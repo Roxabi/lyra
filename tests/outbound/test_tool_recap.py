@@ -265,6 +265,32 @@ def test_route_default_hides_read_grep_glob() -> None:
     )
 
 
+def test_route_show_read_true_silent_counts_not_unknown() -> None:
+    """show.read=True must silent-count — NOT route to unknown_calls.
+
+    Regression test for review finding: an explicit show.read=True landed in
+    unknown_calls (rendering '🔧 1 read') instead of the silent-count line.
+    read/grep/glob have no dedicated render bucket; both show=True and show=False
+    produce silent-count UX (no-op for these tools today).
+    """
+    config = ToolDisplayConfig(show={"read": True, "grep": True, "glob": True})
+    accum = ToolRecapAccumulator(config=config)
+    _feed_tool(accum, "r1", "read", '{"path": "src/foo.py"}')
+    _feed_tool(accum, "g1", "grep", '{"pattern": "class"}')
+    _feed_tool(accum, "gl1", "glob", '{"pattern": "**/*.py"}')
+
+    # No unknown_calls entries (the regression sent these here).
+    assert accum.unknown_calls == {}, (
+        f"read/grep/glob with show=True must not land in unknown_calls; "
+        f"got {accum.unknown_calls!r}"
+    )
+    # Silent counters incremented.
+    silent = accum.snapshot_silent()
+    assert silent.reads == 1
+    assert silent.greps == 1
+    assert silent.globs == 1
+
+
 def test_route_default_shows_bash_edit_write_web_fetch() -> None:
     """Default show has bash/edit/write/web_fetch=True → recap lines emitted."""
     accum = ToolRecapAccumulator(config=ToolDisplayConfig())

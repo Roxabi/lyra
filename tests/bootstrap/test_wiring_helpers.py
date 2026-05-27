@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import Any
-from unittest.mock import ANY, AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -31,6 +31,7 @@ from lyra.core.agent import Agent
 from lyra.core.agent.agent_config import ModelConfig
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.hub import Hub
+from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.nats.queue_groups import HUB_INBOUND
 
 # ---------------------------------------------------------------------------
@@ -680,9 +681,11 @@ class TestWireAdapters:
         # Act
         result = await _wire_adapters(hub, bundle, fake_nc, stores, vault_dir, {})
 
-        # Assert — tool_display_config threading lands via _load_tool_display_config({})
-        # → ToolDisplayConfig() default. Use ANY here because the loader is real, not
-        # mocked, and a value-equality match isn't worth the brittleness.
+        # Assert — _wire_adapters calls _load_tool_display_config({}) which returns
+        # ToolDisplayConfig() defaults; the loader call is part of the contract and
+        # value-equality catches the "loader silently removed" regression that ANY
+        # would have masked.
+        expected_tdc = ToolDisplayConfig()
         mock_wire_tg.assert_awaited_once_with(
             hub,
             bundle.tg_bot_auths,
@@ -690,7 +693,7 @@ class TestWireAdapters:
             bundle.circuit_registry,
             bundle.msg_manager,
             nats_client=fake_nc,
-            tool_display_config=ANY,
+            tool_display_config=expected_tdc,
         )
         mock_wire_dc.assert_awaited_once_with(
             hub,
@@ -701,7 +704,7 @@ class TestWireAdapters:
             agent_store=stores.agent,
             vault_dir=str(vault_dir),
             nats_client=fake_nc,
-            tool_display_config=ANY,
+            tool_display_config=expected_tdc,
         )
 
         assert isinstance(result, WiredAdapters)

@@ -362,3 +362,97 @@ async def test_standalone_path_threads_tool_display_config_to_telegram() -> None
     adapter_cfg = captured_kwargs["tool_display_config"]
     assert adapter_cfg.bash_max_len == 200
     assert adapter_cfg.show["web_fetch"] is False
+
+
+@pytest.mark.asyncio
+async def test_standalone_path_threads_tool_display_config_to_discord() -> None:
+    """_bootstrap_adapter_standalone must pass tool_display_config= to DiscordAdapter.
+
+    Symmetric to the Telegram standalone test; closes the SC-6 coverage gap on
+    the Discord standalone bootstrap callsite (adapter_standalone.py:269).
+    """
+    from lyra.bootstrap.standalone.adapter_standalone import (
+        _bootstrap_adapter_standalone,
+    )
+
+    raw_config = _dc_raw_config(
+        tool_display={"bash_max_len": 200, "show": {"web_fetch": False}}
+    )
+
+    stop = asyncio.Event()
+    stop.set()  # return immediately
+
+    mock_nc = AsyncMock()
+    mock_nc.subscribe = AsyncMock(return_value=AsyncMock())
+
+    captured_kwargs: dict = {}
+
+    def _capture_dc_adapter(**kwargs):
+        captured_kwargs.update(kwargs)
+        mock = MagicMock()
+        mock._bot_id = "main"
+        mock.resolve_identity = AsyncMock()
+        mock.astart = AsyncMock()
+        mock.start = AsyncMock()
+        mock.close = AsyncMock()
+        mock._typing = MagicMock()
+        mock._resolve_identity_fn = None
+        mock._resolve_channel = MagicMock()
+        return mock
+
+    mock_inbound_bus = AsyncMock()
+    mock_inbound_bus.register = MagicMock()
+    mock_inbound_bus.start = AsyncMock()
+    mock_inbound_bus.stop = AsyncMock()
+
+    mock_listener = AsyncMock()
+    mock_dc_typing_listener = AsyncMock()
+    mock_thread_store = AsyncMock()
+    mock_turn_store = AsyncMock()
+
+    with (
+        patch("nats.connect", AsyncMock(return_value=mock_nc)),
+        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch(
+            "lyra.adapters.discord.DiscordAdapter",
+            side_effect=_capture_dc_adapter,
+        ),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            return_value=mock_listener,
+        ),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
+            AsyncMock(return_value=True),
+        ),
+        patch(
+            "lyra.bootstrap.credentials.load_bot_token",
+            return_value=("test-token", None),
+        ),
+        patch(
+            "lyra.infrastructure.stores.thread_store.ThreadStore",
+            return_value=mock_thread_store,
+        ),
+        patch(
+            "lyra.infrastructure.stores.turn_store.TurnStore",
+            return_value=mock_turn_store,
+        ),
+        patch(
+            "lyra.typing.TypingListener",
+            return_value=mock_dc_typing_listener,
+        ),
+        patch(
+            "lyra.typing.make_typing_factory",
+            return_value=MagicMock(),
+        ),
+        patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
+    ):
+        await _bootstrap_adapter_standalone(raw_config, "discord", _stop=stop)
+
+    assert "tool_display_config" in captured_kwargs, (
+        "_bootstrap_adapter_standalone must pass tool_display_config= "
+        "to DiscordAdapter constructor (SC-6 standalone half)"
+    )
+    adapter_cfg = captured_kwargs["tool_display_config"]
+    assert adapter_cfg.bash_max_len == 200
+    assert adapter_cfg.show["web_fetch"] is False

@@ -5,7 +5,6 @@ from roxabi_contracts.llm.models import (
     LifecycleRequest,
     LifecycleResponse,
     LlmChunkEvent,
-    LlmHeartbeat,
     LlmRequest,
     LlmResponse,
 )
@@ -16,7 +15,6 @@ __all__ = [
     "LifecycleRequest",
     "LifecycleResponse",
     "LlmChunkEvent",
-    "LlmHeartbeat",
     "LlmRequest",
     "LlmResponse",
     "build_llm_chunk",

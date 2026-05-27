@@ -24,14 +24,19 @@ if [[ ! -f "$NKEY_PATH" ]]; then
   error "NKey seed not found: $NKEY_PATH (run: make nats-setup)"
 fi
 
+# Extract host:port from NATS_URL (default nats://127.0.0.1:4222)
+NATS_HOST_PORT="${NATS_URL#nats://}"
+NATS_HOST="${NATS_HOST_PORT%:*}"
+NATS_PORT="${NATS_HOST_PORT##*:}"
+
 # Wait for NATS to accept connections (up to 30 s)
 for _ in $(seq 30); do
-  if nc -z 127.0.0.1 4222 2>/dev/null; then
+  if nc -z "$NATS_HOST" "$NATS_PORT" 2>/dev/null; then
     break
   fi
   sleep 1
 done
-nc -z 127.0.0.1 4222 2>/dev/null || error "NATS not reachable on 127.0.0.1:4222 — start lyra-nats first"
+nc -z "$NATS_HOST" "$NATS_PORT" 2>/dev/null || error "NATS not reachable on ${NATS_HOST}:${NATS_PORT} — start lyra-nats first"
 
 # ── Provision ───────────────────────────────────────────────────────────────
 

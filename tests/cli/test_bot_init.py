@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,7 @@ from typer.testing import CliRunner
 
 from lyra.cli import lyra_app as app
 from lyra.core.agent.bot_models import BotRow
+from lyra.infrastructure.stores.bot_store import BotStore
 from tests.helpers.bot_cli import write_bot_toml
 from tests.helpers.bot_store import db_get, db_upsert
 
@@ -266,10 +268,19 @@ class TestBotInitValidation:
 
         result = runner.invoke(app, ["bot", "init"])
 
-        # exit_code 0 (validation errors are counted but do NOT cause exit 1)
+        # spec SC-10: validation errors → exit 1
         assert result.exit_code == 1, result.output  # 1 error → exits 1
         assert "error" in result.output.lower()
         # DB must have 0 rows — invalid entry was not persisted
         db_path = tmp_path / "config.db"
-        row = db_get(db_path, "telegram", "main")
+        row = db_get(db_path, "telegram", "../../evil")
         assert row is None
+
+        async def _get_all() -> list[BotRow]:
+            store = BotStore(db_path=str(db_path))
+            await store.connect()
+            rows = store.get_all()
+            await store.close()
+            return rows
+
+        assert asyncio.run(_get_all()) == []

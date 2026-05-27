@@ -6,7 +6,8 @@ import json
 import logging
 from pathlib import Path
 
-from lyra.core.agent.bot_models import BotRow, _utc_now_iso
+from lyra.core.agent.agent_models import _utc_now_iso
+from lyra.core.agent.bot_models import BotRow
 from lyra.core.agent.bot_schema import (
     _CREATE_BOTS,
     _SELECT_BOTS,

@@ -10,31 +10,20 @@ log = logging.getLogger(__name__)
 
 __all__ = ["run_bot_migrations"]
 
-_CREATE_BOTS = """
-CREATE TABLE bots (
-    platform TEXT NOT NULL,
-    bot_id TEXT NOT NULL,
-    agent TEXT NOT NULL,
-    webhook_enabled INTEGER NOT NULL DEFAULT 0,
-    default_trust TEXT NOT NULL DEFAULT 'untrusted',
-    owner_users_json TEXT NOT NULL DEFAULT '[]',
-    trusted_users_json TEXT NOT NULL DEFAULT '[]',
-    auto_thread INTEGER NOT NULL DEFAULT 0,
-    thread_hot_hours INTEGER NOT NULL DEFAULT 24,
-    updated_at TEXT,
-    PRIMARY KEY (platform, bot_id)
-)
-"""
+# _CREATE_BOTS lives in bot_store.py (passed to _open_db(ddl=[...]) at connect time).
+# This module is additive-only: future ALTER TABLE statements go here.
 
 
 async def run_bot_migrations(db: aiosqlite.Connection) -> None:
-    """Run schema migrations for the bots table.
+    """Run additive schema migrations for the bots table.
 
-    The CREATE TABLE statement is run once; future
-    additive migrations will append ``ALTER TABLE`` statements here.
+    The CREATE TABLE statement is handled by ``_open_db(ddl=[_CREATE_BOTS])``
+    in ``BotStore.connect()`` — matching the AgentStore pattern.
+
+    Future additive migrations (e.g. ``ALTER TABLE ADD COLUMN``) go here.
 
     Args:
         db: An open aiosqlite connection.
     """
-    await db.execute(_CREATE_BOTS)
-    await db.commit()
+    # No migrations yet — placeholder for future ALTER TABLE statements.
+    pass

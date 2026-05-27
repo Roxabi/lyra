@@ -138,3 +138,12 @@ forbidden_modules =
     lyra.adapters.shared._shared_streaming_emitter
     lyra.adapters.shared._shared_streaming
 allow_indirect_imports = true
+
+[importlinter:contract:adapters-no-bot-store]
+name = Adapters must not import BotStore directly (use BotStoreProtocol instead)
+type = forbidden
+source_modules =
+    lyra.adapters
+forbidden_modules =
+    lyra.infrastructure.stores.bot_store
+allow_indirect_imports = true

@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, assert_never
 if TYPE_CHECKING:
     from lyra.outbound.throttle import ThrottleCapability
 
+from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.core.messaging import (
     ReasoningDeltaRenderEvent,
     ReasoningEndRenderEvent,
@@ -131,6 +132,14 @@ class OutboundEmitter:
     per outbound turn.
     """
 
+    # Stage contract (ADR-073):
+    #   Set EXCLUSIVELY by OutboundAdapterBase.send_streaming after _make_emitter
+    #   returns; read by run() to construct the ToolRecapAccumulator. Concrete
+    #   _make_emitter overrides MUST NOT assign this attribute — that would
+    #   re-introduce per-platform wiring and re-create the target-axis-trap
+    #   Phase B was designed to remove.
+    tool_display_config: ToolDisplayConfig | None = None
+
     def __init__(
         self,
         callbacks: PlatformCallbacks,
@@ -192,13 +201,13 @@ class OutboundEmitter:
         self._st.had_tool_events = True
 
         if isinstance(event, ToolCallStartRenderEvent):
-            self._recap_accum.observe_start(event)
+            self._tool_recap.observe_start(event)
             if not await self._ensure_trace_obj():
                 return
         elif isinstance(event, ToolCallArgsRenderEvent):
-            self._recap_accum.observe_args(event)
+            self._tool_recap.observe_args(event)
         elif isinstance(event, ToolCallEndRenderEvent):
-            self._recap_accum.observe_end(event)
+            self._tool_recap.observe_end(event)
         else:
             # ToolCallResultRenderEvent — recap is input-only; nothing to do.
             return
@@ -214,7 +223,7 @@ class OutboundEmitter:
             self._last_recap_edit is None
             or (now - self._last_recap_edit) >= self._edit_interval
         ):
-            lines = format_recap_lines(self._recap_accum, done=False)
+            lines = format_recap_lines(self._tool_recap, done=False)
             if lines:
                 trace = self._trace_obj
 
@@ -431,7 +440,7 @@ class OutboundEmitter:
             and not self._recap_done_emitted
         ):
             self._recap_done_emitted = True
-            lines = format_recap_lines(self._recap_accum, done=True)
+            lines = format_recap_lines(self._tool_recap, done=True)
             if lines:
                 trace = self._trace_obj
                 result = await self._handler.guard(
@@ -484,6 +493,8 @@ class OutboundEmitter:
         backend failures never leave an orphaned "…".  Re-raises
         stream errors after delivering the error message.
         """
+        config = self.tool_display_config or ToolDisplayConfig()
+        self._tool_recap = ToolRecapAccumulator(config=config)
         # Peek: empty stream → fallback, no placeholder.
         first_event: RenderEvent | None = None
         peek_error: Exception | None = None

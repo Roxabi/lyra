@@ -7,6 +7,8 @@ intentionally RED until Phase B Slices 1-2 are implemented.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from lyra.core.messaging.render_events import (
@@ -35,7 +37,7 @@ def _feed_bash(
     accum.observe_args(
         ToolCallArgsRenderEvent(
             tool_call_id=call_id,
-            delta=f'{{"command": {command!r}}}',
+            delta=json.dumps({"command": command}),
         )
     )
     accum.observe_end(ToolCallEndRenderEvent(tool_call_id=call_id))
@@ -64,7 +66,7 @@ def _feed_file(
     tool_name: str = "edit",
 ) -> None:
     """Feed a single file edit/write call."""
-    _feed_tool(accum, call_id, tool_name, f'{{"path": {path!r}}}')
+    _feed_tool(accum, call_id, tool_name, json.dumps({"path": path}))
 
 
 def _bash_lines(lines: list[str]) -> list[str]:

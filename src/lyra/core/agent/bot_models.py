@@ -29,6 +29,8 @@ class BotRow:
     @classmethod
     def from_db_row(cls, row: tuple[Any, ...]) -> "BotRow":
         """Construct a BotRow from a raw aiosqlite SELECT tuple."""
+        if len(row) != 10:
+            raise ValueError(f"Expected 10 columns, got {len(row)}")
         (
             platform,
             bot_id,

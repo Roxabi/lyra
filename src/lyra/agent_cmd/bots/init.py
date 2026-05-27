@@ -9,13 +9,7 @@ from pathlib import Path
 
 import typer
 
-from lyra.cli_bot import bot_app
-
-
-def _get_db_path() -> Path:
-    return (
-        Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))) / "config.db"
-    )
+from lyra.cli_bot import _connect_bot_store, bot_app
 
 
 def _find_config_toml() -> Path | None:
@@ -39,12 +33,7 @@ def init_bots(
     """Seed the bot DB from config.toml (one-time migration)."""
 
     async def _run() -> None:
-        from lyra.infrastructure.stores.bot_store import (  # type: ignore — DEBT:store-not-yet-landed (T1–T5)
-            BotStore,
-        )
-
-        store = BotStore(db_path=_get_db_path())
-        await store.connect()
+        store = await _connect_bot_store()
         try:
             config_path = _find_config_toml()
             if config_path is None:
@@ -105,10 +94,11 @@ def _merge_bots(raw: dict) -> list:  # noqa: C901 — DEBT:complexity-residual �
 
     def _add_entries(section_path: tuple[str, ...], platform: str) -> None:
         section = raw
-        for key in section_path:
+        for key in section_path[:-1]:
             section = section.get(key, {})
             if not isinstance(section, dict):
                 return
+        section = section.get(section_path[-1], [])
         if not isinstance(section, list):
             return
         for entry in section:

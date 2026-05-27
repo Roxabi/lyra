@@ -11,7 +11,7 @@ log = logging.getLogger(__name__)
 __all__ = ["run_bot_migrations"]
 
 _CREATE_BOTS = """
-CREATE TABLE bots (
+CREATE TABLE IF NOT EXISTS bots (
     platform TEXT NOT NULL,
     bot_id TEXT NOT NULL,
     agent TEXT NOT NULL,

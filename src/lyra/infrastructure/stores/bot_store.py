@@ -8,6 +8,7 @@ from pathlib import Path
 
 from lyra.core.agent.bot_models import BotRow, _utc_now_iso
 from lyra.core.stores.bot_store_protocol import BotStoreProtocol
+from lyra.infrastructure.stores.bot_store_migrations import run_bot_migrations
 
 from .sqlite_base import SqliteStore
 
@@ -76,6 +77,8 @@ class BotStore(SqliteStore, BotStoreProtocol):
             return  # already connected
         await self._open_db(ddl=[_CREATE_BOTS])
         try:
+            db = self._require_db()
+            await run_bot_migrations(db)
             await self._warm_cache()
         except Exception:
             log.exception("BotStore.connect() setup failed; closing connection")
@@ -94,9 +97,9 @@ class BotStore(SqliteStore, BotStoreProtocol):
 
     async def close(self) -> None:
         """Close the database connection and clear caches."""
+        self._bots.clear()
         if self._db is not None:
             await super().close()
-            self._bots.clear()
             log.info("BotStore closed")
 
     # ------------------------------------------------------------------

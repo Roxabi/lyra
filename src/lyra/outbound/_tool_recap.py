@@ -17,12 +17,23 @@ from lyra.core.messaging.render_events import (
     ToolCallEndRenderEvent,
     ToolCallStartRenderEvent,
 )
+from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 
-_BASH_DISPLAY_MAX = 80
 _AGENT_DISPLAY_MAX = 48
-_BASH_GROUP_THRESHOLD = 3
-_FILES_GROUP_THRESHOLD = 3
-_NAMES_THRESHOLD = 5
+
+# Canonical lookup for tools whose .lower() doesn't match the canonical
+# snake_case key in ToolDisplayConfig.show. WebFetch → "webfetch", but the
+# canonical key is "web_fetch" — same for WebSearch.
+_TOOL_KEY_ALIASES = {
+    "webfetch": "web_fetch",
+    "websearch": "web_search",
+}
+
+
+def _canonical_key(tool_name: str) -> str:
+    """Map a CLI tool name to its canonical show-map key (lowercase snake_case)."""
+    name = tool_name.lower()
+    return _TOOL_KEY_ALIASES.get(name, name)
 
 
 def _truncate(text: str, max_len: int) -> str:
@@ -53,7 +64,7 @@ def _accumulate_file_edit(
     else:
         new_count = existing.count + 1
         new_edits = list(existing.edits) + [tool_name]
-    if new_count > _NAMES_THRESHOLD:
+    if new_count > accum.config.names_threshold:
         new_edits = []
     accum.files[path] = FileEditSummary(path=path, edits=new_edits, count=new_count)
 
@@ -68,6 +79,7 @@ class _PartialCall:
 class ToolRecapAccumulator:
     """Accumulates tool call events for a single turn."""
 
+    config: ToolDisplayConfig = field(default_factory=ToolDisplayConfig)
     files: dict[str, FileEditSummary] = field(default_factory=dict)
     bash_commands: list[str] = field(default_factory=list)
     web_fetches: list[str] = field(default_factory=list)
@@ -87,7 +99,9 @@ class ToolRecapAccumulator:
         buffer so that ``observe_end`` naturally no-ops.
         """
         if ev.input:
-            self._route(ev.tool_call_id, ev.tool_name.lower(), ev.tool_name, ev.input)
+            self._route(
+                ev.tool_call_id, _canonical_key(ev.tool_name), ev.tool_name, ev.input
+            )
             return
         self._in_flight[ev.tool_call_id] = _PartialCall(tool_name=ev.tool_name)
 
@@ -97,24 +111,50 @@ class ToolRecapAccumulator:
         if partial is not None:
             partial.args_buffer += ev.delta
 
-    def _route(self, tool_call_id: str, key: str, tool_name: str, args: dict) -> None:
-        """Route a completed tool call into the appropriate accumulator bucket."""
+    def _route(  # noqa: C901 — branchy bucket-dispatch is the simplest shape; one elif per tool
+        self, tool_call_id: str, key: str, tool_name: str, args: dict
+    ) -> None:
+        """Route a completed tool call into the appropriate accumulator bucket.
+
+        Visibility rule: a key explicitly present in ``self.config.show`` with value
+        ``False`` is suppressed (silent counters preserved for read/grep/glob).
+        Keys not present in ``show`` fall through to routing — this preserves
+        Phase A's tracking of unknown tools (e.g. ``TodoWrite``, ``LS``) in
+        ``unknown_calls``. Operators who want to suppress an unknown tool can add
+        it to ``[tool_display.show]`` with ``false``.
+
+        Note on read/grep/glob: these tools have no dedicated render bucket;
+        their UX is the silent-count line ("🔍 N reads · M greps"). show=True
+        and show=absent both produce the silent-count path. show=False
+        suppresses entirely (no counter, no line). A dedicated render surface
+        for these tools is deferred — see follow-up issue.
+        """
+        show = self.config.show
+        if key in show and not show[key]:
+            # Explicitly suppressed (silent counters preserved for read/grep/glob)
+            if key == "read":
+                self._silent_reads += 1
+            elif key == "grep":
+                self._silent_greps += 1
+            elif key == "glob":
+                self._silent_globs += 1
+            return
         if key in ("edit", "write"):
             _accumulate_file_edit(self, tool_call_id, tool_name, args)
         elif key == "bash":
             self.bash_commands.append(args.get("command", ""))
+        elif key == "web_fetch":
+            self.web_fetches.append(args.get("url", ""))
+        elif key == "web_search":
+            self.web_searches.append(args.get("query", ""))
+        elif key == "agent":
+            self.agent_calls.append(args.get("description", "agent"))
         elif key == "read":
             self._silent_reads += 1
         elif key == "grep":
             self._silent_greps += 1
         elif key == "glob":
             self._silent_globs += 1
-        elif key in ("web_fetch", "webfetch"):
-            self.web_fetches.append(args.get("url", ""))
-        elif key in ("web_search", "websearch"):
-            self.web_searches.append(args.get("query", ""))
-        elif key == "agent":
-            self.agent_calls.append(args.get("description", "agent"))
         else:
             self.unknown_calls[key] = self.unknown_calls.get(key, 0) + 1
 
@@ -127,7 +167,9 @@ class ToolRecapAccumulator:
             args: dict = json.loads(partial.args_buffer)
         except (json.JSONDecodeError, ValueError):
             args = {}
-        self._route(ev.tool_call_id, partial.tool_name.lower(), partial.tool_name, args)
+        self._route(
+            ev.tool_call_id, _canonical_key(partial.tool_name), partial.tool_name, args
+        )
         del self._in_flight[ev.tool_call_id]
 
     def snapshot_silent(self) -> SilentCounts:
@@ -157,7 +199,7 @@ def _format_files(accum: ToolRecapAccumulator) -> list[str]:
     """Build lines for the file-edit section."""
     if not accum.files:
         return []
-    if len(accum.files) >= _FILES_GROUP_THRESHOLD:
+    if len(accum.files) >= accum.config.group_threshold:
         total = sum(f.count for f in accum.files.values())
         return [f"✏️ {len(accum.files)} files · {total} edits"]
     lines: list[str] = []
@@ -173,9 +215,10 @@ def _format_bash(accum: ToolRecapAccumulator) -> list[str]:
     cmds = [c for c in (s.strip() for s in accum.bash_commands) if c]
     if not cmds:
         return []
-    if len(cmds) >= _BASH_GROUP_THRESHOLD:
+    if len(cmds) >= accum.config.group_threshold:
         return [f"\U0001f4bb {_plural(len(cmds), 'command')}"]
-    return [f"\U0001f4bb `{_sanitize(_truncate(c, _BASH_DISPLAY_MAX))}`" for c in cmds]
+    max_len = accum.config.bash_max_len
+    return [f"\U0001f4bb `{_sanitize(_truncate(c, max_len))}`" for c in cmds]
 
 
 def _format_unknown(accum: ToolRecapAccumulator) -> list[str]:

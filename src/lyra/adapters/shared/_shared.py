@@ -25,14 +25,6 @@ from lyra.adapters.shared._shared_audio import (
     buffer_audio_chunks,
     mime_to_ext,
 )
-
-# Re-exports from _shared_streaming_state — importers can use either module.
-from lyra.adapters.shared._shared_streaming_state import (
-    IntermediateTextState,
-    StreamState,
-)
-
-# Re-exports from _shared_audio — importers can use either module.
 from lyra.adapters.shared._shared_text import (
     chunk_text,
     sanitize_filename,
@@ -40,6 +32,7 @@ from lyra.adapters.shared._shared_text import (
 )
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.messaging.message import InboundMessage, Platform
+from lyra.outbound._streaming_state import IntermediateTextState, StreamState
 
 if TYPE_CHECKING:
     from lyra.adapters.shared.outbound_listener import OutboundListener

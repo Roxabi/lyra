@@ -31,6 +31,7 @@ from lyra.core.agent import Agent
 from lyra.core.agent.agent_config import ModelConfig
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.hub import Hub
+from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.nats.queue_groups import HUB_INBOUND
 
 # ---------------------------------------------------------------------------
@@ -678,9 +679,13 @@ class TestWireAdapters:
         vault_dir = Path("/tmp/fake_vault")
 
         # Act
-        result = await _wire_adapters(hub, bundle, fake_nc, stores, vault_dir)
+        result = await _wire_adapters(hub, bundle, fake_nc, stores, vault_dir, {})
 
-        # Assert
+        # Assert — _wire_adapters calls _load_tool_display_config({}) which returns
+        # ToolDisplayConfig() defaults; the loader call is part of the contract and
+        # value-equality catches the "loader silently removed" regression that ANY
+        # would have masked.
+        expected_tdc = ToolDisplayConfig()
         mock_wire_tg.assert_awaited_once_with(
             hub,
             bundle.tg_bot_auths,
@@ -688,6 +693,7 @@ class TestWireAdapters:
             bundle.circuit_registry,
             bundle.msg_manager,
             nats_client=fake_nc,
+            tool_display_config=expected_tdc,
         )
         mock_wire_dc.assert_awaited_once_with(
             hub,
@@ -698,6 +704,7 @@ class TestWireAdapters:
             agent_store=stores.agent,
             vault_dir=str(vault_dir),
             nats_client=fake_nc,
+            tool_display_config=expected_tdc,
         )
 
         assert isinstance(result, WiredAdapters)

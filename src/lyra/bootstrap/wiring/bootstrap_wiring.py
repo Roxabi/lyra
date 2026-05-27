@@ -22,6 +22,7 @@ from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.hub import Hub, OutboundDispatcher, RoutingKey
 from lyra.core.messaging.message import Platform
 from lyra.core.messaging.messages import MessageManager
+from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.core.stores.bot_store_protocol import BotStoreProtocol
 from lyra.infrastructure.stores.agent_store import AgentStore
 from lyra.infrastructure.stores.auth_store import AuthStore
@@ -41,11 +42,15 @@ async def wire_telegram_adapters(  # noqa: PLR0913 — DEBT:wiring-bootstrap-dep
     circuit_registry: CircuitRegistry,
     msg_manager: MessageManager,
     nats_client: Any = None,
+    tool_display_config: ToolDisplayConfig | None = None,
 ) -> tuple[list[TelegramAdapter], list[OutboundDispatcher]]:
     """Wire each Telegram bot: adapter + dispatcher + hub bindings.
 
     Returns (adapters, dispatchers) lists.
     """
+    _tdc = (
+        tool_display_config if tool_display_config is not None else ToolDisplayConfig()
+    )
     adapters: list[TelegramAdapter] = []
     dispatchers: list[OutboundDispatcher] = []
 
@@ -70,6 +75,7 @@ async def wire_telegram_adapters(  # noqa: PLR0913 — DEBT:wiring-bootstrap-dep
             circuit_registry=circuit_registry,
             msg_manager=msg_manager,
             turn_store=hub._turn_store,
+            tool_display_config=_tdc,
         )
         await adapter.resolve_identity()
         # C3: Hub is the trust authority — register authenticator here, not on adapter.
@@ -114,6 +120,7 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — DEBT:wiring-bootstra
     agent_store: AgentStore | None = None,
     vault_dir: str | None = None,
     nats_client: Any = None,
+    tool_display_config: ToolDisplayConfig | None = None,
 ) -> tuple[
     list[tuple[DiscordAdapter, DiscordBotConfig, str]],
     list[OutboundDispatcher],
@@ -124,6 +131,9 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — DEBT:wiring-bootstra
     Returns (adapters_with_config, dispatchers) where each adapter entry is
     (adapter, bot_cfg, token) — the token is needed later for ``adapter.start()``.
     """
+    _tdc = (
+        tool_display_config if tool_display_config is not None else ToolDisplayConfig()
+    )
     adapters: list[tuple[DiscordAdapter, DiscordBotConfig, str]] = []
     dispatchers: list[OutboundDispatcher] = []
 
@@ -178,6 +188,7 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — DEBT:wiring-bootstra
                 thread_store=thread_store,
                 watch_channels=watch_channels,
                 turn_store=hub._turn_store,
+                tool_display_config=_tdc,
             )
             # Wire identity resolver for slash command trust (voice commands).
             adapter._resolve_identity_fn = hub.resolve_identity

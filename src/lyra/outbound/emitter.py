@@ -18,24 +18,7 @@ from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, assert_never
 
-# IMPORTANT: state + tool-recap imports are deferred to the BOTTOM of this file
-# (after the class definitions) to break a circular import. Both
-# lyra.adapters/__init__.py and lyra.adapters.shared/__init__.py do eager
-# package-level imports of DiscordAdapter / StreamingSession / PlatformCallbacks
-# that transitively re-enter this module through the
-# _shared_streaming_emitter shim. If the imports were at the top of this file,
-# Python would resolve them while emitter.py is still partially initialized,
-# and the shim's `from lyra.outbound.emitter import OutboundEmitter` would
-# fail with "partially initialized module". Deferring the import to the bottom
-# of the file means OutboundEmitter is defined before the shared-state import
-# fires, so the shim's lookup succeeds. (Issue #1279 keeps the state + recap
-# files under lyra.adapters.shared/ per resolved spec Open Q 2.)
 if TYPE_CHECKING:
-    from lyra.adapters.shared._shared_streaming_state import StreamState
-    from lyra.adapters.shared._tool_recap import (
-        ToolRecapAccumulator,
-        format_recap_lines,
-    )
     from lyra.outbound.throttle import ThrottleCapability
 
 from lyra.core.messaging import (
@@ -56,7 +39,14 @@ from lyra.core.messaging import (
     ToolCallStartRenderEvent,
 )
 from lyra.core.messaging.message import GENERIC_ERROR_REPLY, OutboundMessage
+from lyra.core.messaging.tool_display_config import ToolDisplayConfig
+from lyra.outbound._streaming_state import StreamState
+from lyra.outbound._tool_recap import (
+    ToolRecapAccumulator,
+    format_recap_lines,
+)
 from lyra.outbound.error_handler import OutboundErrorHandler
+from lyra.outbound.throttle import STREAMING_EDIT_INTERVAL
 from lyra.transport._result import Err
 
 log = logging.getLogger(__name__)
@@ -142,6 +132,14 @@ class OutboundEmitter:
     per outbound turn.
     """
 
+    # Stage contract (ADR-073):
+    #   Set EXCLUSIVELY by OutboundAdapterBase.send_streaming after _make_emitter
+    #   returns; read by run() to construct the ToolRecapAccumulator. Concrete
+    #   _make_emitter overrides MUST NOT assign this attribute — that would
+    #   re-introduce per-platform wiring and re-create the target-axis-trap
+    #   Phase B was designed to remove.
+    tool_display_config: ToolDisplayConfig | None = None
+
     def __init__(
         self,
         callbacks: PlatformCallbacks,
@@ -164,7 +162,6 @@ class OutboundEmitter:
             typing.edit_interval_s if typing is not None else STREAMING_EDIT_INTERVAL
         )
         self._trace_obj: Any | None = None
-        self._recap_accum = ToolRecapAccumulator()
         self._last_recap_edit: float | None = None
         self._recap_done_emitted: bool = False
 
@@ -204,13 +201,13 @@ class OutboundEmitter:
         self._st.had_tool_events = True
 
         if isinstance(event, ToolCallStartRenderEvent):
-            self._recap_accum.observe_start(event)
+            self._tool_recap.observe_start(event)
             if not await self._ensure_trace_obj():
                 return
         elif isinstance(event, ToolCallArgsRenderEvent):
-            self._recap_accum.observe_args(event)
+            self._tool_recap.observe_args(event)
         elif isinstance(event, ToolCallEndRenderEvent):
-            self._recap_accum.observe_end(event)
+            self._tool_recap.observe_end(event)
         else:
             # ToolCallResultRenderEvent — recap is input-only; nothing to do.
             return
@@ -226,7 +223,7 @@ class OutboundEmitter:
             self._last_recap_edit is None
             or (now - self._last_recap_edit) >= self._edit_interval
         ):
-            lines = format_recap_lines(self._recap_accum, done=False)
+            lines = format_recap_lines(self._tool_recap, done=False)
             if lines:
                 trace = self._trace_obj
 
@@ -443,7 +440,7 @@ class OutboundEmitter:
             and not self._recap_done_emitted
         ):
             self._recap_done_emitted = True
-            lines = format_recap_lines(self._recap_accum, done=True)
+            lines = format_recap_lines(self._tool_recap, done=True)
             if lines:
                 trace = self._trace_obj
                 result = await self._handler.guard(
@@ -496,6 +493,8 @@ class OutboundEmitter:
         backend failures never leave an orphaned "…".  Re-raises
         stream errors after delivering the error message.
         """
+        config = self.tool_display_config or ToolDisplayConfig()
+        self._tool_recap = ToolRecapAccumulator(config=config)
         # Peek: empty stream → fallback, no placeholder.
         first_event: RenderEvent | None = None
         peek_error: Exception | None = None
@@ -533,17 +532,3 @@ class OutboundEmitter:
         finally:
             if isinstance(events, AsyncGenerator):
                 await events.aclose()
-
-
-# Deferred imports — see the explanatory comment at the top of the file.
-# These run AFTER OutboundEmitter is fully defined, so the shim's lookup of
-# OutboundEmitter (triggered transitively by lyra.adapters.__init__) finds a
-# fully initialized class instead of a partially loaded module.
-from lyra.adapters.shared._shared_streaming_state import (  # noqa: E402
-    StreamState,
-)
-from lyra.adapters.shared._tool_recap import (  # noqa: E402
-    ToolRecapAccumulator,
-    format_recap_lines,
-)
-from lyra.outbound.throttle import STREAMING_EDIT_INTERVAL  # noqa: E402, F401

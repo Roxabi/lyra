@@ -33,29 +33,37 @@ class ToolDisplayConfig(BaseModel):
     ----------
     names_threshold:
         Number of individual file-edit names to show per file before switching
-        to count-only mode (e.g. "3 edits").  Default: 3.
+        to count-only mode (e.g. "5 edits").  Default: 5.
     group_threshold:
         Number of distinct files before switching from per-file display to a
         grouped summary (e.g. "4 files edited").  Default: 3.
     bash_max_len:
         Maximum characters to display per bash command before truncating.
-        Default: 60.
+        Default: 80.
     throttle_ms:
         Minimum milliseconds between consecutive intermediate tool-card
         emissions during a single turn.  Terminal events bypass this throttle.
         Default: 2000.  Use 0 to disable throttling entirely.
     show:
-        Read-only mapping of tool name → whether to surface the call in the
-        summary card.  Keys not present in this map are treated as ``False``
-        (silent).  Mutation raises ``TypeError``.
+        Read-only mapping of canonical tool key → visibility. A key explicitly
+        set to ``False`` suppresses the corresponding tool from the recap card
+        (read/grep/glob preserve silent counters). Keys NOT present in the map
+        fall through to default routing — known buckets render normally; truly
+        unknown tools (e.g. ``TodoWrite``, ``LS``) are tracked in
+        ``unknown_calls``. To suppress an unknown tool, add it with ``false``.
+        Canonical keys are lowercase snake_case (``web_fetch``, not ``webfetch``).
+        Mutation raises ``TypeError``.
     """
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
-    names_threshold: int = 3
+    names_threshold: int = 5
     group_threshold: int = 3
-    bash_max_len: int = 60
+    bash_max_len: int = 80
     throttle_ms: int = 2000
+    """Min ms between streaming edits. Future consumers must wire through
+    lyra.outbound.throttle.ThrottleCapability (not per-adapter logic) per
+    ADR-073 — single stage primitive, not per-platform variants."""
     # Stored as dict[str, bool] for Pydantic compatibility; exposed as
     # MappingProxyType via the .show property to preserve read-only semantics.
     _show: dict[str, bool] = {}

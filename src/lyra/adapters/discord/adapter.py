@@ -54,6 +54,7 @@ from lyra.core.messaging.message import (
     OutboundMessage,
 )
 from lyra.core.messaging.messages import MessageManager
+from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 
 log = logging.getLogger(__name__)
 
@@ -95,11 +96,13 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         thread_store: ThreadStoreProtocol | None = None,
         watch_channels: frozenset[int] = frozenset(),
         turn_store: "TurnStore | None" = None,
+        tool_display_config: ToolDisplayConfig | None = None,
     ) -> None:
         if intents is None:
             intents = discord.Intents.default()
             intents.message_content = True
         super().__init__(intents=intents)
+        self._tool_display_config = tool_display_config
         self.tree = discord.app_commands.CommandTree(self)
         _register_voice_app_commands(self.tree, self)
         self._inbound_bus = inbound_bus

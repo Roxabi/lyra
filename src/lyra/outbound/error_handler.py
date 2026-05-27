@@ -3,7 +3,7 @@
 Wraps platform-side exceptions into SanitizedError (type(exc).__name__ only,
 never str(exc)) and routes them via Result[T, SanitizedError]. Replaces the
 13 ad-hoc `except Exception:  # noqa: BLE001` sites that used to live in
-StreamingSession (Phase 2 of stage-axis refactor, #1279).
+OutboundEmitter (Phase 2 of stage-axis refactor, #1279).
 """
 
 from __future__ import annotations

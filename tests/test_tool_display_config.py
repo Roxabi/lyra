@@ -26,9 +26,9 @@ class TestToolDisplayConfigDefaults:
         # Arrange / Act
         cfg = ToolDisplayConfig()
         # Assert
-        assert cfg.names_threshold == 3
+        assert cfg.names_threshold == 5
         assert cfg.group_threshold == 3
-        assert cfg.bash_max_len == 60
+        assert cfg.bash_max_len == 80
         assert cfg.throttle_ms == 2000
 
     def test_show_contains_all_nine_keys(self) -> None:
@@ -111,7 +111,7 @@ class TestToolDisplayConfigFromDict:
         # Assert
         assert cfg.names_threshold == 5
         assert cfg.group_threshold == 3  # default preserved
-        assert cfg.bash_max_len == 60  # default preserved
+        assert cfg.bash_max_len == 80  # default preserved
         assert cfg.throttle_ms == 2000  # default preserved
 
     def test_all_numeric_keys_overridden(self) -> None:

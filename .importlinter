@@ -40,16 +40,6 @@ ignore_imports =
     lyra.core.cli.cli_pool_session -> lyra.infrastructure.stores.turn_store
     lyra.core.pool.pool -> lyra.infrastructure.stores.turn_store
     lyra.core.pool.pool_observer -> lyra.infrastructure.stores.turn_store
-    # OutboundEmitter (lyra.outbound) imports shared state types that REMAIN in
-    # lyra.adapters.shared per resolved Open Q 2 (spec §Resolved Open Questions).
-    # classify_stream_error has moved to OutboundErrorHandler (#1279), but StreamState
-    # + ToolRecapAccumulator still live under adapters.shared because moving them
-    # into lyra.outbound would re-introduce the circular load path through
-    # StreamState.build_display_text. Deferred imports at the bottom of emitter.py
-    # break the import-time cycle; these exemptions remain necessary until
-    # StreamState relocates in Phase 7 (#1284) — DEBT:importlinter-outbound-shared-state-transition
-    lyra.outbound.emitter -> lyra.adapters.shared._shared_streaming_state
-    lyra.outbound.emitter -> lyra.adapters.shared._tool_recap
 
 [importlinter:contract:core-stores-no-sqlite]
 name = core/stores protocols must not import SQLite drivers

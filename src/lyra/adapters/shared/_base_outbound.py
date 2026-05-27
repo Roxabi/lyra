@@ -21,6 +21,7 @@ from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
+from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.outbound.emitter import OutboundEmitter, PlatformCallbacks
 
 if TYPE_CHECKING:
@@ -65,6 +66,10 @@ class OutboundAdapterBase(ABC):
     ) -> None:
         """Stream reply using the shared OutboundEmitter algorithm."""
         emitter = self._make_emitter(original_msg, outbound)
+        # Single WRITE site for tool_display_config — see ADR-073.
+        emitter.tool_display_config = (
+            getattr(self, "_tool_display_config", None) or ToolDisplayConfig()
+        )
         await emitter.run(events)
 
     @abstractmethod

@@ -21,6 +21,20 @@ from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 
 _AGENT_DISPLAY_MAX = 48
 
+# Canonical lookup for tools whose .lower() doesn't match the canonical
+# snake_case key in ToolDisplayConfig.show. WebFetch → "webfetch", but the
+# canonical key is "web_fetch" — same for WebSearch.
+_TOOL_KEY_ALIASES = {
+    "webfetch": "web_fetch",
+    "websearch": "web_search",
+}
+
+
+def _canonical_key(tool_name: str) -> str:
+    """Map a CLI tool name to its canonical show-map key (lowercase snake_case)."""
+    name = tool_name.lower()
+    return _TOOL_KEY_ALIASES.get(name, name)
+
 
 def _truncate(text: str, max_len: int) -> str:
     """Truncate text to max_len chars, appending … when shortened."""
@@ -85,7 +99,9 @@ class ToolRecapAccumulator:
         buffer so that ``observe_end`` naturally no-ops.
         """
         if ev.input:
-            self._route(ev.tool_call_id, ev.tool_name.lower(), ev.tool_name, ev.input)
+            self._route(
+                ev.tool_call_id, _canonical_key(ev.tool_name), ev.tool_name, ev.input
+            )
             return
         self._in_flight[ev.tool_call_id] = _PartialCall(tool_name=ev.tool_name)
 
@@ -96,10 +112,18 @@ class ToolRecapAccumulator:
             partial.args_buffer += ev.delta
 
     def _route(self, tool_call_id: str, key: str, tool_name: str, args: dict) -> None:
-        """Route a completed tool call into the appropriate accumulator bucket."""
-        if not self.config.show.get(key, False):
-            # Tool hidden by config — preserve silent-counter accounting for the
-            # default-hidden read/grep/glob set (Phase A behavior).
+        """Route a completed tool call into the appropriate accumulator bucket.
+
+        Visibility rule: a key explicitly present in ``self.config.show`` with value
+        ``False`` is suppressed (silent counters preserved for read/grep/glob).
+        Keys not present in ``show`` fall through to routing — this preserves
+        Phase A's tracking of unknown tools (e.g. ``TodoWrite``, ``LS``) in
+        ``unknown_calls``. Operators who want to suppress an unknown tool can add
+        it to ``[tool_display.show]`` with ``false``.
+        """
+        show = self.config.show
+        if key in show and not show[key]:
+            # Explicitly suppressed
             if key == "read":
                 self._silent_reads += 1
             elif key == "grep":
@@ -111,9 +135,9 @@ class ToolRecapAccumulator:
             _accumulate_file_edit(self, tool_call_id, tool_name, args)
         elif key == "bash":
             self.bash_commands.append(args.get("command", ""))
-        elif key in ("web_fetch", "webfetch"):
+        elif key == "web_fetch":
             self.web_fetches.append(args.get("url", ""))
-        elif key in ("web_search", "websearch"):
+        elif key == "web_search":
             self.web_searches.append(args.get("query", ""))
         elif key == "agent":
             self.agent_calls.append(args.get("description", "agent"))
@@ -129,7 +153,9 @@ class ToolRecapAccumulator:
             args: dict = json.loads(partial.args_buffer)
         except (json.JSONDecodeError, ValueError):
             args = {}
-        self._route(ev.tool_call_id, partial.tool_name.lower(), partial.tool_name, args)
+        self._route(
+            ev.tool_call_id, _canonical_key(partial.tool_name), partial.tool_name, args
+        )
         del self._in_flight[ev.tool_call_id]
 
     def snapshot_silent(self) -> SilentCounts:

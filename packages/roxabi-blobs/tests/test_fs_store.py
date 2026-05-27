@@ -84,6 +84,11 @@ class TestExists:
         # Latest = the discord ingestion
         assert found.source == "discord"
         assert found.platform_ref == "dc:2"
+        # FsBlobStore-specific: returned BlobRef carries the full sha256.
+        # (HttpBlobStore returns a sentinel with content_hash="", is_sentinel=True;
+        # asserting equality here pins the FS-side contract — #1367.)
+        assert found.content_hash == first.content_hash
+        assert found.is_sentinel is False
 
     async def test_exists_missing(self, store: FsBlobStore) -> None:
         result = await store.exists("deadbeef" * 8)

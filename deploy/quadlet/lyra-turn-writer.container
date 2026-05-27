@@ -34,8 +34,18 @@ Environment=LYRA_TURNS_DB=/data/turns.db
 Environment=LYRA_VAULT_DIR=/data
 Environment=PYTHONUNBUFFERED=1
 Exec=lyra turn-writer
-HealthCmd=pgrep -f "lyra turn-writer"
+HealthCmd=python3 -c 'import urllib.request,sys; r=urllib.request.urlopen("http://127.0.0.1:8083/health",timeout=3); sys.exit(0 if r.status==200 else 1)'
+# Intentional fleet divergence: HTTP probe failure → SIGKILL → Restart=on-failure
+# cycles the unit. Other lyra-* units use shallow process-presence probes where
+# kill-on-fail is overkill; here the writer's sole-writer contract makes a dead
+# probe a hard failure worth recycling. See ADR-075 and #1349.
+HealthOnFailure=kill
 HealthInterval=30s
+# HealthStartPeriod gives the writer 60s before probes count as failures —
+# wide enough to absorb NATS connect + ensure_stream + ensure_consumer +
+# uvicorn bind on :8083, even under I/O contention. Without it the first
+# probe fires at t=30s and a slow startup would race uvicorn → SIGKILL loop.
+HealthStartPeriod=60s
 
 [Service]
 Restart=on-failure

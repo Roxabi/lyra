@@ -38,6 +38,7 @@ if TYPE_CHECKING:
     from lyra.infrastructure.stores.prefs_store import PrefsStore
     from lyra.infrastructure.stores.turn_store import TurnStore
     from lyra.transport.turn_publisher import TurnPublisher
+    from lyra.transport.typing_publisher import TypingPublisher
 
     from ..agent import AgentBase
     from ..circuit_breaker import CircuitRegistry
@@ -108,6 +109,8 @@ class Hub(
         self._memory_tasks: set[asyncio.Task] = set()
         self._turn_store: TurnStore | None = None
         self._turn_publisher: TurnPublisher | None = None
+        # T1 — typing-plane publisher; wired by bootstrap, consumed by T2.
+        self._typing_publisher: TypingPublisher | None = None
         self._turn_timeout = cfg.turn_timeout
         self._prefs_store: PrefsStore | None = prefs_store
         self._safe_dispatch_timeout = cfg.safe_dispatch_timeout

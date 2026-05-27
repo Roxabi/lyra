@@ -39,7 +39,7 @@ define require_machine1
 	@case "$(DEPLOY_DIR)" in *[\'\"\$$\\\;\&\|\`]*) echo "Error: DEPLOY_DIR contains shell metacharacters"; exit 1 ;; esac
 endef
 
-.PHONY: build push lyra telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy remote nats-setup nats-regen-authconf nats-add-identity test test-integration voice-smoke lint typecheck format quality-debt-report quality-debt-classify
+.PHONY: build push lyra telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-sync-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy remote nats-setup nats-regen-authconf nats-add-identity test test-integration voice-smoke lint typecheck format quality-debt-report quality-debt-classify
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
@@ -172,12 +172,26 @@ quadlet-install: quadlet-preflight  ## install Quadlet units → reload + verify
 	@cp deploy/quadlet/lyra-gh.pod                     "$(QUADLET_DIR)/lyra-gh.pod"
 	@cp deploy/quadlet/lyra-gh-helper.container        "$(QUADLET_DIR)/lyra-gh-helper.container"
 	@cp deploy/quadlet/lyra-clipool.container          "$(QUADLET_DIR)/lyra-clipool.container"
+	@cp deploy/quadlet/lyra-blobstore.container        "$(QUADLET_DIR)/lyra-blobstore.container"
+	@cp deploy/quadlet/lyra-turn-writer.container      "$(QUADLET_DIR)/lyra-turn-writer.container"
 	@echo "Quadlet units copied."
 	@if [ "$(NO_RESTART)" = "1" ]; then \
 		echo "NO_RESTART=1 — skipping daemon-reload, restart, and verification."; \
 	else \
 		bash deploy/quadlet-install-verify.sh; \
 	fi
+
+QUADLET_SYNC_SRC := deploy/systemd
+QUADLET_SYNC_DST := $(HOME)/.config/systemd/user
+
+quadlet-sync-install:  ## install lyra-quadlet-sync timer + service → daemon-reload + enable
+	@mkdir -p "$(QUADLET_SYNC_DST)"
+	@cp "$(QUADLET_SYNC_SRC)/lyra-quadlet-sync.service" "$(QUADLET_SYNC_DST)/"
+	@cp "$(QUADLET_SYNC_SRC)/lyra-quadlet-sync.timer"   "$(QUADLET_SYNC_DST)/"
+	@echo "Sync units copied to $(QUADLET_SYNC_DST)"
+	@systemctl --user daemon-reload
+	@systemctl --user enable lyra-quadlet-sync.timer
+	@echo "[ok] lyra-quadlet-sync.timer enabled."
 
 quadlet-authconf-merged:  ## render merged auth.conf (lyra + voicecli identities) → ~/.lyra/nkeys/auth.conf
 	@lyra-acl genkeys --emit-merged-authconf
@@ -292,10 +306,15 @@ remote:
 
 # ── Dev tools ────────────────────────────────────────────────────────────────
 
+# Shared list of services that hold NATS subject auth and must restart
+# whenever `auth.conf` is regenerated or a new identity is added. The bare
+# `lyra-nats` is restarted separately by the target itself before this list.
+LYRA_NATS_CLIENTS := lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-turn-writer lyra-gh-helper
+
 nats-setup:
 	@bash deploy/nats/setup.sh
 
-nats-regen-authconf:          ## re-render auth.conf, refresh lyra-nats-auth secret only, restart NATS
+nats-regen-authconf:          ## re-render auth.conf, refresh lyra-nats-auth secret only, restart all NATS clients
 	@lyra-acl genkeys --regen-authconf
 	@test -s "$(LYRA_NKEYS_DIR)/auth.conf" \
 		|| { echo "ERROR: $(LYRA_NKEYS_DIR)/auth.conf missing or empty after genkeys"; exit 1; }
@@ -303,6 +322,16 @@ nats-regen-authconf:          ## re-render auth.conf, refresh lyra-nats-auth sec
 	@podman secret create --replace lyra-nats-auth "$(LYRA_NKEYS_DIR)/auth.conf"
 	@# Restart, not HUP — see docs/ops/nats-authconf-update.md.
 	@systemctl --user restart lyra-nats
+	@systemctl --user is-active --wait lyra-nats \
+		|| { echo "ERROR: lyra-nats failed to reach active state"; exit 1; }
+	@# All NATS clients hold stale subject auth after an ACL change (#1390).
+	@failed=""; \
+	for svc in $(LYRA_NATS_CLIENTS); do \
+	  if systemctl --user is-active --quiet $$svc; then \
+	    systemctl --user restart $$svc || { echo "ERROR: restart $$svc failed"; failed="$$failed $$svc"; }; \
+	  fi; \
+	done; \
+	[ -z "$$failed" ] || { echo "ERROR: restart failed for:$$failed"; exit 1; }
 
 nats-add-identity:  ## add a single NATS identity rootless; idempotent after full-consistency (seed+secret present)
 	@test -n "$(NAME)" || { echo "usage: make nats-add-identity NAME=<x>"; exit 2; }
@@ -320,7 +349,7 @@ nats-add-identity:  ## add a single NATS identity rootless; idempotent after ful
 	podman secret create --replace "lyra-nats-$(NAME)" "$(LYRA_NKEYS_DIR)/$(NAME).seed"; \
 	podman secret create --replace lyra-nats-auth "$(LYRA_NKEYS_DIR)/auth.conf"; \
 	failed=""; \
-	for svc in lyra-nats lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-turn-writer lyra-gh-helper; do \
+	for svc in lyra-nats $(LYRA_NATS_CLIENTS); do \
 	  if systemctl --user is-active --quiet $$svc; then \
 	    systemctl --user restart $$svc || { echo "ERROR: restart $$svc failed"; failed="$$failed $$svc"; }; \
 	  fi; \

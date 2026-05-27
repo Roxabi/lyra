@@ -94,6 +94,13 @@ API keys) use underscores (`lyra_<service>_<purpose>`, e.g. `lyra_blobstore_toke
 Mixing styles is intentional and tracked; do not "normalize" without coordinating
 with the operator (Mickael).
 
+Bot per-platform secrets follow the hyphen convention:
+
+| Secret name | In-container target | Mode | Notes |
+|---|---|---|---|
+| `lyra-bot-<platform>-<bot_id>` | `bot_token-<bot_id>` | 0400 | Bot token; always emitted per bot |
+| `lyra-bot-<platform>-<bot_id>-webhook` | `bot_webhook-<bot_id>` | 0400 | Telegram webhook secret; only emitted when `[[auth.<platform>_bots]].webhook_enabled = true` |
+
 ### Known residual risk — blobstore PublishPort Tailscale fallback (#1330)
 
 `lyra-blobstore.container` binds `PublishPort` to `${TAILSCALE_IPV4}:8449:8449` (resolved at
@@ -101,6 +108,12 @@ provision time via `tailscale ip -4 | head -1`). If `TAILSCALE_IPV4` is unset or
 is absent at container start, Podman falls back to `0.0.0.0:8449` (LAN-exposed). The bearer
 token (`lyra_blobstore_token`) is then the **sole** auth boundary. Accepted for V8; Phase 2
 (network policy / per-identity tokens) will address this systematically.
+
+The `ExecStartPre=` guard strips all whitespace before the `-n` test (POSIX `tr -d`) so
+empty, unset, **and whitespace-only** values are all rejected at the systemd layer (#1368).
+Prior to #1368, `[ -n "   " ]` was TRUE in POSIX sh — a whitespace-only value passed the
+guard and Podman's downstream parse error provided fail-closed behaviour by accident, not
+by design. The guard is now the authoritative rejection point.
 
 ### Known residual risk — clipool `core.hooksPath` override (tracked #1245)
 

@@ -76,6 +76,25 @@ jobs:
           /usr/libexec/podman/quadlet --dryrun --user 2>&1
           echo "quadlet --dryrun passed"
 
+      - name: Quadlet HealthCmd double-quote check
+        # The Quadlet generator silently drops the closing double-quote from
+        # HealthCmd= values, producing ["CMD-SHELL","pgrep -f \"lyra X"] which
+        # /bin/sh rejects with "Syntax error: Unterminated quoted string".
+        # All containers report unhealthy indefinitely.  Fix: use /proc/1/cmdline
+        # (no quotes needed).  Reject any HealthCmd= containing a double-quote.
+        # See issue #1370.
+        run: |
+          set -euo pipefail
+          if grep -nP "HealthCmd=(?!python3 -c ').*\"" deploy/quadlet/*.container; then
+            echo "::error::Double-quotes found in HealthCmd= in the above Quadlet unit(s)."
+            echo "The Quadlet generator drops the closing quote, producing a broken CMD-SHELL"
+            echo "array (/bin/sh: Syntax error: Unterminated quoted string). Use"
+            echo "  HealthCmd=grep -q <keyword> /proc/1/cmdline"
+            echo "instead (no quotes, no procps dependency). See issue #1370."
+            exit 1
+          fi
+          echo "No double-quotes in HealthCmd= lines — OK"
+
       - name: Quadlet inline-comment check
         # Quadlet does NOT strip trailing # comments from option values.
         # A line such as:  Volume=foo:bar:z  # comment

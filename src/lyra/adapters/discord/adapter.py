@@ -5,6 +5,7 @@ import logging
 import os
 import re
 from collections.abc import AsyncIterator
+from functools import partial
 from typing import TYPE_CHECKING, Any, cast
 
 import discord
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
 from lyra.adapters.discord import discord_audio  # noqa: I001 — DEBT:module-level-patch-fixtures
 from lyra.adapters.discord import discord_audio_outbound
 from lyra.adapters.shared._shared import TypingTaskManager, resolve_msg
+from lyra.typing import make_typing_factory
 from lyra.adapters.discord.discord_inbound import handle_message
 from lyra.adapters.discord.discord_normalize import normalize as _normalize_impl
 from lyra.adapters.shared._base_outbound import OutboundAdapterBase
@@ -54,6 +56,21 @@ from lyra.core.messaging.message import (
 from lyra.core.messaging.messages import MessageManager
 
 log = logging.getLogger(__name__)
+
+
+# ── Typing plane (#1376) — module-level resolver for AC8 ─────────────────
+from lyra.transport.work_scope import WorkScope  # noqa: E402
+
+
+def _discord_scope_resolver(scope: WorkScope) -> int:
+    """Resolve WorkScope → Discord parent channel.id.
+
+    AC8: module-level (not closure over adapter instance) so import-only
+    tests can verify without instantiating DiscordAdapter. WorkScope.scope_id
+    IS the parent channel.id by T2 construction (inbound captures
+    channel.id pre-pre-session-hook — auto-thread cannot drift the key).
+    """
+    return scope.scope_id
 
 
 class DiscordAdapter(discord.Client, OutboundAdapterBase):
@@ -96,6 +113,9 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
             os.environ.get("LYRA_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
         )
         self._typing = TypingTaskManager()
+        self._factory_builder = make_typing_factory(
+            partial(_discord_typing_worker, self._resolve_channel)
+        )
         self._bot_user: Any = None  # set on on_ready; None until login
         self._mention_re: re.Pattern[str] | None = None  # compiled on on_ready
         self._owned_threads: set[int] = set()  # populated from ThreadStore on on_ready
@@ -122,10 +142,7 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
 
     def _start_typing(self, scope_id: int) -> None:
         """Start (or restart) the typing indicator background task for scope_id."""
-        self._typing.start(
-            scope_id,
-            lambda: _discord_typing_worker(self._resolve_channel, scope_id),
-        )
+        self._typing.start(scope_id, self._factory_builder(scope_id))
 
     def _cancel_typing(self, scope_id: int) -> None:
         """Cancel and remove the typing indicator task for scope_id."""

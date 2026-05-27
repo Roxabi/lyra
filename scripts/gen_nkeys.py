@@ -19,6 +19,7 @@ if str(_REPO_ROOT) not in sys.path:
 from scripts._acl_models import Flow, Identity  # noqa: E402
 from scripts._loader import load_matrix  # noqa: E402
 from scripts._modes import (  # noqa: E402
+    _handle_externals,
     _mode_add_identity,
     _mode_emit_merged_authconf,
     _mode_fix_perms,
@@ -26,6 +27,7 @@ from scripts._modes import (  # noqa: E402
     _mode_regen_authconf,
     _mode_regenerate,
     _mode_show,
+    _seeds_dir,
     atomic_write,
     operator_home,
 )
@@ -78,7 +80,8 @@ def _cmd_genkeys(args: argparse.Namespace) -> None:
         return
 
     # Default: full provisioning
-    _mode_full_provision(args)
+    externals = _mode_full_provision(args)
+    _handle_externals(externals, _seeds_dir(), args)
 
 
 def _cmd_validate_supervisor(args: argparse.Namespace) -> None:
@@ -230,6 +233,15 @@ def _build_parser() -> argparse.ArgumentParser:
         "--yes",
         action="store_true",
         help="Skip confirmation prompts (for use with --regenerate in CI/scripts)",
+    )
+    gk.add_argument(
+        "--ack-external-distribution",
+        action="store_true",
+        help=(
+            "Acknowledge that external seeds (deploy.type=external) will be"
+            " manually fan-outed after regen. Without this flag, genkeys exits 2"
+            " when external identities are present."
+        ),
     )
     gk.add_argument(
         "--add-identity",

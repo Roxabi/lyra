@@ -22,7 +22,7 @@ DropCapability=all
 # ADR-054: UserNS=keep-id maps container UID to host UID 1000 (mickael),
 # so the blobstore process can read %h/.lyra/blobstore/ owned by the host user.
 UserNS=keep-id:uid=1500,gid=1500
-# blobstore.env holds operational vars (see deploy/quadlet/blobstore.env.example).
+# blobstore.env holds operational vars (TAILSCALE_IPV4, NATS_URL); generated idempotently by deploy/install.sh §1c.
 # Do NOT add the `-` prefix — Podman 5.7 treats it as a literal path character.
 EnvironmentFile=%h/.lyra/env/blobstore.env
 # NATS target for audit sink + readiness KV; mirrors hub convention.
@@ -49,7 +49,7 @@ Volume=%h/.lyra/config.toml:/app/config.toml:ro,z
 # Accepted for V8; document in deploy/CLAUDE.md §Residual risks.
 PublishPort=${TAILSCALE_IPV4}:8449:8449
 Exec=lyra blobstore serve --token-path /run/secrets/lyra_blobstore_token --host 0.0.0.0 --port 8449
-HealthCmd=pgrep -f "lyra blobstore serve"
+HealthCmd=grep -q blobstore /proc/1/cmdline
 HealthInterval=30s
 
 [Service]
@@ -59,13 +59,18 @@ HealthInterval=30s
 # through verbatim, so this loads the file twice — once for systemd (here), once for
 # Podman (above) — both intentional.
 EnvironmentFile=%h/.lyra/env/blobstore.env
-# Fail-closed guard: refuse to start when TAILSCALE_IPV4 is empty/unset.
+# Fail-closed guard: refuse to start when TAILSCALE_IPV4 is empty, unset,
+# or whitespace-only. `[ -n "   " ]` is TRUE in POSIX sh, so a bare -n test
+# passes on whitespace-only values — Podman would then construct a malformed
+# PublishPort spec and reject it downstream (fail-closed by accident, not by
+# intent). The tr-based strip removes all whitespace before the -n test so
+# the guard is the authoritative rejection point, not Podman's parser.
 # Note: the `PublishPort=${TAILSCALE_IPV4}:8449:8449` line above is resolved
 # by Podman BEFORE this ExecStartPre fires — so the publish-port spec is
 # already constructed (and could read as 0.0.0.0). This guard prevents the
 # CONTAINER from entering running state, so no traffic is ever served.
 # Operationally equivalent to closing the port (nothing accepts traffic).
-ExecStartPre=/bin/sh -c '[ -n "${TAILSCALE_IPV4}" ] || exit 1'
+ExecStartPre=/bin/sh -c 'v=$(printf %s "${TAILSCALE_IPV4}" | tr -d "[:space:]"); [ -n "$v" ] || exit 1'
 Restart=on-failure
 RestartSec=10
 # Cold-path I/O service — 1 full core is sufficient; prevents it from starving

@@ -10,6 +10,7 @@
     "035-nats-subject-naming-convention",
     "036-renderevent-streaming-chunk-protocol",
     "065-nats-kv-readiness-probe",
+    "076-three-nats-planes",
     "---LLM, Streaming & Agents---",
     "028-token-level-streaming-path-shape",
     "032-llmevent-streamprocessor-renderevent-hexagonal-streaming",

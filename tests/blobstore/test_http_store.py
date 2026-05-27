@@ -73,6 +73,30 @@ class TestHttpBlobStoreExists:
         assert found is not None
         assert missing is None
 
+    async def test_http_blob_store_exists_sentinel_content_hash_is_empty(
+        self, asgi_store: HttpBlobStore
+    ) -> None:
+        """exists() returns a sentinel BlobRef (content_hash="", is_sentinel=True).
+
+        Spec-pin regression guard for #1367: if a future implementation populates
+        content_hash from a response header (e.g., X-Blob-Content-Hash), this
+        test must be updated deliberately. The empty-string sentinel is the
+        explicit contract — wrong-typed values must not silently pass downstream
+        sha256/dedup checks.
+        """
+        # Arrange
+        payload = b"sentinel content_hash check"
+        # Act
+        async with asgi_store:
+            ref = await asgi_store.put(
+                payload, mime="application/octet-stream", source="test"
+            )
+            found = await asgi_store.exists(ref.content_hash)
+        # Assert
+        assert found is not None
+        assert found.content_hash == ""
+        assert found.is_sentinel is True
+
 
 # ---------------------------------------------------------------------------
 # N4 — delete removes blob

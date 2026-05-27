@@ -17,7 +17,6 @@ fallback still supported if `LYRA_SUPERVISORCTL_PATH` is set in remote `.env`
 Let:
   H      := DEPLOY_HOST (from `~/projects/lyra/.env`)
   units  := {lyra-hub, lyra-telegram, lyra-discord, nats}
-  mon    := lyra-monitor.timer + lyra-monitor.service (systemd --user)
   Σ      := severity (🔴 down | 🟡 degraded | 🟢 healthy)
   pat    := known error patterns (see §Known Patterns)
 
@@ -84,13 +83,6 @@ ssh $H "journalctl --user -u nats -n 100 --no-pager"
 ```
 
 Equivalent via Makefile (foreground tail): `make remote hub logs` / `telegram logs` / `discord logs` / `hub errors`.
-
-Monitor timer (health probe every N minutes):
-
-```bash
-ssh $H "systemctl --user list-timers lyra-monitor.timer"
-ssh $H "journalctl --user -u lyra-monitor.service -n 50 --no-pager"
-```
 
 In-container structured logs (if the hub writes files to the logs volume):
 

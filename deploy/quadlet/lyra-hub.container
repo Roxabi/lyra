@@ -46,7 +46,7 @@ Volume=%h/.lyra/config.toml:/app/config.toml:ro,z
 Volume=%h/.roxabi-vault:/home/lyra/.roxabi-vault:z
 Environment=VAULT_DB=/home/lyra/.roxabi-vault/vault.db
 # ~/.claude/ mounts moved to lyra-clipool.container (issue #941 — security boundary)
-# Health endpoint — probed by lyra-monitor via host loopback (localhost:8443).
+# Health endpoint — probed by `python -m lyra.monitoring` via host loopback (localhost:8443).
 # Bind to 0.0.0.0 inside container so PublishPort forwarding reaches uvicorn;
 # host exposure is restricted to 127.0.0.1 by PublishPort below.
 Environment=LYRA_HEALTH_HOST=0.0.0.0
@@ -54,7 +54,7 @@ Environment=LYRA_HEALTH_HOST=0.0.0.0
 Environment=LYRA_TTS_TIMEOUT=90
 PublishPort=127.0.0.1:8443:8443
 Exec=lyra hub
-HealthCmd=pgrep -f "lyra hub"
+HealthCmd=grep -q hub /proc/1/cmdline
 HealthInterval=30s
 
 [Service]

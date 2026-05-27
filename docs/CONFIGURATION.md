@@ -161,6 +161,10 @@ bot_id = "lyra"
 default = "blocked"            # "blocked" | "trusted" | "owner"
 owner_users = [123456789]      # numeric Telegram IDs — seeded into DB
 trusted_users = [987654321]    # can interact, cannot admin
+# Optional: webhook_enabled — bool, default false. When true, the
+#   render_quadlet pipeline emits an additional Secret=…bot_webhook-<bot_id>
+#   mount for the Telegram webhook secret verification path.
+webhook_enabled = false
 
 [[auth.discord_bots]]
 bot_id = "lyra"
@@ -460,22 +464,31 @@ health_secret = ""                            # optional health endpoint auth
 
 #### BlobStore env file
 
-`deploy/quadlet/blobstore.env.example` is an operator-facing template for the BlobStore
-Quadlet container. It is NOT loaded by the lyra application itself; it is consumed by
-`lyra-blobstore.container` at container start via `EnvironmentFile=%h/.lyra/env/blobstore.env`.
+`~/.lyra/env/blobstore.env` is a Quadlet env file consumed by `lyra-blobstore.container` at
+container start via `EnvironmentFile=%h/.lyra/env/blobstore.env`. It is NOT loaded by the
+lyra application itself.
 
 | File | Versioned | Purpose |
 |------|-----------|---------|
-| `deploy/quadlet/blobstore.env.example` | Yes (template) | Documents all env vars for `lyra-blobstore.service`; NOT loaded by lyra |
 | `~/.lyra/env/blobstore.env` (on M₁) | No (operator copy) | Live env file read by the container at startup |
 
-Operator setup: copy the template and fill in `TAILSCALE_IPV4` before starting the service.
+**Bootstrap:** `deploy/install.sh` §1c generates this file idempotently — it skips creation
+if the file already exists, and regenerates it with `--force`.
+
+Variables written by install.sh:
+
+| Variable | Source | Notes |
+|----------|--------|-------|
+| `TAILSCALE_IPV4` | `tailscale ip -4 \| head -1` at bootstrap | Empty string if Tailscale is absent at install time — the unit's `ExecStartPre` guard rejects start when unset (fail-closed; see `deploy/CLAUDE.md §Known residual risk`) |
+| `NATS_URL` | Omitted from the file | Supplied exclusively by the unit's inline `Environment=NATS_URL=nats://lyra-nats:4222`; omitting it from the env file prevents an empty value in systemd scope from shadowing the inline directive |
+
+File permissions: `0600` (set atomically via `umask 0077` subshell in install.sh).
+
+**Recovery:** delete the file and re-run install.sh to regenerate.
 
 ```bash
-mkdir -p ~/.lyra/env
-cp deploy/quadlet/blobstore.env.example ~/.lyra/env/blobstore.env
-chmod 600 ~/.lyra/env/blobstore.env
-# Edit: set TAILSCALE_IPV4=$(tailscale ip -4 | head -1)
+rm ~/.lyra/env/blobstore.env
+./deploy/install.sh --force
 ```
 
 Load order: N/A — this is a Quadlet env file, not an application config file. The bearer
@@ -667,11 +680,9 @@ After fixing the underlying issue, run a normal `make quadlet-install` (without
 
 ---
 
-## Monitoring — DEPRECATED (#1035)
+## Monitoring — removed; superseded by Monitoring v2 (#1035)
 
-The host-timer health monitor (`lyra-monitor.{service,timer}` + `src/lyra/monitoring/`) is **deprecated**. It pokes `systemctl --user`, `podman logs`, and host loopback ports — none of which translate cleanly to a containerised world — and offers no UI beyond a Telegram message.
-
-It is being replaced by **Monitoring v2** — a NATS event stream + Tauri desktop dashboard — tracked in [#1035](https://github.com/Roxabi/lyra/issues/1035). Banners on the deprecated files retain the existing check logic so the v2 spec author can mine it.
+The host-timer units (`lyra-monitor.{service,timer}`) have been removed from `deploy/`. The Python module `src/lyra/monitoring/` is retained for [Monitoring v2 (#1035)](https://github.com/Roxabi/lyra/issues/1035) spec mining. It pokes `systemctl --user`, `podman logs`, and host loopback ports — none of which translate cleanly to a containerised world — and offers no UI beyond a Telegram message.
 
 For ad-hoc hub-health probes, hit `/health/detail` directly:
 

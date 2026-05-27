@@ -53,6 +53,16 @@ if [[ ! -d "${NKEYS_DIR}" ]]; then
   exit 1
 fi
 
+# Refuse to install with placeholder nkeys still in the live auth.conf.
+# Skipped under --dry-run so the operator can still preview install actions.
+if [[ "$DRY_RUN" -eq 0 ]] \
+  && [[ -f "${NKEYS_DIR}/auth.conf" ]] \
+  && grep -qE '^[[:space:]]*nkey:[[:space:]]+"UDET' "${NKEYS_DIR}/auth.conf"; then
+  echo "ERROR: ${NKEYS_DIR}/auth.conf still contains UDET* placeholder pubkeys." >&2
+  echo "       Run: make nats-regen-authconf  (renders nkeys from ${NKEYS_DIR}/*.seed)" >&2
+  exit 1
+fi
+
 declare -A SEEDS=(
   [lyra-nats-auth]="${NKEYS_DIR}/auth.conf"
   [lyra-nats-hub]="${NKEYS_DIR}/hub.seed"
@@ -70,13 +80,30 @@ if [[ ! -f "${BLOBSTORE_TOK}" || "$FORCE" -eq 1 ]]; then
   log "Generating blobstore bearer token → ${BLOBSTORE_TOK} ..."
   run mkdir -p "${HOME}/.lyra"
   if [[ "$DRY_RUN" -eq 0 ]]; then
-    head -c 48 /dev/urandom | base64 | tr -d '/+=' | head -c 48 > "${BLOBSTORE_TOK}"
-    chmod 0600 "${BLOBSTORE_TOK}"
+    (umask 0077; head -c 48 /dev/urandom | base64 | tr -d '/+=' | head -c 48 > "${BLOBSTORE_TOK}")
   else
     echo "[dry-run] would generate ${BLOBSTORE_TOK} (48 url-safe chars, mode 0600)"
   fi
 else
   echo "  [skip] ${BLOBSTORE_TOK} already exists (use --force to regenerate)"
+fi
+
+# ── 1c. Bootstrap blobstore.env (idempotent) ─────────────────────────────────
+
+ENV_FILE="${HOME}/.lyra/env/blobstore.env"
+if [[ ! -f "${ENV_FILE}" || "$FORCE" -eq 1 ]]; then
+  log "Generating ${ENV_FILE} ..."
+  run mkdir -p "$(dirname "${ENV_FILE}")"
+  if [[ "$DRY_RUN" -eq 0 ]]; then
+    TS_IP=$(tailscale ip -4 2>/dev/null | head -1 || true)
+    # `run` only wraps exec; stream redirection (>) is dry-run-gated via the if block above.
+    (umask 0077; printf 'TAILSCALE_IPV4=%s\n' "${TS_IP}" > "${ENV_FILE}")
+    log "[ok] generated ${ENV_FILE} (TAILSCALE_IPV4=${TS_IP:-<empty>})"
+  else
+    echo "[dry-run] would generate ${ENV_FILE} (TAILSCALE_IPV4 from tailscale ip -4)"
+  fi
+else
+  echo "  [skip] ${ENV_FILE} already exists (use --force to regenerate)"
 fi
 
 MISSING=0
@@ -159,3 +186,8 @@ run systemctl --user daemon-reload
 echo "  [ok]   daemon-reload"
 
 log "Done. Services NOT restarted — run: systemctl --user start lyra-nats lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-gh-helper lyra-turn-writer lyra-blobstore"
+
+# ── 6. Install sync timer + service (idempotent) ───────────────────────────
+
+log "Installing lyra-quadlet-sync timer + service ..."
+run make quadlet-sync-install

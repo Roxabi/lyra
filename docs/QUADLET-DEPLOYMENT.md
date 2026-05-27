@@ -53,6 +53,41 @@ make quadlet-install    # copy units + daemon-reload
 systemctl --user restart lyra-hub lyra-telegram lyra-discord lyra-clipool
 ```
 
+## Auto-sync for Quadlet file changes
+
+Tracked Quadlet files (`deploy/quadlet/**`, `Makefile`, `tools/render_quadlet.py`) are
+auto-converged on M₁ by `lyra-quadlet-sync.timer`:
+
+| Path | Cadence | What it does |
+|---|---|---|
+| **Auto** (`lyra-quadlet-sync.timer`) | Every 5 min | `git fetch` → `ff-only pull` → diff-guard → conditional `make quadlet-install` |
+| **Manual** (`make quadlet-install`) | Operator-driven | Immediate — use when you need a change NOW or the timer is disabled |
+
+### First-time enable
+
+Run once (idempotent):
+```bash
+cd ~/projects/lyra
+make quadlet-sync-install
+```
+
+### Checking sync status
+
+```bash
+# Last run output
+journalctl --user -u lyra-quadlet-sync -n 20
+
+# Timer next trigger
+systemctl --user list-timers lyra-quadlet-sync.timer
+```
+
+### When to use manual `make quadlet-install`
+
+- You need a Quadlet change applied **immediately** (timer max latency = 5 min).
+- You are debugging a unit and want to iterate fast.
+- The auto-sync service is temporarily stopped for maintenance.
+- The change is a hot-fix and you cannot wait for the next timer firing.
+
 ## Secret layout
 
 | Podman secret | Source file | Mounted at |
@@ -306,6 +341,26 @@ systemctl --user status podman-auto-update.timer
 | `lyra-gh-helper` fails | Missing `lyra-gh-pem` | Install PEM secret (see above) |
 | Container restart loop | `RestartSec=10` applies — check logs | `journalctl --user -u <svc> -n 50` |
 | Auto-update not pulling | Timer inactive | `systemctl --user start podman-auto-update.timer` |
+
+## Pitfall: double-quotes in HealthCmd= are dropped by the Quadlet generator
+
+The Quadlet generator silently drops the closing double-quote from `HealthCmd=` values,
+turning `HealthCmd=pgrep -f "lyra adapter X"` into the JSON array
+`["CMD-SHELL","pgrep -f \"lyra adapter X"]` — note the missing closing `"`.
+`/bin/sh` then fails with `Syntax error: Unterminated quoted string`, and the container
+reports `unhealthy` indefinitely (all 6 `lyra-*` units were affected until issue #1370).
+
+Workaround: use `/proc/1/cmdline` — no quotes required, and `grep`/`cat` are present in
+both the slim (`:staging-svc`) and fat (`:staging`) images (unlike `pgrep` which requires
+`procps`):
+
+```ini
+# correct — no quotes, no procps dependency
+HealthCmd=grep -q telegram /proc/1/cmdline
+```
+
+The `quadlet-lint.yml` CI workflow enforces this via a `grep -nP 'HealthCmd=.*"'` check that
+fails on any double-quote in a `HealthCmd=` line. See issue #1370.
 
 ## References
 

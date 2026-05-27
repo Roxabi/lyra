@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from lyra.core.audio_payload import AudioPayload
 from lyra.core.auth.trust import TrustLevel
+from roxabi_contracts import BlobRef
 
 if TYPE_CHECKING:
     from lyra.core.commands.command_parser import CommandContext
@@ -162,10 +163,11 @@ class OutboundAudio:
     """Typed envelope for outbound audio data on the bus.
 
     Produced by TTS / voice pipelines; consumed by adapter render_audio().
-    audio_bytes holds the raw audio payload (e.g. ogg/opus from TTS).
+    blob_ref holds a content-addressed pointer to the audio payload in BlobStore
+    (e.g. ogg/opus from TTS). Adapters resolve to bytes via HttpBlobStore.get().
     """
 
-    audio_bytes: bytes = field(repr=False)
+    blob_ref: BlobRef
     mime_type: str = "audio/ogg"  # e.g. "audio/ogg", "audio/mpeg"
     duration_ms: int | None = None
     waveform_b64: str | None = None  # 256-byte amplitude array, base64

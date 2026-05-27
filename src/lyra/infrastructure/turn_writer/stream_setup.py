@@ -101,11 +101,11 @@ async def ensure_consumer(js: "JetStreamContext") -> None:
     """
     cfg = _consumer_config()
     try:
-        await js._jsm.consumer_info(STREAM_NAME, CONSUMER_NAME)  # noqa: SLF001
+        await js.consumer_info(STREAM_NAME, CONSUMER_NAME)
         log.debug("turn-writer: consumer %s already exists", CONSUMER_NAME)
     except NotFoundError:
         try:
-            await js._jsm.add_consumer(STREAM_NAME, config=cfg)  # noqa: SLF001
+            await js.add_consumer(STREAM_NAME, config=cfg)
             log.info(
                 "turn-writer: consumer %s created on stream %s",
                 CONSUMER_NAME,

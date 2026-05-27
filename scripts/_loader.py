@@ -8,7 +8,7 @@ from pathlib import Path
 from scripts._acl_models import Flow, Identity, LoadedMatrix
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-_VALID_VERSIONS = {"1", "2"}
+_VALID_VERSIONS = {"1", "2", "3"}
 _VALID_STATUSES = {"active", "retired"}
 _VALID_OWNERS = {"lyra", "voicecli", "imagecli", "reserved"}
 _REQUIRED_FIELDS = (
@@ -27,7 +27,22 @@ def _die(msg: str) -> None:
     sys.exit(1)
 
 
-def _validate_identity(name: str, data: dict) -> Identity:
+def _validate_deploy(name: str, data: dict[str, object]) -> None:
+    dtype = data.get("type")
+    if dtype == "container":
+        if "secret" not in data:
+            _die(f"identity '{name}': deploy.container missing 'secret'")
+    elif dtype == "host":
+        if "path" not in data:
+            _die(f"identity '{name}': deploy.host missing 'path'")
+    elif dtype == "external":
+        if "host" not in data or "target_path" not in data:
+            _die(f"identity '{name}': deploy.external missing 'host' or 'target_path'")
+    else:
+        _die(f"identity '{name}': deploy.type invalid: {dtype!r}")
+
+
+def _validate_identity(name: str, data: dict, version: str) -> Identity:
     for field in _REQUIRED_FIELDS:
         if field not in data:
             _die(f"identity '{name}': missing field '{field}'")
@@ -51,6 +66,11 @@ def _validate_identity(name: str, data: dict) -> Identity:
                 f"identity '{name}': invalid date format for retired_at: '{retired_at}'"
             )
 
+    if "deploy" in data:
+        _validate_deploy(name, data["deploy"])  # type: ignore[arg-type]
+    elif version == "3" and data.get("status") == "active":
+        _die(f"identity '{name}': v3 requires 'deploy' for active identities")
+
     return data  # type: ignore[return-value]
 
 
@@ -67,10 +87,10 @@ def load_matrix(path: Path) -> LoadedMatrix:
 
     identities: dict[str, Identity] = {}
     for name, data in raw.get("identities", {}).items():
-        identities[name] = _validate_identity(name, data)
+        identities[name] = _validate_identity(name, data, version)
 
     flows: list[Flow] = []
-    if version == "2":
+    if version in {"2", "3"}:
         raw_flows = raw.get("request_reply_flows", [])
         seen: set[tuple[str, str]] = set()
         for flow in raw_flows:

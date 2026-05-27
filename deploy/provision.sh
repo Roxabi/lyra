@@ -471,10 +471,9 @@ fi
 # would silently log success even if the real call had failed, creating false
 # confidence about persistent user services.
 
-# Note: legacy host-timer health monitoring (lyra-monitor.{service,timer}) is
-# DEPRECATED — superseded by Monitoring v2 (NATS event stream + Tauri desktop
-# dashboard, tracked in #1035). The host timer was disabled on prod in 2026-05;
-# do not install it on new hosts.
+# Note: lyra-monitor.{service,timer} host-timer units have been removed from deploy/
+# (superseded by Monitoring v2, tracked in #1035). Python module src/lyra/monitoring/
+# is retained for spec mining. ¬install any lyra-monitor units on new hosts.
 
 section "Node.js"
 if command -v node &>/dev/null; then

@@ -11,6 +11,7 @@ import discord
 from discord.http import Route  # internal discord.py API — verify on upgrades
 
 from lyra.adapters.discord.discord_formatting import _validate_inbound
+from lyra.adapters.shared._blobstore_client import get_blobstore_client
 from lyra.adapters.shared._shared import (
     _AUDIO_EXTS,
     ATTACHMENT_EXTS_BASE,
@@ -83,7 +84,9 @@ async def render_audio(
     if reply_to_id is not None:
         payload["message_reference"] = {"message_id": str(reply_to_id)}
 
-    voice_file = discord.File(fp=BytesIO(msg.audio_bytes), filename="voice.ogg")
+    store = get_blobstore_client()
+    audio_bytes = await store.get(msg.blob_ref.store_key)
+    voice_file = discord.File(fp=BytesIO(audio_bytes), filename="voice.ogg")
     form = [
         {"name": "payload_json", "value": discord.utils._to_json(payload)},
         {
@@ -98,7 +101,7 @@ async def render_audio(
         await adapter.http.request(route, form=form, files=[voice_file])
         log.info(
             "render_audio: voice message sent (%d bytes OGG, %.1fs) for msg id=%s",
-            len(msg.audio_bytes),
+            len(audio_bytes),
             duration_secs,
             inbound.id,
         )
@@ -109,7 +112,7 @@ async def render_audio(
         )
         messageable = await adapter._resolve_channel(send_to_id)
         ext = mime_to_ext(msg.mime_type, _AUDIO_EXTS)
-        attachment = discord.File(fp=BytesIO(msg.audio_bytes), filename=f"audio.{ext}")
+        attachment = discord.File(fp=BytesIO(audio_bytes), filename=f"audio.{ext}")
         await messageable.send(content=content or None, file=attachment)
 
 

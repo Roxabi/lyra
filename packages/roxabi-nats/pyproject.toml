@@ -3,7 +3,7 @@ name = "roxabi-nats"
 version = "0.4.1"
 description = "NATS transport SDK for Lyra and Roxabi plugin ecosystem"
 readme = "README.md"
-license = { text = "MIT" }
+license = { text = "AGPL-3.0-or-later" }
 requires-python = ">=3.12"
 authors = [{ name = "Roxabi SAS", email = "mickael@bouly.io" }]
 dependencies = [

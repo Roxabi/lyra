@@ -3,7 +3,7 @@ name = "roxabi-blobs"
 version = "0.1.1"
 description = "Content-addressed BlobStore (Flat-FS + SQLite manifest) for the Roxabi plugin ecosystem"
 readme = "README.md"
-license = { text = "MIT" }
+license = { text = "AGPL-3.0-or-later" }
 requires-python = ">=3.12"
 authors = [{ name = "Roxabi SAS", email = "mickael@bouly.io" }]
 dependencies = [

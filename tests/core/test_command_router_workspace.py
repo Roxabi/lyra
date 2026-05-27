@@ -28,6 +28,7 @@ def make_workspace_router(tmp_path: Path, workspaces: dict[str, Path]) -> Comman
         command_loader=loader,
         enabled_plugins=[],
         workspaces=workspaces,
+        base_dir=tmp_path,
     )
 
 

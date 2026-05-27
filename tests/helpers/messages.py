@@ -90,3 +90,22 @@ def make_voice_message(
     }
     defaults.update(overrides)
     return InboundMessage(**defaults)
+
+
+_TEST_BLOB_REGISTRY: dict[str, bytes] = {}
+
+
+def make_test_blobref(
+    audio_bytes: bytes,
+    mime_type: str = "audio/ogg",
+    store_key: str = "test-blob",
+) -> BlobRef:
+    """Return a BlobRef suitable for testing OutboundAudio construction."""
+    _TEST_BLOB_REGISTRY[store_key] = audio_bytes
+    return BlobRef(
+        store_key=store_key,
+        content_hash="deadbeef",
+        mime=mime_type,
+        size=len(audio_bytes),
+        source="test",
+    )

@@ -120,7 +120,7 @@ class TelegramTokenFilter(logging.Filter):
     """
 
     # URL-embedded: /bot<id>:<secret>/method (httpx always emits full-length secrets)
-    _TOKEN_RE = re.compile(r"bot(\d+):[A-Za-z0-9_-]+")
+    _TOKEN_RE = re.compile(r"bot(\d+):[A-Za-z0-9+/._=-]+")
     _REDACTED_SUB = r"bot\1:<REDACTED>"
     # Bare token: 1234567890:AAEhBP0av28...Z (config dumps, exception reprs)
     # Lookbehind/lookahead instead of \b: \b breaks after trailing '-' (non-\w).
@@ -128,7 +128,7 @@ class TelegramTokenFilter(logging.Filter):
     # _REDACTED_SUB must stay < 30 chars so a partially-redacted URL-form token
     # (bot<id>:<REDACTED>) is not re-matched by this pattern.
     _BARE_TOKEN_RE = re.compile(
-        r"(?<!\w)(\d{8,12}:[A-Za-z0-9_-]{30,})(?![A-Za-z0-9_-])"
+        r"(?<!\w)(\d{8,12}:[A-Za-z0-9+/._=-]{30,})(?![A-Za-z0-9+/._=-])"
     )
 
     def filter(self, record: logging.LogRecord) -> bool:

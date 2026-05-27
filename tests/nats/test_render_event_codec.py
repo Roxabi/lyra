@@ -153,6 +153,25 @@ class TestToolCallCodecRoundTrip:
         decoded = codec.decode(event_type, payload)
         assert decoded == original
 
+    def test_tool_call_start_with_input_round_trip(self) -> None:
+        """Clipool path: input dict is encoded, decoded, and preserved."""
+        codec = NatsRenderEventCodec()
+        original = ToolCallStartRenderEvent(
+            tool_call_id="toolu_AB",
+            tool_name="Bash",
+            input={"command": "git log"},
+        )
+
+        event_type, payload, is_done = codec.encode(original)
+
+        assert event_type == "tool_call_start"
+        assert is_done is False
+        assert payload["input"] == {"command": "git log"}
+
+        decoded = codec.decode(event_type, payload)
+        assert decoded == original
+        assert decoded.input == {"command": "git log"}  # type: ignore[union-attr]
+
     def test_tool_call_args_round_trip(self) -> None:
         codec = NatsRenderEventCodec()
         original = ToolCallArgsRenderEvent(tool_call_id="toolu_AB", delta='{"foo":')

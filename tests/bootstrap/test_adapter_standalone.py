@@ -160,3 +160,138 @@ async def test_nc_close_called_even_on_exception() -> None:
         await _bootstrap_adapter_standalone(_make_raw_config("telegram"), "telegram")
 
     mock_nc.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_telegram_astart_failure_cleans_up_wired_resources() -> None:
+    """astart() raises mid-loop -> wired + current bot resources cleaned up."""
+    from lyra.bootstrap.standalone.adapter_standalone import (
+        _bootstrap_adapter_standalone,
+    )
+
+    raw_config = {
+        "telegram": {
+            "bots": [{"bot_id": "first"}, {"bot_id": "second"}]
+        }
+    }
+
+    mock_nc = AsyncMock()
+
+    mock_adapter_first = AsyncMock()
+    mock_adapter_first._bot_id = "first"
+    mock_adapter_first.astart = AsyncMock()
+    mock_adapter_first.close = AsyncMock()
+
+    mock_bus_first = AsyncMock()
+    mock_bus_first.register = MagicMock()
+    mock_bus_first.start = AsyncMock()
+    mock_bus_first.stop = AsyncMock()
+
+    mock_adapter_second = AsyncMock()
+    mock_adapter_second._bot_id = "second"
+    mock_adapter_second.astart = AsyncMock(side_effect=RuntimeError("boom"))
+    mock_adapter_second.close = AsyncMock()
+
+    mock_bus_second = AsyncMock()
+    mock_bus_second.register = MagicMock()
+    mock_bus_second.start = AsyncMock()
+    mock_bus_second.stop = AsyncMock()
+
+    adapter_queue = [mock_adapter_first, mock_adapter_second]
+    bus_queue = [mock_bus_first, mock_bus_second]
+
+    def _make_adapter(*args, **kwargs):
+        return adapter_queue.pop(0)
+
+    def _make_bus(*args, **kwargs):
+        return bus_queue.pop(0)
+
+    (load_token_patch,) = _cred_store_patches("test-token")
+    with (
+        patch("nats.connect", AsyncMock(return_value=mock_nc)),
+        patch("lyra.nats.nats_bus.NatsBus", side_effect=_make_bus),
+        patch("lyra.adapters.telegram.TelegramAdapter", side_effect=_make_adapter),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            return_value=AsyncMock(),
+        ),
+        load_token_patch,
+        patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
+        pytest.raises(RuntimeError, match="boom"),
+    ):
+        await _bootstrap_adapter_standalone(raw_config, "telegram")
+
+    mock_adapter_first.close.assert_awaited_once()
+    mock_bus_first.stop.assert_awaited_once()
+    mock_adapter_second.close.assert_awaited_once()
+    mock_bus_second.stop.assert_awaited_once()
+    mock_nc.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_discord_astart_failure_cleans_up_wired_resources() -> None:
+    """astart() raises mid-loop -> wired + current bot resources cleaned up."""
+    from lyra.bootstrap.standalone.adapter_standalone import (
+        _bootstrap_adapter_standalone,
+    )
+
+    raw_config = {
+        "discord": {
+            "bots": [
+                {"bot_id": "first", "auto_thread": False, "thread_hot_hours": 4},
+                {"bot_id": "second", "auto_thread": False, "thread_hot_hours": 4},
+            ]
+        }
+    }
+
+    mock_nc = AsyncMock()
+
+    mock_adapter_first = AsyncMock()
+    mock_adapter_first._bot_id = "first"
+    mock_adapter_first.astart = AsyncMock()
+    mock_adapter_first.close = AsyncMock()
+
+    mock_bus_first = AsyncMock()
+    mock_bus_first.register = MagicMock()
+    mock_bus_first.start = AsyncMock()
+    mock_bus_first.stop = AsyncMock()
+
+    mock_adapter_second = AsyncMock()
+    mock_adapter_second._bot_id = "second"
+    mock_adapter_second.astart = AsyncMock(side_effect=RuntimeError("boom"))
+    mock_adapter_second.close = AsyncMock()
+
+    mock_bus_second = AsyncMock()
+    mock_bus_second.register = MagicMock()
+    mock_bus_second.start = AsyncMock()
+    mock_bus_second.stop = AsyncMock()
+
+    adapter_queue = [mock_adapter_first, mock_adapter_second]
+    bus_queue = [mock_bus_first, mock_bus_second]
+
+    def _make_adapter(*args, **kwargs):
+        return adapter_queue.pop(0)
+
+    def _make_bus(*args, **kwargs):
+        return bus_queue.pop(0)
+
+    (load_token_patch,) = _cred_store_patches("discord-token")
+    with (
+        patch("nats.connect", AsyncMock(return_value=mock_nc)),
+        patch("lyra.nats.nats_bus.NatsBus", side_effect=_make_bus),
+        patch("lyra.adapters.discord.DiscordAdapter", side_effect=_make_adapter),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            return_value=AsyncMock(),
+        ),
+        load_token_patch,
+        patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
+        pytest.raises(RuntimeError, match="boom"),
+    ):
+        await _bootstrap_adapter_standalone(raw_config, "discord")
+
+    mock_adapter_first.close.assert_awaited_once()
+    mock_bus_first.stop.assert_awaited_once()
+    mock_adapter_second.close.assert_awaited_once()
+    mock_bus_second.stop.assert_awaited_once()
+    mock_nc.close.assert_awaited_once()

@@ -6,7 +6,8 @@
     { "requester": "hub", "responder": "voice-stt",      "subject": "lyra.voice.stt.request.>" },
     { "requester": "hub", "responder": "llm-worker",     "subject": "lyra.llm.generate.request" },
     { "requester": "hub", "responder": "image-worker",   "subject": "lyra.image.generate.request" },
-    { "requester": "voice-client", "responder": "voice-stt", "subject": "lyra.voice.stt.request" }
+    { "requester": "voice-client", "responder": "voice-stt", "subject": "lyra.voice.stt.request" },
+    { "requester": "voice-client", "responder": "voice-tts", "subject": "lyra.voice.tts.request" }
   ],
   "identities": {
     "hub": {
@@ -219,10 +220,11 @@
       "status": "active",
       "created_at": "2026-04-29",
       "owner": "voicecli",
-      "description": "VoiceCLI dictate client — sends STT requests from local mic to remote voice-stt worker. Inbox normalized to _inbox.voice-client.> (ADR-051). Inbox grant derived from request_reply_flows.",
+      "description": "VoiceCLI dictate (STT) and generate --via-nats (TTS) client — sends requests from local host to remote voice-stt / voice-tts workers. Inbox normalized to _inbox.voice-client.> (ADR-051). Inbox grant derived from request_reply_flows. TTS publish added 2026-05-27 (#1462) to unblock voiceCLI #178.",
       "allow_responses": true,
       "publish": [
-        "lyra.voice.stt.request"
+        "lyra.voice.stt.request",
+        "lyra.voice.tts.request"
       ],
       "subscribe": [
         "_inbox.voice-client.>"

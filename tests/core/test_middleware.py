@@ -223,6 +223,10 @@ class TestCreatePool:
 
         assert ctx.pool is not None
         await ctx.pool._on_resume_fn("test-session-id")  # type: ignore[attr-defined]
+        # _make_hub() leaves hub._turn_store=None → closure skips store-read
+        # → current=0 → target_count = current + 1 = 1. trace_id == session_id
+        # by design in this middleware: the closure derives trace_id from the
+        # session_id argument (see MessagePrepMiddleware._make_on_resume_fn).
         publisher.publish_increment_resume_count.assert_awaited_once_with(
             pool_id="telegram:main:chat:42",
             session_id="test-session-id",

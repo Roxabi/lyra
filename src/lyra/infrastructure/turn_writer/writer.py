@@ -121,7 +121,8 @@ class TurnWriter:
                 return
             except nats.errors.ConnectionClosedError as err:
                 log.error(
-                    "TurnWriter: NATS connection lost, Quadlet will restart: %s",
+                    "TurnWriter: NATS connection lost, will exit and let "
+                    "Quadlet restart: %s",
                     err,
                 )
                 raise

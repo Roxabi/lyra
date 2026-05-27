@@ -3,7 +3,7 @@ name = "roxabi-contracts"
 version = "0.4.0"
 description = "Shared Pydantic schemas for Lyra cross-project NATS contracts"
 readme = "README.md"
-license = { text = "MIT" }
+license = { text = "AGPL-3.0-or-later" }
 requires-python = ">=3.12"
 authors = [{ name = "Roxabi SAS", email = "mickael@bouly.io" }]
 dependencies = ["pydantic>=2"]

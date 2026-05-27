@@ -133,4 +133,7 @@ class HubDispatchMixin:
                     msg.id,
                 )
         elif result.action == Action.SUBMIT_TO_POOL and result.pool:
-            result.pool.submit(result.msg if result.msg is not None else msg)
+            try:
+                result.pool.submit(result.msg if result.msg is not None else msg)
+            except Exception:
+                log.exception("pool.submit() failed for msg id=%s — skipping", msg.id)

@@ -1,0 +1,61 @@
+---
+title: wire ToolDisplayConfig into live recap + resolve circular-import (Phase B)
+issue: 1336
+status: approved
+tier: F-full
+date: 2026-05-27
+---
+
+## Problem
+
+`ToolDisplayConfig` exists in `src/lyra/core/messaging/tool_display_config.py` and `_load_tool_display_config` exists in `src/lyra/bootstrap/factory/config.py`, but **no production code calls the loader** — only `tests/test_tool_display_config.py` does. The live tool-recap renderer in `src/lyra/adapters/shared/_tool_recap.py` reads four hardcoded constants (`_BASH_DISPLAY_MAX = 80`, `_BASH_GROUP_THRESHOLD = 3`, `_FILES_GROUP_THRESHOLD = 3`, `_NAMES_THRESHOLD = 5`) and ignores any user-config under `[tool_display]`. The user's `show.web_fetch = false` does nothing.
+
+Additionally, `src/lyra/outbound/emitter.py` carries a workaround at the bottom of the file — `from lyra.adapters.shared._tool_recap import ToolRecapAccumulator, format_recap_lines` placed AFTER `OutboundEmitter` is fully defined to dodge a circular import with `lyra.adapters.__init__`. The workaround is documented in `src/lyra/outbound/CLAUDE.md` §State + recap helpers as a known band-aid awaiting structural resolution.
+
+Phase A (#1335, closed 2026-05-25) deleted all dead tool-display surfaces (`StreamProcessor` accumulator, `emit_tool_recap` plumbing, `show_tool_recap` agent column). Phase B lands on that clean foundation: wire the config + resolve the cycle. Both `dev-core:axial-adr-review` and `dev-core:architect` flagged this as the correct landing — not as part of Phase A (which would re-introduce wrong-axis duplication).
+
+## Who
+
+- **Primary:** Lyra operators who set `[tool_display]` in `config.toml` and expect the values to take effect on Telegram + Discord tool recaps (currently silently ignored).
+- **Secondary:**
+  - Future adapter authors (Slack, Matrix, CLI extensions) — they should inherit `ToolDisplayConfig` wiring automatically via the stage-axis boundary, not redo it per-platform.
+  - Maintainers reading `src/lyra/outbound/emitter.py` — the deferred-import block at the bottom is a documented eyesore that obscures the actual stage composition.
+
+## Constraints
+
+- **Axial constraint (hard):** `ToolDisplayConfig` MUST be threaded through exactly ONE site — `OutboundAdapterBase` — not per-platform `_make_emitter`. Per-platform wiring is a target-axis-trap against ADR-073 (2 sibling sites today: `telegram.py:269`, `discord/adapter.py:251`).
+- **Stage-axis epic (#1277):** `OutboundEmitter` composition is owned by P2 (#1279, merged). Mutation must preserve stage-axis structure.
+- **No deferred-import band-aid:** the circular-import resolution must be structural (refactor exports or invert dependency), not a relocation of the same workaround.
+- **Behavioral parity by default:** when `[tool_display]` is absent from `config.toml`, the recap must render identically to today (all four current thresholds preserved as `ToolDisplayConfig` defaults).
+- **Quality gates:** `uv run pyright`, `uv run pytest`, `uv run ruff check .`, importlinter must all pass on the worktree branch.
+
+## Out of Scope
+
+Explicit non-goals — to be filed separately once Phase B lands:
+
+- **read/grep/glob tool specificity** — show paths/patterns in recap instead of silent counters
+- **Agent sub-tool nesting** — requires `parent_tool_use_id` on `ToolUseLlmEvent` + CLI parser change
+- **Unknown-tool args display** — currently dropped; could show first ~60 chars
+- **ADR for the stage-axis pivot** — deferred to #1284 (P7) per #1279 plan
+- **#1348 work (already merged):** input/args propagation into the accumulator is orthogonal flow plumbing and stays as-is
+
+## Premise Validity
+
+**Success in 6 months:** ToolDisplayConfig is the single source of truth for tool-recap rendering on Telegram + Discord. Setting `config.show.web_fetch = false` or `config.bash_max_len = 200` produces the matching observable behavior in prod (no hardcoded constants, no platform-specific wiring duplication). The circular-import workaround at the bottom of `src/lyra/outbound/emitter.py` no longer exists.
+
+**Failure in 6 months:** By end of Q3 2026 (Aug 31), production `_tool_recap.py` still contains the `_BASH_DISPLAY_MAX` / `_BASH_GROUP_THRESHOLD` / `_FILES_GROUP_THRESHOLD` / `_NAMES_THRESHOLD` hardcoded constants OR the deferred-import block at the bottom of `emitter.py` is still in place OR `_make_emitter` per-platform sites hold platform-specific `ToolDisplayConfig` wiring (>1 site).
+
+**Simplest alternative:** Inject `ToolDisplayConfig` per-platform via each adapter's `_make_emitter` (Telegram + Discord — 2 sites today). Bypasses the circular-import + lets us avoid touching `OutboundAdapterBase`.
+
+**Why not simplest:** Axial review against ADR-073 flagged this as a target-axis-trap: 2 sibling sites today, +1 per future adapter (Slack, Matrix, CLI). The whole point of Phase A → Phase B was to remove that wrong-axis duplication; replacing dead wrong-axis code with live wrong-axis code defeats it.
+
+## Complexity
+
+**Tier: F-full** — Multi-domain (outbound + adapters/shared + bootstrap + tests + docs), introduces a new structural decision (canonical home of `ToolRecapAccumulator`), and resolves a known circular-import via refactor.
+
+Signals observed:
+- 10+ files affected (per issue Scope table)
+- Architectural decision required: outbound/ vs adapters/shared/ home for `ToolRecapAccumulator`
+- Cross-cutting wiring change touching `OutboundAdapterBase` (consumed by both platforms)
+- `size:F-full` label on the GitHub issue
+- Two reviewer agents flagged this as the correct landing (axial + architect) — implies non-trivial design space

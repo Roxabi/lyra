@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 
-from lyra.adapters.shared._tool_recap import (  # type: ignore[import-untyped]
+from lyra.outbound._tool_recap import (
     ToolRecapAccumulator,
     format_recap_lines,
 )

@@ -101,14 +101,15 @@ async def test_wired_path_threads_tool_display_config_to_telegram() -> None:
             bot_agent_map={("telegram", "main"): "lyra_default"},
             circuit_registry=CircuitRegistry(),
             msg_manager=MagicMock(),
-            # T20 will add tool_display_config= param to wire_telegram_adapters.
+            tool_display_config=tool_display_cfg,
         )
 
-    # RED: T20 must add `tool_display_config=cfg` to the TelegramAdapter constructor
-    # call in bootstrap_wiring.py. Until then, "tool_display_config" is absent.
+    # T20 contract: wire_telegram_adapters threads tool_display_config kwarg
+    # through to the TelegramAdapter constructor. Loader call lives one layer
+    # up in wiring_helpers._wire_adapters (where raw_config is in scope).
     assert "tool_display_config" in captured_kwargs, (
-        "RED: wire_telegram_adapters does not yet pass tool_display_config= "
-        "to TelegramAdapter constructor (T20 implements this)"
+        "wire_telegram_adapters must forward tool_display_config= to "
+        "TelegramAdapter constructor"
     )
     assert captured_kwargs["tool_display_config"].bash_max_len == 200
     assert captured_kwargs["tool_display_config"].show["web_fetch"] is False
@@ -178,13 +179,15 @@ async def test_wired_path_threads_tool_display_config_to_discord() -> None:
             circuit_registry=CircuitRegistry(),
             msg_manager=MagicMock(),
             agent_store=mock_agent_store,
-            # T20 will add tool_display_config= param to wire_discord_adapters.
+            tool_display_config=loader_result,
         )
 
-    # RED: T20 must add `tool_display_config=cfg` to DiscordAdapter constructor call.
+    # T20 contract: wire_discord_adapters threads tool_display_config kwarg
+    # through to the DiscordAdapter constructor. Loader call lives one layer
+    # up in wiring_helpers._wire_adapters (where raw_config is in scope).
     assert "tool_display_config" in captured_kwargs, (
-        "RED: wire_discord_adapters does not yet pass tool_display_config= "
-        "to DiscordAdapter constructor (T20 implements this)"
+        "wire_discord_adapters must forward tool_display_config= to "
+        "DiscordAdapter constructor"
     )
     assert captured_kwargs["tool_display_config"].bash_max_len == 200
     assert captured_kwargs["tool_display_config"].show["web_fetch"] is False

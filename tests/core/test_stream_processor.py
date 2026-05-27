@@ -270,320 +270,114 @@ class TestStreamProcessor:
         assert tool_ends[0].tool_call_id == "w1"
 
     # ------------------------------------------------------------------
-    # T11 — Five edits at threshold (SC-4: names mode)
+    # T11–T15 — Tool-count threshold / grouping modes (parametrized)
     # ------------------------------------------------------------------
 
-    async def test_five_edits_at_threshold(self) -> None:
-        """Exactly names_threshold edits: names mode preserved (B8-3, #1211 S4).
-
-        v2 contract: 5 Edit calls at names_threshold=5 keeps names mode —
-        the edits list has 5 entries (not cleared to count-only). Each Edit
-        emits one ToolCallStart; orphan synthesis at ResultLlmEvent emits 5
-        ToolCallEnd events. The ToolCallStart/End event stream is the
-        authoritative record.
-        """
-        # Arrange
+    @pytest.mark.parametrize(
+        "count,paths,expected_ids",
+        [
+            (5, ["src/foo.py"] * 5, [f"t{i}" for i in range(5)]),
+            (6, ["src/foo.py"] * 6, [f"t{i}" for i in range(6)]),
+            (2, ["a.py", "b.py"], ["t1", "t2"]),
+            (3, ["a.py", "b.py", "c.py"], ["t1", "t2", "t3"]),
+            (
+                80,
+                [f"src/file{i % 5}.py" for i in range(80)],
+                [f"t{i}" for i in range(80)],
+            ),
+        ],
+        ids=[
+            "five_edits_at_threshold",
+            "six_edits_count_mode",
+            "two_files_no_group",
+            "three_files_group",
+            "eighty_tools_multi_file",
+        ],
+    )
+    async def test_edit_tool_counts(
+        self, count: int, paths: list[str], expected_ids: list[str]
+    ) -> None:
+        """Edit tool counts at threshold / group boundaries (parametrized)."""
         processor = StreamProcessor()
         edit_events = [
             ToolUseLlmEvent(
-                tool_name="Edit", tool_id=f"t{i}", input={"path": "src/foo.py"}
+                tool_name="Edit", tool_id=expected_ids[i], input={"path": paths[i]}
             )
-            for i in range(5)
+            for i in range(count)
         ]
         events = async_events(
             *edit_events, ResultLlmEvent(is_error=False, duration_ms=50)
         )
-
-        # Act
         all_events = await collect(processor.process(events))
-
-        # Assert — 5 ToolCallStart + 5 ToolCallEnd emitted
         starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
         ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
-        assert len(starts) == 5, f"Expected 5 ToolCallStart, got {len(starts)}"
-        assert len(ends) == 5, f"Expected 5 ToolCallEnd, got {len(ends)}"
-        assert [e.tool_call_id for e in starts] == [f"t{i}" for i in range(5)]
+        assert len(starts) == count, (
+            f"Expected {count} ToolCallStart, got {len(starts)}"
+        )
+        assert len(ends) == count, f"Expected {count} ToolCallEnd, got {len(ends)}"
+        assert [e.tool_call_id for e in starts] == expected_ids
 
     # ------------------------------------------------------------------
-    # T12 — Six edits: count mode (SC-4: threshold+1)
+    # T16–T18 — Single-tool visibility (parametrized)
     # ------------------------------------------------------------------
 
-    async def test_six_edits_count_mode(self) -> None:
-        """names_threshold+1 edits switches to count mode (B8-4, #1211 S4).
-
-        v2 contract: 6 Edit calls at names_threshold=5 triggers count mode —
-        the edits list is cleared to [] and only count is tracked. Each Edit
-        still emits ToolCallStart; orphan synthesis emits 6 ToolCallEnd events.
-        """
-        # Arrange
+    @pytest.mark.parametrize(
+        "tools,expected_names,expected_ids",
+        [
+            ([("Bash", "b1", {"command": "x" * 80})], ["Bash"], ["b1"]),
+            (
+                [("Read", "r1", {}), ("Grep", "g1", {}), ("Glob", "gl1", {})],
+                ["Read", "Grep", "Glob"],
+                None,
+            ),
+            (
+                [("WebFetch", "wf1", {"url": "https://example.com"})],
+                ["WebFetch"],
+                ["wf1"],
+            ),
+            (
+                [("WebSearch", "ws1", {"query": "python asyncio"})],
+                ["WebSearch"],
+                ["ws1"],
+            ),
+            (
+                [("WebFetch", "wf1", {"url": "https://example.com"})],
+                ["WebFetch"],
+                ["wf1"],
+            ),
+        ],
+        ids=[
+            "bash_truncation",
+            "silent_read_grep_glob",
+            "web_fetch_visible",
+            "web_search_visible",
+            "web_fetch_hidden_when_show_false",
+        ],
+    )
+    async def test_single_tool_visibility(
+        self,
+        tools: list[tuple[str, str, dict]],
+        expected_names: list[str],
+        expected_ids: list[str] | None,
+    ) -> None:
+        """Single-tool visibility: every tool emits ToolCallStart/End (parametrized)."""
         processor = StreamProcessor()
-        edit_events = [
-            ToolUseLlmEvent(
-                tool_name="Edit", tool_id=f"t{i}", input={"path": "src/foo.py"}
-            )
-            for i in range(6)
+        tool_events = [
+            ToolUseLlmEvent(tool_name=name, tool_id=tid, input=inp)
+            for name, tid, inp in tools
         ]
         events = async_events(
-            *edit_events, ResultLlmEvent(is_error=False, duration_ms=50)
+            *tool_events, ResultLlmEvent(is_error=False, duration_ms=50)
         )
-
-        # Act
         all_events = await collect(processor.process(events))
-
-        # Assert — 6 ToolCallStart + 6 ToolCallEnd emitted
         starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
         ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
-        assert len(starts) == 6, f"Expected 6 ToolCallStart, got {len(starts)}"
-        assert len(ends) == 6, f"Expected 6 ToolCallEnd, got {len(ends)}"
-
-    # ------------------------------------------------------------------
-    # T13 — Two files, no group (SC-5)
-    # ------------------------------------------------------------------
-
-    async def test_two_files_no_group(self) -> None:
-        """Two distinct files below group_threshold: one ToolCallStart each (L02).
-
-        v2 contract: 2 Edit calls at group_threshold=3 stays per-file — both
-        emit distinct ToolCallStart events. Orphan synthesis at ResultLlmEvent
-        emits 2 ToolCallEnd events. The ToolCallStart/End event stream is the
-        authoritative record; no v1 ToolSummaryRenderEvent exists.
-        """
-        # Arrange
-        processor = StreamProcessor()
-        events = async_events(
-            ToolUseLlmEvent(tool_name="Edit", tool_id="t1", input={"path": "a.py"}),
-            ToolUseLlmEvent(tool_name="Edit", tool_id="t2", input={"path": "b.py"}),
-            ResultLlmEvent(is_error=False, duration_ms=50),
-        )
-
-        # Act
-        all_events = await collect(processor.process(events))
-
-        # Assert — 2 ToolCallStart + 2 ToolCallEnd emitted
-        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
-        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
-        assert len(starts) == 2, f"Expected 2 ToolCallStart, got {len(starts)}"
-        assert len(ends) == 2, f"Expected 2 ToolCallEnd, got {len(ends)}"
-        assert {e.tool_call_id for e in starts} == {"t1", "t2"}
-
-    # ------------------------------------------------------------------
-    # T14 — Three files at group_threshold (SC-5)
-    # ------------------------------------------------------------------
-
-    async def test_three_files_group(self) -> None:
-        """Three distinct files at group_threshold: one ToolCallStart each (L03).
-
-        v2 contract: 3 Edit calls at group_threshold=3 — all three emit distinct
-        ToolCallStart events. Orphan synthesis at ResultLlmEvent emits 3 ToolCallEnd
-        events. The ToolCallStart/End event stream is the authoritative record; no v1
-        ToolSummaryRenderEvent exists. Group-display decisions live at the adapter
-        layer, not StreamProcessor.
-        """
-        # Arrange
-        processor = StreamProcessor()
-        events = async_events(
-            ToolUseLlmEvent(tool_name="Edit", tool_id="t1", input={"path": "a.py"}),
-            ToolUseLlmEvent(tool_name="Edit", tool_id="t2", input={"path": "b.py"}),
-            ToolUseLlmEvent(tool_name="Edit", tool_id="t3", input={"path": "c.py"}),
-            ResultLlmEvent(is_error=False, duration_ms=50),
-        )
-
-        # Act
-        all_events = await collect(processor.process(events))
-
-        # Assert — 3 ToolCallStart + 3 ToolCallEnd emitted
-        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
-        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
-        assert len(starts) == 3, f"Expected 3 ToolCallStart, got {len(starts)}"
-        assert len(ends) == 3, f"Expected 3 ToolCallEnd, got {len(ends)}"
-        assert {e.tool_call_id for e in starts} == {"t1", "t2", "t3"}
-
-    # ------------------------------------------------------------------
-    # T15 — 80 edits over 5 files (SC-4, SC-5)
-    # ------------------------------------------------------------------
-
-    async def test_eighty_tools_multi_file(self) -> None:
-        """80 edits cycling 5 files: each file gets count==16 in count mode (L04).
-
-        v2 contract: 80 Edit calls cycling 5 files at names_threshold=3 puts all
-        files into count mode (16 > 3). Each Edit emits ToolCallStart; orphan
-        synthesis at ResultLlmEvent emits 80 ToolCallEnd events. The ToolCallStart/End
-        event stream is the authoritative record (80 starts, 80 ends across 5 paths).
-        """
-        # Arrange
-        processor = StreamProcessor()
-        file_names = [f"src/file{i}.py" for i in range(5)]
-        edit_events = [
-            ToolUseLlmEvent(
-                tool_name="Edit", tool_id=f"t{i}", input={"path": file_names[i % 5]}
-            )
-            for i in range(80)
-        ]
-        events = async_events(
-            *edit_events, ResultLlmEvent(is_error=False, duration_ms=50)
-        )
-
-        # Act
-        all_events = await collect(processor.process(events))
-
-        # Assert — 80 ToolCallStart + 80 ToolCallEnd emitted
-        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
-        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
-        assert len(starts) == 80, f"Expected 80 ToolCallStart, got {len(starts)}"
-        assert len(ends) == 80, f"Expected 80 ToolCallEnd, got {len(ends)}"
-
-    # ------------------------------------------------------------------
-    # T16 — Bash truncation (SC-6)
-    # ------------------------------------------------------------------
-
-    async def test_bash_truncation(self) -> None:
-        """Bash tool emits ToolCallStart/End (B8-5, #1211 S4).
-
-        v2 contract: Bash tool emits ToolCallStart/End like any other tool.
-        The ToolCallStart/End event stream is the authoritative record;
-        no ToolSummaryRenderEvent exists post-v1 removal.
-        """
-        # Arrange
-        processor = StreamProcessor()
-        long_command = "x" * 80
-        events = async_events(
-            ToolUseLlmEvent(
-                tool_name="Bash", tool_id="b1", input={"command": long_command}
-            ),
-            ResultLlmEvent(is_error=False, duration_ms=50),
-        )
-
-        # Act
-        all_events = await collect(processor.process(events))
-
-        # Assert — ToolCall lifecycle emitted for Bash
-        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
-        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
-        assert len(starts) == 1
-        assert starts[0].tool_name == "Bash"
-        assert len(ends) == 1
-
-    # ------------------------------------------------------------------
-    # T17 — Silent Read/Grep/Glob (SC-7)
-    # ------------------------------------------------------------------
-
-    async def test_silent_read_grep_glob(self) -> None:
-        """Read/Grep/Glob: ToolCall lifecycle + silent counters (B8-6, #1211 S4).
-
-        v2 contract: ToolCallStart is emitted for every tool (including silent ones)
-        since _handle_tool_event always yields it. The ToolCallStart/End event stream
-        is the authoritative record; Read/Grep/Glob each produce one ToolCallStart
-        and one ToolCallEnd (via orphan synthesis).
-        """
-        # Arrange
-        processor = StreamProcessor()
-        events = async_events(
-            ToolUseLlmEvent(tool_name="Read", tool_id="r1", input={}),
-            ToolUseLlmEvent(tool_name="Grep", tool_id="g1", input={}),
-            ToolUseLlmEvent(tool_name="Glob", tool_id="gl1", input={}),
-            ResultLlmEvent(is_error=False, duration_ms=50),
-        )
-
-        # Act
-        all_events = await collect(processor.process(events))
-
-        # Assert — 3 ToolCallStart + 3 ToolCallEnd (orphan synthesis) emitted
-        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
-        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
-        assert len(starts) == 3, f"Expected 3 ToolCallStart, got {len(starts)}"
-        assert len(ends) == 3, f"Expected 3 ToolCallEnd, got {len(ends)}"
-        assert {e.tool_name for e in starts} == {"Read", "Grep", "Glob"}
-
-    # ------------------------------------------------------------------
-    # T18 — WebFetch visible (SC-9)
-    # ------------------------------------------------------------------
-
-    async def test_web_fetch_visible(self) -> None:
-        """WebFetch: ToolCallStart/End emitted (B8-7, #1211 S4).
-
-        v2 contract: WebFetch emits ToolCallStart/End like any other tool.
-        The ToolCallStart/End event stream is the authoritative record;
-        no ToolSummaryRenderEvent exists post-v1 removal.
-        """
-        # Arrange
-        processor = StreamProcessor()
-        events = async_events(
-            ToolUseLlmEvent(
-                tool_name="WebFetch",
-                tool_id="wf1",
-                input={"url": "https://example.com"},
-            ),
-            ResultLlmEvent(is_error=False, duration_ms=50),
-        )
-
-        # Act
-        all_events = await collect(processor.process(events))
-
-        # Assert — ToolCall lifecycle emitted
-        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
-        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
-        assert len(starts) == 1
-        assert starts[0].tool_name == "WebFetch"
-        assert starts[0].tool_call_id == "wf1"
-        assert len(ends) == 1
-
-    async def test_web_search_visible(self) -> None:
-        """WebSearch: ToolCallStart/End emitted (L05).
-
-        v2 contract: WebSearch emits ToolCallStart/End like any other tool.
-        The ToolCallStart/End event stream is the authoritative record.
-        Parity with the active test_web_fetch_visible.
-        """
-        # Arrange
-        processor = StreamProcessor()
-        events = async_events(
-            ToolUseLlmEvent(
-                tool_name="WebSearch",
-                tool_id="ws1",
-                input={"query": "python asyncio"},
-            ),
-            ResultLlmEvent(is_error=False, duration_ms=50),
-        )
-
-        # Act
-        all_events = await collect(processor.process(events))
-
-        # Assert — ToolCall lifecycle emitted
-        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
-        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
-        assert len(starts) == 1
-        assert starts[0].tool_name == "WebSearch"
-        assert starts[0].tool_call_id == "ws1"
-        assert len(ends) == 1
-        assert ends[0].tool_call_id == "ws1"
-
-    async def test_web_fetch_hidden_when_show_false(self) -> None:
-        """WebFetch: ToolCallStart/End lifecycle always emitted (L06).
-
-        v2 contract: ToolCallStart/End are always emitted by _handle_tool_event
-        regardless of any show configuration (show flags are an adapter concern
-        post-v1 removal). This test retains the emission-side assertion only.
-        """
-        # Arrange
-        processor = StreamProcessor()
-        events = async_events(
-            ToolUseLlmEvent(
-                tool_name="WebFetch",
-                tool_id="wf1",
-                input={"url": "https://example.com"},
-            ),
-            ResultLlmEvent(is_error=False, duration_ms=50),
-        )
-
-        # Act
-        all_events = await collect(processor.process(events))
-
-        # Assert — ToolCallStart/End still emitted (lifecycle always fires)
-        starts = [e for e in all_events if isinstance(e, ToolCallStartRenderEvent)]
-        ends = [e for e in all_events if isinstance(e, ToolCallEndRenderEvent)]
-        assert len(starts) == 1
-        assert starts[0].tool_name == "WebFetch"
-        assert len(ends) == 1
+        assert len(starts) == len(tools)
+        assert len(ends) == len(tools)
+        assert [e.tool_name for e in starts] == expected_names
+        if expected_ids is not None:
+            assert [e.tool_call_id for e in starts] == expected_ids
+            assert [e.tool_call_id for e in ends] == expected_ids
 
     # ------------------------------------------------------------------
     # T20 — ResultLlmEvent bypasses throttle (SC-8)
@@ -691,39 +485,6 @@ class TestStreamProcessor:
     # B3 — is_error propagation from ResultLlmEvent → TextRenderEvent (#392)
     # ------------------------------------------------------------------
 
-    async def test_is_error_propagated_to_text_render_event(self) -> None:
-        """ResultLlmEvent(is_error=True) → RunErrorRenderEvent (v2, #1211 S3).
-
-        v2 contract: is_error on the Result closes the open text block via
-        TextEndRenderEvent, then emits RunErrorRenderEvent (not RunFinishedRenderEvent).
-        The error flag is carried on the run-level event, not on TextEnd.
-        """
-        # Arrange
-        processor = StreamProcessor()
-        events = async_events(
-            TextLlmEvent(text="error response"),
-            ResultLlmEvent(is_error=True, duration_ms=0),
-        )
-
-        # Act
-        all_events = await collect(processor.process(events))
-
-        # Assert — run envelope uses RunError (not RunFinished) for is_error=True
-        assert isinstance(all_events[0], RunStartedRenderEvent)
-        assert isinstance(all_events[-1], RunErrorRenderEvent)
-        assert not any(isinstance(e, RunFinishedRenderEvent) for e in all_events)
-
-        # Assert — text block is properly closed before the run terminates
-        text_starts = [e for e in all_events if isinstance(e, TextStartRenderEvent)]
-        text_deltas = [e for e in all_events if isinstance(e, TextDeltaRenderEvent)]
-        text_ends = [e for e in all_events if isinstance(e, TextEndRenderEvent)]
-        assert len(text_starts) == 1
-        assert len(text_deltas) == 1
-        assert text_deltas[0].delta == "error response"
-        assert text_deltas[0].message_id == text_starts[0].message_id
-        assert len(text_ends) == 1
-        assert text_ends[0].message_id == text_starts[0].message_id
-
     async def test_is_error_run_error_carries_error_text(self) -> None:
         """ResultLlmEvent(is_error=True, error_text=...) → RunErrorRenderEvent.message.
 
@@ -741,37 +502,41 @@ class TestStreamProcessor:
         assert len(run_errors) == 1
         assert run_errors[0].message == "boom"
 
-    async def test_is_error_false_propagated_to_text_render_event(self) -> None:
-        """ResultLlmEvent(is_error=False) → RunFinishedRenderEvent, not RunError (L10).
-
-        v2 contract: is_error=False closes the text block cleanly via
-        TextEndRenderEvent, then emits RunFinishedRenderEvent (outcome=success).
-        No RunErrorRenderEvent is emitted. Parity-False case for the active
-        test_is_error_propagated_to_text_render_event (is_error=True).
-        """
-        # Arrange
+    @pytest.mark.parametrize(
+        "is_error,terminal_type,opposite_type,outcome",
+        [
+            (True, RunErrorRenderEvent, RunFinishedRenderEvent, None),
+            (False, RunFinishedRenderEvent, RunErrorRenderEvent, "success"),
+        ],
+        ids=["is_error_true", "is_error_false"],
+    )
+    async def test_is_error_polarity(
+        self,
+        is_error: bool,
+        terminal_type: type,
+        opposite_type: type,
+        outcome: str | None,
+    ) -> None:
+        """ResultLlmEvent is_error polarity → terminal event (parametrized)."""
         processor = StreamProcessor()
+        text = "error response" if is_error else "normal response"
         events = async_events(
-            TextLlmEvent(text="normal response"),
-            ResultLlmEvent(is_error=False, duration_ms=0),
+            TextLlmEvent(text=text),
+            ResultLlmEvent(is_error=is_error, duration_ms=0),
         )
-
-        # Act
         all_events = await collect(processor.process(events))
-
-        # Assert — terminal is RunFinished (not RunError) for is_error=False
-        assert isinstance(all_events[-1], RunFinishedRenderEvent)
-        assert all_events[-1].outcome == "success"
-        assert not any(isinstance(e, RunErrorRenderEvent) for e in all_events)
-
-        # Assert — text block properly closed
-        text_ends = [e for e in all_events if isinstance(e, TextEndRenderEvent)]
-        text_deltas = [e for e in all_events if isinstance(e, TextDeltaRenderEvent)]
-        assert len(text_ends) == 1
-        assert len(text_deltas) == 1
-        assert text_deltas[0].delta == "normal response"
+        assert isinstance(all_events[-1], terminal_type)
+        if outcome is not None:
+            assert all_events[-1].outcome == outcome
+        assert not any(isinstance(e, opposite_type) for e in all_events)
         text_starts = [e for e in all_events if isinstance(e, TextStartRenderEvent)]
+        text_deltas = [e for e in all_events if isinstance(e, TextDeltaRenderEvent)]
+        text_ends = [e for e in all_events if isinstance(e, TextEndRenderEvent)]
         assert len(text_starts) == 1
+        assert len(text_deltas) == 1
+        assert text_deltas[0].delta == text
+        assert text_deltas[0].message_id == text_starts[0].message_id
+        assert len(text_ends) == 1
         assert text_ends[0].message_id == text_starts[0].message_id
 
     async def test_error_text_surfaces_when_no_streamed_text(self) -> None:
@@ -1386,6 +1151,44 @@ class TestToolCallLifecycle:
         # If the bare-else regressed, the delta would crash on event.is_error
         # access. Successful dispatch surfaces a ToolCallArgsRenderEvent.
         assert any(isinstance(e, ToolCallArgsRenderEvent) for e in result)
+
+    async def test_clipool_input_forwarding(self) -> None:
+        """ToolUseLlmEvent with non-empty input → ToolCallStartRenderEvent carries it.
+
+        Clipool NATS path sends the full input dict in a single tool_use chunk.
+        StreamProcessor must forward it so the recap accumulator can route
+        immediately without waiting for ToolCallArgs deltas.
+        """
+        processor = StreamProcessor()
+        events = async_events(
+            ToolUseLlmEvent(
+                tool_name="Bash", tool_id="tc-1", input={"command": "git log"}
+            ),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        result = await collect(processor.process(events))
+        starts = [e for e in result if isinstance(e, ToolCallStartRenderEvent)]
+        assert len(starts) == 1
+        assert starts[0].input == {"command": "git log"}
+
+    async def test_empty_input_maps_to_none(self) -> None:
+        """SDK path: ToolUseLlmEvent.input defaults to {} → mapped to None.
+
+        Empty dict is falsy; StreamProcessor must pass None so the accumulator
+        falls back to the buffered _in_flight path (Args + End) rather than
+        premature routing on an empty dict.
+        """
+        processor = StreamProcessor()
+        events = async_events(
+            ToolUseLlmEvent(tool_name="Read", tool_id="r1", input={}),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        result = await collect(processor.process(events))
+        starts = [e for e in result if isinstance(e, ToolCallStartRenderEvent)]
+        assert len(starts) == 1
+        assert starts[0].input is None
 
 
 # ---------------------------------------------------------------------------

@@ -261,7 +261,7 @@ def refine(name: str = typer.Argument(..., help="Agent name to refine.")) -> Non
             io = TerminalIO()
             before_row = store.get(name)
             try:
-                patch = refiner.run_session(io)
+                patch = await refiner.run_session(io)
             except RefinementCancelled:
                 typer.echo("\nRefinement session cancelled.")
                 raise typer.Exit(0)

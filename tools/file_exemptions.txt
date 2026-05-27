@@ -1,6 +1,7 @@
 # File size exemptions (≤300 lines per file)
 # Each entry must have a tracking issue.
 # Format: <path>  # <lines> lines — <issue> <description>
+tests/core/conftest.py  # 314 lines — DEBT:file-exemptions — backward-compatible re-exports after factory extraction (#1417)
 src/lyra/bootstrap/factory/wiring_helpers.py  # 410 lines — DEBT:file-exemptions — ADR-059/V10 bootstrap helper aggregator (imports + 10 focused functions)
 src/lyra/bootstrap/bootstrap_stores.py  # 307 lines — DEBT:file-exemptions — #957 idx_sql DDL validation adds allowlist guard before sqlite_master replay
 src/lyra/core/cli/cli_pool.py  # 345 lines — DEBT:file-exemptions — #1150 agent identity kwargs added to send() signature; #1278 +4 lines (ruff format line-wrap)
@@ -9,7 +10,7 @@ src/lyra/agents/simple_agent.py  # 317 lines — DEBT:file-exemptions — #1008 
 src/lyra/bootstrap/standalone/hub_standalone.py  # 303 lines — DEBT:file-exemptions — #1376 T9 TypingPublisher instantiation (bootstrap composition root)
 src/lyra/bootstrap/standalone/adapter_standalone.py  # 310 lines — DEBT:file-exemptions — #1016 WorkerError startup version log; #1376 T10 TypingListener per-bot wiring (bootstrap composition root); #1396 +9 lines (functools.partial closure fix replacing late-binding lambda + make_typing_factory wrapper + import line)
 src/lyra/core/processors/stream_processor.py  # 638 lines — DEBT:file-exemptions — #1016 WorkerError extractor + #1098 Run lifecycle + #1101 Reasoning emission + #1282 Slice 3 sub-handler split + Slice 4 EventEmitter wiring + StateMachine composition + Slice 4 review-fix: extract _process_events for noqa drop + #1282 1b1: F9 _close_open_blocks helper extraction (net -7) + F5 Site B sanitization via SanitizedError.from_message + #1321 API hygiene (sanctioned close loop, orphan-tool-end symmetry, dead-surface docstring)
-src/lyra/outbound/emitter.py  # 548 lines — DEBT:file-exemptions — #1279 ThrottleCapability helpers + edit-interval wire-up; split into stage slices in Phase 7 follow-up; remove this exemption after StreamState relocates out of adapters.shared
+src/lyra/outbound/emitter.py  # 549 lines — DEBT:file-exemptions — #1279 ThrottleCapability helpers + edit-interval wire-up + #1426 aclose() leak fix; split into stage slices in Phase 7 follow-up; remove this exemption after StreamState relocates out of adapters.shared
 src/lyra/adapters/clipool/clipool_worker.py  # 388 lines — DEBT:file-exemptions — #1016 WorkerError population + exception classifier; #1215 +9 lines (sanitization log.warning + comments at 4 sites); #1150 +5 lines (agent identity kwargs forwarded to pool.send); #1147 +1 line (wait_ready=False worker semantics)
 src/lyra/core/cli/cli_streaming_parser.py  # 444 lines — DEBT:file-exemptions — #1100 ToolCall streamed events + #1101 thinking-block recognition + #1219 bus-message sanitization (log.warning + comment) + #1252 path-(a) scrubber + #1282 Slice 2 sub-handler split + Slice 4 EventEmitter wiring + StateMachine composition + compat properties + #1282 1b1: F7 shallow-copy on compat properties + #1321 doc hygiene (name-collision docstring + Parser shape qualifier)
 src/lyra/core/messaging/render_events.py  # 359 lines — DEBT:file-exemptions — #1099 Text v2 triplet + #1101 Reasoning v2 triplet (refactor deferred to Slice 5 / #1102)

@@ -1,0 +1,52 @@
+---
+title: feat(bots): BotStore SQLite + lyra bot init (DB-first foundation)
+issue: 1414
+status: approved
+tier: F-lite
+date: 2026-05-27
+---
+
+## Problem
+
+Bot configuration in Lyra is currently scattered across `config.toml` sections (`[[telegram.bots]]`, `[[discord.bots]]`, `[[auth.telegram_bots]]`, `[[auth.discord_bots]]`). Hub and adapters read this TOML directly at runtime, which prevents programmatic bot management, per-bot mutable runtime state (trusted users, thread settings), and hot-reload without file I/O on every message. The AgentStore pattern (ADR-048) proved that a DB-first approach with Protocol/impl separation and a seed CLI works well for agents; bots need the same foundation.
+
+## Who
+
+- **Primary:** Lyra operators who declare and manage bots via `config.toml`
+- **Secondary:** Hub dispatch code (Authenticator registry, auth seeding, quadlet rendering) that needs structured bot config with queryable state
+- **Tertiary:** Adapters that must receive bot config without ever touching `config.db`
+
+## Constraints
+
+- ADR-048 Protocol/impl separation: Protocol in `core/stores/`, SQLite impl in `infrastructure/stores/`
+- `import-linter` must pass: zero `lyra.adapters` imports of `lyra.infrastructure.stores.bot_store`
+- Adapters **never** read `~/.lyra/config.db`; they receive config via NATS publish-at-boot
+- `lyra bot init` must be idempotent and preserve existing deployments (skip-existing by default, `--force` to override)
+- Mirror `agent_store.py` / `agent_cmd/agents/init.py` pattern; do not invent new abstractions
+
+## Out of Scope
+
+- Consumers reading from BotStore (Authenticator, auth_seeding, render_quadlet) — S3
+- Additional CLI verbs (`list`, `show`, `add`, `delete`, …) — S2
+- Deprecation of TOML read paths — S7
+- KV bucket or live-watch for bot config changes — publish-at-boot only for S1
+
+## Premise Validity
+
+**Success in 6 months:** BotStore is the canonical runtime source for bot configuration in Hub. `lyra bot init` seeds all production bots from TOML to `config.db` on deploy. Adapters receive bot config via NATS at boot and never read `config.db`. TOML remains the human-editable declarative source; DB is the runtime operational source.
+
+**Failure in 6 months:** BotStore table exists but Hub code paths still read TOML directly for bot config. Adapters import `bot_store` or read `config.db`. `lyra bot init` is unused or broken by TOML schema changes. Zero consumers migrated to BotStore by S7.
+
+**Simplest alternative:** Continue reading bot config directly from `config.toml` in Hub and adapters at runtime.
+**Why not simplest:** TOML is human-editable but not programmatically manageable. Runtime file I/O on every message is inefficient. No support for per-bot runtime mutable state (trusted_users, thread_hot_hours) without rewriting a text file. Violates the DB-first pattern established by AgentStore (ADR-048).
+
+## Complexity
+
+**Tier: F-lite** — single domain (stores + CLI), clear scope, mirrors existing AgentStore pattern. ~8 files, no new architecture.
+
+Signals observed:
+- Files touched: ~8 (protocol, impl, migration, CLI command + init, tests, CLAUDE.md, import-linter)
+- Technical risk: Known pattern (AgentStore), new lib not required
+- Arch impact: Single module pair + CLI, no cross-domain abstractions
+- Unknowns: 0
+- Domain breadth: 1 (stores / CLI)

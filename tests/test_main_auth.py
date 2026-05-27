@@ -73,9 +73,8 @@ class TestAuthConfig:
         monkeypatch.setattr(main_mod, "_load_raw_config", lambda: {})
         stop = asyncio.Event()
         stop.set()
-        # With no config, _bootstrap_unified exits with "No adapters configured"
-        # which includes "auth.telegram_bots" — matches pattern "auth.telegram".
-        with pytest.raises(SystemExit, match="auth.telegram"):
+        # With no config, _bootstrap_unified exits with "No adapters configured".
+        with pytest.raises(SystemExit, match="No adapters configured"):
             await main_mod._main(_stop=stop)
 
     async def test_discord_section_optional_when_telegram_present(
@@ -124,18 +123,26 @@ class TestAuthConfig:
             await main_mod._main(_stop=stop)
 
     async def test_invalid_default_exits(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Invalid default in auth config causes SystemExit when _main() runs."""
+        """Invalid default_trust in BotStore causes SystemExit when _main() runs."""
+        from unittest.mock import MagicMock
+
+        import lyra.bootstrap.bootstrap_stores as stores_mod_local
+
         patch_auth_config_test(monkeypatch)
-        # Use the multi-bot format (telegram_bots) since load_multibot_config
-        # routes through _bootstrap_unified.
+        _fake_bot_store = MagicMock()
+        _fake_bot_store.connect = AsyncMock()
+        _fake_bot_store.close = AsyncMock()
+        _fake_bot_store.get = MagicMock(
+            return_value=MagicMock(default_trust="invalid_level", trusted_roles=[])
+        )
+        monkeypatch.setattr(
+            stores_mod_local, "BotStore", lambda **kwargs: _fake_bot_store
+        )
         monkeypatch.setattr(
             main_mod,
             "_load_raw_config",
             lambda: {
                 "telegram": {"bots": [{"bot_id": "main"}]},
-                "auth": {
-                    "telegram_bots": [{"bot_id": "main", "default": "invalid_level"}],
-                },
             },
         )
         stop = asyncio.Event()

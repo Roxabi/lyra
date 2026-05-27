@@ -22,5 +22,11 @@ async def run_bot_migrations(db: aiosqlite.Connection) -> None:
     Args:
         db: An open aiosqlite connection.
     """
-    # No migrations yet — placeholder for future ALTER TABLE statements.
-    pass
+    # Migration: add trusted_roles_json column for #1416
+    cur = await db.execute(
+        "SELECT 1 FROM pragma_table_info('bots') WHERE name = 'trusted_roles_json'"
+    )
+    if await cur.fetchone() is None:
+        await db.execute(
+            "ALTER TABLE bots ADD COLUMN trusted_roles_json TEXT NOT NULL DEFAULT '[]'"
+        )

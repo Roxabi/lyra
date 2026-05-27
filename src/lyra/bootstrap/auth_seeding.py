@@ -16,6 +16,7 @@ from lyra.config import (
 )
 from lyra.core.auth.authenticator import Authenticator
 from lyra.core.circuit_breaker import CircuitRegistry
+from lyra.core.stores.bot_store_protocol import BotStoreProtocol
 from lyra.infrastructure.stores.auth_store import AuthStore
 
 log = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ async def seed_auth_store(auth_store: AuthStore, raw_config: dict) -> None:
 def build_bot_auths(
     raw_config: dict,
     auth_store: AuthStore,
+    bot_store: BotStoreProtocol,
 ) -> tuple[
     CircuitRegistry,
     frozenset[str],
@@ -51,7 +53,7 @@ def build_bot_auths(
     tg_multi_cfg, dc_multi_cfg = load_multibot_config(raw_config)
 
     tg_bot_auths, dc_bot_auths = _build_bot_auths(
-        raw_config,
+        bot_store,
         tg_multi_cfg,
         dc_multi_cfg,
         auth_store,
@@ -62,8 +64,7 @@ def build_bot_auths(
     if not tg_bot_auths and not dc_bot_auths:
         raise ValueError(
             "No adapters configured — add at least one [[telegram.bots]] or"
-            " [[discord.bots]] entry with a matching [[auth.telegram_bots]] or"
-            " [[auth.discord_bots]] section to config.toml"
+            " [[discord.bots]] entry and run 'lyra bot init' to seed the bot store"
         )
 
     return circuit_registry, admin_user_ids, tg_bot_auths, dc_bot_auths

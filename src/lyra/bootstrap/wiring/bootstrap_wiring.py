@@ -22,6 +22,7 @@ from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.hub import Hub, OutboundDispatcher, RoutingKey
 from lyra.core.messaging.message import Platform
 from lyra.core.messaging.messages import MessageManager
+from lyra.core.stores.bot_store_protocol import BotStoreProtocol
 from lyra.infrastructure.stores.agent_store import AgentStore
 from lyra.infrastructure.stores.auth_store import AuthStore
 from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
@@ -221,7 +222,7 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — DEBT:wiring-bootstra
 
 
 def _build_bot_auths(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
-    raw_config: dict,
+    bot_store: BotStoreProtocol,
     tg_multi_cfg: TelegramMultiConfig,
     dc_multi_cfg: DiscordMultiConfig,
     auth_store: AuthStore,
@@ -237,10 +238,10 @@ def _build_bot_auths(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
 
     try:
         for bot_cfg in tg_multi_cfg.bots:
-            auth = Authenticator.from_bot_config(
-                raw_config,
+            auth = Authenticator.from_bot_store(
                 "telegram",
                 bot_cfg.bot_id,
+                bot_store,
                 store=auth_store,
                 admin_user_ids=admin_user_ids,
                 alias_store=alias_store,
@@ -254,10 +255,10 @@ def _build_bot_auths(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
             tg_bot_auths.append((bot_cfg, auth))
 
         for bot_cfg in dc_multi_cfg.bots:
-            auth = Authenticator.from_bot_config(
-                raw_config,
+            auth = Authenticator.from_bot_store(
                 "discord",
                 bot_cfg.bot_id,
+                bot_store,
                 store=auth_store,
                 admin_user_ids=admin_user_ids,
                 alias_store=alias_store,

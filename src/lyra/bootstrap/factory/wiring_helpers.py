@@ -139,7 +139,7 @@ async def _init_bot_auths_and_agents(
         raise SystemExit(str(exc))
 
     tg_bot_auths, dc_bot_auths = _build_bot_auths(
-        raw_config,
+        stores.bot,
         tg_multi_cfg,
         dc_multi_cfg,
         stores.auth,
@@ -154,9 +154,8 @@ async def _init_bot_auths_and_agents(
     if not tg_bot_auths and not dc_bot_auths:
         raise SystemExit(
             "No adapters configured — add at least one"
-            " [[telegram.bots]] or [[discord.bots]] entry with"
-            " a matching [[auth.telegram_bots]] or"
-            " [[auth.discord_bots]] section to config.toml"
+            " [[telegram.bots]] or [[discord.bots]] entry"
+            " and run 'lyra bot init' to seed the bot store"
         )
 
     bot_agent_map = await _resolve_bot_agent_map(

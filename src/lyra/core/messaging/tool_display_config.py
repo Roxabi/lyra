@@ -45,9 +45,14 @@ class ToolDisplayConfig(BaseModel):
         emissions during a single turn.  Terminal events bypass this throttle.
         Default: 2000.  Use 0 to disable throttling entirely.
     show:
-        Read-only mapping of tool name → whether to surface the call in the
-        summary card.  Keys not present in this map are treated as ``False``
-        (silent).  Mutation raises ``TypeError``.
+        Read-only mapping of canonical tool key → visibility. A key explicitly
+        set to ``False`` suppresses the corresponding tool from the recap card
+        (read/grep/glob preserve silent counters). Keys NOT present in the map
+        fall through to default routing — known buckets render normally; truly
+        unknown tools (e.g. ``TodoWrite``, ``LS``) are tracked in
+        ``unknown_calls``. To suppress an unknown tool, add it with ``false``.
+        Canonical keys are lowercase snake_case (``web_fetch``, not ``webfetch``).
+        Mutation raises ``TypeError``.
     """
 
     model_config = ConfigDict(frozen=True, extra="ignore")

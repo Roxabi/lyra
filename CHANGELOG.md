@@ -57,6 +57,14 @@ Entries are generated automatically by `/promote` and committed to staging befor
   new `_ensure_trace_obj` helper, so the trace placeholder is sent at most once per turn
   regardless of which path fires first. Unknown tools (`todowrite`, `ls`, …) render as
   `🔧 N toolname` (lost feature from PR #1209). Adjacent v2-cutover context: #1102. (#1214)
+- Clipool NATS path now forwards the full tool-input dict through
+  `ToolCallStartRenderEvent.input`, fixing the bare "🔧 Done ✅" recap card on
+  clipool turns. `StreamProcessor` maps `ToolUseLlmEvent.input` → the new optional
+  `input` field; `ToolRecapAccumulator.observe_start` routes immediately when `input`
+  is present, skipping the buffered `_in_flight` path. Empty-dict (`{}`) inputs
+  (SDK streamed-delta default) map to `None` so the existing Args+End buffering
+  path is preserved. Old adapters tolerate the new field because
+  `roxabi_nats._decode_dataclass` ignores unknown payload keys. (#1348)
 
 ## [0.2.0](https://github.com/Roxabi/lyra/compare/lyra-v0.1.0...lyra-v0.2.0) (2026-04-17)
 

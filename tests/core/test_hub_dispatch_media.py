@@ -14,6 +14,7 @@ from lyra.core.messaging.message import (
     Platform,
 )
 from tests.core.conftest import make_inbound_message
+from tests.helpers.messages import make_test_blobref
 
 # ---------------------------------------------------------------------------
 # #182 — dispatch_audio
@@ -29,7 +30,7 @@ class TestDispatchAudio:
         dispatcher.enqueue_audio = MagicMock()
         hub.register_outbound_dispatcher(Platform.TELEGRAM, "main", dispatcher)
         msg = make_inbound_message(platform="telegram", bot_id="main")
-        audio = OutboundAudio(audio_bytes=b"ogg", mime_type="audio/ogg")
+        audio = OutboundAudio(blob_ref=make_test_blobref(b"ogg"), mime_type="audio/ogg")
         await hub.dispatch_audio(msg, audio)
         dispatcher.enqueue_audio.assert_called_once_with(msg, audio)
         assert hub._last_processed_at is not None
@@ -40,14 +41,14 @@ class TestDispatchAudio:
         adapter.render_audio = AsyncMock()
         hub.register_adapter(Platform.TELEGRAM, "main", adapter)
         msg = make_inbound_message(platform="telegram", bot_id="main")
-        audio = OutboundAudio(audio_bytes=b"ogg", mime_type="audio/ogg")
+        audio = OutboundAudio(blob_ref=make_test_blobref(b"ogg"), mime_type="audio/ogg")
         await hub.dispatch_audio(msg, audio)
         adapter.render_audio.assert_awaited_once_with(audio, msg)
 
     async def test_missing_adapter_raises(self) -> None:
         hub = Hub()
         msg = make_inbound_message(platform="telegram", bot_id="ghost")
-        audio = OutboundAudio(audio_bytes=b"ogg", mime_type="audio/ogg")
+        audio = OutboundAudio(blob_ref=make_test_blobref(b"ogg"), mime_type="audio/ogg")
         with pytest.raises(KeyError):
             await hub.dispatch_audio(msg, audio)
 
@@ -58,7 +59,7 @@ class TestDispatchAudio:
         hub.register_adapter(Platform.TELEGRAM, "main", adapter)
         assert hub._last_processed_at is None
         msg = make_inbound_message(platform="telegram", bot_id="main")
-        audio = OutboundAudio(audio_bytes=b"ogg", mime_type="audio/ogg")
+        audio = OutboundAudio(blob_ref=make_test_blobref(b"ogg"), mime_type="audio/ogg")
         await hub.dispatch_audio(msg, audio)
         assert hub._last_processed_at is not None
 

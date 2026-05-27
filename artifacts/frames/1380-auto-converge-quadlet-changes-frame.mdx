@@ -1,0 +1,53 @@
+---
+title: ops(deploy): auto-converge Quadlet file changes on lyra-hub via systemd-timer pull-loop
+issue: 1380
+status: approved
+tier: F-lite
+date: 2026-05-27
+---
+
+## Problem
+
+M₁ (lyra-hub role) has two independent deploy control planes for the same logical target (running containers), creating a windowed partial-deploy state when a PR touches both surfaces:
+
+| Plane | Trigger | Latency | What it deploys |
+|---|---|---|---|
+| **Image auto-update** | `podman-auto-update.timer` (~30 min) | ≤30 min | new `ghcr.io/roxabi/lyra:staging` images → pull + restart |
+| **Quadlet file install** | operator runs `make quadlet-install` | indefinite (human) | `.container.tmpl` → render → `~/.config/containers/systemd/` → daemon-reload + restart |
+
+When a PR touches both (new env var + new Python code, or new `HealthCmd` + new behavior), the image lands within 30 min while the Quadlet directive sits undeployed until the operator remembers to run `make quadlet-install`. This is the same drift class as #1369 and #1361: operator-local-mutations-vs-tracked-state.
+
+Concrete example: PR #1371 changed `HealthCmd` in both `.container.tmpl` files. No image change, no auto-update trigger. M₁ ran the OLD pgrep-based HealthCmd until manual install.
+
+## Who
+
+- **Primary:** Operator deploying to M₁ (lyra-hub role) — no longer needs to remember to run `make quadlet-install` after merges touching Quadlet files.
+- **Secondary:** Any reviewer/observer verifying that tracked Quadlet state matches live host state — now observable via `journalctl --user -u lyra-quadlet-sync`.
+
+## Constraints
+
+- Host-local only — no CI→host SSH coupling, no GHA secrets for host access.
+- Must mirror existing `podman-auto-update.timer` mental model (auto-pull pattern already trusted on M₁).
+- Manual `make quadlet-install` must remain as escape hatch.
+- Idempotent: zero-work fast-forward to current HEAD must exit 0 with no side effects.
+- Guarded: only Quadlet-relevant diffs trigger `make quadlet-install`; `src/` or `tests/` changes go via the image auto-update path.
+- Failure surface must be uniform and inspectable via systemd journal.
+
+## Out of Scope
+
+- Multi-host generalization (M₂ does not currently run Lyra adapters; revisit when it does).
+- Rolling Quadlet directives into the OCI image (separate ADR-grade decision).
+- Replacing `podman-auto-update.timer` (orthogonal — image deploys are fine as-is).
+
+## Premise Validity
+
+**Success in 6 months:** M₁ Quadlet state converges to `origin/staging` within 5 minutes of any merge touching `deploy/quadlet/**`, `Makefile`, or `tools/render_quadlet.py` — measurable via `journalctl --user -u lyra-quadlet-sync` showing successful installs, and zero operator reports of "I forgot to run make quadlet-install."
+
+**Failure in 6 months:** A merge touching Quadlet files sits undeployed for >30 min because the operator didn't run `make quadlet-install` — same as today. This is falsifiable by checking `git log --since="30 min ago" deploy/quadlet/` against `journalctl --user -u lyra-quadlet-sync` for corresponding install entries.
+
+**Simplest alternative:** Status quo + `make deploy-status` diagnostic that surfaces the gap.
+**Why not simplest:** It surfaces the gap but does not close it. Same operator-recall burden, same silent divergence risk.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (devops/infra), ~3–5 files (systemd units + Makefile target + docs update). No new architectural patterns, no multi-domain coordination.

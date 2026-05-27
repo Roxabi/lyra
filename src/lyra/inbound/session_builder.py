@@ -214,6 +214,7 @@ class SessionBuilder:
                     "SessionBuilder: ThreadStore.update_session failed thread_id=%s",
                     _tid_str,
                 )
+                raise
 
         _replacements: dict = {"session_update_fn": _thread_update_fn}
         if _stored is not None and _stored.session_id is not None:

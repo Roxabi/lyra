@@ -97,6 +97,38 @@ def _tool_result_user_line(
     )
 
 
+_EMPTY_TEXT_DELTA = _ndjson(
+    {
+        "type": "stream_event",
+        "event": {
+            "type": "content_block_delta",
+            "delta": {"type": "text_delta", "text": ""},
+        },
+    }
+)
+
+_EXTRA_DELTA = _ndjson(
+    {
+        "type": "stream_event",
+        "event": {
+            "type": "content_block_delta",
+            "delta": {"type": "text_delta", "text": "After result"},
+        },
+    }
+)
+
+_RESULT_SESS_999 = _ndjson(
+    {
+        "type": "result",
+        "session_id": "result-sess-999",
+        "duration_ms": 10,
+        "is_error": False,
+    }
+)
+
+_RESULT_EVT = ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123")
+
+
 # ---------------------------------------------------------------------------
 # TestStreamingIteratorYields
 # ---------------------------------------------------------------------------
@@ -105,107 +137,62 @@ def _tool_result_user_line(
 class TestStreamingIteratorYields:
     """StreamingIterator yields text_delta chunks from content_block_delta events."""
 
-    async def test_yields_text_delta_chunks(self) -> None:
-        # Arrange
-        proc = make_fake_proc(
-            [INIT_LINE, TEXT_DELTA_LINE, TEXT_DELTA_LINE2, RESULT_LINE]
-        )
+    @pytest.mark.parametrize(
+        "lines,expected",
+        [
+            pytest.param(
+                [INIT_LINE, TEXT_DELTA_LINE, TEXT_DELTA_LINE2, RESULT_LINE],
+                [
+                    TextLlmEvent(text="Hello"),
+                    TextLlmEvent(text=" world"),
+                    _RESULT_EVT,
+                ],
+                id="yields_text_delta_chunks",
+            ),
+            pytest.param(
+                [
+                    INIT_LINE,
+                    TEXT_DELTA_LINE,
+                    INPUT_JSON_DELTA_LINE,
+                    TEXT_DELTA_LINE2,
+                    RESULT_LINE,
+                ],
+                [
+                    TextLlmEvent(text="Hello"),
+                    TextLlmEvent(text=" world"),
+                    _RESULT_EVT,
+                ],
+                id="skips_input_json_delta_events",
+            ),
+            pytest.param(
+                [INIT_LINE, _EMPTY_TEXT_DELTA, TEXT_DELTA_LINE, RESULT_LINE],
+                [
+                    TextLlmEvent(text="Hello"),
+                    _RESULT_EVT,
+                ],
+                id="skips_empty_text_delta",
+            ),
+            pytest.param(
+                [INIT_LINE, TEXT_DELTA_LINE, RESULT_LINE, _EXTRA_DELTA],
+                [
+                    TextLlmEvent(text="Hello"),
+                    _RESULT_EVT,
+                ],
+                id="stops_on_result_event",
+            ),
+            pytest.param(
+                [INIT_LINE, TEXT_DELTA_LINE],
+                [TextLlmEvent(text="Hello")],
+                id="stops_on_eof",
+            ),
+        ],
+    )
+    async def test_streaming_iterator_yields(self, lines, expected) -> None:
+        proc = make_fake_proc(lines)
         entry = make_entry(proc)
-
-        # Act
         it = StreamingIterator(entry, DEFAULT_POOL_ID)
         chunks = [chunk async for chunk in it]
-
-        # Assert
-        assert chunks == [
-            TextLlmEvent(text="Hello"),
-            TextLlmEvent(text=" world"),
-            ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
-        ]
-
-    async def test_skips_input_json_delta_events(self) -> None:
-        # Arrange — mix of text_delta and input_json_delta; only text_delta should yield
-        proc = make_fake_proc(
-            [
-                INIT_LINE,
-                TEXT_DELTA_LINE,
-                INPUT_JSON_DELTA_LINE,
-                TEXT_DELTA_LINE2,
-                RESULT_LINE,
-            ]
-        )
-        entry = make_entry(proc)
-
-        # Act
-        it = StreamingIterator(entry, DEFAULT_POOL_ID)
-        chunks = [chunk async for chunk in it]
-
-        # Assert — input_json_delta silently skipped
-        assert chunks == [
-            TextLlmEvent(text="Hello"),
-            TextLlmEvent(text=" world"),
-            ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
-        ]
-
-    async def test_skips_empty_text_delta(self) -> None:
-        # Arrange — text_delta with empty string should not be yielded
-        empty_delta = _ndjson(
-            {
-                "type": "stream_event",
-                "event": {
-                    "type": "content_block_delta",
-                    "delta": {"type": "text_delta", "text": ""},
-                },
-            }
-        )
-        proc = make_fake_proc([INIT_LINE, empty_delta, TEXT_DELTA_LINE, RESULT_LINE])
-        entry = make_entry(proc)
-
-        # Act
-        it = StreamingIterator(entry, DEFAULT_POOL_ID)
-        chunks = [chunk async for chunk in it]
-
-        # Assert
-        assert chunks == [
-            TextLlmEvent(text="Hello"),
-            ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
-        ]
-
-    async def test_stops_on_result_event(self) -> None:
-        # Arrange — result event must terminate iteration
-        extra_delta = _ndjson(
-            {
-                "type": "stream_event",
-                "event": {
-                    "type": "content_block_delta",
-                    "delta": {"type": "text_delta", "text": "After result"},
-                },
-            }
-        )
-        proc = make_fake_proc([INIT_LINE, TEXT_DELTA_LINE, RESULT_LINE, extra_delta])
-        entry = make_entry(proc)
-
-        # Act
-        it = StreamingIterator(entry, DEFAULT_POOL_ID)
-        chunks = [chunk async for chunk in it]
-
-        # Assert — stops at result; extra_delta not yielded
-        assert chunks == [
-            TextLlmEvent(text="Hello"),
-            ResultLlmEvent(is_error=False, duration_ms=100, session_id="abc-123"),
-        ]
-
-    async def test_stops_on_eof(self) -> None:
-        # Arrange — no result event; proc sends EOF
-        proc = make_fake_proc([INIT_LINE, TEXT_DELTA_LINE])  # EOF appended by helper
-        entry = make_entry(proc)
-
-        # Act
-        it = StreamingIterator(entry, DEFAULT_POOL_ID)
-        chunks = [chunk async for chunk in it]
-
-        # Assert — EOF gracefully ends iteration with NO ResultLlmEvent
-        assert chunks == [TextLlmEvent(text="Hello")]
+        assert chunks == expected
 
     async def test_already_done_raises_stop_async_iteration(self) -> None:
         # Arrange — create iterator and exhaust it
@@ -227,65 +214,59 @@ class TestStreamingIteratorYields:
 class TestStreamingIteratorSessionId:
     """StreamingIterator captures and exposes session_id."""
 
-    async def test_session_id_captured_from_system_init(self) -> None:
-        # Arrange
-        proc = make_fake_proc([INIT_LINE, TEXT_DELTA_LINE, RESULT_LINE])
+    @pytest.mark.parametrize(
+        "lines,consume,expected_session_id,check_entry",
+        [
+            pytest.param(
+                [INIT_LINE, TEXT_DELTA_LINE, RESULT_LINE],
+                True,
+                "abc-123",
+                False,
+                id="from_system_init",
+            ),
+            pytest.param(
+                [TEXT_DELTA_LINE, _RESULT_SESS_999],
+                True,
+                "result-sess-999",
+                False,
+                id="from_result_event",
+            ),
+            pytest.param(
+                [INIT_LINE, TEXT_DELTA_LINE],
+                False,
+                None,
+                False,
+                id="none_when_closed_before_result",
+            ),
+            pytest.param(
+                [INIT_LINE, RESULT_LINE],
+                True,
+                "abc-123",
+                True,
+                id="propagated_to_entry",
+            ),
+        ],
+    )
+    async def test_streaming_iterator_session_id(
+        self,
+        lines: list[bytes],
+        consume: bool,
+        expected_session_id: str | None,
+        check_entry: bool,
+    ) -> None:
+        proc = make_fake_proc(lines)
         entry = make_entry(proc)
-
-        # Act
+        if check_entry:
+            assert entry.session_id is None
         it = StreamingIterator(entry, DEFAULT_POOL_ID)
-        async for _ in it:
-            pass
-
-        # Assert
-        assert it.session_id == "abc-123"
-
-    async def test_session_id_updated_from_result_event(self) -> None:
-        # Arrange — result carries a different session_id (session_id from result)
-        result_with_session = _ndjson(
-            {
-                "type": "result",
-                "session_id": "result-sess-999",
-                "duration_ms": 10,
-                "is_error": False,
-            }
-        )
-        proc = make_fake_proc([TEXT_DELTA_LINE, result_with_session])
-        entry = make_entry(proc)
-
-        # Act
-        it = StreamingIterator(entry, DEFAULT_POOL_ID)
-        async for _ in it:
-            pass
-
-        # Assert — session_id from result event overwrites None
-        assert it.session_id == "result-sess-999"
-
-    async def test_session_id_none_when_closed_before_result(self) -> None:
-        # Arrange — close iterator before result arrives
-        proc = make_fake_proc([INIT_LINE, TEXT_DELTA_LINE])
-        entry = make_entry(proc)
-
-        # Act — close before consuming
-        it = StreamingIterator(entry, DEFAULT_POOL_ID)
-        await it.aclose()
-
-        # Assert — no session_id was set before close
-        assert it.session_id is None
-
-    async def test_session_id_propagated_to_entry(self) -> None:
-        # Arrange
-        proc = make_fake_proc([INIT_LINE, RESULT_LINE])
-        entry = make_entry(proc)
-        assert entry.session_id is None
-
-        # Act
-        it = StreamingIterator(entry, DEFAULT_POOL_ID)
-        async for _ in it:
-            pass
-
-        # Assert — entry.session_id updated on init
-        assert entry.session_id == "abc-123"
+        if consume:
+            async for _ in it:
+                pass
+        else:
+            await it.aclose()
+        assert it.session_id == expected_session_id
+        if check_entry:
+            assert entry.session_id == expected_session_id
 
 
 # ---------------------------------------------------------------------------

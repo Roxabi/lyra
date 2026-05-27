@@ -119,6 +119,12 @@ class TurnWriter:
                 continue
             except asyncio.CancelledError:
                 return
+            except nats.errors.ConnectionClosedError as err:
+                log.warning(
+                    "TurnWriter: NATS connection lost, Quadlet will restart: %s",
+                    err,
+                )
+                raise
 
             # Record oldest-pending once per batch (W5: not per-message).
             if msgs and self._oldest_pending is None:

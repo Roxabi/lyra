@@ -89,6 +89,7 @@ __all__ = [
     "make_pairing_auth_store",
     "make_pairing_pm",
     "make_store",
+    "bot_store",
 ]
 
 # ---------------------------------------------------------------------------
@@ -227,245 +228,6 @@ ASSISTANT_INTERMEDIATE_LINE2 = _ndjson(
 
 
 # ---------------------------------------------------------------------------
-# AuthStore shared helpers (used by test_auth_store_connect, test_auth_store_check,
-# test_auth_store_upsert_seed)
-# ---------------------------------------------------------------------------
-
-
-async def make_auth_store(tmp_path: Path) -> AuthStore:
-    """Create and connect a real AuthStore backed by a tmp file DB.
-
-    Prefer the ``auth_store`` pytest fixture for new tests — it provides
-    automatic teardown via ``yield`` + ``await store.close()``.
-    """
-    store = AuthStore(db_path=str(tmp_path / "grants.db"))
-    await store.connect()
-    return store
-
-
-@pytest.fixture
-async def auth_store(tmp_path: Path):
-    """Fixture-based AuthStore with automatic teardown. Prefer over make_auth_store."""
-    store = await make_auth_store(tmp_path)
-    try:
-        yield store
-    finally:
-        await store.close()
-
-
-# ---------------------------------------------------------------------------
-# AgentStore shared helpers (used by test_agent_store_crud + test_agent_store_seed)
-# ---------------------------------------------------------------------------
-
-
-def make_agent_row(name: str = "test-agent") -> AgentRow:
-    """Return a minimal valid AgentRow for the given name."""
-    return AgentRow(
-        name=name,
-        backend="claude-cli",
-        model="claude-3-5-haiku-20241022",
-        max_turns=10,
-        tools_json="[]",
-        show_intermediate=False,
-        smart_routing_json=None,
-        plugins_json="[]",
-        memory_namespace=None,
-        cwd=None,
-        source="test",
-    )
-
-
-async def make_store(tmp_path: Path) -> AgentStore:
-    """Create and connect a real AgentStore backed by a tmp file DB."""
-    store = AgentStore(db_path=str(tmp_path / "agents.db"))
-    await store.connect()
-    return store
-
-
-@pytest.fixture
-async def agent_store(tmp_path: Path):
-    """Fixture-based AgentStore with automatic teardown."""
-    store = await make_store(tmp_path)
-    try:
-        yield store
-    finally:
-        await store.close()
-
-
-@pytest.fixture
-async def json_agent_store(tmp_path: Path):
-    """JsonAgentStore fixture backed by a tmp JSON file — no SQLite needed.
-
-    Use this in tests that exercise agent configuration logic but do not
-    specifically test the SQLite implementation.  Faster and DB-free.
-    """
-    from lyra.core.stores.json_agent_store import JsonAgentStore
-
-    store = JsonAgentStore(path=tmp_path / "agents_test.json")
-    await store.connect()
-    try:
-        yield store
-    finally:
-        await store.close()
-
-
-# ---------------------------------------------------------------------------
-# BotStore fixture (helpers live in tests.helpers.bot_store)
-# ---------------------------------------------------------------------------
-
-from tests.helpers.bot_store import make_bot_store  # noqa: E402
-
-
-@pytest.fixture
-async def bot_store(tmp_path: Path):
-    """Fixture-based BotStore with automatic teardown."""
-    store = await make_bot_store(tmp_path)
-    try:
-        yield store
-    finally:
-        await store.close()
-
-
-# ---------------------------------------------------------------------------
-# OutboundDispatcher shared helpers (used by test_outbound_dispatcher_queue,
-# test_outbound_dispatcher_media)
-# ---------------------------------------------------------------------------
-
-
-def make_dispatcher_msg() -> InboundMessage:
-    """Build a minimal InboundMessage for OutboundDispatcher tests."""
-    return InboundMessage(
-        id="msg-1",
-        platform="telegram",
-        bot_id="main",
-        scope_id="chat:123",
-        user_id="tg:user:42",
-        user_name="Alice",
-        is_mention=False,
-        text="hello",
-        text_raw="hello",
-        timestamp=datetime.now(timezone.utc),
-        platform_meta=TelegramMeta(chat_id=123),
-        trust_level=TrustLevel.TRUSTED,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Debouncer shared helpers (used by test_debouncer_merge, test_debouncer_collect,
-# test_debouncer_pool, test_debouncer_runtime_config)
-# ---------------------------------------------------------------------------
-
-
-def make_debouncer_msg(
-    text: str = "hello",
-    msg_id: str = "msg-1",
-    is_mention: bool = False,
-    attachments: list[Attachment] | None = None,
-) -> InboundMessage:
-    """Build a minimal InboundMessage for debouncer tests.
-
-    Supports msg_id, is_mention, attachments.
-    """
-    return InboundMessage(
-        id=msg_id,
-        platform="telegram",
-        bot_id="main",
-        scope_id="chat:1",
-        user_id="tg:user:1",
-        user_name="Alice",
-        is_mention=is_mention,
-        text=text,
-        text_raw=text,
-        timestamp=datetime.now(timezone.utc),
-        platform_meta=TelegramMeta(chat_id=1),
-        trust_level=TrustLevel.TRUSTED,
-        attachments=attachments or [],
-    )
-
-
-class RecordingAgent:
-    """Agent that records the text it receives."""
-
-    name = "test_agent"
-
-    def __init__(self) -> None:
-        self.calls: list[str] = []
-
-    async def process(
-        self, msg: InboundMessage, pool: Pool, *, on_intermediate=None
-    ) -> Response:
-        self.calls.append(msg.text)
-        return Response(content=f"reply:{msg.text}")
-
-
-# ---------------------------------------------------------------------------
-# Pool shared helpers (used by test_pool_tasks, test_pool_streaming,
-# test_pool_advanced)
-# ---------------------------------------------------------------------------
-
-
-def _make_ctx_mock(agents: dict | None = None) -> MagicMock:
-    """Build a minimal PoolContext mock."""
-    ctx = MagicMock()
-    _agents: dict = agents or {}
-    ctx.get_agent = MagicMock(side_effect=lambda name: _agents.get(name))
-    ctx.get_message = MagicMock(return_value=None)
-    ctx.dispatch_response = AsyncMock(return_value=None)
-    ctx.dispatch_streaming = AsyncMock(return_value=None)
-    ctx.record_circuit_success = MagicMock()
-    ctx.record_circuit_failure = MagicMock()
-    # Keep a reference so tests can mutate the agent registry
-    ctx._agents = _agents
-    return ctx
-
-
-@pytest.fixture
-def ctx_mock() -> MagicMock:
-    """Minimal PoolContext stub with the methods Pool._process_loop() touches."""
-    return _make_ctx_mock()
-
-
-@pytest.fixture
-def pool(ctx_mock: MagicMock) -> Pool:
-    """Pool with a very long timeout (not triggered in normal tests)."""
-    return Pool(
-        pool_id="test:main:chat:1",
-        agent_name="test_agent",
-        ctx=ctx_mock,
-        config=PoolConfig(turn_timeout=60.0, debounce_ms=0),
-    )
-
-
-@pytest.fixture
-def fast_pool(ctx_mock: MagicMock) -> Pool:
-    """Pool with a very short timeout for timeout tests."""
-    return Pool(
-        pool_id="test:main:chat:1",
-        agent_name="test_agent",
-        ctx=ctx_mock,
-        config=PoolConfig(turn_timeout=0.05, debounce_ms=0),
-    )
-
-
-def make_msg(text: str = "hello") -> InboundMessage:
-    """Build a minimal InboundMessage for pool tests."""
-    return InboundMessage(
-        id="msg-1",
-        platform="telegram",
-        bot_id="main",
-        scope_id="chat:1",
-        user_id="tg:user:1",
-        user_name="Alice",
-        is_mention=False,
-        text=text,
-        text_raw=text,
-        timestamp=datetime.now(timezone.utc),
-        platform_meta=TelegramMeta(chat_id=1),
-        trust_level=TrustLevel.TRUSTED,
-    )
-
-
-# ---------------------------------------------------------------------------
 # MessagePipeline shared helpers (used by test_message_pipeline_guards +
 # test_message_pipeline_context)
 # ---------------------------------------------------------------------------
@@ -530,6 +292,25 @@ def _make_hub(**kwargs: Any) -> Hub:
 
 _RC_TG = RoutingContext(platform="telegram", bot_id="main", scope_id="chat:123")
 _RC_DC = RoutingContext(platform="discord", bot_id="main", scope_id="channel:456")
+
+
+
+
+# ---------------------------------------------------------------------------
+# BotStore fixture (helpers live in tests.helpers.bot_store)
+# ---------------------------------------------------------------------------
+
+from tests.helpers.bot_store import make_bot_store  # noqa: E402
+
+
+@pytest.fixture
+async def bot_store(tmp_path: Path):
+    """Fixture-based BotStore with automatic teardown."""
+    store = await make_bot_store(tmp_path)
+    try:
+        yield store
+    finally:
+        await store.close()
 
 
 # ---------------------------------------------------------------------------

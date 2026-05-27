@@ -212,7 +212,7 @@ class TestRunSession:
         row = make_row()
         store = make_store(row)
 
-        mock_driver = MagicMock()
+        mock_driver = AsyncMock()
         mock_driver.chat.side_effect = [
             # First call: initial greeting
             "Here is your profile. What would you like to change?",
@@ -222,14 +222,14 @@ class TestRunSession:
             'I\'ll update the model.\n<<PATCH>>\n{"model": "new-model"}\n<<END_PATCH>>',
         ]
 
-        mock_io = MagicMock(spec=TerminalIO)
+        mock_io = AsyncMock(spec=TerminalIO)
         # First prompt: describe what to change; second prompt: confirm
         mock_io.prompt.side_effect = ["change the model", "confirm"]
 
         refiner = AgentRefiner("lyra_default", store, driver=mock_driver)
 
         # Act
-        result = refiner.run_session(mock_io)
+        result = asyncio.run(refiner.run_session(mock_io))
 
         # Assert
         assert isinstance(result, RefinementPatch)
@@ -240,7 +240,7 @@ class TestRunSession:
         row = make_row()
         store = make_store(row)
 
-        mock_driver = MagicMock()
+        mock_driver = AsyncMock()
         mock_driver.chat.side_effect = [
             # First call: initial greeting (before loop)
             "Hello! Here's your current profile. What would you like to change?",
@@ -252,53 +252,53 @@ class TestRunSession:
             "\n<<END_PATCH>>",
         ]
 
-        mock_io = MagicMock(spec=TerminalIO)
+        mock_io = AsyncMock(spec=TerminalIO)
         mock_io.prompt.side_effect = ["change the model first", "confirm"]
 
         refiner = AgentRefiner("lyra_default", store, driver=mock_driver)
 
         # Act
-        result = refiner.run_session(mock_io)
+        result = asyncio.run(refiner.run_session(mock_io))
 
         # Assert
         assert result.fields == {
             "persona_json": '{"identity": {"display_name": "Aryl"}}'
         }
         # Assert driver was called for greeting + the 2 loop turns
-        assert mock_driver.chat.call_count == 3
-        assert mock_io.prompt.call_count == 2
+        assert mock_driver.chat.await_count == 3
+        assert mock_io.prompt.await_count == 2
 
     def test_run_session_raises_on_abort(self) -> None:
         # Arrange
         row = make_row()
         store = make_store(row)
 
-        mock_driver = MagicMock()
+        mock_driver = AsyncMock()
         mock_driver.chat.return_value = (
             "Here is your profile. What would you like to change?"
         )
 
-        mock_io = MagicMock(spec=TerminalIO)
+        mock_io = AsyncMock(spec=TerminalIO)
         mock_io.prompt.return_value = "quit"
 
         refiner = AgentRefiner("lyra_default", store, driver=mock_driver)
 
         # Act + Assert
         with pytest.raises(RefinementCancelled):
-            refiner.run_session(mock_io)
+            asyncio.run(refiner.run_session(mock_io))
 
         # Assert driver was called only for the greeting, not again after abort
-        mock_driver.chat.assert_called_once()
+        mock_driver.chat.assert_awaited_once()
 
     def test_run_session_skips_empty_input(self) -> None:
         # Arrange — first prompt returns empty (skipped), second returns abort
         row = make_row()
         store = make_store(row)
 
-        mock_driver = MagicMock()
+        mock_driver = AsyncMock()
         mock_driver.chat.return_value = "Profile loaded. What to change?"
 
-        mock_io = MagicMock(spec=TerminalIO)
+        mock_io = AsyncMock(spec=TerminalIO)
         # Empty string is skipped; second call returns abort
         mock_io.prompt.side_effect = ["", "exit"]
 
@@ -306,7 +306,7 @@ class TestRunSession:
 
         # Act + Assert
         with pytest.raises(RefinementCancelled):
-            refiner.run_session(mock_io)
+            asyncio.run(refiner.run_session(mock_io))
 
 
 # ---------------------------------------------------------------------------
@@ -340,6 +340,7 @@ class TestRefineCommand:
             ),
             mock_patch(
                 "lyra.core.agent.agent_refiner.AgentRefiner.run_session",
+                new_callable=AsyncMock,
                 return_value=RefinementPatch(fields={"model": "claude-opus-4-6"}),
             ),
         ):
@@ -373,6 +374,7 @@ class TestRefineCommand:
             ),
             mock_patch(
                 "lyra.core.agent.agent_refiner.AgentRefiner.run_session",
+                new_callable=AsyncMock,
                 side_effect=RefinementCancelled(),
             ),
         ):

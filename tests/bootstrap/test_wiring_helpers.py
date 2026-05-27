@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import ANY, AsyncMock, MagicMock
 
 import pytest
 
@@ -678,9 +678,11 @@ class TestWireAdapters:
         vault_dir = Path("/tmp/fake_vault")
 
         # Act
-        result = await _wire_adapters(hub, bundle, fake_nc, stores, vault_dir)
+        result = await _wire_adapters(hub, bundle, fake_nc, stores, vault_dir, {})
 
-        # Assert
+        # Assert — tool_display_config threading lands via _load_tool_display_config({})
+        # → ToolDisplayConfig() default. Use ANY here because the loader is real, not
+        # mocked, and a value-equality match isn't worth the brittleness.
         mock_wire_tg.assert_awaited_once_with(
             hub,
             bundle.tg_bot_auths,
@@ -688,6 +690,7 @@ class TestWireAdapters:
             bundle.circuit_registry,
             bundle.msg_manager,
             nats_client=fake_nc,
+            tool_display_config=ANY,
         )
         mock_wire_dc.assert_awaited_once_with(
             hub,
@@ -698,6 +701,7 @@ class TestWireAdapters:
             agent_store=stores.agent,
             vault_dir=str(vault_dir),
             nats_client=fake_nc,
+            tool_display_config=ANY,
         )
 
         assert isinstance(result, WiredAdapters)

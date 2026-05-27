@@ -89,6 +89,7 @@ __all__ = [
     "make_pairing_auth_store",
     "make_pairing_pm",
     "make_store",
+    "bot_store",
 ]
 
 # ---------------------------------------------------------------------------
@@ -291,6 +292,25 @@ def _make_hub(**kwargs: Any) -> Hub:
 
 _RC_TG = RoutingContext(platform="telegram", bot_id="main", scope_id="chat:123")
 _RC_DC = RoutingContext(platform="discord", bot_id="main", scope_id="channel:456")
+
+
+
+
+# ---------------------------------------------------------------------------
+# BotStore fixture (helpers live in tests.helpers.bot_store)
+# ---------------------------------------------------------------------------
+
+from tests.helpers.bot_store import make_bot_store  # noqa: E402
+
+
+@pytest.fixture
+async def bot_store(tmp_path: Path):
+    """Fixture-based BotStore with automatic teardown."""
+    store = await make_bot_store(tmp_path)
+    try:
+        yield store
+    finally:
+        await store.close()
 
 
 # ---------------------------------------------------------------------------

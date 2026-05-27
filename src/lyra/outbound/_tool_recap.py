@@ -17,12 +17,9 @@ from lyra.core.messaging.render_events import (
     ToolCallEndRenderEvent,
     ToolCallStartRenderEvent,
 )
+from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 
-_BASH_DISPLAY_MAX = 80
 _AGENT_DISPLAY_MAX = 48
-_BASH_GROUP_THRESHOLD = 3
-_FILES_GROUP_THRESHOLD = 3
-_NAMES_THRESHOLD = 5
 
 
 def _truncate(text: str, max_len: int) -> str:
@@ -53,7 +50,7 @@ def _accumulate_file_edit(
     else:
         new_count = existing.count + 1
         new_edits = list(existing.edits) + [tool_name]
-    if new_count > _NAMES_THRESHOLD:
+    if new_count > accum.config.names_threshold:
         new_edits = []
     accum.files[path] = FileEditSummary(path=path, edits=new_edits, count=new_count)
 
@@ -68,6 +65,7 @@ class _PartialCall:
 class ToolRecapAccumulator:
     """Accumulates tool call events for a single turn."""
 
+    config: ToolDisplayConfig = field(default_factory=ToolDisplayConfig)
     files: dict[str, FileEditSummary] = field(default_factory=dict)
     bash_commands: list[str] = field(default_factory=list)
     web_fetches: list[str] = field(default_factory=list)
@@ -99,16 +97,20 @@ class ToolRecapAccumulator:
 
     def _route(self, tool_call_id: str, key: str, tool_name: str, args: dict) -> None:
         """Route a completed tool call into the appropriate accumulator bucket."""
+        if not self.config.show.get(key, False):
+            # Tool hidden by config — preserve silent-counter accounting for the
+            # default-hidden read/grep/glob set (Phase A behavior).
+            if key == "read":
+                self._silent_reads += 1
+            elif key == "grep":
+                self._silent_greps += 1
+            elif key == "glob":
+                self._silent_globs += 1
+            return
         if key in ("edit", "write"):
             _accumulate_file_edit(self, tool_call_id, tool_name, args)
         elif key == "bash":
             self.bash_commands.append(args.get("command", ""))
-        elif key == "read":
-            self._silent_reads += 1
-        elif key == "grep":
-            self._silent_greps += 1
-        elif key == "glob":
-            self._silent_globs += 1
         elif key in ("web_fetch", "webfetch"):
             self.web_fetches.append(args.get("url", ""))
         elif key in ("web_search", "websearch"):
@@ -157,7 +159,7 @@ def _format_files(accum: ToolRecapAccumulator) -> list[str]:
     """Build lines for the file-edit section."""
     if not accum.files:
         return []
-    if len(accum.files) >= _FILES_GROUP_THRESHOLD:
+    if len(accum.files) >= accum.config.group_threshold:
         total = sum(f.count for f in accum.files.values())
         return [f"✏️ {len(accum.files)} files · {total} edits"]
     lines: list[str] = []
@@ -173,9 +175,10 @@ def _format_bash(accum: ToolRecapAccumulator) -> list[str]:
     cmds = [c for c in (s.strip() for s in accum.bash_commands) if c]
     if not cmds:
         return []
-    if len(cmds) >= _BASH_GROUP_THRESHOLD:
+    if len(cmds) >= accum.config.group_threshold:
         return [f"\U0001f4bb {_plural(len(cmds), 'command')}"]
-    return [f"\U0001f4bb `{_sanitize(_truncate(c, _BASH_DISPLAY_MAX))}`" for c in cmds]
+    max_len = accum.config.bash_max_len
+    return [f"\U0001f4bb `{_sanitize(_truncate(c, max_len))}`" for c in cmds]
 
 
 def _format_unknown(accum: ToolRecapAccumulator) -> list[str]:

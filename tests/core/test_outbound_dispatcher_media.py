@@ -13,6 +13,7 @@ from lyra.core.messaging.message import (
     OutboundAudio,
     OutboundAudioChunk,
 )
+from tests.helpers.messages import make_test_blobref
 
 from .conftest import make_dispatcher_msg
 
@@ -46,7 +47,9 @@ class TestOutboundDispatcherAudio:
         await dispatcher.start()
         try:
             inbound = make_dispatcher_msg()
-            audio = OutboundAudio(audio_bytes=b"fake-ogg", mime_type="audio/ogg")
+            audio = OutboundAudio(
+                blob_ref=make_test_blobref(b"fake-ogg"), mime_type="audio/ogg"
+            )
             dispatcher.enqueue_audio(inbound, audio)
             await asyncio.sleep(0.05)
             adapter.render_audio.assert_awaited_once_with(audio, inbound)
@@ -66,7 +69,9 @@ class TestOutboundDispatcherAudio:
         await dispatcher.start()
         try:
             inbound = make_dispatcher_msg()
-            audio = OutboundAudio(audio_bytes=b"fake-ogg", mime_type="audio/ogg")
+            audio = OutboundAudio(
+                blob_ref=make_test_blobref(b"fake-ogg"), mime_type="audio/ogg"
+            )
             dispatcher.enqueue_audio(inbound, audio)
             await asyncio.sleep(0.05)
             adapter.render_audio.assert_not_awaited()
@@ -84,7 +89,9 @@ class TestOutboundDispatcherAudio:
         await dispatcher.start()
         try:
             inbound = make_dispatcher_msg()
-            audio = OutboundAudio(audio_bytes=b"fake-ogg", mime_type="audio/ogg")
+            audio = OutboundAudio(
+                blob_ref=make_test_blobref(b"fake-ogg"), mime_type="audio/ogg"
+            )
             dispatcher.enqueue_audio(inbound, audio)
             await asyncio.sleep(0.05)
             assert cb._failure_count >= 1

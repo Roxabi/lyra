@@ -22,6 +22,7 @@ from lyra.core.messaging.message import InboundMessage, Platform, Response
 from lyra.core.messaging.render_events import RenderEvent
 from lyra.core.pool import Pool
 from tests.core.conftest import FakeSTT, MockAdapter
+from tests.helpers.messages import make_test_blobref
 
 if TYPE_CHECKING:
     from lyra.core.ports.stt import STTProtocol
@@ -54,6 +55,7 @@ class TestSynthesizeDispatchAgentTTS:
                 audio_bytes=b"fake",
                 mime_type="audio/ogg",
                 duration_ms=100,
+                blob_ref=make_test_blobref(b"fake"),
             )
         )
 
@@ -94,6 +96,7 @@ class TestSynthesizeDispatchAgentTTS:
                 audio_bytes=b"fake",
                 mime_type="audio/ogg",
                 duration_ms=100,
+                blob_ref=make_test_blobref(b"fake"),
             )
         )
 
@@ -262,6 +265,7 @@ class TestDispatchResponseAgentTTSE2E:
                 audio_bytes=b"audio",
                 mime_type="audio/ogg",
                 duration_ms=100,
+                blob_ref=make_test_blobref(b"audio"),
             )
         )
         hub._tts = mock_tts

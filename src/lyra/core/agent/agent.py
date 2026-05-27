@@ -165,6 +165,7 @@ class AgentBase(ABC, SessionManager):
             config=router_config,
             circuit_registry=self._circuit_registry,
             msg_manager=self._msg_manager,
+            runtime_config_path=router_kwargs.get("runtime_config_path"),
         )
 
     def _build_router_kwargs(self) -> dict:

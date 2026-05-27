@@ -50,7 +50,9 @@ class TestBotInitHelp:
     """`lyra bot init --help`"""
 
     def test_help_shows_force_flag(self) -> None:
-        result = runner.invoke(app, ["bot", "init", "--help"])
+        result = runner.invoke(
+            app, ["bot", "init", "--help"], env={"COLUMNS": "80"}
+        )
         assert result.exit_code == 0
         assert "--force" in result.output
 

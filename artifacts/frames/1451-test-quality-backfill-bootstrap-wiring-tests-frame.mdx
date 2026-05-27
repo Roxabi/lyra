@@ -1,0 +1,49 @@
+---
+title: Test Quality: backfill bootstrap wiring tests for agent_store_factory / bot_agent_map / unified / wiring_helpers
+issue: 1451
+status: approved
+tier: F-lite
+date: 2026-05-27
+---
+
+## Problem
+
+Quality Audit 2026-05-26 identified severe coverage gaps in 4 bootstrap wiring modules:
+
+- `agent_store_factory` — 0 % coverage
+- `bot_agent_map` — 12 % coverage
+- `unified` — 24 % coverage
+- `wiring_helpers` — 32 % coverage
+
+These modules are critical to the bootstrap path (standalone hub, adapters, clipool). Low coverage means regressions in agent-store construction, bot-to-agent mapping, or wiring assembly are caught late — typically during integration or in production. The audit flagged this as P1-high.
+
+## Who
+
+- **Primary:** Developers modifying bootstrap factory code (agent construction, store wiring, overlay logic)
+- **Secondary:** Reviewers relying on CI green-light; on-call debugging bootstrap failures in production
+
+## Constraints
+
+- Tests must **not** pull in full hub lifecycle or NATS — bootstrap modules only
+- Test runtime per module suite should stay under ~1 s (unit-test discipline)
+- Must use existing pytest fixtures and patterns from `tests/bootstrap/`
+- Must not introduce new test dependencies beyond current `pyproject.toml` test extras
+
+## Out of Scope
+
+- Integration tests through `lyra start` or full hub spin-up
+- Refactoring the modules themselves — this is test backfill only
+- Coverage for modules not listed (e.g., `agent_factory`, `hub_builder`)
+
+## Premise Validity
+
+**Success in 6 months:** The 4 bootstrap wiring modules each have ≥80 % unit test coverage, with tests that bootstrap only required dependencies and run in under 1 s per module suite.
+
+**Failure in 6 months:** After 2 PR cycles, any of the 4 modules still has <50 % coverage, or the test suite requires spinning up a full hub/NATS to execute.
+
+**Simplest alternative:** Add a single broad integration test covering all 4 modules together via the unified bootstrap path.
+**Why not simplest:** Integration tests would pull in the full hub lifecycle (violating the stated scope), run slower, and mask individual module edge cases — the audit explicitly flagged the need for isolated unit tests.
+
+## Complexity
+
+**Tier: F-lite** — 4 test files, single domain (bootstrap factory testing), clear scope, no architectural unknowns.

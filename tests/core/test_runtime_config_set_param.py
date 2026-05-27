@@ -10,6 +10,14 @@ import pytest
 
 from lyra.core.runtime_config import (
     RuntimeConfig,
+    _parse_cancel_on_new_message,
+    _parse_debounce_ms,
+    _parse_extra_instructions,
+    _parse_language,
+    _parse_max_steps,
+    _parse_model,
+    _parse_style,
+    _parse_temperature,
     set_param,
 )
 
@@ -246,3 +254,215 @@ class TestSetParam:
         # Act / Assert
         with pytest.raises(ValueError):
             set_param(rc, "language", "FR")
+
+    def test_valid_debounce_ms(self) -> None:
+        rc = RuntimeConfig()
+        updated = set_param(rc, "debounce_ms", "1000")
+        assert updated.debounce_ms == 1000
+
+    def test_debounce_ms_min_boundary(self) -> None:
+        rc = RuntimeConfig()
+        updated = set_param(rc, "debounce_ms", "0")
+        assert updated.debounce_ms == 0
+
+    def test_debounce_ms_max_boundary(self) -> None:
+        rc = RuntimeConfig()
+        updated = set_param(rc, "debounce_ms", "5000")
+        assert updated.debounce_ms == 5000
+
+    def test_debounce_ms_negative_raises(self) -> None:
+        rc = RuntimeConfig()
+        with pytest.raises(ValueError):
+            set_param(rc, "debounce_ms", "-1")
+
+    def test_debounce_ms_above_max_raises(self) -> None:
+        rc = RuntimeConfig()
+        with pytest.raises(ValueError):
+            set_param(rc, "debounce_ms", "5001")
+
+    def test_debounce_ms_non_int_raises(self) -> None:
+        rc = RuntimeConfig()
+        with pytest.raises(ValueError):
+            set_param(rc, "debounce_ms", "abc")
+
+    def test_cancel_on_new_message_true(self) -> None:
+        rc = RuntimeConfig()
+        updated = set_param(rc, "cancel_on_new_message", "true")
+        assert updated.cancel_on_new_message is True
+
+    def test_cancel_on_new_message_yes(self) -> None:
+        rc = RuntimeConfig()
+        updated = set_param(rc, "cancel_on_new_message", "yes")
+        assert updated.cancel_on_new_message is True
+
+    def test_cancel_on_new_message_false(self) -> None:
+        rc = RuntimeConfig()
+        updated = set_param(rc, "cancel_on_new_message", "false")
+        assert updated.cancel_on_new_message is False
+
+    def test_cancel_on_new_message_off(self) -> None:
+        rc = RuntimeConfig()
+        updated = set_param(rc, "cancel_on_new_message", "off")
+        assert updated.cancel_on_new_message is False
+
+    def test_cancel_on_new_message_invalid_raises(self) -> None:
+        rc = RuntimeConfig()
+        with pytest.raises(ValueError):
+            set_param(rc, "cancel_on_new_message", "maybe")
+
+    def test_extra_instructions_accepted(self) -> None:
+        rc = RuntimeConfig()
+        updated = set_param(rc, "extra_instructions", "Be concise.")
+        assert updated.extra_instructions == "Be concise."
+
+    def test_extra_instructions_too_long_raises(self) -> None:
+        rc = RuntimeConfig()
+        with pytest.raises(ValueError):
+            set_param(rc, "extra_instructions", "x" * 501)
+
+    def test_model_valid_value(self) -> None:
+        rc = RuntimeConfig()
+        updated = set_param(rc, "model", "claude-sonnet-4-6")
+        assert updated.model == "claude-sonnet-4-6"
+
+
+# ---------------------------------------------------------------------------
+# Parser helpers (_parse_*)
+# ---------------------------------------------------------------------------
+
+
+class TestParseStyle:
+    def test_valid(self) -> None:
+        assert _parse_style("detailed") == "detailed"
+
+    def test_invalid_raises(self) -> None:
+        with pytest.raises(ValueError, match="Invalid style"):
+            _parse_style("bogus")
+
+
+class TestParseTemperature:
+    def test_valid_float(self) -> None:
+        assert _parse_temperature("0.3") == pytest.approx(0.3)
+
+    def test_boundary_min(self) -> None:
+        assert _parse_temperature("0.0") == pytest.approx(0.0)
+
+    def test_boundary_max(self) -> None:
+        assert _parse_temperature("1.0") == pytest.approx(1.0)
+
+    def test_below_min_raises(self) -> None:
+        with pytest.raises(ValueError):
+            _parse_temperature("-0.1")
+
+    def test_above_max_raises(self) -> None:
+        with pytest.raises(ValueError):
+            _parse_temperature("1.1")
+
+    def test_non_float_raises(self) -> None:
+        with pytest.raises(ValueError):
+            _parse_temperature("abc")
+
+
+class TestParseMaxSteps:
+    def test_valid(self) -> None:
+        assert _parse_max_steps("5") == 5
+
+    def test_zero_raises(self) -> None:
+        with pytest.raises(ValueError):
+            _parse_max_steps("0")
+
+    def test_negative_raises(self) -> None:
+        with pytest.raises(ValueError):
+            _parse_max_steps("-1")
+
+    def test_above_max_raises(self) -> None:
+        with pytest.raises(ValueError):
+            _parse_max_steps("51")
+
+    def test_non_int_raises(self) -> None:
+        with pytest.raises(ValueError):
+            _parse_max_steps("3.5")
+
+
+class TestParseModel:
+    def test_none_lowercase(self) -> None:
+        assert _parse_model("none") is None
+
+    def test_none_uppercase(self) -> None:
+        assert _parse_model("None") is None
+
+    def test_valid(self) -> None:
+        assert _parse_model("claude-haiku") == "claude-haiku"
+
+    def test_invalid_chars_raises(self) -> None:
+        with pytest.raises(ValueError):
+            _parse_model("model@id")
+
+
+class TestParseLanguage:
+    def test_two_char(self) -> None:
+        assert _parse_language("fr") == "fr"
+
+    def test_eight_char(self) -> None:
+        assert _parse_language("zhtwblah") == "zhtwblah"
+
+    def test_one_char_raises(self) -> None:
+        with pytest.raises(ValueError):
+            _parse_language("f")
+
+    def test_nine_char_raises(self) -> None:
+        with pytest.raises(ValueError):
+            _parse_language("abcdefghi")
+
+    def test_auto(self) -> None:
+        assert _parse_language("auto") == "auto"
+
+    def test_uppercase_raises(self) -> None:
+        with pytest.raises(ValueError):
+            _parse_language("FR")
+
+
+class TestParseDebounceMs:
+    def test_valid(self) -> None:
+        assert _parse_debounce_ms("1000") == 1000
+
+    def test_boundary_min(self) -> None:
+        assert _parse_debounce_ms("0") == 0
+
+    def test_boundary_max(self) -> None:
+        assert _parse_debounce_ms("5000") == 5000
+
+    def test_negative_raises(self) -> None:
+        with pytest.raises(ValueError):
+            _parse_debounce_ms("-1")
+
+    def test_above_max_raises(self) -> None:
+        with pytest.raises(ValueError):
+            _parse_debounce_ms("5001")
+
+    def test_non_int_raises(self) -> None:
+        with pytest.raises(ValueError):
+            _parse_debounce_ms("abc")
+
+
+class TestParseCancelOnNewMessage:
+    def test_true_variants(self) -> None:
+        for v in ("true", "1", "yes", "on"):
+            assert _parse_cancel_on_new_message(v) is True
+
+    def test_false_variants(self) -> None:
+        for v in ("false", "0", "no", "off"):
+            assert _parse_cancel_on_new_message(v) is False
+
+    def test_invalid_raises(self) -> None:
+        with pytest.raises(ValueError):
+            _parse_cancel_on_new_message("maybe")
+
+
+class TestParseExtraInstructions:
+    def test_valid(self) -> None:
+        assert _parse_extra_instructions("Be concise.") == "Be concise."
+
+    def test_too_long_raises(self) -> None:
+        with pytest.raises(ValueError):
+            _parse_extra_instructions("x" * 501)

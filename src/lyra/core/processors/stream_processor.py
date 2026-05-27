@@ -396,7 +396,9 @@ class StreamProcessor:
         self._sm_tool.open(event.tool_id, event.tool_name)
         self._tool_id_to_name[event.tool_id] = event.tool_name
         yield ToolCallStartRenderEvent(
-            tool_call_id=event.tool_id, tool_name=event.tool_name
+            tool_call_id=event.tool_id,
+            tool_name=event.tool_name,
+            input=event.input if event.input else None,
         )
         if self._show_intermediate:
             self._pending_text = ""

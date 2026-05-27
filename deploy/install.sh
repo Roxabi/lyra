@@ -186,3 +186,8 @@ run systemctl --user daemon-reload
 echo "  [ok]   daemon-reload"
 
 log "Done. Services NOT restarted — run: systemctl --user start lyra-nats lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-gh-helper lyra-turn-writer lyra-blobstore"
+
+# ── 6. Install sync timer + service (idempotent) ───────────────────────────
+
+log "Installing lyra-quadlet-sync timer + service ..."
+run make quadlet-sync-install

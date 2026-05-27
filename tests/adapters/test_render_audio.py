@@ -26,6 +26,7 @@ from lyra.core.messaging.message import (
     InboundMessage,
     OutboundAudio,
 )
+from tests.helpers.messages import make_test_blobref
 
 from .conftest import (
     make_dc_adapter,
@@ -43,7 +44,7 @@ from .conftest import (
 @pytest.mark.asyncio
 async def test_tg_render_audio_calls_send_voice() -> None:
     adapter = make_tg_adapter()
-    audio = OutboundAudio(audio_bytes=b"OGG", mime_type="audio/ogg")
+    audio = OutboundAudio(blob_ref=make_test_blobref(b"OGG"), mime_type="audio/ogg")
     inbound = make_tg_msg()
 
     await adapter.render_audio(audio, inbound)
@@ -58,7 +59,7 @@ async def test_tg_render_audio_calls_send_voice() -> None:
 @pytest.mark.asyncio
 async def test_tg_render_audio_default_reply_to_message_id() -> None:
     adapter = make_tg_adapter()
-    audio = OutboundAudio(audio_bytes=b"OGG")
+    audio = OutboundAudio(blob_ref=make_test_blobref(b"OGG"))
     inbound = make_tg_msg(message_id=77)
 
     await adapter.render_audio(audio, inbound)
@@ -70,7 +71,7 @@ async def test_tg_render_audio_default_reply_to_message_id() -> None:
 @pytest.mark.asyncio
 async def test_tg_render_audio_explicit_reply_to_id_overrides() -> None:
     adapter = make_tg_adapter()
-    audio = OutboundAudio(audio_bytes=b"OGG", reply_to_id="200")
+    audio = OutboundAudio(blob_ref=make_test_blobref(b"OGG"), reply_to_id="200")
     inbound = make_tg_msg(message_id=77)
 
     await adapter.render_audio(audio, inbound)
@@ -82,7 +83,7 @@ async def test_tg_render_audio_explicit_reply_to_id_overrides() -> None:
 @pytest.mark.asyncio
 async def test_tg_render_audio_caption_forwarded() -> None:
     adapter = make_tg_adapter()
-    audio = OutboundAudio(audio_bytes=b"OGG", caption="Lyra speaking")
+    audio = OutboundAudio(blob_ref=make_test_blobref(b"OGG"), caption="Lyra speaking")
     inbound = make_tg_msg()
 
     await adapter.render_audio(audio, inbound)
@@ -94,7 +95,7 @@ async def test_tg_render_audio_caption_forwarded() -> None:
 @pytest.mark.asyncio
 async def test_tg_render_audio_duration_converted_to_seconds() -> None:
     adapter = make_tg_adapter()
-    audio = OutboundAudio(audio_bytes=b"OGG", duration_ms=3500)
+    audio = OutboundAudio(blob_ref=make_test_blobref(b"OGG"), duration_ms=3500)
     inbound = make_tg_msg()
 
     await adapter.render_audio(audio, inbound)
@@ -106,7 +107,7 @@ async def test_tg_render_audio_duration_converted_to_seconds() -> None:
 @pytest.mark.asyncio
 async def test_tg_render_audio_topic_thread_id_forwarded() -> None:
     adapter = make_tg_adapter()
-    audio = OutboundAudio(audio_bytes=b"OGG")
+    audio = OutboundAudio(blob_ref=make_test_blobref(b"OGG"))
     inbound = make_tg_msg(topic_id=5)
 
     await adapter.render_audio(audio, inbound)
@@ -118,7 +119,7 @@ async def test_tg_render_audio_topic_thread_id_forwarded() -> None:
 @pytest.mark.asyncio
 async def test_tg_render_audio_non_telegram_context_no_send(caplog) -> None:
     adapter = make_tg_adapter()
-    audio = OutboundAudio(audio_bytes=b"OGG")
+    audio = OutboundAudio(blob_ref=make_test_blobref(b"OGG"))
     inbound = make_dc_msg()  # wrong platform
 
     await adapter.render_audio(audio, inbound)
@@ -136,7 +137,7 @@ async def test_dc_render_audio_sends_file_attachment() -> None:
     adapter = make_dc_adapter()
     channel = mock_channel()
 
-    audio = OutboundAudio(audio_bytes=b"MP3", mime_type="audio/mpeg")
+    audio = OutboundAudio(blob_ref=make_test_blobref(b"MP3"), mime_type="audio/mpeg")
     inbound = make_dc_msg(channel_id=99, message_id=55)
 
     with patch.object(adapter, "get_channel", return_value=channel):
@@ -155,7 +156,7 @@ async def test_dc_render_audio_caption_as_content() -> None:
     adapter = make_dc_adapter()
     channel = mock_channel()
 
-    audio = OutboundAudio(audio_bytes=b"OGG", caption="Hello from Lyra")
+    audio = OutboundAudio(blob_ref=make_test_blobref(b"OGG"), caption="Hello from Lyra")
     inbound = make_dc_msg()
 
     with patch.object(adapter, "get_channel", return_value=channel):
@@ -172,7 +173,7 @@ async def test_dc_render_audio_fallback_to_send_on_fetch_failure() -> None:
     channel = mock_channel()
     channel.fetch_message = AsyncMock(side_effect=Exception("not found"))
 
-    audio = OutboundAudio(audio_bytes=b"OGG")
+    audio = OutboundAudio(blob_ref=make_test_blobref(b"OGG"))
     inbound = make_dc_msg()
 
     with patch.object(adapter, "get_channel", return_value=channel):
@@ -187,7 +188,7 @@ async def test_dc_render_audio_no_reply_to_id_sends_normally() -> None:
     adapter = make_dc_adapter()
     channel = mock_channel()
 
-    audio = OutboundAudio(audio_bytes=b"OGG", reply_to_id=None)
+    audio = OutboundAudio(blob_ref=make_test_blobref(b"OGG"), reply_to_id=None)
     # Use message_id=None to simulate no reply target
     inbound = InboundMessage(
         id="discord:dc:user:1:0:0",
@@ -225,7 +226,7 @@ async def test_dc_render_audio_no_reply_to_id_sends_normally() -> None:
 async def test_dc_render_audio_non_discord_context_no_send(caplog) -> None:
     adapter = make_dc_adapter()
     channel = mock_channel()
-    audio = OutboundAudio(audio_bytes=b"OGG")
+    audio = OutboundAudio(blob_ref=make_test_blobref(b"OGG"))
     inbound = make_tg_msg()  # wrong platform
 
     with patch.object(adapter, "get_channel", return_value=channel):

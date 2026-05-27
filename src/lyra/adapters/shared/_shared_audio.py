@@ -11,11 +11,13 @@ import os
 from collections.abc import AsyncIterator, Awaitable, Callable
 from io import BytesIO
 
+from lyra.adapters.shared._blobstore_client import get_blobstore_client
 from lyra.core.messaging.message import (
     InboundMessage,
     OutboundAudio,
     OutboundAudioChunk,
 )
+from roxabi_contracts import BlobRef as ContractBlobRef
 
 log = logging.getLogger(__name__)
 
@@ -81,8 +83,22 @@ async def buffer_audio_chunks(
         return None
 
     buf.seek(0)
+    audio_bytes = buf.read()
+    store = get_blobstore_client()
+    raw_ref = await store.put(
+        audio_bytes,
+        mime=mime_type,
+        source="lyra-tts",
+    )
+    blob_ref = ContractBlobRef(
+        store_key=raw_ref.store_key,
+        content_hash=raw_ref.content_hash,
+        mime=raw_ref.mime,
+        size=raw_ref.size,
+        source=raw_ref.source,
+    )
     assembled = OutboundAudio(
-        audio_bytes=buf.read(),
+        blob_ref=blob_ref,
         mime_type=mime_type,
         caption=caption,
         reply_to_id=reply_to_id,

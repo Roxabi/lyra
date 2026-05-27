@@ -159,14 +159,15 @@ quadlet-install: quadlet-preflight  ## install Quadlet units → reload + verify
 	@chmod 0700 "$(HOME)/.lyra/nats/jetstream"
 	@cp deploy/quadlet/lyra-nats.container             "$(QUADLET_DIR)/lyra-nats.container"
 	@cp deploy/quadlet/lyra-hub.container              "$(QUADLET_DIR)/lyra-hub.container"
+	@uv run lyra bot init
 	@uv run python tools/render_quadlet.py \
 		--platform telegram \
-		--config "$(HOME)/.lyra/config.toml" \
+		--db "$(HOME)/.lyra/config.db" \
 		--tmpl deploy/quadlet/lyra-telegram.container.tmpl \
 		--dest "$(QUADLET_DIR)/lyra-telegram.container"
 	@uv run python tools/render_quadlet.py \
 		--platform discord \
-		--config "$(HOME)/.lyra/config.toml" \
+		--db "$(HOME)/.lyra/config.db" \
 		--tmpl deploy/quadlet/lyra-discord.container.tmpl \
 		--dest "$(QUADLET_DIR)/lyra-discord.container"
 	@cp deploy/quadlet/lyra-gh.pod                     "$(QUADLET_DIR)/lyra-gh.pod"

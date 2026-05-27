@@ -55,6 +55,7 @@ class TestBootstrapCallsSeedAuthStore:
         async def fake_open_stores(vault_dir):
             fake_stores = MagicMock()
             fake_stores.auth = MagicMock(spec=AuthStore)
+            fake_stores.bot = MagicMock()
             fake_stores.message_index = MagicMock()
             fake_stores.message_index.cleanup_older_than = AsyncMock(return_value=0)
             yield fake_stores
@@ -106,7 +107,8 @@ class TestBuildBotAuthsRaisesWithoutAdapters:
             "auth": {"telegram_bots": [], "discord_bots": []},
         }
         fake_auth_store = MagicMock(spec=AuthStore)
+        fake_bot_store = MagicMock()
 
         # Act / Assert
         with pytest.raises(ValueError, match="No adapters configured"):
-            build_bot_auths(raw_config, fake_auth_store)
+            build_bot_auths(raw_config, fake_auth_store, fake_bot_store)

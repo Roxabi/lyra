@@ -263,7 +263,7 @@ def patch_all(
         side_effect=lambda *a, **kw: next(_auth_results)
     )
     _bot_auth_results = iter([mock_tg_auth, mock_dc_auth])
-    _mock_auth_cls.from_bot_config = MagicMock(
+    _mock_auth_cls.from_bot_store = MagicMock(
         side_effect=lambda *a, **kw: next(_bot_auth_results)
     )
     monkeypatch.setattr(wiring_mod, "Authenticator", _mock_auth_cls)
@@ -312,6 +312,8 @@ def patch_all(
 
 def patch_auth_config_test(monkeypatch: pytest.MonkeyPatch) -> None:
     """Shared setup for TestAuthConfig tests: mock auth/credential stores."""
+    from lyra.core.agent.bot_models import BotRow
+
     monkeypatch.setattr(main_mod, "load_dotenv", lambda: None)
 
     _fake_auth_store = MagicMock()
@@ -327,6 +329,23 @@ def patch_auth_config_test(monkeypatch: pytest.MonkeyPatch) -> None:
     _fake_agent_store.get = MagicMock(return_value=None)
     _fake_agent_store.set_bot_agent = AsyncMock()
     monkeypatch.setattr(stores_mod, "AgentStore", lambda **kwargs: _fake_agent_store)
+
+    _fake_bot_store = MagicMock()
+    _fake_bot_store.connect = AsyncMock()
+    _fake_bot_store.close = AsyncMock()
+    _fake_bot_store.get = MagicMock(
+        side_effect=lambda platform, bot_id: (
+            BotRow(
+                platform=platform,
+                bot_id=bot_id,
+                agent="lyra_default",
+                default_trust="public",
+            )
+            if (platform, bot_id) == ("telegram", "main")
+            else None
+        )
+    )
+    monkeypatch.setattr(stores_mod, "BotStore", lambda **kwargs: _fake_bot_store)
     monkeypatch.setattr(
         agent_factory_mod,
         "_resolve_bot_agent_map",

@@ -126,7 +126,7 @@ message; durable consumers for the future dashboard are tracked in #1035.
 
 ### (a) No manual splicing
 
-The tracked files `deploy/quadlet/lyra-{telegram,discord}.container.tmpl` are **pure templates** — they contain a `{{bot_secrets}}` marker and zero `Secret=lyra-bot-*` lines. Per-bot `Secret=lyra-bot-<platform>-<bot_id>,…` directives are generated at install time by `tools/render_quadlet.py`, which reads `[[auth.<platform>_bots]]` entries from `~/.lyra/config.toml` and substitutes the rendered block into each template before writing the live Quadlet to `~/.config/containers/systemd/`.
+The tracked files `deploy/quadlet/lyra-{telegram,discord}.container.tmpl` are **pure templates** — they contain a `{{bot_secrets}}` marker and zero `Secret=lyra-bot-*` lines. Per-bot `Secret=lyra-bot-<platform>-<bot_id>,…` directives are generated at install time by `tools/render_quadlet.py`, which reads bot rows from `BotStore` (`~/.lyra/config.db`) and substitutes the rendered block into each template before writing the live Quadlet to `~/.config/containers/systemd/`.
 
 **Never edit `~/.config/containers/systemd/lyra-{telegram,discord}.container` directly.** Any manual change is silently overwritten on the next `make quadlet-install`. This replaces the prior fragment-paste workflow that caused the 2026-05-26 crash-loop cascade (#1369): a `git pull --ff-only` during the #1331 deploy discarded an operator-spliced `BEGIN/END` block, stranding 4 bot-token mounts and forcing 6.5 h of adapter crash-loop before re-splice. Use the onboarding flow in (b) instead.
 
@@ -150,13 +150,18 @@ End-to-end flow for adding a new bot:
    ```
    (Replace `<platform>` with `telegram` or `discord`.)
 
-3. Render and restart:
+3. Seed the bot database from `config.toml` (idempotent — skips existing rows):
+   ```bash
+   lyra bot init
+   ```
+
+4. Render and restart:
    ```bash
    make quadlet-install
    ```
-   The render step reads the updated `config.toml`, generates the `Secret=` directive, writes the new Quadlet atomically, runs `systemctl --user daemon-reload`, then restarts the adapter container.
+   The target runs `lyra bot init` (re-syncs `config.toml` → `BotStore`), then `render_quadlet.py` reads from `BotStore`, generates the `Secret=` directives, writes the new Quadlet atomically, runs `systemctl --user daemon-reload`, then restarts the adapter container.
 
-4. Verify the adapter is healthy:
+5. Verify the adapter is healthy:
    ```bash
    systemctl --user status lyra-<platform>
    ```
@@ -174,7 +179,7 @@ Three artefacts prevent re-introduction of the manual-splice pattern:
 
 ### (d) Multi-host caveat
 
-`~/.lyra/config.toml` is Syncthing-synced across M₁, M₂, and laptop. That means `[[auth.telegram_bots]]` and `[[auth.discord_bots]]` enumerate **all bots across all hosts** in one shared file. The render step reads this file on whichever host runs `make quadlet-install` — so the rendered Quadlet on every host includes `Secret=` lines for every configured bot.
+`~/.lyra/config.toml` is Syncthing-synced across M₁, M₂, and laptop. That means `[[auth.telegram_bots]]` and `[[auth.discord_bots]]` enumerate **all bots across all hosts** in one shared file. `make quadlet-install` runs `lyra bot init` first (seeds `BotStore` from `config.toml`), then `render_quadlet.py` reads from `BotStore` — so the rendered Quadlet on every host includes `Secret=` lines for every configured bot.
 
 However, Podman secrets (`lyra-bot-<platform>-<bot_id>`) are **host-local** and must be installed per host. A mismatch — `config.toml` lists a bot but its Podman secret is absent — causes `systemctl --user start lyra-<platform>` to fail immediately:
 

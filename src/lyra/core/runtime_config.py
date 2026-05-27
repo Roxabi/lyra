@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 import tomllib
+from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -173,7 +174,93 @@ def _write_flat_toml(data: dict[str, object]) -> str:
     return "\n".join(lines) + "\n" if lines else ""
 
 
-def set_param(rc: RuntimeConfig, key: str, value: str) -> RuntimeConfig:  # noqa: C901, PLR0915 — DEBT:complexity-residual
+def _parse_style(value: str) -> str:
+    if value not in _STYLES:
+        raise ValueError(f"Invalid style {value!r}. Valid: {sorted(_STYLES)}")
+    return value
+
+
+def _parse_temperature(value: str) -> float:
+    try:
+        fval = float(value)
+    except (ValueError, TypeError):
+        raise ValueError(f"temperature must be a float between 0 and 1, got {value!r}")
+    if not 0.0 <= fval <= 1.0:
+        raise ValueError(f"temperature must be between 0 and 1, got {fval}")
+    return fval
+
+
+def _parse_max_steps(value: str) -> int:
+    try:
+        iv = int(value)
+    except (ValueError, TypeError):
+        raise ValueError(f"max_steps must be a positive integer, got {value!r}")
+    if iv <= 0:
+        raise ValueError(f"max_steps must be a positive integer (≥1), got {iv}")
+    if iv > 50:
+        raise ValueError(f"max_steps too large ({iv}). Maximum is 50.")
+    return iv
+
+
+def _parse_model(value: str) -> str | None:
+    if value.lower() in ("", "none"):
+        return None
+    if not re.match(r"^[a-zA-Z0-9_.:-]+$", value):
+        raise ValueError(
+            f"Invalid model ID {value!r}. "
+            "Only alphanumerics, '.', '_', ':', '-' are allowed."
+        )
+    return value
+
+
+def _parse_language(value: str) -> str:
+    if value != "auto" and not re.match(r"^[a-z]{2,8}$", value):
+        raise ValueError(
+            f"Invalid language {value!r}. "
+            "Use 'auto' or a 2-8 char lowercase code (e.g. 'fr', 'en')."
+        )
+    return value
+
+
+def _parse_debounce_ms(value: str) -> int:
+    try:
+        iv = int(value)
+    except (ValueError, TypeError):
+        raise ValueError(f"debounce_ms must be an integer (0–5000), got {value!r}")
+    if iv < 0 or iv > 5000:
+        raise ValueError(f"debounce_ms must be between 0 and 5000, got {iv}")
+    return iv
+
+
+def _parse_cancel_on_new_message(value: str) -> bool:
+    if value.lower() in ("true", "1", "yes", "on"):
+        return True
+    if value.lower() in ("false", "0", "no", "off"):
+        return False
+    raise ValueError(f"cancel_on_new_message must be true or false, got {value!r}")
+
+
+def _parse_extra_instructions(value: str) -> str:
+    if len(value) > 500:
+        raise ValueError(
+            f"extra_instructions too long ({len(value)} chars). Max is 500."
+        )
+    return value
+
+
+_PARSERS: dict[str, Callable[[str], object]] = {
+    "style": _parse_style,
+    "temperature": _parse_temperature,
+    "max_steps": _parse_max_steps,
+    "model": _parse_model,
+    "language": _parse_language,
+    "debounce_ms": _parse_debounce_ms,
+    "cancel_on_new_message": _parse_cancel_on_new_message,
+    "extra_instructions": _parse_extra_instructions,
+}
+
+
+def set_param(rc: RuntimeConfig, key: str, value: str) -> RuntimeConfig:
     """Validate and apply a single key=value update to RuntimeConfig.
 
     Returns a new RuntimeConfig instance via model_copy().
@@ -182,81 +269,8 @@ def set_param(rc: RuntimeConfig, key: str, value: str) -> RuntimeConfig:  # noqa
     if key not in _VALID_PARAMS:
         raise ValueError(f"Unknown config key: {key!r}. Valid: {sorted(_VALID_PARAMS)}")
 
-    parsed: object
-
-    if key == "style":
-        if value not in _STYLES:
-            raise ValueError(f"Invalid style {value!r}. Valid: {sorted(_STYLES)}")
-        parsed = value
-
-    elif key == "temperature":
-        try:
-            fval = float(value)
-        except (ValueError, TypeError):
-            raise ValueError(
-                f"temperature must be a float between 0 and 1, got {value!r}"
-            )
-        if not 0.0 <= fval <= 1.0:
-            raise ValueError(f"temperature must be between 0 and 1, got {fval}")
-        parsed = fval
-
-    elif key == "max_steps":
-        try:
-            iv = int(value)
-        except (ValueError, TypeError):
-            raise ValueError(f"max_steps must be a positive integer, got {value!r}")
-        if iv <= 0:
-            raise ValueError(f"max_steps must be a positive integer (≥1), got {iv}")
-        if iv > 50:
-            raise ValueError(f"max_steps too large ({iv}). Maximum is 50.")
-        parsed = iv
-
-    elif key == "model":
-        if value.lower() in ("", "none"):
-            parsed = None
-        else:
-            if not re.match(r"^[a-zA-Z0-9_.:-]+$", value):
-                raise ValueError(
-                    f"Invalid model ID {value!r}. "
-                    "Only alphanumerics, '.', '_', ':', '-' are allowed."
-                )
-            parsed = value
-
-    elif key == "language":
-        if value != "auto" and not re.match(r"^[a-z]{2,8}$", value):
-            raise ValueError(
-                f"Invalid language {value!r}. "
-                "Use 'auto' or a 2-8 char lowercase code (e.g. 'fr', 'en')."
-            )
-        parsed = value
-
-    elif key == "debounce_ms":
-        try:
-            iv = int(value)
-        except (ValueError, TypeError):
-            raise ValueError(f"debounce_ms must be an integer (0–5000), got {value!r}")
-        if iv < 0 or iv > 5000:
-            raise ValueError(f"debounce_ms must be between 0 and 5000, got {iv}")
-        parsed = iv
-
-    elif key == "cancel_on_new_message":
-        if value.lower() in ("true", "1", "yes", "on"):
-            parsed = True
-        elif value.lower() in ("false", "0", "no", "off"):
-            parsed = False
-        else:
-            raise ValueError(
-                f"cancel_on_new_message must be true or false, got {value!r}"
-            )
-
-    else:
-        # extra_instructions — accept as-is, but cap length to avoid bloating context
-        if len(value) > 500:
-            raise ValueError(
-                f"extra_instructions too long ({len(value)} chars). Max is 500."
-            )
-        parsed = value
-
+    parser = _PARSERS[key]
+    parsed = parser(value)
     return rc.model_copy(update={key: parsed})
 
 

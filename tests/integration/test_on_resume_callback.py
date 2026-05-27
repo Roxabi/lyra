@@ -8,6 +8,7 @@ Tests:
   2. test_on_resume_fn_awaited_at_callsites     — static grep guard
   3. test_on_resume_fn_high_water_mark_target   — target_count = current + 1
   4. test_on_resume_fn_handles_no_publisher     — None publisher → None fn
+  5. test_on_resume_fn_derives_identity_from_message — production path via real append
 """
 
 from __future__ import annotations
@@ -257,3 +258,61 @@ def test_on_resume_fn_handles_no_publisher() -> None:
     assert pool._on_resume_fn is None, (
         "_on_resume_fn must remain None when hub._turn_publisher is None"
     )
+
+
+# ---------------------------------------------------------------------------
+# Test 5 — _on_resume_fn derives platform/user_id from inbound message via real append
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_on_resume_fn_derives_identity_from_message(tmp_path) -> None:
+    """SC-10: production path: MessagePrepMiddleware wires _on_resume_fn,
+    next() calls pool.append(msg) to set identity, then _on_resume_fn reads it.
+
+    This is the only test that exercises the full
+    ``MessagePrepMiddleware → pool.append(msg) → _on_resume_fn`` pipeline
+    with a live pool identity derived from the inbound message.
+    """
+    # Arrange
+    store = TurnStore(tmp_path / "resume_identity.db")
+    await store.connect()
+
+    mock_pub = _make_mock_publisher()
+    hub = _make_hub_with_publisher(mock_pub, turn_store=store)
+
+    from lyra.core.hub.hub_protocol import Binding
+    from lyra.core.hub.middleware import PipelineContext
+    from lyra.core.hub.middleware.middleware_stages import MessagePrepMiddleware
+    from lyra.core.hub.pipeline.message_pipeline import Action, PipelineResult
+    from tests.core.conftest import make_inbound_message
+
+    agent = MagicMock()
+    agent.name = "lyra"
+    agent.command_router = None
+    hub.register_agent(agent)
+
+    binding = Binding(agent_name="lyra", pool_id="telegram:main:chat:42")
+    mw = MessagePrepMiddleware()
+    ctx = PipelineContext(hub=hub, binding=binding, agent=agent)
+    msg = make_inbound_message(platform="telegram", user_id="bob")
+
+    async def real_next(msg, ctx):
+        await ctx.pool.append(msg)
+        await ctx.pool._on_resume_fn("sess-identity-001")
+        return PipelineResult(action=Action.SUBMIT_TO_POOL)
+
+    # Act
+    _result = await mw(msg, ctx, real_next)
+    assert _result is not None
+
+    # Assert
+    mock_pub.publish_increment_resume_count.assert_awaited_once()
+    call_kwargs = mock_pub.publish_increment_resume_count.call_args.kwargs
+    assert call_kwargs["platform"] == "telegram"
+    assert call_kwargs["user_id"] == "bob"
+    assert call_kwargs["pool_id"] == "telegram:main:chat:42"
+    assert call_kwargs["session_id"] == "sess-identity-001"
+    assert call_kwargs["target_count"] == 1
+
+    await store.close()

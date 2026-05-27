@@ -1,5 +1,4 @@
-"""Integration test — /clear rotates Pool session UUID and publishes via TurnPublisher.
-"""
+"""Integration test — /clear rotates session UUID and publishes via TurnPublisher."""
 
 from __future__ import annotations
 

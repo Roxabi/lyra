@@ -39,7 +39,7 @@ define require_machine1
 	@case "$(DEPLOY_DIR)" in *[\'\"\$$\\\;\&\|\`]*) echo "Error: DEPLOY_DIR contains shell metacharacters"; exit 1 ;; esac
 endef
 
-.PHONY: build push lyra telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy remote nats-setup nats-regen-authconf nats-add-identity test test-integration voice-smoke lint typecheck format quality-debt-report quality-debt-classify
+.PHONY: build push lyra telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-sync-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy remote nats-setup nats-regen-authconf nats-add-identity test test-integration voice-smoke lint typecheck format quality-debt-report quality-debt-classify
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
@@ -180,6 +180,18 @@ quadlet-install: quadlet-preflight  ## install Quadlet units → reload + verify
 	else \
 		bash deploy/quadlet-install-verify.sh; \
 	fi
+
+QUADLET_SYNC_SRC := deploy/systemd
+QUADLET_SYNC_DST := $(HOME)/.config/systemd/user
+
+quadlet-sync-install:  ## install lyra-quadlet-sync timer + service → daemon-reload + enable
+	@mkdir -p "$(QUADLET_SYNC_DST)"
+	@cp "$(QUADLET_SYNC_SRC)/lyra-quadlet-sync.service" "$(QUADLET_SYNC_DST)/"
+	@cp "$(QUADLET_SYNC_SRC)/lyra-quadlet-sync.timer"   "$(QUADLET_SYNC_DST)/"
+	@echo "Sync units copied to $(QUADLET_SYNC_DST)"
+	@systemctl --user daemon-reload
+	@systemctl --user enable lyra-quadlet-sync.timer
+	@echo "[ok] lyra-quadlet-sync.timer enabled."
 
 quadlet-authconf-merged:  ## render merged auth.conf (lyra + voicecli identities) → ~/.lyra/nkeys/auth.conf
 	@lyra-acl genkeys --emit-merged-authconf

@@ -30,6 +30,7 @@ from lyra.core.messaging.message import (
 from lyra.core.pool import Pool
 from lyra.core.ports.tts import TtsProtocol
 from lyra.core.runtime_config import RuntimeConfig
+from tests.helpers.messages import make_test_blobref
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -215,7 +216,7 @@ class TestTelegramAdapterRenderAudio:
         adapter = self._make_adapter()
         inbound = self._make_inbound()
         audio_msg = OutboundAudio(
-            audio_bytes=b"wav_data",
+            blob_ref=make_test_blobref(b"wav_data"),
             mime_type="audio/wav",
             duration_ms=500,
         )
@@ -237,7 +238,7 @@ class TestTelegramAdapterRenderAudio:
         adapter = self._make_adapter()
         inbound = self._make_inbound()
         audio_msg = OutboundAudio(
-            audio_bytes=b"ogg_data",
+            blob_ref=make_test_blobref(b"ogg_data"),
             mime_type="audio/ogg",
             duration_ms=300,
         )
@@ -259,7 +260,7 @@ class TestTelegramAdapterRenderAudio:
         adapter = self._make_adapter()
         inbound = self._make_inbound()
         audio_msg = OutboundAudio(
-            audio_bytes=b"mp3_data",
+            blob_ref=make_test_blobref(b"mp3_data"),
             mime_type="audio/mpeg",
             duration_ms=1200,
         )

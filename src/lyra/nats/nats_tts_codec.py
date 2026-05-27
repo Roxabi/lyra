@@ -98,14 +98,10 @@ class TtsCodec:
                 duration_ms=None,
                 error=resp.error or "tts.worker_error",
             )
-        # blob_ref may carry the actual store_key (post #1067) or PENDING_STORE_KEY
-        # during the transitional window. The codec does NOT resolve it to bytes — that
-        # is the pipeline's job (eager-ingest land in epic #1061 V3/V4). We surface
-        # empty bytes here; tts_dispatch + adapter render the silent path until #1067
-        # wires the blob_ref → bytes resolution downstream.
         return SynthesisResult(
             audio_bytes=b"",
             mime_type=resp.mime_type,  # type: ignore[arg-type]
             duration_ms=resp.duration_ms,  # type: ignore[arg-type]
             waveform_b64=resp.waveform_b64,
+            blob_ref=resp.blob_ref,
         )

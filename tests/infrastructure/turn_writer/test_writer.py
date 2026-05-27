@@ -21,9 +21,10 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Literal
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+import nats.errors
 import pytest
 
 from lyra.infrastructure.stores.turn_store import TurnStore
@@ -419,3 +420,34 @@ async def test_per_pool_order_preserved(writer: TurnWriter, store: TurnStore) ->
     ) as cur:
         rows_b = list(await cur.fetchall())
     assert len(rows_b) == 1 and rows_b[0][0] == pool_b
+
+
+@pytest.mark.anyio
+async def test_consume_loop_propagates_connection_closed_error(
+    store: TurnStore,
+) -> None:
+    """ConnectionClosedError in fetch must re-raise (not fall through to nak path).
+
+    Negative test: if the except nats.errors.ConnectionClosedError clause at
+    writer.py:122-127 is deleted, the error is swallowed by the inner
+    except Exception block which naks and continues — exactly the wrong
+    behaviour. This test fails in that scenario.
+    """
+    # Arrange: writer whose _sub.fetch raises ConnectionClosedError immediately.
+    mock_sub = MagicMock()
+    mock_sub.fetch = AsyncMock(
+        side_effect=nats.errors.ConnectionClosedError("nats: connection closed")
+    )
+    mock_js = MagicMock()
+    w = TurnWriter(turn_store=store, js=mock_js)
+    w._sub = mock_sub
+
+    # Act + Assert: the loop propagates rather than swallowing the error.
+    with patch("lyra.infrastructure.turn_writer.writer.log") as mock_log:
+        with pytest.raises(nats.errors.ConnectionClosedError):
+            await w._consume_loop()
+
+        # Also verify log.error was called with the expected message fragment.
+        assert mock_log.error.called
+        call_args = mock_log.error.call_args
+        assert "NATS connection lost" in call_args[0][0]

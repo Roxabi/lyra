@@ -21,6 +21,7 @@ from typing import AsyncIterator
 
 from lyra.infrastructure.stores.agent_store import AgentStore
 from lyra.infrastructure.stores.auth_store import AuthStore
+from lyra.infrastructure.stores.bot_store import BotStore
 from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 from lyra.infrastructure.stores.message_index import MessageIndex
 from lyra.infrastructure.stores.prefs_store import PrefsStore
@@ -230,6 +231,7 @@ class StoreBundle:
 
     auth: AuthStore
     agent: AgentStore
+    bot: BotStore | None
     turn: TurnStore
     prefs: PrefsStore
     message_index: MessageIndex
@@ -250,6 +252,7 @@ async def open_stores(vault_dir: Path) -> AsyncIterator[StoreBundle]:
 
     auth_store: AuthStore | None = None
     agent_store: AgentStore | None = None
+    bot_store: BotStore | None = None
     turn_store: TurnStore | None = None
     prefs_store: PrefsStore | None = None
     message_index_store: MessageIndex | None = None
@@ -263,6 +266,9 @@ async def open_stores(vault_dir: Path) -> AsyncIterator[StoreBundle]:
 
         agent_store = AgentStore(db_path=vault_dir / "config.db")
         await agent_store.connect()
+
+        bot_store = BotStore(db_path=vault_dir / "config.db")
+        await bot_store.connect()
 
         turn_store = TurnStore(db_path=vault_dir / "turns.db")
         await turn_store.connect()
@@ -278,6 +284,7 @@ async def open_stores(vault_dir: Path) -> AsyncIterator[StoreBundle]:
         yield StoreBundle(
             auth=auth_store,
             agent=agent_store,
+            bot=bot_store,
             turn=turn_store,
             prefs=prefs_store,
             message_index=message_index_store,
@@ -287,6 +294,7 @@ async def open_stores(vault_dir: Path) -> AsyncIterator[StoreBundle]:
         all_stores = (
             auth_store,
             agent_store,
+            bot_store,
             turn_store,
             prefs_store,
             message_index_store,

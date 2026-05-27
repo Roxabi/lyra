@@ -1,7 +1,7 @@
 """BotStoreProtocol — structural interface for bot stores.
 
-Factory: use ``lyra.bootstrap.factory.bot_store_factory.make_bot_store``
-to obtain a store instance at runtime.
+Factory: use ``lyra.bootstrap.bootstrap_stores.open_stores``
+to obtain a store bundle (which includes the BotStore) at runtime.
 """
 
 from __future__ import annotations

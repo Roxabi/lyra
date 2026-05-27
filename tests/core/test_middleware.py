@@ -222,8 +222,19 @@ class TestCreatePool:
         await mw(msg, ctx, _make_next())
 
         assert ctx.pool is not None
-        # _on_resume_fn is a closure; verify it is wired (not None)
-        assert ctx.pool._on_resume_fn is not None  # type: ignore[attr-defined]
+        await ctx.pool._on_resume_fn("test-session-id")  # type: ignore[attr-defined]
+        # _make_hub() leaves hub._turn_store=None → closure skips store-read
+        # → current=0 → target_count = current + 1 = 1. trace_id == session_id
+        # by design in this middleware: the closure derives trace_id from the
+        # session_id argument (see MessagePrepMiddleware._make_on_resume_fn).
+        publisher.publish_increment_resume_count.assert_awaited_once_with(
+            pool_id="telegram:main:chat:42",
+            session_id="test-session-id",
+            platform="",
+            user_id="",
+            target_count=1,
+            trace_id="test-session-id",
+        )
 
     async def test_on_resume_fn_not_set_when_turn_store_absent(self) -> None:
         from lyra.core.hub.hub_protocol import Binding

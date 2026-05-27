@@ -81,6 +81,11 @@ class ToolRecapAccumulator:
 
     def observe_start(self, ev: ToolCallStartRenderEvent) -> None:
         """Register a new in-flight tool call."""
+        if ev.input:
+            self._route(
+                ev.tool_call_id, ev.tool_name.lower(), ev.tool_name, ev.input
+            )
+            return
         self._in_flight[ev.tool_call_id] = _PartialCall(tool_name=ev.tool_name)
 
     def observe_args(self, ev: ToolCallArgsRenderEvent) -> None:

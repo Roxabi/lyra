@@ -51,8 +51,9 @@ class ToolUseLlmEvent:
     """Emitted when the LLM calls a tool.
 
     ``input`` is empty at ``ContentBlockStart`` time (SDK); the full input dict
-    is populated via ``InputJsonDelta`` events but V1 only tracks tool name/id
-    for real-time visibility.
+    is populated via ``InputJsonDelta`` events. The clipool NATS path sends the
+    full input dict in a single ``tool_use`` chunk, so ``input`` may already be
+    complete when this event is emitted.
     """
 
     tool_name: str

@@ -1,0 +1,49 @@
+---
+title: "Code Smells: extract retry loop / kind-router / post-send hooks from dispatch_outbound_item"
+issue: 1449
+status: approved
+tier: F-lite
+date: 2026-05-27
+---
+
+## Problem
+
+`dispatch_outbound_item` in the outbound pipeline is 167 LOC with explicit `noqa: C901, PLR0913, PLR0915` suppressions. It entangles three distinct responsibilities in a single function: retry-loop orchestration, kind-based message routing, and post-send callback / circuit-breaker hooks.
+
+Quality Audit 2026-05-26 (#1426) flagged this as the #1 cross-domain hotspot with 24 findings across 6 domains. The function's size and mixed concerns make it resistant to unit testing and risky to modify when adding new outbound channels.
+
+## Who
+
+- **Primary:** Lyra maintainers working on outbound pipeline reliability and testability
+- **Secondary:** Contributors adding new outbound channel kinds (clear routing boundary reduces onboarding friction)
+
+## Constraints
+
+- **No behavioral change** — extraction is a pure refactor; all retry semantics, routing rules, and hook sequencing must remain identical
+- **Existing error handling** — exception paths and logging must not shift
+- **Outbound stage contract** — changes must stay within the current outbound stage composition boundary (ADR-1279)
+
+## Out of Scope
+
+- Rewriting retry policy parameters or backoff strategy
+- Adding new channel kinds or outbound platforms
+- Changing formatter / throttle / emitter boundaries outside `dispatch_outbound_item`
+- Observability instrumentation (unless already inline and moving with extracted code)
+
+## Premise Validity
+
+**Success in 6 months:** `dispatch_outbound_item` is ≤60 LOC with zero complexity `noqa` suppressions; the extracted retry loop, kind-router, and post-send hooks each have dedicated unit tests and no cross-domain coupling in the outbound pipeline.
+
+**Failure in 6 months:** `dispatch_outbound_item` still exceeds 100 LOC or requires new `noqa` suppressions after extraction; OR the extracted units remain untested, meaning complexity was moved rather than reduced.
+
+**Simplest alternative:** Extract only the retry loop (the largest and most self-contained unit), leaving kind-router and post-send hooks inline.
+
+**Why not simplest:** Partial extraction leaves two mixed responsibilities in `dispatch_outbound_item`; the quality audit explicitly flagged all three as distinct smells requiring separation. A half-measure would not resolve the SRP violation or the cross-domain hotspot.
+
+## Complexity
+
+**Tier: F-lite** — single domain (outbound/dispatch), well-understood extraction pattern, no new architectural patterns or unknowns.
+
+- Scope is bounded to one function and its three inline responsibilities
+- Extraction pattern is mechanical (extract function / extract class) with existing type signatures as contract
+- No cross-domain coordination required

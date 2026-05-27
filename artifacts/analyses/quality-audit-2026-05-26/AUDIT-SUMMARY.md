@@ -7,12 +7,37 @@
 
 ---
 
+## Fix Log (post-audit)
+
+| When | PR | Fixes |
+|------|-----|-------|
+| 2026-05-27 | #1431 | P0 — refine CLI blocking event loop (#1424) |
+| 2026-05-27 | #1432 | P0 — runtime_config.set_param cognitive hotspot (#1425) |
+| 2026-05-27 | #1443 | P1 — CliLlmProvider.chat() sync subprocess in async context |
+| 2026-05-27 | #1444 | P1 — Bootstrap adapter cleanup + teardown protection |
+| 2026-05-27 | #1445 | P1 — Admin path traversal in /folder and /workspace |
+| 2026-05-27 | #1446 | P1 — SubmitToPoolMiddleware broad `except Exception` narrowed |
+
+*Remaining P1 count: 106 → 101 (2 P0 + 4 P1 resolved).*
+
+## Issue Tracking (post-audit)
+
+Top 5 remaining P1 findings filed as child issues of #1426:
+
+| Issue | Domain | Title | Size | Priority |
+|-------|--------|-------|------|----------|
+| #1447 | Security | Audio attachment path traversal validation | S | High |
+| #1448 | Error Handling | Guard `pool.submit()` in `_dispatch_pipeline_result` | S | High |
+| #1449 | Code Smells | Extract retry/kind-router/post-send from `dispatch_outbound_item` | L | High |
+| #1450 | Architecture | Close ADR-048 gap (`ResumePublisherPort` + halt concrete setters) | L | High |
+| #1451 | Test Quality | Backfill bootstrap wiring tests | L | High |
+
 ## Executive Summary
 
 - **Overall health is mixed but not alarming:** 1,011 findings across ~917 unique source + test files, yet only 2 Critical and 106 High. The long tail is Low/Medium (88 %), indicating many small cleanups rather than systemic failure. Stage-axis decomposition is structurally sound; the dominant architectural gap is the unfinished ADR-048 port migration (direct infrastructure imports in `core/hub` and `core/nonhub`).
 - **Security posture is solid at the core, soft at the edges:** No critical security vulnerabilities in production runtime code. The single High finding is a path-traversal vector in audio-attachment handling (`P08`). Most residual risk lives in configuration-time env-var paths and NATS ACL over-permission (#1293).
 - **Test coverage is polarized:** `src/lyra/core` achieves 88 % line coverage, but bootstrap wiring modules sit at 0–24 % and 48+ `asyncio.sleep` calls create endemic flaky timing. Parametrization is effectively unused (2 usages across ~1,655 core tests).
-- **Key debt items:** ADR-048 protocol coverage stalled at ~44 % in the hub; 140 tech-debt annotations (zero TODO/FIXME/HACK/XXX — good hygiene); two stale closed-epic phase references (#753); one live transitional placeholder (`b""` in STT, tracked by #1067); one critical blocking-event-loop bug in the `lyra agent refine` CLI command.
+- **Key debt items:** ADR-048 protocol coverage stalled at ~44 % in the hub; 140 tech-debt annotations (zero TODO/FIXME/HACK/XXX — good hygiene); two stale closed-epic phase references (#753); one live transitional placeholder (`b""` in STT, tracked by #1067); both P0 critical issues fixed on 2026-05-27 (#1424 refine blocking loop, #1425 runtime_config hotspot).
 
 ---
 
@@ -48,11 +73,13 @@
 
 ## Critical Issues (P0)
 
-1. **Blocking event-loop bug in `lyra agent refine` (`async-patterns/P08`)**
+*Status: 2/2 fixed as of 2026-05-27*
+
+1. **[FIXED #1431] Blocking event-loop bug in `lyra agent refine` (`async-patterns/P08`)**
    `AgentRefiner.run_session(io)` is a synchronous method that calls `input()` and `subprocess.run(["claude", "--print", ...])` inside an async CLI coroutine. This freezes the asyncio event loop for the full duration of an interactive refinement session and will crash with `RuntimeError` if invoked from an existing loop (the normal Lyra runtime).
    *File:* `src/lyra/agent_cmd/agents/edit_cmd.py:264`
 
-2. **Cognitive-complexity critical hotspot in runtime config (`code-smells/P04`)**
+2. **[FIXED #1432] Cognitive-complexity critical hotspot in runtime config (`code-smells/P04`)**
    `set_param` in `runtime_config.py` is 124 lines with estimated cognitive complexity ~124. The monolithic `if/elif` chain handles every config key with validation, coercion, and side effects in one function, making the config subsystem extremely brittle to refactor or extend.
    *File:* `src/lyra/core/runtime_config.py:176`
 
@@ -61,38 +88,38 @@
 ## High Priority (P1)
 
 ### Architecture
-- `MessagePrepMiddleware` (stage 7) drills into `ctx.hub._turn_publisher` and `ctx.hub._turn_store` to build a JetStream resume closure — direct transport/infrastructure coupling with no core protocol.
-- Hub registration API (`set_turn_publisher`, `set_typing_publisher`) accepts 5 concrete store/transport types lacking `core/ports/` protocols, expanding the ADR-048 gap.
+- `MessagePrepMiddleware` (stage 7) drills into `ctx.hub._turn_publisher` and `ctx.hub._turn_store` to build a JetStream resume closure — direct transport/infrastructure coupling with no core protocol. → **#1450**
+- Hub registration API (`set_turn_publisher`, `set_typing_publisher`) accepts 5 concrete store/transport types lacking `core/ports/` protocols, expanding the ADR-048 gap. → **#1450**
 - `lyra.inbound` is absent from all 7 `.importlinter` contracts; bidirectional `adapters ↔ inbound` coupling is invisible to CI.
-- `LlmClient` bypasses `WorkerPoolClient` circuit breaker / routing to call `_transport.call()` directly for `reset`, `resume_and_reset`, `switch_cwd`.
+- `LlmClient` bypasses `WorkerPoolClient` circuit breaker / routing to call `_transport.call()` directly for `reset`, `resume_and_reset`, `switch_cwd`. → **#1450**
 
 ### Async Patterns
 - `OutboundEmitter.run()` abandons the `events` async iterator on the first `__anext__()` exception without `aclose()`, leaking NATS queue consumers.
-- `CliLlmProvider.chat()` uses sync `subprocess.run(...)` to shell out to `claude --print` from an async context.
-- `AgentRefiner.apply_patch()` nests `asyncio.run(_apply())`, which will raise `RuntimeError` inside the normal Lyra event loop.
-- Bootstrap standalone adapters do not clean up previously-wired buses, NATS subscriptions, or stores if `adapter.astart()` raises inside the per-bot loop.
+- **[FIXED #1443]** `CliLlmProvider.chat()` uses sync `subprocess.run(...)` to shell out to `claude --print` from an async context.
+- **[FIXED #1431]** `AgentRefiner.apply_patch()` nests `asyncio.run(_apply())`, which will raise `RuntimeError` inside the normal Lyra event loop.
+- **[FIXED #1444]** Bootstrap standalone adapters do not clean up previously-wired buses, NATS subscriptions, or stores if `adapter.astart()` raises inside the per-bot loop.
 
 ### Code Smells
-- `dispatch_outbound_item` is 167 LOC with explicit `noqa: C901, PLR0913, PLR0915`; handles 6 message kinds, retry loops, circuit breaker, and iterator draining in one function.
+- `dispatch_outbound_item` is 167 LOC with explicit `noqa: C901, PLR0913, PLR0915`; handles 6 message kinds, retry loops, circuit breaker, and iterator draining in one function. → **#1449**
 - God classes persist: `Hub` (10+ subsystems), `OutboundRouter` (6 dispatch types), `PoolManager` (6 lifecycle responsibilities), `OutboundEmitter` (9+ responsibilities).
 - `packages/roxabi-blobs/fs_store.py` exceeds the 300-line cap without exemption (344 LOC).
 - Fake worker test doubles in `roxabi-nats.testing` are ~80 % copy-paste across `voice.py` and `image.py`.
 
 ### Error Handling
-- `pool.submit()` in `_dispatch_pipeline_result` is unguarded; a synchronous exception crashes the `Hub.run()` consumer loop.
+- `pool.submit()` in `_dispatch_pipeline_result` is unguarded; a synchronous exception crashes the `Hub.run()` consumer loop. → **#1448**
 - `ThreadStore.update_session` failures are silently swallowed inside `_thread_update_fn`, causing data loss (new session_id never persisted).
-- Broad `except Exception` in `SubmitToPoolMiddleware` swallows store outages as `ResumeStatus.SKIPPED`, masking infrastructure failures.
-- Bootstrap teardown sequences (`teardown_buses`, `teardown_dispatchers`) are unguarded; one failure orphans remaining resources.
+- **[FIXED #1446]** Broad `except Exception` in `SubmitToPoolMiddleware` swallows store outages as `ResumeStatus.SKIPPED`, masking infrastructure failures.
+- **[FIXED #1444]** Bootstrap teardown sequences (`teardown_buses`, `teardown_dispatchers`) are unguarded; one failure orphans remaining resources.
 
 ### Security
-- Audio-attachment path traversal: `Path(str(audio_attachment.url_or_path_or_bytes))` is unvalidated, enabling arbitrary file read/delete via `read_bytes()` + `unlink()`.
+- Audio-attachment path traversal: `Path(str(audio_attachment.url_or_path_or_bytes))` is unvalidated, enabling arbitrary file read/delete via `read_bytes()` + `unlink()`. → **#1447**
 - Telegram token regex in `trace.py` is too narrow (`-`, `_` only), allowing partial token leakage into logs.
-- Admin `/folder` and `/workspace` commands resolve arbitrary paths without a base-directory constraint.
+- **[FIXED #1445]** Admin `/folder` and `/workspace` commands resolve arbitrary paths without a base-directory constraint.
 
 ### Test Quality
 - `test_hub_tts_dispatch.py` mocks SUT methods (`hub.dispatch_audio`, `hub.dispatch_response`) instead of asserting through injected adapter fakes.
 - `test_outbound_dispatcher_coverage.py` patches `asyncio.sleep` globally and patches `try_notify_user` to speed up backoff tests.
-- Bootstrap wiring modules have severe coverage gaps: `agent_store_factory` 0 %, `bot_agent_map` 12 %, `unified` 24 %, `wiring_helpers` 32 %.
+- Bootstrap wiring modules have severe coverage gaps: `agent_store_factory` 0 %, `bot_agent_map` 12 %, `unified` 24 %, `wiring_helpers` 32 %. → **#1451**
 
 ### Type Safety
 - `factory/wiring_helpers.py` has a file-level `# pyright: reportAttributeAccessIssue=false, reportArgumentType=false` suppression covering the entire module.
@@ -182,11 +209,11 @@ Files with findings in ≥3 domains:
 
 | Priority | Action | Effort | Impact |
 |----------|--------|--------|--------|
-| P0 | Convert `AgentRefiner.run_session` to async; offload `input()` and `subprocess.run()` to threads | 1–2 days | Eliminates blocking-event-loop crash |
-| P1 | Guard `pool.submit()` in `_dispatch_pipeline_result` with try/except to prevent hub-loop crashes | 2–4 hours | Prevents single bad pool from killing the hub |
-| P1 | Validate audio-attachment paths before `read_bytes()` / `unlink()` in `llm/attachments.py` | 1 day | Closes path-traversal High |
-| P1 | Extract `ResumePublisherPort` and inject into `PipelineContext`; halt new concrete setters on `Hub` until protocols exist | 3–5 days | Closes ADR-048 gap and hub-coupling |
-| P1 | Protect bootstrap teardown: wrap each `bus.stop()` / `dispatcher.stop()` / `store.close()` in individual try/except | 1 day | Prevents resource orphaning |
+| P0 | ~~Convert `AgentRefiner.run_session` to async; offload `input()` and `subprocess.run()` to threads~~ | ~~1–2 days~~ | **FIXED #1431** |
+| P1 | Guard `pool.submit()` in `_dispatch_pipeline_result` with try/except to prevent hub-loop crashes | 2–4 hours | **#1448** — Prevents single bad pool from killing the hub |
+| P1 | Validate audio-attachment paths before `read_bytes()` / `unlink()` in `llm/attachments.py` | 1 day | **#1447** — Closes path-traversal High |
+| P1 | Extract `ResumePublisherPort` and inject into `PipelineContext`; halt new concrete setters on `Hub` until protocols exist | 3–5 days | **#1450** — Closes ADR-048 gap and hub-coupling |
+| P1 | ~~Protect bootstrap teardown: wrap each `bus.stop()` / `dispatcher.stop()` / `store.close()` in individual try/except~~ | ~~1 day~~ | **FIXED #1444** |
 | P1 | Replace sleep patches in `test_outbound_dispatcher_coverage.py` with an injected `sleep` callable / test clock | 2–3 days | Removes monkey-patching of stdlib |
 | P2 | Replace `threading.Lock` with `asyncio.Lock` in `PoolManager` | 4–6 hours | Removes brittle threading primitive in async code |
 | P2 | Add `lyra.inbound` to `.importlinter` contracts (layers + independence) | 2–4 hours | Makes inbound boundary enforceable in CI |
@@ -216,10 +243,10 @@ Files with findings in ≥3 domains:
 
 | # | Action | Domain | Effort | Impact |
 |---|--------|--------|--------|--------|
-| 1 | Convert `refine` CLI to async (`asyncio.to_thread` + `create_subprocess_exec`) | Async Patterns | 1–2 days | Critical crash/blocking eliminated |
-| 2 | Guard `pool.submit()` in `Hub.run()` with try/except + log-and-continue | Error Handling | 2–4 hours | Prevents hub consumer loop crash |
+| 1 | ~~Convert `refine` CLI to async (`asyncio.to_thread` + `create_subprocess_exec`)~~ | Async Patterns | ~~1–2 days~~ | **FIXED #1431** |
+| 2 | Guard `pool.submit()` in `Hub.run()` with try/except + log-and-continue | Error Handling | 2–4 hours | **#1448** — Prevents hub consumer loop crash |
 | 3 | Sanitize NATS subject segments in `TypingPublisher` (strip `*`, `>`, dots) | Security | 2–4 hours | Closes only Medium injection vector |
-| 4 | Wrap each bootstrap `stop()` / `close()` in individual try/except during teardown | Error Handling | 4–6 hours | Stops resource orphaning |
+| 4 | ~~Wrap each bootstrap `stop()` / `close()` in individual try/except during teardown~~ | Error Handling | ~~4–6 hours~~ | **FIXED #1444** |
 | 5 | Replace `threading.Lock` with `asyncio.Lock` in `PoolManager` | Async Patterns | 4–6 hours | Removes brittle anti-pattern |
 | 6 | Narrow `hub: object` to `Hub` in `middleware_stt.py` under `TYPE_CHECKING` | Type Safety | 30 min | Deletes partition's only 2 `# type: ignore` |
 | 7 | Remove stale `#753 Phase 3` comments from `hub_dispatch.py` + `outbound_router.py` | Tech Debt | 15 min | Stops reader confusion |

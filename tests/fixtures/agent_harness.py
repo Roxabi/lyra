@@ -10,7 +10,7 @@ import tomllib
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, AsyncIterator
+from typing import TYPE_CHECKING, AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock
 
 from tests.conftest import _drain
@@ -208,7 +208,7 @@ class AgentHarness:
 async def agent_harness(
     agent_cls: type[SimpleAgent] = SimpleAgent,
     toml: str = MINIMAL_TOML,
-) -> AsyncIterator[AgentHarness]:
+) -> AsyncGenerator[AgentHarness, None]:
     """Create a fully-wired agent test harness.
 
     Sets up:

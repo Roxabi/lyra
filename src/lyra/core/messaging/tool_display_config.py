@@ -52,10 +52,13 @@ class ToolDisplayConfig(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="ignore")
 
-    names_threshold: int = 3
+    names_threshold: int = 5
     group_threshold: int = 3
-    bash_max_len: int = 60
+    bash_max_len: int = 80
     throttle_ms: int = 2000
+    """Min ms between streaming edits. Future consumers must wire through
+    lyra.outbound.throttle.ThrottleCapability (not per-adapter logic) per
+    ADR-073 — single stage primitive, not per-platform variants."""
     # Stored as dict[str, bool] for Pydantic compatibility; exposed as
     # MappingProxyType via the .show property to preserve read-only semantics.
     _show: dict[str, bool] = {}

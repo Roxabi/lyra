@@ -1304,10 +1304,11 @@ wheels = [
 
 [[package]]
 name = "roxabi-blobs"
-version = "0.1.1"
+version = "0.1.2"
 source = { editable = "packages/roxabi-blobs" }
 dependencies = [
     { name = "aiosqlite" },
+    { name = "httpx" },
     { name = "pydantic" },
 ]
 
@@ -1321,6 +1322,7 @@ testing = [
 [package.metadata]
 requires-dist = [
     { name = "aiosqlite", specifier = ">=0.20" },
+    { name = "httpx", specifier = ">=0.28" },
     { name = "pydantic", specifier = ">=2.13" },
     { name = "pytest", marker = "extra == 'testing'", specifier = ">=8.4" },
     { name = "pytest-asyncio", marker = "extra == 'testing'", specifier = ">=1.1" },

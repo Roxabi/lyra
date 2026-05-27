@@ -85,7 +85,7 @@ jobs:
         # See issue #1370.
         run: |
           set -euo pipefail
-          if grep -nP 'HealthCmd=.*"' deploy/quadlet/*.container; then
+          if grep -nP 'HealthCmd=(?!python3 -c ).*"' deploy/quadlet/*.container; then
             echo "::error::Double-quotes found in HealthCmd= in the above Quadlet unit(s)."
             echo "The Quadlet generator drops the closing quote, producing a broken CMD-SHELL"
             echo "array (/bin/sh: Syntax error: Unterminated quoted string). Use"

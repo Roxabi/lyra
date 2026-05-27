@@ -34,7 +34,8 @@ Environment=LYRA_TURNS_DB=/data/turns.db
 Environment=LYRA_VAULT_DIR=/data
 Environment=PYTHONUNBUFFERED=1
 Exec=lyra turn-writer
-HealthCmd=grep -q turn-writer /proc/1/cmdline
+HealthCmd=python3 -c 'import urllib.request,sys; r=urllib.request.urlopen("http://127.0.0.1:8083/health",timeout=3); sys.exit(0 if r.status==200 else 1)'
+HealthOnFailure=kill
 HealthInterval=30s
 
 [Service]

@@ -1387,6 +1387,44 @@ class TestToolCallLifecycle:
         # access. Successful dispatch surfaces a ToolCallArgsRenderEvent.
         assert any(isinstance(e, ToolCallArgsRenderEvent) for e in result)
 
+    async def test_clipool_input_forwarding(self) -> None:
+        """ToolUseLlmEvent with non-empty input → ToolCallStartRenderEvent carries it.
+
+        Clipool NATS path sends the full input dict in a single tool_use chunk.
+        StreamProcessor must forward it so the recap accumulator can route
+        immediately without waiting for ToolCallArgs deltas.
+        """
+        processor = StreamProcessor()
+        events = async_events(
+            ToolUseLlmEvent(
+                tool_name="Bash", tool_id="tc-1", input={"command": "git log"}
+            ),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        result = await collect(processor.process(events))
+        starts = [e for e in result if isinstance(e, ToolCallStartRenderEvent)]
+        assert len(starts) == 1
+        assert starts[0].input == {"command": "git log"}
+
+    async def test_empty_input_maps_to_none(self) -> None:
+        """SDK path: ToolUseLlmEvent.input defaults to {} → mapped to None.
+
+        Empty dict is falsy; StreamProcessor must pass None so the accumulator
+        falls back to the buffered _in_flight path (Args + End) rather than
+        premature routing on an empty dict.
+        """
+        processor = StreamProcessor()
+        events = async_events(
+            ToolUseLlmEvent(tool_name="Read", tool_id="r1", input={}),
+            ResultLlmEvent(is_error=False, duration_ms=10),
+        )
+
+        result = await collect(processor.process(events))
+        starts = [e for e in result if isinstance(e, ToolCallStartRenderEvent)]
+        assert len(starts) == 1
+        assert starts[0].input is None
+
 
 # ---------------------------------------------------------------------------
 # Slice 4 of #1096 — Reasoning events (#1101) — T11

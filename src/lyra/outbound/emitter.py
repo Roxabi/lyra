@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, assert_never
 
@@ -500,35 +500,39 @@ class OutboundEmitter:
         first_event: RenderEvent | None = None
         peek_error: Exception | None = None
         try:
-            first_event = await events.__anext__()
-        except StopAsyncIteration:
-            pass
-        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — terminal, migrated in S7
-            peek_error = exc
-        if first_event is None and peek_error is None:
-            await self._drain_fallback(events)
-            await self._handle_typing_tail()
-            return
-        if peek_error is not None:
-            self._st.stream_error = peek_error
+            try:
+                first_event = await events.__anext__()
+            except StopAsyncIteration:
+                pass
+            except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — terminal, migrated in S7
+                peek_error = exc
+            if first_event is None and peek_error is None:
+                await self._drain_fallback(events)
+                await self._handle_typing_tail()
+                return
+            if peek_error is not None:
+                self._st.stream_error = peek_error
+                result = await self._send_placeholder()
+                if result is not None:
+                    await self._deliver_final(result[0])
+                await self._handle_typing_tail()
+                raise peek_error
+            assert first_event is not None  # narrowed above
             result = await self._send_placeholder()
-            if result is not None:
-                await self._deliver_final(result[0])
+            full = _prepend(first_event, events)
+            if result is None:
+                await self._drain_fallback(full)
+                await self._handle_typing_tail()
+                return
+            placeholder_obj, _ = result
+            await self._run_event_loop(full, placeholder_obj)
+            await self._deliver_final(placeholder_obj)
             await self._handle_typing_tail()
-            raise peek_error
-        assert first_event is not None  # narrowed above
-        result = await self._send_placeholder()
-        full = _prepend(first_event, events)
-        if result is None:
-            await self._drain_fallback(full)
-            await self._handle_typing_tail()
-            return
-        placeholder_obj, _ = result
-        await self._run_event_loop(full, placeholder_obj)
-        await self._deliver_final(placeholder_obj)
-        await self._handle_typing_tail()
-        if self._st.stream_error is not None:
-            raise self._st.stream_error
+            if self._st.stream_error is not None:
+                raise self._st.stream_error
+        finally:
+            if isinstance(events, AsyncGenerator):
+                await events.aclose()
 
 
 # Deferred imports — see the explanatory comment at the top of the file.

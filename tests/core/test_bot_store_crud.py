@@ -226,6 +226,7 @@ class TestBotRowConversion:
             None,  # default_trust
             "[]",  # owner_users_json
             "[]",  # trusted_users_json
+            "[]",  # trusted_roles_json
             None,  # auto_thread
             None,  # thread_hot_hours
             "2024-01-01T00:00:00+00:00",  # updated_at
@@ -253,6 +254,7 @@ class TestBotRowConversion:
             "unknown_level",  # invalid default_trust — not in _VALID_TRUST_LEVELS
             "[]",  # owner_users_json
             "[]",  # trusted_users_json
+            "[]",  # trusted_roles_json
             0,  # auto_thread
             24,  # thread_hot_hours
             "2024-01-01T00:00:00+00:00",  # updated_at
@@ -275,6 +277,7 @@ class TestBotRowConversion:
             "blocked",  # default_trust
             "[]",  # owner_users_json
             "[]",  # trusted_users_json
+            "[]",  # trusted_roles_json
             0,  # auto_thread
             0,  # thread_hot_hours = 0 (explicit, must be preserved)
             "2024-01-01T00:00:00+00:00",  # updated_at

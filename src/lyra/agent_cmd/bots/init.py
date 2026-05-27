@@ -130,7 +130,8 @@ def _merge_bots(raw: dict[str, Any]) -> tuple[list[BotRow], int]:  # noqa: C901 
             for k, v in entry.items():
                 if k == "bot_id":
                     continue
-                if k in ("owner_users", "trusted_users") and isinstance(v, list):
+                list_keys = ("owner_users", "trusted_users", "trusted_roles")
+                if k in list_keys and isinstance(v, list):
                     if not all(isinstance(el, str) for el in v):
                         continue  # reject non-string elements silently
                     existing = merged[key].get(k, [])
@@ -157,6 +158,7 @@ def _merge_bots(raw: dict[str, Any]) -> tuple[list[BotRow], int]:  # noqa: C901 
                 default_trust=data.get("default_trust", DEFAULT_TRUST),
                 owner_users=data.get("owner_users", []),
                 trusted_users=data.get("trusted_users", []),
+                trusted_roles=data.get("trusted_roles", []),
                 auto_thread=data.get("auto_thread", DEFAULT_AUTO_THREAD),
                 thread_hot_hours=data.get("thread_hot_hours", DEFAULT_THREAD_HOT_HOURS),
             )

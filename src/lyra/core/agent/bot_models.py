@@ -39,6 +39,7 @@ class BotRow:
     default_trust: str = DEFAULT_TRUST
     owner_users: list[str] = field(default_factory=list)
     trusted_users: list[str] = field(default_factory=list)
+    trusted_roles: list[str] = field(default_factory=list)
     auto_thread: bool = DEFAULT_AUTO_THREAD
     thread_hot_hours: int = DEFAULT_THREAD_HOT_HOURS
     updated_at: str = field(default_factory=_utc_now_iso)
@@ -53,8 +54,8 @@ class BotRow:
     @classmethod
     def from_db_row(cls, row: tuple[Any, ...]) -> "BotRow":
         """Construct a BotRow from a raw aiosqlite SELECT tuple."""
-        if len(row) != 10:
-            raise ValueError(f"Expected 10 columns, got {len(row)}")
+        if len(row) != 11:
+            raise ValueError(f"Expected 11 columns, got {len(row)}")
         (
             platform,
             bot_id,
@@ -63,6 +64,7 @@ class BotRow:
             default_trust,
             owner_users_json,
             trusted_users_json,
+            trusted_roles_json,
             auto_thread,
             thread_hot_hours,
             updated_at,
@@ -91,6 +93,18 @@ class BotRow:
         except (json.JSONDecodeError, TypeError):
             log.warning("trusted_users_json is not valid JSON; resetting to []")
             parsed_trusted = []
+
+        # Parse trusted_roles — same guard.
+        try:
+            parsed_roles = json.loads(trusted_roles_json or "[]")
+            if not isinstance(parsed_roles, list) or not all(
+                isinstance(el, str) for el in parsed_roles
+            ):
+                log.warning("trusted_roles_json has unexpected shape; resetting to []")
+                parsed_roles = []
+        except (json.JSONDecodeError, TypeError):
+            log.warning("trusted_roles_json is not valid JSON; resetting to []")
+            parsed_roles = []
 
         # Validate default_trust before construction — __post_init__ raises on
         # invalid values, so legacy DB rows must be coerced here (not raised).
@@ -122,6 +136,7 @@ class BotRow:
             default_trust=coerced_trust,
             owner_users=parsed_owner,
             trusted_users=parsed_trusted,
+            trusted_roles=parsed_roles,
             auto_thread=bool(auto_thread),
             thread_hot_hours=coerced_hours,
             updated_at=updated_at,

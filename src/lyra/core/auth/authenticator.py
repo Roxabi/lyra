@@ -14,6 +14,7 @@ from lyra.core.auth.identity import Identity
 from lyra.core.auth.trust import TrustLevel
 
 if TYPE_CHECKING:
+    from lyra.core.stores.bot_store_protocol import BotStoreProtocol
     from lyra.infrastructure.stores.auth_store import AuthStore
     from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 
@@ -241,46 +242,39 @@ class Authenticator:
         )
 
     @classmethod
-    def from_bot_config(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
+    def from_bot_store(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         cls,
-        raw: dict,
-        section: str,
+        platform: str,
         bot_id: str,
+        bot_store: BotStoreProtocol,
         store: AuthStore | None = None,
         admin_user_ids: frozenset[str] = frozenset(),
         alias_store: IdentityAliasStore | None = None,
     ) -> Authenticator | None:
-        auth_block: dict = raw.get("auth", {})
-        bots_key = f"{section}_bots"
-        bots_list: list[dict] = auth_block.get(bots_key, [])
-
-        section_cfg: dict | None = None
-        for entry in bots_list:
-            if entry.get("bot_id") == bot_id:
-                section_cfg = entry
-                break
-
-        if section_cfg is None:
-            if section == "cli":
-                return cls._cli_sentinel(
-                    store=None,
-                    admin_user_ids=admin_user_ids,
-                    alias_store=alias_store,
-                )
+        if platform == "cli":
+            return cls._cli_sentinel(
+                store=None,
+                admin_user_ids=admin_user_ids,
+                alias_store=alias_store,
+            )
+        row = bot_store.get(platform, bot_id)
+        if row is None:
             log.warning(
-                "Missing [auth.%s] or [[auth.%s]] entry for bot_id=%r"
+                "Missing bot config for %s bot_id=%r"
                 " -- %s adapter bot_id=%r will be disabled",
-                section,
-                bots_key,
+                platform,
                 bot_id,
-                section,
+                platform,
                 bot_id,
             )
             return None
-
+        section_cfg = {
+            "default": row.default_trust,
+            "trusted_roles": row.trusted_roles,
+        }
         return cls._build_from_section_cfg(
             section_cfg,
-            context_label=f"auth config for {section} bot_id={bot_id!r}",
+            context_label=f"bot store for {platform} bot_id={bot_id!r}",
             store=store,
             admin_user_ids=admin_user_ids,
             alias_store=alias_store,

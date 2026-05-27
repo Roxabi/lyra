@@ -60,6 +60,7 @@ class CommandRouter:
         patterns: dict[str, bool] | None = None,
         pattern_configs: dict[str, dict] | None = None,
         session_driver: object = None,
+        base_dir: Path | None = None,
     ) -> None:
         cfg: RouterConfig = config if config is not None else RouterConfig()
         # Allow individual param overrides for backward compat
@@ -82,6 +83,10 @@ class CommandRouter:
         )
         self._passthroughs: set[str] = set()
         self._session_driver: object = session_driver or cfg.session_driver
+        from pathlib import Path
+        self._base_dir = (
+            base_dir if base_dir is not None else Path.home()
+        )
         self._session_handlers: dict[str, SessionCommandEntry] = {}
         self._builtin_handlers = self._build_builtin_handlers()
         check_command_conflicts(
@@ -208,10 +213,14 @@ class CommandRouter:
             "/text": _text,
             "/clear": lambda a, m, p: workspace_commands.cmd_clear(p),
             "/new": lambda a, m, p: workspace_commands.cmd_clear(p),
-            "/folder": lambda a, m, p: workspace_commands.cmd_folder(m, a, p),
-            "/cd": lambda a, m, p: workspace_commands.cmd_folder(m, a, p),
+            "/folder": lambda a, m, p: workspace_commands.cmd_folder(
+                m, a, p, self._base_dir
+            ),
+            "/cd": lambda a, m, p: workspace_commands.cmd_folder(
+                m, a, p, self._base_dir
+            ),
             "/workspace": lambda a, m, p: workspace_commands.cmd_workspace(
-                m, a, p, self._workspaces
+                m, a, p, self._workspaces, self._base_dir
             ),
             "/session": lambda a, m, p: session_commands.cmd_session(m, a, p),
         }

@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import importlib
 import os
 import re
 import subprocess
+from pathlib import Path
 
 import typer
+
+from lyra.infrastructure.stores.bot_store import BotStore
 
 bot_app = typer.Typer(
     name="bot", help="Manage bot credentials stored as Podman secrets."
@@ -17,6 +21,18 @@ bot_app.add_typer(secret_app, name="secret")
 
 _BOT_ID_RE = re.compile(r"[A-Za-z0-9_-]+")
 _VALID_PLATFORMS = ("telegram", "discord")
+
+
+def _get_db_path() -> Path:
+    return (
+        Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))) / "config.db"
+    )
+
+
+async def _connect_bot_store() -> BotStore:
+    store = BotStore(db_path=_get_db_path())
+    await store.connect()
+    return store
 
 
 def _validate_platform(platform: str) -> None:
@@ -101,3 +117,6 @@ def list_() -> None:
         text=True,
     )
     typer.echo(result.stdout)
+
+
+importlib.import_module("lyra.agent_cmd.bots")  # noqa: E402 — DEBT:module-level-patch-fixtures — intentional: registers subcommands after bot_app is defined

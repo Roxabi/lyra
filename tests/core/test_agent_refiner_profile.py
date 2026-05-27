@@ -227,7 +227,7 @@ class TestRefineUnknownAgent:
 
         # Act + Assert
         with pytest.raises(ValueError, match="not found"):
-            refiner.apply_patch(patch)
+            asyncio.run(refiner.apply_patch(patch))
 
 
 # ---------------------------------------------------------------------------
@@ -246,7 +246,7 @@ class TestApplyPatch:
         patch = RefinementPatch(fields={"model": "claude-opus-4-6"})
 
         # Act
-        updated = refiner.apply_patch(patch)
+        updated = asyncio.run(refiner.apply_patch(patch))
 
         # Assert
         assert updated.model == "claude-opus-4-6"
@@ -261,7 +261,7 @@ class TestApplyPatch:
 
         # Act + Assert
         with pytest.raises(ValueError, match="not found"):
-            refiner.apply_patch(patch)
+            asyncio.run(refiner.apply_patch(patch))
 
 
 # ---------------------------------------------------------------------------

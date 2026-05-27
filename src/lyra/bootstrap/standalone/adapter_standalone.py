@@ -115,7 +115,24 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
                     queue_group=adapter_outbound(platform_enum.value, bot_id),
                 )
                 adapter._outbound_listener = listener
-                await adapter.astart()
+                try:
+                    await adapter.astart()
+                except Exception:
+                    await close_safely(
+                        "tg-adapter-start",
+                        adapter.close(),
+                        inbound_bus.stop(),
+                    )
+                    await close_safely(
+                        "tg-wired",
+                        *[
+                            coro
+                            for a, ibus, tl in wired
+                            for coro in (a.close(), ibus.stop(), tl.stop())
+                        ],
+                    )
+                    await tg_turn_store.close()
+                    raise
 
                 from lyra.adapters.telegram.telegram import _telegram_scope_resolver
                 from lyra.adapters.telegram.telegram_outbound import _typing_worker
@@ -132,9 +149,12 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
                 )
                 await tg_typing_listener.start()
 
-                wired.append((adapter, inbound_bus, tg_typing_listener))
+                wired.append(
+                    (adapter, inbound_bus, tg_typing_listener)
+                )
                 log.info(
-                    "adapter_standalone: Telegram bot_id=%s ready (NATS mode)", bot_id
+                    "adapter_standalone: Telegram bot_id=%s ready (NATS mode)",
+                    bot_id,
                 )
 
             if not wired:
@@ -255,7 +275,25 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
                     queue_group=adapter_outbound(platform_enum.value, bot_id),
                 )
                 adapter_dc._outbound_listener = listener_dc
-                await adapter_dc.astart()
+                try:
+                    await adapter_dc.astart()
+                except Exception:
+                    await close_safely(
+                        "dc-adapter-start",
+                        adapter_dc.close(),
+                        inbound_bus_dc.stop(),
+                    )
+                    await close_safely(
+                        "dc-wired",
+                        *[
+                            coro
+                            for a, _tok, ibus, tl in wired_dc
+                            for coro in (a.close(), ibus.stop(), tl.stop())
+                        ],
+                    )
+                    await dc_thread_store.close()
+                    await dc_turn_store.close()
+                    raise
 
                 from lyra.adapters.discord.adapter import _discord_scope_resolver
                 from lyra.adapters.discord.discord_outbound import (
@@ -274,9 +312,12 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
                 )
                 await dc_typing_listener.start()
 
-                wired_dc.append((adapter_dc, token, inbound_bus_dc, dc_typing_listener))
+                wired_dc.append(
+                    (adapter_dc, token, inbound_bus_dc, dc_typing_listener)
+                )
                 log.info(
-                    "adapter_standalone: Discord bot_id=%s ready (NATS mode)", bot_id
+                    "adapter_standalone: Discord bot_id=%s ready (NATS mode)",
+                    bot_id,
                 )
 
             if not wired_dc:

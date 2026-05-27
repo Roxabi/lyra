@@ -83,10 +83,9 @@ class CommandRouter:
         )
         self._passthroughs: set[str] = set()
         self._session_driver: object = session_driver or cfg.session_driver
+        from pathlib import Path
         self._base_dir = (
-            base_dir if base_dir is not None else (
-                runtime_config_path.parent if runtime_config_path else None
-            )
+            base_dir if base_dir is not None else Path.home()
         )
         self._session_handlers: dict[str, SessionCommandEntry] = {}
         self._builtin_handlers = self._build_builtin_handlers()

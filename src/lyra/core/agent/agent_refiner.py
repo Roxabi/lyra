@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import json
 import shutil
-import subprocess
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -107,8 +107,8 @@ class RefinementPatch:
 class TerminalIO:
     """Simple terminal I/O wrapper (injectable for tests)."""
 
-    def prompt(self, text: str) -> str:
-        return input(text)
+    async def prompt(self, text: str) -> str:
+        return await asyncio.to_thread(input, text)
 
     def print(self, text: str) -> None:
         print(text)
@@ -117,7 +117,7 @@ class TerminalIO:
 class LlmProvider(Protocol):
     """Protocol for any LLM backend used by AgentRefiner."""
 
-    def chat(self, system: str, messages: list[dict[str, Any]]) -> str:
+    async def chat(self, system: str, messages: list[dict[str, Any]]) -> str:
         """Single LLM call returning assistant response text."""
         ...
 
@@ -125,7 +125,7 @@ class LlmProvider(Protocol):
 class CliLlmProvider:
     """LlmProvider backed by the Claude CLI (`claude --print`)."""
 
-    def chat(self, system: str, messages: list[dict[str, Any]]) -> str:
+    async def chat(self, system: str, messages: list[dict[str, Any]]) -> str:
         """Shell out to `claude --print` and return stdout."""
         parts = [system] if system else []
         for msg in messages:
@@ -134,16 +134,19 @@ class CliLlmProvider:
             parts.append(f"{role}: {content}" if role else content)
         prompt = "\n\n".join(parts)
 
-        result = subprocess.run(
-            ["claude", "--print", prompt],
-            capture_output=True,
-            text=True,
+        proc = await asyncio.create_subprocess_exec(
+            "claude",
+            "--print",
+            prompt,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
         )
-        if result.returncode != 0:
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
             raise RuntimeError(
-                f"claude CLI exited {result.returncode}: {result.stderr.strip()}"
+                f"claude CLI exited {proc.returncode}: {stderr.decode().strip()}"
             )
-        return result.stdout.strip()
+        return stdout.decode().strip()
 
 
 # ---------------------------------------------------------------------------
@@ -196,7 +199,9 @@ class AgentRefiner:
     # Interactive session
     # ------------------------------------------------------------------
 
-    def run_session(self, io: TerminalIO, *, max_turns: int = 20) -> RefinementPatch:
+    async def run_session(
+        self, io: TerminalIO, *, max_turns: int = 20
+    ) -> RefinementPatch:
         """LLM-driven Q&A loop. Returns patch on user confirmation.
 
         Flow:
@@ -219,7 +224,7 @@ class AgentRefiner:
 
         # Initial greeting
         initial_msg = "Hello, I'd like to refine this agent's profile."
-        initial_response = driver.chat(
+        initial_response = await driver.chat(
             system, [{"role": "user", "content": initial_msg}]
         )
         io.print(initial_response)
@@ -229,7 +234,7 @@ class AgentRefiner:
         turn = 0
         while turn < max_turns:
             turn += 1
-            user_input = io.prompt("\nYou: ").strip()
+            user_input = (await io.prompt("\nYou: ")).strip()
             if not user_input:
                 turn -= 1  # don't count empty prompts against the limit
                 continue
@@ -239,7 +244,7 @@ class AgentRefiner:
             waiting_for_confirmation = user_input.lower().strip(".!") in _CONFIRM_WORDS
 
             messages.append({"role": "user", "content": user_input})
-            response = driver.chat(system, messages)
+            response = await driver.chat(system, messages)
             io.print(f"\nAssistant: {response}")
             messages.append({"role": "assistant", "content": response})
 
@@ -258,22 +263,14 @@ class AgentRefiner:
     # Patch apply
     # ------------------------------------------------------------------
 
-    def apply_patch(self, patch: RefinementPatch) -> "AgentRow":
-        """Apply patch to agent row and upsert to DB. Returns updated AgentRow.
-
-        Internally calls asyncio.run() — consistent with the sync CLI pattern.
-        """
-        import asyncio
-
-        async def _apply() -> "AgentRow":
-            row = self._store.get(self._name)
-            if row is None:
-                raise ValueError(f"Agent {self._name!r} not found in DB")
-            updated = patch.to_agent_row(row)
-            await self._store.upsert(updated)
-            return updated
-
-        return asyncio.run(_apply())
+    async def apply_patch(self, patch: RefinementPatch) -> "AgentRow":
+        """Apply patch to agent row and upsert to DB. Returns updated AgentRow."""
+        row = self._store.get(self._name)
+        if row is None:
+            raise ValueError(f"Agent {self._name!r} not found in DB")
+        updated = patch.to_agent_row(row)
+        await self._store.upsert(updated)
+        return updated
 
     # ------------------------------------------------------------------
     # Private helpers

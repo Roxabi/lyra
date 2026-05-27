@@ -27,7 +27,13 @@ class TestBotInitHelp:
     """`lyra bot init --help`"""
 
     def test_help_shows_force_flag(self) -> None:
-        result = runner.invoke(app, ["bot", "init", "--help"], env={"COLUMNS": "80"})
+        # NO_COLOR=1 disables Rich's ANSI styling so '--force' is a contiguous
+        # literal in result.output instead of being split by escape codes.
+        result = runner.invoke(
+            app,
+            ["bot", "init", "--help"],
+            env={"COLUMNS": "200", "NO_COLOR": "1", "TERM": "dumb"},
+        )
         assert result.exit_code == 0
         assert "--force" in result.output
 

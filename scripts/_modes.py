@@ -17,12 +17,21 @@ from typing import Callable, cast
 from scripts._acl_models import ExternalDeploy, LoadedMatrix
 from scripts._loader import load_matrix
 from scripts._nk import (
-    FakeNkeyProvider,
     NkeyProvider,
     SubprocessNkeyProvider,
     ensure_nk_or_exit,
 )
 from scripts._renderer import parse_auth_conf, render_auth_conf
+
+# Test-only entry point: FakeNkeyProvider lives in tests/fakes so production
+# code never imports it unconditionally.  Guarded by LYRA_TEST_MODE at runtime.
+FakeNkeyProvider: NkeyProvider | None = None  # type: ignore[no-redef]
+try:
+    from tests.fakes.nkey_provider import FakeNkeyProvider as _FakeNkeyProvider
+
+    FakeNkeyProvider = _FakeNkeyProvider  # type: ignore[assignment]
+except ImportError:
+    pass
 
 _provider_factory: Callable[[], NkeyProvider] = SubprocessNkeyProvider
 
@@ -35,6 +44,12 @@ def _get_provider() -> NkeyProvider:
             print(
                 "error: NKEY_PROVIDER=fake requires LYRA_TEST_MODE=1"
                 " — refusing to generate fake seeds outside test context",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        if FakeNkeyProvider is None:
+            print(
+                "error: FakeNkeyProvider not available — tests package not importable",
                 file=sys.stderr,
             )
             sys.exit(1)

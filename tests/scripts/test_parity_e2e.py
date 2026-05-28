@@ -175,8 +175,9 @@ def test_hub_identity_in_auth_conf(rendered_auth_conf: Path) -> None:
 def test_retired_identity_excluded(tmp_path: Path) -> None:
     """Render with v2-with-retired fixture; 'old-worker' must not appear."""
     from scripts._loader import load_matrix
-    from scripts._nk import FakeNkeyProvider
     from scripts._renderer import render_auth_conf
+
+    from tests.fakes.nkey_provider import FakeNkeyProvider
 
     matrix_path = FIXTURES_DIR / "v2-with-retired.json"
     matrix = load_matrix(matrix_path)

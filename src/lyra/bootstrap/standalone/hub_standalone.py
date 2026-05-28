@@ -7,38 +7,29 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import Any
 
 from lyra.bootstrap.auth_seeding import build_bot_auths, seed_grants_from_bots
 from lyra.bootstrap.bootstrap_stores import open_stores
 from lyra.bootstrap.factory.agent_factory import _resolve_bot_agent_map
 from lyra.bootstrap.factory.config import MessageIndexConfig
-from lyra.bootstrap.factory.hub_builder import (
-    build_hub,
-    build_inbound_bus,
-    build_llm_client,
-    register_agents,
-)
-from lyra.bootstrap.factory.llm_overlay import init_nats_llm
-from lyra.bootstrap.factory.voice_overlay import init_nats_stt, init_nats_tts
-from lyra.bootstrap.infra.health import create_health_app
+from lyra.bootstrap.factory.hub_builder import _build_hub_and_wire, build_inbound_bus
+from lyra.bootstrap.infra.health import create_health_server
 from lyra.bootstrap.infra.lockfile import acquire_lockfile, release_lockfile
 from lyra.bootstrap.infra.notify import notify_startup
-from lyra.bootstrap.lifecycle.lifecycle_helpers import setup_signal_handlers
+from lyra.bootstrap.lifecycle.lifecycle_helpers import (
+    _freshness_drivers,
+    _on_nats_reconnect,
+    _run_shutdown,
+    setup_signal_handlers,
+)
 from lyra.bootstrap.standalone.hub_standalone_helpers import (
+    _build_active_list,
+    _create_hub_tasks,
     build_pairing_manager,
     load_agent_configs,
-    shutdown_hub_runtime,
     start_mint_failure_subscriber,
 )
-from lyra.bootstrap.wiring.nats_wiring import (
-    NatsDcWiringDeps,
-    NatsTgWiringDeps,
-    wire_nats_discord_proxies,
-    wire_nats_telegram_proxies,
-)
 from lyra.core.messaging.metrics import log_contracts_version
-from lyra.infrastructure.audit import JetStreamAuditSink
 from roxabi_nats import nats_connect
 from roxabi_nats.connect import scrub_nats_url
 from roxabi_nats.readiness import announce_hub_ready, start_readiness_responder
@@ -70,19 +61,12 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
     acquire_lockfile()
     log_contracts_version()
 
-    # Drivers built later are registered here so the reconnect callback can
-    # clear their stale freshness timestamps after a NATS reconnect.
-    _freshness_drivers: list[Any] = []
-
-    async def _on_nats_reconnect() -> None:
-        log.info("NATS reconnected — clearing worker freshness caches")
-        for _d in _freshness_drivers:
-            if hasattr(_d, "_worker_freshness"):
-                _d._worker_freshness.clear()
-
+    _freshness_drivers_list = _freshness_drivers()
     try:
         nc = await nats_connect(
-            nats_url, identity_name="hub", reconnected_cb=_on_nats_reconnect
+            nats_url,
+            identity_name="hub",
+            reconnected_cb=_on_nats_reconnect(_freshness_drivers_list),
         )
         log.info("Connected to NATS at %s", scrub_nats_url(nats_url))
     except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
@@ -144,92 +128,22 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
             admin_user_ids=admin_user_ids,
         )
 
-        # STT / TTS via NATS clients (hub talks to voicecli adapters over NATS)
-        stt_service = init_nats_stt(nc)
-        await stt_service.start()
-        tts_service = init_nats_tts(nc)
-        await tts_service.start()
-        nats_llm_client = await init_nats_llm(nc)
-
-        from lyra.infrastructure.resume_publisher_adapter import TurnPublisherAdapter
-        from lyra.transport.turn_publisher import TurnPublisher
-        from lyra.transport.typing_publisher import TypingPublisher
-
-        js = nc.jetstream()
-        turn_publisher = TurnPublisher(js)
-        adapter = TurnPublisherAdapter(turn_publisher, stores.turn)
-
-        hub = build_hub(
+        hub_result = await _build_hub_and_wire(
+            nc,
             raw_config,
+            stores,
             circuit_registry=circuit_registry,
+            bot_agent_map=bot_agent_map,
             msg_manager=msg_manager,
-            pairing_manager=pm,
-            stt_service=stt_service,
-            tts_service=tts_service,
-            prefs_store=stores.prefs,
+            pm=pm,
             inbound_bus=inbound_bus,
             inbound_bus_cfg=inbound_bus_cfg,
-            resume_publisher=adapter,
+            freshness_drivers_list=_freshness_drivers_list,
+            agent_configs=agent_configs,
+            tg_bot_auths=tg_bot_auths,
+            dc_bot_auths=dc_bot_auths,
         )
-        hub.set_turn_store(stores.turn)
-        hub.set_message_index(stores.message_index)
-        hub.set_turn_publisher(turn_publisher)
-        if hub._turn_publisher is None:
-            raise RuntimeError("TurnPublisher not wired — startup check failed")
-
-        # T1: instantiate TypingPublisher (flag-off no-op via LYRA_TYPING_ENABLED).
-        # T2 will wire it into Pool.process_one() scope contexts.
-        typing_publisher = TypingPublisher(nc)
-        hub.set_typing_publisher(typing_publisher)
-
-        audit_sink = JetStreamAuditSink()
-        await audit_sink.provision(nc)
-
-        cli_nats_driver = await build_llm_client(nc)
-        cli_nats_driver.set_turn_store(stores.turn)
-        hub.cli_pool = None  # CliPool now runs in lyra-clipool container
-
-        # Register drivers that hold _worker_freshness so the reconnect callback
-        # clears stale timestamps after a NATS reconnect (see _on_nats_reconnect).
-        _freshness_drivers.extend(
-            d for d in [cli_nats_driver, nats_llm_client] if d is not None
-        )
-
-        register_agents(
-            hub,
-            agent_configs,
-            None,
-            circuit_registry,
-            msg_manager,
-            stt_service,
-            tts_service,
-            stores.agent,
-            raw_config,
-            nats_llm_client,
-            cli_nats_driver=cli_nats_driver,
-        )
-
-        # Wire each (platform, bot_id) to a NatsChannelProxy + OutboundDispatcher
-        tg_proxies, tg_dispatchers = wire_nats_telegram_proxies(
-            NatsTgWiringDeps(
-                hub=hub,
-                nc=nc,
-                tg_bot_auths=tg_bot_auths,
-                bot_agent_map=bot_agent_map,
-                circuit_registry=circuit_registry,
-            )
-        )
-        dc_proxies, dc_dispatchers = wire_nats_discord_proxies(
-            NatsDcWiringDeps(
-                hub=hub,
-                nc=nc,
-                dc_bot_auths=dc_bot_auths,
-                bot_agent_map=bot_agent_map,
-                circuit_registry=circuit_registry,
-            )
-        )
-        proxies = tg_proxies + dc_proxies
-        dispatchers = tg_dispatchers + dc_dispatchers
+        hub, proxies, dispatchers, cli_nats_driver, nats_llm_client = hub_result
 
         # Lifecycle: start buses, dispatchers, hub, health server
         await hub.inbound_bus.start()
@@ -241,39 +155,15 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
         await announce_hub_ready(nc)
         readiness_sub = await start_readiness_responder(nc, [hub.inbound_bus])
 
-        import uvicorn
-
-        health_port = int(os.environ.get("LYRA_HEALTH_PORT", "8443"))
-        health_host = os.environ.get("LYRA_HEALTH_HOST", "127.0.0.1")
-        health_app = create_health_app(hub, nc=nc)
-        health_config = uvicorn.Config(
-            health_app, host=health_host, port=health_port, log_level="warning"
-        )
-        health_server = uvicorn.Server(health_config)
+        health_server, health_port = create_health_server(hub, nc=nc)
 
         stop = _stop if _stop is not None else asyncio.Event()
         if _stop is None:
             setup_signal_handlers(stop)
 
-        from lyra.bootstrap.factory.utils import watchdog
+        tasks = _create_hub_tasks(hub, health_server)
 
-        tasks = [
-            asyncio.create_task(hub.run(), name="hub"),
-            asyncio.create_task(health_server.serve(), name="health"),
-        ]
-
-        if hub._event_bus is not None:
-            from lyra.core.hub.pipeline.audit_consumer import AuditConsumer
-
-            _audit_queue = hub._event_bus.subscribe()
-            _audit_consumer = AuditConsumer(_audit_queue)
-            tasks.append(
-                asyncio.create_task(_audit_consumer.run(), name="audit-consumer")
-            )
-
-        active = [f"telegram:{c.bot_id}" for c, _ in tg_bot_auths] + [
-            f"discord:{c.bot_id}" for c, _ in dc_bot_auths
-        ]
+        active = _build_active_list(tg_bot_auths, dc_bot_auths)
         log.info(
             "Hub standalone started — NATS proxies: %s, health on :%d.",
             ", ".join(active) if active else "none",
@@ -282,15 +172,10 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
 
         await notify_startup(active, health_port)
 
-        await watchdog(tasks, stop)
-
-        log.info("Shutdown signal received — stopping...")
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        if mint_failure_sub is not None:
-            await mint_failure_sub.stop()
-        await shutdown_hub_runtime(
+        await _run_shutdown(
+            tasks,
+            stop,
+            mint_failure_sub,
             hub,
             readiness_sub=readiness_sub,
             dispatchers=dispatchers,

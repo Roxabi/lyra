@@ -1,6 +1,10 @@
 [importlinter]
-root_package = lyra
-source_root = src
+root_packages =
+    lyra
+    tests
+source_roots =
+    src
+    .
 include_external_packages = True
 
 [importlinter:contract:clean-architecture-layers]
@@ -136,4 +140,13 @@ source_modules =
     lyra.adapters
 forbidden_modules =
     lyra.infrastructure.stores.bot_store
+allow_indirect_imports = true
+
+[importlinter:contract:tests-fakes-isolation]
+name = Production code must not import tests.fakes
+type = forbidden
+source_modules =
+    lyra
+forbidden_modules =
+    tests.fakes
 allow_indirect_imports = true

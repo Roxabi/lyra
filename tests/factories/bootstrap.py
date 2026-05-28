@@ -12,6 +12,7 @@ import pytest
 import lyra.__main__ as main_mod
 import lyra.bootstrap.bootstrap_stores as stores_mod
 import lyra.bootstrap.factory.agent_factory as agent_factory_mod
+import lyra.bootstrap.factory.hub_builder as hub_builder_mod
 import lyra.bootstrap.factory.unified as unified_mod
 import lyra.bootstrap.factory.wiring_helpers as wiring_helpers_mod
 import lyra.bootstrap.wiring.bootstrap_wiring as wiring_mod
@@ -117,7 +118,7 @@ def _patch_nats_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_audit_sink.provision = AsyncMock()
     fake_audit_sink.emit = AsyncMock()
     monkeypatch.setattr(
-        wiring_helpers_mod, "JetStreamAuditSink", lambda: fake_audit_sink
+        hub_builder_mod, "JetStreamAuditSink", lambda: fake_audit_sink
     )
     monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
     monkeypatch.setenv("LYRA_HEALTH_PORT", "0")
@@ -188,10 +189,10 @@ def patch_bootstrap_common(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
             result[("discord", bot_cfg.bot_id)] = "lyra_default"
         return result
 
-    monkeypatch.setattr(wiring_helpers_mod, "_resolve_bot_agent_map", _fake_resolve)
+    monkeypatch.setattr(agent_factory_mod, "_resolve_bot_agent_map", _fake_resolve)
 
     monkeypatch.setattr(
-        wiring_helpers_mod,
+        agent_factory_mod,
         "agent_row_to_config",
         lambda row, **kw: Agent(
             name=row.name if hasattr(row, "name") else "lyra_default",
@@ -239,7 +240,7 @@ def patch_all(
             super().__init__(**kwargs)
             captured.append(self)
 
-    monkeypatch.setattr(wiring_helpers_mod, "Hub", CapturingHub)
+    monkeypatch.setattr(hub_builder_mod, "Hub", CapturingHub)
 
     class CapturingDcAdapter(_FakeDcAdapter):
         def __init__(self, **kwargs: object) -> None:
@@ -305,7 +306,7 @@ def patch_all(
         lambda platform, bot_id: ("fake-token", "fake-secret"),
     )
     monkeypatch.setattr(
-        wiring_helpers_mod,
+        agent_factory_mod,
         "agent_row_to_config",
         lambda row, **kw: Agent(
             name=row.name,

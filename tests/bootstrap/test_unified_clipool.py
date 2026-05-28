@@ -41,15 +41,20 @@ class TestUnifiedLlmClientWired:
         by unified.py).  We inspect both modules so the test does not regress
         if the helper is inlined back into unified.py in a future change.
         """
+        import lyra.bootstrap.factory.hub_builder as hub_builder_mod
         import lyra.bootstrap.factory.unified as unified_mod
         import lyra.bootstrap.factory.wiring_helpers as helpers_mod
 
         importlib.reload(unified_mod)
-        combined = inspect.getsource(unified_mod) + inspect.getsource(helpers_mod)
+        combined = (
+            inspect.getsource(unified_mod)
+            + inspect.getsource(helpers_mod)
+            + inspect.getsource(hub_builder_mod)
+        )
 
         # Assert
         assert "build_llm_client" in combined, (
-            "Neither unified.py nor wiring_helpers.py references "
+            "Neither unified.py, wiring_helpers.py, nor hub_builder.py references "
             "build_llm_client — T22 should add LLM client wiring"
         )
 
@@ -60,15 +65,20 @@ class TestUnifiedLlmClientWired:
         by unified.py).  We inspect both modules so the test does not regress
         if the helper is inlined back into unified.py in a future change.
         """
+        import lyra.bootstrap.factory.hub_builder as hub_builder_mod
         import lyra.bootstrap.factory.unified as unified_mod
         import lyra.bootstrap.factory.wiring_helpers as helpers_mod
 
         importlib.reload(unified_mod)
-        combined = inspect.getsource(unified_mod) + inspect.getsource(helpers_mod)
+        combined = (
+            inspect.getsource(unified_mod)
+            + inspect.getsource(helpers_mod)
+            + inspect.getsource(hub_builder_mod)
+        )
 
         # Assert
         assert "CliPoolNatsWorker" in combined, (
-            "Neither unified.py nor wiring_helpers.py references "
+            "Neither unified.py, wiring_helpers.py, nor hub_builder.py references "
             "CliPoolNatsWorker — T22 should spawn it as an asyncio task"
         )
 
@@ -104,18 +114,23 @@ class TestUnifiedCliPoolNatsWorkerInstantiated:
             instantiated.append(inst)
             return inst
 
+        import lyra.bootstrap.factory.hub_builder as hub_builder_mod
         import lyra.bootstrap.factory.wiring_helpers as helpers_mod
 
-        # Patch at the module boundary where unified.py resolves the class
+        # Patch at the module boundary where hub_builder.py resolves the class
         with patch.object(
-            unified_mod,
+            hub_builder_mod,
             "CliPoolNatsWorker",
             side_effect=track_instantiation,
             create=True,
         ):
             # We do NOT call _bootstrap_unified (too heavy) —
             # instead verify the source contract via inspection.
-            combined = inspect.getsource(unified_mod) + inspect.getsource(helpers_mod)
+            combined = (
+                inspect.getsource(unified_mod)
+                + inspect.getsource(helpers_mod)
+                + inspect.getsource(hub_builder_mod)
+            )
 
         # Assert — post-T22 the class is referenced in the unified bootstrap
         assert "CliPoolNatsWorker" in combined, (

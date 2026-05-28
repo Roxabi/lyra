@@ -54,7 +54,7 @@ class TestBuildCliPoolAuditSinkWiring:
 
 class TestJetStreamAuditSinkBootstrapIntegration:
     async def test_provision_is_called_before_cli_pool_in_standalone(self) -> None:
-        """provision() must be called before build_llm_client in hub_standalone."""
+        """provision() must be called before build_llm_client in hub_builder."""
         call_order: list[str] = []
 
         async def _fake_provision(*_: object) -> None:
@@ -64,21 +64,21 @@ class TestJetStreamAuditSinkBootstrapIntegration:
             call_order.append("build_llm_client")
 
         with patch(
-            "lyra.bootstrap.standalone.hub_standalone.JetStreamAuditSink"
+            "lyra.bootstrap.factory.hub_builder.JetStreamAuditSink"
         ) as MockSink:
             mock_sink = MagicMock()
             mock_sink.provision = _fake_provision
             MockSink.return_value = mock_sink
 
             with patch(
-                "lyra.bootstrap.standalone.hub_standalone.build_llm_client",
+                "lyra.bootstrap.factory.hub_builder.build_llm_client",
                 side_effect=_fake_build_llm_client,
             ):
                 # Import the module — both symbols are referenced at module level
-                import lyra.bootstrap.standalone.hub_standalone as hub_mod
+                import lyra.bootstrap.factory.hub_builder as hub_builder_mod
 
                 # Verify structural presence — imported at module level
-                assert hasattr(hub_mod, "JetStreamAuditSink")
+                assert hasattr(hub_builder_mod, "JetStreamAuditSink")
 
         # If both were called, provision must precede build_llm_client
         _key = "build_llm_client"

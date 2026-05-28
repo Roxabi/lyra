@@ -9,18 +9,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+import lyra.bootstrap.factory.agent_factory as agent_factory_mod
+import lyra.bootstrap.factory.hub_builder as hub_builder_mod
 import lyra.bootstrap.factory.wiring_helpers as wiring_helpers_mod
+from lyra.bootstrap.factory.agent_factory import _init_bot_auths_and_agents
+from lyra.bootstrap.factory.hub_builder import _build_hub, _init_clipool
 from lyra.bootstrap.factory.wiring_helpers import (
-    BotAuthBundle,
-    BuildHubDeps,
-    CliPoolBundle,
-    RegisterAgentsDeps,
-    VoiceBundle,
-    WireAdaptersDeps,
-    WiredAdapters,
-    _build_hub,
-    _init_bot_auths_and_agents,
-    _init_clipool,
     _init_inbound_bus,
     _init_pairing,
     _init_voice_services,
@@ -29,6 +23,15 @@ from lyra.bootstrap.factory.wiring_helpers import (
     _run_clipool_worker_task,
     _seed_auth,
     _wire_adapters,
+)
+from lyra.bootstrap.types import (
+    BotAuthBundle,
+    BuildHubDeps,
+    CliPoolBundle,
+    RegisterAgentsDeps,
+    VoiceBundle,
+    WireAdaptersDeps,
+    WiredAdapters,
 )
 from lyra.core.agent import Agent
 from lyra.core.agent.agent_config import ModelConfig
@@ -151,7 +154,7 @@ class TestInitPairing:
         )
 
         # Act
-        result = await _init_pairing({}, [], Path("/tmp"), MagicMock())
+        result = await _init_pairing({}, frozenset(), Path("/tmp"), MagicMock())
 
         # Assert
         assert result is None
@@ -173,7 +176,9 @@ class TestInitPairing:
         monkeypatch.setattr(wiring_helpers_mod, "set_pairing_manager", mock_set_pm)
 
         # Act
-        result = await _init_pairing({}, ["tg:user:123"], Path("/tmp"), MagicMock())
+        result = await _init_pairing(
+            {}, frozenset(["tg:user:123"]), Path("/tmp"), MagicMock()
+        )
 
         # Assert
         assert result is mock_pm
@@ -195,7 +200,7 @@ class TestInitPairing:
         monkeypatch.setattr(wiring_helpers_mod, "set_pairing_manager", MagicMock())
 
         with caplog.at_level(logging.WARNING):
-            result = await _init_pairing({}, [], Path("/tmp"), MagicMock())
+            result = await _init_pairing({}, frozenset(), Path("/tmp"), MagicMock())
 
         assert result is mock_pm
         assert "[admin].user_ids is empty" in caplog.text
@@ -276,7 +281,7 @@ class TestInitBotAuthsAndAgents:
         circuit_reg = CircuitRegistry()
         circuit_reg.register(CircuitBreaker(name="claude-cli"))
         monkeypatch.setattr(
-            wiring_helpers_mod,
+            agent_factory_mod,
             "_load_circuit_config",
             lambda raw: (circuit_reg, frozenset(["tg:user:123"])),
         )
@@ -286,26 +291,25 @@ class TestInitBotAuthsAndAgents:
         dc_cfg = MagicMock()
         dc_cfg.bots = []
         monkeypatch.setattr(
-            wiring_helpers_mod,
+            agent_factory_mod,
             "load_multibot_config",
             lambda raw: (tg_cfg, dc_cfg),
         )
 
         mock_tg_auth = MagicMock()
         monkeypatch.setattr(
-            wiring_helpers_mod,
-            "_build_bot_auths",
+            "lyra.bootstrap.wiring.bootstrap_wiring._build_bot_auths",
             lambda *a, **kw: ([(tg_cfg.bots[0], mock_tg_auth)], []),
         )
 
         monkeypatch.setattr(
-            wiring_helpers_mod,
+            agent_factory_mod,
             "_resolve_bot_agent_map",
             AsyncMock(return_value={("telegram", "main"): "lyra_default"}),
         )
 
         monkeypatch.setattr(
-            wiring_helpers_mod,
+            agent_factory_mod,
             "_build_agent_overrides",
             lambda raw, name: MagicMock(model_dump=lambda: {}),
         )
@@ -317,7 +321,7 @@ class TestInitBotAuthsAndAgents:
             llm_config=ModelConfig(backend="claude-cli"),
         )
         monkeypatch.setattr(
-            wiring_helpers_mod,
+            agent_factory_mod,
             "agent_row_to_config",
             lambda row, **kw: fake_agent,
         )
@@ -327,7 +331,7 @@ class TestInitBotAuthsAndAgents:
         def _load_messages(language: str) -> MagicMock:
             return mock_msg_mgr
 
-        monkeypatch.setattr(wiring_helpers_mod, "_load_messages", _load_messages)
+        monkeypatch.setattr(agent_factory_mod, "_load_messages", _load_messages)
 
         stores = MagicMock()
         stores.agent.get = MagicMock(return_value=MagicMock(name="lyra_default"))
@@ -351,18 +355,17 @@ class TestInitBotAuthsAndAgents:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
-            wiring_helpers_mod,
+            agent_factory_mod,
             "_load_circuit_config",
             lambda raw: (MagicMock(), frozenset()),
         )
         monkeypatch.setattr(
-            wiring_helpers_mod,
+            agent_factory_mod,
             "load_multibot_config",
             lambda raw: (MagicMock(bots=[]), MagicMock(bots=[])),
         )
         monkeypatch.setattr(
-            wiring_helpers_mod,
-            "_build_bot_auths",
+            "lyra.bootstrap.wiring.bootstrap_wiring._build_bot_auths",
             lambda *a, **kw: ([], []),
         )
 
@@ -374,22 +377,21 @@ class TestInitBotAuthsAndAgents:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
-            wiring_helpers_mod,
+            agent_factory_mod,
             "_load_circuit_config",
             lambda raw: (MagicMock(), frozenset()),
         )
         monkeypatch.setattr(
-            wiring_helpers_mod,
+            agent_factory_mod,
             "load_multibot_config",
             lambda raw: (MagicMock(bots=[MagicMock()]), MagicMock(bots=[])),
         )
         monkeypatch.setattr(
-            wiring_helpers_mod,
-            "_build_bot_auths",
+            "lyra.bootstrap.wiring.bootstrap_wiring._build_bot_auths",
             lambda *a, **kw: ([(MagicMock(), MagicMock())], []),
         )
         monkeypatch.setattr(
-            wiring_helpers_mod,
+            agent_factory_mod,
             "_resolve_bot_agent_map",
             AsyncMock(return_value={("telegram", "main"): "missing"}),
         )
@@ -404,12 +406,12 @@ class TestInitBotAuthsAndAgents:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
-            wiring_helpers_mod,
+            agent_factory_mod,
             "_load_circuit_config",
             lambda raw: (MagicMock(), frozenset()),
         )
         monkeypatch.setattr(
-            wiring_helpers_mod,
+            agent_factory_mod,
             "load_multibot_config",
             MagicMock(side_effect=ValueError("bad config")),
         )
@@ -424,22 +426,22 @@ class TestBuildHub:
     ) -> None:
         # Arrange — patch all config loaders
         monkeypatch.setattr(
-            wiring_helpers_mod,
+            hub_builder_mod,
             "_load_cli_pool_config",
             lambda raw: MagicMock(turn_timeout=30.0),
         )
         monkeypatch.setattr(
-            wiring_helpers_mod,
+            hub_builder_mod,
             "_load_hub_config",
             lambda raw: MagicMock(rate_limit=10, rate_window=30, pool_ttl=3600.0),
         )
         monkeypatch.setattr(
-            wiring_helpers_mod,
+            hub_builder_mod,
             "_load_pool_config",
             lambda raw: MagicMock(safe_dispatch_timeout=5.0),
         )
         monkeypatch.setattr(
-            wiring_helpers_mod,
+            hub_builder_mod,
             "_load_debouncer_config",
             lambda raw: MagicMock(
                 default_debounce_ms=200,
@@ -448,12 +450,12 @@ class TestBuildHub:
             ),
         )
         monkeypatch.setattr(
-            wiring_helpers_mod,
+            hub_builder_mod,
             "_load_event_bus_config",
             lambda raw: MagicMock(queue_maxsize=500),
         )
         monkeypatch.setattr(
-            wiring_helpers_mod,
+            hub_builder_mod,
             "_load_inbound_bus_config",
             lambda raw: MagicMock(
                 staging_maxsize=100, platform_queue_maxsize=50, queue_depth_threshold=25
@@ -465,9 +467,9 @@ class TestBuildHub:
         def _event_bus(maxsize: int) -> MagicMock:
             return mock_event_bus
 
-        monkeypatch.setattr(wiring_helpers_mod, "PipelineEventBus", _event_bus)
+        monkeypatch.setattr(hub_builder_mod, "PipelineEventBus", _event_bus)
         mock_hub = MagicMock()
-        monkeypatch.setattr(wiring_helpers_mod, "Hub", lambda **kw: mock_hub)
+        monkeypatch.setattr(hub_builder_mod, "Hub", lambda **kw: mock_hub)
 
         bundle = BotAuthBundle(
             tg_bot_auths=[],
@@ -477,7 +479,7 @@ class TestBuildHub:
             first_agent_config=MagicMock(),
             msg_manager=MagicMock(),
             circuit_registry=MagicMock(),
-            admin_user_ids=[],
+            admin_user_ids=frozenset(),
         )
         voice = VoiceBundle(
             stt_service=MagicMock(),
@@ -515,7 +517,7 @@ class TestInitClipool:
     ) -> None:
         # Arrange
         monkeypatch.setattr(
-            wiring_helpers_mod,
+            hub_builder_mod,
             "_load_cli_pool_config",
             lambda raw: MagicMock(
                 idle_ttl=1200,
@@ -535,12 +537,12 @@ class TestInitClipool:
         def _audit_sink() -> MagicMock:
             return mock_audit
 
-        monkeypatch.setattr(wiring_helpers_mod, "JetStreamAuditSink", _audit_sink)
+        monkeypatch.setattr(hub_builder_mod, "JetStreamAuditSink", _audit_sink)
 
         mock_cli_pool = MagicMock()
         mock_cli_pool.start = AsyncMock()
         mock_cli_pool.set_turn_store = MagicMock()
-        monkeypatch.setattr(wiring_helpers_mod, "CliPool", lambda **kw: mock_cli_pool)
+        monkeypatch.setattr(hub_builder_mod, "CliPool", lambda **kw: mock_cli_pool)
 
         mock_llm_client = MagicMock()
         monkeypatch.setattr(
@@ -606,7 +608,7 @@ class TestRegisterAgents:
             first_agent_config=MagicMock(),
             msg_manager=MagicMock(),
             circuit_registry=CircuitRegistry(),
-            admin_user_ids=[],
+            admin_user_ids=frozenset(),
         )
         voice = VoiceBundle(stt_service=None, tts_service=None, nats_llm_client=None)
         clipool = CliPoolBundle(
@@ -694,7 +696,7 @@ class TestWireAdapters:
             first_agent_config=MagicMock(),
             msg_manager=MagicMock(),
             circuit_registry=MagicMock(),
-            admin_user_ids=[],
+            admin_user_ids=frozenset(),
         )
         stores = MagicMock()
         fake_nc = MagicMock()

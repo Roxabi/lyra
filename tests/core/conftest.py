@@ -21,12 +21,8 @@ from lyra.core.messaging.message import (
     RoutingContext,
 )
 from lyra.core.pool import Pool
-
-# Backward-compatible re-exports from domain factories
 from tests.factories.agents import (
-    FakeSTT,
     FastAgent,
-    MockAdapter,
     RecordingAgent,
     SlowAgent,
 )
@@ -56,6 +52,9 @@ from tests.factories.stores import (
     make_pairing_pm,
     make_store,
 )
+
+# Backward-compatible re-exports from domain factories
+from tests.fakes import FakeSTT, MockAdapter
 
 __all__ = [
     "FakeSTT",

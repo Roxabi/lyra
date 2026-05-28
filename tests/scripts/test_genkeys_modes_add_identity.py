@@ -204,8 +204,9 @@ def test_add_identity_noop_when_full_consistency(tmp_path: Path) -> None:
     # Write a real auth.conf via the actual renderer so parse_auth_conf sees
     # a structurally valid users block containing turn-writer (review B1).
     from scripts._loader import load_matrix
-    from scripts._nk import FakeNkeyProvider
     from scripts._renderer import render_auth_conf
+
+    from tests.fakes.nkey_provider import FakeNkeyProvider
 
     matrix = load_matrix(matrix_path)
     provider = FakeNkeyProvider()

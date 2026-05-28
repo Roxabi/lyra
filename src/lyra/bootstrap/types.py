@@ -10,15 +10,26 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, NamedTuple
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from nats.aio.client import Client as NatsClient
 
     from lyra.adapters.discord import DiscordAdapter
     from lyra.adapters.telegram import TelegramAdapter
+    from lyra.bootstrap.bootstrap_stores import StoreBundle
     from lyra.config import DiscordBotConfig
+    from lyra.core.agent import Agent
+    from lyra.core.circuit_breaker import CircuitRegistry
     from lyra.core.cli.cli_pool import CliPool
-    from lyra.core.hub import OutboundDispatcher
+    from lyra.core.hub import Hub, OutboundDispatcher
+    from lyra.core.messaging.messages import MessageManager
+    from lyra.core.ports.stt import STTProtocol
+    from lyra.core.ports.tts import TtsProtocol
+    from lyra.infrastructure.audit import JetStreamAuditSink
     from lyra.infrastructure.stores.pairing import PairingManager
     from lyra.infrastructure.stores.thread_store import ThreadStore
+    from lyra.llm.llm_client import LlmClient
+    from lyra.nats.nats_bus import NatsBus
     from lyra.nats.nats_channel_proxy import NatsChannelProxy
 
 
@@ -46,3 +57,70 @@ class LifecycleResources:
     cli_pool: CliPool | None
     proxies: list[NatsChannelProxy] = field(default_factory=list)
     nc: NatsClient | None = field(default=None)
+
+
+# ---------------------------------------------------------------------------
+# Return bundles (plain dataclasses — no framework imports)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class VoiceBundle:
+    stt_service: STTProtocol | None
+    tts_service: TtsProtocol | None
+    nats_llm_client: "LlmClient | None"
+
+
+@dataclass
+class BotAuthBundle:
+    tg_bot_auths: list
+    dc_bot_auths: list
+    bot_agent_map: dict
+    agent_configs: dict[str, Agent]
+    first_agent_config: Agent
+    msg_manager: MessageManager
+    circuit_registry: CircuitRegistry
+    admin_user_ids: frozenset[str]
+
+
+@dataclass
+class CliPoolBundle:
+    cli_pool: CliPool
+    cli_nats_driver: "LlmClient | None"
+    worker: object
+    audit_sink: JetStreamAuditSink
+
+
+# ---------------------------------------------------------------------------
+# DI containers
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class BuildHubDeps:
+    raw_config: dict
+    bundle: BotAuthBundle
+    voice: VoiceBundle
+    inbound_bus: NatsBus
+    pm: PairingManager | None
+    stores: StoreBundle
+
+
+@dataclass
+class RegisterAgentsDeps:
+    hub: Hub
+    bundle: BotAuthBundle
+    voice: VoiceBundle
+    clipool: CliPoolBundle
+    raw_config: dict
+    stores: StoreBundle
+
+
+@dataclass
+class WireAdaptersDeps:
+    hub: Hub
+    bundle: BotAuthBundle
+    nc: NatsClient
+    stores: StoreBundle
+    vault_dir: Path
+    raw_config: dict

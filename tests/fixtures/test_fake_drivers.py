@@ -1,7 +1,7 @@
 """Tests for fake TTS/STT/LLM drivers."""
 
 import pytest
-from tests.fixtures.fake_drivers import (
+from tests.fakes import (
     FakeClaudeCliDriver,
     FakeStt,
     FakeTts,

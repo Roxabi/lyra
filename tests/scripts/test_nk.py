@@ -4,7 +4,9 @@ import shutil
 import string
 
 import pytest
-from scripts._nk import _NKEY_PUBKEY_LEN, FakeNkeyProvider, SubprocessNkeyProvider
+from scripts._nk import _NKEY_PUBKEY_LEN, SubprocessNkeyProvider
+
+from tests.fakes.nkey_provider import FakeNkeyProvider
 
 NK_AVAILABLE = shutil.which("nk") is not None
 

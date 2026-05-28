@@ -30,17 +30,22 @@ Eight containers on `roxabi.network` (systemd `--user`, linger enabled):
 cd ~/projects/lyra
 make nats-setup
 
-# 2. Run idempotent install
+# 2. Install secrets + static units
 cd ~/projects/lyra
 ./deploy/install.sh
 
-# 3. Start services
+# 3. Seed BotStore + render adapter templates + daemon-reload
+#    Required since #1416: hub bootstraps auth from BotStore (~/.lyra/config.db),
+#    not from config.toml directly. Skipping this step causes a hub crash-loop.
+make quadlet-install
+
+# 4. Start services
 systemctl --user start lyra-nats lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-gh-helper
 
-# 4. Provision JetStream monitoring streams (idempotent)
+# 5. Provision JetStream monitoring streams (idempotent)
 ./deploy/nats/bootstrap-streams.sh
 
-# 5. Verify
+# 6. Verify
 systemctl --user status 'lyra-*'
 podman ps
 ```

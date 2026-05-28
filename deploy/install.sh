@@ -185,6 +185,18 @@ log "Reloading systemd user daemon ..."
 run systemctl --user daemon-reload
 echo "  [ok]   daemon-reload"
 
+# ── 5b. Seed BotStore from config.toml (idempotent) ─────────────────────────
+# Required since #1416: Authenticator reads from BotStore, not config.toml.
+# Skipping this causes a hub crash-loop on first boot.
+log "Seeding BotStore from config.toml ..."
+run podman run --rm \
+    -v "${HOME}/.lyra:/home/lyra/.lyra:z" \
+    -v "${HOME}/.lyra/config.toml:/app/config.toml:ro,z" \
+    ghcr.io/roxabi/lyra:staging-svc \
+    lyra bot init
+
+echo "  [ok]   BotStore seeded"
+
 log "Done. Services NOT restarted — run: systemctl --user start lyra-nats lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-gh-helper lyra-turn-writer lyra-blobstore"
 
 # ── 6. Install sync timer + service (idempotent) ───────────────────────────

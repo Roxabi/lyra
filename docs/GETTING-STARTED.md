@@ -215,11 +215,12 @@ cd ~/projects/lyra && python3 deploy/setup.py
 5. Create log directories (`~/.local/state/*/logs/`)
 6. Scaffold `config.toml` from example
 7. Seed agents into the DB (`lyra agent init`)
-8. Install Claude Code plugins:
+8. Seed bots into BotStore (`lyra bot init`)
+9. Install Claude Code plugins:
    - **Mandatory:** `web-intel`, `agent-browser`, `lyra-send`, `refine-agent`
    - **Conditional:** `voice-cli` (auto-installed if voiceCLI was installed)
    - **Optional (prompted):** `dev-core`, `visual-explainer`, `compress`
-9. Enable linger + start Quadlet containers
+10. Enable linger + start Quadlet containers
 
 To install all optional modules and plugins without prompts:
 ```bash

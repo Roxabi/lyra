@@ -218,6 +218,28 @@ def init_agents(lyra_dir: Path) -> None:
         )
 
 
+def init_bots(lyra_dir: Path) -> None:
+    """Run lyra bot init to seed BotStore from config.toml (#1416)."""
+    bot_init = lyra_dir / ".venv" / "bin" / "lyra"
+    if not bot_init.exists():
+        print("  ✗  lyra CLI not found in venv — skipping bot init")
+        return
+    result = subprocess.run(
+        [str(bot_init), "bot", "init"],
+        cwd=lyra_dir,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0:
+        print("  ✓  lyra bot init — bots seeded into BotStore")
+    else:
+        # Non-fatal — may fail if DB already has bots
+        print(
+            "  !  lyra bot init skipped "
+            f"({result.stderr.strip() or 'already initialized'})"
+        )
+
+
 def create_log_dirs() -> None:
     """Create XDG-compliant log directories used by Quadlet bind mounts."""
     state = Path.home() / ".local" / "state"
@@ -507,6 +529,7 @@ def main() -> None:
     scaffold_env(lyra_dir)
     scaffold_config_toml(lyra_dir)
     init_agents(lyra_dir)
+    init_bots(lyra_dir)
     print()
 
     # Phase 4: Claude Code plugins

@@ -57,6 +57,21 @@ MAX_DELIVER = 5
 _FETCH_BATCH = 5
 _FETCH_TIMEOUT = 5.0  # seconds — keeps the loop responsive
 
+# ---------------------------------------------------------------------------
+# In-process metric counters (#1482 T11)
+# These counters are per-process/per-consumer-instance; tests assert on them
+# directly. The monitoring subsystem observes the same signals via the NATS
+# HTTP /jsz endpoint (consumer num_pending + stream num_bytes) rather than
+# reading these counters at runtime — they are purely for test observability
+# and local introspection.
+# ---------------------------------------------------------------------------
+#: Number of times term() fired (silent-loss-averted events). Any value > 0
+#: is alertable. Monotonically increasing since process start.
+audio_terminal_drop_total: int = 0
+
+#: Number of messages observed with num_delivered > 1 (redeliveries).
+audio_redelivery_total: int = 0
+
 AudioSendFn = Callable[[OutboundAudio, InboundMessage], Awaitable[None]]
 TextSendFn = Callable[[InboundMessage, OutboundMessage], Awaitable[None]]
 
@@ -206,6 +221,9 @@ class JetStreamAudioConsumer:
             return
 
         n_delivered = num_delivered(msg)
+        if n_delivered > 1:  # redelivery observation (#1482 T11)
+            global audio_redelivery_total
+            audio_redelivery_total += 1
 
         try:
             await self._send_audio(audio, inbound)
@@ -237,6 +255,9 @@ class JetStreamAudioConsumer:
         self, msg: Any, stream_id: str, inbound: InboundMessage
     ) -> None:
         """Terminate message + send user notification exactly once per stream_id."""
+        global audio_terminal_drop_total
+        # increment before term() in case it raises (#1482 T11)
+        audio_terminal_drop_total += 1
         try:
             await msg.term()
             log.warning(

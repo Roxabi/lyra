@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 import httpx
 
+from .checks_audio import check_audio_consumer_lag, check_audio_stream_usage
 from .checks_log import check_hub_dict_stream_gen_timeout, check_nats_log_errors
 from .checks_varz import check_disk, check_disk_pct, check_inode_pct, check_nats_varz
 from .config import MonitoringConfig
@@ -294,6 +295,23 @@ async def run_checks(config: MonitoringConfig) -> HealthReport:
             config.blobstore_disk_path,
             config.blobstore_inode_warning_pct,
             config.blobstore_inode_critical_pct,
+        )
+    )
+
+    # Check 13: Outbound-audio consumer lag (#1482 T11)
+    checks.append(
+        await check_audio_consumer_lag(
+            config.nats_monitor_url,
+            lag_pending_threshold=config.audio_lag_pending_threshold,
+            lag_age_warn_s=config.audio_lag_age_warn_s,
+        )
+    )
+
+    # Check 14: Outbound-audio stream fullness (#1482 T11)
+    checks.append(
+        await check_audio_stream_usage(
+            config.nats_monitor_url,
+            warn_pct=config.audio_stream_usage_warn_pct,
         )
     )
 

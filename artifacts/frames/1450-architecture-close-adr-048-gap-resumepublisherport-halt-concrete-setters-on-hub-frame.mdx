@@ -1,0 +1,47 @@
+---
+title: Architecture: close ADR-048 gap — ResumePublisherPort + halt concrete setters on Hub
+issue: 1450
+status: approved
+tier: F-lite
+date: 2026-05-28
+---
+
+## Problem
+
+P1 audit finding (#1426) identifies three concrete violations of ADR-048's port/protocol abstraction:
+
+- `MessagePrepMiddleware` (stage 7) drills directly into `ctx.hub._turn_publisher` and `ctx.hub._turn_store`
+- Hub registration API accepts 5 concrete store/transport types lacking `core/ports/` protocols
+- `LlmClient` bypasses `WorkerPoolClient` circuit breaker for `reset`/`resume`/`switch_cwd`
+
+These violations allow new concrete setters to proliferate on Hub, undermining the architectural boundary.
+
+## Who
+
+- **Primary:** Developers adding new store/transport types to Hub
+- **Secondary:** Architecture reviewers, future maintainers
+
+## Constraints
+
+- Must align with ADR-048 (port/protocol abstraction)
+- Must not break existing Hub registration API
+- Must be injectable into `PipelineContext` without circular imports
+
+## Out of Scope
+
+- Rewriting existing 5 concrete setters (tracked separately)
+- Refactoring `LlmClient` beyond circuit-breaker fix
+- Changes to `WorkerPoolClient` itself
+
+## Premise Validity
+
+**Success in 6 months:** All hub store/transport registrations go through `core/ports/` protocols; `ResumePublisherPort` is defined and injected; no new concrete setters added to Hub.
+
+**Failure in 6 months:** Concrete setters still being added to Hub 3 months after this PR; new store/transport types bypass port protocols (observable in commit history).
+
+**Simplest alternative:** Document current violations and add a linter rule.
+**Why not simplest:** Documentation alone doesn't enforce the architecture; violations continue without structural changes.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain, no new architectural patterns.

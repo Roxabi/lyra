@@ -9,6 +9,7 @@ import pytest
 
 from lyra.transport import SanitizedError
 from lyra.transport._result import Err, InboxStream, Ok, Result
+from roxabi_contracts.errors import KNOWN_CODES
 
 
 def test_ok_isinstance() -> None:
@@ -100,6 +101,17 @@ class TestSanitizedErrorFromMessage:
         assert result.message == "model_error"
         assert result.code == "stream.error"
         assert result.retryable is False
+
+    def test_default_code_is_registered(self) -> None:
+        """#1113: the default code flows to RunErrorRenderEvent.code, so the
+        from_message default must be a registry-valid KNOWN_CODES key.
+
+        Transport is intentionally roxabi_contracts-free at runtime, so the
+        literal default has no import-time guard — this test is its guard.
+        """
+        default_code = SanitizedError.from_message("anything").code
+        assert default_code in KNOWN_CODES
+        assert default_code == "stream.error"
 
     def test_control_chars_are_stripped(self) -> None:
         """Non-printable control chars (NUL, BEL, newline, CR) become spaces."""

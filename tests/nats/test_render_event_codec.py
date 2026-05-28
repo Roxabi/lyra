@@ -706,8 +706,8 @@ class TestRunErrorCodeRoundTrip:
 
         assert is_done is True
         decoded = codec.decode(event_type, payload)
+        # decoded == original (frozen dataclass) already pins code fidelity.
         assert decoded == original
-        assert decoded.code == "stream.error"  # type: ignore[union-attr]
 
     def test_worker_error_code_round_trips(self) -> None:
         codec = NatsRenderEventCodec()
@@ -717,7 +717,6 @@ class TestRunErrorCodeRoundTrip:
         event_type, payload, _ = codec.encode(original)
         decoded = codec.decode(event_type, payload)
         assert decoded == original
-        assert decoded.code == "cli.auth"  # type: ignore[union-attr]
 
     def test_historical_none_code_decodes(self) -> None:
         """Forward-compat: an event serialized before #1113 (code=None) decodes."""

@@ -1821,18 +1821,28 @@ class TestRunErrorCode:
 
         run_errors = [e for e in collected if isinstance(e, RunErrorRenderEvent)]
         assert run_errors, "expected a RunErrorRenderEvent before the re-raise"
+        # Ordering: the RunError must be the LAST event emitted before the
+        # re-raise — guards against a refactor that re-raises before yielding it.
+        assert isinstance(collected[-1], RunErrorRenderEvent)
         assert run_errors[-1].code == "stream.error"
 
-    async def test_soft_error_with_worker_error_propagates_code(self) -> None:
-        """Site B: a WorkerError code (e.g. cli.auth) reaches RunError.code."""
+    @pytest.mark.parametrize(
+        "code,retryable",
+        [("cli.auth", False), ("llm.rate_limit", True)],
+        ids=["non_retryable", "retryable"],
+    )
+    async def test_soft_error_with_worker_error_propagates_code(
+        self, code: str, retryable: bool
+    ) -> None:
+        """Site B: a WorkerError code reaches RunError.code (both retryable values)."""
         processor = StreamProcessor()
         events = async_events(
             ResultLlmEvent(
                 is_error=True,
                 duration_ms=0,
-                error_text="Not logged in",
+                error_text="upstream error",
                 worker_error=WorkerError(
-                    code="cli.auth", message="auth failed", retryable=False
+                    code=code, message="worker said no", retryable=retryable
                 ),
             ),
         )
@@ -1840,7 +1850,7 @@ class TestRunErrorCode:
 
         run_errors = [e for e in all_events if isinstance(e, RunErrorRenderEvent)]
         assert len(run_errors) == 1
-        assert run_errors[0].code == "cli.auth"
+        assert run_errors[0].code == code
 
     async def test_soft_error_without_worker_error_code_is_stream_error(self) -> None:
         """Site B: error_text only (no WorkerError) falls back to stream.error."""
@@ -1854,11 +1864,49 @@ class TestRunErrorCode:
         assert len(run_errors) == 1
         assert run_errors[0].code == "stream.error"
 
-    def test_emittable_codes_are_registered(self) -> None:
-        """SC-6: every code RunErrorRenderEvent can emit is a KNOWN_CODES key."""
-        # The translator emits either "stream.error" (Site A + from_message default)
-        # or a WorkerError.code (Site B). WorkerError.code is validated against the
-        # registry at its own boundaries; the only literal this issue introduces is
-        # "stream.error", which must be registered.
-        assert "stream.error" in KNOWN_CODES
+    async def test_soft_error_empty_error_text_falls_back_to_model_error(self) -> None:
+        """Site B: empty error_text → from_message → message='model_error'."""
+        processor = StreamProcessor()
+        events = async_events(
+            ResultLlmEvent(is_error=True, duration_ms=0, error_text=""),
+        )
+        all_events = await collect(processor.process(events))
+
+        run_errors = [e for e in all_events if isinstance(e, RunErrorRenderEvent)]
+        assert len(run_errors) == 1
+        assert run_errors[0].message == "model_error"
+        assert run_errors[0].code == "stream.error"
+
+    async def test_emitted_codes_are_registered(self) -> None:
+        """SC-6: every code the processor actually emits is a KNOWN_CODES key.
+
+        Connects the emit sites to the registry (not a static dict membership
+        check): drives all three paths and asserts each emitted, non-None code
+        is registered.
+        """
+        emitted: list[str] = []
+
+        # Site A — infra exception.
+        with pytest.raises(RuntimeError):
+            async for ev in StreamProcessor().process(_raise_events()):
+                if isinstance(ev, RunErrorRenderEvent) and ev.code is not None:
+                    emitted.append(ev.code)
+
+        # Site B — WorkerError code, and from_message fallback.
+        for evt in (
+            ResultLlmEvent(
+                is_error=True,
+                duration_ms=0,
+                worker_error=WorkerError(
+                    code="cli.auth", message="x", retryable=False
+                ),
+            ),
+            ResultLlmEvent(is_error=True, duration_ms=0, error_text="boom"),
+        ):
+            for ev in await collect(StreamProcessor().process(async_events(evt))):
+                if isinstance(ev, RunErrorRenderEvent) and ev.code is not None:
+                    emitted.append(ev.code)
+
+        assert emitted, "expected at least one populated code across the emit paths"
+        assert all(code in KNOWN_CODES for code in emitted), emitted
         assert KNOWN_CODES["stream.error"].domain == "stream"

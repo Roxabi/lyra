@@ -37,6 +37,7 @@ from lyra.nats.queue_groups import HUB_INBOUND
 if TYPE_CHECKING:
     from lyra.core.messaging.messages import MessageManager
     from lyra.core.ports.audit_sink import AuditSink
+    from lyra.core.ports.resume_publisher import ResumePublisherPort
     from lyra.infrastructure.stores.pairing import PairingManager
     from lyra.infrastructure.stores.prefs_store import PrefsStore
     from lyra.llm.llm_client import LlmClient
@@ -100,6 +101,7 @@ def build_hub(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — construction 
     prefs_store: PrefsStore | None,
     inbound_bus: NatsBus[InboundMessage],
     inbound_bus_cfg: InboundBusConfig,
+    resume_publisher: "ResumePublisherPort | None" = None,
 ) -> Hub:
     """Construct a Hub from loaded config and injected dependencies."""
     cli_pool_cfg = _load_cli_pool_config(raw_config)
@@ -133,6 +135,7 @@ def build_hub(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — construction 
         event_bus=event_bus,
         inbound_bus=inbound_bus,
         config=hub_config,
+        resume_publisher=resume_publisher,
     )
     return hub
 

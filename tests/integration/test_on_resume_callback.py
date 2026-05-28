@@ -41,7 +41,7 @@ def _make_hub_with_publisher(
     turn_publisher: TurnPublisher,
     turn_store: TurnStore | None = None,
 ) -> Hub:
-    """Build a Hub with _turn_publisher injected (bypasses full bootstrap)."""
+    """Build a Hub with _resume_publisher injected (bypasses full bootstrap)."""
     cr = CircuitRegistry()
     hub = Hub(circuit_registry=cr)
     hub._turn_publisher = turn_publisher
@@ -107,16 +107,14 @@ async def test_on_resume_fn_calls_publisher(tmp_path) -> None:
 
     pool = _make_pool_with_resume_fn()
 
-    # Wire _on_resume_fn exactly as middleware_pool.py does
-    _pub = hub._turn_publisher
-    _store = hub._turn_store
+    # Wire _on_resume_fn using the resume_publisher (as middleware_pool.py does)
+    _rp = hub._resume_publisher
+    assert _rp is not None
     _pool_ref = pool
 
     async def _resume_fn(session_id: str) -> None:
-        current = 0
-        if _store is not None:
-            current = await _store.get_resume_count(session_id)
-        await _pub.publish_increment_resume_count(  # type: ignore[union-attr]
+        current = await _rp.get_resume_count(session_id)
+        await _rp.publish_increment_resume_count(
             pool_id=_pool_ref.pool_id,
             session_id=session_id,
             platform=_pool_ref.medium or "",
@@ -247,30 +245,30 @@ async def test_on_resume_fn_high_water_mark_target(tmp_path) -> None:
 
 
 def test_on_resume_fn_handles_no_publisher() -> None:
-    """SC-10: if hub._turn_publisher is None, _on_resume_fn is not wired.
+    """SC-10: if hub._resume_publisher is None, _on_resume_fn is not wired.
 
     MessagePrepMiddleware only assigns pool._on_resume_fn when
-    hub._turn_publisher is not None.  If publisher is None, pool._on_resume_fn
-    stays None — no wiring dependency error.
+    ctx.resume_publisher is not None.  If resume_publisher is None,
+    pool._on_resume_fn stays None — no wiring dependency error.
     """
-    # Arrange — hub without a publisher
+    # Arrange — hub without a resume_publisher
     cr = CircuitRegistry()
     hub = Hub(circuit_registry=cr)
-    # _turn_publisher is None by default (see hub.py line ~110)
-    assert hub._turn_publisher is None
+    # _resume_publisher is None by default
+    assert hub._resume_publisher is None
 
     pool = _make_pool_with_resume_fn()
     # _on_resume_fn starts as None (pool.py line ~79)
     assert pool._on_resume_fn is None
 
     # Simulate what MessagePrepMiddleware does:
-    if pool._on_resume_fn is None and hub._turn_publisher is not None:
-        # This branch is NOT taken — publisher is None
+    if pool._on_resume_fn is None and hub._resume_publisher is not None:
+        # This branch is NOT taken — resume_publisher is None
         pool._on_resume_fn = lambda sid: None  # type: ignore[assignment]
 
-    # Assert — _on_resume_fn remains None when publisher absent
+    # Assert — _on_resume_fn remains None when resume_publisher absent
     assert pool._on_resume_fn is None, (
-        "_on_resume_fn must remain None when hub._turn_publisher is None"
+        "_on_resume_fn must remain None when hub._resume_publisher is None"
     )
 
 

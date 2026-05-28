@@ -272,6 +272,11 @@ def _build_hub(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         max_merged_chars=debouncer_cfg.max_merged_chars,
     )
 
+    # Wire TurnPublisher + ResumePublisherAdapter before Hub construction
+    js = inbound_bus._nc.jetstream()
+    turn_publisher = TurnPublisher(js)
+    adapter = TurnPublisherAdapter(turn_publisher, stores.turn)
+
     hub = Hub(
         circuit_registry=bundle.circuit_registry,
         msg_manager=bundle.msg_manager,
@@ -282,6 +287,7 @@ def _build_hub(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         event_bus=event_bus,
         inbound_bus=inbound_bus,
         config=hub_config,
+        resume_publisher=adapter,
     )
     hub.set_turn_store(stores.turn)
     hub.set_message_index(stores.message_index)
@@ -289,13 +295,7 @@ def _build_hub(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
     # Wire alias_store (#472)
     stores.prefs.set_alias_store(stores.identity_alias)
     hub.set_alias_store(stores.identity_alias)
-
-    # Wire TurnPublisher + ResumePublisherAdapter
-    js = inbound_bus._nc.jetstream()
-    turn_publisher = TurnPublisher(js)
     hub.set_turn_publisher(turn_publisher)
-    adapter = TurnPublisherAdapter(turn_publisher, stores.turn)
-    hub._resume_publisher = adapter  # type: ignore
 
     return hub
 

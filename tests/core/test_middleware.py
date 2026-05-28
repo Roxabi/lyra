@@ -208,7 +208,7 @@ class TestCreatePool:
         next_fn.assert_awaited_once()
         assert ctx.pool is not None
 
-    async def test_on_resume_fn_wired_when_turn_publisher_present(self) -> None:
+    async def test_on_resume_fn_wired_when_resume_publisher_present(self) -> None:
         from lyra.core.hub.hub_protocol import Binding
 
         hub = _make_hub()
@@ -237,11 +237,10 @@ class TestCreatePool:
             trace_id="test-session-id",
         )
 
-    async def test_on_resume_fn_not_set_when_turn_store_absent(self) -> None:
+    async def test_on_resume_fn_not_set_when_resume_publisher_absent(self) -> None:
         from lyra.core.hub.hub_protocol import Binding
 
         hub = _make_hub()
-        hub._turn_store = None
         agent = hub.agent_registry["lyra"]
         binding = Binding(agent_name="lyra", pool_id="telegram:main:chat:42")
         mw = MessagePrepMiddleware()
@@ -257,8 +256,8 @@ class TestCreatePool:
         from lyra.core.hub.hub_protocol import Binding
 
         hub = _make_hub()
-        hub._turn_store = MagicMock()
-        hub._turn_store._increment_resume_count = AsyncMock()
+        publisher = MagicMock()
+        publisher.get_resume_count = AsyncMock(return_value=0)
 
         # Pre-create the pool and assign a sentinel
         pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
@@ -268,7 +267,9 @@ class TestCreatePool:
         agent = hub.agent_registry["lyra"]
         binding = Binding(agent_name="lyra", pool_id="telegram:main:chat:42")
         mw = MessagePrepMiddleware()
-        ctx = PipelineContext(hub=hub, binding=binding, agent=agent)
+        ctx = PipelineContext(
+            hub=hub, binding=binding, agent=agent, resume_publisher=publisher
+        )
         msg = make_inbound_message()
 
         await mw(msg, ctx, _make_next())

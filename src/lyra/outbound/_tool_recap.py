@@ -199,7 +199,7 @@ def _format_files(accum: ToolRecapAccumulator) -> list[str]:
     """Build lines for the file-edit section."""
     if not accum.files:
         return []
-    if len(accum.files) >= accum.config.group_threshold:
+    if len(accum.files) >= accum.config.files_group_threshold:
         total = sum(f.count for f in accum.files.values())
         return [f"✏️ {len(accum.files)} files · {total} edits"]
     lines: list[str] = []
@@ -215,7 +215,7 @@ def _format_bash(accum: ToolRecapAccumulator) -> list[str]:
     cmds = [c for c in (s.strip() for s in accum.bash_commands) if c]
     if not cmds:
         return []
-    if len(cmds) >= accum.config.group_threshold:
+    if len(cmds) >= accum.config.bash_group_threshold:
         return [f"\U0001f4bb {_plural(len(cmds), 'command')}"]
     max_len = accum.config.bash_max_len
     return [f"\U0001f4bb `{_sanitize(_truncate(c, max_len))}`" for c in cmds]

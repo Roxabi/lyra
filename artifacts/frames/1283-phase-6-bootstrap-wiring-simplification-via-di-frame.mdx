@@ -1,0 +1,42 @@
+---
+title: "Phase 6 — Bootstrap & wiring simplification via DI"
+issue: 1283
+status: approved
+tier: F-lite
+date: 2026-05-28
+---
+
+## Problem
+
+After Phases 1-5 of the stage-axis refactor, the DI shape of the application is fully composition-based. Phase 6 industrializes this by cleaning up the bootstrap layer: flattening the standalone-vs-wired-vs-factory split, reducing `wiring-bootstrap-deps` occurrences (84 → ≤30), removing `module-level-patch-fixtures` workarounds in tests, and tightening `protocol-private-ducktyping` (8 sites) into explicit Protocols.
+
+## Who
+
+- **Primary:** Lyra developers adding new adapters/drivers/bots
+- **Secondary:** Code reviewers auditing bootstrap for complexity
+
+## Constraints
+
+- Must build on stabilized DI patterns from Phases 1-5 (transport, adapters, drivers, streaming)
+- Single PR, ~2 weeks estimated
+- Parent issue #1277 (epic) — close Phase 6 when done
+- Absorbs sub-issues #1093 (test fakes isolation) and #1079 (TurnStoreProtocol extraction)
+
+## Out of Scope
+
+- New feature work (no new adapters or drivers)
+- Phase 7+ (not yet defined)
+- Refactoring outside `src/lyra/bootstrap/` and `tests/`
+
+## Premise Validity
+
+**Success in 6 months:** `wiring-bootstrap-deps` ≤ 30 (from 84), bootstrap files ≤ 150 lines each, zero `# noqa: C901, PLR0915` in bootstrap/, test fakes isolated in `tests/fakes/` with import-linter rule.
+
+**Failure in 6 months:** `wiring-bootstrap-deps` count stays ≥ 60 after 2 sprint cycles; bootstrap files still > 200 lines; tests still use module-level patches.
+
+**Simplest alternative:** Patch the 84 deps manually one-by-one without a DI container/dependency graph.
+**Why not simplest:** Without a DI container, every new adapter/driver adds N×M wiring code; the debt count will regress within 1 sprint.
+
+## Complexity
+
+**Tier: F-lite** — single domain (`src/lyra/bootstrap/`), clear scope, mechanical after prior phases. Signals: 4 concrete success criteria, no unknowns, no multi-domain coordination.

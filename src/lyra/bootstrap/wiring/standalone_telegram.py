@@ -30,9 +30,7 @@ async def _bootstrap_telegram_setup(
     from lyra.config import TelegramMultiConfig
     from lyra.infrastructure.stores.turn_store import TurnStore
 
-    tg_multi_cfg = TelegramMultiConfig.model_validate(
-        raw_config.get("telegram", {})
-    )
+    tg_multi_cfg = TelegramMultiConfig.model_validate(raw_config.get("telegram", {}))
     if not tg_multi_cfg.bots:
         sys.exit("No telegram bots configured")
 
@@ -51,9 +49,7 @@ async def _bootstrap_telegram_setup(
 async def _close_tg_wired(label: str, wired: list[tuple]) -> None:
     """Close all wired Telegram adapters, buses, and typing listeners."""
     close_coros = [
-        coro
-        for a, ibus, tl in wired
-        for coro in (a.close(), ibus.stop(), tl.stop())
+        coro for a, ibus, tl in wired for coro in (a.close(), ibus.stop(), tl.stop())
     ]
     await close_safely(label, *close_coros)
 
@@ -148,9 +144,7 @@ async def bootstrap_telegram_standalone(
             nc=nc,
             subject=f"lyra.typing.telegram.{bot_id}",
             resolver=_telegram_scope_resolver,
-            factory_builder=make_typing_factory(
-                partial(_typing_worker, adapter.bot)
-            ),
+            factory_builder=make_typing_factory(partial(_typing_worker, adapter.bot)),
             manager=adapter._typing,
         )
         try:
@@ -186,6 +180,7 @@ async def bootstrap_telegram_standalone(
         )
 
     if not wired:
+        await tg_turn_store.close()
         sys.exit("No Telegram adapters started — check credentials")
     await wait_for_hub(nc)
 

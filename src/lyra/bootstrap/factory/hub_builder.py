@@ -53,9 +53,7 @@ if TYPE_CHECKING:
     from lyra.core.hub import OutboundDispatcher
     from lyra.core.messaging.messages import MessageManager
     from lyra.core.ports.audit_sink import AuditSink
-    from lyra.core.ports.resume_publisher import ResumePublisherPort
     from lyra.infrastructure.stores.pairing import PairingManager
-    from lyra.infrastructure.stores.prefs_store import PrefsStore
     from lyra.llm.llm_client import LlmClient
     from lyra.nats.nats_channel_proxy import NatsChannelProxy
 
@@ -107,56 +105,6 @@ def build_inbound_bus(
         queue_group=HUB_INBOUND,
     )
     return inbound_bus, inbound_bus_cfg
-
-
-def build_hub(  # noqa: PLR0913 — construction requires all deps
-    raw_config: dict,
-    *,
-    circuit_registry: CircuitRegistry,
-    msg_manager: MessageManager | None,
-    pairing_manager: PairingManager | None,
-    stt_service: STTProtocol | None,
-    tts_service: TtsProtocol | None,
-    prefs_store: PrefsStore | None,
-    inbound_bus: NatsBus[InboundMessage],
-    inbound_bus_cfg: InboundBusConfig,
-    resume_publisher: "ResumePublisherPort | None" = None,
-) -> Hub:
-    """Construct a Hub from loaded config and injected dependencies."""
-    cli_pool_cfg = _load_cli_pool_config(raw_config)
-    hub_cfg = _load_hub_config(raw_config)
-    pool_cfg = _load_pool_config(raw_config)
-    debouncer_cfg = _load_debouncer_config(raw_config)
-    event_bus_cfg = _load_event_bus_config(raw_config)
-    event_bus = PipelineEventBus(maxsize=event_bus_cfg.queue_maxsize)
-
-    hub_config = HubConfig(
-        rate_limit=hub_cfg.rate_limit,
-        rate_window=hub_cfg.rate_window,
-        pool_ttl=hub_cfg.pool_ttl,
-        debounce_ms=debouncer_cfg.default_debounce_ms,
-        cancel_on_new_message=debouncer_cfg.cancel_on_new_message,
-        turn_timeout=cli_pool_cfg.turn_timeout,
-        safe_dispatch_timeout=pool_cfg.safe_dispatch_timeout,
-        staging_maxsize=inbound_bus_cfg.staging_maxsize,
-        platform_queue_maxsize=inbound_bus_cfg.platform_queue_maxsize,
-        queue_depth_threshold=inbound_bus_cfg.queue_depth_threshold,
-        max_merged_chars=debouncer_cfg.max_merged_chars,
-    )
-
-    hub = Hub(
-        circuit_registry=circuit_registry,
-        msg_manager=msg_manager,
-        pairing_manager=pairing_manager,
-        stt=stt_service,
-        tts=tts_service,
-        prefs_store=prefs_store,
-        event_bus=event_bus,
-        inbound_bus=inbound_bus,
-        config=hub_config,
-        resume_publisher=resume_publisher,
-    )
-    return hub
 
 
 def _build_hub(deps: BuildHubDeps) -> Hub:
@@ -317,11 +265,11 @@ async def _build_hub_and_wire(  # noqa: PLR0913 — unavoidable wiring surface
     msg_manager: MessageManager,
     pm: PairingManager | None,
     inbound_bus: NatsBus[InboundMessage],
-    inbound_bus_cfg: InboundBusConfig,
     freshness_drivers_list: list[object],
     agent_configs: dict[str, Agent],
     tg_bot_auths: list[tuple[TelegramBotConfig, Authenticator]],
     dc_bot_auths: list[tuple[DiscordBotConfig, Authenticator]],
+    admin_user_ids: frozenset[str],
 ) -> tuple[
     Hub, list[NatsChannelProxy], list[OutboundDispatcher], LlmClient, LlmClient | None
 ]:
@@ -344,7 +292,7 @@ async def _build_hub_and_wire(  # noqa: PLR0913 — unavoidable wiring surface
         first_agent_config=first_agent_config,
         msg_manager=msg_manager,
         circuit_registry=circuit_registry,
-        admin_user_ids=frozenset(),
+        admin_user_ids=admin_user_ids,
     )
     voice = VoiceBundle(
         stt_service=stt_service,
@@ -352,22 +300,21 @@ async def _build_hub_and_wire(  # noqa: PLR0913 — unavoidable wiring surface
         nats_llm_client=nats_llm_client,
     )
 
-    hub = _build_hub(BuildHubDeps(
-        raw_config=raw_config,
-        bundle=bundle,
-        voice=voice,
-        inbound_bus=inbound_bus,
-        pm=pm,
-        stores=stores,
-    ))
+    hub = _build_hub(
+        BuildHubDeps(
+            raw_config=raw_config,
+            bundle=bundle,
+            voice=voice,
+            inbound_bus=inbound_bus,
+            pm=pm,
+            stores=stores,
+        )
+    )
     if hub._turn_publisher is None:
         raise RuntimeError("TurnPublisher not wired — startup check failed")
 
     typing_publisher = TypingPublisher(nc)
     hub.set_typing_publisher(typing_publisher)
-
-    audit_sink = JetStreamAuditSink()
-    await audit_sink.provision(nc)
 
     cli_nats_driver = await build_llm_client(nc)
     cli_nats_driver.set_turn_store(stores.turn)

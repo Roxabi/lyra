@@ -30,9 +30,7 @@ async def _bootstrap_discord_setup(
     from lyra.config import DiscordMultiConfig
     from lyra.infrastructure.stores.agent_store import AgentStore
 
-    dc_multi_cfg = DiscordMultiConfig.model_validate(
-        raw_config.get("discord", {})
-    )
+    dc_multi_cfg = DiscordMultiConfig.model_validate(raw_config.get("discord", {}))
     if not dc_multi_cfg.bots:
         sys.exit("No discord bots configured")
 
@@ -50,9 +48,7 @@ async def _bootstrap_discord_setup(
     dc_bot_watch_channels: dict[str, frozenset[int]] = {}
     try:
         for bot_cfg in dc_multi_cfg.bots:
-            bot_settings = agent_store.get_bot_settings(
-                "discord", bot_cfg.bot_id
-            )
+            bot_settings = agent_store.get_bot_settings("discord", bot_cfg.bot_id)
             raw_ids = bot_settings.get("watch_channels", [])
             valid: list[int] = []
             for ch in raw_ids:
@@ -60,8 +56,7 @@ async def _bootstrap_discord_setup(
                     valid.append(int(ch))
                 except (ValueError, TypeError):
                     log.warning(
-                        "watch_channels: invalid channel id %r for bot %r"
-                        " — skipping",
+                        "watch_channels: invalid channel id %r for bot %r — skipping",
                         ch,
                         bot_cfg.bot_id,
                     )
@@ -107,18 +102,14 @@ async def _bootstrap_discord_teardown(
     ]
     try:
         await stop_dc.wait()
-        await close_safely(
-            "dc-adapters", *[a.close() for a, _, _, _ in wired_dc]
-        )
+        await close_safely("dc-adapters", *[a.close() for a, _, _, _ in wired_dc])
         for t in start_tasks:
             t.cancel()
         await asyncio.gather(*start_tasks, return_exceptions=True)
     finally:
         dc_bus_coros = [ibus.stop() for _, _, ibus, _ in wired_dc]
         await close_safely("dc-buses", *dc_bus_coros)
-        await close_safely(
-            "dc-typing", *[tl.stop() for _, _, _, tl in wired_dc]
-        )
+        await close_safely("dc-typing", *[tl.stop() for _, _, _, tl in wired_dc])
         await dc_thread_store.close()
         await dc_turn_store.close()
 
@@ -231,6 +222,8 @@ async def bootstrap_discord_standalone(
         )
 
     if not wired_dc:
+        await dc_thread_store.close()
+        await dc_turn_store.close()
         sys.exit("No Discord adapters started — check credentials")
     await wait_for_hub(nc)
     stop_dc = setup_shutdown_event(_stop)

@@ -72,7 +72,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
     except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
         sys.exit(f"Failed to connect to NATS at {scrub_nats_url(nats_url)!r}: {exc}")
 
-    inbound_bus, inbound_bus_cfg = build_inbound_bus(nc, raw_config)
+    inbound_bus, _ = build_inbound_bus(nc, raw_config)
 
     vault_dir = Path(
         os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))
@@ -137,11 +137,11 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
             msg_manager=msg_manager,
             pm=pm,
             inbound_bus=inbound_bus,
-            inbound_bus_cfg=inbound_bus_cfg,
             freshness_drivers_list=_freshness_drivers_list,
             agent_configs=agent_configs,
             tg_bot_auths=tg_bot_auths,
             dc_bot_auths=dc_bot_auths,
+            admin_user_ids=admin_user_ids,
         )
         hub, proxies, dispatchers, cli_nats_driver, nats_llm_client = hub_result
 

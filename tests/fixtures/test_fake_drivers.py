@@ -316,12 +316,19 @@ class TestFakeClaudeCliDriver:
         assert driver.is_alive("any-pool")
         assert driver.is_alive("different-pool")
 
-    def test_queue_fifo_order(self, driver: FakeClaudeCliDriver) -> None:
-        """Responses are returned in FIFO order."""
+    @pytest.mark.asyncio
+    async def test_queue_fifo_order(
+        self, driver: FakeClaudeCliDriver, model_cfg: ModelConfig
+    ) -> None:
+        """Responses are dequeued in FIFO (first-in, first-out) order."""
         driver.queue_response("First")
         driver.queue_response("Second")
         driver.queue_response("Third")
 
-        assert driver._queue[0].result == "First"
-        assert driver._queue[1].result == "Second"
-        assert driver._queue[2].result == "Third"
+        r1 = await driver.complete("p", "x", model_cfg, "s")
+        r2 = await driver.complete("p", "x", model_cfg, "s")
+        r3 = await driver.complete("p", "x", model_cfg, "s")
+
+        assert r1.result == "First"
+        assert r2.result == "Second"
+        assert r3.result == "Third"

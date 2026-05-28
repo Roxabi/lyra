@@ -100,10 +100,7 @@ async def _init_bot_auths_and_agents(
     """Resolve multibot config, build authenticators, load agent configs."""
     circuit_registry, admin_user_ids = _load_circuit_config(raw_config)
 
-    try:
-        tg_multi_cfg, dc_multi_cfg = load_multibot_config(raw_config)
-    except ValueError as exc:
-        raise ValueError(str(exc))
+    tg_multi_cfg, dc_multi_cfg = load_multibot_config(raw_config)
 
     tg_bot_auths, dc_bot_auths = _build_bot_auths(
         BotAuthDeps(

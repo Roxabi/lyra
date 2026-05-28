@@ -36,6 +36,7 @@ class FakeNatsClient:
         self._subscriptions.append((subject, kwargs))
         return FakeSubscription()
 
+    @property
     def is_connected(self) -> bool:
         """Return connected state."""
         return self.connected

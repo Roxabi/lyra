@@ -142,7 +142,7 @@ class CodeMeta(BaseModel):
 # ---------------------------------------------------------------------------
 # KNOWN_CODES — canonical registry (ADR-066 § "The code namespace")
 # ---------------------------------------------------------------------------
-# Domains: transport | pool | worker | cli | llm | voice | image
+# Domains: transport | pool | worker | cli | llm | voice | image | stream
 # ---------------------------------------------------------------------------
 
 KNOWN_CODES: dict[str, CodeMeta] = {
@@ -282,5 +282,11 @@ KNOWN_CODES: dict[str, CodeMeta] = {
         domain="image",
         default_retryable=False,
         description="Image prompt was rejected by the engine's content policy.",
+    ),
+    # --- stream --------------------------------------------------------------
+    "stream.error": CodeMeta(
+        domain="stream",
+        default_retryable=False,
+        description="Unhandled exception during hub-side stream processing (StreamProcessor), or an un-categorized soft error surfaced via SanitizedError.from_message.",  # noqa: E501
     ),
 }

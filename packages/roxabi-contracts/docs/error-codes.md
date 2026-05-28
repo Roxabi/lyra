@@ -65,4 +65,10 @@
 | image.engine_unavailable | true | Image generation engine is not reachable or has not started. |
 | image.prompt_rejected | false | Image prompt was rejected by the engine's content policy. |
 
+## stream.*
+
+| code | retryable | description |
+|------|-----------|-------------|
+| stream.error | false | Unhandled exception during hub-side stream processing (StreamProcessor), or an un-categorized soft error surfaced via SanitizedError.from_message. |
+
 See ADR-066 for design rationale.

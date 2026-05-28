@@ -210,6 +210,11 @@ Both maps are built once in `__init__` and are immutable thereafter. `decode()` 
 | ToolCall lifecycle | `tool_call_start`, `tool_call_args`, `tool_call_end`, `tool_call_result` |
 | Reasoning lifecycle | `reasoning_start`, `reasoning_delta`, `reasoning_end` |
 
+`run_error` events carry a populated `code` drawn from the canonical
+`roxabi_contracts.errors.KNOWN_CODES` registry (e.g. `stream.error`, `cli.auth`,
+`llm.rate_limit`) — see [error-codes.md](../../packages/roxabi-contracts/docs/error-codes.md)
+(issue #1113). `code` is `None` only for events serialized before the taxonomy landed.
+
 The v1 events `TextRenderEvent` (`event_type="text"`) and `ToolSummaryRenderEvent`
 (`event_type="tool_summary"`) have been removed from `src/lyra/core/messaging/render_events.py`
 and from the registry (issue #1192, Slice 3). All consumer paths and dual-emit sites have been

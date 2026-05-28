@@ -169,8 +169,12 @@ class RunErrorRenderEvent:
     In both cases, the adapter dispatch ladder flags the turn as error so the
     final rendered message gets an ``❌`` prefix.
 
-    ``code`` is reserved for a future taxonomy (carry-over from #1097 review);
-    Slice 1 always passes ``None``.
+    ``code`` is a key from the canonical ``roxabi_contracts.errors.KNOWN_CODES``
+    registry (e.g. ``stream.error`` for an infrastructure exception, or a
+    ``WorkerError`` code such as ``cli.auth`` / ``llm.rate_limit`` for soft
+    errors). It is populated from the originating ``SanitizedError.code`` at
+    both emit sites. ``None`` is retained only as the historical / pre-taxonomy
+    sentinel for events serialized before #1113.
     """
 
     run_id: str

@@ -33,6 +33,7 @@ from lyra.core.messaging.render_events import (
     ReasoningEndRenderEvent,
     ReasoningStartRenderEvent,
     RenderEvent,
+    RunErrorRenderEvent,
     TextChunkRenderEvent,
     TextDeltaRenderEvent,
     TextEndRenderEvent,
@@ -687,3 +688,41 @@ def test_decode_synthetic_sentinel_no_warning(
         f"Unexpected 'unknown event_type' warning(s) for synthetic sentinels: "
         f"{[r.getMessage() for r in unknown_warnings]}"
     )
+
+
+class TestRunErrorCodeRoundTrip:
+    """#1113 — RunErrorRenderEvent.code survives the NATS codec round-trip.
+
+    The codec is a pass-through serialiser; populating ``code`` from KNOWN_CODES
+    must reach the wire, and historical ``code=None`` events must still decode.
+    """
+
+    def test_populated_code_round_trips(self) -> None:
+        codec = NatsRenderEventCodec()
+        original = RunErrorRenderEvent(
+            run_id="run-1", message="ValueError", code="stream.error"
+        )
+        event_type, payload, is_done = codec.encode(original)
+
+        assert is_done is True
+        decoded = codec.decode(event_type, payload)
+        # decoded == original (frozen dataclass) already pins code fidelity.
+        assert decoded == original
+
+    def test_worker_error_code_round_trips(self) -> None:
+        codec = NatsRenderEventCodec()
+        original = RunErrorRenderEvent(
+            run_id="run-2", message="auth failed", code="cli.auth"
+        )
+        event_type, payload, _ = codec.encode(original)
+        decoded = codec.decode(event_type, payload)
+        assert decoded == original
+
+    def test_historical_none_code_decodes(self) -> None:
+        """Forward-compat: an event serialized before #1113 (code=None) decodes."""
+        codec = NatsRenderEventCodec()
+        original = RunErrorRenderEvent(run_id="run-3", message="boom", code=None)
+        event_type, payload, _ = codec.encode(original)
+        decoded = codec.decode(event_type, payload)
+        assert decoded == original
+        assert decoded.code is None  # type: ignore[union-attr]

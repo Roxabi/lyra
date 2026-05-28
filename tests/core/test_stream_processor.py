@@ -37,6 +37,7 @@ from lyra.core.messaging.render_events import (
 )
 from lyra.core.processors.stream_processor import StreamProcessor
 from lyra.core.trace import TraceContext
+from roxabi_contracts.errors import KNOWN_CODES, WorkerError
 
 _RUN_LIFECYCLE_TYPES = (
     RunStartedRenderEvent,
@@ -834,10 +835,10 @@ class TestRunLifecycle:
         # can leak file paths, hostnames, auth tokens onto the wire.
         assert seen[-1].message == "_Boom"
         assert "input died" not in seen[-1].message
-        # code is intentionally None per RunErrorRenderEvent docstring
-        # ("reserved for a future taxonomy" — #1097 carry-over). The EventEmitter
-        # translator deliberately drops SanitizedError.code on the wire.
-        assert seen[-1].code is None
+        # #1113: the EventEmitter translator now propagates SanitizedError.code
+        # onto the wire. Site A (infra exception) sources "stream.error", a key
+        # in roxabi_contracts.errors.KNOWN_CODES.
+        assert seen[-1].code == "stream.error"
         assert seen[-1].run_id == seen[0].run_id
         # Position-aware: no RunFinished must appear before RunError, and
         # exactly two lifecycle events should be present (started + error).
@@ -1788,3 +1789,124 @@ class TestTextTriplet:
         assert text_end_idx < run_finished_idx, (
             "TextEnd must be emitted before RunFinished on truncation path"
         )
+
+
+# ---------------------------------------------------------------------------
+# #1113 — RunErrorRenderEvent.code taxonomy (KNOWN_CODES)
+# ---------------------------------------------------------------------------
+
+
+async def _raise_events() -> AsyncIterator:
+    """Async iterator that raises mid-stream — drives the Site A infra path."""
+    raise RuntimeError("kaboom")
+    yield  # pragma: no cover — unreachable, makes this an async generator
+
+
+class TestRunErrorCode:
+    """RunErrorRenderEvent.code is populated from SanitizedError.code (#1113).
+
+    Three emit paths, all sourced from roxabi_contracts.errors.KNOWN_CODES:
+      - Site A: infrastructure exception → ``stream.error``.
+      - Site B with a WorkerError → the worker's registry code.
+      - Site B without a WorkerError (error_text → from_message) → ``stream.error``.
+    """
+
+    async def test_infra_exception_code_is_stream_error(self) -> None:
+        """Site A: an exception escaping process() emits code='stream.error'."""
+        processor = StreamProcessor()
+        collected: list = []
+        with pytest.raises(RuntimeError):
+            async for ev in processor.process(_raise_events()):
+                collected.append(ev)
+
+        run_errors = [e for e in collected if isinstance(e, RunErrorRenderEvent)]
+        assert run_errors, "expected a RunErrorRenderEvent before the re-raise"
+        # Ordering: the RunError must be the LAST event emitted before the
+        # re-raise — guards against a refactor that re-raises before yielding it.
+        assert isinstance(collected[-1], RunErrorRenderEvent)
+        assert run_errors[-1].code == "stream.error"
+
+    @pytest.mark.parametrize(
+        "code,retryable",
+        [("cli.auth", False), ("llm.rate_limit", True)],
+        ids=["non_retryable", "retryable"],
+    )
+    async def test_soft_error_with_worker_error_propagates_code(
+        self, code: str, retryable: bool
+    ) -> None:
+        """Site B: a WorkerError code reaches RunError.code (both retryable values)."""
+        processor = StreamProcessor()
+        events = async_events(
+            ResultLlmEvent(
+                is_error=True,
+                duration_ms=0,
+                error_text="upstream error",
+                worker_error=WorkerError(
+                    code=code, message="worker said no", retryable=retryable
+                ),
+            ),
+        )
+        all_events = await collect(processor.process(events))
+
+        run_errors = [e for e in all_events if isinstance(e, RunErrorRenderEvent)]
+        assert len(run_errors) == 1
+        assert run_errors[0].code == code
+
+    async def test_soft_error_without_worker_error_code_is_stream_error(self) -> None:
+        """Site B: error_text only (no WorkerError) falls back to stream.error."""
+        processor = StreamProcessor()
+        events = async_events(
+            ResultLlmEvent(is_error=True, duration_ms=0, error_text="boom"),
+        )
+        all_events = await collect(processor.process(events))
+
+        run_errors = [e for e in all_events if isinstance(e, RunErrorRenderEvent)]
+        assert len(run_errors) == 1
+        assert run_errors[0].code == "stream.error"
+
+    async def test_soft_error_empty_error_text_falls_back_to_model_error(self) -> None:
+        """Site B: empty error_text → from_message → message='model_error'."""
+        processor = StreamProcessor()
+        events = async_events(
+            ResultLlmEvent(is_error=True, duration_ms=0, error_text=""),
+        )
+        all_events = await collect(processor.process(events))
+
+        run_errors = [e for e in all_events if isinstance(e, RunErrorRenderEvent)]
+        assert len(run_errors) == 1
+        assert run_errors[0].message == "model_error"
+        assert run_errors[0].code == "stream.error"
+
+    async def test_emitted_codes_are_registered(self) -> None:
+        """SC-6: every code the processor actually emits is a KNOWN_CODES key.
+
+        Connects the emit sites to the registry (not a static dict membership
+        check): drives all three paths and asserts each emitted, non-None code
+        is registered.
+        """
+        emitted: list[str] = []
+
+        # Site A — infra exception.
+        with pytest.raises(RuntimeError):
+            async for ev in StreamProcessor().process(_raise_events()):
+                if isinstance(ev, RunErrorRenderEvent) and ev.code is not None:
+                    emitted.append(ev.code)
+
+        # Site B — WorkerError code, and from_message fallback.
+        for evt in (
+            ResultLlmEvent(
+                is_error=True,
+                duration_ms=0,
+                worker_error=WorkerError(
+                    code="cli.auth", message="x", retryable=False
+                ),
+            ),
+            ResultLlmEvent(is_error=True, duration_ms=0, error_text="boom"),
+        ):
+            for ev in await collect(StreamProcessor().process(async_events(evt))):
+                if isinstance(ev, RunErrorRenderEvent) and ev.code is not None:
+                    emitted.append(ev.code)
+
+        assert emitted, "expected at least one populated code across the emit paths"
+        assert all(code in KNOWN_CODES for code in emitted), emitted
+        assert KNOWN_CODES["stream.error"].domain == "stream"

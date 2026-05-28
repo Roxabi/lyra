@@ -159,7 +159,10 @@ def test_real_matrix_has_no_drift() -> None:
     all lyra-owned identities.  Failing this test means a regression was
     introduced into deploy/nats/acl-matrix.json."""
     if not _MATRIX_PATH.exists():
-        pytest.skip(f"matrix file not found: {_MATRIX_PATH}")
+        pytest.fail(
+            f"matrix file not found: {_MATRIX_PATH}"
+            " — committed artefact, absence is a regression"
+        )
     identities = _load_matrix(_MATRIX_PATH)
     findings = audit_matrix_inbox_drift(identities)
     assert findings == [], (

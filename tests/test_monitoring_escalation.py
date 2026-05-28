@@ -241,6 +241,26 @@ class TestRunFallbackChain:
                 free=50 * 1024**3,
             ),
         )
+        # Mock inode usage for check_inode_pct
+        import os as _os
+
+        monkeypatch.setattr(
+            "lyra.monitoring.checks_varz.os.statvfs",
+            lambda path: _os.statvfs_result(
+                (
+                    100 * 1024**3,
+                    50 * 1024**3,
+                    50 * 1024**3,
+                    1000000,
+                    900000,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                )
+            ),
+        )
 
     async def test_all_pass_returns_zero(
         self,

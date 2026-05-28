@@ -1,0 +1,591 @@
+---
+title: "Tool system articulation — harness, tools, workers, agents"
+description: "Comprehensive synthesis of the Lyra tool layer: bridges epic #493 (ToolHandler), #1044/#1047 (JobHandler), harness-epic-consolidated, and the satellite ecosystem (imageCLI, voiceCLI, llmCLI, Postiz, XCLI). Establishes the 5-layer tool taxonomy, the uniform dispatcher pattern, the per-agent Quadlet `@` template, and the roxabi-tools-sdk shared library."
+issue: 493
+tier: F-full
+date: 2026-05-27
+---
+
+## Source
+
+> "On a un sujet de tools sur lyra. Il faudrait qu'on dégage un pattern, une structure, quelque chose d'assez universel… On aura des tools qui seront internes dans le harness et des tools qui sont externes. Donc comment on va gérer ces cas là ? Sachant que globalement le harness il est fort probable qu'on ait un template de harness mais qu'à chaque fois qu'on appelle un agent différent, l'agent il va spawn sûrement un conteneur différent sur la base de ce harness."
+>
+> — Trigger of the design session, 2026-05-27
+
+This document captures the full design synthesis from 5 internal/external research agents + 3 domain reviewers (architect, devops, axial-adr-review). It is the **reference articulation** for the tool layer across Lyra and satellites. Companion to `harness-epic-consolidated.md`.
+
+---
+
+## 1. Context — the scattered state
+
+The "tool" concept is currently split across **four parallel design spaces** that do not yet converge:
+
+| Space | Where | Owns |
+|---|---|---|
+| **A. Tool registry (LLM-facing)** | epic #493 + #477 + #478 | `ToolHandler` Protocol, `ToolRegistry`, 3 built-ins (`shell_sandboxed`, `file_read`, `web_fetch`), Plugin SDK |
+| **B. Worker fleet (job-facing)** | epic #1044 + #1047 + #1052 | `JobHandler` Protocol, atomic/composite distinction, `invoke_subjob` (depth≤3), `--role` workers |
+| **C. Harness runtime** | `harness-epic-consolidated.md` (not yet opened as GH epic; supersedes #633 + #987) | Agentic turn loop, tool executor, turn-local working memory, `HarnessRequest`/`HarnessResponse` |
+| **D. Satellite ecosystem** | imageCLI, voiceCLI, llmCLI, Postiz, XCLI | NATS workers + CLIs + Quadlet sidecars + per-component NKey secrets |
+
+**The drift signal**: space A defines `ToolHandler`. Space B defines `JobHandler`. Both target NATS dispatch. Both have a registry. **Neither references the other.** The harness consolidated doc (§6, Q1) explicitly flags this as unresolved.
+
+**The user-intent signal** (verbatim from `harness-epic-consolidated.md` §6): *"We will have internal tool and tool used through NATS. Protocol will be likely different because we may use a pre existing tool for harness that might have plugins."* Confirmed user intent, not formalized.
+
+---
+
+## 2. Discovery — what already exists in lyra
+
+| Artifact | State | Relevant content |
+|---|---|---|
+| Epic **#493** (OPEN) | Design locked | `ToolHandler(name, description, input_schema, read_only, async execute)` + `ToolRegistry(register, get_definitions, dispatch, get)` |
+| Issue **#477** (OPEN) | Spec drafted, blocked on protocol | Registry + 3 in-process built-ins, ~300 LOC estimate |
+| Issue **#478** (OPEN, P3) | Spec drafted, blocked on #477 | Plugin SDK, SKILL.md manifest, Pydantic validation, directory-scan discovery, lifecycle hooks |
+| Epic **#1044** (OPEN) | Worker fleet | Job-name resolution, role-filtered registry, `--role` flag for worker specialization |
+| Issue **#1047** (OPEN) | Defined | `JobHandler.handle(payload, ctx) → dict`, `ctx.invoke_subjob()` for composition |
+| Issue **#1052** (OPEN) | Defined | Composite depth≤3, `JobEnvelope` validator already shipped in `roxabi-contracts` |
+| **ADR-010** | Ratified | External CLI pattern: Install (binary on PATH) + Wrap (SKILL.md) + Declare (agent TOML `model.tools`) |
+| **ADR-067/068** | Ratified | Blobstore HTTP service |
+| **ADR-073** (axial) | Ratified | Primary axis = `stage` (pipeline slice). Non-primary = platform/adapter |
+| **ADR-075** | Ratified | `lyra-turn-writer` as sole JetStream writer |
+| `harness-epic-consolidated.md` | Drafted, **not yet GH-opened** | 3-concerns split (canonical store, context builder = hub, turn-local = harness); LangGraph leaning; `lyra.harness.turn.{request,heartbeat}` subjects |
+| `roxabi-contracts/` package | Production | Pydantic models for `voice/`, `image/`, `llm/` domains. Cross-service contract source-of-truth |
+| `~/projects/CLAUDE.md` | Production | M₁/M₂ host topology, Quadlet manifest convention, NATS hub-spoke |
+
+**Concepts NOT yet documented anywhere in lyra**:
+- Atomic vs composite in the **tool/harness layer** (only in worker layer)
+- Skill / playbook / macro abstraction above tools
+- Sub-agent invocation pattern (Task tool style)
+- Per-agent containerization (user's stated intent — undocumented)
+- Built-in vs external tool taxonomy (user-confirmed intent — undocumented)
+- `gh` / GitHub as a first-class built-in candidate
+
+**Concept search returned zero hits**: "lightpool" appears nowhere in codebase, docs, or web. Treat as confusion with `clipool` (the Claude CLI subprocess pool). Pending user clarification.
+
+---
+
+## 3. External SOTA — convergent patterns
+
+Research across LangChain, LangGraph, smolagents, CrewAI, AutoGen, Pydantic AI, OpenAI Agents SDK, Anthropic Tool Use + Skills, MCP. **Six points of convergence** (≥6 frameworks agree):
+
+| Convergent pattern | Status in #493 |
+|---|---|
+| JSON Schema = universal contract | ✅ |
+| Dot-namespaced names | ✅ |
+| Sync + async execution pair | ⚠ async-only mandated; Hermes uses sync bridge — re-arbitrated to async-only |
+| Rich description ≥ schema for LLM UX | ✅ |
+| Registration = list at agent init | ✅ |
+| Input examples (Anthropic `input_examples`) | ❌ — to add |
+| Behavioral annotations (`read_only`, `idempotent`, `destructive`, `open_world`) | ⚠ only `read_only` — extend |
+
+**Dispatcher uniformity (key architectural choice)**:
+
+| Framework | Built-in vs external dispatcher | Verdict |
+|---|---|---|
+| Claude Code | **Uniform** (deny-first pipeline, `assembleToolPool()`) | ⭐ adopt |
+| smolagents | **Uniform** | ⭐ adopt |
+| LangGraph DeepAgents | Graph-uniform | OK |
+| OpenAI Codex CLI | **Branched** (built-ins sandboxed, MCP self-responsible) | reject |
+| OpenAI Agents SDK | Explicitly branched | reject |
+
+→ **Adopt uniform dispatcher** (one ACL pipeline, same `ToolResult`, transport varies). This is also the axial-correct shape (single dispatcher = single stage primitive, no per-tool reimplementation).
+
+**Per-agent containerization patterns**:
+
+| Pattern | Examples | Tradeoff | Fit for Lyra |
+|---|---|---|---|
+| A. Python objects in one process | LangGraph, CrewAI, smolagents | No isolation; fast | ❌ no isolation |
+| B. Managed cloud containers per session | Anthropic Managed Agents, E2B, Modal | Strong isolation; startup latency | ❌ external infra |
+| C. **Quadlet `@` instance templates** | `foo@<inst>.container`, EnvFile per instance | Same image, per-agent identity, ~1-3s start | ⭐ ideal fit |
+| D. Shared pool + identity in payload | Current lyra-clipool | Minimal; context leakage risk | partial — fine for hub, not for harness |
+
+→ **Adopt Pattern C** for the harness (`lyra-agent@<slug>.container`). User intuition correct, Quadlet native support.
+
+**Atomic vs composite — 4-layer canonical taxonomy** (derived from Anthropic Skills + smolagents managed_agents + LangGraph subagents + Pydantic AI toolsets):
+
+| Layer | Name | Definition | Frameworks |
+|---|---|---|---|
+| L0 | **Atomic tool** | Single LLM `tool_use` → single primitive op | All |
+| L1 | **Macro** | Deterministic chain of L0, no sub-LLM | smolagents code-agent, lyra `JobHandler` composite (#1052) |
+| L2 | **Skill** | Instruction-layer composite — guides LLM via SKILL.md, prompt injection | Anthropic Skills (Oct 2025), Hermes SKILL.md |
+| L3 | **Sub-agent** | Recursive harness call, isolated context | Claude Code Task tool, smolagents ManagedAgent, LangGraph subagents |
+
+---
+
+## 4. The articulation — 5-layer model
+
+```
+╔═════════════════════════════════════════════════════════════════════════╗
+║  IDENTITY & DEPLOYMENT  (Pattern C — Quadlet @ template)                ║
+╠═════════════════════════════════════════════════════════════════════════╣
+║  ~/.config/containers/systemd/lyra-agent@.container                     ║
+║    Image=ghcr.io/roxabi/lyra-agent-harness:vX.Y.Z                       ║
+║    ContainerName=lyra-agent-%i                                          ║
+║    EnvironmentFile=%h/.roxabi/lyra/env/%i.env       ← per-agent ACL     ║
+║    Volume=%h/.roxabi/lyra/agents/%i:/data/agent     ← per-agent state   ║
+║    Volume=%h/.roxabi/lyra/skills/%i:/data/skills:ro ← per-agent L2      ║
+║    Secret=lyra-nats-%i,type=mount                                       ║
+║                                                                          ║
+║  systemctl --user start lyra-agent@telegram.service                     ║
+║  systemctl --user start lyra-agent@discord.service                      ║
+║  systemctl --user start lyra-agent@gh-bot.service                       ║
+╚═════════════════════════════════════════════════════════════════════════╝
+                                  ▼
+╔═════════════════════════════════════════════════════════════════════════╗
+║  HARNESS  (identical binary, N instances, per `harness-epic-consolidated`)║
+╠═════════════════════════════════════════════════════════════════════════╣
+║  ├─ Agentic turn loop (LLM call → tool exec → re-LLM → end_turn)        ║
+║  ├─ Tool dispatcher — UNIFORM (deny-first ACL, same ToolResult)         ║
+║  ├─ Turn-local working memory (discarded post-turn)                     ║
+║  └─ Stream HarnessEvent → hub (lyra.harness.turn.request)               ║
+╚═════════════════════════════════════════════════════════════════════════╝
+                                  ▼
+╔═════════════════════════════════════════════════════════════════════════╗
+║  TOOLS  (4 layers — uniform dispatch, transport varies)                 ║
+╠═════════════════════════════════════════════════════════════════════════╣
+║  L0a  Built-in atomic    │ in-process │ bash, file_*, web_fetch,         ║
+║       (in harness binary)│            │ nats_publish, nats_request, gh   ║
+║  ─────────────────────────┼───────────┼─────────────────────────────────  ║
+║  L0b  Remote atomic       │ NATS Micro│ image.generate, voice.tts,       ║
+║       (NATS sidecar)      │ $SRV.INFO │ llm.generate, postiz.create_post,║
+║                            │           │ xcli.post, vault.add, scrape    ║
+║  ─────────────────────────┼───────────┼─────────────────────────────────  ║
+║  L1   Macro (chain L0)    │ in-proc OR│ vault.add_from_url =             ║
+║       deterministic, no    │ remote    │  scrape→llm.summarize→vault.add ║
+║       sub-LLM              │ via #1052 │  (composite JobHandler)          ║
+║  ─────────────────────────┼───────────┼─────────────────────────────────  ║
+║  L2   Skill (SKILL.md)    │ prompt    │ Code-review skill, brand-voice   ║
+║       instruction-layer    │ injection │ skill, etc. → guide LLM to seq  ║
+║                            │           │ L0/L1 in a domain                ║
+║  ─────────────────────────┼───────────┼─────────────────────────────────  ║
+║  L3   Sub-agent (Task)    │ NATS      │ Spawn nested harness, isolated   ║
+║       recursive harness    │ harness   │ context, returns summary upward ║
+║                            │ subject   │ (open question — v1 or v2)      ║
+╚═════════════════════════════════════════════════════════════════════════╝
+                                  ▼
+╔═════════════════════════════════════════════════════════════════════════╗
+║  SHARED CONTRACTS & SDK                                                 ║
+╠═════════════════════════════════════════════════════════════════════════╣
+║  roxabi-contracts/tools/        ← Protocols & manifests (NEW submodule) ║
+║    ├─ InProcessTool (Protocol)                                           ║
+║    ├─ RemoteTool (Protocol)                                              ║
+║    ├─ ToolResult (Ok | RetryableError | TerminalError)                   ║
+║    ├─ ToolManifest (Pydantic — single parser)                            ║
+║    └─ AgentIdField (security-bearing — breaking-change ADR)              ║
+║                                                                          ║
+║  roxabi-tools-sdk (NEW package)  ← Transport primitives                  ║
+║    ├─ NATSMicroAdapter (base class for L0b sidecars)                     ║
+║    ├─ AgentIdMiddleware (X-Roxabi-Agent propagation — single site)       ║
+║    ├─ ToolRegistryClient (heartbeat-TTL, lyra/WorkerRegistry pattern)    ║
+║    └─ ManifestLoader (parses tool-manifest.toml per repo)                ║
+╚═════════════════════════════════════════════════════════════════════════╝
+```
+
+---
+
+## 5. Worker ≠ Tool — distinction resolved
+
+User question: "Est-ce qu'on considère les workers comme des tools, un bundle de tools, ou quelque chose d'indépendant qui va utiliser les autres tools ?"
+
+**Answer**: A worker is **not** a tool. A worker is a service that **exposes** tools.
+
+| | Worker | Tool |
+|---|---|---|
+| Nature | Long-running NATS service | Surface of invocation visible to LLM |
+| Deployment unit | Quadlet `.container` | Entry in `ToolRegistry` |
+| Cardinality | 1 worker → N tools | 1 tool → 1 endpoint (atomic) or 1 macro (composite) |
+| Identity | NATS account + NKey | Dot-namespace in registry |
+| Discovery | `$SRV.PING` on boot | `$SRV.INFO` metadata fetch |
+
+**Examples**:
+
+| Worker | Tools it exposes |
+|---|---|
+| `imageCLI` (Quadlet `imagecli-gen`) | `image.generate`, `image.list_engines`, `image.cancel` |
+| `voiceCLI` STT (`voicecli-stt`) | `voice.stt`, `voice.list_models` |
+| `voiceCLI` TTS (`voicecli-tts`) | `voice.tts`, `voice.list_voices` |
+| `llmCLI` worker | `llm.generate` (atomic), `llm.lifecycle.swap` (control plane) |
+| `lyra-vault-intel` (planned, #1050-1052) | `vault.add` (L0b atomic), `vault.add_from_url` (L1 composite — calls `scrape`+`llm.summarize`+`vault.add`) |
+| `postiz` (no Quadlet — bash CLI direct from hub) | `postiz.create_post`, `postiz.list_integrations`, `postiz.analytics` |
+| `xcli` (no Quadlet — bash CLI direct from hub) | `xcli.post`, `xcli.feed`, `xcli.search` |
+
+→ The harness sees `image.generate` and `bash` identically in its `tools[]` array. Transport difference is invisible to the LLM.
+
+---
+
+## 6. Bridging #493 ↔ #1047 — the unified registry
+
+`ToolHandler` (#493) and `JobHandler` (#1047) are converging on the same shape. **Bridge them via `roxabi-contracts/tools/`** (axial-adr-review verdict: drift present, refactor before commit).
+
+```python
+# roxabi-contracts/tools/protocols.py
+
+class InProcessTool(Protocol):
+    """L0a — built-in, compiled in harness binary."""
+    name: str                           # dot-namespace (e.g. "bash", "gh.list_prs")
+    description: str
+    input_schema: dict                  # JSON Schema (portable)
+    input_examples: list[dict]          # ≥2 examples (Anthropic convention)
+    hints: ToolHints                    # read_only / idempotent / destructive / open_world
+    requires_env: list[str]             # ["GH_TOKEN", ...]
+    max_result_size_chars: int          # output budget
+    async def execute(self, input: dict) -> ToolResult: ...
+
+class RemoteTool(Protocol):
+    """L0b — NATS sidecar, plus L1 composite via #1052 invoke_subjob."""
+    name: str
+    description: str
+    input_schema: dict
+    input_examples: list[dict]
+    hints: ToolHints
+    nats_subject: str                   # "lyra.image.generate.request"
+    queue_group: str                    # "IMAGE_WORKERS"
+    heartbeat_subject: str              # "lyra.image.heartbeat"
+    timeout_ms: int = 30_000
+    # `check_fn` available via $SRV.PING liveness check (no per-tool callable needed)
+    # execute() is implemented by the SDK NATSMicroAdapter, not per-tool
+
+class ToolResult:
+    """Discriminated union, mapped to existing WorkerError codes at boundary."""
+    # variant: Ok(payload: str)
+    # variant: RetryableError(reason: str, retry_after_ms: int | None)
+    # variant: TerminalError(reason: str, code: WorkerError.Code)
+```
+
+**JobHandler (#1047) becomes a specific case of `RemoteTool`** — the `invoke_subjob` capability is exposed at the worker layer (worker-side composition) and surfaces upward as a single `RemoteTool` to the harness. Depth≤3 enforcement stays in the worker, transparent to the harness.
+
+---
+
+## 7. Manifest standard — `tool-manifest.toml`
+
+One manifest per repo (lyra has multiple). Single parser in `roxabi-contracts/tools/manifest.py`. Single validator (Pydantic).
+
+```toml
+# Per-repo example: imageCLI/tool-manifest.toml
+
+[meta]
+name        = "imagecli"
+version     = "0.1.1"            # matches pyproject
+uid         = 1503
+worker_role = "image-worker"     # references hosts.toml role
+
+[invoke]
+transport  = "nats"              # "nats" | "http" | "stdio"
+cli_bin    = "imagecli"          # entrypoint for direct CLI mode (Postiz/XCLI)
+
+[[tools]]                        # one or more tools exposed by this worker
+name              = "image.generate"
+description       = "Generate an image from a text prompt using FLUX engines."
+nats_subject      = "lyra.image.generate.request"
+queue_group       = "IMAGE_WORKERS"
+heartbeat_subject = "lyra.image.heartbeat"
+request_schema    = "schemas/image_generate_request.json"
+response_schema   = "schemas/image_generate_response.json"
+examples_file     = "schemas/image_generate_examples.json"
+timeout_ms        = 120_000
+max_result_size_chars = 4_000    # blob ref, not blob itself
+hints             = { read_only = false, idempotent = false, destructive = false, open_world = false }
+
+[[tools]]
+name              = "image.list_engines"
+description       = "List available image generation engines and their status."
+nats_subject      = "lyra.image.engines.list"
+queue_group       = "IMAGE_WORKERS"
+heartbeat_subject = "lyra.image.heartbeat"
+hints             = { read_only = true, idempotent = true }
+
+[data]
+data_dir   = "~/.roxabi/imagecli"
+volumes    = [
+  "~/.cache/huggingface:/home/imagecli/.cache/huggingface",  # shared_ro
+  "~/.roxabi/imagecli:/home/imagecli/.roxabi/imagecli",       # tool_data
+]
+
+[deploy]
+quadlet_dir  = "deploy/quadlet"
+components   = ["gen"]
+env_dir      = "~/.roxabi/imagecli/env"
+
+[auth]
+nats_account     = "image-worker"     # references hosts.toml
+nkey_secret_name = "imagecli-nats-gen"
+nkey_env         = "NATS_NKEY_SEED_PATH"
+```
+
+**Postiz / XCLI variant** — `transport = "stdio"` or `transport = "http"`, no `nats_subject`, no Quadlet sidecar. The harness invokes the CLI directly (devops verdict — no value in wrapping bash in NATS Micro for low-frequency calls).
+
+---
+
+## 8. Identity, auth, volume — formalized standard
+
+| Concern | Standard | Source |
+|---|---|---|
+| **NATS account** | One per role (`lyra-hub`, `voice-worker`, `image-worker`, `llm-worker`) | Existing, in `hosts.toml` |
+| **NKey credential** | One Podman secret per component (`voicecli-nats-tts`, etc.) | Existing |
+| **UID anchor** | Fixed UID per tool (image=1503, voice=1501, llm=1502) | Existing |
+| **EnvironmentFile** | `%h/.roxabi/<tool>/env/<role>.env` | Ratified `feedback_quadlet_env_in_tool_data_dir.md` — universalize to imageCLI, voiceCLI |
+| **Shared volumes** | `~/.cache/huggingface` (RO, multi-tool) | Existing |
+| **Tool data volume** | `~/.roxabi/<tool>/` (RW, single-tool) | Existing (voiceCLI grandfathered at `~/.voicecli/`) |
+| **Per-agent volume** | `~/.roxabi/<tool>/agents/<agent-id>/` subdir inside bind-mount | NEW — devops verdict: subdir, not named volumes (Syncthing) |
+| **Agent identity propagation** | `agent_id` field embedded in JSON payload body of every NATS request | NEW — single site in `roxabi-tools-sdk` (`AgentIdMiddleware`); breaking-change ADR on `roxabi-contracts` |
+| **Identity enforcement** | ACL at harness pool-assembly time (deny-first); tools log `agent_id` for audit only | NEW — Claude Code pattern |
+
+**Rejected**:
+- Account-per-agent at scale (≤10 agents foreseeable — disproportionate operational surface)
+- NATS protocol header for `agent_id` (requires transport-layer changes; embed in JSON payload instead)
+- Named volumes (break Syncthing M₁↔M₂ replication)
+- OCI artifact distribution via ORAS (no consumer; revisit only at pull-CD adoption)
+
+---
+
+## 9. Reviewer findings — synthesized
+
+### 9.1 Architect (verdict: MODIFY)
+
+| Finding | Decision |
+|---|---|
+| `RemoteToolHandler extends ToolHandler` is Liskov violation | ✅ Use 2 distinct Protocols (`InProcessTool` + `RemoteTool`) |
+| Hermes sync-bridge is acknowledged tech debt — don't bring forward | ✅ async-only `execute()` for in-process tools; remote tools handled by SDK |
+| `execute() → str` loses retry semantics | ✅ Return `ToolResult` discriminated union; serialise at LLM boundary |
+| `$SRV.PING` enumeration thundering-herd at 20 tools | ✅ Reuse lyra `WorkerRegistry` heartbeat-TTL pattern instead |
+| Schema as Pydantic class blocks JS/Rust agents | ✅ JSON Schema in manifest is SSoT; Pydantic only inside hub |
+| `tool-manifest.toml` should NOT block #477 | ✅ #477 stays in-code registration; manifests appear in #478 |
+
+### 9.2 DevOps (verdict: 7 specific calls)
+
+| # | Question | Verdict |
+|---|---|---|
+| 1 | NATS account vs ACL for multi-agent | **Header-only via JSON body** — current account-per-role is right granularity |
+| 2 | Per-agent volume namespacing | **Subdir bind-mount** `~/.roxabi/<tool>/agents/<agent-id>/` (Syncthing-safe) |
+| 3 | voiceCLI `~/.voicecli/` migration | **Keep grandfathered** — manifest allows `tool_data` override |
+| 4 | OCI artifact distribution via ORAS | **Defer** — no consumer |
+| 5 | Quadlet sidecar for Postiz/XCLI | **No** — bash CLI direct from hub for ≤10 agents. Postiz token migrates to `env/postiz.env` (security fix, independent) |
+| 6 | EnvironmentFile universalization | **Yes**, low-risk for imageCLI/voiceCLI |
+| 7 | Hub currently propagates agent identity? | **No** — codec-layer change required (single site in SDK) |
+
+### 9.3 Axial-ADR-Review (verdict: DRIFT PRESENT, refactor before commit)
+
+ADR-073 primary axis = `stage` (pipeline slice). The 5 tools sit on non-primary axis (platform/adapter).
+
+| Finding | Class | Solution |
+|---|---|---|
+| Quadlet boilerplate + NATS Micro adapter duplicated across 5 tools | `target-axis-trap` (blocking) | Extract `roxabi-tools-sdk` + `roxabi-contracts/tools/` (single canonical impl) |
+| `X-Roxabi-Agent` propagation per-tool = textbook N×M on security-bearing concern | `target-axis-trap` (blocking) | Single site in `roxabi-tools-sdk` SDK transport layer; **breaking-change ADR on `roxabi-contracts` required** |
+| `tool-manifest.toml` parser duplicated per tool | partial trap | Single parser in `roxabi-contracts/tools/` |
+| `RemoteToolHandler` location | dependency direction risk | Place in `roxabi-contracts/tools/`, not lyra core (satellites import contracts, never lyra) |
+| Per-agent dir creation logic | minor | Shared helper in SDK |
+
+---
+
+## 10. Decisions arrêtées
+
+| # | Decision | Outcome |
+|---|---|---|
+| **D1** | Bridge `ToolHandler` ↔ `JobHandler` | **Unified** in `roxabi-contracts/tools/` (axial-mandated) |
+| **D2** | Per-agent container | **Pattern C** Quadlet `@` template (`lyra-agent@<slug>.container`) |
+| **D3** | Layer 2 (Skills SKILL.md) | **Defer** — post-#477, post-harness epic open |
+| **D4** | Layer 3 (Sub-agent via Task tool) | **Follow-up** to v1 harness (per harness §6) |
+| **D5** | `gh`/GitHub as built-in atomic | **Yes** — among primordial L0a |
+| **D6** | Harness runtime | **Indéterminé** — POC needed; lean LangGraph + MemorySaver |
+| **D7** | Open harness epic on GitHub | **Now** — draft exists in `harness-epic-consolidated.md` |
+| **D8** | Primordial L0a built-ins list | **Extend #477** to 7: `shell_sandboxed`, `file_read`, `file_write`, `web_fetch`, `nats_publish`, `nats_request`, `gh` |
+| **D9** | Shared lib package | **`roxabi-tools-sdk`** (new package, separate from `roxabi-nats`) |
+| **D10** | Path A/B/C from initial proposal | **C-revised**: 2 protocols (not extends), SDK-owned NATS adapter |
+| **D11** | Postiz/XCLI deployment | **No Quadlet sidecar** — bash CLI direct from hub via `RemoteTool` with `transport = "stdio" / "http"` |
+| **D12** | ORAS / OCI artifact distribution | **Defer indefinitely** |
+| **D13** | voiceCLI data dir | **Grandfathered** `~/.voicecli/` (manifest override) |
+| **D14** | Postiz token storage | **Fix now** — migrate to `~/.roxabi/postiz/env/postiz.env` (independent security debt) |
+| **D15** | EnvironmentFile pattern | **Universalize** to imageCLI + voiceCLI |
+| **D16** | `agent_id` propagation | **JSON payload body** (not NATS protocol header); breaking-change ADR on `roxabi-contracts` required |
+
+---
+
+## 11. Implementation plan — 3 parallel tracks
+
+### Track A — Security & infra (parallel-safe, low-risk)
+
+| Step | Scope | Estimate |
+|---|---|---|
+| A1 | Postiz token → `~/.roxabi/postiz/env/postiz.env` (D14) | 15 min |
+| A2 | EnvironmentFile pattern on imageCLI Quadlet (D15) | 1 h |
+| A3 | EnvironmentFile pattern on voiceCLI Quadlet (D15) | 1 h |
+| A4 | Update `feedback_quadlet_env_in_tool_data_dir.md` memory to mark universal | 5 min |
+
+### Track B — Contracts & SDK (critical path, blocks #477+)
+
+| Step | Scope | Depends on |
+|---|---|---|
+| B1 | Breaking-change ADR on `roxabi-contracts` for `agent_id` field (D16) | — |
+| B2 | Create `roxabi-contracts/tools/` submodule with `InProcessTool`, `RemoteTool`, `ToolResult`, `ToolManifest`, `ToolHints` | B1 |
+| B3 | Map `ToolResult` variants to existing `WorkerError` codes (architect risk 3) | B2 |
+| B4 | Create `roxabi-tools-sdk` package with `NATSMicroAdapter`, `AgentIdMiddleware`, `ToolRegistryClient` (heartbeat-TTL pattern), `ManifestLoader` | B2 |
+| B5 | Amend epic #493 design comment with revised protocol (post on GH) | B2 |
+| B6 | Amend issue #477 to use `InProcessTool` + extend built-ins list per D8 | B5 |
+| B7 | Implement #477 (in-process registry + 7 built-ins) | B6 |
+
+### Track C — Harness & per-agent (parallel to B, dependent on B at integration)
+
+| Step | Scope | Depends on |
+|---|---|---|
+| C1 | Open harness epic on GitHub from `harness-epic-consolidated.md` (D7) | — |
+| C2 | Spec Quadlet `@` template `lyra-agent@.container` (D2) | C1 |
+| C3 | POC: 1 instance of `lyra-agent@telegram` running, identity in env file | C2 |
+| C4 | Migrate hub → harness handoff via `lyra.harness.turn.request` | B7, C3 |
+
+### Track D — Satellite migration (after B+C ready)
+
+| Step | Scope | Depends on |
+|---|---|---|
+| D1 | Add `tool-manifest.toml` to imageCLI, expose via `NATSMicroAdapter` | B4 |
+| D2 | Same for voiceCLI (STT + TTS) | B4 |
+| D3 | Same for llmCLI worker | B4 |
+| D4 | Postiz: `RemoteTool` with `transport = "http"` (no Quadlet), wrapping `~/.roxabi/postiz/bin/postiz` | B4 |
+| D5 | XCLI: `RemoteTool` with `transport = "stdio"` (no Quadlet) | B4 |
+| D6 | Open child issues for D1-D5 under #478 (Plugin SDK) | B4 |
+
+### Sequence summary
+
+```
+t0 ──── A1 (Postiz token)
+   ├──── A2-A4 (EnvFile rollout)
+   ├──── B1 (ADR breaking-change) ──┐
+   ├──── C1 (open harness epic)     │
+                                    ▼
+t1 ──── B2 (contracts/tools/) ──── B3 ──── B4 (SDK)
+   └──── C2 (Quadlet template spec) ──── C3 (POC)
+                                    ▼
+t2 ──── B5 (amend #493) ──── B6 (amend #477) ──── B7 (implement #477)
+                                    ▼
+t3 ──── D1-D6 (satellite migration, parallel)
+   └──── C4 (hub→harness handoff)
+```
+
+---
+
+## 12. Open questions to surface to user
+
+| # | Question | Owner | Why it matters |
+|---|---|---|---|
+| Q1 | Confirm `roxabi-tools-sdk` as separate package vs extending `roxabi-nats` | user | Decided D9, but reconfirm before B4 starts |
+| Q2 | Harness runtime: LangGraph + MemorySaver, custom thin loop, or Hermes? | user + architect | D6 still open. POC may inform. |
+| Q3 | "Lightpool" reference — clipool typo? Or external term to investigate? | user | If external, may have prior art to mine |
+| Q4 | Layer 3 (sub-agent via Task tool) in harness v1 or follow-up? | user + architect | Aligns with harness `harness-epic-consolidated.md` §6 |
+| Q5 | Layer 2 (Skills SKILL.md) — do we adopt SKILL.md format from Hermes/Anthropic, or invent? | user | If Anthropic, free interop with Claude Code skills |
+| Q6 | XCLI direction: does the upstream `clix` container evolve to expose NATS natively? | user | Affects D5 decision long-term |
+| Q7 | Per-agent volume cleanup mechanism (cron? agent-delete hook?) | devops | Mentioned in devops review, not designed |
+| Q8 | NATS account proliferation cap — at what # of agents do we move to account-per-agent? | user | Currently 1 per role (~5), recommended cap before transition |
+
+---
+
+## 13. Risks
+
+| # | Risk | Likelihood | Impact | Mitigation |
+|---|---|---|---|---|
+| R1 | #477 lands before bridge (D1) → drift between ToolHandler and JobHandler | high | high | Hold #477 until B5 (amend #493) lands |
+| R2 | Per-agent Quadlet `@` template POC fails (Pattern C unviable) | low | medium | Fallback: Pattern D (shared pool + identity in payload) — strictly worse on isolation |
+| R3 | `agent_id` breaking-change ADR delayed → propagation blocked | medium | high | Open ADR first thing (B1) |
+| R4 | LangGraph chosen for harness, then revoked → 2-week rework | medium | medium | POC explicitly required before committing (Q2) |
+| R5 | Postiz/XCLI as `RemoteTool stdio` introduces process-spawn latency vs sidecar | low | low | Profile if >50ms; switch to sidecar only if latency-sensitive |
+| R6 | "Lightpool" turns out to be a real external pattern we should adopt | low | medium | User clarification gates Q3 |
+| R7 | Skill (L2) layer absence in harness v1 limits Claude Code interop | low | medium | If Anthropic SKILL.md is adopted, deferred only by 1 sprint |
+| R8 | Worker fleet (#1044) advances faster than tool bridge → `JobHandler` ratified before unification | medium | high | Coordinate with #1044 owner before B2 |
+
+---
+
+## 14. Glossary
+
+| Term | Definition |
+|---|---|
+| **Harness** | The agentic control loop — owns turn loop, tool dispatch, turn-local memory. One binary, N Quadlet instances. |
+| **Tool** | Surface of invocation visible to the LLM. Has name, description, schema, examples, hints. Either L0a (built-in), L0b (NATS), L1 (macro), L2 (skill), or L3 (sub-agent). |
+| **Worker** | A long-running NATS service that exposes one or more tools. Not a tool itself. |
+| **Atomic tool** | Single LLM `tool_use` → single primitive op. No internal LLM loop. |
+| **Composite tool** | One callable from LLM perspective; internally chains multiple primitives. Macro (L1) = deterministic chain; Skill (L2) = LLM-guided; Sub-agent (L3) = recursive harness. |
+| **Built-in tool** | Compiled in the harness binary; in-process; always available; no `$SRV.INFO` discovery. |
+| **External tool** | NATS sidecar with `$SRV.INFO` discovery + heartbeat. Or `transport = "stdio"|"http"` for direct CLI wrapping. |
+| **Skill** | Instruction-layer composite. SKILL.md (Anthropic Oct 2025 convention) injected into system prompt to guide LLM through a sequence of L0/L1. |
+| **Sub-agent** | Nested harness invocation with isolated context. Called via Task tool from parent harness. |
+| **Agent** | A configuration profile (system prompt + allowed tools + persona). Materialized as one `lyra-agent@<slug>.service` instance. |
+| **Pattern C** | Quadlet `@` template instantiation — one image, N per-instance configs via EnvironmentFile + volumes. |
+| **Uniform dispatcher** | One ACL pipeline, one `ToolResult` type, transport-agnostic. Claude Code / smolagents pattern. |
+| **roxabi-tools-sdk** | New package — transport primitives (NATS Micro adapter, identity middleware, registry client). |
+| **roxabi-contracts/tools/** | New submodule — shared Protocols (InProcessTool, RemoteTool), shared types (ToolResult, ToolHints, ToolManifest). |
+
+---
+
+## 15. References
+
+### Lyra issues
+- **#112** — per-scope subprocess isolation gap (ADR-005)
+- **#477** — registry + 3 built-ins (to be amended per D6, D8)
+- **#478** — Plugin SDK + SKILL.md manifest
+- **#493** — `ToolHandler` Protocol + `ToolRegistry` (epic, design locked, to be amended per B5)
+- **#633** — superseded by harness consolidated draft
+- **#640** — canonical store (Redis/JetStream KV)
+- **#987** — superseded by harness consolidated draft
+- **#1044** — lyra-code-worker fleet (epic)
+- **#1047** — `JobHandler` Protocol
+- **#1048** — escape hatch: harness calling back over NATS
+- **#1050-1052** — vault.add, vault.add_from_url (composite), web-intel.scrape
+- **#1277** — stage-axis refactor strategy (axial enforcement)
+
+### Lyra ADRs
+- **ADR-005** — per-scope isolation
+- **ADR-010** — external CLI pattern (Install + Wrap + Declare)
+- **ADR-067/068** — blobstore HTTP service
+- **ADR-073** (axial) — primary axis = stage; non-primary = platform/adapter
+- **ADR-075** — `lyra-turn-writer` sole writer
+
+### Lyra files
+- `~/projects/lyra/artifacts/analyses/harness-epic-consolidated.md` — companion (harness side of articulation)
+- `~/projects/lyra/artifacts/analyses/1277-stage-axis-refactor-strategy.mdx` — axial enforcement context
+- `~/projects/lyra/packages/roxabi-contracts/CLAUDE.md` — contracts versioning rules (breaking-change ADR requirement)
+- `~/projects/lyra/src/lyra/nats/worker_registry.py` — heartbeat-TTL pattern to reuse
+- `~/projects/lyra/src/lyra/adapters/clipool/clipool_worker.py` — sidecar reference impl
+- `~/projects/lyra/src/lyra/nats/nats_image_client.py` — domain client pattern
+
+### Roxabi files
+- `~/projects/CLAUDE.md` — host topology, Quadlet manifest
+- `~/projects/hosts.toml` — M₁/M₂ role mapping
+- `~/projects/deploy.sh` — idempotent deploy entry point
+- `~/projects/docs/container-deployment-standard.md` — 18 deploy standards
+- `~/projects/imageCLI/deploy/quadlet/` — reference sidecar layout
+- `~/projects/voiceCLI/deploy/quadlet/` — NKey + per-role pattern
+- `~/projects/llmCLI/deploy/quadlet/` — EnvironmentFile + lifecycle bus pattern
+- `~/projects/roxabi-hermes/tools/registry.py` — richer registry reference (8 extra fields lifted)
+- `~/.roxabi/postiz/bin/postiz` — bash wrapper (target for D11)
+- `~/.roxabi/clix/bin/xcli` — bash wrapper (target for D11)
+
+### External SOTA
+- [Claude Code MCP docs](https://code.claude.com/docs/en/mcp) — uniform dispatcher reference
+- [Claude Code harness analysis (WaveSpeed)](https://wavespeed.ai/blog/posts/claude-code-agent-harness-architecture/)
+- [Anthropic Agent Skills (Oct 2025)](https://claude.com/blog/skills) — L2 reference
+- [Anthropic Managed Agents](https://platform.claude.com/docs/en/managed-agents/overview) — Pattern B reference
+- [OpenAI Codex CLI architecture](https://openai.com/index/unrolling-the-codex-agent-loop/) — branched dispatcher (rejected)
+- [smolagents](https://huggingface.co/docs/smolagents/) — uniform dispatcher + tool-as-class
+- [LangGraph DeepAgents](https://github.com/langchain-ai/deepagents) — subagent + filesystem tools
+- [Pydantic AI Toolsets](https://pydantic.dev/docs/ai/tools-toolsets/toolsets/) — FilteredToolset (ACL pattern)
+- [MCP Tool Annotations](https://blog.modelcontextprotocol.io/posts/2026-03-16-tool-annotations/) — read_only/idempotent/destructive vocabulary
+- [Wassette (Microsoft, Aug 2025)](https://opensource.microsoft.com/blog/2025/08/06/introducing-wassette-webassembly-based-tools-for-ai-agents/) — OCI artifact + capability tools (closest prior art, deferred D12)
+- [CLI Tools vs MCP (35× token reduction)](https://jannikreinhard.com/2026/02/22/why-cli-tools-are-beating-mcp-for-ai-agents/) — confirms MCP rejection
+- [NATS Micro `$SRV.INFO`](https://pkg.go.dev/github.com/nats-io/nats.go/micro) — discovery primitive
+- [Podman Quadlet template (`@`) support](https://github.com/containers/podman/discussions/17744) — Pattern C reference
+- [Microsoft Agent Governance Toolkit](https://opensource.microsoft.com/blog/2026/04/02/introducing-the-agent-governance-toolkit-open-source-runtime-security-for-ai-agents/) — identity for multi-agent (future evolution past Q8 cap)
+
+---
+
+## 16. Resume checklist (work-in-progress tracker)
+
+- [ ] D1-D16 user-validated
+- [ ] Track A1 — Postiz token migration (15 min, security)
+- [ ] Track A2-A3 — EnvironmentFile rollout (imageCLI + voiceCLI)
+- [ ] Track B1 — Breaking-change ADR on `roxabi-contracts` for `agent_id`
+- [ ] Track B2 — `roxabi-contracts/tools/` submodule (Protocols + types)
+- [ ] Track B4 — `roxabi-tools-sdk` package skeleton
+- [ ] Track B5 — Comment on epic #493 with revised protocol + link this doc
+- [ ] Track B6 — Amend #477 spec (extended built-ins list per D8)
+- [ ] Track C1 — Open harness epic from `harness-epic-consolidated.md`
+- [ ] Track C2 — Spec Quadlet `@` template
+- [ ] Track C3 — POC `lyra-agent@telegram` instance
+- [ ] Track D6 — Open child issues for satellite migration under #478
+- [ ] Open ADR for axial enforcement (cross-link ADR-073) re: tool-system shared lib
+- [ ] Update `~/projects/CLAUDE.md` "Active Projects" with `roxabi-tools-sdk` entry once package exists

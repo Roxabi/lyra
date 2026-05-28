@@ -73,6 +73,8 @@ Who runs it: operator (Mickael) — ¬automated, ¬CI. Idempotent for most steps
 `systemctl --user daemon-reload`.
 
 Secrets bootstrap: `make quadlet-secrets-install` (installs Podman secrets from host key files).
+BotStore bootstrap: `make quadlet-install` runs `lyra bot init` as its first step (seeds
+`~/.lyra/config.db` from `config.toml` — idempotent, skip-existing). Required since #1416.
 Operator scripts: `scripts/rotate-claude-oauth.sh`, `scripts/rotate-gh-key.sh` — run manually
 on rotation events.
 

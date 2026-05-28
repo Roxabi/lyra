@@ -6,7 +6,16 @@ import asyncio
 import logging
 import signal
 from collections.abc import Awaitable, Sequence
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
+
+if TYPE_CHECKING:
+    from nats.aio.subscription import Subscription
+
+    from lyra.adapters.nats.mint_failure_subscriber import MintFailureSubscriber
+    from lyra.core.hub import Hub, OutboundDispatcher
+    from lyra.infrastructure.stores.pairing import PairingManager
+    from lyra.llm.llm_client import LlmClient
+    from lyra.nats.nats_channel_proxy import NatsChannelProxy
 
 log = logging.getLogger(__name__)
 
@@ -78,16 +87,16 @@ def _freshness_drivers() -> list[Any]:
 
 
 async def _run_shutdown(  # noqa: PLR0913 — shutdown surface
-    tasks: list[asyncio.Task[Any]],
+    tasks: list[asyncio.Task[object]],
     stop: asyncio.Event,
-    mint_failure_sub: Any,
-    hub: Any,
-    readiness_sub: Any,
-    dispatchers: list[Any],
-    proxies: list[Any],
-    pm: Any,
-    cli_nats_driver: Any,
-    nats_llm_client: Any,
+    mint_failure_sub: MintFailureSubscriber | None,
+    hub: Hub,
+    readiness_sub: Subscription,
+    dispatchers: list[OutboundDispatcher],
+    proxies: list[NatsChannelProxy],
+    pm: PairingManager | None,
+    cli_nats_driver: LlmClient | None,
+    nats_llm_client: LlmClient | None,
 ) -> None:
     """Cancel tasks, wait for shutdown, and run teardown."""
     from lyra.bootstrap.factory.utils import watchdog

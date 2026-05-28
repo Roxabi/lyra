@@ -25,23 +25,20 @@ RACE_GUARD_SECONDS = 3600
 
 def collect_db_paths(db_path: str) -> set[str]:
     """Return a set of absolute paths referenced in the blobs table."""
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute("SELECT store_path FROM blobs")
-    rows = {row["store_path"] for row in cursor.fetchall()}
-    conn.close()
+    with sqlite3.connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT store_path FROM blobs")
+        rows = {row["store_path"] for row in cursor.fetchall()}
     return {str(Path(p).resolve()) for p in rows}
 
 
 def collect_disk_files(blob_root: Path) -> list[Path]:
-    """Return list of all sha256/* hex-named files under blob_root."""
+    """Return list of all hex-named files under blob_root (recursive)."""
     files: list[Path] = []
-    sha256_dir = blob_root / "sha256"
-    if sha256_dir.is_dir():
-        for f in sha256_dir.iterdir():
-            if f.is_file() and all(c in "0123456789abcdefABCDEF" for c in f.name):
-                files.append(f)
+    for f in blob_root.rglob("*"):
+        if f.is_file() and all(c in "0123456789abcdefABCDEF" for c in f.name):
+            files.append(f)
     return files
 
 
@@ -54,6 +51,7 @@ def reconcile(blob_root: str, db_path: str, *, dry_run: bool) -> dict:
     now = time.time()
     files_removed = 0
     bytes_reclaimed = 0
+    unlink_errors: list[str] = []
 
     for f in disk_files:
         abs_path = str(f)
@@ -66,7 +64,11 @@ def reconcile(blob_root: str, db_path: str, *, dry_run: bool) -> dict:
         if abs_path not in db_paths:
             size = f.stat().st_size
             if not dry_run:
-                f.unlink()
+                try:
+                    f.unlink()
+                except OSError as exc:
+                    unlink_errors.append(f"{abs_path}: {exc}")
+                    continue
             files_removed += 1
             bytes_reclaimed += size
 
@@ -76,6 +78,7 @@ def reconcile(blob_root: str, db_path: str, *, dry_run: bool) -> dict:
         "bytes_reclaimed": bytes_reclaimed,
         "blob_root": str(root),
         "db_path": str(Path(db_path).resolve()),
+        "unlink_errors": unlink_errors,
     }
 
     action = "Would remove" if dry_run else "Removed"
@@ -83,6 +86,8 @@ def reconcile(blob_root: str, db_path: str, *, dry_run: bool) -> dict:
         f"{action} {files_removed} orphaned file(s),"
         f" reclaiming {bytes_reclaimed} byte(s)"
     )
+    if unlink_errors:
+        msg += f"; {len(unlink_errors)} unlink error(s)"
     print(msg)
     return report
 
@@ -102,9 +107,18 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    report = reconcile(args.blob_root, args.db_path, dry_run=args.dry_run)
-    print(json.dumps(report, indent=2))
-    return 0
+    try:
+        report = reconcile(args.blob_root, args.db_path, dry_run=args.dry_run)
+        print(json.dumps(report, indent=2))
+        return 0
+    except (OSError, sqlite3.Error) as exc:
+        error_report = {
+            "error": str(exc),
+            "blob_root": str(Path(args.blob_root).resolve()),
+            "db_path": str(Path(args.db_path).resolve()),
+        }
+        print(json.dumps(error_report, indent=2), file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":

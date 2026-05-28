@@ -32,7 +32,15 @@ def check_disk(path: str, min_free_gb: int) -> CheckResult:
 def check_disk_pct(path: str, warning_pct: int, critical_pct: int) -> CheckResult:
     """Check disk usage percentage against warning and critical thresholds."""
     now = datetime.now(timezone.utc)
-    usage = shutil.disk_usage(path)
+    try:
+        usage = shutil.disk_usage(path)
+    except (OSError, FileNotFoundError) as exc:
+        return CheckResult(
+            name="disk_pct",
+            passed=False,
+            detail=str(exc),
+            timestamp=now,
+        )
     total = usage.total
     used_pct = (usage.used / total) * 100 if total else 0
     passed = used_pct < warning_pct
@@ -57,9 +65,17 @@ def check_disk_pct(path: str, warning_pct: int, critical_pct: int) -> CheckResul
 def check_inode_pct(path: str, warning_pct: int, critical_pct: int) -> CheckResult:
     """Check inode usage percentage against warning and critical thresholds."""
     now = datetime.now(timezone.utc)
-    st = os.statvfs(path)
+    try:
+        st = os.statvfs(path)
+    except (OSError, FileNotFoundError) as exc:
+        return CheckResult(
+            name="inode_pct",
+            passed=False,
+            detail=str(exc),
+            timestamp=now,
+        )
     total = st.f_files
-    used = total - st.f_ffree if total else 0
+    used = total - st.f_favail if total else 0
     used_pct = (used / total) * 100 if total else 0
     passed = used_pct < warning_pct
     if used_pct >= critical_pct:

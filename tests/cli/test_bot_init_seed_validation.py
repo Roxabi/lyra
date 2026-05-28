@@ -1,14 +1,13 @@
-"""RED tests for G18 trap: unknown/typo keys in bot seed entries (issue #1420 T9).
+"""Tests for G18 trap: unknown/typo keys in bot seed entries (issue #1420).
 
-T10 will add a Pydantic model with extra="forbid" to _merge_bots so that
-unknown keys (e.g. webhook_enabel) are rejected, skip the entry, increment
-validation_errors, and emit the offending key name to stderr.
-
-Contract (pinned, T10 implements to match):
+Contract:
   - _merge_bots(raw) -> tuple[list[BotRow], int] = (rows, validation_errors)
   - Entry with unknown key: skipped, validation_errors += 1, stderr names key
+  - Known real-config keys (token, webhook_secret, default) are accepted but
+    not stored in BotRow — they must NOT be rejected.
   - Legal seed keys: bot_id, agent, webhook_enabled, default_trust,
-    owner_users, trusted_users, trusted_roles, auto_thread, thread_hot_hours
+    owner_users, trusted_users, trusted_roles, auto_thread, thread_hot_hours,
+    token, webhook_secret, default
 """
 
 from __future__ import annotations
@@ -29,7 +28,6 @@ class TestMergeBotsUnknownKey:
         rows, errors = _merge_bots(raw)
 
         # Assert — entry is skipped, error counted, offending key named on stderr
-        # RED: today errors == 0 and rows has one BotRow (typo silently dropped)
         assert errors == 1, (
             f"Expected 1 validation error for typo key 'webhook_enabel', got {errors}. "
             "T10 must add Pydantic seed model with extra='forbid' to catch this."
@@ -126,3 +124,41 @@ class TestMergeBotsUnknownKey:
             f"Expected offending key 'unknwon_key' named in stderr,"
             f" got: {captured.err!r}"
         )
+
+    def test_real_config_keys_accepted(self) -> None:
+        """Keys present in config.toml.example must not be rejected by extra='forbid'.
+
+        token, webhook_secret, default are real TOML keys in shipped configs;
+        they are accepted by _BotSeedEntry but not stored in BotRow.
+        """
+        # Mirrors config.toml.example [[telegram.bots]] + [[auth.telegram_bots]]
+        raw = {
+            "telegram": {
+                "bots": [
+                    {
+                        "bot_id": "lyra",
+                        "token": "env:TELEGRAM_TOKEN",
+                        "webhook_secret": "env:WH",
+                    }
+                ]
+            },
+            "auth": {
+                "telegram_bots": [
+                    {
+                        "bot_id": "lyra",
+                        "default": "blocked",
+                        "owner_users": [],
+                    }
+                ]
+            },
+        }
+
+        rows, errors = _merge_bots(raw)
+
+        assert errors == 0, (
+            f"Expected 0 errors for real config.toml.example keys, got {errors}. "
+            "token/webhook_secret/default must be accepted (not stored in BotRow)."
+        )
+        assert len(rows) == 1, f"Expected 1 row, got {len(rows)}."
+        assert rows[0].bot_id == "lyra"
+        assert rows[0].platform == "telegram"

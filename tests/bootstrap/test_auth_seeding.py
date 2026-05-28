@@ -141,7 +141,7 @@ class TestBuildBotAuthsRaisesWithoutAdapters:
 
 
 # ---------------------------------------------------------------------------
-# test_roster_from_store  [RED — post-T3 behavior, fails until T3 is implemented]
+# test_roster_from_store
 # ---------------------------------------------------------------------------
 
 
@@ -149,13 +149,9 @@ class TestRosterFromStore:
     async def test_roster_from_store(self, tmp_path: Path) -> None:
         """build_bot_auths reads the bot roster from BotStore, not from TOML.
 
-        RED: currently build_bot_auths calls load_multibot_config(raw_config) and
-        ignores bot_store for roster construction.  After T3 swaps the roster source
-        to bot_store.get_all(), a bot present in the store but absent from TOML must
-        appear in tg_bot_auths.
-
-        Failure until T3: ValueError("No adapters configured") because TOML is empty
-        and the current implementation never reads bot_store for the roster.
+        Verifies that a bot seeded into BotStore appears in tg_bot_auths even
+        when the raw_config contains no [[telegram.bots]] section.  The roster
+        is sourced exclusively from bot_store.get_all().
         """
         # Arrange — real stores backed by a tmp SQLite DB
         bot_store = await make_bot_store(tmp_path)

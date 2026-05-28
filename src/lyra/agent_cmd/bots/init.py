@@ -7,7 +7,7 @@ import os
 import re
 import tomllib
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 import typer
 from pydantic import BaseModel, ConfigDict, ValidationError
@@ -29,12 +29,22 @@ class _BotSeedEntry(BaseModel):
     bot_id: str = "main"
     agent: str = "lyra_default"
     webhook_enabled: bool = False
-    default_trust: str = DEFAULT_TRUST
+    default_trust: Literal["owner", "trusted", "public", "blocked"] = cast(
+        Literal["owner", "trusted", "public", "blocked"], DEFAULT_TRUST
+    )
     owner_users: list[str] = []
     trusted_users: list[str] = []
     trusted_roles: list[str] = []
     auto_thread: bool = DEFAULT_AUTO_THREAD
     thread_hot_hours: int = DEFAULT_THREAD_HOT_HOURS
+    # Real config.toml keys that appear in [[telegram.bots]] / [[discord.bots]]
+    # and [[auth.telegram_bots]] / [[auth.discord_bots]]; listed here so
+    # extra="forbid" doesn't reject them. They are NOT stored in BotRow —
+    # credentials are resolved from secrets at runtime, and `default` is the
+    # legacy trust alias handled by the auth section.
+    token: str | None = None
+    webhook_secret: str | None = None
+    default: str | None = None
 
 
 def _find_config_toml() -> Path | None:

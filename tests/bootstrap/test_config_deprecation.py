@@ -1,10 +1,9 @@
-"""RED tests — warn_deprecated_bot_sections + _load_raw_config deprecation call.
+"""Tests for warn_deprecated_bot_sections + _load_raw_config deprecation call.
 
-These tests are intentionally FAILING until T7 implements:
-  - warn_deprecated_bot_sections(raw: dict) in src/lyra/bootstrap/factory/config.py
-  - _load_raw_config calling it right after tomllib.load(f)
+Verifies that _load_raw_config emits a single WARNING when legacy TOML bot
+sections are present and stays silent on clean configs.
 
-Contract (agreed with T7):
+Contract:
   - Function: warn_deprecated_bot_sections(raw: dict)
   - Module: lyra.bootstrap.factory.config
   - Logger: lyra.bootstrap.factory.config (module-level `log`)

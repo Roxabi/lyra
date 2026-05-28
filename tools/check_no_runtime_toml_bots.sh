@@ -3,16 +3,21 @@
 #
 # Three checks (SC#7a, SC#7b, SC#9):
 #   (SC#7a) No raw dict-index reads of [[telegram.bots]] / [[discord.bots]] at runtime
-#           Pattern: raw["telegram"]["bots"], raw["discord"]["bots"],
+#           Pattern: raw["telegram"]["bots"], raw['telegram']['bots'],
+#                    raw["discord"]["bots"], raw['discord']['bots'],
 #                    auth_block.get("telegram_bots", auth_block.get("discord_bots"
 #   (SC#7b) No raw dict-index reads of [[auth.telegram_bots]] / [[auth.discord_bots]]
-#           Pattern: raw_config["auth"]["telegram_bots"], raw_config["auth"]["discord_bots"]
+#           Pattern: raw_config["auth"]["telegram_bots"], raw_config['auth']['telegram_bots'],
+#                    raw_config["auth"]["discord_bots"], raw_config['auth']['discord_bots']
 #   (SC#9)  load_multibot_config() must not be called from boot paths
 #           (auth_seeding.py, factory/agent_factory.py) — replaced by BotStore.get_all()
 #
 # Exclusions:
 #   src/lyra/agent_cmd/bots/init.py    — sanctioned seed consumer (lyra bot init)
 #   src/lyra/config.py                 — parser internals (sections are still parsed for compat)
+#
+# Sanctioned load_multibot_config() caller NOT in SC#9 target list:
+#   src/lyra/cli.py                    — `lyra config validate` CLI introspection only (¬boot path)
 #
 # Run locally: bash tools/check_no_runtime_toml_bots.sh
 # Run in CI:   quality gate (no_runtime_toml_bots in .claude/stack.yml)
@@ -27,7 +32,7 @@ fail=0
 # Guards against re-introducing raw["telegram"]["bots"] / raw["discord"]["bots"]
 # or .get("telegram_bots") / .get("discord_bots") outside the seed-only consumer.
 violations_7a=$(grep -rn \
-    'raw\["telegram"\]\["bots"\]\|raw\["discord"\]\["bots"\]\|auth_block\.get("telegram_bots"\|auth_block\.get("discord_bots"' \
+    'raw\[["'"'"']\(telegram\|discord\)["'"'"']\]\[["'"'"']bots["'"'"']\]\|auth_block\.get("telegram_bots"\|auth_block\.get("discord_bots"' \
     src/lyra/ \
     --include="*.py" \
     | grep -v 'src/lyra/agent_cmd/bots/init\.py:' \
@@ -44,7 +49,7 @@ fi
 # Guards against raw_config["auth"]["telegram_bots"] / raw_config["auth"]["discord_bots"]
 # outside the seed-only consumer.
 violations_7b=$(grep -rn \
-    'raw_config\["auth"\]\["telegram_bots"\]\|raw_config\["auth"\]\["discord_bots"\]' \
+    'raw_config\[["'"'"']auth["'"'"']\]\[["'"'"']\(telegram_bots\|discord_bots\)["'"'"']\]' \
     src/lyra/ \
     --include="*.py" \
     | grep -v 'src/lyra/agent_cmd/bots/init\.py:' \

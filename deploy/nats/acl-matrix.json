@@ -52,7 +52,7 @@
       "created_at": "2026-04-21",
       "owner": "lyra",
       "description": "Telegram bot adapter — inbox normalized to _inbox.telegram-adapter.> (ADR-051 + postmortem Fix 1).",
-      "notes": "$JS.API.> is currently granted for KV subscribe access derived from the JetStream API. Tighter per-operation scoping (e.g. $JS.API.DIRECT.GET.LYRA_STATE.hub.ready) is tracked as a follow-up. lyra.turns.write added by T27 (#1331): telegram adapter publishes TurnWriteEvents.",
+      "notes": "$JS.API.> narrowed to minimal KV read-only subjects (#1014): DIRECT.GET for KV key reads, INFO for JetStream availability, CONSUMER.CREATE for kv.watch() ephemeral consumer. lyra.turns.write added by T27 (#1331): telegram adapter publishes TurnWriteEvents.",
       "allow_responses": false,
       "publish": [
         "lyra.inbound.telegram.>",
@@ -60,7 +60,9 @@
         "lyra.turns.write",
         "lyra.event.>",
         "lyra.metric.>",
-        "$JS.API.>"
+        "$JS.API.DIRECT.GET.LYRA_STATE.hub.ready",
+        "$JS.API.INFO",
+        "$JS.API.CONSUMER.CREATE.*"
       ],
       "subscribe": [
         "lyra.outbound.telegram.>",
@@ -76,7 +78,7 @@
       "created_at": "2026-04-21",
       "owner": "lyra",
       "description": "Discord bot adapter — inbox normalized to _inbox.discord-adapter.> (ADR-051 + postmortem Fix 1).",
-      "notes": "$JS.API.> is currently granted for KV subscribe access derived from the JetStream API. Tighter per-operation scoping (e.g. $JS.API.DIRECT.GET.LYRA_STATE.hub.ready) is tracked as a follow-up. lyra.turns.write added by T27 (#1331): discord adapter publishes TurnWriteEvents.",
+      "notes": "$JS.API.> narrowed to minimal KV read-only subjects (#1014): DIRECT.GET for KV key reads, INFO for JetStream availability, CONSUMER.CREATE for kv.watch() ephemeral consumer. lyra.turns.write added by T27 (#1331): discord adapter publishes TurnWriteEvents.",
       "allow_responses": false,
       "publish": [
         "lyra.inbound.discord.>",
@@ -84,7 +86,9 @@
         "lyra.turns.write",
         "lyra.event.>",
         "lyra.metric.>",
-        "$JS.API.>"
+        "$JS.API.DIRECT.GET.LYRA_STATE.hub.ready",
+        "$JS.API.INFO",
+        "$JS.API.CONSUMER.CREATE.*"
       ],
       "subscribe": [
         "lyra.outbound.discord.>",

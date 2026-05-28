@@ -24,10 +24,13 @@ The row will grant `subscribe: lyra.typing.>` to `code-worker` (it consumes typi
 <!-- acl-matrix:begin -->
 | Subject | hub | telegram-adapter | discord-adapter | voice-tts | voice-stt | llm-worker | llm-operator | image-worker | clipool-worker | dashboard-reader | voice-client | turn-writer |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| `$JS.API.>` | PUB | PUB | PUB | PUB | PUB | PUB | — | PUB | PUB | — | — | — |
+| `$JS.API.>` | PUB | — | — | PUB | PUB | PUB | — | PUB | PUB | — | — | — |
+| `$JS.API.CONSUMER.CREATE.*` | — | PUB | PUB | — | — | — | — | — | — | — | — | — |
 | `$JS.API.CONSUMER.CREATE.LYRA_TURNS.turn-writer-v1.>` | — | — | — | — | — | — | — | — | — | — | — | PUB |
 | `$JS.API.CONSUMER.INFO.LYRA_TURNS.turn-writer-v1` | — | — | — | — | — | — | — | — | — | — | — | PUB |
 | `$JS.API.CONSUMER.MSG.NEXT.LYRA_TURNS.turn-writer-v1` | — | — | — | — | — | — | — | — | — | — | — | PUB |
+| `$JS.API.DIRECT.GET.LYRA_STATE.hub.ready` | — | PUB | PUB | — | — | — | — | — | — | — | — | — |
+| `$JS.API.INFO` | — | PUB | PUB | — | — | — | — | — | — | — | — | — |
 | `$JS.API.STREAM.CREATE.LYRA_TURNS` | — | — | — | — | — | — | — | — | — | — | — | PUB |
 | `$JS.API.STREAM.INFO.LYRA_TURNS` | — | — | — | — | — | — | — | — | — | — | — | PUB |
 | `$JS.API.STREAM.UPDATE.LYRA_TURNS` | — | — | — | — | — | — | — | — | — | — | — | PUB |

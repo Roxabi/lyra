@@ -7,9 +7,10 @@ import os
 import re
 import tomllib
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 import typer
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from lyra.cli_bot import _connect_bot_store, bot_app
 from lyra.core.agent.bot_models import (
@@ -18,6 +19,32 @@ from lyra.core.agent.bot_models import (
     DEFAULT_TRUST,
     BotRow,
 )
+
+
+class _BotSeedEntry(BaseModel):
+    """Validates one raw TOML bot entry; rejects unknown keys (G18 typo trap)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    bot_id: str = "main"
+    agent: str = "lyra_default"
+    webhook_enabled: bool = False
+    default_trust: Literal["owner", "trusted", "public", "blocked"] = cast(
+        Literal["owner", "trusted", "public", "blocked"], DEFAULT_TRUST
+    )
+    owner_users: list[str] = []
+    trusted_users: list[str] = []
+    trusted_roles: list[str] = []
+    auto_thread: bool = DEFAULT_AUTO_THREAD
+    thread_hot_hours: int = DEFAULT_THREAD_HOT_HOURS
+    # Real config.toml keys that appear in [[telegram.bots]] / [[discord.bots]]
+    # and [[auth.telegram_bots]] / [[auth.discord_bots]]; listed here so
+    # extra="forbid" doesn't reject them. They are NOT stored in BotRow —
+    # credentials are resolved from secrets at runtime, and `default` is the
+    # legacy trust alias handled by the auth section.
+    token: str | None = None
+    webhook_secret: str | None = None
+    default: str | None = None
 
 
 def _find_config_toml() -> Path | None:
@@ -121,6 +148,15 @@ def _merge_bots(raw: dict[str, Any]) -> tuple[list[BotRow], int]:  # noqa: C901 
             if not _BOT_ID_RE.match(bot_id) or not _PLATFORM_RE.match(platform):
                 typer.echo(
                     f"  error: invalid platform/bot_id ({platform}/{bot_id}) — skipped",
+                    err=True,
+                )
+                validation_errors += 1
+                continue
+            try:
+                _BotSeedEntry.model_validate(entry)
+            except ValidationError as exc:
+                typer.echo(
+                    f"  error: invalid bot entry ({platform}/{bot_id}): {exc}",
                     err=True,
                 )
                 validation_errors += 1

@@ -1,0 +1,67 @@
+---
+title: deprecate runtime-read of [[telegram.bots]] + [[auth.*_bots]] (TOML → seed-only)
+issue: 1420
+status: approved
+tier: F-lite
+date: 2026-05-28
+---
+
+## Problem
+
+Closing step of epic #1413 (BotStore SQLite + `lyra bot` CLI — drop TOML runtime). All
+consumer migrations are complete and merged: #1415 (CLI verbs), #1416 (Authenticator →
+BotStore), #1417 (render_quadlet → BotStore), #1418 (unified seed function), #1412 (shared
+Pydantic BotConfig). BotStore is now the runtime source of truth for bot identity.
+
+The four legacy TOML sections — `[[telegram.bots]]`, `[[discord.bots]]`,
+`[[auth.telegram_bots]]`, `[[auth.discord_bots]]` — are no longer needed at runtime, but
+nothing tells an operator that. A `config.toml` carrying stale bot definitions loads
+silently with zero output, inviting drift between TOML and BotStore. The TOML must become
+**seed-only** (consumed solely by `lyra bot init`) and emit a one-time `DeprecationWarning`
+at config load so operators know to migrate. Also closes #1412's G18 finding (the
+`webhook_enabled` typo trap) by having the Pydantic seed validator catch it at init time.
+
+## Who
+
+- **Primary:** Operators deploying/configuring Lyra — need a clear signal that TOML bot
+  sections are seed-only, plus a migration path (`lyra bot init` → remove sections).
+- **Secondary:** Developers — `Deprecated[...]` Pydantic field markers surface the status
+  in-IDE and prevent accidental new runtime reads.
+
+## Constraints
+
+- Sections must remain **parsable** (no schema error) — `lyra bot init` still consumes them
+  as seed source for backward-compat.
+- DeprecationWarning fires **once** (deduplicated), not per-load-spam.
+- No removal of the sections from config parsing — that is next-major (out of scope here).
+- Single domain: `src/lyra/config.py` + docs + CHANGELOG.
+
+## Out of Scope
+
+- **Removal** of the 4 sections from config parsing (next major version, TBD).
+- Migration tooling beyond `lyra bot init` (operators run init manually).
+
+## Premise Validity
+
+**Success in 6 months:** TOML bot sections are never read at runtime — all bot identity
+flows from BotStore. Grep guardrails return 0 matches. A legacy `config.toml` emits exactly
+one `DeprecationWarning` at load. `lyra bot init` still consumes the sections as seed. The
+G18 `webhook_enabled` typo is caught at seed time by the Pydantic validator.
+
+**Failure in 6 months:** Grep guardrails return >0 matches (runtime reads survive the
+deprecation), OR a `config.toml` containing `[[telegram.bots]]` loads with zero deprecation
+output. Both are observable: a grep count and a boolean "warning fired".
+
+**Simplest alternative:** Hard-delete the 4 sections from config parsing now.
+**Why not simplest:** It breaks `lyra bot init`, which consumes the sections as its seed
+source, and gives operators no migration window. Deprecate-now / remove-next-major with a
+warning is the safe path.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (config), no new architecture; depends on
+already-merged consumer migrations.
+
+- Touches `src/lyra/config.py` (detect + warn), Pydantic models (`Deprecated[...]` markers),
+  `docs/bot-management.md` (deprecation timeline), CHANGELOG.
+- No multi-domain coordination, no unknowns — guardrails are deterministic greps.

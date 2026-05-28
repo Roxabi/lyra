@@ -5,6 +5,14 @@ Entries are generated automatically by `/promote` and committed to staging befor
 
 ## [Unreleased]
 
+### Deprecated
+
+- Runtime-read of the four TOML bot sections (`[[telegram.bots]]`, `[[discord.bots]]`,
+  `[[auth.telegram_bots]]`, `[[auth.discord_bots]]`) is deprecated and now seed-only. The
+  runtime bot roster is sourced from BotStore (`~/.lyra/config.db`); these sections are
+  consumed only by `lyra bot init`. A one-time `DeprecationWarning` is logged at config load
+  if they are present. Scheduled for removal in the next major release (v1.0.0). (#1420)
+
 ### Changed
 
 - Migrated 7 consumer paths and 5 dual-emit sites from v1 to v2 RenderEvents: text triplet

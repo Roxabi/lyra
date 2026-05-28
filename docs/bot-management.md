@@ -25,6 +25,27 @@ lyra bot secret install <platform> <bot_id>-webhook
 
 **Rule:** `lyra bot init` is idempotent. Run it after every `config.toml` edit that changes bot definitions.
 
+## Deprecation Timeline
+
+As of this release, the four TOML bot sections are **deprecated and seed-only**. The runtime bot roster is read from BotStore (`~/.lyra/config.db`), not from `config.toml`.
+
+| Deprecated section | Replacement |
+|---|---|
+| `[[telegram.bots]]` | BotStore via `lyra bot init` |
+| `[[discord.bots]]` | BotStore via `lyra bot init` |
+| `[[auth.telegram_bots]]` | BotStore via `lyra bot init` |
+| `[[auth.discord_bots]]` | BotStore via `lyra bot init` |
+
+At runtime, presence of any of these sections logs a one-time `DeprecationWarning`.
+
+**Migration path:**
+
+1. Run `lyra bot init` to seed BotStore from your existing TOML sections.
+2. Verify with `lyra bot list`.
+3. Remove the four deprecated sections from `config.toml`.
+
+**Removal schedule:** The four sections will be removed in the `next major` release (`v1.0.0`; current is `0.2.1`). Until then they remain parsable and are consumed only by `lyra bot init`.
+
 ## CLI Commands (per platform)
 
 Bot management commands are grouped under `lyra agent <platform>` (`telegram` or `discord`). Each platform exposes the same 9 verbs.

@@ -71,6 +71,13 @@ repos:
     pass_filenames: false
     stages:
     - pre-push
+  - id: check-no-runtime-toml-bots
+    name: check-no-runtime-toml-bots
+    entry: tools/check_no_runtime_toml_bots.sh
+    language: system
+    pass_filenames: false
+    stages:
+    - pre-push
   - id: license
     name: license check
     entry: uv run tools/license_check.py

@@ -20,7 +20,7 @@ from lyra.bootstrap.factory.config import (
 )
 from lyra.bootstrap.types import BotAuthBundle
 from lyra.bootstrap.wiring.bootstrap_wiring import BotAuthDeps, _build_bot_auths
-from lyra.config import load_multibot_config
+from lyra.config import multibot_config_from_store
 from lyra.core.agent import Agent, AgentBase
 from lyra.core.agent.agent_loader import agent_row_to_config
 from lyra.core.circuit_breaker import CircuitRegistry
@@ -100,7 +100,7 @@ async def _init_bot_auths_and_agents(
     """Resolve multibot config, build authenticators, load agent configs."""
     circuit_registry, admin_user_ids = _load_circuit_config(raw_config)
 
-    tg_multi_cfg, dc_multi_cfg = load_multibot_config(raw_config)
+    tg_multi_cfg, dc_multi_cfg = multibot_config_from_store(stores.bot)
 
     tg_bot_auths, dc_bot_auths = _build_bot_auths(
         BotAuthDeps(
@@ -119,9 +119,9 @@ async def _init_bot_auths_and_agents(
 
     if not tg_bot_auths and not dc_bot_auths:
         raise ValueError(
-            "No adapters configured — add at least one"
-            " [[telegram.bots]] or [[discord.bots]] entry"
-            " and run 'lyra bot init' to seed the bot store"
+            "No bots configured — the runtime roster is sourced from BotStore."
+            " Run 'lyra bot init' to seed it from config.toml,"
+            " then 'lyra bot list' to verify."
         )
 
     bot_agent_map = await _resolve_bot_agent_map(

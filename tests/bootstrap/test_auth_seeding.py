@@ -36,9 +36,10 @@ class TestBootstrapCallsSeedGrantsFromBots:
             # Raise to abort further bootstrap — we only need to verify the call
             raise RuntimeError("test-sentinel: abort after seed")
 
+        import lyra.bootstrap.composition_root as composition_root_mod
         import lyra.bootstrap.standalone.hub_standalone as hub_standalone_mod
 
-        monkeypatch.setattr(hub_standalone_mod, "seed_grants_from_bots", fake_seed)
+        monkeypatch.setattr(composition_root_mod, "seed_grants_from_bots", fake_seed)
 
         # Patch NATS connection so we never touch a real server
         fake_nc = AsyncMock()
@@ -67,7 +68,7 @@ class TestBootstrapCallsSeedGrantsFromBots:
         fake_bus = MagicMock()
         fake_bus_cfg = MagicMock()
         monkeypatch.setattr(
-            hub_standalone_mod,
+            composition_root_mod,
             "build_inbound_bus",
             lambda nc, raw_config: (fake_bus, fake_bus_cfg),
         )

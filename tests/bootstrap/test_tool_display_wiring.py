@@ -333,7 +333,7 @@ async def test_standalone_path_threads_tool_display_config_to_telegram() -> None
             side_effect=_capture_tg_adapter,
         ),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            "lyra.bootstrap.composition_root.NatsOutboundListener",
             return_value=mock_listener,
         ),
         patch(
@@ -433,7 +433,7 @@ async def test_standalone_path_threads_tool_display_config_to_discord() -> None:
             side_effect=_capture_dc_adapter,
         ),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            "lyra.bootstrap.composition_root.NatsOutboundListener",
             return_value=mock_listener,
         ),
         patch(

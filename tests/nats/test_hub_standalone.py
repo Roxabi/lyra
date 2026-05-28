@@ -487,7 +487,7 @@ class TestAdapterStandaloneIdentityName:
                 mock_nats_connect,
             ),
             patch(
-                "lyra.bootstrap.standalone.adapter_standalone.Platform",
+                "lyra.bootstrap.composition_root.Platform",
                 mock_platform_enum,
             ),
         ):

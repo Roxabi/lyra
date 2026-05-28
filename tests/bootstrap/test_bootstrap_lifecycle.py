@@ -3,38 +3,13 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
-from lyra.bootstrap.lifecycle.bootstrap_lifecycle import LifecycleResources
-
-
-def _make_hub() -> MagicMock:
-    """Minimal Hub mock sufficient for run_lifecycle."""
-    hub = MagicMock()
-    hub.run = AsyncMock()
-    hub.shutdown = AsyncMock()
-    hub.notify_shutdown_inflight = AsyncMock()
-    hub._event_bus = None  # disable audit consumer branch
-    hub._turn_store = MagicMock()
-    hub.inbound_bus = MagicMock()
-    hub.inbound_bus.start = AsyncMock()
-    hub.inbound_bus.stop = AsyncMock()
-    return hub
-
-
-def _make_wired(dc_thread_store: AsyncMock | None) -> MagicMock:
-    """Minimal WiredAdapters mock with the given dc_thread_store."""
-    wired = MagicMock()
-    wired.tg_adapters = []
-    wired.tg_dispatchers = []
-    wired.dc_adapters = []
-    wired.dc_dispatchers = []
-    wired.dc_thread_store = dc_thread_store
-    return wired
-
-
-def _make_resources() -> LifecycleResources:
-    return LifecycleResources(pm=None, cli_pool=None, nc=None)
+from tests.factories.bootstrap import (
+    make_fake_hub,
+    make_fake_lifecycle_resources,
+    make_fake_wired_adapters,
+)
 
 
 async def _watchdog_immediate(tasks: object, stop: asyncio.Event) -> None:
@@ -51,10 +26,10 @@ async def test_run_lifecycle_closes_dc_thread_store() -> None:
     """F6a: run_lifecycle calls dc_thread_store.close() once after adapter teardown."""
     from lyra.bootstrap.lifecycle.bootstrap_lifecycle import run_lifecycle
 
-    hub = _make_hub()
+    hub = make_fake_hub()
     dc_thread_store = AsyncMock()
-    wired = _make_wired(dc_thread_store)
-    resources = _make_resources()
+    wired = make_fake_wired_adapters(dc_thread_store)
+    resources = make_fake_lifecycle_resources()
     stop = asyncio.Event()
     stop.set()  # trigger immediate shutdown
 
@@ -88,10 +63,10 @@ async def test_run_lifecycle_none_dc_thread_store_is_noop() -> None:
     """
     from lyra.bootstrap.lifecycle.bootstrap_lifecycle import run_lifecycle
 
-    hub = _make_hub()
+    hub = make_fake_hub()
     mock_store = AsyncMock()  # would fail loudly if close() were called
-    wired = _make_wired(dc_thread_store=None)  # None guard being tested
-    resources = _make_resources()
+    wired = make_fake_wired_adapters(dc_thread_store=None)  # None guard being tested
+    resources = make_fake_lifecycle_resources()
     stop = asyncio.Event()
     stop.set()
 

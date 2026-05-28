@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
+import signal
 import sys
 
-from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
-from lyra.bootstrap.factory.config import _load_cli_pool_config
+from lyra.bootstrap.composition_root import DependencyGraph, compose_clipool
 from lyra.bootstrap.infra.git_ownership_probe import run_git_ownership_probe
-from lyra.core.cli.cli_pool import CliPool
 from lyra.core.messaging.metrics import log_contracts_version
+from roxabi_nats import nats_connect
 from roxabi_nats.connect import scrub_nats_url
 
 log = logging.getLogger(__name__)
@@ -25,30 +26,27 @@ async def _bootstrap_clipool_standalone(raw_config: dict) -> None:
 
     log_contracts_version()
 
-    cli_pool_cfg = _load_cli_pool_config(raw_config)
-
-    log.info("clipool: will connect to NATS at %s", scrub_nats_url(nats_url))
-
-    cli_pool = CliPool(
-        idle_ttl=cli_pool_cfg.idle_ttl,
-        default_timeout=cli_pool_cfg.default_timeout,
-        reaper_interval=cli_pool_cfg.reaper_interval,
-        kill_timeout=cli_pool_cfg.kill_timeout,
-        read_buffer_bytes=cli_pool_cfg.read_buffer_bytes,
-        stdin_drain_timeout=cli_pool_cfg.stdin_drain_timeout,
-        max_idle_retries=cli_pool_cfg.max_idle_retries,
-        intermediate_timeout=cli_pool_cfg.intermediate_timeout,
-    )
-    await cli_pool.start()
-
-    worker = CliPoolNatsWorker(
-        cli_pool,
-        timeout=cli_pool_cfg.default_timeout,
-        identity_name="clipool-worker",
-    )
-    log.info("clipool: starting CliPoolNatsWorker on lyra.clipool.cmd")
     try:
-        await worker.run(nats_url)
+        nc = await nats_connect(nats_url, identity_name="clipool-worker")
+        log.info("clipool: connected to NATS at %s", scrub_nats_url(nats_url))
+    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+        sys.exit(f"Failed to connect to NATS at {scrub_nats_url(nats_url)!r}: {exc}")
+
+    deps = DependencyGraph()
+    subsystem = await compose_clipool(raw_config, nc, deps)
+
+    log.info("clipool: starting CliPoolNatsWorker on lyra.clipool.cmd")
+    stop = asyncio.Event()
+    loop = asyncio.get_running_loop()
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, stop.set)
+    try:
+        await subsystem.worker.run_embedded(nc, stop)
     finally:
-        await cli_pool.drain_audit_tasks()
-        await cli_pool.stop()
+        await subsystem.cli_pool.drain_audit_tasks()
+        await subsystem.cli_pool.stop()
+        try:
+            await nc.close()
+            log.info("NATS connection closed.")
+        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+            log.warning("Error closing NATS connection: %s", exc)

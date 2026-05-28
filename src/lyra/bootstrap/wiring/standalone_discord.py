@@ -22,22 +22,13 @@ from roxabi_nats.readiness import wait_for_hub
 log = logging.getLogger(__name__)
 
 
-async def bootstrap_discord_standalone(  # noqa: C901, PLR0915
-    nc: Any,
+async def _bootstrap_discord_setup(
     raw_config: dict,
-    config_bundle: AdapterConfigBundle,
     vault_dir: Path,
-    platform_enum: Platform,
-    *,
-    _stop: asyncio.Event | None = None,
-) -> None:
-    """Bootstrap a standalone Discord adapter process connected to NATS."""
-    from lyra.adapters.discord import DiscordAdapter
+) -> tuple:
+    """Load Discord config, credentials, and watch channels."""
     from lyra.config import DiscordMultiConfig
     from lyra.infrastructure.stores.agent_store import AgentStore
-    from lyra.infrastructure.stores.thread_store import ThreadStore
-    from lyra.infrastructure.stores.turn_store import TurnStore
-    from lyra.nats.nats_bus import NatsBus
 
     dc_multi_cfg = DiscordMultiConfig.model_validate(
         raw_config.get("discord", {})
@@ -78,6 +69,55 @@ async def bootstrap_discord_standalone(  # noqa: C901, PLR0915
     finally:
         await agent_store.close()
 
+    return dc_multi_cfg, dc_creds, dc_bot_watch_channels
+
+
+async def _bootstrap_discord_teardown(
+    wired_dc: list[tuple],
+    dc_thread_store: Any,
+    dc_turn_store: Any,
+    stop_dc: asyncio.Event,
+) -> None:
+    """Run shutdown sequence for all wired Discord adapters."""
+    start_tasks = [
+        asyncio.create_task(a.start(tok), name=f"discord:{a._bot_id}")
+        for a, tok, _, _ in wired_dc
+    ]
+    try:
+        await stop_dc.wait()
+        await close_safely(
+            "dc-adapters", *[a.close() for a, _, _, _ in wired_dc]
+        )
+        for t in start_tasks:
+            t.cancel()
+        await asyncio.gather(*start_tasks, return_exceptions=True)
+    finally:
+        dc_bus_coros = [ibus.stop() for _, _, ibus, _ in wired_dc]
+        await close_safely("dc-buses", *dc_bus_coros)
+        await close_safely(
+            "dc-typing", *[tl.stop() for _, _, _, tl in wired_dc]
+        )
+        await dc_thread_store.close()
+        await dc_turn_store.close()
+
+
+async def bootstrap_discord_standalone(
+    nc: Any,
+    raw_config: dict,
+    config_bundle: AdapterConfigBundle,
+    vault_dir: Path,
+    platform_enum: Platform,
+    *,
+    _stop: asyncio.Event | None = None,
+) -> None:
+    """Bootstrap a standalone Discord adapter process connected to NATS."""
+    from lyra.infrastructure.stores.thread_store import ThreadStore
+    from lyra.infrastructure.stores.turn_store import TurnStore
+
+    dc_multi_cfg, dc_creds, dc_bot_watch_channels = await _bootstrap_discord_setup(
+        raw_config, vault_dir
+    )
+
     dc_thread_store = ThreadStore(db_path=vault_dir / "discord.db")
     await dc_thread_store.connect()
 
@@ -86,11 +126,15 @@ async def bootstrap_discord_standalone(  # noqa: C901, PLR0915
 
     wired_dc: list[tuple] = []  # (DiscordAdapter, str, Bus, TypingListener)
 
-    for bot_cfg in dc_multi_cfg.bots:
+    async def _wire_bot(bot_cfg: Any, token: str) -> tuple:
+        """Wire a single Discord bot with NATS transport and typing listener."""
         bot_id = bot_cfg.bot_id
-        if bot_id not in dc_creds:
-            continue
-        token = dc_creds[bot_id]
+
+        from lyra.adapters.discord import DiscordAdapter
+        from lyra.adapters.discord.adapter import _discord_scope_resolver
+        from lyra.adapters.discord.discord_outbound import _discord_typing_worker
+        from lyra.nats.nats_bus import NatsBus
+        from lyra.typing import TypingListener, make_typing_factory
 
         inbound_bus_dc: Bus[InboundMessage] = NatsBus(
             nc=nc,
@@ -128,23 +172,7 @@ async def bootstrap_discord_standalone(  # noqa: C901, PLR0915
                 adapter_dc.close(),
                 inbound_bus_dc.stop(),
             )
-            await close_safely(
-                "dc-wired",
-                *[
-                    coro
-                    for a, _tok, ibus, tl in wired_dc
-                    for coro in (a.close(), ibus.stop(), tl.stop())
-                ],
-            )
-            await dc_thread_store.close()
-            await dc_turn_store.close()
             raise
-
-        from lyra.adapters.discord.adapter import _discord_scope_resolver
-        from lyra.adapters.discord.discord_outbound import (
-            _discord_typing_worker,
-        )
-        from lyra.typing import TypingListener, make_typing_factory
 
         dc_typing_listener = TypingListener(
             nc=nc,
@@ -157,7 +185,30 @@ async def bootstrap_discord_standalone(  # noqa: C901, PLR0915
         )
         await dc_typing_listener.start()
 
-        wired_dc.append((adapter_dc, token, inbound_bus_dc, dc_typing_listener))
+        return (adapter_dc, token, inbound_bus_dc, dc_typing_listener)
+
+    for bot_cfg in dc_multi_cfg.bots:
+        bot_id = bot_cfg.bot_id
+        if bot_id not in dc_creds:
+            continue
+        token = dc_creds[bot_id]
+
+        try:
+            wired = await _wire_bot(bot_cfg, token)
+        except Exception:
+            await close_safely(
+                "dc-wired",
+                *[
+                    coro
+                    for a, _, ibus, tl in wired_dc
+                    for coro in (a.close(), ibus.stop(), tl.stop())
+                ],
+            )
+            await dc_thread_store.close()
+            await dc_turn_store.close()
+            raise
+
+        wired_dc.append(wired)
         log.info(
             "adapter_standalone: Discord bot_id=%s ready (NATS mode)",
             bot_id,
@@ -167,23 +218,4 @@ async def bootstrap_discord_standalone(  # noqa: C901, PLR0915
         sys.exit("No Discord adapters started — check credentials")
     await wait_for_hub(nc)
     stop_dc = setup_shutdown_event(_stop)
-    start_tasks = [
-        asyncio.create_task(a.start(tok), name=f"discord:{a._bot_id}")
-        for a, tok, _, _tl in wired_dc
-    ]
-    try:
-        await stop_dc.wait()
-        await close_safely(
-            "dc-adapters", *[a.close() for a, _, _, _tl in wired_dc]
-        )
-        for t in start_tasks:
-            t.cancel()
-        await asyncio.gather(*start_tasks, return_exceptions=True)
-    finally:
-        dc_bus_coros = [ibus.stop() for _, _, ibus, _tl in wired_dc]
-        await close_safely("dc-buses", *dc_bus_coros)
-        await close_safely(
-            "dc-typing", *[tl.stop() for _, _, _, tl in wired_dc]
-        )
-        await dc_thread_store.close()
-        await dc_turn_store.close()
+    await _bootstrap_discord_teardown(wired_dc, dc_thread_store, dc_turn_store, stop_dc)

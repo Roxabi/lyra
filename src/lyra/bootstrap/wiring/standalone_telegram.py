@@ -22,20 +22,13 @@ from roxabi_nats.readiness import wait_for_hub
 log = logging.getLogger(__name__)
 
 
-async def bootstrap_telegram_standalone(  # noqa: PLR0915
-    nc: Any,
+async def _bootstrap_telegram_setup(
     raw_config: dict,
-    config_bundle: AdapterConfigBundle,
     vault_dir: Path,
-    platform_enum: Platform,
-    *,
-    _stop: asyncio.Event | None = None,
-) -> None:
-    """Bootstrap a standalone Telegram adapter process connected to NATS."""
-    from lyra.adapters.telegram import TelegramAdapter
+) -> tuple:
+    """Load Telegram config, credentials, and connect turn store."""
     from lyra.config import TelegramMultiConfig
     from lyra.infrastructure.stores.turn_store import TurnStore
-    from lyra.nats.nats_bus import NatsBus
 
     tg_multi_cfg = TelegramMultiConfig.model_validate(
         raw_config.get("telegram", {})
@@ -52,13 +45,64 @@ async def bootstrap_telegram_standalone(  # noqa: PLR0915
     tg_turn_store = TurnStore(db_path=vault_dir / "turns.db")
     await tg_turn_store.connect()
 
+    return tg_multi_cfg, tg_creds, tg_turn_store
+
+
+async def _bootstrap_telegram_teardown(
+    wired: list[tuple],
+    tg_turn_store: Any,
+    stop: asyncio.Event,
+) -> None:
+    """Run shutdown sequence for all wired Telegram adapters."""
+    poll_tasks = [
+        asyncio.create_task(
+            a.dp.start_polling(a.bot, handle_signals=False),
+            name=f"telegram:{a._bot_id}",
+        )
+        for a, _, _ in wired
+    ]
+    try:
+        await stop.wait()
+        for a, _, _ in wired:
+            await a.dp.stop_polling()
+        await asyncio.gather(*poll_tasks, return_exceptions=True)
+    finally:
+        await close_safely(
+            "tg",
+            *[
+                coro
+                for a, ibus, tl in wired
+                for coro in (a.close(), ibus.stop(), tl.stop())
+            ],
+        )
+        await tg_turn_store.close()
+
+
+async def bootstrap_telegram_standalone(
+    nc: Any,
+    raw_config: dict,
+    config_bundle: AdapterConfigBundle,
+    vault_dir: Path,
+    platform_enum: Platform,
+    *,
+    _stop: asyncio.Event | None = None,
+) -> None:
+    """Bootstrap a standalone Telegram adapter process connected to NATS."""
+    tg_multi_cfg, tg_creds, tg_turn_store = await _bootstrap_telegram_setup(
+        raw_config, vault_dir
+    )
+
     wired: list[tuple] = []  # (TelegramAdapter, Bus, TypingListener)
 
-    for bot_cfg in tg_multi_cfg.bots:
+    async def _wire_bot(bot_cfg: Any, token: str, webhook_secret: str | None) -> tuple:
+        """Wire a single Telegram bot with NATS transport and typing listener."""
         bot_id = bot_cfg.bot_id
-        if bot_id not in tg_creds:
-            continue
-        token, webhook_secret = tg_creds[bot_id]
+
+        from lyra.adapters.telegram import TelegramAdapter
+        from lyra.adapters.telegram.telegram import _telegram_scope_resolver
+        from lyra.adapters.telegram.telegram_outbound import _typing_worker
+        from lyra.nats.nats_bus import NatsBus
+        from lyra.typing import TypingListener, make_typing_factory
 
         inbound_bus: Bus[InboundMessage] = NatsBus(
             nc=nc,
@@ -95,20 +139,7 @@ async def bootstrap_telegram_standalone(  # noqa: PLR0915
                 adapter.close(),
                 inbound_bus.stop(),
             )
-            await close_safely(
-                "tg-wired",
-                *[
-                    coro
-                    for a, ibus, tl in wired
-                    for coro in (a.close(), ibus.stop(), tl.stop())
-                ],
-            )
-            await tg_turn_store.close()
             raise
-
-        from lyra.adapters.telegram.telegram import _telegram_scope_resolver
-        from lyra.adapters.telegram.telegram_outbound import _typing_worker
-        from lyra.typing import TypingListener, make_typing_factory
 
         tg_typing_listener = TypingListener(
             nc=nc,
@@ -121,7 +152,29 @@ async def bootstrap_telegram_standalone(  # noqa: PLR0915
         )
         await tg_typing_listener.start()
 
-        wired.append((adapter, inbound_bus, tg_typing_listener))
+        return (adapter, inbound_bus, tg_typing_listener)
+
+    for bot_cfg in tg_multi_cfg.bots:
+        bot_id = bot_cfg.bot_id
+        if bot_id not in tg_creds:
+            continue
+        token, webhook_secret = tg_creds[bot_id]
+
+        try:
+            wired_bot = await _wire_bot(bot_cfg, token, webhook_secret)
+        except Exception:
+            await close_safely(
+                "tg-wired",
+                *[
+                    coro
+                    for a, ibus, tl in wired
+                    for coro in (a.close(), ibus.stop(), tl.stop())
+                ],
+            )
+            await tg_turn_store.close()
+            raise
+
+        wired.append(wired_bot)
         log.info(
             "adapter_standalone: Telegram bot_id=%s ready (NATS mode)",
             bot_id,
@@ -132,26 +185,4 @@ async def bootstrap_telegram_standalone(  # noqa: PLR0915
     await wait_for_hub(nc)
 
     stop = setup_shutdown_event(_stop)
-
-    poll_tasks = [
-        asyncio.create_task(
-            a.dp.start_polling(a.bot, handle_signals=False),
-            name=f"telegram:{a._bot_id}",
-        )
-        for a, _, _tl in wired
-    ]
-    try:
-        await stop.wait()
-        for a, _, _tl in wired:
-            await a.dp.stop_polling()
-        await asyncio.gather(*poll_tasks, return_exceptions=True)
-    finally:
-        await close_safely(
-            "tg",
-            *[
-                coro
-                for a, ibus, tl in wired
-                for coro in (a.close(), ibus.stop(), tl.stop())
-            ],
-        )
-        await tg_turn_store.close()
+    await _bootstrap_telegram_teardown(wired, tg_turn_store, stop)

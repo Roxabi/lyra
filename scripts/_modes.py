@@ -23,16 +23,6 @@ from scripts._nk import (
 )
 from scripts._renderer import parse_auth_conf, render_auth_conf
 
-# Test-only entry point: FakeNkeyProvider lives in tests/fakes so production
-# code never imports it unconditionally.  Guarded by LYRA_TEST_MODE at runtime.
-FakeNkeyProvider: NkeyProvider | None = None  # type: ignore[no-redef]
-try:
-    from tests.fakes.nkey_provider import FakeNkeyProvider as _FakeNkeyProvider
-
-    FakeNkeyProvider = _FakeNkeyProvider  # type: ignore[assignment]
-except ImportError:
-    pass
-
 _provider_factory: Callable[[], NkeyProvider] = SubprocessNkeyProvider
 
 
@@ -47,7 +37,11 @@ def _get_provider() -> NkeyProvider:
                 file=sys.stderr,
             )
             sys.exit(1)
-        if FakeNkeyProvider is None:
+        # Lazy import — test-only fake provider,
+        # guarded by LYRA_TEST_MODE runtime check.
+        try:
+            from tests.fakes.nkey_provider import FakeNkeyProvider  # noqa: I001  # type: ignore[reportMissingImports]
+        except ImportError:
             print(
                 "error: FakeNkeyProvider not available — tests package not importable",
                 file=sys.stderr,

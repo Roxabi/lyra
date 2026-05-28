@@ -298,7 +298,8 @@ class TestInitBotAuthsAndAgents:
 
         mock_tg_auth = MagicMock()
         monkeypatch.setattr(
-            "lyra.bootstrap.wiring.bootstrap_wiring._build_bot_auths",
+            agent_factory_mod,
+            "_build_bot_auths",
             lambda *a, **kw: ([(tg_cfg.bots[0], mock_tg_auth)], []),
         )
 
@@ -365,7 +366,8 @@ class TestInitBotAuthsAndAgents:
             lambda raw: (MagicMock(bots=[]), MagicMock(bots=[])),
         )
         monkeypatch.setattr(
-            "lyra.bootstrap.wiring.bootstrap_wiring._build_bot_auths",
+            agent_factory_mod,
+            "_build_bot_auths",
             lambda *a, **kw: ([], []),
         )
 
@@ -387,7 +389,8 @@ class TestInitBotAuthsAndAgents:
             lambda raw: (MagicMock(bots=[MagicMock()]), MagicMock(bots=[])),
         )
         monkeypatch.setattr(
-            "lyra.bootstrap.wiring.bootstrap_wiring._build_bot_auths",
+            agent_factory_mod,
+            "_build_bot_auths",
             lambda *a, **kw: ([(MagicMock(), MagicMock())], []),
         )
         monkeypatch.setattr(

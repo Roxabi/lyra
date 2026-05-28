@@ -2,6 +2,7 @@
 root_packages =
     lyra
     tests
+    scripts
 source_roots =
     src
     .
@@ -147,6 +148,10 @@ name = Production code must not import tests.fakes
 type = forbidden
 source_modules =
     lyra
+    scripts
 forbidden_modules =
     tests.fakes
 allow_indirect_imports = true
+ignore_imports =
+    # Guarded by LYRA_TEST_MODE runtime check; test-only fake nkey provider (#1283)
+    scripts._modes -> tests.fakes.nkey_provider

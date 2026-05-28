@@ -19,6 +19,7 @@ from lyra.bootstrap.factory.config import (
     _load_messages,
 )
 from lyra.bootstrap.types import BotAuthBundle
+from lyra.bootstrap.wiring.bootstrap_wiring import BotAuthDeps, _build_bot_auths
 from lyra.config import load_multibot_config
 from lyra.core.agent import Agent, AgentBase
 from lyra.core.agent.agent_loader import agent_row_to_config
@@ -103,8 +104,6 @@ async def _init_bot_auths_and_agents(
         tg_multi_cfg, dc_multi_cfg = load_multibot_config(raw_config)
     except ValueError as exc:
         raise SystemExit(str(exc))
-
-    from lyra.bootstrap.wiring.bootstrap_wiring import BotAuthDeps, _build_bot_auths
 
     tg_bot_auths, dc_bot_auths = _build_bot_auths(
         BotAuthDeps(

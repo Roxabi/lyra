@@ -82,17 +82,89 @@ def _gh_json(cmd: list[str]) -> list[dict]:
     return json.loads(result.stdout)
 
 
-def fetch_issues() -> list[dict]:
-    fields = "number,title,labels,body,assignees"
-    return _gh_json(
-        [
-            "issue", "list",
-            "--repo", REPO,
-            "--state", "open",
-            "--limit", "200",
-            "--json", fields,
-        ]
+def _gh_graphql(query: str) -> dict:
+    result = subprocess.run(
+        ["gh", "api", "graphql", "-f", f"query={query}"],
+        capture_output=True,
+        text=True,
+        check=True,
     )
+    return json.loads(result.stdout)["data"]
+
+
+def fetch_issues() -> list[dict]:
+    query = """
+    query {
+      repository(owner: "roxabi", name: "lyra") {
+        issues(
+          first: 100, states: OPEN,
+          orderBy: {field: CREATED_AT, direction: DESC}
+        ) {
+          nodes {
+            number
+            title
+            state
+            body
+            url
+            labels(first: 20) {
+              nodes {
+                name
+              }
+            }
+            assignees(first: 10) {
+              nodes {
+                login
+              }
+            }
+            blockedBy(first: 10) {
+              nodes {
+                number
+                state
+              }
+            }
+            parent {
+              number
+              state
+              blockedBy(first: 10) {
+                nodes {
+                  number
+                  state
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    """
+    data = _gh_graphql(query)
+    nodes = data["repository"]["issues"]["nodes"]
+    issues = []
+    for node in nodes:
+        issues.append({
+            "number": node["number"],
+            "title": node["title"],
+            "state": node["state"],
+            "body": node.get("body", ""),
+            "url": node.get("url"),
+            "labels": [lbl["name"] for lbl in node.get("labels", {}).get("nodes", [])],
+            "assignees": [
+                {"login": a["login"]}
+                for a in node.get("assignees", {}).get("nodes", [])
+            ],
+            "blockedBy": node.get("blockedBy", {}).get("nodes", []),
+            "parent": (
+                {
+                    "number": node["parent"]["number"],
+                    "state": node["parent"]["state"],
+                    "blockedBy": [
+                        b for b in node["parent"].get("blockedBy", {}).get("nodes", [])
+                    ],
+                }
+                if node.get("parent") else None
+            ),
+        })
+    return issues
 
 
 def fetch_prs() -> list[dict]:
@@ -139,17 +211,18 @@ def parse_blocked_by(body: str) -> list[str]:
     return [f"#{r}" for r in refs]
 
 
-def is_blocked(issue: dict, all_issues: dict[int, dict]) -> bool:
-    """Check if any blocked_by refs are still open."""
-    blocked_by = parse_blocked_by(issue.get("body", ""))
-    for ref in blocked_by:
-        num = int(ref.lstrip("#"))
-        target = all_issues.get(num)
-        if target is None:
-            # Unknown issue — conservatively treat as open blocker
+def is_blocked(issue: dict) -> bool:
+    """Check if any blockedBy refs are still open, or if parent has open blockers."""
+    for blocker in issue.get("blockedBy", []):
+        if blocker.get("state") != "CLOSED":
             return True
-        if target.get("state") != "closed":
-            return True
+
+    parent = issue.get("parent")
+    if parent:
+        for blocker in parent.get("blockedBy", []):
+            if blocker.get("state") != "CLOSED":
+                return True
+
     return False
 
 
@@ -190,7 +263,7 @@ def get_worktree_blockers(issues: list[dict]) -> list[dict]:
         issue_num = int(match.group(1))
         issue = issues_by_number.get(issue_num)
         if issue:
-            labels = [lbl["name"] for lbl in issue.get("labels", [])]
+            labels = issue.get("labels", [])
             blockers.append({
                 "wt_name": wt.name,
                 "issue_number": issue_num,
@@ -216,7 +289,7 @@ def get_pr_blockers(issues: list[dict], prs: list[dict]) -> list[dict]:
         issue_num = int(match.group(1))
         issue = issues_by_number.get(issue_num)
         if issue:
-            labels = [lbl["name"] for lbl in issue.get("labels", [])]
+            labels = issue.get("labels", [])
             blockers.append({
                 "pr_number": pr.get("number"),
                 "pr_title": title,
@@ -232,7 +305,6 @@ def filter_candidates(
     issues: list[dict],
     prs: list[dict],
 ) -> list[Candidate]:
-    all_issues_by_number = {i["number"]: i for i in issues}
     candidates: list[Candidate] = []
 
     for iss in issues:
@@ -240,7 +312,7 @@ def filter_candidates(
         if number <= MIN_NUMBER:
             continue
 
-        labels = [lbl["name"] for lbl in iss.get("labels", [])]
+        labels = iss.get("labels", [])
         size = parse_size(labels)
         priority = parse_priority(labels)
         assignees = [a["login"] for a in iss.get("assignees", [])]
@@ -249,8 +321,8 @@ def filter_candidates(
         if size and size not in ("XS", "S"):
             continue
 
-        # Blocker filter: no open blockers
-        if is_blocked(iss, all_issues_by_number):
+        # Blocker filter: no open blockers (direct or via parent)
+        if is_blocked(iss):
             continue
 
         # WIP gate: skip if assigned to someone else
@@ -270,7 +342,7 @@ def filter_candidates(
                 labels=labels,
                 assignees=assignees,
                 body=iss.get("body", ""),
-                blocked_by=parse_blocked_by(iss.get("body", "")),
+                blocked_by=[f"#{b['number']}" for b in iss.get("blockedBy", [])],
                 url=iss.get("url", f"https://github.com/{REPO}/issues/{number}"),
             )
         )

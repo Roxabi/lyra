@@ -64,6 +64,13 @@ repos:
     pass_filenames: false
     stages:
     - pre-push
+  - id: check-single-write-tool-display-config
+    name: check-single-write-tool-display-config
+    entry: tools/check_single_write_tool_display_config.sh
+    language: system
+    pass_filenames: false
+    stages:
+    - pre-push
   - id: license
     name: license check
     entry: uv run tools/license_check.py

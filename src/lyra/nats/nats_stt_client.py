@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from lyra.core.ports.stt import STTNoiseError, STTUnavailableError, TranscriptionResult
 from lyra.nats.nats_stt_codec import SttEncodeParams
 from lyra.nats.stt_helpers import is_whisper_noise
-from roxabi_contracts import BlobRef
+from roxabi_contracts import PENDING_STORE_KEY, BlobRef
 from roxabi_contracts.voice import per_worker_stt
 
 if TYPE_CHECKING:
@@ -56,7 +56,7 @@ class NatsSttClient:
         params = SttEncodeParams(model=self._model)
         if isinstance(audio, bytes):
             blob_ref = BlobRef(
-                store_key="",
+                store_key=PENDING_STORE_KEY,
                 content_hash="",
                 mime=mime,
                 size=len(audio),

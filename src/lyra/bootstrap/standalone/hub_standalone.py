@@ -149,6 +149,14 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
         await tts_service.start()
         nats_llm_client = await init_nats_llm(nc)
 
+        from lyra.infrastructure.resume_publisher_adapter import TurnPublisherAdapter
+        from lyra.transport.turn_publisher import TurnPublisher
+        from lyra.transport.typing_publisher import TypingPublisher
+
+        js = nc.jetstream()
+        turn_publisher = TurnPublisher(js)
+        adapter = TurnPublisherAdapter(turn_publisher, stores.turn)
+
         hub = build_hub(
             raw_config,
             circuit_registry=circuit_registry,
@@ -159,18 +167,13 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
             prefs_store=stores.prefs,
             inbound_bus=inbound_bus,
             inbound_bus_cfg=inbound_bus_cfg,
+            resume_publisher=adapter,
         )
         hub.set_turn_store(stores.turn)
         hub.set_message_index(stores.message_index)
-
-        from lyra.transport.turn_publisher import TurnPublisher
-        from lyra.transport.typing_publisher import TypingPublisher
-
-        js = nc.jetstream()
-        hub.set_turn_publisher(TurnPublisher(js))
-        assert hub._turn_publisher is not None, (  # noqa: S101
-            "TurnPublisher not wired — startup check failed"
-        )
+        hub.set_turn_publisher(turn_publisher)
+        if hub._turn_publisher is None:
+            raise RuntimeError("TurnPublisher not wired — startup check failed")
 
         # T1: instantiate TypingPublisher (flag-off no-op via LYRA_TYPING_ENABLED).
         # T2 will wire it into Pool.process_one() scope contexts.

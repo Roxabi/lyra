@@ -45,6 +45,7 @@ if TYPE_CHECKING:
     from ..cli.cli_pool import CliPool
     from ..memory import MemoryManager
     from ..messaging.messages import MessageManager
+    from ..ports.resume_publisher import ResumePublisherPort
     from ..ports.stt import STTProtocol
     from ..ports.tts import TtsProtocol
     from .event_bus import PipelineEventBus
@@ -75,6 +76,7 @@ class Hub(
         event_bus: "PipelineEventBus | None" = None,
         inbound_bus: "Bus[InboundMessage] | None" = None,
         config: HubConfig | None = None,
+        resume_publisher: "ResumePublisherPort | None" = None,
     ) -> None:
         cfg = config if config is not None else HubConfig()
         if cfg.max_pools <= 0:
@@ -109,6 +111,7 @@ class Hub(
         self._memory_tasks: set[asyncio.Task] = set()
         self._turn_store: TurnStore | None = None
         self._turn_publisher: TurnPublisher | None = None
+        self._resume_publisher: ResumePublisherPort | None = resume_publisher
         # T1 — typing-plane publisher; wired by bootstrap, consumed by T2.
         self._typing_publisher: TypingPublisher | None = None
         self._turn_timeout = cfg.turn_timeout
@@ -200,7 +203,11 @@ class Hub(
 
     async def run(self) -> None:
         """Hub bus consumer loop. Runs until cancelled."""
-        pipeline = build_default_pipeline(self, event_bus=self._event_bus)
+        pipeline = build_default_pipeline(
+            self,
+            resume_publisher=self._resume_publisher,
+            event_bus=self._event_bus,
+        )
         while True:
             msg = await self.inbound_bus.get()
             try:

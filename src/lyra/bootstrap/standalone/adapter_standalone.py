@@ -36,7 +36,10 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
 
     log_contracts_version()
 
-    platform_enum = Platform(platform)
+    try:
+        platform_enum = Platform(platform)
+    except ValueError:
+        sys.exit(f"Unknown platform: {platform!r}")
     config_bundle = build_adapter_config_bundle(raw_config)
 
     try:

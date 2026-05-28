@@ -197,7 +197,14 @@ async def bootstrap_discord_standalone(
             ),
             manager=adapter_dc._typing,
         )
-        await dc_typing_listener.start()
+        try:
+            await dc_typing_listener.start()
+        except Exception:
+            await close_safely(
+                "dc-typing-start",
+                dc_typing_listener.stop(),
+            )
+            raise
 
         return (adapter_dc, token, inbound_bus_dc, dc_typing_listener)
 

@@ -7,7 +7,7 @@ import logging
 import sys
 from functools import partial
 from pathlib import Path
-from typing import Any, NamedTuple
+from typing import Any
 
 from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 from lyra.bootstrap import credentials
@@ -22,16 +22,10 @@ from roxabi_nats.readiness import wait_for_hub
 log = logging.getLogger(__name__)
 
 
-class _TelegramSetupResult(NamedTuple):
-    multi_cfg: Any
-    creds: dict[str, tuple[str, str | None]]
-    turn_store: Any
-
-
 async def _bootstrap_telegram_setup(
     raw_config: dict,
     vault_dir: Path,
-) -> _TelegramSetupResult:
+) -> tuple:
     """Load Telegram config, credentials, and connect turn store."""
     from lyra.config import TelegramMultiConfig
     from lyra.infrastructure.stores.turn_store import TurnStore
@@ -51,7 +45,7 @@ async def _bootstrap_telegram_setup(
     tg_turn_store = TurnStore(db_path=vault_dir / "turns.db")
     await tg_turn_store.connect()
 
-    return _TelegramSetupResult(tg_multi_cfg, tg_creds, tg_turn_store)
+    return tg_multi_cfg, tg_creds, tg_turn_store
 
 
 async def _close_tg_wired(label: str, wired: list[tuple]) -> None:
@@ -97,10 +91,9 @@ async def bootstrap_telegram_standalone(
     _stop: asyncio.Event | None = None,
 ) -> None:
     """Bootstrap a standalone Telegram adapter process connected to NATS."""
-    tg_setup = await _bootstrap_telegram_setup(raw_config, vault_dir)
-    tg_multi_cfg = tg_setup.multi_cfg
-    tg_creds = tg_setup.creds
-    tg_turn_store = tg_setup.turn_store
+    tg_multi_cfg, tg_creds, tg_turn_store = await _bootstrap_telegram_setup(
+        raw_config, vault_dir
+    )
 
     wired: list[tuple] = []  # (TelegramAdapter, Bus, TypingListener)
 
@@ -160,7 +153,14 @@ async def bootstrap_telegram_standalone(
             ),
             manager=adapter._typing,
         )
-        await tg_typing_listener.start()
+        try:
+            await tg_typing_listener.start()
+        except Exception:
+            await close_safely(
+                "tg-typing-start",
+                tg_typing_listener.stop(),
+            )
+            raise
 
         return (adapter, inbound_bus, tg_typing_listener)
 

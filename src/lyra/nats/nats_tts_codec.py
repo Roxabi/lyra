@@ -91,6 +91,9 @@ class TtsCodec:
                 mime_type="",
                 duration_ms=None,
                 error=err.code,
+                error_message=err.message,
+                retryable=err.retryable,
+                unavailable=True,
             )
         try:
             resp = TtsResponse.model_validate_json(result.value)
@@ -101,13 +104,33 @@ class TtsCodec:
                 mime_type="",
                 duration_ms=None,
                 error="decode.validation_error",
+                error_message="response payload failed validation",
+                retryable=False,
+                unavailable=False,
             )
         if not resp.ok:
+            if resp.worker_error is not None:
+                we = resp.worker_error
+                return SynthesisResult(
+                    blob_ref=_SENTINEL_BLOB_REF,
+                    mime_type="",
+                    duration_ms=None,
+                    error=we.code,
+                    error_message=we.message,
+                    error_detail=we.detail,
+                    retryable=we.retryable,
+                    unavailable=False,
+                )
+            # Older worker: fall back to flat resp.error
+            flat_error = resp.error or "tts.worker_error"
             return SynthesisResult(
                 blob_ref=_SENTINEL_BLOB_REF,
                 mime_type="",
                 duration_ms=None,
-                error=resp.error or "tts.worker_error",
+                error=flat_error,
+                error_message=flat_error,
+                retryable=False,
+                unavailable=False,
             )
         return SynthesisResult(
             blob_ref=resp.blob_ref,  # type: ignore[arg-type]

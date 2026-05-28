@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from lyra.core.ports.tts import SynthesisResult, TtsUnavailableError
+from lyra.core.ports.tts import SynthesisResult, TtsSynthesisError, TtsUnavailableError
 from roxabi_contracts.voice import per_worker_tts
 
 if TYPE_CHECKING:
@@ -62,6 +62,13 @@ class NatsTtsClient:
             per_worker_tts, payload, max_attempts=None
         )
         synth = self._codec.decode(result)
-        if synth.error:
-            raise TtsUnavailableError(synth.error)
+        if synth.error and synth.unavailable:
+            raise TtsUnavailableError(synth.error_message or synth.error)
+        elif synth.error:
+            raise TtsSynthesisError(
+                code=synth.error,
+                message=synth.error_message or synth.error,
+                detail=synth.error_detail,
+                retryable=synth.retryable,
+            )
         return synth

@@ -20,7 +20,7 @@ from .messaging.message import (
     OutboundMessage,
     Platform,
 )
-from .ports.tts import TtsUnavailableError
+from .ports.tts import TtsSynthesisError, TtsUnavailableError
 
 if TYPE_CHECKING:
     from lyra.core.agent.agent_config import AgentTTSConfig
@@ -191,6 +191,7 @@ class AudioPipeline:
         to avoid the reentrancy loop documented in #621.
         """
         assert self._hub._tts is not None  # caller guarantees this
+        _notif_text: str = ""
         try:
             lang: str | None = None
             voice: str | None = None
@@ -257,34 +258,42 @@ class AudioPipeline:
                 result.blob_ref.store_key,
                 msg.id,
             )
-        except Exception as _tts_exc:
+        except TtsUnavailableError as _tts_exc:
             # Text response was already dispatched by the caller before TTS was
             # attempted — the user has the content.  Do not call dispatch_response
             # here: doing so creates a reentrancy path that causes an infinite
             # retry loop in production (#621).
             # Instead, use _route_outbound directly to send a notification
             # without spawning TTS tasks.
-            if isinstance(_tts_exc, TtsUnavailableError):
-                log.warning(
-                    "TTS adapter unavailable for msg id=%s — notifying user",
-                    msg.id,
-                )
-                _notif_text = "⚠️ Voice synthesis temporarily unavailable."
-            else:
-                log.exception(
-                    "TTS synthesis failed (msg id=%s) — notifying user",
-                    msg.id,
-                )
-                _notif_text = "⚠️ Voice synthesis failed."
-
-            # Send notification via _route_outbound (safe: no TTS spawning)
-            await self._hub._route_outbound(
-                msg,
-                enqueue_fn=lambda d: d.enqueue(
-                    msg, OutboundMessage.from_text(_notif_text)
-                ),
-                fallback_fn=lambda a: a.send(
-                    msg, OutboundMessage.from_text(_notif_text)
-                ),
-                resource="tts-failure-notification",
+            log.warning(
+                "TTS adapter unavailable for msg id=%s: %s — notifying user",
+                msg.id,
+                _tts_exc,
             )
+            _notif_text = "⚠️ Voice synthesis temporarily unavailable."
+        except TtsSynthesisError as _tts_exc:
+            log.warning(
+                "TTS synthesis error for msg id=%s: code=%s msg=%s detail=%s"
+                " — notifying user",
+                msg.id,
+                _tts_exc.code,
+                _tts_exc.message,
+                _tts_exc.detail,
+            )
+            _notif_text = f"⚠️ Voice synthesis failed: {_tts_exc.message}"
+        except Exception as _tts_exc:
+            log.exception(
+                "TTS synthesis failed (msg id=%s) — notifying user",
+                msg.id,
+            )
+            _notif_text = "⚠️ Voice synthesis failed."
+        else:
+            return
+
+        # Send notification via _route_outbound (safe: no TTS spawning)
+        await self._hub._route_outbound(
+            msg,
+            enqueue_fn=lambda d: d.enqueue(msg, OutboundMessage.from_text(_notif_text)),
+            fallback_fn=lambda a: a.send(msg, OutboundMessage.from_text(_notif_text)),
+            resource="tts-failure-notification",
+        )

@@ -6,7 +6,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.ports.tts import SynthesisResult, TtsUnavailableError
+from lyra.core.ports.tts import (
+    SynthesisResult,
+    TtsSynthesisError,
+    TtsUnavailableError,
+)
 from lyra.nats.nats_tts_client import NatsTtsClient
 from lyra.transport._result import Err, Ok, SanitizedError
 from roxabi_contracts import BlobRef
@@ -58,22 +62,52 @@ class TestNatsTtsClientSynthesize:
         assert result.mime_type == "audio/ogg"
 
     @pytest.mark.asyncio
-    async def test_codec_error_raises_tts_unavailable(self) -> None:
+    async def test_worker_domain_error_raises_tts_synthesis_error(self) -> None:
+        """Worker error with unavailable=False → TtsSynthesisError."""
         err_synth = SynthesisResult(
             blob_ref=_FAKE_BLOB,
             mime_type="",
             duration_ms=None,
-            error="tts.worker_error",
+            error="voice.invalid_voice",
+            error_message="Voice Cherry not found",
+            error_detail="Available: alloy, echo",
+            retryable=False,
+            unavailable=False,
         )
         pool = _make_pool()
         pool.request_with_routing = AsyncMock(return_value=Ok(b"raw"))
         codec = _make_codec(err_synth)
         client = NatsTtsClient(pool, codec)
-        with pytest.raises(TtsUnavailableError, match="tts.worker_error"):
+        with pytest.raises(TtsSynthesisError) as exc_info:
+            await client.synthesize("hello")
+        exc = exc_info.value
+        assert exc.code == "voice.invalid_voice"
+        assert exc.message == "Voice Cherry not found"
+        assert exc.detail == "Available: alloy, echo"
+        assert exc.retryable is False
+
+    @pytest.mark.asyncio
+    async def test_transport_error_raises_tts_unavailable(self) -> None:
+        """Transport Err with unavailable=True → TtsUnavailableError."""
+        err_synth = SynthesisResult(
+            blob_ref=_FAKE_BLOB,
+            mime_type="",
+            duration_ms=None,
+            error="pool.no_live_workers",
+            error_message="NoLiveWorkers",
+            retryable=True,
+            unavailable=True,
+        )
+        pool = _make_pool()
+        pool.request_with_routing = AsyncMock(return_value=Ok(b"raw"))
+        codec = _make_codec(err_synth)
+        client = NatsTtsClient(pool, codec)
+        with pytest.raises(TtsUnavailableError, match="NoLiveWorkers"):
             await client.synthesize("hello")
 
     @pytest.mark.asyncio
     async def test_pool_err_propagates_via_codec_decode(self) -> None:
+        """Err from pool (unavailable=True) → TtsUnavailableError."""
         err_result = Err(
             SanitizedError(
                 code="pool.no_live_workers", message="NoLiveWorkers", retryable=True
@@ -84,13 +118,36 @@ class TestNatsTtsClientSynthesize:
             mime_type="",
             duration_ms=None,
             error="pool.no_live_workers",
+            error_message="NoLiveWorkers",
+            retryable=True,
+            unavailable=True,
         )
         pool = _make_pool()
         pool.request_with_routing = AsyncMock(return_value=err_result)
         codec = _make_codec(err_synth)
         client = NatsTtsClient(pool, codec)
-        with pytest.raises(TtsUnavailableError, match="pool.no_live_workers"):
+        with pytest.raises(TtsUnavailableError, match="NoLiveWorkers"):
             await client.synthesize("hello")
+
+    @pytest.mark.asyncio
+    async def test_worker_error_tts_synthesis_error_str(self) -> None:
+        """TtsSynthesisError.__str__ returns 'code: message'."""
+        err_synth = SynthesisResult(
+            blob_ref=_FAKE_BLOB,
+            mime_type="",
+            duration_ms=None,
+            error="tts.worker_error",
+            error_message="generic worker error",
+            unavailable=False,
+        )
+        pool = _make_pool()
+        pool.request_with_routing = AsyncMock(return_value=Ok(b"raw"))
+        codec = _make_codec(err_synth)
+        client = NatsTtsClient(pool, codec)
+        with pytest.raises(TtsSynthesisError) as exc_info:
+            await client.synthesize("hello")
+        assert "tts.worker_error" in str(exc_info.value)
+        assert "generic worker error" in str(exc_info.value)
 
     @pytest.mark.asyncio
     async def test_encode_called_with_correct_args(self) -> None:

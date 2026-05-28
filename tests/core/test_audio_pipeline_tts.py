@@ -437,6 +437,111 @@ class TestTtsUnavailableFallback:
         assert "notifying user" in caplog.text
         assert any(r.levelno == logging.ERROR for r in caplog.records)
 
+    @pytest.mark.asyncio
+    async def test_tts_synthesis_error_actionable_notification(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """TtsSynthesisError → actionable user notification with scrubbed message.
+
+        dispatch_response must NOT be called (#621).  The notification text
+        includes the worker-provided message (already scrubbed by the contract).
+        """
+        import logging
+
+        from lyra.core.ports.tts import TtsSynthesisError
+
+        # Arrange
+        mock_tts = MagicMock()
+        mock_tts.synthesize = AsyncMock(
+            side_effect=TtsSynthesisError(
+                code="voice.invalid_voice",
+                message="Voice Cherry not found",
+                detail="Available: alloy, echo",
+                retryable=False,
+            )
+        )
+
+        hub = Hub(tts=mock_tts)
+        hub.dispatch_audio = AsyncMock()
+        hub.dispatch_response = AsyncMock()
+        hub._route_outbound = AsyncMock()
+
+        msg = InboundMessage(
+            id="msg-fallback-3",
+            platform="telegram",
+            bot_id="main",
+            scope_id="chat:99",
+            user_id="alice",
+            user_name="Alice",
+            is_mention=False,
+            text="hello",
+            text_raw="hello",
+            timestamp=datetime.now(timezone.utc),
+            trust_level=TrustLevel.TRUSTED,
+            modality="voice",
+        )
+
+        # Act
+        with caplog.at_level(logging.WARNING, logger="lyra.core.tts_dispatch"):
+            await hub._audio_pipeline.synthesize_and_dispatch_audio(
+                msg, "Hello from Lyra"
+            )
+
+        # Assert — dispatch_response NOT called (#621)
+        hub.dispatch_audio.assert_not_awaited()
+        hub.dispatch_response.assert_not_awaited()
+        # _route_outbound IS called to send notification
+        hub._route_outbound.assert_awaited_once()
+        call_args = hub._route_outbound.call_args
+        assert call_args.kwargs.get("resource") == "tts-failure-notification"
+        # Log warning includes structured fields
+        assert "msg-fallback-3" in caplog.text
+        assert "voice.invalid_voice" in caplog.text
+        assert "notifying user" in caplog.text
+        assert any(r.levelno == logging.WARNING for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_tts_unavailable_log_includes_exception(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """TtsUnavailableError log message includes the exception cause."""
+        import logging
+
+        from lyra.core.ports.tts import TtsUnavailableError
+
+        mock_tts = MagicMock()
+        mock_tts.synthesize = AsyncMock(
+            side_effect=TtsUnavailableError("pool.no_live_workers")
+        )
+
+        hub = Hub(tts=mock_tts)
+        hub.dispatch_audio = AsyncMock()
+        hub.dispatch_response = AsyncMock()
+        hub._route_outbound = AsyncMock()
+
+        msg = InboundMessage(
+            id="msg-fallback-4",
+            platform="telegram",
+            bot_id="main",
+            scope_id="chat:99",
+            user_id="alice",
+            user_name="Alice",
+            is_mention=False,
+            text="hello",
+            text_raw="hello",
+            timestamp=datetime.now(timezone.utc),
+            trust_level=TrustLevel.TRUSTED,
+            modality="voice",
+        )
+
+        with caplog.at_level(logging.WARNING, logger="lyra.core.tts_dispatch"):
+            await hub._audio_pipeline.synthesize_and_dispatch_audio(
+                msg, "Hello from Lyra"
+            )
+
+        # The exception cause must appear in the log (not just "notifying user")
+        assert "pool.no_live_workers" in caplog.text
+
 
 # ---------------------------------------------------------------------------
 # dispatch_streaming TTS fallback — notification via _route_outbound (#627)

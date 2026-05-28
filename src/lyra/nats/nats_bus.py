@@ -33,7 +33,7 @@ from lyra.core.messaging.message import (
 from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
 from roxabi_nats import TypeHintResolver
 from roxabi_nats._serialize import deserialize_dict, serialize
-from roxabi_nats._validate import validate_nats_token
+from roxabi_nats._validate import validate_nats_single_token, validate_nats_token
 from roxabi_nats._version_check import check_schema_version
 
 log = logging.getLogger(__name__)
@@ -96,7 +96,7 @@ class NatsBus(Generic[T]):
         if self._started:
             raise RuntimeError(f"Cannot register {platform!r} after start().")
         resolved_bid = bot_id or self._bot_id
-        validate_nats_token(resolved_bid, kind="bot_id")
+        validate_nats_single_token(resolved_bid, kind="bot_id")
         self._registrations.add((platform, resolved_bid))
 
     # ------------------------------------------------------------------

@@ -16,7 +16,7 @@ import logging
 import time
 from dataclasses import dataclass
 
-from roxabi_nats._validate import validate_nats_token
+from roxabi_nats._validate import validate_nats_single_token
 
 log = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ class WorkerRegistry:
         # worker_id flows into NATS subjects (``<SUBJECT>.<worker_id>``) — reject
         # wildcards (``*``, ``>``), spaces, and other injection-prone characters.
         try:
-            validate_nats_token(worker_id, kind="worker_id")
+            validate_nats_single_token(worker_id, kind="worker_id")
         except ValueError:
             log.warning(
                 "worker_registry: rejecting heartbeat with invalid worker_id=%r",

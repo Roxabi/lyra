@@ -14,6 +14,7 @@ from lyra.bootstrap import credentials
 from lyra.bootstrap.factory.config import AdapterConfigBundle
 from lyra.bootstrap.lifecycle.lifecycle_helpers import close_safely
 from lyra.bootstrap.lifecycle.signal_handlers import setup_shutdown_event
+from lyra.bootstrap.standalone.audio_consumer_bootstrap import start_audio_consumer
 from lyra.core.messaging.bus import Bus
 from lyra.core.messaging.message import InboundMessage, Platform
 from lyra.nats.queue_groups import adapter_outbound
@@ -80,11 +81,11 @@ async def _create_dc_stores(vault_dir: Path) -> tuple:
 
 
 async def _close_dc_wired(label: str, wired_dc: list[tuple]) -> None:
-    """Close all wired Discord adapters, buses, and typing listeners."""
+    """Close all wired Discord adapters, buses, typing listeners, and consumers."""
     close_coros = [
         coro
-        for a, _, ibus, tl in wired_dc
-        for coro in (a.close(), ibus.stop(), tl.stop())
+        for a, _, ibus, tl, consumer in wired_dc
+        for coro in (a.close(), ibus.stop(), tl.stop(), consumer.stop())
     ]
     await close_safely(label, *close_coros)
 
@@ -98,23 +99,26 @@ async def _bootstrap_discord_teardown(
     """Run shutdown sequence for all wired Discord adapters."""
     start_tasks = [
         asyncio.create_task(a.start(tok), name=f"discord:{a._bot_id}")
-        for a, tok, _, _ in wired_dc
+        for a, tok, _, _, _ in wired_dc
     ]
     try:
         await stop_dc.wait()
-        await close_safely("dc-adapters", *[a.close() for a, _, _, _ in wired_dc])
+        await close_safely("dc-adapters", *[a.close() for a, _, _, _, _ in wired_dc])
         for t in start_tasks:
             t.cancel()
         await asyncio.gather(*start_tasks, return_exceptions=True)
     finally:
-        dc_bus_coros = [ibus.stop() for _, _, ibus, _ in wired_dc]
+        dc_bus_coros = [ibus.stop() for _, _, ibus, _, _ in wired_dc]
         await close_safely("dc-buses", *dc_bus_coros)
-        await close_safely("dc-typing", *[tl.stop() for _, _, _, tl in wired_dc])
+        await close_safely("dc-typing", *[tl.stop() for _, _, _, tl, _ in wired_dc])
+        await close_safely(
+            "dc-audio", *[consumer.stop() for _, _, _, _, consumer in wired_dc]
+        )
         await dc_thread_store.close()
         await dc_turn_store.close()
 
 
-async def bootstrap_discord_standalone(
+async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap composition root
     nc: Any,
     raw_config: dict,
     config_bundle: AdapterConfigBundle,
@@ -128,11 +132,12 @@ async def bootstrap_discord_standalone(
         raw_config, vault_dir
     )
     dc_thread_store, dc_turn_store = await _create_dc_stores(vault_dir)
+    js = nc.jetstream()
 
-    wired_dc: list[tuple] = []  # (DiscordAdapter, str, Bus, TypingListener)
+    wired_dc: list[tuple] = []  # (DiscordAdapter, str, Bus, TypingListener, Consumer)
 
     async def _wire_bot(bot_cfg: Any, token: str) -> tuple:
-        """Wire a single Discord bot with NATS transport and typing listener."""
+        """Wire a single Discord bot with NATS, typing listener, and audio consumer."""
         bot_id = bot_cfg.bot_id
 
         from lyra.adapters.discord import DiscordAdapter
@@ -199,7 +204,13 @@ async def bootstrap_discord_standalone(
             )
             raise
 
-        return (adapter_dc, token, inbound_bus_dc, dc_typing_listener)
+        # Audio consumer: started strictly after astart() + typing, so no
+        # cleanup needed in either astart or typing failure paths above.
+        consumer = await start_audio_consumer(
+            js, platform_enum.value, bot_id, adapter_dc
+        )
+
+        return (adapter_dc, token, inbound_bus_dc, dc_typing_listener, consumer)
 
     for bot_cfg in dc_multi_cfg.bots:
         bot_id = bot_cfg.bot_id

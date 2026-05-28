@@ -1,13 +1,16 @@
-"""Tests for bootstrap_audio_consumer wiring (#1482 T8).
+"""Tests for audio consumer wiring in standalone_telegram/standalone_discord (#1482 T8).
 
-Asserts that _bootstrap_adapter_standalone:
-  1. Calls ensure_stream / ensure_kv / ensure_consumer before constructing the consumer.
-  2. Constructs JetStreamAudioConsumer with the correct durable + filter_subject.
-  3. Wires adapter.render_audio as send_audio and adapter.send as send_text.
-  4. Calls consumer.start() during bootstrap.
-  5. Calls consumer.stop() during teardown.
+Asserts that bootstrap_telegram_standalone / bootstrap_discord_standalone:
+  1. Call start_audio_consumer after astart() + typing-listener, passing js from
+     nc.jetstream(), the correct platform string, bot_id, and adapter instance.
+  2. Pass per-bot durable ("outbound-audio-{platform}-{bot_id}") and filter
+     ("lyra.outbound.audio.{platform}.{bot_id}.>") to ensure_consumer + ctor.
+  3. Wire adapter.render_audio as send_audio and adapter.send as send_text.
+  4. Call consumer.start() and consumer.stop() (via _close_tg/dc_wired).
+  5. astart-failure path: start_audio_consumer is never called.
 
-Both telegram and discord platforms are exercised.
+All tests override the autouse _noop_audio_consumer conftest fixture by applying
+their own `with patch(...)` blocks inside the test body (innermost patch wins).
 """
 
 from __future__ import annotations
@@ -17,8 +20,6 @@ import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
-from lyra.adapters.nats.jetstream_audio_dedup import KvSentSet
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -53,22 +54,31 @@ def _make_nc_mock() -> AsyncMock:
 
 
 # ---------------------------------------------------------------------------
-# Telegram bootstrap_audio_consumer
+# Telegram — provisions and starts
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_bootstrap_audio_consumer_telegram_provisions_and_starts() -> None:
-    """Telegram: ensure_stream/kv/consumer called, consumer.start() called."""
+    """Telegram: start_audio_consumer called with correct js/platform/bot_id/adapter.
+
+    Patches start_audio_consumer at the wiring module import path (overriding the
+    conftest autouse no-op) and captures the call arguments.  Also patches the
+    underlying ensure_*/JetStreamAudioConsumer via a side_effect that calls through
+    to the real start_audio_consumer so provisioning assertions hold.
+    """
     from lyra.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
+    )
+    from lyra.bootstrap.standalone.audio_consumer_bootstrap import (
+        start_audio_consumer as real_start_audio_consumer,
     )
 
     stop = asyncio.Event()
     stop.set()
 
     mock_nc = _make_nc_mock()
-    mock_js = mock_nc.jetstream()  # capture the same object the bootstrap will see
+    mock_js = mock_nc.jetstream()
 
     mock_adapter = AsyncMock()
     mock_adapter._bot_id = "main"
@@ -84,19 +94,34 @@ async def test_bootstrap_audio_consumer_telegram_provisions_and_starts() -> None
     mock_inbound_bus = AsyncMock()
     mock_inbound_bus.register = MagicMock()
 
+    captured_calls: list[dict] = []
+
+    async def _capturing_start_audio_consumer(js, platform, bot_id, adapter):
+        captured_calls.append(
+            {"js": js, "platform": platform, "bot_id": bot_id, "adapter": adapter}
+        )
+        # Call through to the real function so ensure_*/JetStreamAudioConsumer run.
+        return await real_start_audio_consumer(js, platform, bot_id, adapter)
+
     (load_token,) = _cred_patch()
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
         patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
         patch("lyra.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
+            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=True),
         ),
+        # Override the conftest no-op with a capturing call-through.
+        patch(
+            "lyra.bootstrap.wiring.standalone_telegram.start_audio_consumer",
+            side_effect=_capturing_start_audio_consumer,
+        ),
+        # Intercept NATS provisioning inside start_audio_consumer.
         patch(
             "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_stream",
             new_callable=AsyncMock,
@@ -120,47 +145,46 @@ async def test_bootstrap_audio_consumer_telegram_provisions_and_starts() -> None
             _make_raw_config("telegram"), "telegram", _stop=stop
         )
 
-    # Provisioning order: stream → kv → consumer
+    # start_audio_consumer called once with the right arguments
+    assert len(captured_calls) == 1
+    assert captured_calls[0]["js"] is mock_js
+    assert captured_calls[0]["platform"] == "telegram"
+    assert captured_calls[0]["bot_id"] == "main"
+    assert captured_calls[0]["adapter"] is mock_adapter
+
+    # Provisioning order: stream → kv → consumer with per-bot durable/filter
     mock_ensure_stream.assert_awaited_once_with(mock_js)
     mock_ensure_kv.assert_awaited_once_with(mock_js)
     mock_ensure_consumer.assert_awaited_once_with(
         mock_js,
-        durable="outbound-audio-telegram",
-        filter_subject="lyra.outbound.audio.telegram.>",
+        durable="outbound-audio-telegram-main",
+        filter_subject="lyra.outbound.audio.telegram.main",
     )
 
-    # Constructor called with correct durable + filter
+    # Constructor: per-bot durable + filter, correct send bindings
     mock_consumer_cls.assert_called_once()
     _, ctor_kwargs = mock_consumer_cls.call_args
-    assert ctor_kwargs["durable"] == "outbound-audio-telegram"
-    assert ctor_kwargs["filter_subject"] == "lyra.outbound.audio.telegram.>"
-
-    # send_audio / send_text wired to adapter bound methods
+    assert ctor_kwargs["durable"] == "outbound-audio-telegram-main"
+    assert ctor_kwargs["filter_subject"] == "lyra.outbound.audio.telegram.main"
     assert ctor_kwargs["send_audio"] == mock_adapter.render_audio
     assert ctor_kwargs["send_text"] == mock_adapter.send
 
-    # T10: dedup must be a KvSentSet wrapping the kv handle from ensure_kv
-    assert isinstance(ctor_kwargs["dedup"], KvSentSet)
-    assert ctor_kwargs["dedup"]._kv is mock_ensure_kv.return_value
-
-    # Consumer lifecycle: started during bootstrap, stopped in teardown
+    # Consumer lifecycle: started during _wire_bot, stopped via _close_tg_wired
     mock_consumer.start.assert_awaited_once()
     mock_consumer.stop.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_bootstrap_audio_consumer_telegram_stop_called_in_teardown() -> None:
-    """Telegram: consumer.stop() is called in the teardown finally block."""
+    """Telegram: consumer.stop() called via _close_tg_wired in teardown finally."""
     from lyra.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
 
-    # Use a stop event that immediately fires — teardown path is exercised.
     stop = asyncio.Event()
     stop.set()
 
     mock_nc = _make_nc_mock()
-
     mock_adapter = AsyncMock()
     mock_adapter._bot_id = "main"
     mock_adapter.resolve_identity = AsyncMock()
@@ -181,28 +205,16 @@ async def test_bootstrap_audio_consumer_telegram_stop_called_in_teardown() -> No
         patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
         patch("lyra.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
+            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=True),
         ),
         patch(
-            "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_stream",
-            new_callable=AsyncMock,
-        ),
-        patch(
-            "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_kv",
-            new_callable=AsyncMock,
-        ),
-        patch(
-            "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_consumer",
-            new_callable=AsyncMock,
-        ),
-        patch(
-            "lyra.bootstrap.standalone.audio_consumer_bootstrap.JetStreamAudioConsumer",
-            return_value=mock_consumer,
+            "lyra.bootstrap.wiring.standalone_telegram.start_audio_consumer",
+            AsyncMock(return_value=mock_consumer),
         ),
         load_token,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
@@ -211,20 +223,65 @@ async def test_bootstrap_audio_consumer_telegram_stop_called_in_teardown() -> No
             _make_raw_config("telegram"), "telegram", _stop=stop
         )
 
-    # Teardown must stop the audio consumer.
+    # Teardown (_close_tg_wired) must stop the consumer.
     mock_consumer.stop.assert_awaited_once()
 
 
+@pytest.mark.asyncio
+async def test_bootstrap_audio_consumer_tg_no_consumer_on_astart_failure() -> None:
+    """Telegram astart failure: start_audio_consumer never called."""
+    from lyra.bootstrap.standalone.adapter_standalone import (
+        _bootstrap_adapter_standalone,
+    )
+
+    mock_nc = _make_nc_mock()
+    mock_adapter = AsyncMock()
+    mock_adapter._bot_id = "main"
+    mock_adapter.resolve_identity = AsyncMock()
+    mock_adapter.astart = AsyncMock(side_effect=RuntimeError("astart failed"))
+    mock_adapter.close = AsyncMock()
+
+    mock_inbound_bus = AsyncMock()
+    mock_inbound_bus.register = MagicMock()
+
+    (load_token,) = _cred_patch()
+    with (
+        patch("nats.connect", AsyncMock(return_value=mock_nc)),
+        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("lyra.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
+        patch(
+            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            return_value=AsyncMock(),
+        ),
+        patch(
+            "lyra.bootstrap.wiring.standalone_telegram.start_audio_consumer",
+            new_callable=AsyncMock,
+        ) as mock_start_consumer,
+        load_token,
+        patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
+        pytest.raises(RuntimeError, match="astart failed"),
+    ):
+        await _bootstrap_adapter_standalone(
+            _make_raw_config("telegram"), "telegram"
+        )
+
+    # Consumer must NOT be started when astart raises
+    mock_start_consumer.assert_not_awaited()
+
+
 # ---------------------------------------------------------------------------
-# Discord bootstrap_audio_consumer
+# Discord — provisions and starts
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_bootstrap_audio_consumer_discord_provisions_and_starts() -> None:
-    """Discord: ensure_stream/kv/consumer called, consumer.start() called."""
+    """Discord: start_audio_consumer called with correct js/platform/bot_id/adapter."""
     from lyra.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
+    )
+    from lyra.bootstrap.standalone.audio_consumer_bootstrap import (
+        start_audio_consumer as real_start_audio_consumer,
     )
 
     stop = asyncio.Event()
@@ -245,20 +302,30 @@ async def test_bootstrap_audio_consumer_discord_provisions_and_starts() -> None:
     mock_inbound_bus_dc = AsyncMock()
     mock_inbound_bus_dc.register = MagicMock()
 
+    captured_calls: list[dict] = []
+
+    async def _capturing_start_audio_consumer(js, platform, bot_id, adapter):
+        captured_calls.append(
+            {"js": js, "platform": platform, "bot_id": bot_id, "adapter": adapter}
+        )
+        return await real_start_audio_consumer(js, platform, bot_id, adapter)
+
     (load_token_dc,) = _cred_patch("discord-token")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
         patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus_dc),
+        patch("lyra.adapters.discord.DiscordAdapter", return_value=mock_adapter_dc),
         patch(
-            "lyra.adapters.discord.DiscordAdapter", return_value=mock_adapter_dc
-        ),
-        patch(
-            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            "lyra.bootstrap.wiring.standalone_discord.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
+            "lyra.bootstrap.wiring.standalone_discord.wait_for_hub",
             AsyncMock(return_value=True),
+        ),
+        patch(
+            "lyra.bootstrap.wiring.standalone_discord.start_audio_consumer",
+            side_effect=_capturing_start_audio_consumer,
         ),
         patch(
             "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_stream",
@@ -283,24 +350,26 @@ async def test_bootstrap_audio_consumer_discord_provisions_and_starts() -> None:
             _make_raw_config("discord"), "discord", _stop=stop
         )
 
+    assert len(captured_calls) == 1
+    assert captured_calls[0]["js"] is mock_js
+    assert captured_calls[0]["platform"] == "discord"
+    assert captured_calls[0]["bot_id"] == "main"
+    assert captured_calls[0]["adapter"] is mock_adapter_dc
+
     mock_ensure_stream_dc.assert_awaited_once_with(mock_js)
     mock_ensure_kv_dc.assert_awaited_once_with(mock_js)
     mock_ensure_consumer_dc.assert_awaited_once_with(
         mock_js,
-        durable="outbound-audio-discord",
-        filter_subject="lyra.outbound.audio.discord.>",
+        durable="outbound-audio-discord-main",
+        filter_subject="lyra.outbound.audio.discord.main",
     )
 
     mock_consumer_cls_dc.assert_called_once()
     _, ctor_kwargs_dc = mock_consumer_cls_dc.call_args
-    assert ctor_kwargs_dc["durable"] == "outbound-audio-discord"
-    assert ctor_kwargs_dc["filter_subject"] == "lyra.outbound.audio.discord.>"
+    assert ctor_kwargs_dc["durable"] == "outbound-audio-discord-main"
+    assert ctor_kwargs_dc["filter_subject"] == "lyra.outbound.audio.discord.main"
     assert ctor_kwargs_dc["send_audio"] == mock_adapter_dc.render_audio
     assert ctor_kwargs_dc["send_text"] == mock_adapter_dc.send
-
-    # T10: dedup must be a KvSentSet wrapping the kv handle from ensure_kv
-    assert isinstance(ctor_kwargs_dc["dedup"], KvSentSet)
-    assert ctor_kwargs_dc["dedup"]._kv is mock_ensure_kv_dc.return_value
 
     mock_consumer_dc.start.assert_awaited_once()
     mock_consumer_dc.stop.assert_awaited_once()

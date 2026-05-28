@@ -1,20 +1,25 @@
 """Bootstrap helper for the durable JetStream outbound-audio consumer.
 
-Called once per (platform, bot_id) pair inside _bootstrap_adapter_standalone
-after the adapter's astart() succeeds and before the shutdown wait.
+Called once per (platform, bot_id) pair from bootstrap_telegram_standalone /
+bootstrap_discord_standalone (via standalone_telegram.py / standalone_discord.py)
+after the adapter's astart() and typing-listener start() succeed.
 
 Ordering contract (mirrors turn_writer_standalone.py):
-    js = nc.jetstream()
+    js = nc.jetstream()          -- called once per bootstrap_*_standalone
     await ensure_stream(js)
     kv = await ensure_kv(js)     -- idempotent; KvSentSet wraps the handle
     await ensure_consumer(...)
     consumer = JetStreamAudioConsumer(...)
     await consumer.start()
     # ... running ...
-    await consumer.stop()        -- registered in adapter teardown finally block
+    await consumer.stop()        -- called in _close_tg_wired / _close_dc_wired
 
-The helper is extracted here to keep adapter_standalone.py below its
-file-length cap (already 351 lines with an exemption).
+Consumer is per-bot (not per-platform): durable and filter_subject are scoped
+to (platform, bot_id) so each bot's consumer is bound to its own adapter send
+paths and receives only its own audio messages.
+
+    durable        = "outbound-audio-{platform}-{bot_id}"
+    filter_subject = "lyra.outbound.audio.{platform}.{bot_id}"
 """
 
 from __future__ import annotations
@@ -58,8 +63,8 @@ async def start_audio_consumer(
     await ensure_stream(js)
     kv = await ensure_kv(js)
 
-    durable = f"outbound-audio-{platform}"
-    filter_subject = f"lyra.outbound.audio.{platform}.>"
+    durable = f"outbound-audio-{platform}-{bot_id}"
+    filter_subject = f"lyra.outbound.audio.{platform}.{bot_id}"
 
     await ensure_consumer(js, durable=durable, filter_subject=filter_subject)
 

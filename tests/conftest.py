@@ -102,6 +102,48 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Audio consumer no-op (T8 bootstrap wiring) — tests/ root scope
+# ---------------------------------------------------------------------------
+
+# Files that invoke _bootstrap_adapter_standalone but do NOT explicitly mock
+# start_audio_consumer. Listed by path fragment to stay narrow.
+_NOOP_AUDIO_CONSUMER_FILES = frozenset(
+    [
+        "test_bootstrap_credential_resolution",
+    ]
+)
+
+
+@pytest.fixture(autouse=True)
+def _noop_audio_consumer_root(request):
+    """Patch start_audio_consumer to a no-op for tests that call bootstrap but
+    don't exercise audio consumer behaviour (T8).
+
+    Scoped to files in _NOOP_AUDIO_CONSUMER_FILES only, so the rest of the suite
+    is unaffected.  Tests in tests/bootstrap/ are handled by their own conftest.
+    """
+    node_id = request.node.nodeid
+    if not any(f in node_id for f in _NOOP_AUDIO_CONSUMER_FILES):
+        yield
+        return
+
+    from unittest.mock import AsyncMock, patch
+
+    noop = AsyncMock(return_value=AsyncMock())
+    with (
+        patch(
+            "lyra.bootstrap.wiring.standalone_telegram.start_audio_consumer",
+            noop,
+        ),
+        patch(
+            "lyra.bootstrap.wiring.standalone_discord.start_audio_consumer",
+            noop,
+        ),
+    ):
+        yield
+
+
+# ---------------------------------------------------------------------------
 # Agent store fixture
 # ---------------------------------------------------------------------------
 

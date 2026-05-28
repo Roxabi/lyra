@@ -30,14 +30,6 @@ def _cred_store_patches(token: str, webhook_secret: str = "") -> tuple:
     )
 
 
-def _audio_consumer_patch():  # type: ignore[return]  # patch() return type is complex
-    """Patch start_audio_consumer so all tests skip real JetStream provisioning."""
-    return patch(
-        "lyra.bootstrap.standalone.adapter_standalone.start_audio_consumer",
-        return_value=AsyncMock(),
-    )
-
-
 @pytest.mark.asyncio
 async def test_telegram_bootstrap_wires_listener_and_calls_astart() -> None:
     """Telegram standalone bootstrap: NatsOutboundListener wired, astart() called."""
@@ -78,7 +70,6 @@ async def test_telegram_bootstrap_wires_listener_and_calls_astart() -> None:
             "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=True),
         ),
-        _audio_consumer_patch(),
         load_token_patch,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
     ):
@@ -125,7 +116,6 @@ async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
             "lyra.bootstrap.wiring.standalone_discord.wait_for_hub",
             AsyncMock(return_value=True),
         ),
-        _audio_consumer_patch(),
         load_token_patch_dc,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
     ):
@@ -174,12 +164,7 @@ async def test_nc_close_called_even_on_exception() -> None:
 
 @pytest.mark.asyncio
 async def test_telegram_astart_failure_cleans_up_wired_resources() -> None:
-    """astart() raises mid-loop -> wired + current bot resources cleaned up.
-
-    With T8 audio consumer wiring: first bot starts successfully (consumer
-    appended to tg_audio_consumers), second bot's astart() raises.  The
-    astart-failure except block must stop the first bot's audio consumer.
-    """
+    """astart() raises mid-loop -> wired + current bot resources cleaned up."""
     from lyra.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
@@ -208,21 +193,14 @@ async def test_telegram_astart_failure_cleans_up_wired_resources() -> None:
     mock_bus_second.start = AsyncMock()
     mock_bus_second.stop = AsyncMock()
 
-    # Audio consumer for first bot (second never starts).
-    mock_consumer_first = AsyncMock()
-
     adapter_queue = [mock_adapter_first, mock_adapter_second]
     bus_queue = [mock_bus_first, mock_bus_second]
-    consumer_queue = [mock_consumer_first]
 
     def _make_adapter(*args, **kwargs):
         return adapter_queue.pop(0)
 
     def _make_bus(*args, **kwargs):
         return bus_queue.pop(0)
-
-    async def _make_consumer(*args, **kwargs):
-        return consumer_queue.pop(0)
 
     (load_token_patch,) = _cred_store_patches("test-token")
     with (
@@ -232,10 +210,6 @@ async def test_telegram_astart_failure_cleans_up_wired_resources() -> None:
         patch(
             "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=AsyncMock(),
-        ),
-        patch(
-            "lyra.bootstrap.standalone.adapter_standalone.start_audio_consumer",
-            side_effect=_make_consumer,
         ),
         load_token_patch,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
@@ -248,17 +222,11 @@ async def test_telegram_astart_failure_cleans_up_wired_resources() -> None:
     mock_adapter_second.close.assert_awaited_once()
     mock_bus_second.stop.assert_awaited_once()
     mock_nc.close.assert_awaited_once()
-    # First bot's audio consumer must be stopped on the astart-failure path.
-    mock_consumer_first.stop.assert_awaited_once()
 
 
 @pytest.mark.asyncio
 async def test_discord_astart_failure_cleans_up_wired_resources() -> None:
-    """astart() raises mid-loop -> wired + current bot resources cleaned up.
-
-    Symmetric to the Telegram test: first bot's audio consumer must be stopped
-    when second bot's astart() raises.
-    """
+    """astart() raises mid-loop -> wired + current bot resources cleaned up."""
     from lyra.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
@@ -294,20 +262,14 @@ async def test_discord_astart_failure_cleans_up_wired_resources() -> None:
     mock_bus_second.start = AsyncMock()
     mock_bus_second.stop = AsyncMock()
 
-    mock_consumer_first = AsyncMock()
-
     adapter_queue = [mock_adapter_first, mock_adapter_second]
     bus_queue = [mock_bus_first, mock_bus_second]
-    consumer_queue = [mock_consumer_first]
 
     def _make_adapter(*args, **kwargs):
         return adapter_queue.pop(0)
 
     def _make_bus(*args, **kwargs):
         return bus_queue.pop(0)
-
-    async def _make_consumer(*args, **kwargs):
-        return consumer_queue.pop(0)
 
     (load_token_patch,) = _cred_store_patches("discord-token")
     with (
@@ -317,10 +279,6 @@ async def test_discord_astart_failure_cleans_up_wired_resources() -> None:
         patch(
             "lyra.bootstrap.wiring.standalone_discord.NatsOutboundListener",
             return_value=AsyncMock(),
-        ),
-        patch(
-            "lyra.bootstrap.standalone.adapter_standalone.start_audio_consumer",
-            side_effect=_make_consumer,
         ),
         load_token_patch,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
@@ -333,5 +291,3 @@ async def test_discord_astart_failure_cleans_up_wired_resources() -> None:
     mock_adapter_second.close.assert_awaited_once()
     mock_bus_second.stop.assert_awaited_once()
     mock_nc.close.assert_awaited_once()
-    # First bot's audio consumer must be stopped on the astart-failure path.
-    mock_consumer_first.stop.assert_awaited_once()

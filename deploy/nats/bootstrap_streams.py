@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Bootstrap lyra-events and lyra-metrics JetStream streams.
+"""Bootstrap lyra-events, lyra-metrics, and lyra-outbound JetStream streams.
 
 Idempotent — safe to run multiple times. Uses the add→BadRequestError→update
 pattern mirroring turn_writer/stream_setup.py.
 
 Retention policy (ops decision #1183):
-  lyra-events  — 24 h hot  (MaxAge=86400 s)
-  lyra-metrics — 7 d warm (MaxAge=604800 s)
+  lyra-events   — 24 h hot  (MaxAge=86400 s)
+  lyra-metrics  — 7 d warm (MaxAge=604800 s)
+  lyra-outbound — 24 h hot  (MaxAge=86400 s)
 
 Usage (from repo root, after NATS is running):
     uv run python deploy/nats/bootstrap_streams.py
@@ -53,6 +54,14 @@ STREAMS: dict[str, dict] = {
         "max_bytes": 256 * 1024 * 1024,  # 256 MiB
         "storage": StorageType.FILE,
         "duplicate_window": 60,  # 1 min dedup
+    },
+    "lyra-outbound": {
+        "subjects": ["lyra.outbound.>"],
+        "retention": RetentionPolicy.LIMITS,
+        "max_age": 86400,  # 24 hours (hot)
+        "max_bytes": 512 * 1024 * 1024,  # 512 MiB
+        "storage": StorageType.FILE,
+        "duplicate_window": 120,  # 2 min dedup
     },
 }
 

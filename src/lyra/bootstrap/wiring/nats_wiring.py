@@ -9,6 +9,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from nats.aio.client import Client as NATS
+from nats.js.client import JetStreamContext
 
 from lyra.config import DiscordBotConfig, TelegramBotConfig
 from lyra.core.auth.authenticator import Authenticator
@@ -31,6 +32,8 @@ def wire_nats_telegram_proxies(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps 
     tg_bot_auths: list[tuple[TelegramBotConfig, Authenticator]],
     bot_agent_map: dict[tuple[str, str], str],
     circuit_registry: CircuitRegistry,
+    *,
+    js: JetStreamContext | None = None,
 ) -> tuple[list[NatsChannelProxy], list[OutboundDispatcher]]:
     """Wire each Telegram bot to a NatsChannelProxy + OutboundDispatcher.
 
@@ -49,7 +52,7 @@ def wire_nats_telegram_proxies(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps 
             continue
 
         proxy = NatsChannelProxy(
-            nc=nc, platform=Platform.TELEGRAM, bot_id=bot_cfg.bot_id
+            nc=nc, platform=Platform.TELEGRAM, bot_id=bot_cfg.bot_id, js=js
         )
         proxies.append(proxy)
         hub.register_authenticator(Platform.TELEGRAM, bot_cfg.bot_id, auth)
@@ -88,6 +91,8 @@ def wire_nats_discord_proxies(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps �
     dc_bot_auths: list[tuple[DiscordBotConfig, Authenticator]],
     bot_agent_map: dict[tuple[str, str], str],
     circuit_registry: CircuitRegistry,
+    *,
+    js: JetStreamContext | None = None,
 ) -> tuple[list[NatsChannelProxy], list[OutboundDispatcher]]:
     """Wire each Discord bot to a NatsChannelProxy + OutboundDispatcher.
 
@@ -106,7 +111,7 @@ def wire_nats_discord_proxies(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps �
             continue
 
         proxy = NatsChannelProxy(
-            nc=nc, platform=Platform.DISCORD, bot_id=bot_cfg.bot_id
+            nc=nc, platform=Platform.DISCORD, bot_id=bot_cfg.bot_id, js=js
         )
         proxies.append(proxy)
         hub.register_authenticator(Platform.DISCORD, bot_cfg.bot_id, auth)

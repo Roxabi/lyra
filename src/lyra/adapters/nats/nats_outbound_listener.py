@@ -11,6 +11,9 @@ from typing import TYPE_CHECKING, Any
 
 from nats.aio.client import Client as NATS
 
+if TYPE_CHECKING:
+    from nats.js.client import JetStreamContext
+
 from lyra.adapters.nats.nats_envelope_handlers import handle_raw_message
 from lyra.adapters.nats.nats_stream_decoder import (
     decode_stream_events,
@@ -46,11 +49,13 @@ class NatsOutboundListener:
         bot_id: str,
         adapter: "ChannelAdapter",
         *,
+        js: "JetStreamContext | None" = None,
         queue_group: str = "",
         resolver: TypeHintResolver = TYPE_REGISTRY_RESOLVER,
     ) -> None:
         validate_nats_token(queue_group, kind="queue_group", allow_empty=True)
         self._nc = nc
+        self._js = js
         self._platform = platform
         self._bot_id = bot_id
         validate_nats_token(bot_id, kind="bot_id")
@@ -90,9 +95,19 @@ class NatsOutboundListener:
 
     async def start(self) -> None:
         """Subscribe to the outbound NATS subject."""
-        self._sub = await self._nc.subscribe(
-            self._subject, queue=self._queue_group, cb=self._handle
-        )
+        if self._js is not None:
+            from nats.js.api import AckPolicy, ConsumerConfig
+
+            self._sub = await self._js.subscribe(
+                self._subject,
+                queue=self._queue_group,
+                cb=self._handle,
+                config=ConsumerConfig(ack_policy=AckPolicy.EXPLICIT, max_deliver=3),
+            )
+        else:
+            self._sub = await self._nc.subscribe(
+                self._subject, queue=self._queue_group, cb=self._handle
+            )
         self._reaper_task = asyncio.create_task(run_reaper_loop(self))
 
     async def stop(self) -> None:
@@ -120,7 +135,9 @@ class NatsOutboundListener:
         """Dispatch to the stream_error handler in nats_stream_decoder."""
         _handle_stream_error_impl(self, data)
 
-    async def _drain_stream(self, stream_id: str, q: asyncio.Queue[dict]) -> None:
+    async def _drain_stream(
+        self, stream_id: str, q: asyncio.Queue[dict], msg: Any | None = None
+    ) -> None:
         """Drain a stream queue and call adapter.send_streaming()."""
         original_msg = self._cache.get(stream_id)
         if original_msg is None:
@@ -170,11 +187,15 @@ class NatsOutboundListener:
                 ),
                 outbound,
             )
+            if msg is not None and hasattr(msg, "ack"):
+                await msg.ack()
         except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch — send_streaming: exception type varies by adapter
             log.exception(
                 "NatsOutboundListener: send_streaming failed for stream_id=%r",
                 stream_id,
             )
+            if msg is not None and hasattr(msg, "nak"):
+                await msg.nak()
         finally:
             self._cache.pop(stream_id)
             self._stream_tasks.pop(stream_id, None)

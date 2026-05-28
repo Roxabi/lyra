@@ -322,6 +322,10 @@ async def test_standalone_path_threads_tool_display_config_to_telegram() -> None
             return_value=mock_listener,
         ),
         patch(
+            "lyra.bootstrap.standalone.adapter_standalone.DeadLetterConsumer",
+            return_value=AsyncMock(),
+        ),
+        patch(
             "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
             AsyncMock(return_value=True),
         ),
@@ -420,6 +424,10 @@ async def test_standalone_path_threads_tool_display_config_to_discord() -> None:
         patch(
             "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
             return_value=mock_listener,
+        ),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone.DeadLetterConsumer",
+            return_value=AsyncMock(),
         ),
         patch(
             "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",

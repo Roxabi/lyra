@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from nats.aio.msg import Msg
 
@@ -36,6 +36,7 @@ _MAX_QUEUE_SIZE = 256
 async def handle_send(
     listener: "NatsOutboundListener",
     data: dict,
+    msg: Any,
     *,
     resolver: TypeHintResolver = TYPE_REGISTRY_RESOLVER,
 ) -> None:
@@ -55,13 +56,21 @@ async def handle_send(
     except (ValueError, TypeError):
         log.warning("NatsOutboundListener: failed to deserialize outbound message")
         return
-    await listener._adapter.send(original_msg, outbound)
+    try:
+        await listener._adapter.send(original_msg, outbound)
+        if hasattr(msg, "ack"):
+            await msg.ack()
+    except Exception:
+        log.exception("NatsOutboundListener: send failed")
+        if hasattr(msg, "nak"):
+            await msg.nak()
     listener._cache.pop(stream_id)
 
 
 async def handle_attachment(
     listener: "NatsOutboundListener",
     data: dict,
+    msg: Any,
     *,
     resolver: TypeHintResolver = TYPE_REGISTRY_RESOLVER,
 ) -> None:
@@ -83,13 +92,21 @@ async def handle_attachment(
     except (ValueError, TypeError):
         log.warning("NatsOutboundListener: failed to deserialize attachment")
         return
-    await listener._adapter.render_attachment(attachment, original_msg)
+    try:
+        await listener._adapter.render_attachment(attachment, original_msg)
+        if hasattr(msg, "ack"):
+            await msg.ack()
+    except Exception:
+        log.exception("NatsOutboundListener: render_attachment failed")
+        if hasattr(msg, "nak"):
+            await msg.nak()
     listener._cache.pop(stream_id)
 
 
 async def handle_audio(
     listener: "NatsOutboundListener",
     data: dict,
+    msg: Any,
     *,
     resolver: TypeHintResolver = TYPE_REGISTRY_RESOLVER,
 ) -> None:
@@ -107,7 +124,14 @@ async def handle_audio(
     except (ValueError, TypeError):
         log.warning("NatsOutboundListener: failed to deserialize audio")
         return
-    await listener._adapter.render_audio(audio, original_msg)
+    try:
+        await listener._adapter.render_audio(audio, original_msg)
+        if hasattr(msg, "ack"):
+            await msg.ack()
+    except Exception:
+        log.exception("NatsOutboundListener: render_audio failed")
+        if hasattr(msg, "nak"):
+            await msg.nak()
     listener._cache.pop(stream_id)
 
 
@@ -143,7 +167,7 @@ def handle_stream_start(
         log.warning("NatsOutboundListener: failed to deserialize stream outbound")
 
 
-async def handle_chunk(listener: "NatsOutboundListener", data: dict) -> None:
+async def handle_chunk(listener: "NatsOutboundListener", data: dict, msg: Any) -> None:
     """Handle chunk envelope (stream_id + seq) — queue chunk for streaming dispatch."""
     stream_id = data.get("stream_id")
     if stream_id is None:
@@ -180,7 +204,7 @@ async def handle_chunk(listener: "NatsOutboundListener", data: dict) -> None:
         return
     if stream_id not in listener._stream_tasks:
         listener._stream_tasks[stream_id] = asyncio.create_task(
-            listener._drain_stream(stream_id, q)
+            listener._drain_stream(stream_id, q, msg)
         )
 
 
@@ -198,17 +222,17 @@ async def handle_raw_message(
         return
     msg_type = data.get("type")
     if msg_type == "send":
-        await handle_send(listener, data, resolver=resolver)
+        await handle_send(listener, data, msg, resolver=resolver)
     elif msg_type == "stream_start":
         handle_stream_start(listener, data, resolver=resolver)
     elif msg_type == "stream_error":
         listener._handle_stream_error(data)
     elif msg_type == "attachment":
-        await handle_attachment(listener, data, resolver=resolver)
+        await handle_attachment(listener, data, msg, resolver=resolver)
     elif msg_type == "audio":
-        await handle_audio(listener, data, resolver=resolver)
+        await handle_audio(listener, data, msg, resolver=resolver)
     elif "stream_id" in data and "seq" in data:
-        await handle_chunk(listener, data)
+        await handle_chunk(listener, data, msg)
     else:
         log.warning("NatsOutboundListener: unknown envelope type=%r", msg_type)
 

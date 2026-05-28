@@ -65,6 +65,10 @@ async def test_adapter_reads_token_from_run_secrets(
             return_value=AsyncMock(),
         ),
         patch(
+            "lyra.bootstrap.standalone.adapter_standalone.DeadLetterConsumer",
+            return_value=AsyncMock(),
+        ),
+        patch(
             "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
             AsyncMock(return_value=True),
         ),
@@ -129,6 +133,10 @@ async def test_adapter_reads_webhook_when_present(
             return_value=AsyncMock(),
         ),
         patch(
+            "lyra.bootstrap.standalone.adapter_standalone.DeadLetterConsumer",
+            return_value=AsyncMock(),
+        ),
+        patch(
             "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
             AsyncMock(return_value=True),
         ),
@@ -190,6 +198,10 @@ async def test_adapter_omits_webhook_when_absent(
         patch("lyra.adapters.telegram.TelegramAdapter", side_effect=_capture_tg),
         patch(
             "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            return_value=AsyncMock(),
+        ),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone.DeadLetterConsumer",
             return_value=AsyncMock(),
         ),
         patch(
@@ -263,6 +275,10 @@ async def test_adapter_handles_multi_bot(
         patch("lyra.adapters.telegram.TelegramAdapter", side_effect=_capture_tg),
         patch(
             "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            return_value=AsyncMock(),
+        ),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone.DeadLetterConsumer",
             return_value=AsyncMock(),
         ),
         patch(
@@ -366,6 +382,10 @@ async def test_discord_adapter_handles_multi_bot(
         ),
         patch(
             "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            return_value=AsyncMock(),
+        ),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone.DeadLetterConsumer",
             return_value=AsyncMock(),
         ),
         patch(

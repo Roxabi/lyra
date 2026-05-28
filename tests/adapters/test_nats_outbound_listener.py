@@ -39,8 +39,12 @@ def _make_tg_msg(msg_id: str = "msg-1") -> InboundMessage:
 
 
 def _make_nats_msg(data: dict) -> MagicMock:
+    from unittest.mock import AsyncMock
+
     msg = MagicMock()
     msg.data = json.dumps(data).encode("utf-8")
+    msg.ack = AsyncMock()
+    msg.nak = AsyncMock()
     return msg
 
 

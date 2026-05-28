@@ -9,6 +9,7 @@ import sys
 from functools import partial
 from pathlib import Path
 
+from lyra.adapters.nats.dead_letter_consumer import DeadLetterConsumer
 from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 from lyra.bootstrap import credentials
 from lyra.bootstrap.factory.config import build_adapter_config_bundle
@@ -84,6 +85,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
             await tg_turn_store.connect()
 
             wired: list[tuple] = []  # (TelegramAdapter, Bus, TypingListener)
+            tg_dlq_consumers: list[DeadLetterConsumer] = []
 
             for bot_cfg in tg_multi_cfg.bots:
                 bot_id = bot_cfg.bot_id
@@ -115,11 +117,20 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
                     platform_enum,
                     bot_id,
                     adapter,
+                    js=nc.jetstream(),
                     queue_group=adapter_outbound(platform_enum.value, bot_id),
                 )
                 adapter._outbound_listener = listener
+                dlq_consumer = DeadLetterConsumer(
+                    js=nc.jetstream(),
+                    platform=platform_enum,
+                    bot_id=bot_id,
+                    adapter=adapter,
+                )
                 try:
                     await adapter.astart()
+                    await dlq_consumer.start()
+                    tg_dlq_consumers.append(dlq_consumer)
                 except Exception:
                     await close_safely(
                         "tg-adapter-start",
@@ -185,6 +196,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
                         for coro in (a.close(), ibus.stop(), tl.stop())
                     ],
                 )
+                await close_safely("tg-dlq", *[dlq.stop() for dlq in tg_dlq_consumers])
                 await tg_turn_store.close()
 
         elif platform == "discord":
@@ -242,6 +254,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
             await dc_turn_store.connect()
 
             wired_dc: list[tuple] = []  # (DiscordAdapter, str, Bus, TypingListener)
+            dc_dlq_consumers: list[DeadLetterConsumer] = []
 
             for bot_cfg in dc_multi_cfg.bots:
                 bot_id = bot_cfg.bot_id
@@ -274,11 +287,20 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
                     platform_enum,
                     bot_id,
                     adapter_dc,
+                    js=nc.jetstream(),
                     queue_group=adapter_outbound(platform_enum.value, bot_id),
                 )
                 adapter_dc._outbound_listener = listener_dc
+                dlq_consumer_dc = DeadLetterConsumer(
+                    js=nc.jetstream(),
+                    platform=platform_enum,
+                    bot_id=bot_id,
+                    adapter=adapter_dc,
+                )
                 try:
                     await adapter_dc.astart()
+                    await dlq_consumer_dc.start()
+                    dc_dlq_consumers.append(dlq_consumer_dc)
                 except Exception:
                     await close_safely(
                         "dc-adapter-start",
@@ -342,6 +364,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
                 await close_safely(
                     "dc-typing", *[tl.stop() for _, _, _, tl in wired_dc]
                 )
+                await close_safely("dc-dlq", *[dlq.stop() for dlq in dc_dlq_consumers])
                 await dc_thread_store.close()
                 await dc_turn_store.close()
 

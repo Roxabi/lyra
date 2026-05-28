@@ -12,9 +12,12 @@ import logging
 import re
 import time
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import nats.errors
+
+if TYPE_CHECKING:
+    from nats.js.client import JetStreamContext
 from nats.aio.client import Client as NATS
 
 from lyra.core.auth.trust import TrustLevel
@@ -99,6 +102,7 @@ class NatsChannelProxy:
         platform: Platform,
         bot_id: str,
         *,
+        js: "JetStreamContext | None" = None,
         resolver: TypeHintResolver = TYPE_REGISTRY_RESOLVER,
     ) -> None:
         """Store nc, platform, bot_id. No I/O."""
@@ -108,6 +112,7 @@ class NatsChannelProxy:
                 "must match [A-Za-z0-9_-]+"
             )
         self._nc = nc
+        self._js = js
         self._platform = platform
         self._bot_id = bot_id
         self._resolver = resolver
@@ -133,6 +138,13 @@ class NatsChannelProxy:
     ) -> InboundMessage:
         raise NotImplementedError("NatsChannelProxy does not normalize audio messages")
 
+    async def _publish(self, subject: str, payload: bytes) -> None:
+        """Publish via JetStream if available, else core NATS (backward compat)."""
+        if self._js is not None:
+            await self._js.publish(subject, payload)
+        else:
+            await self._nc.publish(subject, payload)
+
     # ------------------------------------------------------------------
     # Outbound dispatch
     # ------------------------------------------------------------------
@@ -153,7 +165,7 @@ class NatsChannelProxy:
             ),
         }
         payload = json.dumps(envelope, ensure_ascii=False).encode("utf-8")
-        await self._nc.publish(subject, payload)
+        await self._publish(subject, payload)
 
     async def send_streaming(
         self,
@@ -184,7 +196,7 @@ class NatsChannelProxy:
                     serialize(original_msg, resolver=self._resolver).decode("utf-8")
                 ),
             }
-            await self._nc.publish(
+            await self._publish(
                 subject, json.dumps(header, ensure_ascii=False).encode("utf-8")
             )
 
@@ -207,7 +219,7 @@ class NatsChannelProxy:
                         "payload": payload,
                         "done": is_done,
                     }
-                    await self._nc.publish(
+                    await self._publish(
                         subject,
                         json.dumps(chunk, ensure_ascii=False).encode("utf-8"),
                     )
@@ -223,7 +235,7 @@ class NatsChannelProxy:
                     "payload": {},
                     "done": True,
                 }
-                await self._nc.publish(
+                await self._publish(
                     subject,
                     json.dumps(terminal, ensure_ascii=False).encode("utf-8"),
                 )
@@ -255,7 +267,7 @@ class NatsChannelProxy:
             "reason": "streaming_exception",
         }
         try:
-            await self._nc.publish(
+            await self._publish(
                 subject,
                 json.dumps(error_envelope, ensure_ascii=False).encode("utf-8"),
             )
@@ -282,7 +294,7 @@ class NatsChannelProxy:
                 "reason": reason,
             }
             try:
-                await self._nc.publish(
+                await self._publish(
                     subject,
                     json.dumps(envelope, ensure_ascii=False).encode("utf-8"),
                 )
@@ -310,7 +322,7 @@ class NatsChannelProxy:
             ),
         }
         payload = json.dumps(envelope, ensure_ascii=False).encode("utf-8")
-        await self._nc.publish(subject, payload)
+        await self._publish(subject, payload)
 
     async def render_audio_stream(
         self,
@@ -355,4 +367,4 @@ class NatsChannelProxy:
             ),
         }
         payload = json.dumps(envelope, ensure_ascii=False).encode("utf-8")
-        await self._nc.publish(subject, payload)
+        await self._publish(subject, payload)

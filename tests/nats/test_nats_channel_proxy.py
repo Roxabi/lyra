@@ -155,6 +155,29 @@ async def test_send_subject_uses_platform_value() -> None:
     assert "DISCORD" not in subject
 
 
+@pytest.mark.asyncio
+async def test_send_uses_jetstream() -> None:
+    """send() publishes via JetStream (js.publish) for guaranteed delivery."""
+    from nats.js import JetStreamContext
+
+    js = AsyncMock(spec=JetStreamContext)
+    nc = _make_nc()
+    nc.jetstream.return_value = js
+
+    proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main", js=js)
+    inbound = _make_inbound("msg-js")
+    outbound = OutboundMessage.from_text("Hi")
+
+    await proxy.send(inbound, outbound)
+
+    js.publish.assert_awaited_once()
+    subject, payload = js.publish.call_args.args
+    assert subject == "lyra.outbound.telegram.main"
+    envelope = json.loads(payload.decode("utf-8"))
+    assert envelope["type"] == "send"
+    assert envelope["stream_id"] == "msg-js"
+
+
 # ---------------------------------------------------------------------------
 # send_streaming()
 # ---------------------------------------------------------------------------

@@ -42,6 +42,7 @@ async def test_telegram_bootstrap_wires_listener_and_calls_astart() -> None:
 
     mock_nc = AsyncMock()
     mock_nc.subscribe = AsyncMock(return_value=AsyncMock())
+    mock_nc.jetstream = MagicMock(return_value=MagicMock())
 
     mock_adapter = AsyncMock()
     mock_adapter._bot_id = "main"
@@ -65,6 +66,10 @@ async def test_telegram_bootstrap_wires_listener_and_calls_astart() -> None:
         patch(
             "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
             return_value=mock_listener,
+        ),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone.DeadLetterConsumer",
+            return_value=AsyncMock(),
         ),
         patch(
             "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
@@ -92,6 +97,7 @@ async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
     stop.set()
 
     mock_nc = AsyncMock()
+    mock_nc.jetstream = MagicMock(return_value=MagicMock())
     mock_adapter_dc = AsyncMock()
     mock_adapter_dc._bot_id = "main"
     mock_adapter_dc.astart = AsyncMock()
@@ -111,6 +117,10 @@ async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
         patch(
             "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
             return_value=mock_listener_dc,
+        ),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone.DeadLetterConsumer",
+            return_value=AsyncMock(),
         ),
         patch(
             "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
@@ -169,13 +179,10 @@ async def test_telegram_astart_failure_cleans_up_wired_resources() -> None:
         _bootstrap_adapter_standalone,
     )
 
-    raw_config = {
-        "telegram": {
-            "bots": [{"bot_id": "first"}, {"bot_id": "second"}]
-        }
-    }
+    raw_config = {"telegram": {"bots": [{"bot_id": "first"}, {"bot_id": "second"}]}}
 
     mock_nc = AsyncMock()
+    mock_nc.jetstream = MagicMock(return_value=MagicMock())
 
     mock_adapter_first = AsyncMock()
     mock_adapter_first._bot_id = "first"
@@ -215,6 +222,10 @@ async def test_telegram_astart_failure_cleans_up_wired_resources() -> None:
             "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone.DeadLetterConsumer",
+            return_value=AsyncMock(),
+        ),
         load_token_patch,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
         pytest.raises(RuntimeError, match="boom"),
@@ -245,6 +256,7 @@ async def test_discord_astart_failure_cleans_up_wired_resources() -> None:
     }
 
     mock_nc = AsyncMock()
+    mock_nc.jetstream = MagicMock(return_value=MagicMock())
 
     mock_adapter_first = AsyncMock()
     mock_adapter_first._bot_id = "first"
@@ -282,6 +294,10 @@ async def test_discord_astart_failure_cleans_up_wired_resources() -> None:
         patch("lyra.adapters.discord.DiscordAdapter", side_effect=_make_adapter),
         patch(
             "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            return_value=AsyncMock(),
+        ),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone.DeadLetterConsumer",
             return_value=AsyncMock(),
         ),
         load_token_patch,

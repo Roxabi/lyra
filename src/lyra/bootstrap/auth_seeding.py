@@ -22,15 +22,21 @@ from lyra.infrastructure.stores.auth_store import AuthStore
 log = logging.getLogger(__name__)
 
 
-async def seed_auth_store(auth_store: AuthStore, raw_config: dict) -> None:
-    """Seed per-bot owner/trusted users as permanent grants into the auth store."""
-    auth_block: dict = raw_config.get("auth", {})
-    for entry in auth_block.get("telegram_bots", []):
-        synthetic = {"auth": {"telegram": entry}}
-        await auth_store.seed_from_config(synthetic, "telegram")
-    for entry in auth_block.get("discord_bots", []):
-        synthetic = {"auth": {"discord": entry}}
-        await auth_store.seed_from_config(synthetic, "discord")
+async def seed_grants_from_bots(
+    auth_store: AuthStore,
+    bot_store: BotStoreProtocol,
+) -> None:
+    """Single canonical: read bots from BotStore, seed permanent grants into auth.db."""
+    for bot in bot_store.get_all():
+        synthetic = {
+            "auth": {
+                bot.platform: {
+                    "owner_users": bot.owner_users,
+                    "trusted_users": bot.trusted_users,
+                }
+            }
+        }
+        await auth_store.seed_from_config(synthetic, bot.platform)
 
 
 def build_bot_auths(

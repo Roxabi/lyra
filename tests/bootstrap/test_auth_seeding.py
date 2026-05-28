@@ -1,4 +1,4 @@
-"""Tests for lyra.bootstrap.auth_seeding — seed_auth_store and build_bot_auths."""
+"""Tests for lyra.bootstrap.auth_seeding — seed_grants_from_bots and build_bot_auths."""
 
 from __future__ import annotations
 
@@ -10,34 +10,34 @@ from lyra.bootstrap.auth_seeding import build_bot_auths
 from lyra.infrastructure.stores.auth_store import AuthStore
 
 # ---------------------------------------------------------------------------
-# test_bootstrap_calls_seed_auth_store
+# test_bootstrap_calls_seed_grants_from_bots
 # ---------------------------------------------------------------------------
 
 
-class TestBootstrapCallsSeedAuthStore:
-    async def test_bootstrap_calls_seed_auth_store(
+class TestBootstrapCallsSeedGrantsFromBots:
+    async def test_bootstrap_calls_seed_grants_from_bots(
         self, tmp_path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """_bootstrap_hub_standalone calls seed_auth_store once with an AuthStore.
+        """_bootstrap_hub_standalone calls seed_grants_from_bots once.
 
         Drives the bootstrap past the NATS_URL guard with a mock NATS connection,
-        then short-circuits just after seed_auth_store so no real DB is needed.
+        then short-circuits just after seed_grants_from_bots so no real DB is needed.
         """
         # Arrange
         monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
         monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
 
-        # Track the seed_auth_store call
+        # Track the seed_grants_from_bots call
         seed_calls: list[tuple] = []
 
-        async def fake_seed(auth_store, raw_config):
-            seed_calls.append((auth_store, raw_config))
+        async def fake_seed(auth_store, bot_store):
+            seed_calls.append((auth_store, bot_store))
             # Raise to abort further bootstrap — we only need to verify the call
             raise RuntimeError("test-sentinel: abort after seed")
 
         import lyra.bootstrap.standalone.hub_standalone as hub_standalone_mod
 
-        monkeypatch.setattr(hub_standalone_mod, "seed_auth_store", fake_seed)
+        monkeypatch.setattr(hub_standalone_mod, "seed_grants_from_bots", fake_seed)
 
         # Patch NATS connection so we never touch a real server
         fake_nc = AsyncMock()
@@ -84,12 +84,11 @@ class TestBootstrapCallsSeedAuthStore:
         with pytest.raises(RuntimeError, match="test-sentinel"):
             await _bootstrap_hub_standalone(raw_config)
 
-        # Assert — seed_auth_store was called once with an AuthStore instance
-        assert len(seed_calls) == 1, "seed_auth_store must be called exactly once"
-        passed_store, passed_config = seed_calls[0]
-        # The store passed must be the one from fake_stores.auth
+        # Assert — seed_grants_from_bots was called once with auth+bot stores
+        assert len(seed_calls) == 1, "seed_grants_from_bots must be called exactly once"
+        passed_store, passed_bot = seed_calls[0]
         assert passed_store is not None
-        assert passed_config == raw_config
+        assert passed_bot is not None
 
 
 # ---------------------------------------------------------------------------

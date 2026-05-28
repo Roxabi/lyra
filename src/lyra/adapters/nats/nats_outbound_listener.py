@@ -52,6 +52,7 @@ class NatsOutboundListener:
         self._nc = nc
         self._platform = platform
         self._bot_id = bot_id
+        validate_nats_token(bot_id, kind="bot_id")
         self._adapter = adapter
         self._queue_group = queue_group
         self._resolver = resolver

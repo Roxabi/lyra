@@ -451,6 +451,35 @@ async def test_default_queue_group_is_empty() -> None:
     assert listener._queue_group == ""
 
 
+# ---------------------------------------------------------------------------
+# #1410: bot_id validation before subject interpolation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("bot_id", ["main", "bot_1", "a.b", "hub-primary", "v1.2.3"])
+def test_valid_bot_id_accepted(bot_id: str) -> None:
+    """Valid NATS identifier bot_ids are accepted."""
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
+
+    nc = AsyncMock()
+    adapter = AsyncMock()
+    listener = NatsOutboundListener(nc, Platform.TELEGRAM, bot_id, adapter)
+    assert listener._bot_id == bot_id
+
+
+@pytest.mark.parametrize(
+    "bot_id", ["bot*", "bot >", "bot inbound", "bot/inbound", "bot@sign"]
+)
+def test_invalid_bot_id_rejected(bot_id: str) -> None:
+    """Invalid bot_id raises ValueError before subject is built."""
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
+
+    nc = AsyncMock()
+    adapter = AsyncMock()
+    with pytest.raises(ValueError, match="bot_id"):
+        NatsOutboundListener(nc, Platform.TELEGRAM, bot_id, adapter)
+
+
 @pytest.mark.asyncio
 async def test_stream_error_enqueues_poison_pill() -> None:
     """Verifies _handle routes type=stream_error to _handle_stream_error.

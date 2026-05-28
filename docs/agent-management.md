@@ -26,6 +26,37 @@ lyra bot secret install <platform> <bot_id>-webhook
 
 **Rule:** `lyra bot init` is idempotent. Run it after every `config.toml` edit that changes bot definitions.
 
+### Bot CLI management (per platform)
+
+Bot management commands are grouped under `lyra agent <platform>` (telegram or discord). Each platform exposes the same 9 verbs.
+
+```bash
+# Listing & inspection
+lyra agent telegram list                     # all Telegram bots in DB
+lyra agent discord list                      # all Discord bots in DB
+lyra agent telegram show <bot_id>          # full bot record
+
+# Creation & editing
+lyra agent telegram add <bot_id> --agent foo --webhook-enabled
+lyra agent telegram edit <bot_id>            # interactive field editor
+lyra agent telegram patch <bot_id> --webhook-enabled true
+lyra agent telegram patch <bot_id> --agent foo
+lyra agent telegram patch <bot_id> --owner-users "123,456"
+lyra agent telegram remove <bot_id>          # delete + cascade bot_agent_map cleanup
+lyra agent telegram remove <bot_id> --yes    # skip confirmation
+
+# Agent assignment
+lyra agent telegram assign <bot_id> --agent foo
+lyra agent telegram unassign <bot_id>        # revert to empty agent
+
+# Validation
+lyra agent telegram validate <bot_id>        # check agent exists, owners non-empty, secret present
+```
+
+**Valid trust levels:** `owner`, `trusted`, `public`, `blocked` (default: `blocked`).
+
+**Patchable fields:** `agent`, `webhook_enabled`, `default_trust`, `owner_users`, `trusted_users`, `trusted_roles`, `auto_thread`, `thread_hot_hours`. Typer rejects unknown flags (`--webhook-enabel` → shell error).
+
 ## TOML Search Locations
 
 Precedence (later overrides earlier):

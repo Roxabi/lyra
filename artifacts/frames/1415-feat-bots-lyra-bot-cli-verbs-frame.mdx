@@ -1,0 +1,71 @@
+---
+title: "feat(bots): lyra bot CLI verbs (list, show, add, edit, patch, remove, assign, unassign, validate)"
+issue: 1415
+status: approved
+tier: F-lite
+date: 2026-05-28
+---
+
+## Problem
+
+Bot configuration is currently config.toml-driven. Operators need a CLI surface to inspect, create, modify, and validate bot records without editing TOML files. Bots are agent extensions — they should be managed under `lyra agent`, not as a separate top-level command.
+
+## Who
+
+- **Primary:** Operators managing bot deployments on M1/M2
+- **Secondary:** Developers debugging bot-agent mappings
+
+## Constraints
+
+- Blocked by #1414 (BotStore SQLite foundation) — now closed
+- Quality gate: all files ≤300 LOC
+- Typer-typed args with Pydantic validation at boundary (closes #1412 G18)
+- Must mirror patterns from `src/lyra/agent_cmd/agents/{list_cmd,edit_cmd}.py`
+- Platform-specific sub-typers under `lyra agent` (telegram, discord)
+
+## Design Decision
+
+**Option B chosen:** `lyra agent <platform> <verb>`
+
+| Platform | Commands |
+|----------|----------|
+| `lyra agent telegram list` | List all Telegram bots |
+| `lyra agent telegram show <bot_id>` | Show bot record |
+| `lyra agent telegram add <bot_id>` | Create new bot |
+| `lyra agent telegram edit <bot_id>` | Interactive edit |
+| `lyra agent telegram patch <bot_id>` | Single-field update |
+| `lyra agent telegram remove <bot_id>` | Delete bot + cascade |
+| `lyra agent telegram validate` | Dry-run validation |
+| `lyra agent telegram assign <bot_id> --agent <name>` | Set agent |
+| `lyra agent telegram unassign <bot_id>` | Revert to default |
+
+Same pattern for `lyra agent discord`.
+
+Existing commands kept as-is:
+- `lyra agent assign/unassign` — bot-agent mapping (already exists)
+- `lyra agent list` — already shows bot assignments
+- `lyra bot init` — seeding (separate concern)
+- `lyra bot secret` — Podman secrets (separate concern)
+
+## Out of Scope
+
+- Hot-reload from hub to adapter (restart still required after DB changes)
+- Bulk import from YAML/CSV
+- Webhook management beyond `--webhook-enabled` flag
+- New platforms beyond telegram/discord
+
+## Premise Validity
+
+**Success in 6 months:** All 9 bot CLI verbs are implemented, tested, and operators manage bots via CLI without editing config.toml.
+
+**Failure in 6 months:** Operators still edit config.toml for bot changes, or bot CLI test coverage <80%, or quality gate violations persist after 3 PRs.
+
+**Simplest alternative:** Only implement `list` + `show` (read-only).
+**Why not simplest:** Read-only commands don't solve the core need: add/edit/remove bots without touching config.toml.
+
+## Complexity
+
+**Tier: F-lite** — single domain (`agent_cmd`), clear scope (9 verbs), known patterns (mirror `agents/` CLI), no new architecture.
+
+- Signals: ≤3 files per verb group, 1 domain, no new arch patterns
+- Issue label: `size:F-lite`

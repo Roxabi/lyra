@@ -37,6 +37,7 @@ from lyra.cli_voice_smoke import voice_smoke_app
 importlib.import_module("lyra.agent_cmd.bots")
 importlib.import_module("lyra.cli_agent_create")
 importlib.import_module("lyra.agent_cmd.agents")
+importlib.import_module("lyra.agent_cmd.platforms")
 
 # ---------------------------------------------------------------------------
 # Version

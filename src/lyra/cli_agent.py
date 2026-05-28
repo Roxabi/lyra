@@ -1,12 +1,11 @@
 """lyra agent — agent management CLI commands (mounted by cli.py).
 
-Thin facade: defines ``agent_app`` and shared helpers, then imports
-sub-modules that register their commands on ``agent_app``.
+Thin facade: defines ``agent_app`` and shared helpers.
+Subcommands are registered in cli.py after agent_app is imported.
 """
 
 from __future__ import annotations
 
-import importlib
 import os
 from pathlib import Path
 from typing import Optional
@@ -78,11 +77,3 @@ def _list_from_dir(
         typer.echo(f"{name:<16} {backend:<16} {model:<34} {sr_status:<14}{source}")
         printed.add(agent_name)
     return printed
-
-
-# ---------------------------------------------------------------------------
-# Register commands from sub-modules (import triggers @agent_app.command())
-# ---------------------------------------------------------------------------
-
-importlib.import_module("lyra.cli_agent_create")  # noqa: E402 — DEBT:module-level-patch-fixtures — intentional: registers subcommands after agent_app is defined
-importlib.import_module("lyra.agent_cmd.agents")  # noqa: E402 — DEBT:module-level-patch-fixtures — intentional: registers subcommands after agent_app is defined

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
 import os
 import re
 import subprocess
@@ -117,6 +116,3 @@ def list_() -> None:
         text=True,
     )
     typer.echo(result.stdout)
-
-
-importlib.import_module("lyra.agent_cmd.bots")  # noqa: E402 — DEBT:module-level-patch-fixtures — intentional: registers subcommands after bot_app is defined

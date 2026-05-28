@@ -17,6 +17,7 @@ Backward compat:
 from __future__ import annotations
 
 import asyncio
+import importlib
 import importlib.metadata
 import tomllib
 
@@ -30,6 +31,12 @@ from lyra.cli_bot import bot_app
 from lyra.cli_ops import ops_app
 from lyra.cli_setup import setup_app
 from lyra.cli_voice_smoke import voice_smoke_app
+
+# Register subcommands from sub-modules (import triggers @app.command())
+# after app objects are imported. Previously at module exit in cli_bot/cli_agent.
+importlib.import_module("lyra.agent_cmd.bots")
+importlib.import_module("lyra.cli_agent_create")
+importlib.import_module("lyra.agent_cmd.agents")
 
 # ---------------------------------------------------------------------------
 # Version

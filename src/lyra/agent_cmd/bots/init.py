@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import typer
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from lyra.cli_bot import _connect_bot_store, bot_app
 from lyra.core.agent.bot_models import (
@@ -18,6 +19,22 @@ from lyra.core.agent.bot_models import (
     DEFAULT_TRUST,
     BotRow,
 )
+
+
+class _BotSeedEntry(BaseModel):
+    """Validates one raw TOML bot entry; rejects unknown keys (G18 typo trap)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    bot_id: str = "main"
+    agent: str = "lyra_default"
+    webhook_enabled: bool = False
+    default_trust: str = DEFAULT_TRUST
+    owner_users: list[str] = []
+    trusted_users: list[str] = []
+    trusted_roles: list[str] = []
+    auto_thread: bool = DEFAULT_AUTO_THREAD
+    thread_hot_hours: int = DEFAULT_THREAD_HOT_HOURS
 
 
 def _find_config_toml() -> Path | None:
@@ -121,6 +138,15 @@ def _merge_bots(raw: dict[str, Any]) -> tuple[list[BotRow], int]:  # noqa: C901 
             if not _BOT_ID_RE.match(bot_id) or not _PLATFORM_RE.match(platform):
                 typer.echo(
                     f"  error: invalid platform/bot_id ({platform}/{bot_id}) — skipped",
+                    err=True,
+                )
+                validation_errors += 1
+                continue
+            try:
+                _BotSeedEntry.model_validate(entry)
+            except ValidationError as exc:
+                typer.echo(
+                    f"  error: invalid bot entry ({platform}/{bot_id}): {exc}",
                     err=True,
                 )
                 validation_errors += 1

@@ -12,7 +12,7 @@ from lyra.bootstrap.wiring.bootstrap_wiring import BotAuthDeps, _build_bot_auths
 from lyra.config import (
     DiscordBotConfig,
     TelegramBotConfig,
-    load_multibot_config,
+    multibot_config_from_store,
 )
 from lyra.core.auth.authenticator import Authenticator
 from lyra.core.circuit_breaker import CircuitRegistry
@@ -56,7 +56,7 @@ def build_bot_auths(
     """
     circuit_registry, admin_user_ids = _load_circuit_config(raw_config)
 
-    tg_multi_cfg, dc_multi_cfg = load_multibot_config(raw_config)
+    tg_multi_cfg, dc_multi_cfg = multibot_config_from_store(bot_store)
 
     tg_bot_auths, dc_bot_auths = _build_bot_auths(
         BotAuthDeps(
@@ -71,8 +71,9 @@ def build_bot_auths(
 
     if not tg_bot_auths and not dc_bot_auths:
         raise ValueError(
-            "No adapters configured — add at least one [[telegram.bots]] or"
-            " [[discord.bots]] entry and run 'lyra bot init' to seed the bot store"
+            "No bots configured — the runtime roster is sourced from BotStore."
+            " Run 'lyra bot init' to seed it from config.toml,"
+            " then 'lyra bot list' to verify."
         )
 
     return circuit_registry, admin_user_ids, tg_bot_auths, dc_bot_auths

@@ -77,10 +77,21 @@ class TestAuthConfig:
         """No bot config at all causes ValueError when _main() runs."""
         patch_auth_config_test(monkeypatch)
         monkeypatch.setattr(main_mod, "_load_raw_config", lambda: {})
+        # Override BotStore so get_all returns empty roster — no bots in DB.
+        import lyra.bootstrap.bootstrap_stores as stores_mod_local
+
+        _empty_bot_store = MagicMock()
+        _empty_bot_store.connect = AsyncMock()
+        _empty_bot_store.close = AsyncMock()
+        _empty_bot_store.get = MagicMock(return_value=None)
+        _empty_bot_store.get_all = MagicMock(return_value=[])
+        monkeypatch.setattr(
+            stores_mod_local, "BotStore", lambda **kwargs: _empty_bot_store
+        )
         stop = asyncio.Event()
         stop.set()
-        # With no config, _bootstrap_unified raises ValueError.
-        with pytest.raises(ValueError, match="No adapters configured"):
+        # With no bots in BotStore, _init_bot_auths_and_agents raises ValueError.
+        with pytest.raises(ValueError, match="No bots configured"):
             await main_mod._main(_stop=stop)
 
     async def test_discord_section_optional_when_telegram_present(
@@ -133,11 +144,24 @@ class TestAuthConfig:
         from unittest.mock import MagicMock
 
         import lyra.bootstrap.bootstrap_stores as stores_mod_local
+        from lyra.core.agent.bot_models import BotRow
 
         patch_auth_config_test(monkeypatch)
         _fake_bot_store = MagicMock()
         _fake_bot_store.connect = AsyncMock()
         _fake_bot_store.close = AsyncMock()
+        # get_all provides the roster (telegram "main" bot present).
+        _fake_bot_store.get_all = MagicMock(
+            return_value=[
+                BotRow(
+                    platform="telegram",
+                    bot_id="main",
+                    agent="lyra_default",
+                    default_trust="public",
+                )
+            ]
+        )
+        # Per-bot get returns a row with invalid trust — this triggers SystemExit.
         _fake_bot_store.get = MagicMock(
             return_value=MagicMock(default_trust="invalid_level", trusted_roles=[])
         )
@@ -147,9 +171,7 @@ class TestAuthConfig:
         monkeypatch.setattr(
             main_mod,
             "_load_raw_config",
-            lambda: {
-                "telegram": {"bots": [{"bot_id": "main"}]},
-            },
+            lambda: {},
         )
         stop = asyncio.Event()
         stop.set()

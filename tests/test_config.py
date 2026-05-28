@@ -19,7 +19,9 @@ from lyra.config import (
     _parse_telegram_bots,
     _resolve_value,
     load_multibot_config,
+    multibot_config_from_store,
 )
+from lyra.core.agent.bot_models import BotRow
 
 # ---------------------------------------------------------------------------
 # TestResolveValue
@@ -228,3 +230,121 @@ class TestLoadMultibotConfig:
         # Assert — only the new-style bot is present; no legacy "main" bot synthesized
         assert len(tg.bots) == 1
         assert tg.bots[0].bot_id == "new_bot"
+
+
+# ---------------------------------------------------------------------------
+# TestMultibotConfigFromStore
+# ---------------------------------------------------------------------------
+
+
+class _FakeBotStore:
+    """Minimal in-memory BotStore stub for testing multibot_config_from_store.
+
+    Implements the full BotStoreProtocol surface so it type-checks where the
+    protocol is expected; only ``get_all`` carries behaviour for these tests.
+    """
+
+    def __init__(self, rows: list[BotRow]) -> None:
+        self._rows = rows
+
+    def get_all(self) -> list[BotRow]:
+        return list(self._rows)
+
+    def get(self, platform: str, bot_id: str) -> BotRow | None:
+        return next(
+            (r for r in self._rows if r.platform == platform and r.bot_id == bot_id),
+            None,
+        )
+
+    async def connect(self) -> None:  # pragma: no cover - stub
+        return None
+
+    async def close(self) -> None:  # pragma: no cover - stub
+        return None
+
+    async def upsert(self, row: BotRow) -> None:  # pragma: no cover - stub
+        self._rows.append(row)
+
+    async def delete(
+        self, platform: str, bot_id: str
+    ) -> None:  # pragma: no cover - stub
+        self._rows = [
+            r for r in self._rows if not (r.platform == platform and r.bot_id == bot_id)
+        ]
+
+
+class TestMultibotConfigFromStore:
+    def _tg_row(self, bot_id: str = "tg_bot", agent: str = "lyra_default") -> BotRow:
+        return BotRow(platform="telegram", bot_id=bot_id, agent=agent)
+
+    def _dc_row(
+        self,
+        bot_id: str = "dc_bot",
+        agent: str = "lyra_default",
+        auto_thread: bool = True,
+        thread_hot_hours: int = 36,
+    ) -> BotRow:
+        return BotRow(
+            platform="discord",
+            bot_id=bot_id,
+            agent=agent,
+            auto_thread=auto_thread,
+            thread_hot_hours=thread_hot_hours,
+        )
+
+    def test_from_store_one_telegram_one_discord(self) -> None:
+        # Arrange
+        store = _FakeBotStore([self._tg_row("tg_bot"), self._dc_row("dc_bot")])
+        # Act
+        tg, dc = multibot_config_from_store(store)
+        # Assert
+        assert isinstance(tg, TelegramMultiConfig)
+        assert isinstance(dc, DiscordMultiConfig)
+        assert len(tg.bots) == 1
+        assert len(dc.bots) == 1
+        assert tg.bots[0].bot_id == "tg_bot"
+        assert dc.bots[0].bot_id == "dc_bot"
+
+    def test_from_store_telegram_bot_fields_round_trip(self) -> None:
+        # Arrange
+        store = _FakeBotStore([self._tg_row(bot_id="lyra", agent="my_agent")])
+        # Act
+        tg, _ = multibot_config_from_store(store)
+        # Assert
+        bot = tg.bots[0]
+        assert isinstance(bot, TelegramBotConfig)
+        assert bot.bot_id == "lyra"
+        assert bot.agent == "my_agent"
+
+    def test_from_store_discord_bot_fields_round_trip(self) -> None:
+        # Arrange
+        store = _FakeBotStore(
+            [self._dc_row(bot_id="dc1", auto_thread=False, thread_hot_hours=48)]
+        )
+        # Act
+        _, dc = multibot_config_from_store(store)
+        # Assert
+        bot = dc.bots[0]
+        assert isinstance(bot, DiscordBotConfig)
+        assert bot.bot_id == "dc1"
+        assert bot.auto_thread is False
+        assert bot.thread_hot_hours == 48
+
+    def test_from_store_empty_store_returns_empty_lists(self) -> None:
+        # Arrange
+        store = _FakeBotStore([])
+        # Act
+        tg, dc = multibot_config_from_store(store)
+        # Assert
+        assert tg.bots == []
+        assert dc.bots == []
+
+    def test_from_store_unknown_platform_ignored(self) -> None:
+        # Arrange — a row with an unrecognised platform is silently skipped
+        unknown = BotRow(platform="slack", bot_id="slack_bot", agent="lyra_default")
+        store = _FakeBotStore([self._tg_row(), unknown])
+        # Act
+        tg, dc = multibot_config_from_store(store)
+        # Assert
+        assert len(tg.bots) == 1
+        assert dc.bots == []

@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from lyra.bootstrap.auth_seeding import build_bot_auths
+from lyra.core.agent.bot_models import BotRow
 from lyra.infrastructure.stores.auth_store import AuthStore
+from tests.factories.stores import make_auth_store
+from tests.helpers.bot_store import make_bot_store
 
 # ---------------------------------------------------------------------------
 # test_bootstrap_calls_seed_grants_from_bots
@@ -99,16 +103,93 @@ class TestBootstrapCallsSeedGrantsFromBots:
 
 class TestBuildBotAuthsRaisesWithoutAdapters:
     def test_build_bot_auths_raises_without_adapters(self) -> None:
-        """build_bot_auths raises ValueError when no telegram AND no discord bots."""
-        # Arrange
-        raw_config: dict = {
-            "telegram": {"bots": []},
-            "discord": {"bots": []},
-            "auth": {"telegram_bots": [], "discord_bots": []},
-        }
+        """build_bot_auths raises ValueError when BotStore is empty (no roster).
+
+        Old contract raised "No adapters configured" from TOML parsing.
+        New contract: the roster comes from bot_store.get_all(); an empty
+        store raises ValueError with the new migration-hint message.
+        """
+        # Arrange — empty BotStore (roster is store-sourced, not TOML)
+        raw_config: dict = {}
         fake_auth_store = MagicMock(spec=AuthStore)
         fake_bot_store = MagicMock()
+        fake_bot_store.get_all.return_value = []  # empty roster
+
+        # Act / Assert — new message guides operator to run 'lyra bot init'
+        with pytest.raises(ValueError, match="No bots configured"):
+            build_bot_auths(raw_config, fake_auth_store, fake_bot_store)
+
+    def test_build_bot_auths_error_message_contains_lyra_bot_init(self) -> None:
+        """SC#3 — the ValueError message contains 'lyra bot init' so operators know
+        how to recover from an empty roster.
+
+        Negative gate: deleting the guard in build_bot_auths would suppress the
+        raise entirely, causing this test to fail (no exception raised at all).
+        """
+        # Arrange
+        fake_auth_store = MagicMock(spec=AuthStore)
+        fake_bot_store = MagicMock()
+        fake_bot_store.get_all.return_value = []  # empty roster
 
         # Act / Assert
-        with pytest.raises(ValueError, match="No adapters configured"):
-            build_bot_auths(raw_config, fake_auth_store, fake_bot_store)
+        with pytest.raises(ValueError) as exc_info:
+            build_bot_auths({}, fake_auth_store, fake_bot_store)
+
+        assert "lyra bot init" in str(exc_info.value), (
+            f"Expected 'lyra bot init' in error message, got: {exc_info.value!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# test_roster_from_store  [RED — post-T3 behavior, fails until T3 is implemented]
+# ---------------------------------------------------------------------------
+
+
+class TestRosterFromStore:
+    async def test_roster_from_store(self, tmp_path: Path) -> None:
+        """build_bot_auths reads the bot roster from BotStore, not from TOML.
+
+        RED: currently build_bot_auths calls load_multibot_config(raw_config) and
+        ignores bot_store for roster construction.  After T3 swaps the roster source
+        to bot_store.get_all(), a bot present in the store but absent from TOML must
+        appear in tg_bot_auths.
+
+        Failure until T3: ValueError("No adapters configured") because TOML is empty
+        and the current implementation never reads bot_store for the roster.
+        """
+        # Arrange — real stores backed by a tmp SQLite DB
+        bot_store = await make_bot_store(tmp_path)
+        auth_store = await make_auth_store(tmp_path)
+
+        try:
+            # Seed exactly one Telegram bot into BotStore (not in TOML)
+            seeded_row = BotRow(
+                platform="telegram",
+                bot_id="seeded_tg",
+                agent="lyra_default",
+                default_trust="public",
+            )
+            await bot_store.upsert(seeded_row)
+
+            # raw_config has NO [[telegram.bots]] and NO [[discord.bots]]
+            # — TOML roster empty
+            raw_config: dict = {}
+
+            # Act — post-T3 this must succeed and return the seeded bot
+            _circuit_registry, _admin_ids, tg_bot_auths, _dc_bot_auths = (
+                build_bot_auths(raw_config, auth_store, bot_store)
+            )
+
+            # Assert — seeded_tg must appear in the telegram bot-auth list
+            assert len(tg_bot_auths) >= 1, (
+                "Expected at least one telegram bot-auth from BotStore, got none. "
+                "build_bot_auths still reads roster from TOML instead of bot_store."
+            )
+            bot_cfg, _auth = tg_bot_auths[0]
+            assert bot_cfg.bot_id == "seeded_tg", (
+                f"Expected bot_id='seeded_tg', got {bot_cfg.bot_id!r}. "
+                "Roster is not sourced from BotStore."
+            )
+        finally:
+            await bot_store.close()
+            await auth_store.close()

@@ -365,6 +365,16 @@ def patch_auth_config_test(monkeypatch: pytest.MonkeyPatch) -> None:
             else None
         )
     )
+    _fake_bot_store.get_all = MagicMock(
+        return_value=[
+            BotRow(
+                platform="telegram",
+                bot_id="main",
+                agent="lyra_default",
+                default_trust="public",
+            )
+        ]
+    )
     monkeypatch.setattr(stores_mod, "BotStore", lambda **kwargs: _fake_bot_store)
     monkeypatch.setattr(
         agent_factory_mod,

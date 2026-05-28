@@ -12,6 +12,12 @@ And the legacy flat schema (backward compat, treated as single bot with bot_id="
     ...
 
 Re-exports legacy single-bot dataclasses for callers that still use them.
+
+Deprecated classes
+------------------
+TelegramMultiConfig, DiscordMultiConfig — TOML-sourced bot roster is seed-only.
+The runtime roster comes from BotStore via multibot_config_from_store().
+See docs/bot-management.md (Deprecation Timeline).
 """
 
 from __future__ import annotations
@@ -28,6 +34,7 @@ from lyra.core.config import (
     load_discord_config,
     load_telegram_config,
 )
+from lyra.core.stores import BotStoreProtocol
 
 # Backward-compat alias: callers using load_config get the Telegram loader.
 load_config = load_telegram_config
@@ -43,6 +50,7 @@ __all__ = [
     "TelegramMultiConfig",
     "DiscordMultiConfig",
     "load_multibot_config",
+    "multibot_config_from_store",
 ]
 
 log = logging.getLogger(__name__)
@@ -95,13 +103,23 @@ class DiscordBotConfig(BaseModel):
 
 
 class TelegramMultiConfig(BaseModel):
-    """Parsed [telegram] section: list of bot configs."""
+    """Parsed [telegram] section: list of bot configs.
+
+    .. deprecated::
+        TOML-sourced bot roster is seed-only; runtime roster comes from BotStore
+        via multibot_config_from_store(). See docs/bot-management.md.
+    """
 
     bots: list[TelegramBotConfig] = []
 
 
 class DiscordMultiConfig(BaseModel):
-    """Parsed [discord] section: list of bot configs."""
+    """Parsed [discord] section: list of bot configs.
+
+    .. deprecated::
+        TOML-sourced bot roster is seed-only; runtime roster comes from BotStore
+        via multibot_config_from_store(). See docs/bot-management.md.
+    """
 
     bots: list[DiscordBotConfig] = []
 
@@ -215,4 +233,30 @@ def load_multibot_config(
             )
         ]
 
+    return TelegramMultiConfig(bots=tg_bots), DiscordMultiConfig(bots=dc_bots)
+
+
+def multibot_config_from_store(
+    bot_store: BotStoreProtocol,
+) -> tuple[TelegramMultiConfig, DiscordMultiConfig]:
+    """Build the runtime bot roster from BotStore (SSoT), not TOML.
+
+    Partitions bot_store.get_all() by platform. Telegram rows become
+    TelegramBotConfig(bot_id, agent); Discord rows become
+    DiscordBotConfig(bot_id, auto_thread, agent, thread_hot_hours).
+    """
+    tg_bots: list[TelegramBotConfig] = []
+    dc_bots: list[DiscordBotConfig] = []
+    for row in bot_store.get_all():
+        if row.platform == "telegram":
+            tg_bots.append(TelegramBotConfig(bot_id=row.bot_id, agent=row.agent))
+        elif row.platform == "discord":
+            dc_bots.append(
+                DiscordBotConfig(
+                    bot_id=row.bot_id,
+                    auto_thread=row.auto_thread,
+                    agent=row.agent,
+                    thread_hot_hours=row.thread_hot_hours,
+                )
+            )
     return TelegramMultiConfig(bots=tg_bots), DiscordMultiConfig(bots=dc_bots)

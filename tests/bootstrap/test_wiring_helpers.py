@@ -290,10 +290,11 @@ class TestInitBotAuthsAndAgents:
         tg_cfg.bots = [MagicMock(bot_id="main")]
         dc_cfg = MagicMock()
         dc_cfg.bots = []
+        # Roster now comes from multibot_config_from_store(stores.bot), not TOML
         monkeypatch.setattr(
             agent_factory_mod,
-            "load_multibot_config",
-            lambda raw: (tg_cfg, dc_cfg),
+            "multibot_config_from_store",
+            lambda bot_store: (tg_cfg, dc_cfg),
         )
 
         mock_tg_auth = MagicMock()
@@ -355,15 +356,21 @@ class TestInitBotAuthsAndAgents:
     async def test_init_bot_auths_exits_when_no_bots_configured(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """SC#3 — empty BotStore roster raises SystemExit with 'lyra bot init' hint.
+
+        Negative gate: deleting the empty-roster guard in _init_bot_auths_and_agents
+        means no SystemExit is raised and the test fails.
+        """
         monkeypatch.setattr(
             agent_factory_mod,
             "_load_circuit_config",
             lambda raw: (MagicMock(), frozenset()),
         )
+        # Roster sourced from store — return empty configs (no bots in BotStore)
         monkeypatch.setattr(
             agent_factory_mod,
-            "load_multibot_config",
-            lambda raw: (MagicMock(bots=[]), MagicMock(bots=[])),
+            "multibot_config_from_store",
+            lambda bot_store: (MagicMock(bots=[]), MagicMock(bots=[])),
         )
         monkeypatch.setattr(
             agent_factory_mod,
@@ -371,8 +378,12 @@ class TestInitBotAuthsAndAgents:
             lambda *a, **kw: ([], []),
         )
 
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError) as exc_info:
             await _init_bot_auths_and_agents(MagicMock(), {})
+
+        assert "lyra bot init" in str(exc_info.value), (
+            f"Expected 'lyra bot init' in error message, got: {exc_info.value!r}"
+        )
 
     @pytest.mark.asyncio
     async def test_init_bot_auths_exits_when_no_agent_configs_loaded(
@@ -383,10 +394,11 @@ class TestInitBotAuthsAndAgents:
             "_load_circuit_config",
             lambda raw: (MagicMock(), frozenset()),
         )
+        # Roster sourced from store — one telegram bot present
         monkeypatch.setattr(
             agent_factory_mod,
-            "load_multibot_config",
-            lambda raw: (MagicMock(bots=[MagicMock()]), MagicMock(bots=[])),
+            "multibot_config_from_store",
+            lambda bot_store: (MagicMock(bots=[MagicMock()]), MagicMock(bots=[])),
         )
         monkeypatch.setattr(
             agent_factory_mod,
@@ -408,18 +420,32 @@ class TestInitBotAuthsAndAgents:
     async def test_init_bot_auths_exits_on_bad_multibot_config(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """Old behavior: ValueError from load_multibot_config (TOML parsing) was wrapped
+        into SystemExit. That wrapping is GONE — the store builder does not parse TOML.
+
+        Repurposed: assert that BotStore.get_all() raising propagates unhandled through
+        _init_bot_auths_and_agents. This tests the boundary between the store and the
+        factory: a broken store is an infrastructure failure, not a configuration error,
+        so we expect the exception to surface (not be silently swallowed).
+
+        Choice rationale: option (a) — BotStore raising on get_all() propagates — is
+        preferred over merging with the empty-store test (#3) because it exercises a
+        distinct failure mode (store error vs. empty store) and keeps the negative-test
+        guard distinct and non-redundant.
+        """
         monkeypatch.setattr(
             agent_factory_mod,
             "_load_circuit_config",
             lambda raw: (MagicMock(), frozenset()),
         )
+        # Simulate a broken BotStore that raises on get_all()
         monkeypatch.setattr(
             agent_factory_mod,
-            "load_multibot_config",
-            MagicMock(side_effect=ValueError("bad config")),
+            "multibot_config_from_store",
+            MagicMock(side_effect=RuntimeError("store unavailable")),
         )
 
-        with pytest.raises(ValueError, match="bad config"):
+        with pytest.raises(RuntimeError, match="store unavailable"):
             await _init_bot_auths_and_agents(MagicMock(), {})
 
 

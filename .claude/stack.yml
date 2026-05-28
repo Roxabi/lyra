@@ -72,3 +72,7 @@ quality_gates:
     enabled: true
     stage: pre-push
     config: .importlinter
+
+  no_runtime_toml_bots:
+    enabled: true
+    script: tools/check_no_runtime_toml_bots.sh

@@ -1,0 +1,46 @@
+---
+title: "feat(voice): STT/TTS workers consume/produce BlobRef — cross-repo coord"
+issue: 1067
+status: approved
+tier: F-lite
+date: 2026-05-28
+---
+
+## Problem
+
+Slice V5 of epic #1061. The Lyra hub is currently wired to voice workers (STT/TTS) via inline bytes or FS-direct paths. This blocks cross-host deployment (e.g., moving GPU-bound voice workers to M₂) and violates ADR-068's Protocol abstraction mandate. The V8 HttpBlobStore service (#1330) and Telegram eager-ingest (#1065) are now landed, so the infrastructure to support BlobRef-only audio exchange is in place. Lyra-side ports and middleware must be updated to consume/produce `BlobRef` exclusively, establishing the stable contract before voiceCLI implements its worker side (#144).
+
+## Who
+
+- **Primary:** Lyra hub voice pipeline (middleware_stt, ports, NATS codecs)
+- **Secondary:** voiceCLI workers (STT/TTS) — they consume the contract produced by this slice
+
+## Constraints
+
+- Workers are co-located on M₁ today, but MUST use HttpBlobStore Protocol regardless (ADR-068 conscious design decision, NOT a performance optimization to defer)
+- `BlobRef` wire format already landed in contracts via #1064 / PR #1329
+- Exception co-located writer applies to adapters/middleware only — NOT to workers
+- Audit α/β (time-window forensic scans) will need an α-index dependency; precise schema TBD during implementation
+
+## Out of Scope
+
+- voiceCLI worker implementation → voiceCLI#144
+- Any new HttpBlobStore service or Protocol changes → V8 #1330 (already closed)
+- Telegram eager-ingest changes → #1065 (already closed)
+
+## Premise Validity
+
+**Success in 6 months:** `src/lyra/core/ports/stt.py` and `tts.py` accept `BlobRef` exclusively (no `bytes` fallback); `middleware_stt.py` passes `msg.audio.blob_ref` to the port (no `b""` placeholder); voiceCLI#144 consumes the stable contract cross-host via HttpBlobStore Protocol.
+
+**Failure in 6 months:** `bytes` or `audio_b64` paths still exist in voice pipeline after 2 sprint cycles; or voiceCLI#144 is blocked because Lyra contract hasn't stabilized.
+
+**Simplest alternative:** Pass audio bytes inline in NATS messages (`audio_b64` field).
+**Why not:** Violates ADR-068 (no FS-direct coupling), blocks future GPU-worker relocation to M₂, causes memory bloat on large audio clips, and incompatible with future audit α/β time-window scans.
+
+## Complexity
+
+**Tier: F-lite** — 5 files, single domain (voice/ports), clear scope, blockers resolved.
+
+- Files touched: `src/lyra/core/ports/stt.py`, `src/lyra/core/ports/tts.py`, `src/lyra/core/hub/middleware/middleware_stt.py`, `src/lyra/nats/nats_stt_codec.py`, `src/lyra/nats/nats_tts_codec.py`
+- Domain: voice/BlobRef wiring
+- Unknowns: 0 (blockers closed, V8 landed)

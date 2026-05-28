@@ -1,5 +1,7 @@
 [Unit]
 Description=Lyra NATS server
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Container]
 Image=docker.io/library/nats:2.10.29-alpine

@@ -5,7 +5,8 @@ Stream LYRA_OUTBOUND_AUDIO: subject lyra.outbound.audio.>, retention Limits
 MaxAge=24h, MaxBytes=32MiB, duplicate_window=60s.
 
 Consumer (durable, pull): AckExplicit, AckWait=90s, MaxDeliver=5,
-filter_subject parameterised by bootstrap caller (e.g. lyra.outbound.audio.telegram.>).
+filter_subject parameterised by bootstrap caller (e.g.
+lyra.outbound.audio.telegram.{bot_id} — exact 5-token subject, no ".>").
 
 KV bucket lyra_outbound_audio_sent: TTL=900s.
   Arithmetic: ack_wait × max_deliver = 90 × 5 = 450s floor;
@@ -32,7 +33,7 @@ from nats.js.api import (
     StorageType,
     StreamConfig,
 )
-from nats.js.errors import BadRequestError, BucketNotFoundError, NotFoundError
+from nats.js.errors import BadRequestError, NotFoundError
 from nats.js.kv import KeyValue
 
 from roxabi_contracts.outbound import STREAM_AUDIO
@@ -49,9 +50,9 @@ log = logging.getLogger(__name__)
 STREAM_SUBJECTS = ["lyra.outbound.audio.>"]
 ACK_WAIT_SECONDS = 90.0
 MAX_DELIVER = 5
-MAX_AGE_SECONDS = 24 * 60 * 60   # 24 h — silent-loss bound (D4)
-MAX_BYTES = 32 * 1024 * 1024     # 32 MiB
-DUPLICATE_WINDOW_SECONDS = 60    # 60 s dedup window
+MAX_AGE_SECONDS = 24 * 60 * 60  # 24 h — silent-loss bound (D4)
+MAX_BYTES = 32 * 1024 * 1024  # 32 MiB
+DUPLICATE_WINDOW_SECONDS = 60  # 60 s dedup window
 
 # KV bucket: TTL = ack_wait × max_deliver × 2 (headroom)
 # Floor: 90 × 5 = 450 s; we use 900 s (15 min) for ≥2× retry-jitter margin.
@@ -137,7 +138,8 @@ async def ensure_consumer(
     Args:
         js: JetStreamContext bound to the NATS connection.
         durable: Durable consumer name (e.g. "outbound-audio-telegram").
-        filter_subject: Subject filter (e.g. "lyra.outbound.audio.telegram.>").
+        filter_subject: Exact per-bot subject (e.g.
+            "lyra.outbound.audio.telegram.123456") — no trailing ".>".
     """
     cfg = _consumer_config(durable=durable, filter_subject=filter_subject)
     try:
@@ -174,15 +176,9 @@ async def ensure_kv(js: "JetStreamContext") -> KeyValue:
         kv = await js.create_key_value(cfg)
         log.info("outbound-audio: KV bucket %s created", KV_BUCKET)
         return kv
-    except BucketNotFoundError:
-        # Should not happen after create, but guard for race conditions.
-        log.warning(
-            "outbound-audio: KV bucket %s create returned BucketNotFoundError, binding",
-            KV_BUCKET,
-        )
-        return await js.key_value(KV_BUCKET)
     except BadRequestError:
-        # Bucket already exists — bind to existing.
+        # BadRequestError = bucket already exists (create_key_value on existing bucket).
+        # BucketNotFoundError is a read-time error from key_value(), not from create.
         log.debug("outbound-audio: KV bucket %s already exists, binding", KV_BUCKET)
         return await js.key_value(KV_BUCKET)
     except nats.errors.Error:

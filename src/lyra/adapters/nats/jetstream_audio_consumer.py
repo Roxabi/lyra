@@ -9,22 +9,8 @@ adapter with exactly-once-effective semantics (Model A):
     notification via notify_undelivered().
   - Dedup via an injected SentSet (V1: InMemorySentSet; T10: KvSentSet).
 
-This class is SEPARATE from NatsOutboundListener by axial decision: delivery-
-guarantee is its own stage; the existing listener handles at-most-once text/
-attachment/streaming delivery and must not acquire a second responsibility.
-
-Constructor injects:
-  - js            : JetStreamContext (consumer provisioned by ensure_consumer)
-  - durable       : durable consumer name (e.g. "outbound-audio-telegram")
-  - filter_subject: per-platform subject filter
-  - send_audio    : async callable (OutboundAudio, InboundMessage) -> None
-                    reuses adapter.render_audio
-  - send_text     : async callable (InboundMessage, OutboundMessage) -> None
-                    used to deliver the terminal-failure notification
-  - stream_name   : JetStream stream name (default: STREAM_AUDIO from contracts)
-  - max_deliver   : must match the consumer's MaxDeliver (default: 5)
-  - dedup         : SentSet instance; defaults to InMemorySentSet().
-                    T10 passes KvSentSet here — no other change required.
+Separate from NatsOutboundListener by axial decision (#1482).
+T10 swap: replace default ``InMemorySentSet()`` with ``KvSentSet(kv)``.
 """
 
 from __future__ import annotations
@@ -44,15 +30,13 @@ from lyra.adapters.nats.jetstream_audio_envelope import (
 )
 from lyra.core.messaging.message import InboundMessage, OutboundAudio, OutboundMessage
 from lyra.core.messaging.voice_notify import notify_undelivered
+from lyra.infrastructure.outbound_audio.stream_setup import MAX_DELIVER
 from roxabi_contracts.outbound import STREAM_AUDIO
 
 if TYPE_CHECKING:
     from nats.js.client import JetStreamContext
 
 log = logging.getLogger(__name__)
-
-# Must match ensure_consumer config (stream_setup.py)
-MAX_DELIVER = 5
 
 _FETCH_BATCH = 5
 _FETCH_TIMEOUT = 5.0  # seconds — keeps the loop responsive
@@ -130,29 +114,31 @@ class JetStreamAudioConsumer:
     async def start(self) -> None:
         """Bind to the durable consumer and launch the background pull loop.
 
-        Requires ensure_stream() + ensure_consumer() to have been called
-        before start() so the consumer exists on the server side.
+        Consumer config (AckWait, MaxDeliver, etc.) is owned by ensure_consumer
+        in stream_setup.py — nats-py ignores config= for existing durables.
         """
-        from nats.js.api import AckPolicy, ConsumerConfig, DeliverPolicy
-
-        config = ConsumerConfig(
-            durable_name=self._durable,
-            name=self._durable,
-            deliver_policy=DeliverPolicy.ALL,
-            ack_policy=AckPolicy.EXPLICIT,
-            ack_wait=90.0,
-            max_deliver=self._max_deliver,
-            filter_subject=self._filter_subject,
-        )
         self._sub = await self._js.pull_subscribe(
             self._filter_subject,
             durable=self._durable,
             stream=self._stream_name,
-            config=config,
         )
         self._task = asyncio.create_task(
             self._consume_loop(), name=f"js-audio-consumer:{self._durable}"
         )
+
+        def _on_task_done(t: asyncio.Task[None]) -> None:
+            if t.cancelled():
+                return
+            exc = t.exception()
+            if exc is not None:
+                log.error(
+                    "JetStreamAudioConsumer: consume loop exited unexpectedly"
+                    " (consumer=%s exc_type=%s) — Quadlet will restart",
+                    self._durable,
+                    type(exc).__name__,
+                )
+
+        self._task.add_done_callback(_on_task_done)
         log.info(
             "JetStreamAudioConsumer started (stream=%s consumer=%s filter=%s)",
             self._stream_name,
@@ -167,6 +153,10 @@ class JetStreamAudioConsumer:
             with contextlib.suppress(asyncio.CancelledError):
                 await self._task
             self._task = None
+        if self._sub is not None:
+            with contextlib.suppress(Exception):
+                await self._sub.unsubscribe()
+            self._sub = None
         log.info("JetStreamAudioConsumer stopped (consumer=%s)", self._durable)
 
     # ------------------------------------------------------------------
@@ -210,8 +200,19 @@ class JetStreamAudioConsumer:
                 await msg.ack()
             return
 
-        # Dedup: stream_id already delivered → ack + skip (no double-send).
-        if await self._dedup.already_sent(stream_id):
+        # Dedup: already delivered → ack + skip. KV read error → treat as not-sent
+        # (bounded double-send risk preferable to crashed consumer loop).
+        try:
+            already = await self._dedup.already_sent(stream_id)
+        except Exception as exc:  # noqa: BLE001
+            log.warning(
+                "JetStreamAudioConsumer: dedup read error stream_id=%r"
+                " (exc_type=%s), treating as not-sent",
+                stream_id,
+                type(exc).__name__,
+            )
+            already = False
+        if already:
             log.debug(
                 "JetStreamAudioConsumer: dedup hit for stream_id=%r, acking",
                 stream_id,
@@ -254,23 +255,35 @@ class JetStreamAudioConsumer:
     async def _handle_terminal(
         self, msg: Any, stream_id: str, inbound: InboundMessage
     ) -> None:
-        """Terminate message + send user notification exactly once per stream_id."""
+        """Terminate message + notify user exactly once per stream_id.
+
+        Notification is sent ONLY after a successful term() — if term() fails,
+        JetStream redelivers and we retry rather than notify prematurely.
+        """
         global audio_terminal_drop_total
         # increment before term() in case it raises (#1482 T11)
         audio_terminal_drop_total += 1
+        termed = False
         try:
             await msg.term()
+            termed = True
             log.warning(
                 "JetStreamAudioConsumer: terminal for stream_id=%r"
                 " — termed, notifying user",
                 stream_id,
             )
-        except Exception:
-            log.exception(
-                "JetStreamAudioConsumer: term() failed for stream_id=%r",
+        except Exception as exc:  # noqa: BLE001
+            log.error(
+                "JetStreamAudioConsumer: term() failed for stream_id=%r"
+                " (exc_type=%s) — will retry on next redelivery",
                 stream_id,
+                type(exc).__name__,
             )
 
+        if not termed:
+            return
+
+        # _notified: bounded by terminal-failure count per lifetime — negligible.
         if stream_id in self._notified:
             return
         self._notified.add(stream_id)
@@ -278,9 +291,10 @@ class JetStreamAudioConsumer:
         outbound = notify_undelivered(context="audio-terminal-undelivered")
         try:
             await self._send_text(inbound, outbound)
-        except Exception:
-            log.exception(
+        except Exception as exc:  # noqa: BLE001
+            log.error(
                 "JetStreamAudioConsumer: user notification failed"
-                " for stream_id=%r (best-effort)",
+                " for stream_id=%r (exc_type=%s, best-effort)",
                 stream_id,
+                type(exc).__name__,
             )

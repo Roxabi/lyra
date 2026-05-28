@@ -544,6 +544,8 @@ the legacy Core path.
 
 **Stream and KV: leave in place or purge**
 
+Rollback to a pre-#1482 image is a config/image rollback (pin `Image=` to the prior tag per the image-lifecycle pattern in `deploy/CLAUDE.md`). The JetStream stream (`LYRA_OUTBOUND_AUDIO`), consumers, and KV bucket (`lyra_outbound_audio_sent`) persist after rollback — a pre-#1482 image simply stops consuming the audio subject; messages already on the stream remain until MaxAge (24 h) and then expire automatically. The audio path also exposes module counters `audio_terminal_drop_total` / `audio_redelivery_total` for monitoring.
+
 Leaving `LYRA_OUTBOUND_AUDIO` and `lyra_outbound_audio_sent` in place is safe — they are
 inactive once the adapters stop consuming. Messages age out at MaxAge=24 h; KV keys at TTL=900 s.
 

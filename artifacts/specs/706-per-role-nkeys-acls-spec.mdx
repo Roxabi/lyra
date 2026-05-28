@@ -41,7 +41,7 @@ The row will grant `subscribe: lyra.typing.>` to `code-worker` (it consumes typi
 | `$JS.API.STREAM.UPDATE.LYRA_OUTBOUND_AUDIO` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — |
 | `$JS.API.STREAM.UPDATE.LYRA_TURNS` | — | — | — | — | — | — | — | — | — | — | — | PUB | — |
 | `$KV.lyra-state.>` | PUB | SUB | SUB | SUB | SUB | SUB | — | SUB | SUB | — | — | — | PUB |
-| `$KV.lyra_outbound_audio_sent.>` | — | SUB | SUB | — | — | — | — | — | — | — | — | — | — |
+| `$KV.lyra_outbound_audio_sent.>` | — | PUB+SUB | PUB+SUB | — | — | — | — | — | — | — | — | — | — |
 | `_inbox.blobstore.>` | — | — | — | — | — | — | — | — | — | — | — | — | SUB |
 | `_inbox.clipool-worker.>` | — | — | — | — | — | — | — | — | SUB | — | — | — | — |
 | `_inbox.discord-adapter.*.*` | — | — | SUB | — | — | — | — | — | — | — | — | — | — |

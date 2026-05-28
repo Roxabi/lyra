@@ -46,6 +46,39 @@ _CONSUMER_PREFIXES = ("outbound-audio-",)
 _FALLBACK_MAX_BYTES = 32 * 1024 * 1024
 
 
+def _consumer_age_failure(
+    consumer: dict,
+    name: str,
+    num_pending: int,
+    now: datetime,
+    lag_age_warn_s: int,
+) -> str | None:
+    """Return a failure string if ack_floor age exceeds threshold, else None.
+
+    Age check: when pending > 0, ack_floor.last_active is the timestamp of the
+    last acknowledged message delivery. Messages above the ack_floor have not
+    been acked yet; if (now - last_active) > lag_age_warn_s the batch is stale
+    and approaching the 24 h stream MaxAge bound.
+    """
+    if num_pending == 0:
+        return None
+    ack_floor = consumer.get("ack_floor") or {}
+    last_active_str = ack_floor.get("last_active")
+    if not last_active_str:
+        return None
+    try:
+        last_active = datetime.fromisoformat(last_active_str.replace("Z", "+00:00"))
+        age_s = (now - last_active).total_seconds()
+        if age_s > lag_age_warn_s:
+            return (
+                f"{name}: oldest unacked age={age_s:.0f}s"
+                f" > warn_threshold={lag_age_warn_s}s"
+            )
+    except (ValueError, TypeError):
+        pass
+    return None
+
+
 async def check_audio_consumer_lag(
     nats_monitor_url: str,
     *,
@@ -60,7 +93,7 @@ async def check_audio_consumer_lag(
 
     Fails if any consumer has:
       - ``num_pending`` > ``lag_pending_threshold`` (default: 50), OR
-      - oldest unacked message age (``num_ack_pending > 0`` and
+      - oldest unacked message age (``num_pending > 0`` and
         ``ack_floor.last_active`` age) > ``lag_age_warn_s`` (default: 72000 s
         / 20 h — approaching the 24 h MaxAge bound).
 
@@ -74,6 +107,9 @@ async def check_audio_consumer_lag(
         async with httpx.AsyncClient() as client:
             resp = await client.get(url, timeout=timeout)
         if resp.status_code == 404:
+            # /jsz?name=<stream> returns 404 when NATS has no JetStream
+            # enabled or the stream was never provisioned. Treat as skip,
+            # not a failure — pre-deploy state is not broken state.
             return CheckResult(
                 name="audio:consumer_lag",
                 passed=True,
@@ -92,7 +128,7 @@ async def check_audio_consumer_lag(
         return CheckResult(
             name="audio:consumer_lag",
             passed=False,
-            detail=str(exc),
+            detail=type(exc).__name__,
             timestamp=now,
         )
 
@@ -126,10 +162,17 @@ async def check_audio_consumer_lag(
         name = consumer.get("name", "<unknown>")
         num_pending = int(consumer.get("num_pending", 0))
         details.append(f"{name}: pending={num_pending}")
+
         if num_pending > lag_pending_threshold:
             failures.append(
                 f"{name}: num_pending={num_pending} > threshold={lag_pending_threshold}"
             )
+
+        age_fail = _consumer_age_failure(
+            consumer, name, num_pending, now, lag_age_warn_s
+        )
+        if age_fail:
+            failures.append(age_fail)
 
     if failures:
         return CheckResult(
@@ -167,6 +210,9 @@ async def check_audio_stream_usage(
         async with httpx.AsyncClient() as client:
             resp = await client.get(url, timeout=timeout)
         if resp.status_code == 404:
+            # Same reasoning as check_audio_consumer_lag: pre-deploy state is not
+            # a failure. /jsz returns 404 when JetStream is disabled or the stream
+            # has not been provisioned yet.
             return CheckResult(
                 name="audio:stream_usage",
                 passed=True,
@@ -185,7 +231,7 @@ async def check_audio_stream_usage(
         return CheckResult(
             name="audio:stream_usage",
             passed=False,
-            detail=str(exc),
+            detail=type(exc).__name__,
             timestamp=now,
         )
 

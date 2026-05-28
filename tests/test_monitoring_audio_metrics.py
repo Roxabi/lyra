@@ -320,7 +320,7 @@ async def test_consumer_lag_skips_when_stream_absent() -> None:
 
 @pytest.mark.anyio
 async def test_consumer_lag_fails_on_http_error() -> None:
-    """Connection error → passed=False."""
+    """Connection error → passed=False (detail is exc type name, not message)."""
     from lyra.monitoring.checks_audio import check_audio_consumer_lag
 
     with patch("lyra.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
@@ -333,7 +333,126 @@ async def test_consumer_lag_fails_on_http_error() -> None:
         result = await check_audio_consumer_lag("http://127.0.0.1:8222")
 
     assert result.passed is False
-    assert "connection refused" in result.detail
+    # SanitizedError discipline: detail is the exception class name, not the message
+    assert result.detail == "OSError"
+
+
+# ---------------------------------------------------------------------------
+# lag-age check tests (#1482 B2)
+# ---------------------------------------------------------------------------
+
+
+def _make_lag_jsz(
+    *,
+    num_pending: int,
+    last_active: str,
+) -> dict:
+    """Build a minimal /jsz payload with ack_floor.last_active set."""
+    return {
+        "streams": [
+            {
+                "name": "LYRA_OUTBOUND_AUDIO",
+                "config": {"max_bytes": 33554432},
+                "state": {"bytes": 1024},
+                "consumers": [
+                    {
+                        "name": "outbound-audio-telegram",
+                        "num_pending": num_pending,
+                        "ack_floor": {"last_active": last_active},
+                    }
+                ],
+            }
+        ]
+    }
+
+
+@pytest.mark.anyio
+async def test_consumer_lag_age_warn_when_old_last_active() -> None:
+    """pending>0 + last_active older than lag_age_warn_s → passed=False."""
+    from datetime import datetime, timedelta, timezone
+
+    from lyra.monitoring.checks_audio import check_audio_consumer_lag
+
+    # 25 hours ago — exceeds the 72000s (20h) default threshold
+    old_ts = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
+    data = _make_lag_jsz(num_pending=3, last_active=old_ts)
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = data
+
+    with patch("lyra.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client_cls.return_value = mock_client
+
+        result = await check_audio_consumer_lag(
+            "http://127.0.0.1:8222", lag_age_warn_s=72000
+        )
+
+    assert result.passed is False
+    assert "oldest unacked age" in result.detail
+    assert "warn_threshold=72000s" in result.detail
+
+
+@pytest.mark.anyio
+async def test_consumer_lag_age_ok_when_recent_last_active() -> None:
+    """pending>0 + last_active within lag_age_warn_s → passed=True."""
+    from datetime import datetime, timedelta, timezone
+
+    from lyra.monitoring.checks_audio import check_audio_consumer_lag
+
+    # 5 minutes ago — well within the 20h threshold
+    recent_ts = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+    data = _make_lag_jsz(num_pending=3, last_active=recent_ts)
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = data
+
+    with patch("lyra.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client_cls.return_value = mock_client
+
+        result = await check_audio_consumer_lag(
+            "http://127.0.0.1:8222", lag_age_warn_s=72000
+        )
+
+    assert result.passed is True
+
+
+@pytest.mark.anyio
+async def test_consumer_lag_age_ok_when_no_pending() -> None:
+    """pending==0 → age check skipped → passed=True regardless of last_active."""
+    from datetime import datetime, timedelta, timezone
+
+    from lyra.monitoring.checks_audio import check_audio_consumer_lag
+
+    # Very old timestamp — but pending=0 so the age check must not fire
+    old_ts = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
+    data = _make_lag_jsz(num_pending=0, last_active=old_ts)
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = data
+
+    with patch("lyra.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.get = AsyncMock(return_value=mock_resp)
+        mock_client_cls.return_value = mock_client
+
+        result = await check_audio_consumer_lag(
+            "http://127.0.0.1:8222", lag_age_warn_s=72000
+        )
+
+    assert result.passed is True
 
 
 # ===========================================================================

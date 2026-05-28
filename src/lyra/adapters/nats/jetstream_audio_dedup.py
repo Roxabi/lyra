@@ -7,9 +7,11 @@ Two implementations sharing the same async interface:
     Does NOT survive a process restart — use only for testing or as fallback.
 
 ``KvSentSet`` (V2 / production)
-    JetStream KV-backed set. Survives restarts and is shared across replicas.
-    Uses the ``lyra_outbound_audio_sent`` bucket provisioned by ``ensure_kv``
-    (TTL=900s, set on the bucket — not re-implemented here).
+    JetStream KV-backed set. Survives restarts. Best-effort dedup: check-then-
+    act is not atomic (separate get + put, no CAS / put-if-absent), so
+    exactly-once across concurrent replicas is not guaranteed. Current single-
+    process deployment is unaffected. Uses the ``lyra_outbound_audio_sent``
+    bucket provisioned by ``ensure_kv`` (TTL=900s).
 
 Interface contract (both impls must satisfy)::
 
@@ -49,6 +51,7 @@ class _KvLike(Protocol):
 
     async def get(self, key: str) -> Any: ...
     async def put(self, key: str, value: bytes) -> Any: ...
+
 
 # TTL: ack_wait × max_deliver × 2 headroom = 90 × 5 × 2 = 900 s.
 # Must be ≥ ack_wait × max_deliver = 450 s (floor).
@@ -114,9 +117,10 @@ class InMemorySentSet:
 class KvSentSet:
     """Async KV-backed dedup set using JetStream KeyValue.
 
-    Survives process restarts and is shared across consumer replicas bound
-    to the same KV bucket.  Expiry is handled by the bucket TTL (900s),
-    not by this class.
+    Survives process restarts. Best-effort dedup only: check (get) and act
+    (put) are separate operations — no atomic CAS. Exactly-once across
+    concurrent replicas is not guaranteed; single-process deployment is
+    unaffected. Expiry is handled by the bucket TTL (900s), not by this class.
 
     KV key = hex(stream_id.encode('utf-8')) — always a valid NATS KV key
     regardless of what characters appear in the raw stream_id.

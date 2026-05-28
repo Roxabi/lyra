@@ -1,4 +1,5 @@
 # File size exemptions (≤300 lines per file)
+src/lyra/bootstrap/factory/config.py  # 313 lines — DEBT:file-exemptions — #1467 +23 lines (AdapterConfigBundle dataclass + build_adapter_config_bundle factory); config loader aggregator — all _load_* helpers live here
 # Each entry must have a tracking issue.
 # Format: <path>  # <lines> lines — <issue> <description>
 tests/core/conftest.py  # 314 lines — DEBT:file-exemptions — backward-compatible re-exports after factory extraction (#1417)

@@ -11,7 +11,7 @@ from pathlib import Path
 
 from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 from lyra.bootstrap import credentials
-from lyra.bootstrap.factory.config import _load_tool_display_config
+from lyra.bootstrap.factory.config import build_adapter_config_bundle
 from lyra.bootstrap.lifecycle.lifecycle_helpers import close_safely
 from lyra.bootstrap.lifecycle.signal_handlers import setup_shutdown_event
 from lyra.core.messaging.bus import Bus
@@ -45,7 +45,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
     log_contracts_version()
 
     platform_enum = Platform(platform)
-    tool_display_config = _load_tool_display_config(raw_config)
+    config_bundle = build_adapter_config_bundle(raw_config)
 
     try:
         nc = await nats_connect(nats_url, identity_name=f"{platform}-adapter")
@@ -106,7 +106,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
                     inbound_bus=inbound_bus,
                     webhook_secret=webhook_secret or "",
                     turn_store=tg_turn_store,
-                    tool_display_config=tool_display_config,
+                    tool_display_config=config_bundle.tool_display,
                 )
                 await adapter.resolve_identity()
 
@@ -266,7 +266,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
                     thread_store=dc_thread_store,
                     watch_channels=dc_bot_watch_channels.get(bot_id, frozenset()),
                     turn_store=dc_turn_store,
-                    tool_display_config=tool_display_config,
+                    tool_display_config=config_bundle.tool_display,
                 )
 
                 listener_dc = NatsOutboundListener(

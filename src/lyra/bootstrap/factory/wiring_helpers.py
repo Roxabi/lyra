@@ -24,7 +24,7 @@ from lyra.bootstrap.factory.config import (
     _load_messages,
     _load_pairing_config,
     _load_pool_config,
-    _load_tool_display_config,
+    build_adapter_config_bundle,
 )
 from lyra.bootstrap.types import DiscordAdapterEntry, WiredAdapters
 from lyra.bootstrap.wiring.bootstrap_wiring import (
@@ -369,7 +369,7 @@ async def _wire_adapters(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — mi
     raw_config: dict,
 ) -> WiredAdapters:
     """Wire Telegram and Discord adapters."""
-    tool_display_config = _load_tool_display_config(raw_config)
+    config_bundle = build_adapter_config_bundle(raw_config)
     tg_adapters, tg_dispatchers = await wire_telegram_adapters(
         hub,
         bundle.tg_bot_auths,
@@ -377,7 +377,7 @@ async def _wire_adapters(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — mi
         bundle.circuit_registry,
         bundle.msg_manager,
         nats_client=nc,
-        tool_display_config=tool_display_config,
+        tool_display_config=config_bundle.tool_display,
     )
     dc_adapters, dc_dispatchers, dc_thread_store = await wire_discord_adapters(
         hub,
@@ -388,7 +388,7 @@ async def _wire_adapters(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — mi
         agent_store=stores.agent,
         vault_dir=str(vault_dir),
         nats_client=nc,
-        tool_display_config=tool_display_config,
+        tool_display_config=config_bundle.tool_display,
     )
     return WiredAdapters(
         tg_adapters=tg_adapters,

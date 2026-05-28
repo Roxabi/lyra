@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from lyra.bootstrap.wiring.bootstrap_wiring import TelegramWiringDeps
 from lyra.config import TelegramBotConfig
 from lyra.core.auth.authenticator import Authenticator
 from lyra.core.auth.trust import (
@@ -58,11 +59,13 @@ async def test_wire_telegram_adapters_registers_authenticator() -> None:
     ):
         # Act
         adapters, dispatchers = await wire_telegram_adapters(
-            hub=hub,
-            tg_bot_auths=[(bot_cfg, auth)],
-            bot_agent_map=bot_agent_map,
-            circuit_registry=circuit_registry,
-            msg_manager=msg_manager,
+            TelegramWiringDeps(
+                hub=hub,
+                tg_bot_auths=[(bot_cfg, auth)],
+                bot_agent_map=bot_agent_map,
+                circuit_registry=circuit_registry,
+                msg_manager=msg_manager,
+            )
         )
 
     # Assert — hub._authenticators should have the entry for (TELEGRAM, "main")
@@ -102,11 +105,13 @@ async def test_wire_telegram_no_nats_listener_in_dev_mode() -> None:
         ),
     ):
         adapters, _ = await wire_telegram_adapters(
-            hub=hub,
-            tg_bot_auths=[(bot_cfg, auth)],
-            bot_agent_map={("telegram", "main"): "lyra_default"},
-            circuit_registry=CircuitRegistry(),
-            msg_manager=MagicMock(),
+            TelegramWiringDeps(
+                hub=hub,
+                tg_bot_auths=[(bot_cfg, auth)],
+                bot_agent_map={("telegram", "main"): "lyra_default"},
+                circuit_registry=CircuitRegistry(),
+                msg_manager=MagicMock(),
+            )
         )
 
     assert len(adapters) == 1
@@ -131,11 +136,13 @@ async def test_wire_telegram_adapters_skips_missing_agent_mapping() -> None:
     # Act — bot_agent_map is empty so "orphan_bot" has no agent,
     # and the function returns before _load_bot_token is called.
     adapters, dispatchers = await wire_telegram_adapters(
-        hub=hub,
-        tg_bot_auths=[(bot_cfg, auth)],
-        bot_agent_map={},
-        circuit_registry=circuit_registry,
-        msg_manager=msg_manager,
+        TelegramWiringDeps(
+            hub=hub,
+            tg_bot_auths=[(bot_cfg, auth)],
+            bot_agent_map={},
+            circuit_registry=circuit_registry,
+            msg_manager=msg_manager,
+        )
     )
 
     # Assert — nothing registered, nothing returned

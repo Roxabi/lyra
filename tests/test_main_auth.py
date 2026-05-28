@@ -10,6 +10,7 @@ import pytest
 import lyra.__main__ as main_mod
 import lyra.bootstrap.factory.agent_factory as agent_factory_mod
 import lyra.bootstrap.factory.wiring_helpers as wiring_helpers_mod
+from lyra.bootstrap.factory.agent_factory import CreateAgentDeps
 from lyra.core.agent import Agent
 from lyra.core.agent.agent_config import ModelConfig
 from tests.conftest import patch_auth_config_test
@@ -30,7 +31,9 @@ class TestAgentFactory:
             llm_config=ModelConfig(backend="claude-cli"),
         )
         cli_pool = MagicMock()
-        agent = agent_factory_mod._create_agent(config, cli_pool)
+        agent = agent_factory_mod._create_agent(
+            CreateAgentDeps(config=config, cli_pool=cli_pool)
+        )
         assert isinstance(agent, SimpleAgent)
 
     def test_unknown_backend_raises(self) -> None:
@@ -46,7 +49,9 @@ class TestAgentFactory:
             llm_config=llm_cfg,
         )
         with pytest.raises(ValueError, match="Unknown backend"):
-            agent_factory_mod._create_agent(config, None)
+            agent_factory_mod._create_agent(
+                CreateAgentDeps(config=config, cli_pool=None)
+            )
 
     def test_cli_backend_without_pool_raises(self) -> None:
         config = Agent(
@@ -56,7 +61,9 @@ class TestAgentFactory:
             llm_config=ModelConfig(backend="claude-cli"),
         )
         with pytest.raises(RuntimeError, match="CliPool required"):
-            agent_factory_mod._create_agent(config, None)
+            agent_factory_mod._create_agent(
+                CreateAgentDeps(config=config, cli_pool=None)
+            )
 
 
 # ---------------------------------------------------------------------------

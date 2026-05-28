@@ -7,7 +7,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lyra.bootstrap.wiring.nats_wiring import wire_nats_telegram_proxies
+from lyra.bootstrap.wiring.nats_wiring import (
+    NatsTgWiringDeps,
+    wire_nats_telegram_proxies,
+)
 from lyra.config import TelegramBotConfig
 from lyra.core.auth.authenticator import Authenticator
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
@@ -45,11 +48,13 @@ class TestWireNatsTelegramProxies:
             logging.WARNING, logger="lyra.bootstrap.wiring.nats_wiring"
         ):  # noqa: E501
             proxies, dispatchers = wire_nats_telegram_proxies(
-                hub=hub,
-                nc=fake_nc,
-                tg_bot_auths=tg_bot_auths,
-                bot_agent_map=bot_agent_map,
-                circuit_registry=circuit_registry,
+                NatsTgWiringDeps(
+                    hub=hub,
+                    nc=fake_nc,
+                    tg_bot_auths=tg_bot_auths,
+                    bot_agent_map=bot_agent_map,
+                    circuit_registry=circuit_registry,
+                )
             )
 
         # Assert — no proxy created and warning was logged

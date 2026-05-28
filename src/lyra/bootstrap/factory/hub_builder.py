@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from nats.aio.client import Client as NATS
 
-from lyra.bootstrap.factory.agent_factory import _resolve_agents
+from lyra.bootstrap.factory.agent_factory import ResolveAgentsDeps, _resolve_agents
 from lyra.bootstrap.factory.config import (
     InboundBusConfig,
     _load_cli_pool_config,
@@ -37,6 +37,7 @@ from lyra.nats.queue_groups import HUB_INBOUND
 if TYPE_CHECKING:
     from lyra.core.messaging.messages import MessageManager
     from lyra.core.ports.audit_sink import AuditSink
+    from lyra.core.ports.resume_publisher import ResumePublisherPort
     from lyra.infrastructure.stores.pairing import PairingManager
     from lyra.infrastructure.stores.prefs_store import PrefsStore
     from lyra.llm.llm_client import LlmClient
@@ -100,6 +101,7 @@ def build_hub(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — construction 
     prefs_store: PrefsStore | None,
     inbound_bus: NatsBus[InboundMessage],
     inbound_bus_cfg: InboundBusConfig,
+    resume_publisher: "ResumePublisherPort | None" = None,
 ) -> Hub:
     """Construct a Hub from loaded config and injected dependencies."""
     cli_pool_cfg = _load_cli_pool_config(raw_config)
@@ -133,6 +135,7 @@ def build_hub(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — construction 
         event_bus=event_bus,
         inbound_bus=inbound_bus,
         config=hub_config,
+        resume_publisher=resume_publisher,
     )
     return hub
 
@@ -180,16 +183,18 @@ def register_agents(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — registr
     """Resolve agents from configs and register them on the hub."""
     llm_cfg = _load_llm_config(raw_config)
     all_agents = _resolve_agents(
-        agent_configs,
-        cli_pool,
-        circuit_registry,
-        msg_manager,
-        stt_service,
-        tts_service,
-        agent_store=agent_store,
-        llm_cfg=llm_cfg,
-        nats_llm_client=nats_llm_client,  # type: ignore[arg-type]  # T24 will update _resolve_agents to LlmClient
-        cli_nats_driver=cli_nats_driver,
+        ResolveAgentsDeps(
+            agent_configs=agent_configs,
+            cli_pool=cli_pool,
+            circuit_registry=circuit_registry,
+            msg_manager=msg_manager,
+            stt_service=stt_service,
+            tts_service=tts_service,
+            agent_store=agent_store,
+            llm_cfg=llm_cfg,
+            nats_llm_client=nats_llm_client,  # type: ignore[arg-type]  # T24 will update _resolve_agents to LlmClient
+            cli_nats_driver=cli_nats_driver,
+        )
     )
     for ag in all_agents.values():
         hub.register_agent(ag)

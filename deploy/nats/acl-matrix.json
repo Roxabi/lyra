@@ -280,6 +280,23 @@
         "_inbox.turn-writer.>"
       ],
       "deploy": { "type": "container", "secret": "lyra-nats-turn-writer" }
+    },
+    "blobstore": {
+      "status": "active",
+      "created_at": "2026-05-28",
+      "owner": "lyra",
+      "description": "BlobStore HTTP service — publishes audit events to lyra.audit.blobs.> and announces readiness via lyra-state KV.",
+      "notes": "Publishes to lyra.audit.> for BlobAuditSink and uses $JS.API.> + $KV.lyra-state.> for KV readiness announce. allow_responses=true for JetStream API request-reply (js.create_key_value). No explicit subscription subjects.",
+      "allow_responses": true,
+      "publish": [
+        "lyra.audit.>",
+        "$JS.API.>",
+        "$KV.lyra-state.>"
+      ],
+      "subscribe": [
+        "_inbox.blobstore.>"
+      ],
+      "deploy": { "type": "container", "secret": "lyra-nats-blobstore" }
     }
   }
 }

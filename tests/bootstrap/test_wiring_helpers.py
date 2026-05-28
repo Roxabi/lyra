@@ -12,8 +12,11 @@ import pytest
 import lyra.bootstrap.factory.wiring_helpers as wiring_helpers_mod
 from lyra.bootstrap.factory.wiring_helpers import (
     BotAuthBundle,
+    BuildHubDeps,
     CliPoolBundle,
+    RegisterAgentsDeps,
     VoiceBundle,
+    WireAdaptersDeps,
     WiredAdapters,
     _build_hub,
     _init_bot_auths_and_agents,
@@ -486,7 +489,14 @@ class TestBuildHub:
         stores = MagicMock()
 
         # Act
-        result = _build_hub({}, bundle, voice, inbound_bus, pm, stores)
+        result = _build_hub(BuildHubDeps(
+            raw_config={},
+            bundle=bundle,
+            voice=voice,
+            inbound_bus=inbound_bus,
+            pm=pm,
+            stores=stores,
+        ))
 
         # Assert
         assert result is mock_hub
@@ -611,21 +621,32 @@ class TestRegisterAgents:
         mem_agent._memory.set_alias_store = MagicMock()
         hub.agent_registry = {"mem_agent": mem_agent}
 
+        from lyra.bootstrap.factory.agent_factory import ResolveAgentsDeps
+
         # Act
-        _register_agents(hub, bundle, voice, clipool, {}, stores)
+        _register_agents(RegisterAgentsDeps(
+            hub=hub,
+            bundle=bundle,
+            voice=voice,
+            clipool=clipool,
+            raw_config={},
+            stores=stores,
+        ))
 
         # Assert — resolve called with correct args
         mock_resolve.assert_called_once_with(
-            bundle.agent_configs,
-            None,
-            bundle.circuit_registry,
-            bundle.msg_manager,
-            voice.stt_service,
-            voice.tts_service,
-            agent_store=stores.agent,
-            llm_cfg=mock_llm_cfg,
-            nats_llm_client=voice.nats_llm_client,
-            cli_nats_driver=clipool.cli_nats_driver,
+            ResolveAgentsDeps(
+                agent_configs=bundle.agent_configs,
+                cli_pool=None,
+                circuit_registry=bundle.circuit_registry,  # type: ignore[reportArgumentType]
+                msg_manager=bundle.msg_manager,  # type: ignore[reportArgumentType]
+                stt_service=voice.stt_service,  # type: ignore[reportArgumentType]
+                tts_service=voice.tts_service,  # type: ignore[reportArgumentType]
+                agent_store=stores.agent,
+                llm_cfg=mock_llm_cfg,
+                nats_llm_client=voice.nats_llm_client,
+                cli_nats_driver=clipool.cli_nats_driver,
+            )
         )
 
         # Assert — every agent registered
@@ -675,8 +696,20 @@ class TestWireAdapters:
         fake_nc = MagicMock()
         vault_dir = Path("/tmp/fake_vault")
 
+        from lyra.bootstrap.wiring.bootstrap_wiring import (
+            DiscordWiringDeps,
+            TelegramWiringDeps,
+        )
+
         # Act
-        result = await _wire_adapters(hub, bundle, fake_nc, stores, vault_dir, {})
+        result = await _wire_adapters(WireAdaptersDeps(
+            hub=hub,
+            bundle=bundle,
+            nc=fake_nc,
+            stores=stores,
+            vault_dir=vault_dir,
+            raw_config={},
+        ))
 
         # Assert — _wire_adapters calls _load_tool_display_config({}) which returns
         # ToolDisplayConfig() defaults; the loader call is part of the contract and
@@ -684,24 +717,28 @@ class TestWireAdapters:
         # would have masked.
         expected_tdc = ToolDisplayConfig()
         mock_wire_tg.assert_awaited_once_with(
-            hub,
-            bundle.tg_bot_auths,
-            bundle.bot_agent_map,
-            bundle.circuit_registry,
-            bundle.msg_manager,
-            nats_client=fake_nc,
-            tool_display_config=expected_tdc,
+            TelegramWiringDeps(  # type: ignore[reportArgumentType]
+                hub=hub,
+                tg_bot_auths=bundle.tg_bot_auths,  # type: ignore[reportArgumentType]
+                bot_agent_map=bundle.bot_agent_map,
+                circuit_registry=bundle.circuit_registry,  # type: ignore[reportArgumentType]
+                msg_manager=bundle.msg_manager,  # type: ignore[reportArgumentType]
+                nats_client=fake_nc,
+                tool_display_config=expected_tdc,
+            )
         )
         mock_wire_dc.assert_awaited_once_with(
-            hub,
-            bundle.dc_bot_auths,
-            bundle.bot_agent_map,
-            bundle.circuit_registry,
-            bundle.msg_manager,
-            agent_store=stores.agent,
-            vault_dir=str(vault_dir),
-            nats_client=fake_nc,
-            tool_display_config=expected_tdc,
+            DiscordWiringDeps(  # type: ignore[reportArgumentType]
+                hub=hub,
+                dc_bot_auths=bundle.dc_bot_auths,  # type: ignore[reportArgumentType]
+                bot_agent_map=bundle.bot_agent_map,
+                circuit_registry=bundle.circuit_registry,  # type: ignore[reportArgumentType]
+                msg_manager=bundle.msg_manager,  # type: ignore[reportArgumentType]
+                agent_store=stores.agent,
+                vault_dir=str(vault_dir),
+                nats_client=fake_nc,
+                tool_display_config=expected_tdc,
+            )
         )
 
         assert isinstance(result, WiredAdapters)

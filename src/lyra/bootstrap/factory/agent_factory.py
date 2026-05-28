@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 # Re-exported for backward compatibility (tests import these from agent_factory)
+from lyra.agents.simple_agent import SimpleAgent
 from lyra.bootstrap.factory.bot_agent_map import (
     resolve_bot_agent_map,  # noqa: F401 — DEBT:re-export-init
 )
@@ -17,13 +20,53 @@ from lyra.core.messaging.messages import MessageManager
 from lyra.core.ports.stt import STTProtocol
 from lyra.core.ports.tts import TtsProtocol
 from lyra.infrastructure.stores.agent_store import AgentStore
+from lyra.integrations.base import SessionTools
+from lyra.integrations.vault_cli import VaultCli
+from lyra.integrations.web_intel import WebIntelScraper
 from lyra.llm.base import LlmProvider
+from lyra.llm.decorators import CircuitBreakerDecorator, RetryDecorator
+from lyra.llm.drivers.cli import ClaudeCliDriver
 from lyra.llm.registry import ProviderRegistry
 
 if TYPE_CHECKING:
     from lyra.llm.llm_client import LlmClient
 
 log = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# DI containers
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class CreateAgentDeps:
+    config: Agent
+    cli_pool: CliPool | None
+    circuit_registry: CircuitRegistry | None = None
+    msg_manager: MessageManager | None = None
+    stt: STTProtocol | None = None
+    tts: TtsProtocol | None = None
+    provider_registry: ProviderRegistry | None = None
+    agent_store: AgentStore | None = None
+    cli_nats_driver: "LlmClient | None" = None
+    agent_cls: Callable[..., AgentBase] = SimpleAgent
+    cli_driver_cls: type = ClaudeCliDriver
+    session_tools: SessionTools | None = None
+
+
+@dataclass
+class ResolveAgentsDeps:
+    agent_configs: dict[str, Agent]
+    cli_pool: CliPool | None
+    circuit_registry: CircuitRegistry
+    msg_manager: MessageManager
+    stt_service: STTProtocol | None
+    tts_service: TtsProtocol | None = None
+    agent_store: AgentStore | None = None
+    llm_cfg: LlmConfig | None = None
+    nats_llm_client: "LlmClient | None" = None
+    cli_nats_driver: "LlmClient | None" = None
 
 
 # ---------------------------------------------------------------------------
@@ -40,13 +83,15 @@ async def _resolve_bot_agent_map(
     return await resolve_bot_agent_map(agent_store, tg_bots, dc_bots)
 
 
-def _build_shared_base_providers(
+def _build_shared_base_providers(  # noqa: PLR0913
     circuit_registry: CircuitRegistry,
     cli_pool: CliPool | None,
     llm_cfg: LlmConfig,
     *,
     nats_llm_client: "LlmClient | None" = None,
     cli_nats_driver: "LlmClient | None" = None,
+    cb_decorator_cls: type = CircuitBreakerDecorator,
+    retry_decorator_cls: type = RetryDecorator,
 ) -> dict[str, LlmProvider]:
     """Build ``{backend: base LlmProvider}`` reusable across all agents.
 
@@ -57,31 +102,27 @@ def _build_shared_base_providers(
     ``cli_nats_driver`` takes precedence over ``cli_pool`` for the
     ``claude-cli`` backend when both are provided.
     """
-    from lyra.llm.decorators import CircuitBreakerDecorator, RetryDecorator
-
     providers: dict[str, LlmProvider] = {}
 
     if cli_nats_driver is not None:
         cli_cb = circuit_registry.get("claude-cli")
         base: LlmProvider = cli_nats_driver
         if cli_cb is not None:
-            providers["claude-cli"] = CircuitBreakerDecorator(base, cli_cb)
+            providers["claude-cli"] = cb_decorator_cls(base, cli_cb)
         else:
             providers["claude-cli"] = base
         log.info("Shared base: built claude-cli driver via NATS (decorated)")
     elif cli_pool is not None:
-        from lyra.llm.drivers.cli import ClaudeCliDriver
-
         cli_driver: LlmProvider = ClaudeCliDriver(cli_pool)
         cli_cb = circuit_registry.get("claude-cli")
         if cli_cb is not None:
-            providers["claude-cli"] = CircuitBreakerDecorator(cli_driver, cli_cb)
+            providers["claude-cli"] = cb_decorator_cls(cli_driver, cli_cb)
         else:
             providers["claude-cli"] = cli_driver
         log.info("Shared base: built claude-cli driver (in-process, decorated)")
 
     if nats_llm_client is not None:
-        providers["nats"] = RetryDecorator(
+        providers["nats"] = retry_decorator_cls(
             nats_llm_client,
             max_retries=llm_cfg.max_retries,
             backoff_base=llm_cfg.backoff_base,
@@ -125,84 +166,60 @@ def _build_provider_registry(
     return _build_per_agent_registry(shared)
 
 
-def _create_agent(  # noqa: PLR0913  — DEBT:wiring-bootstrap-deps — factory with optional overrides for each agent dependency
-    config: Agent,
-    cli_pool: CliPool | None,
-    circuit_registry: CircuitRegistry | None = None,
-    msg_manager: MessageManager | None = None,
-    stt: STTProtocol | None = None,
-    tts: TtsProtocol | None = None,
-    provider_registry: ProviderRegistry | None = None,
-    agent_store: AgentStore | None = None,
-    cli_nats_driver: "LlmClient | None" = None,
-) -> AgentBase:
+def _create_agent(deps: CreateAgentDeps) -> AgentBase:
     """Select agent implementation based on backend config."""
-    backend = config.llm_config.backend
+    backend = deps.config.llm_config.backend
     if backend in ("claude-cli", "nats"):
         if backend == "nats":
-            if provider_registry is None:
+            if deps.provider_registry is None:
                 raise ValueError(
                     "backend='nats' requires a ProviderRegistry with 'nats' registered."
                     " Is NATS_URL set?"
                 )
             try:
-                provider = provider_registry.get("nats")
+                provider = deps.provider_registry.get("nats")
             except KeyError as exc:
                 raise RuntimeError(
                     "backend='nats' registered but LlmClient missing from"
                     " registry -- is NATS_URL set and driver started?"
                 ) from exc
-        elif provider_registry is not None:
-            provider = provider_registry.get("claude-cli")
+        elif deps.provider_registry is not None:
+            provider = deps.provider_registry.get("claude-cli")
         else:
-            if cli_pool is None:
+            if deps.cli_pool is None:
                 raise RuntimeError(f"CliPool required for {backend} backend")
-            from lyra.llm.drivers.cli import ClaudeCliDriver
+            provider = deps.cli_driver_cls(deps.cli_pool)
 
-            provider = ClaudeCliDriver(cli_pool)
-        from lyra.agents.simple_agent import SimpleAgent
-        from lyra.integrations.base import SessionTools
-        from lyra.integrations.vault_cli import VaultCli
-        from lyra.integrations.web_intel import WebIntelScraper
+        if deps.session_tools is None:
+            try:
+                session_tools = SessionTools(
+                    scraper=WebIntelScraper(), vault=VaultCli()
+                )
+            except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
+                log.warning(
+                    "agent_factory: could not build SessionTools — passing None",
+                    exc_info=True,
+                )
+                session_tools = None
+        else:
+            session_tools = deps.session_tools
 
-        try:
-            session_tools: SessionTools | None = SessionTools(
-                scraper=WebIntelScraper(), vault=VaultCli()
-            )
-        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
-            log.warning(
-                "agent_factory: could not build SessionTools — passing None",
-                exc_info=True,
-            )
-            session_tools = None
-
-        return SimpleAgent(
-            config,
+        return deps.agent_cls(
+            deps.config,
             provider,
-            cli_pool=cli_pool,
-            circuit_registry=circuit_registry,
-            msg_manager=msg_manager,
-            stt=stt,
-            tts=tts,
-            agent_store=agent_store,
+            cli_pool=deps.cli_pool,
+            circuit_registry=deps.circuit_registry,
+            msg_manager=deps.msg_manager,
+            stt=deps.stt,
+            tts=deps.tts,
+            agent_store=deps.agent_store,
             session_tools=session_tools,
-            cli_nats_driver=cli_nats_driver,
+            cli_nats_driver=deps.cli_nats_driver,
         )
     raise ValueError(f"Unknown backend: {backend}")
 
 
-def _resolve_agents(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
-    agent_configs: dict[str, Agent],
-    cli_pool: CliPool | None,
-    circuit_registry: CircuitRegistry,
-    msg_manager: MessageManager,
-    stt_service: STTProtocol | None,
-    tts_service: TtsProtocol | None = None,
-    agent_store: AgentStore | None = None,
-    llm_cfg: LlmConfig | None = None,
-    nats_llm_client: "LlmClient | None" = None,
-    cli_nats_driver: "LlmClient | None" = None,
-) -> dict[str, AgentBase]:
+def _resolve_agents(deps: ResolveAgentsDeps) -> dict[str, AgentBase]:
     """Create all uniquely named agents referenced by bot configs.
 
     Builds the shared driver layer once (``_build_shared_base_providers``),
@@ -220,15 +237,17 @@ def _resolve_agents(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
     instead of an in-process ``CliPool``. Takes precedence over ``cli_pool``.
     """
     shared_providers = _build_shared_base_providers(
-        circuit_registry,
-        cli_pool,
-        llm_cfg or LlmConfig(),
-        nats_llm_client=nats_llm_client,
-        cli_nats_driver=cli_nats_driver,
+        deps.circuit_registry,
+        deps.cli_pool,
+        deps.llm_cfg or LlmConfig(),
+        nats_llm_client=deps.nats_llm_client,
+        cli_nats_driver=deps.cli_nats_driver,
     )
 
     agents: dict[str, AgentBase] = {}
-    for name, agent_config in sorted(agent_configs.items()):  # deterministic log order
+    for name, agent_config in sorted(  # deterministic log order
+        deps.agent_configs.items()
+    ):
         log.info(
             "Agent loaded: name=%s model=%s backend=%s",
             agent_config.name,
@@ -237,15 +256,17 @@ def _resolve_agents(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         )
         per_agent_registry = _build_per_agent_registry(shared_providers)
         agent = _create_agent(
-            agent_config,
-            cli_pool,
-            circuit_registry=circuit_registry,
-            msg_manager=msg_manager,
-            stt=stt_service,
-            tts=tts_service,
-            provider_registry=per_agent_registry,
-            agent_store=agent_store,
-            cli_nats_driver=cli_nats_driver,
+            CreateAgentDeps(
+                config=agent_config,
+                cli_pool=deps.cli_pool,
+                circuit_registry=deps.circuit_registry,
+                msg_manager=deps.msg_manager,
+                stt=deps.stt_service,
+                tts=deps.tts_service,
+                provider_registry=per_agent_registry,
+                agent_store=deps.agent_store,
+                cli_nats_driver=deps.cli_nats_driver,
+            )
         )
         agents[name] = agent
     return agents

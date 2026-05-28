@@ -77,11 +77,12 @@ class TestAllowResponsesHonored:
         assert "allow_responses: true" in rendered
 
     def test_allow_responses_false_honored(self, prod_matrix: LoadedMatrix) -> None:
-        """hub (allow_responses=False) renders allow_responses: false in block."""
+        """telegram-adapter (allow_responses=False) renders allow_responses: false
+        in block."""
         pubkeys = _fake_pubkeys(prod_matrix)
         rendered = render_auth_conf(prod_matrix, pubkeys)
 
-        assert prod_matrix["identities"]["hub"]["allow_responses"] is False
+        assert prod_matrix["identities"]["telegram-adapter"]["allow_responses"] is False
         assert "allow_responses: false" in rendered
 
 

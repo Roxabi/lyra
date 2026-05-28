@@ -1,0 +1,54 @@
+---
+title: feat(ops): blob mount, noatime, inode/df alerts, orphan reconciler, backup runbook
+issue: 1068
+status: approved
+tier: F-lite
+date: 2026-05-28
+---
+
+## Problem
+
+The BlobStore HTTP service (V8 #1330) is implemented but not yet operationalized on M1 (`lyra-hub` role). Without dedicated ops plumbing, the service cannot survive host restarts, disk exhaustion, or data corruption. The epic #1061 V7 slice requires: persistent volume with correct mount options, health monitoring, automated cleanup, and a tested backup procedure.
+
+## Who
+
+- **Primary:** M1 host operator ( deploy, monitor, recover from disk issues)
+- **Secondary:** Developers who deploy via `deploy.sh` and need idempotent, documented procedures
+
+## Constraints
+
+- M1 only — single-host backend, no replication
+- `noatime` + `nodiratime` required for performance
+- Mount distinct from JetStream `store_dir`
+- Syncthing exclusion mandatory for `/data/lyra/blobs/`
+- Port 8449 (fallback 8450) — must not conflict with existing Quadlet units
+- Startup ordering: `lyra-blobstore` must start after `lyra-nats`, `lyra-hub` must start after `lyra-blobstore`
+- Readiness signal via `blobstore.ready` in JS-KV `lyra-state` bucket
+
+## Out of Scope
+
+- BlobStore code changes (V8 #1330 owns the service)
+- Contract/schema changes (#1067 owns usage contracts)
+- Layout FS decisions (#1063 owns V1 layout)
+- Multi-host replication or HA
+- Automated failover
+
+## Premise Validity
+
+**Success in 6 months:** BlobStore container starts on every M1 boot, `/data/lyra/blobs` is mounted with `noatime`, health check at `:8449/healthz` is green, orphan-reconciler runs weekly and removes >95% of orphaned blobs, disk/inode alerts fire at 60%/70%, backup runbook has been executed at least once and verified.
+
+**Failure in 6 months:** Disk at `/data/lyra/blobs` exceeds 80% with zero alert fired, OR inode exhaustion causes write failures, OR orphan blobs accumulate to >5% of total storage without reconciliation, OR backup runbook exists but has never been executed.
+
+**Simplest alternative:** Deploy `lyra-blobstore.container` with a plain Podman named volume, no alerts, no scripts, no runbook.
+
+**Why not simplest:** Named volume = overlay2 CoW = performance degradation for large blob writes; no alerts = disk exhaustion takes down the hub silently; no reconciler = FS drifts from index over time; no runbook = recovery from corruption is ad-hoc and slow.
+
+## Complexity
+
+**Tier: F-lite** — Single domain (ops/deploy), clear scope, no new architecture, dependencies resolved.
+
+- Files touched: ~6 (Quadlet unit, manifest, deploy script, health check, reconciler script, runbook)
+- Technical risk: Low — known Quadlet patterns, existing NATS readiness SDK
+- Architectural impact: None — extends existing deploy infrastructure
+- Unknowns: 0 — all blockers closed, port verified, paths standardized
+- Domain breadth: 1 (ops/deploy)

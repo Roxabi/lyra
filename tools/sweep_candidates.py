@@ -302,29 +302,30 @@ def main() -> int:
     wt_blockers = get_worktree_blockers(issues)
     pr_blockers = get_pr_blockers(issues, prs)
 
-    for wt in wt_blockers:
-        size = wt["size"] or "unset"
-        flag = "🟢" if size in ("XS", "S") else "⚠️"
-        msg = (
-            f"{flag} Worktree `{wt['wt_name']}` → #{wt['issue_number']} "
-            f"(size: {size}) — sweep blocked"
-        )
-        print(msg, file=sys.stderr)
+    if not args.json:
+        for wt in wt_blockers:
+            size = wt["size"] or "unset"
+            flag = "🟢" if size in ("XS", "S") else "⚠️"
+            msg = (
+                f"{flag} Worktree `{wt['wt_name']}` → #{wt['issue_number']} "
+                f"(size: {size}) — sweep blocked"
+            )
+            print(msg, file=sys.stderr)
 
-    for pr in pr_blockers:
-        size = pr["size"] or "unset"
-        flag = "🟢" if size in ("XS", "S") else "⚠️"
-        msg = (
-            f"{flag} PR #{pr['pr_number']} `{pr['pr_title']}` → "
-            f"#{pr['issue_number']} (size: {size}) — sweep blocked"
-        )
-        print(msg, file=sys.stderr)
+        for pr in pr_blockers:
+            size = pr["size"] or "unset"
+            flag = "🟢" if size in ("XS", "S") else "⚠️"
+            msg = (
+                f"{flag} PR #{pr['pr_number']} `{pr['pr_title']}` → "
+                f"#{pr['issue_number']} (size: {size}) — sweep blocked"
+            )
+            print(msg, file=sys.stderr)
 
-    if not wt_blockers and worktree_exists():
-        print(
-            "⚠️  Worktree exists (unlinked) — sweep blocked until cleared.",
-            file=sys.stderr,
-        )
+        if not wt_blockers and worktree_exists():
+            print(
+                "⚠️  Worktree exists (unlinked) — sweep blocked until cleared.",
+                file=sys.stderr,
+            )
 
     top = candidates[: args.top]
 

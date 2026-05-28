@@ -11,6 +11,14 @@ from lyra.core.agent.agent_config import ModelConfig
 from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent
 from lyra.core.ports.stt import TranscriptionResult
 from lyra.core.ports.tts import SynthesisResult
+from roxabi_contracts import BlobRef
+
+_FAKE_BLOB = BlobRef(
+    store_key="test", content_hash="deadbeef", mime="audio/wav", size=0, source="test"
+)
+_FAKE_BLOB_OGG = BlobRef(
+    store_key="test", content_hash="deadbeef", mime="audio/ogg", size=0, source="test"
+)
 
 
 class TestFakeTts:
@@ -35,7 +43,8 @@ class TestFakeTts:
         assert tts.last_text == "Test text"
         assert tts.last_voice == "alloy"
         assert isinstance(result, SynthesisResult)
-        assert result.audio_bytes == tts._audio_bytes
+        assert result.blob_ref is not None
+        assert result.blob_ref.size == len(tts._audio_bytes)
 
     @pytest.mark.asyncio
     async def test_fake_tts_returns_synthesis_result(self) -> None:
@@ -77,7 +86,8 @@ class TestFakeTts:
 
         assert tts.called is True
         assert tts.last_text == ""
-        assert result.audio_bytes == tts._audio_bytes
+        assert result.blob_ref is not None
+        assert result.blob_ref.size == len(tts._audio_bytes)
 
     @pytest.mark.asyncio
     async def test_fake_tts_handles_none_voice(self) -> None:
@@ -87,7 +97,8 @@ class TestFakeTts:
         result = await tts.synthesize("Test text", voice=None)
 
         assert tts.last_voice == ""
-        assert result.audio_bytes == tts._audio_bytes
+        assert result.blob_ref is not None
+        assert result.blob_ref.size == len(tts._audio_bytes)
 
 
 class TestFakeStt:
@@ -105,7 +116,7 @@ class TestFakeStt:
         """Should return configured preset transcript."""
         stt = FakeStt(preset_transcript="Custom transcript")
 
-        result = await stt.transcribe(b"fake audio", "audio/wav")
+        result = await stt.transcribe(_FAKE_BLOB, "audio/wav")
 
         assert isinstance(result, TranscriptionResult)
         assert result.text == "Custom transcript"
@@ -116,27 +127,27 @@ class TestFakeStt:
         """Should record audio and mime from transcribe call."""
         stt = FakeStt()
 
-        await stt.transcribe(b"audio data", "audio/wav")
+        await stt.transcribe(_FAKE_BLOB, "audio/wav")
 
         assert stt.called is True
-        assert stt.last_audio == b"audio data"
+        assert stt.last_audio == _FAKE_BLOB
         assert stt.last_mime == "audio/wav"
 
     @pytest.mark.asyncio
-    async def test_fake_stt_records_audio_bytes(self) -> None:
-        """Should record audio bytes passed directly."""
+    async def test_fake_stt_records_audio_blob(self) -> None:
+        """Should record audio BlobRef passed directly."""
         stt = FakeStt()
 
-        await stt.transcribe(b"fake audio data here", "audio/wav")
+        await stt.transcribe(_FAKE_BLOB, "audio/wav")
 
-        assert stt.last_audio == b"fake audio data here"
+        assert stt.last_audio == _FAKE_BLOB
 
     @pytest.mark.asyncio
     async def test_fake_stt_records_mime(self) -> None:
         """Should record the mime type passed to transcribe."""
         stt = FakeStt()
 
-        await stt.transcribe(b"\x00" * 16, "audio/ogg")
+        await stt.transcribe(_FAKE_BLOB_OGG, "audio/ogg")
 
         assert stt.last_mime == "audio/ogg"
 
@@ -146,7 +157,7 @@ class TestFakeStt:
         stt = FakeStt(raise_on_transcribe=RuntimeError("STT unavailable"))
 
         with pytest.raises(RuntimeError, match="STT unavailable"):
-            await stt.transcribe(b"fake audio", "audio/wav")
+            await stt.transcribe(_FAKE_BLOB, "audio/wav")
 
         assert stt.called is True  # Call was recorded before raise
 
@@ -155,7 +166,7 @@ class TestFakeStt:
         """Should accept any mime type string."""
         stt = FakeStt(preset_transcript="mime test")
 
-        result = await stt.transcribe(b"ogg data", "audio/ogg")
+        result = await stt.transcribe(_FAKE_BLOB_OGG, "audio/ogg")
 
         assert result.text == "mime test"
         assert stt.last_mime == "audio/ogg"

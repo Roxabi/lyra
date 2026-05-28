@@ -30,11 +30,10 @@ class TtsProtocol(Protocol):
 
 @dataclass
 class SynthesisResult:
-    audio_bytes: bytes
+    blob_ref: BlobRef
     mime_type: str
     duration_ms: int | None  # None if WAV header unreadable
     waveform_b64: str | None = field(default=None)  # 256-byte amplitude array, base64
-    blob_ref: BlobRef | None = field(default=None)
     error: str = field(default="")  # non-empty on codec decode failure
 
 

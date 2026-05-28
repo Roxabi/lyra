@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from lyra.core.ports.stt import STTNoiseError, STTUnavailableError, TranscriptionResult
 from lyra.nats.nats_stt_codec import SttEncodeParams
 from lyra.nats.stt_helpers import is_whisper_noise
+from roxabi_contracts import PENDING_STORE_KEY, BlobRef
 from roxabi_contracts.voice import per_worker_stt
 
 if TYPE_CHECKING:
@@ -49,9 +50,21 @@ class NatsSttClient:
     def is_available(self) -> bool:
         return self._pool.is_pool_alive()
 
-    async def transcribe(self, audio: bytes, mime: str) -> TranscriptionResult:
+    async def transcribe(
+        self, audio: BlobRef | bytes, mime: str
+    ) -> TranscriptionResult:
         params = SttEncodeParams(model=self._model)
-        payload = self._codec.encode(audio, mime, params)
+        if isinstance(audio, bytes):
+            blob_ref = BlobRef(
+                store_key=PENDING_STORE_KEY,
+                content_hash="",
+                mime=mime,
+                size=len(audio),
+                source="lyra-hub",
+            )
+        else:
+            blob_ref = audio
+        payload = self._codec.encode(blob_ref, mime, params)
         result = await self._pool.request_with_routing(
             per_worker_stt, payload, max_attempts=None
         )

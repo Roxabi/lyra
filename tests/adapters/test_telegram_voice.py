@@ -237,6 +237,7 @@ def test_normalize_audio_voice_fields() -> None:
     assert result.audio.file_id == "F1"
     from roxabi_contracts import PENDING_STORE_KEY
 
+    assert result.audio.blob_ref is not None
     assert result.audio.blob_ref.store_key == PENDING_STORE_KEY
     assert result.audio.blob_ref.size == len(b"data")
     assert result.audio.blob_ref.source == "telegram"

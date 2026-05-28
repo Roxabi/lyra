@@ -10,10 +10,14 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
+from roxabi_contracts import BlobRef
+
 
 @runtime_checkable
 class STTProtocol(Protocol):
-    async def transcribe(self, audio: bytes, mime: str) -> "TranscriptionResult": ...
+    async def transcribe(
+        self, audio: BlobRef | bytes, mime: str
+    ) -> "TranscriptionResult": ...
 
 
 @dataclass

@@ -1,6 +1,6 @@
 # Agent Management
 
-Agents are stored in **`~/.lyra/config.db`** (SQLite). TOML files are seed sources only — run `lyra agent init` to import them into the DB before use.
+Agents and bots are stored in **`~/.lyra/config.db`** (SQLite). TOML files are seed sources only — run `lyra agent init` (agents) and `lyra bot init` (bots) to import them into the DB before use.
 
 ## Database Tables
 
@@ -9,6 +9,22 @@ Agents are stored in **`~/.lyra/config.db`** (SQLite). TOML files are seed sourc
 | `agents` | Agent configurations (24 columns — see `effort` below) |
 | `bot_agent_map` | Maps `(platform, bot_id)` → `agent_name` |
 | `agent_runtime_state` | Runtime status (idle/active/error, pool_count) |
+
+## Bot Configuration
+
+Bots are configured in `~/.lyra/config.toml` (`[[telegram.bots]]`, `[[discord.bots]]`, `[[auth.telegram_bots]]`, `[[auth.discord_bots]]`). The hub reads bot metadata from `BotStore` (table `bots`), not from `config.toml` directly.
+
+```bash
+# Seeding (required before first hub boot since #1416)
+lyra bot init                     # import config.toml → BotStore (skip existing)
+lyra bot init --force             # overwrite existing rows
+
+# Secret management
+lyra bot secret install <platform> <bot_id>   # create Podman secret for bot token
+lyra bot secret install <platform> <bot_id>-webhook
+```
+
+**Rule:** `lyra bot init` is idempotent. Run it after every `config.toml` edit that changes bot definitions.
 
 ## TOML Search Locations
 

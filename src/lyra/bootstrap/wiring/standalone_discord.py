@@ -203,6 +203,8 @@ async def bootstrap_discord_standalone(
             await close_safely(
                 "dc-typing-start",
                 dc_typing_listener.stop(),
+                adapter_dc.close(),
+                inbound_bus_dc.stop(),
             )
             raise
 

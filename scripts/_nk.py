@@ -34,8 +34,8 @@ class SubprocessNkeyProvider(NkeyProvider):
         # newline, and nk is finicky about extra whitespace on some versions.
         fd, tmp_path = tempfile.mkstemp(suffix=".seed")
         try:
-            os.write(fd, seed.strip() + b"\n")
-            os.close(fd)
+            with os.fdopen(fd, "wb") as f:
+                f.write(seed.strip() + b"\n")
             result = subprocess.run(
                 ["nk", "-inkey", tmp_path, "-pubout"],
                 capture_output=True,

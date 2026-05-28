@@ -159,6 +159,8 @@ async def bootstrap_telegram_standalone(
             await close_safely(
                 "tg-typing-start",
                 tg_typing_listener.stop(),
+                adapter.close(),
+                inbound_bus.stop(),
             )
             raise
 

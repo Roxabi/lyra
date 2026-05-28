@@ -1,0 +1,191 @@
+# Issue 1490 — Harness Composition: External Research Synthesis
+
+> **Status:** analysis complete
+> **Sources:** Hermes (NousResearch), Pi (badlogic/pi-mono), ECC (affaan-m/ECC), Meta-Harness (Stanford IRIS), OpenHarness (HKUDS)
+> **Written:** 2026-05-28
+> **Purpose:** inform runtime choice (§9) and implementation design for `lyra-harness` stateless agent turn worker
+
+---
+
+## TL;DR
+
+- **Hermes = defensive execution harness** — 15+ provider-specific recovery paths, strict system-prompt cache protection, SQLite session state. Best for: production resilience, multi-provider support.
+- **Pi = interactive session harness** — tree-based JSONL sessions, split-turn compaction, phase machine, typed extension API. Best for: long-running TUI, deep context lifecycle.
+- **ECC = cross-harness operator layer** — hook profiles, DRY adapter, SQLite instincts, AgentShield verification. Best for: multi-IDE parity, institutional knowledge retention.
+- **Meta-Harness = automated optimization** — outer loop searches over harness code with filesystem observability; 7.7pp improvement over hand-tuned. Best for: long-term evolution.
+- **OpenHarness = batteries-included scaffold** — dry-run preview, multi-level permissions, auto-compaction, Pydantic tools. Best for: rapid bootstrap, safe tool execution.
+- **For lyra-harness:** Custom thin loop (~200 lines) remains the right call — but Hermes's error classifier and Pi's session tree are the two highest-ROI patterns to port.
+
+---
+
+## 1. Hermes — Defensive Execution Harness
+
+| Component | File | Role |
+|---|---|---|
+| Orchestration loop | `agent/conversation_loop.py` | `run_conversation()` — single `while` with interrupt + budget + sanitization |
+| Agent init | `agent/agent_init.py` | 60-parameter constructor, provider auto-detection |
+| Error classifier | `agent/error_classifier.py` | `FailoverReason` enum (auth, billing, rate_limit, context_overflow, thinking_signature, llama_cpp_grammar, ...) |
+| Context compressor | `agent/context_compressor.py` | Middle-turn summarization with auxiliary model, head/tail protection |
+| Memory manager | `agent/memory_manager.py` | Single integration point for external memory providers |
+| State store | `hermes_state.py` | `SessionDB` — SQLite + WAL + FTS5 |
+| Plugin system | `hermes_cli/plugins.py` | 20+ hooks (`pre_llm_call`, `post_tool_call`, `transform_llm_output`, ...) |
+
+### Key patterns for lyra
+
+| Pattern | Why it matters |
+|---|---|
+| **FailoverReason classifier** | 15+ provider-specific recovery paths instead of generic retries. Critical for lyra-harness running across Claude, LiteLLM, local models. |
+| **System prompt = Hermes territory** | Plugins inject context into user message only. Preserves prefix cache across turns. |
+| **Async bridging without `asyncio.run()`** | Per-thread persistent event loops prevent "Event loop is closed" from cached httpx clients. |
+| **Plugin boundaries** | Plugins cannot break prefix cache. Context injected into user message only. |
+| **Tool dispatch classification** | Sequential for file-mutating (`write_file`, `patch`); concurrent via `ThreadPoolExecutor(max_workers=8)` for parallel-safe tools. |
+
+---
+
+## 2. Pi (pi-mono) — Interactive Session Harness
+
+| Layer | Package | Key File | Responsibility |
+|---|---|---|---|
+| LLM transport | `pi-ai` | `packages/ai/src/stream.ts` | Multi-provider streaming, prompt caching |
+| Agent loop | `pi-agent-core` | `packages/agent/src/agent-loop.ts` | Turn-based loop, tool execution, event emission |
+| Agent state | `pi-agent-core` | `packages/agent/src/agent.ts` | Stateful wrapper, queues, abort, listeners |
+| Harness | `pi-agent-core` | `packages/agent/src/harness/agent-harness.ts` | Session integration, skills, templates, compaction |
+| Session storage | `pi-agent-core` | `packages/agent/src/harness/session/session.ts` | Tree-based JSONL persistence, branch navigation |
+| CLI session | `pi-coding-agent` | `packages/coding-agent/src/core/agent-session.ts` | Extensions, UI, bash, auto-retry |
+
+### Key patterns for lyra
+
+| Pattern | Why it matters |
+|---|---|
+| **Phase machine** | `AgentHarness.phase` (`idle` / `turn` / `compaction` / `retry`) prevents race conditions. Directly applicable to `/dev` skill and lyra-harness turn lifecycle. |
+| **Session tree (not log)** | `SessionTreeEntry` types (11 entry types) + `moveTo()` for branching. Could inform lyra's canonical-store history model. |
+| **Split-turn compaction** | `compaction.ts` summarizes history + turn-prefix separately so user never loses current turn. |
+| **Pending write buffer** | `pendingSessionWrites` buffers session mutations during a turn; flushed at `turn_end`. |
+| **Event streaming** | `EventStream<AgentEvent,AgentMessage[]>` — UI gets incremental updates without polling. |
+| **Boundary conversion** | Internal `AgentMessage[]` → `Message[]` only at LLM boundary. Keeps loop provider-agnostic. |
+
+---
+
+## 3. ECC — Cross-Harness Operator System
+
+| Pattern | Why it matters |
+|---|---|
+| **Hook profiles** (`minimal` / `standard` / `strict`) | Tune strictness via env vars without file edits. Enables progressive rollout and incident response. |
+| **DRY adapter** | Reuse Claude Code hook scripts on Cursor via translation layer. Eliminates config drift between IDEs. |
+| **SQLite state store + pattern extraction** | Session context persists across restarts; usage patterns cluster into confidence-scored instincts. |
+| **Verification loops** | Test-driven with 80%+ coverage + automated security scanning via AgentShield. |
+| **Manifest-driven install** | Component-scoped installation prevents bloat and caps initial session context. |
+
+---
+
+## 4. Meta-Harness (Stanford IRIS)
+
+| Pattern | Why it matters |
+|---|---|
+| **Agentic proposer with filesystem access** | Optimizer reads source code, scores, and execution traces of all prior candidates — not summaries. |
+| **End-to-end harness optimization** | Discovers what to store, retrieve, and present automatically. Beats hand-tuned baselines by 7.7pp with 75% fewer tokens. |
+| **Cross-model generalization** | Single discovered harness transfers to 5 unseen models. |
+| **Disk-based persistent candidate store** | Full execution context survives across optimization runs. |
+
+**Production insight:** The critical pattern is filesystem-based observability of all prior attempts — raw code + scores + traces. This is the difference between research-grade prompt tuning and production-grade harness evolution.
+
+---
+
+## 5. OpenHarness (HKUDS)
+
+| Pattern | Why it matters |
+|---|---|
+| **Dry-run preview mode** | Reports ready/warning/blocked verdicts before live execution. Reduces blast radius of new skills. |
+| **Multi-level permission modes** | PreToolUse/PostToolUse hooks with interactive approval dialogs. Compliance by default. |
+| **Context auto-compaction + MEMORY.md** | Long-running sessions preserve state without manual intervention. |
+| **Pydantic-validated tools** | Every tool has structured input validation and automatic discovery. |
+| **Streaming agent loop with retry + parallel execution** | Exponential backoff and concurrent tool calls maximize throughput. |
+
+---
+
+## 6. Cross-Source Comparison Matrix
+
+| Pattern | Hermes | Pi | ECC | Meta-Harness | OpenHarness |
+|---|---|---|---|---|---|
+| **Error classifier** | `FailoverReason` (15+ paths) | `Result<T,Error>` + stable codes | AgentShield | Not discussed | Ready/warning/blocked |
+| **Context lifecycle** | Middle-turn compression | Split-turn compaction | Strategic compaction | Token reduction | Auto-compaction |
+| **Session state** | SQLite + WAL | JSONL tree | SQLite + instincts | Filesystem history | MEMORY.md |
+| **Plugin boundaries** | System prompt = sacred | Extension invalidation | Hook profiles | Not discussed | Pre/PostToolUse |
+| **Cross-harness parity** | Not discussed | Not discussed | DRY adapter | Not discussed | Not discussed |
+| **Automated optimization** | Not discussed | Not discussed | Instinct learning | Outer-loop search | Not discussed |
+| **Dry-run preview** | Not discussed | Not discussed | Not discussed | Not discussed | Ready/warning/blocked |
+| **Phase machine** | Not discussed | `idle`/`turn`/`compaction` | Not discussed | Not discussed | Not discussed |
+| **Abort propagation** | `AbortController` per run | `AbortController` per run/tool/bash | Not discussed | Not discussed | Not discussed |
+| **Tool concurrency** | Sequential write / parallel read | `executionMode` per tool | Not discussed | Not discussed | Parallel execution |
+
+---
+
+## 7. Recommendations for lyra-harness (Issue 1490)
+
+### High-priority patterns to adopt
+
+| # | Pattern | Source | Effort | Impact |
+|---|---|---|---|---|
+| 1 | **Error classifier** (`FailoverReason`-style) | Hermes | M | Critical — lyra-harness will run across multiple providers (Claude, LiteLLM, local models) |
+| 2 | **Phase machine** (`idle`/`turn`/`compaction`/`retry`) | Pi | S | Prevents race conditions in turn lifecycle; directly applicable to `/dev` skill |
+| 3 | **Pending write buffer** | Pi | S | Flush session mutations at `turn_end` rather than inline |
+| 4 | **Context compressor** (middle-turn with auxiliary model) | Hermes | M | Long sessions hit token limits; proactive compression is non-negotiable |
+| 5 | **Dry-run preview mode** | OpenHarness | M | Validates harness changes before live execution |
+| 6 | **Tool concurrency classification** (sequential write / parallel read) | Hermes + Pi | S | Read-only parallelizes; write serializes with checkpointing |
+
+### Medium-priority patterns
+
+| # | Pattern | Source | Effort | Impact |
+|---|---|---|---|---|
+| 7 | **Structured trace output** (task → trace → outcome → tokens) | Meta-Harness | M | Enables future automated harness optimization |
+| 8 | **Hook profiles** (`minimal`/`standard`/`strict`) | ECC | M | Progressive rollout of safety checks |
+| 9 | **Cross-harness parity** (DRY adapter) | ECC | L | If lyra skills ever need to run on Cursor/Codex |
+
+### Low-priority / future
+
+| # | Pattern | Source | Effort | Impact |
+|---|---|---|---|---|
+| 10 | **Session tree** (branching, `moveTo`) | Pi | L | Could inform canonical-store history model, but v1 scope is stateless per-turn |
+| 11 | **Automated harness optimization** | Meta-Harness | L | Requires structured traces (item 7) as prerequisite |
+| 12 | **Instinct learning** | ECC | L | Requires operational history and confidence scoring |
+
+---
+
+## 8. Runtime Choice Revisited (§9 from harness-epic-consolidated.md)
+
+| Runtime | Prior Verdict | Revisited Verdict | Rationale |
+|---|---|---|---|
+| **LangGraph** | Best fit | Still viable | Mature, pluggable, `MemorySaver` = caller-driven context. But adds dependency for v1. |
+| **Hermes** | Worth deeper look | **Port patterns, not adopt wholesale** | Too heavy for lyra-harness v1 (2600-line loop, 60-param agent). But error classifier + tool concurrency are portable. |
+| **Pi** | Polyglot pain (TypeScript) | **Port patterns, not adopt** | Session tree + phase machine are portable concepts. TypeScript runtime rules out for lyra (Python). |
+| **Custom thin loop** | **Tentative recommendation** | **Confirmed** | ~200 lines Python, zero external lock-in, swappable later. Port Hermes's `FailoverReason` + Pi's phase machine into the custom loop. |
+| **OpenHarness** | Not discussed | **Reference scaffold** | Good for rapid bootstrap, but lyra-harness is already well-scoped. Use as reference for dry-run + permissions. |
+
+**Revised recommendation:** Custom thin loop with selective porting:
+- Hermes's error classifier pattern (provider-specific recovery paths)
+- Pi's phase machine (turn lifecycle states)
+- Hermes's tool concurrency classification (sequential write / parallel read)
+- OpenHarness's dry-run preview concept (for tool validation)
+
+---
+
+## 9. Child Issue Additions for 1490
+
+Based on this research, the following child issues should be added to the epic:
+
+1. **Error classifier design** — `FailoverReason`-style taxonomy for lyra-harness provider errors (429, 413, 529, auth, thinking_signature, etc.)
+2. **Phase machine implementation** — `idle`/`turn`/`compaction`/`retry` states for lyra-harness turn lifecycle
+3. **Context compression strategy** — middle-turn summarization with auxiliary model, head/tail protection
+4. **Tool concurrency classification** — sequential for file-mutating, parallel for read-only
+5. **Dry-run preview mode** — ready/warning/blocked verdicts before tool execution
+6. **Structured trace logging** — task → trace → outcome → tokens for future meta-harness optimization
+
+---
+
+## 10. Provenance
+
+- Hermes research: `external_repos/hermes-agent` (pulled 2026-05-28, `0554ef1aa`)
+- Pi research: `external_repos/pi-mono` (pulled 2026-05-28, `53ca936`)
+- Web research: ECC, Meta-Harness (arXiv:2603.28052), OpenHarness (HKUDS), Claude Code (Anthropic)
+- Synthesis: `roxabi-intel` session, 2026-05-28
+- Related: `artifacts/analyses/harness-epic-consolidated.md` (issue 1490 epic body)

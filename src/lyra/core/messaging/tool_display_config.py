@@ -9,7 +9,7 @@ from __future__ import annotations
 from types import MappingProxyType
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
 # Canonical show-key names (lowercase).  StreamProcessor normalises tool_name
 # to lowercase before lookup.
@@ -34,7 +34,10 @@ class ToolDisplayConfig(BaseModel):
     names_threshold:
         Number of individual file-edit names to show per file before switching
         to count-only mode (e.g. "5 edits").  Default: 5.
-    group_threshold:
+    bash_group_threshold:
+        Number of bash commands before switching from per-command display to a
+        grouped summary (e.g. "4 commands").  Default: 3.
+    files_group_threshold:
         Number of distinct files before switching from per-file display to a
         grouped summary (e.g. "4 files edited").  Default: 3.
     bash_max_len:
@@ -58,7 +61,8 @@ class ToolDisplayConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="ignore")
 
     names_threshold: int = 5
-    group_threshold: int = 3
+    bash_group_threshold: int = 3
+    files_group_threshold: int = 3
     bash_max_len: int = 80
     throttle_ms: int = 2000
     """Min ms between streaming edits. Future consumers must wire through
@@ -67,6 +71,17 @@ class ToolDisplayConfig(BaseModel):
     # Stored as dict[str, bool] for Pydantic compatibility; exposed as
     # MappingProxyType via the .show property to preserve read-only semantics.
     _show: dict[str, bool] = {}
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_group_threshold(cls, data: Any) -> Any:
+        """Deprecated alias: group_threshold sets both bash and files thresholds."""
+        if isinstance(data, dict) and data.get("group_threshold") is not None:
+            data = dict(data)
+            gt = data.pop("group_threshold")
+            data.setdefault("bash_group_threshold", gt)
+            data.setdefault("files_group_threshold", gt)
+        return data
 
     def __init__(self, **data: Any) -> None:
         show_raw: Any = data.pop("show", None)
@@ -92,11 +107,18 @@ class ToolDisplayConfig(BaseModel):
             raise ValueError(f"names_threshold must be >= 1, got {v}")
         return v
 
-    @field_validator("group_threshold")
+    @field_validator("bash_group_threshold")
     @classmethod
-    def _validate_group_threshold(cls, v: int) -> int:
+    def _validate_bash_group_threshold(cls, v: int) -> int:
         if v < 1:
-            raise ValueError(f"group_threshold must be >= 1, got {v}")
+            raise ValueError(f"bash_group_threshold must be >= 1, got {v}")
+        return v
+
+    @field_validator("files_group_threshold")
+    @classmethod
+    def _validate_files_group_threshold(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError(f"files_group_threshold must be >= 1, got {v}")
         return v
 
     @field_validator("bash_max_len")
@@ -118,7 +140,8 @@ class ToolDisplayConfig(BaseModel):
             return NotImplemented
         return (
             self.names_threshold == other.names_threshold
-            and self.group_threshold == other.group_threshold
+            and self.bash_group_threshold == other.bash_group_threshold
+            and self.files_group_threshold == other.files_group_threshold
             and self.bash_max_len == other.bash_max_len
             and self.throttle_ms == other.throttle_ms
             and self._show == other._show
@@ -128,7 +151,8 @@ class ToolDisplayConfig(BaseModel):
         return hash(
             (
                 self.names_threshold,
-                self.group_threshold,
+                self.bash_group_threshold,
+                self.files_group_threshold,
                 self.bash_max_len,
                 self.throttle_ms,
                 tuple(sorted(self._show.items())),

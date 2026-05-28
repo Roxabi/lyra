@@ -121,13 +121,13 @@ def test_accumulator_uses_default_bash_max_len_when_no_config() -> None:
 
 
 # ---------------------------------------------------------------------------
-# SC-1: group_threshold config
+# SC-1: bash_group_threshold / files_group_threshold config
 # ---------------------------------------------------------------------------
 
 
-def test_accumulator_respects_group_threshold() -> None:
-    """config.group_threshold controls when bash cmds collapse to a summary."""
-    config = ToolDisplayConfig(group_threshold=10)
+def test_accumulator_respects_bash_group_threshold() -> None:
+    """config.bash_group_threshold controls when bash cmds collapse to a summary."""
+    config = ToolDisplayConfig(bash_group_threshold=10)
 
     # 9 commands — below threshold → individual lines, no grouping
     accum_below = ToolRecapAccumulator(config=config)
@@ -136,7 +136,7 @@ def test_accumulator_respects_group_threshold() -> None:
     lines_below = format_recap_lines(accum_below, done=True)
     blines_below = _bash_lines(lines_below)
     assert not any("commands" in ln for ln in blines_below), (
-        "9 commands below group_threshold=10 must not be grouped"
+        "9 commands below bash_group_threshold=10 must not be grouped"
     )
 
     # 11 commands — above threshold → grouped summary
@@ -146,8 +146,43 @@ def test_accumulator_respects_group_threshold() -> None:
     lines_above = format_recap_lines(accum_above, done=True)
     blines_above = _bash_lines(lines_above)
     assert any("commands" in ln for ln in blines_above), (
-        "11 commands above group_threshold=10 must be grouped"
+        "11 commands above bash_group_threshold=10 must be grouped"
     )
+
+
+def test_accumulator_respects_files_group_threshold() -> None:
+    """config.files_group_threshold controls when file edits collapse to a summary."""
+    config = ToolDisplayConfig(files_group_threshold=5)
+
+    def _file_lines(lines: list[str]) -> list[str]:
+        return [ln for ln in lines if "✏️" in ln]
+
+    # 4 files — below threshold → individual lines
+    accum_below = ToolRecapAccumulator(config=config)
+    for idx in range(4):
+        _feed_file(accum_below, f"f{idx}", f"edit{idx}")
+    lines_below = format_recap_lines(accum_below, done=True)
+    flines_below = _file_lines(lines_below)
+    assert not any("files" in ln for ln in flines_below), (
+        "4 files below files_group_threshold=5 must not be grouped"
+    )
+
+    # 6 files — above threshold → grouped summary
+    accum_above = ToolRecapAccumulator(config=config)
+    for idx in range(6):
+        _feed_file(accum_above, f"g{idx}", f"edit{idx}")
+    lines_above = format_recap_lines(accum_above, done=True)
+    flines_above = _file_lines(lines_above)
+    assert any("files" in ln for ln in flines_above), (
+        "6 files above files_group_threshold=5 must be grouped"
+    )
+
+
+def test_deprecated_group_threshold_alias_sets_both() -> None:
+    """Deprecated group_threshold sets both bash and files thresholds."""
+    config = ToolDisplayConfig(group_threshold=10)
+    assert config.bash_group_threshold == 10
+    assert config.files_group_threshold == 10
 
 
 # ---------------------------------------------------------------------------

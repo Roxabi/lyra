@@ -27,7 +27,8 @@ class TestToolDisplayConfigDefaults:
         cfg = ToolDisplayConfig()
         # Assert
         assert cfg.names_threshold == 5
-        assert cfg.group_threshold == 3
+        assert cfg.bash_group_threshold == 3
+        assert cfg.files_group_threshold == 3
         assert cfg.bash_max_len == 80
         assert cfg.throttle_ms == 2000
 
@@ -110,7 +111,8 @@ class TestToolDisplayConfigFromDict:
         cfg = ToolDisplayConfig.model_validate(data)
         # Assert
         assert cfg.names_threshold == 5
-        assert cfg.group_threshold == 3  # default preserved
+        assert cfg.bash_group_threshold == 3  # default preserved
+        assert cfg.files_group_threshold == 3  # default preserved
         assert cfg.bash_max_len == 80  # default preserved
         assert cfg.throttle_ms == 2000  # default preserved
 
@@ -118,7 +120,8 @@ class TestToolDisplayConfigFromDict:
         # Arrange
         data = {
             "names_threshold": 10,
-            "group_threshold": 7,
+            "bash_group_threshold": 7,
+            "files_group_threshold": 4,
             "bash_max_len": 120,
             "throttle_ms": 500,
         }
@@ -126,7 +129,8 @@ class TestToolDisplayConfigFromDict:
         cfg = ToolDisplayConfig.model_validate(data)
         # Assert
         assert cfg.names_threshold == 10
-        assert cfg.group_threshold == 7
+        assert cfg.bash_group_threshold == 7
+        assert cfg.files_group_threshold == 4
         assert cfg.bash_max_len == 120
         assert cfg.throttle_ms == 500
 
@@ -247,7 +251,8 @@ class TestLoadToolDisplayConfig:
         # Assert
         assert cfg.names_threshold == 6
         assert cfg.throttle_ms == 1000
-        assert cfg.group_threshold == 3  # default preserved
+        assert cfg.bash_group_threshold == 3  # default preserved
+        assert cfg.files_group_threshold == 3  # default preserved
 
     def test_show_subsection_parsed(self) -> None:
         # Arrange

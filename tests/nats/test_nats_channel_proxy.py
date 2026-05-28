@@ -6,6 +6,7 @@ needed. Each test verifies subject routing and envelope structure independently.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from datetime import datetime, timezone
@@ -451,6 +452,89 @@ async def test_render_audio_publish_subject_and_header() -> None:
     assert headers.get("Nats-Msg-Id") == "stream-123"
     # nc.publish (core, at-most-once) must NOT be called
     nc.publish.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# render_audio_puback_fail — publish failure → notif dispatched, no re-raise
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_render_audio_puback_fail_dispatches_notification() -> None:
+    """On js.publish failure, a voice-undelivered notification is sent via nc.publish.
+
+    Asserts:
+    (a) notify_undelivered text is published to the legacy text subject
+    (b) no raw exception text in the published notification payload
+    (c) render_audio does not re-raise the publish error
+    """
+    nc = _make_nc()
+    js = nc.jetstream()
+    js.publish = AsyncMock(side_effect=nats.errors.Error("stream unavailable"))
+
+    proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
+    inbound = _make_inbound("msg-fail-42")
+    audio = OutboundAudio(
+        blob_ref=make_test_blobref(b"\xde\xad"), mime_type="audio/ogg"
+    )
+
+    # (c) must not raise
+    await proxy.render_audio(audio, inbound)
+
+    # (a) notification dispatched via legacy text subject
+    nc.publish.assert_awaited_once()
+    notif_subject, notif_payload_bytes = nc.publish.await_args.args
+    assert notif_subject == "lyra.outbound.telegram.main"
+
+    notif_data = json.loads(notif_payload_bytes)
+    assert notif_data["type"] == "send"
+    assert notif_data["stream_id"] == "msg-fail-42"
+    outbound_content = notif_data["outbound"]["content"]
+    # Notification text must contain user-facing message
+    assert any("Voice" in part or "voice" in part for part in outbound_content)
+
+    # (b) raw exception string must NOT appear in the published payload
+    raw_payload_str = notif_payload_bytes.decode("utf-8")
+    assert "stream unavailable" not in raw_payload_str
+    assert "nats.errors" not in raw_payload_str
+
+
+@pytest.mark.asyncio
+async def test_render_audio_puback_fail_timeout_dispatches_notification() -> None:
+    """asyncio.TimeoutError on PubAck also triggers the notification path."""
+    nc = _make_nc()
+    js = nc.jetstream()
+    js.publish = AsyncMock(side_effect=asyncio.TimeoutError())
+
+    proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
+    inbound = _make_inbound("msg-timeout-7")
+    audio = OutboundAudio(
+        blob_ref=make_test_blobref(b"\xbe\xef"), mime_type="audio/ogg"
+    )
+
+    await proxy.render_audio(audio, inbound)
+
+    nc.publish.assert_awaited_once()
+    notif_subject, _ = nc.publish.await_args.args
+    assert notif_subject == "lyra.outbound.telegram.main"
+
+
+@pytest.mark.asyncio
+async def test_render_audio_puback_fail_notif_publish_also_fails() -> None:
+    """When both js.publish AND nc.publish fail, render_audio does not raise."""
+    nc = _make_nc()
+    js = nc.jetstream()
+    js.publish = AsyncMock(side_effect=nats.errors.Error("js down"))
+    nc.publish = AsyncMock(side_effect=nats.errors.Error("nc down too"))
+
+    proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
+    inbound = _make_inbound("msg-double-fail-99")
+    audio = OutboundAudio(
+        blob_ref=make_test_blobref(b"\x00"), mime_type="audio/ogg"
+    )
+
+    # Must not raise even when the fallback notif publish also fails
+    await proxy.render_audio(audio, inbound)
 
 
 # ---------------------------------------------------------------------------

@@ -27,6 +27,7 @@ from lyra.core.messaging.message import (
     Platform,
 )
 from lyra.core.messaging.render_events import RenderEvent
+from lyra.core.messaging.voice_notify import notify_undelivered
 from lyra.nats.render_event_codec import NatsRenderEventCodec
 from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
 from roxabi_contracts.outbound import OutboundAudioSubjects
@@ -308,7 +309,10 @@ class NatsChannelProxy:
         on stream ``LYRA_OUTBOUND_AUDIO``.  The ``Nats-Msg-Id`` header is set to
         ``inbound.id`` to drive JetStream dedup-window and downstream idempotency.
         Awaiting PubAck guarantees the message is persisted before returning.
-        Publish failures propagate to the caller (T6 will wrap them).
+
+        On publish failure (``nats.errors.Error`` or ``asyncio.TimeoutError``), a
+        sanitized error is logged and a best-effort user-facing notification is
+        dispatched via the legacy text subject.  The publish error is NOT re-raised.
         """
         stream_id = inbound.id
         subject = OutboundAudioSubjects.audio(self._platform.value, self._bot_id)
@@ -323,7 +327,46 @@ class NatsChannelProxy:
             ),
         }
         payload = json.dumps(envelope, ensure_ascii=False).encode("utf-8")
-        await self._js.publish(subject, payload, headers={"Nats-Msg-Id": stream_id})
+        try:
+            await self._js.publish(subject, payload, headers={"Nats-Msg-Id": stream_id})
+        except (nats.errors.Error, asyncio.TimeoutError) as exc:
+            log.error(
+                "NatsChannelProxy: audio JetStream publish failed"
+                " stream_id=%r exc_type=%s — dispatching undelivered notification",
+                stream_id,
+                type(exc).__name__,
+            )
+            await self._notify_audio_publish_failed(inbound)
+
+    async def _notify_audio_publish_failed(self, inbound: InboundMessage) -> None:
+        """Best-effort: send voice-undelivered notification via legacy text subject.
+
+        Uses the core-NATS (at-most-once) text subject rather than JetStream — the
+        JetStream path is the one that just failed.  Swallows any publish error;
+        the failure is logged but never re-raised so the hub loop stays alive.
+        No ``str(exc)`` content reaches the bus (SanitizedError discipline).
+        """
+        text_subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
+        notif = notify_undelivered(context="hub-audio-publish-fail")
+        notif_envelope = {
+            "type": "send",
+            "stream_id": inbound.id,
+            "outbound": json.loads(
+                serialize(notif, resolver=self._resolver).decode("utf-8")
+            ),
+            "original_msg": json.loads(
+                serialize(inbound, resolver=self._resolver).decode("utf-8")
+            ),
+        }
+        notif_payload = json.dumps(notif_envelope, ensure_ascii=False).encode("utf-8")
+        try:
+            await self._nc.publish(text_subject, notif_payload)
+        except nats.errors.Error:
+            log.warning(
+                "NatsChannelProxy: failed to publish audio-undelivered notification"
+                " stream_id=%r — user will not be notified",
+                inbound.id,
+            )
 
     async def render_audio_stream(
         self,

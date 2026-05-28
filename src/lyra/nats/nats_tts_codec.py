@@ -17,6 +17,8 @@ from pydantic import ValidationError
 
 from lyra.core.ports.tts import SynthesisResult
 from lyra.transport._result import Err, Result, SanitizedError
+from roxabi_contracts import BlobRef
+from roxabi_contracts.blob_ref import PENDING_STORE_KEY
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.voice import TtsRequest, TtsResponse
 from roxabi_contracts.voice.constants import TTS_CONFIG_FIELDS
@@ -25,6 +27,15 @@ if TYPE_CHECKING:
     from lyra.core.agent.agent_config import AgentTTSConfig
 
 log = logging.getLogger(__name__)
+
+# Sentinel BlobRef for error paths where no real blob was produced.
+_SENTINEL_BLOB_REF = BlobRef(
+    store_key=PENDING_STORE_KEY,
+    content_hash="",
+    mime="",
+    size=0,
+    source="",
+)
 
 
 class TtsCodec:
@@ -76,7 +87,7 @@ class TtsCodec:
         if isinstance(result, Err):
             err = result.error
             return SynthesisResult(
-                audio_bytes=b"",
+                blob_ref=_SENTINEL_BLOB_REF,
                 mime_type="",
                 duration_ms=None,
                 error=err.code,
@@ -86,22 +97,21 @@ class TtsCodec:
         except (ValidationError, ValueError) as exc:
             log.warning("TtsCodec.decode: validation error: %r", exc)
             return SynthesisResult(
-                audio_bytes=b"",
+                blob_ref=_SENTINEL_BLOB_REF,
                 mime_type="",
                 duration_ms=None,
                 error="decode.validation_error",
             )
         if not resp.ok:
             return SynthesisResult(
-                audio_bytes=b"",
+                blob_ref=_SENTINEL_BLOB_REF,
                 mime_type="",
                 duration_ms=None,
                 error=resp.error or "tts.worker_error",
             )
         return SynthesisResult(
-            audio_bytes=b"",
+            blob_ref=resp.blob_ref,  # type: ignore[arg-type]
             mime_type=resp.mime_type,  # type: ignore[arg-type]
             duration_ms=resp.duration_ms,  # type: ignore[arg-type]
             waveform_b64=resp.waveform_b64,
-            blob_ref=resp.blob_ref,
         )

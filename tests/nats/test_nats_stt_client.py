@@ -9,6 +9,7 @@ import pytest
 from lyra.core.ports.stt import STTNoiseError, STTUnavailableError, TranscriptionResult
 from lyra.nats.nats_stt_client import NatsSttClient
 from lyra.transport._result import Err, Ok, SanitizedError
+from roxabi_contracts import BlobRef
 
 
 def _make_pool(*, alive: bool = True) -> MagicMock:
@@ -27,6 +28,9 @@ def _make_codec(tr: TranscriptionResult) -> MagicMock:
 
 
 WAV_BYTES = b"RIFF$\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x00\x00"
+WAV_BLOB = BlobRef(
+    store_key="test", content_hash="abc123", mime="audio/wav", size=36, source="test"
+)
 
 
 class TestNatsSttClientAvailability:
@@ -51,7 +55,7 @@ class TestNatsSttClientTranscribe:
         pool.request_with_routing = AsyncMock(return_value=Ok(b"raw"))
         codec = _make_codec(expected)
         client = NatsSttClient(pool, codec)
-        result = await client.transcribe(WAV_BYTES, "audio/wav")
+        result = await client.transcribe(WAV_BLOB, "audio/wav")
         assert result.text == "hello"
         assert result.language == "en"
 
@@ -65,7 +69,7 @@ class TestNatsSttClientTranscribe:
         codec = _make_codec(err_tr)
         client = NatsSttClient(pool, codec)
         with pytest.raises(STTUnavailableError, match="stt.worker_error"):
-            await client.transcribe(WAV_BYTES, "audio/wav")
+            await client.transcribe(WAV_BLOB, "audio/wav")
 
     @pytest.mark.asyncio
     async def test_pool_err_propagates_via_codec_decode(self) -> None:
@@ -82,7 +86,7 @@ class TestNatsSttClientTranscribe:
         codec = _make_codec(err_tr)
         client = NatsSttClient(pool, codec)
         with pytest.raises(STTUnavailableError, match="pool.no_live_workers"):
-            await client.transcribe(WAV_BYTES, "audio/wav")
+            await client.transcribe(WAV_BLOB, "audio/wav")
 
     @pytest.mark.asyncio
     async def test_noise_transcript_raises_noise_error(self) -> None:
@@ -94,7 +98,7 @@ class TestNatsSttClientTranscribe:
         codec = _make_codec(noise_tr)
         client = NatsSttClient(pool, codec)
         with pytest.raises(STTNoiseError):
-            await client.transcribe(WAV_BYTES, "audio/wav")
+            await client.transcribe(WAV_BLOB, "audio/wav")
 
     @pytest.mark.asyncio
     async def test_model_passed_to_encode_via_params(self) -> None:
@@ -103,9 +107,9 @@ class TestNatsSttClientTranscribe:
         pool.request_with_routing = AsyncMock(return_value=Ok(b"raw"))
         codec = _make_codec(ok_tr)
         client = NatsSttClient(pool, codec, model="tiny")
-        await client.transcribe(WAV_BYTES, "audio/wav")
+        await client.transcribe(WAV_BLOB, "audio/wav")
         call_args = codec.encode.call_args
-        assert call_args.args[0] == WAV_BYTES  # audio
+        assert call_args.args[0] == WAV_BLOB  # audio
         assert call_args.args[1] == "audio/wav"  # mime
         params = call_args.args[2]
         assert params.model == "tiny"

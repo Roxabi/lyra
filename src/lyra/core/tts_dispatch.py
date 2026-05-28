@@ -245,12 +245,6 @@ class AudioPipeline:
                 voice=voice,
                 fallback_language=fallback_language,
             )
-            if result.blob_ref is None:
-                log.warning(
-                    "TTS result missing blob_ref for msg id=%s — dropping audio",
-                    msg.id,
-                )
-                return
             audio = OutboundAudio(
                 blob_ref=result.blob_ref,
                 mime_type=result.mime_type,

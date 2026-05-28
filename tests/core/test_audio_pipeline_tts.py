@@ -52,10 +52,9 @@ class TestSynthesizeDispatchAgentTTS:
         mock_tts = MagicMock()
         mock_tts.synthesize = AsyncMock(
             return_value=SynthesisResult(
-                audio_bytes=b"fake",
+                blob_ref=make_test_blobref(b"fake"),
                 mime_type="audio/ogg",
                 duration_ms=100,
-                blob_ref=make_test_blobref(b"fake"),
             )
         )
 
@@ -93,10 +92,9 @@ class TestSynthesizeDispatchAgentTTS:
         mock_tts = MagicMock()
         mock_tts.synthesize = AsyncMock(
             return_value=SynthesisResult(
-                audio_bytes=b"fake",
+                blob_ref=make_test_blobref(b"fake"),
                 mime_type="audio/ogg",
                 duration_ms=100,
-                blob_ref=make_test_blobref(b"fake"),
             )
         )
 
@@ -262,10 +260,9 @@ class TestDispatchResponseAgentTTSE2E:
         mock_tts = MagicMock()
         mock_tts.synthesize = AsyncMock(
             return_value=SynthesisResult(
-                audio_bytes=b"audio",
+                blob_ref=make_test_blobref(b"audio"),
                 mime_type="audio/ogg",
                 duration_ms=100,
-                blob_ref=make_test_blobref(b"audio"),
             )
         )
         hub._tts = mock_tts

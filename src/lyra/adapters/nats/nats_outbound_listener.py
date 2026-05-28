@@ -35,9 +35,6 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-_MAX_STREAMS = 100
-_MAX_QUEUE_SIZE = 256
-
 
 class NatsOutboundListener:
     """NATS outbound subscriber → adapter dispatch (send/attachment/stream)."""
@@ -148,7 +145,7 @@ class NatsOutboundListener:
         _handle_stream_error_impl(self, data)
 
     async def _drain_stream(
-        self, stream_id: str, q: asyncio.Queue[dict], msg: Any | None = None
+        self, stream_id: str, q: asyncio.Queue[dict]
     ) -> None:
         """Drain a stream queue and call adapter.send_streaming()."""
         original_msg = self._cache.get(stream_id)

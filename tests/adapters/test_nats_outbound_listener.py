@@ -266,10 +266,8 @@ async def test_stream_drops_when_at_max_streams(caplog) -> None:
     import asyncio
     import logging
 
-    from lyra.adapters.nats.nats_outbound_listener import (
-        _MAX_STREAMS,
-        NatsOutboundListener,
-    )
+    from lyra.adapters.nats.nats_envelope_handlers import _MAX_STREAMS
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
     nc = AsyncMock()
     adapter = AsyncMock()
@@ -308,10 +306,8 @@ async def test_existing_stream_receives_chunks_at_capacity(caplog) -> None:
     import asyncio
     import logging
 
-    from lyra.adapters.nats.nats_outbound_listener import (
-        _MAX_STREAMS,
-        NatsOutboundListener,
-    )
+    from lyra.adapters.nats.nats_envelope_handlers import _MAX_STREAMS
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
     nc = AsyncMock()
     adapter = AsyncMock()

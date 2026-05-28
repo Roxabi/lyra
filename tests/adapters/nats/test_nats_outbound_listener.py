@@ -132,3 +132,67 @@ async def test_nak_on_failure() -> None:
         await listener._handle(msg)
 
     assert msg.nak.called
+
+
+# ---------------------------------------------------------------------------
+# _drain_stream tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_drain_stream_success() -> None:
+    """_drain_stream calls send_streaming and cleans up state."""
+    import asyncio
+
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
+
+    adapter = AsyncMock()
+    listener = NatsOutboundListener(
+        nc=AsyncMock(),
+        platform=Platform.TELEGRAM,
+        bot_id="test_bot",
+        adapter=adapter,
+    )
+
+    fake_inbound = MagicMock()
+    fake_inbound.id = "scope_123"
+    listener.cache_inbound(fake_inbound)
+
+    outbound = MagicMock()
+    listener._stream_outbound["scope_123"] = outbound
+
+    q: asyncio.Queue[dict] = asyncio.Queue()
+    await q.put({"seq": 0, "event_type": "text", "payload": {"text": "hi"}})
+    await q.put({"seq": 1, "event_type": "text", "payload": {"text": "!"}})
+
+    await listener._drain_stream("scope_123", q)
+
+    assert adapter.send_streaming.called
+    assert "scope_123" not in listener._cache
+    assert "scope_123" not in listener._stream_tasks
+    assert "scope_123" not in listener._stream_queues
+    assert "scope_123" not in listener._stream_outbound
+
+
+@pytest.mark.asyncio
+async def test_drain_stream_unknown_stream_id() -> None:
+    """_drain_stream drains queue and warns for unknown stream_id."""
+    import asyncio
+
+    from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
+
+    adapter = AsyncMock()
+    listener = NatsOutboundListener(
+        nc=AsyncMock(),
+        platform=Platform.TELEGRAM,
+        bot_id="test_bot",
+        adapter=adapter,
+    )
+
+    q: asyncio.Queue[dict] = asyncio.Queue()
+    await q.put({"seq": 0, "event_type": "text", "payload": {"text": "hi"}})
+
+    await listener._drain_stream("unknown", q)
+
+    assert not adapter.send_streaming.called
+    assert "unknown" not in listener._stream_queues

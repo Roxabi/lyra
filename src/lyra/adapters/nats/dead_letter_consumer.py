@@ -10,6 +10,7 @@ from lyra.core.messaging.message import InboundMessage, OutboundMessage, Platfor
 from lyra.nats.queue_groups import adapter_outbound
 from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
 from roxabi_nats._serialize import deserialize_dict
+from roxabi_nats._validate import validate_nats_token
 
 if TYPE_CHECKING:
     from nats.js.client import JetStreamContext
@@ -34,6 +35,7 @@ class DeadLetterConsumer:
         self._js = js
         self._platform = platform
         self._bot_id = bot_id
+        validate_nats_token(bot_id, kind="bot_id")
         self._adapter = adapter
         self._subject = subject or f"lyra.outbound.dlq.{platform.value}.{bot_id}"
         self._sub: Any = None

@@ -36,7 +36,6 @@ _MAX_QUEUE_SIZE = 256
 async def handle_send(
     listener: "NatsOutboundListener",
     data: dict,
-    msg: Any,
     *,
     resolver: TypeHintResolver = TYPE_REGISTRY_RESOLVER,
 ) -> None:
@@ -70,7 +69,6 @@ async def handle_send(
 async def handle_attachment(
     listener: "NatsOutboundListener",
     data: dict,
-    msg: Any,
     *,
     resolver: TypeHintResolver = TYPE_REGISTRY_RESOLVER,
 ) -> None:
@@ -104,7 +102,6 @@ async def handle_attachment(
 async def handle_audio(
     listener: "NatsOutboundListener",
     data: dict,
-    msg: Any,
     *,
     resolver: TypeHintResolver = TYPE_REGISTRY_RESOLVER,
 ) -> None:
@@ -202,7 +199,7 @@ async def handle_chunk(listener: "NatsOutboundListener", data: dict, msg: Any) -
         await msg.ack()
     if stream_id not in listener._stream_tasks:
         listener._stream_tasks[stream_id] = asyncio.create_task(
-            listener._drain_stream(stream_id, q, msg)
+            listener._drain_stream(stream_id, q)
         )
 
 
@@ -220,15 +217,15 @@ async def handle_raw_message(
         return
     msg_type = data.get("type")
     if msg_type == "send":
-        await handle_send(listener, data, msg, resolver=resolver)
+        await handle_send(listener, data, resolver=resolver)
     elif msg_type == "stream_start":
         handle_stream_start(listener, data, resolver=resolver)
     elif msg_type == "stream_error":
         listener._handle_stream_error(data)
     elif msg_type == "attachment":
-        await handle_attachment(listener, data, msg, resolver=resolver)
+        await handle_attachment(listener, data, resolver=resolver)
     elif msg_type == "audio":
-        await handle_audio(listener, data, msg, resolver=resolver)
+        await handle_audio(listener, data, resolver=resolver)
     elif "stream_id" in data and "seq" in data:
         await handle_chunk(listener, data, msg)
     else:

@@ -83,9 +83,26 @@ class TestBlobReconcile:
             f"stderr: {result.stderr}\n"
             f"stdout: {result.stdout}"
         )
-        # Parse JSON from stdout (human line comes first, then JSON block)
-        json_start = result.stdout.index("{")
-        return json.loads(result.stdout[json_start:])
+        # Parse JSON from stdout — find first line starting with {
+        # and join all subsequent lines (JSON is pretty-printed multi-line)
+        lines = result.stdout.splitlines()
+        json_start = next(i for i, line in enumerate(lines) if line.startswith("{"))
+        json_text = "\n".join(lines[json_start:])
+        return json.loads(json_text)
+
+    def _run_expect_error(
+        self, blob_root: Path, db_path: Path, dry_run: bool = False
+    ) -> subprocess.CompletedProcess[str]:
+        cmd = [sys.executable, str(SCRIPT)]
+        if dry_run:
+            cmd.append("--dry-run")
+        cmd.extend([str(blob_root), str(db_path)])
+        return subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            cwd=str(REPO_ROOT),
+        )
 
     # ── Core behaviour ─────────────────────────────────────────────────────────
 
@@ -218,11 +235,51 @@ class TestBlobReconcile:
             "bytes_reclaimed",
             "blob_root",
             "db_path",
+            "unlink_errors",
         }
         assert isinstance(report["dry_run"], bool)
         assert isinstance(report["files_removed"], int)
         assert isinstance(report["bytes_reclaimed"], int)
         assert isinstance(report["blob_root"], str)
         assert isinstance(report["db_path"], str)
+        assert isinstance(report["unlink_errors"], list)
         assert Path(report["blob_root"]).exists()
         assert Path(report["db_path"]).exists()
+        assert report["files_removed"] == 0
+        assert report["bytes_reclaimed"] == 0
+        assert report["unlink_errors"] == []
+
+    # ── Error-path coverage ────────────────────────────────────────────────────
+
+    def test_missing_db_table(self, tmp_path: Path) -> None:
+        """DB without a blobs table → graceful empty report."""
+        blob_root = self._setup_blob_dir(tmp_path)
+        db_path = tmp_path / "blobs.db"
+        conn = sqlite3.connect(str(db_path))
+        conn.execute("CREATE TABLE other (id INTEGER PRIMARY KEY)")
+        conn.commit()
+        conn.close()
+
+        report = self._run(blob_root, db_path)
+
+        assert report["files_removed"] == 0
+        assert report["bytes_reclaimed"] == 0
+
+    def test_nonexistent_blob_root(self, tmp_path: Path) -> None:
+        """Non-existent blob_root → graceful, no crash."""
+        db_path = tmp_path / "blobs.db"
+        self._setup_db(db_path, [])
+        blob_root = tmp_path / "nonexistent_blobs"
+
+        report = self._run(blob_root, db_path)
+
+        assert report["files_removed"] == 0
+        assert report["bytes_reclaimed"] == 0
+
+    def test_missing_db_file(self, tmp_path: Path) -> None:
+        """Missing DB file → non-zero exit."""
+        blob_root = self._setup_blob_dir(tmp_path)
+        db_path = tmp_path / "missing.db"
+
+        result = self._run_expect_error(blob_root, db_path)
+        assert result.returncode != 0

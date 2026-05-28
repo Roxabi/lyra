@@ -28,14 +28,19 @@ def collect_db_paths(db_path: str) -> set[str]:
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        cursor.execute("SELECT store_path FROM blobs")
-        rows = {row["store_path"] for row in cursor.fetchall()}
+        try:
+            cursor.execute("SELECT store_path FROM blobs")
+            rows = {row["store_path"] for row in cursor.fetchall()}
+        except sqlite3.OperationalError:
+            rows = set()
     return {str(Path(p).resolve()) for p in rows}
 
 
 def collect_disk_files(blob_root: Path) -> list[Path]:
     """Return list of all hex-named files under blob_root (recursive)."""
     files: list[Path] = []
+    if not blob_root.exists():
+        return files
     for f in blob_root.rglob("*"):
         if f.is_file() and all(c in "0123456789abcdefABCDEF" for c in f.name):
             files.append(f)
@@ -106,6 +111,15 @@ def main() -> int:
         "db_path", help="Path to SQLite manifest (e.g. ~/.lyra/blobstore/index.sqlite)"
     )
     args = parser.parse_args()
+
+    if not Path(args.db_path).exists():
+        error_report = {
+            "error": f"database file not found: {args.db_path}",
+            "blob_root": str(Path(args.blob_root).resolve()),
+            "db_path": str(Path(args.db_path).resolve()),
+        }
+        print(json.dumps(error_report, indent=2), file=sys.stderr)
+        return 1
 
     try:
         report = reconcile(args.blob_root, args.db_path, dry_run=args.dry_run)

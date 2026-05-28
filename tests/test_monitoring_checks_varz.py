@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from unittest.mock import MagicMock
 
 import pytest
@@ -102,9 +103,22 @@ class TestCheckDiskPct:
 
 
 class TestCheckInodePct:
-    def _mock_statvfs(self, f_files: int, f_ffree: int) -> MagicMock:
+    def _mock_statvfs(self, f_files: int, f_ffree: int) -> os.statvfs_result:
         """Build a statvfs result with the given inode totals."""
-        return MagicMock(f_files=f_files, f_ffree=f_ffree)
+        return os.statvfs_result(
+            (
+                4096,       # f_bsize
+                4096,       # f_frsize
+                1000000,    # f_blocks
+                500000,     # f_bfree
+                500000,     # f_bavail
+                f_files,    # f_files
+                f_ffree,    # f_ffree
+                f_ffree,    # f_favail
+                0,          # f_flag
+                255,        # f_namemax
+            )
+        )
 
     def test_returns_check_result(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """check_inode_pct returns a CheckResult with name='inode_pct'."""

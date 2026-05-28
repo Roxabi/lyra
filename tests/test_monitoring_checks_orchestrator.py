@@ -193,3 +193,13 @@ class TestRunChecks:
 
         assert report.all_passed is False
         assert report.failed_count >= 1
+        assert {c.name for c in report.checks} == {
+            "process:lyra-hub",
+            "http_health",
+            "nats:permissions_violation",
+            "hub:dict_stream_gen_timeout",
+            "disk",
+            "nats:varz",
+            "disk_pct",
+            "inode_pct",
+        }

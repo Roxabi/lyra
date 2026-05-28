@@ -6,6 +6,8 @@ import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -54,6 +56,7 @@ def _make_outbound_envelope(
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_subscribe_dlq() -> None:
     """start() subscribes to the DLQ subject and stores the subscription."""
     from lyra.adapters.nats.dead_letter_consumer import DeadLetterConsumer
@@ -80,6 +83,7 @@ async def test_subscribe_dlq() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_notify_telegram() -> None:
     """DLQ message for Telegram triggers adapter.send_failure_notification."""
     from lyra.adapters.nats.dead_letter_consumer import DeadLetterConsumer
@@ -111,6 +115,7 @@ async def test_notify_telegram() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_notify_discord() -> None:
     """DLQ message for Discord triggers adapter.send_failure_notification."""
     from lyra.adapters.nats.dead_letter_consumer import DeadLetterConsumer
@@ -122,7 +127,7 @@ async def test_notify_discord() -> None:
 
     consumer = DeadLetterConsumer(
         js,
-        Platform.TELEGRAM,
+        Platform.DISCORD,
         "main",
         adapter,
         subject="lyra.outbound.dlq",
@@ -142,6 +147,7 @@ async def test_notify_discord() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_stop_unsubscribes() -> None:
     """start() then stop() must unsubscribe the DLQ subscription."""
     from lyra.adapters.nats.dead_letter_consumer import DeadLetterConsumer
@@ -171,6 +177,7 @@ async def test_stop_unsubscribes() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_stop_without_start_is_noop() -> None:
     """stop() before start() does not raise."""
     from lyra.adapters.nats.dead_letter_consumer import DeadLetterConsumer

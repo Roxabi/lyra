@@ -102,7 +102,11 @@ class NatsOutboundListener:
                 self._subject,
                 queue=self._queue_group,
                 cb=self._handle,
-                config=ConsumerConfig(ack_policy=AckPolicy.EXPLICIT, max_deliver=3),
+                manual_ack=True,
+                config=ConsumerConfig(
+                    ack_policy=AckPolicy.EXPLICIT,
+                    max_deliver=3,
+                ),
             )
         else:
             self._sub = await self._nc.subscribe(
@@ -129,7 +133,15 @@ class NatsOutboundListener:
 
     async def _handle(self, msg: Any) -> None:
         """Dispatch raw NATS message to envelope handlers."""
-        await handle_raw_message(self, msg, resolver=self._resolver)
+        try:
+            await handle_raw_message(self, msg, resolver=self._resolver)
+        except Exception:
+            if hasattr(msg, "nak"):
+                await msg.nak()
+            raise
+        else:
+            if hasattr(msg, "ack"):
+                await msg.ack()
 
     def _handle_stream_error(self, data: dict) -> None:
         """Dispatch to the stream_error handler in nats_stream_decoder."""
@@ -187,15 +199,11 @@ class NatsOutboundListener:
                 ),
                 outbound,
             )
-            if msg is not None and hasattr(msg, "ack"):
-                await msg.ack()
         except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch — send_streaming: exception type varies by adapter
             log.exception(
                 "NatsOutboundListener: send_streaming failed for stream_id=%r",
                 stream_id,
             )
-            if msg is not None and hasattr(msg, "nak"):
-                await msg.nak()
         finally:
             self._cache.pop(stream_id)
             self._stream_tasks.pop(stream_id, None)

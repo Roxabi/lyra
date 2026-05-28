@@ -6,6 +6,8 @@ import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from lyra.core.messaging.message import Platform
 
 # ---------------------------------------------------------------------------
@@ -26,15 +28,17 @@ def _make_nats_msg(data: dict[str, Any]) -> MagicMock:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_subscribe_uses_jetstream() -> None:
-    """start() must subscribe via JetStream with manual_ack=True."""
+    """start() must subscribe via JetStream with explicit ack and max_deliver=3."""
+    from nats.js.api import AckPolicy, ConsumerConfig
+
     from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
     nc = AsyncMock()
     js = MagicMock()
     nc.jetstream = MagicMock(return_value=js)
     sub = MagicMock()
-    sub.manual_ack = True
     js.subscribe = AsyncMock(return_value=sub)
 
     adapter = AsyncMock()
@@ -47,8 +51,10 @@ async def test_subscribe_uses_jetstream() -> None:
     )
     await listener.start()
 
-    sub = listener._sub
-    assert sub.manual_ack is True
+    _, call_kwargs = js.subscribe.call_args
+    assert isinstance(call_kwargs["config"], ConsumerConfig)
+    assert call_kwargs["config"].ack_policy is AckPolicy.EXPLICIT
+    assert call_kwargs["config"].max_deliver == 3
 
 
 # ---------------------------------------------------------------------------
@@ -56,6 +62,7 @@ async def test_subscribe_uses_jetstream() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_ack_on_success() -> None:
     """msg.ack() is called after a successful dispatch."""
     from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
@@ -85,6 +92,7 @@ async def test_ack_on_success() -> None:
     await listener._handle(msg)
 
     assert msg.ack.called
+    assert not msg.nak.called
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +100,7 @@ async def test_ack_on_success() -> None:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.asyncio
 async def test_nak_on_failure() -> None:
     """msg.nak() is called when dispatch raises an exception."""
     from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
@@ -119,10 +128,7 @@ async def test_nak_on_failure() -> None:
         },
     }
     msg = _make_nats_msg(envelope)
-    try:
+    with pytest.raises(RuntimeError, match="boom"):
         await listener._handle(msg)
-    except RuntimeError:
-        # current implementation doesn't catch; future impl will catch + nak
-        pass
 
     assert msg.nak.called

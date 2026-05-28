@@ -87,6 +87,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
             wired: list[tuple] = []  # (TelegramAdapter, Bus, TypingListener)
             tg_dlq_consumers: list[DeadLetterConsumer] = []
 
+            js = nc.jetstream()
             for bot_cfg in tg_multi_cfg.bots:
                 bot_id = bot_cfg.bot_id
                 if bot_id not in tg_creds:
@@ -117,12 +118,12 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
                     platform_enum,
                     bot_id,
                     adapter,
-                    js=nc.jetstream(),
+                    js=js,
                     queue_group=adapter_outbound(platform_enum.value, bot_id),
                 )
                 adapter._outbound_listener = listener
                 dlq_consumer = DeadLetterConsumer(
-                    js=nc.jetstream(),
+                    js=js,
                     platform=platform_enum,
                     bot_id=bot_id,
                     adapter=adapter,
@@ -256,6 +257,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
             wired_dc: list[tuple] = []  # (DiscordAdapter, str, Bus, TypingListener)
             dc_dlq_consumers: list[DeadLetterConsumer] = []
 
+            js = nc.jetstream()
             for bot_cfg in dc_multi_cfg.bots:
                 bot_id = bot_cfg.bot_id
                 if bot_id not in dc_creds:
@@ -287,12 +289,12 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
                     platform_enum,
                     bot_id,
                     adapter_dc,
-                    js=nc.jetstream(),
+                    js=js,
                     queue_group=adapter_outbound(platform_enum.value, bot_id),
                 )
                 adapter_dc._outbound_listener = listener_dc
                 dlq_consumer_dc = DeadLetterConsumer(
-                    js=nc.jetstream(),
+                    js=js,
                     platform=platform_enum,
                     bot_id=bot_id,
                     adapter=adapter_dc,

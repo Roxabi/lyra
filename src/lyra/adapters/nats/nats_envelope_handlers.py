@@ -45,26 +45,26 @@ async def handle_send(
     if resolved is None:
         return
     stream_id, original_msg = resolved
-    outbound_data = data.get("outbound")
-    if outbound_data is None:
-        log.warning("NatsOutboundListener: missing 'outbound' key in send envelope")
-        return
-    if not _check_outbound_version(listener, outbound_data, "OutboundMessage"):
-        return
     try:
-        outbound = _deserialize_dict(outbound_data, OutboundMessage, resolver=resolver)
-    except (ValueError, TypeError):
-        log.warning("NatsOutboundListener: failed to deserialize outbound message")
-        return
-    try:
+        outbound_data = data.get("outbound")
+        if outbound_data is None:
+            log.warning("NatsOutboundListener: missing 'outbound' key in send envelope")
+            return
+        if not _check_outbound_version(listener, outbound_data, "OutboundMessage"):
+            return
+        try:
+            outbound = _deserialize_dict(
+                outbound_data, OutboundMessage, resolver=resolver
+            )
+        except (ValueError, TypeError):
+            log.warning("NatsOutboundListener: failed to deserialize outbound message")
+            return
         await listener._adapter.send(original_msg, outbound)
-        if hasattr(msg, "ack"):
-            await msg.ack()
     except Exception:
         log.exception("NatsOutboundListener: send failed")
-        if hasattr(msg, "nak"):
-            await msg.nak()
-    listener._cache.pop(stream_id)
+        raise
+    finally:
+        listener._cache.pop(stream_id)
 
 
 async def handle_attachment(
@@ -79,28 +79,26 @@ async def handle_attachment(
     if resolved is None:
         return
     stream_id, original_msg = resolved
-    attachment_data = data.get("attachment")
-    if attachment_data is None:
-        log.warning("NatsOutboundListener: missing 'attachment' key in envelope")
-        return
-    if not _check_outbound_version(listener, attachment_data, "OutboundAttachment"):
-        return
     try:
-        attachment = _deserialize_dict(
-            attachment_data, OutboundAttachment, resolver=resolver
-        )
-    except (ValueError, TypeError):
-        log.warning("NatsOutboundListener: failed to deserialize attachment")
-        return
-    try:
+        attachment_data = data.get("attachment")
+        if attachment_data is None:
+            log.warning("NatsOutboundListener: missing 'attachment' key in envelope")
+            return
+        if not _check_outbound_version(listener, attachment_data, "OutboundAttachment"):
+            return
+        try:
+            attachment = _deserialize_dict(
+                attachment_data, OutboundAttachment, resolver=resolver
+            )
+        except (ValueError, TypeError):
+            log.warning("NatsOutboundListener: failed to deserialize attachment")
+            return
         await listener._adapter.render_attachment(attachment, original_msg)
-        if hasattr(msg, "ack"):
-            await msg.ack()
     except Exception:
         log.exception("NatsOutboundListener: render_attachment failed")
-        if hasattr(msg, "nak"):
-            await msg.nak()
-    listener._cache.pop(stream_id)
+        raise
+    finally:
+        listener._cache.pop(stream_id)
 
 
 async def handle_audio(
@@ -115,24 +113,22 @@ async def handle_audio(
     if resolved is None:
         return
     stream_id, original_msg = resolved
-    audio_data = data.get("audio")
-    if audio_data is None:
-        log.warning("NatsOutboundListener: missing 'audio' key in envelope")
-        return
     try:
-        audio = _deserialize_dict(audio_data, OutboundAudio, resolver=resolver)
-    except (ValueError, TypeError):
-        log.warning("NatsOutboundListener: failed to deserialize audio")
-        return
-    try:
+        audio_data = data.get("audio")
+        if audio_data is None:
+            log.warning("NatsOutboundListener: missing 'audio' key in envelope")
+            return
+        try:
+            audio = _deserialize_dict(audio_data, OutboundAudio, resolver=resolver)
+        except (ValueError, TypeError):
+            log.warning("NatsOutboundListener: failed to deserialize audio")
+            return
         await listener._adapter.render_audio(audio, original_msg)
-        if hasattr(msg, "ack"):
-            await msg.ack()
     except Exception:
         log.exception("NatsOutboundListener: render_audio failed")
-        if hasattr(msg, "nak"):
-            await msg.nak()
-    listener._cache.pop(stream_id)
+        raise
+    finally:
+        listener._cache.pop(stream_id)
 
 
 def handle_stream_start(
@@ -202,6 +198,8 @@ async def handle_chunk(listener: "NatsOutboundListener", data: dict, msg: Any) -
             stream_id,
         )
         return
+    if hasattr(msg, "ack"):
+        await msg.ack()
     if stream_id not in listener._stream_tasks:
         listener._stream_tasks[stream_id] = asyncio.create_task(
             listener._drain_stream(stream_id, q, msg)

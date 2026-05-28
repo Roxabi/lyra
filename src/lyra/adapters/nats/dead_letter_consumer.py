@@ -7,6 +7,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from lyra.core.messaging.message import InboundMessage, OutboundMessage, Platform
+from lyra.nats.queue_groups import adapter_outbound
 from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
 from roxabi_nats._serialize import deserialize_dict
 
@@ -42,6 +43,8 @@ class DeadLetterConsumer:
         self._sub = await self._js.subscribe(
             self._subject,
             cb=self._handle,
+            manual_ack=True,
+            queue=adapter_outbound(self._platform.value, self._bot_id),
         )
 
     async def stop(self) -> None:

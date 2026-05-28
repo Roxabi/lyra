@@ -235,7 +235,7 @@ class TestRunFallbackChain:
         # Mock disk usage for check_disk
         monkeypatch.setattr(
             "lyra.monitoring.checks_varz.shutil.disk_usage",
-            lambda path: shutil._ntuple_diskusage(
+            lambda _: shutil._ntuple_diskusage(
                 total=100 * 1024**3,
                 used=50 * 1024**3,
                 free=50 * 1024**3,
@@ -246,7 +246,7 @@ class TestRunFallbackChain:
 
         monkeypatch.setattr(
             "lyra.monitoring.checks_varz.os.statvfs",
-            lambda path: _os.statvfs_result(
+            lambda _: _os.statvfs_result(
                 (
                     100 * 1024**3,
                     50 * 1024**3,
@@ -262,9 +262,9 @@ class TestRunFallbackChain:
             ),
         )
 
-    async def test_all_pass_returns_zero(
+    async def test_all_pass_returns_zero(  # type: ignore
         self,
-        _mock_config,
+        _mock_config: object,  # type: ignore
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """All checks pass → exit 0, no LLM call."""
@@ -272,7 +272,7 @@ class TestRunFallbackChain:
 
         monkeypatch.setattr(
             "lyra.monitoring.checks.subprocess.run",
-            lambda *a, **kw: MagicMock(returncode=0, stdout="active\n"),
+            MagicMock(return_value=MagicMock(returncode=0, stdout="active\n")),
         )
 
         mock_resp = MagicMock()
@@ -295,9 +295,9 @@ class TestRunFallbackChain:
 
         assert code == 0
 
-    async def test_llm_fail_raw_telegram_sent(
+    async def test_llm_fail_raw_telegram_sent(  # type: ignore
         self,
-        _mock_config,
+        _mock_config: object,  # type: ignore
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Anomaly + CLI unavailable → raw Telegram sent → exit 1.
@@ -311,7 +311,7 @@ class TestRunFallbackChain:
         # Process check fails → anomaly
         monkeypatch.setattr(
             "lyra.monitoring.checks.subprocess.run",
-            lambda *a, **kw: MagicMock(returncode=3, stdout="inactive\n"),
+            MagicMock(return_value=MagicMock(returncode=3, stdout="inactive\n")),
         )
 
         import httpx
@@ -332,7 +332,7 @@ class TestRunFallbackChain:
             checks_cls.return_value = mc_checks
 
             # Telegram raw alert succeeds
-            async def mock_post(*args, **kwargs):
+            async def mock_post(*_, **__):  # type: ignore
                 call_log.append("telegram_raw")
                 resp = MagicMock()
                 resp.status_code = 200
@@ -351,7 +351,7 @@ class TestRunFallbackChain:
 
     async def test_both_fail_log_only(
         self,
-        _mock_config,
+        _mock_config: object,  # type: ignore
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Anomaly + LLM fails + Telegram fails → log only → exit 1."""
@@ -359,7 +359,7 @@ class TestRunFallbackChain:
 
         monkeypatch.setattr(
             "lyra.monitoring.checks.subprocess.run",
-            lambda *a, **kw: MagicMock(returncode=3, stdout="inactive\n"),
+            MagicMock(return_value=MagicMock(returncode=3, stdout="inactive\n")),
         )
 
         import httpx

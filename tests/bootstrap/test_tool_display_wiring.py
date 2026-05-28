@@ -327,7 +327,7 @@ async def test_standalone_path_threads_tool_display_config_to_telegram() -> None
 
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("lyra.bootstrap.composition_root.NatsBus", return_value=mock_inbound_bus),
         patch(
             "lyra.adapters.telegram.TelegramAdapter",
             side_effect=_capture_tg_adapter,
@@ -427,7 +427,7 @@ async def test_standalone_path_threads_tool_display_config_to_discord() -> None:
 
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("lyra.bootstrap.composition_root.NatsBus", return_value=mock_inbound_bus),
         patch(
             "lyra.adapters.discord.DiscordAdapter",
             side_effect=_capture_dc_adapter,

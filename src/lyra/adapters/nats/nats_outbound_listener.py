@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import re
 from collections import OrderedDict
 from typing import TYPE_CHECKING, Any
 
@@ -53,6 +54,11 @@ class NatsOutboundListener:
         self._platform = platform
         self._bot_id = bot_id
         validate_nats_token(bot_id, kind="bot_id")
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", bot_id):
+            raise ValueError(
+                f"Invalid bot_id for NATS subject: {bot_id!r} — "
+                "must match [A-Za-z0-9_-]+ (no dots)"
+            )
         self._adapter = adapter
         self._queue_group = queue_group
         self._resolver = resolver

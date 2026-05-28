@@ -456,19 +456,20 @@ async def test_default_queue_group_is_empty() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("bot_id", ["main", "bot_1", "a.b", "hub-primary", "v1.2.3"])
+@pytest.mark.parametrize("bot_id", ["main", "bot_1", "hub-primary"])
 def test_valid_bot_id_accepted(bot_id: str) -> None:
-    """Valid NATS identifier bot_ids are accepted."""
+    """Valid single-token bot_ids are accepted and built into the subject."""
     from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
     nc = AsyncMock()
     adapter = AsyncMock()
     listener = NatsOutboundListener(nc, Platform.TELEGRAM, bot_id, adapter)
-    assert listener._bot_id == bot_id
+    assert listener._subject == f"lyra.outbound.telegram.{bot_id}"
 
 
 @pytest.mark.parametrize(
-    "bot_id", ["bot*", "bot >", "bot inbound", "bot/inbound", "bot@sign"]
+    "bot_id",
+    ["", "bot*", "bot >", "bot inbound", "bot/inbound", "bot@sign", "a.b", "v1.2.3"],
 )
 def test_invalid_bot_id_rejected(bot_id: str) -> None:
     """Invalid bot_id raises ValueError before subject is built."""

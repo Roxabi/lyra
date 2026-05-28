@@ -28,7 +28,7 @@ Machine 1 (roxabituwer, 192.168.1.16)
 │   ├── lyra-gh.pod
 │   └── lyra-*.volume
 ├── config: ~/projects/lyra/config.toml
-├── credentials: ~/.lyra/config.db (encrypted, via `lyra bot add`)
+├── credentials: ~/.lyra/config.db (bot config) + Podman secrets (bot tokens)
 ├── nkey seeds: ~/.lyra/nkeys/*.seed
 ├── Podman secrets: lyra-nats-auth, lyra-nats-hub, lyra-nats-telegram, lyra-nats-discord, lyra-nats-clipool
 └── logs: journalctl --user -u lyra-hub
@@ -85,12 +85,12 @@ make lyra reload        # restart containers
 
 ## 2. Configure environment
 
-**Credentials (tokens):** Bot tokens are stored encrypted in `~/.lyra/config.db` via `lyra bot add`. Adapters read directly from this database at startup — no env vars needed for tokens.
+**Credentials (tokens):** Bot tokens are stored as Podman secrets (`lyra-bot-<platform>-<bot_id>`). Adapters mount them at container start.
 
 ```bash
 # Store bot tokens (run once per bot)
-lyra bot add --platform telegram --bot-id lyra
-lyra bot add --platform discord --bot-id lyra
+lyra bot secret install telegram lyra
+lyra bot secret install discord lyra
 ```
 
 **Environment inline in `.container` files:** NATS connection vars are set directly in each Quadlet unit:
@@ -134,7 +134,7 @@ owner_users = []
 
 2. Store the bot token:
 ```bash
-lyra bot add --platform telegram --bot-id aryl
+lyra bot secret install telegram aryl
 ```
 
 3. Restart containers:

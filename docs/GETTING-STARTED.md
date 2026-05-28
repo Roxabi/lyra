@@ -34,7 +34,7 @@ git clone git@github.com:Roxabi/lyra.git ~/projects/lyra
 cd ~/projects/lyra && uv sync
 cp config.toml.example config.toml   # edit owner_users with your IDs
 lyra agent init                      # seed agents DB from bundled TOML
-lyra bot add --platform telegram --bot-id lyra   # store token encrypted
+lyra bot secret install telegram lyra   # store token encrypted
 lyra start                           # hub + telegram + discord in one process
 ```
 
@@ -244,6 +244,8 @@ Fill in your user IDs in the `owner_users` arrays:
 - Telegram ID: message [@userinfobot](https://t.me/userinfobot) on Telegram
 - Discord ID: Settings → Advanced → Developer Mode → right-click your username → Copy User ID
 
+> **Agents vs Bots:** Your setup already created a default agent (`lyra`) in the DB (`lyra agent init`). An **agent** is the AI brain (model, persona, tools). A **bot** is the platform identity (Telegram bot token, Discord bot token). One agent can answer many bots. Step 2 and 3 below are about creating the *platform identity* (bot), not the AI brain (agent).
+
 ### 2. Create your bots
 
 **Telegram:**
@@ -257,19 +259,16 @@ Fill in your user IDs in the `owner_users` arrays:
 4. OAuth2 → URL Generator → scopes: `bot` → permissions: `Send Messages`, `Read Message History`
 5. Use the generated URL to invite the bot to your server
 
-### 3. Store bot tokens in the credential store
+### 3. Install bot tokens as Podman secrets
 
-Bot tokens are **not** stored in `.env`. They go into the encrypted credential store:
+Bot tokens are **not** stored in `.env`. They are delivered as Podman `type=mount` secrets:
 
 ```bash
-lyra bot add --platform telegram --bot-id lyra
-# Prompts for: token, bot_username, webhook_secret
-
-lyra bot add --platform discord --bot-id lyra
-# Prompts for: token
+lyra bot secret install telegram lyra
+lyra bot secret install discord lyra
 ```
 
-This encrypts and stores the tokens in `~/.lyra/config.db`.
+These create `lyra-bot-telegram-lyra` and `lyra-bot-discord-lyra` in the Podman secret store.
 
 > **Note:** Bot tokens are encrypted in `~/.lyra/config.db` — not in `.env`. The `.env` file is for:
 > - `DEPLOY_HOST`, `DEPLOY_DIR` — remote deployment target
@@ -439,7 +438,7 @@ ssh -i ~/.ssh/lyra_agent lyra@<MACHINE_1_IP> "id && git --version"
 | Quadlet units | `~/.config/containers/systemd/lyra-*.container` |
 | VoiceCLI Quadlet units | `~/.config/containers/systemd/voicecli-*.container` (if voiceCLI installed) |
 | Config | `~/projects/lyra/config.toml` |
-| Credentials | `~/.lyra/config.db` (encrypted, via `lyra bot add`) |
+| Credentials | `~/.lyra/config.db` (bot config) + Podman secrets (bot tokens) |
 | Nkey seeds | `~/.lyra/nkeys/*.seed` |
 | Podman secrets | `podman secret ls` (lyra-nats-auth, lyra-nats-hub, lyra-nats-telegram, lyra-nats-discord, lyra-nats-clipool) |
 | Logs | `journalctl --user -u lyra-hub` |

@@ -22,7 +22,7 @@ locally and makes HTTP calls inline.
 Tokens are stored encrypted in `~/.lyra/config.db` (`bot_secrets` table), encrypted
 with a Fernet key at `~/.lyra/keyring.key`. The skill decrypts at call time, holds the
 token in a local variable only, and never prints or persists it. Populated by
-`lyra agent init`.
+`lyra bot secret install` (creates Podman secret) and read by the skill from `config.db`.
 
 Target identity (who to send to) is resolved from `~/.lyra/turns.db` — the plugin
 queries recent turns to surface known `chat_id` (Telegram) or `channel_id`/`thread_id`
@@ -39,7 +39,7 @@ queries recent turns to surface known `chat_id` (Telegram) or `channel_id`/`thre
 
 - Telegram: bot cannot initiate with a user who has never messaged it first.
 - Discord: bot must have `Send Messages` permission in the target channel.
-- Both: `lyra agent init` must have run to populate `bot_secrets`.
+- Both: `lyra bot secret install` must have run to populate `bot_secrets`.
 
 ## Skill entry point
 

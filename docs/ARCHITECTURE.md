@@ -403,6 +403,18 @@ Note: the outer render-event chunk envelope (`{stream_id, seq, event_type, paylo
 3. Coordinate a simultaneous deploy of `lyra_hub` + `lyra_telegram` + `lyra_discord`. Rolling deploys across a version bump will produce loud ERROR logs on the still-old receivers until they are upgraded.
 4. Verify the bump with: `grep SCHEMA_VERSION_ src/lyra/core/*.py`.
 
+### Agents vs Bots
+
+| Concept | What it is | Where it lives | Managed by |
+|---|---|---|---|
+| **Bot** | A platform identity (e.g. `@RoxabiLyraBot` on Telegram). Owns a token, has `bot_id` and `platform`. | `config.toml` → seeded to `BotStore` (`config.db` table `bots`) | `lyra bot init` |
+| **Agent** | The AI brain that processes messages. Has a `model`, `backend`, `persona`, `tools`, `plugins`. | `src/lyra/agents/*.toml` → seeded to `AgentStore` (`config.db` table `agents`) | `lyra agent init` |
+| **Binding** | The mapping `bot_id` → `agent_name` for a given conversation. | `config.db` table `bot_agent_map` | `lyra agent assign` / `lyra agent unassign` |
+
+**Analogy:** The bot is the *telephone line* (platform identity + token). The agent is the *person answering the phone* (AI brain). You can have multiple telephone lines (bots) all answered by the same person (agent), or each line answered by a different specialist.
+
+**Boot flow:** The hub reads `BotStore` to know which bots exist, then uses `bot_agent_map` to find which agent handles each `(platform, bot_id)` pair. If `bot_agent_map` has no entry for a bot, the hub falls back to the agent named in `bot.agent` (default agent from the bot row).
+
 ### Bindings (routing table)
 
 Rule: `(platform, bot_id, scope_id)` → `(agent, pool_id)`

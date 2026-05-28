@@ -45,13 +45,14 @@ source .venv/bin/activate
 | `lyra agent patch <name> --json <json_object>` | Apply a partial JSON patch to an agent |
 | `lyra agent refine <name>` | Interactively refine agent persona/voice |
 
-**Bot credential management**
+**Bot management**
 
 | Command | Description |
 |---------|-------------|
-| `lyra bot add --platform <p> --bot-id <id>` | Store encrypted bot token (prompts for token) |
-| `lyra bot list` | List all stored bot credentials (tokens masked) |
-| `lyra bot remove --platform <p> --bot-id <id>` | Remove stored bot credentials |
+| `lyra bot init` | Seed BotStore from `config.toml` (idempotent) |
+| `lyra bot init --force` | Overwrite existing BotStore rows |
+| `lyra bot secret install <platform> <bot_id>` | Store bot token as Podman secret |
+| `lyra bot secret install <platform> <bot_id>-webhook` | Store webhook secret as Podman secret |
 
 **Hub and adapter (production four-process mode)**
 

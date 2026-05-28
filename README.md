@@ -86,10 +86,11 @@ cp config.toml.example config.toml
 # Edit config.toml: set bot_id, agent, owner_users
 
 # 3. Store credentials (encrypted)
-lyra bot add --platform telegram --bot-id <bot_id>
+lyra bot secret install telegram <bot_id>
 
-# 4. Initialize agents
-lyra agent init
+# 4. Seed DB from TOML
+lyra agent init              # agents
+lyra bot init                # bots (required since #1416)
 
 # 5. Run
 lyra start
@@ -126,13 +127,13 @@ lyra agent unassign         # unassign agent from a bot
 lyra agent refine <name>    # LLM-guided profile refinement
 ```
 
-### Bot credentials
+### Bot management
 
 ```bash
-lyra bot add --platform telegram --bot-id <id>   # store encrypted token
-lyra bot add --platform discord --bot-id <id>
-lyra bot list                                    # list stored (masked)
-lyra bot remove --platform telegram --bot-id <id>
+lyra bot init                                      # seed BotStore from config.toml
+lyra bot init --force                              # overwrite existing rows
+lyra bot secret install telegram <bot_id>          # store encrypted token
+lyra bot secret install discord <bot_id>
 ```
 
 ### Configuration
@@ -175,7 +176,7 @@ Two files:
 - `config.toml` — bot instances, auth rules, adapter settings
 - `.env` — secrets: `NATS_URL`, `ANTHROPIC_API_KEY` (optional for CLI driver)
 
-Agent configs stored in `~/.lyra/config.db` (SQLite). TOML files in `src/lyra/agents/` are seed sources — import with `lyra agent init`.
+Agent and bot configs stored in `~/.lyra/config.db` (SQLite). TOML files are seed sources — import with `lyra agent init` (agents) and `lyra bot init` (bots).
 
 ## Project structure
 

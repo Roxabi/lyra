@@ -9,6 +9,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from lyra.cli import agent_app
@@ -208,6 +209,17 @@ class TestTelegramAdd:
         assert result.exit_code == 2, result.output
         assert "invalid" in result.output.lower()
 
+    def test_add_invalid_default_trust(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        result = runner.invoke(
+            agent_app,
+            ["telegram", "add", "main", "--default-trust", "evil"],
+        )
+        assert result.exit_code == 2, result.output
+        assert "invalid" in result.output.lower()
+
 
 # ---------------------------------------------------------------------------
 # TestTelegramEdit
@@ -313,6 +325,80 @@ class TestTelegramEdit:
         assert row.auto_thread is False
         assert row.thread_hot_hours == 48
 
+    def test_edit_invalid_thread_hot_hours(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Invalid int for thread_hot_hours prints error and skips field."""
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        db_path = tmp_path / "config.db"
+        db_upsert(
+            db_path,
+            BotRow(
+                platform="telegram",
+                bot_id="main",
+                agent="lyra",
+                thread_hot_hours=24,
+            ),
+        )
+        responses = ["", "", "", "", "", "", "", "abc"]
+        idx = 0
+
+        def _seq_prompt(*_args: Any, **_kwargs: Any) -> str:
+            nonlocal idx
+            val = responses[idx]
+            idx += 1
+            return val
+
+        monkeypatch.setattr(
+            "lyra.agent_cmd.platforms._shared.typer.prompt", _seq_prompt
+        )
+        result = runner.invoke(agent_app, ["telegram", "edit", "main"])
+        assert result.exit_code == 0, result.output
+        assert "invalid int" in result.output.lower()
+        row = db_get(db_path, "telegram", "main")
+        assert row is not None
+        assert row.thread_hot_hours == 24
+
+    def test_edit_clear_list(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """'-' input clears list fields."""
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        db_path = tmp_path / "config.db"
+        db_upsert(
+            db_path,
+            BotRow(
+                platform="telegram",
+                bot_id="main",
+                agent="lyra",
+                owner_users=["alice"],
+                trusted_users=["bob"],
+                trusted_roles=["admin"],
+            ),
+        )
+        # agent, webhook, default_trust, owner_users, trusted_users,
+        # trusted_roles, auto_thread, thread_hot_hours
+        responses = ["", "", "", "-", "-", "-", "", ""]
+        idx = 0
+
+        def _seq_prompt(*_args: Any, **_kwargs: Any) -> str:
+            nonlocal idx
+            val = responses[idx]
+            idx += 1
+            return val
+
+        monkeypatch.setattr(
+            "lyra.agent_cmd.platforms._shared.typer.prompt", _seq_prompt
+        )
+        result = runner.invoke(agent_app, ["telegram", "edit", "main"])
+        assert result.exit_code == 0, result.output
+        assert "updated" in result.output.lower()
+        row = db_get(db_path, "telegram", "main")
+        assert row is not None
+        assert row.owner_users == []
+        assert row.trusted_users == []
+        assert row.trusted_roles == []
+
 
 # ---------------------------------------------------------------------------
 # TestTelegramPatch
@@ -380,6 +466,100 @@ class TestTelegramPatch:
         assert row is not None
         assert row.owner_users == ["alice", "bob"]
 
+    def test_patch_webhook_enabled(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        db_path = tmp_path / "config.db"
+        db_upsert(
+            db_path,
+            BotRow(
+                platform="telegram", bot_id="main", agent="lyra", webhook_enabled=False
+            ),
+        )
+        result = runner.invoke(
+            agent_app, ["telegram", "patch", "main", "--webhook-enabled"]
+        )
+        assert result.exit_code == 0, result.output
+        row = db_get(db_path, "telegram", "main")
+        assert row is not None
+        assert row.webhook_enabled is True
+
+    def test_patch_default_trust(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        db_path = tmp_path / "config.db"
+        db_upsert(
+            db_path,
+            BotRow(
+                platform="telegram",
+                bot_id="main",
+                agent="lyra",
+                default_trust="blocked",
+            ),
+        )
+        result = runner.invoke(
+            agent_app,
+            ["telegram", "patch", "main", "--default-trust", "public"],
+        )
+        assert result.exit_code == 0, result.output
+        row = db_get(db_path, "telegram", "main")
+        assert row is not None
+        assert row.default_trust == "public"
+
+    def test_patch_auto_thread(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        db_path = tmp_path / "config.db"
+        db_upsert(
+            db_path,
+            BotRow(
+                platform="telegram", bot_id="main", agent="lyra", auto_thread=False
+            ),
+        )
+        result = runner.invoke(
+            agent_app, ["telegram", "patch", "main", "--auto-thread"]
+        )
+        assert result.exit_code == 0, result.output
+        row = db_get(db_path, "telegram", "main")
+        assert row is not None
+        assert row.auto_thread is True
+
+    def test_patch_thread_hot_hours(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        db_path = tmp_path / "config.db"
+        db_upsert(
+            db_path,
+            BotRow(
+                platform="telegram", bot_id="main", agent="lyra", thread_hot_hours=24
+            ),
+        )
+        result = runner.invoke(
+            agent_app,
+            ["telegram", "patch", "main", "--thread-hot-hours", "6"],
+        )
+        assert result.exit_code == 0, result.output
+        row = db_get(db_path, "telegram", "main")
+        assert row is not None
+        assert row.thread_hot_hours == 6
+
+    def test_patch_default_trust_invalid(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        db_path = tmp_path / "config.db"
+        db_upsert(db_path, BotRow(platform="telegram", bot_id="main", agent="lyra"))
+        result = runner.invoke(
+            agent_app,
+            ["telegram", "patch", "main", "--default-trust", "evil"],
+        )
+        assert result.exit_code == 2, result.output
+        assert "invalid" in result.output.lower()
+
 
 # ---------------------------------------------------------------------------
 # TestTelegramRemove
@@ -423,6 +603,41 @@ class TestTelegramRemove:
         result = runner.invoke(agent_app, ["telegram", "remove", "../../evil", "--yes"])
         assert result.exit_code == 2, result.output
         assert "invalid" in result.output.lower()
+
+    def test_remove_confirm_yes(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Confirm deletion without --yes flag (mock confirm=yes)."""
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        db_path = tmp_path / "config.db"
+        db_upsert(db_path, BotRow(platform="telegram", bot_id="main", agent="lyra"))
+        monkeypatch.setattr(
+            "lyra.agent_cmd.platforms._commands.typer.confirm", lambda *a, **k: None
+        )
+        result = runner.invoke(agent_app, ["telegram", "remove", "main"])
+        assert result.exit_code == 0, result.output
+        assert "deleted" in result.output.lower()
+        row = db_get(db_path, "telegram", "main")
+        assert row is None
+
+    def test_remove_confirm_no(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Decline deletion without --yes flag (mock confirm=no)."""
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        db_path = tmp_path / "config.db"
+        db_upsert(db_path, BotRow(platform="telegram", bot_id="main", agent="lyra"))
+
+        def _no(*a, **k):
+            raise typer.Abort()
+
+        monkeypatch.setattr(
+            "lyra.agent_cmd.platforms._commands.typer.confirm", _no
+        )
+        result = runner.invoke(agent_app, ["telegram", "remove", "main"])
+        assert result.exit_code == 1, result.output
+        row = db_get(db_path, "telegram", "main")
+        assert row is not None
 
 
 # ---------------------------------------------------------------------------
@@ -623,6 +838,98 @@ class TestTelegramValidate:
         result = runner.invoke(agent_app, ["telegram", "validate", "main"])
         assert result.exit_code == 1, result.output
         assert "secret" in result.output.lower()
+
+    def test_validate_missing_agent(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Agent referenced by bot does not exist in AgentStore."""
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        db_path = tmp_path / "config.db"
+        _seed_agent(db_path, "lyra")
+        db_upsert(
+            db_path,
+            BotRow(
+                platform="telegram",
+                bot_id="main",
+                agent="other",
+                owner_users=["alice"],
+            ),
+        )
+        secret_name = "lyra-bot-telegram-main"
+        mock_run = MagicMock(
+            return_value=_make_proc(returncode=0, stdout=secret_name)
+        )
+        monkeypatch.setattr(
+            "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
+        )
+        result = runner.invoke(agent_app, ["telegram", "validate", "main"])
+        assert result.exit_code == 1, result.output
+        assert "agent" in result.output.lower()
+        assert "other" in result.output.lower()
+
+    def test_validate_podman_error(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """subprocess.run returns non-zero exit code."""
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        db_path = tmp_path / "config.db"
+        _seed_agent(db_path, "lyra")
+        db_upsert(
+            db_path,
+            BotRow(
+                platform="telegram",
+                bot_id="main",
+                agent="lyra",
+                owner_users=["alice"],
+            ),
+        )
+        mock_run = MagicMock(return_value=_make_proc(returncode=1, stdout=""))
+        monkeypatch.setattr(
+            "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
+        )
+        result = runner.invoke(agent_app, ["telegram", "validate", "main"])
+        assert result.exit_code == 1, result.output
+        assert "secret" in result.output.lower()
+
+    def test_validate_ok_args(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Validate that subprocess.run was called with correct arguments."""
+        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        db_path = tmp_path / "config.db"
+        _seed_agent(db_path, "lyra")
+        db_upsert(
+            db_path,
+            BotRow(
+                platform="telegram",
+                bot_id="main",
+                agent="lyra",
+                owner_users=["alice"],
+            ),
+        )
+        secret_name = "lyra-bot-telegram-main"
+        mock_run = MagicMock(
+            return_value=_make_proc(returncode=0, stdout=secret_name)
+        )
+        monkeypatch.setattr(
+            "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
+        )
+        result = runner.invoke(agent_app, ["telegram", "validate", "main"])
+        assert result.exit_code == 0, result.output
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args
+        assert call_args[0][0] == [
+            "podman",
+            "secret",
+            "ls",
+            "--filter",
+            f"name={secret_name}",
+            "--format",
+            "{{.Name}}",
+        ]
+        assert call_args[1].get("capture_output") is True
+        assert call_args[1].get("text") is True
+        assert call_args[1].get("timeout") == 10
 
     def test_validate_invalid_bot_id(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

@@ -2,22 +2,13 @@
 
 from __future__ import annotations
 
-import os
 import re
-from pathlib import Path
 
 import typer
 
 from lyra.core.agent.bot_models import BotRow
 
 _BOT_ID_RE = re.compile(r"[A-Za-z0-9_-]+")
-_VALID_PLATFORMS = ("telegram", "discord")
-
-
-def _get_db_path() -> Path:
-    return (
-        Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))) / "config.db"
-    )
 
 
 def _validate_bot_id(bot_id: str) -> None:
@@ -25,16 +16,6 @@ def _validate_bot_id(bot_id: str) -> None:
         typer.echo(
             f"invalid bot_id {bot_id!r}: must match [A-Za-z0-9_-]+ "
             "(alphanumeric, hyphen, underscore only)",
-            err=True,
-        )
-        raise typer.Exit(2)
-
-
-def _validate_platform(platform: str) -> None:
-    if platform not in _VALID_PLATFORMS:
-        typer.echo(
-            f"invalid platform {platform!r}: must be one of "
-            f"{', '.join(_VALID_PLATFORMS)}",
             err=True,
         )
         raise typer.Exit(2)
@@ -56,8 +37,12 @@ def _format_table(rows: list[BotRow]) -> None:
 
 
 def _prompt_edit_string(field: str, current: str) -> str | None:
-    val = typer.prompt(f"  {field} (current: {current!r}, blank=keep)", default="")
+    val = typer.prompt(
+        f"  {field} (current: {current!r}, blank=keep, -=clear)", default=""
+    )
     v = val.strip()
+    if v == "-":
+        return ""
     return v if v else None
 
 

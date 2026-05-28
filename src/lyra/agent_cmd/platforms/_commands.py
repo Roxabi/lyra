@@ -59,6 +59,9 @@ def _show(platform: str, bot_id: str) -> None:
     asyncio.run(_run())
 
 
+_VALID_TRUST = {"owner", "trusted", "public", "blocked"}
+
+
 def _add(  # noqa: PLR0913
     platform: str,
     bot_id: str,
@@ -73,6 +76,13 @@ def _add(  # noqa: PLR0913
 ) -> None:
     """Create or replace a bot row."""
     _validate_bot_id(bot_id)
+    if default_trust not in _VALID_TRUST:
+        typer.echo(
+            f"Error: invalid default_trust {default_trust!r}. "
+            f"Must be one of: {', '.join(sorted(_VALID_TRUST))}",
+            err=True,
+        )
+        raise typer.Exit(2)
 
     async def _run() -> None:
         store = await _connect_bot_store()
@@ -161,6 +171,14 @@ def _edit(  # noqa: C901, PLR0915
 def _patch(platform: str, bot_id: str, **kwargs: Any) -> None:
     """Apply a partial patch to a bot row."""
     _validate_bot_id(bot_id)
+    dt = kwargs.get("default_trust")
+    if dt is not None and dt not in _VALID_TRUST:
+        typer.echo(
+            f"Error: invalid default_trust {dt!r}. "
+            f"Must be one of: {', '.join(sorted(_VALID_TRUST))}",
+            err=True,
+        )
+        raise typer.Exit(2)
 
     async def _run() -> None:
         store = await _connect_bot_store()
@@ -220,6 +238,32 @@ def _unassign(platform: str, bot_id: str) -> None:
     _patch(platform, bot_id, agent="")
 
 
+def _check_secret(secret_name: str) -> str | None:
+    """Return error message if podman secret is missing, else None."""
+    try:
+        result = subprocess.run(
+            [
+                "podman",
+                "secret",
+                "ls",
+                "--filter",
+                f"name={secret_name}",
+                "--format",
+                "{{.Name}}",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except FileNotFoundError:
+        return "podman command not found"
+    except subprocess.TimeoutExpired:
+        return "podman secret ls timed out"
+    if result.returncode != 0 or secret_name not in result.stdout.splitlines():
+        return f"Podman secret {secret_name!r} not found"
+    return None
+
+
 def _validate(platform: str, bot_id: str) -> None:
     """Dry-run validation: agent exists, owners non-empty, secret exists."""
     _validate_bot_id(bot_id)
@@ -241,21 +285,9 @@ def _validate(platform: str, bot_id: str) -> None:
             if not row.owner_users:
                 errors.append("owner_users is empty")
             secret_name = f"lyra-bot-{platform}-{bot_id}"
-            result = subprocess.run(
-                [
-                    "podman",
-                    "secret",
-                    "ls",
-                    "--filter",
-                    f"name={secret_name}",
-                    "--format",
-                    "{{.Name}}",
-                ],
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode != 0 or secret_name not in result.stdout:
-                errors.append(f"Podman secret {secret_name!r} not found")
+            err = _check_secret(secret_name)
+            if err:
+                errors.append(err)
             if errors:
                 for e in errors:
                     typer.echo(f"Error: {e}", err=True)

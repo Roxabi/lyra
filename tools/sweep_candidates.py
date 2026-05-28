@@ -1,12 +1,6 @@
 """List small, unblocked, ready issues for the sequential automation sweep.
 
-Usage:
-    uv run python tools/sweep_candidates.py
-    uv run python tools/sweep_candidates.py --json   # machine-readable output
-
-/goal Small Issue Automation Sweep — v3 Sequential (1-at-a-time)
-- `uv run python tools/sweep_candidates.py --json --top 1`
-  → return no issue when no candidate
+/goal `sweep_candidates.py --json --top 1` → empty when no candidate
 ================================================================
 Run a sequential sweep of small, unblocked, ready issues in roxabi/lyra.
 
@@ -143,29 +137,37 @@ def fetch_issues() -> list[dict]:
     nodes = data["repository"]["issues"]["nodes"]
     issues = []
     for node in nodes:
-        issues.append({
-            "number": node["number"],
-            "title": node["title"],
-            "state": node["state"],
-            "body": node.get("body", ""),
-            "url": node.get("url"),
-            "labels": [lbl["name"] for lbl in node.get("labels", {}).get("nodes", [])],
-            "assignees": [
-                {"login": a["login"]}
-                for a in node.get("assignees", {}).get("nodes", [])
-            ],
-            "blockedBy": node.get("blockedBy", {}).get("nodes", []),
-            "parent": (
-                {
-                    "number": node["parent"]["number"],
-                    "state": node["parent"]["state"],
-                    "blockedBy": [
-                        b for b in node["parent"].get("blockedBy", {}).get("nodes", [])
-                    ],
-                }
-                if node.get("parent") else None
-            ),
-        })
+        issues.append(
+            {
+                "number": node["number"],
+                "title": node["title"],
+                "state": node["state"],
+                "body": node.get("body", ""),
+                "url": node.get("url"),
+                "labels": [
+                    lbl["name"] for lbl in node.get("labels", {}).get("nodes", [])
+                ],
+                "assignees": [
+                    {"login": a["login"]}
+                    for a in node.get("assignees", {}).get("nodes", [])
+                ],
+                "blockedBy": node.get("blockedBy", {}).get("nodes", []),
+                "parent": (
+                    {
+                        "number": node["parent"]["number"],
+                        "state": node["parent"]["state"],
+                        "blockedBy": [
+                            b
+                            for b in node["parent"]
+                            .get("blockedBy", {})
+                            .get("nodes", [])
+                        ],
+                    }
+                    if node.get("parent")
+                    else None
+                ),
+            }
+        )
     return issues
 
 
@@ -173,11 +175,16 @@ def fetch_prs() -> list[dict]:
     """Open PRs to check for WIP overlap."""
     return _gh_json(
         [
-            "pr", "list",
-            "--repo", REPO,
-            "--state", "open",
-            "--json", "number,title,headRefName",
-            "--limit", "100",
+            "pr",
+            "list",
+            "--repo",
+            REPO,
+            "--state",
+            "open",
+            "--json",
+            "number,title,headRefName",
+            "--limit",
+            "100",
         ]
     )
 
@@ -266,13 +273,15 @@ def get_worktree_blockers(issues: list[dict]) -> list[dict]:
         issue = issues_by_number.get(issue_num)
         if issue:
             labels = issue.get("labels", [])
-            blockers.append({
-                "wt_name": wt.name,
-                "issue_number": issue_num,
-                "issue_title": issue.get("title", ""),
-                "size": parse_size(labels),
-                "priority": parse_priority(labels),
-            })
+            blockers.append(
+                {
+                    "wt_name": wt.name,
+                    "issue_number": issue_num,
+                    "issue_title": issue.get("title", ""),
+                    "size": parse_size(labels),
+                    "priority": parse_priority(labels),
+                }
+            )
     return blockers
 
 
@@ -292,14 +301,16 @@ def get_pr_blockers(issues: list[dict], prs: list[dict]) -> list[dict]:
         issue = issues_by_number.get(issue_num)
         if issue:
             labels = issue.get("labels", [])
-            blockers.append({
-                "pr_number": pr.get("number"),
-                "pr_title": title,
-                "issue_number": issue_num,
-                "issue_title": issue.get("title", ""),
-                "size": parse_size(labels),
-                "priority": parse_priority(labels),
-            })
+            blockers.append(
+                {
+                    "pr_number": pr.get("number"),
+                    "pr_title": title,
+                    "issue_number": issue_num,
+                    "issue_title": issue.get("title", ""),
+                    "size": parse_size(labels),
+                    "priority": parse_priority(labels),
+                }
+            )
     return blockers
 
 
@@ -356,6 +367,7 @@ def filter_candidates(
 
 def main() -> int:
     import argparse
+
     parser = argparse.ArgumentParser(description="List sweep candidates")
     parser.add_argument("--json", action="store_true", help="Output JSON")
     parser.add_argument("--top", type=int, default=10, help="Max candidates to show")
@@ -412,9 +424,7 @@ def main() -> int:
             p = c.priority or "-"
             s = c.size or "-"
             blockers = (
-                f"  [blocked by {', '.join(c.blocked_by)}]"
-                if c.blocked_by
-                else ""
+                f"  [blocked by {', '.join(c.blocked_by)}]" if c.blocked_by else ""
             )
             print(f"{c.number:>5}  {p:>3}  {s:>5}  {c.title}{blockers}")
         print("-" * 70)

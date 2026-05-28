@@ -12,7 +12,7 @@ import logging
 import re
 import time
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import nats.errors
 from nats.aio.client import Client as NATS
@@ -29,8 +29,12 @@ from lyra.core.messaging.message import (
 from lyra.core.messaging.render_events import RenderEvent
 from lyra.nats.render_event_codec import NatsRenderEventCodec
 from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
+from roxabi_contracts.outbound import OutboundAudioSubjects
 from roxabi_nats import TypeHintResolver
 from roxabi_nats._serialize import serialize
+
+if TYPE_CHECKING:
+    from nats.js.client import JetStreamContext
 
 log = logging.getLogger(__name__)
 
@@ -108,6 +112,7 @@ class NatsChannelProxy:
                 "must match [A-Za-z0-9_-]+"
             )
         self._nc = nc
+        self._js: JetStreamContext = nc.jetstream()
         self._platform = platform
         self._bot_id = bot_id
         self._resolver = resolver
@@ -297,11 +302,19 @@ class NatsChannelProxy:
     # ------------------------------------------------------------------
 
     async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
-        """Publish an outbound audio voice note to NATS."""
-        subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
+        """Publish an outbound audio voice note to NATS via JetStream (durable).
+
+        Publishes to the 5-token subject ``lyra.outbound.audio.<platform>.<bot_id>``
+        on stream ``LYRA_OUTBOUND_AUDIO``.  The ``Nats-Msg-Id`` header is set to
+        ``inbound.id`` to drive JetStream dedup-window and downstream idempotency.
+        Awaiting PubAck guarantees the message is persisted before returning.
+        Publish failures propagate to the caller (T6 will wrap them).
+        """
+        stream_id = inbound.id
+        subject = OutboundAudioSubjects.audio(self._platform.value, self._bot_id)
         envelope = {
             "type": "audio",
-            "stream_id": inbound.id,
+            "stream_id": stream_id,
             "audio": json.loads(
                 serialize(msg, resolver=self._resolver).decode("utf-8")
             ),
@@ -310,7 +323,7 @@ class NatsChannelProxy:
             ),
         }
         payload = json.dumps(envelope, ensure_ascii=False).encode("utf-8")
-        await self._nc.publish(subject, payload)
+        await self._js.publish(subject, payload, headers={"Nats-Msg-Id": stream_id})
 
     async def render_audio_stream(
         self,

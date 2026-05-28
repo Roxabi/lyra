@@ -36,10 +36,13 @@ from tests.helpers.messages import make_test_blobref
 # ---------------------------------------------------------------------------
 
 
-def _make_nc() -> AsyncMock:
-    """Return a mock NATS client with an async publish method."""
+def _make_nc() -> MagicMock:
+    """Return a mock NATS client with async publish and a JetStream context mock."""
     nc = MagicMock()
     nc.publish = AsyncMock()
+    js = MagicMock()
+    js.publish = AsyncMock(return_value=MagicMock())  # PubAck stub
+    nc.jetstream = MagicMock(return_value=js)
     return nc
 
 
@@ -391,7 +394,7 @@ async def test_render_attachment_publishes_to_outbound_subject() -> None:
 
 @pytest.mark.asyncio
 async def test_render_audio_publishes_to_nats() -> None:
-    """render_audio() publishes a type=audio envelope to NATS."""
+    """render_audio() publishes a type=audio envelope via JetStream to durable subj."""
     nc = _make_nc()
     proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
     inbound = _make_inbound("msg-audio")
@@ -401,14 +404,53 @@ async def test_render_audio_publishes_to_nats() -> None:
 
     await proxy.render_audio(audio, inbound)
 
-    nc.publish.assert_awaited_once()
-    subject, payload = nc.publish.await_args.args
-    assert subject == "lyra.outbound.telegram.main"
+    # Must use JetStream publish, not core NATS publish
+    nc.publish.assert_not_awaited()
+    js = nc.jetstream()
+    js.publish.assert_awaited_once()
+    subject, payload = js.publish.await_args.args
+    assert subject == "lyra.outbound.audio.telegram.main"
     data = json.loads(payload)
     assert data["type"] == "audio"
     assert data["stream_id"] == "msg-audio"
     assert "audio" in data
     assert "original_msg" in data
+
+
+# ---------------------------------------------------------------------------
+# render_audio_publish — durable JetStream subject + Nats-Msg-Id header
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_render_audio_publish_subject_and_header() -> None:
+    """render_audio() uses 5-token audio subject and Nats-Msg-Id = stream_id.
+
+    Asserts:
+    - js.publish is called (not nc.publish)
+    - subject is lyra.outbound.audio.<platform>.<bot_id>
+    - Nats-Msg-Id header == inbound.id (stream_id)
+    - PubAck is awaited (js.publish is awaited, not fire-and-forget)
+    """
+    nc = _make_nc()
+    proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="bot1")
+    inbound = _make_inbound("stream-123")
+    audio = OutboundAudio(
+        blob_ref=make_test_blobref(b"\xff\xfe"), mime_type="audio/ogg"
+    )
+
+    await proxy.render_audio(audio, inbound)
+
+    js = nc.jetstream()
+    js.publish.assert_awaited_once()
+    call = js.publish.await_args
+    subj, _payload = call.args
+    headers = call.kwargs.get("headers") or {}
+
+    assert subj == "lyra.outbound.audio.telegram.bot1"
+    assert headers.get("Nats-Msg-Id") == "stream-123"
+    # nc.publish (core, at-most-once) must NOT be called
+    nc.publish.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

@@ -166,6 +166,11 @@ fi
 # ── 3. Ensure data directories ──────────────────────────────────────────────
 
 log "Ensuring data directories ..."
+run mkdir -p /data/lyra/blobs
+if ! findmnt /data/lyra/blobs >/dev/null 2>&1; then
+  warn "/data/lyra/blobs is not a mount point — verify data persistence"
+fi
+echo "  [ok]   /data/lyra/blobs"
 run mkdir -p "${HOME}/.lyra/turn-writer"
 echo "  [ok]   ~/.lyra/turn-writer/"
 
@@ -184,6 +189,10 @@ done
 log "Reloading systemd user daemon ..."
 run systemctl --user daemon-reload
 echo "  [ok]   daemon-reload"
+
+log "Enabling lyra-blobstore.service ..."
+run systemctl --user enable lyra-blobstore.service
+echo "  [ok]   lyra-blobstore.service enabled"
 
 # ── 5b. Seed BotStore from config.toml (idempotent) ─────────────────────────
 # Required since #1416: Authenticator reads from BotStore, not config.toml.

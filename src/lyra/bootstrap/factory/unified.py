@@ -49,7 +49,7 @@ async def _bootstrap_unified(
 
         async with open_stores(vault_dir) as stores:
             await _prune_message_index(stores, raw_config)
-            await _seed_auth(stores, raw_config)
+            await _seed_auth(stores)
 
             bundle = await _init_bot_auths_and_agents(stores, raw_config)
             pm = await _init_pairing(

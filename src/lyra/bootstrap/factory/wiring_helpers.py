@@ -104,15 +104,11 @@ async def _init_inbound_bus(
     )
 
 
-async def _seed_auth(stores: object, raw_config: dict) -> None:
-    """Seed auth store from config block."""
-    auth_block: dict = raw_config.get("auth", {})
-    for entry in auth_block.get("telegram_bots", []):
-        synthetic = {"auth": {"telegram": entry}}
-        await stores.auth.seed_from_config(synthetic, "telegram")
-    for entry in auth_block.get("discord_bots", []):
-        synthetic = {"auth": {"discord": entry}}
-        await stores.auth.seed_from_config(synthetic, "discord")
+async def _seed_auth(stores: object) -> None:
+    """Thin shim: delegate to canonical seed_grants_from_bots."""
+    from lyra.bootstrap.auth_seeding import seed_grants_from_bots
+
+    await seed_grants_from_bots(stores.auth, stores.bot)
 
 
 async def _prune_message_index(stores: object, raw_config: dict) -> None:

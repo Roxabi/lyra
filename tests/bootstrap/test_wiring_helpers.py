@@ -71,35 +71,32 @@ class TestInitInboundBus:
 
 class TestSeedAuth:
     @pytest.mark.asyncio
-    async def test_seed_auth_calls_seed_from_config_once_per_bot_entry(self) -> None:
+    async def test_seed_auth_delegates_to_seed_grants_from_bots(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         # Arrange
+        seed_calls: list[tuple] = []
+
+        async def fake_seed(auth_store, bot_store):
+            seed_calls.append((auth_store, bot_store))
+
+        monkeypatch.setattr(
+            "lyra.bootstrap.auth_seeding.seed_grants_from_bots",
+            fake_seed,
+        )
+
         stores = MagicMock()
-        stores.auth.seed_from_config = AsyncMock()
-        raw_config = {
-            "auth": {
-                "telegram_bots": [
-                    {"bot_id": "tg1", "default": "public"},
-                    {"bot_id": "tg2", "default": "public"},
-                ],
-                "discord_bots": [
-                    {"bot_id": "dc1", "default": "public"},
-                ],
-            }
-        }
+        stores.auth = MagicMock()
+        stores.bot = MagicMock()
 
         # Act
-        await _seed_auth(stores, raw_config)
+        await _seed_auth(stores)
 
-        # Assert
-        assert stores.auth.seed_from_config.call_count == 3
-        stores.auth.seed_from_config.assert_any_call(
-            {"auth": {"telegram": {"bot_id": "tg1", "default": "public"}}},
-            "telegram",
-        )
-        stores.auth.seed_from_config.assert_any_call(
-            {"auth": {"discord": {"bot_id": "dc1", "default": "public"}}},
-            "discord",
-        )
+        # Assert — delegates to canonical seed_grants_from_bots with auth+bot stores
+        assert len(seed_calls) == 1
+        passed_auth, passed_bot = seed_calls[0]
+        assert passed_auth is stores.auth
+        assert passed_bot is stores.bot
 
 
 class TestPruneMessageIndex:

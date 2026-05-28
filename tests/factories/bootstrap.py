@@ -274,6 +274,19 @@ def patch_all(
     _fake_auth_store.close = AsyncMock()
     monkeypatch.setattr(stores_mod, "AuthStore", lambda **kwargs: _fake_auth_store)
 
+    from lyra.core.agent.bot_models import BotRow
+
+    _fake_bot_store = MagicMock()
+    _fake_bot_store.connect = AsyncMock()
+    _fake_bot_store.close = AsyncMock()
+    _fake_bot_store.get_all = MagicMock(
+        return_value=[
+            BotRow(platform="telegram", bot_id="main", agent="lyra_default"),
+            BotRow(platform="discord", bot_id="main", agent="lyra_default"),
+        ]
+    )
+    monkeypatch.setattr(stores_mod, "BotStore", lambda **kwargs: _fake_bot_store)
+
     _fake_agent_row = MagicMock()
     _fake_agent_row.name = "lyra_default"
     _fake_agent_store = MagicMock()

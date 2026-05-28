@@ -80,7 +80,7 @@ if [[ ! -f "${BLOBSTORE_TOK}" || "$FORCE" -eq 1 ]]; then
   log "Generating blobstore bearer token → ${BLOBSTORE_TOK} ..."
   run mkdir -p "${HOME}/.lyra"
   if [[ "$DRY_RUN" -eq 0 ]]; then
-    (umask 0077; head -c 48 /dev/urandom | base64 | tr -d '/+=' | head -c 48 > "${BLOBSTORE_TOK}")
+    (umask 0077; openssl rand -base64 48 > "${BLOBSTORE_TOK}")
   else
     echo "[dry-run] would generate ${BLOBSTORE_TOK} (48 url-safe chars, mode 0600)"
   fi
@@ -168,9 +168,11 @@ fi
 log "Ensuring data directories ..."
 run mkdir -p /data/lyra/blobs
 if ! findmnt /data/lyra/blobs >/dev/null 2>&1; then
-  warn "/data/lyra/blobs is not a mount point — verify data persistence"
+  warn "/data/lyra/blobs is not a mount point — add to /etc/fstab with noatime,nodiratime"
 fi
 echo "  [ok]   /data/lyra/blobs"
+run ln -sf /data/lyra/blobs ~/.lyra/blobstore
+echo "  [ok]   ~/.lyra/blobstore → /data/lyra/blobs"
 run mkdir -p "${HOME}/.lyra/turn-writer"
 echo "  [ok]   ~/.lyra/turn-writer/"
 
@@ -206,9 +208,9 @@ run podman run --rm \
 
 echo "  [ok]   BotStore seeded"
 
-log "Done. Services NOT restarted — run: systemctl --user start lyra-nats lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-gh-helper lyra-turn-writer lyra-blobstore"
-
 # ── 6. Install sync timer + service (idempotent) ───────────────────────────
 
 log "Installing lyra-quadlet-sync timer + service ..."
 run make quadlet-sync-install
+
+log "Done. Services NOT restarted — run: systemctl --user start lyra-nats lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-gh-helper lyra-turn-writer lyra-blobstore"

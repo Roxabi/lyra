@@ -6,7 +6,7 @@ Extracted from hub_standalone.py for size compliance (#760).
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from nats.aio.client import Client as NATS
 
@@ -48,14 +48,18 @@ from lyra.transport.typing_publisher import TypingPublisher
 
 if TYPE_CHECKING:
     from lyra.bootstrap.bootstrap_stores import StoreBundle
+    from lyra.bootstrap.wiring.bootstrap_wiring import Authenticator
+    from lyra.config import DiscordBotConfig, TelegramBotConfig
+    from lyra.core.hub import OutboundDispatcher
     from lyra.core.messaging.messages import MessageManager
     from lyra.core.ports.audit_sink import AuditSink
     from lyra.core.ports.resume_publisher import ResumePublisherPort
     from lyra.infrastructure.stores.pairing import PairingManager
     from lyra.infrastructure.stores.prefs_store import PrefsStore
     from lyra.llm.llm_client import LlmClient
+    from lyra.nats.nats_channel_proxy import NatsChannelProxy
 
-from lyra.bootstrap.types import BuildHubDeps, CliPoolBundle
+from lyra.bootstrap.types import BotAuthBundle, BuildHubDeps, CliPoolBundle, VoiceBundle
 
 log = logging.getLogger(__name__)
 
@@ -304,21 +308,23 @@ async def _init_clipool(
 
 
 async def _build_hub_and_wire(  # noqa: PLR0913 — unavoidable wiring surface
-    nc: Any,
+    nc: NATS,
     raw_config: dict,
-    stores: Any,
+    stores: StoreBundle,
     *,
-    circuit_registry: Any,
+    circuit_registry: CircuitRegistry,
     bot_agent_map: dict[tuple[str, str], str],
-    msg_manager: Any,
+    msg_manager: MessageManager,
     pm: PairingManager | None,
-    inbound_bus: Any,
-    inbound_bus_cfg: Any,
-    freshness_drivers_list: list[Any],
-    agent_configs: dict[str, Any],
-    tg_bot_auths: list[Any],
-    dc_bot_auths: list[Any],
-) -> tuple[Any, list[Any], list[Any], Any, Any]:
+    inbound_bus: NatsBus[InboundMessage],
+    inbound_bus_cfg: InboundBusConfig,
+    freshness_drivers_list: list[object],
+    agent_configs: dict[str, Agent],
+    tg_bot_auths: list[tuple[TelegramBotConfig, Authenticator]],
+    dc_bot_auths: list[tuple[DiscordBotConfig, Authenticator]],
+) -> tuple[
+    Hub, list[NatsChannelProxy], list[OutboundDispatcher], LlmClient, LlmClient | None
+]:
     """Build the Hub, wire NATS proxies, and register agents.
 
     Returns ``(hub, proxies, dispatchers, cli_nats_driver, nats_llm_client)``.
@@ -329,25 +335,31 @@ async def _build_hub_and_wire(  # noqa: PLR0913 — unavoidable wiring surface
     await tts_service.start()
     nats_llm_client = await init_nats_llm(nc)
 
-    js = nc.jetstream()
-    turn_publisher = TurnPublisher(js)
-    adapter = TurnPublisherAdapter(turn_publisher, stores.turn)
-
-    hub = build_hub(
-        raw_config,
-        circuit_registry=circuit_registry,
+    first_agent_config = agent_configs[next(iter(sorted(agent_configs)))]
+    bundle = BotAuthBundle(
+        tg_bot_auths=tg_bot_auths,
+        dc_bot_auths=dc_bot_auths,
+        bot_agent_map=bot_agent_map,
+        agent_configs=agent_configs,
+        first_agent_config=first_agent_config,
         msg_manager=msg_manager,
-        pairing_manager=pm,
+        circuit_registry=circuit_registry,
+        admin_user_ids=frozenset(),
+    )
+    voice = VoiceBundle(
         stt_service=stt_service,
         tts_service=tts_service,
-        prefs_store=stores.prefs,
-        inbound_bus=inbound_bus,
-        inbound_bus_cfg=inbound_bus_cfg,
-        resume_publisher=adapter,
+        nats_llm_client=nats_llm_client,
     )
-    hub.set_turn_store(stores.turn)
-    hub.set_message_index(stores.message_index)
-    hub.set_turn_publisher(turn_publisher)
+
+    hub = _build_hub(BuildHubDeps(
+        raw_config=raw_config,
+        bundle=bundle,
+        voice=voice,
+        inbound_bus=inbound_bus,
+        pm=pm,
+        stores=stores,
+    ))
     if hub._turn_publisher is None:
         raise RuntimeError("TurnPublisher not wired — startup check failed")
 

@@ -17,8 +17,9 @@ if TYPE_CHECKING:
     from lyra.adapters.discord import DiscordAdapter
     from lyra.adapters.telegram import TelegramAdapter
     from lyra.bootstrap.bootstrap_stores import StoreBundle
-    from lyra.config import DiscordBotConfig
+    from lyra.config import DiscordBotConfig, TelegramBotConfig
     from lyra.core.agent import Agent
+    from lyra.core.auth.authenticator import Authenticator
     from lyra.core.circuit_breaker import CircuitRegistry
     from lyra.core.cli.cli_pool import CliPool
     from lyra.core.hub import Hub, OutboundDispatcher
@@ -73,8 +74,8 @@ class VoiceBundle:
 
 @dataclass
 class BotAuthBundle:
-    tg_bot_auths: list
-    dc_bot_auths: list
+    tg_bot_auths: list[tuple[TelegramBotConfig, Authenticator]]
+    dc_bot_auths: list[tuple[DiscordBotConfig, Authenticator]]
     bot_agent_map: dict
     agent_configs: dict[str, Agent]
     first_agent_config: Agent

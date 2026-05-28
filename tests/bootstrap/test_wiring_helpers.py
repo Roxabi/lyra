@@ -371,7 +371,7 @@ class TestInitBotAuthsAndAgents:
             lambda *a, **kw: ([], []),
         )
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(ValueError):
             await _init_bot_auths_and_agents(MagicMock(), {})
 
     @pytest.mark.asyncio
@@ -401,7 +401,7 @@ class TestInitBotAuthsAndAgents:
         stores = MagicMock()
         stores.agent.get = MagicMock(return_value=None)
 
-        with pytest.raises(SystemExit):
+        with pytest.raises(ValueError):
             await _init_bot_auths_and_agents(stores, {})
 
     @pytest.mark.asyncio
@@ -419,7 +419,7 @@ class TestInitBotAuthsAndAgents:
             MagicMock(side_effect=ValueError("bad config")),
         )
 
-        with pytest.raises(SystemExit, match="bad config"):
+        with pytest.raises(ValueError, match="bad config"):
             await _init_bot_auths_and_agents(MagicMock(), {})
 
 

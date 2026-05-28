@@ -103,7 +103,7 @@ async def _init_bot_auths_and_agents(
     try:
         tg_multi_cfg, dc_multi_cfg = load_multibot_config(raw_config)
     except ValueError as exc:
-        raise SystemExit(str(exc))
+        raise ValueError(str(exc))
 
     tg_bot_auths, dc_bot_auths = _build_bot_auths(
         BotAuthDeps(
@@ -121,7 +121,7 @@ async def _init_bot_auths_and_agents(
     )
 
     if not tg_bot_auths and not dc_bot_auths:
-        raise SystemExit(
+        raise ValueError(
             "No adapters configured — add at least one"
             " [[telegram.bots]] or [[discord.bots]] entry"
             " and run 'lyra bot init' to seed the bot store"
@@ -144,7 +144,7 @@ async def _init_bot_auths_and_agents(
         else:
             log.error("Agent %r not found in DB — skipping", n)
     if not agent_configs:
-        raise SystemExit(
+        raise ValueError(
             "No agent configs could be loaded — run"
             " 'lyra agent init' to seed the agents table"
         )

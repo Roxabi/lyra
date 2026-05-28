@@ -1,6 +1,6 @@
 # Harness Epic — Consolidated Architecture & Resume Point
 
-> **Status:** pre-draft. Epic not yet created on GitHub.
+> **Status:** drafted. Epic created on GitHub: [#1490](https://github.com/Roxabi/lyra/issues/1490).
 > **Owner:** mickael
 > **Last touched:** 2026-05-20
 > **Supersedes:**
@@ -277,12 +277,16 @@ All closed between 2026-05-14 and 2026-05-17.
 | Q4 | Backend taxonomy (`agent_config.backend`) | **answered: A** (per prior intent) | Collapse to `claude-cli \| harness`; litellm/ollama become harness *models*. Schedule with `#1198` cleanup-tail. |
 | Q5 | Failure semantics | **answered: B** (per prior intent) | Tool-error-soft — `ToolUseLlmEvent` raises → `ToolResultLlmEvent { is_error: true }`, loop continues. Matches Claude/OpenAI agentic SDK behavior. |
 | — | Ownership split (3-concerns) | **needs explicit confirmation** | §3 — hub owns context-builder, harness owns turn-local, shared store owns canonical |
-| — | Runtime choice (LangGraph vs custom vs Hermes) | **open** | Lean LangGraph w/ `MemorySaver`; custom thin loop as fallback. See §9. |
-| — | Sub-harness spawn (Q2 sibling) in v1 or follow-up? | **open** | Lean follow-up — trivial under 3-concerns model, but adds scope to v1 |
+| — | Runtime choice (LangGraph vs custom vs Hermes) | **answered: Custom** | Custom thin loop (~200 lines Python) — zero external lock-in |
+| — | Sub-harness spawn (Q2 sibling) in v1 or follow-up? | **answered: follow-up** | Trivial under 3-concerns model, but adds scope to v1 |
 | — | Canonical-store backend (Redis vs JS-KV) | **deferred to `#640`** | Harness epic stays silent — store is just a client dependency |
-| — | Naming (§8) | **needs confirmation** | Aligned with `#1044` convention; should be a quick yes |
-
-**Pending confirmations on prior answers:** Q4=A and Q5=B were captured from prior conversation in the brainstorm doc. Worth a 30-second re-confirm before locking into the epic.
+| — | Naming (§8) | **answered: OK** | Aligned with `#1044` convention |
+| — | Memory injection | **answered: Hub pre-builds** | Memory = external tool (roxabi-cortex); no harness calls |
+| — | Streaming | **answered: Real-time** | `HarnessTurnEvent` emitted as loop runs |
+| — | Tool result shape | **answered: Structured dict** | `{"output": ..., "status": ..., "artifacts": [...]}` |
+| — | `HistoryRef` resolver | **answered: Blobstore** | Reuse #1330 V8 HTTP-fronted blobstore |
+| — | `LyraToolProxy` subject | **answered: Reuse `lyra.jobs.*`** | Worker fleet already uses this; tool = job |
+| — | Turn timeout | **answered: None** | Healthcheck only; no per-turn timeout |
 
 ---
 
@@ -445,15 +449,15 @@ lyra.harness.dlq                — turn DLQ (if Q5 ever pivots)
 ### Decision recording — fill in when answered
 
 ```
-Ownership split (3-concerns)        : confirm / amend : ____
-Q1 (tool execution layer)           : A / B / C       : ____
-Q2 (tool-execution locality)        : A / B / C       : ____
-Q3 (wire/history transport)         : B / C           : ____
-Q4 (backend taxonomy)               : A (confirm)     : ____
-Q5 (failure semantics)              : B (confirm)     : ____
-Runtime                             : LangGraph / custom / Hermes : ____
-Sub-harness spawn                   : v1 / follow-up  : ____
-Naming (§8)                         : OK / amend      : ____
+Ownership split (3-concerns)        : confirm         : CONFIRMED 2026-05-28
+Q1 (tool execution layer)           : A / B / C       : C (hybrid: shared + harness-local)
+Q2 (tool-execution locality)        : A / B / C       : Hybrid: in-harness + Lyra tools via NATS (not through hub)
+Q3 (wire/history transport)         : B / C           : Hybrid: text via JetStream (turns), objects via blobstore
+Q4 (backend taxonomy)               : A (confirm)     : A (collapse to claude-cli | harness) — CONFIRMED 2026-05-28
+Q5 (failure semantics)              : B (confirm)     : B (tool-error-soft, loop continues) — CONFIRMED 2026-05-28
+Runtime                             : LangGraph / custom / Hermes : B (custom thin loop)
+Sub-harness spawn                   : v1 / follow-up  : follow-up
+Naming (§8)                         : OK / amend      : OK
 ```
 
 ### Child issues to open after epic lands

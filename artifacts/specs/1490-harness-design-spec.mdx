@@ -1,0 +1,666 @@
+# Harness Design Spec — #1490
+
+> **Status:** design — pending implementation
+> **Scope:** contracts, worker architecture, hub-side client, tool layer, container, bootstrap
+> **Decisions:** Q1=C, Q2=Hybrid, Q3=Hybrid, Q4=A, Q5=B, Runtime=Custom, Sub-harness=follow-up
+
+---
+
+## 1. Architecture Overview
+
+**A1 update:** Hub = pure router. Harness = context builder + canonical store + turn-local memory.
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  HUB (pure router)                                                  │
+│   ├─ receive inbound message (Telegram / Discord)                    │
+│   ├─ ship (pool_id, user_msg, metadata) → lyra.harness.turn.request │
+│   └─ forward harness reply → outbound adapter                        │
+└─────────────────────────────────────────────────────────────────────┘
+                          │
+                          ▼ sticky routing: pool_id → harness worker
+┌─────────────────────────────────────────────────────────────────────┐
+│  lyra-harness (stateful on pool_id, 1 worker = 1 pool_id)           │
+│   ├─ read canonical store for conversation history                   │
+│   ├─ build messages[] (history + system prompt + tools)              │
+│   │   memory = external tool call (roxabi-cortex) → pre-injected     │
+│   ├─ custom loop:                                                    │
+│   │   while not done and turn_limit not hit:                        │
+│   │     LLM call → LlmProvider (CliNatsDriver / LiteLLMDriver)      │
+│   │     if ToolUseLlmEvent: execute via ToolRegistry                │
+│   │       ├─ local tool → in-process                                 │
+│   │       └─ Lyra tool → NATS proxy (lyra.jobs.*)                   │
+│   │     emit HarnessTurnEvent stream → hub reply inbox              │
+│   ├─ write new turn to canonical store                               │
+│   ├─ return HarnessResponse (assistant_msg)                          │
+│   └─ keep pool_id state alive (fork / resume / rewind ready)        │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Key change from original 3-concerns split:** Harness owns the canonical store and context builder. Hub is a thin router. This requires **sticky routing** on `pool_id`.
+
+---
+
+## 2. Wire Contracts (`roxabi-contracts`)
+
+New module: `src/roxabi_contracts/harness/`
+
+### 2.1 Envelopes
+
+```python
+# src/roxabi_contracts/harness/models.py
+
+class BlobRef(BaseModel):
+    """Pointer to a large object stored in blobstore."""
+    sha: str
+    size_bytes: int
+    mime_type: str | None = None
+
+class HistoryRef(BaseModel):
+    """Pointer to conversation history stored in JetStream KV or Redis (NOT blobstore)."""
+    ref_type: Literal["jetstream_kv", "redis"]
+    bucket: str
+    key: str
+    size_bytes: int
+    checksum: str | None = None
+
+class ToolDescriptor(BaseModel):
+    """Tool schema carried on the wire — same shape as OpenAI function schema."""
+    name: str
+    description: str
+    parameters: dict
+    registry: Literal["local", "lyra"] = "local"  # Q1=C hybrid
+
+class ModelConfig(BaseModel):
+    """Subset of lyra.core.agent.agent_config.ModelConfig, serializable."""
+    model: str
+    max_tokens: int | None = None
+    temperature: float | None = None
+    max_turns: int | None = None
+
+class Message(BaseModel):
+    """Chat message in the conversation history.
+
+    A5 note: When a tool returns a structured dict, it is serialized to JSON
+    string before becoming Message.content. For binary artifacts, use BlobRef
+    in the content field or a dedicated message_type variant.
+    """
+    role: Literal["system", "user", "assistant", "tool"]
+    content: str | BlobRef  # A3: large objects via blob SHA
+    tool_call_id: str | None = None
+    name: str | None = None  # tool name for role=tool
+
+class ToolUseSummary(BaseModel):
+    """Summary of a tool execution."""
+    tool_name: str
+    tool_id: str
+    input: dict
+    output: dict  # structured dict per Q3
+    duration_ms: float
+    is_error: bool = False
+
+class ErrorInfo(BaseModel):
+    code: str
+    message: str
+    retryable: bool = False
+
+class HarnessRequest(ContractEnvelope):
+    """Single turn submission.  Hub → harness."""
+    request_id: str
+    pool_id: str
+    trace_id: str
+    user_message: str                      # the new user message for this turn
+    system_prompt: str | None = None
+    tools: list[ToolDescriptor]
+    model: ModelConfig
+    metadata: dict = Field(default_factory=dict)
+    # metadata carries: agent identity, memory hints, turn_limit override, etc.
+    # Hub does NOT send full history[] — harness reads from canonical store.
+
+class HarnessResponse(ContractEnvelope):
+    """Terminal result.  Harness → hub."""
+    request_id: str
+    pool_id: str
+    trace_id: str
+    assistant_message: Message
+    tool_calls_summary: list[ToolUseSummary]
+    duration_ms: float
+    turn_count: int
+    error: ErrorInfo | None = None
+
+class HarnessTurnEvent(ContractEnvelope):
+    """Streaming event mid-turn.  Harness → hub (reply inbox)."""
+    request_id: str
+    trace_id: str
+    event_type: Literal["text", "tool_use", "tool_result", "thinking", "done", "error"]
+    # event-type-specific payload:
+    delta: str | None = None                   # A2: text delta (renamed from text)
+    tool_name: str | None = None              # tool_use
+    tool_id: str | None = None
+    tool_input: dict | None = None
+    tool_result: dict | None = None           # tool_result
+    is_error: bool = False
+    error: ErrorInfo | None = None
+    duration_ms: float | None = None
+```
+
+### 2.2 Subjects
+
+```python
+# src/roxabi_contracts/harness/subjects.py
+
+class HarnessSubjects:
+    turn_request = "lyra.harness.turn.request"      # sticky routing on pool_id
+    heartbeat = "lyra.harness.heartbeat"
+    control = "lyra.harness.control"                # broadcast (reset, drain, fork, resume, rewind)
+```
+
+---
+
+## 3. Harness Worker (`src/lyra/adapters/harness/`)
+
+### 3.1 File layout
+
+```
+src/lyra/adapters/harness/
+├── __init__.py
+├── harness_worker.py          # NatsAdapterBase subclass — main worker
+├── harness_loop.py              # Custom agentic loop (~200 lines)
+├── harness_store.py           # Canonical store client (read history, write turn)
+├── tool_registry.py           # Hybrid tool registry (local + Lyra proxy)
+├── local_tools.py             # In-harness tool implementations
+├── lyra_tool_proxy.py         # NATS proxy to Lyra tool bus (lyra.jobs.*)
+├── harness_codec.py           # Encode/decode HarnessRequest/Response
+├── harness_control.py         # Control commands (fork, resume, rewind)
+└── errors.py                  # Harness-specific error classification
+```
+
+### 3.2 `HarnessWorker` — NATS adapter
+
+```python
+# harness_worker.py
+
+_CMD_SUBJECT = "lyra.harness.turn.request"
+_CONTROL_SUBJECT = "lyra.harness.control"
+_HEARTBEAT_SUBJECT = "lyra.harness.heartbeat"
+_QUEUE_GROUP = "harness-workers"
+_ENVELOPE_NAME = "HarnessRequest"
+_SCHEMA_VERSION = 1
+_HEARTBEAT_INTERVAL = 30.0
+
+class HarnessWorker(NatsAdapterBase):
+    def __init__(
+        self,
+        loop: HarnessLoop,
+        store: HarnessStore,
+        *,
+        timeout: float | None = None,
+        identity_name: str | None = None,
+    ) -> None:
+        super().__init__(
+            subject=_CMD_SUBJECT,
+            queue_group=_QUEUE_GROUP,
+            envelope_name=_ENVELOPE_NAME,
+            schema_version=_SC_VERSION,
+            timeout=timeout,
+            heartbeat_subject=_HEARTBEAT_SUBJECT,
+            heartbeat_interval=_HEARTBEAT_INTERVAL,
+            identity_name=identity_name,
+            wait_ready=False,
+        )
+        self._loop = loop
+        self._store = store
+        # pool_id affinity: one worker holds state for one or more pool_ids
+        self._pool_states: dict[str, PoolState] = {}
+
+    def _extra_subjects(self) -> list[str]:
+        return [_CONTROL_SUBJECT]
+
+    async def handle(self, msg: Any, payload: dict) -> None:
+        if msg.subject == _CONTROL_SUBJECT:
+            await self._handle_control(msg, payload)
+        else:
+            await self._handle_turn(msg, payload)
+
+    async def _handle_turn(self, msg: Any, payload: dict) -> None:
+        try:
+            req = HarnessRequest.model_validate(payload)
+        except ValidationError:
+            log.exception("harness_worker: HarnessRequest validation failed")
+            await self.reply(msg, _make_error_chunk(..., code="worker.validation"))
+            return
+
+        # Read history from canonical store
+        history = await self._store.read_history(req.pool_id)
+
+        # Get or create pool state
+        pool_state = self._pool_states.get(req.pool_id)
+        if pool_state is None:
+            pool_state = PoolState(pool_id=req.pool_id)
+            self._pool_states[req.pool_id] = pool_state
+
+        # Run the agentic loop
+        turn_result = await self._loop.run_turn(req, history, pool_state)
+
+        # Stream events back via reply inbox
+        for event in turn_result.events:
+            await self.reply(msg, _encode_turn_event(event))
+
+        # Write new turn to canonical store
+        await self._store.append_turn(req.pool_id, turn_result.new_messages)
+
+        # Terminal HarnessResponse
+        resp = turn_result.to_response(req)
+        await self.reply(msg, _encode_response(resp))
+
+    async def _handle_control(self, msg: Any, payload: dict) -> None:
+        ...  # fork, resume, rewind, drain
+```
+
+### 3.3 `HarnessLoop` — custom thin loop
+
+```python
+# harness_loop.py
+
+@dataclass
+class TurnResult:
+    """A9: Immutable result object returned by run_turn()."""
+    events: list[HarnessTurnEvent]
+    assistant_message: Message
+    new_messages: list[Message]  # messages to append to canonical store
+    tool_summaries: list[ToolUseSummary]
+    turn_count: int
+    duration_ms: float
+
+    def to_response(self, req: HarnessRequest) -> HarnessResponse:
+        return HarnessResponse(
+            request_id=req.request_id,
+            pool_id=req.pool_id,
+            trace_id=req.trace_id,
+            assistant_message=self.assistant_message,
+            tool_calls_summary=self.tool_summaries,
+            duration_ms=self.duration_ms,
+            turn_count=self.turn_count,
+        )
+
+class HarnessLoop:
+    """Custom agentic loop: one turn = one LLM conversation turn.
+
+    A9: run_turn() returns a TurnResult object directly. No mutable side effects.
+    """
+
+    def __init__(
+        self,
+        llm_provider: LlmProvider,
+        tool_registry: HybridToolRegistry,
+        max_turns: int = 10,
+    ) -> None:
+        self._llm = llm_provider
+        self._tools = tool_registry
+        self._max_turns = max_turns
+
+    async def run_turn(
+        self, req: HarnessRequest, history: list[Message], pool_state: PoolState
+    ) -> TurnResult:
+        """Run the agentic loop and return a TurnResult.
+
+        A4: pool_id is passed to the outbound LlmProvider for session tracking.
+        If the outbound provider is CliNatsDriver (clipool), it uses pool_id for
+        session affinity. This is intentional: the harness is stateful on pool_id,
+        and clipool session affinity aligns with harness pool affinity.
+        """
+        messages = list(history)
+        messages.append(Message(role="user", content=req.user_message))
+
+        turn_count = 0
+        assistant_message = Message(role="assistant", content="")
+        tool_summaries: list[ToolUseSummary] = []
+        events: list[HarnessTurnEvent] = []
+        start_time = time.monotonic()
+
+        while turn_count < (req.model.max_turns or self._max_turns):
+            turn_count += 1
+            stream = self._llm.stream(
+                pool_id=req.pool_id,
+                text=messages[-1].content if messages else "",
+                model_cfg=req.model,
+                system_prompt=req.system_prompt,
+                messages=[m.model_dump() for m in messages],
+            )
+
+            async for event in stream:
+                if isinstance(event, TextLlmEvent):
+                    assistant_message.content += event.text
+                    events.append(HarnessTurnEvent(
+                        request_id=req.request_id,
+                        trace_id=req.trace_id,
+                        event_type="text",
+                        delta=event.text,
+                    ))
+                elif isinstance(event, ToolUseLlmEvent):
+                    events.append(HarnessTurnEvent(
+                        request_id=req.request_id,
+                        trace_id=req.trace_id,
+                        event_type="tool_use",
+                        tool_name=event.tool_name,
+                        tool_id=event.tool_id,
+                        tool_input=event.input,
+                    ))
+                    # Execute tool
+                    result = await self._tools.execute(
+                        name=event.tool_name,
+                        input=event.input,
+                        pool_id=req.pool_id,
+                        trace_id=req.trace_id,
+                    )
+                    tool_summaries.append(result.summary)
+                    events.append(HarnessTurnEvent(
+                        request_id=req.request_id,
+                        trace_id=req.trace_id,
+                        event_type="tool_result",
+                        tool_id=event.tool_id,
+                        tool_result=result.data,
+                    ))
+                    # A5: Serialize structured dict to JSON string for Message.content
+                    content = result.data if isinstance(result.data, str) else json.dumps(result.data)
+                    messages.append(Message(
+                        role="tool",
+                        content=content,
+                        tool_call_id=event.tool_id,
+                        name=event.tool_name,
+                    ))
+                elif isinstance(event, ResultLlmEvent):
+                    if event.is_error:
+                        events.append(HarnessTurnEvent(
+                            request_id=req.request_id,
+                            trace_id=req.trace_id,
+                            event_type="error",
+                            is_error=True,
+                            error=ErrorInfo(...),
+                        ))
+                        return TurnResult(
+                            events=events,
+                            assistant_message=assistant_message,
+                            new_messages=messages,
+                            tool_summaries=tool_summaries,
+                            turn_count=turn_count,
+                            duration_ms=...,  # compute
+                        )
+                    break  # turn done
+
+            # If no tool was called, turn is complete
+            if not any(isinstance(e, ToolUseLlmEvent) for e in ...):
+                break
+
+        return TurnResult(
+            events=events,
+            assistant_message=assistant_message,
+            new_messages=messages,
+            tool_summaries=tool_summaries,
+            turn_count=turn_count,
+            duration_ms=...,  # compute
+        )
+```
+
+### 3.4 `HybridToolRegistry` — Q1=C
+
+```python
+# tool_registry.py
+
+class HybridToolRegistry:
+    """Q1=C: shared tools via NATS proxy + local tools in-process.
+
+    A6: LyraToolProxy is a full job producer client. It submits jobs to
+    lyra.jobs.* and waits for JobResult. The harness includes a JobProducer
+    client (codec + retry + timeout) from the worker fleet (#1044).
+    """
+
+    def __init__(
+        self,
+        local: LocalToolRegistry,
+        lyra_proxy: LyraToolProxy,
+    ) -> None:
+        self._local = local
+        self._lyra = lyra_proxy
+
+    async def execute(
+        self, name: str, input: dict, pool_id: str, trace_id: str
+    ) -> ToolResult:
+        descriptor = self._resolve(name)
+        if descriptor.registry == "local":
+            return await self._local.execute(name, input, pool_id, trace_id)
+        return await self._lyra.execute(name, input, pool_id, trace_id)
+```
+
+---
+
+## 4. Hub-Side Client (`src/lyra/llm/harness_client.py`)
+
+New `LlmProvider` implementation that ships turns to the harness.
+
+```python
+# harness_client.py
+
+class HarnessLlmProvider:
+    """Hub-side LlmProvider that targets lyra-harness over NATS.
+
+    P1: No degradation logic here. Hub handles harness unavailability
+    (timeout, no workers) at a higher level (retry, fallback, or error to user).
+    """
+
+    capabilities = {"streaming": True, "auth": "nats", "tools": True}
+
+    def __init__(
+        self,
+        pool: WorkerPoolClient,
+        codec: HarnessCodec,
+        *,
+        timeout: float | None = None,
+    ) -> None:
+        self._pool = pool
+        self._codec = codec
+        self._timeout = timeout
+
+    async def stream(
+        self, pool_id, text, model_cfg, system_prompt, *, messages=None
+    ) -> AsyncIterator[LlmEvent]:
+        # Encode HarnessRequest
+        payload, trace_id = self._codec.encode(
+            pool_id=pool_id,
+            text=text,
+            model_cfg=model_cfg,
+            system_prompt=system_prompt,
+            messages=messages,
+            stream=True,
+        )
+        # Stream request to harness
+        async for result in self._pool.stream_request(
+            "lyra.harness.turn.request", payload, timeout=self._timeout
+        ):
+            event = self._codec.decode_chunk(result)
+            if event is None:
+                continue
+            yield event
+            if isinstance(event, ResultLlmEvent):
+                return
+
+    async def complete(...) -> LlmResult:
+        # Non-streaming: collect all events, return final
+        ...
+
+    def is_alive(self, pool_id: str) -> bool:
+        return self._pool.is_pool_alive()
+
+    async def stop(self) -> None:
+        await self._pool.stop()
+```
+
+---
+
+## 5. Container Template (`deploy/quadlet/lyra-harness.container`)
+
+A7: Based on `lyra-clipool.container` — same hardening, GH pod dependency, same secret pattern.
+
+```ini
+[Unit]
+Description=Lyra Harness Worker
+After=lyra-nats.service
+After=lyra-gh-pod.service
+BindsTo=lyra-gh-pod.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+Image=ghcr.io/roxabi/lyra:staging
+Label=io.containers.autoupdate=registry
+ContainerName=lyra-harness
+Pod=lyra-gh.pod
+NoNewPrivileges=true
+ReadOnly=true
+DropCapability=all
+Environment=NATS_URL=nats://lyra-nats:4222
+Secret=lyra-nats-harness,type=mount,target=lyra-nats-harness.seed,uid=1500,gid=1500,mode=0400
+Environment=NATS_NKEY_SEED_PATH=/run/secrets/lyra-nats-harness.seed
+EnvironmentFile=%h/.lyra/env/harness.env
+
+Volume=lyra-gh-token.volume:/run/lyra-gh-token:rw
+Tmpfs=/home/lyra/.config/git:mode=0755
+Environment=GIT_CONFIG_GLOBAL=/etc/lyra/git.config.tmpl
+
+Exec=lyra adapter harness
+HealthCmd=python -c "import lyra.health; lyra.health.check()"
+HealthInterval=30s
+
+[Service]
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=120
+CPUQuota=400%
+
+[Install]
+WantedBy=default.target
+```
+
+---
+
+## 6. Bootstrap (`src/lyra/bootstrap/standalone/harness_standalone.py`)
+
+Pattern: copy `clipool_standalone.py` shape.
+
+```python
+# harness_standalone.py
+
+async def _bootstrap_harness_standalone(raw_config: dict) -> None:
+    run_git_ownership_probe()
+    nats_url = os.environ.get("NATS_URL")
+    if not nats_url:
+        sys.exit("NATS_URL is required for standalone harness mode.")
+
+    log_contracts_version()
+
+    # Build LLM provider (outbound from harness to actual LLM)
+    llm_provider = _build_harness_llm_provider(raw_config)
+
+    # Build hybrid tool registry
+    tool_registry = _build_hybrid_tool_registry(raw_config)
+
+    # Build canonical store client
+    store = _build_harness_store(raw_config)
+
+    # Build harness loop
+    loop = HarnessLoop(
+        llm_provider=llm_provider,
+        tool_registry=tool_registry,
+        max_turns=raw_config.get("harness", {}).get("max_turns", 10),
+    )
+
+    worker = HarnessWorker(
+        loop,
+        store,
+        timeout=raw_config.get("harness", {}).get("timeout", None),
+        identity_name="harness-worker",
+    )
+
+    log.info("harness: starting HarnessWorker on lyra.harness.turn.request")
+    try:
+        await worker.run(nats_url)
+    finally:
+        await llm_provider.stop()
+        await store.close()
+```
+
+---
+
+## 7. CLI Entry Point
+
+```python
+# src/lyra/cli.py
+
+@adapter_app.command("harness")
+def _adapter_harness() -> None:
+    """Start the standalone Harness NATS worker."""
+    from lyra.bootstrap.standalone.harness_standalone import (
+        _bootstrap_harness_standalone,
+    )
+    _boot(_bootstrap_harness_standalone)
+```
+
+---
+
+## 8. Wiring & Backend Enum (Q4=A)
+
+```python
+_VALID_BACKENDS: frozenset[str] = frozenset({"claude-cli", "harness"})
+```
+
+---
+
+## 9. pool_id Lifecycle (Extra)
+
+The harness supports conversation operations via `lyra.harness.control`:
+
+| Command | Action |
+|---|---|
+| `fork` | Create new pool_id from current history snapshot |
+| `resume` | Restore pool_id from canonical store (after worker restart) |
+| `rewind` | Truncate history to N turns back |
+| `reset` | Clear pool_id state (new conversation) |
+| `drain` | Stop accepting new turns, finish current |
+
+These are **harness-side** operations (harness owns context). Hub sends control commands; harness executes.
+
+---
+
+## 10. Open Questions (to resolve during implementation)
+
+| # | Question | Status | Notes |
+|---|---|---|---|
+| 1 | `HistoryRef` resolver — JetStream KV or Redis? | **TBD** | P5: blobstore NOT for history |
+| 2 | `LyraToolProxy` subject — `lyra.jobs.*` or `lyra.tools.*`? | **Reuse `lyra.jobs.*`** | P4: tool = job; needs #1044/#1203 clarification |
+| 3 | Tool result shape — string or structured dict? | **Structured dict** | A3: large objects via BlobRef |
+| 4 | Turn timeout — none or per-LLM-call? | **None** | A8: healthcheck only; no per-turn timeout |
+| 5 | Error classification — reuse clipool? | **Yes** | Same `WorkerError` taxonomy |
+| 6 | Memory injection — external tool | **roxabi-cortex** | Harness calls memory tool directly |
+| 7 | Streaming | **Real-time** | `HarnessTurnEvent` emitted as loop runs |
+| 8 | Message.content for structured data | **JSON string** | A5: dict → json.dumps → str |
+| 9 | Outbound LLM pool_id stickiness | **Intentional** | A4: aligns with harness pool affinity |
+| 10 | Cancellation / pre-emption | **P2: TBD** | Need use cases: new user msg, stop button, etc. |
+| 11 | Degradation | **P1: Hub handles** | No harness-side fallback; hub retries or errors |
+| 12 | Migration / rollback | **P3: None** | No canary rollout planned |
+| 13 | `HarnessWorker` health check | **Proper health check** | A7: python-based, not grep |
+| 14 | `HarnessLoop` mutable state | **Fixed** | A9: TurnResult returned directly |
+| 15 | Sticky routing implementation | **TBD** | NATS queue groups → consistent hash on pool_id |
+
+---
+
+## 11. Reference Files
+
+| Pattern | File | Purpose |
+|---|---|---|
+| Worker adapter | `src/lyra/adapters/clipool/clipool_worker.py` | `NatsAdapterBase` subclass template |
+| Standalone bootstrap | `src/lyra/bootstrap/standalone/clipool_standalone.py` | Entry point template |
+| Quadlet container | `deploy/quadlet/lyra-clipool.container` | Hardening + secret + volume pattern |
+| Hub-side client | `src/lyra/llm/llm_client.py` | `LlmProvider` over NATS template |
+| Codec | `src/lyra/llm/cli_nats_codec.py` | Pure encode/decode boundary template |
+| Contracts | `packages/roxabi-contracts/src/roxabi_contracts/llm/models.py` | `ContractEnvelope` + `LlmRequest` pattern |
+| Tool registry | `src/lyra/core/commands/command_router.py` | Existing tool dispatch (reference for LyraToolProxy) |

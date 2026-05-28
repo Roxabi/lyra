@@ -83,16 +83,21 @@ def _capture_recap_lines(edit_tool_recap_mock: AsyncMock) -> list[str]:
 
 
 def _make_tg_adapter(tool_display_config: ToolDisplayConfig | None = None):
-    """Build a TelegramAdapter with the given tool_display_config."""
+    """Build a TelegramAdapter with the given tool_display_config.
+
+    Constructs the adapter WITHOUT the kwarg (removed in #1468), then calls
+    configure_tool_display() post-construction. Passing None skips the setter
+    call so send_streaming falls back to ToolDisplayConfig() defaults.
+    """
     from lyra.adapters.telegram import TelegramAdapter
 
-    # Wave 4 adds tool_display_config kwarg — RED until then
     adapter = TelegramAdapter(
         bot_id="main",
         token="test-token",
         inbound_bus=MagicMock(),
-        tool_display_config=tool_display_config,
     )
+    if tool_display_config is not None:
+        adapter.configure_tool_display(tool_display_config)
     placeholder_msg = SimpleNamespace(message_id=100)
     bot = AsyncMock()
     bot.send_message = AsyncMock(return_value=placeholder_msg)
@@ -134,16 +139,21 @@ def _make_tg_inbound(chat_id: int = 42, message_id: int = 10) -> InboundMessage:
 
 
 def _make_dc_adapter(tool_display_config: ToolDisplayConfig | None = None):
-    """Build a DiscordAdapter with the given tool_display_config."""
+    """Build a DiscordAdapter with the given tool_display_config.
+
+    Constructs the adapter WITHOUT the kwarg (removed in #1468), then calls
+    configure_tool_display() post-construction. Passing None skips the setter
+    call so send_streaming falls back to ToolDisplayConfig() defaults.
+    """
     from lyra.adapters.discord import DiscordAdapter
 
-    # Wave 4 adds tool_display_config kwarg — RED until then
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
         intents=discord.Intents.none(),
-        tool_display_config=tool_display_config,
     )
+    if tool_display_config is not None:
+        adapter.configure_tool_display(tool_display_config)
     placeholder = AsyncMock()
     placeholder.id = 200
     placeholder.edit = AsyncMock()

@@ -66,11 +66,20 @@ class OutboundAdapterBase(ABC):
     ) -> None:
         """Stream reply using the shared OutboundEmitter algorithm."""
         emitter = self._make_emitter(original_msg, outbound)
-        # Single WRITE site for tool_display_config — see ADR-073.
+        # Single site propagating tool_display_config to the emitter — see ADR-073.
         emitter.tool_display_config = (
             getattr(self, "_tool_display_config", None) or ToolDisplayConfig()
         )
         await emitter.run(events)
+
+    def configure_tool_display(self, config: ToolDisplayConfig | None) -> None:
+        """Store the per-instance tool-display config (post-construction setter).
+
+        OutboundAdapterBase has no __init__ (Discord MRO); this is the single
+        permitted per-instance write point. Stores None as-is — defaulting to
+        ToolDisplayConfig() happens only in send_streaming's read path.
+        """
+        self._tool_display_config = config
 
     @abstractmethod
     def _make_emitter(

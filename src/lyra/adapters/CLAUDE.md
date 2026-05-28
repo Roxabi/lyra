@@ -62,6 +62,16 @@ formatter/typing-indicator implementations under `outbound/`.
 `OutboundAdapterBase` has no `__init__` intentionally. Do NOT add one — it breaks
 cooperative MRO with `discord.Client`.
 
+`configure_tool_display(config: ToolDisplayConfig | None)` is the **single permitted
+per-instance write point** for `tool_display_config` (stored as
+`self._tool_display_config`). It is a **post-construction setter** — bootstrap calls
+it after construction, keeping per-instance config storage off `__init__`. Every
+adapter inherits it. A new platform adapter MUST NOT re-declare a
+`tool_display_config` constructor kwarg or a bare
+`self._tool_display_config = ...` assignment. Same "define once on the base, never
+per-adapter-dir" rationale as `make_typing_factory` — avoids N×M drift per
+ADR-073.
+
 ## MRO constraint (Discord only)
 
 `discord.Client` must be first:

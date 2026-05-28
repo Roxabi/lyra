@@ -1,15 +1,14 @@
-"""Slice 3 RED tests — tool_display_config threading from raw_config to adapters.
+"""tool_display_config threading from raw_config to adapters — post-#1468.
 
 Tests assert that the [tool_display] section in raw_config is loaded and threaded
 through both the wired bootstrap path (bootstrap_wiring.py) and the standalone
-adapter path (adapter_standalone.py) to TelegramAdapter._tool_display_config and
-DiscordAdapter._tool_display_config.
-
-These tests are intentionally RED until T20 (wired path) + T21 (standalone path)
-implement the loader call + kwarg threading in the respective bootstrap modules.
+adapter path (adapter_standalone.py) via configure_tool_display() (post-construction
+setter), NOT via a constructor kwarg.
 
 SC-5: absent [tool_display] section → ToolDisplayConfig() defaults (integration level).
-SC-6: all 4 bootstrap callsites pass tool_display_config= to adapter constructors.
+SC-6: all 4 bootstrap callsites call adapter.configure_tool_display(config) after
+      construction (kwarg was removed from both TelegramAdapter and DiscordAdapter
+      __init__ in #1468).
 """
 
 from __future__ import annotations
@@ -54,10 +53,11 @@ def _dc_raw_config(tool_display: dict | None = None) -> dict:
 
 @pytest.mark.asyncio
 async def test_wired_path_threads_tool_display_config_to_telegram() -> None:
-    """wire_telegram_adapters must pass tool_display_config= to TelegramAdapter.
+    """wire_telegram_adapters must call adapter.configure_tool_display() post-build.
 
-    RED trigger: wire_telegram_adapters currently does NOT pass tool_display_config=.
-    T20 implements the wiring at bootstrap_wiring.py L64.
+    #1468 removed tool_display_config= from TelegramAdapter.__init__. The wiring
+    contract is now: construct without the kwarg, then call configure_tool_display()
+    on the returned instance.
     """
     from lyra.bootstrap.wiring.bootstrap_wiring import (
         TelegramWiringDeps,
@@ -71,7 +71,7 @@ async def test_wired_path_threads_tool_display_config_to_telegram() -> None:
 
     raw_config = {"tool_display": {"bash_max_len": 200, "show": {"web_fetch": False}}}
 
-    # Arrange — loader parses the section correctly (loader itself is already done)
+    # Arrange — loader parses the section correctly
     tool_display_cfg = _load_tool_display_config(raw_config)
     assert tool_display_cfg.bash_max_len == 200
     assert tool_display_cfg.show["web_fetch"] is False
@@ -80,12 +80,15 @@ async def test_wired_path_threads_tool_display_config_to_telegram() -> None:
     bot_cfg = TelegramBotConfig(bot_id="main")
     auth = Authenticator(store=None, role_map={}, default=TrustLevel.PUBLIC)
 
-    captured_kwargs: dict = {}
+    captured_constructor_kwargs: dict = {}
+    captured_adapter_instance: MagicMock | None = None
 
     def _capture_adapter(**kwargs):
-        captured_kwargs.update(kwargs)
+        captured_constructor_kwargs.update(kwargs)
         mock = MagicMock()
         mock.resolve_identity = AsyncMock()
+        nonlocal captured_adapter_instance
+        captured_adapter_instance = mock
         return mock
 
     with (
@@ -109,15 +112,17 @@ async def test_wired_path_threads_tool_display_config_to_telegram() -> None:
             )
         )
 
-    # T20 contract: wire_telegram_adapters threads tool_display_config kwarg
-    # through to the TelegramAdapter constructor. Loader call lives one layer
-    # up in wiring_helpers._wire_adapters (where raw_config is in scope).
-    assert "tool_display_config" in captured_kwargs, (
-        "wire_telegram_adapters must forward tool_display_config= to "
-        "TelegramAdapter constructor"
+    # #1468 contract: constructor must NOT receive tool_display_config= kwarg.
+    assert "tool_display_config" not in captured_constructor_kwargs, (
+        "TelegramAdapter constructor must NOT receive tool_display_config= "
+        "after #1468 (setter replaces kwarg)"
     )
-    assert captured_kwargs["tool_display_config"].bash_max_len == 200
-    assert captured_kwargs["tool_display_config"].show["web_fetch"] is False
+
+    # Post-construction setter must be called with the correct config.
+    assert captured_adapter_instance is not None
+    captured_adapter_instance.configure_tool_display.assert_called_once_with(
+        tool_display_cfg
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -127,10 +132,11 @@ async def test_wired_path_threads_tool_display_config_to_telegram() -> None:
 
 @pytest.mark.asyncio
 async def test_wired_path_threads_tool_display_config_to_discord() -> None:
-    """wire_discord_adapters must pass tool_display_config= to DiscordAdapter.
+    """wire_discord_adapters must call adapter.configure_tool_display() post-build.
 
-    RED until T20 adds the kwarg to the DiscordAdapter callsite in
-    bootstrap_wiring.py (L170).
+    #1468 removed tool_display_config= from DiscordAdapter.__init__. The wiring
+    contract is now: construct without the kwarg, then call configure_tool_display()
+    on the returned instance.
     """
     from lyra.bootstrap.wiring.bootstrap_wiring import (
         DiscordWiringDeps,
@@ -152,12 +158,15 @@ async def test_wired_path_threads_tool_display_config_to_discord() -> None:
     bot_cfg = DiscordBotConfig(bot_id="main", auto_thread=False, thread_hot_hours=4)
     auth = Authenticator(store=None, role_map={}, default=TrustLevel.PUBLIC)
 
-    captured_kwargs: dict = {}
+    captured_constructor_kwargs: dict = {}
+    captured_adapter_instance: MagicMock | None = None
 
     def _capture_discord_adapter(**kwargs):
-        captured_kwargs.update(kwargs)
+        captured_constructor_kwargs.update(kwargs)
         mock = MagicMock()
         mock._resolve_identity_fn = None
+        nonlocal captured_adapter_instance
+        captured_adapter_instance = mock
         return mock
 
     mock_thread_store = AsyncMock()
@@ -190,15 +199,17 @@ async def test_wired_path_threads_tool_display_config_to_discord() -> None:
             )
         )
 
-    # T20 contract: wire_discord_adapters threads tool_display_config kwarg
-    # through to the DiscordAdapter constructor. Loader call lives one layer
-    # up in wiring_helpers._wire_adapters (where raw_config is in scope).
-    assert "tool_display_config" in captured_kwargs, (
-        "wire_discord_adapters must forward tool_display_config= to "
-        "DiscordAdapter constructor"
+    # #1468 contract: constructor must NOT receive tool_display_config= kwarg.
+    assert "tool_display_config" not in captured_constructor_kwargs, (
+        "DiscordAdapter constructor must NOT receive tool_display_config= "
+        "after #1468 (setter replaces kwarg)"
     )
-    assert captured_kwargs["tool_display_config"].bash_max_len == 200
-    assert captured_kwargs["tool_display_config"].show["web_fetch"] is False
+
+    # Post-construction setter must be called with the correct config.
+    assert captured_adapter_instance is not None
+    captured_adapter_instance.configure_tool_display.assert_called_once_with(
+        loader_result
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -208,14 +219,16 @@ async def test_wired_path_threads_tool_display_config_to_discord() -> None:
 
 @pytest.mark.asyncio
 async def test_wired_path_with_absent_tool_display_section_uses_defaults() -> None:
-    """raw_config={} (no [tool_display]) → TelegramAdapter receives default config.
+    """raw_config={} (no [tool_display]) → configure_tool_display() receives defaults.
 
     SC-5: integration-level default parity — absent section must produce
-    ToolDisplayConfig() defaults (bash_max_len=80, names_threshold=5) threaded
-    through to the adapter, not None.
+    ToolDisplayConfig() defaults (bash_max_len=80) threaded through to the adapter
+    via configure_tool_display(), not None.
 
-    RED until T20 wires the loader into wire_telegram_adapters so the kwarg is
-    always populated.
+    When tool_display_config is None in TelegramWiringDeps (absent section),
+    configure_tool_display(None) is called and send_streaming falls back to
+    ToolDisplayConfig() defaults — both paths are acceptable. This test verifies
+    the wiring_helpers path which passes a default ToolDisplayConfig(), not None.
     """
     from lyra.bootstrap.wiring.bootstrap_wiring import (
         TelegramWiringDeps,
@@ -227,20 +240,23 @@ async def test_wired_path_with_absent_tool_display_section_uses_defaults() -> No
     from lyra.core.circuit_breaker import CircuitRegistry
     from lyra.core.hub.hub import Hub
 
-    # No [tool_display] section
+    # No [tool_display] section — loader returns defaults
     tool_display_cfg = _load_tool_display_config({})
-    assert tool_display_cfg.bash_max_len == 80  # default after Slice 1
+    assert tool_display_cfg.bash_max_len == 80  # default
 
     hub = Hub()
     bot_cfg = TelegramBotConfig(bot_id="main")
     auth = Authenticator(store=None, role_map={}, default=TrustLevel.PUBLIC)
 
-    captured_kwargs: dict = {}
+    captured_constructor_kwargs: dict = {}
+    captured_adapter_instance: MagicMock | None = None
 
     def _capture_adapter(**kwargs):
-        captured_kwargs.update(kwargs)
+        captured_constructor_kwargs.update(kwargs)
         mock = MagicMock()
         mock.resolve_identity = AsyncMock()
+        nonlocal captured_adapter_instance
+        captured_adapter_instance = mock
         return mock
 
     with (
@@ -260,18 +276,22 @@ async def test_wired_path_with_absent_tool_display_section_uses_defaults() -> No
                 bot_agent_map={("telegram", "main"): "lyra_default"},
                 circuit_registry=CircuitRegistry(),
                 msg_manager=MagicMock(),
+                tool_display_config=tool_display_cfg,
             )
         )
 
-    # RED: T20 must thread tool_display_cfg (default) to TelegramAdapter.
-    # Until then: key absent → KeyError / assertion fails.
-    assert "tool_display_config" in captured_kwargs, (
-        "RED: wire_telegram_adapters does not pass tool_display_config= "
-        "when [tool_display] section is absent (T20 implements this)"
+    # #1468 contract: constructor must NOT receive tool_display_config= kwarg.
+    assert "tool_display_config" not in captured_constructor_kwargs, (
+        "TelegramAdapter constructor must NOT receive tool_display_config= "
+        "after #1468 (setter replaces kwarg)"
     )
-    adapter_cfg = captured_kwargs["tool_display_config"]
-    assert adapter_cfg.bash_max_len == 80, (
-        f"Expected default bash_max_len=80, got {adapter_cfg.bash_max_len}"
+
+    # configure_tool_display() must be called with the default config.
+    assert captured_adapter_instance is not None
+    captured_adapter_instance.configure_tool_display.assert_called_once()
+    call_arg = captured_adapter_instance.configure_tool_display.call_args[0][0]
+    assert call_arg.bash_max_len == 80, (
+        f"Expected default bash_max_len=80, got {call_arg.bash_max_len}"
     )
 
 
@@ -282,10 +302,11 @@ async def test_wired_path_with_absent_tool_display_section_uses_defaults() -> No
 
 @pytest.mark.asyncio
 async def test_standalone_path_threads_tool_display_config_to_telegram() -> None:
-    """_bootstrap_adapter_standalone must pass tool_display_config= to TelegramAdapter.
+    """Standalone bootstrap must call adapter.configure_tool_display() post-construct.
 
-    RED until T21 adds the _load_tool_display_config call + kwarg threading in
-    adapter_standalone.py (L101 callsite).
+    #1468 removed tool_display_config= from TelegramAdapter.__init__. The standalone
+    bootstrap contract is now: construct without the kwarg, then call
+    configure_tool_display() on the returned instance with the parsed config.
     """
     from lyra.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
@@ -301,10 +322,11 @@ async def test_standalone_path_threads_tool_display_config_to_telegram() -> None
     mock_nc = AsyncMock()
     mock_nc.subscribe = AsyncMock(return_value=AsyncMock())
 
-    captured_kwargs: dict = {}
+    captured_constructor_kwargs: dict = {}
+    captured_tg_adapter_instance: MagicMock | None = None
 
     def _capture_tg_adapter(**kwargs):
-        captured_kwargs.update(kwargs)
+        captured_constructor_kwargs.update(kwargs)
         mock = MagicMock()
         mock._bot_id = "main"
         mock.resolve_identity = AsyncMock()
@@ -314,6 +336,8 @@ async def test_standalone_path_threads_tool_display_config_to_telegram() -> None
         mock.dp.start_polling = AsyncMock(return_value=None)
         mock.dp.stop_polling = AsyncMock(return_value=None)
         mock._typing = MagicMock()
+        nonlocal captured_tg_adapter_instance
+        captured_tg_adapter_instance = mock
         return mock
 
     mock_inbound_bus = AsyncMock()
@@ -368,23 +392,27 @@ async def test_standalone_path_threads_tool_display_config_to_telegram() -> None
     ):
         await _bootstrap_adapter_standalone(raw_config, "telegram", _stop=stop)
 
-    # RED: T21 must add _load_tool_display_config(raw_config) call and pass
-    # tool_display_config= kwarg to TelegramAdapter at L101 in adapter_standalone.py.
-    assert "tool_display_config" in captured_kwargs, (
-        "RED: _bootstrap_adapter_standalone does not yet pass tool_display_config= "
-        "to TelegramAdapter constructor (T21 implements this)"
+    # #1468 contract: constructor must NOT receive tool_display_config= kwarg.
+    assert "tool_display_config" not in captured_constructor_kwargs, (
+        "TelegramAdapter constructor must NOT receive tool_display_config= "
+        "after #1468 (setter replaces kwarg)"
     )
-    adapter_cfg = captured_kwargs["tool_display_config"]
+
+    # configure_tool_display() must be called post-construction with the parsed config.
+    assert captured_tg_adapter_instance is not None
+    captured_tg_adapter_instance.configure_tool_display.assert_called_once()
+    adapter_cfg = captured_tg_adapter_instance.configure_tool_display.call_args[0][0]
     assert adapter_cfg.bash_max_len == 200
     assert adapter_cfg.show["web_fetch"] is False
 
 
 @pytest.mark.asyncio
 async def test_standalone_path_threads_tool_display_config_to_discord() -> None:
-    """_bootstrap_adapter_standalone must pass tool_display_config= to DiscordAdapter.
+    """Standalone bootstrap must call Discord configure_tool_display() post-construct.
 
-    Symmetric to the Telegram standalone test; closes the SC-6 coverage gap on
-    the Discord standalone bootstrap callsite (adapter_standalone.py:269).
+    Symmetric to the Telegram standalone test. #1468 removed tool_display_config=
+    from DiscordAdapter.__init__; the standalone bootstrap must call the setter
+    after construction (adapter_standalone.py callsite).
     """
     from lyra.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
@@ -400,10 +428,11 @@ async def test_standalone_path_threads_tool_display_config_to_discord() -> None:
     mock_nc = AsyncMock()
     mock_nc.subscribe = AsyncMock(return_value=AsyncMock())
 
-    captured_kwargs: dict = {}
+    captured_constructor_kwargs_dc: dict = {}
+    captured_dc_adapter_instance: MagicMock | None = None
 
     def _capture_dc_adapter(**kwargs):
-        captured_kwargs.update(kwargs)
+        captured_constructor_kwargs_dc.update(kwargs)
         mock = MagicMock()
         mock._bot_id = "main"
         mock.resolve_identity = AsyncMock()
@@ -413,6 +442,8 @@ async def test_standalone_path_threads_tool_display_config_to_discord() -> None:
         mock._typing = MagicMock()
         mock._resolve_identity_fn = None
         mock._resolve_channel = MagicMock()
+        nonlocal captured_dc_adapter_instance
+        captured_dc_adapter_instance = mock
         return mock
 
     mock_inbound_bus = AsyncMock()
@@ -464,10 +495,15 @@ async def test_standalone_path_threads_tool_display_config_to_discord() -> None:
     ):
         await _bootstrap_adapter_standalone(raw_config, "discord", _stop=stop)
 
-    assert "tool_display_config" in captured_kwargs, (
-        "_bootstrap_adapter_standalone must pass tool_display_config= "
-        "to DiscordAdapter constructor (SC-6 standalone half)"
+    # #1468 contract: constructor must NOT receive tool_display_config= kwarg.
+    assert "tool_display_config" not in captured_constructor_kwargs_dc, (
+        "DiscordAdapter constructor must NOT receive tool_display_config= "
+        "after #1468 (setter replaces kwarg)"
     )
-    adapter_cfg = captured_kwargs["tool_display_config"]
+
+    # configure_tool_display() must be called post-construction with the parsed config.
+    assert captured_dc_adapter_instance is not None
+    captured_dc_adapter_instance.configure_tool_display.assert_called_once()
+    adapter_cfg = captured_dc_adapter_instance.configure_tool_display.call_args[0][0]
     assert adapter_cfg.bash_max_len == 200
     assert adapter_cfg.show["web_fetch"] is False

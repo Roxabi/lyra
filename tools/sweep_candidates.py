@@ -5,6 +5,8 @@ Usage:
     uv run python tools/sweep_candidates.py --json   # machine-readable output
 
 /goal Small Issue Automation Sweep — v3 Sequential (1-at-a-time)
+- `uv run python tools/sweep_candidates.py --json --top 1`
+  → return no issue when no candidate
 ================================================================
 Run a sequential sweep of small, unblocked, ready issues in roxabi/lyra.
 

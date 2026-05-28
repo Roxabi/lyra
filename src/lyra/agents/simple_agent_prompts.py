@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import html
 import logging
+import os
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -26,11 +27,14 @@ log = logging.getLogger(__name__)
 def _validate_audio_path(path: Path) -> Path:
     """Validate that the audio file path is safe (no directory traversal).
 
-    Ensures the path is within the system temp directory and contains no
-    parent-directory references.
+    Ensures the path is within the system temp directory, contains no
+    parent-directory references, is a regular file owned by the current user,
+    and is not a symlink.
     """
     if ".." in path.parts:
         raise ValueError(f"Invalid audio path: traversal detected in {path}")
+    if path.is_symlink():
+        raise ValueError("Invalid audio path: symlinks are not allowed")
     resolved = path.resolve()
     tmp_dir = Path(tempfile.gettempdir()).resolve()
     try:
@@ -39,6 +43,10 @@ def _validate_audio_path(path: Path) -> Path:
         raise ValueError(
             f"Invalid audio path: {path} is outside temp directory"
         ) from exc
+    if not resolved.is_file():
+        raise ValueError("Invalid audio path: not a regular file")
+    if resolved.stat().st_uid != os.getuid():
+        raise ValueError("Invalid audio path: file not owned by current user")
     return resolved
 
 
@@ -86,6 +94,25 @@ async def build_llm_text(
     return msg.text, None
 
 
+def _safe_read_bytes(path: Path) -> bytes:
+    """Read file bytes without following symlinks (O_NOFOLLOW).
+
+    Prevents TOCTOU race where a path is swapped for a symlink after
+    validation but before read.
+    """
+    fd = os.open(str(path), os.O_RDONLY | os.O_NOFOLLOW)
+    try:
+        chunks = []
+        while True:
+            chunk = os.read(fd, 65536)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        return b"".join(chunks)
+    finally:
+        os.close(fd)
+
+
 async def _build_audio_text(
     tmp_path: Path,
     stt: "STTProtocol",
@@ -105,7 +132,7 @@ async def _build_audio_text(
     from lyra.nats.stt_helpers import is_whisper_noise, mime_from_suffix
 
     try:
-        audio_bytes = await asyncio.to_thread(tmp_path.read_bytes)
+        audio_bytes = await asyncio.to_thread(_safe_read_bytes, tmp_path)
         mime = mime_from_suffix(tmp_path.suffix)
         stt_result: TranscriptionResult = await stt.transcribe(audio_bytes, mime)
     except Exception as exc:

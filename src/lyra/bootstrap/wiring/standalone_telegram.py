@@ -7,7 +7,7 @@ import logging
 import sys
 from functools import partial
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 from lyra.bootstrap import credentials
@@ -22,10 +22,16 @@ from roxabi_nats.readiness import wait_for_hub
 log = logging.getLogger(__name__)
 
 
+class _TelegramSetupResult(NamedTuple):
+    multi_cfg: Any
+    creds: dict[str, tuple[str, str | None]]
+    turn_store: Any
+
+
 async def _bootstrap_telegram_setup(
     raw_config: dict,
     vault_dir: Path,
-) -> tuple:
+) -> _TelegramSetupResult:
     """Load Telegram config, credentials, and connect turn store."""
     from lyra.config import TelegramMultiConfig
     from lyra.infrastructure.stores.turn_store import TurnStore
@@ -45,7 +51,17 @@ async def _bootstrap_telegram_setup(
     tg_turn_store = TurnStore(db_path=vault_dir / "turns.db")
     await tg_turn_store.connect()
 
-    return tg_multi_cfg, tg_creds, tg_turn_store
+    return _TelegramSetupResult(tg_multi_cfg, tg_creds, tg_turn_store)
+
+
+async def _close_tg_wired(label: str, wired: list[tuple]) -> None:
+    """Close all wired Telegram adapters, buses, and typing listeners."""
+    close_coros = [
+        coro
+        for a, ibus, tl in wired
+        for coro in (a.close(), ibus.stop(), tl.stop())
+    ]
+    await close_safely(label, *close_coros)
 
 
 async def _bootstrap_telegram_teardown(
@@ -67,14 +83,7 @@ async def _bootstrap_telegram_teardown(
             await a.dp.stop_polling()
         await asyncio.gather(*poll_tasks, return_exceptions=True)
     finally:
-        await close_safely(
-            "tg",
-            *[
-                coro
-                for a, ibus, tl in wired
-                for coro in (a.close(), ibus.stop(), tl.stop())
-            ],
-        )
+        await _close_tg_wired("tg", wired)
         await tg_turn_store.close()
 
 
@@ -88,9 +97,10 @@ async def bootstrap_telegram_standalone(
     _stop: asyncio.Event | None = None,
 ) -> None:
     """Bootstrap a standalone Telegram adapter process connected to NATS."""
-    tg_multi_cfg, tg_creds, tg_turn_store = await _bootstrap_telegram_setup(
-        raw_config, vault_dir
-    )
+    tg_setup = await _bootstrap_telegram_setup(raw_config, vault_dir)
+    tg_multi_cfg = tg_setup.multi_cfg
+    tg_creds = tg_setup.creds
+    tg_turn_store = tg_setup.turn_store
 
     wired: list[tuple] = []  # (TelegramAdapter, Bus, TypingListener)
 
@@ -163,14 +173,7 @@ async def bootstrap_telegram_standalone(
         try:
             wired_bot = await _wire_bot(bot_cfg, token, webhook_secret)
         except Exception:
-            await close_safely(
-                "tg-wired",
-                *[
-                    coro
-                    for a, ibus, tl in wired
-                    for coro in (a.close(), ibus.stop(), tl.stop())
-                ],
-            )
+            await _close_tg_wired("tg-wired", wired)
             await tg_turn_store.close()
             raise
 

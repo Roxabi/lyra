@@ -72,6 +72,28 @@ async def _bootstrap_discord_setup(
     return dc_multi_cfg, dc_creds, dc_bot_watch_channels
 
 
+async def _create_dc_stores(vault_dir: Path) -> tuple:
+    """Create and connect Discord thread + turn stores."""
+    from lyra.infrastructure.stores.thread_store import ThreadStore
+    from lyra.infrastructure.stores.turn_store import TurnStore
+
+    dc_thread_store = ThreadStore(db_path=vault_dir / "discord.db")
+    await dc_thread_store.connect()
+    dc_turn_store = TurnStore(db_path=vault_dir / "turns.db")
+    await dc_turn_store.connect()
+    return dc_thread_store, dc_turn_store
+
+
+async def _close_dc_wired(label: str, wired_dc: list[tuple]) -> None:
+    """Close all wired Discord adapters, buses, and typing listeners."""
+    close_coros = [
+        coro
+        for a, _, ibus, tl in wired_dc
+        for coro in (a.close(), ibus.stop(), tl.stop())
+    ]
+    await close_safely(label, *close_coros)
+
+
 async def _bootstrap_discord_teardown(
     wired_dc: list[tuple],
     dc_thread_store: Any,
@@ -111,18 +133,10 @@ async def bootstrap_discord_standalone(
     _stop: asyncio.Event | None = None,
 ) -> None:
     """Bootstrap a standalone Discord adapter process connected to NATS."""
-    from lyra.infrastructure.stores.thread_store import ThreadStore
-    from lyra.infrastructure.stores.turn_store import TurnStore
-
     dc_multi_cfg, dc_creds, dc_bot_watch_channels = await _bootstrap_discord_setup(
         raw_config, vault_dir
     )
-
-    dc_thread_store = ThreadStore(db_path=vault_dir / "discord.db")
-    await dc_thread_store.connect()
-
-    dc_turn_store = TurnStore(db_path=vault_dir / "turns.db")
-    await dc_turn_store.connect()
+    dc_thread_store, dc_turn_store = await _create_dc_stores(vault_dir)
 
     wired_dc: list[tuple] = []  # (DiscordAdapter, str, Bus, TypingListener)
 
@@ -196,14 +210,7 @@ async def bootstrap_discord_standalone(
         try:
             wired = await _wire_bot(bot_cfg, token)
         except Exception:
-            await close_safely(
-                "dc-wired",
-                *[
-                    coro
-                    for a, _, ibus, tl in wired_dc
-                    for coro in (a.close(), ibus.stop(), tl.stop())
-                ],
-            )
+            await _close_dc_wired("dc-wired", wired_dc)
             await dc_thread_store.close()
             await dc_turn_store.close()
             raise

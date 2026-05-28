@@ -158,8 +158,8 @@ async def bootstrap_discord_standalone(
             thread_store=dc_thread_store,
             watch_channels=dc_bot_watch_channels.get(bot_id, frozenset()),
             turn_store=dc_turn_store,
-            tool_display_config=config_bundle.tool_display,
         )
+        adapter_dc.configure_tool_display(config_bundle.tool_display)
 
         listener_dc = NatsOutboundListener(
             nc,

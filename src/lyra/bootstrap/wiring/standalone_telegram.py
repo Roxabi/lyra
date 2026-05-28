@@ -118,8 +118,8 @@ async def bootstrap_telegram_standalone(
             inbound_bus=inbound_bus,
             webhook_secret=webhook_secret or "",
             turn_store=tg_turn_store,
-            tool_display_config=config_bundle.tool_display,
         )
+        adapter.configure_tool_display(config_bundle.tool_display)
         await adapter.resolve_identity()
 
         listener = NatsOutboundListener(

@@ -1,0 +1,56 @@
+---
+title: "watch: 3rd OutboundAdapterBase subclass — design tool_display_config storage before adding"
+issue: 1468
+status: approved
+tier: F-lite
+date: 2026-05-28
+---
+
+## Problem
+
+`tool_display_config` is stored per-platform via a copy-pasted `__init__` kwarg + assignment:
+
+```python
+def __init__(self, ..., tool_display_config: ToolDisplayConfig | None = None):
+    self._tool_display_config = tool_display_config
+```
+
+This pattern is currently duplicated in EXACTLY 2 sibling adapter dirs — `src/lyra/adapters/telegram/telegram.py` and `src/lyra/adapters/discord/adapter.py`. ADR-073 RC-3 (target-axis-trap) fires at 3 sibling dirs: any new `OutboundAdapterBase` subclass (Slack, Matrix, …) would copy-paste the same kwarg + storage, crossing the threshold and re-introducing cross-cutting drift along the non-primary (platform) axis.
+
+A 3rd adapter is now imminent, so the storage mechanism must be designed and the 2 existing platforms refactored onto it **before** the 3rd is added.
+
+## Who
+
+- **Primary:** Lyra maintainers adding new outbound platform adapters — they should configure tool-display once, not re-implement storage.
+- **Secondary:** Reviewers / axial-adr-review (ADR-073 RC-3) — the mechanism removes the recurring target-axis-trap finding.
+
+## Constraints
+
+- `OutboundAdapterBase` has **NO `__init__`** (MRO with `discord.Client` — `DiscordAdapter(discord.Client, OutboundAdapterBase)`). A base-class `__init__` is forbidden. Verified: `_base_outbound.py:34` class def, no `__init__`; line 71 reads `getattr(self, "_tool_display_config", None) or ToolDisplayConfig()` defensively.
+- Single domain: `src/lyra/adapters/`. No new arch.
+- Must keep the existing read path working (`getattr(self, "_tool_display_config", None)` consumers in `_base_outbound.py`).
+- Refactor both existing adapters onto the new mechanism in the same change (no half-migrated state).
+
+## Out of Scope
+
+- Adding the actual 3rd adapter (Slack/Matrix) — separate issue once mechanism lands.
+- Changing `ToolDisplayConfig` shape or the bootstrap wiring that constructs the configs (`bootstrap/factory/config.py`, `bootstrap/wiring/bootstrap_wiring.py`).
+- The outbound emitter consumption of the config (`outbound/emitter.py`, `outbound/_tool_recap.py`).
+
+## Premise Validity
+
+**Success in 6 months:** A 3rd `OutboundAdapterBase` subclass is added WITHOUT copy-pasting the `tool_display_config` kwarg + storage; the storage mechanism is defined once and the 2 existing adapters use it.
+
+**Failure in 6 months:** The 3rd adapter ships still copy-pasting `self._tool_display_config = tool_display_config` (≥3 sibling dirs duplicate the pattern → ADR-073 RC-3 target-axis-trap fires), OR the new mechanism added net complexity (LOC of base mechanism > LOC saved across adapters). Falsifiable: measurable via sibling-dir duplication count and net LOC delta.
+
+**Simplest alternative:** Keep the class-attribute default + per-subclass `__init__` storage (current pattern).
+**Why not simplest:** Doesn't scale — every new adapter re-duplicates the kwarg + assignment; that re-duplication is exactly the drift that triggered this issue and ADR-073 RC-3.
+
+## Complexity
+
+**Tier: F-lite** — single domain (adapters), clear scope, no new architecture; bounded to a storage-mechanism design + 2-adapter refactor.
+
+Signals observed:
+- `size:F-lite` label on issue.
+- Single domain (`src/lyra/adapters/`), 2 files to refactor + 1 base mechanism.
+- No unknowns: the 3 candidate mechanisms are enumerated in the issue.

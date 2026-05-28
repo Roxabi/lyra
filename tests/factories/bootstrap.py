@@ -69,6 +69,9 @@ class _FakeTgAdapter:
         self._bot_id = kwargs.get("bot_id", "main")
         self.dp = _FakeDp(shutdown_event)
 
+    def configure_tool_display(self, config: object) -> None:
+        self._tool_display_config = config
+
     async def send(self, msg: object, response: object) -> None:
         pass
 
@@ -86,6 +89,9 @@ class _FakeDcAdapter:
         self, shutdown_event: asyncio.Event | None = None, **kwargs: object
     ) -> None:
         self._shutdown = shutdown_event if shutdown_event else asyncio.Event()
+
+    def configure_tool_display(self, config: object) -> None:
+        self._tool_display_config = config
 
     async def start(self, token: str) -> None:
         await self._shutdown.wait()  # explicit: wait for teardown signal

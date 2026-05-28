@@ -87,11 +87,6 @@ async def wire_telegram_adapters(
 
     Returns (adapters, dispatchers) lists.
     """
-    _tdc = (
-        deps.tool_display_config
-        if deps.tool_display_config is not None
-        else ToolDisplayConfig()
-    )
     adapters: list[TelegramAdapter] = []
     dispatchers: list[OutboundDispatcher] = []
 
@@ -116,8 +111,8 @@ async def wire_telegram_adapters(
             circuit_registry=deps.circuit_registry,
             msg_manager=deps.msg_manager,
             turn_store=deps.hub._turn_store,
-            tool_display_config=_tdc,
         )
+        adapter.configure_tool_display(deps.tool_display_config)
         await adapter.resolve_identity()
         # C3: Hub is the trust authority — register authenticator here, not on adapter.
         deps.hub.register_authenticator(Platform.TELEGRAM, bot_cfg.bot_id, auth)
@@ -166,11 +161,6 @@ async def wire_discord_adapters(
     Returns (adapters_with_config, dispatchers) where each adapter entry is
     (adapter, bot_cfg, token) — the token is needed later for ``adapter.start()``.
     """
-    _tdc = (
-        deps.tool_display_config
-        if deps.tool_display_config is not None
-        else ToolDisplayConfig()
-    )
     adapters: list[tuple[DiscordAdapter, DiscordBotConfig, str]] = []
     dispatchers: list[OutboundDispatcher] = []
 
@@ -229,8 +219,8 @@ async def wire_discord_adapters(
                 thread_store=thread_store,
                 watch_channels=watch_channels,
                 turn_store=deps.hub._turn_store,
-                tool_display_config=_tdc,
             )
+            adapter.configure_tool_display(deps.tool_display_config)
             # Wire identity resolver for slash command trust (voice commands).
             adapter._resolve_identity_fn = deps.hub.resolve_identity
             # C3: Hub is the trust authority — register here, not on adapter.

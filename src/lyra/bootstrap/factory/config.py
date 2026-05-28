@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import tomllib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -226,6 +227,28 @@ def _load_tool_display_config(raw: dict[str, Any]) -> ToolDisplayConfig:
     """Load [tool_display] section. Missing section → all defaults."""
     section: dict[str, Any] = raw.get("tool_display", {})
     return ToolDisplayConfig.model_validate(section)
+
+
+@dataclass(frozen=True)
+class AdapterConfigBundle:
+    """Single composition root for adapter-scoped config.
+
+    Extracted per ADR-073 to prevent N×M duplication when new bootstrap
+    paths (wired, standalone, embedded) are added.
+    """
+
+    tool_display: ToolDisplayConfig
+
+
+def build_adapter_config_bundle(raw_config: dict[str, Any]) -> AdapterConfigBundle:
+    """Build AdapterConfigBundle from raw config dict.
+
+    All bootstrap paths (wired, standalone, embedded) call this single
+    factory instead of duplicating _load_tool_display_config calls.
+    """
+    return AdapterConfigBundle(
+        tool_display=_load_tool_display_config(raw_config),
+    )
 
 
 def _load_cli_pool_config(raw: dict[str, Any]) -> CliPoolConfig:

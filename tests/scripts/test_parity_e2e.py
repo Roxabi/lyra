@@ -487,7 +487,13 @@ def test_retired_identity_connect_rejected(
                 connect_timeout=2,
             )
 
-        with pytest.raises(Exception):
+        with pytest.raises(
+            Exception,
+            match=(
+                r"authorization violation|auth error|connection refused"
+                r"|no servers available"
+            ),
+        ):
             asyncio.run(_connect_retired())
     finally:
         proc.terminate()

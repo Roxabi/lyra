@@ -58,7 +58,7 @@ async def test_adapter_reads_token_from_run_secrets(
 
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("lyra.bootstrap.composition_root.NatsBus", return_value=mock_inbound_bus),
         patch("lyra.adapters.telegram.TelegramAdapter", side_effect=_capture_tg),
         patch(
             "lyra.bootstrap.composition_root.NatsOutboundListener",
@@ -122,7 +122,7 @@ async def test_adapter_reads_webhook_when_present(
 
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("lyra.bootstrap.composition_root.NatsBus", return_value=mock_inbound_bus),
         patch("lyra.adapters.telegram.TelegramAdapter", side_effect=_capture_tg),
         patch(
             "lyra.bootstrap.composition_root.NatsOutboundListener",
@@ -186,7 +186,7 @@ async def test_adapter_omits_webhook_when_absent(
 
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("lyra.bootstrap.composition_root.NatsBus", return_value=mock_inbound_bus),
         patch("lyra.adapters.telegram.TelegramAdapter", side_effect=_capture_tg),
         patch(
             "lyra.bootstrap.composition_root.NatsOutboundListener",
@@ -259,7 +259,7 @@ async def test_adapter_handles_multi_bot(
 
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("lyra.bootstrap.composition_root.NatsBus", return_value=mock_inbound_bus),
         patch("lyra.adapters.telegram.TelegramAdapter", side_effect=_capture_tg),
         patch(
             "lyra.bootstrap.composition_root.NatsOutboundListener",
@@ -350,7 +350,7 @@ async def test_discord_adapter_handles_multi_bot(
 
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("lyra.bootstrap.composition_root.NatsBus", return_value=mock_inbound_bus),
         patch("lyra.adapters.discord.DiscordAdapter", side_effect=_capture_dc),
         patch(
             "lyra.infrastructure.stores.agent_store.AgentStore",

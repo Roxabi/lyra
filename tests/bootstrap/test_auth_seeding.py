@@ -20,8 +20,9 @@ class TestBootstrapCallsSeedGrantsFromBots:
     ) -> None:
         """_bootstrap_hub_standalone calls seed_grants_from_bots once.
 
-        Drives the bootstrap past the NATS_URL guard with a mock NATS connection,
-        then short-circuits just after seed_grants_from_bots so no real DB is needed.
+        Uses auth+bot stores. Drives the bootstrap past the NATS_URL guard
+        with a mock NATS connection, then short-circuits just after
+        seed_grants_from_bots so no real DB is needed.
         """
         # Arrange
         monkeypatch.setenv("NATS_URL", "nats://localhost:4222")

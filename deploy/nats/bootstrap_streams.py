@@ -88,7 +88,7 @@ async def main() -> int:
         log.error("NKey seed not found at %s", NKEY_PATH)
         return 1
 
-    kwargs: dict = {"servers": NATS_URL, "nkeys_seed_str": seed}
+    kwargs: dict = {"servers": NATS_URL, "nkeys_seed_str": seed, "inbox_prefix": "_inbox.hub"}
     nc = None
     try:
         nc = await nats.connect(**kwargs)

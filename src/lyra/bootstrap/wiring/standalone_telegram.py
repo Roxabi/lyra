@@ -14,6 +14,7 @@ from lyra.bootstrap import credentials
 from lyra.bootstrap.factory.config import AdapterConfigBundle
 from lyra.bootstrap.lifecycle.lifecycle_helpers import close_safely
 from lyra.bootstrap.lifecycle.signal_handlers import setup_shutdown_event
+from lyra.bootstrap.standalone.audio_consumer_bootstrap import start_audio_consumer
 from lyra.core.messaging.bus import Bus
 from lyra.core.messaging.message import InboundMessage, Platform
 from lyra.nats.queue_groups import adapter_outbound
@@ -47,9 +48,11 @@ async def _bootstrap_telegram_setup(
 
 
 async def _close_tg_wired(label: str, wired: list[tuple]) -> None:
-    """Close all wired Telegram adapters, buses, and typing listeners."""
+    """Close all wired Telegram adapters, buses, typing listeners, and consumers."""
     close_coros = [
-        coro for a, ibus, tl in wired for coro in (a.close(), ibus.stop(), tl.stop())
+        coro
+        for a, ibus, tl, consumer in wired
+        for coro in (a.close(), ibus.stop(), tl.stop(), consumer.stop())
     ]
     await close_safely(label, *close_coros)
 
@@ -65,11 +68,11 @@ async def _bootstrap_telegram_teardown(
             a.dp.start_polling(a.bot, handle_signals=False),
             name=f"telegram:{a._bot_id}",
         )
-        for a, _, _ in wired
+        for a, _, _, _ in wired
     ]
     try:
         await stop.wait()
-        for a, _, _ in wired:
+        for a, _, _, _ in wired:
             await a.dp.stop_polling()
         await asyncio.gather(*poll_tasks, return_exceptions=True)
     finally:
@@ -90,11 +93,12 @@ async def bootstrap_telegram_standalone(
     tg_multi_cfg, tg_creds, tg_turn_store = await _bootstrap_telegram_setup(
         raw_config, vault_dir
     )
+    js = nc.jetstream()
 
-    wired: list[tuple] = []  # (TelegramAdapter, Bus, TypingListener)
+    wired: list[tuple] = []  # (TelegramAdapter, Bus, TypingListener, AudioConsumer)
 
     async def _wire_bot(bot_cfg: Any, token: str, webhook_secret: str | None) -> tuple:
-        """Wire a single Telegram bot with NATS transport and typing listener."""
+        """Wire a single Telegram bot with NATS, typing listener, and audio consumer."""
         bot_id = bot_cfg.bot_id
 
         from lyra.adapters.telegram import TelegramAdapter
@@ -158,7 +162,13 @@ async def bootstrap_telegram_standalone(
             )
             raise
 
-        return (adapter, inbound_bus, tg_typing_listener)
+        # Audio consumer: started strictly after astart() + typing, so no
+        # cleanup needed in either astart or typing failure paths above.
+        consumer = await start_audio_consumer(
+            js, platform_enum.value, bot_id, adapter
+        )
+
+        return (adapter, inbound_bus, tg_typing_listener, consumer)
 
     for bot_cfg in tg_multi_cfg.bots:
         bot_id = bot_cfg.bot_id

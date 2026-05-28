@@ -66,11 +66,22 @@ class TestRunChecks:
         varz_response.status_code = 200
         varz_response.json.return_value = {"auth_errors": 0, "slow_consumers": 0}
 
+        # /jsz → 404: stream not yet provisioned → audio checks pass/skip (#1482 T11)
+        jsz_response = MagicMock()
+        jsz_response.status_code = 404
+
+        # Single patch covers all monitoring modules: checks.py, checks_varz.py, and
+        # checks_audio.py all reference the same httpx module object, so patching
+        # httpx.AsyncClient via any one of those namespaces patches it globally.
         with patch("lyra.monitoring.checks.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
 
             def _mock_get(url: str, **_kwargs: object) -> MagicMock:  # type: ignore
-                return varz_response if "/varz" in url else mock_response
+                if "/varz" in url:
+                    return varz_response
+                if "/jsz" in url:
+                    return jsz_response
+                return mock_response
 
             mock_client.get.side_effect = _mock_get
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -122,6 +133,8 @@ class TestRunChecks:
             "nats:varz",
             "disk_pct",
             "inode_pct",
+            "audio:consumer_lag",
+            "audio:stream_usage",
         }
 
     async def test_failure_detected(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -158,12 +171,22 @@ class TestRunChecks:
             MagicMock(return_value=MagicMock(returncode=0, stdout="", stderr="")),
         )
 
-        # HTTP also fails (hub is down)
+        # HTTP also fails (hub is down); audio checks use the same mock client but
+        # /jsz → 404 so they pass/skip and do NOT add to failed_count (#1482 T11).
         import httpx
+
+        jsz_response = MagicMock()
+        jsz_response.status_code = 404
 
         with patch("lyra.monitoring.checks.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
-            mock_client.get.side_effect = httpx.ConnectError("Connection refused")
+
+            def _mock_get_failure(url: str, **_kwargs: object) -> MagicMock:  # type: ignore
+                if "/jsz" in url:
+                    return jsz_response
+                raise httpx.ConnectError("Connection refused")
+
+            mock_client.get.side_effect = _mock_get_failure
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
             mock_client_cls.return_value = mock_client
@@ -210,4 +233,6 @@ class TestRunChecks:
             "nats:varz",
             "disk_pct",
             "inode_pct",
+            "audio:consumer_lag",
+            "audio:stream_usage",
         }

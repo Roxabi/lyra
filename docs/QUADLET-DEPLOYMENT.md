@@ -408,6 +408,175 @@ HealthCmd=grep -q telegram /proc/1/cmdline
 The `quadlet-lint.yml` CI workflow enforces this via a `grep -nP 'HealthCmd=.*"'` check that
 fails on any double-quote in a `HealthCmd=` line. See issue #1370.
 
+## Outbound audio durable delivery (#1482)
+
+Runbook for deploying and rolling back the JetStream-backed outbound audio path
+introduced by issue #1482. The audio path uses a dedicated 5-token subject family
+(`lyra.outbound.audio.<platform>.<bot_id>`), JetStream stream `LYRA_OUTBOUND_AUDIO`,
+and KV dedup bucket `lyra_outbound_audio_sent`. See ADR-077 for the full decision record.
+
+### Stream + consumer parameters
+
+| Parameter | Value | Source |
+|---|---|---|
+| Stream | `LYRA_OUTBOUND_AUDIO` | `stream_setup.py` |
+| Subjects | `lyra.outbound.audio.>` | `stream_setup.py` |
+| Retention | Limits (NOT WorkQueue — multi-consumer fan-out) | `stream_setup.py` |
+| MaxAge | 24 h | `stream_setup.py` |
+| MaxBytes | 32 MiB | `stream_setup.py` |
+| Consumer durable | `outbound-audio-telegram`, `outbound-audio-discord` | `audio_consumer_bootstrap.py` |
+| Filter subject | `lyra.outbound.audio.<platform>.>` | `audio_consumer_bootstrap.py` |
+| AckWait | 90 s | `stream_setup.py` |
+| MaxDeliver | 5 | `stream_setup.py` |
+| KV bucket | `lyra_outbound_audio_sent` | `stream_setup.py` |
+| KV TTL | 900 s (15 min — ≥2× AckWait×MaxDeliver floor of 450 s) | `stream_setup.py` |
+
+### Deploy order (strict — each step is a prerequisite for the next)
+
+**Step 1 — ACL: update `acl-matrix.json` → regen `auth.conf` → RESTART `lyra-nats`**
+
+```bash
+# On M₁ (roxabituwer) — regen auth.conf from real nkey seeds in ~/.lyra/nkeys/
+sudo env "PATH=$PATH" lyra-acl genkeys --regen-authconf
+
+# Re-install the NATS auth secret from the regenerated file
+podman secret create --replace lyra-nats-auth ~/.lyra/nkeys/auth.conf
+
+# RESTART lyra-nats — a HUP is NOT sufficient
+# auth.conf is a type=mount secret (tmpfs-backed); the in-container file is bound
+# at container init only. --replace updates the Podman store but the running
+# container still reads the old file. A full restart is mandatory.
+systemctl --user restart lyra-nats
+```
+
+**Why ACL must precede adapters:** the adapters call `ensure_stream`, `ensure_consumer`,
+and `ensure_kv` on boot (idempotent, via `audio_consumer_bootstrap.start_audio_consumer`).
+These issue `$JS.API.STREAM.CREATE.LYRA_OUTBOUND_AUDIO`, `$JS.API.CONSUMER.CREATE.*`,
+and KV API calls. Without the new grants in `auth.conf`, NATS returns a permission-denied
+error and the adapter crashes before completing bootstrap.
+
+**Step 2 — Deploy hub** (now publishes audio via JetStream + PubAck instead of Core fire-and-forget)
+
+```bash
+systemctl --user restart lyra-hub
+```
+
+The hub publishes to `lyra.outbound.audio.<platform>.<bot_id>` and returns immediately
+(stateless, Model A). No stream provisioning is performed by the hub — that is owned
+entirely by the adapters.
+
+**Step 3 — Deploy adapters** (auto-provision stream/consumer/KV on boot, then start the pull consumer)
+
+```bash
+systemctl --user restart lyra-telegram lyra-discord
+```
+
+On boot each adapter calls (in order):
+1. `ensure_stream(js)` — create or update `LYRA_OUTBOUND_AUDIO` (idempotent)
+2. `ensure_kv(js)` — create or bind KV bucket `lyra_outbound_audio_sent` (idempotent)
+3. `ensure_consumer(js, durable="outbound-audio-<platform>", filter_subject=…)` (idempotent)
+4. `JetStreamAudioConsumer.start()` — begins the pull-subscribe loop
+
+All three `ensure_*` calls are idempotent — safe to re-run on any subsequent restart.
+
+> **No separate stream-creation step is required.** The adapters self-provision on start.
+> The only prerequisite is that the ACL grants exist (Step 1), otherwise the JetStream API
+> calls are denied before the stream can be created.
+
+### Verification after deploy
+
+```bash
+# Confirm the stream exists and has the expected config
+nats stream info LYRA_OUTBOUND_AUDIO
+
+# Confirm both per-platform consumers exist
+nats consumer info LYRA_OUTBOUND_AUDIO outbound-audio-telegram
+nats consumer info LYRA_OUTBOUND_AUDIO outbound-audio-discord
+
+# Confirm adapters are healthy (NRestarts=0 expected)
+systemctl --user status lyra-telegram lyra-discord
+
+# Adapter logs — audio delivery failures surface here, NOT in lyra-nats.service
+journalctl --user -u lyra-telegram -n 50 | grep -E "audio|LYRA_OUTBOUND"
+journalctl --user -u lyra-discord  -n 50 | grep -E "audio|LYRA_OUTBOUND"
+
+# Check NATS HTTP monitoring for consumer lag and stream usage
+# (thresholds: num_pending > 50 → lag warning; used > 80% of 32 MiB → fullness warning)
+curl -s "http://127.0.0.1:8222/jsz?consumers=1&name=LYRA_OUTBOUND_AUDIO" \
+  | python3 -m json.tool | grep -E '"num_pending"|"name"|"bytes"'
+```
+
+The monitoring subsystem (`python -m lyra.monitoring`) runs two audio-specific probes after
+this deploy:
+
+| Check name | What it monitors | Fail condition |
+|---|---|---|
+| `audio:consumer_lag` | `num_pending` per `outbound-audio-*` consumer | `num_pending > 50` or oldest unacked message age > 20 h |
+| `audio:stream_usage` | `LYRA_OUTBOUND_AUDIO` bytes vs 32 MiB max | used > 80 % of max |
+
+### Rollback
+
+Rollback consists of reverting the hub to at-most-once audio publish and stopping the audio
+consumers. The ACL grants and JetStream resources can be left in place — they are additive
+and harmless.
+
+**Step R1 — Revert hub to prior image or prior code**
+
+```bash
+# Point hub back to the previous image tag and restart
+# (edit Image= in lyra-hub.container, or make quadlet-install with prior tag)
+systemctl --user restart lyra-hub
+```
+
+The reverted hub stops publishing to `lyra.outbound.audio.>`. Any messages already in
+`LYRA_OUTBOUND_AUDIO` will age out after 24 h (the stream MaxAge). They will not be
+delivered because the adapters' pull consumers are stopped in the next step.
+
+**Step R2 — Stop audio consumers (revert adapter images or restart without audio bootstrap)**
+
+```bash
+systemctl --user restart lyra-telegram lyra-discord
+```
+
+If the adapter image is also rolled back to a version without `JetStreamAudioConsumer`,
+the `ensure_*` calls and the pull-subscribe loop are absent — adapters start cleanly on
+the legacy Core path.
+
+**Stream and KV: leave in place or purge**
+
+Rollback to a pre-#1482 image is a config/image rollback (pin `Image=` to the prior tag per the image-lifecycle pattern in `deploy/CLAUDE.md`). The JetStream stream (`LYRA_OUTBOUND_AUDIO`), consumers, and KV bucket (`lyra_outbound_audio_sent`) persist after rollback — a pre-#1482 image simply stops consuming the audio subject; messages already on the stream remain until MaxAge (24 h) and then expire automatically. The audio path also exposes module counters `audio_terminal_drop_total` / `audio_redelivery_total` for monitoring.
+
+Leaving `LYRA_OUTBOUND_AUDIO` and `lyra_outbound_audio_sent` in place is safe — they are
+inactive once the adapters stop consuming. Messages age out at MaxAge=24 h; KV keys at TTL=900 s.
+
+To purge explicitly (optional, operator-driven):
+
+```bash
+nats stream rm LYRA_OUTBOUND_AUDIO --force
+# KV bucket is a stream internally; removing the stream also drops the KV bucket
+nats stream rm KV_lyra_outbound_audio_sent --force
+```
+
+**ACL grants: safe to leave**
+
+The `lyra.outbound.audio.>` publish grant (hub) and the adapter JetStream API grants are
+additive. Leaving them in `auth.conf` has no functional impact when the audio code path is
+inactive. Remove them only if a full ACL audit is underway (requires regen + `lyra-nats` RESTART).
+
+> **Note:** in-flight messages in `LYRA_OUTBOUND_AUDIO` at the time of hub rollback will
+> not be delivered — the hub no longer publishes, and the adapters have stopped consuming.
+> These messages age out within 24 h. This is acceptable: the rollback scenario implies a
+> confirmed regression; undelivered audio from the failed window is intentionally dropped.
+
+### Cross-references
+
+- ADR-077 — `lyra.outbound.audio.*` subject naming + JetStream design decision
+- `deploy/nats/acl-matrix.json` — full ACL grant matrix (hub + telegram-adapter + discord-adapter identities)
+- `src/lyra/infrastructure/outbound_audio/stream_setup.py` — stream/consumer/KV config constants
+- `src/lyra/bootstrap/standalone/audio_consumer_bootstrap.py` — adapter boot sequence
+- `src/lyra/monitoring/checks_audio.py` — `audio:consumer_lag` + `audio:stream_usage` probes
+- `deploy/CLAUDE.md` — `type=mount` secret restart requirement (general invariant)
+
 ## References
 
 - `deploy/quadlet/` — unit files (authoritative)

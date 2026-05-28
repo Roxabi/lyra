@@ -27,6 +27,7 @@ from .render_events import (
     ToolCallResultRenderEvent,
     ToolCallStartRenderEvent,
 )
+from .voice_notify import VOICE_UNDELIVERED_MSG, notify_undelivered
 
 __all__ = [
     "Bus",
@@ -54,4 +55,6 @@ __all__ = [
     "ToolCallEndRenderEvent",
     "ToolCallResultRenderEvent",
     "ToolCallStartRenderEvent",
+    "VOICE_UNDELIVERED_MSG",
+    "notify_undelivered",
 ]

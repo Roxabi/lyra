@@ -1,0 +1,86 @@
+---
+title: Fiabilité outbound audio — livraison garantie + ack user
+issue: 1482
+status: approved
+tier: F-full
+date: 2026-05-28
+---
+
+## Problem
+
+The hub publishes outbound audio events via **core NATS (at-most-once)**. A subscriber TCP
+glitch silently drops the event — the user gets neither audio nor an error. The hub logs
+`dispatched`, but that only confirms a *local publish*, not delivery.
+
+Confirmed causal chain:
+
+- **hub**: `publish lyra.outbound.telegram.aryl` → logs `dispatched` (publish-local success, ¬delivery guarantee)
+- **telegram**: TCP glitch → event never received
+- **blobstore**: no `GET` of `store_key` → audio never played
+- **user**: ∅ audio, ∅ error message → **silent loss**
+
+Two design gaps: (1) no delivery guarantee (no JetStream / ack / redelivery on outbound
+topics); (2) no user notification on terminal failure.
+
+The audio bytes are **not** what is lost — they sit durable + content-addressed in
+`FsBlobStore`. The hub publishes a `BlobRef` *pointer* (`store_key`), not bytes. What is
+lost is the tiny pointer event. This reframes the fix: persist + redeliver the *event*,
+not the payload.
+
+## Who
+
+- **Primary:** Lyra end users on Telegram/Discord — receive (or silently lose) voice replies.
+- **Secondary:**
+  - Hub outbound path (`OutboundDispatcher`, `tts_dispatch.AudioPipeline`) — publisher.
+  - Platform adapters (Telegram/Discord) — event consumers that `GET` the blob and send.
+  - BlobStore service — the `GET`-audit stream is a delivery-observability source.
+
+## Constraints
+
+- **JetStream precedent exists**: `TurnPublisher` already publishes `TurnWriteEvent` to JS
+  `lyra.turns.write` awaiting `PubAck`, drained by a sole-writer consumer (`TurnWriter`,
+  ADR-075). Outbound audio is the same α-pattern (durable event → JS → consumer-ack).
+- **Hub stays stateless** (Model A, agreed): hub does durable-publish-once (`PubAck`), no
+  retry loop, no in-flight state. Redelivery is **JetStream-owned** (`AckWait`/`MaxDeliver`/
+  backoff), consumer-acked at the adapter after send-to-user succeeds.
+- Existing CB lives in `WorkerPoolClient` / `OutboundDispatcher` — MUST NOT add a second CB.
+- `SanitizedError` discipline on bus-bound paths (no `str(exc)` leak) must hold.
+- NATS subjects are config/contract-driven (`roxabi-contracts`); subject + stream changes
+  flow through the contracts package + NATS Quadlet (restart-not-HUP for ACL/stream config).
+- Redelivery requires **idempotent consume** — a redelivered event must not double-send.
+
+## Out of Scope
+
+- Inbound audio reliability (STT path) — separate concern.
+- Image / file outbound delivery — audio-first; generalize only if the pattern proves out.
+- Per-identity blobstore auth (#1334) — orthogonal.
+- Regenerating TTS on redelivery — the blob is durable; never re-synthesize.
+
+## Premise Validity
+
+**Success in 6 months:** Zero silent audio drops — every outbound voice either reaches the
+user OR the user receives an explicit "voice failed" message. Hub holds no retry state;
+redelivery is JetStream-owned.
+
+**Failure in 6 months:** Silent-drop incidents still occur (audio sent by hub, no
+`GET`-audit, no user notif) — measurable as ≥1 reproducible loss under a TCP-glitch test
+after the change ships.
+
+**Simplest alternative:** Add a user-facing "voice failed" notification on publish error,
+keep core NATS at-most-once.
+**Why not simplest:** Publish succeeds *locally* even when delivery fails — that is the
+actual bug. A publish-error notif never fires for the real failure mode; it only catches a
+failure that isn't happening. It does not close the gap.
+
+## Complexity
+
+**Tier: F-full** — multi-domain, new delivery semantics, unresolved design sub-questions.
+
+Signals observed:
+- Spans transport (JetStream stream/consumer), hub publish, platform adapters (consumer
+  + ack), blobstore (GET-audit oracle), and user-notif — multiple domains.
+- New architecture: outbound JetStream stream + durable consumer + DLQ/terminal-notif path;
+  no prior outbound-delivery-guarantee pattern (TurnPublisher is the closest precedent).
+- Open design sub-questions for analyze/spec: `AckWait`/`MaxDeliver` values, DLQ subject,
+  ack-after-send semantics, idempotency key on redelivery, GET-audit as probe vs primary ack.
+- Labels: `bug` + `feat` + `P1-high`.

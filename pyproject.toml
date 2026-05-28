@@ -98,6 +98,7 @@ filterwarnings = [
 markers = [
     "nats_integration: NATS integration tests requiring Docker Compose",
     "integration: cross-host integration tests requiring M1 Tailnet",
+    "audio_consumer_live: test exercises audio consumer directly; skip the autouse no-op neutralizer",
 ]
 
 [tool.coverage.run]

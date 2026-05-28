@@ -63,6 +63,7 @@ File/rename → update P immediately
 | `src/lyra/streaming/CLAUDE.md` | stage-axis streaming primitives (parser Protocol, state_machine, event_emitter) — composed by CliStreamingParser + StreamProcessor (#1282) |
 | `src/lyra/transport/CLAUDE.md` | NATS transport + WorkerPoolClient (3-layer primitives, #1278) |
 | `src/lyra/infrastructure/turn_writer/CLAUDE.md` | JetStream subscriber-writer for turns.db (#1331) — sole writer per ADR-075 |
+| `src/lyra/infrastructure/outbound_audio/CLAUDE.md` | JetStream stream + consumer + KV provisioning for durable outbound-audio path (#1482) |
 | `src/lyra/nats/CLAUDE.md` | in-tree NATS integration (subjects, codec, domain clients) |
 | `src/lyra/tools/CLAUDE.md` | GitHub token dispenser (gh_token submodule) |
 | `packages/roxabi-nats/CLAUDE.md` | NATS transport SDK (ADR-045) |

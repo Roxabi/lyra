@@ -1,0 +1,205 @@
+---
+title: "ADR-077: Outbound audio subject family and JetStream delivery guarantee"
+description: Introduces lyra.outbound.audio.<platform>.<bot_id> as a dedicated 5-token subject backed by JetStream stream LYRA_OUTBOUND_AUDIO, delivering at-least-once + KV dedup for audio. The legacy 4-token text path is unchanged.
+status: accepted
+date: 2026-05-28
+deciders: [Mickael, architect, devops]
+supersedes: []
+superseded_by: []
+related: [035, 076, 075]
+---
+
+> **Current truth** → [`docs/architecture/messaging.md`](../messaging.md){#current-truth}
+> This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+
+## Status
+
+Accepted — 2026-05-28
+
+## Context
+
+### The problem
+
+Outbound audio messages were published via Core NATS on the existing 4-token subject
+`lyra.outbound.<platform>.<bot_id>` — the same path used for text chunks. Core NATS
+is at-most-once: a TCP glitch between the hub and an adapter silently dropped the
+message with no replay possible. For text, a dropped chunk is usually recoverable
+(the stream continues); for audio, a dropped message means the user receives no audio
+at all, with no indication anything went wrong.
+
+Issue #1482 documents a confirmed silent-drop reproducer on the Discord adapter under
+transient subscriber disconnection.
+
+### Naming conflict risk
+
+Sharing the text subject also carries a semantic risk: a downstream subscriber cannot
+distinguish "this envelope contains audio bytes" from "this envelope contains text
+chunks" without inspecting the payload. Per ADR-035, subject tokens are the ACL
+boundary; a unified subject forces a unified grant, making fine-grained audio-specific
+ACLs impossible.
+
+### Relation to the three-plane model (ADR-076)
+
+ADR-076 defines three NATS planes (Messages / Persistence / Typing). The Messages
+plane covers `lyra.{inbound,outbound}.<platform>.<bot_id>` with Core NATS
+(at-most-once). Audio delivery **cannot** use the Messages plane because it requires
+durability. Audio delivery **is not** the Persistence plane (`lyra.turns.>`) because
+it is not an append-only turn log — it is an outbound delivery guarantee.
+
+The durability + direction + lifecycle triple differs from all three existing planes:
+
+| Axis | Audio outbound | Messages plane | Persistence plane |
+|---|---|---|---|
+| Durability | at-least-once (JetStream) | ephemeral (Core) | durable (JetStream) |
+| Direction | hub → adapter | bidirectional | hub → turn-writer |
+| Lifecycle | delivery-confirmed-by-consumer | fire-and-forget | append-log |
+
+The three-prong test (ADR-076) is satisfied — a new subject family is warranted, not a
+stretched plane.
+
+## Decision
+
+### New subject family
+
+Introduce `lyra.outbound.audio.<platform>.<bot_id>` as a dedicated 5-token subject for
+all outbound audio messages.
+
+| Token position | Value |
+|---|---|
+| 1 | `lyra` |
+| 2 | `outbound` |
+| 3 | `audio` |
+| 4 | `<platform>` — lowercase ASCII (`telegram`, `discord`) |
+| 5 | `<bot_id>` — numeric string `^[1-9][0-9]*$` (same constraint as ADR-035) |
+
+The 5-token structure is intentionally distinct from the legacy 4-token text path
+(`lyra.outbound.<platform>.<bot_id>`). A 4-token wildcard subscription
+(`lyra.outbound.>`) does **not** match the audio subject unless a `>` wildcard is
+anchored at position 2; the distinction is the 3rd token `audio`.
+
+### JetStream stream
+
+A new JetStream stream `LYRA_OUTBOUND_AUDIO` is provisioned:
+
+| Property | Value | Rationale |
+|---|---|---|
+| Subjects | `lyra.outbound.audio.>` | Covers all platforms and bots |
+| Retention | Limits (`MaxAge=5m`, `MaxMsgs` TBD by T14) | Audio has no replay value past delivery window |
+| Storage | File | Survives `lyra-nats` restart |
+| Replicas | 1 (single-node; current M₁ topology) | Consistent with `LYRA_TURNS` |
+
+### Durable pull consumer
+
+A durable pull consumer `audio-delivery-v1` is provisioned on `LYRA_OUTBOUND_AUDIO`.
+The adapter subscribes via `js.pull_subscribe(subject, durable="audio-delivery-v1")`.
+The consumer ACKs each message after the platform API confirms receipt (Telegram
+`send_voice` / Discord `channel.send(file=…)` returns without exception).
+
+### KV dedup bucket
+
+A JetStream KV bucket `lyra_outbound_audio_sent` stores delivery receipts keyed on
+message ID (envelope `stream_id`). Before publishing to the platform API, the adapter
+checks the bucket; if the key exists, it ACKs the NATS message without re-delivering.
+This provides effectively-once semantics at the platform boundary.
+
+Bucket TTL matches `LYRA_OUTBOUND_AUDIO` `MaxAge` — entries expire together.
+
+### Hub stays stateless (Model A)
+
+The hub publishes to `lyra.outbound.audio.<platform>.<bot_id>` and returns
+immediately. It does not track delivery state. JetStream owns redelivery; the adapter
+owns the ACK. This preserves the hub's stateless contract per ADR-073.
+
+### Legacy text path
+
+The 4-token path `lyra.outbound.<platform>.<bot_id>` is **unchanged** — it remains
+Core NATS, at-most-once, for text chunks. No migration is required. The two paths are
+parallel and non-interfering.
+
+## Consequences
+
+### Positive
+
+- Audio messages get at-least-once delivery with JetStream redelivery on adapter
+  crash/restart. The silent-drop class from #1482 is structurally eliminated.
+- KV dedup prevents double-delivery on NATS redelivery after a platform API success
+  that was not ACKed (e.g. adapter crash after `send_voice` returned but before ACK).
+- Fine-grained ACL: audio adapter identity can hold `lyra.outbound.audio.<platform>.>`
+  without receiving text chunks, and vice versa.
+- Text path carries zero additional latency or ACK cost — it remains fire-and-forget
+  as designed.
+
+### Negative / Expected debt
+
+- **ACL provisioning required (T7).** The hub identity gains publish on
+  `lyra.outbound.audio.>`. Each adapter identity gains subscribe on
+  `lyra.outbound.audio.<platform>.>`. Auth conf must be updated and `lyra-nats`
+  restarted (`type=mount` secret pattern, ADR-074; no HUP).
+- **Stream + consumer provisioning required (T14).** `LYRA_OUTBOUND_AUDIO` stream and
+  `audio-delivery-v1` consumer must be created in the NATS provisioning script before
+  any adapter starts. Missing provisioning is a startup error, not a silent failure —
+  the pull subscribe call raises immediately.
+- **KV bucket provisioning required.** `lyra_outbound_audio_sent` bucket must be
+  created alongside the stream (same provisioning script, T14).
+- **Monitoring grep target changes.** Audio delivery failures surface in
+  `journalctl --user -u lyra-{discord,telegram}` as NATS ACK timeouts or platform API
+  errors, NOT in `lyra-nats.service`. Operators monitoring for audio gaps must grep the
+  adapter units.
+
+### Forward-compatible constraint
+
+If a second media type (video, document) requires durable delivery, it MUST:
+
+1. Use a distinct 5-token subject family (e.g. `lyra.outbound.video.<platform>.<bot_id>`).
+2. Reuse `LYRA_OUTBOUND_AUDIO` stream only if subjects and retention needs align; otherwise
+   open a new stream.
+3. Use a distinct durable consumer — never share `audio-delivery-v1`.
+
+Do **not** collapse future media subjects back onto the 4-token text path.
+
+## Alternatives considered
+
+### A. Keep the 4-token path, add JetStream backing to `lyra.outbound.*`
+
+Promote the existing outbound stream to JetStream. Text chunks and audio share one stream.
+
+- **Rejected.** Text chunks are high-frequency, ephemeral, and lossy-OK; paying JetStream
+  ACK + storage overhead for every text chunk reverses the Core-vs-JetStream decision
+  principle in ADR-076. Text chunk volume would also pollute the audio stream's retention
+  counters, making `MaxMsgs` tuning unreliable for the audio-only delivery window.
+
+### B. At-most-once with application-level retry in the hub
+
+Hub retains a short in-memory queue per bot; republishes if the adapter does not ACK within
+a timeout via a custom reply subject.
+
+- **Rejected.** Hub becomes stateful (owns retry state), violating the hub-stateless
+  contract. In-memory queue is lost on hub restart. Reinvents JetStream redelivery at
+  higher complexity and lower reliability.
+
+### C. Embed audio in the existing `LYRA_TURNS` JetStream stream
+
+Publish audio as a turn event variant on `lyra.turns.write`, delivered to adapters via a
+second consumer on `LYRA_TURNS`.
+
+- **Rejected.** `LYRA_TURNS` is an append-only turn log keyed for the TurnWriter consumer
+  (ADR-075). It is not a delivery channel. Adding an adapter consumer on `LYRA_TURNS`
+  would violate the stream's WorkQueue retention contract and create a coupling between
+  the persistence plane and the audio delivery concern.
+
+## References
+
+- **ADR-035** — NATS Subject Naming Convention (`lyra.{domain}.{qualifier...}` rule this
+  subject family extends; token constraints on `{platform}` and `{bot_id}`).
+- **ADR-076** — Three NATS Planes (three-prong test that authorises a new subject family;
+  Core-vs-JetStream choice principle).
+- **ADR-075** — TurnWriter subscriber-writer (established `LYRA_TURNS` pattern this stream
+  mirrors structurally; WorkQueue retention contrast).
+- **ADR-073** — Axis of Decomposition: Stage of Pipeline (hub-stateless invariant; Model A
+  choice).
+- **ADR-074** — Bot Credential Delivery via Podman Secrets (`type=mount`; no HUP on ACL
+  change → requires `lyra-nats` restart).
+- Issue **#1482** — outbound audio delivery reliability (origin; silent-drop reproducer).
+- T7 — ACL provisioning for `lyra.outbound.audio.>` grants.
+- T14 — JetStream stream + consumer + KV bucket provisioning.
+- Domain page: `docs/architecture/messaging.md` — carries the live plane/subject table.

@@ -51,6 +51,14 @@ class MonitoringConfig(BaseModel):
     blobstore_disk_critical_pct: int = 70
     blobstore_inode_warning_pct: int = 60
     blobstore_inode_critical_pct: int = 70
+    # Outbound-audio JetStream checks (#1482 T11)
+    # consumer lag: alert when num_pending exceeds this value
+    audio_lag_pending_threshold: int = 50
+    # consumer lag: alert when oldest unacked message is older than this (seconds)
+    # default 72000 s = 20 h — approaching the 24 h MaxAge silent-loss bound (D4)
+    audio_lag_age_warn_s: int = 72000
+    # stream fullness: alert when stream bytes exceed this % of max_bytes
+    audio_stream_usage_warn_pct: int = 80
 
     # Secrets (from env vars)
     telegram_token: str = Field(default="", repr=False)

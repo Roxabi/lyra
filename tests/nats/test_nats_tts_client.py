@@ -9,6 +9,11 @@ import pytest
 from lyra.core.ports.tts import SynthesisResult, TtsUnavailableError
 from lyra.nats.nats_tts_client import NatsTtsClient
 from lyra.transport._result import Err, Ok, SanitizedError
+from roxabi_contracts import BlobRef
+
+_FAKE_BLOB = BlobRef(
+    store_key="test", content_hash="deadbeef", mime="audio/ogg", size=4, source="test"
+)
 
 
 def _make_pool(*, alive: bool = True) -> MagicMock:
@@ -42,20 +47,23 @@ class TestNatsTtsClientSynthesize:
     @pytest.mark.asyncio
     async def test_success_returns_synth_result(self) -> None:
         expected = SynthesisResult(
-            audio_bytes=b"audio", mime_type="audio/ogg", duration_ms=100
+            blob_ref=_FAKE_BLOB, mime_type="audio/ogg", duration_ms=100
         )
         pool = _make_pool()
         pool.request_with_routing = AsyncMock(return_value=Ok(b"raw"))
         codec = _make_codec(expected)
         client = NatsTtsClient(pool, codec)
         result = await client.synthesize("hello")
-        assert result.audio_bytes == b"audio"
+        assert result.blob_ref == _FAKE_BLOB
         assert result.mime_type == "audio/ogg"
 
     @pytest.mark.asyncio
     async def test_codec_error_raises_tts_unavailable(self) -> None:
         err_synth = SynthesisResult(
-            audio_bytes=b"", mime_type="", duration_ms=None, error="tts.worker_error"
+            blob_ref=_FAKE_BLOB,
+            mime_type="",
+            duration_ms=None,
+            error="tts.worker_error",
         )
         pool = _make_pool()
         pool.request_with_routing = AsyncMock(return_value=Ok(b"raw"))
@@ -72,7 +80,7 @@ class TestNatsTtsClientSynthesize:
             )
         )
         err_synth = SynthesisResult(
-            audio_bytes=b"",
+            blob_ref=_FAKE_BLOB,
             mime_type="",
             duration_ms=None,
             error="pool.no_live_workers",
@@ -87,7 +95,7 @@ class TestNatsTtsClientSynthesize:
     @pytest.mark.asyncio
     async def test_encode_called_with_correct_args(self) -> None:
         ok_synth = SynthesisResult(
-            audio_bytes=b"x", mime_type="audio/ogg", duration_ms=10
+            blob_ref=_FAKE_BLOB, mime_type="audio/ogg", duration_ms=10
         )
         pool = _make_pool()
         pool.request_with_routing = AsyncMock(return_value=Ok(b"raw"))

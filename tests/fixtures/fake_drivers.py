@@ -48,9 +48,6 @@ class FakeTts:
             raise self.raise_on_synthesize
 
         return SynthesisResult(
-            audio_bytes=self._audio_bytes,
-            mime_type="audio/wav",
-            duration_ms=100,
             blob_ref=BlobRef(
                 store_key="test-blob",
                 content_hash="deadbeef",
@@ -58,6 +55,8 @@ class FakeTts:
                 size=len(self._audio_bytes),
                 source="test",
             ),
+            mime_type="audio/wav",
+            duration_ms=100,
         )
 
 
@@ -71,11 +70,13 @@ class FakeStt:
 
     preset_transcript: str = "Hello world"
     called: bool = False
-    last_audio: bytes = field(default_factory=bytes)
+    last_audio: BlobRef | bytes = field(default_factory=bytes)
     last_mime: str = ""
     raise_on_transcribe: Exception | None = None
 
-    async def transcribe(self, audio: bytes, mime: str) -> TranscriptionResult:
+    async def transcribe(
+        self, audio: BlobRef | bytes, mime: str
+    ) -> TranscriptionResult:
         """Return preset transcript or raise if configured."""
         self.called = True
         self.last_audio = audio

@@ -17,7 +17,7 @@ from pydantic import ValidationError
 
 from lyra.core.ports.stt import TranscriptionResult
 from lyra.transport._result import Err, Result, SanitizedError
-from roxabi_contracts import PENDING_STORE_KEY, BlobRef
+from roxabi_contracts import BlobRef
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.voice import SttRequest, SttResponse
 
@@ -41,7 +41,7 @@ class SttCodec:
     decode: maps Result[bytes, SanitizedError] → TranscriptionResult; never raises.
     """
 
-    def encode(self, audio: bytes, mime: str, params: SttEncodeParams) -> bytes:
+    def encode(self, blob_ref: BlobRef, mime: str, params: SttEncodeParams) -> bytes:
         """Build canonical SttRequest payload bytes.
 
         Mirrors NatsSttClient.transcribe() payload-builder exactly so the wire
@@ -52,13 +52,7 @@ class SttCodec:
             trace_id=str(uuid4()),
             issued_at=datetime.now(timezone.utc),
             request_id=str(uuid4()),
-            blob_ref=BlobRef(
-                store_key=PENDING_STORE_KEY,
-                content_hash="",
-                mime=mime,
-                size=len(audio),
-                source="lyra-hub",
-            ),
+            blob_ref=blob_ref,
             mime_type=mime,
             model=params.model,
             language_detection_threshold=params.language_detection_threshold,

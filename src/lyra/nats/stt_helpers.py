@@ -16,7 +16,7 @@ def mime_from_suffix(suffix: str) -> str:
     """Map a file extension (with leading dot) to its audio MIME type.
 
     Callers that receive audio as a file path (e.g. attachment handlers) use this
-    to derive the MIME type before calling STTProtocol.transcribe(audio, mime).
+    to derive the MIME type before calling STTProtocol.transcribe(blob_ref, mime).
     """
     return {
         ".ogg": "audio/ogg",

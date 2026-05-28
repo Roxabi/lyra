@@ -15,11 +15,12 @@
       "created_at": "2026-04-21",
       "owner": "lyra",
       "description": "Hub core — routes inbound messages, dispatches to voice/LLM/image/clipool workers. Inbox normalized to lowercase _inbox.hub.> (ADR-051 + postmortem Fix 1).",
-      "notes": "Hub provisions the lyra-state KV bucket at runtime on first boot (announce_hub_ready, #1012). $JS.API.> required for KV bucket creation and JetStream API calls. $KV.lyra-state.> required for kv.put() which publishes directly to $KV.<bucket>.<key> subjects (not covered by $JS.API.>). Tighter per-operation scoping is tracked as a follow-up. lyra.turns.write added by T27 (#1331): hub publishes TurnWriteEvents.",
+      "notes": "Hub provisions the lyra-state KV bucket at runtime on first boot (announce_hub_ready, #1012). $JS.API.> required for KV bucket creation and JetStream API calls. $KV.lyra-state.> required for kv.put() which publishes directly to $KV.<bucket>.<key> subjects (not covered by $JS.API.>). Tighter per-operation scoping is tracked as a follow-up. lyra.turns.write added by T27 (#1331): hub publishes TurnWriteEvents. lyra.outbound.audio.> added by T7 (#1482): hub publishes to outbound-audio JetStream path.",
       "allow_responses": true,
       "publish": [
         "lyra.outbound.telegram.>",
         "lyra.outbound.discord.>",
+        "lyra.outbound.audio.>",
         "lyra.voice.tts.request",
         "lyra.voice.tts.request.>",
         "lyra.voice.stt.request",
@@ -54,7 +55,7 @@
       "created_at": "2026-04-21",
       "owner": "lyra",
       "description": "Telegram bot adapter — inbox normalized to _inbox.telegram-adapter.> (ADR-051 + postmortem Fix 1).",
-      "notes": "$JS.API.> narrowed to minimal KV read-only subjects (#1014): DIRECT.GET for KV key reads, INFO for JetStream availability, CONSUMER.CREATE for kv.watch() ephemeral consumer. lyra.turns.write added by T27 (#1331): telegram adapter publishes TurnWriteEvents.",
+      "notes": "$JS.API.> narrowed to minimal KV read-only subjects (#1014): DIRECT.GET for KV key reads, INFO for JetStream availability, CONSUMER.CREATE for kv.watch() ephemeral consumer. lyra.turns.write added by T27 (#1331): telegram adapter publishes TurnWriteEvents. Outbound-audio JetStream consumer grants added by T7 (#1482): stream/consumer create+info, pull-next, KV dedup bucket.",
       "allow_responses": false,
       "publish": [
         "lyra.inbound.telegram.>",
@@ -64,14 +65,22 @@
         "lyra.metric.>",
         "$JS.API.DIRECT.GET.LYRA_STATE.hub.ready",
         "$JS.API.INFO",
-        "$JS.API.CONSUMER.CREATE.*"
+        "$JS.API.CONSUMER.CREATE.*",
+        "$JS.API.STREAM.CREATE.LYRA_OUTBOUND_AUDIO",
+        "$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO",
+        "$JS.API.STREAM.UPDATE.LYRA_OUTBOUND_AUDIO",
+        "$JS.API.CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO.*",
+        "$JS.API.CONSUMER.INFO.LYRA_OUTBOUND_AUDIO.*",
+        "$JS.API.CONSUMER.MSG.NEXT.LYRA_OUTBOUND_AUDIO.*"
       ],
       "subscribe": [
         "lyra.outbound.telegram.>",
+        "lyra.outbound.audio.>",
         "lyra.typing.telegram.>",
         "_inbox.telegram-adapter.>",
         "_inbox.telegram-adapter.*.*",
-        "$KV.lyra-state.>"
+        "$KV.lyra-state.>",
+        "$KV.lyra_outbound_audio_sent.>"
       ],
       "deploy": { "type": "container", "secret": "lyra-nats-telegram" }
     },
@@ -80,7 +89,7 @@
       "created_at": "2026-04-21",
       "owner": "lyra",
       "description": "Discord bot adapter — inbox normalized to _inbox.discord-adapter.> (ADR-051 + postmortem Fix 1).",
-      "notes": "$JS.API.> narrowed to minimal KV read-only subjects (#1014): DIRECT.GET for KV key reads, INFO for JetStream availability, CONSUMER.CREATE for kv.watch() ephemeral consumer. lyra.turns.write added by T27 (#1331): discord adapter publishes TurnWriteEvents.",
+      "notes": "$JS.API.> narrowed to minimal KV read-only subjects (#1014): DIRECT.GET for KV key reads, INFO for JetStream availability, CONSUMER.CREATE for kv.watch() ephemeral consumer. lyra.turns.write added by T27 (#1331): discord adapter publishes TurnWriteEvents. Outbound-audio JetStream consumer grants added by T7 (#1482): stream/consumer create+info, pull-next, KV dedup bucket.",
       "allow_responses": false,
       "publish": [
         "lyra.inbound.discord.>",
@@ -90,14 +99,22 @@
         "lyra.metric.>",
         "$JS.API.DIRECT.GET.LYRA_STATE.hub.ready",
         "$JS.API.INFO",
-        "$JS.API.CONSUMER.CREATE.*"
+        "$JS.API.CONSUMER.CREATE.*",
+        "$JS.API.STREAM.CREATE.LYRA_OUTBOUND_AUDIO",
+        "$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO",
+        "$JS.API.STREAM.UPDATE.LYRA_OUTBOUND_AUDIO",
+        "$JS.API.CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO.*",
+        "$JS.API.CONSUMER.INFO.LYRA_OUTBOUND_AUDIO.*",
+        "$JS.API.CONSUMER.MSG.NEXT.LYRA_OUTBOUND_AUDIO.*"
       ],
       "subscribe": [
         "lyra.outbound.discord.>",
+        "lyra.outbound.audio.>",
         "lyra.typing.discord.>",
         "_inbox.discord-adapter.>",
         "_inbox.discord-adapter.*.*",
-        "$KV.lyra-state.>"
+        "$KV.lyra-state.>",
+        "$KV.lyra_outbound_audio_sent.>"
       ],
       "deploy": { "type": "container", "secret": "lyra-nats-discord" }
     },

@@ -76,6 +76,22 @@ assign this attribute; doing so re-introduces the target-axis-trap Phase B (#133
 Thresholds (`bash_max_len`, `group_threshold`, `names_threshold`) are config-driven inside
 `ToolRecapAccumulator`; `_route()` gates via `config.show` for visibility control.
 
+## Audio delivery path (durable — #1482)
+
+Outbound audio uses a separate durable JetStream path, NOT the text-chunk Core path:
+
+- Subject: `lyra.outbound.audio.<platform>.<bot_id>` (5 tokens — distinct from 4-token text path)
+- Stream: `LYRA_OUTBOUND_AUDIO` (Limits retention, `MaxAge=5m`)
+- Consumer: durable pull `audio-delivery-v1`
+- Dedup: KV bucket `lyra_outbound_audio_sent` keyed on `stream_id`
+
+Hub publishes and returns immediately (stateless, Model A). Adapter owns the ACK after
+platform API confirms. Text path (`lyra.outbound.<platform>.<bot_id>`, Core) is unchanged.
+
+ACL and stream provisioning: T7 (ACL grants) and T14 (stream/consumer/KV bootstrap).
+
+→ ADR-077 — full decision record.
+
 ## ADR pending — Phase 7
 
 The architectural-decision record for the stage-axis pivot is deferred to Phase 7

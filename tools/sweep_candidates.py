@@ -172,6 +172,62 @@ def worktree_exists() -> bool:
     return any(wt_root.iterdir())
 
 
+def get_worktree_blockers(issues: list[dict]) -> list[dict]:
+    """Return worktrees with linked issue info."""
+    wt_root = Path(__file__).resolve().parents[1] / ".claude" / "worktrees"
+    if not wt_root.exists():
+        return []
+
+    blockers = []
+    issues_by_number = {i["number"]: i for i in issues}
+
+    for wt in wt_root.iterdir():
+        if not wt.is_dir():
+            continue
+        match = re.match(r"(\d+)", wt.name)
+        if not match:
+            continue
+        issue_num = int(match.group(1))
+        issue = issues_by_number.get(issue_num)
+        if issue:
+            labels = [lbl["name"] for lbl in issue.get("labels", [])]
+            blockers.append({
+                "wt_name": wt.name,
+                "issue_number": issue_num,
+                "issue_title": issue.get("title", ""),
+                "size": parse_size(labels),
+                "priority": parse_priority(labels),
+            })
+    return blockers
+
+
+def get_pr_blockers(issues: list[dict], prs: list[dict]) -> list[dict]:
+    """Return open PRs with linked issue info."""
+    blockers = []
+    issues_by_number = {i["number"]: i for i in issues}
+
+    for pr in prs:
+        branch = pr.get("headRefName", "")
+        title = pr.get("title", "")
+        text = f"{branch} {title}"
+        match = re.search(r"#?(\d{4,})", text)
+        if not match:
+            continue
+        issue_num = int(match.group(1))
+        issue = issues_by_number.get(issue_num)
+        if issue:
+            labels = [lbl["name"] for lbl in issue.get("labels", [])]
+            blockers.append({
+                "pr_number": pr.get("number"),
+                "pr_title": title,
+                "issue_number": issue_num,
+                "issue_title": issue.get("title", ""),
+                "size": parse_size(labels),
+                "priority": parse_priority(labels),
+            })
+    return blockers
+
+
 def filter_candidates(
     issues: list[dict],
     prs: list[dict],
@@ -229,15 +285,46 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="List sweep candidates")
     parser.add_argument("--json", action="store_true", help="Output JSON")
     parser.add_argument("--top", type=int, default=10, help="Max candidates to show")
+    parser.add_argument(
+        "--goal", action="store_true", help="Echo the /goal procedure and exit"
+    )
     args = parser.parse_args()
+
+    if args.goal:
+        print(__doc__)
+        return 0
 
     issues = fetch_issues()
     prs = fetch_prs()
     candidates = filter_candidates(issues, prs)
 
-    # WIP gate: worktree check
-    if worktree_exists():
-        print("⚠️  Worktree exists — sweep blocked until cleared.", file=sys.stderr)
+    # WIP gate: worktree + PR blocker info
+    wt_blockers = get_worktree_blockers(issues)
+    pr_blockers = get_pr_blockers(issues, prs)
+
+    for wt in wt_blockers:
+        size = wt["size"] or "unset"
+        flag = "🟢" if size in ("XS", "S") else "⚠️"
+        msg = (
+            f"{flag} Worktree `{wt['wt_name']}` → #{wt['issue_number']} "
+            f"(size: {size}) — sweep blocked"
+        )
+        print(msg, file=sys.stderr)
+
+    for pr in pr_blockers:
+        size = pr["size"] or "unset"
+        flag = "🟢" if size in ("XS", "S") else "⚠️"
+        msg = (
+            f"{flag} PR #{pr['pr_number']} `{pr['pr_title']}` → "
+            f"#{pr['issue_number']} (size: {size}) — sweep blocked"
+        )
+        print(msg, file=sys.stderr)
+
+    if not wt_blockers and worktree_exists():
+        print(
+            "⚠️  Worktree exists (unlinked) — sweep blocked until cleared.",
+            file=sys.stderr,
+        )
 
     top = candidates[: args.top]
 

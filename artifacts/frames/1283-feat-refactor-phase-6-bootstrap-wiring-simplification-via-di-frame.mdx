@@ -1,0 +1,52 @@
+---
+title: "Phase 6 — Bootstrap & wiring simplification via DI"
+issue: 1283
+status: approved
+tier: F-lite
+date: 2026-05-28
+---
+
+## Problem
+
+After Phases 1-5, the DI shape of the application is fully composition-based. The bootstrap layer in `src/lyra/bootstrap/` still carries structural debt from the pre-DI era: a standalone-vs-wired-vs-factory split that is now redundant, 84 occurrences of `wiring-bootstrap-deps` annotations, `module-level-patch-fixtures` workarounds in tests, and 8 sites of loose `protocol-private-ducktyping` that should be tightened into explicit Protocols. This makes the bootstrap harder to understand, test, and extend.
+
+## Who
+
+- **Primary:** Core maintainers touching bootstrap or adding new process entry points (hub, adapters, clipool)
+- **Secondary:** Contributors writing tests — module-level patch fixtures are brittle and slow
+
+## Constraints
+
+- Must wait for Phases 1-5 to stabilize (DI pattern must be proven across transport/adapters/drivers/streaming)
+- Single PR to keep the mechanical refactor atomic and reviewable
+- Must not break existing production entry points (`lyra hub`, `lyra adapter telegram`, `lyra adapter discord`, `lyra adapter clipool`, `lyra start`)
+
+## Out of Scope
+
+- New features or architecture changes beyond cleanup
+- Changes to DI pattern itself (Phase 6 is industrialization, not invention)
+- Refactor of non-bootstrap modules (e.g., inbound pipeline, outbound stage) — covered by other phases
+
+## Premise Validity
+
+**Success in 6 months:**
+- `wiring-bootstrap-deps` ≤ 30 (from 84 today)
+- Bootstrap files ≤ 150 lines each
+- No `# noqa: C901, PLR0915` in `bootstrap/`
+- Test fakes isolated in `tests/fakes/` with import-linter rule
+
+**Failure in 6 months:**
+- `wiring-bootstrap-deps` count stays > 30 or rises after 3 sprints
+- Bootstrap files still > 150 lines or complexity noqa still present
+- Test fakes still mixed in production imports
+
+**Simplest alternative:** Clean up only one file at a time (e.g., just `_bootstrap_hub_standalone`).
+**Why not simplest:** The standalone-vs-wired-vs-factory split is structural; partial cleanup would leave the same architectural debt pattern intact across all bootstrap files, requiring a second refactor pass.
+
+## Complexity
+
+**Tier: F-lite** — single domain (bootstrap), mostly mechanical after prior phases, clear success criteria.
+
+- Signals: size:F-lite label, issue body describes mechanical work, ≤1 PR
+- Parent: #1277 (Stage-axis refactor epic)
+- Absorbed sub-issues: #1093 (isolate test fakes), #1079 (Extract TurnStoreProtocol)

@@ -17,7 +17,6 @@ from typing import Callable, cast
 from scripts._acl_models import ExternalDeploy, LoadedMatrix
 from scripts._loader import load_matrix
 from scripts._nk import (
-    FakeNkeyProvider,
     NkeyProvider,
     SubprocessNkeyProvider,
     ensure_nk_or_exit,
@@ -31,10 +30,20 @@ def _get_provider() -> NkeyProvider:
     """Return the active NkeyProvider; exit 1 with install hint when nk is absent."""
     env_provider = os.environ.get("NKEY_PROVIDER", "").lower()
     if env_provider == "fake":
-        if not os.environ.get("LYRA_TEST_MODE"):
+        if os.environ.get("LYRA_TEST_MODE") != "1":
             print(
                 "error: NKEY_PROVIDER=fake requires LYRA_TEST_MODE=1"
                 " — refusing to generate fake seeds outside test context",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        # Lazy import — test-only fake provider,
+        # guarded by LYRA_TEST_MODE runtime check.
+        try:
+            from tests.fakes.nkey_provider import FakeNkeyProvider  # noqa: I001  # type: ignore[reportMissingImports]
+        except ImportError:
+            print(
+                "error: FakeNkeyProvider not available — tests package not importable",
                 file=sys.stderr,
             )
             sys.exit(1)

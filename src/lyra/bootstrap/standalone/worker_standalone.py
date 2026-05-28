@@ -1,11 +1,4 @@
-"""Standalone bootstrap for the lyra-turn-writer process.
-
-Subscribes to lyra.turns.write (JetStream durable consumer), persists turn
-events to ~/.lyra/turns.db via TurnStore private mutators.
-
-This is the SOLE writer of turns.db post-refactor — hub + adapters mount the
-file read-only.
-"""
+"""Bootstrap standalone workers — CliPool and TurnWriter."""
 
 from __future__ import annotations
 
@@ -14,6 +7,11 @@ import os
 import sys
 from pathlib import Path
 
+from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+from lyra.bootstrap.factory.config import _load_cli_pool_config
+from lyra.bootstrap.infra.git_ownership_probe import run_git_ownership_probe
+from lyra.core.cli.cli_pool import CliPool
+from lyra.core.messaging.metrics import log_contracts_version
 from lyra.infrastructure.stores.turn_store import TurnStore
 from lyra.infrastructure.turn_writer.health import TurnWriterHealthServer
 from lyra.infrastructure.turn_writer.stream_setup import (
@@ -25,6 +23,44 @@ from roxabi_nats import nats_connect
 from roxabi_nats.connect import scrub_nats_url
 
 log = logging.getLogger(__name__)
+
+
+async def _bootstrap_clipool_standalone(raw_config: dict) -> None:
+    """Wire a standalone CliPoolNatsWorker connected to NATS."""
+    run_git_ownership_probe()
+    nats_url = os.environ.get("NATS_URL")
+    if not nats_url:
+        sys.exit("NATS_URL is required for standalone clipool mode.")
+
+    log_contracts_version()
+
+    cli_pool_cfg = _load_cli_pool_config(raw_config)
+
+    log.info("clipool: will connect to NATS at %s", scrub_nats_url(nats_url))
+
+    cli_pool = CliPool(
+        idle_ttl=cli_pool_cfg.idle_ttl,
+        default_timeout=cli_pool_cfg.default_timeout,
+        reaper_interval=cli_pool_cfg.reaper_interval,
+        kill_timeout=cli_pool_cfg.kill_timeout,
+        read_buffer_bytes=cli_pool_cfg.read_buffer_bytes,
+        stdin_drain_timeout=cli_pool_cfg.stdin_drain_timeout,
+        max_idle_retries=cli_pool_cfg.max_idle_retries,
+        intermediate_timeout=cli_pool_cfg.intermediate_timeout,
+    )
+    await cli_pool.start()
+
+    worker = CliPoolNatsWorker(
+        cli_pool,
+        timeout=cli_pool_cfg.default_timeout,
+        identity_name="clipool-worker",
+    )
+    log.info("clipool: starting CliPoolNatsWorker on lyra.clipool.cmd")
+    try:
+        await worker.run(nats_url)
+    finally:
+        await cli_pool.drain_audit_tasks()
+        await cli_pool.stop()
 
 
 async def _bootstrap_turn_writer_standalone(raw_config: dict) -> None:
@@ -42,8 +78,6 @@ async def _bootstrap_turn_writer_standalone(raw_config: dict) -> None:
     if not nats_url:
         sys.exit("NATS_URL is required for standalone turn-writer mode.")
 
-    # mkdir the actual db parent — avoids EROFS when LYRA_TURNS_DB overrides
-    # to a writable bind-mount under a ReadOnly=true rootfs (#1359).
     db_path = Path(
         os.environ.get("LYRA_TURNS_DB")
         or (

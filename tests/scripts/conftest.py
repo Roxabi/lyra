@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 from scripts._acl_models import LoadedMatrix
-from scripts._nk import FakeNkeyProvider as FakeNkeyProvider  # noqa: F401
+
+from tests.fakes.nkey_provider import FakeNkeyProvider as FakeNkeyProvider  # noqa: F401
 
 # ── Repo root ────────────────────────────────────────────────────────────────
 REPO = Path(__file__).resolve().parents[2]

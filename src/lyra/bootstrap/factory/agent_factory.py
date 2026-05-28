@@ -12,8 +12,17 @@ from lyra.agents.simple_agent import SimpleAgent
 from lyra.bootstrap.factory.bot_agent_map import (
     resolve_bot_agent_map,  # noqa: F401 — DEBT:re-export-init
 )
-from lyra.bootstrap.factory.config import LlmConfig
+from lyra.bootstrap.factory.config import (
+    LlmConfig,
+    _build_agent_overrides,
+    _load_circuit_config,
+    _load_messages,
+)
+from lyra.bootstrap.types import BotAuthBundle
+from lyra.bootstrap.wiring.bootstrap_wiring import BotAuthDeps, _build_bot_auths
+from lyra.config import load_multibot_config
 from lyra.core.agent import Agent, AgentBase
+from lyra.core.agent.agent_loader import agent_row_to_config
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.cli.cli_pool import CliPool
 from lyra.core.messaging.messages import MessageManager
@@ -29,6 +38,7 @@ from lyra.llm.drivers.cli import ClaudeCliDriver
 from lyra.llm.registry import ProviderRegistry
 
 if TYPE_CHECKING:
+    from lyra.bootstrap.bootstrap_stores import StoreBundle
     from lyra.llm.llm_client import LlmClient
 
 log = logging.getLogger(__name__)
@@ -81,6 +91,75 @@ async def _resolve_bot_agent_map(
 ) -> dict:
     """Thin alias — delegates to bot_agent_map.resolve_bot_agent_map."""
     return await resolve_bot_agent_map(agent_store, tg_bots, dc_bots)
+
+
+async def _init_bot_auths_and_agents(
+    stores: StoreBundle,
+    raw_config: dict,
+) -> BotAuthBundle:
+    """Resolve multibot config, build authenticators, load agent configs."""
+    circuit_registry, admin_user_ids = _load_circuit_config(raw_config)
+
+    tg_multi_cfg, dc_multi_cfg = load_multibot_config(raw_config)
+
+    tg_bot_auths, dc_bot_auths = _build_bot_auths(
+        BotAuthDeps(
+            bot_store=stores.bot,
+            tg_multi_cfg=tg_multi_cfg,
+            dc_multi_cfg=dc_multi_cfg,
+            auth_store=stores.auth,
+            admin_user_ids=admin_user_ids,
+            alias_store=stores.identity_alias,
+        )
+    )
+    log.info(
+        "Authenticator: %d admin_user_id(s) configured",
+        len(admin_user_ids),
+    )
+
+    if not tg_bot_auths and not dc_bot_auths:
+        raise ValueError(
+            "No adapters configured — add at least one"
+            " [[telegram.bots]] or [[discord.bots]] entry"
+            " and run 'lyra bot init' to seed the bot store"
+        )
+
+    bot_agent_map = await _resolve_bot_agent_map(
+        stores.agent, tg_multi_cfg.bots, dc_multi_cfg.bots
+    )
+    agent_names: set[str] = set(bot_agent_map.values())
+
+    agent_configs: dict[str, Agent] = {}
+    for n in sorted(agent_names):
+        row = stores.agent.get(n)
+        if row is not None:
+            overrides = _build_agent_overrides(raw_config, n)
+            agent_configs[n] = agent_row_to_config(
+                row,
+                instance_overrides=overrides.model_dump(),
+            )
+        else:
+            log.error("Agent %r not found in DB — skipping", n)
+    if not agent_configs:
+        raise ValueError(
+            "No agent configs could be loaded — run"
+            " 'lyra agent init' to seed the agents table"
+        )
+
+    first_agent_name = next(iter(sorted(agent_configs)))
+    first_agent_config = agent_configs[first_agent_name]
+    msg_manager = _load_messages(language=first_agent_config.i18n_language)
+
+    return BotAuthBundle(
+        tg_bot_auths=tg_bot_auths,
+        dc_bot_auths=dc_bot_auths,
+        bot_agent_map=bot_agent_map,
+        agent_configs=agent_configs,
+        first_agent_config=first_agent_config,
+        msg_manager=msg_manager,
+        circuit_registry=circuit_registry,
+        admin_user_ids=admin_user_ids,
+    )
 
 
 def _build_shared_base_providers(  # noqa: PLR0913

@@ -11,13 +11,9 @@ import nats.errors
 
 import nats
 from lyra.bootstrap.bootstrap_stores import open_stores
+from lyra.bootstrap.factory.agent_factory import _init_bot_auths_and_agents
+from lyra.bootstrap.factory.hub_builder import _build_hub, _init_clipool
 from lyra.bootstrap.factory.wiring_helpers import (
-    BuildHubDeps,
-    RegisterAgentsDeps,
-    WireAdaptersDeps,
-    _build_hub,
-    _init_bot_auths_and_agents,
-    _init_clipool,
     _init_inbound_bus,
     _init_pairing,
     _init_voice_services,
@@ -30,7 +26,12 @@ from lyra.bootstrap.factory.wiring_helpers import (
 from lyra.bootstrap.infra.embedded_nats import ensure_nats
 from lyra.bootstrap.infra.lockfile import acquire_lockfile, release_lockfile
 from lyra.bootstrap.lifecycle.bootstrap_lifecycle import run_lifecycle
-from lyra.bootstrap.types import LifecycleResources
+from lyra.bootstrap.types import (
+    BuildHubDeps,
+    LifecycleResources,
+    RegisterAgentsDeps,
+    WireAdaptersDeps,
+)
 
 log = logging.getLogger(__name__)
 

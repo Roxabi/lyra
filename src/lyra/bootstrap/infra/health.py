@@ -17,6 +17,30 @@ from lyra.core.hub import Hub
 log = logging.getLogger(__name__)
 
 
+def create_health_server(  # noqa: PLR0913 — health surface
+    hub: Hub,
+    nc: Any | None = None,
+    *,
+    port_env: str = "LYRA_HEALTH_PORT",
+    host_env: str = "LYRA_HEALTH_HOST",
+    default_port: int = 8443,
+    default_host: str = "127.0.0.1",
+) -> tuple[Any, int]:
+    """Build a Uvicorn server for the hub health endpoint.
+
+    Returns the Uvicorn server instance and the resolved port.
+    """
+    import uvicorn
+
+    health_port = int(os.environ.get(port_env, str(default_port)))
+    health_host = os.environ.get(host_env, default_host)
+    health_app = create_health_app(hub, nc=nc)
+    health_config = uvicorn.Config(
+        health_app, host=health_host, port=health_port, log_level="warning"
+    )
+    return uvicorn.Server(health_config), health_port
+
+
 class Secrets:
     def __init__(self, vault_dir: Path | None = None) -> None:
         self._vault_dir = (

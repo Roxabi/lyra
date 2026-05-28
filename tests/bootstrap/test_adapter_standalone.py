@@ -63,11 +63,11 @@ async def test_telegram_bootstrap_wires_listener_and_calls_astart() -> None:
         patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
         patch("lyra.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=mock_listener,
         ),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
+            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=True),
         ),
         load_token_patch,
@@ -109,11 +109,11 @@ async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
         patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus_dc),
         patch("lyra.adapters.discord.DiscordAdapter", return_value=mock_adapter_dc),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            "lyra.bootstrap.wiring.standalone_discord.NatsOutboundListener",
             return_value=mock_listener_dc,
         ),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
+            "lyra.bootstrap.wiring.standalone_discord.wait_for_hub",
             AsyncMock(return_value=True),
         ),
         load_token_patch_dc,
@@ -208,7 +208,7 @@ async def test_telegram_astart_failure_cleans_up_wired_resources() -> None:
         patch("lyra.nats.nats_bus.NatsBus", side_effect=_make_bus),
         patch("lyra.adapters.telegram.TelegramAdapter", side_effect=_make_adapter),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         load_token_patch,
@@ -277,7 +277,7 @@ async def test_discord_astart_failure_cleans_up_wired_resources() -> None:
         patch("lyra.nats.nats_bus.NatsBus", side_effect=_make_bus),
         patch("lyra.adapters.discord.DiscordAdapter", side_effect=_make_adapter),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            "lyra.bootstrap.wiring.standalone_discord.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         load_token_patch,

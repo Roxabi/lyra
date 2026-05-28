@@ -333,11 +333,11 @@ async def test_standalone_path_threads_tool_display_config_to_telegram() -> None
             side_effect=_capture_tg_adapter,
         ),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=mock_listener,
         ),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
+            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=True),
         ),
         patch(
@@ -433,11 +433,11 @@ async def test_standalone_path_threads_tool_display_config_to_discord() -> None:
             side_effect=_capture_dc_adapter,
         ),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            "lyra.bootstrap.wiring.standalone_discord.NatsOutboundListener",
             return_value=mock_listener,
         ),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
+            "lyra.bootstrap.wiring.standalone_discord.wait_for_hub",
             AsyncMock(return_value=True),
         ),
         patch(

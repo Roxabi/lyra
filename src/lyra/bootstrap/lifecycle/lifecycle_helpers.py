@@ -6,7 +6,16 @@ import asyncio
 import logging
 import signal
 from collections.abc import Awaitable, Sequence
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
+
+if TYPE_CHECKING:
+    from nats.aio.subscription import Subscription
+
+    from lyra.adapters.nats.mint_failure_subscriber import MintFailureSubscriber
+    from lyra.core.hub import Hub, OutboundDispatcher
+    from lyra.infrastructure.stores.pairing import PairingManager
+    from lyra.llm.llm_client import LlmClient
+    from lyra.nats.nats_channel_proxy import NatsChannelProxy
 
 log = logging.getLogger(__name__)
 
@@ -50,3 +59,62 @@ async def teardown_dispatchers(dispatchers: Sequence[_Stoppable]) -> None:
     """Stop all outbound dispatchers."""
     for d in dispatchers:
         await d.stop()
+
+
+def _on_nats_reconnect(freshness_drivers: list[Any]) -> Any:
+    """Return a callback that clears worker freshness caches on NATS reconnect.
+
+    The returned coroutine is suitable for the *reconnected_cb* parameter of
+    ``nats_connect``.
+    """
+
+    async def callback() -> None:
+        log.info("NATS reconnected — clearing worker freshness caches")
+        for d in freshness_drivers:
+            if hasattr(d, "_worker_freshness"):
+                d._worker_freshness.clear()
+
+    return callback
+
+
+def _freshness_drivers() -> list[Any]:
+    """Return a mutable list to hold drivers that carry worker freshness state.
+
+    Pass the list to ``_on_nats_reconnect`` and extend it after drivers are
+    built.
+    """
+    return []
+
+
+async def _run_shutdown(  # noqa: PLR0913 — shutdown surface
+    tasks: list[asyncio.Task[object]],
+    stop: asyncio.Event,
+    mint_failure_sub: MintFailureSubscriber | None,
+    hub: Hub,
+    readiness_sub: Subscription,
+    dispatchers: list[OutboundDispatcher],
+    proxies: list[NatsChannelProxy],
+    pm: PairingManager | None,
+    cli_nats_driver: LlmClient | None,
+    nats_llm_client: LlmClient | None,
+) -> None:
+    """Cancel tasks, wait for shutdown, and run teardown."""
+    from lyra.bootstrap.factory.utils import watchdog
+    from lyra.bootstrap.standalone.hub_standalone_helpers import shutdown_hub_runtime
+
+    await watchdog(tasks, stop)
+    log.info("Shutdown signal received — stopping...")
+    for task in tasks:
+        task.cancel()
+    await asyncio.gather(*tasks, return_exceptions=True)
+    if mint_failure_sub is not None:
+        await mint_failure_sub.stop()
+    await shutdown_hub_runtime(
+        hub,
+        readiness_sub=readiness_sub,
+        dispatchers=dispatchers,
+        proxies=proxies,
+        pm=pm,
+        cli_nats_driver=cli_nats_driver,
+        nats_llm_client=nats_llm_client,
+    )

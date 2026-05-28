@@ -133,7 +133,7 @@ def _adapter_discord() -> None:
 @adapter_app.command("clipool")
 def _adapter_clipool() -> None:
     """Start the standalone CliPool NATS worker."""
-    from lyra.bootstrap.standalone.clipool_standalone import (
+    from lyra.bootstrap.standalone.worker_standalone import (
         _bootstrap_clipool_standalone,
     )
 
@@ -151,7 +151,7 @@ def _run_adapter(platform: str) -> None:
 @lyra_app.command("turn-writer")
 def _turn_writer() -> None:
     """Run standalone TurnWriter process (subscribes to lyra.turns.write)."""
-    from lyra.bootstrap.standalone.turn_writer_standalone import (
+    from lyra.bootstrap.standalone.worker_standalone import (
         _bootstrap_turn_writer_standalone,
     )
 

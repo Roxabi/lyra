@@ -18,7 +18,7 @@ async def test_lyra_turns_db_set_skips_vault_dir_mkdir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """LYRA_TURNS_DB set → mkdir targets its parent, never Path.home()/.lyra."""
-    from lyra.bootstrap.standalone.turn_writer_standalone import (
+    from lyra.bootstrap.standalone.worker_standalone import (
         _bootstrap_turn_writer_standalone,
     )
 
@@ -37,7 +37,7 @@ async def test_lyra_turns_db_set_skips_vault_dir_mkdir(
     # Make the connect call fail early so we exit before NATS state is touched —
     # the only behavior under test is path resolution + mkdir.
     with patch(
-        "lyra.bootstrap.standalone.turn_writer_standalone.nats_connect",
+        "lyra.bootstrap.standalone.worker_standalone.nats_connect",
         side_effect=ConnectionError("stub: skip NATS"),
     ):
         with pytest.raises(SystemExit):
@@ -53,7 +53,7 @@ async def test_no_lyra_turns_db_falls_back_to_vault_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """LYRA_TURNS_DB unset → mkdir targets LYRA_VAULT_DIR (dev-mode path)."""
-    from lyra.bootstrap.standalone.turn_writer_standalone import (
+    from lyra.bootstrap.standalone.worker_standalone import (
         _bootstrap_turn_writer_standalone,
     )
 
@@ -63,7 +63,7 @@ async def test_no_lyra_turns_db_falls_back_to_vault_dir(
     monkeypatch.setenv("NATS_URL", "nats://invalid:4222")
 
     with patch(
-        "lyra.bootstrap.standalone.turn_writer_standalone.nats_connect",
+        "lyra.bootstrap.standalone.worker_standalone.nats_connect",
         side_effect=ConnectionError("stub: skip NATS"),
     ):
         with pytest.raises(SystemExit):

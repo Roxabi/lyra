@@ -61,11 +61,11 @@ async def test_adapter_reads_token_from_run_secrets(
         patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
         patch("lyra.adapters.telegram.TelegramAdapter", side_effect=_capture_tg),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
+            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=True),
         ),
         patch("lyra.bootstrap.credentials._is_prod_env", return_value=False),
@@ -125,11 +125,11 @@ async def test_adapter_reads_webhook_when_present(
         patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
         patch("lyra.adapters.telegram.TelegramAdapter", side_effect=_capture_tg),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
+            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=True),
         ),
         patch("lyra.bootstrap.credentials._is_prod_env", return_value=False),
@@ -189,11 +189,11 @@ async def test_adapter_omits_webhook_when_absent(
         patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
         patch("lyra.adapters.telegram.TelegramAdapter", side_effect=_capture_tg),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
+            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=True),
         ),
         patch("lyra.bootstrap.credentials._is_prod_env", return_value=False),
@@ -262,11 +262,11 @@ async def test_adapter_handles_multi_bot(
         patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
         patch("lyra.adapters.telegram.TelegramAdapter", side_effect=_capture_tg),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
+            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=True),
         ),
         patch("lyra.bootstrap.credentials._is_prod_env", return_value=False),
@@ -365,11 +365,11 @@ async def test_discord_adapter_handles_multi_bot(
             return_value=mock_turn_store,
         ),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            "lyra.bootstrap.wiring.standalone_discord.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.wait_for_hub",
+            "lyra.bootstrap.wiring.standalone_discord.wait_for_hub",
             AsyncMock(return_value=True),
         ),
         patch("lyra.bootstrap.credentials._is_prod_env", return_value=False),

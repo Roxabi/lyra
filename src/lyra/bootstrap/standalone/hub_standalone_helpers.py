@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from collections.abc import Iterable
@@ -102,7 +103,7 @@ async def build_pairing_manager(
     return pm
 
 
-async def shutdown_hub_runtime(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — unavoidable wiring surface
+async def shutdown_hub_runtime(  # noqa: PLR0913 — unavoidable wiring surface
     hub: Hub,
     *,
     readiness_sub,
@@ -125,3 +126,27 @@ async def shutdown_hub_runtime(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps 
     if nats_llm_client is not None:
         await nats_llm_client.stop()
     await hub.shutdown()
+
+
+def _build_active_list(tg_bot_auths: list[Any], dc_bot_auths: list[Any]) -> list[str]:
+    """Return the list of active bot identifiers for logging."""
+    return [f"telegram:{c.bot_id}" for c, _ in tg_bot_auths] + [
+        f"discord:{c.bot_id}" for c, _ in dc_bot_auths
+    ]
+
+
+def _create_hub_tasks(hub: Any, health_server: Any) -> list[asyncio.Task[Any]]:
+    """Create the core runtime tasks (hub + health) and optional audit consumer."""
+    tasks: list[asyncio.Task[Any]] = [
+        asyncio.create_task(hub.run(), name="hub"),
+        asyncio.create_task(health_server.serve(), name="health"),
+    ]
+    if hub._event_bus is not None:
+        from lyra.core.hub.pipeline.audit_consumer import AuditConsumer
+
+        _audit_queue = hub._event_bus.subscribe()
+        _audit_consumer = AuditConsumer(_audit_queue)
+        tasks.append(
+            asyncio.create_task(_audit_consumer.run(), name="audit-consumer")
+        )
+    return tasks

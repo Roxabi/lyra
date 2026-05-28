@@ -23,7 +23,8 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 CREDENTIALS = PROJECT_ROOT / "src/lyra/bootstrap/credentials.py"
-ADAPTER_BOOTSTRAP = PROJECT_ROOT / "src/lyra/bootstrap/standalone/adapter_standalone.py"
+STANDALONE_TG = PROJECT_ROOT / "src/lyra/bootstrap/wiring/standalone_telegram.py"
+STANDALONE_DC = PROJECT_ROOT / "src/lyra/bootstrap/wiring/standalone_discord.py"
 WIRING = PROJECT_ROOT / "src/lyra/bootstrap/wiring/bootstrap_wiring.py"
 CLI_SETUP = PROJECT_ROOT / "src/lyra/cli_setup.py"
 
@@ -42,7 +43,7 @@ def test_credentials_module_reads_from_run_secrets() -> None:
 
 def test_adapter_and_wiring_use_credentials_module() -> None:
     """The adapter + wiring entry points pull from `lyra.bootstrap.credentials`."""
-    for f in (ADAPTER_BOOTSTRAP, WIRING):
+    for f in (STANDALONE_TG, STANDALONE_DC, WIRING):
         src = f.read_text()
         assert "from lyra.bootstrap import credentials" in src, (
             f"{f.relative_to(PROJECT_ROOT)} must import the credentials module"
@@ -74,7 +75,7 @@ def test_credentials_has_prod_guard_on_env_override() -> None:
 def test_no_credential_store_in_adapter_call_chain() -> None:
     """The deleted CredentialStore class must not be imported anywhere in the
     adapter credential path."""
-    for f in (CREDENTIALS, ADAPTER_BOOTSTRAP, WIRING, CLI_SETUP):
+    for f in (CREDENTIALS, STANDALONE_TG, STANDALONE_DC, WIRING, CLI_SETUP):
         src = f.read_text()
         assert "CredentialStore" not in src, (
             f"{f.relative_to(PROJECT_ROOT)} must not reference CredentialStore "

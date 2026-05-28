@@ -9,7 +9,6 @@ import pytest
 
 import lyra.__main__ as main_mod
 import lyra.bootstrap.factory.agent_factory as agent_factory_mod
-import lyra.bootstrap.factory.wiring_helpers as wiring_helpers_mod
 from lyra.bootstrap.factory.agent_factory import CreateAgentDeps
 from lyra.core.agent import Agent
 from lyra.core.agent.agent_config import ModelConfig
@@ -72,16 +71,16 @@ class TestAgentFactory:
 
 
 class TestAuthConfig:
-    async def test_missing_telegram_section_exits(
+    async def test_missing_telegram_section_raises(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """No bot config at all causes SystemExit when _main() runs."""
+        """No bot config at all causes ValueError when _main() runs."""
         patch_auth_config_test(monkeypatch)
         monkeypatch.setattr(main_mod, "_load_raw_config", lambda: {})
         stop = asyncio.Event()
         stop.set()
-        # With no config, _bootstrap_unified exits with "No adapters configured".
-        with pytest.raises(SystemExit, match="No adapters configured"):
+        # With no config, _bootstrap_unified raises ValueError.
+        with pytest.raises(ValueError, match="No adapters configured"):
             await main_mod._main(_stop=stop)
 
     async def test_discord_section_optional_when_telegram_present(
@@ -120,7 +119,7 @@ class TestAuthConfig:
         )
         # Sentinel: if we reach agent_row_to_config, auth validation passed.
         monkeypatch.setattr(
-            wiring_helpers_mod,
+            agent_factory_mod,
             "agent_row_to_config",
             lambda row, **kw: (_ for _ in ()).throw(SystemExit("past_auth")),
         )

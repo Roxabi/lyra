@@ -3,32 +3,24 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
-from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
 from lyra.core.agent import Agent
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage, OutboundMessage
+from lyra.core.messaging.message import InboundMessage
 from lyra.core.pool import Pool
 from lyra.core.ports.stt import STTProtocol, TranscriptionResult
 from lyra.llm.base import LlmResult
 
 if TYPE_CHECKING:
     from lyra.core.messaging.message import (
-        OutboundAttachment,
-        OutboundAudio,
-        OutboundAudioChunk,
         Response,
     )
-    from lyra.core.messaging.render_events import RenderEvent
 
 __all__ = [
     "FastAgent",
-    "FakeSTT",
-    "MockAdapter",
     "RecordingAgent",
     "SlowAgent",
     "make_audio_message",
@@ -38,54 +30,6 @@ __all__ = [
     "make_pool",
     "make_text_message",
 ]
-
-
-class MockAdapter:
-    """Typed ChannelAdapter test double — implements the full protocol."""
-
-    def normalize(self, raw: Any) -> InboundMessage:
-        raise NotImplementedError
-
-    def normalize_audio(
-        self,
-        raw: Any,
-        audio_bytes: bytes,
-        mime_type: str,
-        *,
-        trust_level: TrustLevel,
-    ) -> InboundMessage:
-        raise NotImplementedError
-
-    async def send(
-        self, original_msg: InboundMessage, outbound: OutboundMessage
-    ) -> None:
-        pass
-
-    async def send_streaming(
-        self,
-        original_msg: InboundMessage,
-        events: AsyncIterator[RenderEvent],
-        outbound: OutboundMessage | None = None,
-    ) -> None:
-        pass
-
-    async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
-        pass
-
-    async def render_audio_stream(
-        self, chunks: AsyncIterator[OutboundAudioChunk], inbound: InboundMessage
-    ) -> None:
-        pass
-
-    async def render_voice_stream(
-        self, chunks: AsyncIterator[OutboundAudioChunk], inbound: InboundMessage
-    ) -> None:
-        pass
-
-    async def render_attachment(
-        self, msg: OutboundAttachment, inbound: InboundMessage
-    ) -> None:
-        pass
 
 
 class RecordingAgent:
@@ -141,21 +85,6 @@ class FastAgent:
         on_intermediate=None,
     ) -> Response:
         return Response(content=f"echo: {msg.text}")
-
-
-@dataclass
-class FakeTranscription:
-    text: str
-    language: str = "en"
-    duration_seconds: float = 2.5
-
-
-class FakeSTT:
-    def __init__(self, text: str = "Hello world") -> None:
-        self._text = text
-
-    async def transcribe(self, audio, mime):
-        return FakeTranscription(text=self._text)
 
 
 def make_audio_message(url: str) -> InboundMessage:

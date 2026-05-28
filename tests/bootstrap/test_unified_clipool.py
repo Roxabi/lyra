@@ -20,7 +20,7 @@ import pytest
 class TestUnifiedNoBuildCliPool:
     def test_unified_no_direct_cli_pool_in_bootstrap(self) -> None:
         """After T22, unified.py must not import or call build_cli_pool."""
-        # Arrange
+        # RED-phase: replace with runtime assertion when T22 ships
         import lyra.bootstrap.factory.unified as unified_mod
 
         importlib.reload(unified_mod)
@@ -41,15 +41,21 @@ class TestUnifiedLlmClientWired:
         by unified.py).  We inspect both modules so the test does not regress
         if the helper is inlined back into unified.py in a future change.
         """
+        # RED-phase: replace with runtime assertion when T22 ships
+        import lyra.bootstrap.factory.hub_builder as hub_builder_mod
         import lyra.bootstrap.factory.unified as unified_mod
         import lyra.bootstrap.factory.wiring_helpers as helpers_mod
 
         importlib.reload(unified_mod)
-        combined = inspect.getsource(unified_mod) + inspect.getsource(helpers_mod)
+        combined = (
+            inspect.getsource(unified_mod)
+            + inspect.getsource(helpers_mod)
+            + inspect.getsource(hub_builder_mod)
+        )
 
         # Assert
         assert "build_llm_client" in combined, (
-            "Neither unified.py nor wiring_helpers.py references "
+            "Neither unified.py, wiring_helpers.py, nor hub_builder.py references "
             "build_llm_client — T22 should add LLM client wiring"
         )
 
@@ -60,15 +66,21 @@ class TestUnifiedLlmClientWired:
         by unified.py).  We inspect both modules so the test does not regress
         if the helper is inlined back into unified.py in a future change.
         """
+        # RED-phase: replace with runtime assertion when T22 ships
+        import lyra.bootstrap.factory.hub_builder as hub_builder_mod
         import lyra.bootstrap.factory.unified as unified_mod
         import lyra.bootstrap.factory.wiring_helpers as helpers_mod
 
         importlib.reload(unified_mod)
-        combined = inspect.getsource(unified_mod) + inspect.getsource(helpers_mod)
+        combined = (
+            inspect.getsource(unified_mod)
+            + inspect.getsource(helpers_mod)
+            + inspect.getsource(hub_builder_mod)
+        )
 
         # Assert
         assert "CliPoolNatsWorker" in combined, (
-            "Neither unified.py nor wiring_helpers.py references "
+            "Neither unified.py, wiring_helpers.py, nor hub_builder.py references "
             "CliPoolNatsWorker — T22 should spawn it as an asyncio task"
         )
 
@@ -79,12 +91,7 @@ class TestUnifiedCliPoolNatsWorkerInstantiated:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """After T22, _bootstrap_unified must instantiate CliPoolNatsWorker."""
-        from unittest.mock import AsyncMock, MagicMock, patch
-
         import lyra.bootstrap.factory.unified as unified_mod
-
-        # Track whether CliPoolNatsWorker was ever instantiated
-        instantiated: list[object] = []
 
         try:
             import lyra.adapters.clipool.clipool_worker as _clipool_worker_mod
@@ -93,29 +100,15 @@ class TestUnifiedCliPoolNatsWorkerInstantiated:
         except (ImportError, AttributeError):
             pytest.skip("CliPoolNatsWorker not importable — dependency missing")
 
-        worker_mock = MagicMock()
-        worker_mock.run = AsyncMock()
-        worker_mock.run_embedded = AsyncMock()
-
-        def track_instantiation(*args, **kwargs):
-            inst = MagicMock()
-            inst.run = AsyncMock()
-            inst.run_embedded = AsyncMock()
-            instantiated.append(inst)
-            return inst
-
+        import lyra.bootstrap.factory.hub_builder as hub_builder_mod
         import lyra.bootstrap.factory.wiring_helpers as helpers_mod
 
-        # Patch at the module boundary where unified.py resolves the class
-        with patch.object(
-            unified_mod,
-            "CliPoolNatsWorker",
-            side_effect=track_instantiation,
-            create=True,
-        ):
-            # We do NOT call _bootstrap_unified (too heavy) —
-            # instead verify the source contract via inspection.
-            combined = inspect.getsource(unified_mod) + inspect.getsource(helpers_mod)
+        # RED-phase: replace with runtime assertion when T22 ships
+        combined = (
+            inspect.getsource(unified_mod)
+            + inspect.getsource(helpers_mod)
+            + inspect.getsource(hub_builder_mod)
+        )
 
         # Assert — post-T22 the class is referenced in the unified bootstrap
         assert "CliPoolNatsWorker" in combined, (
@@ -130,6 +123,7 @@ class TestUnifiedWorkerTaskCreated:
         After the V10 refactor, create_task lives in wiring_helpers.py
         (_run_clipool_worker_task).  We inspect both modules.
         """
+        # RED-phase: replace with runtime assertion when T22 ships
         import lyra.bootstrap.factory.unified as unified_mod
         import lyra.bootstrap.factory.wiring_helpers as helpers_mod
 

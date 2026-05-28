@@ -68,6 +68,10 @@ async def test_adapter_reads_token_from_run_secrets(
             "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=True),
         ),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone.start_audio_consumer",
+            return_value=AsyncMock(),
+        ),
         patch("lyra.bootstrap.credentials._is_prod_env", return_value=False),
     ):
         # Act
@@ -132,6 +136,10 @@ async def test_adapter_reads_webhook_when_present(
             "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=True),
         ),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone.start_audio_consumer",
+            return_value=AsyncMock(),
+        ),
         patch("lyra.bootstrap.credentials._is_prod_env", return_value=False),
     ):
         # Act
@@ -195,6 +203,10 @@ async def test_adapter_omits_webhook_when_absent(
         patch(
             "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=True),
+        ),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone.start_audio_consumer",
+            return_value=AsyncMock(),
         ),
         patch("lyra.bootstrap.credentials._is_prod_env", return_value=False),
     ):
@@ -268,6 +280,10 @@ async def test_adapter_handles_multi_bot(
         patch(
             "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=True),
+        ),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone.start_audio_consumer",
+            return_value=AsyncMock(),
         ),
         patch("lyra.bootstrap.credentials._is_prod_env", return_value=False),
     ):
@@ -371,6 +387,10 @@ async def test_discord_adapter_handles_multi_bot(
         patch(
             "lyra.bootstrap.wiring.standalone_discord.wait_for_hub",
             AsyncMock(return_value=True),
+        ),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone.start_audio_consumer",
+            return_value=AsyncMock(),
         ),
         patch("lyra.bootstrap.credentials._is_prod_env", return_value=False),
     ):

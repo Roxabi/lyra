@@ -388,6 +388,10 @@ async def test_standalone_path_threads_tool_display_config_to_telegram() -> None
             "lyra.typing.make_typing_factory",
             return_value=MagicMock(),
         ),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone.start_audio_consumer",
+            return_value=AsyncMock(),
+        ),
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
     ):
         await _bootstrap_adapter_standalone(raw_config, "telegram", _stop=stop)
@@ -490,6 +494,10 @@ async def test_standalone_path_threads_tool_display_config_to_discord() -> None:
         patch(
             "lyra.typing.make_typing_factory",
             return_value=MagicMock(),
+        ),
+        patch(
+            "lyra.bootstrap.standalone.adapter_standalone.start_audio_consumer",
+            return_value=AsyncMock(),
         ),
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
     ):

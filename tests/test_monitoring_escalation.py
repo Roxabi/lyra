@@ -241,6 +241,11 @@ class TestRunFallbackChain:
                 free=50 * 1024**3,
             ),
         )
+        # Mock podman logs for log-scan checks
+        monkeypatch.setattr(
+            "lyra.monitoring.checks_log.subprocess.run",
+            MagicMock(return_value=MagicMock(returncode=0, stdout="", stderr="")),
+        )
         # Mock inode usage for check_inode_pct
         import os as _os
 
@@ -253,9 +258,9 @@ class TestRunFallbackChain:
                     50 * 1024**3,
                     1000000,
                     900000,
-                    0,
-                    0,
-                    0,
+                    1000,
+                    700,
+                    700,
                     0,
                     0,
                 )

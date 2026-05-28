@@ -68,6 +68,7 @@ class TestRunChecks:
 
         with patch("lyra.monitoring.checks.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
+
             def _mock_get(url: str, **_kwargs: object) -> MagicMock:  # type: ignore
                 return varz_response if "/varz" in url else mock_response
 
@@ -96,9 +97,9 @@ class TestRunChecks:
                         50 * 1024**3,
                         1000000,
                         900000,
-                        0,
-                        0,
-                        0,
+                        1000,
+                        700,
+                        700,
                         0,
                         0,
                     )
@@ -151,6 +152,12 @@ class TestRunChecks:
             MagicMock(return_value=MagicMock(returncode=3, stdout="inactive\n")),
         )
 
+        # Mock podman logs for log-scan checks
+        monkeypatch.setattr(
+            "lyra.monitoring.checks_log.subprocess.run",
+            MagicMock(return_value=MagicMock(returncode=0, stdout="", stderr="")),
+        )
+
         # HTTP also fails (hub is down)
         import httpx
 
@@ -181,9 +188,9 @@ class TestRunChecks:
                         50 * 1024**3,
                         1000000,
                         900000,
-                        0,
-                        0,
-                        0,
+                        1000,
+                        700,
+                        700,
                         0,
                         0,
                     )
@@ -193,7 +200,7 @@ class TestRunChecks:
             report = await run_checks(config)
 
         assert report.all_passed is False
-        assert report.failed_count >= 1
+        assert report.failed_count == 2
         assert {c.name for c in report.checks} == {
             "process:lyra-hub",
             "http_health",

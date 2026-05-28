@@ -34,7 +34,7 @@ def check_disk_pct(path: str, warning_pct: int, critical_pct: int) -> CheckResul
     now = datetime.now(timezone.utc)
     try:
         usage = shutil.disk_usage(path)
-    except (OSError, FileNotFoundError) as exc:
+    except OSError as exc:
         return CheckResult(
             name="disk_pct",
             passed=False,
@@ -42,7 +42,14 @@ def check_disk_pct(path: str, warning_pct: int, critical_pct: int) -> CheckResul
             timestamp=now,
         )
     total = usage.total
-    used_pct = (usage.used / total) * 100 if total else 0
+    if total == 0:
+        return CheckResult(
+            name="disk_pct",
+            passed=False,
+            detail="unable to determine total disk capacity",
+            timestamp=now,
+        )
+    used_pct = (usage.used / total) * 100
     passed = used_pct < warning_pct
     if used_pct >= critical_pct:
         level = "CRITICAL"
@@ -67,7 +74,7 @@ def check_inode_pct(path: str, warning_pct: int, critical_pct: int) -> CheckResu
     now = datetime.now(timezone.utc)
     try:
         st = os.statvfs(path)
-    except (OSError, FileNotFoundError) as exc:
+    except OSError as exc:
         return CheckResult(
             name="inode_pct",
             passed=False,
@@ -75,8 +82,15 @@ def check_inode_pct(path: str, warning_pct: int, critical_pct: int) -> CheckResu
             timestamp=now,
         )
     total = st.f_files
-    used = total - st.f_favail if total else 0
-    used_pct = (used / total) * 100 if total else 0
+    if total == 0:
+        return CheckResult(
+            name="inode_pct",
+            passed=False,
+            detail="unable to determine total inode count",
+            timestamp=now,
+        )
+    used = total - st.f_favail
+    used_pct = (used / total) * 100
     passed = used_pct < warning_pct
     if used_pct >= critical_pct:
         level = "CRITICAL"

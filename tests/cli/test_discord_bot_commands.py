@@ -514,13 +514,9 @@ class TestDiscordPatch:
         db_path = tmp_path / "config.db"
         db_upsert(
             db_path,
-            BotRow(
-                platform="discord", bot_id="main", agent="lyra", auto_thread=False
-            ),
+            BotRow(platform="discord", bot_id="main", agent="lyra", auto_thread=False),
         )
-        result = runner.invoke(
-            agent_app, ["discord", "patch", "main", "--auto-thread"]
-        )
+        result = runner.invoke(agent_app, ["discord", "patch", "main", "--auto-thread"])
         assert result.exit_code == 0, result.output
         row = db_get(db_path, "discord", "main")
         assert row is not None
@@ -630,9 +626,7 @@ class TestDiscordRemove:
         def _no(*a, **k):
             raise typer.Abort()
 
-        monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._commands.typer.confirm", _no
-        )
+        monkeypatch.setattr("lyra.agent_cmd.platforms._commands.typer.confirm", _no)
         result = runner.invoke(agent_app, ["discord", "remove", "main"])
         assert result.exit_code == 1, result.output
         row = db_get(db_path, "discord", "main")
@@ -855,9 +849,7 @@ class TestDiscordValidate:
             ),
         )
         secret_name = "lyra-bot-discord-main"
-        mock_run = MagicMock(
-            return_value=_make_proc(returncode=0, stdout=secret_name)
-        )
+        mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
             "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
         )
@@ -907,9 +899,7 @@ class TestDiscordValidate:
             ),
         )
         secret_name = "lyra-bot-discord-main"
-        mock_run = MagicMock(
-            return_value=_make_proc(returncode=0, stdout=secret_name)
-        )
+        mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
             "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
         )

@@ -8,6 +8,7 @@ Coverage:
   (b) STATE=noop + secret present → Phase 2 skipped (no restart).
   (c) STATE=noop + secret missing → Phase 2 runs (receiving host case).
 """
+
 from __future__ import annotations
 
 import os
@@ -54,10 +55,10 @@ def _run_with_stubs(
         # ── stub: podman (logs invocations, secret inspect controllable) ─────────────
         inspect_rc = "0" if podman_inspect_ok else "1"
         (stubs / "podman").write_text(
-            '#!/bin/sh\n'
+            "#!/bin/sh\n"
             f'echo "$@" >> "{podman_log}"\n'
             f'if [ "$1" = "secret" ] && [ "$2" = "inspect" ];'
-            f' then exit {inspect_rc}; fi\n'
+            f" then exit {inspect_rc}; fi\n"
             "exit 0\n",
             encoding="utf-8",
         )
@@ -65,9 +66,7 @@ def _run_with_stubs(
 
         # ── stub: systemctl (all services "active", restart logs) ────────────────────
         (stubs / "systemctl").write_text(
-            '#!/bin/sh\n'
-            f'echo "$@" >> "{systemctl_log}"\n'
-            "exit 0\n",
+            f'#!/bin/sh\necho "$@" >> "{systemctl_log}"\nexit 0\n',
             encoding="utf-8",
         )
         (stubs / "systemctl").chmod(0o755)
@@ -85,9 +84,7 @@ def _run_with_stubs(
             podman_log.read_text().splitlines() if podman_log.exists() else []
         )
         systemctl_lines = (
-            systemctl_log.read_text().splitlines()
-            if systemctl_log.exists()
-            else []
+            systemctl_log.read_text().splitlines() if systemctl_log.exists() else []
         )
         return result, podman_lines, systemctl_lines
 
@@ -112,17 +109,16 @@ def test_restart_runs_when_state_added() -> None:
         for line in podman_lines
     ), "podman secret create lyra-nats-test-identity not called"
     assert any(
-        "secret create --replace lyra-nats-auth" in line
-        for line in podman_lines
+        "secret create --replace lyra-nats-auth" in line for line in podman_lines
     ), "podman secret create lyra-nats-auth not called"
 
     for svc in _EXPECTED_RESTART_SVCS:
-        assert any(
-            f"restart {svc}" in line for line in systemctl_lines
-        ), f"systemctl restart {svc} not called"
-        assert any(
-            f"is-active --quiet {svc}" in line for line in systemctl_lines
-        ), f"systemctl is-active {svc} not called"
+        assert any(f"restart {svc}" in line for line in systemctl_lines), (
+            f"systemctl restart {svc} not called"
+        )
+        assert any(f"is-active --quiet {svc}" in line for line in systemctl_lines), (
+            f"systemctl is-active {svc} not called"
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -172,11 +168,10 @@ def test_restart_runs_when_noop_but_secret_missing() -> None:
         for line in podman_lines
     ), "podman secret create lyra-nats-test-identity not called"
     assert any(
-        "secret create --replace lyra-nats-auth" in line
-        for line in podman_lines
+        "secret create --replace lyra-nats-auth" in line for line in podman_lines
     ), "podman secret create lyra-nats-auth not called"
 
     for svc in _EXPECTED_RESTART_SVCS:
-        assert any(
-            f"restart {svc}" in line for line in systemctl_lines
-        ), f"systemctl restart {svc} not called"
+        assert any(f"restart {svc}" in line for line in systemctl_lines), (
+            f"systemctl restart {svc} not called"
+        )

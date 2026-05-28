@@ -489,14 +489,16 @@ class TestBuildHub:
         stores = MagicMock()
 
         # Act
-        result = _build_hub(BuildHubDeps(
-            raw_config={},
-            bundle=bundle,
-            voice=voice,
-            inbound_bus=inbound_bus,
-            pm=pm,
-            stores=stores,
-        ))
+        result = _build_hub(
+            BuildHubDeps(
+                raw_config={},
+                bundle=bundle,
+                voice=voice,
+                inbound_bus=inbound_bus,
+                pm=pm,
+                stores=stores,
+            )
+        )
 
         # Assert
         assert result is mock_hub
@@ -624,14 +626,16 @@ class TestRegisterAgents:
         from lyra.bootstrap.factory.agent_factory import ResolveAgentsDeps
 
         # Act
-        _register_agents(RegisterAgentsDeps(
-            hub=hub,
-            bundle=bundle,
-            voice=voice,
-            clipool=clipool,
-            raw_config={},
-            stores=stores,
-        ))
+        _register_agents(
+            RegisterAgentsDeps(
+                hub=hub,
+                bundle=bundle,
+                voice=voice,
+                clipool=clipool,
+                raw_config={},
+                stores=stores,
+            )
+        )
 
         # Assert — resolve called with correct args
         mock_resolve.assert_called_once_with(
@@ -702,14 +706,16 @@ class TestWireAdapters:
         )
 
         # Act
-        result = await _wire_adapters(WireAdaptersDeps(
-            hub=hub,
-            bundle=bundle,
-            nc=fake_nc,
-            stores=stores,
-            vault_dir=vault_dir,
-            raw_config={},
-        ))
+        result = await _wire_adapters(
+            WireAdaptersDeps(
+                hub=hub,
+                bundle=bundle,
+                nc=fake_nc,
+                stores=stores,
+                vault_dir=vault_dir,
+                raw_config={},
+            )
+        )
 
         # Assert — _wire_adapters calls _load_tool_display_config({}) which returns
         # ToolDisplayConfig() defaults; the loader call is part of the contract and

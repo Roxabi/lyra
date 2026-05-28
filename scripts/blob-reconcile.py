@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
 import sys
 import time
@@ -23,17 +24,21 @@ from pathlib import Path
 RACE_GUARD_SECONDS = 3600
 
 
-def collect_db_paths(db_path: str) -> set[str]:
+def collect_db_paths(db_path: str, blob_root: str) -> set[str]:
     """Return a set of absolute paths referenced in the blobs table."""
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        try:
-            cursor.execute("SELECT store_path FROM blobs")
-            rows = {row["store_path"] for row in cursor.fetchall()}
-        except sqlite3.OperationalError:
-            rows = set()
-    return {str(Path(p).resolve()) for p in rows}
+        cursor.execute("SELECT store_path FROM blobs")
+        rows = {row["store_path"] for row in cursor.fetchall()}
+    root = Path(blob_root)
+    resolved: set[str] = set()
+    for p in rows:
+        if Path(p).is_absolute():
+            resolved.add(str(Path(p).resolve()))
+        else:
+            resolved.add(str((root / p).resolve()))
+    return resolved
 
 
 def collect_disk_files(blob_root: Path) -> list[Path]:
@@ -41,16 +46,17 @@ def collect_disk_files(blob_root: Path) -> list[Path]:
     files: list[Path] = []
     if not blob_root.exists():
         return files
-    for f in blob_root.rglob("*"):
-        if f.is_file() and all(c in "0123456789abcdefABCDEF" for c in f.name):
-            files.append(f)
+    for root, _dirs, filenames in os.walk(str(blob_root), followlinks=False):
+        for name in filenames:
+            if all(c in "0123456789abcdefABCDEF" for c in name):
+                files.append(Path(root) / name)
     return files
 
 
 def reconcile(blob_root: str, db_path: str, *, dry_run: bool) -> dict:
     """Run reconciliation and return a JSON report dict."""
     root = Path(blob_root).resolve()
-    db_paths = collect_db_paths(db_path)
+    db_paths = collect_db_paths(db_path, blob_root)
     disk_files = collect_disk_files(root)
 
     now = time.time()
@@ -69,6 +75,8 @@ def reconcile(blob_root: str, db_path: str, *, dry_run: bool) -> dict:
         if abs_path not in db_paths:
             size = f.stat().st_size
             if not dry_run:
+                if f.is_symlink():
+                    continue
                 try:
                     f.unlink()
                 except OSError as exc:
@@ -93,7 +101,7 @@ def reconcile(blob_root: str, db_path: str, *, dry_run: bool) -> dict:
     )
     if unlink_errors:
         msg += f"; {len(unlink_errors)} unlink error(s)"
-    print(msg)
+    print(msg, file=sys.stderr)
     return report
 
 
@@ -112,9 +120,18 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    if not Path(args.db_path).exists():
+    if not Path(args.db_path).is_file():
         error_report = {
             "error": f"database file not found: {args.db_path}",
+            "blob_root": str(Path(args.blob_root).resolve()),
+            "db_path": str(Path(args.db_path).resolve()),
+        }
+        print(json.dumps(error_report, indent=2), file=sys.stderr)
+        return 1
+
+    if not Path(args.blob_root).is_dir():
+        error_report = {
+            "error": f"blob root not found or not a directory: {args.blob_root}",
             "blob_root": str(Path(args.blob_root).resolve()),
             "db_path": str(Path(args.db_path).resolve()),
         }

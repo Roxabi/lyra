@@ -86,15 +86,14 @@ class TestCheckDiskPct:
         assert "used=90.0%" in result.detail
 
     def test_zero_total(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Zero total disk space → used_pct=0, passed=True (no crash)."""
+        """Zero total disk space → failed check with explanatory detail."""
         monkeypatch.setattr(
             "lyra.monitoring.checks_varz.shutil.disk_usage",
             lambda _: MagicMock(total=0, used=0, free=0),
         )
         result = check_disk_pct("/tmp", warning_pct=60, critical_pct=70)
-        assert result.passed is True
-        assert "OK" in result.detail
-        assert "used=0.0%" in result.detail
+        assert result.passed is False
+        assert "unable to determine total disk capacity" in result.detail
 
 
 # ---------------------------------------------------------------------------
@@ -107,16 +106,16 @@ class TestCheckInodePct:
         """Build a statvfs result with the given inode totals."""
         return os.statvfs_result(
             (
-                4096,       # f_bsize
-                4096,       # f_frsize
-                1000000,    # f_blocks
-                500000,     # f_bfree
-                500000,     # f_bavail
-                f_files,    # f_files
-                f_ffree,    # f_ffree
-                f_ffree,    # f_favail
-                0,          # f_flag
-                255,        # f_namemax
+                4096,  # f_bsize
+                4096,  # f_frsize
+                1000000,  # f_blocks
+                500000,  # f_bfree
+                500000,  # f_bavail
+                f_files,  # f_files
+                f_ffree,  # f_ffree
+                f_ffree,  # f_favail
+                0,  # f_flag
+                255,  # f_namemax
             )
         )
 
@@ -190,15 +189,14 @@ class TestCheckInodePct:
         assert "used=90.0%" in result.detail
 
     def test_zero_total(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Zero total inodes → used_pct=0, passed=True (no crash)."""
+        """Zero total inodes → failed check with explanatory detail."""
         monkeypatch.setattr(
             "lyra.monitoring.checks_varz.os.statvfs",
             lambda _: self._mock_statvfs(f_files=0, f_ffree=0),
         )
         result = check_inode_pct("/tmp", warning_pct=60, critical_pct=70)
-        assert result.passed is True
-        assert "OK" in result.detail
-        assert "used=0.0%" in result.detail
+        assert result.passed is False
+        assert "unable to determine total inode count" in result.detail
 
     def test_detail_includes_thresholds(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Detail string includes both warning and critical percentages."""
@@ -209,3 +207,31 @@ class TestCheckInodePct:
         result = check_inode_pct("/tmp", warning_pct=60, critical_pct=70)
         assert "warning=60%" in result.detail
         assert "critical=70%" in result.detail
+
+    def test_file_not_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Disk usage on a non-existent path → failed check."""
+
+        def _raise(_):
+            raise FileNotFoundError("/missing")
+
+        monkeypatch.setattr(
+            "lyra.monitoring.checks_varz.shutil.disk_usage",
+            _raise,
+        )
+        result = check_disk_pct("/missing", warning_pct=60, critical_pct=70)
+        assert result.passed is False
+        assert "/missing" in result.detail
+
+    def test_inode_file_not_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Inode check on a non-existent path → failed check."""
+
+        def _raise(_):
+            raise FileNotFoundError("/missing")
+
+        monkeypatch.setattr(
+            "lyra.monitoring.checks_varz.os.statvfs",
+            _raise,
+        )
+        result = check_inode_pct("/missing", warning_pct=60, critical_pct=70)
+        assert result.passed is False
+        assert "/missing" in result.detail

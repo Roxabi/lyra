@@ -515,9 +515,7 @@ class TestTelegramPatch:
         db_path = tmp_path / "config.db"
         db_upsert(
             db_path,
-            BotRow(
-                platform="telegram", bot_id="main", agent="lyra", auto_thread=False
-            ),
+            BotRow(platform="telegram", bot_id="main", agent="lyra", auto_thread=False),
         )
         result = runner.invoke(
             agent_app, ["telegram", "patch", "main", "--auto-thread"]
@@ -631,9 +629,7 @@ class TestTelegramRemove:
         def _no(*a, **k):
             raise typer.Abort()
 
-        monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._commands.typer.confirm", _no
-        )
+        monkeypatch.setattr("lyra.agent_cmd.platforms._commands.typer.confirm", _no)
         result = runner.invoke(agent_app, ["telegram", "remove", "main"])
         assert result.exit_code == 1, result.output
         row = db_get(db_path, "telegram", "main")
@@ -856,9 +852,7 @@ class TestTelegramValidate:
             ),
         )
         secret_name = "lyra-bot-telegram-main"
-        mock_run = MagicMock(
-            return_value=_make_proc(returncode=0, stdout=secret_name)
-        )
+        mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
             "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
         )
@@ -908,9 +902,7 @@ class TestTelegramValidate:
             ),
         )
         secret_name = "lyra-bot-telegram-main"
-        mock_run = MagicMock(
-            return_value=_make_proc(returncode=0, stdout=secret_name)
-        )
+        mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
             "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
         )

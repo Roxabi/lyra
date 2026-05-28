@@ -86,7 +86,11 @@ class TestBlobReconcile:
         # Parse JSON from stdout — find first line starting with {
         # and join all subsequent lines (JSON is pretty-printed multi-line)
         lines = result.stdout.splitlines()
-        json_start = next(i for i, line in enumerate(lines) if line.startswith("{"))
+        json_start = next(
+            (i for i, line in enumerate(lines) if line.startswith("{")),
+            None,
+        )
+        assert json_start is not None, "No JSON line found in stdout"
         json_text = "\n".join(lines[json_start:])
         return json.loads(json_text)
 
@@ -209,6 +213,7 @@ class TestBlobReconcile:
         db_path = tmp_path / "blobs.db"
         non_hex = blob_root / "sha256" / "not_a_hex_file.txt"
         non_hex.write_bytes(b"ignore me")
+        os.utime(non_hex, (time.time() - 7200, time.time() - 7200))
         self._setup_db(db_path, [])
 
         # Act
@@ -252,7 +257,7 @@ class TestBlobReconcile:
     # ── Error-path coverage ────────────────────────────────────────────────────
 
     def test_missing_db_table(self, tmp_path: Path) -> None:
-        """DB without a blobs table → graceful empty report."""
+        """DB without a blobs table → error report."""
         blob_root = self._setup_blob_dir(tmp_path)
         db_path = tmp_path / "blobs.db"
         conn = sqlite3.connect(str(db_path))
@@ -260,21 +265,21 @@ class TestBlobReconcile:
         conn.commit()
         conn.close()
 
-        report = self._run(blob_root, db_path)
-
-        assert report["files_removed"] == 0
-        assert report["bytes_reclaimed"] == 0
+        result = self._run_expect_error(blob_root, db_path)
+        assert result.returncode == 1
+        report = json.loads(result.stderr)
+        assert "no such table" in report["error"]
 
     def test_nonexistent_blob_root(self, tmp_path: Path) -> None:
-        """Non-existent blob_root → graceful, no crash."""
+        """Non-existent blob_root → error report with resolved path."""
         db_path = tmp_path / "blobs.db"
         self._setup_db(db_path, [])
         blob_root = tmp_path / "nonexistent_blobs"
 
-        report = self._run(blob_root, db_path)
-
-        assert report["files_removed"] == 0
-        assert report["bytes_reclaimed"] == 0
+        result = self._run_expect_error(blob_root, db_path)
+        assert result.returncode == 1
+        report = json.loads(result.stderr)
+        assert Path(report["blob_root"]).exists() is False
 
     def test_missing_db_file(self, tmp_path: Path) -> None:
         """Missing DB file → non-zero exit."""
@@ -283,3 +288,4 @@ class TestBlobReconcile:
 
         result = self._run_expect_error(blob_root, db_path)
         assert result.returncode != 0
+        assert "database file not found" in result.stderr

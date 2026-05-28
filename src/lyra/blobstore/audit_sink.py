@@ -69,6 +69,4 @@ class BlobAuditSink:
                 subject,
             )
             self._degraded = True
-            self._security_log.warning(
-                "AUDIT DEGRADED [%s]: %s", subject, json_str
-            )
+            self._security_log.warning("AUDIT DEGRADED [%s]: %s", subject, json_str)

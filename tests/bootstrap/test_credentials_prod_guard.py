@@ -20,13 +20,16 @@ class TestIsProdEnv:
     """Unit tests for _is_prod_env helper."""
 
     def test_true_when_lyra_env_is_prod(
-        self, monkeypatch: pytest.MonkeyPatch,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setenv("LYRA_ENV", "prod")
         assert _is_prod_env() is True
 
     def test_true_when_containerenv_exists(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
     ) -> None:
         monkeypatch.delenv("LYRA_ENV", raising=False)
         fake_containerenv = tmp_path / ".containerenv"
@@ -40,7 +43,9 @@ class TestIsProdEnv:
             assert _is_prod_env() is True
 
     def test_false_when_neither(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
     ) -> None:
         monkeypatch.delenv("LYRA_ENV", raising=False)
         missing = tmp_path / "missing"
@@ -55,7 +60,9 @@ class TestLoadBotTokenProdGuard:
     """Unit tests for the production guard in load_bot_token."""
 
     def test_ignores_override_in_container(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """When /run/.containerenv exists, LYRA_RUN_SECRETS_DIR is ignored."""
         fake_containerenv = tmp_path / ".containerenv"
@@ -85,7 +92,9 @@ class TestLoadBotTokenProdGuard:
         assert webhook is None
 
     def test_ignores_override_when_lyra_env_prod(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """When LYRA_ENV=prod, LYRA_RUN_SECRETS_DIR is ignored."""
         fake_secrets = tmp_path / "fake-secrets"
@@ -106,7 +115,9 @@ class TestLoadBotTokenProdGuard:
         assert webhook is None
 
     def test_allows_override_in_dev(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """In development (no container, no LYRA_ENV=prod), override is honored."""
         dev_secrets = tmp_path / "dev-secrets"
@@ -127,7 +138,9 @@ class TestLoadBotTokenProdGuard:
         assert webhook is None
 
     def test_reads_webhook_from_prod_when_override_ignored(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Webhook is also read from /run/secrets when override is ignored."""
         fake_secrets = tmp_path / "fake-secrets"
@@ -148,7 +161,9 @@ class TestLoadBotTokenProdGuard:
         assert webhook == "PROD_WEBHOOK"
 
     def test_missing_token_raises_with_prod_path_when_override_ignored(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Error message references /run/secrets when override is ignored in prod."""
         fake_secrets = tmp_path / "fake-secrets"

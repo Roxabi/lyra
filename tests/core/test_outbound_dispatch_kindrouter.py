@@ -141,9 +141,7 @@ class TestResolveItemAudio:
         # Arrange
         msg = make_dispatcher_msg()
         object.__setattr__(msg, "routing", _make_routing())
-        audio = OutboundAudio(
-            blob_ref=make_test_blobref(b"ogg"), mime_type="audio/ogg"
-        )
+        audio = OutboundAudio(blob_ref=make_test_blobref(b"ogg"), mime_type="audio/ogg")
         item = ("audio", msg, audio)
         verify = MagicMock(return_value=True)
 

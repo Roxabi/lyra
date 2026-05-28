@@ -146,9 +146,7 @@ class StreamProcessor:
         deltas.
     """
 
-    def __init__(
-        self, *, show_intermediate: bool = True
-    ) -> None:
+    def __init__(self, *, show_intermediate: bool = True) -> None:
         self._show_intermediate = show_intermediate
 
         # --- pending text ---

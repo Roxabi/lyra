@@ -51,16 +51,17 @@ def add(  # noqa: PLR0913
 ) -> None:
     """Add a Telegram bot."""
     _owner_users = (
-        [x.strip() for x in owner_users.split(",") if x.strip()]
-        if owner_users else []
+        [x.strip() for x in owner_users.split(",") if x.strip()] if owner_users else []
     )
     _trusted_users = (
         [x.strip() for x in trusted_users.split(",") if x.strip()]
-        if trusted_users else []
+        if trusted_users
+        else []
     )
     _trusted_roles = (
         [x.strip() for x in trusted_roles.split(",") if x.strip()]
-        if trusted_roles else []
+        if trusted_roles
+        else []
     )
     _commands._add(
         "telegram",

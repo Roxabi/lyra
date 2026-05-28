@@ -147,9 +147,7 @@ class TestHandlePostSendCircuit:
 
 class TestHandlePostSendDrain:
     @pytest.mark.parametrize("kind", ["streaming", "audio_stream", "voice_stream"])
-    async def test_handle_post_send_iterator_drained_on_error(
-        self, kind: str
-    ) -> None:
+    async def test_handle_post_send_iterator_drained_on_error(self, kind: str) -> None:
         """streaming/audio_stream/voice_stream iterators are drained
         when _last_exc is set."""
         msg = make_dispatcher_msg()

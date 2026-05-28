@@ -6,18 +6,12 @@ import asyncio
 import logging
 import os
 import sys
-from functools import partial
 from pathlib import Path
 
-from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
-from lyra.bootstrap import credentials
-from lyra.bootstrap.factory.config import build_adapter_config_bundle
+from lyra.bootstrap.composition_root import DependencyGraph, compose_adapter
 from lyra.bootstrap.lifecycle.lifecycle_helpers import close_safely
 from lyra.bootstrap.lifecycle.signal_handlers import setup_shutdown_event
-from lyra.core.messaging.bus import Bus
-from lyra.core.messaging.message import InboundMessage, Platform
 from lyra.core.messaging.metrics import log_contracts_version
-from lyra.nats.queue_groups import adapter_outbound
 from roxabi_nats import nats_connect
 from roxabi_nats.connect import scrub_nats_url
 from roxabi_nats.readiness import wait_for_hub
@@ -25,7 +19,7 @@ from roxabi_nats.readiness import wait_for_hub
 log = logging.getLogger(__name__)
 
 
-async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migration-sequence-bootstrap
+async def _bootstrap_adapter_standalone(
     raw_config: dict,
     platform: str,
     *,
@@ -44,9 +38,6 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
 
     log_contracts_version()
 
-    platform_enum = Platform(platform)
-    config_bundle = build_adapter_config_bundle(raw_config)
-
     try:
         nc = await nats_connect(nats_url, identity_name=f"{platform}-adapter")
         log.info(
@@ -56,294 +47,79 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
     except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
         sys.exit(f"Failed to connect to NATS at {scrub_nats_url(nats_url)!r}: {exc}")
 
-    from lyra.nats.nats_bus import NatsBus
-
     vault_dir = Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
     vault_dir.mkdir(parents=True, exist_ok=True)
 
     try:
+        deps = DependencyGraph()
+        subsystem = await compose_adapter(raw_config, nc, platform, vault_dir, deps)
+
+        await wait_for_hub(nc)
+
         if platform == "telegram":
-            from lyra.adapters.telegram import TelegramAdapter
-            from lyra.config import TelegramMultiConfig
-
-            tg_multi_cfg = TelegramMultiConfig.model_validate(
-                raw_config.get("telegram", {})
-            )
-            if not tg_multi_cfg.bots:
-                sys.exit("No telegram bots configured")
-
-            tg_creds: dict[str, tuple[str, str | None]] = {}
-            for bot_cfg in tg_multi_cfg.bots:
-                bot_id = bot_cfg.bot_id
-                tg_creds[bot_id] = credentials.load_bot_token("telegram", bot_id)
-                log.info("read token from /run/secrets/bot_token-%s", bot_id)
-
-            from lyra.infrastructure.stores.turn_store import TurnStore as TurnStore
-
-            tg_turn_store = TurnStore(db_path=vault_dir / "turns.db")
-            await tg_turn_store.connect()
-
-            wired: list[tuple] = []  # (TelegramAdapter, Bus, TypingListener)
-
-            for bot_cfg in tg_multi_cfg.bots:
-                bot_id = bot_cfg.bot_id
-                if bot_id not in tg_creds:
-                    continue
-                token, webhook_secret = tg_creds[bot_id]
-
-                inbound_bus: Bus[InboundMessage] = NatsBus(  # type: ignore[type-arg] — DEBT:wiring-bootstrap-deps
-                    nc=nc,
-                    bot_id=bot_id,
-                    item_type=InboundMessage,
-                    publish_only=True,
-                )
-                inbound_bus.register(platform_enum)
-                await inbound_bus.start()
-
-                adapter = TelegramAdapter(
-                    bot_id=bot_id,
-                    token=token,
-                    inbound_bus=inbound_bus,
-                    webhook_secret=webhook_secret or "",
-                    turn_store=tg_turn_store,
-                    tool_display_config=config_bundle.tool_display,
-                )
-                await adapter.resolve_identity()
-
-                listener = NatsOutboundListener(
-                    nc,
-                    platform_enum,
-                    bot_id,
-                    adapter,
-                    queue_group=adapter_outbound(platform_enum.value, bot_id),
-                )
-                adapter._outbound_listener = listener
-                try:
-                    await adapter.astart()
-                except Exception:
-                    await close_safely(
-                        "tg-adapter-start",
-                        adapter.close(),
-                        inbound_bus.stop(),
-                    )
-                    await close_safely(
-                        "tg-wired",
-                        *[
-                            coro
-                            for a, ibus, tl in wired
-                            for coro in (a.close(), ibus.stop(), tl.stop())
-                        ],
-                    )
-                    await tg_turn_store.close()
-                    raise
-
-                from lyra.adapters.telegram.telegram import _telegram_scope_resolver
-                from lyra.adapters.telegram.telegram_outbound import _typing_worker
-                from lyra.typing import TypingListener, make_typing_factory
-
-                tg_typing_listener = TypingListener(
-                    nc=nc,
-                    subject=f"lyra.typing.telegram.{bot_id}",
-                    resolver=_telegram_scope_resolver,
-                    factory_builder=make_typing_factory(
-                        partial(_typing_worker, adapter.bot)
-                    ),
-                    manager=adapter._typing,
-                )
-                await tg_typing_listener.start()
-
-                wired.append((adapter, inbound_bus, tg_typing_listener))
-                log.info(
-                    "adapter_standalone: Telegram bot_id=%s ready (NATS mode)",
-                    bot_id,
-                )
-
-            if not wired:
-                sys.exit("No Telegram adapters started — check credentials")
-            await wait_for_hub(nc)
-
             stop = setup_shutdown_event(_stop)
 
             poll_tasks = [
                 asyncio.create_task(
-                    a.dp.start_polling(a.bot, handle_signals=False),
-                    name=f"telegram:{a._bot_id}",
+                    entry.adapter.dp.start_polling(
+                        entry.adapter.bot, handle_signals=False
+                    ),
+                    name=f"telegram:{entry.adapter._bot_id}",
                 )
-                for a, _, _tl in wired
+                for entry in subsystem.entries
             ]
             try:
                 await stop.wait()
-                for a, _, _tl in wired:
-                    await a.dp.stop_polling()
+                for entry in subsystem.entries:
+                    await entry.adapter.dp.stop_polling()
                 await asyncio.gather(*poll_tasks, return_exceptions=True)
             finally:
                 await close_safely(
                     "tg",
                     *[
                         coro
-                        for a, ibus, tl in wired
-                        for coro in (a.close(), ibus.stop(), tl.stop())
+                        for entry in subsystem.entries
+                        for coro in (
+                            entry.adapter.close(),
+                            entry.inbound_bus.stop(),
+                            entry.typing_listener.stop(),
+                        )
                     ],
                 )
-                await tg_turn_store.close()
+                if subsystem.turn_store is not None:
+                    await subsystem.turn_store.close()
 
         elif platform == "discord":
-            from lyra.adapters.discord import DiscordAdapter
-            from lyra.config import DiscordMultiConfig
-
-            dc_multi_cfg = DiscordMultiConfig.model_validate(
-                raw_config.get("discord", {})
-            )
-            if not dc_multi_cfg.bots:
-                sys.exit("No discord bots configured")
-
-            dc_creds: dict[str, str] = {}
-            for bot_cfg in dc_multi_cfg.bots:
-                bot_id = bot_cfg.bot_id
-                token, _ = credentials.load_bot_token("discord", bot_id)
-                dc_creds[bot_id] = token
-                log.info("read token from /run/secrets/bot_token-%s", bot_id)
-
-            from lyra.infrastructure.stores.agent_store import AgentStore
-            from lyra.infrastructure.stores.thread_store import ThreadStore
-
-            # Read per-bot settings then close — don't hold config.db open
-            # during the long-lived adapter lifecycle (short-lived reads, same pattern).
-            agent_store = AgentStore(db_path=vault_dir / "config.db")
-            await agent_store.connect()
-            dc_bot_watch_channels: dict[str, frozenset[int]] = {}
-            try:
-                for bot_cfg in dc_multi_cfg.bots:
-                    bot_settings = agent_store.get_bot_settings(
-                        "discord", bot_cfg.bot_id
-                    )
-                    raw_ids = bot_settings.get("watch_channels", [])
-                    valid: list[int] = []
-                    for ch in raw_ids:
-                        try:
-                            valid.append(int(ch))
-                        except (ValueError, TypeError):
-                            log.warning(
-                                "watch_channels: invalid channel id %r for bot %r"
-                                " — skipping",
-                                ch,
-                                bot_cfg.bot_id,
-                            )
-                    dc_bot_watch_channels[bot_cfg.bot_id] = frozenset(valid)
-            finally:
-                await agent_store.close()
-
-            dc_thread_store = ThreadStore(db_path=vault_dir / "discord.db")
-            await dc_thread_store.connect()
-
-            from lyra.infrastructure.stores.turn_store import TurnStore
-
-            dc_turn_store = TurnStore(db_path=vault_dir / "turns.db")
-            await dc_turn_store.connect()
-
-            wired_dc: list[tuple] = []  # (DiscordAdapter, str, Bus, TypingListener)
-
-            for bot_cfg in dc_multi_cfg.bots:
-                bot_id = bot_cfg.bot_id
-                if bot_id not in dc_creds:
-                    continue
-                token = dc_creds[bot_id]
-
-                inbound_bus_dc: Bus[InboundMessage] = NatsBus(  # type: ignore[type-arg] — DEBT:wiring-bootstrap-deps
-                    nc=nc,
-                    bot_id=bot_id,
-                    item_type=InboundMessage,
-                    publish_only=True,
-                )
-                inbound_bus_dc.register(platform_enum)
-                await inbound_bus_dc.start()
-
-                adapter_dc = DiscordAdapter(
-                    bot_id=bot_id,
-                    inbound_bus=inbound_bus_dc,
-                    auto_thread=bot_cfg.auto_thread,
-                    thread_hot_hours=bot_cfg.thread_hot_hours,
-                    thread_store=dc_thread_store,
-                    watch_channels=dc_bot_watch_channels.get(bot_id, frozenset()),
-                    turn_store=dc_turn_store,
-                    tool_display_config=config_bundle.tool_display,
-                )
-
-                listener_dc = NatsOutboundListener(
-                    nc,
-                    platform_enum,
-                    bot_id,
-                    adapter_dc,
-                    queue_group=adapter_outbound(platform_enum.value, bot_id),
-                )
-                adapter_dc._outbound_listener = listener_dc
-                try:
-                    await adapter_dc.astart()
-                except Exception:
-                    await close_safely(
-                        "dc-adapter-start",
-                        adapter_dc.close(),
-                        inbound_bus_dc.stop(),
-                    )
-                    await close_safely(
-                        "dc-wired",
-                        *[
-                            coro
-                            for a, _tok, ibus, tl in wired_dc
-                            for coro in (a.close(), ibus.stop(), tl.stop())
-                        ],
-                    )
-                    await dc_thread_store.close()
-                    await dc_turn_store.close()
-                    raise
-
-                from lyra.adapters.discord.adapter import _discord_scope_resolver
-                from lyra.adapters.discord.discord_outbound import (
-                    _discord_typing_worker,
-                )
-                from lyra.typing import TypingListener, make_typing_factory
-
-                dc_typing_listener = TypingListener(
-                    nc=nc,
-                    subject=f"lyra.typing.discord.{bot_id}",
-                    resolver=_discord_scope_resolver,
-                    factory_builder=make_typing_factory(
-                        partial(_discord_typing_worker, adapter_dc._resolve_channel)
-                    ),
-                    manager=adapter_dc._typing,
-                )
-                await dc_typing_listener.start()
-
-                wired_dc.append((adapter_dc, token, inbound_bus_dc, dc_typing_listener))
-                log.info(
-                    "adapter_standalone: Discord bot_id=%s ready (NATS mode)",
-                    bot_id,
-                )
-
-            if not wired_dc:
-                sys.exit("No Discord adapters started — check credentials")
-            await wait_for_hub(nc)
             stop_dc = setup_shutdown_event(_stop)
             start_tasks = [
-                asyncio.create_task(a.start(tok), name=f"discord:{a._bot_id}")
-                for a, tok, _, _tl in wired_dc
+                asyncio.create_task(
+                    entry.adapter.start(entry.token),
+                    name=f"discord:{entry.adapter._bot_id}",
+                )
+                for entry in subsystem.entries
             ]
             try:
                 await stop_dc.wait()
                 await close_safely(
-                    "dc-adapters", *[a.close() for a, _, _, _tl in wired_dc]
+                    "dc-adapters",
+                    *[entry.adapter.close() for entry in subsystem.entries],
                 )
                 for t in start_tasks:
                     t.cancel()
                 await asyncio.gather(*start_tasks, return_exceptions=True)
             finally:
-                dc_bus_coros = [ibus.stop() for _, _, ibus, _tl in wired_dc]
+                dc_bus_coros = [
+                    entry.inbound_bus.stop() for entry in subsystem.entries
+                ]
                 await close_safely("dc-buses", *dc_bus_coros)
                 await close_safely(
-                    "dc-typing", *[tl.stop() for _, _, _, tl in wired_dc]
+                    "dc-typing",
+                    *[entry.typing_listener.stop() for entry in subsystem.entries],
                 )
-                await dc_thread_store.close()
-                await dc_turn_store.close()
+                if subsystem.thread_store is not None:
+                    await subsystem.thread_store.close()
+                if subsystem.turn_store is not None:
+                    await subsystem.turn_store.close()
 
         else:
             sys.exit(f"Unknown platform: {platform!r}")

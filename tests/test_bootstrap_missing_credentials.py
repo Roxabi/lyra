@@ -46,7 +46,7 @@ async def test_adapter_raises_bootstrap_error_on_missing_token(
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
         patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            "lyra.bootstrap.composition_root.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(

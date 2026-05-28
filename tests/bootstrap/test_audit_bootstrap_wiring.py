@@ -64,21 +64,21 @@ class TestJetStreamAuditSinkBootstrapIntegration:
             call_order.append("build_llm_client")
 
         with patch(
-            "lyra.bootstrap.standalone.hub_standalone.JetStreamAuditSink"
+            "lyra.bootstrap.composition_root.JetStreamAuditSink"
         ) as MockSink:
             mock_sink = MagicMock()
             mock_sink.provision = _fake_provision
             MockSink.return_value = mock_sink
 
             with patch(
-                "lyra.bootstrap.standalone.hub_standalone.build_llm_client",
+                "lyra.bootstrap.composition_root.build_llm_client",
                 side_effect=_fake_build_llm_client,
             ):
                 # Import the module — both symbols are referenced at module level
-                import lyra.bootstrap.standalone.hub_standalone as hub_mod
+                import lyra.bootstrap.composition_root as composition_root_mod
 
                 # Verify structural presence — imported at module level
-                assert hasattr(hub_mod, "JetStreamAuditSink")
+                assert hasattr(composition_root_mod, "JetStreamAuditSink")
 
         # If both were called, provision must precede build_llm_client
         _key = "build_llm_client"

@@ -60,10 +60,12 @@ async def test_telegram_bootstrap_wires_listener_and_calls_astart() -> None:
     (load_token_patch,) = _cred_store_patches("test-token", "webhook-secret")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch(
+            "lyra.bootstrap.composition_root.NatsBus", return_value=mock_inbound_bus
+        ),
         patch("lyra.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            "lyra.bootstrap.composition_root.NatsOutboundListener",
             return_value=mock_listener,
         ),
         patch(
@@ -106,10 +108,13 @@ async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
     (load_token_patch_dc,) = _cred_store_patches("discord-token")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus_dc),
+        patch(
+            "lyra.bootstrap.composition_root.NatsBus",
+            return_value=mock_inbound_bus_dc,
+        ),
         patch("lyra.adapters.discord.DiscordAdapter", return_value=mock_adapter_dc),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            "lyra.bootstrap.composition_root.NatsOutboundListener",
             return_value=mock_listener_dc,
         ),
         patch(
@@ -152,7 +157,10 @@ async def test_nc_close_called_even_on_exception() -> None:
     (load_token_patch_exc,) = _cred_store_patches("t")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", side_effect=RuntimeError("boom")),
+        patch(
+            "lyra.bootstrap.composition_root.NatsBus",
+            side_effect=RuntimeError("boom"),
+        ),
         load_token_patch_exc,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
         pytest.raises(RuntimeError, match="boom"),
@@ -209,10 +217,12 @@ async def test_telegram_astart_failure_cleans_up_wired_resources() -> None:
     (load_token_patch,) = _cred_store_patches("test-token")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", side_effect=_make_bus),
-        patch("lyra.adapters.telegram.TelegramAdapter", side_effect=_make_adapter),
+        patch("lyra.bootstrap.composition_root.NatsBus", side_effect=_make_bus),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            "lyra.adapters.telegram.TelegramAdapter", side_effect=_make_adapter
+        ),
+        patch(
+            "lyra.bootstrap.composition_root.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         load_token_patch,
@@ -278,10 +288,12 @@ async def test_discord_astart_failure_cleans_up_wired_resources() -> None:
     (load_token_patch,) = _cred_store_patches("discord-token")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", side_effect=_make_bus),
-        patch("lyra.adapters.discord.DiscordAdapter", side_effect=_make_adapter),
+        patch("lyra.bootstrap.composition_root.NatsBus", side_effect=_make_bus),
         patch(
-            "lyra.bootstrap.standalone.adapter_standalone.NatsOutboundListener",
+            "lyra.adapters.discord.DiscordAdapter", side_effect=_make_adapter
+        ),
+        patch(
+            "lyra.bootstrap.composition_root.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         load_token_patch,

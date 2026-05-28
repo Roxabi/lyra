@@ -23,7 +23,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).parent.parent.parent
 CREDENTIALS = PROJECT_ROOT / "src/lyra/bootstrap/credentials.py"
-ADAPTER_BOOTSTRAP = PROJECT_ROOT / "src/lyra/bootstrap/standalone/adapter_standalone.py"
+ADAPTER_BOOTSTRAP = PROJECT_ROOT / "src/lyra/bootstrap/composition_root.py"
 WIRING = PROJECT_ROOT / "src/lyra/bootstrap/wiring/bootstrap_wiring.py"
 CLI_SETUP = PROJECT_ROOT / "src/lyra/cli_setup.py"
 

@@ -14,6 +14,7 @@ from lyra.core.auth.trust import (
 )
 from lyra.core.hub.hub import Hub
 from lyra.core.messaging.message import Platform
+from tests.factories.bootstrap import make_fake_tg_adapter_mock
 
 # ---------------------------------------------------------------------------
 # Finding I: wire_telegram_adapters registers the authenticator on the hub
@@ -42,10 +43,7 @@ async def test_wire_telegram_adapters_registers_authenticator() -> None:
 
     # Patch TelegramAdapter so we don't make real HTTP calls.
     # resolve_identity() is an async method that calls the Telegram API — mock it.
-    from unittest.mock import AsyncMock
-
-    mock_adapter_instance = MagicMock()
-    mock_adapter_instance.resolve_identity = AsyncMock()
+    mock_adapter_instance = make_fake_tg_adapter_mock()
 
     with (
         patch(
@@ -88,10 +86,7 @@ async def test_wire_telegram_no_nats_listener_in_dev_mode() -> None:
     bot_cfg = TelegramBotConfig(bot_id="main")
     auth = Authenticator(store=None, role_map={}, default=TrustLevel.PUBLIC)
 
-    from unittest.mock import AsyncMock
-
-    mock_adapter_instance = MagicMock()
-    mock_adapter_instance.resolve_identity = AsyncMock()
+    mock_adapter_instance = make_fake_tg_adapter_mock()
     mock_adapter_instance._outbound_listener = None
 
     with (

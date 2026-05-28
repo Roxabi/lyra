@@ -1,23 +1,13 @@
-"""Bootstrap patching factories for tests."""
+"""Bootstrap DI factories for tests — pure object creation, no global patching."""
 
 from __future__ import annotations
 
 import asyncio
-import tempfile
-from typing import Any, cast
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-import lyra.__main__ as main_mod
-import lyra.bootstrap.bootstrap_stores as stores_mod
-import lyra.bootstrap.factory.agent_factory as agent_factory_mod
-import lyra.bootstrap.factory.unified as unified_mod
-import lyra.bootstrap.factory.wiring_helpers as wiring_helpers_mod
-import lyra.bootstrap.wiring.bootstrap_wiring as wiring_mod
-from lyra.core.agent import Agent
-from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.auth.authenticator import Authenticator as AuthMiddleware
 from lyra.core.hub import Hub
 from roxabi_nats import _version_check as _vc_mod
 
@@ -25,12 +15,23 @@ __all__ = [
     "_FakeDcAdapter",
     "_FakeDp",
     "_FakeTgAdapter",
-    "_patch_nats_stubs",
     "_reset_version_check_log_state",
-    "make_fake_stores",
-    "patch_all",
-    "patch_auth_config_test",
-    "patch_bootstrap_common",
+    "make_fake_auth_store",
+    "make_fake_agent_store",
+    "make_fake_bot_store",
+    "make_fake_tg_adapter",
+    "make_fake_dc_adapter",
+    "make_fake_nats_client",
+    "make_fake_nats_bus",
+    "make_fake_audit_sink",
+    "make_fake_capturing_hub",
+    "make_fake_credentials",
+    "make_fake_lifecycle_resources",
+    "make_fake_wired_adapters",
+    "make_fake_hub",
+    "make_fake_tg_adapter_mock",
+    "make_fake_agent_row",
+    "make_fake_auth_middleware",
 ]
 
 
@@ -96,142 +97,121 @@ class _FakeDcAdapter:
         pass
 
 
-def _patch_nats_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Patch NATS components so _bootstrap_unified never touches a real server."""
-    fake_nc = AsyncMock()
-    fake_nc.close = AsyncMock()
-    fake_embedded = MagicMock()
-    fake_embedded.stop = AsyncMock()
-    monkeypatch.setattr(
-        unified_mod,
-        "ensure_nats",
-        AsyncMock(return_value=(fake_nc, fake_embedded, "nats://localhost:4222")),
-    )
-    monkeypatch.setattr(unified_mod, "acquire_lockfile", lambda: None)
-    monkeypatch.setattr(unified_mod, "release_lockfile", lambda: None)
-    fake_nats_bus = MagicMock()
-    fake_nats_bus.start = AsyncMock()
-    fake_nats_bus.stop = AsyncMock()
-    monkeypatch.setattr(wiring_helpers_mod, "NatsBus", lambda **kw: fake_nats_bus)
-    fake_audit_sink = MagicMock()
-    fake_audit_sink.provision = AsyncMock()
-    fake_audit_sink.emit = AsyncMock()
-    monkeypatch.setattr(
-        wiring_helpers_mod, "JetStreamAuditSink", lambda: fake_audit_sink
-    )
-    monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
-    monkeypatch.setenv("LYRA_HEALTH_PORT", "0")
-    # Isolate vault dir per test to prevent parallel-worker races on
-    # ~/.lyra/discord.db (_ensure_discord_db TOCTOU with -n auto).
-    monkeypatch.setenv("LYRA_VAULT_DIR", tempfile.mkdtemp())
+# ---------------------------------------------------------------------------
+# DI factory functions — construct and return fakes, no global patching
+# ---------------------------------------------------------------------------
 
 
-def make_fake_stores(
-    monkeypatch: pytest.MonkeyPatch,
+def make_fake_auth_store() -> MagicMock:
+    """Return a fake AuthStore with async connect/seed/close."""
+    fake_auth_store = MagicMock()
+    fake_auth_store.connect = AsyncMock()
+    fake_auth_store.seed_from_config = AsyncMock()
+    fake_auth_store.close = AsyncMock()
+    return fake_auth_store
+
+
+def make_fake_agent_store(agent_name: str = "lyra_default") -> MagicMock:
+    """Return a fake AgentStore with async connect/close and get/get_bot_agent."""
+    _fake_agent_row = MagicMock()
+    _fake_agent_row.name = agent_name
+    fake_agent_store = MagicMock()
+    fake_agent_store.connect = AsyncMock()
+    fake_agent_store.close = AsyncMock()
+    fake_agent_store.get_bot_agent = MagicMock(return_value=None)
+    fake_agent_store.get = MagicMock(return_value=_fake_agent_row)
+    fake_agent_store.set_bot_agent = AsyncMock()
+    return fake_agent_store
+
+
+def make_fake_bot_store() -> MagicMock:
+    """Return a fake BotStore with pre-filled BotRow entries."""
+    from lyra.core.agent.bot_models import BotRow
+
+    fake_bot_store = MagicMock()
+    fake_bot_store.connect = AsyncMock()
+    fake_bot_store.close = AsyncMock()
+    fake_bot_store.get_all = MagicMock(
+        return_value=[
+            BotRow(platform="telegram", bot_id="main", agent="lyra_default"),
+            BotRow(platform="discord", bot_id="main", agent="lyra_default"),
+        ]
+    )
+    return fake_bot_store
+
+
+def make_fake_credentials(
     *,
     tg_creds: tuple[str, str | None] | None = ("fake-token", "fake-secret"),
     dc_creds: tuple[str, str | None] | None = ("fake-dc-token", None),
-) -> tuple[MagicMock, MagicMock]:
-    """Patch load_bot_token at the credentials module to return fake creds.
+) -> Any:
+    """Return a fake ``load_bot_token`` callable.
 
-    Returns (MagicMock(), MagicMock()) for API compatibility with callers that
-    previously received (fake_keyring, fake_cred_store).  Callers that ignore
-    both return values are unaffected.
+    Use with ``patch("lyra.bootstrap.credentials.load_bot_token",
+    new=make_fake_credentials())``.
     """
-    import lyra.bootstrap.credentials as credentials_mod
 
     def _fake_load(platform: str, bot_id: str) -> tuple[str, str | None]:
         if platform == "telegram":
             return tg_creds or ("fake-token", None)
         if platform == "discord":
-            creds = dc_creds or ("fake-dc-token", None)
-            return creds
+            return dc_creds or ("fake-dc-token", None)
         return ("fake-token", None)
 
-    monkeypatch.setattr(credentials_mod, "load_bot_token", _fake_load)
-    return MagicMock(), MagicMock()
+    return _fake_load
 
 
-def patch_bootstrap_common(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
-    """Patch shared bootstrap dependencies.
-
-    Patches: auth_store, load_dotenv, agent stores, adapters.
-
-    Returns fake_auth_store so callers can assert on it.
-    """
-    monkeypatch.setattr(main_mod, "load_dotenv", lambda: None)
-
-    fake_auth_store = MagicMock()
-    fake_auth_store.connect = AsyncMock()
-    fake_auth_store.seed_from_config = AsyncMock()
-    fake_auth_store.close = AsyncMock()
-    monkeypatch.setattr(stores_mod, "AuthStore", lambda **kwargs: fake_auth_store)
-
-    fake_agent_store = MagicMock()
-    fake_agent_store.connect = AsyncMock()
-    fake_agent_store.close = AsyncMock()
-    fake_agent_store.get_bot_agent = MagicMock(return_value=None)
-    # Return a fake AgentRow so agent_row_to_config can be reached
-    _fake_agent_row = MagicMock()
-    _fake_agent_row.name = "lyra_default"
-    fake_agent_store.get = MagicMock(return_value=_fake_agent_row)
-    fake_agent_store.set_bot_agent = AsyncMock()
-    monkeypatch.setattr(stores_mod, "AgentStore", lambda **kwargs: fake_agent_store)
-
-    # Bypass _resolve_bot_agent_map so credential-resolution tests are not blocked
-    # by the agent-existence check. Builds the map directly from bot lists.
-    async def _fake_resolve(agent_store, tg_bots, dc_bots):  # noqa: ANN001
-        result = {}
-        for bot_cfg in tg_bots:
-            result[("telegram", bot_cfg.bot_id)] = "lyra_default"
-        for bot_cfg in dc_bots:
-            result[("discord", bot_cfg.bot_id)] = "lyra_default"
-        return result
-
-    monkeypatch.setattr(wiring_helpers_mod, "_resolve_bot_agent_map", _fake_resolve)
-
-    monkeypatch.setattr(
-        wiring_helpers_mod,
-        "agent_row_to_config",
-        lambda row, **kw: Agent(
-            name=row.name if hasattr(row, "name") else "lyra_default",
-            system_prompt="test",
-            memory_namespace="test",
-            llm_config=ModelConfig(backend="claude-cli"),
-        ),
-    )
-    monkeypatch.setattr(
-        wiring_mod, "TelegramAdapter", lambda **kwargs: _FakeTgAdapter()
-    )
-    monkeypatch.setattr(
-        wiring_mod,
-        "DiscordAdapter",
-        lambda **kwargs: _FakeDcAdapter(),
-    )
-
-    mock_tg_auth = MagicMock()
-    mock_dc_auth = MagicMock()
-    _auth_results = iter([mock_tg_auth, mock_dc_auth])
-    monkeypatch.setattr(
-        AuthMiddleware,
-        "from_config",
-        classmethod(lambda cls, raw, section, store=None: next(_auth_results)),
-    )
-
-    _patch_nats_stubs(monkeypatch)
-
-    return fake_auth_store
+def make_fake_tg_adapter(**kwargs: Any) -> _FakeTgAdapter:
+    """Return a real _FakeTgAdapter instance."""
+    return _FakeTgAdapter(**kwargs)
 
 
-def patch_all(
-    monkeypatch: pytest.MonkeyPatch,
-) -> tuple[list[Hub], MagicMock]:
-    """Patch __main__ globals to avoid real network calls.
+def make_fake_tg_adapter_mock() -> MagicMock:
+    """Return a MagicMock suitable for patching TelegramAdapter in wiring tests."""
+    mock = MagicMock()
+    mock.resolve_identity = AsyncMock()
+    mock._outbound_listener = None
+    return mock
 
-    Returns (captured_hubs, fake_auth_store) — callers can assert on the store mock.
+
+def make_fake_dc_adapter(**kwargs: Any) -> _FakeDcAdapter:
+    """Return a real _FakeDcAdapter instance."""
+    return _FakeDcAdapter(**kwargs)
+
+
+def make_fake_nats_client() -> AsyncMock:
+    """Return a fake NATS client with async close."""
+    fake_nc = AsyncMock()
+    fake_nc.close = AsyncMock()
+    return fake_nc
+
+
+def make_fake_nats_bus() -> MagicMock:
+    """Return a fake NatsBus with async start/stop."""
+    fake_nats_bus = MagicMock()
+    fake_nats_bus.start = AsyncMock()
+    fake_nats_bus.stop = AsyncMock()
+    return fake_nats_bus
+
+
+def make_fake_audit_sink() -> MagicMock:
+    """Return a fake JetStreamAuditSink with async provision/emit."""
+    fake_audit_sink = MagicMock()
+    fake_audit_sink.provision = AsyncMock()
+    fake_audit_sink.emit = AsyncMock()
+    return fake_audit_sink
+
+
+def make_fake_capturing_hub() -> tuple[type[Hub], list[Hub]]:
+    """Return a Hub subclass that captures every instantiated Hub.
+
+    Usage::
+
+        CapturingHub, captured = make_fake_capturing_hub()
+        with patch("lyra.bootstrap.factory.wiring_helpers.Hub", CapturingHub):
+            ...
     """
     captured: list[Hub] = []
-
     _OriginalHub = Hub
 
     class CapturingHub(_OriginalHub):  # type: ignore[misc]
@@ -239,138 +219,50 @@ def patch_all(
             super().__init__(**kwargs)
             captured.append(self)
 
-    monkeypatch.setattr(wiring_helpers_mod, "Hub", CapturingHub)
-
-    class CapturingDcAdapter(_FakeDcAdapter):
-        def __init__(self, **kwargs: object) -> None:
-            shutdown = cast("asyncio.Event | None", kwargs.pop("shutdown_event", None))
-            super().__init__(shutdown_event=shutdown, **kwargs)
-
-    mock_tg_auth, mock_dc_auth = MagicMock(), MagicMock()
-    _auth_results = iter([mock_tg_auth, mock_dc_auth])
-    monkeypatch.setattr(main_mod, "load_dotenv", lambda: None)
-    _synthetic_config = {
-        "telegram": {"bots": [{"bot_id": "main"}]},
-        "discord": {"bots": [{"bot_id": "main"}]},
-        "auth": {
-            "telegram_bots": [{"bot_id": "main", "default": "public"}],
-            "discord_bots": [{"bot_id": "main", "default": "public"}],
-        },
-    }
-    monkeypatch.setattr(main_mod, "_load_raw_config", lambda: _synthetic_config)
-    _mock_auth_cls = MagicMock()
-    _mock_auth_cls.from_config = MagicMock(
-        side_effect=lambda *a, **kw: next(_auth_results)
-    )
-    _bot_auth_results = iter([mock_tg_auth, mock_dc_auth])
-    _mock_auth_cls.from_bot_store = MagicMock(
-        side_effect=lambda *a, **kw: next(_bot_auth_results)
-    )
-    monkeypatch.setattr(wiring_mod, "Authenticator", _mock_auth_cls)
-
-    _fake_auth_store = MagicMock()
-    _fake_auth_store.connect = AsyncMock()
-    _fake_auth_store.seed_from_config = AsyncMock()
-    _fake_auth_store.close = AsyncMock()
-    monkeypatch.setattr(stores_mod, "AuthStore", lambda **kwargs: _fake_auth_store)
-
-    from lyra.core.agent.bot_models import BotRow
-
-    _fake_bot_store = MagicMock()
-    _fake_bot_store.connect = AsyncMock()
-    _fake_bot_store.close = AsyncMock()
-    _fake_bot_store.get_all = MagicMock(
-        return_value=[
-            BotRow(platform="telegram", bot_id="main", agent="lyra_default"),
-            BotRow(platform="discord", bot_id="main", agent="lyra_default"),
-        ]
-    )
-    monkeypatch.setattr(stores_mod, "BotStore", lambda **kwargs: _fake_bot_store)
-
-    _fake_agent_row = MagicMock()
-    _fake_agent_row.name = "lyra_default"
-    _fake_agent_store = MagicMock()
-    _fake_agent_store.connect = AsyncMock()
-    _fake_agent_store.close = AsyncMock()
-    _fake_agent_store.get_bot_agent = MagicMock(return_value="lyra_default")
-    _fake_agent_store.get = MagicMock(return_value=_fake_agent_row)
-    _fake_agent_store.set_bot_agent = AsyncMock()
-    monkeypatch.setattr(stores_mod, "AgentStore", lambda **kwargs: _fake_agent_store)
-
-    import lyra.bootstrap.credentials as credentials_mod
-
-    monkeypatch.setattr(
-        credentials_mod,
-        "load_bot_token",
-        lambda platform, bot_id: ("fake-token", "fake-secret"),
-    )
-    monkeypatch.setattr(
-        wiring_helpers_mod,
-        "agent_row_to_config",
-        lambda row, **kw: Agent(
-            name=row.name,
-            system_prompt="test",
-            memory_namespace="test",
-            llm_config=ModelConfig(backend="claude-cli"),
-        ),
-    )
-    monkeypatch.setattr(
-        wiring_mod, "TelegramAdapter", lambda **kwargs: _FakeTgAdapter(**kwargs)
-    )
-    monkeypatch.setattr(wiring_mod, "DiscordAdapter", CapturingDcAdapter)
-
-    _patch_nats_stubs(monkeypatch)
-    return captured, _fake_auth_store
+    return CapturingHub, captured
 
 
-def patch_auth_config_test(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Shared setup for TestAuthConfig tests: mock auth/credential stores."""
-    from lyra.core.agent.bot_models import BotRow
+def make_fake_auth_middleware() -> tuple[MagicMock, MagicMock]:
+    """Return (mock_tg_auth, mock_dc_auth) for Authenticator.from_config."""
+    return MagicMock(), MagicMock()
 
-    monkeypatch.setattr(main_mod, "load_dotenv", lambda: None)
 
-    _fake_auth_store = MagicMock()
-    _fake_auth_store.connect = AsyncMock()
-    _fake_auth_store.seed_from_config = AsyncMock()
-    _fake_auth_store.close = AsyncMock()
-    monkeypatch.setattr(stores_mod, "AuthStore", lambda **kwargs: _fake_auth_store)
+def make_fake_agent_row(name: str = "lyra_default") -> MagicMock:
+    """Return a MagicMock with a ``name`` attribute."""
+    row = MagicMock()
+    row.name = name
+    return row
 
-    _fake_agent_store = MagicMock()
-    _fake_agent_store.connect = AsyncMock()
-    _fake_agent_store.close = AsyncMock()
-    _fake_agent_store.get_bot_agent = MagicMock(return_value=None)
-    _fake_agent_store.get = MagicMock(return_value=None)
-    _fake_agent_store.set_bot_agent = AsyncMock()
-    monkeypatch.setattr(stores_mod, "AgentStore", lambda **kwargs: _fake_agent_store)
 
-    _fake_bot_store = MagicMock()
-    _fake_bot_store.connect = AsyncMock()
-    _fake_bot_store.close = AsyncMock()
-    _fake_bot_store.get = MagicMock(
-        side_effect=lambda platform, bot_id: (
-            BotRow(
-                platform=platform,
-                bot_id=bot_id,
-                agent="lyra_default",
-                default_trust="public",
-            )
-            if (platform, bot_id) == ("telegram", "main")
-            else None
-        )
-    )
-    monkeypatch.setattr(stores_mod, "BotStore", lambda **kwargs: _fake_bot_store)
-    monkeypatch.setattr(
-        agent_factory_mod,
-        "_resolve_bot_agent_map",
-        AsyncMock(return_value={("telegram", "main"): "lyra_default"}),
-    )
+def make_fake_hub() -> MagicMock:
+    """Return a MagicMock configured like a Hub for lifecycle tests."""
+    hub = MagicMock()
+    hub.run = AsyncMock()
+    hub.shutdown = AsyncMock()
+    hub.notify_shutdown_inflight = AsyncMock()
+    hub._event_bus = None
+    hub._turn_store = MagicMock()
+    hub.inbound_bus = MagicMock()
+    hub.inbound_bus.start = AsyncMock()
+    hub.inbound_bus.stop = AsyncMock()
+    return hub
 
-    import lyra.bootstrap.credentials as credentials_mod
 
-    monkeypatch.setattr(
-        credentials_mod,
-        "load_bot_token",
-        lambda platform, bot_id: ("fake-token", "fake-secret"),
-    )
+def make_fake_wired_adapters(
+    dc_thread_store: Any = None,
+) -> MagicMock:
+    """Return a MagicMock shaped like WiredAdapters for lifecycle tests."""
+    wired = MagicMock()
+    wired.tg_adapters = []
+    wired.tg_dispatchers = []
+    wired.dc_adapters = []
+    wired.dc_dispatchers = []
+    wired.dc_thread_store = dc_thread_store
+    return wired
 
-    _patch_nats_stubs(monkeypatch)
+
+def make_fake_lifecycle_resources() -> Any:
+    """Return a LifecycleResources with empty fields."""
+    from lyra.bootstrap.types import LifecycleResources
+
+    return LifecycleResources(pm=None, cli_pool=None, nc=None)

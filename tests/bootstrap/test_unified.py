@@ -15,7 +15,6 @@ import nats.errors
 import pytest
 
 from lyra.bootstrap.types import LifecycleResources
-from tests.factories.bootstrap import _patch_nats_stubs
 
 
 @pytest.fixture
@@ -25,10 +24,31 @@ def _patch_unified_boundaries(  # noqa: PLR0915
     """Patch every boundary collaborator inside lyra.bootstrap.factory.unified."""
     import lyra.bootstrap.factory.unified as unified_mod
 
-    # Already patched by _patch_nats_stubs: ensure_nats, acquire_lockfile,
-    # release_lockfile, nc, embedded.  We re-patch release_lockfile below
-    # with a spy so we can assert on it.
-    _patch_nats_stubs(monkeypatch)
+    # Patch NATS stubs inline (was _patch_nats_stubs from factories)
+    import lyra.bootstrap.factory.wiring_helpers as wiring_helpers_mod
+    fake_nc = AsyncMock()
+    fake_nc.close = AsyncMock()
+    fake_embedded = MagicMock()
+    fake_embedded.stop = AsyncMock()
+    monkeypatch.setattr(
+        unified_mod,
+        "ensure_nats",
+        AsyncMock(return_value=(fake_nc, fake_embedded, "nats://fake:4222")),
+    )
+    monkeypatch.setattr(unified_mod, "acquire_lockfile", lambda: None)
+    monkeypatch.setattr(unified_mod, "release_lockfile", lambda: None)
+    fake_nats_bus = MagicMock()
+    fake_nats_bus.start = AsyncMock()
+    fake_nats_bus.stop = AsyncMock()
+    monkeypatch.setattr(wiring_helpers_mod, "NatsBus", lambda **kw: fake_nats_bus)
+    fake_audit_sink = MagicMock()
+    fake_audit_sink.provision = AsyncMock()
+    fake_audit_sink.emit = AsyncMock()
+    _make_sink = lambda: fake_audit_sink  # noqa: E731
+    monkeypatch.setattr(wiring_helpers_mod, "JetStreamAuditSink", _make_sink)
+    monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
+    monkeypatch.setenv("LYRA_HEALTH_PORT", "0")
+    monkeypatch.setenv("LYRA_VAULT_DIR", "/tmp/fake-vault")
 
     # ------------------------------------------------------------------
     # Track call order via a shared list

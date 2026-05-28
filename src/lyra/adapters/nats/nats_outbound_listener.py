@@ -103,6 +103,7 @@ class NatsOutboundListener:
                 config=ConsumerConfig(
                     ack_policy=AckPolicy.EXPLICIT,
                     max_deliver=3,
+                    backoff=[5.0, 15.0, 30.0],
                 ),
             )
         else:
@@ -130,6 +131,24 @@ class NatsOutboundListener:
 
     async def _handle(self, msg: Any) -> None:
         """Dispatch raw NATS message to envelope handlers."""
+        # Manual DLQ routing — nats-py ConsumerConfig lacks dead_letter field.
+        # Detect final delivery attempt and forward to DLQ subject.
+        if hasattr(msg, "metadata") and hasattr(msg.metadata, "num_delivered"):
+            if msg.metadata.num_delivered >= 3:
+                try:
+                    dlq_subject = (
+                        f"lyra.outbound.dlq.{self._platform.value}.{self._bot_id}"
+                    )
+                    await self._nc.publish(dlq_subject, msg.data)
+                except Exception:
+                    log.exception(
+                        "NatsOutboundListener: failed to publish to DLQ"
+                    )
+                if hasattr(msg, "term"):
+                    await msg.term()
+                elif hasattr(msg, "ack"):
+                    await msg.ack()
+                return
         try:
             await handle_raw_message(self, msg, resolver=self._resolver)
         except Exception:

@@ -42,11 +42,14 @@ class DeadLetterConsumer:
 
     async def start(self) -> None:
         """Subscribe to the DLQ subject."""
+        from nats.js.api import ConsumerConfig
+
         self._sub = await self._js.subscribe(
             self._subject,
             cb=self._handle,
             manual_ack=True,
             queue=adapter_outbound(self._platform.value, self._bot_id),
+            config=ConsumerConfig(max_deliver=1),
         )
 
     async def stop(self) -> None:
@@ -63,8 +66,10 @@ class DeadLetterConsumer:
                 await msg.ack()
         except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
             log.exception("DeadLetterConsumer: failed to process DLQ message")
-            if hasattr(msg, "nak"):
-                await msg.nak()
+            if hasattr(msg, "term"):
+                await msg.term()
+            elif hasattr(msg, "ack"):
+                await msg.ack()
 
     async def _notify_user(self, msg: Any) -> None:
         """Extract original_msg from the DLQ envelope and notify the user."""

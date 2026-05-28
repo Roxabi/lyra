@@ -208,7 +208,6 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
         )
 
         # Wire each (platform, bot_id) to a NatsChannelProxy + OutboundDispatcher
-        js = nc.jetstream()
         tg_proxies, tg_dispatchers = wire_nats_telegram_proxies(
             hub=hub,
             nc=nc,

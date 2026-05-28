@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from nats.aio.msg import Msg
 
@@ -160,7 +160,7 @@ def handle_stream_start(
         log.warning("NatsOutboundListener: failed to deserialize stream outbound")
 
 
-async def handle_chunk(listener: "NatsOutboundListener", data: dict, msg: Any) -> None:
+async def handle_chunk(listener: "NatsOutboundListener", data: dict) -> None:
     """Handle chunk envelope (stream_id + seq) — queue chunk for streaming dispatch."""
     stream_id = data.get("stream_id")
     if stream_id is None:
@@ -195,8 +195,6 @@ async def handle_chunk(listener: "NatsOutboundListener", data: dict, msg: Any) -
             stream_id,
         )
         return
-    if hasattr(msg, "ack"):
-        await msg.ack()
     if stream_id not in listener._stream_tasks:
         listener._stream_tasks[stream_id] = asyncio.create_task(
             listener._drain_stream(stream_id, q)
@@ -227,7 +225,7 @@ async def handle_raw_message(
     elif msg_type == "audio":
         await handle_audio(listener, data, resolver=resolver)
     elif "stream_id" in data and "seq" in data:
-        await handle_chunk(listener, data, msg)
+        await handle_chunk(listener, data)
     else:
         log.warning("NatsOutboundListener: unknown envelope type=%r", msg_type)
 

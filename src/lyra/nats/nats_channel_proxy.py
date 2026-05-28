@@ -139,11 +139,10 @@ class NatsChannelProxy:
         raise NotImplementedError("NatsChannelProxy does not normalize audio messages")
 
     async def _publish(self, subject: str, payload: bytes) -> None:
-        """Publish via JetStream if available, else core NATS (backward compat)."""
+        """Publish to core NATS (backward compat) and JetStream if available."""
+        await self._nc.publish(subject, payload)
         if self._js is not None:
             await self._js.publish(subject, payload)
-        else:
-            await self._nc.publish(subject, payload)
 
     # ------------------------------------------------------------------
     # Outbound dispatch

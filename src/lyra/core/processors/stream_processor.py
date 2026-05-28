@@ -220,9 +220,13 @@ class StreamProcessor:
         #
         # RenderEvent is a TypeAlias (Union[...]), not a concrete class, so the
         # Generic bound is left inferred by the translator return type.
+        # #1113: propagate the originating SanitizedError.code (a KNOWN_CODES
+        # key, e.g. ``stream.error`` for infra exceptions or a WorkerError code
+        # such as ``cli.auth`` for soft errors) onto RunErrorRenderEvent.code,
+        # rather than discarding it as ``None``.
         _emitter: EventEmitter[RunErrorRenderEvent] = EventEmitter(
             error_translator=lambda err: RunErrorRenderEvent(
-                run_id=run_id, message=err.message, code=None
+                run_id=run_id, message=err.message, code=err.code
             )
         )
         yield RunStartedRenderEvent(run_id=run_id)

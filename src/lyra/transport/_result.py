@@ -47,6 +47,11 @@ class SanitizedError:
         (mirrors ``_scrub_cli_error_text`` in cli_streaming_parser — same
         security boundary: untrusted upstream content must not reach the NATS
         bus raw). Falls back to ``"model_error"`` when ``message`` is empty.
+
+        The default ``code="stream.error"`` is a registry-valid key in
+        ``roxabi_contracts.errors.KNOWN_CODES`` (#1113); it flows through to
+        ``RunErrorRenderEvent.code`` for soft errors that lack a structured
+        ``WorkerError``.
         """
         if not message:
             return cls(code=code, message="model_error", retryable=False)

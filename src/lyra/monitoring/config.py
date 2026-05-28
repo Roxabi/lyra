@@ -46,6 +46,11 @@ class MonitoringConfig(BaseModel):
     nats_monitor_url: str = "http://127.0.0.1:8222"
     nats_monitor_state_file: str = "~/.lyra/nats-monitor-state.json"
     log_level: str = "info"
+    blobstore_disk_path: str = "/data/lyra/blobs"
+    blobstore_disk_warning_pct: int = 60
+    blobstore_disk_critical_pct: int = 70
+    blobstore_inode_warning_pct: int = 60
+    blobstore_inode_critical_pct: int = 70
 
     # Secrets (from env vars)
     telegram_token: str = Field(default="", repr=False)

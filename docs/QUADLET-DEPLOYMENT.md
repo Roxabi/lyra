@@ -263,6 +263,8 @@ mandatory (ADR-054). Keep the prior source file as `.prev` until rotation is con
 
 ## Backing up the BlobStore
 
+> **Host vs container path:** `/data/lyra/blobs` is the canonical host path. `~/.lyra/blobstore` is the container view (bind-mounted into `lyra-blobstore` via `Volume=/data/lyra/blobs:/home/lyra/.lyra/blobstore:z`). All backup and restore commands below reference the canonical host path.
+
 The BlobStore consists of two parts that must be snapshotted in order: the SQLite index
 (`~/.lyra/blobstore/index.sqlite`) first, then the content-addressed shard tree
 (`~/.lyra/blobstore/sha256/`). Reversing the order risks capturing a `blob_refs` row
@@ -323,6 +325,29 @@ bug that the step-1-before-step-2 ordering prevents.
 
 → See `docs/architecture/storage.md` (BlobStore section) for the write-durability invariant
 that underpins this restore procedure.
+
+## Host-level mount requirements
+
+The `/data/lyra/blobs` filesystem must be mounted with `noatime` and `nodiratime` on the host. This prevents every blob read (GET, HEAD, or consistency check) from updating the inode `atime`, which would otherwise generate unnecessary write I/O and accelerate SSD wear on the content-addressed shard tree.
+
+Verify current mount options:
+
+```bash
+findmnt -n -o OPTIONS /data/lyra/blobs
+```
+
+If `noatime` is missing, update `/etc/fstab` and remount:
+
+```bash
+# Example fstab entry
+/dev/mapper/data-lyra-blobs  /data/lyra/blobs  ext4  defaults,noatime,nodiratime  0  2
+```
+
+Apply without reboot:
+
+```bash
+sudo mount -o remount,noatime,nodiratime /data/lyra/blobs
+```
 
 ## Diagnostic
 

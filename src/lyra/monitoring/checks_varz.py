@@ -29,6 +29,57 @@ def check_disk(path: str, min_free_gb: int) -> CheckResult:
     )
 
 
+def check_disk_pct(path: str, warning_pct: int, critical_pct: int) -> CheckResult:
+    """Check disk usage percentage against warning and critical thresholds."""
+    now = datetime.now(timezone.utc)
+    usage = shutil.disk_usage(path)
+    total = usage.total
+    used_pct = (usage.used / total) * 100 if total else 0
+    passed = used_pct < warning_pct
+    if used_pct >= critical_pct:
+        level = "CRITICAL"
+    elif used_pct >= warning_pct:
+        level = "WARNING"
+    else:
+        level = "OK"
+    detail = (
+        f"{level}: used={used_pct:.1f}%,"
+        f" warning={warning_pct}%, critical={critical_pct}%"
+    )
+    return CheckResult(
+        name="disk_pct",
+        passed=passed,
+        detail=detail,
+        timestamp=now,
+    )
+
+
+def check_inode_pct(path: str, warning_pct: int, critical_pct: int) -> CheckResult:
+    """Check inode usage percentage against warning and critical thresholds."""
+    now = datetime.now(timezone.utc)
+    st = os.statvfs(path)
+    total = st.f_files
+    used = total - st.f_ffree if total else 0
+    used_pct = (used / total) * 100 if total else 0
+    passed = used_pct < warning_pct
+    if used_pct >= critical_pct:
+        level = "CRITICAL"
+    elif used_pct >= warning_pct:
+        level = "WARNING"
+    else:
+        level = "OK"
+    detail = (
+        f"{level}: used={used_pct:.1f}%,"
+        f" warning={warning_pct}%, critical={critical_pct}%"
+    )
+    return CheckResult(
+        name="inode_pct",
+        passed=passed,
+        detail=detail,
+        timestamp=now,
+    )
+
+
 async def check_nats_varz(url: str, state_file: str, timeout: int = 5) -> CheckResult:
     """Poll NATS /varz for auth_errors and slow_consumers with delta tracking.
 

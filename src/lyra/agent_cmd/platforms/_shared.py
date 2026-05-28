@@ -47,9 +47,7 @@ def _prompt_edit_string(field: str, current: str) -> str | None:
 
 
 def _prompt_edit_bool(field: str, current: bool) -> bool | None:
-    val = typer.prompt(
-        f"  {field} (current: {current}, blank=keep, y/n)", default=""
-    )
+    val = typer.prompt(f"  {field} (current: {current}, blank=keep, y/n)", default="")
     v = val.strip().lower()
     if v == "y":
         return True

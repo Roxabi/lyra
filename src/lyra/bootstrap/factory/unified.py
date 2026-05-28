@@ -59,35 +59,41 @@ async def _bootstrap_unified(
                 raw_config, bundle.admin_user_ids, vault_dir, stores
             )
             voice = await _init_voice_services(nc)
-            hub = _build_hub(BuildHubDeps(
-                raw_config=raw_config,
-                bundle=bundle,
-                voice=voice,
-                inbound_bus=inbound_bus,
-                pm=pm,
-                stores=stores,
-            ))
+            hub = _build_hub(
+                BuildHubDeps(
+                    raw_config=raw_config,
+                    bundle=bundle,
+                    voice=voice,
+                    inbound_bus=inbound_bus,
+                    pm=pm,
+                    stores=stores,
+                )
+            )
 
             clipool = await _init_clipool(nc, raw_config, stores)
             hub.cli_pool = None  # hub no longer holds CliPool directly
 
-            _register_agents(RegisterAgentsDeps(
-                hub=hub,
-                bundle=bundle,
-                voice=voice,
-                clipool=clipool,
-                raw_config=raw_config,
-                stores=stores,
-            ))
+            _register_agents(
+                RegisterAgentsDeps(
+                    hub=hub,
+                    bundle=bundle,
+                    voice=voice,
+                    clipool=clipool,
+                    raw_config=raw_config,
+                    stores=stores,
+                )
+            )
 
-            wired = await _wire_adapters(WireAdaptersDeps(
-                hub=hub,
-                bundle=bundle,
-                nc=nc,
-                stores=stores,
-                vault_dir=vault_dir,
-                raw_config=raw_config,
-            ))
+            wired = await _wire_adapters(
+                WireAdaptersDeps(
+                    hub=hub,
+                    bundle=bundle,
+                    nc=nc,
+                    stores=stores,
+                    vault_dir=vault_dir,
+                    raw_config=raw_config,
+                )
+            )
 
             clipool_worker_task = await _run_clipool_worker_task(clipool.worker, nc)
 

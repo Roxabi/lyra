@@ -263,9 +263,11 @@ mandatory (ADR-054). Keep the prior source file as `.prev` until rotation is con
 
 ## Backing up the BlobStore
 
+> **Host vs container path:** `/data/lyra/blobs` is the canonical host path. `~/.lyra/blobstore` is the container view (bind-mounted into `lyra-blobstore` via `Volume=/data/lyra/blobs:/home/lyra/.lyra/blobstore:z`). All backup and restore commands below reference the canonical host path.
+
 The BlobStore consists of two parts that must be snapshotted in order: the SQLite index
-(`~/.lyra/blobstore/index.sqlite`) first, then the content-addressed shard tree
-(`~/.lyra/blobstore/sha256/`). Reversing the order risks capturing a `blob_refs` row
+(`/data/lyra/blobs/index.sqlite`) first, then the content-addressed shard tree
+(`/data/lyra/blobs/`). Reversing the order risks capturing a `blob_refs` row
 whose shard file was not yet in the snapshot — a phantom row at restore time.
 
 `FsBlobStore` uses a per-instance `asyncio.Lock`, not a global write-quiesce. A concurrent
@@ -276,12 +278,12 @@ row was NOT captured in the DB snapshot. The restore invariant handles this safe
 1. Snapshot the SQLite index (atomic per the SQLite `.backup` API):
    ```bash
    mkdir -p /tmp/blobstore-snapshot
-   sqlite3 ~/.lyra/blobstore/index.sqlite ".backup '/tmp/blobstore-snapshot/index.sqlite'"
+   sqlite3 /data/lyra/blobs/index.sqlite ".backup '/tmp/blobstore-snapshot/index.sqlite'"
    ```
 
 2. Snapshot the shard tree together with the DB snapshot (use hardlinks to minimise disk usage):
    ```bash
-   cp -al ~/.lyra/blobstore/sha256 /tmp/blobstore-snapshot/sha256
+   cp -al /data/lyra/blobs /tmp/blobstore-snapshot/blobs
    ```
    For off-host backup, pipe through Restic or similar:
    ```bash
@@ -290,7 +292,7 @@ row was NOT captured in the DB snapshot. The restore invariant handles this safe
 
 3. Verify the snapshot (should report 0 mismatches):
    ```bash
-   sha256sum -c <(find /tmp/blobstore-snapshot/sha256 -type f -exec sha256sum {} +)
+   sha256sum -c <(find /tmp/blobstore-snapshot/blobs -type f -exec sha256sum {} +)
    ```
 
 Recommended cadence: daily, scheduled when traffic is low. Store alongside `~/.lyra/config.db`
@@ -299,10 +301,10 @@ backups.
 ## Restore invariant
 
 After extracting a backup, the SQLite manifest is the authoritative record. Any shard file
-in `sha256/` that is NOT referenced by a `blobs.store_path` row is a content-addressed orphan
-produced by a `put()` that wrote the file but did not complete its `INSERT blob_refs` before
-the DB snapshot was taken. These orphans are always safe to discard — no consumer ever held
-a `store_key` pointing to them.
+under the prefix-shard tree (`<root>/<sha[:2]>/<sha>`) that is NOT referenced by a `blobs.store_path`
+row is a content-addressed orphan produced by a `put()` that wrote the file but did not complete
+its `INSERT blob_refs` before the DB snapshot was taken. These orphans are always safe to
+discard — no consumer ever held a `store_key` pointing to them.
 
 Reconciliation procedure after restore:
 
@@ -313,7 +315,7 @@ Reconciliation procedure after restore:
 
 2. List actual files on disk:
    ```bash
-   find sha256 -type f
+   find . -type f
    ```
 
 3. Discard files in (2) that are absent from (1) — they are dedup-orphans, never user data loss.
@@ -323,6 +325,29 @@ bug that the step-1-before-step-2 ordering prevents.
 
 → See `docs/architecture/storage.md` (BlobStore section) for the write-durability invariant
 that underpins this restore procedure.
+
+## Host-level mount requirements
+
+The `/data/lyra/blobs` filesystem must be mounted with `noatime` and `nodiratime` on the host. This prevents every blob read (GET, HEAD, or consistency check) from updating the inode `atime`, which would otherwise generate unnecessary write I/O and accelerate SSD wear on the content-addressed shard tree.
+
+Verify current mount options:
+
+```bash
+findmnt -n -o OPTIONS /data/lyra/blobs
+```
+
+If `noatime` is missing, update `/etc/fstab` and remount:
+
+```bash
+# Example fstab entry
+/dev/mapper/data-lyra-blobs  /data/lyra/blobs  ext4  defaults,noatime,nodiratime  0  2
+```
+
+Apply without reboot:
+
+```bash
+sudo mount -o remount,noatime,nodiratime /data/lyra/blobs
+```
 
 ## Diagnostic
 

@@ -38,13 +38,17 @@ def _patch_unified_boundaries(  # noqa: PLR0915
     def _track(name: str, fn: Any) -> Any:
         """Wrap fn so it appends `name` to order before executing."""
         if inspect.iscoroutinefunction(fn):
+
             async def _async_wrapper(*a: Any, **kw: Any) -> Any:
                 order.append(name)
                 return await fn(*a, **kw)
+
             return _async_wrapper
+
         def _sync_wrapper(*a: Any, **kw: Any) -> Any:
             order.append(name)
             return fn(*a, **kw)
+
         return _sync_wrapper
 
     # -- ensure_nats & lockfile (replace the no-op stubs with tracking versions)
@@ -53,7 +57,9 @@ def _patch_unified_boundaries(  # noqa: PLR0915
     fake_embedded = MagicMock()
     fake_embedded.stop = AsyncMock()
 
-    _orig_ensure_nats = AsyncMock(return_value=(fake_nc, fake_embedded, "nats://fake:4222"))
+    _orig_ensure_nats = AsyncMock(
+        return_value=(fake_nc, fake_embedded, "nats://fake:4222")
+    )
     monkeypatch.setattr(
         unified_mod,
         "ensure_nats",
@@ -87,6 +93,7 @@ def _patch_unified_boundaries(  # noqa: PLR0915
         async def __aenter__(self) -> MagicMock:
             order.append("open_stores.enter")
             return fake_stores
+
         async def __aexit__(self, *_exc: Any) -> None:
             order.append("open_stores.exit")
 

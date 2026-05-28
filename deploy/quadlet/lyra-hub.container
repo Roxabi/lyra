@@ -1,6 +1,7 @@
 [Unit]
 Description=Lyra Hub
 After=lyra-nats.service
+After=lyra-blobstore.service
 Requires=lyra-nats.service
 StartLimitIntervalSec=60
 StartLimitBurst=5

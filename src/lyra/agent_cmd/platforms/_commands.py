@@ -153,9 +153,7 @@ def _edit(  # noqa: C901, PLR0915
                 try:
                     new_vals["thread_hot_hours"] = int(v)
                 except ValueError:
-                    typer.echo(
-                        f"    Invalid int for thread_hot_hours: {v!r} - skipped"
-                    )
+                    typer.echo(f"    Invalid int for thread_hot_hours: {v!r} - skipped")
             if not new_vals:
                 typer.echo("No changes.")
                 return

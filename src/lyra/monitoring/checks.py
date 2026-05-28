@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 import httpx
 
 from .checks_log import check_hub_dict_stream_gen_timeout, check_nats_log_errors
-from .checks_varz import check_disk, check_nats_varz
+from .checks_varz import check_disk, check_disk_pct, check_inode_pct, check_nats_varz
 from .config import MonitoringConfig
 from .models import CheckResult, HealthReport
 
@@ -274,6 +274,26 @@ async def run_checks(config: MonitoringConfig) -> HealthReport:
         await check_nats_varz(
             config.nats_monitor_url,
             config.nats_monitor_state_file,
+        )
+    )
+
+    # Check 11: Blobstore disk usage percentage
+    checks.append(
+        await asyncio.to_thread(
+            check_disk_pct,
+            config.blobstore_disk_path,
+            config.blobstore_disk_warning_pct,
+            config.blobstore_disk_critical_pct,
+        )
+    )
+
+    # Check 12: Blobstore inode usage percentage
+    checks.append(
+        await asyncio.to_thread(
+            check_inode_pct,
+            config.blobstore_disk_path,
+            config.blobstore_inode_warning_pct,
+            config.blobstore_inode_critical_pct,
         )
     )
 

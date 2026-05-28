@@ -566,8 +566,10 @@ class TestResolveContextResumeStatus:
 
             kwargs["resume_fn"] = _capturing_resume
         elif resume_returns is not None:
+
             async def _bool_resume(_sid: str) -> bool:
                 return resume_returns
+
             kwargs["resume_fn"] = _bool_resume
         status = await self._run(
             pool_id,

@@ -46,6 +46,11 @@ class MonitoringConfig(BaseModel):
     nats_monitor_url: str = "http://127.0.0.1:8222"
     nats_monitor_state_file: str = "~/.lyra/nats-monitor-state.json"
     log_level: str = "info"
+    blobstore_disk_path: str = "/data/lyra/blobs"
+    blobstore_disk_warning_pct: int = 60
+    blobstore_disk_critical_pct: int = 70
+    blobstore_inode_warning_pct: int = 60
+    blobstore_inode_critical_pct: int = 70
 
     # Secrets (from env vars)
     telegram_token: str = Field(default="", repr=False)
@@ -79,10 +84,30 @@ class MonitoringConfig(BaseModel):
             )
         return v
 
+    @field_validator(
+        "blobstore_disk_warning_pct",
+        "blobstore_disk_critical_pct",
+        "blobstore_inode_warning_pct",
+        "blobstore_inode_critical_pct",
+    )
+    @classmethod
+    def _validate_pct(cls, v: int) -> int:
+        if not 0 <= v <= 100:
+            raise ValueError("must be between 0 and 100")
+        return v
+
     @model_validator(mode="after")
-    def _validate_quiet_times(self) -> MonitoringConfig:
-        # Both fields are already validated individually; model_validator runs after.
-        # This hook is a placeholder for any cross-field validation needed in future.
+    def _validate_threshold_order(self) -> MonitoringConfig:
+        if self.blobstore_disk_warning_pct >= self.blobstore_disk_critical_pct:
+            raise ValueError(
+                "blobstore_disk_warning_pct must be less than "
+                "blobstore_disk_critical_pct"
+            )
+        if self.blobstore_inode_warning_pct >= self.blobstore_inode_critical_pct:
+            raise ValueError(
+                "blobstore_inode_warning_pct must be less than "
+                "blobstore_inode_critical_pct"
+            )
         return self
 
 

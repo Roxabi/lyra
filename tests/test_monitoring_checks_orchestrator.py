@@ -37,13 +37,13 @@ class TestRunChecks:
         # Mock systemctl --user is-active
         monkeypatch.setattr(
             "lyra.monitoring.checks.subprocess.run",
-            lambda *a, **kw: MagicMock(returncode=0, stdout="active\n"),
+            MagicMock(return_value=MagicMock(returncode=0, stdout="active\n")),
         )
 
         # Mock podman logs for log-scan checks (empty output → 0 matches → passed)
         monkeypatch.setattr(
             "lyra.monitoring.checks_log.subprocess.run",
-            lambda *a, **kw: MagicMock(returncode=0, stdout="", stderr=""),
+            MagicMock(return_value=MagicMock(returncode=0, stdout="", stderr="")),
         )
 
         mock_response = MagicMock()
@@ -68,9 +68,11 @@ class TestRunChecks:
 
         with patch("lyra.monitoring.checks.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
-            mock_client.get.side_effect = lambda url, **kw: (
-                varz_response if "/varz" in url else mock_response
-            )
+
+            def _mock_get(url: str, **_kwargs: object) -> MagicMock:  # type: ignore
+                return varz_response if "/varz" in url else mock_response
+
+            mock_client.get.side_effect = _mock_get
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
             mock_client.__aexit__ = AsyncMock(return_value=False)
             mock_client_cls.return_value = mock_client
@@ -79,8 +81,28 @@ class TestRunChecks:
 
             monkeypatch.setattr(
                 "lyra.monitoring.checks_varz.shutil.disk_usage",
-                lambda path: shutil._ntuple_diskusage(
+                lambda _: shutil._ntuple_diskusage(
                     total=100 * 1024**3, used=50 * 1024**3, free=50 * 1024**3
+                ),
+            )
+
+            import os as _os
+
+            monkeypatch.setattr(
+                "lyra.monitoring.checks_varz.os.statvfs",
+                lambda _: _os.statvfs_result(
+                    (
+                        100 * 1024**3,
+                        50 * 1024**3,
+                        50 * 1024**3,
+                        1000000,
+                        900000,
+                        1000,
+                        700,
+                        700,
+                        0,
+                        0,
+                    )
                 ),
             )
 
@@ -98,6 +120,8 @@ class TestRunChecks:
             "hub:dict_stream_gen_timeout",
             "disk",
             "nats:varz",
+            "disk_pct",
+            "inode_pct",
         }
 
     async def test_failure_detected(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -125,7 +149,13 @@ class TestRunChecks:
         # Process check fails — systemctl returns inactive
         monkeypatch.setattr(
             "lyra.monitoring.checks.subprocess.run",
-            lambda *a, **kw: MagicMock(returncode=3, stdout="inactive\n"),
+            MagicMock(return_value=MagicMock(returncode=3, stdout="inactive\n")),
+        )
+
+        # Mock podman logs for log-scan checks
+        monkeypatch.setattr(
+            "lyra.monitoring.checks_log.subprocess.run",
+            MagicMock(return_value=MagicMock(returncode=0, stdout="", stderr="")),
         )
 
         # HTTP also fails (hub is down)
@@ -142,12 +172,42 @@ class TestRunChecks:
 
             monkeypatch.setattr(
                 "lyra.monitoring.checks_varz.shutil.disk_usage",
-                lambda path: shutil._ntuple_diskusage(
+                lambda _: shutil._ntuple_diskusage(
                     total=100 * 1024**3, used=50 * 1024**3, free=50 * 1024**3
+                ),
+            )
+
+            import os as _os
+
+            monkeypatch.setattr(
+                "lyra.monitoring.checks_varz.os.statvfs",
+                lambda _: _os.statvfs_result(
+                    (
+                        100 * 1024**3,
+                        50 * 1024**3,
+                        50 * 1024**3,
+                        1000000,
+                        900000,
+                        1000,
+                        700,
+                        700,
+                        0,
+                        0,
+                    )
                 ),
             )
 
             report = await run_checks(config)
 
         assert report.all_passed is False
-        assert report.failed_count >= 1
+        assert report.failed_count == 2
+        assert {c.name for c in report.checks} == {
+            "process:lyra-hub",
+            "http_health",
+            "nats:permissions_violation",
+            "hub:dict_stream_gen_timeout",
+            "disk",
+            "nats:varz",
+            "disk_pct",
+            "inode_pct",
+        }

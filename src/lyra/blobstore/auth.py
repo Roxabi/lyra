@@ -29,7 +29,7 @@ def _op_from_request(request: Request) -> str:
 def _store_key_from_path(path: str) -> str | None:
     """Extract store_key from /blobs/{store_key}; return None for other paths."""
     if path.startswith("/blobs/"):
-        tail = path[len("/blobs/"):]
+        tail = path[len("/blobs/") :]
         return tail if tail else None
     return None
 
@@ -70,7 +70,7 @@ class BearerAuthMiddleware(BaseHTTPMiddleware):
             await _emit_unauthorized_audit(request)
             return JSONResponse({"detail": "unauthorized"}, status_code=401)
 
-        provided = auth[len("Bearer "):]
+        provided = auth[len("Bearer ") :]
         if not hmac.compare_digest(provided.encode(), self._token.encode()):
             await _emit_unauthorized_audit(request)
             return JSONResponse({"detail": "unauthorized"}, status_code=401)

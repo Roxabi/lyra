@@ -169,11 +169,7 @@ async def test_telegram_astart_failure_cleans_up_wired_resources() -> None:
         _bootstrap_adapter_standalone,
     )
 
-    raw_config = {
-        "telegram": {
-            "bots": [{"bot_id": "first"}, {"bot_id": "second"}]
-        }
-    }
+    raw_config = {"telegram": {"bots": [{"bot_id": "first"}, {"bot_id": "second"}]}}
 
     mock_nc = AsyncMock()
 

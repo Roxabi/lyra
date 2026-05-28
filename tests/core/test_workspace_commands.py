@@ -1,4 +1,5 @@
 """Tests for workspace command path-constraint helpers (#1434)."""
+
 from __future__ import annotations
 
 from pathlib import Path

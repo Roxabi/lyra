@@ -154,7 +154,9 @@ async def wire_telegram_adapters(
     return adapters, dispatchers
 
 
-async def wire_discord_adapters(deps: DiscordWiringDeps) -> tuple[
+async def wire_discord_adapters(
+    deps: DiscordWiringDeps,
+) -> tuple[
     list[tuple[DiscordAdapter, DiscordBotConfig, str]],
     list[OutboundDispatcher],
     ThreadStore | None,
@@ -271,7 +273,9 @@ async def wire_discord_adapters(deps: DiscordWiringDeps) -> tuple[
     return adapters, dispatchers, thread_store
 
 
-def _build_bot_auths(deps: BotAuthDeps) -> tuple[
+def _build_bot_auths(
+    deps: BotAuthDeps,
+) -> tuple[
     list[tuple[TelegramBotConfig, Authenticator]],
     list[tuple[DiscordBotConfig, Authenticator]],
 ]:

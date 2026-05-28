@@ -39,7 +39,7 @@ Secret=lyra_blobstore_token,type=mount,uid=1500,gid=1500,mode=0400,target=/run/s
 # under the lyra home (/home/lyra/.lyra/blobstore via UserNS=keep-id).
 # NOTE: Do NOT add inline # comments after Volume= values; Quadlet passes them to
 # Podman as mount-option strings (issue #1083).
-Volume=%h/.lyra/blobstore:/home/lyra/.lyra/blobstore:z
+Volume=/data/lyra/blobs:/home/lyra/.lyra/blobstore:z
 # config.toml — required by the staging-svc image variant (svc-runtime entrypoint
 # reads config at startup; see docs/ops/container-publishing.md §svc-runtime).
 Volume=%h/.lyra/config.toml:/app/config.toml:ro,z

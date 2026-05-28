@@ -69,26 +69,27 @@ declare -A SEEDS=(
   [lyra-nats-telegram]="${NKEYS_DIR}/telegram-adapter.seed"
   [lyra-nats-discord]="${NKEYS_DIR}/discord-adapter.seed"
   [lyra-nats-clipool]="${NKEYS_DIR}/clipool-worker.seed"
+  [lyra-nats-blobstore]="${NKEYS_DIR}/blobstore.seed"
   [lyra-nats-turn-writer]="${NKEYS_DIR}/turn-writer.seed"
   [lyra_blobstore_token]="${HOME}/.lyra/blobstore.tok"
 )
 
-# ── 1b. Generate blobstore bearer token (idempotent) ────────────────────────
+# ── 2. Generate blobstore bearer token (idempotent) ────────────────────────
 
 BLOBSTORE_TOK="${HOME}/.lyra/blobstore.tok"
 if [[ ! -f "${BLOBSTORE_TOK}" || "$FORCE" -eq 1 ]]; then
   log "Generating blobstore bearer token → ${BLOBSTORE_TOK} ..."
   run mkdir -p "${HOME}/.lyra"
   if [[ "$DRY_RUN" -eq 0 ]]; then
-    (umask 0077; head -c 48 /dev/urandom | base64 | tr -d '/+=' | head -c 48 > "${BLOBSTORE_TOK}")
+    (umask 0077; openssl rand -base64 48 > "${BLOBSTORE_TOK}")
   else
-    echo "[dry-run] would generate ${BLOBSTORE_TOK} (48 url-safe chars, mode 0600)"
+    echo "[dry-run] would generate ${BLOBSTORE_TOK} (64 base64 chars, mode 0600)"
   fi
 else
   echo "  [skip] ${BLOBSTORE_TOK} already exists (use --force to regenerate)"
 fi
 
-# ── 1c. Bootstrap blobstore.env (idempotent) ─────────────────────────────────
+# ── 3. Bootstrap blobstore.env (idempotent) ─────────────────────────────────
 
 ENV_FILE="${HOME}/.lyra/env/blobstore.env"
 if [[ ! -f "${ENV_FILE}" || "$FORCE" -eq 1 ]]; then
@@ -119,7 +120,7 @@ if [[ "$MISSING" -eq 1 ]]; then
   exit 1
 fi
 
-# ── 2. Install Podman secrets ────────────────────────────────────────────────
+# ── 4. Install Podman secrets ────────────────────────────────────────────────
 
 log "Installing Podman secrets ..."
 for secret_name in "${!SEEDS[@]}"; do
@@ -163,13 +164,22 @@ if [[ "$SECRETS_ONLY" -eq 1 ]]; then
   exit 0
 fi
 
-# ── 3. Ensure data directories ──────────────────────────────────────────────
+# ── 5. Ensure data directories ──────────────────────────────────────────────
 
 log "Ensuring data directories ..."
+run mkdir -p /data/lyra/blobs
+if [[ "$DRY_RUN" -eq 0 ]]; then
+  if ! findmnt /data/lyra/blobs >/dev/null 2>&1; then
+    warn "/data/lyra/blobs is not a mount point — add to /etc/fstab with noatime,nodiratime"
+  fi
+fi
+echo "  [ok]   /data/lyra/blobs"
+run ln -sf /data/lyra/blobs "${HOME}/.lyra/blobstore"
+echo "  [ok]   ${HOME}/.lyra/blobstore → /data/lyra/blobs"
 run mkdir -p "${HOME}/.lyra/turn-writer"
 echo "  [ok]   ~/.lyra/turn-writer/"
 
-# ── 4. Copy Quadlet units ────────────────────────────────────────────────────
+# ── 6. Copy Quadlet units ────────────────────────────────────────────────────
 
 log "Copying Quadlet units to ${QUADLET_DST} ..."
 run mkdir -p "${QUADLET_DST}"
@@ -179,13 +189,17 @@ for f in "${QUADLET_SRC}"/*.container "${QUADLET_SRC}"/*.network "${QUADLET_SRC}
   echo "  [cp]   $(basename "$f")"
 done
 
-# ── 5. daemon-reload ─────────────────────────────────────────────────────────
+# ── 7. daemon-reload ─────────────────────────────────────────────────────────
 
 log "Reloading systemd user daemon ..."
 run systemctl --user daemon-reload
 echo "  [ok]   daemon-reload"
 
-# ── 5b. Seed BotStore from config.toml (idempotent) ─────────────────────────
+log "Enabling lyra-blobstore.service ..."
+run systemctl --user enable lyra-blobstore.service
+echo "  [ok]   lyra-blobstore.service enabled"
+
+# ── 8. Seed BotStore from config.toml (idempotent) ─────────────────────────
 # Required since #1416: Authenticator reads from BotStore, not config.toml.
 # Skipping this causes a hub crash-loop on first boot.
 log "Seeding BotStore from config.toml ..."
@@ -197,9 +211,9 @@ run podman run --rm \
 
 echo "  [ok]   BotStore seeded"
 
-log "Done. Services NOT restarted — run: systemctl --user start lyra-nats lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-gh-helper lyra-turn-writer lyra-blobstore"
-
-# ── 6. Install sync timer + service (idempotent) ───────────────────────────
+# ── 9. Install sync timer + service (idempotent) ───────────────────────────
 
 log "Installing lyra-quadlet-sync timer + service ..."
 run make quadlet-sync-install
+
+log "Done. Services NOT restarted — run: systemctl --user start lyra-nats lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-gh-helper lyra-turn-writer lyra-blobstore"

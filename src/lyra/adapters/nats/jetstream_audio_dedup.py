@@ -1,26 +1,54 @@
-"""In-memory dedup set for JetStreamAudioConsumer (V1).
+"""Dedup set implementations for JetStreamAudioConsumer.
 
-V1 implementation: OrderedDict-backed TTL set with FIFO eviction cap.
+Two implementations sharing the same async interface:
 
-T10 swap target
+``InMemorySentSet`` (V1 / fallback)
+    OrderedDict-backed TTL set with FIFO eviction cap.
+    Does NOT survive a process restart — use only for testing or as fallback.
+
+``KvSentSet`` (V2 / production)
+    JetStream KV-backed set. Survives restarts and is shared across replicas.
+    Uses the ``lyra_outbound_audio_sent`` bucket provisioned by ``ensure_kv``
+    (TTL=900s, set on the bucket — not re-implemented here).
+
+Interface contract (both impls must satisfy)::
+
+    async def already_sent(self, stream_id: str) -> bool
+    async def mark_sent(self, stream_id: str) -> None
+
+KV key encoding
 ---------------
-T10 replaces the injected ``InMemorySentSet`` instance with a ``KvSentSet``
-(async, backed by the ``lyra_outbound_audio_sent`` JetStream KV bucket
-provisioned by ``ensure_kv`` in ``infrastructure/outbound_audio/stream_setup.py``).
+NATS KV keys allow ``[-/_=.a-zA-Z0-9]``. Stream IDs are opaque message IDs
+that may contain characters outside that set (colons, angle brackets, etc.).
+Both methods encode ``stream_id`` to hex (UTF-8 bytes → lowercase hex string)
+before using it as a KV key.  The encoding is injective and only produces
+``[0-9a-f]``, so it is always a valid KV key.
 
-The consumer only calls ``already_sent(stream_id)`` and ``mark_sent(stream_id)``.
-T10 makes those async and updates the call-sites in ``_process`` — the loop
-logic is otherwise unchanged.
-
-Interface contract (both V1 and future KvSentSet must satisfy):
-    already_sent(stream_id: str) -> bool   (sync V1 / async KvSentSet)
-    mark_sent(stream_id: str) -> None      (sync V1 / async KvSentSet)
+T10 wiring
+----------
+Bootstrap calls ``kv = await ensure_kv(js)`` and passes ``dedup=KvSentSet(kv)``
+to ``JetStreamAudioConsumer``.  No other change is needed in the consumer.
 """
 
 from __future__ import annotations
 
 import time
 from collections import OrderedDict
+from typing import Any, Protocol, runtime_checkable
+
+from nats.js.errors import KeyNotFoundError
+
+
+@runtime_checkable
+class _KvLike(Protocol):
+    """Structural protocol for the KV operations KvSentSet actually uses.
+
+    Both the real ``nats.js.kv.KeyValue`` and the test ``FakeKv`` satisfy
+    this protocol structurally — no inheritance required.
+    """
+
+    async def get(self, key: str) -> Any: ...
+    async def put(self, key: str, value: bytes) -> Any: ...
 
 # TTL: ack_wait × max_deliver × 2 headroom = 90 × 5 × 2 = 900 s.
 # Must be ≥ ack_wait × max_deliver = 450 s (floor).
@@ -30,18 +58,21 @@ DEDUP_TTL = 900.0  # seconds
 DEDUP_MAX_ENTRIES = 1_000
 
 
+def _encode_key(stream_id: str) -> str:
+    """Encode stream_id to a valid NATS KV key (hex of UTF-8 bytes).
+
+    KV keys allow ``[-/_=.a-zA-Z0-9]``.  Stream IDs are opaque and may
+    contain colons, spaces, or other forbidden characters.  Hex encoding is
+    injective, produces only ``[0-9a-f]``, and is reversible.
+    """
+    return stream_id.encode("utf-8").hex()
+
+
 class InMemorySentSet:
-    """Sync in-memory dedup set backed by an OrderedDict with TTL + FIFO eviction.
+    """Async in-memory dedup set backed by an OrderedDict with TTL + FIFO eviction.
 
     Thread safety: NOT thread-safe (asyncio single-threaded use only).
-
-    T10 swap:
-        Replace the ``InMemorySentSet()`` instance injected into
-        ``JetStreamAudioConsumer`` with a ``KvSentSet`` instance.
-        ``KvSentSet.already_sent`` / ``mark_sent`` will be async; update
-        the two call-sites in ``JetStreamAudioConsumer._process`` to
-        ``await self._dedup.already_sent(sid)`` /
-        ``await self._dedup.mark_sent(sid)``.
+    Does NOT survive process restart — use KvSentSet in production.
     """
 
     def __init__(
@@ -53,10 +84,10 @@ class InMemorySentSet:
         self._max = max_entries
         self._sent: OrderedDict[str, float] = OrderedDict()
 
-    def already_sent(self, stream_id: str) -> bool:
+    async def already_sent(self, stream_id: str) -> bool:
         """Return True if stream_id was marked sent within the TTL window.
 
-        Expired entries are evicted lazily on access. Returns False for
+        Expired entries are evicted lazily on access.  Returns False for
         expired entries so a late redeliver past the TTL can proceed.
         """
         now = time.monotonic()
@@ -68,7 +99,7 @@ class InMemorySentSet:
             return False
         return True
 
-    def mark_sent(self, stream_id: str) -> None:
+    async def mark_sent(self, stream_id: str) -> None:
         """Record stream_id as successfully sent.
 
         Moves an existing entry to the end (refresh) and evicts the oldest
@@ -78,3 +109,40 @@ class InMemorySentSet:
         self._sent.move_to_end(stream_id)
         while len(self._sent) > self._max:
             self._sent.popitem(last=False)
+
+
+class KvSentSet:
+    """Async KV-backed dedup set using JetStream KeyValue.
+
+    Survives process restarts and is shared across consumer replicas bound
+    to the same KV bucket.  Expiry is handled by the bucket TTL (900s),
+    not by this class.
+
+    KV key = hex(stream_id.encode('utf-8')) — always a valid NATS KV key
+    regardless of what characters appear in the raw stream_id.
+    """
+
+    def __init__(self, kv: _KvLike) -> None:
+        self._kv = kv
+
+    async def already_sent(self, stream_id: str) -> bool:
+        """Return True if stream_id has a live entry in the KV bucket.
+
+        ``KeyNotFoundError`` (key absent or expired) → False (not sent).
+        Any other error propagates so the caller can decide not to ack.
+        """
+        key = _encode_key(stream_id)
+        try:
+            await self._kv.get(key)
+            return True
+        except KeyNotFoundError:
+            return False
+
+    async def mark_sent(self, stream_id: str) -> None:
+        """Write stream_id into the KV bucket.
+
+        Uses ``kv.put`` which creates or updates the key.  The bucket TTL
+        (900s, set during ensure_kv provisioning) handles expiry automatically.
+        """
+        key = _encode_key(stream_id)
+        await self._kv.put(key, b"1")

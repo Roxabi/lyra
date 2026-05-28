@@ -37,7 +37,7 @@ from typing import TYPE_CHECKING, Any
 
 import nats.errors
 
-from lyra.adapters.nats.jetstream_audio_dedup import InMemorySentSet
+from lyra.adapters.nats.jetstream_audio_dedup import InMemorySentSet, KvSentSet
 from lyra.adapters.nats.jetstream_audio_envelope import (
     decode_audio_envelope,
     num_delivered,
@@ -106,7 +106,7 @@ class JetStreamAudioConsumer:
         send_text: TextSendFn,
         stream_name: str = STREAM_AUDIO,
         max_deliver: int = MAX_DELIVER,
-        dedup: InMemorySentSet | None = None,
+        dedup: InMemorySentSet | KvSentSet | None = None,
     ) -> None:
         self._js = js
         self._durable = durable
@@ -211,7 +211,7 @@ class JetStreamAudioConsumer:
             return
 
         # Dedup: stream_id already delivered → ack + skip (no double-send).
-        if self._dedup.already_sent(stream_id):
+        if await self._dedup.already_sent(stream_id):
             log.debug(
                 "JetStreamAudioConsumer: dedup hit for stream_id=%r, acking",
                 stream_id,
@@ -241,7 +241,7 @@ class JetStreamAudioConsumer:
             return
 
         # Success: record send, then ack.
-        self._dedup.mark_sent(stream_id)
+        await self._dedup.mark_sent(stream_id)
         try:
             await msg.ack()
         except Exception:

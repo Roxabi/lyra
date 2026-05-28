@@ -6,7 +6,7 @@ after the adapter's astart() succeeds and before the shutdown wait.
 Ordering contract (mirrors turn_writer_standalone.py):
     js = nc.jetstream()
     await ensure_stream(js)
-    await ensure_kv(js)          -- idempotent; T10 uses the returned handle
+    kv = await ensure_kv(js)     -- idempotent; KvSentSet wraps the handle
     await ensure_consumer(...)
     consumer = JetStreamAudioConsumer(...)
     await consumer.start()
@@ -23,7 +23,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from lyra.adapters.nats.jetstream_audio_consumer import JetStreamAudioConsumer
-from lyra.adapters.nats.jetstream_audio_dedup import InMemorySentSet
+from lyra.adapters.nats.jetstream_audio_dedup import KvSentSet
 from lyra.infrastructure.outbound_audio.stream_setup import (
     ensure_consumer,
     ensure_kv,
@@ -56,7 +56,7 @@ async def start_audio_consumer(
         calling ``await consumer.stop()`` in teardown.
     """
     await ensure_stream(js)
-    await ensure_kv(js)  # V1: provisioned now; T10 consumes the returned handle
+    kv = await ensure_kv(js)
 
     durable = f"outbound-audio-{platform}"
     filter_subject = f"lyra.outbound.audio.{platform}.>"
@@ -69,7 +69,7 @@ async def start_audio_consumer(
         filter_subject=filter_subject,
         send_audio=adapter.render_audio,  # type: ignore[arg-type]
         send_text=adapter.send,  # type: ignore[arg-type]
-        dedup=InMemorySentSet(),
+        dedup=KvSentSet(kv),
     )
     await consumer.start()
 

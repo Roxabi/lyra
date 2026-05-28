@@ -143,28 +143,31 @@ def _make_nats_msg(  # noqa: PLR0913
 # ===========================================================================
 
 
-def test_in_memory_sent_set_round_trip() -> None:
+@pytest.mark.anyio
+async def test_in_memory_sent_set_round_trip() -> None:
     """mark_sent + already_sent basic round-trip."""
     s = InMemorySentSet()
-    assert not s.already_sent("sid-a")
-    s.mark_sent("sid-a")
-    assert s.already_sent("sid-a")
+    assert not await s.already_sent("sid-a")
+    await s.mark_sent("sid-a")
+    assert await s.already_sent("sid-a")
 
 
-def test_in_memory_sent_set_ttl_expiry() -> None:
+@pytest.mark.anyio
+async def test_in_memory_sent_set_ttl_expiry() -> None:
     """Expired entry (past TTL) treated as not-sent."""
     s = InMemorySentSet(ttl=10.0)
-    s.mark_sent("sid-old")
+    await s.mark_sent("sid-old")
     s._sent["sid-old"] = time.monotonic() - 20.0  # backdate past TTL
-    assert not s.already_sent("sid-old")
+    assert not await s.already_sent("sid-old")
 
 
-def test_in_memory_sent_set_fifo_eviction() -> None:
+@pytest.mark.anyio
+async def test_in_memory_sent_set_fifo_eviction() -> None:
     """Oldest entry is evicted when cap is exceeded."""
     s = InMemorySentSet(max_entries=3)
     for i in range(3):
-        s.mark_sent(f"sid-{i}")
-    s.mark_sent("sid-overflow")
+        await s.mark_sent(f"sid-{i}")
+    await s.mark_sent("sid-overflow")
     assert "sid-0" not in s._sent
     assert "sid-overflow" in s._sent
     assert len(s._sent) == 3
@@ -176,12 +179,13 @@ def test_in_memory_sent_set_default_constants() -> None:
     assert DEDUP_MAX_ENTRIES == 1_000
 
 
-def test_in_memory_sent_set_different_ids_independent() -> None:
+@pytest.mark.anyio
+async def test_in_memory_sent_set_different_ids_independent() -> None:
     """Two distinct stream_ids are tracked independently."""
     s = InMemorySentSet()
-    s.mark_sent("a")
-    assert s.already_sent("a")
-    assert not s.already_sent("b")
+    await s.mark_sent("a")
+    assert await s.already_sent("a")
+    assert not await s.already_sent("b")
 
 
 # ===========================================================================
@@ -258,7 +262,7 @@ async def test_successful_send_acks_and_marks_sent() -> None:
     msg.ack.assert_awaited_once()
     msg.nak.assert_not_awaited()
     msg.term.assert_not_awaited()
-    assert consumer._dedup.already_sent(_STREAM_ID)
+    assert await consumer._dedup.already_sent(_STREAM_ID)
 
 
 @pytest.mark.anyio

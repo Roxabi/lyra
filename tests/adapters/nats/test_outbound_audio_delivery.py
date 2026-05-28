@@ -475,7 +475,8 @@ async def test_sc5_dedup_guard_deleted_would_double_send() -> None:
     # Arrange
     stream_id = "sc5-guard-verify"
     send_audio = AsyncMock()
-    consumer = _make_consumer(send_audio=send_audio)
+    dedup = InMemorySentSet()  # hold concrete type so pyright can see ._sent
+    consumer = _make_consumer(send_audio=send_audio, dedup=dedup)
 
     msg_first = _make_nats_msg(stream_id=stream_id, num_delivered_val=1)
 
@@ -483,14 +484,14 @@ async def test_sc5_dedup_guard_deleted_would_double_send() -> None:
     await consumer._process(msg_first)
 
     # Assert: mark_sent was recorded in the dedup set
-    assert consumer._dedup.already_sent(stream_id), (
+    assert await dedup.already_sent(stream_id), (
         "stream_id must be in dedup set after successful send; "
         "deleting mark_sent call would break SC5 protection"
     )
 
     # Confirm: if dedup set is bypassed (stream_id cleared), a second process
     # call WOULD invoke send_audio again — demonstrating the guard is load-bearing
-    consumer._dedup._sent.clear()  # simulate guard removal
+    dedup._sent.clear()  # simulate guard removal (InMemorySentSet internal)
     msg_redeliver = _make_nats_msg(stream_id=stream_id, num_delivered_val=2)
     await consumer._process(msg_redeliver)
 

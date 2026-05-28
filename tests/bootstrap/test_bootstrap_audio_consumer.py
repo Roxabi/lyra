@@ -18,6 +18,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from lyra.adapters.nats.jetstream_audio_dedup import KvSentSet
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -136,6 +138,10 @@ async def test_bootstrap_audio_consumer_telegram_provisions_and_starts() -> None
     # send_audio / send_text wired to adapter bound methods
     assert ctor_kwargs["send_audio"] == mock_adapter.render_audio
     assert ctor_kwargs["send_text"] == mock_adapter.send
+
+    # T10: dedup must be a KvSentSet wrapping the kv handle from ensure_kv
+    assert isinstance(ctor_kwargs["dedup"], KvSentSet)
+    assert ctor_kwargs["dedup"]._kv is mock_ensure_kv.return_value
 
     # Consumer lifecycle: started during bootstrap, stopped in teardown
     mock_consumer.start.assert_awaited_once()
@@ -291,6 +297,10 @@ async def test_bootstrap_audio_consumer_discord_provisions_and_starts() -> None:
     assert ctor_kwargs_dc["filter_subject"] == "lyra.outbound.audio.discord.>"
     assert ctor_kwargs_dc["send_audio"] == mock_adapter_dc.render_audio
     assert ctor_kwargs_dc["send_text"] == mock_adapter_dc.send
+
+    # T10: dedup must be a KvSentSet wrapping the kv handle from ensure_kv
+    assert isinstance(ctor_kwargs_dc["dedup"], KvSentSet)
+    assert ctor_kwargs_dc["dedup"]._kv is mock_ensure_kv_dc.return_value
 
     mock_consumer_dc.start.assert_awaited_once()
     mock_consumer_dc.stop.assert_awaited_once()

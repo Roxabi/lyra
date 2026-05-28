@@ -233,9 +233,7 @@ _STREAM_JSZ = {
 
 
 @pytest.mark.anyio
-async def test_consumer_lag_passes_below_threshold(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_consumer_lag_passes_below_threshold() -> None:
     """num_pending=5 < threshold=50 → passed=True."""
     from lyra.monitoring.checks_audio import check_audio_consumer_lag
 
@@ -261,9 +259,7 @@ async def test_consumer_lag_passes_below_threshold(
 
 
 @pytest.mark.anyio
-async def test_consumer_lag_fails_above_threshold(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_consumer_lag_fails_above_threshold() -> None:
     """num_pending=80 > threshold=50 → passed=False."""
     from lyra.monitoring.checks_audio import check_audio_consumer_lag
 
@@ -662,7 +658,7 @@ async def test_run_checks_includes_audio_checks(
 
     call_count: dict[str, int] = {"n": 0}
 
-    async def _mock_get(url: str, **kwargs: object) -> MagicMock:
+    async def _mock_get(url: str, **_kwargs: object) -> MagicMock:
         call_count["n"] += 1
         if "/varz" in url:
             return varz_resp

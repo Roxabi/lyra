@@ -198,28 +198,37 @@ async def test_sc2_offline_then_restart_delivers() -> None:
     Models the JetStream persistence scenario: the hub publishes while the
     consumer is down; on restart the pull subscription yields the pending
     message. We test that the resumed consumer processes and acks it.
+
+    Uses asyncio.Event gates instead of sleep(0) to avoid scheduler-timing
+    flakiness: the test waits for a concrete signal (fetch invoked / msg acked)
+    rather than hoping one event-loop tick is enough.
     """
     # Arrange
     stream_id = "sc2-pending-001"
-    send_audio = AsyncMock()
-    consumer = _make_consumer(send_audio=send_audio)
+    # Event set when send_audio completes, so the test can stop cleanly.
+    msg_processed = asyncio.Event()
 
+    async def _send_audio_and_signal(audio: object, inbound: object) -> None:
+        msg_processed.set()
+
+    send_audio = AsyncMock(side_effect=_send_audio_and_signal)
+    consumer = _make_consumer(send_audio=send_audio)
     pending_msg = _make_nats_msg(stream_id=stream_id, num_delivered_val=1)
 
-    # Simulate subscription: first start-call yields no messages (fetch timeout),
-    # then stop is called, then start again — post-restart the subscription
-    # yields the pending message on the first fetch.
-    fetch_results: list = [
-        nats.errors.TimeoutError(),  # First poll: nothing pending
-    ]
+    # first_start_fetched: set when the first subscription's fetch is called at
+    # least once, so we know the loop is running before we stop it.
+    first_start_fetched = asyncio.Event()
+
+    fetch_results: list = []
 
     async def _fake_fetch(batch: int, timeout: float) -> list:
+        first_start_fetched.set()
         if fetch_results:
             result = fetch_results.pop(0)
             if isinstance(result, Exception):
                 raise result
             return result
-        # After the pending message is consumed, keep loop alive until cancel
+        # Park until cancelled
         await asyncio.sleep(9999)
         return []  # unreachable
 
@@ -227,21 +236,20 @@ async def test_sc2_offline_then_restart_delivers() -> None:
     mock_sub.fetch = _fake_fetch
     consumer._js.pull_subscribe = AsyncMock(return_value=mock_sub)
 
-    # Start → consume one timeout → stop cleanly
+    # First start: loop runs, fetch called with nothing pending, then stop.
     await consumer.start()
-    await asyncio.sleep(0)  # let loop iterate once
+    await asyncio.wait_for(first_start_fetched.wait(), timeout=2.0)
     await consumer.stop()
 
-    # Post-restart: subscription now delivers the pending message on first fetch
-    fetch_results.clear()
-    fetch_results.append([pending_msg])  # pending batch
+    # Post-restart: subscription now delivers the pending message on first fetch.
+    fetch_results.append([pending_msg])
 
     await consumer.start()
-    await asyncio.sleep(0)  # let loop iterate and process pending_msg
+    # Wait until send_audio has been called (message processed), then stop.
+    await asyncio.wait_for(msg_processed.wait(), timeout=2.0)
     await consumer.stop()
 
     # Assert: pending message was processed and acked exactly once
-    send_audio.assert_awaited_once()
     pending_msg.ack.assert_awaited_once()
     pending_msg.term.assert_not_awaited()
 

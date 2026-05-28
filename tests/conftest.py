@@ -105,8 +105,18 @@ def pytest_configure(config: pytest.Config) -> None:
 # Audio consumer no-op (T8 bootstrap wiring) — tests/ root scope
 # ---------------------------------------------------------------------------
 
-# Files that invoke _bootstrap_adapter_standalone but do NOT explicitly mock
-# start_audio_consumer. Listed by path fragment to stay narrow.
+# Patch targets: must match where start_audio_consumer is imported in the
+# wiring modules.  If these paths move, tests that rely on this no-op will
+# start seeing real NATS calls and fail immediately — making drift visible.
+_AUDIO_CONSUMER_PATCH_TARGETS = (
+    "lyra.bootstrap.wiring.standalone_telegram.start_audio_consumer",
+    "lyra.bootstrap.wiring.standalone_discord.start_audio_consumer",
+)
+
+# Narrow allowlist: only these test-file name fragments trigger the no-op.
+# Kept as a secondary gate so that files outside tests/bootstrap/ that
+# accidentally call _bootstrap_adapter_standalone are patched rather than
+# silently hitting real NATS.
 _NOOP_AUDIO_CONSUMER_FILES = frozenset(
     [
         "test_bootstrap_credential_resolution",
@@ -115,13 +125,23 @@ _NOOP_AUDIO_CONSUMER_FILES = frozenset(
 
 
 @pytest.fixture(autouse=True)
-def _noop_audio_consumer_root(request):
+def _noop_audio_consumer_root(request: pytest.FixtureRequest) -> object:
     """Patch start_audio_consumer to a no-op for tests that call bootstrap but
     don't exercise audio consumer behaviour (T8).
 
-    Scoped to files in _NOOP_AUDIO_CONSUMER_FILES only, so the rest of the suite
-    is unaffected.  Tests in tests/bootstrap/ are handled by their own conftest.
+    Activation rules (either condition is sufficient):
+      - Test is marked with ``@pytest.mark.audio_consumer_live`` → skip patch
+        (test exercises the real consumer or applies its own inner patch).
+      - Test file name matches a fragment in _NOOP_AUDIO_CONSUMER_FILES → apply
+        the no-op patch.
+      - Otherwise → do not patch (most of the suite is unaffected).
+
+    Tests in tests/bootstrap/ are handled by their own conftest.
     """
+    if request.node.get_closest_marker("audio_consumer_live") is not None:
+        yield
+        return
+
     node_id = request.node.nodeid
     if not any(f in node_id for f in _NOOP_AUDIO_CONSUMER_FILES):
         yield
@@ -131,14 +151,8 @@ def _noop_audio_consumer_root(request):
 
     noop = AsyncMock(return_value=AsyncMock())
     with (
-        patch(
-            "lyra.bootstrap.wiring.standalone_telegram.start_audio_consumer",
-            noop,
-        ),
-        patch(
-            "lyra.bootstrap.wiring.standalone_discord.start_audio_consumer",
-            noop,
-        ),
+        patch(_AUDIO_CONSUMER_PATCH_TARGETS[0], noop),
+        patch(_AUDIO_CONSUMER_PATCH_TARGETS[1], noop),
     ):
         yield
 

@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 
 from lyra.bootstrap.factory.config import _load_circuit_config
-from lyra.bootstrap.wiring.bootstrap_wiring import _build_bot_auths
+from lyra.bootstrap.wiring.bootstrap_wiring import BotAuthDeps, _build_bot_auths
 from lyra.config import (
     DiscordBotConfig,
     TelegramBotConfig,
@@ -59,11 +59,13 @@ def build_bot_auths(
     tg_multi_cfg, dc_multi_cfg = load_multibot_config(raw_config)
 
     tg_bot_auths, dc_bot_auths = _build_bot_auths(
-        bot_store,
-        tg_multi_cfg,
-        dc_multi_cfg,
-        auth_store,
-        admin_user_ids,
+        BotAuthDeps(
+            bot_store=bot_store,
+            tg_multi_cfg=tg_multi_cfg,
+            dc_multi_cfg=dc_multi_cfg,
+            auth_store=auth_store,
+            admin_user_ids=admin_user_ids,
+        )
     )
     log.info("Authenticator: %d admin_user_id(s) configured", len(admin_user_ids))
 

@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from nats.aio.client import Client as NATS
 
-from lyra.bootstrap.factory.agent_factory import _resolve_agents
+from lyra.bootstrap.factory.agent_factory import ResolveAgentsDeps, _resolve_agents
 from lyra.bootstrap.factory.config import (
     InboundBusConfig,
     _load_cli_pool_config,
@@ -183,16 +183,18 @@ def register_agents(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — registr
     """Resolve agents from configs and register them on the hub."""
     llm_cfg = _load_llm_config(raw_config)
     all_agents = _resolve_agents(
-        agent_configs,
-        cli_pool,
-        circuit_registry,
-        msg_manager,
-        stt_service,
-        tts_service,
-        agent_store=agent_store,
-        llm_cfg=llm_cfg,
-        nats_llm_client=nats_llm_client,  # type: ignore[arg-type]  # T24 will update _resolve_agents to LlmClient
-        cli_nats_driver=cli_nats_driver,
+        ResolveAgentsDeps(
+            agent_configs=agent_configs,
+            cli_pool=cli_pool,
+            circuit_registry=circuit_registry,
+            msg_manager=msg_manager,
+            stt_service=stt_service,
+            tts_service=tts_service,
+            agent_store=agent_store,
+            llm_cfg=llm_cfg,
+            nats_llm_client=nats_llm_client,  # type: ignore[arg-type]  # T24 will update _resolve_agents to LlmClient
+            cli_nats_driver=cli_nats_driver,
+        )
     )
     for ag in all_agents.values():
         hub.register_agent(ag)

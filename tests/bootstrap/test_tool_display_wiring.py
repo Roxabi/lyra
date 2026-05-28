@@ -59,7 +59,10 @@ async def test_wired_path_threads_tool_display_config_to_telegram() -> None:
     RED trigger: wire_telegram_adapters currently does NOT pass tool_display_config=.
     T20 implements the wiring at bootstrap_wiring.py L64.
     """
-    from lyra.bootstrap.wiring.bootstrap_wiring import wire_telegram_adapters
+    from lyra.bootstrap.wiring.bootstrap_wiring import (
+        TelegramWiringDeps,
+        wire_telegram_adapters,
+    )
     from lyra.config import TelegramBotConfig
     from lyra.core.auth.authenticator import Authenticator
     from lyra.core.auth.trust import TrustLevel
@@ -96,12 +99,14 @@ async def test_wired_path_threads_tool_display_config_to_telegram() -> None:
         ),
     ):
         await wire_telegram_adapters(
-            hub=hub,
-            tg_bot_auths=[(bot_cfg, auth)],
-            bot_agent_map={("telegram", "main"): "lyra_default"},
-            circuit_registry=CircuitRegistry(),
-            msg_manager=MagicMock(),
-            tool_display_config=tool_display_cfg,
+            TelegramWiringDeps(
+                hub=hub,
+                tg_bot_auths=[(bot_cfg, auth)],
+                bot_agent_map={("telegram", "main"): "lyra_default"},
+                circuit_registry=CircuitRegistry(),
+                msg_manager=MagicMock(),
+                tool_display_config=tool_display_cfg,
+            )
         )
 
     # T20 contract: wire_telegram_adapters threads tool_display_config kwarg
@@ -127,7 +132,10 @@ async def test_wired_path_threads_tool_display_config_to_discord() -> None:
     RED until T20 adds the kwarg to the DiscordAdapter callsite in
     bootstrap_wiring.py (L170).
     """
-    from lyra.bootstrap.wiring.bootstrap_wiring import wire_discord_adapters
+    from lyra.bootstrap.wiring.bootstrap_wiring import (
+        DiscordWiringDeps,
+        wire_discord_adapters,
+    )
     from lyra.config import DiscordBotConfig
     from lyra.core.auth.authenticator import Authenticator
     from lyra.core.auth.trust import TrustLevel
@@ -171,13 +179,15 @@ async def test_wired_path_threads_tool_display_config_to_discord() -> None:
         ),
     ):
         await wire_discord_adapters(
-            hub=hub,
-            dc_bot_auths=[(bot_cfg, auth)],
-            bot_agent_map={("discord", "main"): "lyra_default"},
-            circuit_registry=CircuitRegistry(),
-            msg_manager=MagicMock(),
-            agent_store=mock_agent_store,
-            tool_display_config=loader_result,
+            DiscordWiringDeps(
+                hub=hub,
+                dc_bot_auths=[(bot_cfg, auth)],
+                bot_agent_map={("discord", "main"): "lyra_default"},
+                circuit_registry=CircuitRegistry(),
+                msg_manager=MagicMock(),
+                agent_store=mock_agent_store,
+                tool_display_config=loader_result,
+            )
         )
 
     # T20 contract: wire_discord_adapters threads tool_display_config kwarg
@@ -207,7 +217,10 @@ async def test_wired_path_with_absent_tool_display_section_uses_defaults() -> No
     RED until T20 wires the loader into wire_telegram_adapters so the kwarg is
     always populated.
     """
-    from lyra.bootstrap.wiring.bootstrap_wiring import wire_telegram_adapters
+    from lyra.bootstrap.wiring.bootstrap_wiring import (
+        TelegramWiringDeps,
+        wire_telegram_adapters,
+    )
     from lyra.config import TelegramBotConfig
     from lyra.core.auth.authenticator import Authenticator
     from lyra.core.auth.trust import TrustLevel
@@ -241,11 +254,13 @@ async def test_wired_path_with_absent_tool_display_section_uses_defaults() -> No
         ),
     ):
         await wire_telegram_adapters(
-            hub=hub,
-            tg_bot_auths=[(bot_cfg, auth)],
-            bot_agent_map={("telegram", "main"): "lyra_default"},
-            circuit_registry=CircuitRegistry(),
-            msg_manager=MagicMock(),
+            TelegramWiringDeps(
+                hub=hub,
+                tg_bot_auths=[(bot_cfg, auth)],
+                bot_agent_map={("telegram", "main"): "lyra_default"},
+                circuit_registry=CircuitRegistry(),
+                msg_manager=MagicMock(),
+            )
         )
 
     # RED: T20 must thread tool_display_cfg (default) to TelegramAdapter.

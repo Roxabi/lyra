@@ -12,6 +12,9 @@ import nats.errors
 import nats
 from lyra.bootstrap.bootstrap_stores import open_stores
 from lyra.bootstrap.factory.wiring_helpers import (
+    BuildHubDeps,
+    RegisterAgentsDeps,
+    WireAdaptersDeps,
     _build_hub,
     _init_bot_auths_and_agents,
     _init_clipool,
@@ -56,14 +59,35 @@ async def _bootstrap_unified(
                 raw_config, bundle.admin_user_ids, vault_dir, stores
             )
             voice = await _init_voice_services(nc)
-            hub = _build_hub(raw_config, bundle, voice, inbound_bus, pm, stores)
+            hub = _build_hub(BuildHubDeps(
+                raw_config=raw_config,
+                bundle=bundle,
+                voice=voice,
+                inbound_bus=inbound_bus,
+                pm=pm,
+                stores=stores,
+            ))
 
             clipool = await _init_clipool(nc, raw_config, stores)
             hub.cli_pool = None  # hub no longer holds CliPool directly
 
-            _register_agents(hub, bundle, voice, clipool, raw_config, stores)
+            _register_agents(RegisterAgentsDeps(
+                hub=hub,
+                bundle=bundle,
+                voice=voice,
+                clipool=clipool,
+                raw_config=raw_config,
+                stores=stores,
+            ))
 
-            wired = await _wire_adapters(hub, bundle, nc, stores, vault_dir, raw_config)
+            wired = await _wire_adapters(WireAdaptersDeps(
+                hub=hub,
+                bundle=bundle,
+                nc=nc,
+                stores=stores,
+                vault_dir=vault_dir,
+                raw_config=raw_config,
+            ))
 
             clipool_worker_task = await _run_clipool_worker_task(clipool.worker, nc)
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -35,27 +36,67 @@ _DEFAULT_VAULT_DIR = os.path.expanduser("~/.lyra")
 log = logging.getLogger(__name__)
 
 
-async def wire_telegram_adapters(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — wiring requires all deps
-    hub: Hub,
-    tg_bot_auths: list[tuple[TelegramBotConfig, Authenticator]],
-    bot_agent_map: dict[tuple[str, str], str],
-    circuit_registry: CircuitRegistry,
-    msg_manager: MessageManager,
-    nats_client: Any = None,
-    tool_display_config: ToolDisplayConfig | None = None,
+# ---------------------------------------------------------------------------
+# DI containers
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class TelegramWiringDeps:
+    hub: Hub
+    tg_bot_auths: list[tuple[TelegramBotConfig, Authenticator]]
+    bot_agent_map: dict[tuple[str, str], str]
+    circuit_registry: CircuitRegistry
+    msg_manager: MessageManager
+    nats_client: Any = None
+    tool_display_config: ToolDisplayConfig | None = None
+
+
+@dataclass
+class DiscordWiringDeps:
+    hub: Hub
+    dc_bot_auths: list[tuple[DiscordBotConfig, Authenticator]]
+    bot_agent_map: dict[tuple[str, str], str]
+    circuit_registry: CircuitRegistry
+    msg_manager: MessageManager
+    agent_store: AgentStore | None = None
+    vault_dir: str | None = None
+    nats_client: Any = None
+    tool_display_config: ToolDisplayConfig | None = None
+
+
+@dataclass
+class BotAuthDeps:
+    bot_store: BotStoreProtocol
+    tg_multi_cfg: TelegramMultiConfig
+    dc_multi_cfg: DiscordMultiConfig
+    auth_store: AuthStore
+    admin_user_ids: frozenset[str] = frozenset()
+    alias_store: IdentityAliasStore | None = None
+
+
+# ---------------------------------------------------------------------------
+# Wiring functions
+# ---------------------------------------------------------------------------
+
+
+async def wire_telegram_adapters(
+    deps: TelegramWiringDeps,
 ) -> tuple[list[TelegramAdapter], list[OutboundDispatcher]]:
     """Wire each Telegram bot: adapter + dispatcher + hub bindings.
 
     Returns (adapters, dispatchers) lists.
     """
     _tdc = (
-        tool_display_config if tool_display_config is not None else ToolDisplayConfig()
+        deps.tool_display_config
+        if deps.tool_display_config is not None
+        else ToolDisplayConfig()
     )
     adapters: list[TelegramAdapter] = []
     dispatchers: list[OutboundDispatcher] = []
 
-    for bot_cfg, auth in tg_bot_auths:
-        resolved_agent = bot_agent_map.get(("telegram", bot_cfg.bot_id))
+    for bot_cfg, auth in deps.tg_bot_auths:
+        resolved_agent = deps.bot_agent_map.get(("telegram", bot_cfg.bot_id))
         if resolved_agent is None:
             log.warning(
                 "telegram bot_id=%r not in bot_agent_map — skipping adapter",
@@ -70,20 +111,20 @@ async def wire_telegram_adapters(  # noqa: PLR0913 — DEBT:wiring-bootstrap-dep
         adapter = TelegramAdapter(
             bot_id=bot_cfg.bot_id,
             token=tg_token,
-            inbound_bus=hub.inbound_bus,
+            inbound_bus=deps.hub.inbound_bus,
             webhook_secret=tg_webhook_secret or "",
-            circuit_registry=circuit_registry,
-            msg_manager=msg_manager,
-            turn_store=hub._turn_store,
+            circuit_registry=deps.circuit_registry,
+            msg_manager=deps.msg_manager,
+            turn_store=deps.hub._turn_store,
             tool_display_config=_tdc,
         )
         await adapter.resolve_identity()
         # C3: Hub is the trust authority — register authenticator here, not on adapter.
-        hub.register_authenticator(Platform.TELEGRAM, bot_cfg.bot_id, auth)
-        hub.register_adapter(Platform.TELEGRAM, bot_cfg.bot_id, adapter)
+        deps.hub.register_authenticator(Platform.TELEGRAM, bot_cfg.bot_id, auth)
+        deps.hub.register_adapter(Platform.TELEGRAM, bot_cfg.bot_id, adapter)
 
         tg_key = RoutingKey(Platform.TELEGRAM, bot_cfg.bot_id, "*")
-        hub.register_binding(
+        deps.hub.register_binding(
             Platform.TELEGRAM,
             bot_cfg.bot_id,
             "*",
@@ -94,11 +135,13 @@ async def wire_telegram_adapters(  # noqa: PLR0913 — DEBT:wiring-bootstrap-dep
         dispatcher = OutboundDispatcher(
             platform_name="telegram",
             adapter=adapter,
-            circuit=circuit_registry.get("telegram"),
-            circuit_registry=circuit_registry,
+            circuit=deps.circuit_registry.get("telegram"),
+            circuit_registry=deps.circuit_registry,
             bot_id=bot_cfg.bot_id,
         )
-        hub.register_outbound_dispatcher(Platform.TELEGRAM, bot_cfg.bot_id, dispatcher)
+        deps.hub.register_outbound_dispatcher(
+            Platform.TELEGRAM, bot_cfg.bot_id, dispatcher
+        )
 
         adapters.append(adapter)
         dispatchers.append(dispatcher)
@@ -111,17 +154,7 @@ async def wire_telegram_adapters(  # noqa: PLR0913 — DEBT:wiring-bootstrap-dep
     return adapters, dispatchers
 
 
-async def wire_discord_adapters(  # noqa: PLR0913, C901 — DEBT:wiring-bootstrap-deps — wiring requires all deps
-    hub: Hub,
-    dc_bot_auths: list[tuple[DiscordBotConfig, Authenticator]],
-    bot_agent_map: dict[tuple[str, str], str],
-    circuit_registry: CircuitRegistry,
-    msg_manager: MessageManager,
-    agent_store: AgentStore | None = None,
-    vault_dir: str | None = None,
-    nats_client: Any = None,
-    tool_display_config: ToolDisplayConfig | None = None,
-) -> tuple[
+async def wire_discord_adapters(deps: DiscordWiringDeps) -> tuple[
     list[tuple[DiscordAdapter, DiscordBotConfig, str]],
     list[OutboundDispatcher],
     ThreadStore | None,
@@ -132,22 +165,26 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — DEBT:wiring-bootstra
     (adapter, bot_cfg, token) — the token is needed later for ``adapter.start()``.
     """
     _tdc = (
-        tool_display_config if tool_display_config is not None else ToolDisplayConfig()
+        deps.tool_display_config
+        if deps.tool_display_config is not None
+        else ToolDisplayConfig()
     )
     adapters: list[tuple[DiscordAdapter, DiscordBotConfig, str]] = []
     dispatchers: list[OutboundDispatcher] = []
 
     # Shared ThreadStore for all Discord adapters (#417/S4)
     # One connection to discord.db — shared across all Discord bots.
-    _vault = Path(vault_dir or os.environ.get("LYRA_VAULT_DIR", _DEFAULT_VAULT_DIR))
+    _vault = Path(
+        deps.vault_dir or os.environ.get("LYRA_VAULT_DIR", _DEFAULT_VAULT_DIR)
+    )
     thread_store: ThreadStore | None = None
-    if dc_bot_auths:
+    if deps.dc_bot_auths:
         thread_store = ThreadStore(db_path=_vault / "discord.db")
         await thread_store.connect()
 
     try:
-        for bot_cfg, auth in dc_bot_auths:
-            resolved_agent = bot_agent_map.get(("discord", bot_cfg.bot_id))
+        for bot_cfg, auth in deps.dc_bot_auths:
+            resolved_agent = deps.bot_agent_map.get(("discord", bot_cfg.bot_id))
             if resolved_agent is None:
                 log.warning(
                     "discord bot_id=%r not in bot_agent_map — skipping adapter",
@@ -158,8 +195,10 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — DEBT:wiring-bootstra
             dc_token, _ = credentials.load_bot_token("discord", bot_cfg.bot_id)
 
             watch_channels: frozenset[int] = frozenset()
-            if agent_store is not None:
-                bot_settings = agent_store.get_bot_settings("discord", bot_cfg.bot_id)
+            if deps.agent_store is not None:
+                bot_settings = deps.agent_store.get_bot_settings(
+                    "discord", bot_cfg.bot_id
+                )
 
                 def _parse_channel_ids(key: str) -> frozenset[int]:
                     raw_ids = bot_settings.get(key, [])
@@ -180,24 +219,24 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — DEBT:wiring-bootstra
 
             adapter = DiscordAdapter(
                 bot_id=bot_cfg.bot_id,
-                inbound_bus=hub.inbound_bus,
-                circuit_registry=circuit_registry,
-                msg_manager=msg_manager,
+                inbound_bus=deps.hub.inbound_bus,
+                circuit_registry=deps.circuit_registry,
+                msg_manager=deps.msg_manager,
                 auto_thread=bot_cfg.auto_thread,
                 thread_hot_hours=bot_cfg.thread_hot_hours,
                 thread_store=thread_store,
                 watch_channels=watch_channels,
-                turn_store=hub._turn_store,
+                turn_store=deps.hub._turn_store,
                 tool_display_config=_tdc,
             )
             # Wire identity resolver for slash command trust (voice commands).
-            adapter._resolve_identity_fn = hub.resolve_identity
+            adapter._resolve_identity_fn = deps.hub.resolve_identity
             # C3: Hub is the trust authority — register here, not on adapter.
-            hub.register_authenticator(Platform.DISCORD, bot_cfg.bot_id, auth)
-            hub.register_adapter(Platform.DISCORD, bot_cfg.bot_id, adapter)
+            deps.hub.register_authenticator(Platform.DISCORD, bot_cfg.bot_id, auth)
+            deps.hub.register_adapter(Platform.DISCORD, bot_cfg.bot_id, adapter)
 
             dc_key = RoutingKey(Platform.DISCORD, bot_cfg.bot_id, "*")
-            hub.register_binding(
+            deps.hub.register_binding(
                 Platform.DISCORD,
                 bot_cfg.bot_id,
                 "*",
@@ -208,11 +247,11 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — DEBT:wiring-bootstra
             dispatcher = OutboundDispatcher(
                 platform_name="discord",
                 adapter=adapter,
-                circuit=circuit_registry.get("discord"),
-                circuit_registry=circuit_registry,
+                circuit=deps.circuit_registry.get("discord"),
+                circuit_registry=deps.circuit_registry,
                 bot_id=bot_cfg.bot_id,
             )
-            hub.register_outbound_dispatcher(
+            deps.hub.register_outbound_dispatcher(
                 Platform.DISCORD, bot_cfg.bot_id, dispatcher
             )
 
@@ -232,14 +271,7 @@ async def wire_discord_adapters(  # noqa: PLR0913, C901 — DEBT:wiring-bootstra
     return adapters, dispatchers, thread_store
 
 
-def _build_bot_auths(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
-    bot_store: BotStoreProtocol,
-    tg_multi_cfg: TelegramMultiConfig,
-    dc_multi_cfg: DiscordMultiConfig,
-    auth_store: AuthStore,
-    admin_user_ids: frozenset[str] = frozenset(),
-    alias_store: IdentityAliasStore | None = None,
-) -> tuple[
+def _build_bot_auths(deps: BotAuthDeps) -> tuple[
     list[tuple[TelegramBotConfig, Authenticator]],
     list[tuple[DiscordBotConfig, Authenticator]],
 ]:
@@ -248,14 +280,14 @@ def _build_bot_auths(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
     dc_bot_auths: list[tuple[DiscordBotConfig, Authenticator]] = []
 
     try:
-        for bot_cfg in tg_multi_cfg.bots:
+        for bot_cfg in deps.tg_multi_cfg.bots:
             auth = Authenticator.from_bot_store(
                 "telegram",
                 bot_cfg.bot_id,
-                bot_store,
-                store=auth_store,
-                admin_user_ids=admin_user_ids,
-                alias_store=alias_store,
+                deps.bot_store,
+                store=deps.auth_store,
+                admin_user_ids=deps.admin_user_ids,
+                alias_store=deps.alias_store,
             )
             if auth is None:
                 log.warning(
@@ -265,14 +297,14 @@ def _build_bot_auths(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
                 continue
             tg_bot_auths.append((bot_cfg, auth))
 
-        for bot_cfg in dc_multi_cfg.bots:
+        for bot_cfg in deps.dc_multi_cfg.bots:
             auth = Authenticator.from_bot_store(
                 "discord",
                 bot_cfg.bot_id,
-                bot_store,
-                store=auth_store,
-                admin_user_ids=admin_user_ids,
-                alias_store=alias_store,
+                deps.bot_store,
+                store=deps.auth_store,
+                admin_user_ids=deps.admin_user_ids,
+                alias_store=deps.alias_store,
             )
             if auth is None:
                 log.warning(

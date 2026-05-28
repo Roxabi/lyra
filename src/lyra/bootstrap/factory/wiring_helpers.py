@@ -87,6 +87,41 @@ class CliPoolBundle:
 
 
 # ---------------------------------------------------------------------------
+# DI containers
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class BuildHubDeps:
+    raw_config: dict
+    bundle: BotAuthBundle
+    voice: VoiceBundle
+    inbound_bus: NatsBus
+    pm: PairingManager | None
+    stores: object
+
+
+@dataclass
+class RegisterAgentsDeps:
+    hub: Hub
+    bundle: BotAuthBundle
+    voice: VoiceBundle
+    clipool: CliPoolBundle
+    raw_config: dict
+    stores: object
+
+
+@dataclass
+class WireAdaptersDeps:
+    hub: Hub
+    bundle: BotAuthBundle
+    nc: nats.aio.client.Client
+    stores: object
+    vault_dir: Path
+    raw_config: dict
+
+
+# ---------------------------------------------------------------------------
 # Phase helpers
 # ---------------------------------------------------------------------------
 
@@ -137,13 +172,17 @@ async def _init_bot_auths_and_agents(
     except ValueError as exc:
         raise SystemExit(str(exc))
 
+    from lyra.bootstrap.wiring.bootstrap_wiring import BotAuthDeps
+
     tg_bot_auths, dc_bot_auths = _build_bot_auths(
-        stores.bot,
-        tg_multi_cfg,
-        dc_multi_cfg,
-        stores.auth,
-        admin_user_ids,
-        alias_store=stores.identity_alias,
+        BotAuthDeps(
+            bot_store=stores.bot,
+            tg_multi_cfg=tg_multi_cfg,
+            dc_multi_cfg=dc_multi_cfg,
+            auth_store=stores.auth,
+            admin_user_ids=admin_user_ids,
+            alias_store=stores.identity_alias,
+        )
     )
     log.info(
         "Authenticator: %d admin_user_id(s) configured",
@@ -241,21 +280,14 @@ async def _init_voice_services(
     )
 
 
-def _build_hub(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
-    raw_config: dict,
-    bundle: BotAuthBundle,
-    voice: VoiceBundle,
-    inbound_bus: NatsBus,
-    pm: PairingManager | None,
-    stores: object,
-) -> Hub:
+def _build_hub(deps: BuildHubDeps) -> Hub:
     """Construct HubConfig and Hub, wire stores and alias store."""
-    cli_pool_cfg = _load_cli_pool_config(raw_config)
-    hub_cfg = _load_hub_config(raw_config)
-    pool_cfg = _load_pool_config(raw_config)
-    debouncer_cfg = _load_debouncer_config(raw_config)
-    event_bus_cfg = _load_event_bus_config(raw_config)
-    inbound_bus_cfg = _load_inbound_bus_config(raw_config)
+    cli_pool_cfg = _load_cli_pool_config(deps.raw_config)
+    hub_cfg = _load_hub_config(deps.raw_config)
+    pool_cfg = _load_pool_config(deps.raw_config)
+    debouncer_cfg = _load_debouncer_config(deps.raw_config)
+    event_bus_cfg = _load_event_bus_config(deps.raw_config)
+    inbound_bus_cfg = _load_inbound_bus_config(deps.raw_config)
     event_bus = PipelineEventBus(maxsize=event_bus_cfg.queue_maxsize)
 
     hub_config = HubConfig(
@@ -273,28 +305,28 @@ def _build_hub(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
     )
 
     # Wire TurnPublisher + ResumePublisherAdapter before Hub construction
-    js = inbound_bus._nc.jetstream()
+    js = deps.inbound_bus._nc.jetstream()
     turn_publisher = TurnPublisher(js)
-    adapter = TurnPublisherAdapter(turn_publisher, stores.turn)
+    adapter = TurnPublisherAdapter(turn_publisher, deps.stores.turn)
 
     hub = Hub(
-        circuit_registry=bundle.circuit_registry,
-        msg_manager=bundle.msg_manager,
-        pairing_manager=pm,
-        stt=voice.stt_service,
-        tts=voice.tts_service,
-        prefs_store=stores.prefs,
+        circuit_registry=deps.bundle.circuit_registry,
+        msg_manager=deps.bundle.msg_manager,
+        pairing_manager=deps.pm,
+        stt=deps.voice.stt_service,
+        tts=deps.voice.tts_service,
+        prefs_store=deps.stores.prefs,
         event_bus=event_bus,
-        inbound_bus=inbound_bus,
+        inbound_bus=deps.inbound_bus,
         config=hub_config,
         resume_publisher=adapter,
     )
-    hub.set_turn_store(stores.turn)
-    hub.set_message_index(stores.message_index)
+    hub.set_turn_store(deps.stores.turn)
+    hub.set_message_index(deps.stores.message_index)
 
     # Wire alias_store (#472)
-    stores.prefs.set_alias_store(stores.identity_alias)
-    hub.set_alias_store(stores.identity_alias)
+    deps.stores.prefs.set_alias_store(deps.stores.identity_alias)
+    hub.set_alias_store(deps.stores.identity_alias)
     hub.set_turn_publisher(turn_publisher)
 
     return hub
@@ -337,67 +369,66 @@ async def _init_clipool(
     )
 
 
-def _register_agents(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
-    hub: Hub,
-    bundle: BotAuthBundle,
-    voice: VoiceBundle,
-    clipool: CliPoolBundle,
-    raw_config: dict,
-    stores: object,
-) -> None:
+def _register_agents(deps: RegisterAgentsDeps) -> None:
     """Resolve agents, register them on hub, wire alias stores into memory managers."""
-    llm_cfg = _load_llm_config(raw_config)
+    from lyra.bootstrap.factory.agent_factory import ResolveAgentsDeps
+
+    llm_cfg = _load_llm_config(deps.raw_config)
     all_agents = _resolve_agents(
-        bundle.agent_configs,
-        None,
-        bundle.circuit_registry,
-        bundle.msg_manager,
-        voice.stt_service,
-        voice.tts_service,
-        agent_store=stores.agent,
-        llm_cfg=llm_cfg,
-        nats_llm_client=voice.nats_llm_client,
-        cli_nats_driver=clipool.cli_nats_driver,
+        ResolveAgentsDeps(
+            agent_configs=deps.bundle.agent_configs,
+            cli_pool=None,
+            circuit_registry=deps.bundle.circuit_registry,
+            msg_manager=deps.bundle.msg_manager,
+            stt_service=deps.voice.stt_service,
+            tts_service=deps.voice.tts_service,
+            agent_store=deps.stores.agent,
+            llm_cfg=llm_cfg,
+            nats_llm_client=deps.voice.nats_llm_client,
+            cli_nats_driver=deps.clipool.cli_nats_driver,
+        )
     )
     for ag in all_agents.values():
-        hub.register_agent(ag)
+        deps.hub.register_agent(ag)
 
     # Wire alias_store into MemoryManagers (#472)
-    for agent in hub.agent_registry.values():
+    for agent in deps.hub.agent_registry.values():
         mem = getattr(agent, "_memory", None)
         if mem is not None and hasattr(mem, "set_alias_store"):
-            mem.set_alias_store(stores.identity_alias)
+            mem.set_alias_store(deps.stores.identity_alias)
 
 
-async def _wire_adapters(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — mirrors _build_hub shape
-    hub: Hub,
-    bundle: BotAuthBundle,
-    nc: nats.aio.client.Client,
-    stores: object,
-    vault_dir: Path,
-    raw_config: dict,
-) -> WiredAdapters:
+async def _wire_adapters(deps: WireAdaptersDeps) -> WiredAdapters:
     """Wire Telegram and Discord adapters."""
-    config_bundle = build_adapter_config_bundle(raw_config)
+    from lyra.bootstrap.wiring.bootstrap_wiring import (
+        DiscordWiringDeps,
+        TelegramWiringDeps,
+    )
+
+    config_bundle = build_adapter_config_bundle(deps.raw_config)
     tg_adapters, tg_dispatchers = await wire_telegram_adapters(
-        hub,
-        bundle.tg_bot_auths,
-        bundle.bot_agent_map,
-        bundle.circuit_registry,
-        bundle.msg_manager,
-        nats_client=nc,
-        tool_display_config=config_bundle.tool_display,
+        TelegramWiringDeps(
+            hub=deps.hub,
+            tg_bot_auths=deps.bundle.tg_bot_auths,
+            bot_agent_map=deps.bundle.bot_agent_map,
+            circuit_registry=deps.bundle.circuit_registry,
+            msg_manager=deps.bundle.msg_manager,
+            nats_client=deps.nc,
+            tool_display_config=config_bundle.tool_display,
+        )
     )
     dc_adapters, dc_dispatchers, dc_thread_store = await wire_discord_adapters(
-        hub,
-        bundle.dc_bot_auths,
-        bundle.bot_agent_map,
-        bundle.circuit_registry,
-        bundle.msg_manager,
-        agent_store=stores.agent,
-        vault_dir=str(vault_dir),
-        nats_client=nc,
-        tool_display_config=config_bundle.tool_display,
+        DiscordWiringDeps(
+            hub=deps.hub,
+            dc_bot_auths=deps.bundle.dc_bot_auths,
+            bot_agent_map=deps.bundle.bot_agent_map,
+            circuit_registry=deps.bundle.circuit_registry,
+            msg_manager=deps.bundle.msg_manager,
+            agent_store=deps.stores.agent,
+            vault_dir=str(deps.vault_dir),
+            nats_client=deps.nc,
+            tool_display_config=config_bundle.tool_display,
+        )
     )
     return WiredAdapters(
         tg_adapters=tg_adapters,

@@ -1,0 +1,73 @@
+---
+title: Define RunErrorRenderEvent.code taxonomy
+issue: 1113
+status: approved
+tier: F-lite
+date: 2026-05-28
+---
+
+## Problem
+
+`RunErrorRenderEvent.code: str | None = None` exists in the render-events contract
+(`src/lyra/core/messaging/render_events.py`) but is **always emitted as `None`**. It was
+added in Slice 1 of #1096 (#1098, PR #1109) as a carry-over from #1097 review N1, with a
+docstring note deferring the taxonomy to "future" work.
+
+A field that is structurally always `None` is a contract lie: clients cannot rely on it,
+readers cannot infer intent from it. Today — before any UI consumer — a populated `code`
+already pays off in logs and debugging (filter/group infra failures by category). Once a
+consumer (dashboard, AG-UI HTTP/SSE adapter, structured-error filtering) arrives, historical
+events will already be tagged. This is hygiene debt, schedulable independently of any
+downstream consumer.
+
+## Who
+
+- **Primary:** operators / developers reading logs and debugging run failures — gain a
+  categorized `code` for filtering and triage.
+- **Secondary:** future observability consumers (roxabi-dashboard, AG-UI adapter,
+  structured-error filtering) — inherit historically-tagged data with no backfill.
+
+## Constraints
+
+- Single domain: render-events messaging contract + `StreamProcessor` emit sites.
+- Finite, enumerated taxonomy (enum or `Literal`), not free-form `str`.
+- ~5–10 emit sites to propagate categorization (start: `stream_processor.py` `RunErrorRenderEvent(...)` constructors).
+- Forward-compatible wire schema must be preserved (current consumers ignore the field).
+- If the contract schema is mirrored in `roxabi-contracts`, that mirror must stay in sync.
+
+## Out of Scope
+
+- Building any consumer of the field (dashboard, AG-UI adapter, error-filtering UI).
+- Changing the wire/SCHEMA_VERSION semantics beyond populating the existing field.
+- Reworking error handling/propagation logic itself — only categorize what is already raised.
+
+## Premise Validity
+
+**Success in 6 months:** `RunErrorRenderEvent.code` emits a real value drawn from a finite
+taxonomy at every emit site; logs and debugging can filter/group by code; the "future
+taxonomy" docstring note is removed; the contract no longer lies (`code` is never `None`
+in production).
+
+**Failure in 6 months:** ≥1 production emit site still constructs
+`RunErrorRenderEvent(code=None)` after merge — observable via grep / a test assertion that
+fails if any emit path leaves `code` unset.
+
+**Simplest alternative:** Delete the `code` field outright and remove the dead weight.
+**Why not simplest:** the field is SCHEMA-version-stable and forward-valuable — populated
+today it aids debugging with no UI, and historical events get tagged before a consumer
+arrives. Deleting forfeits both the debugging value now and the zero-backfill benefit later.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (render-events messaging), no new architecture;
+design fork + ~5–10 emit sites + per-category mapping tests.
+
+Signals observed:
+- `size:F-lite` label on the issue.
+- One domain (`core/messaging` + `core/processors`), no cross-cutting changes.
+- One genuine design decision (taxonomy location) → resolved in /spec, not an unknown.
+
+## Open Design Question (→ /spec)
+
+Taxonomy home: `roxabi_contracts.errors` (alongside `KNOWN_CODES`) **vs.** `core/messaging/`.
+Drives whether `roxabi-contracts` needs a coordinated bump.

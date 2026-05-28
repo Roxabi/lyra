@@ -1,7 +1,8 @@
-"""RED-phase tests for V2 HTTP API (N1–N4) and stale-token assertion (SC-Code-5)."""
+"""Tests for V2 HTTP API (N1–N4) and stale-token assertion (SC-Code-5)."""
 
 from __future__ import annotations
 
+import hashlib
 import pathlib
 from unittest.mock import AsyncMock
 
@@ -92,9 +93,16 @@ class TestPutBlob:
         assert "size" in body
         assert "mime" in body
 
-    def test_put_returns_401_on_wrong_bearer(
-        self, client: TestClient
-    ) -> None:
+    def test_put_store_key_is_content_address(self, client: TestClient) -> None:
+        """PUT response store_key is 'sha256:<hex>' and Location matches."""
+        response = client.put("/blobs", content=_PNG_BYTES, headers=_put_headers())
+        assert response.status_code == 201
+        body = response.json()
+        expected_hex = hashlib.sha256(_PNG_BYTES).hexdigest()
+        assert body["store_key"] == f"sha256:{expected_hex}"
+        assert response.headers["location"] == f"/blobs/sha256:{expected_hex}"
+
+    def test_put_returns_401_on_wrong_bearer(self, client: TestClient) -> None:
         """PUT /blobs with wrong bearer returns 401."""
         # Arrange
         headers = {
@@ -113,9 +121,7 @@ class TestPutBlob:
 
 
 class TestGetBlob:
-    def test_get_returns_200_with_body_after_put(
-        self, client: TestClient
-    ) -> None:
+    def test_get_returns_200_with_body_after_put(self, client: TestClient) -> None:
         """PUT then GET the returned store_key; body matches uploaded bytes."""
         # Arrange — PUT first
         put_resp = client.put("/blobs", content=_PNG_BYTES, headers=_put_headers())
@@ -127,14 +133,27 @@ class TestGetBlob:
         assert response.status_code == 200
         assert response.content == _PNG_BYTES
 
-    def test_get_returns_404_when_unknown_store_key(
-        self, client: TestClient
-    ) -> None:
+    def test_get_returns_404_when_unknown_store_key(self, client: TestClient) -> None:
         """GET on a never-PUT store_key returns 404."""
-        # Arrange
-        # Act
         response = client.get("/blobs/nonexistent-key", headers=_auth_headers())
-        # Assert
+        assert response.status_code == 404
+
+    def test_put_get_roundtrip_via_sha256_wire_key(self, client: TestClient) -> None:
+        """PUT → sha256 wire key → GET returns original bytes (canonical roundtrip)."""
+        put_resp = client.put("/blobs", content=_PNG_BYTES, headers=_put_headers())
+        assert put_resp.status_code == 201
+        wire_key = put_resp.json()["store_key"]
+        expected_hex = hashlib.sha256(_PNG_BYTES).hexdigest()
+        assert wire_key == f"sha256:{expected_hex}"
+        # GET via the content-address wire key must return the original bytes.
+        get_resp = client.get(f"/blobs/{wire_key}", headers=_auth_headers())
+        assert get_resp.status_code == 200
+        assert get_resp.content == _PNG_BYTES
+
+    def test_get_returns_404_on_bogus_sha256_wire_key(self, client: TestClient) -> None:
+        """GET with a valid-prefix but non-existent sha256 key returns 404."""
+        bogus = "sha256:" + "a" * 64
+        response = client.get(f"/blobs/{bogus}", headers=_auth_headers())
         assert response.status_code == 404
 
 
@@ -144,9 +163,7 @@ class TestGetBlob:
 
 
 class TestHeadBlob:
-    def test_head_returns_200_when_exists(
-        self, client: TestClient
-    ) -> None:
+    def test_head_returns_200_when_exists(self, client: TestClient) -> None:
         """HEAD /blobs/{store_key} returns 200 with no body after a PUT."""
         # Arrange
         put_resp = client.put("/blobs", content=_PNG_BYTES, headers=_put_headers())
@@ -158,16 +175,13 @@ class TestHeadBlob:
         assert response.status_code == 200
         assert response.content == b""
 
-    def test_head_returns_404_when_unknown(
-        self, client: TestClient
-    ) -> None:
+    def test_head_returns_404_when_unknown(self, client: TestClient) -> None:
         """HEAD /blobs/{store_key} returns 404 for an unknown key."""
         # Arrange
         # Act
         response = client.head("/blobs/nonexistent-key", headers=_auth_headers())
         # Assert
         assert response.status_code == 404
-
 
     def test_head_does_not_call_store_exists(
         self, blob_root: pathlib.Path, monkeypatch: pytest.MonkeyPatch
@@ -212,9 +226,7 @@ class TestHeadBlob:
 
 
 class TestDeleteBlob:
-    def test_delete_returns_204_when_exists(
-        self, client: TestClient
-    ) -> None:
+    def test_delete_returns_204_when_exists(self, client: TestClient) -> None:
         """DELETE returns 204; subsequent HEAD returns 404."""
         # Arrange
         put_resp = client.put("/blobs", content=_PNG_BYTES, headers=_put_headers())
@@ -228,9 +240,7 @@ class TestDeleteBlob:
         head_resp = client.head(f"/blobs/{store_key}", headers=_auth_headers())
         assert head_resp.status_code == 404
 
-    def test_delete_returns_404_when_unknown(
-        self, client: TestClient
-    ) -> None:
+    def test_delete_returns_404_when_unknown(self, client: TestClient) -> None:
         """DELETE on an unknown store_key returns 404."""
         # Arrange
         # Act

@@ -99,22 +99,38 @@ other write failures via HTTP status; the audit event carries `error_code:"blob-
 Pre-read 413 enforcement (reject before loading body) is deferred: it would require
 reading `Content-Length` and enforcing before `request.body()`. V8 ships the simpler path.
 
+## Wire key semantics (content address)
+
+The HTTP wire `store_key` is `sha256:<hex>` (content address). The on-disk `store_path`
+(absolute FS path in `blobs.store_path`) is **internal only** and never emitted to callers.
+
+- **PUT** returns `store_key = "sha256:<hex>"` in the JSON body and `Location: /blobs/sha256:<hex>`.
+- **GET / HEAD / DELETE** accept `sha256:<hex>` as the path argument and resolve it to
+  `store_path` via the manifest before any FS operation.
+- Legacy `store_path` keys (absolute path, no prefix) are accepted on GET/HEAD/DELETE
+  for back-compat with any in-flight refs predating this change.
+- Key resolution lives in `src/lyra/blobstore/_keys.py` (`resolve_wire_key`), imported
+  by `_handlers.py` to keep the handler file under the 300-line gate.
+
 ## Polymorphic DELETE path
 
-URL path argument is tested against `^\d+$`:
-- Numeric → `blob_ref_id` used directly.
-- Non-numeric → SQLite `store_path` lookup to resolve `blob_ref_id`.
+URL path argument is tested in order:
+1. Numeric (`^\d+$`) → `blob_ref_id` used directly.
+2. `sha256:<hex>` prefix → content_hash lookup: `SELECT r.id FROM blob_refs WHERE r.content_hash = ? ORDER BY ingested_at DESC LIMIT 1`.
+3. Other (legacy store_path) → `store_path` JOIN lookup.
 
 Protocol signature uses `blob_ref_id`; HTTP wire identifier is `store_key`.
 
 ## HEAD handler dual lookup
 
-`handle_head` in `src/lyra/blobstore/_handlers.py` performs two sequential database lookups:
+`handle_head` performs two sequential database lookups:
 
-1. **`store_key` lookup** — primary path for callers that pass an opaque `store_key` (the wire path on disk); the handler resolves it directly via `store_path` in the manifest.
-2. **`content_hash` fallback** — secondary path for callers like `HttpBlobStore.exists` that pass a `content_hash` directly (see `packages/roxabi-blobs/CLAUDE.md §HttpBlobStore.exists` for the call shape); the symmetry between the two lookup paths is asserted via the existing inline comment at `_handlers.py:181-182`.
+1. **`store_path` lookup** — primary path for legacy keys (bare FS path).
+2. **`content_hash` fallback** — bare hex or `sha256:<hex>` prefix (prefix stripped via
+   `removeprefix`); covers `HttpBlobStore.exists` (passes content_hash directly) and
+   callers with canonical wire keys.
 
-Both `content_hash` and `store_key` must be handled because the `BlobStore` Protocol allows either opaque identifier to act as an existence key. The dual-lookup design keeps the server handler generic without requiring callers to pre-resolve which form they hold.
+≤2 SELECTs total, 0 calls to `store.exists()` (consensus T3).
 
 ## Reference pointers
 

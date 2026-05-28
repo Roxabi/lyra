@@ -16,6 +16,7 @@ import aiosqlite
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
+from lyra.blobstore._keys import resolve_delete_key, resolve_wire_key
 from roxabi_blobs import FsBlobStore
 from roxabi_blobs.errors import BlobNotFoundError, BlobWriteError
 from roxabi_contracts.audit.blobs import BlobAuditEvent
@@ -90,8 +91,7 @@ def _conn(store: FsBlobStore) -> aiosqlite.Connection:
 async def handle_put(request: Request) -> JSONResponse:
     source = request.headers.get("X-Blob-Source")
     if not source:
-        # 400s are not in audit scope for V8 (only the 5 result Literals are).
-        return JSONResponse(
+        return JSONResponse(  # 400s not in audit scope for V8
             {"detail": "X-Blob-Source header is required"}, status_code=400
         )
 
@@ -99,8 +99,7 @@ async def handle_put(request: Request) -> JSONResponse:
     platform_message_id = request.headers.get("X-Blob-Platform-Message-Id")
     filename = request.headers.get("X-Blob-Filename")
     raw_ct = request.headers.get("Content-Type", "application/octet-stream")
-    # Strip parameters: "image/png; charset=utf-8" → "image/png"
-    mime = raw_ct.split(";")[0].strip() or "application/octet-stream"
+    mime = raw_ct.split(";")[0].strip() or "application/octet-stream"  # strip params
 
     body = await request.body()
     store = _store(request)
@@ -123,11 +122,12 @@ async def handle_put(request: Request) -> JSONResponse:
         await _emit_audit(request.app, op="put", result="internal_error")
         return JSONResponse({"detail": "internal error"}, status_code=500)
 
+    wire_key = f"sha256:{ref.content_hash}"
     payload = ref.model_dump(mode="json")
-    # ref.id is populated by FsBlobStore.put via lastrowid (#1330 T8).
-    await _emit_audit(request.app, op="put", result="ok", store_key=ref.store_key)
+    payload["store_key"] = wire_key  # on-disk store_path stays internal
+    await _emit_audit(request.app, op="put", result="ok", store_key=wire_key)
     return JSONResponse(
-        payload, status_code=201, headers={"Location": f"/blobs/{ref.store_key}"}
+        payload, status_code=201, headers={"Location": f"/blobs/{wire_key}"}
     )
 
 
@@ -139,7 +139,8 @@ async def handle_put(request: Request) -> JSONResponse:
 async def handle_get(store_key: str, request: Request) -> Response:
     store = _store(request)
     try:
-        data = await store.get(store_key)
+        resolved = await resolve_wire_key(store, store_key)
+        data = await store.get(resolved)
     except BlobNotFoundError:
         await _emit_audit(
             request.app, op="get", result="not_found", store_key=store_key
@@ -153,8 +154,6 @@ async def handle_get(store_key: str, request: Request) -> Response:
         return JSONResponse({"detail": "internal error"}, status_code=500)
 
     await _emit_audit(request.app, op="get", result="ok", store_key=store_key)
-    # Returning raw bytes; per-blob mime requires an extra SQLite lookup —
-    # acceptable simplification for V8 scope.
     return Response(content=data, media_type="application/octet-stream")
 
 
@@ -178,11 +177,10 @@ async def handle_head(store_key: str, request: Request) -> Response:
         row = await cursor.fetchone()
         await cursor.close()
         if row is None:
-            # Fallback: store_key may be a content_hash (HttpBlobStore.exists passes
-            # content_hash directly — see roxabi-blobs CLAUDE.md §HttpBlobStore.exists).
+            # Fallback: content_hash form (bare hex or sha256: prefix).
             cursor2 = await conn.execute(
                 "SELECT content_hash FROM blobs WHERE content_hash = ?",
-                (store_key,),
+                (store_key.removeprefix("sha256:"),),
             )
             row = await cursor2.fetchone()
             await cursor2.close()
@@ -199,12 +197,7 @@ async def handle_head(store_key: str, request: Request) -> Response:
         )
         return Response(status_code=404)
 
-    # Row confirms existence — no need to call store.exists() (which would be a
-    # redundant 3rd DB hit). HEAD only signals existence; body is always empty.
-    # Fallback path (content_hash lookup) is preserved above: ≤2 SELECTs total,
-    # 0 calls to store.exists(). content_hash flows into the audit event so the
-    # forensic record matches the pre-collapse 3-lookup behavior.
-
+    # Row confirms existence: ≤2 SELECTs, 0 calls to store.exists() (consensus T3).
     await _emit_audit(
         request.app,
         op="exists",
@@ -231,15 +224,7 @@ async def handle_delete(key: str, request: Request) -> Response:
         except RuntimeError:
             return JSONResponse({"detail": "internal error"}, status_code=500)
         try:
-            cursor = await conn.execute(
-                "SELECT r.id FROM blob_refs r "
-                "JOIN blobs b ON r.content_hash = b.content_hash "
-                "WHERE b.store_path = ? "
-                "ORDER BY r.ingested_at DESC LIMIT 1",
-                (key,),
-            )
-            row = await cursor.fetchone()
-            await cursor.close()
+            resolved_id = await resolve_delete_key(conn, key)
         except aiosqlite.Error:
             _log.exception("DELETE /blobs/%s db lookup failed", key)
             await _emit_audit(
@@ -247,13 +232,13 @@ async def handle_delete(key: str, request: Request) -> Response:
             )
             return JSONResponse({"detail": "internal error"}, status_code=500)
 
-        if row is None:
+        if resolved_id is None:
             await _emit_audit(
                 request.app, op="delete", result="not_found", store_key=key
             )
             return JSONResponse({"detail": "blob not found"}, status_code=404)
 
-        blob_ref_id = int(row[0])
+        blob_ref_id = resolved_id
 
     # Verify existence before calling delete() (delete() silently no-ops on miss)
     try:

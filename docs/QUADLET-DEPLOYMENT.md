@@ -139,7 +139,13 @@ The tracked files `deploy/quadlet/lyra-{telegram,discord}.container.tmpl` are **
 
 End-to-end flow for adding a new bot:
 
-1. Install the Podman secret for the bot token (host-local):
+1. Add the bot to the DB (DB-first since #1415):
+   ```bash
+   lyra agent <platform> add <bot_id> --agent <agent>
+   ```
+   (Replace `<platform>` with `telegram` or `discord`.)
+
+2. Install the Podman secret for the bot token (host-local):
    ```bash
    lyra bot secret install <platform> <bot_id>
    ```
@@ -148,25 +154,13 @@ End-to-end flow for adding a new bot:
    lyra bot secret install <platform> <bot_id>-webhook
    ```
 
-2. Add the bot to `~/.lyra/config.toml`:
-   ```toml
-   [[auth.<platform>_bots]]
-   bot_id = "<bot_id>"
-   ```
-   (Replace `<platform>` with `telegram` or `discord`.)
-
-3. Seed the bot database from `config.toml` (idempotent — skips existing rows):
-   ```bash
-   lyra bot init
-   ```
-
-4. Render and restart:
+3. Render and restart:
    ```bash
    make quadlet-install
    ```
-   The target runs `lyra bot init` (re-syncs `config.toml` → `BotStore`), then `render_quadlet.py` reads from `BotStore`, generates the `Secret=` directives, writes the new Quadlet atomically, runs `systemctl --user daemon-reload`, then restarts the adapter container.
+   The target runs `lyra bot init` (idempotent re-sync of `config.toml` → `BotStore`), then `render_quadlet.py` reads from `BotStore`, generates the `Secret=` directives, writes the new Quadlet atomically, runs `systemctl --user daemon-reload`, then restarts the adapter container.
 
-5. Verify the adapter is healthy:
+4. Verify the adapter is healthy:
    ```bash
    systemctl --user status lyra-<platform>
    ```

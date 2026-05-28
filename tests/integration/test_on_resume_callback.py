@@ -46,6 +46,8 @@ def _make_hub_with_publisher(
     hub = Hub(circuit_registry=cr)
     hub._turn_publisher = turn_publisher
     hub._turn_store = turn_store
+    if turn_store is not None:
+        hub._resume_publisher = _make_mock_resume_publisher(turn_publisher, turn_store)
     return hub
 
 
@@ -54,6 +56,18 @@ def _make_mock_publisher() -> MagicMock:
     pub = MagicMock(spec=TurnPublisher)
     pub.publish_increment_resume_count = AsyncMock()
     return pub
+
+
+def _make_mock_resume_publisher(
+    publisher: TurnPublisher, store: TurnStore
+) -> MagicMock:
+    """Return a MagicMock ResumePublisherPort wrapping publisher + store."""
+    from lyra.core.ports.resume_publisher import ResumePublisherPort
+
+    rp = MagicMock(spec=ResumePublisherPort)
+    rp.publish_increment_resume_count = publisher.publish_increment_resume_count
+    rp.get_resume_count = AsyncMock(return_value=0)
+    return rp
 
 
 def _make_pool_with_resume_fn(
@@ -294,7 +308,12 @@ async def test_on_resume_fn_derives_identity_from_message(tmp_path) -> None:
 
     binding = Binding(agent_name="lyra", pool_id="telegram:main:chat:42")
     mw = MessagePrepMiddleware()
-    ctx = PipelineContext(hub=hub, binding=binding, agent=agent)
+    ctx = PipelineContext(
+        hub=hub,
+        resume_publisher=hub._resume_publisher,
+        binding=binding,
+        agent=agent,
+    )
     msg = make_inbound_message(platform="telegram", user_id="bob")
 
     async def real_next(msg, ctx):

@@ -41,9 +41,11 @@ from lyra.core.hub import Hub
 from lyra.core.hub.event_bus import PipelineEventBus
 from lyra.core.messaging.message import InboundMessage
 from lyra.infrastructure.audit import JetStreamAuditSink
+from lyra.infrastructure.resume_publisher_adapter import TurnPublisherAdapter
 from lyra.infrastructure.stores.pairing import PairingManager, set_pairing_manager
 from lyra.nats.nats_bus import NatsBus
 from lyra.nats.queue_groups import HUB_INBOUND
+from lyra.transport.turn_publisher import TurnPublisher
 
 if TYPE_CHECKING:
     import nats
@@ -287,6 +289,13 @@ def _build_hub(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
     # Wire alias_store (#472)
     stores.prefs.set_alias_store(stores.identity_alias)
     hub.set_alias_store(stores.identity_alias)
+
+    # Wire TurnPublisher + ResumePublisherAdapter
+    js = inbound_bus._nc.jetstream()
+    turn_publisher = TurnPublisher(js)
+    hub.set_turn_publisher(turn_publisher)
+    adapter = TurnPublisherAdapter(turn_publisher, stores.turn)
+    hub._resume_publisher = adapter  # type: ignore
 
     return hub
 

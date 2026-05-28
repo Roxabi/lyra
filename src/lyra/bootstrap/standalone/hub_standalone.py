@@ -163,14 +163,18 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
         hub.set_turn_store(stores.turn)
         hub.set_message_index(stores.message_index)
 
+        from lyra.infrastructure.resume_publisher_adapter import TurnPublisherAdapter
         from lyra.transport.turn_publisher import TurnPublisher
         from lyra.transport.typing_publisher import TypingPublisher
 
         js = nc.jetstream()
-        hub.set_turn_publisher(TurnPublisher(js))
+        turn_publisher = TurnPublisher(js)
+        hub.set_turn_publisher(turn_publisher)
         assert hub._turn_publisher is not None, (  # noqa: S101
             "TurnPublisher not wired — startup check failed"
         )
+        adapter = TurnPublisherAdapter(turn_publisher, stores.turn)
+        hub._resume_publisher = adapter
 
         # T1: instantiate TypingPublisher (flag-off no-op via LYRA_TYPING_ENABLED).
         # T2 will wire it into Pool.process_one() scope contexts.

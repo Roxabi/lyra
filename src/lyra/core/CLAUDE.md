@@ -82,3 +82,4 @@ Non-obvious: `messaging/events.py` defines `LlmEvent` (placed in `core/`, not `l
 - ¬add platform-specific code to `core/` — belongs in `adapters/`
 - ¬construct pool ID strings manually — use `RoutingKey.to_pool_id()`
 - ¬create nested CLAUDE.md inside subdirs — this file covers all of `core/`
+- ¬add new concrete setters to Hub without a `core/ports/` protocol

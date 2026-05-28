@@ -214,21 +214,20 @@ class TestCreatePool:
         hub = _make_hub()
         publisher = MagicMock()
         publisher.publish_increment_resume_count = AsyncMock()
-        hub._turn_publisher = publisher
+        publisher.get_resume_count = AsyncMock(return_value=0)
         agent = hub.agent_registry["lyra"]
         binding = Binding(agent_name="lyra", pool_id="telegram:main:chat:42")
         mw = MessagePrepMiddleware()
-        ctx = PipelineContext(hub=hub, binding=binding, agent=agent)
+        ctx = PipelineContext(
+            hub=hub, binding=binding, agent=agent, resume_publisher=publisher
+        )
         msg = make_inbound_message()
 
         await mw(msg, ctx, _make_next())
 
         assert ctx.pool is not None
         await ctx.pool._on_resume_fn("test-session-id")  # type: ignore[attr-defined]
-        # _make_hub() leaves hub._turn_store=None → closure skips store-read
-        # → current=0 → target_count = current + 1 = 1. trace_id == session_id
-        # by design in this middleware: the closure derives trace_id from the
-        # session_id argument (see MessagePrepMiddleware._make_on_resume_fn).
+        publisher.get_resume_count.assert_awaited_once_with("test-session-id")
         publisher.publish_increment_resume_count.assert_awaited_once_with(
             pool_id="telegram:main:chat:42",
             session_id="test-session-id",

@@ -21,6 +21,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Protocol
 
+from lyra.core.ports.resume_publisher import ResumePublisherPort
+
 from ...agent import AgentBase
 from ...messaging.message import InboundMessage
 from ...pool import Pool
@@ -47,6 +49,7 @@ class PipelineContext:
     """Mutable routing context accumulated as middleware runs."""
 
     hub: Hub
+    resume_publisher: ResumePublisherPort | None = None
     key: RoutingKey | None = None
     binding: Binding | None = None
     agent: AgentBase | None = None
@@ -102,11 +105,13 @@ class MiddlewarePipeline:
         middlewares: list[PipelineMiddleware],
         hub: Hub,
         *,
+        resume_publisher: ResumePublisherPort | None = None,
         trace_hook: TraceHook | None = None,
         event_bus: PipelineEventBus | None = None,
     ) -> None:
         self._middlewares = middlewares
         self._hub = hub
+        self._resume_publisher = resume_publisher
         self._trace_hook = trace_hook
         self._event_bus = event_bus
 
@@ -114,6 +119,7 @@ class MiddlewarePipeline:
         """Route *msg* through the middleware chain."""
         ctx = PipelineContext(
             hub=self._hub,
+            resume_publisher=self._resume_publisher,
             trace_hook=self._trace_hook,
             event_bus=self._event_bus,
         )
@@ -166,6 +172,7 @@ class MiddlewarePipeline:
 def build_default_pipeline(
     hub: Hub,
     *,
+    resume_publisher: ResumePublisherPort | None = None,
     trace_hook: TraceHook | None = None,
     event_bus: PipelineEventBus | None = None,
 ) -> MiddlewarePipeline:
@@ -197,6 +204,7 @@ def build_default_pipeline(
             SubmitToPoolMiddleware(),
         ],
         hub,
+        resume_publisher=resume_publisher,
         trace_hook=trace_hook,
         event_bus=event_bus,
     )

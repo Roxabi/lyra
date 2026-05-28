@@ -119,10 +119,10 @@ class TestPublishesKeepaliveDuringIdle:
         proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
         inbound = _make_inbound("msg-idle")
 
-        # Events iterator that sleeps for 5 * interval before yielding anything,
+        # Events iterator that sleeps for 10 * interval before yielding anything,
         # simulating an LLM tool-call that takes a while.
         async def _slow_events() -> AsyncIterator:
-            await asyncio.sleep(5 * fast_interval)
+            await asyncio.sleep(10 * fast_interval)
             # Yield nothing — keepalives should have fired before this returns
             return
             yield  # make it an async generator

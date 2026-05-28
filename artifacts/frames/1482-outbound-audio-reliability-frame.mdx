@@ -1,0 +1,57 @@
+---
+title: Fiabilité outbound audio — livraison garantie + ack user
+issue: 1482
+status: approved
+tier: F-full
+date: 2026-05-28
+---
+
+## Problem
+
+The hub publishes outbound audio events via core NATS (at-most-once delivery). A network glitch on the subscriber side results in silent loss — the user receives neither audio nor any error notification.
+
+Confirmed causal chain:
+- Hub publishes to `lyra.outbound.telegram.<bot_id>` — local publish succeeds (log shows "dispatched"), but core NATS provides no delivery guarantee.
+- Telegram adapter: if TCP connection glitches, the event is never received.
+- BlobStore: no GET for the store_key means the audio is never played.
+- User: no audio, no error message — completely silent failure.
+
+Design gap: no delivery guarantee (no JetStream / ack / redelivery), no user notification on final failure.
+
+## Who
+
+- **Primary:** End users receiving audio responses from the AI agent (Telegram and Discord).
+- **Secondary:** Developers and operators debugging silent failures; currently no signal in logs correlates "dispatched" with "played".
+
+## Constraints
+
+- Must use NATS JetStream (already available in the stack, used for other persistent topics).
+- Must work across both Telegram and Discord adapters with a unified mechanism.
+- Must not block the outbound pipeline indefinitely — bounded retry with backoff.
+- Must not duplicate audio playback (idempotent delivery or at-least-once with deduplication).
+- Must maintain backward compatibility with existing at-most-once consumers during transition.
+
+## Out of Scope
+
+- Inbound audio reliability (voice messages → STT) — separate concern.
+- Changes to the TTS generation pipeline or audio format.
+- Real-time delivery latency guarantees (this is about reliability, not speed).
+- Client-side retry logic (adapter-side only).
+
+## Premise Validity
+
+**Success in 6 months:** Outbound audio events have delivery guarantee (JetStream persistence + explicit ack + retry with backoff). Zero silent loss in production logs. User receives a text fallback notification if audio delivery fails after all retries. Same mechanism across Telegram and Discord.
+
+**Failure in 6 months:** Production logs still show "audio dispatched but never played" silent loss events at the current rate. Or: retry mechanism exists but users still report "no audio + no error" because final-failure notification is not implemented.
+
+**Simplest alternative:** Switch outbound topics from NATS core to JetStream (persistent + redelivery) without explicit ack or user notification.
+**Why not simplest:** JetStream redelivery alone only covers transient subscriber disconnects. It doesn't handle the subscriber receiving the message but failing to process it (e.g., Telegram API rate limit, blobstore fetch failure, malformed audio). Without explicit ack + retry + user notification, silent loss persists on non-network failures.
+
+## Complexity
+
+**Tier: F-full** — Multi-domain change touching NATS transport layer (JetStream topics, ack/retry protocol), outbound pipeline (error handling, retry state), and both Telegram and Discord adapters (failure notification, user-facing fallback). Requires new patterns for delivery guarantee and cross-platform error notification.
+
+Signals observed:
+- Multiple domains: transport (`src/lyra/transport/`, `packages/roxabi-nats/`), outbound (`src/lyra/outbound/`), adapters (`src/lyra/adapters/telegram/`, `src/lyra/adapters/discord/`)
+- New pattern: explicit ack + retry with backoff on outbound audio delivery
+- Unknowns: JetStream consumer configuration for at-least-once without duplication, backoff strategy, failure notification format

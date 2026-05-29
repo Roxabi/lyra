@@ -142,6 +142,25 @@ forbidden_modules =
     lyra.infrastructure.stores.bot_store
 allow_indirect_imports = true
 
+[importlinter:contract:inbound-no-adapters]
+name = inbound stages must not import adapters (stage-axis invariant, ADR-073 / #1287)
+type = forbidden
+source_modules =
+    lyra.inbound
+forbidden_modules =
+    lyra.adapters
+allow_indirect_imports = true
+ignore_imports =
+    # DEBT:inbound-adapters-transition (#1287) — stage→shared coupling pending relocation
+    # of push_to_hub_guarded + shared types to lyra.core/lyra.shared (deferred; see #1283 Phase 6).
+    lyra.inbound.dispatcher -> lyra.adapters.shared._shared
+    lyra.inbound.context -> lyra.adapters.shared._shared
+    lyra.inbound.context -> lyra.adapters.shared.outbound_listener
+    # DEBT:inbound-adapters-wireparser (#1287) — wire parsers reference concrete adapter
+    # classes under TYPE_CHECKING only (platform-parser coupling, separate concern).
+    lyra.inbound.wire_parser_telegram -> lyra.adapters.telegram.telegram
+    lyra.inbound.wire_parser_discord -> lyra.adapters.discord.adapter
+
 [importlinter:contract:tests-fakes-isolation]
 name = Production code must not import tests.fakes
 type = forbidden

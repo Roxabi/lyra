@@ -14,6 +14,7 @@ from lyra.core.auth.trust import (
 )
 from lyra.core.hub.hub import Hub
 from lyra.core.messaging.message import Platform
+from tests.conftest import _LOAD_BOT_TOKEN_PATH
 
 # ---------------------------------------------------------------------------
 # Finding I: wire_telegram_adapters registers the authenticator on the hub
@@ -53,7 +54,7 @@ async def test_wire_telegram_adapters_registers_authenticator() -> None:
             return_value=mock_adapter_instance,
         ),
         patch(
-            "lyra.bootstrap.credentials.load_bot_token",
+            _LOAD_BOT_TOKEN_PATH,
             return_value=("fake-token", "fake-secret"),
         ),
     ):
@@ -100,7 +101,7 @@ async def test_wire_telegram_no_nats_listener_in_dev_mode() -> None:
             return_value=mock_adapter_instance,
         ),
         patch(
-            "lyra.bootstrap.credentials.load_bot_token",
+            _LOAD_BOT_TOKEN_PATH,
             return_value=("fake-token", "fake-secret"),
         ),
     ):

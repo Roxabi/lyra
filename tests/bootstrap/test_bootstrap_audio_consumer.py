@@ -21,6 +21,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.conftest import _LOAD_BOT_TOKEN_PATH
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -39,7 +41,7 @@ def _make_raw_config(platform: str) -> dict:
 def _cred_patch(token: str = "tok", webhook: str = "") -> tuple:
     return (
         patch(
-            "lyra.bootstrap.credentials.load_bot_token",
+            _LOAD_BOT_TOKEN_PATH,
             return_value=(token, webhook or None),
         ),
     )

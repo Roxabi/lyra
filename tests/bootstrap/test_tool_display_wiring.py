@@ -20,6 +20,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from lyra.bootstrap.factory.config import _load_tool_display_config
+from tests.conftest import _LOAD_BOT_TOKEN_PATH
 
 # ---------------------------------------------------------------------------
 # Helper — minimal raw_config dicts
@@ -97,7 +98,7 @@ async def test_wired_path_threads_tool_display_config_to_telegram() -> None:
             side_effect=_capture_adapter,
         ),
         patch(
-            "lyra.bootstrap.credentials.load_bot_token",
+            _LOAD_BOT_TOKEN_PATH,
             return_value=("fake-token", None),
         ),
     ):
@@ -179,7 +180,7 @@ async def test_wired_path_threads_tool_display_config_to_discord() -> None:
             side_effect=_capture_discord_adapter,
         ),
         patch(
-            "lyra.bootstrap.credentials.load_bot_token",
+            _LOAD_BOT_TOKEN_PATH,
             return_value=("dc-token", None),
         ),
         patch(
@@ -265,7 +266,7 @@ async def test_wired_path_with_absent_tool_display_section_uses_defaults() -> No
             side_effect=_capture_adapter,
         ),
         patch(
-            "lyra.bootstrap.credentials.load_bot_token",
+            _LOAD_BOT_TOKEN_PATH,
             return_value=("fake-token", None),
         ),
     ):
@@ -365,7 +366,7 @@ async def test_standalone_path_threads_tool_display_config_to_telegram() -> None
             AsyncMock(return_value=True),
         ),
         patch(
-            "lyra.bootstrap.credentials.load_bot_token",
+            _LOAD_BOT_TOKEN_PATH,
             return_value=("test-token", None),
         ),
         patch(
@@ -472,7 +473,7 @@ async def test_standalone_path_threads_tool_display_config_to_discord() -> None:
             AsyncMock(return_value=True),
         ),
         patch(
-            "lyra.bootstrap.credentials.load_bot_token",
+            _LOAD_BOT_TOKEN_PATH,
             return_value=("test-token", None),
         ),
         patch(

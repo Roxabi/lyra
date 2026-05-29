@@ -15,6 +15,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.conftest import _LOAD_BOT_TOKEN_PATH
+
 
 @pytest.fixture()
 def config_file(tmp_path: Path) -> Path:
@@ -56,7 +58,7 @@ class TestRegisterAll:
 
         with (
             patch(
-                "lyra.bootstrap.credentials.load_bot_token",
+                _LOAD_BOT_TOKEN_PATH,
                 return_value=("fake_token", "fake_secret"),
             ),
             patch(
@@ -87,7 +89,7 @@ class TestRegisterAll:
         # Should not raise — prints message and returns
         with (
             patch(
-                "lyra.bootstrap.credentials.load_bot_token",
+                _LOAD_BOT_TOKEN_PATH,
                 return_value=(MagicMock(), None),
             ),
             patch(
@@ -112,7 +114,7 @@ class TestRegisterAll:
 
         with (
             patch(
-                "lyra.bootstrap.credentials.load_bot_token",
+                _LOAD_BOT_TOKEN_PATH,
                 side_effect=MissingCredentialsError("telegram", "test_bot"),
             ),
             patch(
@@ -134,7 +136,7 @@ class TestRegisterAll:
 
         with (
             patch(
-                "lyra.bootstrap.credentials.load_bot_token",
+                _LOAD_BOT_TOKEN_PATH,
                 return_value=("fake_token", "fake_secret"),
             ),
             patch(

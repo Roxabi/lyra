@@ -31,6 +31,7 @@ __all__ = [
     "_FakeDcAdapter",
     "_FakeDp",
     "_FakeTgAdapter",
+    "_LOAD_BOT_TOKEN_PATH",
     "_patch_nats_stubs",
     "_reset_version_check_log_state",
     "make_fake_stores",
@@ -38,6 +39,13 @@ __all__ = [
     "patch_auth_config_test",
     "patch_bootstrap_common",
 ]
+
+# ---------------------------------------------------------------------------
+# Patch-path constants — centralised so a future relocation of load_bot_token
+# is a one-line change here rather than a grep-across-13-files exercise.
+# ---------------------------------------------------------------------------
+
+_LOAD_BOT_TOKEN_PATH = "lyra.bootstrap.credentials.load_bot_token"
 
 # ---------------------------------------------------------------------------
 # Health endpoint shared constants

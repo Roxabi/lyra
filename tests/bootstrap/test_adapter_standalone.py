@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.conftest import _LOAD_BOT_TOKEN_PATH
+
 
 def _make_raw_config(platform: str) -> dict:
     if platform == "telegram":
@@ -24,7 +26,7 @@ def _cred_store_patches(token: str, webhook_secret: str = "") -> tuple:
     webhook: str | None = webhook_secret if webhook_secret else None
     return (
         patch(
-            "lyra.bootstrap.credentials.load_bot_token",
+            _LOAD_BOT_TOKEN_PATH,
             return_value=(token, webhook),
         ),
     )

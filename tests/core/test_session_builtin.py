@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -9,6 +10,7 @@ import pytest
 from lyra.core.commands import session_commands
 from lyra.core.messaging.message import Response
 from lyra.core.pool import Pool
+from lyra.core.stores.turn_store_protocol import SessionRow
 from lyra.infrastructure.stores.turn_store import TurnStore
 
 from .conftest import make_message
@@ -251,15 +253,18 @@ class TestFormatHelpers:
         )
 
     def test_format_list_marks_active_only(self) -> None:
-        rows = [
-            {**_ROW_PING, "session_id": "s1", "cli_session_id": "cli-1"},
-            {
-                **_ROW_PING,
-                "session_id": "s2",
-                "cli_session_id": "cli-2",
-                "first_user_msg": "older",
-            },
-        ]
+        rows = cast(
+            list[SessionRow],
+            [
+                {**_ROW_PING, "session_id": "s1", "cli_session_id": "cli-1"},
+                {
+                    **_ROW_PING,
+                    "session_id": "s2",
+                    "cli_session_id": "cli-2",
+                    "first_user_msg": "older",
+                },
+            ],
+        )
         body = session_commands._format_list(rows, current_cli="cli-2")
         assert "► 2." in body
         assert "► 1." not in body

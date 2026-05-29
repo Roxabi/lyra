@@ -56,7 +56,7 @@ protocol structurally (`@runtime_checkable`), so no call-site changes are needed
 ## Consequences
 
 **Positive:**
-- Layering inversion eliminated — `core/` no longer imports from `infrastructure/`
+- Layering inversion eliminated for `pool/` consumers — `pool.py` and `pool_observer.py` no longer import from `infrastructure/` (5 hub/cli TYPE_CHECKING exemptions remain in `.importlinter`; tracked separately)
 - `TurnStoreProtocol` is now swappable for testing (in-memory stub, NATS-backed future impl)
 - Consistent with the existing `AgentStoreProtocol` / `BotStoreProtocol` / `ThreadStoreProtocol` pattern
 

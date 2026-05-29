@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     import aiosqlite
 
+    from lyra.core.stores.turn_store_protocol import SessionRow, TurnRow
+
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -153,7 +155,7 @@ _LIST_SESSIONS_COLS = (
 
 async def list_sessions_for_pool(
     db: aiosqlite.Connection, pool_id: str, limit: int = 5
-) -> list[dict]:
+) -> list[SessionRow]:
     """Return up to *limit* recent sessions for *pool_id*, newest first.
 
     Each row pulls the first user message and total turn count via correlated
@@ -167,12 +169,12 @@ async def list_sessions_for_pool(
     except sqlite3.Error:
         log.exception("list_sessions_for_pool failed (pool=%s)", pool_id)
         return []
-    return [dict(zip(_LIST_SESSIONS_COLS, row)) for row in rows]
+    return [SessionRow(**dict(zip(_LIST_SESSIONS_COLS, row))) for row in rows]
 
 
 async def get_turns(
     db: aiosqlite.Connection, pool_id: str, user_id: str, limit: int = 50
-) -> list[dict]:
+) -> list[TurnRow]:
     """Return the last *limit* turns for *pool_id* and *user_id*, newest first.
 
     *limit* is silently capped at 500 to guard against runaway reads.
@@ -192,11 +194,11 @@ async def get_turns(
     limit = min(limit, 500)  # guard against runaway reads
     async with db.execute(_SELECT_BY_POOL, (pool_id, user_id, limit)) as cur:
         rows = await cur.fetchall()
-    result = []
+    result: list[TurnRow] = []
     for row in rows:
         d = dict(zip(_COLS, row))
         d["metadata"] = json.loads(d["metadata"] or "{}")
-        result.append(d)
+        result.append(TurnRow(**d))
     return result
 
 

@@ -14,7 +14,10 @@ import json
 import logging
 import sqlite3
 from datetime import UTC, datetime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
+
+if TYPE_CHECKING:
+    from lyra.core.stores.turn_store_protocol import TurnRow
 
 from lyra.infrastructure.stores.sqlite_base import SqliteStore
 from lyra.infrastructure.stores.turn_store_session import TurnStoreSessionMixin
@@ -220,7 +223,7 @@ class TurnStore(SqliteStore, TurnStoreSessionMixin):
 
     async def get_turns(
         self, pool_id: str, user_id: str, limit: int = 50
-    ) -> list[dict]:
+    ) -> list[TurnRow]:
         """Return the last *limit* turns for *pool_id* and *user_id*, newest first.
 
         *limit* is silently capped at 500 to guard against runaway reads.

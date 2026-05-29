@@ -11,9 +11,35 @@ can be wired in transparently.
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import Protocol, TypedDict, runtime_checkable
 
-__all__ = ["TurnStoreProtocol"]
+__all__ = ["SessionRow", "TurnRow", "TurnStoreProtocol"]
+
+
+class TurnRow(TypedDict):
+    """One row from the ``conversation_turns`` table."""
+
+    id: int
+    pool_id: str
+    session_id: str
+    role: str
+    platform: str
+    user_id: str
+    content: str
+    message_id: str | None
+    reply_message_id: str | None
+    timestamp: str
+    metadata: dict
+
+
+class SessionRow(TypedDict):
+    """One row from ``list_sessions`` — session summary with first message."""
+
+    session_id: str
+    cli_session_id: str | None
+    last_active_at: str
+    first_user_msg: str | None
+    turn_count: int
 
 
 @runtime_checkable
@@ -28,11 +54,11 @@ class TurnStoreProtocol(Protocol):
 
     async def get_turns(
         self, pool_id: str, user_id: str, limit: int = 50
-    ) -> list[dict]: ...
+    ) -> list[TurnRow]: ...
 
     async def list_sessions(
         self, pool_id: str, limit: int = 5
-    ) -> list[dict]: ...
+    ) -> list[SessionRow]: ...
 
     async def get_cli_session(self, session_id: str) -> str | None: ...
 

@@ -36,7 +36,6 @@ if TYPE_CHECKING:
     from lyra.infrastructure.stores.message_index import MessageIndex
     from lyra.infrastructure.stores.pairing import PairingManager
     from lyra.infrastructure.stores.prefs_store import PrefsStore
-    from lyra.infrastructure.stores.turn_store import TurnStore
     from lyra.transport.turn_publisher import TurnPublisher
     from lyra.transport.typing_publisher import TypingPublisher
 
@@ -109,7 +108,8 @@ class Hub(
         self._start_time: float = time.monotonic()
         self._memory: MemoryManager | None = None
         self._memory_tasks: set[asyncio.Task] = set()
-        self._turn_store: TurnStore | None = None
+        # _turn_store: TurnStoreProtocol | None — declared by HubShutdownMixin
+        self._turn_store = None
         self._turn_publisher: TurnPublisher | None = None
         self._resume_publisher: ResumePublisherPort | None = resume_publisher
         # T1 — typing-plane publisher; wired by bootstrap, consumed by T2.

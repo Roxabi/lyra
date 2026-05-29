@@ -291,6 +291,9 @@ async def test_build_streaming_noop_on_non_telegram_msg() -> None:
     with pytest.raises(ValueError, match="invalid inbound message"):
         await formatter.send_placeholder()
 
+    with pytest.raises(ValueError):
+        await formatter.send_trace_placeholder()
+
 
 @pytest.mark.asyncio
 async def test_streaming_send_placeholder_with_reply() -> None:

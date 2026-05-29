@@ -27,6 +27,7 @@ from lyra.core.messaging.render_events import (
     TextEndRenderEvent,
 )
 from lyra.outbound.emitter import OutboundEmitter as StreamingSession
+from lyra.outbound.throttle import ThrottleCapability
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -297,6 +298,56 @@ async def test_typing_tail_final():
         )
     )
     # No assertion on typing — ThrottleCapability is separate from formatter
+
+
+@pytest.mark.asyncio
+async def test_typing_tail_intermediate_calls_throttle_start() -> None:
+    """intermediate=True turn → ThrottleCapability.start_typing awaited once."""
+    # Arrange
+    typing = AsyncMock(spec=ThrottleCapability)
+    typing.edit_interval_s = 1.0
+    fmt = _make_formatter()
+    outbound = OutboundMessage.from_text("x")
+    outbound.intermediate = True
+
+    session = StreamingSession(fmt, outbound=outbound, typing=typing, typing_scope_id=7)
+
+    # Act
+    await session.run(
+        _events(
+            TextDeltaRenderEvent(message_id="msg1", delta="hi"),
+            TextEndRenderEvent(message_id="msg1"),
+        )
+    )
+
+    # Assert — _handle_typing_tail calls start_typing(scope_id) for intermediate turns
+    typing.start_typing.assert_awaited_once_with(7)
+    typing.cancel_typing.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_typing_tail_final_calls_throttle_cancel() -> None:
+    """non-intermediate turn → ThrottleCapability.cancel_typing awaited once."""
+    # Arrange
+    typing = AsyncMock(spec=ThrottleCapability)
+    typing.edit_interval_s = 1.0
+    fmt = _make_formatter()
+    outbound = OutboundMessage.from_text("x")
+    outbound.intermediate = False
+
+    session = StreamingSession(fmt, outbound=outbound, typing=typing, typing_scope_id=7)
+
+    # Act
+    await session.run(
+        _events(
+            TextDeltaRenderEvent(message_id="msg1", delta="hi"),
+            TextEndRenderEvent(message_id="msg1"),
+        )
+    )
+
+    # Assert — _handle_typing_tail calls cancel_typing(scope_id) for final turns
+    typing.cancel_typing.assert_awaited_once_with(7)
+    typing.start_typing.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------

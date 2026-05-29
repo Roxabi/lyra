@@ -226,7 +226,7 @@ class TestOutboundAdapterBaseSendStreaming:
         await adapter.send_streaming(original_msg, _events(), outbound=outbound)
 
         # Assert — OutboundEmitter should have stored the placeholder message id
-        assert "reply_message_id" in outbound.metadata
+        assert outbound.metadata["reply_message_id"] == 42
 
     async def test_send_streaming_calls_make_emitter_exactly_once(self) -> None:
         """send_streaming() must call _make_emitter() exactly once.

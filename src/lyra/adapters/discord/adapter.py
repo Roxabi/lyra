@@ -57,51 +57,6 @@ from lyra.core.messaging.messages import MessageManager
 log = logging.getLogger(__name__)
 
 
-class _BadDiscordFormatter:
-    """Noop/error formatter for _make_emitter when inbound validation fails."""
-
-    def placeholder_text(self) -> str:
-        return "…"
-
-    def chunk(self, text: str) -> list[str]:
-        return [text]
-
-    def render_text(self, text: str) -> list[str]:
-        return [text]
-
-    def render_buttons(self, buttons: Any) -> Any:
-        return buttons
-
-    def dim_italic(self, text: str) -> str:
-        return text
-
-    def get_msg(self, key: str, fallback: str) -> str:
-        return fallback
-
-    async def send_placeholder(self) -> tuple[None, None]:
-        raise ValueError("not a discord message")
-
-    async def edit_placeholder_text(self, ph: Any, text: str) -> None:
-        pass
-
-    async def send_trace_placeholder(self) -> tuple[None, None]:
-        raise ValueError("not a discord message")
-
-    async def send_message(self, text: str) -> None:
-        return None
-
-    async def send_fallback(self, text: str) -> None:
-        return None
-
-    async def edit_reasoning(self, trace_obj: Any, event: Any) -> None:
-        pass
-
-    async def edit_tool_recap(
-        self, trace_obj: Any, lines: list[str], done: bool
-    ) -> None:
-        pass
-
-
 # ── Typing plane (#1376) — module-level resolver for AC8 ─────────────────
 from lyra.transport.work_scope import WorkScope  # noqa: E402
 
@@ -294,10 +249,11 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         from lyra.adapters.discord.discord_formatting import _validate_inbound
         from lyra.outbound.emitter import OutboundEmitter
         from lyra.outbound.error_handler import OutboundErrorHandler
+        from lyra.outbound.formatter import BadFormatter
 
         meta = _validate_inbound(original_msg, "_make_emitter")
         if meta is None:
-            return OutboundEmitter(_BadDiscordFormatter(), outbound)
+            return OutboundEmitter(BadFormatter("not a discord message"), outbound)
 
         channel_id, thread_id, message_id = meta
         send_to_id = thread_id if thread_id is not None else channel_id

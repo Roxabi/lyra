@@ -471,6 +471,9 @@ async def test_build_streaming_noop_on_non_discord_msg() -> None:
     with pytest.raises(ValueError, match="not a discord message"):
         await formatter.send_placeholder()
 
+    with pytest.raises(ValueError, match="not a discord message"):
+        await formatter.send_trace_placeholder()
+
 
 @pytest.mark.asyncio
 async def test_streaming_edit_placeholder_text() -> None:

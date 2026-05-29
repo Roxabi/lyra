@@ -157,7 +157,7 @@ class TestDiscordReasoningRendering:
                 return window
 
         with patch(
-            "lyra.adapters.discord.discord_formatter.time.monotonic",
+            "lyra.outbound._reasoning_accum.time.monotonic",
             side_effect=fake_monotonic,
         ):
             # Act — session supplies trace_obj (post-#1214 contract).

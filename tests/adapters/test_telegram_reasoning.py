@@ -143,7 +143,7 @@ class TestTelegramReasoningRendering:
                 return window
 
         with patch(
-            "lyra.adapters.telegram.telegram_formatter.time.monotonic",
+            "lyra.outbound._reasoning_accum.time.monotonic",
             side_effect=fake_monotonic,
         ):
             # Act — session pre-supplies trace_obj (non-None) as per new contract

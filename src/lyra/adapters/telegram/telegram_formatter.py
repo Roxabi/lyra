@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from typing import TYPE_CHECKING, Any
 
 from aiogram.exceptions import TelegramAPIError
@@ -14,7 +13,7 @@ from lyra.core.messaging.render_events import (
     ReasoningEndRenderEvent,
     ReasoningStartRenderEvent,
 )
-from lyra.outbound.throttle import STREAMING_EDIT_INTERVAL
+from lyra.outbound._reasoning_accum import ReasoningAccumulator
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -47,8 +46,7 @@ class TelegramFormatter:
         self._get_msg = get_msg
         self._placeholder_text = placeholder_text
         self._reply_to = reply_to
-        self._reasoning_accum: str = ""
-        self._last_reasoning_edit: float | None = None
+        self._reasoning = ReasoningAccumulator()
 
     def placeholder_text(self) -> str:
         return self._placeholder_text
@@ -158,35 +156,11 @@ class TelegramFormatter:
 
         trace_obj=None means placeholder send failed — bail silently.
         """
-        if isinstance(event, ReasoningStartRenderEvent):
-            if trace_obj is None:
-                return
-            self._reasoning_accum = ""
-            self._last_reasoning_edit = None
-
-        elif isinstance(event, ReasoningDeltaRenderEvent):
-            if trace_obj is None:
-                return
-            self._reasoning_accum += event.delta
-            truncated = self._reasoning_accum
-            if len(truncated) > 120:
-                truncated = truncated[:117] + "…"
-            now = time.monotonic()
-            if (
-                self._last_reasoning_edit is None
-                or (now - self._last_reasoning_edit) >= STREAMING_EDIT_INTERVAL
-            ):
-                await self._edit_trace_with_text(trace_obj, self.dim_italic(truncated))
-                self._last_reasoning_edit = now
-
-        else:  # ReasoningEndRenderEvent
-            if trace_obj is None:
-                return
-            if self._reasoning_accum:
-                truncated = self._reasoning_accum
-                if len(truncated) > 120:
-                    truncated = truncated[:117] + "…"
-                await self._edit_trace_with_text(trace_obj, self.dim_italic(truncated))
+        if trace_obj is None:
+            return
+        text, should_edit = self._reasoning.process(event)
+        if should_edit and text is not None:
+            await self._edit_trace_with_text(trace_obj, self.dim_italic(text))
 
     async def edit_tool_recap(
         self,

@@ -10,7 +10,7 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from lyra.infrastructure.stores.turn_store import TurnStore
+    from lyra.core.stores import TurnStoreProtocol
     from lyra.transport.turn_publisher import TurnPublisher
 
 from .cli_protocol import SESSION_ID_RE
@@ -24,10 +24,10 @@ class CliPoolSessionMixin:
     # Declared for type-checking — initialised by CliPool.__init__.
     if TYPE_CHECKING:
         _lyra_sessions: dict[str, str]
-        _turn_store: "TurnStore | None"
+        _turn_store: "TurnStoreProtocol | None"
         _turn_publisher: "TurnPublisher | None"
 
-    def set_turn_store(self, store: TurnStore) -> None:
+    def set_turn_store(self, store: TurnStoreProtocol) -> None:
         """Wire the TurnStore for CLI session reads (get_cli_session, etc.)."""
         self._turn_store = store
 

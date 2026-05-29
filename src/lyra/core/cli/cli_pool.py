@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from lyra.infrastructure.stores.turn_store import TurnStore
+    from lyra.core.stores import TurnStoreProtocol
 
 from lyra.core.ports.audit_sink import AuditSink
 
@@ -98,7 +98,7 @@ class CliPool(  # noqa: E501 — DEBT:lint-residual
         self._last_sweep_at: float | None = None
         # TurnStore — wired after construction via set_turn_store().
         # Stores CLI session IDs in pool_sessions so --resume survives restarts.
-        self._turn_store: TurnStore | None = None
+        self._turn_store: TurnStoreProtocol | None = None
         # In-memory mapping of pool_id → current Lyra session UUID.
         # Updated by link_lyra_session() before each send, so the
         # _on_session_update callback can record {lyra_sid → cli_sid}.

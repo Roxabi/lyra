@@ -12,9 +12,9 @@ from ..messaging.message import InboundMessage, Platform
 from .hub_protocol import Binding, ChannelAdapter, RoutingKey
 
 if TYPE_CHECKING:
+    from lyra.core.stores import TurnStoreProtocol
     from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
     from lyra.infrastructure.stores.message_index import MessageIndex
-    from lyra.infrastructure.stores.turn_store import TurnStore
     from lyra.transport.turn_publisher import TurnPublisher
     from lyra.transport.typing_publisher import TypingPublisher
 
@@ -41,7 +41,7 @@ class HubRegistrationMixin:
         _memory_tasks: set
         _message_index: MessageIndex | None
         _platform_queue_maxsize: int
-        _turn_store: TurnStore | None
+        # _turn_store: typed by HubShutdownMixin (concrete TurnStore; close() needed)
         _turn_publisher: TurnPublisher | None
         _typing_publisher: TypingPublisher | None
 
@@ -69,7 +69,7 @@ class HubRegistrationMixin:
             if hasattr(agent, "_memory"):
                 agent._memory = manager
 
-    def set_turn_store(self, store: TurnStore) -> None:
+    def set_turn_store(self, store: TurnStoreProtocol) -> None:
         self._turn_store = store
         for pool in self.pools.values():
             pool._observer.register_turn_store(store)

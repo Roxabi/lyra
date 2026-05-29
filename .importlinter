@@ -39,11 +39,9 @@ ignore_imports =
     lyra.core.pool.pool_observer -> lyra.infrastructure.stores.message_index
     # TurnStore moved to infrastructure per ADR-048 (#760 review fix f2) — DEBT:importlinter-adr048-transition
     # pool.pool and pool.pool_observer fixed in #1079 (TurnStoreProtocol introduced)
-    lyra.core.hub.hub -> lyra.infrastructure.stores.turn_store
-    lyra.core.hub.hub_registration -> lyra.infrastructure.stores.turn_store
+    # hub, hub_registration, cli_pool, cli_pool_session fixed in #1506 (widened to TurnStoreProtocol)
+    # hub_shutdown retained: calls self._turn_store.close() — lifecycle method not in TurnStoreProtocol
     lyra.core.hub.hub_shutdown -> lyra.infrastructure.stores.turn_store
-    lyra.core.cli.cli_pool -> lyra.infrastructure.stores.turn_store
-    lyra.core.cli.cli_pool_session -> lyra.infrastructure.stores.turn_store
 
 [importlinter:contract:core-stores-no-sqlite]
 name = core/stores protocols must not import SQLite drivers

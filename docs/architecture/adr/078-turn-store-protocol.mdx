@@ -56,10 +56,23 @@ protocol structurally (`@runtime_checkable`), so no call-site changes are needed
 ## Consequences
 
 **Positive:**
-- Layering inversion eliminated for `pool/` consumers — `pool.py` and `pool_observer.py` no longer import from `infrastructure/` (5 hub/cli TYPE_CHECKING exemptions remain in `.importlinter`; tracked separately)
+- Layering inversion eliminated for `pool/` consumers — `pool.py` and `pool_observer.py` no longer import from `infrastructure/`
+- 4 of 5 hub/cli `.importlinter` exemptions removed in #1506: `hub.hub`, `hub.hub_registration`, `cli.cli_pool`, `cli.cli_pool_session` all widened to `TurnStoreProtocol`
 - `TurnStoreProtocol` is now swappable for testing (in-memory stub, NATS-backed future impl)
 - Consistent with the existing `AgentStoreProtocol` / `BotStoreProtocol` / `ThreadStoreProtocol` pattern
 
 **Neutral:**
 - No behaviour change — `TurnStore` satisfies `TurnStoreProtocol` structurally
 - Pyright verifies structural compatibility at the wire-up site in `bootstrap/`
+
+## Remaining DEBT
+
+`hub_shutdown.py` retains the concrete `TurnStore` import and its `.importlinter` exemption.
+`HubShutdownMixin.shutdown()` calls `self._turn_store.close()`, which is a lifecycle method
+intentionally absent from `TurnStoreProtocol` (the protocol covers the read/session surface only).
+
+**Options for follow-up:**
+- Add a `Closeable` / `LifecycleStore` protocol to `core/ports/` and narrow the shutdown mixin to that
+- Or relocate shutdown teardown to the bootstrap layer, where concrete types are in scope
+
+Until then the exemption is load-bearing and annotated in `.importlinter` with a rationale comment.

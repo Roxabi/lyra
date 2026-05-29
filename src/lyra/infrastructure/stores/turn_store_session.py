@@ -11,10 +11,10 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from lyra.core.stores.turn_store_protocol import SessionRow
+
 if TYPE_CHECKING:
     import aiosqlite
-
-    from lyra.core.stores.turn_store_protocol import SessionRow
 
 from lyra.infrastructure.stores.turn_store_queries import (
     get_cli_session,

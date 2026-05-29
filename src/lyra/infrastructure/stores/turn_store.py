@@ -14,11 +14,9 @@ import json
 import logging
 import sqlite3
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
-if TYPE_CHECKING:
-    from lyra.core.stores.turn_store_protocol import TurnRow
-
+from lyra.core.stores.turn_store_protocol import TurnRow
 from lyra.infrastructure.stores.sqlite_base import SqliteStore
 from lyra.infrastructure.stores.turn_store_session import TurnStoreSessionMixin
 

@@ -36,9 +36,8 @@ formatter/throttle/error_handler methods directly.
   `OutboundAdapterBase` inheritance chain.
 - **Single broad-catch site in the emitter.** `OutboundErrorHandler.guard` is the only
   `except Exception` in `lyra.outbound/`. Two terminal sites in `OutboundEmitter.run`
-  and `_run_event_loop` are temporarily annotated
-  `# DEBT:boundary-broad-catch — terminal, migrated in S7` — these are the
-  stream-error capture path and will be unified in a follow-up restructure.
+  and `_run_event_loop` capture stream errors with broad-catch — this is intentional
+  (terminal stream-error path, no more specific exception type known at this level).
 
 ## Composition example
 
@@ -50,14 +49,8 @@ class MyAdapter(OutboundAdapterBase):
     def _make_emitter(self, original_msg, outbound):
         formatter = MyFormatter(self, get_msg=self._msg, placeholder_text=self._msg("ph", "…"))
         typing = MyTypingIndicator(self)
-        handler = OutboundErrorHandler(get_msg=self._msg)
-        # Transitional path: dataclass-based PlatformCallbacks bridges
-        # send-mechanics until S7 follow-up restructure absorbs it into formatter.
-        callbacks = self._make_streaming_callbacks(original_msg, outbound)
-        callbacks.edit_reasoning = formatter.edit_reasoning
-        callbacks.edit_tool_recap = formatter.edit_tool_recap
-        callbacks.chunk_text = formatter.chunk
-        return OutboundEmitter(callbacks, outbound, error_handler=handler)
+        handler = OutboundErrorHandler(get_msg=formatter.get_msg)
+        return OutboundEmitter(formatter, outbound, error_handler=handler, typing=typing)
 ```
 
 ## State + recap helpers

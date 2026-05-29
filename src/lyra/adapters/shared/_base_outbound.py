@@ -4,8 +4,6 @@ Defines the shared contract for Telegram and Discord outbound adapters:
 - abstract send() — platform-specific complete reply
 - concrete send_streaming() — shared algorithm via OutboundEmitter
 - abstract _make_emitter() — platform-specific stage-composed emitter factory
-- abstract _make_streaming_callbacks() — legacy callback factory (kept during
-  S4→S7 transition; consumed by some tests directly)
 - abstract _start_typing() / _cancel_typing() — typing indicator lifecycle
 
 Discord MRO constraint: __init__ must be a no-op. discord.Client's __init__
@@ -22,7 +20,7 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig
-from lyra.outbound.emitter import OutboundEmitter, PlatformCallbacks
+from lyra.outbound.emitter import OutboundEmitter
 
 if TYPE_CHECKING:
     from lyra.core.messaging.message import InboundMessage, OutboundMessage
@@ -36,13 +34,12 @@ class OutboundAdapterBase(ABC):
 
     Subclasses must implement:
     - send()
-    - _make_emitter() — stage-composed factory (#1279 T15/T19)
-    - _make_streaming_callbacks() — legacy callbacks factory (kept until S7 cleanup)
+    - _make_emitter() — stage-composed factory (formatter + throttle + error_handler)
     - _start_typing()
     - _cancel_typing()
 
     send_streaming() is provided as a concrete method and must NOT be overridden.
-    It now delegates to _make_emitter so each platform's stage composition
+    It delegates to _make_emitter so each platform's stage composition
     (formatter + typing + error_handler) is the active path.
 
     MRO note: __init__ is intentionally absent. DiscordAdapter uses multiple
@@ -89,23 +86,9 @@ class OutboundAdapterBase(ABC):
     ) -> OutboundEmitter:
         """Build the platform-specific OutboundEmitter (stage-composed).
 
-        Composes OutboundFormatter + ThrottleCapability + OutboundErrorHandler
-        per #1279 Phase 2. Subclasses construct the per-platform formatter
-        + typing indicator + error handler and return OutboundEmitter wired
-        through the existing PlatformCallbacks dataclass (transitional; the
-        dataclass itself is removed in S7 along with _make_streaming_callbacks).
-        """
-
-    @abstractmethod
-    def _make_streaming_callbacks(
-        self,
-        original_msg: "InboundMessage",
-        outbound: "OutboundMessage | None",
-    ) -> PlatformCallbacks:
-        """Legacy callbacks factory — consumed by `_make_emitter` and a few tests.
-
-        Removed in S7 of #1279 once the formatter Protocol fully owns the
-        callback surface.
+        Composes OutboundFormatter + ThrottleCapability + OutboundErrorHandler.
+        Subclasses construct the per-platform formatter + typing indicator +
+        error handler and return OutboundEmitter wrapping the formatter.
         """
 
     @abstractmethod

@@ -261,9 +261,7 @@ async def test_bootstrap_audio_consumer_tg_no_consumer_on_astart_failure() -> No
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
         pytest.raises(RuntimeError, match="astart failed"),
     ):
-        await _bootstrap_adapter_standalone(
-            _make_raw_config("telegram"), "telegram"
-        )
+        await _bootstrap_adapter_standalone(_make_raw_config("telegram"), "telegram")
 
     # Consumer must NOT be started when astart raises
     mock_start_consumer.assert_not_awaited()

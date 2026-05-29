@@ -56,9 +56,7 @@ class MockAdapter:
     ) -> None:
         pass
 
-    async def render_attachment(
-        self, msg: Any, inbound: InboundMessage
-    ) -> None:
+    async def render_attachment(self, msg: Any, inbound: InboundMessage) -> None:
         pass
 
 

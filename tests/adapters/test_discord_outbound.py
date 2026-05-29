@@ -433,12 +433,14 @@ async def test_discord_fallback_sets_reply_message_id() -> None:
 
 @pytest.mark.asyncio
 async def test_build_streaming_noop_on_non_discord_msg() -> None:
-    """build_streaming_callbacks() with a non-discord msg returns noop callbacks
-    whose send_placeholder raises ValueError."""
+    """DiscordFormatter with a non-discord msg: send_placeholder raises ValueError.
+
+    Migrated from build_streaming_callbacks: DiscordAdapter._make_emitter returns
+    a _BadDiscordFormatter for non-discord messages. Tests via adapter path.
+    """
     from datetime import datetime, timezone
 
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.adapters.discord.discord_outbound import build_streaming_callbacks
     from lyra.core.auth.trust import TrustLevel
     from lyra.core.messaging.message import InboundMessage
 
@@ -463,17 +465,18 @@ async def test_build_streaming_noop_on_non_discord_msg() -> None:
     )
     outbound = OutboundMessage.from_text("hi")
 
-    callbacks = build_streaming_callbacks(adapter, non_discord_msg, outbound)
+    emitter = adapter._make_emitter(non_discord_msg, outbound)
+    formatter = emitter._fmt
 
     with pytest.raises(ValueError, match="not a discord message"):
-        await callbacks.send_placeholder()
+        await formatter.send_placeholder()
 
 
 @pytest.mark.asyncio
 async def test_streaming_edit_placeholder_text() -> None:
-    """edit_placeholder_text closure calls ph.edit(content=..., embed=None)."""
+    """DiscordFormatter.edit_placeholder_text calls ph.edit(content=..., embed=None)."""
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.adapters.discord.discord_outbound import build_streaming_callbacks
+    from lyra.adapters.discord.discord_formatter import DiscordFormatter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -484,22 +487,29 @@ async def test_streaming_edit_placeholder_text() -> None:
     ph = AsyncMock()
     ph.edit = AsyncMock()
 
-    outbound = OutboundMessage.from_text("")
-    callbacks = build_streaming_callbacks(adapter, make_dc_inbound_msg(), outbound)
-    await callbacks.edit_placeholder_text(ph, "hello world")
+    formatter = DiscordFormatter(
+        adapter,
+        send_to_id=333,
+        get_msg=lambda k, fb: fb,
+        placeholder_text="…",
+        reply_msg_id=555,
+        should_reply=True,
+        original_msg=make_dc_inbound_msg(),
+    )
+    await formatter.edit_placeholder_text(ph, "hello world")
 
     ph.edit.assert_awaited_once_with(content="hello world", embed=None)
 
 
 @pytest.mark.asyncio
 async def test_streaming_send_message_multi_chunk() -> None:
-    """send_message closure splits text > 2000 chars into chunks.
+    """DiscordFormatter.send_message splits text > 2000 chars into chunks.
 
     Non-last chunks go through send_with_retry; last chunk goes via direct send.
     Returns the last sent message id.
     """
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.adapters.discord.discord_outbound import build_streaming_callbacks
+    from lyra.adapters.discord.discord_formatter import DiscordFormatter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -512,10 +522,15 @@ async def test_streaming_send_message_multi_chunk() -> None:
     mock_channel.send = AsyncMock(side_effect=sent_ids)
     adapter._resolve_channel = AsyncMock(return_value=mock_channel)
 
-    outbound = OutboundMessage.from_text("")
-    callbacks = build_streaming_callbacks(adapter, make_dc_inbound_msg(), outbound)
+    formatter = DiscordFormatter(
+        adapter,
+        send_to_id=333,
+        get_msg=lambda k, fb: fb,
+        placeholder_text="…",
+        original_msg=make_dc_inbound_msg(),
+    )
     long_text = "x" * 2500
-    result = await callbacks.send_message(long_text)
+    result = await formatter.send_message(long_text)
 
     assert result == 20
     assert mock_channel.send.await_count == 2
@@ -523,9 +538,9 @@ async def test_streaming_send_message_multi_chunk() -> None:
 
 @pytest.mark.asyncio
 async def test_streaming_send_message_failure() -> None:
-    """send_message closure logs exception and returns None when final send raises."""
+    """DiscordFormatter.send_message logs exception and returns None when send raises."""  # noqa: E501
     from lyra.adapters.discord import DiscordAdapter
-    from lyra.adapters.discord.discord_outbound import build_streaming_callbacks
+    from lyra.adapters.discord.discord_formatter import DiscordFormatter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -537,9 +552,14 @@ async def test_streaming_send_message_failure() -> None:
     mock_channel.send = AsyncMock(side_effect=Exception("network error"))
     adapter._resolve_channel = AsyncMock(return_value=mock_channel)
 
-    outbound = OutboundMessage.from_text("")
-    callbacks = build_streaming_callbacks(adapter, make_dc_inbound_msg(), outbound)
-    result = await callbacks.send_message("short text")
+    formatter = DiscordFormatter(
+        adapter,
+        send_to_id=333,
+        get_msg=lambda k, fb: fb,
+        placeholder_text="…",
+        original_msg=make_dc_inbound_msg(),
+    )
+    result = await formatter.send_message("short text")
 
     assert result is None
 

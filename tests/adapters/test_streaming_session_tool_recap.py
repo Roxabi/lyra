@@ -1,12 +1,8 @@
 # pyright: reportFunctionMemberAccess=false, reportAttributeAccessIssue=false, reportCallIssue=false, reportGeneralTypeIssues=false
-"""RED tests for StreamingSession tool recap callback wiring (#1214 T6).
+"""Tests for StreamingSession tool recap callback wiring (#1214 T6).
 
-These tests expose two gaps not yet implemented:
-1. PlatformCallbacks is missing the ``edit_tool_recap`` field (T4 will add it).
-2. ``StreamingSession._on_toolcall_v2`` does not route events to the accumulator
-   or invoke ``edit_tool_recap`` (T5 will wire this).
-
-All tests in this file MUST FAIL on the unmodified codebase.
+Migrated in S7 (#1501): PlatformCallbacks dataclass replaced with
+MagicMock OutboundFormatter. Test semantics are preserved.
 """
 
 from __future__ import annotations
@@ -26,31 +22,28 @@ from lyra.core.messaging.render_events import (
     ToolCallStartRenderEvent,
 )
 from lyra.outbound.emitter import OutboundEmitter as StreamingSession
-from lyra.outbound.emitter import PlatformCallbacks
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _make_callbacks(**overrides) -> PlatformCallbacks:
-    """Build a PlatformCallbacks with all fields mocked, including edit_tool_recap."""
-    cb = PlatformCallbacks(
-        send_placeholder=AsyncMock(return_value=(object(), 42)),
-        edit_placeholder_text=AsyncMock(),
-        send_trace_placeholder=AsyncMock(return_value=(object(), 42)),
-        send_message=AsyncMock(return_value=99),
-        send_fallback=AsyncMock(return_value=77),
-        chunk_text=MagicMock(side_effect=lambda t: [t] if t else []),
-        start_typing=MagicMock(),
-        cancel_typing=MagicMock(),
-        get_msg=MagicMock(side_effect=lambda _key, fallback: fallback),
-        placeholder_text="…",
-        edit_tool_recap=AsyncMock(),
-    )
+def _make_formatter(**overrides) -> MagicMock:
+    """Build a mock OutboundFormatter with all fields mocked, including edit_tool_recap."""  # noqa: E501
+    fmt = MagicMock()
+    fmt.placeholder_text = MagicMock(return_value="…")
+    fmt.chunk = MagicMock(side_effect=lambda t: [t] if t else [])
+    fmt.get_msg = MagicMock(side_effect=lambda _key, fallback: fallback)
+    fmt.send_placeholder = AsyncMock(return_value=(object(), 42))
+    fmt.edit_placeholder_text = AsyncMock()
+    fmt.send_trace_placeholder = AsyncMock(return_value=(object(), 42))
+    fmt.send_message = AsyncMock(return_value=99)
+    fmt.send_fallback = AsyncMock(return_value=77)
+    fmt.edit_reasoning = AsyncMock()
+    fmt.edit_tool_recap = AsyncMock()
     for k, v in overrides.items():
-        setattr(cb, k, v)
-    return cb
+        setattr(fmt, k, v)
+    return fmt
 
 
 async def _gen(*items: RenderEvent) -> AsyncIterator[RenderEvent]:
@@ -73,8 +66,8 @@ async def test_multi_tool_turn_invokes_edit_tool_recap_streaming_and_done() -> N
     - edit_tool_recap called exactly once with done=True.
     - The done=True call carries lines starting with the recap header.
     """
-    cb = _make_callbacks()
-    session = StreamingSession(cb, outbound=None)
+    fmt = _make_formatter()
+    session = StreamingSession(fmt, outbound=None)
 
     await session.run(
         _gen(
@@ -90,10 +83,10 @@ async def test_multi_tool_turn_invokes_edit_tool_recap_streaming_and_done() -> N
     )
 
     # send_trace_placeholder must fire exactly once when tool events are present
-    cb.send_trace_placeholder.assert_called_once()
+    fmt.send_trace_placeholder.assert_called_once()
 
     # Collect all edit_tool_recap calls
-    all_calls = cb.edit_tool_recap.call_args_list
+    all_calls = fmt.edit_tool_recap.call_args_list
     assert len(all_calls) >= 1, "edit_tool_recap must be called at least once"
 
     # There must be at least one done=False call
@@ -138,8 +131,8 @@ async def test_multi_tool_turn_invokes_edit_tool_recap_streaming_and_done() -> N
 
 async def test_text_only_turn_never_sends_trace_placeholder() -> None:
     """Pure text stream must never trigger send_trace_placeholder or edit_tool_recap."""
-    cb = _make_callbacks()
-    session = StreamingSession(cb, outbound=None)
+    fmt = _make_formatter()
+    session = StreamingSession(fmt, outbound=None)
 
     await session.run(
         _gen(
@@ -150,8 +143,8 @@ async def test_text_only_turn_never_sends_trace_placeholder() -> None:
         )
     )
 
-    cb.send_trace_placeholder.assert_not_called()
-    cb.edit_tool_recap.assert_not_called()
+    fmt.send_trace_placeholder.assert_not_called()
+    fmt.edit_tool_recap.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -170,11 +163,11 @@ async def test_ungraceful_end_still_fires_done_true_edit() -> None:
         yield ToolCallEndRenderEvent(tool_call_id="t1")
         # No RunFinished — iterator ends here
 
-    cb = _make_callbacks()
-    session = StreamingSession(cb, outbound=None)
+    fmt = _make_formatter()
+    session = StreamingSession(fmt, outbound=None)
     await session.run(_abrupt_gen())
 
-    all_calls = cb.edit_tool_recap.call_args_list
+    all_calls = fmt.edit_tool_recap.call_args_list
     done_true_calls = [
         c
         for c in all_calls
@@ -187,38 +180,34 @@ async def test_ungraceful_end_still_fires_done_true_edit() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Test 4 — edit_tool_recap field has a default no-op (SC5)
+# Test 4 — edit_tool_recap on formatter has a default no-op via Protocol
 # ---------------------------------------------------------------------------
 
 
-async def test_edit_tool_recap_field_has_default_noop() -> None:
-    """PlatformCallbacks must accept construction without edit_tool_recap
-    and default to a callable no-op.
+async def test_edit_tool_recap_on_formatter_is_callable() -> None:
+    """OutboundFormatter.edit_tool_recap is callable on a real formatter impl.
+
+    Uses TelegramFormatter to verify the Protocol method exists and is awaitable.
     """
-    # Construct without the edit_tool_recap field — must not raise TypeError
-    cb = PlatformCallbacks(
-        send_placeholder=AsyncMock(return_value=(object(), 42)),
-        edit_placeholder_text=AsyncMock(),
-        send_trace_placeholder=AsyncMock(return_value=(object(), 42)),
-        send_message=AsyncMock(return_value=99),
-        send_fallback=AsyncMock(return_value=77),
-        chunk_text=MagicMock(side_effect=lambda t: [t] if t else []),
-        start_typing=MagicMock(),
-        cancel_typing=MagicMock(),
-        get_msg=MagicMock(side_effect=lambda _key, fallback: fallback),
+    from unittest.mock import MagicMock
+
+    from lyra.adapters.telegram.telegram_formatter import TelegramFormatter
+
+    adapter_mock = MagicMock()
+    adapter_mock.bot = MagicMock()
+    adapter_mock.bot.send_message = AsyncMock()
+    adapter_mock.bot.edit_message_text = AsyncMock()
+
+    formatter = TelegramFormatter(
+        adapter_mock,
+        chat_id=123,
+        get_msg=lambda k, fb: fb,
         placeholder_text="…",
-        # edit_tool_recap intentionally omitted
     )
 
-    # The field must exist and be a callable
-    assert hasattr(cb, "edit_tool_recap"), (
-        "PlatformCallbacks must have edit_tool_recap field"
-    )
-    assert callable(cb.edit_tool_recap), "edit_tool_recap must be callable"
-
-    # Invoking the default must return None (it's a coroutine — await it)
-    result = await cb.edit_tool_recap(None, [], True)
-    assert result is None, f"Default edit_tool_recap must return None, got {result!r}"
+    # The method must exist and be awaitable with no-op (lines=[], done=True)
+    result = await formatter.edit_tool_recap(None, [], True)
+    assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -230,8 +219,8 @@ async def test_orphan_tool_call_id_does_not_crash() -> None:
     """ToolCallEnd with no matching Start must be silently ignored —
     session must not raise.
     """
-    cb = _make_callbacks()
-    session = StreamingSession(cb, outbound=None)
+    fmt = _make_formatter()
+    session = StreamingSession(fmt, outbound=None)
 
     # No ToolCallStart for "ghost" — just an End
     await session.run(
@@ -244,7 +233,7 @@ async def test_orphan_tool_call_id_does_not_crash() -> None:
     )
 
     # Session must complete without raising
-    cb.cancel_typing.assert_called()
+    fmt.edit_placeholder_text.assert_called()
 
 
 # ---------------------------------------------------------------------------
@@ -261,10 +250,10 @@ async def test_placeholder_send_failure_does_not_invoke_edit_tool_recap() -> Non
     this test, removing either the early-return in _on_toolcall_v2 or the
     None-guard in _deliver_final would not be caught by any assertion.
     """
-    cb = _make_callbacks(
+    fmt = _make_formatter(
         send_trace_placeholder=AsyncMock(side_effect=RuntimeError("boom")),
     )
-    session = StreamingSession(cb, outbound=None)
+    session = StreamingSession(fmt, outbound=None)
 
     await session.run(
         _gen(
@@ -280,6 +269,6 @@ async def test_placeholder_send_failure_does_not_invoke_edit_tool_recap() -> Non
     )
 
     # Placeholder send was attempted exactly once.
-    assert cb.send_trace_placeholder.await_count == 1
+    assert fmt.send_trace_placeholder.await_count == 1
     # No recap edit ever fired — neither streaming nor done=True.
-    cb.edit_tool_recap.assert_not_called()
+    fmt.edit_tool_recap.assert_not_called()

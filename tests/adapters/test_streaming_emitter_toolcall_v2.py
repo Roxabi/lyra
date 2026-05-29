@@ -3,6 +3,8 @@
 After Slice 5 / #1192 v1 cutover: TextRenderEvent and ToolSummaryRenderEvent are
 gone. ToolCall* events are absorbed by the dispatch ladder silently.
 Text is conveyed via the v2 TextStart/Delta/End triplet only.
+
+Migrated in S7 (#1501): PlatformCallbacks replaced with MagicMock OutboundFormatter.
 """
 
 from __future__ import annotations
@@ -24,22 +26,24 @@ from lyra.core.messaging.render_events import (
     ToolCallStartRenderEvent,
 )
 from lyra.outbound.emitter import OutboundEmitter as StreamingSession
-from lyra.outbound.emitter import PlatformCallbacks
 
 
-def _make_callbacks() -> PlatformCallbacks:
-    return PlatformCallbacks(
-        send_placeholder=AsyncMock(return_value=(object(), 42)),
-        edit_placeholder_text=AsyncMock(),
-        send_trace_placeholder=AsyncMock(return_value=(object(), 42)),
-        send_message=AsyncMock(return_value=99),
-        send_fallback=AsyncMock(return_value=77),
-        chunk_text=MagicMock(side_effect=lambda t: [t] if t else []),
-        start_typing=MagicMock(),
-        cancel_typing=MagicMock(),
-        get_msg=MagicMock(side_effect=lambda key, fallback: fallback),
-        placeholder_text="…",
-    )
+def _make_formatter(**overrides) -> MagicMock:
+    """Build a mock OutboundFormatter with AsyncMock/MagicMock defaults."""
+    fmt = MagicMock()
+    fmt.placeholder_text = MagicMock(return_value="…")
+    fmt.chunk = MagicMock(side_effect=lambda t: [t] if t else [])
+    fmt.get_msg = MagicMock(side_effect=lambda key, fallback: fallback)
+    fmt.send_placeholder = AsyncMock(return_value=(object(), 42))
+    fmt.edit_placeholder_text = AsyncMock()
+    fmt.send_trace_placeholder = AsyncMock(return_value=(object(), 42))
+    fmt.send_message = AsyncMock(return_value=99)
+    fmt.send_fallback = AsyncMock(return_value=77)
+    fmt.edit_reasoning = AsyncMock()
+    fmt.edit_tool_recap = AsyncMock()
+    for k, v in overrides.items():
+        setattr(fmt, k, v)
+    return fmt
 
 
 async def _events(*evts: RenderEvent) -> AsyncIterator[RenderEvent]:
@@ -51,9 +55,9 @@ class TestSharedEmitterIgnoresToolCallV2:
     """ToolCall* v2 events must not raise, must not crash dispatch, must not edit."""
 
     async def test_toolcall_v2_events_do_not_raise(self) -> None:
-        cb = _make_callbacks()
+        fmt = _make_formatter()
         outbound = OutboundMessage.from_text("hi")
-        session = StreamingSession(cb, outbound=outbound)
+        session = StreamingSession(fmt, outbound=outbound)
         # Must not raise — dispatch ladder covers ToolCall*; v2 text triplet used
         await session.run(
             _events(
@@ -87,9 +91,9 @@ class TestSharedEmitterIgnoresToolCallV2:
             ) -> None:
                 captured.append(event)
 
-        cb = _make_callbacks()
+        fmt = _make_formatter()
         outbound = OutboundMessage.from_text("hi")
-        session = _RecordingSession(cb, outbound=outbound)
+        session = _RecordingSession(fmt, outbound=outbound)
         await session.run(
             _events(
                 RunStartedRenderEvent(run_id="r1"),

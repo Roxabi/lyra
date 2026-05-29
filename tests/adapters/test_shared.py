@@ -19,26 +19,29 @@ from lyra.core.messaging.render_events import (
     TextStartRenderEvent,
 )
 from lyra.outbound.emitter import OutboundEmitter as StreamingSession
-from lyra.outbound.emitter import PlatformCallbacks
 
 # ---------------------------------------------------------------------------
 # Helpers shared by v2 Text dispatch tests
+# Migrated in S7 (#1501): PlatformCallbacks replaced with MagicMock formatter.
 # ---------------------------------------------------------------------------
 
 
-def _make_callbacks() -> PlatformCallbacks:
-    return PlatformCallbacks(
-        send_placeholder=AsyncMock(return_value=(object(), 42)),
-        edit_placeholder_text=AsyncMock(),
-        send_trace_placeholder=AsyncMock(return_value=(object(), 42)),
-        send_message=AsyncMock(return_value=99),
-        send_fallback=AsyncMock(return_value=77),
-        chunk_text=MagicMock(side_effect=lambda t: [t] if t else []),
-        start_typing=MagicMock(),
-        cancel_typing=MagicMock(),
-        get_msg=MagicMock(side_effect=lambda key, fallback: fallback),
-        placeholder_text="…",
-    )
+def _make_formatter(**overrides) -> MagicMock:
+    """Build a mock OutboundFormatter with AsyncMock/MagicMock defaults."""
+    fmt = MagicMock()
+    fmt.placeholder_text = MagicMock(return_value="…")
+    fmt.chunk = MagicMock(side_effect=lambda t: [t] if t else [])
+    fmt.get_msg = MagicMock(side_effect=lambda key, fallback: fallback)
+    fmt.send_placeholder = AsyncMock(return_value=(object(), 42))
+    fmt.edit_placeholder_text = AsyncMock()
+    fmt.send_trace_placeholder = AsyncMock(return_value=(object(), 42))
+    fmt.send_message = AsyncMock(return_value=99)
+    fmt.send_fallback = AsyncMock(return_value=77)
+    fmt.edit_reasoning = AsyncMock()
+    fmt.edit_tool_recap = AsyncMock()
+    for k, v in overrides.items():
+        setattr(fmt, k, v)
+    return fmt
 
 
 async def _async_iter(*evts: RenderEvent) -> AsyncIterator[RenderEvent]:
@@ -172,15 +175,15 @@ class TestDispatchTextStartToOnTextV2:
 
     async def test_dispatch_routes_text_start_to_on_text_v2(self) -> None:
         # Arrange
-        cb = _make_callbacks()
+        fmt = _make_formatter()
         outbound = OutboundMessage.from_text("hi")
-        session = StreamingSession(cb, outbound=outbound)
+        session = StreamingSession(fmt, outbound=outbound)
 
         # Feed only a TextStartRenderEvent (no text delta follows).
         # The stream has no final text so _deliver_final will edit the placeholder
         # with an error message — but edit_placeholder_text must NOT have been
         # called during event dispatch (only during delivery).
-        cb.edit_placeholder_text.reset_mock()  # type: ignore[attr-defined]
+        fmt.edit_placeholder_text.reset_mock()
 
         await session._run_event_loop(
             _async_iter(TextStartRenderEvent(message_id="text-1")),
@@ -191,7 +194,7 @@ class TestDispatchTextStartToOnTextV2:
         # loop itself (the no-op _on_text_v2 seam must absorb the event without
         # touching the placeholder). Negative: if the guard were removed and the
         # event fell through to assert_never, _run_event_loop would raise.
-        cb.edit_placeholder_text.assert_not_called()  # type: ignore[attr-defined]
+        fmt.edit_placeholder_text.assert_not_called()
 
 
 class TestDispatchAllFourV2TextTypes:
@@ -212,9 +215,9 @@ class TestDispatchAllFourV2TextTypes:
             ) -> None:
                 seen.append(type(event))
 
-        cb = _make_callbacks()
+        fmt = _make_formatter()
         outbound = OutboundMessage.from_text("hi")
-        session = _SpySession(cb, outbound=outbound)
+        session = _SpySession(fmt, outbound=outbound)
 
         events = [
             TextStartRenderEvent(message_id="text-1"),
@@ -244,9 +247,9 @@ class TestDrainFallbackHarvestsV2Delta:
 
     async def test_drain_fallback_harvests_v2_delta(self) -> None:
         # Arrange
-        cb = _make_callbacks()
+        fmt = _make_formatter()
         outbound = OutboundMessage.from_text("hi")
-        session = StreamingSession(cb, outbound=outbound)
+        session = StreamingSession(fmt, outbound=outbound)
 
         # Act — drain a v2-only stream
         await session._drain_fallback(
@@ -257,7 +260,7 @@ class TestDrainFallbackHarvestsV2Delta:
         # Negative: if the isinstance(event, TextDeltaRenderEvent) branch is
         # removed, parts stays [] and send_fallback gets placeholder_text ("…"),
         # not "Hello".
-        cb.send_fallback.assert_awaited_once_with("Hello")  # type: ignore[attr-defined]
+        fmt.send_fallback.assert_awaited_once_with("Hello")
 
 
 class TestDrainFallbackV2Accumulation:
@@ -266,9 +269,9 @@ class TestDrainFallbackV2Accumulation:
     async def test_drain_fallback_v2_only_yields_single_string(self) -> None:
         # A v2-only stream produces a single accumulation. Proves the v2 branch
         # consumes TextDeltaRenderEvent.
-        cb = _make_callbacks()
+        fmt = _make_formatter()
         outbound = OutboundMessage.from_text("hi")
-        session = StreamingSession(cb, outbound=outbound)
+        session = StreamingSession(fmt, outbound=outbound)
 
         await session._drain_fallback(
             _async_iter(
@@ -276,4 +279,4 @@ class TestDrainFallbackV2Accumulation:
             )
         )
 
-        cb.send_fallback.assert_awaited_once_with("Hi")  # type: ignore[attr-defined]
+        fmt.send_fallback.assert_awaited_once_with("Hi")

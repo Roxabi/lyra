@@ -50,7 +50,6 @@ Inherit for every new platform adapter. Abstract methods to implement:
 |--------|------|
 | `send(original_msg, outbound)` | Send complete reply |
 | `_make_emitter(original_msg, outbound) -> OutboundEmitter` | Compose stage objects (formatter + throttle + error_handler) |
-| `_make_streaming_callbacks(original_msg, outbound) -> PlatformCallbacks` | Build send-mechanics callbacks (transitional — pending S7 absorption) |
 | `_start_typing(scope_id)` | Start typing indicator |
 | `_cancel_typing(scope_id)` | Cancel typing indicator |
 
@@ -93,13 +92,13 @@ Per-platform code is now thin formatter implementations (`telegram_formatter.py`
 | Stage | Module | Role |
 |-------|--------|------|
 | Emitter | `lyra.outbound.emitter.OutboundEmitter` | Composes formatter + throttle + error_handler; owns placeholder→edits→delivery |
-| Formatter | `lyra.outbound.formatter.OutboundFormatter` (Protocol) | chunk, render_text, render_buttons, dim_italic, placeholder_text, edit_reasoning, edit_tool_recap |
+| Formatter | `lyra.outbound.formatter.OutboundFormatter` (Protocol) | chunk, render_text, render_buttons, dim_italic, placeholder_text, get_msg, send_placeholder, edit_placeholder_text, send_trace_placeholder, send_message, send_fallback, edit_reasoning, edit_tool_recap |
 | Throttle | `lyra.outbound.throttle.ThrottleCapability` (Protocol) | start_typing/cancel_typing + edit_interval_s |
 | Error handler | `lyra.outbound.error_handler.OutboundErrorHandler` | guard (single broad-catch site), handle, classify_stream_error, get_msg |
 
-`PlatformCallbacks` dataclass is transitional — used by `_make_streaming_callbacks` for
-send-mechanics until a follow-up restructure absorbs it into the formatter Protocol.
-See `src/lyra/outbound/CLAUDE.md`.
+Send-mechanics (send_placeholder, edit_placeholder_text, send_trace_placeholder,
+send_message, send_fallback) and get_msg are part of `OutboundFormatter` — the
+formatter is the single platform-I/O surface consumed by `OutboundEmitter`.
 
 ## Clipool adapter (`clipool/`)
 

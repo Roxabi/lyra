@@ -1,6 +1,6 @@
 """Integration tests for Discord adapter Reasoning rendering (SC-16, T13).
 
-Covers _render_reasoning via PlatformCallbacks.edit_reasoning for:
+Covers DiscordFormatter.edit_reasoning for:
 - Reasoning callback edits the session-supplied trace_obj
   (lazy placeholder creation moved upstream to StreamingSession in #1214)
 - Edit throttle bound
@@ -9,11 +9,15 @@ Covers _render_reasoning via PlatformCallbacks.edit_reasoning for:
 The show_intermediate=False gate lives upstream on StreamProcessor (SC-6) — no
 Reasoning* events reach this callback when disabled, so adapter-level coverage
 is not needed here (see test_stream_processor.py::TestReasoning).
+
+Migrated in S7 (#1501): build_streaming_callbacks replaced with DiscordFormatter
+direct construction.
 """
 
 from __future__ import annotations
 
 import math
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
@@ -59,6 +63,21 @@ def _make_messageable_with_trace_obj() -> tuple[AsyncMock, AsyncMock]:
     return messageable, trace_obj
 
 
+def _make_formatter(adapter: DiscordAdapter) -> Any:
+    """Build a DiscordFormatter for tests."""
+    from lyra.adapters.discord.discord_formatter import DiscordFormatter
+
+    return DiscordFormatter(
+        adapter,
+        send_to_id=333,
+        get_msg=lambda k, fb: fb,
+        placeholder_text="…",
+        reply_msg_id=555,
+        should_reply=True,
+        original_msg=make_dc_inbound_msg(),
+    )
+
+
 # ---------------------------------------------------------------------------
 # T13 — Discord reasoning rendering (4 tests)
 # ---------------------------------------------------------------------------
@@ -72,36 +91,33 @@ class TestDiscordReasoningRendering:
         """Reasoning callback edits the session-supplied trace_obj.
 
         Post-#1214: lazy placeholder creation moved upstream to
-        ``StreamingSession._ensure_trace_obj``. The callback no longer
+        ``StreamingSession._ensure_trace_obj``. The formatter no longer
         calls ``messageable.send`` itself — it must edit whatever
         ``trace_obj`` the session passes in. Two back-to-back reasoning
         blocks must therefore both edit the same session-supplied
         trace_obj without producing any extra ``messageable.send`` calls.
         """
-        from lyra.adapters.discord.discord_outbound import build_streaming_callbacks
-
         # Arrange
         adapter = _make_discord_adapter()
         messageable, trace_obj = _make_messageable_with_trace_obj()
         adapter._resolve_channel = AsyncMock(return_value=messageable)
 
-        original_msg = make_dc_inbound_msg()
-        callbacks = build_streaming_callbacks(adapter, original_msg, None)
+        formatter = _make_formatter(adapter)
 
         # Act — two back-to-back reasoning blocks; session passes trace_obj.
         for block_id in (_MSG_ID, f"{_MSG_ID}-2"):
-            await callbacks.edit_reasoning(
+            await formatter.edit_reasoning(
                 trace_obj, ReasoningStartRenderEvent(message_id=block_id)
             )
-            await callbacks.edit_reasoning(
+            await formatter.edit_reasoning(
                 trace_obj,
                 ReasoningDeltaRenderEvent(message_id=block_id, delta="thinking…"),
             )
-            await callbacks.edit_reasoning(
+            await formatter.edit_reasoning(
                 trace_obj, ReasoningEndRenderEvent(message_id=block_id)
             )
 
-        # Callback never sends its own placeholder anymore.
+        # Formatter never sends its own placeholder anymore.
         assert messageable.send.await_count == 0, (
             "edit_reasoning must not send its own placeholder "
             "(session._ensure_trace_obj owns lazy-create)"
@@ -119,15 +135,12 @@ class TestDiscordReasoningRendering:
         Act: drive Start + 20 Delta events spread across a 2s window + End.
         Assert: trace_obj.edit count <= ceil(2.0 / STREAMING_EDIT_INTERVAL) + 1.
         """
-        from lyra.adapters.discord.discord_outbound import build_streaming_callbacks
-
         # Arrange
         adapter = _make_discord_adapter()
         messageable, trace_obj = _make_messageable_with_trace_obj()
         adapter._resolve_channel = AsyncMock(return_value=messageable)
 
-        original_msg = make_dc_inbound_msg()
-        callbacks = build_streaming_callbacks(adapter, original_msg, None)
+        formatter = _make_formatter(adapter)
 
         # Spread 20 deltas uniformly across a 2s window
         window = 2.0
@@ -144,19 +157,19 @@ class TestDiscordReasoningRendering:
                 return window
 
         with patch(
-            "lyra.adapters.discord.discord_outbound.time.monotonic",
+            "lyra.adapters.discord.discord_formatter.time.monotonic",
             side_effect=fake_monotonic,
         ):
             # Act — session supplies trace_obj (post-#1214 contract).
-            await callbacks.edit_reasoning(
+            await formatter.edit_reasoning(
                 trace_obj, ReasoningStartRenderEvent(message_id=_MSG_ID)
             )
             for i in range(n_deltas):
-                await callbacks.edit_reasoning(
+                await formatter.edit_reasoning(
                     trace_obj,
                     ReasoningDeltaRenderEvent(message_id=_MSG_ID, delta=f"chunk{i}"),
                 )
-            await callbacks.edit_reasoning(
+            await formatter.edit_reasoning(
                 trace_obj, ReasoningEndRenderEvent(message_id=_MSG_ID)
             )
 
@@ -176,8 +189,6 @@ class TestDiscordReasoningRendering:
         Act: Start → Delta(200 'x' chars) → End.
         Assert: the edit call receives text ending with '…'.
         """
-        from lyra.adapters.discord.discord_outbound import build_streaming_callbacks
-
         # Arrange
         adapter = _make_discord_adapter()
         messageable = AsyncMock()
@@ -195,18 +206,17 @@ class TestDiscordReasoningRendering:
         messageable.send = AsyncMock(return_value=trace_obj)
         adapter._resolve_channel = AsyncMock(return_value=messageable)
 
-        original_msg = make_dc_inbound_msg()
-        callbacks = build_streaming_callbacks(adapter, original_msg, None)
+        formatter = _make_formatter(adapter)
 
         # Act — session supplies trace_obj (post-#1214 contract).
-        await callbacks.edit_reasoning(
+        await formatter.edit_reasoning(
             trace_obj, ReasoningStartRenderEvent(message_id=_MSG_ID)
         )
-        await callbacks.edit_reasoning(
+        await formatter.edit_reasoning(
             trace_obj,
             ReasoningDeltaRenderEvent(message_id=_MSG_ID, delta="x" * 200),
         )
-        await callbacks.edit_reasoning(
+        await formatter.edit_reasoning(
             trace_obj, ReasoningEndRenderEvent(message_id=_MSG_ID)
         )
 

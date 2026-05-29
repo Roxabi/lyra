@@ -4,14 +4,17 @@ Spec trace: SC-19, SC-20 (Issue #1101, Slice 4).
 Phase: RED-GATE final — exercises parser → StreamProcessor → StreamingSession dispatch.
 
 Mocked (externals only):
-  - PlatformCallbacks (injectable dataclass — all methods are AsyncMock/MagicMock)
+  - OutboundFormatter (injectable MagicMock — all methods are AsyncMock/MagicMock)
 
 Real (not mocked):
   - CliStreamingParser  (core.cli.cli_streaming_parser)
   - StreamProcessor     (core.processors.stream_processor)
-  - StreamingSession._run_event_loop  (adapters.shared._shared_streaming_emitter)
+  - StreamingSession._run_event_loop  (outbound.emitter)
   - ReasoningStart/Delta/EndRenderEvent  (core.messaging.render_events)
   - ThinkingLlmEvent  (core.messaging.events)
+
+Migrated in S7 (#1501): PlatformCallbacks dataclass replaced with
+MagicMock OutboundFormatter (OutboundFormatter Protocol).
 """
 
 # pyright: reportAttributeAccessIssue=false, reportInvalidTypeForm=false
@@ -42,7 +45,6 @@ from lyra.core.messaging.render_events import (
 )
 from lyra.core.processors.stream_processor import StreamProcessor
 from lyra.outbound.emitter import OutboundEmitter as StreamingSession
-from lyra.outbound.emitter import PlatformCallbacks
 
 # DEBT:v1-stubs — for skipped tests; rewrite for v2 (#1192 S3 follow-up)
 # Typed as Any so pyright doesn't flag v1-shape access in skipped tests.
@@ -98,24 +100,22 @@ async def _collect_render_events(llm_events: list[LlmEvent]) -> list[RenderEvent
     return [ev async for ev in sp.process(_async_seq(*llm_events))]
 
 
-def _make_callbacks(**overrides: object) -> PlatformCallbacks:
-    """Build PlatformCallbacks with async/sync mock defaults."""
-    cb = PlatformCallbacks(
-        send_placeholder=AsyncMock(return_value=(object(), 42)),
-        edit_placeholder_text=AsyncMock(),
-        send_trace_placeholder=AsyncMock(return_value=(object(), 43)),
-        send_message=AsyncMock(return_value=99),
-        send_fallback=AsyncMock(return_value=77),
-        chunk_text=MagicMock(side_effect=lambda t: [t] if t else []),
-        start_typing=MagicMock(),
-        cancel_typing=MagicMock(),
-        get_msg=MagicMock(side_effect=lambda key, fallback: fallback),
-        placeholder_text="…",
-        edit_reasoning=AsyncMock(),
-    )
+def _make_formatter(**overrides: object) -> MagicMock:
+    """Build a mock OutboundFormatter with async/sync mock defaults."""
+    fmt = MagicMock()
+    fmt.placeholder_text = MagicMock(return_value="…")
+    fmt.chunk = MagicMock(side_effect=lambda t: [t] if t else [])
+    fmt.get_msg = MagicMock(side_effect=lambda key, fallback: fallback)
+    fmt.send_placeholder = AsyncMock(return_value=(object(), 42))
+    fmt.edit_placeholder_text = AsyncMock()
+    fmt.send_trace_placeholder = AsyncMock(return_value=(object(), 43))
+    fmt.send_message = AsyncMock(return_value=99)
+    fmt.send_fallback = AsyncMock(return_value=77)
+    fmt.edit_reasoning = AsyncMock()
+    fmt.edit_tool_recap = AsyncMock()
     for k, v in overrides.items():
-        setattr(cb, k, v)
-    return cb
+        setattr(fmt, k, v)
+    return fmt
 
 
 # ---------------------------------------------------------------------------
@@ -246,7 +246,7 @@ class TestEffortNoneEmitsNoReasoning:
 
 
 class TestCallbackInvokedThroughDispatch:
-    """SC-20: _run_event_loop routes Reasoning events to edit_reasoning."""
+    """SC-20: _run_event_loop routes Reasoning events to edit_reasoning on formatter."""
 
     async def test_callback_invoked_through_dispatch(self) -> None:
         # Arrange — parse fixture through full pipeline to get RenderEvents
@@ -268,10 +268,10 @@ class TestCallbackInvokedThroughDispatch:
             "fixture must produce at least one Reasoning event"
         )
 
-        # Build callbacks with spy on edit_reasoning
+        # Build formatter mock with spy on edit_reasoning
         edit_reasoning_spy = AsyncMock()
         placeholder_obj = object()
-        cb = _make_callbacks(
+        fmt = _make_formatter(
             send_placeholder=AsyncMock(return_value=(placeholder_obj, 42)),
             edit_reasoning=edit_reasoning_spy,
         )
@@ -281,7 +281,7 @@ class TestCallbackInvokedThroughDispatch:
             for ev in render_events:
                 yield ev
 
-        session = StreamingSession(cb, outbound=None)
+        session = StreamingSession(fmt, outbound=None)
         await session._run_event_loop(_render_stream(), placeholder_obj)
 
         # Assert — edit_reasoning called once per Reasoning* event, in order

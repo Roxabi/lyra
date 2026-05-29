@@ -44,6 +44,12 @@ _NATS_UNSAFE = re.compile(r"[.*> ]")
 KEEPALIVE_INTERVAL_S = 30.0
 KEEPALIVE_EVENT_TYPE = "stream_keepalive"
 
+# Bounded retry for transient JetStream publish failures (leader election, timeout).
+# Nats-Msg-Id + the stream's 60 s duplicate window make retried publishes idempotent.
+_AUDIO_PUBLISH_MAX_ATTEMPTS = 3
+_AUDIO_PUBLISH_BACKOFF_BASE_S = 0.2
+_AUDIO_PUBLISH_BACKOFF_CAP_S = 1.0
+
 
 def _safe_subject_token(value: str) -> str:
     """Sanitize a value for use as a NATS subject token."""
@@ -113,6 +119,9 @@ class NatsChannelProxy:
                 "must match [A-Za-z0-9_-]+"
             )
         self._nc = nc
+        # JetStreamContext stores the NATS client by reference (self._nc = conn) and
+        # dispatches every publish through it.  The NATS client reconnects in-place
+        # (same object, new socket) so this cached context is reconnect-transparent.
         self._js: JetStreamContext = nc.jetstream()
         self._platform = platform
         self._bot_id = bot_id
@@ -328,7 +337,7 @@ class NatsChannelProxy:
         }
         payload = json.dumps(envelope, ensure_ascii=False).encode("utf-8")
         try:
-            await self._js.publish(subject, payload, headers={"Nats-Msg-Id": stream_id})
+            await self._publish_audio_with_retry(subject, payload, stream_id)
         except (nats.errors.Error, asyncio.TimeoutError) as exc:
             log.error(
                 "NatsChannelProxy: audio JetStream publish failed"
@@ -337,6 +346,44 @@ class NatsChannelProxy:
                 type(exc).__name__,
             )
             await self._notify_audio_publish_failed(inbound)
+
+    async def _publish_audio_with_retry(
+        self, subject: str, payload: bytes, stream_id: str
+    ) -> None:
+        """Attempt JetStream publish up to _AUDIO_PUBLISH_MAX_ATTEMPTS times.
+
+        Retries on transient ``nats.errors.Error`` or ``asyncio.TimeoutError``
+        with capped exponential backoff.  Re-raises the last exception on
+        exhaustion so the caller can fall through to _notify_audio_publish_failed.
+
+        Retried publishes are idempotent: the ``Nats-Msg-Id`` header combined
+        with the stream's 60 s duplicate window prevents double-delivery.
+        """
+        last_exc: nats.errors.Error | asyncio.TimeoutError | None = None
+        for attempt in range(_AUDIO_PUBLISH_MAX_ATTEMPTS):
+            try:
+                await self._js.publish(
+                    subject, payload, headers={"Nats-Msg-Id": stream_id}
+                )
+                return
+            except (nats.errors.Error, asyncio.TimeoutError) as exc:
+                last_exc = exc
+                if attempt < _AUDIO_PUBLISH_MAX_ATTEMPTS - 1:
+                    delay = min(
+                        _AUDIO_PUBLISH_BACKOFF_BASE_S * (2**attempt),
+                        _AUDIO_PUBLISH_BACKOFF_CAP_S,
+                    )
+                    log.warning(
+                        "NatsChannelProxy: audio publish attempt %d/%d failed"
+                        " stream_id=%r exc_type=%s — retrying in %.2fs",
+                        attempt + 1,
+                        _AUDIO_PUBLISH_MAX_ATTEMPTS,
+                        stream_id,
+                        type(exc).__name__,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+        raise last_exc  # type: ignore[misc]
 
     async def _notify_audio_publish_failed(self, inbound: InboundMessage) -> None:
         """Best-effort: send voice-undelivered notification via legacy text subject.

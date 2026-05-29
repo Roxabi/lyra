@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import time
 from typing import TYPE_CHECKING, Any, cast
 
 import discord
@@ -15,7 +14,7 @@ from lyra.core.messaging.render_events import (
     ReasoningEndRenderEvent,
     ReasoningStartRenderEvent,
 )
-from lyra.outbound.throttle import STREAMING_EDIT_INTERVAL
+from lyra.outbound._reasoning_accum import ReasoningAccumulator
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -58,8 +57,7 @@ class DiscordFormatter:
         self._reply_msg_id = reply_msg_id
         self._should_reply = should_reply
         self._original_msg = original_msg
-        self._reasoning_accum: str = ""
-        self._last_reasoning_edit: float | None = None
+        self._reasoning = ReasoningAccumulator()
 
     def placeholder_text(self) -> str:
         return self._placeholder_text
@@ -136,7 +134,7 @@ class DiscordFormatter:
             await _send(self._adapter, self._original_msg, fallback_outbound)
         return fallback_outbound.metadata.get("reply_message_id")
 
-    async def edit_reasoning(  # noqa: C901 — three-branch state machine
+    async def edit_reasoning(
         self,
         trace_obj: Any,
         event: ReasoningStartRenderEvent
@@ -150,43 +148,15 @@ class DiscordFormatter:
         The show_intermediate=False gate lives upstream on StreamProcessor — no
         adapter-side double-gate needed here.
         """
-        if isinstance(event, ReasoningStartRenderEvent):
-            if trace_obj is None:
-                return
-            self._reasoning_accum = ""
-            self._last_reasoning_edit = None
-
-        elif isinstance(event, ReasoningDeltaRenderEvent):
-            if trace_obj is None:
-                return
-            self._reasoning_accum += event.delta
-            truncated = self._reasoning_accum
-            if len(truncated) > 120:  # noqa: PLR2004
-                truncated = truncated[:117] + "…"
-            now = time.monotonic()
-            if (
-                self._last_reasoning_edit is None
-                or (now - self._last_reasoning_edit) >= STREAMING_EDIT_INTERVAL
-            ):
-                text = self.dim_italic(truncated)
-                await send_with_retry(
-                    lambda t=text: trace_obj.edit(content=t, embed=None),
-                    label="Reasoning trace edit",
-                )
-                self._last_reasoning_edit = now
-
-        else:  # ReasoningEndRenderEvent
-            if trace_obj is None:
-                return
-            if self._reasoning_accum:
-                truncated = self._reasoning_accum
-                if len(truncated) > 120:  # noqa: PLR2004
-                    truncated = truncated[:117] + "…"
-                text = self.dim_italic(truncated)
-                await send_with_retry(
-                    lambda t=text: trace_obj.edit(content=t, embed=None),
-                    label="Reasoning trace edit",
-                )
+        if trace_obj is None:
+            return
+        text, should_edit = self._reasoning.process(event)
+        if should_edit and text is not None:
+            rendered = self.dim_italic(text)
+            await send_with_retry(
+                lambda t=rendered: trace_obj.edit(content=t, embed=None),
+                label="Reasoning trace edit",
+            )
 
     async def edit_tool_recap(
         self,

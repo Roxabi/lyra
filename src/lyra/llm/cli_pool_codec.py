@@ -24,11 +24,37 @@ from lyra.core.trace import TraceContext
 from lyra.transport._result import Err, Result, SanitizedError
 from roxabi_contracts.cli.models import CliChunkEvent, CliCmdPayload, CliControlCmd
 from roxabi_contracts.envelope import CONTRACT_VERSION
+from roxabi_contracts.errors import KNOWN_CODES, WorkerError
 
 if TYPE_CHECKING:
     from lyra.core.agent.agent_config import ModelConfig
 
 log = logging.getLogger(__name__)
+
+_FALLBACK_CODE = "worker.internal"
+
+
+def _validate_worker_error(we: WorkerError | None) -> WorkerError | None:
+    """Guard wire-sourced WorkerError.code against KNOWN_CODES.
+
+    decode_chunk must never raise, so an unregistered code (regex-valid but not
+    in the registry — e.g. from a future or third-party worker) is mapped to the
+    generic fallback rather than forwarded verbatim to downstream subscribers
+    that route/metric on .code.
+    """
+    if we is None or we.code in KNOWN_CODES:
+        return we
+    log.warning(
+        "CliPoolCodec: unregistered WorkerError code %r — mapping to %r",
+        we.code,
+        _FALLBACK_CODE,
+    )
+    return WorkerError(
+        code=_FALLBACK_CODE,
+        message=we.message,
+        retryable=we.retryable,
+        detail=we.detail,
+    )
 
 
 class CliPoolCodec:
@@ -125,7 +151,7 @@ class CliPoolCodec:
                 duration_ms=0,
                 cost_usd=None,
                 error_text=sanitized,
-                worker_error=chunk.worker_error,
+                worker_error=_validate_worker_error(chunk.worker_error),
             )
 
         if chunk.event_type == "text":
@@ -144,7 +170,7 @@ class CliPoolCodec:
                 duration_ms=0,
                 cost_usd=None,
                 session_id=chunk.session_id,
-                worker_error=chunk.worker_error,
+                worker_error=_validate_worker_error(chunk.worker_error),
             )
 
         if chunk.event_type == "session_id":

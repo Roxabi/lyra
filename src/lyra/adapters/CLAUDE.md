@@ -100,6 +100,14 @@ Send-mechanics (send_placeholder, edit_placeholder_text, send_trace_placeholder,
 send_message, send_fallback) and get_msg are part of `OutboundFormatter` — the
 formatter is the single platform-I/O surface consumed by `OutboundEmitter`.
 
+**Format-vs-I/O split (S7a decision, #1508):** `OutboundFormatter` intentionally
+owns two axes — (a) pure formatting (`chunk`, `render_text`, `render_buttons`,
+`dim_italic`, `placeholder_text`) and (b) platform-I/O mechanics (everything else).
+This is a deliberate SRP trade-off accepted at N=2 platforms to keep `_make_emitter`
+arity low.  Any new method added to `OutboundFormatter` MUST be consciously placed
+in axis (a) or (b).  Re-evaluate extracting an `OutboundSender` Protocol when a
+third platform adapter lands (#1508).
+
 ## Clipool adapter (`clipool/`)
 
 Not a platform adapter — the **NATS worker** that hosts `CliPool` in a separate

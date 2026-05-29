@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from lyra.bootstrap.auth_seeding import build_bot_auths
+from lyra.bootstrap.wiring.bootstrap_wiring import BotAuthDeps
 from lyra.core.agent.bot_models import BotRow
 from lyra.infrastructure.stores.auth_store import AuthStore
+from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 from tests.factories.stores import make_auth_store
 from tests.helpers.bot_store import make_bot_store
 
@@ -189,3 +191,93 @@ class TestRosterFromStore:
         finally:
             await bot_store.close()
             await auth_store.close()
+
+
+# ---------------------------------------------------------------------------
+# test_alias_store_parity — hub-path threads alias_store into BotAuthDeps
+# ---------------------------------------------------------------------------
+
+
+class TestAliasStoreParity:
+    def test_build_bot_auths_threads_alias_store_into_deps(self) -> None:
+        """build_bot_auths passes alias_store into BotAuthDeps when provided.
+
+        Parity gate: the hub-standalone path must forward its alias_store arg
+        into the BotAuthDeps so Authenticator.from_bot_store receives it.
+        Without the fix, alias_store defaults to None and identity-alias
+        resolution is silently skipped for all bots in hub-standalone mode.
+
+        This test fails if build_bot_auths ignores the alias_store parameter
+        (i.e., still constructs BotAuthDeps without forwarding it).
+        """
+        fake_auth_store = MagicMock(spec=AuthStore)
+        fake_bot_store = MagicMock()
+        fake_bot_store.get_all.return_value = []
+        fake_alias_store = MagicMock(spec=IdentityAliasStore)
+
+        captured_deps: list[BotAuthDeps] = []
+
+        def fake_build_bot_auths(deps: BotAuthDeps):
+            captured_deps.append(deps)
+            return [], []
+
+        with (
+            patch(
+                "lyra.bootstrap.auth_seeding._build_bot_auths",
+                side_effect=fake_build_bot_auths,
+            ),
+            patch("lyra.bootstrap.auth_seeding._load_circuit_config") as mock_circuit,
+            patch(
+                "lyra.bootstrap.auth_seeding.multibot_config_from_store"
+            ) as mock_multi,
+        ):
+            mock_circuit.return_value = (MagicMock(), frozenset())
+            mock_multi.return_value = (MagicMock(bots=[]), MagicMock(bots=[]))
+
+            with pytest.raises(ValueError, match="No bots configured"):
+                build_bot_auths(
+                    {},
+                    fake_auth_store,
+                    fake_bot_store,
+                    fake_alias_store,
+                )
+
+        assert len(captured_deps) == 1, "Expected _build_bot_auths to be called once"
+        assert captured_deps[0].alias_store is fake_alias_store, (
+            "build_bot_auths did not forward alias_store into BotAuthDeps. "
+            "Hub-standalone path will silently skip identity-alias resolution."
+        )
+
+    def test_build_bot_auths_alias_store_defaults_to_none(self) -> None:
+        """build_bot_auths preserves None default when alias_store is omitted.
+
+        Ensures backward-compatibility for callers that do not pass alias_store.
+        """
+        fake_auth_store = MagicMock(spec=AuthStore)
+        fake_bot_store = MagicMock()
+        fake_bot_store.get_all.return_value = []
+
+        captured_deps: list[BotAuthDeps] = []
+
+        def fake_build_bot_auths(deps: BotAuthDeps):
+            captured_deps.append(deps)
+            return [], []
+
+        with (
+            patch(
+                "lyra.bootstrap.auth_seeding._build_bot_auths",
+                side_effect=fake_build_bot_auths,
+            ),
+            patch("lyra.bootstrap.auth_seeding._load_circuit_config") as mock_circuit,
+            patch(
+                "lyra.bootstrap.auth_seeding.multibot_config_from_store"
+            ) as mock_multi,
+        ):
+            mock_circuit.return_value = (MagicMock(), frozenset())
+            mock_multi.return_value = (MagicMock(bots=[]), MagicMock(bots=[]))
+
+            with pytest.raises(ValueError, match="No bots configured"):
+                build_bot_auths({}, fake_auth_store, fake_bot_store)
+
+        assert len(captured_deps) == 1
+        assert captured_deps[0].alias_store is None

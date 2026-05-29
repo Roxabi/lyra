@@ -18,6 +18,7 @@ from lyra.core.auth.authenticator import Authenticator
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.stores.bot_store_protocol import BotStoreProtocol
 from lyra.infrastructure.stores.auth_store import AuthStore
+from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 
 log = logging.getLogger(__name__)
 
@@ -43,6 +44,7 @@ def build_bot_auths(
     raw_config: dict,
     auth_store: AuthStore,
     bot_store: BotStoreProtocol,
+    alias_store: IdentityAliasStore | None = None,
 ) -> tuple[
     CircuitRegistry,
     frozenset[str],
@@ -65,6 +67,7 @@ def build_bot_auths(
             dc_multi_cfg=dc_multi_cfg,
             auth_store=auth_store,
             admin_user_ids=admin_user_ids,
+            alias_store=alias_store,
         )
     )
     log.info("Authenticator: %d admin_user_id(s) configured", len(admin_user_ids))

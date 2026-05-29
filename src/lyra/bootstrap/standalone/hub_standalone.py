@@ -94,7 +94,9 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
 
         try:
             circuit_registry, admin_user_ids, tg_bot_auths, dc_bot_auths = (
-                build_bot_auths(raw_config, stores.auth, stores.bot)
+                build_bot_auths(
+                    raw_config, stores.auth, stores.bot, stores.identity_alias
+                )
             )
         except ValueError as exc:
             log.error("Configuration error: %s", exc)

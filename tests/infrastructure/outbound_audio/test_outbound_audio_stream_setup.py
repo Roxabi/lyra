@@ -164,9 +164,7 @@ async def test_ensure_kv_idempotent_double_call() -> None:
     fake_kv = MagicMock()
     js = MagicMock()
     # First call: create succeeds; second: BadRequestError (exists)
-    js.create_key_value = AsyncMock(
-        side_effect=[fake_kv, BadRequestError()]
-    )
+    js.create_key_value = AsyncMock(side_effect=[fake_kv, BadRequestError()])
     js.key_value = AsyncMock(return_value=fake_kv)
 
     kv1 = await ensure_kv(js)

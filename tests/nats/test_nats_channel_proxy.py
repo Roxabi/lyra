@@ -529,9 +529,7 @@ async def test_render_audio_puback_fail_notif_publish_also_fails() -> None:
 
     proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
     inbound = _make_inbound("msg-double-fail-99")
-    audio = OutboundAudio(
-        blob_ref=make_test_blobref(b"\x00"), mime_type="audio/ogg"
-    )
+    audio = OutboundAudio(blob_ref=make_test_blobref(b"\x00"), mime_type="audio/ogg")
 
     # Must not raise even when the fallback notif publish also fails
     await proxy.render_audio(audio, inbound)

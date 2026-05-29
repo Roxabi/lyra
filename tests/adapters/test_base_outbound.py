@@ -1,7 +1,7 @@
 """Tests for OutboundAdapterBase ABC.
 
-RED-phase tests: the module under test (lyra.adapters._base_outbound) does not
-exist yet. All tests are expected to fail with ImportError until V3 is implemented.
+Migrated in S7 (#1501): PlatformCallbacks removed; _make_streaming_callbacks
+is no longer abstract. Tests now use MagicMock formatter directly.
 """
 
 from __future__ import annotations
@@ -14,8 +14,31 @@ import pytest
 from lyra.adapters.shared._base_outbound import OutboundAdapterBase
 from lyra.core.messaging.message import InboundMessage, OutboundMessage
 from lyra.core.messaging.render_events import RenderEvent, TextEndRenderEvent
-from lyra.outbound.emitter import OutboundEmitter, PlatformCallbacks
+from lyra.outbound.emitter import OutboundEmitter
 from tests.adapters.conftest import make_tg_msg
+
+# ---------------------------------------------------------------------------
+# Shared formatter helper
+# ---------------------------------------------------------------------------
+
+
+def _make_test_formatter(**overrides) -> MagicMock:
+    """Build a mock OutboundFormatter suitable for OutboundEmitter construction."""
+    fmt = MagicMock()
+    fmt.placeholder_text = MagicMock(return_value="…")
+    fmt.chunk = MagicMock(side_effect=lambda t: [t] if t else [])
+    fmt.get_msg = MagicMock(side_effect=lambda key, fallback: fallback)
+    fmt.send_placeholder = AsyncMock(return_value=(MagicMock(), 42))
+    fmt.edit_placeholder_text = AsyncMock()
+    fmt.send_trace_placeholder = AsyncMock(return_value=(object(), 42))
+    fmt.send_message = AsyncMock(return_value=99)
+    fmt.send_fallback = AsyncMock(return_value=77)
+    fmt.edit_reasoning = AsyncMock()
+    fmt.edit_tool_recap = AsyncMock()
+    for k, v in overrides.items():
+        setattr(fmt, k, v)
+    return fmt
+
 
 # ---------------------------------------------------------------------------
 # Concrete subclasses for testing
@@ -27,20 +50,13 @@ class ConcreteAdapter(OutboundAdapterBase):
 
     async def send(
         self, original_msg: InboundMessage, outbound: OutboundMessage
-    ) -> None:  # noqa: E501
+    ) -> None:
         pass
-
-    def _make_streaming_callbacks(
-        self, original_msg: InboundMessage, outbound: OutboundMessage | None
-    ) -> PlatformCallbacks:
-        return MagicMock(spec=PlatformCallbacks)
 
     def _make_emitter(
         self, original_msg: InboundMessage, outbound: OutboundMessage | None
     ) -> OutboundEmitter:
-        return OutboundEmitter(
-            self._make_streaming_callbacks(original_msg, outbound), outbound
-        )
+        return OutboundEmitter(_make_test_formatter(), outbound)
 
     def _start_typing(self, scope_id: int) -> None:
         pass
@@ -50,39 +66,21 @@ class ConcreteAdapter(OutboundAdapterBase):
 
 
 class TestableAdapter(OutboundAdapterBase):
-    """Concrete subclass that returns real PlatformCallbacks with AsyncMock callbacks.
+    """Concrete subclass that returns real formatter mocks.
 
-    Used for send_streaming() integration tests where StreamingSession.run()
+    Used for send_streaming() integration tests where OutboundEmitter.run()
     must not crash.
     """
 
     async def send(
         self, original_msg: InboundMessage, outbound: OutboundMessage
-    ) -> None:  # noqa: E501
+    ) -> None:
         pass
-
-    def _make_streaming_callbacks(
-        self, original_msg: InboundMessage, outbound: OutboundMessage | None
-    ) -> PlatformCallbacks:
-        return PlatformCallbacks(
-            send_placeholder=AsyncMock(return_value=(MagicMock(), 42)),
-            edit_placeholder_text=AsyncMock(),
-            send_trace_placeholder=AsyncMock(return_value=(object(), 42)),
-            send_message=AsyncMock(return_value=99),
-            send_fallback=AsyncMock(return_value=77),
-            chunk_text=lambda text: [text],
-            start_typing=MagicMock(),
-            cancel_typing=MagicMock(),
-            get_msg=MagicMock(side_effect=lambda key, fb: fb),
-            placeholder_text="\u2026",
-        )
 
     def _make_emitter(
         self, original_msg: InboundMessage, outbound: OutboundMessage | None
     ) -> OutboundEmitter:
-        return OutboundEmitter(
-            self._make_streaming_callbacks(original_msg, outbound), outbound
-        )
+        return OutboundEmitter(_make_test_formatter(), outbound)
 
     def _start_typing(self, scope_id: int) -> None:
         pass
@@ -111,9 +109,6 @@ class TestOutboundAdapterBaseABC:
 
         # Arrange
         class MissingSend(OutboundAdapterBase):
-            def _make_streaming_callbacks(self, original_msg, outbound):  # type: ignore[override]
-                pass
-
             def _make_emitter(self, original_msg, outbound):  # type: ignore[override]
                 pass
 
@@ -127,36 +122,12 @@ class TestOutboundAdapterBaseABC:
         with pytest.raises(TypeError):
             MissingSend()  # type: ignore[abstract]
 
-    def test_missing_make_streaming_callbacks_raises_type_error(self) -> None:
-        """Instantiating a subclass that omits _make_streaming_callbacks() must raise TypeError."""  # noqa: E501
-
-        # Arrange
-        class MissingCallbacks(OutboundAdapterBase):
-            async def send(self, original_msg, outbound):
-                pass
-
-            def _make_emitter(self, original_msg, outbound):  # type: ignore[override]
-                pass
-
-            def _start_typing(self, scope_id):
-                pass
-
-            def _cancel_typing(self, scope_id):
-                pass
-
-        # Act / Assert
-        with pytest.raises(TypeError):
-            MissingCallbacks()  # type: ignore[abstract]
-
     def test_missing_make_emitter_raises_type_error(self) -> None:
         """Instantiating a subclass that omits _make_emitter() must raise TypeError."""
 
         # Arrange
         class MissingEmitter(OutboundAdapterBase):
             async def send(self, original_msg, outbound):
-                pass
-
-            def _make_streaming_callbacks(self, original_msg, outbound):  # type: ignore[override]
                 pass
 
             def _start_typing(self, scope_id):
@@ -177,9 +148,6 @@ class TestOutboundAdapterBaseABC:
             async def send(self, original_msg, outbound):
                 pass
 
-            def _make_streaming_callbacks(self, original_msg, outbound):  # type: ignore[override]
-                pass
-
             def _make_emitter(self, original_msg, outbound):  # type: ignore[override]
                 pass
 
@@ -196,9 +164,6 @@ class TestOutboundAdapterBaseABC:
         # Arrange
         class MissingCancelTyping(OutboundAdapterBase):
             async def send(self, original_msg, outbound):
-                pass
-
-            def _make_streaming_callbacks(self, original_msg, outbound):  # type: ignore[override]
                 pass
 
             def _make_emitter(self, original_msg, outbound):  # type: ignore[override]
@@ -260,15 +225,14 @@ class TestOutboundAdapterBaseSendStreaming:
         # Act
         await adapter.send_streaming(original_msg, _events(), outbound=outbound)
 
-        # Assert — StreamingSession should have stored the placeholder message id
-        assert "reply_message_id" in outbound.metadata
+        # Assert — OutboundEmitter should have stored the placeholder message id
+        assert outbound.metadata["reply_message_id"] == 42
 
     async def test_send_streaming_calls_make_emitter_exactly_once(self) -> None:
         """send_streaming() must call _make_emitter() exactly once.
 
-        This pins the base class dispatch contract \u2014 send_streaming delegates
-        to _make_emitter (not _make_streaming_callbacks, which is the
-        transitional path used internally by adapters).
+        This pins the base class dispatch contract — send_streaming delegates
+        to _make_emitter (formatter-based path).
         """
         # Arrange
         emitter_call_count = 0
@@ -278,26 +242,10 @@ class TestOutboundAdapterBaseSendStreaming:
             async def send(self, original_msg, outbound):
                 pass
 
-            def _make_streaming_callbacks(self, original_msg, outbound):
-                return PlatformCallbacks(
-                    send_placeholder=AsyncMock(return_value=(MagicMock(), 42)),
-                    edit_placeholder_text=AsyncMock(),
-                    send_trace_placeholder=AsyncMock(return_value=(object(), 42)),
-                    send_message=AsyncMock(return_value=99),
-                    send_fallback=AsyncMock(return_value=77),
-                    chunk_text=lambda text: [text],
-                    start_typing=MagicMock(),
-                    cancel_typing=MagicMock(),
-                    get_msg=MagicMock(side_effect=lambda key, fb: fb),
-                    placeholder_text="\u2026",
-                )
-
             def _make_emitter(self, original_msg, outbound):
                 nonlocal emitter_call_count
                 emitter_call_count += 1
-                return OutboundEmitter(
-                    self._make_streaming_callbacks(original_msg, outbound), outbound
-                )
+                return OutboundEmitter(_make_test_formatter(), outbound)
 
             def _start_typing(self, scope_id):
                 pass
@@ -310,5 +258,5 @@ class TestOutboundAdapterBaseSendStreaming:
         # Act
         await adapter.send_streaming(original_msg, _events(), outbound=None)
 
-        # Assert \u2014 send_streaming \u2192 _make_emitter dispatch fires exactly once
+        # Assert — send_streaming → _make_emitter dispatch fires exactly once
         assert emitter_call_count == 1

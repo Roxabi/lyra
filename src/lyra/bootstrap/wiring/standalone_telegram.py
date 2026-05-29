@@ -164,9 +164,7 @@ async def bootstrap_telegram_standalone(
 
         # Audio consumer: started strictly after astart() + typing, so no
         # cleanup needed in either astart or typing failure paths above.
-        consumer = await start_audio_consumer(
-            js, platform_enum.value, bot_id, adapter
-        )
+        consumer = await start_audio_consumer(js, platform_enum.value, bot_id, adapter)
 
         return (adapter, inbound_bus, tg_typing_listener, consumer)
 

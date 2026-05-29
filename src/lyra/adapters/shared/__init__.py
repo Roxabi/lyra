@@ -21,13 +21,11 @@ from lyra.adapters.shared._shared_text import (
 from lyra.adapters.shared.cli import CLIAdapter
 from lyra.adapters.shared.outbound_listener import OutboundListener
 from lyra.outbound.emitter import OutboundEmitter as StreamingSession
-from lyra.outbound.emitter import PlatformCallbacks
 
 __all__ = [
     "OutboundAdapterBase",
     "OutboundListener",
     "CLIAdapter",
-    "PlatformCallbacks",
     "StreamingSession",
     "TypingTaskManager",
     "ATTACHMENT_EXTS_BASE",

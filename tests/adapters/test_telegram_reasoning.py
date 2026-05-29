@@ -1,6 +1,6 @@
 """Integration tests for Telegram adapter Reasoning rendering (SC-15, T13).
 
-Covers _render_reasoning via PlatformCallbacks.edit_reasoning for:
+Covers TelegramFormatter.edit_reasoning for:
 - Lazy placeholder creation (back-to-back blocks share one placeholder)
 - Edit throttle bound
 - Text truncation
@@ -8,6 +8,9 @@ Covers _render_reasoning via PlatformCallbacks.edit_reasoning for:
 The show_intermediate=False gate lives upstream on StreamProcessor (SC-6) — no
 Reasoning* events reach this callback when disabled, so adapter-level coverage
 is not needed here (see test_stream_processor.py::TestReasoning).
+
+Migrated in S7 (#1501): build_streaming_callbacks replaced with TelegramFormatter
+direct construction.
 """
 
 from __future__ import annotations
@@ -23,7 +26,7 @@ from lyra.core.messaging.render_events import (
     ReasoningStartRenderEvent,
 )
 from lyra.outbound.throttle import STREAMING_EDIT_INTERVAL
-from tests.adapters.conftest import _make_telegram_adapter, _make_telegram_message
+from tests.adapters.conftest import _make_telegram_adapter
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -39,6 +42,19 @@ def _make_trace_send_mock(message_id: int = 501) -> MagicMock:
     return m
 
 
+def _make_formatter(adapter, *, reply_to: int | None = None):
+    """Build a TelegramFormatter for tests."""
+    from lyra.adapters.telegram.telegram_formatter import TelegramFormatter
+
+    return TelegramFormatter(
+        adapter,
+        chat_id=123,
+        get_msg=lambda k, fb: fb,
+        placeholder_text="…",
+        reply_to=reply_to,
+    )
+
+
 # ---------------------------------------------------------------------------
 # T13 — Telegram reasoning rendering (4 tests)
 # ---------------------------------------------------------------------------
@@ -49,16 +65,14 @@ class TestTelegramReasoningRendering:
 
     @pytest.mark.asyncio
     async def test_reasoning_shared_trace_obj(self) -> None:
-        """Callback renders into a pre-supplied trace_obj without calling send_message.
+        """Formatter renders into a pre-supplied trace_obj without calling send_message.
 
         The placeholder is now created by the session layer (_ensure_trace_obj) before
-        _render_reasoning is invoked. This test verifies:
+        edit_reasoning is invoked. This test verifies:
         - With a valid trace_obj, two back-to-back reasoning blocks both render (edit
           calls are made).
-        - The callback itself never calls send_message (no lazy placeholder creation).
+        - The formatter itself never calls send_message (no lazy placeholder creation).
         """
-        from lyra.adapters.telegram.telegram_outbound import build_streaming_callbacks
-
         # Arrange
         adapter = _make_telegram_adapter()
         trace_mock = _make_trace_send_mock(message_id=501)
@@ -68,25 +82,24 @@ class TestTelegramReasoningRendering:
         adapter.bot.send_message = send_message_mock
         adapter.bot.edit_message_text = edit_message_mock
 
-        original_msg = _make_telegram_message()
-        callbacks = build_streaming_callbacks(adapter, original_msg, None)
+        formatter = _make_formatter(adapter)
 
         # Act — two back-to-back reasoning blocks; session pre-supplies trace_obj
         for block_id in (_MSG_ID, f"{_MSG_ID}-2"):
-            await callbacks.edit_reasoning(
+            await formatter.edit_reasoning(
                 trace_mock, ReasoningStartRenderEvent(message_id=block_id)
             )
-            await callbacks.edit_reasoning(
+            await formatter.edit_reasoning(
                 trace_mock,
                 ReasoningDeltaRenderEvent(message_id=block_id, delta="thinking…"),
             )
-            await callbacks.edit_reasoning(
+            await formatter.edit_reasoning(
                 trace_mock, ReasoningEndRenderEvent(message_id=block_id)
             )
 
-        # Assert — callback never calls send_message (session owns placeholder creation)
+        # Assert — formatter never calls send_message (session owns placeholder)
         assert send_message_mock.await_count == 0, (
-            f"Callback must not create its own placeholder; "
+            f"Formatter must not create its own placeholder; "
             f"got {send_message_mock.await_count} send_message calls"
         )
         # At least 2 edit calls (one End flush per block)
@@ -105,8 +118,6 @@ class TestTelegramReasoningRendering:
         Assert: edit_message_text count <= ceil(2.0 / STREAMING_EDIT_INTERVAL) + 1
         and >= 1 (at least the final End flush).
         """
-        from lyra.adapters.telegram.telegram_outbound import build_streaming_callbacks
-
         # Arrange
         adapter = _make_telegram_adapter()
         trace_mock = _make_trace_send_mock(message_id=502)
@@ -114,15 +125,14 @@ class TestTelegramReasoningRendering:
         adapter.bot.send_message = AsyncMock(return_value=trace_mock)
         adapter.bot.edit_message_text = AsyncMock()
 
-        original_msg = _make_telegram_message()
-        callbacks = build_streaming_callbacks(adapter, original_msg, None)
+        formatter = _make_formatter(adapter)
 
         # Spread 20 deltas uniformly across a 2s window
         window = 2.0
         n_deltas = 20
         tick = window / n_deltas  # 0.1s per delta
 
-        # Control time.monotonic in the telegram_outbound module
+        # Control time.monotonic in the telegram_formatter module
         times: list[float] = [i * tick for i in range(n_deltas)]
         time_iter = iter(times)
 
@@ -133,19 +143,19 @@ class TestTelegramReasoningRendering:
                 return window
 
         with patch(
-            "lyra.adapters.telegram.telegram_outbound.time.monotonic",
+            "lyra.adapters.telegram.telegram_formatter.time.monotonic",
             side_effect=fake_monotonic,
         ):
             # Act — session pre-supplies trace_obj (non-None) as per new contract
-            await callbacks.edit_reasoning(
+            await formatter.edit_reasoning(
                 trace_mock, ReasoningStartRenderEvent(message_id=_MSG_ID)
             )
             for i in range(n_deltas):
-                await callbacks.edit_reasoning(
+                await formatter.edit_reasoning(
                     trace_mock,
                     ReasoningDeltaRenderEvent(message_id=_MSG_ID, delta=f"chunk{i}"),
                 )
-            await callbacks.edit_reasoning(
+            await formatter.edit_reasoning(
                 trace_mock, ReasoningEndRenderEvent(message_id=_MSG_ID)
             )
 
@@ -166,8 +176,6 @@ class TestTelegramReasoningRendering:
         Act: Start → Delta(200 'x' chars) → End.
         Assert: the edit call receives text of length 118 ending with '…'.
         """
-        from lyra.adapters.telegram.telegram_outbound import build_streaming_callbacks
-
         # Arrange
         adapter = _make_telegram_adapter()
         trace_mock = _make_trace_send_mock(message_id=503)
@@ -182,18 +190,17 @@ class TestTelegramReasoningRendering:
 
         adapter.bot.edit_message_text = capture_edit
 
-        original_msg = _make_telegram_message()
-        callbacks = build_streaming_callbacks(adapter, original_msg, None)
+        formatter = _make_formatter(adapter)
 
         # Act — session pre-supplies trace_obj (non-None) as per new contract
-        await callbacks.edit_reasoning(
+        await formatter.edit_reasoning(
             trace_mock, ReasoningStartRenderEvent(message_id=_MSG_ID)
         )
-        await callbacks.edit_reasoning(
+        await formatter.edit_reasoning(
             trace_mock,
             ReasoningDeltaRenderEvent(message_id=_MSG_ID, delta="x" * 200),
         )
-        await callbacks.edit_reasoning(
+        await formatter.edit_reasoning(
             trace_mock, ReasoningEndRenderEvent(message_id=_MSG_ID)
         )
 

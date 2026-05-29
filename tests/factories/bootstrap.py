@@ -123,9 +123,7 @@ def _patch_nats_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_audit_sink = MagicMock()
     fake_audit_sink.provision = AsyncMock()
     fake_audit_sink.emit = AsyncMock()
-    monkeypatch.setattr(
-        hub_builder_mod, "JetStreamAuditSink", lambda: fake_audit_sink
-    )
+    monkeypatch.setattr(hub_builder_mod, "JetStreamAuditSink", lambda: fake_audit_sink)
     monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
     monkeypatch.setenv("LYRA_HEALTH_PORT", "0")
     # Isolate vault dir per test to prevent parallel-worker races on

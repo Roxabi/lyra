@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from lyra.core.messaging.bus import Bus
     from lyra.core.stores.thread_store_protocol import ThreadStoreProtocol
     from lyra.infrastructure.stores.turn_store import TurnStore
-    from lyra.outbound.emitter import OutboundEmitter, PlatformCallbacks
+    from lyra.outbound.emitter import OutboundEmitter
 
 from lyra.adapters.discord import discord_audio  # noqa: I001 — DEBT:module-level-patch-fixtures
 from lyra.adapters.discord import discord_audio_outbound
@@ -29,7 +29,6 @@ from lyra.adapters.shared._base_outbound import OutboundAdapterBase
 from lyra.adapters.discord.discord_outbound import (
     DiscordTypingIndicator,
     _discord_typing_worker,
-    build_streaming_callbacks as _build_streaming_callbacks,
     send as _send_impl,
 )
 from lyra.adapters.discord.voice.discord_voice import VoiceSessionManager
@@ -54,6 +53,7 @@ from lyra.core.messaging.message import (
     OutboundMessage,
 )
 from lyra.core.messaging.messages import MessageManager
+
 log = logging.getLogger(__name__)
 
 
@@ -239,61 +239,40 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         """Send response back to Discord."""
         await _send_impl(self, original_msg, outbound)
 
-    def _make_streaming_callbacks(
-        self,
-        original_msg: InboundMessage,
-        outbound: OutboundMessage | None,
-    ) -> "PlatformCallbacks":
-        """Build platform-specific callbacks for StreamingSession."""
-        return _build_streaming_callbacks(self, original_msg, outbound)
-
     def _make_emitter(
         self,
         original_msg: InboundMessage,
         outbound: OutboundMessage | None,
     ) -> "OutboundEmitter":
-        """Build an OutboundEmitter composed of Discord stages (#1279).
-
-        Active since OutboundAdapterBase.send_streaming was flipped to call
-        _make_emitter (T16). Legacy _make_streaming_callbacks is retained for
-        send-mechanics until the S7 follow-up absorbs send_* into the
-        formatter Protocol; the formatter's rendering slots (edit_reasoning,
-        edit_tool_recap, chunk_text) are patched onto the callbacks below.
-        """
+        """Build an OutboundEmitter composed of Discord stages (#1279, S7)."""
         from lyra.adapters.discord.discord_formatter import DiscordFormatter
         from lyra.adapters.discord.discord_formatting import _validate_inbound
         from lyra.outbound.emitter import OutboundEmitter
         from lyra.outbound.error_handler import OutboundErrorHandler
+        from lyra.outbound.formatter import BadFormatter
 
         meta = _validate_inbound(original_msg, "_make_emitter")
         if meta is None:
-            # Bad inbound: fall back to legacy callbacks path so existing error handling
-            # (ValueError "not a discord message") is preserved for this edge case.
-            callbacks = self._make_streaming_callbacks(original_msg, outbound)
-            return OutboundEmitter(callbacks, outbound)
+            return OutboundEmitter(BadFormatter("not a discord message"), outbound)
 
-        channel_id, thread_id, _ = meta
+        channel_id, thread_id, message_id = meta
         send_to_id = thread_id if thread_id is not None else channel_id
+        reply_msg_id = message_id
+        should_reply = reply_msg_id is not None and thread_id is None
         placeholder_text = self._msg("stream_placeholder", "…")
         formatter = DiscordFormatter(
             self,
             send_to_id=send_to_id,
             get_msg=self._msg,
             placeholder_text=placeholder_text,
+            reply_msg_id=reply_msg_id,
+            should_reply=should_reply,
+            original_msg=original_msg,
         )
         typing = DiscordTypingIndicator(self)
-        handler = OutboundErrorHandler(get_msg=self._msg)
-        # Legacy callbacks still own the send-mechanics; formatter overrides
-        # the rendering-only slots so both paths stay consistent during transition.
-        callbacks = self._make_streaming_callbacks(original_msg, outbound)
-        callbacks.edit_reasoning = formatter.edit_reasoning
-        callbacks.edit_tool_recap = formatter.edit_tool_recap
-        callbacks.chunk_text = formatter.chunk
-        callbacks.placeholder_text = formatter.placeholder_text()
-        callbacks.start_typing = lambda: self._start_typing(send_to_id)
-        callbacks.cancel_typing = lambda: self._cancel_typing(send_to_id)
+        handler = OutboundErrorHandler(get_msg=formatter.get_msg)
         return OutboundEmitter(
-            callbacks,
+            formatter,
             outbound,
             error_handler=handler,
             typing=typing,

@@ -199,9 +199,9 @@ def _make_dc_inbound(channel_id: int = 333) -> InboundMessage:
 
 
 def _patch_edit_tool_recap(adapter) -> AsyncMock:
-    """Monkey-patch the callbacks so we can capture edit_tool_recap calls.
+    """Monkey-patch the formatter so we can capture edit_tool_recap calls.
 
-    The emitter's _cb.edit_tool_recap is our observation point. We wrap it
+    The emitter's _fmt.edit_tool_recap is our observation point. We wrap it
     after _make_emitter is called via a patched send_streaming.
     """
     mock = AsyncMock()
@@ -209,7 +209,7 @@ def _patch_edit_tool_recap(adapter) -> AsyncMock:
 
     def patched_make_emitter(original_msg, outbound):
         emitter = original_make_emitter(original_msg, outbound)
-        emitter._cb.edit_tool_recap = mock
+        emitter._fmt.edit_tool_recap = mock
         # Also patch edit_tool_recap on trace placeholder side
         return emitter
 

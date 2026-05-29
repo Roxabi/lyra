@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from lyra.adapters.shared.outbound_listener import OutboundListener
     from lyra.core.messaging.bus import Bus
     from lyra.infrastructure.stores.turn_store import TurnStore
-    from lyra.outbound.emitter import OutboundEmitter, PlatformCallbacks
+    from lyra.outbound.emitter import OutboundEmitter
 
 from lyra.adapters.telegram import telegram_audio  # noqa: I001 — DEBT:lint-residual
 from lyra.adapters.shared._base_outbound import OutboundAdapterBase
@@ -35,7 +35,6 @@ from lyra.adapters.telegram.telegram_normalize import (
 from lyra.adapters.telegram.telegram_outbound import (
     _typing_loop as _typing_loop,  # noqa: F401 — DEBT:re-export-init
     _typing_worker,
-    build_streaming_callbacks as _build_streaming_callbacks,
     send as _send_impl,
 )
 from lyra.core.circuit_breaker import CircuitRegistry
@@ -50,6 +49,7 @@ from lyra.core.messaging.message import (
     OutboundMessage,
 )
 from lyra.core.messaging.messages import MessageManager
+
 log = logging.getLogger(__name__)
 
 
@@ -260,53 +260,39 @@ class TelegramAdapter(OutboundAdapterBase):
     ) -> None:
         await _send_impl(self, original_msg, outbound)
 
-    def _make_streaming_callbacks(
-        self, original_msg: InboundMessage, outbound: OutboundMessage | None
-    ) -> "PlatformCallbacks":
-        return _build_streaming_callbacks(self, original_msg, outbound)
-
     def _make_emitter(
         self,
         original_msg: InboundMessage,
         outbound: OutboundMessage | None,
     ) -> "OutboundEmitter":
-        """Construct an OutboundEmitter composed from stage objects (#1279).
-
-        Active since OutboundAdapterBase.send_streaming was flipped to call
-        _make_emitter (T16). The formatter's edit_reasoning/edit_tool_recap
-        are wired onto the PlatformCallbacks so send-mechanics share the same
-        rendering surface until the S7 follow-up absorbs send_* into the
-        formatter Protocol and PlatformCallbacks is deleted.
-        """
+        """Construct an OutboundEmitter composed from stage objects (#1279, S7)."""
         from lyra.adapters.telegram.telegram_formatter import TelegramFormatter
         from lyra.adapters.telegram.telegram_formatting import _validate_inbound
         from lyra.adapters.telegram.telegram_outbound import TelegramTypingIndicator
+        from lyra.core.messaging.message import TelegramMeta
         from lyra.outbound.emitter import OutboundEmitter
         from lyra.outbound.error_handler import OutboundErrorHandler
+        from lyra.outbound.formatter import BadFormatter
 
         meta = _validate_inbound(original_msg, "send_streaming")
         if meta is None:
-            callbacks = _build_streaming_callbacks(self, original_msg, outbound)
-            return OutboundEmitter(callbacks, outbound)
+            return OutboundEmitter(BadFormatter("invalid inbound message"), outbound)
 
         chat_id, _, _ = meta
+        _pm = original_msg.platform_meta
+        reply_to: int | None = _pm.message_id if isinstance(_pm, TelegramMeta) else None
         placeholder_text = self._msg("stream_placeholder", "…")
         formatter = TelegramFormatter(
             self,
             chat_id=chat_id,
             get_msg=self._msg,
             placeholder_text=placeholder_text,
+            reply_to=reply_to,
         )
         typing = TelegramTypingIndicator(self)
-        handler = OutboundErrorHandler(get_msg=self._msg)
-        callbacks = _build_streaming_callbacks(self, original_msg, outbound)
-        # Wire formatter methods onto the mutable PlatformCallbacks dataclass so
-        # the legacy emitter orchestration calls the stage-extracted logic.
-        callbacks.edit_reasoning = formatter.edit_reasoning
-        callbacks.edit_tool_recap = formatter.edit_tool_recap
-        callbacks.chunk_text = formatter.chunk
+        handler = OutboundErrorHandler(get_msg=formatter.get_msg)
         return OutboundEmitter(
-            callbacks,
+            formatter,
             outbound,
             error_handler=handler,
             typing=typing,

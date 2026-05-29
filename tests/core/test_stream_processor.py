@@ -1897,9 +1897,7 @@ class TestRunErrorCode:
             ResultLlmEvent(
                 is_error=True,
                 duration_ms=0,
-                worker_error=WorkerError(
-                    code="cli.auth", message="x", retryable=False
-                ),
+                worker_error=WorkerError(code="cli.auth", message="x", retryable=False),
             ),
             ResultLlmEvent(is_error=True, duration_ms=0, error_text="boom"),
         ):

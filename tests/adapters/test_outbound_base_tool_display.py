@@ -6,6 +6,9 @@ Covers:
 2. Setter stores None as-is — no defaulting at write time.
 3. An adapter that never had the setter called still defaults correctly in the
    read path (mirrors send_streaming's getattr fallback).
+
+Migrated in S7 (#1501): PlatformCallbacks removed; _make_streaming_callbacks
+no longer abstract. _MinimalAdapter now builds emitter with MagicMock formatter.
 """
 
 from __future__ import annotations
@@ -14,11 +17,29 @@ from unittest.mock import AsyncMock, MagicMock
 
 from lyra.adapters.shared._base_outbound import OutboundAdapterBase
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig
-from lyra.outbound.emitter import OutboundEmitter, PlatformCallbacks
+from lyra.outbound.emitter import OutboundEmitter
 
 # ---------------------------------------------------------------------------
 # Minimal concrete subclass (OutboundAdapterBase is abstract)
 # ---------------------------------------------------------------------------
+
+
+def _make_test_formatter(**overrides) -> MagicMock:
+    """Build a mock OutboundFormatter suitable for OutboundEmitter construction."""
+    fmt = MagicMock()
+    fmt.placeholder_text = MagicMock(return_value="…")
+    fmt.chunk = MagicMock(side_effect=lambda t: [t] if t else [])
+    fmt.get_msg = MagicMock(side_effect=lambda key, fallback: fallback)
+    fmt.send_placeholder = AsyncMock(return_value=(MagicMock(), 42))
+    fmt.edit_placeholder_text = AsyncMock()
+    fmt.send_trace_placeholder = AsyncMock(return_value=(object(), 42))
+    fmt.send_message = AsyncMock(return_value=99)
+    fmt.send_fallback = AsyncMock(return_value=77)
+    fmt.edit_reasoning = AsyncMock()
+    fmt.edit_tool_recap = AsyncMock()
+    for k, v in overrides.items():
+        setattr(fmt, k, v)
+    return fmt
 
 
 class _MinimalAdapter(OutboundAdapterBase):
@@ -27,24 +48,8 @@ class _MinimalAdapter(OutboundAdapterBase):
     async def send(self, original_msg, outbound) -> None:
         pass
 
-    def _make_streaming_callbacks(self, original_msg, outbound) -> PlatformCallbacks:
-        return PlatformCallbacks(
-            send_placeholder=AsyncMock(return_value=(MagicMock(), 42)),
-            edit_placeholder_text=AsyncMock(),
-            send_trace_placeholder=AsyncMock(return_value=(object(), 42)),
-            send_message=AsyncMock(return_value=99),
-            send_fallback=AsyncMock(return_value=77),
-            chunk_text=lambda text: [text],
-            start_typing=MagicMock(),
-            cancel_typing=MagicMock(),
-            get_msg=MagicMock(side_effect=lambda key, fb: fb),
-            placeholder_text="…",
-        )
-
     def _make_emitter(self, original_msg, outbound) -> OutboundEmitter:
-        return OutboundEmitter(
-            self._make_streaming_callbacks(original_msg, outbound), outbound
-        )
+        return OutboundEmitter(_make_test_formatter(), outbound)
 
     def _start_typing(self, scope_id: int) -> None:
         pass

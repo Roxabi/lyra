@@ -272,63 +272,51 @@ def _make_discord_msg() -> InboundMessage:
 
 @pytest.mark.asyncio
 async def test_build_streaming_noop_on_non_telegram_msg() -> None:
-    """build_streaming_callbacks() with a non-telegram msg returns noop callbacks.
+    """TelegramFormatter with a non-telegram msg: send_placeholder raises ValueError.
 
-    Calling _send_placeholder on the noop result raises ValueError.
-    Covers L176-182.
+    Migrated from build_streaming_callbacks: TelegramFormatter._BadTelegramFormatter
+    (returned by _make_emitter when validation fails) raises ValueError.
+    Tests via adapter._make_emitter path (non-telegram msg → _BadTelegramFormatter).
     """
-    from lyra.adapters.telegram.telegram_outbound import build_streaming_callbacks
-
     adapter = _make_telegram_adapter()
     adapter.bot = AsyncMock()
     original_msg = _make_discord_msg()
     outbound = OutboundMessage.from_text("hi")
 
-    # Act
-    callbacks = build_streaming_callbacks(adapter, original_msg, outbound)
+    # _make_emitter returns a _BadTelegramFormatter on non-telegram msg
+    emitter = adapter._make_emitter(original_msg, outbound)
+    formatter = emitter._fmt
 
     # Assert — noop send_placeholder raises ValueError
     with pytest.raises(ValueError, match="invalid inbound message"):
-        await callbacks.send_placeholder()
+        await formatter.send_placeholder()
+
+    with pytest.raises(ValueError):
+        await formatter.send_trace_placeholder()
 
 
 @pytest.mark.asyncio
 async def test_streaming_send_placeholder_with_reply() -> None:
-    """_send_placeholder calls bot.send_message with reply_to_message_id
-    when message_id is set. Covers L199-205.
+    """TelegramFormatter.send_placeholder calls bot.send_message with
+    reply_to_message_id when reply_to is set.
     """
-    from lyra.adapters.telegram.telegram_outbound import build_streaming_callbacks
+    from lyra.adapters.telegram.telegram_formatter import TelegramFormatter
 
     adapter = _make_telegram_adapter()
     sent_mock = SimpleNamespace(message_id=42)
     adapter.bot = AsyncMock()
     adapter.bot.send_message = AsyncMock(return_value=sent_mock)
 
-    original_msg = InboundMessage(
-        id="msg-tg-reply",
-        platform="telegram",
-        bot_id="main",
-        scope_id="chat:123",
-        user_id="tg:user:1",
-        user_name="Alice",
-        is_mention=False,
-        text="hi",
-        text_raw="hi",
-        timestamp=datetime.now(timezone.utc),
-        platform_meta=TelegramMeta(
-            chat_id=123,
-            message_id=77,
-            topic_id=None,
-            is_group=False,
-        ),
-        trust_level=TrustLevel.TRUSTED,
+    formatter = TelegramFormatter(
+        adapter,
+        chat_id=123,
+        get_msg=lambda k, fb: fb,
+        placeholder_text="…",
+        reply_to=77,
     )
-    outbound = OutboundMessage.from_text("")
-
-    callbacks = build_streaming_callbacks(adapter, original_msg, outbound)
 
     # Act
-    await callbacks.send_placeholder()
+    await formatter.send_placeholder()
 
     # Assert
     adapter.bot.send_message.assert_awaited_once()
@@ -338,41 +326,26 @@ async def test_streaming_send_placeholder_with_reply() -> None:
 
 @pytest.mark.asyncio
 async def test_streaming_send_placeholder_no_reply() -> None:
-    """_send_placeholder sends without reply_to_message_id when message_id is None.
-    Covers L199-205.
+    """TelegramFormatter.send_placeholder sends without reply_to_message_id
+    when reply_to is None.
     """
-    from lyra.adapters.telegram.telegram_outbound import build_streaming_callbacks
+    from lyra.adapters.telegram.telegram_formatter import TelegramFormatter
 
     adapter = _make_telegram_adapter()
     sent_mock = SimpleNamespace(message_id=10)
     adapter.bot = AsyncMock()
     adapter.bot.send_message = AsyncMock(return_value=sent_mock)
 
-    original_msg = InboundMessage(
-        id="msg-tg-noreply",
-        platform="telegram",
-        bot_id="main",
-        scope_id="chat:123",
-        user_id="tg:user:1",
-        user_name="Alice",
-        is_mention=False,
-        text="hi",
-        text_raw="hi",
-        timestamp=datetime.now(timezone.utc),
-        platform_meta=TelegramMeta(
-            chat_id=123,
-            message_id=None,
-            topic_id=None,
-            is_group=False,
-        ),
-        trust_level=TrustLevel.TRUSTED,
+    formatter = TelegramFormatter(
+        adapter,
+        chat_id=123,
+        get_msg=lambda k, fb: fb,
+        placeholder_text="…",
+        reply_to=None,
     )
-    outbound = OutboundMessage.from_text("")
-
-    callbacks = build_streaming_callbacks(adapter, original_msg, outbound)
 
     # Act
-    await callbacks.send_placeholder()
+    await formatter.send_placeholder()
 
     # Assert — no reply_to_message_id kwarg
     call_kwargs = adapter.bot.send_message.call_args.kwargs
@@ -381,24 +354,23 @@ async def test_streaming_send_placeholder_no_reply() -> None:
 
 @pytest.mark.asyncio
 async def test_streaming_edit_placeholder_text() -> None:
-    """edit_placeholder_text closure calls bot.edit_message_text.
-
-    Covers L208-218.
-    """
-    from lyra.adapters.telegram.telegram_outbound import build_streaming_callbacks
+    """TelegramFormatter.edit_placeholder_text calls bot.edit_message_text."""
+    from lyra.adapters.telegram.telegram_formatter import TelegramFormatter
 
     adapter = _make_telegram_adapter()
     adapter.bot = AsyncMock()
     adapter.bot.edit_message_text = AsyncMock()
 
-    original_msg = _make_telegram_message()
-    outbound = OutboundMessage.from_text("")
-
-    callbacks = build_streaming_callbacks(adapter, original_msg, outbound)
+    formatter = TelegramFormatter(
+        adapter,
+        chat_id=123,
+        get_msg=lambda k, fb: fb,
+        placeholder_text="…",
+    )
     ph = SimpleNamespace(message_id=5)
 
     # Act
-    await callbacks.edit_placeholder_text(ph, "hello")
+    await formatter.edit_placeholder_text(ph, "hello")
 
     # Assert
     adapter.bot.edit_message_text.assert_awaited_once()
@@ -408,11 +380,8 @@ async def test_streaming_edit_placeholder_text() -> None:
 
 @pytest.mark.asyncio
 async def test_streaming_edit_placeholder_text_failure() -> None:
-    """edit_placeholder_text logs debug on exception and does not re-raise.
-
-    Covers L217-218.
-    """
-    from lyra.adapters.telegram.telegram_outbound import build_streaming_callbacks
+    """TelegramFormatter.edit_placeholder_text swallows TelegramAPIError silently."""
+    from lyra.adapters.telegram.telegram_formatter import TelegramFormatter
 
     adapter = _make_telegram_adapter()
     adapter.bot = AsyncMock()
@@ -420,14 +389,16 @@ async def test_streaming_edit_placeholder_text_failure() -> None:
         side_effect=TelegramAPIError(MagicMock(), "API error")
     )
 
-    original_msg = _make_telegram_message()
-    outbound = OutboundMessage.from_text("")
-
-    callbacks = build_streaming_callbacks(adapter, original_msg, outbound)
+    formatter = TelegramFormatter(
+        adapter,
+        chat_id=123,
+        get_msg=lambda k, fb: fb,
+        placeholder_text="…",
+    )
     ph = SimpleNamespace(message_id=5)
 
     # Act — should not raise
-    await callbacks.edit_placeholder_text(ph, "hello")
+    await formatter.edit_placeholder_text(ph, "hello")
 
     # Assert — exception swallowed
     adapter.bot.edit_message_text.assert_awaited_once()
@@ -435,23 +406,23 @@ async def test_streaming_edit_placeholder_text_failure() -> None:
 
 @pytest.mark.asyncio
 async def test_streaming_send_message() -> None:
-    """send_message closure renders chunks and sends each, returning last message_id.
-    Covers L235-244.
-    """
-    from lyra.adapters.telegram.telegram_outbound import build_streaming_callbacks
+    """TelegramFormatter.send_message renders chunks and returns last message_id."""
+    from lyra.adapters.telegram.telegram_formatter import TelegramFormatter
 
     adapter = _make_telegram_adapter()
     sent_mock = SimpleNamespace(message_id=99)
     adapter.bot = AsyncMock()
     adapter.bot.send_message = AsyncMock(return_value=sent_mock)
 
-    original_msg = _make_telegram_message()
-    outbound = OutboundMessage.from_text("")
-
-    callbacks = build_streaming_callbacks(adapter, original_msg, outbound)
+    formatter = TelegramFormatter(
+        adapter,
+        chat_id=123,
+        get_msg=lambda k, fb: fb,
+        placeholder_text="…",
+    )
 
     # Act
-    result = await callbacks.send_message("hello world")
+    result = await formatter.send_message("hello world")
 
     # Assert
     adapter.bot.send_message.assert_awaited()
@@ -460,24 +431,23 @@ async def test_streaming_send_message() -> None:
 
 @pytest.mark.asyncio
 async def test_streaming_send_fallback_with_text() -> None:
-    """send_fallback with non-empty text renders and sends the message.
-
-    Covers L246-256.
-    """
-    from lyra.adapters.telegram.telegram_outbound import build_streaming_callbacks
+    """TelegramFormatter.send_fallback with non-empty text renders and sends."""
+    from lyra.adapters.telegram.telegram_formatter import TelegramFormatter
 
     adapter = _make_telegram_adapter()
     sent_mock = SimpleNamespace(message_id=88)
     adapter.bot = AsyncMock()
     adapter.bot.send_message = AsyncMock(return_value=sent_mock)
 
-    original_msg = _make_telegram_message()
-    outbound = OutboundMessage.from_text("")
-
-    callbacks = build_streaming_callbacks(adapter, original_msg, outbound)
+    formatter = TelegramFormatter(
+        adapter,
+        chat_id=123,
+        get_msg=lambda k, fb: fb,
+        placeholder_text="…",
+    )
 
     # Act
-    result = await callbacks.send_fallback("fallback text")
+    result = await formatter.send_fallback("fallback text")
 
     # Assert
     adapter.bot.send_message.assert_awaited()
@@ -486,24 +456,23 @@ async def test_streaming_send_fallback_with_text() -> None:
 
 @pytest.mark.asyncio
 async def test_streaming_send_fallback_empty_text() -> None:
-    """send_fallback with empty string uses placeholder_text.
-
-    Covers L250.
-    """
-    from lyra.adapters.telegram.telegram_outbound import build_streaming_callbacks
+    """TelegramFormatter.send_fallback with empty string uses placeholder_text."""
+    from lyra.adapters.telegram.telegram_formatter import TelegramFormatter
 
     adapter = _make_telegram_adapter()
     sent_mock = SimpleNamespace(message_id=77)
     adapter.bot = AsyncMock()
     adapter.bot.send_message = AsyncMock(return_value=sent_mock)
 
-    original_msg = _make_telegram_message()
-    outbound = OutboundMessage.from_text("")
-
-    callbacks = build_streaming_callbacks(adapter, original_msg, outbound)
+    formatter = TelegramFormatter(
+        adapter,
+        chat_id=123,
+        get_msg=lambda k, fb: fb,
+        placeholder_text="…",
+    )
 
     # Act — empty string triggers fallback to placeholder_text
-    result = await callbacks.send_fallback("")
+    result = await formatter.send_fallback("")
 
     # Assert — send_message was called (with placeholder text as fallback)
     adapter.bot.send_message.assert_awaited()

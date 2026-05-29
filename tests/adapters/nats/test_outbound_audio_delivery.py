@@ -276,9 +276,7 @@ async def test_sc3_terminal_term_and_notif_exactly_once() -> None:
     consumer = _make_consumer(send_audio=send_audio, send_text=send_text)
 
     # Deliver at max_deliver count (terminal threshold)
-    msg_terminal = _make_nats_msg(
-        stream_id=stream_id, num_delivered_val=MAX_DELIVER
-    )
+    msg_terminal = _make_nats_msg(stream_id=stream_id, num_delivered_val=MAX_DELIVER)
 
     # Act — first terminal hit
     await consumer._process(msg_terminal)
@@ -294,9 +292,7 @@ async def test_sc3_terminal_term_and_notif_exactly_once() -> None:
     assert VOICE_UNDELIVERED_MSG in outbound_arg.to_text()
 
     # SC7 guard: second terminal hit for same stream_id → notify NOT called again
-    msg_terminal_2 = _make_nats_msg(
-        stream_id=stream_id, num_delivered_val=MAX_DELIVER
-    )
+    msg_terminal_2 = _make_nats_msg(stream_id=stream_id, num_delivered_val=MAX_DELIVER)
     await consumer._process(msg_terminal_2)
 
     # send_text still at count 1 — _notified set guards against re-notification
@@ -419,9 +415,7 @@ async def test_sc4_js_publish_guard_deleted_would_skip_notification() -> None:
 
     proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
     inbound = _make_inbound("sc4-guard-success")
-    audio = OutboundAudio(
-        blob_ref=make_test_blobref(b"\x01"), mime_type="audio/ogg"
-    )
+    audio = OutboundAudio(blob_ref=make_test_blobref(b"\x01"), mime_type="audio/ogg")
 
     # Act: successful publish
     await proxy.render_audio(audio, inbound)

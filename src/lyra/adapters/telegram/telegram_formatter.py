@@ -27,10 +27,8 @@ log = logging.getLogger("lyra.adapters.telegram")
 class TelegramFormatter:
     """OutboundFormatter impl for Telegram (MarkdownV2 escape, 4096 chunk).
 
-    Encapsulates chunking, escaping, button rendering, and trace rendering
-    (reasoning + tool recap) for the Telegram platform. Send-mechanics
-    callbacks (send_placeholder, edit_placeholder_text, …) stay in
-    build_streaming_callbacks for the transition period (S4→S6).
+    Encapsulates chunking, escaping, button rendering, trace rendering
+    (reasoning + tool recap), and send-mechanics for the Telegram platform.
 
     Per-formatter (per-turn) state: reasoning accumulator + last-edit timestamp.
     Both reset on ReasoningStartRenderEvent so each turn starts clean.
@@ -42,11 +40,13 @@ class TelegramFormatter:
         chat_id: int,
         get_msg: "Callable[[str, str], str]",
         placeholder_text: str,
+        reply_to: int | None = None,
     ) -> None:
         self._adapter = adapter
         self._chat_id = chat_id
         self._get_msg = get_msg
         self._placeholder_text = placeholder_text
+        self._reply_to = reply_to
         self._reasoning_accum: str = ""
         self._last_reasoning_edit: float | None = None
 
@@ -64,6 +64,69 @@ class TelegramFormatter:
 
     def dim_italic(self, text: str) -> str:
         return f"*{text}*"
+
+    def get_msg(self, key: str, fallback: str) -> str:
+        return self._get_msg(key, fallback)
+
+    async def send_placeholder(self) -> tuple[Any, int]:
+        kw: dict = {}
+        if self._reply_to is not None:
+            kw["reply_to_message_id"] = self._reply_to
+        msg = await self._adapter.bot.send_message(
+            chat_id=self._chat_id,
+            text=self._placeholder_text,
+            **kw,
+        )
+        return msg, msg.message_id
+
+    async def edit_placeholder_text(self, ph: Any, text: str) -> None:
+        rendered = _render_text(text)
+        if rendered:
+            try:
+                await self._adapter.bot.edit_message_text(
+                    chat_id=self._chat_id,
+                    message_id=ph.message_id,
+                    text=rendered[0],
+                    parse_mode="MarkdownV2",
+                )
+            except TelegramAPIError as exc:
+                log.debug("Placeholder text edit skipped: type=%s", type(exc).__name__)
+
+    async def send_trace_placeholder(self) -> tuple[Any, int | None]:
+        kw: dict = {}
+        if self._reply_to is not None:
+            kw["reply_to_message_id"] = self._reply_to
+        msg = await self._adapter.bot.send_message(
+            chat_id=self._chat_id,
+            text="🔧 …",
+            **kw,
+        )
+        return msg, msg.message_id
+
+    async def send_message(self, text: str) -> int | None:
+        rendered = _render_text(text)
+        last = None
+        for chunk in rendered:
+            try:
+                last = await self._adapter.bot.send_message(
+                    chat_id=self._chat_id, text=chunk, parse_mode="MarkdownV2"
+                )
+            except Exception as exc:  # noqa: BLE001 — terminal final-chunk send; type sanitized
+                log.warning(
+                    "Failed to send final text chunk: type=%s", type(exc).__name__
+                )
+        return last.message_id if last else None
+
+    async def send_fallback(self, text: str) -> int | None:
+        rendered = _render_text(text) if text else []
+        if not rendered:
+            rendered = [text or self._placeholder_text]
+        last = None
+        for chunk in rendered:
+            last = await self._adapter.bot.send_message(
+                chat_id=self._chat_id, text=chunk, parse_mode="MarkdownV2"
+            )
+        return last.message_id if last else None
 
     async def _edit_trace_with_text(self, trace_obj: Any, text: str) -> None:
         """Edit the trace placeholder with formatted text."""

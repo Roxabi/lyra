@@ -2,20 +2,17 @@
 
 Relocated from src/lyra/adapters/shared/_shared_streaming_emitter.py (issue #1279,
 Phase 2 stage extraction). Renamed StreamingSession → OutboundEmitter.
-PlatformCallbacks dataclass kept here transitionally; split into
-Formatter/Throttle/ErrorHandler stages in subsequent slices.
 
 Contains the orchestration algorithm (placeholder → debounced edits → final
-delivery) and the injectable PlatformCallbacks contract. State types live in
-_shared_streaming_state.py.
+delivery). Platform-specific behaviour is injected via OutboundFormatter Protocol.
+State types live in _shared_streaming_state.py.
 """
 
 from __future__ import annotations
 
 import logging
 import time
-from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
-from dataclasses import dataclass, field
+from collections.abc import AsyncGenerator, AsyncIterator
 from typing import TYPE_CHECKING, Any, assert_never
 
 if TYPE_CHECKING:
@@ -46,63 +43,11 @@ from lyra.outbound._tool_recap import (
     format_recap_lines,
 )
 from lyra.outbound.error_handler import OutboundErrorHandler
+from lyra.outbound.formatter import OutboundFormatter
 from lyra.outbound.throttle import STREAMING_EDIT_INTERVAL
 from lyra.transport._result import Err
 
 log = logging.getLogger(__name__)
-
-
-async def _default_no_op_edit_tool_recap(
-    trace_obj: Any,
-    lines: list[str],
-    done: bool,
-) -> None:
-    """Default no-op — adapters that haven't opted in render nothing."""
-    del trace_obj, lines, done
-
-
-async def _default_no_op_edit_reasoning(
-    trace_obj: Any,
-    event: ReasoningStartRenderEvent
-    | ReasoningDeltaRenderEvent
-    | ReasoningEndRenderEvent,
-) -> None:
-    """Default no-op — adapters that haven't opted in render nothing."""
-    del trace_obj, event
-
-
-@dataclass
-class PlatformCallbacks:
-    """Injectable platform callbacks for OutboundEmitter.
-
-    Callbacks may raise; OutboundEmitter catches and handles exceptions
-    internally except for stream errors which are re-raised from ``run()``.
-    See adapters/CLAUDE.md for full field documentation.
-    """
-
-    send_placeholder: Callable[[], Awaitable[tuple[Any, int | None]]]
-    edit_placeholder_text: Callable[[Any, str], Awaitable[None]]
-    send_trace_placeholder: Callable[[], Awaitable[tuple[Any, int | None]]]
-    send_message: Callable[[str], Awaitable[int | None]]
-    send_fallback: Callable[[str], Awaitable[int | None]]
-    chunk_text: Callable[[str], list[str]]
-    start_typing: Callable[[], None]
-    cancel_typing: Callable[[], None]
-    get_msg: Callable[[str, str], str]
-    placeholder_text: str
-    edit_reasoning: Callable[
-        [
-            Any,
-            ReasoningStartRenderEvent
-            | ReasoningDeltaRenderEvent
-            | ReasoningEndRenderEvent,
-        ],
-        Awaitable[None],
-    ] = field(default=_default_no_op_edit_reasoning)
-    edit_tool_recap: Callable[
-        [Any, list[str], bool],
-        Awaitable[None],
-    ] = field(default=_default_no_op_edit_tool_recap)
 
 
 async def _prepend(
@@ -128,7 +73,7 @@ class OutboundEmitter:
       5. Manage typing indicator tail
 
     Platform-specific behaviour (API calls, text formatting) is injected via
-    ``PlatformCallbacks``. The session is single-use — create a new instance
+    ``OutboundFormatter``. The session is single-use — create a new instance
     per outbound turn.
     """
 
@@ -142,16 +87,16 @@ class OutboundEmitter:
 
     def __init__(
         self,
-        callbacks: PlatformCallbacks,
+        formatter: OutboundFormatter,
         outbound: OutboundMessage | None,
         *,
         error_handler: OutboundErrorHandler | None = None,
         typing: "ThrottleCapability | None" = None,
         typing_scope_id: int | None = None,
     ) -> None:
-        self._cb = callbacks
+        self._fmt = formatter
         self._outbound = outbound
-        self._handler = error_handler or OutboundErrorHandler(get_msg=callbacks.get_msg)
+        self._handler = error_handler or OutboundErrorHandler(get_msg=formatter.get_msg)
         self._typing = typing
         self._typing_scope_id = typing_scope_id
         self._st = StreamState()
@@ -174,7 +119,7 @@ class OutboundEmitter:
         if self._trace_obj is not None:
             return True
         result = await self._handler.guard(
-            self._cb.send_trace_placeholder,
+            self._fmt.send_trace_placeholder,
             context="ensure_trace_obj",
         )
         if isinstance(result, Err):
@@ -228,7 +173,7 @@ class OutboundEmitter:
                 trace = self._trace_obj
 
                 result = await self._handler.guard(
-                    lambda t=trace, ls=lines: self._cb.edit_tool_recap(t, ls, False),
+                    lambda t=trace, ls=lines: self._fmt.edit_tool_recap(t, ls, False),
                     context="recap_intermediate_edit",
                 )
                 if isinstance(result, Err):
@@ -261,7 +206,7 @@ class OutboundEmitter:
                     display = self._st.istate.display()
                     result = await self._handler.guard(
                         lambda p=placeholder_obj, d=display: (
-                            self._cb.edit_placeholder_text(p, d)
+                            self._fmt.edit_placeholder_text(p, d)
                         ),
                         context="intermediate_text_edit",
                     )
@@ -282,18 +227,14 @@ class OutboundEmitter:
                 self._st.set_final_text(final)
 
     async def _cancel_typing(self) -> None:
-        """Cancel typing via ThrottleCapability or legacy callback."""
+        """Cancel typing via ThrottleCapability."""
         if self._typing is not None and self._typing_scope_id is not None:
             await self._typing.cancel_typing(self._typing_scope_id)
-        else:
-            self._cb.cancel_typing()
 
     async def _start_typing(self) -> None:
-        """Start typing via ThrottleCapability or legacy callback."""
+        """Start typing via ThrottleCapability."""
         if self._typing is not None and self._typing_scope_id is not None:
             await self._typing.start_typing(self._typing_scope_id)
-        else:
-            self._cb.start_typing()
 
     async def _send_placeholder(self) -> tuple[Any, int | None] | None:
         """Send the placeholder and record reply_message_id on outbound.
@@ -303,7 +244,7 @@ class OutboundEmitter:
         Returns (placeholder_obj, reply_message_id) on success.
         """
         result = await self._handler.guard(
-            self._cb.send_placeholder,
+            self._fmt.send_placeholder,
             context="send_placeholder",
         )
         if isinstance(result, Err):
@@ -320,9 +261,9 @@ class OutboundEmitter:
         async for event in events:
             if isinstance(event, TextDeltaRenderEvent):
                 parts.append(event.delta)
-        fallback_text = "".join(parts) or self._cb.placeholder_text
+        fallback_text = "".join(parts) or self._fmt.placeholder_text()
         result = await self._handler.guard(
-            lambda t=fallback_text: self._cb.send_fallback(t),
+            lambda t=fallback_text: self._fmt.send_fallback(t),
             context="drain_fallback",
         )
         if isinstance(result, Err):
@@ -385,18 +326,17 @@ class OutboundEmitter:
                     | ReasoningEndRenderEvent,
                 ):
                     # Slice 4 (#1101): typed reasoning events. Routed through
-                    # PlatformCallbacks.edit_reasoning (see T9.5). Default
-                    # callback is no-op; adapters override via OutboundAdapterBase.
-                    # On Start, ensure the shared trace placeholder exists so
-                    # reasoning and recap share a single placeholder object.
+                    # OutboundFormatter.edit_reasoning. On Start, ensure the
+                    # shared trace placeholder exists so reasoning and recap
+                    # share a single placeholder object.
                     if isinstance(event, ReasoningStartRenderEvent):
                         await self._ensure_trace_obj()
-                    await self._cb.edit_reasoning(self._trace_obj, event)
+                    await self._fmt.edit_reasoning(self._trace_obj, event)
                     continue
                 else:
                     assert_never(event)
 
-        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — terminal, migrated in S7
+        except Exception as exc:  # noqa: BLE001 — terminal stream-error capture; broad-catch is intentional
             self._st.stream_error = exc
 
     async def _deliver_text_chunks(
@@ -406,8 +346,8 @@ class OutboundEmitter:
     ) -> None:
         """Edit placeholder with first chunk, send overflow."""
         result = await self._handler.guard(
-            lambda p=placeholder_obj, c=final_chunks[0]: self._cb.edit_placeholder_text(
-                p, c
+            lambda p=placeholder_obj, c=final_chunks[0]: (
+                self._fmt.edit_placeholder_text(p, c)
             ),
             context="deliver_final_edit",
         )
@@ -415,7 +355,7 @@ class OutboundEmitter:
             pass  # guard already logged; non-fatal
         for extra_chunk in final_chunks[1:]:
             result = await self._handler.guard(
-                lambda c=extra_chunk: self._cb.send_message(c),
+                lambda c=extra_chunk: self._fmt.send_message(c),
                 context="deliver_overflow_chunk",
             )
             if isinstance(result, Err):
@@ -444,14 +384,14 @@ class OutboundEmitter:
             if lines:
                 trace = self._trace_obj
                 result = await self._handler.guard(
-                    lambda t=trace, ls=lines: self._cb.edit_tool_recap(t, ls, True),
+                    lambda t=trace, ls=lines: self._fmt.edit_tool_recap(t, ls, True),
                     context="recap_final_edit",
                 )
                 if isinstance(result, Err):
                     pass  # guard already logged; non-fatal
 
-        display_text = self._st.build_display_text(self._cb.get_msg)
-        chunks = self._cb.chunk_text(display_text) if display_text else []
+        display_text = self._st.build_display_text(self._fmt.get_msg)
+        chunks = self._fmt.chunk(display_text) if display_text else []
         if chunks:
             await self._deliver_text_chunks(placeholder_obj, chunks)
             return
@@ -471,7 +411,7 @@ class OutboundEmitter:
             or GENERIC_ERROR_REPLY
         )
         result = await self._handler.guard(
-            lambda p=placeholder_obj, t=error_text: self._cb.edit_placeholder_text(
+            lambda p=placeholder_obj, t=error_text: self._fmt.edit_placeholder_text(
                 p, t
             ),
             context="error_edit",
@@ -503,7 +443,7 @@ class OutboundEmitter:
                 first_event = await events.__anext__()
             except StopAsyncIteration:
                 pass
-            except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — terminal, migrated in S7
+            except Exception as exc:  # noqa: BLE001 — terminal stream-error capture; broad-catch is intentional
                 peek_error = exc
             if first_event is None and peek_error is None:
                 await self._drain_fallback(events)

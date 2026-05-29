@@ -146,7 +146,5 @@ def _create_hub_tasks(hub: Any, health_server: Any) -> list[asyncio.Task[Any]]:
 
         _audit_queue = hub._event_bus.subscribe()
         _audit_consumer = AuditConsumer(_audit_queue)
-        tasks.append(
-            asyncio.create_task(_audit_consumer.run(), name="audit-consumer")
-        )
+        tasks.append(asyncio.create_task(_audit_consumer.run(), name="audit-consumer"))
     return tasks

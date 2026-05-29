@@ -26,7 +26,7 @@ The row will grant `subscribe: lyra.typing.>` to `code-worker` (it consumes typi
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
 | `$JS.API.>` | PUB | — | — | PUB | PUB | PUB | — | PUB | PUB | — | — | — | PUB |
 | `$JS.API.CONSUMER.CREATE.*` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — |
-| `$JS.API.CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO.*` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — |
+| `$JS.API.CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO.>` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — |
 | `$JS.API.CONSUMER.CREATE.LYRA_TURNS.turn-writer-v1.>` | — | — | — | — | — | — | — | — | — | — | — | PUB | — |
 | `$JS.API.CONSUMER.INFO.LYRA_OUTBOUND_AUDIO.*` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — |
 | `$JS.API.CONSUMER.INFO.LYRA_TURNS.turn-writer-v1` | — | — | — | — | — | — | — | — | — | — | — | PUB | — |
@@ -34,10 +34,13 @@ The row will grant `subscribe: lyra.typing.>` to `code-worker` (it consumes typi
 | `$JS.API.CONSUMER.MSG.NEXT.LYRA_TURNS.turn-writer-v1` | — | — | — | — | — | — | — | — | — | — | — | PUB | — |
 | `$JS.API.DIRECT.GET.LYRA_STATE.hub.ready` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — |
 | `$JS.API.INFO` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — |
+| `$JS.API.STREAM.CREATE.KV_lyra_outbound_audio_sent` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — |
 | `$JS.API.STREAM.CREATE.LYRA_OUTBOUND_AUDIO` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — |
 | `$JS.API.STREAM.CREATE.LYRA_TURNS` | — | — | — | — | — | — | — | — | — | — | — | PUB | — |
+| `$JS.API.STREAM.INFO.KV_lyra_outbound_audio_sent` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — |
 | `$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — |
 | `$JS.API.STREAM.INFO.LYRA_TURNS` | — | — | — | — | — | — | — | — | — | — | — | PUB | — |
+| `$JS.API.STREAM.MSG.GET.KV_lyra_outbound_audio_sent` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — |
 | `$JS.API.STREAM.UPDATE.LYRA_OUTBOUND_AUDIO` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — |
 | `$JS.API.STREAM.UPDATE.LYRA_TURNS` | — | — | — | — | — | — | — | — | — | — | — | PUB | — |
 | `$KV.lyra-state.>` | PUB | SUB | SUB | SUB | SUB | SUB | — | SUB | SUB | — | — | — | PUB |

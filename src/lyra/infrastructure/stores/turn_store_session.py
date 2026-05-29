@@ -11,6 +11,8 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from lyra.core.stores.turn_store_protocol import SessionRow
+
 if TYPE_CHECKING:
     import aiosqlite
 
@@ -90,7 +92,7 @@ class TurnStoreSessionMixin:
         """
         return await get_cli_session_by_pool(self._db_or_raise(), pool_id)
 
-    async def list_sessions(self, pool_id: str, limit: int = 5) -> list[dict]:
+    async def list_sessions(self, pool_id: str, limit: int = 5) -> list[SessionRow]:
         """Return up to *limit* recent sessions for *pool_id*, newest first.
 
         Each row carries ``session_id``, ``cli_session_id``, ``last_active_at``,

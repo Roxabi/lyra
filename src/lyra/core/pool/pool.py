@@ -10,14 +10,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from lyra.infrastructure.stores.turn_store import TurnStore
-
     from ..memory import SessionSnapshot
 
 from ..config import PoolConfig
 from ..debouncer import MessageDebouncer
 from ..messaging.message import InboundMessage, OutboundMessage
 from ..stores.pairing_protocol import PairingManagerProtocol
+from ..stores.turn_store_protocol import TurnStoreProtocol
 from .pool_context import PoolContext as PoolContext
 from .pool_observer import PoolObserver
 from .pool_processor import PoolProcessor
@@ -126,7 +125,7 @@ class Pool:
         self.pairing_manager: PairingManagerProtocol | None = None
 
     @property
-    def turn_store(self) -> "TurnStore | None":
+    def turn_store(self) -> TurnStoreProtocol | None:
         """Read-only access to the wired TurnStore (None if not configured)."""
         return self._observer._turn_store
 

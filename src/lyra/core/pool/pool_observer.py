@@ -6,10 +6,11 @@ from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from lyra.infrastructure.stores.message_index import MessageIndex
-    from lyra.infrastructure.stores.turn_store import TurnStore
     from lyra.transport.turn_publisher import TurnPublisher
 
     from ..messaging.message import InboundMessage
+
+from ..stores.turn_store_protocol import TurnStoreProtocol
 
 log = logging.getLogger(__name__)
 
@@ -30,7 +31,7 @@ class PoolObserver:
         self._pool_id = pool_id
         self._session_id_fn = session_id_fn
 
-        self._turn_store: TurnStore | None = None
+        self._turn_store: TurnStoreProtocol | None = None
         self._turn_publisher: TurnPublisher | None = None
         self._message_index: MessageIndex | None = None
         self._turn_logger: Callable[[str, InboundMessage], Awaitable[None]] | None = (
@@ -45,7 +46,7 @@ class PoolObserver:
     # Registration helpers (replaces direct attribute assignment)
     # ------------------------------------------------------------------
 
-    def register_turn_store(self, store: TurnStore) -> None:
+    def register_turn_store(self, store: TurnStoreProtocol) -> None:
         """Wire the TurnStore for L1 raw turn logging (kept for read paths)."""
         self._turn_store = store
 

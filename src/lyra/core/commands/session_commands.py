@@ -9,6 +9,10 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..stores.turn_store_protocol import SessionRow
 
 from ..messaging.message import InboundMessage, Response
 from ..pool import Pool
@@ -50,7 +54,7 @@ def _truncate(text: str | None, n: int = _TITLE_MAX) -> str:
     return first_line[: n - 1] + "…"
 
 
-def _format_list(rows: list[dict], current_cli: str | None) -> str:
+def _format_list(rows: list[SessionRow], current_cli: str | None) -> str:
     if not rows:
         return "No past sessions for this chat."
     lines = ["Recent sessions:"]

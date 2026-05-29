@@ -1,0 +1,65 @@
+---
+title: "ADR-078: TurnStoreProtocol — decouple lyra.core from concrete TurnStore"
+description: Introduce TurnStoreProtocol in core/stores/ so pool and session_lifecycle depend on the protocol, not the SQLite implementation. Fixes the lyra.core ← lyra.infrastructure inversion.
+status: accepted
+date: 2026-05-28
+deciders: [Mickael]
+supersedes: []
+superseded_by: []
+related: [048, 075]
+---
+
+## Status
+
+Accepted — 2026-05-28
+
+## Context
+
+`TurnStore` (the L1 raw-turn SQLite store) lives in `lyra.infrastructure.stores`.
+Per ADR-048, persistence implementations belong in `infrastructure/`; protocols
+belong in `core/stores/`. Every other store already follows this pattern:
+`AgentStoreProtocol`, `BotStoreProtocol`, `ThreadStoreProtocol` are all defined
+in `core/stores/` and re-exported by `core/stores/__init__.py`.
+
+`TurnStore` was the only exception. Without a protocol:
+
+- `src/lyra/core/pool/pool.py` — `turn_store` property typed as `"TurnStore | None"` (TYPE_CHECKING import from infrastructure)
+- `src/lyra/core/pool/pool_observer.py` — `_turn_store` field and `register_turn_store` parameter typed as `TurnStore`
+
+Both invert the dependency arrow `lyra.core ← lyra.infrastructure`, violating the
+layering contract documented in `src/lyra/core/CLAUDE.md`.
+
+## Decision
+
+Introduce `TurnStoreProtocol` in `src/lyra/core/stores/turn_store_protocol.py`.
+
+The protocol covers the **read-path interface** used by `lyra.core` consumers:
+
+| Method | Consumer |
+|---|---|
+| `get_turns(pool_id, user_id, limit)` | `core/session_lifecycle.py` |
+| `list_sessions(pool_id, limit)` | `core/commands/session_commands.py` |
+| `get_cli_session(session_id)` | `core/commands/session_commands.py` |
+| `get_cli_session_by_pool(pool_id)` | future consumers |
+| `get_last_session(pool_id)` | future consumers |
+| `get_session_pool_id(session_id)` | future consumers |
+
+Write-path methods (`_log_turn`, `_start_session`, `_end_session`,
+`_set_cli_session`, `_increment_resume_count`) are intentionally excluded.
+They are private to the `TurnWriter` subscriber (ADR-075) and are never
+called by `core/` consumers directly.
+
+`Pool.turn_store` and `PoolObserver._turn_store` / `register_turn_store` are
+retyped to `TurnStoreProtocol | None`. The concrete `TurnStore` satisfies the
+protocol structurally (`@runtime_checkable`), so no call-site changes are needed.
+
+## Consequences
+
+**Positive:**
+- Layering inversion eliminated for `pool/` consumers — `pool.py` and `pool_observer.py` no longer import from `infrastructure/` (5 hub/cli TYPE_CHECKING exemptions remain in `.importlinter`; tracked separately)
+- `TurnStoreProtocol` is now swappable for testing (in-memory stub, NATS-backed future impl)
+- Consistent with the existing `AgentStoreProtocol` / `BotStoreProtocol` / `ThreadStoreProtocol` pattern
+
+**Neutral:**
+- No behaviour change — `TurnStore` satisfies `TurnStoreProtocol` structurally
+- Pyright verifies structural compatibility at the wire-up site in `bootstrap/`

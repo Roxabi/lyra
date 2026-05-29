@@ -125,6 +125,53 @@ class TestMergeBotsUnknownKey:
             f" got: {captured.err!r}"
         )
 
+    def test_default_alias_sets_trust(self) -> None:
+        """[[auth.*_bots]] `default` key must reach BotRow.default_trust (#1498).
+
+        Old code: data.get("default_trust", DEFAULT_TRUST) — ignored `default` key.
+        New code: data.get("default_trust", data.get("default", DEFAULT_TRUST)).
+        Without the fix this asserts "trusted" but receives "blocked".
+        """
+        raw = {
+            "auth": {
+                "telegram_bots": [
+                    {"bot_id": "main", "default": "trusted"},
+                ]
+            }
+        }
+
+        rows, errors = _merge_bots(raw)
+
+        assert errors == 0, f"Expected 0 errors, got {errors}."
+        assert len(rows) == 1
+        assert rows[0].default_trust == "trusted", (
+            f"Expected default_trust='trusted' via 'default' alias, "
+            f"got {rows[0].default_trust!r}. Fix: read 'default' as fallback."
+        )
+
+    def test_default_trust_wins_over_default_alias(self) -> None:
+        """Explicit `default_trust` must take precedence over `default` alias (#1498).
+
+        Both keys present in the merged dict — canonical key wins (last-wins
+        semantics are irrelevant here; `default_trust` is authoritative).
+        """
+        raw = {
+            "auth": {
+                "telegram_bots": [
+                    {"bot_id": "main", "default_trust": "owner", "default": "trusted"},
+                ]
+            }
+        }
+
+        rows, errors = _merge_bots(raw)
+
+        assert errors == 0, f"Expected 0 errors, got {errors}."
+        assert len(rows) == 1
+        assert rows[0].default_trust == "owner", (
+            f"Expected default_trust='owner' (canonical key wins), "
+            f"got {rows[0].default_trust!r}."
+        )
+
     def test_real_config_keys_accepted(self) -> None:
         """Keys present in config.toml.example must not be rejected by extra='forbid'.
 

@@ -191,7 +191,11 @@ def _merge_bots(raw: dict[str, Any]) -> tuple[list[BotRow], int]:  # noqa: C901 
                 bot_id=bot_id,
                 agent=data.get("agent", "lyra_default"),
                 webhook_enabled=data.get("webhook_enabled", False),
-                default_trust=data.get("default_trust", DEFAULT_TRUST),
+                # [[auth.*_bots]] sections use `default` (per config.toml.example);
+                # `default_trust` is the canonical CLI key. Both must reach BotRow.
+                default_trust=data.get(
+                    "default_trust", data.get("default", DEFAULT_TRUST)
+                ),
                 owner_users=data.get("owner_users", []),
                 trusted_users=data.get("trusted_users", []),
                 trusted_roles=data.get("trusted_roles", []),

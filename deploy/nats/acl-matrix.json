@@ -55,7 +55,7 @@
       "created_at": "2026-04-21",
       "owner": "lyra",
       "description": "Telegram bot adapter — inbox normalized to _inbox.telegram-adapter.> (ADR-051 + postmortem Fix 1).",
-      "notes": "$JS.API.> narrowed to minimal KV read-only subjects (#1014): DIRECT.GET for KV key reads, INFO for JetStream availability, CONSUMER.CREATE for kv.watch() ephemeral consumer. lyra.turns.write added by T27 (#1331): telegram adapter publishes TurnWriteEvents. Outbound-audio JetStream consumer grants added by T7 (#1482): stream/consumer create+info, pull-next, KV dedup bucket. $KV.lyra_outbound_audio_sent.> added to publish (#1482 B1): kv.put() in KvSentSet.mark_sent publishes directly to $KV.<bucket>.<key> subjects and requires an explicit publish grant.",
+      "notes": "$JS.API.> narrowed to minimal KV read-only subjects (#1014): DIRECT.GET for KV key reads, INFO for JetStream availability, CONSUMER.CREATE for kv.watch() ephemeral consumer. lyra.turns.write added by T27 (#1331): telegram adapter publishes TurnWriteEvents. Outbound-audio JetStream consumer grants added by T7 (#1482): stream/consumer create+info, pull-next, KV dedup bucket. $KV.lyra_outbound_audio_sent.> added to publish (#1482 B1): kv.put() in KvSentSet.mark_sent publishes directly to $KV.<bucket>.<key> subjects and requires an explicit publish grant. Hotfix (2026-05-29, prod crash-loop): added $JS.API.STREAM.CREATE.KV_lyra_outbound_audio_sent (create_key_value triggers add_stream on the KV backing stream), $JS.API.STREAM.INFO.KV_lyra_outbound_audio_sent (key_value() bind path calls stream_info when bucket already exists), $JS.ACK.LYRA_OUTBOUND_AUDIO.> (msg.ack()/term() publish to msg.reply which is scoped to $JS.ACK.<stream>.>), $JS.API.STREAM.MSG.GET.KV_lyra_outbound_audio_sent (kv.get() non-direct path calls STREAM.MSG.GET). All confirmed by tracing nats-py source (aio/msg.py, js/manager.py, js/client.py). Hotfix superseded by the sole-provisioner axis migration (tracking issue TBD).",
       "allow_responses": false,
       "publish": [
         "lyra.inbound.telegram.>",
@@ -72,6 +72,10 @@
         "$JS.API.CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO.*",
         "$JS.API.CONSUMER.INFO.LYRA_OUTBOUND_AUDIO.*",
         "$JS.API.CONSUMER.MSG.NEXT.LYRA_OUTBOUND_AUDIO.*",
+        "$JS.API.STREAM.CREATE.KV_lyra_outbound_audio_sent",
+        "$JS.API.STREAM.INFO.KV_lyra_outbound_audio_sent",
+        "$JS.API.STREAM.MSG.GET.KV_lyra_outbound_audio_sent",
+        "$JS.ACK.LYRA_OUTBOUND_AUDIO.>",
         "$KV.lyra_outbound_audio_sent.>"
       ],
       "subscribe": [
@@ -90,7 +94,7 @@
       "created_at": "2026-04-21",
       "owner": "lyra",
       "description": "Discord bot adapter — inbox normalized to _inbox.discord-adapter.> (ADR-051 + postmortem Fix 1).",
-      "notes": "$JS.API.> narrowed to minimal KV read-only subjects (#1014): DIRECT.GET for KV key reads, INFO for JetStream availability, CONSUMER.CREATE for kv.watch() ephemeral consumer. lyra.turns.write added by T27 (#1331): discord adapter publishes TurnWriteEvents. Outbound-audio JetStream consumer grants added by T7 (#1482): stream/consumer create+info, pull-next, KV dedup bucket. $KV.lyra_outbound_audio_sent.> added to publish (#1482 B1): kv.put() in KvSentSet.mark_sent publishes directly to $KV.<bucket>.<key> subjects and requires an explicit publish grant.",
+      "notes": "$JS.API.> narrowed to minimal KV read-only subjects (#1014): DIRECT.GET for KV key reads, INFO for JetStream availability, CONSUMER.CREATE for kv.watch() ephemeral consumer. lyra.turns.write added by T27 (#1331): discord adapter publishes TurnWriteEvents. Outbound-audio JetStream consumer grants added by T7 (#1482): stream/consumer create+info, pull-next, KV dedup bucket. $KV.lyra_outbound_audio_sent.> added to publish (#1482 B1): kv.put() in KvSentSet.mark_sent publishes directly to $KV.<bucket>.<key> subjects and requires an explicit publish grant. Hotfix (2026-05-29, prod crash-loop): added $JS.API.STREAM.CREATE.KV_lyra_outbound_audio_sent (create_key_value triggers add_stream on the KV backing stream), $JS.API.STREAM.INFO.KV_lyra_outbound_audio_sent (key_value() bind path calls stream_info when bucket already exists), $JS.ACK.LYRA_OUTBOUND_AUDIO.> (msg.ack()/term() publish to msg.reply which is scoped to $JS.ACK.<stream>.>), $JS.API.STREAM.MSG.GET.KV_lyra_outbound_audio_sent (kv.get() non-direct path calls STREAM.MSG.GET). All confirmed by tracing nats-py source (aio/msg.py, js/manager.py, js/client.py). Hotfix superseded by the sole-provisioner axis migration (tracking issue TBD).",
       "allow_responses": false,
       "publish": [
         "lyra.inbound.discord.>",
@@ -107,6 +111,10 @@
         "$JS.API.CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO.*",
         "$JS.API.CONSUMER.INFO.LYRA_OUTBOUND_AUDIO.*",
         "$JS.API.CONSUMER.MSG.NEXT.LYRA_OUTBOUND_AUDIO.*",
+        "$JS.API.STREAM.CREATE.KV_lyra_outbound_audio_sent",
+        "$JS.API.STREAM.INFO.KV_lyra_outbound_audio_sent",
+        "$JS.API.STREAM.MSG.GET.KV_lyra_outbound_audio_sent",
+        "$JS.ACK.LYRA_OUTBOUND_AUDIO.>",
         "$KV.lyra_outbound_audio_sent.>"
       ],
       "subscribe": [

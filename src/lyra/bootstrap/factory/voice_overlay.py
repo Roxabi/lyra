@@ -103,14 +103,18 @@ def init_nats_image(nc: "NATS") -> "NatsImageClient":
     return NatsImageClient(pool, ImageCodec(), nc=nc)
 
 
-def init_blobstore() -> "BlobStorePort":
+def init_blobstore() -> "BlobStorePort | None":
     """Build and return an ``HttpBlobStoreAdapter`` satisfying ``BlobStorePort``.
 
     Reads ``LYRA_BLOBSTORE_URL`` and ``LYRA_BLOBSTORE_TOKEN_PATH`` once at
     construction time (restart-not-HUP semantics — token is never re-read
-    without a process restart).  This is the canonical composition-root factory
-    for ``BlobStorePort``; the bare per-call HTTP-client factory it replaced has been
-    removed (ADR-082).
+    without a process restart).
+
+    Returns ``None`` when the token file is absent — the blob store is
+    considered unconfigured and audio attachment upload is disabled until the
+    file is present and the process is restarted.  Only ``FileNotFoundError``
+    is suppressed; permission errors and other ``OSError`` subclasses propagate
+    as real misconfiguration.
     """
     import os
     from pathlib import Path
@@ -123,7 +127,15 @@ def init_blobstore() -> "BlobStorePort":
         "LYRA_BLOBSTORE_TOKEN_PATH",
         str(Path.home() / ".lyra" / "blobstore.tok"),
     )
-    token = Path(token_path).read_text().strip()
+    try:
+        token = Path(token_path).read_text().strip()
+    except FileNotFoundError:
+        log.warning(
+            "BlobStore token not found at %s — blob_store unavailable "
+            "(audio attachments disabled until configured)",
+            token_path,
+        )
+        return None
     http_store = HttpBlobStore(base_url, token)
     log.info("BlobStore client created — url=%s", base_url)
     return HttpBlobStoreAdapter(http_store)

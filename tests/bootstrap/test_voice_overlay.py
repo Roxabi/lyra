@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.bootstrap.factory.voice_overlay import (
+    init_blobstore,
     init_nats_image,
     init_nats_stt,
     init_nats_tts,
@@ -21,6 +22,32 @@ from lyra.nats.nats_tts_client import NatsTtsClient
 @pytest.fixture()
 def mock_nc() -> MagicMock:
     return MagicMock()
+
+
+class TestInitBlobstore:
+    def test_returns_none_when_token_file_absent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """init_blobstore must not raise when token file is missing — returns None."""
+        monkeypatch.setenv(
+            "LYRA_BLOBSTORE_TOKEN_PATH", "/nonexistent/path/blobstore.tok"
+        )
+        result = init_blobstore()
+        assert result is None
+
+    def test_returns_port_when_token_file_present(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pytest.TempPathFactory
+    ) -> None:
+        """init_blobstore returns a BlobStorePort when token file exists."""
+        from lyra.core.ports.blobstore import BlobStorePort
+
+        tok = tmp_path / "blobstore.tok"  # type: ignore[operator]
+        tok.write_text("test-token")
+        monkeypatch.setenv("LYRA_BLOBSTORE_TOKEN_PATH", str(tok))
+        monkeypatch.setenv("LYRA_BLOBSTORE_URL", "http://localhost:8449")
+        result = init_blobstore()
+        assert result is not None
+        assert isinstance(result, BlobStorePort)
 
 
 class TestInitNatsStt:

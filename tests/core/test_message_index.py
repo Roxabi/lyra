@@ -118,3 +118,45 @@ class TestMessageIndexStartupPrune:
         assert await s.resolve("pool:tg:main", "msg-recent") == "sess-recent"
 
         await s.close()
+
+
+# ---------------------------------------------------------------------------
+# MessageIndexProtocol conformance (#1529)
+# ---------------------------------------------------------------------------
+
+
+class TestMessageIndexProtocolConformance:
+    """MessageIndex satisfies MessageIndexProtocol (runtime_checkable guard).
+
+    Guards against silent protocol drift: if MessageIndex drops or renames any
+    method required by the protocol, this test fails immediately.
+    """
+
+    async def test_message_index_isinstance_check(self, tmp_path) -> None:
+        """MessageIndex satisfies MessageIndexProtocol (runtime_checkable check)."""
+        from lyra.core.stores.message_index_protocol import MessageIndexProtocol
+
+        # Arrange — minimal real instance (no connect needed for isinstance check)
+        store = MessageIndex(db_path=tmp_path / "conformance.db")
+
+        # Assert — structural conformance verified at runtime
+        assert isinstance(store, MessageIndexProtocol)
+
+    def test_message_index_protocol_exported_from_package(self) -> None:
+        """MessageIndexProtocol is importable from lyra.core.stores."""
+        from lyra.core.stores import MessageIndexProtocol as _MIP
+        from lyra.core.stores.message_index_protocol import MessageIndexProtocol
+
+        assert _MIP is MessageIndexProtocol
+
+    def test_message_index_protocol_has_no_close_method(self) -> None:
+        """ADR-078: close() is intentionally excluded from MessageIndexProtocol.
+
+        Lifecycle is owned by bootstrap_stores.open_stores() — re-adding close()
+        to the protocol would silently break teardown ownership.
+        """
+        from lyra.core.stores.message_index_protocol import MessageIndexProtocol
+
+        expected = {"resolve", "upsert"}
+        actual: set[str] = getattr(MessageIndexProtocol, "__protocol_attrs__", set())
+        assert actual == expected

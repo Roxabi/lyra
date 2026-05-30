@@ -4,13 +4,13 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Literal
 
+from ..stores.message_index_protocol import MessageIndexProtocol
+from ..stores.turn_store_protocol import TurnStoreProtocol
+
 if TYPE_CHECKING:
-    from lyra.infrastructure.stores.message_index import MessageIndex
     from lyra.transport.turn_publisher import TurnPublisher
 
     from ..messaging.message import InboundMessage
-
-from ..stores.turn_store_protocol import TurnStoreProtocol
 
 log = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class PoolObserver:
 
         self._turn_store: TurnStoreProtocol | None = None
         self._turn_publisher: TurnPublisher | None = None
-        self._message_index: MessageIndex | None = None
+        self._message_index: MessageIndexProtocol | None = None
         self._turn_logger: Callable[[str, InboundMessage], Awaitable[None]] | None = (
             None
         )
@@ -54,7 +54,7 @@ class PoolObserver:
         """Wire the TurnPublisher for NATS-backed turn writes."""
         self._turn_publisher = publisher
 
-    def register_message_index(self, store: MessageIndex) -> None:
+    def register_message_index(self, store: MessageIndexProtocol) -> None:
         """Wire the MessageIndex for session routing on reply-to (#341)."""
         self._message_index = store
 

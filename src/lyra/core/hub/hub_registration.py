@@ -12,9 +12,8 @@ from ..messaging.message import InboundMessage, Platform
 from .hub_protocol import Binding, ChannelAdapter, RoutingKey
 
 if TYPE_CHECKING:
-    from lyra.core.stores import TurnStoreProtocol
+    from lyra.core.stores import MessageIndexProtocol, TurnStoreProtocol
     from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
-    from lyra.infrastructure.stores.message_index import MessageIndex
     from lyra.transport.turn_publisher import TurnPublisher
     from lyra.transport.typing_publisher import TypingPublisher
 
@@ -39,7 +38,7 @@ class HubRegistrationMixin:
         _authenticators: dict[tuple[Platform, str], Authenticator]
         _memory: MemoryManager | None
         _memory_tasks: set
-        _message_index: MessageIndex | None
+        _message_index: MessageIndexProtocol | None
         _platform_queue_maxsize: int
         _turn_store: TurnStoreProtocol | None
         _turn_publisher: TurnPublisher | None
@@ -84,7 +83,7 @@ class HubRegistrationMixin:
         """Wire the TypingPublisher (called by bootstrap; consumed by T2)."""
         self._typing_publisher = publisher
 
-    def set_message_index(self, store: MessageIndex) -> None:
+    def set_message_index(self, store: MessageIndexProtocol) -> None:
         self._message_index = store
         for pool in self.pools.values():
             pool._observer.register_message_index(store)

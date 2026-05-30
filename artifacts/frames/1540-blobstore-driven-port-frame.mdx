@@ -1,0 +1,102 @@
+---
+title: BlobStorePort driven-port + from_store_ref BlobRef converter (ADR-082)
+issue: 1540
+status: approved
+tier: F-lite
+date: 2026-05-30
+---
+
+## Problem
+
+Lyra consumes every external capability (STT, TTS, LLM, audit, resume) through two
+consistent mechanisms: the NATS `WorkerPoolClient` transport (#1278) and a driven-port
+`Protocol` in `core/ports/`. **Blob storage is the sole exception** — it is consumed via
+a bare `get_blobstore_client()` HTTP factory called inline in three adapter callsites,
+with no `core/ports` port and no bootstrap injection point. The concrete `HttpBlobStore`
+type is imported directly into adapters.
+
+The missing port has produced a concrete symptom: the storage→wire `BlobRef` conversion
+(`roxabi_blobs.BlobRef` → `roxabi_contracts.BlobRef`) is hand-rolled at every boundary
+crossing, divergently. The lyra copy at `_shared_audio.py:93` is **buggy** — it drops
+`filename`, `platform_ref`, `platform_message_id`, and `created_at` (provenance loss).
+Every new callsite is a new conversion site.
+
+ADR-082 (Accepted 2026-05-30; architect ENDORSE-WITH-CHANGES + axial ORTHOGONAL-OK) is
+the decision: a `BlobStorePort` Protocol + infra adapter that owns the conversion seam,
+plus a single canonical `BlobRef.from_store_ref()` converter in `roxabi-contracts`.
+
+## Who
+
+- **Primary:** lyra hub/adapter paths that PUT/GET blobs (TTS outbound audio,
+  Telegram/Discord audio ingest) — today they call `get_blobstore_client()` directly and
+  convert by hand.
+- **Secondary:** #1537 central-inbound attachment-ingest stage (next consumer — receives
+  `BlobStorePort` via `IngestCtx`); future blob consumers; voiceCLI/imageCLI (already
+  converge on the correct `from_store_ref` shape — cross-repo migration deferred).
+
+## Constraints
+
+- **lyra monorepo only.** Cross-repo voiceCLI/imageCLI converter migration → separate
+  follow-up issues (deferred).
+- HTTP (not NATS) transport is correct for blobs (ADR-068: NATS 1 MB cap). Transport is
+  NOT changing; only the port abstraction is added.
+- Port returns **wire** `BlobRef` (`roxabi_contracts`), never storage `BlobRef`
+  (`roxabi_blobs`) — the conversion seam lives in the infra adapter.
+- `from_store_ref(store_ref: Any)` is duck-typed — `roxabi-contracts` must NOT import
+  `roxabi-blobs` (layering invariant; verified — llmCLI imports contracts but not blobs).
+- Adapter owns the **semantic** guard (reject `PENDING_STORE_KEY`), NOT the `sha256:`
+  format regex — `store_key` is opaque (`models.py:21`); a format regex would break a
+  future S3/MinIO backend and stays per-consumer (voiceCLI routing invariant).
+- `roxabi-contracts` minor bump (0.4.0 → 0.4.1) + repin consumers on `staging`.
+- No `delete()` on the port (not in production path; non-breaking future addition).
+- Global rules: worktree-only, ¬`--force`/`--hard`/`--amend`, commit co-author trailer.
+
+## Out of Scope
+
+- **Cross-repo converter migration** (voiceCLI `blobs.py`, imageCLI `adapter.py` →
+  `from_store_ref`) — deferred follow-ups.
+- **voiceCLI `requests.py`** inbound storage-type→wire-type parsing fix — separate
+  deferred issue.
+- **`IngestCtx.store: BlobStorePort | None` wiring** — `IngestCtx` is **#1537's** artifact
+  (does not exist in tree yet; recheck confirmed 0 files). #1540 delivers the PORT; #1537
+  wires it into `IngestCtx`. The issue's acceptance bullet naming `IngestCtx.store` is
+  satisfied in #1537, not here.
+- **ADR-083 (central-inbound) §5** converter-sketch amendment is #1537's doc; #1540 only
+  references the new port/converter where #1540 owns the surface.
+
+## Premise Validity
+
+**Success in 6 months:** All lyra blob consumption flows through `BlobStorePort`;
+`grep get_blobstore_client src/lyra` = 0 and stays 0; `from_store_ref` is the only
+storage→wire converter in lyra; the field-set parity test is green in CI; the
+`_shared_audio.py` provenance-loss bug is gone (all 4 fields preserved); a unit test can
+inject a `MockBlobStore` with no HTTP/env.
+
+**Failure in 6 months (falsifiable):** A 4th divergent storage→wire `BlobRef` converter
+appears in lyra, OR `grep get_blobstore_client src/lyra` > 0 again, OR the parity test is
+deleted/skipped to unblock a change — i.e. the port did not actually prevent the drift it
+was built to stop. Measurable: converter count, grep count, test presence in CI.
+
+**Simplest alternative:** ADR Option A — add `from_store_ref` + parity test to
+`roxabi-contracts` and fix the `_shared_audio.py` bug, but LEAVE `get_blobstore_client()`
+in place (no port, no bootstrap injection).
+**Why not simplest:** It fixes the symptom, not the structure. The bare factory persists →
+the next caller reintroduces a converter site; no test-double injection at the hub/adapter
+boundary; #1537's `IngestCtx.store` becomes a hand-written partial port reinvented from
+scratch. Architect review rejected Option A for exactly this reason (does not close the
+structural gap).
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single primary domain (backend), ~0 unknowns (ADR-082 is
+Accepted and resolved them); the patterns are a direct mirror of the existing
+`STTProtocol`/`TtsProtocol` ports + `resume_publisher_adapter` + `voice_overlay` factory.
+
+Signals observed:
+- ~10–13 files across 2 packages (`roxabi-contracts` + lyra `src/`) — upper-F-lite by
+  file count.
+- Known patterns only — no new architecture (the architecture IS the existing hexagonal
+  port model, extended to blobs).
+- Board Size=L reflects file-count/effort, not process tier; complexity marker κ=6 →
+  F-lite; the `analyze` step is redundant (ADR-082 already did the deep analysis).
+  Defaulted to F-lite per the marker; downgrade-resistant since unknowns ≈ 0.

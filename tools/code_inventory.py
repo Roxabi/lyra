@@ -20,6 +20,7 @@ import ast
 import builtins
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Literal
 
@@ -52,11 +53,28 @@ class Verdict:
 # Project namespace configuration
 # ---------------------------------------------------------------------------
 
+
+def _compute_project_prefixes() -> frozenset[str]:
+    """Derive project namespace prefixes from packages/ layout at import time.
+
+    Always includes "lyra" (the main package).  Adds one prefix per
+    packages/<pkg>/src/ directory, converting hyphens to underscores so the
+    dotted module name matches the filesystem layout.  A new package added to
+    packages/ is then automatically covered without editing this file.
+    """
+    prefixes: set[str] = {"lyra"}
+    packages_dir = Path(__file__).resolve().parent.parent / "packages"
+    if packages_dir.is_dir():
+        for pkg_dir in packages_dir.iterdir():
+            if (pkg_dir / "src").is_dir():
+                prefixes.add(pkg_dir.name.replace("-", "_"))
+    return frozenset(prefixes)
+
+
 # Dotted-name prefixes owned by this project.  Other dotted tokens are
 # treated as external → kind=unknown (no false positive).
-_PROJECT_PREFIXES: frozenset[str] = frozenset(
-    ["lyra", "roxabi_nats", "roxabi_contracts", "roxabi_blobs", "roxabi_vault"]
-)
+# Derived at import time from packages/ layout; a new package is auto-covered.
+_PROJECT_PREFIXES: frozenset[str] = _compute_project_prefixes()
 
 # Well-known external / generic PascalCase names that appear in project docs
 # but are NOT project-defined classes.  The oracle skips these (kind=unknown)
@@ -64,25 +82,63 @@ _PROJECT_PREFIXES: frozenset[str] = frozenset(
 _EXTERNAL_KNOWN_NAMES: frozenset[str] = frozenset(
     [
         # stdlib exceptions and warnings
-        "KeyError", "ValueError", "TypeError", "RuntimeError", "OSError",
-        "AttributeError", "NotImplementedError", "StopAsyncIteration",
-        "DeprecationWarning", "UserWarning", "StopIteration", "Exception",
-        "BaseException", "ImportError", "FileNotFoundError", "PermissionError",
-        "TimeoutError", "ConnectionError", "OverflowError", "IndexError",
-        "NameError", "UnicodeDecodeError", "UnicodeEncodeError",
+        "KeyError",
+        "ValueError",
+        "TypeError",
+        "RuntimeError",
+        "OSError",
+        "AttributeError",
+        "NotImplementedError",
+        "StopAsyncIteration",
+        "DeprecationWarning",
+        "UserWarning",
+        "StopIteration",
+        "Exception",
+        "BaseException",
+        "ImportError",
+        "FileNotFoundError",
+        "PermissionError",
+        "TimeoutError",
+        "ConnectionError",
+        "OverflowError",
+        "IndexError",
+        "NameError",
+        "UnicodeDecodeError",
+        "UnicodeEncodeError",
         # typing / generic terms
-        "PascalCase", "CamelCase", "TypeVar", "Protocol", "Optional", "Union",
-        "Dict", "List", "Tuple", "Set", "Any", "Callable", "Iterator",
-        "AsyncIterator", "Generator", "AsyncGenerator",
+        "PascalCase",
+        "CamelCase",
+        "TypeVar",
+        "Protocol",
+        "Optional",
+        "Union",
+        "Dict",
+        "List",
+        "Tuple",
+        "Set",
+        "Any",
+        "Callable",
+        "Iterator",
+        "AsyncIterator",
+        "Generator",
+        "AsyncGenerator",
         # framework / external library names
-        "GitHub", "Discord", "Telegram", "FastAPI", "Pydantic",
-        "Python", "MagicMock", "AsyncMock",
+        "GitHub",
+        "Discord",
+        "Telegram",
+        "FastAPI",
+        "Pydantic",
+        "Python",
+        "MagicMock",
+        "AsyncMock",
         # nats-py external exceptions
-        "NoRespondersError", "BucketNotFoundError",
+        "NoRespondersError",
+        "BucketNotFoundError",
         # anthropic / LLM library types
         "InputJsonDelta",
         # HTTP/ASGI transports
-        "ASGITransport", "HTTPTransport",
+        "ASGITransport",
+        "HTTPTransport",
         # generic doc terms that are not project classes
         "RunError",
     ]
@@ -99,8 +155,14 @@ def _nats_matches(pattern: str, subject: str) -> bool:
     NATS wildcards:
       *  — matches exactly one token (no dots allowed in that token)
       >  — matches one or more tokens at the end; must be the last token
+
+    A pattern with `>` in a non-terminal position is malformed; return False.
     """
     p_tokens = pattern.split(".")
+    # Guard: `>` must be the last token if present anywhere in the pattern
+    for i, pt in enumerate(p_tokens):
+        if pt == ">" and i != len(p_tokens) - 1:
+            return False
     s_tokens = subject.split(".")
     pi = 0
     si = 0
@@ -355,7 +417,12 @@ def _ast_pass(
 
 
 def _collect_subjects(root: Path) -> frozenset[str]:
-    """Collect all NATS subjects from ACL matrix and contracts."""
+    """Collect all NATS subjects from ACL matrix and contracts.
+
+    Emits a WARNING to stderr when no subjects are found, which typically
+    indicates a missing or malformed acl-matrix.json — subject refs will be
+    misclassified as dead modules instead of dead subjects in that case.
+    """
     all_subjects: set[str] = set()
     acl_path = root / "deploy" / "nats" / "acl-matrix.json"
     all_subjects |= _extract_subjects_from_acl(acl_path)
@@ -364,6 +431,12 @@ def _collect_subjects(root: Path) -> frozenset[str]:
         contracts_src = pkg_root / "roxabi-contracts" / "src"
         if contracts_src.is_dir():
             all_subjects |= _extract_subjects_from_contracts(contracts_src)
+    if not all_subjects:
+        print(
+            "WARNING: no NATS subjects loaded from acl-matrix.json/contracts"
+            " — subject refs may be misclassified",
+            file=sys.stderr,
+        )
     return frozenset(all_subjects)
 
 
@@ -422,12 +495,34 @@ class CodeInventory:
             syntax_errors=syntax_errors,
         )
 
+    # ------------------------------------------------------------------ to_dict
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a stable, JSON-serializable snapshot of the inventory.
+
+        The dict has three keys:
+          - "modules":  sorted list of all dotted module names
+          - "symbols":  dict mapping bare name → sorted list of defining modules
+          - "subjects": sorted list of all NATS subject literals/patterns
+
+        Deterministic (sorted everywhere) so that two builds over the same
+        codebase yield identical dicts.  Intended as the shared serialization
+        contract consumed by #1532 and any downstream tool that needs an
+        inventory without re-scanning.
+        """
+        return {
+            "modules": sorted(self.modules),
+            "symbols": {k: sorted(v) for k, v in sorted(self.symbols.items())},
+            "subjects": sorted(self.subjects),
+        }
+
     # ------------------------------------------------------------------ resolve
 
     def resolve(self, token: str) -> Verdict:
         """Resolve a single backtick token to a Verdict.
 
         Resolution order:
+          0. Pathologically long token (>200 chars) → kind=unknown (O(N²) guard)
           1. Template/glob tokens → kind=unknown (no false positive)
           2. Starts with src/ or packages/ → path resolution
           3. Contains a dot → module/qualified-symbol/subject resolution
@@ -436,6 +531,10 @@ class CodeInventory:
         """
         t = token.strip()
         if not t:
+            return Verdict(exists=False, kind="unknown")
+
+        # 0. Length guard — prevents O(N²) on pathological tokens
+        if len(t) > 200:
             return Verdict(exists=False, kind="unknown")
 
         # 1. Template/glob tokens (documentation patterns, not real refs)
@@ -503,12 +602,15 @@ class CodeInventory:
             return True
         return token in self.subjects
 
-    def _resolve_symbol_at_split(
-        self, token: str, parts: list[str]
-    ) -> Verdict | None:
+    def _resolve_symbol_at_split(self, token: str, parts: list[str]) -> Verdict | None:
         """Try each split point for a module.Symbol pattern.
 
         Returns a Verdict when confident, or None to fall through to subject check.
+
+        SCOPED CHECK: `suffix in self.symbols` is NOT sufficient — `symbols` maps
+        name → set(defining modules).  A name imported/defined elsewhere must not
+        cause `module.name` to resolve live when `module` doesn't define/import it.
+        We require `prefix_module in self.symbols[suffix]` to scope the check.
         """
         for split in range(len(parts) - 1, 0, -1):
             prefix = ".".join(parts[:split])
@@ -516,8 +618,8 @@ class CodeInventory:
             suffix = ".".join(suffix_parts)
             if prefix not in self.modules:
                 continue
-            # prefix is a valid module
-            if suffix in self.symbols:
+            # prefix is a valid module — scope symbol check to this module
+            if suffix in self.symbols and prefix in self.symbols[suffix]:
                 return Verdict(exists=True, kind="symbol")
             # Single uppercase-initial suffix → class reference
             if (
@@ -554,21 +656,25 @@ class CodeInventory:
             return symbol_verdict
 
         # Also check: last-dot prefix is a module and final segment is a symbol
+        # SCOPED: require mod_prefix in symbols[last] to avoid false positives
+        # when 'last' is imported elsewhere but not defined in mod_prefix.
         last = parts[-1]
         mod_prefix = ".".join(parts[:-1])
         if mod_prefix in self.modules:
-            if last in self.symbols:
+            if last in self.symbols and mod_prefix in self.symbols[last]:
                 return Verdict(exists=True, kind="symbol")
             # lowercase final segment — fall through to subject check
 
         # 3. NATS subject check (before declaring project token dead)
         if _subject_matches_any(token, self.subjects):
             return Verdict(exists=True, kind="subject")
-        # Subject-namespace token not in subjects set → dead subject reference
+        # Subject-namespace token not in subjects set → dead subject reference.
+        # $JS/$KV/_inbox namespaces are always NATS-owned (not project prefixes),
+        # so bypass the _PROJECT_PREFIXES guard and return kind=subject directly.
         lower = token.lower()
-        if any(lower.startswith(p) for p in ("lyra.", "$js.", "$kv.", "_inbox.")):
-            if parts[0] not in _PROJECT_PREFIXES:
-                return Verdict(exists=False, kind="unknown")
+        if any(lower.startswith(p) for p in ("$js.", "$kv.", "_inbox.")):
+            return Verdict(exists=False, kind="subject")
+        if lower.startswith("lyra."):
             return Verdict(exists=False, kind="subject")
 
         # 4. Project namespace root not found as module or subject

@@ -25,7 +25,12 @@ import json
 from pathlib import Path
 
 import pytest
-from tools.code_inventory import CodeInventory, Verdict, _is_template_token
+from tools.code_inventory import (
+    CodeInventory,
+    Verdict,
+    _is_template_token,
+    _nats_matches,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures & helpers
@@ -417,3 +422,195 @@ def test_is_template_token(token: str, expected: bool) -> None:
     assert _is_template_token(token) is expected, (
         f"_is_template_token({token!r}) should be {expected}"
     )
+
+
+# ---------------------------------------------------------------------------
+# T20 — REGRESSION: scoped symbol resolution (FIX 1)
+# Pins the false-positive bug where `module.commonname` resolved live because
+# `commonname` was imported elsewhere — but NOT defined in that module.
+# ---------------------------------------------------------------------------
+
+
+def test_scoped_symbol_resolution_live(tmp_path: Path) -> None:
+    """pkg.mod.ClassName is live when ClassName is defined in pkg.mod."""
+    _make_src_module(tmp_path, "pkg/mod.py", "class ClassName: ...\n")
+    inv = CodeInventory.build(tmp_path)
+    # pkg is not a known project prefix, but the module exists and symbol is scoped
+    # Use lyra prefix so it goes through project-prefix resolution
+    _make_src_module(tmp_path, "lyra/mod.py", "class ClassName: ...\n")
+    inv = CodeInventory.build(tmp_path)
+    v = inv.resolve("lyra.mod.ClassName")
+    assert v == Verdict(exists=True, kind="symbol")
+
+
+def test_scoped_symbol_resolution_dead_commonname(tmp_path: Path) -> None:
+    """lyra.mod.commonname is dead when 'commonname' is imported elsewhere
+    but NOT defined in lyra.mod.
+
+    This is the exact regression case for FIX 1: 'asyncio', 'errors', etc.
+    are in symbols because other modules import them, but they are not
+    defined/imported in the specific module used as the qualifier.
+    """
+    # lyra.mod imports nothing; asyncio is imported in lyra.other
+    _make_src_module(tmp_path, "lyra/mod.py", "# empty\n")
+    _make_src_module(tmp_path, "lyra/other.py", "import asyncio\n")
+    inv = CodeInventory.build(tmp_path)
+    # 'asyncio' is in symbols (lyra.other imports it), but NOT in lyra.mod
+    assert "asyncio" in inv.symbols
+    assert "lyra.mod" not in inv.symbols["asyncio"]
+    v = inv.resolve("lyra.mod.asyncio")
+    assert v.exists is False, (
+        "lyra.mod.asyncio must be dead: 'asyncio' is not defined/imported in lyra.mod"
+    )
+
+
+# ---------------------------------------------------------------------------
+# T21 — packages/ dead module: roxabi_nats.ghost → exists=False
+# ---------------------------------------------------------------------------
+
+
+def test_package_module_dead(tmp_path: Path) -> None:
+    """A dotted name in a packages/ namespace with no backing file is dead."""
+    _make_pkg_module(tmp_path, "roxabi-nats", "roxabi_nats/__init__.py", "# init\n")
+    inv = CodeInventory.build(tmp_path)
+    v = inv.resolve("roxabi_nats.ghost")
+    assert v.exists is False
+    assert v.kind in ("module", "subject")
+
+
+# ---------------------------------------------------------------------------
+# T22 — malformed / missing acl-matrix.json → build() doesn't crash, subjects empty
+# ---------------------------------------------------------------------------
+
+
+def test_malformed_acl_matrix_no_crash(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:  # type: ignore[type-arg]
+    """build() must not raise on malformed acl-matrix.json; subjects is empty."""
+    acl_dir = tmp_path / "deploy" / "nats"
+    acl_dir.mkdir(parents=True, exist_ok=True)
+    (acl_dir / "acl-matrix.json").write_text("{not valid json", encoding="utf-8")
+    inv = CodeInventory.build(tmp_path)
+    assert len(inv.subjects) == 0
+    captured = capsys.readouterr()
+    assert "WARNING" in captured.err
+
+
+def test_missing_acl_matrix_no_crash(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:  # type: ignore[type-arg]
+    """build() must not raise when acl-matrix.json is absent; subjects is empty."""
+    # No deploy/nats/ directory at all
+    inv = CodeInventory.build(tmp_path)
+    assert len(inv.subjects) == 0
+    captured = capsys.readouterr()
+    assert "WARNING" in captured.err
+
+
+# ---------------------------------------------------------------------------
+# T23 — _nats_matches edge cases (FIX 4)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "pattern,subject,expected",
+    [
+        # `>` in non-terminal position → malformed → False
+        ("lyra.>.extra", "lyra.x.extra", False),
+        # `>` at end matches remaining tokens (one or more)
+        ("lyra.>", "lyra", False),  # must match ≥1 token after lyra.
+        # `*` matches exactly one token — multi-segment subject fails
+        ("lyra.*", "lyra.x.y", False),
+        # exact match fails when subject is shorter than pattern
+        ("lyra.a.b", "lyra.a", False),
+        # `>` non-terminal with leading tokens
+        ("a.>.b", "a.x.b", False),
+    ],
+)
+def test_nats_matches_edges(pattern: str, subject: str, expected: bool) -> None:
+    assert _nats_matches(pattern, subject) is expected, (
+        f"_nats_matches({pattern!r}, {subject!r}) should be {expected}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# T24 — _EXTERNAL_KNOWN_NAMES suppression with empty inventory
+# ---------------------------------------------------------------------------
+
+
+def test_external_known_name_is_unknown_no_inventory(tmp_path: Path) -> None:
+    """FastAPI in an empty inventory is kind=unknown (not a dead symbol).
+
+    FastAPI is in _EXTERNAL_KNOWN_NAMES; resolve() must not classify it as a
+    dead project symbol even when the symbol is in the global symbols map
+    (because a module might import it).
+    """
+    # Empty inventory — FastAPI not imported anywhere
+    inv = CodeInventory.build(tmp_path)
+    v = inv.resolve("FastAPI")
+    assert v.kind == "unknown", (
+        "FastAPI should be kind=unknown (external known name, not project symbol)"
+    )
+
+
+# ---------------------------------------------------------------------------
+# T25 — to_dict() determinism (FIX 7)
+# ---------------------------------------------------------------------------
+
+
+def test_to_dict_determinism(tmp_path: Path) -> None:
+    """Two CodeInventory.build() calls over the same tree produce equal to_dict()."""
+    _make_src_module(tmp_path, "lyra/core/hub.py", "class Hub: ...\n")
+    _make_src_module(tmp_path, "lyra/core/agent.py", "class Agent: ...\n")
+    _acl_matrix(tmp_path, ["lyra.turns.write", "lyra.turns.>"])
+
+    inv1 = CodeInventory.build(tmp_path)
+    inv2 = CodeInventory.build(tmp_path)
+    d1 = inv1.to_dict()
+    d2 = inv2.to_dict()
+    assert d1 == d2, "to_dict() must be deterministic across two builds"
+
+
+def test_to_dict_structure(tmp_path: Path) -> None:
+    """to_dict() has exactly the three expected keys with correct types."""
+    _make_src_module(tmp_path, "lyra/core/hub.py", "class Hub: ...\n")
+    inv = CodeInventory.build(tmp_path)
+    d = inv.to_dict()
+    assert set(d.keys()) == {"modules", "symbols", "subjects"}
+    assert isinstance(d["modules"], list)
+    assert isinstance(d["symbols"], dict)
+    assert isinstance(d["subjects"], list)
+    # All lists must be sorted
+    assert d["modules"] == sorted(d["modules"])  # type: ignore[arg-type]
+    assert d["subjects"] == sorted(d["subjects"])  # type: ignore[arg-type]
+    for name, mods in d["symbols"].items():  # type: ignore[union-attr]
+        assert isinstance(mods, list)
+        assert mods == sorted(mods), f"symbols[{name!r}] not sorted"
+
+
+# ---------------------------------------------------------------------------
+# T26 — tighten test_module_dead_project_prefix (FIX 8 note)
+# The original T2 accepts kind in ("module", "subject") because a lowercase
+# ghost token whose prefix IS a valid module falls through to subject-namespace
+# detection after FIX 1: lyra.core is a module, "ghostmodule" is not in
+# symbols[lyra.core], so it falls through the subject check and returns
+# kind="subject" (lyra. prefix → dead subject).  exists=False is the contract;
+# both kinds are valid gate outcomes.  This test documents that invariant.
+# ---------------------------------------------------------------------------
+
+
+def test_module_dead_project_prefix_kind_documented(tmp_path: Path) -> None:
+    """lyra.core.ghostmodule → exists=False.
+
+    After FIX 1, kind is 'subject' (lyra. prefix, not in subjects set, not a
+    live symbol in lyra.core) rather than 'module'.  Both kinds gate correctly.
+    The dual-kind acceptance in T2 is correct and intentional — this test
+    documents the post-fix behaviour explicitly.
+    """
+    _make_src_module(tmp_path, "lyra/__init__.py")
+    _make_src_module(tmp_path, "lyra/core/__init__.py")
+    inv = CodeInventory.build(tmp_path)
+    v = inv.resolve("lyra.core.ghostmodule")
+    assert v.exists is False
+    # Post-fix: falls to subject-namespace path (lyra. prefix, not in subjects)
+    assert v.kind == "subject"

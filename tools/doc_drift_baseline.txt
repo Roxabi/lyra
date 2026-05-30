@@ -26,6 +26,7 @@ docs/architecture/architecture-patterns.md::ErrorBoundaryMiddleware
 docs/architecture/architecture-patterns.md::LyraUserError
 docs/architecture/architecture-patterns.md::NullMessageManager
 docs/architecture/architecture-patterns.md::SttError
+docs/architecture/architecture-patterns.md::lyra.core.errors
 docs/architecture/architecture-patterns.md::lyra.core.message
 docs/architecture/contracts.md::roxabi_contracts.memory
 docs/architecture/llm-streaming.md::TextRenderEvent
@@ -46,6 +47,7 @@ docs/architecture/security-routing.md::AuthMiddleware
 docs/architecture/security-routing.md::ComplexityEstimator
 docs/architecture/security-routing.md::MemoryEntry
 docs/architecture/security-routing.md::SmartRoutingDecorator
+docs/architecture/security-routing.md::_INBOX.>
 docs/architecture/security-routing.md::lyra.core.admin
 docs/architecture/security-routing.md::lyra.security
 docs/architecture/security-routing.md::src/lyra/core/auth.py
@@ -84,6 +86,7 @@ src/lyra/blobstore/CLAUDE.md::lyra.security
 src/lyra/blobstore/CLAUDE.md::src/lyra/infrastructure/blobstore/
 src/lyra/core/CLAUDE.md::lyra.ports
 src/lyra/inbound/CLAUDE.md::lyra.shared
+src/lyra/infrastructure/turn_writer/CLAUDE.md::_INBOX.>
 src/lyra/monitoring/CLAUDE.md::lyra.toml
 src/lyra/nats/CLAUDE.md::NatsChunkEnvelope
 src/lyra/streaming/CLAUDE.md::src/lyra/adapters/shared/_shared_streaming_state.py

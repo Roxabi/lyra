@@ -13,6 +13,7 @@ import nats
 from lyra.bootstrap.bootstrap_stores import open_stores
 from lyra.bootstrap.factory.agent_factory import _init_bot_auths_and_agents
 from lyra.bootstrap.factory.hub_builder import _build_hub, _init_clipool
+from lyra.bootstrap.factory.voice_overlay import init_blobstore
 from lyra.bootstrap.factory.wiring_helpers import (
     _init_inbound_bus,
     _init_pairing,
@@ -60,6 +61,7 @@ async def _bootstrap_unified(
                 raw_config, bundle.admin_user_ids, vault_dir, stores
             )
             voice = await _init_voice_services(nc)
+            blob_store = init_blobstore()
             hub = _build_hub(
                 BuildHubDeps(
                     raw_config=raw_config,
@@ -68,6 +70,7 @@ async def _bootstrap_unified(
                     inbound_bus=inbound_bus,
                     pm=pm,
                     stores=stores,
+                    blob_store=blob_store,
                 )
             )
 
@@ -93,6 +96,7 @@ async def _bootstrap_unified(
                     stores=stores,
                     vault_dir=vault_dir,
                     raw_config=raw_config,
+                    blob_store=blob_store,
                 )
             )
 

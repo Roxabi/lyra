@@ -12,6 +12,7 @@ from typing import Any
 from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 from lyra.bootstrap import credentials
 from lyra.bootstrap.factory.config import AdapterConfigBundle
+from lyra.bootstrap.factory.voice_overlay import init_blobstore
 from lyra.bootstrap.lifecycle.lifecycle_helpers import close_safely
 from lyra.bootstrap.lifecycle.signal_handlers import setup_shutdown_event
 from lyra.bootstrap.standalone.audio_consumer_bootstrap import start_audio_consumer
@@ -133,6 +134,7 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
     )
     dc_thread_store, dc_turn_store = await _create_dc_stores(vault_dir)
     js = nc.jetstream()
+    blob_store = init_blobstore()
 
     wired_dc: list[tuple] = []  # (DiscordAdapter, str, Bus, TypingListener, Consumer)
 
@@ -163,6 +165,7 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
             thread_store=dc_thread_store,
             watch_channels=dc_bot_watch_channels.get(bot_id, frozenset()),
             turn_store=dc_turn_store,
+            blob_store=blob_store,
         )
         adapter_dc.configure_tool_display(config_bundle.tool_display)
 

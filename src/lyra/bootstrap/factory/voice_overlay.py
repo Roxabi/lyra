@@ -1,4 +1,8 @@
-"""Voice overlay helpers — 3-layer DI for TTS, STT, Image."""
+"""Voice overlay helpers — 3-layer DI for TTS, STT, Image.
+
+Also hosts ``init_blobstore()`` — the composition-root factory for the
+BlobStorePort (same infra-factory pattern as ``init_nats_*``).
+"""
 
 from __future__ import annotations
 
@@ -10,6 +14,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
 
+    from lyra.core.ports.blobstore import BlobStorePort
     from lyra.nats.nats_image_client import NatsImageClient
     from lyra.nats.nats_stt_client import NatsSttClient
     from lyra.nats.nats_tts_client import NatsTtsClient
@@ -96,6 +101,31 @@ def init_nats_image(nc: "NATS") -> "NatsImageClient":
     )
     log.info("Image client created (3-layer) — availability via heartbeat")
     return NatsImageClient(pool, ImageCodec(), nc=nc)
+
+
+def init_blobstore() -> "BlobStorePort":
+    """Build and return an ``HttpBlobStoreAdapter`` satisfying ``BlobStorePort``.
+
+    Reads ``LYRA_BLOBSTORE_URL`` and ``LYRA_BLOBSTORE_TOKEN_PATH`` once at
+    construction time (restart-not-HUP semantics — token is never re-read
+    without a process restart).  Env var names and defaults replicate
+    ``adapters/shared/_blobstore_client.get_blobstore_client()`` verbatim.
+    """
+    import os
+    from pathlib import Path
+
+    from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
+    from roxabi_blobs import HttpBlobStore
+
+    base_url = os.environ.get("LYRA_BLOBSTORE_URL", "http://localhost:8449")
+    token_path = os.environ.get(
+        "LYRA_BLOBSTORE_TOKEN_PATH",
+        str(Path.home() / ".lyra" / "blobstore.tok"),
+    )
+    token = Path(token_path).read_text().strip()
+    http_store = HttpBlobStore(base_url, token)
+    log.info("BlobStore client created — url=%s", base_url)
+    return HttpBlobStoreAdapter(http_store)
 
 
 async def probe_voice_services(

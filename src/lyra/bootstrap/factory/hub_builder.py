@@ -22,7 +22,11 @@ from lyra.bootstrap.factory.config import (
     _load_pool_config,
 )
 from lyra.bootstrap.factory.llm_overlay import init_nats_llm
-from lyra.bootstrap.factory.voice_overlay import init_nats_stt, init_nats_tts
+from lyra.bootstrap.factory.voice_overlay import (
+    init_blobstore,
+    init_nats_stt,
+    init_nats_tts,
+)
 from lyra.bootstrap.wiring.nats_wiring import (
     NatsDcWiringDeps,
     NatsTgWiringDeps,
@@ -308,6 +312,7 @@ async def _build_hub_and_wire(  # noqa: PLR0913 — unavoidable wiring surface
             inbound_bus=inbound_bus,
             pm=pm,
             stores=stores,
+            blob_store=init_blobstore(),
         )
     )
     if hub._turn_publisher is None:

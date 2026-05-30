@@ -1,0 +1,48 @@
+---
+title: central attachment ingest stage — voice path + prod wiring (Telegram + Discord)
+issue: 1551
+status: approved
+tier: F-lite
+date: 2026-05-30
+parent_spec: artifacts/specs/1537-central-attachment-ingestion-stage-spec.mdx
+parent_issue: 1537
+---
+
+## Scope
+
+Phase 1 of the central ingestion stage — slices **S1–S4 + S8** of the parent spec.
+Delivers the user-facing durability win (inbound voice persisted before STT, both
+platforms, production-wired) and the stage/descriptor/pipeline foundation the later
+phases build on.
+
+- **S1** `PendingAttachment` + `FetchFn` + `IngestCtx` + pipeline/context plumbing
+  (`InboundContext.ingest: IngestCtx | None = None`, `InboundPipeline(ingest_stage=None)`).
+- **S2** `AttachmentIngestStage.run` — voice path. Stage awaits the fetch closure, calls
+  `ctx.ingest.store.put()` (returns wire `BlobRef`), stamps `AudioPayload.blob_ref`.
+- **S3** wire Telegram voice — `handle_voice_message` builds the closure, routes via
+  `InboundPipeline.run()` (drops the direct `push_to_hub_guarded`).
+- **S4** wire Discord voice — `handle_audio` symmetric; eager-ingest before CDN expiry.
+- **S8** bootstrap wiring + prod assert + adapter Quadlet — inject `BlobStorePort` into
+  `IngestCtx` (reuse `init_blobstore()` in telegram/discord standalone bootstrap), assert
+  `ctx.ingest.store is not None` in prod, and add `LYRA_BLOBSTORE_URL` +
+  `LYRA_BLOBSTORE_TOKEN_PATH` + `Secret=lyra_blobstore_token,type=mount` to
+  `lyra-telegram.container` + `lyra-discord.container`.
+
+## Success Criteria
+
+- [ ] `AttachmentIngestStage` in `src/lyra/inbound/` stamps a real `BlobRef` for voice
+      (no `PENDING_STORE_KEY`), both platforms.
+- [ ] Telegram + Discord plug via a `FetchFn` closure; zero ingest logic duplicated.
+- [ ] `grep -n 'store.put(' src/lyra/adapters/` = 0; single ingest site in `inbound/`.
+- [ ] `inbound-no-adapters` importlinter green (no `discord`/`aiogram` in `lyra.inbound`).
+- [ ] Inbound voice persisted **before** STT; STT failure no longer loses the blob.
+- [ ] `IngestCtx.store: BlobStorePort | None`; stage calls `store.put()`; `store=None`
+      no-op (existing CLI/test suite green).
+- [ ] Prod bootstrap asserts `ctx.ingest.store is not None`.
+- [ ] `lyra-telegram.container` + `lyra-discord.container` carry blobstore url + token
+      secret (no silent no-op).
+
+## Reference
+
+Full design + breadboard + data model + pipeline-wiring:
+[parent spec](./1537-central-attachment-ingestion-stage-spec.mdx) · ADR-083.

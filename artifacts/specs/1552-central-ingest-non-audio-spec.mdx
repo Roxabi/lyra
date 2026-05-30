@@ -1,0 +1,38 @@
+---
+title: central attachment ingest — non-audio attachments (image/doc/video/sticker)
+issue: 1552
+status: approved
+tier: F-lite
+date: 2026-05-30
+parent_spec: artifacts/specs/1537-central-attachment-ingestion-stage-spec.mdx
+parent_issue: 1537
+---
+
+## Scope
+
+Phase 2 — slices **S5–S7** of the parent spec. Extends the stage to non-audio
+attachment types (image, document, video, sticker, animation, GIF) on both platforms.
+Highest-risk surface (new shared wire field), isolated to its own increment.
+
+- **S5** add `Attachment.blob_ref: BlobRef | None = None`; `AttachmentIngestStage`
+  non-audio path; `MAX_ATTACHMENT_INGEST_BYTES` (new const, env
+  `LYRA_MAX_ATTACHMENT_INGEST_BYTES`, default 20 MiB) guard **before** download; map
+  HTTP 500 → user-facing error.
+- **S6** wire Telegram non-audio — `_extract_attachments` emits fetch closures.
+- **S7** wire Discord non-audio — `discord_normalize`/`discord_formatting`; closes
+  #1066 as superseded on merge.
+
+## Success Criteria
+
+- [ ] Stage stamps a real `BlobRef` into `Attachment.blob_ref` for all non-audio types,
+      both platforms.
+- [ ] `MAX_ATTACHMENT_INGEST_BYTES` enforced before download; reject + log + user error.
+- [ ] Stage catches HTTP 500 from `put()` → user-facing error (no silent propagation).
+- [ ] Zero ingest duplication; `PendingAttachment.source` never branches in the stage.
+- [ ] All `Attachment` construction sites audited for the new field.
+- [ ] #1066 closed-as-superseded on merge.
+
+## Reference
+
+[parent spec](./1537-central-attachment-ingestion-stage-spec.mdx) · ADR-083.
+Depends on #1551 (stage infra + voice path).

@@ -4,11 +4,12 @@ Called once per (platform, bot_id) pair from bootstrap_telegram_standalone /
 bootstrap_discord_standalone (via standalone_telegram.py / standalone_discord.py)
 after the adapter's astart() and typing-listener start() succeed.
 
-Ordering contract (S2 state — ensure_stream/ensure_kv still here; S3 moves them
-to hub_standalone.py as sole-provisioner):
-    js = nc.jetstream()          -- called once per bootstrap_*_standalone
-    await ensure_stream(js)
-    kv = await ensure_kv(js)     -- idempotent; KvSentSet wraps the handle
+Ordering contract (post-S3 / ADR-079 sole-provisioner):
+    # Stream LYRA_OUTBOUND_AUDIO and KV lyra_outbound_audio_sent are provisioned
+    # by the hub before announce_hub_ready (ADR-079 sole-provisioner). Adapters
+    # are bind-only: js.key_value() binds the existing bucket; ensure_consumer()
+    # creates the per-bot durable consumer. Do NOT call ensure_stream/ensure_kv here.
+    kv = await js.key_value(KV_BUCKET)   -- bind-only; hub already provisioned
     await ensure_consumer(...)
     consumer = JetStreamAudioConsumer(...)
     await consumer.start()
@@ -35,9 +36,8 @@ from lyra.adapters.nats.jetstream_audio_consumer import JetStreamAudioConsumer
 from lyra.adapters.nats.jetstream_audio_dedup import KvSentSet
 from lyra.adapters.nats.null_audio_consumer import NullAudioConsumer
 from lyra.infrastructure.outbound_audio.stream_setup import (
+    KV_BUCKET,
     ensure_consumer,
-    ensure_kv,
-    ensure_stream,
 )
 
 if TYPE_CHECKING:
@@ -52,7 +52,12 @@ async def start_audio_consumer(
     bot_id: str,
     adapter: object,
 ) -> JetStreamAudioConsumer | NullAudioConsumer:
-    """Provision stream/KV/consumer then construct and start a JetStreamAudioConsumer.
+    """Bind KV + create durable consumer, then start a JetStreamAudioConsumer.
+
+    The hub provisions stream LYRA_OUTBOUND_AUDIO and KV lyra_outbound_audio_sent
+    before announce_hub_ready (ADR-079 sole-provisioner). This function is
+    bind-only for the KV (js.key_value) and creates the per-bot durable consumer
+    via ensure_consumer. Do NOT call ensure_stream/ensure_kv here.
 
     On any failure, logs at ERROR level and returns a NullAudioConsumer sentinel
     instead of raising.  The adapter boots and serves text fully; audio messages
@@ -72,8 +77,9 @@ async def start_audio_consumer(
         in either case — both types satisfy the async stop() contract.
     """
     try:
-        await ensure_stream(js)
-        kv = await ensure_kv(js)
+        # Hub provisions stream + KV before announce_hub_ready (ADR-079).
+        # Adapters are bind-only: key_value() binds the existing bucket.
+        kv = await js.key_value(KV_BUCKET)
 
         durable = f"outbound-audio-{platform}-{bot_id}"
         filter_subject = f"lyra.outbound.audio.{platform}.{bot_id}"

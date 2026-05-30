@@ -1,11 +1,10 @@
-"""RED test — announce_hub_ready must be called before start_readiness_responder.
+"""Structural ordering tests for _bootstrap_hub_standalone.
 
-Structural assertion: parse the source of _bootstrap_hub_standalone and verify
-that the call to announce_hub_ready() precedes the call to
-start_readiness_responder() in the function body.
+Tests verify that:
+  1. announce_hub_ready() precedes start_readiness_responder() (#1012 invariant).
+  2. ensure_stream() + ensure_kv() precede announce_hub_ready() (ADR-079 S3).
 
-This test will FAIL until announce_hub_ready is wired into hub_standalone.py
-(issue #1012).
+Both tests parse the AST of the function source — no I/O, no NATS.
 """
 
 from __future__ import annotations
@@ -100,4 +99,66 @@ class TestHubStandaloneReadinessOrdering:
             f"announce_hub_ready (line {announce_line}) must come before "
             f"start_readiness_responder (line {responder_line}) in "
             "_bootstrap_hub_standalone."
+        )
+
+
+class TestHubAudioProvisioningBeforeReady:
+    """ADR-079 / #1525 S3 — ensure_stream + ensure_kv precede announce_hub_ready."""
+
+    def test_ensure_stream_called_before_announce_hub_ready(self) -> None:
+        """ensure_stream() must appear before announce_hub_ready() in hub_standalone.
+
+        Structural assertion: parse the source of _bootstrap_hub_standalone and
+        verify that ensure_stream is called before announce_hub_ready.  This
+        guarantees the stream is provisioned before adapters unblock.
+        """
+        import lyra.bootstrap.standalone.hub_standalone as _mod
+
+        func = _mod._bootstrap_hub_standalone
+        func_source = inspect.getsource(func)
+
+        positions = _call_order(func_source, "ensure_stream", "announce_hub_ready")
+
+        ensure_stream_line = positions["ensure_stream"]
+        announce_line = positions["announce_hub_ready"]
+
+        assert ensure_stream_line != -1, (
+            "ensure_stream() is never called in _bootstrap_hub_standalone. "
+            "Hub must provision audio stream before announce_hub_ready (ADR-079 S3)."
+        )
+        assert announce_line != -1, (
+            "announce_hub_ready() not found — unexpected; check source."
+        )
+        assert ensure_stream_line < announce_line, (
+            f"ensure_stream (line {ensure_stream_line}) must come before "
+            f"announce_hub_ready (line {announce_line}) in _bootstrap_hub_standalone."
+        )
+
+    def test_ensure_kv_called_before_announce_hub_ready(self) -> None:
+        """ensure_kv() must appear before announce_hub_ready() in hub_standalone.
+
+        Structural assertion: parse the source of _bootstrap_hub_standalone and
+        verify that ensure_kv is called before announce_hub_ready.  This
+        guarantees the KV bucket is provisioned before adapters unblock.
+        """
+        import lyra.bootstrap.standalone.hub_standalone as _mod
+
+        func = _mod._bootstrap_hub_standalone
+        func_source = inspect.getsource(func)
+
+        positions = _call_order(func_source, "ensure_kv", "announce_hub_ready")
+
+        ensure_kv_line = positions["ensure_kv"]
+        announce_line = positions["announce_hub_ready"]
+
+        assert ensure_kv_line != -1, (
+            "ensure_kv() is never called in _bootstrap_hub_standalone. "
+            "Hub must provision audio KV before announce_hub_ready (ADR-079 S3)."
+        )
+        assert announce_line != -1, (
+            "announce_hub_ready() not found — unexpected; check source."
+        )
+        assert ensure_kv_line < announce_line, (
+            f"ensure_kv (line {ensure_kv_line}) must come before "
+            f"announce_hub_ready (line {announce_line}) in _bootstrap_hub_standalone."
         )

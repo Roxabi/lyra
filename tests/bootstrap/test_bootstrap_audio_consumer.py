@@ -9,6 +9,10 @@ Asserts that bootstrap_telegram_standalone / bootstrap_discord_standalone:
   4. Call consumer.start() and consumer.stop() (via _close_tg/dc_wired).
   5. astart-failure path: start_audio_consumer is never called.
 
+Also asserts ADR-079 S3 bind-only invariants:
+  6. start_audio_consumer does NOT call ensure_stream/ensure_kv (hub sole-provisioner).
+  7. start_audio_consumer uses js.key_value(KV_BUCKET) (bind-only) not ensure_kv.
+
 All tests override the autouse _noop_audio_consumer conftest fixture by applying
 their own `with patch(...)` blocks inside the test body (innermost patch wins).
 """
@@ -105,6 +109,10 @@ async def test_bootstrap_audio_consumer_telegram_provisions_and_starts() -> None
         # Call through to the real function so ensure_*/JetStreamAudioConsumer run.
         return await real_start_audio_consumer(js, platform, bot_id, adapter)
 
+    # S3 bind-only: js.key_value() is the bind path (hub already provisioned).
+    mock_kv = MagicMock()
+    mock_js.key_value = AsyncMock(return_value=mock_kv)
+
     (load_token,) = _cred_patch()
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
@@ -123,15 +131,7 @@ async def test_bootstrap_audio_consumer_telegram_provisions_and_starts() -> None
             "lyra.bootstrap.wiring.standalone_telegram.start_audio_consumer",
             side_effect=_capturing_start_audio_consumer,
         ),
-        # Intercept NATS provisioning inside start_audio_consumer.
-        patch(
-            "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_stream",
-            new_callable=AsyncMock,
-        ) as mock_ensure_stream,
-        patch(
-            "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_kv",
-            new_callable=AsyncMock,
-        ) as mock_ensure_kv,
+        # S3: ensure_consumer still called per-bot; ensure_stream/ensure_kv removed.
         patch(
             "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_consumer",
             new_callable=AsyncMock,
@@ -154,9 +154,9 @@ async def test_bootstrap_audio_consumer_telegram_provisions_and_starts() -> None
     assert captured_calls[0]["bot_id"] == "main"
     assert captured_calls[0]["adapter"] is mock_adapter
 
-    # Provisioning order: stream → kv → consumer with per-bot durable/filter
-    mock_ensure_stream.assert_awaited_once_with(mock_js)
-    mock_ensure_kv.assert_awaited_once_with(mock_js)
+    # S3 bind-only: js.key_value() called with KV_BUCKET (hub already provisioned).
+    mock_js.key_value.assert_awaited_once_with("lyra_outbound_audio_sent")
+    # Consumer created with per-bot durable/filter
     mock_ensure_consumer.assert_awaited_once_with(
         mock_js,
         durable="outbound-audio-telegram-main",
@@ -310,6 +310,10 @@ async def test_bootstrap_audio_consumer_discord_provisions_and_starts() -> None:
         )
         return await real_start_audio_consumer(js, platform, bot_id, adapter)
 
+    # S3 bind-only: js.key_value() is the bind path (hub already provisioned).
+    mock_kv_dc = MagicMock()
+    mock_js.key_value = AsyncMock(return_value=mock_kv_dc)
+
     (load_token_dc,) = _cred_patch("discord-token")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
@@ -327,14 +331,7 @@ async def test_bootstrap_audio_consumer_discord_provisions_and_starts() -> None:
             "lyra.bootstrap.wiring.standalone_discord.start_audio_consumer",
             side_effect=_capturing_start_audio_consumer,
         ),
-        patch(
-            "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_stream",
-            new_callable=AsyncMock,
-        ) as mock_ensure_stream_dc,
-        patch(
-            "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_kv",
-            new_callable=AsyncMock,
-        ) as mock_ensure_kv_dc,
+        # S3: ensure_consumer still called per-bot; ensure_stream/ensure_kv removed.
         patch(
             "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_consumer",
             new_callable=AsyncMock,
@@ -356,8 +353,8 @@ async def test_bootstrap_audio_consumer_discord_provisions_and_starts() -> None:
     assert captured_calls[0]["bot_id"] == "main"
     assert captured_calls[0]["adapter"] is mock_adapter_dc
 
-    mock_ensure_stream_dc.assert_awaited_once_with(mock_js)
-    mock_ensure_kv_dc.assert_awaited_once_with(mock_js)
+    # S3 bind-only: js.key_value() called with KV_BUCKET (hub already provisioned).
+    mock_js.key_value.assert_awaited_once_with("lyra_outbound_audio_sent")
     mock_ensure_consumer_dc.assert_awaited_once_with(
         mock_js,
         durable="outbound-audio-discord-main",
@@ -381,43 +378,39 @@ async def test_bootstrap_audio_consumer_discord_provisions_and_starts() -> None:
 
 
 @pytest.mark.asyncio
-async def test_start_audio_consumer_returns_null_on_ensure_stream_failure() -> None:
-    """Returns NullAudioConsumer (not None, no raise) when ensure_stream fails."""
+async def test_start_audio_consumer_returns_null_on_key_value_failure() -> None:
+    """Returns NullAudioConsumer (not None, no raise) when js.key_value() fails.
+
+    S3: adapter uses js.key_value() (bind-only); hub provisions the bucket.
+    If js.key_value() fails (e.g. bucket not yet provisioned), the adapter
+    degrades to NullAudioConsumer instead of raising.
+    """
     import nats.errors
 
     from lyra.adapters.nats.null_audio_consumer import NullAudioConsumer
     from lyra.bootstrap.standalone.audio_consumer_bootstrap import start_audio_consumer
 
     mock_js = MagicMock()
+    mock_js.key_value = AsyncMock(side_effect=nats.errors.Error("bucket not found"))
 
-    with patch(
-        "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_stream",
-        new_callable=AsyncMock,
-        side_effect=nats.errors.Error("STREAM.CREATE denied"),
-    ):
-        result = await start_audio_consumer(mock_js, "telegram", "main", MagicMock())
+    result = await start_audio_consumer(mock_js, "telegram", "main", MagicMock())
 
     assert isinstance(result, NullAudioConsumer)
 
 
 @pytest.mark.asyncio
-async def test_start_audio_consumer_returns_null_on_ensure_kv_failure() -> None:
-    """start_audio_consumer returns NullAudioConsumer when ensure_kv raises."""
+async def test_start_audio_consumer_returns_null_on_ensure_consumer_failure() -> None:
+    """start_audio_consumer returns NullAudioConsumer when ensure_consumer raises."""
     from lyra.adapters.nats.null_audio_consumer import NullAudioConsumer
     from lyra.bootstrap.standalone.audio_consumer_bootstrap import start_audio_consumer
 
     mock_js = MagicMock()
+    mock_js.key_value = AsyncMock(return_value=MagicMock())
 
-    with (
-        patch(
-            "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_stream",
-            new_callable=AsyncMock,
-        ),
-        patch(
-            "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_kv",
-            new_callable=AsyncMock,
-            side_effect=RuntimeError("KV create failed"),
-        ),
+    with patch(
+        "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_consumer",
+        new_callable=AsyncMock,
+        side_effect=RuntimeError("consumer create failed"),
     ):
         result = await start_audio_consumer(mock_js, "discord", "main", MagicMock())
 
@@ -426,27 +419,22 @@ async def test_start_audio_consumer_returns_null_on_ensure_kv_failure() -> None:
 
 @pytest.mark.asyncio
 async def test_start_audio_consumer_returns_real_consumer_on_success() -> None:
-    """start_audio_consumer returns the real JetStreamAudioConsumer on happy path."""
+    """start_audio_consumer returns the real JetStreamAudioConsumer on happy path.
+
+    S3: bind-only path — js.key_value() called with KV_BUCKET, not ensure_kv.
+    """
     from lyra.adapters.nats.jetstream_audio_consumer import JetStreamAudioConsumer
     from lyra.bootstrap.standalone.audio_consumer_bootstrap import start_audio_consumer
 
     mock_js = MagicMock()
     mock_kv = MagicMock()
+    mock_js.key_value = AsyncMock(return_value=mock_kv)
     mock_consumer = AsyncMock(spec=JetStreamAudioConsumer)
     mock_adapter = MagicMock()
     mock_adapter.render_audio = AsyncMock()
     mock_adapter.send = AsyncMock()
 
     with (
-        patch(
-            "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_stream",
-            new_callable=AsyncMock,
-        ),
-        patch(
-            "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_kv",
-            new_callable=AsyncMock,
-            return_value=mock_kv,
-        ),
         patch(
             "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_consumer",
             new_callable=AsyncMock,
@@ -460,6 +448,76 @@ async def test_start_audio_consumer_returns_real_consumer_on_success() -> None:
 
     assert result is mock_consumer
     mock_consumer.start.assert_awaited_once()
+    # S3 bind-only: js.key_value called with KV_BUCKET
+    mock_js.key_value.assert_awaited_once_with("lyra_outbound_audio_sent")
+
+
+# ---------------------------------------------------------------------------
+# S3 — Adapter bind-only (ADR-079 sole-provisioner)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_start_audio_consumer_does_not_call_ensure_stream() -> None:
+    """start_audio_consumer must NOT call ensure_stream (hub sole-provisioner, S3).
+
+    Structural: ensure_stream is no longer imported in audio_consumer_bootstrap.
+    Runtime: we patch it at the source module and verify it stays uncalled.
+    """
+    from lyra.bootstrap.standalone.audio_consumer_bootstrap import start_audio_consumer
+
+    mock_js = MagicMock()
+    mock_js.key_value = AsyncMock(return_value=MagicMock())
+
+    with (
+        patch(
+            "lyra.infrastructure.outbound_audio.stream_setup.ensure_stream",
+            new_callable=AsyncMock,
+        ) as mock_ensure_stream,
+        patch(
+            "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_consumer",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "lyra.bootstrap.standalone.audio_consumer_bootstrap.JetStreamAudioConsumer",
+            return_value=AsyncMock(),
+        ),
+    ):
+        await start_audio_consumer(mock_js, "telegram", "main", MagicMock())
+
+    mock_ensure_stream.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_start_audio_consumer_uses_key_value_bind_not_ensure_kv() -> None:
+    """start_audio_consumer uses js.key_value() (bind) not ensure_kv() (S3).
+
+    Verifies that:
+    - js.key_value is awaited with KV_BUCKET ("lyra_outbound_audio_sent")
+    - ensure_kv is NOT in the call chain
+    """
+    from lyra.bootstrap.standalone.audio_consumer_bootstrap import (
+        KV_BUCKET,
+        start_audio_consumer,
+    )
+
+    mock_js = MagicMock()
+    mock_kv = MagicMock()
+    mock_js.key_value = AsyncMock(return_value=mock_kv)
+
+    with (
+        patch(
+            "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_consumer",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "lyra.bootstrap.standalone.audio_consumer_bootstrap.JetStreamAudioConsumer",
+            return_value=AsyncMock(),
+        ),
+    ):
+        await start_audio_consumer(mock_js, "telegram", "main", MagicMock())
+
+    mock_js.key_value.assert_awaited_once_with(KV_BUCKET)
 
 
 @pytest.mark.asyncio

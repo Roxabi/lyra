@@ -154,6 +154,18 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
 
         mint_failure_sub = await start_mint_failure_subscriber(nc)
 
+        # Provision shared audio infrastructure before signalling readiness.
+        # Adapters block on wait_for_hub; stream + KV are guaranteed to exist
+        # when they connect. Idempotent: safe on every hub restart. ADR-079.
+        from lyra.infrastructure.outbound_audio.stream_setup import (
+            ensure_kv,
+            ensure_stream,
+        )
+
+        _audio_js = nc.jetstream()
+        await ensure_stream(_audio_js)
+        await ensure_kv(_audio_js)
+
         await announce_hub_ready(nc)
         readiness_sub = await start_readiness_responder(nc, [hub.inbound_bus])
 

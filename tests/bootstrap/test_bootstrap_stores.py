@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
+
+import pytest
 
 from lyra.bootstrap.bootstrap_stores import (
     _atomic_table_copy,
     _ensure_config_db,
     _ensure_discord_db,
     _has_sentinel,
+    open_stores,
 )
 
 # ---------------------------------------------------------------------------
@@ -295,3 +299,120 @@ class TestEnsureDiscordDb:
         _ensure_discord_db(tmp_path)
         # Assert — untouched
         assert discord_path.stat().st_mtime == mtime_before
+
+
+# ---------------------------------------------------------------------------
+# open_stores lifecycle — turn_store closed exactly once (#1506 regression)
+# ---------------------------------------------------------------------------
+
+
+def _make_store_mock() -> AsyncMock:
+    """Return an AsyncMock that satisfies SqliteStore's connect/close protocol."""
+    mock = AsyncMock()
+    mock.connect = AsyncMock()
+    mock.close = AsyncMock()
+    return mock
+
+
+class TestOpenStoresLifecycle:
+    """open_stores finally block closes TurnStore exactly once (#1506).
+
+    Regression guard: hub.shutdown() previously called turn_store.close() as
+    well as the open_stores finally block, resulting in a double-close.  After
+    #1506 the close responsibility belongs ONLY to open_stores.
+    """
+
+    @pytest.mark.asyncio
+    async def test_turn_store_closed_exactly_once_across_open_stores_and_hub_shutdown(
+        self, tmp_path: Path
+    ) -> None:
+        """turn_store.close() is invoked exactly once: by open_stores.finally.
+
+        Simulates the full lifecycle:
+          1. open_stores enters and connects all stores
+          2. hub.set_turn_store() wires the store into the hub
+          3. hub.shutdown() is called (must NOT close turn_store)
+          4. open_stores context exits — finally block must close turn_store once
+        """
+        from lyra.core.hub import Hub
+
+        # Arrange — one mock per store that open_stores constructs
+        mock_turn = _make_store_mock()
+        mock_auth = _make_store_mock()
+        mock_agent = _make_store_mock()
+        mock_bot = _make_store_mock()
+        mock_prefs = _make_store_mock()
+        mock_index = _make_store_mock()
+        mock_alias = _make_store_mock()
+
+        hub = Hub()
+
+        # Patch all store constructors so open_stores never touches real SQLite.
+        # The mocks' connect() and close() are async no-ops by default.
+        with (
+            patch(
+                "lyra.bootstrap.bootstrap_stores.AuthStore",
+                return_value=mock_auth,
+            ),
+            patch(
+                "lyra.bootstrap.bootstrap_stores.IdentityAliasStore",
+                return_value=mock_alias,
+            ),
+            patch(
+                "lyra.bootstrap.bootstrap_stores.AgentStore",
+                return_value=mock_agent,
+            ),
+            patch(
+                "lyra.bootstrap.bootstrap_stores.TurnStore",
+                return_value=mock_turn,
+            ),
+            patch(
+                "lyra.bootstrap.bootstrap_stores.BotStore",
+                return_value=mock_bot,
+            ),
+            patch(
+                "lyra.bootstrap.bootstrap_stores.PrefsStore",
+                return_value=mock_prefs,
+            ),
+            patch(
+                "lyra.bootstrap.bootstrap_stores.MessageIndex",
+                return_value=mock_index,
+            ),
+            # Migration guards touch the filesystem; bypass them for lifecycle tests.
+            patch("lyra.bootstrap.bootstrap_stores._ensure_config_db"),
+            patch("lyra.bootstrap.bootstrap_stores._ensure_discord_db"),
+        ):
+            # Act — enter open_stores, wire hub, call hub.shutdown(), then exit
+            async with open_stores(tmp_path) as stores:
+                hub.set_turn_store(stores.turn)
+                # hub.shutdown() must NOT close the turn store
+                await hub.shutdown()
+
+        # Assert — full lifecycle: connect on entry, close exactly once on exit
+        mock_turn.connect.assert_awaited_once()
+        assert mock_turn.close.await_count == 1, (
+            f"Expected turn_store.close() to be called exactly once "
+            f"(by open_stores.finally), got {mock_turn.close.await_count} call(s). "
+            "A call count > 1 means hub.shutdown() is still closing the store — "
+            "the double-close regression from #1506 has been reintroduced."
+        )
+
+    @pytest.mark.asyncio
+    async def test_hub_shutdown_does_not_close_turn_store(self, tmp_path: Path) -> None:
+        """hub.shutdown() alone must not invoke turn_store.close().
+
+        This is the negative half of the regression: if hub.shutdown() is called
+        WITHOUT the open_stores context exiting, close() must not be called at all.
+        """
+        from lyra.core.hub import Hub
+
+        # Arrange
+        mock_turn = _make_store_mock()
+        hub = Hub()
+        hub.set_turn_store(mock_turn)
+
+        # Act — only hub.shutdown(); no open_stores context
+        await hub.shutdown()
+
+        # Assert — turn_store.close() must not have been called
+        mock_turn.close.assert_not_called()

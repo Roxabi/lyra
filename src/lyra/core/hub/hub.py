@@ -47,6 +47,7 @@ if TYPE_CHECKING:
     from ..ports.resume_publisher import ResumePublisherPort
     from ..ports.stt import STTProtocol
     from ..ports.tts import TtsProtocol
+    from ..stores import TurnStoreProtocol
     from .event_bus import PipelineEventBus
     from .outbound import OutboundDispatcher
 
@@ -108,8 +109,7 @@ class Hub(
         self._start_time: float = time.monotonic()
         self._memory: MemoryManager | None = None
         self._memory_tasks: set[asyncio.Task] = set()
-        # _turn_store: TurnStoreProtocol | None — declared by HubShutdownMixin
-        self._turn_store = None
+        self._turn_store: TurnStoreProtocol | None = None
         self._turn_publisher: TurnPublisher | None = None
         self._resume_publisher: ResumePublisherPort | None = resume_publisher
         # T1 — typing-plane publisher; wired by bootstrap, consumed by T2.

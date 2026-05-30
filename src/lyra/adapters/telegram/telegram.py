@@ -16,7 +16,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 if TYPE_CHECKING:
     from lyra.adapters.shared.outbound_listener import OutboundListener
     from lyra.core.messaging.bus import Bus
-    from lyra.infrastructure.stores.turn_store import TurnStore
+    from lyra.core.stores import TurnStoreProtocol
     from lyra.outbound.emitter import OutboundEmitter
 
 from lyra.adapters.telegram import telegram_audio  # noqa: I001 — DEBT:lint-residual
@@ -89,7 +89,7 @@ class TelegramAdapter(OutboundAdapterBase):
         webhook_secret: str = "",
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
-        turn_store: "TurnStore | None" = None,
+        turn_store: "TurnStoreProtocol | None" = None,
     ) -> None:
         super().__init__()  # no-op today, future-proofs cooperative chain
         self._bot_id = bot_id
@@ -104,7 +104,7 @@ class TelegramAdapter(OutboundAdapterBase):
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
         self._guard_chain: GuardChain = GuardChain([BlockedGuard()])
-        self._turn_store: "TurnStore | None" = turn_store
+        self._turn_store: "TurnStoreProtocol | None" = turn_store
         _raw_tmp = os.environ.get("LYRA_AUDIO_TMP") or None
         if _raw_tmp is not None:
             _tmp_path = Path(_raw_tmp)

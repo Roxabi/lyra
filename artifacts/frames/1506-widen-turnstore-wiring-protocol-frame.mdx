@@ -1,0 +1,90 @@
+---
+title: Eliminate core→infrastructure TurnStore coupling (protocol + lifecycle ownership)
+issue: 1506
+status: approved
+tier: F-lite
+date: 2026-05-29
+---
+
+## Problem
+
+`TurnStoreProtocol` (ADR-078, #1079) decoupled `pool/` consumers from the concrete
+SQLite `TurnStore`, but **5 `.importlinter` TYPE_CHECKING exemptions remain** in the
+hub/cli wiring sites — `lyra.core.*  ->  lyra.infrastructure.stores.turn_store` (lines
+42–46), tagged `DEBT:importlinter-adr048-transition`. They are the last residue of the
+`lyra.core ← lyra.infrastructure` layering inversion that ADR-048/078 exist to remove.
+
+The original issue framed this as a 2-signature widening. Investigation during
+implement-prep found the real shape is **lifecycle ownership**, not type annotation:
+
+- `bootstrap_stores.open_stores()` already creates → `connect()` → **closes** every
+  store, including `turn_store`, in its `finally` block (line 305). It is the canonical
+  lifecycle owner. Both hub entrypoints run inside it (`hub_standalone.py:82`,
+  `unified.py:54`).
+- `hub_shutdown.shutdown()` *also* calls `await self._turn_store.close()` — a
+  **redundant second close** on a store the hub received via `set_turn_store()` but
+  never created. This is the ownership inversion in miniature, and it is the reason
+  `hub_shutdown` cannot drop the concrete type (`close()` ∉ read-path `TurnStoreProtocol`).
+
+Widening only the two `set_turn_store` signatures clears just 2 of 5 exemptions and
+leaves a heterogeneous residue (some siblings on protocol, some on concrete) =
+**parallel-path drift**.
+
+## Who
+
+- **Primary:** Lyra core maintainers — the layering contract in `src/lyra/core/CLAUDE.md`
+  and the import-linter gate are theirs to keep clean.
+- **Secondary:** Future authors of alternative TurnStore impls (in-memory stub for tests,
+  NATS-backed) — uniform protocol dependency makes the store swappable.
+
+## Constraints
+
+- No behavior regression: store must still be closed exactly once on shutdown (no leaked
+  SQLite handles, no double-close error). Safety rests on `open_stores`' `finally`.
+- `TurnStoreProtocol` stays **read-path only** (ADR-078) — do NOT add `close()` to it;
+  lifecycle is an infrastructure/bootstrap concern.
+- `import-linter` (`lint-imports`) is the objective gate — every exemption removed must be
+  proven unused, not assumed.
+- Stage-axis (ADR-073) is untouched — this is the orthogonal layering axis.
+
+## Out of Scope
+
+- `hub_shutdown` also redundantly closes `memory` + `message_index` (same `open_stores`
+  ownership). Same fix pattern, different DEBT lines → **sibling follow-up issue**, not
+  this PR.
+- No change to `pool.py` / `pool_observer.py` (already on the protocol since #1079).
+- No new TurnStore implementation.
+
+## Premise Validity
+
+**Success in 6 months:** Zero `turn_store` core→infra exemptions in `.importlinter`;
+ADR-078 marked fully discharged (no "exemptions remain" caveat); new `core/` code that
+reads turns depends on `TurnStoreProtocol` by default; store shutdown still closes exactly
+once.
+
+**Failure in 6 months (falsifiable):** the `turn_store` ignore_imports count in
+`.importlinter` is still > 0, OR a shutdown regression is observed (SQLite connection
+leak / double-close exception in any hub or adapter mode), OR the exemption count creeps
+back up because new core code re-imported the concrete `TurnStore`.
+
+**Simplest alternative:** Widen only the two `set_turn_store` signatures + their field
+annotations (the original S), remove the 2 exemptions that clear, keep `hub_shutdown` on
+the concrete type with a clarifying comment.
+**Why not simplest:** leaves 1–3 exemptions = the same logical dependency expressed two
+ways across sibling modules (parallel-path drift), preserves the lifecycle ownership
+inversion, and leaves ADR-078's debt formally open. It does not reach the stated goal.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (core layering), but ~5 source files +
+`.importlinter` + ADR-078, and includes one behavioral deletion (the redundant close) that
+warrants spec/plan gates and a tester verifying shutdown still closes once.
+
+Signals observed:
+- Files touched: `hub.py`, `hub_registration.py`, `hub_shutdown.py`, `cli_pool.py`,
+  `cli_pool_session.py`, `.importlinter`, ADR-078 (~7) → above S's ≤3.
+- Technical risk: low (mechanical annotation swaps) except the 1 behavioral deletion.
+- Architectural impact: single layering axis; restores ADR-048/078 contract.
+- Unknowns: ~1 (confirm no non-`open_stores` hub mode owns the close — preliminarily
+  verified for hub_standalone + unified).
+- Domain breadth: 1 (core).

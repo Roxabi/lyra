@@ -207,17 +207,28 @@ class TestHubEvictFlushTask:
         # Eviction must schedule a flush task for the pool with messages
         assert len(hub._memory_tasks) >= 1
 
+
+class TestHubShutdownStoreLifecycle:
+    """hub.shutdown() store-teardown invariants (#1506)."""
+
     @pytest.mark.asyncio
-    async def test_shutdown_closes_injected_stores(self) -> None:
-        """hub.shutdown() must close turn_store and message_index when injected."""
+    async def test_shutdown_closes_message_index_but_not_turn_store(self) -> None:
+        """hub.shutdown() must close message_index but NOT turn_store.
+
+        Turn-store lifecycle is owned by open_stores() whose finally block closes
+        it exactly once.  hub.shutdown() must never call turn_store.close() — doing
+        so would produce a double-close (#1506 regression guard).
+        """
         hub = Hub()
         mock_turn = AsyncMock()
         mock_index = AsyncMock()
         hub.set_turn_store(mock_turn)
         hub.set_message_index(mock_index)
         await hub.shutdown()
-        mock_turn.close.assert_awaited_once()
+        # message_index: still closed by hub.shutdown()
         mock_index.close.assert_awaited_once()
+        # turn_store: must NOT be closed here — open_stores.finally owns its lifecycle
+        mock_turn.close.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

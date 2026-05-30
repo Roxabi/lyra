@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from lyra.infrastructure.stores.message_index import MessageIndex
-    from lyra.infrastructure.stores.turn_store import TurnStore
 
     from ..circuit_breaker import CircuitRegistry
     from ..memory import MemoryManager
@@ -33,7 +32,6 @@ class HubShutdownMixin:
         _pool_manager: PoolManager
         _memory_tasks: set[asyncio.Task]
         _memory: MemoryManager | None
-        _turn_store: TurnStore | None
         _message_index: MessageIndex | None
         adapter_registry: dict[tuple[Platform, str], ChannelAdapter]
         outbound_dispatchers: dict[tuple[Platform, str], OutboundDispatcher]
@@ -106,7 +104,5 @@ class HubShutdownMixin:
             await asyncio.gather(*self._memory_tasks, return_exceptions=True)
         if self._memory is not None:
             await self._memory.close()
-        if self._turn_store is not None:
-            await self._turn_store.close()
         if self._message_index is not None:
             await self._message_index.close()

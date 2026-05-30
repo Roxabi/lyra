@@ -41,7 +41,7 @@ class HubRegistrationMixin:
         _memory_tasks: set
         _message_index: MessageIndex | None
         _platform_queue_maxsize: int
-        # _turn_store: typed by HubShutdownMixin (concrete TurnStore; close() needed)
+        _turn_store: TurnStoreProtocol | None
         _turn_publisher: TurnPublisher | None
         _typing_publisher: TypingPublisher | None
 

@@ -33,11 +33,11 @@ if TYPE_CHECKING:
     from lyra.core.circuit_breaker import CircuitRegistry
     from lyra.core.messaging.bus import Bus
     from lyra.core.messaging.messages import MessageManager
+    from lyra.core.stores import TurnStoreProtocol
     from lyra.core.stores.thread_store_protocol import (
         ThreadSession,
         ThreadStoreProtocol,
     )
-    from lyra.infrastructure.stores.turn_store import TurnStore
     from lyra.transport.turn_publisher import TurnPublisher
 
 
@@ -69,7 +69,7 @@ class SessionCtx:
     When ``None`` (test/CLI mode), session persistence is skipped.
     """
 
-    turn_store: TurnStore | None
+    turn_store: TurnStoreProtocol | None
     thread_store: ThreadStoreProtocol | None
     turn_publisher: TurnPublisher | None = None
     thread_sessions_cache: dict[str, ThreadSession] = field(default_factory=dict)

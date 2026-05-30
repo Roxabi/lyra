@@ -15,8 +15,8 @@ from lyra.core.stores.thread_store_protocol import ThreadSession
 if TYPE_CHECKING:
     from lyra.adapters.shared.outbound_listener import OutboundListener
     from lyra.core.messaging.bus import Bus
+    from lyra.core.stores import TurnStoreProtocol
     from lyra.core.stores.thread_store_protocol import ThreadStoreProtocol
-    from lyra.infrastructure.stores.turn_store import TurnStore
     from lyra.outbound.emitter import OutboundEmitter
 
 from lyra.adapters.discord import discord_audio  # noqa: I001 — DEBT:module-level-patch-fixtures
@@ -93,7 +93,7 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         thread_hot_hours: int = 36,
         thread_store: ThreadStoreProtocol | None = None,
         watch_channels: frozenset[int] = frozenset(),
-        turn_store: "TurnStore | None" = None,
+        turn_store: "TurnStoreProtocol | None" = None,
     ) -> None:
         if intents is None:
             intents = discord.Intents.default()
@@ -119,7 +119,7 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         self._mention_re: re.Pattern[str] | None = None  # compiled on on_ready
         self._owned_threads: set[int] = set()  # populated from ThreadStore on on_ready
         self._thread_store: ThreadStoreProtocol | None = thread_store
-        self._turn_store: "TurnStore | None" = turn_store
+        self._turn_store: "TurnStoreProtocol | None" = turn_store
         self._watch_channels: frozenset[int] = watch_channels
         self._thread_sessions: dict[str, ThreadSession] = {}
         self._vsm: VoiceSessionManager = VoiceSessionManager()

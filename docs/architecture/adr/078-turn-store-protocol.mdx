@@ -56,10 +56,11 @@ protocol structurally (`@runtime_checkable`), so no call-site changes are needed
 ## Consequences
 
 **Positive:**
-- Layering inversion eliminated for `pool/` consumers — `pool.py` and `pool_observer.py` no longer import from `infrastructure/`
-- 4 of 5 hub/cli `.importlinter` exemptions removed in #1506: `hub.hub`, `hub.hub_registration`, `cli.cli_pool`, `cli.cli_pool_session` all widened to `TurnStoreProtocol`
+- Layering inversion eliminated for ALL `turn_store` consumers (`pool/`, `hub/`, `cli/`, adapters, inbound) — `.importlinter` carries no `turn_store` exemptions as of #1506
 - `TurnStoreProtocol` is now swappable for testing (in-memory stub, NATS-backed future impl)
 - Consistent with the existing `AgentStoreProtocol` / `BotStoreProtocol` / `ThreadStoreProtocol` pattern
+- **Lifecycle ownership rule** (#1506): the store's lifecycle (`connect` / `close`) is owned solely by the bootstrap layer (`bootstrap_stores.open_stores()`, which closes every store in its `finally` block); `lyra.core` consumers depend on the read-path `TurnStoreProtocol` only and must NOT call lifecycle methods — the previously-redundant `hub_shutdown` `close()` call was removed for this reason
+- `close()` is intentionally excluded from `TurnStoreProtocol`; the protocol is read-path only
 
 **Neutral:**
 - No behaviour change — `TurnStore` satisfies `TurnStoreProtocol` structurally

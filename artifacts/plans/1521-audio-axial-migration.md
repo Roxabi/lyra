@@ -2,7 +2,12 @@
 
 ADR: `docs/architecture/adr/079-audio-nats-contract-axial-consolidation.mdx`
 Tracking: #1521
-Relief PR superseded: #1520 (STREAM.CREATE/INFO/UPDATE grants on adapters removed by S3)
+Relief PR partially superseded: #1520 — S3 removes `STREAM.CREATE.LYRA_OUTBOUND_AUDIO`,
+`STREAM.UPDATE.LYRA_OUTBOUND_AUDIO`, and `STREAM.CREATE.KV_lyra_outbound_audio_sent`
+from adapter identities (these move to hub sole ownership). The remaining #1520 grants
+(`STREAM.INFO.LYRA_OUTBOUND_AUDIO`, `STREAM.INFO/MSG.GET.KV_…`, `$JS.ACK.LYRA_OUTBOUND_AUDIO.>`,
+`CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO.>`) stay on adapters; S4 moves them into the
+`audio-consumer` group for structural deduplication.
 
 ## Overview
 
@@ -14,7 +19,7 @@ are hardening; they may ship in parallel after S3 is deployed.
 | Slice | Name | Primary axis fixed | Restores audio? | Supersedes relief grants? |
 |---|---|---|---|---|
 | S2 | NullAudioConsumer sentinel | Fatal coupling | No (safety-net only) | No |
-| S3 | Sole-provisioner (hub) | N-way control-plane | No (audio already restored by #1520) | Yes — STREAM.* adapter grants |
+| S3 | Sole-provisioner (hub) | N-way control-plane | No (audio already restored by #1520) | Yes — 3 CREATE/UPDATE adapter grants |
 | S4 | ACL grant-group schema v4 | Flat ACL copy-paste | No | No (is the structural fix for copy-paste) |
 | S5 | CI falsification gate | Blind-spot in CI | No | — |
 
@@ -145,7 +150,7 @@ bootstrap. Remove stream control-plane grants from adapter ACL identities.
 | `src/lyra/bootstrap/standalone/hub_standalone.py` | Add `js = nc.jetstream()` + `await ensure_stream(js)` + `await ensure_kv(js)` before `announce_hub_ready(nc)` |
 | `src/lyra/bootstrap/standalone/audio_consumer_bootstrap.py` | Remove `ensure_stream` + `ensure_kv` calls; replace `ensure_kv(js)` with `js.key_value(KV_BUCKET)` (bind-only); update ordering docstring |
 | `src/lyra/infrastructure/outbound_audio/CLAUDE.md` | Update invariants: `ensure_stream` + `ensure_kv` are hub-owned; `start_audio_consumer` is bind-only for KV |
-| `deploy/nats/acl-matrix.json` | Remove from `telegram-adapter` publish: `$JS.API.STREAM.CREATE/INFO/UPDATE.LYRA_OUTBOUND_AUDIO`; same for `discord-adapter` |
+| `deploy/nats/acl-matrix.json` | Remove from `telegram-adapter` + `discord-adapter` publish: `STREAM.CREATE.LYRA_OUTBOUND_AUDIO`, `STREAM.UPDATE.LYRA_OUTBOUND_AUDIO`, `STREAM.CREATE.KV_lyra_outbound_audio_sent` |
 
 ### Before → after: hub_standalone.py (insertion point)
 
@@ -195,19 +200,22 @@ After:
 
 ### ACL change: acl-matrix.json
 
-`telegram-adapter` publish — remove these three subjects (move to hub sole ownership):
+`telegram-adapter` and `discord-adapter` publish — remove exactly these three
+subjects (control-plane CREATE/UPDATE moves to hub sole ownership):
 ```
 "$JS.API.STREAM.CREATE.LYRA_OUTBOUND_AUDIO",
-"$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO",
 "$JS.API.STREAM.UPDATE.LYRA_OUTBOUND_AUDIO",
+"$JS.API.STREAM.CREATE.KV_lyra_outbound_audio_sent",
 ```
 
-Same removal for `discord-adapter`. Hub `publish` is unchanged (`$JS.API.>` already
-covers these).
+Do NOT remove `$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO` — the adapter needs it for
+`pull_subscribe`, which calls `stream_info` to validate stream existence.
 
-After removing from adapters, verify via `lyra-acl genkeys --template-only` that
-the rendered auth.conf for telegram-adapter and discord-adapter no longer contains
-the three STREAM subjects.
+Hub `publish` is unchanged (`$JS.API.>` already covers all provisioning calls).
+
+After removing from adapters, verify via `lyra-acl genkeys --template-only` that the
+rendered auth.conf for telegram-adapter and discord-adapter no longer contains the
+three removed subjects, and still contains `STREAM.INFO.LYRA_OUTBOUND_AUDIO`.
 
 ### Provision-before-consume ordering guarantee
 
@@ -255,8 +263,10 @@ ordering invariant.
    `journalctl --user -u lyra-hub` before the `announce_hub_ready` log line.
 2. Deploy adapters with S3 ACL (STREAM.CREATE removed). Confirm adapters start and
    `JetStreamAudioConsumer` binds successfully.
-3. Confirm S1 (#1520) relief grants for STREAM.CREATE/INFO/UPDATE on adapters are
-   now superseded — those subjects are no longer in the rendered auth.conf.
+3. Confirm the three S3-removed grants are gone from the rendered auth.conf:
+   `STREAM.CREATE.LYRA_OUTBOUND_AUDIO`, `STREAM.UPDATE.LYRA_OUTBOUND_AUDIO`,
+   `STREAM.CREATE.KV_lyra_outbound_audio_sent`. Confirm `STREAM.INFO.LYRA_OUTBOUND_AUDIO`
+   is still present (adapter needs it for `pull_subscribe`).
 
 ---
 
@@ -272,7 +282,7 @@ discord-adapter. Define `audio-consumer` group once; reference it from each adap
 | `scripts/_acl_models.py` | Add `GroupDefinition(TypedDict)`; extend `LoadedMatrix` with `groups`; extend `Identity` with `groups` |
 | `scripts/_loader.py` | Parse optional `"groups"` key in `load_matrix`; validate cross-references; bump `_VALID_VERSIONS` to include `"4"` |
 | `scripts/_renderer.py` | Expand group subjects into effective `pub_allow`/`sub_allow` before flow injection in `render_auth_conf` |
-| `deploy/nats/acl-matrix.json` | Bump version to `"4"`; add top-level `"groups"` key with `audio-consumer`; add `"groups": ["audio-consumer"]` to `telegram-adapter` and `discord-adapter`; remove the 4 publish subjects from each adapter that are now in the group |
+| `deploy/nats/acl-matrix.json` | Bump version to `"4"`; add top-level `"groups"` key with `audio-consumer`; add `"groups": ["audio-consumer"]` to `telegram-adapter` and `discord-adapter`; remove the 8 publish + 1 subscribe subjects from each adapter that are now in the group |
 
 ### New types (_acl_models.py)
 
@@ -318,12 +328,18 @@ Output order within the allow list must be deterministic: iteration is stable
 
 ### acl-matrix.json subjects movement
 
+All values derived directly from post-#1520 matrix (`deploy/nats/acl-matrix.json`).
+
 Subjects moving FROM `telegram-adapter.publish` and `discord-adapter.publish`
-TO `groups.audio-consumer.publish` (post-S3):
+TO `groups.audio-consumer.publish` (the remaining audio subjects post-S3 removal):
 ```
-$JS.API.CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO.*
+$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO
+$JS.API.CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO.>    ← .> not .*
 $JS.API.CONSUMER.INFO.LYRA_OUTBOUND_AUDIO.*
 $JS.API.CONSUMER.MSG.NEXT.LYRA_OUTBOUND_AUDIO.*
+$JS.API.STREAM.INFO.KV_lyra_outbound_audio_sent
+$JS.API.STREAM.MSG.GET.KV_lyra_outbound_audio_sent
+$JS.ACK.LYRA_OUTBOUND_AUDIO.>
 $KV.lyra_outbound_audio_sent.>
 ```
 
@@ -332,6 +348,9 @@ TO `groups.audio-consumer.subscribe`:
 ```
 $KV.lyra_outbound_audio_sent.>
 ```
+
+After S4, each adapter identity's `publish` and `subscribe` lists contain zero
+audio-specific subjects directly — all are inherited via `"groups": ["audio-consumer"]`.
 
 ### Test plan
 
@@ -415,7 +434,7 @@ Same for kv_buckets.
 Failure output format:
 ```
 FAIL: identity 'telegram-adapter' publish[] does not cover required subject
-      '$JS.API.CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO.*'
+      '$JS.API.CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO.>'
       (via stream LYRA_OUTBOUND_AUDIO consumer-group audio-consumer)
 ```
 
@@ -456,7 +475,7 @@ S2  →  merge independently (safety-net)
              ↓
 S3  →  requires S2 deployed (NullAudioConsumer must be live before ACL tightened)
              ↓
-S4  →  requires S3 merged (group references CONSUMER.* subjects moved by S3)
+S4  →  requires S3 merged (group contains post-S3 adapter subject set; identity lists must be trimmed first)
 S5  →  requires S4 merged (gate must resolve group definitions)
 ```
 
@@ -465,14 +484,21 @@ logic depends on the group schema).
 
 ## Relief grant supersession map
 
-| Relief grant (PR #1520) | Superseded by | Mechanism |
-|---|---|---|
-| `$JS.API.STREAM.CREATE.LYRA_OUTBOUND_AUDIO` on telegram-adapter | S3 | Removed from adapter publish; hub owns provisioning |
-| `$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO` on telegram-adapter | S3 | Same |
-| `$JS.API.STREAM.UPDATE.LYRA_OUTBOUND_AUDIO` on telegram-adapter | S3 | Same |
-| Same three on discord-adapter | S3 | Same |
-| `$KV.lyra_outbound_audio_sent.>` publish (the missing grant that caused the outage) | S4 | Moved to audio-consumer group; rendered identically to the relief grant |
+All entries derived from post-#1520 `deploy/nats/acl-matrix.json`.
 
-The `$KV.lyra_outbound_audio_sent.>` publish grant itself is NOT removed — it is the
-correct grant and remains. S4 moves it from per-identity copy to a group definition.
-The rendered auth.conf entry for each adapter is identical before and after S4.
+| Relief grant added by PR #1520 | Action by slice | Rationale |
+|---|---|---|
+| `$JS.API.STREAM.CREATE.LYRA_OUTBOUND_AUDIO` (adapters) | S3 removes | Hub sole-provisioner; adapters don't create the stream |
+| `$JS.API.STREAM.UPDATE.LYRA_OUTBOUND_AUDIO` (adapters) | S3 removes | Same |
+| `$JS.API.STREAM.CREATE.KV_lyra_outbound_audio_sent` (adapters) | S3 removes | Hub sole-provisioner; adapters don't create the KV bucket |
+| `$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO` (adapters) | S4 moves to group | Stays on adapters (needed by `pull_subscribe`); deduped via group |
+| `$JS.API.STREAM.INFO.KV_lyra_outbound_audio_sent` (adapters) | S4 moves to group | Stays on adapters (`key_value()` bind); deduped via group |
+| `$JS.API.STREAM.MSG.GET.KV_lyra_outbound_audio_sent` (adapters) | S4 moves to group | Stays on adapters (`kv.get()`); deduped via group |
+| `$JS.ACK.LYRA_OUTBOUND_AUDIO.>` (adapters) | S4 moves to group | Stays on adapters (`msg.ack()`/`term()`); deduped via group |
+| `$JS.API.CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO.>` (adapters, `.*` → `.>` fix) | S4 moves to group | Stays on adapters (`add_consumer`); `.>` wildcard correct; deduped |
+| All other audio grants already in pre-#1520 matrix | S4 moves to group | Deduped; no functional change |
+
+Grants marked "S4 moves to group": the rendered auth.conf subject is unchanged — the
+subject moves from per-identity list to group definition, expanding identically.
+Grants marked "S3 removes": the subject is no longer present in either adapter identity
+after S3; the hub's `$JS.API.>` implicitly covers the provisioning operations.

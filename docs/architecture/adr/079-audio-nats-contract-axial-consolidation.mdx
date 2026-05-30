@@ -16,21 +16,43 @@ related: [073, 075, 076, 077]
 
 Accepted — 2026-05-30
 
-Tracks: issue #1521. Supersedes the relief grants applied in PR #1520 for
-`$JS.API.STREAM.CREATE/INFO/UPDATE.LYRA_OUTBOUND_AUDIO` on adapter identities
-(those grants are removed by slice S3 of the implementation plan).
+Tracks: issue #1521. The relief applied in PR #1520 added five subject grants to both
+adapter identities; the sole-provisioner move (slice S3) removes three of them
+(`STREAM.CREATE.LYRA_OUTBOUND_AUDIO`, `STREAM.UPDATE.LYRA_OUTBOUND_AUDIO`,
+`STREAM.CREATE.KV_lyra_outbound_audio_sent`) and moves them permanently to the hub.
+The remaining two (`STREAM.INFO.LYRA_OUTBOUND_AUDIO`, `$JS.ACK.LYRA_OUTBOUND_AUDIO.>`)
+stay with adapters (adapter-owned operations).
 
 ## Context
 
 ### The incident (2026-05-29)
 
 Both `lyra-telegram` and `lyra-discord` Quadlet units entered a crash-loop immediately
-after the #1482 outbound-audio deployment. Diagnosis: the live NATS ACL lacked the
-`$KV.lyra_outbound_audio_sent.>` **publish** grant that `KvSentSet.mark_sent` requires
-(nats-py `kv.put` resolves to a `$KV.<bucket>.<key>` publish). The grant existed in the
-matrix source, but only in the `subscribe` list of each adapter identity, not in
-`publish`. Both adapters were added simultaneously (copy-paste discipline), and the
-same error was copied into both.
+after the #1482 outbound-audio deployment. The failure was layered — each fix surfaced
+the next violation as a distinct NATS server `Publish Violation … Subject` log line,
+requiring a separate `make nats-regen-authconf` + container restart cycle:
+
+- **L0 — ops drift (26 h stale auth.conf):** The live `auth.conf` was generated from a
+  pre-#1482 matrix and lacked *all* audio grants that were already in the #1517 matrix.
+  First `nats-regen-authconf` fixed L0 and unmasked L1.
+- **L1 — missing `$JS.API.STREAM.CREATE.KV_lyra_outbound_audio_sent`:** `create_key_value`
+  triggers an `add_stream` call on the KV backing stream; grant absent.
+- **L2 — missing `$JS.API.STREAM.INFO.KV_lyra_outbound_audio_sent`:** `key_value()` bind
+  path calls `stream_info` on the backing stream; grant absent.
+- **L3 — missing `$JS.API.STREAM.MSG.GET.KV_lyra_outbound_audio_sent`:** `kv.get()` non-
+  direct path calls `STREAM.MSG.GET`; grant absent.
+- **L4 — missing `$JS.ACK.LYRA_OUTBOUND_AUDIO.>`:** `msg.ack()` / `msg.term()` publish
+  to the `msg.reply` subject, which is scoped to `$JS.ACK.<stream>.>`; grant absent.
+- **L5 — `$JS.API.CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO` wildcard too narrow:** the
+  `add_consumer` wire subject is `$JS.API.CONSUMER.CREATE.<stream>.<durable>.<filter>`
+  where `filter_subject` is multi-token (e.g. `lyra.outbound.audio.telegram.main` = 5
+  tokens); the grant used `.*` (one token) instead of `.>` (any depth).
+
+All five root subjects were confirmed by tracing nats-py source (`aio/msg.py`,
+`js/manager.py`, `js/client.py`). The underlying structural cause across all layers:
+both adapter grants were copy-pasted from the same source, so the same gaps appeared
+in both identities simultaneously — a single missed subject required two edits and
+produced two crash-loops.
 
 ### Precise classification
 
@@ -41,7 +63,7 @@ was platform-axial in three specific ways:
 | Drift site | Signal | ADR-073 rule violated |
 |---|---|---|
 | `ensure_stream` + `ensure_kv` called in every adapter bootstrap | N-way control-plane provisioning | new concern → edit all N targets |
-| Stream CREATE/INFO/UPDATE grants copy-pasted across `telegram-adapter` + `discord-adapter` | Flat ACL, no group/role/extends | new concern → edit all N targets |
+| 11 audio publish grants copy-pasted verbatim across `telegram-adapter` + `discord-adapter` | Flat ACL, no group/role/extends | new concern → edit all N targets |
 | `start_audio_consumer` raised unconditionally; no try/except in adapter wiring | Audio failure = adapter crash | stage boundary not enforced in code |
 
 A fourth gap enabled the drift to reach production undetected: no CI step verified
@@ -126,25 +148,43 @@ or `pull_subscribe`.
 
 **Forward-compat — if hub `$JS.API.>` is ever tightened.** The hub currently holds
 `$JS.API.>` for KV readiness-probe calls and general JetStream API access. If that
-wildcard is narrowed in a future hardening pass, the explicit subjects
+wildcard is narrowed in a future hardening pass, the hub's provisioning subjects must be
+added explicitly to the hub `publish` list in `acl-matrix.json` **before** the wildcard
+is removed. The subjects the hub needs for audio provisioning are:
 `$JS.API.STREAM.CREATE.LYRA_OUTBOUND_AUDIO`, `$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO`,
-`$JS.API.STREAM.UPDATE.LYRA_OUTBOUND_AUDIO`, and `$JS.API.CONSUMER.INFO.LYRA_OUTBOUND_AUDIO.*`
-must be added to the hub `publish` list in `acl-matrix.json` **before** the wildcard
-is removed. The CI falsification gate (move d) will catch any gap.
+`$JS.API.STREAM.UPDATE.LYRA_OUTBOUND_AUDIO`, `$JS.API.STREAM.CREATE.KV_lyra_outbound_audio_sent`,
+`$JS.API.STREAM.INFO.KV_lyra_outbound_audio_sent`, and `$KV.lyra_outbound_audio_sent.>`.
+The CI falsification gate (move d) will catch any gap automatically.
 
 **ACL change (per-identity, before → after).**
 
-`telegram-adapter` publish — remove:
+`telegram-adapter` publish — remove (control-plane CREATE/UPDATE, moved to hub):
 ```
 $JS.API.STREAM.CREATE.LYRA_OUTBOUND_AUDIO
-$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO
 $JS.API.STREAM.UPDATE.LYRA_OUTBOUND_AUDIO
+$JS.API.STREAM.CREATE.KV_lyra_outbound_audio_sent
 ```
-Retain (moved to `audio-consumer` group): `$JS.API.CONSUMER.CREATE/INFO/MSG.NEXT.LYRA_OUTBOUND_AUDIO.*`
-and `$KV.lyra_outbound_audio_sent.>` (publish + subscribe — `kv.put` publishes here).
 
-Identical removal applies to `discord-adapter`. The hub identity is unchanged
-(`$JS.API.>` already covers the provisioning calls).
+`telegram-adapter` publish — retain (moved to `audio-consumer` group):
+```
+$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO          (pull_subscribe calls stream_info)
+$JS.API.CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO.>    (.> — multi-token filter_subject)
+$JS.API.CONSUMER.INFO.LYRA_OUTBOUND_AUDIO.*
+$JS.API.CONSUMER.MSG.NEXT.LYRA_OUTBOUND_AUDIO.*
+$JS.API.STREAM.INFO.KV_lyra_outbound_audio_sent  (key_value() bind calls stream_info)
+$JS.API.STREAM.MSG.GET.KV_lyra_outbound_audio_sent  (kv.get() non-direct path)
+$JS.ACK.LYRA_OUTBOUND_AUDIO.>                    (msg.ack()/term() reply subject)
+$KV.lyra_outbound_audio_sent.>                   (kv.put publishes here)
+```
+
+`telegram-adapter` subscribe — retain in group:
+```
+$KV.lyra_outbound_audio_sent.>
+```
+
+Identical removal and group assignment applies to `discord-adapter`. The hub identity
+is unchanged (`$JS.API.>` already covers all provisioning calls; `$KV.lyra-state.>`
+covers the readiness KV).
 
 ### (b) ACL grant-groups — `acl-matrix.json` v4
 
@@ -159,9 +199,13 @@ output is identical to the v3 output — groups are a source-side abstraction on
   "audio-consumer": {
     "description": "Grants for adapter identities pulling from LYRA_OUTBOUND_AUDIO + dedup KV",
     "publish": [
-      "$JS.API.CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO.*",
+      "$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO",
+      "$JS.API.CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO.>",
       "$JS.API.CONSUMER.INFO.LYRA_OUTBOUND_AUDIO.*",
       "$JS.API.CONSUMER.MSG.NEXT.LYRA_OUTBOUND_AUDIO.*",
+      "$JS.API.STREAM.INFO.KV_lyra_outbound_audio_sent",
+      "$JS.API.STREAM.MSG.GET.KV_lyra_outbound_audio_sent",
+      "$JS.ACK.LYRA_OUTBOUND_AUDIO.>",
       "$KV.lyra_outbound_audio_sent.>"
     ],
     "subscribe": [
@@ -170,6 +214,18 @@ output is identical to the v3 output — groups are a source-side abstraction on
   }
 }
 ```
+
+Key wildcard rationale (from nats-py source trace, adapter notes):
+- `CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO.>` — `.>` required because the wire subject is
+  `$JS.API.CONSUMER.CREATE.<stream>.<durable>.<filter_subject>` where `filter_subject`
+  is 5 tokens (`lyra.outbound.audio.<platform>.<bot_id>`); `.*` matches only 1 token.
+- `CONSUMER.INFO.*` and `MSG.NEXT.*` — `.*` correct; those take only `<stream>.<durable>`
+  (1-token tail, no filter suffix).
+- `STREAM.INFO.KV_lyra_outbound_audio_sent` — `key_value()` bind path calls `stream_info`
+  on the KV backing stream; needed even though hub provisions the bucket.
+- `STREAM.MSG.GET.KV_lyra_outbound_audio_sent` — `kv.get()` non-direct path.
+- `$JS.ACK.LYRA_OUTBOUND_AUDIO.>` — `msg.ack()` / `msg.term()` publish to `msg.reply`
+  which NATS scopes to `$JS.ACK.<stream>.>`.
 
 Both `telegram-adapter` and `discord-adapter` add `"groups": ["audio-consumer"]`.
 All current and future platform adapter identities reference the group — no subject
@@ -249,9 +305,11 @@ NATS resource (stream or KV bucket), then identifies the provisioner and consume
       "consumer_group": "audio-consumer",
       "consumer_subjects": {
         "publish": [
-          "$JS.API.CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO.*",
+          "$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO",
+          "$JS.API.CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO.>",
           "$JS.API.CONSUMER.INFO.LYRA_OUTBOUND_AUDIO.*",
-          "$JS.API.CONSUMER.MSG.NEXT.LYRA_OUTBOUND_AUDIO.*"
+          "$JS.API.CONSUMER.MSG.NEXT.LYRA_OUTBOUND_AUDIO.*",
+          "$JS.ACK.LYRA_OUTBOUND_AUDIO.>"
         ]
       }
     },
@@ -273,11 +331,19 @@ NATS resource (stream or KV bucket), then identifies the provisioner and consume
     "lyra_outbound_audio_sent": {
       "provisioner": "hub",
       "provisioner_subjects": {
-        "publish": ["$KV.lyra_outbound_audio_sent.>"]
+        "publish": [
+          "$JS.API.STREAM.CREATE.KV_lyra_outbound_audio_sent",
+          "$JS.API.STREAM.INFO.KV_lyra_outbound_audio_sent",
+          "$KV.lyra_outbound_audio_sent.>"
+        ]
       },
       "consumer_group": "audio-consumer",
       "consumer_subjects": {
-        "publish": ["$KV.lyra_outbound_audio_sent.>"],
+        "publish": [
+          "$JS.API.STREAM.INFO.KV_lyra_outbound_audio_sent",
+          "$JS.API.STREAM.MSG.GET.KV_lyra_outbound_audio_sent",
+          "$KV.lyra_outbound_audio_sent.>"
+        ],
         "subscribe": ["$KV.lyra_outbound_audio_sent.>"]
       }
     }

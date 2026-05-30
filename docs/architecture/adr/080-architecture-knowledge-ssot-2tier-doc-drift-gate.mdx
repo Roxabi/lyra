@@ -1,0 +1,73 @@
+---
+title: "ADR-080: Architecture Knowledge SSoT — Generated Current-State + Doc-Drift Gate"
+description: Two-tier architecture-knowledge model — code-generated current-state vs hand-authored intent — bridged by a CI doc-drift gate that makes silent rot loud.
+---
+
+## Status
+
+Accepted (2026-05-30)
+
+## Context
+
+Lyra (and Roxabi repos generally) evolve faster than their docs and issues are maintained, producing **systemic silent documentation rot**. A 2026-05-30 audit of `docs/architecture/` found a **67% live-reference hit-rate** (5 of 15 sampled paths / symbols no longer resolved). Concrete failures: a driver deleted in #1281 was still presented as live in `docs/ARCHITECTURE.md` (edited 2 days prior), `target-architecture.md`, and `messaging.md`; ADR-058's `Proposed` error-handling symbols were described as implemented though a 3-week-old audit confirmed none exist; `messaging.md` carried dead flat module paths made wrong by a sub-package extraction. These same errors propagated into a generated architecture diagram for #1490 because it was sourced from design docs/specs rather than code.
+
+**Root cause.** Architecture knowledge has three strata with different rot rates:
+
+| Stratum | Examples | Rot rate |
+|---|---|---|
+| INVENTORY | class/file names, NATS subjects, deps, entry points | fast + silent |
+| STRUCTURE | import layers, ownership, decomposition axes | medium |
+| INTENT | rationale, trade-offs, constraints | slow |
+
+When the three are mixed in one artifact, fast-rotting INVENTORY poisons still-valid INTENT — the document loses trust, and readers (human or agent) fall back to guessing or expensive full code-reads. Hand-maintained INVENTORY cannot win the race against code.
+
+## Options Considered
+
+### Option A: One regularly-maintained architecture document as SSoT
+- **Pros:** single place to look; carries intent inline.
+- **Cons:** INVENTORY rots on a ~2–4 week half-life regardless of discipline (edits don't refresh anchors); becomes actively misleading; doesn't scale with project velocity.
+
+### Option B: Code-only — no architecture docs, always read code / ccc
+- **Pros:** never wrong about "what is".
+- **Cons:** no intent/rationale anywhere; no fast gestalt; every architecture question becomes an expensive re-derivation; loses the "why".
+
+### Option C: Two-tier — generated current-state + hand-authored intent, bridged by a doc-drift gate (chosen)
+- **Pros:** each stratum lives where it cannot rot; silent rot becomes a loud CI failure; reuses existing assets; gives humans and agents a reliable ordered source.
+- **Cons:** new CI gates to maintain; one-time + ongoing purge of INVENTORY from domain pages.
+
+## Decision
+
+Adopt a **two-tier** architecture-knowledge SSoT, bridged by a doc-drift CI gate.
+
+**Tier 1 — Generated current-state ("what is").** Derived in CI from existing machine-readable sources, never hand-typed: `.importlinter` (layer map), `deploy/nats/acl-matrix.json` (subjects + process identities), `deploy/quadlet.toml` + `cli.py` (process topology), `roxabi-contracts` `SUBJECTS` (typed subject constants).
+
+**Tier 2 — Hand-authored intent ("why").** ADR domain pages, **purged of INVENTORY**, carrying `status:` frontmatter. The `src/lyra/llm/CLAUDE.md` convention of self-annotating deleted symbols with their PR number is the reference standard.
+
+**Bridge — Doc-drift CI gate.** Generalize the existing 3-symbol guard in `.github/workflows/ci.yml` and reuse the recheck symbol-missing mechanism: scan `docs/architecture/` and the CLAUDE.md network for paths and backticked symbols, and fail CI when a cited reference no longer resolves in code — except references annotated as historical (deleted/removed/superseded/renamed) or baselined. This converts silent rot into loud rot while preserving the self-annotating-deletion pattern.
+
+**Retrieval ladder** (canonical order for "what is the current architecture?", for humans and agents):
+
+1. Code — ground truth for "what is".
+2. Generated Tier-1 artifacts — fast fresh index.
+3. `ccc` (cocoindex-code) semantic search — "where/how".
+4. CLAUDE.md invariants + ADR domain pages — INTENT/boundaries only; check `status:`.
+5. `artifacts/` (specs/analyses/plans) + GitHub issues — DELTAS only; **never** current-state; always cross-check code.
+
+`roxabi-live` remains the issue-dependency SSoT (GitHub dep-graph), explicitly **not** a code-architecture source.
+
+**Implementation is sequenced** (epic #1530): (1) doc-drift gate (#1531 — keystone; this ADR lands with it), (2) Tier-1 generated snapshot (#1532), (3) `check_subject_literals.py` (#1533), (4) `ccc index` auto-refresh in `worktree-setup.sh` (#1534).
+
+## Consequences
+
+### Positive
+- Silent doc-rot becomes a loud, blocking CI signal.
+- INVENTORY is never hand-maintained — generated from the same code it describes.
+- Humans and agents get a reliable, ordered retrieval protocol; the #1490 class of error (sourcing current-state from specs) is structurally prevented.
+
+### Negative
+- New CI gates and generators to maintain.
+- One-time purge of INVENTORY from existing domain pages, plus ongoing discipline to keep them intent-only.
+
+### Neutral
+- A future `docs/architecture/knowledge-ssot.md` domain page may host the living retrieval ladder once the gate lands.
+- Forward-looking docs keep their value as deltas; the ladder just bars them from "current-state" duty.

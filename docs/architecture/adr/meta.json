@@ -4,6 +4,8 @@
   "pages": [
     "---Foundational---",
     "073-axial-stage-of-pipeline-decomposition",
+    "080-architecture-knowledge-ssot-2tier-doc-drift-gate",
+    "081-architecture-inventory-semantic-code-oracle",
     "---Messaging & NATS---",
     "001-routing-key-platform-bot-id-user-id",
     "002-hub-impl-contracts-dispatch-pool-deprecation",

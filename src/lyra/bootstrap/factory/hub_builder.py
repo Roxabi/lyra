@@ -23,7 +23,6 @@ from lyra.bootstrap.factory.config import (
 )
 from lyra.bootstrap.factory.llm_overlay import init_nats_llm
 from lyra.bootstrap.factory.voice_overlay import (
-    init_blobstore,
     init_nats_stt,
     init_nats_tts,
 )
@@ -312,7 +311,7 @@ async def _build_hub_and_wire(  # noqa: PLR0913 — unavoidable wiring surface
             inbound_bus=inbound_bus,
             pm=pm,
             stores=stores,
-            blob_store=init_blobstore(),
+            # blob_store omitted: hub is a pure router; adapters self-init (ADR-082).
         )
     )
     if hub._turn_publisher is None:

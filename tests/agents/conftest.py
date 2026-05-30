@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import tempfile
-from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -16,6 +15,7 @@ from tests.factories.agents import (  # noqa: F401
     make_pool,
     make_text_message,
 )
+from tests.factories.blobs import _make_mock_blob_store
 
 __all__ = [
     "make_audio_message",
@@ -32,33 +32,6 @@ def tmp_ogg_path() -> str:
     """Create a real temp file with .ogg suffix and return its path."""
     with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
         return f.name
-
-
-def _make_mock_blob_store() -> MagicMock:
-    """Build a mock BlobStorePort backed by _TEST_BLOB_REGISTRY."""
-    from typing import Any
-
-    from roxabi_contracts import BlobRef
-    from tests.helpers.messages import _TEST_BLOB_REGISTRY
-
-    async def _mock_get(store_key: str) -> bytes:
-        return _TEST_BLOB_REGISTRY.get(store_key, b"mock-audio-bytes")
-
-    async def _mock_put(data: bytes, *, mime: str, **kwargs: Any) -> BlobRef:
-        ref = BlobRef(
-            store_key="test-blob",
-            content_hash="deadbeef",
-            mime=mime,
-            size=len(data),
-            source="test",
-        )
-        _TEST_BLOB_REGISTRY[ref.store_key] = data
-        return ref
-
-    mock_store = MagicMock()
-    mock_store.get = AsyncMock(side_effect=_mock_get)
-    mock_store.put = AsyncMock(side_effect=_mock_put)
-    return mock_store
 
 
 @pytest.fixture(autouse=True)

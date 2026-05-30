@@ -66,6 +66,18 @@ class HttpBlobStoreAdapter:
         """Pass-through to wrapped store; raises BlobNotFoundError on 404."""
         return await self._http_store.get(store_key)
 
+    async def aclose(self) -> None:
+        """Close the underlying httpx client (resource cleanup at shutdown).
+
+        Mirrors ``HttpBlobStore.__aexit__``: closes the lazy client if it was
+        ever created, then stops any ASGI lifespan task (test seam only).
+        Safe to call when the client was never used (no-op).
+        """
+        if self._http_store._client is not None:
+            await self._http_store._client.aclose()
+            self._http_store._client = None
+        await self._http_store._stop_asgi_lifespan()
+
     async def exists(self, content_hash: str) -> BlobRef | None:
         """Return a wire BlobRef if the blob exists, else None.
 

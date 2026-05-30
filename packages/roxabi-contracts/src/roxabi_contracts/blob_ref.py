@@ -70,7 +70,13 @@ class BlobRef(BaseModel):
         """Canonical storage→wire converter. Duck-typed: accepts any object with
         model_dump() (e.g. roxabi_blobs.BlobRef) without importing it (no
         storage↔transport cycle). Drops storage-only fields {id, is_sentinel};
-        every other field (incl. created_at) is carried through verbatim."""
+        every other field (incl. created_at) is carried through verbatim.
+
+        A ``pydantic.ValidationError`` from ``model_validate`` is INTENTIONAL —
+        it signals field-set drift between the storage and wire schemas (the
+        parity test is the primary early-warning gate).  Callers MUST NOT
+        swallow it; let it propagate so the mismatch is surfaced immediately.
+        """
         return cls.model_validate(store_ref.model_dump(exclude={"id", "is_sentinel"}))
 
     @model_validator(mode="after")

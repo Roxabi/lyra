@@ -11,12 +11,25 @@ Design constraint: roxabi-contracts MUST NOT import roxabi-blobs at runtime
 (storage ↔ transport cycle breaks satellite consumers). The storage field-set
 is therefore encoded as a module-level frozenset constant below.  Keep it in
 sync with roxabi_blobs.BlobRef whenever that model gains or loses fields.
+
+Coverage oracle (one-sided):
+  STORAGE_FIELDS is a hardcoded frozenset — it is NOT a live mirror of
+  roxabi_blobs.BlobRef.  The parity test catches:
+    (1) wire-side additions: a new field on roxabi_contracts.BlobRef not in
+        STORAGE_FIELDS will fail the assertion.
+    (2) STORAGE_FIELDS/wire mismatch: a field removed from wire but still in
+        STORAGE_FIELDS - {id, is_sentinel} will also fail.
+  It does NOT automatically catch storage-side field additions: if
+  roxabi_blobs.BlobRef gains a new field, STORAGE_FIELDS must be updated
+  MANUALLY in this file to re-enable detection.
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any
+
+import pytest
 
 from roxabi_contracts import BlobRef
 
@@ -57,9 +70,12 @@ STORAGE_FIELDS: frozenset[str] = frozenset(
 def test_wire_field_set_equals_storage_minus_storage_only_fields() -> None:
     """Wire BlobRef fields == storage BlobRef fields - {id, is_sentinel} (SC3).
 
-    Negative-test invariant: if a field is added to roxabi_blobs.BlobRef
-    without updating STORAGE_FIELDS, or if a field is added to the wire model
-    without being added to STORAGE_FIELDS, this assertion catches the drift.
+    One-sided oracle — catches:
+      (1) wire-side additions: a new wire field not in STORAGE_FIELDS fails here.
+      (2) STORAGE_FIELDS/wire mismatch: a removed wire field still in
+          STORAGE_FIELDS - {id, is_sentinel} fails here.
+    Does NOT auto-detect storage-side additions: if roxabi_blobs.BlobRef gains a
+    new field, STORAGE_FIELDS must be updated manually in this test file.
     """
     wire_fields = set(BlobRef.model_fields)
     storage_only = {"id", "is_sentinel"}
@@ -149,9 +165,24 @@ def test_from_store_ref_carries_optional_fields() -> None:
     assert result.platform_message_id == "msg-99"
 
 
-def test_from_store_ref_strips_storage_only_fields() -> None:
-    """Result has no id / is_sentinel attribute (wire model extra=forbid)."""
+def test_extra_forbid_rejects_storage_only_fields() -> None:
+    """BlobRef.model_validate raises ValidationError when storage-only fields present.
+
+    This is the falsifiable guard for the exclude={"id", "is_sentinel"} call inside
+    from_store_ref.  The test constructs the full storage dump (with id and
+    is_sentinel) and passes it DIRECTLY to model_validate — i.e. without the
+    exclude= filter — asserting that extra="forbid" on the wire model rejects it.
+
+    If extra="forbid" were removed from BlobRef, this test would pass the validate
+    call and the assertion below would fail, catching the regression.
+
+    Deleting exclude= from from_store_ref (without removing extra="forbid") would
+    make from_store_ref itself raise ValidationError at runtime — caught by
+    test_from_store_ref_returns_wire_blob_ref above.
+    """
+    import pydantic
+
     fake = _FakeStorageBlobRef()
-    result = BlobRef.from_store_ref(fake)  # type: ignore[attr-defined]
-    assert not hasattr(result, "id")
-    assert not hasattr(result, "is_sentinel")
+    full_dump = fake.model_dump()  # includes id and is_sentinel — no exclude=
+    with pytest.raises(pydantic.ValidationError):
+        BlobRef.model_validate(full_dump)

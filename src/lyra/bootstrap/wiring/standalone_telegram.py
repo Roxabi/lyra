@@ -196,4 +196,8 @@ async def bootstrap_telegram_standalone(  # noqa: PLR0915 — DEBT:wiring-bootst
     await wait_for_hub(nc)
 
     stop = setup_shutdown_event(_stop)
-    await _bootstrap_telegram_teardown(wired, tg_turn_store, stop)
+    try:
+        await _bootstrap_telegram_teardown(wired, tg_turn_store, stop)
+    finally:
+        if blob_store is not None:
+            await blob_store.aclose()  # type: ignore[union-attr]  # concrete HttpBlobStoreAdapter; aclose not on port

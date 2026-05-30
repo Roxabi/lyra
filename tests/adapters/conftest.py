@@ -9,7 +9,6 @@ functionality, we skip extraction when the request URL is relative.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -35,6 +34,7 @@ from tests.factories.adapters import (  # noqa: F401
 )
 from tests.factories.adapters import make_dc_adapter as _make_dc_adapter_base
 from tests.factories.adapters import make_tg_adapter as _make_tg_adapter_base
+from tests.factories.blobs import _make_mock_blob_store
 
 __all__ = [
     "attach_typing_cm",
@@ -53,32 +53,8 @@ __all__ = [
 
 # ---------------------------------------------------------------------------
 # Mock BlobStorePort factory — used by make_tg_adapter / make_dc_adapter wrappers
+# Imported from tests.factories.blobs (single source of truth)
 # ---------------------------------------------------------------------------
-
-
-def _make_mock_blob_store() -> MagicMock:
-    """Build a mock BlobStorePort backed by _TEST_BLOB_REGISTRY."""
-    from roxabi_contracts import BlobRef
-    from tests.helpers.messages import _TEST_BLOB_REGISTRY
-
-    async def _mock_get(store_key: str) -> bytes:
-        return _TEST_BLOB_REGISTRY.get(store_key, b"mock-audio-bytes")
-
-    async def _mock_put(data: bytes, *, mime: str, **kwargs: Any) -> BlobRef:
-        ref = BlobRef(
-            store_key="test-blob",
-            content_hash="deadbeef",
-            mime=mime,
-            size=len(data),
-            source="test",
-        )
-        _TEST_BLOB_REGISTRY[ref.store_key] = data
-        return ref
-
-    mock_store = MagicMock()
-    mock_store.get = AsyncMock(side_effect=_mock_get)
-    mock_store.put = AsyncMock(side_effect=_mock_put)
-    return mock_store
 
 
 def make_tg_adapter() -> TelegramAdapter:

@@ -47,6 +47,7 @@ async def _bootstrap_unified(
     acquire_lockfile()
     voice = None
     clipool = None
+    blob_store = None
     try:
         inbound_bus = await _init_inbound_bus(nc, raw_config)
         vault_dir = Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
@@ -116,6 +117,8 @@ async def _bootstrap_unified(
         # Flush in-flight audit emit tasks before closing NATS (audit uses JetStream).
         if clipool is not None:
             await clipool.cli_pool.drain_audit_tasks()
+        if blob_store is not None:
+            await blob_store.aclose()  # type: ignore[union-attr]  # concrete HttpBlobStoreAdapter; aclose not on port
         try:
             await nc.close()
             log.info("NATS connection closed.")

@@ -241,4 +241,10 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
         sys.exit("No Discord adapters started — check credentials")
     await wait_for_hub(nc)
     stop_dc = setup_shutdown_event(_stop)
-    await _bootstrap_discord_teardown(wired_dc, dc_thread_store, dc_turn_store, stop_dc)
+    try:
+        await _bootstrap_discord_teardown(
+            wired_dc, dc_thread_store, dc_turn_store, stop_dc
+        )
+    finally:
+        if blob_store is not None:
+            await blob_store.aclose()  # type: ignore[union-attr]  # concrete HttpBlobStoreAdapter; aclose not on port

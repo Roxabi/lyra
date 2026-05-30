@@ -10,6 +10,7 @@ Covers:
 - caption is passed as message content
 - reply falls back to channel.send on fetch failure
 - non-discord platform logs an error and returns without sending
+- _blob_store is None: early-returns without raise (B1 guard coverage)
 """
 
 from __future__ import annotations
@@ -234,3 +235,52 @@ async def test_dc_render_audio_non_discord_context_no_send(caplog) -> None:
 
     channel.send.assert_not_awaited()
     channel.fetch_message.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# B1 — _blob_store is None guard: early-return without raise
+#
+# Negative-test contract: if the None guard is deleted from render_audio,
+# accessing None.get raises AttributeError and the test fails.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_tg_render_audio_blob_store_none_returns_without_raise() -> None:
+    """render_audio early-returns when _blob_store is None (Telegram).
+
+    Deleting the guard causes AttributeError on None.get(), failing this test.
+    """
+    from tests.factories.adapters import make_tg_adapter as _base_make_tg_adapter
+
+    adapter = _base_make_tg_adapter()
+    adapter._blob_store = None  # simulate unconfigured blob store
+
+    audio = OutboundAudio(blob_ref=make_test_blobref(b"OGG"))
+    inbound = make_tg_msg()
+
+    # Must not raise; no send call must be made
+    await adapter.render_audio(audio, inbound)
+
+    adapter.bot.send_voice.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_dc_render_audio_blob_store_none_returns_without_raise() -> None:
+    """render_audio early-returns when _blob_store is None (Discord).
+
+    Deleting the guard causes AttributeError on None.get(), failing this test.
+    """
+    from tests.factories.adapters import make_dc_adapter as _base_make_dc_adapter
+
+    adapter = _base_make_dc_adapter()
+    adapter._blob_store = None  # simulate unconfigured blob store
+
+    audio = OutboundAudio(blob_ref=make_test_blobref(b"OGG"))
+    channel = mock_channel()
+    inbound = make_dc_msg()
+
+    with patch.object(adapter, "get_channel", return_value=channel):
+        await adapter.render_audio(audio, inbound)
+
+    channel.send.assert_not_awaited()

@@ -114,7 +114,8 @@ def init_blobstore() -> "BlobStorePort | None":
     considered unconfigured and audio attachment upload is disabled until the
     file is present and the process is restarted.  Only ``FileNotFoundError``
     is suppressed; permission errors and other ``OSError`` subclasses propagate
-    as real misconfiguration.
+    as real misconfiguration.  An empty token file raises ``OSError`` — an
+    empty token would yield ``Bearer `` and cause silent 401s at first use.
     """
     import os
     from pathlib import Path
@@ -136,6 +137,8 @@ def init_blobstore() -> "BlobStorePort | None":
             token_path,
         )
         return None
+    if not token:
+        raise OSError(f"BlobStore token file at {token_path!r} is empty")
     http_store = HttpBlobStore(base_url, token)
     log.info("BlobStore client created — url=%s", base_url)
     return HttpBlobStoreAdapter(http_store)

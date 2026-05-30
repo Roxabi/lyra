@@ -462,6 +462,18 @@ health_secret = ""                            # optional health endpoint auth
 |----------|---------|-------------|
 | `NATS_URL` | `nats://localhost:4222` | NATS server URL (required for standalone hub) |
 
+### BlobStore
+
+Read by `init_blobstore()` in the hub process at startup. Token is read **once** at startup
+(restart-not-HUP — the value is never re-read without a process restart). If
+`LYRA_BLOBSTORE_TOKEN_PATH` points to an absent file, `blob_store` degrades to `None`:
+audio attachments are disabled and a warning is logged; no crash occurs.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LYRA_BLOBSTORE_URL` | `http://localhost:8449` | BlobStore service base URL |
+| `LYRA_BLOBSTORE_TOKEN_PATH` | `~/.lyra/blobstore.tok` | Path to bearer-token file; read once at startup |
+
 #### BlobStore env file
 
 `~/.lyra/env/blobstore.env` is a Quadlet env file consumed by `lyra-blobstore.container` at

@@ -51,12 +51,22 @@ __all__ = [
     "DiscordMultiConfig",
     "load_multibot_config",
     "multibot_config_from_store",
+    # Discord-specific defaults (#1514)
+    "DISCORD_DEFAULT_AUTO_THREAD",
+    "DISCORD_DEFAULT_THREAD_HOT_HOURS",
 ]
 
 log = logging.getLogger(__name__)
 
 _ENV_PREFIX = "env:"
 _AUTO_THREAD_TRUE = frozenset({"1", "true", "yes", "on"})
+
+# Discord-specific defaults — intentionally diverge from the generic bot_models defaults
+# (DEFAULT_AUTO_THREAD=False / DEFAULT_THREAD_HOT_HOURS=24).
+# Discord threads conversations by default; the generic store default is False for
+# non-threading platforms (e.g. Telegram). See #1514. Keep the divergence deliberate.
+DISCORD_DEFAULT_AUTO_THREAD: bool = True
+DISCORD_DEFAULT_THREAD_HOT_HOURS: int = 36
 
 
 def _resolve_value(value: str) -> str:
@@ -97,9 +107,9 @@ class DiscordBotConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     bot_id: str
-    auto_thread: bool = True
+    auto_thread: bool = DISCORD_DEFAULT_AUTO_THREAD
     agent: str = "lyra_default"
-    thread_hot_hours: int = 36
+    thread_hot_hours: int = DISCORD_DEFAULT_THREAD_HOT_HOURS
 
 
 class TelegramMultiConfig(BaseModel):
@@ -154,7 +164,8 @@ def _parse_discord_bots(raw: dict[str, Any]) -> list[DiscordBotConfig]:
     """Parse [[discord.bots]] array from raw config.
 
     Each entry requires: bot_id.
-    Optional: auto_thread (default True), agent (default "lyra_default").
+    Optional: auto_thread (default DISCORD_DEFAULT_AUTO_THREAD),
+    agent (default "lyra_default").
 
     Credentials (token) are resolved at bootstrap time from
     /run/secrets/bot_token-<bot_id> and are not read here.
@@ -165,9 +176,11 @@ def _parse_discord_bots(raw: dict[str, Any]) -> list[DiscordBotConfig]:
     bots: list[DiscordBotConfig] = []
     for entry in bots_raw:
         bot_id: str = entry.get("bot_id", "main")
-        auto_thread: bool = entry.get("auto_thread", True)
+        auto_thread: bool = entry.get("auto_thread", DISCORD_DEFAULT_AUTO_THREAD)
         agent: str = entry.get("agent", "lyra_default")
-        thread_hot_hours: int = int(entry.get("thread_hot_hours", 36))
+        thread_hot_hours: int = int(
+            entry.get("thread_hot_hours", DISCORD_DEFAULT_THREAD_HOT_HOURS)
+        )
 
         bots.append(
             DiscordBotConfig(
@@ -220,7 +233,11 @@ def load_multibot_config(
     dc_has_bots_key = "bots" in raw.get("discord", {})
     if not dc_bots and not dc_has_bots_key and raw.get("auth", {}).get("discord"):
         auto_thread_str = os.environ.get("DISCORD_AUTO_THREAD", "").strip().lower()
-        auto_thread = auto_thread_str in _AUTO_THREAD_TRUE if auto_thread_str else True
+        auto_thread = (
+            auto_thread_str in _AUTO_THREAD_TRUE
+            if auto_thread_str
+            else DISCORD_DEFAULT_AUTO_THREAD
+        )
         log.info(
             "discord: no [[discord.bots]] found; "
             "falling back to legacy single-bot path (bot_id='main')"

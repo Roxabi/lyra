@@ -10,7 +10,10 @@ import logging
 
 import pytest
 
+import lyra.core.agent.bot_models as bot_models
 from lyra.config import (
+    DISCORD_DEFAULT_AUTO_THREAD,
+    DISCORD_DEFAULT_THREAD_HOT_HOURS,
     DiscordBotConfig,
     DiscordMultiConfig,
     TelegramBotConfig,
@@ -348,3 +351,47 @@ class TestMultibotConfigFromStore:
         # Assert
         assert len(tg.bots) == 1
         assert dc.bots == []
+
+
+# ---------------------------------------------------------------------------
+# TestDiscordDefaultConstants — guard test for #1514
+# ---------------------------------------------------------------------------
+
+
+class TestDiscordDefaultConstants:
+    """Guard that the Discord-specific defaults are named, valued, and deliberately
+    diverge from the generic platform-agnostic defaults in bot_models.
+
+    If a future "alignment" refactor changes these values, this test will trip and
+    force re-reading the decision documented in #1514 before proceeding.
+    """
+
+    def test_discord_default_auto_thread_is_true(self) -> None:
+        # Discord threads every conversation by default.
+        assert DISCORD_DEFAULT_AUTO_THREAD is True
+
+    def test_discord_default_thread_hot_hours_is_36(self) -> None:
+        assert DISCORD_DEFAULT_THREAD_HOT_HOURS == 36
+
+    def test_discord_bot_config_default_auto_thread(self) -> None:
+        # DiscordBotConfig() with no explicit auto_thread must use the named constant.
+        cfg = DiscordBotConfig(bot_id="test")
+        assert cfg.auto_thread is DISCORD_DEFAULT_AUTO_THREAD
+        assert cfg.auto_thread is True
+
+    def test_discord_bot_config_default_thread_hot_hours(self) -> None:
+        # DiscordBotConfig() with no explicit thread_hot_hours must use the constant.
+        cfg = DiscordBotConfig(bot_id="test")
+        assert cfg.thread_hot_hours == DISCORD_DEFAULT_THREAD_HOT_HOURS
+        assert cfg.thread_hot_hours == 36
+
+    def test_intentional_divergence_from_generic_auto_thread(self) -> None:
+        # DELIBERATE: Discord default (True) != generic default (False).
+        # bot_models.DEFAULT_AUTO_THREAD is False for non-threading platforms
+        # (e.g. Telegram). Discord is the exception.
+        # See #1514. Do NOT "fix" this divergence without re-reading that decision.
+        assert DISCORD_DEFAULT_AUTO_THREAD != bot_models.DEFAULT_AUTO_THREAD
+
+    def test_intentional_divergence_from_generic_thread_hot_hours(self) -> None:
+        # DELIBERATE: Discord default (36 h) != generic default (24 h). See #1514.
+        assert DISCORD_DEFAULT_THREAD_HOT_HOURS != bot_models.DEFAULT_THREAD_HOT_HOURS

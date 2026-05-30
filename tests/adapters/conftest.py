@@ -70,6 +70,7 @@ def make_dc_adapter() -> DiscordAdapter:
     adapter._blob_store = _make_mock_blob_store()
     return adapter
 
+
 # ---------------------------------------------------------------------------
 # Outbound-send test helpers (used by test_telegram_outbound_send/render)
 # ---------------------------------------------------------------------------

@@ -169,11 +169,28 @@ class TestInitBlobstoreLoopbackWarning:
         ("url", "expect_warning"),
         [
             ("http://10.0.0.5:8449", True),  # non-loopback http — must warn
+            ("http://[2001:db8::1]:8449", True),  # IPv6 remote — must warn
             ("http://localhost:8449", False),  # loopback hostname — silent
             ("http://127.0.0.1:8449", False),  # loopback IP — silent
+            ("http://[::1]:8449", False),  # IPv6 loopback — silent
+            ("http://127.1:8449", False),  # IPv4 alias loopback 127.0.0.1 — silent
+            ("http://2130706433:8449", False),  # 0x7f000001 decimal — silent
+            ("http://0x7f000001:8449", False),  # hex literal loopback — silent
+            ("http:///blob", False),  # no host (None) — silent
             ("https://host:8449", False),  # TLS — silent
         ],
-        ids=["nonloopback-http", "localhost", "127.0.0.1", "https"],
+        ids=[
+            "nonloopback-http",
+            "ipv6-remote",
+            "localhost",
+            "127.0.0.1",
+            "ipv6-loopback",
+            "127.1-alias",
+            "decimal-loopback",
+            "hex-loopback",
+            "no-host",
+            "https",
+        ],
     )
     def test_loopback_warning_guard(
         self,

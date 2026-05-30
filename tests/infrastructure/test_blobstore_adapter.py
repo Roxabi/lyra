@@ -316,9 +316,10 @@ class TestHttpBlobStoreAdapterErrorTranslation:
     ) -> None:
         """get() translates storage BlobNotFoundError to contracts BlobNotFoundError.
 
-        Negative guard: the adapter's get() is currently a pass-through that re-raises
-        the roxabi_blobs error directly.  Once the translation layer is in place, the
-        test will pass.  Deleting the translation layer makes this test fail because
+        This asserts the storage→contracts error translation at the adapter seam:
+        the adapter catches roxabi_blobs.BlobNotFoundError and re-raises the port-level
+        roxabi_contracts.BlobNotFoundError so callers never need to import roxabi_blobs.
+        Deleting the translation layer makes this test fail because
         pytest.raises(roxabi_contracts.BlobNotFoundError) won't catch the raw
         roxabi_blobs.BlobNotFoundError.
         """
@@ -337,8 +338,12 @@ class TestHttpBlobStoreAdapterErrorTranslation:
         with pytest.raises(roxabi_contracts.BlobNotFoundError) as exc_info:
             await adapter.get("k")
 
+        raised = exc_info.value
+        # Assert on type and key — not on str(err) which may be redacted
+        assert isinstance(raised, roxabi_contracts.BlobNotFoundError)
+        assert raised.key == "k"
         # The raised exception must NOT be the storage-layer type
-        assert not isinstance(exc_info.value, roxabi_blobs.BlobNotFoundError), (
+        assert not isinstance(raised, roxabi_blobs.BlobNotFoundError), (
             "adapter must translate roxabi_blobs.BlobNotFoundError into "
             "roxabi_contracts.BlobNotFoundError, not re-raise the storage type"
         )

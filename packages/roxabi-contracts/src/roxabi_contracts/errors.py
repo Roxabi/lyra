@@ -11,25 +11,12 @@ from urllib.parse import urlsplit, urlunsplit
 from pydantic import BaseModel, Field, field_validator
 
 __all__ = [
-    "BlobNotFoundError",
     "WorkerError",
     "CodeMeta",
     "KNOWN_CODES",
     "scrub_credentials",
     "truncate_with_marker",
 ]
-
-
-class BlobNotFoundError(Exception):
-    """Raised by BlobStorePort.get when an opaque store_key is absent.
-
-    Callers import this from ``roxabi_contracts`` (not ``roxabi_blobs``).
-    The adapter layer translates the storage-layer error at the seam.
-    """
-
-    def __init__(self, key: str) -> None:
-        super().__init__(key)
-        self.key = key
 
 
 # Maximum stored length for free-text fields. Long stack traces / framing errors

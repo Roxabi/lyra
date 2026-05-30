@@ -73,7 +73,7 @@ class HttpBlobStoreAdapter:
         try:
             return await self._http_store.get(store_key)
         except roxabi_blobs.BlobNotFoundError as e:
-            raise BlobNotFoundError(str(e)) from e
+            raise BlobNotFoundError(e.args[0] if e.args else str(e)) from e
 
     async def aclose(self) -> None:
         """Close the underlying httpx client (resource cleanup at shutdown).

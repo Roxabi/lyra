@@ -68,8 +68,10 @@ class BlobStorePort(Protocol):
         **server** enforces path containment via ``FsBlobStore._safe_resolve_in_root``
         (directory traversal attempts yield 404, not an oracle response).
 
-        Only ``get()`` raises ``BlobNotFoundError``; ``delete`` is not part
-        of ``BlobStorePort``.
+        ``delete`` is intentionally absent from ``BlobStorePort``.  If a
+        future delete capability is added it MUST raise
+        ``roxabi_contracts.BlobNotFoundError`` on a missing key — same
+        contract as ``get`` — so callers keep a single error type to catch.
         """
         ...
 

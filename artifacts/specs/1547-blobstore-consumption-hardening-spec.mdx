@@ -56,13 +56,13 @@ oracle), and that invariant is regression-locked by `tests/blobstore/test_serve_
 sanitisation (it would break the legitimate `:path` legacy-key slash semantics). No behavior change.
 
 **F3 — port-level not-found error.** A new `BlobNotFoundError` is defined in
-`roxabi_contracts.errors` (independent `Exception` subclass, mirroring the public shape of the
-`roxabi_blobs` one) and exported from both `roxabi_contracts.errors.__all__` and the
-`roxabi_contracts` package `__init__`. `HttpBlobStoreAdapter` — already the single seam allowed to
+`roxabi_contracts.blob_errors` (independent `Exception` subclass, mirroring the public shape of the
+`roxabi_blobs` one) and exported from the `roxabi_contracts` package `__all__` (via `__init__`).
+`HttpBlobStoreAdapter` — already the single seam allowed to
 import both packages — catches `roxabi_blobs.BlobNotFoundError` in `get()` and re-raises the
 `roxabi_contracts.BlobNotFoundError`. The `BlobStorePort.get` docstring is updated to tell callers
 to import the error from `roxabi_contracts`. The BlobStore **server** (`_handlers.py`, `_keys.py`)
-is untouched — it legitimately imports from `roxabi_blobs` as the storage layer itself.
+is untouched — it legitimately imports from `roxabi_blobs.errors` as the storage layer itself.
 
 ## Data Model & Consumers
 
@@ -173,6 +173,6 @@ Each slice is independently shippable; recommended order S1 → S2 → S3 (S3 is
 - [ ] `HttpBlobStore.get` and `BlobStorePort.get` docstrings state `store_key` is server-issued/opaque and the **server** enforces path containment, citing `_safe_resolve_in_root` + the existing traversal tests.
 - [ ] `roxabi_contracts.BlobNotFoundError` exists, subclasses `Exception`, and imports via both `from roxabi_contracts import BlobNotFoundError` and `from roxabi_contracts.errors import BlobNotFoundError`.
 - [ ] `HttpBlobStoreAdapter.get` raises `roxabi_contracts.BlobNotFoundError` (not the `roxabi_blobs` one) on a wrapped 404; a test asserts the raised type.
-- [ ] `BlobStorePort.get` docstring instructs callers to import `BlobNotFoundError` from `roxabi_contracts`; `grep 'from roxabi_blobs import BlobNotFoundError' src/lyra` matches only the server files (`_handlers.py`, `_keys.py`), no port consumers.
+- [ ] `BlobStorePort.get` docstring instructs callers to import `BlobNotFoundError` from `roxabi_contracts`; the adapter uses module-qualified `import roxabi_blobs` + `except roxabi_blobs.BlobNotFoundError` (never `from roxabi_blobs import BlobNotFoundError`), so `grep -rn 'from roxabi_blobs import BlobNotFoundError' src/lyra` returns zero matches; the server files (`_handlers.py`, `_keys.py`) import via `roxabi_blobs.errors` and stay unchanged.
 - [ ] `roxabi_contracts` does not import `roxabi_blobs` (decoupling preserved — import-linter / grep green); server files `_handlers.py` / `_keys.py` unchanged.
 - [ ] Full existing blobstore + contracts + bootstrap test suites still pass.

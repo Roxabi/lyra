@@ -10,9 +10,9 @@ per-domain submodules (voice, image, memory, llm) arrive in later tags.
 from importlib.metadata import PackageNotFoundError, version
 
 from .audit import SecurityEvent
+from .blob_errors import BlobNotFoundError
 from .blob_ref import PENDING_STORE_KEY, BlobRef
 from .envelope import CONTRACT_VERSION, ContractEnvelope
-from .errors import BlobNotFoundError
 
 try:
     __version__: str = version("roxabi-contracts")

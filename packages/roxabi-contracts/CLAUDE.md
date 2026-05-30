@@ -57,6 +57,7 @@ least one minor release before removal; announce in CHANGELOG.md.
 src/roxabi_contracts/
 ├── envelope.py          # ContractEnvelope base + CONTRACT_VERSION
 ├── errors.py            # WorkerError + KNOWN_CODES registry (ADR-066)
+├── blob_errors.py       # BlobNotFoundError (port-level not-found, ADR-082)
 ├── _testing_guards.py   # Shared production-guard logic (env + loopback checks)
 ├── voice/               # lyra ↔ voiceCLI (ADR-044)
 ├── image/               # lyra ↔ imageCLI (ADR-050)

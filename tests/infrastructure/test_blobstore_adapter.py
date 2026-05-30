@@ -305,6 +305,46 @@ class TestHttpBlobStoreAdapterDelegation:
 
 
 # ---------------------------------------------------------------------------
+# T5 — Error translation: roxabi_blobs.BlobNotFoundError →
+#       roxabi_contracts.BlobNotFoundError
+# ---------------------------------------------------------------------------
+
+
+class TestHttpBlobStoreAdapterErrorTranslation:
+    async def test_get_translates_storage_blob_not_found_to_contracts_error(
+        self,
+    ) -> None:
+        """get() translates storage BlobNotFoundError to contracts BlobNotFoundError.
+
+        Negative guard: the adapter's get() is currently a pass-through that re-raises
+        the roxabi_blobs error directly.  Once the translation layer is in place, the
+        test will pass.  Deleting the translation layer makes this test fail because
+        pytest.raises(roxabi_contracts.BlobNotFoundError) won't catch the raw
+        roxabi_blobs.BlobNotFoundError.
+        """
+        # Arrange
+        import roxabi_blobs
+        import roxabi_contracts
+        from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
+
+        fake_store = _make_fake_http_store()
+        cast(AsyncMock, fake_store.get).side_effect = roxabi_blobs.BlobNotFoundError(
+            "k"
+        )
+        adapter = HttpBlobStoreAdapter(fake_store)
+
+        # Act / Assert — translated error type is raised
+        with pytest.raises(roxabi_contracts.BlobNotFoundError) as exc_info:
+            await adapter.get("k")
+
+        # The raised exception must NOT be the storage-layer type
+        assert not isinstance(exc_info.value, roxabi_blobs.BlobNotFoundError), (
+            "adapter must translate roxabi_blobs.BlobNotFoundError into "
+            "roxabi_contracts.BlobNotFoundError, not re-raise the storage type"
+        )
+
+
+# ---------------------------------------------------------------------------
 # T4 — Protocol conformance: HttpBlobStoreAdapter satisfies BlobStorePort
 # ---------------------------------------------------------------------------
 

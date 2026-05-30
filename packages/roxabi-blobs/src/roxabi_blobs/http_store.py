@@ -117,7 +117,18 @@ class HttpBlobStore:
         return BlobRef.model_validate(resp.json())
 
     async def get(self, store_key: str) -> bytes:
-        """GET bytes by store_key; raises BlobNotFoundError on 404."""
+        """GET bytes by store_key; raises BlobNotFoundError on 404.
+
+        ``store_key`` is server-issued and opaque — callers must not construct
+        or sanitise it.  The BlobStore server enforces path-containment:
+        ``FsBlobStore._safe_resolve_in_root`` ensures a traversal key that
+        resolves outside the blob root → 404 with no oracle leak.
+        Do NOT add client-side ``store_key`` sanitisation here — it would break
+        the legitimate ``/blobs/{store_key:path}`` legacy-key slash semantics.
+        This invariant is regression-locked by
+        ``tests/blobstore/test_serve_api.py::TestPathTraversal`` and
+        ``packages/roxabi-blobs/tests/test_security.py::TestPathTraversal``.
+        """
         client = await self._ensure_client()
         resp = await client.get(f"/blobs/{store_key}")
         if resp.status_code == 404:

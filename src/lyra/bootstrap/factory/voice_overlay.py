@@ -117,13 +117,34 @@ def init_blobstore() -> "BlobStorePort | None":
     as real misconfiguration.  An empty token file raises ``OSError`` — an
     empty token would yield ``Bearer `` and cause silent 401s at first use.
     """
+    import ipaddress
     import os
     from pathlib import Path
+    from urllib.parse import urlsplit
 
     from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
     from roxabi_blobs import HttpBlobStore
 
     base_url = os.environ.get("LYRA_BLOBSTORE_URL", "http://localhost:8449")
+
+    def _is_loopback(h: str | None) -> bool:
+        if h is None:
+            return False
+        if h == "localhost":
+            return True
+        try:
+            return ipaddress.ip_address(h).is_loopback  # 127.0.0.0/8, ::1
+        except ValueError:
+            return False
+
+    _parts = urlsplit(base_url)
+    if _parts.scheme == "http" and not _is_loopback(_parts.hostname):
+        log.warning(
+            "LYRA_BLOBSTORE_URL %s is non-loopback http — bearer token sent in "
+            "cleartext (mitigated by Tailnet WireGuard); prefer https",
+            base_url,
+        )
+
     token_path = os.environ.get(
         "LYRA_BLOBSTORE_TOKEN_PATH",
         str(Path.home() / ".lyra" / "blobstore.tok"),

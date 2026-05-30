@@ -52,9 +52,24 @@ class BlobStorePort(Protocol):
     async def get(self, store_key: str) -> bytes:
         """Retrieve raw bytes by opaque *store_key*.
 
-        Raises ``BlobNotFoundError`` (``roxabi_blobs``) when the key is
-        absent.  The caller is responsible for importing that error if it
-        needs to catch it.
+        Raises ``BlobNotFoundError`` from ``roxabi_contracts`` (NOT
+        ``roxabi_blobs``) when the key is absent.  The adapter seam
+        (``HttpBlobStoreAdapter``) translates the storage-layer error so
+        callers only ever see the contracts type::
+
+            from roxabi_contracts import BlobNotFoundError
+            try:
+                data = await blobstore.get(store_key)
+            except BlobNotFoundError:
+                ...
+
+        *store_key* is server-issued and opaque — callers must not apply a
+        ``sha256:`` regex or any other format assumption.  The BlobStore
+        **server** enforces path containment via ``FsBlobStore._safe_resolve_in_root``
+        (directory traversal attempts yield 404, not an oracle response).
+
+        Only ``get()`` raises ``BlobNotFoundError``; ``delete`` is not part
+        of ``BlobStorePort``.
         """
         ...
 

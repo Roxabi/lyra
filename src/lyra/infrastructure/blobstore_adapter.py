@@ -13,9 +13,10 @@ See ADR-082 (driven-port) and ADR-067 (BlobStore abstraction).
 
 from __future__ import annotations
 
+import roxabi_blobs
 from roxabi_blobs import HttpBlobStore
 from roxabi_blobs.models import BlobRef as StorageBlobRef
-from roxabi_contracts import PENDING_STORE_KEY, BlobRef
+from roxabi_contracts import PENDING_STORE_KEY, BlobNotFoundError, BlobRef
 
 
 class HttpBlobStoreAdapter:
@@ -63,8 +64,16 @@ class HttpBlobStoreAdapter:
         return wire
 
     async def get(self, store_key: str) -> bytes:
-        """Pass-through to wrapped store; raises BlobNotFoundError on 404."""
-        return await self._http_store.get(store_key)
+        """Retrieve raw bytes by opaque store_key; translates storage error.
+
+        Catches ``roxabi_blobs.BlobNotFoundError`` at the seam and re-raises
+        it as ``roxabi_contracts.BlobNotFoundError`` so callers never see the
+        storage-layer type.
+        """
+        try:
+            return await self._http_store.get(store_key)
+        except roxabi_blobs.BlobNotFoundError as e:
+            raise BlobNotFoundError(str(e)) from e
 
     async def aclose(self) -> None:
         """Close the underlying httpx client (resource cleanup at shutdown).

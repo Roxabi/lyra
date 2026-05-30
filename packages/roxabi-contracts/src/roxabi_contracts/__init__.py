@@ -12,6 +12,7 @@ from importlib.metadata import PackageNotFoundError, version
 from .audit import SecurityEvent
 from .blob_ref import PENDING_STORE_KEY, BlobRef
 from .envelope import CONTRACT_VERSION, ContractEnvelope
+from .errors import BlobNotFoundError
 
 try:
     __version__: str = version("roxabi-contracts")
@@ -19,6 +20,7 @@ except PackageNotFoundError:
     __version__ = "0.0.0+unknown"
 
 __all__ = [
+    "BlobNotFoundError",
     "BlobRef",
     "CONTRACT_VERSION",
     "ContractEnvelope",

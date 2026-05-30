@@ -373,3 +373,155 @@ async def test_bootstrap_audio_consumer_discord_provisions_and_starts() -> None:
 
     mock_consumer_dc.start.assert_awaited_once()
     mock_consumer_dc.stop.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# S2 — NullAudioConsumer sentinel (ADR-079 §c)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_start_audio_consumer_returns_null_on_ensure_stream_failure() -> None:
+    """Returns NullAudioConsumer (not None, no raise) when ensure_stream fails."""
+    import nats.errors
+
+    from lyra.adapters.nats.null_audio_consumer import NullAudioConsumer
+    from lyra.bootstrap.standalone.audio_consumer_bootstrap import start_audio_consumer
+
+    mock_js = MagicMock()
+
+    with patch(
+        "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_stream",
+        new_callable=AsyncMock,
+        side_effect=nats.errors.Error("STREAM.CREATE denied"),
+    ):
+        result = await start_audio_consumer(mock_js, "telegram", "main", MagicMock())
+
+    assert isinstance(result, NullAudioConsumer)
+
+
+@pytest.mark.asyncio
+async def test_start_audio_consumer_returns_null_on_ensure_kv_failure() -> None:
+    """start_audio_consumer returns NullAudioConsumer when ensure_kv raises."""
+    from lyra.adapters.nats.null_audio_consumer import NullAudioConsumer
+    from lyra.bootstrap.standalone.audio_consumer_bootstrap import start_audio_consumer
+
+    mock_js = MagicMock()
+
+    with (
+        patch(
+            "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_stream",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_kv",
+            new_callable=AsyncMock,
+            side_effect=RuntimeError("KV create failed"),
+        ),
+    ):
+        result = await start_audio_consumer(mock_js, "discord", "main", MagicMock())
+
+    assert isinstance(result, NullAudioConsumer)
+
+
+@pytest.mark.asyncio
+async def test_start_audio_consumer_returns_real_consumer_on_success() -> None:
+    """start_audio_consumer returns the real JetStreamAudioConsumer on happy path."""
+    from lyra.adapters.nats.jetstream_audio_consumer import JetStreamAudioConsumer
+    from lyra.bootstrap.standalone.audio_consumer_bootstrap import start_audio_consumer
+
+    mock_js = MagicMock()
+    mock_kv = MagicMock()
+    mock_consumer = AsyncMock(spec=JetStreamAudioConsumer)
+    mock_adapter = MagicMock()
+    mock_adapter.render_audio = AsyncMock()
+    mock_adapter.send = AsyncMock()
+
+    with (
+        patch(
+            "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_stream",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_kv",
+            new_callable=AsyncMock,
+            return_value=mock_kv,
+        ),
+        patch(
+            "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_consumer",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "lyra.bootstrap.standalone.audio_consumer_bootstrap.JetStreamAudioConsumer",
+            return_value=mock_consumer,
+        ),
+    ):
+        result = await start_audio_consumer(mock_js, "telegram", "main", mock_adapter)
+
+    assert result is mock_consumer
+    mock_consumer.start.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_null_audio_consumer_stop_is_awaitable_noop() -> None:
+    """NullAudioConsumer.stop() is awaitable and completes without error."""
+    from lyra.adapters.nats.null_audio_consumer import NullAudioConsumer
+
+    sentinel = NullAudioConsumer()
+    # Must not raise; return value is None.
+    result = await sentinel.stop()
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_teardown_calls_stop_on_null_sentinel_without_error() -> None:
+    """Teardown calls .stop() on NullAudioConsumer — no if-guards, no error."""
+    from lyra.adapters.nats.null_audio_consumer import NullAudioConsumer
+    from lyra.bootstrap.standalone.adapter_standalone import (
+        _bootstrap_adapter_standalone,
+    )
+
+    stop = asyncio.Event()
+    stop.set()
+
+    mock_nc = _make_nc_mock()
+    mock_adapter = AsyncMock()
+    mock_adapter._bot_id = "main"
+    mock_adapter.resolve_identity = AsyncMock()
+    mock_adapter.astart = AsyncMock()
+    mock_adapter.close = AsyncMock()
+    mock_adapter.dp.start_polling = AsyncMock(return_value=None)
+    mock_adapter.dp.stop_polling = AsyncMock()
+    mock_adapter.render_audio = AsyncMock()
+    mock_adapter.send = AsyncMock()
+
+    mock_inbound_bus = AsyncMock()
+    mock_inbound_bus.register = MagicMock()
+
+    # Return a real NullAudioConsumer (not a mock) to verify the sentinel contract.
+    null_consumer = NullAudioConsumer()
+
+    (load_token,) = _cred_patch()
+    with (
+        patch("nats.connect", AsyncMock(return_value=mock_nc)),
+        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("lyra.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
+        patch(
+            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            return_value=AsyncMock(),
+        ),
+        patch(
+            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
+            AsyncMock(return_value=True),
+        ),
+        patch(
+            "lyra.bootstrap.wiring.standalone_telegram.start_audio_consumer",
+            AsyncMock(return_value=null_consumer),
+        ),
+        load_token,
+        patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
+    ):
+        # Should complete without any AttributeError or TypeError from teardown.
+        await _bootstrap_adapter_standalone(
+            _make_raw_config("telegram"), "telegram", _stop=stop
+        )

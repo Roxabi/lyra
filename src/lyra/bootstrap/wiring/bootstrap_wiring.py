@@ -28,6 +28,7 @@ from lyra.core.messaging.message import Platform
 from lyra.core.messaging.messages import MessageManager
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.core.stores.bot_store_protocol import BotStoreProtocol
+from lyra.inbound.attachment_ingest import AttachmentIngestStage, IngestCtx
 from lyra.infrastructure.stores.agent_store import AgentStore
 from lyra.infrastructure.stores.auth_store import AuthStore
 from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
@@ -318,3 +319,33 @@ def _build_bot_auths(
         sys.exit(str(exc))
 
     return tg_bot_auths, dc_bot_auths
+
+
+# ---------------------------------------------------------------------------
+# Ingest wiring helpers (#1551, ADR-083)
+# ---------------------------------------------------------------------------
+
+
+def build_ingest(
+    blob_store: "BlobStorePort | None",
+) -> tuple[IngestCtx, AttachmentIngestStage | None]:
+    """Compose the inbound ingest context + stage from an optional blob store.
+
+    store=None (CLI / degraded / blobstore unconfigured) → (IngestCtx(store=None), None)
+    so the inbound pipeline's ingest guard no-ops. store present → a live IngestCtx
+    plus a (stateless) AttachmentIngestStage. (#1551, ADR-083.)
+    """
+    stage = AttachmentIngestStage() if blob_store is not None else None
+    return IngestCtx(store=blob_store), stage
+
+
+def _assert_prod_ingest_store(ingest: IngestCtx) -> None:
+    """Production invariant: a configured ingest stage must carry a live store.
+
+    Guards against a silent no-op where LYRA_BLOBSTORE_URL / token are unset and
+    inbound attachments would never persist. (#1551 S8.)
+    """
+    assert ingest.store is not None, (
+        "Production bootstrap: ctx.ingest.store is None — "
+        "LYRA_BLOBSTORE_URL + LYRA_BLOBSTORE_TOKEN_PATH must be configured"
+    )

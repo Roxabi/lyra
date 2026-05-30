@@ -139,6 +139,9 @@ class InboundMessage:
     # Callback set by adapters to persist session ID after a turn starts (#853).
     # Not serialized over NATS (callable cannot cross process boundary).
     session_update_fn: SessionUpdateFn | None = field(default=None, repr=False)
+    # Transient adapter→stage carrier for PendingAttachment. Typed Any to avoid
+    # core→inbound cycle; never serialized; cleared by AttachmentIngestStage (#1551).
+    pending_attachment: Any = field(default=None, repr=False)
 
 
 @dataclass

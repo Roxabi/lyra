@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from lyra.core.messaging.message import InboundMessage
+    from lyra.inbound.attachment_ingest import AttachmentIngestStage
     from lyra.inbound.context import InboundContext
     from lyra.inbound.wire_parser import WireParser
 
@@ -36,10 +37,12 @@ class InboundPipeline:
         router: Router | None = None,
         session_builder: SessionBuilder | None = None,
         dispatcher: Dispatcher | None = None,
+        ingest_stage: "AttachmentIngestStage | None" = None,
     ) -> None:
         self._router = router or Router()
         self._session_builder = session_builder or SessionBuilder()
         self._dispatcher = dispatcher or Dispatcher()
+        self._ingest_stage = ingest_stage
 
     async def run(  # noqa: PLR0913 — pipeline signature; each param is a distinct stage hook
         self,
@@ -79,6 +82,12 @@ class InboundPipeline:
         msg = parser.parse(raw, ctx)
         if msg is None:
             return
+        if (
+            self._ingest_stage is not None
+            and ctx.ingest is not None
+            and ctx.ingest.store is not None
+        ):
+            msg = await self._ingest_stage.run(msg, ctx.ingest)
         if pre_route_hook is not None:
             await pre_route_hook(msg, ctx)
         if self._router.decide(msg, ctx.router) is RouteDecision.DROP:

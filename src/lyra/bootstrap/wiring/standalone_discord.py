@@ -16,6 +16,10 @@ from lyra.bootstrap.factory.voice_overlay import init_blobstore
 from lyra.bootstrap.lifecycle.lifecycle_helpers import close_safely
 from lyra.bootstrap.lifecycle.signal_handlers import setup_shutdown_event
 from lyra.bootstrap.standalone.audio_consumer_bootstrap import start_audio_consumer
+from lyra.bootstrap.wiring.bootstrap_wiring import (
+    _assert_prod_ingest_store,
+    build_ingest,
+)
 from lyra.core.messaging.bus import Bus
 from lyra.core.messaging.message import InboundMessage, Platform
 from lyra.nats.queue_groups import adapter_outbound
@@ -135,6 +139,7 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
     dc_thread_store, dc_turn_store = await _create_dc_stores(vault_dir)
     js = nc.jetstream()
     blob_store = init_blobstore()
+    ingest_ctx, ingest_stage = build_ingest(blob_store)
 
     wired_dc: list[tuple] = []  # (DiscordAdapter, str, Bus, TypingListener, Consumer)
 
@@ -168,6 +173,7 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
             blob_store=blob_store,
         )
         adapter_dc.configure_tool_display(config_bundle.tool_display)
+        adapter_dc._ingest_ctx = ingest_ctx
 
         listener_dc = NatsOutboundListener(
             nc,
@@ -177,6 +183,8 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
             queue_group=adapter_outbound(platform_enum.value, bot_id),
         )
         adapter_dc._outbound_listener = listener_dc
+        if ingest_stage is not None:
+            _assert_prod_ingest_store(ingest_ctx)
         try:
             await adapter_dc.astart()
         except Exception:

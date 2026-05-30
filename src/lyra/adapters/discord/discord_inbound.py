@@ -16,6 +16,7 @@ from lyra.adapters.discord.discord_threads import persist_thread_claim
 from lyra.adapters.shared._shared import AUDIO_MIME_TYPES
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import DiscordMeta, InboundMessage
+from lyra.inbound.attachment_ingest import AttachmentIngestStage
 from lyra.inbound.context import DispatchCtx, InboundContext, RouterCtx, SessionCtx
 from lyra.inbound.dispatcher import Dispatcher
 from lyra.inbound.pipeline import InboundPipeline
@@ -32,21 +33,48 @@ _dispatcher = Dispatcher()
 _router = Router()
 _session_builder = SessionBuilder()
 _pipeline = InboundPipeline(
-    router=_router, session_builder=_session_builder, dispatcher=_dispatcher
+    router=_router,
+    session_builder=_session_builder,
+    dispatcher=_dispatcher,
+    ingest_stage=AttachmentIngestStage(),
 )
 # Adapters are process-singletons created at bootstrap; id-keying is safe for
 # this lifecycle (no GC + id-reuse window). Revisit when bootstrap DI lands (#1283).
 _parser_cache: dict[int, DiscordWireParser] = {}  # one parser per adapter instance
 
 
+def build_discord_inbound_ctx(
+    adapter: "DiscordAdapter",
+    *,
+    ingest: Any = None,
+) -> InboundContext:
+    """Shared InboundContext builder for text path (ingest=None) and audio path."""
+    return InboundContext(
+        router=RouterCtx(
+            bot_id=adapter._bot_id,
+            owned_threads=adapter._owned_threads,
+            watch_channels=adapter._watch_channels if adapter._watch_channels else None,
+        ),
+        session=SessionCtx(
+            turn_store=adapter._turn_store,
+            thread_store=adapter._thread_store,
+            thread_sessions_cache=adapter._thread_sessions,
+        ),
+        dispatch=DispatchCtx(
+            inbound_bus=adapter._inbound_bus,
+            circuit_registry=adapter._circuit_registry,
+            outbound_listener=adapter._outbound_listener,
+            typing=adapter._typing,
+            msg_catalog=adapter._msg_manager,
+        ),
+        ingest=ingest,
+    )
+
+
 async def _discord_pre_route_hook(
     msg: InboundMessage, ctx: InboundContext, adapter: "DiscordAdapter"
 ) -> None:
-    """Cold-path: lazy ThreadStore.is_owned warmup so revived threads route correctly.
-
-    Mutates ``ctx.router.owned_threads`` in place when the DB confirms ownership.
-    Bound with ``functools.partial(adapter=...)`` before passing to the pipeline.
-    """
+    """Cold-path: lazy is_owned warmup; mutates owned_threads.  Bound via partial."""
     meta = msg.platform_meta
     if not isinstance(meta, DiscordMeta):
         return
@@ -249,25 +277,7 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:
         parser = DiscordWireParser(adapter)
         _parser_cache[id(adapter)] = parser
 
-    inbound_ctx = InboundContext(
-        router=RouterCtx(
-            bot_id=adapter._bot_id,
-            owned_threads=adapter._owned_threads,  # mutable — shared by reference
-            watch_channels=adapter._watch_channels if adapter._watch_channels else None,
-        ),
-        session=SessionCtx(
-            turn_store=adapter._turn_store,
-            thread_store=adapter._thread_store,
-            thread_sessions_cache=adapter._thread_sessions,  # MUTABLE shared by ref
-        ),
-        dispatch=DispatchCtx(
-            inbound_bus=adapter._inbound_bus,
-            circuit_registry=adapter._circuit_registry,
-            outbound_listener=adapter._outbound_listener,
-            typing=adapter._typing,
-            msg_catalog=adapter._msg_manager,
-        ),
-    )
+    inbound_ctx = build_discord_inbound_ctx(adapter)
 
     pre_route = functools.partial(_discord_pre_route_hook, adapter=adapter)
     pre_session = functools.partial(

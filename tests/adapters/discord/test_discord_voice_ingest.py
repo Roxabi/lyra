@@ -1,0 +1,131 @@
+"""GREEN tests — Discord voice ingest routing via InboundPipeline (#1537 / #1551).
+
+Eager-read design (corrected from original deferred-read spec):
+- handle_audio() reads attachment bytes synchronously BEFORE routing via _pipeline.
+- Bytes are wrapped in a trivial closure (FetchFn) so AttachmentIngestStage can
+  call store.put() uniformly; the fetch is a local memory read, not a CDN round-trip.
+- audio_attachment.read IS awaited eagerly in the handler (before _pipeline.run).
+- The routed InboundMessage carries a non-None pending_attachment.
+- _pipeline.run is awaited exactly once.
+"""
+
+from __future__ import annotations
+
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import discord
+import pytest
+
+from lyra.adapters.discord import DiscordAdapter
+from lyra.adapters.discord.discord_audio import handle_audio
+from lyra.core.auth.trust import TrustLevel
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+_OGG_MAGIC = b"OggS" + b"\x00" * 20  # valid magic bytes to pass format gate
+
+
+def _make_adapter() -> DiscordAdapter:
+    """Minimal DiscordAdapter — no real gateway connection."""
+    adapter = DiscordAdapter(
+        bot_id="main",
+        inbound_bus=MagicMock(),
+        intents=discord.Intents.none(),
+    )
+    return adapter
+
+
+def _make_discord_message() -> SimpleNamespace:
+    """Discord-like message in a DM (guild=None so audio gate passes)."""
+    return SimpleNamespace(
+        guild=None,  # DM — bypasses the DM/mention/owned-thread gate
+        channel=SimpleNamespace(id=333),
+        author=SimpleNamespace(id=42, name="Alice", display_name="Alice", bot=False),
+        id=777,
+        mentions=[],
+        created_at=__import__("datetime").datetime.now(
+            __import__("datetime").timezone.utc
+        ),
+        reply=AsyncMock(),
+    )
+
+
+def _make_audio_attachment(size: int = 1024) -> SimpleNamespace:
+    """Attachment whose read() returns valid OGG bytes."""
+    return SimpleNamespace(
+        content_type="audio/ogg",
+        url="https://cdn.discord.com/audio.ogg",
+        size=size,
+        read=AsyncMock(return_value=_OGG_MAGIC),
+    )
+
+
+# ---------------------------------------------------------------------------
+# T4-1: handle_audio routes via _pipeline.run (not push_to_hub_guarded)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_dc_voice_routes_via_pipeline_not_direct_push() -> None:
+    """handle_audio() must await _pipeline.run() exactly once."""
+    adapter = _make_adapter()
+    message = _make_discord_message()
+    audio_attachment = _make_audio_attachment()
+
+    mock_pipeline = MagicMock()
+    mock_pipeline.run = AsyncMock(return_value=None)
+
+    # handle_audio shares discord_inbound._pipeline (single pipeline per adapter)
+    with patch("lyra.adapters.discord.discord_inbound._pipeline", mock_pipeline):
+        await handle_audio(adapter, message, audio_attachment, TrustLevel.PUBLIC)
+
+    # Assert: pipeline.run was called exactly once
+    mock_pipeline.run.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# T4-2: audio_attachment.read IS awaited eagerly; routed message carries pending
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_dc_eager_read_and_pending_attachment_routed() -> None:
+    """handle_audio() reads eagerly AND routes a non-None pending_attachment.
+
+    Eager design: read + magic-check fire synchronously in the handler (before
+    _pipeline.run) so download errors produce user-facing replies immediately.
+    The already-fetched bytes are wrapped in a trivial FetchFn closure and passed
+    as pending_attachment on the InboundMessage so AttachmentIngestStage can
+    call store.put() without a second CDN round-trip.
+    """
+    adapter = _make_adapter()
+    message = _make_discord_message()
+    audio_attachment = _make_audio_attachment()
+
+    # Capture the InboundMessage that _pipeline.run receives.
+    captured_msg: list = []
+
+    async def _capture_run(raw, ctx, parser, **kwargs):  # noqa: ARG001
+        msg = parser.parse(raw, ctx)
+        captured_msg.append(msg)
+
+    mock_pipeline = MagicMock()
+    mock_pipeline.run = AsyncMock(side_effect=_capture_run)
+
+    # handle_audio shares discord_inbound._pipeline (single pipeline per adapter)
+    with patch("lyra.adapters.discord.discord_inbound._pipeline", mock_pipeline):
+        await handle_audio(adapter, message, audio_attachment, TrustLevel.PUBLIC)
+
+    # Attachment was read eagerly (synchronously in the handler).
+    audio_attachment.read.assert_awaited_once()
+
+    # pipeline.run was called once.
+    mock_pipeline.run.assert_awaited_once()
+
+    # The routed message carries a non-None pending_attachment (FetchFn closure).
+    assert len(captured_msg) == 1
+    routed = captured_msg[0]
+    assert routed.pending_attachment is not None

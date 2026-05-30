@@ -60,7 +60,13 @@ class ChannelAdapter(Protocol):
     def normalize(self, raw: Any) -> InboundMessage: ...
 
     def normalize_audio(
-        self, raw: Any, audio_bytes: bytes, mime_type: str, *, trust_level: TrustLevel
+        self,
+        raw: Any,
+        audio_bytes: bytes,
+        mime_type: str,
+        *,
+        trust_level: TrustLevel,
+        pending: Any = None,
     ) -> InboundMessage: ...
 
     async def send(

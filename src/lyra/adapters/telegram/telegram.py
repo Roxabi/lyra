@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from lyra.core.messaging.bus import Bus
     from lyra.core.ports.blobstore import BlobStorePort
     from lyra.core.stores import TurnStoreProtocol
+    from lyra.inbound.attachment_ingest import IngestCtx
     from lyra.outbound.emitter import OutboundEmitter
 
 from lyra.adapters.telegram import telegram_audio  # noqa: I001 — DEBT:lint-residual
@@ -139,6 +140,9 @@ class TelegramAdapter(OutboundAdapterBase):
         self.app = FastAPI()
         self._register_routes()
         self._outbound_listener: "OutboundListener | None" = None
+        # Post-construction injection (same pattern as _outbound_listener).
+        # Carries the BlobStorePort for AttachmentIngestStage; None = no-op.
+        self._ingest_ctx: "IngestCtx | None" = None
 
     @property
     def bot(self) -> Any:
@@ -252,10 +256,16 @@ class TelegramAdapter(OutboundAdapterBase):
         return _normalize_impl(self, raw, trust_level=trust_level, is_admin=is_admin)
 
     def normalize_audio(
-        self, raw: Any, audio_bytes: bytes, mime_type: str, *, trust_level: TrustLevel
+        self,
+        raw: Any,
+        audio_bytes: bytes,
+        mime_type: str,
+        *,
+        trust_level: TrustLevel,
+        pending: Any = None,
     ) -> InboundMessage:
         return _normalize_audio_impl(
-            self, raw, audio_bytes, mime_type, trust_level=trust_level
+            self, raw, audio_bytes, mime_type, trust_level=trust_level, pending=pending
         )
 
     async def send(

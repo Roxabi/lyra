@@ -1,0 +1,385 @@
+---
+title: "ADR-079: Audio NATS contract — axial consolidation and sole-provisioner"
+description: Closes N×M drift in LYRA_OUTBOUND_AUDIO contracts by moving stream+KV provisioning to the hub (sole-provisioner), introducing ACL grant-groups, mandating a NullAudioConsumer sentinel, and adding a stream-keyed CI falsification gate.
+status: accepted
+date: 2026-05-30
+deciders: [Mickael, architect, axial-adr-review]
+supersedes: []
+superseded_by: []
+related: [073, 075, 076, 077]
+---
+
+> **Current truth** → [`docs/architecture/messaging.md`](../messaging.md){#current-truth}
+> This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+
+## Status
+
+Accepted — 2026-05-30
+
+Tracks: issue #1521. Supersedes the relief grants applied in PR #1520 for
+`$JS.API.STREAM.CREATE/INFO/UPDATE.LYRA_OUTBOUND_AUDIO` on adapter identities
+(those grants are removed by slice S3 of the implementation plan).
+
+## Context
+
+### The incident (2026-05-29)
+
+Both `lyra-telegram` and `lyra-discord` Quadlet units entered a crash-loop immediately
+after the #1482 outbound-audio deployment. Diagnosis: the live NATS ACL lacked the
+`$KV.lyra_outbound_audio_sent.>` **publish** grant that `KvSentSet.mark_sent` requires
+(nats-py `kv.put` resolves to a `$KV.<bucket>.<key>` publish). The grant existed in the
+matrix source, but only in the `subscribe` list of each adapter identity, not in
+`publish`. Both adapters were added simultaneously (copy-paste discipline), and the
+same error was copied into both.
+
+### Precise classification
+
+The audio *code* is correctly stage-axial: one shared `JetStreamAudioConsumer` is
+composed per adapter, not duplicated per platform. The audio *NATS resource contract*
+was platform-axial in three specific ways:
+
+| Drift site | Signal | ADR-073 rule violated |
+|---|---|---|
+| `ensure_stream` + `ensure_kv` called in every adapter bootstrap | N-way control-plane provisioning | new concern → edit all N targets |
+| Stream CREATE/INFO/UPDATE grants copy-pasted across `telegram-adapter` + `discord-adapter` | Flat ACL, no group/role/extends | new concern → edit all N targets |
+| `start_audio_consumer` raised unconditionally; no try/except in adapter wiring | Audio failure = adapter crash | stage boundary not enforced in code |
+
+A fourth gap enabled the drift to reach production undetected: no CI step verified
+that the subjects the code uses are ⊆ the subjects the ACL grants. Dev NATS is
+permissive; prod NATS is not.
+
+### Relation to ADR-073 and ADR-075
+
+ADR-073 prohibits the "new concern → edit all N targets" growth function. The exact
+drift signature is the one ADR-073 documents: 5 sibling-fixes for a single bug class.
+Here the bug class is "audio ACL grant missing in both adapters simultaneously."
+
+ADR-075 established the precedent of a sole-provisioner for NATS infrastructure: the
+`turn-writer` process is the sole provisioner for `LYRA_TURNS` because it is the sole
+consumer. The audio stream has N consumers (one per adapter×bot), so the sole
+*producer* (hub) is the natural provisioner — same principle, different ownership
+justification (see Sole-Provisioner section below).
+
+## Options Considered
+
+### Option 1 — Status quo with stronger copy-paste discipline
+
+Keep N-way provisioning and flat ACL. Add a code-review checklist item to verify
+grants are identical across all platform identities before merge.
+
+- **Pros:** No code change; zero migration risk.
+- **Cons:** The outage was caused by following this discipline and still missing a
+  grant. Copy-paste discipline is not a structural invariant — it relies on human
+  attention at review time. Does not close the ADR-073 drift; a third adapter would
+  introduce a third copy. Does not prevent a future missed grant.
+
+### Option 2 — Axial consolidation (chosen)
+
+Four concurrent moves on four orthogonal axes:
+
+- **(a) Sole-provisioner** — hub provisions the shared stream + KV at startup; adapters
+  become bind-only.
+- **(b) ACL grant-groups** — define the `audio-consumer` permission set once in
+  `acl-matrix.json`; reference it from each platform identity.
+- **(c) NullAudioConsumer sentinel** — `start_audio_consumer` never raises; it returns
+  a real consumer or a `NullAudioConsumer` (no-op `stop()`), so teardown is
+  unconditional and platform-axis guard code (`if consumer is not None`) never exists.
+- **(d) Stream-keyed CI falsification gate** — a manifest keyed by stream/KV (not by
+  identity) declares the subjects each resource requires; the gate asserts ⊆ effective
+  ACL before merge.
+
+- **Pros:** Each move closes one drift axis structurally. Collectively they make the
+  "new concern → edit all N targets" pattern mechanically impossible for audio:
+  a new adapter adds one `"groups": ["audio-consumer"]` line — no grant copy-paste.
+- **Cons:** Schema version bump in `acl-matrix.json` (v3 → v4). Hub bootstrap adds
+  two async `$JS.API` calls before `announce_hub_ready`. `start_audio_consumer` return
+  type changes to a union; the sentinel pattern requires a new class. Phased delivery
+  (S2 ships first as safety-net before S3 touches ACL).
+
+## Decision
+
+**Option 2 — Axial consolidation.**
+
+### (a) Sole-provisioner — hub provisions stream + KV
+
+The hub calls `ensure_stream(js)` and `ensure_kv(js)` before `announce_hub_ready(nc)`.
+Adapters call only `ensure_consumer` (per-bot, legitimately per-adapter: the consumer
+`durable` and `filter_subject` are parametric on `platform` and `bot_id`) and bind
+to the KV via `js.key_value(KV_BUCKET)` (bind-only — no CREATE rights needed).
+
+**Why the hub and not a dedicated provisioner?** ADR-075 justified a separate
+`lyra-turn-writer.container` because the writer owns an active subscriber loop with
+its own startup/shutdown lifecycle — incompatible with a passive store. `ensure_stream`
+and `ensure_kv` are idempotent one-shot startup calls, not running loops. The overhead
+of a new Quadlet unit and NKey identity for three async calls is unjustified.
+
+**Why the hub and not deploy-time provisioning?** NATS JetStream provisions
+idempotently. A one-shot deploy script creates temporal coupling: if the script is not
+re-run after a config change, the production stream drifts silently. Runtime idempotent
+provisioning in the hub is self-healing — every hub restart reconverges the config.
+
+**Provision-before-consume ordering.** The hub calls `ensure_stream` + `ensure_kv`
+before `announce_hub_ready`. Adapters call `wait_for_hub` before starting consumers.
+This fence already exists in both `standalone_telegram.py` and `standalone_discord.py`
+and guarantees the stream and KV exist before any adapter attempts `ensure_consumer`
+or `pull_subscribe`.
+
+**Forward-compat — if hub `$JS.API.>` is ever tightened.** The hub currently holds
+`$JS.API.>` for KV readiness-probe calls and general JetStream API access. If that
+wildcard is narrowed in a future hardening pass, the explicit subjects
+`$JS.API.STREAM.CREATE.LYRA_OUTBOUND_AUDIO`, `$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO`,
+`$JS.API.STREAM.UPDATE.LYRA_OUTBOUND_AUDIO`, and `$JS.API.CONSUMER.INFO.LYRA_OUTBOUND_AUDIO.*`
+must be added to the hub `publish` list in `acl-matrix.json` **before** the wildcard
+is removed. The CI falsification gate (move d) will catch any gap.
+
+**ACL change (per-identity, before → after).**
+
+`telegram-adapter` publish — remove:
+```
+$JS.API.STREAM.CREATE.LYRA_OUTBOUND_AUDIO
+$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO
+$JS.API.STREAM.UPDATE.LYRA_OUTBOUND_AUDIO
+```
+Retain (moved to `audio-consumer` group): `$JS.API.CONSUMER.CREATE/INFO/MSG.NEXT.LYRA_OUTBOUND_AUDIO.*`
+and `$KV.lyra_outbound_audio_sent.>` (publish + subscribe — `kv.put` publishes here).
+
+Identical removal applies to `discord-adapter`. The hub identity is unchanged
+(`$JS.API.>` already covers the provisioning calls).
+
+### (b) ACL grant-groups — `acl-matrix.json` v4
+
+`deploy/nats/acl-matrix.json` is extended to schema version `"4"` with an optional
+top-level `"groups"` key. Each group defines `publish` and `subscribe` lists. Identity
+entries may declare `"groups": [...]`; the renderer (`scripts/_renderer.py`) expands
+group subjects into the effective grant list before rendering `auth.conf`. The rendered
+output is identical to the v3 output — groups are a source-side abstraction only.
+
+```json
+"groups": {
+  "audio-consumer": {
+    "description": "Grants for adapter identities pulling from LYRA_OUTBOUND_AUDIO + dedup KV",
+    "publish": [
+      "$JS.API.CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO.*",
+      "$JS.API.CONSUMER.INFO.LYRA_OUTBOUND_AUDIO.*",
+      "$JS.API.CONSUMER.MSG.NEXT.LYRA_OUTBOUND_AUDIO.*",
+      "$KV.lyra_outbound_audio_sent.>"
+    ],
+    "subscribe": [
+      "$KV.lyra_outbound_audio_sent.>"
+    ]
+  }
+}
+```
+
+Both `telegram-adapter` and `discord-adapter` add `"groups": ["audio-consumer"]`.
+All current and future platform adapter identities reference the group — no subject
+copy-paste.
+
+**Generator changes.** `_acl_models.py` gains `GroupDefinition(TypedDict)` and
+extended `LoadedMatrix` + `Identity` types. `_loader.py` parses the optional `groups`
+key and validates cross-references. `_renderer.py:render_auth_conf` expands group
+subjects before flow injection. Existing v3 matrices remain valid (`groups` defaults
+to `{}`).
+
+**Proof of identical-or-tighter output.** Group expansion is a pure set-union of
+subjects already present on each identity in v3. A regression test asserts
+`parse_auth_conf(render_v4) == parse_auth_conf(render_v3)` for the migrated matrix.
+
+### (c) NullAudioConsumer sentinel — non-fatal audio stage
+
+`start_audio_consumer` (`audio_consumer_bootstrap.py`) wraps its entire provisioning
++ consumer-start body in `try/except Exception`. On failure it logs at `ERROR` level
+and returns a `NullAudioConsumer` instance — a no-op sentinel with an async `stop()`
+that returns immediately.
+
+```
+# sentinel contract:
+class NullAudioConsumer:
+    async def stop(self) -> None:
+        pass   # no-op; teardown calls this unconditionally
+```
+
+`NullAudioConsumer` satisfies the consumer interface at call sites without requiring
+`if consumer is not None` guards. Those guards would be latent platform-axis drift:
+each adapter bootstrap would need to copy the same conditional, re-introducing N
+sites for a single-stage invariant. The sentinel collapses that to zero.
+
+Return type of `start_audio_consumer` changes from `JetStreamAudioConsumer` to
+`JetStreamAudioConsumer | NullAudioConsumer`. Teardown in `_close_tg_wired` (line 55)
+and `_close_dc_wired` (line 88) calls `consumer.stop()` unconditionally — no change
+to teardown logic.
+
+**Degraded-mode behaviour.** The adapter boots and serves text fully. Audio messages
+accumulate on `LYRA_OUTBOUND_AUDIO` (buffered by JetStream up to `MaxAge=24h`).
+If the adapter restarts and audio bootstrap succeeds, the consumer resumes from the
+earliest unacked offset and delivers buffered audio. No silent data loss.
+
+**Observability signal.** Single grep target across both platforms:
+`journalctl --user -u lyra-{discord,telegram} | grep "audio degraded"`.
+The `log.exception` call is in `audio_consumer_bootstrap.py` — one site, zero
+per-platform duplication.
+
+**Ordering docstring update.** The ordering comment in `audio_consumer_bootstrap.py`
+(lines 9–15) and the `ensure_stream`/`ensure_kv` entries in
+`src/lyra/infrastructure/outbound_audio/CLAUDE.md` must be updated to reflect that
+`ensure_stream` and `ensure_kv` are now hub-owned and are not called by
+`start_audio_consumer`. See implementation plan slice S2/S3.
+
+### (d) Stream-keyed CI falsification gate
+
+**Manifest approach: stream/KV-keyed (not identity-keyed).** An identity-keyed manifest
+is isomorphic to `acl-matrix.json` — it would grow N×adapter, re-introducing
+platform-axis surface. A stream/KV-keyed manifest lists required subjects once per
+NATS resource (stream or KV bucket), then identifies the provisioner and consumer group.
+
+`deploy/nats/code-subjects.json`:
+```json
+{
+  "version": "1",
+  "streams": {
+    "LYRA_OUTBOUND_AUDIO": {
+      "provisioner": "hub",
+      "provisioner_subjects": {
+        "publish": [
+          "$JS.API.STREAM.CREATE.LYRA_OUTBOUND_AUDIO",
+          "$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO",
+          "$JS.API.STREAM.UPDATE.LYRA_OUTBOUND_AUDIO"
+        ]
+      },
+      "consumer_group": "audio-consumer",
+      "consumer_subjects": {
+        "publish": [
+          "$JS.API.CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO.*",
+          "$JS.API.CONSUMER.INFO.LYRA_OUTBOUND_AUDIO.*",
+          "$JS.API.CONSUMER.MSG.NEXT.LYRA_OUTBOUND_AUDIO.*"
+        ]
+      }
+    },
+    "LYRA_TURNS": {
+      "provisioner": "turn-writer",
+      "provisioner_subjects": {
+        "publish": [
+          "$JS.API.STREAM.CREATE.LYRA_TURNS",
+          "$JS.API.STREAM.INFO.LYRA_TURNS",
+          "$JS.API.STREAM.UPDATE.LYRA_TURNS",
+          "$JS.API.CONSUMER.CREATE.LYRA_TURNS.turn-writer-v1.>",
+          "$JS.API.CONSUMER.INFO.LYRA_TURNS.turn-writer-v1",
+          "$JS.API.CONSUMER.MSG.NEXT.LYRA_TURNS.turn-writer-v1"
+        ]
+      }
+    }
+  },
+  "kv_buckets": {
+    "lyra_outbound_audio_sent": {
+      "provisioner": "hub",
+      "provisioner_subjects": {
+        "publish": ["$KV.lyra_outbound_audio_sent.>"]
+      },
+      "consumer_group": "audio-consumer",
+      "consumer_subjects": {
+        "publish": ["$KV.lyra_outbound_audio_sent.>"],
+        "subscribe": ["$KV.lyra_outbound_audio_sent.>"]
+      }
+    }
+  }
+}
+```
+
+**Gate logic** (`lyra-acl check grants` subcommand in `scripts/gen_nkeys.py`):
+
+For each stream/KV in the manifest:
+1. Assert the provisioner identity's effective publish list (post-group-expansion via
+   `render_auth_conf`) covers each provisioner subject via `_subject_covered`.
+2. Resolve the consumer group: for each identity in `acl-matrix.json` that references
+   the group (via `"groups": ["audio-consumer"]`), assert its effective grant list
+   covers each consumer subject.
+
+Failure output: `FAIL: identity 'X' publish[] does not cover required subject 'Y'
+(via stream LYRA_OUTBOUND_AUDIO consumer-group audio-consumer)`.
+
+**Where it runs.** New CI step after existing `check retired` and `check flows`:
+```yaml
+- name: Check ACL code coverage
+  run: uv run lyra-acl check grants
+```
+Runs pre-push equivalent. Fails exit 1 with structured per-line errors.
+
+**Manifest maintenance.** When adding a new `$JS`/`$KV` subject to code: add it to
+`code-subjects.json` under the owning stream/KV entry. CI rejects any PR where
+code-subjects outstrips effective ACL grants.
+
+## Consequences
+
+### Positive
+
+- N×M audio grant drift is structurally eliminated. A new platform adapter adds
+  `"groups": ["audio-consumer"]` — one line, zero grant copy-paste.
+- Crash-loop class structurally eliminated: audio failure returns `NullAudioConsumer`,
+  adapter serves text, teardown is unconditional. No platform-axis guard code.
+- Grant gaps are detectable pre-merge: CI gate fails the PR.
+- Hub provisioning is idempotent and self-healing: every restart reconverges stream
+  config without operator intervention.
+- ADR-073 compliance: audio grants defined once (group), applied N times by reference.
+  The drift signal from ADR-073 ("new concern → edit all N targets") is structurally
+  prevented for all four axes.
+
+### Negative
+
+- `acl-matrix.json` schema version bump v3 → v4 requires `_loader.py` + `_renderer.py`
+  updates. Existing v3 matrices remain valid (groups key is optional, loader
+  backward-compatible).
+- Hub bootstrap adds two async `$JS.API` calls before `announce_hub_ready`. Normal
+  case: sub-millisecond (stream already exists). Pathological case (stream config
+  update needed): adds a few hundred milliseconds. Acceptable.
+- `start_audio_consumer` return type changes from `JetStreamAudioConsumer` to
+  `JetStreamAudioConsumer | NullAudioConsumer`. Pyright catches the gap at wire-up
+  sites. The sentinel pattern avoids `None`-guard proliferation.
+- `code-subjects.json` is a manual manifest — it must be updated when code adds new
+  `$JS`/`$KV` subjects. The CI gate enforces manifest → ACL coverage; the code →
+  manifest direction relies on contributor discipline (a future AST scanner could
+  close this fully, tracked as follow-up).
+
+### Neutral
+
+- The `turn-writer` provisioning pattern (ADR-075) is unchanged — it provisions its
+  own stream `LYRA_TURNS` as sole consumer. The audio stream has N consumers, making
+  the hub (sole producer) the natural provisioner. Same principle, different ownership
+  justification.
+- `ensure_consumer` remains in `audio_consumer_bootstrap.py` — it is genuinely
+  per-adapter-per-bot (parametric on `platform` and `bot_id`), not a shared concern.
+- The `lyra start` unified mode (hub + adapters in one process) must be verified
+  separately: the provision-before-consume ordering guarantee depends on `announce_hub_ready`
+  as the fence; in unified mode the sequencing inside the single process must provide
+  an equivalent barrier. This is a verification item for slice S3, not a blocker.
+
+### Revisit triggers
+
+- A third platform adapter is added and does not reference `audio-consumer` group →
+  CI gate catches before merge.
+- A future media type (video, document) requires durable delivery → follow ADR-077
+  forward-compatible constraint: new subject family, new group, new consumer entry in
+  `code-subjects.json`. Do not extend `audio-consumer` to cover non-audio subjects.
+- Hub startup latency increases measurably (>500 ms) due to JetStream provisioning →
+  consider concurrent pre-announce provisioning or a cached stream-exists flag.
+- Hub `$JS.API.>` is tightened → add explicit stream+KV CREATE subjects to hub
+  publish list before removing the wildcard (CI gate will surface any gap).
+- `audio_terminal_drop_total > 0` in production for more than 24 h → the MaxAge
+  silent-loss bound is being hit; investigate consumer lag before adjusting MaxAge.
+
+## References
+
+- **ADR-073** — Axis of Decomposition: Stage of Pipeline (N×M drift rule; stage-axis
+  compliance verification)
+- **ADR-075** — TurnWriter subscriber-writer (sole-provisioner precedent; active-loop
+  vs startup-call distinction)
+- **ADR-076** — Three NATS Planes (transport sub-axis ownership; JetStream vs Core
+  choice; audio plane's durability + direction + lifecycle triple)
+- **ADR-077** — Outbound audio subject family (origin; `LYRA_OUTBOUND_AUDIO` stream
+  definition; KV dedup design; forward-compat constraint for new media types)
+- **ADR-074** — Bot Credential Delivery via Podman Secrets (`type=mount`; no HUP on
+  ACL change → requires `lyra-nats` restart on every auth.conf update)
+- Issue **#1521** — axial consolidation tracking issue (this ADR)
+- PR **#1520** — relief grants (superseded by slice S3 of implementation plan)
+- `deploy/nats/acl-matrix.json` — identity grants SSoT (v4 post-migration)
+- `deploy/nats/code-subjects.json` — code↔ACL manifest (new, this ADR, slice S5)
+- `artifacts/plans/1521-audio-axial-migration.md` — implementation plan (S2–S5)

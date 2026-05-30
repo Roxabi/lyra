@@ -10,8 +10,6 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from lyra.infrastructure.stores.message_index import MessageIndex
-
     from ..circuit_breaker import CircuitRegistry
     from ..memory import MemoryManager
     from ..messaging.message import Platform
@@ -32,7 +30,6 @@ class HubShutdownMixin:
         _pool_manager: PoolManager
         _memory_tasks: set[asyncio.Task]
         _memory: MemoryManager | None
-        _message_index: MessageIndex | None
         adapter_registry: dict[tuple[Platform, str], ChannelAdapter]
         outbound_dispatchers: dict[tuple[Platform, str], OutboundDispatcher]
         circuit_registry: CircuitRegistry | None
@@ -102,10 +99,10 @@ class HubShutdownMixin:
             await self._pool_manager.flush_pool(pool_id, "shutdown")
         if self._memory_tasks:
             await asyncio.gather(*self._memory_tasks, return_exceptions=True)
+        # _memory (MemoryManager) IS hub-owned: it is a core class, not a StoreBundle
+        # entry, and is never connected/closed by open_stores(). Closing here is correct.  # noqa: E501
         if self._memory is not None:
             await self._memory.close()
-        # _turn_store is intentionally NOT closed here: its lifecycle is owned by
-        # bootstrap_stores.open_stores(), which closes it once in its finally block
-        # (ADR-078). The hub is a read-path consumer (TurnStoreProtocol), not the owner.
-        if self._message_index is not None:
-            await self._message_index.close()
+        # _turn_store and _message_index are intentionally NOT closed here: their
+        # lifecycle is owned by bootstrap_stores.open_stores(), which closes each once
+        # in its finally block (ADR-078). The hub is a consumer, not the owner.

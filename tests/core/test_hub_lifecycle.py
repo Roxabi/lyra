@@ -209,26 +209,60 @@ class TestHubEvictFlushTask:
 
 
 class TestHubShutdownStoreLifecycle:
-    """hub.shutdown() store-teardown invariants (#1506)."""
+    """hub.shutdown() store-teardown invariants (#1506, #1529)."""
 
     @pytest.mark.asyncio
-    async def test_shutdown_closes_message_index_but_not_turn_store(self) -> None:
-        """hub.shutdown() must close message_index but NOT turn_store.
+    async def test_shutdown_does_not_close_message_index_or_turn_store(self) -> None:
+        """hub.shutdown() must NOT close message_index or turn_store.
 
-        Turn-store lifecycle is owned by open_stores() whose finally block closes
-        it exactly once.  hub.shutdown() must never call turn_store.close() — doing
-        so would produce a double-close (#1506 regression guard).
+        Both stores' lifecycle is owned by open_stores() whose finally block closes
+        each exactly once.  hub.shutdown() must never call close() on either — doing
+        so would produce a double-close (#1529 regression guard; #1506 for turn_store).
         """
+        # Arrange
         hub = Hub()
         mock_turn = AsyncMock()
         mock_index = AsyncMock()
         hub.set_turn_store(mock_turn)
         hub.set_message_index(mock_index)
+
+        # Act
         await hub.shutdown()
-        # message_index: still closed by hub.shutdown()
-        mock_index.close.assert_awaited_once()
-        # turn_store: must NOT be closed here — open_stores.finally owns its lifecycle
+
+        # Assert — open_stores.finally owns both lifecycles; hub must not close them
+        mock_index.close.assert_not_called()
         mock_turn.close.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_shutdown_closes_memory_when_set(self) -> None:
+        """hub.shutdown() must close _memory when it is not None.
+
+        _memory (MemoryManager) is hub-owned: never connected/closed by open_stores().
+        Closing it in shutdown() is correct and intentional.
+        """
+        # Arrange
+        hub = Hub()
+        mock_memory = AsyncMock()
+        object.__setattr__(hub, "_memory", mock_memory)
+
+        # Act
+        await hub.shutdown()
+
+        # Assert — memory close IS hub's responsibility
+        mock_memory.close.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_shutdown_does_not_raise_when_memory_is_none(self) -> None:
+        """hub.shutdown() with _memory=None must not raise.
+
+        Default Hub has no memory configured; guard branch must be safe.
+        """
+        # Arrange
+        hub = Hub()
+        assert hub._memory is None
+
+        # Act + Assert — must not raise
+        await hub.shutdown()
 
 
 # ---------------------------------------------------------------------------

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Scan docs and CLAUDE.md files for dead backtick references.
 
-Checks src/... paths, module paths, and CamelCase symbols against the codebase.
+Checks src/... paths, module paths, NATS subjects, and CamelCase symbols
+against the codebase using a semantic AST-based oracle (CodeInventory).
+
 Exit 0 = clean. Exit 1 = new dead references found. Exit 2 = script error.
 
 Usage:
@@ -12,44 +14,47 @@ from __future__ import annotations
 
 import argparse
 import re
-import subprocess
 import sys
 from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Import shim — supports both script invocation (python tools/check_doc_drift.py)
+# and import from project root (from tools.check_doc_drift import main).
+# ---------------------------------------------------------------------------
+
+try:
+    from tools.code_inventory import CodeInventory
+except ImportError:
+    # Running as a standalone script: tools/ is not a proper package on sys.path.
+    # Insert the directory containing this file so code_inventory.py is importable.
+    _tools_dir = Path(__file__).resolve().parent
+    if str(_tools_dir) not in sys.path:
+        sys.path.insert(0, str(_tools_dir))
+    from code_inventory import CodeInventory  # type: ignore[no-redef]
 
 # ---------------------------------------------------------------------------
 # Patterns & constants
 # ---------------------------------------------------------------------------
 
 _BACKTICK_RE = re.compile(r"`([^`\n]+)`")
-_SRC_PATH_RE = re.compile(r"^(src|packages)/[\w./\-]+$")
-_MODULE_RE = re.compile(r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]+)+(\.[A-Za-z]\w*)?$")
-_CAMEL_RE = re.compile(r"^[A-Z][a-zA-Z0-9]*[a-z][a-zA-Z0-9]*$")
+
 _HISTORICAL_RE = re.compile(
     r"deleted|removed|superseded|renamed|formerly|no longer"
     r"|legacy|historical|#\d+ deleted",
     re.IGNORECASE,
 )
 
-# Known module prefixes to check (others are third-party — skip)
-_KNOWN_PREFIXES = frozenset(
-    ["lyra", "roxabi_nats", "roxabi_contracts", "roxabi_blobs", "roxabi_vault"]
-)
-
-# CamelCase symbols to skip: Python builtins, stdlib exceptions, generic terms,
-# and known external package names that won't resolve in src/
-_SKIP_SYMBOLS = frozenset(
-    # stdlib exceptions + external-package symbols that won't resolve in src/
-    "KeyError ValueError TypeError RuntimeError OSError AttributeError "
-    "NotImplementedError StopAsyncIteration DeprecationWarning UserWarning "
-    "StopIteration Exception BaseException ImportError FileNotFoundError "
-    "PermissionError TimeoutError ConnectionError OverflowError IndexError "
-    "NameError UnicodeDecodeError UnicodeEncodeError "
-    # generic / external terms
-    "PascalCase CamelCase GitHub Discord Telegram FastAPI Pydantic Python "
-    "TypeVar Protocol Optional Union Dict List Tuple Set Any "
-    # known external pkg symbols (nats-py, anthropic)
-    "NoRespondersError BucketNotFoundError InputJsonDelta".split()
-)
+# Regex to split a line into whitespace-delimited clauses, used to scope the
+# historical-annotation check per-token.  A clause is a run of characters
+# between whitespace/punctuation that does not contain backtick boundaries.
+# Rule (C): historical exemption is PER-TOKEN, not per-line.
+# We scope the exemption to backtick-enclosed tokens that are *adjacent to*
+# a historical keyword on the same line.  "Adjacent" means the token and the
+# keyword appear in the same comma-delimited clause OR are within 60 chars of
+# each other on the line.  This allows:
+#   "The `OldFoo` driver was deleted; `LiveBar` remains." → OldFoo exempt,
+#   LiveBar still checked.
+_ADJACENT_THRESHOLD = 60  # characters between token start and keyword match
 
 
 def _default_root() -> Path:
@@ -111,78 +116,30 @@ def _collect_scan_files(root: Path) -> list[Path]:
 
 
 # ---------------------------------------------------------------------------
-# Token classification
+# Per-token historical scope check (fix C)
 # ---------------------------------------------------------------------------
 
 
-def _classify_token(token: str) -> str | None:
-    """Return 'path', 'module', 'symbol', or None (skip)."""
-    t = token.strip()
-    if not t or " " in t or "\t" in t or len(t) > 120:
-        return None
-    if _SRC_PATH_RE.match(t):
-        return "path"
-    if "." in t and _MODULE_RE.match(t):
-        prefix = t.split(".")[0]
-        if prefix in _KNOWN_PREFIXES:
-            return "module"
-        return None
-    if _CAMEL_RE.match(t):
-        upper = sum(1 for c in t if c.isupper())
-        if upper >= 2 and t not in _SKIP_SYMBOLS:
-            return "symbol"
-    return None
+def _token_is_historical(token_start: int, line: str) -> bool:
+    """Return True if the token at *token_start* is adjacent to a historical keyword.
 
+    "Adjacent" = the historical keyword match is within _ADJACENT_THRESHOLD
+    characters of the token's start position.  This prevents a historical
+    annotation for one dead symbol from exempting a *different* live-but-dead
+    reference on the same line.
 
-# ---------------------------------------------------------------------------
-# Resolution
-# ---------------------------------------------------------------------------
+    Rule (fix C): exemption is scoped per-token, not per-line.  A historical
+    keyword far away (>60 chars) does NOT exempt the token.  In practice both
+    tokens in a short sentence share the exemption — the threshold covers
+    same-clause co-location.
 
-
-def _resolve_path(root: Path, token: str) -> bool:
-    return (root / token).exists()
-
-
-def _resolve_module(root: Path, token: str) -> bool:
-    rel = Path(*token.split("."))
-    cands: list[Path] = []
-    src = root / "src"
-    if src.is_dir():
-        cands += [src / rel, src / rel.with_suffix(".py")]
-    pkg_root = root / "packages"
-    if pkg_root.is_dir():
-        for pd in pkg_root.iterdir():
-            ps = pd / "src"
-            if ps.is_dir():
-                cands += [ps / rel, ps / rel.with_suffix(".py")]
-    return any(c.exists() for c in cands)
-
-
-def _resolve_symbol(root: Path, token: str) -> bool:
-    """Grep for class/assignment definitions of token in src/ and packages/."""
-    dirs = [str(d) for d in (root / "src", root / "packages") if d.is_dir()]
-    if not dirs:
-        return False
-    for pat in (f"class {token}", f"{token} =", f"{token}("):
-        try:
-            if (
-                subprocess.run(
-                    ["grep", "-rqF", "--", pat, *dirs], capture_output=True
-                ).returncode
-                == 0
-            ):
-                return True
-        except OSError:
-            return False
+    Lines are scanned separately, so a historical keyword on line N never
+    exempts a token on line N+1.
+    """
+    for m in _HISTORICAL_RE.finditer(line):
+        if abs(m.start() - token_start) <= _ADJACENT_THRESHOLD:
+            return True
     return False
-
-
-def _resolve_token(root: Path, token: str, kind: str) -> bool:
-    if kind == "path":
-        return _resolve_path(root, token)
-    if kind == "module":
-        return _resolve_module(root, token)
-    return _resolve_symbol(root, token)  # kind == "symbol"
 
 
 # ---------------------------------------------------------------------------
@@ -212,7 +169,10 @@ Violation = tuple[str, int, str, str]  # (relpath, lineno, token, reason)
 
 
 def _scan_file(
-    root: Path, path: Path, baseline: frozenset[str]
+    root: Path,
+    path: Path,
+    baseline: frozenset[str],
+    oracle: CodeInventory,
 ) -> tuple[list[Violation], list[Violation]]:
     new_v: list[Violation] = []
     base_v: list[Violation] = []
@@ -221,20 +181,32 @@ def _scan_file(
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
         return [], []
+
     for lineno, line in enumerate(lines, 1):
         if "<!-- drift-ignore -->" in line:
             continue
-        tokens = _BACKTICK_RE.findall(line)
-        if not tokens:
+        # Find all backtick tokens and their positions on the line
+        token_matches = list(_BACKTICK_RE.finditer(line))
+        if not token_matches:
             continue
-        is_historical = bool(_HISTORICAL_RE.search(line))
-        for token in tokens:
-            kind = _classify_token(token)
-            if kind is None or is_historical:
+
+        for m in token_matches:
+            token = m.group(1)
+            token_start = m.start()
+
+            verdict = oracle.resolve(token)
+            # kind=unknown → external / unclassifiable → skip (no false positive)
+            if verdict.kind == "unknown":
                 continue
-            if _resolve_token(root, token, kind):
+            # Token exists → not a dead ref
+            if verdict.exists:
                 continue
-            reason = f"not found in src/ ({kind})"
+
+            # Dead reference candidate — apply historical adjacency check (fix C)
+            if _token_is_historical(token_start, line):
+                continue
+
+            reason = f"not found in src/ ({verdict.kind})"
             key = _baseline_key(relpath, token)
             (base_v if key in baseline else new_v).append(
                 (relpath, lineno, token, reason)
@@ -243,12 +215,14 @@ def _scan_file(
 
 
 def scan(
-    root: Path, baseline: frozenset[str]
+    root: Path,
+    baseline: frozenset[str],
+    oracle: CodeInventory,
 ) -> tuple[list[Violation], list[Violation]]:
     all_new: list[Violation] = []
     all_base: list[Violation] = []
     for f in _collect_scan_files(root):
-        n, b = _scan_file(root, f, baseline)
+        n, b = _scan_file(root, f, baseline, oracle)
         all_new.extend(n)
         all_base.extend(b)
     return all_new, all_base
@@ -273,11 +247,18 @@ def _write_baseline(path: Path, violations: list[Violation]) -> None:
 
 
 # ---------------------------------------------------------------------------
-# CLI
+# CLI (fix D: exit 2 on unexpected internal error)
 # ---------------------------------------------------------------------------
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the doc-drift gate.
+
+    Exit codes:
+      0 — clean (no unbaselined violations)
+      1 — unbaselined violations found
+      2 — script error (unexpected exception or syntax errors in scanned sources)
+    """
     parser = argparse.ArgumentParser(
         description=(
             "Scan docs and CLAUDE.md files for dead backtick references. "
@@ -294,32 +275,67 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    root: Path = (args.root or _default_root()).resolve()
-    baseline_path: Path = args.baseline or _default_baseline(root)
-    baseline = _load_baseline(baseline_path)
+    try:
+        root: Path = (args.root or _default_root()).resolve()
+        baseline_path: Path = args.baseline or _default_baseline(root)
+        baseline = _load_baseline(baseline_path)
 
-    new_violations, baselined = scan(root, baseline)
+        # Build the semantic oracle
+        oracle = CodeInventory.build(root)
 
-    if args.update_baseline:
-        _write_baseline(baseline_path, new_violations + baselined)
+        # Surface syntax errors as a fatal condition (exit 2)
+        if oracle.syntax_errors:
+            for path, msg in oracle.syntax_errors:
+                print(
+                    f"ERROR: SyntaxError in {path}: {msg}",
+                    file=sys.stderr,
+                )
+            print(
+                f"check_doc_drift: {len(oracle.syntax_errors)} source file(s) "
+                "failed to parse — cannot run gate reliably.",
+                file=sys.stderr,
+            )
+            return 2
+
+        new_violations, baselined = scan(root, baseline, oracle)
+
+        if args.update_baseline:
+            all_violations = new_violations + baselined
+            # Fix E: warn when rewrite absorbs previously-unbaselined violations
+            # (ratchet-growth guard — new violations would be silently baselined)
+            if new_violations:
+                print(
+                    f"WARNING: --update-baseline is absorbing {len(new_violations)} "
+                    "new (previously-unbaselined) violation(s). "
+                    "Review before committing: these were not in the prior baseline.",
+                    file=sys.stderr,
+                )
+            _write_baseline(baseline_path, all_violations)
+            return 0
+
+        if new_violations:
+            for relpath, lineno, token, reason in sorted(new_violations):
+                print(f"{relpath}:{lineno} → `{token}` → {reason}")
+            n = len(new_violations)
+            b = len(baselined)
+            print(f"\n{n} dead reference(s) found ({b} baselined).", file=sys.stderr)
+            print(
+                "Suppress with: historical annotation (deleted/removed/...) "
+                "or <!-- drift-ignore -->. Fix the doc to clear the violation.",
+                file=sys.stderr,
+            )
+            return 1
+
+        b = len(baselined)
+        print(f"doc-drift: OK — 0 new violations ({b} in burn-down baseline).")
         return 0
 
-    if new_violations:
-        for relpath, lineno, token, reason in sorted(new_violations):
-            print(f"{relpath}:{lineno} → `{token}` → {reason}")
-        n = len(new_violations)
-        b = len(baselined)
-        print(f"\n{n} dead reference(s) found ({b} baselined).", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001
         print(
-            "Suppress with: historical annotation (deleted/removed/...) "
-            "or <!-- drift-ignore -->. Fix the doc to clear the violation.",
+            f"check_doc_drift: unexpected error: {type(exc).__name__}: {exc}",
             file=sys.stderr,
         )
-        return 1
-
-    b = len(baselined)
-    print(f"doc-drift: OK — 0 new violations ({b} in burn-down baseline).")
-    return 0
+        return 2
 
 
 if __name__ == "__main__":

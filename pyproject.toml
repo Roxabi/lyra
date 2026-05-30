@@ -111,7 +111,7 @@ show_missing = true
 [tool.pyright]
 pythonVersion = "3.12"
 typeCheckingMode = "strict"
-include = ["src", "tests", "packages/roxabi-nats/src", "packages/roxabi-contracts/src", "packages/roxabi-blobs/src"]
+include = ["src", "tests", "tools", "packages/roxabi-nats/src", "packages/roxabi-contracts/src", "packages/roxabi-blobs/src"]
 venvPath = "."
 venv = ".venv"
 # ── Permanent policy ──────────────────────────────────────────────────────────

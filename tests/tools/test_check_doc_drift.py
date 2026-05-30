@@ -153,3 +153,20 @@ def test_update_baseline_writes_and_exits_0(tmp_path: Path) -> None:
     assert baseline.exists()
     content = baseline.read_text()
     assert "docs/architecture/test.md::ZzzGhostClass" in content
+
+
+# ---------------------------------------------------------------------------
+# T8 — ADR archive is not scanned (historical records) → exit 0
+# ---------------------------------------------------------------------------
+
+
+def test_adr_archive_is_not_scanned(tmp_path: Path) -> None:
+    # A dead ref inside docs/architecture/adr/ must NOT trip the gate: ADRs are
+    # immutable decision records citing symbols as-of-writing (ADR-080).
+    _make_doc(
+        tmp_path,
+        "docs/architecture/adr/099-old-decision.mdx",
+        "This ADR referenced `ZzzGhostClass` at decision time.\n",
+    )
+    rc = main(["--root", str(tmp_path)])
+    assert rc == 0

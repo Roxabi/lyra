@@ -93,8 +93,13 @@ def _collect_scan_files(root: Path) -> list[Path]:
 
     arch = root / "docs" / "architecture"
     if arch.is_dir():
+        # ADR archive = immutable decision records; they cite symbols as-of-writing
+        # and are NOT drift-gated (per ADR-080: ADRs carry historical INTENT).
+        adr_dir = arch / "adr"
         for ext in ("*.md", "*.mdx"):
             for f in sorted(arch.rglob(ext)):
+                if adr_dir in f.parents:
+                    continue
                 add(f)
     add(root / "docs" / "ARCHITECTURE.md")
     standards = root / "docs" / "standards"

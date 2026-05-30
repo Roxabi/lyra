@@ -65,6 +65,9 @@ override-dependencies = [
     "pynacl>=1.6.2",  # CVE-2025-69277 — discord.py 2.7.1 pins <1.6 but 1.6.x is API-compatible (discord.py master confirmed)
     "aiohttp>=3.13.4",  # CVE-2026-34520 + 9 others fixed in 3.13.4 (transitive via aiogram); drop-in, no API changes
     "pygments>=2.20.0",  # CVE-2026-4539 ReDoS fixed in 2.20.0 (dev-only, transitive via rich/pytest)
+    "idna>=3.15",  # CVE-2026-45409 ReDoS (incomplete 2024 fix) — transitive via anyio/httpx/requests/yarl
+    "starlette>=1.0.1",  # PYSEC-2026-161 Host-header path-prepend auth-bypass — via fastapi (0.136.3 accepts any starlette)
+    "urllib3>=2.7.0",  # PYSEC-2026-141/142 (proxy-auth on cross-origin redirect + brotli OOM) — dev-only, transitive via requests→pip-audit
 ]
 
 [tool.uv.extra-build-dependencies]

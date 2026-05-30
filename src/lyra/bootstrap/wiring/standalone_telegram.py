@@ -12,6 +12,7 @@ from typing import Any
 from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
 from lyra.bootstrap import credentials
 from lyra.bootstrap.factory.config import AdapterConfigBundle
+from lyra.bootstrap.factory.voice_overlay import init_blobstore
 from lyra.bootstrap.lifecycle.lifecycle_helpers import close_safely
 from lyra.bootstrap.lifecycle.signal_handlers import setup_shutdown_event
 from lyra.bootstrap.standalone.audio_consumer_bootstrap import start_audio_consumer
@@ -80,7 +81,7 @@ async def _bootstrap_telegram_teardown(
         await tg_turn_store.close()
 
 
-async def bootstrap_telegram_standalone(
+async def bootstrap_telegram_standalone(  # noqa: PLR0915 — DEBT:wiring-bootstrap-deps
     nc: Any,
     raw_config: dict,
     config_bundle: AdapterConfigBundle,
@@ -94,6 +95,7 @@ async def bootstrap_telegram_standalone(
         raw_config, vault_dir
     )
     js = nc.jetstream()
+    blob_store = init_blobstore()
 
     wired: list[tuple] = []  # (TelegramAdapter, Bus, TypingListener, AudioConsumer)
 
@@ -122,6 +124,7 @@ async def bootstrap_telegram_standalone(
             inbound_bus=inbound_bus,
             webhook_secret=webhook_secret or "",
             turn_store=tg_turn_store,
+            blob_store=blob_store,
         )
         adapter.configure_tool_display(config_bundle.tool_display)
         await adapter.resolve_identity()
@@ -193,4 +196,8 @@ async def bootstrap_telegram_standalone(
     await wait_for_hub(nc)
 
     stop = setup_shutdown_event(_stop)
-    await _bootstrap_telegram_teardown(wired, tg_turn_store, stop)
+    try:
+        await _bootstrap_telegram_teardown(wired, tg_turn_store, stop)
+    finally:
+        if blob_store is not None:
+            await blob_store.aclose()  # type: ignore[union-attr]  # concrete HttpBlobStoreAdapter; aclose not on port

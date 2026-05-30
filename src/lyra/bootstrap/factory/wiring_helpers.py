@@ -170,6 +170,7 @@ async def _wire_adapters(deps: WireAdaptersDeps) -> WiredAdapters:
             msg_manager=deps.bundle.msg_manager,
             nats_client=deps.nc,
             tool_display_config=config_bundle.tool_display,
+            blob_store=deps.blob_store,
         )
     )
     dc_adapters, dc_dispatchers, dc_thread_store = await wire_discord_adapters(
@@ -183,6 +184,7 @@ async def _wire_adapters(deps: WireAdaptersDeps) -> WiredAdapters:
             vault_dir=str(deps.vault_dir),
             nats_client=deps.nc,
             tool_display_config=config_bundle.tool_display,
+            blob_store=deps.blob_store,
         )
     )
     return WiredAdapters(

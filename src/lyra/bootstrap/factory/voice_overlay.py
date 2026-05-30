@@ -1,4 +1,8 @@
-"""Voice overlay helpers — 3-layer DI for TTS, STT, Image."""
+"""Voice overlay helpers — 3-layer DI for TTS, STT, Image.
+
+Also hosts ``init_blobstore()`` — the composition-root factory for the
+BlobStorePort (same infra-factory pattern as ``init_nats_*``).
+"""
 
 from __future__ import annotations
 
@@ -10,6 +14,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
 
+    from lyra.core.ports.blobstore import BlobStorePort
     from lyra.nats.nats_image_client import NatsImageClient
     from lyra.nats.nats_stt_client import NatsSttClient
     from lyra.nats.nats_tts_client import NatsTtsClient
@@ -96,6 +101,47 @@ def init_nats_image(nc: "NATS") -> "NatsImageClient":
     )
     log.info("Image client created (3-layer) — availability via heartbeat")
     return NatsImageClient(pool, ImageCodec(), nc=nc)
+
+
+def init_blobstore() -> "BlobStorePort | None":
+    """Build and return an ``HttpBlobStoreAdapter`` satisfying ``BlobStorePort``.
+
+    Reads ``LYRA_BLOBSTORE_URL`` and ``LYRA_BLOBSTORE_TOKEN_PATH`` once at
+    construction time (restart-not-HUP semantics — token is never re-read
+    without a process restart).
+
+    Returns ``None`` when the token file is absent — the blob store is
+    considered unconfigured and audio attachment upload is disabled until the
+    file is present and the process is restarted.  Only ``FileNotFoundError``
+    is suppressed; permission errors and other ``OSError`` subclasses propagate
+    as real misconfiguration.  An empty token file raises ``OSError`` — an
+    empty token would yield ``Bearer `` and cause silent 401s at first use.
+    """
+    import os
+    from pathlib import Path
+
+    from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
+    from roxabi_blobs import HttpBlobStore
+
+    base_url = os.environ.get("LYRA_BLOBSTORE_URL", "http://localhost:8449")
+    token_path = os.environ.get(
+        "LYRA_BLOBSTORE_TOKEN_PATH",
+        str(Path.home() / ".lyra" / "blobstore.tok"),
+    )
+    try:
+        token = Path(token_path).read_text().strip()
+    except FileNotFoundError:
+        log.warning(
+            "BlobStore token not found at %s — blob_store unavailable "
+            "(audio attachments disabled until configured)",
+            token_path,
+        )
+        return None
+    if not token:
+        raise OSError(f"BlobStore token file at {token_path!r} is empty")
+    http_store = HttpBlobStore(base_url, token)
+    log.info("BlobStore client created — url=%s", base_url)
+    return HttpBlobStoreAdapter(http_store)
 
 
 async def probe_voice_services(

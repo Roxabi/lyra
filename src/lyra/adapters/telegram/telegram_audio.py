@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any
 
 from aiogram.types import BufferedInputFile
 
-from lyra.adapters.shared._blobstore_client import get_blobstore_client
 from lyra.adapters.shared._shared import (
     buffer_and_render_audio,
     mime_to_ext,
@@ -103,8 +102,14 @@ async def render_audio(
         msg.duration_ms // 1000 if msg.duration_ms is not None else None
     )
 
-    store = get_blobstore_client()
-    audio_bytes = await store.get(msg.blob_ref.store_key)
+    if adapter._blob_store is None:
+        log.error(
+            "render_audio: BlobStorePort not wired (adapter._blob_store is None) "
+            "for msg id=%s — cannot fetch audio",
+            inbound.id,
+        )
+        return
+    audio_bytes = await adapter._blob_store.get(msg.blob_ref.store_key)
     audio_buf = BytesIO(audio_bytes)
     use_audio_method = msg.mime_type in ("audio/wav", "audio/mpeg", "audio/mp3")
     audio_buf.name = "audio.wav" if use_audio_method else "voice.ogg"
@@ -183,8 +188,20 @@ async def render_audio_stream(
     meta = _validate_inbound(inbound, "render_audio_stream")
     if meta is None:
         return
+    if adapter._blob_store is None:
+        log.error(
+            "render_audio_stream: BlobStorePort not wired "
+            "(adapter._blob_store is None) for msg id=%s — cannot buffer audio",
+            inbound.id,
+        )
+        async for _ in chunks:
+            pass
+        return
     await buffer_and_render_audio(
-        chunks, inbound, lambda audio, msg: render_audio(adapter, audio, msg)
+        chunks,
+        inbound,
+        lambda audio, msg: render_audio(adapter, audio, msg),
+        blob_store=adapter._blob_store,
     )
 
 

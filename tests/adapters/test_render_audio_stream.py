@@ -8,6 +8,7 @@ Covers:
 - caption and reply_to_id from final chunk are used
 - Discord fetch-failure fallback
 - Discord no-reply-target path
+- _blob_store is None: early-returns without raise, drains iterator (B1 guard coverage)
 """
 
 from __future__ import annotations
@@ -299,3 +300,82 @@ async def test_dc_stream_no_reply_target_sends_normally() -> None:
 
     # message_id=0 means no reply attempted, send directly
     channel.send.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# B1 — _blob_store is None guard: early-return without raise, iterator drained
+#
+# Negative-test contract: if the guard is deleted from the source, calling
+# _blob_store.get(...) on None raises AttributeError and the test fails (the
+# expected early-return path is never taken).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_tg_render_audio_stream_blob_store_none_returns_without_raise() -> None:
+    """render_audio_stream early-returns when _blob_store is None (Telegram).
+
+    The guard drains the iterator so callers do not deadlock on an unconsumed
+    async generator.  If the guard is deleted, accessing None.get raises
+    AttributeError inside buffer_and_render_audio and this test fails.
+    """
+    from tests.factories.adapters import make_tg_adapter as _base_make_tg_adapter
+
+    adapter = _base_make_tg_adapter()
+    adapter._blob_store = None  # simulate unconfigured blob store
+
+    drained: list[int] = []
+
+    async def _tracking_stream():
+        for i in range(3):
+            drained.append(i)
+            yield OutboundAudioChunk(
+                chunk_bytes=f"c{i}".encode(),
+                session_id="s1",
+                chunk_index=i,
+                is_final=(i == 2),
+            )
+
+    inbound = make_tg_msg()
+    # Must not raise; iterator must be drained
+    await adapter.render_audio_stream(_tracking_stream(), inbound)
+
+    adapter.bot.send_voice.assert_not_awaited()
+    assert drained == [0, 1, 2], (
+        "Iterator was not drained — guard may be consuming 0 chunks"
+    )
+
+
+@pytest.mark.asyncio
+async def test_dc_render_audio_stream_blob_store_none_returns_without_raise() -> None:
+    """render_audio_stream early-returns when _blob_store is None (Discord).
+
+    Same contract as the Telegram variant.  Deleting the None guard would cause
+    AttributeError on None.get inside buffer_and_render_audio, failing this test.
+    """
+    from tests.factories.adapters import make_dc_adapter as _base_make_dc_adapter
+
+    adapter = _base_make_dc_adapter()
+    adapter._blob_store = None  # simulate unconfigured blob store
+
+    drained: list[int] = []
+
+    async def _tracking_stream():
+        for i in range(3):
+            drained.append(i)
+            yield OutboundAudioChunk(
+                chunk_bytes=f"c{i}".encode(),
+                session_id="s1",
+                chunk_index=i,
+                is_final=(i == 2),
+            )
+
+    channel = mock_channel()
+    inbound = make_dc_msg()
+    with patch.object(adapter, "get_channel", return_value=channel):
+        await adapter.render_audio_stream(_tracking_stream(), inbound)
+
+    channel.send.assert_not_awaited()
+    assert drained == [0, 1, 2], (
+        "Iterator was not drained — guard may be consuming 0 chunks"
+    )

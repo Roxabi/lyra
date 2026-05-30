@@ -10,14 +10,16 @@ import logging
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable
 from io import BytesIO
+from typing import TYPE_CHECKING
 
-from lyra.adapters.shared._blobstore_client import get_blobstore_client
 from lyra.core.messaging.message import (
     InboundMessage,
     OutboundAudio,
     OutboundAudioChunk,
 )
-from roxabi_contracts import BlobRef as ContractBlobRef
+
+if TYPE_CHECKING:
+    from lyra.core.ports.blobstore import BlobStorePort
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +47,7 @@ _MAX_OUTBOUND_AUDIO_BYTES: int = int(
 async def buffer_audio_chunks(
     chunks: AsyncIterator[OutboundAudioChunk],
     *,
+    blob_store: "BlobStorePort",
     max_bytes: int = _MAX_OUTBOUND_AUDIO_BYTES,
 ) -> OutboundAudio | None:
     """Buffer streamed audio chunks into a single OutboundAudio.
@@ -84,18 +87,10 @@ async def buffer_audio_chunks(
 
     buf.seek(0)
     audio_bytes = buf.read()
-    store = get_blobstore_client()
-    raw_ref = await store.put(
+    blob_ref = await blob_store.put(
         audio_bytes,
         mime=mime_type,
         source="lyra-tts",
-    )
-    blob_ref = ContractBlobRef(
-        store_key=raw_ref.store_key,
-        content_hash=raw_ref.content_hash,
-        mime=raw_ref.mime,
-        size=raw_ref.size,
-        source=raw_ref.source,
     )
     assembled = OutboundAudio(
         blob_ref=blob_ref,
@@ -117,6 +112,8 @@ async def buffer_and_render_audio(
     chunks: AsyncIterator[OutboundAudioChunk],
     inbound: InboundMessage,
     render_fn: Callable[[OutboundAudio, InboundMessage], Awaitable[None]],
+    *,
+    blob_store: "BlobStorePort",
 ) -> None:
     """Buffer streaming audio chunks and call *render_fn* with the assembled audio.
 
@@ -129,7 +126,7 @@ async def buffer_and_render_audio(
     Returns without calling *render_fn* if the stream yields no data.
     """
     try:
-        assembled = await buffer_audio_chunks(chunks)
+        assembled = await buffer_audio_chunks(chunks, blob_store=blob_store)
     except _PartialAudioError as e:
         await render_fn(e.audio, inbound)
         raise e.cause from e

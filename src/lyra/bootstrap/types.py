@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from lyra.core.cli.cli_pool import CliPool
     from lyra.core.hub import Hub, OutboundDispatcher
     from lyra.core.messaging.messages import MessageManager
+    from lyra.core.ports.blobstore import BlobStorePort
     from lyra.core.ports.stt import STTProtocol
     from lyra.core.ports.tts import TtsProtocol
     from lyra.infrastructure.audit import JetStreamAuditSink
@@ -105,6 +106,7 @@ class BuildHubDeps:
     inbound_bus: NatsBus
     pm: PairingManager | None
     stores: StoreBundle
+    blob_store: "BlobStorePort | None" = None
 
 
 @dataclass
@@ -125,3 +127,4 @@ class WireAdaptersDeps:
     stores: StoreBundle
     vault_dir: Path
     raw_config: dict
+    blob_store: "BlobStorePort | None" = None

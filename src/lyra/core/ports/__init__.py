@@ -24,6 +24,7 @@ Constraints
 """
 
 from lyra.core.ports.audit_sink import AuditSink
+from lyra.core.ports.blobstore import BlobStorePort
 from lyra.core.ports.llm import LlmProvider, LlmResult
 from lyra.core.ports.resume_publisher import ResumePublisherPort
 from lyra.core.ports.stt import STTProtocol
@@ -31,6 +32,7 @@ from lyra.core.ports.tts import TtsProtocol
 
 __all__ = [
     "AuditSink",
+    "BlobStorePort",
     "LlmProvider",
     "LlmResult",
     "ResumePublisherPort",

@@ -16,6 +16,14 @@ from lyra.core.audio_payload import AudioPayload
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import InboundMessage
 from roxabi_contracts import BlobRef
+from tests.factories.blobs import _TEST_BLOB_REGISTRY  # noqa: F401  # re-export
+
+__all__ = [
+    "_TEST_BLOB_REGISTRY",
+    "make_test_blobref",
+    "make_text_message",
+    "make_voice_message",
+]
 
 # ---------------------------------------------------------------------------
 # Default constants
@@ -90,9 +98,6 @@ def make_voice_message(
     }
     defaults.update(overrides)
     return InboundMessage(**defaults)
-
-
-_TEST_BLOB_REGISTRY: dict[str, bytes] = {}
 
 
 def make_test_blobref(

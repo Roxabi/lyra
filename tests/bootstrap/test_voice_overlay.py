@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import warnings
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from lyra.bootstrap.factory.voice_overlay import (
+    init_blobstore,
     init_nats_image,
     init_nats_stt,
     init_nats_tts,
@@ -21,6 +23,66 @@ from lyra.nats.nats_tts_client import NatsTtsClient
 @pytest.fixture()
 def mock_nc() -> MagicMock:
     return MagicMock()
+
+
+class TestInitBlobstore:
+    def test_returns_none_when_token_file_absent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """init_blobstore must not raise when token file is missing — returns None."""
+        monkeypatch.setenv(
+            "LYRA_BLOBSTORE_TOKEN_PATH", "/nonexistent/path/blobstore.tok"
+        )
+        result = init_blobstore()
+        assert result is None
+
+    def test_returns_port_when_token_file_present(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """init_blobstore returns a BlobStorePort when token file exists."""
+        from lyra.core.ports.blobstore import BlobStorePort
+
+        tok = tmp_path / "blobstore.tok"
+        tok.write_text("test-token")
+        monkeypatch.setenv("LYRA_BLOBSTORE_TOKEN_PATH", str(tok))
+        monkeypatch.setenv("LYRA_BLOBSTORE_URL", "http://localhost:8449")
+        result = init_blobstore()
+        assert result is not None
+        assert isinstance(result, BlobStorePort)
+
+    def test_raises_oserror_when_token_file_is_empty(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """init_blobstore raises OSError when token file exists but is empty.
+
+        An empty token file is misconfiguration — the process must not silently
+        continue with a blank credential.  The backend fixer adds this raise to
+        voice_overlay.init_blobstore(); this test is the contract for that behavior.
+
+        Negative-test: if the empty-token raise is removed from init_blobstore,
+        this test will fail (no OSError is raised and pytest.raises catches nothing).
+        """
+        tok = tmp_path / "blobstore.tok"
+        tok.write_text("")  # empty file — token is missing
+        monkeypatch.setenv("LYRA_BLOBSTORE_TOKEN_PATH", str(tok))
+        monkeypatch.setenv("LYRA_BLOBSTORE_URL", "http://localhost:8449")
+        with pytest.raises(OSError):
+            init_blobstore()
+
+    def test_raises_oserror_when_token_file_is_whitespace_only(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """init_blobstore raises OSError when token file contains only whitespace.
+
+        Whitespace-only content strips to empty string — same misconfiguration as
+        an empty file.  The check must run AFTER .strip() so "  \n  " is rejected.
+        """
+        tok = tmp_path / "blobstore.tok"
+        tok.write_text("   \n   ")  # whitespace-only
+        monkeypatch.setenv("LYRA_BLOBSTORE_TOKEN_PATH", str(tok))
+        monkeypatch.setenv("LYRA_BLOBSTORE_URL", "http://localhost:8449")
+        with pytest.raises(OSError):
+            init_blobstore()
 
 
 class TestInitNatsStt:

@@ -7,7 +7,10 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from lyra.core.ports.blobstore import BlobStorePort
 
 from lyra.adapters.discord import DiscordAdapter
 from lyra.adapters.telegram import TelegramAdapter
@@ -50,6 +53,7 @@ class TelegramWiringDeps:
     msg_manager: MessageManager
     nats_client: Any = None
     tool_display_config: ToolDisplayConfig | None = None
+    blob_store: "BlobStorePort | None" = None
 
 
 @dataclass
@@ -63,6 +67,7 @@ class DiscordWiringDeps:
     vault_dir: str | None = None
     nats_client: Any = None
     tool_display_config: ToolDisplayConfig | None = None
+    blob_store: "BlobStorePort | None" = None
 
 
 @dataclass
@@ -111,6 +116,7 @@ async def wire_telegram_adapters(
             circuit_registry=deps.circuit_registry,
             msg_manager=deps.msg_manager,
             turn_store=deps.hub._turn_store,
+            blob_store=deps.blob_store,
         )
         adapter.configure_tool_display(deps.tool_display_config)
         await adapter.resolve_identity()
@@ -219,6 +225,7 @@ async def wire_discord_adapters(
                 thread_store=thread_store,
                 watch_channels=watch_channels,
                 turn_store=deps.hub._turn_store,
+                blob_store=deps.blob_store,
             )
             adapter.configure_tool_display(deps.tool_display_config)
             # Wire identity resolver for slash command trust (voice commands).

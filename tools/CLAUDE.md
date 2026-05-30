@@ -15,6 +15,7 @@ Scripts are driven by `.claude/stack.yml` `quality_gates` block and pre-push hoo
 | `check_folder_size.sh` | `folder_size` — 12-file cap per `src/**` folder | pre-commit |
 | `check_duplicate_test_basenames.sh` | `duplicate_test_basenames` | pre-commit |
 | `.importlinter` (external) | `import_layers` | pre-push |
+| `check_doc_drift.py` | `doc_drift` — dead backtick refs in docs + CLAUDE.md network; baseline in `doc_drift_baseline.txt` (burn-down list, epic #1530) | CI |
 
 Runtime config: `tools/qg.conf` (seeded from `stack.yml` by `/release-setup`); scripts fall back to hardcoded defaults when absent.
 
@@ -57,6 +58,7 @@ Read tools tolerate false positives; write tools must not mutate test/fixture fi
 | `check_duplicate_test_basenames.sh` | `classify_quality_debt.py` |
 | `check-nats-acls.sh` | `capture_v1_text_baseline.py` |
 | `smoke_llm_e2e.sh` | `license_check.py` |
+| `check_doc_drift.py` | — |
 
 `adr_consolidate.py` — migration tool (flat ADR archive → domain pages); see `artifacts/analyses/adr-consolidation-matrix.md`.
 

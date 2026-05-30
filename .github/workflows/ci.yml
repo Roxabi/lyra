@@ -93,6 +93,7 @@ jobs:
             echo "::error::Removed symbols found in operator docs — update docs to match current code"
             exit 1
           fi
+          uv run python tools/check_doc_drift.py
 
       - name: Enforce import layers
         run: uv run lint-imports

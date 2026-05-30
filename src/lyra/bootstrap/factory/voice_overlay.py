@@ -6,10 +6,14 @@ BlobStorePort (same infra-factory pattern as ``init_nats_*``).
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import os
+import socket
 import warnings
+from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import urlsplit
 
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
@@ -117,13 +121,34 @@ def init_blobstore() -> "BlobStorePort | None":
     as real misconfiguration.  An empty token file raises ``OSError`` — an
     empty token would yield ``Bearer `` and cause silent 401s at first use.
     """
-    import os
-    from pathlib import Path
-
     from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
     from roxabi_blobs import HttpBlobStore
 
     base_url = os.environ.get("LYRA_BLOBSTORE_URL", "http://localhost:8449")
+
+    def _is_loopback(h: str | None) -> bool:
+        if h is None:
+            return False
+        if h == "localhost":
+            return True
+        try:
+            return ipaddress.ip_address(h).is_loopback  # 127.0.0.0/8, ::1
+        except ValueError:
+            pass
+        try:  # 127.1 / 2130706433 / 0x7f000001 — inet_aton normalizes; no DNS lookup
+            return ipaddress.ip_address(socket.inet_aton(h)).is_loopback
+        except OSError:
+            return False
+
+    _parts = urlsplit(base_url)
+    host = _parts.hostname
+    if _parts.scheme == "http" and host is not None and not _is_loopback(host):
+        log.warning(
+            "LYRA_BLOBSTORE_URL %s is non-loopback http — bearer token sent in "
+            "cleartext (mitigated by Tailnet WireGuard); prefer https",
+            base_url,
+        )
+
     token_path = os.environ.get(
         "LYRA_BLOBSTORE_TOKEN_PATH",
         str(Path.home() / ".lyra" / "blobstore.tok"),

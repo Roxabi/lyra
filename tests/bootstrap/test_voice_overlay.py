@@ -157,6 +157,81 @@ class TestInitNatsImage:
         assert isinstance(client, NatsImageClient)
 
 
+class TestInitBlobstoreLoopbackWarning:
+    """Guard: cleartext bearer token on non-loopback URLs must emit a WARNING.
+
+    Negative-test: if the non-loopback http:// guard is deleted from
+    init_blobstore, the http://10.0.0.5 case will emit no warning and the
+    caplog assertion will fail.
+    """
+
+    @pytest.mark.parametrize(
+        ("url", "expect_warning"),
+        [
+            ("http://10.0.0.5:8449", True),  # non-loopback http — must warn
+            ("http://[2001:db8::1]:8449", True),  # IPv6 remote — must warn
+            ("http://localhost:8449", False),  # loopback hostname — silent
+            ("http://127.0.0.1:8449", False),  # loopback IP — silent
+            ("http://[::1]:8449", False),  # IPv6 loopback — silent
+            ("http://127.1:8449", False),  # IPv4 alias loopback 127.0.0.1 — silent
+            ("http://2130706433:8449", False),  # 0x7f000001 decimal — silent
+            ("http://0x7f000001:8449", False),  # hex literal loopback — silent
+            ("http:///blob", False),  # no host (None) — silent
+            ("https://host:8449", False),  # TLS — silent
+        ],
+        ids=[
+            "nonloopback-http",
+            "ipv6-remote",
+            "localhost",
+            "127.0.0.1",
+            "ipv6-loopback",
+            "127.1-alias",
+            "decimal-loopback",
+            "hex-loopback",
+            "no-host",
+            "https",
+        ],
+    )
+    def test_loopback_warning_guard(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: "Path",
+        caplog: pytest.LogCaptureFixture,
+        url: str,
+        expect_warning: bool,
+    ) -> None:
+        """init_blobstore warns on cleartext bearer token over non-loopback http://."""
+        import logging
+
+        tok = tmp_path / "blobstore.tok"
+        tok.write_text("test-token")
+        monkeypatch.setenv("LYRA_BLOBSTORE_TOKEN_PATH", str(tok))
+        monkeypatch.setenv("LYRA_BLOBSTORE_URL", url)
+
+        with caplog.at_level(logging.WARNING):
+            result = init_blobstore()
+
+        # Every URL must still produce a non-None adapter (warning-only, no rejection)
+        assert result is not None
+
+        warning_records = [
+            r
+            for r in caplog.records
+            if r.levelno == logging.WARNING
+            and ("cleartext" in r.getMessage().lower() or url in r.getMessage())
+        ]
+        if expect_warning:
+            assert len(warning_records) >= 1, (
+                f"Expected a cleartext-bearer WARNING for URL {url!r}"
+                " but none was logged"
+            )
+        else:
+            assert len(warning_records) == 0, (
+                f"Expected NO cleartext warning for URL {url!r} but got: "
+                + str([r.getMessage() for r in warning_records])
+            )
+
+
 class TestProbeVoiceServices:
     @pytest.mark.asyncio
     async def test_stt_unreachable_logs_warning_no_raise(self) -> None:

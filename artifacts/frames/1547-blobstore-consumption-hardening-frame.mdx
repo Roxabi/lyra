@@ -1,0 +1,104 @@
+---
+title: BlobStore consumption hardening follow-ups (from #1546 review)
+issue: 1547
+status: approved
+tier: F-lite
+date: 2026-05-30
+---
+
+## Problem
+
+Three lower-priority findings from the ADR-082 / PR #1546 review were deferred from #1540
+to keep that PR scoped to the BlobStorePort + blocker fixes. All three were rated
+**non-blocking** by the review panel. This issue closes them as a single hardening pass on
+the blobstore consumption path.
+
+Grounded against the code (read, not assumed) two of the three are **already mitigated** and
+need *locking*, not *adding* — the work is to make the existing guarantees explicit and
+regression-proof, and to harden the one genuine gap (the HTTPS scheme warning).
+
+## Who
+
+- **Primary:** Lyra operators / maintainers — defense-in-depth against blobstore
+  misconfiguration (cleartext bearer token) and future refactor regressions (traversal,
+  import-boundary).
+- **Secondary:** Cross-host M₂ workers (llm-worker, image-worker, future voice-worker) that
+  consume the blobstore over Tailnet via `HttpBlobStore`.
+
+## Constraints
+
+- `roxabi-blobs` must **not** import `roxabi-contracts` and vice-versa — the `contracts ⊥ blobs`
+  decoupling is deliberate (contracts *mirrors* `BlobRef`, never imports it). Finding #3 must
+  preserve this.
+- The server route is `/blobs/{store_key:path}` — the `:path` converter intentionally accepts
+  slashes for legacy `store_path` keys. Any client-side key handling must not break this.
+- Token is read once at startup (restart-not-HUP). The HTTPS guard is a construction-time check.
+- All three changes are non-blocking; keep the diff small and reversible.
+
+## Out of Scope
+
+- Per-identity tokens / scoped grants (#1334 roadmap).
+- Pre-read 413 oversized-blob gate (deferred in V8 spec).
+- Broader BlobStore server auth changes.
+- Rejecting (vs warning on) non-https URLs — warn only, never break loopback-http dev.
+
+## Premise Validity
+
+**Success in 6 months:**
+- `init_blobstore` emits a warning when `LYRA_BLOBSTORE_URL` is non-loopback `http://`.
+- Traversal → 404 is locked by an HTTP-boundary regression test
+  (`GET /blobs/<../traversal>` → 404).
+- `grep -r 'from roxabi_blobs import BlobNotFoundError' src/lyra` returns **0 hits** — callers
+  catch the error from `roxabi_contracts` only.
+
+**Failure in 6 months (falsifiable):** by the next blobstore touch (or 6mo, whichever first),
+**any one** of:
+- a non-loopback `http://` `LYRA_BLOBSTORE_URL` ships with no warning in logs, OR
+- `grep 'from roxabi_blobs import BlobNotFoundError' src/lyra` > 0, OR
+- no test exercises `GET /blobs/<traversal>` → 404.
+
+**Simplest alternative:** do only finding #3's *literal* re-export
+(`roxabi_contracts` imports `roxabi_blobs.errors`), document #1 and #2 as
+Tailnet-/server-mitigated, ship no guards or tests.
+**Why not simplest:** the literal re-export breaks the deliberate `contracts ⊥ blobs`
+decoupling; and shipping zero tests leaves the traversal invariant and the import boundary
+unprotected against future refactors — exactly the regressions a hardening issue exists to
+prevent.
+
+## Findings & Approach
+
+**F1 — HTTPS-scheme guard (security-auditor C65).** `init_blobstore`
+(`src/lyra/bootstrap/factory/voice_overlay.py:126`) defaults `http://localhost:8449` and reads
+the bearer token. A non-loopback `http://` would carry the token in cleartext (Tailnet-mitigated
+today). → **warn-on-non-loopback-non-https**: log a warning when scheme is `http` and host is not
+loopback; loopback-http and any-https stay silent. Do **not** reject. ~5 LOC + unit test.
+
+**F2 — `store_key` path-traversal (security-auditor C62).** **Already enforced server-side**:
+`FsBlobStore.get` (`packages/roxabi-blobs/.../fs_store.py:243`) calls `_safe_resolve_in_root`
+(containment check via `is_relative_to(root)`); escape → `None` → `BlobNotFoundError` → 404 (no
+oracle). The client `HttpBlobStore.get` interpolates `store_key` into `/blobs/{key:path}`
+un-encoded, but encoding it would break the `:path` legacy-key slash semantics and the server
+guards regardless. → **lock, don't add**: HTTP-boundary regression test (`GET /blobs/<../traversal>`
+→ 404) + a docstring note on `HttpBlobStore.get`/the port stating the server is the enforcement
+point and `store_key` is server-issued/opaque. **No production code change.**
+
+**F3 — re-export `BlobNotFoundError` (architect C80).** Port `get()` docstring tells callers to
+import the error from `roxabi_blobs`, breaking the "callers never import roxabi_blobs" invariant.
+A naive re-export would force `roxabi_contracts` to import `roxabi_blobs.errors`, breaking the
+`contracts ⊥ blobs` decoupling. → **adapter translation**: define a port-level
+`BlobNotFoundError` in `roxabi_contracts.errors` (independent class, exported via `__all__`);
+`HttpBlobStoreAdapter` catches `roxabi_blobs.BlobNotFoundError` and re-raises the contracts
+error at the boundary; update the port `get()` docstring + any in-tree callers to import from
+`roxabi_contracts`. Keeps both packages decoupled.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (Python backend), ~5–7 files, no new architecture;
+two embedded approach-decisions resolved at frame time.
+
+Signals observed:
+- ~5–7 files: `voice_overlay.py`, `roxabi_contracts/errors.py` + `__init__.py`,
+  `infrastructure/blobstore_adapter.py`, `core/ports/blobstore.py` (docstring), tests.
+- Single domain (backend), no new patterns; cross-package but all small.
+- Two approach decisions (F1 warn-vs-document, F3 translate-vs-re-export) → frame-level shaping,
+  not an F-full analysis.

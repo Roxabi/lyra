@@ -18,6 +18,7 @@ __all__ = [
     "truncate_with_marker",
 ]
 
+
 # Maximum stored length for free-text fields. Long stack traces / framing errors
 # are truncated to fit; we never raise a ValidationError on overflow because
 # WorkerError construction sites are inside `except` handlers — raising there

@@ -25,16 +25,16 @@ from lyra.core.messaging.message import InboundMessage, TelegramMeta
 from tests.factories.adapters import (  # noqa: F401
     attach_typing_cm,
     discord_adapter,
-    make_dc_adapter,
     make_dc_attach_msg,
     make_dc_inbound_msg,
     make_dc_msg,
-    make_tg_adapter,
     make_tg_attach_msg,
     make_tg_msg,
     mock_channel,
     telegram_adapter,
 )
+from tests.factories.adapters import make_dc_adapter as _make_dc_adapter_base
+from tests.factories.adapters import make_tg_adapter as _make_tg_adapter_base
 
 __all__ = [
     "attach_typing_cm",
@@ -49,6 +49,50 @@ __all__ = [
     "mock_channel",
     "telegram_adapter",
 ]
+
+
+# ---------------------------------------------------------------------------
+# Mock BlobStorePort factory — used by make_tg_adapter / make_dc_adapter wrappers
+# ---------------------------------------------------------------------------
+
+
+def _make_mock_blob_store() -> MagicMock:
+    """Build a mock BlobStorePort backed by _TEST_BLOB_REGISTRY."""
+    from roxabi_contracts import BlobRef
+    from tests.helpers.messages import _TEST_BLOB_REGISTRY
+
+    async def _mock_get(store_key: str) -> bytes:
+        return _TEST_BLOB_REGISTRY.get(store_key, b"mock-audio-bytes")
+
+    async def _mock_put(data: bytes, *, mime: str, **kwargs: Any) -> BlobRef:
+        ref = BlobRef(
+            store_key="test-blob",
+            content_hash="deadbeef",
+            mime=mime,
+            size=len(data),
+            source="test",
+        )
+        _TEST_BLOB_REGISTRY[ref.store_key] = data
+        return ref
+
+    mock_store = MagicMock()
+    mock_store.get = AsyncMock(side_effect=_mock_get)
+    mock_store.put = AsyncMock(side_effect=_mock_put)
+    return mock_store
+
+
+def make_tg_adapter() -> TelegramAdapter:
+    """TelegramAdapter pre-wired with a mock BlobStorePort (no HTTP/env needed)."""
+    adapter = _make_tg_adapter_base()
+    adapter._blob_store = _make_mock_blob_store()
+    return adapter
+
+
+def make_dc_adapter() -> DiscordAdapter:
+    """DiscordAdapter pre-wired with a mock BlobStorePort (no HTTP/env needed)."""
+    adapter = _make_dc_adapter_base()
+    adapter._blob_store = _make_mock_blob_store()
+    return adapter
 
 # ---------------------------------------------------------------------------
 # Outbound-send test helpers (used by test_telegram_outbound_send/render)
@@ -132,40 +176,6 @@ def mock_inbound_bus():
     bus = MagicMock()
     bus.put = AsyncMock()
     return bus
-
-
-@pytest.fixture(autouse=True)
-def patch_blobstore_client(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Auto-use fixture: mock HttpBlobStore so adapter tests don't hit the network."""
-    from unittest.mock import MagicMock
-
-    from roxabi_contracts import BlobRef
-    from tests.helpers.messages import _TEST_BLOB_REGISTRY
-
-    async def _mock_get(store_key: str) -> bytes:
-        return _TEST_BLOB_REGISTRY.get(store_key, b"mock-audio-bytes")
-
-    def _mock_put(data: bytes, *, mime: str, **kwargs: Any) -> BlobRef:
-        ref = BlobRef(
-            store_key="test-blob",
-            content_hash="deadbeef",
-            mime=mime,
-            size=len(data),
-            source="test",
-        )
-        _TEST_BLOB_REGISTRY[ref.store_key] = data
-        return ref
-
-    mock_store = MagicMock()
-    mock_store.get = AsyncMock(side_effect=_mock_get)
-    mock_store.put = AsyncMock(side_effect=_mock_put)
-    for target in (
-        "lyra.adapters.shared._blobstore_client.get_blobstore_client",
-        "lyra.adapters.telegram.telegram_audio.get_blobstore_client",
-        "lyra.adapters.discord.discord_audio_outbound.get_blobstore_client",
-        "lyra.adapters.shared._shared_audio.get_blobstore_client",
-    ):
-        monkeypatch.setattr(target, lambda: mock_store)
 
 
 _original_extract_cookies = httpx.Cookies.extract_cookies

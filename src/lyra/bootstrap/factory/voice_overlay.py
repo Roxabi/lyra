@@ -108,8 +108,9 @@ def init_blobstore() -> "BlobStorePort":
 
     Reads ``LYRA_BLOBSTORE_URL`` and ``LYRA_BLOBSTORE_TOKEN_PATH`` once at
     construction time (restart-not-HUP semantics — token is never re-read
-    without a process restart).  Env var names and defaults replicate
-    ``adapters/shared/_blobstore_client.get_blobstore_client()`` verbatim.
+    without a process restart).  This is the canonical composition-root factory
+    for ``BlobStorePort``; the bare per-call HTTP-client factory it replaced has been
+    removed (ADR-082).
     """
     import os
     from pathlib import Path

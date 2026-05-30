@@ -11,7 +11,6 @@ import discord
 from discord.http import Route  # internal discord.py API — verify on upgrades
 
 from lyra.adapters.discord.discord_formatting import _validate_inbound
-from lyra.adapters.shared._blobstore_client import get_blobstore_client
 from lyra.adapters.shared._shared import (
     _AUDIO_EXTS,
     ATTACHMENT_EXTS_BASE,
@@ -84,8 +83,14 @@ async def render_audio(
     if reply_to_id is not None:
         payload["message_reference"] = {"message_id": str(reply_to_id)}
 
-    store = get_blobstore_client()
-    audio_bytes = await store.get(msg.blob_ref.store_key)
+    if adapter._blob_store is None:
+        log.error(
+            "render_audio: BlobStorePort not wired (adapter._blob_store is None) "
+            "for msg id=%s — cannot fetch audio",
+            inbound.id,
+        )
+        return
+    audio_bytes = await adapter._blob_store.get(msg.blob_ref.store_key)
     voice_file = discord.File(fp=BytesIO(audio_bytes), filename="voice.ogg")
     form = [
         {"name": "payload_json", "value": discord.utils._to_json(payload)},
@@ -180,8 +185,20 @@ async def render_audio_stream(
     meta = _validate_inbound(inbound, "render_audio_stream")
     if meta is None:
         return
+    if adapter._blob_store is None:
+        log.error(
+            "render_audio_stream: BlobStorePort not wired "
+            "(adapter._blob_store is None) for msg id=%s — cannot buffer audio",
+            inbound.id,
+        )
+        async for _ in chunks:
+            pass
+        return
     await buffer_and_render_audio(
-        chunks, inbound, lambda audio, msg: render_audio(adapter, audio, msg)
+        chunks,
+        inbound,
+        lambda audio, msg: render_audio(adapter, audio, msg),
+        blob_store=adapter._blob_store,
     )
 
 

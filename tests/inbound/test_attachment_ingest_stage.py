@@ -11,15 +11,14 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock
 
+from lyra.core.audio_payload import AudioPayload
+from lyra.core.auth.trust import TrustLevel
+from lyra.core.messaging.message import InboundMessage
 from lyra.inbound.attachment_ingest import (  # noqa: E402 — module does not exist yet (RED)
     AttachmentIngestStage,
     IngestCtx,
     PendingAttachment,
 )
-
-from lyra.core.audio_payload import AudioPayload
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage
 from roxabi_contracts import PENDING_STORE_KEY, BlobRef
 
 # ---------------------------------------------------------------------------

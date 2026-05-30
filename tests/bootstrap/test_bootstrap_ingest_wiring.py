@@ -17,16 +17,16 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from lyra.inbound.attachment_ingest import (  # noqa: E402 — module added in GREEN
-    AttachmentIngestStage,
-    IngestCtx,
-)
 
 from lyra.bootstrap.wiring.bootstrap_wiring import (  # noqa: E402 — symbols added in GREEN
     _assert_prod_ingest_store,
     build_ingest,
 )
 from lyra.core.ports.blobstore import BlobStorePort
+from lyra.inbound.attachment_ingest import (  # noqa: E402 — module added in GREEN
+    AttachmentIngestStage,
+    IngestCtx,
+)
 
 
 class TestBuildIngest:

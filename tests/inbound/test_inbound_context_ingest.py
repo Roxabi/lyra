@@ -14,7 +14,6 @@ from unittest.mock import MagicMock
 from lyra.inbound.attachment_ingest import (  # noqa: E402 — module does not exist yet (RED)
     AttachmentIngestStage,
 )
-
 from lyra.inbound.context import DispatchCtx, InboundContext, RouterCtx, SessionCtx
 from lyra.inbound.pipeline import InboundPipeline
 

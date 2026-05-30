@@ -39,6 +39,7 @@ DECLARED = "lyra.turns.write"
 def _run(
     src_dirs: list[Path] | None = None,
     allowlist: Path | None = None,
+    root: Path | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run the CLI, optionally scoped to explicit --src dirs and an allowlist."""
     cmd = [sys.executable, str(CLI)]
@@ -47,6 +48,8 @@ def _run(
             cmd += ["--src", str(d)]
     if allowlist is not None:
         cmd += ["--allowlist", str(allowlist)]
+    if root is not None:
+        cmd += ["--root", str(root)]
     return subprocess.run(
         cmd,
         capture_output=True,
@@ -174,20 +177,34 @@ class TestFalsePositiveFilters:
         result = _run([tmp_path], allowlist=_empty_allowlist(tmp_path))
         assert result.returncode == 0, result.stdout
 
-    def test_comment_and_docstring_not_flagged(self, tmp_path: Path) -> None:
-        """AST extraction ignores comments and docstrings."""
+    def test_comment_not_flagged(self, tmp_path: Path) -> None:
+        """Comments are not AST nodes — an orphan in a comment is not flagged."""
         _write_py(
             tmp_path,
-            "doc.py",
-            f'''\
-            # "{ORPHAN}" mentioned in a comment
+            "comment.py",
+            f"""\
+            # {ORPHAN} mentioned in a comment only
             def f():
-                """Docstring mentions {ORPHAN} too."""
                 return 1
-            ''',
+            """,
         )
         result = _run([tmp_path], allowlist=_empty_allowlist(tmp_path))
         assert result.returncode == 0, result.stdout
+
+    def test_docstring_literal_is_flagged(self, tmp_path: Path) -> None:
+        """A bare orphan string literal used as a docstring IS an AST Constant and
+        IS scanned — the scanner does not special-case docstrings."""
+        _write_py(
+            tmp_path,
+            "docstring.py",
+            f'''\
+            def f():
+                "{ORPHAN}"
+            ''',
+        )
+        result = _run([tmp_path], allowlist=_empty_allowlist(tmp_path))
+        assert result.returncode == 1, result.stdout
+        assert ORPHAN in result.stdout
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +248,31 @@ class TestExclusion:
         _write_py(tests_dir, "helper.py", f'SUBJECT = "{ORPHAN}"\n')
         result = _run([tmp_path], allowlist=_empty_allowlist(tmp_path))
         assert result.returncode == 0
+
+    def test_conftest_excluded(self, tmp_path: Path) -> None:
+        """conftest.py is excluded from scanning — orphan inside it is not flagged."""
+        _write_py(tmp_path, "conftest.py", f'SUBJECT = "{ORPHAN}"\n')
+        result = _run([tmp_path], allowlist=_empty_allowlist(tmp_path))
+        assert result.returncode == 0
+        assert "FAIL" not in result.stdout
+
+
+class TestSyntaxError:
+    def test_unparseable_file_exits_2(self, tmp_path: Path) -> None:
+        """A .py file with invalid syntax causes the scanner to exit 2."""
+        broken = tmp_path / "broken.py"
+        broken.write_text("def broken(:\n    pass\n")
+        result = _run(
+            [tmp_path],
+            allowlist=_empty_allowlist(tmp_path),
+            root=tmp_path,
+        )
+        assert result.returncode == 2, result.stdout + result.stderr
+        assert (
+            "ERROR" in result.stderr
+            or "syntax" in result.stderr.lower()
+            or "parse" in result.stderr.lower()
+        )
 
 
 class TestMissingSrcTarget:

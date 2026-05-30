@@ -143,14 +143,26 @@ def _looks_like_filename(literal: str) -> bool:
     return literal.rsplit(".", 1)[-1].lower() in _FILE_EXTENSIONS
 
 
-def _extract_subject_literals(path: Path) -> dict[str, list[int]]:
+def _extract_subject_literals(
+    path: Path,
+    parse_errors: list[tuple[Path, str]],
+) -> dict[str, list[int]]:
     """Map each candidate ``lyra.*`` literal in *path* to its line numbers.
 
     Excludes f-string fragments, getLogger() arguments, and filenames.
+    On SyntaxError/UnicodeDecodeError/OSError, appends ``(path, reason)`` to
+    *parse_errors* and returns ``{}`` so the caller can surface the failure.
     """
     try:
         tree = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
-    except (SyntaxError, UnicodeDecodeError, OSError):
+    except SyntaxError as exc:
+        parse_errors.append((path, f"SyntaxError: {exc}"))
+        return {}
+    except UnicodeDecodeError as exc:
+        parse_errors.append((path, f"UnicodeDecodeError: {exc}"))
+        return {}
+    except OSError as exc:
+        parse_errors.append((path, f"OSError: {exc}"))
         return {}
 
     skip = _fstring_fragment_ids(tree) | _getlogger_arg_ids(tree)
@@ -195,11 +207,15 @@ def _scan(
     inventory: CodeInventory,
     files: list[Path],
     allowlist: set[str],
+    parse_errors: list[tuple[Path, str]],
 ) -> dict[str, list[str]]:
-    """Return ``{orphan_subject: [<file>:<line>, ...]}`` over *files*."""
+    """Return ``{orphan_subject: [<file>:<line>, ...]}`` over *files*.
+
+    Files that cannot be parsed are recorded in *parse_errors*.
+    """
     orphans: dict[str, list[str]] = {}
     for path in files:
-        for literal, linenos in _extract_subject_literals(path).items():
+        for literal, linenos in _extract_subject_literals(path, parse_errors).items():
             if literal in allowlist:
                 continue
             verdict = inventory.resolve(literal)
@@ -264,7 +280,18 @@ def main() -> None:
         sys.exit(2)
 
     allowlist = _load_allowlist(args.allowlist)
-    orphans = _scan(inventory, _iter_source_files(src_dirs), allowlist)
+    parse_errors: list[tuple[Path, str]] = []
+    orphans = _scan(inventory, _iter_source_files(src_dirs), allowlist, parse_errors)
+
+    if parse_errors:
+        print(
+            f"ERROR: scanner failed to parse {len(parse_errors)} file(s) — "
+            "subject inventory for those files is incomplete:",
+            file=sys.stderr,
+        )
+        for path, reason in parse_errors:
+            print(f"  {path}: {reason}", file=sys.stderr)
+        sys.exit(2)
 
     if orphans:
         print(

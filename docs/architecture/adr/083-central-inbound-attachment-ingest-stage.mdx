@@ -1,0 +1,113 @@
+---
+title: "ADR-083: Central Inbound Attachment Ingest Stage"
+description: Absorb per-adapter attachment ingest into a single stage-axis module, eliminating the N×M trap and guaranteeing blob durability before STT runs.
+related: [073, 067, 079, 082]
+---
+
+## Status
+
+Proposed
+
+## Context
+
+Inbound attachments (voice, image, document, video, sticker, animation, GIF) from Telegram and Discord are currently normalized adapter-side with `store_key=PENDING_STORE_KEY` — a sentinel indicating that no BlobStore write has occurred. The `ingest_bytes_to_blob_ref()` helper in `packages/roxabi-blobs/` was written to close this gap but was never wired in (`git log -S ingest_bytes_to_blob_ref -- src/lyra/adapters/` = empty). Consequences:
+
+1. **Audio loss on STT failure.** `handle_voice_message` (Telegram) and `handle_audio` (Discord) download audio bytes to construct a `PENDING_STORE_KEY` `BlobRef`, then discard the bytes. If `SttMiddleware` fails, the audio is permanently lost — the Bot API has no history to re-fetch from.
+2. **N×M implementation surface.** Ingest logic (download → hash → store → emit `BlobRef`) must be duplicated per platform × per attachment type. At N=2 platforms, M=7 types, that is up to 14 implementation points. Each new adapter or new attachment type amplifies this.
+3. **PENDING_STORE_KEY sentinel persists on the wire.** `SttRequest(blob_ref)` carries `store_key=PENDING_STORE_KEY`; STT workers must implement a `platform_ref` fallback path. This fallback adds complexity in `nats_stt_client.py`, is undocumented in the STT worker contract, and blocks `PENDING_STORE_KEY` removal.
+
+This is precisely the N×M duplication pattern ADR-073 identifies as the primary architectural anti-pattern. The `inbound-no-adapters` importlinter contract (#1287) already forbids `lyra.inbound` modules from importing `discord` or `aiogram`, establishing the boundary this ADR formalizes.
+
+Epic #1277 §11 explicitly absorbs issues #1065 (Telegram adapter eager-ingest), #1066 (Discord adapter eager-ingest), and #1067 (workers consume real `BlobRef`) into the stage axis. Issue #1537 is the delivery issue for this ADR.
+
+Reference analysis: `artifacts/analyses/1537-central-inbound-ingestion-design.md`.
+
+## Options Considered
+
+### Option A: Per-adapter eager ingest (platform-axis)
+
+Each adapter implements its own ingest path: Telegram `handle_voice_message` calls `ingest_bytes_to_blob_ref()` before `normalize_audio()`; Discord `handle_audio` does the same. Non-audio attachments follow per-adapter download + ingest logic.
+
+- **Pros:** Minimal pipeline changes; each adapter owns its full ingest path; no new stage type needed.
+- **Cons:** N×M growth preserved — each new adapter must re-implement ingest for all M types. Ingest cannot be tested independently of adapter platform libraries. Contradicts ADR-073 primary-axis decision. This is also precisely the approach `#1065` was designed to take, and it was never completed — evidence that per-adapter implementation has high friction.
+
+### Option B: Central ingest stage + fetch-closure injection (stage-axis, chosen)
+
+A single `AttachmentIngestStage` module in `src/lyra/inbound/` receives a platform-agnostic `PendingAttachment` descriptor (containing a `FetchFn: Callable[[], Awaitable[bytes]]` closure) produced by adapters during normalization. The stage calls `ingest_bytes_to_blob_ref()` once per attachment, stamping a real `BlobRef` before the message reaches the bus.
+
+- **Pros:** Single ingest implementation regardless of N or M. Importlinter contract satisfied — no platform types in `lyra.inbound`. Fetch failure handling is centralized. Blob durability guaranteed before `SttMiddleware` runs — STT failure no longer loses audio. Fetch closures follow the established `functools.partial` hook pattern already used by `pre_route_hook` / `pre_session_hook`.
+- **Cons:** Adapters must be refactored to emit `PendingAttachment` descriptors rather than stamping `PENDING_STORE_KEY` inline. `InboundContext` gains an `IngestCtx` field. `InboundPipeline.run()` gains one new stage insertion. `Attachment` dataclass gains a `blob_ref` field.
+
+## Decision
+
+**Option B — central ingest stage with fetch-closure injection.**
+
+**Primary axis:** `stage` (per ADR-073). The ingest concern is a pipeline stage, not a per-platform concern. Platform variation is confined to the `FetchFn` closure constructed by the adapter (e.g. Telegram `bot.get_file()` + `bot.download()` vs Discord CDN HTTP GET), which is the only platform-specific bit crossing the adapter→stage boundary.
+
+**Stage placement:** `AttachmentIngestStage` is inserted into `InboundPipeline.run()` between `parse()` and `pre_route_hook`, as the first async operation on the parsed message. This placement guarantees:
+
+1. The stage sees the normalized `InboundMessage` with all `PendingAttachment` descriptors.
+2. The stage runs before `Dispatcher.dispatch()` pushes the message to the inbound bus.
+3. `SttMiddleware` (downstream of the bus, inside the hub pipeline) always receives a real `BlobRef`.
+
+**Fetch closure protocol:**
+
+```python
+FetchFn = Callable[[], Awaitable[bytes]]
+
+@dataclass(frozen=True)
+class PendingAttachment:
+    fetch: FetchFn
+    mime: str
+    source: str
+    platform_ref: str | None
+    platform_message_id: str | None
+    filename: str | None = None
+```
+
+**Context extension:** `InboundContext` gains `ingest: IngestCtx` where `IngestCtx.store: BlobStorePort | None` (Protocol from `lyra.core.ports.blobstore`, per ADR-082 — never a concrete infrastructure type). When `store=None` (test/CLI mode), the stage is a no-op — `PENDING_STORE_KEY` is preserved and the pipeline continues unchanged (backward compatible).
+
+**Blob write protocol:** Blob bytes flow via HTTP `BlobStorePort.put()` single-shot in V1. `put_multipart()` (#1334) is deferred — it is an additive, non-breaking Protocol extension; HTTP transport already bypasses the NATS size cap. Multipart is out-of-scope for this stage.
+
+**Converter:** The `roxabi_blobs.BlobRef` → `roxabi_contracts.BlobRef` conversion uses `roxabi_contracts.BlobRef.from_store_ref(ref)` exclusively (per ADR-082). Manual field-copy is forbidden — it silently drops `filename`, `platform_ref`, `platform_message_id`, and `created_at`.
+
+**AudioPayload path:** Audio bytes are captured in a `FetchFn` closure by the adapter (Telegram `handle_voice_message`, Discord `handle_audio`). The stage resolves `AudioPayload.blob_ref` from `PENDING_STORE_KEY` to a real `BlobRef` before the message is enqueued.
+
+**Non-audio attachment path:** `Attachment` gains `blob_ref: BlobRef | None = None`. After the stage, `blob_ref` is populated; `url_or_path_or_bytes` retains the original platform reference for provenance / debugging.
+
+## Consequences
+
+### Positive
+
+- **Blob durability before STT.** STT failure no longer loses audio. The blob is in the store before `SttMiddleware` runs; replay and manual retranscription become possible.
+- **N×M trap closed.** Ingest is a single module. New platform → 1 adapter-side fetch closure per attachment type. New attachment type → 1 new `FetchFn` constructor in the adapter + stage coverage extended. No stage duplication.
+- **PENDING_STORE_KEY retirement path.** Once S2–S4 (voice path) and S5–S7 (non-audio path) are merged, `PENDING_STORE_KEY` construction at adapter ingest sites drops to zero and the sentinel can be removed from `roxabi_contracts.blob_ref`.
+- **STT worker simplification (#1067).** `NatsSttClient.transcribe()` can remove the `isinstance(audio, bytes)` branch and the inline `PENDING_STORE_KEY` construction. The `platform_ref` fallback path in the STT worker contract is retired.
+- **Importlinter contract respected.** `AttachmentIngestStage` imports only `roxabi_blobs`, `roxabi_contracts`, and `lyra.core` types. The `inbound-no-adapters` contract requires no new `ignore_imports` entries.
+
+### Negative
+
+- **Adapter refactor cost.** `handle_voice_message` and `handle_audio` must be refactored to emit `PendingAttachment` and route through `InboundPipeline.run()` instead of calling `push_to_hub_guarded()` directly. Estimated: 9 slices (see design analysis §7).
+- **BlobStore required in production wiring.** `IngestCtx.store` must be non-None in all production bootstrap paths. This must be wired in `bootstrap/wiring.py` or equivalent. Bootstrap MUST assert `ctx.ingest.store is not None` — a missed wiring is silent (stage no-ops) with no user-visible error.
+- **`Attachment` dataclass change.** Adding `blob_ref: BlobRef | None = None` to `Attachment` is additive (default None) but all Attachment construction sites must be audited for completeness.
+- **Non-audio attachment ceiling (open).** Non-audio attachments have no size cap in code today (`telegram_normalize.py:26-81`, `discord_formatting.py:67-88` pass by opaque ref / CDN URL — zero download). The stage is the first download site. Implementation MUST enforce `MAX_ATTACHMENT_INGEST_BYTES` (recommended 20 MiB = Telegram `getFile` cap) before download — reject + log + user-facing error on oversize. Audio cap is `LYRA_MAX_AUDIO_BYTES` (default 5 MiB), not the platform-advertised limits.
+- **HTTP 500 on oversize.** The blobstore HTTP service returns 500 (not 413) on oversize payloads. The stage must map HTTP 500 from `put()` to a user-facing error; do not propagate silently.
+- **Discord CDN URL expiry.** Discord CDN URLs expire within minutes. Ingest must be eager (within the pipeline, before bus enqueue). Confirm timing in S4/S7.
+
+### Neutral
+
+- The `FetchFn` closure pattern adds a small allocation per attachment per message. At typical Lyra message volumes this is not a performance concern.
+- `BlobRef` dual-type mapping (from `roxabi_blobs.BlobRef` returned by `ingest_bytes_to_blob_ref()` to `roxabi_contracts.BlobRef` embedded in `InboundMessage`) is already the documented pattern in `roxabi_blobs/CLAUDE.md §BlobRef ownership`. The stage performs this conversion once per attachment.
+
+## Trail
+
+- Issue: #1537 — central inbound attachment-ingest stage (delivery)
+- Epic: #1277 §11 — stage-axis decomposition (absorbed issues)
+- Absorbed: #1065 (Telegram adapter eager-ingest), #1066 (Discord adapter eager-ingest), #1067 (workers consume real BlobRef)
+- Enables: BlobStore epic #1061 V3/V4 slices (adapter-side ingest)
+- ADR-073: `axial: true` — stage as primary axis; this ADR implements that choice for the attachment-ingest concern
+- ADR-067: BlobStore abstraction (FsBlobStore + `ingest_bytes_to_blob_ref` contract)
+- ADR-079: Audio NATS contract axial consolidation (NATS plane complement to this inbound-pipeline decision)
+- ADR-082: BlobStorePort driven-port (delivered PR #1546, 2026-05-30) — `IngestCtx.store: BlobStorePort | None`; converter = `BlobRef.from_store_ref()`
+- Contract: `.importlinter` → `inbound-no-adapters` (#1287)
+- Design analysis: `artifacts/analyses/1537-central-inbound-ingestion-design.md`

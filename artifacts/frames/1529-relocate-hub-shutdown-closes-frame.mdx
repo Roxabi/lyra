@@ -1,0 +1,92 @@
+---
+title: Relocate hub_shutdown memory/message_index closes to bootstrap (finish ADR-048 ownership)
+issue: 1529
+status: approved
+tier: F-lite
+date: 2026-05-30
+---
+
+## Problem
+
+`#1506` (PR #1523) established the ADR-078 lifecycle-ownership rule: store
+`connect()`/`close()` is owned **solely** by `bootstrap_stores.open_stores()`, whose
+`finally` block closes every store exactly once. It removed `hub_shutdown`'s redundant
+`turn_store.close()` and left the explanatory comment now at `hub_shutdown.py:107-109`.
+
+The **same redundant-close pattern remains for two more stores** in
+`HubShutdownMixin.shutdown()`:
+
+- `self._message_index.close()` (`hub_shutdown.py:111`) — `message_index` is already
+  closed by `open_stores`'s `finally` (`bootstrap_stores.py:305`). This is a **redundant
+  second close** *and* a `core → infrastructure` ownership inversion that still carries
+  `.importlinter` `DEBT:importlinter-adr048-transition` exemptions.
+- `self._memory.close()` (`hub_shutdown.py:106`) — `MemoryManager`. Ownership is **not
+  yet verified**: `MemoryManager` is not visibly in the `StoreBundle` that `open_stores`
+  manages, so removal is gated on confirming who actually owns its lifecycle.
+
+These are the last residue (for these stores) of the `lyra.core ← lyra.infrastructure`
+layering inversion that ADR-048/078 exist to remove.
+
+## Who
+
+- **Primary:** Lyra maintainers working in `core/` — every `hub_shutdown` /
+  `bootstrap_stores` edit reasons about store lifecycle; a redundant close is a latent
+  double-close / use-after-close trap and an architectural false signal.
+- **Secondary:** the import-layer gate (`.importlinter`) — each freed exemption removes a
+  sanctioned `core → infrastructure` edge, tightening the ADR-048 boundary for everyone.
+
+## Constraints
+
+- **Ownership-first (per #1506):** verify `open_stores` (or equivalent) owns `close` for
+  `message_index` **and** `memory` in **every** hub/adapter mode *before* removing any
+  close — same check applied to `turn_store` in #1506.
+- **No read-path protocol exists yet:** unlike `turn_store` (`TurnStoreProtocol` predated
+  #1506), there is **no** `MessageIndexProtocol` / `MemoryManagerProtocol`. Retyping fields
+  to a read-path protocol may require **protocol extraction first** — a prerequisite the
+  spec must size.
+- **Exemption removal is conditional:** drop a `.importlinter`
+  `DEBT:importlinter-adr048-transition` exemption only as each becomes eligible (i.e. once
+  the runtime import is gone and any residual is TYPE_CHECKING-only / removed).
+- **Pattern reference:** #1506 / PR #1523 — reuse its lifecycle-ownership approach verbatim.
+
+## Out of Scope
+
+- `turn_store` lifecycle — already relocated in #1506.
+- Any store **not** named here (identity/alias, audit, etc.) beyond exemptions directly
+  freed by this change.
+- Broader ADR-048 migration of unrelated `core → infrastructure` edges.
+- Behavioural change to shutdown ordering beyond removing the redundant close calls.
+
+## Premise Validity
+
+*Auto-derived from the issue body + #1506 precedent — correct any field on review.*
+
+**Success in 6 months:** `HubShutdownMixin.shutdown()` no longer calls `close()` on any
+store it does not own; `message_index` (and `memory`, if owned by bootstrap) are closed
+exactly once, by `open_stores`'s `finally`; the `message_index` `adr048-transition`
+exemptions in `.importlinter` are gone.
+
+**Failure in 6 months:** the `message_index` / `memory` `DEBT:importlinter-adr048-transition`
+exemptions still present in `.importlinter` (measurable: `grep` count unchanged), **or** a
+double-close / use-after-close regression observed in hub shutdown. Falsifiable boolean +
+exemption count.
+
+**Simplest alternative:** delete the two `close()` lines in `hub_shutdown.py` directly.
+
+**Why not simplest:** (1) `memory` ownership is unverified — blind removal risks leaking an
+unclosed DB or a use-after-close if bootstrap does *not* own it; (2) the `.importlinter`
+exemptions are bound to the `TYPE_CHECKING` import of the concrete store — they cannot be
+fully dropped without the read-path-protocol retype, which may need protocol extraction
+first. Deleting the calls alone neither verifies ownership nor frees all exemptions.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (store lifecycle + `core/infrastructure`
+layering), direct precedent in #1506; the only unknowns (memory ownership, protocol
+extraction) are narrow enough to resolve in spec rather than a full analysis pass.
+
+Signals observed:
+- Two stores, mechanical close-relocation following an established pattern (#1506).
+- Spans `core/hub`, `bootstrap`, `infrastructure/stores`, `.importlinter` — single concern.
+- One genuine unknown (memory ownership) + one conditional prerequisite (protocol extraction).
+- Label `P3-low`; no size label.

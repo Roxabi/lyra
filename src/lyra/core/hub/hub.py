@@ -33,7 +33,6 @@ if TYPE_CHECKING:
     from collections import deque
 
     from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
-    from lyra.infrastructure.stores.message_index import MessageIndex
     from lyra.infrastructure.stores.pairing import PairingManager
     from lyra.infrastructure.stores.prefs_store import PrefsStore
     from lyra.transport.turn_publisher import TurnPublisher
@@ -47,7 +46,7 @@ if TYPE_CHECKING:
     from ..ports.resume_publisher import ResumePublisherPort
     from ..ports.stt import STTProtocol
     from ..ports.tts import TtsProtocol
-    from ..stores import TurnStoreProtocol
+    from ..stores import MessageIndexProtocol, TurnStoreProtocol
     from .event_bus import PipelineEventBus
     from .outbound import OutboundDispatcher
 
@@ -99,7 +98,7 @@ class Hub(
                 " — STT error replies will use hardcoded fallbacks"
             )
         self._pairing_manager = pairing_manager
-        self._message_index: MessageIndex | None = None
+        self._message_index: MessageIndexProtocol | None = None
         self._stt: STTProtocol | None = stt
         self._tts_value: TtsProtocol | None = tts
         self._pool_ttl = cfg.pool_ttl

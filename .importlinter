@@ -31,12 +31,8 @@ ignore_imports =
     lyra.core.hub.hub -> lyra.infrastructure.stores.identity_alias_store
     lyra.core.hub.hub_registration -> lyra.infrastructure.stores.identity_alias_store
     # TYPE_CHECKING imports for migrated stores (#935) — DEBT:importlinter-adr048-transition
-    lyra.core.hub.hub -> lyra.infrastructure.stores.message_index
     lyra.core.hub.hub -> lyra.infrastructure.stores.pairing
     lyra.core.hub.hub -> lyra.infrastructure.stores.prefs_store
-    lyra.core.hub.hub_registration -> lyra.infrastructure.stores.message_index
-    lyra.core.hub.hub_shutdown -> lyra.infrastructure.stores.message_index
-    lyra.core.pool.pool_observer -> lyra.infrastructure.stores.message_index
 
 [importlinter:contract:core-stores-no-sqlite]
 name = core/stores protocols must not import SQLite drivers

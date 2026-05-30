@@ -2,12 +2,14 @@
 
 > **Status:** drafted. Epic created on GitHub: [#1490](https://github.com/Roxabi/lyra/issues/1490).
 > **Owner:** mickael
-> **Last touched:** 2026-05-20
+> **Last touched:** 2026-05-28
 > **Supersedes:**
 > - `artifacts/analyses/archive/new-harness-epic-context.md` (resume point, 2026-05-17)
 > - `artifacts/analyses/archive/harness-context-ownership.md` (brainstorm, 2026-05-17)
 >
 > **Purpose:** single source for the harness epic until it lands on GitHub. Captures the architectural reframe, the closed-out trajectory, what shipped on staging that changes the picture, the open decisions, and the practical reference data needed to resume drafting in one pass.
+
+> **Amended 2026-05-28:** context-builder moved hub→harness; state model (stateless vs stateful) reopened; write-back via turn-writer; backend routing = C2. §3, §6, §14 updated.
 
 ---
 
@@ -20,9 +22,9 @@ We pivoted to a clean, long-term, distributed Lyra harness. Two stale epics (`#9
 | Concern | Owner |
 |---|---|
 | Canonical store (durable history) | **Shared persistent layer** (Redis / JetStream KV, target per `#640`) |
-| Context builder (assemble `messages[]` per turn) | **Hub** |
+| Context builder (assemble `messages[]` per turn) | **Harness** |
 | Turn-local working memory (tool intermediates, partial msgs) | **Harness** |
-| Write-back (new turn → canonical store) | Hub (single writer) |
+| Write-back (new turn → canonical store) | **Harness** (publishes `lyra.turns.write`; turn-writer persists) |
 | Wire transport | inline ≤256 KB, else JetStream object-store ref (`#1061` dep) |
 
 Net: harness becomes **pure compute** — no `pool_id` affinity, NATS queue-group scales horizontally, sub-harness spawn (Q2) is trivial. Runtime (LangGraph / custom / Hermes) becomes swappable behind one interface.
@@ -71,7 +73,7 @@ Net: harness becomes **pure compute** — no `pool_id` affinity, NATS queue-grou
 ## 2. Intent & target — draft language for the new epic
 
 > **What we're building:**
-> A stateless NATS worker — **`lyra_harness`** — that executes one agent turn end-to-end. The hub assembles `messages[]` per turn (system prompt + tools + agent_config + history slice + new user message) and ships it. The worker runs the agentic loop (LLM call → tool execution → LLM call → … → final response), emits a stream of `LlmEvent`s back to the hub, and terminates. The worker holds **no per-pool state** between turns.
+> A NATS worker — **`lyra_harness`** — that executes one agent turn end-to-end. The hub routes the turn (pool_id, user message, metadata) to the harness. The **harness** assembles `messages[]` (system prompt + tools + agent_config + history + new user message), runs the agentic loop (LLM call → tool execution → LLM call → … → final response), emits a stream of `LlmEvent`s back to the hub, publishes new turn(s) to `lyra.turns.write`, and terminates. The worker holds **no per-pool state** between turns. (⚠ state model stateless-vs-stateful reopened 2026-05-28 — see §6/§14)
 
 > **Why we're building it:**
 > Long-term scalable distributed Lyra. Today the hub embeds the agent runtime; the hub process is the bottleneck for horizontal scale, fault isolation, and language polyglot (Python today, Rust/Go tomorrow). Pushing the agent turn to a stateless worker:
@@ -116,10 +118,12 @@ The hub-vs-harness debate confuses three distinct things. Treating them separate
 | Concern | Owner | Rationale |
 |---|---|---|
 | Canonical store (#1) | **Shared persistent layer** (Redis / JS-KV per `#640`) | M4 trajectory already there; neither compute layer is stateful |
-| Context builder (#2) | **Hub** | Only component with full Lyra context: memory, agent config, system prompt, multi-channel merging, auth, tool permissions per agent |
+| Context builder (#2) | **Harness** | Harness assembles messages[] per turn: history read from shared store + agent_config (system prompt / tools / model) + memory injection (roxabi-cortex). Reverses prior hub-owned model. |
 | Turn-local working memory (#3) | **Harness** | Naturally ephemeral; lives in the loop that uses it |
-| Write-back | **Hub** (single writer) | No concurrency mess; matches today's TurnStore pattern |
+| Write-back | **Harness** (publishes `lyra.turns.write`) | turn-writer persists to store; ADR-075 sole-writer preserved. Reverses prior hub-owned write-back. |
 | Wire transport | inline ≤256 KB, else `history_ref` | Avoids NATS max-msg blowups; reuses `#1061` object-store work |
+
+> **Footnote:** State model (stateless vs stateful) is 🔓 OPEN. Stateless = harness re-reads shared store each turn, queue-group scaling. Stateful = harness retains pool state, sticky routing. Context-builder=harness and write-back=turn-writer hold under both variants.
 
 ### 3.3 Why this beats the pure options
 
@@ -135,31 +139,34 @@ The hub-vs-harness debate confuses three distinct things. Treating them separate
 | Wire payload size | high | tiny | medium | bounded (two-tier) |
 | Aligns with `#640` | △ | ✗ | ✓ | ✓ |
 
-The split combines hub-owned policy wins (memory, system prompt, multi-channel) with shared-store wins (M4-ready, crash recovery, statelessness). Goose-style runtimes that want to own #1+#2 collide with hub's existing ownership — Goose has `override_conversation` precisely for this, but we'd fight it every turn. LangGraph's `MemorySaver` (stateless-per-call) is the cleaner fit; runtime-agnostic is easiest.
+The split combines harness-owned context-building (memory injection, system prompt, tool descriptions) with shared-store wins (M4-ready, crash recovery, statelessness) and hub as a pure router. Goose-style runtimes that want to own #1+#2 would collide with harness ownership — Goose has `override_conversation` precisely for this, but we'd fight it every turn. LangGraph's `MemorySaver` (stateless-per-call) is the cleaner fit; runtime-agnostic is easiest. *(Note: table column "Hub-owns-all (A)" is a comparison option, not the adopted model — ★ = 3-concerns split, adopted 2026-05-28.)*
 
 ### 3.4 Data-flow diagram (target state)
 
 ```
-┌──────────────────── canonical store ────────────────────┐
-│   Redis / JetStream KV  (target per #640)                │
-│   • full conversation history, keyed by pool_id          │
-│   • semantic memories, agent prefs, pairings             │
-│   • single source of truth                               │
-└──────────────────────────────────────────────────────────┘
-                  ▲                          ▲
-                  │ read/write (hub only)    │ read-only slice (sub-harness)
-                  │                          │
-┌─── hub ─────────┴────────────┐    ┌──── harness ──────────────┐
-│  context builder              │    │  agentic loop runtime      │
-│  • read history from store    │    │  • LangGraph / custom /    │
-│  • inject memory              │    │    Hermes (swappable)      │
-│  • assemble system prompt     │───▶│  • parsed tool calls       │
-│  • attach tool descriptions   │    │  • intermediate results    │
-│  • ship LlmRequest            │    │  • dies at end of turn     │
-│  • write new turn back        │◀───│  • returns updated history │
-│    after harness reply        │    │    + assistant message     │
-└───────────────────────────────┘    └────────────────────────────┘
+┌──────────────────── canonical store (shared layer) ──────────────────┐
+│   turns.db today → Redis / JetStream KV (target per #640)             │
+│   • full conversation history, keyed by pool_id                        │
+│   • semantic memories, agent prefs, pairings                          │
+│   • single source of truth — turn-writer = sole writer (ADR-075)      │
+└───────────────────────────────────────────────────────────────────────┘
+                  ▲                           ▲
+                  │ write (turn-writer only)  │ read (harness, per turn)
+                  │                           │
+┌─── hub (router)─┴─────────────┐    ┌──── harness ───────────────────┐
+│  • receive inbound message     │    │  context builder + agentic loop │
+│  • fork on agent_config.       │    │  • read history from store      │
+│    backend:                    │    │  • inject memory (roxabi-cortex)│
+│      claude-cli → clipool      │    │  • assemble system prompt       │
+│      harness → lyra-harness    │    │  • attach tool descriptions     │
+│  • ship (pool_id, user_msg,    │───▶│  • custom loop (model-only LLM) │
+│    agent_config)               │    │  • parsed tool calls            │
+│  • relay reply → outbound      │◀───│  • publish new turn(s) to       │
+│    adapter                     │    │    lyra.turns.write             │
+└────────────────────────────────┘    └─────────────────────────────────┘
 ```
+
+> 🔓 **OPEN — State model:** stateless (queue-group, store read each turn) vs stateful (sticky routing, local pool cache). Hub and harness boxes above hold under both; only the read arrow and routing strategy differ.
 
 ### 3.5 Wire shape (concrete)
 
@@ -167,7 +174,8 @@ The split combines hub-owned policy wins (memory, system prompt, multi-channel) 
 class HarnessRequest(BaseModel):
     request_id: str
     pool_id: str
-    history: list[Message] | HistoryRef     # inline ≤256 KB else by-ref
+    history: list[Message] | HistoryRef     # superseded — harness reads the shared store directly;
+                                            # on-wire history shape depends on OPEN (b)/state-model
     system_prompt: str
     tools: list[ToolDescriptor]
     model: ModelConfig
@@ -176,13 +184,14 @@ class HarnessRequest(BaseModel):
 class HarnessResponse(BaseModel):
     request_id: str
     assistant_message: Message
-    updated_history_delta: list[Message]    # turns to append to canonical store
+    updated_history_delta: list[Message]    # superseded — write-back is now lyra.turns.write (turn-writer);
+                                            # field retained pending OPEN (b)/state-model resolution
     tool_calls_summary: list[ToolUseSummary]
     duration_ms: float
     error: ErrorInfo | None
 ```
 
-Harness is stateless: every turn carries everything it needs to run. No `pool_id`-keyed local state.
+Harness reads shared store and assembles context per turn; no `pool_id`-keyed local state. (⚠ state model stateless-vs-stateful reopened 2026-05-28 — see §6/§14; the read pattern and routing strategy are OPEN)
 
 ---
 
@@ -273,20 +282,25 @@ All closed between 2026-05-14 and 2026-05-17.
 |---|---|---|---|
 | Q1 | Tool execution layer (`#493` `ToolHandler` vs internal vs hybrid) | **open** | Lean A — co-design with `#1047` `JobHandler` registry to avoid drift |
 | Q2 | Tool-execution locality (all in-harness vs FS-only vs per-tool routed) | **open** | Lean A for v1 — harness owns tool execution; `#1048` shape (proxy-back-over-NATS for remote capabilities) is the escape hatch we'd add later |
-| Q3 | Wire/history transport (inline cap vs hybrid vs always object-store) | **provisional B (hybrid)** | 3-concerns reframe answers this: hub builds `messages[]`; inline ≤256 KB else `history_ref` via `#1061` object-store substrate. `#1203` JetStream JOBS makes always-by-ref (C) materially cheaper too — could re-discuss. |
-| Q4 | Backend taxonomy (`agent_config.backend`) | **answered: A** (per prior intent) | Collapse to `claude-cli \| harness`; litellm/ollama become harness *models*. Schedule with `#1198` cleanup-tail. |
-| Q5 | Failure semantics | **answered: B** (per prior intent) | Tool-error-soft — `ToolUseLlmEvent` raises → `ToolResultLlmEvent { is_error: true }`, loop continues. Matches Claude/OpenAI agentic SDK behavior. |
-| — | Ownership split (3-concerns) | **needs explicit confirmation** | §3 — hub owns context-builder, harness owns turn-local, shared store owns canonical |
-| — | Runtime choice (LangGraph vs custom vs Hermes) | **answered: Custom** | Custom thin loop (~200 lines Python) — zero external lock-in |
-| — | Sub-harness spawn (Q2 sibling) in v1 or follow-up? | **answered: follow-up** | Trivial under 3-concerns model, but adds scope to v1 |
-| — | Canonical-store backend (Redis vs JS-KV) | **deferred to `#640`** | Harness epic stays silent — store is just a client dependency |
-| — | Naming (§8) | **answered: OK** | Aligned with `#1044` convention |
-| — | Memory injection | **answered: Hub pre-builds** | Memory = external tool (roxabi-cortex); no harness calls |
-| — | Streaming | **answered: Real-time** | `HarnessTurnEvent` emitted as loop runs |
-| — | Tool result shape | **answered: Structured dict** | `{"output": ..., "status": ..., "artifacts": [...]}` |
-| — | `HistoryRef` resolver | **answered: Blobstore** | Reuse #1330 V8 HTTP-fronted blobstore |
-| — | `LyraToolProxy` subject | **answered: Reuse `lyra.jobs.*`** | Worker fleet already uses this; tool = job |
-| — | Turn timeout | **answered: None** | Healthcheck only; no per-turn timeout |
+| Q3 | Wire/history transport (inline cap vs hybrid vs always object-store) | **provisional B (hybrid)** | Harness builds `messages[]`; inline ≤256 KB else `history_ref` via `#1061` object-store substrate. `#1203` JetStream JOBS makes always-by-ref (C) materially cheaper too — could re-discuss. |
+| Q4 | Backend taxonomy (`agent_config.backend`) | **answered: A** | Collapse to `claude-cli \| harness`; litellm/ollama become harness *models*. Schedule with `#1198` cleanup-tail. |
+| Q5 | Failure semantics | **answered: B** | Tool-error-soft — `ToolUseLlmEvent` raises → `ToolResultLlmEvent { is_error: true }`, loop continues. |
+| — | Ownership split (3-concerns) | **Resolved 2026-05-28** | Harness = context-builder + turn-local; hub = router; shared store = canonical |
+| — | Context builder | **Resolved 2026-05-28: Harness** | Harness assembles messages[] per turn (history + agent_config + memory injection). Reverses prior "hub owns context-builder". |
+| — | Memory injection | **Resolved 2026-05-28: Harness** | Harness calls roxabi-cortex during context-build. Reverses prior "Hub pre-builds". |
+| — | Write-back | **Resolved 2026-05-28: Harness** | Harness publishes to `lyra.turns.write`; turn-writer persists (ADR-075). Reverses prior hub-owned write-back. |
+| — | Backend routing (c) | **Resolved 2026-05-28: C2 (parallel)** | Hub forks: `agent_config.backend ∈ {claude-cli→clipool, harness→lyra-harness}`. CliNatsDriver NOT in harness loop. |
+| — | Prefix-cache (a) | **Resolved: A3** | Caching = inference backend's job. Harness passes pool_id through; no harness-side cache. |
+| — | State model (stateless vs stateful) | 🔓 **OPEN** | Stateless = re-read store each turn, queue-group. Stateful = sticky routing, local pool cache. Context-builder=harness + write-back=turn-writer hold under both. |
+| — | Context read-path / HistoryRef (b) | 🔓 **OPEN** | Deferred. Tied to state-model decision and #640. |
+| — | Runtime choice | **Resolved: Custom** | Custom thin loop (~200 lines Python) — zero external lock-in |
+| — | Sub-harness spawn | **Resolved: follow-up** | Trivial under resolved model, but adds scope to v1 |
+| — | Canonical-store backend (Redis vs JS-KV) | **deferred to `#640`** | Harness epic stays silent — store is a client dependency |
+| — | Naming (§8) | **Resolved: OK** | Aligned with `#1044` convention |
+| — | Streaming | **Resolved: Real-time** | `HarnessTurnEvent` emitted as loop runs |
+| — | Tool result shape | **Resolved: Structured dict** | `{"output": ..., "status": ..., "artifacts": [...]}` |
+| — | `LyraToolProxy` subject | **Resolved: Reuse `lyra.jobs.*`** | Worker fleet already uses this; tool = job |
+| — | Turn timeout | **Resolved: None** | Healthcheck only; no per-turn timeout |
 
 ---
 
@@ -295,13 +309,13 @@ All closed between 2026-05-14 and 2026-05-17.
 | Component | Today | Under harness epic |
 |---|---|---|
 | `TurnStore` | Audit-only, SQLite hub-side | Stays audit, or merges into canonical store (TBD, defer to `#640`) |
-| `MemoryManager` | Hub-side | Stays hub-side; queried during context-builder step. No call inversion. |
+| `MemoryManager` | Hub-side | TBD — context-builder moved to harness (2026-05-28); MemoryManager either follows (harness calls roxabi-cortex directly) or is exposed via a read-API. No call inversion per original intent; exact placement TBD with state-model decision. |
 | `MessageIndex` | Hub-side (reply-to routing) | Stays hub-side. Independent of harness. |
 | `CliPool` / `clipool_worker` | Backend = `claude-cli` (in-proc CliPool) | Becomes one of N inference targets behind `LlmProvider`. Decision: defer; reassess after harness lands. |
 | `_VALID_BACKENDS` | `{"claude-cli", "ollama", "litellm"}` | Per Q4=A → `{"claude-cli", "harness"}`. Schedule with `#1198`. |
 | `_shared_streaming_emitter.py` / `StreamingSession` | Tool events via `ToolSummaryRenderEvent` | Stays. v2 typed splits (`#1102`) compatible — harness emits same `RenderEvent` types. |
 | `roxabi-contracts` | `LlmRequest` / `LlmChunkEvent` / `LlmResponse` | Add `HarnessRequest` / `HarnessResponse` envelopes. Existing LLM envelopes stay for raw-LLM path. Harness layer sits *above* the LLM layer. |
-| `#640` (hub statelessness M4) | Open | Compatible. Hub becomes router + context-builder + store-client. Its "state" is the shared store. |
+| `#640` (hub statelessness M4) | Open | Compatible. Hub becomes router + store-client (context-builder + store-read moved to harness). Its "state" is the shared store. |
 
 ---
 
@@ -334,7 +348,7 @@ Aligned with `#1044` convention (now project-wide policy).
 
 \* Star counts verified real via `gh api repos/...`.
 
-**Tentative recommendation:** LangGraph with `MemorySaver`. Caller (hub) assembles context, harness invokes graph, no per-call state retained. Swappable later.
+**Tentative recommendation:** LangGraph with `MemorySaver`. Harness assembles context and invokes graph, no per-call state retained. Swappable later. *(Note: runtime choice = custom thin loop per §14; LangGraph remains the reference comparison point.)*
 **Alternative:** custom thin loop (~200 lines of Python). Trades ecosystem (MCP plugins, prebuilt agents) for control. Reasonable if we want zero external lock-in.
 
 ---
@@ -449,15 +463,25 @@ lyra.harness.dlq                — turn DLQ (if Q5 ever pivots)
 ### Decision recording — fill in when answered
 
 ```
-Ownership split (3-concerns)        : confirm         : CONFIRMED 2026-05-28
-Q1 (tool execution layer)           : A / B / C       : C (hybrid: shared + harness-local)
-Q2 (tool-execution locality)        : A / B / C       : Hybrid: in-harness + Lyra tools via NATS (not through hub)
-Q3 (wire/history transport)         : B / C           : Hybrid: text via JetStream (turns), objects via blobstore
-Q4 (backend taxonomy)               : A (confirm)     : A (collapse to claude-cli | harness) — CONFIRMED 2026-05-28
-Q5 (failure semantics)              : B (confirm)     : B (tool-error-soft, loop continues) — CONFIRMED 2026-05-28
-Runtime                             : LangGraph / custom / Hermes : B (custom thin loop)
-Sub-harness spawn                   : v1 / follow-up  : follow-up
-Naming (§8)                         : OK / amend      : OK
+Ownership split (3-concerns)        : CONFIRMED 2026-05-28
+  Hub                               : pure router
+  Context builder                   : harness (assembles messages[] per turn) — AMENDED 2026-05-28 (was: hub)
+  Memory injection                  : harness (roxabi-cortex during context-build) — AMENDED 2026-05-28 (was: hub pre-builds)
+  Write-back                        : harness publishes lyra.turns.write; turn-writer persists (ADR-075) — AMENDED 2026-05-28 (was: hub)
+  ADR-076 amendment                 : persistence-plane producer moves hub→harness — PENDING
+Q1 (tool execution layer)           : C (hybrid: shared + harness-local)
+Q2 (tool-execution locality)        : Hybrid: in-harness + Lyra tools via NATS (not through hub)
+Q3 (wire/history transport)         : Hybrid: text via JetStream (turns), objects via blobstore
+Q4 (backend taxonomy)               : A — collapse to claude-cli | harness — CONFIRMED 2026-05-28
+Q5 (failure semantics)              : B — tool-error-soft, loop continues — CONFIRMED 2026-05-28
+Backend routing (c)                 : C2 (parallel) — hub forks: claude-cli→clipool, harness→lyra-harness — CONFIRMED 2026-05-28
+Prefix-cache (a)                    : A3 — caching = inference backend's job; harness passes pool_id — CONFIRMED 2026-05-28
+State model (stateless vs stateful) : OPEN (not decided)
+Context read-path / HistoryRef (b)  : OPEN (deferred, tied to state model + #640)
+Runtime                             : B (custom thin loop)
+Sub-harness spawn                   : follow-up
+Naming (§8)                         : OK
+Amended                             : 2026-05-28
 ```
 
 ### Child issues to open after epic lands
@@ -466,8 +490,8 @@ Naming (§8)                         : OK / amend      : OK
 - `HarnessRequest` / `HarnessResponse` contracts in `roxabi-contracts`
 - Runtime spike (LangGraph PoC if §9 lands there)
 - `harness_standalone.py` bootstrap + Quadlet container
-- Hub-side context-builder module (3-concerns #2 home)
-- Hub-side write-back path on `HarnessResponse.updated_history_delta`
+- Harness-side context-builder module (3-concerns #2 home — moved hub→harness 2026-05-28)
+- Harness write-back path: publish `lyra.turns.write` (turn-writer persists; replaces hub-side path)
 - Tool execution layer wiring (`#493` co-design — Q1)
 - Observability: `lyra.event.harness.*` emit + OTel spans
 - Integration test: stateless harness round-trip with tool execution

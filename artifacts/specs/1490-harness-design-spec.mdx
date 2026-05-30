@@ -2,42 +2,59 @@
 
 > **Status:** design — pending implementation
 > **Scope:** contracts, worker architecture, hub-side client, tool layer, container, bootstrap
-> **Decisions:** Q1=C, Q2=Hybrid, Q3=Hybrid, Q4=A, Q5=B, Runtime=Custom, Sub-harness=follow-up
+> **Decisions:** Hub=pure-router, ContextBuilder=harness, MemoryInjection=harness, Cache=A3, Backend-routing=C2, Write-back=via turn-writer(lyra.turns.write); State-model=OPEN(stateless|stateful), HistoryRef/(b)=OPEN; Q4=A, Q5=B, Runtime=Custom
+
+> **Amended 2026-05-28:** harness owns context-builder (not the store); state model reopened; backend routing = C2; write-back via turn-writer. See `artifacts/analyses/harness-epic-consolidated.md`.
 
 ---
 
 ## 1. Architecture Overview
 
-**A1 update:** Hub = pure router. Harness = context builder + canonical store + turn-local memory.
+**A1 update:** Hub = pure router (messages-plane only). Harness = context builder + turn-local memory.
+
+**Memory injection = harness** (calls roxabi-cortex during context-build). This reverses the prior "hub pre-builds memory" assumption.
+
+**Canonical store = shared layer** (turns.db today via turn-writer; backend per #640). Harness READS it. turn-writer remains sole writer (ADR-075). Harness does NOT own the store.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │  HUB (pure router)                                                  │
 │   ├─ receive inbound message (Telegram / Discord)                    │
-│   ├─ ship (pool_id, user_msg, metadata) → lyra.harness.turn.request │
+│   ├─ fork on agent_config.backend:                                   │
+│   │     claude-cli → clipool (C2 parallel path)                     │
+│   │     harness    → lyra-harness (below)                           │
+│   ├─ ship (pool_id, user_msg, agent_config) → lyra.harness.turn.request │
 │   └─ forward harness reply → outbound adapter                        │
 └─────────────────────────────────────────────────────────────────────┘
                           │
-                          ▼ sticky routing: pool_id → harness worker
+                          ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│  lyra-harness (stateful on pool_id, 1 worker = 1 pool_id)           │
-│   ├─ read canonical store for conversation history                   │
+│  lyra-harness                                                        │
+│   ├─ read shared canonical store for conversation history            │
 │   ├─ build messages[] (history + system prompt + tools)              │
-│   │   memory = external tool call (roxabi-cortex) → pre-injected     │
+│   │   memory injection = roxabi-cortex call during context-build     │
 │   ├─ custom loop:                                                    │
 │   │   while not done and turn_limit not hit:                        │
-│   │     LLM call → LlmProvider (CliNatsDriver / LiteLLMDriver)      │
+│   │     LLM call → LlmProvider (LiteLLMDriver / local — model-only) │
 │   │     if ToolUseLlmEvent: execute via ToolRegistry                │
 │   │       ├─ local tool → in-process                                 │
 │   │       └─ Lyra tool → NATS proxy (lyra.jobs.*)                   │
 │   │     emit HarnessTurnEvent stream → hub reply inbox              │
-│   ├─ write new turn to canonical store                               │
-│   ├─ return HarnessResponse (assistant_msg)                          │
-│   └─ keep pool_id state alive (fork / resume / rewind ready)        │
+│   ├─ publish new turn(s) to lyra.turns.write                        │
+│   │     (turn-writer persists; ADR-075 sole-writer preserved)        │
+│   └─ return HarnessResponse (assistant_msg)                          │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-**Key change from original 3-concerns split:** Harness owns the canonical store and context builder. Hub is a thin router. This requires **sticky routing** on `pool_id`.
+> 🔓 **OPEN — State model (stateless vs stateful):** two variants under consideration; neither is decided.
+>
+> **Stateless:** harness re-reads the shared store each turn. No per-pool state. Queue-group scaling, any worker handles any pool_id. Requires a network read-path to the store (ties to #640 / context read-path decision (b)).
+>
+> **Stateful:** harness retains pool state between turns in process. Sticky routing (`pool_id` → worker). Warm local cache, no store read per turn. Requires consistent-hash or session-affinity in the NATS routing layer.
+>
+> **Critical note:** hub=pure-router, context-builder=harness, memory-injection=harness, and write-back via turn-writer all hold under **both** variants. Only the read pattern (re-read vs local cache) and routing (queue-group vs sticky) differ.
+
+**Key change from original 3-concerns split:** Harness owns the context builder (not the canonical store). Hub is a thin router. Store is a shared read layer; turn-writer is the sole writer.
 
 ---
 
@@ -210,7 +227,7 @@ class HarnessWorker(NatsAdapterBase):
         )
         self._loop = loop
         self._store = store
-        # pool_id affinity: one worker holds state for one or more pool_ids
+        # only if STATE MODEL = stateful (OPEN); stateless variant holds no per-pool state
         self._pool_states: dict[str, PoolState] = {}
 
     def _extra_subjects(self) -> list[str]:
@@ -246,8 +263,9 @@ class HarnessWorker(NatsAdapterBase):
         for event in turn_result.events:
             await self.reply(msg, _encode_turn_event(event))
 
-        # Write new turn to canonical store
-        await self._store.append_turn(req.pool_id, turn_result.new_messages)
+        # Publish new turn(s) to persistence plane — turn-writer persists (ADR-075 sole-writer).
+        # ADR-076 amendment pending: persistence-plane producer moves hub→harness.
+        await self._turns_producer.publish("lyra.turns.write", req.pool_id, turn_result.new_messages)
 
         # Terminal HarnessResponse
         resp = turn_result.to_response(req)
@@ -304,10 +322,13 @@ class HarnessLoop:
     ) -> TurnResult:
         """Run the agentic loop and return a TurnResult.
 
-        A4: pool_id is passed to the outbound LlmProvider for session tracking.
-        If the outbound provider is CliNatsDriver (clipool), it uses pool_id for
-        session affinity. This is intentional: the harness is stateful on pool_id,
-        and clipool session affinity aligns with harness pool affinity.
+        Outbound LlmProvider = MODEL-ONLY drivers (LiteLLMDriver / local).
+        CliNatsDriver is NOT used here — claude-cli is reached via the hub→clipool
+        parallel path (C2) and never wrapped by the harness loop.
+
+        A4: pool_id is passed to the outbound LlmProvider for session tracking /
+        prefix-cache affinity (A3: caching is the inference backend's job; harness
+        passes pool_id through, clipool keeps --resume affinity via pool_sessions).
         """
         messages = list(history)
         messages.append(Message(role="user", content=req.user_message))
@@ -607,11 +628,20 @@ def _adapter_harness() -> None:
 
 ---
 
-## 8. Wiring & Backend Enum (Q4=A)
+## 8. Wiring & Backend Enum (Q4=A, Backend-routing=C2)
 
 ```python
 _VALID_BACKENDS: frozenset[str] = frozenset({"claude-cli", "harness"})
 ```
+
+**C2 routing rule (hub forks on `agent_config.backend`):**
+
+| `agent_config.backend` | Hub routes to | Notes |
+|---|---|---|
+| `claude-cli` | clipool | claude-cli is harness+model (runs its own loop); reached via clipool path |
+| `harness` | lyra-harness | lyra-harness is the agentic loop for MODEL-ONLY backends (LiteLLMDriver / local / #61 SLMs) |
+
+`CliNatsDriver` is **not** used by the harness loop. It belongs to the hub→clipool path only.
 
 ---
 
@@ -635,21 +665,25 @@ These are **harness-side** operations (harness owns context). Hub sends control 
 
 | # | Question | Status | Notes |
 |---|---|---|---|
-| 1 | `HistoryRef` resolver — JetStream KV or Redis? | **TBD** | P5: blobstore NOT for history |
-| 2 | `LyraToolProxy` subject — `lyra.jobs.*` or `lyra.tools.*`? | **Reuse `lyra.jobs.*`** | P4: tool = job; needs #1044/#1203 clarification |
-| 3 | Tool result shape — string or structured dict? | **Structured dict** | A3: large objects via BlobRef |
-| 4 | Turn timeout — none or per-LLM-call? | **None** | A8: healthcheck only; no per-turn timeout |
-| 5 | Error classification — reuse clipool? | **Yes** | Same `WorkerError` taxonomy |
-| 6 | Memory injection — external tool | **roxabi-cortex** | Harness calls memory tool directly |
-| 7 | Streaming | **Real-time** | `HarnessTurnEvent` emitted as loop runs |
-| 8 | Message.content for structured data | **JSON string** | A5: dict → json.dumps → str |
-| 9 | Outbound LLM pool_id stickiness | **Intentional** | A4: aligns with harness pool affinity |
+| 1 | Context read-path / `HistoryRef` resolver (b) | 🔓 **OPEN** | Deferred. Distributed harness can't mount local SQLite → needs network store / read-API. Tied to #640 and state-model decision. |
+| — | State model (stateless vs stateful) | 🔓 **OPEN** | See §1 OPEN block. Queue-group (stateless) vs sticky routing (stateful). Both preserve hub=router / harness=context-builder / write-back-via-turn-writer. |
+| 2 | `LyraToolProxy` subject — `lyra.jobs.*` or `lyra.tools.*`? | **Resolved: `lyra.jobs.*`** | P4: tool = job; needs #1044/#1203 clarification |
+| 3 | Tool result shape — string or structured dict? | **Resolved: Structured dict** | A3: large objects via BlobRef |
+| 4 | Turn timeout — none or per-LLM-call? | **Resolved: None** | A8: healthcheck only; no per-turn timeout |
+| 5 | Error classification — reuse clipool? | **Resolved: Yes** | Same `WorkerError` taxonomy |
+| 6 | Memory injection | **Resolved: Harness** | Harness calls roxabi-cortex during context-build. Reverses prior "hub pre-builds" assumption. |
+| 7 | Streaming | **Resolved: Real-time** | `HarnessTurnEvent` emitted as loop runs |
+| 8 | Message.content for structured data | **Resolved: JSON string** | A5: dict → json.dumps → str |
+| 9 | Outbound LLM pool_id / prefix-cache (a) | **Resolved: A3** | Caching = inference backend's job. Harness passes pool_id; clipool keeps `--resume` affinity in pool_sessions. No harness-side cache. |
+| — | Backend routing (c) | **Resolved: C2 (parallel)** | Hub forks: claude-cli→clipool, harness→lyra-harness. See §8. |
+| — | Context builder ownership | **Resolved: Harness** | Harness assembles messages[] per turn. Hub is pure router. |
+| — | Write-back ownership | **Resolved: Harness** | Harness publishes to `lyra.turns.write`; turn-writer persists (ADR-075). ADR-076 amendment pending. |
 | 10 | Cancellation / pre-emption | **P2: TBD** | Need use cases: new user msg, stop button, etc. |
 | 11 | Degradation | **P1: Hub handles** | No harness-side fallback; hub retries or errors |
 | 12 | Migration / rollback | **P3: None** | No canary rollout planned |
 | 13 | `HarnessWorker` health check | **Proper health check** | A7: python-based, not grep |
 | 14 | `HarnessLoop` mutable state | **Fixed** | A9: TurnResult returned directly |
-| 15 | Sticky routing implementation | **TBD** | NATS queue groups → consistent hash on pool_id |
+| 15 | Sticky routing implementation | 🔓 **OPEN** | Tied to state-model decision (stateless = queue-group, stateful = consistent hash on pool_id) |
 
 ---
 

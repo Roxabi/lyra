@@ -207,6 +207,10 @@ class TestHubEvictFlushTask:
         # Eviction must schedule a flush task for the pool with messages
         assert len(hub._memory_tasks) >= 1
 
+
+class TestHubShutdownStoreLifecycle:
+    """hub.shutdown() store-teardown invariants (#1506)."""
+
     @pytest.mark.asyncio
     async def test_shutdown_closes_message_index_but_not_turn_store(self) -> None:
         """hub.shutdown() must close message_index but NOT turn_store.

@@ -66,14 +66,15 @@ protocol structurally (`@runtime_checkable`), so no call-site changes are needed
 - No behaviour change — `TurnStore` satisfies `TurnStoreProtocol` structurally
 - Pyright verifies structural compatibility at the wire-up site in `bootstrap/`
 
-## Remaining DEBT
+## DEBT resolution (#1506)
 
-`hub_shutdown.py` retains the concrete `TurnStore` import and its `.importlinter` exemption.
-`HubShutdownMixin.shutdown()` calls `self._turn_store.close()`, which is a lifecycle method
-intentionally absent from `TurnStoreProtocol` (the protocol covers the read/session surface only).
+The interim residue — `hub_shutdown.py` retaining the concrete `TurnStore` import + a
+`.importlinter` exemption because `HubShutdownMixin.shutdown()` called `self._turn_store.close()`
+— was resolved in #1506 by taking the **"relocate teardown to bootstrap"** option:
+`bootstrap_stores.open_stores()` is the sole lifecycle owner (its `finally` closes every store
+exactly once), so the hub's redundant `close()` call was removed. `hub_shutdown.py` no longer
+imports `TurnStore`, and `.importlinter` carries **zero** `turn_store` exemptions.
 
-**Options for follow-up:**
-- Add a `Closeable` / `LifecycleStore` protocol to `core/ports/` and narrow the shutdown mixin to that
-- Or relocate shutdown teardown to the bootstrap layer, where concrete types are in scope
-
-Until then the exemption is load-bearing and annotated in `.importlinter` with a rationale comment.
+`close()` remains intentionally absent from `TurnStoreProtocol` (read-path only) — adding a
+`Closeable`/`LifecycleStore` protocol proved unnecessary once lifecycle ownership was correctly
+placed in the bootstrap layer.

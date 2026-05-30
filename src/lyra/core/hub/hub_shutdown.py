@@ -104,5 +104,8 @@ class HubShutdownMixin:
             await asyncio.gather(*self._memory_tasks, return_exceptions=True)
         if self._memory is not None:
             await self._memory.close()
+        # _turn_store is intentionally NOT closed here: its lifecycle is owned by
+        # bootstrap_stores.open_stores(), which closes it once in its finally block
+        # (ADR-078). The hub is a read-path consumer (TurnStoreProtocol), not the owner.
         if self._message_index is not None:
             await self._message_index.close()

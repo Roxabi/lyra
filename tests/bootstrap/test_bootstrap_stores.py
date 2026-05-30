@@ -388,7 +388,8 @@ class TestOpenStoresLifecycle:
                 # hub.shutdown() must NOT close the turn store
                 await hub.shutdown()
 
-        # Assert — turn_store.close() called exactly once (by open_stores.finally)
+        # Assert — full lifecycle: connect on entry, close exactly once on exit
+        mock_turn.connect.assert_awaited_once()
         assert mock_turn.close.await_count == 1, (
             f"Expected turn_store.close() to be called exactly once "
             f"(by open_stores.finally), got {mock_turn.close.await_count} call(s). "

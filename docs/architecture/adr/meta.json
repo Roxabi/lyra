@@ -35,6 +35,7 @@
     "063-thread-store-teardown-bootstrap-ownership",
     "067-blobstore-abstraction-flat-fs-content-addressed",
     "068-ecosystem-service-plane",
+    "082-blobstore-driven-port",
     "---Security & Routing---",
     "046-nkey-provisioning-declarative-authconf",
     "051-per-identity-nats-inbox-prefix",

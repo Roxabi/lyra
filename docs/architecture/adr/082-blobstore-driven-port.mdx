@@ -1,0 +1,173 @@
+---
+title: "ADR-082: BlobStorePort — driven-port parity for blob storage"
+description: Define a BlobStorePort Protocol in core/ports/, wrapping HttpBlobStore and owning the storage→wire BlobRef conversion seam, to close the one external capability consumed outside the hexagonal port/adapter discipline.
+related: [067, 068, 073, 078, 083]
+---
+
+## Status
+
+Accepted
+
+## Context
+
+Lyra consumes external capabilities through two consistent mechanisms.
+
+**Mechanism 1 — NATS WorkerPoolClient (`#1278`):** STT, TTS, Image, and LLM each compose a 3-layer stack: `NatsTransport → WorkerPoolClient → DomainClient`. Domain clients (`NatsSttClient`, `NatsTtsClient`, `NatsImageClient`, `LlmClient`) are constructed by bootstrap factory helpers in `src/lyra/bootstrap/factory/voice_overlay.py` and injected into `Hub` and agents as typed Protocol references (`STTProtocol`, `TtsProtocol`, `LlmProvider`). This layer handles control payloads and small/streamable data over NATS.
+
+**Mechanism 2 — Driven-port Protocols (`core/ports/`):** Every external capability lyra consumes has a `Protocol` in `src/lyra/core/ports/` (`STTProtocol`, `TtsProtocol`, `LlmProvider`, `AuditSink`, `ResumePublisherPort`). These are pure Protocol definitions — no infrastructure imports. Concrete adapters live in `src/lyra/infrastructure/` and are constructed and injected by bootstrap. The pattern is documented in `src/lyra/core/ports/__init__.py`.
+
+**The outlier — BlobStore:** The blob storage capability is consumed via neither mechanism. Three adapter callsites call `get_blobstore_client()` directly from `src/lyra/adapters/shared/_blobstore_client.py`:
+
+- `src/lyra/adapters/shared/_shared_audio.py:87` (TTS outbound audio PUT)
+- `src/lyra/adapters/telegram/telegram_audio.py:106` (Telegram audio ingest)
+- `src/lyra/adapters/discord/discord_audio_outbound.py:87` (Discord audio outbound PUT)
+
+`get_blobstore_client()` constructs an `HttpBlobStore` directly, reads `LYRA_BLOBSTORE_URL` and `LYRA_BLOBSTORE_TOKEN_PATH` inline, and returns the concrete type — not a Protocol. There is no bootstrap injection point, no port in `core/ports/`, and the concrete type (`HttpBlobStore` from `roxabi_blobs`) is imported directly in adapters.
+
+HTTP (not NATS) is the correct transport for blobs — ADR-068 §BlobStore documents this explicitly: NATS is subject to a 1 MB cap; blobs are large binary payloads. The transport choice is justified. The missing piece is the **port abstraction and bootstrap injection pattern**, not the transport.
+
+**Symptom — storage→wire BlobRef conversion duplication:** Because `BlobStore.put()` returns a `roxabi_blobs.BlobRef` (storage model with `extra="ignore"`, has `id` + `is_sentinel`) and callers must emit a `roxabi_contracts.BlobRef` (wire model with `extra="forbid"`, no `id`/`is_sentinel`), every callsite that crosses the adapter→NATS boundary must hand-roll this conversion. This has produced three divergent implementations:
+
+- `src/lyra/adapters/shared/_shared_audio.py:93-99` — manually constructs 5 fields; **drops `filename`, `platform_ref`, `platform_message_id`, `created_at`** (provenance loss bug).
+- `voiceCLI src/voicecli/adapters/nats/blobs.py:91-102` — `model_dump(exclude={"id","is_sentinel"})` (correct, with regex guard).
+- `imageCLI src/imagecli/nats/adapter.py:54-66` — `model_dump(exclude={"id","is_sentinel"})` (correct, no guard).
+
+The conversion duplication is a direct consequence of the absent port: with no single adapter seam, every callsite that crosses the boundary is a new conversion site. ADR-083 §5 (analysis) also perpetuates the pattern by inlining a 7-field manual sketch. Closing the port seam removes all future conversion sites.
+
+**Relationship to ADR-073 (stage axis):** This ADR is orthogonal to ADR-073. ADR-073 governs the decomposition axis for the inbound pipeline (stage over platform). This ADR governs the hexagonal consumption pattern for a cross-cutting capability. The two decisions are independent: `AttachmentIngestStage` (ADR-083) will call `BlobStorePort`, not `get_blobstore_client()`. The `axial` label does not apply here.
+
+## Options Considered
+
+### Option A: Parity test only
+
+Add a field-set parity test to `roxabi-contracts` that fails on divergence; add `BlobRef.from_store_ref(Any)` to `roxabi-contracts`. Leave `get_blobstore_client()` in place. Fix the `_shared_audio.py` converter bug.
+
+- **Pros:** Minimal scope; no new Protocol, no bootstrap change; ships fast.
+- **Cons:** Does not close the structural gap. The bare factory pattern persists, making it impossible to inject a test double for the BlobStore at the hub/adapter boundary. The next caller of `get_blobstore_client()` reintroduces a new conversion site. ADR-083 (`AttachmentIngestStage`) requires a `BlobStore | None` in `IngestCtx` — that context field is a hand-written partial port that will be re-invented if no canonical port exists.
+
+### Option B: BlobStorePort in core/ports/ + infra adapter + from_store_ref in contracts (chosen)
+
+Define `BlobStorePort` as a `Protocol` in `src/lyra/core/ports/blobstore.py`. Create `src/lyra/infrastructure/blobstore_adapter.py` as the concrete adapter wrapping `HttpBlobStore`. The adapter owns the storage→wire conversion seam by calling `roxabi_contracts.BlobRef.from_store_ref()` and the semantic guard (`reject PENDING_STORE_KEY`). Bootstrap constructs and injects the adapter using the same `factory/` pattern as STT/TTS. Existing callsites migrate from `get_blobstore_client()` to the injected port.
+
+- **Pros:** Closes the structural gap. Full parity with `STTProtocol`/`TtsProtocol`. Bootstrap injection enables test doubles. Conversion seam is owned by one file. `AttachmentIngestStage` (ADR-083) receives the port via `IngestCtx` without ad-hoc wiring. The `from_store_ref` classmethod in `roxabi-contracts` is the single canonical conversion point across lyra, voiceCLI, and imageCLI.
+- **Cons:** Three files to create/modify (`core/ports/blobstore.py`, `infrastructure/blobstore_adapter.py`, `bootstrap/factory/blobstore_factory.py` or similar). Bootstrap wiring adds a new dependency edge. Existing adapter callsites must be migrated.
+
+### Option C: roxabi-blob-ref micro-package
+
+Extract a minimal shared type package containing only the canonical `BlobRef` and the conversion logic.
+
+- **Pros:** Zero layering tension; all consumers import from a neutral package.
+- **Cons:** A third package for a 2-field delta between two types that already coexist in the same monorepo. The layering invariant (`roxabi-blobs` must not import `roxabi-contracts`) is the actual constraint; a micro-package does not resolve it, it just moves the problem. Over-engineered for the current ecosystem scale (3 consumers, co-versioned monorepo). ADR-083 still requires a `BlobStore` injection point regardless of where `BlobRef` conversion lives.
+
+## Decision
+
+**Option B — BlobStorePort in `core/ports/` + infra adapter + `BlobRef.from_store_ref` in contracts.**
+
+### BlobStorePort
+
+`src/lyra/core/ports/blobstore.py` defines:
+
+```python
+# src/lyra/core/ports/blobstore.py
+from __future__ import annotations
+from typing import Protocol, runtime_checkable
+from roxabi_contracts import BlobRef  # wire type only
+
+
+@runtime_checkable
+class BlobStorePort(Protocol):
+    """Driven port for content-addressed blob storage.
+
+    Returns wire BlobRef (roxabi_contracts.BlobRef) — callers never
+    touch roxabi_blobs.BlobRef. The storage→wire seam is owned by the
+    infra adapter (infrastructure/blobstore_adapter.py).
+
+    Transport is HTTP (not NATS) per ADR-068: blobs exceed the NATS 1 MB cap.
+    """
+
+    async def put(
+        self,
+        data: bytes,
+        *,
+        mime: str,
+        source: str,
+        filename: str | None = None,
+        platform_ref: str | None = None,
+        platform_message_id: str | None = None,
+    ) -> BlobRef: ...
+
+    async def get(self, store_key: str) -> bytes: ...
+
+    async def exists(self, content_hash: str) -> BlobRef | None: ...
+```
+
+**Port return type is `roxabi_contracts.BlobRef` (wire), not `roxabi_blobs.BlobRef` (storage).** Rationale: the domain and every downstream consumer (inbound pipeline, outbound audio, NATS contract emission) operate with wire `BlobRef`. Exposing the storage type through the port would require every caller to perform the conversion, recreating the duplication problem. The conversion seam belongs at the infra layer, not in domain code.
+
+`delete()` is excluded from the port: it is not called from production paths in V1 (ADR-067 §Interface). If retention policies emerge, it is a non-breaking port addition.
+
+### BlobStorePort adapter
+
+`src/lyra/infrastructure/blobstore_adapter.py` wraps `HttpBlobStore` and owns:
+
+1. `storage → wire` conversion via `roxabi_contracts.BlobRef.from_store_ref(store_ref)`.
+2. Semantic guard: reject `store_key == PENDING_STORE_KEY` before returning. This guard is a domain constraint (a `PENDING_STORE_KEY` returned by `put()` is a bug, not a valid ref); owning it at the adapter seam prevents it from leaking into domain code.
+
+The adapter does **not** own the `sha256:` format regex — that is a voiceCLI-specific routing invariant (`voicecli/adapters/nats/blobs.py:100-101`) that must remain per-consumer.
+
+### from_store_ref in roxabi-contracts
+
+`roxabi_contracts.blob_ref.BlobRef.from_store_ref(store_ref: Any) -> BlobRef` — duck-typed `Any` avoids a `roxabi-blobs` import in contracts. The method is the single canonical conversion point for lyra, voiceCLI, and imageCLI. A field-set parity test in `packages/roxabi-contracts/tests/` verifies `wire_fields == storage_fields - {"id", "is_sentinel"}` and fails at CI time on any future field-set divergence.
+
+### Bootstrap wiring pattern
+
+Mirrors `bootstrap/factory/voice_overlay.py`:
+
+```python
+# src/lyra/bootstrap/factory/blobstore_factory.py
+def init_blobstore() -> BlobStorePort:
+    from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
+    url = os.environ.get("LYRA_BLOBSTORE_URL", "http://localhost:8449")
+    token_path = os.environ.get("LYRA_BLOBSTORE_TOKEN_PATH", ...)
+    token = Path(token_path).read_text().strip()
+    return HttpBlobStoreAdapter(base_url=url, token=token)
+```
+
+`BlobStorePort` is constructed once by `init_blobstore()` and carried as `blob_store: BlobStorePort | None` on `BuildHubDeps` (validated 2026-05-30; not a separate `BlobStoreBundle`). The same instance is injected into the channel adapters via `WireAdaptersDeps` — 2 of the 3 callsites (`telegram_audio.py`, `discord_audio_outbound.py`) are adapter-side outbound-audio paths. `get_blobstore_client()` is **deleted** once all three callsites are migrated (no `@deprecated` shim — no consumers outside `lyra/adapters/`).
+
+### Orthogonality to ADR-073
+
+This ADR does not define a new pipeline axis. ADR-073's stage axis governs how the inbound pipeline is decomposed. This ADR governs the hexagonal consumption contract for a single cross-cutting capability. `AttachmentIngestStage` (ADR-083) receives `BlobStorePort` via `IngestCtx.store: BlobStorePort | None` — the port is injected, the stage is axis-pure. The boundary is enforced **structurally** by the `clean-architecture-layers` import-linter contract (`.importlinter`), which places `lyra.infrastructure` above `lyra.core`/`lyra.inbound`: the stage can import the `core/ports` Protocol but never the concrete `infrastructure/blobstore_adapter.py`.
+
+## Consequences
+
+### Positive
+
+- **Port parity achieved.** All external capabilities lyra consumes have a `core/ports/` Protocol. `BlobStorePort` joins `STTProtocol`, `TtsProtocol`, `LlmProvider`, `AuditSink`, `ResumePublisherPort`.
+- **Conversion seam owned.** `BlobRef.from_store_ref` + PENDING guard live in one file. No new callsite can introduce a divergent converter.
+- **Test double enabled.** Bootstrap injection allows a `MockBlobStore` in unit tests without environment variables or HTTP stubs.
+- **ADR-083 integration clean.** `AttachmentIngestStage` receives `IngestCtx.store: BlobStorePort | None` — the None-safe passthrough is structurally correct (same pattern as `stt_service: STTProtocol | None` in `VoiceBundle`).
+- **_shared_audio.py bug fixed transitively.** Once the callsite migrates to the port, the 4-field provenance loss is eliminated by the adapter.
+
+### Negative
+
+- **Bootstrap wiring cost.** A new factory helper and a new dependency edge on `BuildHubDeps` / `WireAdaptersDeps`. Estimated: 2–3 files, ~50 lines of bootstrap wiring.
+- **Callsite migration.** Three existing `get_blobstore_client()` callsites in `lyra/adapters/` must be migrated, then `get_blobstore_client()` + `_blobstore_client.py` are **deleted in the same PR** — no `@deprecated` shim, as there are no consumers outside `lyra/adapters/`. (Supersedes the earlier "deprecated shim" draft language.)
+- **`roxabi-contracts` minor bump.** `from_store_ref` addition is an additive minor bump (0.4.0 → 0.4.1). lyra consumes via `workspace = true`; branch-tracked satellites (`branch = "staging"`) auto-pick-up on next sync — no manual repin step.
+
+### Neutral
+
+- `BlobStorePort.delete()` is intentionally absent from the port (not in production path). A future retention-policy feature adds it as a non-breaking extension.
+- voiceCLI-specific `sha256:` format regex guard stays in `voicecli/adapters/nats/blobs.py` — it is a routing invariant of the voiceCLI worker, not a universal storage contract.
+- `HttpBlobStore` from `roxabi_blobs` becomes an infrastructure detail. `core/` never imports it. `adapters/` eventually stop importing it.
+
+## Trail
+
+- ADR-067: BlobStore abstraction — interface and V1 backend
+- ADR-068: Ecosystem Service Plane — access-pattern rule (HTTP for blobs); transport choice confirmed here
+- ADR-073: Stage-axis decomposition — orthogonal to this ADR (see §Orthogonality)
+- ADR-078: TurnStore Protocol — pattern precedent for driven-port Protocols on storage capabilities
+- ADR-083: Central inbound attachment-ingest stage — primary consumer of `BlobStorePort` via `IngestCtx`
+- #1278: WorkerPoolClient layer extraction — transport mechanism for NATS capabilities (contrast with HTTP for blobs)
+- #1330: HTTP BlobStore service (`lyra-blobstore` Quadlet) — the HTTP service this port wraps
+- #1537: Central inbound attachment-ingest stage delivery — issue that surfaced the converter duplication symptom
+- Reviews (2026-05-30): architect `ENDORSE-WITH-CHANGES` (changes applied); `axial-adr-review` `ORTHOGONAL-OK` — confirmed orthogonal to ADR-073, seam ownership resolves the converter-duplication trap

@@ -132,9 +132,20 @@ Protocol signature uses `blob_ref_id`; HTTP wire identifier is `store_key`.
 
 ≤2 SELECTs total, 0 calls to `store.exists()` (consensus T3).
 
+## In-process consumers (ADR-082)
+
+In-process callers (audio paths, inbound attachment ingest) do NOT import this package directly. They consume the service through:
+
+- Port: `core.ports.BlobStorePort` (`@runtime_checkable` Protocol, wire `roxabi_contracts.BlobRef`)
+- Adapter: `infrastructure.blobstore_adapter.HttpBlobStoreAdapter` (injected by bootstrap)
+- Composition root: `init_blobstore()` in `bootstrap/factory/voice_overlay.py` (reads URL+token once; restart-not-HUP)
+
+The bare per-call `get_blobstore_client()` factory has been removed (ADR-082). `HttpBlobStoreAdapter` is the sole injection point; adapters and stages receive it as `BlobStorePort`.
+
 ## Reference pointers
 
 - `docs/QUADLET-DEPLOYMENT.md` — install runbook, secret rotation, backup procedures
 - `docs/architecture/adr/067-blobstore-abstraction-flat-fs-content-addressed.mdx` — Protocol
   contract, HTTP API mapping, auth plane decisions
+- `docs/architecture/adr/082-blobstore-driven-port.mdx` — driven-port pattern + injection wiring
 - `artifacts/specs/1330-v8-http-fronted-blobstore-spec.mdx` — V8 full spec

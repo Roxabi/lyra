@@ -29,23 +29,29 @@ link_venv() {
   fi
 
   ln -s "${main_repo}/.venv" .venv
-  echo "worktree-setup: linked .venv → ${main_repo}/.venv"
+  echo "worktree-setup: linked .venv → ${main_repo}/.venv" >&2
 }
 
 # ccc resolves the project to the shared main-repo root, so a single incremental
-# index keeps semantic search current for the new worktree. ccc is an optional,
-# user-local tool; a missing binary or a failed index must never block worktree
-# creation, so both cases are non-fatal.
+# index (~1.6s) keeps semantic search current for the new worktree. ccc is an
+# optional, user-local tool; a missing binary, a failed index, or a slow cold
+# rebuild must never block worktree creation, so all cases are non-fatal and the
+# run is bounded by a timeout.
 refresh_ccc_index() {
   if ! command -v ccc >/dev/null 2>&1; then
     echo "worktree-setup: ccc not found — skipping index refresh" >&2
     return 0
   fi
 
-  if ccc index >/dev/null 2>&1; then
-    echo "worktree-setup: refreshed ccc index"
+  # Capture output so a failure is debuggable without a re-run; bound the run so
+  # a cold/corrupted index can't stall the hook indefinitely (timeout exits
+  # non-zero → handled by the same non-fatal else branch).
+  local ccc_out
+  if ccc_out=$(timeout 30 ccc index 2>&1); then
+    echo "worktree-setup: refreshed ccc index" >&2
   else
     echo "worktree-setup: ccc index failed — continuing" >&2
+    echo "${ccc_out}" >&2
   fi
 }
 

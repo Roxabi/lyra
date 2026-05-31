@@ -10,6 +10,15 @@ from lyra.infrastructure.stores.agent_store import AgentStore
 log = logging.getLogger(__name__)
 
 
+async def _resolve_bot_agent_map(
+    agent_store: AgentStore,
+    tg_bots: "list[TelegramBotConfig]",
+    dc_bots: "list[DiscordBotConfig]",
+) -> "dict[tuple[str, str], str]":
+    """Backward-compatible alias — delegates to resolve_bot_agent_map."""
+    return await resolve_bot_agent_map(agent_store, tg_bots, dc_bots)
+
+
 async def resolve_bot_agent_map(
     agent_store: AgentStore,
     tg_bots: "list[TelegramBotConfig]",

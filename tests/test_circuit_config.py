@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-import lyra.bootstrap.factory.config as config_mod
+import lyra.bootstrap.factory.config.config_loader as config_loader_mod
 from lyra.bootstrap.factory.config import (
     _load_circuit_config,
     _load_raw_config,
@@ -28,7 +28,7 @@ class TestLoadCircuitConfigDefaults:
         # Arrange — point LYRA_CONFIG at a nonexistent file
         monkeypatch.setenv("LYRA_CONFIG", str(tmp_path / "nonexistent.toml"))
         monkeypatch.setattr(
-            config_mod,
+            config_loader_mod,
             "_validate_config_path",
             lambda path_str: str(Path(path_str).resolve()),
         )
@@ -88,7 +88,7 @@ class TestLoadCircuitConfigTomlOverrides:
         )
         monkeypatch.setenv("LYRA_CONFIG", str(config))
         monkeypatch.setattr(
-            config_mod,
+            config_loader_mod,
             "_validate_config_path",
             lambda path_str: str(Path(path_str).resolve()),
         )
@@ -121,7 +121,7 @@ class TestLoadCircuitConfigTomlOverrides:
         )
         monkeypatch.setenv("LYRA_CONFIG", str(config))
         monkeypatch.setattr(
-            config_mod,
+            config_loader_mod,
             "_validate_config_path",
             lambda path_str: str(Path(path_str).resolve()),
         )
@@ -144,7 +144,7 @@ class TestLoadCircuitConfigTomlOverrides:
         config.write_text("[circuit_breaker.hub]\nrecovery_timeout = 120\n")
         monkeypatch.setenv("LYRA_CONFIG", str(config))
         monkeypatch.setattr(
-            config_mod,
+            config_loader_mod,
             "_validate_config_path",
             lambda path_str: str(Path(path_str).resolve()),
         )

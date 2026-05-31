@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from lyra.bootstrap.factory.hub_builder import build_cli_pool
+from lyra.bootstrap.factory.hub.hub_cli_pool import build_cli_pool
 from lyra.core.agent import Agent
 from lyra.core.agent.agent_config import ModelConfig
 from lyra.core.cli.cli_pool import CliPoolDeps
@@ -28,7 +28,7 @@ class TestBuildCliPoolAuditSinkWiring:
         agent_configs = {"a": _make_cli_agent()}
         sink = JetStreamAuditSink()
 
-        with patch("lyra.bootstrap.factory.hub_builder.CliPool") as MockCliPool:
+        with patch("lyra.bootstrap.factory.hub.hub_cli_pool.CliPool") as MockCliPool:
             mock_pool = MagicMock()
             mock_pool.start = AsyncMock()
             MockCliPool.return_value = mock_pool
@@ -43,7 +43,7 @@ class TestBuildCliPoolAuditSinkWiring:
         """build_cli_pool defaults audit_sink=None when not provided."""
         agent_configs = {"a": _make_cli_agent()}
 
-        with patch("lyra.bootstrap.factory.hub_builder.CliPool") as MockCliPool:
+        with patch("lyra.bootstrap.factory.hub.hub_cli_pool.CliPool") as MockCliPool:
             mock_pool = MagicMock()
             mock_pool.start = AsyncMock()
             MockCliPool.return_value = mock_pool
@@ -57,10 +57,10 @@ class TestBuildCliPoolAuditSinkWiring:
 
 class TestJetStreamAuditSinkBootstrapIntegration:
     async def test_provision_is_imported_before_cli_pool(self) -> None:
-        """JetStreamAuditSink must be importable in hub_builder."""
-        import lyra.bootstrap.factory.hub_builder as hub_builder_mod
+        """JetStreamAuditSink must be importable in hub_clipool_init."""
+        import lyra.bootstrap.factory.hub.hub_clipool_init as hub_clipool_init_mod
 
-        assert hasattr(hub_builder_mod, "JetStreamAuditSink")
+        assert hasattr(hub_clipool_init_mod, "JetStreamAuditSink")
 
     async def test_audit_sink_skip_permissions_event_fields(self) -> None:
         """A spawn with skip_permissions=True emits event with that field True."""

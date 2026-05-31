@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from lyra.bootstrap.auth_seeding import build_bot_auths
-from lyra.bootstrap.wiring.bootstrap_wiring import BotAuthDeps
+from lyra.bootstrap.wiring.auth import BotAuthDeps
 from lyra.core.agent.bot_models import BotRow
 from lyra.infrastructure.stores.auth_store import AuthStore
 from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore

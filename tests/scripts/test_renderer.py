@@ -241,6 +241,213 @@ class TestAclRegressionS3AdapterNoStreamCreate:
         )
 
 
+class TestGrouplessMatrixBackwardCompat:
+    """T9 (S4 ACL grant-group, #1526) — matrices without a top-level 'groups' key
+    must load and render without error.
+
+    Covers v1-legacy.json, v2-with-retired.json, and v3-pre-grant-group.json.
+    Each fixture has no 'groups' key.  The test asserts:
+      - render_auth_conf returns a non-empty string
+      - parse_auth_conf succeeds without exception
+      - every expected active identity is present by comment_name in the result
+
+    Structural-only assertions (¬byte-equality) because nkeys are deterministic
+    only given the same pubkeys dict, and the point is absence-of-regression.
+
+    verified: if render_auth_conf raises on a missing 'groups' key (e.g. a
+    KeyError or AttributeError introduced by group expansion logic), every case
+    here fails immediately.
+    """
+
+    def test_v1_legacy_renders_without_error(self, legacy_matrix: LoadedMatrix) -> None:
+        """v1-legacy.json loads and renders; hub is present in parsed output."""
+        pubkeys = _fake_pubkeys(legacy_matrix)
+        rendered = render_auth_conf(legacy_matrix, pubkeys)
+
+        assert rendered  # non-empty
+        parsed = parse_auth_conf(rendered)
+        names = {u.comment_name for u in parsed.users}
+        assert "hub" in names
+
+    def test_v2_with_retired_renders_without_error(
+        self, with_retired_matrix: LoadedMatrix
+    ) -> None:
+        """v2-with-retired.json loads and renders; active identities present,
+        retired old-worker absent."""
+        pubkeys = _fake_pubkeys(with_retired_matrix)
+        rendered = render_auth_conf(with_retired_matrix, pubkeys)
+
+        assert rendered
+        parsed = parse_auth_conf(rendered)
+        names = {u.comment_name for u in parsed.users}
+        # active identities must be present
+        assert "hub" in names
+        assert "voice-tts" in names
+        assert "clipool-worker" in names
+        # retired identity must be excluded
+        assert "old-worker" not in names
+
+    def test_v3_pre_grant_group_renders_without_error(self) -> None:
+        """v3-pre-grant-group.json (no groups key) loads and renders; key active
+        identities are present in the parsed output."""
+        from pathlib import Path  # noqa: PLC0415
+
+        from scripts._loader import load_matrix  # noqa: PLC0415
+
+        fixture = (
+            Path(__file__).resolve().parent / "fixtures" / "v3-pre-grant-group.json"
+        )
+        matrix = load_matrix(fixture)
+        pubkeys = _fake_pubkeys(matrix)
+        rendered = render_auth_conf(matrix, pubkeys)
+
+        assert rendered
+        parsed = parse_auth_conf(rendered)
+        names = {u.comment_name for u in parsed.users}
+        # spot-check a selection of expected active identities
+        expected_active = (
+            "hub", "telegram-adapter", "discord-adapter", "clipool-worker"
+        )
+        for expected in expected_active:
+            assert expected in names, f"expected {expected!r} in rendered output"
+        # retired monitor must be excluded
+        assert "monitor" not in names
+
+    def test_v2_with_retired_inline_grants_present(
+        self, with_retired_matrix: LoadedMatrix
+    ) -> None:
+        """Inline publish/subscribe grants from v2-with-retired are faithfully rendered.
+
+        Verifies that the backward-compat path does not silently drop subjects.
+
+        verified: stripping publish/subscribe subjects from _emit_user would remove
+        them from the rendered output, failing this assertion.
+        """
+        pubkeys = _fake_pubkeys(with_retired_matrix)
+        rendered = render_auth_conf(with_retired_matrix, pubkeys)
+        parsed = parse_auth_conf(rendered)
+        users_by_name = {u.comment_name: u for u in parsed.users}
+
+        hub = users_by_name["hub"]
+        assert "lyra.outbound.telegram.>" in hub.publish_allow
+        assert "lyra.inbound.telegram.>" in hub.subscribe_allow
+
+
+class TestGrantGroupEquality:
+    """T8 (S4 ACL grant-group, #1526) — v4 group-expansion renders set-identically
+    to the v3 inline baseline.
+
+    v4 = deploy/nats/acl-matrix.json (version 4: telegram/discord reference the
+         audio-consumer group; 8 audio subjects moved out of the inline publish list).
+    v3 = tests/scripts/fixtures/v3-pre-grant-group.json (pre-migration snapshot:
+         the same 8 subjects listed inline in telegram/discord publish).
+
+    Both matrices have the same identity names, so _fake_pubkeys produces the same
+    pubkey dict for both.  We build a union dict as belt-and-suspenders.
+
+    ParsedUser.nkey has compare=False, so frozenset equality compares
+    publish_allow + subscribe_allow + allow_responses + comment_name only —
+    i.e. the rendered permission sets, independent of nkey values.
+
+    verified: if the renderer does NOT expand groups, v4 telegram-adapter
+    publish_allow is missing the 8 audio subjects → ParsedUser differs from v3 →
+    frozenset assertion fails.
+    """
+
+    _AUDIO_GROUP_PUBLISH = frozenset(
+        {
+            "$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO",
+            "$JS.API.CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO.>",
+            "$JS.API.CONSUMER.INFO.LYRA_OUTBOUND_AUDIO.*",
+            "$JS.API.CONSUMER.MSG.NEXT.LYRA_OUTBOUND_AUDIO.*",
+            "$JS.API.STREAM.INFO.KV_lyra_outbound_audio_sent",
+            "$JS.API.STREAM.MSG.GET.KV_lyra_outbound_audio_sent",
+            "$JS.ACK.LYRA_OUTBOUND_AUDIO.>",
+            "$KV.lyra_outbound_audio_sent.>",
+        }
+    )
+
+    def _load_both(self) -> tuple[LoadedMatrix, LoadedMatrix]:
+        from pathlib import Path  # noqa: PLC0415
+
+        from scripts._loader import load_matrix  # noqa: PLC0415
+
+        root = Path(__file__).resolve().parents[2]
+        v4 = load_matrix(root / "deploy" / "nats" / "acl-matrix.json")
+        v3 = load_matrix(
+            root / "tests" / "scripts" / "fixtures" / "v3-pre-grant-group.json"
+        )
+        return v4, v3
+
+    def _shared_pubkeys(
+        self, v4: LoadedMatrix, v3: LoadedMatrix
+    ) -> dict[str, str]:
+        """Union of identity names from both matrices → deterministic fake pubkeys."""
+        all_names = set(v4["identities"]) | set(v3["identities"])
+        return {
+            name: f"UDET{name.upper().replace('-', '')}" for name in all_names
+        }
+
+    def test_v4_render_set_equals_v3_render(self) -> None:
+        """Rendered ParsedUser set for v4 == v3: group expansion is set-identical to
+        inline grants.
+
+        verified: if the renderer skips group expansion (removes the for-gname loop),
+        v4 telegram/discord ParsedUsers are missing 8 subjects → frozensets differ.
+        """
+        # Arrange
+        v4, v3 = self._load_both()
+        pk = self._shared_pubkeys(v4, v3)
+
+        # Act
+        parsed_v4 = parse_auth_conf(render_auth_conf(v4, pk))
+        parsed_v3 = parse_auth_conf(render_auth_conf(v3, pk))
+
+        # Assert — order-independent set equality (nkey excluded from comparison)
+        assert frozenset(parsed_v4.users) == frozenset(parsed_v3.users)
+
+    def test_audio_subjects_absent_from_v4_inline_list(self) -> None:
+        """The 8 audio publish subjects are NOT in telegram-adapter's inline publish
+        list in v4 (they were moved to the audio-consumer group).
+
+        verified: if the migration is reversed (subjects put back inline), v4
+        telegram-adapter identity["publish"] would contain them → assertion fails.
+        """
+        # Arrange
+        v4, _ = self._load_both()
+
+        # Assert — inline list must NOT contain any audio-group subject
+        tg_inline = frozenset(v4["identities"]["telegram-adapter"]["publish"])
+        assert self._AUDIO_GROUP_PUBLISH.isdisjoint(tg_inline), (
+            f"audio subjects still inline in v4 telegram-adapter publish: "
+            f"{self._AUDIO_GROUP_PUBLISH & tg_inline!r}"
+        )
+
+    def test_audio_subjects_present_in_v4_rendered_telegram(self) -> None:
+        """The 8 audio publish subjects ARE present in the rendered/parsed
+        telegram-adapter publish_allow set (group expansion re-added them).
+
+        verified: if the renderer does not expand groups, publish_allow is missing
+        these subjects → assertion fails.
+        """
+        # Arrange
+        v4, _ = self._load_both()
+        pk = self._shared_pubkeys(v4, v4)
+        rendered = render_auth_conf(v4, pk)
+        parsed = parse_auth_conf(rendered)
+        users = {u.comment_name: u for u in parsed.users}
+
+        # Act
+        tg_pub = users["telegram-adapter"].publish_allow
+
+        # Assert
+        missing = self._AUDIO_GROUP_PUBLISH - tg_pub
+        assert not missing, (
+            f"telegram-adapter rendered publish_allow is missing audio subjects: "
+            f"{missing!r}"
+        )
+
+
 class TestNatsSubjectCharset:
     def test_nats_subject_charset(self, prod_matrix: LoadedMatrix) -> None:
         """All rendered subjects only contain valid NATS subject characters.

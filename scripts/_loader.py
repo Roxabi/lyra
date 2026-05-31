@@ -5,10 +5,10 @@ import re
 import sys
 from pathlib import Path
 
-from scripts._acl_models import Flow, Identity, LoadedMatrix
+from scripts._acl_models import Flow, GroupDefinition, Identity, LoadedMatrix
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-_VALID_VERSIONS = {"1", "2", "3"}
+_VALID_VERSIONS = {"1", "2", "3", "4"}
 _VALID_STATUSES = {"active", "retired"}
 _VALID_OWNERS = {"lyra", "voicecli", "imagecli", "reserved"}
 _REQUIRED_FIELDS = (
@@ -68,10 +68,32 @@ def _validate_identity(name: str, data: dict, version: str) -> Identity:
 
     if "deploy" in data:
         _validate_deploy(name, data["deploy"])  # type: ignore[arg-type]
-    elif version == "3" and data.get("status") == "active":
+    elif version in {"3", "4"} and data.get("status") == "active":
         _die(f"identity '{name}': v3 requires 'deploy' for active identities")
 
     return data  # type: ignore[return-value]
+
+
+def _parse_groups(raw_groups: dict) -> dict[str, GroupDefinition]:
+    groups: dict[str, GroupDefinition] = {}
+    for gname, gdata in raw_groups.items():
+        if not isinstance(gdata, dict):
+            _die(f"group '{gname}': must be an object")
+        if "publish" not in gdata or not isinstance(gdata["publish"], list):
+            _die(f"group '{gname}': missing or invalid 'publish' list")
+        if "subscribe" not in gdata or not isinstance(gdata["subscribe"], list):
+            _die(f"group '{gname}': missing or invalid 'subscribe' list")
+        groups[gname] = gdata  # type: ignore[assignment]
+    return groups
+
+
+def _validate_group_refs(
+    identities: dict[str, Identity], groups: dict[str, GroupDefinition]
+) -> None:
+    for name, identity in identities.items():
+        for ref in identity.get("groups", []):  # type: ignore[union-attr]
+            if ref not in groups:
+                _die(f"identity '{name}': references unknown group '{ref}'")
 
 
 def load_matrix(path: Path) -> LoadedMatrix:
@@ -90,7 +112,7 @@ def load_matrix(path: Path) -> LoadedMatrix:
         identities[name] = _validate_identity(name, data, version)
 
     flows: list[Flow] = []
-    if version in {"2", "3"}:
+    if version in {"2", "3", "4"}:
         raw_flows = raw.get("request_reply_flows", [])
         seen: set[tuple[str, str]] = set()
         for flow in raw_flows:
@@ -101,6 +123,12 @@ def load_matrix(path: Path) -> LoadedMatrix:
             seen.add(pair)
             flows.append(flow)
 
+    groups = _parse_groups(raw.get("groups", {}))
+    _validate_group_refs(identities, groups)
+
     return LoadedMatrix(
-        version=version, identities=identities, request_reply_flows=flows
+        version=version,
+        identities=identities,
+        request_reply_flows=flows,
+        groups=groups,
     )

@@ -28,11 +28,40 @@ SPEC="${REPO_ROOT}/artifacts/specs/706-per-role-nkeys-acls-spec.mdx"
 [[ -f "$JSON" ]] || { echo "::error::acl-matrix.json not found: $JSON"; exit 1; }
 [[ -f "$SPEC" ]] || { echo "::error::spec file not found: $SPEC"; exit 1; }
 
-# Pre-compute effective ACL (static grants + derived from request_reply_flows).
+# Pre-compute effective ACL in two passes:
+#   Pass 1 — expand group grants into each identity's publish/subscribe arrays.
+#            Groups are defined in .groups (v4+); absent in v1-v3 (safe no-op).
+#   Pass 2 — derive inbox grants from request_reply_flows.
 # Guard: skip flows that reference unknown identities (prevents auto-vivification).
 # Use |= unique after each += to prevent duplicate entries when the same identity
 # appears as requester/responder in multiple flows.
 EFFECTIVE_JSON=$(jq '
+  # Pass 1: expand group grants into each identity'\''s publish/subscribe arrays.
+  # Capture .groups before the reduce so jq path resolution is stable after
+  # in-place mutations to .identities (referencing .groups inside the reduce
+  # body would re-evaluate against the mutated accumulator and fail).
+  (.groups // {}) as $all_groups |
+  reduce (.identities | to_entries[]) as $entry (
+    .;
+    ($entry.value.groups // []) as $grps |
+    if ($grps | length) > 0 then
+      reduce $grps[] as $gname (
+        .;
+        if $all_groups[$gname] != null then
+          .identities[$entry.key].publish   |= (. + ($all_groups[$gname].publish   // []) | unique) |
+          .identities[$entry.key].subscribe |= (. + ($all_groups[$gname].subscribe // []) | unique)
+        else
+          .
+        end
+      )
+    else
+      .
+    end
+  ) |
+  # Pass 2: derive inbox grants from request_reply_flows.
+  # Guard: skip flows that reference unknown identities (prevents auto-vivification).
+  # Use |= unique after each += to prevent duplicate entries when the same identity
+  # appears as requester/responder in multiple flows.
   reduce (.request_reply_flows[]?) as $flow (
     .;
     if (.identities[$flow.requester] != null and .identities[$flow.responder] != null) then

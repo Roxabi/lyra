@@ -31,7 +31,7 @@ Phase 1 used a shared `telegram:main:*` pool; all users shared one lock and one 
 
 #### Multi-bot startup
 
-Each active agent gets its own `ProviderRegistry` (with a `SmartRoutingDecorator` configured from that agent's `smart_routing` config) and its own `MessageManager` (keyed to that agent's `i18n_language`). `CliPool` is a single shared instance — it is a process-management resource, not a per-agent config resource. Construction lives in `src/lyra/bootstrap/factory/agent_factory.py::_build_per_agent_registry()`. A startup warning fires when `len(agent_names) > 1` and agents have differing routing configs or languages. → ADR-019
+Each active agent gets its own `ProviderRegistry` (with a SmartRoutingDecorator configured from that agent's `smart_routing` config) and its own `MessageManager` (keyed to that agent's `i18n_language`). `CliPool` is a single shared instance — it is a process-management resource, not a per-agent config resource. Construction lives in `src/lyra/bootstrap/factory/agent_factory.py::_build_per_agent_registry()`. A startup warning fires when `len(agent_names) > 1` and agents have differing routing configs or languages. → ADR-019
 
 #### Pool callback wiring
 
@@ -55,7 +55,7 @@ External CLIs (voicecli, imagecli, gws, scraper) follow a 3-layer Install–Wrap
 
 #### Model selection (ComplexityEstimator)
 
-Model selection is based on message complexity to avoid using a heavyweight model for simple inputs. `ComplexityEstimator.estimate()` scores a set of signals (message length, code content, attachments, command type, turn count, question chains) and returns a `ComplexityLevel` (LOW / MEDIUM / HIGH). The `COMPLEXITY_TO_MODEL` mapping translates the level to an `LLMConfig`:
+Model selection is based on message complexity to avoid using a heavyweight model for simple inputs. ComplexityEstimator.estimate() scores a set of signals (message length, code content, attachments, command type, turn count, question chains) and returns a ComplexityLevel (LOW / MEDIUM / HIGH). The `COMPLEXITY_TO_MODEL` mapping translates the level to an LLMConfig:
 
 ```python
 class ComplexityLevel(Enum):
@@ -87,7 +87,7 @@ COMPLEXITY_TO_MODEL = {
 }
 ```
 
-`ComplexityEstimator` / `SmartRoutingDecorator` exist in code but are disabled: `smart_routing.enabled=true` is rejected by the validator. Model selection is fixed per agent config. The `COMPLEXITY_TO_MODEL` routing table is therefore not active.
+ComplexityEstimator / SmartRoutingDecorator exist in code but are disabled: `smart_routing.enabled=true` is rejected by the validator. Model selection is fixed per agent config. The `COMPLEXITY_TO_MODEL` routing table is therefore not active.
 
 #### ProcessorRegistry concurrent dispatch
 
@@ -99,7 +99,7 @@ Slash commands that need conversation history are implemented as `BaseProcessor`
 
 #### Importlinter port-import fix
 
-The `shared-modules-independence` contract enforces peer isolation between 8 floating modules (`lyra.obs`, `lyra.stt`, `lyra.tts`, `lyra.errors`, `lyra.config`, `lyra.integrations`, `lyra.monitoring`, `lyra.agent_cmd`). As of 2026-05-08, 4 `ignore_imports` suppressions remain. The target is 2: fix `lyra.core.agent.agent` to import `STTProtocol`/`TtsProtocol` from `lyra.core.ports.*` (not from `lyra.stt`/`lyra.tts`), and introduce `SessionToolsProtocol` in `lyra.core.ports.integrations` so `processor_registry.py` no longer imports the concrete `SessionTools` from `lyra.integrations.base`. The two remaining suppressions (`core/ports/stt.py → lyra.stt:TranscriptionResult` and `core/ports/tts.py → lyra.tts:SynthesisResult`) are TYPE_CHECKING-only and track a separate result-type migration. → ADR-061
+The `shared-modules-independence` contract enforces peer isolation between 8 floating modules (`lyra.obs`, lyra.stt, lyra.tts, `lyra.errors`, `lyra.config`, `lyra.integrations`, `lyra.monitoring`, `lyra.agent_cmd`). As of 2026-05-08, 4 `ignore_imports` suppressions remain. The target is 2: fix `lyra.core.agent.agent` to import `STTProtocol`/`TtsProtocol` from `lyra.core.ports.*` (not from lyra.stt/lyra.tts), and introduce SessionToolsProtocol in lyra.core.ports.integrations so `processor_registry.py` no longer imports the concrete `SessionTools` from `lyra.integrations.base`. The two remaining suppressions (`core/ports/stt.py → lyra.stt:TranscriptionResult` and `core/ports/tts.py → lyra.tts:SynthesisResult`) are TYPE_CHECKING-only and track a separate result-type migration. → ADR-061
 
 #### Health monitoring layer boundaries
 
@@ -128,7 +128,7 @@ When `CliPool.send()` receives a `ModelConfig` that differs from the one used to
 
 ## Open questions / known gaps
 
-- ADR-061: 4 `ignore_imports` remain — target is 2; `lyra.core.ports.integrations` (`SessionToolsProtocol`) not yet created; import sites in `agent.py` and `processor_registry.py` not yet updated.
+- ADR-061: 4 `ignore_imports` remain — target is 2; lyra.core.ports.integrations (SessionToolsProtocol) not yet created; import sites in `agent.py` and `processor_registry.py` not yet updated.
 - ADR-007: non-streaming path (`cli_pool.py`) still silently ignores model-config mismatch; migration gated on model-selector SLM.
 - ADR-005 / #112: CliPool subprocess isolation (one subprocess per scope) and memory-namespace isolation per scope are not yet implemented; only Hub-layer pool isolation is complete.
 - ADR-038: audit of `cli_protocol.py` for silent-failure paths not confirmed complete; some empty-stdout failures may not yet reach `cb.record_failure()`.

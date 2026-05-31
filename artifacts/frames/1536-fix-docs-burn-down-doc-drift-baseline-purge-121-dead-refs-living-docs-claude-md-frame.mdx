@@ -1,0 +1,46 @@
+---
+title: fix(docs): burn down doc-drift baseline — purge 121 dead refs (living docs + CLAUDE.md)
+issue: 1536
+status: approved
+tier: F-lite
+date: 2026-05-31
+---
+
+## Problem
+
+The doc-drift gate (`tools/check_doc_drift.py`) shipped with a baseline of **121 pre-existing dead references** in living docs and the CLAUDE.md network (`tools/doc_drift_baseline.txt`). These are genuine inventory rot — Tier-2 docs referencing deleted symbols, moved files, or renamed modules. The baseline exists to prevent the gate from failing on historical debt, but it masks ongoing rot and creates a false sense of hygiene.
+
+Origin: #1531 (doc-drift gate). The gate was built to prevent future drift; now the pre-existing debt must be cleared so the baseline can be deleted and the gate runs clean at 0 entries.
+
+## Who
+
+- **Primary:** Lyra maintainers reading architecture docs or CLAUDE.md files for current system state
+- **Secondary:** New contributors using docs as onboarding reference; CI gate operators
+
+## Constraints
+
+- Must preserve historical intent: deleted symbols can be annotated with `deleted #NNNN` rather than silently removed
+- Must fix the gate's path-resolution bug for `packages/*/CLAUDE.md` (package-root-relative vs repo-root-relative)
+- Acceptance is binary: `tools/doc_drift_baseline.txt` empty/removed + `check_doc_drift.py` exits 0 with 0 baseline entries
+
+## Out of Scope
+
+- Rewriting or expanding doc content beyond fixing dead refs
+- Adding new drift checks or gates
+- Fixing non-doc source code (unless it's a path referenced in docs)
+- Cross-repo migration (voiceCLI/imageCLI have their own baseline files)
+
+## Premise Validity
+
+**Success in 6 months:** `tools/doc_drift_baseline.txt` is empty/removed; `uv run python tools/check_doc_drift.py` exits 0 with 0 baseline entries; all living docs and CLAUDE.md files reference only live symbols/paths.
+
+**Failure in 6 months:** `tools/doc_drift_baseline.txt` still contains >0 entries after 3 weeks, OR the doc-drift gate continues to exit non-zero with new dead refs accumulating.
+
+**Simplest alternative:** Run the check once, manually fix the 121 refs, and don't add a gate.
+**Why not simplest:** The gate prevents future doc rot — without it, the 121 dead refs will reappear as code moves. The baseline file exists precisely because the gate caught these pre-existing issues.
+
+## Complexity
+
+**Tier: F-lite** — Clear scope, single domain (docs/CLAUDE.md hygiene), no architecture changes, no cross-cutting concerns.
+
+- Signals: ≤1 domain (docs), no new patterns, no unknowns, P3-low priority

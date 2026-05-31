@@ -165,7 +165,7 @@ HealthRetries=3
 
 **Priority:** P1 — the current 4-step manual process is a routine hazard. Every ACL change is an opportunity to leave the system silently inconsistent (e.g., `make lyra-nats reload` executed before `make quadlet-secrets-install` silently reloads NATS against the old `auth.conf`).
 
-**Current state:** `Makefile` has `nats-regen-authconf` (pull + regen) and `quadlet-secrets-install` (create Podman secrets) as separate targets with no dependency chain.
+**Current state:** Makefile has `nats-regen-authconf` (pull + regen) and `quadlet-secrets-install` (create Podman secrets) as separate targets with no dependency chain.
 
 **What is needed:**
 

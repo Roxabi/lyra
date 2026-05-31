@@ -43,7 +43,7 @@ is superseded — see RenderEvent v2 below.
 The pipeline is a strict hexagonal layering enforced by import-linter:
 
 ```
-LlmEvent          (lyra.llm.events)          — port, provider-agnostic
+LlmEvent          (lyra.core.messaging.events)          — port, provider-agnostic
     ↓
 StreamProcessor   (lyra.core.stream_processor) — domain, config-driven, no network deps
     ↓
@@ -62,16 +62,16 @@ bypasses `RetryDecorator` and `CircuitBreakerDecorator` — those wrappers cover
 
 → ADR-070
 
-ADR-070 extends the v1 two-event model (`TextRenderEvent`, `ToolSummaryRenderEvent`) by
+ADR-070 extends the v1 two-event model (`TextDeltaRenderEvent`, `ToolCallResultRenderEvent`) by
 back-porting four AG-UI event families into `core/messaging/render_events.py`. AG-UI is **not**
 adopted as a wire format.
 
 | Family | New events | Replaces (Slice 5) |
 |---|---|---|
 | Run lifecycle | `RunStarted/Finished/ErrorRenderEvent` | — (additive) |
-| Text triplet | `TextStart/Delta/End/ChunkRenderEvent` | `TextRenderEvent` |
-| ToolCall split | `ToolCallStart/Args/End/ResultRenderEvent` | `ToolSummaryRenderEvent` |
-| Reasoning typed | `ReasoningStart/Delta/EndRenderEvent` | split from `TextRenderEvent` |
+| Text triplet | `TextStart/Delta/End/ChunkRenderEvent` | `TextDeltaRenderEvent` |
+| ToolCall split | `ToolCallStart/Args/End/ResultRenderEvent` | `ToolCallResultRenderEvent` |
+| Reasoning typed | `ReasoningStart/Delta/EndRenderEvent` | split from `TextDeltaRenderEvent` |
 
 `ToolCallArgsRenderEvent` (Slice 3 / #1100) supersedes ADR-028 EC-3 by surfacing
 `input_json_delta` fragments instead of silently discarding them — with content-sanitization
@@ -91,7 +91,7 @@ Every new event carries a `SCHEMA_VERSION_*` constant (ADR-049 discipline). `run
 - Streaming is opt-in per agent (`ModelConfig.streaming`); the non-streaming path is never
   modified by streaming changes.
 - `LlmEvent` must import nothing outside `lyra.llm`. `StreamProcessor` imports only
-  `lyra.llm.events` and `lyra.core.render_events`. Adapters import `RenderEvent` from
+  `lyra.core.messaging.events` and `lyra.core.messaging.render_events`. Adapters import `RenderEvent` from
   `lyra.core.messaging.render_events` only — enforced by import-linter.
 - `stream()` is always duck-typed (`hasattr`), never a required protocol member.
 - The streaming path bypasses circuit-breaker protection — document this explicitly in any

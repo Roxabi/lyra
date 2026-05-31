@@ -185,7 +185,7 @@ curl -fsS localhost:8443/health
 ```
 
 `is-active` prints `active` for each unit on success. The health endpoint is served by
-`lyra-hub` on `127.0.0.1:8443` (published via `PublishPort` in the Quadlet unit).
+`lyra-hub` on `127.0.0.1:8443` (published via PublishPort in the Quadlet unit).
 
 ---
 
@@ -279,7 +279,7 @@ Never leave hub and adapters pinned to different semver tags across a schema-flo
 
 Steps for a new Roxabi project (voiceCLI, 2ndBrain, imageCLI, llmCLI) to adopt this pattern:
 
-1. Add a production-ready `Dockerfile` at the repo root following the conventions above: multi-
+1. Add a production-ready Dockerfile at the repo root following the conventions above: multi-
    stage, pinned base image, non-root UID, and a working `HEALTHCHECK`. The reusable workflow
    automatically forces Docker v2 schema 2 manifest format (`oci-mediatypes=false`), so
    `HEALTHCHECK` is preserved without any extra configuration in the caller workflow.

@@ -77,21 +77,21 @@ At least one section must be present. A missing section logs a warning and disab
 
 ### Implementation — ✅ Shipped (#151, refactored #313/#314)
 
-- [x] `Authenticator` (identity resolver) in `src/lyra/core/authenticator.py`
-- [x] `GuardChain` (composable guard pipeline) in `src/lyra/core/guard.py`
-- [x] `TrustLevel` enum in `src/lyra/core/trust.py`
-- [x] Config-driven trust_map (TOML), parsed in `src/lyra/core/auth.py`
+- [x] `Authenticator` (identity resolver) in `src/lyra/core/auth/authenticator.py`
+- [x] `GuardChain` (composable guard pipeline) in `src/lyra/core/auth/guard.py`
+- [x] `TrustLevel` enum in `src/lyra/core/auth/trust.py`
+- [x] Config-driven trust_map (TOML), parsed in src/lyra/core/auth.py
 - [x] Integrated in TelegramAdapter + DiscordAdapter
 - [x] CLIAdapter (trust = OWNER by default)
 - [x] Rejection logging
 
-> **Refactored in #313/#314**: The original monolithic `AuthMiddleware` was split into `Authenticator` (resolves user identity → TrustLevel) and `GuardChain` (runs composable guards sequentially, returning the first Rejection or None).
+> **Refactored in #313/#314**: The original monolithic AuthMiddleware was split into `Authenticator` (resolves user identity → TrustLevel) and `GuardChain` (runs composable guards sequentially, returning the first Rejection or None).
 
 ### Admin access
 
 `owner_users` in `[auth.telegram]` / `[auth.discord]` are automatically added to the admin set at startup — no need to duplicate IDs in `[admin].user_ids`. Extra non-owner admins can be added there explicitly.
 
-Module-level registry: `lyra.core.admin` — `is_admin(user_id)` / `set_admin_user_ids()` / `get_admin_user_ids()`. Plugins use `is_admin()` to gate admin-only commands without needing access to the config layer.
+Module-level registry: lyra.core.admin — `is_admin(user_id)` / `set_admin_user_ids()` / `get_admin_user_ids()`. Plugins use `is_admin()` to gate admin-only commands without needing access to the config layer.
 
 ---
 
@@ -145,15 +145,15 @@ COMMAND_ROUTING = {
 }
 ```
 
-→ See `workers-tooling.md` (Model selection) for `ComplexityEstimator` and `COMPLEXITY_TO_MODEL` mapping. Model selection is a worker routing concern, not a security concern.
+→ See `workers-tooling.md` (Model selection) for ComplexityEstimator and `COMPLEXITY_TO_MODEL` mapping. Model selection is a worker routing concern, not a security concern.
 
 ### Implementation status
 
-`CommandParser` is shipped and wired into `middleware_pool.py` and Discord voice commands. The `ComplexityEstimator` / `SmartRoutingDecorator` exists in code but is disabled: `smart_routing.enabled=true` is rejected by the validator and `create` wizard. Model selection is fixed per agent config. The `COMPLEXITY_TO_MODEL` routing table below is therefore not active.
+`CommandParser` is shipped and wired into `middleware_pool.py` and Discord voice commands. The ComplexityEstimator / SmartRoutingDecorator exists in code but is disabled: `smart_routing.enabled=true` is rejected by the validator and `create` wizard. Model selection is fixed per agent config. The `COMPLEXITY_TO_MODEL` routing table below is therefore not active.
 
 - [x] `CommandParser` + `CommandContext` — `src/lyra/core/commands/command_parser.py`
 - [x] Command routing in `CommandRouter`
-- [ ] `ComplexityEstimator` with configurable signals — code exists, wiring disabled
+- [ ] ComplexityEstimator with configurable signals — code exists, wiring disabled
 - [ ] `COMPLEXITY_TO_MODEL` mapping in config — not active
 - [ ] Dynamic upgrade mid-generation — not implemented
 
@@ -169,7 +169,7 @@ Without a strict partition by `user_id`, a bug or malformed query could return m
 
 Every memory query at every level (L0–L4) must include `user_id` as an explicit filter. Never run a global query without a `user_id` filter. Even for stats, aggregate per user.
 
-→ See `storage.md` for the full L0–L4 taxonomy, `MemoryEntry` schema, SQL isolation rule, counter-update code, and implementation checklist.
+→ See `storage.md` for the full L0–L4 taxonomy, MemoryEntry schema, SQL isolation rule, counter-update code, and implementation checklist.
 
 ---
 
@@ -183,11 +183,11 @@ Every memory query at every level (L0–L4) must include `user_id` as an explici
 
 ### Per-identity NATS inbox prefix
 
-Every NATS identity must connect with `inbox_prefix="_INBOX.<identity-name>"`. This scopes all ephemeral inboxes that identity creates to `_INBOX.<identity>.>`, narrowing the ACL grant from the former bus-wide `_INBOX.>`. A leaked seed is therefore bounded to the compromised identity's own inbox namespace — it cannot be used to wiretap other identities' request-reply traffic. The fix is enforced at connect time via `roxabi_nats.nats_connect` with no changes to streaming logic. All current identities (hub, telegram-adapter, discord-adapter, tts-adapter, stt-adapter, voice-tts, voice-stt, image-worker) are covered. New identities added to `IDENTITIES` must supply `inbox_prefix` from their first connection. → ADR-051
+Every NATS identity must connect with `inbox_prefix="_INBOX.<identity-name>"`. This scopes all ephemeral inboxes that identity creates to `_INBOX.<identity>.>`, narrowing the ACL grant from the former bus-wide _INBOX.>. A leaked seed is therefore bounded to the compromised identity's own inbox namespace — it cannot be used to wiretap other identities' request-reply traffic. The fix is enforced at connect time via `roxabi_nats.nats_connect` with no changes to streaming logic. All current identities (hub, telegram-adapter, discord-adapter, tts-adapter, stt-adapter, voice-tts, voice-stt, image-worker) are covered. New identities added to `IDENTITIES` must supply `inbox_prefix` from their first connection. → ADR-051
 
 ### Security event audit
 
-`CliPool` subprocess spawns (carrying `skip_permissions`, tools allowlist, model, PID, pool_id, agent_name) are audited via a port/adapter split that respects import layer boundaries. `AuditSink` is a `Protocol` defined in `lyra.core.cli` — the port. `JetStreamAuditSink` in `lyra.infrastructure.audit` is the concrete adapter; it publishes `SecurityEvent` (a `roxabi-contracts` Pydantic model) to the `LYRA_AUDIT` JetStream stream (`lyra.audit.>`, FILE storage, 90-day retention, 1 GiB cap). When JetStream is unavailable, the sink falls back to the `lyra.security` logger without crashing the runtime. Both `hub_standalone.py` and the unified `lyra start` bootstrap (`wiring_helpers.py:309`) wire the sink. → ADR-057
+`CliPool` subprocess spawns (carrying `skip_permissions`, tools allowlist, model, PID, pool_id, agent_name) are audited via a port/adapter split that respects import layer boundaries. `AuditSink` is a `Protocol` defined in `lyra.core.cli` — the port. `JetStreamAuditSink` in `lyra.infrastructure.audit` is the concrete adapter; it publishes `SecurityEvent` (a `roxabi-contracts` Pydantic model) to the `LYRA_AUDIT` JetStream stream (`lyra.audit.>`, FILE storage, 90-day retention, 1 GiB cap). When JetStream is unavailable, the sink falls back to the lyra.security logger without crashing the runtime. Both `hub_standalone.py` and the unified `lyra start` bootstrap (`wiring_helpers.py:309`) wire the sink. → ADR-057
 
 ### ACL request/reply derivation
 
@@ -202,7 +202,7 @@ Responder inbox grants are no longer hand-written. A `request_reply_flows` secti
 - No NATS identity may connect without an entry in the `IDENTITIES` manifest in `gen-nkeys.sh`.
 - `auth.conf` is always regenerated from manifest + seed dir — it is never hand-edited, patched, or appended to incrementally.
 - Every supervisor program references its own named seed file; missing seed → process exits non-zero (no silent fallback to another identity's seed).
-- Every identity's `nats_connect` call supplies `inbox_prefix="_INBOX.<identity>"` — the bus-wide `_INBOX.>` grant is retired for all roles.
+- Every identity's `nats_connect` call supplies `inbox_prefix="_INBOX.<identity>"` — the bus-wide _INBOX.> grant is retired for all roles.
 - Responder inbox grants are derived from `request_reply_flows` in `acl-matrix.json` — no hand-written `_inbox.<requester>.>` entries in identity publish lists.
 - `CliPool` subprocess spawns are audited to `LYRA_AUDIT` JetStream stream; NATS unavailability degrades to logger, not crash.
 - Advisory provisioning checks (`warn_subid_overlap`) distinguish missing files (skip silently) from unreadable files (warn operator); they do not suppress the check without notice.

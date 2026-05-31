@@ -674,7 +674,7 @@ async def synthesize(text: str, voice: str = "Chelsie") -> bytes:
 | **VoiceCLI on prod** | roxabituwer | Install VoiceCLI + Qwen3-TTS 0.6B + Whisper models | Small — same setup as local, just `uv sync` + model download |
 | **lyra_omni supervisor program** | roxabituwer | Serve Qwen2.5-Omni-7B via vLLM-Omni | Medium — new supervisor conf + run script |
 | **Mode manager / watchdog** | roxabituwer | Health check + mode switching (Omni ↔ Pipeline) | Medium — see pseudo-code above |
-| **Lyra voice router** | roxabituwer | Route voice messages based on current mode | Medium — extend existing `InboundAudio` handling |
+| **Lyra voice router** | roxabituwer | Route voice messages based on current mode | Medium — extend existing AudioPayload handling |
 | **Firewall / network** | Both | Allow HTTP traffic between machines on VoiceCLI port | Small — ufw rule |
 
 #### Supervisord Configuration

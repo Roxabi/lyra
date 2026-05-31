@@ -12,7 +12,7 @@ Lyra uses two types of configuration files with distinct responsibilities:
 | File | Type | Versioned | Purpose |
 |------|------|-----------|---------|
 | `config.toml` | Instance config | No | Deployment wiring: bots, tokens, auth, defaults |
-| `lyra.toml` | Instance config | No | Monitoring thresholds (read by `lyra.monitoring` only) |
+| lyra.toml | Instance config | No | Monitoring thresholds (read by `lyra.monitoring` only) |
 | `~/.lyra/config.db` | Runtime DB | No | Agents, credentials, grants, user prefs (SQLite) |
 | `~/.lyra/turns.db` | Runtime DB | No | Conversation turns, pool sessions |
 | `~/.lyra/discord.db` | Runtime DB | No | Discord thread data (owned by Discord adapter) |
@@ -45,17 +45,17 @@ Resolution order (first match wins):
 
 The path is validated to be under `$HOME` when set via `LYRA_CONFIG`.
 
-### `lyra.toml` — Monitoring only
+### lyra.toml — Monitoring only
 
 Resolution order:
 
 ```
 1. $LYRA_CONFIG           (if set, must be under $HOME)
-2. ./lyra.toml            (cwd)
+2. ./lyra.toml           (cwd)
 3. Empty dict (defaults)
 ```
 
-**Note:** Hub uses `config.toml`, monitoring uses `lyra.toml`. If you set `$LYRA_CONFIG`, it must contain both `[monitoring]` and any other sections you need.
+**Note:** Hub uses `config.toml`, monitoring uses lyra.toml. If you set `$LYRA_CONFIG`, it must contain both `[monitoring]` and any other sections you need.
 
 ### `messages.toml` — i18n strings
 
@@ -404,7 +404,7 @@ After restoring, run `make quadlet-install` to re-render the Quadlet and restart
 
 ---
 
-## `lyra.toml` — Monitoring Only
+## lyra.toml — Monitoring Only
 
 Read exclusively by `lyra.monitoring`. Hub does NOT read this file.
 
@@ -435,7 +435,7 @@ health_secret = ""                            # optional health endpoint auth
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LYRA_CONFIG` | — | Path to `config.toml` (hub) or `lyra.toml` (monitoring) |
+| `LYRA_CONFIG` | — | Path to `config.toml` (hub) or lyra.toml (monitoring) |
 | `LYRA_VAULT_DIR` | `~/.lyra` | Store directory for all databases |
 | `LYRA_MESSAGES_CONFIG` | bundled | Path to custom `messages.toml` |
 | `LYRA_DB` | — | Override database path (test only) |
@@ -491,7 +491,7 @@ Variables written by install.sh:
 
 | Variable | Source | Notes |
 |----------|--------|-------|
-| `TAILSCALE_IPV4` | `tailscale ip -4 \| head -1` at bootstrap | Empty string if Tailscale is absent at install time — the unit's `ExecStartPre` guard rejects start when unset (fail-closed; see `deploy/CLAUDE.md §Known residual risk`) |
+| `TAILSCALE_IPV4` | `tailscale ip -4 \| head -1` at bootstrap | Empty string if Tailscale is absent at install time — the unit's ExecStartPre guard rejects start when unset (fail-closed; see `deploy/CLAUDE.md §Known residual risk`) |
 | `NATS_URL` | Omitted from the file | Supplied exclusively by the unit's inline `Environment=NATS_URL=nats://lyra-nats:4222`; omitting it from the env file prevents an empty value in systemd scope from shadowing the inline directive |
 
 File permissions: `0600` (set atomically via `umask 0077` subshell in install.sh).

@@ -26,10 +26,10 @@ harness (see `workers-tooling.md`) and routing key conventions (see `messaging.m
 
 The FastAPI webhook route calls `Update.model_validate(body)` then
 `await self._dp.feed_update(self._bot, update)` directly — no aiogram
-`SimpleRequestHandler`. The route owns parse, validate, dispatch, and response. Secret
+SimpleRequestHandler. The route owns parse, validate, dispatch, and response. Secret
 token validation runs as a FastAPI `Depends` verifier. The test harness drives the ASGI
 app via `httpx.AsyncClient` with `ASGITransport`; this pattern must be preserved.
-`aiogram.SimpleRequestHandler` is an available migration path if the test harness is
+aiogram.SimpleRequestHandler is an available migration path if the test harness is
 reworked, but is not adopted. → ADR-003
 
 ### CLI entry-point dispatch
@@ -68,7 +68,7 @@ This double-normalization is resolved: `InboundAudio` was superseded by `AudioPa
 (`src/lyra/core/audio_payload.py`), which both adapters produce and `AudioPipeline`
 consumes. `normalize_audio()` is present on the `ChannelAdapter` Protocol
 (`hub_protocol.py:36`). Open items: `start()` / `stop()` lifecycle methods are still
-absent from the Protocol; `platform_meta: dict` → typed `PlatformContext` migration is
+absent from the Protocol; `platform_meta: dict` → typed PlatformContext migration is
 partial (hard prerequisite before a third platform is added). → ADR-014
 
 ### Outbound audio dispatch & reply-id
@@ -92,9 +92,9 @@ Four findings from the Phase 1b review, resolved as of 2026-05-08:
 TTS resolution chain per call: **user prefs** → **STT-detected language**
 (`InboundMessage.language`) → **agent default** → **service default**. `PrefsStore`
 is application-layer (hub DI); it resolves via `prefs_store.get_prefs(msg.user_id)`
-inside `_synthesize_and_dispatch_audio`. One `TTSService` per process (shared GPU
+inside `_synthesize_and_dispatch_audio`. One TTSService per process (shared GPU
 resource). Per-agent TTS config is honoured via per-call `language`/`voice` kwargs on
-`TTSService.synthesize()` (Option B); per-agent `ProviderRegistry` is live in
+TTSService.synthesize() (Option B); per-agent `ProviderRegistry` is live in
 `bootstrap/factory/agent_factory.py`. `prefs_store.close()` must be called in the
 graceful shutdown path. `InboundMessage.language` is a hint field only — never used for
 routing or trust. → ADR-023
@@ -172,7 +172,7 @@ runs post-NATS inside the hub process. See `ARCHITECTURE.md §Inbound Message Pi
 ## Key invariants
 
 - The Telegram webhook route calls `feed_update()` directly; it does not delegate to
-  `aiogram.SimpleRequestHandler`.
+  aiogram.SimpleRequestHandler.
 - `__main__.py` is daemon bootstrap only; all CLI dispatch lives in `cli.py`.
 - The adapter performs immediate read + unlink on media temp files; bytes are forwarded
   via `PendingAttachment` closures — no downstream stage touches the filesystem path.
@@ -182,7 +182,7 @@ runs post-NATS inside the hub process. See `ARCHITECTURE.md §Inbound Message Pi
   frozen.
 - `InboundMessage.language` is a TTS hint only — never a routing or trust input.
 - `platform_meta: dict` is the current inbound routing escape hatch; typed
-  `PlatformContext` migration is required before any third platform is added.
+  PlatformContext migration is required before any third platform is added.
 - Hub starts and serves text traffic independently of voice adapter availability.
 - `prefs_store.close()` must be in the graceful shutdown sequence.
 
@@ -194,13 +194,13 @@ runs post-NATS inside the hub process. See `ARCHITECTURE.md §Inbound Message Pi
   `send_streaming()` adopted and implemented in `telegram_outbound.py`.
 - `ChannelAdapter` Protocol missing `start()` / `stop()` lifecycle methods (ADR-014
   Option D); render_audio() is present but lifecycle is not.
-- `platform_meta: dict` → `PlatformContext` typed migration is partial; hard prerequisite
+- `platform_meta: dict` → PlatformContext typed migration is partial; hard prerequisite
   before a third platform adapter is added.
 - `OutboundDispatcher._queue` is unbounded; `queue_maxsize` constructor parameter and a
   sensible default are recommended but not yet added.
 - Startup-time stale temp-file sweep of `LYRA_AUDIO_TMP` on hub restart is deferred.
 - Multi-agent `AgentTTSConfig` — until Option B is verified at `AudioPipeline` /
-  `TTSService` call sites, multi-agent deployments should log a warning when two agents
+  TTSService call sites, multi-agent deployments should log a warning when two agents
   differ in `AgentTTSConfig`.
 
 ---

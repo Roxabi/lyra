@@ -1,0 +1,81 @@
+---
+title: S4 — ACL grant-group (acl-matrix.json v4 + generator)
+issue: 1526
+status: approved
+tier: F-lite
+date: 2026-05-31
+---
+
+## Problem
+
+The audio publish/subscribe grant set is copy-pasted verbatim across the
+`telegram-adapter` and `discord-adapter` identity blocks in
+`deploy/nats/acl-matrix.json` (flat ACL, no group/role/extends). This is the N×M
+drift root cause of the 2026-05-29 crash-loop (ADR-079 §incident): a new audio
+concern must be edited into all N adapter targets, and grants silently diverge.
+
+Slice S4 of #1521 (ADR-079 §b) introduces an `acl-matrix.json` schema **v4** with
+a top-level `groups` key. The post-S3 audio grant set is defined **once** as the
+`audio-consumer` group; each platform-adapter identity references it via
+`"groups": ["audio-consumer"]`. The generator (`scripts/_acl_models.py`,
+`_loader.py`, `_renderer.py`) expands group subjects into the effective grant list
+**before** flow injection — groups are a source-side abstraction only, so the
+rendered `auth.conf` is byte-equivalent (or strictly tighter) versus v3.
+
+## Who
+
+- **Primary:** ACL maintainers / ops — edit `acl-matrix.json` + run
+  `make nats-regen-authconf`; a future 3rd adapter adds one line, not 11 grants.
+- **Secondary:** `lyra-telegram` / `lyra-discord` runtimes — must observe an
+  identical effective grant set post-migration (no auth regression).
+
+## Constraints
+
+- **Render-equality contract:** `render(v4) == render(v3)` proven via
+  `parse_auth_conf` equality — identical-or-tighter `auth.conf`. Touches the
+  renderer feeding **prod** auth.conf.
+- **Backward compat:** existing v3 matrices stay valid (`groups` optional, loader
+  defaults to empty).
+- **Derive, don't invent:** the `audio-consumer` group set is the *current
+  post-S3* adapter audio grant (CONSUMER.CREATE uses `.>`), extracted from the
+  live matrix — not hand-authored.
+- **Deploy ordering (prior retro):** regen + restart-not-HUP, no root; permissive
+  dev NATS hides gaps — equality must be asserted in code/CI, not at deploy time.
+- Single domain (ACL generation infra under `scripts/` + `deploy/nats/`).
+
+## Out of Scope
+
+- S5 / CI falsification gate (#1527) — stream-keyed assertion lives in its own slice.
+- Hub identity grants / sole-provisioner (done in S3 / #1525).
+- Any runtime/adapter Python code — this is generator + matrix data only.
+- Adding a 3rd adapter (the group merely makes it a one-liner later).
+
+## Premise Validity
+
+**Success in 6 months:** `acl-matrix.json` is v4; the audio grant set appears in
+exactly **one** place (`groups.audio-consumer`); both adapters reference it by
+name; `render(v4) == render(v3)` holds as a passing test. Adding a future adapter
+is a one-line `"groups": ["audio-consumer"]` change with zero grant copy-paste.
+
+**Failure in 6 months (falsifiable):** the audio publish grant set is still
+duplicated inline across ≥2 identity blocks (per-identity copy-pasted audio grant
+count > 0) **OR** a pre-existing v3 matrix fails to load/render after the change —
+observable by grep + the render-equality test, decidable within this epic.
+
+**Simplest alternative:** keep the flat per-identity grant lists (status quo).
+**Why not simplest:** that *is* the N×M drift that caused the 2026-05-29
+production crash-loop — every new audio concern edits all N adapters and grants
+diverge silently; the group abstraction is the ADR-073-compliant fix (define once,
+apply N times by reference).
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (ACL generator), design fully
+specified in ADR-079 §b; 4–5 files, no new architecture, no unknowns.
+
+Signals observed:
+- 3 generator modules + 1 data file + tests (~4–5 files) → F-lite range.
+- Single domain (`scripts/` ACL generation) → not F-full.
+- Schema-version bump + render-equality contract feeding prod auth.conf → above S
+  (warrants spec/plan gates).
+- Design already in an accepted ADR → no deep unknowns (not F-full).

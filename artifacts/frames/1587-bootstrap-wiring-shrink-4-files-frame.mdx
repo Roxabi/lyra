@@ -1,0 +1,54 @@
+---
+title: "refactor: shared bootstrap wiring + config loader split — shrink 4 files"
+issue: 1587
+status: approved
+tier: F-lite
+date: 2026-05-31
+---
+
+## Problem
+
+Four bootstrap files carry `DEBT:file-exemptions` because they exceed the 300-line cap:
+
+- `src/lyra/bootstrap/wiring/bootstrap_wiring.py` (376 lines) — `wire_telegram_adapters` and `wire_discord_adapters` share ~70 lines of identical sequencing
+- `src/lyra/bootstrap/factory/config.py` (353 lines) — 12 `_load_*` helpers (5–20 lines each) aggregated in one file
+- `src/lyra/bootstrap/factory/agent_factory.py` (351 lines) — `_init_bot_auths_and_agents` and `_resolve_bot_agent_map` helpers
+- `src/lyra/bootstrap/factory/hub_builder.py` (370 lines) — `_build_hub` and `_build_hub_and_wire` helpers
+
+Each file grew organically as new bootstrap concerns landed. The helpers are largely independent and could live in domain-specific modules, but they were kept inline to avoid proliferating small files. Now the accumulated weight violates the quality gate and masks the real structure of each file.
+
+## Who
+
+- **Primary:** Lyra maintainers editing bootstrap wiring or factory logic
+- **Secondary:** Contributors reading bootstrap code to understand startup flow
+
+## Constraints
+
+- `src/lyra/bootstrap/` must stay under 12 files (currently 11; no new files at root level)
+- All 4 target files must pass `check_file_length.sh` (≤300 lines)
+- Pure code movement — no behavior changes, no API surface changes
+- Subdirectories inside `bootstrap/` are acceptable (e.g., `bootstrap/wiring/`, `bootstrap/factory/`)
+
+## Out of Scope
+
+- Non-bootstrap file exemptions (adapters, core, outbound, etc.)
+- Behavior changes or API surface changes
+- Folder-size cap changes
+
+## Premise Validity
+
+**Success in 6 months:**
+The 4 bootstrap files are under 300 lines, their `DEBT:file-exemptions` entries are removed from `tools/file_exemptions.txt`, and new bootstrap additions don't re-trigger length violations because helpers are placed in domain-specific modules.
+
+**Failure in 6 months:**
+Files remain over 300 lines or exemptions stay in place because extracted helpers didn't reduce caller files below the cap; or new files were added at `src/lyra/bootstrap/` root, violating the 12-file folder-size cap.
+
+**Simplest alternative:**
+Inline some helpers or add `# noqa: PLR0915` suppressions to the 4 files.
+
+**Why not simplest:**
+Suppressions don't address the root cause (helpers duplicated across files) and create tech debt rather than paying it down. The goal is structural clarity, not just gate compliance.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (bootstrap wiring/factory), existing plan with 4 specific extraction targets, no unknowns or cross-domain coordination.

@@ -211,9 +211,10 @@ class TestAttachmentIngestStageNonAudio:
         stage = AttachmentIngestStage()
 
         # Act + Assert — must raise before awaiting fetch
-        with pytest.raises(AttachmentIngestError):
+        with pytest.raises(AttachmentIngestError) as exc_info:
             await stage.run(msg, ctx)
 
+        assert exc_info.value.reason == "oversize"
         # Negative guard: if fetch was called, this fails
         fetch_mock.assert_not_awaited()
 
@@ -236,8 +237,10 @@ class TestAttachmentIngestStageNonAudio:
         stage = AttachmentIngestStage()
 
         # Act + Assert
-        with pytest.raises(AttachmentIngestError):
+        with pytest.raises(AttachmentIngestError) as exc_info:
             await stage.run(msg, ctx)
+
+        assert exc_info.value.reason == "storage_error"
 
     async def test_store_none_is_passthrough_nonaudio(self) -> None:
         """store=None → no-op passthrough; attachments unchanged; no blob_ref set.
@@ -326,9 +329,10 @@ class TestAttachmentIngestStageNonAudio:
         stage = AttachmentIngestStage()
 
         # Act + Assert — must raise AttachmentIngestError
-        with pytest.raises(AttachmentIngestError):
+        with pytest.raises(AttachmentIngestError) as exc_info:
             await stage.run(msg, ctx)
 
+        assert exc_info.value.reason == "oversize"
         # store.put must NOT be called — bytes must not be forwarded on oversize
         store_mock.put.assert_not_awaited()
 
@@ -364,3 +368,110 @@ class TestAttachmentIngestStageNonAudio:
         assert result.attachments[0].blob_ref is not None
         assert result.attachments[0].blob_ref.store_key == f"blob:{source}-001"
         assert result.pending_attachments == []
+
+    async def test_mixed_success_and_declared_oversize_raises(self) -> None:
+        """N=2: first succeeds, second declared oversize → store.put once, then raise.
+
+        Covers the accumulation contract (#1561): failures are recorded and the
+        loop continues; after the loop a summary ``AttachmentIngestError`` is raised
+        with the first failure message and ``reason="oversize"``.
+        """
+        # Arrange
+        image_bytes = b"imgbytes"
+        fetch_mock = AsyncMock(return_value=image_bytes)
+        real_ref = _wire_ref("blob:img-001")
+        store_mock = AsyncMock()
+        store_mock.put = AsyncMock(return_value=real_ref)
+
+        oversize_fetch = AsyncMock(
+            side_effect=AssertionError("fetch must not be called")
+        )
+        oversize = MAX_ATTACHMENT_INGEST_BYTES + 1
+
+        pendings = [
+            _pending_attachment(fetch=fetch_mock),
+            _pending_attachment(fetch=oversize_fetch, size=oversize),
+        ]
+        atts = [_attachment(), _attachment()]
+        msg = _nonaudio_msg(attachments=atts, pending_attachments=pendings)
+        ctx = IngestCtx(store=store_mock)
+        stage = AttachmentIngestStage()
+
+        # Act + Assert
+        with pytest.raises(AttachmentIngestError) as exc_info:
+            await stage.run(msg, ctx)
+
+        assert exc_info.value.reason == "oversize"
+        assert "too large" in exc_info.value.user_message
+        # store.put called only for the first (successful) item
+        store_mock.put.assert_awaited_once()
+        # oversize fetch must NOT be called
+        oversize_fetch.assert_not_awaited()
+
+    async def test_mixed_success_and_post_fetch_oversize_raises(self) -> None:
+        """N=2: first succeeds, second post-fetch oversize → store.put once, then raise.
+
+        """
+        # Arrange
+        image_bytes = b"imgbytes"
+        fetch_mock = AsyncMock(return_value=image_bytes)
+        real_ref = _wire_ref("blob:img-001")
+        store_mock = AsyncMock()
+        store_mock.put = AsyncMock(return_value=real_ref)
+
+        oversize_data = b"x" * (MAX_ATTACHMENT_INGEST_BYTES + 1)
+        oversize_fetch = AsyncMock(return_value=oversize_data)
+
+        pendings = [
+            _pending_attachment(fetch=fetch_mock),
+            _pending_attachment(fetch=oversize_fetch, size=None),
+        ]
+        atts = [_attachment(), _attachment()]
+        msg = _nonaudio_msg(attachments=atts, pending_attachments=pendings)
+        ctx = IngestCtx(store=store_mock)
+        stage = AttachmentIngestStage()
+
+        # Act + Assert
+        with pytest.raises(AttachmentIngestError) as exc_info:
+            await stage.run(msg, ctx)
+
+        assert exc_info.value.reason == "oversize"
+        assert "too large" in exc_info.value.user_message
+        # store.put called only for the first item
+        store_mock.put.assert_awaited_once()
+
+    async def test_mixed_success_and_storage_error_raises(self) -> None:
+        """N=2: first succeeds, second BlobStoreServerError → raise.
+
+        store.put twice: once for success, once for failure.
+        """
+        # Arrange
+        image_bytes = b"imgbytes"
+        fetch_mock = AsyncMock(return_value=image_bytes)
+        real_ref = _wire_ref("blob:img-001")
+        store_mock = AsyncMock()
+        store_mock.put = AsyncMock(
+            side_effect=[
+                real_ref,
+                BlobStoreServerError("upstream 503", status_code=503),
+            ]
+        )
+
+        fail_fetch = AsyncMock(return_value=b"failbytes")
+        pendings = [
+            _pending_attachment(fetch=fetch_mock),
+            _pending_attachment(fetch=fail_fetch),
+        ]
+        atts = [_attachment(), _attachment()]
+        msg = _nonaudio_msg(attachments=atts, pending_attachments=pendings)
+        ctx = IngestCtx(store=store_mock)
+        stage = AttachmentIngestStage()
+
+        # Act + Assert
+        with pytest.raises(AttachmentIngestError) as exc_info:
+            await stage.run(msg, ctx)
+
+        assert exc_info.value.reason == "storage_error"
+        assert "try again" in exc_info.value.user_message
+        # store.put awaited twice (once for success, once for failure)
+        assert store_mock.put.await_count == 2

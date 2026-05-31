@@ -8,6 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import discord
 
+from lyra.inbound.attachment_ingest import MAX_ATTACHMENT_INGEST_BYTES
+
 
 class TestDiscordAttachments:
     """DiscordAdapter.normalize() extracts non-audio attachments."""
@@ -163,3 +165,36 @@ class TestDiscordAttachments:
         assert msg.text == "check this out"
         assert len(msg.attachments) == 1
         assert msg.attachments[0].type == "image"
+
+    def test_normalize_oversize_attachment_filtered(self) -> None:
+        """Attachment with size > MAX_ATTACHMENT_INGEST_BYTES is NOT in attachments."""
+        adapter = self._make_adapter()
+        att = SimpleNamespace(
+            content_type="image/png",
+            url="https://cdn/img.png",
+            filename="img.png",
+            size=MAX_ATTACHMENT_INGEST_BYTES + 1,
+            read=AsyncMock(return_value=b"<bytes>"),
+        )
+        msg = adapter.normalize(
+            self._make_msg(attachments=[att]),
+        )
+        assert len(msg.attachments) == 0
+        assert len(msg.pending_attachments) == 0
+
+    def test_normalize_text_preserved_with_oversize_attachment(self) -> None:
+        """Text stays 'hello' when oversize attachment is filtered out."""
+        adapter = self._make_adapter()
+        att = SimpleNamespace(
+            content_type="application/pdf",
+            url="https://cdn/doc.pdf",
+            filename="doc.pdf",
+            size=MAX_ATTACHMENT_INGEST_BYTES + 1,
+            read=AsyncMock(return_value=b"<bytes>"),
+        )
+        msg = adapter.normalize(
+            self._make_msg(content="hello", attachments=[att]),
+        )
+        assert msg.text == "hello"
+        assert len(msg.attachments) == 0
+        assert len(msg.pending_attachments) == 0

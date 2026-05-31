@@ -1,0 +1,48 @@
+---
+title: Non-audio ingest — V1 hardening follow-ups
+issue: 1561
+status: approved
+tier: F-lite
+date: 2026-05-31
+---
+
+## Problem
+
+Three deferred review findings from PR #1559 (S5–S7 of #1552) in the non-audio attachment ingest pipeline:
+
+1. **A1 — Mixed text+oversize message drops the text** (~95%). When any non-audio attachment trips the size guard or store error, `AttachmentIngestStage` raises `AttachmentIngestError` mid-pipeline; the adapter boundary replies "too large" and returns — the message's text is silently discarded.
+
+2. **A2 — Partial-failure mid-loop orphans earlier blobs** (~85%). `_ingest_non_audio` raises on item *i*; items `0..i-1` are already `store.put()`-ed (orphan refs, no `blob_ref` stamped). The no-rollback contract is implicit today.
+
+3. **A4 — Flat `AttachmentIngestError` (no machine-readable reason)** (~70%). The error conflates "oversize" and "storage 5xx" — both raise the same flat type, so the boundary can't branch.
+
+## Who
+
+- **Primary:** Users sending mixed text+attachment messages (e.g., "here's that clip [50MB video]").
+- **Secondary:** Operators debugging attachment failures, and the adapter boundary that must decide whether to let text through on oversize.
+
+## Constraints
+
+- Must not break existing audio ingest path (ADR-079).
+- Backward-compatible with existing adapter boundary contract.
+- Fixes are within the inbound attachment stage domain — no cross-domain refactor.
+
+## Out of Scope
+
+- Audio ingest path changes (ADR-079 owns that).
+- New storage backend or blobstore protocol changes.
+- General error taxonomy beyond `AttachmentIngestError`.
+- Doc-only notes (spec #1537 breadboard N4 discrepancy, `roxabi_contracts` dependency note) — fold into next doc-sync.
+
+## Premise Validity
+
+**Success in 6 months:** Mixed text+oversize messages preserve text (attachment rejected, not message). Partial-failure contract is explicit (no orphaning surprises). Adapter boundary branches on error reason. Zero regressions in audio ingest (ADR-079).
+
+**Failure in 6 months:** A user report of lost text on oversize attachment, or attachment error rate unchanged over 3 sprint cycles, or a new partial-failure leak discovered during routine audit.
+
+**Simplest alternative:** Fix only A1 — move size check to parse phase, skip A2 (no-rollback doc) and A4 (reason field).
+**Why not simplest:** A2 is a footgun for operators debugging orphan refs. A4 is prerequisite for A1's boundary branching — without `reason`, the adapter can't distinguish "oversize" (let text through) from "storage 5xx" (fail hard).
+
+## Complexity
+
+**Tier: F-lite** — single domain (inbound/attachment), clear scope, 3 specific fixes, no unknowns.

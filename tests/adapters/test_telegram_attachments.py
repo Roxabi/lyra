@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+from lyra.inbound.attachment_ingest import MAX_ATTACHMENT_INGEST_BYTES
+
 
 class TestTelegramAttachments:
     """TelegramAdapter.normalize() extracts non-audio attachments."""
@@ -154,3 +156,31 @@ class TestTelegramAttachments:
         adapter = self._make_adapter()
         msg = adapter.normalize(self._make_msg())
         assert msg.attachments == []
+
+    def test_normalize_oversize_photo_filtered(self) -> None:
+        """Photo with file_size > MAX_ATTACHMENT_INGEST_BYTES is NOT in attachments."""
+        adapter = self._make_adapter()
+        photo = [
+            SimpleNamespace(file_id="small123", file_size=123),
+            SimpleNamespace(
+                file_id="large456",
+                file_size=MAX_ATTACHMENT_INGEST_BYTES + 1,
+            ),
+        ]
+        msg = adapter.normalize(self._make_msg(photo=photo))
+        assert len(msg.attachments) == 0
+        assert len(msg.pending_attachments) == 0
+
+    def test_normalize_text_preserved_with_oversize_photo(self) -> None:
+        """Text stays 'hello' when oversize photo is filtered out."""
+        adapter = self._make_adapter()
+        photo = [
+            SimpleNamespace(
+                file_id="large456",
+                file_size=MAX_ATTACHMENT_INGEST_BYTES + 1,
+            ),
+        ]
+        msg = adapter.normalize(self._make_msg(text="hello", photo=photo))
+        assert msg.text == "hello"
+        assert len(msg.attachments) == 0
+        assert len(msg.pending_attachments) == 0

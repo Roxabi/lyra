@@ -23,13 +23,12 @@ import logging
 import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
-
-from roxabi_contracts import BlobStoreServerError
+from typing import TYPE_CHECKING, Literal, cast
 
 if TYPE_CHECKING:
     from lyra.core.messaging.message import InboundMessage
     from lyra.core.ports.blobstore import BlobStorePort
+    from roxabi_contracts import BlobRef
 
 # Maximum bytes for a non-audio attachment before download is refused.
 # Mirrors LYRA_MAX_AUDIO_BYTES (TG getFile 20 MiB cap) — raised via env for
@@ -75,9 +74,24 @@ class AttachmentIngestError(Exception):
     Carries a user-facing message the adapter boundary surfaces as a reply (#1552).
     """
 
-    def __init__(self, user_message: str) -> None:
+    def __init__(
+        self,
+        user_message: str,
+        reason: Literal["oversize", "storage_error"],
+    ) -> None:
         self.user_message = user_message
+        self.reason = reason
         super().__init__(user_message)
+
+
+@dataclass(frozen=True)
+class AttachmentResult:
+    """Per-item outcome of the non-audio ingest loop (#1561)."""
+
+    success: bool
+    blob_ref: "BlobRef | None" = None
+    error: str | None = None
+    reason: Literal["oversize", "storage_error"] | None = None
 
 
 @dataclass(frozen=True)
@@ -179,11 +193,14 @@ class AttachmentIngestStage:
     ) -> "InboundMessage":
         """Non-audio ingest: size-guard → fetch → store.put.
 
-        Stamps each ``attachments[i].blob_ref`` with the returned BlobRef.
-        Raises ``AttachmentIngestError`` on oversize or BlobStore 5xx.
+        Accumulates per-item ``AttachmentResult``.  Stamps successful blob_refs
+        onto the message.  Raises ``AttachmentIngestError`` with the first error
+        message and ``reason="storage_error"`` if any item failed.
         """
         new_atts = list(msg.attachments)
         pending_attachments = cast("list[PendingAttachment]", msg.pending_attachments)
+        results: list[AttachmentResult] = []
+
         for i, p in enumerate(pending_attachments):
             if p.size is not None and p.size > MAX_ATTACHMENT_INGEST_BYTES:
                 log.warning(
@@ -192,8 +209,26 @@ class AttachmentIngestStage:
                     MAX_ATTACHMENT_INGEST_BYTES,
                     p.source,
                 )
-                raise AttachmentIngestError("That file is too large to process.")
-            data = await p.fetch()
+                results.append(
+                    AttachmentResult(
+                        success=False,
+                        error="That file is too large to process.",
+                        reason="oversize",
+                    )
+                )
+                continue
+            try:
+                data = await p.fetch()
+            except Exception:
+                log.exception("attachment fetch failed (source=%s)", p.source)
+                results.append(
+                    AttachmentResult(
+                        success=False,
+                        error="Couldn't download your attachment — please try again.",
+                        reason="storage_error",
+                    )
+                )
+                continue
             if len(data) > MAX_ATTACHMENT_INGEST_BYTES:
                 log.warning(
                     "attachment exceeded cap after fetch: %s > %s (source=%s)",
@@ -201,7 +236,14 @@ class AttachmentIngestStage:
                     MAX_ATTACHMENT_INGEST_BYTES,
                     p.source,
                 )
-                raise AttachmentIngestError("That file is too large to process.")
+                results.append(
+                    AttachmentResult(
+                        success=False,
+                        error="That file is too large to process.",
+                        reason="oversize",
+                    )
+                )
+                continue
             try:
                 ref = await store.put(
                     data,
@@ -211,11 +253,39 @@ class AttachmentIngestStage:
                     platform_ref=p.platform_ref,
                     platform_message_id=p.platform_message_id,
                 )
-            except BlobStoreServerError:
+            except Exception:
                 log.exception("blobstore rejected attachment (source=%s)", p.source)
-                raise AttachmentIngestError(
-                    "Couldn't store your attachment — please try again."
-                ) from None
+                results.append(
+                    AttachmentResult(
+                        success=False,
+                        error="Couldn't store your attachment — please try again.",
+                        reason="storage_error",
+                    )
+                )
+                continue
             if i < len(new_atts):
                 new_atts[i] = dataclasses.replace(new_atts[i], blob_ref=ref)
+            else:
+                log.warning(
+                    "blob_ref dropped: pending_attachment index %d exceeds "
+                    "attachments length %d",
+                    i,
+                    len(new_atts),
+                )
+                results.append(
+                    AttachmentResult(
+                        success=False,
+                        error="Index mismatch: attachment and pending list out of sync",
+                        reason="storage_error",
+                    )
+                )
+                continue
+            results.append(AttachmentResult(success=True, blob_ref=ref))
+
+        failures = [r for r in results if not r.success]
+        if failures:
+            first_error = failures[0].error or "Attachment ingest failed."
+            reason = failures[0].reason or "storage_error"
+            raise AttachmentIngestError(first_error, reason=reason)
+
         return dataclasses.replace(msg, attachments=new_atts, pending_attachments=[])

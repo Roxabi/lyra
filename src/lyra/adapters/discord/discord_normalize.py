@@ -94,7 +94,7 @@ def normalize(deps: NormalizeDeps) -> InboundMessage:
     _display_name = getattr(raw.author, "display_name", None)
     roles = tuple(str(r.id) for r in getattr(raw.author, "roles", []) or [])
     raw_atts = getattr(raw, "attachments", None) or []
-    attachments, _pendings = extract_attachments(raw_atts)
+    attachments, _pendings, _oversize_count = extract_attachments(raw_atts)
     _reference = getattr(raw, "reference", None)
     reply_to_id: str | None = (
         str(_reference.message_id)

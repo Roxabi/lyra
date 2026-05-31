@@ -17,7 +17,10 @@ from lyra.core.messaging.message import (
     InboundMessage,
     Platform,
 )
-from lyra.inbound.attachment_ingest import PendingAttachment
+from lyra.inbound.attachment_ingest import (
+    MAX_ATTACHMENT_INGEST_BYTES,
+    PendingAttachment,
+)
 
 log = logging.getLogger("lyra.adapters.discord")
 
@@ -68,12 +71,15 @@ def make_thread_name(content: str, fallback: str) -> str:
 
 def extract_attachments(
     raw_attachments: list[Any],
-) -> tuple[list[Attachment], list[PendingAttachment]]:
+) -> tuple[list[Attachment], list[PendingAttachment], int]:
     """Extract non-audio Attachment objects and PendingAttachment closures.
 
-    Returns a tuple (attachments, pending_attachments), index-aligned.
+    Returns a tuple (attachments, pending_attachments, oversize_count), index-aligned.
     Audio attachments (content_type in AUDIO_MIME_TYPES) are skipped entirely —
     they are handled by the audio short-circuit path in discord_inbound.
+
+    Oversize attachments (size > MAX_ATTACHMENT_INGEST_BYTES) are skipped and
+    counted in oversize_count.
 
     For each non-audio attachment the PendingAttachment closure captures
     ``a.read`` by per-item binding (no late-binding loop bug) so the stage
@@ -81,9 +87,20 @@ def extract_attachments(
     """
     attachments: list[Attachment] = []
     pendings: list[PendingAttachment] = []
+    oversize_count = 0
     for a in raw_attachments:
         ct = getattr(a, "content_type", None) or ""
         if ct in AUDIO_MIME_TYPES:
+            continue
+        size = getattr(a, "size", None)
+        if size is not None and size > MAX_ATTACHMENT_INGEST_BYTES:
+            oversize_count += 1
+            log.warning(
+                "attachment too large: %s > %s (filename=%s)",
+                size,
+                MAX_ATTACHMENT_INGEST_BYTES,
+                getattr(a, "filename", None),
+            )
             continue
         if ct.startswith("image/"):
             att_type = "image"
@@ -115,7 +132,7 @@ def extract_attachments(
                 size=getattr(a, "size", None),
             )
         )
-    return attachments, pendings
+    return attachments, pendings, oversize_count
 
 
 def render_text(text: str, max_length: int = 2000) -> list[str]:

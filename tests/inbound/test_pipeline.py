@@ -281,6 +281,7 @@ class TestInboundPipeline:
         pipeline, _mock_router, mock_session_builder, _mock_dispatcher = _make_pipeline(
             route_decision=RouteDecision.PROCESS,
         )
+
         # Build a message carrying a non-empty pending_attachments list
         async def _fake_fetch() -> bytes:
             return b"data"  # pragma: no cover

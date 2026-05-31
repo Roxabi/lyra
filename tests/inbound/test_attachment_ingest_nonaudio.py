@@ -32,7 +32,7 @@ from lyra.inbound.attachment_ingest import (  # noqa: E402 — module imports be
     IngestCtx,
     PendingAttachment,
 )
-from roxabi_contracts import PENDING_STORE_KEY, BlobRef, BlobStoreServerError
+from roxabi_contracts import BlobRef, BlobStoreServerError
 
 # ---------------------------------------------------------------------------
 # Helpers / shared fixtures
@@ -102,17 +102,6 @@ def _nonaudio_msg(
     )
 
 
-_PENDING_VOICE_BLOB_REF = BlobRef(
-    store_key=PENDING_STORE_KEY,
-    content_hash="",
-    mime="audio/ogg",
-    size=1024,
-    source="telegram",
-    platform_ref="tg:file_id:VOICE42",
-    platform_message_id="42",
-)
-
-
 def _voice_msg(*, pending_attachment: PendingAttachment) -> InboundMessage:
     """Minimal voice InboundMessage (mirrors reference fixture)."""
     return InboundMessage(
@@ -128,7 +117,7 @@ def _voice_msg(*, pending_attachment: PendingAttachment) -> InboundMessage:
         trust_level=TrustLevel.PUBLIC,
         modality="voice",
         audio=AudioPayload(
-            blob_ref=_PENDING_VOICE_BLOB_REF,
+            blob_ref=None,  # unresolved until AttachmentIngestStage stamps a real ref
             mime_type="audio/ogg",
             duration_ms=3000,
             file_id="VOICE42",
@@ -308,6 +297,7 @@ class TestAttachmentIngestStageNonAudio:
 
         # Assert — audio.blob_ref updated to the real wire ref
         assert result.audio is not None
+        assert result.audio.blob_ref is not None
         assert result.audio.blob_ref.store_key == "blob:audio-xyz"
         # pending_attachment cleared (singular voice path)
         assert result.pending_attachment is None

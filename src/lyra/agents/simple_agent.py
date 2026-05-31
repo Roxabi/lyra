@@ -216,7 +216,7 @@ class SimpleAgent(AgentBase):
 
         # Build LLM text from message (handles audio, voice, regular messages)
         try:
-            text, _stt_text = await build_llm_text(msg, self._stt)
+            text, _stt_text = await build_llm_text(msg)
         except STTNoiseError:
             return Response(
                 content=(

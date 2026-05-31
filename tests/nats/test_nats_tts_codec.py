@@ -68,6 +68,7 @@ class TestTtsCodecDecodeSuccess:
         assert result.unavailable is False
         assert result.mime_type == "audio/ogg"
         assert result.duration_ms == 500
+        assert result.blob_ref is not None
         assert result.blob_ref.store_key == _FAKE_BLOB.store_key
 
     def test_success_path_no_error_message(self) -> None:

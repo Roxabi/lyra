@@ -15,9 +15,7 @@ from roxabi_contracts import BlobRef
 
 @runtime_checkable
 class STTProtocol(Protocol):
-    async def transcribe(
-        self, audio: BlobRef | bytes, mime: str
-    ) -> "TranscriptionResult": ...
+    async def transcribe(self, audio: BlobRef, mime: str) -> "TranscriptionResult": ...
 
 
 @dataclass

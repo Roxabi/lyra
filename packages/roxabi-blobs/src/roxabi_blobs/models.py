@@ -59,7 +59,8 @@ class BlobRef(BaseModel):
         description=(
             "True for sparse BlobRefs from HEAD-only paths (HttpBlobStore.exists). "
             "When True, content_hash/size/mime/created_at are placeholders — "
-            "callers must not use them. Mirrors roxabi-contracts PENDING_STORE_KEY."
+            "callers must not use them. "
+            "Sparse HEAD-only refs carry content_hash='' guarded by is_sentinel."
         ),
     )
 

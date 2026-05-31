@@ -166,10 +166,9 @@ class HttpBlobStore:
         the response.
 
         WARNING: do NOT forward this sentinel into a ``roxabi_contracts.BlobRef``
-        constructor — the wire model's validator requires either a non-empty
-        ``content_hash`` or ``store_key == PENDING_STORE_KEY``, and this
-        sentinel satisfies neither. Convert deliberately (substitute
-        ``PENDING_STORE_KEY``) or call PUT to obtain a full envelope.
+        constructor — the wire model no longer validates ``content_hash`` against a
+        sentinel constant, so a sparse sentinel would silently carry
+        ``content_hash=""``; callers must PUT to obtain a full envelope.
         """
         # HEAD endpoint only returns 200/404; reconstruct a minimal BlobRef on hit.
         # Full BlobRef data is not available via HEAD — callers needing the full
@@ -182,7 +181,7 @@ class HttpBlobStore:
         # HEAD returns no body — synthesise a sentinel BlobRef so Protocol
         # callers that only test truthiness get a non-None result. is_sentinel=True
         # makes the sparseness machine-checkable (BlobRef validator rejects
-        # content_hash="" without it, mirroring roxabi-contracts PENDING_STORE_KEY).
+        # content_hash="" without it; must not be forwarded as a wire BlobRef).
         return BlobRef(
             store_key=content_hash,
             content_hash="",

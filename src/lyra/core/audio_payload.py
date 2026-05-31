@@ -16,12 +16,12 @@ class AudioPayload:
     successful transcription to keep agent history free of the BlobRef pointer
     (semantics preserved — it just clears the pointer instead of the bytes).
 
-    The blob_ref field holds a BlobRef pointer (content-addressed via BlobStore;
-    or the transitional `PENDING_STORE_KEY` sentinel for legacy adapters during
-    epic #1061 slices V3/V4).
+    ``blob_ref`` holds a content-addressed BlobRef once ingest completes.
+    ``None`` means the audio is unresolved/degraded (ingest failed); the STT
+    middleware will drop the message with a user-facing error in that case.
     """
 
-    blob_ref: BlobRef
+    blob_ref: BlobRef | None
     mime_type: str
     duration_ms: int | None = None
     file_id: str | None = None

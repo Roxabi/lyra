@@ -4,8 +4,7 @@ The local `STTNoiseError` class previously defined in
 `lyra.agents.simple_agent_prompts` shadowed the canonical class in
 `lyra.core.ports.stt`. If a future change reintroduces a local definition,
 callers that `except STTNoiseError` from the port would silently stop
-catching the exception raised by `_build_audio_text`. This test fails
-immediately on re-shadow.
+catching it. This test fails immediately on re-shadow.
 """
 
 from __future__ import annotations

@@ -235,13 +235,8 @@ def test_normalize_audio_voice_fields() -> None:
     assert result.audio.mime_type == "audio/ogg"
     assert result.audio.duration_ms == 3000
     assert result.audio.file_id == "F1"
-    from roxabi_contracts import PENDING_STORE_KEY
-
-    assert result.audio.blob_ref is not None
-    assert result.audio.blob_ref.store_key == PENDING_STORE_KEY
-    assert result.audio.blob_ref.size == len(b"data")
-    assert result.audio.blob_ref.source == "telegram"
-    assert result.audio.blob_ref.mime == "audio/ogg"
+    # blob_ref=None until AttachmentIngestStage stamps a real ref (#1553)
+    assert result.audio.blob_ref is None
 
 
 def test_normalize_audio_audio_file_fields() -> None:

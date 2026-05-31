@@ -20,16 +20,16 @@ lyra.core (protocols) ← lyra.llm | lyra.nats ← lyra.infrastructure (implemen
 | `stores/` | SQLite store implementations | ADR-048 |
 | `audit/` | `JetStreamAuditSink` — publishes `SecurityEvent` to NATS JetStream | ADR-057 |
 | `turn_writer/` | JetStream subscriber-writer for turns.db (sole writer post-#1331) | ADR-075 |
-| `blobstore_adapter.py` | `HttpBlobStoreAdapter` — satisfies `core.ports.BlobStorePort`; wraps `roxabi_blobs.HttpBlobStore`; owns storage→wire conversion via `BlobRef.from_store_ref` and the `PENDING_STORE_KEY` sentinel guard | ADR-082, ADR-067 |
+| `blobstore_adapter.py` | `HttpBlobStoreAdapter` — satisfies `core.ports.BlobStorePort`; wraps `roxabi_blobs.HttpBlobStore`; owns storage→wire conversion via `BlobRef.from_store_ref` and the empty-store-key guard | ADR-082, ADR-067 |
 
 ## BlobStore adapter invariants
 
 `HttpBlobStoreAdapter` is the single seam permitted to import both `roxabi_blobs` (storage) and `roxabi_contracts` (wire). All other lyra modules depend on `BlobStorePort` only. Two invariants are owned here and must not move:
 
 1. **from_store_ref conversion** — `BlobRef.from_store_ref(store_ref)` is the only path from storage→wire BlobRef; no manual field construction anywhere else.
-2. **PENDING guard** — `store_key == PENDING_STORE_KEY` after a live `put()` raises `ValueError` immediately (contract violation, not a format check; `store_key` is opaque).
+2. **Empty-key guard** — an empty `store_key` after a live `put()` raises `ValueError` immediately (contract violation, not a format check; `store_key` is opaque).
 
-`exists()` maps storage sentinels (`is_sentinel=True`) → `None` because HEAD responses return a sparse sentinel that the wire validator rejects; callers needing the full envelope must `put` (idempotent via content-hash dedup).
+`exists()` maps storage sentinels (`is_sentinel=True`) → `None` because HEAD responses return a sparse sentinel with `content_hash=""` that the wire BlobRef rejects; callers needing the full envelope must `put` (idempotent via content-hash dedup).
 
 ## Governance rule
 

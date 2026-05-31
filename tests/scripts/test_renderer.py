@@ -307,7 +307,10 @@ class TestGrouplessMatrixBackwardCompat:
         names = {u.comment_name for u in parsed.users}
         # spot-check a selection of expected active identities
         expected_active = (
-            "hub", "telegram-adapter", "discord-adapter", "clipool-worker"
+            "hub",
+            "telegram-adapter",
+            "discord-adapter",
+            "clipool-worker",
         )
         for expected in expected_active:
             assert expected in names, f"expected {expected!r} in rendered output"
@@ -380,14 +383,10 @@ class TestGrantGroupEquality:
         )
         return v4, v3
 
-    def _shared_pubkeys(
-        self, v4: LoadedMatrix, v3: LoadedMatrix
-    ) -> dict[str, str]:
+    def _shared_pubkeys(self, v4: LoadedMatrix, v3: LoadedMatrix) -> dict[str, str]:
         """Union of identity names from both matrices → deterministic fake pubkeys."""
         all_names = set(v4["identities"]) | set(v3["identities"])
-        return {
-            name: f"UDET{name.upper().replace('-', '')}" for name in all_names
-        }
+        return {name: f"UDET{name.upper().replace('-', '')}" for name in all_names}
 
     def test_v4_render_set_equals_v3_render(self) -> None:
         """Rendered ParsedUser set for v4 == v3: group expansion is set-identical to
@@ -447,7 +446,6 @@ class TestGrantGroupEquality:
             f"telegram-adapter rendered publish_allow is missing audio subjects: "
             f"{missing!r}"
         )
-
 
     def test_group_subscribe_subject_present_in_v4_rendered_telegram(self) -> None:
         """The audio-consumer group's subscribe subject is PRESENT in the

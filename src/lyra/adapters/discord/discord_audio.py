@@ -19,7 +19,6 @@ from lyra.core.messaging.message import (
 from lyra.core.messaging.scope import user_scoped
 from lyra.inbound.attachment_ingest import PendingAttachment
 from lyra.inbound.prebuilt_parser import PrebuiltParser
-from roxabi_contracts import PENDING_STORE_KEY, BlobRef
 
 if TYPE_CHECKING:
     from lyra.adapters.discord import DiscordAdapter
@@ -72,7 +71,7 @@ def normalize_audio(  # noqa: PLR0913 — additive signature (audio_bytes, mime_
     """Build an InboundMessage (modality='voice') from a Discord audio attachment.
 
     ``pending`` carries the fetch closure; AttachmentIngestStage stamps a real
-    BlobRef when a store is present.  PENDING sentinel carries size=len(audio_bytes).
+    BlobRef when a store is present.  ``audio.blob_ref=None`` until ingest completes.
     """
     is_thread = isinstance(raw.channel, discord.Thread)
     scope_id = f"thread:{raw.channel.id}" if is_thread else f"channel:{raw.channel.id}"
@@ -111,15 +110,7 @@ def normalize_audio(  # noqa: PLR0913 — additive signature (audio_bytes, mime_
         routing=routing,
         modality="voice",
         audio=AudioPayload(
-            blob_ref=BlobRef(
-                store_key=PENDING_STORE_KEY,
-                content_hash="",
-                mime=mime_type,
-                size=len(audio_bytes),
-                source="discord",
-                platform_ref=None,  # Discord: attachment URL fetched server-side (V2)
-                platform_message_id=str(raw.id),
-            ),
+            blob_ref=None,  # stamped by AttachmentIngestStage; None = unresolved
             mime_type=mime_type,
             duration_ms=None,
             file_id=None,

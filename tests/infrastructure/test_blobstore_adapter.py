@@ -4,8 +4,8 @@ Injects a fake wrapped store (matching the real roxabi_blobs.HttpBlobStore.put
 signature exactly) and asserts:
   1. Happy path — put() converts STORAGE BlobRef to WIRE BlobRef, preserving
      created_at and all provenance fields.
-  2. PENDING guard — put() raises ValueError when the wrapped store returns a
-     ref with store_key == PENDING_STORE_KEY (real ingest must yield a real key).
+  2. Empty-key guard — put() raises ValueError when the wrapped store returns a
+     ref with store_key=="" (real ingest must yield a non-empty store_key).
   3. Delegation — get() / exists() delegate to the wrapped store.
   4. exists() sentinel mapping — sentinel storage ref maps to None (not a wire BlobRef).
   5. Protocol conformance — HttpBlobStoreAdapter satisfies BlobStorePort.
@@ -190,27 +190,28 @@ class TestHttpBlobStoreAdapterPut:
 
 
 # ---------------------------------------------------------------------------
-# T2 — PENDING guard: put() raises ValueError when store returns PENDING_STORE_KEY
+# T2 — Empty-key guard: put() raises ValueError when store returns empty store_key
 # ---------------------------------------------------------------------------
 
 
 class TestHttpBlobStoreAdapterPendingGuard:
-    async def test_put_raises_when_store_key_is_pending(self) -> None:
-        """put() raises ValueError when store_key == PENDING_STORE_KEY.
+    async def test_put_raises_when_store_key_is_empty(self) -> None:
+        """put() raises ValueError when the wrapped store returns store_key=="".
 
-        Negative guard: if the PENDING check is deleted from HttpBlobStoreAdapter.put,
+        Negative guard: if the empty-key check is deleted from HttpBlobStoreAdapter.put,
         this test will fail because no ValueError will be raised.
+
+        The new guard fires on ``if not wire.store_key:`` — an empty store_key
+        after a live ingest indicates a storage contract violation (#1553).
         """
         # Arrange
         from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
         from roxabi_blobs.models import BlobRef as StorageBlobRef
-        from roxabi_contracts.blob_ref import PENDING_STORE_KEY
 
-        # Build a storage ref that simulates the pathological case:
-        # store returns PENDING_STORE_KEY — a contract violation for live ingest.
+        # Build a storage ref with empty store_key — contract violation for live ingest.
         # StorageBlobRef requires is_sentinel=True when content_hash is "".
-        pending_ref = StorageBlobRef(
-            store_key=PENDING_STORE_KEY,
+        empty_key_ref = StorageBlobRef(
+            store_key="",
             content_hash="",
             mime="audio/ogg",
             size=0,
@@ -219,7 +220,7 @@ class TestHttpBlobStoreAdapterPendingGuard:
             created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
             is_sentinel=True,
         )
-        fake_store = _make_fake_http_store(put_return=pending_ref)
+        fake_store = _make_fake_http_store(put_return=empty_key_ref)
         adapter = HttpBlobStoreAdapter(fake_store)
 
         # Act / Assert — ValueError must be raised; no value returned
@@ -285,8 +286,8 @@ class TestHttpBlobStoreAdapterDelegation:
     async def test_exists_returns_none_for_sentinel_storage_ref(self) -> None:
         """exists() returns None when the wrapped store returns a sentinel BlobRef.
 
-        Negative guard: the adapter maps is_sentinel=True to None because the
-        wire validator rejects content_hash="" when store_key != PENDING_STORE_KEY.
+        Negative guard: the adapter maps is_sentinel=True to None because a sparse
+        sentinel has content_hash="" and must not be forwarded as a wire BlobRef.
         If this mapping is removed, from_store_ref will raise a ValidationError —
         or worse, a corrupt BlobRef with content_hash="" will propagate downstream.
         """

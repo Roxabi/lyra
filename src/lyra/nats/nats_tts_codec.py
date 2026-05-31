@@ -17,8 +17,6 @@ from pydantic import ValidationError
 
 from lyra.core.ports.tts import SynthesisResult
 from lyra.transport._result import Err, Result, SanitizedError
-from roxabi_contracts import BlobRef
-from roxabi_contracts.blob_ref import PENDING_STORE_KEY
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.voice import TtsRequest, TtsResponse
 from roxabi_contracts.voice.constants import TTS_CONFIG_FIELDS
@@ -27,15 +25,6 @@ if TYPE_CHECKING:
     from lyra.core.agent.agent_config import AgentTTSConfig
 
 log = logging.getLogger(__name__)
-
-# Sentinel BlobRef for error paths where no real blob was produced.
-_SENTINEL_BLOB_REF = BlobRef(
-    store_key=PENDING_STORE_KEY,
-    content_hash="",
-    mime="",
-    size=0,
-    source="",
-)
 
 
 class TtsCodec:
@@ -87,7 +76,7 @@ class TtsCodec:
         if isinstance(result, Err):
             err = result.error
             return SynthesisResult(
-                blob_ref=_SENTINEL_BLOB_REF,
+                blob_ref=None,
                 mime_type="",
                 duration_ms=None,
                 error=err.code,
@@ -100,7 +89,7 @@ class TtsCodec:
         except (ValidationError, ValueError) as exc:
             log.warning("TtsCodec.decode: validation error: %r", exc)
             return SynthesisResult(
-                blob_ref=_SENTINEL_BLOB_REF,
+                blob_ref=None,
                 mime_type="",
                 duration_ms=None,
                 error="decode.validation_error",
@@ -112,7 +101,7 @@ class TtsCodec:
             if resp.worker_error is not None:
                 we = resp.worker_error
                 return SynthesisResult(
-                    blob_ref=_SENTINEL_BLOB_REF,
+                    blob_ref=None,
                     mime_type="",
                     duration_ms=None,
                     error=we.code,
@@ -124,7 +113,7 @@ class TtsCodec:
             # Older worker: fall back to flat resp.error
             flat_error = resp.error or "tts.worker_error"
             return SynthesisResult(
-                blob_ref=_SENTINEL_BLOB_REF,
+                blob_ref=None,
                 mime_type="",
                 duration_ms=None,
                 error=flat_error,

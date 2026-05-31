@@ -154,7 +154,7 @@ async def handle_audio(  # noqa: C901 — DEBT:wiring-bootstrap-deps
     att_size = getattr(audio_attachment, "size", None)
     if att_size is None or att_size > adapter._max_audio_bytes:
         log.warning(
-            "Audio attachment rejected: %d bytes exceeds %d byte limit (message_id=%s)",
+            "Audio attachment rejected: %s bytes exceeds %d byte limit (message_id=%s)",
             att_size,
             adapter._max_audio_bytes,
             message.id,

@@ -80,23 +80,20 @@ class AttachmentIngestStage:
 
         try:
             data = await pending.fetch()
+            wire_ref = await ctx.store.put(
+                data,
+                mime=pending.mime,
+                source=pending.source,
+                filename=pending.filename,
+                platform_ref=pending.platform_ref,
+                platform_message_id=pending.platform_message_id,
+            )
         except Exception:
-            log.exception("attachment fetch failed — degraded (PENDING preserved)")
+            log.exception("attachment ingest failed — degraded (PENDING preserved)")
             return dataclasses.replace(msg, pending_attachment=None)
 
-        wire_ref = await ctx.store.put(
-            data,
-            mime=pending.mime,
-            source=pending.source,
-            filename=pending.filename,
-            platform_ref=pending.platform_ref,
-            platform_message_id=pending.platform_message_id,
-        )
-
         if msg.audio is None:
-            return dataclasses.replace(
-                msg, pending_attachment=None
-            )  # non-audio = P2 (#1552)
-
+            # non-audio = P2 (#1552)
+            return dataclasses.replace(msg, pending_attachment=None)
         new_audio = dataclasses.replace(msg.audio, blob_ref=wire_ref)
         return dataclasses.replace(msg, audio=new_audio, pending_attachment=None)

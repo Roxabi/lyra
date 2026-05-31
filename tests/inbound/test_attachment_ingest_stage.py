@@ -116,6 +116,12 @@ class TestAttachmentIngestStage:
         Negative: if the ``except Exception: return msg`` guard is deleted, the
         exception propagates to the caller instead of returning the original msg,
         which would break the pipeline degradation contract.
+
+        Also asserts ``pending_attachment is None`` — the stage MUST clear the fetch
+        closure on the degraded path so the message is safe to serialise over NATS.
+        Negative: if the degraded return is changed back to ``return msg`` (without
+        ``dataclasses.replace``), ``result.pending_attachment`` would still be the
+        ``PendingAttachment`` instance and this assertion would fail.
         """
         # Arrange
         fetch_mock = AsyncMock(side_effect=RuntimeError("platform fetch failed"))
@@ -139,6 +145,8 @@ class TestAttachmentIngestStage:
         assert result.audio.blob_ref.store_key == PENDING_STORE_KEY
         # store.put must NOT have been called when fetch raised
         store_mock.put.assert_not_awaited()
+        # Fetch closure MUST be cleared — NATS-safe even on degraded path
+        assert result.pending_attachment is None
 
     async def test_happy_path_stamps_real_blob_ref(self) -> None:
         """fetch returns bytes → store.put called once → result carries real BlobRef.
@@ -199,3 +207,46 @@ class TestAttachmentIngestStage:
 
         # pending_attachment cleared after successful ingest
         assert result.pending_attachment is None
+
+    async def test_put_failure_degrades_like_fetch_failure(self) -> None:
+        """store.put raises → same degraded path as fetch failure.
+
+        B1 fix: the try/except wraps BOTH fetch() and store.put().  Verify that
+        a RuntimeError from store.put() follows the same degraded return path:
+        PENDING sentinel preserved on audio, pending_attachment cleared, and no
+        exception propagates to the caller.
+
+        Negative (a): if the try/except did NOT cover store.put(), the RuntimeError
+        would propagate out of stage.run — the test would fail with RuntimeError
+        rather than AssertionError.
+        Negative (b): if the degraded return did not use ``dataclasses.replace``,
+        ``result.pending_attachment`` would still be the PendingAttachment instance
+        and assertion (b) would fail.
+        """
+        # Arrange
+        fetch_mock = AsyncMock(return_value=b"oggbytes")
+        pending = PendingAttachment(
+            fetch=fetch_mock,
+            mime="audio/ogg",
+            source="telegram",
+            platform_ref="tg:file_id:ABC123",
+            platform_message_id="42",
+        )
+        msg = _voice_msg(pending_attachment=pending)
+        store_mock = AsyncMock()
+        store_mock.put = AsyncMock(side_effect=RuntimeError("blobstore write failed"))
+        ctx = IngestCtx(store=store_mock)
+        stage = AttachmentIngestStage()
+
+        # Act — must NOT raise despite store.put raising
+        result = await stage.run(msg, ctx)
+
+        # Assert (a) — PENDING sentinel preserved on audio (not replaced)
+        assert result.audio is not None
+        assert result.audio.blob_ref.store_key == PENDING_STORE_KEY
+        # Assert (b) — fetch closure cleared (NATS-safe even on degraded path)
+        assert result.pending_attachment is None
+        # Assert (c) — fetch WAS awaited (fetch succeeded; put was the failure)
+        fetch_mock.assert_awaited_once()
+        # Assert (d) — put WAS attempted (failure came from put, not fetch)
+        store_mock.put.assert_awaited_once()

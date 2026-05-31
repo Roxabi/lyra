@@ -121,6 +121,7 @@ async def wire_telegram_adapters(
         )
         adapter.configure_tool_display(deps.tool_display_config)
         await adapter.resolve_identity()
+        wire_ingest(adapter, deps.blob_store)
         # C3: Hub is the trust authority — register authenticator here, not on adapter.
         deps.hub.register_authenticator(Platform.TELEGRAM, bot_cfg.bot_id, auth)
         deps.hub.register_adapter(Platform.TELEGRAM, bot_cfg.bot_id, adapter)
@@ -231,6 +232,7 @@ async def wire_discord_adapters(
             adapter.configure_tool_display(deps.tool_display_config)
             # Wire identity resolver for slash command trust (voice commands).
             adapter._resolve_identity_fn = deps.hub.resolve_identity
+            wire_ingest(adapter, deps.blob_store)
             # C3: Hub is the trust authority — register here, not on adapter.
             deps.hub.register_authenticator(Platform.DISCORD, bot_cfg.bot_id, auth)
             deps.hub.register_adapter(Platform.DISCORD, bot_cfg.bot_id, adapter)
@@ -339,13 +341,32 @@ def build_ingest(
     return IngestCtx(store=blob_store), stage
 
 
-def _assert_prod_ingest_store(ingest: IngestCtx) -> None:
-    """Production invariant: a configured ingest stage must carry a live store.
+def _assert_blobstore_configured_if_url_set(ingest: IngestCtx) -> None:
+    """Fail fast on misconfiguration: URL set but the store failed to initialise.
 
-    Guards against a silent no-op where LYRA_BLOBSTORE_URL / token are unset and
-    inbound attachments would never persist. (#1551 S8.)
+    Honors #1540 graceful degradation: when ``LYRA_BLOBSTORE_URL`` is unset
+    (dev / CLI), a ``None`` store is expected and we degrade silently. When the
+    URL IS set but ``init_blobstore()`` returned ``None`` (token file absent or
+    unreadable → misconfiguration), raise so inbound attachment ingest cannot
+    silently no-op in production. (#1551 S8, reconciles #1540.)
     """
-    assert ingest.store is not None, (
-        "Production bootstrap: ctx.ingest.store is None — "
-        "LYRA_BLOBSTORE_URL + LYRA_BLOBSTORE_TOKEN_PATH must be configured"
-    )
+    url = os.environ.get("LYRA_BLOBSTORE_URL")
+    if url and ingest.store is None:
+        raise RuntimeError(
+            f"LYRA_BLOBSTORE_URL={url!r} is set but BlobStore failed to "
+            "initialise (LYRA_BLOBSTORE_TOKEN_PATH absent or unreadable) — "
+            "inbound attachment ingest would silently no-op."
+        )
+
+
+def wire_ingest(adapter: Any, blob_store: "BlobStorePort | None") -> None:
+    """Inject the ingest context onto an adapter + enforce the prod invariant.
+
+    Single seam called from EVERY bootstrap path (standalone + hub) so no path
+    can omit ingest wiring (#1551 S8, ADR-083). The live stage runs in the
+    module-level inbound pipeline; bootstrap only supplies the IngestCtx (store)
+    that the pipeline reads at call time, so the returned stage is unused here.
+    """
+    ingest_ctx, _stage = build_ingest(blob_store)
+    adapter._ingest_ctx = ingest_ctx
+    _assert_blobstore_configured_if_url_set(ingest_ctx)

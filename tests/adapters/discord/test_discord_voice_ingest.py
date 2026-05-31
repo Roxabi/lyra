@@ -129,3 +129,118 @@ async def test_dc_eager_read_and_pending_attachment_routed() -> None:
     assert len(captured_msg) == 1
     routed = captured_msg[0]
     assert routed.pending_attachment is not None
+
+
+# ---------------------------------------------------------------------------
+# T4-3: too-large early return — pipeline never awaited
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_dc_too_large_reply_no_pipeline() -> None:
+    """When attachment size exceeds _max_audio_bytes, handler must:
+    (a) await message.reply() with the audio_too_large text, and
+    (b) NOT await discord_inbound._pipeline.run.
+
+    Negative-test contract: deleting the early `return` after the size check
+    would cause _pipeline.run to be awaited — assert_not_awaited() catches it.
+    """
+    adapter = _make_adapter()
+    message = _make_discord_message()
+    # Size exactly one byte over the limit
+    oversized = _make_audio_attachment(size=adapter._max_audio_bytes + 1)
+
+    mock_pipeline = MagicMock()
+    mock_pipeline.run = AsyncMock(return_value=None)
+
+    with patch("lyra.adapters.discord.discord_inbound._pipeline", mock_pipeline):
+        await handle_audio(adapter, message, oversized, TrustLevel.PUBLIC)
+
+    # (a) Reply was sent
+    message.reply.assert_awaited_once()
+    reply_text: str = message.reply.call_args.args[0]
+    assert "large" in reply_text.lower()
+
+    # (b) Pipeline was NOT reached — load-bearing assertion
+    mock_pipeline.run.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# T4-4: download failure early return — pipeline never awaited
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_dc_download_failed_reply_no_pipeline() -> None:
+    """When audio_attachment.read() raises discord.HTTPException, handler must:
+    (a) await message.reply() with the audio_download_failed text, and
+    (b) NOT await discord_inbound._pipeline.run.
+
+    Negative-test contract: deleting the early `return` after the download-failure
+    branch would cause _pipeline.run to be awaited — assert_not_awaited() catches it.
+    """
+    adapter = _make_adapter()
+    message = _make_discord_message()
+    attachment = _make_audio_attachment()
+    # Override read to raise — HTTPException is in the except tuple
+    resp_mock = MagicMock(status=503, headers={})
+    attachment.read = AsyncMock(
+        side_effect=discord.HTTPException(resp_mock, "service unavailable")
+    )
+
+    mock_pipeline = MagicMock()
+    mock_pipeline.run = AsyncMock(return_value=None)
+
+    with patch("lyra.adapters.discord.discord_inbound._pipeline", mock_pipeline):
+        await handle_audio(adapter, message, attachment, TrustLevel.PUBLIC)
+
+    # (a) Reply was sent
+    message.reply.assert_awaited_once()
+    reply_text: str = message.reply.call_args.args[0]
+    assert (
+        "audio" in reply_text.lower()
+        or "retrieve" in reply_text.lower()
+        or "try again" in reply_text.lower()
+    )
+
+    # (b) Pipeline was NOT reached — load-bearing assertion
+    mock_pipeline.run.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# T4-5: invalid magic bytes early return — pipeline never awaited
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_dc_invalid_magic_reply_no_pipeline() -> None:
+    """When audio bytes fail the magic-byte check, handler must:
+    (a) await message.reply() with the audio_invalid_format text, and
+    (b) NOT await discord_inbound._pipeline.run.
+
+    Negative-test contract: deleting the early `return` after the magic-byte check
+    would cause _pipeline.run to be awaited — assert_not_awaited() catches it.
+    """
+    adapter = _make_adapter()
+    message = _make_discord_message()
+    attachment = _make_audio_attachment()
+    # Return bytes that look like plain text — fails every magic signature
+    attachment.read = AsyncMock(return_value=b"NOTAUDIO" + b"\x00" * 20)
+
+    mock_pipeline = MagicMock()
+    mock_pipeline.run = AsyncMock(return_value=None)
+
+    with patch("lyra.adapters.discord.discord_inbound._pipeline", mock_pipeline):
+        await handle_audio(adapter, message, attachment, TrustLevel.PUBLIC)
+
+    # (a) Reply was sent
+    message.reply.assert_awaited_once()
+    reply_text: str = message.reply.call_args.args[0]
+    assert (
+        "audio" in reply_text.lower()
+        or "valid" in reply_text.lower()
+        or "format" in reply_text.lower()
+    )
+
+    # (b) Pipeline was NOT reached — load-bearing assertion
+    mock_pipeline.run.assert_not_awaited()

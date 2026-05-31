@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any
 
@@ -88,6 +89,12 @@ class InboundPipeline:
             and ctx.ingest.store is not None
         ):
             msg = await self._ingest_stage.run(msg, ctx.ingest)
+        elif msg.pending_attachment is not None:
+            # No-store path: the stage did not run. Clear the fetch closure so the
+            # message is safe to serialise over NATS (a PendingAttachment must never
+            # cross the process boundary). Transport-boundary invariant.
+            # (#1551, ADR-083)
+            msg = dataclasses.replace(msg, pending_attachment=None)
         if pre_route_hook is not None:
             await pre_route_hook(msg, ctx)
         if self._router.decide(msg, ctx.router) is RouteDecision.DROP:

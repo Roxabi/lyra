@@ -1,29 +1,21 @@
-"""RED tests for build_ingest / _assert_prod_ingest_store wiring helpers (#1537, #1551).
-
-Targets two functions not yet added to
-``lyra.bootstrap.wiring.bootstrap_wiring``:
-
-    def build_ingest(
-        blob_store: BlobStorePort | None,
-    ) -> tuple[IngestCtx, AttachmentIngestStage | None]: ...
-    def _assert_prod_ingest_store(ingest: IngestCtx) -> None: ...
-
-These tests will FAIL at collection (ImportError) until the GREEN implementation
-is committed.  IngestCtx + AttachmentIngestStage are also nonexistent (RED from T1).
+"""Tests for build_ingest / wire_ingest / _assert_blobstore_configured_if_url_set
+wiring helpers (#1537, #1551, ADR-083).
 """
 
 from __future__ import annotations
 
+import types
 from unittest.mock import MagicMock
 
 import pytest
 
-from lyra.bootstrap.wiring.bootstrap_wiring import (  # noqa: E402 — symbols added in GREEN
-    _assert_prod_ingest_store,
+from lyra.bootstrap.wiring.bootstrap_wiring import (
+    _assert_blobstore_configured_if_url_set,
     build_ingest,
+    wire_ingest,
 )
 from lyra.core.ports.blobstore import BlobStorePort
-from lyra.inbound.attachment_ingest import (  # noqa: E402 — module added in GREEN
+from lyra.inbound.attachment_ingest import (
     AttachmentIngestStage,
     IngestCtx,
 )
@@ -39,15 +31,11 @@ class TestBuildIngest:
         sets ctx.store = None, the assertion ``ctx.store is mock_blob_store``
         fails — the ingest stage would never receive a live store in production.
         """
-        # Arrange
         mock_blob_store = MagicMock(spec=BlobStorePort)
 
-        # Act
         ctx, stage = build_ingest(mock_blob_store)
 
-        # Assert — store is the exact object passed in
         assert ctx.store is mock_blob_store
-        # A stage must be returned so the pipeline actually runs ingest
         assert stage is not None
         assert isinstance(stage, AttachmentIngestStage)
 
@@ -58,31 +46,85 @@ class TestBuildIngest:
         ``stage is None`` fails — a stage with no store would attempt a None.put()
         call, raising AttributeError instead of silently degrading.
         """
-        # Arrange + Act
         ctx, stage = build_ingest(None)
 
-        # Assert — degraded / CLI path: no store, no stage
         assert ctx.store is None
         assert stage is None
 
 
-class TestAssertProdIngestStore:
-    """_assert_prod_ingest_store — production guard that rejects None stores."""
+class TestAssertBlobstoreConfiguredIfUrlSet:
+    """_assert_blobstore_configured_if_url_set — env-signal prod guard."""
 
-    def test_prod_assert_raises_when_store_none(self) -> None:
-        """_assert_prod_ingest_store raises AssertionError when ctx.store is None.
+    def test_url_set_store_none_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """LYRA_BLOBSTORE_URL set + store None → RuntimeError (misconfiguration).
 
-        Negative: if the guard ``assert ingest.store is not None`` is deleted,
-        the function returns silently and the production pipeline starts with a
-        None store — attachments silently degrade instead of surfacing the
-        misconfiguration at startup.
-
-        The match string ``ctx.ingest.store`` is pinned to the locked contract
-        error message so that a vague assertion error is not mistaken for a pass.
+        Negative: if the guard is removed or the env-signal check is inverted,
+        production silently no-ops instead of failing fast at startup.
         """
-        # Arrange
+        monkeypatch.setenv("LYRA_BLOBSTORE_URL", "http://blobstore.example.com")
         ingest_ctx = IngestCtx(store=None)
 
-        # Act + Assert
-        with pytest.raises(AssertionError, match="ctx.ingest.store"):
-            _assert_prod_ingest_store(ingest_ctx)
+        with pytest.raises(RuntimeError, match="LYRA_BLOBSTORE_URL"):
+            _assert_blobstore_configured_if_url_set(ingest_ctx)
+
+    def test_url_set_store_present_no_raise(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """LYRA_BLOBSTORE_URL set + store present → no raise (correct config)."""
+        monkeypatch.setenv("LYRA_BLOBSTORE_URL", "http://blobstore.example.com")
+        mock_store = MagicMock(spec=BlobStorePort)
+        ingest_ctx = IngestCtx(store=mock_store)
+
+        # Should not raise
+        _assert_blobstore_configured_if_url_set(ingest_ctx)
+
+    def test_url_unset_store_none_no_raise(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """LYRA_BLOBSTORE_URL unset + store None → no raise (honors #1540 degradation).
+
+        Negative: if the guard fires unconditionally on store=None, dev/CLI mode
+        would always error — breaking the #1540 graceful-degradation contract.
+        """
+        monkeypatch.delenv("LYRA_BLOBSTORE_URL", raising=False)
+        ingest_ctx = IngestCtx(store=None)
+
+        # Should not raise — degraded path is intentional
+        _assert_blobstore_configured_if_url_set(ingest_ctx)
+
+
+class TestWireIngest:
+    """wire_ingest — single seam that injects IngestCtx and enforces prod invariant."""
+
+    def test_wire_ingest_sets_ingest_ctx_store(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """wire_ingest(obj, store) → obj._ingest_ctx.store is store."""
+        monkeypatch.delenv("LYRA_BLOBSTORE_URL", raising=False)
+        mock_store = MagicMock(spec=BlobStorePort)
+        adapter = types.SimpleNamespace()
+
+        wire_ingest(adapter, mock_store)
+
+        assert adapter._ingest_ctx.store is mock_store
+
+    def test_wire_ingest_none_url_unset_no_raise(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """wire_ingest(obj, None) with URL unset → ctx.store is None, no raise."""
+        monkeypatch.delenv("LYRA_BLOBSTORE_URL", raising=False)
+        adapter = types.SimpleNamespace()
+
+        wire_ingest(adapter, None)
+
+        assert adapter._ingest_ctx.store is None
+
+    def test_wire_ingest_none_url_set_raises(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """wire_ingest(obj, None) with URL set → RuntimeError (misconfiguration)."""
+        monkeypatch.setenv("LYRA_BLOBSTORE_URL", "http://blobstore.example.com")
+        adapter = types.SimpleNamespace()
+
+        with pytest.raises(RuntimeError, match="LYRA_BLOBSTORE_URL"):
+            wire_ingest(adapter, None)

@@ -75,7 +75,8 @@
         "$JS.API.STREAM.MSG.GET.KV_lyra_outbound_audio_sent",
         "$JS.ACK.LYRA_OUTBOUND_AUDIO.>",
         "$KV.lyra_outbound_audio_sent.>",
-        "$JS.API.STREAM.INFO.KV_lyra-state"
+        "$JS.API.STREAM.INFO.KV_lyra-state",
+        "$JS.API.STREAM.MSG.GET.KV_lyra-state"
       ],
       "subscribe": [
         "lyra.outbound.telegram.>",
@@ -112,7 +113,8 @@
         "$JS.API.STREAM.MSG.GET.KV_lyra_outbound_audio_sent",
         "$JS.ACK.LYRA_OUTBOUND_AUDIO.>",
         "$KV.lyra_outbound_audio_sent.>",
-        "$JS.API.STREAM.INFO.KV_lyra-state"
+        "$JS.API.STREAM.INFO.KV_lyra-state",
+        "$JS.API.STREAM.MSG.GET.KV_lyra-state"
       ],
       "subscribe": [
         "lyra.outbound.discord.>",

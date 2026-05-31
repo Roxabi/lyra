@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 from scripts._acl_models import LoadedMatrix
-from scripts._effective import effective_grants
+from scripts._effective import effective_grants, subject_covered
 from scripts._loader import load_matrix
 
 # ── Repo root ────────────────────────────────────────────────────────────────
@@ -149,3 +149,42 @@ class TestEffectiveGrantsExcludesRetired:
         assert "old-worker" not in grants, (
             "old-worker is retired and must not appear in effective_grants keys"
         )
+
+
+# ── subject_covered ───────────────────────────────────────────────────────────
+
+
+class TestSubjectCovered:
+    @pytest.mark.parametrize(
+        ("subject", "grants", "expected"),
+        [
+            # exact match
+            ("foo", ["foo"], True),
+            # bare >
+            ("foo.bar", [">"], True),
+            # .> matches sub-level
+            ("foo.bar", ["foo.>"], True),
+            # .> matches deep sub-level
+            ("foo.bar.baz", ["foo.>"], True),
+            # .> does NOT match bare prefix
+            ("foo", ["foo.>"], False),
+            # .> does NOT match unrelated
+            ("bar.baz", ["foo.>"], False),
+            # .* matches single token
+            ("foo.bar", ["foo.*"], True),
+            # .* does NOT match multi-token
+            ("foo.bar.baz", ["foo.*"], False),
+            # .* does NOT match bare prefix
+            ("foo", ["foo.*"], False),
+            # .* does NOT match unrelated
+            ("bar.baz", ["foo.*"], False),
+            # mixed grant list
+            ("foo.bar", ["foo.>", "baz.*"], True),
+            # mixed grant list negative
+            ("foo.bar.baz", ["foo.*"], False),
+        ],
+    )
+    def test_subject_covered(
+        self, subject: str, grants: list[str], expected: bool
+    ) -> None:
+        assert subject_covered(subject, grants) is expected

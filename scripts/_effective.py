@@ -65,22 +65,24 @@ def subject_covered(subject: str, grants: list[str]) -> bool:
     """NATS-wildcard-aware coverage check.
 
     Returns True if *subject* is covered by any grant in *grants*:
-      - Exact match:    grant == subject
-      - Bare wildcard:  grant == ">"
+      - Exact match:     grant == subject
+      - Bare wildcard:   grant == ">"
       - Suffix wildcard: grant ends with ".>" and
-          subject == grant[:-2]  (the prefix token itself)
-          OR subject starts with grant[:-1]  (any sub-level)
+          subject starts with grant[:-1] (any sub-level, bare prefix excluded)
+      - Single-token wildcard: grant ends with ".*" and
+          subject starts with grant[:-1] and has exactly one extra token
 
     Semantics are identical to _subject_covered in check_request_reply_flows.py.
     """
     for grant in grants:
-        if grant == subject:
-            return True
-        if grant == ">":
+        if grant == subject or grant == ">":
             return True
         if grant.endswith(".>"):
             prefix = grant[:-1]  # "lyra.foo."
-            bare = grant[:-2]  # "lyra.foo"
-            if subject == bare or subject.startswith(prefix):
+            if subject.startswith(prefix):
+                return True
+        if grant.endswith(".*"):
+            prefix = grant[:-1]  # "lyra.foo."
+            if subject.startswith(prefix) and "." not in subject[len(prefix):]:
                 return True
     return False

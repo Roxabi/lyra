@@ -2,8 +2,8 @@
 title: retire PENDING_STORE_KEY sentinel + STT fallback cleanup
 issue: 1553
 status: approved
-tier: S
-date: 2026-05-30
+tier: F-lite
+date: 2026-05-31
 parent_spec: artifacts/specs/1537-central-attachment-ingestion-stage-spec.mdx
 parent_issue: 1537
 ---
@@ -11,24 +11,41 @@ parent_issue: 1537
 ## Scope
 
 Phase 3 — slice **S9** of the parent spec. Final cleanup once both adapters produce real
-`BlobRef`s. Retires the `PENDING_STORE_KEY` sentinel and the STT `platform_ref` fallback.
+`BlobRef`s (blockers #1551 + #1552 merged). Retires the `PENDING_STORE_KEY` sentinel and the
+STT `platform_ref` fallback. Converges voice fetch-failure degraded mode to `blob_ref=None`;
+no path emits the retired sentinel.
 
-- Remove `isinstance(audio, bytes)` branch + inline `PENDING_STORE_KEY` construction in
-  `NatsSttClient.transcribe()`.
-- Remove the sentinel + `_require_content_hash_unless_sentinel` validator in
-  `roxabi_contracts.blob_ref`.
-- Clean residual usage in `cli_voice_smoke.py`, `nats_tts_codec.py`.
-- Converge voice fetch-failure degraded mode → drop + error (`blob_ref=None`); no path
-  emits the retired sentinel.
+This is a **cross-layer change (~15 files / 5 layers)**, not a 3-file cleanup. It includes a
+type-contract change on `AudioPayload` and a breaking change to a versioned published package.
+
+| Layer | Files | Change |
+|---|---|---|
+| contracts (pkg — **breaking**) | `roxabi_contracts/blob_ref.py` (const `PENDING_STORE_KEY=__pending__` L17, validator `_require_content_hash_unless_sentinel` L83-86, docstrings L20/38/41/58), `__init__.py` export (L14,28), `voice/builders.py` docstring L87 | remove sentinel + validator; **bump 0.5.0→0.6.0** |
+| core (type contract) | `core/audio_payload.py` (`blob_ref: BlobRef`→`BlobRef \| None` L24 + docstring L19-21), `core/hub/middleware/middleware_stt.py` L116, `core/ports/blobstore.py` docstring L47 | Optional blob_ref + degraded handling |
+| adapters | `adapters/discord/discord_audio.py` L114-122, `adapters/telegram/telegram_normalize.py` L227+ | construct `blob_ref=None`, not sentinel placeholder |
+| inbound | `inbound/attachment_ingest.py` degraded path L157-159 (+ docstrings L113-115) | degraded → `blob_ref=None`, stop "PENDING preserved" |
+| infrastructure | `infrastructure/blobstore_adapter.py` PENDING-guard L79-81 (+ comments L53/116), `infrastructure/CLAUDE.md` L23/30 | guard replacement (see decision 3) |
+| nats | `nats/nats_stt_client.py` (import L15, `isinstance(audio,bytes)` + inline sentinel L58-66), `nats/nats_tts_codec.py` (import L21, `_SENTINEL_BLOB_REF` L33 used at L90/103/115/127 — ~5 branches) | remove sentinel paths → `blob_ref=None` |
+| cli | `cli_voice_smoke.py` L17, L227 | remove sentinel |
+
+## Decisions
+
+1. **Type contract** — `AudioPayload.blob_ref: BlobRef → BlobRef | None` (`None` = unresolved/degraded). Plan must audit every reader before deref: `middleware_stt.py:116` STT consumer, any `.audio.blob_ref.store_key` deref, NATS inbound serialization of `audio.blob_ref`.
+
+2. **Voice degraded path** — adapters construct `blob_ref=None` initially (happy path overwrites it via `attachment_ingest` L165; degraded leaves `None`). `attachment_ingest` degraded branch (L157-159) sets `blob_ref=None` instead of preserving the sentinel. `middleware_stt`: on `blob_ref is None` → drop + user-facing error, no STT call.
+
+3. **Consumption guard replacement (ADR-082)** — `blobstore_adapter.py:79`: replace `store_key == PENDING_STORE_KEY → raise` with `not store_key → raise` (empty store_key = contract violation; preserve the "a live `put()` must return a resolved ref" invariant; `store_key` is opaque).
+
+4. **Breaking contracts bump** — removing the two public exports = breaking → `roxabi-contracts 0.5.0 → 0.6.0`. Cross-repo: verify voiceCLI#187 / imageCLI#101 (migrating to BlobStorePort) don't import the removed symbols; flag coordination. Audit `TtsResponse` model + `builders.py` for residual sentinel coupling.
 
 ## Success Criteria
 
-- [ ] `grep -r PENDING_STORE_KEY src/` = 0.
-- [ ] STT integration passes on real `BlobRef`; `platform_ref` fallback no longer
-      exercised.
-- [ ] Voice degraded mode emits `blob_ref=None`, never the retired sentinel.
+- [ ] `grep -rn PENDING_STORE_KEY src/ packages/` = 0 (constant lives in `packages/`; both trees must be clean)
+- [ ] STT integration passes on a real `BlobRef`; `platform_ref` fallback removed (no `isinstance(audio, bytes)` branch)
+- [ ] Voice degraded mode emits `blob_ref=None`, never the retired sentinel
+- [ ] `roxabi-contracts` version bumped to 0.6.0; no consumer imports the removed symbols
 
 ## Reference
 
-[parent spec](./1537-central-attachment-ingestion-stage-spec.mdx) · ADR-083.
-Depends on #1551 + #1552 (all adapters cut over).
+[parent spec](./1537-central-attachment-ingestion-stage-spec.mdx) · ADR-083 · ADR-082.
+Blockers #1551 + #1552 merged (unblocked).

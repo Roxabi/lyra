@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage, TelegramMeta
+from lyra.core.messaging.message import Attachment, InboundMessage, TelegramMeta
+from lyra.inbound.attachment_ingest import IngestCtx, PendingAttachment
 from lyra.inbound.context import DispatchCtx, InboundContext, RouterCtx, SessionCtx
 from lyra.inbound.pipeline import InboundPipeline
 from lyra.inbound.router import RouteDecision
@@ -36,7 +37,9 @@ def _make_msg(*, is_mention: bool = False) -> InboundMessage:
     )
 
 
-def _make_ctx(*, owned_threads: set[int] | None = None) -> InboundContext:
+def _make_ctx(
+    *, owned_threads: set[int] | None = None, ingest: "IngestCtx | None" = None
+) -> InboundContext:
     router_ctx = RouterCtx(
         bot_id=_BOT_ID,
         owned_threads=owned_threads if owned_threads is not None else set(),
@@ -44,7 +47,9 @@ def _make_ctx(*, owned_threads: set[int] | None = None) -> InboundContext:
     )
     session_ctx = SessionCtx(turn_store=None, thread_store=None)
     dispatch_ctx = MagicMock(spec=DispatchCtx)
-    return InboundContext(router=router_ctx, session=session_ctx, dispatch=dispatch_ctx)
+    return InboundContext(
+        router=router_ctx, session=session_ctx, dispatch=dispatch_ctx, ingest=ingest
+    )
 
 
 def _make_pipeline(
@@ -259,3 +264,64 @@ class TestInboundPipeline:
         )
         # on_drop not triggered by the pipeline itself (only Dispatcher may call it)
         on_drop.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_no_store_path_clears_pending_attachments(self) -> None:
+        """No-store path (ingest_stage=None or store=None): pending_attachments cleared.
+
+        B1 contract: when the ingest stage is skipped (no store configured), both
+        singular ``pending_attachment`` and plural ``pending_attachments`` must be
+        cleared before the message is forwarded to the router/dispatcher — fetch
+        closures must never cross the NATS process boundary.
+
+        Negative: if only ``pending_attachment`` is cleared (old code), a message
+        carrying ``pending_attachments`` leaks live closures downstream.
+        """
+        # Arrange — pipeline with NO ingest stage (store=None path)
+        pipeline, _mock_router, mock_session_builder, _mock_dispatcher = _make_pipeline(
+            route_decision=RouteDecision.PROCESS,
+        )
+        # Build a message carrying a non-empty pending_attachments list
+        async def _fake_fetch() -> bytes:
+            return b"data"  # pragma: no cover
+
+        pending = PendingAttachment(
+            fetch=_fake_fetch,
+            mime="image/jpeg",
+            source="telegram",
+        )
+        att = Attachment(
+            type="image", url_or_path_or_bytes="tg:x", mime_type="image/jpeg"
+        )
+        msg_with_pending = dataclasses.replace(
+            _make_msg(), attachments=[att], pending_attachments=[pending]
+        )
+
+        ctx = _make_ctx(ingest=IngestCtx(store=None))
+        parser = MagicMock()
+        parser.parse = MagicMock(return_value=msg_with_pending)
+        send_backpressure = AsyncMock()
+
+        # Capture the msg that session_builder.build receives
+        captured: list[InboundMessage] = []
+
+        async def _capture_build(m: InboundMessage, _s: object) -> InboundMessage:
+            captured.append(m)
+            return m
+
+        mock_session_builder.build = AsyncMock(side_effect=_capture_build)
+
+        # Act
+        await pipeline.run(
+            raw="raw-event",
+            ctx=ctx,
+            parser=parser,
+            send_backpressure=send_backpressure,
+        )
+
+        # Assert — the msg forwarded downstream has pending_attachments cleared
+        assert len(captured) == 1
+        forwarded = captured[0]
+        assert forwarded.pending_attachments == [], (
+            "pending_attachments must be cleared on the no-store path (B1 NATS-safety)"
+        )

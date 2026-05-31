@@ -89,12 +89,14 @@ class InboundPipeline:
             and ctx.ingest.store is not None
         ):
             msg = await self._ingest_stage.run(msg, ctx.ingest)
-        elif msg.pending_attachment is not None:
-            # No-store path: the stage did not run. Clear the fetch closure so the
-            # message is safe to serialise over NATS (a PendingAttachment must never
-            # cross the process boundary). Transport-boundary invariant.
-            # (#1551, ADR-083)
-            msg = dataclasses.replace(msg, pending_attachment=None)
+        elif msg.pending_attachment is not None or msg.pending_attachments:
+            # No-store path: the stage did not run. Clear fetch closures (singular
+            # audio #1551 + plural non-audio #1552) so the message is NATS-safe —
+            # a PendingAttachment closure must never cross the process boundary.
+            # Transport-boundary invariant. (ADR-083)
+            msg = dataclasses.replace(
+                msg, pending_attachment=None, pending_attachments=[]
+            )
         if pre_route_hook is not None:
             await pre_route_hook(msg, ctx)
         if self._router.decide(msg, ctx.router) is RouteDecision.DROP:

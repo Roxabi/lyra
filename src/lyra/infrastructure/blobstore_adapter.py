@@ -13,10 +13,17 @@ See ADR-082 (driven-port) and ADR-067 (BlobStore abstraction).
 
 from __future__ import annotations
 
+import httpx
+
 import roxabi_blobs
 from roxabi_blobs import HttpBlobStore
 from roxabi_blobs.models import BlobRef as StorageBlobRef
-from roxabi_contracts import PENDING_STORE_KEY, BlobNotFoundError, BlobRef
+from roxabi_contracts import (
+    PENDING_STORE_KEY,
+    BlobNotFoundError,
+    BlobRef,
+    BlobStoreServerError,
+)
 
 
 class HttpBlobStoreAdapter:
@@ -47,14 +54,27 @@ class HttpBlobStoreAdapter:
         real ingest indicates a storage contract violation and raises
         ``ValueError`` immediately (store_key is opaque — no sha256 regex).
         """
-        storage_ref: StorageBlobRef = await self._http_store.put(
-            data,
-            mime=mime,
-            source=source,
-            filename=filename,
-            platform_ref=platform_ref,
-            platform_message_id=platform_message_id,
-        )
+        try:
+            storage_ref: StorageBlobRef = await self._http_store.put(
+                data,
+                mime=mime,
+                source=source,
+                filename=filename,
+                platform_ref=platform_ref,
+                platform_message_id=platform_message_id,
+            )
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code >= 500:
+                raise BlobStoreServerError(
+                    f"BlobStore returned HTTP {e.response.status_code}",
+                    status_code=e.response.status_code,
+                ) from e
+            raise
+        except httpx.RequestError as e:
+            raise BlobStoreServerError(
+                f"BlobStore request failed: {type(e).__name__}",
+                status_code=503,
+            ) from e
         wire = BlobRef.from_store_ref(storage_ref)
         if wire.store_key == PENDING_STORE_KEY:
             raise ValueError(

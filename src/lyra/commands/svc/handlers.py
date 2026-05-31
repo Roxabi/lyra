@@ -8,12 +8,12 @@ import re
 from lyra.core.error_utils import safe_error_response
 from lyra.core.messaging.message import InboundMessage, Response
 from lyra.core.pool import Pool
-from lyra.integrations.base import ServiceControlFailed, ServiceManager
+from lyra.integrations.base import ServiceControlFailed
 from lyra.integrations.systemctl import SystemctlManager
 
 log = logging.getLogger(__name__)
 
-_service_manager: ServiceManager = SystemctlManager()
+_service_manager = SystemctlManager()
 
 _ALLOWED_SERVICES = frozenset({"lyra", "voicecli_stt", "voicecli_tts"})
 _ALLOWED_ACTIONS = frozenset({"restart", "start", "stop", "status"})

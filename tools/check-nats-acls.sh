@@ -2,11 +2,11 @@
 # Stream journalctl for NATS permission violations after an ACL reload.
 #
 # Usage: scripts/check-nats-acls.sh [--since <timestamp>] [--window <seconds>]
-# Env:   NATS_UNIT=nats.service   (override systemd unit name; matches deploy/nats/nats.service)
+# Env:   NATS_UNIT=lyra-nats.service   (override systemd unit name; Quadlet container)
 set -euo pipefail
 SINCE=""
 WINDOW="${WINDOW:-90}"
-NATS_UNIT="${NATS_UNIT:-nats.service}"
+NATS_UNIT="${NATS_UNIT:-lyra-nats.service}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --since)  SINCE="$2"; shift 2 ;;

@@ -1,7 +1,6 @@
-"""SystemctlManager — ServiceManager backed by `systemctl --user` (Quadlet model).
+"""SystemctlManager — backed by `systemctl --user` (Quadlet model).
 
-Replaces the supervisord-era `SupervisorctlManager` for the `/svc` plugin. Maps
-the user-facing service name to one or more rootless `systemd --user` units:
+Maps the user-facing service name to one or more rootless `systemd --user` units:
 
     lyra         → lyra-{nats,hub,telegram,discord,clipool}.service
     voicecli_stt → voicecli-stt.service
@@ -50,7 +49,7 @@ _TOLERATED_STATUS_CODES: frozenset[int] = frozenset({0, 3})
 
 
 class SystemctlManager:
-    """ServiceManager backed by `systemctl --user`."""
+    """Backs the /svc plugin via `systemctl --user`."""
 
     async def control(self, action: str, service: str | None) -> str:
         sysd_action = _ACTIONS.get(action)

@@ -36,7 +36,6 @@ from scripts._modes import (  # noqa: E402
 __all__ = ["atomic_write", "operator_home"]  # re-exported for test imports
 from scripts._effective import subject_covered  # noqa: E402
 from scripts._renderer import render_auth_conf  # noqa: E402
-from scripts._supervisor import validate_supervisor  # noqa: E402
 
 _DEFAULT_MATRIX = Path("deploy/nats/acl-matrix.json")
 
@@ -51,10 +50,6 @@ def _cmd_genkeys(args: argparse.Namespace) -> None:
             if identity["status"] == "active"
         }
         print(render_auth_conf(matrix, pubkeys), end="")
-        return
-
-    if args.validate_supervisor:
-        _cmd_validate_supervisor(args)
         return
 
     if args.add_identity:
@@ -84,17 +79,6 @@ def _cmd_genkeys(args: argparse.Namespace) -> None:
     # Default: full provisioning
     externals = _mode_full_provision(args)
     _handle_externals(externals, _seeds_dir(), args)
-
-
-def _cmd_validate_supervisor(args: argparse.Namespace) -> None:
-    matrix = load_matrix(args.matrix)
-    repo_root = Path.cwd()
-    errors = validate_supervisor(matrix, repo_root)
-    if errors:
-        for e in errors:
-            print(e, file=sys.stderr)
-        sys.exit(1)
-    print("validate-supervisor: OK")
 
 
 def _cmd_check_retired(args: argparse.Namespace) -> None:
@@ -214,11 +198,6 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Render auth.conf to stdout using fake nkeys (no nk binary required)",
     )
     gk.add_argument(
-        "--validate-supervisor",
-        action="store_true",
-        help="Check NATS_NKEY_SEED_PATH wiring in deploy files",
-    )
-    gk.add_argument(
         "--regen-authconf",
         action="store_true",
         help="Regenerate auth.conf from existing seeds (no new keys generated)",
@@ -267,19 +246,6 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     gk.set_defaults(func=_cmd_genkeys)
-
-    # --- validate-supervisor subcommand ---
-    vs = sub.add_parser(
-        "validate-supervisor",
-        help="Validate NATS_NKEY_SEED_PATH wiring in deploy files",
-    )
-    vs.add_argument(
-        "--matrix",
-        type=Path,
-        default=_DEFAULT_MATRIX,
-        metavar="PATH",
-    )
-    vs.set_defaults(func=_cmd_validate_supervisor)
 
     # --- check subcommand (with sub-subcommands) ---
     ck = sub.add_parser("check", help="ACL matrix consistency checks")

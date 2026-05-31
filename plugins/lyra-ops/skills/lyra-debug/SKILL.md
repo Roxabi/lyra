@@ -10,13 +10,11 @@ allowed-tools: Bash, Read, Glob, Grep
 Diagnose Lyra issues on production (roxabituwer). Runs from the **local** machine
 (`~/projects/lyra`) — all production access is via `make remote` and SSH.
 
-Production runs **Podman Quadlet** (rootless, systemd --user units). Supervisord
-fallback still supported if `LYRA_SUPERVISORCTL_PATH` is set in remote `.env`
-(legacy hosts only) — `make remote` auto-branches.
+Production runs **Podman Quadlet** (rootless, systemd --user units).
 
 Let:
   H      := DEPLOY_HOST (from `~/projects/lyra/.env`)
-  units  := {lyra-hub, lyra-telegram, lyra-discord, nats}
+  units  := {lyra-hub, lyra-telegram, lyra-discord, lyra-nats}
   Σ      := severity (🔴 down | 🟡 degraded | 🟢 healthy)
   pat    := known error patterns (see §Known Patterns)
 
@@ -31,7 +29,7 @@ Let:
 | `start-limit-hit` / unit in `failed` | systemd gave up after 5 restarts in 60s | Inspect journal, fix root cause, `systemctl --user reset-failed` |
 | `CancelledError` in starlette | Normal shutdown noise — not a root cause | Ignore unless paired with other errors |
 | `Rate limit` / `429` | Anthropic API rate limit | Wait or check API key quota |
-| `NATS.*connection` / `no servers available` | Hub ↔ adapter NATS transport broken or nats.service down | Restart `nats` first, then `lyra-hub`, then adapters |
+| `NATS.*connection` / `no servers available` | Hub ↔ adapter NATS transport broken or lyra-nats.service down | Restart `lyra-nats` first, then `lyra-hub`, then adapters |
 | `IsADirectoryError.*config.toml` | Quadlet bind-mount downgrade (see commit c9187fb) | Ensure inline `Volume=%h/.lyra/config.toml:/app/config.toml:ro,z` |
 | `permission denied.*\.lyra` | UserNS mapping mismatch (ADR-054) | Verify `UserNS=keep-id:uid=1500,gid=1500` in container unit |
 
@@ -45,7 +43,7 @@ Also inspect containers + nats directly:
 
 ```bash
 ssh $H "podman ps -a --format '{{.Names}}\t{{.Status}}\t{{.Image}}' | grep -E 'lyra-|nats'"
-ssh $H "systemctl --user status lyra-hub lyra-telegram lyra-discord nats --no-pager"
+ssh $H "systemctl --user status lyra-hub lyra-telegram lyra-discord lyra-nats --no-pager"
 ```
 
 ∀ unit ∈ units: record state (active/running + uptime | failed | inactive).
@@ -79,7 +77,7 @@ ssh $H "journalctl --user -u lyra-hub -n 200 --no-pager"
 ssh $H "journalctl --user -u lyra-hub -n 200 -p err --no-pager"
 ssh $H "journalctl --user -u lyra-telegram -n 200 --no-pager"
 ssh $H "journalctl --user -u lyra-discord -n 200 --no-pager"
-ssh $H "journalctl --user -u nats -n 100 --no-pager"
+ssh $H "journalctl --user -u lyra-nats -n 100 --no-pager"
 ```
 
 Equivalent via Makefile (foreground tail): `make remote hub logs` / `telegram logs` / `discord logs` / `hub errors`.
@@ -90,8 +88,6 @@ In-container structured logs (if the hub writes files to the logs volume):
 ssh $H "podman exec lyra-hub ls -t /home/lyra/.local/state/lyra/logs/ | head -10"
 ssh $H "podman exec lyra-hub tail -200 /home/lyra/.local/state/lyra/logs/<file>"
 ```
-
-Legacy hosts (supervisord): logs still in `~/.local/state/lyra/logs/*.log`.
 
 ## Phase 4 — Diagnosis
 
@@ -134,7 +130,7 @@ Present fix options via DP(A) (load `${CLAUDE_PLUGIN_ROOT}/../shared/references/
 | Restart hub only | `make remote hub reload` | Dead backend, stale CLI pool |
 | Restart all Lyra | `make remote lyra reload` | DB locked, NATS broken |
 | Restart specific adapter | `make remote discord reload` / `make remote telegram reload` | Single adapter failed |
-| Restart NATS | `ssh $H "systemctl --user restart nats"` | NATS connection errors |
+| Restart NATS | `ssh $H "systemctl --user restart lyra-nats"` | NATS connection errors |
 | Clear failed state | `ssh $H "systemctl --user reset-failed lyra-hub"` | Unit stuck in `failed` after start-limit-hit |
 | Check DB locks | `ssh $H "podman exec lyra-hub fuser /home/lyra/.lyra/*.db"` | Persistent DB locked errors |
 | Reinstall Quadlet units | `make quadlet-install` then `ssh $H "systemctl --user daemon-reload"` | Unit file drift |

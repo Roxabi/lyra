@@ -43,7 +43,7 @@ make quadlet-install
 systemctl --user start lyra-nats lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-gh-helper
 
 # 5. Provision JetStream monitoring streams (idempotent)
-./deploy/nats/bootstrap-streams.sh
+uv run python deploy/nats/bootstrap_streams.py
 
 # 6. Verify
 systemctl --user status 'lyra-*'
@@ -121,7 +121,7 @@ the auth middleware and never re-read until the container restarts (ADR-054).
 | `lyra-metrics` | `lyra.metric.>` | Limits | 7 d (warm) | 256 MiB |
 
 Both streams use `StorageType.FILE` backed by `lyra-jetstream.volume` (`~/.lyra/nats/jetstream`).
-Provisioning is idempotent via `./deploy/nats/bootstrap-streams.sh` (called in first-time setup above).
+Provisioning is idempotent via `uv run python deploy/nats/bootstrap_streams.py` (called in first-time setup above).
 
 Ops decision (#1183): events = 24 h hot (high churn, dashboard real-time), metrics = 7 d warm
 (trending / SLA review). Both are Limits retention so multiple consumers can read the same

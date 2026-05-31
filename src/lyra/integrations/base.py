@@ -1,9 +1,8 @@
 """Tool provider Protocols and shared types for session commands (issue #360).
 
 Mirrors the LlmProvider pattern in lyra.llm.base:
-  - Protocols define the interface (ScrapeProvider, VaultProvider, AudioConverter,
-    ServiceManager)
-  - Implementations live in sibling modules (web_intel, vault_cli, audio, supervisor)
+  - Protocols define the interface (ScrapeProvider, VaultProvider, AudioConverter)
+  - Implementations live in sibling modules (web_intel, vault_cli, audio)
   - SessionTools bundles providers for injection at session command registration
 
 VaultProvider.search intentionally does NOT raise — search failure is non-fatal.
@@ -67,13 +66,6 @@ class AudioConverter(Protocol):
     """Async audio converter: WAV → OGG/Opus."""
 
     async def convert_wav_to_ogg(self, wav_path: Path, ogg_path: Path) -> None: ...
-
-
-@runtime_checkable
-class ServiceManager(Protocol):
-    """Async service manager: control supervisor services."""
-
-    async def control(self, action: str, service: str | None) -> str: ...
 
 
 @dataclass

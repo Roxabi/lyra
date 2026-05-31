@@ -18,6 +18,8 @@ from lyra.core.messaging.render_events import (
     TextEndRenderEvent,
     TextStartRenderEvent,
 )
+from lyra.outbound._emitter_run import _run_event_loop
+from lyra.outbound._placeholder_lifecycle import _drain_fallback
 from lyra.outbound.emitter import OutboundEmitter as StreamingSession
 
 # ---------------------------------------------------------------------------
@@ -185,7 +187,8 @@ class TestDispatchTextStartToOnTextV2:
         # called during event dispatch (only during delivery).
         fmt.edit_placeholder_text.reset_mock()
 
-        await session._run_event_loop(
+        await _run_event_loop(
+            session,
             _async_iter(TextStartRenderEvent(message_id="text-1")),
             placeholder_obj=object(),
         )
@@ -227,7 +230,8 @@ class TestDispatchAllFourV2TextTypes:
         ]
 
         # Act
-        await session._run_event_loop(
+        await _run_event_loop(
+            session,
             _async_iter(*events),
             placeholder_obj=object(),
         )
@@ -252,8 +256,9 @@ class TestDrainFallbackHarvestsV2Delta:
         session = StreamingSession(fmt, outbound=outbound)
 
         # Act — drain a v2-only stream
-        await session._drain_fallback(
-            _async_iter(TextDeltaRenderEvent(message_id="text-x", delta="Hello"))
+        await _drain_fallback(
+            session,
+            _async_iter(TextDeltaRenderEvent(message_id="text-x", delta="Hello")),
         )
 
         # Assert — send_fallback received the delta text exactly.
@@ -273,10 +278,11 @@ class TestDrainFallbackV2Accumulation:
         outbound = OutboundMessage.from_text("hi")
         session = StreamingSession(fmt, outbound=outbound)
 
-        await session._drain_fallback(
+        await _drain_fallback(
+            session,
             _async_iter(
                 TextDeltaRenderEvent(message_id="text-1", delta="Hi"),
-            )
+            ),
         )
 
         fmt.send_fallback.assert_awaited_once_with("Hi")

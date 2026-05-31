@@ -9,7 +9,7 @@ Mocked (externals only):
 Real (not mocked):
   - CliStreamingParser  (core.cli.cli_streaming_parser)
   - StreamProcessor     (core.processors.stream_processor)
-  - StreamingSession._run_event_loop  (outbound.emitter)
+  - _run_event_loop  (outbound._emitter_run)
   - ReasoningStart/Delta/EndRenderEvent  (core.messaging.render_events)
   - ThinkingLlmEvent  (core.messaging.events)
 
@@ -44,6 +44,7 @@ from lyra.core.messaging.render_events import (
     RenderEvent,
 )
 from lyra.core.processors.stream_processor import StreamProcessor
+from lyra.outbound._emitter_run import _run_event_loop
 from lyra.outbound.emitter import OutboundEmitter as StreamingSession
 
 # DEBT:v1-stubs — for skipped tests; rewrite for v2 (#1192 S3 follow-up)
@@ -282,7 +283,7 @@ class TestCallbackInvokedThroughDispatch:
                 yield ev
 
         session = StreamingSession(fmt, outbound=None)
-        await session._run_event_loop(_render_stream(), placeholder_obj)
+        await _run_event_loop(session, _render_stream(), placeholder_obj)
 
         # Assert — edit_reasoning called once per Reasoning* event, in order
         assert edit_reasoning_spy.call_count == len(expected_reasoning_events), (

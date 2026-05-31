@@ -369,3 +369,41 @@ def test_live_nats_subject_passes(tmp_path: Path) -> None:
     )
     rc = main(["--root", str(tmp_path)])
     assert rc == 0
+
+
+# ---------------------------------------------------------------------------
+# Operational-truth scope (#1538) — allowlist gates ops docs, exempts narrative
+# ---------------------------------------------------------------------------
+
+
+def test_operational_doc_dead_ref_exits_1(tmp_path: Path) -> None:
+    """A dead ref in an operational-truth doc (CONFIGURATION.md) fails CI."""
+    _make_doc(
+        tmp_path,
+        "docs/CONFIGURATION.md",
+        "Config is loaded by `ZzzGhostLoader` which does not exist.\n",
+    )
+    rc = main(["--root", str(tmp_path)])
+    assert rc == 1
+
+
+def test_operational_subdir_doc_dead_ref_exits_1(tmp_path: Path) -> None:
+    """A dead ref in a docs/ops/** doc is gated (recursive allowlist)."""
+    _make_doc(
+        tmp_path,
+        "docs/ops/runbook.md",
+        "The deploy calls `ZzzGhostDeployer` which does not exist.\n",
+    )
+    rc = main(["--root", str(tmp_path)])
+    assert rc == 1
+
+
+def test_narrative_doc_dead_ref_is_exempt(tmp_path: Path) -> None:
+    """A future/illustrative ref in a narrative doc (ROADMAP.md) is NOT scanned."""
+    _make_doc(
+        tmp_path,
+        "docs/ROADMAP.md",
+        "Someday we will add `ZzzFutureFeature` to the engine.\n",
+    )
+    rc = main(["--root", str(tmp_path)])
+    assert rc == 0

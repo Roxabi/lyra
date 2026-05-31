@@ -1335,7 +1335,7 @@ provides-extras = ["testing"]
 
 [[package]]
 name = "roxabi-contracts"
-version = "0.4.1"
+version = "0.5.0"
 source = { editable = "packages/roxabi-contracts" }
 dependencies = [
     { name = "pydantic" },

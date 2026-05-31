@@ -34,6 +34,7 @@ from scripts._modes import (  # noqa: E402
 )
 
 __all__ = ["atomic_write", "operator_home"]  # re-exported for test imports
+from scripts._effective import subject_covered  # noqa: E402
 from scripts._renderer import render_auth_conf  # noqa: E402
 from scripts._supervisor import validate_supervisor  # noqa: E402
 
@@ -127,19 +128,6 @@ def _cmd_check_retired(args: argparse.Namespace) -> None:
     print("ok — acl-matrix lifecycle fields valid")
 
 
-def _subject_covered(subject: str, publish: list[str]) -> bool:
-    """Return True if subject is covered by any NATS wildcard grant in publish."""
-    for grant in publish:
-        if grant in (subject, ">"):
-            return True
-        if grant.endswith(".>"):
-            prefix = grant[:-1]
-            bare = grant[:-2]
-            if subject == bare or subject.startswith(prefix):
-                return True
-    return False
-
-
 def _flow_errors(flow: Flow, identities: dict[str, Identity]) -> list[str]:
     requester = flow["requester"]
     responder = flow["responder"]
@@ -152,7 +140,7 @@ def _flow_errors(flow: Flow, identities: dict[str, Identity]) -> list[str]:
         errors.append(f"FAIL: responder '{responder}' not found in identities")
     if subject and req_exists:
         publish = identities[requester].get("publish", [])
-        if not _subject_covered(subject, publish):
+        if not subject_covered(subject, publish):
             errors.append(
                 f"FAIL: requester '{requester}' publish[] does not cover"
                 f" subject '{subject}'"

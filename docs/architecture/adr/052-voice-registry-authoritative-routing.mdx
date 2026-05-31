@@ -1,7 +1,7 @@
 ---
 title: "ADR-052: Registry-authoritative voice routing"
 description: Eliminate dual load-balancer disagreement by making WorkerRegistry the single source of routing truth for hub-side voice clients, removing NATS queue-group fallback entirely.
-status: accepted
+status: amended
 ---
 
 > **Current truth** → [`docs/architecture/contracts.md`](../contracts.md){#current-truth}
@@ -10,7 +10,14 @@ status: accepted
 
 ## Status
 
-Accepted
+Amended
+
+> **Amendment (2026-05-31, #1278):** The `_walk_registry()` method described in the
+> Implementation Notes section was absorbed into `WorkerPoolClient` as part of the
+> stage-axis transport extraction (Epic #1277 Phase 1). The routing logic and registry
+> contract remain valid; the implementation now lives in
+> `src/lyra/transport/worker_pool_client.py` (`WorkerPoolClient.request_with_routing`)
+> rather than inline in each hub-side NATS client.
 
 ## Context
 

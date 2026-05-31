@@ -49,7 +49,7 @@ Pattern: `lyra.{domain}.{qualifier...}`
 |---------|-----------|---------|
 | `lyra.inbound.{platform}.{bot_id}` | adapter → hub | User message delivery |
 | `lyra.outbound.{platform}.{bot_id}` | hub → adapter | Text response chunk delivery (Core, at-most-once — unchanged) |
-| `lyra.outbound.audio.{platform}.{bot_id}` | hub → adapter | Audio delivery (JetStream `LYRA_OUTBOUND_AUDIO`, durable pull consumer `audio-delivery-v1`, at-least-once + KV dedup `lyra_outbound_audio_sent` — ADR-077) |
+| `lyra.outbound.audio.{platform}.{bot_id}` | hub → adapter | Audio delivery (JetStream `LYRA_OUTBOUND_AUDIO` `MaxAge=24h`, durable pull consumer `outbound-audio-{platform}-{bot_id}`, at-least-once + KV dedup `lyra_outbound_audio_sent` — ADR-077) |
 | `lyra.llm.generate.request` | hub → worker | LLM compute (queue-group dispatched) |
 | `lyra.llm.health.{worker_id}` | worker → hub | LLM worker heartbeats |
 | `lyra.clipool.cmd` | hub → clipool | LLM subprocess requests |

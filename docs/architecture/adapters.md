@@ -14,8 +14,9 @@ description: Current truth for Telegram, Discord, CLI, and audio adapter decisio
 Inbound channel adapters are the processes that receive platform events (Telegram webhooks,
 Discord gateway messages, CLI input, voice audio) and deliver them to the hub over NATS.
 This page covers Telegram webhook dispatch, Discord adapter, CLI entry points, audio routing
-in/out, and TTS preference overlay. It excludes the CliPool worker harness (see
-`workers-tooling.md`) and routing key conventions (see `messaging.md`).
+in/out, TTS preference overlay, the adapter-side inbound stage pipeline (`lyra.inbound`),
+and the outbound stage composition model (`lyra.outbound`). It excludes the CliPool worker
+harness (see `workers-tooling.md`) and routing key conventions (see `messaging.md`).
 
 ---
 
@@ -48,13 +49,16 @@ path are unaffected. → ADR-020
 
 ### Media temp-file lifecycle
 
-Temp files for binary media (audio, images) are created by the adapter and cleaned up by
-the agent's `process()` method via `try/finally` at the `STTService.transcribe()` call
-site. `STTService` does not delete files it did not create. This pattern extends to all
-future media types: any agent method that receives a binary media path owns cleanup.
-Temp files are created with `tempfile.mkstemp(suffix=".ogg", dir=<LYRA_AUDIO_TMP>)`.
-A startup-time stale-file sweep of `LYRA_AUDIO_TMP` is recommended as a safety net for
-crash-orphaned files (deferred). → ADR-013
+Temp files for binary media (audio, images) are written and immediately consumed inside
+the adapter. In `telegram_inbound.py` the audio bytes are downloaded, written to a temp
+path, read back via `tmp_path.read_bytes()`, and deleted via `tmp_path.unlink(missing_ok=True)`
+— all within the same handler. The already-fetched bytes are then wrapped in a
+`PendingAttachment` closure (`lyra.inbound.attachment_ingest.PendingAttachment`) that
+the inbound pipeline carries forward without touching the filesystem again.
+No transcription/STT-service call site is involved; the old `try/finally`-at-transcribe
+ownership model has been superseded by this immediate-read-and-unlink pattern.
+A startup-time stale-file sweep of `LYRA_AUDIO_TMP` remains recommended as a safety net
+for crash-orphaned files (deferred). → ADR-013
 
 ### Inbound audio routing
 
@@ -74,11 +78,12 @@ Four findings from the Phase 1b review, resolved as of 2026-05-08:
 - **A (render_audio dispatch gap):** Audio dispatch now routes through `AudioPipeline`
   wired into `OutboundRouter` — no longer bypasses `OutboundDispatcher`.
 - **B (send_streaming reply_message_id):** Option B1 (thread `OutboundMessage` through
-  `send_streaming()`) adopted; implementation tracked in issue #67 — status unclear.
-- **C (OutboundAudio mutability):** `OutboundAudio` is `@dataclass(frozen=True)` at
-  `src/lyra/core/messaging/message.py:160–168`, consistent with all other envelope types.
+  `send_streaming()`) adopted; implemented — `telegram_outbound.py` sets
+  `outbound.metadata["reply_message_id"]` from the sent message ID after each platform call.
+- **C (OutboundAudio mutability):** `OutboundAudio` is `@dataclass(frozen=True)` in
+  `src/lyra/core/messaging/message.py`, consistent with all other envelope types.
 - **D (adapter backpressure inconsistency):** Per-scope lock fan-out with `_scope_locks`
-  and `_SCOPE_REAP_THRESHOLD` in `outbound_dispatcher.py:177–212`.
+  and `_SCOPE_REAP_THRESHOLD` in `outbound_dispatcher.py`.
 
 → ADR-015
 
@@ -100,12 +105,67 @@ routing or trust. → ADR-023
 `lyra_hub`, `lyra_telegram`, and `lyra_discord`. The hub never imports `voicecli`.
 `AudioPipeline` calls `NatsSttClient.transcribe()` and `NatsTtsClient.synthesize()`
 over NATS request-reply (`lyra.voice.stt.request` / `lyra.voice.tts.request`). Both
-clients satisfy `STTProtocol` / `TtsProtocol` structural interfaces — drop-in for the
-old `STTService` / `TTSService`. On NATS timeout, `STTUnavailableError` is raised;
+clients satisfy `STTProtocol` / `TtsProtocol` structural interfaces. On NATS timeout, `STTUnavailableError` is raised;
 `AudioPipeline` treats it identically to `stt is None` (sends `stt_unavailable` reply).
 Hub starts and processes text immediately regardless of whether voice adapters are up.
 Deployment via Quadlet units (`deploy/quadlet/lyra-stt.container`,
 `deploy/quadlet/lyra-tts.container`). → ADR-039
+
+---
+
+## Outbound stage composition
+
+Added in Epic #1277 Phase 2 (#1279). ADR-073 records the stage-axis pivot decision.
+
+All platform adapters inherit `OutboundAdapterBase` (`adapters/shared/_base_outbound.py`).
+Outbound streaming is orchestrated by `OutboundEmitter` (`lyra.outbound.emitter`), which
+composes three stage protocols:
+
+| Stage | Protocol / class | Module |
+|-------|-----------------|--------|
+| Formatter | `OutboundFormatter` | `lyra.outbound.formatter` |
+| Throttle | `ThrottleCapability` | `lyra.outbound.throttle` |
+| Error handler | `OutboundErrorHandler` | `lyra.outbound.error_handler` |
+
+Each adapter implements `_make_emitter()` (abstract on `OutboundAdapterBase`): it
+constructs the platform formatter (`telegram_formatter.py` or `discord_formatter.py`)
+and a typing indicator, then returns `OutboundEmitter(formatter, outbound, error_handler=…,
+typing=…)`. The concrete `send_streaming()` on the base calls `_make_emitter()` and
+delegates to the emitter — adapters must **not** override `send_streaming()`.
+
+Platform formatters (`telegram_formatter.py`, `discord_formatter.py`) are ≤200 LOC each;
+they implement the `OutboundFormatter` Protocol and own all platform I/O mechanics.
+
+---
+
+## Inbound stage pipeline
+
+Added in Epic #1277 Phase 3 (#1280). `lyra.inbound.pipeline.InboundPipeline` runs **adapter-side**
+(pre-NATS) inside each adapter process.
+
+Pipeline shape:
+```
+parse → AttachmentIngestStage (when store configured;
+         no-store path clears pending_attachment(s) closures — ADR-083)
+       → pre_route_hook(opt) → Router → [DROP → return]
+       → pre_session_hook(opt) → SessionBuilder → Dispatcher
+```
+
+| Stage | Module | Role |
+|-------|--------|------|
+| `WireParser` | `inbound/wire_parser_telegram.py`, `inbound/wire_parser_discord.py` | Platform-native event → `InboundMessage` |
+| `AttachmentIngestStage` | `inbound/attachment_ingest.py` | Conditional (store-gated): resolves `PendingAttachment` closures right after parse, before routing. No-store path clears closures to enforce NATS transport-boundary invariant (ADR-083). |
+| `Router` | `inbound/router.py` | Sync + pure routing decision (`RouteDecision.DROP` or `PROCESS`) |
+| `SessionBuilder` | `inbound/session_builder.py` | Resolves or creates session context |
+| `Dispatcher` | `inbound/dispatcher.py` | Pushes `InboundMessage` to hub via NATS |
+
+Platform-specific hooks (`pre_route_hook`, `pre_session_hook`) handle Discord thread
+ownership warmup and auto-thread creation; they are bound via `functools.partial` in the
+respective adapter. Telegram supplies no hooks — its routing is fully determined by
+platform metadata.
+
+This pipeline is distinct from the hub-side middleware chain (`core/hub/middleware/`) which
+runs post-NATS inside the hub process. See `ARCHITECTURE.md §Inbound Message Pipeline`.
 
 ---
 
@@ -114,8 +174,8 @@ Deployment via Quadlet units (`deploy/quadlet/lyra-stt.container`,
 - The Telegram webhook route calls `feed_update()` directly; it does not delegate to
   `aiogram.SimpleRequestHandler`.
 - `__main__.py` is daemon bootstrap only; all CLI dispatch lives in `cli.py`.
-- The agent's `process()` owns temp file cleanup via `try/finally`; services never
-  delete files they did not create.
+- The adapter performs immediate read + unlink on media temp files; bytes are forwarded
+  via `PendingAttachment` closures — no downstream stage touches the filesystem path.
 - Audio bytes never travel through the hub as a blocking in-process call; all
   transcription and synthesis is via NATS request-reply to isolated adapter processes.
 - `OutboundAudio` is frozen (`@dataclass(frozen=True)`); all inbound envelopes are also
@@ -130,8 +190,8 @@ Deployment via Quadlet units (`deploy/quadlet/lyra-stt.container`,
 
 ## Open questions / known gaps
 
-- `send_streaming()` reply-threading (Finding B / issue #67): `OutboundMessage` thread
-  through `send_streaming()` adopted but implementation status unclear.
+- `send_streaming()` reply-threading (Finding B): `OutboundMessage` thread through
+  `send_streaming()` adopted and implemented in `telegram_outbound.py`.
 - `ChannelAdapter` Protocol missing `start()` / `stop()` lifecycle methods (ADR-014
   Option D); render_audio() is present but lifecycle is not.
 - `platform_meta: dict` → `PlatformContext` typed migration is partial; hard prerequisite
@@ -164,3 +224,4 @@ Deployment via Quadlet units (`deploy/quadlet/lyra-stt.container`,
 | 020 | CLI entry-point dispatch strategy | Accepted (2026-05-08) |
 | 023 | Per-user TTS prefs and agent TTS config overlay | Accepted (2026-05-08) |
 | 039 | STT/TTS NATS adapter decoupling | Accepted |
+| 073 | Stage-axis outbound pivot (OutboundEmitter composition) | Accepted |

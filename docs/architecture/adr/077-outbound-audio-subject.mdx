@@ -84,14 +84,16 @@ A new JetStream stream `LYRA_OUTBOUND_AUDIO` is provisioned:
 | Property | Value | Rationale |
 |---|---|---|
 | Subjects | `lyra.outbound.audio.>` | Covers all platforms and bots |
-| Retention | Limits (`MaxAge=5m`, `MaxMsgs` TBD by T14) | Audio has no replay value past delivery window |
+| Retention | Limits (`MaxAge=24h`, `MaxBytes=32MiB`) | Audio has no replay value past delivery window |
 | Storage | File | Survives `lyra-nats` restart |
 | Replicas | 1 (single-node; current M₁ topology) | Consistent with `LYRA_TURNS` |
 
 ### Durable pull consumer
 
-A durable pull consumer `audio-delivery-v1` is provisioned on `LYRA_OUTBOUND_AUDIO`.
-The adapter subscribes via `js.pull_subscribe(subject, durable="audio-delivery-v1")`.
+A durable pull consumer is provisioned on `LYRA_OUTBOUND_AUDIO` per bot, using the
+naming pattern `outbound-audio-{platform}-{bot_id}` (e.g. `outbound-audio-telegram-123`).
+The adapter subscribes via `js.pull_subscribe(filter_subject, durable=durable)` where
+`filter_subject = lyra.outbound.audio.{platform}.{bot_id}`.
 The consumer ACKs each message after the platform API confirms receipt (Telegram
 `send_voice` / Discord `channel.send(file=…)` returns without exception).
 
@@ -102,7 +104,7 @@ message ID (envelope `stream_id`). Before publishing to the platform API, the ad
 checks the bucket; if the key exists, it ACKs the NATS message without re-delivering.
 This provides effectively-once semantics at the platform boundary.
 
-Bucket TTL matches `LYRA_OUTBOUND_AUDIO` `MaxAge` — entries expire together.
+Bucket TTL is `900s` (15 min) — arithmetic: `AckWait=90s × MaxDeliver=5 = 450s` floor; 900s provides ≥2× headroom for retry jitter. Dedup keys expire well within `MaxAge=24h`.
 
 ### Hub stays stateless (Model A)
 
@@ -135,9 +137,10 @@ parallel and non-interfering.
   `lyra.outbound.audio.>`. Each adapter identity gains subscribe on
   `lyra.outbound.audio.<platform>.>`. Auth conf must be updated and `lyra-nats`
   restarted (`type=mount` secret pattern, ADR-074; no HUP).
-- **Stream + consumer provisioning required (T14).** `LYRA_OUTBOUND_AUDIO` stream and
-  `audio-delivery-v1` consumer must be created in the NATS provisioning script before
-  any adapter starts. Missing provisioning is a startup error, not a silent failure —
+- **Stream + consumer provisioning required (T14).** `LYRA_OUTBOUND_AUDIO` stream is
+  provisioned by the hub before `announce_hub_ready` (ADR-079 sole-provisioner). Per-bot
+  durable consumers (`outbound-audio-{platform}-{bot_id}`) are created by each adapter at
+  startup. Missing stream provisioning is a startup error, not a silent failure —
   the pull subscribe call raises immediately.
 - **KV bucket provisioning required.** `lyra_outbound_audio_sent` bucket must be
   created alongside the stream (same provisioning script, T14).
@@ -153,7 +156,7 @@ If a second media type (video, document) requires durable delivery, it MUST:
 1. Use a distinct 5-token subject family (e.g. `lyra.outbound.video.<platform>.<bot_id>`).
 2. Reuse `LYRA_OUTBOUND_AUDIO` stream only if subjects and retention needs align; otherwise
    open a new stream.
-3. Use a distinct durable consumer — never share `audio-delivery-v1`.
+3. Use a distinct durable consumer — never share a consumer with the audio path.
 
 Do **not** collapse future media subjects back onto the 4-token text path.
 

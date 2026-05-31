@@ -1,0 +1,90 @@
+---
+title: "Phase 7 — ADR & architecture docs cleanup post-refactor"
+issue: 1284
+status: approved
+tier: F-lite
+date: 2026-05-31
+---
+
+## Problem
+
+Epic #1277 (stage-axis decomposition) landed across Phases 1-6 (#1278–#1283, all merged).
+The **ADR layer largely kept pace** during the refactor — stage-axis decision is already
+captured (ADR-073), and BlobStore/attachment/audio ADRs (067, 068, 075, 076, 077, 079, 082,
+083) were written inline. The layer that did **not** keep pace is the **narrative/domain
+layer**: the domain pages, top-level `ARCHITECTURE.md`, and `CLAUDE.md` files still describe
+a pre-refactor (and pre-late-merge) shape.
+
+Two drift fronts are acute (flagged 2026-05-31):
+
+1. **BlobStore** — `storage.md` last touched 2026-05-25, predates `BlobStorePort` (ADR-082,
+   PR #1546 merged 05-30) and the dual-`BlobRef`/3×-converter collapse + `pending`-rejection
+   (#1547, PR #1554). Domain narrative still describes the old multi-`BlobRef` shape.
+2. **Inbound/outbound file handling** — central inbound attachment ingest (ADR-083),
+   `pending_attachment` → `pending_attachments` sibling migration (#1552), no-store path
+   (#1551), and the durable outbound-audio NATS axial path (#1521, #1482) are not reflected
+   in `adapters.md` / `messaging.md` narrative.
+
+Observable impact: a contributor reading `docs/architecture/*.md` or a `CLAUDE.md` gets a
+materially wrong mental model — the docs mask the new shape (the exact failure the issue was
+filed to prevent).
+
+## Who
+
+- **Primary:** contributors (human + Claude agents) using `docs/architecture/` + `CLAUDE.md`
+  as the architecture entry point; the `architecture-ssot-retrieval` ladder treats domain
+  pages as the *intent* SSoT.
+- **Secondary:** future `/dev` work on storage/adapters/transport that anchors on stale narrative.
+
+## Constraints
+
+- **Docs-only, single domain.** No code changes. Code + generated artifacts (`.importlinter`,
+  ACL matrix, quadlet) remain the *inventory* SSoT; docs carry *intent only*.
+- **"Invariants, not inventory"** per CLAUDE.md hygiene rules — no file counts / method dumps.
+- ADR archive (`docs/architecture/adr/`) is traceability, **not** the daily SSoT — domain
+  pages are. Don't rewrite history; add redirect/status only where genuinely superseded.
+- Verify each "current state" claim against **code/generated**, never against issues/specs.
+- Reconcile against the issue's now-partly-stale deliverable list (stage-axis ADR + most
+  BlobStore ADRs already done — do **not** recreate them).
+
+## Out of Scope
+
+- Creating the stage-axis ADR (already ADR-073).
+- Code refactors, module moves, or behavioral changes.
+- Domain-page **consolidation** 12 → ≤9 (guideline overflow noted; separate concern unless
+  trivially merge-able — defer to a follow-up issue if surfaced).
+- Cross-repo doc sync (voiceCLI / imageCLI) — tracked separately.
+
+## Premise Validity
+
+**Success in 6 months:** A contributor (or Claude) opening `docs/architecture/storage.md`,
+`adapters.md`, `messaging.md`, `docs/ARCHITECTURE.md`, and the top-level + per-subdir
+`CLAUDE.md` reads a description that matches the code as merged through #1552/#1546/#1521 —
+specifically the `BlobStorePort` single-ref model and the inbound-ingest / outbound-audio
+stage paths. No domain page or `accepted` ADR references a deleted module or pre-`BlobStorePort`
+shape.
+
+**Failure in 6 months:** ≥1 domain page or `status: accepted`/`amended` ADR still describes
+the pre-refactor shape (multi-`BlobRef`, per-target wiring, `pending_attachment` singular, or
+a deleted module) — verifiable by grep against the live tree — **and** a contributor has
+filed/started work on a wrong mental model traceable to that stale doc.
+
+**Simplest alternative:** Touch only `storage.md` + `adapters.md` (the two acute BlobStore /
+file-handling fronts) and stop.
+**Why not simplest:** The user explicitly flagged "and some other stuff may have changed";
+the drift is systemic (domain-pages + top-level + CLAUDE.md inventory), and a partial sync
+leaves `ARCHITECTURE.md` / `CLAUDE.md` pointing at the old shape — re-masking the new one.
+A bounded audit across all domain pages + CLAUDE.md is required to *find* the drift, even if
+each fix is mechanical.
+
+## Complexity
+
+**Tier: F-lite** — single domain (docs), clear scope, no new architecture or unknowns of an
+architectural kind. The only "unknown" is *how much* drifted, resolved by a bounded audit
+pass in the spec step.
+
+Signals observed:
+- Single domain (documentation), `size:F-lite` label.
+- No code changes; mechanical once drift is enumerated.
+- File count likely at the upper F-lite bound (domain pages + several `CLAUDE.md`) — spec
+  will slice by surface (BlobStore / file-handling / ADR-audit / CLAUDE.md / top-level).

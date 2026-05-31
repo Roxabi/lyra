@@ -261,7 +261,13 @@ stateDiagram-v2
 
 ## Inbound Message Pipeline
 
-Every inbound message (Telegram, Discord, CLI) runs through a fixed 10-stage sequential middleware chain before reaching the LLM or being dropped.
+There are **two distinct inbound pipelines** that process a message in sequence:
+
+1. **Adapter-side `InboundPipeline`** (`src/lyra/inbound/pipeline.py`) — runs **pre-NATS**, inside the adapter process. Stages: `parse → ingest (when store configured; no-store path clears pending closures instead) → pre_route_hook (opt) → Router → [DROP → return] → pre_session_hook (opt) → SessionBuilder → Dispatcher`. Platform-specific wire parsers (`wire_parser_telegram.py`, `wire_parser_discord.py`) feed the pipeline; optional per-adapter hooks (`pre_route_hook`, `pre_session_hook`) handle platform-specific concerns (e.g., Discord thread ownership). On `RouteDecision.DROP` the message is silently discarded; on `RouteDecision.PROCESS` the dispatcher pushes the normalized `InboundMessage` to the hub over NATS (`lyra.inbound.<platform>.<bot_id>`).
+
+2. **Hub-side middleware chain** (`src/lyra/core/hub/middleware/`) — runs **post-NATS**, inside the hub process. Receives the `InboundMessage` from the NATS bus and applies a fixed 10-stage sequential chain before routing to the LLM pool or dropping.
+
+The 10-stage hub-side chain:
 
 ```
 User sends message
@@ -346,17 +352,30 @@ After the Phase 1b refactoring and V4 decomposition (#773), every module is ≤3
 | **Outbound** | `hub/outbound/` | `OutboundDispatcher`, `OutboundRouter`, `AudioDispatch`, `TtsDispatch` |
 | **Telegram** | `adapters/telegram/telegram.py` | `telegram_inbound.py`, `telegram_outbound.py`, `telegram_normalize.py`, `telegram_audio.py`, `telegram_formatting.py` |
 | **Discord** | `adapters/discord/adapter.py` | `discord_inbound.py`, `discord_outbound.py`, `discord_normalize.py`, `discord_audio.py`, `discord_audio_outbound.py`, `discord_formatting.py`, `discord_threads.py`, `discord_config.py`, `lifecycle.py`, `voice/` |
-| **Bootstrap** | `bootstrap/standalone/` | `hub_standalone.py`, `adapter_standalone.py`, `clipool_standalone.py`; `factory/` (hub_builder, agent_factory, config, unified); `wiring/` (nats_wiring); `lifecycle/`; `infra/` (health, lockfile, notify, embedded_nats) |
+| **Bootstrap** | `bootstrap/standalone/` | `hub_standalone.py`, `adapter_standalone.py`, `worker_standalone.py`; `factory/` (hub_builder, agent_factory, config, unified); `wiring/` (nats_wiring); `lifecycle/`; `infra/` (health, lockfile, notify, embedded_nats) |
 | **Shared** | `adapters/shared/_shared.py` | Common adapter utilities (typing control, push_to_hub_guarded) |
-| **Shared** | `adapters/shared/_shared_streaming_emitter.py` | `StreamingSession`, `PlatformCallbacks` — centralized edit-in-place streaming for all adapters |
-| **Shared** | `adapters/shared/_base_outbound.py` | `OutboundAdapterBase` — abstract base class for all platform outbound adapters |
+| **Shared** | `adapters/shared/_base_outbound.py` | `OutboundAdapterBase` — abstract base for all platform outbound adapters; `send_streaming()` delegates to `_make_emitter()` |
+| **Outbound stages** | `outbound/emitter.py` | `OutboundEmitter` — composes `OutboundFormatter` + `ThrottleCapability` + `OutboundErrorHandler`; owns placeholder→edits→delivery algorithm (Epic #1277 Phase 2) |
+| **Outbound stages** | `outbound/formatter.py`, `outbound/throttle.py`, `outbound/error_handler.py` | Per-stage protocols/implementations; platform formatters at `adapters/telegram/telegram_formatter.py`, `adapters/discord/discord_formatter.py` |
+| **Inbound stages** | `inbound/pipeline.py` | `InboundPipeline` — adapter-side pre-NATS pipeline: `parse → ingest (store-conditional) → pre_route_hook (opt) → Router → pre_session_hook (opt) → SessionBuilder → Dispatcher` |
+| **Inbound stages** | `inbound/router.py`, `inbound/session_builder.py`, `inbound/dispatcher.py`, `inbound/attachment_ingest.py` | Per-stage modules; wire parsers at `inbound/wire_parser_telegram.py`, `inbound/wire_parser_discord.py` |
 | **NATS** | `nats/nats_bus.py` | `nats_stt_client.py`, `nats_tts_client.py`, `nats_channel_proxy.py`, `render_event_codec.py`, `queue_groups.py`, `type_registry.py`, `worker_registry.py`, `nats_image_client.py`, `nats_llm_client.py` |
 | **NATS adapters** | `adapters/nats/nats_outbound_listener.py` | `mint_failure_subscriber.py`, `nats_envelope_handlers.py`, `nats_stream_decoder.py` |
-| **LLM** | `llm/base.py` | `llm/drivers/` (cli.py, nats_driver.py, cli_nats.py), `llm/decorators.py`, `llm/registry.py` |
+| **LLM** | `llm/llm_client.py` | `LlmClient` — domain client over `WorkerPoolClient`; `llm/drivers/` (cli.py); `llm/decorators.py`, `llm/registry.py` |
+| **Transport** | `transport/nats_request_response.py` | `NatsTransport` — call/publish/inbox primitives over NATS |
+| **Transport** | `transport/worker_pool_client.py` | `WorkerPoolClient` — routing + circuit-breaker + heartbeat; composes a transport; domain clients (LLM, STT, TTS) call `request_with_routing()` / `stream_request()` |
 
 ### Adapter Streaming Pattern
 
-All platform adapters inherit `OutboundAdapterBase`. Streaming is centralized in `StreamingSession`, which accepts a `PlatformCallbacks` dataclass containing platform-specific send, edit, and typing operations. This eliminates streaming code duplication across adapters — each platform only supplies its callbacks; the edit-in-place algorithm lives in one place. Added in #468, #495, #501.
+All platform adapters inherit `OutboundAdapterBase` (`adapters/shared/_base_outbound.py`). Streaming is orchestrated by `OutboundEmitter` (`lyra.outbound.emitter`), which composes three stage protocols:
+
+| Stage | Symbol | Role |
+|-------|--------|------|
+| Formatter | `OutboundFormatter` | Platform I/O: chunk, send_placeholder, edit_placeholder_text, send_message, send_fallback |
+| Throttle | `ThrottleCapability` | Typing indicator lifecycle + edit interval |
+| Error handler | `OutboundErrorHandler` | Single broad-catch site; converts exceptions to `SanitizedError` |
+
+Each adapter implements `_make_emitter()` (abstract), which constructs the platform-specific formatter (e.g., `telegram_formatter.py`, `discord_formatter.py`) and returns an `OutboundEmitter`. The concrete `send_streaming()` on the base calls `_make_emitter()` and runs the emitter — adapters must **not** override `send_streaming()`. Platform differences belong in `_make_emitter()` and the per-platform formatter/typing-indicator implementations under `src/lyra/outbound/`. Stage-axis pivot landed in Epic #1277 Phase 2 (#1279).
 
 ### The Bus
 

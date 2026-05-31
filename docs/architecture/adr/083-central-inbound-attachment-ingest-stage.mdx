@@ -1,18 +1,23 @@
 ---
 title: "ADR-083: Central Inbound Attachment Ingest Stage"
 description: Absorb per-adapter attachment ingest into a single stage-axis module, eliminating the N×M trap and guaranteeing blob durability before STT runs.
+status: accepted
 related: [073, 067, 079, 082]
 ---
 
 ## Status
 
-Proposed
+Accepted
+
+> **Update (2026-05-31):** S1 (#1551) and S2 (#1552) landed — `AttachmentIngestStage` wired
+> for voice path (Telegram + Discord). S3–S7 (non-audio attachment types, `PENDING_STORE_KEY`
+> retirement, STT worker simplification #1067) remain.
 
 ## Context
 
 Inbound attachments (voice, image, document, video, sticker, animation, GIF) from Telegram and Discord are currently normalized adapter-side with `store_key=PENDING_STORE_KEY` — a sentinel indicating that no BlobStore write has occurred. The `ingest_bytes_to_blob_ref()` helper in `packages/roxabi-blobs/` was written to close this gap but was never wired in (`git log -S ingest_bytes_to_blob_ref -- src/lyra/adapters/` = empty). Consequences:
 
-1. **Audio loss on STT failure.** `handle_voice_message` (Telegram) and `handle_audio` (Discord) download audio bytes to construct a `PENDING_STORE_KEY` `BlobRef`, then discard the bytes. If `SttMiddleware` fails, the audio is permanently lost — the Bot API has no history to re-fetch from.
+1. ~~**Audio loss on STT failure.**~~ *(Resolved — S1 #1551 + S2 #1552 landed.)* `handle_voice_message` (Telegram) and `handle_audio` (Discord) now eagerly ingest audio via `AttachmentIngestStage` before `SttMiddleware` runs. Audio bytes are durably stored before STT; STT failure no longer loses audio for the voice path.
 2. **N×M implementation surface.** Ingest logic (download → hash → store → emit `BlobRef`) must be duplicated per platform × per attachment type. At N=2 platforms, M=7 types, that is up to 14 implementation points. Each new adapter or new attachment type amplifies this.
 3. **PENDING_STORE_KEY sentinel persists on the wire.** `SttRequest(blob_ref)` carries `store_key=PENDING_STORE_KEY`; STT workers must implement a `platform_ref` fallback path. This fallback adds complexity in `nats_stt_client.py`, is undocumented in the STT worker contract, and blocks `PENDING_STORE_KEY` removal.
 

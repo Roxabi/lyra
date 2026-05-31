@@ -7,7 +7,7 @@ description: Current truth for all store, persistence, and event-bus decisions i
 
 > Status: LIVING — current truth for store/persistence/event-bus decisions.
 > Last updated: 2026-05-24.
-> Source ADRs: 008, 022 (amended), 024, 029, 063, 067 (amended), 068. Absorbed via 059: 048.
+> Source ADRs: 008, 022 (amended), 024, 029, 063, 067 (amended), 068, 082. Absorbed via 059: 048.
 
 ## Scope
 
@@ -184,8 +184,7 @@ Six endpoints (N1–N6 per spec):
 | `GET` | `/blobs/{store_key}` | Download blob bytes |
 | `HEAD` | `/blobs/{store_key}` | Check existence, return metadata headers |
 | `DELETE` | `/blobs/{store_key}` | Remove blob |
-| `GET` | `/blobs/{store_key}/exists` | Boolean existence check |
-| `GET` | `/health` | Readiness + version |
+| `GET` | `/healthz` | Readiness + version |
 
 **Client:** `roxabi_blobs.HttpBlobStore` — implements the `BlobStore` Protocol using `httpx`
 async. Zero `lyra.*` imports; importable from voiceCLI, imageCLI, and any other cross-repo
@@ -215,6 +214,18 @@ layer. A future phase may add mTLS at the app layer if the Tailnet boundary is b
 **Topology rule:** only the `lyra-blobstore` process uses `FsBlobStore` directly. Every
 other process — hub, adapters, M₂ workers — constructs `HttpBlobStore`. Direct-FS access
 is a violation of this boundary from V8 onwards.
+
+#### BlobStorePort (ADR-082)
+
+In-process callers (audio paths, inbound attachment ingest) consume blob storage via the
+hexagonal driven-port `BlobStorePort` defined in `src/lyra/core/ports/blobstore.py`. The
+concrete adapter `HttpBlobStoreAdapter` (in `src/lyra/infrastructure/blobstore_adapter.py`)
+wraps `HttpBlobStore` and owns the single storage→wire `BlobRef` conversion seam via
+`BlobRef.from_store_ref()`. An empty `store_key` after a live `put()` raises `ValueError`
+immediately — PENDING refs were retired in #1553 and the guard now rejects any empty key.
+Bootstrap constructs one `HttpBlobStoreAdapter` via `init_blobstore()` in
+`bootstrap/factory/voice_overlay.py` and injects it into adapters and stages as
+`BlobStorePort`. No adapter or stage imports `HttpBlobStore` or `roxabi_blobs` directly.
 
 **Backup and restore:** see `docs/QUADLET-DEPLOYMENT.md` (§ Rotating the BlobStore bearer
 token and §§ Backing up the BlobStore / Restore invariant) for the operator runbook.
@@ -297,4 +308,5 @@ guard pattern is gone; the bus is either injected or absent. → ADR-022 (amende
 | 063 | ThreadStore teardown | Accepted |
 | 067 | BlobStore content-addressed | Accepted (amended 2026-05-24) |
 | 068 | Ecosystem Service Plane | Accepted |
+| 082 | BlobStorePort — driven-port parity | Accepted |
 | 048 | Lyra infrastructure layer | Absorbed by ADR-059 |

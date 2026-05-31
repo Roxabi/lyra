@@ -368,13 +368,16 @@ cd ~/projects/lyra
 systemctl --user status 'lyra-*.service'
 ```
 
-You should see all five units active:
+You should see all eight units active:
 ```
-lyra-nats.service       active (running)
-lyra-hub.service        active (running)
-lyra-telegram.service   active (running)
-lyra-discord.service    active (running)
-lyra-clipool.service    active (running)
+lyra-nats.service         active (running)
+lyra-hub.service          active (running)
+lyra-telegram.service     active (running)
+lyra-discord.service      active (running)
+lyra-clipool.service      active (running)
+lyra-gh-helper.service    active (running)
+lyra-turn-writer.service  active (running)
+lyra-blobstore.service    active (running)
 ```
 
 Or check the full container list:

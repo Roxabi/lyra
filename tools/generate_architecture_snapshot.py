@@ -40,8 +40,12 @@ def build_inventory(root: Path) -> dict[str, object]:
 
 
 def parse_importlinter(root: Path) -> list[dict]:
+    path = root / ".importlinter"
+    if not path.exists():
+        print(f"ERROR: missing {path}", file=sys.stderr)
+        sys.exit(2)
     config = configparser.ConfigParser()
-    config.read(root / ".importlinter")
+    config.read(path)
     contracts = []
     for section in config.sections():
         if section.startswith("importlinter:contract:"):
@@ -68,12 +72,20 @@ def parse_importlinter(root: Path) -> list[dict]:
 
 
 def parse_quadlet(root: Path) -> dict:
-    with open(root / "deploy" / "quadlet.toml", "rb") as f:
+    path = root / "deploy" / "quadlet.toml"
+    if not path.exists():
+        print(f"ERROR: missing {path}", file=sys.stderr)
+        sys.exit(2)
+    with open(path, "rb") as f:
         return tomllib.load(f)
 
 
 def parse_acl_matrix(root: Path) -> dict:
-    with open(root / "deploy" / "nats" / "acl-matrix.json") as f:
+    path = root / "deploy" / "nats" / "acl-matrix.json"
+    if not path.exists():
+        print(f"ERROR: missing {path}", file=sys.stderr)
+        sys.exit(2)
+    with open(path) as f:
         return json.load(f)
 
 

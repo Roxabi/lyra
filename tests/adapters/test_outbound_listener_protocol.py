@@ -20,7 +20,7 @@ import inspect
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
-from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
+from lyra.adapters.nats.nats_outbound_listener import ListenerDeps, NatsOutboundListener
 from lyra.adapters.shared.outbound_listener import OutboundListener
 from lyra.core.audio_payload import AudioPayload
 from lyra.core.auth.trust import TrustLevel
@@ -82,7 +82,14 @@ def test_nats_listener_satisfies_outbound_listener_protocol() -> None:
     the cache_inbound exercise guard against signature drift that a loose
     type-checker configuration might miss.
     """
-    listener = NatsOutboundListener(AsyncMock(), Platform.TELEGRAM, "main", AsyncMock())
+    listener = NatsOutboundListener(
+        ListenerDeps(
+            nc=AsyncMock(),
+            platform=Platform.TELEGRAM,
+            bot_id="main",
+            adapter=AsyncMock(),
+        )
+    )
     # Static structural conformance — mypy/pyright verify this assignment.
     proto: OutboundListener = listener
     assert proto is listener

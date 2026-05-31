@@ -20,7 +20,7 @@ from lyra.core.commands.command_registry import (
     PlatformCommand,
     collect_commands,
 )
-from lyra.core.commands.command_router import CommandRouter
+from lyra.core.commands.command_router import CommandRouter, CommandRouterDeps
 
 # ---------------------------------------------------------------------------
 # collect_commands() unit tests
@@ -99,8 +99,10 @@ class TestCommandMetadata:
     def router(self, tmp_path: Path) -> CommandRouter:
         loader = CommandLoader(tmp_path / "plugins")
         return CommandRouter(
-            command_loader=loader,
-            enabled_plugins=[],
+            CommandRouterDeps(
+                command_loader=loader,
+                enabled_plugins=[],
+            )
         )
 
     def test_returns_all_builtins(self, router: CommandRouter) -> None:
@@ -141,7 +143,9 @@ class TestCommandMetadata:
         loader = CommandLoader(tmp_path / "plugins")
         loader.discover()
         loader.load("echo")
-        router = CommandRouter(command_loader=loader, enabled_plugins=["echo"])
+        router = CommandRouter(
+            CommandRouterDeps(command_loader=loader, enabled_plugins=["echo"])
+        )
         meta = router.command_metadata()
         names = [m[0] for m in meta]
         assert "/echo" in names

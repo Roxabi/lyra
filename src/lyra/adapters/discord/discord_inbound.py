@@ -6,6 +6,7 @@ import dataclasses
 import functools
 import logging
 import sqlite3
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import discord
@@ -97,20 +98,32 @@ async def _discord_pre_route_hook(
         )
 
 
-async def _try_auto_create_thread(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — raw_message/ctx/adapter are distinct dependencies
-    raw_message: Any,
-    ctx: InboundContext,
-    adapter: "DiscordAdapter",
-    *,
-    is_mention: bool,
-    is_dm: bool,
-    is_thread: bool,
-) -> int | None:
+@dataclass(frozen=True)
+class AutoThreadDeps:
+    """Frozen DI object for _try_auto_create_thread() — replaces PLR0913 param list."""
+
+    raw_message: Any
+    ctx: InboundContext
+    adapter: "DiscordAdapter"
+    is_mention: bool
+    is_dm: bool
+    is_thread: bool
+
+
+async def _try_auto_create_thread(deps: AutoThreadDeps) -> int | None:
     """Auto-create a Discord thread when mention / watch-channel triggers it.
 
     Mutates ctx.router.owned_threads on success.
     Returns resolved thread_id, or None if not created.
     """
+    raw_message, ctx, adapter, is_mention, is_dm, is_thread = (
+        deps.raw_message,
+        deps.ctx,
+        deps.adapter,
+        deps.is_mention,
+        deps.is_dm,
+        deps.is_thread,
+    )
     _is_watch_channel = (
         not is_dm
         and not is_thread
@@ -207,12 +220,14 @@ async def _discord_pre_session_hook(
     is_thread = isinstance(raw_message.channel, discord.Thread)
 
     resolved_thread_id = await _try_auto_create_thread(
-        raw_message,
-        ctx,
-        adapter,
-        is_mention=is_mention,
-        is_dm=is_dm,
-        is_thread=is_thread,
+        AutoThreadDeps(
+            raw_message=raw_message,
+            ctx=ctx,
+            adapter=adapter,
+            is_mention=is_mention,
+            is_dm=is_dm,
+            is_thread=is_thread,
+        )
     )
     await _claim_existing_thread(raw_message, ctx, adapter, is_mention=is_mention)
 

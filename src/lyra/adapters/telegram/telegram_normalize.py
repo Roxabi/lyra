@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import timezone
 from typing import TYPE_CHECKING, Any
 
@@ -34,27 +35,34 @@ def _make_scope_id(
     return f"chat:{chat_id}"
 
 
-def _build_routing(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — groups related metadata fields
-    adapter: TelegramAdapter,
-    chat_id: int,
-    topic_id: int | None,
-    message_id: int | None,
-    scope_id: str,
-    is_group: bool,
-) -> tuple[TelegramMeta, RoutingContext]:
+@dataclass(frozen=True)
+class RoutingDeps:
+    """Frozen deps for _build_routing — groups related metadata fields."""
+
+    adapter: "TelegramAdapter"
+    chat_id: int
+    topic_id: int | None
+    message_id: int | None
+    scope_id: str
+    is_group: bool
+
+
+def _build_routing(deps: RoutingDeps) -> tuple[TelegramMeta, RoutingContext]:
     """Build TelegramMeta and RoutingContext for a Telegram message."""
     platform_meta = TelegramMeta(
-        chat_id=chat_id,
-        topic_id=topic_id,
-        message_id=message_id,
-        is_group=is_group,
+        chat_id=deps.chat_id,
+        topic_id=deps.topic_id,
+        message_id=deps.message_id,
+        is_group=deps.is_group,
     )
     routing = RoutingContext(
         platform=Platform.TELEGRAM.value,
-        bot_id=adapter._bot_id,
-        scope_id=scope_id,
-        thread_id=str(topic_id) if topic_id is not None else None,
-        reply_to_message_id=str(message_id) if message_id is not None else None,
+        bot_id=deps.adapter._bot_id,
+        scope_id=deps.scope_id,
+        thread_id=str(deps.topic_id) if deps.topic_id is not None else None,
+        reply_to_message_id=(
+            str(deps.message_id) if deps.message_id is not None else None
+        ),
         platform_meta=platform_meta,
     )
     return platform_meta, routing
@@ -136,7 +144,14 @@ def normalize(  # noqa: C901 — DEBT:wiring-bootstrap-deps
         str(reply_to_message.message_id) if reply_to_message is not None else None
     )
     platform_meta, routing = _build_routing(
-        adapter, chat_id, topic_id, message_id, scope_id, is_group
+        RoutingDeps(
+            adapter=adapter,
+            chat_id=chat_id,
+            topic_id=topic_id,
+            message_id=message_id,
+            scope_id=scope_id,
+            is_group=is_group,
+        )
     )
     return InboundMessage(
         id=(f"telegram:{user_id}:{int(timestamp.timestamp())}:{message_id or ''}"),
@@ -205,7 +220,14 @@ def normalize_audio(  # noqa: PLR0913 — ChannelAdapter protocol; pending is ad
         str(reply_to_message.message_id) if reply_to_message is not None else None
     )
     platform_meta, routing = _build_routing(
-        adapter, chat_id, topic_id, message_id, scope_id, is_group
+        RoutingDeps(
+            adapter=adapter,
+            chat_id=chat_id,
+            topic_id=topic_id,
+            message_id=message_id,
+            scope_id=scope_id,
+            is_group=is_group,
+        )
     )
     return InboundMessage(
         id=(f"telegram:{user_id}:{int(timestamp.timestamp())}:{file_id or ''}"),

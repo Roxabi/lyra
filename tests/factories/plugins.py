@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from lyra.core.commands.command_loader import CommandLoader
-from lyra.core.commands.command_router import CommandRouter
+from lyra.core.commands.command_router import CommandRouter, CommandRouterDeps
 from lyra.core.config import RouterConfig
 
 __all__ = [
@@ -78,5 +78,7 @@ def make_router(
     _patterns = patterns if patterns is not None else {"bare_url": True}
     router_config = RouterConfig(patterns=_patterns)
     return CommandRouter(
-        command_loader=loader, enabled_plugins=effective, config=router_config
+        CommandRouterDeps(
+            command_loader=loader, enabled_plugins=effective, config=router_config
+        )
     )

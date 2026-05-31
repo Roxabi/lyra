@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -544,6 +544,8 @@ class TestInitClipool:
     async def test_init_clipool_constructs_bundle_provisions_and_starts(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        from lyra.core.cli.cli_pool import CliPoolDeps
+
         # Arrange
         monkeypatch.setattr(
             hub_builder_mod,
@@ -571,7 +573,6 @@ class TestInitClipool:
         mock_cli_pool = MagicMock()
         mock_cli_pool.start = AsyncMock()
         mock_cli_pool.set_turn_store = MagicMock()
-        monkeypatch.setattr(hub_builder_mod, "CliPool", lambda **kw: mock_cli_pool)
 
         mock_llm_client = MagicMock()
         monkeypatch.setattr(
@@ -588,10 +589,21 @@ class TestInitClipool:
         stores = MagicMock()
         fake_nc = MagicMock()
 
-        # Act
-        result = await _init_clipool(fake_nc, {}, stores)
+        # Act — patch CliPool so call_args can be inspected
+        with patch.object(
+            hub_builder_mod, "CliPool", return_value=mock_cli_pool
+        ) as MockCliPool:
+            result = await _init_clipool(fake_nc, {}, stores)
 
-        # Assert
+        # Assert — CliPool was called with a CliPoolDeps carrying audit_sink
+        args, _ = MockCliPool.call_args
+        assert isinstance(args[0], CliPoolDeps), (
+            f"Expected CliPoolDeps, got {type(args[0])}"
+        )
+        assert args[0].audit_sink is mock_audit, (
+            f"Expected audit_sink={mock_audit!r}, got {args[0].audit_sink!r}"
+        )
+
         assert isinstance(result, CliPoolBundle)
         assert result.cli_pool is mock_cli_pool
         assert result.cli_nats_driver is mock_llm_client

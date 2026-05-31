@@ -7,7 +7,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lyra.core.auth.authenticator import Authenticator as AuthMiddleware
+from lyra.core.auth.authenticator import (
+    Authenticator as AuthMiddleware,
+)
+from lyra.core.auth.authenticator import (
+    AuthenticatorDeps,
+)
 from lyra.core.auth.trust import TrustLevel
 from lyra.infrastructure.stores.auth_store import AuthStore
 
@@ -18,23 +23,31 @@ from lyra.infrastructure.stores.auth_store import AuthStore
 
 class TestAuthMiddleware:
     def test_check_returns_default_for_unknown_user(self) -> None:
-        auth = AuthMiddleware(store=None, role_map={}, default=TrustLevel.BLOCKED)
+        auth = AuthMiddleware(
+            AuthenticatorDeps(store=None, role_map={}, default=TrustLevel.BLOCKED)
+        )
         assert auth.check("unknown") == TrustLevel.BLOCKED
 
     def test_check_none_user_returns_blocked(self) -> None:
         # None user_id is always BLOCKED regardless of default (security hardening)
-        auth = AuthMiddleware(store=None, role_map={}, default=TrustLevel.PUBLIC)
+        auth = AuthMiddleware(
+            AuthenticatorDeps(store=None, role_map={}, default=TrustLevel.PUBLIC)
+        )
         assert auth.check(None) == TrustLevel.BLOCKED
 
     def test_check_none_user_returns_blocked_default(self) -> None:
-        auth = AuthMiddleware(store=None, role_map={}, default=TrustLevel.BLOCKED)
+        auth = AuthMiddleware(
+            AuthenticatorDeps(store=None, role_map={}, default=TrustLevel.BLOCKED)
+        )
         assert auth.check(None) == TrustLevel.BLOCKED
 
     async def test_user_map_returns_mapped_level(self, auth_store: AuthStore) -> None:
         await auth_store.upsert(
             "alice", TrustLevel.OWNER, None, "config", "config.toml"
         )
-        auth = AuthMiddleware(store=auth_store, role_map={}, default=TrustLevel.BLOCKED)
+        auth = AuthMiddleware(
+            AuthenticatorDeps(store=auth_store, role_map={}, default=TrustLevel.BLOCKED)
+        )
         assert auth.check("alice") == TrustLevel.OWNER
 
     async def test_user_map_precedence_over_role_map(
@@ -45,44 +58,54 @@ class TestAuthMiddleware:
             "alice", TrustLevel.BLOCKED, None, "config", "config.toml"
         )
         auth = AuthMiddleware(
-            store=auth_store,
-            role_map={"admin": TrustLevel.OWNER},
-            default=TrustLevel.PUBLIC,
+            AuthenticatorDeps(
+                store=auth_store,
+                role_map={"admin": TrustLevel.OWNER},
+                default=TrustLevel.PUBLIC,
+            )
         )
         # alice is BLOCKED in store even though she has admin role
         assert auth.check("alice", roles=["admin"]) == TrustLevel.BLOCKED
 
     def test_role_match_returns_trust(self) -> None:
         auth = AuthMiddleware(
-            store=None,
-            role_map={"admin": TrustLevel.TRUSTED},
-            default=TrustLevel.BLOCKED,
+            AuthenticatorDeps(
+                store=None,
+                role_map={"admin": TrustLevel.TRUSTED},
+                default=TrustLevel.BLOCKED,
+            )
         )
         assert auth.check("unknown_user", roles=["admin"]) == TrustLevel.TRUSTED
 
     def test_highest_trust_wins_for_multiple_roles(self) -> None:
         auth = AuthMiddleware(
-            store=None,
-            role_map={
-                "member": TrustLevel.PUBLIC,
-                "admin": TrustLevel.TRUSTED,
-                "superadmin": TrustLevel.OWNER,
-            },
-            default=TrustLevel.BLOCKED,
+            AuthenticatorDeps(
+                store=None,
+                role_map={
+                    "member": TrustLevel.PUBLIC,
+                    "admin": TrustLevel.TRUSTED,
+                    "superadmin": TrustLevel.OWNER,
+                },
+                default=TrustLevel.BLOCKED,
+            )
         )
         assert auth.check("user", roles=["member", "admin"]) == TrustLevel.TRUSTED
         assert auth.check("user", roles=["member", "superadmin"]) == TrustLevel.OWNER
 
     def test_no_role_match_falls_back_to_default(self) -> None:
         auth = AuthMiddleware(
-            store=None,
-            role_map={"admin": TrustLevel.TRUSTED},
-            default=TrustLevel.BLOCKED,
+            AuthenticatorDeps(
+                store=None,
+                role_map={"admin": TrustLevel.TRUSTED},
+                default=TrustLevel.BLOCKED,
+            )
         )
         assert auth.check("user", roles=["member"]) == TrustLevel.BLOCKED
 
     def test_empty_roles_falls_back_to_default(self) -> None:
-        auth = AuthMiddleware(store=None, role_map={}, default=TrustLevel.PUBLIC)
+        auth = AuthMiddleware(
+            AuthenticatorDeps(store=None, role_map={}, default=TrustLevel.PUBLIC)
+        )
         assert auth.check("user", roles=[]) == TrustLevel.PUBLIC
 
 
@@ -113,7 +136,9 @@ class TestAuthMiddlewareWithStore:
         await auth_store.upsert(
             "owner-uid", TrustLevel.OWNER, None, "config", "config.toml"
         )
-        auth = AuthMiddleware(store=auth_store, role_map={}, default=TrustLevel.PUBLIC)
+        auth = AuthMiddleware(
+            AuthenticatorDeps(store=auth_store, role_map={}, default=TrustLevel.PUBLIC)
+        )
         assert auth.check("owner-uid") == TrustLevel.OWNER
 
     async def test_seeded_blocked_user_returns_blocked(
@@ -122,7 +147,9 @@ class TestAuthMiddlewareWithStore:
         await auth_store.upsert(
             "blocked-uid", TrustLevel.BLOCKED, None, "config", "config.toml"
         )
-        auth = AuthMiddleware(store=auth_store, role_map={}, default=TrustLevel.PUBLIC)
+        auth = AuthMiddleware(
+            AuthenticatorDeps(store=auth_store, role_map={}, default=TrustLevel.PUBLIC)
+        )
         assert auth.check("blocked-uid") == TrustLevel.BLOCKED
 
     async def test_join_command_blocked_for_blocked_user(
@@ -136,7 +163,9 @@ class TestAuthMiddlewareWithStore:
         await auth_store.upsert(
             "blocked-join", TrustLevel.BLOCKED, None, "config", "config.toml"
         )
-        auth = AuthMiddleware(store=auth_store, role_map={}, default=TrustLevel.BLOCKED)
+        auth = AuthMiddleware(
+            AuthenticatorDeps(store=auth_store, role_map={}, default=TrustLevel.BLOCKED)
+        )
         result = auth.check("blocked-join", command="/join")
         assert result == TrustLevel.BLOCKED
 
@@ -144,16 +173,20 @@ class TestAuthMiddlewareWithStore:
         self, auth_store: AuthStore
     ) -> None:
         """public_commands bypass: /join returns PUBLIC for non-blocked users."""
-        auth = AuthMiddleware(store=auth_store, role_map={}, default=TrustLevel.PUBLIC)
+        auth = AuthMiddleware(
+            AuthenticatorDeps(store=auth_store, role_map={}, default=TrustLevel.PUBLIC)
+        )
         result = auth.check("unknown-user", command="/join")
         assert result == TrustLevel.PUBLIC
 
     async def test_store_none_uses_role_map_and_default(self) -> None:
         """Backward compat: store=None falls back to role_map + default."""
         auth = AuthMiddleware(
-            store=None,
-            role_map={"admin": TrustLevel.TRUSTED},
-            default=TrustLevel.BLOCKED,
+            AuthenticatorDeps(
+                store=None,
+                role_map={"admin": TrustLevel.TRUSTED},
+                default=TrustLevel.BLOCKED,
+            )
         )
         assert auth.check("unknown") == TrustLevel.BLOCKED
         assert auth.check("unknown", roles=["admin"]) == TrustLevel.TRUSTED
@@ -171,9 +204,11 @@ class TestAuthMiddlewareWithStore:
         await auth_store.upsert("alice", TrustLevel.PUBLIC, None, "test", "test")
         role_map = {"admin_role": TrustLevel.OWNER}
         mw = AuthMiddleware(
-            store=auth_store,
-            role_map=role_map,
-            default=TrustLevel.PUBLIC,
+            AuthenticatorDeps(
+                store=auth_store,
+                role_map=role_map,
+                default=TrustLevel.PUBLIC,
+            )
         )
         # With no roles, falls through to default
         assert mw.check("alice") == TrustLevel.PUBLIC

@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from lyra.core.auth.authenticator import _ALLOW_ALL, _DENY_ALL, Authenticator
+from lyra.core.auth.authenticator import (
+    _ALLOW_ALL,
+    _DENY_ALL,
+    Authenticator,
+    AuthenticatorDeps,
+)
 from lyra.core.auth.identity import Identity
 from lyra.core.auth.trust import TrustLevel
 
@@ -13,7 +18,9 @@ class TestResolve:
     """Authenticator.resolve() returns Identity with correct trust + admin."""
 
     def test_anonymous_returns_blocked_not_admin(self) -> None:
-        auth = Authenticator(store=None, role_map={}, default=TrustLevel.PUBLIC)
+        auth = Authenticator(
+            AuthenticatorDeps(store=None, role_map={}, default=TrustLevel.PUBLIC)
+        )
         identity = auth.resolve(None)
         assert identity == Identity(
             user_id="", trust_level=TrustLevel.BLOCKED, is_admin=False
@@ -22,7 +29,9 @@ class TestResolve:
     def test_owner_store_user_is_admin(self) -> None:
         store = MagicMock()
         store.check.return_value = TrustLevel.OWNER
-        auth = Authenticator(store=store, role_map={}, default=TrustLevel.PUBLIC)
+        auth = Authenticator(
+            AuthenticatorDeps(store=store, role_map={}, default=TrustLevel.PUBLIC)
+        )
         identity = auth.resolve("u1")
         assert identity.trust_level == TrustLevel.OWNER
         assert identity.is_admin is True
@@ -31,10 +40,12 @@ class TestResolve:
         # admin_user_ids grants OWNER trust regardless of store/default —
         # prevents cache-key format mismatch (tg:user: vs bare ID) blocking admins.
         auth = Authenticator(
-            store=None,
-            role_map={},
-            default=TrustLevel.PUBLIC,
-            admin_user_ids=frozenset({"u1"}),
+            AuthenticatorDeps(
+                store=None,
+                role_map={},
+                default=TrustLevel.PUBLIC,
+                admin_user_ids=frozenset({"u1"}),
+            )
         )
         identity = auth.resolve("u1")
         assert identity.trust_level == TrustLevel.OWNER
@@ -42,10 +53,12 @@ class TestResolve:
 
     def test_non_admin_user(self) -> None:
         auth = Authenticator(
-            store=None,
-            role_map={},
-            default=TrustLevel.PUBLIC,
-            admin_user_ids=frozenset({"other"}),
+            AuthenticatorDeps(
+                store=None,
+                role_map={},
+                default=TrustLevel.PUBLIC,
+                admin_user_ids=frozenset({"other"}),
+            )
         )
         identity = auth.resolve("u1")
         assert identity.trust_level == TrustLevel.PUBLIC
@@ -55,10 +68,12 @@ class TestResolve:
         store = MagicMock()
         store.check.return_value = TrustLevel.PUBLIC
         auth = Authenticator(
-            store=store,
-            role_map={},
-            default=TrustLevel.BLOCKED,
-            public_commands=["/join"],
+            AuthenticatorDeps(
+                store=store,
+                role_map={},
+                default=TrustLevel.BLOCKED,
+                public_commands=["/join"],
+            )
         )
         identity = auth.resolve("u1", command="/join")
         assert identity.trust_level == TrustLevel.PUBLIC
@@ -67,10 +82,12 @@ class TestResolve:
         store = MagicMock()
         store.check.return_value = TrustLevel.BLOCKED
         auth = Authenticator(
-            store=store,
-            role_map={},
-            default=TrustLevel.BLOCKED,
-            public_commands=["/join"],
+            AuthenticatorDeps(
+                store=store,
+                role_map={},
+                default=TrustLevel.BLOCKED,
+                public_commands=["/join"],
+            )
         )
         identity = auth.resolve("u1", command="/join")
         assert identity.trust_level == TrustLevel.BLOCKED
@@ -78,15 +95,19 @@ class TestResolve:
 
     def test_role_map_resolution(self) -> None:
         auth = Authenticator(
-            store=None,
-            role_map={"role1": TrustLevel.TRUSTED},
-            default=TrustLevel.PUBLIC,
+            AuthenticatorDeps(
+                store=None,
+                role_map={"role1": TrustLevel.TRUSTED},
+                default=TrustLevel.PUBLIC,
+            )
         )
         identity = auth.resolve("u1", roles=["role1"])
         assert identity.trust_level == TrustLevel.TRUSTED
 
     def test_default_fallback(self) -> None:
-        auth = Authenticator(store=None, role_map={}, default=TrustLevel.BLOCKED)
+        auth = Authenticator(
+            AuthenticatorDeps(store=None, role_map={}, default=TrustLevel.BLOCKED)
+        )
         identity = auth.resolve("u1")
         assert identity.trust_level == TrustLevel.BLOCKED
 
@@ -95,10 +116,12 @@ class TestResolve:
         store = MagicMock()
         store.check.return_value = TrustLevel.OWNER
         auth = Authenticator(
-            store=store,
-            role_map={},
-            default=TrustLevel.BLOCKED,
-            public_commands=["/join"],
+            AuthenticatorDeps(
+                store=store,
+                role_map={},
+                default=TrustLevel.BLOCKED,
+                public_commands=["/join"],
+            )
         )
         identity = auth.resolve("u1", command="/join")
         # trust_level is PUBLIC (public command bypass)
@@ -111,7 +134,9 @@ class TestCheckBackwardCompat:
     """check() still returns TrustLevel for backward compat."""
 
     def test_check_returns_trust_level(self) -> None:
-        auth = Authenticator(store=None, role_map={}, default=TrustLevel.PUBLIC)
+        auth = Authenticator(
+            AuthenticatorDeps(store=None, role_map={}, default=TrustLevel.PUBLIC)
+        )
         result = auth.check("u1")
         assert isinstance(result, TrustLevel)
         assert result == TrustLevel.PUBLIC

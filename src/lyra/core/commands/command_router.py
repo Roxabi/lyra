@@ -7,6 +7,7 @@ import importlib
 import inspect
 import logging
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -40,56 +41,59 @@ BuiltinHandler = Callable[
 ]
 
 
+@dataclass(frozen=True)
+class CommandRouterDeps:
+    """Collapsed constructor parameters for CommandRouter."""
+
+    command_loader: CommandLoader
+    enabled_plugins: list[str]
+    circuit_registry: "CircuitRegistry | None" = None
+    msg_manager: "MessageManager | None" = None
+    runtime_config_holder: "RuntimeConfigHolder | None" = None
+    runtime_config_path: Path | None = None
+    config: RouterConfig | None = None
+    builtins: dict[str, CommandConfig] | None = None
+    on_debounce_change: Callable[[int], None] | None = None
+    on_cancel_change: Callable[[bool], None] | None = None
+    workspaces: dict[str, Path] | None = None
+    patterns: dict[str, bool] | None = None
+    pattern_configs: dict[str, dict] | None = None
+    session_driver: object = None
+    base_dir: Path | None = None
+
+
 class CommandRouter:
     """Routes slash commands to plugin handlers or built-in handlers."""
 
-    def __init__(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
-        self,
-        command_loader: CommandLoader,
-        enabled_plugins: list[str],
-        circuit_registry: "CircuitRegistry | None" = None,
-        msg_manager: "MessageManager | None" = None,
-        runtime_config_holder: "RuntimeConfigHolder | None" = None,
-        runtime_config_path: Path | None = None,
-        config: RouterConfig | None = None,
-        # Backward-compat: individual params override config (deprecated)
-        builtins: dict[str, CommandConfig] | None = None,
-        on_debounce_change: Callable[[int], None] | None = None,
-        on_cancel_change: Callable[[bool], None] | None = None,
-        workspaces: dict[str, Path] | None = None,
-        patterns: dict[str, bool] | None = None,
-        pattern_configs: dict[str, dict] | None = None,
-        session_driver: object = None,
-        base_dir: Path | None = None,
-    ) -> None:
-        cfg: RouterConfig = config if config is not None else RouterConfig()
+    def __init__(self, deps: CommandRouterDeps) -> None:
+        cfg: RouterConfig = deps.config if deps.config is not None else RouterConfig()
         # Allow individual param overrides for backward compat
-        self._command_loader = command_loader
-        self._enabled_plugins = enabled_plugins
+        self._command_loader = deps.command_loader
+        self._enabled_plugins = deps.enabled_plugins
         default_builtins = cfg.builtins or dict(DEFAULT_BUILTINS)
         self._builtins: dict[str, CommandConfig] = (
-            builtins if builtins is not None else default_builtins
+            deps.builtins if deps.builtins is not None else default_builtins
         )
-        self._circuit_registry = circuit_registry
-        self._msg_manager = msg_manager
-        self._runtime_config_holder = runtime_config_holder
-        self._runtime_config_path = runtime_config_path
-        self._on_debounce_change = on_debounce_change or cfg.on_debounce_change
-        self._on_cancel_change = on_cancel_change or cfg.on_cancel_change
-        self._workspaces: dict[str, Path] = workspaces or {}
-        self._patterns: dict[str, bool] = patterns or cfg.patterns
+        self._circuit_registry = deps.circuit_registry
+        self._msg_manager = deps.msg_manager
+        self._runtime_config_holder = deps.runtime_config_holder
+        self._runtime_config_path = deps.runtime_config_path
+        self._on_debounce_change = deps.on_debounce_change or cfg.on_debounce_change
+        self._on_cancel_change = deps.on_cancel_change or cfg.on_cancel_change
+        self._workspaces: dict[str, Path] = deps.workspaces or {}
+        self._patterns: dict[str, bool] = deps.patterns or cfg.patterns
         self._pattern_configs: dict[str, dict] = (
-            pattern_configs if pattern_configs is not None else cfg.pattern_configs
+            deps.pattern_configs
+            if deps.pattern_configs is not None
+            else cfg.pattern_configs
         )
         self._passthroughs: set[str] = set()
-        self._session_driver: object = session_driver or cfg.session_driver
-        from pathlib import Path
-
-        self._base_dir = base_dir if base_dir is not None else Path.home()
+        self._session_driver: object = deps.session_driver or cfg.session_driver
+        self._base_dir = deps.base_dir if deps.base_dir is not None else Path.home()
         self._session_handlers: dict[str, SessionCommandEntry] = {}
         self._builtin_handlers = self._build_builtin_handlers()
         check_command_conflicts(
-            command_loader.get_commands(enabled_plugins), self._builtins
+            deps.command_loader.get_commands(deps.enabled_plugins), self._builtins
         )
 
     @classmethod
@@ -189,24 +193,33 @@ class CommandRouter:
 
         return {
             "/help": lambda a, m, p: builtin_commands.help_command(
-                self._builtins,
-                self._session_handlers,
-                self._command_loader,
-                self._enabled_plugins,
-                self._msg_manager,
-                frozenset(self._passthroughs),
+                builtin_commands.HelpCommandDeps(
+                    builtins=self._builtins,
+                    session_handlers=self._session_handlers,
+                    command_loader=self._command_loader,
+                    enabled_plugins=self._enabled_plugins,
+                    msg_manager=self._msg_manager,
+                    passthroughs=frozenset(self._passthroughs),
+                )
             ),
             "/circuit": lambda a, m, p: builtin_commands.circuit_status(
                 m, self._circuit_registry
             ),
             "/stop": _stop,
             "/config": lambda a, m, p: builtin_commands.config_command(
-                m,
-                a,
-                self._runtime_config_holder,
-                self._runtime_config_path,
-                self._on_debounce_change,
-                self._on_cancel_change,
+                builtin_commands.HelpCommandDeps(
+                    builtins=self._builtins,
+                    session_handlers=self._session_handlers,
+                    command_loader=self._command_loader,
+                    enabled_plugins=self._enabled_plugins,
+                    msg_manager=self._msg_manager,
+                    msg=m,
+                    args=a,
+                    runtime_config_holder=self._runtime_config_holder,
+                    runtime_config_path=self._runtime_config_path,
+                    on_debounce_change=self._on_debounce_change,
+                    on_cancel_change=self._on_cancel_change,
+                )
             ),
             "/voice": _voice,
             "/text": _text,

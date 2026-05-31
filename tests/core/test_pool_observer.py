@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core.messaging.message import TelegramMeta
-from lyra.core.pool.pool_observer import PoolObserver
+from lyra.core.pool.pool_observer import PoolObserver, TurnLogDeps
 from tests.core.conftest import make_inbound_message
 
 # ---------------------------------------------------------------------------
@@ -41,10 +41,9 @@ class TestLogTurnAsync:
         """log_turn_async is silent when no TurnStore is registered."""
         obs = _make_observer()
         await obs.log_turn_async(
-            role="user",
-            platform="telegram",
-            user_id="alice",
-            content="hello",
+            TurnLogDeps(
+                role="user", platform="telegram", user_id="alice", content="hello"
+            )
         )
 
     @pytest.mark.anyio
@@ -56,11 +55,13 @@ class TestLogTurnAsync:
         obs.register_turn_publisher(publisher)
 
         await obs.log_turn_async(
-            role="user",
-            platform="telegram",
-            user_id="alice",
-            content="hello",
-            message_id="msg-1",
+            TurnLogDeps(
+                role="user",
+                platform="telegram",
+                user_id="alice",
+                content="hello",
+                message_id="msg-1",
+            )
         )
 
         publisher.publish_log_turn.assert_called_once()
@@ -87,7 +88,9 @@ class TestLogTurnAsync:
 
         session_ids.append("sess-second")
         await obs.log_turn_async(
-            role="assistant", platform="telegram", user_id="bot", content="hi"
+            TurnLogDeps(
+                role="assistant", platform="telegram", user_id="bot", content="hi"
+            )
         )
 
         _, kwargs = publisher.publish_log_turn.call_args
@@ -285,10 +288,9 @@ class TestLogTurnAsyncErrorPath:
         with caplog.at_level(logging.ERROR, logger="lyra.core.pool.pool_observer"):
             # Act — must not raise
             await obs.log_turn_async(
-                role="user",
-                platform="telegram",
-                user_id="alice",
-                content="hello",
+                TurnLogDeps(
+                    role="user", platform="telegram", user_id="alice", content="hello"
+                )
             )
 
         assert any("turn_publisher write failed" in r.message for r in caplog.records)

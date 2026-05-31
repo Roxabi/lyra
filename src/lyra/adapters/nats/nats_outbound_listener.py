@@ -7,6 +7,7 @@ import contextlib
 import logging
 import re
 from collections import OrderedDict
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from nats.aio.client import Client as NATS
@@ -36,35 +37,38 @@ _MAX_STREAMS = 100
 _MAX_QUEUE_SIZE = 256
 
 
+@dataclass(frozen=True)
+class ListenerDeps:
+    """Frozen deps for NatsOutboundListener.__init__."""
+
+    nc: NATS
+    platform: Platform
+    bot_id: str
+    adapter: "ChannelAdapter"
+    queue_group: str = ""
+    resolver: TypeHintResolver = field(default_factory=lambda: TYPE_REGISTRY_RESOLVER)
+
+
 class NatsOutboundListener:
     """NATS outbound subscriber → adapter dispatch (send/attachment/stream)."""
 
-    def __init__(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
-        self,
-        nc: NATS,
-        platform: Platform,
-        bot_id: str,
-        adapter: "ChannelAdapter",
-        *,
-        queue_group: str = "",
-        resolver: TypeHintResolver = TYPE_REGISTRY_RESOLVER,
-    ) -> None:
-        validate_nats_token(queue_group, kind="queue_group", allow_empty=True)
-        self._nc = nc
-        self._platform = platform
-        self._bot_id = bot_id
-        validate_nats_token(bot_id, kind="bot_id")
-        if not re.fullmatch(r"[A-Za-z0-9_-]+", bot_id):
+    def __init__(self, deps: ListenerDeps) -> None:
+        validate_nats_token(deps.queue_group, kind="queue_group", allow_empty=True)
+        self._nc = deps.nc
+        self._platform = deps.platform
+        self._bot_id = deps.bot_id
+        validate_nats_token(deps.bot_id, kind="bot_id")
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", deps.bot_id):
             raise ValueError(
-                f"Invalid bot_id for NATS subject: {bot_id!r} — "
+                f"Invalid bot_id for NATS subject: {deps.bot_id!r} — "
                 "must match [A-Za-z0-9_-]+ (no dots)"
             )
-        self._adapter = adapter
-        self._queue_group = queue_group
-        self._resolver = resolver
-        self._subject = f"lyra.outbound.{platform.value}.{bot_id}"
-        self._cache = InboundCache(resolver=resolver)
-        self._codec = NatsRenderEventCodec(resolver=resolver)
+        self._adapter = deps.adapter
+        self._queue_group = deps.queue_group
+        self._resolver = deps.resolver
+        self._subject = f"lyra.outbound.{deps.platform.value}.{deps.bot_id}"
+        self._cache = InboundCache(resolver=deps.resolver)
+        self._codec = NatsRenderEventCodec(resolver=deps.resolver)
         self._stream_queues: dict[str, asyncio.Queue[dict]] = {}
         self._stream_tasks: dict[str, asyncio.Task[None]] = {}
         self._stream_outbound: dict[str, OutboundMessage] = {}

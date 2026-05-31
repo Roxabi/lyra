@@ -23,7 +23,11 @@ from lyra.core.auth.trust import TrustLevel
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.commands.command_loader import CommandLoader
 from lyra.core.commands.command_parser import CommandParser
-from lyra.core.commands.command_router import CommandConfig, CommandRouter
+from lyra.core.commands.command_router import (
+    CommandConfig,
+    CommandRouter,
+    CommandRouterDeps,
+)
 from lyra.core.messaging.message import InboundMessage, Response, TelegramMeta
 
 # ---------------------------------------------------------------------------
@@ -47,9 +51,11 @@ def make_circuit_router(registry: CircuitRegistry | None = None) -> CommandRoute
     plugins_dir = Path(tempfile.mkdtemp())
     loader = CommandLoader(plugins_dir)
     return CommandRouter(
-        command_loader=loader,
-        enabled_plugins=[],
-        circuit_registry=registry,
+        CommandRouterDeps(
+            command_loader=loader,
+            enabled_plugins=[],
+            circuit_registry=registry,
+        )
     )
 
 

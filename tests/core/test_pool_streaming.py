@@ -243,9 +243,9 @@ class TestPoolStreaming:
 
         log_calls: list[str] = []
 
-        async def _capture_turn(**kw: object) -> None:
-            if kw.get("role") == "assistant":
-                log_calls.append(str(kw.get("content", "")))
+        async def _capture_turn(deps: object) -> None:
+            if getattr(deps, "role", None) == "assistant":
+                log_calls.append(str(getattr(deps, "content", "")))
 
         object.__setattr__(pool._observer, "log_turn_async", _capture_turn)
 
@@ -278,9 +278,9 @@ class TestPoolStreaming:
 
         logged: list[str] = []
 
-        async def _capture_turn(**kw: object) -> None:
-            if kw.get("role") == "assistant":
-                logged.append(str(kw.get("content", "")))
+        async def _capture_turn(deps: object) -> None:
+            if getattr(deps, "role", None) == "assistant":
+                logged.append(str(getattr(deps, "content", "")))
 
         object.__setattr__(pool._observer, "log_turn_async", _capture_turn)
 
@@ -304,9 +304,9 @@ class TestPoolStreaming:
 
         logged: list[str] = []
 
-        async def _capture_turn(**kw: object) -> None:
-            if kw.get("role") == "assistant":
-                logged.append(str(kw.get("content", "MISSING")))
+        async def _capture_turn(deps: object) -> None:
+            if getattr(deps, "role", None) == "assistant":
+                logged.append(str(getattr(deps, "content", "MISSING")))
 
         object.__setattr__(pool._observer, "log_turn_async", _capture_turn)
 
@@ -350,9 +350,9 @@ class TestPoolStreaming:
 
         logged: list[str] = []
 
-        async def _capture_turn(**kw: object) -> None:
-            if kw.get("role") == "assistant":
-                logged.append(str(kw.get("content", "")))
+        async def _capture_turn(deps: object) -> None:
+            if getattr(deps, "role", None) == "assistant":
+                logged.append(str(getattr(deps, "content", "")))
 
         object.__setattr__(pool._observer, "log_turn_async", _capture_turn)
 

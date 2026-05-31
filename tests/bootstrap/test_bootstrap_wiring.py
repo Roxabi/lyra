@@ -8,7 +8,7 @@ import pytest
 
 from lyra.bootstrap.wiring.bootstrap_wiring import TelegramWiringDeps
 from lyra.config import TelegramBotConfig
-from lyra.core.auth.authenticator import Authenticator
+from lyra.core.auth.authenticator import Authenticator, AuthenticatorDeps
 from lyra.core.auth.trust import (
     TrustLevel,  # noqa: F401 — used in Authenticator(default=)
 )
@@ -31,7 +31,9 @@ async def test_wire_telegram_adapters_registers_authenticator() -> None:
     hub = Hub()
 
     bot_cfg = TelegramBotConfig(bot_id="main")
-    auth = Authenticator(store=None, role_map={}, default=TrustLevel.PUBLIC)
+    auth = Authenticator(
+        AuthenticatorDeps(store=None, role_map={}, default=TrustLevel.PUBLIC)
+    )
 
     # bot_agent_map maps ("telegram", bot_id) → agent_name
     bot_agent_map: dict[tuple[str, str], str] = {("telegram", "main"): "lyra_default"}
@@ -87,7 +89,9 @@ async def test_wire_telegram_no_nats_listener_in_dev_mode() -> None:
 
     hub = Hub()
     bot_cfg = TelegramBotConfig(bot_id="main")
-    auth = Authenticator(store=None, role_map={}, default=TrustLevel.PUBLIC)
+    auth = Authenticator(
+        AuthenticatorDeps(store=None, role_map={}, default=TrustLevel.PUBLIC)
+    )
 
     from unittest.mock import AsyncMock
 
@@ -129,7 +133,9 @@ async def test_wire_telegram_adapters_skips_missing_agent_mapping() -> None:
     # Arrange
     hub = Hub()
     bot_cfg = TelegramBotConfig(bot_id="orphan_bot")
-    auth = Authenticator(store=None, role_map={}, default=TrustLevel.PUBLIC)
+    auth = Authenticator(
+        AuthenticatorDeps(store=None, role_map={}, default=TrustLevel.PUBLIC)
+    )
 
     circuit_registry = CircuitRegistry()
     msg_manager = MagicMock()

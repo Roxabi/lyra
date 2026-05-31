@@ -21,7 +21,7 @@ import discord
 import pytest
 
 from lyra.adapters.discord import DiscordAdapter
-from lyra.adapters.discord.discord_normalize import normalize
+from lyra.adapters.discord.discord_normalize import NormalizeDeps, normalize
 from lyra.inbound.attachment_ingest import PendingAttachment
 
 # ---------------------------------------------------------------------------
@@ -118,7 +118,7 @@ def test_dc_multi_attachment_normalize_sets_pending_attachments() -> None:
     )
     raw = _make_discord_message(attachments=[att1, att2, att3])
 
-    msg = normalize(adapter, raw)
+    msg = normalize(NormalizeDeps(adapter=adapter, raw=raw))
 
     assert len(msg.attachments) == 3
     assert len(msg.pending_attachments) == 3

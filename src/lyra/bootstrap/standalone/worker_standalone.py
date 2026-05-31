@@ -10,7 +10,7 @@ from pathlib import Path
 from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
 from lyra.bootstrap.factory.config import _load_cli_pool_config
 from lyra.bootstrap.infra.git_ownership_probe import run_git_ownership_probe
-from lyra.core.cli.cli_pool import CliPool
+from lyra.core.cli.cli_pool import CliPool, CliPoolDeps
 from lyra.core.messaging.metrics import log_contracts_version
 from lyra.infrastructure.stores.turn_store import TurnStore
 from lyra.infrastructure.turn_writer.health import TurnWriterHealthServer
@@ -39,14 +39,16 @@ async def _bootstrap_clipool_standalone(raw_config: dict) -> None:
     log.info("clipool: will connect to NATS at %s", scrub_nats_url(nats_url))
 
     cli_pool = CliPool(
-        idle_ttl=cli_pool_cfg.idle_ttl,
-        default_timeout=cli_pool_cfg.default_timeout,
-        reaper_interval=cli_pool_cfg.reaper_interval,
-        kill_timeout=cli_pool_cfg.kill_timeout,
-        read_buffer_bytes=cli_pool_cfg.read_buffer_bytes,
-        stdin_drain_timeout=cli_pool_cfg.stdin_drain_timeout,
-        max_idle_retries=cli_pool_cfg.max_idle_retries,
-        intermediate_timeout=cli_pool_cfg.intermediate_timeout,
+        CliPoolDeps(
+            idle_ttl=cli_pool_cfg.idle_ttl,
+            default_timeout=cli_pool_cfg.default_timeout,
+            reaper_interval=cli_pool_cfg.reaper_interval,
+            kill_timeout=cli_pool_cfg.kill_timeout,
+            read_buffer_bytes=cli_pool_cfg.read_buffer_bytes,
+            stdin_drain_timeout=cli_pool_cfg.stdin_drain_timeout,
+            max_idle_retries=cli_pool_cfg.max_idle_retries,
+            intermediate_timeout=cli_pool_cfg.intermediate_timeout,
+        )
     )
     await cli_pool.start()
 

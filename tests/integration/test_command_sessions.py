@@ -16,7 +16,7 @@ import pytest
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.commands.command_loader import CommandLoader
 from lyra.core.commands.command_parser import CommandParser
-from lyra.core.commands.command_router import CommandRouter
+from lyra.core.commands.command_router import CommandRouter, CommandRouterDeps
 from lyra.core.messaging.message import InboundMessage, Response
 from lyra.core.pool import Pool
 from lyra.integrations.base import SessionTools
@@ -141,10 +141,12 @@ def make_router_with_session(
     # Minimal plugins dir (no real plugins needed for session command tests)
     loader = CommandLoader(tmp_path)
     router = CommandRouter(
-        command_loader=loader,
-        enabled_plugins=[],
-        session_driver=driver,
-        patterns={"bare_url": True},
+        CommandRouterDeps(
+            command_loader=loader,
+            enabled_plugins=[],
+            session_driver=driver,
+            patterns={"bare_url": True},
+        )
     )
     router.register_session_command(
         "vault-add", _stub_vault_add, tools=_tools, description="Save URL", timeout=60.0
@@ -329,9 +331,11 @@ class TestSessionTimeout:
             return Response(content="never")
 
         router = CommandRouter(
-            command_loader=loader,
-            enabled_plugins=[],
-            session_driver=driver,
+            CommandRouterDeps(
+                command_loader=loader,
+                enabled_plugins=[],
+                session_driver=driver,
+            )
         )
         tools = SessionTools(scraper=MagicMock(), vault=MagicMock())
         router.register_session_command("slow", slow_handler, tools=tools, timeout=0.01)

@@ -10,6 +10,7 @@ if TYPE_CHECKING:
 
 from ..persona import compose_system_prompt_from_json
 from .agent_builder import (
+    AssembleDeps,
     _assemble_agent,
     _build_commands_from_dict,
     _build_smart_routing_from_dict,
@@ -164,18 +165,20 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — DEBT:complexity-residual —
     )
 
     return _assemble_agent(
-        name=row.name,
-        system_prompt=system_prompt,
-        memory_namespace=memory_namespace,
-        llm_config=model_cfg,
-        permissions=permissions,
-        commands=commands,
-        commands_enabled=tuple(plugins),
-        i18n_language=i18n_language,
-        smart_routing=smart_routing,
-        show_intermediate=row.show_intermediate,
-        workspaces=workspaces,
-        voice=voice,
-        patterns=patterns,
-        passthroughs=passthroughs,
+        AssembleDeps(
+            name=row.name,
+            system_prompt=system_prompt,
+            memory_namespace=memory_namespace,
+            llm_config=model_cfg,
+            permissions=permissions,
+            commands=commands,
+            commands_enabled=tuple(plugins),
+            i18n_language=i18n_language,
+            smart_routing=smart_routing,
+            show_intermediate=row.show_intermediate,
+            workspaces=workspaces,
+            voice=voice,
+            patterns=patterns,
+            passthroughs=passthroughs,
+        )
     )

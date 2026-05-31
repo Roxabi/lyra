@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.cli.cli_pool import CliPool
+from lyra.core.cli.cli_pool import CliPool, CliPoolDeps
 from lyra.core.cli.cli_pool_worker import _ProcessEntry
 
 # ---------------------------------------------------------------------------
@@ -31,7 +31,7 @@ _ANOTHER_CLI_SID = "11111111-2222-3333-4444-555555555555"
 
 def _make_pool() -> CliPool:
     """Return a CliPool with no background tasks started."""
-    return CliPool(idle_ttl=300)
+    return CliPool(CliPoolDeps(idle_ttl=300))
 
 
 def _make_live_entry(

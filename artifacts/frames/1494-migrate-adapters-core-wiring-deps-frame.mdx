@@ -1,0 +1,68 @@
+---
+title: "refactor(bootstrap): migrate adapters/ + core/ off wiring-bootstrap-deps"
+issue: 1494
+status: approved
+tier: F-lite
+date: 2026-05-31
+---
+
+## Problem
+
+`src/lyra/` carries **47** `# noqa: PLR0913|PLR0915 — DEBT:wiring-bootstrap-deps` annotations. Each marks a function that wires bootstrap dependencies through a long positional/keyword argument list (flagged `PLR0913` too-many-args or `PLR0915` too-many-statements). Phase 6 (#1283) introduced DI-container dataclasses to collapse these arg-lists and set a ratchet success criterion of **≤30** occurrences. The count sits at **47**, so the criterion is unmet.
+
+The debt is concentrated in out-of-Phase-6 consumers — verified live @ HEAD `d3aa9777`:
+
+| dir | occurrences |
+|---|---|
+| `core/` | 22 |
+| `adapters/` | 10 |
+| `llm/` | 4 |
+| `nats/` | 2 |
+| `integrations/` | 2 |
+| transport / tools / outbound / infrastructure / bootstrap / agents / cli_agent_create | 1 each |
+| **total** | **47** |
+
+**Why now:** Phase 6 / PR #1492 cleared *bootstrap-local* wiring but stopped at its scope boundary. The ratchet target stays breached, keeping the Phase 6 success criterion open. **Observable impact:** adding one dependency means threading it through long signatures across `core/` + `adapters/` instead of extending a single `Deps` object — higher edit cost, harder to test.
+
+## Who
+
+- **Primary:** Lyra maintainers extending `bootstrap/`-driven wiring — today a new dep edits multi-arg signatures across `core/` + `adapters/`.
+- **Secondary:** Phase 6 DI epic (#1283) — its success criterion cannot close until count ≤30.
+
+## Constraints
+
+- **Behaviour-preserving** — no functional/runtime change; pure structural refactor.
+- **Migrate INTO existing DI containers** (verified present @ HEAD), ¬invent parallel ones:
+  - `bootstrap/types.py`: `BuildHubDeps`, `RegisterAgentsDeps`, `WireAdaptersDeps`
+  - `bootstrap/wiring/bootstrap_wiring.py`: `TelegramWiringDeps`, `DiscordWiringDeps`, `BotAuthDeps`
+  - `bootstrap/wiring/nats_wiring.py`: `NatsTgWiringDeps`, `NatsDcWiringDeps`
+  - `bootstrap/factory/agent_factory.py`: `CreateAgentDeps`, `ResolveAgentsDeps`
+- **Real migration, not annotation hygiene:** removing a `DEBT:wiring-bootstrap-deps` marker must also drop its paired `# noqa: PLR0913/PLR0915` — i.e. ruff passes on the function *without* the noqa. Count reduction must reflect collapsed signatures, not deleted comments.
+- Quality gates: file ≤300 lines, folder ≤12 files, import-linter layers, ruff format+check, pyright clean.
+
+## Out of Scope
+
+- `bootstrap/`-local wiring — already cleared by Phase 6 / PR #1492.
+- **Full elimination.** Target is **≤30 (remove ≥17)**, prioritising `core/` + `adapters/` functions that map cleanly to an existing `Deps` dataclass. Stop once under threshold.
+- `llm/decorators.py` (4) + single-occurrence dirs — touch only if `core/` + `adapters/` alone don't reach ≤30.
+- Any annotation that is a legitimate composition-root assembly point (intended, not debt).
+- Functional changes to wiring behaviour.
+
+## Premise Validity
+
+**Success in 6 months:** `grep -rc "DEBT:wiring-bootstrap-deps" src/lyra/` ≤ 30, every removal achieved by routing wiring through an existing `Deps` dataclass — verified by ruff passing on each touched function *without* its former `PLR0913/PLR0915` noqa.
+
+**Failure in 6 months (falsifiable):** after merge, count still > 30; **OR** count ≤30 but reached by stripping markers while the functions still require `PLR0913/PLR0915` noqa (the proxy-metric trap — bookkeeping moved, structure didn't). Both are observable via `grep -c` + `ruff check` with the noqa removed.
+
+**Simplest alternative:** delete the marker comments / raise the ratchet threshold back to 49.
+**Why not simplest:** that is precisely the `#1162` anti-pattern — it measures annotation compliance, not wiring structure. The long-signature wiring (and its testability/extension cost) survives, and Phase 6's DI goal is defeated. The metric only has value if it tracks real signature-collapse — hence the noqa-removal verification above.
+
+## Complexity
+
+**Tier: F-lite** — single domain (bootstrap wiring), clear scope (collapse arg-lists into *existing* dataclasses), mechanism already shipped in Phase 6, no new architecture; issue label `size:F-lite`.
+
+Signals observed:
+- 1 domain (bootstrap/wiring + its `core/`+`adapters/` consumers)
+- Mechanical + homogeneous (one pattern applied N times), no unknowns — DI containers exist, pattern established
+- Behaviour-preserving; bounded by "remove ≥17 to hit ≤30", not "migrate all 47"
+- Caveat: raw file count could exceed the F-lite 4–10 band; if migration balloons, split `core/` and `adapters/` into separate PRs rather than upgrading tier.

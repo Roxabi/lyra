@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from ..stores.message_index_protocol import MessageIndexProtocol
@@ -13,6 +14,18 @@ if TYPE_CHECKING:
     from ..messaging.message import InboundMessage
 
 log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class TurnLogDeps:
+    """Dependencies for PoolObserver.log_turn_async."""
+
+    role: str
+    platform: str
+    user_id: str
+    content: str
+    message_id: str | None = None
+    reply_message_id: str | None = None
 
 
 class PoolObserver:
@@ -103,16 +116,7 @@ class PoolObserver:
                 exc_info=True,
             )
 
-    async def log_turn_async(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
-        self,
-        *,
-        role: str,
-        platform: str,
-        user_id: str,
-        content: str,
-        message_id: str | None = None,
-        reply_message_id: str | None = None,
-    ) -> None:
+    async def log_turn_async(self, deps: TurnLogDeps) -> None:
         """Publish turn via TurnPublisher; no-op if not connected."""
         if self._turn_publisher is None:
             return
@@ -121,23 +125,23 @@ class PoolObserver:
             # otherwise fall back to a fresh uuid4 hex
             import uuid
 
-            trace_id = (message_id or "").strip() or uuid.uuid4().hex
+            trace_id = (deps.message_id or "").strip() or uuid.uuid4().hex
             await self._turn_publisher.publish_log_turn(
                 pool_id=self._pool_id,
                 session_id=self._session_id_fn(),
-                platform=platform,
-                user_id=user_id,
-                role=role,
-                content=content,
-                message_id=message_id or None,
-                reply_message_id=reply_message_id,
+                platform=deps.platform,
+                user_id=deps.user_id,
+                role=deps.role,
+                content=deps.content,
+                message_id=deps.message_id or None,
+                reply_message_id=deps.reply_message_id,
                 trace_id=trace_id,
             )
         except Exception:
             log.error(
                 "turn_publisher write failed (pool=%s role=%s)",
                 self._pool_id,
-                role,
+                deps.role,
                 exc_info=True,
             )
 
@@ -177,11 +181,13 @@ class PoolObserver:
                     exc_info=True,
                 )
         await self.log_turn_async(
-            role="user",
-            platform=str(msg.platform),
-            user_id=msg.user_id,
-            content=msg.text,
-            message_id=msg.id,
+            TurnLogDeps(
+                role="user",
+                platform=str(msg.platform),
+                user_id=msg.user_id,
+                content=msg.text,
+                message_id=msg.id,
+            )
         )
         # Index user turn for reply-to session routing (#341).
         _msg_id = getattr(msg.platform_meta, "message_id", None)

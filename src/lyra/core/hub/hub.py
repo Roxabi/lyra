@@ -26,7 +26,7 @@ from .hub_registration import HubRegistrationMixin
 from .hub_shutdown import HubShutdownMixin
 from .identity_resolver import IdentityResolver
 from .middleware import build_default_pipeline
-from .outbound import OutboundRouter
+from .outbound import OutboundRouter, OutboundRouterDeps
 from .pipeline import PoolManager
 
 if TYPE_CHECKING:
@@ -136,13 +136,15 @@ class Hub(
             bindings=self.bindings,
         )
         self._outbound_router = OutboundRouter(
-            adapters=self.adapter_registry,
-            dispatchers=self.outbound_dispatchers,
-            audio_pipeline=self._audio_pipeline,
-            circuit_registry=self.circuit_registry,
-            msg_manager=self._msg_manager,
-            tts=self._tts,
-            memory_tasks=self._memory_tasks,
+            OutboundRouterDeps(
+                adapters=self.adapter_registry,
+                dispatchers=self.outbound_dispatchers,
+                audio_pipeline=self._audio_pipeline,
+                circuit_registry=self.circuit_registry,
+                msg_manager=self._msg_manager,
+                tts=self._tts,
+                memory_tasks=self._memory_tasks,
+            )
         )
 
     @property

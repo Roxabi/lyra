@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.cli.cli_pool import CliPool, _ProcessEntry
+from lyra.core.cli.cli_pool import CliPool, CliPoolDeps, _ProcessEntry
 from lyra.core.cli.cli_protocol import CliResult
 
 from .conftest_cli_pool import (
@@ -320,7 +320,7 @@ class TestReaperSkipsLockedEntries:
     """Reaper skips entries whose _lock is held (in-use by send())."""
 
     async def test_reaper_skips_locked_entry(self) -> None:
-        pool = CliPool(idle_ttl=1)  # very short TTL
+        pool = CliPool(CliPoolDeps(idle_ttl=1))  # very short TTL
         proc = make_fake_proc([])
         entry = _ProcessEntry(proc=proc, pool_id="p-locked", model_config=DEFAULT_MODEL)
         entry.last_activity = 0.0  # far in the past → definitely idle

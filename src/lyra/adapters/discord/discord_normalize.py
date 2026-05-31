@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import discord
@@ -23,16 +24,28 @@ if TYPE_CHECKING:
 log = logging.getLogger("lyra.adapters.discord")
 
 
-def normalize(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
-    adapter: "DiscordAdapter",
-    raw: Any,
-    *,
-    thread_id: int | None = None,
-    channel_id: int | None = None,
-    trust_level: TrustLevel = TrustLevel.TRUSTED,
-    is_admin: bool = False,  # REQUIRED: always pass is_admin=identity.is_admin
-) -> InboundMessage:
+@dataclass(frozen=True)
+class NormalizeDeps:
+    """Frozen DI object for normalize() — replaces PLR0913 param list."""
+
+    adapter: "DiscordAdapter"
+    raw: Any
+    thread_id: int | None = None
+    channel_id: int | None = None
+    trust_level: TrustLevel = TrustLevel.TRUSTED
+    is_admin: bool = False  # REQUIRED: always pass is_admin=identity.is_admin
+
+
+def normalize(deps: NormalizeDeps) -> InboundMessage:
     """Convert a discord.py Message (or SimpleNamespace) to InboundMessage."""
+    adapter, raw, thread_id, channel_id, trust_level, is_admin = (
+        deps.adapter,
+        deps.raw,
+        deps.thread_id,
+        deps.channel_id,
+        deps.trust_level,
+        deps.is_admin,
+    )
     is_mention = adapter._bot_user is not None and adapter._bot_user in raw.mentions
 
     # Strip @mention prefix so content reaches the agent clean

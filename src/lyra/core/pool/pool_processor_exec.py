@@ -20,7 +20,9 @@ if TYPE_CHECKING:
 from ..messaging.callbacks import TrustedCallback
 from ..messaging.message import GENERIC_ERROR_REPLY, OutboundMessage, Response
 from ..trace import TraceContext
+from .pool_observer import TurnLogDeps
 from .pool_processor_streaming import (
+    StreamLogDeps,
     build_streaming_capture,
     build_streaming_turn_logger,
     run_streaming_turn_post,
@@ -196,12 +198,14 @@ async def process_one(  # noqa: C901, PLR0915 — DEBT:complexity-residual — s
 
         # Build outbound with turn-logging callback
         _outbound, _log_callback = build_streaming_turn_logger(
-            pool,
-            _result_iter_for_sid,
-            _original_msg,
-            _platform,
-            _user_id,
-            _content_parts,
+            StreamLogDeps(
+                pool=pool,
+                result_iter_for_sid=_result_iter_for_sid,
+                original_msg=_original_msg,
+                platform=_platform,
+                user_id=_user_id,
+                content_parts=_content_parts,
+            )
         )
         pool._inflight_stream_outbound = _outbound
         _outbound.metadata["_on_dispatched"] = TrustedCallback(_log_callback)
@@ -239,13 +243,15 @@ async def process_one(  # noqa: C901, PLR0915 — DEBT:complexity-residual — s
             async def _log_turn(outbound: OutboundMessage) -> None:
                 _reply_id = outbound.metadata.get("reply_message_id")
                 await pool._observer.log_turn_async(
-                    role="assistant",
-                    platform=_platform,
-                    user_id=_user_id,
-                    content=_content,
-                    reply_message_id=(
-                        str(_reply_id) if _reply_id is not None else None
-                    ),
+                    TurnLogDeps(
+                        role="assistant",
+                        platform=_platform,
+                        user_id=_user_id,
+                        content=_content,
+                        reply_message_id=(
+                            str(_reply_id) if _reply_id is not None else None
+                        ),
+                    )
                 )
                 # Index assistant turn for reply-to session routing (#341).
                 await pool._observer.index_turn_async(

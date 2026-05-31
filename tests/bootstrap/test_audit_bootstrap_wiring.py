@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from lyra.bootstrap.factory.hub_builder import build_cli_pool
 from lyra.core.agent import Agent
 from lyra.core.agent.agent_config import ModelConfig
+from lyra.core.cli.cli_pool import CliPoolDeps
 
 
 def _make_cli_agent(name: str = "test_agent") -> Agent:
@@ -34,8 +35,9 @@ class TestBuildCliPoolAuditSinkWiring:
 
             await build_cli_pool({}, agent_configs, audit_sink=sink)
 
-        _, kwargs = MockCliPool.call_args
-        assert kwargs.get("audit_sink") is sink
+        args, _ = MockCliPool.call_args
+        assert isinstance(args[0], CliPoolDeps)
+        assert args[0].audit_sink is sink
 
     async def test_build_cli_pool_no_audit_sink_defaults_to_none(self) -> None:
         """build_cli_pool defaults audit_sink=None when not provided."""
@@ -48,8 +50,9 @@ class TestBuildCliPoolAuditSinkWiring:
 
             await build_cli_pool({}, agent_configs)
 
-        _, kwargs = MockCliPool.call_args
-        assert kwargs.get("audit_sink") is None
+        args, _ = MockCliPool.call_args
+        assert isinstance(args[0], CliPoolDeps)
+        assert args[0].audit_sink is None
 
 
 class TestJetStreamAuditSinkBootstrapIntegration:
@@ -72,7 +75,7 @@ class TestJetStreamAuditSinkBootstrapIntegration:
         sink = MagicMock()
         sink.emit = _capture  # type: ignore[method-assign]
 
-        pool = CliPool(audit_sink=sink)
+        pool = CliPool(CliPoolDeps(audit_sink=sink))
         model = ModelConfig(backend="claude-cli", skip_permissions=True)
         fake_proc = make_fake_proc([])
 
@@ -101,7 +104,7 @@ class TestJetStreamAuditSinkBootstrapIntegration:
         sink = MagicMock()
         sink.emit = _capture  # type: ignore[method-assign]
 
-        pool = CliPool(audit_sink=sink)
+        pool = CliPool(CliPoolDeps(audit_sink=sink))
         model = ModelConfig(backend="claude-cli", skip_permissions=False)
         fake_proc = make_fake_proc([])
 

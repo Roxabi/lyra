@@ -34,7 +34,7 @@ from lyra.bootstrap.wiring.nats_wiring import (
 )
 from lyra.core.agent import Agent
 from lyra.core.circuit_breaker import CircuitRegistry
-from lyra.core.cli.cli_pool import CliPool
+from lyra.core.cli.cli_pool import CliPool, CliPoolDeps
 from lyra.core.config import HubConfig
 from lyra.core.hub import Hub
 from lyra.core.hub.event_bus import PipelineEventBus
@@ -173,15 +173,17 @@ async def build_cli_pool(
     for cfg in agent_configs.values():
         if cfg.llm_config.backend == "claude-cli":
             cli_pool = CliPool(
-                idle_ttl=cli_pool_cfg.idle_ttl,
-                default_timeout=cli_pool_cfg.default_timeout,
-                reaper_interval=cli_pool_cfg.reaper_interval,
-                kill_timeout=cli_pool_cfg.kill_timeout,
-                read_buffer_bytes=cli_pool_cfg.read_buffer_bytes,
-                stdin_drain_timeout=cli_pool_cfg.stdin_drain_timeout,
-                max_idle_retries=cli_pool_cfg.max_idle_retries,
-                intermediate_timeout=cli_pool_cfg.intermediate_timeout,
-                audit_sink=audit_sink,
+                CliPoolDeps(
+                    idle_ttl=cli_pool_cfg.idle_ttl,
+                    default_timeout=cli_pool_cfg.default_timeout,
+                    reaper_interval=cli_pool_cfg.reaper_interval,
+                    kill_timeout=cli_pool_cfg.kill_timeout,
+                    read_buffer_bytes=cli_pool_cfg.read_buffer_bytes,
+                    stdin_drain_timeout=cli_pool_cfg.stdin_drain_timeout,
+                    max_idle_retries=cli_pool_cfg.max_idle_retries,
+                    intermediate_timeout=cli_pool_cfg.intermediate_timeout,
+                    audit_sink=audit_sink,
+                )
             )
             await cli_pool.start()
             return cli_pool
@@ -236,15 +238,17 @@ async def _init_clipool(
 
     cli_nats_driver = await build_llm_client(nc)
     cli_pool = CliPool(
-        idle_ttl=cli_pool_cfg.idle_ttl,
-        default_timeout=cli_pool_cfg.default_timeout,
-        reaper_interval=cli_pool_cfg.reaper_interval,
-        kill_timeout=cli_pool_cfg.kill_timeout,
-        read_buffer_bytes=cli_pool_cfg.read_buffer_bytes,
-        stdin_drain_timeout=cli_pool_cfg.stdin_drain_timeout,
-        max_idle_retries=cli_pool_cfg.max_idle_retries,
-        intermediate_timeout=cli_pool_cfg.intermediate_timeout,
-        audit_sink=audit_sink,
+        CliPoolDeps(
+            idle_ttl=cli_pool_cfg.idle_ttl,
+            default_timeout=cli_pool_cfg.default_timeout,
+            reaper_interval=cli_pool_cfg.reaper_interval,
+            kill_timeout=cli_pool_cfg.kill_timeout,
+            read_buffer_bytes=cli_pool_cfg.read_buffer_bytes,
+            stdin_drain_timeout=cli_pool_cfg.stdin_drain_timeout,
+            max_idle_retries=cli_pool_cfg.max_idle_retries,
+            intermediate_timeout=cli_pool_cfg.intermediate_timeout,
+            audit_sink=audit_sink,
+        )
     )
     await cli_pool.start()
     cli_pool.set_turn_store(stores.turn)

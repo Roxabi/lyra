@@ -10,7 +10,7 @@ import nats.errors
 import pytest
 
 from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.cli.cli_pool import CliPool
+from lyra.core.cli.cli_pool import CliPool, CliPoolDeps
 from lyra.core.trace import TraceContext
 
 from .conftest_cli_pool import make_fake_proc
@@ -67,7 +67,7 @@ class TestCliSpawnAuditEmit:
     async def test_spawn_emits_event_with_correct_pid(self) -> None:
         """SecurityEvent.pid must equal the spawned process PID."""
         sink = _make_sink()
-        pool = CliPool(audit_sink=sink)
+        pool = CliPool(CliPoolDeps(audit_sink=sink))
         fake_proc = make_fake_proc([])
         fake_proc.pid = 12345
 
@@ -86,7 +86,7 @@ class TestCliSpawnAuditEmit:
         from contextvars import copy_context
 
         sink = _make_sink()
-        pool = CliPool(audit_sink=sink)
+        pool = CliPool(CliPoolDeps(audit_sink=sink))
         fake_proc = make_fake_proc([])
 
         captured_events: list[object] = []
@@ -111,7 +111,7 @@ class TestCliSpawnAuditEmit:
     async def test_spawn_no_emit_when_process_exits_in_liveness_gate(self) -> None:
         """Process that exits within 100ms must NOT emit a SecurityEvent."""
         sink = _make_sink()
-        pool = CliPool(audit_sink=sink)
+        pool = CliPool(CliPoolDeps(audit_sink=sink))
 
         # Dead-on-arrival: returncode set at proc creation → wait() returns immediately.
         dead_proc = make_fake_proc([])
@@ -135,7 +135,7 @@ class TestCliSpawnAuditEmit:
         sink = MagicMock()
         sink.emit = _gated_emit  # type: ignore[method-assign]
 
-        pool = CliPool(audit_sink=sink)
+        pool = CliPool(CliPoolDeps(audit_sink=sink))
         fake_proc = make_fake_proc([])
 
         with patch(_WORKER_PATCH, return_value=fake_proc):
@@ -152,7 +152,7 @@ class TestCliSpawnAuditEmit:
     async def test_spawn_emits_tools_restricted_false_when_no_tools(self) -> None:
         """tools_restricted=False and tools_allowlist=[] when no tools configured."""
         sink = _make_sink()
-        pool = CliPool(audit_sink=sink)
+        pool = CliPool(CliPoolDeps(audit_sink=sink))
         model = ModelConfig(tools=())
         fake_proc = make_fake_proc([])
 
@@ -167,7 +167,7 @@ class TestCliSpawnAuditEmit:
     async def test_spawn_emits_tools_restricted_true_when_tools_set(self) -> None:
         """tools_restricted=True and allowlist populated when tools configured."""
         sink = _make_sink()
-        pool = CliPool(audit_sink=sink)
+        pool = CliPool(CliPoolDeps(audit_sink=sink))
         model = ModelConfig(tools=("Read", "Bash"))
         fake_proc = make_fake_proc([])
 
@@ -182,7 +182,7 @@ class TestCliSpawnAuditEmit:
     async def test_spawn_emits_empty_agent_name_when_context_unset(self) -> None:
         """agent_name must be empty string when ContextVar is not set at spawn time."""
         sink = _make_sink()
-        pool = CliPool(audit_sink=sink)
+        pool = CliPool(CliPoolDeps(audit_sink=sink))
         fake_proc = make_fake_proc([])
 
         # Do NOT set TraceContext.agent_name — verify the fallback

@@ -65,7 +65,7 @@ async def test_wired_path_threads_tool_display_config_to_telegram() -> None:
         wire_telegram_adapters,
     )
     from lyra.config import TelegramBotConfig
-    from lyra.core.auth.authenticator import Authenticator
+    from lyra.core.auth.authenticator import Authenticator, AuthenticatorDeps
     from lyra.core.auth.trust import TrustLevel
     from lyra.core.circuit_breaker import CircuitRegistry
     from lyra.core.hub.hub import Hub
@@ -79,7 +79,9 @@ async def test_wired_path_threads_tool_display_config_to_telegram() -> None:
 
     hub = Hub()
     bot_cfg = TelegramBotConfig(bot_id="main")
-    auth = Authenticator(store=None, role_map={}, default=TrustLevel.PUBLIC)
+    auth = Authenticator(
+        AuthenticatorDeps(store=None, role_map={}, default=TrustLevel.PUBLIC)
+    )
 
     captured_constructor_kwargs: dict = {}
     captured_adapter_instance: MagicMock | None = None
@@ -144,7 +146,7 @@ async def test_wired_path_threads_tool_display_config_to_discord() -> None:
         wire_discord_adapters,
     )
     from lyra.config import DiscordBotConfig
-    from lyra.core.auth.authenticator import Authenticator
+    from lyra.core.auth.authenticator import Authenticator, AuthenticatorDeps
     from lyra.core.auth.trust import TrustLevel
     from lyra.core.circuit_breaker import CircuitRegistry
     from lyra.core.hub.hub import Hub
@@ -157,7 +159,9 @@ async def test_wired_path_threads_tool_display_config_to_discord() -> None:
 
     hub = Hub()
     bot_cfg = DiscordBotConfig(bot_id="main", auto_thread=False, thread_hot_hours=4)
-    auth = Authenticator(store=None, role_map={}, default=TrustLevel.PUBLIC)
+    auth = Authenticator(
+        AuthenticatorDeps(store=None, role_map={}, default=TrustLevel.PUBLIC)
+    )
 
     captured_constructor_kwargs: dict = {}
     captured_adapter_instance: MagicMock | None = None
@@ -236,7 +240,7 @@ async def test_wired_path_with_absent_tool_display_section_uses_defaults() -> No
         wire_telegram_adapters,
     )
     from lyra.config import TelegramBotConfig
-    from lyra.core.auth.authenticator import Authenticator
+    from lyra.core.auth.authenticator import Authenticator, AuthenticatorDeps
     from lyra.core.auth.trust import TrustLevel
     from lyra.core.circuit_breaker import CircuitRegistry
     from lyra.core.hub.hub import Hub
@@ -247,7 +251,9 @@ async def test_wired_path_with_absent_tool_display_section_uses_defaults() -> No
 
     hub = Hub()
     bot_cfg = TelegramBotConfig(bot_id="main")
-    auth = Authenticator(store=None, role_map={}, default=TrustLevel.PUBLIC)
+    auth = Authenticator(
+        AuthenticatorDeps(store=None, role_map={}, default=TrustLevel.PUBLIC)
+    )
 
     captured_constructor_kwargs: dict = {}
     captured_adapter_instance: MagicMock | None = None

@@ -17,7 +17,7 @@ import pytest
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.commands.command_loader import CommandLoader
 from lyra.core.commands.command_parser import CommandParser
-from lyra.core.commands.command_router import CommandRouter
+from lyra.core.commands.command_router import CommandRouter, CommandRouterDeps
 from lyra.core.messaging.message import InboundMessage, Response, TelegramMeta
 from lyra.core.pool import Pool
 
@@ -40,10 +40,12 @@ def make_config_router(
     loader = CommandLoader(plugins_dir)
     holder = RuntimeConfigHolder(RuntimeConfig()) if with_holder else None
     return CommandRouter(
-        command_loader=loader,
-        enabled_plugins=[],
-        runtime_config_holder=holder,
-        runtime_config_path=tmp_path / "lyra_runtime.toml",
+        CommandRouterDeps(
+            command_loader=loader,
+            enabled_plugins=[],
+            runtime_config_holder=holder,
+            runtime_config_path=tmp_path / "lyra_runtime.toml",
+        )
     )
 
 

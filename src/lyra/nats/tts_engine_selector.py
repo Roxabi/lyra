@@ -7,6 +7,7 @@ by nats_tts_client.py. Dead code TTSConfig/load_tts_config not included (issue #
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -37,17 +38,21 @@ def normalize_language(lang: str | None) -> str | None:
     return LANG_ISO_TO_QWEN.get(lang.lower(), lang)
 
 
-def build_generate_kwargs(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — merge-order inputs map 1:1 to config layers
-    output: "Path",
-    *,
-    global_engine: str | None,
-    global_voice: str | None,
-    global_language: str | None,
-    agent_tts: "AgentTTSConfig | None" = None,
-    language: str | None = None,
-    voice: str | None = None,
-    fallback_language: str | None = None,
-) -> dict:
+@dataclass(frozen=True)
+class GenerateKwargsDeps:
+    """Frozen deps for build_generate_kwargs — inputs map 1:1 to config layers."""
+
+    output: "Path"
+    global_engine: str | None
+    global_voice: str | None
+    global_language: str | None
+    agent_tts: "AgentTTSConfig | None" = field(default=None)
+    language: str | None = field(default=None)
+    voice: str | None = field(default=None)
+    fallback_language: str | None = field(default=None)
+
+
+def build_generate_kwargs(deps: GenerateKwargsDeps) -> dict:
     """Build kwargs for voicecli.generate_async with engine/voice/language selection.
 
     Merge order (high → low priority):
@@ -58,33 +63,33 @@ def build_generate_kwargs(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — m
 
     ``chunked`` is always ``True`` (safety hardcode, never overridden).
     """
-    a = agent_tts
+    a = deps.agent_tts
 
     # language: user pref > agent_tts > fallback_language > global
-    if language is not None:
-        effective_lang = language
+    if deps.language is not None:
+        effective_lang = deps.language
     elif a is not None and a.language is not None:
         effective_lang = a.language
-    elif fallback_language is not None:
-        effective_lang = fallback_language
+    elif deps.fallback_language is not None:
+        effective_lang = deps.fallback_language
     else:
-        effective_lang = global_language
+        effective_lang = deps.global_language
 
     # voice: user pref > agent_tts > global
-    if voice is not None:
-        effective_voice = voice
+    if deps.voice is not None:
+        effective_voice = deps.voice
     elif a is not None and a.voice is not None:
         effective_voice = a.voice
     else:
-        effective_voice = global_voice
+        effective_voice = deps.global_voice
 
     # engine: agent_tts > global (no user-pref layer)
     effective_engine = (
-        a.engine if a is not None and a.engine is not None else global_engine
+        a.engine if a is not None and a.engine is not None else deps.global_engine
     )
 
     kwargs: dict = {
-        "output": output,
+        "output": deps.output,
         "engine": effective_engine,
         "voice": effective_voice,
         "language": normalize_language(effective_lang),

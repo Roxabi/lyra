@@ -1,0 +1,83 @@
+---
+title: retire PENDING_STORE_KEY sentinel + STT fallback cleanup
+issue: 1553
+status: approved
+tier: F-lite
+date: 2026-05-31
+---
+
+## Problem
+
+`PENDING_STORE_KEY = "__pending__"` was a transitional placeholder: platform adapters
+(which have no BlobStore access) emitted an unresolved `BlobRef(store_key="__pending__",
+content_hash="")` and handed the payload to a central ingest stage that stored it and
+stamped the real ref. With blockers #1551 (voice path + prod wiring, TG+Discord) and
+#1552 (non-audio attachments) merged, the central `attachment_ingest` stage now resolves
+every audio payload via a `pending_attachment` **closure** — the sentinel `BlobRef` is
+redundant placeholder cruft. Retiring it removes a transition-only contract from a
+versioned package and converges the voice fetch-failure degraded path onto a single shape
+(`blob_ref=None`) instead of a magic string that every downstream reader must special-case.
+
+Observable today: `grep -rn PENDING_STORE_KEY src/ packages/` returns matches across 5
+layers; the degraded STT path preserves an unresolved sentinel ref ("PENDING preserved")
+that STT must defensively detect; the published `roxabi-contracts` API still exports a
+transition-only symbol + its `_require_content_hash_unless_sentinel` validator.
+
+## Who
+
+- **Primary:** Lyra voice pipeline (inbound audio → BlobStore → STT) — the paths that
+  construct and consume audio `BlobRef`s.
+- **Secondary:** cross-repo consumers of `roxabi-contracts` (voiceCLI #187, imageCLI #101,
+  migrating to `BlobStorePort`) — the breaking removal must not strand them.
+
+## Constraints
+
+- `roxabi-contracts` is a versioned published package (0.5.0); `PENDING_STORE_KEY` +
+  `_require_content_hash_unless_sentinel` are public exports → removal is **breaking**
+  (version bump + consumer audit).
+- `AudioPayload.blob_ref` is currently non-Optional (`BlobRef`); degraded `blob_ref=None`
+  requires a **type-contract change** that ripples to every reader.
+- Worktree-only; no force/hard/amend. Blockers #1551 + #1552 already merged.
+- Binding AC: `grep PENDING_STORE_KEY` = 0 across **src/ AND packages/** (constant lives
+  in `packages/roxabi-contracts/`, so the original `src/`-only criterion was incomplete).
+
+## Out of Scope
+
+- The central attachment-ingest stage itself (delivered by #1551/#1552) — only the
+  sentinel handoff is retired.
+- Non-audio attachment behavior (already cut over in #1552).
+- Cross-repo migration of voiceCLI/imageCLI (tracked separately; here we only verify they
+  do not import the removed symbols).
+
+## Premise Validity
+
+**Success in 6 months:** `grep -rn PENDING_STORE_KEY src/ packages/` stays at 0; audio
+`BlobRef`s are always either fully resolved or explicitly `None`; no successor placeholder
+string has been introduced; `roxabi-contracts ≥ 0.6.0` with no consumer importing the
+removed symbols.
+
+**Failure in 6 months:** a new magic-string placeholder reappears in the audio path (grep
+for sentinel-style `store_key` literals > 0), OR voice degraded-mode regressions recur in
+prod logs (unresolved ref reaching STT → transcribe error) within 3 release cycles. Both
+are observable and would trigger a revert/rethink.
+
+**Simplest alternative:** delete the constant + edit only the 4 files the original spec
+listed (`nats_stt_client`, `blob_ref`, `cli_voice_smoke`, `nats_tts_codec`), leave
+`AudioPayload.blob_ref` non-Optional, keep the adapters emitting a placeholder.
+**Why not simplest:** it cannot satisfy the AC — the two adapters and ~5 `nats_tts_codec`
+branches still construct the sentinel (grep ≠ 0), and degraded mode cannot emit `None`
+without the `BlobRef | None` type change. The "simplest" path leaves the contract
+half-retired — strictly worse than not starting.
+
+## Complexity
+
+**Tier: F-lite** — clear scope and no new architecture, but a cross-layer (5-layer) change
+with a breaking package bump and a type-contract ripple; warrants a plan to pin the type
+change, the consumption-guard replacement, and the degraded-path test.
+
+Signals observed:
+- ~15 files across contracts / core / adapters / inbound / infrastructure / nats.
+- 1 breaking published-package change (`roxabi-contracts` 0.5.0 → 0.6.0).
+- 1 type-contract change (`BlobRef → BlobRef | None`) with multi-reader ripple.
+- 2 semantic decisions (consumption-guard replacement, degraded → `None`).
+- Issue size label: M.

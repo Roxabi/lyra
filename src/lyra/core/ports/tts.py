@@ -30,7 +30,7 @@ class TtsProtocol(Protocol):
 
 @dataclass
 class SynthesisResult:
-    blob_ref: BlobRef
+    blob_ref: BlobRef | None
     mime_type: str
     duration_ms: int | None  # None if WAV header unreadable
     waveform_b64: str | None = field(default=None)  # 256-byte amplitude array, base64

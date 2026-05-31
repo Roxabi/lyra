@@ -128,3 +128,59 @@ class TestNatsSttClientTranscribe:
         client = NatsSttClient(pool, MagicMock())
         await client.stop()
         pool.stop.assert_awaited_once()
+
+
+class TestNatsSttClientRealBlobRef:
+    """Contract tests: post-#1553, transcribe() accepts a real BlobRef (no sentinel).
+
+    Negative guard: if SttCodec.encode() is changed to expect bytes or a sentinel
+    field, ``SttRequest.model_validate_json`` will raise a ValidationError and this
+    test will fail because the real codec rejects the malformed wire payload.
+    """
+
+    @pytest.mark.asyncio
+    async def test_transcribe_real_blobref_wire_carries_store_key_and_content_hash(
+        self,
+    ) -> None:
+        """Real BlobRef with non-empty store_key + content_hash survives encode→decode.
+
+        Exercises the real SttCodec (not a mock) so the wire bytes are the source
+        of truth. Asserts the SttRequest embedded in the wire payload carries the
+        exact store_key and content_hash of the input BlobRef — no sentinel, no
+        placeholder string.
+        """
+        import json
+
+        from lyra.nats.nats_stt_codec import SttCodec, SttEncodeParams
+        from roxabi_contracts.voice import SttRequest
+
+        # Arrange — real BlobRef with non-empty fields (post-#1553 contract)
+        real_ref = BlobRef(
+            store_key="sha256:abc123deadbeef",
+            content_hash="abc123deadbeef",
+            mime="audio/ogg",
+            size=1024,
+            source="telegram",
+        )
+        codec = SttCodec()
+        params = SttEncodeParams(model="large-v3-turbo")
+
+        # Act — encode produces wire bytes using the real codec path
+        wire_bytes = codec.encode(real_ref, "audio/ogg", params)
+
+        # Assert — wire bytes are valid JSON; SttRequest parses without error
+        wire_dict = json.loads(wire_bytes)
+        # Re-validate via the contract model to confirm the full schema round-trip
+        request = SttRequest.model_validate(wire_dict)
+
+        # The embedded blob_ref must carry the real store_key and content_hash
+        assert request.blob_ref.store_key == "sha256:abc123deadbeef", (
+            "wire SttRequest must embed the real store_key; "
+            "no sentinel or empty string allowed post-#1553"
+        )
+        assert request.blob_ref.content_hash == "abc123deadbeef", (
+            "wire SttRequest must embed the real content_hash"
+        )
+        # mime and model are forwarded correctly
+        assert request.mime_type == "audio/ogg"
+        assert request.model == "large-v3-turbo"

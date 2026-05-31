@@ -22,7 +22,6 @@ from lyra.inbound.attachment_ingest import (  # noqa: E402 — module does not e
 from lyra.inbound.context import DispatchCtx, InboundContext, RouterCtx, SessionCtx
 from lyra.inbound.pipeline import InboundPipeline
 from lyra.inbound.prebuilt_parser import PrebuiltParser
-from roxabi_contracts import PENDING_STORE_KEY, BlobRef
 
 # ---------------------------------------------------------------------------
 # Helpers — minimal real sub-contexts
@@ -111,16 +110,7 @@ class TestInboundPipelineNoStoreClearing:
         retains its PendingAttachment and the assertion fails — the test binds
         directly to the new behavior.
         """
-        # Arrange — voice message with a PENDING attachment
-        pending_blob_ref = BlobRef(
-            store_key=PENDING_STORE_KEY,
-            content_hash="",
-            mime="audio/ogg",
-            size=512,
-            source="telegram",
-            platform_ref="tg:file_id:XYZ",
-            platform_message_id="99",
-        )
+        # Arrange — voice message with unresolved blob_ref + pending attachment
         pending = PendingAttachment(
             fetch=AsyncMock(return_value=b"oggbytes"),
             mime="audio/ogg",
@@ -141,7 +131,7 @@ class TestInboundPipelineNoStoreClearing:
             trust_level=TrustLevel.PUBLIC,
             modality="voice",
             audio=AudioPayload(
-                blob_ref=pending_blob_ref,
+                blob_ref=None,  # unresolved until AttachmentIngestStage stamps a ref
                 mime_type="audio/ogg",
                 duration_ms=1000,
                 file_id="XYZ",

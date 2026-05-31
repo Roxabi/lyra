@@ -83,8 +83,7 @@ def build_tts_response(  # noqa: PLR0913 — builder with optional success/error
             'trace_id' is optional; falls back to request_id.
         ok: Success flag. When True, blob_ref, mime_type, and duration_ms
             are required (validated by TtsResponse model).
-        blob_ref: BlobRef pointer (required when ok=True; sentinel
-            store_key=PENDING_STORE_KEY allowed during adapter transition).
+        blob_ref: BlobRef pointer (required when ok=True).
         mime_type: Audio MIME type (required when ok=True).
         duration_ms: Audio duration in milliseconds (required when ok=True).
         error: Error message (required when ok=False).

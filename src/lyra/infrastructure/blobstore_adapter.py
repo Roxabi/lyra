@@ -19,7 +19,6 @@ import roxabi_blobs
 from roxabi_blobs import HttpBlobStore
 from roxabi_blobs.models import BlobRef as StorageBlobRef
 from roxabi_contracts import (
-    PENDING_STORE_KEY,
     BlobNotFoundError,
     BlobRef,
     BlobStoreServerError,
@@ -47,12 +46,12 @@ class HttpBlobStoreAdapter:
         platform_ref: str | None = None,
         platform_message_id: str | None = None,
     ) -> BlobRef:
-        """Delegate to the wrapped store; convert STORAGE→WIRE; guard PENDING.
+        """Delegate to the wrapped store; convert STORAGE→WIRE; guard empty key.
 
         ``BlobRef.from_store_ref`` is the only conversion path — no manual
-        BlobRef construction.  ``store_key == PENDING_STORE_KEY`` after a
-        real ingest indicates a storage contract violation and raises
-        ``ValueError`` immediately (store_key is opaque — no sha256 regex).
+        BlobRef construction.  An empty ``store_key`` after a real ingest
+        indicates a storage contract violation and raises ``ValueError``
+        immediately (store_key is opaque — no format assumption).
         """
         try:
             storage_ref: StorageBlobRef = await self._http_store.put(
@@ -76,9 +75,9 @@ class HttpBlobStoreAdapter:
                 status_code=503,
             ) from e
         wire = BlobRef.from_store_ref(storage_ref)
-        if wire.store_key == PENDING_STORE_KEY:
+        if not wire.store_key:
             raise ValueError(
-                f"BlobStore.put returned PENDING_STORE_KEY ({PENDING_STORE_KEY!r}); "
+                "BlobStore.put returned an empty store_key; "
                 "a live ingest must yield a real store_key"
             )
         return wire
@@ -112,11 +111,10 @@ class HttpBlobStoreAdapter:
 
         ``HttpBlobStore.exists`` returns a sparse sentinel (``is_sentinel=True``,
         ``content_hash=""``) on a HEAD hit.  That sentinel cannot be forwarded
-        through ``from_store_ref`` because the wire validator rejects
-        ``content_hash=""`` when ``store_key != PENDING_STORE_KEY`` (see
-        http_store.py docstring warning).  Sentinels are therefore mapped to
-        ``None`` here — callers that need the full envelope should ``put``
-        (content-hash dedup makes it idempotent).
+        through ``from_store_ref`` because the wire BlobRef requires a non-empty
+        ``content_hash`` (see http_store.py docstring warning).  Sentinels are
+        therefore mapped to ``None`` here — callers that need the full envelope
+        should ``put`` (content-hash dedup makes it idempotent).
         """
         storage_ref: StorageBlobRef | None = await self._http_store.exists(content_hash)
         if storage_ref is None:

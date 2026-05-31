@@ -19,37 +19,19 @@ from lyra.inbound.attachment_ingest import (  # noqa: E402 — module does not e
     IngestCtx,
     PendingAttachment,
 )
-from roxabi_contracts import PENDING_STORE_KEY, BlobRef
+from roxabi_contracts import BlobRef
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-_PENDING_BLOB_REF = BlobRef(
-    store_key=PENDING_STORE_KEY,
-    content_hash="",
-    mime="audio/ogg",
-    size=1024,
-    source="telegram",
-    platform_ref="tg:file_id:ABC123",
-    platform_message_id="42",
-)
-
-_PENDING_ATTACHMENT = PendingAttachment(
-    fetch=AsyncMock(return_value=b"oggbytes"),
-    mime="audio/ogg",
-    source="telegram",
-    platform_ref="tg:file_id:ABC123",
-    platform_message_id="42",
-)
-
 
 def _voice_msg(
     *,
     pending_attachment: PendingAttachment | None = None,
-    blob_ref: BlobRef = _PENDING_BLOB_REF,
+    blob_ref: BlobRef | None = None,
 ) -> InboundMessage:
-    """Build a minimal voice InboundMessage with PENDING audio payload."""
+    """Build a minimal voice InboundMessage with unresolved (None) audio payload."""
     return InboundMessage(
         id="msg-1",
         platform="telegram",
@@ -86,7 +68,7 @@ class TestAttachmentIngestStage:
         Negative: if the guard ``if ctx.store is None: return msg`` is deleted,
         the stage will attempt to call ``ctx.store.put(...)`` on None and raise
         AttributeError — the test would then fail for the wrong reason.  This
-        assertion checks the PENDING sentinel is preserved (no mutation).
+        assertion checks that blob_ref remains None (no mutation, no ingest).
         """
         # Arrange
         fetch_mock = AsyncMock(return_value=b"oggbytes")
@@ -104,9 +86,9 @@ class TestAttachmentIngestStage:
         # Act
         result = await stage.run(msg, ctx)
 
-        # Assert — blob_ref is still the PENDING sentinel
+        # Assert — blob_ref stays None (unresolved; no ingest attempted)
         assert result.audio is not None
-        assert result.audio.blob_ref.store_key == PENDING_STORE_KEY
+        assert result.audio.blob_ref is None
         # Negative: fetch must NOT have been awaited (store is None → early return)
         fetch_mock.assert_not_awaited()
 
@@ -140,9 +122,9 @@ class TestAttachmentIngestStage:
         # Act
         result = await stage.run(msg, ctx)
 
-        # Assert — PENDING preserved (degraded mode)
+        # Assert — blob_ref stays None on degraded path (fetch failed; no ingest)
         assert result.audio is not None
-        assert result.audio.blob_ref.store_key == PENDING_STORE_KEY
+        assert result.audio.blob_ref is None
         # store.put must NOT have been called when fetch raised
         store_mock.put.assert_not_awaited()
         # Fetch closure MUST be cleared — NATS-safe even on degraded path
@@ -193,6 +175,7 @@ class TestAttachmentIngestStage:
 
         # Assert — real blob ref stamped on audio
         assert result.audio is not None
+        assert result.audio.blob_ref is not None
         assert result.audio.blob_ref.store_key == "blob:abc"
 
         # store.put awaited once with the right args from PendingAttachment
@@ -213,8 +196,8 @@ class TestAttachmentIngestStage:
 
         B1 fix: the try/except wraps BOTH fetch() and store.put().  Verify that
         a RuntimeError from store.put() follows the same degraded return path:
-        PENDING sentinel preserved on audio, pending_attachment cleared, and no
-        exception propagates to the caller.
+        blob_ref stays None, pending_attachment cleared, and no exception
+        propagates to the caller.
 
         Negative (a): if the try/except did NOT cover store.put(), the RuntimeError
         would propagate out of stage.run — the test would fail with RuntimeError
@@ -241,9 +224,9 @@ class TestAttachmentIngestStage:
         # Act — must NOT raise despite store.put raising
         result = await stage.run(msg, ctx)
 
-        # Assert (a) — PENDING sentinel preserved on audio (not replaced)
+        # Assert (a) — blob_ref stays None on degraded path (put failed; unresolved)
         assert result.audio is not None
-        assert result.audio.blob_ref.store_key == PENDING_STORE_KEY
+        assert result.audio.blob_ref is None
         # Assert (b) — fetch closure cleared (NATS-safe even on degraded path)
         assert result.pending_attachment is None
         # Assert (c) — fetch WAS awaited (fetch succeeded; put was the failure)

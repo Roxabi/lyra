@@ -111,6 +111,16 @@ class SttMiddleware:
         if msg.audio is None:  # guaranteed by modality == "voice", guard for -O safety
             return _DROP
 
+        if msg.audio.blob_ref is None:
+            # Degraded path: ingest failed; no real BlobRef available.
+            log.warning(
+                "STT skipped — audio ingest degraded (blob_ref=None) for msg id=%s",
+                msg.id,
+            )
+            await self._dispatch_error(hub, msg, "stt_failed")
+            _STT_STAGE_OUTCOMES["failed"] += 1
+            return _DROP
+
         try:
             result = await asyncio.wait_for(
                 hub._stt.transcribe(msg.audio.blob_ref, msg.audio.mime_type),

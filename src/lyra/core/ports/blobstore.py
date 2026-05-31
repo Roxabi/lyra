@@ -43,9 +43,9 @@ class BlobStorePort(Protocol):
         """Store *data* and return a fully-populated wire BlobRef.
 
         The returned ``store_key`` is opaque — callers MUST NOT apply a
-        ``sha256:`` regex or any other format assumption.  The
-        ``PENDING_STORE_KEY`` sentinel is never returned by a live
-        implementation; adapters guard against it (``ValueError``).
+        ``sha256:`` regex or any other format assumption.  An empty
+        ``store_key`` from a live implementation is a contract violation
+        and the adapter raises ``ValueError`` immediately.
         """
         ...
 

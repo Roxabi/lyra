@@ -17,8 +17,6 @@ from pydantic import ValidationError
 
 from lyra.core.ports.tts import SynthesisResult
 from lyra.transport._result import Err, Result, SanitizedError
-from roxabi_contracts import BlobRef
-from roxabi_contracts.blob_ref import PENDING_STORE_KEY
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.voice import TtsRequest, TtsResponse
 from roxabi_contracts.voice.constants import TTS_CONFIG_FIELDS
@@ -27,15 +25,6 @@ if TYPE_CHECKING:
     from lyra.core.agent.agent_config import AgentTTSConfig
 
 log = logging.getLogger(__name__)
-
-# Sentinel BlobRef for error paths where no real blob was produced.
-_SENTINEL_BLOB_REF = BlobRef(
-    store_key=PENDING_STORE_KEY,
-    content_hash="",
-    mime="",
-    size=0,
-    source="",
-)
 
 
 class TtsCodec:
@@ -87,7 +76,7 @@ class TtsCodec:
         if isinstance(result, Err):
             err = result.error
             return SynthesisResult(
-                blob_ref=_SENTINEL_BLOB_REF,
+                blob_ref=None,
                 mime_type="",
                 duration_ms=None,
                 error=err.code,
@@ -100,7 +89,7 @@ class TtsCodec:
         except (ValidationError, ValueError) as exc:
             log.warning("TtsCodec.decode: validation error: %r", exc)
             return SynthesisResult(
-                blob_ref=_SENTINEL_BLOB_REF,
+                blob_ref=None,
                 mime_type="",
                 duration_ms=None,
                 error="decode.validation_error",
@@ -112,7 +101,7 @@ class TtsCodec:
             if resp.worker_error is not None:
                 we = resp.worker_error
                 return SynthesisResult(
-                    blob_ref=_SENTINEL_BLOB_REF,
+                    blob_ref=None,
                     mime_type="",
                     duration_ms=None,
                     error=we.code,
@@ -124,7 +113,7 @@ class TtsCodec:
             # Older worker: fall back to flat resp.error
             flat_error = resp.error or "tts.worker_error"
             return SynthesisResult(
-                blob_ref=_SENTINEL_BLOB_REF,
+                blob_ref=None,
                 mime_type="",
                 duration_ms=None,
                 error=flat_error,
@@ -132,9 +121,14 @@ class TtsCodec:
                 retryable=False,
                 unavailable=False,
             )
+        # ok=True ⇒ blob_ref/mime_type/duration_ms are non-None (TtsResponse
+        # model_validator, ADR-067). Assert the invariant rather than masking it
+        # with `# type: ignore`; this also narrows the Optionals for pyright.
+        assert resp.blob_ref is not None
+        assert resp.mime_type is not None
         return SynthesisResult(
-            blob_ref=resp.blob_ref,  # type: ignore[arg-type]
-            mime_type=resp.mime_type,  # type: ignore[arg-type]
-            duration_ms=resp.duration_ms,  # type: ignore[arg-type]
+            blob_ref=resp.blob_ref,
+            mime_type=resp.mime_type,
+            duration_ms=resp.duration_ms,
             waveform_b64=resp.waveform_b64,
         )

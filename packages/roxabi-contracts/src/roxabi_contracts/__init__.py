@@ -11,7 +11,7 @@ from importlib.metadata import PackageNotFoundError, version
 
 from .audit import SecurityEvent
 from .blob_errors import BlobNotFoundError, BlobStoreServerError
-from .blob_ref import PENDING_STORE_KEY, BlobRef
+from .blob_ref import BlobRef
 from .envelope import CONTRACT_VERSION, ContractEnvelope
 
 try:
@@ -25,7 +25,6 @@ __all__ = [
     "BlobStoreServerError",
     "CONTRACT_VERSION",
     "ContractEnvelope",
-    "PENDING_STORE_KEY",
     "SecurityEvent",
     "__version__",
 ]

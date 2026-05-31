@@ -379,6 +379,64 @@ class TestSttMiddleware:
         hub.dispatch_response.assert_called_once()
 
     # ------------------------------------------------------------------
+    # 10b. blob_ref=None (degraded ingest) → stt_failed, transcribe NOT called
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio()
+    async def test_stt_stage_drops_when_blob_ref_is_none(self) -> None:
+        """blob_ref=None (degraded ingest) → stt_failed + DROP, transcribe skipped.
+
+        Post-#1553 contract: AudioPayload.blob_ref is BlobRef | None; None signals
+        that ingest failed (degraded path). SttMiddleware must drop immediately with
+        an stt_failed reply and must NOT call hub._stt.transcribe().
+
+        Negative guard: if the ``if msg.audio.blob_ref is None`` guard is deleted
+        from SttMiddleware, transcribe() will be called with None and this test will
+        fail because (a) transcribe_mock.assert_not_awaited() will raise, and (b)
+        the dispatch_response assertion on the stt_failed content will fail.
+        """
+        import dataclasses
+
+        from lyra.core.audio_payload import AudioPayload
+
+        # Arrange — real STT stub wired, audio present but blob_ref=None
+        transcribe_mock = AsyncMock()
+        hub = _make_hub(stt=FakeSTT())
+        # Replace the stt with one whose transcribe is an AsyncMock so we can assert
+        # it is never awaited.
+        hub._stt = MagicMock()
+        hub._stt.transcribe = transcribe_mock
+        hub._stt.timeout_ms = 30000
+        ctx = _make_ctx(hub)
+
+        # Build a voice message with degraded AudioPayload (blob_ref=None)
+        base_msg = make_voice_message()
+        msg = dataclasses.replace(
+            base_msg,
+            audio=AudioPayload(
+                blob_ref=None,  # degraded — ingest failed
+                mime_type="audio/ogg",
+                duration_ms=1500,
+                file_id="file-1",
+            ),
+        )
+        next_fn = AsyncMock(return_value=_SENTINEL_RESULT)
+
+        # Act
+        result = await SttMiddleware()(msg, ctx, next_fn)
+
+        # Assert — pipeline drops with stt_failed, transcribe never called
+        assert result == _DROP
+        assert result.action == Action.DROP
+        next_fn.assert_not_called()
+        transcribe_mock.assert_not_awaited()
+        hub.dispatch_response.assert_called_once()
+        _reply_msg, response = hub.dispatch_response.call_args[0]
+        assert "stt_failed" in response.content or "[stt_failed" in response.content, (
+            f"expected stt_failed in response content, got: {response.content!r}"
+        )
+
+    # ------------------------------------------------------------------
     # 11. modality=None passes through (non-voice, non-text modality)
     # ------------------------------------------------------------------
 

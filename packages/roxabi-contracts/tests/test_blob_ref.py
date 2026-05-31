@@ -1,8 +1,9 @@
-"""Wire-contract invariant tests for BlobRef and PENDING_STORE_KEY.
+"""Wire-contract invariant tests for BlobRef.
 
-Covers: round-trip serialisation, frozen model, extra="forbid", sentinel
-constant value, top-level re-export, sentinel dispatch idiom, and UTC-aware
-default for created_at.
+Covers: round-trip serialisation, frozen model, extra="forbid", UTC-aware
+default for created_at, required-field rejection, and content_hash validation.
+
+Note: the retired sentinel constant and its validator tests were removed in #1553.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from roxabi_contracts import PENDING_STORE_KEY, BlobRef
+from roxabi_contracts import BlobRef
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -89,51 +90,18 @@ def test_extra_forbid_rejects_unknown_kwarg() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 4. PENDING_STORE_KEY constant value
+# 4. Top-level import re-export
 # ---------------------------------------------------------------------------
 
 
-def test_pending_store_key_value() -> None:
-    """PENDING_STORE_KEY must equal the literal '__pending__'."""
-    assert PENDING_STORE_KEY == "__pending__"
-
-
-# ---------------------------------------------------------------------------
-# 5. Top-level import re-export (exercises T2)
-#    Import is at module level above — collection failure = T2 not landed yet.
-#    If that happens, fall back to:
-#      from roxabi_contracts.blob_ref import BlobRef, PENDING_STORE_KEY
-#    and add comment "switch to top-level import once T2 lands".
-# ---------------------------------------------------------------------------
-
-
-def test_top_level_import_exposes_blob_ref_and_pending_store_key() -> None:
-    """BlobRef and PENDING_STORE_KEY are accessible from the top-level package."""
-    # Both were imported at module level — reaching this line confirms it.
+def test_top_level_import_exposes_blob_ref() -> None:
+    """BlobRef is accessible from the top-level package."""
+    # Imported at module level above — reaching this line confirms it.
     assert BlobRef is not None
-    assert PENDING_STORE_KEY is not None
 
 
 # ---------------------------------------------------------------------------
-# 6. Sentinel comparison idiom
-# ---------------------------------------------------------------------------
-
-
-def test_sentinel_dispatch_idiom() -> None:
-    """Worker dispatch pattern: store_key == PENDING_STORE_KEY flags legacy path."""
-    br = BlobRef(
-        store_key=PENDING_STORE_KEY,
-        content_hash="",
-        mime="audio/ogg",
-        size=0,
-        source="telegram",
-        platform_ref="tg-file-id-xyz",
-    )
-    assert br.store_key == PENDING_STORE_KEY
-
-
-# ---------------------------------------------------------------------------
-# 7. created_at default is UTC-aware
+# 5. created_at default is UTC-aware
 # ---------------------------------------------------------------------------
 
 
@@ -150,7 +118,7 @@ def test_created_at_default_is_utc_aware() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 8. Required-field rejection — spec SC-1
+# 6. Required-field rejection — spec SC-1
 # ---------------------------------------------------------------------------
 
 
@@ -173,12 +141,12 @@ def test_missing_required_field_raises_validation_error(missing_field: str) -> N
 
 
 # ---------------------------------------------------------------------------
-# 9. content_hash empty only valid when store_key == sentinel
+# 7. content_hash non-empty required for real store_key
 # ---------------------------------------------------------------------------
 
 
-def test_empty_content_hash_rejected_when_store_key_is_real() -> None:
-    """Worker integrity-check invariant: empty content_hash only OK on sentinel path."""
+def test_empty_content_hash_rejected() -> None:
+    """Empty content_hash is not valid for any BlobRef post-#1553."""
     with pytest.raises(ValidationError):
         BlobRef.model_validate(
             {
@@ -189,17 +157,3 @@ def test_empty_content_hash_rejected_when_store_key_is_real() -> None:
                 "source": "telegram",
             }
         )
-
-
-def test_empty_content_hash_allowed_on_sentinel_path() -> None:
-    """Adapters emit content_hash='' + store_key=PENDING_STORE_KEY — must validate."""
-    br = BlobRef.model_validate(
-        {
-            "store_key": PENDING_STORE_KEY,
-            "content_hash": "",
-            "mime": "audio/ogg",
-            "size": 0,
-            "source": "telegram",
-        }
-    )
-    assert br.content_hash == ""

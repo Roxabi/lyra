@@ -14,7 +14,6 @@ import nats.errors
 import typer
 from nats.aio.client import Client as NATS
 
-from roxabi_contracts import PENDING_STORE_KEY
 from roxabi_contracts.voice import SUBJECTS
 from roxabi_nats.connect import nats_connect  # noqa: F401 — DEBT:re-export-init
 
@@ -223,13 +222,7 @@ async def _step_stt(nc: NATS, blob_ref: dict, mime_type: str, timeout: float) ->
         {
             "contract_version": _CONTRACT_VERSION,
             "request_id": str(uuid4()),
-            "blob_ref": {
-                "store_key": PENDING_STORE_KEY,
-                "content_hash": "",
-                "mime": mime_type,
-                "size": 0,  # smoke test does not carry bytes through
-                "source": "voice-smoke",
-            },
+            "blob_ref": blob_ref,  # real BlobRef from TTS step (round-trip)
             "mime_type": mime_type,
             "model": "large-v3-turbo",
         },

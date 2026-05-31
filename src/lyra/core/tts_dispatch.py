@@ -246,6 +246,12 @@ class AudioPipeline:
                 voice=voice,
                 fallback_language=fallback_language,
             )
+            if result.blob_ref is None:
+                log.error(
+                    "TTS synthesis returned blob_ref=None (unexpected) for msg id=%s",
+                    msg.id,
+                )
+                return
             audio = OutboundAudio(
                 blob_ref=result.blob_ref,
                 mime_type=result.mime_type,

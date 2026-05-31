@@ -12,15 +12,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-
-PENDING_STORE_KEY = "__pending__"
-"""Sentinel store_key emitted by adapters before BlobStore ingest lands.
-
-Workers receiving a BlobRef where store_key == PENDING_STORE_KEY MUST fall back
-to platform_ref (legacy fetch path) instead of calling blob_store.get(store_key).
-Removed once adapter eager-ingest (epic #1061 slices V3/V4) is in production.
-"""
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class BlobRef(BaseModel):
@@ -35,10 +27,10 @@ class BlobRef(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     store_key: str
-    """BlobStore PK. Equals PENDING_STORE_KEY during adapter transition."""
+    """BlobStore PK — opaque server-issued string."""
 
     content_hash: str
-    """SHA-256 hex of payload bytes. May be "" when store_key == PENDING_STORE_KEY."""
+    """SHA-256 hex of payload bytes."""
 
     mime: str
     """MIME type (e.g. "audio/ogg", "image/png")."""
@@ -53,17 +45,20 @@ class BlobRef(BaseModel):
     """Optional original filename."""
 
     platform_ref: str | None = None
-    """Optional platform-native handle (Telegram file_id, Discord attachment URL).
-
-    Used by workers on the sentinel path (store_key == PENDING_STORE_KEY) to
-    fetch the blob via the legacy platform API.
-    """
+    """Optional platform-native handle (Telegram file_id, Discord attachment URL)."""
 
     platform_message_id: str | None = None
     """Optional message-id correlation key."""
 
     created_at: datetime = Field(default_factory=lambda: datetime.now(tz=UTC))
     """UTC-aware creation timestamp."""
+
+    @field_validator("content_hash")
+    @classmethod
+    def _require_non_empty_content_hash(cls, v: str) -> str:
+        if not v:
+            raise ValueError("content_hash must be non-empty")
+        return v
 
     @classmethod
     def from_store_ref(cls, store_ref: Any) -> "BlobRef":
@@ -78,11 +73,3 @@ class BlobRef(BaseModel):
         swallow it; let it propagate so the mismatch is surfaced immediately.
         """
         return cls.model_validate(store_ref.model_dump(exclude={"id", "is_sentinel"}))
-
-    @model_validator(mode="after")
-    def _require_content_hash_unless_sentinel(self) -> BlobRef:
-        if self.content_hash == "" and self.store_key != PENDING_STORE_KEY:
-            raise ValueError(
-                "content_hash must be non-empty unless store_key == PENDING_STORE_KEY"
-            )
-        return self

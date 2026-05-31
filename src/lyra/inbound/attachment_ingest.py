@@ -110,7 +110,7 @@ class AttachmentIngestStage:
           Raises ``AttachmentIngestError`` on oversize or BlobStore 5xx.
         - Audio path (``msg.pending_attachment`` set):
           fetch failure or put failure → degraded: ``pending_attachment``
-          cleared, ``audio.blob_ref`` preserved as PENDING.
+          cleared, ``audio.blob_ref`` set to None.
           Success → real BlobRef stamped on ``msg.audio.blob_ref``;
           ``pending_attachment`` cleared.
 
@@ -142,7 +142,9 @@ class AttachmentIngestStage:
     ) -> "InboundMessage":
         """Voice ingest: fetch → store.put → stamp audio.blob_ref.
 
-        Degrades gracefully on any error (PENDING preserved, closure cleared).
+        Degrades gracefully on any error: blob_ref set to None, closure cleared.
+        The STT middleware detects blob_ref=None and drops the message with a
+        user-facing error reply.
         """
         try:
             data = await pending.fetch()
@@ -155,7 +157,12 @@ class AttachmentIngestStage:
                 platform_message_id=pending.platform_message_id,
             )
         except Exception:
-            log.exception("attachment ingest failed — degraded (PENDING preserved)")
+            log.exception("attachment ingest failed — degraded (blob_ref=None)")
+            if msg.audio is not None:
+                new_audio = dataclasses.replace(msg.audio, blob_ref=None)
+                return dataclasses.replace(
+                    msg, audio=new_audio, pending_attachment=None
+                )
             return dataclasses.replace(msg, pending_attachment=None)
 
         if msg.audio is None:

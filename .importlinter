@@ -157,8 +157,5 @@ source_modules =
     lyra
     scripts
 forbidden_modules =
-    tests.fakes
+    tests
 allow_indirect_imports = true
-ignore_imports =
-    # Guarded by LYRA_TEST_MODE runtime check; test-only fake nkey provider (#1283)
-    scripts._modes -> tests.fakes.nkey_provider

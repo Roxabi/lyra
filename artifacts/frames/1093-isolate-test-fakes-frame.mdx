@@ -1,0 +1,107 @@
+---
+title: "refactor: isolate test fakes from production imports — remove the rejected band-aid"
+issue: 1093
+status: approved
+tier: F-lite
+date: 2026-05-31
+---
+
+## Problem
+
+Issue #1093 was filed after incident #1089: `FakeNkeyProvider` (a test fake) was
+reachable from a production code path and rendered a 62-char malformed nkey into
+M₁'s `auth.conf`, taking down the NATS broker. The issue's thesis: make it
+**structurally impossible** to import test code from production code — runtime
+guards are band-aids.
+
+**Drift since filing (verified at recheck, 2026-05-31):** PR #1283 (Phase 6
+bootstrap) already did the structural *move* and added the contract:
+
+- ✅ All fakes live under `tests/fakes/` (`nkey_provider`, `nats_client`, `store`, `drivers`, `agents`).
+- ✅ `.importlinter` contract `tests-fakes-isolation` exists (`source_modules = lyra, scripts` → `forbidden = tests.fakes`).
+
+But #1283 implemented exactly the band-aid #1093 **rejected**, and it survives in the tree today:
+
+1. `scripts/_modes.py::_get_provider` branches on a fake env var —
+   `if env_provider == "fake": … return FakeNkeyProvider()` (lazy import), gated
+   only by a `LYRA_TEST_MODE=1` *runtime* check. This is AC #5's forbidden pattern verbatim.
+2. `.importlinter` carries an `ignore_imports` exemption
+   `scripts._modes -> tests.fakes.nkey_provider` — a documented **hole** in the
+   very contract meant to prevent recurrence.
+
+**Why the band-aid exists (the real constraint):** the env-branch doubles as the
+**subprocess test-injection seam**. ~5 test files run the real CLI
+(`subprocess.run([python, "scripts/gen_nkeys.py", "genkeys", …], env={NKEY_PROVIDER: "fake"})`)
+to get true end-to-end coverage of file modes, atomic writes, and full
+provisioning. A subprocess cannot have `_provider_factory` monkeypatched from the
+parent process, so today `NKEY_PROVIDER=fake` is the *only* way these tests
+inject the fake. Removing the branch naively breaks those tests.
+
+So the residual work is not "delete a line" — it is **relocate the subprocess
+injection seam out of production code into `tests/`**, then drop the env-branch
+and the importlinter exemption, and prove reintroduction fails CI.
+
+## Who
+
+- **Primary:** Ops / the production NATS provisioning path on M₁ — a reachable
+  fake in `scripts/_modes.py` is the standing liability #1089 proved can take down the broker.
+- **Secondary:** Devs — the `.importlinter` `ignore_imports` exemption is a hole
+  in the CI gate; any future `scripts.*`/`lyra.*` → `tests.fakes` leak that
+  routes through `_modes` is silently allowed.
+
+## Constraints
+
+- **Subprocess test fidelity must be preserved** — `test_file_modes`,
+  `test_genkeys_modes`, `test_genkeys_modes_add_identity` exercise the real CLI
+  via subprocess; the new injection seam must keep that coverage (no downgrade to
+  in-process-only) unless explicitly traded in the spec.
+- **Security-sensitive path** — this is the exact code that renders `auth.conf`;
+  changes must not weaken the `LYRA_TEST_MODE` safety property (fake never
+  reachable in a real prod invocation).
+- The `_provider_factory: Callable[[], NkeyProvider]` DI seam already exists in
+  `scripts/_modes.py` — in-process tests can override it; the design must extend
+  an equivalent seam to the subprocess path **without** a prod env-branch.
+- Single domain (scripts provisioning + build-config); no new architecture.
+
+## Out of Scope
+
+- The fakes *move* itself (done in #1283) — not re-litigated.
+- Migrating other env-driven feature flags (file separately if found — issue says so).
+- Adding *more* runtime guards (band-aid; the structural fix supersedes).
+- Broadening fakes isolation to non-nkey fakes beyond the required audit pass.
+
+## Premise Validity
+
+**Success in 6 months:** `grep -c 'fake' scripts/_modes.py` → 0 (no env-branch,
+no fake import in prod); `.importlinter` `tests-fakes-isolation` has **zero**
+`ignore_imports` entries; a verify-test asserts a reintroduced
+`from tests.fakes import …` in `scripts/`/`src/` fails `lint-imports`; all
+subprocess tests still pass via a `tests/`-resident injection seam.
+
+**Failure in 6 months (falsifiable):** `scripts/_modes.py` still contains
+`if env_provider == "fake"` **OR** `.importlinter` still lists the
+`scripts._modes -> tests.fakes.nkey_provider` exemption — i.e. the band-aid
+survived because relocating the subprocess seam was judged too costly. Measurable:
+`grep -c 'env_provider == "fake"' scripts/_modes.py > 0` or exemption count > 0.
+
+**Simplest alternative:** Leave it as-is. #1283 already added (a) a `LYRA_TEST_MODE=1`
+runtime refusal, (b) lazy import, (c) a fake that now produces valid nkeys — so
+the #1089 *failure* is already mitigated three ways.
+**Why not simplest:** The issue's whole thesis is that a runtime guard is a
+band-aid and a reachable fake in prod is a standing liability — #1089 proved the
+class of bug. The `ignore_imports` exemption is a self-documented hole in the
+recurrence-prevention contract. The structural fix removes the liability instead
+of guarding it. *(Tension acknowledged: if the spec finds no clean seam
+relocation, the simplest alternative may legitimately win — the spec resolves this.)*
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain, no new architecture, but one real
+design decision (where/how to relocate the subprocess injection seam) that
+warrants a spec gate before implementation.
+
+Signals observed:
+- ~3 prod files touched (`scripts/_modes.py`, `.importlinter`, + a verify-test) → S-ish volume
+- BUT a non-trivial design fork (subprocess injection seam: test-only entry shim
+  vs. in-process conversion vs. CLI flag) → spec needed → F-lite
+- Issue label `size:F-lite` concurs

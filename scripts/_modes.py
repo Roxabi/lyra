@@ -19,7 +19,6 @@ from scripts._loader import load_matrix
 from scripts._nk import (
     NkeyProvider,
     SubprocessNkeyProvider,
-    ensure_nk_or_exit,
 )
 from scripts._renderer import parse_auth_conf, render_auth_conf
 
@@ -28,28 +27,9 @@ _provider_factory: Callable[[], NkeyProvider] = SubprocessNkeyProvider
 
 def _get_provider() -> NkeyProvider:
     """Return the active NkeyProvider; exit 1 with install hint when nk is absent."""
-    env_provider = os.environ.get("NKEY_PROVIDER", "").lower()
-    if env_provider == "fake":
-        if os.environ.get("LYRA_TEST_MODE") != "1":
-            print(
-                "error: NKEY_PROVIDER=fake requires LYRA_TEST_MODE=1"
-                " — refusing to generate fake seeds outside test context",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        # Lazy import — test-only fake provider,
-        # guarded by LYRA_TEST_MODE runtime check.
-        try:
-            from tests.fakes.nkey_provider import FakeNkeyProvider  # noqa: I001  # type: ignore[reportMissingImports]
-        except ImportError:
-            print(
-                "error: FakeNkeyProvider not available — tests package not importable",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-        return FakeNkeyProvider()
-    ensure_nk_or_exit()
-    return _provider_factory()
+    provider = _provider_factory()
+    provider.ensure_available()
+    return provider
 
 
 def operator_home() -> Path:

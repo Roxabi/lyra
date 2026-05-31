@@ -17,6 +17,9 @@ import sys
 from pathlib import Path
 
 import pytest
+import scripts._modes as _modes
+
+from tests.fakes.nkey_provider import FakeNkeyProvider
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 _MATRIX_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "v2-prod.json"
@@ -32,12 +35,10 @@ def _run_genkeys(
 ) -> subprocess.CompletedProcess[str]:
     """Run gen_nkeys.py genkeys with given args via subprocess."""
     run_env = os.environ.copy()
-    run_env["NKEY_PROVIDER"] = "fake"  # tests write name.encode() seed bytes
-    run_env["LYRA_TEST_MODE"] = "1"  # required sentinel for fake provider
     if env:
         run_env.update(env)
     return subprocess.run(
-        [sys.executable, "scripts/gen_nkeys.py", "genkeys"] + args,
+        [sys.executable, "tests/scripts/_fake_genkeys.py", "genkeys"] + args,
         capture_output=True,
         text=True,
         cwd=str(REPO_ROOT),
@@ -538,8 +539,7 @@ class TestExternalFailLoud:
         auth_dir.mkdir(parents=True)
         monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
         monkeypatch.setenv("AUTH_DIR", str(auth_dir))
-        monkeypatch.setenv("NKEY_PROVIDER", "fake")
-        monkeypatch.setenv("LYRA_TEST_MODE", "1")
+        monkeypatch.setattr(_modes, "_provider_factory", FakeNkeyProvider)
 
         # No externals → []
         matrix_no_ext = _make_matrix(tmp_path, with_external=False)
@@ -775,8 +775,7 @@ class TestExternalFailLoud:
 
         monkeypatch.setenv("SEEDS_DIR", str(seeds_dir))
         monkeypatch.setenv("AUTH_DIR", str(auth_dir))
-        monkeypatch.setenv("NKEY_PROVIDER", "fake")
-        monkeypatch.setenv("LYRA_TEST_MODE", "1")
+        monkeypatch.setattr(_modes, "_provider_factory", FakeNkeyProvider)
 
         args = argparse.Namespace(
             matrix=matrix_path,

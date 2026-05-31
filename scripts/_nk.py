@@ -22,8 +22,18 @@ class NkeyProvider(ABC):
     @abstractmethod
     def pubkey_from_seed(self, seed: bytes) -> str: ...
 
+    def ensure_available(self) -> None:
+        """Hook: verify provider prerequisites.
+
+        Default no-op; the subprocess provider overrides to check for `nk`.
+        """
+        return None
+
 
 class SubprocessNkeyProvider(NkeyProvider):
+    def ensure_available(self) -> None:
+        ensure_nk_or_exit()
+
     def gen_seed(self, name: str) -> bytes:
         result = subprocess.run(["nk", "-gen", "user"], capture_output=True, check=True)
         return result.stdout.strip()

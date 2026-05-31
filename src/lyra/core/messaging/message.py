@@ -87,7 +87,7 @@ class Attachment:
     - Local path (str) for pre-download audio, or raw bytes (future).
     """
 
-    type: str  # "image" | "audio" | "video" | "file"
+    type: Literal["image", "audio", "video", "file"]
     url_or_path_or_bytes: str | bytes  # URL, local path, or raw bytes
     mime_type: str
     filename: str | None = None

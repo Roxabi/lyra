@@ -23,7 +23,6 @@ __all__ = [
     "FastAgent",
     "RecordingAgent",
     "SlowAgent",
-    "make_audio_message",
     "make_cli_pool",
     "make_config",
     "make_mock_stt",
@@ -85,28 +84,6 @@ class FastAgent:
         on_intermediate=None,
     ) -> Response:
         return Response(content=f"echo: {msg.text}")
-
-
-def make_audio_message(url: str) -> InboundMessage:
-    from lyra.core.messaging.message import Attachment, TelegramMeta
-
-    return InboundMessage(
-        id="msg-audio",
-        platform="telegram",
-        bot_id="main",
-        scope_id="chat:42",
-        user_id="alice",
-        user_name="Alice",
-        is_mention=False,
-        text="",
-        text_raw="",
-        attachments=[
-            Attachment(type="audio", url_or_path_or_bytes=url, mime_type="audio/ogg"),
-        ],
-        timestamp=datetime.now(timezone.utc),
-        platform_meta=TelegramMeta(chat_id=42),
-        trust_level=TrustLevel.TRUSTED,
-    )
 
 
 def make_text_message(text: str = "hello") -> InboundMessage:

@@ -56,6 +56,7 @@ def render_auth_conf(matrix: LoadedMatrix, pubkeys: dict[str, str]) -> str:
     identities = matrix["identities"]
     flows = matrix.get("request_reply_flows", [])
 
+    groups = matrix.get("groups", {})
     pub_allow: dict[str, list[str]] = {}
     sub_allow: dict[str, list[str]] = {}
 
@@ -64,6 +65,12 @@ def render_auth_conf(matrix: LoadedMatrix, pubkeys: dict[str, str]) -> str:
             continue
         pub_allow[name] = list(identity.get("publish", []))
         sub_allow[name] = list(identity.get("subscribe", []))
+        for gname in identity.get("groups", []):
+            g = groups[gname]
+            pub_allow[name].extend(g.get("publish", []))
+            sub_allow[name].extend(g.get("subscribe", []))
+        pub_allow[name] = list(dict.fromkeys(pub_allow[name]))
+        sub_allow[name] = list(dict.fromkeys(sub_allow[name]))
 
     for flow in flows:
         requester, responder = flow["requester"], flow["responder"]

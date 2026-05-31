@@ -26,6 +26,12 @@ class ExternalDeploy(TypedDict):
 Deploy = ContainerDeploy | HostDeploy | ExternalDeploy
 
 
+class GroupDefinition(TypedDict):
+    description: NotRequired[str]
+    publish: list[str]
+    subscribe: list[str]
+
+
 class Identity(TypedDict):
     owner: Owner
     status: Status
@@ -37,6 +43,7 @@ class Identity(TypedDict):
     retired_at: NotRequired[str]
     notes: NotRequired[str]
     deploy: NotRequired[Deploy]
+    groups: NotRequired[list[str]]
 
 
 class Flow(TypedDict):
@@ -49,6 +56,7 @@ class LoadedMatrix(TypedDict):
     version: str
     identities: dict[str, Identity]
     request_reply_flows: NotRequired[list[Flow]]
+    groups: NotRequired[dict[str, GroupDefinition]]
 
 
 @dataclass(eq=True, frozen=True)

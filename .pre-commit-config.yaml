@@ -99,3 +99,10 @@ repos:
     pass_filenames: false
     stages:
     - pre-push
+  - id: acl-authconf-drift
+    name: ACL auth.conf drift (acl-matrix.json is source of truth)
+    entry: scripts/check-acl-authconf-drift.sh
+    language: system
+    pass_filenames: false
+    stages:
+    - pre-push

@@ -36,7 +36,7 @@ ADR-075 authorises this sublayer (axial: `stage-of-pipeline` →
 Runs as its own systemd unit: `lyra-turn-writer.container`. Entry point:
 `lyra turn-writer` CLI subcommand → `_bootstrap_turn_writer_standalone`.
 
-NATS user: `turn-writer` (subscribes `lyra.turns.>`, publishes `_INBOX.>`
+NATS user: `turn-writer` (subscribes `lyra.turns.>`, publishes _INBOX.>
 for ACK path, JetStream API scoped to `LYRA_TURNS` + `turn-writer-v1`
 only — see `deploy/nats/auth.conf`).
 

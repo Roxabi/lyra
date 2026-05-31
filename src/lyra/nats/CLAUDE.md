@@ -70,8 +70,8 @@ in #1104 to match the canonical ACL allow list; do NOT reintroduce them.
 - Every hub↔adapter envelope (`InboundMessage`) carries `schema_version: int` guarded by
   `SCHEMA_VERSION_*` constants in `lyra.core.messaging.message`. Drop + log on mismatch;
   version bump requires simultaneous hub + adapter deploy.
-- `NatsChunkEnvelope` (outer stream wrapper) is intentionally unversioned — only the
-  inner payload carries a version.
+- The outer chunk envelope (a plain dict with `stream_id`, `seq`, `event_type`, `payload`, `done`)
+  is intentionally unversioned — only the inner payload carries a version.
 - LLM wire encoding is handled by `LlmCodec` in `lyra.llm` — it uses `roxabi_contracts`
   Pydantic models (`LlmRequest`, `LlmResponse`, `LlmChunkEvent`) directly — JSON, NOT
   the `roxabi_nats` serialize helpers.

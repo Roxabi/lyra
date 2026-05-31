@@ -2,7 +2,6 @@
 # Tracked in epic #1530. Pre-existing violations to purge over time.
 # Format: relpath::token  (sorted, one per line)
 # DO NOT add new entries — fix the doc or add a historical annotation.
-deploy/CLAUDE.md::PublishPort
 docs/ARCHITECTURE.md::AuthMiddleware
 docs/ARCHITECTURE.md::CliNatsDriver
 docs/ARCHITECTURE.md::CognitiveFrame
@@ -99,14 +98,3 @@ docs/standards/backend-patterns.md::ErrorBoundaryMiddleware
 docs/standards/backend-patterns.md::InboundAudio
 docs/standards/backend-patterns.md::LyraUserError
 docs/standards/backend-patterns.md::NatsLlmDriver
-src/lyra/adapters/CLAUDE.md::InboundAudio
-src/lyra/adapters/CLAUDE.md::OutboundSender
-src/lyra/agents/CLAUDE.md::AgentSeeder
-src/lyra/blobstore/CLAUDE.md::lyra.security
-src/lyra/blobstore/CLAUDE.md::src/lyra/infrastructure/blobstore/
-src/lyra/core/CLAUDE.md::lyra.ports
-src/lyra/inbound/CLAUDE.md::lyra.shared
-src/lyra/infrastructure/turn_writer/CLAUDE.md::_INBOX.>
-src/lyra/monitoring/CLAUDE.md::lyra.toml
-src/lyra/nats/CLAUDE.md::NatsChunkEnvelope
-src/lyra/streaming/CLAUDE.md::src/lyra/adapters/shared/_shared_streaming_state.py

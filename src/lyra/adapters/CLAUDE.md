@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Translate platform-native events → `InboundMessage` / `InboundAudio` and
+Translate platform-native events → `InboundMessage` / `AudioPayload` and
 `OutboundMessage` / `OutboundAudio` → platform API calls.
 No business logic, LLM calls, or agent logic lives here.
 
@@ -32,7 +32,7 @@ No business logic, LLM calls, or agent logic lives here.
 | Method | Role |
 |--------|------|
 | `normalize(raw)` | Raw payload → `InboundMessage` |
-| `normalize_audio(raw, bytes, mime, trust_level)` | Raw audio → `InboundAudio` |
+| `normalize_audio(raw, bytes, mime, trust_level)` | Raw audio → `AudioPayload` |
 | `send(original_msg, outbound)` | Send complete reply |
 | `send_streaming(original_msg, chunks, outbound)` | Stream reply with edit-in-place |
 | `render_audio(msg, inbound)` | Send voice note |
@@ -105,7 +105,7 @@ owns two axes — (a) pure formatting (`chunk`, `render_text`, `render_buttons`,
 `dim_italic`, `placeholder_text`) and (b) platform-I/O mechanics (everything else).
 This is a deliberate SRP trade-off accepted at N=2 platforms to keep `_make_emitter`
 arity low.  Any new method added to `OutboundFormatter` MUST be consciously placed
-in axis (a) or (b).  Re-evaluate extracting an `OutboundSender` Protocol when a
+in axis (a) or (b).  Re-evaluate extracting an OutboundSender Protocol when a
 third platform adapter lands (#1508).
 
 ## Clipool adapter (`clipool/`)

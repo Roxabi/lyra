@@ -45,7 +45,7 @@ primary observability path.
 
 ## Config
 
-Thresholds: `[monitoring]` section in `lyra.toml` (or `$LYRA_CONFIG`).
+Thresholds: `[monitoring]` section in lyra.toml (or `$LYRA_CONFIG`).
 Secrets (required at runtime, ¬in TOML): `TELEGRAM_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID`.
 Optional: `LYRA_HEALTH_SECRET` (Bearer token for `/health/detail`).
 Missing secrets → `ValueError` at startup (fail-fast, ¬silent misconfiguration).

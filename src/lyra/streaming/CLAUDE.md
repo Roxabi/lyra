@@ -52,7 +52,7 @@ Three primitives, all composed (not inherited):
 - **Event vocabulary** — `LlmEvent`, `RenderEvent`, `WorkerError`, etc. live in
   `src/lyra/core/messaging/events.py` and `render_events.py`. Do not redefine them here.
 - **Ordering invariants on the streaming bus** — the comment anchor lives in
-  `src/lyra/adapters/shared/_shared_streaming_state.py` ~lines 150–155 (`is_error_pending`
+  `src/lyra/outbound/_streaming_state.py` ~lines 109–142 (`is_error_pending`
   field). Stream-bus ordering is enforced by the adapter layer, not this package.
 - **Adding new parsers (NATS-stream, SSE, …)** — Phase 5 enables this; impls land in separate
   issues. `src/lyra/streaming/` provides the primitives; consumer files

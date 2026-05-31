@@ -14,7 +14,7 @@ Entry point: `lyra blobstore serve`.
 ## Module placement — Framing B (peer-of-adapters)
 
 `axial-adr-review` flagged this as a potential `target-axis-trap` (ADR-073), recommending
-`src/lyra/infrastructure/blobstore/`. **Decision: keep peer-of-adapters.**
+src/lyra/infrastructure/blobstore/. **Decision: keep peer-of-adapters.**
 
 Short version: `lyra-blobstore` is a **bootable process surface** (typer subcommand →
 uvicorn → FastAPI), structurally identical to `lyra.adapters.{telegram,discord,clipool}`.
@@ -44,7 +44,7 @@ NATS connect (best-effort) → `BlobAuditSink.provision(nc)` → KV announce
 (`blobstore.ready=true`) → uvicorn start on `:8449`.
 
 **NATS-connect failure does NOT abort startup** (degraded mode). If NATS is unreachable:
-audit sink logs to `lyra.security` logger, `blobstore.ready` is not published, uvicorn
+audit sink logs to lyra.security logger, `blobstore.ready` is not published, uvicorn
 starts normally and accepts HTTP traffic. No in-process reconnect loop — failure mode is
 intentionally loud; re-provision deferred to next container restart.
 
@@ -72,7 +72,7 @@ Auth middleware **allowlist** (bypass bearer check): `/healthz`, `/metrics`.
 
 Every op (PUT / GET / HEAD / DELETE) emits a `BlobAuditEvent` on
 `lyra.audit.blobs.{op}` — **including 401s** (subject `"anonymous"`, result
-`"unauthorized"`). If NATS publish fails, sink degrades to `lyra.security` logger.
+`"unauthorized"`). If NATS publish fails, sink degrades to lyra.security logger.
 
 `BlobAuditEvent` defined in `packages/roxabi-contracts/src/roxabi_contracts/audit/blobs.py`.
 At time of S3 wiring, the `_emit_audit` stub in `_handlers.py` is replaced by the real sink.

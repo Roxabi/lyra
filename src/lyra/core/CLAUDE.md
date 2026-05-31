@@ -16,7 +16,7 @@ Four responsibilities:
 
 ## Import layers
 
-`core/` may import: stdlib, third-party, `lyra.ports` (own ports subdir).
+`core/` may import: stdlib, third-party, `lyra.core.ports` (own ports subdir).
 `core/` must NOT import: `lyra.adapters`, `lyra.infrastructure`, `lyra.llm` (drivers), `lyra.commands` (plugin cmds).
 Adapters and infrastructure may import `core/`; never the reverse.
 

@@ -105,7 +105,7 @@ Bot per-platform secrets follow the hyphen convention:
 
 ### Known residual risk — blobstore PublishPort Tailscale fallback (#1330)
 
-`lyra-blobstore.container` binds `PublishPort` to `${TAILSCALE_IPV4}:8449:8449` (resolved at
+`lyra-blobstore.container` binds PublishPort to `${TAILSCALE_IPV4}:8449:8449` (resolved at
 provision time via `tailscale ip -4 | head -1`). If `TAILSCALE_IPV4` is unset or `tailscale0`
 is absent at container start, Podman falls back to `0.0.0.0:8449` (LAN-exposed). The bearer
 token (`lyra_blobstore_token`) is then the **sole** auth boundary. Accepted for V8; Phase 2

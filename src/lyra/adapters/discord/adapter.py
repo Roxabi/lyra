@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from lyra.core.ports.blobstore import BlobStorePort
     from lyra.core.stores import TurnStoreProtocol
     from lyra.core.stores.thread_store_protocol import ThreadStoreProtocol
+    from lyra.inbound.attachment_ingest import IngestCtx
     from lyra.outbound.emitter import OutboundEmitter
 
 from lyra.adapters.discord import discord_audio  # noqa: I001 — DEBT:module-level-patch-fixtures
@@ -130,6 +131,9 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         # Injectable identity resolver for slash command trust (set by wiring layer).
         # Falls back to PUBLIC trust when not set (standalone/test mode).
         self._resolve_identity_fn: Any = None
+        # Post-construction injection: set by bootstrap after build_ingest().
+        # None → ingest stage no-ops (CLI / degraded / blobstore unconfigured).
+        self._ingest_ctx: "IngestCtx | None" = None
 
     def _msg(self, key: str, fallback: str) -> str:
         """Return a localised message string, falling back when no manager."""
@@ -203,6 +207,7 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         mime_type: str,
         *,
         trust_level: TrustLevel,
+        pending: "discord_audio.PendingAttachment | None" = None,
     ) -> InboundMessage:
         """Build an InboundMessage (modality='voice') from a Discord audio message."""
         return discord_audio.normalize_audio(
@@ -211,6 +216,7 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
             mime_type,
             bot_id=self._bot_id,
             trust_level=trust_level,
+            pending=pending,
         )
 
     def normalize(

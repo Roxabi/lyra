@@ -16,6 +16,7 @@ from lyra.bootstrap.factory.voice_overlay import init_blobstore
 from lyra.bootstrap.lifecycle.lifecycle_helpers import close_safely
 from lyra.bootstrap.lifecycle.signal_handlers import setup_shutdown_event
 from lyra.bootstrap.standalone.audio_consumer_bootstrap import start_audio_consumer
+from lyra.bootstrap.wiring.bootstrap_wiring import wire_ingest
 from lyra.core.messaging.bus import Bus
 from lyra.core.messaging.message import InboundMessage, Platform
 from lyra.nats.queue_groups import adapter_outbound
@@ -168,6 +169,7 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
             blob_store=blob_store,
         )
         adapter_dc.configure_tool_display(config_bundle.tool_display)
+        wire_ingest(adapter_dc, blob_store)
 
         listener_dc = NatsOutboundListener(
             nc,

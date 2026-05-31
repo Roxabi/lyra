@@ -27,6 +27,7 @@ class MockAdapter:
         mime_type: str,
         *,
         trust_level: TrustLevel,
+        pending: Any = None,
     ) -> InboundMessage:
         raise NotImplementedError
 

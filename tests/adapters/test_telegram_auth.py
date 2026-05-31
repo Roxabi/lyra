@@ -11,6 +11,7 @@ SC-14 (GET /status returns all circuits), C3 (adapter forwards with PUBLIC trust
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -184,8 +185,15 @@ class TestTelegramAdapterInbound:
         inbound_bus.put.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_voice_message_forwarded_with_public_trust(self) -> None:
-        """Voice messages reach the bus with trust_level=PUBLIC."""
+    async def test_voice_message_forwarded_with_public_trust(
+        self, tmp_path: Path
+    ) -> None:
+        """Voice messages reach the pipeline with trust_level=PUBLIC.
+
+        The voice path now routes via _pipeline.run() (not push_to_hub_guarded()).
+        We assert that normalize_audio is called with PUBLIC trust and that the
+        pipeline receives the message.
+        """
         from unittest.mock import patch
 
         from lyra.adapters.telegram import TelegramAdapter
@@ -208,25 +216,35 @@ class TestTelegramAdapterInbound:
             audio=None,
             video_note=None,
             entities=None,
+            reply_to_message=None,
         )
 
-        _fake_audio = MagicMock(read_bytes=lambda: b"audio", unlink=MagicMock())
-        _fake_dl = AsyncMock(return_value=(_fake_audio, 5.0))
-        with patch(
-            "lyra.adapters.telegram.telegram_inbound._download_audio", new=_fake_dl
-        ):  # noqa: E501
-            with patch(  # noqa: E501
+        audio_file = tmp_path / "voice.ogg"
+        audio_file.write_bytes(b"audio")
+
+        _fake_dl = AsyncMock(return_value=(audio_file, 5.0))
+        mock_pipeline = MagicMock()
+        mock_pipeline.run = AsyncMock(return_value=None)
+        with (
+            patch(
+                "lyra.adapters.telegram.telegram_inbound._download_audio", new=_fake_dl
+            ),
+            patch(
                 "lyra.adapters.telegram.telegram_inbound.normalize_audio"
-            ) as mock_norm_audio:
-                mock_norm_audio.return_value = MagicMock()
-                _fake_push = AsyncMock()
-                with patch(
-                    "lyra.adapters.telegram.telegram_inbound.push_to_hub_guarded",
-                    new=_fake_push,
-                ):
-                    await adapter._on_voice_message(voice_msg)
+            ) as mock_norm_audio,
+            patch(
+                "lyra.adapters.telegram.telegram_inbound._pipeline",
+                mock_pipeline,
+            ),
+        ):
+            _stub_msg = MagicMock()
+            _stub_msg.pending_attachment = None
+            mock_norm_audio.return_value = _stub_msg
+            await adapter._on_voice_message(voice_msg)
 
         # normalize_audio called with PUBLIC trust
         mock_norm_audio.assert_called_once()
         call_kwargs = mock_norm_audio.call_args
         assert call_kwargs.kwargs.get("trust_level") == TrustLevel.PUBLIC
+        # Voice now routes via the pipeline, not push_to_hub_guarded
+        mock_pipeline.run.assert_awaited_once()

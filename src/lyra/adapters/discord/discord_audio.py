@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
 import discord
 
-from lyra.adapters.shared._shared import push_to_hub_guarded
 from lyra.core.audio_payload import AudioPayload
 from lyra.core.messaging.message import (
     DiscordMeta,
@@ -17,6 +17,8 @@ from lyra.core.messaging.message import (
     RoutingContext,
 )
 from lyra.core.messaging.scope import user_scoped
+from lyra.inbound.attachment_ingest import PendingAttachment
+from lyra.inbound.prebuilt_parser import PrebuiltParser
 from roxabi_contracts import PENDING_STORE_KEY, BlobRef
 
 if TYPE_CHECKING:
@@ -58,18 +60,19 @@ def is_valid_audio_magic(data: bytes) -> bool:
     return False
 
 
-def normalize_audio(
+def normalize_audio(  # noqa: PLR0913 — additive signature (audio_bytes, mime_type, pending); matches ChannelAdapter protocol
     raw: Any,
     audio_bytes: bytes,
     mime_type: str,
     *,
     bot_id: str,
     trust_level: "TrustLevel",
+    pending: PendingAttachment | None = None,
 ) -> InboundMessage:
-    """Build an InboundMessage (modality='voice') envelope from a Discord audio message.
+    """Build an InboundMessage (modality='voice') from a Discord audio attachment.
 
-    Security: trust is always 'user'. Bot messages are filtered by
-    on_message().
+    ``pending`` carries the fetch closure; AttachmentIngestStage stamps a real
+    BlobRef when a store is present.  PENDING sentinel carries size=len(audio_bytes).
     """
     is_thread = isinstance(raw.channel, discord.Thread)
     scope_id = f"thread:{raw.channel.id}" if is_thread else f"channel:{raw.channel.id}"
@@ -122,6 +125,7 @@ def normalize_audio(
             file_id=None,
             waveform_b64=None,
         ),
+        pending_attachment=pending,
     )
 
 
@@ -131,7 +135,12 @@ async def handle_audio(  # noqa: C901 — DEBT:wiring-bootstrap-deps
     audio_attachment: Any,
     trust: "TrustLevel",
 ) -> None:
-    """Handle an inbound audio attachment."""
+    """Handle an inbound audio attachment.
+
+    Eager guards: size-check → download → magic-byte → DM/mention/thread gate.
+    On pass: wraps bytes in a fetch closure, routes via _pipeline + PrebuiltParser.
+    AttachmentIngestStage calls store.put → real BlobRef (prod); no-op in CLI mode.
+    """
     user_id = f"dc:user:{message.author.id}"
     log.info(
         "audio_received",
@@ -145,7 +154,7 @@ async def handle_audio(  # noqa: C901 — DEBT:wiring-bootstrap-deps
     att_size = getattr(audio_attachment, "size", None)
     if att_size is None or att_size > adapter._max_audio_bytes:
         log.warning(
-            "Audio attachment rejected: %d bytes exceeds %d byte limit (message_id=%s)",
+            "Audio attachment rejected: %s bytes exceeds %d byte limit (message_id=%s)",
             att_size,
             adapter._max_audio_bytes,
             message.id,
@@ -237,24 +246,50 @@ async def handle_audio(  # noqa: C901 — DEBT:wiring-bootstrap-deps
     if not _audio_is_dm and not _audio_is_mention and not _audio_in_owned_thread:
         return
 
-    hub_audio = adapter.normalize_audio(
-        message,
-        audio_bytes=audio_bytes,
-        mime_type=getattr(audio_attachment, "content_type", "audio/ogg"),
-        trust_level=trust,
+    # Wrap already-fetched bytes in a trivial closure so AttachmentIngestStage
+    # can await it uniformly.  Bytes are already in memory — no CDN round-trip.
+    mime_type = getattr(audio_attachment, "content_type", "audio/ogg")
+
+    async def _dc_audio_fetch() -> bytes:
+        return audio_bytes
+
+    pending = PendingAttachment(
+        fetch=_dc_audio_fetch,
+        mime=mime_type,
+        source="discord",
+        platform_ref=None,
+        platform_message_id=str(message.id),
+    )
+
+    from lyra.adapters.discord import (
+        discord_inbound,  # noqa: PLC0415 — local import avoids module-level circular dep
+    )
+
+    inbound_ctx = discord_inbound.build_discord_inbound_ctx(
+        adapter, ingest=adapter._ingest_ctx
+    )
+
+    pre_route = functools.partial(
+        discord_inbound._discord_pre_route_hook, adapter=adapter
+    )
+    pre_session = functools.partial(
+        discord_inbound._discord_pre_session_hook,
+        raw_message=message,
+        adapter=adapter,
     )
 
     async def _send_bp(text: str) -> None:
         await message.reply(text)
 
     adapter._start_typing(message.channel.id)
-    await push_to_hub_guarded(
-        inbound_bus=adapter._inbound_bus,
-        platform=Platform.DISCORD,
-        msg=hub_audio,
-        circuit_registry=adapter._circuit_registry,
-        on_drop=lambda: adapter._cancel_typing(message.channel.id),
+    await discord_inbound._pipeline.run(
+        adapter.normalize_audio(
+            message, audio_bytes, mime_type, trust_level=trust, pending=pending
+        ),
+        inbound_ctx,
+        PrebuiltParser(),
+        pre_route_hook=pre_route,
+        pre_session_hook=pre_session,
         send_backpressure=_send_bp,
-        get_msg=adapter._msg,
-        outbound_listener=adapter._outbound_listener,
+        on_drop=lambda: adapter._cancel_typing(message.channel.id),
     )

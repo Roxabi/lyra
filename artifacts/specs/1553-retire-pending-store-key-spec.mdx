@@ -1,0 +1,34 @@
+---
+title: retire PENDING_STORE_KEY sentinel + STT fallback cleanup
+issue: 1553
+status: approved
+tier: S
+date: 2026-05-30
+parent_spec: artifacts/specs/1537-central-attachment-ingestion-stage-spec.mdx
+parent_issue: 1537
+---
+
+## Scope
+
+Phase 3 — slice **S9** of the parent spec. Final cleanup once both adapters produce real
+`BlobRef`s. Retires the `PENDING_STORE_KEY` sentinel and the STT `platform_ref` fallback.
+
+- Remove `isinstance(audio, bytes)` branch + inline `PENDING_STORE_KEY` construction in
+  `NatsSttClient.transcribe()`.
+- Remove the sentinel + `_require_content_hash_unless_sentinel` validator in
+  `roxabi_contracts.blob_ref`.
+- Clean residual usage in `cli_voice_smoke.py`, `nats_tts_codec.py`.
+- Converge voice fetch-failure degraded mode → drop + error (`blob_ref=None`); no path
+  emits the retired sentinel.
+
+## Success Criteria
+
+- [ ] `grep -r PENDING_STORE_KEY src/` = 0.
+- [ ] STT integration passes on real `BlobRef`; `platform_ref` fallback no longer
+      exercised.
+- [ ] Voice degraded mode emits `blob_ref=None`, never the retired sentinel.
+
+## Reference
+
+[parent spec](./1537-central-attachment-ingestion-stage-spec.mdx) · ADR-083.
+Depends on #1551 + #1552 (all adapters cut over).

@@ -7,15 +7,15 @@ from typing import TYPE_CHECKING, Any
 
 from aiogram.exceptions import TelegramAPIError
 
-from lyra.adapters.shared._shared import push_to_hub_guarded
 from lyra.adapters.telegram.telegram_audio import _download_audio
 from lyra.adapters.telegram.telegram_formatting import _make_send_kwargs
 from lyra.adapters.telegram.telegram_normalize import _make_scope_id, normalize_audio
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import Platform
+from lyra.inbound.attachment_ingest import AttachmentIngestStage, PendingAttachment
 from lyra.inbound.context import DispatchCtx, InboundContext, RouterCtx, SessionCtx
 from lyra.inbound.dispatcher import Dispatcher
 from lyra.inbound.pipeline import InboundPipeline
+from lyra.inbound.prebuilt_parser import PrebuiltParser
 from lyra.inbound.router import Router
 from lyra.inbound.session_builder import SessionBuilder
 from lyra.inbound.wire_parser_telegram import TelegramWireParser
@@ -25,11 +25,15 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("lyra.adapters.telegram")
 
+
 _dispatcher = Dispatcher()
 _router = Router()
 _session_builder = SessionBuilder()
 _pipeline = InboundPipeline(
-    router=_router, session_builder=_session_builder, dispatcher=_dispatcher
+    router=_router,
+    session_builder=_session_builder,
+    dispatcher=_dispatcher,
+    ingest_stage=AttachmentIngestStage(),
 )
 # Adapters are process-singletons created at bootstrap; id-keying is safe for
 # this lifecycle (no GC + id-reuse window). Revisit when bootstrap DI lands (#1283).
@@ -84,11 +88,15 @@ async def handle_message(adapter: "TelegramAdapter", msg: Any) -> None:
     )
 
 
-async def handle_voice_message(adapter: TelegramAdapter, msg: Any) -> None:
+async def handle_voice_message(adapter: "TelegramAdapter", msg: Any) -> None:  # noqa: C901
     """Handle an incoming voice or audio message.
 
-    Downloads audio, builds an InboundMessage (modality='voice') envelope, and
-    enqueues it on the inbound bus with backpressure / circuit-open guards.
+    Downloads audio eagerly (with early-return error handling), then wraps the
+    already-fetched bytes in a trivial FetchFn closure passed to PendingAttachment.
+    Routes the voice InboundMessage through InboundPipeline so AttachmentIngestStage
+    can call store.put() and stamp a real BlobRef (when a store is configured).
+    In no-store mode the stage is a no-op and the PENDING BlobRef reaches the hub
+    unchanged — same behavior as before this refactor.
     """
     if not msg.from_user or getattr(msg.from_user, "is_bot", False):
         return
@@ -116,6 +124,7 @@ async def handle_voice_message(adapter: TelegramAdapter, msg: Any) -> None:
         },
     )
 
+    # --- Eager download with early-return error handling (preserved from original) ---
     try:
         tmp_path, _duration_s = await _download_audio(
             adapter, file_id, getattr(voice, "duration", None)
@@ -164,32 +173,58 @@ async def handle_voice_message(adapter: TelegramAdapter, msg: Any) -> None:
     finally:
         tmp_path.unlink(missing_ok=True)
 
+    # Trivial FetchFn: bytes already in hand; closure satisfies the PendingAttachment
+    # contract so AttachmentIngestStage can call store.put() when a store is present.
+    async def _tg_voice_fetch() -> bytes:
+        return audio_bytes
+
+    pending = PendingAttachment(
+        fetch=_tg_voice_fetch,
+        mime="audio/ogg",
+        source="telegram",
+        platform_ref=file_id,
+        platform_message_id=str(message_id) if message_id is not None else None,
+    )
+
     # C3: trust resolved by Hub; adapter passes PUBLIC as raw identity.
     hub_audio = normalize_audio(
         adapter,
         msg,
-        audio_bytes=audio_bytes,
-        mime_type="audio/ogg",
+        audio_bytes,
+        "audio/ogg",
         trust_level=TrustLevel.PUBLIC,
+        pending=pending,
     )
 
     adapter._start_typing(chat_id)
-    try:
 
-        async def _send_bp(text: str) -> None:
-            await adapter.bot.send_message(
-                **_make_send_kwargs(chat_id, text, message_id)
-            )
-
-        await push_to_hub_guarded(
+    inbound_ctx = InboundContext(
+        router=RouterCtx(
+            bot_id=adapter._bot_id,
+            owned_threads=set(),  # Telegram has no thread model
+            watch_channels=None,
+        ),
+        session=SessionCtx(
+            turn_store=adapter._turn_store,
+            thread_store=None,  # Telegram has no thread model
+        ),
+        dispatch=DispatchCtx(
             inbound_bus=adapter._inbound_bus,
-            platform=Platform.TELEGRAM,
-            msg=hub_audio,
             circuit_registry=adapter._circuit_registry,
-            on_drop=None,
-            send_backpressure=_send_bp,
-            get_msg=adapter._msg,
             outbound_listener=adapter._outbound_listener,
-        )
-    finally:
-        adapter._cancel_typing(chat_id)
+            typing=adapter._typing,
+            msg_catalog=adapter._msg_manager,
+        ),
+        ingest=getattr(adapter, "_ingest_ctx", None),
+    )
+
+    async def _send_bp(text: str) -> None:
+        await adapter.bot.send_message(**_make_send_kwargs(chat_id, text, message_id))
+
+    await _pipeline.run(
+        hub_audio,
+        inbound_ctx,
+        PrebuiltParser(),
+        send_backpressure=_send_bp,
+        on_drop=lambda: adapter._cancel_typing(chat_id),
+    )

@@ -38,6 +38,7 @@ if TYPE_CHECKING:
         ThreadSession,
         ThreadStoreProtocol,
     )
+    from lyra.inbound.attachment_ingest import IngestCtx
     from lyra.transport.turn_publisher import TurnPublisher
 
 
@@ -98,3 +99,4 @@ class InboundContext:
     router: RouterCtx
     session: SessionCtx
     dispatch: DispatchCtx
+    ingest: "IngestCtx | None" = None

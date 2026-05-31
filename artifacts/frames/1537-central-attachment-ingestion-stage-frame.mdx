@@ -1,0 +1,99 @@
+---
+title: central attachment ingestion stage (all types) — plug Telegram + Discord
+issue: 1537
+status: approved
+tier: F-full
+date: 2026-05-30
+---
+
+## Problem
+
+Inbound attachments are never persisted. The per-adapter `*_normalize.py` modules
+(`telegram.py` / `discord` audio path) stamp `store_key=PENDING_STORE_KEY` and drop
+the bytes — nothing reaches the BlobStore. Prod `index.sqlite` shows **0 refs**
+`source=telegram` and **0** `source=discord`. On STT failure the inbound voice is
+`_DROP`ped → silently and **unrecoverably** lost (Telegram Bot API has no history
+endpoint; Discord CDN URLs expire within minutes).
+
+The root cause is axial: **attachment ingestion is a stage concern (primary axis)**,
+but today it is duplicated/absent on the **platform axis (non-primary)** — the N×M
+trap. Each platform × each attachment type re-implements (or fails to implement)
+download → persist → payload-construction. Epic #1277 §11 already commits to absorbing
+the adapter-side ingest (#1065/#1066/#1067) into a single central stage; this issue
+realizes that absorption.
+
+## Who
+
+- **Primary:** end users sending attachments (voice, documents, images, videos,
+  stickers, animations, GIFs) to Lyra Telegram/Discord bots — today their voice notes
+  vanish on STT failure and no attachment is durably stored.
+- **Secondary:** STT/TTS workers (#1067) that must consume a real `store_key` instead
+  of the `platform_ref` fallback; future features needing durable inbound media.
+
+## Constraints
+
+- importlinter `inbound-no-adapters` (#1287) forbids `discord`/`aiogram` imports in
+  stage modules → the byte-fetch must be an **injected closure** from the adapter; only
+  the platform bit crosses the boundary.
+- `BlobStorePort.put()` single-shot only (ADR-082); `put_multipart()` (#1334) is
+  **out of scope** for V1.
+- Conversion via `roxabi_contracts.BlobRef.from_store_ref()` — no manual converter
+  (ADR-082); `store_key` is opaque (reject `PENDING`, ¬sha256-regex).
+- `MAX_ATTACHMENT_INGEST_BYTES` (≈20 MiB = TG getFile cap) enforced **before** download
+  for non-audio (non-audio is uncapped today); reject + log.
+- Ingest happens **before STT** so STT failure can no longer lose the blob.
+- Stage must catch HTTP **500** from `put()` (service returns 500, not 413, on oversize)
+  → user-facing error, no silent propagation.
+- `HttpBlobStore` write timeout is 5s (`http_store.py:89`) — verify/override if the
+  stage streams CDN→PUT and download latency can exceed the idle window.
+- Bootstrap must assert `ctx.ingest.store is not None` in production wiring (no silent
+  no-op).
+- Discord CDN URLs expire within minutes → eager-ingest timing must be confirmed.
+
+## Out of Scope
+
+- `put_multipart()` / chunked upload (#1334) — V1 uses single-shot `put()`.
+- Outbound attachment handling — inbound only.
+- STT/TTS worker-side consumption changes — coordinated in #1067, not owned here.
+- Removing the `PENDING_STORE_KEY` sentinel from contracts — only becomes removable
+  once both adapters cut over (tracked as a follow-up).
+
+## Premise Validity
+
+**Success in 6 months:** A single central `AttachmentIngestStage` in
+`src/lyra/inbound/` builds `InboundMessage` payloads with a real `BlobRef` (no
+`PENDING_STORE_KEY`) for **all** attachment types. Telegram + Discord both plug in via
+a fetch closure with **zero** ingest logic duplicated per adapter. Observable:
+`grep 'store.put(' src/lyra/adapters/` = 0; prod `index.sqlite` shows non-zero
+`source=telegram`/`source=discord`; blob persisted **before** STT; importlinter green.
+
+**Failure in 6 months (falsifiable):** After the stage ships, any of these measurable
+conditions holds — prod `index.sqlite` **still** shows 0 inbound refs (nothing
+persisted), **or** `grep PENDING_STORE_KEY src/lyra/adapters/` > 0 (sentinel still
+emitted), **or** `ingest_bytes_to_blob_ref` is called from **>1** adapter site instead
+of one central stage (N×M trap re-introduced). Each is an observable count, decided in
+one command.
+
+**Simplest alternative:** Keep per-adapter eager-ingest — the V3/V4 split where #1065
+(Telegram) and #1066 (Discord) each ingest inside their own `*_normalize.py`.
+
+**Why not simplest:** That split **is** the N×M trap — download-policy, dedup,
+provenance, size-capping and payload-construction get re-implemented for every platform
+× every attachment type. #1277 §11 explicitly commits to central absorption. And the
+per-adapter path already failed once: #1065 was closed COMPLETED (2026-05-25) but its
+V3 deliverable never landed (`git log -S ingest_bytes_to_blob_ref -- src/lyra/adapters/`
+= empty) — proving per-adapter ownership is fragile.
+
+## Complexity
+
+**Tier: F-full** — multi-domain (new inbound stage + Telegram adapter + Discord adapter
++ bootstrap wiring + contracts), introduces a new attachment-descriptor + fetch-closure
+protocol across an importlinter boundary, and coordinates with a cross-repo issue
+(#1067).
+
+Signals observed:
+- `size:F-full` label on the issue.
+- Touches `src/lyra/inbound/`, `src/lyra/adapters/{telegram,discord}/`, bootstrap, and
+  `roxabi-contracts`/`roxabi-blobs` — ≥4 areas.
+- New architectural pattern (injected fetch-closure across the stage↔adapter seam).
+- Unknowns: Discord CDN expiry timing, write-timeout sufficiency under CDN→PUT streaming.

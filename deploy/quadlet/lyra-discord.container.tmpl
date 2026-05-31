@@ -30,6 +30,11 @@ Environment=NATS_NKEY_SEED_PATH=/run/secrets/lyra-nats-discord.seed
 # Typing-indicator NATS plane (#1376). Sibling: deploy/quadlet/hub.env.example
 # — flipping the hub flag without updating this adapter flag causes split-brain.
 Environment=LYRA_TYPING_ENABLED=false
+# BlobStore — required for AttachmentIngestStage to persist inbound attachments (#1551 S8).
+# Without these the prod assert fails and ingest silently no-ops.
+Environment=LYRA_BLOBSTORE_URL=http://lyra-blobstore:8449
+Environment=LYRA_BLOBSTORE_TOKEN_PATH=/run/secrets/lyra_blobstore_token
+Secret=lyra_blobstore_token,type=mount,uid=1500,gid=1500,mode=0400,target=/run/secrets/lyra_blobstore_token
 # Per-bot Secret= directives are rendered at install time from
 # ~/.lyra/config.toml's [[auth.<platform>_bots]] enumeration.
 # Use `make quadlet-install` to render them. See docs/QUADLET-DEPLOYMENT.md.

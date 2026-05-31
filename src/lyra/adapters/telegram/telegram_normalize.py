@@ -19,6 +19,7 @@ from roxabi_contracts import PENDING_STORE_KEY, BlobRef
 
 if TYPE_CHECKING:
     from lyra.adapters.telegram import TelegramAdapter
+    from lyra.inbound.attachment_ingest import PendingAttachment
 
 log = logging.getLogger("lyra.adapters.telegram")
 
@@ -215,15 +216,22 @@ def normalize(  # noqa: C901 — DEBT:wiring-bootstrap-deps
     )
 
 
-def normalize_audio(
-    adapter: TelegramAdapter,
+def normalize_audio(  # noqa: PLR0913 — ChannelAdapter protocol; pending is additive kwarg
+    adapter: "TelegramAdapter",
     raw: Any,
     audio_bytes: bytes,
     mime_type: str,
     *,
     trust_level: TrustLevel,
+    pending: "PendingAttachment | None" = None,
 ) -> InboundMessage:
     """Build a voice InboundMessage from a Telegram audio/voice/video_note update.
+
+    ``audio_bytes`` and ``mime_type`` are required positional args (ChannelAdapter
+    protocol).  ``pending`` is optional: when provided (voice path via
+    handle_voice_message), it is stored in ``InboundMessage.pending_attachment`` so
+    ``AttachmentIngestStage`` can later persist the bytes and stamp a real BlobRef.
+    When absent (existing callers / test helpers), ``pending_attachment`` is None.
 
     Security: trust is always 'user'. normalize_audio() is never called for
     bot messages. Never logs the bot token.
@@ -287,4 +295,5 @@ def normalize_audio(
             file_id=file_id,
             waveform_b64=None,
         ),
+        pending_attachment=pending,
     )

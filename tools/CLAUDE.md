@@ -12,7 +12,7 @@ Scripts are driven by `.claude/stack.yml` `quality_gates` block and pre-push hoo
 | Script | Gate | Stage |
 |---|---|---|
 | `check_file_length.sh` | `file_length` — 300-line cap on `src/**/*.py` | pre-commit |
-| `check_folder_size.sh` | `folder_size` — 12-file cap per `src/**` folder | pre-commit |
+| `check_folder_size.sh` | `folder_size` — 20-file cap per `src/**` folder | pre-commit |
 | `check_duplicate_test_basenames.sh` | `duplicate_test_basenames` | pre-commit |
 | `.importlinter` (external) | `import_layers` | pre-push |
 | `check_doc_drift.py` | `doc_drift` — dead backtick refs in docs + CLAUDE.md network; baseline in `doc_drift_baseline.txt` (burn-down list, epic #1530) | CI |

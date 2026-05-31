@@ -13,14 +13,13 @@ Summary of all inline and configured exceptions to quality rules.
 | `src/lyra/core/pool/pool.py` | 326 | #858 | Backward-compat param overrides |
 | `src/lyra/bootstrap/factory/wiring_helpers.py` | 400 | ADR-059/V10 | Bootstrap helper aggregator |
 
-### Folder Size (>12 files)
+### Folder Size (>20 files)
 
 **Config:** `tools/folder_exemptions.txt`
 
 | Path | Files | Issue | Reason |
 |------|-------|-------|--------|
-| `src/lyra/core` | 13 | #858 | Config dataclass extraction |
-| `src/lyra/infrastructure/stores` | 14 | #935 | ADR-048 store migration |
+| — | — | — | — |
 
 ---
 

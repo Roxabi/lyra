@@ -10,7 +10,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 import lyra.bootstrap.factory.agent_factory as agent_factory_mod
-import lyra.bootstrap.factory.hub_builder as hub_builder_mod
+import lyra.bootstrap.factory.hub.hub_clipool_init as hub_clipool_init_mod
+import lyra.bootstrap.factory.hub.hub_core as hub_core_mod
 import lyra.bootstrap.factory.wiring_helpers as wiring_helpers_mod
 from lyra.bootstrap.factory.agent_factory import _init_bot_auths_and_agents
 from lyra.bootstrap.factory.hub_builder import _build_hub, _init_clipool
@@ -455,22 +456,22 @@ class TestBuildHub:
     ) -> None:
         # Arrange — patch all config loaders
         monkeypatch.setattr(
-            hub_builder_mod,
+            hub_core_mod,
             "_load_cli_pool_config",
             lambda raw: MagicMock(turn_timeout=30.0),
         )
         monkeypatch.setattr(
-            hub_builder_mod,
+            hub_core_mod,
             "_load_hub_config",
             lambda raw: MagicMock(rate_limit=10, rate_window=30, pool_ttl=3600.0),
         )
         monkeypatch.setattr(
-            hub_builder_mod,
+            hub_core_mod,
             "_load_pool_config",
             lambda raw: MagicMock(safe_dispatch_timeout=5.0),
         )
         monkeypatch.setattr(
-            hub_builder_mod,
+            hub_core_mod,
             "_load_debouncer_config",
             lambda raw: MagicMock(
                 default_debounce_ms=200,
@@ -479,12 +480,12 @@ class TestBuildHub:
             ),
         )
         monkeypatch.setattr(
-            hub_builder_mod,
+            hub_core_mod,
             "_load_event_bus_config",
             lambda raw: MagicMock(queue_maxsize=500),
         )
         monkeypatch.setattr(
-            hub_builder_mod,
+            hub_core_mod,
             "_load_inbound_bus_config",
             lambda raw: MagicMock(
                 staging_maxsize=100, platform_queue_maxsize=50, queue_depth_threshold=25
@@ -496,9 +497,9 @@ class TestBuildHub:
         def _event_bus(maxsize: int) -> MagicMock:
             return mock_event_bus
 
-        monkeypatch.setattr(hub_builder_mod, "PipelineEventBus", _event_bus)
+        monkeypatch.setattr(hub_core_mod, "PipelineEventBus", _event_bus)
         mock_hub = MagicMock()
-        monkeypatch.setattr(hub_builder_mod, "Hub", lambda **kw: mock_hub)
+        monkeypatch.setattr(hub_core_mod, "Hub", lambda **kw: mock_hub)
 
         bundle = BotAuthBundle(
             tg_bot_auths=[],
@@ -548,7 +549,7 @@ class TestInitClipool:
 
         # Arrange
         monkeypatch.setattr(
-            hub_builder_mod,
+            hub_clipool_init_mod,
             "_load_cli_pool_config",
             lambda raw: MagicMock(
                 idle_ttl=1200,
@@ -568,7 +569,7 @@ class TestInitClipool:
         def _audit_sink() -> MagicMock:
             return mock_audit
 
-        monkeypatch.setattr(hub_builder_mod, "JetStreamAuditSink", _audit_sink)
+        monkeypatch.setattr(hub_clipool_init_mod, "JetStreamAuditSink", _audit_sink)
 
         mock_cli_pool = MagicMock()
         mock_cli_pool.start = AsyncMock()
@@ -576,7 +577,7 @@ class TestInitClipool:
 
         mock_llm_client = MagicMock()
         monkeypatch.setattr(
-            "lyra.bootstrap.factory.hub_builder.build_llm_client",
+            "lyra.bootstrap.factory.hub.hub_clipool_init.build_llm_client",
             AsyncMock(return_value=mock_llm_client),
         )
 
@@ -591,7 +592,7 @@ class TestInitClipool:
 
         # Act — patch CliPool so call_args can be inspected
         with patch.object(
-            hub_builder_mod, "CliPool", return_value=mock_cli_pool
+            hub_clipool_init_mod, "CliPool", return_value=mock_cli_pool
         ) as MockCliPool:
             result = await _init_clipool(fake_nc, {}, stores)
 

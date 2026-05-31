@@ -67,6 +67,7 @@ class TestUnifiedLlmClientWired:
         if the helper is inlined back into unified.py in a future change.
         """
         # RED-phase: replace with runtime assertion when T22 ships
+        import lyra.bootstrap.factory.hub.hub_clipool_init as hub_clipool_init_mod
         import lyra.bootstrap.factory.hub_builder as hub_builder_mod
         import lyra.bootstrap.factory.unified as unified_mod
         import lyra.bootstrap.factory.wiring_helpers as helpers_mod
@@ -76,12 +77,14 @@ class TestUnifiedLlmClientWired:
             inspect.getsource(unified_mod)
             + inspect.getsource(helpers_mod)
             + inspect.getsource(hub_builder_mod)
+            + inspect.getsource(hub_clipool_init_mod)
         )
 
         # Assert
         assert "CliPoolNatsWorker" in combined, (
-            "Neither unified.py, wiring_helpers.py, nor hub_builder.py references "
-            "CliPoolNatsWorker — T22 should spawn it as an asyncio task"
+            "Neither unified.py, wiring_helpers.py, hub_builder.py, nor "
+            "hub_clipool_init.py references CliPoolNatsWorker — "
+            "T22 should spawn it as an asyncio task"
         )
 
 
@@ -100,6 +103,7 @@ class TestUnifiedCliPoolNatsWorkerInstantiated:
         except (ImportError, AttributeError):
             pytest.skip("CliPoolNatsWorker not importable — dependency missing")
 
+        import lyra.bootstrap.factory.hub.hub_clipool_init as hub_clipool_init_mod
         import lyra.bootstrap.factory.hub_builder as hub_builder_mod
         import lyra.bootstrap.factory.wiring_helpers as helpers_mod
 
@@ -108,6 +112,7 @@ class TestUnifiedCliPoolNatsWorkerInstantiated:
             inspect.getsource(unified_mod)
             + inspect.getsource(helpers_mod)
             + inspect.getsource(hub_builder_mod)
+            + inspect.getsource(hub_clipool_init_mod)
         )
 
         # Assert — post-T22 the class is referenced in the unified bootstrap

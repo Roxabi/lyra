@@ -104,12 +104,12 @@ class TestRegisterAgents:
         fake_msg_manager = MagicMock()
         raw_config: dict = {}
 
-        import lyra.bootstrap.factory.hub_builder as hub_builder_mod
+        import lyra.bootstrap.factory.hub.hub_agent_registration as hub_agent_reg_mod
 
         with (
             patch.object(hub, "register_agent") as mock_register,
             patch.object(
-                hub_builder_mod,
+                hub_agent_reg_mod,
                 "_resolve_agents",
                 return_value={"alpha": mock_alpha, "beta": mock_beta},
             ),

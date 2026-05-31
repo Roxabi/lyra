@@ -23,9 +23,10 @@ if TYPE_CHECKING:
 import pytest
 
 from lyra.core.agent import Agent, AgentBase
+from lyra.core.commands.builtin_commands import HelpCommandDeps
 from lyra.core.commands.command_loader import CommandLoader
 from lyra.core.commands.command_parser import CommandParser
-from lyra.core.commands.command_router import CommandRouter
+from lyra.core.commands.command_router import CommandRouter, CommandRouterDeps
 from lyra.core.messaging.message import (
     InboundMessage,
     OutboundMessage,
@@ -288,7 +289,9 @@ class TestBareUrlPatternsDisabled:
         plugins_dir = make_echo_plugin_dir(tmp_path)
         loader = CommandLoader(plugins_dir)
         loader.load("echo")
-        router = CommandRouter(command_loader=loader, enabled_plugins=["echo"])
+        router = CommandRouter(
+            CommandRouterDeps(command_loader=loader, enabled_plugins=["echo"])
+        )
         # Default is opt-in (False): bare URL not treated as command
         assert router.is_command(make_message(content="https://example.com")) is False
 
@@ -433,11 +436,13 @@ class TestSessionCommands:
             "mything", handler, tools=tools, description="Does the thing"
         )  # noqa: E501
         response = help_command(
-            router._builtins,
-            router._session_handlers,
-            router._command_loader,
-            router._enabled_plugins,
-            router._msg_manager,
+            HelpCommandDeps(
+                builtins=router._builtins,
+                session_handlers=router._session_handlers,
+                command_loader=router._command_loader,
+                enabled_plugins=router._enabled_plugins,
+                msg_manager=router._msg_manager,
+            )
         )
         assert "Commands:" in response.content
         assert "/mything" in response.content
@@ -466,35 +471,41 @@ class TestSessionCommands:
 
             # passthroughs=None → show all (backward compat)
             resp_none = help_command(
-                router._builtins,
-                router._session_handlers,
-                router._command_loader,
-                router._enabled_plugins,
-                router._msg_manager,
+                HelpCommandDeps(
+                    builtins=router._builtins,
+                    session_handlers=router._session_handlers,
+                    command_loader=router._command_loader,
+                    enabled_plugins=router._enabled_plugins,
+                    msg_manager=router._msg_manager,
+                )
             )
             assert "/fake-a" in resp_none.content
             assert "/fake-b" in resp_none.content
 
             # Empty passthroughs → hide all processor commands
             resp_empty = help_command(
-                router._builtins,
-                router._session_handlers,
-                router._command_loader,
-                router._enabled_plugins,
-                router._msg_manager,
-                passthroughs=frozenset(),
+                HelpCommandDeps(
+                    builtins=router._builtins,
+                    session_handlers=router._session_handlers,
+                    command_loader=router._command_loader,
+                    enabled_plugins=router._enabled_plugins,
+                    msg_manager=router._msg_manager,
+                    passthroughs=frozenset(),
+                )
             )
             assert "/fake-a" not in resp_empty.content
             assert "/fake-b" not in resp_empty.content
 
             # Selective passthroughs → only matching ones appear
             resp_one = help_command(
-                router._builtins,
-                router._session_handlers,
-                router._command_loader,
-                router._enabled_plugins,
-                router._msg_manager,
-                passthroughs=frozenset({"/fake-a"}),
+                HelpCommandDeps(
+                    builtins=router._builtins,
+                    session_handlers=router._session_handlers,
+                    command_loader=router._command_loader,
+                    enabled_plugins=router._enabled_plugins,
+                    msg_manager=router._msg_manager,
+                    passthroughs=frozenset({"/fake-a"}),
+                )
             )
             assert "/fake-a" in resp_one.content
             assert "/fake-b" not in resp_one.content

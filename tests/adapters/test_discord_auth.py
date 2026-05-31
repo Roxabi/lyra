@@ -166,13 +166,15 @@ class TestHubTrustResolution:
 
     def test_resolves_trust_from_authenticator(self) -> None:
         """Hub re-resolves trust on dequeued message."""
-        from lyra.core.auth.authenticator import Authenticator
+        from lyra.core.auth.authenticator import Authenticator, AuthenticatorDeps
         from lyra.core.hub.hub import Hub
         from lyra.core.messaging.message import InboundMessage, Platform
 
         store = MagicMock()
         store.check.return_value = TrustLevel.TRUSTED
-        auth = Authenticator(store=store, role_map={}, default=TrustLevel.PUBLIC)
+        auth = Authenticator(
+            AuthenticatorDeps(store=store, role_map={}, default=TrustLevel.PUBLIC)
+        )
 
         hub = Hub()
         hub.register_authenticator(Platform.TELEGRAM, "main", auth)
@@ -319,14 +321,16 @@ class TestHubTrustResolutionEdgeCases:
 
     def test_invalid_platform_returns_message_unchanged(self) -> None:
         """Invalid platform string causes early return — message object is unchanged."""
-        from lyra.core.auth.authenticator import Authenticator
+        from lyra.core.auth.authenticator import Authenticator, AuthenticatorDeps
         from lyra.core.hub.hub import Hub
         from lyra.core.messaging.message import Platform
 
         # Arrange
         store = MagicMock()
         store.check.return_value = TrustLevel.TRUSTED
-        auth = Authenticator(store=store, role_map={}, default=TrustLevel.PUBLIC)
+        auth = Authenticator(
+            AuthenticatorDeps(store=store, role_map={}, default=TrustLevel.PUBLIC)
+        )
 
         hub = Hub()
         hub.register_authenticator(Platform.TELEGRAM, "main", auth)

@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from lyra.core.commands.command_loader import CommandLoader
-from lyra.core.commands.command_router import CommandRouter
+from lyra.core.commands.command_router import CommandRouter, CommandRouterDeps
 from lyra.core.messaging.message import Response
 from lyra.core.pool import Pool
 
@@ -25,10 +25,12 @@ def make_workspace_router(tmp_path: Path, workspaces: dict[str, Path]) -> Comman
     plugins_dir = Path(tempfile.mkdtemp())
     loader = CommandLoader(plugins_dir)
     return CommandRouter(
-        command_loader=loader,
-        enabled_plugins=[],
-        workspaces=workspaces,
-        base_dir=tmp_path,
+        CommandRouterDeps(
+            command_loader=loader,
+            enabled_plugins=[],
+            workspaces=workspaces,
+            base_dir=tmp_path,
+        )
     )
 
 

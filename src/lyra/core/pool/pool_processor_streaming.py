@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import collections.abc
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -17,6 +18,7 @@ if TYPE_CHECKING:
 
 from ..messaging.message import OutboundMessage, Response
 from ..messaging.render_events import RenderEvent, TextDeltaRenderEvent
+from .pool_observer import TurnLogDeps
 
 log = logging.getLogger(__name__)
 
@@ -50,13 +52,20 @@ def build_streaming_capture(
     return _capture()
 
 
-def build_streaming_turn_logger(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — internal helper, params bundled for streaming context
-    pool: Pool,
-    result_iter_for_sid: collections.abc.AsyncIterator[RenderEvent],
-    original_msg: InboundMessage,
-    platform: str,
-    user_id: str,
-    content_parts: list[str],
+@dataclass(frozen=True)
+class StreamLogDeps:
+    """Dependencies for build_streaming_turn_logger."""
+
+    pool: Pool
+    result_iter_for_sid: collections.abc.AsyncIterator[RenderEvent]
+    original_msg: InboundMessage
+    platform: str
+    user_id: str
+    content_parts: list[str]
+
+
+def build_streaming_turn_logger(
+    deps: StreamLogDeps,
 ) -> tuple[OutboundMessage, Callable[[OutboundMessage], Awaitable[None]]]:
     """Build OutboundMessage with turn-logging callback for streaming responses.
 
@@ -68,26 +77,28 @@ def build_streaming_turn_logger(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
 
     async def _log_streaming_turn(outbound_msg: OutboundMessage) -> None:
         # Clear inflight reference once streaming is fully delivered.
-        if pool._inflight_stream_outbound is outbound_msg:
-            pool._inflight_stream_outbound = None
+        if deps.pool._inflight_stream_outbound is outbound_msg:
+            deps.pool._inflight_stream_outbound = None
         # Propagate CLI session_id from the (now-consumed) iterator.
-        _stream_sid = getattr(result_iter_for_sid, "session_id", None)
-        if _stream_sid and pool.session_id != _stream_sid:
-            await pool._observer.end_session_async(pool.session_id)
-            pool.session_id = _stream_sid
-        await pool._observer.session_update_async(original_msg)
+        _stream_sid = getattr(deps.result_iter_for_sid, "session_id", None)
+        if _stream_sid and deps.pool.session_id != _stream_sid:
+            await deps.pool._observer.end_session_async(deps.pool.session_id)
+            deps.pool.session_id = _stream_sid
+        await deps.pool._observer.session_update_async(deps.original_msg)
         _reply_id = outbound_msg.metadata.get("reply_message_id")
-        await pool._observer.log_turn_async(
-            role="assistant",
-            platform=platform,
-            user_id=user_id,
-            content="".join(content_parts),
-            reply_message_id=(str(_reply_id) if _reply_id is not None else None),
+        await deps.pool._observer.log_turn_async(
+            TurnLogDeps(
+                role="assistant",
+                platform=deps.platform,
+                user_id=deps.user_id,
+                content="".join(deps.content_parts),
+                reply_message_id=(str(_reply_id) if _reply_id is not None else None),
+            )
         )
         # Index assistant turn for reply-to session routing (#341).
-        await pool._observer.index_turn_async(
+        await deps.pool._observer.index_turn_async(
             str(_reply_id) if _reply_id is not None else None,
-            session_id=pool.session_id,
+            session_id=deps.pool.session_id,
             role="assistant",
         )
 

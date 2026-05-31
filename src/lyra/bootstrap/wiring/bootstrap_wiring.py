@@ -21,7 +21,7 @@ from lyra.config import (
     TelegramBotConfig,
     TelegramMultiConfig,
 )
-from lyra.core.auth.authenticator import Authenticator
+from lyra.core.auth.authenticator import Authenticator, FromBotStoreDeps
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.hub import Hub, OutboundDispatcher, RoutingKey
 from lyra.core.messaging.message import Platform
@@ -286,12 +286,14 @@ def _build_bot_auths(
     try:
         for bot_cfg in deps.tg_multi_cfg.bots:
             auth = Authenticator.from_bot_store(
-                "telegram",
-                bot_cfg.bot_id,
-                deps.bot_store,
-                store=deps.auth_store,
-                admin_user_ids=deps.admin_user_ids,
-                alias_store=deps.alias_store,
+                FromBotStoreDeps(
+                    platform="telegram",
+                    bot_id=bot_cfg.bot_id,
+                    bot_store=deps.bot_store,
+                    store=deps.auth_store,
+                    admin_user_ids=deps.admin_user_ids,
+                    alias_store=deps.alias_store,
+                )
             )
             if auth is None:
                 log.warning(
@@ -303,12 +305,14 @@ def _build_bot_auths(
 
         for bot_cfg in deps.dc_multi_cfg.bots:
             auth = Authenticator.from_bot_store(
-                "discord",
-                bot_cfg.bot_id,
-                deps.bot_store,
-                store=deps.auth_store,
-                admin_user_ids=deps.admin_user_ids,
-                alias_store=deps.alias_store,
+                FromBotStoreDeps(
+                    platform="discord",
+                    bot_id=bot_cfg.bot_id,
+                    bot_store=deps.bot_store,
+                    store=deps.auth_store,
+                    admin_user_ids=deps.admin_user_ids,
+                    alias_store=deps.alias_store,
+                )
             )
             if auth is None:
                 log.warning(

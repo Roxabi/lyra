@@ -10,6 +10,7 @@ import asyncio
 import logging
 import time
 from collections.abc import Callable, Coroutine
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -34,11 +35,31 @@ from .cli_protocol import (
     send_and_read,
 )
 
+
+@dataclass(frozen=True)
+class CliPoolDeps:
+    """Dependencies for CliPool constructor."""
+
+    idle_ttl: int = 1200
+    default_timeout: int = 1200  # 20 min × 3 retries = 60 min max idle
+    on_reap: Callable[[str, str], Coroutine[Any, Any, None]] | None = field(
+        default=None
+    )
+    reaper_interval: int = 60
+    kill_timeout: float = 5.0
+    read_buffer_bytes: int = 1024 * 1024
+    stdin_drain_timeout: float = 10.0
+    max_idle_retries: int = 3
+    intermediate_timeout: float = 5.0
+    audit_sink: AuditSink | None = field(default=None)
+
+
 # Re-export private names that tests reference via
 # `from lyra.core.cli.cli_pool import …`
 __all__ = [
     "AuditSink",
     "CliPool",
+    "CliPoolDeps",
     "CliResult",
     "_LYRA_ROOT",
     "_ProcessEntry",
@@ -66,30 +87,18 @@ class CliPool(  # noqa: E501 — DEBT:lint-residual
         await pool.stop()
     """
 
-    def __init__(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
-        self,
-        idle_ttl: int = 1200,
-        default_timeout: int = 1200,  # 20 min × 3 retries = 60 min max idle
-        on_reap: Callable[[str, str], Coroutine[Any, Any, None]] | None = None,
-        *,
-        reaper_interval: int = 60,
-        kill_timeout: float = 5.0,
-        read_buffer_bytes: int = 1024 * 1024,
-        stdin_drain_timeout: float = 10.0,
-        max_idle_retries: int = 3,
-        intermediate_timeout: float = 5.0,
-        audit_sink: AuditSink | None = None,
-    ) -> None:
-        self._idle_ttl = idle_ttl
-        self._default_timeout = default_timeout
-        self._on_reap = on_reap
-        self._reaper_interval = reaper_interval
-        self._kill_timeout = kill_timeout
-        self._read_buffer_bytes = read_buffer_bytes
+    def __init__(self, deps: CliPoolDeps | None = None) -> None:
+        d = deps or CliPoolDeps()
+        self._idle_ttl = d.idle_ttl
+        self._default_timeout = d.default_timeout
+        self._on_reap = d.on_reap
+        self._reaper_interval = d.reaper_interval
+        self._kill_timeout = d.kill_timeout
+        self._read_buffer_bytes = d.read_buffer_bytes
         self._protocol_opts = CliProtocolOptions(
-            stdin_drain_timeout=stdin_drain_timeout,
-            max_idle_retries=max_idle_retries,
-            intermediate_timeout=intermediate_timeout,
+            stdin_drain_timeout=d.stdin_drain_timeout,
+            max_idle_retries=d.max_idle_retries,
+            intermediate_timeout=d.intermediate_timeout,
         )
         self._entries: dict[str, _ProcessEntry] = {}
         self._reaper_task: asyncio.Task[None] | None = None
@@ -103,7 +112,7 @@ class CliPool(  # noqa: E501 — DEBT:lint-residual
         # Updated by link_lyra_session() before each send, so the
         # _on_session_update callback can record {lyra_sid → cli_sid}.
         self._lyra_sessions: dict[str, str] = {}
-        self._audit_sink: AuditSink | None = audit_sink
+        self._audit_sink: AuditSink | None = d.audit_sink
         # Anchors fire-and-forget audit emit tasks so GC cannot collect them
         # before completion. Done-callback removes each task on completion.
         self._audit_tasks: set[asyncio.Task[None]] = set()

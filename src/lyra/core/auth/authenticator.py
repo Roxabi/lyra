@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from lyra.core.auth.identity import Identity
@@ -20,7 +21,13 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-__all__ = ["Authenticator", "_ALLOW_ALL", "_DENY_ALL"]
+__all__ = [
+    "Authenticator",
+    "AuthenticatorDeps",
+    "FromBotStoreDeps",
+    "_ALLOW_ALL",
+    "_DENY_ALL",
+]
 
 
 _TRUST_ORDER: dict[TrustLevel, int] = {
@@ -31,6 +38,36 @@ _TRUST_ORDER: dict[TrustLevel, int] = {
 }
 
 
+@dataclass(frozen=True)
+class AuthenticatorDeps:
+    """Wiring dependencies for Authenticator.__init__.
+
+    Collapsed from PLR0913 parameter list (#1494).
+    """
+
+    store: AuthStore | None = None
+    role_map: dict[str, TrustLevel] = field(default_factory=dict)
+    default: TrustLevel = TrustLevel.BLOCKED
+    public_commands: list[str] | None = None
+    admin_user_ids: frozenset[str] = frozenset()
+    alias_store: IdentityAliasStore | None = None
+
+
+@dataclass(frozen=True)
+class FromBotStoreDeps:
+    """Wiring dependencies for Authenticator.from_bot_store.
+
+    Collapsed from PLR0913 parameter list (#1494).
+    """
+
+    platform: str = ""
+    bot_id: str = ""
+    bot_store: BotStoreProtocol | None = None
+    store: AuthStore | None = None
+    admin_user_ids: frozenset[str] = frozenset()
+    alias_store: IdentityAliasStore | None = None
+
+
 class Authenticator:
     """Identity resolver: trust resolution considers all linked aliases.
 
@@ -38,23 +75,19 @@ class Authenticator:
     → role_map → default.
     """
 
-    def __init__(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
+    def __init__(
         self,
-        store: AuthStore | None,
-        role_map: dict[str, TrustLevel],
-        default: TrustLevel,
-        public_commands: list[str] | None = None,
-        admin_user_ids: frozenset[str] = frozenset(),
-        alias_store: IdentityAliasStore | None = None,
+        deps: AuthenticatorDeps | None = None,
     ) -> None:
-        self._store = store
-        self._role_map = role_map
-        self._default = default
+        d = deps or AuthenticatorDeps()
+        self._store = d.store
+        self._role_map = d.role_map
+        self._default = d.default
         self._public_commands: frozenset[str] = frozenset(
-            public_commands if public_commands is not None else ["/join"]
+            d.public_commands if d.public_commands is not None else ["/join"]
         )
-        self._admin_user_ids = admin_user_ids
-        self._alias_store = alias_store
+        self._admin_user_ids = d.admin_user_ids
+        self._alias_store = d.alias_store
 
     def _store_level(self, user_id: str | None) -> TrustLevel | None:
         if self._store is None or user_id is None:
@@ -169,11 +202,13 @@ class Authenticator:
         alias_store: IdentityAliasStore | None = None,
     ) -> Authenticator:
         return cls(
-            store=store,
-            role_map={},
-            default=TrustLevel.OWNER,
-            admin_user_ids=admin_user_ids,
-            alias_store=alias_store,
+            AuthenticatorDeps(
+                store=store,
+                role_map={},
+                default=TrustLevel.OWNER,
+                admin_user_ids=admin_user_ids,
+                alias_store=alias_store,
+            )
         )
 
     @classmethod
@@ -200,11 +235,13 @@ class Authenticator:
             role_map[str(role)] = TrustLevel.TRUSTED
 
         return cls(
-            store=store,
-            role_map=role_map,
-            default=default,
-            admin_user_ids=admin_user_ids,
-            alias_store=alias_store,
+            AuthenticatorDeps(
+                store=store,
+                role_map=role_map,
+                default=default,
+                admin_user_ids=admin_user_ids,
+                alias_store=alias_store,
+            )
         )
 
     @classmethod
@@ -242,30 +279,36 @@ class Authenticator:
         )
 
     @classmethod
-    def from_bot_store(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
+    def from_bot_store(
         cls,
-        platform: str,
-        bot_id: str,
-        bot_store: BotStoreProtocol,
-        store: AuthStore | None = None,
-        admin_user_ids: frozenset[str] = frozenset(),
-        alias_store: IdentityAliasStore | None = None,
+        deps: FromBotStoreDeps,
     ) -> Authenticator | None:
-        if platform == "cli":
+        d = deps
+        if d.platform == "cli":
             return cls._cli_sentinel(
                 store=None,
-                admin_user_ids=admin_user_ids,
-                alias_store=alias_store,
+                admin_user_ids=d.admin_user_ids,
+                alias_store=d.alias_store,
             )
-        row = bot_store.get(platform, bot_id)
+        if d.bot_store is None:
+            log.warning(
+                "Missing bot_store for %s bot_id=%r"
+                " -- %s adapter bot_id=%r will be disabled",
+                d.platform,
+                d.bot_id,
+                d.platform,
+                d.bot_id,
+            )
+            return None
+        row = d.bot_store.get(d.platform, d.bot_id)
         if row is None:
             log.warning(
                 "Missing bot config for %s bot_id=%r"
                 " -- %s adapter bot_id=%r will be disabled",
-                platform,
-                bot_id,
-                platform,
-                bot_id,
+                d.platform,
+                d.bot_id,
+                d.platform,
+                d.bot_id,
             )
             return None
         section_cfg = {
@@ -274,17 +317,21 @@ class Authenticator:
         }
         return cls._build_from_section_cfg(
             section_cfg,
-            context_label=f"bot store for {platform} bot_id={bot_id!r}",
-            store=store,
-            admin_user_ids=admin_user_ids,
-            alias_store=alias_store,
+            context_label=f"bot store for {d.platform} bot_id={d.bot_id!r}",
+            store=d.store,
+            admin_user_ids=d.admin_user_ids,
+            alias_store=d.alias_store,
         )
 
 
 # Sentinel: denies all traffic by default (safe default when no auth is configured).
-_DENY_ALL = Authenticator(store=None, role_map={}, default=TrustLevel.BLOCKED)
+_DENY_ALL = Authenticator(
+    AuthenticatorDeps(store=None, role_map={}, default=TrustLevel.BLOCKED)
+)
 
 # Sentinel: allows all traffic as PUBLIC (for tests and permissive contexts).
 # Note: resolve() always returns is_admin=False. For admin identity in tests,
 # construct Authenticator directly with admin_user_ids or use trust=OWNER.
-_ALLOW_ALL = Authenticator(store=None, role_map={}, default=TrustLevel.PUBLIC)
+_ALLOW_ALL = Authenticator(
+    AuthenticatorDeps(store=None, role_map={}, default=TrustLevel.PUBLIC)
+)

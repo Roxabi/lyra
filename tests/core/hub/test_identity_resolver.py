@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from lyra.core.auth.authenticator import Authenticator
+from lyra.core.auth.authenticator import Authenticator, AuthenticatorDeps
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.hub.hub_protocol import Binding, RoutingKey
 from lyra.core.hub.identity_resolver import IdentityResolver
@@ -53,10 +53,12 @@ def make_authenticator(
 ) -> Authenticator:
     """Build a minimal Authenticator for tests."""
     return Authenticator(
-        store=None,
-        role_map=role_map or {},
-        default=default,
-        admin_user_ids=admin_user_ids,
+        AuthenticatorDeps(
+            store=None,
+            role_map=role_map or {},
+            default=default,
+            admin_user_ids=admin_user_ids,
+        )
     )
 
 

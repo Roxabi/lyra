@@ -20,7 +20,7 @@ from lyra.core.paths import PLUGINS_DIR
 from ..auth.trust import TrustLevel
 from ..circuit_breaker import CircuitRegistry
 from ..commands.command_loader import CommandLoader
-from ..commands.command_router import CommandRouter
+from ..commands.command_router import CommandRouter, CommandRouterDeps
 from ..config import RouterConfig
 from ..messaging.message import InboundMessage, Response
 from ..messaging.messages import MessageManager
@@ -160,12 +160,14 @@ class AgentBase(ABC, SessionManager):
             session_driver=router_kwargs.get("session_driver"),
         )
         self.command_router = CommandRouter(
-            self._command_loader,
-            self._command_mgr.effective_commands,
-            config=router_config,
-            circuit_registry=self._circuit_registry,
-            msg_manager=self._msg_manager,
-            runtime_config_path=router_kwargs.get("runtime_config_path"),
+            CommandRouterDeps(
+                command_loader=self._command_loader,
+                enabled_plugins=self._command_mgr.effective_commands,
+                config=router_config,
+                circuit_registry=self._circuit_registry,
+                msg_manager=self._msg_manager,
+                runtime_config_path=router_kwargs.get("runtime_config_path"),
+            )
         )
 
     def _build_router_kwargs(self) -> dict:

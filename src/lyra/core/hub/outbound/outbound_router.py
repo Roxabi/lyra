@@ -15,6 +15,7 @@ import asyncio
 import logging
 import time
 from collections.abc import AsyncIterator, Callable, Coroutine
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from ...messaging.callbacks import unwrap_callback
@@ -37,9 +38,22 @@ if TYPE_CHECKING:
     from .outbound_dispatcher import OutboundDispatcher
 
 # Re-export for API preservation
-__all__ = ["AudioDispatch", "OutboundRouter", "TtsDispatch"]
+__all__ = ["AudioDispatch", "OutboundRouter", "OutboundRouterDeps", "TtsDispatch"]
 
 log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class OutboundRouterDeps:
+    """Collapsed constructor parameters for OutboundRouter."""
+
+    adapters: "dict[tuple[Platform, str], ChannelAdapter]"
+    dispatchers: "dict[tuple[Platform, str], OutboundDispatcher]"
+    audio_pipeline: "AudioPipeline | None" = None
+    circuit_registry: "CircuitRegistry | None" = None
+    msg_manager: "MessageManager | None" = None
+    tts: "object | None" = None
+    memory_tasks: "set[asyncio.Task] | None" = None
 
 
 class OutboundRouter:
@@ -52,36 +66,27 @@ class OutboundRouter:
     Owns TTS integration for voice responses.
     """
 
-    def __init__(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
-        self,
-        adapters: dict[tuple[Platform, str], "ChannelAdapter"],
-        dispatchers: dict[tuple[Platform, str], "OutboundDispatcher"],
-        audio_pipeline: "AudioPipeline | None" = None,
-        circuit_registry: "CircuitRegistry | None" = None,
-        msg_manager: "MessageManager | None" = None,
-        tts: "object | None" = None,
-        memory_tasks: "set[asyncio.Task] | None" = None,
-    ) -> None:
-        self._adapters = adapters
-        self._dispatchers = dispatchers
-        self._audio_pipeline = audio_pipeline
-        self._circuit_registry = circuit_registry
-        self._msg_manager = msg_manager
-        self._tts = tts
-        self._memory_tasks = memory_tasks
+    def __init__(self, deps: OutboundRouterDeps) -> None:
+        self._adapters = deps.adapters
+        self._dispatchers = deps.dispatchers
+        self._audio_pipeline = deps.audio_pipeline
+        self._circuit_registry = deps.circuit_registry
+        self._msg_manager = deps.msg_manager
+        self._tts = deps.tts
+        self._memory_tasks = deps.memory_tasks
         self._last_processed_at: float | None = None
         # TTS dispatch helper (extracted per #760)
         self._tts_dispatch = TtsDispatch(
-            audio_pipeline=audio_pipeline,
-            tts=tts,
-            memory_tasks=memory_tasks,
+            audio_pipeline=deps.audio_pipeline,
+            tts=deps.tts,
+            memory_tasks=deps.memory_tasks,
         )
         # Audio dispatch helper (extracted per #760)
         self._audio_dispatch = AudioDispatch(route_outbound=self._route_outbound)
         # Streaming dispatch helper (extracted per #760)
         self._streaming_dispatch = StreamingDispatch(
-            adapters=adapters,
-            dispatchers=dispatchers,
+            adapters=deps.adapters,
+            dispatchers=deps.dispatchers,
             tts_dispatch=self._tts_dispatch,
             get_tts=lambda: self._tts,
             get_audio_pipeline=lambda: self._audio_pipeline,

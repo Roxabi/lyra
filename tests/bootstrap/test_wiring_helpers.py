@@ -571,7 +571,7 @@ class TestInitClipool:
         mock_cli_pool = MagicMock()
         mock_cli_pool.start = AsyncMock()
         mock_cli_pool.set_turn_store = MagicMock()
-        monkeypatch.setattr(hub_builder_mod, "CliPool", lambda **kw: mock_cli_pool)
+        monkeypatch.setattr(hub_builder_mod, "CliPool", lambda deps=None: mock_cli_pool)
 
         mock_llm_client = MagicMock()
         monkeypatch.setattr(

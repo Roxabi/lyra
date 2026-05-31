@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.cli.cli_pool import CliPool, _ProcessEntry
+from lyra.core.cli.cli_pool import CliPool, CliPoolDeps, _ProcessEntry
 from lyra.core.cli.cli_protocol import StreamingIterator
 from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent
 from tests.conftest import yield_once
@@ -60,7 +60,9 @@ class TestOnReapCallback:
 
     async def test_reaper_calls_on_reap_for_idle(self) -> None:
         on_reap = AsyncMock()
-        pool = CliPool(idle_ttl=0, on_reap=on_reap)  # ttl=0 → immediate reap
+        pool = CliPool(
+            CliPoolDeps(idle_ttl=0, on_reap=on_reap)
+        )  # ttl=0 → immediate reap
 
         proc = make_fake_proc([INIT_LINE])
         entry = _ProcessEntry(proc=proc, pool_id="p1", model_config=DEFAULT_MODEL)
@@ -91,7 +93,7 @@ class TestOnReapCallback:
     async def test_reaper_survives_on_reap_failure(self) -> None:
         """SC-7: on_reap failure must not crash reaper."""
         on_reap = AsyncMock(side_effect=RuntimeError("dispatch failed"))
-        pool = CliPool(idle_ttl=0, on_reap=on_reap)
+        pool = CliPool(CliPoolDeps(idle_ttl=0, on_reap=on_reap))
 
         proc = make_fake_proc([INIT_LINE])
         entry = _ProcessEntry(proc=proc, pool_id="p1", model_config=DEFAULT_MODEL)
@@ -122,7 +124,7 @@ class TestOnReapCallback:
     async def test_on_reap_not_called_for_dead_processes(self) -> None:
         """on_reap only fires for idle eviction, not dead process cleanup."""
         on_reap = AsyncMock()
-        pool = CliPool(idle_ttl=9999, on_reap=on_reap)
+        pool = CliPool(CliPoolDeps(idle_ttl=9999, on_reap=on_reap))
 
         proc = make_fake_proc([INIT_LINE])
         proc.returncode = 1  # dead

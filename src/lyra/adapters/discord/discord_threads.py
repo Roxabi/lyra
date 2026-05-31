@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -14,6 +15,18 @@ if TYPE_CHECKING:
     from lyra.core.stores.thread_store_protocol import ThreadStoreProtocol
 
 log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ThreadPersistDeps:
+    """Frozen DI object for persist_thread_session() — replaces PLR0913 param list."""
+
+    thread_store: "ThreadStoreProtocol"
+    msg: "InboundMessage"
+    session_id: str
+    pool_id: str
+    bot_id: str
+    cache: dict[str, ThreadSession]
 
 
 async def persist_thread_claim(
@@ -42,15 +55,16 @@ async def persist_thread_claim(
         )
 
 
-async def persist_thread_session(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — each arg is a distinct required dependency
-    thread_store: "ThreadStoreProtocol",
-    msg: "InboundMessage",
-    session_id: str,
-    pool_id: str,
-    bot_id: str,
-    cache: dict[str, ThreadSession],
-) -> None:
+async def persist_thread_session(deps: ThreadPersistDeps) -> None:
     """Persist session_id and pool_id for a thread after a successful turn."""
+    thread_store, msg, session_id, pool_id, bot_id, cache = (
+        deps.thread_store,
+        deps.msg,
+        deps.session_id,
+        deps.pool_id,
+        deps.bot_id,
+        deps.cache,
+    )
     if not isinstance(msg.platform_meta, DiscordMeta):
         return
     thread_id: int | None = msg.platform_meta.thread_id

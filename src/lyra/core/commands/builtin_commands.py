@@ -8,6 +8,7 @@ from __future__ import annotations
 import importlib
 import logging
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -22,6 +23,25 @@ if TYPE_CHECKING:
     from ..messaging.messages import MessageManager
     from ..runtime_config import RuntimeConfigHolder
     from .command_loader import CommandLoader
+
+
+@dataclass(frozen=True)
+class HelpCommandDeps:
+    """Collapsed parameters for help_command and config_command."""
+
+    builtins: "Mapping[str, object]"
+    session_handlers: "Mapping[str, object] | None"
+    command_loader: "CommandLoader"
+    enabled_plugins: "list[str]"
+    msg_manager: "MessageManager | None"
+    passthroughs: "frozenset[str] | None" = None
+    # config_command fields (unused by help_command; defaults make them optional)
+    msg: "InboundMessage | None" = None
+    args: "list[str] | None" = None
+    runtime_config_holder: "RuntimeConfigHolder | None" = None
+    runtime_config_path: "Path | None" = None
+    on_debounce_change: "Callable[[int], None] | None" = None
+    on_cancel_change: "Callable[[bool], None] | None" = None
 
 
 def require_admin(msg: InboundMessage) -> "Response | None":
@@ -39,23 +59,20 @@ def require_admin(msg: InboundMessage) -> "Response | None":
     return None
 
 
-def help_command(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
-    builtins: Mapping[str, object],
-    session_handlers: "Mapping[str, object] | None",
-    command_loader: "CommandLoader",
-    enabled_plugins: list[str],
-    msg_manager: "MessageManager | None",
-    passthroughs: "frozenset[str] | None" = None,
-) -> Response:
+def help_command(deps: HelpCommandDeps) -> Response:
     """Return a listing of all available commands, grouped by section."""
-    header = msg_manager.get("help_header") if msg_manager else "Available commands:"
+    header = (
+        deps.msg_manager.get("help_header")
+        if deps.msg_manager
+        else "Available commands:"
+    )
     lines: list[str] = [header]
     lines.append("Commands:")
-    for cmd_name, cfg in sorted(builtins.items()):
+    for cmd_name, cfg in sorted(deps.builtins.items()):
         desc = getattr(cfg, "description", "") or "(no description)"
         lines.append(f"  {cmd_name} — {desc}")
-    if session_handlers:
-        for cmd_name, entry in sorted(session_handlers.items()):
+    if deps.session_handlers:
+        for cmd_name, entry in sorted(deps.session_handlers.items()):
             desc = getattr(entry, "description", "") or "(no description)"
             lines.append(f"  {cmd_name} — {desc}")
     # Include processor registry commands only when the agent registered them
@@ -68,15 +85,17 @@ def help_command(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         proc_descs = _proc_registry.descriptions()
         if proc_descs:
             for cmd_name, desc in sorted(proc_descs.items()):
-                if passthroughs is None or cmd_name in passthroughs:
+                if deps.passthroughs is None or cmd_name in deps.passthroughs:
                     lines.append(f"  {cmd_name} — {desc or '(no description)'}")
     except Exception as exc:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
         log.debug("Could not load processor descriptions: %s", exc)
-    plugin_handlers = command_loader.get_commands(enabled_plugins)
-    plugin_cmds = [cmd for cmd in sorted(plugin_handlers) if cmd not in builtins]
+    plugin_handlers = deps.command_loader.get_commands(deps.enabled_plugins)
+    plugin_cmds = [cmd for cmd in sorted(plugin_handlers) if cmd not in deps.builtins]
     if plugin_cmds:
         lines.append("Plugins:")
-        plugin_descs = command_loader.get_command_descriptions(enabled_plugins)
+        plugin_descs = deps.command_loader.get_command_descriptions(
+            deps.enabled_plugins
+        )
         for cmd_name in plugin_cmds:
             desc = plugin_descs.get(cmd_name, "(plugin command)")
             lines.append(f"  {cmd_name} — {desc}")
@@ -104,29 +123,26 @@ def circuit_status(
     return Response(content="\n".join(lines))
 
 
-def config_command(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — mirrors original DI surface
-    msg: InboundMessage,
-    args: list[str],
-    runtime_config_holder: "RuntimeConfigHolder | None",
-    runtime_config_path: Path | None,
-    on_debounce_change: "Callable[[int], None] | None",
-    on_cancel_change: "Callable[[bool], None] | None" = None,
-) -> Response:
+def config_command(deps: HelpCommandDeps) -> Response:
     """Dispatch /config show/set/reset."""
-    if denied := require_admin(msg):
+    assert deps.msg is not None, "config_command requires deps.msg"
+    assert deps.args is not None, "config_command requires deps.args"
+    if denied := require_admin(deps.msg):
         return denied
-    if runtime_config_holder is None:
+    if deps.runtime_config_holder is None:
         return Response(content="Runtime config not available for this backend.")
-    if not args:
-        return _config_show(runtime_config_holder)
-    if args[0] == "reset":
-        return _config_reset(args[1:], runtime_config_holder, runtime_config_path)
+    if not deps.args:
+        return _config_show(deps.runtime_config_holder)
+    if deps.args[0] == "reset":
+        return _config_reset(
+            deps.args[1:], deps.runtime_config_holder, deps.runtime_config_path
+        )
     return _config_set(
-        args,
-        runtime_config_holder,
-        runtime_config_path,
-        on_debounce_change,
-        on_cancel_change,
+        deps.args,
+        deps.runtime_config_holder,
+        deps.runtime_config_path,
+        deps.on_debounce_change,
+        deps.on_cancel_change,
     )
 
 

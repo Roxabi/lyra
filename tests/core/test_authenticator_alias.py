@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.auth.authenticator import Authenticator
+from lyra.core.auth.authenticator import Authenticator, AuthenticatorDeps
 from lyra.core.auth.trust import TrustLevel
 from lyra.infrastructure.stores.auth_store import AuthStore
 from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
@@ -43,11 +43,13 @@ def make_auth(
     admin_user_ids: frozenset[str] = frozenset(),
 ) -> Authenticator:
     return Authenticator(
-        store=auth_store,
-        role_map={},
-        default=TrustLevel.PUBLIC,
-        admin_user_ids=admin_user_ids,
-        alias_store=alias_store,
+        AuthenticatorDeps(
+            store=auth_store,
+            role_map={},
+            default=TrustLevel.PUBLIC,
+            admin_user_ids=admin_user_ids,
+            alias_store=alias_store,
+        )
     )
 
 

@@ -24,7 +24,7 @@ import pytest
 
 from lyra.core.agent import Agent, AgentBase
 from lyra.core.commands.command_loader import CommandLoader
-from lyra.core.commands.command_router import CommandRouter
+from lyra.core.commands.command_router import CommandRouter, CommandRouterDeps
 from lyra.core.messaging.message import (
     InboundMessage,
     OutboundMessage,
@@ -199,7 +199,10 @@ class TestHotReloadUpdatesCommands:
         agent._effective_plugins = ["echo"]
         agent._plugin_mtimes = agent._record_plugin_mtimes()
         agent.command_router = CommandRouter(
-            agent._command_loader, agent._effective_plugins
+            CommandRouterDeps(
+                command_loader=agent._command_loader,
+                enabled_plugins=agent._effective_plugins,
+            )
         )
 
         plugin_cmds = agent._command_loader.get_commands(["echo"])
@@ -336,7 +339,7 @@ class TestMsgManagerInjectionUnknownCommand:
         plugins_dir = Path(tempfile.mkdtemp())
         loader = CommandLoader(plugins_dir)
         router = CommandRouter(
-            command_loader=loader, enabled_plugins=[], msg_manager=mm
+            CommandRouterDeps(command_loader=loader, enabled_plugins=[], msg_manager=mm)
         )
         msg = make_message(content="/unknown_cmd")
 

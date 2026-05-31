@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Coroutine
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from lyra.adapters.shared._shared_audio import (
@@ -50,6 +51,7 @@ __all__ = [
     "ATTACHMENT_EXTS_BASE",
     "DISCORD_MAX_LENGTH",
     "push_to_hub_guarded",
+    "PushGuardDeps",
     "truncate_caption",
     "sanitize_filename",
     "chunk_text",
@@ -64,17 +66,24 @@ __all__ = [
 log = logging.getLogger(__name__)
 
 
-async def push_to_hub_guarded(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — each arg is a distinct guard/callback dependency
-    *,
-    inbound_bus: "Bus[Any]",
-    platform: Platform,
-    msg: InboundMessage,
-    circuit_registry: CircuitRegistry | None,
-    on_drop: Callable[[], None] | None,
-    send_backpressure: Callable[[str], Awaitable[None]],
-    get_msg: Callable[[str, str], str],
-    outbound_listener: "OutboundListener | None" = None,
-) -> None:
+@dataclass(frozen=True)
+class PushGuardDeps:
+    """Frozen deps for push_to_hub_guarded.
+
+    Each field is a distinct guard/callback dependency.
+    """
+
+    inbound_bus: "Bus[Any]"
+    platform: Platform
+    msg: InboundMessage
+    circuit_registry: CircuitRegistry | None
+    on_drop: Callable[[], None] | None
+    send_backpressure: Callable[[str], Awaitable[None]]
+    get_msg: Callable[[str, str], str]
+    outbound_listener: "OutboundListener | None" = field(default=None)
+
+
+async def push_to_hub_guarded(deps: PushGuardDeps) -> None:
     """Put *msg* on the inbound bus with circuit-open and backpressure guards.
 
     *on_drop* is called before early return in both circuit-open and QueueFull
@@ -86,36 +95,36 @@ async def push_to_hub_guarded(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps �
     message by stream_id.  Must be called here (not by the caller) to guarantee
     the cache is populated before the hub can dispatch a response.
     """
-    if outbound_listener is not None:
-        outbound_listener.cache_inbound(msg)
+    if deps.outbound_listener is not None:
+        deps.outbound_listener.cache_inbound(deps.msg)
 
-    if circuit_registry is not None:
-        cb = circuit_registry.get("hub")
+    if deps.circuit_registry is not None:
+        cb = deps.circuit_registry.get("hub")
         if cb is not None and cb.is_open():
             log.warning(
                 "hub_circuit_open",
                 extra={
-                    "platform": platform.value,
-                    "user_id": msg.user_id,
+                    "platform": deps.platform.value,
+                    "user_id": deps.msg.user_id,
                     "dropped": True,
                 },
             )
-            if on_drop is not None:
-                on_drop()
-            text = get_msg(
+            if deps.on_drop is not None:
+                deps.on_drop()
+            text = deps.get_msg(
                 "circuit_open_ack",
                 "I'm temporarily overloaded, please try again in a moment.",
             )
-            await send_backpressure(text)
+            await deps.send_backpressure(text)
             return
 
     try:
-        await inbound_bus.put(platform, msg)
+        await deps.inbound_bus.put(deps.platform, deps.msg)
     except asyncio.QueueFull:
-        if on_drop is not None:
-            on_drop()
-        text = get_msg("backpressure_ack", "Processing your request\u2026")
-        await send_backpressure(text)
+        if deps.on_drop is not None:
+            deps.on_drop()
+        text = deps.get_msg("backpressure_ack", "Processing your request…")
+        await deps.send_backpressure(text)
 
 
 # Shared base set of allowed file extensions for outbound attachment filenames.

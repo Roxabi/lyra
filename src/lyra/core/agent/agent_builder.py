@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -178,37 +179,41 @@ def _resolve_workspaces_lenient(
 # ---------------------------------------------------------------------------
 
 
-def _assemble_agent(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — one param per Agent field
-    *,
-    name: str,
-    system_prompt: str,
-    memory_namespace: str,
-    llm_config: ModelConfig,
-    permissions: tuple[str, ...],
-    commands: dict[str, "CommandConfig"],
-    commands_enabled: tuple[str, ...],
-    i18n_language: str,
-    smart_routing: SmartRoutingConfig | None,
-    show_intermediate: bool,
-    workspaces: dict[str, Path],
-    voice: AgentVoiceConfig | None = None,
-    patterns: dict[str, bool] | None = None,
-    passthroughs: tuple[str, ...] | None = None,
-) -> Agent:
+@dataclass(frozen=True)
+class AssembleDeps:
+    """Frozen deps for _assemble_agent — one field per Agent field."""
+
+    name: str
+    system_prompt: str
+    memory_namespace: str
+    llm_config: ModelConfig
+    permissions: tuple[str, ...]
+    commands: dict[str, "CommandConfig"]
+    commands_enabled: tuple[str, ...]
+    i18n_language: str
+    smart_routing: SmartRoutingConfig | None
+    show_intermediate: bool
+    workspaces: dict[str, Path]
+    voice: AgentVoiceConfig | None = None
+    patterns: dict[str, bool] | None = field(default=None)
+    passthroughs: tuple[str, ...] | None = field(default=None)
+
+
+def _assemble_agent(deps: AssembleDeps) -> Agent:
     """Instantiate an Agent from already-resolved fields."""
     return Agent(
-        name=name,
-        system_prompt=system_prompt,
-        memory_namespace=memory_namespace,
-        llm_config=llm_config,
-        permissions=permissions,
-        commands=commands,
-        commands_enabled=commands_enabled,
-        i18n_language=i18n_language,
-        smart_routing=smart_routing,
-        show_intermediate=show_intermediate,
-        workspaces=workspaces,
-        voice=voice,
-        patterns=patterns or {},
-        passthroughs=passthroughs or (),
+        name=deps.name,
+        system_prompt=deps.system_prompt,
+        memory_namespace=deps.memory_namespace,
+        llm_config=deps.llm_config,
+        permissions=deps.permissions,
+        commands=deps.commands,
+        commands_enabled=deps.commands_enabled,
+        i18n_language=deps.i18n_language,
+        smart_routing=deps.smart_routing,
+        show_intermediate=deps.show_intermediate,
+        workspaces=deps.workspaces,
+        voice=deps.voice,
+        patterns=deps.patterns or {},
+        passthroughs=deps.passthroughs or (),
     )

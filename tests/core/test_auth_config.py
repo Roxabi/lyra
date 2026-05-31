@@ -10,7 +10,12 @@ import logging
 import pytest
 
 from lyra.core.agent.bot_models import BotRow
-from lyra.core.auth.authenticator import Authenticator as AuthMiddleware
+from lyra.core.auth.authenticator import (
+    Authenticator as AuthMiddleware,
+)
+from lyra.core.auth.authenticator import (
+    FromBotStoreDeps,
+)
 from lyra.core.auth.trust import TrustLevel
 from lyra.infrastructure.stores.auth_store import AuthStore
 from lyra.infrastructure.stores.bot_store import BotStore
@@ -165,7 +170,12 @@ class TestFromBotStore:
         )
         # Act
         auth = AuthMiddleware.from_bot_store(
-            "telegram", "lyra", bot_store, store=auth_store
+            FromBotStoreDeps(
+                platform="telegram",
+                bot_id="lyra",
+                bot_store=bot_store,
+                store=auth_store,
+            )
         )
         # Assert
         assert auth is not None
@@ -176,7 +186,9 @@ class TestFromBotStore:
 
     def test_missing_bot_returns_none(self, bot_store: BotStore) -> None:
         # Act — looking for "lyra", which is not in the store
-        auth = AuthMiddleware.from_bot_store("telegram", "lyra", bot_store)
+        auth = AuthMiddleware.from_bot_store(
+            FromBotStoreDeps(platform="telegram", bot_id="lyra", bot_store=bot_store)
+        )
         # Assert — returns None (security fix: no fallback)
         assert auth is None
 
@@ -185,7 +197,11 @@ class TestFromBotStore:
     ) -> None:
         # Act
         with caplog.at_level(logging.WARNING, logger="lyra.core.auth"):
-            auth = AuthMiddleware.from_bot_store("telegram", "lyra", bot_store)
+            auth = AuthMiddleware.from_bot_store(
+                FromBotStoreDeps(
+                    platform="telegram", bot_id="lyra", bot_store=bot_store
+                )
+            )
         # Assert
         assert auth is None
         assert "lyra" in caplog.text
@@ -193,7 +209,9 @@ class TestFromBotStore:
     def test_cli_section_returns_owner(self, bot_store: BotStore) -> None:
         # Arrange — platform="cli", no store lookup needed
         # Act
-        auth = AuthMiddleware.from_bot_store("cli", "main", bot_store)
+        auth = AuthMiddleware.from_bot_store(
+            FromBotStoreDeps(platform="cli", bot_id="main", bot_store=bot_store)
+        )
         # Assert
         assert auth is not None
         assert auth.check("anyone") == TrustLevel.OWNER

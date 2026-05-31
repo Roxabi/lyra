@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 from ...commands.command_parser import CommandParser
@@ -15,6 +16,17 @@ from .middleware import Next, PipelineContext
 
 log = logging.getLogger(__name__)
 _command_parser = CommandParser()
+
+
+@dataclass(frozen=True)
+class DispatchDeps:
+    """Collapsed parameters for CommandMiddleware._dispatch_command."""
+
+    msg: InboundMessage
+    cmd: str
+    router: Any
+    ctx: PipelineContext
+    next: Next
 
 
 class ResolveBindingMiddleware:
@@ -170,35 +182,36 @@ class CommandMiddleware:
                 ctx.key.scope_id if ctx.key else "?",
             )
             ctx.trace("processor", "command_detected", command=_cmd)
-            return await self._dispatch_command(msg, _cmd, router, ctx, next)
+            return await self._dispatch_command(
+                DispatchDeps(msg=msg, cmd=_cmd, router=router, ctx=ctx, next=next)
+            )
         return await next(msg, ctx)
 
-    async def _dispatch_command(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
-        self,
-        msg: InboundMessage,
-        cmd: str,
-        router: Any,
-        ctx: PipelineContext,
-        next: Next,
-    ) -> PipelineResult:
-        pool = ctx.pool
-        key = ctx.key
+    async def _dispatch_command(self, deps: DispatchDeps) -> PipelineResult:
+        pool = deps.ctx.pool
+        key = deps.ctx.key
         try:
-            response = await router.dispatch(msg, pool)
+            response = await deps.router.dispatch(deps.msg, pool)
         except Exception as exc:
             log.exception("command dispatch failed for %s: %s", key, exc)
-            mgr = ctx.hub._msg_manager
+            mgr = deps.ctx.hub._msg_manager
             _content = mgr.get("generic") if mgr else GENERIC_ERROR_REPLY
-            ctx.trace("outbound", "command_error", action=Action.COMMAND_HANDLED.value)
+            deps.ctx.trace(
+                "outbound", "command_error", action=Action.COMMAND_HANDLED.value
+            )
             return PipelineResult(
                 action=Action.COMMAND_HANDLED, response=Response(content=_content)
             )
 
         if response is None:
-            ctx.trace("processor", "command_fallthrough")
-            return await next(msg, ctx)
-        ctx.trace("outbound", "command_handled", action=Action.COMMAND_HANDLED.value)
-        ctx.emit(
-            CommandDispatched(msg_id=msg.id, stage=type(self).__name__, command=cmd)
+            deps.ctx.trace("processor", "command_fallthrough")
+            return await deps.next(deps.msg, deps.ctx)
+        deps.ctx.trace(
+            "outbound", "command_handled", action=Action.COMMAND_HANDLED.value
+        )
+        deps.ctx.emit(
+            CommandDispatched(
+                msg_id=deps.msg.id, stage=type(self).__name__, command=deps.cmd
+            )
         )
         return PipelineResult(action=Action.COMMAND_HANDLED, response=response)

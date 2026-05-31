@@ -26,7 +26,10 @@ from lyra.adapters.discord import discord_audio_outbound
 from lyra.adapters.shared._shared import TypingTaskManager, resolve_msg
 from lyra.typing import make_typing_factory
 from lyra.adapters.discord.discord_inbound import handle_message
-from lyra.adapters.discord.discord_normalize import normalize as _normalize_impl
+from lyra.adapters.discord.discord_normalize import (
+    NormalizeDeps,
+    normalize as _normalize_impl,
+)
 from lyra.adapters.shared._base_outbound import OutboundAdapterBase
 from lyra.adapters.discord.discord_outbound import (
     DiscordTypingIndicator,
@@ -230,12 +233,14 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
     ) -> InboundMessage:
         """Convert a discord.py Message (or SimpleNamespace) to InboundMessage."""
         return _normalize_impl(
-            self,
-            raw,
-            thread_id=thread_id,
-            channel_id=channel_id,
-            trust_level=trust_level,
-            is_admin=is_admin,
+            NormalizeDeps(
+                adapter=self,
+                raw=raw,
+                thread_id=thread_id,
+                channel_id=channel_id,
+                trust_level=trust_level,
+                is_admin=is_admin,
+            )
         )
 
     async def on_message(self, message: Any) -> None:

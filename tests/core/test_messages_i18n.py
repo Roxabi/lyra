@@ -221,7 +221,7 @@ class TestHotReloadPreservesMsgManager:
 
         from lyra.core.agent import Agent, AgentBase
         from lyra.core.agent.agent_config import ModelConfig
-        from lyra.core.commands.command_router import CommandRouter
+        from lyra.core.commands.command_router import CommandRouter, CommandRouterDeps
         from lyra.core.messaging.message import InboundMessage, Response
         from lyra.core.pool import Pool
 
@@ -273,9 +273,11 @@ class TestHotReloadPreservesMsgManager:
         agent._plugin_mtimes = agent._record_plugin_mtimes()
         agent._command_mgr.command_hashes = agent._command_mgr._record_command_hashes()
         agent.command_router = CommandRouter(
-            agent._command_loader,
-            agent._effective_plugins,
-            msg_manager=mm,
+            CommandRouterDeps(
+                command_loader=agent._command_loader,
+                enabled_plugins=agent._effective_plugins,
+                msg_manager=mm,
+            )
         )
 
         # Act -- simulate plugin handlers.py change (content + mtime)

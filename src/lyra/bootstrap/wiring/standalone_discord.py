@@ -9,7 +9,7 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from lyra.adapters.nats.nats_outbound_listener import NatsOutboundListener
+from lyra.adapters.nats.nats_outbound_listener import ListenerDeps, NatsOutboundListener
 from lyra.bootstrap import credentials
 from lyra.bootstrap.factory.config import AdapterConfigBundle
 from lyra.bootstrap.factory.voice_overlay import init_blobstore
@@ -172,11 +172,13 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
         wire_ingest(adapter_dc, blob_store)
 
         listener_dc = NatsOutboundListener(
-            nc,
-            platform_enum,
-            bot_id,
-            adapter_dc,
-            queue_group=adapter_outbound(platform_enum.value, bot_id),
+            ListenerDeps(
+                nc=nc,
+                platform=platform_enum,
+                bot_id=bot_id,
+                adapter=adapter_dc,
+                queue_group=adapter_outbound(platform_enum.value, bot_id),
+            )
         )
         adapter_dc._outbound_listener = listener_dc
         try:

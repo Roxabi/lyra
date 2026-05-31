@@ -272,7 +272,10 @@ class TestPersistThreadSessionEviction:
         """Cache at 500 entries: adding one more evicts oldest, inserts new."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from lyra.adapters.discord.discord_threads import persist_thread_session
+        from lyra.adapters.discord.discord_threads import (
+            ThreadPersistDeps,
+            persist_thread_session,
+        )
         from lyra.core.stores.thread_store_protocol import ThreadSession
 
         # Arrange — cache pre-filled to the limit (500 entries)
@@ -292,7 +295,14 @@ class TestPersistThreadSessionEviction:
 
         # Act
         await persist_thread_session(
-            mock_store, mock_msg, "new-sess", "new-pool", "bot1", cache
+            ThreadPersistDeps(
+                thread_store=mock_store,
+                msg=mock_msg,
+                session_id="new-sess",
+                pool_id="new-pool",
+                bot_id="bot1",
+                cache=cache,
+            )
         )
 
         # Assert — size unchanged (one evicted, one inserted)
@@ -310,7 +320,10 @@ class TestPersistThreadSessionEviction:
         """Non-DiscordMeta platform_meta → early return, update_session not called."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from lyra.adapters.discord.discord_threads import persist_thread_session
+        from lyra.adapters.discord.discord_threads import (
+            ThreadPersistDeps,
+            persist_thread_session,
+        )
         from lyra.core.messaging.message import TelegramMeta
         from lyra.core.stores.thread_store_protocol import ThreadSession
 
@@ -322,7 +335,14 @@ class TestPersistThreadSessionEviction:
         mock_msg.platform_meta = TelegramMeta(chat_id=42)
 
         await persist_thread_session(
-            mock_store, mock_msg, "sess", "pool", "bot1", cache
+            ThreadPersistDeps(
+                thread_store=mock_store,
+                msg=mock_msg,
+                session_id="sess",
+                pool_id="pool",
+                bot_id="bot1",
+                cache=cache,
+            )
         )
 
         mock_store.update_session.assert_not_called()

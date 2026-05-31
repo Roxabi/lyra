@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
-from lyra.adapters.shared._shared import push_to_hub_guarded
+from lyra.adapters.shared._shared import PushGuardDeps, push_to_hub_guarded
 from lyra.core.messaging.message import Platform
 
 if TYPE_CHECKING:
@@ -54,12 +54,14 @@ class Dispatcher:
             _catalog_get_msg if _catalog is not None else _default_get_msg
         )
         await push_to_hub_guarded(
-            inbound_bus=ctx.inbound_bus,
-            platform=Platform[msg.platform.upper()],
-            msg=msg,
-            circuit_registry=ctx.circuit_registry,
-            on_drop=on_drop,
-            send_backpressure=send_backpressure,
-            get_msg=get_msg,
-            outbound_listener=ctx.outbound_listener,
+            PushGuardDeps(
+                inbound_bus=ctx.inbound_bus,
+                platform=Platform[msg.platform.upper()],
+                msg=msg,
+                circuit_registry=ctx.circuit_registry,
+                on_drop=on_drop,
+                send_backpressure=send_backpressure,
+                get_msg=get_msg,
+                outbound_listener=ctx.outbound_listener,
+            )
         )

@@ -12,7 +12,6 @@ StartLimitBurst=5
 # as lyra-hub.container. Dedicated blobstore image blocked until Protocol v2 + ≥3
 # cross-repo consumers; see analysis §Shape A rationale.
 Image=ghcr.io/roxabi/lyra:staging-svc
-Label=io.containers.autoupdate=registry
 ContainerName=lyra-blobstore
 Network=roxabi.network
 # Hardening — defense in depth (see issue #652).

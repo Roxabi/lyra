@@ -84,6 +84,69 @@ on rotation events.
 
 ---
 
+## Atomic deploy — `make converge`
+
+`make converge` (→ `deploy/converge.sh`) is the **atomic, idempotent, change-gated** local
+deploy verb for M₁. It reconciles the running system with the desired state declared in
+`staging` (lyra + optionally voiceCLI) without operator intervention.
+
+### Properties
+
+| Property | Mechanism |
+|---|---|
+| **Change-gated** | Computes a convergence fingerprint (`git HEAD` + rendered Quadlet unit checksums + `auth.conf` SHA). If the current state matches the last recorded stamp (`~/.lyra/.converge-stamp`), the script exits immediately with `Already converged — nothing to do.` |
+| **Idempotent** | Running `make converge` twice on an unchanged tree is a no-op. Individual steps (git pull, `make quadlet-install`, `lyra-acl genkeys`, secret install, restarts) are each idempotent or guarded. |
+| **Atomic** | A `flock` file lock (`/run/user/<uid>/lyra-deploy.lock`) prevents concurrent converges. If the lock is held, the second invocation exits 0 silently. The full sequence (pull → install → regen auth → secrets → restart NATS → restart clients) is executed as a single critical section. |
+
+### Convergence sequence
+
+1. **Change-gate** — skip if already converged.
+2. **Pull** — `git pull origin staging` in `~/projects/lyra` (and `~/projects/voiceCLI` if present).
+3. **Install Quadlet units** — `make quadlet-install NO_RESTART=1` (renders units, copies to `~/.config/containers/systemd`, `daemon-reload`, seeds BotStore).
+4. **Regenerate auth.conf** — `lyra-acl genkeys --regen-authconf` (renders `nkeys/` → `auth.conf`).
+5. **Install secrets** — `make quadlet-secrets-install` (recreates Podman secrets from host key files).
+6. **Restart NATS** — `systemctl --user restart lyra-nats` (mount-typed secrets require container restart, not HUP, to refresh). Waits for `is-active`.
+7. **Restart lyra clients** — `lyra-hub`, `lyra-telegram`, `lyra-discord`, `lyra-clipool`, `lyra-turn-writer`, `lyra-gh-helper`, `lyra-blobstore` (only if already active; any failure aborts the converge).
+8. **Restart voiceCLI** — `voicecli-tts`, `voicecli-stt` (if voiceCLI directory exists).
+9. **Record stamp** — writes the new convergence fingerprint to `~/.lyra/.converge-stamp`.
+
+### Trigger wiring
+
+Two systemd user timers drive convergence **automatically**:
+
+| Timer | Period | Service | Role |
+|---|---|---|---|
+| `lyra-quadlet-sync.timer` | `*:0/5` (5 min) | `lyra-quadlet-sync.service` | Pulls `origin/staging` for lyra. If `deploy/quadlet/**`, Makefile, or `tools/render_quadlet.py` changed, runs `make quadlet-install` (conditional, no full converge). |
+| `lyra-post-autoupdate.timer` | `*:0/5` (5 min) | `lyra-post-autoupdate.service` | Checks whether `podman-auto-update` has pulled a new image digest. On digest change, triggers the full `make converge` sequence (including auth.conf regen + secret refresh + restarts). |
+
+`lyra-quadlet-sync` handles **unit/template changes** (code-driven).
+`lyra-post-autoupdate` handles **image digest changes** (CI-driven).
+Both are required for fully hands-off deploys.
+
+### Failure notification path
+
+`lyra-quadlet-sync.service` and `lyra-post-autoupdate.service` both declare:
+
+```ini
+OnFailure=lyra-deploy-failure.service
+```
+
+`lyra-deploy-failure.service` is a `Type=oneshot` unit that logs a structured error message
+to the systemd journal via `systemd-cat` (tag `lyra-deploy-failure`, priority `err`).
+Monitor: `journalctl --user -t lyra-deploy-failure -f`
+
+### Manual usage
+
+```bash
+# Full atomic converge (operator-initiated)
+make converge
+
+# Check convergence state without changing anything
+bash -c 'source deploy/lib/deploy-common.sh; is_converged && echo "Converged" || echo "Drift"'
+```
+
+---
+
 ## Hardening invariants (∀ `.container` file)
 
 `NoNewPrivileges=true` | `ReadOnly=true` | `DropCapability=all`

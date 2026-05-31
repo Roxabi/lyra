@@ -1,0 +1,8 @@
+[Unit]
+Description=Lyra deploy failure notification — logs deploy failure to journal
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo "Lyra deploy failure: a deployment-related service (lyra-quadlet-sync or lyra-post-autoupdate) failed. Check journal for details." | systemd-cat -t lyra-deploy-failure -p err'
+StandardOutput=journal
+StandardError=journal

@@ -8,7 +8,10 @@ changes needed.
 
 from . import _scraping, explain, search, summarize, vault_add
 from .processor_registry import BaseProcessor, ProcessorRegistry, registry
+from .stream_close import StreamCloseHandler
 from .stream_processor import StreamProcessor
+from .stream_text import StreamTextHandler
+from .stream_tool import StreamToolHandler
 
 __all__ = [
     "_scraping",
@@ -18,6 +21,9 @@ __all__ = [
     "vault_add",
     "BaseProcessor",
     "ProcessorRegistry",
+    "StreamCloseHandler",
     "StreamProcessor",
+    "StreamTextHandler",
+    "StreamToolHandler",
     "registry",
 ]

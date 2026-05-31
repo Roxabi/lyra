@@ -76,3 +76,8 @@ quality_gates:
   no_runtime_toml_bots:
     enabled: true
     script: tools/check_no_runtime_toml_bots.sh
+
+  architecture_snapshot:
+    enabled: true
+    stage: pre-push
+    script: tools/check_architecture_snapshot.sh

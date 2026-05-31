@@ -4,9 +4,10 @@
 
 Per-platform-agnostic stage composition for outbound message rendering. Consumed by
 `OutboundAdapterBase.send_streaming` via `_make_emitter` on platform adapters (Telegram,
-Discord). Replaces the per-target axis (`telegram_outbound.py` + `discord_outbound.py` +
-`_shared_streaming_emitter.py`) that produced the boundary-broad-catch cascade observed
-2026-05-19 (epic #1277).
+Discord). The per-target outbound files (`telegram_outbound.py`, `discord_outbound.py`) remain
+active and now delegate to `OutboundEmitter` (composition). The old shared helper
+`_shared_streaming_emitter.py` was removed; its replacement is `outbound/_streaming_state.py`.
+Addresses the boundary-broad-catch cascade observed 2026-05-19 (epic #1277).
 
 ## Layer contract
 

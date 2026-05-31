@@ -1,11 +1,11 @@
 # src/lyra/tools/ — In-container helper utilities
 
 Helper processes that run inside `lyra-clipool` but with **isolated identity** from Claude (uid 1500).
-Each submodule is self-contained — pure stdlib + project deps, no hub/core imports at module level.
+Each helper module is self-contained — pure stdlib + project deps, no hub/core imports at module level.
 
-## Submodule map
+## Module map
 
-| Submodule | Process uid | Purpose |
+| Module | Process uid | Purpose |
 |-----------|-------------|---------|
 | `gh_token/` | 1501 (`lyra-gh`) | JWT signer → GitHub installation token → tmpfs cache → dispenser socket → rate-capped refresh |
 
@@ -21,7 +21,7 @@ uid 1500 (lyra / Claude subprocess)
   ▼
 /run/lyra-gh-token/          dir  0700  uid 1501 (lyra-gh)
   ├── dispenser.sock         sock 0660  group lyra-tokenuser (gid 1502)
-  └── token.cache            file 0600  uid 1501 (lyra-gh)
+  └── token.json             file 0600  uid 1501 (lyra-gh)
 ```
 
 Both uid 1500 and uid 1501 are members of `lyra-tokenuser` (gid 1502) — group membership is the trust boundary; no root needed.

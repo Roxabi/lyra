@@ -59,17 +59,14 @@ Three primitives, all composed (not inherited):
   (`core/cli/cli_streaming_parser.py`, `core/processors/stream_processor.py`) demonstrate the
   composition pattern.
 
-## File map
+## Key modules
 
-```
-streaming/
-├── __init__.py          # Re-exports: Parser, StateMachine, EventEmitter
-├── parser.py            # Parser[InT, OutT] Protocol — duck-typed, @runtime_checkable
-├── state_machine.py     # StateMachine[K, V] — open/close/mark_seen/drain
-└── event_emitter.py     # EventEmitter[OutT] — SanitizedError → OutT translator
-```
+- `parser.py` — `Parser[InT, OutT]` Protocol (duck-typed, `@runtime_checkable`)
+- `state_machine.py` — `StateMachine[K, V]` (open/close/mark_seen/drain)
+- `event_emitter.py` — `EventEmitter[OutT]` (`SanitizedError` → `OutT` translator)
+- `__init__.py` — re-exports the three primitives above
 
-All files ≤300 LOC, package ≤12 files (quality gates).
+For a current file listing: `ls src/lyra/streaming/`. Subject to repo file-length and folder-size quality gates.
 
 ## See also
 

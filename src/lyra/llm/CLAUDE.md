@@ -38,7 +38,7 @@ The NATS LLM driver is a 3-layer composition (since #1278):
 LlmClient (lyra.llm.llm_client)
    ├─ pool: WorkerPoolClient (lyra.transport.worker_pool_client)
    │     └─ transport: NatsTransport (lyra.transport.nats_request_response)
-   └─ codec: LlmCodec (lyra.llm.llm_codec)
+   └─ codec: LlmCodec (lyra.llm.codec)
 ```
 
 - `LlmClient`: implements `LlmProvider`; orchestrates encode → pool → decode.
@@ -75,7 +75,7 @@ Historical: `CliNatsDriver` (deleted in #1281) inherited `max_total_duration=180
 ## Decorator stack
 
 ```
-CircuitBreakerDecorator → SmartRoutingDecorator → RetryDecorator → Driver
+CircuitBreakerDecorator → RetryDecorator → Driver
 ```
 
 Stack assembled in `bootstrap/`, not in `llm/`. Order matters: circuit-breaker wraps
@@ -92,21 +92,20 @@ deltas, tool-result, terminal result). Read source for current members.
 Import from `lyra.core.messaging.events` — `lyra.llm` does **not** re-export these
 (would obscure the canonical location from `import-linter`).
 
-## smart_routing.py
+## SmartRoutingConfig
 
-5-line stub kept for backward import compatibility — all classifier/decorator logic
-removed in #666. Only `SmartRoutingConfig` remains; validator rejects `enabled = true`
-on all backends. Keep `enabled = false` (default).
+`SmartRoutingConfig` lives in `lyra.core.agent.agent_config` (¬`llm/smart_routing.py` — that file
+does not exist). Validator rejects `enabled = true` on all backends. Keep `enabled = false` (default).
 
 ## ProviderRegistry (`registry.py`)
 
 Dict-based: `register(backend, driver)` / `get(backend)`. Backends: `"claude-cli"`,
 `"nats"`. `get()` raises `KeyError` for unknown backends.
 
-## errors.py
+## LlmUnavailableError
 
-Shim — re-exports `LlmUnavailableError` from `lyra.core.ports.llm`. Useful for import
-resolution; prefer the canonical path in new code.
+Defined in `lyra.core.ports.llm` (¬`llm/errors.py` — that file does not exist). Import from the
+canonical path in all new code.
 
 ## Constraints
 

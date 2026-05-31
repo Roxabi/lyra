@@ -22,13 +22,13 @@ from lyra.core.messaging.message import (
 )
 from lyra.core.messaging.messages import MessageManager
 from lyra.core.pool import Pool
-from lyra.core.ports.stt import STTNoiseError
+from lyra.core.ports.stt import STTNoiseError as STTNoiseError  # re-export (#1225)
 from lyra.core.processors.stream_processor import StreamProcessor
 from lyra.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
 from lyra.integrations.base import SessionTools
 from lyra.llm.base import LlmProvider
 
-from .simple_agent_prompts import STTError, build_llm_text
+from .simple_agent_prompts import build_llm_text
 
 _AGENTS_DIR = Path(__file__).resolve().parent
 
@@ -214,27 +214,10 @@ class SimpleAgent(AgentBase):
         if _voice_rewritten is not None:
             msg = _voice_rewritten
 
-        # Build LLM text from message (handles audio, voice, regular messages)
-        try:
-            text, _stt_text = await build_llm_text(msg)
-        except STTNoiseError:
-            return Response(
-                content=(
-                    self._msg_manager.get("stt_noise")
-                    if self._msg_manager
-                    else "I couldn't make out your voice message, please try again."
-                )
-            )
-        except STTError:
-            log.exception("STT transcription failed in SimpleAgent")
-            return Response(
-                content=(
-                    self._msg_manager.get("stt_failed")
-                    if self._msg_manager
-                    else "Sorry, I couldn't transcribe your voice message."
-                ),
-                metadata={"error": True},
-            )
+        # Build LLM text from message (voice transcript / regular messages).
+        # STT now runs upstream in middleware_stt; build_llm_text only wraps text,
+        # so the former STTNoiseError/STTError handlers were dead and removed (#1553).
+        text, _ = await build_llm_text(msg)
 
         model_cfg = self.config.llm_config
 

@@ -47,10 +47,3 @@ async def build_llm_text(
         return f"<user_message>{html.escape(msg.text)}</user_message>", None
 
     return msg.text, None
-
-
-class STTError(Exception):
-    """Raised when STT transcription fails."""
-
-    def __init__(self, message: str) -> None:
-        super().__init__(message)

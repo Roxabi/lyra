@@ -167,8 +167,8 @@ class OutboundAudio:
     """Typed envelope for outbound audio data on the bus.
 
     Produced by TTS / voice pipelines; consumed by adapter render_audio().
-    blob_ref holds a content-addressed pointer to the audio payload in BlobStore
-    (e.g. ogg/opus from TTS). Adapters resolve to bytes via HttpBlobStore.get().
+    blob_ref is a content-addressed pointer (ogg/opus) resolved to bytes via
+    HttpBlobStore.get(). Required (non-Optional); None is filtered upstream (#1553).
     """
 
     blob_ref: BlobRef

@@ -121,9 +121,14 @@ class TtsCodec:
                 retryable=False,
                 unavailable=False,
             )
+        # ok=True ⇒ blob_ref/mime_type/duration_ms are non-None (TtsResponse
+        # model_validator, ADR-067). Assert the invariant rather than masking it
+        # with `# type: ignore`; this also narrows the Optionals for pyright.
+        assert resp.blob_ref is not None
+        assert resp.mime_type is not None
         return SynthesisResult(
-            blob_ref=resp.blob_ref,  # type: ignore[arg-type]
-            mime_type=resp.mime_type,  # type: ignore[arg-type]
-            duration_ms=resp.duration_ms,  # type: ignore[arg-type]
+            blob_ref=resp.blob_ref,
+            mime_type=resp.mime_type,
+            duration_ms=resp.duration_ms,
             waveform_b64=resp.waveform_b64,
         )

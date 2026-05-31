@@ -5,3 +5,5 @@
 # V4 of #760 completed under #773 — core/, adapters/, bootstrap/ decomposed
 # into cohesive subdirs. core/hub/ deferred to V5 (follow-up issue).
 # V5 completed under #848 — core/hub/ decomposed into middleware/, outbound/, pipeline/.
+src/lyra/infrastructure/stores  # 17 files — DEBT:folder-exemptions — #935 ADR-048 store migration (4 files moved from core/stores) + #1414 BotStore (bot_store.py, bot_store_migrations.py) + #1059 message_index_kv.py + #1060 bot_settings_kv.py
+src/lyra/nats  # 20 files — DEBT:folder-exemptions — #1278 codec split from clients (T11/T12 added nats_{tts,stt,image}_codec.py); _worker_client_base.py + nats_llm_client.py deleted (net +1 vs 15 pre-#1278 baseline: -2 deletions + 3 codec files); #1589 extracted audio_publish.py + keepalive.py + stream_error.py from nats_channel_proxy.py; #1592 extracted render_event_codec_registry.py from render_event_codec.py

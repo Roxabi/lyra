@@ -27,11 +27,9 @@ log = logging.getLogger(__name__)
 
 async def _bootstrap_discord_setup(
     raw_config: dict,
-    vault_dir: Path,
 ) -> tuple:
-    """Load Discord config, credentials, and watch channels."""
+    """Load Discord config and credentials."""
     from lyra.config import DiscordMultiConfig
-    from lyra.infrastructure.stores.agent_store import AgentStore
 
     dc_multi_cfg = DiscordMultiConfig.model_validate(raw_config.get("discord", {}))
     if not dc_multi_cfg.bots:
@@ -44,30 +42,29 @@ async def _bootstrap_discord_setup(
         dc_creds[bot_id] = token
         log.info("read token from /run/secrets/bot_token-%s", bot_id)
 
-    # Read per-bot settings then close — don't hold config.db open
-    # during the long-lived adapter lifecycle (short-lived reads, same pattern).
-    agent_store = AgentStore(db_path=vault_dir / "config.db")
-    await agent_store.connect()
-    dc_bot_watch_channels: dict[str, frozenset[int]] = {}
-    try:
-        for bot_cfg in dc_multi_cfg.bots:
-            bot_settings = agent_store.get_bot_settings("discord", bot_cfg.bot_id)
-            raw_ids = bot_settings.get("watch_channels", [])
-            valid: list[int] = []
-            for ch in raw_ids:
-                try:
-                    valid.append(int(ch))
-                except (ValueError, TypeError):
-                    log.warning(
-                        "watch_channels: invalid channel id %r for bot %r — skipping",
-                        ch,
-                        bot_cfg.bot_id,
-                    )
-            dc_bot_watch_channels[bot_cfg.bot_id] = frozenset(valid)
-    finally:
-        await agent_store.close()
+    return dc_multi_cfg, dc_creds
 
-    return dc_multi_cfg, dc_creds, dc_bot_watch_channels
+
+async def _watch_kv_for_changes(
+    kv: Any,
+    bot_id: str,
+    adapter: Any,
+) -> None:
+    """Background task: watch KV for watch_channels updates and mutate adapter."""
+    from lyra.infrastructure.stores.bot_settings_kv import watch_watch_channels
+
+    try:
+        async for channels in watch_watch_channels(kv, bot_id):
+            adapter._watch_channels = channels
+            log.info(
+                "watch_channels updated for bot_id=%s: %s",
+                bot_id,
+                channels,
+            )
+    except asyncio.CancelledError:
+        raise
+    except Exception:
+        log.exception("watch_channels watcher failed for bot_id=%s", bot_id)
 
 
 async def _create_dc_stores(vault_dir: Path) -> tuple:
@@ -120,7 +117,7 @@ async def _bootstrap_discord_teardown(
         await dc_turn_store.close()
 
 
-async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap composition root
+async def bootstrap_discord_standalone(  # noqa: PLR0915, C901 — bootstrap composition root
     nc: Any,
     raw_config: dict,
     config_bundle: AdapterConfigBundle,
@@ -130,22 +127,27 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
     _stop: asyncio.Event | None = None,
 ) -> None:
     """Bootstrap a standalone Discord adapter process connected to NATS."""
-    dc_multi_cfg, dc_creds, dc_bot_watch_channels = await _bootstrap_discord_setup(
-        raw_config, vault_dir
-    )
+    dc_multi_cfg, dc_creds = await _bootstrap_discord_setup(raw_config)
     dc_thread_store, dc_turn_store = await _create_dc_stores(vault_dir)
     js = nc.jetstream()
     blob_store = init_blobstore()
 
     wired_dc: list[tuple] = []  # (DiscordAdapter, str, Bus, TypingListener, Consumer)
+    _watch_tasks: list[asyncio.Task] = []
 
-    async def _wire_bot(bot_cfg: Any, token: str) -> tuple:
+    async def _wire_bot(
+        bot_cfg: Any,
+        token: str,
+        *,
+        kv: Any,
+    ) -> tuple:
         """Wire a single Discord bot with NATS, typing listener, and audio consumer."""
         bot_id = bot_cfg.bot_id
 
         from lyra.adapters.discord import DiscordAdapter
         from lyra.adapters.discord.adapter import _discord_scope_resolver
         from lyra.adapters.discord.discord_outbound import _discord_typing_worker
+        from lyra.infrastructure.stores.bot_settings_kv import get_watch_channels
         from lyra.nats.nats_bus import NatsBus
         from lyra.typing import TypingListener, make_typing_factory
 
@@ -158,18 +160,28 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
         inbound_bus_dc.register(platform_enum)
         await inbound_bus_dc.start()
 
+        watch_channels = await get_watch_channels(kv, bot_id)
+
         adapter_dc = DiscordAdapter(
             bot_id=bot_id,
             inbound_bus=inbound_bus_dc,
             auto_thread=bot_cfg.auto_thread,
             thread_hot_hours=bot_cfg.thread_hot_hours,
             thread_store=dc_thread_store,
-            watch_channels=dc_bot_watch_channels.get(bot_id, frozenset()),
+            watch_channels=watch_channels,
             turn_store=dc_turn_store,
             blob_store=blob_store,
         )
         adapter_dc.configure_tool_display(config_bundle.tool_display)
         wire_ingest(adapter_dc, blob_store)
+
+        # Background watcher: updates adapter._watch_channels dynamically.
+        _watch_tasks.append(
+            asyncio.create_task(
+                _watch_kv_for_changes(kv, bot_id, adapter_dc),
+                name=f"dc-watch:{bot_id}",
+            )
+        )
 
         listener_dc = NatsOutboundListener(
             ListenerDeps(
@@ -226,6 +238,11 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
     # reintroduce the cold-boot race (BucketNotFoundError / missing-stream).
     await wait_for_hub(nc)
 
+    # Bind bot-settings KV (hub-provisioned) before wiring bots.
+    from lyra.infrastructure.stores.bot_settings_kv import ensure_kv as _ensure_bot_kv
+
+    _bot_kv = await _ensure_bot_kv(js)
+
     for bot_cfg in dc_multi_cfg.bots:
         bot_id = bot_cfg.bot_id
         if bot_id not in dc_creds:
@@ -233,9 +250,11 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
         token = dc_creds[bot_id]
 
         try:
-            wired = await _wire_bot(bot_cfg, token)
+            wired = await _wire_bot(bot_cfg, token, kv=_bot_kv)
         except Exception:
             await _close_dc_wired("dc-wired", wired_dc)
+            for t in _watch_tasks:
+                t.cancel()
             await dc_thread_store.close()
             await dc_turn_store.close()
             raise
@@ -256,5 +275,9 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
             wired_dc, dc_thread_store, dc_turn_store, stop_dc
         )
     finally:
+        for t in _watch_tasks:
+            t.cancel()
+        if _watch_tasks:
+            await asyncio.gather(*_watch_tasks, return_exceptions=True)
         if blob_store is not None:
             await blob_store.aclose()  # type: ignore[union-attr]  # concrete HttpBlobStoreAdapter; aclose not on port

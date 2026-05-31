@@ -54,7 +54,7 @@ class RouterCtx:
 
     bot_id: str
     owned_threads: set[int]
-    watch_channels: frozenset[int] | None
+    watch_channels: set[int] | frozenset[int] | None
 
 
 @dataclass(frozen=True)

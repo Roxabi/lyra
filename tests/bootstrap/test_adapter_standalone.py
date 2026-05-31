@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -117,6 +118,18 @@ async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
         patch(
             "lyra.bootstrap.wiring.standalone_discord.wait_for_hub",
             AsyncMock(return_value=True),
+        ),
+        patch(
+            "lyra.infrastructure.stores.bot_settings_kv.ensure_kv",
+            AsyncMock(return_value=AsyncMock()),
+        ),
+        patch(
+            "lyra.infrastructure.stores.bot_settings_kv.get_watch_channels",
+            AsyncMock(return_value=frozenset()),
+        ),
+        patch(
+            "lyra.infrastructure.stores.bot_settings_kv.watch_watch_channels",
+            AsyncMock(return_value=AsyncMock()),
         ),
         load_token_patch_dc,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
@@ -297,6 +310,14 @@ async def test_discord_astart_failure_cleans_up_wired_resources() -> None:
             "lyra.bootstrap.wiring.standalone_discord.wait_for_hub",
             AsyncMock(return_value=None),
         ),
+        patch(
+            "lyra.infrastructure.stores.bot_settings_kv.ensure_kv",
+            AsyncMock(return_value=AsyncMock()),
+        ),
+        patch(
+            "lyra.infrastructure.stores.bot_settings_kv.get_watch_channels",
+            AsyncMock(return_value=frozenset()),
+        ),
         load_token_patch,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
         pytest.raises(RuntimeError, match="boom"),
@@ -308,3 +329,38 @@ async def test_discord_astart_failure_cleans_up_wired_resources() -> None:
     mock_adapter_second.close.assert_awaited_once()
     mock_bus_second.stop.assert_awaited_once()
     mock_nc.close.assert_awaited_once()
+
+
+async def _mock_watch_watch_channels(kv: Any, bot_id: str):
+    """Async generator yielding two frozenset updates for the patch."""
+    yield frozenset({222})
+    yield frozenset({333, 444})
+
+
+@pytest.mark.asyncio
+async def test_discord_kv_watch_updates_watch_channels() -> None:
+    """KV watch background task mutates adapter._watch_channels on change."""
+    from lyra.bootstrap.wiring.standalone_discord import _watch_kv_for_changes
+
+    mock_adapter = AsyncMock()
+    mock_adapter._watch_channels = frozenset({111})
+
+    mock_kv = AsyncMock()
+
+    with patch(
+        "lyra.infrastructure.stores.bot_settings_kv.watch_watch_channels",
+        _mock_watch_watch_channels,
+    ):
+        task = asyncio.create_task(
+            _watch_kv_for_changes(mock_kv, "main", mock_adapter)
+        )
+        # Allow the event loop to process both yielded values
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    assert mock_adapter._watch_channels == frozenset({333, 444})

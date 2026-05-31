@@ -26,6 +26,7 @@ from lyra.core.messaging.message import Platform
 from lyra.core.messaging.messages import MessageManager
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.infrastructure.stores.agent_store import AgentStore
+from lyra.infrastructure.stores.bot_settings_kv import ensure_kv, put_watch_channels
 from lyra.infrastructure.stores.thread_store import ThreadStore
 
 # Default vault dir for discord.db (#417 / S4)
@@ -141,7 +142,7 @@ async def wire_telegram_adapters(
     return adapters, dispatchers
 
 
-async def wire_discord_adapters(
+async def wire_discord_adapters(  # noqa: C901 — bootstrap composition root
     deps: DiscordWiringDeps,
 ) -> tuple[
     list[tuple[DiscordAdapter, DiscordBotConfig, str]],
@@ -200,6 +201,11 @@ async def wire_discord_adapters(
                     return frozenset(valid)
 
                 watch_channels = _parse_channel_ids("watch_channels")
+
+            if deps.nats_client is not None:
+                _js = deps.nats_client.jetstream()
+                _kv = await ensure_kv(_js)
+                await put_watch_channels(_kv, bot_cfg.bot_id, watch_channels)
 
             adapter = DiscordAdapter(
                 bot_id=bot_cfg.bot_id,

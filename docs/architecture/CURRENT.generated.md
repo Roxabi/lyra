@@ -99,11 +99,11 @@
 
 ### discord-adapter
 - **Publish:** $JS.API.CONSUMER.CREATE.*, $JS.API.DIRECT.GET.LYRA_STATE.hub.ready, $JS.API.INFO, $JS.API.STREAM.INFO.KV_lyra-state, $JS.API.STREAM.MSG.GET.KV_lyra-state, lyra.event.>, lyra.inbound.discord.>, lyra.metric.>, lyra.system.ready, lyra.turns.write
-- **Subscribe:** $KV.lyra-state.>, _inbox.discord-adapter.*.*, _inbox.discord-adapter.>, lyra.outbound.audio.>, lyra.outbound.discord.>, lyra.typing.discord.>
+- **Subscribe:** $KV.lyra-bot-settings.>, $KV.lyra-state.>, _inbox.discord-adapter.*.*, _inbox.discord-adapter.>, lyra.outbound.audio.>, lyra.outbound.discord.>, lyra.typing.discord.>
 
 ### hub
 - **Publish:** $JS.API.>, $KV.lyra-msg-index.>, $KV.lyra-state.>, lyra.audit.>, lyra.clipool.cmd, lyra.clipool.control, lyra.event.>, lyra.image.generate.request, lyra.llm.generate.request, lyra.metric.>, lyra.outbound.audio.>, lyra.outbound.discord.>, lyra.outbound.telegram.>, lyra.turns.write, lyra.typing.>, lyra.voice.stt.request, lyra.voice.stt.request.>, lyra.voice.tts.request, lyra.voice.tts.request.>
-- **Subscribe:** _inbox.hub.>, lyra.clipool.heartbeat, lyra.gh.mint_failure.>, lyra.image.heartbeat, lyra.inbound.discord.>, lyra.inbound.telegram.>, lyra.llm.heartbeat, lyra.system.ready, lyra.voice.stt.heartbeat, lyra.voice.tts.heartbeat
+- **Subscribe:** $KV.lyra-bot-settings.>, _inbox.hub.>, lyra.clipool.heartbeat, lyra.gh.mint_failure.>, lyra.image.heartbeat, lyra.inbound.discord.>, lyra.inbound.telegram.>, lyra.llm.heartbeat, lyra.system.ready, lyra.voice.stt.heartbeat, lyra.voice.tts.heartbeat
 
 ### image-worker
 - **Publish:** $JS.API.>, lyra.image.heartbeat

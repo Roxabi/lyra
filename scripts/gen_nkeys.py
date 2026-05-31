@@ -8,7 +8,6 @@ Aliases: lyra-genkeys, lyra-check-acl-retired, lyra-check-flows
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -152,27 +151,17 @@ def _cmd_check_flows(args: argparse.Namespace) -> None:
 
 def _cmd_check_grants(args: argparse.Namespace) -> None:
     """Assert code-required NATS subjects are covered by ACL grants (ADR-079)."""
-    from scripts.check_grants import load_code_subjects, run
+    from scripts.check_grants import RESOURCES, run
 
     matrix = load_matrix(args.matrix)
-
-    try:
-        code_subjects = load_code_subjects(args.code_subjects)
-    except (json.JSONDecodeError, ValueError, OSError) as exc:
-        print(f"error: {args.code_subjects}: {exc}", file=sys.stderr)
-        sys.exit(2)
-
-    errors = run(matrix, code_subjects)
+    errors = run(matrix)
 
     if errors:
         for e in errors:
             print(e, file=sys.stderr)
         sys.exit(1)
 
-    total = len(code_subjects.get("streams") or {}) + len(
-        code_subjects.get("kv_buckets") or {}
-    )
-    print(f"check-grants: OK ({total} resources)")
+    print(f"check-grants: OK ({len(RESOURCES)} resources)")
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -282,13 +271,6 @@ def _build_parser() -> argparse.ArgumentParser:
         default=_DEFAULT_MATRIX,
         metavar="PATH",
         help="Path to acl-matrix.json (default: deploy/nats/acl-matrix.json)",
-    )
-    ck_grants.add_argument(
-        "--code-subjects",
-        type=Path,
-        default=Path("deploy/nats/code-subjects.json"),
-        metavar="PATH",
-        help="Path to code-subjects.json (default: deploy/nats/code-subjects.json)",
     )
     ck_grants.set_defaults(func=_cmd_check_grants)
 

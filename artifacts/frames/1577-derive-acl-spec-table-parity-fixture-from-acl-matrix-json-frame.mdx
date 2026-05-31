@@ -1,0 +1,51 @@
+---
+title: "Derive ACL spec table + parity fixture from acl-matrix.json (single source of truth)"
+issue: 1577
+status: approved
+tier: F-lite
+date: 2026-05-31
+---
+
+## Problem
+
+The NATS ACL configuration for Lyra is maintained in **5 hand-mirrored representations**:
+
+1. `deploy/nats/acl-matrix.json` — the JSON matrix defining per-role subjects
+2. `deploy/nats/auth.conf` — generated from the matrix, but checked in
+3. `artifacts/specs/706-per-role-nkeys-acls-spec.mdx` — the spec table (manual)
+4. The parity fixture (manual) — used by tests to verify ACL coverage
+5. `deploy/nats/code-subjects.json` — consumed by e2e tests
+
+These are kept in sync by **4 cross-check scripts** plus a **CI drift gate**. The drift gate **failed twice** during recent PRs (#1572, #1575), meaning the manual sync is both error-prone and a recurring tax on every ACL change.
+
+## Who
+
+- **Primary:** Developers adding or modifying NATS ACL roles/subjects
+- **Secondary:** Reviewers verifying ACL coverage; CI maintainers debugging drift-gate failures
+
+## Constraints
+
+- Must preserve existing test coverage (4 cross-check scripts must still pass)
+- Must not break existing `auth.conf` generation pipeline
+- Must work with the current `acl-matrix.json` schema
+- Must be deterministic (same matrix → same generated views)
+
+## Out of Scope
+
+- Changing the NATS ACL semantics or subject patterns
+- Moving to a non-JSON ACL definition format
+- Adding new ACL roles (unless they already exist in the matrix)
+- Refactoring the nkeys / signing infrastructure
+
+## Premise Validity
+
+**Success in 6 months:** Any ACL change requires editing only `acl-matrix.json`; the spec table and parity fixture auto-regenerate via CI pre-commit or script; zero manual sync incidents across all ACL PRs; `code-subjects.json` is deleted and its assertions live in the e2e conformance test.
+
+**Failure in 6 months:** An ACL PR lands where ≥2 files were hand-edited because the author didn't know about or didn't trust the generator; the spec-drift CI gate fires again within 2 sprints; a new role is added to `acl-matrix.json` but the spec table is stale because the generator wasn't run.
+
+**Simplest alternative:** Add a README note instructing authors to edit `acl-matrix.json` first, then run `tools/regen_acl.py`.
+**Why not simplest:** The drift gate already failed twice despite having scripts and docs — the failure mode is human process, not lack of documentation. A README doesn't eliminate the recurring manual step.
+
+## Complexity
+
+**Tier: F-lite** — single domain (ACL generation tooling), clear scope, no new architecture. The work is mechanical: parse JSON matrix → emit Markdown table + JSON fixture → wire into e2e test.

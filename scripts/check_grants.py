@@ -2,7 +2,6 @@
 """check_grants.py — assert code-required NATS subjects are covered by ACL grants.
 
 Consumes:
-  deploy/nats/code-subjects.json  — resource-keyed subject manifest
   deploy/nats/acl-matrix.json     — identity/group grant matrix
 
 Exit 0: all required subjects are covered.
@@ -13,7 +12,6 @@ Exit 2: bad input (malformed JSON, missing required keys).
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -26,126 +24,67 @@ from scripts._acl_models import LoadedMatrix  # noqa: E402
 from scripts._effective import effective_grants, subject_covered  # noqa: E402
 from scripts._loader import load_matrix  # noqa: E402
 
-
-def _validate_consumer_fields(
-    kind: str,
-    res_name: str,
-    resource: dict,  # type: ignore[type-arg]
-) -> None:
-    """B1+B2: validate consumer_subjects shape and mutual-requirement with consumer_group.
-
-    Raises ValueError on any violation.
-    """  # noqa: E501
-    cons_subjects = resource.get("consumer_subjects")
-
-    # B1: consumer_subjects shape.
-    if cons_subjects is not None:
-        if not isinstance(cons_subjects, dict):
-            raise ValueError(
-                f"code-subjects.json: {kind} '{res_name}': "
-                f"'consumer_subjects' must be an object"
-            )
-        pub = cons_subjects.get("publish")
-        sub = cons_subjects.get("subscribe")
-        if pub is not None and not isinstance(pub, list):
-            raise ValueError(
-                f"code-subjects.json: {kind} '{res_name}': "
-                f"'consumer_subjects.publish' must be a list"
-            )
-        if sub is not None and not isinstance(sub, list):
-            raise ValueError(
-                f"code-subjects.json: {kind} '{res_name}': "
-                f"'consumer_subjects.subscribe' must be a list"
-            )
-
-    # B2: consumer_group and consumer_subjects are mutually required.
-    cons_group = resource.get("consumer_group")
-    has_group = bool(cons_group and isinstance(cons_group, str))
-    has_subjects = bool(
-        isinstance(cons_subjects, dict)
-        and (cons_subjects.get("publish") or cons_subjects.get("subscribe"))
-    )
-    if cons_group is not None and not has_group:
-        raise ValueError(
-            f"code-subjects.json: {kind} '{res_name}': "
-            f"'consumer_group' must be a non-empty string"
-        )
-    if has_group and not has_subjects:
-        raise ValueError(
-            f"code-subjects.json: {kind} '{res_name}': "
-            f"'consumer_group' present but 'consumer_subjects' is absent "
-            f"or contains no non-empty list"
-        )
-    if has_subjects and not has_group:
-        raise ValueError(
-            f"code-subjects.json: {kind} '{res_name}': "
-            f"'consumer_subjects' present but 'consumer_group' is absent "
-            f"or empty"
-        )
-
-
-def _validate_resource(kind: str, res_name: str, resource: object) -> None:
-    """Validate a single resource entry from the code-subjects manifest.
-
-    Raises ValueError on any shape violation.
-    """
-    if not isinstance(resource, dict):
-        raise ValueError(
-            f"code-subjects.json: {kind} '{res_name}' must be an object"
-        )
-    if "provisioner" not in resource or not isinstance(resource["provisioner"], str):
-        raise ValueError(
-            f"code-subjects.json: {kind} '{res_name}': "
-            "missing or non-string 'provisioner'"
-        )
-    prov_subjects = resource.get("provisioner_subjects")
-    if not isinstance(prov_subjects, dict) or "publish" not in prov_subjects:
-        raise ValueError(
-            f"code-subjects.json: {kind} '{res_name}': "
-            f"'provisioner_subjects' must contain a 'publish' list"
-        )
-    if not isinstance(prov_subjects["publish"], list):
-        raise ValueError(
-            f"code-subjects.json: {kind} '{res_name}': "
-            f"'provisioner_subjects.publish' must be a list"
-        )
-    _validate_consumer_fields(kind, res_name, resource)
-
-
-def load_code_subjects(path: Path) -> dict:  # type: ignore[type-arg]
-    """Read and minimally validate the code-subjects manifest.
-
-    Required top-level structure:
-      - at least one of "streams" or "kv_buckets" (both must be dicts if present)
-      - each resource has "provisioner" (str) and "provisioner_subjects.publish" (list)
-
-    Raises ValueError on shape violations; raises json.JSONDecodeError on bad JSON.
-    """
-    raw_text = path.read_text()
-    parsed: object = json.loads(raw_text)
-
-    # B1: top-level must be a JSON object, not a list or scalar.
-    if not isinstance(parsed, dict):
-        raise ValueError("code-subjects.json: top-level value must be a JSON object")
-    data: dict = parsed  # type: ignore[type-arg]
-
-    streams = data.get("streams")
-    kv_buckets = data.get("kv_buckets")
-
-    if streams is None and kv_buckets is None:
-        raise ValueError(
-            "code-subjects.json: must have at least one of 'streams' or 'kv_buckets'"
-        )
-    if streams is not None and not isinstance(streams, dict):
-        raise ValueError("code-subjects.json: 'streams' must be an object")
-    if kv_buckets is not None and not isinstance(kv_buckets, dict):
-        raise ValueError("code-subjects.json: 'kv_buckets' must be an object")
-
-    for kind, bucket in (("stream", streams or {}), ("kv", kv_buckets or {})):
-        for res_name, resource in bucket.items():
-            _validate_resource(kind, res_name, resource)
-
-    return data
+# Embedded resource definitions (stable, small).
+# Tuple: (kind, name, provisioner, provisioner_subjects, consumer_group,
+#         consumer_subjects)
+RESOURCES = [
+    (
+        "stream",
+        "LYRA_OUTBOUND_AUDIO",
+        "hub",
+        [
+            "$JS.API.STREAM.CREATE.LYRA_OUTBOUND_AUDIO",
+            "$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO",
+            "$JS.API.STREAM.UPDATE.LYRA_OUTBOUND_AUDIO",
+        ],
+        "audio-consumer",
+        {
+            "publish": [
+                "$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO",
+                "$JS.API.CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO.>",
+                "$JS.API.CONSUMER.INFO.LYRA_OUTBOUND_AUDIO.*",
+                "$JS.API.CONSUMER.MSG.NEXT.LYRA_OUTBOUND_AUDIO.*",
+                "$JS.ACK.LYRA_OUTBOUND_AUDIO.>",
+            ],
+            "subscribe": [],
+        },
+    ),
+    (
+        "stream",
+        "LYRA_TURNS",
+        "turn-writer",
+        [
+            "$JS.API.STREAM.CREATE.LYRA_TURNS",
+            "$JS.API.STREAM.INFO.LYRA_TURNS",
+            "$JS.API.STREAM.UPDATE.LYRA_TURNS",
+            "$JS.API.CONSUMER.CREATE.LYRA_TURNS.turn-writer-v1.>",
+            "$JS.API.CONSUMER.INFO.LYRA_TURNS.turn-writer-v1",
+            "$JS.API.CONSUMER.MSG.NEXT.LYRA_TURNS.turn-writer-v1",
+        ],
+        None,
+        None,
+    ),
+    (
+        "kv",
+        "lyra_outbound_audio_sent",
+        "hub",
+        [
+            "$JS.API.STREAM.CREATE.KV_lyra_outbound_audio_sent",
+            "$JS.API.STREAM.INFO.KV_lyra_outbound_audio_sent",
+        ],
+        "audio-consumer",
+        {
+            "publish": [
+                "$JS.API.STREAM.INFO.KV_lyra_outbound_audio_sent",
+                "$JS.API.STREAM.MSG.GET.KV_lyra_outbound_audio_sent",
+                "$KV.lyra_outbound_audio_sent.>",
+            ],
+            "subscribe": [
+                "$KV.lyra_outbound_audio_sent.>",
+            ],
+        },
+    ),
+]
 
 
 def _check_provisioner(
@@ -191,7 +130,8 @@ def _check_consumer_group(
     members = [
         name
         for name, identity in matrix["identities"].items()
-        if identity["status"] == "active" and cg in identity.get("groups", [])
+        if identity["status"] == "active"
+        and cg in identity.get("groups", [])
     ]
     if not members:
         return [
@@ -219,21 +159,21 @@ def _check_consumer_group(
     return errors
 
 
-def run(matrix: LoadedMatrix, code_subjects: dict) -> list[str]:  # type: ignore[type-arg]
+def run(matrix: LoadedMatrix) -> list[str]:
     """Check that every required subject is covered by ACL grants.
 
     Returns a (possibly empty) list of FAIL lines.
     """
     grants = effective_grants(matrix)
 
-    resources: list[tuple[str, str, dict]] = []  # type: ignore[type-arg]
-    for res_name, resource in (code_subjects.get("streams") or {}).items():
-        resources.append(("stream", res_name, resource))
-    for res_name, resource in (code_subjects.get("kv_buckets") or {}).items():
-        resources.append(("kv", res_name, resource))
-
     errors: list[str] = []
-    for kind, res_name, resource in resources:
+    for kind, res_name, provisioner, prov_subjects, cg, cg_subjects in RESOURCES:
+        resource = {
+            "provisioner": provisioner,
+            "provisioner_subjects": {"publish": prov_subjects},
+            "consumer_group": cg,
+            "consumer_subjects": cg_subjects,
+        }
         errors.extend(_check_provisioner(kind, res_name, resource, grants))
         errors.extend(_check_consumer_group(kind, res_name, resource, matrix, grants))
     return errors
@@ -242,8 +182,8 @@ def run(matrix: LoadedMatrix, code_subjects: dict) -> list[str]:  # type: ignore
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Assert every NATS subject the code requires (per code-subjects.json) "
-            "is covered by the effective ACL grants in acl-matrix.json."
+            "Assert every NATS subject the code requires"
+            " is covered by the effective ACL grants in acl-matrix.json."
         )
     )
     parser.add_argument(
@@ -252,33 +192,18 @@ def main(argv: list[str] | None = None) -> None:
         default=Path("deploy/nats/acl-matrix.json"),
         help="Path to acl-matrix.json (default: deploy/nats/acl-matrix.json)",
     )
-    parser.add_argument(
-        "--code-subjects",
-        type=Path,
-        default=Path("deploy/nats/code-subjects.json"),
-        help="Path to code-subjects.json (default: deploy/nats/code-subjects.json)",
-    )
     args = parser.parse_args(argv)
 
     matrix = load_matrix(args.matrix)
 
-    try:
-        code_subjects = load_code_subjects(args.code_subjects)
-    except (json.JSONDecodeError, ValueError, OSError) as exc:
-        print(f"error: code-subjects.json: {exc}", file=sys.stderr)
-        sys.exit(2)
-
-    errors = run(matrix, code_subjects)
+    errors = run(matrix)
 
     if errors:
         for e in errors:
             print(e, file=sys.stderr)
         sys.exit(1)
 
-    total = len(code_subjects.get("streams") or {}) + len(
-        code_subjects.get("kv_buckets") or {}
-    )
-    print(f"check-grants: OK ({total} resources)")
+    print(f"check-grants: OK ({len(RESOURCES)} resources)")
     sys.exit(0)
 
 

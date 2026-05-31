@@ -72,7 +72,7 @@ def rendered_auth_conf(tmp_path_factory: pytest.TempPathFactory) -> Path:
     from scripts._renderer import render_auth_conf
 
     tmp = tmp_path_factory.mktemp("nats")
-    matrix_path = REPO_ROOT / "tests/scripts/fixtures/v2-prod.json"
+    matrix_path = REPO_ROOT / "tests/scripts/fixtures/v3-current.json"
     matrix = load_matrix(matrix_path)
 
     provider = SubprocessNkeyProvider()
@@ -148,7 +148,7 @@ def test_rendered_auth_conf_parses_correctly(rendered_auth_conf: Path) -> None:
     from scripts._loader import load_matrix
     from scripts._renderer import parse_auth_conf
 
-    matrix = load_matrix(REPO_ROOT / "tests/scripts/fixtures/v2-prod.json")
+    matrix = load_matrix(REPO_ROOT / "tests/scripts/fixtures/v3-current.json")
     active_count = sum(
         1 for ident in matrix["identities"].values() if ident["status"] == "active"
     )

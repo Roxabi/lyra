@@ -71,9 +71,6 @@ jobs:
       - name: Check duplicate test basenames
         run: bash tools/check_duplicate_test_basenames.sh
 
-      - name: Check ACL matrix spec drift
-        run: bash scripts/check-acl-matrix-spec.sh
-
       - name: Check ACL matrix lifecycle fields
         run: uv run lyra-check-acl-retired
 
@@ -81,7 +78,7 @@ jobs:
         run: uv run lyra-check-flows
 
       - name: Check ACL code coverage (ADR-079)
-        run: uv run lyra-acl check grants --matrix deploy/nats/acl-matrix.json --code-subjects deploy/nats/code-subjects.json
+        run: uv run lyra-acl check grants --matrix deploy/nats/acl-matrix.json
 
       - name: Check auth.conf drift (acl-matrix.json is source of truth)
         run: bash scripts/check-acl-authconf-drift.sh

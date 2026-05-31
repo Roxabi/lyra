@@ -1,0 +1,48 @@
+---
+title: "feat(tools): Tier-1 generated architecture snapshot (layers + subjects + process topology)"
+issue: 1532
+status: approved
+tier: F-lite
+date: 2026-05-31
+---
+
+## Problem
+
+Architecture documentation in `lyra` drifts from code reality. The #1531 doc-drift gate caught dead references, but the fix is reactive — we need a proactive, machine-generated snapshot that stays current without hand-editing. The Tier-1 snapshot serializes the `CodeInventory` oracle (built in #1531) plus the `.importlinter` layer map into a single generated document, refreshed in CI, clearly marked as never-hand-edit.
+
+## Who
+
+- **Primary:** Developers and architects reviewing system structure
+- **Secondary:** CI pipeline (consumes the doc for drift gating), new contributors (onboarding reference)
+
+## Constraints
+
+- Must consume `CodeInventory.build(root)` from #1531 — no separate extractor
+- Must include `.importlinter` layer/boundary map
+- Must be excluded from #1531 doc-drift gate (no self-gating)
+- CI refresh must be non-blocking (stale = fail or auto-commit)
+
+## Out of Scope
+
+- Tier-2 deep analysis (call graphs, dependency heatmaps)
+- Runtime topology discovery (this is static source analysis)
+- Manual curation or hand-editing of the generated output
+- ADR consolidation (handled separately by `adr_consolidate.py`)
+
+## Premise Validity
+
+**Success in 6 months:** `docs/architecture/CURRENT.generated.md` is regenerated in CI on every push, accurately reflects current layer map + NATS subjects/identities + process topology, and is treated as the canonical architecture snapshot by the team.
+
+**Failure in 6 months:** The generated doc is stale (last CI refresh > 2 weeks old) or contains references to removed modules/subjects, or the CI gate fails because the snapshot drifts from reality.
+
+**Simplest alternative:** One-time hand-written `docs/architecture/CURRENT.md` maintained manually.
+
+**Why not simplest:** Hand-written docs drift from code (this is the #1531 problem we're solving). The goal is a machine-generated, CI-verified source of truth that stays current without human effort.
+
+## Complexity
+
+**Tier: F-lite** — bounded scope (serialize existing oracle + layer map), multi-source but well-defined, no new architecture.
+
+- ≤ 3 files changed: generator script + CI workflow + output doc
+- Clear inputs/outputs: `CodeInventory` + `.importlinter` → markdown
+- Single domain: tools/CI

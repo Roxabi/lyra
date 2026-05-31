@@ -85,3 +85,10 @@ repos:
     pass_filenames: false
     stages:
     - pre-push
+  - id: architecture-snapshot
+    name: architecture snapshot freshness
+    entry: tools/check_architecture_snapshot.sh
+    language: system
+    pass_filenames: false
+    stages:
+    - pre-push

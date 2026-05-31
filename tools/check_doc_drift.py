@@ -180,6 +180,36 @@ def _token_is_historical(token_start: int, line: str) -> bool:
     return False
 
 
+def _resolve_package_relative_path(root: Path, doc_path: Path, token: str) -> bool:
+    """Return True if *token* is a package-relative path that exists.
+
+    When scanning ``packages/<pkg>/CLAUDE.md``, ``src/...`` tokens should be
+    resolved relative to ``packages/<pkg>/`` first, then repo root.  This
+    prevents false positives where a package CLAUDE.md references a path
+    inside its own ``src/`` tree and the gate incorrectly tries repo-root
+    ``src/`` first.
+    """
+    if not token.startswith("src/"):
+        return False
+    try:
+        rel = doc_path.relative_to(root / "packages")
+    except ValueError:
+        return False
+    parts = rel.parts
+    if len(parts) < 1:
+        return False
+    pkg_dir = parts[0]
+    candidate = root / "packages" / pkg_dir / token
+    try:
+        resolved = candidate.resolve()
+        resolved.relative_to(root.resolve())
+        if resolved.exists():
+            return True
+    except (ValueError, OSError):
+        pass
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Baseline
 # ---------------------------------------------------------------------------
@@ -231,6 +261,10 @@ def _scan_file(
         for m in token_matches:
             token = m.group(1)
             token_start = m.start()
+
+            # Package-relative path short-circuit for packages/*/CLAUDE.md
+            if _resolve_package_relative_path(root, path, token):
+                continue
 
             verdict = oracle.resolve(token)
             # kind=unknown → external / unclassifiable → skip (no false positive)

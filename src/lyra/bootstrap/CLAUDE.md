@@ -44,4 +44,3 @@ Owning ADRs: ADR-045 (transport SDK), ADR-049 (contracts), #1278 (layer extracti
 ## Rules
 
 - All intra-bootstrap imports: full absolute paths (`lyra.bootstrap.<subdir>.<module>`).
-- `cli.py` / `__main__.py` use lazy imports to avoid circular deps at module load time.

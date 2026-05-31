@@ -58,7 +58,7 @@ src/roxabi_contracts/
 ├── envelope.py          # ContractEnvelope base + CONTRACT_VERSION
 ├── errors.py            # WorkerError + KNOWN_CODES registry (ADR-066)
 ├── blob_errors.py       # BlobNotFoundError (port-level not-found, ADR-082)
-├── _testing_guards.py   # Shared production-guard logic (env + loopback checks)
+├── _testing_guards.py   # Deprecated backward-compat re-export; canonical location is `roxabi_nats.testing._guards` (ADR-059 V6).
 ├── voice/               # lyra ↔ voiceCLI (ADR-044)
 ├── image/               # lyra ↔ imageCLI (ADR-050)
 ├── jobs/                # Generic job-dispatch contract

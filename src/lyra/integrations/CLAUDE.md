@@ -16,7 +16,6 @@ subprocess, or calls an external HTTP API belongs here — nowhere else.
 | `ScrapeProvider` | `async scrape(url, timeout) → str` |
 | `VaultProvider` | `async add(…) → None` / `async search(query) → str` |
 | `AudioConverter` | `async convert_wav_to_ogg(wav_path, ogg_path) → None` |
-| `SystemctlManager` | `async control(action, service) → str` |
 
 `SessionTools` is the injection bundle handed to plugin commands at registration.
 

@@ -5,7 +5,7 @@
 `AgentBase.process(msg, pool)` is the single entry point for all agents. `SimpleAgent` is the
 standard implementation for `backend = "claude-cli"`.
 
-Store/lifecycle machinery (`AgentStore`, `AgentSeederTarget`, `AgentRow`) lives in `core/`, not here.
+Store/lifecycle machinery (`AgentStore` lives in `infrastructure/stores/`, `AgentSeederTarget` and `AgentRow` live in `core/`) — not here.
 
 ## Backend wiring
 

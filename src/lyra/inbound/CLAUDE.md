@@ -52,7 +52,7 @@ parse → AttachmentIngestStage (store-conditional; no-store path clears pending
 
 ## DEBT carry-over
 
-Phase 3 audit (2026-05-20): No `DEBT:boundary-broad-catch` residuals after Phase 3 audit.
+Phase 3 audit (2026-05-20): No `DEBT:boundary-broad-catch` residuals in `*_inbound.py` files after Phase 3 audit.
 
 Both BLE001 sites from the original `discord_inbound.py` were drained:
 

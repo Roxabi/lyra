@@ -14,7 +14,7 @@ Trigger: `/refine-agent [agent-name]`
 
 ## Storage contract
 
-Agents live in `~/.lyra/auth.db` (SQLite). TOML files are seed-only:
+Agents live in `~/.lyra/config.db` (SQLite). TOML files are seed-only:
 
 | Source | Role |
 |--------|------|

@@ -15,7 +15,6 @@ Claude Code plugin via `roxabi-plugins` (or loaded locally from this path).
   `ssh $H "..."` calls — never direct Python imports or lyra source references.
 - `$H` := `DEPLOY_HOST` read from `~/projects/lyra/.env` on the local machine.
 - Production runtime: Podman Quadlet (rootless systemd --user units).
-  Legacy supervisord still supported when `LYRA_SUPERVISORCTL_PATH` is set.
 - Health endpoint: `http://localhost:8443/health/detail` (loopback on `$H`,
   bearer token from `~/.lyra/secrets/health_secret`).
 - Logs: `journalctl --user -u <unit>` on `$H`. In-container files via
@@ -34,8 +33,8 @@ Claude Code plugin via `roxabi-plugins` (or loaded locally from this path).
 
 `/lyra-debug` — full diagnostic cycle: status → health endpoint → logs →
 root-cause diagnosis → remediation options (DP) → recovery verification.
-Covers both degraded and fully-down scenarios across all four Lyra units
-(lyra-hub, lyra-telegram, lyra-discord, nats).
+Covers both degraded and fully-down scenarios across all eight Lyra production units
+(lyra-hub, lyra-telegram, lyra-discord, lyra-nats, lyra-clipool, lyra-gh-helper, lyra-turn-writer, lyra-blobstore).
 
 ## Adding skills
 

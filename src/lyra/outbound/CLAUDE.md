@@ -24,8 +24,7 @@ formatter/throttle/error_handler methods directly.
 
 ## Key invariants
 
-- **No second circuit-breaker layer here.** CB lives in `OutboundDispatcher` (hub-side,
-  per #1278/transport/CLAUDE.md). Outbound stages MUST NOT add a second CB.
+- **No second circuit-breaker layer here.** CB lives in `OutboundDispatcher` (hub-side). Outbound stages MUST NOT add a second CB.
 - **SanitizedError only on bus-bound paths.** All exceptions caught by
   `OutboundErrorHandler.guard` are converted to
   `SanitizedError(message=type(exc).__name__, …)` — never `str(exc)`. The discipline
@@ -34,10 +33,7 @@ formatter/throttle/error_handler methods directly.
   `DiscordAdapter.__init__` flows to `discord.Client(intents=intents)` via
   `super().__init__(intents=intents)`. Do NOT add `__init__` to any class in the
   `OutboundAdapterBase` inheritance chain.
-- **Single broad-catch site in the emitter.** `OutboundErrorHandler.guard` is the only
-  `except Exception` in `lyra.outbound/`. Two terminal sites in `OutboundEmitter.run`
-  and `_run_event_loop` capture stream errors with broad-catch — this is intentional
-  (terminal stream-error path, no more specific exception type known at this level).
+- **Single broad-catch site in the emitter.** `OutboundErrorHandler.guard` is the single semantic broad-catch site in `lyra.outbound/`. Two additional terminal sites in `OutboundEmitter.run` and `_run_event_loop` capture stream errors with broad-catch — these are intentional (terminal stream-error path).
 
 ## Composition example
 

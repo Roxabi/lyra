@@ -28,8 +28,8 @@ Defined by `__all__` in `src/roxabi_blobs/__init__.py`:
 
 - `BlobStore` — `Protocol` with 4 async methods (`put`/`get`/`exists`/`delete`)
 - `FsBlobStore` — concrete impl (Flat-FS + SQLite WAL)
-- `BlobRef` — Pydantic envelope (`store_key`, `content_hash`, `mime`, `size`, `filename?`, `source`, `platform_ref?`, `platform_message_id?`, `created_at`)
-- `BlobNotFoundError`, `BlobWriteError`, `BlobConsistencyError` — typed errors
+- `BlobRef` — Pydantic envelope (`id`, `store_key`, `content_hash`, `mime`, `size`, `filename?`, `source`, `platform_ref?`, `platform_message_id?`, `created_at`, `is_sentinel`)
+- `BlobNotFoundError`, `BlobWriteError`, `BlobConsistencyError`, `BlobError`, `BlobStateError` — typed errors
 
 `_`-prefixed submodules (`_schema` if any) are internal.
 

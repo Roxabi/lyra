@@ -18,11 +18,12 @@ Cross-repo adoption checklist → `docs/ops/container-publishing.md § Cross-rep
 | Unit file | Container name | Service unit |
 |---|---|---|
 | `quadlet/lyra-hub.container` | `lyra-hub` | `lyra-hub.service` |
-| `quadlet/lyra-telegram.container` | `lyra-telegram` | `lyra-telegram.service` |
-| `quadlet/lyra-discord.container` | `lyra-discord` | `lyra-discord.service` |
+| `quadlet/lyra-telegram.container.tmpl` | `lyra-telegram` | `lyra-telegram.service` |
+| `quadlet/lyra-discord.container.tmpl` | `lyra-discord` | `lyra-discord.service` |
 | `quadlet/lyra-clipool.container` | `lyra-clipool` | `lyra-clipool.service` |
 | `quadlet/lyra-nats.container` | `lyra-nats` | `lyra-nats.service` |
 | `quadlet/lyra-gh-helper.container` | `lyra-gh-helper` | `lyra-gh-helper.service` |
+| `quadlet/lyra-turn-writer.container` | `lyra-turn-writer` | `lyra-turn-writer.service` |
 | `quadlet/lyra-blobstore.container` | `lyra-blobstore` | `lyra-blobstore.service` |
 
 Pattern: `lyra-<component>.container` → `ContainerName=lyra-<component>`.

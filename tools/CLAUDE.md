@@ -16,7 +16,8 @@ Scripts are driven by `.claude/stack.yml` `quality_gates` block and pre-push hoo
 | `check_duplicate_test_basenames.sh` | `duplicate_test_basenames` | pre-commit |
 | `.importlinter` (external) | `import_layers` | pre-push |
 | `check_architecture_snapshot.sh` | `architecture_snapshot` — regenerates + diffs `docs/architecture/CURRENT.generated.md`; exit 0=clean, 1=drift, 2=generator crash | pre-push |
-| `check_doc_drift.py` | `doc_drift` — dead backtick refs in docs + CLAUDE.md network; baseline in `doc_drift_baseline.txt` (burn-down list, epic #1530) | CI |
+| `check_doc_drift.py` | `doc_drift` — dead backtick refs in docs + CLAUDE.md network | CI |
+| `check_no_runtime_toml_bots.sh` | `no_runtime_toml_bots` | pre-commit |
 
 ### `check_doc_drift.py` — scanned scope (allowlist, #1538)
 

@@ -51,7 +51,7 @@ Reads are synchronous (cache). Writes are async (SQLite). Cache updated atomical
 
 ## Non-obvious placements
 
-**`hub/pipeline/` owns `PoolManager`** — `PoolManager` and `pipeline_types` both import `Hub` at runtime; placing them in `pool/` would create a circular import. Re-exported from `lyra.core.hub` for consumers.
+**`hub/pipeline/` owns `PoolManager`** — `PoolManager` and `pipeline_types` both import `Hub` at runtime; placing them in `pool/` would create a circular import. Re-exported from `lyra.core.hub.pipeline` for consumers.
 
 **`cli/cli_pool_entry.py` (`_ProcessEntry`)** — extracted from `cli_pool.py` solely to break a circular import between pool mixins. Not a separate concern.
 
@@ -63,7 +63,7 @@ Reads are synchronous (cache). Writes are async (SQLite). Cache updated atomical
 
 **`ChannelAdapter`** (`hub/hub_protocol.py`) — structural protocol every adapter must implement. Hub trusts `InboundMessage.user_id` as authenticated; adapters must verify platform auth before constructing the message.
 
-**`PoolContext`** (`pool/pool.py`) — narrow interface `Pool` requires from its owner. Test seam: inject a mock to unit-test `Pool` without pulling in `Hub`.
+**`PoolContext`** (`pool/pool_context.py`) — narrow interface `Pool` requires from its owner. Test seam: inject a mock to unit-test `Pool` without pulling in `Hub`.
 
 **`RoutingKey`** (`hub/hub_protocol.py`) — `NamedTuple(platform, bot_id, scope_id)`. Always call `.to_pool_id()` — never build pool ID strings manually (ADR-001 §4).
 

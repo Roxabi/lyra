@@ -39,6 +39,7 @@ primary observability path.
 | `checks.py` | Layer 1 probes (process liveness, HTTP health, queue depth, circuits, reaper, disk) |
 | `checks_log.py` | Log-scraping probes (NATS permission errors, stream_gen timeouts) |
 | `checks_varz.py` | NATS `/varz` delta probe — tracks auth_errors + slow_consumers across runs |
+| `checks_audio.py` | Audio pipeline health probe — checks TTS/STT worker liveness, queue depth, and audio delivery path |
 | `config.py` | `MonitoringConfig` (Pydantic) — thresholds from `[monitoring]` TOML, secrets from env |
 | `models.py` | `CheckResult`, `HealthReport`, `DiagnosisReport` dataclasses |
 | `escalation.py` | Layer 2 — LLM diagnosis via Claude CLI + Telegram delivery (direct httpx, ¬hub) |

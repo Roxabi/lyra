@@ -15,8 +15,7 @@ DomainClient           — thin wrapper in lyra.nats / lyra.llm (compose pool + 
 
 ## Key invariants
 
-- `NatsTransport.open_inbox()` is an async context manager; the `InboxStream` it yields
-  is only valid inside the `async with` block — never escape the CM.
+- `NatsTransport.open_inbox()` returns an `AsyncGenerator[InboxStream, None]`; it is consumed with `async for`, not `async with`.
 - `WorkerPoolClient` accepts a `WorkerRegistry` via dependency injection (bootstrap/factory
   owns the instance) and manages the heartbeat subscription. Domain clients MUST NOT
   subscribe to heartbeat subjects or open inboxes directly.

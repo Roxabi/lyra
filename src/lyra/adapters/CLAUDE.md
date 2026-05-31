@@ -39,7 +39,7 @@ No business logic, LLM calls, or agent logic lives here.
 | `render_audio_stream(chunks, inbound)` | Stream TTS audio chunks |
 | `render_attachment(msg, inbound)` | Send attachment |
 
-`render_voice_stream()` is an intentional no-op stub on Telegram — voice-channel
+`render_voice_stream()` on Telegram logs a warning and returns — voice-channel
 playback is Discord-only. Do NOT make it functional.
 
 ## OutboundAdapterBase (`shared/_base_outbound.py`)

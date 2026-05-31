@@ -22,6 +22,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ACL_MATRIX="${REPO_ROOT}/deploy/nats/acl-matrix.json"
 
 SPEC_COMMITTED="${REPO_ROOT}/artifacts/specs/706-per-role-nkeys-acls-spec.mdx"
 FIXTURE_COMMITTED="${REPO_ROOT}/tests/scripts/fixtures/v3-current.json"
@@ -35,10 +36,12 @@ FIXTURE_FRESH="${TMPDIR_GATE}/v3-current-fresh.json"
 # Render spec table to temp — exit 2 if generator crashes
 cp "$SPEC_COMMITTED" "$SPEC_FRESH"
 uv run --project "${REPO_ROOT}" python "${REPO_ROOT}/scripts/render_acl_spec.py" \
+    --matrix "$ACL_MATRIX" \
     --output "$SPEC_FRESH" || exit 2
 
 # Render parity fixture to temp — exit 2 if generator crashes
 uv run --project "${REPO_ROOT}" python "${REPO_ROOT}/scripts/render_acl_parity.py" \
+    --matrix "$ACL_MATRIX" \
     --output "$FIXTURE_FRESH" || exit 2
 
 # Diff committed vs freshly rendered
@@ -54,3 +57,5 @@ if [ "$drift" -ne 0 ]; then
   echo "::error::ACL spec/fixture views are stale. Run 'make nats-regen-specs' and commit the result." >&2
   exit 1
 fi
+
+echo "✓ ACL spec + parity fixture match acl-matrix.json"

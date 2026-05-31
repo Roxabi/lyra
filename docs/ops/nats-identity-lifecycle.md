@@ -130,7 +130,7 @@ lyra-acl genkeys --regen-authconf
 **6. Commit.**
 
 ```bash
-git add deploy/nats/acl-matrix.json artifacts/specs/706-per-role-nkeys-acls-spec.mdx
+git add deploy/nats/acl-matrix.json artifacts/specs/706-per-role-nkeys-acls-spec.mdx tests/scripts/fixtures/v3-current.json
 git commit -m "chore(nats): retire <name> identity"
 ```
 

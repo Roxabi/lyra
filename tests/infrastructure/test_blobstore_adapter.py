@@ -350,6 +350,71 @@ class TestHttpBlobStoreAdapterErrorTranslation:
 
 
 # ---------------------------------------------------------------------------
+# T6 — 5xx translation: httpx.HTTPStatusError ≥500 → BlobStoreServerError
+# ---------------------------------------------------------------------------
+
+
+class TestHttpBlobStoreAdapterServerErrorTranslation:
+    async def test_put_translates_5xx_to_blob_store_server_error(self) -> None:
+        """put() wraps httpx.HTTPStatusError with status ≥500 as BlobStoreServerError.
+
+        Negative guard: removing the 5xx catch in HttpBlobStoreAdapter.put makes
+        pytest.raises(roxabi_contracts.BlobStoreServerError) fail because the raw
+        httpx.HTTPStatusError propagates uncaught.
+        """
+        # Arrange
+        import httpx
+
+        import roxabi_contracts
+        from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
+
+        fake_store = _make_fake_http_store()
+        # Build a minimal httpx.HTTPStatusError for a 503 response
+        request = httpx.Request("PUT", "http://blobstore/blobs")
+        response = httpx.Response(503, request=request)
+        cast(AsyncMock, fake_store.put).side_effect = httpx.HTTPStatusError(
+            "503 Service Unavailable", request=request, response=response
+        )
+        adapter = HttpBlobStoreAdapter(fake_store)
+
+        # Act / Assert
+        with pytest.raises(roxabi_contracts.BlobStoreServerError) as exc_info:
+            await adapter.put(b"data", mime="image/png", source="discord")
+
+        raised = exc_info.value
+        assert raised.status_code == 503
+        assert isinstance(raised, roxabi_contracts.BlobStoreServerError)
+
+    async def test_put_does_not_wrap_4xx_as_blob_store_server_error(self) -> None:
+        """put() does not wrap non-5xx HTTPStatusError as BlobStoreServerError.
+
+        A 4xx (e.g. 400 Bad Request) must propagate as the raw httpx error,
+        not be swallowed or re-typed as BlobStoreServerError.
+        """
+        # Arrange
+        import httpx
+
+        import roxabi_contracts
+        from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
+
+        fake_store = _make_fake_http_store()
+        request = httpx.Request("PUT", "http://blobstore/blobs")
+        response = httpx.Response(400, request=request)
+        cast(AsyncMock, fake_store.put).side_effect = httpx.HTTPStatusError(
+            "400 Bad Request", request=request, response=response
+        )
+        adapter = HttpBlobStoreAdapter(fake_store)
+
+        # Act / Assert — 4xx passes through as raw httpx.HTTPStatusError
+        try:
+            await adapter.put(b"data", mime="image/png", source="discord")
+        except roxabi_contracts.BlobStoreServerError:
+            pytest.fail("4xx must not be wrapped as BlobStoreServerError")
+        except httpx.HTTPStatusError:
+            pass  # expected — raw 4xx propagates unchanged
+
+
+# ---------------------------------------------------------------------------
 # T4 — Protocol conformance: HttpBlobStoreAdapter satisfies BlobStorePort
 # ---------------------------------------------------------------------------
 

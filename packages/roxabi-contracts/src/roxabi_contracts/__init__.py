@@ -10,7 +10,7 @@ per-domain submodules (voice, image, memory, llm) arrive in later tags.
 from importlib.metadata import PackageNotFoundError, version
 
 from .audit import SecurityEvent
-from .blob_errors import BlobNotFoundError
+from .blob_errors import BlobNotFoundError, BlobStoreServerError
 from .blob_ref import PENDING_STORE_KEY, BlobRef
 from .envelope import CONTRACT_VERSION, ContractEnvelope
 
@@ -22,6 +22,7 @@ except PackageNotFoundError:
 __all__ = [
     "BlobNotFoundError",
     "BlobRef",
+    "BlobStoreServerError",
     "CONTRACT_VERSION",
     "ContractEnvelope",
     "PENDING_STORE_KEY",

@@ -6,80 +6,22 @@ import logging
 from datetime import timezone
 from typing import TYPE_CHECKING, Any
 
+from lyra.adapters.telegram.telegram_attachments import _extract_attachments
 from lyra.core.audio_payload import AudioPayload
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import (
-    Attachment,
     InboundMessage,
     Platform,
     RoutingContext,
     TelegramMeta,
 )
+from lyra.inbound.attachment_ingest import PendingAttachment
 from roxabi_contracts import PENDING_STORE_KEY, BlobRef
 
 if TYPE_CHECKING:
     from lyra.adapters.telegram import TelegramAdapter
-    from lyra.inbound.attachment_ingest import PendingAttachment
 
 log = logging.getLogger("lyra.adapters.telegram")
-
-
-def _extract_attachments(msg: Any) -> list[Attachment]:
-    """Extract non-audio Attachment objects from a Telegram message."""
-    result: list[Attachment] = []
-    # photo: list of PhotoSize, take largest (last)
-    photo = getattr(msg, "photo", None)
-    if photo:
-        largest = photo[-1]
-        result.append(
-            Attachment(
-                type="image",
-                url_or_path_or_bytes=f"tg:file_id:{largest.file_id}",
-                mime_type="image/jpeg",
-            )
-        )
-    doc = getattr(msg, "document", None)
-    if doc:
-        result.append(
-            Attachment(
-                type="file",
-                url_or_path_or_bytes=f"tg:file_id:{doc.file_id}",
-                mime_type=getattr(doc, "mime_type", None) or "application/octet-stream",
-                filename=getattr(doc, "file_name", None),
-            )
-        )
-    video = getattr(msg, "video", None)
-    if video:
-        result.append(
-            Attachment(
-                type="video",
-                url_or_path_or_bytes=f"tg:file_id:{video.file_id}",
-                mime_type=getattr(video, "mime_type", None) or "video/mp4",
-            )
-        )
-    anim = getattr(msg, "animation", None)
-    if anim:
-        result.append(
-            Attachment(
-                type="image",
-                url_or_path_or_bytes=f"tg:file_id:{anim.file_id}",
-                mime_type="image/gif",
-            )
-        )
-    sticker = getattr(msg, "sticker", None)
-    if sticker:
-        # Only static WebP stickers; skip animated (.tgs) and video (.webm)
-        if not getattr(sticker, "is_animated", False) and not getattr(
-            sticker, "is_video", False
-        ):
-            result.append(
-                Attachment(
-                    type="image",
-                    url_or_path_or_bytes=f"tg:file_id:{sticker.file_id}",
-                    mime_type="image/webp",
-                )
-            )
-    return result
 
 
 def _make_scope_id(
@@ -187,7 +129,7 @@ def normalize(  # noqa: C901 — DEBT:wiring-bootstrap-deps
         chat_id,
     )
 
-    attachments = _extract_attachments(raw)
+    attachments, pendings = _extract_attachments(adapter, raw)
     message_id = getattr(raw, "message_id", None)
     reply_to_message = getattr(raw, "reply_to_message", None)
     reply_to_id = (
@@ -207,6 +149,7 @@ def normalize(  # noqa: C901 — DEBT:wiring-bootstrap-deps
         text=text,
         text_raw=text,
         attachments=attachments,
+        pending_attachments=pendings,
         timestamp=timestamp,
         trust_level=trust_level,
         is_admin=is_admin,
@@ -223,7 +166,7 @@ def normalize_audio(  # noqa: PLR0913 — ChannelAdapter protocol; pending is ad
     mime_type: str,
     *,
     trust_level: TrustLevel,
-    pending: "PendingAttachment | None" = None,
+    pending: PendingAttachment | None = None,
 ) -> InboundMessage:
     """Build a voice InboundMessage from a Telegram audio/voice/video_note update.
 

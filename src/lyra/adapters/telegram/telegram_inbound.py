@@ -11,7 +11,11 @@ from lyra.adapters.telegram.telegram_audio import _download_audio
 from lyra.adapters.telegram.telegram_formatting import _make_send_kwargs
 from lyra.adapters.telegram.telegram_normalize import _make_scope_id, normalize_audio
 from lyra.core.auth.trust import TrustLevel
-from lyra.inbound.attachment_ingest import AttachmentIngestStage, PendingAttachment
+from lyra.inbound.attachment_ingest import (
+    AttachmentIngestError,
+    AttachmentIngestStage,
+    PendingAttachment,
+)
 from lyra.inbound.context import DispatchCtx, InboundContext, RouterCtx, SessionCtx
 from lyra.inbound.dispatcher import Dispatcher
 from lyra.inbound.pipeline import InboundPipeline
@@ -74,18 +78,31 @@ async def handle_message(adapter: "TelegramAdapter", msg: Any) -> None:
             typing=adapter._typing,
             msg_catalog=adapter._msg_manager,
         ),
+        ingest=getattr(adapter, "_ingest_ctx", None),
     )
 
     async def _tg_backpressure(text: str) -> None:
         await adapter.bot.send_message(msg.chat.id, text)
 
-    await _pipeline.run(
-        msg,
-        inbound_ctx,
-        parser,
-        send_backpressure=_tg_backpressure,
-        on_drop=lambda: adapter._cancel_typing(msg.chat.id),
-    )
+    try:
+        await _pipeline.run(
+            msg,
+            inbound_ctx,
+            parser,
+            send_backpressure=_tg_backpressure,
+            on_drop=lambda: adapter._cancel_typing(msg.chat.id),
+        )
+    except AttachmentIngestError as e:
+        try:
+            await adapter.bot.send_message(
+                **_make_send_kwargs(msg.chat.id, e.user_message, msg.message_id)
+            )
+        except TelegramAPIError:
+            log.warning(
+                "Failed to send attachment-too-large reply for chat_id=%s",
+                msg.chat.id,
+            )
+        return
 
 
 async def handle_voice_message(adapter: "TelegramAdapter", msg: Any) -> None:  # noqa: C901

@@ -47,6 +47,8 @@ class TestDiscordAttachments:
             content_type="image/png",
             url="https://cdn.discord.com/img.png",
             filename="img.png",
+            size=123,
+            read=AsyncMock(return_value=b"<bytes>"),
         )
         msg = adapter.normalize(
             self._make_msg(attachments=[att]),
@@ -65,6 +67,8 @@ class TestDiscordAttachments:
             content_type="application/pdf",
             url="https://cdn.discord.com/doc.pdf",
             filename="doc.pdf",
+            size=123,
+            read=AsyncMock(return_value=b"<bytes>"),
         )
         msg = adapter.normalize(
             self._make_msg(attachments=[att]),
@@ -83,11 +87,15 @@ class TestDiscordAttachments:
                 content_type="image/jpeg",
                 url="https://cdn/a.jpg",
                 filename="a.jpg",
+                size=123,
+                read=AsyncMock(return_value=b"<bytes>"),
             ),
             SimpleNamespace(
                 content_type="application/pdf",
                 url="https://cdn/b.pdf",
                 filename="b.pdf",
+                size=123,
+                read=AsyncMock(return_value=b"<bytes>"),
             ),
         ]
         msg = adapter.normalize(
@@ -102,6 +110,8 @@ class TestDiscordAttachments:
             content_type="video/mp4",
             url="https://cdn.discord.com/clip.mp4",
             filename="clip.mp4",
+            size=123,
+            read=AsyncMock(return_value=b"<bytes>"),
         )
         msg = adapter.normalize(
             self._make_msg(attachments=[att]),
@@ -137,6 +147,8 @@ class TestDiscordAttachments:
             content_type="image/png",
             url="https://cdn/img.png",
             filename="img.png",
+            size=123,
+            read=AsyncMock(return_value=b"<bytes>"),
         )
         msg = adapter.normalize(
             self._make_msg(

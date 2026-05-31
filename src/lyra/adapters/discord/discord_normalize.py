@@ -80,7 +80,8 @@ def normalize(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
 
     _display_name = getattr(raw.author, "display_name", None)
     roles = tuple(str(r.id) for r in getattr(raw.author, "roles", []) or [])
-    attachments = extract_attachments(getattr(raw, "attachments", None) or [])
+    raw_atts = getattr(raw, "attachments", None) or []
+    attachments, _pendings = extract_attachments(raw_atts)
     _reference = getattr(raw, "reference", None)
     reply_to_id: str | None = (
         str(_reference.message_id)
@@ -114,6 +115,7 @@ def normalize(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         text=text,
         text_raw=raw.content,
         attachments=attachments,
+        pending_attachments=_pendings,
         timestamp=timestamp,
         trust_level=trust_level,
         is_admin=is_admin,

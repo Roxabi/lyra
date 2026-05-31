@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from datetime import UTC, datetime
 from typing import Any
 
@@ -11,11 +12,19 @@ import httpx
 from .errors import BlobNotFoundError
 from .models import BlobRef
 
+# Default write (and overall/read) timeout raised from 5 s to 30 s to accommodate
+# 20 MiB non-audio CDN→PUT transfers (#1552 / parent Open-Q1).  connect stays at
+# 5 s — it is unaffected by payload size.
+_DEFAULT_WRITE_TIMEOUT_S: float = float(
+    os.environ.get("LYRA_BLOBSTORE_WRITE_TIMEOUT_S", "30.0")
+)
+
 
 class HttpBlobStore:
     """HTTP client for a remote `lyra blobstore serve` service.
 
-    Per-request timeout = 5 s connect / 5 s read.
+    Per-request timeout: connect=5 s, write/read/pool=``timeout`` seconds
+    (default 30 s, overridable via ``LYRA_BLOBSTORE_WRITE_TIMEOUT_S`` env var).
     """
 
     def __init__(
@@ -23,10 +32,12 @@ class HttpBlobStore:
         base_url: str,
         token: str,
         *,
+        timeout: float = _DEFAULT_WRITE_TIMEOUT_S,
         _transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._token = token
+        self._timeout = timeout
         self._transport = _transport
         self._client: httpx.AsyncClient | None = None
         # ASGI lifespan support (test seam only — production uses real HTTP)
@@ -86,7 +97,7 @@ class HttpBlobStore:
                 base_url=self._base_url,
                 headers={"Authorization": f"Bearer {self._token}"},
                 transport=self._transport,  # None → default network transport
-                timeout=httpx.Timeout(5.0, connect=5.0),
+                timeout=httpx.Timeout(self._timeout, connect=5.0),
             )
         return self._client
 

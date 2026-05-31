@@ -80,20 +80,19 @@ class RoutingContext:
 class Attachment:
     """A file or media attachment on an InboundMessage.
 
-    url_or_path_or_bytes stores platform-specific references:
+    url_or_path_or_bytes stores a platform-specific reference:
     - Discord: direct CDN URL (str) — fetchable with HTTP GET.
-    - Telegram: prefixed file_id (str, ``"tg:file_id:{id}"``) — resolve via
-      Bot API ``getFile``. Detect with
-      ``url_or_path_or_bytes.startswith("tg:file_id:")``.
-    - Local filesystem path (str, e.g. ``"/tmp/tmpXXX.ogg"``) — for audio
-      downloaded by adapters before normalization.
-    - Raw bytes (bytes) — for pre-downloaded media (future).
+    - Telegram: prefixed file_id (``"tg:file_id:{id}"``) — resolve via Bot API
+      ``getFile``; detect with ``.startswith("tg:file_id:")``.
+    - Local path (str) for pre-download audio, or raw bytes (future).
     """
 
     type: str  # "image" | "audio" | "video" | "file"
     url_or_path_or_bytes: str | bytes  # URL, local path, or raw bytes
     mime_type: str
     filename: str | None = None
+    # content-addressed ref; stamped by AttachmentIngestStage (#1552)
+    blob_ref: BlobRef | None = None
 
 
 @dataclass(frozen=True)
@@ -139,9 +138,11 @@ class InboundMessage:
     # Callback set by adapters to persist session ID after a turn starts (#853).
     # Not serialized over NATS (callable cannot cross process boundary).
     session_update_fn: SessionUpdateFn | None = field(default=None, repr=False)
-    # Transient adapter→stage carrier for PendingAttachment. Typed Any to avoid
-    # core→inbound cycle; never serialized; cleared by AttachmentIngestStage (#1551).
+    # Transient adapter→stage carriers (Typed Any → avoid core→inbound cycle; never
+    # serialized; cleared by AttachmentIngestStage). Singular = audio (#1551); plural =
+    # non-audio, index-aligned with `attachments` (#1552).
     pending_attachment: Any = field(default=None, repr=False)
+    pending_attachments: list[Any] = field(default_factory=list, repr=False)
 
 
 @dataclass

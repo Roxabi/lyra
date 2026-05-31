@@ -16,7 +16,7 @@ from lyra.adapters.discord.discord_threads import persist_thread_claim
 from lyra.adapters.shared._shared import AUDIO_MIME_TYPES
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import DiscordMeta, InboundMessage
-from lyra.inbound.attachment_ingest import AttachmentIngestStage
+from lyra.inbound.attachment_ingest import AttachmentIngestError, AttachmentIngestStage
 from lyra.inbound.context import DispatchCtx, InboundContext, RouterCtx, SessionCtx
 from lyra.inbound.dispatcher import Dispatcher
 from lyra.inbound.pipeline import InboundPipeline
@@ -241,8 +241,7 @@ async def _discord_pre_session_hook(
 async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:
     """Handle incoming Gateway message.
 
-    Filters own/bot messages, dispatches audio/voice short-circuits,
-    then delegates to InboundPipeline for the text path.
+    Bot filter → audio/voice short-circuits → InboundPipeline (text path).
     """
     # Discard bot messages early — before normalization to avoid waste.
     if message.author.bot:
@@ -266,8 +265,7 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:
         if await adapter._handle_voice_command(message, TrustLevel.PUBLIC):
             return
 
-    # _cancel_typing is keyed by id — use channel.id (what was started); never
-    # thread.id (auto-thread is created later by pre_session_hook, after typing starts).
+    # Use channel.id (not thread.id — auto-thread is created later by pre_session_hook).
     send_to_id = message.channel.id
     adapter._start_typing(send_to_id)
 
@@ -277,7 +275,8 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:
         parser = DiscordWireParser(adapter)
         _parser_cache[id(adapter)] = parser
 
-    inbound_ctx = build_discord_inbound_ctx(adapter)
+    _ingest = getattr(adapter, "_ingest_ctx", None)
+    inbound_ctx = build_discord_inbound_ctx(adapter, ingest=_ingest)
 
     pre_route = functools.partial(_discord_pre_route_hook, adapter=adapter)
     pre_session = functools.partial(
@@ -287,12 +286,15 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:
     async def _dc_backpressure(text: str) -> None:
         await message.reply(text)
 
-    await _pipeline.run(
-        message,
-        inbound_ctx,
-        parser,
-        pre_route_hook=pre_route,
-        pre_session_hook=pre_session,
-        send_backpressure=_dc_backpressure,
-        on_drop=lambda: adapter._cancel_typing(send_to_id),
-    )
+    try:
+        await _pipeline.run(
+            message,
+            inbound_ctx,
+            parser,
+            pre_route_hook=pre_route,
+            pre_session_hook=pre_session,
+            send_backpressure=_dc_backpressure,
+            on_drop=lambda: adapter._cancel_typing(send_to_id),
+        )
+    except AttachmentIngestError as e:
+        await message.reply(e.user_message)

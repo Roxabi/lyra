@@ -12,7 +12,8 @@ import pytest
 import lyra.__main__ as main_mod
 import lyra.bootstrap.bootstrap_stores as stores_mod
 import lyra.bootstrap.factory.agent_factory as agent_factory_mod
-import lyra.bootstrap.factory.hub_builder as hub_builder_mod
+import lyra.bootstrap.factory.hub.hub_clipool_init as hub_clipool_init_mod
+import lyra.bootstrap.factory.hub.hub_core as hub_core_mod
 import lyra.bootstrap.factory.unified as unified_mod
 import lyra.bootstrap.factory.wiring_helpers as wiring_helpers_mod
 import lyra.bootstrap.wiring.bootstrap_wiring as wiring_mod
@@ -123,7 +124,9 @@ def _patch_nats_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_audit_sink = MagicMock()
     fake_audit_sink.provision = AsyncMock()
     fake_audit_sink.emit = AsyncMock()
-    monkeypatch.setattr(hub_builder_mod, "JetStreamAuditSink", lambda: fake_audit_sink)
+    monkeypatch.setattr(
+        hub_clipool_init_mod, "JetStreamAuditSink", lambda: fake_audit_sink
+    )
     monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
     monkeypatch.setenv("LYRA_HEALTH_PORT", "0")
     # Isolate vault dir per test to prevent parallel-worker races on
@@ -244,7 +247,7 @@ def patch_all(
             super().__init__(**kwargs)
             captured.append(self)
 
-    monkeypatch.setattr(hub_builder_mod, "Hub", CapturingHub)
+    monkeypatch.setattr(hub_core_mod, "Hub", CapturingHub)
 
     class CapturingDcAdapter(_FakeDcAdapter):
         def __init__(self, **kwargs: object) -> None:
@@ -272,6 +275,13 @@ def patch_all(
         side_effect=lambda *a, **kw: next(_bot_auth_results)
     )
     monkeypatch.setattr(wiring_mod, "Authenticator", _mock_auth_cls)
+    # auth.py imports Authenticator directly from lyra.core.auth.authenticator,
+    # so the wiring_mod patch above does not cover it.
+    monkeypatch.setattr(
+        AuthMiddleware,
+        "from_bot_store",
+        classmethod(lambda cls, *a, **kw: next(_bot_auth_results)),
+    )
 
     _fake_auth_store = MagicMock()
     _fake_auth_store.connect = AsyncMock()

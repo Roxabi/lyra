@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lyra.bootstrap.wiring.bootstrap_wiring import (
+from lyra.bootstrap.wiring.ingest_wiring import (
     _assert_blobstore_configured_if_url_set,
     build_ingest,
     wire_ingest,

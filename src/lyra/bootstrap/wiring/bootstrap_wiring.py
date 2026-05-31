@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -15,23 +14,18 @@ if TYPE_CHECKING:
 from lyra.adapters.discord import DiscordAdapter
 from lyra.adapters.telegram import TelegramAdapter
 from lyra.bootstrap import credentials
+from lyra.bootstrap.wiring.ingest_wiring import wire_ingest
 from lyra.config import (
     DiscordBotConfig,
-    DiscordMultiConfig,
     TelegramBotConfig,
-    TelegramMultiConfig,
 )
-from lyra.core.auth.authenticator import Authenticator, FromBotStoreDeps
+from lyra.core.auth.authenticator import Authenticator
 from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.hub import Hub, OutboundDispatcher, RoutingKey
 from lyra.core.messaging.message import Platform
 from lyra.core.messaging.messages import MessageManager
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig
-from lyra.core.stores.bot_store_protocol import BotStoreProtocol
-from lyra.inbound.attachment_ingest import AttachmentIngestStage, IngestCtx
 from lyra.infrastructure.stores.agent_store import AgentStore
-from lyra.infrastructure.stores.auth_store import AuthStore
-from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 from lyra.infrastructure.stores.thread_store import ThreadStore
 
 # Default vault dir for discord.db (#417 / S4)
@@ -69,16 +63,6 @@ class DiscordWiringDeps:
     nats_client: Any = None
     tool_display_config: ToolDisplayConfig | None = None
     blob_store: "BlobStorePort | None" = None
-
-
-@dataclass
-class BotAuthDeps:
-    bot_store: BotStoreProtocol
-    tg_multi_cfg: TelegramMultiConfig
-    dc_multi_cfg: DiscordMultiConfig
-    auth_store: AuthStore
-    admin_user_ids: frozenset[str] = frozenset()
-    alias_store: IdentityAliasStore | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -271,106 +255,3 @@ async def wire_discord_adapters(
         raise
 
     return adapters, dispatchers, thread_store
-
-
-def _build_bot_auths(
-    deps: BotAuthDeps,
-) -> tuple[
-    list[tuple[TelegramBotConfig, Authenticator]],
-    list[tuple[DiscordBotConfig, Authenticator]],
-]:
-    """Build (bot_cfg, auth) pairs for each platform, skipping bots without auth."""
-    tg_bot_auths: list[tuple[TelegramBotConfig, Authenticator]] = []
-    dc_bot_auths: list[tuple[DiscordBotConfig, Authenticator]] = []
-
-    try:
-        for bot_cfg in deps.tg_multi_cfg.bots:
-            auth = Authenticator.from_bot_store(
-                FromBotStoreDeps(
-                    platform="telegram",
-                    bot_id=bot_cfg.bot_id,
-                    bot_store=deps.bot_store,
-                    store=deps.auth_store,
-                    admin_user_ids=deps.admin_user_ids,
-                    alias_store=deps.alias_store,
-                )
-            )
-            if auth is None:
-                log.warning(
-                    "telegram bot_id=%r has no auth config — skipping",
-                    bot_cfg.bot_id,
-                )
-                continue
-            tg_bot_auths.append((bot_cfg, auth))
-
-        for bot_cfg in deps.dc_multi_cfg.bots:
-            auth = Authenticator.from_bot_store(
-                FromBotStoreDeps(
-                    platform="discord",
-                    bot_id=bot_cfg.bot_id,
-                    bot_store=deps.bot_store,
-                    store=deps.auth_store,
-                    admin_user_ids=deps.admin_user_ids,
-                    alias_store=deps.alias_store,
-                )
-            )
-            if auth is None:
-                log.warning(
-                    "discord bot_id=%r has no auth config — skipping",
-                    bot_cfg.bot_id,
-                )
-                continue
-            dc_bot_auths.append((bot_cfg, auth))
-    except ValueError as exc:
-        sys.exit(str(exc))
-
-    return tg_bot_auths, dc_bot_auths
-
-
-# ---------------------------------------------------------------------------
-# Ingest wiring helpers (#1551, ADR-083)
-# ---------------------------------------------------------------------------
-
-
-def build_ingest(
-    blob_store: "BlobStorePort | None",
-) -> tuple[IngestCtx, AttachmentIngestStage | None]:
-    """Compose the inbound ingest context + stage from an optional blob store.
-
-    store=None (CLI / degraded / blobstore unconfigured) → (IngestCtx(store=None), None)
-    so the inbound pipeline's ingest guard no-ops. store present → a live IngestCtx
-    plus a (stateless) AttachmentIngestStage. (#1551, ADR-083.)
-    """
-    stage = AttachmentIngestStage() if blob_store is not None else None
-    return IngestCtx(store=blob_store), stage
-
-
-def _assert_blobstore_configured_if_url_set(ingest: IngestCtx) -> None:
-    """Fail fast on misconfiguration: URL set but the store failed to initialise.
-
-    Honors #1540 graceful degradation: when ``LYRA_BLOBSTORE_URL`` is unset
-    (dev / CLI), a ``None`` store is expected and we degrade silently. When the
-    URL IS set but ``init_blobstore()`` returned ``None`` (token file absent or
-    unreadable → misconfiguration), raise so inbound attachment ingest cannot
-    silently no-op in production. (#1551 S8, reconciles #1540.)
-    """
-    url = os.environ.get("LYRA_BLOBSTORE_URL")
-    if url and ingest.store is None:
-        raise RuntimeError(
-            f"LYRA_BLOBSTORE_URL={url!r} is set but BlobStore failed to "
-            "initialise (LYRA_BLOBSTORE_TOKEN_PATH absent or unreadable) — "
-            "inbound attachment ingest would silently no-op."
-        )
-
-
-def wire_ingest(adapter: Any, blob_store: "BlobStorePort | None") -> None:
-    """Inject the ingest context onto an adapter + enforce the prod invariant.
-
-    Single seam called from EVERY bootstrap path (standalone + hub) so no path
-    can omit ingest wiring (#1551 S8, ADR-083). The live stage runs in the
-    module-level inbound pipeline; bootstrap only supplies the IngestCtx (store)
-    that the pipeline reads at call time, so the returned stage is unused here.
-    """
-    ingest_ctx, _stage = build_ingest(blob_store)
-    adapter._ingest_ctx = ingest_ctx
-    _assert_blobstore_configured_if_url_set(ingest_ctx)

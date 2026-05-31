@@ -21,9 +21,11 @@ from pathlib import Path
 
 import pytest
 
-LOGGER_NAME = "lyra.bootstrap.factory.config"
+LOGGER_NAME = "lyra.bootstrap.factory.config.config_deprecation"
 DEPRECATED_SUBSTRING = "TOML bot sections are deprecated"
-FLAG_PATH = "lyra.bootstrap.factory.config._bot_sections_deprecation_warned"
+FLAG_PATH = (
+    "lyra.bootstrap.factory.config.config_deprecation._bot_sections_deprecation_warned"
+)
 
 
 class TestWarnOnLegacyBotSections:

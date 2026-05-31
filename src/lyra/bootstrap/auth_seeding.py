@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 
 from lyra.bootstrap.factory.config import _load_circuit_config
-from lyra.bootstrap.wiring.bootstrap_wiring import BotAuthDeps, _build_bot_auths
+from lyra.bootstrap.wiring.auth import BotAuthDeps, _build_bot_auths
 from lyra.config import (
     DiscordBotConfig,
     TelegramBotConfig,

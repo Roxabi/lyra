@@ -1,4 +1,4 @@
-"""Bootstrap config helpers — raw config loading and parsing."""
+"""Config loading helpers — raw config loading, parsing, and typed section builders."""
 
 from __future__ import annotations
 
@@ -6,12 +6,23 @@ import logging
 import os
 import re
 import tomllib
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
-
+from lyra.bootstrap.factory.config.config_deprecation import (
+    warn_deprecated_bot_sections,
+)
+from lyra.bootstrap.factory.config.config_models import (
+    AgentOverrideConfig,
+    CliPoolConfig,
+    DebouncerConfig,
+    EventBusConfig,
+    HubConfig,
+    InboundBusConfig,
+    LlmConfig,
+    LoggingConfig,
+    PoolConfig,
+)
 from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.messaging.messages import MessageManager
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig
@@ -19,150 +30,9 @@ from lyra.core.stores.pairing_config import PairingConfig
 
 log = logging.getLogger(__name__)
 
-_bot_sections_deprecation_warned: bool = False
-
-
-# ---------------------------------------------------------------------------
-# Deprecation helpers
-# ---------------------------------------------------------------------------
-
-
-def warn_deprecated_bot_sections(raw: dict[str, Any]) -> None:
-    """Log a one-time DeprecationWarning if any legacy TOML bot section is present.
-
-    The runtime bot roster now comes from BotStore (`lyra bot init`); these four
-    sections are seed-only. Detected sections:
-    [[telegram.bots]], [[discord.bots]], [[auth.telegram_bots]], [[auth.discord_bots]].
-    """
-    global _bot_sections_deprecation_warned
-    if _bot_sections_deprecation_warned:
-        return
-    present = [
-        name
-        for name, value in (
-            ("[[telegram.bots]]", (raw.get("telegram") or {}).get("bots")),
-            ("[[discord.bots]]", (raw.get("discord") or {}).get("bots")),
-            ("[[auth.telegram_bots]]", (raw.get("auth") or {}).get("telegram_bots")),
-            ("[[auth.discord_bots]]", (raw.get("auth") or {}).get("discord_bots")),
-        )
-        if value
-    ]
-    if not present:
-        return
-    _bot_sections_deprecation_warned = True
-    log.warning(
-        "TOML bot sections are deprecated and seed-only: %s. "
-        "The runtime roster now comes from BotStore — seed it with `lyra bot init` "
-        "and remove these sections from config.toml. "
-        "See docs/bot-management.md (Deprecation Timeline).",
-        ", ".join(present),
-    )
-
-
-# ---------------------------------------------------------------------------
-# Pydantic config section models (#411)
-# ---------------------------------------------------------------------------
-
-
-class CliPoolConfig(BaseModel):
-    """Typed [cli_pool] config section."""
-
-    model_config = ConfigDict(frozen=True)
-
-    idle_ttl: int = 1200
-    default_timeout: int = 1200
-    turn_timeout: float | None = None
-    reaper_interval: int = 60
-    kill_timeout: float = 5.0
-    read_buffer_bytes: int = 1024 * 1024
-    stdin_drain_timeout: float = 10.0
-    max_idle_retries: int = 3
-    intermediate_timeout: float = 5.0
-
-
-class HubConfig(BaseModel):
-    """Typed [hub] config section."""
-
-    model_config = ConfigDict(frozen=True)
-
-    pool_ttl: float = 604800.0
-    rate_limit: int = 20
-    rate_window: int = 60
-
-
-class PoolConfig(BaseModel):
-    """Typed [pool] config section."""
-
-    model_config = ConfigDict(frozen=True)
-
-    safe_dispatch_timeout: float = 10.0
-
-
-class LlmConfig(BaseModel):
-    """Typed [llm] config section."""
-
-    model_config = ConfigDict(frozen=True)
-
-    max_retries: int = 3
-    backoff_base: float = 1.0
-
-
-class InboundBusConfig(BaseModel):
-    """Typed [inbound_bus] config section."""
-
-    model_config = ConfigDict(frozen=True)
-
-    queue_depth_threshold: int = 100
-    staging_maxsize: int = 500
-    platform_queue_maxsize: int = 100
-
-
-class DebouncerConfig(BaseModel):
-    """Typed [debouncer] config section."""
-
-    model_config = ConfigDict(frozen=True)
-
-    default_debounce_ms: int = 300
-    max_merged_chars: int = 4096
-    cancel_on_new_message: bool = False
-
-
-class LoggingConfig(BaseModel):
-    """Typed [logging] config section (#270)."""
-
-    model_config = ConfigDict(frozen=True)
-
-    level: str = "info"
-
-
-class EventBusConfig(BaseModel):
-    """Typed [event_bus] config section (#432)."""
-
-    model_config = ConfigDict(frozen=True)
-
-    queue_maxsize: int = 1000
-
-
-class MessageIndexConfig(BaseModel):
-    """Typed [message_index] config section (#417)."""
-
-    model_config = ConfigDict(frozen=True)
-
-    retention_days: int = 90
-
-
-class AgentOverrideConfig(BaseModel):
-    """Typed output of _build_agent_overrides().
-
-    Uses extra="ignore" — only cwd, persona, workspaces are consumed; extra keys
-    are silently discarded.
-    """
-
-    model_config = ConfigDict(frozen=True, extra="ignore")
-
-    cwd: str | None = None
-    persona: str | None = None
-    workspaces: dict[str, str] = {}
+_CB_DEFAULTS: dict[str, int] = {"failure_threshold": 5, "recovery_timeout": 60}
+_CB_SERVICES = ("claude-cli", "telegram", "discord", "hub")
+_ADMIN_ID_PATTERN = re.compile(r"^(tg|dc):user:\d+$")
 
 
 def _validate_config_path(path_str: str) -> str:
@@ -178,11 +48,6 @@ def _validate_config_path(path_str: str) -> str:
             "Set the env var to a path under your home directory."
         )
     return str(resolved)
-
-
-_CB_DEFAULTS: dict[str, int] = {"failure_threshold": 5, "recovery_timeout": 60}
-_CB_SERVICES = ("claude-cli", "telegram", "discord", "hub")
-_ADMIN_ID_PATTERN = re.compile(r"^(tg|dc):user:\d+$")
 
 
 def _load_raw_config(config_path: str | None = None) -> dict[str, Any]:
@@ -267,28 +132,6 @@ def _load_tool_display_config(raw: dict[str, Any]) -> ToolDisplayConfig:
     """Load [tool_display] section. Missing section → all defaults."""
     section: dict[str, Any] = raw.get("tool_display", {})
     return ToolDisplayConfig.model_validate(section)
-
-
-@dataclass(frozen=True)
-class AdapterConfigBundle:
-    """Single composition root for adapter-scoped config.
-
-    Extracted per ADR-073 to prevent N×M duplication when new bootstrap
-    paths (wired, standalone, embedded) are added.
-    """
-
-    tool_display: ToolDisplayConfig
-
-
-def build_adapter_config_bundle(raw_config: dict[str, Any]) -> AdapterConfigBundle:
-    """Build AdapterConfigBundle from raw config dict.
-
-    All bootstrap paths (wired, standalone, embedded) call this single
-    factory instead of duplicating _load_tool_display_config calls.
-    """
-    return AdapterConfigBundle(
-        tool_display=_load_tool_display_config(raw_config),
-    )
 
 
 def _load_cli_pool_config(raw: dict[str, Any]) -> CliPoolConfig:

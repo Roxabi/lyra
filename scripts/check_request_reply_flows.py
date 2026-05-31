@@ -21,30 +21,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from scripts._effective import subject_covered  # noqa: E402
 from scripts._loader import load_matrix  # noqa: E402
-
-
-def _subject_covered(subject: str, publish: list[str]) -> bool:
-    """Return True if *subject* is covered by any grant in *publish*.
-
-    Matching rules (NATS-wildcard-aware, mirrors check-request-reply-flows.sh):
-      - Exact match: grant == subject
-      - Bare wildcard: grant == ">" (covers everything)
-      - Suffix wildcard: grant ends with ".>" and:
-          subject == grant[:-2]  (the prefix level itself)
-          OR subject starts with grant[:-1]  (any sub-level)
-    """
-    for grant in publish:
-        if grant == subject:
-            return True
-        if grant == ">":
-            return True
-        if grant.endswith(".>"):
-            prefix = grant[:-1]  # "lyra.foo."
-            bare = grant[:-2]  # "lyra.foo"
-            if subject == bare or subject.startswith(prefix):
-                return True
-    return False
 
 
 def main() -> None:
@@ -80,7 +58,7 @@ def main() -> None:
 
         if subject and req_exists:
             publish = identities[requester].get("publish", [])
-            if not _subject_covered(subject, publish):
+            if not subject_covered(subject, publish):
                 errors.append(
                     f"FAIL: requester '{requester}' publish[] does not cover"
                     f" subject '{subject}'"

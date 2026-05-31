@@ -375,15 +375,19 @@ class TestOpenStoresLifecycle:
                 return_value=mock_prefs,
             ),
             patch(
-                "lyra.bootstrap.bootstrap_stores.MessageIndex",
+                "lyra.bootstrap.bootstrap_stores.MessageIndexKvStore",
                 return_value=mock_index,
+            ),
+            patch(
+                "lyra.bootstrap.bootstrap_stores.ensure_kv",
+                AsyncMock(),
             ),
             # Migration guards touch the filesystem; bypass them for lifecycle tests.
             patch("lyra.bootstrap.bootstrap_stores._ensure_config_db"),
             patch("lyra.bootstrap.bootstrap_stores._ensure_discord_db"),
         ):
             # Act — enter open_stores, wire hub, call hub.shutdown(), then exit
-            async with open_stores(tmp_path) as stores:
+            async with open_stores(tmp_path, nc=AsyncMock()) as stores:
                 hub.set_turn_store(stores.turn)
                 # hub.shutdown() must NOT close the turn store
                 await hub.shutdown()

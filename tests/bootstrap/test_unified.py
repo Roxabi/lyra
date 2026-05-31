@@ -100,7 +100,7 @@ def _patch_unified_boundaries(  # noqa: PLR0915
     monkeypatch.setattr(
         unified_mod,
         "open_stores",
-        lambda _vault_dir: _FakeStoresCtx(),
+        lambda _vault_dir, nc=None: _FakeStoresCtx(),
     )
 
     # -- helper mocks with realistic return values

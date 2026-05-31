@@ -59,7 +59,7 @@ class TestBootstrapCallsSeedGrantsFromBots:
         from contextlib import asynccontextmanager
 
         @asynccontextmanager
-        async def fake_open_stores(vault_dir):
+        async def fake_open_stores(vault_dir, nc=None):
             fake_stores = MagicMock()
             fake_stores.auth = MagicMock(spec=AuthStore)
             fake_stores.bot = MagicMock()

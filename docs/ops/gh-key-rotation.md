@@ -75,7 +75,7 @@ The script:
 1. Removes the existing `lyra-gh-pem` Podman secret (tolerates first-time absence).
 2. Creates a new `lyra-gh-pem` secret from the supplied PEM path.
 3. Runs `systemctl --user restart lyra-gh-helper.service`.
-4. Polls every 0.5 s for up to 10 s, waiting for two conditions: helper container `Up` AND the dispenser socket reachable from inside `lyra-clipool` (`test -S /run/lyra-gh-token/dispenser.sock`).
+4. Polls every 0.5 s for up to 10 s, waiting for two conditions: helper container Up AND the dispenser socket reachable from inside `lyra-clipool` (`test -S /run/lyra-gh-token/dispenser.sock`).
 
 **Expected output:** `lyra-gh-helper restarted, dispenser reachable, secret rotated.`
 **Expected wall-clock:** ≤10 s total. Reference measurement: 0.58 s on M₁ (Podman 5.7.0) 2026-05-06.
@@ -95,7 +95,7 @@ systemctl --user is-active lyra-gh-helper.service lyra-clipool.service
 podman ps --filter name=lyra-gh-helper --filter name=lyra-clipool --format '{{.Names}} {{.Status}}'
 ```
 
-Expected: `active active` and two status lines beginning with `Up`.
+Expected: `active active` and two status lines beginning with Up.
 
 **3.2 Check helper logs for mint activity.**
 
@@ -103,7 +103,7 @@ Expected: `active active` and two status lines beginning with `Up`.
 journalctl --user -u lyra-gh-helper --since "$RT" | grep -iE 'mint|github|token|error'
 ```
 
-Look for absence of `MintFailure` lines. A successful token mint by the helper confirms the new PEM was read and accepted by GitHub's API.
+Look for absence of MintFailure lines. A successful token mint by the helper confirms the new PEM was read and accepted by GitHub's API.
 
 **3.3 End-to-end credential check.**
 
@@ -127,7 +127,7 @@ shred -u /home/lyra/secrets/new-lyra-harness.pem
 
 Trigger rollback when:
 - The rotation script exits non-zero.
-- `lyra-clipool` fails to return to `Up` state within 10 s.
+- `lyra-clipool` fails to return to Up state within 10 s.
 - `git fetch`/`git push` returns auth errors post-rotation.
 
 **4.1 If you have the previous PEM archived** (recommended: keep the prior rotation's PEM in a sealed location for ≥7 days):

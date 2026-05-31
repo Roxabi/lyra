@@ -92,7 +92,7 @@ Workers are re-admitted automatically on their next heartbeat (heartbeat TTL: 15
 - ADR-040 Finding 7 (open): outbound queue is unbounded; no max-age drain before circuit opens.
 - `roxabi-nats/v0.3.0` will remove the `CONTRACT_VERSION` compat re-export from `adapter_base.py`; satellite imports of `roxabi_nats.CONTRACT_VERSION` will break and require a source update.
 - VoiceCLI queue-group subscriptions are still present for fallback compatibility (ADR-052 follow-up); removal tracked but not yet landed.
-- `lyra.memory.*` contract ADR not yet written; `roxabi_contracts.memory` submodule does not exist — `import roxabi_contracts.memory` would fail at import time.
+- `lyra.memory.*` contract ADR not yet written; roxabi_contracts.memory submodule does not exist — `import roxabi_contracts.memory` would fail at import time.
 - PyPI publication for both subpackages is deferred; triggers: ≥3 external consumers in `staging`, `contract_version: "2"`, or monorepo clone size becomes a friction point.
 - `make test-acl` CI integration test (ADR-062 Fix 3) — required per ADR but track status separately.
 

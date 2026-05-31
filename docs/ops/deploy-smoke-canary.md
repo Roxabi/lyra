@@ -110,7 +110,7 @@ Optional: `--timeout SECONDS` (default 30).
 [smoke_llm_e2e] FAIL — LlmResponse ok=false (or no reply / timeout)
 ```
 
-**Troubleshooting:** If you see `Permissions Violation` in the broker log: check that the inbox subject (`_INBOX.>`) and the request subject (`lyra.llm.generate.request`) are both in the canonical ACL allow-list. See `docs/architecture/messaging.md` § ACL.
+**Troubleshooting:** If you see `Permissions Violation` in the broker log: check that the inbox subject (_INBOX.>) and the request subject (`lyra.llm.generate.request`) are both in the canonical ACL allow-list. See `docs/architecture/messaging.md` § ACL.
 
 Script: [tools/smoke_llm_e2e.sh](../../tools/smoke_llm_e2e.sh)
 

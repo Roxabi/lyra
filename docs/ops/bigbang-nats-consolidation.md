@@ -35,7 +35,7 @@
 ### lyra staging PR
 
 1. `deploy/nats/gen-nkeys.sh` — add `--emit-merged-authconf` mode; read identities from `acl-matrix.json` (hub, telegram, discord, voice-tts, voice-stt)
-2. `Makefile`:
+2. Makefile:
    - `quadlet-authconf-merged` → writes `~/.lyra/nkeys/auth.conf`
    - `quadlet-secrets-install` → upload as `lyra-nats-auth` (replaces existing)
 3. `deploy/quadlet/lyra-nats.container`:
@@ -58,7 +58,7 @@
    - `NATS_URL=nats://voicecli-nats:4222` → `NATS_URL=nats://lyra-nats:4222`
    - Drop `voicecli-nats-auth` secret mount (not needed on clients)
    - Keep `voicecli-nats-{tts,stt}` seed secret mounts
-4. `Makefile` — drop voicecli-nats install + drop `voicecli-nats-auth` secret creation
+4. Makefile — drop voicecli-nats install + drop `voicecli-nats-auth` secret creation
 
 Merge order doesn't matter — cutover reconciles.
 

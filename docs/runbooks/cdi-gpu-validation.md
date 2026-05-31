@@ -52,7 +52,7 @@ loginctl show-user "$(whoami)" | grep Linger
 | Driver version | >= 525 | Update nvidia driver |
 | `nvidia-ctk` | present, any version | `sudo apt install nvidia-container-toolkit` |
 | CDI spec exists | file present, size > 0 | Run §2 to generate |
-| `podman info` CDI | `cdi: true` or `CDISpecDirs` listed | Podman too old (unlikely on 26.04) |
+| `podman info` CDI | `cdi: true` or CDISpecDirs listed | Podman too old (unlikely on 26.04) |
 | subuid/subgid | entry present with range >= 65536 | `sudo usermod --add-subuids 100000-165535 $(whoami)` |
 | `/dev/nvidia*` | world-readable or user in video/render | `sudo usermod -aG video,render $(whoami)` then re-login |
 | Linger | `Linger=yes` | `loginctl enable-linger $(whoami)` |

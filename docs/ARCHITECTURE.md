@@ -407,7 +407,7 @@ class InboundMessage:
 
 ### Schema versioning
 
-Every hub↔adapter envelope (`InboundMessage`, `InboundAudio`, `OutboundMessage`, `TextRenderEvent`, `ToolSummaryRenderEvent`) carries a `schema_version: int = 1` field. The current version for each envelope lives in a `SCHEMA_VERSION_*` module-level constant in `src/lyra/core/message.py` and `src/lyra/core/render_events.py`.
+Every hub↔adapter envelope (`InboundMessage`, `OutboundMessage`, `AudioPayload`, `TextDeltaRenderEvent`, `ToolCallResultRenderEvent`) carries a `schema_version: int = 1` field. The current version for each envelope lives in a `SCHEMA_VERSION_*` module-level constant in `src/lyra/core/messaging/message.py` and `src/lyra/core/messaging/render_events.py`.
 
 A receiver accepts any payload where `schema_version <= expected`. Strictly-greater versions are **dropped** with an ERROR log and an in-process counter increment via `check_schema_version` in `packages/roxabi-nats/src/roxabi_nats/_version_check.py`. Legacy payloads without a `schema_version` key default to version 1, so existing wire traffic is never dropped.
 
@@ -417,7 +417,7 @@ Note: the outer render-event chunk envelope (`{stream_id, seq, event_type, paylo
 
 **How to bump `schema_version`:**
 
-1. Bump the `SCHEMA_VERSION_<ENVELOPE>` constant in `src/lyra/core/message.py` or `src/lyra/core/render_events.py` by 1.
+1. Bump the `SCHEMA_VERSION_<ENVELOPE>` constant in `src/lyra/core/messaging/message.py` or `src/lyra/core/messaging/render_events.py` by 1.
 2. Update the `schema_version` field default on the corresponding envelope to match.
 3. Coordinate a simultaneous deploy of `lyra_hub` + `lyra_telegram` + `lyra_discord`. Rolling deploys across a version bump will produce loud ERROR logs on the still-old receivers until they are upgraded.
 4. Verify the bump with: `grep SCHEMA_VERSION_ src/lyra/core/*.py`.
@@ -780,7 +780,7 @@ client = AsyncOpenAI(
 
 - **Python + asyncio** — Go/Rust/Zig/Node eliminated. Python AI ecosystem is unbeatable, asyncio is sufficient for 1-5 I/O-bound users.
 - **2 machines** — Machine 1 autonomous (hub + TTS + embeddings), Machine 2 on demand (heavy LLM). Eliminates VRAM contention.
-- **Cloud LLM by default** — LlmProvider protocol (#123 ✅) with drivers: `ClaudeCliDriver` (CLI subprocess) and `NatsLlmDriver` (remote worker). NATS standalone mode (hub + adapters as separate processes on Machine 1) ✅ done (#458). Local LLM on Machine 2 via NATS worker = Phase 2 (#51).
+- **Cloud LLM by default** — LlmProvider protocol (#123 ✅) with drivers: `ClaudeCliDriver` (CLI subprocess) and `LlmClient` (remote worker via NATS). NATS standalone mode (hub + adapters as separate processes on Machine 1) ✅ done (#458). Local LLM on Machine 2 via NATS worker = Phase 2 (#51).
 - **SQLite** — No Postgres. SQLite + WAL mode + `aiosqlite` amply covers personal use.
 
 ### Resolved decisions (Phase 1b completions)
@@ -792,14 +792,14 @@ client = AsyncOpenAI(
 - **scope_id replaces user_id in RoutingKey** (#125) — `RoutingKey(platform, bot_id, scope_id)`. Scope extracted from platform context: `chat:NNN`, `thread:NNN`, `channel:NNN`, etc.
 - **fastembed ONNX replaces sentence-transformers** (#82) — Non-blocking ONNX runtime, no `run_in_executor` needed. Hybrid BM25 (FTS5) + cosine (sqlite-vec).
 - **LLM circuit breaker** (#104) — Timeout + retry logic for Anthropic SDK calls. Graceful degradation on failure.
-- **LlmProvider protocol** (#123 ✅) — Multi-driver abstraction: `ClaudeCliDriver`, `NatsLlmDriver`, `CliNatsDriver`. Local-LLM access (Ollama, llama.cpp, …) routes via the `nats` backend → llmCLI worker; no in-process Ollama driver is planned.
-- **Auth: Authenticator + GuardChain** (#151 ✅, refactored in #313/#314) — Per-adapter auth with trust levels (owner/trusted/public/blocked). Config-driven via TOML. Originally a monolithic `AuthMiddleware`; refactored into `Authenticator` (identity resolver in `authenticator.py`) and `GuardChain` (composable guard pipeline in `guard.py`). Note: `[admin].user_ids` grants cross-platform admin commands to those users across ALL bots, whereas per-bot `owner_users` in `[[auth.telegram_bots]]` / `[[auth.discord_bots]]` sets the trust level for that specific bot only.
+- **LlmProvider protocol** (#123 ✅) — Multi-driver abstraction: `ClaudeCliDriver` (in-process), `LlmClient` (NATS remote). `NatsLlmDriver` and `CliNatsDriver` deleted in #1281. Local-LLM access (Ollama, llama.cpp, …) routes via the `nats` backend → llmCLI worker; no in-process Ollama driver is planned.
+- **Auth: Authenticator + GuardChain** (#151 ✅, refactored in #313/#314) — Per-adapter auth with trust levels (owner/trusted/public/blocked). Config-driven via TOML. Originally a monolithic AuthMiddleware; refactored into `Authenticator` (identity resolver in `authenticator.py`) and `GuardChain` (composable guard pipeline in `guard.py`). Note: `[admin].user_ids` grants cross-platform admin commands to those users across ALL bots, whereas per-bot `owner_users` in `[[auth.telegram_bots]]` / `[[auth.discord_bots]]` sets the trust level for that specific bot only.
 - **RoutingContext + outbound verification** (#152 ✅) — Every outbound response carries a RoutingContext; adapters verify channel + bot_id before sending.
 - **PoolContext protocol** (#204 ✅) — Decouples Pool from Hub via a protocol interface.
 - **TTL eviction for Hub.pools** (#205 ✅) — Prevents memory leak from stale pools.
-- **Message normalization** (#139 ✅) — Full bus envelope: InboundMessage, OutboundMessage, InboundAudio, OutboundAudioChunk, OutboundAttachment. Per-adapter render functions.
+- **Message normalization** (#139 ✅) — Full bus envelope: InboundMessage, OutboundMessage, AudioPayload, OutboundAudioChunk, OutboundAttachment. Per-adapter render functions.
 - **Runtime agent config** (#135 ✅) — Live tuning via `!config` command, no restart needed.
-- **Voice STT** (#80 ✅, #690 ✅) — STT via NATS to voicecli workers (faster-whisper + personal vocab). InboundAudioBus, audio consumer loop in Hub. In-process STTService removed in #690.
+- **Voice STT** (#80 ✅, #690 ✅) — STT via NATS to voicecli workers (faster-whisper + personal vocab). InboundAudioBus (deleted in #690), audio consumer loop in Hub. In-process STTService removed in #690.
 - **Normalized STT/TTS env vars + circuit breaker** (#598 ✅) — `LYRA_STT_MODEL` replaces `STT_MODEL_SIZE` (deprecated fallback kept for one cycle); `LYRA_TTS_ENGINE` replaces `TTS_ENGINE` (same fallback). `LYRA_STT_ENABLED` / `LYRA_TTS_ENABLED` (default `false`) gate each service independently — TTS no longer requires STT. `LYRA_VOICE_RESPONSES` removed (superseded by `LYRA_TTS_ENABLED`). `NatsCircuitBreaker` (`src/lyra/nats/circuit_breaker.py`) applied to both `NatsSttClient` and `NatsTtsClient`: 3 failures → open for 60 s, prevents log spam when adapters are down. `probe_voice_services()` in `voice_overlay.py` warns at boot if STT/TTS adapters are unreachable.
 - **Typing indicator redesign** (#229 ✅) — `TelegramAdapter` and `DiscordAdapter` start typing at message receipt (`_on_message`); long-running requests keep the indicator alive via a background task. Typing is cancelled **after** the last chunk is confirmed sent — in `send()` after the send loop, and in `send_streaming()` after the final edit — ensuring the indicator stays active until the message is visible.
 - **Outbound send reliability** — `OutboundDispatcher` retries transient send failures (network errors, 5xx, rate-limit 429) up to 3 times with exponential backoff (1 s / 2 s / 4 s). After all retries are exhausted, the user receives a plaintext error notification (`"⚠️ I encountered an error sending my response. Please try again."`). When the platform circuit breaker is open, the user is notified once per 60 s per scope (`"⚠️ I'm temporarily unavailable. Please try again in a moment."`). Non-retryable errors (4xx client errors) fail immediately.
@@ -813,7 +813,7 @@ client = AsyncOpenAI(
 - **AgentStore** (#268 ✅) — SQLite-backed agent registry (`~/.lyra/config.db`, renamed from `auth.db` in v15). TOML files are seed sources only — imported via `lyra agent init`. Runtime reads from DB. CLI: `init`, `list`, `show`, `edit`, `validate`, `assign`, `unassign`, `delete`. In-memory cache warmed at `connect()` — no per-message file I/O. Includes `tts_json`/`stt_json` columns for per-agent TTS/STT config (serialized from TOML `[tts]`/`[stt]` sections, deserialized into `AgentTTSConfig`/`AgentSTTConfig`). See ADR-024.
 - **Raw turn logging** (#67 ✅) — `TurnStore` (`src/lyra/infrastructure/stores/turn_store.py`) persists every user + assistant turn to `~/.lyra/turns.db` (SQLite, separate from vault). Fire-and-forget writes via `asyncio.create_task`. Query: `get_session_turns()`, `get_pool_turns()`, `get_user_turns()`. This is the L1 memory layer.
 - **Retryable LlmResult** (#276 ✅) — `LlmResult` carries a `retryable: bool` flag. Non-retryable errors (auth failures, invalid requests) skip the retry/backoff loop in decorators.
-- **Hub command sessions** (#99 ✅, refactored to processor commands #363) — Processor command layer: `BaseProcessor` from `processor_registry.py`, registered via `@register()` decorators. `/vault-add` (scrape → LLM summary → vault write), `/explain` (scrape → LLM plain-language explanation), `/summarize` (scrape → LLM bullet points), `/search` (vault FTS). Bare URL messages auto-rewritten to `/vault-add <url>` — target command configurable in `src/lyra/data/patterns.toml` `[bare_url].command`. Processor commands land responses in pool history, enabling follow-up questions (unlike the old `SessionCommandHandler` pattern). `commands/search/` plugin implements `/search`.
+- **Hub command sessions** (#99 ✅, refactored to processor commands #363) — Processor command layer: `BaseProcessor` from `processor_registry.py`, registered via `@register()` decorators. `/vault-add` (scrape → LLM summary → vault write), `/explain` (scrape → LLM plain-language explanation), `/summarize` (scrape → LLM bullet points), `/search` (vault FTS). Bare URL messages auto-rewritten to `/vault-add <url>` — target command configurable in `src/lyra/data/patterns.toml` `[bare_url].command`. Processor commands land responses in pool history, enabling follow-up questions (unlike the old SessionCommandHandler pattern, deleted in #363). `commands/search/` plugin implements `/search`.
 
 ### External tool integration
 
@@ -841,9 +841,9 @@ What is built in Phase 1 / 1b:
 - Telegram + Discord adapters (✅)
 - LLM: Claude CLI subprocess (✅), LlmProvider protocol (#123 ✅)
 - Agent identity + persona (#75 ✅), runtime config (#135 ✅)
-- Message normalization (#139 ✅): InboundMessage, OutboundMessage, InboundAudio, OutboundAudioChunk, OutboundAttachment
+- Message normalization (#139 ✅): InboundMessage, OutboundMessage, AudioPayload, OutboundAudioChunk, OutboundAttachment
 - Auth: Authenticator + GuardChain (#151 ✅, refactored #313/#314), RoutingContext + outbound verification (#152 ✅)
-- Voice: STT/TTS via NATS to voicecli workers (#80 ✅, #690 ✅), InboundAudioBus, audio consumer loop · TTS: OGG/Opus (ffmpeg libopus, 48kHz mono), `SynthesisResult` with `duration_ms` + `waveform_b64`, language ISO→Qwen normalization, Discord `IS_VOICE_MESSAGE` (8192) flag
+- Voice: STT/TTS via NATS to voicecli workers (#80 ✅, #690 ✅), InboundAudioBus (deleted in #690), audio consumer loop · TTS: OGG/Opus (ffmpeg libopus, 48kHz mono), `SynthesisResult` with `duration_ms` + `waveform_b64`, language ISO→Qwen normalization, Discord `IS_VOICE_MESSAGE` (8192) flag
 - Hub hardening: PoolContext protocol (#204 ✅), TTL eviction (#205 ✅), async I/O audio loop (#203 ✅)
 - DX: complexity/size limits (#196 ✅), pytest-cov + coverage gate (#211 ✅)
 - Security: hmac.compare_digest (#212 ✅), two-tier /health (#207 ✅), symlink plugin_loader fix (#215 ✅)
@@ -857,11 +857,11 @@ What is built in Phase 1 / 1b:
 
 **Post-Phase 1b: architecture refactoring shipped.**
 - Module decomposition (#294–#312): all core, adapter, and bootstrap modules decomposed to ≤300 LOC
-- Auth refactoring (#313/#314): `AuthMiddleware` → `Authenticator` + `GuardChain`
+- Auth refactoring (#313/#314): AuthMiddleware → `Authenticator` + `GuardChain`
 - Deduplication: 8 cross-codebase patterns consolidated
 - Timeout hardening (#317): reaper process + timeout system hardened
 - Session resumption (#318): `session_id` + `reply_message_id` wired for resumption
-- Dead code removal: `bootstrap/legacy.py` deleted; `event_bus.py` refactored into `PipelineEventBus` (fire-and-forget telemetry fan-out, #432) — the old pub/sub `EventBus` was removed and replaced by typed dataclass events + `PipelineEventBus`
+- Dead code removal: `bootstrap/legacy.py` deleted; `event_bus.py` refactored into `PipelineEventBus` (fire-and-forget telemetry fan-out, #432) — the old pub/sub EventBus was removed and replaced by typed dataclass events + `PipelineEventBus`
 
 What is **explicitly excluded from Phase 1**:
 - Memory levels 2 (episodic), 4 (procedural) — added when the real need arises (L1 raw turn logging shipped in #67)
@@ -892,24 +892,6 @@ Reserve the large LLM only for generation. Everything else → small specialized
 
 **Expected impact**: 80-90% of messages routed without the full LLM. Cost /10, latency /5 on simple cases.
 
-### Cognitive Meta-language
-
-SLMs exchange `CognitiveFrame` — compact structures, not natural language:
-
-```python
-@dataclass
-class CognitiveFrame:
-    intent: str
-    entities: list[str]
-    context_refs: list[str]
-    skill_path: list[str]
-    confidence: float
-    emotional_tone: str | None
-    metadata: dict
-```
-
-**Cognitive flow**: message → routing SLM → memory SLM → planner SLM → skills → LLM (if needed) → NER SLM → memory update.
-
 ## Current Status
 
 **Phase 1b complete. Architecture refactoring complete.**
@@ -921,10 +903,10 @@ class CognitiveFrame:
 - Adapter decomposition: `discord.py` → 11 focused modules in `adapters/discord/` (`adapter.py`, `lifecycle.py`, `discord_inbound.py`, etc.); `telegram.py` → 5 focused modules in `adapters/telegram/`
 - Core decomposition: `agent/` subdirectory with `agent.py`, `agent_builder.py`, `agent_config.py`, `agent_db_loader.py`, `agent_models.py`, `agent_commands.py`; `pool/` subdirectory with `pool.py`, `pool_processor.py`, `pool_observer.py`, `pool_context.py`
 - Infrastructure layer (ADR-048): stores moved from `core/stores/` to `infrastructure/stores/` — `agent_store.py`, `turn_store.py`, `auth_store.py`, `pairing.py`, etc.
-- Auth split: `AuthMiddleware` → `Authenticator` (identity resolver) + `GuardChain` (composable guard pipeline) in `auth/` subdirectory
+- Auth split: AuthMiddleware → `Authenticator` (identity resolver) + `GuardChain` (composable guard pipeline) in `auth/` subdirectory
 - Bootstrap decomposition: `bootstrap/` → subdirectories `standalone/`, `factory/`, `wiring/`, `lifecycle/`, `infra/`
 - 8-pattern deduplication across adapters + core — shared adapter code in `adapters/shared/`
-- Removed dead abstractions: `bootstrap/legacy.py`; `event_bus.py` refactored into `PipelineEventBus` (fire-and-forget telemetry fan-out, #432) — old pub/sub `EventBus` replaced by typed dataclass events
+- Removed dead abstractions: `bootstrap/legacy.py`; `event_bus.py` refactored into `PipelineEventBus` (fire-and-forget telemetry fan-out, #432) — old pub/sub EventBus replaced by typed dataclass events
 - **#317** — Harden timeout system and reaper process
 - **#318** — Wire `session_id` + `reply_message_id` for session resumption
 

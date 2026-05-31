@@ -107,11 +107,11 @@ async def write(self, user_id: str, content: str, level: MemoryLevel, session_id
 
 ### Memory implementation status
 
-`user_id` partitioning is active in `prefs_store.py` (L3 queries use `WHERE user_id = ?`). The full `MemoryEntry` metadata schema (count_usage, count_edits, confidence, ttl, source) is not yet applied uniformly — tracked as an extension to #83.
+`user_id` partitioning is active in `prefs_store.py` (L3 queries use `WHERE user_id = ?`). The full MemoryEntry metadata schema (count_usage, count_edits, confidence, ttl, source) is not yet applied uniformly — tracked as an extension to #83.
 
 - [x] `user_id` isolation enforced in `prefs_store.py` queries
 - [x] L2 path structure uses `{user_id}/` directories (session_lifecycle.py)
-- [ ] Full `MemoryEntry` metadata schema with all fields above
+- [ ] Full MemoryEntry metadata schema with all fields above
 - [ ] `count_usage` + `count_edits` auto-increment
 - [ ] TTL auto-purge for L1/L2
 - [ ] Per-user stats endpoint (usage, size, last activity)
@@ -274,7 +274,7 @@ guard pattern is gone; the bus is either injected or absent. → ADR-022 (amende
 ## Open questions / known gaps
 
 - `SimpleAgent` does not register `/add`, `/explain`, `/summarize` session commands (only
-  `AnthropicAgent` does). The gap pre-dates ADR-029 and surfaces on every
+  AnthropicAgent does). The gap pre-dates ADR-029 and surfaces on every
   `_rebuild_command_router()` call. Fix: `SimpleAgent._register_session_commands()` override.
 - Persona hot-reload (changing `.persona.toml` without a DB `upsert()`) no longer fires
   automatically post ADR-029. Operators must run `lyra agent edit` or `lyra agent init --force`.

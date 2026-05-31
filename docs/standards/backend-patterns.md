@@ -58,7 +58,7 @@ pool_id = f"telegram:main:{scope_id}"  # NEVER
 
 ### Middleware pipeline
 
-The inbound pipeline is a composable middleware stack (`hub/middleware.py`). `ErrorBoundaryMiddleware` sits at position 0 — it catches `LyraUserError` and unhandled exceptions, dispatches a reply, and returns `_DROP`. Never silence exceptions above this boundary.
+The inbound pipeline is a composable middleware stack (`hub/middleware.py`). ErrorBoundaryMiddleware sits at position 0 — it catches LyraUserError and unhandled exceptions, dispatches a reply, and returns `_DROP`. Never silence exceptions above this boundary.
 
 ### Store pattern
 
@@ -91,7 +91,7 @@ Every platform adapter must implement `ChannelAdapter` (defined in `core/hub/hub
 | Method | Role |
 |--------|------|
 | `normalize(raw)` | Parse raw platform payload → `InboundMessage` |
-| `normalize_audio(raw, bytes, mime, trust_level)` | Parse audio → `InboundAudio` |
+| `normalize_audio(raw, bytes, mime, trust_level)` | Parse audio → AudioPayload |
 | `send(original_msg, outbound)` | Send a complete reply |
 | `send_streaming(original_msg, chunks, outbound)` | Stream reply with edit-in-place |
 | `render_audio(msg, inbound)` | Send a voice note |
@@ -150,8 +150,8 @@ class LlmProvider(Protocol):
 | Driver | When to use |
 |--------|-------------|
 | `ClaudeCliDriver` | Single-process mode (hub owns CliPool directly) |
-| `CliNatsDriver` | Multi-process mode (hub sends to clipool worker over NATS) |
-| `NatsLlmDriver` | Generic remote LLM worker (not claude-cli specific) |
+| CliNatsDriver | Multi-process mode (hub sends to clipool worker over NATS) |
+| NatsLlmDriver | Generic remote LLM worker (not claude-cli specific) |
 
 ### Decorator stack
 
@@ -246,11 +246,11 @@ Exception
 
 ### Error boundary rule
 
-`LyraUserError` subclasses are raised at the point of failure and caught by `ErrorBoundaryMiddleware`. They produce a user-visible reply via `MessageManager` template lookup (`key`) with a `fallback_text` for degraded mode.
+LyraUserError subclasses are raised at the point of failure and caught by ErrorBoundaryMiddleware. They produce a user-visible reply via `MessageManager` template lookup (`key`) with a `fallback_text` for degraded mode.
 
-Never raise `LyraUserError` from within a store or driver — raise a domain-specific subclass instead.
+Never raise LyraUserError from within a store or driver — raise a domain-specific subclass instead.
 
-Never silently drop errors above `ErrorBoundaryMiddleware` — unhandled exceptions are caught there and translated into a generic error reply.
+Never silently drop errors above ErrorBoundaryMiddleware — unhandled exceptions are caught there and translated into a generic error reply.
 
 ---
 
@@ -280,7 +280,7 @@ ALWAYS check `result.ok` before accessing `result.result` from `LlmResult`.
 
 ALWAYS verify platform-level auth in adapters before constructing `InboundMessage`.
 
-ALWAYS raise `LyraUserError` subclasses for user-visible failures; let `ErrorBoundaryMiddleware` catch them.
+ALWAYS raise LyraUserError subclasses for user-visible failures; let ErrorBoundaryMiddleware catch them.
 
 NEVER import an outer layer from an inner layer — dependencies point inward.
 

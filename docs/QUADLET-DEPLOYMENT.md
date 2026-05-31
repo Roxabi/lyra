@@ -63,7 +63,7 @@ systemctl --user restart lyra-hub lyra-telegram lyra-discord lyra-clipool
 
 ## Auto-sync for Quadlet file changes
 
-Tracked Quadlet files (`deploy/quadlet/**`, `Makefile`, `tools/render_quadlet.py`) are
+Tracked Quadlet files (`deploy/quadlet/**`, Makefile, `tools/render_quadlet.py`) are
 auto-converged on M₁ by `lyra-quadlet-sync.timer`:
 
 | Path | Cadence | What it does |
@@ -124,7 +124,7 @@ Both streams use `StorageType.FILE` backed by `lyra-jetstream.volume` (`~/.lyra/
 Provisioning is idempotent via `./deploy/nats/bootstrap-streams.sh` (called in first-time setup above).
 
 Ops decision (#1183): events = 24 h hot (high churn, dashboard real-time), metrics = 7 d warm
-(trending / SLA review). Both are `Limits` retention so multiple consumers can read the same
+(trending / SLA review). Both are Limits retention so multiple consumers can read the same
 message; durable consumers for the future dashboard are tracked in #1035.
 
 ## Bot credentials

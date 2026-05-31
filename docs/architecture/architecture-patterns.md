@@ -283,15 +283,15 @@ The **CLI protocol circular import** (ADR-060, absorbed here) established the ca
 
 ### Typed error boundary
 
-`LyraUserError` (defined in `lyra.core.errors`) is the base class for all errors that must produce a user-visible reply. Subclasses (`AudioDownloadError`, `AudioTooLargeError`, `AudioInvalidFormatError`, `SttError`) map to specific failure modes and carry a `key` for `MessageManager` template lookup plus a `fallback_text` for degraded mode.
+LyraUserError (defined in `lyra.core.exceptions`) is the base class for all errors that must produce a user-visible reply. Subclasses (AudioDownloadError, AudioTooLargeError, AudioInvalidFormatError, SttError) map to specific failure modes and carry a `key` for `MessageManager` template lookup plus a `fallback_text` for degraded mode.
 
-`ErrorBoundaryMiddleware` sits at position 0 of the pipeline — it catches `LyraUserError` and any unhandled exception, dispatches a reply, and returns `_DROP`. It is a safety net for pipeline-internal failures; adapter-level download failures raise typed exceptions before the pipeline and are caught in the adapter's download function directly.
+ErrorBoundaryMiddleware sits at position 0 of the pipeline — it catches LyraUserError and any unhandled exception, dispatches a reply, and returns `_DROP`. It is a safety net for pipeline-internal failures; adapter-level download failures raise typed exceptions before the pipeline and are caught in the adapter's download function directly.
 
-`NullMessageManager` replaces `if hub._msg_manager is None: return _DROP` guards, making misconfiguration observable instead of silently dropping messages. → ADR-058
+NullMessageManager replaces `if hub._msg_manager is None: return _DROP` guards, making misconfiguration observable instead of silently dropping messages. → ADR-058
 
 ### Generic error reply placement
 
-`GENERIC_ERROR_REPLY` lives in `lyra.core.message`, co-located with the `Response` type it populates. It was moved from `lyra.core.hub` to break an agents → hub import coupling: `SimpleAgent` (a spoke) was importing a UI-primitive string from the hub coordinator. Since `message.py` is already a shared dependency with no upward coupling, all agents and the hub now import the constant from the same low-dependency module. The agents layer has no import dependency on `hub.py`. → ADR-009
+`GENERIC_ERROR_REPLY` lives in `lyra.core.messaging.message`, co-located with the `Response` type it populates. It was moved from `lyra.core.hub` to break an agents → hub import coupling: `SimpleAgent` (a spoke) was importing a UI-primitive string from the hub coordinator. Since `message.py` is already a shared dependency with no upward coupling, all agents and the hub now import the constant from the same low-dependency module. The agents layer has no import dependency on `hub.py`. → ADR-009
 
 ### Invariants summary
 
@@ -299,9 +299,9 @@ The **CLI protocol circular import** (ADR-060, absorbed here) established the ca
 - Application orchestrates Domain via ports defined in Domain; it never imports Infrastructure concretions
 - Infrastructure implements ports; lives in `lyra.infrastructure.*`; is the only layer that may hold migration runners and connection pools
 - Adapters are the outer ring; never imported by inner layers; lateral adapter-to-adapter imports are forbidden
-- All user-visible errors are `LyraUserError` subclasses raised at the point of failure
-- All unhandled pipeline errors are caught at `ErrorBoundaryMiddleware` and translated into a user reply, never silently dropped
-- Shared UI-primitive constants (`GENERIC_ERROR_REPLY`) live in `lyra.core.message`, not in hub or adapter modules
+- All user-visible errors are LyraUserError subclasses raised at the point of failure
+- All unhandled pipeline errors are caught at ErrorBoundaryMiddleware and translated into a user reply, never silently dropped
+- Shared UI-primitive constants (`GENERIC_ERROR_REPLY`) live in `lyra.core.messaging.message`, not in hub or adapter modules
 - Concrete implementations are instantiated only in the Composition Root (`lyra.bootstrap`); no factory that selects concretions may live in Domain or Application
 
 ### See also

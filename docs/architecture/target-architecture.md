@@ -69,7 +69,7 @@ Everything specific (Telegram, Discord, Claude, Anthropic SDK) is an **Adapter**
 ┌──────────────────────────▼──────────────────────────────────────┐
 │                    OUTBOUND PORT                                │
 │   AsyncIterator[RenderEvent]                                    │
-│   RenderEvent = TextRenderEvent | ToolSummaryRenderEvent        │
+│   RenderEvent = TextDeltaRenderEvent | ToolCallResultRenderEvent│
 └──────────────────────────┬──────────────────────────────────────┘
                            │
 ┌──────────────────────────▼──────────────────────────────────────┐
@@ -94,7 +94,7 @@ Everything specific (Telegram, Discord, Claude, Anthropic SDK) is an **Adapter**
 
 ### LlmEvent (emitted by LLM adapters)
 
-Defined in `src/lyra/core/events.py`.
+Defined in `src/lyra/core/messaging/events.py`.
 
 ```python
 @dataclass(frozen=True)
@@ -111,15 +111,17 @@ class ToolUseLlmEvent:
 class ResultLlmEvent:
     is_error: bool
     duration_ms: int
-    cost_usd: float | None = None      # None for ClaudeCliDriver
-    error_text: str | None = None      # backend-reported error message
+    cost_usd: float | None = None
+    error_text: str | None = None
+    session_id: str | None = None
+    worker_error: WorkerError | None = None
 
 LlmEvent = TextLlmEvent | ToolUseLlmEvent | ResultLlmEvent
 ```
 
 ### RenderEvent (emitted by StreamProcessor)
 
-Defined in `src/lyra/core/render_events.py`.
+Defined in `src/lyra/core/messaging/render_events.py`.
 
 ```python
 @dataclass(frozen=True)
@@ -135,23 +137,19 @@ class FileEditSummary:
     count: int              # total edits on this file
 
 @dataclass(frozen=True)
-class TextRenderEvent:
-    text: str
-    is_final: bool          # True = last message of session
+class TextDeltaRenderEvent:
+    message_id: str
+    delta: str
     schema_version: int = 1
-    is_error: bool = False  # True when originating ResultLlmEvent.is_error
 
 @dataclass(frozen=True)
-class ToolSummaryRenderEvent:
-    files: dict[str, FileEditSummary]
-    bash_commands: list[str]
-    web_fetches: list[str]       # URLs fetched
-    agent_calls: list[str]       # agent descriptions
-    silent_counts: SilentCounts  # reads, greps, globs
-    is_complete: bool            # True = result received
+class ToolCallResultRenderEvent:
+    tool_call_id: str
+    content: str
+    is_error: bool = False
     schema_version: int = 1
 
-RenderEvent = TextRenderEvent | ToolSummaryRenderEvent
+RenderEvent = TextDeltaRenderEvent | ToolCallResultRenderEvent
 ```
 
 ### LlmProvider Protocol
@@ -194,7 +192,7 @@ class LlmResult:
 
 ## StreamProcessor — Logic
 
-Implemented in `src/lyra/core/stream_processor.py`.
+Implemented in `src/lyra/core/processors/stream_processor.py`.
 
 ```
 For each LlmEvent received:
@@ -202,7 +200,7 @@ For each LlmEvent received:
   TextLlmEvent
     → accumulate text in _pending_text
     → if show_intermediate and text precedes tool call:
-         yield TextRenderEvent(text, is_final=False)
+         yield TextDeltaRenderEvent(message_id, text)
          clear _pending_text
 
   ToolUseLlmEvent
@@ -212,11 +210,11 @@ For each LlmEvent received:
        Read/Grep/Glob → silent_counts++
        WebFetch/WebSearch → web_fetches (if show.web_fetch)
        Agent → agent_calls (if show.agent)
-    → if throttle elapsed: yield ToolSummaryRenderEvent(snapshot)
+    → if throttle elapsed: yield ToolCallResultRenderEvent(tool_call_id, snapshot)
 
   ResultLlmEvent
-    → if any tool events: yield ToolSummaryRenderEvent(is_complete=True)
-    → yield TextRenderEvent(final_text, is_final=True, is_error=Result.is_error)
+    → if any tool events: yield ToolCallResultRenderEvent(tool_call_id, content, is_error=False)
+    → yield TextDeltaRenderEvent(message_id, final_text)
 ```
 
 ### Config (in `config.toml`)
@@ -244,10 +242,11 @@ edit       = true
 
 ## StreamingSession — Outbound Orchestration
 
-Implemented in `src/lyra/adapters/shared/_shared_streaming_emitter.py`.
+Implemented in `src/lyra/outbound/emitter.py`.
 
 Centralizes the edit-in-place streaming algorithm for all platform adapters.
-Platform-specific behavior is injected via `PlatformCallbacks`.
+OutboundEmitter composes formatter + throttle + error_handler stages.
+Platform-specific behavior is injected via platform formatters.
 
 ### PlatformCallbacks
 
@@ -256,7 +255,7 @@ Platform-specific behavior is injected via `PlatformCallbacks`.
 class PlatformCallbacks:
     send_placeholder: Callable[[], Awaitable[tuple[Any, int | None]]]
     edit_placeholder_text: Callable[[Any, str], Awaitable[None]]
-    edit_placeholder_tool: Callable[[Any, ToolSummaryRenderEvent, str], Awaitable[None]]
+    edit_placeholder_tool: Callable[[Any, ToolCallResultRenderEvent, str], Awaitable[None]]
     send_message: Callable[[str], Awaitable[int | None]]
     send_fallback: Callable[[str], Awaitable[int | None]]
     chunk_text: Callable[[str], list[str]]
@@ -281,13 +280,13 @@ class PlatformCallbacks:
 Each outbound adapter receives an `AsyncIterator[RenderEvent]` and decides how to render it.
 
 **TelegramOutbound:**
-- `TextRenderEvent` → `sendMessage` if `is_final`, else `⏳ text` placeholder
-- `ToolSummaryRenderEvent` → `sendMessage` on first, then `editMessage` (throttled)
-- `ToolSummaryRenderEvent(is_complete=True)` → final edit with ✅
+- `TextDeltaRenderEvent` → `sendMessage` if `is_final`, else `⏳ text` placeholder
+- `ToolCallResultRenderEvent` → `sendMessage` on first, then `editMessage` (throttled)
+- `ToolCallResultRenderEvent(is_complete=True)` → final edit with ✅
 
 **DiscordOutbound:**
-- `ToolSummaryRenderEvent` → update embed in current message
-- `TextRenderEvent(is_final=True)` → new message or embed continuation
+- `ToolCallResultRenderEvent` → update embed in current message
+- `TextDeltaRenderEvent(is_final=True)` → new message or embed continuation
 
 **CliOutbound:**
 - Colored print line by line, no edit
@@ -301,8 +300,8 @@ Three drivers implement `LlmProvider`:
 | Driver | Backend | Streaming | Auth |
 |--------|---------|-----------|------|
 | `ClaudeCliDriver` | Claude Code subprocess | ✅ native NDJSON stream | `oauth_only` |
-| `NatsLlmDriver` | Remote LLM worker over NATS | ✅ ephemeral inbox | `nats` |
-| `CliNatsDriver` | Hub-side dispatch to claude-cli over NATS | ✅ ephemeral inbox | `nats` |
+| NatsLlmDriver | Remote LLM worker over NATS | ✅ ephemeral inbox | `nats` |
+| CliNatsDriver | Hub-side dispatch to claude-cli over NATS | ✅ ephemeral inbox | `nats` |
 
 ### Decorator Stack
 
@@ -342,7 +341,7 @@ Every hub↔adapter envelope carries `schema_version: int`.
 | `RenderEvent` types | ✅ Implemented |
 | `StreamProcessor` | ✅ Implemented |
 | `StreamingSession` | ✅ Implemented |
-| `PlatformCallbacks` | ✅ Implemented |
+| PlatformCallbacks | ✅ Implemented |
 | `OutboundAdapterBase` | ✅ Implemented |
 | Drivers (3) | ✅ ClaudeCli, NatsLlm, CliNats |
 | Decorator stack | ✅ CircuitBreaker → SmartRouting → Retry |

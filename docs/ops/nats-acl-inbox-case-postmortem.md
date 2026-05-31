@@ -8,10 +8,10 @@ returned a silent failure (bot received the message, no reply was ever sent).
 LLM-streamed responses were the only affected path; no commands, history reads,
 or other features were tested for availability.
 
-Root cause: hub's subscribe ACL was missing the lowercase `_inbox.hub.>` variant,
+Root cause: hub's subscribe ACL was missing the lowercase _inbox.hub.> variant,
 so clipool replies never reached the hub after a new image was deployed. Symptom
 was `_stream_gen timeout on lyra.clipool.cmd` in hub logs and repeated
-`permissions violation for publish to "_inbox.hub.*"` in clipool logs.
+permissions violation for publish to "_inbox.hub.*" in clipool logs.
 Detection lag: **2h44m** from first failure to mitigation start. No alert fired;
 discovered via manual log inspection.
 
@@ -24,7 +24,7 @@ discovered via manual log inspection.
 | ~11:17 | Anthropic API 401 errors — unrelated (API key issue, self-resolved by ~12:23) |
 | ~13:17–14:23 | CLI invocations succeed (hub PID 1585354, no ACL issue yet) |
 | 15:34 | Hub restarted → new PID 1680947, new image pulled |
-| 16:11 | First `permissions violation for publish to "_inbox.hub.*"` in clipool |
+| 16:11 | First permissions violation for publish to "_inbox.hub.*" in clipool |
 | 17:15, 18:03 | Repeated violations — every user message produces ❌ |
 | 18:55 | Hub restarted as part of investigation + NATS secret updated |
 | 19:30 | NATS restarted with new auth.conf (Podman secret); all units reconnect |
@@ -36,7 +36,7 @@ discovered via manual log inspection.
 
 ### What the code does
 
-`hub_standalone.py` connects with `inbox_prefix="_INBOX.hub"`:
+`hub_standalone.py` connects with inbox_prefix="_INBOX.hub":
 
 ```python
 nc = await nats_connect(nats_url, inbox_prefix="_INBOX.hub")
@@ -59,7 +59,7 @@ new_inbox():         _INBOX.hub.tjt1ZZrZCAPdpKe6JhWAdT
 ### What NATS server does
 
 NATS server 2.10.29 (Go) lowercases subject names in `-ERR` permission violation
-messages. The actual wire subject is `_INBOX.hub.<NUID>` (uppercase), but the
+messages. The actual wire subject is _INBOX.hub.<NUID> (uppercase), but the
 server reports:
 
 ```
@@ -81,7 +81,7 @@ The `allow_responses: true` in clipool's ACL grants publish permission to the
 exact reply-to subject from the received message. Because the ACL evaluation by
 NATS server appears to match case-insensitively for `allow_responses` grants but
 applies the subscription filter case-sensitively, replies published by clipool
-to `_INBOX.hub.<NUID>` did not match the hub's subscription to `_INBOX.hub.>`.
+to _INBOX.hub.<NUID> did not match the hub's subscription to _INBOX.hub.>.
 
 > **Note:** `allow_responses` case-sensitivity is observed behaviour, not a NATS
 > spec guarantee. A future NATS release could change this; Fix 2 (explicit
@@ -89,24 +89,24 @@ to `_INBOX.hub.<NUID>` did not match the hub's subscription to `_INBOX.hub.>`.
 
 Exact failure chain:
 1. Hub publishes to `lyra.clipool.cmd` with `reply="_INBOX.hub.TOKEN"`
-2. Clipool receives message, attempts to publish streaming chunks to `_INBOX.hub.TOKEN`
+2. Clipool receives message, attempts to publish streaming chunks to _INBOX.hub.TOKEN
 3. NATS reports permission violation (displayed as lowercase in error)
-4. Hub subscription `_INBOX.hub.>` receives nothing → `_stream_gen` times out
+4. Hub subscription _INBOX.hub.> receives nothing → `_stream_gen` times out
 5. Users get ❌
 
 ### Why it worked before
 
 Hub PID 1585354 (running from 08:40) was on an older image. The new image
 deployed at 15:34 contained changes from commit `fd3250c4` (adding
-`inbox_prefix="_INBOX.hub"`) and accompanying ACL narrowing. The combination of
+inbox_prefix="_INBOX.hub") and accompanying ACL narrowing. The combination of
 a fresh uppercase prefix and the narrowed clipool publish ACL (removing the old
-`_INBOX.>` wildcard, added in #949) exposed the gap.
+_INBOX.> wildcard, added in #949) exposed the gap.
 
 ---
 
 ## Fix applied
 
-Added `_inbox.hub.>` to hub's subscribe ACL in `acl-matrix.json` and the live
+Added _inbox.hub.> to hub's subscribe ACL in `acl-matrix.json` and the live
 Podman secret:
 
 ```json
@@ -127,9 +127,9 @@ restarted to apply.
 
 ## Long-term solutions
 
-### Fix 1 — Standardize on lowercase `_inbox` prefix (eliminates dual-variant)
+### Fix 1 — Standardize on lowercase _inbox prefix (eliminates dual-variant)
 
-The dual-case pattern (`_INBOX.X.>` + `_inbox.X.>`) is a permanent maintenance
+The dual-case pattern (_INBOX.X.> + _inbox.X.>) is a permanent maintenance
 burden. Every new identity, every ACL audit, every `gen-nkeys.sh --regenerate`
 must carry both variants or the next case-mismatch bug ships silently.
 
@@ -142,9 +142,9 @@ nc = await nats_connect(nats_url, identity_name="hub")   # already in a832f5c8
 nc = await nats_connect(nats_url, inbox_prefix="_inbox.hub")
 ```
 
-Update `nats_connect()` in roxabi-nats: `identity_name` → `f"_inbox.{identity_name}"`.
+Update `nats_connect()` in roxabi-nats: `identity_name` → f"_inbox.{identity_name}".
 Update all `acl-matrix.json` subscribe entries to lowercase. Drop the uppercase
-`_INBOX.X.>` entries.
+_INBOX.X.> entries.
 
 Result: one entry per identity, matches what NATS server reports in errors,
 no divergence possible.
@@ -165,7 +165,7 @@ lyra only while voicecli still uses uppercase is an identical silent breakage.
 ### Fix 2 — Make reply-paths explicit in `acl-matrix.json`
 
 `allow_responses: true` is invisible in the ACL matrix. The fact that
-clipool-worker needs to reach `_inbox.hub.*` is undocumented and only
+clipool-worker needs to reach _inbox.hub.* is undocumented and only
 inferable from the request-reply pattern at runtime.
 
 **Action:** Add the requester's inbox to each responder's publish ACL:
@@ -189,7 +189,7 @@ This makes the dependency graph fully auditable in `acl-matrix.json` and
 removes reliance on dynamic `allow_responses` grants for correctness.
 `allow_responses: true` can be kept as defence-in-depth.
 
-**Coupling trade-off:** responders now encode `_inbox.hub.>`, so a hub identity
+**Coupling trade-off:** responders now encode _inbox.hub.>, so a hub identity
 rename or a new requester identity requires ACL updates across all responder
 entries. Acceptable for current hub-spoke topology; does not auto-scale to
 multi-requester topologies.
@@ -230,22 +230,22 @@ environments; document or add as a CI setup step.
 | Priority | Action | Effort | Blocker |
 |---|---|---|---|
 | P0 — now | Fix 2 — explicit reply-path publish in `acl-matrix.json` | 10-line JSON + regenerate secret | none |
-| P0 — unblocked | Fix 1 — lowercase `_inbox` prefix + drop dual-variant (hub/adapters/image-worker/clipool-worker) | `nats_connect()` identity_name path + `acl-matrix.json` + redeploy | voicecli blocker resolved; voice-{tts,stt} already done |
+| P0 — unblocked | Fix 1 — lowercase _inbox prefix + drop dual-variant (hub/adapters/image-worker/clipool-worker) | `nats_connect()` identity_name path + `acl-matrix.json` + redeploy | voicecli blocker resolved; voice-{tts,stt} already done |
 | P0 — alongside Fix 1 | Fix 3 — ACL integration test in CI | new test script + Makefile target | Fix 1 must land first to test correct case |
 
 Fix 2 is independent and low-risk — deploy immediately regardless of Fix 1
-scheduling. It uses lowercase `_inbox.hub.>` (correct after Fix 1); during the
-transition window before Fix 1 lands, also carry `_INBOX.hub.>` in each
+scheduling. It uses lowercase _inbox.hub.> (correct after Fix 1); during the
+transition window before Fix 1 lands, also carry _INBOX.hub.> in each
 responder's publish ACL.
 
 Fix 3 is P0, not Medium: it is the only fix that would have prevented this
 incident from shipping. Gate it in `pre-push` alongside `import_layers`.
 
 > **Fix 1 voicecli blocker is resolved.** voicecli already connects with
-> lowercase `_inbox.voice-tts` / `_inbox.voice-stt` (verified 2026-04-28).
+> lowercase _inbox.voice-tts / _inbox.voice-stt (verified 2026-04-28).
 > voice-{tts,stt} ACL entries in `acl-matrix.json` are already normalized to
 > lowercase-only (commit `4f3a02d6`). Remaining Fix 1 scope: change
-> `nats_connect()` `identity_name` path from `_INBOX.{name}` → `_inbox.{name}`
+> `nats_connect()` `identity_name` path from _INBOX.{name} → _inbox.{name}
 > and update ACL entries for hub, adapters, image-worker, clipool-worker.
 
 Fixes 1+2 together eliminate the entire class of case-mismatch and
@@ -283,9 +283,9 @@ invisible-grant bugs. Fix 3 is the guardrail that catches the next one.
 | Item | Owner | Status |
 |---|---|---|
 | Fix 2 — explicit reply-path ACLs | — | done |
-| Fix 1 — lowercase normalization (all identities) | — | done — `nats_connect()` identity_name path → `_inbox.{name}`; all uppercase `_INBOX.X.>` ACL entries dropped |
+| Fix 1 — lowercase normalization (all identities) | — | done — `nats_connect()` identity_name path → _inbox.{name}; all uppercase _INBOX.X.> ACL entries dropped |
 | Fix 3 — `make test-acl` in pre-push | — | skipped |
-| Phase 3 — `request_reply_flows` schema + derived inbox grants | — | Done — #992 (request_reply_flows array added; manual `_inbox.hub.>` entries removed from all responder publish ACLs) |
+| Phase 3 — `request_reply_flows` schema + derived inbox grants | — | Done — #992 (request_reply_flows array added; manual _inbox.hub.> entries removed from all responder publish ACLs) |
 | Alert: `permissions violation` in NATS logs | — | done |
 | Alert: sustained `_stream_gen timeout` in hub logs | — | done |
 | Synthetic round-trip health probe | — | skipped |
@@ -342,7 +342,7 @@ No documented procedure for the full sequence. Until written:
 - ADR-062 — NATS ACL inbox case normalization and explicit reply-paths
 - ADR-051 — per-identity inbox prefix invariant
 - ADR-045 — roxabi-nats SDK
-- Issue #949 — clipool publish ACL narrowing (removed `_INBOX.>` wildcard)
+- Issue #949 — clipool publish ACL narrowing (removed _INBOX.> wildcard)
 
 ---
 
@@ -356,23 +356,23 @@ Four independent analyses were run after the initial postmortem: architect, prod
 
 #### Why-chain 1: `allow_responses` created an invisible, load-bearing dependency
 
-1. After #949 removed the `_INBOX.>` wildcard from clipool's publish ACL, no explicit `_inbox.hub.>` entry replaced it. `allow_responses: true` became the **sole** authorization path for all reply traffic — not a supplement.
+1. After #949 removed the _INBOX.> wildcard from clipool's publish ACL, no explicit _inbox.hub.> entry replaced it. `allow_responses: true` became the **sole** authorization path for all reply traffic — not a supplement.
 2. The assumption that `allow_responses` was a complete replacement was never challenged because its semantics (and case-sensitivity behavior) are not documented in `acl-matrix.json`, ADR-046, or ADR-051 with enough precision to make the gap visible.
 3. `allow_responses: true` is hardcoded into `emit_user()` in `gen-nkeys.sh` for every identity. It does not appear in the ACL matrix at all — an operator reading `acl-matrix.json` has no signal that it exists, let alone that its case-sensitivity behavior diverges between publish-grant and subscribe-filter evaluation.
-4. Pre-#949, `_INBOX.>` wildcards covered the full reply path. `allow_responses: true` was a secondary mechanism. When #949 narrowed publish ACLs it silently promoted `allow_responses` to load-bearing status — a transition that was not documented.
+4. Pre-#949, _INBOX.> wildcards covered the full reply path. `allow_responses: true` was a secondary mechanism. When #949 narrowed publish ACLs it silently promoted `allow_responses` to load-bearing status — a transition that was not documented.
 5. **Root:** `acl-matrix.json` is a per-identity permission list, not a communication topology graph. Cross-identity request-reply flows span two identities and cannot be expressed in the schema. Any change to one side of a request-reply pair requires updating the other side by convention only — there is no machine-enforced linkage.
 
 #### Why-chain 2: Dual-case existed on satellites but not hub
 
-1. Hub received `inbox_prefix="_INBOX.hub"` via `fd3250c4` as the first ADR-051 implementation for the hub identity.
-2. Satellite workers already had dual-case ACL entries (`_INBOX.X.>` + `_inbox.X.>`) added reactively when nats-py lowercase behavior was first observed — treated as a satellite-specific quirk, not generalized to a rule.
+1. Hub received inbox_prefix="_INBOX.hub" via `fd3250c4` as the first ADR-051 implementation for the hub identity.
+2. Satellite workers already had dual-case ACL entries (_INBOX.X.> + _inbox.X.>) added reactively when nats-py lowercase behavior was first observed — treated as a satellite-specific quirk, not generalized to a rule.
 3. When ADR-051 was implemented for hub, the precedent set by the satellite dual-case entries was not applied. ADR-051 documented the concern in "Negative consequences" but deferred it, and hub was the first identity to implement ADR-051 without inheriting the defensive dual-case pattern.
 4. The deferred dual-case rule was not encoded as a lint check or schema constraint. ADR-051 stated the rule in prose; there was no automated enforcement.
 5. **Root:** A temporary compatibility measure was treated as self-expiring and therefore not codified as a lint-enforced invariant. The transition was expected to be self-resolving, so no permanent guardrail was warranted. It was never resolved; new identities were added without the defensive pattern.
 
 #### Why-chain 3: No invariant enforces inbox_prefix ↔ ACL subscribe parity
 
-1. `inbox_prefix="_INBOX.hub"` is set in `hub_standalone.py`; `_INBOX.hub.>` is an entry in `acl-matrix.json`. These two artifacts live in different files, different layers (application code vs. deploy config), with no machine-checked relationship.
+1. inbox_prefix="_INBOX.hub" is set in `hub_standalone.py`; _INBOX.hub.> is an entry in `acl-matrix.json`. These two artifacts live in different files, different layers (application code vs. deploy config), with no machine-checked relationship.
 2. ADR-051 established `inbox_prefix` as a "required-by-convention parameter" but made no provision for verifying that the value used at connect time matches the ACL subscribe entry.
 3. `gen-nkeys.sh --validate-supervisor` verifies credential wiring but does not validate that the identity's runtime inbox prefix matches any ACL entry.
 4. Extracting the `inbox_prefix` value from Python source and cross-referencing it against JSON would require multi-language static analysis not present in any quality gate.
@@ -388,7 +388,7 @@ Four independent analyses were run after the initial postmortem: architect, prod
 
 #### Why-chain 5: Cross-repo coupling and latent gen-nkeys.sh bug
 
-**5A — Hub-spoke coupling (Fix 2):** Fix 2 requires each responder to name `_inbox.hub.>` in its publish ACL. This encodes a cross-identity dependency that looks structurally identical to a namespace grant — no schema field identifies it as a topology dependency. A hub identity rename or second requester requires manual updates to all responder ACLs with no tooling to find them.
+**5A — Hub-spoke coupling (Fix 2):** Fix 2 requires each responder to name _inbox.hub.> in its publish ACL. This encodes a cross-identity dependency that looks structurally identical to a namespace grant — no schema field identifies it as a topology dependency. A hub identity rename or second requester requires manual updates to all responder ACLs with no tooling to find them.
 
 **5B — voicecli coordination (Fix 1):** `voice-tts` and `voice-stt` identities live in `acl-matrix.json` (lyra repo) but their connect-site configuration lives in voicecli (separate repo, separate release cycle). Deploying Fix 1 in lyra while voicecli still uses uppercase produces an identical outage for voice-tts and voice-stt. The lyra `acl-matrix.json` can be updated and `auth.conf` regenerated with no CI gate preventing partial rollout.
 
@@ -581,7 +581,7 @@ These two representations describe the same truth, but they are not equivalent u
 - Topology → per-identity ACLs can be **derived mechanically**
 - Per-identity ACLs → topology **cannot be reconstructed** without knowing which subjects correspond to which roles at runtime
 
-Because the wrong level was chosen as the SSoT, every implementation detail — inbox case (`_INBOX` vs `_inbox`), wildcard narrowing, `allow_responses` semantics — became a load-bearing configuration surface with no machine-enforced relationship to the semantic invariant it was supposed to implement.
+Because the wrong level was chosen as the SSoT, every implementation detail — inbox case (_INBOX vs _inbox), wildcard narrowing, `allow_responses` semantics — became a load-bearing configuration surface with no machine-enforced relationship to the semantic invariant it was supposed to implement.
 
 Every specific failure in this incident traces back to this:
 
@@ -589,7 +589,7 @@ Every specific failure in this incident traces back to this:
 |---|---|
 | `allow_responses` became invisible load-bearing | It bridges the gap between the subject-centric model and the actual topology — magic required because the schema cannot express "clipool replies to hub" |
 | Dual-case maintenance burden | Case is an implementation artifact; the topology (`clipool→hub flow`) is case-agnostic. The wrong abstraction level forces case tracking |
-| `inbox_prefix` ↔ ACL subscribe parity unenforced | `_INBOX.hub` in Python and `_INBOX.hub.>` in JSON are two representations of the same semantic fact — but the schema has no concept of "this is the hub's inbox", so there is nothing to enforce parity against |
+| `inbox_prefix` ↔ ACL subscribe parity unenforced | _INBOX.hub in Python and _INBOX.hub.> in JSON are two representations of the same semantic fact — but the schema has no concept of "this is the hub's inbox", so there is nothing to enforce parity against |
 | #949 narrowing silently broke clipool→hub | Changing one identity's publish ACL had no machine-detectable effect on the cross-identity flow it was part of — because cross-identity flows do not exist as a concept in the schema |
 | Fix 2 introduces responder-encodes-requester coupling | Correct fix, but it encodes topology into per-identity subject lists — still the wrong layer, just explicit now instead of implicit |
 
@@ -628,11 +628,11 @@ What this buys:
 |---|---|
 | Rename hub's inbox prefix → manually hunt every responder | Rename it in one place → generator updates all responder publish entries |
 | Add a new flow → remember to update both sides | Declare the flow → both sides generated |
-| `allow_responses` is invisible load-bearing magic | Explicit `_inbox.hub.>` entry; `allow_responses` is defence-in-depth or removed |
+| `allow_responses` is invisible load-bearing magic | Explicit _inbox.hub.> entry; `allow_responses` is defence-in-depth or removed |
 | CI cannot verify cross-identity correctness | Generator has the topology → can emit a test matrix asserting hub→clipool→hub round-trip |
 | Case mismatch is possible | Generator controls the case → single source, always consistent |
 
-The inbox case-mismatch bug that caused this incident is **structurally impossible** in this model: there is no second place to write the string incorrectly. The generator formats `_inbox.{requester}.>` once and writes it into both the requester's subscribe ACL and every responder's publish ACL. The Python connect call reads from the same source:
+The inbox case-mismatch bug that caused this incident is **structurally impossible** in this model: there is no second place to write the string incorrectly. The generator formats _inbox.{requester}.> once and writes it into both the requester's subscribe ACL and every responder's publish ACL. The Python connect call reads from the same source:
 
 ```python
 # generator uses:   f"_inbox.{identity_name}.>"
@@ -640,7 +640,7 @@ The inbox case-mismatch bug that caused this incident is **structurally impossib
 # → inbox_prefix derived from identity_name by nats_connect, same string, structural parity
 ```
 
-This is the correct long-term target for `acl-matrix.json`. Fix 2 (explicit `_inbox.hub.>` in responder publish ACLs) is the right immediate step and moves in this direction — it makes the topology visible. The topology-first schema makes it machine-enforced.
+This is the correct long-term target for `acl-matrix.json`. Fix 2 (explicit _inbox.hub.> in responder publish ACLs) is the right immediate step and moves in this direction — it makes the topology visible. The topology-first schema makes it machine-enforced.
 
 ---
 
@@ -654,7 +654,7 @@ Three phases: immediate mitigation → normalization (coordinated) → topology-
 
 | Action | Rationale |
 |---|---|
-| Fix 2: explicit `_inbox.hub.>` in all responder publish ACLs in `acl-matrix.json` | Removes reliance on `allow_responses` as sole auth path; seeds Phase 3 topology migration |
+| Fix 2: explicit _inbox.hub.> in all responder publish ACLs in `acl-matrix.json` | Removes reliance on `allow_responses` as sole auth path; seeds Phase 3 topology migration |
 | Remove `allow_responses: true` from identities that never do request-reply | Shrinks blast radius; makes which identities participate in request-reply visible |
 | Alert on `permissions violation` in NATS container logs | Would have caught this incident at 16:11 instead of 18:55 |
 | Alert on sustained `_stream_gen timeout` in hub logs | Hub-side signal for any future ACL or transport break |
@@ -667,7 +667,7 @@ Three phases: immediate mitigation → normalization (coordinated) → topology-
 
 | Action | Rationale |
 |---|---|
-| Fix 1: lowercase `_inbox` prefix — all identities | `nats_connect()` identity_name path normalized; all uppercase `_INBOX.X.>` ACL entries dropped; voicecli confirmed lowercase (2026-04-28) |
+| Fix 1: lowercase _inbox prefix — all identities | `nats_connect()` identity_name path normalized; all uppercase _INBOX.X.> ACL entries dropped; voicecli confirmed lowercase (2026-04-28) |
 | Fix 3: `make test-acl` in pre-push — real NATS, real round-trips, denied-subject assertions, `allow_responses`-removed fixture | CI gate that would have blocked this incident from shipping; run alongside `import_layers` |
 
 ---
@@ -679,9 +679,9 @@ Root cause 1 fix: `acl-matrix.json` currently models authorization at the subjec
 | Action | Status | Rationale |
 |---|---|---|
 | Add `request_reply_flows` section to `acl-matrix.json`; declare all existing hub→responder flows | Done — #992 | Makes topology visible and machine-readable; prerequisite for generator derivation |
-| Remove manual `_inbox.hub.>` entries from all responder publish ACLs (derived from flows) | Done — #992 | Inbox grants are now declared via request_reply_flows, not per-identity manual entries |
-| Build generator that derives `_inbox.{requester}.>` subscribe + publish entries from flow declarations | open | Inbox ACLs become generated output; no second place to write the string incorrectly |
-| Update `nats_connect()` in roxabi-nats: `identity_name` → `f"_inbox.{identity_name}.>"` so connect-site and generator use the same string | open | Closes the Python ↔ JSON parity gap that caused this incident |
+| Remove manual _inbox.hub.> entries from all responder publish ACLs (derived from flows) | Done — #992 | Inbox grants are now declared via request_reply_flows, not per-identity manual entries |
+| Build generator that derives _inbox.{requester}.> subscribe + publish entries from flow declarations | open | Inbox ACLs become generated output; no second place to write the string incorrectly |
+| Update `nats_connect()` in roxabi-nats: `identity_name` → f"_inbox.{identity_name}.>" so connect-site and generator use the same string | open | Closes the Python ↔ JSON parity gap that caused this incident |
 | Drop `allow_responses: true` from all identities once explicit flow grants cover all reply paths | open | Removes invisible magic; may be kept as defence-in-depth only |
 | Drive `gen-nkeys.sh` key-generation from `IDENTITIES[]` iteration — kill hardcoded identity list | open | Single identity SSoT; prevents clipool-worker-class desync on fresh provisioning |
 | Extend Fix 3 test suite: assert that removing a flow declaration removes the derived ACL grant | open | Documents and tests topology derivation as load-bearing |

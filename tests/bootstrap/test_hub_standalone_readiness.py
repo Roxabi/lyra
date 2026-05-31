@@ -1,17 +1,27 @@
-"""Structural ordering tests for _bootstrap_hub_standalone.
+"""Structural and behavioral ordering tests for _bootstrap_hub_standalone.
 
 Tests verify that:
   1. announce_hub_ready() precedes start_readiness_responder() (#1012 invariant).
   2. ensure_stream() + ensure_kv() precede announce_hub_ready() (ADR-079 S3).
 
-Both tests parse the AST of the function source — no I/O, no NATS.
+AST tests (class TestHub*) parse source — no I/O, no NATS.
+Behavioral tests (class TestHubAudioProvisioningBehavioral) use recording mocks
+to assert actual await order at runtime, complementing the AST tests which operate
+on static source and cannot assert that calls are actually awaited.
+
+NOTE on AST test limitation: AST tests in TestHubAudioProvisioningBeforeReady parse
+dead/guarded code (function bodies with conditional branches) and verify textual
+ordering, but they cannot verify that the calls are actually awaited in the correct
+order at runtime. The behavioral companion tests below close this gap.
 """
 
 from __future__ import annotations
 
 import ast
 import inspect
+from contextlib import asynccontextmanager
 from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock, patch
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -140,6 +150,10 @@ class TestHubAudioProvisioningBeforeReady:
         Structural assertion: parse the source of _bootstrap_hub_standalone and
         verify that ensure_kv is called before announce_hub_ready.  This
         guarantees the KV bucket is provisioned before adapters unblock.
+
+        NOTE: This AST test verifies textual ordering of call sites but cannot
+        assert that the calls are actually awaited. See
+        TestHubAudioProvisioningBehavioral for the runtime companion.
         """
         import lyra.bootstrap.standalone.hub_standalone as _mod
 
@@ -162,3 +176,295 @@ class TestHubAudioProvisioningBeforeReady:
             f"ensure_kv (line {ensure_kv_line}) must come before "
             f"announce_hub_ready (line {announce_line}) in _bootstrap_hub_standalone."
         )
+
+
+# ---------------------------------------------------------------------------
+# Behavioral companion — runtime ordering (B3, ADR-079 S3)
+# ---------------------------------------------------------------------------
+
+import pytest  # noqa: E402 — kept below class definitions to match module style
+
+
+def _make_hub_stubs() -> tuple:
+    """Return (mock_nc, fake_open_stores) for hub bootstrap short-circuit tests."""
+    mock_nc = AsyncMock()
+    mock_nc.is_connected = True
+    mock_nc.close = AsyncMock()
+    mock_nc.drain = AsyncMock()
+    mock_js = MagicMock()
+    mock_nc.jetstream = MagicMock(return_value=mock_js)
+
+    @asynccontextmanager
+    async def _fake_open_stores(*_args, **_kwargs):
+        # Minimal stores stub; hub_standalone destructures the result
+        stores = MagicMock()
+        stores.message_index.cleanup_older_than = AsyncMock(return_value=0)
+        stores.auth = MagicMock()
+        stores.bot = MagicMock()
+        stores.identity_alias = MagicMock()
+        stores.agent = MagicMock()
+        yield stores
+
+    return mock_nc, _fake_open_stores
+
+
+def _test_config() -> dict:
+    return {
+        "defaults": {"cwd": "/tmp"},
+        "admin": {"user_ids": ["test_admin"]},
+        "telegram": {"bots": []},
+        "discord": {"bots": []},
+        "auth": {"telegram_bots": [], "discord_bots": []},
+        "message_index": {},
+    }
+
+
+class TestHubAudioProvisioningBehavioral:
+    """Behavioral ordering: ensure_stream + ensure_kv awaited before announce_hub_ready.
+
+    These tests run the actual _bootstrap_hub_standalone function with deep mocking
+    of all infrastructure dependencies, stopping execution after announce_hub_ready
+    via a side_effect sentinel. They complement the AST tests in
+    TestHubAudioProvisioningBeforeReady which only verify textual call ordering.
+    """
+
+    @pytest.mark.asyncio
+    async def test_ensure_stream_and_kv_awaited_before_announce_hub_ready(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """ensure_stream and ensure_kv awaited before announce_hub_ready (ADR-079 S3).
+
+        Records the call order of ensure_stream, ensure_kv, and announce_hub_ready
+        via side_effect callbacks, then asserts the ordering invariant.
+        The test stops immediately after announce_hub_ready to avoid running the
+        full hub lifecycle.
+        """
+        monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
+        raw_config = _test_config()
+        mock_nc, fake_open_stores = _make_hub_stubs()
+
+        call_order: list[str] = []
+
+        async def _record_ensure_stream(*_a, **_kw):
+            call_order.append("ensure_stream")
+
+        async def _record_ensure_kv(*_a, **_kw):
+            call_order.append("ensure_kv")
+            return MagicMock()
+
+        async def _record_announce_hub_ready(*_a, **_kw):
+            call_order.append("announce_hub_ready")
+            raise SystemExit("test-sentinel: stop after announce_hub_ready")
+
+        from lyra.bootstrap.standalone.hub_standalone import _bootstrap_hub_standalone
+
+        with (
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.nats_connect",
+                AsyncMock(return_value=mock_nc),
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.acquire_lockfile",
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.release_lockfile",
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.open_stores",
+                fake_open_stores,
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.seed_grants_from_bots",
+                AsyncMock(),
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.build_bot_auths",
+                return_value=(MagicMock(), [], [], []),
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone._resolve_bot_agent_map",
+                AsyncMock(return_value={}),
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.load_agent_configs",
+                return_value={"default": MagicMock()},
+            ),
+            # _load_messages is lazily imported; patch at the source module.
+            patch(
+                "lyra.bootstrap.factory.config._load_messages",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.build_pairing_manager",
+                AsyncMock(return_value=MagicMock()),
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone._build_hub_and_wire",
+                AsyncMock(
+                    return_value=(
+                        MagicMock(
+                            inbound_bus=AsyncMock(start=AsyncMock()),
+                        ),
+                        [],
+                        [],
+                        MagicMock(),
+                        MagicMock(),
+                    )
+                ),
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.start_mint_failure_subscriber",
+                AsyncMock(return_value=MagicMock()),
+            ),
+            # ensure_stream/ensure_kv are lazily imported inside the function body;
+            # patch at source module path so the local import picks up the stub.
+            patch(
+                "lyra.infrastructure.outbound_audio.stream_setup.ensure_stream",
+                side_effect=_record_ensure_stream,
+            ),
+            patch(
+                "lyra.infrastructure.outbound_audio.stream_setup.ensure_kv",
+                side_effect=_record_ensure_kv,
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.announce_hub_ready",
+                side_effect=_record_announce_hub_ready,
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.log_contracts_version",
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.build_inbound_bus",
+                return_value=(AsyncMock(), MagicMock()),
+            ),
+        ):
+            with pytest.raises(SystemExit, match="test-sentinel"):
+                await _bootstrap_hub_standalone(raw_config)
+
+        assert "ensure_stream" in call_order, (
+            "ensure_stream was never awaited — hub must provision audio stream "
+            "before announce_hub_ready (ADR-079 S3)."
+        )
+        assert "ensure_kv" in call_order, (
+            "ensure_kv was never awaited — hub must provision audio KV "
+            "before announce_hub_ready (ADR-079 S3)."
+        )
+        assert "announce_hub_ready" in call_order, (
+            "announce_hub_ready was never called — unexpected."
+        )
+        es_idx = call_order.index("ensure_stream")
+        ev_idx = call_order.index("ensure_kv")
+        ar_idx = call_order.index("announce_hub_ready")
+        assert es_idx < ar_idx, (
+            f"ensure_stream (pos {es_idx}) must precede announce_hub_ready "
+            f"(pos {ar_idx}) — ADR-079 S3 ordering violated."
+        )
+        assert ev_idx < ar_idx, (
+            f"ensure_kv (pos {ev_idx}) must precede announce_hub_ready "
+            f"(pos {ar_idx}) — ADR-079 S3 ordering violated."
+        )
+
+    @pytest.mark.asyncio
+    async def test_announce_hub_ready_not_called_when_ensure_stream_raises(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """announce_hub_ready not called when ensure_stream raises nats.errors.Error.
+
+        This tests S1 fail-fast: provisioning failure is terminal. The hub must not
+        signal readiness if stream provisioning fails, because adapters would then
+        unblock and attempt to bind a non-existent stream/KV.
+        """
+        import nats.errors
+
+        monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
+        raw_config = _test_config()
+        mock_nc, fake_open_stores = _make_hub_stubs()
+
+        mock_announce = AsyncMock()
+
+        from lyra.bootstrap.standalone.hub_standalone import _bootstrap_hub_standalone
+
+        with (
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.nats_connect",
+                AsyncMock(return_value=mock_nc),
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.acquire_lockfile",
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.release_lockfile",
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.open_stores",
+                fake_open_stores,
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.seed_grants_from_bots",
+                AsyncMock(),
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.build_bot_auths",
+                return_value=(MagicMock(), [], [], []),
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone._resolve_bot_agent_map",
+                AsyncMock(return_value={}),
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.load_agent_configs",
+                return_value={"default": MagicMock()},
+            ),
+            # _load_messages is lazily imported; patch at the source module.
+            patch(
+                "lyra.bootstrap.factory.config._load_messages",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.build_pairing_manager",
+                AsyncMock(return_value=MagicMock()),
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone._build_hub_and_wire",
+                AsyncMock(
+                    return_value=(
+                        MagicMock(
+                            inbound_bus=AsyncMock(start=AsyncMock()),
+                        ),
+                        [],
+                        [],
+                        MagicMock(),
+                        MagicMock(),
+                    )
+                ),
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.start_mint_failure_subscriber",
+                AsyncMock(return_value=MagicMock()),
+            ),
+            # ensure_stream/ensure_kv are lazily imported; patch at source module.
+            patch(
+                "lyra.infrastructure.outbound_audio.stream_setup.ensure_stream",
+                side_effect=nats.errors.Error("stream create denied"),
+            ),
+            patch(
+                "lyra.infrastructure.outbound_audio.stream_setup.ensure_kv",
+                AsyncMock(),
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.announce_hub_ready",
+                mock_announce,
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.log_contracts_version",
+            ),
+            patch(
+                "lyra.bootstrap.standalone.hub_standalone.build_inbound_bus",
+                return_value=(AsyncMock(), MagicMock()),
+            ),
+        ):
+            with pytest.raises(nats.errors.Error):
+                await _bootstrap_hub_standalone(raw_config)
+
+        # announce_hub_ready must NOT be called when provisioning fails (ADR-079 S3 S1).
+        mock_announce.assert_not_awaited()

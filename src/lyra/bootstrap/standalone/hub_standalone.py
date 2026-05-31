@@ -157,14 +157,27 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
         # Provision shared audio infrastructure before signalling readiness.
         # Adapters block on wait_for_hub; stream + KV are guaranteed to exist
         # when they connect. Idempotent: safe on every hub restart. ADR-079.
+        # Fail-fast: provisioning is terminal — adapters block on wait_for_hub
+        # until stream+KV exist (ADR-079 S3). RestartSec recovers the hub.
+        import nats.errors as _nats_errors
+
         from lyra.infrastructure.outbound_audio.stream_setup import (
             ensure_kv,
             ensure_stream,
         )
 
         _audio_js = nc.jetstream()
-        await ensure_stream(_audio_js)
-        await ensure_kv(_audio_js)
+        try:
+            await ensure_stream(_audio_js)
+            await ensure_kv(_audio_js)
+        except _nats_errors.Error as exc:
+            log.critical(
+                "hub_standalone: audio provisioning failed — stream/KV not created;"
+                " hub cannot announce ready; adapters will not unblock. "
+                "Cause: %s. RestartSec will recover. (ADR-079 S3)",
+                exc,
+            )
+            raise
 
         await announce_hub_ready(nc)
         readiness_sub = await start_readiness_responder(nc, [hub.inbound_bus])

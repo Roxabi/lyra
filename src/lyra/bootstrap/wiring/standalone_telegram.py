@@ -173,6 +173,13 @@ async def bootstrap_telegram_standalone(  # noqa: PLR0915 — DEBT:wiring-bootst
 
         return (adapter, inbound_bus, tg_typing_listener, consumer)
 
+    # ADR-079 S3: wait_for_hub is a load-bearing barrier — it MUST precede
+    # start_audio_consumer (called inside _wire_bot). The hub sets hub.ready only
+    # after ensure_stream + ensure_kv complete, so this call guarantees stream + KV
+    # exist before any adapter bind/consume attempt. Moving it after the loop would
+    # reintroduce the cold-boot race (BucketNotFoundError / missing-stream).
+    await wait_for_hub(nc)
+
     for bot_cfg in tg_multi_cfg.bots:
         bot_id = bot_cfg.bot_id
         if bot_id not in tg_creds:
@@ -195,7 +202,6 @@ async def bootstrap_telegram_standalone(  # noqa: PLR0915 — DEBT:wiring-bootst
     if not wired:
         await tg_turn_store.close()
         sys.exit("No Telegram adapters started — check credentials")
-    await wait_for_hub(nc)
 
     stop = setup_shutdown_event(_stop)
     try:

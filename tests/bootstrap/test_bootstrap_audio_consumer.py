@@ -9,9 +9,10 @@ Asserts that bootstrap_telegram_standalone / bootstrap_discord_standalone:
   4. Call consumer.start() and consumer.stop() (via _close_tg/dc_wired).
   5. astart-failure path: start_audio_consumer is never called.
 
-Also asserts ADR-079 S3 bind-only invariants:
-  6. start_audio_consumer does NOT call ensure_stream/ensure_kv (hub sole-provisioner).
+Also asserts ADR-079 S3 bind-only and ordering invariants:
+  6. start_audio_consumer does NOT import ensure_stream/ensure_kv (sole-provisioner).
   7. start_audio_consumer uses js.key_value(KV_BUCKET) (bind-only) not ensure_kv.
+  8. wait_for_hub completes BEFORE start_audio_consumer is invoked (ordering barrier).
 
 All tests override the autouse _noop_audio_consumer conftest fixture by applying
 their own `with patch(...)` blocks inside the test body (innermost patch wins).
@@ -255,6 +256,12 @@ async def test_bootstrap_audio_consumer_tg_no_consumer_on_astart_failure() -> No
             "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
+        # ADR-079 S3: wait_for_hub now precedes the wiring loop; must be patched
+        # so this test doesn't attempt real NATS KV operations on the mock nc.
+        patch(
+            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
+            AsyncMock(return_value=None),
+        ),
         patch(
             "lyra.bootstrap.wiring.standalone_telegram.start_audio_consumer",
             new_callable=AsyncMock,
@@ -457,35 +464,31 @@ async def test_start_audio_consumer_returns_real_consumer_on_success() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_start_audio_consumer_does_not_call_ensure_stream() -> None:
-    """start_audio_consumer must NOT call ensure_stream (hub sole-provisioner, S3).
+def test_start_audio_consumer_does_not_import_ensure_stream() -> None:
+    """audio_consumer_bootstrap must NOT import ensure_stream or ensure_kv (S3).
 
-    Structural: ensure_stream is no longer imported in audio_consumer_bootstrap.
-    Runtime: we patch it at the source module and verify it stays uncalled.
+    Structural invariant: after the sole-provisioner migration (ADR-079 S3), the
+    adapter bootstrap module is bind-only and must not carry provisioning imports.
+    This test fails immediately if anyone re-adds ensure_stream or ensure_kv to
+    audio_consumer_bootstrap, making it impossible for the adapter to accidentally
+    provision the stream/KV.
+
+    NOTE on prior tautological version: the previous test patched
+    ``lyra.infrastructure.outbound_audio.stream_setup.ensure_stream`` — a path that
+    audio_consumer_bootstrap never imports. ``assert_not_awaited()`` on that mock
+    could never fail regardless of what the module does, so it provided zero
+    protection. This structural ``hasattr`` check directly tests the invariant.
     """
-    from lyra.bootstrap.standalone.audio_consumer_bootstrap import start_audio_consumer
+    import lyra.bootstrap.standalone.audio_consumer_bootstrap as acb
 
-    mock_js = MagicMock()
-    mock_js.key_value = AsyncMock(return_value=MagicMock())
-
-    with (
-        patch(
-            "lyra.infrastructure.outbound_audio.stream_setup.ensure_stream",
-            new_callable=AsyncMock,
-        ) as mock_ensure_stream,
-        patch(
-            "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_consumer",
-            new_callable=AsyncMock,
-        ),
-        patch(
-            "lyra.bootstrap.standalone.audio_consumer_bootstrap.JetStreamAudioConsumer",
-            return_value=AsyncMock(),
-        ),
-    ):
-        await start_audio_consumer(mock_js, "telegram", "main", MagicMock())
-
-    mock_ensure_stream.assert_not_awaited()
+    assert not hasattr(acb, "ensure_stream"), (
+        "audio_consumer_bootstrap must not import ensure_stream — "
+        "stream provisioning belongs to the hub sole-provisioner (ADR-079 S3)."
+    )
+    assert not hasattr(acb, "ensure_kv"), (
+        "audio_consumer_bootstrap must not import ensure_kv — "
+        "KV provisioning belongs to the hub sole-provisioner (ADR-079 S3)."
+    )
 
 
 @pytest.mark.asyncio
@@ -583,3 +586,157 @@ async def test_teardown_calls_stop_on_null_sentinel_without_error() -> None:
         await _bootstrap_adapter_standalone(
             _make_raw_config("telegram"), "telegram", _stop=stop
         )
+
+
+# ---------------------------------------------------------------------------
+# ADR-079 S3 — Ordering: wait_for_hub before start_audio_consumer (B3)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_wait_for_hub_called_before_start_audio_consumer_telegram() -> None:
+    """Telegram: wait_for_hub completes before start_audio_consumer is invoked.
+
+    This is the regression test for B1 (ADR-079 S3 ordering fix). It MUST fail
+    against the pre-B1 code (where wait_for_hub came AFTER the wiring loop) and
+    pass after the fix (where wait_for_hub precedes the loop).
+
+    Method: record call order via a shared list with side_effect callbacks on
+    both mocks. Assert wait_for_hub index < start_audio_consumer index.
+    """
+    from lyra.bootstrap.standalone.adapter_standalone import (
+        _bootstrap_adapter_standalone,
+    )
+
+    stop = asyncio.Event()
+    stop.set()
+
+    mock_nc = _make_nc_mock()
+    mock_adapter = AsyncMock()
+    mock_adapter._bot_id = "main"
+    mock_adapter.resolve_identity = AsyncMock()
+    mock_adapter.astart = AsyncMock()
+    mock_adapter.close = AsyncMock()
+    mock_adapter.dp.start_polling = AsyncMock(return_value=None)
+    mock_adapter.dp.stop_polling = AsyncMock()
+    mock_adapter.render_audio = AsyncMock()
+    mock_adapter.send = AsyncMock()
+
+    mock_consumer = AsyncMock()
+    mock_inbound_bus = AsyncMock()
+    mock_inbound_bus.register = MagicMock()
+
+    call_order: list[str] = []
+
+    async def _recording_wait_for_hub(*_args, **_kwargs):
+        call_order.append("wait_for_hub")
+
+    async def _recording_start_audio_consumer(*_args, **_kwargs):
+        call_order.append("start_audio_consumer")
+        return mock_consumer
+
+    (load_token,) = _cred_patch()
+    with (
+        patch("nats.connect", AsyncMock(return_value=mock_nc)),
+        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("lyra.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
+        patch(
+            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            return_value=AsyncMock(),
+        ),
+        patch(
+            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
+            side_effect=_recording_wait_for_hub,
+        ),
+        patch(
+            "lyra.bootstrap.wiring.standalone_telegram.start_audio_consumer",
+            side_effect=_recording_start_audio_consumer,
+        ),
+        load_token,
+        patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
+    ):
+        await _bootstrap_adapter_standalone(
+            _make_raw_config("telegram"), "telegram", _stop=stop
+        )
+
+    assert "wait_for_hub" in call_order, "wait_for_hub was never called"
+    assert "start_audio_consumer" in call_order, "start_audio_consumer was never called"
+    wfh_idx = call_order.index("wait_for_hub")
+    sac_idx = call_order.index("start_audio_consumer")
+    assert wfh_idx < sac_idx, (
+        f"wait_for_hub (pos {wfh_idx}) must precede start_audio_consumer "
+        f"(pos {sac_idx}) — ADR-079 S3 ordering invariant violated. "
+        "This indicates the pre-B1 regression: move wait_for_hub before the "
+        "wiring loop in standalone_telegram.py."
+    )
+
+
+@pytest.mark.asyncio
+async def test_wait_for_hub_called_before_start_audio_consumer_discord() -> None:
+    """Discord: wait_for_hub completes before start_audio_consumer is invoked.
+
+    Mirror of the Telegram ordering test (ADR-079 S3 / B1 regression guard).
+    """
+    from lyra.bootstrap.standalone.adapter_standalone import (
+        _bootstrap_adapter_standalone,
+    )
+
+    stop = asyncio.Event()
+    stop.set()
+
+    mock_nc = _make_nc_mock()
+    mock_adapter_dc = AsyncMock()
+    mock_adapter_dc._bot_id = "main"
+    mock_adapter_dc.astart = AsyncMock()
+    mock_adapter_dc.close = AsyncMock()
+    mock_adapter_dc.start = AsyncMock(return_value=None)
+    mock_adapter_dc.render_audio = AsyncMock()
+    mock_adapter_dc.send = AsyncMock()
+
+    mock_consumer_dc = AsyncMock()
+    mock_inbound_bus_dc = AsyncMock()
+    mock_inbound_bus_dc.register = MagicMock()
+
+    call_order: list[str] = []
+
+    async def _recording_wait_for_hub(*_args, **_kwargs):
+        call_order.append("wait_for_hub")
+
+    async def _recording_start_audio_consumer(*_args, **_kwargs):
+        call_order.append("start_audio_consumer")
+        return mock_consumer_dc
+
+    (load_token_dc,) = _cred_patch("discord-token")
+    with (
+        patch("nats.connect", AsyncMock(return_value=mock_nc)),
+        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus_dc),
+        patch("lyra.adapters.discord.DiscordAdapter", return_value=mock_adapter_dc),
+        patch(
+            "lyra.bootstrap.wiring.standalone_discord.NatsOutboundListener",
+            return_value=AsyncMock(),
+        ),
+        patch(
+            "lyra.bootstrap.wiring.standalone_discord.wait_for_hub",
+            side_effect=_recording_wait_for_hub,
+        ),
+        patch(
+            "lyra.bootstrap.wiring.standalone_discord.start_audio_consumer",
+            side_effect=_recording_start_audio_consumer,
+        ),
+        load_token_dc,
+        patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
+    ):
+        await _bootstrap_adapter_standalone(
+            _make_raw_config("discord"), "discord", _stop=stop
+        )
+
+    assert "wait_for_hub" in call_order, "wait_for_hub was never called"
+    assert "start_audio_consumer" in call_order, "start_audio_consumer was never called"
+    wfh_idx = call_order.index("wait_for_hub")
+    sac_idx = call_order.index("start_audio_consumer")
+    assert wfh_idx < sac_idx, (
+        f"wait_for_hub (pos {wfh_idx}) must precede start_audio_consumer "
+        f"(pos {sac_idx}) — ADR-079 S3 ordering invariant violated. "
+        "This indicates the pre-B1 regression: move wait_for_hub before the "
+        "wiring loop in standalone_discord.py."
+    )

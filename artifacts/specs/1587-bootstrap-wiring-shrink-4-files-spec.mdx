@@ -1,0 +1,183 @@
+---
+title: "refactor: shared bootstrap wiring + config loader split — shrink 4 files"
+issue: 1587
+status: approved
+tier: F-lite
+date: 2026-05-31
+promoted_from: "artifacts/frames/1587-bootstrap-wiring-shrink-4-files-frame.mdx"
+---
+
+## Context
+
+Promoted from [frame #1587](/artifacts/frames/1587-bootstrap-wiring-shrink-4-files-frame.mdx).
+
+Four bootstrap files exceed the 300-line quality-gate cap and carry `DEBT:file-exemptions`:
+
+| File | Lines | Exemption | Overage |
+|------|-------|-----------|---------|
+| `src/lyra/bootstrap/wiring/bootstrap_wiring.py` | 376 | #1494/#1450/#1551/#1556 | +76 |
+| `src/lyra/bootstrap/factory/config.py` | 353 | #1467/#1420 | +53 |
+| `src/lyra/bootstrap/factory/agent_factory.py` | 351 | #1283/#1492 | +51 |
+| `src/lyra/bootstrap/factory/hub_builder.py` | 370 | #1494/#1283/#1492/#1540 | +70 |
+
+All four files share the same pattern: domain-specific helpers (config loading, provider building, hub wiring) were kept inline to avoid proliferating small files. Now the accumulated weight violates the gate and masks structure.
+
+## Goal
+
+Extract domain-specific helpers from the 4 files into dedicated submodules so each caller drops below 300 lines, then remove the 4 `DEBT:file-exemptions` entries.
+
+## Users
+
+- **Primary:** Lyra maintainers editing bootstrap wiring or factory logic
+- **Secondary:** Contributors reading bootstrap code to understand startup flow
+
+## Expected Behavior
+
+After extraction, the 4 caller files should read as thin orchestration layers that import helpers from domain modules. No call sites change their signatures or behavior. The new helper modules group functions by domain (e.g., `auth.py`, `pool.py`, `llm.py`, `messages.py` for config loading; `shared_providers.py`, `per_agent_registry.py` for agent factory; `adapter_wiring.py`, `ingest_wiring.py` for bootstrap wiring; `cli_pool.py`, `hub_config.py` for hub builder).
+
+## Data Model & Consumers
+
+The refactor only moves functions and dataclasses; no new data models are introduced. The existing dataclasses remain frozen and their fields are unchanged.
+
+```classDiagram
+    class TelegramWiringDeps {
+        +Hub hub
+        +list[tuple[TelegramBotConfig, Authenticator]] tg_bot_auths
+        +dict[tuple[str, str], str] bot_agent_map
+        +CircuitRegistry circuit_registry
+        +MessageManager msg_manager
+        +Any nats_client
+        +ToolDisplayConfig | None tool_display_config
+        +BlobStorePort | None blob_store
+    }
+    class DiscordWiringDeps {
+        +Hub hub
+        +list[tuple[DiscordBotConfig, Authenticator]] dc_bot_auths
+        +dict[tuple[str, str], str] bot_agent_map
+        +CircuitRegistry circuit_registry
+        +MessageManager msg_manager
+        +AgentStore | None agent_store
+        +str | None vault_dir
+        +Any nats_client
+        +ToolDisplayConfig | None tool_display_config
+        +BlobStorePort | None blob_store
+    }
+    class BotAuthDeps {
+        +BotStoreProtocol bot_store
+        +TelegramMultiConfig tg_multi_cfg
+        +DiscordMultiConfig dc_multi_cfg
+        +AuthStore auth_store
+        +frozenset[str] admin_user_ids
+        +IdentityAliasStore | None alias_store
+    }
+    class CreateAgentDeps {
+        +Agent config
+        +CliPool | None cli_pool
+        +CircuitRegistry | None circuit_registry
+        +MessageManager | None msg_manager
+        +STTProtocol | None stt
+        +TtsProtocol | None tts
+        +ProviderRegistry | None provider_registry
+        +AgentStore | None agent_store
+        +LlmClient | None cli_nats_driver
+        +Callable agent_cls
+        +type cli_driver_cls
+        +SessionTools | None session_tools
+    }
+    class ResolveAgentsDeps {
+        +dict[str, Agent] agent_configs
+        +CliPool | None cli_pool
+        +CircuitRegistry circuit_registry
+        +MessageManager msg_manager
+        +STTProtocol | None stt_service
+        +TtsProtocol | None tts_service
+        +AgentStore | None agent_store
+        +LlmConfig | None llm_cfg
+        +LlmClient | None nats_llm_client
+        +LlmClient | None cli_nats_driver
+    }
+    class BuildHubDeps {
+        <<from types.py>>
+    }
+    class AdapterConfigBundle {
+        +ToolDisplayConfig tool_display
+    }
+
+    TelegramWiringDeps --|> "consumed by" wire_telegram_adapters
+    DiscordWiringDeps --|> "consumed by" wire_discord_adapters
+    BotAuthDeps --|> "consumed by" _build_bot_auths
+    CreateAgentDeps --|> "consumed by" _create_agent
+    ResolveAgentsDeps --|> "consumed by" _resolve_agents
+    BuildHubDeps --|> "consumed by" _build_hub
+    AdapterConfigBundle --|> "consumed by" bootstrap paths
+```
+
+**Consumer summary table**
+
+| Consumer | Fields consumed | When | Status |
+|----------|-----------------|------|--------|
+| `wire_telegram_adapters` | All `TelegramWiringDeps` fields | Bootstrap | this issue |
+| `wire_discord_adapters` | All `DiscordWiringDeps` fields | Bootstrap | this issue |
+| `_build_bot_auths` | All `BotAuthDeps` fields | Bootstrap | this issue |
+| `_create_agent` | All `CreateAgentDeps` fields | Bootstrap | this issue |
+| `_resolve_agents` | All `ResolveAgentsDeps` fields | Bootstrap | this issue |
+| `_build_hub` | All `BuildHubDeps` fields | Bootstrap | this issue |
+| `build_adapter_config_bundle` | `tool_display` | Bootstrap | this issue |
+
+## Breadboard
+
+### Affordances (functions to extract)
+
+| ID | Affordance | Current Location | Target Module | Est. Lines |
+|----|-----------|------------------|---------------|------------|
+| N1 | `_build_bot_auths` | `bootstrap_wiring.py` | `wiring/auth.py` | ~55 |
+| N2 | `build_ingest`, `_assert_blobstore_configured_if_url_set`, `wire_ingest` | `bootstrap_wiring.py` | `wiring/ingest_wiring.py` | ~45 |
+| C1 | `warn_deprecated_bot_sections` | `config.py` | `config/deprecation.py` | ~30 |
+| C2 | All Pydantic config models (11 classes) | `config.py` | `config/models.py` | ~110 |
+| C3 | All `_load_*` helpers (12 functions) | `config.py` | `config/loader.py` | ~130 |
+| C4 | `_validate_config_path` | `config.py` | `config/loader.py` | ~15 |
+| A1 | `_build_shared_base_providers`, `_build_per_agent_registry`, `_build_provider_registry` | `agent_factory.py` | `factory/providers.py` | ~85 |
+| A2 | `_resolve_bot_agent_map` (alias) | `agent_factory.py` | `factory/bot_agent_map.py` (inline) | ~10 |
+| H1 | `build_llm_client` | `hub_builder.py` | `factory/llm_client.py` | ~30 |
+| H2 | `build_inbound_bus` | `hub_builder.py` | `factory/inbound_bus.py` | ~15 |
+| H3 | `build_cli_pool` | `hub_builder.py` | `factory/cli_pool.py` | ~25 |
+| H4 | `register_agents` | `hub_builder.py` | `factory/agent_registration.py` | ~25 |
+| H5 | `_init_clipool` | `hub_builder.py` | `factory/clipool_init.py` | ~35 |
+| H6 | `_build_hub` | `hub_builder.py` | `factory/hub_core.py` | ~50 |
+| H7 | `_build_hub_and_wire` | `hub_builder.py` | `factory/hub_assembly.py` | ~110 |
+
+### Wiring
+
+- `bootstrap_wiring.py` → imports `wiring/auth.py`, `wiring/ingest_wiring.py`
+- `config.py` → imports `config/deprecation.py`, `config/models.py`, `config/loader.py`
+- `agent_factory.py` → imports `factory/providers.py`
+- `hub_builder.py` → imports `factory/llm_client.py`, `factory/inbound_bus.py`, `factory/cli_pool.py`, `factory/agent_registration.py`, `factory/clipool_init.py`, `factory/hub_core.py`, `factory/hub_assembly.py`
+
+## Slices
+
+| Slice | Scope | Files Touched | Breadboard IDs Covered | Independent? |
+|-------|-------|---------------|------------------------|--------------|
+| S1 | Extract `bootstrap_wiring.py` helpers | `wiring/auth.py`, `wiring/ingest_wiring.py`, `wiring/bootstrap_wiring.py` | N1, N2 | ✓ |
+| S2 | Extract `config.py` helpers | `config/deprecation.py`, `config/models.py`, `config/loader.py`, `factory/config.py` | C1, C2, C3, C4 | ✓ |
+| S3 | Extract `agent_factory.py` helpers | `factory/providers.py`, `factory/agent_factory.py` | A1, A2 | ✓ |
+| S4 | Extract `hub_builder.py` helpers | `factory/llm_client.py`, `factory/inbound_bus.py`, `factory/cli_pool.py`, `factory/agent_registration.py`, `factory/clipool_init.py`, `factory/hub_core.py`, `factory/hub_assembly.py`, `factory/hub_builder.py` | H1, H2, H3, H4, H5, H6, H7 | ✓ |
+
+Slices are ordered by dependency (S1 → S4) but each slice is independently merge-able because each file's extraction is self-contained.
+
+## Success Criteria
+
+- [ ] `src/lyra/bootstrap/wiring/bootstrap_wiring.py` ≤ 300 lines (currently 376)
+- [ ] `src/lyra/bootstrap/factory/config.py` ≤ 300 lines (currently 353)
+- [ ] `src/lyra/bootstrap/factory/agent_factory.py` ≤ 300 lines (currently 351)
+- [ ] `src/lyra/bootstrap/factory/hub_builder.py` ≤ 300 lines (currently 370)
+- [ ] `tools/file_exemptions.txt` no longer lists any of the 4 files
+- [ ] `check_file_length.sh` passes for all 4 files
+- [ ] `check_folder_size.sh` passes for `src/lyra/bootstrap/` (must stay < 12 items at root)
+- [ ] No new files added at `src/lyra/bootstrap/` root level (only subdirs)
+- [ ] All existing tests pass (`pytest src/lyra/bootstrap/`)
+- [ ] No import regressions (`.importlinter` passes)
+- [ ] No behavior changes — call-site signatures unchanged, no functional diffs
+
+## [NEEDS CLARIFICATION]
+
+- None — scope is well-defined from frame.

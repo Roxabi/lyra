@@ -39,6 +39,7 @@ lyra-acl = "scripts.gen_nkeys:main"
 lyra-genkeys = "scripts.gen_nkeys:alias_genkeys"
 lyra-check-acl-retired = "scripts.gen_nkeys:_check_retired"
 lyra-check-flows = "scripts.gen_nkeys:_check_flows"
+lyra-check-grants = "scripts.gen_nkeys:_check_grants"
 
 [build-system]
 requires = ["hatchling"]

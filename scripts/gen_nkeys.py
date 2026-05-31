@@ -8,6 +8,7 @@ Aliases: lyra-genkeys, lyra-check-acl-retired, lyra-check-flows
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -177,6 +178,31 @@ def _cmd_check_flows(args: argparse.Namespace) -> None:
     print(f"check-request-reply-flows: OK ({len(flows)} flows)")
 
 
+def _cmd_check_grants(args: argparse.Namespace) -> None:
+    """Assert code-required NATS subjects are covered by ACL grants (ADR-079)."""
+    from scripts.check_grants import load_code_subjects, run
+
+    matrix = load_matrix(args.matrix)
+
+    try:
+        code_subjects = load_code_subjects(args.code_subjects)
+    except (json.JSONDecodeError, ValueError, OSError) as exc:
+        print(f"error: {args.code_subjects}: {exc}", file=sys.stderr)
+        sys.exit(2)
+
+    errors = run(matrix, code_subjects)
+
+    if errors:
+        for e in errors:
+            print(e, file=sys.stderr)
+        sys.exit(1)
+
+    total = len(code_subjects.get("streams") or {}) + len(
+        code_subjects.get("kv_buckets") or {}
+    )
+    print(f"check-grants: OK ({total} resources)")
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="lyra-acl",
@@ -269,7 +295,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     # --- check subcommand (with sub-subcommands) ---
     ck = sub.add_parser("check", help="ACL matrix consistency checks")
-    ck_sub = ck.add_subparsers(dest="check_cmd", metavar="{retired,flows}")
+    ck_sub = ck.add_subparsers(dest="check_cmd", metavar="{retired,flows,grants}")
     ck_sub.required = True
 
     ck_retired = ck_sub.add_parser(
@@ -292,6 +318,26 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     ck_flows.set_defaults(func=_cmd_check_flows)
 
+    ck_grants = ck_sub.add_parser(
+        "grants",
+        help="Assert code-required NATS subjects are covered by ACL grants (ADR-079)",
+    )
+    ck_grants.add_argument(
+        "--matrix",
+        type=Path,
+        default=_DEFAULT_MATRIX,
+        metavar="PATH",
+        help="Path to acl-matrix.json (default: deploy/nats/acl-matrix.json)",
+    )
+    ck_grants.add_argument(
+        "--code-subjects",
+        type=Path,
+        default=Path("deploy/nats/code-subjects.json"),
+        metavar="PATH",
+        help="Path to code-subjects.json (default: deploy/nats/code-subjects.json)",
+    )
+    ck_grants.set_defaults(func=_cmd_check_grants)
+
     return parser
 
 
@@ -311,6 +357,10 @@ def _check_retired() -> None:
 
 def _check_flows() -> None:
     main(["check", "flows"] + sys.argv[1:])
+
+
+def _check_grants() -> None:
+    main(["check", "grants"] + sys.argv[1:])
 
 
 if __name__ == "__main__":

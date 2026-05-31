@@ -333,8 +333,7 @@ NATS resource (stream or KV bucket), then identifies the provisioner and consume
       "provisioner_subjects": {
         "publish": [
           "$JS.API.STREAM.CREATE.KV_lyra_outbound_audio_sent",
-          "$JS.API.STREAM.INFO.KV_lyra_outbound_audio_sent",
-          "$KV.lyra_outbound_audio_sent.>"
+          "$JS.API.STREAM.INFO.KV_lyra_outbound_audio_sent"
         ]
       },
       "consumer_group": "audio-consumer",
@@ -350,6 +349,14 @@ NATS resource (stream or KV bucket), then identifies the provisioner and consume
   }
 }
 ```
+
+**Axis note (corrected #1527).** The KV bucket's provisioner grants are control-plane
+only (`$JS.API.STREAM.*.KV_lyra_outbound_audio_sent`, covered by hub's `$JS.API.>`). The
+data-plane subject `$KV.lyra_outbound_audio_sent.>` is **consume-axis** — written by
+`audio-consumer` members (the platform adapters), never by the hub provisioner. An earlier
+draft listed it under the hub provisioner; that was a cross-axis error — `ensure_kv` only
+creates/binds the bucket (`src/lyra/infrastructure/outbound_audio/stream_setup.py`); the
+adapters do the data-plane `kv.put()` (`src/lyra/adapters/nats/jetstream_audio_dedup.py`).
 
 **Gate logic** (`lyra-acl check grants` subcommand in `scripts/gen_nkeys.py`):
 

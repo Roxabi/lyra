@@ -72,6 +72,9 @@ def rendered_auth_conf(tmp_path_factory: pytest.TempPathFactory) -> Path:
     from scripts._renderer import render_auth_conf
 
     tmp = tmp_path_factory.mktemp("nats")
+    # v3-current.json is auto-generated from deploy/nats/acl-matrix.json by
+    # scripts/render_acl_parity.py; freshness is gate-enforced by
+    # scripts/check-acl-specs-drift.sh (CI + pre-push).
     matrix_path = REPO_ROOT / "tests/scripts/fixtures/v3-current.json"
     matrix = load_matrix(matrix_path)
 

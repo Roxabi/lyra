@@ -112,10 +112,12 @@ Expected output: `ok — acl-matrix lifecycle fields valid`
 **4. Refresh the ACL spec table.**
 
 ```bash
-bash scripts/check-acl-matrix-spec.sh --update
+make nats-regen-specs
 ```
 
-This rewrites the sentinel-bracketed table in `artifacts/specs/706-per-role-nkeys-acls-spec.mdx` to reflect the current active identity set.
+This regenerates the spec table in `artifacts/specs/706-per-role-nkeys-acls-spec.mdx` and the
+parity fixture `tests/scripts/fixtures/v3-current.json` from `acl-matrix.json` using
+`scripts/render_acl_spec.py` and `scripts/render_acl_parity.py`.
 
 **5. Regenerate `auth.conf`.**
 
@@ -187,6 +189,7 @@ A `--retire <name>` subcommand for `gen-nkeys.sh` is planned. It will automate s
 - [`deploy/nats/acl-matrix.json`](../../deploy/nats/acl-matrix.json) — identity registry
 - [`deploy/nats/gen-nkeys.sh`](../../deploy/nats/gen-nkeys.sh) — seed generation and auth.conf rendering
 - [`scripts/check-acl-matrix-retired.sh`](../../scripts/check-acl-matrix-retired.sh) — lifecycle field validator
-- [`scripts/check-acl-matrix-spec.sh`](../../scripts/check-acl-matrix-spec.sh) — spec table sync checker
+- [`scripts/render_acl_spec.py`](../../scripts/render_acl_spec.py) + [`scripts/render_acl_parity.py`](../../scripts/render_acl_parity.py) — spec table and parity fixture generators (`make nats-regen-specs`)
+- [`scripts/check-acl-specs-drift.sh`](../../scripts/check-acl-specs-drift.sh) — spec/fixture drift gate (CI + pre-push)
 - [nkey Rotation Runbook](nkey-rotation.md) — for suspected seed compromise (different scenario)
 - [ADR-046](../architecture/adr/046-nkey-provisioning-declarative-authconf.mdx) — declarative provisioning invariants

@@ -4,7 +4,8 @@
 
 This spec defines the canonical publish/subscribe permissions for each NATS identity
 in the Lyra ecosystem. It is the source of truth for `deploy/nats/acl-matrix.json`
-and is verified by `scripts/check-acl-matrix-spec.sh` on every CI run.
+and is auto-generated from `deploy/nats/acl-matrix.json` by `scripts/render_acl_spec.py`.
+Drift is gated by `scripts/check-acl-specs-drift.sh` (CI + pre-push).
 
 **Updated (postmortem Fix 1+2, 2026-04-28):**
 - Retired `tts-adapter` and `sst-adapter` (replaced by `voice-tts`/`voice-stt`)

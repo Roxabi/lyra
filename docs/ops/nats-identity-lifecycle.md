@@ -180,14 +180,14 @@ Exit 0 on success; exit 1 with per-error messages on failure. The check runs in 
 
 ## Future
 
-A `--retire <name>` subcommand for `gen-nkeys.sh` is planned. It will automate steps 1–7 of the retiring flow above (update JSON, remove flows, validate, update spec, regen auth.conf, commit). Until it ships, follow this runbook manually.
+A `--retire <name>` subcommand for `lyra-acl` is planned. It will automate steps 1–7 of the retiring flow above (update JSON, remove flows, validate, update spec, regen auth.conf, commit). Until it ships, follow this runbook manually.
 
 ---
 
 ## Cross-references
 
 - [`deploy/nats/acl-matrix.json`](../../deploy/nats/acl-matrix.json) — identity registry
-- [`deploy/nats/gen-nkeys.sh`](../../deploy/nats/gen-nkeys.sh) — seed generation and auth.conf rendering
+- [`scripts/gen_nkeys.py`](../../scripts/gen_nkeys.py) / `lyra-acl` — seed generation and auth.conf rendering
 - [`scripts/check-acl-matrix-retired.sh`](../../scripts/check-acl-matrix-retired.sh) — lifecycle field validator
 - [`scripts/render_acl_spec.py`](../../scripts/render_acl_spec.py) + [`scripts/render_acl_parity.py`](../../scripts/render_acl_parity.py) — spec table and parity fixture generators (`make nats-regen-specs`)
 - [`scripts/check-acl-specs-drift.sh`](../../scripts/check-acl-specs-drift.sh) — spec/fixture drift gate (CI + pre-push)

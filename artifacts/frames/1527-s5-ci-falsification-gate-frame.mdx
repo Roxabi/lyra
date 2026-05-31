@@ -1,0 +1,121 @@
+---
+title: "S5 — CI code↔ACL falsification gate"
+issue: 1527
+tier: F-lite
+status: approved
+created: 2026-05-31
+parent: 1521
+adr: ADR-079
+---
+
+# Frame: S5 — CI code↔ACL falsification gate
+
+## Problem
+
+Dev NATS runs permissive ACLs; prod enforces per-role nkey ACLs (`auth.conf`).
+A missing or mis-scoped grant therefore only surfaces **in production** — which is
+exactly what caused the 2026-05-29 outage: `lyra-telegram` + `lyra-discord`
+crash-looped on ~6 latent JetStream/KV grant bugs (3× KV control-plane, `$JS.ACK`,
+`CONSUMER.CREATE` `.*`→`.>`). ADR-079 slices S1–S4 restructured the ACL surface
+(relief grants → non-fatal stage → hub sole-provisioner → grant-groups), all merged.
+**S5 closes the remaining blind spot**: nothing in CI asserts that the subjects the
+code actually uses are a subset of the subjects the ACL grants. This is the
+prevention layer — the falsification gate that would have caught all 6 bugs at PR time.
+
+## Who
+
+- **Primary:** Lyra maintainers + CI — the gate runs on every PR that touches the ACL
+  matrix or adds NATS subjects; it's the automated reviewer that flags under-granting.
+- **Secondary:** prod adapters (`lyra-telegram`/`lyra-discord`) + hub — beneficiaries of
+  no more grant-drift crash-loops; the on-call operator who absorbed the 2026-05-29 incident.
+
+## Current state
+
+- ACL matrix v4 — `deploy/nats/acl-matrix.json`: top-level `groups` key, `audio-consumer`
+  group (8 pub + 2 sub) defined once, referenced by `telegram-adapter` + `discord-adapter`
+  via `"groups": ["audio-consumer"]`; `hub` is the audio stream/KV provisioner (S3/S4).
+- `lyra-acl` CLI — `scripts/gen_nkeys.py:271`: `check {retired,flows}` sub-subcommand group.
+- Reusable primitives (S4-aware):
+  - `scripts/_renderer.py:54` `render_auth_conf(matrix, pubkeys)` — renders effective
+    `auth.conf` *post group-expansion*.
+  - `scripts/gen_nkeys.py:129` `_subject_covered(subject, publish)` — wildcard-aware
+    (`.*` = 1 token, `.>` = tail) coverage check.
+  - `scripts/_loader.py` `load_matrix()` — loads + validates groups (`_die` on unknown ref).
+- CI — `.github/workflows/ci.yml` L42–45 runs ACL drift gates (matrix↔spec, retired,
+  matrix↔auth.conf, request_reply_flows coverage). **None** assert code-required ⊆ granted.
+- Absent: `deploy/nats/code-subjects.json`, a `check grants` subcommand, `tests/scripts/test_check_grants.py`.
+
+## Desired state
+
+- `deploy/nats/code-subjects.json` — manifest **keyed by stream/KV resource** (NOT by
+  identity → avoids N×adapter platform-axis growth, per ADR-079 §d). Each entry names the
+  provisioner identity + optional consumer-group + the pub/sub subjects the code requires.
+- `lyra-acl check grants --matrix … --code-subjects …` — for each resource: resolve the
+  provisioner's (and each consumer-group member's) **effective** grants *post group-expansion*
+  and assert every required subject is `_subject_covered` by them; else print a precise FAIL
+  line and `exit 1`.
+- A CI step after `check flows` runs the gate; PRs that under-grant fail before merge.
+
+## Constraints
+
+1. **Stream-keyed manifest**, not identity-keyed (axial — re-introducing per-identity keys
+   would recreate the platform-axis surface ADR-079 is removing).
+2. **Reuse the existing group-expansion** (the render/loader path) to compute effective grants
+   — do **NOT** add a 3rd independent group-expansion implementation. This is the
+   boundary-contract-drift trap: S4's retro showed every matrix *consumer* must expand groups
+   identically, or the gate lies. (See `feedback_lyra_nats_acl_deploy_ordering`, S4 gotcha a.)
+3. Pure/offline: no network, runs <2s locally and in CI.
+4. Builds on S4 (merged) — group-expansion is already in renderer/loader.
+5. File-length gate: ≤300 lines/file (`tools/file_exemptions.txt`); favors a standalone module.
+
+## Scope
+
+### In scope
+- `deploy/nats/code-subjects.json` (new manifest) + initial entries: `LYRA_OUTBOUND_AUDIO`
+  stream + `lyra_outbound_audio_sent` KV (both: provisioner hub, consumer-group audio-consumer);
+  `LYRA_TURNS` stream (provisioner turn-writer, no consumer-group) — per parent plan.
+- `check grants` logic + CLI wiring under `lyra-acl check`.
+- CI step in `ci.yml` after `check flows`.
+- Unit tests (pass on valid matrix; fail on missing provisioner subject / missing consumer
+  subject; identity-not-in-group not checked).
+
+### Out of scope
+- Changing the matrix or runtime ACL enforcement.
+- Streams beyond the initial entries (manifest is extensible later).
+- The existing spec-sentinel / auth.conf drift gates (already shipped).
+
+## Open questions (resolve in spec)
+
+1. **Module layout** — standalone `scripts/check_grants.py` (mirrors `check_request_reply_flows.py`)
+   + thin `gen_nkeys.py` wire, vs inline. Lean: standalone (repo pattern + file-length gate).
+2. **Effective-grants resolution** — reuse a structured expansion helper vs parse rendered
+   `auth.conf` text. Lean: structured (parsing rendered text is fragile + couples to format).
+   Spec must identify the exact function that yields per-identity expanded pub/sub lists.
+3. **Manifest breadth at ship** — audio-only vs audio + `LYRA_TURNS`. Lean: include `LYRA_TURNS`
+   (the other JetStream contract) so the gate proves generality, per parent plan.
+4. **FAIL output format** — adopt parent plan's template (identity + missing subject + via
+   stream/consumer-group provenance).
+
+## Premise Validity
+
+**Success in 6 months:** the gate is live in CI and *demonstrably fires* — at least one
+under-grant (deliberate test-branch or a real PR) turned CI red before merge — AND zero
+ACL-grant-related prod incidents have occurred since it landed.
+
+**Failure in 6 months (falsifiable):** either (a) ≥1 missing-grant prod incident recurs
+*despite* the gate being green (coverage gap — the manifest didn't model the case), or
+(b) the gate has been disabled/deleted from `ci.yml` because it false-positives or rotted.
+Both are directly observable (incident log; `git log` on `ci.yml`).
+
+**Simplest alternative:** add the missing grants by hand + a runbook note, no automated gate.
+**Why not simplest:** that *is* the reactive S1 relief-grant approach — and it already failed.
+Manual vigilance let 6 grant bugs reach prod on 2026-05-29. S5 exists precisely to make the
+code↔ACL check automatic and unbypassable-by-forgetfulness; a doc note is not a gate.
+
+## Tier rationale
+
+**F-lite.** ~4–5 files, single domain (NATS ACL tooling + CI), no new architecture, design
+pre-settled in ADR-079 / parent plan §S5 (L386–468). Not S: file count exceeds 3 and the area
+is the origin of a prod outage. Not F-full: no unknowns, no cross-domain, no analysis needed.
+The spec gate's real value is pinning constraint #2 (group-expansion reuse) and the manifest
+schema — the two ways this gate could silently lie. Consistent with siblings S3/S4 (both F-lite).

@@ -77,17 +77,16 @@ class Authenticator:
 
     def __init__(
         self,
-        deps: AuthenticatorDeps | None = None,
+        deps: AuthenticatorDeps,
     ) -> None:
-        d = deps or AuthenticatorDeps()
-        self._store = d.store
-        self._role_map = d.role_map
-        self._default = d.default
+        self._store = deps.store
+        self._role_map = deps.role_map
+        self._default = deps.default
         self._public_commands: frozenset[str] = frozenset(
-            d.public_commands if d.public_commands is not None else ["/join"]
+            deps.public_commands if deps.public_commands is not None else ["/join"]
         )
-        self._admin_user_ids = d.admin_user_ids
-        self._alias_store = d.alias_store
+        self._admin_user_ids = deps.admin_user_ids
+        self._alias_store = deps.alias_store
 
     def _store_level(self, user_id: str | None) -> TrustLevel | None:
         if self._store is None or user_id is None:

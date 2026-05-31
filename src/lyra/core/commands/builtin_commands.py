@@ -125,8 +125,10 @@ def circuit_status(
 
 def config_command(deps: HelpCommandDeps) -> Response:
     """Dispatch /config show/set/reset."""
-    assert deps.msg is not None, "config_command requires deps.msg"
-    assert deps.args is not None, "config_command requires deps.args"
+    if deps.msg is None:
+        raise ValueError("config_command requires deps.msg")
+    if deps.args is None:
+        raise ValueError("config_command requires deps.args")
     if denied := require_admin(deps.msg):
         return denied
     if deps.runtime_config_holder is None:

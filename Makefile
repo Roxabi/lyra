@@ -315,6 +315,11 @@ LYRA_NATS_CLIENTS := lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-turn-
 nats-setup:
 	@bash deploy/nats/setup.sh
 
+nats-regen-specs:             ## re-render ACL spec table + parity fixture from acl-matrix.json
+	@uv run python scripts/render_acl_spec.py
+	@uv run python scripts/render_acl_parity.py
+	@echo "[ok] ACL spec + parity fixture regenerated"
+
 nats-regen-authconf:          ## re-render auth.conf, refresh lyra-nats-auth secret only, restart all NATS clients
 	@lyra-acl genkeys --regen-authconf
 	@test -s "$(LYRA_NKEYS_DIR)/auth.conf" \

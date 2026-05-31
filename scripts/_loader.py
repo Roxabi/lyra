@@ -69,7 +69,7 @@ def _validate_identity(name: str, data: dict, version: str) -> Identity:
     if "deploy" in data:
         _validate_deploy(name, data["deploy"])  # type: ignore[arg-type]
     elif version in {"3", "4"} and data.get("status") == "active":
-        _die(f"identity '{name}': v3 requires 'deploy' for active identities")
+        _die(f"identity '{name}': v{version} requires 'deploy' for active identities")
 
     return data  # type: ignore[return-value]
 
@@ -81,8 +81,12 @@ def _parse_groups(raw_groups: dict) -> dict[str, GroupDefinition]:
             _die(f"group '{gname}': must be an object")
         if "publish" not in gdata or not isinstance(gdata["publish"], list):
             _die(f"group '{gname}': missing or invalid 'publish' list")
+        if not all(isinstance(s, str) for s in gdata["publish"]):
+            _die(f"group '{gname}': 'publish' entries must be strings")
         if "subscribe" not in gdata or not isinstance(gdata["subscribe"], list):
             _die(f"group '{gname}': missing or invalid 'subscribe' list")
+        if not all(isinstance(s, str) for s in gdata["subscribe"]):
+            _die(f"group '{gname}': 'subscribe' entries must be strings")
         groups[gname] = gdata  # type: ignore[assignment]
     return groups
 

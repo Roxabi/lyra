@@ -51,7 +51,7 @@ EFFECTIVE_JSON=$(jq '
           .identities[$entry.key].publish   |= (. + ($all_groups[$gname].publish   // []) | unique) |
           .identities[$entry.key].subscribe |= (. + ($all_groups[$gname].subscribe // []) | unique)
         else
-          .
+          error("unknown group: \($gname)")
         end
       )
     else

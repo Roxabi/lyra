@@ -8,6 +8,7 @@ S3 regression tests assert the rendered conf for adapters no longer contains the
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 # This import will fail at collection time — that is the intended RED state.
 from scripts._acl_models import LoadedMatrix
@@ -445,6 +446,87 @@ class TestGrantGroupEquality:
         assert not missing, (
             f"telegram-adapter rendered publish_allow is missing audio subjects: "
             f"{missing!r}"
+        )
+
+
+    def test_group_subscribe_subject_present_in_v4_rendered_telegram(self) -> None:
+        """The audio-consumer group's subscribe subject is PRESENT in the
+        rendered/parsed telegram-adapter subscribe_allow set after group expansion.
+
+        # verified: deleting sub_allow[name].extend(g.get("subscribe", [])) from
+        # _renderer.py causes this test to fail — $KV.lyra_outbound_audio_sent.>
+        # is absent from telegram-adapter subscribe_allow.
+        """
+        # Arrange
+        v4, _ = self._load_both()
+        pk = self._shared_pubkeys(v4, v4)
+        rendered = render_auth_conf(v4, pk)
+        parsed = parse_auth_conf(rendered)
+        users = {u.comment_name: u for u in parsed.users}
+
+        # Act
+        tg_sub = users["telegram-adapter"].subscribe_allow
+
+        # Assert — $KV.lyra_outbound_audio_sent.> is the group's subscribe subject
+        assert "$KV.lyra_outbound_audio_sent.>" in tg_sub, (
+            "telegram-adapter subscribe_allow is missing "
+            "$KV.lyra_outbound_audio_sent.> "
+            "— group subscribe expansion did not fire"
+        )
+
+    def test_empty_group_renders_without_error_and_adds_no_subjects(
+        self, tmp_path: Path
+    ) -> None:
+        """Identity referencing a group with empty publish/subscribe lists renders
+        without error and the identity's allow sets are unchanged relative to its
+        inline grants.
+
+        # verified: if group expansion raises on an empty list, this test errors;
+        # if it incorrectly adds spurious subjects, the equality assertion fails.
+        """
+        import json  # noqa: PLC0415
+
+        # Arrange — v4 matrix with an empty group
+        data = {
+            "version": "4",
+            "request_reply_flows": [],
+            "groups": {
+                "empty-group": {"publish": [], "subscribe": []},
+            },
+            "identities": {
+                "hub": {
+                    "status": "active",
+                    "owner": "lyra",
+                    "created_at": "2026-05-01",
+                    "description": "hub test identity",
+                    "allow_responses": False,
+                    "publish": ["lyra.outbound.telegram.>"],
+                    "subscribe": ["lyra.inbound.telegram.>"],
+                    "deploy": {"type": "container", "secret": "lyra-nats-hub"},
+                    "groups": ["empty-group"],
+                },
+            },
+        }
+        matrix_path = tmp_path / "matrix.json"
+        matrix_path.write_text(json.dumps(data))
+
+        from scripts._loader import load_matrix  # noqa: PLC0415
+
+        matrix = load_matrix(matrix_path)
+        pk = {"hub": "UDETHUB"}
+
+        # Act — must not raise
+        rendered = render_auth_conf(matrix, pk)
+        parsed = parse_auth_conf(rendered)
+        users = {u.comment_name: u for u in parsed.users}
+
+        # Assert — allow sets equal the inline grants exactly (no subjects added)
+        hub = users["hub"]
+        assert hub.publish_allow == frozenset({"lyra.outbound.telegram.>"}), (
+            f"unexpected publish_allow: {hub.publish_allow!r}"
+        )
+        assert hub.subscribe_allow == frozenset({"lyra.inbound.telegram.>"}), (
+            f"unexpected subscribe_allow: {hub.subscribe_allow!r}"
         )
 
 

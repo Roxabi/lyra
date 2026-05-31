@@ -163,7 +163,7 @@ class TestLoadMatrixNegatives:
         assert exc_info.value.code != 0
 
     def test_invalid_version(self, tmp_path: Path) -> None:
-        """Guard: version must be '1' or '2'."""
+        """Guard: unsupported version (e.g. '99') is rejected."""
         # verified: removing version allowlist guard → test fails
         identity = _valid_identity()
         data = {
@@ -693,4 +693,4 @@ class TestLoadMatrixV4GroupsNegatives:
             load_matrix(path)
         assert exc_info.value.code != 0
         captured = capsys.readouterr()
-        assert "v3 requires 'deploy'" in captured.err
+        assert "v4 requires 'deploy'" in captured.err

@@ -54,9 +54,14 @@ Resolve any missing cert before proceeding. voicecli connection errors during ve
 
 **1.4 Confirm a baseline before starting.**
 
-> **TODO:** replace with `lyra ops verify` once implemented (ADR-046 invariant 5).
+Use `lyra ops verify` to confirm the baseline ACL state (ADR-046 invariant 5):
 
-`lyra ops verify` is planned per ADR-046 Invariant 5 but not yet implemented. Until it is, run the manual equivalent:
+```bash
+# On Machine 1:
+lyra ops verify
+```
+
+If you prefer to inspect raw identity counts, the legacy manual equivalent is still available:
 
 ```bash
 # On Machine 1:
@@ -181,7 +186,7 @@ systemctl --user status 'lyra-*.service'
 
 ## 6. Verification
 
-> **TODO:** `lyra ops verify` planned per ADR-046 invariant 5 — replace manual checks below once CLI ships.
+Run `lyra ops verify` for a quick ACL matrix check (ADR-046 invariant 5) before and after rotation.
 
 **6.1 Check for NATS auth errors** using the reload timestamp captured in Step 4:
 
@@ -323,7 +328,7 @@ ls ~/.lyra/nkeys/*.bak-* 2>/dev/null && echo "WARNING: backup files still presen
 
 ## 9. Cross-References
 
-- [ADR-046](../architecture/adr/046-nkey-provisioning-declarative-authconf.mdx) — declarative provisioning invariants, `--regen-authconf` semantics, `lyra ops verify` (Invariant 5, planned)
+- [ADR-046](../architecture/adr/046-nkey-provisioning-declarative-authconf.mdx) — declarative provisioning invariants, `--regen-authconf` semantics, `lyra ops verify` (Invariant 5)
 - [#561](https://github.com/Roxabi/lyra/issues/561) — parent epic (NATS nkey provisioning)
 - [#714](https://github.com/Roxabi/lyra/issues/714) — per-role ACL rework
 - [`deploy/nats/gen-nkeys.sh`](../../deploy/nats/gen-nkeys.sh) — seed generation and auth.conf rendering

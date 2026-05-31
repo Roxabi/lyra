@@ -4,7 +4,7 @@
 # CLAUDE.md — Instructions for Claude Code
 
 Let:
-  A := ~/.lyra/auth.db (grants, identity) | T := TOML seed | P := CLAUDE.md path
+  A := ~/.lyra/auth.db (grants, identity only) | C := ~/.lyra/config.db (agents, bots, prefs) | T := TOML seed | P := CLAUDE.md path
 
 ## Project
 
@@ -33,7 +33,7 @@ Let:
 
 ## Agent management
 
-Agents ∈ A (SQLite) | T files = seed only → `lyra agent init` before use
+Agents ∈ C (SQLite) | T files = seed only → `lyra agent init` before use
 Search: `~/.lyra/agents/` (override) → `src/lyra/agents/` (default)
 `cwd` → `config.toml [defaults]` (¬T)
 
@@ -56,6 +56,7 @@ File/rename → update P immediately
 | `src/lyra/infrastructure/CLAUDE.md` | store implementations (ADR-048) |
 | `src/lyra/integrations/CLAUDE.md` | external boundary layer (supervisor, systemctl, vault-cli, web-intel) |
 | `src/lyra/agent_cmd/CLAUDE.md` | agent CLI commands (init, edit, list, show, …) — applicative layer above core |
+| `src/lyra/agent_cmd/bots/CLAUDE.md` | bot CLI commands (init) wired under `lyra bot` |
 | `src/lyra/llm/CLAUDE.md` | LLM drivers |
 | `src/lyra/monitoring/CLAUDE.md` | standalone health-check subsystem (`python -m lyra.monitoring`) |
 | `src/lyra/obs/CLAUDE.md` | observability scaffolding (OTel/Langfuse) — ¬wired, see #1235 |
@@ -68,6 +69,7 @@ File/rename → update P immediately
 | `src/lyra/tools/CLAUDE.md` | GitHub token dispenser (gh_token submodule) |
 | `packages/roxabi-nats/CLAUDE.md` | NATS transport SDK (ADR-045) |
 | `packages/roxabi-contracts/CLAUDE.md` | NATS contract schemas (ADR-049) |
+| `packages/roxabi-blobs/CLAUDE.md` | BlobStore client SDK (consumed by hub + adapters) |
 | `plugins/lyra-ops/CLAUDE.md` | ops plugin (debug, remote inspection) |
 | `plugins/lyra-send/CLAUDE.md` | message-send plugin (HTTP → Telegram/Discord) |
 | `plugins/refine-agent/CLAUDE.md` | agent-profile refine plugin |
@@ -76,7 +78,7 @@ File/rename → update P immediately
 
 Rules: add/delete/move → update P | new subdir with non-obvious invariants → add CLAUDE.md + register here | "invariants, not inventory" (¬file counts, ¬method dumps — let `ls`/`grep` answer that)
 
-## Production entry points (NATS 4-process)
+## Production entry points (NATS 5-process)
 
 | Subcommand | CLI | Bootstrap |
 |---|---|---|
@@ -84,6 +86,7 @@ Rules: add/delete/move → update P | new subdir with non-obvious invariants →
 | `adapter telegram` | `lyra adapter telegram` | `_bootstrap_adapter_standalone()` |
 | `adapter discord` | `lyra adapter discord` | `_bootstrap_adapter_standalone()` |
 | `adapter clipool` | `lyra adapter clipool` | `_bootstrap_clipool_standalone()` |
+| `turn-writer` | `lyra turn-writer` | `_bootstrap_turn_writer_standalone()` |
 
 Topics: `lyra.inbound.<platform>.<bot_id>` | `lyra.outbound.<platform>.<bot_id>`
 
@@ -91,7 +94,7 @@ Unified: `lyra start` → hub + adapters in 1 process + embedded NATS
 
 ## Container deployment
 
-Prod: Podman Quadlet (systemd `--user`) on M₁ (`lyra-hub` role). Six containers: `lyra-nats`, `lyra-hub`, `lyra-telegram`, `lyra-discord`, `lyra-clipool`, `lyra-gh-helper`. Install: `deploy/install.sh` (idempotent). Manifest: `deploy/quadlet.toml`.
+Prod: Podman Quadlet (systemd `--user`) on M₁ (`lyra-hub` role). Eight containers: `lyra-nats`, `lyra-hub`, `lyra-telegram`, `lyra-discord`, `lyra-clipool`, `lyra-gh-helper`, `lyra-turn-writer`, `lyra-blobstore`. Install: `deploy/install.sh` (idempotent). Manifest: `deploy/quadlet.toml`.
 
 → `docs/QUADLET-DEPLOYMENT.md` — install runbook, secret rotation, diagnostic
 → `~/projects/docs/container-deployment-standard.md` — 18 standards (S7 secret target, S8 naming, S12 RestartSec=10)

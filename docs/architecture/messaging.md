@@ -109,6 +109,7 @@ NATS type (Core vs JetStream), the durability contract, and the keying shape:
 | Messages | `lyra.{inbound,outbound}.<platform>.<bot_id>` | Core | ephemeral | adapters ↔ hub | hub, adapters | bidirectional hub↔adapter routing of user content |
 | Persistence | `lyra.turns.>` | JetStream durable (stream `LYRA_TURNS`, `MaxAge=24h`, WorkQueue) | durable | hub, telegram-adapter, discord-adapter | turn-writer | append-only state changes requiring at-least-once delivery |
 | Typing / Lifecycle | `lyra.typing.<platform>.<bot_id>` | Core | ephemeral | hub (future: workers) | adapters | ephemeral display-feedback events (typing indicators; future progress UX) — lossy-OK because consumer state auto-expires |
+| Audio delivery | `lyra.outbound.audio.<platform>.<bot_id>` | JetStream durable (stream `LYRA_OUTBOUND_AUDIO`, `MaxAge=24h`, Limits retention) | durable | hub | audio-consumer per bot (`outbound-audio-{platform}-{bot_id}`) | durable outbound audio chunks — exactly-once delivery to bot audio sender; dedup via KV `lyra_outbound_audio_sent` (TTL=900s) |
 
 > Note: clipool-worker is intentionally excluded from publishing `lyra.turns.write`. It is a downstream command worker, not a user-message source — the upstream adapter records the turn before the dispatch reaches clipool. See ADR-075 and acl-matrix.json (`clipool-worker.notes`) for the full rationale.
 
@@ -140,6 +141,7 @@ All subjects follow `lyra.{domain}.{qualifier...}` (domain-first, NATS conventio
 |---|---|---|
 | `lyra.inbound.{platform}.{bot_id}` | adapter → hub | User message delivery |
 | `lyra.outbound.{platform}.{bot_id}` | hub → adapter | Response chunk delivery |
+| `lyra.outbound.audio.<platform>.<bot_id>` | hub → audio-consumer | Durable outbound audio chunks (JetStream, stream `LYRA_OUTBOUND_AUDIO`); filter is exact 5-token subject; consumer durable = `outbound-audio-{platform}-{bot_id}` |
 | `lyra.typing.{platform}.{bot_id}` | hub → adapter | Ephemeral typing indicator lifecycle (Typing plane — Epic #1375, lands with T1 #1376) |
 | `lyra.llm.request` | hub → worker | LLM compute offload |
 | `lyra.llm.health.{worker_id}` | worker → hub | Satellite LLM worker heartbeats |
@@ -250,6 +252,55 @@ identities with `allow_responses: true` (health endpoints, CLI tools) but is no 
 part of the adapter startup path.
 
 → ADR-065
+
+## Transport layer
+
+Added in Epic #1277 (#1278). The transport layer (`src/lyra/transport/`) provides
+domain-agnostic primitives consumed by all domain worker clients.
+
+### Three-layer composition
+
+```
+NatsTransport           — call() / publish() / open_inbox()
+      │
+WorkerPoolClient        — routing + circuit-breaker + heartbeat subscription
+      │
+DomainClient            — thin wrapper in lyra.nats / lyra.llm
+                          (e.g. LlmClient, NatsSttClient, NatsTtsClient)
+```
+
+**`NatsTransport`** (`transport/nats_request_response.py`) owns all NATS-specific I/O:
+
+| Method | Description |
+|--------|-------------|
+| `call(subject, payload, *, timeout)` | Request-reply; returns `Result[bytes, SanitizedError]` |
+| `publish(subject, payload, *, reply_subject)` | Fire-and-forget publish with explicit reply subject |
+| `open_inbox()` | Async context manager yielding `InboxStream`; inbox valid only inside the CM |
+
+**`WorkerPoolClient`** (`transport/worker_pool_client.py`) composes a transport and owns:
+- `request_with_routing(subject_fn, payload)` — iterates scored workers from the registry,
+  calls `transport.call(subject_fn(worker_id), payload)`, applies circuit-breaker, marks
+  stale workers on timeout/no-responders.
+- `stream_request(subject, payload)` — opens inbox CM, publishes, iterates chunks.
+- `start(nc)` / `stop()` — heartbeat subscription lifecycle.
+
+**Domain clients** (`lyra.nats.*_client`, `lyra.llm.llm_client`) are thin wrappers that
+compose a `WorkerPoolClient` with a codec. They must NOT add a second circuit-breaker.
+
+### Typed boundary
+
+All transport-level methods return `Result[T] = Ok[T] | Err[SanitizedError]` — no
+exceptions cross the transport boundary. `SanitizedError` (`transport/_result.py`)
+carries a stable `code` string (e.g. `transport.timeout`, `transport.no_responders`,
+`pool.circuit_open`) and a `message` containing `type(exc).__name__` only — never
+`str(exc)`. This ensures no internal detail leaks to users or logs.
+
+### HttpTransport (P4 skeleton)
+
+`HttpTransport` (`transport/http_transport.py`) satisfies `_TransportLike` but raises
+`NotImplementedError` on all methods — it is a Phase 4 placeholder for HTTP-backed LLM
+providers. Domain clients compose via
+`LlmClient(pool=WorkerPoolClient(HttpTransport(...)), codec=…)` once wired.
 
 ## Key invariants
 

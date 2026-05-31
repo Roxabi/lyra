@@ -172,9 +172,9 @@ All consumers speak the same `BlobStore` Protocol; the concrete impl is injected
 
 | Protocol method | HTTP endpoint | Body / Return |
 |---|---|---|
-| `put(bytes, mime?, ...)` → `BlobRef` | `PUT /blobs` (Content-Type: mime) | body=bytes → `{store_key, content_hash, size, dedup: bool, …}` |
+| `put(bytes, mime?, ...)` → `BlobRef` | `PUT /blobs` (Content-Type: mime) | body=bytes → `{store_key, content_hash, size, …}` |
 | `get(store_key)` → bytes | `GET /blobs/<store_key>` | streams response body |
-| `exists(store_key)` → bool | `HEAD /blobs/<store_key>` (auth: bearer; audit: `lyra.audit.blobs.exists`) | server resolves `content_hash` via SQLite `SELECT content_hash FROM blobs WHERE store_path = ?` then calls `FsBlobStore.exists(content_hash)` — `content_hash` is NOT parsed from the opaque `store_key` string → 200 / 401 / 404 |
+| `exists(store_key)` → bool | `HEAD /blobs/<store_key>` (auth: bearer; audit: `lyra.audit.blobs.exists`) | server resolves `content_hash` via ≤2 SQLite SELECTs (store_path lookup + content_hash fallback); 0 calls to `store.exists()` → 200 / 401 / 404 |
 | `delete(store_key)` | `DELETE /blobs/<store_key>` | 204 |
 | (v2 — #1334) `put_multipart(stream)` | `POST /blobs/multipart` + `PUT /blobs/multipart/<id>/<part>` + `POST /blobs/multipart/<id>/complete` | S3-compat multipart flow |
 | (v2 — #1334) `get_stream(store_key)` | `GET /blobs/<store_key>` with `Range:` header support | chunked transfer |

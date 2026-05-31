@@ -41,7 +41,7 @@ At runtime, presence of any of these sections logs a one-time `DeprecationWarnin
 **Migration path:**
 
 1. Run `lyra bot init` to seed BotStore from your existing TOML sections.
-2. Verify with `lyra bot list`.
+2. Verify with `lyra agent telegram list` / `lyra agent discord list`.
 3. Remove the four deprecated sections from `config.toml`.
 
 **Removal schedule:** The four sections will be removed in the `next major` release (`v1.0.0`; current is `0.2.1`). Until then they remain parsable and are consumed only by `lyra bot init`.

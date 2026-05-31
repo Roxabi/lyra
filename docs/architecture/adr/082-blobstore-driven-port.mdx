@@ -2,6 +2,7 @@
 title: "ADR-082: BlobStorePort — driven-port parity for blob storage"
 description: Define a BlobStorePort Protocol in core/ports/, wrapping HttpBlobStore and owning the storage→wire BlobRef conversion seam, to close the one external capability consumed outside the hexagonal port/adapter discipline.
 related: [067, 068, 073, 078, 083]
+status: accepted
 ---
 
 ## Status
@@ -110,7 +111,7 @@ class BlobStorePort(Protocol):
 `src/lyra/infrastructure/blobstore_adapter.py` wraps `HttpBlobStore` and owns:
 
 1. `storage → wire` conversion via `roxabi_contracts.BlobRef.from_store_ref(store_ref)`.
-2. Semantic guard: reject `store_key == PENDING_STORE_KEY` before returning. This guard is a domain constraint (a `PENDING_STORE_KEY` returned by `put()` is a bug, not a valid ref); owning it at the adapter seam prevents it from leaking into domain code.
+2. Semantic guard: reject an empty `store_key` before returning (via `if not wire.store_key: raise ValueError`). **Note:** `PENDING_STORE_KEY` was retired in #1553; the guard no longer checks for that sentinel specifically — it rejects any empty key, which is now the only contract violation form. This guard is a domain constraint; owning it at the adapter seam prevents it from leaking into domain code.
 
 The adapter does **not** own the `sha256:` format regex — that is a voiceCLI-specific routing invariant (`voicecli/adapters/nats/blobs.py:100-101`) that must remain per-consumer.
 

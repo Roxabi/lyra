@@ -63,8 +63,8 @@ async def _deliver_text_chunks(
 ) -> None:
     """Edit placeholder with first chunk, send overflow."""
     result = await emitter._handler.guard(
-        lambda p=placeholder_obj, c=final_chunks[0]: (
-            emitter._fmt.edit_placeholder_text(p, c)
+        lambda p=placeholder_obj, c=final_chunks[0]: emitter._fmt.edit_placeholder_text(
+            p, c
         ),
         context="deliver_final_edit",
     )
@@ -79,9 +79,7 @@ async def _deliver_text_chunks(
             pass  # guard already logged; non-fatal
 
 
-async def _deliver_final(
-    emitter: "OutboundEmitter", placeholder_obj: Any
-) -> None:
+async def _deliver_final(emitter: "OutboundEmitter", placeholder_obj: Any) -> None:
     """Deliver final message after the event loop.
 
     Terminal invariant: the placeholder must never be left as a bare "…".

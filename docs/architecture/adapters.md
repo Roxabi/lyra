@@ -145,17 +145,19 @@ Added in Epic #1277 Phase 3 (#1280). `lyra.inbound.pipeline.InboundPipeline` run
 
 Pipeline shape:
 ```
-parse → pre_route_hook(opt) → Router → [DROP → return]
+parse → AttachmentIngestStage (when store configured;
+         no-store path clears pending_attachment(s) closures — ADR-083)
+       → pre_route_hook(opt) → Router → [DROP → return]
        → pre_session_hook(opt) → SessionBuilder → Dispatcher
 ```
 
 | Stage | Module | Role |
 |-------|--------|------|
 | `WireParser` | `inbound/wire_parser_telegram.py`, `inbound/wire_parser_discord.py` | Platform-native event → `InboundMessage` |
+| `AttachmentIngestStage` | `inbound/attachment_ingest.py` | Conditional (store-gated): resolves `PendingAttachment` closures right after parse, before routing. No-store path clears closures to enforce NATS transport-boundary invariant (ADR-083). |
 | `Router` | `inbound/router.py` | Sync + pure routing decision (`RouteDecision.DROP` or `PROCESS`) |
 | `SessionBuilder` | `inbound/session_builder.py` | Resolves or creates session context |
 | `Dispatcher` | `inbound/dispatcher.py` | Pushes `InboundMessage` to hub via NATS |
-| `AttachmentIngestStage` | `inbound/attachment_ingest.py` | Optional: resolves `PendingAttachment` closures before dispatch |
 
 Platform-specific hooks (`pre_route_hook`, `pre_session_hook`) handle Discord thread
 ownership warmup and auto-thread creation; they are bound via `functools.partial` in the

@@ -11,12 +11,14 @@ delegate to.
 ## Pipeline shape
 
 ```
-parse → pre_route_hook(opt) → Router → [DROP|PROCESS] → pre_session_hook(opt) → SessionBuilder → AttachmentIngest → Dispatcher
+parse → AttachmentIngestStage (store-conditional; no-store path clears pending closures)
+       → pre_route_hook(opt) → Router → [DROP|PROCESS]
+       → pre_session_hook(opt) → SessionBuilder → Dispatcher
 ```
 
+- `AttachmentIngestStage` — central inbound attachment ingest (ADR-083, epic #1537). Runs immediately after parse, **before** routing. When a store is configured, uploads binary attachments on the `InboundMessage` to `BlobStore`, replacing raw bytes with `BlobRef` values so downstream stages (dispatcher, agents) receive opaque refs only. Failures degrade gracefully (`blob_ref=None`). When no store is configured, the stage is skipped; instead, any `pending_attachment` (singular, audio #1551) and `pending_attachments` (plural, non-audio #1552) closures are cleared via `dataclasses.replace` — a closure must never cross the NATS process boundary (transport-boundary invariant, ADR-083).
 - `pre_route_hook` — Discord cold-path: mutates `RouterCtx.owned_threads` with lazy `is_owned` lookup so Router stays sync + pure. Telegram supplies neither hook — its routing is fully determined by PlatformMeta, and Telegram has no thread model.
 - `pre_session_hook` — Discord auto-thread create + claim. Returns updated `InboundMessage` (via `dataclasses.replace`) so downstream stages see the resolved `DiscordMeta.thread_id`. Discord supplies both hooks (pre_route for cold-path is_owned warmup; pre_session for auto-thread create + claim).
-- `AttachmentIngestStage` — central inbound attachment ingest (ADR-083, epic #1537). Runs after `SessionBuilder` and before `Dispatcher`. Uploads any binary attachments on the `InboundMessage` to `BlobStore`, replacing raw bytes with `BlobRef` values so downstream stages (dispatcher, agents) receive opaque refs only. Failures degrade gracefully (`blob_ref=None`).
 - On `RouteDecision.DROP` the pipeline returns immediately; `on_drop` callback fires (e.g. cancel typing).
 
 ## Layer invariants

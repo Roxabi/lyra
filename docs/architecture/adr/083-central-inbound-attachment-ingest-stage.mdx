@@ -13,10 +13,6 @@ Accepted
 > for voice path (Telegram + Discord). S3–S7 (non-audio attachment types, `PENDING_STORE_KEY`
 > retirement, STT worker simplification #1067) remain.
 
-## Status (original)
-
-Proposed
-
 ## Context
 
 Inbound attachments (voice, image, document, video, sticker, animation, GIF) from Telegram and Discord are currently normalized adapter-side with `store_key=PENDING_STORE_KEY` — a sentinel indicating that no BlobStore write has occurred. The `ingest_bytes_to_blob_ref()` helper in `packages/roxabi-blobs/` was written to close this gap but was never wired in (`git log -S ingest_bytes_to_blob_ref -- src/lyra/adapters/` = empty). Consequences:

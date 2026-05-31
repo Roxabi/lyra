@@ -263,7 +263,7 @@ stateDiagram-v2
 
 There are **two distinct inbound pipelines** that process a message in sequence:
 
-1. **Adapter-side `InboundPipeline`** (`src/lyra/inbound/pipeline.py`) — runs **pre-NATS**, inside the adapter process. Stages: `parse → route → session → dispatch`. Platform-specific wire parsers (`wire_parser_telegram.py`, `wire_parser_discord.py`) feed the pipeline; optional per-adapter hooks (`pre_route_hook`, `pre_session_hook`) handle platform-specific concerns (e.g., Discord thread ownership). On `RouteDecision.DROP` the message is silently discarded; on `RouteDecision.PROCESS` the dispatcher pushes the normalized `InboundMessage` to the hub over NATS (`lyra.inbound.<platform>.<bot_id>`).
+1. **Adapter-side `InboundPipeline`** (`src/lyra/inbound/pipeline.py`) — runs **pre-NATS**, inside the adapter process. Stages: `parse → ingest (when store configured; no-store path clears pending closures instead) → pre_route_hook (opt) → Router → [DROP → return] → pre_session_hook (opt) → SessionBuilder → Dispatcher`. Platform-specific wire parsers (`wire_parser_telegram.py`, `wire_parser_discord.py`) feed the pipeline; optional per-adapter hooks (`pre_route_hook`, `pre_session_hook`) handle platform-specific concerns (e.g., Discord thread ownership). On `RouteDecision.DROP` the message is silently discarded; on `RouteDecision.PROCESS` the dispatcher pushes the normalized `InboundMessage` to the hub over NATS (`lyra.inbound.<platform>.<bot_id>`).
 
 2. **Hub-side middleware chain** (`src/lyra/core/hub/middleware/`) — runs **post-NATS**, inside the hub process. Receives the `InboundMessage` from the NATS bus and applies a fixed 10-stage sequential chain before routing to the LLM pool or dropping.
 
@@ -357,7 +357,7 @@ After the Phase 1b refactoring and V4 decomposition (#773), every module is ≤3
 | **Shared** | `adapters/shared/_base_outbound.py` | `OutboundAdapterBase` — abstract base for all platform outbound adapters; `send_streaming()` delegates to `_make_emitter()` |
 | **Outbound stages** | `outbound/emitter.py` | `OutboundEmitter` — composes `OutboundFormatter` + `ThrottleCapability` + `OutboundErrorHandler`; owns placeholder→edits→delivery algorithm (Epic #1277 Phase 2) |
 | **Outbound stages** | `outbound/formatter.py`, `outbound/throttle.py`, `outbound/error_handler.py` | Per-stage protocols/implementations; platform formatters at `adapters/telegram/telegram_formatter.py`, `adapters/discord/discord_formatter.py` |
-| **Inbound stages** | `inbound/pipeline.py` | `InboundPipeline` — adapter-side pre-NATS pipeline: `parse → route → session → dispatch` |
+| **Inbound stages** | `inbound/pipeline.py` | `InboundPipeline` — adapter-side pre-NATS pipeline: `parse → ingest (store-conditional) → pre_route_hook (opt) → Router → pre_session_hook (opt) → SessionBuilder → Dispatcher` |
 | **Inbound stages** | `inbound/router.py`, `inbound/session_builder.py`, `inbound/dispatcher.py`, `inbound/attachment_ingest.py` | Per-stage modules; wire parsers at `inbound/wire_parser_telegram.py`, `inbound/wire_parser_discord.py` |
 | **NATS** | `nats/nats_bus.py` | `nats_stt_client.py`, `nats_tts_client.py`, `nats_channel_proxy.py`, `render_event_codec.py`, `queue_groups.py`, `type_registry.py`, `worker_registry.py`, `nats_image_client.py`, `nats_llm_client.py` |
 | **NATS adapters** | `adapters/nats/nats_outbound_listener.py` | `mint_failure_subscriber.py`, `nats_envelope_handlers.py`, `nats_stream_decoder.py` |

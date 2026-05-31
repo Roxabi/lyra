@@ -22,6 +22,7 @@ from nats.aio.client import Client as NATS
 
 import nats
 from lyra.ops_audit import emit_drift_report
+from roxabi_contracts.verify import verify_deny
 from roxabi_nats.connect import _build_tls_context
 
 ops_app = typer.Typer(name="ops", help="Operational sanity checks.")
@@ -29,7 +30,6 @@ ops_app = typer.Typer(name="ops", help="Operational sanity checks.")
 _DEFAULT_NATS_URL = "nats://localhost:4222"
 _DEFAULT_MATRIX = "deploy/nats/acl-matrix.json"
 _DEFAULT_SEEDS_DIR = "~/.lyra/nkeys"
-_DENY_SUBJECT_PREFIX = "lyra.verify.deny"
 _FLUSH_TIMEOUT = 2
 
 
@@ -197,7 +197,7 @@ async def _verify_identity(
                 result.rows.append(
                     CheckRow(name, expanded, "pub", "published", actual, ok)
                 )
-            deny_subject = f"{_DENY_SUBJECT_PREFIX}.{name}"
+            deny_subject = verify_deny(name)
             ok, actual = await _probe(nc, deny_subject, errors, expect_deny=True)
             result.rows.append(
                 CheckRow(name, deny_subject, "deny", "permission denied", actual, ok)

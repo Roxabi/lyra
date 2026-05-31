@@ -1,0 +1,225 @@
+---
+title: "Plan: refactor: emitter stage extraction — shrink emitter.py"
+issue: 1591
+spec: artifacts/specs/1591-refactor-emitter-stage-extraction-spec.mdx
+complexity: 3/10
+tier: F-lite
+generated: 2026-05-31
+---
+
+## Summary
+
+Extract 230 lines of placeholder-lifecycle and run-loop logic from `emitter.py` into two focused modules: `_placeholder_lifecycle.py` and `_emitter_run.py`. `OutboundEmitter` delegates to both but keeps its public `run()` signature unchanged.
+
+## Architecture
+
+### Data flow
+
+```flowchart TD
+    subgraph emitter["emitter.py"]
+        E["OutboundEmitter.run()"]
+    end
+    subgraph run_module["_emitter_run.py"]
+        RL["run_loop(emitter, events, placeholder_obj)"]
+        PF["peek_first_event(events)"]
+    end
+    subgraph lifecycle["_placeholder_lifecycle.py"]
+        SP["send_placeholder(emitter)"]
+        DF["drain_fallback(emitter, events)"]
+        DT["deliver_text_chunks(emitter, placeholder_obj, chunks)"]
+        DL["deliver_final(emitter, placeholder_obj)"]
+        HT["handle_typing_tail(emitter)"]
+    end
+    E --> RL
+    E --> PF
+    RL --> SP
+    RL --> DF
+    RL --> DL
+    RL --> HT
+    DL --> DT
+```
+
+### File × Function map
+
+```flowchart LR
+    subgraph emitter["emitter.py"]
+        E_init["__init__"]
+        E_run["run()"]
+        E_ontext["_on_text_v2"]
+        E_ontool["_on_toolcall_v2"]
+        E_ensure["_ensure_trace_obj"]
+        E_recap["_maybe_emit_intermediate_recap"]
+        E_typing["_cancel_typing / _start_typing"]
+    end
+    subgraph run_module["_emitter_run.py"]
+        R_loop["_run_event_loop"]
+        R_peek["_peek_first_event"]
+    end
+    subgraph lifecycle["_placeholder_lifecycle.py"]
+        L_send["_send_placeholder"]
+        L_drain["_drain_fallback"]
+        L_deliver["_deliver_final"]
+        L_chunks["_deliver_text_chunks"]
+        L_typing["_handle_typing_tail"]
+    end
+    E_run --> R_loop
+    E_run --> L_send
+    E_run --> L_drain
+    E_run --> L_typing
+    R_loop --> E_ontext
+    R_loop --> E_ontool
+    R_loop --> E_ensure
+    L_deliver --> L_chunks
+    L_deliver --> E_ensure
+    L_deliver --> E_recap
+```
+
+## Agents
+
+| Agent | Tasks | Files |
+|---|---|---|
+| backend-dev | T1–T4 | `src/lyra/outbound/` |
+| tester | T5 | tests |
+
+## Wave Structure
+
+1 wave, 2 agents ∑.
+
+| Wave | Trigger | Agents | Tasks |
+|---|---|---|---|
+| 1 | start | backend-dev-A: T1·T2·T3·T4 ∑ | tester-A: T5 ∑ |
+
+### Budget — per task
+
+| Task | Items | Class | Est. ops | Split? |
+|---|---|---|---|---|
+| T1 | 1 | bounded | 3 | — |
+| T2 | 1 | bounded | 3 | — |
+| T3 | 1 | judgmental | 5 | — |
+| T4 | 1 | trivial | 2 | — |
+| T5 | 1 | bounded | 3 | — |
+
+**Total estimated ops: 16**
+
+### Budget — per agent instance
+
+| Instance | Tasks | Σ ops | Subjects | Split? |
+|---|---|---|---|---|
+| backend-dev-A | T1, T2, T3, T4 | 13 | outbound, extraction | — |
+| tester-A | T5 | 3 | tests | — |
+
+## Micro-Tasks
+
+### Slice 1 — Extract placeholder lifecycle
+
+#### T1 — Create `_placeholder_lifecycle.py`
+
+- **Description:** Create `src/lyra/outbound/_placeholder_lifecycle.py` with the 5 extracted methods.
+- **File:** `src/lyra/outbound/_placeholder_lifecycle.py`
+- **Code snippet:**
+  ```python
+  async def send_placeholder(emitter: "OutboundEmitter") -> tuple[Any, int | None] | None: ...
+  async def drain_fallback(emitter: "OutboundEmitter", events: AsyncIterator[RenderEvent]) -> None: ...
+  async def deliver_text_chunks(emitter: "OutboundEmitter", placeholder_obj: Any, final_chunks: list[str]) -> None: ...
+  async def deliver_final(emitter: "OutboundEmitter", placeholder_obj: Any) -> None: ...
+  async def handle_typing_tail(emitter: "OutboundEmitter") -> None: ...
+  ```
+- **Verify:** `wc -l src/lyra/outbound/_placeholder_lifecycle.py` ≤ 150
+- **Expected output:** file exists, ≤ 150 lines
+- **Time estimate:** 3–5 min
+- **Agent:** backend-dev-A
+- **Subject:** outbound
+- **Phase:** REFACTOR
+- **Difficulty:** 2
+
+#### T2 — Remove placeholder lifecycle from `emitter.py`
+
+- **Description:** Delete `_send_placeholder`, `_drain_fallback`, `_deliver_text_chunks`, `_deliver_final`, `_handle_typing_tail` from `emitter.py`. Add `from lyra.outbound._placeholder_lifecycle import ...` at the top. Replace all internal calls with the free-function equivalents.
+- **File:** `src/lyra/outbound/emitter.py`
+- **Verify:** `wc -l src/lyra/outbound/emitter.py` < 350
+- **Expected output:** line count < 350
+- **Time estimate:** 3–5 min
+- **Agent:** backend-dev-A
+- **Subject:** outbound
+- **Phase:** RED-GATE
+- **Difficulty:** 2
+
+### Slice 2 — Extract run-loop orchestration
+
+#### T3 — Create `_emitter_run.py` and wire into `emitter.py`
+
+- **Description:** Create `src/lyra/outbound/_emitter_run.py` with `_run_event_loop` and a helper to peek the first event. Move `run()` to a thin delegate that imports and calls the extracted functions. Keep the public `run()` signature on `OutboundEmitter` unchanged.
+- **File:** `src/lyra/outbound/_emitter_run.py`, `src/lyra/outbound/emitter.py`
+- **Code snippet:**
+  ```python
+  async def run_loop(emitter: "OutboundEmitter", events: AsyncIterator[RenderEvent], placeholder_obj: Any) -> None: ...
+  ```
+- **Verify:** `wc -l src/lyra/outbound/emitter.py` < 300
+- **Expected output:** line count < 300
+- **Time estimate:** 5–8 min
+- **Agent:** backend-dev-A
+- **Subject:** extraction
+- **Phase:** RED-GATE
+- **Difficulty:** 3
+
+#### T4 — Clean up imports and dead code
+
+- **Description:** Remove any unused imports from `emitter.py` after extraction. Ensure `_prepend` remains accessible (keep in `emitter.py` or move to `_emitter_run.py`). Run `ruff check .` and `ruff format .`.
+- **File:** `src/lyra/outbound/emitter.py`
+- **Verify:** `ruff check .` exits 0
+- **Expected output:** no errors
+- **Time estimate:** 2 min
+- **Agent:** backend-dev-A
+- **Subject:** outbound
+- **Phase:** REFACTOR
+- **Difficulty:** 1
+
+### Regression
+
+#### T5 — Run tests and quality gates
+
+- **Description:** Run `pytest tests/`, `pyright`, `.importlinter`, `tools/check_file_length.sh`. Verify no functional change.
+- **File:** all outbound files
+- **Verify:** `pytest tests/` passes
+- **Expected output:** all green
+- **Time estimate:** 3–5 min
+- **Agent:** tester-A
+- **Subject:** tests
+- **Phase:** GREEN
+- **Difficulty:** 2
+
+## Task Seeding Blueprint
+
+### Wave 1 — start, 2 agents ∑
+
+| Task | Agent instance | blockedBy | Subject |
+|---|---|---|---|
+| T1 | backend-dev-A | — | outbound |
+| T2 | backend-dev-A | T1 | outbound |
+| T3 | backend-dev-A | T2 | extraction |
+| T4 | backend-dev-A | T3 | outbound |
+| T5 | tester-A | T4 | tests |
+
+## Consistency Report
+
+| Spec criterion | Covered by | Status |
+|---|---|---|
+| `emitter.py` < 300 lines | T2, T3 | ✓ |
+| `check_file_length.sh` passes | T5 | ✓ |
+| Tests pass | T5 | ✓ |
+| Public API unchanged | T3 | ✓ |
+| Import layers pass | T4, T5 | ✓ |
+| Lint / format clean | T4 | ✓ |
+| Typecheck passes | T5 | ✓ |
+
+**Untraced:** none
+**Exemptions:** none
+
+## Task IDs
+
+<!-- Generated by /plan. Used by /implement to resume tasks on session restart. -->
+- T1: task-10 — outbound
+- T2: task-11 — outbound
+- T3: task-12 — extraction
+- T4: task-13 — outbound
+- T5: task-14 — tests

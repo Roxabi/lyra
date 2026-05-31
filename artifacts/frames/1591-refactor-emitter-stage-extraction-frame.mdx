@@ -1,0 +1,50 @@
+---
+title: "refactor: emitter stage extraction — shrink emitter.py"
+issue: 1591
+status: approved
+tier: F-lite
+date: 2026-05-31
+---
+
+## Problem
+
+`src/lyra/outbound/emitter.py` is 474 lines — well above the 300-line file-length gate. Previous extractions (`_tool_recap.py`, `_streaming_state.py`, `throttle.py`) already reduced the original bulk, but the remaining logic still exceeds the limit.
+
+The remaining overweight comes from:
+- Placeholder lifecycle management (creation, debounced edits, final delivery)
+- `run()` and `_run_event_loop()` orchestration
+
+These are self-contained subsystems that can be extracted into their own modules without changing the external contract of `OutboundEmitter`.
+
+## Who
+
+- **Primary:** lyra maintainers (outbound stage readability, file-length gate compliance)
+- **Secondary:** Future contributors (smaller files → faster onboarding, clearer boundaries)
+
+## Constraints
+
+- `tools/check_file_length.sh` must pass for `emitter.py` after extraction
+- No change in outbound behavior (no functional change)
+- Extraction modules must live under `src/lyra/outbound/`
+
+## Out of Scope
+
+- Rewriting the emitter contract or public API
+- Changing throttle, formatter, or error_handler logic
+- Adding new features or tests (unless needed for regression confidence)
+
+## Premise Validity
+
+**Success in 6 months:** `emitter.py` stays below 300 lines; file-length gate passes without exemption.
+
+**Failure in 6 months:** `emitter.py` still exceeds 300 lines after extraction attempts; gate requires new exemption.
+
+**Simplest alternative:** Inline all extracted logic back into `emitter.py` and raise the file-length exemption.
+**Why not simplest:** The exemption hides the real problem — the module does too many things. Extraction improves readability and sets a precedent for future stage decomposition.
+
+## Complexity
+
+**Tier: F-lite** — Clear scope, single domain (outbound stage), no new architecture or unknowns.
+- 1 file to split, 2 new modules to create
+- Existing extraction pattern already established (`_tool_recap.py`, `_streaming_state.py`)
+- Acceptance criteria are boolean (gate passes + no behavior change)

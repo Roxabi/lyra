@@ -1,0 +1,92 @@
+---
+title: "refactor: emitter stage extraction — shrink emitter.py"
+issue: 1591
+status: approved
+tier: F-lite
+date: 2026-05-31
+promoted_from: "artifacts/frames/1591-refactor-emitter-stage-extraction-frame.mdx"
+---
+
+## Context
+
+Promoted from [frame #1591](../frames/1591-refactor-emitter-stage-extraction-frame.mdx).
+
+`src/lyra/outbound/emitter.py` is 474 lines. Previous extractions (`_tool_recap.py`, `_streaming_state.py`, `throttle.py`) already reduced the original bulk. The remaining overweight is concentrated in two self-contained subsystems:
+
+1. **Placeholder lifecycle** (`_send_placeholder`, `_drain_fallback`, `_deliver_text_chunks`, `_deliver_final`, `_handle_typing_tail`) — creation, debounced edits, final delivery, overflow handling, and error fallback.
+2. **Run-loop orchestration** (`run`, `_run_event_loop`) — the high-level event-loop driver that ties the lifecycle together.
+
+Both subsystems can be extracted into their own modules without changing the external `OutboundEmitter` contract.
+
+## Goal
+
+`emitter.py` < 300 lines after extraction, with all extracted logic living in focused sibling modules under `src/lyra/outbound/`.
+
+## Users
+
+- **Primary:** lyra maintainers (outbound stage readability, file-length gate compliance)
+- **Secondary:** Future contributors (smaller files → faster onboarding, clearer boundaries)
+
+## Expected Behavior
+
+After extraction, the `OutboundEmitter` class retains only:
+- Constructor (`__init__`)
+- Public method `run()` (or a thin delegate to the extracted run-loop)
+- Stage-composition wiring (tool_display_config, _tool_recap, _st, _fmt, _handler, _typing)
+- Event-dispatch helpers (`_on_text_v2`, `_on_toolcall_v2`, `_ensure_trace_obj`, `_maybe_emit_intermediate_recap`, `_cancel_typing`, `_start_typing`)
+
+All extracted methods continue to operate on the same `OutboundEmitter` instance — they become free functions or a helper class that receives `self` as a parameter. The public API and call graph remain unchanged from the consumer perspective.
+
+## Data Model & Consumers
+
+```classDiagram
+    class OutboundEmitter {
+        +tool_display_config: ToolDisplayConfig | None
+        +__init__(formatter, outbound, error_handler, typing, typing_scope_id)
+        +run(events: AsyncIterator~RenderEvent~)
+        -_on_text_v2(event, placeholder_obj)
+        -_on_toolcall_v2(event)
+        -_ensure_trace_obj()
+        -_maybe_emit_intermediate_recap()
+        -_cancel_typing()
+        -_start_typing()
+    }
+    class PlaceholderLifecycle {
+        +send_placeholder(emitter)
+        +drain_fallback(emitter, events)
+        +deliver_text_chunks(emitter, placeholder_obj, final_chunks)
+        +deliver_final(emitter, placeholder_obj)
+        +handle_typing_tail(emitter)
+    }
+    class RunLoop {
+        +run_loop(emitter, events, placeholder_obj)
+        +peek_first_event(events)
+    }
+    OutboundEmitter --> PlaceholderLifecycle : delegates
+    OutboundEmitter --> RunLoop : delegates
+```
+
+**Consumer summary:**
+
+| Consumer | Fields / Methods | When | Status |
+|---|---|---|---|
+| `OutboundAdapterBase.send_streaming` | `OutboundEmitter.run()` | Per outbound turn | this issue |
+| `OutboundEmitter._on_text_v2` | `_send_placeholder`, `_deliver_final` | During streaming | this issue |
+| `OutboundEmitter._on_toolcall_v2` | `_ensure_trace_obj`, `_maybe_emit_intermediate_recap` | During tool events | this issue |
+
+## Slices
+
+| # | Slice | Deliverable | Acceptance |
+|---|---|---|---|
+| 1 | Extract placeholder lifecycle | `outbound/_placeholder_lifecycle.py` — all placeholder/delivery methods moved | `emitter.py` line count drops; `check_file_length.sh` passes |
+| 2 | Extract run-loop orchestration | `outbound/_emitter_run.py` — `run()` and `_run_event_loop()` moved | `emitter.py` < 300 lines; no functional change |
+
+## Success Criteria
+
+- [ ] `emitter.py` line count < 300 after extraction
+- [ ] `tools/check_file_length.sh` passes for `emitter.py` (no exemption needed)
+- [ ] All existing tests pass (`pytest tests/`) without modification
+- [ ] `OutboundEmitter.run()` public API unchanged (signature, return type, behavior)
+- [ ] No new import-layer violations (`.importlinter` passes)
+- [ ] `ruff check .` and `ruff format .` clean
+- [ ] `pyright` typecheck passes

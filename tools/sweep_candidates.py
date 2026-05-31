@@ -198,8 +198,8 @@ def parse_size(labels: list[str]) -> str | None:
 
 def parse_priority(labels: list[str]) -> str | None:
     for lbl in labels:
-        if lbl.startswith("P") and lbl[1:].isdigit():
-            return lbl
+        if lbl.startswith("P") and lbl[1:2].isdigit():
+            return lbl.split("-")[0]
     return None
 
 

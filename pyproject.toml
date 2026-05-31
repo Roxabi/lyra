@@ -95,8 +95,7 @@ filterwarnings = [
     "ignore:'audioop' is deprecated:DeprecationWarning",
     "ignore:websockets.legacy is deprecated:DeprecationWarning",
     "ignore:websockets.server.WebSocketServerProtocol is deprecated:DeprecationWarning",
-    # Temporary suppressions — remove when #1035 lands (module/class deletion)
-    "ignore:SupervisorctlManager is deprecated:DeprecationWarning",
+    # Temporary suppression — remove when #1035 lands (module deletion)
     "ignore:lyra.monitoring is deprecated:DeprecationWarning",
 ]
 markers = [

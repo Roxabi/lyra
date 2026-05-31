@@ -115,7 +115,7 @@ Expected output includes:
 - `[+] Derived pubkey from existing seed: <identity>` for unchanged identities
 - `[+] Backed up auth.conf → /etc/nats/nkeys/auth.conf.bak.<timestamp>`
 - `[+] auth.conf re-rendered from 10 existing seeds.`
-- `[+] Next: sudo systemctl reload nats.service`
+- `[+] Next: sudo systemctl reload lyra-nats.service`
 
 If `nats-server` is on PATH and `/etc/nats/nats.conf` exists, the script validates the new config via `nats-server -t` before writing. A validation failure restores the backup automatically.
 
@@ -194,7 +194,7 @@ Run `lyra ops verify` for a quick ACL matrix check (ADR-046 invariant 5) before 
 tools/check-nats-acls.sh --since "${RELOAD_TS}" --window 90 | tee ~/nkey-rotation-evidence.txt
 ```
 
-Expected output on success: `OK: no Permissions Violation in nats.service over 90s window`
+Expected output on success: `OK: no Permissions Violation in lyra-nats.service over 90s window`
 
 If violations are detected, the script prints the offending lines and exits 1. Jump to **Rollback** immediately.
 

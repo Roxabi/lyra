@@ -16,7 +16,7 @@ subprocess, or calls an external HTTP API belongs here — nowhere else.
 | `ScrapeProvider` | `async scrape(url, timeout) → str` |
 | `VaultProvider` | `async add(…) → None` / `async search(query) → str` |
 | `AudioConverter` | `async convert_wav_to_ogg(wav_path, ogg_path) → None` |
-| `ServiceManager` | `async control(action, service) → str` |
+| `SystemctlManager` | `async control(action, service) → str` |
 
 `SessionTools` is the injection bundle handed to plugin commands at registration.
 
@@ -25,14 +25,13 @@ in `base.py`) before writing the concrete class.
 
 ## Two categories
 
-### OS control — `supervisor.py`, `systemctl.py`
+### OS control — `systemctl.py`
 
-Affect live host state (start/stop/restart systemd user units, legacy
-supervisorctl). Side-effects are intentional and irreversible within a call.
+Affect live host state (start/stop/restart systemd user units). Side-effects are
+intentional and irreversible within a call.
 
-- `SystemctlManager` is current (`/svc` plugin). `SupervisorctlManager` is
-  deprecated (retained until #1035 lands).
-- Both raise `ServiceControlFailed(reason)` on subprocess error or timeout.
+- `SystemctlManager` is current (`/svc` plugin).
+- Raises `ServiceControlFailed(reason)` on subprocess error or timeout.
 - Callers must not validate/sanitize service names a second time — the command
   boundary (plugin command layer) already enforced authorization.
 

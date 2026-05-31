@@ -7,13 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.integrations.base import ServiceControlFailed, ServiceManager
+from lyra.integrations.base import ServiceControlFailed
 from lyra.integrations.systemctl import SystemctlManager
-
-
-class TestSystemctlManagerProtocol:
-    def test_implements_service_manager(self):
-        assert isinstance(SystemctlManager(), ServiceManager)
 
 
 class TestSystemctlManagerControl:

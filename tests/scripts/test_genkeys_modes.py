@@ -3,8 +3,8 @@
 These tests document the expected behaviour of the V2 write modes
 (--regen-authconf, --emit-merged-authconf, --regenerate, --show).
 
-All tests FAIL in Slice 1 because every mode beyond --template-only and
---validate-supervisor raises SystemExit("not yet implemented in this slice").
+All tests FAIL in Slice 1 because every mode beyond --template-only raises
+SystemExit("not yet implemented in this slice").
 They will turn GREEN when T24 (Slice 2 implementation) lands.
 """
 

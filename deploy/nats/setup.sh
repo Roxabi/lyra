@@ -10,12 +10,10 @@
 #   1. nats-server binary
 #   2. nats system user + /etc/nats directories
 #   3. nats.conf (install or update)
-#   4. nats.service systemd unit + lyra.service ordering drop-in
-#   5. UFW firewall rule (port 4222, LAN only)
-#   6. TLS certs (gen-certs.sh — skips if present)
-#   7. nkey seeds (gen_nkeys.py — re-renders auth.conf + re-applies permissions on re-run)
-#   8. Start / restart nats.service
-#   9. Verify nkey enforcement is active
+#   4. UFW firewall rule (port 4222, LAN only)
+#   5. TLS certs (gen-certs.sh — skips if present)
+#   6. nkey seeds (gen_nkeys.py — re-renders auth.conf + re-applies permissions on re-run)
+#   7. Verify nkey enforcement is active
 #
 # Safe to re-run after upgrades, re-provisioning, or permission drift.
 # To rotate keys: sudo rm -f /etc/nats/nkeys/auth.conf && rm -rf ~/.lyra/nkeys && make nats-setup
@@ -86,31 +84,7 @@ else
   info "nats.conf installed/updated."
 fi
 
-# ── 4. systemd unit + lyra.service drop-in ───────────────────────────────
-
-section "systemd"
-if [ ! -f /etc/systemd/system/nats.service ]; then
-  sudo install -m 644 "${LYRA_DIR}/deploy/nats/nats.service" /etc/systemd/system/nats.service
-  sudo systemctl daemon-reload
-  sudo systemctl enable nats.service
-  info "nats.service installed and enabled."
-else
-  info "nats.service already installed."
-fi
-
-# Clean up stale drop-in (user units can't depend on system units)
-DROPIN_DIR="$HOME/.config/systemd/user/lyra.service.d"
-DROPIN="${DROPIN_DIR}/after-nats.conf"
-if [ -f "${DROPIN}" ]; then
-  rm -f "${DROPIN}"
-  rmdir "${DROPIN_DIR}" 2>/dev/null || true
-  systemctl --user daemon-reload 2>/dev/null || true
-  info "Removed stale lyra.service drop-in (After=nats.service)."
-else
-  info "No stale drop-in to clean."
-fi
-
-# ── 5. Firewall ───────────────────────────────────────────────────────────
+# ── 4. Firewall ───────────────────────────────────────────────────────────
 
 section "Firewall"
 if sudo ufw status | grep -q "4222"; then
@@ -120,7 +94,7 @@ else
   info "UFW: port 4222 allowed from 192.168.1.0/24."
 fi
 
-# ── 6. TLS certs ─────────────────────────────────────────────────────────
+# ── 5. TLS certs ─────────────────────────────────────────────────────────
 
 section "TLS certs"
 if [ -f /etc/nats/certs/server.crt ] && [ -f /etc/nats/certs/server.key ]; then
@@ -129,7 +103,7 @@ else
   sudo "${LYRA_DIR}/deploy/nats/gen-certs.sh"
 fi
 
-# ── 7. nkeys ─────────────────────────────────────────────────────────────
+# ── 6. nkeys ─────────────────────────────────────────────────────────────
 
 section "nkeys"
 if [ -f "${NKEYS_AUTH}" ]; then
@@ -145,26 +119,7 @@ else
 fi
 sudo test -f "${NKEYS_AUTH}" || error "Key generation failed — auth.conf missing"
 
-# ── 8. Start / restart ───────────────────────────────────────────────────
-
-section "NATS service"
-if sudo systemctl is-active --quiet nats.service; then
-  sudo systemctl restart nats.service
-  info "nats.service restarted."
-else
-  sudo systemctl start nats.service
-  info "nats.service started."
-fi
-
-for _ in $(seq 20); do
-  nc -z 127.0.0.1 4222 2>/dev/null && break
-  sleep 0.5
-done
-sudo systemctl is-active --quiet nats.service \
-  || error "nats.service failed to start — check: journalctl -u nats.service -n 50"
-info "nats.service is running."
-
-# ── 9. Verify ─────────────────────────────────────────────────────────────
+# ── 7. Verify ─────────────────────────────────────────────────────────────
 
 section "Verification"
 if command -v nats &>/dev/null; then
@@ -173,7 +128,7 @@ if command -v nats &>/dev/null; then
   if [ "$rc" -ne 0 ] && echo "$output" | grep -qiE "authoriz|permission|auth"; then
     info "Unauthenticated connections rejected — nkey enforcement ACTIVE."
   else
-    error "nkey enforcement NOT confirmed (rc=$rc). Check: journalctl -u nats.service -n 20"
+    error "nkey enforcement NOT confirmed (rc=$rc). Check: journalctl -u lyra-nats.service -n 20"
   fi
 else
   warn "nats CLI not installed — skipping. Verify manually: nats sub '>' (should fail without nkey)"

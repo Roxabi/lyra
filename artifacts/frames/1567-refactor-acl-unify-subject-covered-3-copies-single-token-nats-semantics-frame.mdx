@@ -1,0 +1,56 @@
+---
+title: "refactor(acl): unify subject_covered (3 copies) + single-token .* NATS semantics"
+issue: 1567
+status: approved
+tier: F-lite
+date: 2026-05-31
+---
+
+## Problem
+
+`subject_covered` (NATS-wildcard coverage check) now exists in **3 copies** across the ACL script suite:
+- `scripts/_effective.py:subject_covered` (new, #1527)
+- `scripts/gen_nkeys.py:_subject_covered`
+- `scripts/check_request_reply_flows.py:_subject_covered`
+
+All three are logically identical today but maintained independently. A future correction applied to one silently diverges the others (`parallel-path-drift`).
+
+Two known semantic gaps shared by all three:
+1. **No single-token `.*` handling** — a grant ending `.*` is treated as a literal string, not a one-token wildcard. Currently masked because the ADR manifest expresses required subjects as exact literals or `.>`-covered. A future concrete required-subject + `.*` grant would false-negative.
+2. **Bare-prefix `.>` match** — `subject == grant[:-2]` returns covered, but NATS `foo.>` does NOT match bare `foo`. False-positive in theory; not currently triggerable (no bare-prefix subject in any manifest).
+
+Both gaps are fail-safe in the current data (false-negative / untriggerable), so the gate is correct today — this is hardening, not a live bug.
+
+## Who
+
+- **Primary:** Lyra developers maintaining ACL generation and validation scripts
+- **Secondary:** CI pipeline (`lyra-acl check grants` falsification gate) — correctness of coverage decisions
+
+## Constraints
+
+- Must keep all 3 callers green during migration (no intermediate broken state)
+- Parametric tests must cover `.*` and `.>` edge cases before semantic changes land
+- CI step `Check ACL code coverage (ADR-079)` may drop hardcoded `--matrix`/`--code-subjects` flags (optional, secondary)
+
+## Out of Scope
+
+- NATS server-side ACL changes (ADR-079 manifest format is stable)
+- Changes to `effective_grants` or other `_effective.py` exports
+- New grant types beyond `.*` and `.>` (future issue if needed)
+- CI flag cleanup is secondary and optional; can be deferred if it expands scope
+
+## Premise Validity
+
+**Success in 6 months:** One `subject_covered` in `scripts/_effective.py`, imported by all ACL scripts. `.*` matches single-token wildcards per NATS spec. `.>` no longer matches bare prefix. Parametric tests cover edge cases. Zero new `subject_covered` copies in any ACL script.
+
+**Failure in 6 months:** A 4th `subject_covered` copy appears in any ACL script, OR CI falsification gate passes a `.*` grant that should match but returns false-negative, OR the unified function still treats bare-prefix `.>` as covered (false-positive).
+
+**Simplest alternative:** Copy-paste `_effective.py` version into `gen_nkeys.py` + `check_request_reply_flows.py` without shared import.
+**Why not simplest:** Next bug fix creates a 4th copy — same drift recurs. Two semantic gaps (`.*` + `.>`) must change in all 3 copies simultaneously; shared function is the only guarantee they move together.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (ACL scripts), ~4–8 files, no new architecture.
+
+- Signals: ≤3 files changed (single script + 2 callers), 1 domain (ACL scripts), no unknowns
+- Issue label: none (default F-lite for clear refactor scope)

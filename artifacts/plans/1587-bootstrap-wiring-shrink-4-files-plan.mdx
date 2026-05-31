@@ -1,0 +1,640 @@
+---
+title: "Plan: refactor: shared bootstrap wiring + config loader split — shrink 4 files"
+issue: 1587
+spec: artifacts/specs/1587-bootstrap-wiring-shrink-4-files-spec.mdx
+complexity: 4/10
+tier: F-lite
+generated: 2026-05-31
+---
+
+## Summary
+
+Extract 15 helpers from 4 oversize bootstrap files into 9 domain-specific submodules.
+All 4 caller files drop below 300 lines; 4 `DEBT:file-exemptions` entries are removed.
+Pure code movement — no behavior changes.
+
+## Architecture
+
+### Data flow
+
+```flowchart TD
+    subgraph bootstrap_wiring["bootstrap_wiring.py"]
+        wt[wire_telegram_adapters]
+        wd[wire_discord_adapters]
+    end
+    subgraph wiring_auth["wiring/auth.py"]
+        ba[_build_bot_auths]
+        bd[BotAuthDeps]
+    end
+    subgraph wiring_ingest["wiring/ingest_wiring.py"]
+        bi[build_ingest]
+        ia[_assert_blobstore_configured_if_url_set]
+        wi[wire_ingest]
+    end
+    subgraph config["factory/config.py"]
+        acb[build_adapter_config_bundle]
+    end
+    subgraph config_models["factory/config_models.py"]
+        pydantic[11 Pydantic models]
+    end
+    subgraph config_loader["factory/config_loader.py"]
+        loaders[12 _load_* helpers]
+        vp[_validate_config_path]
+    end
+    subgraph config_deprecation["factory/config_deprecation.py"]
+        warn[warn_deprecated_bot_sections]
+    end
+    subgraph agent_factory["factory/agent_factory.py"]
+        ra[_resolve_agents]
+        ca[_create_agent]
+    end
+    subgraph providers["factory/providers.py"]
+        sp[_build_shared_base_providers]
+        pr[_build_per_agent_registry]
+        pbr[_build_provider_registry]
+    end
+    subgraph hub_builder["factory/hub_builder.py"]
+        hb[_build_hub_and_wire]
+    end
+    subgraph hub_core["factory/hub_core.py"]
+        hc[_build_hub]
+    end
+    subgraph hub_llm["factory/hub_llm_client.py"]
+        hlc[build_llm_client]
+    end
+    subgraph hub_inbound["factory/hub_inbound_bus.py"]
+        hib[build_inbound_bus]
+    end
+    subgraph hub_cli["factory/hub_cli_pool.py"]
+        hcp[build_cli_pool]
+    end
+    subgraph hub_reg["factory/hub_agent_registration.py"]
+        hr[register_agents]
+    end
+    subgraph hub_clipool["factory/hub_clipool_init.py"]
+        hci[_init_clipool]
+    end
+    ba --> wt
+    ba --> wd
+    bi --> wt
+    bi --> wd
+    wi --> wt
+    wi --> wd
+    ia --> wi
+    acb --> wt
+    acb --> wd
+    warn --> loaders
+    pydantic --> loaders
+    loaders --> acb
+    vp --> loaders
+    sp --> ra
+    pr --> ra
+    pbr --> ra
+    ra --> ca
+    hc --> hb
+    hlc --> hb
+    hib --> hb
+    hcp --> hb
+    hr --> hb
+    hci --> hb
+```
+
+### File × Function map
+
+```flowchart LR
+    subgraph S1["S1: wiring"]
+        w1[bootstrap_wiring.py]
+        w2[auth.py]
+        w3[ingest_wiring.py]
+    end
+    subgraph S2["S2: config"]
+        c1[config.py]
+        c2[config_deprecation.py]
+        c3[config_models.py]
+        c4[config_loader.py]
+    end
+    subgraph S3["S3: agent_factory"]
+        a1[agent_factory.py]
+        a2[providers.py]
+        a3[bot_agent_map.py]
+    end
+    subgraph S4["S4: hub_builder"]
+        h1[hub_builder.py]
+        h2[hub_core.py]
+        h3[hub_llm_client.py]
+        h4[hub_inbound_bus.py]
+        h5[hub_cli_pool.py]
+        h6[hub_agent_registration.py]
+        h7[hub_clipool_init.py]
+        h8[hub_assembly.py]
+    end
+    w2 --> w1
+    w3 --> w1
+    c2 --> c1
+    c3 --> c1
+    c4 --> c1
+    a2 --> a1
+    a3 --> a1
+    h2 --> h1
+    h3 --> h1
+    h4 --> h1
+    h5 --> h1
+    h6 --> h1
+    h7 --> h1
+    h8 --> h1
+```
+
+## Agents
+
+| Agent | Tasks | Files | Subjects |
+|-------|-------|-------|----------|
+| backend-dev-A | 3 | wiring/auth.py, wiring/ingest_wiring.py, wiring/bootstrap_wiring.py | wiring |
+| backend-dev-B | 4 | factory/config_deprecation.py, factory/config_models.py, factory/config_loader.py, factory/config.py | config |
+| backend-dev-C | 3 | factory/providers.py, factory/agent_factory.py, factory/bot_agent_map.py | providers |
+| backend-dev-D | 3 | factory/hub_core.py, factory/hub_assembly.py, factory/hub_builder.py | hub |
+| backend-dev-E | 3 | factory/hub_cli_pool.py, factory/hub_agent_registration.py, factory/hub_clipool_init.py | hub |
+| backend-dev-F | 2 | factory/hub_llm_client.py, factory/hub_inbound_bus.py | hub |
+| tester-A | 3 | tools/file_exemptions.txt | validation |
+| tester-B | 3 | — | validation |
+
+## Wave Structure
+
+3 waves, max 6 parallel agents. Elapsed ~1 session vs ~3 sequential.
+
+| Wave | Trigger | Agents | Tasks |
+|------|---------|--------|-------|
+| 1 | start | 6 ∥ | backend-dev-A: T1→T3 · backend-dev-B: T4→T7 · backend-dev-C: T8→T10 · backend-dev-D: T16→T18 · backend-dev-E: T13→T15 · backend-dev-F: T11→T12 |
+| 2 | Wave 1 done | 6 ∥ | All Wave 1 agents update caller files (already included in T3, T7, T9, T18) |
+| 3 | Wave 2 done | 2 ∥ | tester-A: T19→T22 · tester-B: T23→T24 |
+
+### Budget — per task
+
+| Task | Items | Class | Est. ops | Split? |
+|------|-------|-------|----------|--------|
+| T1 | 1 | bounded | 3 | — |
+| T2 | 1 | bounded | 3 | — |
+| T3 | 1 | bounded | 3 | — |
+| T4 | 1 | trivial | 2 | — |
+| T5 | 11 | bounded | 3 | — |
+| T6 | 13 | bounded | 3 | — |
+| T7 | 1 | bounded | 3 | — |
+| T8 | 3 | bounded | 3 | — |
+| T9 | 1 | bounded | 3 | — |
+| T10 | 1 | trivial | 2 | — |
+| T11 | 1 | bounded | 3 | — |
+| T12 | 1 | trivial | 2 | — |
+| T13 | 1 | bounded | 3 | — |
+| T14 | 1 | bounded | 3 | — |
+| T15 | 1 | bounded | 3 | — |
+| T16 | 1 | bounded | 3 | — |
+| T17 | 1 | bounded | 3 | — |
+| T18 | 1 | bounded | 3 | — |
+| T19 | 4 | trivial | 1 | — |
+| T20 | 1 | trivial | 1 | — |
+| T21 | 1 | trivial | 2 | — |
+| T22 | 1 | trivial | 1 | — |
+| T23 | 1 | trivial | 1 | — |
+| T24 | 1 | trivial | 1 | — |
+
+**Total estimated ops: 53**
+
+### Budget — per agent instance
+
+| Instance | Tasks | Σ ops | Subjects | Split? |
+|----------|-------|-------|----------|--------|
+| backend-dev-A | T1, T2, T3 | 9 | wiring | — |
+| backend-dev-B | T4, T5, T6, T7 | 11 | config | — |
+| backend-dev-C | T8, T9, T10 | 8 | providers | — |
+| backend-dev-D | T16, T17, T18 | 9 | hub | — |
+| backend-dev-E | T13, T14, T15 | 9 | hub | — |
+| backend-dev-F | T11, T12 | 5 | hub | — |
+| tester-A | T19, T20, T21, T22 | 4 | validation | — |
+| tester-B | T23, T24 | 2 | validation | — |
+
+## Consistency Report
+
+| Spec Section | Covered | Total | Uncovered |
+|--------------|---------|-------|-----------|
+| Breadboard IDs | 15 | 15 | — |
+| Success Criteria | 11 | 11 | — |
+| Slices | 4 | 4 | — |
+
+**Untraced:** None.
+
+**Exemptions:** None.
+
+## Micro-Tasks
+
+### Slice S1 — wiring/bootstrap_wiring.py
+
+#### T1 — Create `wiring/auth.py`
+- **Description:** Extract `BotAuthDeps` dataclass and `_build_bot_auths` into `wiring/auth.py`
+- **File:** `src/lyra/bootstrap/wiring/auth.py`
+- **Code snippet:** Follow `factory/utils.py` pattern (module-level logger, `__future__` annotations). Import `BotStoreProtocol`, `TelegramMultiConfig`, `DiscordMultiConfig`, `AuthStore`, `IdentityAliasStore`, `Authenticator`, `FromBotStoreDeps`, `credentials`.
+- **Verify:** `python -c "from lyra.bootstrap.wiring.auth import _build_bot_auths, BotAuthDeps"`
+- **Expected:** Exit 0
+- **Time:** 3 min
+- **[P]:** Y
+- **Agent:** backend-dev-A
+- **Subject:** wiring
+- **Spec trace:** N1 → S1
+- **Phase:** RED
+- **Difficulty:** 2
+
+#### T2 — Create `wiring/ingest_wiring.py`
+- **Description:** Extract `build_ingest`, `_assert_blobstore_configured_if_url_set`, `wire_ingest` into `wiring/ingest_wiring.py`
+- **File:** `src/lyra/bootstrap/wiring/ingest_wiring.py`
+- **Code snippet:** Import `BlobStorePort`, `AttachmentIngestStage`, `IngestCtx`, `os`.
+- **Verify:** `python -c "from lyra.bootstrap.wiring.ingest_wiring import build_ingest, wire_ingest"`
+- **Expected:** Exit 0
+- **Time:** 3 min
+- **[P]:** Y
+- **Agent:** backend-dev-A
+- **Subject:** wiring
+- **Spec trace:** N2 → S1
+- **Phase:** RED
+- **Difficulty:** 2
+
+#### T3 — Update `wiring/bootstrap_wiring.py`
+- **Description:** Remove extracted code; add imports from `wiring/auth.py` and `wiring/ingest_wiring.py`. Ensure `wire_telegram_adapters` and `wire_discord_adapters` still call `_build_bot_auths` and `wire_ingest`.
+- **File:** `src/lyra/bootstrap/wiring/bootstrap_wiring.py`
+- **Verify:** `python -c "from lyra.bootstrap.wiring.bootstrap_wiring import wire_telegram_adapters, wire_discord_adapters"`
+- **Expected:** Exit 0
+- **Time:** 3 min
+- **[P]:** N (after T1, T2)
+- **Agent:** backend-dev-A
+- **Subject:** wiring
+- **Spec trace:** N1, N2 → S1
+- **Phase:** RED-GATE
+- **Difficulty:** 2
+
+**RED-GATE:** `wc -l src/lyra/bootstrap/wiring/bootstrap_wiring.py` ≤ 300
+
+### Slice S2 — factory/config.py
+
+#### T4 — Create `factory/config_deprecation.py`
+- **Description:** Extract `warn_deprecated_bot_sections` and `_bot_sections_deprecation_warned` into `factory/config_deprecation.py`
+- **File:** `src/lyra/bootstrap/factory/config_deprecation.py`
+- **Code snippet:** Follow `factory/utils.py` pattern.
+- **Verify:** `python -c "from lyra.bootstrap.factory.config_deprecation import warn_deprecated_bot_sections"`
+- **Expected:** Exit 0
+- **Time:** 2 min
+- **[P]:** Y
+- **Agent:** backend-dev-B
+- **Subject:** config
+- **Spec trace:** C1 → S2
+- **Phase:** RED
+- **Difficulty:** 1
+
+#### T5 — Create `factory/config_models.py`
+- **Description:** Extract all 11 Pydantic config models (`CliPoolConfig`, `HubConfig`, `PoolConfig`, `LlmConfig`, `InboundBusConfig`, `DebouncerConfig`, `LoggingConfig`, `EventBusConfig`, `MessageIndexConfig`, `AgentOverrideConfig`) into `factory/config_models.py`
+- **File:** `src/lyra/bootstrap/factory/config_models.py`
+- **Code snippet:** Import `BaseModel`, `ConfigDict` from pydantic. Re-export all models.
+- **Verify:** `python -c "from lyra.bootstrap.factory.config_models import CliPoolConfig, HubConfig, LlmConfig"`
+- **Expected:** Exit 0
+- **Time:** 3 min
+- **[P]:** Y
+- **Agent:** backend-dev-B
+- **Subject:** config
+- **Spec trace:** C2 → S2
+- **Phase:** RED
+- **Difficulty:** 2
+
+#### T6 — Create `factory/config_loader.py`
+- **Description:** Extract all `_load_*` helpers and `_validate_config_path` into `factory/config_loader.py`
+- **File:** `src/lyra/bootstrap/factory/config_loader.py`
+- **Code snippet:** Import `tomllib`, `os`, `Path`, `re`. Import config models from `config_models.py`. Import `CircuitRegistry`, `CircuitBreaker`, `PairingConfig`, `ToolDisplayConfig`, `MessageManager`.
+- **Verify:** `python -c "from lyra.bootstrap.factory.config_loader import _load_raw_config, _load_llm_config, _load_messages"`
+- **Expected:** Exit 0
+- **Time:** 3 min
+- **[P]:** Y
+- **Agent:** backend-dev-B
+- **Subject:** config
+- **Spec trace:** C3, C4 → S2
+- **Phase:** RED
+- **Difficulty:** 2
+
+#### T7 — Update `factory/config.py`
+- **Description:** Remove extracted code; add imports from `config_deprecation.py`, `config_models.py`, `config_loader.py`. Keep `AdapterConfigBundle` and `build_adapter_config_bundle`.
+- **File:** `src/lyra/bootstrap/factory/config.py`
+- **Verify:** `python -c "from lyra.bootstrap.factory.config import build_adapter_config_bundle, AdapterConfigBundle"`
+- **Expected:** Exit 0
+- **Time:** 3 min
+- **[P]:** N (after T4, T5, T6)
+- **Agent:** backend-dev-B
+- **Subject:** config
+- **Spec trace:** C1, C2, C3, C4 → S2
+- **Phase:** RED-GATE
+- **Difficulty:** 2
+
+**RED-GATE:** `wc -l src/lyra/bootstrap/factory/config.py` ≤ 300
+
+### Slice S3 — factory/agent_factory.py
+
+#### T8 — Create `factory/providers.py`
+- **Description:** Extract `_build_shared_base_providers`, `_build_per_agent_registry`, `_build_provider_registry` into `factory/providers.py`
+- **File:** `src/lyra/bootstrap/factory/providers.py`
+- **Code snippet:** Import `CircuitRegistry`, `CliPool`, `LlmConfig`, `LlmClient`, `ProviderRegistry`, `LlmProvider`, `CircuitBreakerDecorator`, `RetryDecorator`, `ClaudeCliDriver`.
+- **Verify:** `python -c "from lyra.bootstrap.factory.providers import _build_shared_base_providers, _build_provider_registry"`
+- **Expected:** Exit 0
+- **Time:** 3 min
+- **[P]:** Y
+- **Agent:** backend-dev-C
+- **Subject:** providers
+- **Spec trace:** A1 → S3
+- **Phase:** RED
+- **Difficulty:** 2
+
+#### T9 — Update `factory/agent_factory.py`
+- **Description:** Remove extracted code; add imports from `providers.py`. Inline `_resolve_bot_agent_map` alias directly (or keep it as a re-export). Keep `_init_bot_auths_and_agents`, `_create_agent`, `_resolve_agents`, `CreateAgentDeps`, `ResolveAgentsDeps`.
+- **File:** `src/lyra/bootstrap/factory/agent_factory.py`
+- **Verify:** `python -c "from lyra.bootstrap.factory.agent_factory import _resolve_agents, _create_agent"`
+- **Expected:** Exit 0
+- **Time:** 3 min
+- **[P]:** N (after T8)
+- **Agent:** backend-dev-C
+- **Subject:** providers
+- **Spec trace:** A1 → S3
+- **Phase:** RED-GATE
+- **Difficulty:** 2
+
+**RED-GATE:** `wc -l src/lyra/bootstrap/factory/agent_factory.py` ≤ 300
+
+#### T10 — Update `factory/bot_agent_map.py`
+- **Description:** Absorb `_resolve_bot_agent_map` alias from `agent_factory.py`. Add re-export in `agent_factory.py` if needed.
+- **File:** `src/lyra/bootstrap/factory/bot_agent_map.py`
+- **Verify:** `python -c "from lyra.bootstrap.factory.bot_agent_map import resolve_bot_agent_map"`
+- **Expected:** Exit 0
+- **Time:** 2 min
+- **[P]:** Y
+- **Agent:** backend-dev-C
+- **Subject:** providers
+- **Spec trace:** A2 → S3
+- **Phase:** RED
+- **Difficulty:** 1
+
+### Slice S4 — factory/hub_builder.py
+
+#### T11 — Create `factory/hub_llm_client.py`
+- **Description:** Extract `build_llm_client` into `factory/hub_llm_client.py`
+- **File:** `src/lyra/bootstrap/factory/hub_llm_client.py`
+- **Code snippet:** Import `NATS`, `CliPoolCodec`, `LlmClient`, `WorkerRegistry`, `NatsTransport`, `WorkerPoolClient`, `validate_worker_id`, `scrub_nats_url`.
+- **Verify:** `python -c "from lyra.bootstrap.factory.hub_llm_client import build_llm_client"`
+- **Expected:** Exit 0
+- **Time:** 3 min
+- **[P]:** Y
+- **Agent:** backend-dev-F
+- **Subject:** hub
+- **Spec trace:** H1 → S4
+- **Phase:** RED
+- **Difficulty:** 2
+
+#### T12 — Create `factory/hub_inbound_bus.py`
+- **Description:** Extract `build_inbound_bus` into `factory/hub_inbound_bus.py`
+- **File:** `src/lyra/bootstrap/factory/hub_inbound_bus.py`
+- **Code snippet:** Import `NATS`, `NatsBus`, `InboundMessage`, `HUB_INBOUND`.
+- **Verify:** `python -c "from lyra.bootstrap.factory.hub_inbound_bus import build_inbound_bus"`
+- **Expected:** Exit 0
+- **Time:** 2 min
+- **[P]:** Y
+- **Agent:** backend-dev-F
+- **Subject:** hub
+- **Spec trace:** H2 → S4
+- **Phase:** RED
+- **Difficulty:** 1
+
+#### T13 — Create `factory/hub_cli_pool.py`
+- **Description:** Extract `build_cli_pool` into `factory/hub_cli_pool.py`
+- **File:** `src/lyra/bootstrap/factory/hub_cli_pool.py`
+- **Code snippet:** Import `CliPool`, `CliPoolDeps`, `AuditSink`.
+- **Verify:** `python -c "from lyra.bootstrap.factory.hub_cli_pool import build_cli_pool"`
+- **Expected:** Exit 0
+- **Time:** 3 min
+- **[P]:** Y
+- **Agent:** backend-dev-E
+- **Subject:** hub
+- **Spec trace:** H3 → S4
+- **Phase:** RED
+- **Difficulty:** 2
+
+#### T14 — Create `factory/hub_agent_registration.py`
+- **Description:** Extract `register_agents` into `factory/hub_agent_registration.py`
+- **File:** `src/lyra/bootstrap/factory/hub_agent_registration.py`
+- **Code snippet:** Import `Hub`, `Agent`, `CliPool`, `CircuitRegistry`, `MessageManager`, `STTProtocol`, `TtsProtocol`, `AgentStore`, `LlmClient`, `_resolve_agents`, `ResolveAgentsDeps`, `_load_llm_config`.
+- **Verify:** `python -c "from lyra.bootstrap.factory.hub_agent_registration import register_agents"`
+- **Expected:** Exit 0
+- **Time:** 3 min
+- **[P]:** Y
+- **Agent:** backend-dev-E
+- **Subject:** hub
+- **Spec trace:** H4 → S4
+- **Phase:** RED
+- **Difficulty:** 2
+
+#### T15 — Create `factory/hub_clipool_init.py`
+- **Description:** Extract `_init_clipool` into `factory/hub_clipool_init.py`
+- **File:** `src/lyra/bootstrap/factory/hub_clipool_init.py`
+- **Code snippet:** Import `NATS`, `CliPool`, `CliPoolDeps`, `CliPoolNatsWorker`, `CliPoolBundle`, `JetStreamAuditSink`, `LlmClient`, `build_llm_client` (from hub_llm_client).
+- **Verify:** `python -c "from lyra.bootstrap.factory.hub_clipool_init import _init_clipool"`
+- **Expected:** Exit 0
+- **Time:** 3 min
+- **[P]:** Y
+- **Agent:** backend-dev-E
+- **Subject:** hub
+- **Spec trace:** H5 → S4
+- **Phase:** RED
+- **Difficulty:** 2
+
+#### T16 — Create `factory/hub_core.py`
+- **Description:** Extract `_build_hub` into `factory/hub_core.py`
+- **File:** `src/lyra/bootstrap/factory/hub_core.py`
+- **Code snippet:** Import `Hub`, `HubConfig`, `PipelineEventBus`, `TurnPublisher`, `TurnPublisherAdapter`, `BuildHubDeps`, `BotAuthBundle`, `VoiceBundle`, `_load_cli_pool_config`, `_load_hub_config`, `_load_pool_config`, `_load_debouncer_config`, `_load_event_bus_config`, `_load_inbound_bus_config`.
+- **Verify:** `python -c "from lyra.bootstrap.factory.hub_core import _build_hub"`
+- **Expected:** Exit 0
+- **Time:** 3 min
+- **[P]:** Y
+- **Agent:** backend-dev-D
+- **Subject:** hub
+- **Spec trace:** H6 → S4
+- **Phase:** RED
+- **Difficulty:** 2
+
+#### T17 — Create `factory/hub_assembly.py`
+- **Description:** Extract `_build_hub_and_wire` into `factory/hub_assembly.py`
+- **File:** `src/lyra/bootstrap/factory/hub_assembly.py`
+- **Code snippet:** Import `NATS`, `Hub`, `NatsBus`, `InboundMessage`, `BotAuthBundle`, `BuildHubDeps`, `VoiceBundle`, `CliPoolBundle`, `TypingPublisher`, `NatsChannelProxy`, `OutboundDispatcher`, `NatsTgWiringDeps`, `NatsDcWiringDeps`, `wire_nats_telegram_proxies`, `wire_nats_discord_proxies`, `register_agents`, `_build_hub`, `_init_clipool`, `build_llm_client`, `init_nats_stt`, `init_nats_tts`, `init_nats_llm`.
+- **Verify:** `python -c "from lyra.bootstrap.factory.hub_assembly import _build_hub_and_wire"`
+- **Expected:** Exit 0
+- **Time:** 3 min
+- **[P]:** Y
+- **Agent:** backend-dev-D
+- **Subject:** hub
+- **Spec trace:** H7 → S4
+- **Phase:** RED
+- **Difficulty:** 2
+
+#### T18 — Update `factory/hub_builder.py`
+- **Description:** Remove extracted code; add imports from all new hub modules. Keep only re-exports and orchestration.
+- **File:** `src/lyra/bootstrap/factory/hub_builder.py`
+- **Verify:** `python -c "from lyra.bootstrap.factory.hub_builder import _build_hub_and_wire"`
+- **Expected:** Exit 0
+- **Time:** 3 min
+- **[P]:** N (after T11→T17)
+- **Agent:** backend-dev-D
+- **Subject:** hub
+- **Spec trace:** H1→H7 → S4
+- **Phase:** RED-GATE
+- **Difficulty:** 2
+
+**RED-GATE:** `wc -l src/lyra/bootstrap/factory/hub_builder.py` ≤ 300
+
+### Validation
+
+#### T19 — File length check
+- **Description:** Run `check_file_length.sh` on all 4 target files
+- **Verify:** `bash tools/check_file_length.sh`
+- **Expected:** No output for the 4 files (or exit 0)
+- **Time:** 1 min
+- **[P]:** N (after all RED-GATEs)
+- **Agent:** tester-A
+- **Subject:** validation
+- **Spec trace:** SC-1→SC-4
+- **Phase:** GREEN
+- **Difficulty:** 1
+
+#### T20 — Folder size check
+- **Description:** Run `check_folder_size.sh` on `src/lyra/bootstrap/`
+- **Verify:** `bash tools/check_folder_size.sh`
+- **Expected:** Exit 0
+- **Time:** 1 min
+- **[P]:** Y
+- **Agent:** tester-A
+- **Subject:** validation
+- **Spec trace:** SC-7
+- **Phase:** GREEN
+- **Difficulty:** 1
+
+#### T21 — Remove exemptions
+- **Description:** Delete the 4 `DEBT:file-exemptions` lines from `tools/file_exemptions.txt`
+- **File:** `tools/file_exemptions.txt`
+- **Verify:** `grep -c "bootstrap_wiring\|config.py\|agent_factory\|hub_builder" tools/file_exemptions.txt`
+- **Expected:** `0`
+- **Time:** 2 min
+- **[P]:** Y
+- **Agent:** tester-A
+- **Subject:** validation
+- **Spec trace:** SC-5
+- **Phase:** GREEN
+- **Difficulty:** 1
+
+#### T22 — Import linter check
+- **Description:** Run `.importlinter` to verify no import regressions
+- **Verify:** `python -m importlinter --config .importlinter`
+- **Expected:** Exit 0
+- **Time:** 1 min
+- **[P]:** Y
+- **Agent:** tester-A
+- **Subject:** validation
+- **Spec trace:** SC-10
+- **Phase:** GREEN
+- **Difficulty:** 1
+
+#### T23 — Bootstrap tests
+- **Description:** Run `pytest` on bootstrap tests
+- **Verify:** `uv run pytest src/lyra/bootstrap/ -x`
+- **Expected:** Exit 0
+- **Time:** 1 min
+- **[P]:** Y
+- **Agent:** tester-B
+- **Subject:** validation
+- **Spec trace:** SC-9
+- **Phase:** GREEN
+- **Difficulty:** 1
+
+#### T24 — Full pre-commit suite
+- **Description:** Run the full pre-commit suite
+- **Verify:** `pre-commit run --all-files`
+- **Expected:** Exit 0
+- **Time:** 1 min
+- **[P]:** N (after T19→T23)
+- **Agent:** tester-B
+- **Subject:** validation
+- **Spec trace:** SC-9→SC-11
+- **Phase:** GREEN
+- **Difficulty:** 1
+
+## Task IDs
+
+<!-- Generated by /plan. Used by /implement to resume tasks on session restart. -->
+- T1: 10 — wiring
+- T2: 11 — wiring
+- T3: 12 — wiring
+- T4: 13 — config
+- T5: 14 — config
+- T6: 15 — config
+- T7: 16 — config
+- T8: 17 — providers
+- T9: 18 — providers
+- T10: 19 — providers
+- T11: 20 — hub
+- T12: 21 — hub
+- T13: 22 — hub
+- T14: 23 — hub
+- T15: 24 — hub
+- T16: 25 — hub
+- T17: 26 — hub
+- T18: 27 — hub
+- T19: 28 — validation
+- T20: 29 — validation
+- T21: 30 — validation
+- T22: 31 — validation
+- T23: 32 — validation
+- T24: 33 — validation
+
+## Task Seeding Blueprint
+
+<!-- Used by /implement to seed TaskCreate calls on session start.
+     Format: T{n} | agent-instance | blockedBy | subject
+     blockedBy refs T-numbers within this list (not session task IDs).
+     Agent instances are named (backend-dev-A/B, tester-A/B)
+     so parallel tasks map to distinct spawned agents.
+     Seed in wave order; within a wave all rows are parallel (∥). -->
+
+### Wave 1 — no deps, 6 agents ∥
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T1 | backend-dev-A | — | wiring |
+| T2 | backend-dev-A | — | wiring |
+| T4 | backend-dev-B | — | config |
+| T5 | backend-dev-B | — | config |
+| T8 | backend-dev-C | — | providers |
+| T11 | backend-dev-F | — | hub |
+| T12 | backend-dev-F | — | hub |
+| T13 | backend-dev-E | — | hub |
+| T14 | backend-dev-E | — | hub |
+| T15 | backend-dev-E | — | hub |
+| T16 | backend-dev-D | — | hub |
+| T17 | backend-dev-D | — | hub |
+
+### Wave 2 — after Wave 1, 6 agents ∥
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T3 | backend-dev-A | T1, T2 | wiring |
+| T6 | backend-dev-B | T4, T5 | config |
+| T7 | backend-dev-B | T4, T5, T6 | config |
+| T9 | backend-dev-C | T8 | providers |
+| T10 | backend-dev-C | — | providers |
+| T18 | backend-dev-D | T11, T12, T13, T14, T15, T16, T17 | hub |
+
+### Wave 3 — after Wave 2, 2 agents ∥
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T19 | tester-A | T3, T7, T9, T18 | validation |
+| T20 | tester-A | T3, T7, T9, T18 | validation |
+| T21 | tester-A | T3, T7, T9, T18 | validation |
+| T22 | tester-A | T3, T7, T9, T18 | validation |
+| T23 | tester-B | T3, T7, T9, T18 | validation |
+| T24 | tester-B | T19, T20, T21, T22, T23 | validation |

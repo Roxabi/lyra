@@ -34,9 +34,15 @@ if TYPE_CHECKING:
 # Maximum bytes for a non-audio attachment before download is refused.
 # Mirrors LYRA_MAX_AUDIO_BYTES (TG getFile 20 MiB cap) — raised via env for
 # large CDN→PUT transfers (#1552 / parent Open-Q1).
-MAX_ATTACHMENT_INGEST_BYTES: int = int(
-    os.environ.get("LYRA_MAX_ATTACHMENT_INGEST_BYTES", 20 * 1024 * 1024)
-)
+_raw_max_ingest = os.environ.get("LYRA_MAX_ATTACHMENT_INGEST_BYTES")
+try:
+    MAX_ATTACHMENT_INGEST_BYTES: int = (
+        int(_raw_max_ingest) if _raw_max_ingest else 20 * 1024 * 1024
+    )
+except ValueError:
+    raise ValueError(
+        f"LYRA_MAX_ATTACHMENT_INGEST_BYTES must be an int, got {_raw_max_ingest!r}"
+    ) from None
 
 FetchFn = Callable[[], Awaitable[bytes]]
 log = logging.getLogger(__name__)
@@ -181,6 +187,14 @@ class AttachmentIngestStage:
                 )
                 raise AttachmentIngestError("That file is too large to process.")
             data = await p.fetch()
+            if len(data) > MAX_ATTACHMENT_INGEST_BYTES:
+                log.warning(
+                    "attachment exceeded cap after fetch: %s > %s (source=%s)",
+                    len(data),
+                    MAX_ATTACHMENT_INGEST_BYTES,
+                    p.source,
+                )
+                raise AttachmentIngestError("That file is too large to process.")
             try:
                 ref = await store.put(
                     data,

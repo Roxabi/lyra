@@ -32,13 +32,19 @@ from lyra.inbound.attachment_ingest import PendingAttachment
 
 def _make_adapter() -> TelegramAdapter:
     """Minimal TelegramAdapter with mocked bot — no real HTTP."""
+    import io
+
     adapter = TelegramAdapter(
         bot_id="main",
         token="tok",
         inbound_bus=MagicMock(),
     )
     bot_mock = AsyncMock()
-    bot_mock.get_file = AsyncMock()
+    # get_file returns a File-like object with .file_path
+    file_stub = SimpleNamespace(file_id="file_id_stub", file_path="path/to/file")
+    bot_mock.get_file = AsyncMock(return_value=file_stub)
+    # download_file returns a BytesIO (matches aiogram's real return type)
+    bot_mock.download_file = AsyncMock(return_value=io.BytesIO(b"<fake-bytes>"))
     bot_mock.send_message = AsyncMock()
     adapter.bot = bot_mock
     return adapter
@@ -296,3 +302,63 @@ async def test_tg_oversize_photo_reply_no_hub_push() -> None:
     assert len(captured_dispatches) == 0, (
         "Hub must NOT be reached on oversize attachment"
     )
+
+
+# ---------------------------------------------------------------------------
+# Test 5: sticker exclusion — static included, animated + video excluded
+# ---------------------------------------------------------------------------
+
+
+def _make_sticker_msg(
+    file_id: str = "sticker_001",
+    file_size: int = 512,
+    *,
+    is_animated: bool = False,
+    is_video: bool = False,
+) -> SimpleNamespace:
+    """Telegram message carrying a sticker."""
+    base = _make_base_msg()
+    base.sticker = SimpleNamespace(
+        file_id=file_id,
+        file_size=file_size,
+        is_animated=is_animated,
+        is_video=is_video,
+    )
+    return base
+
+
+def test_tg_static_sticker_included() -> None:
+    """Static WebP sticker (is_animated=False, is_video=False) → included."""
+    adapter = _make_adapter()
+    raw = _make_sticker_msg(file_id="sticker_static", is_animated=False, is_video=False)
+
+    msg = normalize(adapter, raw)
+
+    assert len(msg.attachments) == 1
+    assert len(msg.pending_attachments) == 1
+    pa: PendingAttachment = msg.pending_attachments[0]
+    assert pa.mime == "image/webp"
+    assert pa.source == "telegram"
+    assert pa.platform_ref == "sticker_static"
+
+
+def test_tg_animated_sticker_excluded() -> None:
+    """Animated sticker (is_animated=True) → excluded (empty attachment lists)."""
+    adapter = _make_adapter()
+    raw = _make_sticker_msg(is_animated=True, is_video=False)
+
+    msg = normalize(adapter, raw)
+
+    assert len(msg.attachments) == 0
+    assert len(msg.pending_attachments) == 0
+
+
+def test_tg_video_sticker_excluded() -> None:
+    """Video sticker (is_video=True) → excluded (empty attachment lists)."""
+    adapter = _make_adapter()
+    raw = _make_sticker_msg(is_animated=False, is_video=True)
+
+    msg = normalize(adapter, raw)
+
+    assert len(msg.attachments) == 0
+    assert len(msg.pending_attachments) == 0

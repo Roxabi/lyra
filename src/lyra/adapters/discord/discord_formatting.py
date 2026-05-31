@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 import re
 from typing import Any
@@ -101,7 +102,9 @@ def extract_attachments(
         )
         # Per-item factory avoids late-binding: each closure captures its own
         # ``_read`` bound method, not the loop variable ``a``.
-        _read = a.read
+        # use_cached=True fetches via proxy_url (longer-lived than the direct CDN
+        # URL, which expires before the stage can fetch post-queue).
+        _read = functools.partial(a.read, use_cached=True)
         pendings.append(
             PendingAttachment(
                 fetch=_read,

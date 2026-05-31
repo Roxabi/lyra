@@ -30,7 +30,7 @@ def _make_fetch_closure(adapter: "TelegramAdapter", file_id: str) -> Any:
         _file_id: str = file_id,
     ) -> bytes:
         file_ = await _adapter.bot.get_file(_file_id)
-        buf = await _adapter.bot.download(file=file_.file_id)
+        buf = await _adapter.bot.download_file(file_.file_path)
         if isinstance(buf, (bytes, bytearray)):
             return bytes(buf)
         # BytesIO / file-like

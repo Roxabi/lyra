@@ -66,10 +66,15 @@ class HttpBlobStoreAdapter:
         except httpx.HTTPStatusError as e:
             if e.response.status_code >= 500:
                 raise BlobStoreServerError(
-                    str(e),
+                    f"BlobStore returned HTTP {e.response.status_code}",
                     status_code=e.response.status_code,
                 ) from e
             raise
+        except httpx.RequestError as e:
+            raise BlobStoreServerError(
+                f"BlobStore request failed: {type(e).__name__}",
+                status_code=503,
+            ) from e
         wire = BlobRef.from_store_ref(storage_ref)
         if wire.store_key == PENDING_STORE_KEY:
             raise ValueError(

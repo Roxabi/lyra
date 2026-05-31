@@ -413,6 +413,67 @@ class TestHttpBlobStoreAdapterServerErrorTranslation:
         except httpx.HTTPStatusError:
             pass  # expected — raw 4xx propagates unchanged
 
+    async def test_put_translates_request_error_to_blob_store_server_error_503(
+        self,
+    ) -> None:
+        """put() wraps httpx.RequestError (e.g. ConnectError, TimeoutException) as
+        BlobStoreServerError with status_code 503.
+
+        Negative guard: removing the RequestError catch in HttpBlobStoreAdapter.put
+        makes this test fail because the raw httpx.ConnectError propagates uncaught.
+        """
+        # Arrange
+        import httpx
+
+        import roxabi_contracts
+        from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
+
+        fake_store = _make_fake_http_store()
+        request = httpx.Request("PUT", "http://blobstore/blobs")
+        cast(AsyncMock, fake_store.put).side_effect = httpx.ConnectError(
+            "Connection refused", request=request
+        )
+        adapter = HttpBlobStoreAdapter(fake_store)
+
+        # Act / Assert
+        with pytest.raises(roxabi_contracts.BlobStoreServerError) as exc_info:
+            await adapter.put(b"data", mime="image/png", source="discord")
+
+        raised = exc_info.value
+        assert raised.status_code == 503
+        assert isinstance(raised, roxabi_contracts.BlobStoreServerError)
+
+    async def test_put_5xx_error_message_does_not_contain_url(self) -> None:
+        """put() 5xx BlobStoreServerError message must not leak the request URL.
+
+        W1 (secret/URL leak): str(httpx.HTTPStatusError) can include the request URL
+        and potentially token-bearing request repr. The sanitized message must contain
+        only the HTTP status code, never a raw URL or headers.
+        """
+        # Arrange
+        import httpx
+
+        import roxabi_contracts
+        from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
+
+        fake_store = _make_fake_http_store()
+        request = httpx.Request("PUT", "http://blobstore.internal/blobs?token=secret")
+        response = httpx.Response(500, request=request)
+        cast(AsyncMock, fake_store.put).side_effect = httpx.HTTPStatusError(
+            "500 Internal Server Error", request=request, response=response
+        )
+        adapter = HttpBlobStoreAdapter(fake_store)
+
+        # Act
+        with pytest.raises(roxabi_contracts.BlobStoreServerError) as exc_info:
+            await adapter.put(b"data", mime="image/png", source="discord")
+
+        raised = exc_info.value
+        # The message must contain the status code but NOT a URL
+        assert "500" in raised.args[0]
+        assert "http://" not in raised.args[0]
+        assert "blobstore" not in raised.args[0]
+
 
 # ---------------------------------------------------------------------------
 # T4 — Protocol conformance: HttpBlobStoreAdapter satisfies BlobStorePort

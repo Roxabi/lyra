@@ -312,6 +312,36 @@ class TestAttachmentIngestStageNonAudio:
         # pending_attachment cleared (singular voice path)
         assert result.pending_attachment is None
 
+    async def test_post_fetch_oversize_raises_when_size_undeclared(self) -> None:
+        """size=None + fetch > cap → AttachmentIngestError; store.put NOT called.
+
+        Covers the post-fetch hard cap (B3): when the platform does not declare a
+        size up-front (size=None), the pre-download guard is skipped.  After fetch()
+        resolves the actual byte count is checked; an oversize payload must raise
+        AttachmentIngestError and must NOT forward the bytes to store.put.
+
+        Negative: if the post-fetch cap is absent, an oversize payload is sent to
+        store.put and the store_mock.put call count assertion fails.
+        """
+        # Arrange — fetch returns one byte over the cap; size=None (undeclared)
+        oversize_data = b"x" * (MAX_ATTACHMENT_INGEST_BYTES + 1)
+        fetch_mock = AsyncMock(return_value=oversize_data)
+        store_mock = AsyncMock()
+        store_mock.put = AsyncMock()
+
+        pending = _pending_attachment(fetch=fetch_mock, size=None)
+        att = _attachment()
+        msg = _nonaudio_msg(attachments=[att], pending_attachments=[pending])
+        ctx = IngestCtx(store=store_mock)
+        stage = AttachmentIngestStage()
+
+        # Act + Assert — must raise AttachmentIngestError
+        with pytest.raises(AttachmentIngestError):
+            await stage.run(msg, ctx)
+
+        # store.put must NOT be called — bytes must not be forwarded on oversize
+        store_mock.put.assert_not_awaited()
+
     @pytest.mark.parametrize("source", ["telegram", "discord"])
     async def test_source_does_not_branch(self, source: str) -> None:
         """source="telegram" and source="discord" produce identical stamping logic.

@@ -78,7 +78,7 @@ async def handle_message(adapter: "TelegramAdapter", msg: Any) -> None:
             typing=adapter._typing,
             msg_catalog=adapter._msg_manager,
         ),
-        ingest=getattr(adapter, "_ingest_ctx", None),
+        ingest=adapter._ingest_ctx,
     )
 
     async def _tg_backpressure(text: str) -> None:
@@ -232,7 +232,7 @@ async def handle_voice_message(adapter: "TelegramAdapter", msg: Any) -> None:  #
             typing=adapter._typing,
             msg_catalog=adapter._msg_manager,
         ),
-        ingest=getattr(adapter, "_ingest_ctx", None),
+        ingest=adapter._ingest_ctx,
     )
 
     async def _send_bp(text: str) -> None:

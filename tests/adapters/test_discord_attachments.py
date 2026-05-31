@@ -59,6 +59,8 @@ class TestDiscordAttachments:
         assert a.url_or_path_or_bytes == "https://cdn.discord.com/img.png"
         assert a.mime_type == "image/png"
         assert a.filename == "img.png"
+        assert len(msg.pending_attachments) == len(msg.attachments)
+        assert msg.pending_attachments[0].size == 123
 
     def test_normalize_document_attachment(self) -> None:
         """Non-image/video/audio → type='file', correct filename."""
@@ -102,6 +104,8 @@ class TestDiscordAttachments:
             self._make_msg(attachments=atts),
         )
         assert len(msg.attachments) == 2
+        assert len(msg.pending_attachments) == len(msg.attachments)
+        assert msg.pending_attachments[0].size == 123
 
     def test_normalize_video_attachment(self) -> None:
         """Video content_type → type='video'."""

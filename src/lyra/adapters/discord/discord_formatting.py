@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 import re
 from typing import Any
@@ -16,6 +17,7 @@ from lyra.core.messaging.message import (
     InboundMessage,
     Platform,
 )
+from lyra.inbound.attachment_ingest import PendingAttachment
 
 log = logging.getLogger("lyra.adapters.discord")
 
@@ -64,9 +66,21 @@ def make_thread_name(content: str, fallback: str) -> str:
     return name[:100]
 
 
-def extract_attachments(raw_attachments: list[Any]) -> list[Attachment]:
-    """Extract non-audio Attachment objects from Discord message.attachments."""
-    result: list[Attachment] = []
+def extract_attachments(
+    raw_attachments: list[Any],
+) -> tuple[list[Attachment], list[PendingAttachment]]:
+    """Extract non-audio Attachment objects and PendingAttachment closures.
+
+    Returns a tuple (attachments, pending_attachments), index-aligned.
+    Audio attachments (content_type in AUDIO_MIME_TYPES) are skipped entirely —
+    they are handled by the audio short-circuit path in discord_inbound.
+
+    For each non-audio attachment the PendingAttachment closure captures
+    ``a.read`` by per-item binding (no late-binding loop bug) so the stage
+    can ``await fetch()`` without touching any discord type.
+    """
+    attachments: list[Attachment] = []
+    pendings: list[PendingAttachment] = []
     for a in raw_attachments:
         ct = getattr(a, "content_type", None) or ""
         if ct in AUDIO_MIME_TYPES:
@@ -77,15 +91,31 @@ def extract_attachments(raw_attachments: list[Any]) -> list[Attachment]:
             att_type = "video"
         else:
             att_type = "file"
-        result.append(
+        mime = ct or "application/octet-stream"
+        attachments.append(
             Attachment(
                 type=att_type,
                 url_or_path_or_bytes=a.url,
-                mime_type=ct or "application/octet-stream",
+                mime_type=mime,
                 filename=getattr(a, "filename", None),
             )
         )
-    return result
+        # Per-item factory avoids late-binding: each closure captures its own
+        # ``_read`` bound method, not the loop variable ``a``.
+        # use_cached=True fetches via proxy_url (longer-lived than the direct CDN
+        # URL, which expires before the stage can fetch post-queue).
+        _read = functools.partial(a.read, use_cached=True)
+        pendings.append(
+            PendingAttachment(
+                fetch=_read,
+                mime=mime,
+                source="discord",
+                platform_ref=a.url,
+                filename=getattr(a, "filename", None),
+                size=getattr(a, "size", None),
+            )
+        )
+    return attachments, pendings
 
 
 def render_text(text: str, max_length: int = 2000) -> list[str]:

@@ -1,0 +1,44 @@
+---
+title: Collapse deploy to one atomic verb wired to autoupdate
+issue: 1578
+status: approved
+tier: F-full
+date: 2026-05-31
+---
+
+## Problem
+
+Today Lyra has 28 overlapping deploy targets in the Makefile (deploy, full-deploy, quadlet-install, quadlet-sync-install, nats-regen-authconf, nats-setup, install.sh, provision.sh, lyra-quadlet-sync.sh, setup.py, and others). Image autoupdate (image-only) silently wins and leaves git checkout, auth.conf, and Quadlet units stale. This was the root cause of the 2026-05-31 incident where the host ran an outdated config layer while the image was fresh.
+
+Additionally, non-interactive PATH is broken: `.venv/bin` for `lyra-acl`, `uv`, and `lyra` is not available in headless contexts, causing partial deploy aborts mid-run.
+
+## Who
+
+- **Primary:** Mickael (ops, deploys on M1 roxabituwer)
+- **Secondary:** Autoupdate hook (systemd timer, headless)
+
+## Constraints
+
+- Must remain atomic: partial deploy must leave host in a recoverable state
+- Must work headless (non-interactive shell, no PATH assumptions)
+- Must converge on staging merge AND on autoupdate trigger
+- Must not break existing deploy targets until the new verb is proven
+
+## Out of Scope
+
+- Multi-host deploy (M1 only, M2 out-of-scope)
+- Rollback mechanism (not required for this iteration)
+- CI/CD pipeline changes (GitHub Actions stay as-is)
+
+## Premise Validity
+
+**Success in 6 months:** Host config always matches HEAD after any deploy trigger (staging merge, autoupdate, manual). Single `make deploy` verb converges git → render → regen auth.conf → secrets → restart atomically. No half-applied states. PATH fixed for headless.
+
+**Failure in 6 months:** Another incident where image autoupdate leaves git/auth.conf/units stale (measurable: >0 stale-unit alerts per month). 28 make targets still in Makefile. PATH still breaks non-interactive runs.
+
+**Simplest alternative:** Fix PATH only + add a manual post-autoupdate hook script.
+**Why not:** Doesn't collapse the 28-target confusion to one verb; deploy still non-atomic (can abort mid-way); future operators still don't know which target to run.
+
+## Complexity
+
+**Tier: F-full** — Multi-domain: deploy scripts + Makefile + autoupdate hook + PATH headless fix; atomicity requirement = cross-domain coordination.

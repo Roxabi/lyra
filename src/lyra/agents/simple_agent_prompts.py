@@ -39,6 +39,12 @@ async def build_llm_text(
         - transcription_text: Raw STT text for history, or None if not voice
 
     """
+    if any(a.type == "audio" for a in msg.attachments):
+        log.warning(
+            "build_llm_text: stray audio attachment (type='audio') detected — "
+            "protocol violation, skipping"
+        )
+
     if msg.modality == "voice":
         # Pipeline-transcribed audio - wrap for prompt injection guard (H-8)
         return f"<voice_transcript>{html.escape(msg.text)}</voice_transcript>", msg.text

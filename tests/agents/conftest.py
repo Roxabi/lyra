@@ -8,7 +8,6 @@ import pytest
 
 # Backward-compatible re-exports from agent factories
 from tests.factories.agents import (  # noqa: F401
-    make_audio_message,
     make_cli_pool,
     make_config,
     make_mock_stt,
@@ -18,7 +17,6 @@ from tests.factories.agents import (  # noqa: F401
 from tests.factories.blobs import _make_mock_blob_store
 
 __all__ = [
-    "make_audio_message",
     "make_cli_pool",
     "make_config",
     "make_mock_stt",

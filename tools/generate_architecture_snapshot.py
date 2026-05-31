@@ -166,7 +166,7 @@ def render_markdown(
     lines.extend(["", "## Process Topology", ""])
     lines.extend(_render_topology(topology))
     lines.extend(["", "---", _FOOTER])
-    return "\n".join(lines)
+    return "\n".join(lines) + "\n"
 
 
 def main() -> None:

@@ -1,0 +1,65 @@
+---
+title: "refactor: stream processor sub-handler split — shrink stream_processor.py"
+issue: 1590
+status: approved
+tier: F-lite
+date: 2026-05-31
+---
+
+## Problem
+
+`src/lyra/core/processors/stream_processor.py` is 550 lines — it contains 7+ event
+handlers, 4 close helpers, 3 module-level helpers, and the main `process()` orchestrator.
+The file exceeds the 300-line quality gate and mixes multiple responsibilities:
+
+- LlmEvent routing & dispatch (`_dispatch_event`, `_process_events`)
+- Text block lifecycle (`_handle_text`, text minting)
+- Tool-call lifecycle (`_handle_tool_use*`, `_handle_tool_result`, orphan synthesis)
+- Reasoning block lifecycle (`_handle_thinking`, `_close_reasoning_if_open`)
+- Result/termination handling (`_handle_result`, `_close_open_blocks`)
+- Truncation & exception paths (`_close_truncated_stream`, `_close_exception_path`)
+
+Slice 3/4 of the sub-handler split was already completed in #1282 (extracting text and
+tool handlers). The remaining event handlers, close helpers, and module-level utilities
+still live in the main file, keeping it at 550 lines.
+
+## Who
+
+- **Primary:** Developers working on streaming pipeline logic (inbound → render events)
+- **Secondary:** Code reviewers — smaller files = faster, safer reviews
+
+## Constraints
+
+- Must stay within `lyra.core.processors` package (no new top-level module)
+- Must not break the `Parser[LlmEvent, RenderEvent]` Protocol contract
+- All event handlers are synchronous generators (no `await` inside) — this pattern must
+  be preserved in extracted modules
+- Hexagonal boundary: no adapter/LLM-driver imports permitted in sub-handler modules
+
+## Out of Scope
+
+- Refactoring the StateMachine or EventEmitter implementations
+- Changing the `RenderEvent` type hierarchy
+- Adding new event types (only reorganization of existing handlers)
+- Extracting `_mark_consumed` (single-line guard, stays in orchestrator)
+
+## Premise Validity
+
+**Success in 6 months:** `stream_processor.py` < 300 lines, extracted sub-handler modules
+each < 300 lines, streaming tests pass with zero regressions.
+
+**Failure in 6 months:** `stream_processor.py` still ≥ 300 lines after 3 sprints, or any
+extracted module ≥ 300 lines, or streaming tests regress.
+
+**Simplest alternative:** Add file-length exemption for `stream_processor.py`.
+**Why not:** Doesn't address root cause — 550 lines because it contains 7+ distinct
+responsibilities; exemption lets debt grow.
+
+## Complexity
+
+**Tier: F-lite** — Clear scope (1 domain: processor reorganization), single file split
+into 3 focused modules, no new architecture or unknowns.
+
+- Signals: 1 file → 3 modules, all under 300 lines
+- No new dependencies, no cross-domain changes
+- Existing test coverage (streaming tests) sufficient for regression detection

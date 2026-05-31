@@ -1,11 +1,12 @@
 [Unit]
-Description=Lyra Quadlet sync — pull staging and conditional install
+Description=Lyra post-autoupdate hook — run after container image updates
 After=network-online.target
 Wants=network-online.target
+OnFailure=lyra-deploy-failure.service
 
 [Service]
 Type=oneshot
-ExecStart=%h/projects/lyra/deploy/lyra-quadlet-sync.sh
+ExecStart=%h/projects/lyra/deploy/lyra-post-autoupdate.sh
 WorkingDirectory=%h/projects/lyra
 Environment="PATH=%h/projects/lyra/.venv/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
 StandardOutput=journal

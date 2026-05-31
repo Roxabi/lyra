@@ -39,7 +39,7 @@ define require_machine1
 	@case "$(DEPLOY_DIR)" in *[\'\"\$$\\\;\&\|\`]*) echo "Error: DEPLOY_DIR contains shell metacharacters"; exit 1 ;; esac
 endef
 
-.PHONY: build push lyra telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-sync-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy remote nats-setup nats-regen-authconf nats-add-identity test test-integration voice-smoke lint typecheck format quality-debt-report quality-debt-classify
+.PHONY: build push lyra telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-sync-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy converge remote nats-setup nats-regen-authconf nats-add-identity test test-integration voice-smoke lint typecheck format quality-debt-report quality-debt-classify
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
@@ -185,14 +185,18 @@ quadlet-install: quadlet-preflight  ## install Quadlet units → reload + verify
 QUADLET_SYNC_SRC := deploy/systemd
 QUADLET_SYNC_DST := $(HOME)/.config/systemd/user
 
-quadlet-sync-install:  ## install lyra-quadlet-sync timer + service → daemon-reload + enable
+quadlet-sync-install:  ## install systemd sync timers + services → daemon-reload + enable
 	@mkdir -p "$(QUADLET_SYNC_DST)"
-	@cp "$(QUADLET_SYNC_SRC)/lyra-quadlet-sync.service" "$(QUADLET_SYNC_DST)/"
-	@cp "$(QUADLET_SYNC_SRC)/lyra-quadlet-sync.timer"   "$(QUADLET_SYNC_DST)/"
+	@cp "$(QUADLET_SYNC_SRC)/lyra-quadlet-sync.service"      "$(QUADLET_SYNC_DST)/"
+	@cp "$(QUADLET_SYNC_SRC)/lyra-quadlet-sync.timer"        "$(QUADLET_SYNC_DST)/"
+	@cp "$(QUADLET_SYNC_SRC)/lyra-post-autoupdate.service"  "$(QUADLET_SYNC_DST)/"
+	@cp "$(QUADLET_SYNC_SRC)/lyra-post-autoupdate.timer"    "$(QUADLET_SYNC_DST)/"
+	@cp "$(QUADLET_SYNC_SRC)/lyra-deploy-failure.service"    "$(QUADLET_SYNC_DST)/"
 	@echo "Sync units copied to $(QUADLET_SYNC_DST)"
 	@systemctl --user daemon-reload
 	@systemctl --user enable lyra-quadlet-sync.timer
-	@echo "[ok] lyra-quadlet-sync.timer enabled."
+	@systemctl --user enable lyra-post-autoupdate.timer
+	@echo "[ok] lyra-quadlet-sync.timer + lyra-post-autoupdate.timer enabled."
 
 quadlet-authconf-merged:  ## render merged auth.conf (lyra + voicecli identities) → ~/.lyra/nkeys/auth.conf
 	@lyra-acl genkeys --emit-merged-authconf
@@ -227,6 +231,7 @@ quadlet-secrets-install:  ## (re)create Podman secrets from ~/.lyra/nkeys/*
 # ── Deploy + remote ──────────────────────────────────────────────────────────
 
 deploy:
+	@echo "DEPRECATED: use make converge"
 	$(require_machine1)
 	@echo "Deploying quadlet units to $(DEPLOY_HOST)..."
 	@ssh $(DEPLOY_HOST) '\
@@ -250,6 +255,7 @@ deploy:
 	echo "To restart: make remote lyra reload  (or: systemctl --user restart voicecli-tts voicecli-stt)"'
 
 full-deploy:  ## atomic deploy: git pull → quadlet-install → regen auth.conf → secrets → restart NATS → restart lyra
+	@echo "DEPRECATED: use make converge"
 	$(require_machine1)
 	@echo "Full deploy to $(DEPLOY_HOST)..."
 	@ssh $(DEPLOY_HOST) '\
@@ -281,6 +287,9 @@ full-deploy:  ## atomic deploy: git pull → quadlet-install → regen auth.conf
 	echo ""; \
 	echo "Full deploy complete."'
 
+converge:  ## atomic, idempotent, change-gated local deploy
+	@bash deploy/converge.sh
+
 # make remote [service] [action]
 #   service: lyra or empty → all lyra-* + voicecli-* units | <shortname> → lyra-<shortname>
 #   action:  reload | start | stop | status (default) | logs | errors
@@ -310,7 +319,7 @@ remote:
 # Shared list of services that hold NATS subject auth and must restart
 # whenever `auth.conf` is regenerated or a new identity is added. The bare
 # `lyra-nats` is restarted separately by the target itself before this list.
-LYRA_NATS_CLIENTS := lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-turn-writer lyra-gh-helper
+LYRA_NATS_CLIENTS := lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-turn-writer lyra-gh-helper lyra-blobstore
 
 nats-setup:
 	@bash deploy/nats/setup.sh

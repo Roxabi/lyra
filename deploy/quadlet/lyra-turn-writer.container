@@ -7,7 +7,6 @@ StartLimitBurst=5
 
 [Container]
 Image=ghcr.io/roxabi/lyra:staging-svc
-Label=io.containers.autoupdate=registry
 ContainerName=lyra-turn-writer
 Network=roxabi.network
 # Hardening — defense in depth (see issue #652).

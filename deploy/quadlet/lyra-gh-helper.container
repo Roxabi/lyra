@@ -12,7 +12,6 @@ StartLimitBurst=5
 # Same image as clipool — lyra-gh user (uid 1501) + lyra-tokenuser group (gid 1502)
 # are baked into the image at Dockerfile lines 49–51. No separate helper image needed.
 Image=ghcr.io/roxabi/lyra:staging
-Label=io.containers.autoupdate=registry
 ContainerName=lyra-gh-helper
 Pod=lyra-gh.pod
 ReadOnly=true

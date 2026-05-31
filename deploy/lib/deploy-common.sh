@@ -33,16 +33,17 @@ with_deploy_lock() {
 
 # ── Change detection helpers ─────────────────────────────────────────────────
 
-# Compute current convergence fingerprint: git HEAD + unit checksums + auth.conf SHA.
-# Output format: <git-head>:<units-sha256>:<authconf-sha256>
+# Compute current convergence fingerprint: git HEAD + unit checksums + auth.conf SHA
+# (+ voiceCLI HEAD if present).
+# Output format: <git-head>:<units-sha256>:<authconf-sha256>[:<voicecli-head>]
 compute_convergence_state() {
-    local git_head unit_sha auth_sha
+    local git_head unit_sha auth_sha voicecli_head
 
     git_head=$(cd "${LYRA_DIR}" && git rev-parse HEAD 2>/dev/null || echo "none")
 
     if [ -d "${QUADLET_DIR}" ]; then
-        unit_sha=$(find "${QUADLET_DIR}" -maxdepth 1 -name 'lyra*' -type f \
-            | sort | xargs -r sha256sum | sha256sum | awk '{print $1}')
+        unit_sha=$(find "${QUADLET_DIR}" -maxdepth 1 -name 'lyra*' -type f -print0 \
+            | sort -z | xargs -0 -r sha256sum | sha256sum | awk '{print $1}')
     else
         unit_sha="none"
     fi
@@ -53,7 +54,14 @@ compute_convergence_state() {
         auth_sha="none"
     fi
 
-    echo "${git_head}:${unit_sha}:${auth_sha}"
+    VOICE_DIR="${VOICE_DIR:-${HOME}/projects/voiceCLI}"
+    if [ -d "${VOICE_DIR}/.git" ]; then
+        voicecli_head=$(cd "${VOICE_DIR}" && git rev-parse HEAD 2>/dev/null || echo "none")
+    else
+        voicecli_head="none"
+    fi
+
+    echo "${git_head}:${unit_sha}:${auth_sha}:${voicecli_head}"
 }
 
 # Read the last recorded convergence state.
@@ -67,6 +75,7 @@ read_convergence_state() {
 
 # Write the current convergence state to the stamp file.
 write_convergence_state() {
+    mkdir -p "$(dirname "${CONVERGE_STAMP}")"
     compute_convergence_state > "${CONVERGE_STAMP}"
 }
 

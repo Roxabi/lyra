@@ -21,19 +21,19 @@ local_digest() {
 }
 
 main() {
-    local remote local
+    local remote_digest_val local_digest_val
 
-    remote=$(remote_digest)
-    local=$(local_digest)
+    remote_digest_val=$(remote_digest)
+    local_digest_val=$(local_digest)
 
-    if [ -n "${local}" ] && [ "${remote}" = "${local}" ]; then
+    if [ -n "${local_digest_val}" ] && [ "${remote_digest_val}" = "${local_digest_val}" ]; then
         echo "Image digest unchanged (${IMAGE}) — nothing to do."
         exit 0
     fi
 
     echo "Image digest drift detected:"
-    echo "  remote: ${remote}"
-    echo "  local:  ${local:-<not present>}"
+    echo "  remote: ${remote_digest_val}"
+    echo "  local:  ${local_digest_val:-<not present>}"
 
     echo "==> Pulling ${IMAGE}..."
     podman pull "${IMAGE}"

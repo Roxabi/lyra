@@ -2,6 +2,7 @@
 Description=Lyra Quadlet sync — pull staging and conditional install
 After=network-online.target
 Wants=network-online.target
+OnFailure=lyra-deploy-failure.service
 
 [Service]
 Type=oneshot

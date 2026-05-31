@@ -22,7 +22,7 @@ _do_converge() {
 
     # 2) Pull lyra staging
     echo "==> lyra: pulling staging..."
-    (cd "${LYRA_DIR}" && git pull origin staging)
+    (cd "${LYRA_DIR}" && git pull --ff-only origin staging)
 
     # 3) Install lyra quadlet units (no restart)
     echo "==> lyra: installing quadlet units..."
@@ -32,7 +32,7 @@ _do_converge() {
     VOICE_DIR="${VOICE_DIR:-${HOME}/projects/voiceCLI}"
     if [ -d "${VOICE_DIR}/.git" ]; then
         echo "==> voiceCLI: pulling staging..."
-        (cd "${VOICE_DIR}" && git pull origin staging)
+        (cd "${VOICE_DIR}" && git pull --ff-only origin staging)
         echo "==> voiceCLI: installing quadlet units..."
         make -C "${VOICE_DIR}" quadlet-install NO_RESTART=1
     fi
@@ -47,18 +47,16 @@ _do_converge() {
 
     # 7) Restart NATS (mount-typed secret refresh requires restart)
     echo "==> NATS: restarting lyra-nats..."
-    systemctl --user restart lyra-nats
-    systemctl --user is-active --wait lyra-nats \
+    systemctl --user restart --wait lyra-nats
+    systemctl --user is-active --quiet lyra-nats \
         || { echo "ERROR: lyra-nats failed to reach active state"; exit 1; }
 
     # 8) Restart lyra NATS clients
     echo "==> Lyra: restarting containers..."
     local failed=""
     for svc in lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-turn-writer lyra-gh-helper lyra-blobstore; do
-        if systemctl --user is-active --quiet "${svc}"; then
-            systemctl --user restart "${svc}" \
-                || { echo "ERROR: restart ${svc} failed"; failed="${failed} ${svc}"; }
-        fi
+        systemctl --user restart "${svc}" \
+            || { echo "ERROR: restart ${svc} failed"; failed="${failed} ${svc}"; }
     done
     [ -z "${failed}" ] || { echo "ERROR: restart failed for:${failed}"; exit 1; }
 
@@ -67,10 +65,8 @@ _do_converge() {
         echo "==> voiceCLI: restarting containers..."
         failed=""
         for svc in voicecli-tts voicecli-stt; do
-            if systemctl --user is-active --quiet "${svc}"; then
-                systemctl --user restart "${svc}" \
-                    || { echo "ERROR: restart ${svc} failed"; failed="${failed} ${svc}"; }
-            fi
+            systemctl --user restart "${svc}" \
+                || { echo "ERROR: restart ${svc} failed"; failed="${failed} ${svc}"; }
         done
         [ -z "${failed}" ] || { echo "ERROR: restart failed for:${failed}"; exit 1; }
     fi

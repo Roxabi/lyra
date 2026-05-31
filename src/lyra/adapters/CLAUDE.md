@@ -29,15 +29,7 @@ No business logic, LLM calls, or agent logic lives here.
 
 ## ChannelAdapter protocol (`core/hub/hub_protocol.py`)
 
-| Method | Role |
-|--------|------|
-| `normalize(raw)` | Raw payload → `InboundMessage` |
-| `normalize_audio(raw, bytes, mime, trust_level)` | Raw audio → `AudioPayload` |
-| `send(original_msg, outbound)` | Send complete reply |
-| `send_streaming(original_msg, chunks, outbound)` | Stream reply with edit-in-place |
-| `render_audio(msg, inbound)` | Send voice note |
-| `render_audio_stream(chunks, inbound)` | Stream TTS audio chunks |
-| `render_attachment(msg, inbound)` | Send attachment |
+Role interface (Fowler) — the hub's view of every platform adapter: inbound normalization, outbound delivery, audio, attachments. See `src/lyra/core/hub/hub_protocol.py` for the full Protocol definition.
 
 `render_voice_stream()` on Telegram logs a warning and returns — voice-channel
 playback is Discord-only. Do NOT make it functional.
@@ -92,21 +84,17 @@ Per-platform code is now thin formatter implementations (`telegram_formatter.py`
 | Stage | Module | Role |
 |-------|--------|------|
 | Emitter | `lyra.outbound.emitter.OutboundEmitter` | Composes formatter + throttle + error_handler; owns placeholder→edits→delivery |
-| Formatter | `lyra.outbound.formatter.OutboundFormatter` (Protocol) | chunk, render_text, render_buttons, dim_italic, placeholder_text, get_msg, send_placeholder, edit_placeholder_text, send_trace_placeholder, send_message, send_fallback, edit_reasoning, edit_tool_recap |
+| Formatter | `lyra.outbound.formatter.OutboundFormatter` (Protocol) | pure formatting (chunk, render_text, etc.) + platform-I/O mechanics (send_placeholder, send_message, etc.) — see `src/lyra/outbound/formatter.py` |
 | Throttle | `lyra.outbound.throttle.ThrottleCapability` (Protocol) | start_typing/cancel_typing + edit_interval_s |
 | Error handler | `lyra.outbound.error_handler.OutboundErrorHandler` | guard (single broad-catch site), handle, classify_stream_error, get_msg |
 
-Send-mechanics (send_placeholder, edit_placeholder_text, send_trace_placeholder,
-send_message, send_fallback) and get_msg are part of `OutboundFormatter` — the
-formatter is the single platform-I/O surface consumed by `OutboundEmitter`.
+`OutboundFormatter` is the single platform-I/O surface consumed by `OutboundEmitter`.
 
 **Format-vs-I/O split (S7a decision, #1508):** `OutboundFormatter` intentionally
-owns two axes — (a) pure formatting (`chunk`, `render_text`, `render_buttons`,
-`dim_italic`, `placeholder_text`) and (b) platform-I/O mechanics (everything else).
-This is a deliberate SRP trade-off accepted at N=2 platforms to keep `_make_emitter`
-arity low.  Any new method added to `OutboundFormatter` MUST be consciously placed
-in axis (a) or (b).  Re-evaluate extracting an OutboundSender Protocol when a
-third platform adapter lands (#1508).
+owns two axes — (a) pure formatting and (b) platform-I/O mechanics — to keep
+`_make_emitter` arity low (deliberate SRP trade-off at N=2 platforms). Any new
+method MUST be consciously placed in axis (a) or (b). Re-evaluate extracting an
+OutboundSender Protocol when a third platform adapter lands (#1508).
 
 ## Clipool adapter (`clipool/`)
 

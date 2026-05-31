@@ -4,8 +4,8 @@
 
 CLI command implementations for `lyra agent ...` (init, list, show, edit, patch,
 validate, create, delete, assign, unassign, refine) and `lyra bot ...` (init).
-Wired via `src/lyra/agent_cmd/agents/`, `src/lyra/agent_cmd/bots/`, and `src/lyra/agent_cmd/platforms/` subdirs
-and dispatched by the Typer CLI entrypoint.
+Wired via `src/lyra/agent_cmd/agents/`, `src/lyra/agent_cmd/bots/`, and
+`src/lyra/agent_cmd/platforms/` subdirs; dispatched by the Typer CLI entrypoint.
 
 ## Position in the architecture
 
@@ -26,10 +26,10 @@ lyra CLI entrypoint
 
 | Subdir | Role | Store |
 |---|---|---|
-| `agents/` | Agent implementations (SimpleAgent, …) — **not** this package | `AgentStore` (`~/.lyra/config.db`) |
+| `lyra.agents/ (separate pkg)` | Agent implementations (SimpleAgent, …) — **not** this package | `AgentStore` (`~/.lyra/config.db`) |
 | `agent_cmd/agents/` | CLI commands that manage agents | `AgentStore` (read/write) |
 | `agent_cmd/bots/` | CLI commands that manage bot configurations | `BotStore` (`~/.lyra/config.db`) |
-| `agent_cmd/platforms/` | CLI commands for platform-specific adapter setup | `BotStore` (read/write) |
+| `agent_cmd/platforms/` | CLI commands managing per-platform agent/bot bindings (telegram, discord) | `AgentStore` + `BotStore` (`~/.lyra/config.db`) |
 
 ## Invariants
 

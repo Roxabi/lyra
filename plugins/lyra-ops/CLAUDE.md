@@ -33,8 +33,8 @@ Claude Code plugin via `roxabi-plugins` (or loaded locally from this path).
 
 `/lyra-debug` — full diagnostic cycle: status → health endpoint → logs →
 root-cause diagnosis → remediation options (DP) → recovery verification.
-Covers both degraded and fully-down scenarios across all eight Lyra production units
-(lyra-hub, lyra-telegram, lyra-discord, lyra-nats, lyra-clipool, lyra-gh-helper, lyra-turn-writer, lyra-blobstore).
+Covers both degraded and fully-down scenarios across all Lyra Quadlet units
+(authoritative list: `deploy/quadlet.toml`).
 
 ## Adding skills
 

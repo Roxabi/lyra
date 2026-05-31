@@ -66,7 +66,7 @@ File/rename → update P immediately
 | `src/lyra/infrastructure/turn_writer/CLAUDE.md` | JetStream subscriber-writer for turns.db (#1331) — sole writer per ADR-075 |
 | `src/lyra/infrastructure/outbound_audio/CLAUDE.md` | JetStream stream + consumer + KV provisioning for durable outbound-audio path (#1482) |
 | `src/lyra/nats/CLAUDE.md` | in-tree NATS integration (subjects, codec, domain clients) |
-| `src/lyra/tools/CLAUDE.md` | GitHub token dispenser (gh_token submodule) |
+| `src/lyra/tools/CLAUDE.md` | GitHub token dispenser (gh_token helper) |
 | `packages/roxabi-nats/CLAUDE.md` | NATS transport SDK (ADR-045) |
 | `packages/roxabi-contracts/CLAUDE.md` | NATS contract schemas (ADR-049) |
 | `packages/roxabi-blobs/CLAUDE.md` | BlobStore client SDK (consumed by hub + adapters) |

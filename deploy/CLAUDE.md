@@ -3,7 +3,7 @@
 ## Scope
 
 Container deployment artifacts for Lyra on prod (`roxabituwer`, M₁).
-Subdirs: `quadlet/` | `nats/` | `scripts/` | `lib/` | `lyra-gh/`
+Subdirs: `quadlet/` | `nats/` | `scripts/` | `lib/` | `lyra-gh/` | `systemd/`
 
 ¬docker, ¬docker-compose for prod. Runtime stack: **Podman 5.x (native on Ubuntu 26.04 LTS)
 + Quadlet generators + systemd user units**.
@@ -14,6 +14,8 @@ Cross-repo adoption checklist → `docs/ops/container-publishing.md § Cross-rep
 ---
 
 ## Unit naming convention
+
+Authoritative unit manifest: `deploy/quadlet.toml`. Table below is a naming-convention reference, not the SSoT.
 
 | Unit file | Container name | Service unit |
 |---|---|---|
@@ -26,6 +28,7 @@ Cross-repo adoption checklist → `docs/ops/container-publishing.md § Cross-rep
 | `quadlet/lyra-turn-writer.container` | `lyra-turn-writer` | `lyra-turn-writer.service` |
 | `quadlet/lyra-blobstore.container` | `lyra-blobstore` | `lyra-blobstore.service` |
 
+Telegram and discord units are rendered from `.container.tmpl` at deploy time (bot-token injection).
 Pattern: `lyra-<component>.container` → `ContainerName=lyra-<component>`.
 Network: all units attach to `roxabi.network` (defined in `quadlet/roxabi.network`).
 
@@ -136,6 +139,6 @@ so the hooksPath becomes process-immutable.
 
 - `docs/ops/container-publishing.md` — full CI → GHCR → Quadlet pattern + auto-update
 - `docs/ARCHITECTURE.md` — hub-spoke topology
-- ADR-054 — UserNS + secret delivery decisions
+- ADR-055 (supersedes archived ADR-054) — UserNS + secret delivery decisions
 - Issue #929 — `podman auto-update` adoption
 - Issue #652 — container hardening

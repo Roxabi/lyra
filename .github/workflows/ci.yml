@@ -101,6 +101,15 @@ jobs:
           fi
           uv run python tools/check_doc_drift.py
 
+      - name: Check architecture snapshot freshness
+        continue-on-error: true
+        run: |
+          uv run python tools/generate_architecture_snapshot.py .
+          git diff --exit-code docs/architecture/CURRENT.generated.md || {
+            echo "::error::CURRENT.generated.md is stale. Run 'python tools/generate_architecture_snapshot.py .' and commit."
+            exit 1
+          }
+
       - name: Enforce import layers
         run: uv run lint-imports
 

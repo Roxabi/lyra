@@ -140,6 +140,8 @@ def _collect_scan_files(root: Path) -> list[Path]:
             for f in sorted(arch.rglob(ext)):
                 if adr_dir in f.parents:
                     continue
+                if f.name == "CURRENT.generated.md":
+                    continue
                 add(f)
     add(root / "docs" / "ARCHITECTURE.md")
     standards = root / "docs" / "standards"

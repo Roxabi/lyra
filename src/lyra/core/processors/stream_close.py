@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Iterator
-from typing import Any
+from typing import TYPE_CHECKING
 
 from lyra.core.messaging.render_events import (
     ReasoningEndRenderEvent,
@@ -16,6 +16,9 @@ from lyra.core.messaging.render_events import (
     TextEndRenderEvent,
 )
 from lyra.streaming.state_machine import StateMachine
+
+if TYPE_CHECKING:
+    from lyra.core.processors.stream_tool import StreamToolHandler
 
 log = logging.getLogger(__name__)
 
@@ -31,11 +34,9 @@ class StreamCloseHandler:
         StateMachine tracking open reasoning blocks.
     sm_tool:
         StateMachine tracking open tool calls.
-    tool_id_to_name:
-        Map from tool_call_id to the tool name (needed for result sanitisation,
-        but kept here for symmetry with the other extracted helpers).
     tool_handler:
-        Tool handler reference (reserved for future orphan-synthesis logic).
+        Reference to ``StreamToolHandler`` for orphan ``ToolCallEnd`` synthesis
+        on truncation and exception paths.
     """
 
     def __init__(
@@ -43,13 +44,11 @@ class StreamCloseHandler:
         sm_text: StateMachine[str, str],
         sm_reasoning: StateMachine[str, str],
         sm_tool: StateMachine[str, str],
-        tool_id_to_name: dict[str, str],
-        tool_handler: Any,
+        tool_handler: "StreamToolHandler | None",
     ) -> None:
         self._sm_text = sm_text
         self._sm_reasoning = sm_reasoning
         self._sm_tool = sm_tool
-        self._tool_id_to_name = tool_id_to_name
         self._tool_handler = tool_handler
 
     # ------------------------------------------------------------------
@@ -116,6 +115,9 @@ class StreamCloseHandler:
             yield TextEndRenderEvent(message_id=open_text)
             self._sm_text.close(open_text)
         # ───── #1321 A4 — orphan ToolCallEnd symmetry on truncation/exception ─────
+        assert self._tool_handler is not None, (
+            "tool_handler must be wired by StreamProcessor"
+        )
         yield from self._tool_handler.synth_orphan_tool_ends()
 
 

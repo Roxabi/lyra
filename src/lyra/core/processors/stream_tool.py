@@ -88,8 +88,6 @@ class StreamToolHandler:
     sm_text:
         StateMachine tracking open text blocks (needed to close text on tool
         transitions).
-    show_intermediate:
-        Whether intermediate text deltas are emitted (mirrors StreamProcessor flag).
     """
 
     def __init__(
@@ -98,13 +96,11 @@ class StreamToolHandler:
         tool_id_to_name: dict[str, str],
         close_handler: StreamCloseHandler | None,
         sm_text: StateMachine[str, str],
-        show_intermediate: bool,
     ) -> None:
         self._sm_tool = sm_tool
         self._tool_id_to_name = tool_id_to_name
         self._close_handler = close_handler
         self._sm_text = sm_text
-        self._show_intermediate = show_intermediate
 
     def handle_tool_use(self, event: ToolUseLlmEvent) -> Iterator[RenderEvent]:
         """Emit ToolCallStart; register open tool call via _sm_tool."""

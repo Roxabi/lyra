@@ -99,13 +99,12 @@ class StreamProcessor:
             self._sm_text, self._sm_reasoning, show_intermediate, None
         )
         self._tool_handler = StreamToolHandler(
-            self._sm_tool, self._tool_id_to_name, None, self._sm_text, show_intermediate
+            self._sm_tool, self._tool_id_to_name, None, self._sm_text
         )
         self._close_handler = StreamCloseHandler(
             self._sm_text,
             self._sm_reasoning,
             self._sm_tool,
-            self._tool_id_to_name,
             self._tool_handler,
         )
         # Wire back-references (close_handler needs tool_handler; tool_handler
@@ -306,7 +305,7 @@ class StreamProcessor:
         elif isinstance(event, ThinkingLlmEvent):  # pyright: ignore[reportUnnecessaryIsInstance]
             yield from self._text_handler.handle_thinking(event)
         else:
-            assert_never(event)
+            assert_never(event)  # pyright: ignore[reportUnreachableCode] — DEBT:defensive-narrow-payloads
 
     def _handle_result(self, event: ResultLlmEvent) -> Iterator[RenderEvent]:
         """Close open text/reasoning blocks; synthesize orphan ToolCallEnds.

@@ -1,19 +1,15 @@
-# subject_literals_allowlist.txt — pre-existing orphan NATS subjects.
+# subject_literals_allowlist.txt — INTENTIONALLY EMPTY (gate is fully strict).
 #
-# Each line is a raw `lyra.*` subject literal that appears in src/ but is NOT
-# yet declared in deploy/nats/acl-matrix.json or roxabi-contracts SUBJECTS.
-# check_subject_literals.py treats these as baselined debt (gate stays green)
-# instead of failing CI on day one — mirrors the baseline-then-prevent pattern
-# of the other src/ scanners in this directory.
+# This allowlist baselined pre-existing orphan NATS subjects so
+# check_subject_literals.py could ship green. As of #1545 it is retired: both
+# remaining entries were declared at their source and removed from here, so the
+# gate now requires every raw lyra.* subject literal in src/ to resolve — no
+# baselined debt remains.
 #
-# Format: one subject literal per line. `#` comments and blank lines ignored.
+#   - lyra.gh.mint_failure.>  → hub subscribe grant in deploy/nats/acl-matrix.json
+#   - lyra.verify.deny        → roxabi_contracts.verify.SUBJECTS (reserved sentinel)
 #
-# DO NOT add new entries to silence the gate. The correct fix for a new orphan
-# is to declare the subject in acl-matrix.json (publish/subscribe grant) or in
-# roxabi-contracts SUBJECTS. This list should only shrink.
-#
-# Retirement tracked in the follow-up issue (blocked-by #1533): declare both
-# subjects in acl-matrix, then delete them here and the gate goes fully strict.
-
-lyra.verify.deny
-lyra.gh.mint_failure.>
+# DO NOT add entries here. The correct fix for a new orphan subject is to declare
+# it in acl-matrix.json (publish/subscribe grant) or in roxabi-contracts SUBJECTS.
+# Keeping this file empty (rather than deleting it) documents that the gate is
+# strict by design and guards against silent re-introduction of baselined debt.

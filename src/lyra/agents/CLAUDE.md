@@ -46,7 +46,7 @@ After any TOML edit: `lyra agent init --force` + daemon restart (no file watcher
 
 ## Known gotcha
 
-`_WORKSPACE_BUILTIN_CONFLICTS` (in `core/agent_config.py`) — workspace keys that shadow built-in
+`_WORKSPACE_BUILTIN_CONFLICTS` (in `core/agent/agent_config.py`) — workspace keys that shadow built-in
 command names are rejected at init time. Check this list before adding new workspace shortcuts.
 
 ## What NOT to do

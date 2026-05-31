@@ -53,21 +53,11 @@ least one minor release before removal; announce in CHANGELOG.md.
 
 ## Module layout
 
-```
-src/roxabi_contracts/
-├── envelope.py          # ContractEnvelope base + CONTRACT_VERSION
-├── errors.py            # WorkerError + KNOWN_CODES registry (ADR-066)
-├── blob_errors.py       # BlobNotFoundError (port-level not-found, ADR-082)
-├── _testing_guards.py   # Shared production-guard logic (env + loopback checks)
-├── voice/               # lyra ↔ voiceCLI (ADR-044)
-├── image/               # lyra ↔ imageCLI (ADR-050)
-├── jobs/                # Generic job-dispatch contract
-├── llm/                 # LLM streaming contract
-├── cli/                 # CLI pool contract
-├── gh/                  # GitHub event contract
-├── audit/               # Audit event contract
-└── verify/              # ACL-verification deny-probe sentinel (ungranted, #1545)
-```
+Domain-grouped contract modules (run `ls src/roxabi_contracts/` for the full listing):
+
+- **Shared primitives:** `envelope.py` (ContractEnvelope base), `errors.py` (WorkerError + KNOWN_CODES registry, ADR-066), `blob_errors.py` (BlobNotFoundError, ADR-082), `_testing_guards.py`, `_nats_utils.py`
+- **Integration contracts:** `voice/` (ADR-044), `image/` (ADR-050), `turns/` (#1331), `outbound/`, `cli/`, `llm/`, `jobs/`, `gh/`, `audit/`
+- **Sentinel:** `verify/` — ACL-verification deny-probe (ungranted, #1545)
 
 Each domain submodule exposes: `SUBJECTS` (subject constants), models, and
 optionally `fixtures` (pure synthetic data) and `testing` (test doubles —

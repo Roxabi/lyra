@@ -63,7 +63,7 @@ Reads are synchronous (cache). Writes are async (SQLite). Cache updated atomical
 
 **`ChannelAdapter`** (`hub/hub_protocol.py`) — structural protocol every adapter must implement. Hub trusts `InboundMessage.user_id` as authenticated; adapters must verify platform auth before constructing the message.
 
-**`PoolContext`** (`pool/pool.py`) — narrow interface `Pool` requires from its owner. Test seam: inject a mock to unit-test `Pool` without pulling in `Hub`.
+**`PoolContext`** (`pool/pool_context.py`, re-exported from `pool/pool.py`) — narrow interface `Pool` requires from its owner. Test seam: inject a mock to unit-test `Pool` without pulling in `Hub`.
 
 **`RoutingKey`** (`hub/hub_protocol.py`) — `NamedTuple(platform, bot_id, scope_id)`. Always call `.to_pool_id()` — never build pool ID strings manually (ADR-001 §4).
 

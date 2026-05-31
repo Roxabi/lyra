@@ -19,6 +19,7 @@ Bootstrap = orchestration only. No business logic — all domain behaviour lives
 - `_bootstrap_hub_standalone` — hub process
 - `_bootstrap_adapter_standalone` — Telegram / Discord adapter process
 - `_bootstrap_clipool_standalone` — CLI pool process
+- `_bootstrap_turn_writer_standalone` — turn-writer JetStream subscriber process (`lyra turn-writer`, `standalone/worker_standalone.py`)
 - `_bootstrap_unified` — all-in-one single process
 
 ## Flat files at root

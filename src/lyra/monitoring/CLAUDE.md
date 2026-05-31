@@ -31,17 +31,14 @@ Issue #44 note: state changes are now logged at call sites throughout the hub. T
 monitoring process is the **safety-net catch** for persistent anomalies, not the
 primary observability path.
 
-## Files
+## Module roles
 
-| File | Role |
-|---|---|
-| `__main__.py` | Entry point — wires Layer 1 → Layer 2, owns exit code |
-| `checks.py` | Layer 1 probes (process liveness, HTTP health, queue depth, circuits, reaper, disk) |
-| `checks_log.py` | Log-scraping probes (NATS permission errors, stream_gen timeouts) |
-| `checks_varz.py` | NATS `/varz` delta probe — tracks auth_errors + slow_consumers across runs |
-| `config.py` | `MonitoringConfig` (Pydantic) — thresholds from `[monitoring]` TOML, secrets from env |
-| `models.py` | `CheckResult`, `HealthReport`, `DiagnosisReport` dataclasses |
-| `escalation.py` | Layer 2 — LLM diagnosis via Claude CLI + Telegram delivery (direct httpx, ¬hub) |
+- **Entrypoint** (`__main__.py`) — wires Layer 1 → Layer 2, owns exit code
+- **Check implementations** (`checks.py`, `checks_audio.py`, `checks_log.py`, `checks_varz.py`) — probes imported by `checks.py` and composed into `run_checks()`; `checks_varz.py` writes delta state to `~/.lyra/nats-monitor-state.json`
+- **Config + models** (`config.py`, `models.py`) — `MonitoringConfig` (Pydantic, thresholds from `[monitoring]` TOML + secrets from env); `CheckResult` / `HealthReport` / `DiagnosisReport` dataclasses
+- **Escalation** (`escalation.py`) — Layer 2: LLM diagnosis via Claude CLI + Telegram delivery (direct httpx, ¬hub)
+
+For the current file listing: `ls src/lyra/monitoring/`.
 
 ## Config
 

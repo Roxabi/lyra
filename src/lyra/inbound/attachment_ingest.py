@@ -25,8 +25,6 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, cast
 
-from roxabi_contracts import BlobStoreServerError
-
 if TYPE_CHECKING:
     from lyra.core.messaging.message import InboundMessage
     from lyra.core.ports.blobstore import BlobStorePort
@@ -93,6 +91,7 @@ class AttachmentResult:
     success: bool
     blob_ref: "BlobRef | None" = None
     error: str | None = None
+    reason: Literal["oversize", "storage_error"] | None = None
 
 
 @dataclass(frozen=True)
@@ -214,10 +213,22 @@ class AttachmentIngestStage:
                     AttachmentResult(
                         success=False,
                         error="That file is too large to process.",
+                        reason="oversize",
                     )
                 )
                 continue
-            data = await p.fetch()
+            try:
+                data = await p.fetch()
+            except Exception:
+                log.exception("attachment fetch failed (source=%s)", p.source)
+                results.append(
+                    AttachmentResult(
+                        success=False,
+                        error="Couldn't download your attachment — please try again.",
+                        reason="storage_error",
+                    )
+                )
+                continue
             if len(data) > MAX_ATTACHMENT_INGEST_BYTES:
                 log.warning(
                     "attachment exceeded cap after fetch: %s > %s (source=%s)",
@@ -229,6 +240,7 @@ class AttachmentIngestStage:
                     AttachmentResult(
                         success=False,
                         error="That file is too large to process.",
+                        reason="oversize",
                     )
                 )
                 continue
@@ -241,22 +253,39 @@ class AttachmentIngestStage:
                     platform_ref=p.platform_ref,
                     platform_message_id=p.platform_message_id,
                 )
-            except BlobStoreServerError:
+            except Exception:
                 log.exception("blobstore rejected attachment (source=%s)", p.source)
                 results.append(
                     AttachmentResult(
                         success=False,
                         error="Couldn't store your attachment — please try again.",
+                        reason="storage_error",
                     )
                 )
                 continue
             if i < len(new_atts):
                 new_atts[i] = dataclasses.replace(new_atts[i], blob_ref=ref)
+            else:
+                log.warning(
+                    "blob_ref dropped: pending_attachment index %d exceeds "
+                    "attachments length %d",
+                    i,
+                    len(new_atts),
+                )
+                results.append(
+                    AttachmentResult(
+                        success=False,
+                        error="Index mismatch: attachment and pending list out of sync",
+                        reason="storage_error",
+                    )
+                )
+                continue
             results.append(AttachmentResult(success=True, blob_ref=ref))
 
         failures = [r for r in results if not r.success]
         if failures:
             first_error = failures[0].error or "Attachment ingest failed."
-            raise AttachmentIngestError(first_error, reason="storage_error")
+            reason = failures[0].reason or "storage_error"
+            raise AttachmentIngestError(first_error, reason=reason)
 
         return dataclasses.replace(msg, attachments=new_atts, pending_attachments=[])

@@ -257,6 +257,18 @@ async def _discord_pre_session_hook(
     return msg
 
 
+async def _warn_oversize_reply(message: Any) -> None:
+    """Send oversize warning reply, swallowing HTTP errors."""
+    try:
+        await message.reply("That file is too large to process.")
+    except discord.HTTPException:
+        log.warning(
+            "Failed to send oversize reply for message id=%s",
+            message.id,
+            exc_info=True,
+        )
+
+
 async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:
     """Handle incoming Gateway message.
 
@@ -292,7 +304,7 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:
         if (getattr(a, "size", None) or 0) > MAX_ATTACHMENT_INGEST_BYTES
     )
     if oversize_count:
-        await message.reply("That file is too large to process.")
+        await _warn_oversize_reply(message)
     if oversize_count and oversize_count == len(raw_atts) and not (
         message.content or ""
     ).strip():

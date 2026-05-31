@@ -211,9 +211,10 @@ class TestAttachmentIngestStageNonAudio:
         stage = AttachmentIngestStage()
 
         # Act + Assert — must raise before awaiting fetch
-        with pytest.raises(AttachmentIngestError):
+        with pytest.raises(AttachmentIngestError) as exc_info:
             await stage.run(msg, ctx)
 
+        assert exc_info.value.reason == "oversize"
         # Negative guard: if fetch was called, this fails
         fetch_mock.assert_not_awaited()
 
@@ -236,8 +237,10 @@ class TestAttachmentIngestStageNonAudio:
         stage = AttachmentIngestStage()
 
         # Act + Assert
-        with pytest.raises(AttachmentIngestError):
+        with pytest.raises(AttachmentIngestError) as exc_info:
             await stage.run(msg, ctx)
+
+        assert exc_info.value.reason == "storage_error"
 
     async def test_store_none_is_passthrough_nonaudio(self) -> None:
         """store=None → no-op passthrough; attachments unchanged; no blob_ref set.
@@ -326,9 +329,10 @@ class TestAttachmentIngestStageNonAudio:
         stage = AttachmentIngestStage()
 
         # Act + Assert — must raise AttachmentIngestError
-        with pytest.raises(AttachmentIngestError):
+        with pytest.raises(AttachmentIngestError) as exc_info:
             await stage.run(msg, ctx)
 
+        assert exc_info.value.reason == "oversize"
         # store.put must NOT be called — bytes must not be forwarded on oversize
         store_mock.put.assert_not_awaited()
 
@@ -370,7 +374,7 @@ class TestAttachmentIngestStageNonAudio:
 
         Covers the accumulation contract (#1561): failures are recorded and the
         loop continues; after the loop a summary ``AttachmentIngestError`` is raised
-        with the first failure message and ``reason="storage_error"``.
+        with the first failure message and ``reason="oversize"``.
         """
         # Arrange
         image_bytes = b"imgbytes"
@@ -397,7 +401,7 @@ class TestAttachmentIngestStageNonAudio:
         with pytest.raises(AttachmentIngestError) as exc_info:
             await stage.run(msg, ctx)
 
-        assert exc_info.value.reason == "storage_error"
+        assert exc_info.value.reason == "oversize"
         assert "too large" in exc_info.value.user_message
         # store.put called only for the first (successful) item
         store_mock.put.assert_awaited_once()
@@ -431,7 +435,7 @@ class TestAttachmentIngestStageNonAudio:
         with pytest.raises(AttachmentIngestError) as exc_info:
             await stage.run(msg, ctx)
 
-        assert exc_info.value.reason == "storage_error"
+        assert exc_info.value.reason == "oversize"
         assert "too large" in exc_info.value.user_message
         # store.put called only for the first item
         store_mock.put.assert_awaited_once()

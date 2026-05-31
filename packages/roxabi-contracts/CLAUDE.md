@@ -65,7 +65,8 @@ src/roxabi_contracts/
 ├── llm/                 # LLM streaming contract
 ├── cli/                 # CLI pool contract
 ├── gh/                  # GitHub event contract
-└── audit/               # Audit event contract
+├── audit/               # Audit event contract
+└── verify/              # ACL-verification deny-probe sentinel (ungranted, #1545)
 ```
 
 Each domain submodule exposes: `SUBJECTS` (subject constants), models, and

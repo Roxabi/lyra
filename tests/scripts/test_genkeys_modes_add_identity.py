@@ -5,7 +5,8 @@ All tests are expected to FAIL until T5/T6 implementation lands:
   - _mode_add_identity does not exist in _modes.py
 
 Tests use:
-  - NKEY_PROVIDER=fake + LYRA_TEST_MODE=1 (deterministic, no nk binary needed)
+  - tests/scripts/_fake_genkeys.py shim (FakeNkeyProvider pre-seeded —
+    deterministic, no nk binary needed)
   - SEEDS_DIR=tmp_path fixture to avoid touching ~/.lyra/nkeys/
   - AUTH_DIR=tmp_path fixture to avoid /etc/nats/nkeys/ (bypasses _require_root)
   - A tiny 3-identity matrix created in tmp_path (hub, telegram-adapter, turn-writer)
@@ -83,12 +84,10 @@ def _run_genkeys(
 ) -> subprocess.CompletedProcess[str]:
     """Run gen_nkeys.py genkeys with given args via subprocess."""
     run_env = os.environ.copy()
-    run_env["NKEY_PROVIDER"] = "fake"
-    run_env["LYRA_TEST_MODE"] = "1"
     if env:
         run_env.update(env)
     return subprocess.run(
-        [sys.executable, "scripts/gen_nkeys.py", "genkeys"] + args,
+        [sys.executable, "tests/scripts/_fake_genkeys.py", "genkeys"] + args,
         capture_output=True,
         text=True,
         cwd=str(REPO_ROOT),

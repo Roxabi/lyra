@@ -20,6 +20,10 @@ pattern (idempotent — safe to call on every process boot).
 
 ## Invariants
 
+- **Hub sole-provisioner (ADR-079)** — `ensure_stream` and `ensure_kv` are called
+  by `hub_standalone.py` before `announce_hub_ready`. Adapters must NOT call these;
+  `start_audio_consumer` is bind-only for the KV (`js.key_value(KV_BUCKET)`).
+  `ensure_consumer` remains on the adapter (per-bot durable consumer, not shared).
 - **Retention: Limits** — NOT WorkQueue. Multiple per-platform consumers attach
   to the same stream (N×M fan-out). WorkQueue would delete messages after first
   delivery, starving subsequent consumers.

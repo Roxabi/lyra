@@ -155,6 +155,11 @@ async def test_nc_close_called_even_on_exception() -> None:
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
         patch("lyra.nats.nats_bus.NatsBus", side_effect=RuntimeError("boom")),
+        # ADR-079 S3: wait_for_hub now precedes the wiring loop.
+        patch(
+            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
+            AsyncMock(return_value=None),
+        ),
         load_token_patch_exc,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
         pytest.raises(RuntimeError, match="boom"),
@@ -212,6 +217,11 @@ async def test_telegram_astart_failure_cleans_up_wired_resources() -> None:
         patch(
             "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=AsyncMock(),
+        ),
+        # ADR-079 S3: wait_for_hub now precedes the wiring loop.
+        patch(
+            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
+            AsyncMock(return_value=None),
         ),
         load_token_patch,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
@@ -281,6 +291,11 @@ async def test_discord_astart_failure_cleans_up_wired_resources() -> None:
         patch(
             "lyra.bootstrap.wiring.standalone_discord.NatsOutboundListener",
             return_value=AsyncMock(),
+        ),
+        # ADR-079 S3: wait_for_hub now precedes the wiring loop.
+        patch(
+            "lyra.bootstrap.wiring.standalone_discord.wait_for_hub",
+            AsyncMock(return_value=None),
         ),
         load_token_patch,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),

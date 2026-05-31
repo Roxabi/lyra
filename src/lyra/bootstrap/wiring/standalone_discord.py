@@ -217,6 +217,13 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
 
         return (adapter_dc, token, inbound_bus_dc, dc_typing_listener, consumer)
 
+    # ADR-079 S3: wait_for_hub is a load-bearing barrier — it MUST precede
+    # start_audio_consumer (called inside _wire_bot). The hub sets hub.ready only
+    # after ensure_stream + ensure_kv complete, so this call guarantees stream + KV
+    # exist before any adapter bind/consume attempt. Moving it after the loop would
+    # reintroduce the cold-boot race (BucketNotFoundError / missing-stream).
+    await wait_for_hub(nc)
+
     for bot_cfg in dc_multi_cfg.bots:
         bot_id = bot_cfg.bot_id
         if bot_id not in dc_creds:
@@ -241,7 +248,6 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
         await dc_thread_store.close()
         await dc_turn_store.close()
         sys.exit("No Discord adapters started — check credentials")
-    await wait_for_hub(nc)
     stop_dc = setup_shutdown_event(_stop)
     try:
         await _bootstrap_discord_teardown(

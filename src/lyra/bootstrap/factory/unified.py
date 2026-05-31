@@ -89,6 +89,12 @@ async def _bootstrap_unified(
                 )
             )
 
+            # ADR-079 unified-mode note: _wire_adapters uses bootstrap_wiring.py
+            # (wire_telegram_adapters / wire_discord_adapters), which does NOT
+            # start JetStreamAudioConsumer. Audio consumers are only started by
+            # the standalone adapter path (standalone_telegram.py / _discord.py).
+            # Therefore no audio provisioning barrier is required here.
+            # Follow-up: wire audio consumers in unified mode if needed (#1521).
             wired = await _wire_adapters(
                 WireAdaptersDeps(
                     hub=hub,

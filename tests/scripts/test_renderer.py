@@ -1,7 +1,8 @@
-"""RED tests for scripts/_renderer.py — #1017 T03.
+"""Tests for scripts/_renderer.py — #1017 T03 + ADR-079 S3 ACL regression (#1525).
 
-These tests FAIL at collection time because scripts/_renderer.py does not exist yet.
-That is the intended RED state.
+T03 tests verify the renderer produces correct NATS auth.conf from the ACL matrix.
+S3 regression tests assert the rendered conf for adapters no longer contains the
+3 CREATE/UPDATE subjects removed in S3 and still contains STREAM.INFO.
 """
 
 from __future__ import annotations
@@ -164,6 +165,80 @@ class TestParserIdempotence:
 
         assert dataclasses.is_dataclass(parsed)
         assert parsed.__dataclass_params__.frozen  # type: ignore[attr-defined]
+
+
+class TestAclRegressionS3AdapterNoStreamCreate:
+    """ADR-079 S3 (#1525) — adapters must not hold STREAM.CREATE/UPDATE audio grants.
+
+    Renders deploy/nats/acl-matrix.json via render_auth_conf and parses the
+    per-adapter user blocks.  Asserts the 3 subjects removed in S3 are absent
+    and that STREAM.INFO.LYRA_OUTBOUND_AUDIO is still present (needed by
+    pull_subscribe's stream_info call).
+    """
+
+    _REMOVED_SUBJECTS = frozenset(
+        {
+            "$JS.API.STREAM.CREATE.LYRA_OUTBOUND_AUDIO",
+            "$JS.API.STREAM.UPDATE.LYRA_OUTBOUND_AUDIO",
+            "$JS.API.STREAM.CREATE.KV_lyra_outbound_audio_sent",
+        }
+    )
+    _RETAINED_SUBJECT = "$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO"
+
+    def _render_and_parse(self, prod_matrix: LoadedMatrix) -> dict:
+        """Render prod matrix and return {identity_name: ParsedUser}."""
+        pubkeys = _fake_pubkeys(prod_matrix)
+        rendered = render_auth_conf(prod_matrix, pubkeys)
+        parsed = parse_auth_conf(rendered)
+        return {u.comment_name: u for u in parsed.users}
+
+    def test_telegram_adapter_no_stream_create(self, prod_matrix: LoadedMatrix) -> None:
+        """telegram-adapter rendered block must NOT contain S3-removed subjects."""
+        users = self._render_and_parse(prod_matrix)
+        assert "telegram-adapter" in users, (
+            "telegram-adapter not found in rendered auth.conf"
+        )
+        tg = users["telegram-adapter"]
+        for subject in self._REMOVED_SUBJECTS:
+            assert subject not in tg.publish_allow, (
+                f"telegram-adapter publish still contains {subject!r} — "
+                "S3 removal not applied to acl-matrix.json"
+            )
+
+    def test_telegram_adapter_retains_stream_info(
+        self, prod_matrix: LoadedMatrix
+    ) -> None:
+        """telegram-adapter block must still contain STREAM.INFO (pull_subscribe)."""
+        users = self._render_and_parse(prod_matrix)
+        tg = users["telegram-adapter"]
+        assert self._RETAINED_SUBJECT in tg.publish_allow, (
+            f"telegram-adapter publish is missing {self._RETAINED_SUBJECT!r} — "
+            "this subject is required for pull_subscribe's stream_info call"
+        )
+
+    def test_discord_adapter_no_stream_create(self, prod_matrix: LoadedMatrix) -> None:
+        """discord-adapter rendered block must NOT contain S3-removed subjects."""
+        users = self._render_and_parse(prod_matrix)
+        assert "discord-adapter" in users, (
+            "discord-adapter not found in rendered auth.conf"
+        )
+        dc = users["discord-adapter"]
+        for subject in self._REMOVED_SUBJECTS:
+            assert subject not in dc.publish_allow, (
+                f"discord-adapter publish still contains {subject!r} — "
+                "S3 removal not applied to acl-matrix.json"
+            )
+
+    def test_discord_adapter_retains_stream_info(
+        self, prod_matrix: LoadedMatrix
+    ) -> None:
+        """discord-adapter block must still contain STREAM.INFO (pull_subscribe)."""
+        users = self._render_and_parse(prod_matrix)
+        dc = users["discord-adapter"]
+        assert self._RETAINED_SUBJECT in dc.publish_allow, (
+            f"discord-adapter publish is missing {self._RETAINED_SUBJECT!r} — "
+            "this subject is required for pull_subscribe's stream_info call"
+        )
 
 
 class TestNatsSubjectCharset:

@@ -131,9 +131,42 @@ Then revert the `acl-matrix.json` change in git and investigate before re-applyi
 
 ---
 
+---
+
+## S3 / Sole-provisioner deploy ordering (ADR-079, #1525)
+
+After a hub-sole-provisioner ACL tightening (where stream/KV CREATE grants are
+removed from adapter identities and owned exclusively by the hub), the restart
+sequence is **order-sensitive**:
+
+1. Regenerate `auth.conf` + restart `lyra-nats` (step 2 above, `make nats-regen-authconf`).
+2. **Restart `lyra-hub` first** — so it re-provisions stream `LYRA_OUTBOUND_AUDIO`
+   and KV bucket `KV_lyra_outbound_audio_sent` before signalling `announce_hub_ready`.
+3. **Only then** restart `lyra-telegram` and `lyra-discord` — they call `wait_for_hub`
+   which blocks until the hub has finished provisioning, then bind (not create) stream+KV.
+
+Reversing steps 2–3 (adapters before hub) will cause adapters to hit `wait_for_hub`
+indefinitely until the hub starts and announces ready — harmless but will delay startup.
+With the new ACL (CREATE grants removed from adapters), any adapter that bypasses
+`wait_for_hub` and tries to create the stream directly would receive a NATS permission
+violation.
+
+**Caveat — auto-reconnect is NOT gated:** `wait_for_hub` only blocks at adapter
+**startup**, not on automatic NATS reconnect after a NATS server restart. If `lyra-nats`
+is restarted while the hub and adapters are already running, all three processes
+reconnect simultaneously. The hub will re-provision stream+KV on reconnect (ensure_stream
+and ensure_kv are idempotent), but adapters may attempt their reconnect sequence before
+the hub finishes. In that window, adapter audio consumers may log a degraded-boot
+warning and fall back to `NullAudioConsumer` (ADR-079 S2). Audio resumes on the
+next adapter restart. For planned NATS restarts, manually restart hub first, wait
+for its `announce_hub_ready` log line, then restart adapters.
+
+---
+
 ## Cross-references
 
 - `deploy/nats/acl-matrix.json` — ACL SSoT
 - `scripts/gen_nkeys.py` (entry point `lyra-acl`) — renders `auth.conf` from the matrix
 - [nkey-rotation.md](nkey-rotation.md) — compromise rotation (seed replacement)
 - [ADR-046](../architecture/adr/046-nkey-provisioning-declarative-authconf.mdx) — provisioning invariants
+- [ADR-079](../architecture/adr/079-audio-nats-contract-axial-consolidation.mdx) — audio NATS axial migration, sole-provisioner pattern

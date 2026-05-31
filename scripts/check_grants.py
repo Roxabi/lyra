@@ -27,6 +27,91 @@ from scripts._effective import effective_grants, subject_covered  # noqa: E402
 from scripts._loader import load_matrix  # noqa: E402
 
 
+def _validate_consumer_fields(
+    kind: str,
+    res_name: str,
+    resource: dict,  # type: ignore[type-arg]
+) -> None:
+    """B1+B2: validate consumer_subjects shape and mutual-requirement with consumer_group.
+
+    Raises ValueError on any violation.
+    """  # noqa: E501
+    cons_subjects = resource.get("consumer_subjects")
+
+    # B1: consumer_subjects shape.
+    if cons_subjects is not None:
+        if not isinstance(cons_subjects, dict):
+            raise ValueError(
+                f"code-subjects.json: {kind} '{res_name}': "
+                f"'consumer_subjects' must be an object"
+            )
+        pub = cons_subjects.get("publish")
+        sub = cons_subjects.get("subscribe")
+        if pub is not None and not isinstance(pub, list):
+            raise ValueError(
+                f"code-subjects.json: {kind} '{res_name}': "
+                f"'consumer_subjects.publish' must be a list"
+            )
+        if sub is not None and not isinstance(sub, list):
+            raise ValueError(
+                f"code-subjects.json: {kind} '{res_name}': "
+                f"'consumer_subjects.subscribe' must be a list"
+            )
+
+    # B2: consumer_group and consumer_subjects are mutually required.
+    cons_group = resource.get("consumer_group")
+    has_group = bool(cons_group and isinstance(cons_group, str))
+    has_subjects = bool(
+        isinstance(cons_subjects, dict)
+        and (cons_subjects.get("publish") or cons_subjects.get("subscribe"))
+    )
+    if cons_group is not None and not has_group:
+        raise ValueError(
+            f"code-subjects.json: {kind} '{res_name}': "
+            f"'consumer_group' must be a non-empty string"
+        )
+    if has_group and not has_subjects:
+        raise ValueError(
+            f"code-subjects.json: {kind} '{res_name}': "
+            f"'consumer_group' present but 'consumer_subjects' is absent "
+            f"or contains no non-empty list"
+        )
+    if has_subjects and not has_group:
+        raise ValueError(
+            f"code-subjects.json: {kind} '{res_name}': "
+            f"'consumer_subjects' present but 'consumer_group' is absent "
+            f"or empty"
+        )
+
+
+def _validate_resource(kind: str, res_name: str, resource: object) -> None:
+    """Validate a single resource entry from the code-subjects manifest.
+
+    Raises ValueError on any shape violation.
+    """
+    if not isinstance(resource, dict):
+        raise ValueError(
+            f"code-subjects.json: {kind} '{res_name}' must be an object"
+        )
+    if "provisioner" not in resource or not isinstance(resource["provisioner"], str):
+        raise ValueError(
+            f"code-subjects.json: {kind} '{res_name}': "
+            "missing or non-string 'provisioner'"
+        )
+    prov_subjects = resource.get("provisioner_subjects")
+    if not isinstance(prov_subjects, dict) or "publish" not in prov_subjects:
+        raise ValueError(
+            f"code-subjects.json: {kind} '{res_name}': "
+            f"'provisioner_subjects' must contain a 'publish' list"
+        )
+    if not isinstance(prov_subjects["publish"], list):
+        raise ValueError(
+            f"code-subjects.json: {kind} '{res_name}': "
+            f"'provisioner_subjects.publish' must be a list"
+        )
+    _validate_consumer_fields(kind, res_name, resource)
+
+
 def load_code_subjects(path: Path) -> dict:  # type: ignore[type-arg]
     """Read and minimally validate the code-subjects manifest.
 
@@ -37,7 +122,12 @@ def load_code_subjects(path: Path) -> dict:  # type: ignore[type-arg]
     Raises ValueError on shape violations; raises json.JSONDecodeError on bad JSON.
     """
     raw_text = path.read_text()
-    data: dict = json.loads(raw_text)  # type: ignore[type-arg]
+    parsed: object = json.loads(raw_text)
+
+    # B1: top-level must be a JSON object, not a list or scalar.
+    if not isinstance(parsed, dict):
+        raise ValueError("code-subjects.json: top-level value must be a JSON object")
+    data: dict = parsed  # type: ignore[type-arg]
 
     streams = data.get("streams")
     kv_buckets = data.get("kv_buckets")
@@ -53,28 +143,7 @@ def load_code_subjects(path: Path) -> dict:  # type: ignore[type-arg]
 
     for kind, bucket in (("stream", streams or {}), ("kv", kv_buckets or {})):
         for res_name, resource in bucket.items():
-            if not isinstance(resource, dict):
-                raise ValueError(
-                    f"code-subjects.json: {kind} '{res_name}' must be an object"
-                )
-            if "provisioner" not in resource or not isinstance(
-                resource["provisioner"], str
-            ):
-                raise ValueError(
-                    f"code-subjects.json: {kind} '{res_name}': "
-                    "missing or non-string 'provisioner'"
-                )
-            prov_subjects = resource.get("provisioner_subjects")
-            if not isinstance(prov_subjects, dict) or "publish" not in prov_subjects:
-                raise ValueError(
-                    f"code-subjects.json: {kind} '{res_name}': "
-                    f"'provisioner_subjects' must contain a 'publish' list"
-                )
-            if not isinstance(prov_subjects["publish"], list):
-                raise ValueError(
-                    f"code-subjects.json: {kind} '{res_name}': "
-                    f"'provisioner_subjects.publish' must be a list"
-                )
+            _validate_resource(kind, res_name, resource)
 
     return data
 

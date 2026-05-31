@@ -150,11 +150,13 @@ or `pull_subscribe`.
 `$JS.API.>` for KV readiness-probe calls and general JetStream API access. If that
 wildcard is narrowed in a future hardening pass, the hub's provisioning subjects must be
 added explicitly to the hub `publish` list in `acl-matrix.json` **before** the wildcard
-is removed. The subjects the hub needs for audio provisioning are:
+is removed. The subjects the hub needs for audio provisioning are **control-plane only**:
 `$JS.API.STREAM.CREATE.LYRA_OUTBOUND_AUDIO`, `$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO`,
 `$JS.API.STREAM.UPDATE.LYRA_OUTBOUND_AUDIO`, `$JS.API.STREAM.CREATE.KV_lyra_outbound_audio_sent`,
-`$JS.API.STREAM.INFO.KV_lyra_outbound_audio_sent`, and `$KV.lyra_outbound_audio_sent.>`.
-The CI falsification gate (move d) will catch any gap automatically.
+and `$JS.API.STREAM.INFO.KV_lyra_outbound_audio_sent`. The data-plane subject
+`$KV.lyra_outbound_audio_sent.>` is **not** a hub subject — it is consume-axis, granted to
+the `audio-consumer` group only (`ensure_kv` create/binds the bucket; the adapters write the
+keys). See the §d axis correction. The CI falsification gate (move d) will catch any gap automatically.
 
 **ACL change (per-identity, before → after).**
 
@@ -362,7 +364,8 @@ adapters do the data-plane `kv.put()` (`src/lyra/adapters/nats/jetstream_audio_d
 
 For each stream/KV in the manifest:
 1. Assert the provisioner identity's effective publish list (post-group-expansion via
-   `render_auth_conf`) covers each provisioner subject via `_subject_covered`.
+   `scripts/_effective.py:effective_grants`, the shared expansion path also used by
+   `render_auth_conf`) covers each provisioner subject via `subject_covered`.
 2. Resolve the consumer group: for each identity in `acl-matrix.json` that references
    the group (via `"groups": ["audio-consumer"]`), assert its effective grant list
    covers each consumer subject.

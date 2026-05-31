@@ -9,13 +9,21 @@ for every non-audio media object on a Telegram message.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any
 
 from lyra.core.messaging.message import Attachment
-from lyra.inbound.attachment_ingest import PendingAttachment
+from lyra.inbound.attachment_ingest import (
+    MAX_ATTACHMENT_INGEST_BYTES,
+    PendingAttachment,
+)
 
 if TYPE_CHECKING:
+    from typing import Literal
+
     from lyra.adapters.telegram import TelegramAdapter
+
+log = logging.getLogger("lyra.adapters.telegram")
 
 
 def _make_fetch_closure(adapter: "TelegramAdapter", file_id: str) -> Any:
@@ -47,23 +55,34 @@ def _extract_attachments(
     Returns two index-aligned lists: (attachments, pending_attachments).
     Each PendingAttachment carries an async fetch closure bound to the adapter
     and the platform file_id, plus declared size metadata for the oversize guard.
+    Oversize attachments (size > MAX_ATTACHMENT_INGEST_BYTES) are skipped entirely.
     """
     attachments: list[Attachment] = []
     pendings: list[PendingAttachment] = []
     message_id: int | None = getattr(msg, "message_id", None)
     platform_message_id = str(message_id) if message_id is not None else None
 
-    # photo: list of PhotoSize, take largest (last)
-    photo = getattr(msg, "photo", None)
-    if photo:
-        largest = photo[-1]
-        file_id: str = largest.file_id
-        mime = "image/jpeg"
+    def _check_and_append(
+        file_id: str,
+        mime: str,
+        size: int | None,
+        type_: Literal["image", "file", "video"],
+        filename: str | None = None,
+    ) -> None:
+        if size is not None and size > MAX_ATTACHMENT_INGEST_BYTES:
+            log.warning(
+                "Oversize Telegram %s skipped: %s > %s",
+                type_,
+                size,
+                MAX_ATTACHMENT_INGEST_BYTES,
+            )
+            return
         attachments.append(
             Attachment(
-                type="image",
+                type=type_,
                 url_or_path_or_bytes=f"tg:file_id:{file_id}",
                 mime_type=mime,
+                filename=filename,
             )
         )
         pendings.append(
@@ -73,103 +92,58 @@ def _extract_attachments(
                 source="telegram",
                 platform_ref=file_id,
                 platform_message_id=platform_message_id,
-                size=getattr(largest, "file_size", None),
+                size=size,
+                filename=filename,
             )
+        )
+
+    photo = getattr(msg, "photo", None)
+    if photo:
+        largest = photo[-1]
+        _check_and_append(
+            largest.file_id,
+            "image/jpeg",
+            getattr(largest, "file_size", None),
+            "image",
         )
 
     doc = getattr(msg, "document", None)
     if doc:
-        file_id = doc.file_id
-        mime = getattr(doc, "mime_type", None) or "application/octet-stream"
-        filename = getattr(doc, "file_name", None)
-        attachments.append(
-            Attachment(
-                type="file",
-                url_or_path_or_bytes=f"tg:file_id:{file_id}",
-                mime_type=mime,
-                filename=filename,
-            )
-        )
-        pendings.append(
-            PendingAttachment(
-                fetch=_make_fetch_closure(adapter, file_id),
-                mime=mime,
-                source="telegram",
-                platform_ref=file_id,
-                platform_message_id=platform_message_id,
-                filename=filename,
-                size=getattr(doc, "file_size", None),
-            )
+        _check_and_append(
+            doc.file_id,
+            getattr(doc, "mime_type", None) or "application/octet-stream",
+            getattr(doc, "file_size", None),
+            "file",
+            getattr(doc, "file_name", None),
         )
 
     video = getattr(msg, "video", None)
     if video:
-        file_id = video.file_id
-        mime = getattr(video, "mime_type", None) or "video/mp4"
-        attachments.append(
-            Attachment(
-                type="video",
-                url_or_path_or_bytes=f"tg:file_id:{file_id}",
-                mime_type=mime,
-            )
-        )
-        pendings.append(
-            PendingAttachment(
-                fetch=_make_fetch_closure(adapter, file_id),
-                mime=mime,
-                source="telegram",
-                platform_ref=file_id,
-                platform_message_id=platform_message_id,
-                size=getattr(video, "file_size", None),
-            )
+        _check_and_append(
+            video.file_id,
+            getattr(video, "mime_type", None) or "video/mp4",
+            getattr(video, "file_size", None),
+            "video",
         )
 
     anim = getattr(msg, "animation", None)
     if anim:
-        file_id = anim.file_id
-        mime = "image/gif"
-        attachments.append(
-            Attachment(
-                type="image",
-                url_or_path_or_bytes=f"tg:file_id:{file_id}",
-                mime_type=mime,
-            )
-        )
-        pendings.append(
-            PendingAttachment(
-                fetch=_make_fetch_closure(adapter, file_id),
-                mime=mime,
-                source="telegram",
-                platform_ref=file_id,
-                platform_message_id=platform_message_id,
-                size=getattr(anim, "file_size", None),
-            )
+        _check_and_append(
+            anim.file_id,
+            "image/gif",
+            getattr(anim, "file_size", None),
+            "image",
         )
 
     sticker = getattr(msg, "sticker", None)
-    if sticker:
-        # Only static WebP stickers; skip animated (.tgs) and video (.webm)
-        if not getattr(sticker, "is_animated", False) and not getattr(
-            sticker, "is_video", False
-        ):
-            file_id = sticker.file_id
-            mime = "image/webp"
-            attachments.append(
-                Attachment(
-                    type="image",
-                    url_or_path_or_bytes=f"tg:file_id:{file_id}",
-                    mime_type=mime,
-                )
-            )
-            pendings.append(
-                PendingAttachment(
-                    fetch=_make_fetch_closure(adapter, file_id),
-                    mime=mime,
-                    source="telegram",
-                    platform_ref=file_id,
-                    platform_message_id=platform_message_id,
-                    size=getattr(sticker, "file_size", None),
-                )
-            )
+    if sticker and not getattr(sticker, "is_animated", False) and not getattr(
+        sticker, "is_video", False
+    ):
+        _check_and_append(
+            sticker.file_id,
+            "image/webp",
+            getattr(sticker, "file_size", None),
+            "image",
+        )
 
     return attachments, pendings

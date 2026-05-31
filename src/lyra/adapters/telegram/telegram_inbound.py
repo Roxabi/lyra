@@ -44,6 +44,46 @@ _pipeline = InboundPipeline(
 _parser_cache: dict[int, TelegramWireParser] = {}  # one parser per adapter instance
 
 
+def _expected_media_count(msg: Any) -> int:
+    """Count media items on the raw aiogram message that would be extracted."""
+    expected = 0
+    if getattr(msg, "photo", None):
+        expected += 1
+    if getattr(msg, "document", None):
+        expected += 1
+    if getattr(msg, "video", None):
+        expected += 1
+    if getattr(msg, "animation", None):
+        expected += 1
+    sticker = getattr(msg, "sticker", None)
+    if sticker and not getattr(sticker, "is_animated", False) and not getattr(
+        sticker, "is_video", False
+    ):
+        expected += 1
+    return expected
+
+
+async def _send_oversize_reply(
+    adapter: "TelegramAdapter", msg: Any, parsed: Any
+) -> None:
+    """Notify the user when oversize attachments were filtered (T6, #1561)."""
+    expected = _expected_media_count(msg)
+    if len(parsed.attachments) < expected:
+        try:
+            _text = adapter._msg(
+                "attachment_too_large",
+                "That file is too large to process.",
+            )
+            await adapter.bot.send_message(
+                **_make_send_kwargs(msg.chat.id, _text, msg.message_id)
+            )
+        except TelegramAPIError:
+            log.warning(
+                "Failed to send attachment-too-large reply for chat_id=%s",
+                msg.chat.id,
+            )
+
+
 async def handle_message(adapter: "TelegramAdapter", msg: Any) -> None:
     """Handle an incoming aiogram message: apply backpressure and put on bus."""
     # Defense-in-depth bot filter (TelegramWireParser also filters, but keep fast path).
@@ -80,6 +120,18 @@ async def handle_message(adapter: "TelegramAdapter", msg: Any) -> None:
         ),
         ingest=adapter._ingest_ctx,
     )
+
+    # Pre-parse to detect oversize-attachment filtering (T6/T7, #1561).
+    parsed = parser.parse(msg, inbound_ctx)
+    if parsed is None:
+        return
+
+    await _send_oversize_reply(adapter, msg, parsed)
+
+    # T7: Drop if no attachments survived and no text.
+    if not parsed.attachments and not parsed.text:
+        adapter._cancel_typing(msg.chat.id)
+        return
 
     async def _tg_backpressure(text: str) -> None:
         await adapter.bot.send_message(msg.chat.id, text)

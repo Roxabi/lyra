@@ -116,7 +116,7 @@ Two systemd user timers drive convergence **automatically**:
 
 | Timer | Period | Service | Role |
 |---|---|---|---|
-| `lyra-quadlet-sync.timer` | `*:0/5` (5 min) | `lyra-quadlet-sync.service` | Pulls `origin/staging` for lyra. If `deploy/quadlet/**`, `Makefile`, or `tools/render_quadlet.py` changed, runs `make quadlet-install` (conditional, no full converge). |
+| `lyra-quadlet-sync.timer` | `*:0/5` (5 min) | `lyra-quadlet-sync.service` | Pulls `origin/staging` for lyra. If `deploy/quadlet/**`, Makefile, or `tools/render_quadlet.py` changed, runs `make quadlet-install` (conditional, no full converge). |
 | `lyra-post-autoupdate.timer` | `*:0/5` (5 min) | `lyra-post-autoupdate.service` | Checks whether `podman-auto-update` has pulled a new image digest. On digest change, triggers the full `make converge` sequence (including auth.conf regen + secret refresh + restarts). |
 
 `lyra-quadlet-sync` handles **unit/template changes** (code-driven).

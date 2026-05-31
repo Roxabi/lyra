@@ -369,3 +369,92 @@ def test_live_nats_subject_passes(tmp_path: Path) -> None:
     )
     rc = main(["--root", str(tmp_path)])
     assert rc == 0
+
+
+# ---------------------------------------------------------------------------
+# Operational-truth scope (#1538) — allowlist gates ops docs, exempts narrative
+# ---------------------------------------------------------------------------
+
+
+def test_operational_doc_dead_ref_exits_1(tmp_path: Path) -> None:
+    """A dead ref in an operational-truth doc (CONFIGURATION.md) fails CI."""
+    _make_doc(
+        tmp_path,
+        "docs/CONFIGURATION.md",
+        "Config is loaded by `ZzzGhostLoader` which does not exist.\n",
+    )
+    rc = main(["--root", str(tmp_path)])
+    assert rc == 1
+
+
+def test_operational_subdir_doc_dead_ref_exits_1(tmp_path: Path) -> None:
+    """A dead ref in a docs/ops/** doc is gated (recursive allowlist)."""
+    _make_doc(
+        tmp_path,
+        "docs/ops/runbook.md",
+        "The deploy calls `ZzzGhostDeployer` which does not exist.\n",
+    )
+    rc = main(["--root", str(tmp_path)])
+    assert rc == 1
+
+
+def test_runbooks_doc_dead_ref_exits_1(tmp_path: Path) -> None:
+    """A dead ref in a docs/runbooks/** doc is gated (sibling of ops/)."""
+    _make_doc(
+        tmp_path,
+        "docs/runbooks/deploy.md",
+        "The runbook calls `ZzzGhostRunbook` which does not exist.\n",
+    )
+    rc = main(["--root", str(tmp_path)])
+    assert rc == 1
+
+
+def test_playbooks_doc_dead_ref_exits_1(tmp_path: Path) -> None:
+    """A dead ref in a docs/playbooks/** doc is gated (sibling of ops/)."""
+    _make_doc(
+        tmp_path,
+        "docs/playbooks/incident.md",
+        "The playbook calls `ZzzGhostPlaybook` which does not exist.\n",
+    )
+    rc = main(["--root", str(tmp_path)])
+    assert rc == 1
+
+
+def test_operational_mdx_doc_dead_ref_exits_1(tmp_path: Path) -> None:
+    """An .mdx operational doc is gated — rglob covers *.md AND *.mdx."""
+    _make_doc(
+        tmp_path,
+        "docs/ops/guide.mdx",
+        "See `ZzzMdxGhost` for details, which does not exist.\n",
+    )
+    rc = main(["--root", str(tmp_path)])
+    assert rc == 1
+
+
+def test_narrative_doc_exempt_while_sibling_op_doc_gated(tmp_path: Path) -> None:
+    """A narrative doc (ROADMAP.md) is NOT scanned even when a sibling
+    operational doc in the SAME tree IS — proving the exemption is
+    path-specific, not an artifact of the allowlist never being extended.
+
+    Reverting the allowlist edit makes the ops doc unscanned (rc==0, first
+    assert fails); adding ROADMAP.md to the allowlist surfaces its token
+    (last assert fails). Neither tautology survives.
+    """
+    _make_doc(
+        tmp_path,
+        "docs/ROADMAP.md",
+        "Someday we will add `ZzzFutureFeature` to the engine.\n",
+    )
+    _make_doc(
+        tmp_path,
+        "docs/ops/control.md",
+        "The deploy uses `ZzzControlRef` which does not exist.\n",
+    )
+    rc, out, _err = _run_main(tmp_path)
+    # The operational doc's dead ref IS caught …
+    assert rc == 1
+    assert "docs/ops/control.md" in out
+    assert "ZzzControlRef" in out
+    # … while the narrative doc is not scanned at all.
+    assert "ROADMAP.md" not in out
+    assert "ZzzFutureFeature" not in out

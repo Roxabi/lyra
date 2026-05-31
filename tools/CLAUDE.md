@@ -17,6 +17,21 @@ Scripts are driven by `.claude/stack.yml` `quality_gates` block and pre-push hoo
 | `.importlinter` (external) | `import_layers` | pre-push |
 | `check_doc_drift.py` | `doc_drift` — dead backtick refs in docs + CLAUDE.md network; baseline in `doc_drift_baseline.txt` (burn-down list, epic #1530) | CI |
 
+### `check_doc_drift.py` — scanned scope (allowlist, #1538)
+
+`_collect_scan_files()` is an **allowlist** — only listed paths are drift-gated. New top-level narrative docs are exempt by omission (no action needed).
+
+| Scanned (operational truth — cite live symbols/paths) | Exempt (narrative/onboarding/aspirational — illustrative/future refs by design) |
+|---|---|
+| `docs/architecture/**` (non-`adr/`), `docs/ARCHITECTURE.md` | `docs/architecture/adr/**` (immutable records, ADR-080) |
+| `docs/standards/**` | `docs/QUICKSTART.md`, `GETTING-STARTED.md`, `HAPPY-PATHS.md`, `COMMANDS.md` |
+| `docs/CONFIGURATION.md`, `DEPLOYMENT.md`, `QUADLET-DEPLOYMENT.md` | `docs/MULTI-BOT.md`, `OBSERVABILITY.md`, `ROADMAP.md`, `vision.md` |
+| `docs/agent-management.md`, `bot-management.md`, `data-dirs.md` | `docs/code-quality-exceptions.md`, `debt-tracking.md` |
+| `docs/ops/**`, `docs/runbooks/**`, `docs/playbooks/**` | `docs/memory-system/**`, `docs/history/**`, `artifacts/**` |
+| CLAUDE.md network (root, `src/`, `packages/`, `plugins/`) | — |
+
+Add a doc to the gate → list it (or its dir) in `_collect_scan_files()`; regenerate via `--update-baseline` (new dead refs join the #1536 burn-down).
+
 Runtime config: `tools/qg.conf` (seeded from `stack.yml` by `/release-setup`); scripts fall back to hardcoded defaults when absent.
 
 ## Exit-code contract (hard rule — #1162 hotfix)

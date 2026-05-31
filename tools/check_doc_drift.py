@@ -87,6 +87,41 @@ def _collect_claude_mds(root: Path, seen: set[Path], out: list[Path]) -> None:
             add(cm)
 
 
+def _collect_operational_docs(root: Path, seen: set[Path], out: list[Path]) -> None:
+    """Append operational-truth docs (#1538) — docs that describe the REAL
+    running system and cite live symbols/paths, so they are drift-gated.
+
+    Narrative/onboarding/aspirational docs (QUICKSTART, GETTING-STARTED,
+    HAPPY-PATHS, COMMANDS, MULTI-BOT, OBSERVABILITY, ROADMAP, vision,
+    code-quality-exceptions, debt-tracking, docs/memory-system/**,
+    docs/history/**) are EXEMPT by omission — they cite illustrative or future
+    code by design, so gating them would produce false positives.
+    """
+
+    def add(p: Path) -> None:
+        if p not in seen and p.is_file():
+            seen.add(p)
+            out.append(p)
+
+    docs = root / "docs"
+    for rel in (
+        "CONFIGURATION.md",
+        "DEPLOYMENT.md",
+        "QUADLET-DEPLOYMENT.md",
+        "agent-management.md",
+        "bot-management.md",
+        "data-dirs.md",
+    ):
+        add(docs / rel)
+    for sub in ("ops", "runbooks", "playbooks"):
+        d = docs / sub
+        if not d.is_dir():
+            continue
+        for ext in ("*.md", "*.mdx"):
+            for f in sorted(d.rglob(ext)):
+                add(f)
+
+
 def _collect_scan_files(root: Path) -> list[Path]:
     seen: set[Path] = set()
     out: list[Path] = []
@@ -111,6 +146,7 @@ def _collect_scan_files(root: Path) -> list[Path]:
     if standards.is_dir():
         for f in sorted(standards.rglob("*.md")):
             add(f)
+    _collect_operational_docs(root, seen, out)
     _collect_claude_mds(root, seen, out)
     return out
 

@@ -16,17 +16,13 @@ log = logging.getLogger(__name__)
 
 
 def is_typing_enabled() -> bool:
-    return os.getenv("LYRA_TYPING_ENABLED", "false").lower() == "true"
+    return os.getenv("LYRA_TYPING_ENABLED", "true").lower() == "true"
 
 
 class TypingPublisher:
     def __init__(self, nc: "NATS", *, enabled: bool | None = None) -> None:
         self._nc = nc
-        self._enabled = (
-            enabled
-            if enabled is not None
-            else is_typing_enabled()
-        )
+        self._enabled = enabled if enabled is not None else is_typing_enabled()
         self._refcount: dict[tuple[str, str, int], int] = {}
 
     async def publish_started(self, scope: WorkScope) -> None:
@@ -55,8 +51,8 @@ class TypingPublisher:
 
     @asynccontextmanager
     async def scope(self, work_scope: WorkScope):
-        await self.publish_started(work_scope)
         try:
+            await self.publish_started(work_scope)
             yield
         finally:
             await self.publish_ended(work_scope)

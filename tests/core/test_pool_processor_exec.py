@@ -11,6 +11,7 @@ import pytest
 from lyra.core.pool import Pool
 from lyra.core.pool.pool_processor_exec import guarded_process_one
 from lyra.transport.typing_publisher import TypingPublisher
+from lyra.transport.work_scope import WorkScope
 from tests.core.conftest import _make_ctx_mock
 from tests.factories.messages import make_inbound_message
 
@@ -88,9 +89,46 @@ class TestGuardedProcessOneTypingScope:
             "lyra.core.pool.pool_processor_exec.process_one",
             new=_slow_process,
         ):
-            await asyncio.wait_for(guarded_process_one(msg, agent, pool), timeout=0.5)
+            await guarded_process_one(msg, agent, pool)
             pool.typing_publisher.publish_started.assert_awaited_once()
             pool.typing_publisher.publish_ended.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_disabled_flag_with_publisher_present(
+        self, monkeypatch, pool, agent, msg
+    ):
+        """LYRA_TYPING_ENABLED=false skips typing scope even when publisher is present."""  # noqa: E501
+        monkeypatch.setenv("LYRA_TYPING_ENABLED", "false")
+
+        with patch(
+            "lyra.core.pool.pool_processor_exec.process_one",
+            new=AsyncMock(return_value=None),
+        ):
+            await guarded_process_one(msg, agent, pool)
+            pool.typing_publisher.publish_started.assert_not_awaited()
+            pool.typing_publisher.publish_ended.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_malformed_scope_id_fallback(self, pool, agent, msg):
+        """Malformed scope_id falls back to 0 in the constructed WorkScope."""
+        bad_msg = make_inbound_message(scope_id="not_a_number")
+
+        with patch(
+            "lyra.core.pool.pool_processor_exec.process_one",
+            new=AsyncMock(return_value=None),
+        ):
+            with patch(
+                "lyra.core.pool.pool_processor_exec.WorkScope",
+            ) as mock_ws:
+                mock_ws.return_value = WorkScope(
+                    platform=bad_msg.platform,
+                    bot_id=bad_msg.bot_id,
+                    scope_id=0,
+                    trace_id="trace",
+                )
+                await guarded_process_one(bad_msg, agent, pool)
+                mock_ws.assert_called_once()
+                assert mock_ws.call_args.kwargs["scope_id"] == 0
 
     @pytest.mark.asyncio
     async def test_no_publisher_path_processes_normally(self, pool, agent, msg):

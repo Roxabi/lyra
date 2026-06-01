@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -70,10 +69,15 @@ def typing_publisher_shim(  # noqa: PLR0913 — DEBT:typing-publisher-shim-args 
         trace_id=trace_id or uuid4().hex,
     )
     task = asyncio.create_task(method(work_scope))
-    task.add_done_callback(
-        lambda t: t.exception()
-        and log.warning("typing publisher shim failed: %s", t.exception())
-    )
+
+    def _on_done(t: asyncio.Task) -> None:
+        if t.cancelled():
+            return
+        exc = t.exception()
+        if exc:
+            log.warning("typing publisher shim failed: %s", exc)
+
+    task.add_done_callback(_on_done)
     return True
 
 
@@ -93,11 +97,7 @@ class TypingListener:
         self._resolver = resolver
         self._factory_builder = factory_builder
         self._manager = manager
-        self._enabled = (
-            enabled
-            if enabled is not None
-            else os.getenv("LYRA_TYPING_ENABLED", "false").lower() == "true"
-        )
+        self._enabled = enabled if enabled is not None else is_typing_enabled()
         self._sub: "Subscription | None" = None
 
     async def start(self) -> None:

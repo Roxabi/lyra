@@ -409,9 +409,7 @@ class TestAttachmentIngestStageNonAudio:
         oversize_fetch.assert_not_awaited()
 
     async def test_mixed_success_and_post_fetch_oversize_raises(self) -> None:
-        """N=2: first succeeds, second post-fetch oversize → store.put once, then raise.
-
-        """
+        """N=2: first succeeds, second post-fetch oversize → store.put once, then raise."""  # noqa: E501
         # Arrange
         image_bytes = b"imgbytes"
         fetch_mock = AsyncMock(return_value=image_bytes)

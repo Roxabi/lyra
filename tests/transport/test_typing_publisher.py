@@ -126,6 +126,7 @@ async def test_scope_calls_publish_ended_on_exception_exit(scope: WorkScope) -> 
     with pytest.raises(RuntimeError, match="boom"):
         async with pub.scope(scope):
             raise RuntimeError("boom")
+    pub.publish_started.assert_awaited_once_with(scope)
     pub.publish_ended.assert_awaited_once_with(scope)
 
 
@@ -139,4 +140,26 @@ async def test_scope_calls_publish_ended_on_cancelled_error(scope: WorkScope) ->
     with pytest.raises(asyncio.CancelledError):
         async with pub.scope(scope):
             raise asyncio.CancelledError()
+    pub.publish_started.assert_awaited_once_with(scope)
     pub.publish_ended.assert_awaited_once_with(scope)
+
+
+@pytest.mark.asyncio
+async def test_scope_overlapping_calls(scope: WorkScope) -> None:
+    """Nested scope() calls result in a single wire publish per started/ended."""
+    nc = AsyncMock()
+    pub = TypingPublisher(nc, enabled=True)
+    async with pub.scope(scope):
+        async with pub.scope(scope):
+            pass
+    assert nc.publish.call_count == 2  # one started, one ended
+
+
+@pytest.mark.asyncio
+async def test_scope_noop_when_enabled_false(scope: WorkScope) -> None:
+    """scope() with enabled=False does not emit to the wire."""
+    nc = AsyncMock()
+    pub = TypingPublisher(nc, enabled=False)
+    async with pub.scope(scope):
+        pass
+    nc.publish.assert_not_called()

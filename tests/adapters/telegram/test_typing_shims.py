@@ -42,12 +42,13 @@ def test_tg_start_typing_enabled_delegates_to_publisher(monkeypatch: Any) -> Non
     mock_publisher = AsyncMock()
     adapter._typing_publisher = mock_publisher
 
-    with patch(
-        "lyra.adapters.telegram.telegram.TraceContext.get_trace_id",
-        return_value="trace_tg_123",
-    ):
-        with patch("asyncio.create_task") as mock_create_task:
-            adapter._start_typing(100)
+    with patch.object(adapter._typing, "start") as mock_start:
+        with patch(
+            "lyra.adapters.telegram.telegram.TraceContext.get_trace_id",
+            return_value="trace_tg_123",
+        ):
+            with patch("asyncio.create_task") as mock_create_task:
+                adapter._start_typing(100)
 
     mock_publisher.publish_started.assert_called_once()
     scope = mock_publisher.publish_started.call_args.args[0]
@@ -59,8 +60,10 @@ def test_tg_start_typing_enabled_delegates_to_publisher(monkeypatch: Any) -> Non
     mock_create_task.assert_called_once()
     coro = mock_create_task.call_args.args[0]
     import asyncio
+
     assert asyncio.iscoroutine(coro)
     mock_publisher.publish_ended.assert_not_called()
+    mock_start.assert_not_called()
 
 
 def test_tg_cancel_typing_enabled_delegates_to_publisher(monkeypatch: Any) -> None:
@@ -69,12 +72,13 @@ def test_tg_cancel_typing_enabled_delegates_to_publisher(monkeypatch: Any) -> No
     mock_publisher = AsyncMock()
     adapter._typing_publisher = mock_publisher
 
-    with patch(
-        "lyra.adapters.telegram.telegram.TraceContext.get_trace_id",
-        return_value="trace_tg_456",
-    ):
-        with patch("asyncio.create_task") as mock_create_task:
-            adapter._cancel_typing(100)
+    with patch.object(adapter._typing, "cancel") as mock_cancel:
+        with patch(
+            "lyra.adapters.telegram.telegram.TraceContext.get_trace_id",
+            return_value="trace_tg_456",
+        ):
+            with patch("asyncio.create_task") as mock_create_task:
+                adapter._cancel_typing(100)
 
     mock_publisher.publish_ended.assert_called_once()
     scope = mock_publisher.publish_ended.call_args.args[0]
@@ -85,6 +89,7 @@ def test_tg_cancel_typing_enabled_delegates_to_publisher(monkeypatch: Any) -> No
 
     mock_create_task.assert_called_once()
     mock_publisher.publish_started.assert_not_called()
+    mock_cancel.assert_not_called()
 
 
 def test_tg_start_typing_enabled_no_publisher_is_noop(monkeypatch: Any) -> None:

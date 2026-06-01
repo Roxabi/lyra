@@ -260,3 +260,53 @@ class TestOutboundAdapterBaseSendStreaming:
 
         # Assert — send_streaming → _make_emitter dispatch fires exactly once
         assert emitter_call_count == 1
+
+    async def test_send_streaming_malformed_scope_id_fallback(self) -> None:
+        """Malformed scope_id falls back to _sid=0 in emitter._work_scope."""
+        from datetime import datetime, timezone
+
+        from lyra.core.auth.trust import TrustLevel
+        from lyra.core.messaging.message import InboundMessage, TelegramMeta
+        from lyra.transport.typing_publisher import TypingPublisher
+        from lyra.transport.work_scope import WorkScope
+
+        original_msg = InboundMessage(
+            id="msg-1",
+            platform="telegram",
+            bot_id="main",
+            scope_id="invalid",
+            user_id="tg:user:1",
+            user_name="Alice",
+            is_mention=False,
+            text="hi",
+            text_raw="hi",
+            timestamp=datetime.now(timezone.utc),
+            platform_meta=TelegramMeta(chat_id=42),
+            trust_level=TrustLevel.TRUSTED,
+        )
+
+        captured_emitter = None
+
+        class CaptureAdapter(OutboundAdapterBase):
+            async def send(self, original_msg, outbound):
+                pass
+
+            def _make_emitter(self, original_msg, outbound):
+                nonlocal captured_emitter
+                captured_emitter = OutboundEmitter(_make_test_formatter(), outbound)
+                return captured_emitter
+
+            def _start_typing(self, scope_id):
+                pass
+
+            def _cancel_typing(self, scope_id):
+                pass
+
+        adapter = CaptureAdapter()
+        adapter._typing_publisher = TypingPublisher(AsyncMock(), enabled=True)
+
+        await adapter.send_streaming(original_msg, _events(), outbound=None)
+
+        assert captured_emitter is not None
+        assert isinstance(captured_emitter._work_scope, WorkScope)
+        assert captured_emitter._work_scope.scope_id == 0

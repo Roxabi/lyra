@@ -10,6 +10,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from lyra.adapters.telegram.telegram_formatting import (
+    _render_buttons as render_buttons,
+)
+from lyra.adapters.telegram.telegram_formatting import (
+    _render_text as render_text,
+)
 from lyra.core.messaging.message import (  # noqa: F401
     Button,
     OutboundMessage,
@@ -53,21 +59,15 @@ class TestTelegramOutboundMessage:
 
     def test_render_text_empty_returns_no_chunks(self) -> None:
         """_render_text("") returns [] — no empty-string chunk to send to the API."""
-        # Arrange
-        adapter = _make_telegram_adapter()
-
         # Act
-        chunks = adapter._render_text("")
+        chunks = render_text("")
         # Assert
         assert chunks == []
 
     def test_render_text_escapes_markdownv2(self) -> None:
         # _render_text("hello_world") returns ["hello\\_world"] (underscore escaped).
-        # Arrange
-        adapter = _make_telegram_adapter()
-
         # Act
-        chunks = adapter._render_text("hello_world")
+        chunks = render_text("hello_world")
         # Assert
         assert chunks == [r"hello\_world"]
 
@@ -76,33 +76,26 @@ class TestTelegramOutboundMessage:
 
         No special chars means no escaping needed.
         """
-        # Arrange
-        adapter = _make_telegram_adapter()
-
         # Act
-        chunks = adapter._render_text("hello world")
+        chunks = render_text("hello world")
         # Assert
         assert chunks == ["hello world"]
 
     def test_render_text_chunks_at_4096(self) -> None:
         """_render_text("x" * 5000) returns 2 chunks, each <= 4096 characters."""
         # Arrange
-        adapter = _make_telegram_adapter()
         text = "x" * 5000
 
         # Act
-        chunks = adapter._render_text(text)
+        chunks = render_text(text)
         # Assert
         assert len(chunks) == 2
         assert all(len(c) <= 4096 for c in chunks)
 
     def test_render_buttons_none_when_empty(self) -> None:
         """_render_buttons([]) returns None."""
-        # Arrange
-        adapter = _make_telegram_adapter()
-
         # Act
-        result = adapter._render_buttons([])
+        result = render_buttons([])
         # Assert
         assert result is None
 
@@ -110,11 +103,8 @@ class TestTelegramOutboundMessage:
         """_render_buttons([Button("Yes","yes")]) returns an InlineKeyboardMarkup."""
         from aiogram.types import InlineKeyboardMarkup  # ImportError if aiogram absent
 
-        # Arrange
-        adapter = _make_telegram_adapter()
-
         # Act
-        result = adapter._render_buttons([Button("Yes", "yes")])
+        result = render_buttons([Button("Yes", "yes")])
         # Assert
         assert isinstance(result, InlineKeyboardMarkup)
 

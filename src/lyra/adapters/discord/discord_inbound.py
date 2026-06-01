@@ -305,9 +305,11 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:
     )
     if oversize_count:
         await _warn_oversize_reply(message)
-    if oversize_count and oversize_count == len(raw_atts) and not (
-        message.content or ""
-    ).strip():
+    if (
+        oversize_count
+        and oversize_count == len(raw_atts)
+        and not (message.content or "").strip()
+    ):
         # T10: all attachments oversize + no text → drop gracefully
         return
 

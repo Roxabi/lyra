@@ -110,10 +110,10 @@ class TestPublishesKeepaliveDuringIdle:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """At least 3 keepalive envelopes published; seq is monotonically increasing."""
-        import lyra.nats.nats_channel_proxy as proxy_mod  # noqa: PLC0415
+        import lyra.nats.keepalive as keepalive_mod  # noqa: PLC0415
 
         fast_interval = 0.05  # 50 ms
-        monkeypatch.setattr(proxy_mod, "KEEPALIVE_INTERVAL_S", fast_interval)
+        monkeypatch.setattr(keepalive_mod, "KEEPALIVE_INTERVAL_S", fast_interval)
 
         nc = _make_nc()
         proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
@@ -291,3 +291,56 @@ class TestOldAdapterIgnoresUnknownEventType:
         assert any(
             "stream_keepalive" in msg or "unknown" in msg for msg in warning_messages
         ), f"Expected warning about unknown event_type, got: {warning_messages}"
+
+
+# ---------------------------------------------------------------------------
+# Unit: _run_keepalive_loop time guard skips publish when below threshold
+# ---------------------------------------------------------------------------
+
+
+class _FakeTime:
+    """Stand-in for the ``time`` module; does not affect global ``time.monotonic``."""
+
+    def __init__(self, value: float) -> None:
+        self._value = value
+
+    def monotonic(self) -> float:
+        return self._value
+
+
+class TestKeepaliveTimeGuardSkipsPublish:
+    """Negative test for _run_keepalive_loop time guard."""
+
+    @pytest.mark.asyncio
+    async def test_keepalive_skipped_when_time_below_threshold(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Mock time.monotonic to return just below threshold; nc.publish is skipped."""
+        import lyra.nats.keepalive as keepalive_mod  # noqa: PLC0415
+
+        fast_interval = 0.05
+        monkeypatch.setattr(keepalive_mod, "KEEPALIVE_INTERVAL_S", fast_interval)
+
+        nc = _make_nc()
+        seq_box = [0]
+        base_time = 100.0
+        last_publish_box = [base_time]
+
+        # Replace the module-local ``time`` reference so global ``time.monotonic``
+        # (used by ``asyncio.sleep``) is unaffected.
+        fake_time = _FakeTime(base_time + fast_interval - 0.01)
+        monkeypatch.setattr(keepalive_mod, "time", fake_time)
+
+        task = asyncio.create_task(
+            keepalive_mod._run_keepalive_loop(
+                nc, "subject", "stream-id", seq_box, last_publish_box
+            )
+        )
+        await asyncio.sleep(fast_interval * 3)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        nc.publish.assert_not_awaited()

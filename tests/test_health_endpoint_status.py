@@ -15,8 +15,8 @@ from httpx import ASGITransport, AsyncClient
 
 from lyra.bootstrap.infra.health import Secrets
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.hub import Hub
+from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
 from lyra.core.messaging.message import (
     InboundMessage,
     Platform,

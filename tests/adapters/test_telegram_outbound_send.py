@@ -193,7 +193,7 @@ async def test_send_always_delivers_regardless_of_circuit_state() -> None:
     CB check is owned by OutboundDispatcher. Adapter always delivers.
     """
     from lyra.adapters.telegram import TelegramAdapter
-    from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
+    from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
 
     # Arrange — circuit is OPEN but adapter should still send (CB check in dispatcher)
     registry = CircuitRegistry()

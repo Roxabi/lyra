@@ -25,7 +25,7 @@ from .outbound_streaming import StreamingDispatch
 from .outbound_tts import TtsDispatch
 
 if TYPE_CHECKING:
-    from ...circuit_breaker import CircuitRegistry
+    from ...lifecycle.circuit_breaker import CircuitRegistry
     from ...messaging.message import (
         OutboundAttachment,
         OutboundAudio,

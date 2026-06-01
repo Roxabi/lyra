@@ -7,7 +7,7 @@ import logging
 from pathlib import Path
 
 from lyra.core.agent.agent_models import _utc_now_iso
-from lyra.core.agent.agent_schema import _CREATE_BOT_AGENT_MAP
+from lyra.core.agent.schema.agent_schema import _CREATE_BOT_AGENT_MAP
 
 from .sqlite_base import SqliteStore
 

@@ -17,7 +17,7 @@ import pytest
 from lyra.adapters.discord import DiscordAdapter
 from lyra.adapters.telegram import TelegramAdapter
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
+from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.messaging.message import InboundMessage, TelegramMeta
 
 # Backward-compatible re-exports from adapter factories

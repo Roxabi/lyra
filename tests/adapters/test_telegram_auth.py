@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
+from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
 
 # ---------------------------------------------------------------------------
 # File-local helpers

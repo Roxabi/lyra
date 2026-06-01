@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core import Agent, AgentBase, Hub, Pool
-from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.config import HubConfig
+from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.messaging.message import InboundMessage, Response
 from lyra.core.messaging.render_events import RenderEvent
 from tests.core.conftest import make_inbound_message

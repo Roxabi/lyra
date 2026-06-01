@@ -19,8 +19,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.hub import Hub
+from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
 from lyra.core.pool import Pool
 from lyra.core.pool.pool_context import PoolContext
 from lyra.infrastructure.stores.turn_store import TurnStore

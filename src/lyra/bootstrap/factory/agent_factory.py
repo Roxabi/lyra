@@ -28,8 +28,8 @@ from lyra.bootstrap.wiring.auth import BotAuthDeps, _build_bot_auths
 from lyra.config import multibot_config_from_store
 from lyra.core.agent import Agent, AgentBase
 from lyra.core.agent.agent_loader import agent_row_to_config
-from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.cli.cli_pool import CliPool
+from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
 from lyra.core.messaging.messages import MessageManager
 from lyra.core.ports.stt import STTProtocol
 from lyra.core.ports.tts import TtsProtocol

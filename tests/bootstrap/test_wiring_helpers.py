@@ -36,8 +36,8 @@ from lyra.bootstrap.types import (
 )
 from lyra.core.agent import Agent
 from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.hub import Hub
+from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.nats.queue_groups import HUB_INBOUND
 

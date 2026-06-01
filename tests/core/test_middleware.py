@@ -513,8 +513,8 @@ class TestCommandErrorPath:
 class TestCircuitBreakerDrop:
     async def test_circuit_breaker_open_drops(self) -> None:
         """Open circuit breaker in SubmitToPoolMiddleware → DROP."""
-        from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
         from lyra.core.hub.hub_protocol import RoutingKey
+        from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
 
         registry = CircuitRegistry()
         cb = CircuitBreaker(name="claude-cli", failure_threshold=1, recovery_timeout=60)

@@ -39,8 +39,8 @@ if TYPE_CHECKING:
     from lyra.transport.typing_publisher import TypingPublisher
 
     from ..agent import AgentBase
-    from ..circuit_breaker import CircuitRegistry
     from ..cli.cli_pool import CliPool
+    from ..lifecycle.circuit_breaker import CircuitRegistry
     from ..memory import MemoryManager
     from ..messaging.messages import MessageManager
     from ..ports.resume_publisher import ResumePublisherPort

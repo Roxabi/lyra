@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, cast
 import pytest
 
 from lyra.core import Agent, AgentBase, Hub, Pool, Response
-from lyra.core.circuit_breaker import CircuitBreaker
+from lyra.core.lifecycle.circuit_breaker import CircuitBreaker
 
 if TYPE_CHECKING:
     from lyra.core.hub.hub_protocol import ChannelAdapter
@@ -201,7 +201,7 @@ async def test_hub_circuit_opens_after_threshold() -> None:
         pass
 
     # Assert — hub circuit must be OPEN
-    from lyra.core.circuit_breaker import CircuitState
+    from lyra.core.lifecycle.circuit_breaker import CircuitState
 
     hub_status = registry["hub"].get_status()
     assert hub_status.state == CircuitState.OPEN, (

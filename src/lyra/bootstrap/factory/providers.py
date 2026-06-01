@@ -6,8 +6,8 @@ import logging
 from typing import TYPE_CHECKING
 
 from lyra.bootstrap.factory.config import LlmConfig
-from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.cli.cli_pool import CliPool
+from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
 from lyra.llm.base import LlmProvider
 from lyra.llm.decorators import CircuitBreakerDecorator, RetryDecorator
 from lyra.llm.drivers.cli import ClaudeCliDriver

@@ -20,9 +20,9 @@ if TYPE_CHECKING:
     from lyra.config import DiscordBotConfig, TelegramBotConfig
     from lyra.core.agent import Agent
     from lyra.core.auth.authenticator import Authenticator
-    from lyra.core.circuit_breaker import CircuitRegistry
     from lyra.core.cli.cli_pool import CliPool
     from lyra.core.hub import Hub, OutboundDispatcher
+    from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
     from lyra.core.messaging.messages import MessageManager
     from lyra.core.ports.blobstore import BlobStorePort
     from lyra.core.ports.stt import STTProtocol

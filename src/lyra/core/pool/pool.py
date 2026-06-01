@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from ..memory import SessionSnapshot
 
 from ..config import PoolConfig
-from ..debouncer import MessageDebouncer
+from ..lifecycle.debouncer import MessageDebouncer
 from ..messaging.message import InboundMessage, OutboundMessage
 from ..stores.pairing_protocol import PairingManagerProtocol
 from ..stores.turn_store_protocol import TurnStoreProtocol

@@ -16,9 +16,9 @@ import asyncio
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from lyra.core.circuit_breaker import CircuitBreaker
 from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 from lyra.core.hub.outbound.outbound_errors import _SCOPE_REAP_THRESHOLD
+from lyra.core.lifecycle.circuit_breaker import CircuitBreaker
 from lyra.core.messaging.callbacks import TrustedCallback
 from lyra.core.messaging.message import InboundMessage, OutboundMessage, RoutingContext
 from lyra.core.messaging.render_events import TextDeltaRenderEvent, TextEndRenderEvent

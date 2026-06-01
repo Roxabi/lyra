@@ -15,7 +15,7 @@ from lyra.config import (
     multibot_config_from_store,
 )
 from lyra.core.auth.authenticator import Authenticator
-from lyra.core.circuit_breaker import CircuitRegistry
+from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
 from lyra.core.stores.bot_store_protocol import BotStoreProtocol
 from lyra.infrastructure.stores.auth_store import AuthStore
 from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore

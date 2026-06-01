@@ -294,7 +294,7 @@ class TestBotRowConversion:
         # bypassing BotStore validation. Then reconnect and verify graceful coerce.
         import aiosqlite
 
-        from lyra.core.agent.bot_schema import _CREATE_BOTS
+        from lyra.core.agent.schema.bot_schema import _CREATE_BOTS
 
         db_path = tmp_path / "bots.db"
         async with aiosqlite.connect(str(db_path)) as db:

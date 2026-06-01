@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 from lyra.errors import ProviderError
 
 if TYPE_CHECKING:
-    from ..circuit_breaker import CircuitRegistry
+    from ..lifecycle.circuit_breaker import CircuitRegistry
     from ..messaging.message import InboundMessage, OutboundMessage, Response
     from ..messaging.messages import MessageManager
 

@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from lyra.core.agent import Agent, AgentBase
-from lyra.core.circuit_breaker import CircuitRegistry
+from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
 from lyra.core.messaging.message import (
     GENERIC_ERROR_REPLY,
     InboundMessage,

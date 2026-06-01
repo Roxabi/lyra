@@ -31,7 +31,7 @@ from lyra.adapters.shared._shared_text import (
     sanitize_filename,
     truncate_caption,
 )
-from lyra.core.circuit_breaker import CircuitRegistry
+from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
 from lyra.core.messaging.message import InboundMessage, Platform
 from lyra.outbound._streaming_state import IntermediateTextState, StreamState
 

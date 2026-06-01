@@ -18,14 +18,14 @@ if TYPE_CHECKING:
 from lyra.core.paths import PLUGINS_DIR
 
 from ..auth.trust import TrustLevel
-from ..circuit_breaker import CircuitRegistry
 from ..commands.command_loader import CommandLoader
 from ..commands.command_router import CommandRouter, CommandRouterDeps
 from ..config import RouterConfig
+from ..lifecycle.circuit_breaker import CircuitRegistry
+from ..lifecycle.session_lifecycle import MODEL_CONTEXT_TOKENS, SessionManager
 from ..messaging.message import InboundMessage, Response
 from ..messaging.messages import MessageManager
 from ..pool import Pool
-from ..session_lifecycle import MODEL_CONTEXT_TOKENS, SessionManager
 from .agent_commands import CommandReloadManager
 from .agent_config import Agent  # noqa: F401 — DEBT:re-export-init
 from .agent_db_loader import (

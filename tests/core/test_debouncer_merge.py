@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from lyra.core.debouncer import MessageDebouncer
+from lyra.core.lifecycle.debouncer import MessageDebouncer
 from lyra.core.messaging.message import Attachment
 from tests.core.conftest import make_debouncer_msg
 

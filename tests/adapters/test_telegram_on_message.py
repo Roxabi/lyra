@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
+from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.messaging.messages import MessageManager
 
 TOML_PATH = (

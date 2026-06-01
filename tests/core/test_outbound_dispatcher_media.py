@@ -6,8 +6,8 @@ import asyncio
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.circuit_breaker import CircuitBreaker
 from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
+from lyra.core.lifecycle.circuit_breaker import CircuitBreaker
 from lyra.core.messaging.message import (
     OutboundAttachment,
     OutboundAudio,
@@ -35,7 +35,7 @@ def _make_attachment() -> OutboundAttachment:
 
 class TestOutboundDispatcherAudio:
     async def test_enqueue_audio_delivers_via_adapter(self) -> None:
-        from lyra.core.circuit_breaker import CircuitState
+        from lyra.core.lifecycle.circuit_breaker import CircuitState
 
         adapter = MagicMock()
         adapter.render_audio = AsyncMock()
@@ -106,7 +106,7 @@ class TestOutboundDispatcherAudio:
 
 class TestOutboundDispatcherAttachment:
     async def test_enqueue_attachment_delivers_via_adapter(self) -> None:
-        from lyra.core.circuit_breaker import CircuitState
+        from lyra.core.lifecycle.circuit_breaker import CircuitState
 
         adapter = MagicMock()
         adapter.render_attachment = AsyncMock()

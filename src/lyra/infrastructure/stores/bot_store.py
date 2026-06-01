@@ -8,7 +8,7 @@ from pathlib import Path
 
 from lyra.core.agent.agent_models import _utc_now_iso
 from lyra.core.agent.bot_models import BotRow
-from lyra.core.agent.bot_schema import (
+from lyra.core.agent.schema.bot_schema import (
     _CREATE_BOTS,
     _SELECT_BOTS,
     _UPSERT_BOT,

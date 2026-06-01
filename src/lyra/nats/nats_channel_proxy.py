@@ -91,6 +91,9 @@ class NatsChannelProxy:
         self._codec = NatsRenderEventCodec(resolver=resolver)
         self._active_streams: set[str] = set()
 
+    def _to_json(self, obj: Any) -> Any:
+        return json.loads(serialize(obj, resolver=self._resolver).decode("utf-8"))
+
     # ------------------------------------------------------------------
     # Inbound normalization — not supported by this proxy
     # ------------------------------------------------------------------
@@ -123,12 +126,8 @@ class NatsChannelProxy:
         envelope = {
             "type": "send",
             "stream_id": original_msg.id,
-            "outbound": json.loads(
-                serialize(outbound, resolver=self._resolver).decode("utf-8")
-            ),
-            "original_msg": json.loads(
-                serialize(original_msg, resolver=self._resolver).decode("utf-8")
-            ),
+            "outbound": self._to_json(outbound),
+            "original_msg": self._to_json(original_msg),
         }
         payload = json.dumps(envelope, ensure_ascii=False).encode("utf-8")
         await self._nc.publish(subject, payload)
@@ -146,12 +145,8 @@ class NatsChannelProxy:
             header = {
                 "type": "stream_start",
                 "stream_id": original_msg.id,
-                "outbound": json.loads(
-                    serialize(outbound, resolver=self._resolver).decode("utf-8")
-                ),
-                "original_msg": json.loads(
-                    serialize(original_msg, resolver=self._resolver).decode("utf-8")
-                ),
+                "outbound": self._to_json(outbound),
+                "original_msg": self._to_json(original_msg),
             }
             await self._nc.publish(
                 subject, json.dumps(header, ensure_ascii=False).encode("utf-8")
@@ -240,12 +235,8 @@ class NatsChannelProxy:
         envelope = {
             "type": "audio",
             "stream_id": stream_id,
-            "audio": json.loads(
-                serialize(msg, resolver=self._resolver).decode("utf-8")
-            ),
-            "original_msg": json.loads(
-                serialize(inbound, resolver=self._resolver).decode("utf-8")
-            ),
+            "audio": self._to_json(msg),
+            "original_msg": self._to_json(inbound),
         }
         payload = json.dumps(envelope, ensure_ascii=False).encode("utf-8")
         try:
@@ -299,9 +290,7 @@ class NatsChannelProxy:
         envelope = {
             "type": "attachment",
             "stream_id": inbound.id,
-            "attachment": json.loads(
-                serialize(msg, resolver=self._resolver).decode("utf-8")
-            ),
+            "attachment": self._to_json(msg),
         }
         payload = json.dumps(envelope, ensure_ascii=False).encode("utf-8")
         await self._nc.publish(subject, payload)

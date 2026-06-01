@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -345,6 +345,16 @@ class TestOpenStoresLifecycle:
         mock_index = _make_store_mock()
         mock_alias = _make_store_mock()
 
+        mock_nc = AsyncMock()
+        mock_nc.jetstream = MagicMock(return_value=MagicMock())
+        mock_ensure_kv = AsyncMock()
+
+        captured_js = None
+        def _capture_js(*args, **kwargs):
+            nonlocal captured_js
+            captured_js = args[0] if args else kwargs.get("js")
+            return mock_index
+
         hub = Hub()
 
         # Patch all store constructors so open_stores never touches real SQLite.
@@ -375,15 +385,19 @@ class TestOpenStoresLifecycle:
                 return_value=mock_prefs,
             ),
             patch(
-                "lyra.bootstrap.bootstrap_stores.MessageIndex",
-                return_value=mock_index,
+                "lyra.bootstrap.bootstrap_stores.MessageIndexKvStore",
+                side_effect=_capture_js,
+            ),
+            patch(
+                "lyra.bootstrap.bootstrap_stores.ensure_kv",
+                mock_ensure_kv,
             ),
             # Migration guards touch the filesystem; bypass them for lifecycle tests.
             patch("lyra.bootstrap.bootstrap_stores._ensure_config_db"),
             patch("lyra.bootstrap.bootstrap_stores._ensure_discord_db"),
         ):
             # Act — enter open_stores, wire hub, call hub.shutdown(), then exit
-            async with open_stores(tmp_path) as stores:
+            async with open_stores(tmp_path, nc=mock_nc) as stores:
                 hub.set_turn_store(stores.turn)
                 # hub.shutdown() must NOT close the turn store
                 await hub.shutdown()
@@ -396,6 +410,9 @@ class TestOpenStoresLifecycle:
             "A call count > 1 means hub.shutdown() is still closing the store — "
             "the double-close regression from #1506 has been reintroduced."
         )
+        mock_ensure_kv.assert_awaited_once()
+        assert captured_js is not None
+        assert captured_js is mock_nc.jetstream()
 
     @pytest.mark.asyncio
     async def test_hub_shutdown_does_not_close_turn_store(self, tmp_path: Path) -> None:
@@ -416,3 +433,40 @@ class TestOpenStoresLifecycle:
 
         # Assert — turn_store.close() must not have been called
         mock_turn.close.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_open_stores_raises_without_nc(self, tmp_path: Path) -> None:
+        """open_stores without nc raises RuntimeError."""
+        with (
+            patch(
+                "lyra.bootstrap.bootstrap_stores.AuthStore",
+                return_value=AsyncMock(),
+            ),
+            patch(
+                "lyra.bootstrap.bootstrap_stores.IdentityAliasStore",
+                return_value=AsyncMock(),
+            ),
+            patch(
+                "lyra.bootstrap.bootstrap_stores.AgentStore",
+                return_value=AsyncMock(),
+            ),
+            patch(
+                "lyra.bootstrap.bootstrap_stores.TurnStore",
+                return_value=AsyncMock(),
+            ),
+            patch(
+                "lyra.bootstrap.bootstrap_stores.BotStore",
+                return_value=AsyncMock(),
+            ),
+            patch(
+                "lyra.bootstrap.bootstrap_stores.PrefsStore",
+                return_value=AsyncMock(),
+            ),
+            patch("lyra.bootstrap.bootstrap_stores._ensure_config_db"),
+            patch("lyra.bootstrap.bootstrap_stores._ensure_discord_db"),
+        ):
+            with pytest.raises(
+                RuntimeError, match="NATS connection \\(nc\\) is required"
+            ):
+                async with open_stores(tmp_path):
+                    pass

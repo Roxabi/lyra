@@ -33,7 +33,7 @@ Rule of thumb: if the Protocol abstracts something *outside* lyra (LLM, TTS, aud
 
 `ports/llm.py`, `ports/stt.py`, `ports/tts.py` follow the same shape: protocol + value objects + errors only. `ports/` is the single owner of domain types. Adapter-adjacent helpers (`is_whisper_noise`, `mime_from_suffix`) live in `lyra/nats/stt_helpers.py`, not in `ports/`.
 
-## Store pattern (ADR-048)
+## Store pattern (ADR-048 (absorbed into ADR-059))
 
 Store protocols stay in `core/stores/`; SQLite implementations live in `lyra.infrastructure.stores`.
 Pattern: `__init__` = data structures only · `connect()` = open DB + migrate + warm cache · `close()` = teardown.

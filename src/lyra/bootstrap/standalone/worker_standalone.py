@@ -11,7 +11,7 @@ from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
 from lyra.bootstrap.factory.config import _load_cli_pool_config
 from lyra.bootstrap.infra.git_ownership_probe import run_git_ownership_probe
 from lyra.core.cli.cli_pool import CliPool, CliPoolDeps
-from lyra.core.messaging.metrics import log_contracts_version
+from lyra.core.messaging.utils.metrics import log_contracts_version
 from lyra.infrastructure.stores.turn_store import TurnStore
 from lyra.infrastructure.turn_writer.health import TurnWriterHealthServer
 from lyra.infrastructure.turn_writer.stream_setup import (

@@ -524,7 +524,8 @@ class TestCheckContractVersion:
         ],
     )
     def test_lenient_int_forms_drop(self, lenient_string: str) -> None:
-        """Strings that ``int()`` accepts but ADR-044 wire spec rejects → dropped."""
+        """Strings that ``int()`` accepts but
+        ADR-044 (absorbed into ADR-049) wire spec rejects → dropped."""
         # Arrange
         counter: dict[str, int] = {}
 
@@ -594,7 +595,8 @@ class TestCheckContractVersion:
             counter=counter,
         )
 
-        # Assert — producers always stamp strings (ADR-044); bare int is malformed
+                # Assert — producers always stamp strings
+        # (ADR-044 (absorbed into ADR-049)); bare int is malformed
         assert result is False
         assert counter == {"InboundMessage:contract": 1}
 

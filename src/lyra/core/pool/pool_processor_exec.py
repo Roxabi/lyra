@@ -17,8 +17,8 @@ if TYPE_CHECKING:
     from ..messaging.message import InboundMessage
     from .pool import Pool
 
-from ..messaging.callbacks import TrustedCallback
 from ..messaging.message import GENERIC_ERROR_REPLY, OutboundMessage, Response
+from ..messaging.utils.callbacks import TrustedCallback
 from ..trace import TraceContext
 from .pool_observer import TurnLogDeps
 from .pool_processor_streaming import (

@@ -37,7 +37,7 @@ intentionally loud; re-provision deferred to next container restart.
 ## Token semantics
 
 - Bearer token read **once at startup** from `/run/secrets/lyra_blobstore_token`
-  (Podman `type=mount` secret, ADR-054).
+  (Podman `type=mount` secret, ADR-054 (absorbed into ADR-055)).
 - Stored in memory for the process lifetime. Re-read requires container restart — NOT a
   `HUP`. Sending `SIGHUP` does NOT rotate the in-memory token.
 - `BearerAuthMiddleware` uses `hmac.compare_digest` (¬ `==` comparison — SC-Code-4).

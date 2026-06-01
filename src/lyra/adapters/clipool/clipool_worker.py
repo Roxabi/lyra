@@ -1,4 +1,6 @@
-"""CliPoolNatsWorker — NATS worker adapter for CliPool (ADR-054).
+"""CliPoolNatsWorker — NATS worker adapter for CliPool.
+
+(ADR-054 (absorbed into ADR-055)).
 
 Subscribes to ``lyra.clipool.cmd`` (queue group ``clipool-workers``) and
 ``lyra.clipool.control``.  Routes inbound messages to _handle_cmd or
@@ -18,7 +20,7 @@ from pydantic import ValidationError
 from lyra.core.agent.agent_config import ModelConfig
 from lyra.core.cli.cli_pool import CliPool
 from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
-from lyra.core.messaging.metrics import emit_populated_total
+from lyra.core.messaging.utils.metrics import emit_populated_total
 from roxabi_contracts.cli.models import (
     CliChunkEvent,
     CliCmdPayload,
@@ -43,7 +45,7 @@ _HEARTBEAT_INTERVAL = 30.0
 def _classify_exception(exc: BaseException) -> WorkerError:
     """Map an exception to a ``WorkerError`` with the appropriate code.
 
-    Code selection (per T13 / ADR-066):
+    Code selection (per T13 / ADR-066 (absorbed into ADR-049)):
     - ``asyncio.TimeoutError`` → ``cli.session_lost`` (retryable=True)
     - ``UnicodeDecodeError`` / ``ValueError`` (parse/decode) → ``cli.parse``
       (retryable=False)

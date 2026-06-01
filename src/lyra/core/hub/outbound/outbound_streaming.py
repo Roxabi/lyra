@@ -12,8 +12,8 @@ import time
 from collections.abc import AsyncIterator, Callable
 from typing import TYPE_CHECKING
 
-from ...messaging.callbacks import unwrap_callback
 from ...messaging.message import InboundMessage, OutboundMessage, Platform
+from ...messaging.utils.callbacks import unwrap_callback
 
 if TYPE_CHECKING:
     from ...messaging.render_events import RenderEvent

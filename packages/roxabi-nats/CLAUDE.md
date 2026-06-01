@@ -5,7 +5,7 @@
 `roxabi-nats` is a **standalone Python package** — not a Lyra module. It is the
 shared NATS transport SDK for the Roxabi plugin ecosystem (voiceCLI, imageCLI,
 roxabi-vault, and future services). It lives in the Lyra monorepo for colocation
-with the wire contract (ADR-044/049) but is versioned independently.
+with the wire contract (ADR-044 (absorbed into ADR-049)/049) but is versioned independently.
 
 → Architecture contract: `docs/architecture/adr/045-roxabi-nats-sdk-uv-workspace-extraction.mdx`
 

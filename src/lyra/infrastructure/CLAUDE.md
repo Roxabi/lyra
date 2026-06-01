@@ -1,6 +1,6 @@
 # src/lyra/infrastructure/ — Persistence Layer
 
-## ADR-048 invariant
+## ADR-048 (absorbed into ADR-059) invariant
 
 Protocols → `lyra.core.stores/` | Implementations → `lyra.infrastructure.stores/`
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import ANY, AsyncMock, MagicMock
 
 import nats.errors
 import pytest
@@ -97,10 +97,11 @@ def _patch_unified_boundaries(  # noqa: PLR0915
         async def __aexit__(self, *_exc: Any) -> None:
             order.append("open_stores.exit")
 
+    _open_stores_mock = MagicMock(side_effect=lambda _vault_dir, nc: _FakeStoresCtx())
     monkeypatch.setattr(
         unified_mod,
         "open_stores",
-        lambda _vault_dir: _FakeStoresCtx(),
+        _open_stores_mock,
     )
 
     # -- helper mocks with realistic return values
@@ -215,6 +216,7 @@ def _patch_unified_boundaries(  # noqa: PLR0915
         "gather": _orig_gather,
         "acquire_lockfile": _orig_acquire,
         "release_lockfile": _orig_release,
+        "_open_stores_mock": _open_stores_mock,
     }
 
 
@@ -293,6 +295,11 @@ async def test_sequence_order(
     _before("_register_agents", "_wire_adapters")
     _before("_wire_adapters", "_run_clipool_worker_task")
     _before("_run_clipool_worker_task", "run_lifecycle")
+
+    _open_stores_mock = _patch_unified_boundaries["_open_stores_mock"]
+    _open_stores_mock.assert_called_once_with(
+        ANY, nc=_patch_unified_boundaries["fake_nc"]
+    )
 
 
 async def test_run_lifecycle_awaited_with_resources(

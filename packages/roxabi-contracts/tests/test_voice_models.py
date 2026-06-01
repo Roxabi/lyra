@@ -1,7 +1,8 @@
 """Roundtrip + success-path invariant tests for roxabi_contracts.voice models.
 
 Parametrized over all four envelope subclasses (TtsRequest/TtsResponse/
-SttRequest/SttResponse). Invariants per ADR-044 and spec #763 drift
+SttRequest/SttResponse). Invariants per ADR-044 (absorbed into ADR-049)
+and spec #763 drift
 items 1, 3, 4.
 """
 

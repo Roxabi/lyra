@@ -108,6 +108,7 @@ def _patch_nats_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
     """Patch NATS components so _bootstrap_unified never touches a real server."""
     fake_nc = AsyncMock()
     fake_nc.close = AsyncMock()
+    fake_nc.jetstream = MagicMock(return_value=AsyncMock())
     fake_embedded = MagicMock()
     fake_embedded.stop = AsyncMock()
     monkeypatch.setattr(

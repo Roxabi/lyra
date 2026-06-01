@@ -29,7 +29,7 @@ from lyra.bootstrap.standalone.hub_standalone_helpers import (
     load_agent_configs,
     start_mint_failure_subscriber,
 )
-from lyra.core.messaging.metrics import log_contracts_version
+from lyra.core.messaging.utils.metrics import log_contracts_version
 from roxabi_nats import nats_connect
 from roxabi_nats.connect import scrub_nats_url
 from roxabi_nats.readiness import announce_hub_ready, start_readiness_responder
@@ -79,7 +79,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
     ).resolve()
     vault_dir.mkdir(parents=True, exist_ok=True)
 
-    async with open_stores(vault_dir) as stores:
+    async with open_stores(vault_dir, nc=nc) as stores:
         # Prune stale message_index entries
         mi_cfg = MessageIndexConfig(**raw_config.get("message_index", {}))
         pruned = await stores.message_index.cleanup_older_than(mi_cfg.retention_days)

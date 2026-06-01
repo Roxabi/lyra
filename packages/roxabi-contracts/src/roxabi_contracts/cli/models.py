@@ -1,4 +1,5 @@
-"""CliPool NATS contract models — hub ↔ clipool-worker (ADR-054)."""
+"""CliPool NATS contract models — hub ↔ clipool-worker
+(ADR-054 (absorbed into ADR-055))."""
 
 from __future__ import annotations
 

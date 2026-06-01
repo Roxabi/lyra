@@ -27,15 +27,20 @@ from .render_events import (
     ToolCallResultRenderEvent,
     ToolCallStartRenderEvent,
 )
+from .utils.callbacks import TrustedCallback, unwrap_callback
+from .utils.error_extractor import _extract_worker_error
+from .utils.metrics import emit_populated_total, log_contracts_version
 from .voice_notify import VOICE_UNDELIVERED_MSG, notify_undelivered
 
 __all__ = [
     "Bus",
     "DiscordMeta",
+    "emit_populated_total",
     "GenericMeta",
     "InboundMessage",
     "LlmEvent",
     "LocalBus",
+    "log_contracts_version",
     "OutboundMessage",
     "PlatformMeta",
     "ReasoningDeltaRenderEvent",
@@ -55,6 +60,9 @@ __all__ = [
     "ToolCallEndRenderEvent",
     "ToolCallResultRenderEvent",
     "ToolCallStartRenderEvent",
+    "TrustedCallback",
+    "unwrap_callback",
+    "_extract_worker_error",
     "VOICE_UNDELIVERED_MSG",
     "notify_undelivered",
 ]

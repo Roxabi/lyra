@@ -146,7 +146,7 @@ echo ""
 echo "PASS: all 7 assertions (a–g) — 10 identities × {pub,sub} × set equality"
 
 # ── #754 image domain integration — assert image-worker + amended hub ACL ──
-# Contract: ADR-050 (lyra ↔ imagecli). See artifacts/specs/754-lyra-image-domain-integration-spec.mdx §Slice 3.
+# Contract: ADR-050 (absorbed into ADR-049) (lyra ↔ imagecli). See artifacts/specs/754-lyra-image-domain-integration-spec.mdx §Slice 3.
 # Reuses $OUT (written at line 30) and the brace-depth-guarded
 # extract_block helper above — see B9 rationale for why the guard matters.
 

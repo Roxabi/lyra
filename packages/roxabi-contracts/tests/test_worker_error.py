@@ -209,7 +209,8 @@ def test_code_meta_has_required_fields() -> None:
 
 
 # ---------------------------------------------------------------------------
-# KNOWN_CODES: sample presence assertions (from ADR-066 §"The code namespace")
+# KNOWN_CODES: sample presence assertions (from ADR-066 (absorbed into ADR-049)
+# §"The code namespace")
 # ---------------------------------------------------------------------------
 
 
@@ -241,7 +242,8 @@ def test_code_meta_has_required_fields() -> None:
     ],
 )
 def test_known_codes_contains_adr_codes(code: str) -> None:
-    """Every code listed in ADR-066 §'The code namespace' is present."""
+    """Every code listed in ADR-066 (absorbed into ADR-049)
+    §'The code namespace' is present."""
     assert code in KNOWN_CODES, f"Missing expected code: {code!r}"
 
 

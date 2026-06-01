@@ -16,7 +16,7 @@ import re
 import tempfile
 from dataclasses import dataclass
 
-from ..agent.agent_config import ModelConfig
+from ...agent.agent_config import ModelConfig
 
 log = logging.getLogger(__name__)
 

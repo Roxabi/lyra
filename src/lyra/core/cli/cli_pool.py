@@ -28,7 +28,7 @@ from .cli_pool_worker import (
     CliPoolWorkerMixin,
     _ProcessEntry,
 )
-from .cli_protocol import (
+from .protocol.cli_protocol import (
     SESSION_ID_RE,
     CliProtocolOptions,
     CliResult,

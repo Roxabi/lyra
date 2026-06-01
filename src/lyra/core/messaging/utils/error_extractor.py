@@ -1,4 +1,4 @@
-"""Hub-side WorkerError extractor (ADR-066 § "Hub side").
+"""Hub-side WorkerError extractor (ADR-066 (absorbed into ADR-049) § "Hub side").
 
 Single entry-point: ``_extract_worker_error`` — safe across all reply
 envelope types, including legacy ones that predate the field (e.g.

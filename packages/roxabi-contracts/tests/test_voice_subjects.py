@@ -1,7 +1,8 @@
 """Tests for roxabi_contracts.voice subjects namespace.
 
-ADR-044 defines the canonical subject strings used by lyra's NatsTtsClient /
-NatsSttClient and voiceCLI's TtsNatsAdapter / SttNatsAdapter. This file
+ADR-044 (absorbed into ADR-049) defines the canonical subject strings used by
+lyra's NatsTtsClient / NatsSttClient and voiceCLI's TtsNatsAdapter / SttNatsAdapter.
+This file
 locks those strings so a typo or accidental rename fails here, not silently
 in production.
 """

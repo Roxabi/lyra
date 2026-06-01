@@ -141,7 +141,8 @@ class CodeMeta(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# KNOWN_CODES — canonical registry (ADR-066 § "The code namespace")
+# KNOWN_CODES — canonical registry
+# (ADR-066 (absorbed into ADR-049) § "The code namespace")
 # ---------------------------------------------------------------------------
 # Domains: transport | pool | worker | cli | llm | voice | image | stream
 # ---------------------------------------------------------------------------

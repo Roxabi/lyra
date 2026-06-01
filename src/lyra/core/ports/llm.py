@@ -25,7 +25,8 @@ class LlmResult:
     (e.g. open circuit, invalid credentials, quota exhausted).
     Defaults to True so transient failures are retried automatically.
 
-    ``worker_error`` carries the structured error envelope (ADR-066 / #1016).
+    ``worker_error`` carries the structured error envelope
+    (ADR-066 (absorbed into ADR-049) / #1016).
     When populated, ``error`` is also set for backward compatibility (P2 shim).
     """
 

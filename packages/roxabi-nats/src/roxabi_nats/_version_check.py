@@ -26,7 +26,9 @@ import re
 import time
 from dataclasses import dataclass
 
-# ADR-044 wire format: contract_version is a plain decimal numeric string.
+#
+# ADR-044 (absorbed into ADR-049) wire format:
+# contract_version is a plain decimal numeric string.
 # Reject ``_`` separators, leading ``+``/``-``, unicode digits, whitespace —
 # anything ``int()`` would accept that is not an exact plain-decimal literal.
 _CONTRACT_VERSION_RE = re.compile(r"[1-9][0-9]*")
@@ -126,7 +128,8 @@ def check_contract_version(
 ) -> bool:
     """Return True if payload's ``contract_version`` is acceptable for this receiver.
 
-    Mirrors :func:`check_schema_version` but validates the ADR-044 wire-format
+    Mirrors :func:`check_schema_version` but validates the ADR-044
+    (absorbed into ADR-049) wire-format
     ``contract_version`` field (a numeric string such as ``"1"``).  Rejects
     envelopes whose contract_version (parsed as int) is strictly greater than
     the receiver's compiled-in ``CONTRACT_VERSION`` — an outdated hub must not
@@ -151,7 +154,8 @@ def check_contract_version(
     raw = payload.get("contract_version", "1")
     ctx = _DropContext(envelope_name=envelope_name, subject=subject, counter=counter)
 
-    # Wire format (ADR-044) stamps contract_version as a numeric string. Reject
+    # Wire format (ADR-044 (absorbed into ADR-049)) stamps contract_version as a
+    # numeric string. Reject
     # anything else — including bare int — to keep the validator symmetric with
     # producer behavior and prevent silent lenience from masking wire drift.
     if not isinstance(raw, str):
@@ -160,7 +164,7 @@ def check_contract_version(
 
     # Strict plain-decimal match — ``int()`` alone would accept ``"+1"``,
     # ``"1_000"``, unicode digits, and leading/trailing whitespace, all of which
-    # are out of the ADR-044 wire spec.
+    # are out of the ADR-044 (absorbed into ADR-049) wire spec.
     if _CONTRACT_VERSION_RE.fullmatch(raw) is None:
         _drop(ctx, raw, expected, kind="contract")
         return False

@@ -1,7 +1,8 @@
 """Voice-domain NATS subject strings and per-worker helpers.
 
-Canonical values from ADR-044 §Subjects. Literal strings (no f-strings,
-no derivation) so grep can locate every reference across the monorepo.
+Canonical values from ADR-044 (absorbed into ADR-049) §Subjects.
+Literal strings (no f-strings, no derivation) so grep can locate every reference
+across the monorepo.
 """
 
 from dataclasses import dataclass

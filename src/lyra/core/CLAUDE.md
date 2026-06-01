@@ -43,7 +43,7 @@ Rule of thumb: if the Protocol abstracts something *outside* lyra (LLM, TTS, aud
 
 Tracked as future work — not blocking. Trigger to act: when ISP cost shows up in practice (a channel that only emits or only receives, or testability friction isolating one direction). Until then `ChannelAdapter` stays as a documented dette in its file docstring.
 
-## Store pattern (ADR-048)
+## Store pattern (ADR-048 (absorbed into ADR-059))
 
 Store protocols stay in `core/stores/`; SQLite implementations live in `lyra.infrastructure.stores`.
 Pattern: `__init__` = data structures only · `connect()` = open DB + migrate + warm cache · `close()` = teardown.

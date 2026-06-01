@@ -1,6 +1,6 @@
 # src/lyra/infrastructure/ — Persistence Layer
 
-## ADR-048 invariant
+## ADR-048 (absorbed into ADR-059) invariant
 
 Protocols → `lyra.core.stores/` | Implementations → `lyra.infrastructure.stores/`
 
@@ -17,7 +17,7 @@ lyra.core (protocols) ← lyra.llm | lyra.nats ← lyra.infrastructure (implemen
 
 | Subdir / File | Contents | ADR |
 |---------------|----------|-----|
-| `stores/` | SQLite store implementations | ADR-048 |
+| `stores/` | SQLite store implementations | ADR-048 (absorbed into ADR-059) |
 | `audit/` | `JetStreamAuditSink` — publishes `SecurityEvent` to NATS JetStream | ADR-057 |
 | `turn_writer/` | JetStream subscriber-writer for turns.db (sole writer post-#1331) | ADR-075 |
 | `outbound_audio/` | Idempotent JetStream stream + durable consumer + KV provisioning for durable outbound-audio path; hub sole-provisioner for stream+KV, adapters call `ensure_consumer` only | ADR-079 |

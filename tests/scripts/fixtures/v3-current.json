@@ -261,7 +261,7 @@
       "status": "active",
       "created_at": "2026-04-21",
       "owner": "imagecli",
-      "description": "imagecli nats-serve satellite (ADR-050, imageCLI#50 + #754). Inbox normalized to _inbox.image-worker.> (ADR-051 + postmortem Fix 1). Inbox grant derived from request_reply_flows (Fix 3 / #992).",
+      "description": "imagecli nats-serve satellite (ADR-050 (absorbed into ADR-049), imageCLI#50 + #754). Inbox normalized to _inbox.image-worker.> (ADR-051 + postmortem Fix 1). Inbox grant derived from request_reply_flows (Fix 3 / #992).",
       "notes": "$JS.API.> + $KV.lyra-state.> required for roxabi-nats v0.4.x readiness probe (wait_for_hub via JetStream KV). Tighter per-operation scoping tracked in #1293 (holistic hardening: workers + adapters + SDK-drift CI gate). Continues the pre-existing adapter pattern.",
       "allow_responses": true,
       "publish": [

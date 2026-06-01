@@ -1,4 +1,5 @@
-"""SQLite store implementations — moved from lyra.core.stores per ADR-048."""
+"""SQLite store implementations — moved from lyra.core.stores per
+ADR-048 (absorbed into ADR-059)."""
 
 from lyra.infrastructure.stores.agent_store import AgentStore
 from lyra.infrastructure.stores.auth_store import AuthStore

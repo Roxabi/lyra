@@ -55,8 +55,8 @@ least one minor release before removal; announce in CHANGELOG.md.
 
 Domain-grouped contract modules (run `ls src/roxabi_contracts/` for the full listing):
 
-- **Shared primitives:** `envelope.py` (ContractEnvelope base), `errors.py` (WorkerError + KNOWN_CODES registry, ADR-066), `blob_errors.py` (BlobNotFoundError, ADR-082), `blob_ref.py` (wire-side BlobRef, ADR-067), `_testing_guards.py`, `_nats_utils.py`
-- **Integration contracts:** `voice/` (ADR-044), `image/` (ADR-050), `turns/` (#1331), `outbound/`, `event/`, `cli/`, `llm/`, `jobs/`, `gh/`, `audit/`
+- **Shared primitives:** `envelope.py` (ContractEnvelope base), `errors.py` (WorkerError + KNOWN_CODES registry, ADR-066 (absorbed into ADR-049)), `blob_errors.py` (BlobNotFoundError, ADR-082), `blob_ref.py` (wire-side BlobRef, ADR-067), `_testing_guards.py`, `_nats_utils.py`
+- **Integration contracts:** `voice/` (ADR-044 (absorbed into ADR-049)), `image/` (ADR-050 (absorbed into ADR-049)), `turns/` (#1331), `outbound/`, `event/`, `cli/`, `llm/`, `jobs/`, `gh/`, `audit/`
 - **Sentinel:** `verify/` — ACL-verification deny-probe (ungranted, #1545)
 
 Each domain submodule exposes: `SUBJECTS` (subject constants), models, and

@@ -115,7 +115,7 @@ class ResultLlmEvent:
     ``cli_streaming_parser.py``); always co-populated with ``worker_error``
     on terminal failure events. ``None`` or empty on success. Not present on
     NATS wire contracts — only ``worker_error`` crosses the wire. See
-    ADR-066 archive Status for the dual-field rationale.
+    ADR-066 (absorbed into ADR-049) archive Status for the dual-field rationale.
     """
 
     is_error: bool

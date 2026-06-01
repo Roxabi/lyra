@@ -90,8 +90,13 @@ Supporting rules:
 - **Enforcement:** a subject→envelope mapping test asserts work subjects deserialize to
   `WorkEnvelope` subclasses and infra subjects to bare `ContractEnvelope` (same spirit as
   the importlinter contracts).
-- `job_id` / `parent_job_id` are **not security-bearing** → additive **minor** version bump
-  is safe under ADR-049 forward-compat rules.
+- Adding the `WorkEnvelope` base class itself is **additive** and safe as a **minor** bump
+  under ADR-049 forward-compat rules (`extra="ignore"`).
+- **Reparenting existing models** (other than `jobs/*`) to `WorkEnvelope` introduces a
+  **new required field** (`job_id`) where none existed before — this is **breaking** for
+  those domains (`llm`, `voice`, `image`, `turns`, `inbound/outbound`, `cli`). Each domain
+  coordinates its own major/minor bump per ADR-049. `jobs/*` is the exception: it already
+  carries the three fields, so reparenting to `WorkEnvelope` is non-breaking.
 
 ## Relationship to WorkScope and the typing plane
 

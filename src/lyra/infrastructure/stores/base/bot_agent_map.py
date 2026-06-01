@@ -145,6 +145,8 @@ class BotAgentMapStore(SqliteStore):
             (settings_raw, now, platform, bot_id),
         )
         if cursor.rowcount == 0:
+            await cursor.close()
+            await db.rollback()
             raise ValueError(
                 f"No bot_agent_map row for platform={platform!r}, bot_id={bot_id!r}. "
                 "Call set_bot_agent() first."

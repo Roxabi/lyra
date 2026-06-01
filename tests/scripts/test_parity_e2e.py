@@ -488,13 +488,14 @@ def test_retired_identity_connect_rejected(
                 f"nats://127.0.0.1:{client_port}",
                 nkeys_seed_str=seed_str,
                 connect_timeout=2,
+                allow_reconnect=False,
             )
 
         with pytest.raises(
             Exception,
             match=(
-                r"authorization violation|auth error|connection refused"
-                r"|no servers available"
+                r"authorization violation|Authorization Violation|auth error"
+                r"|connection refused|no servers available"
             ),
         ):
             asyncio.run(_connect_retired())

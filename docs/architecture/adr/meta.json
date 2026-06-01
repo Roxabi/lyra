@@ -15,6 +15,7 @@
     "076-three-nats-planes",
     "077-outbound-audio-subject",
     "079-audio-nats-contract-axial-consolidation",
+    "084-workenvelope-job-id-invariant",
     "---LLM, Streaming & Agents---",
     "028-token-level-streaming-path-shape",
     "032-llmevent-streamprocessor-renderevent-hexagonal-streaming",

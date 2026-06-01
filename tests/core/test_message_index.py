@@ -142,6 +142,16 @@ class TestMessageIndexProtocolConformance:
         # Assert — structural conformance verified at runtime
         assert isinstance(store, MessageIndexProtocol)
 
+    async def test_message_index_kv_isinstance_check(self, tmp_path) -> None:
+        """MessageIndexKvStore satisfies MessageIndexProtocol."""
+        from unittest.mock import AsyncMock
+
+        from lyra.core.stores.message_index_protocol import MessageIndexProtocol
+        from lyra.infrastructure.stores.message_index_kv import MessageIndexKvStore
+
+        store = MessageIndexKvStore(AsyncMock())
+        assert isinstance(store, MessageIndexProtocol)
+
     def test_message_index_protocol_exported_from_package(self) -> None:
         """MessageIndexProtocol is importable from lyra.core.stores."""
         from lyra.core.stores import MessageIndexProtocol as _MIP

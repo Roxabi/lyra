@@ -19,11 +19,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncGenerator
 
+from nats.aio.client import Client
+
 from lyra.infrastructure.stores.agent_store import AgentStore
 from lyra.infrastructure.stores.auth_store import AuthStore
 from lyra.infrastructure.stores.bot_store import BotStore
 from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
-from lyra.infrastructure.stores.message_index import MessageIndex
+from lyra.infrastructure.stores.message_index_kv import MessageIndexKvStore, ensure_kv
 from lyra.infrastructure.stores.prefs_store import PrefsStore
 from lyra.infrastructure.stores.turn_store import TurnStore
 
@@ -233,13 +235,15 @@ class StoreBundle:
     agent: AgentStore
     turn: TurnStore
     prefs: PrefsStore
-    message_index: MessageIndex
+    message_index: MessageIndexKvStore
     identity_alias: IdentityAliasStore
     bot: BotStore
 
 
 @asynccontextmanager
-async def open_stores(vault_dir: Path) -> AsyncGenerator[StoreBundle, None]:
+async def open_stores(
+    vault_dir: Path, nc: Client | None = None
+) -> AsyncGenerator[StoreBundle, None]:
     """Open every store, yield a *StoreBundle*, and close on exit.
 
     Runs the auth.db → config.db migration guard before opening stores (#417).
@@ -254,7 +258,7 @@ async def open_stores(vault_dir: Path) -> AsyncGenerator[StoreBundle, None]:
     agent_store: AgentStore | None = None
     turn_store: TurnStore | None = None
     prefs_store: PrefsStore | None = None
-    message_index_store: MessageIndex | None = None
+    message_index_store: MessageIndexKvStore | None = None
     identity_alias_store: IdentityAliasStore | None = None
     bot_store: BotStore | None = None
     try:
@@ -278,7 +282,14 @@ async def open_stores(vault_dir: Path) -> AsyncGenerator[StoreBundle, None]:
         prefs_store = PrefsStore(db_path=vault_dir / "config.db")
         await prefs_store.connect()
 
-        message_index_store = MessageIndex(db_path=vault_dir / "message_index.db")
+        if nc is None:
+            raise RuntimeError(
+                "NATS connection (nc) is required for MessageIndexKvStore;"
+                " message_index is no longer SQLite-backed (#1059)."
+            )
+        js = nc.jetstream()
+        await ensure_kv(js)
+        message_index_store = MessageIndexKvStore(js)
         await message_index_store.connect()
 
         yield StoreBundle(

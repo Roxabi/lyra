@@ -53,7 +53,7 @@ async def _bootstrap_unified(
         vault_dir = Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
         vault_dir.mkdir(parents=True, exist_ok=True)
 
-        async with open_stores(vault_dir) as stores:
+        async with open_stores(vault_dir, nc=nc) as stores:
             await _prune_message_index(stores, raw_config)
             await _seed_auth(stores)
 

@@ -102,7 +102,7 @@
 - **Subscribe:** $KV.lyra-state.>, _inbox.discord-adapter.*.*, _inbox.discord-adapter.>, lyra.outbound.audio.>, lyra.outbound.discord.>, lyra.typing.discord.>
 
 ### hub
-- **Publish:** $JS.API.>, $KV.lyra-state.>, lyra.audit.>, lyra.clipool.cmd, lyra.clipool.control, lyra.event.>, lyra.image.generate.request, lyra.llm.generate.request, lyra.metric.>, lyra.outbound.audio.>, lyra.outbound.discord.>, lyra.outbound.telegram.>, lyra.turns.write, lyra.typing.>, lyra.voice.stt.request, lyra.voice.stt.request.>, lyra.voice.tts.request, lyra.voice.tts.request.>
+- **Publish:** $JS.API.>, $KV.lyra-msg-index.>, $KV.lyra-state.>, lyra.audit.>, lyra.clipool.cmd, lyra.clipool.control, lyra.event.>, lyra.image.generate.request, lyra.llm.generate.request, lyra.metric.>, lyra.outbound.audio.>, lyra.outbound.discord.>, lyra.outbound.telegram.>, lyra.turns.write, lyra.typing.>, lyra.voice.stt.request, lyra.voice.stt.request.>, lyra.voice.tts.request, lyra.voice.tts.request.>
 - **Subscribe:** _inbox.hub.>, lyra.clipool.heartbeat, lyra.gh.mint_failure.>, lyra.image.heartbeat, lyra.inbound.discord.>, lyra.inbound.telegram.>, lyra.llm.heartbeat, lyra.system.ready, lyra.voice.stt.heartbeat, lyra.voice.tts.heartbeat
 
 ### image-worker

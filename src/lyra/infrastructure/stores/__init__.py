@@ -7,6 +7,7 @@ from lyra.infrastructure.stores.bot_agent_map import BotAgentMapStore
 from lyra.infrastructure.stores.bot_store import BotStore
 from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
 from lyra.infrastructure.stores.message_index import MessageIndex
+from lyra.infrastructure.stores.message_index_kv import MessageIndexKvStore
 from lyra.infrastructure.stores.pairing import (
     PairingManager,
     get_pairing_manager,
@@ -24,6 +25,7 @@ __all__ = [
     "BotStore",
     "IdentityAliasStore",
     "MessageIndex",
+    "MessageIndexKvStore",
     "PairingManager",
     "PrefsStore",
     "SqliteStore",

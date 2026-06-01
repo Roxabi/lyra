@@ -79,7 +79,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
     ).resolve()
     vault_dir.mkdir(parents=True, exist_ok=True)
 
-    async with open_stores(vault_dir) as stores:
+    async with open_stores(vault_dir, nc=nc) as stores:
         # Prune stale message_index entries
         mi_cfg = MessageIndexConfig(**raw_config.get("message_index", {}))
         pruned = await stores.message_index.cleanup_older_than(mi_cfg.retention_days)

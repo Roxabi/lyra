@@ -63,7 +63,8 @@
         "lyra.event.>",
         "lyra.metric.>",
         "$JS.API.>",
-        "$KV.lyra-state.>"
+        "$KV.lyra-state.>",
+        "$KV.lyra-msg-index.>"
       ],
       "subscribe": [
         "lyra.inbound.telegram.>",

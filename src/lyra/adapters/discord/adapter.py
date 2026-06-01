@@ -62,6 +62,10 @@ log = logging.getLogger(__name__)
 
 
 # ── Typing plane (#1376) — module-level resolver for AC8 ─────────────────
+import uuid  # noqa: E402
+
+from lyra.core.trace import TraceContext  # noqa: E402
+from lyra.transport.typing_publisher import is_typing_enabled  # noqa: E402
 from lyra.transport.work_scope import WorkScope  # noqa: E402
 
 
@@ -148,10 +152,32 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         return self._typing._tasks
 
     def _start_typing(self, scope_id: int) -> None:
-        self._typing.start(scope_id, self._factory_builder(scope_id))
+        if is_typing_enabled():
+            publisher = getattr(self, "_typing_publisher", None)
+            if publisher is not None:
+                work_scope = WorkScope(
+                    platform="discord",
+                    bot_id=self._bot_id,
+                    scope_id=scope_id,
+                    trace_id=TraceContext.get_trace_id() or uuid.uuid4().hex,
+                )
+                asyncio.create_task(publisher.publish_started(work_scope))
+        else:
+            self._typing.start(scope_id, self._factory_builder(scope_id))
 
     def _cancel_typing(self, scope_id: int) -> None:
-        self._typing.cancel(scope_id)
+        if is_typing_enabled():
+            publisher = getattr(self, "_typing_publisher", None)
+            if publisher is not None:
+                work_scope = WorkScope(
+                    platform="discord",
+                    bot_id=self._bot_id,
+                    scope_id=scope_id,
+                    trace_id=TraceContext.get_trace_id() or uuid.uuid4().hex,
+                )
+                asyncio.create_task(publisher.publish_ended(work_scope))
+        else:
+            self._typing.cancel(scope_id)
 
     def _cancel_typing_for(self, inbound: InboundMessage) -> None:
         pm = inbound.platform_meta

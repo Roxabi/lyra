@@ -319,6 +319,8 @@ class TestGuardedProcessOneAgentName:
 
         msg = MagicMock()
         msg.scope_id = "chat:1"
+        msg.platform = "telegram"
+        msg.bot_id = "main"
 
         monkeypatch.setattr(
             "lyra.core.pool.pool_processor_exec.process_one", _fake_process
@@ -340,6 +342,7 @@ class TestGuardedProcessOneAgentName:
         pool.agent_name = "test-agent"
         pool.pool_id = "telegram:main:chat:2"
         pool._turn_timeout = None
+        pool.typing_publisher = None
         pool._msg = MagicMock(return_value="reply")
         pool._ctx = MagicMock()
         pool._ctx.record_circuit_failure = MagicMock()
@@ -350,6 +353,8 @@ class TestGuardedProcessOneAgentName:
 
         msg = MagicMock()
         msg.scope_id = "chat:2"
+        msg.platform = "telegram"
+        msg.bot_id = "main"
 
         monkeypatch.setattr(
             "lyra.core.pool.pool_processor_exec.process_one", _fake_process

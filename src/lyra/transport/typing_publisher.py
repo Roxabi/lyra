@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import os
 import time
+from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
 from lyra.transport.typing_event import TypingEvent
@@ -14,13 +15,17 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 
+def is_typing_enabled() -> bool:
+    return os.getenv("LYRA_TYPING_ENABLED", "true").lower() == "true"
+
+
 class TypingPublisher:
     def __init__(self, nc: "NATS", *, enabled: bool | None = None) -> None:
         self._nc = nc
         self._enabled = (
             enabled
             if enabled is not None
-            else os.getenv("LYRA_TYPING_ENABLED", "false").lower() == "true"
+            else is_typing_enabled()
         )
         self._refcount: dict[tuple[str, str, int], int] = {}
 
@@ -47,6 +52,14 @@ class TypingPublisher:
             return
         del self._refcount[key]
         await self._publish(TypingEvent(kind="ended", scope=scope, ts=time.time()))
+
+    @asynccontextmanager
+    async def scope(self, work_scope: WorkScope):
+        await self.publish_started(work_scope)
+        try:
+            yield
+        finally:
+            await self.publish_ended(work_scope)
 
     async def _publish(self, event: TypingEvent) -> None:
         subject = f"lyra.typing.{event.scope.platform}.{event.scope.bot_id}"

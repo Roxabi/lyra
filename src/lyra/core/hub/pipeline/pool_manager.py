@@ -74,6 +74,7 @@ class PoolManager:
             # Wire pairing manager from composition root (ADR-059 V4).
             # PairingManager satisfies PairingManagerProtocol structurally.
             new_pool.pairing_manager = self._hub._pairing_manager
+            new_pool.typing_publisher = self._hub._typing_publisher
             self._pools[pool_id] = new_pool
             return new_pool
 

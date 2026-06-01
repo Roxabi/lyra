@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from ...transport.typing_publisher import TypingPublisher
     from ..memory import SessionSnapshot
 
 from ..config import PoolConfig
@@ -123,6 +124,7 @@ class Pool:
         # Command handlers read pool.pairing_manager instead of calling
         # the deferred get_pairing_manager() facade (ADR-059 V4).
         self.pairing_manager: PairingManagerProtocol | None = None
+        self.typing_publisher: TypingPublisher | None = None
 
     @property
     def turn_store(self) -> TurnStoreProtocol | None:

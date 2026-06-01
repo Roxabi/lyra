@@ -17,6 +17,8 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from lyra.outbound.throttle import ThrottleCapability
+    from lyra.transport.typing_publisher import TypingPublisher
+    from lyra.transport.work_scope import WorkScope
 
 from lyra.core.messaging import (
     RenderEvent,
@@ -38,6 +40,10 @@ from lyra.outbound.error_handler import OutboundErrorHandler
 from lyra.outbound.formatter import OutboundFormatter
 from lyra.outbound.throttle import STREAMING_EDIT_INTERVAL
 from lyra.transport._result import Err
+
+if TYPE_CHECKING:
+    from lyra.transport.typing_publisher import TypingPublisher
+    from lyra.transport.work_scope import WorkScope
 
 log = logging.getLogger(__name__)
 
@@ -93,6 +99,9 @@ class OutboundEmitter:
         self._last_recap_edit: float | None = None
         self._recap_done_emitted: bool = False
         self._tool_recap = ToolRecapAccumulator()
+        # Pub/sub typing path (#1377) — injected by OutboundAdapterBase.send_streaming.
+        self.typing_publisher: "TypingPublisher | None" = None
+        self._work_scope: "WorkScope | None" = None
 
     async def _ensure_trace_obj(self) -> bool:
         """Lazily send the trace placeholder, caching it on self._trace_obj.

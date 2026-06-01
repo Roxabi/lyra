@@ -13,6 +13,7 @@ from lyra.core.messaging import RenderEvent, TextDeltaRenderEvent
 from lyra.core.messaging.message import GENERIC_ERROR_REPLY
 from lyra.outbound._tool_recap import format_recap_lines
 from lyra.transport._result import Err
+from lyra.transport.typing_publisher import is_typing_enabled
 
 log = logging.getLogger(__name__)
 
@@ -136,6 +137,20 @@ async def _deliver_final(emitter: "OutboundEmitter", placeholder_obj: Any) -> No
 async def _handle_typing_tail(emitter: "OutboundEmitter") -> None:
     """Start/cancel typing based on whether the turn is intermediate."""
     if emitter._outbound is not None and emitter._outbound.intermediate:
-        await emitter._start_typing()
+        if (
+            is_typing_enabled()
+            and emitter.typing_publisher is not None
+            and emitter._work_scope is not None
+        ):
+            await emitter.typing_publisher.publish_started(emitter._work_scope)
+        else:
+            await emitter._start_typing()
     else:
-        await emitter._cancel_typing()
+        if (
+            is_typing_enabled()
+            and emitter.typing_publisher is not None
+            and emitter._work_scope is not None
+        ):
+            await emitter.typing_publisher.publish_ended(emitter._work_scope)
+        else:
+            await emitter._cancel_typing()

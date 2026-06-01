@@ -4,6 +4,7 @@ RED phase: written before TypingPublisher exists. Will collect-fail with
 ImportError until T3 lands the impl in Wave 2.
 """
 
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -85,3 +86,54 @@ async def test_publish_ended_error_swallow(scope: WorkScope) -> None:
     # AC5 best-effort: decrement before _publish error; no re-increment rollback.
     # Key may be removed (count → 0) per the impl's del branch.
     assert key not in pub._refcount
+
+
+# ---------------------------------------------------------------------------
+# T10 — scope() context manager
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_scope_calls_publish_started_on_entry(scope: WorkScope) -> None:
+    """scope() calls publish_started on entry."""
+    pub = TypingPublisher(AsyncMock(), enabled=True)
+    pub.publish_started = AsyncMock()
+    pub.publish_ended = AsyncMock()
+    async with pub.scope(scope):
+        pass
+    pub.publish_started.assert_awaited_once_with(scope)
+
+
+@pytest.mark.asyncio
+async def test_scope_calls_publish_ended_on_normal_exit(scope: WorkScope) -> None:
+    """scope() calls publish_ended on normal exit."""
+    pub = TypingPublisher(AsyncMock(), enabled=True)
+    pub.publish_started = AsyncMock()
+    pub.publish_ended = AsyncMock()
+    async with pub.scope(scope):
+        pass
+    pub.publish_ended.assert_awaited_once_with(scope)
+
+
+@pytest.mark.asyncio
+async def test_scope_calls_publish_ended_on_exception_exit(scope: WorkScope) -> None:
+    """scope() calls publish_ended even when the body raises an exception."""
+    pub = TypingPublisher(AsyncMock(), enabled=True)
+    pub.publish_started = AsyncMock()
+    pub.publish_ended = AsyncMock()
+    with pytest.raises(RuntimeError, match="boom"):
+        async with pub.scope(scope):
+            raise RuntimeError("boom")
+    pub.publish_ended.assert_awaited_once_with(scope)
+
+
+@pytest.mark.asyncio
+async def test_scope_calls_publish_ended_on_cancelled_error(scope: WorkScope) -> None:
+    """scope() calls publish_ended even when the body raises CancelledError."""
+    pub = TypingPublisher(AsyncMock(), enabled=True)
+    pub.publish_started = AsyncMock()
+    pub.publish_ended = AsyncMock()
+    with pytest.raises(asyncio.CancelledError):
+        async with pub.scope(scope):
+            raise asyncio.CancelledError()
+    pub.publish_ended.assert_awaited_once_with(scope)

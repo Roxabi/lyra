@@ -58,8 +58,15 @@ async def test_discord_typing_worker_handles_exception_gracefully() -> None:
 
 
 @pytest.mark.asyncio
-async def test_start_typing_creates_background_task() -> None:
-    """_start_typing() creates a task in _typing_tasks for the given channel."""
+async def test_start_typing_creates_background_task(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_start_typing() creates a task in _typing_tasks for the given channel.
+
+    Legacy-path test: forces LYRA_TYPING_ENABLED=false so the shim routes
+    to ThrottleCapability rather than typing_publisher.
+    """
+    monkeypatch.setenv("LYRA_TYPING_ENABLED", "false")
 
     from lyra.adapters.discord import DiscordAdapter
 
@@ -186,13 +193,17 @@ async def test_send_streaming_cancels_typing_task_at_start() -> None:
 
 
 @pytest.mark.asyncio
-async def test_on_message_does_not_cancel_typing_when_message_queued() -> None:
+async def test_on_message_does_not_cancel_typing_when_message_queued(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """on_message() must NOT cancel the typing task when the hub accepts the message.
 
     The typing task should remain alive until send() is called.  The old
     ``finally: _cancel_typing`` bug cancelled typing immediately after the
     synchronous hub.put(), so the indicator never showed during processing.
     """
+    monkeypatch.setenv("LYRA_TYPING_ENABLED", "false")
+
     from lyra.adapters.discord import DiscordAdapter
 
     inbound_bus = MagicMock()

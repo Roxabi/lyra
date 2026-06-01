@@ -17,6 +17,10 @@ if TYPE_CHECKING:
     from ..messaging.message import InboundMessage
     from .pool import Pool
 
+from uuid import uuid4
+
+from lyra.transport.work_scope import WorkScope
+
 from ..messaging.message import GENERIC_ERROR_REPLY, OutboundMessage, Response
 from ..messaging.utils.callbacks import TrustedCallback
 from ..trace import TraceContext
@@ -46,12 +50,28 @@ async def guarded_process_one(
             msg.scope_id,
         )
         try:
-            if pool._turn_timeout is not None:
-                await asyncio.wait_for(
-                    process_one(msg, agent, pool), timeout=pool._turn_timeout
-                )
+            scope_id = int(msg.scope_id.split(":")[-1])
+            trace_id = TraceContext.get_trace_id() or uuid4().hex
+            work_scope = WorkScope(
+                platform=msg.platform,
+                bot_id=msg.bot_id,
+                scope_id=scope_id,
+                trace_id=trace_id,
+            )
+
+            async def _run_process_one() -> None:
+                if pool._turn_timeout is not None:
+                    await asyncio.wait_for(
+                        process_one(msg, agent, pool), timeout=pool._turn_timeout
+                    )
+                else:
+                    await process_one(msg, agent, pool)
+
+            if pool.typing_publisher is not None:
+                async with pool.typing_publisher.scope(work_scope):
+                    await _run_process_one()
             else:
-                await process_one(msg, agent, pool)
+                await _run_process_one()
             _duration_ms = (time.monotonic() - _start) * 1000
             log.info(
                 "agent completed: agent=%s pool=%s duration_ms=%.0f",

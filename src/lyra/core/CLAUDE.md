@@ -31,17 +31,7 @@ Two flavours of `Protocol` live in `core/`:
 
 Rule of thumb: if the Protocol abstracts something *outside* lyra (LLM, TTS, audit log, future Langfuse, …) → **driven port** → `core/ports/`. If it abstracts an *internal* collaboration (a role another file inside `lyra.core` fills) → **role interface**, co-located with its sub-domain. Driven ports are pure Protocol with no infrastructure import (TYPE_CHECKING-only allowed). Role interfaces follow the same constraint.
 
-`ports/llm.py`, `ports/stt.py`, `ports/tts.py` follow the same shape: protocol + value objects + errors only. The former `lyra.stt` and `lyra.tts` packages were deleted in #1221; `ports/` is the single owner of domain types. Adapter-adjacent helpers (`is_whisper_noise`, `mime_from_suffix`) live in `lyra/nats/stt_helpers.py`, not in `ports/`.
-
-### Future "orthodoxie pure" (NOT yet done)
-
-`ChannelAdapter` is currently a header interface (Fowler antonym) that fuses one **driver port** (inbound: `normalize`, `normalize_audio` — channels drive the hub) with one **driven port** (outbound: `send`, `send_streaming` — hub drives channels). The orthodox hexagonal split would be:
-
-- `core/ports/inbound/MessageReceiver` — driver/primary port (replaces `normalize*`)
-- `core/ports/outbound/MessageSender` — driven/secondary port (replaces `send*`)
-- All channel adapters implement both.
-
-Tracked as future work — not blocking. Trigger to act: when ISP cost shows up in practice (a channel that only emits or only receives, or testability friction isolating one direction). Until then `ChannelAdapter` stays as a documented dette in its file docstring.
+`ports/llm.py`, `ports/stt.py`, `ports/tts.py` follow the same shape: protocol + value objects + errors only. `ports/` is the single owner of domain types. Adapter-adjacent helpers (`is_whisper_noise`, `mime_from_suffix`) live in `lyra/nats/stt_helpers.py`, not in `ports/`.
 
 ## Store pattern (ADR-048)
 
@@ -69,10 +59,9 @@ Reads are synchronous (cache). Writes are async (SQLite). Cache updated atomical
 
 **`Guard` / `GuardChain`** (`auth/guard.py`) — `Guard.check(identity) -> Rejection | None`. Compose via `GuardChain`. Never raise from `check()`.
 
-## Subdirectory map
+## Non-obvious subdirectory placement
 
-For a current file listing, run `ls src/lyra/core/` and its subdirs.
-Non-obvious: `messaging/events.py` defines `LlmEvent` (placed in `core/`, not `llm/`, so `llm → core` stays unidirectional).
+`messaging/events.py` defines `LlmEvent` (placed in `core/`, not `llm/`, so `llm → core` stays unidirectional).
 
 ## What NOT to do
 

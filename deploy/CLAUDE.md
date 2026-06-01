@@ -15,21 +15,9 @@ Cross-repo adoption checklist → `docs/ops/container-publishing.md § Cross-rep
 
 ## Unit naming convention
 
-Authoritative unit manifest: `deploy/quadlet.toml`. Table below is a naming-convention reference, not the SSoT.
-
-| Unit file | Container name | Service unit |
-|---|---|---|
-| `quadlet/lyra-hub.container` | `lyra-hub` | `lyra-hub.service` |
-| `quadlet/lyra-telegram.container.tmpl` | `lyra-telegram` | `lyra-telegram.service` |
-| `quadlet/lyra-discord.container.tmpl` | `lyra-discord` | `lyra-discord.service` |
-| `quadlet/lyra-clipool.container` | `lyra-clipool` | `lyra-clipool.service` |
-| `quadlet/lyra-nats.container` | `lyra-nats` | `lyra-nats.service` |
-| `quadlet/lyra-gh-helper.container` | `lyra-gh-helper` | `lyra-gh-helper.service` |
-| `quadlet/lyra-turn-writer.container` | `lyra-turn-writer` | `lyra-turn-writer.service` |
-| `quadlet/lyra-blobstore.container` | `lyra-blobstore` | `lyra-blobstore.service` |
-
+Authoritative unit manifest: `deploy/quadlet.toml`.
+Pattern: `lyra-<component>.container` → `ContainerName=lyra-<component>` → `lyra-<component>.service`.
 Telegram and discord units are rendered from `.container.tmpl` at deploy time (bot-token injection).
-Pattern: `lyra-<component>.container` → `ContainerName=lyra-<component>`.
 Network: all units attach to `roxabi.network` (defined in `quadlet/roxabi.network`).
 
 ---
@@ -203,5 +191,3 @@ so the hooksPath becomes process-immutable.
 - `docs/ops/container-publishing.md` — full CI → GHCR → Quadlet pattern + auto-update
 - `docs/ARCHITECTURE.md` — hub-spoke topology
 - ADR-055 (supersedes archived ADR-054) — UserNS + secret delivery decisions
-- Issue #929 — `podman auto-update` adoption
-- Issue #652 — container hardening

@@ -49,18 +49,3 @@ parse → AttachmentIngestStage (store-conditional; no-store path clears pending
 - ¬ store `send_backpressure` in `DispatchCtx`. The closure captures the raw platform
   message, which is only known per-call. Pass it as a direct argument to
   `Dispatcher.dispatch` / `InboundPipeline.run`.
-
-## DEBT carry-over
-
-Phase 3 audit (2026-05-20): No `DEBT:boundary-broad-catch` residuals in `*_inbound.py` files after Phase 3 audit.
-
-Both BLE001 sites from the original `discord_inbound.py` were drained:
-
-- `discord_inbound.py` pre-route hook (`ThreadStore.is_owned`) — narrowed from `except Exception:` to `except sqlite3.Error:` (stdlib, no new dep; aiosqlite wraps sqlite3 at the driver level and the ThreadStore Protocol does not declare a narrower exception type).
-- `discord_inbound.py` pre-session hook recovery path (`persist_thread_claim`) — outer `except Exception as e` removed as dead code: `persist_thread_claim` in `discord_threads.py` already catches and logs all exceptions internally without re-raising.
-
-No `DEBT:boundary-broad-catch` annotations remain in `src/lyra/adapters/{telegram,discord}/*_inbound.py` or `src/lyra/inbound/*.py`.
-
-## Epic #1277 DEBT slug correction
-
-Epic #1277 § 8 lists `adapter-dispatch-complexity` and `adapter-magic-constants` as drained by Phase 3. Verification (2026-05-20): these slugs do not appear in any inbound file (`grep -rn 'adapter-dispatch-complexity\|adapter-magic-constants' src/lyra/adapters/{telegram,discord}/*_inbound.py` returns 0 hits). They belong to outbound + audio + formatting code paths. The corrected target is documented in `artifacts/specs/1280-phase-3-inbound-stages-spec.mdx`.

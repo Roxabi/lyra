@@ -3,15 +3,9 @@
 Helper processes that run inside `lyra-clipool` but with **isolated identity** from Claude (uid 1500).
 Each helper module is self-contained — pure stdlib + project deps, no hub/core imports at module level.
 
-## Module map
+## gh_token/ — dispenser
 
-| Module | Process uid | Purpose |
-|-----------|-------------|---------|
-| `gh_token/` | 1501 (`lyra-gh`) | JWT signer → GitHub installation token → tmpfs cache → dispenser socket → rate-capped refresh |
-
-Shell-script clients in `gh_token/`:
-- `git-credential-lyra-gh` — connects to dispenser socket, emits `password=<token>`; `store`/`erase` are no-ops
-- `lyra-gh` — fetches token from dispenser, execs `env GH_TOKEN=… gh "$@"`; symlinked as `/usr/local/bin/gh`
+`gh_token/` runs as uid 1501 (`lyra-gh`): JWT signer → GitHub installation token → tmpfs cache → dispenser socket → rate-capped refresh. Run `ls src/lyra/tools/gh_token/` for the current module inventory.
 
 ## IPC trust boundary
 

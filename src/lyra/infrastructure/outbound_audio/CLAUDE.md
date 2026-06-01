@@ -5,19 +5,6 @@
 Idempotent JetStream stream + durable consumer + KV bucket bootstrap for
 the durable outbound-audio delivery path (#1482).
 
-## Stream / consumer / KV
-
-`stream_setup.py` exposes three public coroutines:
-
-- `ensure_stream(js)` — create or update `LYRA_OUTBOUND_AUDIO` stream.
-- `ensure_consumer(js, *, durable, filter_subject)` — create durable pull
-  consumer if absent. Bootstrap calls this once per platform adapter.
-- `ensure_kv(js)` — create or bind KV bucket `lyra_outbound_audio_sent`;
-  returns a `KeyValue` handle.
-
-All three use the add→BadRequestError→update / consumer_info→NotFoundError→add
-pattern (idempotent — safe to call on every process boot).
-
 ## Invariants
 
 - **Hub sole-provisioner (ADR-079)** — `ensure_stream` and `ensure_kv` are called

@@ -65,36 +65,23 @@ ADR-073.
 
 ## MRO constraint (Discord only)
 
-`discord.Client` must be first:
-
-```python
-class DiscordAdapter(discord.Client, OutboundAdapterBase):
-    def __init__(self, ...):
-        super().__init__(intents=intents)  # flows to discord.Client
-```
+`discord.Client` must be first in `DiscordAdapter(discord.Client, OutboundAdapterBase)`. See `src/lyra/outbound/CLAUDE.md` — "OutboundAdapterBase has NO `__init__`".
 
 ## OutboundFormatter / ThrottleCapability / OutboundErrorHandler stages (`src/lyra/outbound/`)
 
-#1279 Phase 2 pivot: per-target axis (telegram_outbound + discord_outbound +
-_shared_streaming_emitter) replaced by stage-axis composition under `src/lyra/outbound/`.
-Per-platform code is now thin formatter implementations (`telegram_formatter.py`,
+Per-platform code is thin formatter implementations (`telegram_formatter.py`,
 `discord_formatter.py` ≤200 LOC each) plus thin typing-indicator wrappers
 (`TelegramTypingIndicator`, `DiscordTypingIndicator`).
 
-| Stage | Module | Role |
-|-------|--------|------|
-| Emitter | `lyra.outbound.emitter.OutboundEmitter` | Composes formatter + throttle + error_handler; owns placeholder→edits→delivery |
-| Formatter | `lyra.outbound.formatter.OutboundFormatter` (Protocol) | pure formatting (chunk, render_text, etc.) + platform-I/O mechanics (send_placeholder, send_message, etc.) — see `src/lyra/outbound/formatter.py` |
-| Throttle | `lyra.outbound.throttle.ThrottleCapability` (Protocol) | start_typing/cancel_typing + edit_interval_s |
-| Error handler | `lyra.outbound.error_handler.OutboundErrorHandler` | guard (single broad-catch site), handle, classify_stream_error, get_msg |
+| Stage | Role |
+|-------|------|
+| Emitter | Composes formatter + throttle + error_handler; owns placeholder→edits→delivery |
+| Formatter | pure formatting (chunk, render_text, etc.) + platform-I/O mechanics (send_placeholder, send_message, etc.) |
+| Throttle | start_typing/cancel_typing + edit_interval_s |
+| Error handler | guard (single broad-catch site), handle, classify_stream_error, get_msg |
 
 `OutboundFormatter` is the single platform-I/O surface consumed by `OutboundEmitter`.
-
-**Format-vs-I/O split (S7a decision, #1508):** `OutboundFormatter` intentionally
-owns two axes — (a) pure formatting and (b) platform-I/O mechanics — to keep
-`_make_emitter` arity low (deliberate SRP trade-off at N=2 platforms). Any new
-method MUST be consciously placed in axis (a) or (b). Re-evaluate extracting an
-OutboundSender Protocol when a third platform adapter lands (#1508).
+→ `src/lyra/outbound/CLAUDE.md` for stage invariants and Format-vs-I/O split decision.
 
 ## Clipool adapter (`clipool/`)
 

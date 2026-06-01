@@ -7,17 +7,7 @@ Canonical source: `roxabi-plugins/plugins/dev-core/tools/` — ¬edit project-si
 
 ## Wiring
 
-Scripts are driven by `.claude/stack.yml` `quality_gates` block and pre-push hooks:
-
-| Script | Gate | Stage |
-|---|---|---|
-| `check_file_length.sh` | `file_length` — 300-line cap on `src/**/*.py` | pre-commit |
-| `check_folder_size.sh` | `folder_size` — 12-file cap per `src/**` folder | pre-commit |
-| `check_duplicate_test_basenames.sh` | `duplicate_test_basenames` | pre-commit |
-| `.importlinter` (external) | `import_layers` | pre-push |
-| `check_architecture_snapshot.sh` | `architecture_snapshot` — regenerates + diffs `docs/architecture/CURRENT.generated.md`; exit 0=clean, 1=drift, 2=generator crash | pre-push |
-| `check_doc_drift.py` | `doc_drift` — dead backtick refs in docs + CLAUDE.md network | CI |
-| `check_no_runtime_toml_bots.sh` | `no_runtime_toml_bots` | pre-commit |
+Scripts are driven by `.claude/stack.yml` `quality_gates` block — that block is the SSoT for which gates exist and their stage (pre-commit, pre-push, CI). Most gates run pre-commit; `import_layers` and `architecture_snapshot` run pre-push; `doc_drift` runs CI.
 
 ### `check_doc_drift.py` — scanned scope (allowlist, #1538)
 
@@ -68,15 +58,7 @@ Read tools tolerate false positives; write tools must not mutate test/fixture fi
 
 ## One-off analyses vs persistent gates
 
-| Persistent gates (run every push) | One-off analyses (run on demand) |
-|---|---|
-| `check_file_length.sh` | `adr_consolidate.py` |
-| `check_folder_size.sh` | `audit_quality_debt.py` |
-| `check_duplicate_test_basenames.sh` | `classify_quality_debt.py` |
-| `check-nats-acls.sh` | `capture_v1_text_baseline.py` |
-| `smoke_llm_e2e.sh` | `license_check.py` |
-| `check_architecture_snapshot.sh` | — |
-| `check_doc_drift.py` | — |
+Persistent gates are enumerated in `.claude/stack.yml` `quality_gates`. One-off analysis scripts (`adr_consolidate.py`, `audit_quality_debt.py`, `classify_quality_debt.py`, `capture_v1_text_baseline.py`, `license_check.py`) always exit 0 — they are reporters, not gates. Run `ls tools/*.py tools/*.sh` for the full listing.
 
 `adr_consolidate.py` — migration tool (flat ADR archive → domain pages); see `artifacts/analyses/adr-consolidation-matrix.md`.
 

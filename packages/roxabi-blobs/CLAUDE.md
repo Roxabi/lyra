@@ -16,7 +16,7 @@
 roxabi-blobs = {
   git = "https://github.com/Roxabi/lyra.git",
   subdirectory = "packages/roxabi-blobs",
-  tag = "roxabi-blobs/v0.1.0"
+  tag = "roxabi-blobs/vX.Y.Z"
 }
 ```
 
@@ -24,13 +24,7 @@ Lyra itself consumes via `{ workspace = true }`.
 
 ## Public API (stable contract)
 
-Defined by `__all__` in `src/roxabi_blobs/__init__.py`:
-
-- `BlobStore` — `Protocol` with 4 async methods (`put`/`get`/`exists`/`delete`)
-- `FsBlobStore` — concrete impl (Flat-FS + SQLite WAL)
-- `HttpBlobStore` — HTTP client impl (mirrors `FsBlobStore` against a remote `lyra blobstore serve`, V8 / #1330)
-- `BlobRef` — Pydantic envelope (`id`, `store_key`, `content_hash`, `mime`, `size`, `filename?`, `source`, `platform_ref?`, `platform_message_id?`, `created_at`, `is_sentinel`)
-- `BlobNotFoundError`, `BlobWriteError`, `BlobConsistencyError`, `BlobError`, `BlobStateError` — typed errors
+Defined by `__all__` in `src/roxabi_blobs/__init__.py`; run `grep __all__ packages/roxabi-blobs/src/roxabi_blobs/__init__.py` for the current listing.
 
 `_`-prefixed submodules (`_schema` if any) are internal.
 

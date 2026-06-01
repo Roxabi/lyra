@@ -23,11 +23,9 @@ DomainClient           — thin wrapper in lyra.nats / lyra.llm (compose pool + 
   `SanitizedError` strips internal detail before propagation to users (#1212).
 - CB lives in `WorkerPoolClient` — domain clients must NOT add a second CB layer.
 
-## SanitizedError.from_message — Phase 5 addendum (#1282)
+## SanitizedError.from_message
 
-`from_message` was added in Phase 5 (#1282) as a Phase 1 addendum to the transport boundary.
-
-Purpose: scrub user-safe soft-error wire text (e.g. upstream model errors) before bus propagation. Callers do NOT embed raw exception text — they pass a pre-selected message string (or empty).
+Scrubs user-safe soft-error wire text (e.g. upstream model errors) before bus propagation. Callers do NOT embed raw exception text — they pass a pre-selected message string (or empty).
 
 Sanitization rules:
 - empty input → `message = "model_error"` (fallback)

@@ -52,13 +52,8 @@ Pattern: `lyra.{domain}.{qualifier...}`
 | `lyra.outbound.audio.{platform}.{bot_id}` | hub → adapter | Audio delivery (JetStream `LYRA_OUTBOUND_AUDIO` `MaxAge=24h`, durable pull consumer `outbound-audio-{platform}-{bot_id}`, at-least-once + KV dedup `lyra_outbound_audio_sent` — ADR-077) |
 | `lyra.llm.generate.request` | hub → worker | LLM compute (queue-group dispatched) |
 | `lyra.llm.health.{worker_id}` | worker → hub | LLM worker heartbeats |
-| `lyra.clipool.cmd` | hub → clipool | LLM subprocess requests |
-| `lyra.clipool.heartbeat` | clipool → hub | CliPool health |
-| `lyra.clipool.control` | hub → clipool | Reset / drain |
-
 `{platform}` = lowercase ASCII (`telegram`, `discord`).
-`{bot_id}` = numeric string matching `^[1-9][0-9]*$` — validated at startup; a
-leading-zero or non-numeric value produces a shadow subject that bypasses per-bot ACL.
+`{bot_id}` matches `^[A-Za-z0-9_-]{1,48}$` (validated via WorkScope / nats_channel_proxy).
 `{scope_id}` is intentionally absent from subjects — resolved from the envelope body.
 Per-worker score-routed subjects (`lyra.llm.generate.request.{worker_id}`) were removed
 in #1104 to match the canonical ACL allow list; do NOT reintroduce them.
@@ -92,8 +87,7 @@ that composes `WorkerPoolClient` (from `lyra.transport`) with a codec:
   directly.
 
 `tts_engine_selector.py` and `tts_text_normalization.py` are helpers co-located with their
-consumer (`nats_tts_client.py`). `stt_helpers.py` provides Whisper noise tokens
-(`WHISPER_NOISE_TOKENS`), `is_whisper_noise`, and `mime_from_suffix`.
+consumer (`nats_tts_client.py`).
 
 ## Key invariants
 

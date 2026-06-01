@@ -26,9 +26,7 @@ not add it to the Protocol until all drivers implement it.
 `ClaudeCliDriver` and `LlmClient` may share the `"claude-cli"` registry key — selection between them is determined by wiring mode at bootstrap (single-process picks `ClaudeCliDriver`, multi-process picks `LlmClient(WorkerPoolClient, CliNatsCodec)`).
 
 `LlmClient` lives in `lyra.llm.llm_client` (this package). `LlmClient(pool, codec)` is the
-3-layer composition for the NATS LLM path; the legacy per-driver `CliNatsDriver`
-(formerly in `lyra.llm.drivers.cli_nats`) was deleted in #1281. The legacy `NatsLlmClient`
-(formerly in `lyra.nats`) was deleted in #1278.
+3-layer composition for the NATS LLM path.
 
 ## LlmClient + LlmCodec layering
 
@@ -69,8 +67,7 @@ async with asyncio.timeout(budget_seconds):
         ...
 ```
 
-Historical: `CliNatsDriver` (deleted in #1281) inherited `max_total_duration=1800s` from
-`NatsDriverBase`; that responsibility now belongs to the caller.
+Per-turn wall-clock deadline responsibility belongs to the caller.
 
 ## Decorator stack
 
@@ -94,8 +91,7 @@ Import from `lyra.core.messaging.events` — `lyra.llm` does **not** re-export t
 
 ## SmartRoutingConfig
 
-`SmartRoutingConfig` lives in `lyra.core.agent.agent_config` (¬`llm/smart_routing.py` — that file
-does not exist). Validator rejects `enabled = true` on all backends. Keep `enabled = false` (default).
+`SmartRoutingConfig` lives in `lyra.core.agent.agent_config`. Validator rejects `enabled = true` on all backends. Keep `enabled = false` (default).
 
 ## ProviderRegistry (`registry.py`)
 
@@ -104,8 +100,7 @@ Dict-based: `register(backend, driver)` / `get(backend)`. Backends: `"claude-cli
 
 ## LlmUnavailableError
 
-Defined in `lyra.core.ports.llm` (¬`llm/errors.py` — that file does not exist). Import from the
-canonical path in all new code.
+Defined in `lyra.core.ports.llm`. Import from the canonical path in all new code.
 
 ## Constraints
 

@@ -15,43 +15,9 @@ Plugin commands cannot override built-ins.
 
 **Processor commands** (`processor_registry.py`) are pre/post hooks injected into the pool flow — invoked by the pool processor, not `CommandRouter.dispatch()`. They appear in `/help` output but follow a different contract.
 
-## Handler signatures
-
-### Plugin command handler (registered via `plugin.toml [[commands]]`)
-```python
-async def cmd_example(msg: InboundMessage, pool: Pool, args: list[str]) -> Response:
-    ...
-```
-
-### Session command handler (registered via `agent.register_session_command()`)
-```python
-async def cmd_example(
-    msg: InboundMessage,
-    driver: LlmProvider,
-    tools: SessionTools,
-    args: list[str],
-    timeout: float,
-) -> Response:
-    ...
-```
-
 ## plugin.toml
 
-```toml
-name = "echo"
-description = "Echo a message back"
-version = "0.1.0"
-priority = 100    # lower = higher priority
-enabled = true
-timeout = 30.0
-
-[[commands]]
-name = "echo"
-description = "Echo the given text"
-handler = "cmd_echo"
-```
-
-Leave `[[commands]]` empty (or omit) when a plugin only registers session commands — see `search/plugin.toml`.
+`plugin.toml` schema: see any existing plugin (e.g. `commands/echo/`). Leave `[[commands]]` empty (or omit) when a plugin only registers session commands — see `search/plugin.toml`.
 
 ## Guards / admin restriction
 

@@ -53,11 +53,7 @@ least one minor release before removal; announce in CHANGELOG.md.
 
 ## Module layout
 
-Domain-grouped contract modules (run `ls src/roxabi_contracts/` for the full listing):
-
-- **Shared primitives:** `envelope.py` (ContractEnvelope base), `errors.py` (WorkerError + KNOWN_CODES registry, ADR-066), `blob_errors.py` (BlobNotFoundError, ADR-082), `blob_ref.py` (wire-side BlobRef, ADR-067), `_testing_guards.py`, `_nats_utils.py`
-- **Integration contracts:** `voice/` (ADR-044), `image/` (ADR-050), `turns/` (#1331), `outbound/`, `event/`, `cli/`, `llm/`, `jobs/`, `gh/`, `audit/`
-- **Sentinel:** `verify/` — ACL-verification deny-probe (ungranted, #1545)
+Run `ls src/roxabi_contracts/` for the full listing.
 
 Each domain submodule exposes: `SUBJECTS` (subject constants), models, and
 optionally `fixtures` (pure synthetic data) and `testing` (test doubles —
@@ -75,10 +71,3 @@ tag; group `roxabi-contracts` and `roxabi-nats` in a single Renovate rule
 New domains land as new submodules + a minor version tag. Placeholder
 directories MUST NOT be created — an empty module lets `import
 roxabi_contracts.<domain>` succeed silently with missing attributes.
-
-## turns/ (#1331)
-
-`roxabi_contracts.turns` — TurnWriteEvent discriminated union (5 payload
-kinds) + `SUBJECTS.turn_write = "lyra.turns.write"`. Consumed by
-`lyra.transport.turn_publisher` (publishers) and
-`lyra.infrastructure.turn_writer` (subscriber-writer).

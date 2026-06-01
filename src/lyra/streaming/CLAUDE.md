@@ -20,9 +20,7 @@ Three primitives, all composed (not inherited):
 
 ## Invariants
 
-- **Per-consumer StateMachine instances** — no cross-consumer key sharing. `CliStreamingParser`
-  has 3 instances (tool dedup, open tool blocks, open thinking blocks); `StreamProcessor` has 3
-  (text, reasoning, tool). Mixing keys across instances is a bug.
+- **Per-consumer StateMachine instances** — no cross-consumer key sharing. Mixing keys across instances is a bug.
 
 - **SanitizedError boundary** — `EventEmitter` is the ONLY place in this package where exception
   data is translated to terminal events. Never construct `str(exc)` or `f"...{exc}"` here. Use
@@ -58,15 +56,6 @@ Three primitives, all composed (not inherited):
   issues. `src/lyra/streaming/` provides the primitives; consumer files
   (`core/cli/cli_streaming_parser.py`, `core/processors/stream_processor.py`) demonstrate the
   composition pattern.
-
-## Key modules
-
-- `parser.py` — `Parser[InT, OutT]` Protocol (duck-typed, `@runtime_checkable`)
-- `state_machine.py` — `StateMachine[K, V]` (open/close/mark_seen/drain)
-- `event_emitter.py` — `EventEmitter[OutT]` (`SanitizedError` → `OutT` translator)
-- `__init__.py` — re-exports the three primitives above
-
-For a current file listing: `ls src/lyra/streaming/`. Subject to repo file-length and folder-size quality gates.
 
 ## See also
 

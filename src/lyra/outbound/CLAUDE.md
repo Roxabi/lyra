@@ -4,10 +4,8 @@
 
 Per-platform-agnostic stage composition for outbound message rendering. Consumed by
 `OutboundAdapterBase.send_streaming` via `_make_emitter` on platform adapters (Telegram,
-Discord). The per-target outbound files (`telegram_outbound.py`, `discord_outbound.py`) remain
-active and now delegate to `OutboundEmitter` (composition). The old shared helper
-`_shared_streaming_emitter.py` was removed; its replacement is `outbound/_streaming_state.py`.
-Addresses the boundary-broad-catch cascade observed 2026-05-19 (epic #1277).
+Discord). The per-target outbound files (`telegram_outbound.py`, `discord_outbound.py`)
+delegate to `OutboundEmitter` (composition); state helpers live in `_streaming_state.py`.
 
 ## Layer contract
 
@@ -36,26 +34,11 @@ formatter/throttle/error_handler methods directly.
   `OutboundAdapterBase` inheritance chain.
 - **Single broad-catch site in the emitter.** `OutboundErrorHandler.guard` is the single semantic broad-catch site in `lyra.outbound/`. Two additional terminal sites in `OutboundEmitter.run` and `_run_event_loop` capture stream errors with broad-catch — these are intentional (terminal stream-error path).
 
-## Composition example
-
-```python
-from lyra.outbound.emitter import OutboundEmitter
-from lyra.outbound.error_handler import OutboundErrorHandler
-
-class MyAdapter(OutboundAdapterBase):
-    def _make_emitter(self, original_msg, outbound):
-        formatter = MyFormatter(self, get_msg=self._msg, placeholder_text=self._msg("ph", "…"))
-        typing = MyTypingIndicator(self)
-        handler = OutboundErrorHandler(get_msg=formatter.get_msg)
-        return OutboundEmitter(formatter, outbound, error_handler=handler, typing=typing)
-```
-
 ## State + recap helpers
 
-`IntermediateTextState`, `StreamState` → `lyra.outbound._streaming_state` (renamed from
-`_shared_streaming_state.py`). `ToolRecapAccumulator`, `format_recap_lines` →
-`lyra.outbound._tool_recap`. Both relocated into `outbound/` in #1336; the prior circular
-import via `lyra.adapters/__init__.py` is dissolved. No deferred-import block exists.
+`IntermediateTextState`, `StreamState` → `lyra.outbound._streaming_state`.
+`ToolRecapAccumulator`, `format_recap_lines` → `lyra.outbound._tool_recap`.
+No deferred-import block exists.
 
 ## ToolDisplayConfig wiring
 

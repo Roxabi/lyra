@@ -11,20 +11,6 @@ from `packages/roxabi-blobs`.
 Used cross-host over Tailnet by M₂ workers (llm-worker, image-worker, future voice-worker).
 Entry point: `lyra blobstore serve`.
 
-## Module placement — Framing B (peer-of-adapters)
-
-`axial-adr-review` flagged this as a potential `target-axis-trap` (ADR-073), recommending
-src/lyra/infrastructure/blobstore/. **Decision: keep peer-of-adapters.**
-
-Short version: `lyra-blobstore` is a **bootable process surface** (typer subcommand →
-uvicorn → FastAPI), structurally identical to `lyra.adapters.{telegram,discord,clipool}`.
-`lyra.infrastructure.*` is for store-impl code called by other code in-process (ADR-048).
-This is a process, not a library.
-
-Three-strikes safeguard: if a 2nd HTTP service process lands, wrong-axis drift surfaces
-and the refactor is one-shot. Acknowledged residual axial finding documented in spec §Context
-so the next reviewer sees the explicit choice.
-
 ## Host topology
 
 Runs on M₁ (`lyra-hub` role) only. M₂ workers connect via:
@@ -61,11 +47,6 @@ intentionally loud; re-provision deferred to next container restart.
 
 ## Auth boundary
 
-| Phase | Scope | Status |
-|-------|-------|--------|
-| Phase 1 (V8) | Single shared bearer token | Shipped |
-| Phase 2 | Per-identity tokens + scoped grants | #1334 — roadmap |
-
 Auth middleware **allowlist** (bypass bearer check): `/healthz`, `/metrics`.
 
 ## Audit semantics
@@ -75,7 +56,6 @@ Every op (PUT / GET / HEAD / DELETE) emits a `BlobAuditEvent` on
 `"unauthorized"`). If NATS publish fails, sink degrades to lyra.security logger.
 
 `BlobAuditEvent` defined in `packages/roxabi-contracts/src/roxabi_contracts/audit/blobs.py`.
-At time of S3 wiring, the `_emit_audit` stub in `_handlers.py` is replaced by the real sink.
 
 ## Error mapping invariants
 
@@ -84,20 +64,9 @@ At time of S3 wiring, the `_emit_audit` stub in `_handlers.py` is replaced by th
 - `BlobNotFoundError` on GET / HEAD / DELETE: **404**.
 - `BlobWriteError` (PUT / DELETE): **500** with `{"detail": "blob write failed"}` — static
   message, no exception text echoed.
-- `BlobConsistencyError`: **500**, `error_code:"blob-consistency"`.
+- `BlobConsistencyError`: caught by generic handler → **500** `{"detail": "internal error"}` (no dedicated error_code).
 - All unhandled exceptions: **500** with `{"detail": "internal error"}` — no schema or
   traceback leaked to the caller.
-
-## Oversized-blob handling (max_bytes decision — S2)
-
-`FsBlobStore` accepts an optional `max_bytes` ceiling (env-configurable). **No pre-read 413
-gate exists at the FastAPI layer.** The handler reads the full body into memory first
-(`await request.body()`), then calls `FsBlobStore.put()`. If `put()` raises `BlobWriteError`
-due to size, the response is **500** (not 413). Callers cannot distinguish oversized from
-other write failures via HTTP status; the audit event carries `error_code:"blob-write"`.
-
-Pre-read 413 enforcement (reject before loading body) is deferred: it would require
-reading `Content-Length` and enforcing before `request.body()`. V8 ships the simpler path.
 
 ## Wire key semantics (content address)
 

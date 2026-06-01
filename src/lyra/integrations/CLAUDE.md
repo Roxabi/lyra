@@ -9,14 +9,7 @@ subprocess, or calls an external HTTP API belongs here — nowhere else.
 ## base.py — Protocols and shared errors
 
 `base.py` defines the interfaces every integration must satisfy via
-`typing.Protocol` (runtime-checkable, mirrors the `lyra.llm.base` pattern):
-
-| Protocol | Responsibility |
-|---|---|
-| `ScrapeProvider` | `async scrape(url, timeout) → str` |
-| `VaultProvider` | `async add(…) → None` / `async search(query) → str` |
-| `AudioConverter` | `async convert_wav_to_ogg(wav_path, ogg_path) → None` |
-
+`typing.Protocol` (runtime-checkable, mirrors the `lyra.llm.base` pattern).
 `SessionTools` is the injection bundle handed to plugin commands at registration.
 
 Adding a new integration → implement the matching Protocol (or define a new one
@@ -36,13 +29,7 @@ intentional and irreversible within a call.
 
 ### External services — `vault_cli.py`, `web_intel.py`, `audio.py`
 
-Drive out-of-process tools to fetch or store data.
-
-- `VaultCli` — shells to the `vault` CLI; `search` swallows errors (non-fatal),
-  `add` raises `VaultWriteFailed` (write failure is actionable).
-- `WebIntelScraper` — spawns the web-intel plugin's scraper subprocess; raises
-  `ScrapeFailed` on error.
-- `audio.py` — WAV→OGG conversion via subprocess; raises `AudioConversionFailed`.
+Drive out-of-process tools to fetch or store data. Run `grep -n "class \|def " src/lyra/integrations/vault_cli.py src/lyra/integrations/web_intel.py src/lyra/integrations/audio.py` for the current method inventory.
 
 ## Failure model
 

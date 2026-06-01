@@ -27,18 +27,8 @@ Layer 2: escalate_to_llm()     → Claude CLI (OAuth), 30 s timeout
           Telegram fails   ──→ log-only, still exit 1
 ```
 
-Issue #44 note: state changes are now logged at call sites throughout the hub. This
-monitoring process is the **safety-net catch** for persistent anomalies, not the
+This monitoring process is the **safety-net catch** for persistent anomalies, not the
 primary observability path.
-
-## Module roles
-
-- **Entrypoint** (`__main__.py`) — wires Layer 1 → Layer 2, owns exit code
-- **Check implementations** (`checks.py`, `checks_audio.py`, `checks_log.py`, `checks_varz.py`) — probes imported by `checks.py` and composed into `run_checks()`; `checks_varz.py` writes delta state to `~/.lyra/nats-monitor-state.json`
-- **Config + models** (`config.py`, `models.py`) — `MonitoringConfig` (Pydantic, thresholds from `[monitoring]` TOML + secrets from env); `CheckResult` / `HealthReport` / `DiagnosisReport` dataclasses
-- **Escalation** (`escalation.py`) — Layer 2: LLM diagnosis via Claude CLI + Telegram delivery (direct httpx, ¬hub)
-
-For the current file listing: `ls src/lyra/monitoring/`.
 
 ## Config
 

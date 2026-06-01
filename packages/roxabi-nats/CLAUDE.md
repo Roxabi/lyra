@@ -18,7 +18,7 @@ with the wire contract (ADR-044/049) but is versioned independently.
 roxabi-nats = {
   git = "https://github.com/Roxabi/lyra.git",
   subdirectory = "packages/roxabi-nats",
-  tag = "roxabi-nats/v0.3.0"
+  tag = "roxabi-nats/vX.Y.Z"
 }
 ```
 
@@ -37,13 +37,7 @@ re-export in `roxabi_nats.adapter_base` still exists with a DeprecationWarning; 
 
 ## Public API (stable contract)
 
-Defined by `__all__` in `src/roxabi_nats/__init__.py`:
-
-- `NatsAdapterBase` — base class for NATS-backed adapter lifecycles
-- `NatsDriverBase` / `WorkerUnavailableError` — base class for LLM/worker drivers (added ADR-066 P3)
-- `nats_connect` — hardened connection helper (TLS, nkey, creds, inbox normalization)
-- `TypeHintResolver` — type hint resolution helper for typed deserialization
-- `CONTRACT_VERSION` — re-exported from `roxabi_contracts.envelope`
+Defined by `__all__` in `src/roxabi_nats/__init__.py`. Run `grep __all__ src/roxabi_nats/__init__.py` for the full listing.
 
 `_`-prefixed submodules (`_serialize`, `_sanitize`, `_validate`, `_version_check`,
 `_tts_constants`, `_resolver`) are **internal**. External consumers MUST NOT import

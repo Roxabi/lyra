@@ -22,6 +22,7 @@ Let:
 | File | Role |
 |---|---|
 | `docs/ARCHITECTURE.md` | Architecture + decisions |
+| `docs/architecture/CURRENT.generated.md` | Generated inventory SSoT (layers/subjects/topology) — ¬edit, gated by `architecture_snapshot` |
 | `docs/CONFIGURATION.md` | Config files, load order |
 | `docs/agent-management.md` | Agent seed flow + CLI |
 | `docs/bot-management.md` | Bot seed flow + CLI |
@@ -55,8 +56,7 @@ File/rename → update P immediately
 | `src/lyra/commands/CLAUDE.md` | plugin commands |
 | `src/lyra/infrastructure/CLAUDE.md` | store implementations (ADR-048) |
 | `src/lyra/integrations/CLAUDE.md` | external boundary layer (supervisor, systemctl, vault-cli, web-intel) |
-| `src/lyra/agent_cmd/CLAUDE.md` | agent CLI commands (init, edit, list, show, …) — applicative layer above core |
-| `src/lyra/agent_cmd/bots/CLAUDE.md` | bot CLI commands (init) wired under `lyra bot` |
+| `src/lyra/agent_cmd/CLAUDE.md` | agent + bot CLI commands — applicative layer above core |
 | `src/lyra/llm/CLAUDE.md` | LLM drivers |
 | `src/lyra/monitoring/CLAUDE.md` | standalone health-check subsystem (`python -m lyra.monitoring`) |
 | `src/lyra/obs/CLAUDE.md` | observability scaffolding (OTel/Langfuse) — ¬wired, see #1235 |

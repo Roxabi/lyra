@@ -42,6 +42,8 @@ Secret=lyra_blobstore_token,type=mount,uid=1500,gid=1500,mode=0400,target=/run/s
 {{bot_secrets}}
 # Inline single-file bind mount — see rationale in lyra-hub.container.
 Volume=%h/.lyra/config.toml:/app/config.toml:ro,z
+# Persistent volume for adapter stores (telegram.db, turns.db)
+Volume=lyra-data.volume:/home/lyra/.lyra:z
 Exec=lyra adapter telegram
 HealthCmd=grep -q telegram /proc/1/cmdline
 HealthInterval=30s

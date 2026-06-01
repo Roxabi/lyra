@@ -26,7 +26,6 @@ from lyra.core.messaging.message import Platform
 from lyra.core.messaging.messages import MessageManager
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.infrastructure.stores.agent_store import AgentStore
-from lyra.infrastructure.stores.bot_settings_kv import ensure_kv
 from lyra.infrastructure.stores.thread_store import ThreadStore
 
 # Default vault dir for discord.db (#417 / S4)
@@ -167,12 +166,6 @@ async def wire_discord_adapters(  # noqa: C901 — bootstrap composition root
         thread_store = ThreadStore(db_path=_vault / "discord.db")
         await thread_store.connect()
 
-    _js = None
-    _kv = None
-    if deps.nats_client is not None:
-        _js = deps.nats_client.jetstream()
-        _kv = await ensure_kv(_js)
-
     try:
         for bot_cfg, auth in deps.dc_bot_auths:
             resolved_agent = deps.bot_agent_map.get(("discord", bot_cfg.bot_id))
@@ -191,22 +184,12 @@ async def wire_discord_adapters(  # noqa: C901 — bootstrap composition root
                     "discord", bot_cfg.bot_id
                 )
 
-                def _parse_channel_ids(key: str) -> frozenset[int]:
-                    raw_ids = bot_settings.get(key, [])
-                    valid: list[int] = []
-                    for ch in raw_ids:
-                        try:
-                            valid.append(int(ch))
-                        except (ValueError, TypeError):
-                            log.warning(
-                                "%s: invalid channel id %r for bot %r — skipping",
-                                key,
-                                ch,
-                                bot_cfg.bot_id,
-                            )
-                    return frozenset(valid)
+                from lyra.infrastructure.stores.bot_settings_kv import (
+                    _parse_channel_ids,
+                )
 
-                watch_channels = _parse_channel_ids("watch_channels")
+                _raw_ids = bot_settings.get("watch_channels", [])
+                watch_channels = frozenset(_parse_channel_ids(_raw_ids))
 
             # TODO(#1060): KV-backed watch_channels not yet implemented in unified mode.
 

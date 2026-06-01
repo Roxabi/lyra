@@ -182,32 +182,23 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
         # Provision bot-settings KV and seed watch_channels for Discord bots.
         # Adapters read from KV instead of config.db (#1060).
         from lyra.infrastructure.stores.bot_settings_kv import (
-            ensure_kv as _ensure_bot_settings_kv,
-        )
-        from lyra.infrastructure.stores.bot_settings_kv import (
+            _parse_channel_ids,
             put_watch_channels,
         )
+        from lyra.infrastructure.stores.bot_settings_kv import (
+            ensure_kv as _ensure_bot_settings_kv,
+        )
 
-        _bot_js = nc.jetstream()
-        _bot_kv = await _ensure_bot_settings_kv(_bot_js)
+        _bot_kv = await _ensure_bot_settings_kv(_audio_js)
         for bot_cfg, _ in dc_bot_auths:
             _bot_settings = stores.agent.get_bot_settings("discord", bot_cfg.bot_id)
             _raw_ids = _bot_settings.get("watch_channels", [])
-            _valid: list[int] = []
-            for ch in _raw_ids:
-                try:
-                    _valid.append(int(ch))
-                except (ValueError, TypeError):
-                    log.warning(
-                        "watch_channels: invalid channel id %r for bot %r — skipping",
-                        ch,
-                        bot_cfg.bot_id,
-                    )
+            _valid = _parse_channel_ids(_raw_ids)
             try:
                 await put_watch_channels(
                     _bot_kv, bot_cfg.bot_id, frozenset(_valid)
                 )
-            except Exception:
+            except _nats_errors.Error:
                 log.exception(
                     "watch_channels: failed to seed KV for bot_id=%s — continuing",
                     bot_cfg.bot_id,

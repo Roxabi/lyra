@@ -9,8 +9,9 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import AsyncGenerator
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+import nats.errors
 from nats.js.api import KeyValueConfig, StorageType
 from nats.js.errors import BadRequestError, KeyNotFoundError
 from nats.js.kv import KeyValue
@@ -27,6 +28,21 @@ def _watch_channels_key(bot_id: str) -> str:
     return f"watch_channels.discord.{bot_id}"
 
 
+def _parse_channel_ids(raw: list[Any]) -> list[int]:
+    """Validate and convert a list of raw channel IDs to integers.
+
+    Skips non-integer values with a warning. Shared between hub seeding,
+    unified-mode bootstrap, and KV deserialization.
+    """
+    valid: list[int] = []
+    for item in raw:
+        try:
+            valid.append(int(item))
+        except (ValueError, TypeError):
+            log.warning("bot_settings_kv: invalid channel id %r — skipping", item)
+    return valid
+
+
 def _parse_watch_channels(raw: bytes | None) -> frozenset[int]:
     if raw is None:
         return frozenset()
@@ -39,13 +55,7 @@ def _parse_watch_channels(raw: bytes | None) -> frozenset[int]:
         return frozenset()
     if not isinstance(data, list):
         return frozenset()
-    valid: list[int] = []
-    for item in data:
-        try:
-            valid.append(int(item))
-        except (ValueError, TypeError):
-            log.warning("bot_settings_kv: invalid channel id %r — skipping", item)
-    return frozenset(valid)
+    return frozenset(_parse_channel_ids(data))
 
 
 async def ensure_kv(js: JetStreamContext) -> KeyValue:
@@ -67,7 +77,7 @@ async def ensure_kv(js: JetStreamContext) -> KeyValue:
     except BadRequestError:
         log.debug("bot_settings_kv: KV bucket %s already exists, binding", KV_BUCKET)
         return await js.key_value(KV_BUCKET)
-    except Exception:
+    except nats.errors.Error:
         log.exception("bot_settings_kv: KV bucket %s provision failed", KV_BUCKET)
         raise
 

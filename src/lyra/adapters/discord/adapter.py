@@ -32,7 +32,6 @@ from lyra.adapters.discord.discord_normalize import (
 )
 from lyra.adapters.shared._base_outbound import OutboundAdapterBase
 from lyra.adapters.discord.discord_outbound import (
-    DiscordTypingIndicator,
     _discord_typing_worker,
     send as _send_impl,
 )
@@ -139,7 +138,6 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         self._ingest_ctx: "IngestCtx | None" = None
 
     def _msg(self, key: str, fallback: str) -> str:
-        """Return a localised message string, falling back when no manager."""
         return resolve_msg(
             self._msg_manager, key, platform="discord", fallback=fallback
         )
@@ -150,30 +148,21 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         return self._typing._tasks
 
     def _start_typing(self, scope_id: int) -> None:
-        """Start (or restart) the typing indicator background task for scope_id."""
         self._typing.start(scope_id, self._factory_builder(scope_id))
 
     def _cancel_typing(self, scope_id: int) -> None:
-        """Cancel and remove the typing indicator task for scope_id."""
         self._typing.cancel(scope_id)
 
     def _cancel_typing_for(self, inbound: InboundMessage) -> None:
-        """Cancel the typing indicator for the channel/thread of *inbound*."""
-        if not isinstance(inbound.platform_meta, DiscordMeta):
-            return
-        channel_id: int = inbound.platform_meta.channel_id
-        thread_id: int | None = inbound.platform_meta.thread_id
-        send_to_id = thread_id if thread_id is not None else (channel_id or None)
-        if send_to_id is not None:
-            self._cancel_typing(send_to_id)
+        pm = inbound.platform_meta
+        if isinstance(pm, DiscordMeta):
+            self._cancel_typing(pm.thread_id or pm.channel_id)
 
     async def astart(self) -> None:
-        """Start the outbound listener if wired (NATS mode only)."""
         if self._outbound_listener is not None:
             await self._outbound_listener.start()
 
     async def close(self) -> None:
-        """Cancel typing tasks, drain voice, stop listener."""
         await self._typing.cancel_all()
         await self._vsm.leave_all()
         if self._outbound_listener is not None:
@@ -200,7 +189,6 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
     async def _handle_voice_command(
         self, message: Any, trust: TrustLevel = TrustLevel.TRUSTED
     ) -> bool:
-        """Detect and handle !join / !join stay / !leave voice commands."""
         return await _handle_voice_command_impl(self, message, trust)
 
     def normalize_audio(
@@ -212,7 +200,6 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         trust_level: TrustLevel,
         pending: "discord_audio.PendingAttachment | None" = None,
     ) -> InboundMessage:
-        """Build an InboundMessage (modality='voice') from a Discord audio message."""
         return discord_audio.normalize_audio(
             raw,
             audio_bytes,
@@ -231,7 +218,6 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         trust_level: TrustLevel = TrustLevel.TRUSTED,
         is_admin: bool = False,
     ) -> InboundMessage:
-        """Convert a discord.py Message (or SimpleNamespace) to InboundMessage."""
         return _normalize_impl(
             NormalizeDeps(
                 adapter=self,
@@ -261,36 +247,24 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         """Build an OutboundEmitter composed of Discord stages (#1279, S7)."""
         from lyra.adapters.discord.discord_formatter import DiscordFormatter
         from lyra.adapters.discord.discord_formatting import _validate_inbound
-        from lyra.outbound.emitter import OutboundEmitter
-        from lyra.outbound.error_handler import OutboundErrorHandler
-        from lyra.outbound.formatter import BadFormatter
+        from lyra.adapters.discord.discord_outbound import DiscordTypingIndicator
+        from lyra.adapters.shared._emitter import _make_emitter as _shared
 
-        meta = _validate_inbound(original_msg, "_make_emitter")
-        if meta is None:
-            return OutboundEmitter(BadFormatter("not a discord message"), outbound)
-
-        channel_id, thread_id, message_id = meta
-        send_to_id = thread_id if thread_id is not None else channel_id
-        reply_msg_id = message_id
-        should_reply = reply_msg_id is not None and thread_id is None
-        placeholder_text = self._msg("stream_placeholder", "…")
-        formatter = DiscordFormatter(
+        return _shared(
             self,
-            send_to_id=send_to_id,
-            get_msg=self._msg,
-            placeholder_text=placeholder_text,
-            reply_msg_id=reply_msg_id,
-            should_reply=should_reply,
-            original_msg=original_msg,
-        )
-        typing = DiscordTypingIndicator(self)
-        handler = OutboundErrorHandler(get_msg=formatter.get_msg)
-        return OutboundEmitter(
-            formatter,
+            original_msg,
             outbound,
-            error_handler=handler,
-            typing=typing,
-            typing_scope_id=send_to_id,
+            validate=_validate_inbound,
+            bad_msg="not a discord message",
+            formatter_cls=DiscordFormatter,
+            formatter_kwargs_fn=lambda m: {
+                "send_to_id": m[1] or m[0],
+                "reply_msg_id": m[2],
+                "should_reply": m[2] and m[1] is None,
+                "original_msg": original_msg,
+            },
+            typing_cls=DiscordTypingIndicator,
+            scope_id_fn=lambda m: m[1] or m[0],
         )
 
     async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
@@ -306,26 +280,19 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         self._cancel_typing_for(inbound)
 
     async def render_audio_stream(
-        self,
-        chunks: AsyncIterator[OutboundAudioChunk],
-        inbound: InboundMessage,
+        self, chunks: AsyncIterator[OutboundAudioChunk], inbound: InboundMessage
     ) -> None:
         """Buffer streamed audio chunks and send as a single Discord file attachment."""
         await discord_audio_outbound.render_audio_stream(self, chunks, inbound)
         self._cancel_typing_for(inbound)
 
     async def render_voice_stream(
-        self,
-        chunks: AsyncIterator[OutboundAudioChunk],
-        inbound: InboundMessage,
+        self, chunks: AsyncIterator[OutboundAudioChunk], inbound: InboundMessage
     ) -> None:
         """Route TTS stream to the active Discord voice session for this guild."""
         await discord_audio_outbound.render_voice_stream(self, chunks, inbound)
         self._cancel_typing_for(inbound)
 
     async def _resolve_channel(self, channel_id: int) -> discord.abc.Messageable:
-        """Get channel from cache or fetch from network."""
-        channel = self.get_channel(channel_id)
-        if channel is None:
-            channel = await self.fetch_channel(channel_id)
+        channel = self.get_channel(channel_id) or await self.fetch_channel(channel_id)
         return cast(discord.abc.Messageable, channel)

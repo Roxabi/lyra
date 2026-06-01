@@ -27,8 +27,13 @@ from lyra.core.messaging.message import (
     Platform,
 )
 from lyra.core.messaging.render_events import RenderEvent
-from lyra.core.messaging.voice_notify import notify_undelivered
+from lyra.nats.audio_publish import (
+    notify_audio_publish_failed,
+    publish_audio_with_retry,
+)
+from lyra.nats.keepalive import _run_keepalive_loop
 from lyra.nats.render_event_codec import NatsRenderEventCodec
+from lyra.nats.stream_error import publish_stream_error, publish_stream_errors
 from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
 from roxabi_contracts.outbound import OutboundAudioSubjects
 from roxabi_nats import TypeHintResolver
@@ -41,58 +46,10 @@ log = logging.getLogger(__name__)
 
 _NATS_UNSAFE = re.compile(r"[.*> ]")
 
-KEEPALIVE_INTERVAL_S = 30.0
-KEEPALIVE_EVENT_TYPE = "stream_keepalive"
-
-# Bounded retry for transient JetStream publish failures (leader election, timeout).
-# Nats-Msg-Id + the stream's 60 s duplicate window make retried publishes idempotent.
-_AUDIO_PUBLISH_MAX_ATTEMPTS = 3
-_AUDIO_PUBLISH_BACKOFF_BASE_S = 0.2
-_AUDIO_PUBLISH_BACKOFF_CAP_S = 1.0
-
 
 def _safe_subject_token(value: str) -> str:
     """Sanitize a value for use as a NATS subject token."""
     return _NATS_UNSAFE.sub("_", value)
-
-
-async def _run_keepalive_loop(
-    nc: NATS,
-    subject: str,
-    stream_id: str,
-    seq_box: list[int],
-    last_publish_box: list[float],
-) -> None:
-    """Publish stream_keepalive sentinels during idle periods (#687).
-
-    ``seq_box`` and ``last_publish_box`` are single-element lists used as
-    mutable references shared with the caller's publish loop.  Keepalive only
-    fires when the elapsed time since the last real publish exceeds
-    ``KEEPALIVE_INTERVAL_S``.
-    """
-    while True:
-        await asyncio.sleep(KEEPALIVE_INTERVAL_S)
-        if time.monotonic() - last_publish_box[0] >= KEEPALIVE_INTERVAL_S:
-            ka_seq = seq_box[0]
-            seq_box[0] += 1
-            chunk = {
-                "stream_id": stream_id,
-                "seq": ka_seq,
-                "event_type": KEEPALIVE_EVENT_TYPE,
-                "payload": {},
-                "done": False,
-            }
-            try:
-                await nc.publish(
-                    subject,
-                    json.dumps(chunk, ensure_ascii=False).encode("utf-8"),
-                )
-                log.debug("keepalive published stream_id=%s seq=%d", stream_id, ka_seq)
-            except nats.errors.Error:
-                log.warning(
-                    "NatsChannelProxy: failed to publish keepalive for stream_id=%r",
-                    stream_id,
-                )
 
 
 class NatsChannelProxy:
@@ -177,15 +134,7 @@ class NatsChannelProxy:
         events: AsyncIterator[RenderEvent],
         outbound: OutboundMessage | None = None,
     ) -> None:
-        """Publish streaming render events to NATS as chunked messages.
-
-        A parallel keepalive task fires every ``KEEPALIVE_INTERVAL_S`` seconds
-        while the events iterator is idle (e.g. long tool calls).  This prevents
-        the adapter's ``decode_stream_events`` per-chunk timeout from tripping on
-        legitimate slow turns (#687).  Keepalive chunks carry
-        ``event_type="stream_keepalive"`` and are skipped by the decoder without
-        yielding a render event to the caller.
-        """
+        """Publish streaming chunks to NATS; keepalive prevents per-chunk timeout (#687)."""  # noqa: E501
         subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
         self._active_streams.add(original_msg.id)
 
@@ -250,7 +199,7 @@ class NatsChannelProxy:
                     original_msg.id,
                     type(exc).__name__,
                 )
-                await self._publish_stream_error(subject, original_msg.id)
+                await publish_stream_error(self._nc, subject, original_msg.id)
                 async for _ in events:
                     pass
         finally:
@@ -263,67 +212,19 @@ class NatsChannelProxy:
             # of success, streaming exception, or publish failure in the except path.
             self._active_streams.discard(original_msg.id)
 
-    async def _publish_stream_error(self, subject: str, stream_id: str) -> None:
-        """Publish a stream_error envelope, swallowing NATS transport errors."""
-        error_envelope = {
-            "type": "stream_error",
-            "stream_id": stream_id,
-            "reason": "streaming_exception",
-        }
-        try:
-            await self._nc.publish(
-                subject,
-                json.dumps(error_envelope, ensure_ascii=False).encode("utf-8"),
-            )
-        except nats.errors.Error:
-            log.warning(
-                "NatsChannelProxy: failed to publish stream_error for stream_id=%r",
-                stream_id,
-            )
-
     async def publish_stream_errors(self, reason: str = "hub_shutdown") -> None:
-        """Publish stream_error for all active streams, then clear the set.
-
-        Uses an atomic swap to capture the snapshot and reset the set in one
-        step, eliminating the race window between list() and clear() when a
-        concurrent exception-path discard fires mid-iteration.
-        """
+        """Publish stream_error for all active streams, then clear the set."""
         subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
         stream_ids = self._active_streams
         self._active_streams = set()
-        for stream_id in stream_ids:
-            envelope = {
-                "type": "stream_error",
-                "stream_id": stream_id,
-                "reason": reason,
-            }
-            try:
-                await self._nc.publish(
-                    subject,
-                    json.dumps(envelope, ensure_ascii=False).encode("utf-8"),
-                )
-            except nats.errors.Error:
-                log.warning(
-                    "NatsChannelProxy: failed to publish stream_error for stream_id=%r",
-                    stream_id,
-                )
+        await publish_stream_errors(self._nc, subject, stream_ids, reason)
 
     # ------------------------------------------------------------------
     # Audio — not yet implemented (C5)
     # ------------------------------------------------------------------
 
     async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:
-        """Publish an outbound audio voice note to NATS via JetStream (durable).
-
-        Publishes to the 5-token subject ``lyra.outbound.audio.<platform>.<bot_id>``
-        on stream ``LYRA_OUTBOUND_AUDIO``.  The ``Nats-Msg-Id`` header is set to
-        ``inbound.id`` to drive JetStream dedup-window and downstream idempotency.
-        Awaiting PubAck guarantees the message is persisted before returning.
-
-        On publish failure (``nats.errors.Error`` or ``asyncio.TimeoutError``), a
-        sanitized error is logged and a best-effort user-facing notification is
-        dispatched via the legacy text subject.  The publish error is NOT re-raised.
-        """
+        """Publish audio to JetStream (durable).  Fallback notification on failure."""
         stream_id = inbound.id
         subject = OutboundAudioSubjects.audio(self._platform.value, self._bot_id)
         envelope = {
@@ -338,7 +239,7 @@ class NatsChannelProxy:
         }
         payload = json.dumps(envelope, ensure_ascii=False).encode("utf-8")
         try:
-            await self._publish_audio_with_retry(subject, payload, stream_id)
+            await publish_audio_with_retry(self._js, subject, payload, stream_id)
         except (nats.errors.Error, asyncio.TimeoutError) as exc:
             log.error(
                 "NatsChannelProxy: audio JetStream publish failed"
@@ -346,74 +247,8 @@ class NatsChannelProxy:
                 stream_id,
                 type(exc).__name__,
             )
-            await self._notify_audio_publish_failed(inbound)
-
-    async def _publish_audio_with_retry(
-        self, subject: str, payload: bytes, stream_id: str
-    ) -> None:
-        """Attempt JetStream publish up to _AUDIO_PUBLISH_MAX_ATTEMPTS times.
-
-        Retries on transient ``nats.errors.Error`` or ``asyncio.TimeoutError``
-        with capped exponential backoff.  Re-raises the last exception on
-        exhaustion so the caller can fall through to _notify_audio_publish_failed.
-
-        Retried publishes are idempotent: the ``Nats-Msg-Id`` header combined
-        with the stream's 60 s duplicate window prevents double-delivery.
-        """
-        last_exc: nats.errors.Error | asyncio.TimeoutError | None = None
-        for attempt in range(_AUDIO_PUBLISH_MAX_ATTEMPTS):
-            try:
-                await self._js.publish(
-                    subject, payload, headers={"Nats-Msg-Id": stream_id}
-                )
-                return
-            except (nats.errors.Error, asyncio.TimeoutError) as exc:
-                last_exc = exc
-                if attempt < _AUDIO_PUBLISH_MAX_ATTEMPTS - 1:
-                    delay = min(
-                        _AUDIO_PUBLISH_BACKOFF_BASE_S * (2**attempt),
-                        _AUDIO_PUBLISH_BACKOFF_CAP_S,
-                    )
-                    log.warning(
-                        "NatsChannelProxy: audio publish attempt %d/%d failed"
-                        " stream_id=%r exc_type=%s — retrying in %.2fs",
-                        attempt + 1,
-                        _AUDIO_PUBLISH_MAX_ATTEMPTS,
-                        stream_id,
-                        type(exc).__name__,
-                        delay,
-                    )
-                    await asyncio.sleep(delay)
-        raise last_exc  # type: ignore[misc]
-
-    async def _notify_audio_publish_failed(self, inbound: InboundMessage) -> None:
-        """Best-effort: send voice-undelivered notification via legacy text subject.
-
-        Uses the core-NATS (at-most-once) text subject rather than JetStream — the
-        JetStream path is the one that just failed.  Swallows any publish error;
-        the failure is logged but never re-raised so the hub loop stays alive.
-        No ``str(exc)`` content reaches the bus (SanitizedError discipline).
-        """
-        text_subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
-        notif = notify_undelivered(context="hub-audio-publish-fail")
-        notif_envelope = {
-            "type": "send",
-            "stream_id": inbound.id,
-            "outbound": json.loads(
-                serialize(notif, resolver=self._resolver).decode("utf-8")
-            ),
-            "original_msg": json.loads(
-                serialize(inbound, resolver=self._resolver).decode("utf-8")
-            ),
-        }
-        notif_payload = json.dumps(notif_envelope, ensure_ascii=False).encode("utf-8")
-        try:
-            await self._nc.publish(text_subject, notif_payload)
-        except nats.errors.Error:
-            log.warning(
-                "NatsChannelProxy: failed to publish audio-undelivered notification"
-                " stream_id=%r — user will not be notified",
-                inbound.id,
+            await notify_audio_publish_failed(
+                self._nc, self._platform, self._bot_id, self._resolver, inbound
             )
 
     async def render_audio_stream(

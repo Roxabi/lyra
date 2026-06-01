@@ -110,10 +110,10 @@ class TestPublishesKeepaliveDuringIdle:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """At least 3 keepalive envelopes published; seq is monotonically increasing."""
-        import lyra.nats.nats_channel_proxy as proxy_mod  # noqa: PLC0415
+        import lyra.nats.keepalive as keepalive_mod  # noqa: PLC0415
 
         fast_interval = 0.05  # 50 ms
-        monkeypatch.setattr(proxy_mod, "KEEPALIVE_INTERVAL_S", fast_interval)
+        monkeypatch.setattr(keepalive_mod, "KEEPALIVE_INTERVAL_S", fast_interval)
 
         nc = _make_nc()
         proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")

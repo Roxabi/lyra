@@ -53,18 +53,28 @@ async def _watch_kv_for_changes(
     """Background task: watch KV for watch_channels updates and mutate adapter."""
     from lyra.infrastructure.stores.bot_settings_kv import watch_watch_channels
 
-    try:
-        async for channels in watch_watch_channels(kv, bot_id):
-            adapter._watch_channels = channels
-            log.info(
-                "watch_channels updated for bot_id=%s: %s",
+    delay = 1.0
+    while True:
+        try:
+            async for channels in watch_watch_channels(kv, bot_id):
+                adapter._watch_channels = channels
+                log.info(
+                    "watch_channels updated for bot_id=%s: %s",
+                    bot_id,
+                    channels,
+                )
+            # Watcher ended normally; reset backoff and restart.
+            delay = 1.0
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception(
+                "watch_channels watcher failed for bot_id=%s, retrying in %ss",
                 bot_id,
-                channels,
+                delay,
             )
-    except asyncio.CancelledError:
-        raise
-    except Exception:
-        log.exception("watch_channels watcher failed for bot_id=%s", bot_id)
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 30.0)
 
 
 async def _create_dc_stores(vault_dir: Path) -> tuple:

@@ -121,11 +121,11 @@ async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
         ),
         patch(
             "lyra.infrastructure.stores.bot_settings_kv.ensure_kv",
-            AsyncMock(return_value=AsyncMock()),
+            mock_ensure_kv := AsyncMock(return_value=AsyncMock()),
         ),
         patch(
             "lyra.infrastructure.stores.bot_settings_kv.get_watch_channels",
-            AsyncMock(return_value=frozenset()),
+            mock_get_watch_channels := AsyncMock(return_value=frozenset()),
         ),
         patch(
             "lyra.infrastructure.stores.bot_settings_kv.watch_watch_channels",
@@ -140,6 +140,10 @@ async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
 
     mock_adapter_dc.astart.assert_awaited_once()
     mock_nc.close.assert_awaited_once()
+    mock_ensure_kv.assert_awaited_once()
+    mock_get_watch_channels.assert_awaited_once_with(
+        mock_ensure_kv.return_value, "main"
+    )
 
 
 @pytest.mark.asyncio
@@ -312,11 +316,11 @@ async def test_discord_astart_failure_cleans_up_wired_resources() -> None:
         ),
         patch(
             "lyra.infrastructure.stores.bot_settings_kv.ensure_kv",
-            AsyncMock(return_value=AsyncMock()),
+            mock_ensure_kv := AsyncMock(return_value=AsyncMock()),
         ),
         patch(
             "lyra.infrastructure.stores.bot_settings_kv.get_watch_channels",
-            AsyncMock(return_value=frozenset()),
+            mock_get_watch_channels := AsyncMock(return_value=frozenset()),
         ),
         load_token_patch,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
@@ -329,12 +333,38 @@ async def test_discord_astart_failure_cleans_up_wired_resources() -> None:
     mock_adapter_second.close.assert_awaited_once()
     mock_bus_second.stop.assert_awaited_once()
     mock_nc.close.assert_awaited_once()
+    mock_ensure_kv.assert_awaited_once()
+    assert mock_get_watch_channels.await_count == 2
+    mock_get_watch_channels.assert_any_await(
+        mock_ensure_kv.return_value, "first"
+    )
+    mock_get_watch_channels.assert_any_await(
+        mock_ensure_kv.return_value, "second"
+    )
 
 
-async def _mock_watch_watch_channels(kv: Any, bot_id: str):
-    """Async generator yielding two frozenset updates for the patch."""
-    yield frozenset({222})
-    yield frozenset({333, 444})
+def _make_watch_generator(
+    first_yield_done: asyncio.Event | None = None,
+    second_yield_done: asyncio.Event | None = None,
+    raise_after: int | None = None,
+):
+    """Factory for async generators to patch watch_watch_channels."""
+    async def _gen(kv: Any, bot_id: str):
+        if raise_after == 0:
+            raise Exception("boom")
+        yield frozenset({222})
+        if first_yield_done:
+            first_yield_done.set()
+        if raise_after == 1:
+            raise Exception("boom")
+        yield frozenset({333, 444})
+        if second_yield_done:
+            second_yield_done.set()
+        if raise_after == 2:
+            raise Exception("boom")
+        # Hang forever so the watcher loop doesn't restart.
+        await asyncio.Event().wait()
+    return _gen
 
 
 @pytest.mark.asyncio
@@ -347,16 +377,23 @@ async def test_discord_kv_watch_updates_watch_channels() -> None:
 
     mock_kv = AsyncMock()
 
+    first_yield_done = asyncio.Event()
+    second_yield_done = asyncio.Event()
+
     with patch(
         "lyra.infrastructure.stores.bot_settings_kv.watch_watch_channels",
-        _mock_watch_watch_channels,
+        _make_watch_generator(
+            first_yield_done=first_yield_done,
+            second_yield_done=second_yield_done,
+        ),
     ):
         task = asyncio.create_task(
             _watch_kv_for_changes(mock_kv, "main", mock_adapter)
         )
-        # Allow the event loop to process both yielded values
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
+        await first_yield_done.wait()
+        assert mock_adapter._watch_channels == frozenset({222})
+        await second_yield_done.wait()
+        assert mock_adapter._watch_channels == frozenset({333, 444})
         task.cancel()
         try:
             await task
@@ -364,3 +401,73 @@ async def test_discord_kv_watch_updates_watch_channels() -> None:
             pass
 
     assert mock_adapter._watch_channels == frozenset({333, 444})
+
+
+@pytest.mark.asyncio
+async def test_discord_kv_watch_survives_exception() -> None:
+    """KV watch survives exception in the watcher and retains the last known value."""
+    from lyra.bootstrap.wiring.standalone_discord import _watch_kv_for_changes
+
+    mock_adapter = AsyncMock()
+    mock_adapter._watch_channels = frozenset({111})
+
+    mock_kv = AsyncMock()
+
+    first_yield_done = asyncio.Event()
+
+    with patch(
+        "lyra.infrastructure.stores.bot_settings_kv.watch_watch_channels",
+        _make_watch_generator(
+            first_yield_done=first_yield_done,
+            raise_after=1,
+        ),
+    ), patch(
+        "lyra.bootstrap.wiring.standalone_discord.asyncio.sleep",
+        AsyncMock(),
+    ):
+        task = asyncio.create_task(
+            _watch_kv_for_changes(mock_kv, "main", mock_adapter)
+        )
+        await first_yield_done.wait()
+        # Allow the exception to propagate into the watcher loop.
+        await asyncio.sleep(0)
+        assert mock_adapter._watch_channels == frozenset({222})
+        assert not task.done()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+
+@pytest.mark.asyncio
+async def test_discord_kv_watch_empty_set_clears_watch_channels() -> None:
+    """KV watch yields empty frozenset → adapter._watch_channels is cleared."""
+    from lyra.bootstrap.wiring.standalone_discord import _watch_kv_for_changes
+
+    mock_adapter = AsyncMock()
+    mock_adapter._watch_channels = frozenset({111})
+
+    mock_kv = AsyncMock()
+
+    yield_done = asyncio.Event()
+
+    async def _empty_watch(kv: Any, bot_id: str):
+        yield frozenset()
+        yield_done.set()
+        await asyncio.Event().wait()
+
+    with patch(
+        "lyra.infrastructure.stores.bot_settings_kv.watch_watch_channels",
+        _empty_watch,
+    ):
+        task = asyncio.create_task(
+            _watch_kv_for_changes(mock_kv, "main", mock_adapter)
+        )
+        await yield_done.wait()
+        assert mock_adapter._watch_channels == frozenset()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass

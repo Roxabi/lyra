@@ -7,7 +7,7 @@ description: Current truth for Telegram, Discord, CLI, and audio adapter decisio
 
 > Status: LIVING — current truth for Telegram/Discord/CLI/audio adapter decisions.
 > Last updated: 2026-05-09.
-> Source ADRs: 003, 013, 014, 015, 020, 023, 039.
+> Source ADRs: 003, 013, 014, 015, 020, 023, 039, 073.
 
 ## Scope
 

@@ -1,0 +1,72 @@
+---
+title: "ADR-084: Documentation Architecture — SSoT & Semantic Code Oracle"
+description: "Unified meta-documentation for architecture knowledge SSoT, 2-tier drift gate, and semantic code oracle"
+status: accepted
+---
+
+> **Current truth** → [`docs/architecture/ARCHITECTURE.md`](../../ARCHITECTURE.md){#current-truth}
+> This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+
+## Status
+
+Accepted — 2026-06-01
+
+Absorbs ADR-080 and ADR-081 into a single meta-documentation plane.
+
+## Context
+
+Architecture knowledge in Lyra (and Roxabi repos generally) evolves faster than hand-maintained docs and issues can track, producing systemic silent documentation rot. A 2026-05-30 audit found a 67% live-reference hit-rate in `docs/architecture/`. The root cause is mixing three strata with different rot rates in one artifact:
+
+| Stratum | Examples | Rot rate |
+|---|---|---|
+| INVENTORY | class/file names, NATS subjects, deps, entry points | fast + silent |
+| STRUCTURE | import layers, ownership, decomposition axes | medium |
+| INTENT | rationale, trade-offs, constraints | slow |
+
+When mixed, fast-rotting INVENTORY poisons still-valid INTENT, causing the document to lose trust and readers to fall back to guessing or expensive full code reads.
+
+## Decision
+
+Adopt a **two-tier architecture-knowledge SSoT** bridged by a **doc-drift CI gate**, and a **semantic code oracle** that resolves identifiers exactly from authoritative sources.
+
+### Tier 1 — Generated current-state ("what is")
+Derived from machine-readable sources, never hand-typed: `.importlinter` (layer map), `deploy/nats/acl-matrix.json` (subjects + identities), `deploy/quadlet.toml` + `cli.py` (process topology), `roxabi-contracts` `SUBJECTS` (typed subject constants). The semantic oracle (`tools/code_inventory.py`) answers `resolve(token) → {exists: bool, kind: module | symbol | subject | path | unknown}` from these sources.
+
+### Tier 2 — Hand-authored intent ("why")
+ADR domain pages and CLAUDE.md files, purged of INVENTORY, carrying `status:` frontmatter. The self-annotating-deleted-symbols pattern (marking removed symbols with their PR number) is the reference standard.
+
+### Bridge — Doc-drift CI gate
+Scans `docs/architecture/` and the CLAUDE.md network for paths and backticked symbols, and fails CI when a cited reference no longer resolves — except references annotated as historical or baselined. The gate asserts against the oracle; it never re-derives identity textually.
+
+### Retrieval ladder
+Canonical order for answering "what is the current architecture?":
+
+1. Code — ground truth.
+2. Generated Tier-1 artifacts — fast fresh index.
+3. `ccc` (cocoindex-code) semantic search — "where/how".
+4. CLAUDE.md invariants + ADR domain pages — INTENT/boundaries only; check `status:`.
+5. `artifacts/` (specs/analyses/plans) + GitHub issues — DELTAS only; never current-state.
+
+## Consequences
+
+### Positive
+- Silent doc-rot becomes a loud, blocking CI signal.
+- INVENTORY is never hand-maintained — generated from the same code it describes.
+- Humans and agents get a reliable, ordered retrieval protocol.
+- The oracle eliminates false positives/negatives by construction: exact `module.ClassName` resolution, word-boundary matching, subject awareness, and no hand-maintained skip lists.
+- One shared oracle feeds the doc-drift gate, the Tier-1 snapshot, and the subject-literals check — no parallel resolvers.
+
+### Negative
+- New CI gates and generators to maintain.
+- One-time purge of INVENTORY from existing domain pages, plus ongoing discipline to keep them intent-only.
+- ~200 lines to maintain in `tools/code_inventory.py`.
+
+### Neutral
+- A future `docs/architecture/knowledge-ssot.md` domain page may host the living retrieval ladder once the gate lands.
+- Forward-looking docs keep their value as deltas; the ladder just bars them from "current-state" duty.
+
+## References
+
+- ADR-080 — Architecture Knowledge SSoT (absorbed; two-tier model and retrieval ladder)
+- ADR-081 — Architecture Inventory Semantic Code Oracle (absorbed; oracle implementation)
+- Epic #1530 — implementation tracking (doc-drift gate #1531, Tier-1 snapshot #1532, subject-literals #1533)

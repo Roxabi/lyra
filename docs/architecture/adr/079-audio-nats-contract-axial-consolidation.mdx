@@ -4,9 +4,10 @@ description: Closes N×M drift in LYRA_OUTBOUND_AUDIO contracts by moving stream
 status: accepted
 date: 2026-05-30
 deciders: [Mickael, architect, axial-adr-review]
-supersedes: []
+supersedes: ADR-077
 superseded_by: []
 related: [073, 075, 076, 077]
+
 ---
 
 > **Current truth** → [`docs/architecture/messaging.md`](../messaging.md){#current-truth}
@@ -16,7 +17,7 @@ related: [073, 075, 076, 077]
 
 Accepted — 2026-05-30
 
-Tracks: issue #1521. The relief applied in PR #1520 added five subject grants to both
+Supersedes ADR-077 (outbound audio subject). Tracks: issue #1521. The relief applied in PR #1520 added five subject grants to both
 adapter identities; the sole-provisioner move (slice S3) removes three of them
 (`STREAM.CREATE.LYRA_OUTBOUND_AUDIO`, `STREAM.UPDATE.LYRA_OUTBOUND_AUDIO`,
 `STREAM.CREATE.KV_lyra_outbound_audio_sent`) and moves them permanently to the hub.

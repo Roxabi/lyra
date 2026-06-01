@@ -6,7 +6,7 @@
 
 ## How to read this docs tree
 
-**Start here for current state**: 9 living domain pages, each the single source of truth for its area.
+**Start here for current state**: 13 living domain pages, each the single source of truth for its area.
 
 | Domain page | What it owns |
 |---|---|
@@ -19,8 +19,12 @@
 | [contracts.md](architecture/contracts.md) | roxabi-nats SDK, roxabi-contracts schemas, voice routing |
 | [workers-tooling.md](architecture/workers-tooling.md) | CliPool, processor registry, tool integration, importlinter |
 | [architecture-patterns.md](architecture/architecture-patterns.md) | Clean / Hexagonal / Kernel patterns + engineering invariants |
+| [testing-conventions.md](architecture/testing-conventions.md) | Test taxonomy, fixture policy, mock boundaries, CI gate conventions |
+| [voice-to-voice-analysis.md](architecture/voice-to-voice-analysis.md) | Voice pipeline design, audio latency budgets, STT/TTS adapter contracts |
+| [target-architecture.md](architecture/target-architecture.md) | Hexagonal/Ports & Adapters layout as implemented (file paths, module structure) |
+| [CURRENT.generated.md](architecture/CURRENT.generated.md) | Machine-generated inventory SSoT — layers, subjects, topology, entry points |
 
-**Decision archive** — 46 ADRs in [`architecture/adr/`](architecture/adr/) preserve historical reasoning. Each ADR has a redirect banner to its domain page. **Read ADRs only when you need the *why* behind a decision**, not the *what*. Index grouped by domain in [`adr/meta.json`](architecture/adr/meta.json).
+**Decision archive** — 59 active ADRs (26 archived) in [`architecture/adr/`](architecture/adr/) preserve historical reasoning. Each ADR has a redirect banner to its domain page. **Read ADRs only when you need the *why* behind a decision**, not the *what*. Index grouped by domain in [`adr/meta.json`](architecture/adr/meta.json).
 
 **Implementation reference** — [target-architecture.md](architecture/target-architecture.md) shows the Hexagonal/Ports & Adapters layout as implemented (file paths, module structure).
 

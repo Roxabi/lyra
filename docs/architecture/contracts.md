@@ -7,7 +7,7 @@ description: Living reference for the NATS SDK, shared schema package, voice/ima
 
 > Status: LIVING — current truth for cross-project NATS contracts and shared schemas.
 > Last updated: 2026-05-09.
-> Source ADRs: 045, 049, 052. Absorbed: 037, 040, 044, 047, 050, 062, 066.
+> Source ADRs: 045, 049, 052, 073. Absorbed: 037, 040, 044, 047, 050, 062, 066.
 
 ## Scope
 
@@ -108,7 +108,7 @@ Workers are re-admitted automatically on their next heartbeat (heartbeat TTL: 15
 |-----|-------|--------|
 | 045 | Extract roxabi-nats SDK as uv workspace subpackage | Accepted |
 | 049 | Extract roxabi-contracts as shared schema package | Accepted |
-| 052 | Registry-authoritative voice routing | Accepted |
+| 052 | Registry-authoritative voice routing | Amended |
 | 037 | NatsOutboundListener placement and adapter standalone bootstrap | Absorbed by ADR-045 |
 | 040 | NATS messaging architecture review (9-finding table) | Absorbed by ADR-045 |
 | 047 | NATS connector ownership pattern (7 rules + satellite grep-gate) | Absorbed by ADR-045 |

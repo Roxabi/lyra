@@ -340,4 +340,6 @@ providers. Domain clients compose via
 | 065 | KV readiness probe | Accepted |
 | 072 | Codec registry pattern (v2 RenderEvent) | Accepted — supersedes ADR-032 v1 wire shape |
 | 076 | Three NATS planes (messages / persistence / typing) | Accepted — 2026-05-26; operational landing with Epic #1375 |
+| 077 | Outbound audio subject family | Superseded by ADR-079 |
+| 079 | Audio NATS contract — axial consolidation | Accepted — 2026-05-30 |
 | 037, 040, 047, 062 | (various transport ADRs) | Absorbed by ADR-045 (roxabi-nats SDK) |

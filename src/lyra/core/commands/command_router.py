@@ -30,7 +30,7 @@ from .command_patterns import (
 if TYPE_CHECKING:
     from lyra.core.runtime_config import RuntimeConfigHolder
 
-    from ..circuit_breaker import CircuitRegistry
+    from ..lifecycle.circuit_breaker import CircuitRegistry
     from ..messaging.messages import MessageManager
 
 log = logging.getLogger(__name__)

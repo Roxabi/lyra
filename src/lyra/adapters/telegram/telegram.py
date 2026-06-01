@@ -35,7 +35,7 @@ from lyra.adapters.telegram.telegram_outbound import (
     _typing_worker,
     send as _send_impl,
 )
-from lyra.core.circuit_breaker import CircuitRegistry
+from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
 from lyra.core.auth.guard import BlockedGuard, GuardChain
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.config import TelegramConfig as TelegramConfig, load_telegram_config

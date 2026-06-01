@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
     from lyra.adapters.shared._shared import TypingTaskManager
     from lyra.adapters.shared.outbound_listener import OutboundListener
-    from lyra.core.circuit_breaker import CircuitRegistry
+    from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
     from lyra.core.messaging.bus import Bus
     from lyra.core.messaging.messages import MessageManager
     from lyra.core.stores import TurnStoreProtocol

@@ -16,8 +16,8 @@ from lyra.agents.simple_agent import SimpleAgent
 from lyra.core.agent import Agent
 from lyra.core.agent.agent_config import ModelConfig
 from lyra.core.auth.trust import TrustLevel
-from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.hub import Hub
+from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent
 from lyra.core.messaging.message import (
     InboundMessage,

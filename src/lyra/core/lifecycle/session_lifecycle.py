@@ -6,9 +6,9 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .agent.agent_config import Agent
-    from .memory import MemoryManager, SessionSnapshot
-    from .pool import Pool
+    from ..agent.agent_config import Agent
+    from ..memory import MemoryManager, SessionSnapshot
+    from ..pool import Pool
 
 log = logging.getLogger(__name__)
 

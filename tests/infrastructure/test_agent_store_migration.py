@@ -11,7 +11,7 @@ from pathlib import Path
 import aiosqlite
 import pytest
 
-from lyra.core.agent.agent_schema import (
+from lyra.core.agent.schema.agent_schema import (
     _CREATE_AGENT_RUNTIME_STATE,
     _CREATE_AGENTS,
 )

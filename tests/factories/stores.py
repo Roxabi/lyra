@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
+from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.infrastructure.stores.agent_store import AgentRow, AgentStore
 from lyra.infrastructure.stores.auth_store import AuthStore
 from lyra.infrastructure.stores.pairing import PairingConfig, PairingManager

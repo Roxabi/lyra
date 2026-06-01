@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from ...circuit_breaker import CircuitBreaker
+from ...lifecycle.circuit_breaker import CircuitBreaker
 from ...messaging.callbacks import unwrap_callback
 from ...messaging.message import RoutingContext
 from .outbound_errors import (

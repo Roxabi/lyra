@@ -13,7 +13,7 @@ from lyra.core import Hub, Pool
 if TYPE_CHECKING:
     from lyra.core.agent import AgentBase
     from lyra.core.hub.hub_protocol import ChannelAdapter
-from lyra.core.circuit_breaker import CircuitBreaker
+from lyra.core.lifecycle.circuit_breaker import CircuitBreaker
 from lyra.core.messaging.message import (
     InboundMessage,
     OutboundMessage,

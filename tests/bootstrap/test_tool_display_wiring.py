@@ -67,8 +67,8 @@ async def test_wired_path_threads_tool_display_config_to_telegram() -> None:
     from lyra.config import TelegramBotConfig
     from lyra.core.auth.authenticator import Authenticator, AuthenticatorDeps
     from lyra.core.auth.trust import TrustLevel
-    from lyra.core.circuit_breaker import CircuitRegistry
     from lyra.core.hub.hub import Hub
+    from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
 
     raw_config = {"tool_display": {"bash_max_len": 200, "show": {"web_fetch": False}}}
 
@@ -148,8 +148,8 @@ async def test_wired_path_threads_tool_display_config_to_discord() -> None:
     from lyra.config import DiscordBotConfig
     from lyra.core.auth.authenticator import Authenticator, AuthenticatorDeps
     from lyra.core.auth.trust import TrustLevel
-    from lyra.core.circuit_breaker import CircuitRegistry
     from lyra.core.hub.hub import Hub
+    from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
 
     # Confirm loader parses correctly — the adapter must receive equivalent values.
     loader_result = _load_tool_display_config(
@@ -242,8 +242,8 @@ async def test_wired_path_with_absent_tool_display_section_uses_defaults() -> No
     from lyra.config import TelegramBotConfig
     from lyra.core.auth.authenticator import Authenticator, AuthenticatorDeps
     from lyra.core.auth.trust import TrustLevel
-    from lyra.core.circuit_breaker import CircuitRegistry
     from lyra.core.hub.hub import Hub
+    from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
 
     # No [tool_display] section — loader returns defaults
     tool_display_cfg = _load_tool_display_config({})

@@ -11,8 +11,8 @@ from lyra.bootstrap.factory.hub_builder import (
 )
 from lyra.core.agent import Agent
 from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.hub import Hub
+from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.llm.llm_client import LlmClient
 
 # ---------------------------------------------------------------------------

@@ -8,9 +8,9 @@ from typing import TYPE_CHECKING
 from lyra.bootstrap.factory.agent_factory import ResolveAgentsDeps, _resolve_agents
 from lyra.bootstrap.factory.config import _load_llm_config
 from lyra.core.agent import Agent
-from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.cli.cli_pool import CliPool
 from lyra.core.hub import Hub
+from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
 from lyra.core.messaging.messages import MessageManager
 from lyra.core.ports.stt import STTProtocol
 from lyra.core.ports.tts import TtsProtocol

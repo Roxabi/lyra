@@ -23,7 +23,7 @@ from lyra.bootstrap.factory.config.config_models import (
     LoggingConfig,
     PoolConfig,
 )
-from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
+from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.messaging.messages import MessageManager
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.core.stores.pairing_config import PairingConfig

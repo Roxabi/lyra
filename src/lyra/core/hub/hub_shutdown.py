@@ -10,7 +10,7 @@ import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from ..circuit_breaker import CircuitRegistry
+    from ..lifecycle.circuit_breaker import CircuitRegistry
     from ..memory import MemoryManager
     from ..messaging.message import Platform
     from ..messaging.messages import MessageManager

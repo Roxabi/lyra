@@ -20,8 +20,8 @@ from lyra.config import (
     TelegramBotConfig,
 )
 from lyra.core.auth.authenticator import Authenticator
-from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.hub import Hub, OutboundDispatcher, RoutingKey
+from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
 from lyra.core.messaging.message import Platform
 from lyra.core.messaging.messages import MessageManager
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig

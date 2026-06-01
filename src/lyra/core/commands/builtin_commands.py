@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from ..circuit_breaker import CircuitRegistry
+    from ..lifecycle.circuit_breaker import CircuitRegistry
     from ..messaging.messages import MessageManager
     from ..runtime_config import RuntimeConfigHolder
     from .command_loader import CommandLoader

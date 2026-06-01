@@ -20,8 +20,8 @@ from lyra.bootstrap.wiring.nats_wiring import (
     wire_nats_telegram_proxies,
 )
 from lyra.core.agent import Agent
-from lyra.core.circuit_breaker import CircuitRegistry
 from lyra.core.hub import Hub
+from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
 from lyra.core.messaging.message import InboundMessage
 from lyra.core.messaging.messages import MessageManager
 from lyra.infrastructure.stores.pairing import PairingManager

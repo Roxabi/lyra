@@ -45,7 +45,7 @@ from lyra.adapters.discord.voice.discord_voice_commands import (
     handle_voice_command as _handle_voice_command_impl,
     register_voice_app_commands as _register_voice_app_commands,
 )
-from lyra.core.circuit_breaker import CircuitRegistry
+from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
 from lyra.core.auth.guard import BlockedGuard, GuardChain
 from lyra.core.auth.trust import TrustLevel
 from lyra.core.messaging.message import (

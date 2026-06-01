@@ -13,8 +13,8 @@ from lyra.bootstrap.wiring.nats_wiring import (
 )
 from lyra.config import TelegramBotConfig
 from lyra.core.auth.authenticator import Authenticator
-from lyra.core.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.hub import Hub
+from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
 
 # ---------------------------------------------------------------------------
 # test_wire_nats_telegram_proxies_skips_missing_bot

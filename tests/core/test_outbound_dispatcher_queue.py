@@ -6,8 +6,8 @@ import asyncio
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.circuit_breaker import CircuitBreaker
 from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
+from lyra.core.lifecycle.circuit_breaker import CircuitBreaker
 from lyra.core.messaging.message import OutboundMessage
 from lyra.core.messaging.render_events import TextDeltaRenderEvent, TextEndRenderEvent
 
@@ -156,7 +156,7 @@ class TestOutboundDispatcherCircuitBreaker:
 
         cb = CircuitBreaker(name="telegram", failure_threshold=5)
         # Put in half-open state: open then let recovery time elapse (mock)
-        from lyra.core.circuit_breaker import CircuitState
+        from lyra.core.lifecycle.circuit_breaker import CircuitState
 
         cb._state = CircuitState.HALF_OPEN
 
@@ -170,7 +170,7 @@ class TestOutboundDispatcherCircuitBreaker:
             await asyncio.sleep(0.05)
             adapter.send.assert_awaited_once()
             # CB should be closed after successful send
-            from lyra.core.circuit_breaker import CircuitState
+            from lyra.core.lifecycle.circuit_breaker import CircuitState
 
             assert cb._state == CircuitState.CLOSED
         finally:

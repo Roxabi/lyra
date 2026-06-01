@@ -19,9 +19,9 @@ if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
 
     from lyra.core.ports.blobstore import BlobStorePort
-    from lyra.nats.nats_image_client import NatsImageClient
-    from lyra.nats.nats_stt_client import NatsSttClient
-    from lyra.nats.nats_tts_client import NatsTtsClient
+    from lyra.nats.audio.nats_tts_client import NatsTtsClient
+    from lyra.nats.image.nats_image_client import NatsImageClient
+    from lyra.nats.stt.nats_stt_client import NatsSttClient
 
 log = logging.getLogger(__name__)
 
@@ -39,8 +39,8 @@ def _deprecated_env(old_var: str, new_var: str) -> str | None:
 
 def init_nats_tts(nc: "NATS") -> "NatsTtsClient":
     """Create NatsTtsClient (3-layer). Call ``await client.start()`` to activate hb."""
-    from lyra.nats.nats_tts_client import NatsTtsClient
-    from lyra.nats.nats_tts_codec import TtsCodec
+    from lyra.nats.audio.nats_tts_client import NatsTtsClient
+    from lyra.nats.audio.nats_tts_codec import TtsCodec
     from lyra.nats.worker_registry import WorkerRegistry
     from lyra.transport.nats_request_response import NatsTransport
     from lyra.transport.worker_pool_client import WorkerPoolClient
@@ -60,8 +60,8 @@ def init_nats_tts(nc: "NATS") -> "NatsTtsClient":
 
 def init_nats_stt(nc: "NATS") -> "NatsSttClient":
     """Create NatsSttClient (3-layer). Call ``await client.start()`` to activate hb."""
-    from lyra.nats.nats_stt_client import NatsSttClient
-    from lyra.nats.nats_stt_codec import SttCodec
+    from lyra.nats.stt.nats_stt_client import NatsSttClient
+    from lyra.nats.stt.nats_stt_codec import SttCodec
     from lyra.nats.worker_registry import WorkerRegistry
     from lyra.transport.nats_request_response import NatsTransport
     from lyra.transport.worker_pool_client import WorkerPoolClient
@@ -88,8 +88,8 @@ def init_nats_stt(nc: "NATS") -> "NatsSttClient":
 
 def init_nats_image(nc: "NATS") -> "NatsImageClient":
     """Create NatsImageClient (3-layer). Call ``client.start()`` to start hb."""
-    from lyra.nats.nats_image_client import NatsImageClient
-    from lyra.nats.nats_image_codec import ImageCodec
+    from lyra.nats.image.nats_image_client import NatsImageClient
+    from lyra.nats.image.nats_image_codec import ImageCodec
     from lyra.nats.worker_registry import WorkerRegistry
     from lyra.transport.nats_request_response import NatsTransport
     from lyra.transport.worker_pool_client import WorkerPoolClient

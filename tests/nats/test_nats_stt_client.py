@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from lyra.core.ports.stt import STTNoiseError, STTUnavailableError, TranscriptionResult
-from lyra.nats.nats_stt_client import NatsSttClient
+from lyra.nats.stt.nats_stt_client import NatsSttClient
 from lyra.transport._result import Err, Ok, SanitizedError
 from roxabi_contracts import BlobRef
 
@@ -151,7 +151,7 @@ class TestNatsSttClientRealBlobRef:
         """
         import json
 
-        from lyra.nats.nats_stt_codec import SttCodec, SttEncodeParams
+        from lyra.nats.stt.nats_stt_codec import SttCodec, SttEncodeParams
         from roxabi_contracts.voice import SttRequest
 
         # Arrange — real BlobRef with non-empty fields (post-#1553 contract)

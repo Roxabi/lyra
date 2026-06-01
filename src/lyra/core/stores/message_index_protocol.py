@@ -1,7 +1,7 @@
 """MessageIndexProtocol — structural interface for the message-to-session index.
 
 Decouples lyra.core from the concrete SQLite MessageIndex implementation
-(lyra.infrastructure.stores.message_index). Fixes the layering inversion where
+(lyra.infrastructure.stores.base.message_index). Fixes the layering inversion where
 core modules imported an infrastructure type directly (issue #1529).
 
 Factory: obtain a store via the bootstrap layer; type-annotate against this

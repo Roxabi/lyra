@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
 
     from lyra.core.agent.agent_config import AgentTTSConfig
-    from lyra.nats.nats_tts_codec import TtsCodec
+    from lyra.nats.audio.nats_tts_codec import TtsCodec
     from lyra.transport.worker_pool_client import WorkerPoolClient
 
 log = logging.getLogger(__name__)

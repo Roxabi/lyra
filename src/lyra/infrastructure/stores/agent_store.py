@@ -19,10 +19,12 @@ from lyra.core.agent.schema.agent_schema import (
     _SELECT_AGENTS,
     _UPSERT_AGENT,
 )
-from lyra.infrastructure.stores.agent_store_migrations import run_agent_migrations
+from lyra.infrastructure.stores.migrations.agent_store_migrations import (
+    run_agent_migrations,
+)
 
-from .bot_agent_map import BotAgentMapStore
-from .sqlite_base import SqliteStore
+from .base.bot_agent_map import BotAgentMapStore
+from .base.sqlite_base import SqliteStore
 
 log = logging.getLogger(__name__)
 

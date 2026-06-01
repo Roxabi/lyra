@@ -11,7 +11,7 @@ from lyra.core.ports.tts import (
     TtsSynthesisError,
     TtsUnavailableError,
 )
-from lyra.nats.nats_tts_client import NatsTtsClient
+from lyra.nats.audio.nats_tts_client import NatsTtsClient
 from lyra.transport._result import Err, Ok, SanitizedError
 from roxabi_contracts import BlobRef
 

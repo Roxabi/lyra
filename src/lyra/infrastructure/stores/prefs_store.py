@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from lyra.infrastructure.stores.sqlite_base import SqliteStore
+from lyra.infrastructure.stores.base.sqlite_base import SqliteStore
 
 if TYPE_CHECKING:
     from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore

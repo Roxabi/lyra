@@ -1,0 +1,122 @@
+---
+title: "ADR-084: WorkEnvelope — the job_id invariant"
+description: Split the NATS contract envelope into WorkEnvelope (mandatory job_id) vs infra ContractEnvelope (trace_id only).
+---
+
+## Status
+
+Accepted
+
+Extends ADR-049 (roxabi-contracts shared schema) additively. Supersedes nothing.
+Relates to ADR-076 (three NATS planes) — the Work/Infra split cuts across the
+message/persistence/typing planes (see "Relationship to WorkScope and the typing plane").
+Design source: `artifacts/analyses/workenvelope-job-id-invariant.md`.
+Implemented by: #1619 (WorkEnvelope + reparent) · #1620 (ingress mint) · #1621 (request_id fold).
+Context: Roxabi Factory plan A (distributed-first, independent harness — epic #1490).
+
+## Context
+
+Plan A makes the harness an independent NATS worker and pushes all work through the
+bus. We want any message belonging to a unit of work to carry a stable job identity so a
+turn can be followed end-to-end across hub → harness → satellites, and so jobs nest into a
+trace tree (OTel-style) feeding the observability pipeline (epic #1622).
+
+The naive form — "every message carries a `job_id`" — is **not realistic**:
+
+- `ContractEnvelope` is the base of every NATS model and already mandates `trace_id`
+  (`min_length=1`). Correlation across all hops **already exists** as `trace_id`.
+- `job_id` exists only in the `jobs/` domain today.
+- **Heartbeats** extend `ContractEnvelope` (`CliHeartbeat`, `ImageHeartbeat`) and belong to
+  **no job** — a liveness ping has no meaningful `job_id`. Forcing one fabricates fake ids.
+- A third id already floats: `request_id` (voice/llm builders: "trace_id falls back to
+  request_id"), risking trace_id + request_id + job_id triplication.
+
+The decision is the realistic, enforceable form of the invariant.
+
+## Options Considered
+
+### Option A: `job_id` mandatory on `ContractEnvelope` (every message)
+- **Pros:** one rule, trivially uniform.
+- **Cons:** semantically false for infra (heartbeat/lifecycle/metrics) — forces synthetic
+  ids on liveness pings; pollutes the trace tree with non-work nodes.
+
+### Option B: `job_id` optional on `ContractEnvelope` (nullable everywhere)
+- **Pros:** additive, no hierarchy change.
+- **Cons:** presence not guaranteed where it matters; "is this a work message?" becomes a
+  runtime guess; no type-level enforcement.
+
+### Option C: `WorkEnvelope` subclass — `job_id` mandatory on work, infra stays on base
+- **Pros:** presence guaranteed **by type** on work messages; infra honestly exempt;
+  enforceable via subject→envelope test; mirrors OTel (trace=tree, span=job).
+- **Cons:** requires a per-model classification pass and reparenting work models.
+
+## Decision
+
+**Option C.** Introduce `WorkEnvelope(ContractEnvelope)` carrying mandatory `job_id`
+(`min_length=1`) and nullable `parent_job_id` (`None` at the root span). Work-bearing
+domains (`llm`, `voice`, `image`, `turns`, `jobs`, harness wire, inbound/outbound)
+reparent to `WorkEnvelope`; infra messages (heartbeat, lifecycle, metrics) stay on bare
+`ContractEnvelope`.
+
+The **`cli` domain is split**:
+
+| `cli` model | Envelope | Why |
+|---|---|---|
+| `CliControlCmd` | WorkEnvelope | per-turn control of the clipool worker; part of a job |
+| `CliCmdPayload` | WorkEnvelope | per-turn dispatch to the clipool worker; carries `lyra_session_id` → belongs to a job |
+| `CliHeartbeat` | ContractEnvelope | worker liveness — no job |
+
+The `cli` reparent is a **breaking** `cli` minor bump (new required `job_id`). It overlaps
+with the session-id cleanup in **#1009** (rename `CliControlCmd.session_id` → `cli_session_id`,
+remove `resume_and_reset`), which is *also* a breaking `cli` bump. **Coordinate both into a
+single `cli` minor bump** to avoid two satellite-coordination events (ADR-049). The id taxonomy
+the two settle together: `cli_session_id` (claude-cli resume) · `lyra_session_id` (conversation,
+= `pool_id` ≈ Langfuse session) · `job_id` (turn) · `parent_job_id` (nesting) · `trace_id` (tree).
+
+Id model (= OpenTelemetry):
+
+```
+trace_id       constant across the whole request tree   (already universal/mandatory)
+job_id         one node = one span = the "runID"
+parent_job_id  the nesting edge
+→ one trace contains N job_id.
+```
+
+Supporting rules:
+- **Root `job_id` minted at ingress** by inbound adapters (the moment a user message
+  enters); it then flows hub → harness → satellite (child jobs), the tree sharing `trace_id`.
+- **Fold `request_id` into `job_id`** — keep the system to two ids (trace_id, job_id).
+- **Enforcement:** a subject→envelope mapping test asserts work subjects deserialize to
+  `WorkEnvelope` subclasses and infra subjects to bare `ContractEnvelope` (same spirit as
+  the importlinter contracts).
+- `job_id` / `parent_job_id` are **not security-bearing** → additive **minor** version bump
+  is safe under ADR-049 forward-compat rules.
+
+## Relationship to WorkScope and the typing plane
+
+`WorkScope` (already shipped — #1375 T1: `platform`, `bot_id`, `scope_id`, `trace_id`) is the
+**routing** identity ("where"). `WorkEnvelope` is the **work** identity ("which job"). Distinct
+roles, dangerously close names: **`WorkEnvelope` composes `WorkScope` — it does not replace it,
+and `WorkScope` is NOT promoted to a job id.**
+
+Per ADR-076 (three NATS planes), the **typing** plane (`lyra.typing.*`, display-feedback) is
+currently scope-keyed via an in-Pool ref-count (no `job_id`). It becomes job-tree-driven in
+#1624 — typing derived from root-job open/close — at which point "turn active for scope X" is
+read from the job tree (the SSoT this ADR's `job_id`/`parent_job_id` provides) instead of a
+parallel counter. Until #1624, typing stays on its current envelope; it is not reclassified here.
+
+## Consequences
+
+### Positive
+- Any work message is followable end-to-end; jobs nest into a trace tree.
+- `job_id` maps directly to the OTel span id for the obs pipeline (epic #1622).
+- Type-level guarantee removes runtime "is this work?" guessing.
+- Infra/work boundary made explicit at the envelope layer.
+
+### Negative
+- Per-model classification pass + reparenting of work models (one-time migration).
+- Ingress-mint change in inbound adapters; `request_id` → `job_id` fold in voice/llm builders.
+
+### Neutral
+- `trace_id` semantics unchanged (already universal).
+- `JobEnvelope` already carries the three fields; it reparents to `WorkEnvelope` cleanly.

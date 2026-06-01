@@ -6,9 +6,5 @@
 # into cohesive subdirs. core/hub/ deferred to V5 (follow-up issue).
 # V5 completed under #848 — core/hub/ decomposed into middleware/, outbound/, pipeline/.
 
-src/lyra/core           # 15 files — DEBT:folder-exemptions — #858 config dataclass extraction (pending cleanup); #1020 logging_setup.py added
 src/lyra/infrastructure/stores  # 17 files — DEBT:folder-exemptions — #935 ADR-048 store migration (4 files moved from core/stores) + #1414 BotStore (bot_store.py, bot_store_migrations.py) + #1059 message_index_kv.py
-src/lyra/core/agent         # 14 files — DEBT:folder-exemptions — #1414 bot_models.py + bot_schema.py added; refactor to core/bots/ or similar in Phase 7
-src/lyra/core/cli           # 12 files — DEBT:folder-exemptions — #957 cli_pool_entry.py extracted to break _ProcessEntry circular import; #1593 protocol/ subpackage extracted
-src/lyra/core/messaging     # 11 files — DEBT:folder-exemptions — #1016 WorkerError: error_extractor.py + metrics.py added; #1031 tool_recap_format.py + tool_display_config.py added; #1593 utils/ subpackage extracted
 src/lyra/nats  # 20 files — DEBT:folder-exemptions — #1278 codec split from clients (T11/T12 added nats_{tts,stt,image}_codec.py); _worker_client_base.py + nats_llm_client.py deleted (net +1 vs 15 pre-#1278 baseline: -2 deletions + 3 codec files); #1589 extracted audio_publish.py + keepalive.py + stream_error.py from nats_channel_proxy.py; #1592 extracted render_event_codec_registry.py from render_event_codec.py

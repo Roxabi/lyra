@@ -1,6 +1,7 @@
 ---
 title: "ADR-084: WorkEnvelope — the job_id invariant"
 description: Split the NATS contract envelope into WorkEnvelope (mandatory job_id) vs infra ContractEnvelope (trace_id only).
+related: [049, 076, 075, 078]
 ---
 
 ## Status
@@ -120,3 +121,16 @@ parallel counter. Until #1624, typing stays on its current envelope; it is not r
 ### Neutral
 - `trace_id` semantics unchanged (already universal).
 - `JobEnvelope` already carries the three fields; it reparents to `WorkEnvelope` cleanly.
+
+## Trail
+
+- ADR-049: roxabi-contracts shared schema — extended additively by this ADR
+- ADR-076: three NATS planes — the Work/Infra split cuts across the message/persistence/typing planes
+- ADR-075: turn-writer subscriber — TurnWriteEvent is a work message that will carry `job_id`
+- ADR-078: turn-store protocol — turn persistence, related to the typing-plane discussion
+- #1619: spec for `WorkEnvelope` + reparenting work models
+- #1620: ingress-mint change in inbound adapters
+- #1621: `request_id` → `job_id` fold in voice/llm builders
+- #1622: observability pipeline (epic) — `job_id` maps to OTel span id
+- #1490: Roxabi Factory plan A (distributed-first harness) — the context that motivated this ADR
+- Reviews (2026-06-01): architect review on PR #1625 — 2 suggestions applied (pattern drift + versioning claim)

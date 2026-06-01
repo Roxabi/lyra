@@ -1,7 +1,8 @@
 """RED-phase tests asserting 5 reply envelopes accept worker_error: WorkerError | None.
 
 Envelopes covered: CliChunkEvent, LlmChunkEvent, LlmResponse, TtsResponse,
-SttResponse, ImageResponse.  CliControlAck is excluded per ADR-066.
+SttResponse, ImageResponse.
+CliControlAck is excluded per ADR-066 (absorbed into ADR-049).
 
 All tests will fail with ImportError (roxabi_contracts.errors missing) until
 T4 ships, and will subsequently fail on missing worker_error field until T7
@@ -253,7 +254,8 @@ def test_image_response_worker_error_defaults_none() -> None:
 
 
 # ---------------------------------------------------------------------------
-# ImageResponse.error_detail removal (ADR-066: dead field deleted in P1)
+# ImageResponse.error_detail removal (ADR-066 (absorbed into ADR-049):
+# dead field deleted in P1)
 # ---------------------------------------------------------------------------
 
 
@@ -262,7 +264,7 @@ def test_image_response_error_detail_field_removed() -> None:
     # Assert
     assert "error_detail" not in ImageResponse.model_fields, (
         "'error_detail' is a dead field that must be removed from ImageResponse "
-        "per ADR-066 §'Adoption surface'"
+        "per ADR-066 (absorbed into ADR-049) §'Adoption surface'"
     )
 
 
@@ -312,7 +314,7 @@ def test_all_envelopes_have_worker_error_field(
     """worker_error field exists on model_fields for every covered envelope."""
     assert "worker_error" in envelope_cls.model_fields, (
         f"{envelope_cls.__name__}.model_fields is missing 'worker_error' "
-        f"(additive field per ADR-066)"
+        f"(additive field per ADR-066 (absorbed into ADR-049))"
     )
 
 

@@ -8,7 +8,9 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, StringConstraints
 
-# ADR-044 — single source of truth for the wire-protocol contract version. All
+#
+# ADR-044 (absorbed into ADR-049) — single source of truth for the wire-protocol
+# contract version. All
 # producer sites (hub clients + satellite adapters) stamp this on outgoing
 # payloads. Consumers ignore unknown values. Bumping requires a new ADR.
 CONTRACT_VERSION = "1"

@@ -71,4 +71,4 @@
 |------|-----------|-------------|
 | stream.error | false | Unhandled exception during hub-side stream processing (StreamProcessor), or an un-categorized soft error surfaced via SanitizedError.from_message. |
 
-See ADR-066 for design rationale.
+See ADR-066 (absorbed into ADR-049) for design rationale.

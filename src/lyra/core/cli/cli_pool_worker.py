@@ -36,7 +36,8 @@ log = logging.getLogger(__name__)
 # Explicit env allowlist — only forward safe vars to the claude subprocess.
 # CLAUDE_CODE_OAUTH_TOKEN: 1-year setup-token (auth precedence #5) bypasses the
 # broken interactive-OAuth refresh path on headless subprocess invocations
-# (anthropics/claude-code#50743). Injected via Podman secret in prod (ADR-054).
+# (anthropics/claude-code#50743). Injected via Podman secret in prod
+# (ADR-054 (absorbed into ADR-055)).
 # The token reaches /proc/<claude-pid>/environ — accepted residual risk per
 # the single-tenant container threat model (DropCapability=all, ReadOnly=true,
 # UserNS=keep-id; claude CLI accepts auth ONLY via env, no file alternative).

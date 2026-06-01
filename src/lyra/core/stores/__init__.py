@@ -1,6 +1,7 @@
 """Stores package — protocols and factory functions only.
 
-SQLite implementations have been moved to lyra.infrastructure.stores per ADR-048.
+SQLite implementations have been moved to lyra.infrastructure.stores per
+ADR-048 (absorbed into ADR-059).
 This package re-exports only protocol-safe symbols for backward compatibility.
 """
 

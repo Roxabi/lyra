@@ -204,7 +204,7 @@ _PREAMBLE = """\
 > The pre-commit `codes-sync` hook regenerates this file automatically when `errors.py` changes.
 """
 
-_POSTAMBLE = "See ADR-066 for design rationale.\n"
+_POSTAMBLE = "See ADR-066 (absorbed into ADR-049) for design rationale.\n"
 
 
 def _render_md(py_codes: dict[str, object]) -> str:

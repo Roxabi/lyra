@@ -22,8 +22,8 @@ def test_contract_version_current_value() -> None:
     """Lock the current value against accidental drift.
 
     Bumping ``CONTRACT_VERSION`` is a cross-repo coordination event
-    (ADR-044 §Wire-protocol contract). A silent change must fail a test
-    so the bump is only ever deliberate.
+    (ADR-044 (absorbed into ADR-049) §Wire-protocol contract).
+    A silent change must fail a test so the bump is only ever deliberate.
     """
     assert CONTRACT_VERSION == "1"
 

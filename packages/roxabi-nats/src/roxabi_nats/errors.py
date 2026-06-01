@@ -1,7 +1,8 @@
 """Wire-boundary error sanitization for socket-bound daemon paths.
 
 The canonical structured error path on NATS reply subjects is
-``WorkerError`` from ``roxabi_contracts.errors`` (ADR-066). Its field
+``WorkerError`` from ``roxabi_contracts.errors``
+(ADR-066 (absorbed into ADR-049)). Its field
 validators scrub credentials from embedded URLs and truncate free-text
 fields to bounded length.
 

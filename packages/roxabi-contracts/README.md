@@ -56,7 +56,7 @@ Future domain submodules (voice, image, memory, llm) arrive in subsequent tags. 
 
 ## Voice domain
 
-First per-domain contract, ported from ADR-044 (`lyra` + `voiceCLI` Tts/Stt
+First per-domain contract, ported from ADR-044 (absorbed into ADR-049) (`lyra` + `voiceCLI` Tts/Stt
 wire format). Import surface:
 
 ```python

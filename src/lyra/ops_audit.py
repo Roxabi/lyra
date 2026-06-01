@@ -29,7 +29,7 @@ def audit_matrix_inbox_drift(
     ``direction`` is ``"publish"`` or ``"subscribe"``. Per-identity scoped
     grants (``_INBOX.<identity>.>``) are not flagged. Satellite identities
     are excluded — their narrowing is tracked via per-satellite PRs
-    (ADR-047).
+    (ADR-047 (absorbed into ADR-045)).
     """
     findings: list[tuple[str, str, str]] = []
     for name, spec in identities.items():

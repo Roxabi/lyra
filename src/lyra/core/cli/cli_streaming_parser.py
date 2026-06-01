@@ -77,7 +77,7 @@ def _classify_cli_error(subtype: str, error_text: str) -> WorkerError:
 
     ``worker.parse`` is NOT present in KNOWN_CODES (registry only has
     ``cli.parse`` and ``transport.parse``), so parser failures use
-    ``cli.parse`` per ADR-066 fallback policy.
+    ``cli.parse`` per ADR-066 (absorbed into ADR-049) fallback policy.
 
     ``error_text`` is scrubbed via :func:`_scrub_cli_error_text` before
     landing in ``WorkerError.message`` — see #1252.

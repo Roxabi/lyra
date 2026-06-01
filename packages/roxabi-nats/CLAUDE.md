@@ -5,7 +5,7 @@
 `roxabi-nats` is a **standalone Python package** — not a Lyra module. It is the
 shared NATS transport SDK for the Roxabi plugin ecosystem (voiceCLI, imageCLI,
 roxabi-vault, and future services). It lives in the Lyra monorepo for colocation
-with the wire contract (ADR-044/049) but is versioned independently.
+with the wire contract (ADR-044 (absorbed into ADR-049)/049) but is versioned independently.
 
 → Architecture contract: `docs/architecture/adr/045-roxabi-nats-sdk-uv-workspace-extraction.mdx`
 
@@ -40,7 +40,7 @@ re-export in `roxabi_nats.adapter_base` still exists with a DeprecationWarning; 
 Defined by `__all__` in `src/roxabi_nats/__init__.py`:
 
 - `NatsAdapterBase` — base class for NATS-backed adapter lifecycles
-- `NatsDriverBase` / `WorkerUnavailableError` — base class for LLM/worker drivers (added ADR-066 P3)
+- `NatsDriverBase` / `WorkerUnavailableError` — base class for LLM/worker drivers (added ADR-066 (absorbed into ADR-049) P3)
 - `nats_connect` — hardened connection helper (TLS, nkey, creds, inbox normalization)
 - `TypeHintResolver` — type hint resolution helper for typed deserialization
 - `CONTRACT_VERSION` — re-exported from `roxabi_contracts.envelope`

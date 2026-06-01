@@ -8,7 +8,7 @@ Phase 5 of #1049: replaces SQLite message_index.db with a NATS KV bucket
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import nats.errors
 from nats.js.api import KeyValueConfig, StorageType
@@ -51,10 +51,17 @@ async def ensure_kv(js: "JetStreamContext", retention_days: int = 90) -> "KeyVal
         raise
 
 
+def _sanitize_key_part(value: str) -> str:
+    """Replace NATS subject metacharacters with a safe placeholder."""
+    return value.replace(".", "_").replace("*", "_").replace(">", "_")
+
+
 class MessageIndexKvStore:
     """NATS KV-backed message-to-session index for reply-to resume.
 
-    Key format: ``<pool_id>:<platform_msg_id>``
+    Key format: ``<pool_id>:<platform_msg_id>`` — key parts are sanitized
+    so that ``.``, ``*``, and ``>`` are replaced with ``_`` because these
+    characters act as subject token separators or wildcards in NATS subjects.
     Value: ``session_id`` (UTF-8 bytes)
     """
 
@@ -76,19 +83,19 @@ class MessageIndexKvStore:
         pool_id: str,
         platform_msg_id: str | None,
         session_id: str,
-        role: str,  # noqa: ARG002 — kept for protocol compatibility
+        role: Literal["user", "assistant"],
     ) -> None:
         """Index a message. Skips if platform_msg_id is None (circuit-breaker)."""
         if platform_msg_id is None:
             return
         kv = self._require_kv()
-        key = f"{pool_id}:{platform_msg_id}"
+        key = f"{_sanitize_key_part(pool_id)}:{_sanitize_key_part(platform_msg_id)}"
         await kv.put(key, session_id.encode())
 
     async def resolve(self, pool_id: str, platform_msg_id: str) -> str | None:
         """O(1) KV lookup — return session_id or None."""
         kv = self._require_kv()
-        key = f"{pool_id}:{platform_msg_id}"
+        key = f"{_sanitize_key_part(pool_id)}:{_sanitize_key_part(platform_msg_id)}"
         try:
             entry = await kv.get(key)
             return entry.value.decode() if entry.value else None

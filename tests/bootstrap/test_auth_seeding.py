@@ -59,12 +59,15 @@ class TestBootstrapCallsSeedGrantsFromBots:
         from contextlib import asynccontextmanager
 
         @asynccontextmanager
-        async def fake_open_stores(vault_dir, nc=None):
+        async def fake_open_stores(vault_dir, nc):
             fake_stores = MagicMock()
             fake_stores.auth = MagicMock(spec=AuthStore)
             fake_stores.bot = MagicMock()
             fake_stores.message_index = MagicMock()
             fake_stores.message_index.cleanup_older_than = AsyncMock(return_value=0)
+            assert nc is fake_nc, (
+                "open_stores must receive the NATS connection from nats_connect"
+            )
             yield fake_stores
 
         monkeypatch.setattr(hub_standalone_mod, "open_stores", fake_open_stores)

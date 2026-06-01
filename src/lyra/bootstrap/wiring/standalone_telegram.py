@@ -20,6 +20,7 @@ from lyra.bootstrap.wiring.bootstrap_wiring import wire_ingest
 from lyra.core.messaging.bus import Bus
 from lyra.core.messaging.message import InboundMessage, Platform
 from lyra.nats.queue_groups import adapter_outbound
+from lyra.transport.typing_publisher import TypingPublisher
 from roxabi_nats.readiness import wait_for_hub
 
 log = logging.getLogger(__name__)
@@ -128,6 +129,7 @@ async def bootstrap_telegram_standalone(  # noqa: PLR0915 — DEBT:wiring-bootst
             blob_store=blob_store,
         )
         adapter.configure_tool_display(config_bundle.tool_display)
+        adapter.configure_typing_publisher(TypingPublisher(nc))
         await adapter.resolve_identity()
         wire_ingest(adapter, blob_store)
 

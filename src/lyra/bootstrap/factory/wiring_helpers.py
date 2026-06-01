@@ -6,9 +6,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from functools import partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from lyra.adapters.discord.adapter import _discord_scope_resolver
+from lyra.adapters.discord.discord_outbound import _discord_typing_worker
+from lyra.adapters.telegram.telegram import _telegram_scope_resolver
+from lyra.adapters.telegram.telegram_outbound import _typing_worker
 from lyra.bootstrap.factory.agent_factory import _resolve_agents
 from lyra.bootstrap.factory.config import (
     MessageIndexConfig,
@@ -32,6 +37,7 @@ from lyra.core.messaging.message import InboundMessage
 from lyra.infrastructure.stores.pairing import PairingManager, set_pairing_manager
 from lyra.nats.nats_bus import NatsBus
 from lyra.nats.queue_groups import HUB_INBOUND
+from lyra.typing import TypingListener, make_typing_factory
 
 if TYPE_CHECKING:
     import nats
@@ -187,6 +193,29 @@ async def _wire_adapters(deps: WireAdaptersDeps) -> WiredAdapters:
             blob_store=deps.blob_store,
         )
     )
+
+    for adapter in tg_adapters:
+        tg_typing_listener = TypingListener(
+            nc=deps.nc,
+            subject=f"lyra.typing.telegram.{adapter._bot_id}",
+            resolver=_telegram_scope_resolver,
+            factory_builder=make_typing_factory(partial(_typing_worker, adapter.bot)),
+            manager=adapter._typing,
+        )
+        await tg_typing_listener.start()
+
+    for adapter, _bot_cfg, _token in dc_adapters:
+        dc_typing_listener = TypingListener(
+            nc=deps.nc,
+            subject=f"lyra.typing.discord.{adapter._bot_id}",
+            resolver=_discord_scope_resolver,
+            factory_builder=make_typing_factory(
+                partial(_discord_typing_worker, adapter._resolve_channel)
+            ),
+            manager=adapter._typing,
+        )
+        await dc_typing_listener.start()
+
     return WiredAdapters(
         tg_adapters=tg_adapters,
         tg_dispatchers=tg_dispatchers,

@@ -20,6 +20,7 @@ from lyra.bootstrap.wiring.bootstrap_wiring import wire_ingest
 from lyra.core.messaging.bus import Bus
 from lyra.core.messaging.message import InboundMessage, Platform
 from lyra.nats.queue_groups import adapter_outbound
+from lyra.transport.typing_publisher import TypingPublisher
 from roxabi_nats.readiness import wait_for_hub
 
 log = logging.getLogger(__name__)
@@ -169,6 +170,7 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
             blob_store=blob_store,
         )
         adapter_dc.configure_tool_display(config_bundle.tool_display)
+        adapter_dc.configure_typing_publisher(TypingPublisher(nc))
         wire_ingest(adapter_dc, blob_store)
 
         listener_dc = NatsOutboundListener(

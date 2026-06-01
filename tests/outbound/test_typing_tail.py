@@ -36,7 +36,7 @@ def _make_emitter(
 class TestHandleTypingTailPubSub:
     @pytest.mark.asyncio
     async def test_intermediate_with_typing_publisher_calls_publish_started(self):
-        """intermediate=True + typing_publisher set → publish_started."""
+        """intermediate=True + typing_publisher set + scope set → publish_started."""
         scope = _make_scope()
         tp = AsyncMock()
         emitter = _make_emitter(
@@ -56,7 +56,7 @@ class TestHandleTypingTailPubSub:
 
     @pytest.mark.asyncio
     async def test_final_with_typing_publisher_calls_publish_ended(self):
-        """intermediate=False + typing_publisher set → publish_ended."""
+        """intermediate=False + typing_publisher set + scope set → publish_ended."""
         scope = _make_scope()
         tp = AsyncMock()
         emitter = _make_emitter(
@@ -107,8 +107,8 @@ class TestHandleTypingTailPubSub:
         emitter._start_typing.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_typing_disabled_falls_back_to_legacy_methods(self):
-        """is_typing_enabled=False always falls back to legacy _start/_cancel."""
+    async def test_typing_disabled_with_publisher_falls_back_to_legacy_methods(self):
+        """is_typing_enabled=False + typing_publisher set → legacy _start_typing."""
         scope = _make_scope()
         tp = AsyncMock()
         emitter = _make_emitter(
@@ -126,8 +126,8 @@ class TestHandleTypingTailPubSub:
         tp.publish_ended.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_typing_disabled_final_falls_back_to_cancel_typing(self):
-        """is_typing_enabled=False + intermediate=False falls back to _cancel_typing."""
+    async def test_typing_disabled_final_no_publisher_falls_back_to_cancel_typing(self):
+        """is_typing_enabled=False + final + no typing_publisher → _cancel_typing."""
         emitter = _make_emitter(
             intermediate=False, typing_publisher=None, work_scope=None
         )

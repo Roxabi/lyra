@@ -160,6 +160,7 @@ jobs:
   integration-report:
     name: integration
     needs: [integration]
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - name: Report success

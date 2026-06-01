@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 
 
 def is_typing_enabled() -> bool:
-    return os.getenv("LYRA_TYPING_ENABLED", "true").lower() == "true"
+    return os.getenv("LYRA_TYPING_ENABLED", "false").lower() == "true"
 
 
 class TypingPublisher:

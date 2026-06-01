@@ -17,7 +17,8 @@ from tests.factories.messages import make_inbound_message
 
 class TestGuardedProcessOneTypingScope:
     @pytest.fixture
-    def pool(self):
+    def pool(self, monkeypatch):
+        monkeypatch.setenv("LYRA_TYPING_ENABLED", "true")
         ctx = _make_ctx_mock()
         pool = Pool(
             pool_id="telegram:main:chat:1",
@@ -80,13 +81,25 @@ class TestGuardedProcessOneTypingScope:
         """Timeout path: typing_publisher.scope() is entered and exited on timeout."""
         pool._turn_timeout = 0.01
 
-        async def _slow_process(*_a: Any, **_kw: Any) -> None:
+        async def _slow_process(*_: Any, **__: Any) -> None:
             await asyncio.sleep(1.0)
 
         with patch(
             "lyra.core.pool.pool_processor_exec.process_one",
             new=_slow_process,
         ):
-            await guarded_process_one(msg, agent, pool)
+            await asyncio.wait_for(guarded_process_one(msg, agent, pool), timeout=0.5)
             pool.typing_publisher.publish_started.assert_awaited_once()
             pool.typing_publisher.publish_ended.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_no_publisher_path_processes_normally(self, pool, agent, msg):
+        """No typing_publisher: process_one runs without typing scope calls."""
+        pool.typing_publisher = None
+
+        with patch(
+            "lyra.core.pool.pool_processor_exec.process_one",
+            new=AsyncMock(return_value=None),
+        ) as mock_process_one:
+            await guarded_process_one(msg, agent, pool)
+            mock_process_one.assert_awaited_once_with(msg, agent, pool)

@@ -123,3 +123,20 @@ class TestHandleTypingTailPubSub:
 
         emitter._start_typing.assert_awaited_once()
         tp.publish_started.assert_not_awaited()
+        tp.publish_ended.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_typing_disabled_final_falls_back_to_cancel_typing(self):
+        """is_typing_enabled=False + intermediate=False falls back to _cancel_typing."""
+        emitter = _make_emitter(
+            intermediate=False, typing_publisher=None, work_scope=None
+        )
+
+        with patch(
+            "lyra.outbound._placeholder_lifecycle.is_typing_enabled",
+            return_value=False,
+        ):
+            await _handle_typing_tail(emitter)
+
+        emitter._cancel_typing.assert_awaited_once()
+        emitter._start_typing.assert_not_awaited()

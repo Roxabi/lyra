@@ -75,7 +75,10 @@ class OutboundAdapterBase(ABC):
         _tp = getattr(self, "_typing_publisher", None)
         emitter.typing_publisher = _tp
         if _tp is not None:
-            _sid = int(original_msg.scope_id.split(":")[-1])
+            try:
+                _sid = int(original_msg.scope_id.rsplit(":", 1)[-1])
+            except ValueError:
+                _sid = 0  # fallback: WorkScope.scope_id is int
             emitter._work_scope = WorkScope(
                 platform=original_msg.platform,
                 bot_id=original_msg.bot_id,

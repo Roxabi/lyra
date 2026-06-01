@@ -211,7 +211,11 @@ class TelegramAdapter(OutboundAdapterBase):
                     scope_id=scope_id,
                     trace_id=TraceContext.get_trace_id() or uuid.uuid4().hex,
                 )
-                asyncio.create_task(publisher.publish_started(work_scope))
+                task = asyncio.create_task(publisher.publish_started(work_scope))
+                task.add_done_callback(
+                    lambda t: t.exception()
+                    and log.warning("typing publish_started failed: %s", t.exception())
+                )
         else:
             self._typing.start(scope_id, self._factory_builder(scope_id))
 
@@ -225,7 +229,11 @@ class TelegramAdapter(OutboundAdapterBase):
                     scope_id=scope_id,
                     trace_id=TraceContext.get_trace_id() or uuid.uuid4().hex,
                 )
-                asyncio.create_task(publisher.publish_ended(work_scope))
+                task = asyncio.create_task(publisher.publish_ended(work_scope))
+                task.add_done_callback(
+                    lambda t: t.exception()
+                    and log.warning("typing publish_ended failed: %s", t.exception())
+                )
         else:
             self._typing.cancel(scope_id)
 

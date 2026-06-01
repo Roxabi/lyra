@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 from uuid import uuid4
 
+from lyra.transport.typing_publisher import is_typing_enabled
 from lyra.transport.work_scope import WorkScope
 
 from ..messaging.message import GENERIC_ERROR_REPLY, OutboundMessage, Response
@@ -35,7 +36,7 @@ from .pool_processor_streaming import (
 log = logging.getLogger(__name__)
 
 
-async def guarded_process_one(
+async def guarded_process_one(  # noqa: PLR0915 — DEBT:complexity-residual
     msg: InboundMessage, agent: AgentBase, pool: Pool
 ) -> None:
     """Wrap process_one with timeout and error handling."""
@@ -50,7 +51,11 @@ async def guarded_process_one(
             msg.scope_id,
         )
         try:
-            scope_id = int(msg.scope_id.split(":")[-1])
+            try:
+                scope_id = int(msg.scope_id.rsplit(":", 1)[-1])
+            except ValueError:
+                log.warning("malformed scope_id %r", msg.scope_id)
+                scope_id = 0
             trace_id = TraceContext.get_trace_id() or uuid4().hex
             work_scope = WorkScope(
                 platform=msg.platform,
@@ -67,7 +72,7 @@ async def guarded_process_one(
                 else:
                     await process_one(msg, agent, pool)
 
-            if pool.typing_publisher is not None:
+            if is_typing_enabled() and pool.typing_publisher is not None:
                 async with pool.typing_publisher.scope(work_scope):
                     await _run_process_one()
             else:

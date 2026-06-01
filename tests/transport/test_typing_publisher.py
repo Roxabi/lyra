@@ -100,7 +100,7 @@ async def test_scope_calls_publish_started_on_entry(scope: WorkScope) -> None:
     pub.publish_started = AsyncMock()
     pub.publish_ended = AsyncMock()
     async with pub.scope(scope):
-        pass
+        pub.publish_ended.assert_not_awaited()
     pub.publish_started.assert_awaited_once_with(scope)
 
 
@@ -110,6 +110,7 @@ async def test_scope_calls_publish_ended_on_normal_exit(scope: WorkScope) -> Non
     pub = TypingPublisher(AsyncMock(), enabled=True)
     pub.publish_started = AsyncMock()
     pub.publish_ended = AsyncMock()
+    pub.publish_started.assert_not_awaited()
     async with pub.scope(scope):
         pass
     pub.publish_ended.assert_awaited_once_with(scope)
@@ -121,6 +122,7 @@ async def test_scope_calls_publish_ended_on_exception_exit(scope: WorkScope) -> 
     pub = TypingPublisher(AsyncMock(), enabled=True)
     pub.publish_started = AsyncMock()
     pub.publish_ended = AsyncMock()
+    pub.publish_started.assert_not_awaited()
     with pytest.raises(RuntimeError, match="boom"):
         async with pub.scope(scope):
             raise RuntimeError("boom")
@@ -133,6 +135,7 @@ async def test_scope_calls_publish_ended_on_cancelled_error(scope: WorkScope) ->
     pub = TypingPublisher(AsyncMock(), enabled=True)
     pub.publish_started = AsyncMock()
     pub.publish_ended = AsyncMock()
+    pub.publish_started.assert_not_awaited()
     with pytest.raises(asyncio.CancelledError):
         async with pub.scope(scope):
             raise asyncio.CancelledError()

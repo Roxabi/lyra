@@ -132,6 +132,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
+      fail-fast: false
       matrix:
         typing_enabled: ["true", "false"]
     steps:
@@ -155,3 +156,11 @@ jobs:
       - name: Tear down Docker environment
         if: always()
         run: docker compose -f docker/docker-compose.test.yml down -v
+
+  integration-report:
+    name: integration
+    needs: [integration]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report success
+        run: echo "Integration tests passed"

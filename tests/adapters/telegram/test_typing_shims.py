@@ -57,6 +57,9 @@ def test_tg_start_typing_enabled_delegates_to_publisher(monkeypatch: Any) -> Non
     assert scope.trace_id == "trace_tg_123"
 
     mock_create_task.assert_called_once()
+    coro = mock_create_task.call_args.args[0]
+    import asyncio
+    assert asyncio.iscoroutine(coro)
     mock_publisher.publish_ended.assert_not_called()
 
 
@@ -113,17 +116,21 @@ def test_tg_cancel_typing_enabled_no_publisher_is_noop(monkeypatch: Any) -> None
 
 def test_tg_start_typing_disabled_calls_legacy_path(monkeypatch: Any) -> None:
     """_start_typing with flag=false routes to TypingTaskManager.start."""
+    import inspect
+
     adapter = _make_adapter(monkeypatch, "false")
     mock_publisher = AsyncMock()
     adapter._typing_publisher = mock_publisher
+    adapter._bot = AsyncMock()
 
     with patch.object(adapter._typing, "start") as mock_start:
         adapter._start_typing(100)
 
     mock_start.assert_called_once()
     assert mock_start.call_args.args[0] == 100
-    assert callable(mock_start.call_args.args[1])
-
+    coro_factory = mock_start.call_args.args[1]
+    coro = coro_factory()
+    assert inspect.iscoroutine(coro)
     mock_publisher.publish_started.assert_not_called()
     mock_publisher.publish_ended.assert_not_called()
 

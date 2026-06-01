@@ -33,7 +33,12 @@ from lyra.nats.audio_publish import (
 )
 from lyra.nats.keepalive import _run_keepalive_loop
 from lyra.nats.render_event_codec import NatsRenderEventCodec
-from lyra.nats.stream_error import publish_stream_error, publish_stream_errors
+from lyra.nats.stream_error import (
+    publish_stream_error,
+)
+from lyra.nats.stream_error import (
+    publish_stream_errors as _publish_stream_errors,
+)
 from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
 from roxabi_contracts.outbound import OutboundAudioSubjects
 from roxabi_nats import TypeHintResolver
@@ -136,7 +141,6 @@ class NatsChannelProxy:
     ) -> None:
         """Publish streaming chunks to NATS; keepalive prevents per-chunk timeout (#687)."""  # noqa: E501
         subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
-        self._active_streams.add(original_msg.id)
 
         if outbound is not None:
             header = {
@@ -162,6 +166,7 @@ class NatsChannelProxy:
             )
         )
         try:
+            self._active_streams.add(original_msg.id)
             try:
                 async for event in events:
                     event_type, payload, is_done = self._codec.encode(event)
@@ -213,11 +218,16 @@ class NatsChannelProxy:
             self._active_streams.discard(original_msg.id)
 
     async def publish_stream_errors(self, reason: str = "hub_shutdown") -> None:
-        """Publish stream_error for all active streams, then clear the set."""
+        """Publish stream_error for all active streams, then clear the set.
+
+        Uses an atomic swap to capture the snapshot and reset the set in one step,
+        eliminating the race window between list() and clear() when a concurrent
+        exception-path discard fires mid-iteration.
+        """
         subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
         stream_ids = self._active_streams
         self._active_streams = set()
-        await publish_stream_errors(self._nc, subject, stream_ids, reason)
+        await _publish_stream_errors(self._nc, subject, stream_ids, reason)
 
     # ------------------------------------------------------------------
     # Audio — not yet implemented (C5)

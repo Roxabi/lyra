@@ -203,9 +203,15 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
                         ch,
                         bot_cfg.bot_id,
                     )
-            await put_watch_channels(
-                _bot_kv, bot_cfg.bot_id, frozenset(_valid)
-            )
+            try:
+                await put_watch_channels(
+                    _bot_kv, bot_cfg.bot_id, frozenset(_valid)
+                )
+            except Exception:
+                log.exception(
+                    "watch_channels: failed to seed KV for bot_id=%s — continuing",
+                    bot_cfg.bot_id,
+                )
 
         await announce_hub_ready(nc)
         readiness_sub = await start_readiness_responder(nc, [hub.inbound_bus])

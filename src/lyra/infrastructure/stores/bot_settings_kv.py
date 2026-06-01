@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING
 
-import nats.errors
 from nats.js.api import KeyValueConfig, StorageType
 from nats.js.errors import BadRequestError, KeyNotFoundError
 from nats.js.kv import KeyValue
@@ -67,7 +67,7 @@ async def ensure_kv(js: JetStreamContext) -> KeyValue:
     except BadRequestError:
         log.debug("bot_settings_kv: KV bucket %s already exists, binding", KV_BUCKET)
         return await js.key_value(KV_BUCKET)
-    except nats.errors.Error:
+    except Exception:
         log.exception("bot_settings_kv: KV bucket %s provision failed", KV_BUCKET)
         raise
 
@@ -76,17 +76,14 @@ async def get_watch_channels(kv: KeyValue, bot_id: str) -> frozenset[int]:
     """Return current watch_channels for *bot_id*, or empty frozenset."""
     try:
         entry = await kv.get(_watch_channels_key(bot_id))
-    except KeyNotFoundError:  # type: ignore[reportUndefinedVariable]
-        return frozenset()
-    except nats.errors.Error:
-        log.exception("bot_settings_kv: get failed for bot_id=%s", bot_id)
+    except KeyNotFoundError:
         return frozenset()
     return _parse_watch_channels(entry.value if entry else None)
 
 
 async def watch_watch_channels(
     kv: KeyValue, bot_id: str
-):
+) -> AsyncGenerator[frozenset[int], None]:
     """Async generator yielding frozenset[int] updates for *bot_id*.
 
     First yield is the current value (if any). Subsequent yields fire on every

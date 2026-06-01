@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import hmac
 import logging
 import os
 from collections.abc import AsyncIterator, Coroutine
@@ -25,10 +24,7 @@ from lyra.adapters.telegram import telegram_audio  # noqa: I001 — DEBT:lint-re
 from lyra.adapters.shared._base_outbound import OutboundAdapterBase
 from lyra.adapters.shared._shared import TypingTaskManager, resolve_msg
 from lyra.typing import make_typing_factory
-from lyra.adapters.telegram.telegram_formatting import (
-    _render_buttons as _render_buttons_impl,
-    _render_text as _render_text_impl,
-)
+from lyra.adapters.telegram.telegram_guard import _make_verifier
 from lyra.adapters.telegram.telegram_inbound import handle_message, handle_voice_message
 from lyra.adapters.telegram.telegram_normalize import (
     normalize as _normalize_impl,
@@ -64,20 +60,7 @@ def _telegram_scope_resolver(scope: WorkScope) -> int:
     return scope.scope_id
 
 
-# TelegramConfig/load_telegram_config live in lyra.core.config (ADR-059 V6).
-# load_config is a backward-compat alias.
-load_config = load_telegram_config
-
-
-def _make_verifier(secret: str):
-    """Return a FastAPI dependency that validates the Telegram webhook secret."""
-
-    async def verify(request: Request) -> None:
-        incoming = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
-        if not secret or not hmac.compare_digest(incoming, secret):
-            raise HTTPException(status_code=401, detail="Unauthorized")
-
-    return verify
+load_config = load_telegram_config  # backward-compat alias (ADR-059 V6)
 
 
 class TelegramAdapter(OutboundAdapterBase):
@@ -158,13 +141,10 @@ class TelegramAdapter(OutboundAdapterBase):
         self._bot = value
 
     async def resolve_identity(self) -> None:
-        """Discover the bot's username via getMe — call once after startup."""
         me = await self.bot.get_me()
         self._bot_username = me.username
         log.info(
-            "resolve_identity: bot_id=%s username=@%s",
-            self._bot_id,
-            self._bot_username,
+            "resolve_identity: bot_id=%s username=@%s", self._bot_id, self._bot_username
         )
 
     @property
@@ -234,12 +214,6 @@ class TelegramAdapter(OutboundAdapterBase):
 
     # --- Thin delegates to submodules ---
 
-    def _render_text(self, text: str) -> list[str]:
-        return _render_text_impl(text)
-
-    def _render_buttons(self, buttons: list[Any]) -> object | None:
-        return _render_buttons_impl(buttons)
-
     async def _on_message(self, msg: Any) -> None:
         await handle_message(self, msg)
 
@@ -265,7 +239,12 @@ class TelegramAdapter(OutboundAdapterBase):
         pending: Any = None,
     ) -> InboundMessage:
         return _normalize_audio_impl(
-            self, raw, audio_bytes, mime_type, trust_level=trust_level, pending=pending
+            self,
+            raw,
+            audio_bytes,
+            mime_type,
+            trust_level=trust_level,
+            pending=pending,
         )
 
     async def send(
@@ -279,37 +258,26 @@ class TelegramAdapter(OutboundAdapterBase):
         outbound: OutboundMessage | None,
     ) -> "OutboundEmitter":
         """Construct an OutboundEmitter composed from stage objects (#1279, S7)."""
+        from lyra.adapters.shared._emitter import _make_emitter as _shared
         from lyra.adapters.telegram.telegram_formatter import TelegramFormatter
         from lyra.adapters.telegram.telegram_formatting import _validate_inbound
         from lyra.adapters.telegram.telegram_outbound import TelegramTypingIndicator
         from lyra.core.messaging.message import TelegramMeta
-        from lyra.outbound.emitter import OutboundEmitter
-        from lyra.outbound.error_handler import OutboundErrorHandler
-        from lyra.outbound.formatter import BadFormatter
 
-        meta = _validate_inbound(original_msg, "send_streaming")
-        if meta is None:
-            return OutboundEmitter(BadFormatter("invalid inbound message"), outbound)
-
-        chat_id, _, _ = meta
         _pm = original_msg.platform_meta
-        reply_to: int | None = _pm.message_id if isinstance(_pm, TelegramMeta) else None
-        placeholder_text = self._msg("stream_placeholder", "…")
-        formatter = TelegramFormatter(
+        return _shared(
             self,
-            chat_id=chat_id,
-            get_msg=self._msg,
-            placeholder_text=placeholder_text,
-            reply_to=reply_to,
-        )
-        typing = TelegramTypingIndicator(self)
-        handler = OutboundErrorHandler(get_msg=formatter.get_msg)
-        return OutboundEmitter(
-            formatter,
+            original_msg,
             outbound,
-            error_handler=handler,
-            typing=typing,
-            typing_scope_id=chat_id,
+            validate=_validate_inbound,
+            bad_msg="invalid inbound message",
+            formatter_cls=TelegramFormatter,
+            formatter_kwargs_fn=lambda m: {
+                "chat_id": m[0],
+                "reply_to": _pm.message_id if isinstance(_pm, TelegramMeta) else None,
+            },
+            typing_cls=TelegramTypingIndicator,
+            scope_id_fn=lambda m: m[0],
         )
 
     async def render_audio(self, msg: OutboundAudio, inbound: InboundMessage) -> None:

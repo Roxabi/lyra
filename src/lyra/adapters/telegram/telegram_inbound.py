@@ -29,7 +29,6 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("lyra.adapters.telegram")
 
-
 _dispatcher = Dispatcher()
 _router = Router()
 _session_builder = SessionBuilder()
@@ -56,8 +55,10 @@ def _expected_media_count(msg: Any) -> int:
     if getattr(msg, "animation", None):
         expected += 1
     sticker = getattr(msg, "sticker", None)
-    if sticker and not getattr(sticker, "is_animated", False) and not getattr(
-        sticker, "is_video", False
+    if (
+        sticker
+        and not getattr(sticker, "is_animated", False)
+        and not getattr(sticker, "is_video", False)
     ):
         expected += 1
     return expected

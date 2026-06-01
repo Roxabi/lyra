@@ -1,0 +1,512 @@
+---
+title: "Plan: feat(typing): T2 — Pool + adapters integration"
+issue: 1377
+spec: artifacts/specs/1377-feat-typing-t2-pool-adapters-integration-spec.mdx
+complexity: 5/10
+tier: F-lite
+generated: 2026-06-01
+status: approved
+---
+
+## Summary
+
+Add `typing_publisher` to `Pool`, wrap `process_one()` in `typing_publisher.scope()`, refactor `OutboundEmitter._handle_typing_tail` to call `typing_publisher`, and change all Discord/Telegram adapter typing methods to conditional shims. Land behind `LYRA_TYPING_ENABLED` (default `true` as kill-switch).
+
+## Architecture
+
+### Data Flow
+
+```mermaid
+flowchart TD
+    subgraph Config
+        A1[LYRA_TYPING_ENABLED env]
+    end
+    subgraph Pool
+        B1[pool_processor_exec.py]
+        B2[PoolManager]
+        B3[Pool.typing_publisher]
+        B4[pool_processor.py]
+    end
+    subgraph Transport
+        C1[typing_publisher.py]
+        C2[TypingListener]
+        C3[TypingTaskManager]
+    end
+    subgraph Outbound
+        D1[OutboundEmitter]
+        D2[_placeholder_lifecycle.py]
+    end
+    subgraph Adapters
+        E1[DiscordAdapter]
+        E2[TelegramAdapter]
+        E3[_base_outbound.py]
+        E4[_emitter.py]
+    end
+
+    A1 --> C1
+    B2 -->|wires| B3
+    B1 -->|constructs WorkScope| B3
+    B3 -->|scope() CM| B4
+    B3 -->|publish_started/ended| C1
+    C1 -->|NATS events| C2
+    C2 -->|start/stop| C3
+    D1 -->|_handle_typing_tail| D2
+    D2 -->|publish_started/ended| C1
+    E3 -->|configure_typing_publisher| E1
+    E3 -->|configure_typing_publisher| E2
+    E1 -->|send_streaming inject| D1
+    E2 -->|send_streaming inject| D1
+```
+
+### File × Function Map
+
+```mermaid
+flowchart LR
+    subgraph Pool
+        P1[pool.py] -->|+typing_publisher| P1
+        P2[pool_manager.py] -->|wire| P1
+        P3[pool_processor_exec.py] -->|scope() wrap| P3
+    end
+    subgraph Transport
+        T1[typing_publisher.py] -->|+scope()| T1
+    end
+    subgraph Outbound
+        O1[emitter.py] -->|+typing_publisher attr| O1
+        O2[_placeholder_lifecycle.py] -->|_handle_typing_tail| O2
+    end
+    subgraph Adapters
+        A1[_base_outbound.py] -->|configure_typing_publisher| A1
+        A2[_emitter.py] -->|inject| O1
+        D1[discord/adapter.py] -->|shim| D1
+        D2[discord/discord_inbound.py] -->|calls shim| D1
+        D3[discord/discord_outbound.py] -->|calls shim| D1
+        D4[discord/discord_audio.py] -->|calls shim| D1
+        T1b[telegram/telegram.py] -->|shim| T1b
+        T2[telegram/telegram_inbound.py] -->|calls shim| T1b
+        T3[telegram/telegram_outbound.py] -->|calls shim| T1b
+    end
+    subgraph Tests
+        S1[tests/pool/test_typing_publisher.py] -->|tests| T1
+        S2[tests/outbound/test_typing_tail.py] -->|tests| O2
+        S3[tests/adapters/test_typing_shims.py] -->|tests| D1
+        S4[tests/adapters/test_typing_shims.py] -->|tests| T1b
+    end
+```
+
+## Bootstrap Context
+
+- `typing_publisher` is stored on `Hub` (`Hub._typing_publisher`) and set via `Hub.set_typing_publisher()` in bootstrap.
+- `Pool` already has `pairing_manager` as a direct attribute (not via `PoolObserver`).
+- `OutboundAdapterBase` has no `__init__` (Discord MRO). Post-construction setter pattern exists (`configure_tool_display`).
+- `OutboundEmitter` already accepts `typing: ThrottleCapability` and `typing_scope_id` in `__init__`.
+
+## Agents
+
+| Agent | Tasks | Files |
+|-------|-------|-------|
+| backend-dev-A | T1, T2, T3 | pool.py, pool_manager.py, pool_processor_exec.py, typing_publisher.py |
+| backend-dev-B | T4, T5, T6, T7, T8, T9 | _base_outbound.py, _emitter.py, emitter.py, _placeholder_lifecycle.py, discord/adapter.py, discord/discord_inbound.py, discord/discord_outbound.py, discord/discord_audio.py, telegram/telegram.py, telegram/telegram_inbound.py, telegram/telegram_outbound.py |
+| tester-A | T10, T11, T12 | tests/pool, tests/outbound |
+| tester-B | T13, T14 | tests/adapters |
+| devops-A | T15 | .github/workflows/ |
+
+## Wave Structure
+
+4 waves, max 3 parallel agents. Elapsed ~1 day vs ~3 days sequential.
+
+| Wave | Trigger | Agents | Tasks |
+|------|---------|--------|-------|
+| 1 | start | backend-dev-A, backend-dev-B | T1→T2→T3 (A), T4→T5→T6→T7→T8→T9 (B) |
+| 2 | Wave 1 done | tester-A, tester-B | T10, T11, T12 (A), T13, T14 (B) |
+| 3 | Wave 2 done | devops-A | T15 |
+| 4 | Wave 3 done | backend-dev-A | T16 (fix CI if needed) |
+
+### Budget — per task
+
+| Task | Items | Class | Est. ops | Split? |
+|------|-------|-------|----------|--------|
+| T1 | 2 | bounded | 3 | — |
+| T2 | 1 | bounded | 2 | — |
+| T3 | 1 | judgmental | 4 | — |
+| T4 | 1 | bounded | 2 | — |
+| T5 | 1 | bounded | 2 | — |
+| T6 | 2 | bounded | 3 | — |
+| T7 | 1 | judgmental | 4 | — |
+| T8 | 4 | bounded | 8 | — |
+| T9 | 3 | bounded | 6 | — |
+| T10 | 1 | bounded | 2 | — |
+| T11 | 1 | judgmental | 4 | — |
+| T12 | 1 | bounded | 2 | — |
+| T13 | 2 | judgmental | 6 | — |
+| T14 | 1 | bounded | 2 | — |
+| T15 | 1 | trivial | 1 | — |
+| T16 | 1 | judgmental | 4 | — |
+
+**Total estimated ops: 53**
+
+### Budget — per agent instance
+
+| Instance | Tasks | Σ ops | Subjects | Split? |
+|----------|-------|-------|----------|--------|
+| backend-dev-A | T1, T2, T3 | 9 | pool, typing | — |
+| backend-dev-B | T4, T5, T6, T7, T8, T9 | 25 | adapters, outbound, typing | — |
+| tester-A | T10, T11, T12 | 8 | typing, pool | — |
+| tester-B | T13, T14 | 8 | adapters, outbound | — |
+| devops-A | T15 | 1 | CI | — |
+
+## Consistency Report
+
+| Criterion | Covered | Untraced | Exemptions |
+|---|---|---|---|
+| SC1 | T1, T3 | — | — |
+| SC2 | T1, T3 | — | — |
+| SC3 | T2, T3 | — | — |
+| SC4 | T8 | — | — |
+| SC5 | T8 | — | — |
+| SC6 | T8 | — | — |
+| SC7 | T8 | — | — |
+| SC8 | T9 | — | — |
+| SC9 | T9 | — | — |
+| SC10 | T4, T5, T6 | — | — |
+| SC11 | T15 | — | — |
+| SC12 | T13, T14, T15 | — | — |
+| SC13 | T13, T14 | — | — |
+
+**Covered:** 13/13 — all criteria traced to tasks.
+**Untraced:** None.
+**Exemptions:** None.
+
+## Micro-Tasks
+
+### Wave 1 — Core + Adapters
+
+#### T1 — Add `typing_publisher` to `Pool` and `PoolManager`
+
+- **Description:** Add `typing_publisher: TypingPublisher | None` attribute to `Pool` class (same pattern as `pairing_manager`). In `PoolManager.get_or_create_pool()`, wire `new_pool.typing_publisher = self._hub._typing_publisher`.
+- **File:** `src/lyra/core/pool/pool.py`, `src/lyra/core/hub/pipeline/pool_manager.py`
+- **Code snippet:**
+  ```python
+  # pool.py
+  self.typing_publisher: TypingPublisher | None = None
+
+  # pool_manager.py
+  new_pool.typing_publisher = self._hub._typing_publisher
+  ```
+- **Verify:** `grep -n "typing_publisher" src/lyra/core/pool/pool.py` and `grep -n "typing_publisher" src/lyra/core/hub/pipeline/pool_manager.py`
+- **Expected output:** Both show assignment lines.
+- **Time estimate:** 3 min
+- **Agent:** backend-dev-A
+- **Subject:** pool
+- **Spec trace:** SC1, SC2
+
+#### T2 — Add `typing_publisher.scope()` context manager
+
+- **Description:** Add `@asynccontextmanager` `scope(self, work_scope: WorkScope)` to `TypingPublisher` that calls `publish_started` on entry and `publish_ended` on exit (including exceptions).
+- **File:** `src/lyra/transport/typing_publisher.py`
+- **Code snippet:**
+  ```python
+  @asynccontextmanager
+  async def scope(self, work_scope: WorkScope):
+      await self.publish_started(work_scope)
+      try:
+          yield
+      finally:
+          await self.publish_ended(work_scope)
+  ```
+- **Verify:** `grep -n "asynccontextmanager" src/lyra/transport/typing_publisher.py`
+- **Expected output:** Shows `scope` method.
+- **Time estimate:** 2 min
+- **Agent:** backend-dev-A
+- **Subject:** typing
+- **Spec trace:** SC3
+- **blockedBy:** T1
+
+#### T3 — Wrap `process_one()` in `typing_publisher.scope()`
+
+- **Description:** In `pool_processor_exec.py`, construct `WorkScope` from `InboundMessage` before calling `process_one()`. Wrap `process_one()` in `async with pool.typing_publisher.scope(work_scope):`. Handle `scope_id` conversion (str→int) and `trace_id` derivation.
+- **File:** `src/lyra/core/pool/pool_processor_exec.py`
+- **Code snippet:**
+  ```python
+  from lyra.trace import TraceContext
+  from lyra.transport.work_scope import WorkScope
+
+  scope_id = int(msg.scope_id.split(":")[-1])
+  trace_id = TraceContext.get_trace_id() or uuid4().hex
+  work_scope = WorkScope(
+      platform=msg.platform,
+      bot_id=msg.bot_id,
+      scope_id=scope_id,
+      trace_id=trace_id,
+  )
+  async with pool.typing_publisher.scope(work_scope):
+      await process_one(...)
+  ```
+- **Verify:** `grep -n "typing_publisher.scope" src/lyra/core/pool/pool_processor_exec.py`
+- **Expected output:** Shows `scope` usage.
+- **Time estimate:** 5 min
+- **Agent:** backend-dev-A
+- **Subject:** pool
+- **Spec trace:** SC1, SC2, SC3
+- **blockedBy:** T2
+
+#### T4 — Add `configure_typing_publisher()` to `OutboundAdapterBase`
+
+- **Description:** Add `configure_typing_publisher(self, publisher: TypingPublisher | None)` method to `OutboundAdapterBase` (mirroring `configure_tool_display`).
+- **File:** `src/lyra/adapters/shared/_base_outbound.py`
+- **Code snippet:**
+  ```python
+  def configure_typing_publisher(self, publisher: TypingPublisher | None) -> None:
+      self._typing_publisher = publisher
+  ```
+- **Verify:** `grep -n "configure_typing_publisher" src/lyra/adapters/shared/_base_outbound.py`
+- **Expected output:** Shows method definition.
+- **Time estimate:** 2 min
+- **Agent:** backend-dev-B
+- **Subject:** adapters
+- **Spec trace:** SC10
+
+#### T5 — Add `typing_publisher` attribute to `OutboundEmitter`
+
+- **Description:** Add `typing_publisher: TypingPublisher | None` attribute to `OutboundEmitter` (either as `__init__` parameter or as a plain attribute defaulting to `None`).
+- **File:** `src/lyra/outbound/emitter.py`
+- **Code snippet:**
+  ```python
+  self.typing_publisher: TypingPublisher | None = None
+  ```
+- **Verify:** `grep -n "typing_publisher" src/lyra/outbound/emitter.py`
+- **Expected output:** Shows attribute definition.
+- **Time estimate:** 2 min
+- **Agent:** backend-dev-B
+- **Subject:** outbound
+- **Spec trace:** SC10
+- **blockedBy:** T4
+
+#### T6 — Inject `typing_publisher` into `OutboundEmitter` in `send_streaming`
+
+- **Description:** In `DiscordAdapter.send_streaming` and `TelegramAdapter.send_streaming`, after `_make_emitter` returns, inject `typing_publisher` into the emitter (same pattern as `tool_display_config`).
+- **File:** `src/lyra/adapters/discord/adapter.py`, `src/lyra/adapters/telegram/telegram.py`, `src/lyra/adapters/shared/_emitter.py`
+- **Code snippet:**
+  ```python
+  emitter = self._make_emitter(...)
+  emitter.tool_display_config = ...
+  emitter.typing_publisher = getattr(self, "_typing_publisher", None)
+  ```
+- **Verify:** `grep -n "typing_publisher" src/lyra/adapters/discord/adapter.py` and `grep -n "typing_publisher" src/lyra/adapters/telegram/telegram.py`
+- **Expected output:** Shows injection lines.
+- **Time estimate:** 3 min
+- **Agent:** backend-dev-B
+- **Subject:** adapters
+- **Spec trace:** SC10
+- **blockedBy:** T5
+
+#### T7 — Refactor `_handle_typing_tail` to call `typing_publisher`
+
+- **Description:** In `_placeholder_lifecycle.py`, change `_handle_typing_tail` to call `emitter.typing_publisher.publish_started/ended` instead of `emitter._start_typing()` / `emitter._cancel_typing()`. When `LYRA_TYPING_ENABLED=false`, the publisher is a no-op; legacy adapter shims handle typing.
+- **File:** `src/lyra/outbound/_placeholder_lifecycle.py`
+- **Code snippet:**
+  ```python
+  async def _handle_typing_tail(emitter):
+      if emitter._outbound is not None and emitter._outbound.intermediate:
+          if emitter.typing_publisher is not None:
+              await emitter.typing_publisher.publish_started(emitter._work_scope)
+      else:
+          if emitter.typing_publisher is not None:
+              await emitter.typing_publisher.publish_ended(emitter._work_scope)
+  ```
+  (Note: `emitter._work_scope` may need to be added or derived from `typing_scope_id`.)
+- **Verify:** `grep -n "typing_publisher" src/lyra/outbound/_placeholder_lifecycle.py`
+- **Expected output:** Shows `publish_started` / `publish_ended` calls.
+- **Time estimate:** 4 min
+- **Agent:** backend-dev-B
+- **Subject:** outbound
+- **Spec trace:** SC10
+- **blockedBy:** T5
+
+#### T8 — Discord adapter typing methods → conditional shims
+
+- **Description:** Change `_start_typing`, `_cancel_typing`, and `_cancel_typing_for` in `DiscordAdapter` to conditional shims: if `LYRA_TYPING_ENABLED=true`, delegate to `typing_publisher`; else, call existing `ThrottleCapability` path.
+- **File:** `src/lyra/adapters/discord/adapter.py`, `src/lyra/adapters/discord/discord_inbound.py`, `src/lyra/adapters/discord/discord_outbound.py`, `src/lyra/adapters/discord/discord_audio.py`
+- **Code snippet:**
+  ```python
+  def _start_typing(self, scope_id: int) -> None:
+      if is_typing_enabled():
+          self._typing_publisher.publish_started(...)
+      else:
+          self._typing.start_typing(scope_id)
+  ```
+- **Verify:** `grep -n "is_typing_enabled" src/lyra/adapters/discord/adapter.py`
+- **Expected output:** Shows conditional branches.
+- **Time estimate:** 8 min
+- **Agent:** backend-dev-B
+- **Subject:** adapters
+- **Spec trace:** SC4, SC5, SC6, SC7
+- **blockedBy:** T4
+
+#### T9 — Telegram adapter typing methods → conditional shims
+
+- **Description:** Change `_start_typing` and `_cancel_typing` in `TelegramAdapter` to conditional shims: if `LYRA_TYPING_ENABLED=true`, delegate to `typing_publisher`; else, call existing `ThrottleCapability` path.
+- **File:** `src/lyra/adapters/telegram/telegram.py`, `src/lyra/adapters/telegram/telegram_inbound.py`, `src/lyra/adapters/telegram/telegram_outbound.py`
+- **Code snippet:** Same pattern as T8.
+- **Verify:** `grep -n "is_typing_enabled" src/lyra/adapters/telegram/telegram.py`
+- **Expected output:** Shows conditional branches.
+- **Time estimate:** 6 min
+- **Agent:** backend-dev-B
+- **Subject:** adapters
+- **Spec trace:** SC8, SC9
+- **blockedBy:** T4
+
+### Wave 2 — Tests
+
+#### T10 — Test `typing_publisher.scope()` context manager
+
+- **Description:** Write unit tests for `TypingPublisher.scope()` verifying: (a) `publish_started` called on entry, (b) `publish_ended` called on normal exit, (c) `publish_ended` called on exception exit, (d) `publish_ended` called on `CancelledError`.
+- **File:** `tests/transport/test_typing_publisher.py`
+- **Verify:** `uv run pytest tests/transport/test_typing_publisher.py -v`
+- **Expected output:** 4 passing tests.
+- **Time estimate:** 5 min
+- **Agent:** tester-A
+- **Subject:** typing
+- **Spec trace:** SC3
+- **blockedBy:** T2
+
+#### T11 — Test pool wrap exception safety
+
+- **Description:** Write unit tests for `pool_processor_exec` verifying `typing_publisher.scope()` is entered and exited on success, timeout, exception, and cancellation.
+- **File:** `tests/pool/test_pool_processor_exec.py`
+- **Verify:** `uv run pytest tests/pool/test_pool_processor_exec.py -v`
+- **Expected output:** 4 passing tests.
+- **Time estimate:** 5 min
+- **Agent:** tester-A
+- **Subject:** pool
+- **Spec trace:** SC3
+- **blockedBy:** T3
+
+#### T12 — Test OutboundEmitter typing tail
+
+- **Description:** Write unit tests for `OutboundEmitter._handle_typing_tail` verifying `publish_started` is called when `outbound.intermediate=True`, and `publish_ended` when `False`.
+- **File:** `tests/outbound/test_emitter.py`
+- **Verify:** `uv run pytest tests/outbound/test_emitter.py -v`
+- **Expected output:** 2 passing tests.
+- **Time estimate:** 3 min
+- **Agent:** tester-A
+- **Subject:** outbound
+- **Spec trace:** SC10
+- **blockedBy:** T7
+
+#### T13 — Test Discord conditional shims
+
+- **Description:** Write unit tests for `DiscordAdapter` typing methods verifying: (a) with `LYRA_TYPING_ENABLED=true`, `typing_publisher` is called, (b) with `false`, `ThrottleCapability` is called, (c) no double calls.
+- **File:** `tests/adapters/discord/test_typing_shims.py`
+- **Verify:** `uv run pytest tests/adapters/discord/test_typing_shims.py -v`
+- **Expected output:** 6 passing tests.
+- **Time estimate:** 5 min
+- **Agent:** tester-B
+- **Subject:** adapters
+- **Spec trace:** SC4, SC5, SC6, SC7
+- **blockedBy:** T8
+
+#### T14 — Test Telegram conditional shims
+
+- **Description:** Write unit tests for `TelegramAdapter` typing methods verifying same behavior as T13.
+- **File:** `tests/adapters/telegram/test_typing_shims.py`
+- **Verify:** `uv run pytest tests/adapters/telegram/test_typing_shims.py -v`
+- **Expected output:** 4 passing tests.
+- **Time estimate:** 5 min
+- **Agent:** tester-B
+- **Subject:** adapters
+- **Spec trace:** SC8, SC9
+- **blockedBy:** T9
+
+### Wave 3 — CI
+
+#### T15 — CI matrix for `LYRA_TYPING_ENABLED`
+
+- **Description:** Add `LYRA_TYPING_ENABLED=true` and `false` to CI integration test matrix. Ensure both pass.
+- **File:** `.github/workflows/ci.yml`
+- **Verify:** `grep -n "LYRA_TYPING_ENABLED" .github/workflows/ci.yml`
+- **Expected output:** Shows matrix entries.
+- **Time estimate:** 2 min
+- **Agent:** devops-A
+- **Subject:** CI
+- **Spec trace:** SC11, SC12
+- **blockedBy:** T10, T11, T12, T13, T14
+
+### Wave 4 — CI fixes (if needed)
+
+#### T16 — Fix CI if any tests fail
+
+- **Description:** Run full CI, fix any failing tests.
+- **File:** Various
+- **Verify:** `uv run pytest` passes
+- **Expected output:** All green.
+- **Time estimate:** 5 min
+- **Agent:** backend-dev-A
+- **Subject:** pool
+- **Spec trace:** SC12
+- **blockedBy:** T15
+
+## Task Seeding Blueprint
+
+<!-- Used by /implement to seed TaskCreate calls on session start.
+     Format: T{n} | agent-instance | blockedBy | subject
+     blockedBy refs T-numbers within this list (not session task IDs).
+     Agent instances are named (tester-A/B, backend-dev-A/B/C, devops-A)
+     so parallel tasks map to distinct spawned agents.
+     Seed in wave order; within a wave all rows are parallel (∆).
+     -->
+
+### Wave 1 — no deps, 2 agents ∆
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T1 | backend-dev-A | — | pool |
+| T2 | backend-dev-A | T1 | typing |
+| T3 | backend-dev-A | T2 | pool |
+| T4 | backend-dev-B | — | adapters |
+| T5 | backend-dev-B | T4 | outbound |
+| T6 | backend-dev-B | T5 | adapters |
+| T7 | backend-dev-B | T5 | outbound |
+| T8 | backend-dev-B | T4 | adapters |
+| T9 | backend-dev-B | T4 | adapters |
+
+### Wave 2 — after Wave 1, 2 agents ∆
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T10 | tester-A | T2 | typing |
+| T11 | tester-A | T3 | pool |
+| T12 | tester-A | T7 | outbound |
+| T13 | tester-B | T8 | adapters |
+| T14 | tester-B | T9 | adapters |
+
+### Wave 3 — after Wave 2, 1 agent ∆
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T15 | devops-A | T10, T11, T12, T13, T14 | CI |
+
+### Wave 4 — after Wave 3, 1 agent ∆
+
+| Task | Agent instance | blockedBy | Subject |
+|------|---------------|-----------|---------|
+| T16 | backend-dev-A | T15 | pool |
+
+## Task IDs
+
+<!-- Generated by /plan. Used by /implement to resume tasks on session restart. -->
+- T1: (seeded on session start)
+- T2: (seeded on session start)
+- T3: (seeded on session start)
+- T4: (seeded on session start)
+- T5: (seeded on session start)
+- T6: (seeded on session start)
+- T7: (seeded on session start)
+- T8: (seeded on session start)
+- T9: (seeded on session start)
+- T10: (seeded on session start)
+- T11: (seeded on session start)
+- T12: (seeded on session start)
+- T13: (seeded on session start)
+- T14: (seeded on session start)
+- T15: (seeded on session start)
+- T16: (seeded on session start)

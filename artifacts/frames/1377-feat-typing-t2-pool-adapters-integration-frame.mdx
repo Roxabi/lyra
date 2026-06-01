@@ -1,0 +1,49 @@
+---
+title: "feat(typing): T2 — Pool + adapters integration, close #1374 + audio bug class"
+issue: 1377
+status: approved
+tier: F-lite
+date: 2026-06-01
+---
+
+## Problem
+
+The typing indicator system in Lyra currently uses imperative `_start_typing` / `_cancel_typing` calls scattered across 8 adapter call sites (Discord inbound/outbound/audio, Telegram inbound/outbound). This creates a cross-boundary coordination problem: the pool (hub) does not know when an adapter has started typing, and the adapter does not know when the pool has finished processing. When a turn ends abnormally (timeout, backend dead, cancellation), the adapter's `on_drop` callback may fail to fire, leaving orphan `TypingTaskManager._tasks` entries that never expire. This was reported as #1374 (audio bug class) and also affects text threads.
+
+The T1 core (blocked by #1376, now merged) established a publish/subscribe typing flow: `TypingListener` subscribes to `typing.started` / `typing.ended` events and drives `TypingTaskManager`. This frame covers T2: integrating that pub/sub flow into the pool and removing all imperative call sites.
+
+## Who
+
+- **Primary:** Discord and Telegram bot users who see typing indicators during agent turns
+- **Secondary:** Ops engineers who monitor for orphan typing warnings in `lyra-discord` journalctl
+
+## Constraints
+
+- **Blocked by #1376 (T1 — Core):** now CLOSED, unblocking this work
+- **Single atomic cutover:** all 8 sites + pool wrap in one PR; no partial state
+- **Feature-flagged:** land behind `LYRA_TYPING_ENABLED=false` (default off); cutover after 24h soak
+- **Discord MRO:** `OutboundAdapterBase` must not add `__init__`
+- **Re-entrancy safe:** if agent reset spawns a 2nd `process_one` for the same message, ref-count must not double-emit
+
+## Out of Scope
+
+- Removing the `LYRA_TYPING_ENABLED` feature flag (follow-up PR after soak)
+- Removing the deprecated `_start_typing` / `_cancel_typing` shims (follow-up PR after 1-week soak)
+- `TypingTaskManager` engine changes (it stays, just invoked by `TypingListener` now)
+- Adding typing support to new platforms beyond Discord/Telegram
+
+## Premise Validity
+
+**Success in 6 months:** All typing indicators driven by pub/sub flow; no orphan tasks; feature flag removed; AC1–AC7 passing.
+
+**Failure in 6 months:** Orphan typing tasks still accumulate after 3 months (grep `_start_typing` still finds adapter call sites, or `TypingTaskManager._tasks` non-empty after turns).
+
+**Simplest alternative:** Keep imperative calls + add a cleanup timer.
+**Why not simplest:** Doesn't solve root cause of cross-boundary coordination (pool vs adapters); still races on timeout/dead.
+
+## Complexity
+
+**Tier: F-lite** — Clear scope, single domain (typing/adapters), no new arch patterns. 8 call sites + pool wrap + feature flag.
+
+- Signals: ≤10 files, single domain (typing), issue label `size:F-lite`
+- No unknowns: T1 core is merged, pub/sub contract is established

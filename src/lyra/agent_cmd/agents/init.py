@@ -4,21 +4,18 @@ from __future__ import annotations
 
 import asyncio
 import json as _json
-import os
 from pathlib import Path
 
 import typer
 
 from lyra.cli_agent import _AGENTS_DIR_OPT, _connect_store, agent_app
 from lyra.core.agent.agent_config import _VALID_BACKENDS
+from lyra.paths import factory_data_dir
 
 
 def _user_agents_dir() -> Path:
-    """Resolve user agents dir from LYRA_VAULT_DIR at call time."""
-    return (
-        Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))).resolve()
-        / "agents"
-    )
+    """Resolve user agents dir from ROXABI_FACTORY_DIR at call time."""
+    return factory_data_dir().resolve() / "agents"
 
 
 _SYSTEM_AGENTS_DIR = Path(__file__).resolve().parent.parent.parent / "agents"

@@ -9,6 +9,8 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from lyra.paths import factory_data_dir
+
 _HHMM_RE = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")
 _SERVICE_NAME_RE = re.compile(r"^[a-zA-Z0-9_@.\-]+$")
 
@@ -35,16 +37,18 @@ class MonitoringConfig(BaseModel):
     diagnostic_model: str = "claude-haiku-4-5-20251001"
     disk_check_path: str = "/"
     service_names: list[str] = Field(
-        default=["lyra-hub", "lyra-telegram", "lyra-discord"]
+        default=["factory-hub", "factory-telegram", "factory-discord"]
     )
     health_secret: str = ""
-    nats_container_name: str = "lyra-nats"
-    hub_container_name: str = "lyra-hub"
+    nats_container_name: str = "factory-nats"
+    hub_container_name: str = "factory-hub"
     nats_log_check_minutes: int = 30
     stream_gen_timeout_minutes: int = 30
     stream_gen_timeout_threshold: int = 3
     nats_monitor_url: str = "http://127.0.0.1:8222"
-    nats_monitor_state_file: str = "~/.lyra/nats-monitor-state.json"
+    nats_monitor_state_file: str = Field(
+        default_factory=lambda: str(factory_data_dir() / "nats-monitor-state.json")
+    )
     log_level: str = "info"
     blobstore_disk_path: str = "/data/lyra/blobs"
     blobstore_disk_warning_pct: int = 60

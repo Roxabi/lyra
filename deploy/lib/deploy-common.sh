@@ -14,9 +14,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 
 # ── Constants ────────────────────────────────────────────────────────────────
 LYRA_DIR="${HOME}/projects/lyra"
-CONVERGE_STAMP="${HOME}/.lyra/.converge-stamp"
+CONVERGE_STAMP="${HOME}/.roxabi/factory/.converge-stamp"
 QUADLET_DIR="${HOME}/.config/containers/systemd"
-LYRA_NKEYS_DIR="${HOME}/.lyra/nkeys"
+LYRA_NKEYS_DIR="${HOME}/.roxabi/factory/nkeys"
 DEPLOY_LOCK="/run/user/$(id -u)/lyra-deploy.lock"
 
 # ── flock wrapper ────────────────────────────────────────────────────────────
@@ -42,7 +42,7 @@ compute_convergence_state() {
     git_head=$(cd "${LYRA_DIR}" && git rev-parse HEAD 2>/dev/null || echo "none")
 
     if [ -d "${QUADLET_DIR}" ]; then
-        unit_sha=$(find "${QUADLET_DIR}" -maxdepth 1 -name 'lyra*' -type f -print0 \
+        unit_sha=$(find "${QUADLET_DIR}" -maxdepth 1 \( -name 'lyra*' -o -name 'factory*' \) -type f -print0 \
             | sort -z | xargs -0 -r sha256sum | sha256sum | awk '{print $1}')
     else
         unit_sha="none"

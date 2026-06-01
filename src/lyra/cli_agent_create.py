@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import re
 from pathlib import Path
 from typing import Optional
@@ -13,14 +12,12 @@ import tomli_w
 import typer
 
 from lyra.cli_agent import _AGENTS_DIR_OPT, _connect_store, _parse_tools, agent_app
+from lyra.paths import factory_data_dir
 
 
 def _user_agents_dir() -> Path:
-    """Resolve user agents dir from LYRA_VAULT_DIR at call time."""
-    return (
-        Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))).resolve()
-        / "agents"
-    )
+    """Resolve user agents dir from ROXABI_FACTORY_DIR at call time."""
+    return factory_data_dir().resolve() / "agents"
 
 
 _SYSTEM_AGENTS_DIR = Path(__file__).resolve().parent / "agents"
@@ -32,7 +29,7 @@ AGENTS_DIR = _SYSTEM_AGENTS_DIR
 
 
 def _prompt_location() -> Path:
-    typer.echo("  [u] user   — ~/.lyra/agents/      (personal, gitignored)")
+    typer.echo("  [u] user   — ~/.roxabi/factory/agents/      (personal, gitignored)")
     typer.echo(f"  [s] system — {AGENTS_DIR}  (versioned)")
     choice = typer.prompt("Save to", default="u", show_default=True)
     if choice.lower().startswith("s"):

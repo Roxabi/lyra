@@ -32,7 +32,7 @@ class TestBootstrapCallsSeedGrantsFromBots:
         """
         # Arrange
         monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
 
         # Track the seed_grants_from_bots call
         seed_calls: list[tuple] = []

@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
+from lyra.paths import factory_data_dir
+
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
 
@@ -151,7 +153,7 @@ def init_blobstore() -> "BlobStorePort | None":
 
     token_path = os.environ.get(
         "LYRA_BLOBSTORE_TOKEN_PATH",
-        str(Path.home() / ".lyra" / "blobstore.tok"),
+        str(factory_data_dir() / "blobstore.tok"),
     )
     try:
         token = Path(token_path).read_text().strip()

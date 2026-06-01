@@ -13,6 +13,7 @@ from typing import Any
 from fastapi import FastAPI, Header, HTTPException
 
 from lyra.core.hub import Hub
+from lyra.paths import factory_data_dir
 
 log = logging.getLogger(__name__)
 
@@ -43,12 +44,7 @@ def create_health_server(  # noqa: PLR0913 — health surface
 
 class Secrets:
     def __init__(self, vault_dir: Path | None = None) -> None:
-        self._vault_dir = (
-            vault_dir
-            or Path(
-                os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))
-            ).resolve()
-        )
+        self._vault_dir = vault_dir or factory_data_dir().resolve()
 
     def _read(self, name: str) -> str:
         path = self._vault_dir / "secrets" / name

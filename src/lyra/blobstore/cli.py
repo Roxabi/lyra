@@ -8,6 +8,7 @@ import typer
 import uvicorn
 
 from lyra.blobstore.serve import build_app
+from lyra.paths import factory_data_dir
 
 blobstore_app = typer.Typer(name="blobstore", help="BlobStore HTTP service.")
 
@@ -24,7 +25,7 @@ def serve(
     port: int = typer.Option(8449, help="Bind port."),
 ) -> None:
     """Start the blobstore HTTP service."""
-    blob_root = Path.home() / ".lyra" / "blobstore"
+    blob_root = factory_data_dir() / "blobstore"
     blob_root.mkdir(parents=True, exist_ok=True)
     uvicorn.run(
         build_app(token_path=token_path, blob_root=blob_root),

@@ -3,7 +3,7 @@
 `lyra ops verify` walks ``deploy/nats/acl-matrix.json`` and, per identity,
 publishes on every allowed subject (expect success) plus one `lyra.verify.deny.*`
 probe (expect permission violation). Reads ``NATS_URL``/``NATS_CA_CERT`` from
-env; seeds from ``~/.lyra/nkeys/<id>.seed`` (override via ``--seeds-dir``).
+env; seeds from ``~/.roxabi/factory/nkeys/<id>.seed`` (override via ``--seeds-dir``).
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from nats.aio.client import Client as NATS
 
 import nats
 from lyra.ops_audit import emit_drift_report
+from lyra.paths import factory_data_dir
 from roxabi_contracts.verify import verify_deny
 from roxabi_nats.connect import _build_tls_context
 
@@ -29,7 +30,7 @@ ops_app = typer.Typer(name="ops", help="Operational sanity checks.")
 
 _DEFAULT_NATS_URL = "nats://localhost:4222"
 _DEFAULT_MATRIX = "deploy/nats/acl-matrix.json"
-_DEFAULT_SEEDS_DIR = "~/.lyra/nkeys"
+_DEFAULT_SEEDS_DIR = str(factory_data_dir() / "nkeys")
 _FLUSH_TIMEOUT = 2
 
 

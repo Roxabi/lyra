@@ -10,6 +10,7 @@ from pathlib import Path
 import typer
 
 from lyra.infrastructure.stores.bot_store import BotStore
+from lyra.paths import factory_data_dir
 
 bot_app = typer.Typer(
     name="bot", help="Manage bot credentials stored as Podman secrets."
@@ -23,9 +24,7 @@ _VALID_PLATFORMS = ("telegram", "discord")
 
 
 def _get_db_path() -> Path:
-    return (
-        Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))) / "config.db"
-    )
+    return factory_data_dir() / "config.db"
 
 
 async def _connect_bot_store() -> BotStore:

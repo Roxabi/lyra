@@ -6,11 +6,11 @@ import asyncio
 import logging
 import os
 import sys
-from pathlib import Path
 
 from lyra.bootstrap.factory.config import build_adapter_config_bundle
 from lyra.core.messaging.message import Platform
 from lyra.core.messaging.utils.metrics import log_contracts_version
+from lyra.paths import factory_data_dir
 from roxabi_nats import nats_connect
 from roxabi_nats.connect import scrub_nats_url
 
@@ -51,7 +51,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
     except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
         sys.exit(f"Failed to connect to NATS at {scrub_nats_url(nats_url)!r}: {exc}")
 
-    vault_dir = Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
+    vault_dir = factory_data_dir()
     vault_dir.mkdir(parents=True, exist_ok=True)
 
     try:

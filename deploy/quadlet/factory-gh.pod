@@ -2,12 +2,12 @@
 Description=Lyra GitHub App pod (clipool + token-mint helper)
 # Order after NATS: clipool needs NATS; helper only needs the tmpfs (available immediately).
 # No Requires= on clipool so a hub restart does not cascade.
-After=lyra-nats.service
+After=factory-nats.service
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
 [Pod]
-PodName=lyra-gh
+PodName=factory-gh
 # UserNS set at pod level so both containers share the same user namespace.
 # keep-id:uid=1500 maps the host operator (uid 1000) to container uid 1500.
 # Container uid 1501 maps to a subuid in the 100000+ range (see /etc/subuid).
@@ -21,7 +21,7 @@ Network=roxabi.network
 # Tmpfs= is only valid in [Container] sections. Each container declares an
 # identical Tmpfs= line; Podman merges them into the same in-memory filesystem
 # when both containers share the same pod (same mount namespace for tmpfs paths
-# declared identically). See: lyra-clipool.container + lyra-gh-helper.container.
+# declared identically). See: factory-clipool.container + factory-gh-helper.container.
 # Verified against Podman 4.9.3 quadlet source: supportedPodKeys has no KeyTmpfs.
 
 [Install]

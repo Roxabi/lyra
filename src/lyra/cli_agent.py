@@ -6,13 +6,13 @@ Subcommands are registered in cli.py after agent_app is imported.
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Optional
 
 import typer
 
 from lyra.infrastructure.stores.agent_store import AgentStore
+from lyra.paths import factory_data_dir
 
 agent_app = typer.Typer(name="agent", help="Manage agent configurations.")
 _DEFAULT_TOOLS = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
@@ -27,9 +27,7 @@ _AGENTS_DIR_OPT: Optional[Path] = typer.Option(
 
 
 def _get_db_path() -> Path:
-    return (
-        Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))) / "config.db"
-    )
+    return factory_data_dir() / "config.db"
 
 
 async def _connect_store() -> AgentStore:

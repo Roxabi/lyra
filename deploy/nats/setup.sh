@@ -16,7 +16,7 @@
 #   7. Verify nkey enforcement is active
 #
 # Safe to re-run after upgrades, re-provisioning, or permission drift.
-# To rotate keys: sudo rm -f /etc/nats/nkeys/auth.conf && rm -rf ~/.lyra/nkeys && make nats-setup
+# To rotate keys: sudo rm -f /etc/nats/nkeys/auth.conf && rm -rf ~/.roxabi/factory/nkeys && make nats-setup
 
 set -euo pipefail
 # shellcheck source=../lib/env.sh
@@ -128,7 +128,7 @@ if command -v nats &>/dev/null; then
   if [ "$rc" -ne 0 ] && echo "$output" | grep -qiE "authoriz|permission|auth"; then
     info "Unauthenticated connections rejected — nkey enforcement ACTIVE."
   else
-    error "nkey enforcement NOT confirmed (rc=$rc). Check: journalctl -u lyra-nats.service -n 20"
+    error "nkey enforcement NOT confirmed (rc=$rc). Check: journalctl -u factory-nats.service -n 20"
   fi
 else
   warn "nats CLI not installed — skipping. Verify manually: nats sub '>' (should fail without nkey)"
@@ -145,7 +145,7 @@ LYRA_USER="${SUDO_USER:-$(id -un)}"
   || error "Invalid LYRA_USER: $LYRA_USER"
 LYRA_HOME=$(getent passwd "$LYRA_USER" | cut -d: -f6)
 ENV_FILE="${LYRA_DIR}/.env"
-HUB_SEED="${LYRA_HOME}/.lyra/nkeys/hub.seed"
+HUB_SEED="${LYRA_HOME}/.roxabi/factory/nkeys/hub.seed"
 NATS_CA="/etc/nats/certs/ca.crt"
 if [ -f "${ENV_FILE}" ]; then
   # NATS_URL — use tls:// scheme for TLS-enabled server

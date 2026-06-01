@@ -15,14 +15,14 @@ source "$(dirname "$0")/lib/env.sh"
 
 # Units derived from .container files.  Quadlet maps <name>.container → <name>.service.
 UNITS=(
-    lyra-nats
-    lyra-hub
-    lyra-telegram
-    lyra-discord
-    lyra-clipool
-    lyra-gh-helper
-    lyra-blobstore
-    lyra-turn-writer
+    factory-nats
+    factory-hub
+    factory-telegram
+    factory-discord
+    factory-clipool
+    factory-gh-helper
+    factory-blobstore
+    factory-turn-writer
 )
 
 # ── 1. Reload daemon so Quadlet generates fresh .service files ────────────────

@@ -28,8 +28,8 @@ class TestSystemctlManagerControl:
 
         argv = calls[0]
         assert argv[:3] == ["systemctl", "--user", "status"]
-        assert "lyra-hub.service" in argv
-        assert "lyra-nats.service" in argv
+        assert "factory-hub.service" in argv
+        assert "factory-nats.service" in argv
         assert "voicecli-stt.service" in argv
 
     @pytest.mark.asyncio
@@ -48,7 +48,7 @@ class TestSystemctlManagerControl:
 
         argv = calls[0]
         assert argv[:3] == ["systemctl", "--user", "restart"]
-        assert "lyra-hub.service" in argv
+        assert "factory-hub.service" in argv
         assert "voicecli-stt.service" not in argv
 
     @pytest.mark.asyncio

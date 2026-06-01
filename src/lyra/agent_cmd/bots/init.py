@@ -19,6 +19,7 @@ from lyra.core.agent.bot_models import (
     DEFAULT_TRUST,
     BotRow,
 )
+from lyra.paths import factory_data_dir
 
 
 class _BotSeedEntry(BaseModel):
@@ -54,7 +55,7 @@ def _find_config_toml() -> Path | None:
         p = Path(env_path).expanduser().resolve()
         if p.exists():
             return p
-    vault_dir = Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
+    vault_dir = factory_data_dir()
     for candidate in [vault_dir / "config.toml", Path("config.toml")]:
         if candidate.exists():
             return candidate

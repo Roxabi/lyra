@@ -8,15 +8,14 @@ import os
 import sys
 from pathlib import Path
 
+from lyra.paths import factory_data_dir
+
 log = logging.getLogger(__name__)
 
 
 def lockfile_path() -> Path:
-    """Resolve the hub lockfile path from LYRA_VAULT_DIR at call time."""
-    return (
-        Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))).resolve()
-        / "hub.lock"
-    )
+    """Resolve the hub lockfile path from ROXABI_FACTORY_DIR at call time."""
+    return factory_data_dir().resolve() / "hub.lock"
 
 
 def release_lockfile() -> None:

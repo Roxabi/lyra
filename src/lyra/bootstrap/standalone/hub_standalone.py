@@ -6,7 +6,6 @@ import asyncio
 import logging
 import os
 import sys
-from pathlib import Path
 
 from lyra.bootstrap.auth_seeding import build_bot_auths, seed_grants_from_bots
 from lyra.bootstrap.bootstrap_stores import open_stores
@@ -30,6 +29,7 @@ from lyra.bootstrap.standalone.hub_standalone_helpers import (
     start_mint_failure_subscriber,
 )
 from lyra.core.messaging.utils.metrics import log_contracts_version
+from lyra.paths import factory_data_dir
 from roxabi_nats import nats_connect
 from roxabi_nats.connect import scrub_nats_url
 from roxabi_nats.readiness import announce_hub_ready, start_readiness_responder
@@ -74,9 +74,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
 
     inbound_bus, _ = build_inbound_bus(nc, raw_config)
 
-    vault_dir = Path(
-        os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra"))
-    ).resolve()
+    vault_dir = factory_data_dir().resolve()
     vault_dir.mkdir(parents=True, exist_ok=True)
 
     async with open_stores(vault_dir, nc=nc) as stores:

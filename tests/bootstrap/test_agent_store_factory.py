@@ -35,9 +35,9 @@ def _patch_classes(monkeypatch: pytest.MonkeyPatch) -> tuple[MagicMock, MagicMoc
 def test_make_agent_store_default_lyra_db_unset(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When LYRA_DB is unset, returns AgentStore with default ~/.lyra/config.db."""
+    """LYRA_DB unset → AgentStore with default ~/.roxabi/factory/config.db."""
     monkeypatch.delenv("LYRA_DB", raising=False)
-    monkeypatch.delenv("LYRA_VAULT_DIR", raising=False)
+    monkeypatch.delenv("ROXABI_FACTORY_DIR", raising=False)
     mock_json, mock_sqlite = _patch_classes(monkeypatch)
 
     result = factory_mod.make_agent_store()
@@ -46,7 +46,7 @@ def test_make_agent_store_default_lyra_db_unset(
     mock_sqlite.assert_called_once()
     assert result is mock_sqlite.return_value
     _call_kwargs = mock_sqlite.call_args.kwargs
-    expected_default = Path.home() / ".lyra" / "config.db"
+    expected_default = Path.home() / ".roxabi" / "factory" / "config.db"
     assert _call_kwargs["db_path"] == expected_default
 
 
@@ -61,7 +61,7 @@ def test_make_agent_store_json_mode_default_path(
     """LYRA_DB=json with no LYRA_AGENT_STORE_PATH → JsonAgentStore at default path."""
     monkeypatch.setenv("LYRA_DB", "json")
     monkeypatch.delenv("LYRA_AGENT_STORE_PATH", raising=False)
-    monkeypatch.delenv("LYRA_VAULT_DIR", raising=False)
+    monkeypatch.delenv("ROXABI_FACTORY_DIR", raising=False)
     mock_json, mock_sqlite = _patch_classes(monkeypatch)
 
     result = factory_mod.make_agent_store()
@@ -70,7 +70,7 @@ def test_make_agent_store_json_mode_default_path(
     mock_json.assert_called_once()
     assert result is mock_json.return_value
     _call_kwargs = mock_json.call_args.kwargs
-    expected_default = Path.home() / ".lyra" / "agents_test.json"
+    expected_default = Path.home() / ".roxabi" / "factory" / "agents_test.json"
     assert _call_kwargs["path"] == expected_default
 
 
@@ -150,14 +150,14 @@ def test_make_agent_store_invalid_lyra_db_fallback(
 
 
 # ---------------------------------------------------------------------------
-# LYRA_AGENT_STORE_PATH relative → resolved against LYRA_VAULT_DIR or ~/.lyra
+# LYRA_AGENT_STORE_PATH relative → resolved against ROXABI_FACTORY_DIR or ~/.lyra
 # ---------------------------------------------------------------------------
 
 
 def test_make_agent_store_relative_path_with_vault_dir(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """BUG: relative LYRA_AGENT_STORE_PATH is NOT resolved against LYRA_VAULT_DIR.
+    """BUG: relative LYRA_AGENT_STORE_PATH is NOT resolved against ROXABI_FACTORY_DIR.
 
     The factory computes ``_vault`` but only uses it for the default path.
     When ``LYRA_AGENT_STORE_PATH`` is set, the raw string is passed through
@@ -165,7 +165,7 @@ def test_make_agent_store_relative_path_with_vault_dir(
     """
     monkeypatch.setenv("LYRA_DB", "json")
     monkeypatch.setenv("LYRA_AGENT_STORE_PATH", "agents.json")
-    monkeypatch.setenv("LYRA_VAULT_DIR", "/tmp/vault")
+    monkeypatch.setenv("ROXABI_FACTORY_DIR", "/tmp/vault")
     mock_json, _mock_sqlite = _patch_classes(monkeypatch)
 
     result = factory_mod.make_agent_store()
@@ -178,14 +178,14 @@ def test_make_agent_store_relative_path_with_vault_dir(
 def test_make_agent_store_relative_path_fallback_home(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """BUG: relative LYRA_AGENT_STORE_PATH with no LYRA_VAULT_DIR stays relative.
+    """BUG: relative LYRA_AGENT_STORE_PATH with no ROXABI_FACTORY_DIR stays relative.
 
     Same root cause as above — ``_vault`` is computed but unused when the env
     var is explicitly set.  This test documents actual behaviour.
     """
     monkeypatch.setenv("LYRA_DB", "json")
     monkeypatch.setenv("LYRA_AGENT_STORE_PATH", "agents.json")
-    monkeypatch.delenv("LYRA_VAULT_DIR", raising=False)
+    monkeypatch.delenv("ROXABI_FACTORY_DIR", raising=False)
     mock_json, _mock_sqlite = _patch_classes(monkeypatch)
 
     result = factory_mod.make_agent_store()
@@ -196,16 +196,16 @@ def test_make_agent_store_relative_path_fallback_home(
 
 
 # ---------------------------------------------------------------------------
-# LYRA_VAULT_DIR default path behaviour
+# ROXABI_FACTORY_DIR default path behaviour
 # ---------------------------------------------------------------------------
 
 
 def test_json_default_path_uses_lyra_vault_dir(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """LYRA_DB=json + LYRA_VAULT_DIR set uses vault dir for default path."""
+    """LYRA_DB=json + ROXABI_FACTORY_DIR set uses vault dir for default path."""
     monkeypatch.setenv("LYRA_DB", "json")
-    monkeypatch.setenv("LYRA_VAULT_DIR", "/tmp/vault")
+    monkeypatch.setenv("ROXABI_FACTORY_DIR", "/tmp/vault")
     monkeypatch.delenv("LYRA_AGENT_STORE_PATH", raising=False)
     mock_json, mock_sqlite = _patch_classes(monkeypatch)
 
@@ -220,9 +220,9 @@ def test_json_default_path_uses_lyra_vault_dir(
 def test_sqlite_default_path_uses_lyra_vault_dir(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """LYRA_DB unset + LYRA_VAULT_DIR set uses vault dir for default db path."""
+    """LYRA_DB unset + ROXABI_FACTORY_DIR set uses vault dir for default db path."""
     monkeypatch.delenv("LYRA_DB", raising=False)
-    monkeypatch.setenv("LYRA_VAULT_DIR", "/tmp/vault")
+    monkeypatch.setenv("ROXABI_FACTORY_DIR", "/tmp/vault")
     mock_json, mock_sqlite = _patch_classes(monkeypatch)
 
     result = factory_mod.make_agent_store()

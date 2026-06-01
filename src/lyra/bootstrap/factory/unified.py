@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from pathlib import Path
 
 import nats.errors
 
@@ -33,6 +32,7 @@ from lyra.bootstrap.types import (
     RegisterAgentsDeps,
     WireAdaptersDeps,
 )
+from lyra.paths import factory_data_dir
 
 log = logging.getLogger(__name__)
 
@@ -50,7 +50,7 @@ async def _bootstrap_unified(
     blob_store = None
     try:
         inbound_bus = await _init_inbound_bus(nc, raw_config)
-        vault_dir = Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
+        vault_dir = factory_data_dir()
         vault_dir.mkdir(parents=True, exist_ok=True)
 
         async with open_stores(vault_dir, nc=nc) as stores:

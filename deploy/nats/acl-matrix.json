@@ -68,7 +68,7 @@
         "lyra.gh.mint_failure.>",
         "_inbox.hub.>"
       ],
-      "deploy": { "type": "container", "secret": "lyra-nats-hub" }
+      "deploy": { "type": "container", "secret": "factory-nats-hub" }
     },
     "telegram-adapter": {
       "status": "active",
@@ -98,7 +98,7 @@
         "_inbox.telegram-adapter.*.*",
         "$KV.lyra-state.>"
       ],
-      "deploy": { "type": "container", "secret": "lyra-nats-telegram" }
+      "deploy": { "type": "container", "secret": "factory-nats-telegram" }
     },
     "discord-adapter": {
       "status": "active",
@@ -128,7 +128,7 @@
         "_inbox.discord-adapter.*.*",
         "$KV.lyra-state.>"
       ],
-      "deploy": { "type": "container", "secret": "lyra-nats-discord" }
+      "deploy": { "type": "container", "secret": "factory-nats-discord" }
     },
     "voice-tts": {
       "status": "active",
@@ -257,7 +257,7 @@
         "_inbox.clipool-worker.>",
         "$KV.lyra-state.>"
       ],
-      "deploy": { "type": "container", "secret": "lyra-nats-clipool" }
+      "deploy": { "type": "container", "secret": "factory-nats-clipool" }
     },
     "dashboard-reader": {
       "status": "active",
@@ -271,7 +271,7 @@
         "lyra.event.>",
         "lyra.metric.>"
       ],
-      "deploy": { "type": "host", "path": "~/.lyra/nkeys/dashboard-reader.seed" }
+      "deploy": { "type": "host", "path": "~/.roxabi/factory/nkeys/dashboard-reader.seed" }
     },
     "voice-client": {
       "status": "active",
@@ -292,7 +292,7 @@
       "status": "active",
       "created_at": "2026-05-25",
       "owner": "lyra",
-      "description": "TurnWriter JetStream subscriber-writer — sole writer for turns.db (ADR-075, #1331). Consumes lyra.turns.> durable consumer turn-writer-v1, queue group turn-writer. nkey seed delivered via lyra-nats-turn-writer Podman secret (provisioned by install.sh T25).",
+      "description": "TurnWriter JetStream subscriber-writer — sole writer for turns.db (ADR-075, #1331). Consumes lyra.turns.> durable consumer turn-writer-v1, queue group turn-writer. nkey seed delivered via factory-nats-turn-writer Podman secret (provisioned by install.sh T25).",
       "notes": "JetStream API subjects scoped to LYRA_TURNS stream + turn-writer-v1 consumer only (principle of least privilege). _inbox.turn-writer.> required for pull-subscribe ACK reply path — nats-py emits lowercase identity-scoped inboxes when identity_name is set (#1359). allow_responses=true for pull-subscribe protocol. $JS.API.* in publish (not subscribe) because nc.request() publishes at protocol level (B1). CONSUMER.CREATE uses wildcard suffix to cover filter-subject variants (B2). STREAM.UPDATE added for retention/limits changes on subsequent boots (B3).",
       "allow_responses": true,
       "publish": [
@@ -308,7 +308,7 @@
         "lyra.turns.>",
         "_inbox.turn-writer.>"
       ],
-      "deploy": { "type": "container", "secret": "lyra-nats-turn-writer" }
+      "deploy": { "type": "container", "secret": "factory-nats-turn-writer" }
     },
     "blobstore": {
       "status": "active",
@@ -325,7 +325,7 @@
       "subscribe": [
         "_inbox.blobstore.>"
       ],
-      "deploy": { "type": "container", "secret": "lyra-nats-blobstore" }
+      "deploy": { "type": "container", "secret": "factory-nats-blobstore" }
     }
   }
 }

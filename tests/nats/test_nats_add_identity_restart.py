@@ -19,13 +19,13 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).parent.parent.parent
 
 _EXPECTED_RESTART_SVCS = [
-    "lyra-nats",
-    "lyra-hub",
-    "lyra-telegram",
-    "lyra-discord",
-    "lyra-clipool",
-    "lyra-turn-writer",
-    "lyra-gh-helper",
+    "factory-nats",
+    "factory-hub",
+    "factory-telegram",
+    "factory-discord",
+    "factory-clipool",
+    "factory-turn-writer",
+    "factory-gh-helper",
 ]
 
 
@@ -105,12 +105,12 @@ def test_restart_runs_when_state_added() -> None:
     )
 
     assert any(
-        "secret create --replace lyra-nats-test-identity" in line
+        "secret create --replace factory-nats-test-identity" in line
         for line in podman_lines
-    ), "podman secret create lyra-nats-test-identity not called"
+    ), "podman secret create factory-nats-test-identity not called"
     assert any(
-        "secret create --replace lyra-nats-auth" in line for line in podman_lines
-    ), "podman secret create lyra-nats-auth not called"
+        "secret create --replace factory-nats-auth" in line for line in podman_lines
+    ), "podman secret create factory-nats-auth not called"
 
     for svc in _EXPECTED_RESTART_SVCS:
         assert any(f"restart {svc}" in line for line in systemctl_lines), (
@@ -164,12 +164,12 @@ def test_restart_runs_when_noop_but_secret_missing() -> None:
     )
 
     assert any(
-        "secret create --replace lyra-nats-test-identity" in line
+        "secret create --replace factory-nats-test-identity" in line
         for line in podman_lines
-    ), "podman secret create lyra-nats-test-identity not called"
+    ), "podman secret create factory-nats-test-identity not called"
     assert any(
-        "secret create --replace lyra-nats-auth" in line for line in podman_lines
-    ), "podman secret create lyra-nats-auth not called"
+        "secret create --replace factory-nats-auth" in line for line in podman_lines
+    ), "podman secret create factory-nats-auth not called"
 
     for svc in _EXPECTED_RESTART_SVCS:
         assert any(f"restart {svc}" in line for line in systemctl_lines), (

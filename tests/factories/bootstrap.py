@@ -142,7 +142,7 @@ def _patch_nats_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LYRA_HEALTH_PORT", "0")
     # Isolate vault dir per test to prevent parallel-worker races on
     # ~/.lyra/discord.db (_ensure_discord_db TOCTOU with -n auto).
-    monkeypatch.setenv("LYRA_VAULT_DIR", tempfile.mkdtemp())
+    monkeypatch.setenv("ROXABI_FACTORY_DIR", tempfile.mkdtemp())
 
 
 def make_fake_stores(

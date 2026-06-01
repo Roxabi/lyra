@@ -1,36 +1,36 @@
 [Unit]
 Description=Lyra TurnWriter — JetStream subscriber for lyra.turns.write
-After=lyra-nats.service
-Requires=lyra-nats.service
+After=factory-nats.service
+Requires=factory-nats.service
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
 [Container]
 Image=ghcr.io/roxabi/lyra:staging-svc
-ContainerName=lyra-turn-writer
+ContainerName=factory-turn-writer
 Network=roxabi.network
 # Hardening — defense in depth (see issue #652).
 NoNewPrivileges=true
 ReadOnly=true
 DropCapability=all
 # ADR-054 Decision 2: UserNS=keep-id maps container UID to host UID 1000 (mickael),
-# which owns ~/.lyra/*. uid=1500 is the lyra service user inside the container.
+# which owns ~/.roxabi/factory/*. uid=1500 is the lyra service user inside the container.
 UserNS=keep-id:uid=1500,gid=1500
 # ADR-054 Decision 5 (revised): nkey seed delivered as Podman secret.
-Secret=lyra-nats-turn-writer,type=mount,target=lyra-nats-turn-writer.seed,uid=1500,gid=1500,mode=0400
-Environment=NATS_NKEY_SEED_PATH=/run/secrets/lyra-nats-turn-writer.seed
-Environment=NATS_URL=nats://lyra-nats:4222
+Secret=factory-nats-turn-writer,type=mount,target=factory-nats-turn-writer.seed,uid=1500,gid=1500,mode=0400
+Environment=NATS_NKEY_SEED_PATH=/run/secrets/factory-nats-turn-writer.seed
+Environment=NATS_URL=nats://factory-nats:4222
 # turn-writer/ directory bind-mount (rw) — SQLite WAL requires sibling files
 # (turns.db-wal, turns.db-shm) in the same directory; a file-level bind mount
 # with ReadOnly=true rootfs would cause EROFS at store open (B4 fix, #1331).
 # NOTE: Do NOT add inline # comments after Volume= values; Quadlet does not strip them
 # and Podman receives the literal comment text as a mount-option string (issue #1083).
-Volume=%h/.lyra/turn-writer/:/data/:z
+Volume=%h/.roxabi/factory/turn-writer/:/data/:z
 Environment=LYRA_TURNS_DB=/data/turns.db
-# LYRA_VAULT_DIR=/data ensures bootstrap mkdir targets the writable bind-mount
+# ROXABI_FACTORY_DIR=/data ensures bootstrap mkdir targets the writable bind-mount
 # under ReadOnly=true rootfs even when LYRA_TURNS_DB resolution falls back
 # (defense in depth for #1359).
-Environment=LYRA_VAULT_DIR=/data
+Environment=ROXABI_FACTORY_DIR=/data
 Environment=PYTHONUNBUFFERED=1
 Exec=lyra turn-writer
 HealthCmd=python3 -c 'import urllib.request,sys; r=urllib.request.urlopen("http://127.0.0.1:8083/health",timeout=3); sys.exit(0 if r.status==200 else 1)'

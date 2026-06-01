@@ -46,15 +46,15 @@ _do_converge() {
     make -C "${LYRA_DIR}" quadlet-secrets-install
 
     # 7) Restart NATS (mount-typed secret refresh requires restart)
-    echo "==> NATS: restarting lyra-nats..."
-    systemctl --user restart --wait lyra-nats
-    systemctl --user is-active --quiet lyra-nats \
-        || { echo "ERROR: lyra-nats failed to reach active state"; exit 1; }
+    echo "==> NATS: restarting factory-nats..."
+    systemctl --user restart --wait factory-nats
+    systemctl --user is-active --quiet factory-nats \
+        || { echo "ERROR: factory-nats failed to reach active state"; exit 1; }
 
     # 8) Restart lyra NATS clients
     echo "==> Lyra: restarting containers..."
     local failed=""
-    for svc in lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-turn-writer lyra-gh-helper lyra-blobstore; do
+    for svc in factory-hub factory-telegram factory-discord factory-clipool factory-turn-writer factory-gh-helper factory-blobstore; do
         systemctl --user restart "${svc}" \
             || { echo "ERROR: restart ${svc} failed"; failed="${failed} ${svc}"; }
     done

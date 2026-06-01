@@ -2,46 +2,46 @@
 Description=Lyra BlobStore HTTP service
 # Soft dependency — audit sink degrades to logger if NATS unreachable at startup;
 # blobstore can boot and serve HTTP traffic without NATS (see spec §Boot failure modes).
-After=lyra-nats.service
-Wants=lyra-nats.service
+After=factory-nats.service
+Wants=factory-nats.service
 StartLimitIntervalSec=60
 StartLimitBurst=5
 
 [Container]
 # Image digest pinning deferred per three-strikes deferral (ADR-073) — same cadence
-# as lyra-hub.container. Dedicated blobstore image blocked until Protocol v2 + ≥3
+# as factory-hub.container. Dedicated blobstore image blocked until Protocol v2 + ≥3
 # cross-repo consumers; see analysis §Shape A rationale.
 Image=ghcr.io/roxabi/lyra:staging-svc
-ContainerName=lyra-blobstore
+ContainerName=factory-blobstore
 Network=roxabi.network
 # Hardening — defense in depth (see issue #652).
 NoNewPrivileges=true
 ReadOnly=true
 DropCapability=all
 # ADR-054: UserNS=keep-id maps container UID to host UID 1000 (mickael),
-# so the blobstore process can read %h/.lyra/blobstore/ owned by the host user.
+# so the blobstore process can read %h/.roxabi/factory/blobstore/ owned by the host user.
 UserNS=keep-id:uid=1500,gid=1500
 # blobstore.env holds operational vars (TAILSCALE_IPV4, NATS_URL); generated idempotently by deploy/install.sh §1c.
 # Do NOT add the `-` prefix — Podman 5.7 treats it as a literal path character.
-EnvironmentFile=%h/.lyra/env/blobstore.env
+EnvironmentFile=%h/.roxabi/factory/env/blobstore.env
 # NATS target for audit sink + readiness KV; mirrors hub convention.
-Environment=NATS_URL=nats://lyra-nats:4222
+Environment=NATS_URL=nats://factory-nats:4222
 # ADR-054: nkey seed delivered as Podman secret for NATS nkey auth.
-Secret=lyra-nats-blobstore,type=mount,target=lyra-nats-blobstore.seed,uid=1500,gid=1500,mode=0400
-Environment=NATS_NKEY_SEED_PATH=/run/secrets/lyra-nats-blobstore.seed
+Secret=factory-nats-blobstore,type=mount,target=factory-nats-blobstore.seed,uid=1500,gid=1500,mode=0400
+Environment=NATS_NKEY_SEED_PATH=/run/secrets/factory-nats-blobstore.seed
 # D4: bearer token secret (type=mount, tmpfs-backed). Bootstrap: see docs/QUADLET-DEPLOYMENT.md.
 # Rotation: write new token → podman secret create --replace → systemctl --user restart
 # (type=mount files are bound at container init; restart is mandatory — ADR-054).
-Secret=lyra_blobstore_token,type=mount,uid=1500,gid=1500,mode=0400,target=/run/secrets/lyra_blobstore_token
+Secret=factory_blobstore_token,type=mount,uid=1500,gid=1500,mode=0400,target=/run/secrets/factory_blobstore_token
 # Blob data directory — bind-mount so data persists across container restarts.
-# Host path mirrors the FsBlobStore default (~/.lyra/blobstore); container path resolves
-# under the lyra home (/home/lyra/.lyra/blobstore via UserNS=keep-id).
+# Host path mirrors the FsBlobStore default (~/.roxabi/factory/blobstore); container path resolves
+# under the lyra home (/home/lyra/.roxabi/factory/blobstore via UserNS=keep-id).
 # NOTE: Do NOT add inline # comments after Volume= values; Quadlet passes them to
 # Podman as mount-option strings (issue #1083).
-Volume=/data/lyra/blobs:/home/lyra/.lyra/blobstore:z
+Volume=/data/factory/blobs:/home/lyra/.roxabi/factory/blobstore:z
 # config.toml — required by the staging-svc image variant (svc-runtime entrypoint
 # reads config at startup; see docs/ops/container-publishing.md §svc-runtime).
-Volume=%h/.lyra/config.toml:/app/config.toml:ro,z
+Volume=%h/.roxabi/factory/config.toml:/app/config.toml:ro,z
 # Bind port to the Tailscale IPv4 of M₁ so the service is reachable from the Tailnet
 # but NOT from the LAN. Resolved at provision time via `tailscale ip -4 | head -1`.
 # RESIDUAL RISK: if TAILSCALE_IPV4 is unset or tailscale0 is absent, PublishPort falls
@@ -50,7 +50,7 @@ Volume=%h/.lyra/config.toml:/app/config.toml:ro,z
 # Bearer token remains the sole auth boundary on a misconfigured host (guard circumvented).
 # Accepted for V8; document in deploy/CLAUDE.md §Residual risks.
 PublishPort=${TAILSCALE_IPV4}:8449:8449
-Exec=lyra blobstore serve --token-path /run/secrets/lyra_blobstore_token --host 0.0.0.0 --port 8449
+Exec=lyra blobstore serve --token-path /run/secrets/factory_blobstore_token --host 0.0.0.0 --port 8449
 HealthCmd=grep -q blobstore /proc/1/cmdline
 HealthInterval=30s
 
@@ -60,7 +60,7 @@ HealthInterval=30s
 # ExecStartPre's systemd scope without this second declaration. Quadlet passes `[Service]`
 # through verbatim, so this loads the file twice — once for systemd (here), once for
 # Podman (above) — both intentional.
-EnvironmentFile=%h/.lyra/env/blobstore.env
+EnvironmentFile=%h/.roxabi/factory/env/blobstore.env
 # Fail-closed guard: refuse to start when TAILSCALE_IPV4 is empty, unset,
 # or whitespace-only. `[ -n "   " ]` is TRUE in POSIX sh, so a bare -n test
 # passes on whitespace-only values — Podman would then construct a malformed

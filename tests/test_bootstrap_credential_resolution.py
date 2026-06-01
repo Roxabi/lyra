@@ -293,7 +293,7 @@ async def test_discord_adapter_handles_multi_bot(
 
     monkeypatch.setenv("LYRA_RUN_SECRETS_DIR", str(run_secrets_dir))
     monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
-    monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path / "vault"))
+    monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path / "vault"))
 
     raw_config = {
         "discord": {

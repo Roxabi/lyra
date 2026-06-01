@@ -19,6 +19,7 @@ from lyra.infrastructure.turn_writer.stream_setup import (
     ensure_stream,
 )
 from lyra.infrastructure.turn_writer.writer import TurnWriter
+from lyra.paths import factory_data_dir
 from roxabi_nats import nats_connect
 from roxabi_nats.connect import scrub_nats_url
 
@@ -82,10 +83,7 @@ async def _bootstrap_turn_writer_standalone(raw_config: dict) -> None:
 
     db_path = Path(
         os.environ.get("LYRA_TURNS_DB")
-        or (
-            Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
-            / "turns.db"
-        )
+        or (factory_data_dir() / "turns.db")
     )
     db_path.parent.mkdir(parents=True, exist_ok=True)
 

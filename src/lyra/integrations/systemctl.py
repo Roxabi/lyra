@@ -2,7 +2,7 @@
 
 Maps the user-facing service name to one or more rootless `systemd --user` units:
 
-    lyra         → lyra-{nats,hub,telegram,discord,clipool}.service
+    lyra         → factory-{nats,hub,telegram,discord,clipool}.service
     voicecli_stt → voicecli-stt.service
     voicecli_tts → voicecli-tts.service
 
@@ -22,11 +22,11 @@ log = logging.getLogger(__name__)
 _TIMEOUT_S = 10.0
 
 _LYRA_UNITS = (
-    "lyra-nats.service",
-    "lyra-hub.service",
-    "lyra-telegram.service",
-    "lyra-discord.service",
-    "lyra-clipool.service",
+    "factory-nats.service",
+    "factory-hub.service",
+    "factory-telegram.service",
+    "factory-discord.service",
+    "factory-clipool.service",
 )
 
 _SERVICE_UNITS: dict[str, tuple[str, ...]] = {

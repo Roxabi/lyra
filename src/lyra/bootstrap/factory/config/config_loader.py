@@ -27,6 +27,7 @@ from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
 from lyra.core.messaging.messages import MessageManager
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.core.stores.pairing_config import PairingConfig
+from lyra.paths import factory_data_dir
 
 log = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ def _validate_config_path(path_str: str) -> str:
 def _load_raw_config(config_path: str | None = None) -> dict[str, Any]:
     """Open and parse config.toml once; return the raw dict.
 
-    Resolution: explicit arg → $LYRA_CONFIG → $LYRA_VAULT_DIR/config.toml
+    Resolution: explicit arg → $LYRA_CONFIG → $ROXABI_FACTORY_DIR/config.toml
     → cwd/config.toml → empty dict.
     """
     env_path = os.environ.get("LYRA_CONFIG")
@@ -62,7 +63,7 @@ def _load_raw_config(config_path: str | None = None) -> dict[str, Any]:
     elif env_path:
         candidates = [_validate_config_path(env_path)]
     else:
-        vault_dir = Path(os.environ.get("LYRA_VAULT_DIR", str(Path.home() / ".lyra")))
+        vault_dir = factory_data_dir()
         candidates = [str(vault_dir / "config.toml"), "config.toml"]
     for path in candidates:
         try:

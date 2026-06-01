@@ -145,42 +145,42 @@
 
 
 ### blobstore
-- **Container:** lyra-blobstore.container
-- **Required secrets:** lyra_blobstore_token
+- **Container:** factory-blobstore.container
+- **Required secrets:** factory_blobstore_token
 - **Host roles:** lyra-hub
 
 ### clipool
-- **Container:** lyra-clipool.container
-- **Required secrets:** lyra-nats-clipool
+- **Container:** factory-clipool.container
+- **Required secrets:** factory-nats-clipool
 - **Host roles:** lyra-hub
 
 ### discord
-- **Container:** lyra-discord.container
-- **Required secrets:** lyra-nats-discord
+- **Container:** factory-discord.container
+- **Required secrets:** factory-nats-discord
 - **Host roles:** lyra-hub
 
 ### gh-helper
-- **Container:** lyra-gh-helper.container
+- **Container:** factory-gh-helper.container
 - **Host roles:** lyra-hub
 
 ### hub
-- **Container:** lyra-hub.container
-- **Required secrets:** lyra-nats-hub
+- **Container:** factory-hub.container
+- **Required secrets:** factory-nats-hub
 - **Host roles:** lyra-hub
 
 ### nats
-- **Container:** lyra-nats.container
-- **Required secrets:** lyra-nats-auth
+- **Container:** factory-nats.container
+- **Required secrets:** factory-nats-auth
 - **Host roles:** lyra-hub
 
 ### telegram
-- **Container:** lyra-telegram.container
-- **Required secrets:** lyra-nats-telegram
+- **Container:** factory-telegram.container
+- **Required secrets:** factory-nats-telegram
 - **Host roles:** lyra-hub
 
 ### turn-writer
-- **Container:** lyra-turn-writer.container
-- **Required secrets:** lyra-nats-turn-writer
+- **Container:** factory-turn-writer.container
+- **Required secrets:** factory-nats-turn-writer
 - **Host roles:** lyra-hub
 
 ---

@@ -1,6 +1,6 @@
 [Unit]
 Description=Lyra data bind-mount — Hub (RW: auth.db, config.db, keyring.key) + TurnWriter sole writer turns.db (ADR-075). Hub mounts turns.db ro.
-# Bind-mount of %h/.lyra — used by the Hub container only (#943).
+# Bind-mount of %h/.roxabi/factory — used by the Hub container only (#943).
 # Adapters use per-file inline bind mounts (keyring.key, config.db, turns.db, discord.db)
 # to minimise blast radius on adapter compromise.
 # Rationale: ADR-054 Decision 1 — tokens live in config.db since #417 (auth.db split);
@@ -8,6 +8,6 @@ Description=Lyra data bind-mount — Hub (RW: auth.db, config.db, keyring.key) +
 
 [Volume]
 Type=none
-Device=%h/.lyra
+Device=%h/.roxabi/factory
 Options=bind
-Label=app=lyra
+Label=app=factory

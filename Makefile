@@ -60,11 +60,11 @@ push:                  ## save image and load on $(DEPLOY_HOST) via ssh
 
 # ── Service control (Quadlet units via systemd --user) ───────────────────────
 
-LYRA_HUB_UNIT      := lyra-hub
-LYRA_TELEGRAM_UNIT := lyra-telegram
-LYRA_DISCORD_UNIT  := lyra-discord
-LYRA_NATS_UNIT     := lyra-nats
-LYRA_CLIPOOL_UNIT  := lyra-clipool
+LYRA_HUB_UNIT      := factory-hub
+LYRA_TELEGRAM_UNIT := factory-telegram
+LYRA_DISCORD_UNIT  := factory-discord
+LYRA_NATS_UNIT     := factory-nats
+LYRA_CLIPOOL_UNIT  := factory-clipool
 LYRA_UNITS         := $(LYRA_HUB_UNIT) $(LYRA_TELEGRAM_UNIT) $(LYRA_DISCORD_UNIT) $(LYRA_CLIPOOL_UNIT)
 
 # $(call lyra_sctl,<unit1> [unit2 ...]) — dispatches SVC_CMD to systemctl --user.
@@ -148,33 +148,33 @@ quadlet-lint:  ## lint Quadlet unit files: dryrun parse check + inline-comment g
 
 quadlet-install: quadlet-preflight  ## install Quadlet units → reload + verify (NO_RESTART=1 skips restart/verify)
 	@mkdir -p "$(QUADLET_DIR)"
-	@rm -f "$(QUADLET_DIR)"/lyra*.{network,volume,container,pod} "$(QUADLET_DIR)/nats.container" \
-	       "$(QUADLET_DIR)/roxabi.network" "$(QUADLET_DIR)/lyra-nats.container"
+	@rm -f "$(QUADLET_DIR)"/lyra*.{network,volume,container,pod} "$(QUADLET_DIR)"/factory*.{network,volume,container,pod} "$(QUADLET_DIR)/nats.container" \
+	       "$(QUADLET_DIR)/roxabi.network" "$(QUADLET_DIR)/factory-nats.container"
 	@cp deploy/quadlet/roxabi.network                  "$(QUADLET_DIR)/roxabi.network"
-	@cp deploy/quadlet/lyra-data.volume                "$(QUADLET_DIR)/lyra-data.volume"
-	@cp deploy/quadlet/lyra-jetstream.volume           "$(QUADLET_DIR)/lyra-jetstream.volume"
-	@cp deploy/quadlet/lyra-gh-token.volume            "$(QUADLET_DIR)/lyra-gh-token.volume"
-	@install -d -m 0700 "$(HOME)/.lyra/nats/jetstream"
-	@chmod 0700 "$(HOME)/.lyra/nats"
-	@chmod 0700 "$(HOME)/.lyra/nats/jetstream"
-	@cp deploy/quadlet/lyra-nats.container             "$(QUADLET_DIR)/lyra-nats.container"
-	@cp deploy/quadlet/lyra-hub.container              "$(QUADLET_DIR)/lyra-hub.container"
+	@cp deploy/quadlet/factory-data.volume                "$(QUADLET_DIR)/factory-data.volume"
+	@cp deploy/quadlet/factory-jetstream.volume           "$(QUADLET_DIR)/factory-jetstream.volume"
+	@cp deploy/quadlet/factory-gh-token.volume            "$(QUADLET_DIR)/factory-gh-token.volume"
+	@install -d -m 0700 "$(HOME)/.roxabi/factory/nats/jetstream"
+	@chmod 0700 "$(HOME)/.roxabi/factory/nats"
+	@chmod 0700 "$(HOME)/.roxabi/factory/nats/jetstream"
+	@cp deploy/quadlet/factory-nats.container             "$(QUADLET_DIR)/factory-nats.container"
+	@cp deploy/quadlet/factory-hub.container              "$(QUADLET_DIR)/factory-hub.container"
 	@uv run lyra bot init
 	@uv run python tools/render_quadlet.py \
 		--platform telegram \
-		--db "$(HOME)/.lyra/config.db" \
-		--tmpl deploy/quadlet/lyra-telegram.container.tmpl \
-		--dest "$(QUADLET_DIR)/lyra-telegram.container"
+		--db "$(HOME)/.roxabi/factory/config.db" \
+		--tmpl deploy/quadlet/factory-telegram.container.tmpl \
+		--dest "$(QUADLET_DIR)/factory-telegram.container"
 	@uv run python tools/render_quadlet.py \
 		--platform discord \
-		--db "$(HOME)/.lyra/config.db" \
-		--tmpl deploy/quadlet/lyra-discord.container.tmpl \
-		--dest "$(QUADLET_DIR)/lyra-discord.container"
-	@cp deploy/quadlet/lyra-gh.pod                     "$(QUADLET_DIR)/lyra-gh.pod"
-	@cp deploy/quadlet/lyra-gh-helper.container        "$(QUADLET_DIR)/lyra-gh-helper.container"
-	@cp deploy/quadlet/lyra-clipool.container          "$(QUADLET_DIR)/lyra-clipool.container"
-	@cp deploy/quadlet/lyra-blobstore.container        "$(QUADLET_DIR)/lyra-blobstore.container"
-	@cp deploy/quadlet/lyra-turn-writer.container      "$(QUADLET_DIR)/lyra-turn-writer.container"
+		--db "$(HOME)/.roxabi/factory/config.db" \
+		--tmpl deploy/quadlet/factory-discord.container.tmpl \
+		--dest "$(QUADLET_DIR)/factory-discord.container"
+	@cp deploy/quadlet/factory-gh.pod                     "$(QUADLET_DIR)/factory-gh.pod"
+	@cp deploy/quadlet/factory-gh-helper.container        "$(QUADLET_DIR)/factory-gh-helper.container"
+	@cp deploy/quadlet/factory-clipool.container          "$(QUADLET_DIR)/factory-clipool.container"
+	@cp deploy/quadlet/factory-blobstore.container        "$(QUADLET_DIR)/factory-blobstore.container"
+	@cp deploy/quadlet/factory-turn-writer.container      "$(QUADLET_DIR)/factory-turn-writer.container"
 	@echo "Quadlet units copied."
 	@if [ "$(NO_RESTART)" = "1" ]; then \
 		echo "NO_RESTART=1 — skipping daemon-reload, restart, and verification."; \
@@ -198,33 +198,33 @@ quadlet-sync-install:  ## install systemd sync timers + services → daemon-relo
 	@systemctl --user enable lyra-post-autoupdate.timer
 	@echo "[ok] lyra-quadlet-sync.timer + lyra-post-autoupdate.timer enabled."
 
-quadlet-authconf-merged:  ## render merged auth.conf (lyra + voicecli identities) → ~/.lyra/nkeys/auth.conf
+quadlet-authconf-merged:  ## render merged auth.conf (lyra + voicecli identities) → ~/.roxabi/factory/nkeys/auth.conf
 	@lyra-acl genkeys --emit-merged-authconf
 
 # ADR-054 Decision 5 (revised): file-based credentials (NATS auth.conf + nkey seeds)
-# are delivered to containers as Podman secrets. Source files live in ~/.lyra/nkeys/;
+# are delivered to containers as Podman secrets. Source files live in ~/.roxabi/factory/nkeys/;
 # this target imports them into the user's Podman secret store. Idempotent (--replace).
-LYRA_NKEYS_DIR := $(HOME)/.lyra/nkeys
-quadlet-secrets-install:  ## (re)create Podman secrets from ~/.lyra/nkeys/*
+LYRA_NKEYS_DIR := $(HOME)/.roxabi/factory/nkeys
+quadlet-secrets-install:  ## (re)create Podman secrets from ~/.roxabi/factory/nkeys/*
 	@test -d "$(LYRA_NKEYS_DIR)" || { echo "ERROR: $(LYRA_NKEYS_DIR) not found"; exit 1; }
-	@podman secret create --replace lyra-nats-auth              "$(LYRA_NKEYS_DIR)/auth.conf"
-	@podman secret create --replace lyra-nats-hub               "$(LYRA_NKEYS_DIR)/hub.seed"
-	@podman secret create --replace lyra-nats-telegram          "$(LYRA_NKEYS_DIR)/telegram-adapter.seed"
-	@podman secret create --replace lyra-nats-discord           "$(LYRA_NKEYS_DIR)/discord-adapter.seed"
-	@podman secret create --replace lyra-nats-clipool           "$(LYRA_NKEYS_DIR)/clipool-worker.seed"
-	@if [ -f "$(HOME)/.lyra/gh-app.pem" ]; then \
-		podman secret create --replace lyra-gh-pem "$(HOME)/.lyra/gh-app.pem"; \
-		echo "lyra-gh-pem secret created from ~/.lyra/gh-app.pem"; \
+	@podman secret create --replace factory-nats-auth              "$(LYRA_NKEYS_DIR)/auth.conf"
+	@podman secret create --replace factory-nats-hub               "$(LYRA_NKEYS_DIR)/hub.seed"
+	@podman secret create --replace factory-nats-telegram          "$(LYRA_NKEYS_DIR)/telegram-adapter.seed"
+	@podman secret create --replace factory-nats-discord           "$(LYRA_NKEYS_DIR)/discord-adapter.seed"
+	@podman secret create --replace factory-nats-clipool           "$(LYRA_NKEYS_DIR)/clipool-worker.seed"
+	@if [ -f "$(HOME)/.roxabi/factory/gh-app.pem" ]; then \
+		podman secret create --replace factory-gh-pem "$(HOME)/.roxabi/factory/gh-app.pem"; \
+		echo "factory-gh-pem secret created from ~/.roxabi/factory/gh-app.pem"; \
 	else \
-		echo "SKIP: ~/.lyra/gh-app.pem not found — lyra-gh-pem secret not created."; \
-		echo "      Copy the GitHub App PEM to ~/.lyra/gh-app.pem then re-run."; \
+		echo "SKIP: ~/.roxabi/factory/gh-app.pem not found — factory-gh-pem secret not created."; \
+		echo "      Copy the GitHub App PEM to ~/.roxabi/factory/gh-app.pem then re-run."; \
 	fi
-	@if [ -f "$(HOME)/.lyra/claude-oauth.tok" ]; then \
-		tr -d '\n' < "$(HOME)/.lyra/claude-oauth.tok" | podman secret create --replace lyra-claude-oauth -; \
-		echo "lyra-claude-oauth secret created from ~/.lyra/claude-oauth.tok"; \
+	@if [ -f "$(HOME)/.roxabi/factory/claude-oauth.tok" ]; then \
+		tr -d '\n' < "$(HOME)/.roxabi/factory/claude-oauth.tok" | podman secret create --replace factory-claude-oauth -; \
+		echo "factory-claude-oauth secret created from ~/.roxabi/factory/claude-oauth.tok"; \
 	else \
-		echo "SKIP: ~/.lyra/claude-oauth.tok not found — lyra-claude-oauth secret not created."; \
-		echo "      Generate with: claude setup-token > ~/.lyra/claude-oauth.tok && chmod 600 ~/.lyra/claude-oauth.tok"; \
+		echo "SKIP: ~/.roxabi/factory/claude-oauth.tok not found — factory-claude-oauth secret not created."; \
+		echo "      Generate with: claude setup-token > ~/.roxabi/factory/claude-oauth.tok && chmod 600 ~/.roxabi/factory/claude-oauth.tok"; \
 	fi
 	@echo "Podman secrets installed. Verify: podman secret ls"
 
@@ -279,11 +279,11 @@ full-deploy:  ## atomic deploy: git pull → quadlet-install → regen auth.conf
 	echo "==> NATS: installing Podman secrets..."; \
 	make -C "$$LYRA_DIR" quadlet-secrets-install; \
 	echo "==> NATS: restarting (refresh mount-typed Podman secret)..."; \
-	systemctl --user restart lyra-nats; \
-	systemctl --user is-active --wait lyra-nats \
-		|| { echo "ERROR: lyra-nats failed to reach active state"; exit 1; }; \
+	systemctl --user restart factory-nats; \
+	systemctl --user is-active --wait factory-nats \
+		|| { echo "ERROR: factory-nats failed to reach active state"; exit 1; }; \
 	echo "==> Lyra: restarting containers..."; \
-	systemctl --user restart lyra-hub lyra-telegram lyra-discord lyra-clipool; \
+	systemctl --user restart factory-hub factory-telegram factory-discord factory-clipool; \
 	echo ""; \
 	echo "Full deploy complete."'
 
@@ -300,10 +300,10 @@ remote:
 	SVC="$(word 1,$(_LYRA_CMD))"; ACTION="$(word 2,$(_LYRA_CMD))"; \
 	QDIR=$$HOME/.config/containers/systemd; \
 	rdisc() { ls "$$QDIR"/lyra-*.container "$$QDIR"/voicecli-*.container 2>/dev/null | xargs -n1 basename | sed "s/\.container$$//" | tr "\n" " "; }; \
-	if   [ -z "$$SVC" ] || [ "$$SVC" = lyra ]; then PROGS=$$(rdisc); FIRST=lyra-hub; \
+	if   [ -z "$$SVC" ] || [ "$$SVC" = lyra ]; then PROGS=$$(rdisc); FIRST=factory-hub; \
 	elif [ -f "$$QDIR/lyra-$$SVC.container" ];     then PROGS="lyra-$$SVC"; FIRST="$$PROGS"; \
 	elif [ -f "$$QDIR/voicecli-$$SVC.container" ]; then PROGS="voicecli-$$SVC"; FIRST="$$PROGS"; \
-	else ACTION="$$SVC"; PROGS=$$(rdisc); FIRST=lyra-hub; fi; \
+	else ACTION="$$SVC"; PROGS=$$(rdisc); FIRST=factory-hub; fi; \
 	case "$${ACTION:-status}" in \
 	  reload)  systemctl --user restart $$PROGS ;; \
 	  start)   systemctl --user start   $$PROGS ;; \
@@ -318,8 +318,8 @@ remote:
 
 # Shared list of services that hold NATS subject auth and must restart
 # whenever `auth.conf` is regenerated or a new identity is added. The bare
-# `lyra-nats` is restarted separately by the target itself before this list.
-LYRA_NATS_CLIENTS := lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-turn-writer lyra-gh-helper lyra-blobstore
+# `factory-nats` is restarted separately by the target itself before this list.
+LYRA_NATS_CLIENTS := factory-hub factory-telegram factory-discord factory-clipool factory-turn-writer factory-gh-helper factory-blobstore
 
 nats-setup:
 	@bash deploy/nats/setup.sh
@@ -329,16 +329,16 @@ nats-regen-specs:             ## re-render ACL spec table + parity fixture from 
 	@uv run python scripts/render_acl_parity.py
 	@echo "[ok] ACL spec + parity fixture regenerated"
 
-nats-regen-authconf:          ## re-render auth.conf, refresh lyra-nats-auth secret only, restart all NATS clients
+nats-regen-authconf:          ## re-render auth.conf, refresh factory-nats-auth secret only, restart all NATS clients
 	@lyra-acl genkeys --regen-authconf
 	@test -s "$(LYRA_NKEYS_DIR)/auth.conf" \
 		|| { echo "ERROR: $(LYRA_NKEYS_DIR)/auth.conf missing or empty after genkeys"; exit 1; }
 	@# auth.conf only — seed rotation is a different runbook (nkey-rotation.md).
-	@podman secret create --replace lyra-nats-auth "$(LYRA_NKEYS_DIR)/auth.conf"
+	@podman secret create --replace factory-nats-auth "$(LYRA_NKEYS_DIR)/auth.conf"
 	@# Restart, not HUP — see docs/ops/nats-authconf-update.md.
-	@systemctl --user restart lyra-nats
-	@systemctl --user is-active --wait lyra-nats \
-		|| { echo "ERROR: lyra-nats failed to reach active state"; exit 1; }
+	@systemctl --user restart factory-nats
+	@systemctl --user is-active --wait factory-nats \
+		|| { echo "ERROR: factory-nats failed to reach active state"; exit 1; }
 	@# All NATS clients hold stale subject auth after an ACL change (#1390).
 	@failed=""; \
 	for svc in $(LYRA_NATS_CLIENTS); do \
@@ -357,14 +357,14 @@ nats-add-identity:  ## add a single NATS identity rootless; idempotent after ful
 	if [ $$rc -ne 0 ]; then echo "$$out" >&2; echo "lyra-acl failed (exit $$rc) — aborting"; exit $$rc; fi; \
 	state=$$(echo "$$out" | grep -oE 'STATE=(noop|repaired|added)'); \
 	echo "lyra-acl: $$state"; \
-	if [ "$$state" = "STATE=noop" ] && podman secret inspect "lyra-nats-$(NAME)" >/dev/null 2>&1; then \
+	if [ "$$state" = "STATE=noop" ] && podman secret inspect "factory-nats-$(NAME)" >/dev/null 2>&1; then \
 	  echo "no-op: $(NAME) already provisioned + Podman secret present locally"; \
 	  exit 0; \
 	fi; \
-	podman secret create --replace "lyra-nats-$(NAME)" "$(LYRA_NKEYS_DIR)/$(NAME).seed"; \
-	podman secret create --replace lyra-nats-auth "$(LYRA_NKEYS_DIR)/auth.conf"; \
+	podman secret create --replace "factory-nats-$(NAME)" "$(LYRA_NKEYS_DIR)/$(NAME).seed"; \
+	podman secret create --replace factory-nats-auth "$(LYRA_NKEYS_DIR)/auth.conf"; \
 	failed=""; \
-	for svc in lyra-nats $(LYRA_NATS_CLIENTS); do \
+	for svc in factory-nats $(LYRA_NATS_CLIENTS); do \
 	  if systemctl --user is-active --quiet $$svc; then \
 	    systemctl --user restart $$svc || { echo "ERROR: restart $$svc failed"; failed="$$failed $$svc"; }; \
 	  fi; \

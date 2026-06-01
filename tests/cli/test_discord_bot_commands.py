@@ -66,13 +66,13 @@ class TestDiscordList:
         assert "list" in result.output.lower()
 
     def test_empty_db(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(agent_app, ["discord", "list"])
         assert result.exit_code == 0, result.output
         assert "no discord bots" in result.output.lower()
 
     def test_with_bots(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="discord", bot_id="main", agent="lyra"))
         db_upsert(db_path, BotRow(platform="discord", bot_id="beta", agent="beta"))
@@ -85,7 +85,7 @@ class TestDiscordList:
     def test_ignores_other_platforms(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="telegram", bot_id="tg1", agent="lyra"))
 
@@ -110,7 +110,7 @@ class TestDiscordShow:
         assert "bot_id" in result.output.lower()
 
     def test_missing_bot(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(agent_app, ["discord", "show", "ghost"])
         assert result.exit_code == 1, result.output
         assert "not found" in result.output.lower()
@@ -118,7 +118,7 @@ class TestDiscordShow:
     def test_existing_bot(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(
             db_path,
@@ -140,7 +140,7 @@ class TestDiscordShow:
     def test_invalid_bot_id(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(agent_app, ["discord", "show", "../../evil"])
         assert result.exit_code == 2, result.output
         assert "invalid" in result.output.lower()
@@ -162,7 +162,7 @@ class TestDiscordAdd:
         assert "bot_id" in result.output.lower()
 
     def test_add_minimal(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(agent_app, ["discord", "add", "main"])
         assert result.exit_code == 0, result.output
         assert "added" in result.output.lower()
@@ -176,7 +176,7 @@ class TestDiscordAdd:
     def test_add_with_options(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(
             agent_app,
             [
@@ -208,7 +208,7 @@ class TestDiscordAdd:
     def test_add_invalid_bot_id(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(agent_app, ["discord", "add", "../../evil"])
         assert result.exit_code == 2, result.output
         assert "invalid" in result.output.lower()
@@ -216,7 +216,7 @@ class TestDiscordAdd:
     def test_add_invalid_default_trust(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(
             agent_app,
             ["discord", "add", "main", "--default-trust", "evil"],
@@ -241,7 +241,7 @@ class TestDiscordEdit:
         assert "bot_id" in result.output.lower()
 
     def test_missing_bot(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(agent_app, ["discord", "edit", "ghost"])
         assert result.exit_code == 1, result.output
         assert "not found" in result.output.lower()
@@ -250,7 +250,7 @@ class TestDiscordEdit:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """All blank prompts -> no changes."""
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="discord", bot_id="main", agent="lyra"))
 
@@ -273,7 +273,7 @@ class TestDiscordEdit:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Provide new values for all prompts."""
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(
             db_path,
@@ -333,7 +333,7 @@ class TestDiscordEdit:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Invalid int for thread_hot_hours prints error and skips field."""
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(
             db_path,
@@ -367,7 +367,7 @@ class TestDiscordEdit:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """'-' input clears list fields."""
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(
             db_path,
@@ -420,13 +420,13 @@ class TestDiscordPatch:
         assert "bot_id" in result.output.lower()
 
     def test_missing_bot(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(agent_app, ["discord", "patch", "ghost", "--agent", "x"])
         assert result.exit_code == 1, result.output
         assert "not found" in result.output.lower()
 
     def test_patch_agent(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="discord", bot_id="main", agent="lyra"))
 
@@ -443,7 +443,7 @@ class TestDiscordPatch:
     def test_patch_no_fields(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="discord", bot_id="main", agent="lyra"))
 
@@ -454,7 +454,7 @@ class TestDiscordPatch:
     def test_patch_owner_users(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="discord", bot_id="main", agent="lyra"))
 
@@ -471,7 +471,7 @@ class TestDiscordPatch:
     def test_patch_webhook_enabled(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(
             db_path,
@@ -490,7 +490,7 @@ class TestDiscordPatch:
     def test_patch_default_trust(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(
             db_path,
@@ -510,7 +510,7 @@ class TestDiscordPatch:
     def test_patch_auto_thread(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(
             db_path,
@@ -525,7 +525,7 @@ class TestDiscordPatch:
     def test_patch_thread_hot_hours(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(
             db_path,
@@ -545,7 +545,7 @@ class TestDiscordPatch:
     def test_patch_default_trust_invalid(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="discord", bot_id="main", agent="lyra"))
         result = runner.invoke(
@@ -572,7 +572,7 @@ class TestDiscordRemove:
         assert "bot_id" in result.output.lower()
 
     def test_missing_bot(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(agent_app, ["discord", "remove", "ghost", "--yes"])
         assert result.exit_code == 1, result.output
         assert "not found" in result.output.lower()
@@ -580,7 +580,7 @@ class TestDiscordRemove:
     def test_remove_with_yes(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="discord", bot_id="main", agent="lyra"))
 
@@ -594,7 +594,7 @@ class TestDiscordRemove:
     def test_remove_invalid_bot_id(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(agent_app, ["discord", "remove", "../../evil", "--yes"])
         assert result.exit_code == 2, result.output
         assert "invalid" in result.output.lower()
@@ -603,7 +603,7 @@ class TestDiscordRemove:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Confirm deletion without --yes flag (mock confirm=yes)."""
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="discord", bot_id="main", agent="lyra"))
         monkeypatch.setattr(
@@ -619,7 +619,7 @@ class TestDiscordRemove:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Decline deletion without --yes flag (mock confirm=no)."""
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="discord", bot_id="main", agent="lyra"))
 
@@ -649,7 +649,7 @@ class TestDiscordAssign:
         assert "bot_id" in result.output.lower()
 
     def test_missing_bot(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(
             agent_app, ["discord", "assign", "ghost", "--agent", "lyra"]
         )
@@ -657,7 +657,7 @@ class TestDiscordAssign:
         assert "not found" in result.output.lower()
 
     def test_assign(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="discord", bot_id="main", agent=""))
 
@@ -688,13 +688,13 @@ class TestDiscordUnassign:
         assert "bot_id" in result.output.lower()
 
     def test_missing_bot(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(agent_app, ["discord", "unassign", "ghost"])
         assert result.exit_code == 1, result.output
         assert "not found" in result.output.lower()
 
     def test_unassign(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="discord", bot_id="main", agent="lyra"))
 
@@ -723,13 +723,13 @@ class TestDiscordValidate:
         assert "bot_id" in result.output.lower()
 
     def test_missing_bot(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(agent_app, ["discord", "validate", "ghost"])
         assert result.exit_code == 1, result.output
         assert "not found" in result.output.lower()
 
     def test_validate_ok(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         _seed_agent(db_path, "lyra")
         db_upsert(
@@ -757,7 +757,7 @@ class TestDiscordValidate:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Bot with no agent assigned skips agent check and still passes."""
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(
             db_path,
@@ -782,7 +782,7 @@ class TestDiscordValidate:
     def test_validate_no_owners(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         _seed_agent(db_path, "lyra")
         db_upsert(
@@ -808,7 +808,7 @@ class TestDiscordValidate:
     def test_validate_no_secret(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         _seed_agent(db_path, "lyra")
         db_upsert(
@@ -836,7 +836,7 @@ class TestDiscordValidate:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Agent referenced by bot does not exist in AgentStore."""
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         _seed_agent(db_path, "lyra")
         db_upsert(
@@ -862,7 +862,7 @@ class TestDiscordValidate:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """subprocess.run returns non-zero exit code."""
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         _seed_agent(db_path, "lyra")
         db_upsert(
@@ -886,7 +886,7 @@ class TestDiscordValidate:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Validate that subprocess.run was called with correct arguments."""
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         _seed_agent(db_path, "lyra")
         db_upsert(
@@ -923,7 +923,7 @@ class TestDiscordValidate:
     def test_validate_invalid_bot_id(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(agent_app, ["discord", "validate", "../../evil"])
         assert result.exit_code == 2, result.output
         assert "invalid" in result.output.lower()

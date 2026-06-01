@@ -5,7 +5,7 @@ StartLimitBurst=5
 
 [Container]
 Image=docker.io/library/nats:2.10.29-alpine
-ContainerName=lyra-nats
+ContainerName=factory-nats
 Network=roxabi.network
 # Hardening — defense in depth (see issue #652).
 NoNewPrivileges=true
@@ -20,11 +20,11 @@ Volume=%h/projects/lyra/deploy/nats/nats-container.conf:/etc/nats/nats.conf:ro,z
 # Writable exception to ReadOnly=true — JetStream persistence (rootfs flag only in Podman).
 # NOTE: Do NOT add inline # comments after Volume= values; Quadlet does not strip them
 # and Podman receives the literal comment text as a mount-option string (issue #1083).
-Volume=lyra-jetstream.volume:/var/lib/nats/jetstream:z
+Volume=factory-jetstream.volume:/var/lib/nats/jetstream:z
 # ADR-054 Decision 5 (revised): file-based credentials delivered as Podman secrets
 # (type=mount, tmpfs-backed). Replaces single-file .volume wrappers which failed
 # with "loop device setup" in Podman 5.x. Bootstrap: `make quadlet-secrets-install`.
-Secret=lyra-nats-auth,type=mount,target=/etc/nats/nkeys/auth.conf,mode=0444
+Secret=factory-nats-auth,type=mount,target=/etc/nats/nkeys/auth.conf,mode=0444
 Exec=nats-server -c /etc/nats/nats.conf
 HealthCmd=pgrep -f nats-server
 HealthInterval=30s

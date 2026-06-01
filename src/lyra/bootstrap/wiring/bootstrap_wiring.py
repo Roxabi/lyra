@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -27,9 +26,7 @@ from lyra.core.messaging.messages import MessageManager
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig
 from lyra.infrastructure.stores.agent_store import AgentStore
 from lyra.infrastructure.stores.thread_store import ThreadStore
-
-# Default vault dir for discord.db (#417 / S4)
-_DEFAULT_VAULT_DIR = os.path.expanduser("~/.lyra")
+from lyra.paths import factory_data_dir
 
 log = logging.getLogger(__name__)
 
@@ -159,9 +156,7 @@ async def wire_discord_adapters(
 
     # Shared ThreadStore for all Discord adapters (#417/S4)
     # One connection to discord.db — shared across all Discord bots.
-    _vault = Path(
-        deps.vault_dir or os.environ.get("LYRA_VAULT_DIR", _DEFAULT_VAULT_DIR)
-    )
+    _vault = Path(deps.vault_dir) if deps.vault_dir else factory_data_dir()
     thread_store: ThreadStore | None = None
     if deps.dc_bot_auths:
         thread_store = ThreadStore(db_path=_vault / "discord.db")

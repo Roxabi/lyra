@@ -380,7 +380,7 @@ fi
 # ── Lyra env-file dir (Quadlet EnvironmentFile= targets) ─────────────────────
 
 section "Lyra env-file directory"
-LYRA_ENV_DIR="/home/$ADMIN_USER/.lyra/env"
+LYRA_ENV_DIR="/home/$ADMIN_USER/.roxabi/factory/env"
 sudo -u "$ADMIN_USER" install -d -m 0700 "$LYRA_ENV_DIR"
 # Quadlet EnvironmentFile= cannot use systemd's `-` silent-if-missing prefix;
 # touch an empty file so the unit starts even when no per-host overrides exist.
@@ -395,11 +395,11 @@ GH_PEM_PATH="${GH_PEM_PATH:-}"
 # Trusted dirs for secret files — same allowlist as rotate-gh-key.sh / rotate-claude-oauth.sh.
 LYRA_SECRETS_TRUSTED='/home/lyra/secrets/*|/etc/lyra/*'
 if sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
-     podman secret inspect lyra-gh-pem &>/dev/null; then
-  info "Podman secret 'lyra-gh-pem' already present, skipping."
+     podman secret inspect factory-gh-pem &>/dev/null; then
+  info "Podman secret 'factory-gh-pem' already present, skipping."
 else
   if [[ -z "$GH_PEM_PATH" ]]; then
-    warn "GH_PEM_PATH not set — skipping lyra-gh-pem bootstrap."
+    warn "GH_PEM_PATH not set — skipping factory-gh-pem bootstrap."
     warn "  Re-run with: GH_PEM_PATH=/abs/path/to/lyra-app.pem $0"
   else
     RESOLVED_PEM=$(realpath -e "$GH_PEM_PATH" 2>/dev/null) \
@@ -407,15 +407,15 @@ else
     [[ "$RESOLVED_PEM" == /home/lyra/secrets/* || "$RESOLVED_PEM" == /etc/lyra/* ]] \
       || error "GH_PEM_PATH outside trusted dirs (/home/lyra/secrets/, /etc/lyra/): $RESOLVED_PEM"
     sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
-      podman secret create lyra-gh-pem "$RESOLVED_PEM" \
-      || error "Failed to create podman secret lyra-gh-pem"
-    info "Podman secret 'lyra-gh-pem' created from $RESOLVED_PEM."
+      podman secret create factory-gh-pem "$RESOLVED_PEM" \
+      || error "Failed to create podman secret factory-gh-pem"
+    info "Podman secret 'factory-gh-pem' created from $RESOLVED_PEM."
   fi
 fi
 
 # ── Lyra Claude Code OAuth token (Podman secret) ────────────────────────────
 #
-# The `claude` subprocess in lyra-clipool uses a 1-year OAuth setup-token
+# The `claude` subprocess in factory-clipool uses a 1-year OAuth setup-token
 # (auth precedence #5) instead of the interactive-OAuth credentials file
 # (#6), because the latter's auto-refresh is broken in non-TTY subprocess
 # contexts (anthropics/claude-code#50743). Bootstrap the token by running
@@ -426,13 +426,13 @@ fi
 section "Lyra Claude Code OAuth token (Podman secret)"
 CLAUDE_OAUTH_TOKEN_PATH="${CLAUDE_OAUTH_TOKEN_PATH:-}"
 if sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
-     podman secret inspect lyra-claude-oauth &>/dev/null; then
-  info "Podman secret 'lyra-claude-oauth' already present, skipping."
+     podman secret inspect factory-claude-oauth &>/dev/null; then
+  info "Podman secret 'factory-claude-oauth' already present, skipping."
 else
   if [[ -z "$CLAUDE_OAUTH_TOKEN_PATH" ]]; then
-    warn "CLAUDE_OAUTH_TOKEN_PATH not set — skipping lyra-claude-oauth bootstrap."
-    warn "  Generate the token: install -m 0600 /dev/null ~/.lyra/claude-oauth.tok && claude setup-token > ~/.lyra/claude-oauth.tok"
-    warn "  Re-run with: CLAUDE_OAUTH_TOKEN_PATH=~/.lyra/claude-oauth.tok $0"
+    warn "CLAUDE_OAUTH_TOKEN_PATH not set — skipping factory-claude-oauth bootstrap."
+    warn "  Generate the token: install -m 0600 /dev/null ~/.roxabi/factory/claude-oauth.tok && claude setup-token > ~/.roxabi/factory/claude-oauth.tok"
+    warn "  Re-run with: CLAUDE_OAUTH_TOKEN_PATH=~/.roxabi/factory/claude-oauth.tok $0"
   else
     RESOLVED_TOKEN=$(realpath -e "$CLAUDE_OAUTH_TOKEN_PATH" 2>/dev/null) \
       || error "Token file not found or unresolvable: $(printf '%q' "$CLAUDE_OAUTH_TOKEN_PATH")"
@@ -445,9 +445,9 @@ else
     # Pipe via `tr -d '\n'` so a trailing newline (common from `cmd > file`)
     # cannot leak into the secret value and silently break auth at runtime.
     sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" bash -c \
-      "tr -d '\n' < \"$RESOLVED_TOKEN\" | podman secret create lyra-claude-oauth -" \
-      || error "Failed to create podman secret lyra-claude-oauth"
-    info "Podman secret 'lyra-claude-oauth' created from $RESOLVED_TOKEN."
+      "tr -d '\n' < \"$RESOLVED_TOKEN\" | podman secret create factory-claude-oauth -" \
+      || error "Failed to create podman secret factory-claude-oauth"
+    info "Podman secret 'factory-claude-oauth' created from $RESOLVED_TOKEN."
     # Wipe source file — best-effort. shred is a no-op on CoW filesystems
     # (btrfs, tmpfs, ZFS); rely on encrypted home for at-rest protection.
     shred -u "$RESOLVED_TOKEN" || rm -f "$RESOLVED_TOKEN"
@@ -548,7 +548,7 @@ else
   echo ""
   echo "     git clone git@github.com:Roxabi/lyra.git ~/projects/lyra"
   echo ""
-  echo "  2. Run the lyra setup (clones optional modules, installs Quadlets if this host has the lyra-hub role):"
+  echo "  2. Run the lyra setup (clones optional modules, installs Quadlets if this host has the factory-hub role):"
   echo ""
   echo "     cd ~/projects/lyra && python3 deploy/setup.py"
   echo ""

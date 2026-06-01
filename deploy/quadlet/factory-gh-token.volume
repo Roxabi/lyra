@@ -21,7 +21,7 @@
 #       socket /run/lyra-gh-token/dispenser.sock → 0660 group lyra-tokenuser (I-3)
 #   - Sticky bit prevents either uid from deleting the other's files.
 #
-# Quadlet generates `lyra-gh-token-volume.service` from this file.
+# Quadlet generates `factory-gh-token-volume.service` from this file.
 [Volume]
 Driver=local
 Type=tmpfs

@@ -44,8 +44,8 @@ class TestAgentInitCommand:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """init with empty vault dir exits 0 (creates tables, 0 TOMLs to import)."""
-        # Arrange — redirect vault to tmp_path so no real ~/.lyra is touched
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        # Arrange — redirect vault to tmp_path so no real ~/.roxabi/factory is touched
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
 
         # Act
         result = runner.invoke(agent_app, ["init"])
@@ -75,7 +75,7 @@ class TestAgentListCommand:
     ) -> None:
         """list with empty vault dir exits 0 (no agents, no crash)."""
         # Arrange
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
 
         # Act
         result = runner.invoke(agent_app, ["list"])
@@ -97,7 +97,7 @@ class TestAgentShowCommand:
     ) -> None:
         """show of a non-existent agent exits 1 with 'not found' message."""
         # Arrange
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
 
         # Act
         result = runner.invoke(agent_app, ["show", "nonexistent"])
@@ -120,7 +120,7 @@ class TestAgentValidateCommand:
     ) -> None:
         """validate of a non-existent agent exits 1."""
         # Arrange
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
 
         # Act
         result = runner.invoke(agent_app, ["validate", "nonexistent"])
@@ -142,7 +142,7 @@ class TestAgentDeleteCommand:
     ) -> None:
         """delete of a non-existent agent exits 1."""
         # Arrange
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
 
         # Act
         result = runner.invoke(agent_app, ["delete", "nonexistent", "--yes"])
@@ -164,7 +164,7 @@ class TestAgentAssignCommand:
     ) -> None:
         """assign of an agent not in DB exits 1 with 'not found' message."""
         # Arrange
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
 
         # Act
         result = runner.invoke(
@@ -181,7 +181,7 @@ class TestAgentAssignCommand:
     ) -> None:
         """assign with an unrecognised platform exits 1."""
         # Arrange
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
 
         # Act
         result = runner.invoke(
@@ -206,7 +206,7 @@ class TestAgentUnassignCommand:
     ) -> None:
         """unassign when no mapping exists is a safe no-op: exits 0."""
         # Arrange
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
 
         # Act
         result = runner.invoke(

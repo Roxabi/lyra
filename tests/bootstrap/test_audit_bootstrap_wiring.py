@@ -80,7 +80,7 @@ class TestJetStreamAuditSinkBootstrapIntegration:
         fake_proc = make_fake_proc([])
 
         with patch(
-            "lyra.core.cli.cli_pool_worker.asyncio.create_subprocess_exec",
+            "lyra.core.cli.cli_pool_spawn.asyncio.create_subprocess_exec",
             return_value=fake_proc,
         ):
             await pool._spawn("p:1", model)
@@ -109,7 +109,7 @@ class TestJetStreamAuditSinkBootstrapIntegration:
         fake_proc = make_fake_proc([])
 
         with patch(
-            "lyra.core.cli.cli_pool_worker.asyncio.create_subprocess_exec",
+            "lyra.core.cli.cli_pool_spawn.asyncio.create_subprocess_exec",
             return_value=fake_proc,
         ):
             await pool._spawn("p:2", model)

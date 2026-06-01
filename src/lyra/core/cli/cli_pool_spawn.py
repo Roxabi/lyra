@@ -111,9 +111,9 @@ class CliPoolSpawnMixin:
         strip = lambda v: v.replace("\r", "").replace("\n", "")  # noqa: E731
         safe_name = strip(agent_name)
         ident: dict[str, str] = {"LYRA_AGENT": safe_name}
-        if lyra_session_id:
+        if lyra_session_id is not None and lyra_session_id != "":
             ident["LYRA_SESSION_ID"] = strip(lyra_session_id)
-        if agent_email:
+        if agent_email is not None and agent_email != "":
             ident["GIT_COMMITTER_NAME"] = safe_name
             ident["GIT_COMMITTER_EMAIL"] = strip(agent_email)
         return ident

@@ -9,9 +9,9 @@ it to lyra's domain types.
 
 ## Domain clients here vs transport in `lyra.transport`
 
-`nats_{tts,stt,image}_client.py` are domain clients that compose:
+`audio/nats_tts_client.py`, `stt/nats_stt_client.py`, and `image/nats_image_client.py` are domain clients that compose:
 - `WorkerPoolClient` (from `lyra.transport`) for routing + CB + heartbeat tracking
-- A domain codec (`nats_{tts,stt,image}_codec.py` — encode/decode of wire bytes ↔ domain values)
+- A domain codec (`audio/nats_tts_codec.py`, `stt/nats_stt_codec.py`, `image/nats_image_codec.py` — encode/decode of wire bytes ↔ domain values)
 
 Domain clients here own:
 - Their `roxabi_contracts.voice|image` subject helpers (`per_worker_tts/stt`)
@@ -76,18 +76,18 @@ in #1104 to match the canonical ACL allow list; do NOT reintroduce them.
 
 ## STT/TTS/Image NATS clients
 
-`nats_stt_client.py`, `nats_tts_client.py`, and `nats_image_client.py` implement their
+`stt/nats_stt_client.py`, `audio/nats_tts_client.py`, and `image/nats_image_client.py` implement their
 respective domain protocols over NATS. Since #1278 each client is a thin domain wrapper
 that composes `WorkerPoolClient` (from `lyra.transport`) with a codec:
 
-- `nats_tts_codec.py` / `nats_stt_codec.py` / `nats_image_codec.py` — pure encode/decode,
+- `audio/nats_tts_codec.py` / `stt/nats_stt_codec.py` / `image/nats_image_codec.py` — pure encode/decode,
   no I/O; convert wire bytes ↔ domain value objects.
 - Domain clients call `pool.request_with_routing(subject_fn, payload)` or
   `pool.stream_request(payload)` — they never call `nc.new_inbox()` or `nc.subscribe()`
   directly.
 
-`tts_engine_selector.py` and `tts_text_normalization.py` are helpers co-located with their
-consumer (`nats_tts_client.py`).
+`audio/tts_engine_selector.py` and `audio/tts_text_normalization.py` are helpers co-located with their
+consumer (`audio/nats_tts_client.py`).
 
 ## Key invariants
 

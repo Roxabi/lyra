@@ -12,7 +12,7 @@ import aiosqlite
 import pytest
 
 from lyra.core.agent.schema.bot_schema import _CREATE_BOTS
-from lyra.infrastructure.stores.bot_store_migrations import (
+from lyra.infrastructure.stores.migrations.bot_store_migrations import (
     _get_user_version,
     _set_user_version,
     run_bot_migrations,

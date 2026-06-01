@@ -1,0 +1,49 @@
+---
+title: "refactor: folder reorg — infrastructure/stores + nats subpackages"
+issue: 1595
+status: approved
+tier: F-lite
+date: 2026-06-01
+---
+
+## Problem
+
+Two folders in the lyra codebase exceed the 12-file quality-gate cap:
+
+- `src/lyra/infrastructure/stores` — 16 `.py` files
+- `src/lyra/nats` — 16 `.py` files
+
+Both are currently exempted in `tools/folder_exemptions.txt`. The goal is to reorganize them into logical subpackages so each folder and its subfolders stays under 12 files, then remove the exemptions.
+
+## Who
+
+- **Primary:** Developers maintaining the lyra codebase (code hygiene, navigation)
+- **Secondary:** CI/pre-push hook enforcement (quality gate must pass)
+
+## Constraints
+
+- All imports must be updated to reflect new module paths
+- No test regressions
+- New subpackages must also stay under 12 files
+- Must follow existing project patterns (e.g., `__init__.py` re-exports)
+
+## Out of Scope
+
+- Functional changes to any store or NATS logic
+- New capabilities or features
+- ADR changes (this is a mechanical refactor)
+
+## Premise Validity
+
+**Success in 6 months:** `infrastructure/stores` and `nats` both under 12 files, folder exemptions removed, no test regressions, new subpackages also under 12 files.
+
+**Failure in 6 months:** folder size gate still fails for either folder or exemptions still exist after 3 sprint cycles (measurable).
+
+**Simplest alternative:** Add/extend folder exemptions in `tools/folder_exemptions.txt`.
+**Why not simplest:** Masks structural debt; doesn't improve maintainability or discoverability; subpackages reflect logical grouping (migrations, base stores, audio).
+
+## Complexity
+
+**Tier: F-lite** — single domain (code organization), clear scope, no new patterns, no unknowns.
+
+- Signals: size:F-lite label, refactor label, debt label, clear plan in issue body

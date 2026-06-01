@@ -12,7 +12,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from lyra.nats.nats_image_codec import ImageGenParams
+from lyra.nats.image.nats_image_codec import ImageGenParams
 from roxabi_contracts.image import (
     SUBJECTS,
     ImageHeartbeat,
@@ -24,7 +24,7 @@ from roxabi_contracts.image import (
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
 
-    from lyra.nats.nats_image_codec import ImageCodec
+    from lyra.nats.image.nats_image_codec import ImageCodec
     from lyra.transport.worker_pool_client import WorkerPoolClient
 
 log = logging.getLogger(__name__)

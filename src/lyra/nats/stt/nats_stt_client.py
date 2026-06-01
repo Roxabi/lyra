@@ -10,15 +10,15 @@ import logging
 from typing import TYPE_CHECKING
 
 from lyra.core.ports.stt import STTNoiseError, STTUnavailableError, TranscriptionResult
-from lyra.nats.nats_stt_codec import SttEncodeParams
-from lyra.nats.stt_helpers import is_whisper_noise
+from lyra.nats.stt.nats_stt_codec import SttEncodeParams
+from lyra.nats.stt.stt_helpers import is_whisper_noise
 from roxabi_contracts import BlobRef
 from roxabi_contracts.voice import per_worker_stt
 
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
 
-    from lyra.nats.nats_stt_codec import SttCodec
+    from lyra.nats.stt.nats_stt_codec import SttCodec
     from lyra.transport.worker_pool_client import WorkerPoolClient
 
 log = logging.getLogger(__name__)

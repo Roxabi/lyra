@@ -1,0 +1,176 @@
+---
+title: "refactor: folder reorg — infrastructure/stores + nats subpackages"
+issue: 1595
+status: approved
+tier: F-lite
+date: 2026-06-01
+promoted_from: artifacts/frames/1595-refactor-folder-reorg-infrastructure-stores-nats-subpackages-frame.mdx
+---
+
+## Context
+
+Promoted from [frame #1595](../frames/1595-refactor-folder-reorg-infrastructure-stores-nats-subpackages-frame.mdx).
+
+## Out of Scope
+
+- No file contents modified (only moved)
+- No new abstractions or interfaces introduced
+- No test logic changes beyond import path updates
+- No renaming of classes or functions
+- No functional changes to store or NATS behavior
+
+## Goal
+
+Reorganize `src/lyra/infrastructure/stores` (17 files) and `src/lyra/nats` (20 files) into logical subpackages so every folder stays under the 12-file quality-gate cap, then remove folder exemptions.
+
+## Users
+
+- **Primary:** Developers navigating the codebase
+- **Secondary:** CI/pre-push hooks enforcing `check-folder-size`
+
+## Expected Behavior
+
+1. `src/lyra/infrastructure/stores` is split into:
+   - `stores/migrations/` — `agent_store_migrations.py`, `bot_store_migrations.py`
+   - `stores/base/` — `sqlite_base.py`, `message_index.py`, `bot_agent_map.py`
+   - `stores/` root — remaining 12 files (including `__init__.py`)
+
+2. `src/lyra/nats` is split into:
+   - `nats/audio/` — `nats_tts_client.py`, `nats_tts_codec.py`, `tts_engine_selector.py`, `tts_text_normalization.py` *(note: `tts_engine_selector.py` and `tts_text_normalization.py` are not currently imported by any other module)*
+   - `nats/stt/` — `nats_stt_client.py`, `nats_stt_codec.py`, `stt_helpers.py`
+   - `nats/image/` — `nats_image_client.py`, `nats_image_codec.py`
+   - `nats/` root — remaining 11 files (including `__init__.py`)
+
+3. All internal imports updated to reflect new paths.
+4. `__init__.py` created in each new subpackage (`migrations/`, `base/`, `audio/`, `stt/`, `image/`).
+5. Root `__init__.py` re-exports maintained so external consumers using `from lyra.infrastructure.stores import X` don't change.
+6. `tools/folder_exemptions.txt` entries for both folders removed.
+7. No test regressions.
+
+## Data Model & Consumers
+
+```mermaid
+classDiagram
+    direction TB
+    class stores_root {
+        +agent_store.py
+        +auth_store.py
+        +bot_store.py
+        +identity_alias_store.py
+        +message_index_kv.py
+        +pairing.py
+        +prefs_store.py
+        +thread_store.py
+        +turn_store.py
+        +turn_store_queries.py
+        +turn_store_session.py
+        +__init__.py
+    }
+    class stores_migrations {
+        +agent_store_migrations.py
+        +bot_store_migrations.py
+    }
+    class stores_base {
+        +sqlite_base.py
+        +message_index.py
+        +bot_agent_map.py
+    }
+    class nats_root {
+        +audio_publish.py
+        +keepalive.py
+        +nats_bus.py
+        +nats_channel_proxy.py
+        +queue_groups.py
+        +render_event_codec.py
+        +render_event_codec_registry.py
+        +stream_error.py
+        +type_registry.py
+        +worker_registry.py
+        +__init__.py
+    }
+    class nats_audio {
+        +nats_tts_client.py
+        +nats_tts_codec.py
+        +tts_engine_selector.py
+        +tts_text_normalization.py
+    }
+    class nats_stt {
+        +nats_stt_client.py
+        +nats_stt_codec.py
+        +stt_helpers.py
+    }
+    class nats_image {
+        +nats_image_client.py
+        +nats_image_codec.py
+    }
+
+    stores_root --> stores_migrations : imports
+    stores_root --> stores_base : imports
+    nats_root --> nats_audio : imports
+    nats_root --> nats_stt : imports
+    nats_root --> nats_image : imports
+```
+
+**Consumer summary:**
+
+| Consumer | Fields / Modules | Status |
+|----------|----------------|--------|
+| `bootstrap/bootstrap_stores.py` | `stores.*` | this issue — no change |
+| `bootstrap/factory/voice_overlay.py` | `nats.tts`, `nats.stt`, `nats.image` | this issue — import path update |
+| `adapters/nats/*.py` | `nats.render_event_codec`, `nats.type_registry` | this issue — no change |
+| `bootstrap/factory/hub/*.py` | `nats.nats_bus`, `nats.worker_registry` | this issue — no change |
+
+## Breadboard
+
+| Module | Moved to | Import updates required |
+|--------|----------|------------------------|
+| `stores.agent_store_migrations` | `stores.migrations.agent_store_migrations` | `stores/agent_store.py` |
+| `stores.bot_store_migrations` | `stores.migrations.bot_store_migrations` | `stores/bot_store.py` |
+| `stores.sqlite_base` | `stores.base.sqlite_base` | `stores/{agent,auth,bot,bot_agent_map,identity_alias,message_index,prefs,thread,turn}_store.py` |
+| `stores.message_index` | `stores.base.message_index` | `stores/__init__.py` |
+| `nats.nats_tts_client` | `nats.audio.nats_tts_client` | `nats/__init__.py`, `bootstrap/factory/voice_overlay.py` |
+| `nats.nats_tts_codec` | `nats.audio.nats_tts_codec` | `nats/__init__.py`, `bootstrap/factory/voice_overlay.py`, `nats/nats_tts_client.py` |
+| `nats.tts_engine_selector` | `nats.audio.tts_engine_selector` | `nats/__init__.py`, `nats/nats_tts_client.py` |
+| `nats.tts_text_normalization` | `nats.audio.tts_text_normalization` | `nats/__init__.py`, `nats/nats_tts_client.py` |
+| `nats.nats_stt_client` | `nats.stt.nats_stt_client` | `nats/__init__.py`, `bootstrap/factory/voice_overlay.py` |
+| `nats.nats_stt_codec` | `nats.stt.nats_stt_codec` | `nats/__init__.py`, `bootstrap/factory/voice_overlay.py`, `nats/nats_stt_client.py` |
+| `nats.stt_helpers` | `nats.stt.stt_helpers` | `nats/__init__.py`, `nats/nats_stt_client.py` |
+| `nats.nats_image_client` | `nats.image.nats_image_client` | `nats/__init__.py`, `bootstrap/factory/voice_overlay.py` |
+| `nats.nats_image_codec` | `nats.image.nats_image_codec` | `nats/__init__.py`, `bootstrap/factory/voice_overlay.py`, `nats/nats_image_client.py` |
+
+**Test imports requiring updates:**
+
+| Test file | Moved module | New path |
+|-----------|-------------|----------|
+| `tests/core/test_sqlite_base_wal.py` | `stores.sqlite_base` | `stores.base.sqlite_base` |
+| `tests/core/test_message_index.py` | `stores.message_index` | `stores.base.message_index` |
+| `tests/infrastructure/test_agent_store_migration.py` | `stores.agent_store_migrations` | `stores.migrations.agent_store_migrations` |
+| `tests/infrastructure/test_bot_store_migration.py` | `stores.bot_store_migrations` | `stores.migrations.bot_store_migrations` |
+| `tests/nats/test_nats_tts_client.py` | `nats.nats_tts_client` | `nats.audio.nats_tts_client` |
+| `tests/nats/test_nats_tts_codec.py` | `nats.nats_tts_codec` | `nats.audio.nats_tts_codec` |
+| `tests/nats/test_nats_stt_client.py` | `nats.nats_stt_client` | `nats.stt.nats_stt_client` |
+| `tests/nats/test_nats_image_client.py` | `nats.nats_image_client` | `nats.image.nats_image_client` |
+| `tests/bootstrap/test_voice_overlay.py` | `nats.nats_tts_client`, `nats.nats_stt_client`, `nats.nats_image_client` | `nats.audio.*`, `nats.stt.*`, `nats.image.*` |
+
+## Slices
+
+| # | Slice | Files | Demo |
+|---|-------|-------|------|
+| 1 | Reorg `stores` | Move 5 files to `migrations/` + `base/`, create `__init__.py` in each subpackage, update imports, fix root `__init__.py` | `check-folder-size` passes for `stores/` |
+| 2 | Reorg `nats` | Move 9 files to `audio/`, `stt/`, `image/`, create `__init__.py` in each subpackage, update imports, fix root `__init__.py` | `check-folder-size` passes for `nats/` |
+| 3 | Clean exemptions | Remove entries from `tools/folder_exemptions.txt` | Gate passes CI |
+
+## Success Criteria
+
+- [ ] `src/lyra/infrastructure/stores` root has ≤ 12 `.py` files
+- [ ] `src/lyra/infrastructure/stores/migrations` has ≤ 12 `.py` files
+- [ ] `src/lyra/infrastructure/stores/base` has ≤ 12 `.py` files
+- [ ] `src/lyra/nats` root has ≤ 12 `.py` files
+- [ ] `src/lyra/nats/audio` has ≤ 12 `.py` files
+- [ ] `src/lyra/nats/stt` has ≤ 12 `.py` files
+- [ ] `src/lyra/nats/image` has ≤ 12 `.py` files
+- [ ] `tools/folder_exemptions.txt` no longer lists `src/lyra/infrastructure/stores` or `src/lyra/nats`
+- [ ] `tools/check_folder_size.sh` passes for all affected folders
+- [ ] All tests pass (`uv run pytest`)
+- [ ] No import errors (`uv run pyright` or `python -c "import lyra"`)
+- [ ] `lyra.infrastructure.stores.*` and `lyra.nats.*` re-exports still accessible via root `__init__.py`

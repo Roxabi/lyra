@@ -26,7 +26,7 @@ from lyra.core.stores.pairing_config import (
     _sha256,
     _utc_now,
 )
-from lyra.infrastructure.stores.sqlite_base import SqliteStore
+from lyra.infrastructure.stores.base.sqlite_base import SqliteStore
 
 # Re-export so existing `from lyra.core.pairing import PairingConfig/PairingError`
 # imports continue to work unchanged.

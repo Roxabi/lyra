@@ -16,7 +16,9 @@ from lyra.core.agent.schema.agent_schema import (
     _CREATE_AGENTS,
 )
 from lyra.infrastructure.stores.agent_store import AgentStore
-from lyra.infrastructure.stores.agent_store_migrations import run_agent_migrations
+from lyra.infrastructure.stores.migrations.agent_store_migrations import (
+    run_agent_migrations,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers

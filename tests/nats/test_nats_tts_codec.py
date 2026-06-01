@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from lyra.nats.nats_tts_codec import TtsCodec
+from lyra.nats.audio.nats_tts_codec import TtsCodec
 from lyra.transport._result import Err, Ok, SanitizedError
 from roxabi_contracts import BlobRef
 from roxabi_contracts.envelope import CONTRACT_VERSION

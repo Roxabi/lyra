@@ -31,7 +31,7 @@ Two flavours of `Protocol` live in `core/`:
 
 Rule of thumb: if the Protocol abstracts something *outside* lyra (LLM, TTS, audit log, future Langfuse, …) → **driven port** → `core/ports/`. If it abstracts an *internal* collaboration (a role another file inside `lyra.core` fills) → **role interface**, co-located with its sub-domain. Driven ports are pure Protocol with no infrastructure import (TYPE_CHECKING-only allowed). Role interfaces follow the same constraint.
 
-`ports/llm.py`, `ports/stt.py`, `ports/tts.py` follow the same shape: protocol + value objects + errors only. `ports/` is the single owner of domain types. Adapter-adjacent helpers (`is_whisper_noise`, `mime_from_suffix`) live in `lyra/nats/stt_helpers.py`, not in `ports/`.
+`ports/llm.py`, `ports/stt.py`, `ports/tts.py` follow the same shape: protocol + value objects + errors only. `ports/` is the single owner of domain types. Adapter-adjacent helpers (`is_whisper_noise`, `mime_from_suffix`) live in `lyra/nats/stt/stt_helpers.py`, not in `ports/`.
 
 ## Store pattern (ADR-048 (absorbed into ADR-059))
 

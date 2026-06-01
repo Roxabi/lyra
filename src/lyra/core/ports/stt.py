@@ -2,7 +2,8 @@
 
 Self-contained: protocol + value object + errors.
 Pure: stdlib only. No inbound lyra imports.
-Adapter-adjacent helpers (noise detection, MIME mapping) live in lyra.nats.stt_helpers.
+Adapter-adjacent helpers (noise detection, MIME mapping) live in
+lyra.nats.stt.stt_helpers.
 """
 
 from __future__ import annotations

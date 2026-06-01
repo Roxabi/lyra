@@ -14,9 +14,11 @@ from lyra.core.agent.schema.bot_schema import (
     _UPSERT_BOT,
 )
 from lyra.core.stores.bot_store_protocol import BotStoreProtocol
-from lyra.infrastructure.stores.bot_store_migrations import run_bot_migrations
+from lyra.infrastructure.stores.migrations.bot_store_migrations import (
+    run_bot_migrations,
+)
 
-from .sqlite_base import SqliteStore
+from .base.sqlite_base import SqliteStore
 
 log = logging.getLogger(__name__)
 

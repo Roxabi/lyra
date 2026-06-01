@@ -15,9 +15,9 @@ from lyra.bootstrap.factory.voice_overlay import (
     init_nats_tts,
     probe_voice_services,
 )
-from lyra.nats.nats_image_client import NatsImageClient
-from lyra.nats.nats_stt_client import NatsSttClient
-from lyra.nats.nats_tts_client import NatsTtsClient
+from lyra.nats.audio.nats_tts_client import NatsTtsClient
+from lyra.nats.image.nats_image_client import NatsImageClient
+from lyra.nats.stt.nats_stt_client import NatsSttClient
 
 
 @pytest.fixture()

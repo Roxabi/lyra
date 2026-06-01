@@ -21,7 +21,7 @@ import logging
 from datetime import UTC, datetime
 
 from lyra.core.stores.thread_store_protocol import ThreadSession
-from lyra.infrastructure.stores.sqlite_base import SqliteStore
+from lyra.infrastructure.stores.base.sqlite_base import SqliteStore
 
 log = logging.getLogger(__name__)
 

@@ -47,16 +47,16 @@ from lyra.core.messaging.message import (
     OutboundMessage,
 )
 from lyra.core.messaging.messages import MessageManager
+from lyra.core.trace import TraceContext
+from uuid import uuid4
 
 log = logging.getLogger(__name__)
 
 
 # ── Typing plane (#1376) — module-level resolver for AC8 ─────────────────
-import uuid  # noqa: E402
-
-from lyra.core.trace import TraceContext  # noqa: E402
 from lyra.transport.typing_publisher import is_typing_enabled  # noqa: E402
 from lyra.transport.work_scope import WorkScope  # noqa: E402
+from lyra.typing.listener import typing_publisher_shim  # noqa: E402
 
 
 def _telegram_scope_resolver(scope: WorkScope) -> int:
@@ -202,40 +202,26 @@ class TelegramAdapter(OutboundAdapterBase):
         return _typing_worker(self.bot, chat_id)
 
     def _start_typing(self, scope_id: int) -> None:
+        publisher = getattr(self, "_typing_publisher", None)
+        if publisher is not None and typing_publisher_shim(
+            "telegram", self._bot_id, scope_id, publisher, publisher.publish_started,
+            trace_id=TraceContext.get_trace_id() or uuid4().hex,
+        ):
+            return
         if is_typing_enabled():
-            publisher = getattr(self, "_typing_publisher", None)
-            if publisher is not None:
-                work_scope = WorkScope(
-                    platform="telegram",
-                    bot_id=self._bot_id,
-                    scope_id=scope_id,
-                    trace_id=TraceContext.get_trace_id() or uuid.uuid4().hex,
-                )
-                task = asyncio.create_task(publisher.publish_started(work_scope))
-                task.add_done_callback(
-                    lambda t: t.exception()
-                    and log.warning("typing publish_started failed: %s", t.exception())
-                )
-        else:
-            self._typing.start(scope_id, self._factory_builder(scope_id))
+            return  # pub/sub active but publisher absent → intentional no-op
+        self._typing.start(scope_id, self._factory_builder(scope_id))
 
     def _cancel_typing(self, scope_id: int) -> None:
+        publisher = getattr(self, "_typing_publisher", None)
+        if publisher is not None and typing_publisher_shim(
+            "telegram", self._bot_id, scope_id, publisher, publisher.publish_ended,
+            trace_id=TraceContext.get_trace_id() or uuid4().hex,
+        ):
+            return
         if is_typing_enabled():
-            publisher = getattr(self, "_typing_publisher", None)
-            if publisher is not None:
-                work_scope = WorkScope(
-                    platform="telegram",
-                    bot_id=self._bot_id,
-                    scope_id=scope_id,
-                    trace_id=TraceContext.get_trace_id() or uuid.uuid4().hex,
-                )
-                task = asyncio.create_task(publisher.publish_ended(work_scope))
-                task.add_done_callback(
-                    lambda t: t.exception()
-                    and log.warning("typing publish_ended failed: %s", t.exception())
-                )
-        else:
-            self._typing.cancel(scope_id)
+            return  # pub/sub active but publisher absent → intentional no-op
+        self._typing.cancel(scope_id)
 
     async def astart(self) -> None:
         if self._outbound_listener is not None:

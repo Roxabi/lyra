@@ -1,7 +1,7 @@
 ---
 title: "ADR-077: Outbound audio subject family and JetStream delivery guarantee"
 description: Introduces lyra.outbound.audio.<platform>.<bot_id> as a dedicated 5-token subject backed by JetStream stream LYRA_OUTBOUND_AUDIO, delivering at-least-once + KV dedup for audio. The legacy 4-token text path is unchanged.
-status: accepted
+status: superseded by ADR-079
 date: 2026-05-28
 deciders: [Mickael, architect, devops]
 supersedes: []
@@ -11,6 +11,8 @@ related: [035, 076, 075]
 
 > **Current truth** → [`docs/architecture/messaging.md`](../messaging.md){#current-truth}
 > This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+
+> **Superseded by ADR-079.** See [`ADR-079`](079-audio-nats-contract-axial-consolidation.mdx) for the axial-consolidation successor that subsumes this ADR.
 
 ## Status
 

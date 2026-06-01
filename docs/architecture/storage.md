@@ -308,5 +308,7 @@ guard pattern is gone; the bus is either injected or absent. → ADR-022 (amende
 | 063 | ThreadStore teardown | Accepted |
 | 067 | BlobStore content-addressed | Accepted (amended 2026-05-24) |
 | 068 | Ecosystem Service Plane | Accepted |
+| 075 | TurnWriter subscriber-writer | Superseded by ADR-078 |
+| 078 | TurnStoreProtocol — decouple core from concrete TurnStore | Accepted — 2026-05-28 |
 | 082 | BlobStorePort — driven-port parity | Accepted |
 | 048 | Lyra infrastructure layer | Absorbed by ADR-059 |

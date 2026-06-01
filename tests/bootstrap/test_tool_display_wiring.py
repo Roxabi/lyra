@@ -434,6 +434,7 @@ async def test_standalone_path_threads_tool_display_config_to_discord() -> None:
 
     mock_nc = AsyncMock()
     mock_nc.subscribe = AsyncMock(return_value=AsyncMock())
+    mock_nc.jetstream = MagicMock(return_value=AsyncMock())
 
     captured_constructor_kwargs_dc: dict = {}
     captured_dc_adapter_instance: MagicMock | None = None

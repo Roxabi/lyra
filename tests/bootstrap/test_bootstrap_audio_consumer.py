@@ -55,7 +55,7 @@ def _cred_patch(token: str = "tok", webhook: str = "") -> tuple:
 def _make_nc_mock() -> AsyncMock:
     """Build a NATS connection mock with a synchronous jetstream() method."""
     mock_nc = AsyncMock()
-    mock_js = MagicMock()  # JetStreamContext — nc.jetstream() is sync, not awaited
+    mock_js = AsyncMock()  # JetStreamContext — now async for bot_settings_kv
     mock_nc.jetstream = MagicMock(return_value=mock_js)
     return mock_nc
 

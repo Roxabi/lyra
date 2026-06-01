@@ -48,7 +48,8 @@
         "lyra.image.heartbeat",
         "lyra.clipool.heartbeat",
         "lyra.gh.mint_failure.>",
-        "_inbox.hub.>"
+        "_inbox.hub.>",
+        "$KV.lyra-bot-settings.>"
       ],
       "deploy": { "type": "container", "secret": "lyra-nats-hub" }
     },
@@ -124,7 +125,8 @@
         "_inbox.discord-adapter.>",
         "_inbox.discord-adapter.*.*",
         "$KV.lyra-state.>",
-        "$KV.lyra_outbound_audio_sent.>"
+        "$KV.lyra_outbound_audio_sent.>",
+        "$KV.lyra-bot-settings.>"
       ],
       "deploy": { "type": "container", "secret": "lyra-nats-discord" }
     },

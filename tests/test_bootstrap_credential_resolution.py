@@ -332,6 +332,7 @@ async def test_discord_adapter_handles_multi_bot(
         return _make_mock_adapter(bot_id)
 
     mock_nc = AsyncMock()
+    mock_nc.jetstream = MagicMock(return_value=AsyncMock())
     mock_inbound_bus = AsyncMock()
     mock_inbound_bus.register = MagicMock()
     mock_inbound_bus.start = AsyncMock()

@@ -191,7 +191,7 @@ def _make_hub_stubs() -> tuple:
     mock_nc.is_connected = True
     mock_nc.close = AsyncMock()
     mock_nc.drain = AsyncMock()
-    mock_js = MagicMock()
+    mock_js = AsyncMock()
     mock_nc.jetstream = MagicMock(return_value=mock_js)
 
     @asynccontextmanager

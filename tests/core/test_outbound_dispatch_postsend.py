@@ -16,8 +16,8 @@ import pytest
 
 from lyra.core.hub.outbound._dispatch import _handle_post_send
 from lyra.core.hub.outbound.outbound_errors import _SEND_ERROR_MSG
-from lyra.core.messaging.callbacks import TrustedCallback
 from lyra.core.messaging.message import OutboundMessage
+from lyra.core.messaging.utils.callbacks import TrustedCallback
 from tests.core.conftest import make_dispatcher_msg
 
 # ---------------------------------------------------------------------------

@@ -23,7 +23,7 @@ from roxabi_contracts.envelope import CONTRACT_VERSION
 from ..agent.agent_config import ModelConfig
 from ..trace import TraceContext
 from .cli_pool_entry import _ProcessEntry
-from .cli_protocol_types import _read_stderr_snippet, build_cmd
+from .protocol.cli_protocol_types import _read_stderr_snippet, build_cmd
 
 if TYPE_CHECKING:
     from lyra.core.ports.audit_sink import AuditSink

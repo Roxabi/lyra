@@ -26,7 +26,7 @@ from ..messaging.events import (
     ToolUseEndLlmEvent,
     ToolUseLlmEvent,
 )
-from ..messaging.metrics import emit_populated_total
+from ..messaging.utils.metrics import emit_populated_total
 
 # Anthropic CLI NDJSON wire constants — kept here so the parser is the single
 # source of truth on what shapes upstream emits.

@@ -6,7 +6,7 @@ import logging
 
 import pytest
 
-from lyra.core.messaging.callbacks import TrustedCallback, unwrap_callback
+from lyra.core.messaging.utils.callbacks import TrustedCallback, unwrap_callback
 
 # ---------------------------------------------------------------------------
 # TrustedCallback
@@ -105,7 +105,7 @@ def test_unwrap_rejects_raw_callable_and_logs(caplog: pytest.LogCaptureFixture) 
 
     meta: dict[str, object] = {"_on_dispatched": _raw}
 
-    with caplog.at_level(logging.WARNING, logger="lyra.core.messaging.callbacks"):
+    with caplog.at_level(logging.WARNING, logger="lyra.core.messaging.utils.callbacks"):
         result = unwrap_callback(meta, "_on_dispatched")
 
     assert result is None
@@ -116,7 +116,7 @@ def test_unwrap_rejects_raw_callable_and_logs(caplog: pytest.LogCaptureFixture) 
 def test_unwrap_rejects_lambda_and_logs(caplog: pytest.LogCaptureFixture) -> None:
     meta: dict[str, object] = {"_session_update_fn": lambda: None}
 
-    with caplog.at_level(logging.WARNING, logger="lyra.core.messaging.callbacks"):
+    with caplog.at_level(logging.WARNING, logger="lyra.core.messaging.utils.callbacks"):
         result = unwrap_callback(meta, "_session_update_fn")
 
     assert result is None
@@ -155,7 +155,7 @@ def test_unwrap_rejects_non_callable_value_and_logs(
 ) -> None:
     meta: dict[str, object] = {"_on_dispatched": 42}
 
-    with caplog.at_level(logging.WARNING, logger="lyra.core.messaging.callbacks"):
+    with caplog.at_level(logging.WARNING, logger="lyra.core.messaging.utils.callbacks"):
         result = unwrap_callback(meta, "_on_dispatched")
 
     assert result is None
@@ -170,7 +170,7 @@ def test_unwrap_pop_removes_key_even_on_rejection(
 
     meta: dict[str, object] = {"_on_dispatched": _raw}
 
-    with caplog.at_level(logging.WARNING, logger="lyra.core.messaging.callbacks"):
+    with caplog.at_level(logging.WARNING, logger="lyra.core.messaging.utils.callbacks"):
         result = unwrap_callback(meta, "_on_dispatched", pop=True)
 
     assert result is None

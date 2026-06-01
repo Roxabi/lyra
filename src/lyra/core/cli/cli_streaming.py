@@ -13,8 +13,8 @@ from collections.abc import Awaitable, Callable
 
 from ..messaging.events import LlmEvent
 from .cli_pool_entry import _ProcessEntry
-from .cli_protocol_types import CliProtocolOptions, _read_stderr_snippet
 from .cli_streaming_parser import CliStreamingParser
+from .protocol.cli_protocol_types import CliProtocolOptions, _read_stderr_snippet
 
 log = logging.getLogger(__name__)
 

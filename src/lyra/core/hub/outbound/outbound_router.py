@@ -18,8 +18,8 @@ from collections.abc import AsyncIterator, Callable, Coroutine
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from ...messaging.callbacks import unwrap_callback
 from ...messaging.message import InboundMessage, OutboundMessage, Platform, Response
+from ...messaging.utils.callbacks import unwrap_callback
 from .outbound_audio import AudioDispatch
 from .outbound_streaming import StreamingDispatch
 from .outbound_tts import TtsDispatch

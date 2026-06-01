@@ -10,7 +10,7 @@ from pathlib import Path
 
 from lyra.bootstrap.factory.config import build_adapter_config_bundle
 from lyra.core.messaging.message import Platform
-from lyra.core.messaging.metrics import log_contracts_version
+from lyra.core.messaging.utils.metrics import log_contracts_version
 from roxabi_nats import nats_connect
 from roxabi_nats.connect import scrub_nats_url
 

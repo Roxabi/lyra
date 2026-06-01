@@ -13,10 +13,10 @@ from typing import TYPE_CHECKING, cast
 from ..agent.agent_config import ModelConfig
 from .cli_pool_entry import _ProcessEntry
 from .cli_pool_types import _CliPoolCore
-from .cli_protocol import StreamingIterator, send_and_read_stream
+from .protocol.cli_protocol import StreamingIterator, send_and_read_stream
 
 if TYPE_CHECKING:
-    from .cli_protocol import CliProtocolOptions
+    from .protocol.cli_protocol import CliProtocolOptions
 
 log = logging.getLogger(__name__)
 

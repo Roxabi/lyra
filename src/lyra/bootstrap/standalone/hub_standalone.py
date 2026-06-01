@@ -29,7 +29,7 @@ from lyra.bootstrap.standalone.hub_standalone_helpers import (
     load_agent_configs,
     start_mint_failure_subscriber,
 )
-from lyra.core.messaging.metrics import log_contracts_version
+from lyra.core.messaging.utils.metrics import log_contracts_version
 from roxabi_nats import nats_connect
 from roxabi_nats.connect import scrub_nats_url
 from roxabi_nats.readiness import announce_hub_ready, start_readiness_responder

@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from lyra.core.stores import TurnStoreProtocol
     from lyra.transport.turn_publisher import TurnPublisher
 
-from .cli_protocol import SESSION_ID_RE
+from .protocol.cli_protocol import SESSION_ID_RE
 
 log = logging.getLogger(__name__)
 

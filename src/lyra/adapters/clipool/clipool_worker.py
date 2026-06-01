@@ -20,7 +20,7 @@ from pydantic import ValidationError
 from lyra.core.agent.agent_config import ModelConfig
 from lyra.core.cli.cli_pool import CliPool
 from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
-from lyra.core.messaging.metrics import emit_populated_total
+from lyra.core.messaging.utils.metrics import emit_populated_total
 from roxabi_contracts.cli.models import (
     CliChunkEvent,
     CliCmdPayload,

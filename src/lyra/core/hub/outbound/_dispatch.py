@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from ...lifecycle.circuit_breaker import CircuitBreaker
-from ...messaging.callbacks import unwrap_callback
 from ...messaging.message import RoutingContext
+from ...messaging.utils.callbacks import unwrap_callback
 from .outbound_errors import (
     _CIRCUIT_NOTIFY_DEBOUNCE,
     _CIRCUIT_OPEN_MSG,

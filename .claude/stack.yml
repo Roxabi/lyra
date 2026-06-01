@@ -21,7 +21,7 @@ lsp:
   server: pyright
 
 deploy:
-  platform: none
+  platform: podman
 
 docs:
   framework: none
@@ -72,6 +72,10 @@ quality_gates:
     enabled: true
     stage: pre-push
     config: .importlinter
+
+  doc_drift:
+    enabled: true
+    script: tools/check_doc_drift.py
 
   no_runtime_toml_bots:
     enabled: true

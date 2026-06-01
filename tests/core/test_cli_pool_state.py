@@ -181,7 +181,7 @@ class TestEagerCleanupOnTerminated:
 
         terminated_result = CliResult(error="Process terminated unexpectedly")
         with patch(
-            "lyra.core.cli.cli_pool.send_and_read",
+            "lyra.core.cli.cli_pool_send.send_and_read",
             new=AsyncMock(return_value=terminated_result),
         ):
             result = await pool.send("p1", "hello", DEFAULT_MODEL)
@@ -198,7 +198,7 @@ class TestEagerCleanupOnTerminated:
         from lyra.core.cli.cli_protocol import CliResult
 
         with patch(
-            "lyra.core.cli.cli_pool.send_and_read",
+            "lyra.core.cli.cli_pool_send.send_and_read",
             new=AsyncMock(return_value=CliResult(error="Timeout: no output for 900s")),
         ):
             result = await pool.send("p2", "hello", DEFAULT_MODEL)
@@ -273,7 +273,7 @@ class TestKillPreservesSession:
 
         terminated_result = CliResult(error="Process terminated unexpectedly")
         with patch(
-            "lyra.core.cli.cli_pool.send_and_read",
+            "lyra.core.cli.cli_pool_send.send_and_read",
             new=AsyncMock(return_value=terminated_result),
         ):
             await pool.send("p1", "hello", DEFAULT_MODEL)

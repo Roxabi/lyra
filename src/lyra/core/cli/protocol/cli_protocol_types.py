@@ -1,10 +1,10 @@
 """Shared types and helpers for the Claude CLI NDJSON protocol layer.
 
 Extracted from cli_protocol.py to break the circular import between
-cli_protocol (re-export facade) and cli_non_streaming / cli_streaming
-(protocol implementations).  Consumers should import from cli_protocol
-for the full public surface, or from this module when only the types
-are needed.
+cli_protocol (re-export facade) and protocol.cli_non_streaming /
+protocol.cli_streaming (protocol implementations).  Consumers should import
+from cli_protocol for the full public surface, or from this module when only
+the types are needed.
 """
 
 from __future__ import annotations

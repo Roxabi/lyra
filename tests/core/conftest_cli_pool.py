@@ -84,4 +84,4 @@ RESULT_LINE = _ndjson(
     }
 )
 
-_PATCH_TARGET = "lyra.core.cli.cli_pool.asyncio.create_subprocess_exec"
+_PATCH_TARGET = "lyra.core.cli.cli_pool_spawn.asyncio.create_subprocess_exec"

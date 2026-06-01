@@ -1,7 +1,7 @@
 """_ProcessEntry dataclass — isolated to break the circular import chain.
 
-cli_non_streaming and cli_streaming both need _ProcessEntry for type
-annotations, but they also transitively import cli_protocol_types.
+protocol.cli_non_streaming and protocol.cli_streaming both need _ProcessEntry
+for type annotations, but they also transitively import cli_protocol_types.
 Moving the dataclass here (no cli_protocol* dependencies) lets both modules
 import it directly without a cycle.
 """

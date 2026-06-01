@@ -27,7 +27,7 @@ def test_audit_sink_importable_from_cli_pool() -> None:
 
 
 # Patch target for the subprocess call (asyncio is shared across the mixin).
-_WORKER_PATCH = "lyra.core.cli.cli_pool_worker.asyncio.create_subprocess_exec"
+_WORKER_PATCH = "lyra.core.cli.cli_pool_spawn.asyncio.create_subprocess_exec"
 
 
 # ---------------------------------------------------------------------------

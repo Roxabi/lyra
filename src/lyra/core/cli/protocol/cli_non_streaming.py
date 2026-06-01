@@ -10,8 +10,8 @@ import asyncio
 import json
 import logging
 
-from .cli_pool_entry import _ProcessEntry
-from .protocol.cli_protocol_types import (
+from ..cli_pool_entry import _ProcessEntry
+from .cli_protocol_types import (
     CliProtocolOptions,
     CliResult,
     _read_stderr_snippet,

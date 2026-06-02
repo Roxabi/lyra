@@ -67,7 +67,7 @@ async def test_hub_records_success_on_clean_streaming() -> None:
     # Act
     await push_to_hub(hub, make_inbound_message())
     hub_task = asyncio.create_task(hub.run())
-    await asyncio.sleep(0.1)
+    await asyncio.sleep(0.1)  # event-based
     hub_task.cancel()
     try:
         await hub_task
@@ -130,7 +130,7 @@ async def test_mid_stream_failure_records_anthropic_failure() -> None:
     # Act
     await push_to_hub(hub, make_inbound_message())
     hub_task = asyncio.create_task(hub.run())
-    await asyncio.sleep(0.1)
+    await asyncio.sleep(0.1)  # event-based
     hub_task.cancel()
     try:
         await hub_task
@@ -193,7 +193,7 @@ async def test_hub_circuit_opens_after_threshold() -> None:
     for _ in range(2):
         await push_to_hub(hub, make_inbound_message())
     hub_task = asyncio.create_task(hub.run())
-    await asyncio.sleep(0.2)
+    await asyncio.sleep(0.2)  # event-based
     hub_task.cancel()
     try:
         await hub_task
@@ -275,7 +275,7 @@ async def test_hub_msg_manager_injection_generic_on_agent_failure() -> None:
     msg = make_inbound_message(platform="telegram", bot_id="main", user_id="alice")
     await push_to_hub(hub, msg)
     hub_task = asyncio.create_task(hub.run())
-    await asyncio.sleep(0.1)
+    await asyncio.sleep(0.1)  # event-based
     hub_task.cancel()
     try:
         await hub_task

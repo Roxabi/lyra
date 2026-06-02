@@ -91,7 +91,7 @@ def docker_compose():
             )
             if result.returncode == 0 and "healthy" in result.stdout:
                 break
-            time.sleep(1)
+            time.sleep(1)  # NATS delivery window
         else:
             subprocess.run(
                 ["docker", "compose", "-f", str(COMPOSE_FILE), "logs"],
@@ -152,7 +152,7 @@ class TestWorkerHeartbeatFlow:
     async def _wait_for_base_heartbeat(self, heartbeat_collector):
         """Wait for base stt-stub to announce itself."""
         for _ in range(20):
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.5)  # NATS delivery window
             if any(hb.get("worker_id") == "stt-tower-01" for hb in heartbeat_collector):
                 return
         raise RuntimeError("Base stt-stub (stt-tower-01) did not publish heartbeat")
@@ -162,7 +162,7 @@ class TestWorkerHeartbeatFlow:
         """Heartbeat contains expected fields."""
         # Wait for at least one heartbeat
         for _ in range(10):
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.5)  # NATS delivery window
             if heartbeat_collector:
                 break
         else:
@@ -249,7 +249,7 @@ class TestLoadAwareRoutingLocal:
     async def _wait_for_base_heartbeat(self, heartbeat_collector):
         """Wait for base stt-stub to announce itself."""
         for _ in range(20):
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.5)  # NATS delivery window
             if any(hb.get("worker_id") == "stt-tower-01" for hb in heartbeat_collector):
                 return
         raise RuntimeError("Base stt-stub (stt-tower-01) did not publish heartbeat")
@@ -295,7 +295,7 @@ class TestLoadAwareRoutingLocal:
         try:
             # Wait for heavy worker heartbeat
             for _ in range(20):
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.5)  # NATS delivery window
                 if any(
                     hb.get("worker_id") == "stt-tuwer-01" for hb in heartbeat_collector
                 ):

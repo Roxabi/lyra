@@ -186,7 +186,7 @@ class TestPoolCancelInFlight:
         )
 
         pool.submit(make_debouncer_msg("long request"))
-        await asyncio.sleep(0.1)  # let the agent start
+        await asyncio.sleep(0.1)  # event-based — let the agent start
         pool.cancel()
 
         if pool._current_task is not None:

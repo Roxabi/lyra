@@ -193,7 +193,7 @@ class TestMetricsEndpoint:
         # Brief asyncio yield so clock advances measurably
         import asyncio
 
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.05)  # event-based
 
         _, body2 = await _get(server.app, "/metrics")
         assert isinstance(body2, str)

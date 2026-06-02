@@ -120,3 +120,10 @@ repos:
     pass_filenames: false
     stages:
     - pre-push
+  - id: check-test-sleep
+    name: test sleep (raw sleep without sync comment)
+    entry: tools/check_test_sleep.sh
+    language: system
+    pass_filenames: false
+    stages:
+    - pre-push

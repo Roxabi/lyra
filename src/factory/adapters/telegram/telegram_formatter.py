@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from aiogram.exceptions import TelegramAPIError
 
+from factory.adapters.shared.base_formatter import BaseFormatter
 from factory.adapters.telegram.telegram_formatting import _render_buttons, _render_text
 from factory.core.messaging.render_events import (
     ReasoningDeltaRenderEvent,
@@ -23,7 +24,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("factory.adapters.telegram")
 
 
-class TelegramFormatter:
+class TelegramFormatter(BaseFormatter):
     """OutboundFormatter impl for Telegram (MarkdownV2 escape, 4096 chunk).
 
     Encapsulates chunking, escaping, button rendering, trace rendering

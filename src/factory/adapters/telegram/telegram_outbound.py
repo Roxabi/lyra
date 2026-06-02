@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from aiogram.exceptions import TelegramAPIError
 
+from factory.adapters.shared.platform_send import send_chunked_message
 from factory.adapters.telegram.telegram_formatting import (
     _render_buttons,
     _render_text,
@@ -127,7 +128,7 @@ async def _typing_loop(
 
 
 async def send(
-    adapter: TelegramAdapter,
+    adapter: "TelegramAdapter",
     original_msg: InboundMessage,
     outbound: OutboundMessage,
 ) -> None:
@@ -141,28 +142,33 @@ async def send(
         return
     chat_id, _, _ = meta
 
-    # Flatten content parts to plain text, escape and chunk
     text = outbound.to_text()
     chunks = _render_text(text)
     keyboard = _render_buttons(outbound.buttons)
-    last_idx = len(chunks) - 1
 
     _pm = original_msg.platform_meta
     reply_to: int | None = _pm.message_id if isinstance(_pm, TelegramMeta) else None
-    for i, chunk in enumerate(chunks):
+
+    async def send_chunk(
+        chunk: str, is_first: bool, is_last: bool, buttons: Any
+    ) -> int:
         kwargs: dict = {
             "chat_id": chat_id,
             "text": chunk,
             "parse_mode": "MarkdownV2",
         }
-        if i == 0 and reply_to is not None:
+        if is_first and reply_to is not None:
             kwargs["reply_to_message_id"] = reply_to
-        if i == last_idx and keyboard is not None:
-            kwargs["reply_markup"] = keyboard
+        if buttons is not None:
+            kwargs["reply_markup"] = buttons
         sent = await adapter.bot.send_message(**kwargs)
-        if i == last_idx:
-            outbound.metadata["reply_message_id"] = sent.message_id
-    if outbound.intermediate:
-        adapter._start_typing(chat_id)
-    else:
-        adapter._cancel_typing(chat_id)
+        return sent.message_id
+
+    await send_chunked_message(
+        chunks=chunks,
+        buttons=keyboard,
+        outbound=outbound,
+        adapter=adapter,
+        scope_id=chat_id,
+        send_chunk=send_chunk,
+    )

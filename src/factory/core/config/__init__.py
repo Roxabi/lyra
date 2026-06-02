@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, Callable
 from pydantic import BaseModel, ConfigDict, Field
 
 from .bus_config import BusConfig
+from .dispatch_config import DispatchConfig
 from .lifecycle_config import LifecycleConfig
 from .memory_config import MemoryConfig
 from .platform_config import PlatformConfig
@@ -145,6 +146,7 @@ def load_discord_config() -> DiscordConfig:
 __all__ = [
     "BusConfig",
     "DiscordConfig",
+    "DispatchConfig",
     "HubConfig",
     "LifecycleConfig",
     "MemoryConfig",

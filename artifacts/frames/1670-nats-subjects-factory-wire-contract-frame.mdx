@@ -8,75 +8,102 @@ date: 2026-06-02
 
 ## Problem
 
-The lyra→factory rename (epic #1671) renamed the **project/package** namespace to
-`factory.` (PR #1669) but **deliberately left the NATS wire namespace on `lyra.*`** to keep
-the cutover atomic. NATS subjects are exact-match strings: a publisher on
-`factory.llm.generate.request` never reaches a subscriber still bound to
-`lyra.llm.generate.request`. So the subject rename cannot land incrementally — every
-publisher/subscriber, JetStream stream/consumer/KV name, and ACL grant must flip together
-in one cutover window.
+NATS subjects are exact-match strings. The lyra→factory migration (epic #1671) renamed the
+package/CLI/env/container identity to `factory.*` (PR #1669) but **deliberately left the wire
+namespace on `lyra.*`** to keep that PR non-breaking. The two namespaces are now split:
+project/package = `factory.`, wire subjects = still `lyra.`.
 
-This issue covers the **roxabi-factory repo + the bundled `packages/roxabi-contracts/` SSoT**:
-the 132 `lyra.*` subject literals/builders, the `LYRA_*` JetStream stream/KV identifiers,
-the `deploy/nats/` ACL matrix + regenerated `auth.conf`, and the code-side residue
-(`nats_bus.py` prefix, allowlist, inventory classifier). The 3 satellite repos
-(voiceCLI/llmCLI/imageCLI) re-pin contracts `0.7.0` and cut over their own domains in
-separate sub-issues — lockstep, but out of this worktree's scope.
+This issue closes the gap: rename the wire contract `lyra.*` → `factory.*` across the
+roxabi-contracts SSoT, the JetStream stream/KV identifiers, and the NATS ACL/auth config. A
+renamed publisher (`factory.llm.generate.request`) will never reach a subscriber still bound
+to `lyra.llm.generate.request`, so this **cannot land incrementally** — every
+publisher/subscriber + stream/consumer/KV name + ACL grant flips in one coordinated cutover.
+
+Observable impact today: scope re-verified intact at frame time — 90+ `lyra.*` literals in
+contracts subjects, 93 `lyra.*` entries in `deploy/nats/acl-matrix.json`, 2 `lyra.inbound`
+refs in `nats_bus.py`, and the four `LYRA_{OUTBOUND_AUDIO,AUDIT,TURNS,STATE}` stream/KV
+identifiers all still present. Nothing is pre-done.
 
 ## Who
 
-- **Primary:** the NATS message bus and every process bound to it — `factory-hub`,
-  `factory-{telegram,discord,clipool,turn-writer}`, plus the satellite workers
-  (voice/llm/image). All must agree on the subject namespace or messages silently drop.
-- **Secondary:** ops (maintenance-window cutover, stream recreation, secret/ACL deploy);
-  downstream epic #1671 Phase 4 prod cutover which gates on this landing.
+- **Primary:** the NATS peers — `factory-hub` + all adapters/workers that publish or subscribe
+  on these subjects. A namespace mismatch = silent message loss (no error, just no delivery).
+- **Secondary:** the satellite repos (voiceCLI #189, llmCLI #105, imageCLI #104) that re-pin
+  roxabi-contracts 0.7.0 and cut over their domain subjects in lockstep. They are tracked by
+  their own sub-issues and are **out of this worktree's scope** (see Out of Scope).
 
 ## Constraints
 
-- **Breaking, lockstep across repos** — contracts `0.6.0`→`0.7.0`; satellites re-pin after publish.
-- **JetStream stream names are immutable** — `LYRA_*`→`FACTORY_*` requires create-new+drain
-  or recreate-on-empty, not in-place rename (key unknown for /analyze).
-- **ACL is exact-subject** — `acl-matrix.json` + regenerated `auth.conf` must flip in the
-  same deploy; frozen fixture `v3-pre-grant-group.json` stays untouched.
-- **No prod impact until epic #1671 Phase 4** — `podman-auto-update.timer` disabled; this PR
-  lands the code/contract change, the maintenance-window cutover is a separate step.
-- Repo quality gates apply: `architecture_snapshot`, `doc_drift`, `import_layers`,
-  `subject_literals_allowlist` (drop the `lyra.inbound` entry once renamed).
+- **roxabi-contracts is the wire SSoT.** Subjects are `Literal[...]`-typed constants
+  (`Literal["lyra.llm.generate.request"]`) precisely so pyright catches typos at check-time on
+  an exact-match wire. The rename must preserve this typing — replace literal-for-literal, do
+  not downgrade to plain `str`.
+- **Breaking change → semver major-ish bump:** roxabi-contracts `0.6.0 → 0.7.0`; publish;
+  satellites re-pin (their sub-issues block on the publish).
+- **JetStream stream names are immutable.** `LYRA_OUTBOUND_AUDIO`, `LYRA_AUDIT`, `LYRA_TURNS`
+  + KV bucket `LYRA_STATE` cannot be renamed in place — require create-new + drain, or
+  recreate-on-empty, during the maintenance window. This is the main implementation unknown
+  (→ /analyze).
+- **ACL is generated.** `deploy/nats/acl-matrix.json` (`lyra.*` → `factory.*`, `owner:"lyra"`
+  → `"factory"`), then regen `auth.conf` via `make nats-regen-specs`, update ACL spec sentinel
+  blocks + `tests/scripts/fixtures/v3-current.json`. Leave frozen `v3-pre-grant-group.json`.
+- **Code-side residue** in this repo: `nats_bus.py` `subject_prefix = "lyra.inbound"` →
+  `factory.inbound`; drop the `lyra.inbound` entry from
+  `scripts/subject_literals_allowlist.txt`; update `tools/code_inventory.py` subject classifier.
+- **All-or-nothing cutover** happens in a maintenance window (hub + satellites stopped,
+  streams/KV/ACL recreated, all deployed, restarted, smoke-tested). This issue lands the
+  *code + contract* change; the prod cutover itself is epic Phase 4 (separate, no issue yet).
+- ¬`--force` / ¬`--hard` / ¬`--amend`. File-length gate (300 SLOC), import-layers,
+  doc_drift, architecture_snapshot all apply.
 
 ## Out of Scope
 
-- Satellite-repo cutovers (voiceCLI#189, llmCLI#105, imageCLI#104) — separate sub-issues.
-- Phase 4 prod cutover (data move `~/.lyra`→`~/.roxabi/factory`, Podman secret rename,
-  `hosts.toml` role, re-enable auto-update timer) — no issue yet, epic #1671.
-- "Lyra" persona / `lyra_default` / `bot_id "lyra"` — deliberately kept, not a wire subject.
-- roxabi-vault (archived) and roxabi-cortex (design-phase, not yet a NATS peer).
+- **Satellite repos** (voiceCLI/llmCLI/imageCLI) — they re-pin + cut over in their own
+  sub-issues *after* 0.7.0 publishes. Not edited from this worktree.
+- **Phase 4 prod cutover** — data move, host secret rotation, stream recreation on the live
+  server, re-enabling `podman-auto-update.timer`. Tracked separately under epic #1671.
+- **roxabi-vault** (archived → no action) and **roxabi-cortex** (design-phase, not yet a NATS peer).
+- **Kept deliberately** (NOT renamed): the "Lyra" persona, `lyra_default`, `bot_id "lyra"`,
+  git author trailers, `lyra-*` Claude plugins, `roxabi/base*` images.
 
 ## Premise Validity
 
 **Success in 6 months:** All NATS peers (hub + voiceCLI/llmCLI/imageCLI) communicate on
-`factory.*` subjects; zero `lyra.*` wire literals remain in roxabi-contracts / ACL matrix /
-stream+KV identifiers; contracts published at ≥0.7.0; prod cutover completed with per-domain
-heartbeat round-trips green.
+`factory.*` subjects; zero `lyra.*` wire literals remain in roxabi-contracts / ACL / stream-KV
+identifiers; contracts published at ≥0.7.0; prod cutover completed with per-domain heartbeat
+round-trips green.
 
-**Failure in 6 months:** `lyra.*` and `factory.*` subjects coexist in prod past the cutover
-window → dropped messages on subject mismatch; OR contracts still on `0.6.x` with `lyra.*`
-literals after ≥3 release cycles (cutover perpetually deferred).
+**Failure in 6 months (falsifiable):** `lyra.*` and `factory.*` subjects coexist in prod past
+the cutover window → messages dropped on subject mismatch; OR contracts still on 0.6.x with
+`lyra.*` literals after ≥3 release cycles (cutover perpetually deferred).
 
-**Simplest alternative:** Dual-bind shim — publishers emit `factory.*` while subscribers bind
-BOTH `lyra.*` and `factory.*` for a transition window (no maintenance downtime).
-**Why not simplest:** The issue deliberately chose all-or-nothing. A dual-bind shim doubles
-the ACL surface, cannot paper over the immutable JetStream stream names
-(`LYRA_*`→`FACTORY_*` still needs recreate/drain regardless), and leaves dead `lyra.*`
+**Simplest alternative:** Dual-bind shim — publishers emit `factory.*`, subscribers bind BOTH
+`lyra.*` + `factory.*` for a transition window (no maintenance downtime).
+**Why not simplest:** Dual-bind doubles the ACL surface, can't paper over immutable JetStream
+stream names (`LYRA_*`→`FACTORY_*` still needs recreate/drain), and leaves dead `lyra.*`
 bindings + an ambiguous wire state to clean up later → more total work. One coordinated
 maintenance-window cutover is simpler net.
 
+## Key Design Decision — namespace strategy
+
+**Chosen: hardcoded literal-for-literal sweep** (issue as-written).
+
+Rejected alternatives (recorded so the next rename doesn't relitigate):
+- **Codegen the literals from a single `namespace=` source** — would kill future sweep cost
+  and keep `Literal` typing, but adds a generator + regen gate. Deferred: renames should be
+  rare; revisit as its own issue if they become frequent.
+- **Runtime/config prefix** — DRYest, but `Literal[f"{ROOT}…"]` is illegal (loses pyright
+  typo protection) and a config-driven wire root lets two deployed peers silently diverge.
+  Rejected as an anti-pattern for exact-match subjects.
+
 ## Complexity
 
-**Tier: F-full** — breaking wire change spanning the bundled contracts package + server ACL
-config + code residue, with cross-repo lockstep and a JetStream stream-migration unknown.
+**Tier: F-full** — breaking wire-contract change spanning this repo + the roxabi-contracts
+package, with cross-repo lockstep (4 repos) and a genuine implementation unknown (immutable
+JetStream stream-name migration).
 
 Signals observed:
-- Multiple domains: contracts package, JetStream streams/KV, NATS server ACL/auth, code residue.
-- Unknowns: immutable JetStream stream-name migration strategy (create+drain vs recreate-on-empty).
-- Cross-repo lockstep: 3 satellite re-pins blocked on this publish.
-- Coordinated maintenance-window cutover (all-or-nothing).
+- Multiple domains (contracts package + ACL/deploy config + code residue + fixtures/tests).
+- Cross-repo coordination (3 satellite sub-issues re-pin 0.7.0).
+- Unknown: JetStream stream/KV recreation/drain strategy under immutable names.
+- Breaking change requiring a coordinated maintenance-window cutover.

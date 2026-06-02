@@ -43,10 +43,10 @@ class HubConfig:
     source of truth for LocalBus capacity constants (#1659).
     """
 
-    rate_limit: int = 20
-    rate_window: int = 60
+    rate_limit: int = 20  # const-ok: named config default
+    rate_window: int = 60  # const-ok: named config default
     pool_ttl: float = 604800.0  # 7 days
-    max_pools: int = 500  # hard cap on pool count
+    max_pools: int = 500  # const-ok: named config default
     debounce_ms: int = 0
     cancel_on_new_message: bool = False
     turn_timeout: float | None = None
@@ -54,7 +54,7 @@ class HubConfig:
     staging_maxsize: int = BusConfig.DEFAULT_STAGING_MAXSIZE
     platform_queue_maxsize: int = BusConfig.DEFAULT_MAXSIZE
     queue_depth_threshold: int = BusConfig.DEFAULT_QUEUE_DEPTH
-    max_merged_chars: int = 4096
+    max_merged_chars: int = LifecycleConfig.MAX_MERGED_CHARS
 
 
 @dataclass(frozen=True)
@@ -65,10 +65,10 @@ class PoolConfig:
     """
 
     turn_timeout: float | None = None
-    debounce_ms: int = 300  # DEFAULT_DEBOUNCE_MS
+    debounce_ms: int = LifecycleConfig.DEFAULT_DEBOUNCE_MS
     turn_timeout_ceiling: float | None = None
     safe_dispatch_timeout: float = 10.0
-    max_merged_chars: int = 4096
+    max_merged_chars: int = LifecycleConfig.MAX_MERGED_CHARS
     cancel_on_new_message: bool = False
 
 

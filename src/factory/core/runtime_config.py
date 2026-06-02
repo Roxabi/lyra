@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, ConfigDict
 from pydantic_core import PydanticUndefinedType
 
+from factory.core.config.lifecycle_config import LifecycleConfig
+
 if TYPE_CHECKING:
     from factory.core.agent import Agent
 
@@ -64,7 +66,7 @@ class RuntimeConfig(BaseModel):
     model: str | None = None
     max_steps: int | None = None
     extra_instructions: str = ""
-    debounce_ms: int = 300
+    debounce_ms: int = LifecycleConfig.DEFAULT_DEBOUNCE_MS
     cancel_on_new_message: bool = False
 
     def overlay(self, base: Agent) -> EffectiveConfig:
@@ -197,8 +199,8 @@ def _parse_max_steps(value: str) -> int:
         raise ValueError(f"max_steps must be a positive integer, got {value!r}")
     if iv <= 0:
         raise ValueError(f"max_steps must be a positive integer (≥1), got {iv}")
-    if iv > 50:
-        raise ValueError(f"max_steps too large ({iv}). Maximum is 50.")
+    if iv > _MAX_MAX_STEPS:
+        raise ValueError(f"max_steps too large ({iv}). Maximum is {_MAX_MAX_STEPS}.")
     return iv
 
 
@@ -227,8 +229,10 @@ def _parse_debounce_ms(value: str) -> int:
         iv = int(value)
     except (ValueError, TypeError):
         raise ValueError(f"debounce_ms must be an integer (0–5000), got {value!r}")
-    if iv < 0 or iv > 5000:
-        raise ValueError(f"debounce_ms must be between 0 and 5000, got {iv}")
+    if iv < 0 or iv > _MAX_DEBOUNCE_MS:
+        raise ValueError(
+            f"debounce_ms must be between 0 and {_MAX_DEBOUNCE_MS}, got {iv}"
+        )
     return iv
 
 
@@ -241,12 +245,17 @@ def _parse_cancel_on_new_message(value: str) -> bool:
 
 
 def _parse_extra_instructions(value: str) -> str:
-    if len(value) > 500:
+    if len(value) > _MAX_EXTRA_INSTRUCTIONS_LEN:
         raise ValueError(
-            f"extra_instructions too long ({len(value)} chars). Max is 500."
+            f"extra_instructions too long ({len(value)} chars). "
+            f"Max is {_MAX_EXTRA_INSTRUCTIONS_LEN}."
         )
     return value
 
+
+_MAX_DEBOUNCE_MS = 5000  # const-ok: named validation bound
+_MAX_MAX_STEPS = 50  # const-ok: named validation bound
+_MAX_EXTRA_INSTRUCTIONS_LEN = 500  # const-ok: named validation bound
 
 _PARSERS: dict[str, Callable[[str], object]] = {
     "style": _parse_style,

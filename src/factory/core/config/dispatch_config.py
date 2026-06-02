@@ -19,4 +19,4 @@ class DispatchConfig:
 
     BACKOFF_DELAYS: tuple[float, ...] = (1.0, 2.0, 4.0)
     MAX_ATTEMPTS: int = 4
-    MAX_TRANSCRIPT_LEN: int = 2000
+    MAX_TRANSCRIPT_LEN: int = 2000  # const-ok: named config default

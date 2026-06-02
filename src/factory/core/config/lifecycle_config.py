@@ -11,6 +11,7 @@ class LifecycleConfig:
     referenced without instantiation: ``LifecycleConfig.DEFAULT_DEBOUNCE_MS``.
     """
 
-    DEFAULT_DEBOUNCE_MS: int = 300
+    DEFAULT_DEBOUNCE_MS: int = 300  # const-ok: named config default
     CIRCUIT_FAILURE_THRESHOLD: int = 5
-    CIRCUIT_RECOVERY_TIMEOUT: int = 60
+    CIRCUIT_RECOVERY_TIMEOUT: int = 60  # const-ok: named config default
+    MAX_MERGED_CHARS: int = 4096  # const-ok: named config default

@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     )
     from ...messaging.messages import MessageManager
     from ...messaging.render_events import RenderEvent
+    from ...ports.tts import TtsProtocol
     from ...tts_dispatch import AudioPipeline
     from ..hub_protocol import ChannelAdapter
     from .outbound_dispatcher import OutboundDispatcher
@@ -52,7 +53,7 @@ class OutboundRouterDeps:
     audio_pipeline: "AudioPipeline | None" = None
     circuit_registry: "CircuitRegistry | None" = None
     msg_manager: "MessageManager | None" = None
-    tts: "object | None" = None
+    tts: "TtsProtocol | None" = None
     memory_tasks: "set[asyncio.Task] | None" = None
 
 
@@ -96,7 +97,7 @@ class OutboundRouter:
         """Update message manager reference (called after Hub construction)."""
         self._msg_manager = msg_manager
 
-    def set_tts(self, tts: "object | None") -> None:
+    def set_tts(self, tts: "TtsProtocol | None") -> None:
         """Update TTS reference (called after Hub construction)."""
         self._tts = tts
         self._tts_dispatch.set_tts(tts)

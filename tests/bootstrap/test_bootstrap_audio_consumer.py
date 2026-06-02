@@ -120,7 +120,7 @@ async def test_bootstrap_audio_consumer_telegram_provisions_and_starts() -> None
         patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
         patch("factory.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
         patch(
-            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            "factory.bootstrap.wiring._standalone_wiring_common.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
@@ -129,7 +129,7 @@ async def test_bootstrap_audio_consumer_telegram_provisions_and_starts() -> None
         ),
         # Override the conftest no-op with a capturing call-through.
         patch(
-            "factory.bootstrap.wiring.standalone_telegram.start_audio_consumer",
+            "factory.bootstrap.wiring._standalone_wiring_common.start_audio_consumer",
             side_effect=_capturing_start_audio_consumer,
         ),
         # S3: ensure_consumer still called per-bot; ensure_stream/ensure_kv removed.
@@ -208,7 +208,7 @@ async def test_bootstrap_audio_consumer_telegram_stop_called_in_teardown() -> No
         patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
         patch("factory.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
         patch(
-            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            "factory.bootstrap.wiring._standalone_wiring_common.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
@@ -216,7 +216,7 @@ async def test_bootstrap_audio_consumer_telegram_stop_called_in_teardown() -> No
             AsyncMock(return_value=True),
         ),
         patch(
-            "factory.bootstrap.wiring.standalone_telegram.start_audio_consumer",
+            "factory.bootstrap.wiring._standalone_wiring_common.start_audio_consumer",
             AsyncMock(return_value=mock_consumer),
         ),
         load_token,
@@ -253,7 +253,7 @@ async def test_bootstrap_audio_consumer_tg_no_consumer_on_astart_failure() -> No
         patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
         patch("factory.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
         patch(
-            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            "factory.bootstrap.wiring._standalone_wiring_common.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         # ADR-079 S3: wait_for_hub now precedes the wiring loop; must be patched
@@ -263,7 +263,7 @@ async def test_bootstrap_audio_consumer_tg_no_consumer_on_astart_failure() -> No
             AsyncMock(return_value=None),
         ),
         patch(
-            "factory.bootstrap.wiring.standalone_telegram.start_audio_consumer",
+            "factory.bootstrap.wiring._standalone_wiring_common.start_audio_consumer",
             new_callable=AsyncMock,
         ) as mock_start_consumer,
         load_token,
@@ -327,7 +327,7 @@ async def test_bootstrap_audio_consumer_discord_provisions_and_starts() -> None:
         patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus_dc),
         patch("factory.adapters.discord.DiscordAdapter", return_value=mock_adapter_dc),
         patch(
-            "factory.bootstrap.wiring.standalone_discord.NatsOutboundListener",
+            "factory.bootstrap.wiring._standalone_wiring_common.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
@@ -335,7 +335,7 @@ async def test_bootstrap_audio_consumer_discord_provisions_and_starts() -> None:
             AsyncMock(return_value=True),
         ),
         patch(
-            "factory.bootstrap.wiring.standalone_discord.start_audio_consumer",
+            "factory.bootstrap.wiring._standalone_wiring_common.start_audio_consumer",
             side_effect=_capturing_start_audio_consumer,
         ),
         # S3: ensure_consumer still called per-bot; ensure_stream/ensure_kv removed.
@@ -574,7 +574,7 @@ async def test_teardown_calls_stop_on_null_sentinel_without_error() -> None:
         patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
         patch("factory.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
         patch(
-            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            "factory.bootstrap.wiring._standalone_wiring_common.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
@@ -582,7 +582,7 @@ async def test_teardown_calls_stop_on_null_sentinel_without_error() -> None:
             AsyncMock(return_value=True),
         ),
         patch(
-            "factory.bootstrap.wiring.standalone_telegram.start_audio_consumer",
+            "factory.bootstrap.wiring._standalone_wiring_common.start_audio_consumer",
             AsyncMock(return_value=null_consumer),
         ),
         load_token,
@@ -647,7 +647,7 @@ async def test_wait_for_hub_called_before_start_audio_consumer_telegram() -> Non
         patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
         patch("factory.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
         patch(
-            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            "factory.bootstrap.wiring._standalone_wiring_common.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
@@ -655,7 +655,7 @@ async def test_wait_for_hub_called_before_start_audio_consumer_telegram() -> Non
             side_effect=_recording_wait_for_hub,
         ),
         patch(
-            "factory.bootstrap.wiring.standalone_telegram.start_audio_consumer",
+            "factory.bootstrap.wiring._standalone_wiring_common.start_audio_consumer",
             side_effect=_recording_start_audio_consumer,
         ),
         load_token,
@@ -718,7 +718,7 @@ async def test_wait_for_hub_called_before_start_audio_consumer_discord() -> None
         patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus_dc),
         patch("factory.adapters.discord.DiscordAdapter", return_value=mock_adapter_dc),
         patch(
-            "factory.bootstrap.wiring.standalone_discord.NatsOutboundListener",
+            "factory.bootstrap.wiring._standalone_wiring_common.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
@@ -726,7 +726,7 @@ async def test_wait_for_hub_called_before_start_audio_consumer_discord() -> None
             side_effect=_recording_wait_for_hub,
         ),
         patch(
-            "factory.bootstrap.wiring.standalone_discord.start_audio_consumer",
+            "factory.bootstrap.wiring._standalone_wiring_common.start_audio_consumer",
             side_effect=_recording_start_audio_consumer,
         ),
         load_token_dc,

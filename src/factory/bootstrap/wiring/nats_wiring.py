@@ -7,6 +7,7 @@ Unified parameterized wiring function introduced in #1663.
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Union
 
@@ -42,7 +43,7 @@ class NatsProxyWiringDeps:
     hub: Hub
     nc: NATS
     platform: Platform
-    bot_auths: list[tuple[_BotCfg, Authenticator]]
+    bot_auths: Sequence[tuple[_BotCfg, Authenticator]]
     bot_agent_map: dict[tuple[str, str], str]
     circuit_registry: CircuitRegistry
 

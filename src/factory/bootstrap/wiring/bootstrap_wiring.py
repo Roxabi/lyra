@@ -83,6 +83,7 @@ class _AdapterCoreParams:
     blob_store: "BlobStorePort | None"
     adapter_factory: Callable[[str], Any]
     collect_entry: Callable[[Any, Any, str], Any]
+    resolve_identity: bool = True  # Telegram=True (getMe), Discord=False
 
 
 async def _wire_adapters_core(
@@ -118,7 +119,8 @@ async def _wire_adapters_core(
         adapter = p.adapter_factory(bot_id)
         adapter.configure_tool_display(p.tool_display_config)
         adapter.configure_typing_publisher(p.hub._typing_publisher)
-        await adapter.resolve_identity()
+        if p.resolve_identity:
+            await adapter.resolve_identity()
         wire_ingest(adapter, p.blob_store)
 
         # C3: Hub is the trust authority — register authenticator here, not on adapter.
@@ -229,6 +231,7 @@ async def wire_telegram_adapters(
             blob_store=deps.blob_store,
             adapter_factory=_adapter_factory,
             collect_entry=_collect_entry,
+            resolve_identity=True,
         )
     )
 
@@ -289,6 +292,7 @@ async def wire_discord_adapters(
                 blob_store=deps.blob_store,
                 adapter_factory=_adapter_factory,
                 collect_entry=_collect_entry,
+                resolve_identity=False,  # Discord has no getMe equivalent
             )
         )
     except Exception:

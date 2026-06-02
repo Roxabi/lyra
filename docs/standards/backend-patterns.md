@@ -58,7 +58,7 @@ pool_id = f"telegram:main:{scope_id}"  # NEVER
 
 ### Middleware pipeline
 
-The inbound pipeline is a composable middleware stack (`hub/middleware.py`). ErrorBoundaryMiddleware sits at position 0 — it catches LyraUserError and unhandled exceptions, dispatches a reply, and returns `_DROP`. Never silence exceptions above this boundary.
+The inbound pipeline is a composable middleware stack (`hub/middleware/`). `SttMiddleware` handles voice-message transcription inline and dispatches template-keyed error replies on failure — it catches `STTNoiseError` and `STTUnavailableError` (defined in `core/ports/stt.py`) and maps them to `stt_noise` / `stt_unavailable` template keys. Never silence exceptions above a middleware catch site.
 
 ### Store pattern
 
@@ -227,30 +227,60 @@ Do NOT create plugin names that conflict with built-ins: `help`, `stop`, `circui
 
 ## Error Handling
 
-### Error hierarchy
+### Exception classes
 
-```
-Exception
-├── LyraUserError               # base for all user-visible errors (factory.core.errors)
-│   ├── AudioDownloadError
-│   ├── AudioTooLargeError
-│   ├── AudioInvalidFormatError
-│   └── SttError
-├── ProviderError               # LLM driver errors (src/factory/errors.py)
-│   ├── ProviderAuthError       # retryable=False
-│   ├── ProviderRateLimitError  # retryable=True
-│   └── ProviderApiError        # retryable=False by default
-├── MissingCredentialsError
-└── KeyringError
-```
+Two modules own exception types:
 
-### Error boundary rule
+**Cross-layer exceptions** (`src/factory/core/exceptions.py`) — raised across layer boundaries; live in core to avoid downward imports:
 
-LyraUserError subclasses are raised at the point of failure and caught by ErrorBoundaryMiddleware. They produce a user-visible reply via `MessageManager` template lookup (`key`) with a `fallback_text` for degraded mode.
+| Class | Base | When raised |
+|-------|------|-------------|
+| `StreamChunkTimeout` | `TimeoutError` | Outbound chunk queue idle past threshold |
+| `WorkerUnavailableError` | `RuntimeError` | LLM worker heartbeat stops during active stream |
+| `HubUnavailableError` | `RuntimeError` | Hub health check fails during adapter-side stream drain |
+| `ScrapeFailed` | `Exception` | Scraper not available or errored |
+| `VaultWriteFailed` | `Exception` | Vault write fails or is not available |
 
-Never raise LyraUserError from within a store or driver — raise a domain-specific subclass instead.
+**STT errors** (`src/factory/core/ports/stt.py`) — domain port-level errors for speech-to-text:
 
-Never silently drop errors above ErrorBoundaryMiddleware — unhandled exceptions are caught there and translated into a generic error reply.
+| Class | When raised |
+|-------|-------------|
+| `STTUnavailableError` | STT NATS adapter unreachable (timeout or connection error) |
+| `STTNoiseError` | Transcription result is empty, too short, or a noise token |
+
+**LLM driver errors** (`src/factory/errors.py`) — provider-agnostic exceptions raised by LLM drivers:
+
+| Class | `retryable` | Meaning |
+|-------|-------------|---------|
+| `ProviderError` | `True` (default) | Base for all provider failures |
+| `ProviderAuthError` | `False` | Authentication or authorization failure |
+| `ProviderRateLimitError` | `True` | Rate-limit or quota exceeded |
+| `ProviderApiError` | `False` (default) | Generic provider API error |
+| `MissingCredentialsError` | — | No credentials found for platform/bot_id |
+| `KeyringError` | — | Keyring file is corrupt or missing |
+
+### Stream error → user reply
+
+`OutboundErrorHandler.classify_stream_error` (`src/factory/outbound/error_handler.py`) maps terminal stream errors to user-facing message template keys:
+
+- `StreamChunkTimeout` → template key `error_timeout`
+- Any other stream exception → template key `error_stream`
+- `final_text is None` and `had_tool_events` (stream ended with no final text but tool events occurred) → template key `error_no_final`
+
+All keys are resolved via the injected `get_msg` callable with a hardcoded fallback string. `classify_stream_error` uses `type(exc).__name__` only — never `str(exc)`.
+
+### STT error → user reply
+
+`SttMiddleware` (`src/factory/core/hub/middleware/middleware_stt.py`) catches STT errors inline in the pipeline and dispatches template-keyed replies, then returns `_DROP`:
+
+- `STTNoiseError` → template key `stt_noise`
+- `STTUnavailableError` → template key `stt_unavailable`
+- `asyncio.TimeoutError` → template key `stt_failed`
+- Any other exception → template key `stt_failed`
+
+### Retryability rule
+
+`retryable=False` on `LlmResult` or `ProviderError` means the caller must NOT retry (e.g. quota exhausted, bad key). `ProviderAuthError` is always `retryable=False`.
 
 ---
 
@@ -280,7 +310,7 @@ ALWAYS check `result.ok` before accessing `result.result` from `LlmResult`.
 
 ALWAYS verify platform-level auth in adapters before constructing `InboundMessage`.
 
-ALWAYS raise LyraUserError subclasses for user-visible failures; let ErrorBoundaryMiddleware catch them.
+ALWAYS raise the appropriate domain exception (`STTNoiseError`, `STTUnavailableError`, `StreamChunkTimeout`, `WorkerUnavailableError`, etc.) for user-visible failures; let the relevant middleware or error handler catch and translate them.
 
 NEVER import an outer layer from an inner layer — dependencies point inward.
 

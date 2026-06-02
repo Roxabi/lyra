@@ -23,7 +23,7 @@ this path regardless of owner". That is trust-by-path, a pattern in the CWE-426/
 lineage (untrusted search path). The userns remap already guarantees that only the
 intended uid can place files on the bind-mount host side; the path wildcard adds no
 security and widens the attack surface. Removed in issue #1149; the `[safe]` block is
-absent from `deploy/lyra-gh/git.config.tmpl`.
+absent from `deploy/factory-gh/git.config.tmpl`.
 
 ---
 
@@ -62,7 +62,7 @@ Upstream tracking: https://github.com/containers/podman/issues/24918
 ## References
 
 - `deploy/quadlet/factory-gh.pod` — line `UserNS=keep-id:uid=1500,gid=1500`
-- `deploy/lyra-gh/git.config.tmpl` — post-T2 state: no `[safe]` block
+- `deploy/factory-gh/git.config.tmpl` — post-T2 state: no `[safe]` block
 - `src/factory/bootstrap/infra/git_ownership_probe.py` — startup ownership probe
 - `artifacts/specs/1149-safe-directory-idmap-spec.mdx` — full rationale, Podman #24918
   empirical validation, and threat model

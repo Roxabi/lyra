@@ -18,7 +18,6 @@ from factory.adapters.shared._shared_text import (
     sanitize_filename,
     truncate_caption,
 )
-from factory.adapters.shared.base_formatter import BaseFormatter
 from factory.adapters.shared.base_platform_adapter import BasePlatformAdapter
 from factory.adapters.shared.cli import CLIAdapter
 from factory.adapters.shared.outbound_listener import OutboundListener
@@ -28,6 +27,7 @@ from factory.adapters.shared.platform_send import (
     send_chunked_message,
 )
 from factory.outbound.emitter import OutboundEmitter as StreamingSession
+from factory.outbound.formatter import BaseFormatter
 
 __all__ = [
     "OutboundAdapterBase",

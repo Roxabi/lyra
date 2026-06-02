@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any
 
 from aiogram.exceptions import TelegramAPIError
 
-from factory.adapters.shared.base_formatter import BaseFormatter
 from factory.adapters.telegram.telegram_formatting import _render_buttons, _render_text
 from factory.core.messaging.render_events import (
     ReasoningDeltaRenderEvent,
@@ -15,6 +14,7 @@ from factory.core.messaging.render_events import (
     ReasoningStartRenderEvent,
 )
 from factory.outbound._reasoning_accum import ReasoningAccumulator
+from factory.outbound.formatter import BaseFormatter
 
 if TYPE_CHECKING:
     from collections.abc import Callable

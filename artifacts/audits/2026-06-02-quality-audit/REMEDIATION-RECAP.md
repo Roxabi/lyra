@@ -175,6 +175,50 @@ Blocker #10 was the only one that required a manual orchestrator rescue (rescued
 
 ---
 
+## 10. Post-remediation code audit (validation)
+
+A **second-layer** audit was run after merge to verify that the PRs actually landed
+correctly in the codebase — not just that the process completed. Three agents
+read the source directly on `staging` (2026-06-02).
+
+| Agent | Scope | Result |
+|---|---|---|
+| `backend-dev` | DRY refactors, stage-axis, configs, protocols | 8/8 ✅ |
+| `security-auditor` | `process_one`, `_log_turn`, `except Exception`, `sleep()` | 4/4 ✅ |
+| `axial-adr-review` | Cross-layer pollution, drift along non-primary axis | 2 minor leaks found |
+
+### 10.1 What was confirmed
+
+| Issue | Files read | Verdict |
+|---|---|---|
+| **#1660** BasePlatformAdapter + BaseFormatter + `platform_send` | `base_platform_adapter.py`, `telegram.py`, `discord.py`, `platform_send.py`, outbound modules | ✅ `TelegramAdapter(OutboundAdapterBase)`, `DiscordAdapter(discord.Client, OutboundAdapterBase)`, both formatters inherit `BaseFormatter`, both call `send_chunked_message` |
+| **#1663** Bootstrap wiring unified | `adapter_standalone.py`, `_standalone_wiring_common.py`, `standalone_telegram.py`, `standalone_discord.py` | ✅ Single `wire_bot_common()` shared; per-platform files only call it |
+| **#1664** voice_overlay NATS init | `voice_overlay.py`, `hub_assembly.py`, `wiring_helpers.py` | ✅ `init_nats_tts`, `init_nats_stt`, `init_nats_image`, `probe_voice_services` centralised; no per-platform duplication |
+| **#1665** Agent CLI parametrised | `agent_cmd/platforms/platform.py`, `telegram.py`, `discord.py`, `_commands.py` | ✅ `make_platform_app("telegram")` / `make_platform_app("discord")` shims |
+| **#1666** Inbound helpers relocated | `core/messaging/push_guard.py`, `core/ports/outbound_listener.py`, `typing/task_manager.py` | ✅ `push_to_hub_guarded`, `OutboundListener`, `TypingTaskManager` moved out of `adapters/` |
+| **#1667** Wire parsers with Protocol aliases | `inbound/wire_parser.py`, `wire_parser_telegram.py`, `wire_parser_discord.py` | ✅ `WireParser(Protocol)`, `_TelegramNormalizer(Protocol)`, `_DiscordNormalizer(Protocol)` — no direct adapter imports |
+| **#1659** Configs extracted | `core/config/{bus,memory,platform,turn_store,dispatch,lifecycle}_config.py` | ✅ All 6 config classes exist and are consumed by `core/` call-sites |
+| **#1661** Protocols | `core/ports/llm_types.py`, `core/stores/auth_store_protocol.py`, `core/stores/identity_alias_store_protocol.py` | ✅ `AuthStoreProtocol`, `IdentityAliasStoreProtocol` `@runtime_checkable`; `llm_types.py` self-contained |
+| **#1636** process_one god method | `core/pool/pool_processor_exec.py` | ✅ 31 lines (was 165); decomposed into 6 sub-functions |
+| **#1637** `_log_turn` error contract | `infrastructure/stores/turn_store.py`, `core/pool/pool_observer.py`, `core/hub/outbound/outbound_dispatcher.py` | ✅ `BEGIN → try/except → ROLLBACK → raise` for NACK/redelivery; no silent swallow |
+| **#1639** Bootstrap broad-catch | `bootstrap/wiring/*.py`, `bootstrap/standalone/*.py`, `bootstrap/factory/voice_overlay.py` | ✅ 7 occurrences, all cleanup+raise with inline comments |
+| **#1653** `sleep()` in tests | `tests/` (glob search) | ✅ Every `sleep()` annotated with `# event-based` or `# NATS delivery window` |
+
+### 10.2 Residual findings (non-blocking)
+
+| # | File | Line | Finding | Severity | Note |
+|---|------|------|---------|----------|------|
+| 1 | `core/hub/middleware/path_validation.py` | 114 | `isinstance(msg.platform_meta, (TelegramMeta, DiscordMeta))` — hub core discriminates platform-specific types | medium | Violates `core/` invariant "¬add platform-specific code"; should use a generic `PlatformMeta` trait or protocol |
+| 2 | `core/hub/outbound/outbound_errors.py` | 61-85 | Error classification by module name (`aiogram`, `discord`, `aiohttp`) — adapter concern leaked into core hub | medium | Should be inverted: adapters register their error taxonomy; hub queries a generic classifier |
+| 3 | `core/hub/outbound/outbound_errors.py` | 122 | `except Exception as notify_exc` — `DEBT:boundary-broad-catch` | low | Documented debt; boundary-level notification swallow is acceptable |
+| 4 | `core/config/session_lifecycle.py` | 98 | `limit=500` hardcoded literal for compaction bulk-read | low | ~~Semantic differs from `DEFAULT_GET_TURNS_LIMIT=50`; should be named `COMPACT_TURN_FETCH_LIMIT`~~ ✅ **Fixed** — extracted to `TurnStoreConfig.COMPACT_TURN_FETCH_LIMIT` |
+| 5 | `core/hub/hub.py`, `core/agent/agent.py`, `core/memory/memory.py` | — | `TYPE_CHECKING` imports from `factory.infrastructure` | low | `DEBT:importlinter-adr048-transition` — known transition debt; no runtime violation |
+| 6 | `adapters/nats/jetstream_audio_consumer.py` | 37 | `from factory.infrastructure.outbound_audio.stream_setup import MAX_DELIVER` | low | NATS adapter is an infrastructure-integration adapter; import is acceptable per ADR-073 |
+
+**Verdict:** ✅ **19/19 leaves confirmed in source** — 2 minor axial leaks in `core/hub/`, 1 hardcoded literal, 0 regressions, 0 blockers.
+
+---
+
 ## Appendix A — PR ledger
 
 | PR | Issue | Wave | +/− | files | commits | created→merged (Z) |

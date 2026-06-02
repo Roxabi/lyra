@@ -5,7 +5,7 @@ import json
 import logging
 from typing import TYPE_CHECKING
 
-from factory.core.config import PlatformConfig
+from factory.core.config import PlatformConfig, TurnStoreConfig
 
 if TYPE_CHECKING:
     from ..agent.agent_config import Agent
@@ -95,7 +95,9 @@ class SessionManager:
         if turn_store is not None and pool.user_id:
             # Derive token estimate from TurnStore — includes both user and
             # assistant turns, restoring pre-#666 full-conversation accounting.
-            raw = await turn_store.get_turns(pool.pool_id, pool.user_id, limit=500)
+            raw = await turn_store.get_turns(
+                pool.pool_id, pool.user_id, limit=TurnStoreConfig.COMPACT_TURN_FETCH_LIMIT
+            )
             token_est = sum(len(t["content"]) // 4 for t in raw)
         else:
             token_est = sum(len(msg.text) // 4 for msg in pool.history)

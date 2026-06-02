@@ -14,7 +14,7 @@ Let:
 ## TL;DR
 
 - Entry: `/dev #N` → tier (S/F-lite/F-full) → lifecycle
-- Close checklist (post-merge): `docs/process/dev-cycle.md` — debt retrospective
+- Close checklist (pre-cleanup, from worktree): `docs/process/dev-cycle.md` — run **before** worktree removal; `/dev` skill integration pending (roxabi-plugins)
 - Decisions → global-patterns.md
 - ¬`--force` | ¬`--hard` | ¬`--amend`
 

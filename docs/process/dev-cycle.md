@@ -1,15 +1,15 @@
 # Dev Cycle — Close Checklist
 
-Run after every `/dev #N` cycle completes (PR merged, worktree cleaned up).
+Run from the worktree root **before** cleanup (while `HEAD` still points to the PR branch).
 
 ## Debt Retrospective
 
 ```bash
-# Run from worktree root before cleanup, or against the merged diff
-git diff origin/staging..HEAD -- '*.py' | grep -c 'DEBT:'
-git diff origin/staging..HEAD -- '*.py' | grep -c 'noqa:'
-git diff origin/staging..HEAD -- '*.py' | grep -c 'except Exception'
-git diff origin/staging..HEAD -- '*.py' | grep -c 'sleep('
+# Run from worktree root before cleanup (git diff is empty after merge + worktree removal)
+git diff origin/staging..HEAD -- '*.py' | grep '^+' | grep -c 'DEBT:'
+git diff origin/staging..HEAD -- '*.py' | grep '^+' | grep -c 'noqa:'
+git diff origin/staging..HEAD -- '*.py' | grep '^+' | grep -c 'except Exception'
+git diff origin/staging..HEAD -- '*.py' | grep '^+' | grep -c 'sleep('
 ```
 
 | Metric | Threshold | Action |
@@ -30,3 +30,7 @@ git diff origin/staging..HEAD -- '*.py' | grep -c 'sleep('
 - Debt registry: `artifacts/debt/` — one `<slug>.md` per entry.
 - Audit tool: `tools/audit_quality_debt.py` (run via `make quality-debt-report`).
 - Full debt policy: `docs/debt-tracking.md`.
+
+## Integration Status
+
+This checklist is referenced from `CLAUDE.md` TL;DR. Automated invocation from the `/dev` SKILL.md cleanup step (in `roxabi-plugins`) is **pending** — tracked as a follow-up cross-repo change. Until wired, the checklist must be run manually before worktree cleanup.

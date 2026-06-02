@@ -29,6 +29,7 @@ import asyncio
 import logging
 import os
 import signal
+import socket
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -37,7 +38,9 @@ import httpx
 
 from factory.tools.gh_token.dispenser import Dispenser
 from factory.tools.gh_token.helper import JWTSigner, TokenCache
+from factory.tools.gh_token.mint_failure_publisher import MintFailurePublisher
 from factory.tools.gh_token.rate_limit import RateLimiter
+from roxabi_nats import nats_connect
 
 log = logging.getLogger(__name__)
 
@@ -99,6 +102,21 @@ def _load_config() -> DaemonConfig:
     )
 
 
+def _safe_machine_name(raw: str) -> str:
+    """Return *raw* if it is a valid single NATS subject token, else ``"unknown"``.
+
+    A valid token contains only ``[A-Za-z0-9_-]`` characters (no dots, spaces,
+    wildcards, or ``>``). validate_job_token from roxabi-contracts allows internal
+    dots for namespacing; for the ``machine`` subject segment we need a stricter
+    check so we inline one here.
+    """
+    import re
+
+    if re.fullmatch(r"[A-Za-z0-9_-]+", raw):
+        return raw
+    return "unknown"
+
+
 async def run_daemon(config: DaemonConfig) -> None:
     """Start the dispenser. Runs until cancelled.
 
@@ -109,6 +127,29 @@ async def run_daemon(config: DaemonConfig) -> None:
     cache = TokenCache(config.cache_path)
     rate_limiter = RateLimiter(min_interval_s=config.rate_limit_s)
     lock = asyncio.Lock()
+
+    # ── NATS: best-effort connect for mint-failure publishing ─────────────────
+    nats_url = os.environ.get("NATS_URL", "").strip()
+    nc = None
+    publisher: MintFailurePublisher | None = None
+
+    if not nats_url:
+        log.info("mint-failure publishing disabled — no NATS_URL")
+    else:
+        raw_machine = os.environ.get("FACTORY_MACHINE", socket.gethostname())
+        machine = _safe_machine_name(raw_machine)
+        try:
+            nc = await nats_connect(nats_url, identity_name="gh-helper")
+            publisher = MintFailurePublisher(nc, machine)
+            log.info(
+                "mint-failure publishing enabled — subject lyra.gh.mint_failure.%s",
+                machine,
+            )
+        except Exception as exc:  # noqa: BLE001 — must not crash daemon (BindsTo → pod teardown)
+            log.warning("mint-failure NATS connect failed: %s", exc)
+            nc = None
+            publisher = None
+    # ─────────────────────────────────────────────────────────────────────────
 
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(10.0),
@@ -122,6 +163,7 @@ async def run_daemon(config: DaemonConfig) -> None:
             install_id=config.install_id,
             lock=lock,
             rate_limiter=rate_limiter,
+            publisher=publisher,
         )
 
         config.sock_path.parent.mkdir(parents=True, exist_ok=True)
@@ -146,6 +188,11 @@ async def run_daemon(config: DaemonConfig) -> None:
             await server.wait_closed()
             task.cancel()
             await asyncio.gather(task, return_exceptions=True)
+            if nc is not None:
+                try:
+                    await nc.drain()
+                except Exception:  # noqa: BLE001 — best-effort drain on shutdown
+                    pass
 
 
 def _install_signal_handlers(loop: asyncio.AbstractEventLoop) -> None:

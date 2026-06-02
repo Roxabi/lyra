@@ -174,6 +174,11 @@ class TurnStore(SqliteStore, TurnStoreSessionMixin):
 
         Raises:
             ValueError: If *role* is not ``'user'`` or ``'assistant'``.
+            sqlite3.OperationalError: (or any ``aiosqlite`` error) if the SQLite
+                write fails (disk full, locked, corruption).  The exception is
+                intentionally **not** caught here so that the JetStream caller
+                (``TurnWriter._consume_loop``) can NACK the message and trigger
+                redelivery instead of silently acking a failed write.
         """
         if role not in _VALID_ROLES:
             raise ValueError(
@@ -182,42 +187,34 @@ class TurnStore(SqliteStore, TurnStoreSessionMixin):
         db = self._db_or_raise()
         ts = datetime.now(UTC).isoformat()
         meta_str = json.dumps(metadata or {})
-        try:
-            await db.execute(
-                _INSERT,
-                (
-                    pool_id,
-                    session_id,
-                    role,
-                    platform,
-                    user_id,
-                    content,
-                    message_id,
-                    reply_message_id,
-                    ts,
-                    meta_str,
-                ),
-            )
-            # Ensure session row exists — idempotent, safe on restart
-            await db.execute(
-                "INSERT OR IGNORE INTO pool_sessions"
-                " (session_id, pool_id, started_at, last_active_at)"
-                " VALUES (?, ?, ?, ?)",
-                (session_id, pool_id, ts, ts),
-            )
-            # Update session activity timestamp — tolerant: 0-row OK
-            await db.execute(
-                "UPDATE pool_sessions SET last_active_at = ? WHERE session_id = ?",
-                (ts, session_id),
-            )
-            await db.commit()
-        except Exception:
-            log.exception(
-                "TurnStore._log_turn failed (pool=%s session=%s role=%s)",
+        await db.execute(
+            _INSERT,
+            (
                 pool_id,
                 session_id,
                 role,
-            )
+                platform,
+                user_id,
+                content,
+                message_id,
+                reply_message_id,
+                ts,
+                meta_str,
+            ),
+        )
+        # Ensure session row exists — idempotent, safe on restart
+        await db.execute(
+            "INSERT OR IGNORE INTO pool_sessions"
+            " (session_id, pool_id, started_at, last_active_at)"
+            " VALUES (?, ?, ?, ?)",
+            (session_id, pool_id, ts, ts),
+        )
+        # Update session activity timestamp — tolerant: 0-row OK
+        await db.execute(
+            "UPDATE pool_sessions SET last_active_at = ? WHERE session_id = ?",
+            (ts, session_id),
+        )
+        await db.commit()
 
     async def get_turns(
         self, pool_id: str, user_id: str, limit: int = 50

@@ -223,6 +223,31 @@ class TestTurnStoreErrors:
                 content="hi",
             )
 
+    async def test_log_turn_reraises_on_db_failure(self, store: TurnStore) -> None:
+        """_log_turn re-raises sqlite3.OperationalError — no silent turn loss (#1637).
+
+        Previously the exception was caught and swallowed, causing the JetStream
+        caller to ACK a message whose turn was never persisted.  After the fix,
+        the exception must propagate so the caller can NACK and trigger redelivery.
+        """
+        from unittest.mock import AsyncMock, patch
+
+        db = store._db_or_raise()
+        with patch.object(
+            db,
+            "execute",
+            new=AsyncMock(side_effect=sqlite3.OperationalError("disk I/O error")),
+        ):
+            with pytest.raises(sqlite3.OperationalError, match="disk I/O error"):
+                await store._log_turn(
+                    pool_id="p",
+                    session_id="s",
+                    role="user",
+                    platform="telegram",
+                    user_id="u",
+                    content="will fail",
+                )
+
 
 class TestTurnStoreIntegrationWithPool:
     def _make_msg(

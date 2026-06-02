@@ -19,6 +19,8 @@ Cases:
 
 from __future__ import annotations
 
+import asyncio
+import sqlite3
 from datetime import UTC, datetime
 from typing import Literal
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -451,3 +453,80 @@ async def test_consume_loop_propagates_connection_closed_error(
         assert mock_log.error.called
         call_args = mock_log.error.call_args
         assert "NATS connection lost" in call_args[0][0]
+
+
+@pytest.mark.anyio
+async def test_consume_loop_nacks_on_log_turn_db_failure(
+    store: TurnStore,
+) -> None:
+    """sqlite3.OperationalError in _log_turn must NACK the message (#1637).
+
+    Root cause: _log_turn previously swallowed the exception so the loop fell
+    through to msg.ack().  After the fix, _log_turn re-raises so the outer
+    except clause calls msg.nak() and the turn is redelivered by JetStream.
+
+    Strategy: drive _consume_loop with one message batch.  nak() sets a
+    done_event so we cancel the task promptly without relying on sleep timing.
+    """
+    done_event = asyncio.Event()
+
+    mock_msg = MagicMock()
+    mock_msg.subject = "lyra.turns.write"
+    mock_msg.data = (
+        TurnWriteEvent(
+            contract_version=CONTRACT_VERSION,
+            trace_id="trace-nack-test",
+            issued_at=datetime.now(UTC),
+            event_id=uuid4(),
+            pool_id="pool:nack:1",
+            session_id="sess-nack-001",
+            platform="telegram",
+            user_id="u:nack:1",
+            timestamp=datetime.now(UTC),
+            payload=LogTurnPayload(
+                role="user", content="will fail", message_id="msg-nack"
+            ),
+        )
+        .model_dump_json()
+        .encode()
+    )
+    mock_msg.ack = AsyncMock()
+
+    async def _nak_and_signal(*_args, **_kwargs):
+        done_event.set()
+
+    mock_msg.nak = AsyncMock(side_effect=_nak_and_signal)
+
+    # First fetch: one-message batch.  Subsequent fetches park until cancelled.
+    fetch_call_count = 0
+
+    async def _fetch(batch, timeout):
+        nonlocal fetch_call_count
+        fetch_call_count += 1
+        if fetch_call_count == 1:
+            return [mock_msg]
+        await asyncio.sleep(3600)  # park — will be interrupted by task.cancel()
+        return []  # unreachable
+
+    mock_sub = MagicMock()
+    mock_sub.fetch = AsyncMock(side_effect=_fetch)
+
+    w = TurnWriter(turn_store=store, js=MagicMock())
+    w._sub = mock_sub
+
+    db = store._db_or_raise()
+    with patch.object(
+        db,
+        "execute",
+        new=AsyncMock(side_effect=sqlite3.OperationalError("disk I/O error")),
+    ):
+        task = asyncio.create_task(w._consume_loop())
+        await asyncio.wait_for(done_event.wait(), timeout=2.0)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    mock_msg.nak.assert_called_once()
+    mock_msg.ack.assert_not_called()

@@ -7,6 +7,8 @@ import os
 import sys
 from pathlib import Path
 
+import nats.errors
+
 from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 from factory.bootstrap.factory.config import _load_cli_pool_config
 from factory.bootstrap.infra.git_ownership_probe import run_git_ownership_probe
@@ -98,7 +100,7 @@ async def _bootstrap_turn_writer_standalone(raw_config: dict) -> None:
             "turn-writer: connected to NATS at %s",
             scrub_nats_url(nats_url),
         )
-    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+    except (nats.errors.Error, OSError) as exc:
         sys.exit(f"Failed to connect to NATS at {scrub_nats_url(nats_url)!r}: {exc}")
 
     js = nc.jetstream()

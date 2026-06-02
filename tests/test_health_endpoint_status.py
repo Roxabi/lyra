@@ -357,15 +357,19 @@ class TestNatsHealthProbe:
         monkeypatch: pytest.MonkeyPatch,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """#449 edge: `nc.is_connected` raising → unreachable + DEBUG log."""
+        """#449 edge: `nc.is_connected` raises AttributeError -> unreachable + DEBUG."""
         import logging as _logging
-        from unittest.mock import MagicMock, PropertyMock
 
         monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
 
-        nc = MagicMock()
-        # PropertyMock models the real @property semantics on nats-py client.
-        type(nc).is_connected = PropertyMock(side_effect=RuntimeError("boom"))
+        # Simulate a wrong-type nc object whose is_connected property raises
+        # AttributeError (e.g. a stub/mock that does not implement the attribute).
+        class _BadNc:
+            @property
+            def is_connected(self) -> bool:
+                raise AttributeError("boom")
+
+        nc = _BadNc()
 
         from factory.bootstrap.infra.health import create_health_app
 

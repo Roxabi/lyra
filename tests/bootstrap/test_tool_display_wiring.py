@@ -364,7 +364,7 @@ async def test_standalone_path_threads_tool_display_config_to_telegram() -> None
             side_effect=_capture_tg_adapter,
         ),
         patch(
-            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            "factory.bootstrap.wiring._standalone_wiring_common.NatsOutboundListener",
             return_value=mock_listener,
         ),
         patch(
@@ -471,7 +471,7 @@ async def test_standalone_path_threads_tool_display_config_to_discord() -> None:
             side_effect=_capture_dc_adapter,
         ),
         patch(
-            "factory.bootstrap.wiring.standalone_discord.NatsOutboundListener",
+            "factory.bootstrap.wiring._standalone_wiring_common.NatsOutboundListener",
             return_value=mock_listener,
         ),
         patch(

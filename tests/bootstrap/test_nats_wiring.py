@@ -1,4 +1,4 @@
-"""Tests for factory.bootstrap.wiring.nats_wiring — wire_nats_telegram_proxies."""
+"""Tests for factory.bootstrap.wiring.nats_wiring — wire_nats_proxies."""
 
 from __future__ import annotations
 
@@ -8,24 +8,25 @@ from unittest.mock import MagicMock
 import pytest
 
 from factory.bootstrap.wiring.nats_wiring import (
-    NatsTgWiringDeps,
-    wire_nats_telegram_proxies,
+    NatsProxyWiringDeps,
+    wire_nats_proxies,
 )
 from factory.config import TelegramBotConfig
 from factory.core.auth.authenticator import Authenticator
 from factory.core.hub import Hub
 from factory.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
+from factory.core.messaging.message import Platform
 
 # ---------------------------------------------------------------------------
-# test_wire_nats_telegram_proxies_skips_missing_bot
+# test_wire_nats_proxies_skips_missing_bot
 # ---------------------------------------------------------------------------
 
 
-class TestWireNatsTelegramProxies:
-    def test_wire_nats_telegram_proxies_skips_missing_bot(
+class TestWireNatsProxies:
+    def test_wire_nats_proxies_skips_missing_bot_telegram(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """wire_nats_telegram_proxies skips bots absent from bot_agent_map."""
+        """wire_nats_proxies skips bots absent from bot_agent_map (Telegram)."""
         # Arrange
         circuit_registry = CircuitRegistry()
         circuit_registry.register(CircuitBreaker(name="telegram"))
@@ -37,7 +38,7 @@ class TestWireNatsTelegramProxies:
         bot_cfg = TelegramBotConfig(bot_id="missing_bot", agent="some_agent")
         fake_auth: Authenticator = MagicMock(spec=Authenticator)
 
-        tg_bot_auths: list[tuple[TelegramBotConfig, Authenticator]] = [
+        bot_auths: list[tuple[TelegramBotConfig, Authenticator]] = [
             (bot_cfg, fake_auth)
         ]
         # bot_agent_map intentionally has no entry for ("telegram", "missing_bot")
@@ -46,12 +47,13 @@ class TestWireNatsTelegramProxies:
         # Act
         with caplog.at_level(
             logging.WARNING, logger="factory.bootstrap.wiring.nats_wiring"
-        ):  # noqa: E501
-            proxies, dispatchers = wire_nats_telegram_proxies(
-                NatsTgWiringDeps(
+        ):
+            proxies, dispatchers = wire_nats_proxies(
+                NatsProxyWiringDeps(
                     hub=hub,
                     nc=fake_nc,
-                    tg_bot_auths=tg_bot_auths,
+                    platform=Platform.TELEGRAM,
+                    bot_auths=bot_auths,
                     bot_agent_map=bot_agent_map,
                     circuit_registry=circuit_registry,
                 )

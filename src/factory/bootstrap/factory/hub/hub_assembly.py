@@ -14,15 +14,13 @@ from factory.bootstrap.factory.llm_overlay import init_nats_llm
 from factory.bootstrap.factory.voice_overlay import init_nats_stt, init_nats_tts
 from factory.bootstrap.types import BotAuthBundle, BuildHubDeps, VoiceBundle
 from factory.bootstrap.wiring.nats_wiring import (
-    NatsDcWiringDeps,
-    NatsTgWiringDeps,
-    wire_nats_discord_proxies,
-    wire_nats_telegram_proxies,
+    NatsProxyWiringDeps,
+    wire_nats_proxies,
 )
 from factory.core.agent import Agent
 from factory.core.hub import Hub
 from factory.core.lifecycle.circuit_breaker import CircuitRegistry
-from factory.core.messaging.message import InboundMessage
+from factory.core.messaging.message import InboundMessage, Platform
 from factory.core.messaging.messages import MessageManager
 from factory.infrastructure.stores.pairing import PairingManager
 from factory.nats.nats_bus import NatsBus
@@ -118,20 +116,22 @@ async def _build_hub_and_wire(  # noqa: PLR0913 — unavoidable wiring surface
         cli_nats_driver=cli_nats_driver,
     )
 
-    tg_proxies, tg_dispatchers = wire_nats_telegram_proxies(
-        NatsTgWiringDeps(
+    tg_proxies, tg_dispatchers = wire_nats_proxies(
+        NatsProxyWiringDeps(
             hub=hub,
             nc=nc,
-            tg_bot_auths=tg_bot_auths,
+            platform=Platform.TELEGRAM,
+            bot_auths=tg_bot_auths,
             bot_agent_map=bot_agent_map,
             circuit_registry=circuit_registry,
         )
     )
-    dc_proxies, dc_dispatchers = wire_nats_discord_proxies(
-        NatsDcWiringDeps(
+    dc_proxies, dc_dispatchers = wire_nats_proxies(
+        NatsProxyWiringDeps(
             hub=hub,
             nc=nc,
-            dc_bot_auths=dc_bot_auths,
+            platform=Platform.DISCORD,
+            bot_auths=dc_bot_auths,
             bot_agent_map=bot_agent_map,
             circuit_registry=circuit_registry,
         )

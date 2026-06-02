@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from ...config.dispatch_config import DispatchConfig
 from ...lifecycle.circuit_breaker import CircuitBreaker
 from ...messaging.message import RoutingContext
 from ...messaging.utils.callbacks import unwrap_callback
@@ -24,8 +25,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-_BACKOFF_DELAYS = (1.0, 2.0, 4.0)
-_MAX_ATTEMPTS = 4
+_BACKOFF_DELAYS = DispatchConfig.BACKOFF_DELAYS
+_MAX_ATTEMPTS = DispatchConfig.MAX_ATTEMPTS
 
 
 @dataclass

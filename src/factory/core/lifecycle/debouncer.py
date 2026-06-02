@@ -20,12 +20,15 @@ import logging
 from dataclasses import replace
 from typing import TYPE_CHECKING
 
+from factory.core.config.lifecycle_config import LifecycleConfig
+
 if TYPE_CHECKING:
     from ..messaging.message import InboundMessage
 
 log = logging.getLogger(__name__)
 
-DEFAULT_DEBOUNCE_MS = 300
+# Backward-compatible re-export — SSoT is LifecycleConfig.
+DEFAULT_DEBOUNCE_MS: int = LifecycleConfig.DEFAULT_DEBOUNCE_MS
 _MAX_MERGED_CHARS = 4096
 
 

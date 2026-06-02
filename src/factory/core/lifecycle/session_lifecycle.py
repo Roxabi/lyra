@@ -5,6 +5,8 @@ import json
 import logging
 from typing import TYPE_CHECKING
 
+from factory.core.config import PlatformConfig
+
 if TYPE_CHECKING:
     from ..agent.agent_config import Agent
     from ..memory import MemoryManager, SessionSnapshot
@@ -12,13 +14,10 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-MODEL_CONTEXT_TOKENS = 200_000
-# COMPACT_THRESHOLD is calibrated against full-conversation token counts (user +
-# assistant turns). The pre-#666 AnthropicSdkDriver included both roles; this
-# threshold is restored to the same accounting by deriving the estimate from
-# TurnStore (which logs both roles) rather than pool.history (user-only).
-COMPACT_THRESHOLD = int(0.8 * MODEL_CONTEXT_TOKENS)
-COMPACT_TAIL = 10
+# Backward-compatible re-exports — SSoT is PlatformConfig.
+MODEL_CONTEXT_TOKENS: int = PlatformConfig.DEFAULT_CONTEXT_TOKENS
+COMPACT_THRESHOLD: int = PlatformConfig.COMPACT_THRESHOLD
+COMPACT_TAIL: int = PlatformConfig.COMPACT_TAIL
 
 
 class SessionManager:
@@ -31,7 +30,11 @@ class SessionManager:
     config: Agent
     _memory: MemoryManager | None = None
     _task_registry: set | None = None
-    _compact_context_tokens: int = MODEL_CONTEXT_TOKENS
+    # COMPACT_THRESHOLD is calibrated against full-conversation token counts (user +
+    # assistant turns). The pre-#666 AnthropicSdkDriver included both roles; this
+    # threshold is restored to the same accounting by deriving the estimate from
+    # TurnStore (which logs both roles) rather than pool.history (user-only).
+    _compact_context_tokens: int = PlatformConfig.DEFAULT_CONTEXT_TOKENS
 
     # S4 — session flush (issue #83)
 

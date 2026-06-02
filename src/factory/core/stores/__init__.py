@@ -6,6 +6,7 @@ This package re-exports only protocol-safe symbols for backward compatibility.
 """
 
 from .agent_store_protocol import AgentStoreProtocol
+from .auth_store_protocol import AuthStoreProtocol
 from .bot_store_protocol import BotStoreProtocol
 from .message_index_protocol import MessageIndexProtocol
 from .thread_store_protocol import ThreadStoreProtocol
@@ -13,6 +14,7 @@ from .turn_store_protocol import SessionRow, TurnRow, TurnStoreProtocol
 
 __all__ = [
     "AgentStoreProtocol",
+    "AuthStoreProtocol",
     "BotStoreProtocol",
     "MessageIndexProtocol",
     "SessionRow",

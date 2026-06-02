@@ -16,7 +16,7 @@ Each inbound turn receives a unique `trace_id` (UUID4) that propagates through t
 
 **Level:** `INFO` by default; override via `[logging] level` in `config.toml`.
 
-Configured in `src/lyra/__main__.py` — `_setup_logging()`.
+Configured in `src/factory/__main__.py` — `_setup_logging()`.
 
 ---
 
@@ -29,12 +29,12 @@ A `TraceIdFilter` (attached to all logging handlers at startup) reads `trace_id`
 To isolate a single turn's log lines:
 
 ```bash
-journalctl --user -u lyra-hub | grep 'abc-123-...'
+journalctl --user -u factory-hub | grep 'abc-123-...'
 ```
 
 **Scope boundary:** Log lines emitted in `Hub.run()` outside of pipeline processing (e.g., the main loop itself) do not carry a `trace_id`. Only per-turn processing is traced.
 
-Implemented in `src/lyra/core/trace.py`. See #270.
+Implemented in `src/factory/core/trace.py`. See #270.
 
 ---
 
@@ -50,7 +50,7 @@ The `pool_id` is a stable string that identifies a conversation scope and appear
 To reconstruct a full conversation scope:
 
 ```bash
-journalctl --user -u lyra-hub | grep "telegram:main:chat:123456"
+journalctl --user -u factory-hub | grep "telegram:main:chat:123456"
 ```
 
 ---
@@ -61,13 +61,13 @@ The following events are emitted (at INFO unless noted) for each inbound message
 
 | Stage | Logger | Example line |
 |-------|--------|-------------|
-| Hub routing | `lyra.core.hub` | Pool resolved, workspace/cwd overrides |
-| Agent dispatch | `lyra.agents.anthropic_agent` | `[agent:lyra][pool:telegram:main:chat:123] response: 156 chars` |
-| LLM call (SDK) | `lyra.llm.drivers.sdk` | `SDK stream [pool:...]: in=45 out=87 tokens` |
-| Retry/backoff | `lyra.llm.decorators` | Retry attempt N, backoff delay |
-| Timeout / cancel | `lyra.core.cli_pool` (WARNING/ERROR) | `pool ...: no output for Ns — alive, waiting (1/3)` or `Timeout: no output for Ns` |
-| Cancel-in-flight | `lyra.core.pool` (DEBUG) | New message while LLM processing |
-| Circuit breaker | `lyra.core.circuit_breaker` (WARNING) | State transition old→new |
+| Hub routing | `factory.core.hub` | Pool resolved, workspace/cwd overrides |
+| Agent dispatch | `factory.agents.anthropic_agent` | `[agent:lyra][pool:telegram:main:chat:123] response: 156 chars` |
+| LLM call (SDK) | `factory.llm.drivers.sdk` | `SDK stream [pool:...]: in=45 out=87 tokens` |
+| Retry/backoff | `factory.llm.decorators` | Retry attempt N, backoff delay |
+| Timeout / cancel | `factory.core.cli_pool` (WARNING/ERROR) | `pool ...: no output for Ns — alive, waiting (1/3)` or `Timeout: no output for Ns` |
+| Cancel-in-flight | `factory.core.pool` (DEBUG) | New message while LLM processing |
+| Circuit breaker | `factory.core.circuit_breaker` (WARNING) | State transition old→new |
 
 **What is NOT logged:** message content, full prompts/responses (only char/token counts). For full content capture, see the Turn Store below.
 
@@ -77,7 +77,7 @@ The following events are emitted (at INFO unless noted) for each inbound message
 
 > Shipped in #67 (L1 memory layer).
 
-The `TurnStore` (`src/lyra/core/turn_store.py`) persists every user and assistant turn to a dedicated **`~/.lyra/turns.db`** SQLite database (separate from roxabi-vault to avoid write contention). This provides a complete audit trail with message content, platform IDs, and session context.
+The `TurnStore` (`src/factory/core/turn_store.py`) persists every user and assistant turn to a dedicated **`~/.roxabi/factory/turns.db`** SQLite database (separate from roxabi-vault to avoid write contention). This provides a complete audit trail with message content, platform IDs, and session context.
 
 | Column | Purpose |
 |--------|---------|
@@ -103,7 +103,7 @@ The `TurnStore` (`src/lyra/core/turn_store.py`) persists every user and assistan
 
 ## Pipeline Telemetry Events
 
-Typed telemetry events are emitted at middleware seam boundaries for observability (#432). These are defined in `src/lyra/core/hub/pipeline_events.py` and fanned out via `PipelineEventBus` (`src/lyra/core/hub/event_bus.py`).
+Typed telemetry events are emitted at middleware seam boundaries for observability (#432). These are defined in `src/factory/core/hub/pipeline_events.py` and fanned out via `PipelineEventBus` (`src/factory/core/hub/event_bus.py`).
 
 > **Note:** The original `events.py` (AgentStarted, AgentCompleted, etc.) was deleted in `6cd433c` — these types were never wired into the codebase. The current pipeline event system replaced them for middleware telemetry.
 
@@ -121,10 +121,10 @@ The `PipelineEventBus` is injected via constructor (DI, not singleton) per ADR-0
 
 ## Health Monitoring
 
-> **Removed — see [#1035](https://github.com/Roxabi/lyra/issues/1035).** The host-timer units (`lyra-monitor.{service,timer}`) have been removed from `deploy/`. The Python module `src/lyra/monitoring/` is preserved for Monitoring v2 spec reference.
+> **Removed — see [#1035](https://github.com/Roxabi/roxabi-factory/issues/1035).** The host-timer units (`lyra-monitor.{service,timer}`) have been removed from `deploy/`. The Python module `src/factory/monitoring/` is preserved for Monitoring v2 spec reference.
 
 > For ad-hoc hub health probes, see `docs/CONFIGURATION.md` § Monitoring — removed.
-> For the planned successor, see [#1035](https://github.com/Roxabi/lyra/issues/1035) (Monitoring v2 — NATS event stream + Tauri dashboard).
+> For the planned successor, see [#1035](https://github.com/Roxabi/roxabi-factory/issues/1035) (Monitoring v2 — NATS event stream + Tauri dashboard).
 
 ---
 

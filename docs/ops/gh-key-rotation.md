@@ -2,9 +2,9 @@
 
 ## Scope
 
-This runbook covers rotating the private key (PEM) for the Lyra GitHub App. Rotate when the key is suspected compromised, as part of a scheduled key refresh, or when a new operator takes ownership. The operation replaces the `lyra-gh-pem` Podman secret on the target host and restarts `lyra-gh-helper` (the only container that mounts the PEM in the sidecar Pod design) to load the new key; expected downtime is ≤10 s end-to-end. Measured 0.58 s on M₁ (Podman 5.7.0) on 2026-05-06.
+This runbook covers rotating the private key (PEM) for the Lyra GitHub App. Rotate when the key is suspected compromised, as part of a scheduled key refresh, or when a new operator takes ownership. The operation replaces the `factory-gh-pem` Podman secret on the target host and restarts `factory-gh-helper` (the only container that mounts the PEM in the sidecar Pod design) to load the new key; expected downtime is ≤10 s end-to-end. Measured 0.58 s on M₁ (Podman 5.7.0) on 2026-05-06.
 
-This runbook does **not** cover changing the GitHub App ID or installation ID — those are properties of the registered App and changing them requires re-registering the App and updating the `Environment=` values in `deploy/quadlet/lyra-gh-helper.container`. It also does not cover first-time bootstrap; for that, see `deploy/provision.sh` section "Lyra GitHub App PEM (Podman secret)".
+This runbook does **not** cover changing the GitHub App ID or installation ID — those are properties of the registered App and changing them requires re-registering the App and updating the `Environment=` values in `deploy/quadlet/factory-gh-helper.container`. It also does not cover first-time bootstrap; for that, see `deploy/provision.sh` section "Lyra GitHub App PEM (Podman secret)".
 
 ---
 
@@ -22,10 +22,10 @@ A single GitHub App `lyra-harness` (id `3619198`, install_id `129952244`) is use
 
 | App | Host | Quadlet unit (PEM consumer) | Secret name |
 |---|---|---|---|
-| `lyra-harness` | M₁ — roxabituwer (192.168.1.16) | `lyra-gh-helper.service` | `lyra-gh-pem` |
-| `lyra-harness` | M₂ — ROXABITOWER | `lyra-gh-helper.service` | `lyra-gh-pem` |
+| `lyra-harness` | M₁ — roxabituwer (192.168.1.16) | `factory-gh-helper.service` | `factory-gh-pem` |
+| `lyra-harness` | M₂ — ROXABITOWER | `factory-gh-helper.service` | `factory-gh-pem` |
 
-App ID + install_id are git-versioned in `deploy/quadlet/lyra-gh-helper.container` and identical on both hosts. The secret name `lyra-gh-pem` is identical on both hosts. Each host has an isolated Podman secret store — there is no cross-host conflict, and a single PEM file may be re-used (or a per-host PEM, at the operator's discretion).
+App ID + install_id are git-versioned in `deploy/quadlet/factory-gh-helper.container` and identical on both hosts. The secret name `factory-gh-pem` is identical on both hosts. Each host has an isolated Podman secret store — there is no cross-host conflict, and a single PEM file may be re-used (or a per-host PEM, at the operator's discretion).
 
 ---
 
@@ -39,7 +39,7 @@ On github.com, navigate to Settings → Developer settings → GitHub Apps → L
 For M₁:
 
 ```bash
-scp ~/Downloads/lyra-harness.private-key.YYYY-MM-DD.pem mickael@192.168.1.16:/home/lyra/secrets/new-lyra-harness.pem
+scp ~/Downloads/lyra-harness.private-key.YYYY-MM-DD.pem mickael@192.168.1.16:/home/factory/secrets/new-lyra-harness.pem
 ```
 
 For M₂, use the equivalent path on ROXABITOWER — the script runs locally, so no SCP is needed if you are already on M₂.
@@ -48,7 +48,7 @@ For M₂, use the equivalent path on ROXABITOWER — the script runs locally, so
 
 ```bash
 ssh mickael@192.168.1.16 \
-  'systemctl --user is-active lyra-gh-pod.service lyra-gh-helper.service lyra-clipool.service'
+  'systemctl --user is-active factory-gh-pod.service factory-gh-helper.service factory-clipool.service'
 ```
 
 Expected: `active` for all three. If any is down for an unrelated reason, resolve that first — a degraded baseline makes post-rotation verification ambiguous.
@@ -67,20 +67,20 @@ echo "Rotation start: $RT"
 On the target host:
 
 ```bash
-cd ~/projects/lyra
-time bash deploy/scripts/rotate-gh-key.sh /home/lyra/secrets/new-lyra-harness.pem
+cd ~/projects/roxabi-factory
+time bash deploy/scripts/rotate-gh-key.sh /home/factory/secrets/new-lyra-harness.pem
 ```
 
 The script:
-1. Removes the existing `lyra-gh-pem` Podman secret (tolerates first-time absence).
-2. Creates a new `lyra-gh-pem` secret from the supplied PEM path.
-3. Runs `systemctl --user restart lyra-gh-helper.service`.
-4. Polls every 0.5 s for up to 10 s, waiting for two conditions: helper container Up AND the dispenser socket reachable from inside `lyra-clipool` (`test -S /run/lyra-gh-token/dispenser.sock`).
+1. Removes the existing `factory-gh-pem` Podman secret (tolerates first-time absence).
+2. Creates a new `factory-gh-pem` secret from the supplied PEM path.
+3. Runs `systemctl --user restart factory-gh-helper.service`.
+4. Polls every 0.5 s for up to 10 s, waiting for two conditions: helper container Up AND the dispenser socket reachable from inside `factory-clipool` (`test -S /run/factory-gh-token/dispenser.sock`).
 
-**Expected output:** `lyra-gh-helper restarted, dispenser reachable, secret rotated.`
+**Expected output:** `factory-gh-helper restarted, dispenser reachable, secret rotated.`
 **Expected wall-clock:** ≤10 s total. Reference measurement: 0.58 s on M₁ (Podman 5.7.0) 2026-05-06.
 
-> **Warning:** the helper restart is a hard stop — in-flight `git push` or `gh` operations that already hold a minted token continue uninterrupted, but new token requests from `lyra-clipool` during the helper restart window will fail with `ECONNREFUSED` on the dispenser socket. The script does not drain in-flight operations. If you need to avoid disrupting an active operation, wait for it to complete before running the script.
+> **Warning:** the helper restart is a hard stop — in-flight `git push` or `gh` operations that already hold a minted token continue uninterrupted, but new token requests from `factory-clipool` during the helper restart window will fail with `ECONNREFUSED` on the dispenser socket. The script does not drain in-flight operations. If you need to avoid disrupting an active operation, wait for it to complete before running the script.
 
 If the script exits non-zero, jump to **[4. Rollback](#4-rollback)**.
 
@@ -91,8 +91,8 @@ If the script exits non-zero, jump to **[4. Rollback](#4-rollback)**.
 **3.1 Confirm helper + clipool are healthy.**
 
 ```bash
-systemctl --user is-active lyra-gh-helper.service lyra-clipool.service
-podman ps --filter name=lyra-gh-helper --filter name=lyra-clipool --format '{{.Names}} {{.Status}}'
+systemctl --user is-active factory-gh-helper.service factory-clipool.service
+podman ps --filter name=factory-gh-helper --filter name=factory-clipool --format '{{.Names}} {{.Status}}'
 ```
 
 Expected: `active active` and two status lines beginning with Up.
@@ -100,7 +100,7 @@ Expected: `active active` and two status lines beginning with Up.
 **3.2 Check helper logs for mint activity.**
 
 ```bash
-journalctl --user -u lyra-gh-helper --since "$RT" | grep -iE 'mint|github|token|error'
+journalctl --user -u factory-gh-helper --since "$RT" | grep -iE 'mint|github|token|error'
 ```
 
 Look for absence of MintFailure lines. A successful token mint by the helper confirms the new PEM was read and accepted by GitHub's API.
@@ -110,7 +110,7 @@ Look for absence of MintFailure lines. A successful token mint by the helper con
 From inside the clipool container, exercise the dispenser path with the new PEM:
 
 ```bash
-podman exec lyra-clipool lyra-gh issue list --repo Roxabi/lyra --limit 1
+podman exec factory-clipool lyra-gh issue list --repo Roxabi/roxabi-factory --limit 1
 ```
 
 Expected: a real issue line is printed. The `lyra-gh` shim resolves a fresh installation token from the new PEM via the dispenser socket and runs `gh` with `GH_TOKEN` scoped to the single subprocess invocation.
@@ -118,7 +118,7 @@ Expected: a real issue line is printed. The `lyra-gh` shim resolves a fresh inst
 **3.4 Wipe the staging copy of the PEM from the host.**
 
 ```bash
-shred -u /home/lyra/secrets/new-lyra-harness.pem
+shred -u /home/factory/secrets/new-lyra-harness.pem
 ```
 
 ---
@@ -127,7 +127,7 @@ shred -u /home/lyra/secrets/new-lyra-harness.pem
 
 Trigger rollback when:
 - The rotation script exits non-zero.
-- `lyra-clipool` fails to return to Up state within 10 s.
+- `factory-clipool` fails to return to Up state within 10 s.
 - `git fetch`/`git push` returns auth errors post-rotation.
 
 **4.1 If you have the previous PEM archived** (recommended: keep the prior rotation's PEM in a sealed location for ≥7 days):

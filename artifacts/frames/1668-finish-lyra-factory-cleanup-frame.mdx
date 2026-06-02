@@ -1,0 +1,78 @@
+---
+title: "Finish lyra→factory rename — residual non-functional refs"
+issue: 1668
+status: approved
+tier: F-lite
+date: 2026-06-02
+---
+
+## Problem
+
+The `lyra`→`factory` rename (PR #1669) is functionally complete and merged to `staging`:
+package, CLI surface, `LYRA_*`→`FACTORY_*` env vars, container identity, and the
+image-breaking Dockerfile gh-shim ENV are all done. Deliberately deferred — to keep the
+rename PR tightly scoped — were three classes of **residual, non-functional** references
+that still misrepresent the project as `lyra`:
+
+1. **Doc/artifact sweep** — stale `LYRA_*`, `lyra-*` unit/image refs, `~/.lyra`,
+   `ghcr.io/roxabi/lyra`, `Roxabi/lyra` confined to `.md`/`.mdx`/`docs/`/`artifacts/`,
+   including *living* docs (`deploy/CLAUDE.md`, `src/factory/tools/CLAUDE.md`, the root
+   `CLAUDE.md` container table, etc.) that Claude + contributors read as SSoT.
+2. **Dead env vars** — 7 `FACTORY_*` toggle vars in `.env.example` with **zero readers**
+   in the repo (STT/TTS init is unconditional per `tests/bootstrap/test_voice_overlay.py`).
+   Prefix-renamed in the rename PR for file consistency but still *lie* about a feature gate.
+   (+ bonus: `TTS_ENGINE=` line marked DEPRECATED, also dead.)
+3. **Config-filename drift** (pre-existing) — `FACTORY_CONFIG` default disagrees:
+   `monitoring/config.py:134` → `"lyra.toml"`; `config_loader.py` → canonical `config.toml`;
+   `authenticator.py:266` log msg → `lyra.toml`. Align all to `config.toml`. Test-touching.
+
+## Who
+
+- **Primary:** contributors + Claude reading living docs (`CLAUDE.md`, `deploy/`) as the
+  source of truth — stale `lyra-*` refs mislead about unit/image/path names.
+- **Secondary:** anyone setting `FACTORY_STT_ENABLED`/`FACTORY_TTS_*` in `.env` expecting a
+  toggle that does not exist (silent no-op → confusion).
+
+## Constraints
+
+- Pure cleanup — **no runtime behavior change** beyond the config-filename alignment.
+- **Keep (do NOT touch):** NATS subject examples (`lyra.*`) — separate WIRE workstream #1670;
+  "Lyra" persona / `lyra_default` / `bot_id "lyra"` / `/svc` label / `lyra-bot@` git author;
+  frozen historical fixture `tests/scripts/fixtures/v3-pre-grant-group.json`.
+- Config-filename change touches `tests/test_monitoring_config.py` — keep tests green.
+- Single low-risk PR → `staging`, merge-commit convention.
+
+## Out of Scope
+
+- NATS subjects `lyra.*`→`factory.*`, JetStream streams (`LYRA_OUTBOUND_AUDIO`, `LYRA_AUDIT`,
+  `LYRA_TURNS`), KV `LYRA_STATE`, ACL `owner: "lyra"` — cross-repo wire contract → #1670.
+- Frozen pre-migration test fixture (intentional `lyra-nats-*` / `~/.lyra`).
+- Kept app identity (persona, default agent/bot ids, service label, git author).
+- Prod cutover (data move, host secrets, hosts.toml role, auto-update timer) → Part 2.
+
+## Premise Validity
+
+**Success in 6 months:** `git grep -niE 'lyra' -- '*.md' '*.mdx' docs/ artifacts/` returns
+**only** intentional matches (NATS `lyra.*` subjects, "Lyra" persona, frozen fixture);
+`FACTORY_CONFIG` resolves to `config.toml` in all 3 resolvers; `.env.example` has zero
+dead toggle vars. No contributor/Claude is misled by a stale `lyra-*` ref or phantom flag.
+
+**Failure in 6 months:** A `git grep` over docs still surfaces ≥1 non-subject `lyra`/`LYRA_`
+ref in a living doc (e.g. `deploy/CLAUDE.md` still names `lyra-hub`), OR a contributor files a
+bug/question about `FACTORY_STT_ENABLED` having no effect — i.e. the dead vars still ship.
+(Falsifiable: grep count > 0 on the defined exclusion set; or ≥1 such issue/question.)
+
+**Simplest alternative:** Do nothing — it's pure docs + dead config, zero runtime impact.
+**Why not simplest:** Living docs (`CLAUDE.md`, `deploy/`) are the SSoT that Claude and
+contributors act on; stale refs cause wrong commands/paths, and the dead env vars *actively
+assert* a feature toggle that silently does nothing — misleading, not merely cosmetic.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (cleanup), no new architecture, one real
+decision (item 2: remove vs wire the dead vars → **remove**, working stance).
+
+Signals observed:
+- >3 files (doc sweep spans many `.md`) but mechanical string-replace bulk.
+- One code+test change (item 3) — bounded, 3 source files + 1 test.
+- No unknowns; issue body is already a de-facto spec with exact paths + grep commands.

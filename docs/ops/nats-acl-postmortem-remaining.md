@@ -24,7 +24,7 @@ Source: [nats-acl-inbox-case-postmortem.md](nats-acl-inbox-case-postmortem.md)
 | Drop `allow_responses: true` from all identities | `5b3b6c4a` — hub/adapters explicit `false`; others omit field (NATS default = false) |
 | Kill hardcoded identity list in gen-nkeys.sh — IDENTITIES[] driven from JSON SSoT | `load_matrix()` populates from acl-matrix.json |
 | Alert on `permissions violation` in NATS logs | `src/factory/monitoring/checks_log.py` — `check_nats_log_errors` |
-| Alert on sustained `_dict_stream_gen timeout` in hub logs | `src/lyra/monitoring/checks_log.py:57` — `check_hub_dict_stream_gen_timeout` |
+| Alert on sustained `_dict_stream_gen timeout` in hub logs | `src/factory/monitoring/checks_log.py:57` — `check_hub_dict_stream_gen_timeout` |
 | NATS HTTP monitoring on 127.0.0.1 | `bcab1197` |
 | Retire `tts-adapter`/`sst-adapter` from acl-matrix.json | `5b3b6c4a` |
 | Fix gen-nkeys.sh missing `clipool-worker` in key-gen block | `5b3b6c4a` |
@@ -121,7 +121,7 @@ Add a fixture that removes a flow declaration from `request_reply_flows` and ass
 2. `gen-nkeys.sh` `render_auth_conf`: skip any identity where `status == "retired"` — do not emit a `users[]` block for it.
 3. `gen-nkeys.sh` `generate_nkeys` (full mode): skip `generate_nkey` call for retired identities — do not create or regenerate seeds.
 4. Add a CI check that rejects any identity with `status == "retired"` and no `retired_at` date field. This forces retirement to be a documented, dated action rather than a passive omission.
-5. Document the retirement process: set `status: retired`, add `retired_at: YYYY-MM-DD`, run `gen-nkeys.sh --regen-authconf`, run `make quadlet-secrets-install`, run `make lyra-nats reload`, verify logs show no reconnect from the retired identity.
+5. Document the retirement process: set `status: retired`, add `retired_at: YYYY-MM-DD`, run `gen-nkeys.sh --regen-authconf`, run `make quadlet-secrets-install`, run `make factory-nats reload`, verify logs show no reconnect from the retired identity.
 
 **Reason this matters:** A future identity added to the JSON but later abandoned will accumulate live credentials and ACL grants on every `--regenerate` run unless retirement is an explicit, tooling-enforced step.
 
@@ -163,7 +163,7 @@ HealthRetries=3
 
 ### 5. `make nats-rotate-secrets` atomic wrapper ❌
 
-**Priority:** P1 — the current 4-step manual process is a routine hazard. Every ACL change is an opportunity to leave the system silently inconsistent (e.g., `make lyra-nats reload` executed before `make quadlet-secrets-install` silently reloads NATS against the old `auth.conf`).
+**Priority:** P1 — the current 4-step manual process is a routine hazard. Every ACL change is an opportunity to leave the system silently inconsistent (e.g., `make factory-nats reload` executed before `make quadlet-secrets-install` silently reloads NATS against the old `auth.conf`).
 
 **Current state:** Makefile has `nats-regen-authconf` (pull + regen) and `quadlet-secrets-install` (create Podman secrets) as separate targets with no dependency chain.
 
@@ -172,12 +172,12 @@ HealthRetries=3
 ```makefile
 nats-rotate-secrets: ## atomic: regen + scoped install + restart (via nats-regen-authconf) → wait-ready → verify → smoke
 	@$(MAKE) nats-regen-authconf
-	@# nats-regen-authconf scopes the install to lyra-nats-auth and restarts lyra-nats.
+	@# nats-regen-authconf scopes the install to factory-nats-auth and restarts factory-nats.
 	@# This wrapper adds remote wait-ready + log verification + voice smoke.
-	@ssh $(DEPLOY_HOST) "systemctl --user is-active --wait lyra-nats" \
-		|| { echo "ERROR: lyra-nats failed to reach active state on $(DEPLOY_HOST)"; exit 1; }
-	@if ssh $(DEPLOY_HOST) "journalctl --user -u lyra-nats --since '10 seconds ago' | grep -qi 'permission\|error\|fatal'"; then \
-		echo "ERROR: violations detected in lyra-nats log — inspect: journalctl --user -u lyra-nats"; \
+	@ssh $(DEPLOY_HOST) "systemctl --user is-active --wait factory-nats" \
+		|| { echo "ERROR: factory-nats failed to reach active state on $(DEPLOY_HOST)"; exit 1; }
+	@if ssh $(DEPLOY_HOST) "journalctl --user -u factory-nats --since '10 seconds ago' | grep -qi 'permission\|error\|fatal'"; then \
+		echo "ERROR: violations detected in factory-nats log — inspect: journalctl --user -u factory-nats"; \
 		exit 1; \
 	fi
 	@echo "No errors detected — rotation complete"
@@ -218,7 +218,7 @@ The post-restart verification step is load-bearing — it turns a silent partial
    - Event-triggered rotation: suspected compromise, personnel change with prod access, seed file visible in logs
    - Scheduled rotation: quarterly (mark in calendar or set a cron reminder)
 
-2. **Rotation log:** create `~/.lyra/nkeys/rotation-log.md` (or append to a fixed path) with an entry on every rotation:
+2. **Rotation log:** create `~/.roxabi/factory/nkeys/rotation-log.md` (or append to a fixed path) with an entry on every rotation:
    ```
    2026-04-28 | identities: hub, clipool-worker | reason: quarterly | operator: mickael
    ```
@@ -232,7 +232,7 @@ The post-restart verification step is load-bearing — it turns a silent partial
 
 **Verified 2026-04-28 — already handled.**
 
-`StreamProcessor` (`src/lyra/core/processors/stream_processor.py:134`) detects when the stream ends without a `ResultLlmEvent` and emits `TextRenderEvent("Something went wrong. Please try again.", is_error=True)`. The user receives a message; there is no silent failure.
+`StreamProcessor` (`src/factory/core/processors/stream_processor.py:134`) detects when the stream ends without a `ResultLlmEvent` and emits `TextRenderEvent("Something went wrong. Please try again.", is_error=True)`. The user receives a message; there is no silent failure.
 
 The only remaining gap is cosmetic: the error text is generic and does not distinguish "clipool unreachable" from other truncation causes. Not worth a dedicated issue.
 
@@ -246,7 +246,7 @@ The only remaining gap is cosmetic: the error text is generic and does not disti
 
 ```bash
 ssh mickael@192.168.1.16 \
-  "journalctl --user -u lyra-nats --since '24 hours ago' | grep -i 'permissions violation' | wc -l"
+  "journalctl --user -u factory-nats --since '24 hours ago' | grep -i 'permissions violation' | wc -l"
 ```
 
 Expected output: `0`. If non-zero, investigate before closing this item.

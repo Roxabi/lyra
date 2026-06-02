@@ -9,7 +9,7 @@ Bootstrap = orchestration only. No business logic — all domain behaviour lives
 - `_bootstrap_hub_standalone` — hub process
 - `_bootstrap_adapter_standalone` — Telegram / Discord adapter process
 - `_bootstrap_clipool_standalone` — CLI pool process
-- `_bootstrap_turn_writer_standalone` — turn-writer JetStream subscriber process (`lyra turn-writer`, `standalone/worker_standalone.py`)
+- `_bootstrap_turn_writer_standalone` — turn-writer JetStream subscriber process (`factory turn-writer`, `standalone/worker_standalone.py`)
 - `_bootstrap_unified` — all-in-one single process
 
 ## Flat files at root
@@ -32,4 +32,4 @@ treat the returned object as opaque — they only call domain methods (`complete
 
 ## Rules
 
-- All intra-bootstrap imports: full absolute paths (`lyra.bootstrap.<subdir>.<module>`).
+- All intra-bootstrap imports: full absolute paths (`factory.bootstrap.<subdir>.<module>`).

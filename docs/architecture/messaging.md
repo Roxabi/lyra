@@ -233,8 +233,8 @@ Every hub↔adapter envelope (`InboundMessage`, `AudioPayload`, `OutboundMessage
 
 1. Bump the `SCHEMA_VERSION_<ENVELOPE>` constant in `src/factory/core/messaging/message.py` or `src/factory/core/messaging/render_events.py` by 1.
 2. Update the `schema_version` field default on the corresponding envelope to match.
-3. Coordinate a simultaneous deploy of `lyra_hub` + `lyra_telegram` + `lyra_discord`. Rolling deploys across a version bump produce loud ERROR logs on still-old receivers.
-4. Verify: `grep SCHEMA_VERSION_ src/lyra/core/*.py`.
+3. Coordinate a simultaneous deploy of `factory_hub` + `factory_telegram` + `factory_discord`. Rolling deploys across a version bump produce loud ERROR logs on still-old receivers.
+4. Verify: `grep SCHEMA_VERSION_ src/factory/core/*.py`.
 
 → See `ARCHITECTURE.md` (Schema versioning section) for full detail on the receiver drop-and-log policy and the unversioned outer envelope note.
 
@@ -265,7 +265,7 @@ NatsTransport           — call() / publish() / open_inbox()
       │
 WorkerPoolClient        — routing + circuit-breaker + heartbeat subscription
       │
-DomainClient            — thin wrapper in lyra.nats / lyra.llm
+DomainClient            — thin wrapper in factory.nats / factory.llm
                           (e.g. LlmClient, NatsSttClient, NatsTtsClient)
 ```
 
@@ -284,7 +284,7 @@ DomainClient            — thin wrapper in lyra.nats / lyra.llm
 - `stream_request(subject, payload)` — opens inbox CM, publishes, iterates chunks.
 - `start(nc)` / `stop()` — heartbeat subscription lifecycle.
 
-**Domain clients** (`lyra.nats.*_client`, `factory.llm.llm_client`) are thin wrappers that
+**Domain clients** (`factory.nats.*_client`, `factory.llm.llm_client`) are thin wrappers that
 compose a `WorkerPoolClient` with a codec. They must NOT add a second circuit-breaker.
 
 ### Typed boundary
@@ -325,9 +325,9 @@ providers. Domain clients compose via
 
 ## See also
 
-- Security & ACLs → `/home/mickael/projects/lyra/docs/architecture/security-routing.md` (covers ADR-051, 064, 046, 057, 069)
-- Cross-project contracts → `/home/mickael/projects/lyra/docs/architecture/contracts.md` (covers ADR-045, 049, 052)
-- LLM streaming pipeline → `/home/mickael/projects/lyra/docs/architecture/llm-streaming.md` (covers ADR-032, 070)
+- Security & ACLs → `/home/mickael/projects/roxabi-factory/docs/architecture/security-routing.md` (covers ADR-051, 064, 046, 057, 069)
+- Cross-project contracts → `/home/mickael/projects/roxabi-factory/docs/architecture/contracts.md` (covers ADR-045, 049, 052)
+- LLM streaming pipeline → `/home/mickael/projects/roxabi-factory/docs/architecture/llm-streaming.md` (covers ADR-032, 070)
 
 ## ADR archive
 

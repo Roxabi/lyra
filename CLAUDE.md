@@ -4,7 +4,7 @@
 # CLAUDE.md — Instructions for Claude Code
 
 Let:
-  A := ~/.lyra/auth.db (grants, identity only) | C := ~/.lyra/config.db (agents, bots, prefs) | T := TOML seed | P := CLAUDE.md path
+  A := ~/.roxabi/factory/auth.db (grants, identity only) | C := ~/.roxabi/factory/config.db (agents, bots, prefs) | T := TOML seed | P := CLAUDE.md path
 
 ## Project
 
@@ -27,15 +27,15 @@ Let:
 | `docs/agent-management.md` | Agent seed flow + CLI |
 | `docs/bot-management.md` | Bot seed flow + CLI |
 | `docs/ops/container-publishing.md` | CI → GHCR → Quadlet pattern |
-| `deploy/quadlet/lyra-nats.container` | NATS Quadlet unit — `type=mount` secret anchor (restart-not-HUP for ACL changes) |
+| `deploy/quadlet/factory-nats.container` | NATS Quadlet unit — `type=mount` secret anchor (restart-not-HUP for ACL changes) |
 | `packages/roxabi-nats/` | NATS transport SDK (ADR-045) |
 | `packages/roxabi-contracts/` | NATS contract schemas (ADR-049) |
 | `src/factory/transport/` | NATS transport + WorkerPoolClient (3-layer composition, #1278) |
 
 ## Agent management
 
-Agents ∈ C (SQLite) | T files = seed only → `lyra agent init` before use
-Search: `~/.lyra/agents/` (override) → `src/factory/agents/` (default)
+Agents ∈ C (SQLite) | T files = seed only → `factory agent init` before use
+Search: `~/.roxabi/factory/agents/` (override) → `src/factory/agents/` (default)
 `cwd` → `config.toml [defaults]` (¬T)
 
 → `docs/agent-management.md` — CLI verbs: `init | list | show | edit | patch | validate | create | delete | assign | unassign | refine`
@@ -58,7 +58,7 @@ File/rename → update P immediately
 | `src/factory/integrations/CLAUDE.md` | external boundary layer (supervisor, systemctl, vault-cli, web-intel) |
 | `src/factory/agent_cmd/CLAUDE.md` | agent + bot CLI commands — applicative layer above core |
 | `src/factory/llm/CLAUDE.md` | LLM drivers |
-| `src/factory/monitoring/CLAUDE.md` | standalone health-check subsystem (`python -m lyra.monitoring`) |
+| `src/factory/monitoring/CLAUDE.md` | standalone health-check subsystem (`python -m factory.monitoring`) |
 | `src/factory/obs/CLAUDE.md` | observability scaffolding (OTel/Langfuse) — ¬wired, see #1235 |
 | `src/factory/outbound/CLAUDE.md` | outbound stage composition (formatter/throttle/error_handler/emitter, #1279) |
 | `src/factory/streaming/CLAUDE.md` | stage-axis streaming primitives (parser Protocol, state_machine, event_emitter) — composed by CliStreamingParser + StreamProcessor (#1282) |
@@ -82,19 +82,19 @@ Rules: add/delete/move → update P | new subdir with non-obvious invariants →
 
 | Subcommand | CLI | Bootstrap |
 |---|---|---|
-| `hub` | `lyra hub` | `_bootstrap_hub_standalone()` |
-| `adapter telegram` | `lyra adapter telegram` | `_bootstrap_adapter_standalone()` |
-| `adapter discord` | `lyra adapter discord` | `_bootstrap_adapter_standalone()` |
-| `adapter clipool` | `lyra adapter clipool` | `_bootstrap_clipool_standalone()` |
-| `turn-writer` | `lyra turn-writer` | `_bootstrap_turn_writer_standalone()` |
+| `hub` | `factory hub` | `_bootstrap_hub_standalone()` |
+| `adapter telegram` | `factory adapter telegram` | `_bootstrap_adapter_standalone()` |
+| `adapter discord` | `factory adapter discord` | `_bootstrap_adapter_standalone()` |
+| `adapter clipool` | `factory adapter clipool` | `_bootstrap_clipool_standalone()` |
+| `turn-writer` | `factory turn-writer` | `_bootstrap_turn_writer_standalone()` |
 
 Topics: `lyra.inbound.<platform>.<bot_id>` | `lyra.outbound.<platform>.<bot_id>`
 
-Unified: `lyra start` → hub + adapters in 1 process + embedded NATS
+Unified: `factory start` → hub + adapters in 1 process + embedded NATS
 
 ## Container deployment
 
-Prod: Podman Quadlet (systemd `--user`) on M₁ (`lyra-hub` role). Eight containers: `lyra-nats`, `lyra-hub`, `lyra-telegram`, `lyra-discord`, `lyra-clipool`, `factory-gh-helper`, `lyra-turn-writer`, `lyra-blobstore`. Install: `deploy/install.sh` (idempotent). Manifest: `deploy/quadlet.toml`.
+Prod: Podman Quadlet (systemd `--user`) on M₁ (`factory-hub` role). Eight containers: `factory-nats`, `factory-hub`, `factory-telegram`, `factory-discord`, `factory-clipool`, `factory-gh-helper`, `factory-turn-writer`, `factory-blobstore`. Install: `deploy/install.sh` (idempotent). Manifest: `deploy/quadlet.toml`.
 
 → `docs/QUADLET-DEPLOYMENT.md` — install runbook, secret rotation, diagnostic
 → `~/projects/docs/container-deployment-standard.md` — 18 standards (S7 secret target, S8 naming, S12 RestartSec=10)

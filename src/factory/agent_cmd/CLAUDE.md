@@ -1,8 +1,8 @@
-# CLAUDE.md — lyra.agent_cmd
+# CLAUDE.md — factory.agent_cmd
 
 ## Role
 
-CLI command implementations for `lyra agent ...` and `lyra bot ...`.
+CLI command implementations for `factory agent ...` and `factory bot ...`.
 Verb list: `docs/agent-management.md`.
 Wired via `src/factory/agent_cmd/agents/`, `src/factory/agent_cmd/bots/`, and
 `src/factory/agent_cmd/platforms/` subdirs; dispatched by the Typer CLI entrypoint.
@@ -17,17 +17,17 @@ wire everything applies here.
 ```
 lyra CLI entrypoint
       ↓
-  lyra.agent_cmd     ← you are here
+  factory.agent_cmd     ← you are here
       ↓
-  lyra.core (stores, config.db [agents/bots/prefs], auth.db [grants only])
+  factory.core (stores, config.db [agents/bots/prefs], auth.db [grants only])
 ```
 
 ## Invariants
 
-- `lyra agent init` **must** be called before the hub can use an agent.
-  `~/.lyra/config.db` is the SSoT for agents; TOML files are seed inputs only (¬override at runtime).
-  `~/.lyra/auth.db` holds grants and identity only (AuthStore — separate DB).
-- `lyra bot init` seeds bot configurations from `config.toml` into `BotStore` (`~/.lyra/config.db`);
+- `factory agent init` **must** be called before the hub can use an agent.
+  `~/.roxabi/factory/config.db` is the SSoT for agents; TOML files are seed inputs only (¬override at runtime).
+  `~/.roxabi/factory/auth.db` holds grants and identity only (AuthStore — separate DB).
+- `factory bot init` seeds bot configurations from `config.toml` into `BotStore` (`~/.roxabi/factory/config.db`);
   idempotent by default; `--force` overwrites existing rows.
 - Commands in `agent_cmd/agents/` and `agent_cmd/bots/` must not bypass their respective
   stores — always go through `AgentStore` / `BotStore` (read/write), never directly to the TOML file.

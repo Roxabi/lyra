@@ -2,7 +2,7 @@
 
 ## Invariants
 
-**STANDALONE** — invoked as `python -m lyra.monitoring` (valid triggers: manual / cron / CI smoke — ¬systemd timer).
+**STANDALONE** — invoked as `python -m factory.monitoring` (valid triggers: manual / cron / CI smoke — ¬systemd timer).
 ¬imported by any other `src/factory/*` module. Only tests import this package.
 
 **Exit-code contract** — `main()` returns and `SystemExit` propagates:
@@ -32,13 +32,13 @@ primary observability path.
 
 ## Config
 
-Thresholds: `[monitoring]` section in lyra.toml (or `$LYRA_CONFIG`).
+Thresholds: `[monitoring]` section in config.toml (or `$FACTORY_CONFIG`).
 Secrets (required at runtime, ¬in TOML): `TELEGRAM_TOKEN`, `TELEGRAM_ADMIN_CHAT_ID`.
-Optional: `LYRA_HEALTH_SECRET` (Bearer token for `/health/detail`).
+Optional: `FACTORY_HEALTH_SECRET` (Bearer token for `/health/detail`).
 Missing secrets → `ValueError` at startup (fail-fast, ¬silent misconfiguration).
 
 ## Operational notes
 
-- `checks_varz.py` writes state to `~/.lyra/nats-monitor-state.json` to detect deltas across
+- `checks_varz.py` writes state to `~/.roxabi/factory/nats-monitor-state.json` to detect deltas across
   runs. ¬delete this file without expecting a spurious alert on the next run.
 - LLM backend: `claude` CLI (OAuth, ¬API key). If absent, falls back to raw Telegram alert.

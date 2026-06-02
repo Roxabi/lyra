@@ -18,10 +18,13 @@ from roxabi_vault import AsyncMemoryDB
 if TYPE_CHECKING:
     from factory.infrastructure.stores.identity_alias_store import IdentityAliasStore
 
+from factory.core.config.memory_config import MemoryConfig
 from factory.core.memory.memory_freshness import age_str, is_stale
 from factory.core.memory.memory_schema import apply_schema_compat
 from factory.core.memory.memory_types import FRESHNESS_TTL_DAYS, SessionSnapshot
 from factory.core.memory.memory_upserts import MemoryManagerUpserts
+
+_cfg = MemoryConfig()
 
 # Re-export so `from factory.core.memory.memory import SessionSnapshot` keeps working.
 __all__ = [
@@ -67,7 +70,7 @@ class MemoryManager(MemoryManagerUpserts):
         user_id: str,
         namespace: str,
         first_msg: str = "",
-        token_budget: int = 1000,
+        token_budget: int = _cfg.DEFAULT_TOKEN_BUDGET,
     ) -> str:
         # Resolve aliases once; used by session query, concept search, and prefs
         if self._alias_store is not None:
@@ -86,7 +89,7 @@ class MemoryManager(MemoryManagerUpserts):
             " WHERE type='session'"
             f" AND json_extract(metadata,'$.user_id') IN ({placeholders})"
             " AND (json_extract(metadata,'$.agent_namespace')=? OR namespace=?)"
-            " ORDER BY updated_at DESC LIMIT 5",
+            f" ORDER BY updated_at DESC LIMIT {_cfg.DEFAULT_RECALL_LIMIT}",
             (*alias_list, namespace, namespace),
         ) as cur:
             rows = await cur.fetchall()
@@ -121,7 +124,7 @@ class MemoryManager(MemoryManagerUpserts):
         prefs_block = await self._fetch_preferences(
             user_id,
             namespace,
-            token_budget=min(300, token_budget),
+            token_budget=min(_cfg.DEFAULT_PREF_TOKEN_BUDGET, token_budget),
             aliases=aliases,
         )
         parts = ["[MEMORY]\n" + "\n".join(lines)] if lines else []
@@ -142,7 +145,9 @@ class MemoryManager(MemoryManagerUpserts):
         seen_ids: set[int] = set()
         for alias in aliases:
             concept_namespace = f"{namespace}:{alias}"
-            raw = await self._db.search(first_msg, concept_namespace, limit=8)
+            raw = await self._db.search(
+                first_msg, concept_namespace, limit=_cfg.DEFAULT_CONCEPT_LIMIT
+            )
             for e in raw:
                 entry_id: int | None = e.get("id")
                 if e.get("type") == "concept" and entry_id not in seen_ids:
@@ -155,13 +160,15 @@ class MemoryManager(MemoryManagerUpserts):
         self,
         user_id: str,
         namespace: str,
-        token_budget: int = 300,
+        token_budget: int = _cfg.DEFAULT_PREF_TOKEN_BUDGET,
         aliases: frozenset[str] | None = None,
     ) -> str:
         effective_aliases: frozenset[str] = (
             aliases if aliases is not None else frozenset({user_id})
         )
-        raw = await self._db.search("preference", namespace, limit=10)
+        raw = await self._db.search(
+            "preference", namespace, limit=_cfg.DEFAULT_PREF_LIMIT
+        )
         prefs = [
             e
             for e in raw

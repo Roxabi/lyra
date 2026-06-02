@@ -9,21 +9,16 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from factory.adapters.nats.nats_outbound_listener import (
-    ListenerDeps,
-    NatsOutboundListener,
-)
 from factory.bootstrap import credentials
 from factory.bootstrap.factory.config import AdapterConfigBundle
 from factory.bootstrap.factory.voice_overlay import init_blobstore
 from factory.bootstrap.lifecycle.lifecycle_helpers import close_safely
 from factory.bootstrap.lifecycle.signal_handlers import setup_shutdown_event
-from factory.bootstrap.standalone.audio_consumer_bootstrap import start_audio_consumer
-from factory.bootstrap.wiring.bootstrap_wiring import wire_ingest
-from factory.core.messaging.bus import Bus
-from factory.core.messaging.message import InboundMessage, Platform
-from factory.nats.queue_groups import adapter_outbound
-from factory.transport.typing_publisher import TypingPublisher
+from factory.bootstrap.wiring._standalone_wiring_common import (
+    TypingDeps,
+    wire_bot_common,
+)
+from factory.core.messaging.message import Platform
 from roxabi_nats.readiness import wait_for_hub
 
 log = logging.getLogger(__name__)
@@ -145,87 +140,54 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
 
     async def _wire_bot(bot_cfg: Any, token: str) -> tuple:
         """Wire a single Discord bot with NATS, typing listener, and audio consumer."""
-        bot_id = bot_cfg.bot_id
-
         from factory.adapters.discord import DiscordAdapter
         from factory.adapters.discord.adapter import _discord_scope_resolver
         from factory.adapters.discord.discord_outbound import _discord_typing_worker
-        from factory.nats.nats_bus import NatsBus
-        from factory.typing import TypingListener, make_typing_factory
 
-        inbound_bus_dc: Bus[InboundMessage] = NatsBus(
-            nc=nc,
-            bot_id=bot_id,
-            item_type=InboundMessage,
-            publish_only=True,
-        )
-        inbound_bus_dc.register(platform_enum)
-        await inbound_bus_dc.start()
+        bot_id = bot_cfg.bot_id
 
-        adapter_dc = DiscordAdapter(
-            bot_id=bot_id,
-            inbound_bus=inbound_bus_dc,
-            auto_thread=bot_cfg.auto_thread,
-            thread_hot_hours=bot_cfg.thread_hot_hours,
-            thread_store=dc_thread_store,
-            watch_channels=dc_bot_watch_channels.get(bot_id, frozenset()),
-            turn_store=dc_turn_store,
-            blob_store=blob_store,
-        )
-        adapter_dc.configure_tool_display(config_bundle.tool_display)
-        adapter_dc.configure_typing_publisher(TypingPublisher(nc))
-        wire_ingest(adapter_dc, blob_store)
-
-        listener_dc = NatsOutboundListener(
-            ListenerDeps(
-                nc=nc,
-                platform=platform_enum,
+        def _dc_adapter_factory(inbound_bus: Any) -> tuple:
+            adapter_dc = DiscordAdapter(
                 bot_id=bot_id,
-                adapter=adapter_dc,
-                queue_group=adapter_outbound(platform_enum.value, bot_id),
+                inbound_bus=inbound_bus,
+                auto_thread=bot_cfg.auto_thread,
+                thread_hot_hours=bot_cfg.thread_hot_hours,
+                thread_store=dc_thread_store,
+                watch_channels=dc_bot_watch_channels.get(bot_id, frozenset()),
+                turn_store=dc_turn_store,
+                blob_store=blob_store,
             )
-        )
-        adapter_dc._outbound_listener = listener_dc
-        try:
-            await adapter_dc.astart()
-        except Exception:
-            await close_safely(
-                "dc-adapter-start",
-                adapter_dc.close(),
-                inbound_bus_dc.stop(),
+            typing_deps = TypingDeps(
+                subject=f"lyra.typing.discord.{bot_id}",
+                scope_resolver=_discord_scope_resolver,
+                worker_factory=partial(
+                    _discord_typing_worker, adapter_dc._resolve_channel
+                ),
             )
-            raise
+            return adapter_dc, typing_deps
 
-        dc_typing_listener = TypingListener(
+        # wire_bot_common returns (adapter, inbound_bus, typing_listener, consumer).
+        # Discord teardown needs the token for adapter.start(tok), so we extend the
+        # tuple to (adapter, token, inbound_bus, typing_listener, consumer).
+        (
+            adapter_dc,
+            inbound_bus_dc,
+            dc_typing_listener,
+            consumer,
+        ) = await wire_bot_common(
             nc=nc,
-            subject=f"lyra.typing.discord.{bot_id}",
-            resolver=_discord_scope_resolver,
-            factory_builder=make_typing_factory(
-                partial(_discord_typing_worker, adapter_dc._resolve_channel)
-            ),
-            manager=adapter_dc._typing,
+            platform_enum=platform_enum,
+            bot_id=bot_id,
+            adapter_factory=_dc_adapter_factory,
+            config_bundle=config_bundle,
+            js=js,
+            blob_store=blob_store,
+            resolve_identity=False,
         )
-        try:
-            await dc_typing_listener.start()
-        except Exception:
-            await close_safely(
-                "dc-typing-start",
-                dc_typing_listener.stop(),
-                adapter_dc.close(),
-                inbound_bus_dc.stop(),
-            )
-            raise
-
-        # Audio consumer: started strictly after astart() + typing, so no
-        # cleanup needed in either astart or typing failure paths above.
-        consumer = await start_audio_consumer(
-            js, platform_enum.value, bot_id, adapter_dc
-        )
-
         return (adapter_dc, token, inbound_bus_dc, dc_typing_listener, consumer)
 
     # ADR-079 S3: wait_for_hub is a load-bearing barrier — it MUST precede
-    # start_audio_consumer (called inside _wire_bot). The hub sets hub.ready only
+    # start_audio_consumer (called inside wire_bot_common). The hub sets hub.ready only
     # after ensure_stream + ensure_kv complete, so this call guarantees stream + KV
     # exist before any adapter bind/consume attempt. Moving it after the loop would
     # reintroduce the cold-boot race (BucketNotFoundError / missing-stream).

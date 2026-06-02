@@ -4,12 +4,12 @@ Lyra stores runtime data in two root locations:
 
 | Host path | Purpose | Container path |
 |---|---|---|
-| `~/.lyra/` | Application vault (databases, secrets, config, env) | `/home/lyra/.lyra` (via `lyra-data.volume`) |
-| `/data/lyra/blobs/` | BlobStore shard tree + SQLite index | `/home/lyra/.lyra/blobstore` (via bind-mount in `lyra-blobstore.container`) |
+| `~/.roxabi/factory/` | Application vault (databases, secrets, config, env) | `/home/factory/.roxabi/factory` (via `factory-data.volume`) |
+| `/data/factory/blobs/` | BlobStore shard tree + SQLite index | `/home/factory/.roxabi/factory/blobstore` (via bind-mount in `factory-blobstore.container`) |
 
 ---
 
-## `~/.lyra/` — Application vault
+## `~/.roxabi/factory/` — Application vault
 
 | Subdirectory / File | Purpose | Syncthing |
 |---|---|---|
@@ -23,13 +23,13 @@ Lyra stores runtime data in two root locations:
 | `nkeys/` | NATS nkey seeds and `auth.conf` | **Synced** |
 | `env/` | Quadlet env files (`hub.env`, `blobstore.env`) | **Synced** |
 | `nats/jetstream/` | JetStream persistent storage | **Excluded** (host-local, large WAL files) |
-| `blobstore/` | **Symlink / container view** — points to `/data/lyra/blobs/` | **Excluded** (canonical path is `/data/lyra/blobs/`) |
+| `blobstore/` | **Symlink / container view** — points to `/data/factory/blobs/` | **Excluded** (canonical path is `/data/factory/blobs/`) |
 
-**Note:** `~/.lyra/blobstore/` is a bind-mount view from the container perspective. The canonical host directory is `/data/lyra/blobs/`. Backups and Syncthing exclusions must reference the canonical path.
+**Note:** `~/.roxabi/factory/blobstore/` is a bind-mount view from the container perspective. The canonical host directory is `/data/factory/blobs/`. Backups and Syncthing exclusions must reference the canonical path.
 
 ---
 
-## `/data/lyra/blobs/` — BlobStore canonical host path
+## `/data/factory/blobs/` — BlobStore canonical host path
 
 | Subdirectory / File | Purpose |
 |---|---|
@@ -44,21 +44,21 @@ This directory is **excluded from Syncthing** across all hosts. It is large, app
 
 ## `~/.roxabi-vault/` — Vault CLI database
 
-Mounted into `lyra-hub` so the `vault put` subprocess can write to it. Not part of Syncthing.
+Mounted into `factory-hub` so the `vault put` subprocess can write to it. Not part of Syncthing.
 
 ---
 
 ## Syncthing exclusions
 
-Syncthing syncs `~/.lyra/` across M₁, M₂, and laptop. The following paths are excluded:
+Syncthing syncs `~/.roxabi/factory/` across M₁, M₂, and laptop. The following paths are excluded:
 
 | Path | Reason |
 |---|---|
-| `~/.lyra/nats/jetstream/` | Host-local JetStream WAL; large, not portable |
-| `~/.lyra/blobstore/` | Redirects to `/data/lyra/blobs/`; large binary data |
-| `/data/lyra/blobs/` | Canonical BlobStore host path; excluded from Syncthing |
+| `~/.roxabi/factory/nats/jetstream/` | Host-local JetStream WAL; large, not portable |
+| `~/.roxabi/factory/blobstore/` | Redirects to `/data/factory/blobs/`; large binary data |
+| `/data/factory/blobs/` | Canonical BlobStore host path; excluded from Syncthing |
 
-Exclusion rule (add to `.stignore` in `~/.lyra/`):
+Exclusion rule (add to `.stignore` in `~/.roxabi/factory/`):
 
 ```
 # Syncthing exclusions for Lyra
@@ -66,4 +66,4 @@ nats/jetstream
 blobstore
 ```
 
-The `/data/lyra/blobs/` path is outside `~/.lyra/` so it does not need an `.stignore` rule — it is excluded by simply not adding it to Syncthing at all.
+The `/data/factory/blobs/` path is outside `~/.roxabi/factory/` so it does not need an `.stignore` rule — it is excluded by simply not adding it to Syncthing at all.

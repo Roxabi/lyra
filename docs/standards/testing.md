@@ -19,7 +19,7 @@ This document is the developer-facing companion to `docs/architecture/testing-co
 uv run pytest                          # full suite
 uv run pytest tests/test_config.py     # single file
 uv run pytest -k "TestResolveValue"    # by class/function name
-uv run pytest --cov=src/lyra tests/   # with coverage
+uv run pytest --cov=src/factory tests/   # with coverage
 ```
 
 ---
@@ -73,7 +73,7 @@ When a tool or static file in `deploy/` is consumed by an external binary (nats-
 ## Coverage Rules
 
 ```bash
-uv run pytest --cov=src/lyra tests/    # must show > 0% on the module under test
+uv run pytest --cov=src/factory tests/    # must show > 0% on the module under test
 ```
 
 If coverage shows 0% on a module you intended to test, you are patching the wrong import site. Patch at the import site of the **dependency**, never the module under test.
@@ -83,7 +83,7 @@ If coverage shows 0% on a module you intended to test, you are patching the wron
 monkeypatch.setattr(stores_mod, "AuthStore", lambda **kw: fake_auth_store)
 
 # Wrong: patch the source module
-monkeypatch.setattr("lyra.infrastructure.stores.auth_store.AuthStore", ...)  # may silently miss
+monkeypatch.setattr("factory.infrastructure.stores.auth_store.AuthStore", ...)  # may silently miss
 ```
 
 ---
@@ -97,7 +97,7 @@ monkeypatch.setattr("lyra.infrastructure.stores.auth_store.AuthStore", ...)  # m
 ```
 tests/
   conftest.py                          # shared fixtures (fixtures only, no tests)
-  test_config.py                       # tests for src/lyra/config.py
+  test_config.py                       # tests for src/factory/config.py
   test_monitoring_checks_primitives.py # tests for monitoring/checks.py primitives
 ```
 
@@ -152,10 +152,10 @@ fake_keyring, fake_cred_store = make_fake_stores(monkeypatch)
 
 Use `_patch_nats_stubs(monkeypatch)` (from `conftest.py`) to prevent tests from touching a real NATS server. It patches `ensure_nats`, `acquire_lockfile`, `release_lockfile`, `NatsBus`, and `JetStreamAuditSink`.
 
-Always set `LYRA_VAULT_DIR` to a temp dir in tests that touch the credential store:
+Always set `FACTORY_VAULT_DIR` to a temp dir in tests that touch the credential store:
 
 ```python
-monkeypatch.setenv("LYRA_VAULT_DIR", tempfile.mkdtemp())
+monkeypatch.setenv("FACTORY_VAULT_DIR", tempfile.mkdtemp())
 ```
 
 ---
@@ -193,7 +193,7 @@ ALWAYS patch at the dependency's import site, not the source module.
 
 ALWAYS use `yield_once()` or `_drain()` instead of `asyncio.sleep(0)` in async tests.
 
-ALWAYS set `LYRA_VAULT_DIR` to a temp dir in tests that instantiate credential stores.
+ALWAYS set `FACTORY_VAULT_DIR` to a temp dir in tests that instantiate credential stores.
 
 NEVER mock the module under test — only mock its dependencies.
 
@@ -205,4 +205,4 @@ PREFER integration tests (real modules wired) over unit tests with heavy mocks.
 
 PREFER `pytest.raises(ExceptionType, match="expected message")` over bare `pytest.raises(ExceptionType)`.
 
-Run: `uv run pytest --cov=src/lyra tests/` — 0% coverage on the target module means wrong patch site.
+Run: `uv run pytest --cov=src/factory tests/` — 0% coverage on the target module means wrong patch site.

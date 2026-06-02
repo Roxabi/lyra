@@ -28,7 +28,7 @@ If the identity participates in request-reply, add the corresponding entry to `r
 
 **2. Run `make nats-add-identity NAME=<name>`.**
 
-This single rootless verb chains: generate the new seed, re-render `auth.conf` preserving existing pubkeys, create the local Podman secret, and restart consuming services (`lyra-nats` and any active adapters). No `sudo` required.
+This single rootless verb chains: generate the new seed, re-render `auth.conf` preserving existing pubkeys, create the local Podman secret, and restart consuming services (`factory-nats` and any active adapters). No `sudo` required.
 
 ```bash
 make nats-add-identity NAME=new-worker
@@ -55,20 +55,20 @@ git commit -m "feat(nats): add <name> identity"
 
 ### Multi-host: running on M₁, M₂, Mₙ
 
-Seeds and `auth.conf` propagate across hosts via Syncthing on `~/.lyra/nkeys/`. The Podman secret store does **not** auto-propagate. Run `make nats-add-identity NAME=<name>` on every host that consumes that identity — the same verb, no host-specific procedure.
+Seeds and `auth.conf` propagate across hosts via Syncthing on `~/.roxabi/factory/nkeys/`. The Podman secret store does **not** auto-propagate. Run `make nats-add-identity NAME=<name>` on every host that consumes that identity — the same verb, no host-specific procedure.
 
 How the gate works:
 
-- factory-acl emits `STATE=noop|repaired|added` based on filesystem state (seed present in `~/.lyra/nkeys/` and identity block present in `auth.conf`).
-- The Makefile additionally checks `podman secret inspect lyra-nats-<NAME>`. Phase 2 (secret create + restart) runs when **either** factory-acl mutated the filesystem **or** the local Podman secret is missing.
+- factory-acl emits `STATE=noop|repaired|added` based on filesystem state (seed present in `~/.roxabi/factory/nkeys/` and identity block present in `auth.conf`).
+- The Makefile additionally checks `podman secret inspect factory-nats-<NAME>`. Phase 2 (secret create + restart) runs when **either** factory-acl mutated the filesystem **or** the local Podman secret is missing.
 
 Per-host behavior:
 
-- **Authoring host (e.g. M₁):** factory-acl emits `STATE=added`; Phase 2 runs locally — creates the seed secret and refreshes `lyra-nats-auth`, then restarts `lyra-nats` and adapters.
-- **Receiving host (e.g. M₂, after Syncthing delivered seed + auth.conf):** factory-acl emits `STATE=noop` (filesystem already consistent), but `podman secret inspect lyra-nats-<NAME>` returns non-zero (secret not yet in the local Podman store) → Phase 2 still runs to create the local secret and restart any local Lyra units.
+- **Authoring host (e.g. M₁):** factory-acl emits `STATE=added`; Phase 2 runs locally — creates the seed secret and refreshes `factory-nats-auth`, then restarts `factory-nats` and adapters.
+- **Receiving host (e.g. M₂, after Syncthing delivered seed + auth.conf):** factory-acl emits `STATE=noop` (filesystem already consistent), but `podman secret inspect factory-nats-<NAME>` returns non-zero (secret not yet in the local Podman store) → Phase 2 still runs to create the local secret and restart any local Lyra units.
 - **Non-consuming host:** factory-acl emits `STATE=noop` AND `podman secret inspect` succeeds → true no-op; Phase 2 is skipped entirely.
 
-The restart loop is `systemctl --user is-active`-gated over `{lyra-nats, lyra-hub, lyra-telegram, lyra-discord, lyra-clipool}` — nats first, then adapters in declared `After=` order. On a host with no Lyra units running, the loop is a complete no-op. The verb is safe to run on any host without knowledge of its topology.
+The restart loop is `systemctl --user is-active`-gated over `{factory-nats, factory-hub, factory-telegram, factory-discord, factory-clipool}` — nats first, then adapters in declared `After=` order. On a host with no Lyra units running, the loop is a complete no-op. The verb is safe to run on any host without knowledge of its topology.
 
 ---
 
@@ -76,7 +76,7 @@ The restart loop is `systemctl --user is-active`-gated over `{lyra-nats, lyra-hu
 
 **Scenario:** factory-acl already mutated the filesystem (new seed + new `auth.conf` written and `STATE=added` emitted), but a subsequent `podman secret create --replace` or `systemctl --user restart` call failed (e.g. transient daemon error, stale socket, permissions hiccup).
 
-**Recovery:** re-run `make nats-add-identity NAME=<name>`. On the second invocation, factory-acl finds the seed and auth.conf block already consistent and emits `STATE=noop`. The Makefile gate then checks `podman secret inspect lyra-nats-<NAME>` — if the secret is missing or stale, Phase 2 runs again. `--replace` makes the Podman call safe regardless of prior state.
+**Recovery:** re-run `make nats-add-identity NAME=<name>`. On the second invocation, factory-acl finds the seed and auth.conf block already consistent and emits `STATE=noop`. The Makefile gate then checks `podman secret inspect factory-nats-<NAME>` — if the secret is missing or stale, Phase 2 runs again. `--replace` makes the Podman call safe regardless of prior state.
 
 There is no double-rotation risk: factory-acl's `added` path only generates a seed when the seed file is absent. The existing seed file on disk is preserved on every subsequent invocation.
 
@@ -147,16 +147,16 @@ nats-server --signal reload
 Attempt to connect with the retired seed and confirm NATS returns an auth error. Any active services should be unaffected; check their logs for unexpected reconnect errors:
 
 ```bash
-journalctl --user -u lyra-hub --since "2 min ago" | grep -i "auth\|error\|nats"
-journalctl --user -u lyra-telegram --since "2 min ago" | grep -i "auth\|error\|nats"
+journalctl --user -u factory-hub --since "2 min ago" | grep -i "auth\|error\|nats"
+journalctl --user -u factory-telegram --since "2 min ago" | grep -i "auth\|error\|nats"
 ```
 
 **9. Seed file decision.**
 
-The seed file at `~/.lyra/nkeys/<name>.seed` remains on disk. NATS rejects the credential regardless once `auth.conf` is reloaded. Once you have confirmed the identity is fully offline and no rollback is needed, you may shred the file:
+The seed file at `~/.roxabi/factory/nkeys/<name>.seed` remains on disk. NATS rejects the credential regardless once `auth.conf` is reloaded. Once you have confirmed the identity is fully offline and no rollback is needed, you may shred the file:
 
 ```bash
-shred -u ~/.lyra/nkeys/<name>.seed
+shred -u ~/.roxabi/factory/nkeys/<name>.seed
 ```
 
 This is optional — the file is inert after step 7.

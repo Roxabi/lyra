@@ -143,10 +143,6 @@ ignore_imports =
     factory.inbound.dispatcher -> factory.adapters.shared._shared
     factory.inbound.context -> factory.adapters.shared._shared
     factory.inbound.context -> factory.adapters.shared.outbound_listener
-    # DEBT:inbound-adapters-wireparser (#1287) — wire parsers reference concrete adapter
-    # classes under TYPE_CHECKING only (platform-parser coupling, separate concern).
-    factory.inbound.wire_parser_telegram -> factory.adapters.telegram.telegram
-    factory.inbound.wire_parser_discord -> factory.adapters.discord.adapter
 
 [importlinter:contract:tests-fakes-isolation]
 name = Production code must not import tests.fakes

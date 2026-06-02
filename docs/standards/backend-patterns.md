@@ -265,8 +265,9 @@ Two modules own exception types:
 
 - `StreamChunkTimeout` → template key `error_timeout`
 - Any other stream exception → template key `error_stream`
+- `final_text is None` and `had_tool_events` (stream ended with no final text but tool events occurred) → template key `error_no_final`
 
-Both keys are resolved via the injected `get_msg` callable with a hardcoded fallback string. `classify_stream_error` uses `type(exc).__name__` only — never `str(exc)`.
+All keys are resolved via the injected `get_msg` callable with a hardcoded fallback string. `classify_stream_error` uses `type(exc).__name__` only — never `str(exc)`.
 
 ### STT error → user reply
 

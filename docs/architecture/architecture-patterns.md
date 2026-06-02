@@ -288,6 +288,7 @@ User-visible errors are handled at two distinct sites, each using domain-specifi
 **Stream errors** (`OutboundErrorHandler.classify_stream_error` in `factory.outbound.error_handler`) — maps terminal stream exceptions to message template keys for the platform adapter:
 - `StreamChunkTimeout` (defined in `factory.core.exceptions`) → template key `error_timeout`
 - Any other stream exception → template key `error_stream`
+- stream ends with no final text but had tool events (`final_text is None and had_tool_events`) → template key `error_no_final`
 
 **STT errors** (`factory.core.hub.middleware.middleware_stt.SttMiddleware`) — catches speech-to-text exceptions inline in the inbound pipeline and dispatches a template-keyed reply before returning `_DROP`:
 - `STTNoiseError` (defined in `factory.core.ports.stt`) → template key `stt_noise`

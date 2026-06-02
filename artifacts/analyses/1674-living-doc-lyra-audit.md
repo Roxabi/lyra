@@ -3,15 +3,11 @@
 - **Issue:** #1674
 - **Date:** 2026-06-02
 - **Universe glob:** `git ls-files '*.md' '*.mdx' | grep -vE '^(docs/history/|docs/architecture/adr/|artifacts/)' | grep -vE '(^|/)CHANGELOG' | grep -v '^docs/architecture/CURRENT.generated.md'`
-- **Total occurrences:** 594
-- **Count by verdict:**
-  - KEEP_persona: 224
-  - KEEP_nats_subject: 168
-  - KEEP_stream: 28
-  - KEEP_plugin: 72
-  - KEEP_host_part2: 12
-  - KEEP_history: 78
-  - FIX_state_dir: 2
+- **Table rows:** 171 — one row per swept file, listing that file's `lyra`/`Lyra` occurrences as a line list. A row may carry multiple verdicts where a file mixes concerns (e.g. persona + NATS subject); files swept with no occurrence are marked `—`.
+- **Verdicts:** every row is an intentional **KEEP** (persona · NATS `lyra.*` subject · `LYRA_*` stream · plugin · host-Part2 · history) **except 3 FIX rows** — 2 × `FIX_state_dir` + 1 × `FIX_path` — all applied (see `## FIX applied`).
+- **Stale-and-unfixed:** 0.
+
+*Per-occurrence integer totals are intentionally omitted: rows use collapsed line-ranges and multi-verdict tags, so one "occurrence count" would be ambiguous. The row count is the deterministic, grep-verifiable figure (`grep -c '^|' minus header+separator = 171`); SC-6's bar — every occurrence enumerated + 0 stale-and-unfixed — is met.*
 
 ---
 
@@ -32,7 +28,7 @@
 | README.md | 106,142,143,149,150,151,152 | `lyra` (CLI invocations) | KEEP_persona | Legacy `lyra` CLI alias — kept as alias for `factory` |
 | deploy/CLAUDE.md | 5,11 | `Lyra` | KEEP_persona | Product name in container deploy description |
 | deploy/CLAUDE.md | 23,79 | `lyra` | KEEP_persona | Staging branch note / product name |
-| deploy/CLAUDE.md | 87 | `/run/user/<uid>/lyra-deploy.lock` | KEEP_host_part2 | Lock file on host; host-side identity deferred to Part 2 |
+| deploy/CLAUDE.md | 87 | `/run/user/<uid>/factory-deploy.lock` | FIX_path | stale lock filename; code uses factory-deploy.lock (deploy-common.sh:20) — renamed |
 | deploy/CLAUDE.md | 97 | `lyra clients` | KEEP_persona | Prose reference to lyra service containers as a group |
 | deploy/CLAUDE.md | 107 | `lyra` in timer description | KEEP_persona | `factory-quadlet-sync.timer` pulls lyra repo — product name |
 | deploy/CLAUDE.md | 141 | `UID 1500 = \`lyra\`` | KEEP_host_part2 | Container user UID / host user `lyra` — Part 2 |
@@ -197,3 +193,4 @@
 
 - `plugins/lyra-ops/skills/lyra-debug/SKILL.md:88` — `/home/factory/.local/state/lyra/logs/` → `/home/factory/.local/state/factory/logs/`
 - `plugins/lyra-ops/skills/lyra-debug/SKILL.md:89` — `/home/factory/.local/state/lyra/logs/` → `/home/factory/.local/state/factory/logs/`
+- `deploy/CLAUDE.md:87` — `/run/user/<uid>/lyra-deploy.lock` → `/run/user/<uid>/factory-deploy.lock`

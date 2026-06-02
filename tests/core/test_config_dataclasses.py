@@ -2,7 +2,14 @@
 
 import pytest
 
-from factory.core.config import HubConfig, PoolConfig, RouterConfig
+from factory.core.config import (
+    BusConfig,
+    HubConfig,
+    PlatformConfig,
+    PoolConfig,
+    RouterConfig,
+)
+from factory.core.lifecycle import session_lifecycle
 
 
 class TestHubConfig:
@@ -107,3 +114,39 @@ class TestRouterConfig:
         config = RouterConfig()
         # Should not raise any errors
         assert isinstance(config.pattern_configs, dict)
+
+
+class TestBusConfigWiring:
+    """Verify HubConfig bus-sizing fields delegate to BusConfig — not bare literals."""
+
+    def test_hub_config_staging_maxsize_delegates_to_bus_config(self) -> None:
+        """HubConfig.staging_maxsize default == BusConfig.DEFAULT_STAGING_MAXSIZE."""
+        assert HubConfig().staging_maxsize == BusConfig.DEFAULT_STAGING_MAXSIZE
+
+    def test_hub_config_platform_queue_maxsize_delegates_to_bus_config(self) -> None:
+        """HubConfig.platform_queue_maxsize default == BusConfig.DEFAULT_MAXSIZE."""
+        assert HubConfig().platform_queue_maxsize == BusConfig.DEFAULT_MAXSIZE
+
+    def test_hub_config_queue_depth_threshold_delegates_to_bus_config(self) -> None:
+        """HubConfig.queue_depth_threshold default == BusConfig.DEFAULT_QUEUE_DEPTH."""
+        assert HubConfig().queue_depth_threshold == BusConfig.DEFAULT_QUEUE_DEPTH
+
+
+class TestPlatformConfigWiring:
+    """Verify session_lifecycle module-level constants are wired to PlatformConfig."""
+
+    def test_model_context_tokens_references_platform_config(self) -> None:
+        """MODEL_CONTEXT_TOKENS is wired to PlatformConfig, not a bare literal."""
+        assert (
+            session_lifecycle.MODEL_CONTEXT_TOKENS
+            == PlatformConfig.DEFAULT_CONTEXT_TOKENS
+        )
+
+    def test_session_manager_compact_context_tokens_references_platform_config(
+        self,
+    ) -> None:
+        """SessionManager._compact_context_tokens is wired to PlatformConfig."""
+        assert (
+            session_lifecycle.SessionManager._compact_context_tokens
+            == PlatformConfig.DEFAULT_CONTEXT_TOKENS
+        )

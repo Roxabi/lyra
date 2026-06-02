@@ -1,4 +1,8 @@
-"""Frozen dataclasses for core component configuration.
+"""factory.core.config — frozen dataclasses for core component configuration.
+
+This package supersedes the former ``config.py`` flat module (#1659).
+All symbols previously exported from ``factory.core.config`` are preserved
+here for backward compatibility.  New bus-sizing constants live in BusConfig.
 
 Extracted from constructor parameter explosions (#858).
 Placed at core/ level to avoid circular imports between hub/, pool/, and commands/.
@@ -16,6 +20,11 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .bus_config import BusConfig
+from .memory_config import MemoryConfig
+from .platform_config import PlatformConfig
+from .turn_store_config import TurnStoreConfig
+
 if TYPE_CHECKING:
     from factory.core.commands.command_config import CommandConfig
 
@@ -27,6 +36,8 @@ class HubConfig:
     """Configuration for Hub constructor.
 
     Groups rate limiting, pool TTL, and inbound bus sizing params.
+    Bus-sizing defaults delegate to BusConfig so there is a single
+    source of truth for LocalBus capacity constants (#1659).
     """
 
     rate_limit: int = 20
@@ -37,9 +48,9 @@ class HubConfig:
     cancel_on_new_message: bool = False
     turn_timeout: float | None = None
     safe_dispatch_timeout: float = 10.0
-    staging_maxsize: int = 500
-    platform_queue_maxsize: int = 100
-    queue_depth_threshold: int = 100
+    staging_maxsize: int = BusConfig.DEFAULT_STAGING_MAXSIZE
+    platform_queue_maxsize: int = BusConfig.DEFAULT_MAXSIZE
+    queue_depth_threshold: int = BusConfig.DEFAULT_QUEUE_DEPTH
     max_merged_chars: int = 4096
 
 
@@ -128,3 +139,18 @@ def load_discord_config() -> DiscordConfig:
     auto_thread_str = os.environ.get("DISCORD_AUTO_THREAD", "").strip().lower()
     auto_thread = auto_thread_str in _AUTO_THREAD_TRUE if auto_thread_str else True
     return DiscordConfig(token=token, auto_thread=auto_thread)
+
+
+__all__ = [
+    "BusConfig",
+    "DiscordConfig",
+    "HubConfig",
+    "MemoryConfig",
+    "PlatformConfig",
+    "PoolConfig",
+    "RouterConfig",
+    "TelegramConfig",
+    "TurnStoreConfig",
+    "load_discord_config",
+    "load_telegram_config",
+]

@@ -14,6 +14,8 @@ import shutil
 import sys
 from typing import TYPE_CHECKING
 
+import nats.errors
+
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
 
@@ -178,7 +180,7 @@ async def ensure_nats(
     try:
         nc = await nats_connect(nats_url, identity_name="hub")
         log.info("Connected to NATS at %s", scrub_nats_url(nats_url))
-    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+    except (nats.errors.Error, OSError) as exc:
         if embedded:
             await embedded.stop()
         sys.exit(f"Failed to connect to NATS at {nats_url!r}: {exc}")

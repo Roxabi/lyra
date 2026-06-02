@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Callable, TypeVar
 
 if TYPE_CHECKING:
     from factory.core.ports.blobstore import BlobStorePort
@@ -29,6 +29,8 @@ from factory.infrastructure.stores.thread_store import ThreadStore
 from factory.paths import factory_data_dir
 
 log = logging.getLogger(__name__)
+
+_EntryT = TypeVar("_EntryT")
 
 
 # ---------------------------------------------------------------------------
@@ -63,6 +65,128 @@ class DiscordWiringDeps:
 
 
 # ---------------------------------------------------------------------------
+# Shared core
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class _AdapterCoreParams:
+    """Parameters for _wire_adapters_core — avoids PLR0913 (max 5 args)."""
+
+    platform: Platform
+    platform_name: str
+    bot_auths: list[tuple[Any, Authenticator]]
+    bot_agent_map: dict[tuple[str, str], str]
+    hub: Hub
+    circuit_registry: CircuitRegistry
+    tool_display_config: ToolDisplayConfig | None
+    blob_store: "BlobStorePort | None"
+    adapter_factory: Callable[[str], Any]
+    collect_entry: Callable[[Any, Any, str], Any]
+
+
+async def _wire_adapters_core(
+    p: _AdapterCoreParams,
+) -> tuple[list[Any], list[OutboundDispatcher]]:
+    """Shared loop for Telegram and Discord adapter wiring.
+
+    For each (bot_cfg, auth) pair:
+      - look up resolved_agent
+      - build adapter via *p.adapter_factory(bot_id)*
+      - configure tool_display + typing_publisher
+      - call wire_ingest
+      - register authenticator, adapter, binding, outbound dispatcher on hub
+
+    *p.collect_entry(adapter, bot_cfg, resolved_agent)* is called after the
+    common steps; its return value is appended to the entries list so callers
+    can accumulate platform-specific tuples.
+    """
+    entries: list[Any] = []
+    dispatchers: list[OutboundDispatcher] = []
+
+    for bot_cfg, auth in p.bot_auths:
+        bot_id: str = bot_cfg.bot_id
+        resolved_agent = p.bot_agent_map.get((p.platform_name, bot_id))
+        if resolved_agent is None:
+            log.warning(
+                "%s bot_id=%r not in bot_agent_map — skipping adapter",
+                p.platform_name,
+                bot_id,
+            )
+            continue
+
+        adapter = p.adapter_factory(bot_id)
+        adapter.configure_tool_display(p.tool_display_config)
+        adapter.configure_typing_publisher(p.hub._typing_publisher)
+        await adapter.resolve_identity()
+        wire_ingest(adapter, p.blob_store)
+
+        # C3: Hub is the trust authority — register authenticator here, not on adapter.
+        p.hub.register_authenticator(p.platform, bot_id, auth)
+        p.hub.register_adapter(p.platform, bot_id, adapter)
+
+        key = RoutingKey(p.platform, bot_id, "*")
+        p.hub.register_binding(
+            p.platform,
+            bot_id,
+            "*",
+            resolved_agent,
+            key.to_pool_id(),
+        )
+
+        dispatcher = OutboundDispatcher(
+            platform_name=p.platform_name,
+            adapter=adapter,
+            circuit=p.circuit_registry.get(p.platform_name),
+            circuit_registry=p.circuit_registry,
+            bot_id=bot_id,
+        )
+        p.hub.register_outbound_dispatcher(p.platform, bot_id, dispatcher)
+
+        entries.append(p.collect_entry(adapter, bot_cfg, resolved_agent))
+        dispatchers.append(dispatcher)
+        log.info(
+            "Registered %s bot bot_id=%r agent=%r",
+            p.platform_name.capitalize(),
+            bot_id,
+            resolved_agent,
+        )
+
+    return entries, dispatchers
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _parse_channel_ids(raw_ids: list[Any], key: str, bot_id: str) -> frozenset[int]:
+    """Parse a list of raw channel IDs, warning on invalid entries."""
+    valid: list[int] = []
+    for ch in raw_ids:
+        try:
+            valid.append(int(ch))
+        except (ValueError, TypeError):
+            log.warning(
+                "%s: invalid channel id %r for bot %r — skipping",
+                key,
+                ch,
+                bot_id,
+            )
+    return frozenset(valid)
+
+
+def _load_watch_channels(agent_store: AgentStore | None, bot_id: str) -> frozenset[int]:
+    """Return the watch_channels frozenset for *bot_id* from the agent store."""
+    if agent_store is None:
+        return frozenset()
+    bot_settings = agent_store.get_bot_settings("discord", bot_id)
+    return _parse_channel_ids(
+        bot_settings.get("watch_channels", []), "watch_channels", bot_id
+    )
+
+
+# ---------------------------------------------------------------------------
 # Wiring functions
 # ---------------------------------------------------------------------------
 
@@ -74,24 +198,11 @@ async def wire_telegram_adapters(
 
     Returns (adapters, dispatchers) lists.
     """
-    adapters: list[TelegramAdapter] = []
-    dispatchers: list[OutboundDispatcher] = []
 
-    for bot_cfg, auth in deps.tg_bot_auths:
-        resolved_agent = deps.bot_agent_map.get(("telegram", bot_cfg.bot_id))
-        if resolved_agent is None:
-            log.warning(
-                "telegram bot_id=%r not in bot_agent_map — skipping adapter",
-                bot_cfg.bot_id,
-            )
-            continue
-
-        tg_token, tg_webhook_secret = credentials.load_bot_token(
-            "telegram", bot_cfg.bot_id
-        )
-
-        adapter = TelegramAdapter(
-            bot_id=bot_cfg.bot_id,
+    def _adapter_factory(bot_id: str) -> TelegramAdapter:
+        tg_token, tg_webhook_secret = credentials.load_bot_token("telegram", bot_id)
+        return TelegramAdapter(
+            bot_id=bot_id,
             token=tg_token,
             inbound_bus=deps.hub.inbound_bus,
             webhook_secret=tg_webhook_secret or "",
@@ -100,43 +211,26 @@ async def wire_telegram_adapters(
             turn_store=deps.hub._turn_store,
             blob_store=deps.blob_store,
         )
-        adapter.configure_tool_display(deps.tool_display_config)
-        adapter.configure_typing_publisher(deps.hub._typing_publisher)
-        await adapter.resolve_identity()
-        wire_ingest(adapter, deps.blob_store)
-        # C3: Hub is the trust authority — register authenticator here, not on adapter.
-        deps.hub.register_authenticator(Platform.TELEGRAM, bot_cfg.bot_id, auth)
-        deps.hub.register_adapter(Platform.TELEGRAM, bot_cfg.bot_id, adapter)
 
-        tg_key = RoutingKey(Platform.TELEGRAM, bot_cfg.bot_id, "*")
-        deps.hub.register_binding(
-            Platform.TELEGRAM,
-            bot_cfg.bot_id,
-            "*",
-            resolved_agent,
-            tg_key.to_pool_id(),
-        )
+    def _collect_entry(
+        adapter: TelegramAdapter, bot_cfg: TelegramBotConfig, resolved_agent: str
+    ) -> TelegramAdapter:
+        return adapter
 
-        dispatcher = OutboundDispatcher(
+    return await _wire_adapters_core(
+        _AdapterCoreParams(
+            platform=Platform.TELEGRAM,
             platform_name="telegram",
-            adapter=adapter,
-            circuit=deps.circuit_registry.get("telegram"),
+            bot_auths=deps.tg_bot_auths,
+            bot_agent_map=deps.bot_agent_map,
+            hub=deps.hub,
             circuit_registry=deps.circuit_registry,
-            bot_id=bot_cfg.bot_id,
+            tool_display_config=deps.tool_display_config,
+            blob_store=deps.blob_store,
+            adapter_factory=_adapter_factory,
+            collect_entry=_collect_entry,
         )
-        deps.hub.register_outbound_dispatcher(
-            Platform.TELEGRAM, bot_cfg.bot_id, dispatcher
-        )
-
-        adapters.append(adapter)
-        dispatchers.append(dispatcher)
-        log.info(
-            "Registered Telegram bot bot_id=%r agent=%r",
-            bot_cfg.bot_id,
-            resolved_agent,
-        )
-
-    return adapters, dispatchers
+    )
 
 
 async def wire_discord_adapters(
@@ -151,9 +245,6 @@ async def wire_discord_adapters(
     Returns (adapters_with_config, dispatchers) where each adapter entry is
     (adapter, bot_cfg, token) — the token is needed later for ``adapter.start()``.
     """
-    adapters: list[tuple[DiscordAdapter, DiscordBotConfig, str]] = []
-    dispatchers: list[OutboundDispatcher] = []
-
     # Shared ThreadStore for all Discord adapters (#417/S4)
     # One connection to discord.db — shared across all Discord bots.
     _vault = Path(deps.vault_dir) if deps.vault_dir else factory_data_dir()
@@ -162,93 +253,48 @@ async def wire_discord_adapters(
         thread_store = ThreadStore(db_path=_vault / "discord.db")
         await thread_store.connect()
 
+    def _adapter_factory(bot_id: str) -> DiscordAdapter:
+        bot_cfg = next(cfg for cfg, _ in deps.dc_bot_auths if cfg.bot_id == bot_id)
+        return DiscordAdapter(
+            bot_id=bot_id,
+            inbound_bus=deps.hub.inbound_bus,
+            circuit_registry=deps.circuit_registry,
+            msg_manager=deps.msg_manager,
+            auto_thread=bot_cfg.auto_thread,
+            thread_hot_hours=bot_cfg.thread_hot_hours,
+            thread_store=thread_store,
+            watch_channels=_load_watch_channels(deps.agent_store, bot_id),
+            turn_store=deps.hub._turn_store,
+            blob_store=deps.blob_store,
+        )
+
+    def _collect_entry(
+        adapter: DiscordAdapter, bot_cfg: DiscordBotConfig, resolved_agent: str
+    ) -> tuple[DiscordAdapter, DiscordBotConfig, str]:
+        # Wire identity resolver for slash command trust (voice commands).
+        adapter._resolve_identity_fn = deps.hub.resolve_identity
+        dc_token, _ = credentials.load_bot_token("discord", bot_cfg.bot_id)
+        return (adapter, bot_cfg, dc_token)
+
     try:
-        for bot_cfg, auth in deps.dc_bot_auths:
-            resolved_agent = deps.bot_agent_map.get(("discord", bot_cfg.bot_id))
-            if resolved_agent is None:
-                log.warning(
-                    "discord bot_id=%r not in bot_agent_map — skipping adapter",
-                    bot_cfg.bot_id,
-                )
-                continue
-
-            dc_token, _ = credentials.load_bot_token("discord", bot_cfg.bot_id)
-
-            watch_channels: frozenset[int] = frozenset()
-            if deps.agent_store is not None:
-                bot_settings = deps.agent_store.get_bot_settings(
-                    "discord", bot_cfg.bot_id
-                )
-
-                def _parse_channel_ids(key: str) -> frozenset[int]:
-                    raw_ids = bot_settings.get(key, [])
-                    valid: list[int] = []
-                    for ch in raw_ids:
-                        try:
-                            valid.append(int(ch))
-                        except (ValueError, TypeError):
-                            log.warning(
-                                "%s: invalid channel id %r for bot %r — skipping",
-                                key,
-                                ch,
-                                bot_cfg.bot_id,
-                            )
-                    return frozenset(valid)
-
-                watch_channels = _parse_channel_ids("watch_channels")
-
-            adapter = DiscordAdapter(
-                bot_id=bot_cfg.bot_id,
-                inbound_bus=deps.hub.inbound_bus,
-                circuit_registry=deps.circuit_registry,
-                msg_manager=deps.msg_manager,
-                auto_thread=bot_cfg.auto_thread,
-                thread_hot_hours=bot_cfg.thread_hot_hours,
-                thread_store=thread_store,
-                watch_channels=watch_channels,
-                turn_store=deps.hub._turn_store,
-                blob_store=deps.blob_store,
-            )
-            adapter.configure_tool_display(deps.tool_display_config)
-            adapter.configure_typing_publisher(deps.hub._typing_publisher)
-            # Wire identity resolver for slash command trust (voice commands).
-            adapter._resolve_identity_fn = deps.hub.resolve_identity
-            wire_ingest(adapter, deps.blob_store)
-            # C3: Hub is the trust authority — register here, not on adapter.
-            deps.hub.register_authenticator(Platform.DISCORD, bot_cfg.bot_id, auth)
-            deps.hub.register_adapter(Platform.DISCORD, bot_cfg.bot_id, adapter)
-
-            dc_key = RoutingKey(Platform.DISCORD, bot_cfg.bot_id, "*")
-            deps.hub.register_binding(
-                Platform.DISCORD,
-                bot_cfg.bot_id,
-                "*",
-                resolved_agent,
-                dc_key.to_pool_id(),
-            )
-
-            dispatcher = OutboundDispatcher(
+        entries, dispatchers = await _wire_adapters_core(
+            _AdapterCoreParams(
+                platform=Platform.DISCORD,
                 platform_name="discord",
-                adapter=adapter,
-                circuit=deps.circuit_registry.get("discord"),
+                bot_auths=deps.dc_bot_auths,
+                bot_agent_map=deps.bot_agent_map,
+                hub=deps.hub,
                 circuit_registry=deps.circuit_registry,
-                bot_id=bot_cfg.bot_id,
+                tool_display_config=deps.tool_display_config,
+                blob_store=deps.blob_store,
+                adapter_factory=_adapter_factory,
+                collect_entry=_collect_entry,
             )
-            deps.hub.register_outbound_dispatcher(
-                Platform.DISCORD, bot_cfg.bot_id, dispatcher
-            )
-
-            adapters.append((adapter, bot_cfg, dc_token))
-            dispatchers.append(dispatcher)
-            log.info(
-                "Registered Discord bot bot_id=%r agent=%r",
-                bot_cfg.bot_id,
-                resolved_agent,
-            )
+        )
     except Exception:
         # Close the shared ThreadStore on wiring failure (#417 fix)
         if thread_store is not None:
             await thread_store.close()
         raise
 
-    return adapters, dispatchers, thread_store
+    return entries, dispatchers, thread_store

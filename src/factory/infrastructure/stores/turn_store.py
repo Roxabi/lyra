@@ -174,6 +174,11 @@ class TurnStore(SqliteStore, TurnStoreSessionMixin):
 
         Raises:
             ValueError: If *role* is not ``'user'`` or ``'assistant'``.
+            sqlite3.OperationalError: (or any ``aiosqlite`` error) if the SQLite
+                write fails (disk full, locked, corruption).  The exception is
+                intentionally **not** caught here so that the JetStream caller
+                (``TurnWriter._consume_loop``) can NACK the message and trigger
+                redelivery instead of silently acking a failed write.
         """
         if role not in _VALID_ROLES:
             raise ValueError(
@@ -182,6 +187,17 @@ class TurnStore(SqliteStore, TurnStoreSessionMixin):
         db = self._db_or_raise()
         ts = datetime.now(UTC).isoformat()
         meta_str = json.dumps(metadata or {})
+        # Explicit transaction boundary: three DML statements must commit or
+        # rollback together.  aiosqlite with isolation_level='' auto-opens an
+        # implicit deferred transaction on the first DML but does NOT
+        # auto-rollback on exception.  Without BEGIN/ROLLBACK, a partial
+        # failure (e.g. disk-full after _INSERT but before the pool_sessions
+        # INSERT) leaves an open transaction on the connection; the next
+        # successful _log_turn call's db.commit() would commit the orphaned
+        # partial write as a ghost row.  Explicit BEGIN/ROLLBACK closes that
+        # hole while preserving the re-raise semantics that let the JetStream
+        # caller NACK and trigger redelivery (#1637).
+        await db.execute("BEGIN")
         try:
             await db.execute(
                 _INSERT,
@@ -212,12 +228,8 @@ class TurnStore(SqliteStore, TurnStoreSessionMixin):
             )
             await db.commit()
         except Exception:
-            log.exception(
-                "TurnStore._log_turn failed (pool=%s session=%s role=%s)",
-                pool_id,
-                session_id,
-                role,
-            )
+            await db.execute("ROLLBACK")
+            raise
 
     async def get_turns(
         self, pool_id: str, user_id: str, limit: int = 50

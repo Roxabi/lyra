@@ -213,6 +213,20 @@ docs/         — ARCHITECTURE, ADRs, guides
 | [CONFIGURATION.md](docs/CONFIGURATION.md) | All config files + env vars |
 | [ADRs](docs/architecture/adr/) | Architecture decision records |
 
+## Debt expiry policy
+
+`DEBT:` markers in source files expire after **6 months** from the file's last git commit. An expired marker without an open GitHub issue reference blocks `git push` via a pre-push hook (`tools/check_debt_expiry.sh`).
+
+To keep a `DEBT:` marker alive, do one of:
+
+1. **Resolve the debt** and remove the marker.
+2. **Open a GitHub issue** and append `#<N>` to the marker line — e.g. `# DEBT:boundary-broad-catch #1234`. The hook skips markers that carry an issue ref.
+3. **Touch the file** in a meaningful commit — resets the 6-month clock.
+
+Grace period and scan scope are configurable via environment variables `DEBT_EXPIRY_MONTHS` (default: 6) and `DEBT_SCAN_ROOT` (default: `src/`).
+
+The hook runs on macOS (BSD grep) and Linux (GNU grep) without additional dependencies. See `docs/debt-tracking.md` for the broader debt-tracking workflow.
+
 ## License
 
 MIT

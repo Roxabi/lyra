@@ -1,0 +1,119 @@
+name: Axial Review
+
+# Auto-label PRs that cross architectural layer boundaries.
+# Triggers (issue #1657):
+#   - inbound/ + adapters/ touched (top-level factory modules)  → dev-core:axial-adr-review
+#   - core/ + infrastructure/ touched (top-level factory modules) → dev-core:axial-adr-review
+#   - except Exception added (any binding form)                 → dev-core:security-auditor + dev-core:axial-adr-review
+# Note: core/ports/ and core/hub/ are intra-core sub-packages — no separate trigger.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, staging]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  axial-label:
+    name: Detect cross-layer boundaries
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed files and apply labels
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            // Paginate through all changed files (GitHub REST caps each page at 100)
+            let files = [];
+            let page = 1;
+            while (true) {
+              const { data: batch } = await github.rest.pulls.listFiles({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                per_page: 100,
+                page,
+              });
+              files = files.concat(batch);
+              if (batch.length < 100) break;
+              page++;
+            }
+
+            const paths = files.map(f => f.filename);
+
+            // Layer membership helpers
+            // touches() checks if any path contains the segment as a path component.
+            // For cross-layer detection we need top-level module membership, so we
+            // only match paths whose first src/factory/<segment> segment is the
+            // target — this avoids false positives from same-layer subdirectories
+            // (e.g. core/ports/ and core/hub/ are both inside core/, not separate layers).
+            const touchesTopLevel = (segment) =>
+              paths.some(p => p.includes(`/factory/${segment}/`) || p.startsWith(`factory/${segment}/`));
+
+            const inInbound  = touchesTopLevel('inbound');
+            const inAdapters = touchesTopLevel('adapters');
+            const inCore     = touchesTopLevel('core');
+            const inInfra    = touchesTopLevel('infrastructure');
+
+            // except Exception detection — match all Python bare-except-all forms:
+            //   except Exception:          (no binding)
+            //   except Exception as e:     (canonical binding)
+            //   except Exception as exc:   (any identifier)
+            //   except(Exception):         (parenthesised — uncommon but valid)
+            // Regex: after 'Exception', allow optional whitespace then either
+            //   ':' | '(' | 'as <identifier>'
+            const exceptException = files.some(f =>
+              f.patch && f.patch.split('\n').some(line =>
+                line.startsWith('+') && !line.startsWith('+++') &&
+                /except\s+Exception\s*(?::|[(]|\bas\s+\w)/.test(line)
+              )
+            );
+
+            const crossLayer =
+              (inInbound && inAdapters) ||
+              (inCore && inInfra);
+
+            const labelsToAdd = new Set();
+
+            if (crossLayer)      labelsToAdd.add('dev-core:axial-adr-review');
+            if (exceptException) {
+              labelsToAdd.add('dev-core:axial-adr-review');
+              labelsToAdd.add('dev-core:security-auditor');
+            }
+
+            if (labelsToAdd.size === 0) {
+              core.info('No cross-layer boundary detected — no labels added');
+              return;
+            }
+
+            core.info(`Labels to add: ${[...labelsToAdd].join(', ')}`);
+
+            // Fetch existing labels to avoid duplicates
+            const { data: existing } = await github.rest.issues.listLabelsOnIssue({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existingNames = new Set(existing.map(l => l.name));
+
+            const toApply = [...labelsToAdd].filter(l => !existingNames.has(l));
+            if (toApply.length === 0) {
+              core.info('Labels already present — nothing to do');
+              return;
+            }
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: toApply,
+            });
+            core.info(`Added labels: ${toApply.join(', ')}`);

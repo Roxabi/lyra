@@ -36,6 +36,8 @@ class HubConfig:
     """Configuration for Hub constructor.
 
     Groups rate limiting, pool TTL, and inbound bus sizing params.
+    Bus-sizing defaults delegate to BusConfig so there is a single
+    source of truth for LocalBus capacity constants (#1659).
     """
 
     rate_limit: int = 20
@@ -46,9 +48,9 @@ class HubConfig:
     cancel_on_new_message: bool = False
     turn_timeout: float | None = None
     safe_dispatch_timeout: float = 10.0
-    staging_maxsize: int = 500
-    platform_queue_maxsize: int = 100
-    queue_depth_threshold: int = 100
+    staging_maxsize: int = BusConfig.DEFAULT_STAGING_MAXSIZE
+    platform_queue_maxsize: int = BusConfig.DEFAULT_MAXSIZE
+    queue_depth_threshold: int = BusConfig.DEFAULT_QUEUE_DEPTH
     max_merged_chars: int = 4096
 
 

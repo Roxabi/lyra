@@ -14,6 +14,7 @@ Let:
 ## TL;DR
 
 - Entry: `/dev #N` → tier (S/F-lite/F-full) → lifecycle
+- Close checklist (post-merge): `docs/process/dev-cycle.md` — debt retrospective
 - Decisions → global-patterns.md
 - ¬`--force` | ¬`--hard` | ¬`--amend`
 
@@ -22,6 +23,7 @@ Let:
 | File | Role |
 |---|---|
 | `docs/ARCHITECTURE.md` | Architecture + decisions |
+| `docs/process/dev-cycle.md` | `/dev #N` close checklist — debt retrospective |
 | `docs/architecture/CURRENT.generated.md` | Generated inventory SSoT (layers/subjects/topology) — ¬edit, gated by `architecture_snapshot` |
 | `docs/CONFIGURATION.md` | Config files, load order |
 | `docs/agent-management.md` | Agent seed flow + CLI |

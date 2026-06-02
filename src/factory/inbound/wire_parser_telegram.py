@@ -2,25 +2,39 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from factory.core.auth.trust import TrustLevel
 
 if TYPE_CHECKING:
-    from factory.adapters.telegram.telegram import TelegramAdapter
     from factory.core.messaging.message import InboundMessage
     from factory.inbound.context import InboundContext
+
+
+class _TelegramNormalizer(Protocol):
+    """Narrow protocol: the normalize signature used by TelegramWireParser.
+
+    Satisfied by ``TelegramAdapter`` without importing it.
+    """
+
+    def normalize(
+        self,
+        raw: Any,
+        *,
+        trust_level: TrustLevel = TrustLevel.TRUSTED,
+        is_admin: bool = False,
+    ) -> "InboundMessage": ...
 
 
 class TelegramWireParser:
     """WireParser implementation for Telegram (aiogram).
 
-    Delegates normalization to ``TelegramAdapter.normalize`` to preserve all
+    Delegates normalization to the adapter's ``normalize`` method to preserve all
     existing behaviour.  Bot-author messages are filtered early (return ``None``)
     before reaching the router.
     """
 
-    def __init__(self, adapter: "TelegramAdapter") -> None:
+    def __init__(self, adapter: _TelegramNormalizer) -> None:
         self._adapter = adapter
 
     def parse(self, raw: Any, ctx: "InboundContext") -> "InboundMessage | None":

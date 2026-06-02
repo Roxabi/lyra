@@ -69,9 +69,13 @@ class _FakeTgAdapter:
     ) -> None:
         self._bot_id = kwargs.get("bot_id", "main")
         self.dp = _FakeDp(shutdown_event)
+        self._typing = MagicMock()  # TypingListener manager (#1377)
 
     def configure_tool_display(self, config: object) -> None:
         self._tool_display_config = config
+
+    def configure_typing_publisher(self, publisher: object) -> None:
+        self._typing_publisher = publisher
 
     async def send(self, msg: object, response: object) -> None:
         pass
@@ -90,9 +94,15 @@ class _FakeDcAdapter:
         self, shutdown_event: asyncio.Event | None = None, **kwargs: object
     ) -> None:
         self._shutdown = shutdown_event if shutdown_event else asyncio.Event()
+        self._bot_id = kwargs.get("bot_id", "main")
+        self._typing = MagicMock()  # TypingListener manager (#1377)
+        self._resolve_channel = MagicMock()  # TypingListener factory dep (#1377)
 
     def configure_tool_display(self, config: object) -> None:
         self._tool_display_config = config
+
+    def configure_typing_publisher(self, publisher: object) -> None:
+        self._typing_publisher = publisher
 
     async def start(self, token: str) -> None:
         await self._shutdown.wait()  # explicit: wait for teardown signal

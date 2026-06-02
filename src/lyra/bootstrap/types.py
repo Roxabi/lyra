@@ -33,6 +33,7 @@ if TYPE_CHECKING:
     from lyra.llm.llm_client import LlmClient
     from lyra.nats.nats_bus import NatsBus
     from lyra.nats.nats_channel_proxy import NatsChannelProxy
+    from lyra.typing import TypingListener
 
 
 class DiscordAdapterEntry(NamedTuple):
@@ -48,6 +49,8 @@ class WiredAdapters:
     dc_adapters: list[DiscordAdapterEntry]
     dc_dispatchers: list[OutboundDispatcher]
     dc_thread_store: ThreadStore | None
+    tg_typing_listeners: list[TypingListener] = field(default_factory=list)
+    dc_typing_listeners: list[TypingListener] = field(default_factory=list)
 
 
 @dataclass

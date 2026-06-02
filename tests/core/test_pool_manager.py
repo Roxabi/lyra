@@ -14,6 +14,7 @@ from lyra.core.config import HubConfig
 from lyra.core.hub import Hub
 from lyra.core.messaging.message import Platform
 from lyra.core.pool import Pool
+from lyra.transport.typing_publisher import TypingPublisher
 
 if TYPE_CHECKING:
     from lyra.core.agent import AgentBase
@@ -161,6 +162,36 @@ class TestSetDebounceMs:
         hub.set_debounce_ms(500)
         pool = hub.get_or_create_pool("pool-1", "test-agent")
         assert pool.debounce_ms == 500
+
+
+# ---------------------------------------------------------------------------
+# typing_publisher wiring
+# ---------------------------------------------------------------------------
+
+
+class TestTypingPublisherWiring:
+    """PoolManager.get_or_create_pool sets pool.typing_publisher from Hub."""
+
+    def test_sets_pool_typing_publisher_when_hub_has_one(self):
+        """Hub._typing_publisher non-None → pool.typing_publisher is set."""
+        hub = _make_hub()
+        agent = _StubAgent()
+        hub.register_agent(cast("AgentBase", agent))
+
+        publisher = TypingPublisher(MagicMock(), enabled=True)
+        hub.set_typing_publisher(publisher)
+
+        pool = hub.get_or_create_pool("pool-1", "test-agent")
+        assert pool.typing_publisher is publisher
+
+    def test_pool_typing_publisher_none_when_hub_has_none(self):
+        """Hub._typing_publisher is None → pool.typing_publisher remains None."""
+        hub = _make_hub()
+        agent = _StubAgent()
+        hub.register_agent(cast("AgentBase", agent))
+
+        pool = hub.get_or_create_pool("pool-1", "test-agent")
+        assert pool.typing_publisher is None
 
 
 # ---------------------------------------------------------------------------

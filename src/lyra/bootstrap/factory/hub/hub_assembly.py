@@ -26,7 +26,6 @@ from lyra.core.messaging.message import InboundMessage
 from lyra.core.messaging.messages import MessageManager
 from lyra.infrastructure.stores.pairing import PairingManager
 from lyra.nats.nats_bus import NatsBus
-from lyra.transport.typing_publisher import TypingPublisher
 
 if TYPE_CHECKING:
     from lyra.bootstrap.bootstrap_stores import StoreBundle
@@ -96,9 +95,6 @@ async def _build_hub_and_wire(  # noqa: PLR0913 — unavoidable wiring surface
     )
     if hub._turn_publisher is None:
         raise RuntimeError("TurnPublisher not wired — startup check failed")
-
-    typing_publisher = TypingPublisher(nc)
-    hub.set_typing_publisher(typing_publisher)
 
     cli_nats_driver = await build_llm_client(nc)
     cli_nats_driver.set_turn_store(stores.turn)

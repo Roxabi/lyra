@@ -4,6 +4,7 @@ RED phase: written before TypingPublisher exists. Will collect-fail with
 ImportError until T3 lands the impl in Wave 2.
 """
 
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -58,15 +59,18 @@ async def test_flag_off_no_publish(scope: WorkScope) -> None:
 
 @pytest.mark.asyncio
 async def test_publish_error_swallow(scope: WorkScope) -> None:
-    """AC5: publish error swallowed; ref-count NOT rolled back (best-effort)."""
+    """AC5: publish error swallowed; ref-count stays at 0 on publish failure.
+
+    Blocker 6 fix: refcount is only committed after a successful first publish.
+    On failure the refcount is not incremented, so a later ended() no-ops cleanly.
+    """
     nc = AsyncMock()
     nc.publish.side_effect = RuntimeError("boom")
     pub = TypingPublisher(nc, enabled=True)
     await pub.publish_started(scope)  # AC5 — must not raise
-    # AC5 — best-effort: ref-count remains incremented despite publish failure.
-    # A regression that rolled back on error would fail this assertion.
+    # Refcount stays at 0 (key absent) — consistent with wire state.
     key = (scope.platform, scope.bot_id, scope.scope_id)
-    assert pub._refcount[key] == 1
+    assert key not in pub._refcount
 
 
 @pytest.mark.asyncio
@@ -85,3 +89,81 @@ async def test_publish_ended_error_swallow(scope: WorkScope) -> None:
     # AC5 best-effort: decrement before _publish error; no re-increment rollback.
     # Key may be removed (count → 0) per the impl's del branch.
     assert key not in pub._refcount
+
+
+# ---------------------------------------------------------------------------
+# T10 — scope() context manager
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_scope_calls_publish_started_on_entry(scope: WorkScope) -> None:
+    """scope() calls publish_started on entry."""
+    pub = TypingPublisher(AsyncMock(), enabled=True)
+    pub.publish_started = AsyncMock()
+    pub.publish_ended = AsyncMock()
+    async with pub.scope(scope):
+        pub.publish_ended.assert_not_awaited()
+    pub.publish_started.assert_awaited_once_with(scope)
+
+
+@pytest.mark.asyncio
+async def test_scope_calls_publish_ended_on_normal_exit(scope: WorkScope) -> None:
+    """scope() calls publish_ended on normal exit."""
+    pub = TypingPublisher(AsyncMock(), enabled=True)
+    pub.publish_started = AsyncMock()
+    pub.publish_ended = AsyncMock()
+    pub.publish_started.assert_not_awaited()
+    async with pub.scope(scope):
+        pass
+    pub.publish_started.assert_awaited_once_with(scope)
+    pub.publish_ended.assert_awaited_once_with(scope)
+
+
+@pytest.mark.asyncio
+async def test_scope_calls_publish_ended_on_exception_exit(scope: WorkScope) -> None:
+    """scope() calls publish_ended even when the body raises an exception."""
+    pub = TypingPublisher(AsyncMock(), enabled=True)
+    pub.publish_started = AsyncMock()
+    pub.publish_ended = AsyncMock()
+    pub.publish_started.assert_not_awaited()
+    with pytest.raises(RuntimeError, match="boom"):
+        async with pub.scope(scope):
+            raise RuntimeError("boom")
+    pub.publish_started.assert_awaited_once_with(scope)
+    pub.publish_ended.assert_awaited_once_with(scope)
+
+
+@pytest.mark.asyncio
+async def test_scope_calls_publish_ended_on_cancelled_error(scope: WorkScope) -> None:
+    """scope() calls publish_ended even when the body raises CancelledError."""
+    pub = TypingPublisher(AsyncMock(), enabled=True)
+    pub.publish_started = AsyncMock()
+    pub.publish_ended = AsyncMock()
+    pub.publish_started.assert_not_awaited()
+    with pytest.raises(asyncio.CancelledError):
+        async with pub.scope(scope):
+            raise asyncio.CancelledError()
+    pub.publish_started.assert_awaited_once_with(scope)
+    pub.publish_ended.assert_awaited_once_with(scope)
+
+
+@pytest.mark.asyncio
+async def test_scope_overlapping_calls(scope: WorkScope) -> None:
+    """Nested scope() calls result in a single wire publish per started/ended."""
+    nc = AsyncMock()
+    pub = TypingPublisher(nc, enabled=True)
+    async with pub.scope(scope):
+        async with pub.scope(scope):
+            pass
+    assert nc.publish.call_count == 2  # one started, one ended
+
+
+@pytest.mark.asyncio
+async def test_scope_noop_when_enabled_false(scope: WorkScope) -> None:
+    """scope() with enabled=False does not emit to the wire."""
+    nc = AsyncMock()
+    pub = TypingPublisher(nc, enabled=False)
+    async with pub.scope(scope):
+        pass
+    nc.publish.assert_not_called()

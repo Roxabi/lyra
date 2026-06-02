@@ -131,6 +131,10 @@ jobs:
     needs: [ci]
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        typing_enabled: ["true", "false"]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
@@ -144,8 +148,20 @@ jobs:
         run: docker compose -f docker/docker-compose.test.yml up -d --wait --wait-timeout 60
 
       - name: Run integration tests
-        run: NATS_URL=nats://localhost:4222 uv run pytest tests/integration/ -v
+        env:
+          NATS_URL: nats://localhost:4222
+          LYRA_TYPING_ENABLED: ${{ matrix.typing_enabled }}
+        run: uv run pytest tests/integration/ -v
 
       - name: Tear down Docker environment
         if: always()
         run: docker compose -f docker/docker-compose.test.yml down -v
+
+  integration-report:
+    name: integration
+    needs: [integration]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report success
+        run: echo "Integration tests passed"

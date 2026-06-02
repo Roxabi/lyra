@@ -7,10 +7,12 @@ import re
 from collections.abc import AsyncIterator
 from functools import partial
 from typing import TYPE_CHECKING, Any, cast
+from uuid import uuid4
 
 import discord
 
 from lyra.core.stores.thread_store_protocol import ThreadSession
+from lyra.core.trace import TraceContext
 
 if TYPE_CHECKING:
     from lyra.adapters.shared.outbound_listener import OutboundListener
@@ -62,7 +64,9 @@ log = logging.getLogger(__name__)
 
 
 # ── Typing plane (#1376) — module-level resolver for AC8 ─────────────────
+from lyra.transport.typing_publisher import is_typing_enabled  # noqa: E402
 from lyra.transport.work_scope import WorkScope  # noqa: E402
+from lyra.typing.listener import typing_publisher_shim  # noqa: E402
 
 
 def _discord_scope_resolver(scope: WorkScope) -> int:
@@ -148,9 +152,25 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         return self._typing._tasks
 
     def _start_typing(self, scope_id: int) -> None:
+        publisher = getattr(self, "_typing_publisher", None)
+        if publisher is not None and typing_publisher_shim(
+            "discord", self._bot_id, scope_id, publisher, publisher.publish_started,
+            trace_id=TraceContext.get_trace_id() or uuid4().hex,
+        ):
+            return
+        if is_typing_enabled():
+            return  # pub/sub active but publisher absent → intentional no-op
         self._typing.start(scope_id, self._factory_builder(scope_id))
 
     def _cancel_typing(self, scope_id: int) -> None:
+        publisher = getattr(self, "_typing_publisher", None)
+        if publisher is not None and typing_publisher_shim(
+            "discord", self._bot_id, scope_id, publisher, publisher.publish_ended,
+            trace_id=TraceContext.get_trace_id() or uuid4().hex,
+        ):
+            return
+        if is_typing_enabled():
+            return  # pub/sub active but publisher absent → intentional no-op
         self._typing.cancel(scope_id)
 
     def _cancel_typing_for(self, inbound: InboundMessage) -> None:

@@ -116,12 +116,15 @@ async def test_typing_loop_cancels_on_body_exception() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_cancels_typing_task() -> None:
+async def test_send_cancels_typing_task(monkeypatch: pytest.MonkeyPatch) -> None:
     """adapter.send() cancels the typing task started on message receipt.
 
     The typing indicator is a background task started by _start_typing() (called
     in _on_message). send() cancels it via _cancel_typing() before sending the reply.
+
+    Legacy-path test: forces LYRA_TYPING_ENABLED=false.
     """
+    monkeypatch.setenv("LYRA_TYPING_ENABLED", "false")
     import asyncio
 
     from lyra.adapters.telegram import TelegramAdapter
@@ -182,14 +185,19 @@ async def test_send_cancels_typing_task() -> None:
 
 
 @pytest.mark.asyncio
-async def test_send_streaming_cancels_typing_task_after_placeholder() -> None:
+async def test_send_streaming_cancels_typing_task_after_placeholder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """adapter.send_streaming() cancels the pre-existing typing task once the
     placeholder message is sent (first visible content in the chat).
 
     The typing indicator is started by _start_typing() at message receipt
     (_on_message / _on_voice_message). send_streaming() itself no longer
     creates a new typing loop — it only cancels the pre-existing task.
+
+    Legacy-path test: forces LYRA_TYPING_ENABLED=false.
     """
+    monkeypatch.setenv("LYRA_TYPING_ENABLED", "false")
     import asyncio
 
     from lyra.adapters.telegram import TelegramAdapter

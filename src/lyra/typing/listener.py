@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import asyncio
 import logging
-import os
 from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 from lyra.transport.typing_event import TypingEvent
+from lyra.transport.typing_publisher import is_typing_enabled
+from lyra.transport.work_scope import WorkScope
 from lyra.typing.types import (
     CoroFactory,
     FactoryBuilder,
@@ -17,6 +20,8 @@ if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
     from nats.aio.msg import Msg
     from nats.aio.subscription import Subscription
+
+    from lyra.transport.typing_publisher import TypingPublisher
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +45,42 @@ def make_typing_factory(
     return factory_builder
 
 
+def typing_publisher_shim(  # noqa: PLR0913 — DEBT:typing-publisher-shim-args — 6 params for platform+bot+scope+publisher+method+trace_id; no reasonable grouping exists
+    platform: str,
+    bot_id: str,
+    scope_id: int,
+    publisher: "TypingPublisher | None",
+    method: Callable[[WorkScope], Coroutine[Any, Any, None]],
+    trace_id: str | None = None,
+) -> bool:
+    """Stage-axis helper for pub/sub typing path (ADR-073, #1377).
+
+    Collapses per-adapter `_start_typing` / `_cancel_typing` pub/sub duplication
+    into a single call. Returns True if the shim took the pub/sub path
+    (flag enabled + publisher present); caller must fall back to legacy path
+    on False.
+    """
+    if not is_typing_enabled() or publisher is None:
+        return False
+    work_scope = WorkScope(
+        platform=platform,
+        bot_id=bot_id,
+        scope_id=scope_id,
+        trace_id=trace_id or uuid4().hex,
+    )
+    task = asyncio.create_task(method(work_scope))
+
+    def _on_done(t: asyncio.Task) -> None:
+        if t.cancelled():
+            return
+        exc = t.exception()
+        if exc:
+            log.warning("typing publisher shim failed: %s", exc)
+
+    task.add_done_callback(_on_done)
+    return True
+
+
 class TypingListener:
     def __init__(  # noqa: PLR0913
         self,
@@ -56,11 +97,7 @@ class TypingListener:
         self._resolver = resolver
         self._factory_builder = factory_builder
         self._manager = manager
-        self._enabled = (
-            enabled
-            if enabled is not None
-            else os.getenv("LYRA_TYPING_ENABLED", "false").lower() == "true"
-        )
+        self._enabled = enabled if enabled is not None else is_typing_enabled()
         self._sub: "Subscription | None" = None
 
     async def start(self) -> None:

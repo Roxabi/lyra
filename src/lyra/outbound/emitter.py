@@ -17,6 +17,8 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from lyra.outbound.throttle import ThrottleCapability
+    from lyra.transport.typing_publisher import TypingPublisher
+    from lyra.transport.work_scope import WorkScope
 
 from lyra.core.messaging import (
     RenderEvent,
@@ -38,6 +40,7 @@ from lyra.outbound.error_handler import OutboundErrorHandler
 from lyra.outbound.formatter import OutboundFormatter
 from lyra.outbound.throttle import STREAMING_EDIT_INTERVAL
 from lyra.transport._result import Err
+from lyra.transport.typing_publisher import is_typing_enabled
 
 log = logging.getLogger(__name__)
 
@@ -93,6 +96,9 @@ class OutboundEmitter:
         self._last_recap_edit: float | None = None
         self._recap_done_emitted: bool = False
         self._tool_recap = ToolRecapAccumulator()
+        # Pub/sub typing path (#1377) — injected by OutboundAdapterBase.send_streaming.
+        self.typing_publisher: "TypingPublisher | None" = None
+        self._work_scope: "WorkScope | None" = None
 
     async def _ensure_trace_obj(self) -> bool:
         """Lazily send the trace placeholder, caching it on self._trace_obj.
@@ -211,13 +217,25 @@ class OutboundEmitter:
                 self._st.set_final_text(final)
 
     async def _cancel_typing(self) -> None:
-        """Cancel typing via ThrottleCapability."""
-        if self._typing is not None and self._typing_scope_id is not None:
+        """Cancel typing via pub/sub or legacy ThrottleCapability."""
+        if (
+            is_typing_enabled()
+            and self.typing_publisher is not None
+            and self._work_scope is not None
+        ):
+            await self.typing_publisher.publish_ended(self._work_scope)
+        elif self._typing is not None and self._typing_scope_id is not None:
             await self._typing.cancel_typing(self._typing_scope_id)
 
     async def _start_typing(self) -> None:
-        """Start typing via ThrottleCapability."""
-        if self._typing is not None and self._typing_scope_id is not None:
+        """Start typing via pub/sub or legacy ThrottleCapability."""
+        if (
+            is_typing_enabled()
+            and self.typing_publisher is not None
+            and self._work_scope is not None
+        ):
+            await self.typing_publisher.publish_started(self._work_scope)
+        elif self._typing is not None and self._typing_scope_id is not None:
             await self._typing.start_typing(self._typing_scope_id)
 
     async def run(self, events: AsyncIterator[RenderEvent]) -> None:

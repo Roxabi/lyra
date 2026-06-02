@@ -18,6 +18,7 @@ from lyra.core.hub import Hub
 from lyra.core.hub.event_bus import PipelineEventBus
 from lyra.infrastructure.resume_publisher_adapter import TurnPublisherAdapter
 from lyra.transport.turn_publisher import TurnPublisher
+from lyra.transport.typing_publisher import TypingPublisher
 
 log = logging.getLogger(__name__)
 
@@ -70,5 +71,8 @@ def _build_hub(deps: BuildHubDeps) -> Hub:
     deps.stores.prefs.set_alias_store(deps.stores.identity_alias)
     hub.set_alias_store(deps.stores.identity_alias)
     hub.set_turn_publisher(turn_publisher)
+
+    typing_publisher = TypingPublisher(deps.inbound_bus._nc)
+    hub.set_typing_publisher(typing_publisher)
 
     return hub

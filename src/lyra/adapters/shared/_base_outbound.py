@@ -15,16 +15,23 @@ discord.Client correctly).
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
+from uuid import uuid4
 
 from lyra.core.messaging.tool_display_config import ToolDisplayConfig
+from lyra.core.trace import TraceContext
 from lyra.outbound.emitter import OutboundEmitter
+from lyra.transport.work_scope import WorkScope
 
 if TYPE_CHECKING:
     from lyra.core.messaging.message import InboundMessage, OutboundMessage
     from lyra.core.messaging.render_events import RenderEvent
+    from lyra.transport.typing_publisher import TypingPublisher
+
+log = logging.getLogger(__name__)
 
 __all__ = ["OutboundAdapterBase"]
 
@@ -67,6 +74,27 @@ class OutboundAdapterBase(ABC):
         emitter.tool_display_config = (
             getattr(self, "_tool_display_config", None) or ToolDisplayConfig()
         )
+        # Inject typing publisher for pub/sub typing path (#1377).
+        _tp = getattr(self, "_typing_publisher", None)
+        emitter.typing_publisher = _tp
+        if _tp is not None:
+            try:
+                _sid = int(original_msg.scope_id.rsplit(":", 1)[-1])
+                emitter._work_scope = WorkScope(
+                    platform=original_msg.platform,
+                    bot_id=original_msg.bot_id,
+                    scope_id=_sid,
+                    trace_id=TraceContext.get_trace_id() or uuid4().hex,
+                )
+            except ValueError:
+                log.warning(
+                    "typing disabled — bad scope_id/work_scope: "
+                    "scope_id=%r platform=%r bot_id=%r",
+                    original_msg.scope_id,
+                    original_msg.platform,
+                    original_msg.bot_id,
+                )
+                emitter.typing_publisher = None
         await emitter.run(events)
 
     def configure_tool_display(self, config: ToolDisplayConfig | None) -> None:
@@ -77,6 +105,13 @@ class OutboundAdapterBase(ABC):
         ToolDisplayConfig() happens only in send_streaming's read path.
         """
         self._tool_display_config = config
+
+    def configure_typing_publisher(self, publisher: "TypingPublisher | None") -> None:
+        """Store the per-instance typing publisher (post-construction setter).
+
+        Mirrors configure_tool_display pattern — avoids MRO issues on Discord.
+        """
+        self._typing_publisher = publisher
 
     @abstractmethod
     def _make_emitter(

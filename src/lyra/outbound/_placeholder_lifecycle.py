@@ -134,7 +134,11 @@ async def _deliver_final(emitter: "OutboundEmitter", placeholder_obj: Any) -> No
 
 
 async def _handle_typing_tail(emitter: "OutboundEmitter") -> None:
-    """Start/cancel typing based on whether the turn is intermediate."""
+    """Start/cancel typing based on whether the turn is intermediate.
+
+    Delegates to the emitter's _start_typing/_cancel_typing, which own the
+    pub/sub-vs-legacy gating (is_typing_enabled + typing_publisher + work_scope).
+    """
     if emitter._outbound is not None and emitter._outbound.intermediate:
         await emitter._start_typing()
     else:

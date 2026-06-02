@@ -104,6 +104,7 @@ async def wire_telegram_adapters(
             blob_store=deps.blob_store,
         )
         adapter.configure_tool_display(deps.tool_display_config)
+        adapter.configure_typing_publisher(deps.hub._typing_publisher)
         await adapter.resolve_identity()
         wire_ingest(adapter, deps.blob_store)
         # C3: Hub is the trust authority — register authenticator here, not on adapter.
@@ -214,6 +215,7 @@ async def wire_discord_adapters(
                 blob_store=deps.blob_store,
             )
             adapter.configure_tool_display(deps.tool_display_config)
+            adapter.configure_typing_publisher(deps.hub._typing_publisher)
             # Wire identity resolver for slash command trust (voice commands).
             adapter._resolve_identity_fn = deps.hub.resolve_identity
             wire_ingest(adapter, deps.blob_store)

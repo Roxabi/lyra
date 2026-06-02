@@ -96,7 +96,7 @@ uv run import-linter
 # or
 importlinter
 ```
-Output: `artifacts/analyses/quality-audit/axial-drift/importlinter-report.md`
+Output: `artifacts/audits/quality-audit/axial-drift/importlinter-report.md`
 
 ### Step 2: Semantic Check
 Spawn `dev-core:axial-adr-review` against diff since last audit baseline (`ed2c394`).
@@ -127,7 +127,7 @@ Analyze {DOMAIN} for partition {PARTITION}.
 - {domain-specific bullets}
 
 ## Output
-Write to: artifacts/analyses/quality-audit/{DOMAIN}/{PARTITION}.md
+Write to: artifacts/audits/quality-audit/{DOMAIN}/{PARTITION}.md
 
 ## Format
 ### Summary
@@ -141,7 +141,7 @@ Write to: artifacts/analyses/quality-audit/{DOMAIN}/{PARTITION}.md
 ## 7. Output Structure
 
 ```
-artifacts/analyses/quality-audit/
+artifacts/audits/quality-audit/
 ├── STRATEGY.md
 ├── AGENT_PROMPTS.md
 ├── manifest.json
@@ -211,15 +211,15 @@ artifacts/analyses/quality-audit/
 
 ```bash
 # 1. Init directories
-mkdir -p artifacts/analyses/quality-audit/{axial-drift,architecture,security,code-smells,type-safety,async-patterns,error-handling,test-quality,tech-debt}
+mkdir -p artifacts/audits/quality-audit/{axial-drift,architecture,security,code-smells,type-safety,async-patterns,error-handling,test-quality,tech-debt}
 
 # 2. Seed manifest
-cat > artifacts/analyses/quality-audit/manifest.json << 'EOF'
+cat > artifacts/audits/quality-audit/manifest.json << 'EOF'
 {"status":"in_progress","started":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","completed_agents":[],"pending_agents":[],"current_wave":0,"waves":{}}
 EOF
 
 # 3. Run Wave 1 (structural gate)
-uv run import-linter > artifacts/analyses/quality-audit/axial-drift/importlinter-report.md 2>&1
+uv run import-linter > artifacts/audits/quality-audit/axial-drift/importlinter-report.md 2>&1
 
 # 4. Run Wave 2–20 via Workflow / parallel agents
 #    (see playbook §Execution Pattern)

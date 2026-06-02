@@ -109,7 +109,7 @@ File: docs/architecture/adr/archive/054-credential-store-and-uid-rework.mdx:70-7
 **Resolution:** replace the four file-wrapping `.volume` units with Podman secrets. Each secret is imported from `~/.lyra/nkeys/` via `make quadlet-secrets-install` (calls `podman secret create --replace`), and consumed by containers with `Secret=<name>,type=mount,target=<filename>,mode=0400[,uid=1500,gid=1500]`. Podman mounts each secret as a tmpfs file at `/run/secrets/<filename>` — no loop device involved.
 
 --- Result 8 (score: 0.583) ---
-File: artifacts/1145-cluster-D-deploy-streaming-audit.md:297-308 [markdown]
+File: artifacts/audits/2026-05-08-cluster-D-deploy-streaming-audit-1145.md:297-308 [markdown]
 ### ADR-054 — Quadlet Credential-Store and UID Rework
 
 **Body status:** Accepted. Supersedes ADR-053 Decisions 4+5.
@@ -1245,7 +1245,7 @@ File: docs/architecture/adr/067-blobstore-abstraction-flat-fs-content-addressed.
 - Yet-another internal interface to maintain (`BlobStore`), although a deliberately small one.
 
 --- Result 19 (score: 0.556) ---
-File: artifacts/1145-cluster-B-nats-contracts-audit.md:398-406 [markdown]
+File: artifacts/audits/2026-05-08-cluster-B-nats-contracts-audit-1145.md:398-406 [markdown]
 **Fix 2 status:** ADR-062 Fix 2 introduced explicit hand-written `_inbox.hub.>` grants. ADR-064
 then superseded Fix 2 with declarative derivation. ADR-062 frontmatter `supersedes: "ADR-062 (Fix 2
 — explicit _inbox.hub.> grants)"` is stated in ADR-064's header.
@@ -2066,7 +2066,7 @@ File: docs/architecture/adr/071-clipool-claude-oauth-token-mechanism.mdx:64-68 [
 - TTL: 1 year. No upstream programmatic revocation API ([anthropics/claude-code#34198](https://github.com/anthropics/claude-code/issues/34198) open). Stolen token = up to 1y exposure window.
 
 --- Result 23 (score: 0.597) ---
-File: artifacts/1145-cluster-D-deploy-streaming-audit.md:395-405 [markdown]
+File: artifacts/audits/2026-05-08-cluster-D-deploy-streaming-audit-1145.md:395-405 [markdown]
 **Code check:**
 - `src/lyra/core/cli/audit_sink.py:1,10` — `AuditSink(Protocol)` exists. Confirmed.
 - `src/lyra/infrastructure/audit/__init__.py:3` → imports `JetStreamAuditSink`. Confirmed.
@@ -2354,7 +2354,7 @@ File: artifacts/analyses/2026-05-18-audit-remaining.md:45-50 [markdown]
 | 7.1 | `render_event_codec` exemption | S | Dépend de S4 #1192 (review-fix strategy) — bloqué jusqu'à résolution amont |
 
 --- Result 46 (score: 0.594) ---
-File: artifacts/1145-cluster-A-arch-layering-audit.md:164-182 [markdown]
+File: artifacts/audits/2026-05-08-cluster-A-arch-layering-audit-1145.md:164-182 [markdown]
 - **Decision:** FULL-ARCHIVE
 
 - **superseded_by:** ADR-059 (architectural remediation canon) + code reality
@@ -3893,7 +3893,7 @@ File: packages/roxabi-nats/tests/test_adapter_base.py:1204-1231 [python]
         mock_wait.assert_awaited_once()
 
 --- Result 20 (score: 0.656) ---
-File: artifacts/1145-cluster-A-arch-layering-audit.md:86-93 [markdown]
+File: artifacts/audits/2026-05-08-cluster-A-arch-layering-audit-1145.md:86-93 [markdown]
 ### ADR-009 — GENERIC_ERROR_REPLY placement / simple_agent → hub coupling
 
 - **Decision:** KEEP-LIVE-ACCURATE

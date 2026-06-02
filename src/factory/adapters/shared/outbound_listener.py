@@ -1,35 +1,10 @@
-"""Structural protocol for adapter-side outbound listeners.
+"""Backward-compatibility shim for OutboundListener.
 
-Defines the minimum surface TelegramAdapter / DiscordAdapter call on their
-cached listener. NatsOutboundListener satisfies this protocol structurally
-(no inheritance required). Keeps adapter code transport-agnostic at the
-type level.
+OutboundListener has been relocated to factory.core.ports.outbound_listener
+(ADR-073 / #1666). This module re-exports it to avoid breaking existing
+adapter imports while the inbound-no-adapters contract is now satisfied.
 """
 
-from __future__ import annotations
+from factory.core.ports.outbound_listener import OutboundListener
 
-from typing import TYPE_CHECKING, Protocol
-
-if TYPE_CHECKING:
-    from factory.core.messaging.message import InboundMessage
-
-
-class OutboundListener(Protocol):
-    """Surface that adapter code requires from its outbound listener.
-
-    Matches the shape of NatsOutboundListener. Not @runtime_checkable —
-    this mirrors the ChannelAdapter protocol convention in
-    core/hub/hub_protocol.py.
-    """
-
-    def cache_inbound(self, msg: InboundMessage) -> None:
-        """Store msg so outbound correlation can retrieve it by stream_id."""
-        ...
-
-    async def start(self) -> None:
-        """Start consuming outbound events from the transport."""
-        ...
-
-    async def stop(self) -> None:
-        """Stop consuming and release transport resources."""
-        ...
+__all__ = ["OutboundListener"]

@@ -2,7 +2,7 @@
 
 > Audit transversal sur 3 dimensions (hexagonal, mutualisation, simplification).
 > Scope: `src/lyra/` + `packages/roxabi-*` (+ `tests/` pour A2/A3).
-> Livrables intermédiaires dans `audit-2026-05-18/`.
+> Livrables intermédiaires dans ce dossier (`01-cartography` … `04-simplification`).
 
 ---
 
@@ -39,11 +39,11 @@ Trois chantiers majeurs :
 
 | # | Finding | Sources | Effort | Impact | Status debt | Action |
 |---|---------|---------|--------|--------|-------------|--------|
-| 1.1 | `smart_routing_protocol.py` orphelin | [A1#4](audit-2026-05-18/02-hexagonal.md), [A3#1](audit-2026-05-18/04-simplification.md) | S | fort | hors registry | quick win |
-| 1.2 | `llm/smart_routing.py` shim vide | [A3#3](audit-2026-05-18/04-simplification.md) | S | moyen | hors registry | quick win |
-| 1.3 | `llm/errors.py` shim 6 lignes | [A2#8](audit-2026-05-18/03-mutualisation.md), [A3#4](audit-2026-05-18/04-simplification.md) | S | moyen | hors registry | quick win |
-| 1.4 | `PlatformCallbacks.edit_trace` vestigial | [A3#5](audit-2026-05-18/04-simplification.md), A2 additionnel | S | moyen | hors registry | quick win |
-| 1.5 | `lyra.obs` sans consommateur runtime (199 LOC) | [A3#2](audit-2026-05-18/04-simplification.md) | S | fort | hors registry | issue S-lite (décision roadmap) |
+| 1.1 | `smart_routing_protocol.py` orphelin | [A1#4](02-hexagonal.md), [A3#1](04-simplification.md) | S | fort | hors registry | quick win |
+| 1.2 | `llm/smart_routing.py` shim vide | [A3#3](04-simplification.md) | S | moyen | hors registry | quick win |
+| 1.3 | `llm/errors.py` shim 6 lignes | [A2#8](03-mutualisation.md), [A3#4](04-simplification.md) | S | moyen | hors registry | quick win |
+| 1.4 | `PlatformCallbacks.edit_trace` vestigial | [A3#5](04-simplification.md), A2 additionnel | S | moyen | hors registry | quick win |
+| 1.5 | `lyra.obs` sans consommateur runtime (199 LOC) | [A3#2](04-simplification.md) | S | fort | hors registry | issue S-lite (décision roadmap) |
 
 Findings 1.1–1.4 : PR atomique unique. 1.5 nécessite une décision roadmap (Langfuse oui/non) avant action.
 
@@ -51,9 +51,9 @@ Findings 1.1–1.4 : PR atomique unique. 1.5 nécessite une décision roadmap (L
 
 | # | Finding | Sources | Effort | Impact | Status debt | Action |
 |---|---------|---------|--------|--------|-------------|--------|
-| 2.1 | `ChannelAdapter` port dans `hub_protocol.py` | [A1#2](audit-2026-05-18/02-hexagonal.md) | M | fort | hors registry | issue F-lite |
-| 2.2 | `AgentStoreProtocol` dupliqué | [A1#3](audit-2026-05-18/02-hexagonal.md), A3 additionnel | S | moyen | hors registry | quick win |
-| 2.3 | `SessionToolsProtocol` manquant dans `core/ports/` | [A1#7](audit-2026-05-18/02-hexagonal.md) | M | moyen | `importlinter-shared-modules-transitive` | issue F-lite (ADR-061) |
+| 2.1 | `ChannelAdapter` port dans `hub_protocol.py` | [A1#2](02-hexagonal.md) | M | fort | hors registry | issue F-lite |
+| 2.2 | `AgentStoreProtocol` dupliqué | [A1#3](02-hexagonal.md), A3 additionnel | S | moyen | hors registry | quick win |
+| 2.3 | `SessionToolsProtocol` manquant dans `core/ports/` | [A1#7](02-hexagonal.md) | M | moyen | `importlinter-shared-modules-transitive` | issue F-lite (ADR-061) |
 | 2.4 | `AuditSink` port hors `core/ports/` | A1 additionnel | S | faible | hors registry | issue X-lite |
 | 2.5 | `core/trace.py:TraceLogRecord` hors `core/ports/` | A1 additionnel | S | faible | hors registry | à débattre |
 
@@ -63,7 +63,7 @@ Findings 1.1–1.4 : PR atomique unique. 1.5 nécessite une décision roadmap (L
 
 | # | Finding | Sources | Effort | Impact | Status debt | Action |
 |---|---------|---------|--------|--------|-------------|--------|
-| 3.1 | `pairing_protocol.py` import runtime infra (seule vraie violation) | [A1#1](audit-2026-05-18/02-hexagonal.md) | S | fort | `importlinter-adr048-transition` | issue F-lite (drain dette existante) |
+| 3.1 | `pairing_protocol.py` import runtime infra (seule vraie violation) | [A1#1](02-hexagonal.md) | S | fort | `importlinter-adr048-transition` | issue F-lite (drain dette existante) |
 
 Ce finding est la seule vraie violation hexagonale runtime. Les 11 autres exemptions `core → infrastructure` sont toutes `TYPE_CHECKING` — non-violations confirmées.
 
@@ -71,10 +71,10 @@ Ce finding est la seule vraie violation hexagonale runtime. Les 11 autres exempt
 
 | # | Finding | Sources | Effort | Impact | Status debt | Action |
 |---|---------|---------|--------|--------|-------------|--------|
-| 4.1 | Heartbeat lifecycle copié ×4 dans clients NATS | [A2#1](audit-2026-05-18/03-mutualisation.md) | M | fort | `file-exemptions` (indirect) | issue F-lite → `NatsWorkerClientBase` dans `roxabi-nats` |
-| 4.2 | `_on_heartbeat` body copié ×4 | [A2#2](audit-2026-05-18/03-mutualisation.md) | M | fort | couvre par 4.1 | résoudre avec 4.1 |
-| 4.3 | `_parse_*_timeout()` copié ×3 | [A2#10](audit-2026-05-18/03-mutualisation.md) | S | faible | hors registry | issue X-lite → `nats/_timeout.py` in-tree |
-| 4.4 | `_DEFAULT_NATS_URL` + env resolution ×2 | [A2#3](audit-2026-05-18/03-mutualisation.md) | S | moyen | hors registry | quick win → `_resolve_nats_url()` dans `cli.py` |
+| 4.1 | Heartbeat lifecycle copié ×4 dans clients NATS | [A2#1](03-mutualisation.md) | M | fort | `file-exemptions` (indirect) | issue F-lite → `NatsWorkerClientBase` dans `roxabi-nats` |
+| 4.2 | `_on_heartbeat` body copié ×4 | [A2#2](03-mutualisation.md) | M | fort | couvre par 4.1 | résoudre avec 4.1 |
+| 4.3 | `_parse_*_timeout()` copié ×3 | [A2#10](03-mutualisation.md) | S | faible | hors registry | issue X-lite → `nats/_timeout.py` in-tree |
+| 4.4 | `_DEFAULT_NATS_URL` + env resolution ×2 | [A2#3](03-mutualisation.md) | S | moyen | hors registry | quick win → `_resolve_nats_url()` dans `cli.py` |
 
 4.1 + 4.2 : issue unique. 4.3 : trivial, in-tree, ¬extraction package. 4.4 : quick win sans ADR.
 
@@ -82,7 +82,7 @@ Ce finding est la seule vraie violation hexagonale runtime. Les 11 autres exempt
 
 | # | Finding | Sources | Effort | Impact | Status debt | Action |
 |---|---------|---------|--------|--------|-------------|--------|
-| 5.1 | `_build_request` text-folding = logique applicative dans couche transport | [A1#6](audit-2026-05-18/02-hexagonal.md) | L | moyen | `file-exemptions` | à débattre (voir §4 contradiction) |
+| 5.1 | `_build_request` text-folding = logique applicative dans couche transport | [A1#6](02-hexagonal.md) | L | moyen | `file-exemptions` | à débattre (voir §4 contradiction) |
 
 L'action dépend de la résolution de la contradiction A1/A2 (§4). En attente de décision.
 
@@ -90,7 +90,7 @@ L'action dépend de la résolution de la contradiction A1/A2 (§4). En attente d
 
 | # | Finding | Sources | Effort | Impact | Status debt | Action |
 |---|---------|---------|--------|--------|-------------|--------|
-| 6.1 | 5 stores infra sans protocol `core/stores/` correspondant | [A2#6](audit-2026-05-18/03-mutualisation.md), A1 transmis | M | moyen | `importlinter-adr048-transition` | tracké — confirmer couverture dans plan de drain |
+| 6.1 | 5 stores infra sans protocol `core/stores/` correspondant | [A2#6](03-mutualisation.md), A1 transmis | M | moyen | `importlinter-adr048-transition` | tracké — confirmer couverture dans plan de drain |
 
 Ce finding est déjà dans la dette ouverte. Pas de nouvelle issue — vérifier que les 5 stores manquants sont listés dans le plan de drain ADR-048.
 
@@ -98,11 +98,11 @@ Ce finding est déjà dans la dette ouverte. Pas de nouvelle issue — vérifier
 
 | # | Finding | Sources | Effort | Impact | Status debt | Action |
 |---|---------|---------|--------|--------|-------------|--------|
-| 7.1 | `render_event_codec.py` exemption à expirer (S4 deferred) | [A3#8](audit-2026-05-18/04-simplification.md) | M | moyen | `file-exemptions` | issue X-lite si S4 (#1192) n'est pas ouvert |
-| 7.2 | `config/` TOML vs `config.py` Python — collision nominale | [A3#9](audit-2026-05-18/04-simplification.md) | S | faible | hors registry | quick win |
-| 7.3 | `tests/integration/` vs `tests/integrations/` incohérence | [A3#10](audit-2026-05-18/04-simplification.md) | S | faible | hors registry | quick win |
+| 7.1 | `render_event_codec.py` exemption à expirer (S4 deferred) | [A3#8](04-simplification.md) | M | moyen | `file-exemptions` | issue X-lite si S4 (#1192) n'est pas ouvert |
+| 7.2 | `config/` TOML vs `config.py` Python — collision nominale | [A3#9](04-simplification.md) | S | faible | hors registry | quick win |
+| 7.3 | `tests/integration/` vs `tests/integrations/` incohérence | [A3#10](04-simplification.md) | S | faible | hors registry | quick win |
 | 7.4 | `obs/` absent CLAUDE.md racine + hors contrat | A1, A3 | S | faible | hors registry | résoudre avec 1.5 |
-| 7.5 | `monitoring/__main__.py → core.logging_setup` | [A1#8](audit-2026-05-18/02-hexagonal.md) | S | faible | hors registry | à débattre (long terme → `obs/`) |
+| 7.5 | `monitoring/__main__.py → core.logging_setup` | [A1#8](02-hexagonal.md) | S | faible | hors registry | à débattre (long terme → `obs/`) |
 
 ---
 
@@ -243,7 +243,7 @@ Lecture : colonne "Fort" + ligne "S" → actions immédiates. Ligne "M" + colonn
 
 ### Reste à instruire
 
-→ `2026-05-18-audit-remaining.md` — punch list actionnable post-implémentation.
+→ `remaining.md` — punch list actionnable post-implémentation.
 
 Items qui restent (¬urgent) :
 

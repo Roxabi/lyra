@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 
 from factory.config import DiscordBotConfig, TelegramBotConfig
 from factory.infrastructure.stores.agent_store import AgentStore
@@ -84,7 +85,11 @@ async def resolve_bot_agent_map(
             )
             try:
                 await agent_store.set_bot_agent(platform, bot_id, toml_agent)
-            except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — resilient: DB seed failure must not abort multibot startup
+            except (sqlite3.Error, RuntimeError) as exc:  # <issue:1639>
+                # sqlite3.Error covers all aiosqlite DB errors (aiosqlite.Error is
+                # sqlite3.Error). RuntimeError covers _require_db() not-connected.
+                # Seed failure must not abort multibot startup — bot still wired
+                # from TOML fallback; mapping will be retried on next restart.
                 log.warning(
                     "bot_agent_map: failed to seed (%r, %r) -> %r: %s",
                     platform,

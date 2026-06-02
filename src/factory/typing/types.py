@@ -20,7 +20,7 @@ class ScopeResolver(Protocol):
 
 @runtime_checkable
 class TypingManagerProtocol(Protocol):
-    """Structural Protocol satisfied by factory.adapters.shared.TypingTaskManager.
+    """Structural Protocol satisfied by factory.typing.task_manager.TypingTaskManager.
 
     Defined here in stage-axis module so TypingListener depends ONLY on this
     Protocol — never imports factory.adapters directly (would invert layer stack).

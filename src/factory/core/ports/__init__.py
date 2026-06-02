@@ -26,6 +26,7 @@ Constraints
 from factory.core.ports.audit_sink import AuditSink
 from factory.core.ports.blobstore import BlobStorePort
 from factory.core.ports.llm import LlmProvider, LlmResult
+from factory.core.ports.outbound_listener import OutboundListener
 from factory.core.ports.resume_publisher import ResumePublisherPort
 from factory.core.ports.stt import STTProtocol
 from factory.core.ports.tts import TtsProtocol
@@ -35,6 +36,7 @@ __all__ = [
     "BlobStorePort",
     "LlmProvider",
     "LlmResult",
+    "OutboundListener",
     "ResumePublisherPort",
     "STTProtocol",
     "TtsProtocol",

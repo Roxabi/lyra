@@ -62,6 +62,7 @@ def test_tg_start_typing_enabled_delegates_to_publisher(monkeypatch: Any) -> Non
     import asyncio
 
     assert asyncio.iscoroutine(coro)
+    coro.close()
     mock_publisher.publish_ended.assert_not_called()
     mock_start.assert_not_called()
 
@@ -88,6 +89,11 @@ def test_tg_cancel_typing_enabled_delegates_to_publisher(monkeypatch: Any) -> No
     assert scope.trace_id == "trace_tg_456"
 
     mock_create_task.assert_called_once()
+    coro = mock_create_task.call_args.args[0]
+    import asyncio
+
+    assert asyncio.iscoroutine(coro)
+    coro.close()
     mock_publisher.publish_started.assert_not_called()
     mock_cancel.assert_not_called()
 

@@ -80,15 +80,21 @@ class OutboundAdapterBase(ABC):
         if _tp is not None:
             try:
                 _sid = int(original_msg.scope_id.rsplit(":", 1)[-1])
+                emitter._work_scope = WorkScope(
+                    platform=original_msg.platform,
+                    bot_id=original_msg.bot_id,
+                    scope_id=_sid,
+                    trace_id=TraceContext.get_trace_id() or uuid4().hex,
+                )
             except ValueError:
-                log.warning("malformed scope_id %r", original_msg.scope_id)
-                _sid = 0  # fallback: WorkScope.scope_id is int
-            emitter._work_scope = WorkScope(
-                platform=original_msg.platform,
-                bot_id=original_msg.bot_id,
-                scope_id=_sid,
-                trace_id=TraceContext.get_trace_id() or uuid4().hex,
-            )
+                log.warning(
+                    "typing disabled — bad scope_id/work_scope: "
+                    "scope_id=%r platform=%r bot_id=%r",
+                    original_msg.scope_id,
+                    original_msg.platform,
+                    original_msg.bot_id,
+                )
+                emitter.typing_publisher = None
         await emitter.run(events)
 
     def configure_tool_display(self, config: ToolDisplayConfig | None) -> None:

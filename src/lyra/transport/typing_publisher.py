@@ -55,7 +55,14 @@ class TypingPublisher:
             if self._refcount[key] != 0:
                 return
             del self._refcount[key]
-            await self._publish(TypingEvent(kind="ended", scope=scope, ts=time.time()))
+            ok = await self._publish(
+                TypingEvent(kind="ended", scope=scope, ts=time.time())
+            )
+            if not ok:
+                log.warning(
+                    "typing_publisher: ended publish failed, state may diverge key=%r",
+                    key,
+                )
 
     @asynccontextmanager
     async def scope(self, work_scope: WorkScope):

@@ -801,3 +801,6 @@ class TestWireAdapters:
         ]
         assert result.dc_dispatchers == [mock_dc_dispatcher]
         assert result.dc_thread_store is mock_dc_thread_store
+        assert len(result.tg_typing_listeners) == 1
+        assert len(result.dc_typing_listeners) == 1
+        fake_nc.subscribe.assert_awaited()

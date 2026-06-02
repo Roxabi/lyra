@@ -261,14 +261,13 @@ class TestOutboundAdapterBaseSendStreaming:
         # Assert — send_streaming → _make_emitter dispatch fires exactly once
         assert emitter_call_count == 1
 
-    async def test_send_streaming_malformed_scope_id_fallback(self) -> None:
-        """Malformed scope_id falls back to _sid=0 in emitter._work_scope."""
+    async def test_send_streaming_malformed_scope_id_disables_typing(self) -> None:
+        """Malformed scope_id disables typing (publisher=None) — delivery proceeds."""
         from datetime import datetime, timezone
 
         from lyra.core.auth.trust import TrustLevel
         from lyra.core.messaging.message import InboundMessage, TelegramMeta
         from lyra.transport.typing_publisher import TypingPublisher
-        from lyra.transport.work_scope import WorkScope
 
         original_msg = InboundMessage(
             id="msg-1",
@@ -307,6 +306,7 @@ class TestOutboundAdapterBaseSendStreaming:
 
         await adapter.send_streaming(original_msg, _events(), outbound=None)
 
+        # Malformed scope_id → typing disabled; delivery must still complete.
         assert captured_emitter is not None
-        assert isinstance(captured_emitter._work_scope, WorkScope)
-        assert captured_emitter._work_scope.scope_id == 0
+        assert captured_emitter.typing_publisher is None
+        assert captured_emitter._work_scope is None

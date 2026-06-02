@@ -16,7 +16,7 @@ DropCapability=all
 PublishPort=4222:4222
 # HTTP monitoring — localhost only, consumed by `python -m lyra.monitoring` (checks_varz.py).
 PublishPort=127.0.0.1:8222:8222
-Volume=%h/projects/lyra/deploy/nats/nats-container.conf:/etc/nats/nats.conf:ro,z
+Volume=%h/projects/roxabi-factory/deploy/nats/nats-container.conf:/etc/nats/nats.conf:ro,z
 # Writable exception to ReadOnly=true — JetStream persistence (rootfs flag only in Podman).
 # NOTE: Do NOT add inline # comments after Volume= values; Quadlet does not strip them
 # and Podman receives the literal comment text as a mount-option string (issue #1083).

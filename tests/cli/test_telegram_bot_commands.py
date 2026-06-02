@@ -745,7 +745,7 @@ class TestTelegramValidate:
             ),
         )
 
-        secret_name = "lyra-bot-telegram-main"
+        secret_name = "factory-bot-telegram-main"
         mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
             "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
@@ -772,7 +772,7 @@ class TestTelegramValidate:
             ),
         )
 
-        secret_name = "lyra-bot-telegram-main"
+        secret_name = "factory-bot-telegram-main"
         mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
             "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
@@ -798,7 +798,7 @@ class TestTelegramValidate:
             ),
         )
 
-        secret_name = "lyra-bot-telegram-main"
+        secret_name = "factory-bot-telegram-main"
         mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
             "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
@@ -851,7 +851,7 @@ class TestTelegramValidate:
                 owner_users=["alice"],
             ),
         )
-        secret_name = "lyra-bot-telegram-main"
+        secret_name = "factory-bot-telegram-main"
         mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
             "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
@@ -901,7 +901,7 @@ class TestTelegramValidate:
                 owner_users=["alice"],
             ),
         )
-        secret_name = "lyra-bot-telegram-main"
+        secret_name = "factory-bot-telegram-main"
         mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
             "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run

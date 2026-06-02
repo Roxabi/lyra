@@ -44,10 +44,10 @@ endef
 # ── Container image build + transfer ─────────────────────────────────────────
 
 # Local build tag — used by `make build` and `make push`
-LYRA_IMAGE ?= localhost/lyra:dev
+LYRA_IMAGE ?= localhost/factory:dev
 
 # Registry image reference — used when pulling from CI-published artifacts
-GHCR_IMAGE ?= ghcr.io/roxabi/lyra:latest
+GHCR_IMAGE ?= ghcr.io/roxabi/factory:latest
 
 build:                 ## build lyra image locally
 	podman build -f Dockerfile -t $(LYRA_IMAGE) .
@@ -187,16 +187,16 @@ QUADLET_SYNC_DST := $(HOME)/.config/systemd/user
 
 quadlet-sync-install:  ## install systemd sync timers + services → daemon-reload + enable
 	@mkdir -p "$(QUADLET_SYNC_DST)"
-	@cp "$(QUADLET_SYNC_SRC)/lyra-quadlet-sync.service"      "$(QUADLET_SYNC_DST)/"
-	@cp "$(QUADLET_SYNC_SRC)/lyra-quadlet-sync.timer"        "$(QUADLET_SYNC_DST)/"
-	@cp "$(QUADLET_SYNC_SRC)/lyra-post-autoupdate.service"  "$(QUADLET_SYNC_DST)/"
-	@cp "$(QUADLET_SYNC_SRC)/lyra-post-autoupdate.timer"    "$(QUADLET_SYNC_DST)/"
-	@cp "$(QUADLET_SYNC_SRC)/lyra-deploy-failure.service"    "$(QUADLET_SYNC_DST)/"
+	@cp "$(QUADLET_SYNC_SRC)/factory-quadlet-sync.service"      "$(QUADLET_SYNC_DST)/"
+	@cp "$(QUADLET_SYNC_SRC)/factory-quadlet-sync.timer"        "$(QUADLET_SYNC_DST)/"
+	@cp "$(QUADLET_SYNC_SRC)/factory-post-autoupdate.service"  "$(QUADLET_SYNC_DST)/"
+	@cp "$(QUADLET_SYNC_SRC)/factory-post-autoupdate.timer"    "$(QUADLET_SYNC_DST)/"
+	@cp "$(QUADLET_SYNC_SRC)/factory-deploy-failure.service"    "$(QUADLET_SYNC_DST)/"
 	@echo "Sync units copied to $(QUADLET_SYNC_DST)"
 	@systemctl --user daemon-reload
-	@systemctl --user enable lyra-quadlet-sync.timer
-	@systemctl --user enable lyra-post-autoupdate.timer
-	@echo "[ok] lyra-quadlet-sync.timer + lyra-post-autoupdate.timer enabled."
+	@systemctl --user enable factory-quadlet-sync.timer
+	@systemctl --user enable factory-post-autoupdate.timer
+	@echo "[ok] factory-quadlet-sync.timer + factory-post-autoupdate.timer enabled."
 
 quadlet-authconf-merged:  ## render merged auth.conf (lyra + voicecli identities) → ~/.roxabi/factory/nkeys/auth.conf
 	@lyra-acl genkeys --emit-merged-authconf

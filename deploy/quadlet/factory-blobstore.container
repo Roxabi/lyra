@@ -11,7 +11,7 @@ StartLimitBurst=5
 # Image digest pinning deferred per three-strikes deferral (ADR-073) — same cadence
 # as factory-hub.container. Dedicated blobstore image blocked until Protocol v2 + ≥3
 # cross-repo consumers; see analysis §Shape A rationale.
-Image=ghcr.io/roxabi/lyra:staging-svc
+Image=ghcr.io/roxabi/factory:staging-svc
 ContainerName=factory-blobstore
 Network=roxabi.network
 # Hardening — defense in depth (see issue #652).

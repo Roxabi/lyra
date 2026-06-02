@@ -10,7 +10,7 @@ StartLimitIntervalSec=60
 StartLimitBurst=5
 
 [Container]
-Image=ghcr.io/roxabi/lyra:staging
+Image=ghcr.io/roxabi/factory:staging
 ContainerName=factory-clipool
 # Pod= moves network + user namespace ownership to factory-gh.pod.
 # UserNS=keep-id:uid=1500 is now declared on the pod (factory-gh.pod [Pod] section)

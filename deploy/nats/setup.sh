@@ -4,7 +4,7 @@
 #
 # Lyra by Roxabi — NATS setup (install + configure + start)
 #
-# Usage: cd ~/projects/lyra && make nats-setup
+# Usage: cd ~/projects/roxabi-factory && make nats-setup
 #
 # Does everything in one idempotent pass:
 #   1. nats-server binary

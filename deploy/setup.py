@@ -3,7 +3,7 @@
 
 Run from a fresh checkout:
 
-    cd ~/projects/lyra
+    cd ~/projects/roxabi-factory
     python3 deploy/setup.py            # interactive
     python3 deploy/setup.py --all      # install all optional modules without prompts
 
@@ -18,7 +18,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-LYRA_DIR = Path(os.environ.get("LYRA_DIR", Path.home() / "projects" / "lyra"))
+LYRA_DIR = Path(os.environ.get("LYRA_DIR", Path.home() / "projects" / "roxabi-factory"))
 HOSTS_TOML = Path(os.environ.get("HOSTS_TOML", Path.home() / "projects" / "hosts.toml"))
 
 
@@ -430,7 +430,7 @@ def setup_plugins(
 
 def install_quadlet_units(lyra_dir: Path, host_roles: set[str]) -> None:
     # If we know the roles AND lyra-hub is not in them, skip cleanly.
-    if host_roles and "lyra-hub" not in host_roles:
+    if host_roles and "factory-hub" not in host_roles:
         print("  skip  Quadlet install (host lacks 'lyra-hub' role)")
         return
     print("Installing Quadlet units (lyra)...")
@@ -444,7 +444,7 @@ def install_quadlet_units(lyra_dir: Path, host_roles: set[str]) -> None:
 
 
 def enable_linger(host_roles: set[str]) -> None:
-    container_roles = {"lyra-hub", "voice-worker", "llm-worker", "image-worker"}
+    container_roles = {"factory-hub", "voice-worker", "llm-worker", "image-worker"}
     if host_roles and not (host_roles & container_roles):
         print("  skip  linger (host runs no containers)")
         return
@@ -543,7 +543,7 @@ def main() -> None:
     print("─" * 40)
     print("Setup complete!")
     print()
-    print("  systemctl --user status 'lyra-*.service'  unit status")
+    print("  systemctl --user status 'factory-*.service'  unit status")
     print("  make lyra reload                          restart all containers")
     print("  make lyra logs                            tail journalctl")
     print()
@@ -574,7 +574,7 @@ def main() -> None:
 
     manual_steps.append(
         "Start Quadlet containers:\n"
-        "     make lyra start  # OR: systemctl --user start lyra-nats lyra-hub lyra-telegram lyra-discord lyra-clipool"
+        "     make lyra start  # OR: systemctl --user start factory-nats factory-hub factory-telegram factory-discord factory-clipool"
     )
 
     if manual_steps:

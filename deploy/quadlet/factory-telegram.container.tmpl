@@ -8,9 +8,9 @@ StartLimitIntervalSec=60
 StartLimitBurst=5
 
 [Container]
-# Image digest pinning for localhost/lyra:latest tracks on a follow-up issue
+# Image digest pinning for localhost/factory:latest tracks on a follow-up issue
 # (CI tag-by-SHA strategy).
-Image=ghcr.io/roxabi/lyra:staging-svc
+Image=ghcr.io/roxabi/factory:staging-svc
 Label=io.containers.autoupdate=registry
 ContainerName=factory-telegram
 Network=roxabi.network

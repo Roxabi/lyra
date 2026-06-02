@@ -282,7 +282,7 @@ def _validate(platform: str, bot_id: str) -> None:
                     errors.append(f"agent {row.agent!r} not found in AgentStore")
             if not row.owner_users:
                 errors.append("owner_users is empty")
-            secret_name = f"lyra-bot-{platform}-{bot_id}"
+            secret_name = f"factory-bot-{platform}-{bot_id}"
             err = _check_secret(secret_name)
             if err:
                 errors.append(err)

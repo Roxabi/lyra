@@ -42,7 +42,7 @@ class EmbeddedNats:
         if binary is None:
             raise FileNotFoundError(
                 "nats-server binary not found. Install it:\n"
-                "        cd ~/projects/lyra && make nats-install\n"
+                "        cd ~/projects/roxabi-factory && make nats-install\n"
                 "        Or set NATS_URL to use an external NATS server."
             )
 

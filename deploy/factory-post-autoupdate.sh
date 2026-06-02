@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# deploy/lyra-post-autoupdate.sh — poll image digest and trigger converge on change
+# deploy/factory-post-autoupdate.sh — poll image digest and trigger converge on change
 #
-# Triggered by lyra-post-autoupdate.timer (5 min). Idempotent: if digests match,
+# Triggered by factory-post-autoupdate.timer (5 min). Idempotent: if digests match,
 # exits 0. On digest change, pulls the new image and runs the full converge.
 
 set -euo pipefail
 
 source "$(dirname "$0")/lib/deploy-common.sh"
 
-IMAGE="ghcr.io/roxabi/lyra:staging-svc"
+IMAGE="ghcr.io/roxabi/factory:staging-svc"
 
 # ── Digest comparison ────────────────────────────────────────────────────────
 

@@ -9,7 +9,7 @@ import sys
 
 log = logging.getLogger(__name__)
 
-DEFAULT_PROBE_PATH = "/home/lyra/projects/lyra"
+DEFAULT_PROBE_PATH = "/home/lyra/projects/roxabi-factory"
 PROBE_ENV_VAR = "LYRA_OWNERSHIP_PROBE_PATH"
 
 
@@ -19,7 +19,7 @@ def run_git_ownership_probe(repo_path: str | None = None) -> None:
     Path resolution order:
       1. `repo_path` argument
       2. env var LYRA_OWNERSHIP_PROBE_PATH
-      3. default "/home/lyra/projects/lyra"
+      3. default "/home/lyra/projects/roxabi-factory"
 
     On non-zero exit OR stderr containing "dubious ownership":
       log.error(verbatim stderr); sys.exit(1)

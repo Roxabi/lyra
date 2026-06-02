@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Lyra by Roxabi — Machine 1 post-install provisioning script
-# Usage: curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra/staging/deploy/provision.sh | bash
-#        curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra/staging/deploy/provision.sh | ADMIN_USER=yourname bash
-#        curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra/staging/deploy/provision.sh | ADMIN_USER=yourname AGENT_USER=myagent bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/Roxabi/roxabi-factory/staging/deploy/provision.sh | bash
+#        curl -fsSL https://raw.githubusercontent.com/Roxabi/roxabi-factory/staging/deploy/provision.sh | ADMIN_USER=yourname bash
+#        curl -fsSL https://raw.githubusercontent.com/Roxabi/roxabi-factory/staging/deploy/provision.sh | ADMIN_USER=yourname AGENT_USER=myagent bash
 set -euo pipefail
 # Pin locale so [a-z] / [0-9] regex classes are ASCII-only regardless of host locale.
 export LC_ALL=C
@@ -546,11 +546,11 @@ else
   info "Next steps:"
   echo "  1. Clone lyra:"
   echo ""
-  echo "     git clone git@github.com:Roxabi/lyra.git ~/projects/lyra"
+  echo "     git clone git@github.com:Roxabi/roxabi-factory.git ~/projects/roxabi-factory"
   echo ""
   echo "  2. Run the lyra setup (clones optional modules, installs Quadlets if this host has the factory-hub role):"
   echo ""
-  echo "     cd ~/projects/lyra && python3 deploy/setup.py"
+  echo "     cd ~/projects/roxabi-factory && python3 deploy/setup.py"
   echo ""
   echo "  3. For multi-repo deploys across hosts (lyra + voiceCLI + llmCLI + imageCLI), use the cross-repo deployer:"
   echo ""
@@ -562,6 +562,6 @@ else
   echo ""
   echo "  5. Recommended — NATS setup for multi-machine production (embedded nats-server covers dev/single-machine use):"
   echo ""
-  echo "     cd ~/projects/lyra && make nats-setup"
+  echo "     cd ~/projects/roxabi-factory && make nats-setup"
   echo ""
 fi

@@ -124,7 +124,7 @@ jobs:
 
       - name: Template purity check
         # Enforces tracked deploy/quadlet/*.container.tmpl invariants (#1369):
-        #  - no `Secret=lyra-bot-*` lines (must come from render at install time)
+        #  - no `Secret=factory-bot-*` lines (must come from render at install time)
         #  - no `# --- BEGIN ... ---` splice blocks
         #  - tools/render_quadlet.py exists
         run: bash tools/check_quadlet_template_purity.sh

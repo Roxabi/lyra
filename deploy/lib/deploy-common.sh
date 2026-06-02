@@ -7,13 +7,13 @@ set -euo pipefail
 
 # ── PATH setup ───────────────────────────────────────────────────────────────
 # %h in systemd unit specifiers maps to $HOME in shell.
-export PATH="${HOME}/projects/lyra/.venv/bin:${HOME}/.local/bin:${PATH}"
+export PATH="${HOME}/projects/roxabi-factory/.venv/bin:${HOME}/.local/bin:${PATH}"
 
 # ── Environment guards ─────────────────────────────────────────────────────
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 
 # ── Constants ────────────────────────────────────────────────────────────────
-LYRA_DIR="${HOME}/projects/lyra"
+LYRA_DIR="${HOME}/projects/roxabi-factory"
 CONVERGE_STAMP="${HOME}/.roxabi/factory/.converge-stamp"
 QUADLET_DIR="${HOME}/.config/containers/systemd"
 LYRA_NKEYS_DIR="${HOME}/.roxabi/factory/nkeys"

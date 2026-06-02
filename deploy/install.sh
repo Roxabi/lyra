@@ -206,14 +206,14 @@ log "Seeding BotStore from config.toml ..."
 run podman run --rm \
     -v "${HOME}/.roxabi/factory:/home/lyra/.roxabi/factory:z" \
     -v "${HOME}/.roxabi/factory/config.toml:/app/config.toml:ro,z" \
-    ghcr.io/roxabi/lyra:staging-svc \
+    ghcr.io/roxabi/factory:staging-svc \
     lyra bot init
 
 echo "  [ok]   BotStore seeded"
 
 # ── 9. Install sync timer + service (idempotent) ───────────────────────────
 
-log "Installing lyra-quadlet-sync timer + service ..."
+log "Installing factory-quadlet-sync timer + service ..."
 run make quadlet-sync-install
 
 log "Done. Services NOT restarted — run: systemctl --user start factory-nats factory-hub factory-telegram factory-discord factory-clipool factory-gh-helper factory-turn-writer factory-blobstore"

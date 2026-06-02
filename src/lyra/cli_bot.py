@@ -84,10 +84,10 @@ def install(
         if from_env
         else typer.prompt("Token", hide_input=True).encode()
     )
-    _podman_secret_create(f"lyra-bot-{platform}-{bot_id}", token)
+    _podman_secret_create(f"factory-bot-{platform}-{bot_id}", token)
     if webhook_from_env:
         webhook = _read_env(webhook_from_env)
-        _podman_secret_create(f"lyra-bot-{platform}-{bot_id}-webhook", webhook)
+        _podman_secret_create(f"factory-bot-{platform}-{bot_id}-webhook", webhook)
 
 
 @secret_app.command("rm")
@@ -96,20 +96,20 @@ def rm(platform: str, bot_id: str) -> None:
     _validate_platform(platform)
     _validate_bot_id(bot_id)
     subprocess.run(
-        ["podman", "secret", "rm", f"lyra-bot-{platform}-{bot_id}"],
+        ["podman", "secret", "rm", f"factory-bot-{platform}-{bot_id}"],
         check=True,
     )
     subprocess.run(
-        ["podman", "secret", "rm", f"lyra-bot-{platform}-{bot_id}-webhook"],
+        ["podman", "secret", "rm", f"factory-bot-{platform}-{bot_id}-webhook"],
         check=False,
     )
 
 
 @secret_app.command("list")
 def list_() -> None:
-    """List provisioned bot secrets (lyra-bot-* prefix)."""
+    """List provisioned bot secrets (factory-bot-* prefix)."""
     result = subprocess.run(
-        ["podman", "secret", "ls", "--filter", "name=lyra-bot-", "--format", "json"],
+        ["podman", "secret", "ls", "--filter", "name=factory-bot-", "--format", "json"],
         check=True,
         capture_output=True,
         text=True,

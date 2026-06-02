@@ -6,7 +6,7 @@ StartLimitIntervalSec=60
 StartLimitBurst=5
 
 [Container]
-Image=ghcr.io/roxabi/lyra:staging-svc
+Image=ghcr.io/roxabi/factory:staging-svc
 ContainerName=factory-turn-writer
 Network=roxabi.network
 # Hardening — defense in depth (see issue #652).

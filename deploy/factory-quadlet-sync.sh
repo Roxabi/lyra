@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# deploy/lyra-quadlet-sync.sh — auto-pull staging and trigger make converge
+# deploy/factory-quadlet-sync.sh — auto-pull staging and trigger make converge
 #
-# Called by lyra-quadlet-sync.service (systemd user unit).
+# Called by factory-quadlet-sync.service (systemd user unit).
 # If HEAD differs from origin/staging, pulls and calls make converge
 # (change-gated; no-op if already converged).
 set -euo pipefail
 
-cd ~/projects/lyra || {
-    echo "ERROR: ~/projects/lyra not found" >&2
+cd ~/projects/roxabi-factory || {
+    echo "ERROR: ~/projects/roxabi-factory not found" >&2
     exit 1
 }
 

@@ -4,7 +4,7 @@ Description=Lyra post-autoupdate timer — check every 5 minutes
 [Timer]
 OnCalendar=*:0/5
 Persistent=true
-Unit=lyra-post-autoupdate.service
+Unit=factory-post-autoupdate.service
 
 [Install]
 WantedBy=timers.target

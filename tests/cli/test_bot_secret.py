@@ -90,7 +90,7 @@ class TestSecretInstall:
         assert "secret" in cmd
         assert "create" in cmd
         assert "--replace" in cmd
-        assert "lyra-bot-telegram-demo" in cmd
+        assert "factory-bot-telegram-demo" in cmd
 
         # Token bytes must have been piped via stdin
         kwargs = call_args[1]
@@ -190,7 +190,7 @@ class TestSecretInstall:
         _assert_exit0(result, label="long valid bot_id")
         mock_run.assert_called_once()
         cmd = mock_run.call_args[0][0]
-        assert f"lyra-bot-telegram-{long_id}" in cmd
+        assert f"factory-bot-telegram-{long_id}" in cmd
 
     def test_install_rejects_empty_bot_id(
         self, monkeypatch: pytest.MonkeyPatch
@@ -314,8 +314,8 @@ class TestSecretInstall:
 
         # last positional arg is the secret name
         secret_names = [cmd[-1] for cmd in cmds]
-        assert "lyra-bot-telegram-demo" in secret_names
-        assert "lyra-bot-telegram-demo-webhook" in secret_names
+        assert "factory-bot-telegram-demo" in secret_names
+        assert "factory-bot-telegram-demo-webhook" in secret_names
 
         for c in all_calls:
             cmd = c[0][0]
@@ -347,8 +347,8 @@ class TestSecretRm:
         for c in all_calls:
             all_args.extend(c[0][0])
 
-        assert "lyra-bot-telegram-demo" in all_args
-        assert "lyra-bot-telegram-demo-webhook" in all_args
+        assert "factory-bot-telegram-demo" in all_args
+        assert "factory-bot-telegram-demo-webhook" in all_args
 
     def test_rm_tolerates_missing_webhook_secret(self) -> None:
         """rm exits 0 even when the webhook secret is absent (podman error)."""
@@ -359,7 +359,7 @@ class TestSecretRm:
             nonlocal call_count
             call_count += 1
             # Simulate webhook secret missing
-            if "lyra-bot-telegram-demo-webhook" in cmd:
+            if "factory-bot-telegram-demo-webhook" in cmd:
                 return _make_proc(125)  # podman: secret not found
             return _make_proc(0)
 
@@ -378,11 +378,11 @@ class TestSecretRm:
 
 
 class TestSecretList:
-    """lyra bot secret list — filters by lyra-bot- prefix and echoes JSON."""
+    """lyra bot secret list — filters by factory-bot- prefix and echoes JSON."""
 
     def test_list_filters_by_lyra_bot_prefix(self) -> None:
         """list calls podman secret ls with filter + json format, echoes output."""
-        fake_json = b'[{"Name":"lyra-bot-telegram-demo","ID":"abc123"}]'
+        fake_json = b'[{"Name":"factory-bot-telegram-demo","ID":"abc123"}]'
         mock_proc = _make_proc(0)
         mock_proc.stdout = fake_json
         mock_run = MagicMock(return_value=mock_proc)
@@ -400,13 +400,13 @@ class TestSecretList:
         assert "ls" in cmd
         assert "--filter" in cmd
         filter_idx = cmd.index("--filter")
-        assert cmd[filter_idx + 1] == "name=lyra-bot-"
+        assert cmd[filter_idx + 1] == "name=factory-bot-"
         assert "--format" in cmd
         fmt_idx = cmd.index("--format")
         assert cmd[fmt_idx + 1] == "json"
 
         # Output must include the mocked JSON payload
-        assert "lyra-bot-telegram-demo" in result.output
+        assert "factory-bot-telegram-demo" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -441,7 +441,7 @@ class TestSecretListRoundTrip:
         _assert_exit0(r1, label="install bot1")
         install_calls = mock_run.call_args_list
         cmds1 = [c[0][0] for c in install_calls]
-        assert any("lyra-bot-telegram-bot1" in cmd for cmd in cmds1)
+        assert any("factory-bot-telegram-bot1" in cmd for cmd in cmds1)
 
         # Act — install bot2
         mock_run.reset_mock()
@@ -453,12 +453,12 @@ class TestSecretListRoundTrip:
         _assert_exit0(r2, label="install bot2")
         install_calls2 = mock_run.call_args_list
         cmds2 = [c[0][0] for c in install_calls2]
-        assert any("lyra-bot-telegram-bot2" in cmd for cmd in cmds2)
+        assert any("factory-bot-telegram-bot2" in cmd for cmd in cmds2)
 
         # Reconfigure mock: podman secret ls returns both names as JSON array
         fake_json = (
-            b'[{"Name":"lyra-bot-telegram-bot1","ID":"aaa"},'
-            b'{"Name":"lyra-bot-telegram-bot2","ID":"bbb"}]'
+            b'[{"Name":"factory-bot-telegram-bot1","ID":"aaa"},'
+            b'{"Name":"factory-bot-telegram-bot2","ID":"bbb"}]'
         )
         ls_proc = _make_proc(0)
         ls_proc.stdout = fake_json
@@ -471,11 +471,11 @@ class TestSecretListRoundTrip:
         _assert_exit0(r3, label="list")
 
         # Assert — both names surface in the output
-        assert "lyra-bot-telegram-bot1" in r3.output, (
-            f"Expected lyra-bot-telegram-bot1 in list output:\n{r3.output}"
+        assert "factory-bot-telegram-bot1" in r3.output, (
+            f"Expected factory-bot-telegram-bot1 in list output:\n{r3.output}"
         )
-        assert "lyra-bot-telegram-bot2" in r3.output, (
-            f"Expected lyra-bot-telegram-bot2 in list output:\n{r3.output}"
+        assert "factory-bot-telegram-bot2" in r3.output, (
+            f"Expected factory-bot-telegram-bot2 in list output:\n{r3.output}"
         )
 
 
@@ -534,26 +534,28 @@ class TestE2EV1RedGate:
             f"Expected 2 podman create calls, got {mock_run.call_count}"
         )
         created_names = [c[0][0][-1] for c in mock_run.call_args_list]
-        assert "lyra-bot-telegram-mybot" in created_names
-        assert "lyra-bot-telegram-mybot-webhook" in created_names
+        assert "factory-bot-telegram-mybot" in created_names
+        assert "factory-bot-telegram-mybot-webhook" in created_names
 
         # Reconfigure mock: podman secret ls uses plain-text {{.Name}} format
         ls_proc = _make_proc(0)
-        ls_proc.stdout = b"lyra-bot-telegram-mybot\nlyra-bot-telegram-mybot-webhook\n"
+        ls_proc.stdout = (
+            b"factory-bot-telegram-mybot\nfactory-bot-telegram-mybot-webhook\n"
+        )
         mock_run.reset_mock()
         mock_run.return_value = ls_proc
 
         # Act — list (json format path)
         ls_json_proc = _make_proc(0)
         ls_json_proc.stdout = (
-            b'[{"Name":"lyra-bot-telegram-mybot","ID":"x1"},'
-            b'{"Name":"lyra-bot-telegram-mybot-webhook","ID":"x2"}]'
+            b'[{"Name":"factory-bot-telegram-mybot","ID":"x1"},'
+            b'{"Name":"factory-bot-telegram-mybot-webhook","ID":"x2"}]'
         )
         mock_run.return_value = ls_json_proc
         with patch("subprocess.run", mock_run):
             r_list = runner.invoke(app, ["bot", "secret", "list"])
         _assert_exit0(r_list, label="list after install")
-        assert "lyra-bot-telegram-mybot" in r_list.output
+        assert "factory-bot-telegram-mybot" in r_list.output
 
         # Assert Makefile recipe shape — install→render contract.
         # As of #1369, the render step moved from inline Makefile shell to

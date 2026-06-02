@@ -1,43 +1,43 @@
 [meta]
-tool = "lyra"
+tool = "factory"
 uid = 1500
 
 [component.nats]
 container = "factory-nats.container"
 required_secrets = ["factory-nats-auth"]
-host_roles = ["lyra-hub"]
+host_roles = ["factory-hub"]
 
 [component.hub]
 container = "factory-hub.container"
 required_secrets = ["factory-nats-hub"]
-host_roles = ["lyra-hub"]
+host_roles = ["factory-hub"]
 
 [component.telegram]
 container = "factory-telegram.container"
 required_secrets = ["factory-nats-telegram"]
-host_roles = ["lyra-hub"]
+host_roles = ["factory-hub"]
 
 [component.discord]
 container = "factory-discord.container"
 required_secrets = ["factory-nats-discord"]
-host_roles = ["lyra-hub"]
+host_roles = ["factory-hub"]
 
 [component.clipool]
 container = "factory-clipool.container"
 required_secrets = ["factory-nats-clipool"]
-host_roles = ["lyra-hub"]
+host_roles = ["factory-hub"]
 
 [component.gh-helper]
 container = "factory-gh-helper.container"
 required_secrets = []
-host_roles = ["lyra-hub"]
+host_roles = ["factory-hub"]
 
 [component.turn-writer]
 container = "factory-turn-writer.container"
 required_secrets = ["factory-nats-turn-writer"]
-host_roles = ["lyra-hub"]
+host_roles = ["factory-hub"]
 
 [component.blobstore]
 container = "factory-blobstore.container"
 required_secrets = ["factory_blobstore_token"]
-host_roles = ["lyra-hub"]
+host_roles = ["factory-hub"]

@@ -742,7 +742,7 @@ class TestDiscordValidate:
             ),
         )
 
-        secret_name = "lyra-bot-discord-main"
+        secret_name = "factory-bot-discord-main"
         mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
             "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
@@ -769,7 +769,7 @@ class TestDiscordValidate:
             ),
         )
 
-        secret_name = "lyra-bot-discord-main"
+        secret_name = "factory-bot-discord-main"
         mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
             "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
@@ -795,7 +795,7 @@ class TestDiscordValidate:
             ),
         )
 
-        secret_name = "lyra-bot-discord-main"
+        secret_name = "factory-bot-discord-main"
         mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
             "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
@@ -848,7 +848,7 @@ class TestDiscordValidate:
                 owner_users=["alice"],
             ),
         )
-        secret_name = "lyra-bot-discord-main"
+        secret_name = "factory-bot-discord-main"
         mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
             "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
@@ -898,7 +898,7 @@ class TestDiscordValidate:
                 owner_users=["alice"],
             ),
         )
-        secret_name = "lyra-bot-discord-main"
+        secret_name = "factory-bot-discord-main"
         mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
             "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run

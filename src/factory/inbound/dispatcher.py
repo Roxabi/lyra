@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
-from factory.adapters.shared._shared import PushGuardDeps, push_to_hub_guarded
 from factory.core.messaging.message import Platform
+from factory.core.messaging.push_guard import PushGuardDeps, push_to_hub_guarded
 
 if TYPE_CHECKING:
     from factory.core.messaging.message import InboundMessage

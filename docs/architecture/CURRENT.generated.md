@@ -80,7 +80,7 @@
 - **Type:** forbidden
 - **Source modules:** factory.inbound
 - **Forbidden modules:** factory.adapters
-- **Ignore imports:** factory.inbound.dispatcher -> factory.adapters.shared._shared, factory.inbound.context -> factory.adapters.shared._shared, factory.inbound.context -> factory.adapters.shared.outbound_listener, factory.inbound.wire_parser_telegram -> factory.adapters.telegram.telegram, factory.inbound.wire_parser_discord -> factory.adapters.discord.adapter
+- **Ignore imports:** factory.inbound.wire_parser_telegram -> factory.adapters.telegram.telegram, factory.inbound.wire_parser_discord -> factory.adapters.discord.adapter
 - **Allow indirect imports:** True
 
 ## NATS Subjects & Identities

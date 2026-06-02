@@ -138,11 +138,6 @@ forbidden_modules =
     factory.adapters
 allow_indirect_imports = true
 ignore_imports =
-    # DEBT:inbound-adapters-transition (#1287) — stage→shared coupling pending relocation
-    # of push_to_hub_guarded + shared types to factory.core/factory.shared (deferred; see #1283 Phase 6).
-    factory.inbound.dispatcher -> factory.adapters.shared._shared
-    factory.inbound.context -> factory.adapters.shared._shared
-    factory.inbound.context -> factory.adapters.shared.outbound_listener
     # DEBT:inbound-adapters-wireparser (#1287) — wire parsers reference concrete adapter
     # classes under TYPE_CHECKING only (platform-parser coupling, separate concern).
     factory.inbound.wire_parser_telegram -> factory.adapters.telegram.telegram

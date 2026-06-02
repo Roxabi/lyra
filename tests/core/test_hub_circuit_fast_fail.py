@@ -79,7 +79,7 @@ async def test_anthropic_circuit_open_sends_fast_fail_and_skips_agent() -> None:
     # Act — put one message on bus and let hub process it
     await push_to_hub(hub, make_inbound_message())
     hub_task = asyncio.create_task(hub.run())
-    await asyncio.sleep(0.05)
+    await asyncio.sleep(0.05)  # event-based
     hub_task.cancel()
     try:
         await hub_task
@@ -148,7 +148,7 @@ async def test_anthropic_circuit_open_includes_retry_after() -> None:
     # Act
     await push_to_hub(hub, make_inbound_message())
     hub_task = asyncio.create_task(hub.run())
-    await asyncio.sleep(0.05)
+    await asyncio.sleep(0.05)  # event-based
     hub_task.cancel()
     try:
         await hub_task

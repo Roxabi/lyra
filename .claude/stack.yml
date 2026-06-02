@@ -91,3 +91,8 @@ quality_gates:
     enabled: true
     stage: pre-push
     script: tools/check_debt_expiry.sh
+
+  test_sleep:
+    enabled: true
+    stage: pre-push
+    script: tools/check_test_sleep.sh

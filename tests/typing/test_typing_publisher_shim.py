@@ -33,7 +33,7 @@ class TestOnDoneCallback:
                 )
                 assert result is True
                 # Wait for the task to complete and the done callback to fire
-                await asyncio.sleep(0.05)
+                await asyncio.sleep(0.05)  # event-based
 
         mock_warning.assert_called_once()
         assert mock_warning.call_args.args[0] == "typing publisher shim failed: %s"
@@ -46,7 +46,7 @@ class TestOnDoneCallback:
         publisher = MagicMock(spec=TypingPublisher)
 
         async def _slow_method(_):
-            await asyncio.sleep(10)
+            await asyncio.sleep(10)  # event-based
 
         with patch("factory.typing.listener.is_typing_enabled", return_value=True):
             with patch("factory.typing.listener.log.warning") as mock_warning:
@@ -64,7 +64,7 @@ class TestOnDoneCallback:
                 pending = [t for t in asyncio.all_tasks() if t is not current]
                 for task in pending:
                     task.cancel()
-                await asyncio.sleep(0.05)
+                await asyncio.sleep(0.05)  # event-based
 
         mock_warning.assert_not_called()
 
@@ -77,7 +77,7 @@ class TestOnDoneCallback:
         async def _capture_method(scope):
             nonlocal seen_scope
             seen_scope = scope
-            await asyncio.sleep(0)
+            await asyncio.sleep(0)  # event-based
 
         with patch("factory.typing.listener.is_typing_enabled", return_value=True):
             with patch("factory.typing.listener.uuid4") as mock_uuid:
@@ -93,6 +93,6 @@ class TestOnDoneCallback:
 
         assert result is True
         # Wait for the task to complete so _capture_method runs
-        await asyncio.sleep(0)
+        await asyncio.sleep(0)  # event-based
         assert seen_scope is not None
         assert seen_scope.trace_id == "deadbeef1234"  # pyright: ignore[reportUnreachable]

@@ -62,7 +62,7 @@ class TestRoutingBotIdMismatch:
             )
             msg = _make_msg_with_routing(routing)
             dispatcher.enqueue(msg, OutboundMessage.from_text("hi"))
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
             adapter.send.assert_not_awaited()
         finally:
             await dispatcher.stop()
@@ -91,7 +91,7 @@ class TestRoutingBotIdMismatch:
                 drained = True
 
             dispatcher.enqueue_streaming(msg, chunks())
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
             adapter.send_streaming.assert_not_awaited()
             assert drained
         finally:
@@ -113,7 +113,7 @@ async def test_unknown_kind_skipped() -> None:
         msg = make_dispatcher_msg()
         # Inject an unknown kind directly into the queue
         dispatcher._queue.put_nowait(("unknown_kind", msg, None))
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.05)  # event-based
         adapter.send.assert_not_awaited()
         assert dispatcher.qsize() == 0  # item was consumed
     finally:
@@ -139,7 +139,7 @@ class TestOnDispatchedCallback:
             out.metadata["_on_dispatched"] = TrustedCallback(called.append)
 
             dispatcher.enqueue(msg, out)
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
 
             assert called == [out]
         finally:
@@ -165,7 +165,7 @@ class TestOnDispatchedCallback:
             out.metadata["_on_dispatched"] = TrustedCallback(called.append)
 
             dispatcher.enqueue(msg, out)
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
 
             assert called == [out]
             assert out.metadata.get("reply_message_id") is None
@@ -204,7 +204,7 @@ async def test_circuit_open_debounce_suppresses_second_notification() -> None:
         with _patch:
             dispatcher.enqueue(msg, OutboundMessage.from_text("first"))
             dispatcher.enqueue(msg, OutboundMessage.from_text("second"))
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.1)  # event-based
 
         # Two messages dropped but only one notification sent (debounce)
         assert len(notify_calls) == 1
@@ -273,7 +273,7 @@ async def test_non_transient_error_not_retried() -> None:
     try:
         msg = make_dispatcher_msg()
         dispatcher.enqueue(msg, OutboundMessage.from_text("hi"))
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.1)  # event-based
         # 1 failed send + 1 notification via try_notify_user = 2 calls
         assert call_count == 2
     finally:
@@ -299,7 +299,7 @@ async def test_failed_send_notifies_user() -> None:
         )
         with _patch:
             dispatcher.enqueue(msg, OutboundMessage.from_text("hi"))
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.1)  # event-based
         assert len(notify_calls) == 1
     finally:
         await dispatcher.stop()
@@ -324,7 +324,7 @@ async def test_scope_reap_triggered_at_threshold() -> None:
         # Enqueue one message — _worker_loop sees len > threshold → triggers reap
         msg = make_dispatcher_msg()
         dispatcher.enqueue(msg, OutboundMessage.from_text("hi"))
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.05)  # event-based
 
         # All pre-populated locks were idle at reap time → reaped
         # The msg's lock (chat:123) may also be idle by now → also reaped
@@ -409,10 +409,10 @@ async def test_scope_task_exception_logged_and_dispatcher_survives() -> None:
     try:
         msg = make_dispatcher_msg()
         dispatcher.enqueue(msg, OutboundMessage.from_text("first"))
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.05)  # event-based
         # Dispatcher still alive — second message dispatched normally
         dispatcher.enqueue(msg, OutboundMessage.from_text("second"))
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.05)  # event-based
         # 1 failed send + 1 notification + 1 successful send = 3
         assert call_count == 3
     finally:

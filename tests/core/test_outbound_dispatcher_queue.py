@@ -36,7 +36,7 @@ class TestOutboundDispatcherEnqueue:
             outbound = OutboundMessage.from_text("hi")
             dispatcher.enqueue(msg, outbound)
             # Wait for worker to process
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
             adapter.send.assert_awaited_once_with(msg, outbound)
         finally:
             await dispatcher.stop()
@@ -54,7 +54,7 @@ class TestOutboundDispatcherEnqueue:
                 yield TextEndRenderEvent(message_id="msg1")
 
             dispatcher.enqueue_streaming(msg, chunks())
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
             adapter.send_streaming.assert_awaited_once()
             call_args = adapter.send_streaming.call_args
             assert call_args[0][0] is msg
@@ -75,7 +75,7 @@ class TestOutboundDispatcherEnqueue:
                 yield TextEndRenderEvent(message_id="msg1")
 
             dispatcher.enqueue_streaming(msg, chunks(), outbound)
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
             adapter.send_streaming.assert_awaited_once()
             call_args = adapter.send_streaming.call_args
             assert call_args[0][0] is msg
@@ -115,7 +115,7 @@ class TestOutboundDispatcherCircuitBreaker:
         try:
             msg = make_dispatcher_msg()
             dispatcher.enqueue(msg, OutboundMessage.from_text("hi"))
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
             # Circuit is open — main send is dropped, but try_notify_user
             # calls adapter.send once to deliver the circuit-open notification.
             assert adapter.send.await_count == 1
@@ -147,7 +147,7 @@ class TestOutboundDispatcherCircuitBreaker:
                 yield TextEndRenderEvent(message_id="msg1")
 
             dispatcher.enqueue_streaming(msg, chunks(), outbound)
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
             adapter.send_streaming.assert_not_awaited()
             assert outbound.metadata["reply_message_id"] is None
         finally:
@@ -170,7 +170,7 @@ class TestOutboundDispatcherCircuitBreaker:
         try:
             msg = make_dispatcher_msg()
             dispatcher.enqueue(msg, OutboundMessage.from_text("hi"))
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
             adapter.send.assert_awaited_once()
             # CB should be closed after successful send
             from factory.core.lifecycle.circuit_breaker import CircuitState
@@ -191,7 +191,7 @@ class TestOutboundDispatcherCircuitBreaker:
         try:
             msg = make_dispatcher_msg()
             dispatcher.enqueue(msg, OutboundMessage.from_text("hi"))
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
             assert cb._failure_count >= 1
         finally:
             await dispatcher.stop()

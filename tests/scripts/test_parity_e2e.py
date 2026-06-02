@@ -127,7 +127,7 @@ def nats_server(
             urllib.request.urlopen(f"{monitor_url}/healthz", timeout=0.5)
             break
         except OSError:
-            time.sleep(0.05)
+            time.sleep(0.05)  # event-based
     else:
         proc.terminate()
         raw = proc.stderr.read() if proc.stderr else b""
@@ -328,7 +328,7 @@ def test_hub_publish_acl_enforced(
         )
         await nc.publish("lyra.clipool.cmd", b"ping")
         await nc.publish("lyra.inbound.telegram.acl_test", b"denied")
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.2)  # NATS delivery window
         await nc.drain()
 
     asyncio.run(_test())
@@ -366,7 +366,7 @@ def test_voice_tts_publish_acl_enforced(
         )
         await nc.publish("lyra.voice.tts.heartbeat", b"ping")
         await nc.publish("lyra.clipool.cmd", b"denied")
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.2)  # NATS delivery window
         await nc.drain()
 
     asyncio.run(_test())
@@ -404,7 +404,7 @@ def test_clipool_worker_subscribe_acl_enforced(
         )
         await nc.subscribe("lyra.clipool.cmd")
         await nc.subscribe("lyra.inbound.discord.>")
-        await asyncio.sleep(0.2)
+        await asyncio.sleep(0.2)  # NATS delivery window
         await nc.drain()
 
     asyncio.run(_test())
@@ -473,7 +473,7 @@ def test_retired_identity_connect_rejected(
             )
             break
         except OSError:
-            time.sleep(0.05)
+            time.sleep(0.05)  # event-based
     else:
         proc.terminate()
         raw = proc.stderr.read() if proc.stderr else b""

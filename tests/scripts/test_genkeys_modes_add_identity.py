@@ -218,7 +218,7 @@ def test_add_identity_noop_when_full_consistency(tmp_path: Path) -> None:
     auth_conf.chmod(0o600)
 
     # Capture mtimes before invocation
-    time.sleep(0.01)  # ensure mtime granularity
+    time.sleep(0.01)  # event-based — ensure mtime granularity
     seeds_mtime_before = {f.name: f.stat().st_mtime for f in seeds_dir.iterdir()}
 
     # Act
@@ -274,7 +274,9 @@ def test_add_identity_repairs_when_seed_present_but_block_missing(
 
     seed_mtime_before = (seeds_dir / "turn-writer.seed").stat().st_mtime
     auth_conf_mtime_before = auth_conf.stat().st_mtime
-    time.sleep(0.02)  # ensure mtime granularity for auth.conf rewrite detection
+    time.sleep(
+        0.02
+    )  # event-based — ensure mtime granularity for auth.conf rewrite detection
 
     # Act
     result = _run_genkeys(
@@ -477,7 +479,7 @@ def test_add_identity_does_not_touch_system_path(tmp_path: Path) -> None:
     )
     system_auth_conf.chmod(0o640)
 
-    time.sleep(0.02)  # ensure mtime granularity
+    time.sleep(0.02)  # event-based — ensure mtime granularity
     auth_dir_mtimes_before = {f.name: f.stat().st_mtime for f in auth_dir.iterdir()}
 
     # Act

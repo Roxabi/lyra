@@ -193,7 +193,7 @@ async def test_process_loop_fires_pending_session_id() -> None:
     pool.submit(msg)
 
     # Give the event loop enough time to run through the resume step
-    await asyncio.sleep(0.1)
+    await asyncio.sleep(0.1)  # event-based
 
     resume_fn.assert_awaited_once_with("target-session-id")
     on_resume_fn.assert_awaited_once_with("target-session-id")
@@ -223,6 +223,6 @@ async def test_process_loop_does_not_call_on_resume_fn_when_resume_rejected() ->
 
     pool.submit(msg)
 
-    await asyncio.sleep(0.1)
+    await asyncio.sleep(0.1)  # event-based
 
     on_resume_fn.assert_not_awaited()

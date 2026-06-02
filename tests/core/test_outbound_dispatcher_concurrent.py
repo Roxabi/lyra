@@ -47,7 +47,7 @@ async def test_concurrent_different_scopes() -> None:
     done_b: asyncio.Event = asyncio.Event()
 
     async def slow_send(msg: InboundMessage, out: OutboundMessage) -> None:
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.1)  # event-based
         if out.to_text() == "a":
             done_a.set()
         else:
@@ -93,7 +93,7 @@ async def test_fifo_same_scope() -> None:
     async def track_send(msg: InboundMessage, out: OutboundMessage) -> None:
         # OutboundMessage has no .text — use to_text() to flatten content parts.
         call_order.append(out.to_text())
-        await asyncio.sleep(0.03)
+        await asyncio.sleep(0.03)  # event-based
 
     adapter.send = AsyncMock(side_effect=track_send)
     dispatcher = OutboundDispatcher(platform_name="discord", adapter=adapter)
@@ -177,7 +177,7 @@ async def test_stop_drains_tasks() -> None:
     adapter = MagicMock()
 
     async def slow_send(msg: InboundMessage, out: OutboundMessage) -> None:
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.1)  # event-based
         completed.append("done")
 
     adapter.send = AsyncMock(side_effect=slow_send)
@@ -186,7 +186,9 @@ async def test_stop_drains_tasks() -> None:
 
     # Act
     dispatcher.enqueue(make_dispatcher_msg(), OutboundMessage.from_text("x"))
-    await asyncio.sleep(0.01)  # let the worker dequeue and start the scope task
+    await asyncio.sleep(
+        0.01
+    )  # event-based — let the worker dequeue and start the scope task
     await dispatcher.stop()  # must wait for the 100ms send to finish
 
     # Assert — send completed before stop() returned

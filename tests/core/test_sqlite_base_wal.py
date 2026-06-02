@@ -183,7 +183,7 @@ class TestPeriodicCheckpointTask:
         try:
             spy = AsyncMock(wraps=store._checkpoint)
             with patch.object(store, "_checkpoint", spy):
-                await asyncio.sleep(0.05)
+                await asyncio.sleep(0.05)  # event-based
             assert spy.call_count >= 1, (
                 f"Expected _checkpoint() to be called at least once, "
                 f"got {spy.call_count}"

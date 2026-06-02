@@ -21,6 +21,9 @@ from typing import TYPE_CHECKING, Any, Callable
 from pydantic import BaseModel, ConfigDict, Field
 
 from .bus_config import BusConfig
+from .memory_config import MemoryConfig
+from .platform_config import PlatformConfig
+from .turn_store_config import TurnStoreConfig
 
 if TYPE_CHECKING:
     from factory.core.commands.command_config import CommandConfig
@@ -140,9 +143,12 @@ __all__ = [
     "BusConfig",
     "DiscordConfig",
     "HubConfig",
+    "MemoryConfig",
+    "PlatformConfig",
     "PoolConfig",
     "RouterConfig",
     "TelegramConfig",
+    "TurnStoreConfig",
     "load_discord_config",
     "load_telegram_config",
 ]

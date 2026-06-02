@@ -21,13 +21,15 @@ def make_platform_app(platform: str) -> typer.Typer:
 
     @platform_app.command(name="list")
     def list_() -> None:
-        f"""List all {platform.capitalize()} bots."""
         _commands._list(platform)
+
+    list_.__doc__ = f"List all {platform.capitalize()} bots."
 
     @platform_app.command(name="show")
     def show(bot_id: str = typer.Argument(..., help="Bot ID to show.")) -> None:
-        f"""Show full config for a {platform.capitalize()} bot."""
         _commands._show(platform, bot_id)
+
+    show.__doc__ = f"Show full config for a {platform.capitalize()} bot."
 
     @platform_app.command(name="add")
     def add(  # noqa: PLR0913
@@ -55,7 +57,6 @@ def make_platform_app(platform: str) -> typer.Typer:
             24, "--thread-hot-hours", help="Thread hot hours."
         ),
     ) -> None:
-        f"""Add a {platform.capitalize()} bot."""
         _owner_users = (
             [x.strip() for x in owner_users.split(",") if x.strip()]
             if owner_users
@@ -84,10 +85,13 @@ def make_platform_app(platform: str) -> typer.Typer:
             thread_hot_hours,
         )
 
+    add.__doc__ = f"Add a {platform.capitalize()} bot."
+
     @platform_app.command(name="edit")
     def edit(bot_id: str = typer.Argument(..., help="Bot ID to edit.")) -> None:
-        f"""Interactively edit a {platform.capitalize()} bot."""
         _commands._edit(platform, bot_id)
+
+    edit.__doc__ = f"Interactively edit a {platform.capitalize()} bot."
 
     @platform_app.command(name="patch")
     def patch(  # noqa: PLR0913
@@ -115,7 +119,6 @@ def make_platform_app(platform: str) -> typer.Typer:
             None, "--thread-hot-hours", help="Set thread hot hours."
         ),
     ) -> None:
-        f"""Patch a single field of a {platform.capitalize()} bot."""
         kwargs = {
             "agent": agent,
             "webhook_enabled": webhook_enabled,
@@ -140,34 +143,40 @@ def make_platform_app(platform: str) -> typer.Typer:
         }
         _commands._patch(platform, bot_id, **kwargs)
 
+    patch.__doc__ = f"Patch a single field of a {platform.capitalize()} bot."
+
     @platform_app.command(name="remove")
     def remove(
         bot_id: str = typer.Argument(..., help="Bot ID to remove."),
         yes: bool = typer.Option(False, "--yes", "-y", help="Skip confirmation."),
     ) -> None:
-        f"""Remove a {platform.capitalize()} bot."""
         _commands._remove(platform, bot_id, yes)
+
+    remove.__doc__ = f"Remove a {platform.capitalize()} bot."
 
     @platform_app.command(name="assign")
     def assign(
         bot_id: str = typer.Argument(..., help="Bot ID to assign."),
         agent: str = typer.Option(..., "--agent", help="Agent name to assign."),
     ) -> None:
-        f"""Assign an agent to a {platform.capitalize()} bot."""
         _commands._assign(platform, bot_id, agent)
+
+    assign.__doc__ = f"Assign an agent to a {platform.capitalize()} bot."
 
     @platform_app.command(name="unassign")
     def unassign(
         bot_id: str = typer.Argument(..., help="Bot ID to unassign."),
     ) -> None:
-        f"""Unassign the agent from a {platform.capitalize()} bot."""
         _commands._unassign(platform, bot_id)
+
+    unassign.__doc__ = f"Unassign the agent from a {platform.capitalize()} bot."
 
     @platform_app.command(name="validate")
     def validate(
         bot_id: str = typer.Argument(..., help="Bot ID to validate."),
     ) -> None:
-        f"""Validate a {platform.capitalize()} bot configuration."""
         _commands._validate(platform, bot_id)
+
+    validate.__doc__ = f"Validate a {platform.capitalize()} bot configuration."
 
     return platform_app

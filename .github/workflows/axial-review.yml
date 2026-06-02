@@ -1,0 +1,100 @@
+name: Axial Review
+
+# Auto-label PRs that cross architectural layer boundaries.
+# Triggers (issue #1657):
+#   - inbound/ + adapters/ touched     → dev-core:axial-adr-review
+#   - core/ + infrastructure/ touched  → dev-core:axial-adr-review
+#   - ports/ + hub/ touched            → dev-core:axial-adr-review
+#   - except Exception: added          → dev-core:security-auditor + dev-core:axial-adr-review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, staging]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  axial-label:
+    name: Detect cross-layer boundaries
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed files and apply labels
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              per_page: 100,
+            });
+
+            const paths = files.map(f => f.filename);
+
+            // Layer membership helpers
+            const touches = (segment) => paths.some(p => p.includes(`/${segment}/`) || p.startsWith(`${segment}/`));
+
+            const inInbound      = touches('inbound');
+            const inAdapters     = touches('adapters');
+            const inCore         = touches('core');
+            const inInfra        = touches('infrastructure');
+            const inPorts        = touches('ports');
+            const inHub          = touches('hub');
+
+            // except Exception: detection — scan patch hunks for added lines
+            const exceptException = files.some(f =>
+              f.patch && f.patch.split('\n').some(line =>
+                line.startsWith('+') && !line.startsWith('+++') && /except\s+Exception\s*[:\(]/.test(line)
+              )
+            );
+
+            const crossLayer =
+              (inInbound && inAdapters) ||
+              (inCore && inInfra)       ||
+              (inPorts && inHub);
+
+            const labelsToAdd = new Set();
+
+            if (crossLayer)      labelsToAdd.add('dev-core:axial-adr-review');
+            if (exceptException) {
+              labelsToAdd.add('dev-core:axial-adr-review');
+              labelsToAdd.add('dev-core:security-auditor');
+            }
+
+            if (labelsToAdd.size === 0) {
+              core.info('No cross-layer boundary detected — no labels added');
+              return;
+            }
+
+            core.info(`Labels to add: ${[...labelsToAdd].join(', ')}`);
+
+            // Fetch existing labels to avoid duplicates
+            const { data: existing } = await github.rest.issues.listLabelsOnIssue({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            const existingNames = new Set(existing.map(l => l.name));
+
+            const toApply = [...labelsToAdd].filter(l => !existingNames.has(l));
+            if (toApply.length === 0) {
+              core.info('Labels already present — nothing to do');
+              return;
+            }
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: toApply,
+            });
+            core.info(`Added labels: ${toApply.join(', ')}`);

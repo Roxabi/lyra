@@ -17,6 +17,23 @@ Let:
 - Decisions → global-patterns.md
 - ¬`--force` | ¬`--hard` | ¬`--amend`
 
+## Axial Review (mandatory)
+
+PRs that cross architectural layer boundaries MUST carry `dev-core:axial-adr-review` before merge.
+`.github/workflows/axial-review.yml` applies labels automatically; do NOT strip them manually.
+
+| Trigger | Labels applied |
+|---------|---------------|
+| PR touches `inbound/` **and** `adapters/` | `dev-core:axial-adr-review` |
+| PR touches `core/` **and** `infrastructure/` | `dev-core:axial-adr-review` |
+| PR touches `ports/` **and** `hub/` | `dev-core:axial-adr-review` |
+| PR adds `except Exception:` | `dev-core:axial-adr-review` + `dev-core:security-auditor` |
+
+Review checklist (applies when `dev-core:axial-adr-review` is present):
+- Confirm no inbound-layer logic leaks into adapters (ADR boundary)
+- Confirm core domain objects are not polluted with infrastructure concerns
+- `except Exception:` must be justified inline with a comment; open a follow-up issue if swallowing
+
 ## Key files
 
 | File | Role |

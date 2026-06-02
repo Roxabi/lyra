@@ -26,6 +26,11 @@ repos:
     entry: tools/check_file_length.sh
     language: system
     pass_filenames: false
+  - id: check-file-exemptions
+    name: check-file-exemptions (expiry dates on file-length exemptions)
+    entry: tools/check_file_exemptions.sh
+    language: system
+    pass_filenames: false
   - id: check-file-length-roxabi-nats
     name: check-file-length (roxabi-nats)
     entry: bash -c "QG_FILE_ROOT=packages/roxabi-nats/src/ QG_FILE_EXEMPTIONS=packages/roxabi-nats/tools/file_exemptions.txt tools/check_file_length.sh"

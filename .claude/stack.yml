@@ -91,3 +91,8 @@ quality_gates:
     enabled: true
     stage: pre-push
     script: tools/check_debt_expiry.sh
+
+  file_exemptions:
+    enabled: true
+    script: tools/check_file_exemptions.sh
+    description: every entry in file_exemptions.txt must have a non-expired expires=YYYY-MM-DD token

@@ -1,12 +1,10 @@
 """Tests for Parser[InT, OutT] Protocol shape (Phase 5 — #1282).
 
-The Protocol is duck-typed and structural; consumer classes (CliStreamingParser,
-StreamProcessor) do NOT implement feed/finalize/is_done method names verbatim —
-they expose parse_line/process per the legacy public API. Runtime isinstance()
-conformance is therefore NOT asserted; tests below verify the Protocol itself
-is well-formed (importable, generic, method names declared). When consumers
-gain feed/finalize/is_done aliases in a future issue, an isinstance-based
-conformance test can be added; until then, this file documents the shape only.
+The Protocol is duck-typed and structural.  CliStreamingParser satisfies it at
+the method-name level: it exposes feed, finalize, and is_done aliases (added in
+#1667).  isinstance(CliStreamingParser(), Parser) therefore returns True and is
+asserted below.  StreamProcessor still exposes only process (legacy public API)
+and does not yet satisfy the Protocol; its conformance test is deferred.
 """
 
 from __future__ import annotations
@@ -54,4 +52,28 @@ class TestParserMethodNames:
         # Act + Assert
         assert hasattr(Parser, method_name), (
             f"Parser Protocol is missing required method: {method_name!r}"
+        )
+
+
+class TestCliStreamingParserConformance:
+    """Test 4 — CliStreamingParser satisfies Parser at runtime (#1667).
+
+    Falsification: deleting any of the feed/finalize/is_done aliases on
+    CliStreamingParser causes isinstance to return False and this test to fail.
+    """
+
+    def test_cli_streaming_parser_isinstance_parser(self) -> None:
+        # Arrange
+        from factory.core.cli.cli_streaming_parser import (
+            CliStreamingParser,  # noqa: PLC0415
+        )
+        from factory.streaming import Parser  # noqa: PLC0415
+
+        parser = CliStreamingParser(pool_id="test-pool")
+
+        # Act + Assert — isinstance must return True because Parser is
+        # @runtime_checkable and CliStreamingParser now exposes feed/finalize/is_done.
+        assert isinstance(parser, Parser), (  # type: ignore[arg-type]
+            "CliStreamingParser does not satisfy Parser Protocol — "
+            "feed/finalize/is_done aliases missing"
         )

@@ -326,3 +326,131 @@ class TestInboundPipeline:
         assert forwarded.pending_attachments == [], (
             "pending_attachments must be cleared on the no-store path (B1 NATS-safety)"
         )
+
+
+# ---------------------------------------------------------------------------
+# Wire parser bot-guard isolation tests (#1667)
+# ---------------------------------------------------------------------------
+# Each guard test exercises the WireParser directly — NOT handle_message —
+# so deleting the guard inside the parser class causes the test to fail
+# regardless of any duplicate guard higher in the call stack.
+# ---------------------------------------------------------------------------
+
+
+class TestDiscordWireParserBotGuard:
+    """DiscordWireParser.parse() returns None for bot-authored messages.
+
+    Falsification: deleting ``if raw.author.bot: return None`` in
+    DiscordWireParser.parse() causes this test to fail.  The adapter-level
+    guard in discord_inbound.handle_message is NOT involved here.
+    """
+
+    def test_bot_message_returns_none(self) -> None:
+        from types import SimpleNamespace  # noqa: PLC0415
+
+        from factory.inbound.wire_parser_discord import (
+            DiscordWireParser,  # noqa: PLC0415
+        )
+
+        adapter_mock = MagicMock()
+        parser = DiscordWireParser(adapter=adapter_mock)
+
+        bot_author = SimpleNamespace(bot=True, id=999)
+        raw_msg = SimpleNamespace(author=bot_author, content="I am a bot")
+        ctx = MagicMock()
+
+        result = parser.parse(raw_msg, ctx)
+
+        assert result is None, (
+            "DiscordWireParser.parse() must return None for bot-authored messages; "
+            "deleting the guard makes this assertion fail"
+        )
+        adapter_mock.normalize.assert_not_called()
+
+    def test_human_message_delegates_to_normalize(self) -> None:
+        from types import SimpleNamespace  # noqa: PLC0415
+
+        from factory.inbound.wire_parser_discord import (
+            DiscordWireParser,  # noqa: PLC0415
+        )
+
+        adapter_mock = MagicMock()
+        parser = DiscordWireParser(adapter=adapter_mock)
+
+        human_author = SimpleNamespace(bot=False, id=42)
+        raw_msg = SimpleNamespace(author=human_author, content="hello")
+        ctx = MagicMock()
+
+        parser.parse(raw_msg, ctx)
+
+        adapter_mock.normalize.assert_called_once()
+
+
+class TestTelegramWireParserBotGuard:
+    """TelegramWireParser.parse() returns None for bot-authored messages.
+
+    Falsification: deleting ``if not raw.from_user or raw.from_user.is_bot:``
+    in TelegramWireParser.parse() causes this test to fail.  The adapter-level
+    guard in telegram_inbound.handle_message is NOT involved here.
+    """
+
+    def test_bot_sender_returns_none(self) -> None:
+        from types import SimpleNamespace  # noqa: PLC0415
+
+        from factory.inbound.wire_parser_telegram import (
+            TelegramWireParser,  # noqa: PLC0415
+        )
+
+        adapter_mock = MagicMock()
+        parser = TelegramWireParser(adapter=adapter_mock)
+
+        bot_sender = SimpleNamespace(is_bot=True, id=777)
+        raw_msg = SimpleNamespace(from_user=bot_sender, text="I am a bot")
+        ctx = MagicMock()
+
+        result = parser.parse(raw_msg, ctx)
+
+        assert result is None, (
+            "TelegramWireParser.parse() must return None for bot senders; "
+            "deleting the guard makes this assertion fail"
+        )
+        adapter_mock.normalize.assert_not_called()
+
+    def test_no_sender_returns_none(self) -> None:
+        from types import SimpleNamespace  # noqa: PLC0415
+
+        from factory.inbound.wire_parser_telegram import (
+            TelegramWireParser,  # noqa: PLC0415
+        )
+
+        adapter_mock = MagicMock()
+        parser = TelegramWireParser(adapter=adapter_mock)
+
+        raw_msg = SimpleNamespace(from_user=None, text="anonymous")
+        ctx = MagicMock()
+
+        result = parser.parse(raw_msg, ctx)
+
+        assert result is None, (
+            "TelegramWireParser.parse() must return None when from_user is None; "
+            "deleting the guard makes this assertion fail"
+        )
+        adapter_mock.normalize.assert_not_called()
+
+    def test_human_sender_delegates_to_normalize(self) -> None:
+        from types import SimpleNamespace  # noqa: PLC0415
+
+        from factory.inbound.wire_parser_telegram import (
+            TelegramWireParser,  # noqa: PLC0415
+        )
+
+        adapter_mock = MagicMock()
+        parser = TelegramWireParser(adapter=adapter_mock)
+
+        human_sender = SimpleNamespace(is_bot=False, id=123)
+        raw_msg = SimpleNamespace(from_user=human_sender, text="hello")
+        ctx = MagicMock()
+
+        parser.parse(raw_msg, ctx)
+
+        adapter_mock.normalize.assert_called_once()

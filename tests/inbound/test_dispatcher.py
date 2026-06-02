@@ -162,3 +162,55 @@ class TestDispatcher:
         send_backpressure.assert_awaited_once()
         text_sent = send_backpressure.call_args[0][0]
         assert isinstance(text_sent, str) and len(text_sent) > 0
+
+    @pytest.mark.asyncio
+    async def test_dispatch_calls_cache_inbound_before_bus_put(self) -> None:
+        # Arrange — outbound_listener is provided; ordering invariant under test.
+        # Docstring of push_to_hub_guarded: "Must be called here (not by the caller)
+        # to guarantee the cache is populated before the hub can dispatch a response."
+        call_order: list[str] = []
+
+        bus = AsyncMock()
+        bus.put.side_effect = lambda *_a, **_kw: call_order.append("bus.put")
+
+        outbound_listener = MagicMock()
+        outbound_listener.cache_inbound.side_effect = lambda _msg: call_order.append(
+            "cache_inbound"
+        )
+
+        ctx = _make_ctx(inbound_bus=bus, outbound_listener=outbound_listener)
+        msg = _make_msg()
+        send_backpressure = AsyncMock()
+
+        dispatcher = Dispatcher()
+
+        # Act
+        await dispatcher.dispatch(msg, ctx, send_backpressure)
+
+        # Assert — cache_inbound fired AND preceded bus.put.
+        # Negative: deleting the `if deps.outbound_listener is not None` block in
+        # push_guard.py causes cache_inbound to never be called, making this fail.
+        outbound_listener.cache_inbound.assert_called_once_with(msg)
+        assert call_order == [
+            "cache_inbound",
+            "bus.put",
+        ], f"Ordering invariant violated: {call_order}"
+
+    @pytest.mark.asyncio
+    async def test_dispatch_skips_cache_inbound_when_listener_is_none(self) -> None:
+        # Arrange — outbound_listener=None (default); cache_inbound must NOT be called.
+        bus = AsyncMock()
+        ctx = _make_ctx(inbound_bus=bus, outbound_listener=None)
+        msg = _make_msg()
+        send_backpressure = AsyncMock()
+
+        dispatcher = Dispatcher()
+
+        # Act
+        await dispatcher.dispatch(msg, ctx, send_backpressure)
+
+        # Assert — no attribute access on None; bus.put still fires normally.
+        # Negative: calling cache_inbound unconditionally (None guard removed) raises
+        # AttributeError before bus.put and causes this to fail.
+        bus.put.assert_awaited_once()
+        send_backpressure.assert_not_awaited()

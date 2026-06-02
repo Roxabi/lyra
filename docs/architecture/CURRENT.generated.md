@@ -80,7 +80,6 @@
 - **Type:** forbidden
 - **Source modules:** factory.inbound
 - **Forbidden modules:** factory.adapters
-- **Ignore imports:** factory.inbound.dispatcher -> factory.adapters.shared._shared, factory.inbound.context -> factory.adapters.shared._shared, factory.inbound.context -> factory.adapters.shared.outbound_listener
 - **Allow indirect imports:** True
 
 ## NATS Subjects & Identities

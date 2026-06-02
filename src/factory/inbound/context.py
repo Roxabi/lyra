@@ -28,11 +28,10 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from typing import Any
 
-    from factory.adapters.shared._shared import TypingTaskManager
-    from factory.adapters.shared.outbound_listener import OutboundListener
     from factory.core.lifecycle.circuit_breaker import CircuitRegistry
     from factory.core.messaging.bus import Bus
     from factory.core.messaging.messages import MessageManager
+    from factory.core.ports.outbound_listener import OutboundListener
     from factory.core.stores import TurnStoreProtocol
     from factory.core.stores.thread_store_protocol import (
         ThreadSession,
@@ -40,6 +39,7 @@ if TYPE_CHECKING:
     )
     from factory.inbound.attachment_ingest import IngestCtx
     from factory.transport.turn_publisher import TurnPublisher
+    from factory.typing.task_manager import TypingTaskManager
 
 
 @dataclass(frozen=True)

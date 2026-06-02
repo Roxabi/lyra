@@ -9,6 +9,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import nats.errors
+
 from factory.bootstrap.factory.config import (
     _build_agent_overrides,
     _load_pairing_config,
@@ -55,7 +57,7 @@ async def start_mint_failure_subscriber(nc: Any) -> "MintFailureSubscriber | Non
             ops_telegram_chat_id=int(chat_id_raw),
         )
         await sub.start()
-    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — opt-in subscriber: NATS subscribe or int() parse of chat_id may raise; failure is non-fatal, hub starts without it
+    except (nats.errors.Error, ValueError) as exc:
         log.warning("MintFailureSubscriber failed to start: %s", exc)
         return None
     return sub

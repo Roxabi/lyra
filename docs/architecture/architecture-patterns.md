@@ -285,7 +285,7 @@ The **CLI protocol circular import** (ADR-060, absorbed here) established the ca
 
 User-visible errors are handled at two distinct sites, each using domain-specific exception types:
 
-**Stream errors** (`factory.outbound.error_handler.OutboundErrorHandler.classify_stream_error`) — maps terminal stream exceptions to message template keys for the platform adapter:
+**Stream errors** (`OutboundErrorHandler.classify_stream_error` in `factory.outbound.error_handler`) — maps terminal stream exceptions to message template keys for the platform adapter:
 - `StreamChunkTimeout` (defined in `factory.core.exceptions`) → template key `error_timeout`
 - Any other stream exception → template key `error_stream`
 

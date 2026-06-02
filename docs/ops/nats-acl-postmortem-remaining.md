@@ -23,7 +23,7 @@ Source: [nats-acl-inbox-case-postmortem.md](nats-acl-inbox-case-postmortem.md)
 | Fix 2 — explicit `_inbox.hub.>` in all responder publish ACLs | `5b3b6c4a` |
 | Drop `allow_responses: true` from all identities | `5b3b6c4a` — hub/adapters explicit `false`; others omit field (NATS default = false) |
 | Kill hardcoded identity list in gen-nkeys.sh — IDENTITIES[] driven from JSON SSoT | `load_matrix()` populates from acl-matrix.json |
-| Alert on `permissions violation` in NATS logs | `src/lyra/monitoring/checks_log.py` — `check_nats_log_errors` |
+| Alert on `permissions violation` in NATS logs | `src/factory/monitoring/checks_log.py` — `check_nats_log_errors` |
 | Alert on sustained `_dict_stream_gen timeout` in hub logs | `src/lyra/monitoring/checks_log.py:57` — `check_hub_dict_stream_gen_timeout` |
 | NATS HTTP monitoring on 127.0.0.1 | `bcab1197` |
 | Retire `tts-adapter`/`sst-adapter` from acl-matrix.json | `5b3b6c4a` |
@@ -131,7 +131,7 @@ Add a fixture that removes a flow declaration from `request_reply_flows` and ass
 
 **Priority:** P1 — `/health` currently conflates liveness (process alive) with readiness (can serve user traffic). Hub process alive and NATS subscription broken are decoupled states, as the 2026-04-27 incident demonstrated: the health endpoint was green throughout the 3h15m outage.
 
-**Current state:** `src/lyra/bootstrap/infra/health.py` exposes `/health` (liveness, no auth) and `/health/detail` (full status, bearer token). No readiness probe exists.
+**Current state:** `src/factory/bootstrap/infra/health.py` exposes `/health` (liveness, no auth) and `/health/detail` (full status, bearer token). No readiness probe exists.
 
 **What is needed:**
 

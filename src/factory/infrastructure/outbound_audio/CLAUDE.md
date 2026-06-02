@@ -27,7 +27,7 @@ the durable outbound-audio delivery path (#1482).
 ## Import boundary
 
 `infrastructure/` may import `roxabi_contracts`, `nats`, and stdlib.
-Must NOT import `lyra.adapters`, `lyra.core` business logic, or any HTTP
+Must NOT import `factory.adapters`, `factory.core` business logic, or any HTTP
 framework. `STREAM_AUDIO` is imported from `roxabi_contracts.outbound`.
 
 ## What NOT to do

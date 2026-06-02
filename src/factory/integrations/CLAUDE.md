@@ -9,7 +9,7 @@ subprocess, or calls an external HTTP API belongs here — nowhere else.
 ## base.py — Protocols and shared errors
 
 `base.py` defines the interfaces every integration must satisfy via
-`typing.Protocol` (runtime-checkable, mirrors the `lyra.llm.base` pattern).
+`typing.Protocol` (runtime-checkable, mirrors the `factory.llm.base` pattern).
 `SessionTools` is the injection bundle handed to plugin commands at registration.
 
 Adding a new integration → implement the matching Protocol (or define a new one
@@ -63,5 +63,5 @@ bootstrap factory
   external world (systemd, vault CLI, web-intel, ffmpeg)
 ```
 
-Integrations must not import from `lyra.commands`, `lyra.agents`, or any layer
-above. They may import from `lyra.core.exceptions` for shared error types.
+Integrations must not import from `factory.commands`, `factory.agents`, or any layer
+above. They may import from `factory.core.exceptions` for shared error types.

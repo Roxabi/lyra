@@ -3,7 +3,7 @@
 ## Purpose
 
 Domain-agnostic NATS transport primitives consumed by all domain worker clients
-(`lyra.nats.*_client`, `lyra.llm.llm_client`). Lives here, NOT in `packages/roxabi-nats/`.
+(`lyra.nats.*_client`, `factory.llm.llm_client`). Lives here, NOT in `packages/roxabi-nats/`.
 
 ## Layer contract
 
@@ -53,4 +53,4 @@ pool/observer/inbound rewire (#1331) to replace direct TurnStore mutator
 calls. Required `trace_id: str` per call (non-empty; threaded from
 inbound msg.id when available, else uuid4().hex).
 
-Consumer: `lyra.infrastructure.turn_writer.TurnWriter` (sole writer).
+Consumer: `factory.infrastructure.turn_writer.TurnWriter` (sole writer).

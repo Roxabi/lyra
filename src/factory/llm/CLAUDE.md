@@ -7,8 +7,8 @@ interacts with LLMs through the `LlmProvider` protocol.
 
 ## LlmProvider protocol
 
-SSoT: `lyra.core.ports.llm`. `base.py` is a backward-compatibility shim — import from
-`lyra.core.ports.llm` directly in all new code.
+SSoT: `factory.core.ports.llm`. `base.py` is a backward-compatibility shim — import from
+`factory.core.ports.llm` directly in all new code.
 
 `stream()` is duck-typed optional — callers check `hasattr(provider, "stream")`. Do
 not add it to the Protocol until all drivers implement it.
@@ -25,7 +25,7 @@ not add it to the Protocol until all drivers implement it.
 
 `ClaudeCliDriver` and `LlmClient` may share the `"claude-cli"` registry key — selection between them is determined by wiring mode at bootstrap (single-process picks `ClaudeCliDriver`, multi-process picks `LlmClient(WorkerPoolClient, CliNatsCodec)`).
 
-`LlmClient` lives in `lyra.llm.llm_client` (this package). `LlmClient(pool, codec)` is the
+`LlmClient` lives in `factory.llm.llm_client` (this package). `LlmClient(pool, codec)` is the
 3-layer composition for the NATS LLM path.
 
 ## LlmClient + LlmCodec layering
@@ -43,7 +43,7 @@ LlmClient (lyra.llm.llm_client)
 - `LlmCodec`: pure, no I/O. `encode(text, model_cfg, system_prompt, messages, *, stream)`
   → bytes payload + trace_id. `decode(result, trace_id)` → LlmResult.
   `decode_chunk(result)` → LlmEvent (TextLlmEvent | ResultLlmEvent | None).
-- `WorkerPoolClient`: routing + CB + heartbeat — domain-agnostic, see `lyra.transport`.
+- `WorkerPoolClient`: routing + CB + heartbeat — domain-agnostic, see `factory.transport`.
 
 CB is enforced at the **pool** layer (since #1278). Wiring sites wrap `LlmClient` with
 `RetryDecorator` only — do NOT add `CircuitBreakerDecorator` (reserved for `ClaudeCliDriver`
@@ -83,15 +83,15 @@ by `RetryDecorator`. `CircuitBreakerDecorator` is reserved for `ClaudeCliDriver`
 
 ## LlmEvent
 
-`LlmEvent` union defined in `lyra.core.messaging.events` (text, thinking, tool-use
+`LlmEvent` union defined in `factory.core.messaging.events` (text, thinking, tool-use
 deltas, tool-result, terminal result). Read source for current members.
 
-Import from `lyra.core.messaging.events` — `lyra.llm` does **not** re-export these
+Import from `factory.core.messaging.events` — `factory.llm` does **not** re-export these
 (would obscure the canonical location from `import-linter`).
 
 ## SmartRoutingConfig
 
-`SmartRoutingConfig` lives in `lyra.core.agent.agent_config`. Validator rejects `enabled = true` on all backends. Keep `enabled = false` (default).
+`SmartRoutingConfig` lives in `factory.core.agent.agent_config`. Validator rejects `enabled = true` on all backends. Keep `enabled = false` (default).
 
 ## ProviderRegistry (`registry.py`)
 
@@ -100,7 +100,7 @@ Dict-based: `register(backend, driver)` / `get(backend)`. Backends: `"claude-cli
 
 ## LlmUnavailableError
 
-Defined in `lyra.core.ports.llm`. Import from the canonical path in all new code.
+Defined in `factory.core.ports.llm`. Import from the canonical path in all new code.
 
 ## Constraints
 

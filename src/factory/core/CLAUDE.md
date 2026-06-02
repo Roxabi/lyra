@@ -16,8 +16,8 @@ Four responsibilities:
 
 ## Import layers
 
-`core/` may import: stdlib, third-party, `lyra.core.ports` (own ports subdir).
-`core/` must NOT import: `lyra.adapters`, `lyra.infrastructure`, `lyra.llm` (drivers), `lyra.commands` (plugin cmds).
+`core/` may import: stdlib, third-party, `factory.core.ports` (own ports subdir).
+`core/` must NOT import: `factory.adapters`, `factory.infrastructure`, `factory.llm` (drivers), `factory.commands` (plugin cmds).
 Adapters and infrastructure may import `core/`; never the reverse.
 
 ## Ports & Protocols taxonomy
@@ -27,21 +27,21 @@ Two flavours of `Protocol` live in `core/`:
 | Kind | Where | Role | Examples |
 |---|---|---|---|
 | **Driven port** (Cockburn, secondary) | `core/ports/` | Domain consumes an external capability | `LlmProvider`, `TtsProtocol`, `STTProtocol`, `AuditSink` |
-| **Role interface** (Fowler) | Co-located with sub-domain | Internal collaboration between two pieces of `lyra.core` | `ChannelAdapter` (hub), `PipelineMiddleware` (hub/middleware), `PoolContext` (pool), narrow `AgentSeederTarget` (agent) |
+| **Role interface** (Fowler) | Co-located with sub-domain | Internal collaboration between two pieces of `factory.core` | `ChannelAdapter` (hub), `PipelineMiddleware` (hub/middleware), `PoolContext` (pool), narrow `AgentSeederTarget` (agent) |
 
-Rule of thumb: if the Protocol abstracts something *outside* lyra (LLM, TTS, audit log, future Langfuse, …) → **driven port** → `core/ports/`. If it abstracts an *internal* collaboration (a role another file inside `lyra.core` fills) → **role interface**, co-located with its sub-domain. Driven ports are pure Protocol with no infrastructure import (TYPE_CHECKING-only allowed). Role interfaces follow the same constraint.
+Rule of thumb: if the Protocol abstracts something *outside* lyra (LLM, TTS, audit log, future Langfuse, …) → **driven port** → `core/ports/`. If it abstracts an *internal* collaboration (a role another file inside `factory.core` fills) → **role interface**, co-located with its sub-domain. Driven ports are pure Protocol with no infrastructure import (TYPE_CHECKING-only allowed). Role interfaces follow the same constraint.
 
 `ports/llm.py`, `ports/stt.py`, `ports/tts.py` follow the same shape: protocol + value objects + errors only. `ports/` is the single owner of domain types. Adapter-adjacent helpers (`is_whisper_noise`, `mime_from_suffix`) live in `lyra/nats/stt/stt_helpers.py`, not in `ports/`.
 
 ## Store pattern (ADR-048 (absorbed into ADR-059))
 
-Store protocols stay in `core/stores/`; SQLite implementations live in `lyra.infrastructure.stores`.
+Store protocols stay in `core/stores/`; SQLite implementations live in `factory.infrastructure.stores`.
 Pattern: `__init__` = data structures only · `connect()` = open DB + migrate + warm cache · `close()` = teardown.
 Reads are synchronous (cache). Writes are async (SQLite). Cache updated atomically — event loop never blocks on a read.
 
 ## Non-obvious placements
 
-**`hub/pipeline/` owns `PoolManager`** — `PoolManager` and `pipeline_types` both import `Hub` at runtime; placing them in `pool/` would create a circular import. Re-exported from `lyra.core.hub.pipeline` for consumers.
+**`hub/pipeline/` owns `PoolManager`** — `PoolManager` and `pipeline_types` both import `Hub` at runtime; placing them in `pool/` would create a circular import. Re-exported from `factory.core.hub.pipeline` for consumers.
 
 **`cli/cli_pool_entry.py` (`_ProcessEntry`)** — extracted from `cli_pool.py` solely to break a circular import between pool mixins. Not a separate concern.
 

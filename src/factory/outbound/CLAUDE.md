@@ -36,13 +36,13 @@ formatter/throttle/error_handler methods directly.
 
 ## State + recap helpers
 
-`IntermediateTextState`, `StreamState` → `lyra.outbound._streaming_state`.
-`ToolRecapAccumulator`, `format_recap_lines` → `lyra.outbound._tool_recap`.
+`IntermediateTextState`, `StreamState` → `factory.outbound._streaming_state`.
+`ToolRecapAccumulator`, `format_recap_lines` → `factory.outbound._tool_recap`.
 No deferred-import block exists.
 
 ## ToolDisplayConfig wiring
 
-`ToolDisplayConfig` (from `lyra.core.messaging`) is injected via
+`ToolDisplayConfig` (from `factory.core.messaging`) is injected via
 `OutboundAdapterBase.send_streaming` — the **single WRITE site** for
 `emitter.tool_display_config` (ADR-073). Concrete `_make_emitter` overrides MUST NOT
 assign this attribute; doing so re-introduces the target-axis-trap Phase B (#1336) removed.

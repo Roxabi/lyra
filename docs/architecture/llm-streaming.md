@@ -90,9 +90,9 @@ Every new event carries a `SCHEMA_VERSION_*` constant (ADR-049 discipline). `run
 
 - Streaming is opt-in per agent (`ModelConfig.streaming`); the non-streaming path is never
   modified by streaming changes.
-- `LlmEvent` must import nothing outside `lyra.llm`. `StreamProcessor` imports only
-  `lyra.core.messaging.events` and `lyra.core.messaging.render_events`. Adapters import `RenderEvent` from
-  `lyra.core.messaging.render_events` only — enforced by import-linter.
+- `LlmEvent` must import nothing outside `factory.llm`. `StreamProcessor` imports only
+  `factory.core.messaging.events` and `factory.core.messaging.render_events`. Adapters import `RenderEvent` from
+  `factory.core.messaging.render_events` only — enforced by import-linter.
 - `stream()` is always duck-typed (`hasattr`), never a required protocol member.
 - The streaming path bypasses circuit-breaker protection — document this explicitly in any
   new streaming driver.

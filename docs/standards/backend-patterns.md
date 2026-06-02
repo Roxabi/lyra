@@ -6,7 +6,7 @@ description: Mandatory patterns for hub, adapters, LLM drivers, stores, and plug
 # Backend Patterns — Lyra
 
 > Status: LIVING
-> Scope: `src/lyra/` — core, adapters, llm, commands, infrastructure
+> Scope: `src/factory/` — core, adapters, llm, commands, infrastructure
 > Source: `docs/architecture/architecture-patterns.md`, per-subpackage CLAUDE.md files
 
 ---
@@ -33,7 +33,7 @@ Import-linter enforces these rules on every push (see `.importlinter`). Violatio
 
 ---
 
-## Hub / Core (`src/lyra/core/`)
+## Hub / Core (`src/factory/core/`)
 
 ### Hub contract
 
@@ -78,11 +78,11 @@ await store.close()
 
 Reads are synchronous (served from cache). Writes are async (SQLite). Never call async store methods before `connect()` or from synchronous code.
 
-Store protocols live in `core/stores/`; concrete implementations live in `lyra.infrastructure.stores`.
+Store protocols live in `core/stores/`; concrete implementations live in `factory.infrastructure.stores`.
 
 ---
 
-## Adapters (`src/lyra/adapters/`)
+## Adapters (`src/factory/adapters/`)
 
 ### ChannelAdapter protocol
 
@@ -131,7 +131,7 @@ Do NOT use `async with channel.typing()` — the context manager auto-refreshes 
 
 ---
 
-## LLM Drivers (`src/lyra/llm/`)
+## LLM Drivers (`src/factory/llm/`)
 
 ### LlmProvider protocol
 
@@ -163,7 +163,7 @@ The stack is assembled in `bootstrap/` — never in `llm/`. Do NOT construct the
 
 ### LlmEvent types
 
-Events live in `lyra.core.messaging.events` (not in `llm/`) to preserve the unidirectional `llm → core` dependency:
+Events live in `factory.core.messaging.events` (not in `llm/`) to preserve the unidirectional `llm → core` dependency:
 
 | Event | Purpose |
 |-------|---------|
@@ -171,7 +171,7 @@ Events live in `lyra.core.messaging.events` (not in `llm/`) to preserve the unid
 | `ToolUseLlmEvent(tool_name, tool_id, input)` | LLM called a tool |
 | `ResultLlmEvent(is_error, duration_ms, cost_usd)` | Turn complete (always last) |
 
-All event classes are `frozen=True` — never mutate after construction. Import canonically from `lyra.core.messaging.events`.
+All event classes are `frozen=True` — never mutate after construction. Import canonically from `factory.core.messaging.events`.
 
 ### Retryability
 
@@ -179,7 +179,7 @@ All event classes are `frozen=True` — never mutate after construction. Import 
 
 ---
 
-## Commands / Plugins (`src/lyra/commands/`)
+## Commands / Plugins (`src/factory/commands/`)
 
 ### Plugin structure
 
@@ -264,7 +264,7 @@ Never silently drop errors above ErrorBoundaryMiddleware — unhandled exception
 | Protocol classes | `PascalCase` + `Protocol` suffix is optional | `LlmProvider`, `ChannelAdapter` |
 | Platform submodules | `{platform}_{concern}.py` | `discord_formatting.py` |
 | Store protocols | in `core/stores/`; ends with `_protocol.py` | `agent_store_protocol.py` |
-| Infrastructure implementations | in `lyra.infrastructure.stores` | `agent_store.py` |
+| Infrastructure implementations | in `factory.infrastructure.stores` | `agent_store.py` |
 | Test files | `test_{module_under_test}.py` | `test_config.py` |
 | Commands (slash) | lowercase alphanumeric + hyphens | `/search`, `/add-vault` |
 

@@ -572,9 +572,9 @@ inactive. Remove them only if a full ACL audit is underway (requires regen + `ly
 
 - ADR-077 — `lyra.outbound.audio.*` subject naming + JetStream design decision
 - `deploy/nats/acl-matrix.json` — full ACL grant matrix (hub + telegram-adapter + discord-adapter identities)
-- `src/lyra/infrastructure/outbound_audio/stream_setup.py` — stream/consumer/KV config constants
-- `src/lyra/bootstrap/standalone/audio_consumer_bootstrap.py` — adapter boot sequence
-- `src/lyra/monitoring/checks_audio.py` — `audio:consumer_lag` + `audio:stream_usage` probes
+- `src/factory/infrastructure/outbound_audio/stream_setup.py` — stream/consumer/KV config constants
+- `src/factory/bootstrap/standalone/audio_consumer_bootstrap.py` — adapter boot sequence
+- `src/factory/monitoring/checks_audio.py` — `audio:consumer_lag` + `audio:stream_usage` probes
 - `deploy/CLAUDE.md` — `type=mount` secret restart requirement (general invariant)
 
 ## References

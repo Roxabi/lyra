@@ -94,7 +94,7 @@ Everything specific (Telegram, Discord, Claude, Anthropic SDK) is an **Adapter**
 
 ### LlmEvent (emitted by LLM adapters)
 
-Defined in `src/lyra/core/messaging/events.py`.
+Defined in `src/factory/core/messaging/events.py`.
 
 ```python
 @dataclass(frozen=True)
@@ -121,7 +121,7 @@ LlmEvent = TextLlmEvent | ToolUseLlmEvent | ResultLlmEvent
 
 ### RenderEvent (emitted by StreamProcessor)
 
-Defined in `src/lyra/core/messaging/render_events.py`.
+Defined in `src/factory/core/messaging/render_events.py`.
 
 ```python
 @dataclass(frozen=True)
@@ -154,7 +154,7 @@ RenderEvent = TextDeltaRenderEvent | ToolCallResultRenderEvent
 
 ### LlmProvider Protocol
 
-Defined in `src/lyra/llm/base.py`.
+Defined in `src/factory/llm/base.py`.
 
 ```python
 @runtime_checkable
@@ -192,7 +192,7 @@ class LlmResult:
 
 ## StreamProcessor — Logic
 
-Implemented in `src/lyra/core/processors/stream_processor.py`.
+Implemented in `src/factory/core/processors/stream_processor.py`.
 
 ```
 For each LlmEvent received:
@@ -242,7 +242,7 @@ edit       = true
 
 ## StreamingSession — Outbound Orchestration
 
-Implemented in `src/lyra/outbound/emitter.py`.
+Implemented in `src/factory/outbound/emitter.py`.
 
 Centralizes the edit-in-place streaming algorithm for all platform adapters.
 OutboundEmitter composes formatter + throttle + error_handler stages.

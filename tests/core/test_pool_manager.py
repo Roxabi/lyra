@@ -261,7 +261,7 @@ class TestEvictionFlushSession:
         hub.get_or_create_pool("pool-2", "test-agent")
 
         # flush_session is fire-and-forget via create_task — let it run
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.05)  # event-based
 
         assert len(agent.flush_calls) == 1
         _, reason = agent.flush_calls[0]
@@ -280,7 +280,7 @@ class TestEvictionFlushSession:
         hub._pool_manager._last_eviction_check = 0.0
 
         hub.get_or_create_pool("pool-2", "test-agent")
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.05)  # event-based
 
         assert len(agent.flush_calls) == 0
 

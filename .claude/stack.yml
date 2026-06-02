@@ -96,3 +96,8 @@ quality_gates:
     enabled: true
     script: tools/check_file_exemptions.sh
     description: every entry in file_exemptions.txt must have a non-expired expires=YYYY-MM-DD token
+
+  test_sleep:
+    enabled: true
+    stage: pre-push
+    script: tools/check_test_sleep.sh

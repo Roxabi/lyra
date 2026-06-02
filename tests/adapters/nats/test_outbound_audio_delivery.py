@@ -229,7 +229,7 @@ async def test_sc2_offline_then_restart_delivers() -> None:
                 raise result
             return result
         # Park until cancelled
-        await asyncio.sleep(9999)
+        await asyncio.sleep(9999)  # event-based
         return []  # unreachable
 
     mock_sub = MagicMock()

@@ -83,7 +83,7 @@ class TestGuardedProcessOneTypingScope:
         pool._turn_timeout = 0.01
 
         async def _slow_process(*_: Any, **__: Any) -> None:
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(1.0)  # event-based
 
         with patch(
             "factory.core.pool.pool_processor_exec.process_one",

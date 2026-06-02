@@ -50,7 +50,9 @@ async def test_typing_loop_refreshes_after_interval() -> None:
     interval = 0.05
 
     async with _typing_loop(bot, chat_id, interval=interval):
-        await asyncio.sleep(interval * 5)  # enough time for at least one refresh
+        await asyncio.sleep(
+            interval * 5
+        )  # event-based — enough time for at least one refresh
 
     # At least 2 calls: one on entry, at least one after interval
     assert bot.send_chat_action.await_count >= 2
@@ -72,7 +74,7 @@ async def test_typing_loop_cancels_background_task_on_exit() -> None:
     count_at_exit = bot.send_chat_action.await_count
 
     # Wait longer than interval to confirm no further calls after exit
-    await asyncio.sleep(0.12)
+    await asyncio.sleep(0.12)  # event-based
 
     assert bot.send_chat_action.await_count == count_at_exit
 
@@ -109,7 +111,7 @@ async def test_typing_loop_cancels_on_body_exception() -> None:
     import asyncio
 
     count_after = bot.send_chat_action.await_count
-    await asyncio.sleep(0.1)
+    await asyncio.sleep(0.1)  # event-based
     assert bot.send_chat_action.await_count == count_after
 
 

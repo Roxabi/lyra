@@ -86,7 +86,7 @@ class TestJetStreamAuditSinkBootstrapIntegration:
             await pool._spawn("p:1", model)
 
         for _ in range(5):
-            await asyncio.sleep(0)
+            await asyncio.sleep(0)  # event-based
 
         assert len(events) == 1
         assert events[0].skip_permissions is True  # type: ignore[union-attr]
@@ -115,7 +115,7 @@ class TestJetStreamAuditSinkBootstrapIntegration:
             await pool._spawn("p:2", model)
 
         for _ in range(5):
-            await asyncio.sleep(0)
+            await asyncio.sleep(0)  # event-based
 
         assert len(events) == 1
         assert events[0].skip_permissions is False  # type: ignore[union-attr]

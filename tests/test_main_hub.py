@@ -76,7 +76,7 @@ class TestGracefulShutdown:
         stop = asyncio.Event()
 
         async def trigger() -> None:
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
             stop.set()
 
         trigger_task = asyncio.create_task(trigger())

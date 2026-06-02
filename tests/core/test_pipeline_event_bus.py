@@ -189,7 +189,7 @@ class TestAuditConsumer:
 
         with caplog.at_level(logging.INFO):
             task = asyncio.create_task(consumer.run())
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
             task.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await task
@@ -217,7 +217,7 @@ class TestAuditConsumer:
 
         with caplog.at_level(logging.INFO):
             task = asyncio.create_task(consumer.run())
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
             task.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await task

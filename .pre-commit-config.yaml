@@ -119,8 +119,15 @@ repos:
     stages:
     - pre-push
   - id: check-debt-expiry
-    name: debt expiry (stale DEBT: markers without issue ref)
+    name: "debt expiry (stale DEBT: markers without issue ref)"
     entry: tools/check_debt_expiry.sh
+    language: system
+    pass_filenames: false
+    stages:
+    - pre-push
+  - id: check-test-sleep
+    name: test sleep (raw sleep without sync comment)
+    entry: tools/check_test_sleep.sh
     language: system
     pass_filenames: false
     stages:

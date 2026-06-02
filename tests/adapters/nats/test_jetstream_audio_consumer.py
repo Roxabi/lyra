@@ -453,7 +453,7 @@ async def test_stop_cancels_loop() -> None:
     consumer = _make_consumer()
 
     async def _forever(*args: object, **kwargs: object) -> None:
-        await asyncio.sleep(9999)
+        await asyncio.sleep(9999)  # event-based
 
     mock_sub = MagicMock()
     mock_sub.fetch = _forever
@@ -591,7 +591,7 @@ async def test_start_subscribes_with_exact_5_token_filter_subject() -> None:
     consumer._filter_subject = exact_subject
 
     async def _forever(*args: object, **kwargs: object) -> None:
-        await asyncio.sleep(9999)
+        await asyncio.sleep(9999)  # event-based
 
     mock_sub = MagicMock()
     mock_sub.fetch = _forever

@@ -264,7 +264,7 @@ class TestStandaloneHubPipeline:
             hub_task = asyncio.create_task(hub.run(), name="hub-run")
 
             # Give Hub.run() a moment to enter its get() await
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # NATS delivery window
 
             payload = serialize(test_msg)
             await nc.publish(inbound_subject, payload)
@@ -275,7 +275,7 @@ class TestStandaloneHubPipeline:
             while asyncio.get_event_loop().time() < deadline:
                 if inbound_bus.staging_qsize() == 0:
                     break
-                await asyncio.sleep(0.05)
+                await asyncio.sleep(0.05)  # NATS delivery window
 
             # Assert — staging queue is empty: Hub.run() consumed the message
             assert inbound_bus.staging_qsize() == 0, (
@@ -354,7 +354,7 @@ class TestStandaloneHubPipeline:
             # Act — start Hub, publish message via NATS
             hub_task = asyncio.create_task(hub.run(), name="hub-run-trust")
 
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # NATS delivery window
 
             payload = serialize(test_msg)
             await nc.publish(inbound_subject, payload)
@@ -365,10 +365,10 @@ class TestStandaloneHubPipeline:
             while asyncio.get_event_loop().time() < deadline:
                 if inbound_bus.staging_qsize() == 0:
                     break
-                await asyncio.sleep(0.05)
+                await asyncio.sleep(0.05)  # NATS delivery window
 
             # Give Hub.run() a moment to finish pipeline processing after get()
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.1)  # NATS delivery window
 
             # Assert — Authenticator.resolve() was called with user_id from the message
             mock_auth.resolve.assert_called_once()

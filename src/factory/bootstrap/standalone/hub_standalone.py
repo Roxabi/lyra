@@ -7,6 +7,8 @@ import logging
 import os
 import sys
 
+import nats.errors
+
 from factory.bootstrap.auth_seeding import build_bot_auths, seed_grants_from_bots
 from factory.bootstrap.bootstrap_stores import open_stores
 from factory.bootstrap.factory.agent_factory import _resolve_bot_agent_map
@@ -69,7 +71,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
             reconnected_cb=_on_nats_reconnect(_freshness_drivers_list),
         )
         log.info("Connected to NATS at %s", scrub_nats_url(nats_url))
-    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+    except (nats.errors.Error, OSError) as exc:
         sys.exit(f"Failed to connect to NATS at {scrub_nats_url(nats_url)!r}: {exc}")
 
     inbound_bus, _ = build_inbound_bus(nc, raw_config)
@@ -157,8 +159,6 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
         # when they connect. Idempotent: safe on every hub restart. ADR-079.
         # Fail-fast: provisioning is terminal — adapters block on wait_for_hub
         # until stream+KV exist (ADR-079 S3). RestartSec recovers the hub.
-        import nats.errors as _nats_errors
-
         from factory.infrastructure.outbound_audio.stream_setup import (
             ensure_kv,
             ensure_stream,
@@ -168,7 +168,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
         try:
             await ensure_stream(_audio_js)
             await ensure_kv(_audio_js)
-        except _nats_errors.Error as exc:
+        except nats.errors.Error as exc:
             log.critical(
                 "hub_standalone: audio provisioning failed — stream/KV not created;"
                 " hub cannot announce ready; adapters will not unblock. "
@@ -214,7 +214,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
     try:
         await nc.close()
         log.info("NATS connection closed.")
-    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+    except nats.errors.Error as exc:
         log.warning("Error closing NATS connection: %s", exc)
 
     release_lockfile()

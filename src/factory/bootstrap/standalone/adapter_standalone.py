@@ -7,6 +7,8 @@ import logging
 import os
 import sys
 
+import nats.errors
+
 from factory.bootstrap.factory.config import build_adapter_config_bundle
 from factory.core.messaging.message import Platform
 from factory.core.messaging.utils.metrics import log_contracts_version
@@ -48,7 +50,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
             "adapter_standalone: connected to NATS at %s",
             scrub_nats_url(nats_url),
         )
-    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+    except (nats.errors.Error, OSError) as exc:
         sys.exit(f"Failed to connect to NATS at {scrub_nats_url(nats_url)!r}: {exc}")
 
     vault_dir = factory_data_dir()

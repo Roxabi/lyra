@@ -17,6 +17,7 @@ from factory.adapters.discord.discord_formatting import (
 from factory.adapters.shared._shared import (
     DISCORD_MAX_LENGTH,
 )
+from factory.adapters.shared.platform_send import send_chunked_message
 from factory.core.messaging.message import (
     InboundMessage,
     OutboundMessage,
@@ -29,6 +30,11 @@ if TYPE_CHECKING:
 log = logging.getLogger("factory.adapters.discord")
 
 # Channels that support get_partial_message(); _resolve_channel() returns one of these.
+#
+# Discord-specific: only these channel types expose get_partial_message(), which is
+# required for the reply-to path (should_reply=True, thread_id=None). The cast is
+# kept inline in send() rather than pushed into platform_send because it couples
+# tightly to the Discord SDK type hierarchy — platform_send stays SDK-agnostic.
 _PartialMessageable = (
     discord.TextChannel
     | discord.Thread
@@ -126,7 +132,19 @@ async def send(  # noqa: C901 — DEBT:adapter-dispatch-complexity
     original_msg: InboundMessage,
     outbound: OutboundMessage,
 ) -> None:
-    """Send response back to Discord."""
+    """Send response back to Discord.
+
+    Discord-specific send logic:
+    - reply-vs-thread: skip reply-to when inside a thread (thread context makes
+      reply redundant). ``should_reply`` encodes this gate.
+    - cast to ``_PartialMessageable``: required for ``get_partial_message()`` on
+      the reply path; kept inline (not in platform_send) because it couples to
+      the Discord SDK type hierarchy.
+
+    The per-chunk iteration is delegated to ``send_chunked_message`` from
+    ``platform_send``, which owns the view-on-last logic shared with Telegram.
+    The reply-to-on-all-chunks path is Discord-only and stays in ``_send_chunk``.
+    """
     meta = _validate_inbound(original_msg, "send")
     if meta is None:
         return
@@ -137,13 +155,25 @@ async def send(  # noqa: C901 — DEBT:adapter-dispatch-complexity
     text = outbound.to_text()
     chunks = render_text(text, DISCORD_MAX_LENGTH)
     view = render_buttons(outbound.buttons)
-    last_idx = len(chunks) - 1
 
     # Skip reply-to in threads — thread context makes it redundant.
     reply_msg_id: int | None = message_id
     should_reply = reply_msg_id is not None and thread_id is None
-    for i, chunk in enumerate(chunks):
-        chunk_view = view if (i == last_idx and view is not None) else None
+
+    async def _send_chunk(
+        chunk: str,
+        chunk_view: Any,
+        *,
+        is_first: bool,
+        is_last: bool,
+    ) -> Any:
+        """Send one chunk with reply-to (all chunks when should_reply) and view (last).
+
+        is_first / is_last are provided by send_chunked_message per its contract.
+        When should_reply is True, every chunk is sent as a reply (not just the first)
+        — this matches original behaviour where msg_obj.reply() was used for all chunks.
+        """
+        del is_first, is_last  # view attachment handled by caller via chunk_view arg
         if should_reply:
             if reply_msg_id is None:
                 raise RuntimeError(
@@ -153,20 +183,25 @@ async def send(  # noqa: C901 — DEBT:adapter-dispatch-complexity
                 reply_msg_id
             )
             if chunk_view is not None:
-                sent = await msg_obj.reply(chunk, view=chunk_view)
-            else:
-                sent = await msg_obj.reply(chunk)
-        else:
-            if chunk_view is not None:
-                sent = await messageable.send(chunk, view=chunk_view)
-            else:
-                sent = await messageable.send(chunk)
-        if i == last_idx:
-            outbound.metadata["reply_message_id"] = sent.id
+                return await msg_obj.reply(chunk, view=chunk_view)
+            return await msg_obj.reply(chunk)
+        if chunk_view is not None:
+            return await messageable.send(chunk, view=chunk_view)
+        return await messageable.send(chunk)
+
+    last_id = await send_chunked_message(
+        chunks=chunks,
+        view=view,
+        send_chunk=_send_chunk,
+    )
+    if last_id is not None:
+        outbound.metadata["reply_message_id"] = last_id
+
     if outbound.intermediate:
         adapter._start_typing(send_to_id)
     else:
         adapter._cancel_typing(send_to_id)
+
     log.debug(
         "stored reply_message_id=%s for msg_id=%s",
         outbound.metadata.get("reply_message_id"),

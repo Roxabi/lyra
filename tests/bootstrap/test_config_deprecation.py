@@ -5,8 +5,8 @@ sections are present and stays silent on clean configs.
 
 Contract:
   - Function: warn_deprecated_bot_sections(raw: dict)
-  - Module: lyra.bootstrap.factory.config
-  - Logger: lyra.bootstrap.factory.config (module-level `log`)
+  - Module: factory.bootstrap.factory.config
+  - Logger: factory.bootstrap.factory.config (module-level `log`)
   - Dedup flag: _bot_sections_deprecation_warned (module-level bool, initially False)
   - Log level: WARNING
   - Message substring: "TOML bot sections are deprecated"
@@ -21,11 +21,9 @@ from pathlib import Path
 
 import pytest
 
-LOGGER_NAME = "lyra.bootstrap.factory.config.config_deprecation"
+LOGGER_NAME = "factory.bootstrap.factory.config.config_deprecation"
 DEPRECATED_SUBSTRING = "TOML bot sections are deprecated"
-FLAG_PATH = (
-    "lyra.bootstrap.factory.config.config_deprecation._bot_sections_deprecation_warned"
-)
+FLAG_PATH = "factory.bootstrap.factory.config.config_deprecation._bot_sections_deprecation_warned"  # noqa: E501
 
 
 class TestWarnOnLegacyBotSections:
@@ -49,7 +47,7 @@ class TestWarnOnLegacyBotSections:
         # Reset dedup flag so the warning fires even if another test ran first
         monkeypatch.setattr(FLAG_PATH, False, raising=False)
 
-        from lyra.bootstrap.factory.config import _load_raw_config
+        from factory.bootstrap.factory.config import _load_raw_config
 
         # Act
         with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
@@ -78,7 +76,7 @@ class TestWarnOnLegacyBotSections:
         )
         monkeypatch.setattr(FLAG_PATH, False, raising=False)
 
-        from lyra.bootstrap.factory.config import _load_raw_config
+        from factory.bootstrap.factory.config import _load_raw_config
 
         # Act
         with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):
@@ -113,7 +111,7 @@ class TestWarnOnLegacyBotSections:
         # Reset dedup flag to False so the first call fires the warning
         monkeypatch.setattr(FLAG_PATH, False, raising=False)
 
-        from lyra.bootstrap.factory.config import _load_raw_config
+        from factory.bootstrap.factory.config import _load_raw_config
 
         # Act — call TWICE with the same path; module flag persists between calls
         with caplog.at_level(logging.WARNING, logger=LOGGER_NAME):

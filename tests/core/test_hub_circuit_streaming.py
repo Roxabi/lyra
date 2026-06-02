@@ -7,12 +7,12 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from lyra.core import Agent, AgentBase, Hub, Pool, Response
-from lyra.core.lifecycle.circuit_breaker import CircuitBreaker
+from factory.core import Agent, AgentBase, Hub, Pool, Response
+from factory.core.lifecycle.circuit_breaker import CircuitBreaker
 
 if TYPE_CHECKING:
-    from lyra.core.hub.hub_protocol import ChannelAdapter
-from lyra.core.messaging.message import (
+    from factory.core.hub.hub_protocol import ChannelAdapter
+from factory.core.messaging.message import (
     InboundMessage,
     OutboundMessage,
     Platform,
@@ -111,7 +111,7 @@ async def test_mid_stream_failure_records_anthropic_failure() -> None:
         command_router = None
 
         def process(self, msg: InboundMessage, pool: Pool, *, on_intermediate=None):
-            from lyra.errors import ProviderError
+            from factory.errors import ProviderError
 
             async def gen():
                 yield "partial"
@@ -201,7 +201,7 @@ async def test_hub_circuit_opens_after_threshold() -> None:
         pass
 
     # Assert — hub circuit must be OPEN
-    from lyra.core.lifecycle.circuit_breaker import CircuitState
+    from factory.core.lifecycle.circuit_breaker import CircuitState
 
     hub_status = registry["hub"].get_status()
     assert hub_status.state == CircuitState.OPEN, (
@@ -221,12 +221,12 @@ async def test_hub_msg_manager_injection_generic_on_agent_failure() -> None:
     string (not the hardcoded fallback) when agent.process() raises."""
     from pathlib import Path
 
-    from lyra.core.messaging.messages import MessageManager
+    from factory.core.messaging.messages import MessageManager
 
     TOML_PATH = (
         Path(__file__).resolve().parent.parent.parent
         / "src"
-        / "lyra"
+        / "factory"
         / "data"
         / "messages.toml"
     )

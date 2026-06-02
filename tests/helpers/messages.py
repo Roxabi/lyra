@@ -12,9 +12,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from lyra.core.audio_payload import AudioPayload
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage
+from factory.core.audio_payload import AudioPayload
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import InboundMessage
 from roxabi_contracts import BlobRef
 from tests.factories.blobs import _TEST_BLOB_REGISTRY  # noqa: F401  # re-export
 

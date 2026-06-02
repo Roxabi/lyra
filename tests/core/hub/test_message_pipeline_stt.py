@@ -19,9 +19,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.hub.middleware import PipelineContext
-from lyra.core.hub.middleware.middleware_stt import SttMiddleware
-from lyra.core.hub.pipeline.message_pipeline import _DROP, Action, PipelineResult
+from factory.core.hub.middleware import PipelineContext
+from factory.core.hub.middleware.middleware_stt import SttMiddleware
+from factory.core.hub.pipeline.message_pipeline import _DROP, Action, PipelineResult
 from tests.helpers.messages import make_text_message, make_voice_message
 
 # ---------------------------------------------------------------------------
@@ -68,7 +68,7 @@ class NoisySTT:
     timeout_ms: int = 30000
 
     async def transcribe(self, audio: Any, mime: Any) -> FakeTranscription:
-        from lyra.core.ports.stt import STTNoiseError
+        from factory.core.ports.stt import STTNoiseError
 
         raise STTNoiseError("Noise transcript: ''")
 
@@ -79,7 +79,7 @@ class UnavailableSTT:
     timeout_ms: int = 30000
 
     async def transcribe(self, audio: Any, mime: Any) -> FakeTranscription:
-        from lyra.core.ports.stt import STTUnavailableError
+        from factory.core.ports.stt import STTUnavailableError
 
         raise STTUnavailableError("model not loaded")
 
@@ -397,7 +397,7 @@ class TestSttMiddleware:
         """
         import dataclasses
 
-        from lyra.core.audio_payload import AudioPayload
+        from factory.core.audio_payload import AudioPayload
 
         # Arrange — real STT stub wired, audio present but blob_ref=None
         transcribe_mock = AsyncMock()
@@ -467,8 +467,8 @@ class TestBuildSttReply:
 
     def test_telegram_meta_reply_false_clears_message_id(self) -> None:
         """TelegramMeta + reply=False → message_id set to None."""
-        from lyra.core.hub.middleware.middleware_stt import _build_stt_reply
-        from lyra.core.messaging.message import TelegramMeta
+        from factory.core.hub.middleware.middleware_stt import _build_stt_reply
+        from factory.core.messaging.message import TelegramMeta
 
         msg = make_text_message(
             platform_meta=TelegramMeta(chat_id=1, message_id=5),
@@ -480,8 +480,8 @@ class TestBuildSttReply:
 
     def test_discord_meta_reply_false_preserves_message_id(self) -> None:
         """DiscordMeta + reply=False → platform_meta unchanged (no reply concept)."""
-        from lyra.core.hub.middleware.middleware_stt import _build_stt_reply
-        from lyra.core.messaging.message import DiscordMeta
+        from factory.core.hub.middleware.middleware_stt import _build_stt_reply
+        from factory.core.messaging.message import DiscordMeta
 
         meta = DiscordMeta(channel_id=10, message_id=5, guild_id=1, channel_type="text")
         msg = make_text_message(platform_meta=meta)

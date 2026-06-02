@@ -7,14 +7,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lyra.core.auth.authenticator import (
+from factory.core.auth.authenticator import (
     Authenticator as AuthMiddleware,
 )
-from lyra.core.auth.authenticator import (
+from factory.core.auth.authenticator import (
     AuthenticatorDeps,
 )
-from lyra.core.auth.trust import TrustLevel
-from lyra.infrastructure.stores.auth_store import AuthStore
+from factory.core.auth.trust import TrustLevel
+from factory.infrastructure.stores.auth_store import AuthStore
 
 # ---------------------------------------------------------------------------
 # TestAuthMiddleware

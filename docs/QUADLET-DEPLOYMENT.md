@@ -437,7 +437,7 @@ and KV dedup bucket `lyra_outbound_audio_sent`. See ADR-077 for the full decisio
 
 ```bash
 # On M₁ (roxabituwer) — regen auth.conf from real nkey seeds in ~/.lyra/nkeys/
-sudo env "PATH=$PATH" lyra-acl genkeys --regen-authconf
+sudo env "PATH=$PATH" factory-acl genkeys --regen-authconf
 
 # Re-install the NATS auth secret from the regenerated file
 podman secret create --replace lyra-nats-auth ~/.lyra/nkeys/auth.conf

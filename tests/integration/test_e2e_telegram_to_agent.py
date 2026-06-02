@@ -12,25 +12,25 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.agents.simple_agent import SimpleAgent
-from lyra.core.agent import Agent
-from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.hub import Hub
-from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent
-from lyra.core.messaging.message import (
+from factory.agents.simple_agent import SimpleAgent
+from factory.core.agent import Agent
+from factory.core.agent.agent_config import ModelConfig
+from factory.core.auth.trust import TrustLevel
+from factory.core.hub import Hub
+from factory.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
+from factory.core.messaging.events import ResultLlmEvent, TextLlmEvent
+from factory.core.messaging.message import (
     InboundMessage,
     OutboundMessage,
     Platform,
     TelegramMeta,
 )
-from lyra.core.messaging.render_events import RenderEvent
-from lyra.llm.base import LlmResult
+from factory.core.messaging.render_events import RenderEvent
+from factory.llm.base import LlmResult
 from tests.core.conftest import _MockAdapter, push_to_hub
 
 if TYPE_CHECKING:
-    from lyra.core.messaging.message import OutboundAudioChunk
+    from factory.core.messaging.message import OutboundAudioChunk
 
 
 class _RecordingAdapter(_MockAdapter):

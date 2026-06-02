@@ -19,8 +19,8 @@ import json
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.messaging.inbound_bus import LocalBus
-from lyra.core.messaging.message import InboundMessage, Platform
+from factory.core.messaging.inbound_bus import LocalBus
+from factory.core.messaging.message import InboundMessage, Platform
 from tests.helpers.messages import make_text_message
 
 # ---------------------------------------------------------------------------
@@ -70,7 +70,7 @@ class TestLocalBusInject:
 class TestNatsBusInject:
     async def test_nats_bus_inject_enqueues_item_bypassing_nats(self) -> None:
         # Arrange — NatsBus with a mock NATS client (no real connection needed)
-        from lyra.nats.nats_bus import NatsBus
+        from factory.nats.nats_bus import NatsBus
 
         nc = MagicMock()
         nc.publish = AsyncMock()

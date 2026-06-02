@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock
 import nats.errors
 import pytest
 
-from lyra.infrastructure.audit.jetstream_sink import (
+from factory.infrastructure.audit.jetstream_sink import (
     _SUBJECT_NORMAL,
     _SUBJECT_PREFIX,
     _SUBJECT_PRIVILEGED,

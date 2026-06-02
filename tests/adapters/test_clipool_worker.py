@@ -18,8 +18,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.core.cli.cli_pool import CliPool, CliResult
-from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
+from factory.core.cli.cli_pool import CliPool, CliResult
+from factory.core.messaging.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -87,7 +87,7 @@ def _make_pool() -> MagicMock:
 
 def test_extra_subjects_includes_control() -> None:
     """_extra_subjects() returns exactly ['lyra.clipool.control']."""
-    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange
     pool = _make_pool()
@@ -106,7 +106,7 @@ def test_extra_subjects_includes_control() -> None:
 
 async def test_handle_routes_control_by_subject() -> None:
     """msg.subject == 'lyra.clipool.control' -> _handle_control; else -> _handle_cmd."""
-    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange
     pool = _make_pool()
@@ -136,7 +136,7 @@ async def test_handle_routes_control_by_subject() -> None:
 
 async def test_handle_cmd_stream_calls_pool_send_streaming() -> None:
     """stream=True: send_streaming() called, chunks published to msg.reply."""
-    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange
     pool = _make_pool()
@@ -164,7 +164,7 @@ async def test_handle_cmd_stream_calls_pool_send_streaming() -> None:
 
 async def test_handle_cmd_nonstream_calls_pool_send() -> None:
     """stream=False: pool.send() called, single reply published to msg.reply."""
-    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange
     pool = _make_pool()
@@ -192,7 +192,7 @@ async def test_handle_cmd_nonstream_calls_pool_send() -> None:
 
 async def test_handle_cmd_send_streaming_exception_publishes_error() -> None:
     """When pool.send_streaming raises, worker publishes error chunk via _nc.publish."""
-    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange
     pool = _make_pool()
@@ -218,7 +218,7 @@ async def test_handle_cmd_send_streaming_exception_publishes_error() -> None:
 
 async def test_handle_cmd_publishes_done_chunk_after_stream() -> None:
     """Streaming path publishes a terminal 'done' chunk after iterating events."""
-    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange
     pool = _make_pool()
@@ -251,7 +251,7 @@ async def test_handle_cmd_streaming_forwards_tool_use_as_keepalive() -> None:
     healthy session. The chunk acts as a keepalive — the hub ignores its
     payload but the arrival resets the timer.
     """
-    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange
     pool = _make_pool()
@@ -287,7 +287,7 @@ async def test_handle_cmd_streaming_forwards_worker_error_from_result_event() ->
     hub's nats_driver synthesises `worker.internal` instead of the precise
     CLI code, breaking the P2 instrumentation chain on the streaming path.
     """
-    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
     from roxabi_contracts.errors import WorkerError
 
     # Arrange
@@ -333,7 +333,7 @@ async def test_handle_cmd_validation_error_replies_worker_validation() -> None:
     failed — this is the textbook `worker.validation` case, not
     `transport.parse` (which means "couldn't decode bytes/JSON").
     """
-    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange — payload missing required `text` and `model_cfg` fields
     bad_payload = {
@@ -374,7 +374,7 @@ async def test_handle_cmd_validation_error_replies_worker_validation() -> None:
 
 async def test_handle_control_parse_failure_replies_error_ack() -> None:
     """Malformed CliControlCmd payload: worker replies ok=False (does not hang)."""
-    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange
     pool = _make_pool()
@@ -396,7 +396,7 @@ async def test_handle_control_parse_failure_replies_error_ack() -> None:
 
 async def test_handle_control_dispatch_exception_replies_ok_false() -> None:
     """When pool.reset raises, _handle_control catches and replies ok=False."""
-    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange
     pool = _make_pool()
@@ -418,7 +418,7 @@ async def test_handle_control_dispatch_exception_replies_ok_false() -> None:
 
 async def test_handle_control_reset() -> None:
     """op='reset': pool.reset() called; CliControlAck(ok=True) published."""
-    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange
     pool = _make_pool()
@@ -448,7 +448,7 @@ async def test_handle_control_reset() -> None:
 
 async def test_handle_control_resume_and_reset() -> None:
     """op='resume_and_reset': pool.resume_direct(pool_id, session_id) called."""
-    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange
     pool = _make_pool()
@@ -481,10 +481,10 @@ async def test_handle_control_resume_and_reset() -> None:
 
 async def test_handle_control_switch_cwd(monkeypatch: pytest.MonkeyPatch) -> None:
     """op='switch_cwd': pool.switch_cwd() called with pool_id and cwd."""
-    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange — allow /tmp as the base so /tmp/workspace passes the guard
-    monkeypatch.setenv("LYRA_CLAUDE_CWD", "/tmp")
+    monkeypatch.setenv("FACTORY_CLAUDE_CWD", "/tmp")
     pool = _make_pool()
     worker = CliPoolNatsWorker(pool)
     nc = AsyncMock()
@@ -515,7 +515,7 @@ async def test_handle_control_switch_cwd(monkeypatch: pytest.MonkeyPatch) -> Non
 
 def test_heartbeat_payload_has_pool_count() -> None:
     """heartbeat_payload() includes pool_count == len(pool._entries)."""
-    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange
     pool = _make_pool()
@@ -536,7 +536,7 @@ def test_heartbeat_payload_has_pool_count() -> None:
 
 def test_heartbeat_payload_empty_pool() -> None:
     """heartbeat_payload() with empty pool gives pool_count == 0."""
-    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange
     pool = _make_pool()
@@ -561,7 +561,7 @@ def test_heartbeat_payload_empty_pool() -> None:
 
 def test_constructor_passes_correct_subject_and_queue_group() -> None:
     """Constructor sets subject='lyra.clipool.cmd' and queue_group='clipool-workers'."""
-    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange / Act
     pool = _make_pool()
@@ -574,7 +574,7 @@ def test_constructor_passes_correct_subject_and_queue_group() -> None:
 
 def test_constructor_custom_timeout() -> None:
     """Constructor accepts custom timeout kwarg."""
-    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange / Act
     pool = _make_pool()
@@ -600,7 +600,7 @@ _SENSITIVE_TOKEN = "leak42-host:4222"
 
 async def test_classify_exception_worker_crash_does_not_leak_exception_str() -> None:
     """_classify_exception(RuntimeError(sensitive)) → worker.crash with no leak."""
-    from lyra.adapters.clipool.clipool_worker import _classify_exception
+    from factory.adapters.clipool.clipool_worker import _classify_exception
 
     # Arrange — generic exception caught by the worker.crash branch
     leaky_exc = RuntimeError(f"unexpected failure talking to {_SENSITIVE_TOKEN}")
@@ -624,7 +624,7 @@ async def test_classify_exception_session_lost_does_not_leak_exception_str() -> 
     """asyncio.TimeoutError(sensitive) → cli.session_lost: no leak in message."""
     import asyncio
 
-    from lyra.adapters.clipool.clipool_worker import _classify_exception
+    from factory.adapters.clipool.clipool_worker import _classify_exception
 
     # Arrange — asyncio.TimeoutError can carry message content when constructed
     # with one (rare in practice, but possible from wrapping code).
@@ -651,7 +651,7 @@ async def test_classify_exception_parse_does_not_leak_byte_sequence() -> None:
     reason string — exactly the class of data this PR aims to keep off the
     bus.
     """
-    from lyra.adapters.clipool.clipool_worker import _classify_exception
+    from factory.adapters.clipool.clipool_worker import _classify_exception
 
     # Arrange — sensitive content as the reason argument (echoed by __str__)
     leaky_exc = UnicodeDecodeError(
@@ -688,7 +688,7 @@ async def test_identity_streaming_full_fields_forwarded_to_pool() -> None:
     Guards finding #9: if _handle_cmd_streaming stops forwarding any of the
     three identity kwargs, this test fails even though all other tests pass.
     """
-    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange
     pool = _make_pool()
@@ -724,7 +724,7 @@ async def test_identity_streaming_partial_identity_forwarded_to_pool() -> None:
     identity). The worker must forward the None explicitly rather than omitting
     the kwarg.
     """
-    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange
     pool = _make_pool()
@@ -762,7 +762,7 @@ async def test_identity_blocking_full_fields_forwarded_to_pool() -> None:
     Guards finding #9 for the non-streaming path. stream=False dispatches
     through _handle_cmd_blocking which has its own pool.send call site.
     """
-    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange
     pool = _make_pool()
@@ -812,7 +812,7 @@ async def test_legacy_envelope_passes_none_identity_to_pool() -> None:
     defaults let CliCmdPayload.model_validate succeed and produce None for both
     agent_name and agent_email; the worker then forwards those Nones to the pool.
     """
-    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange — legacy-shape payload constructed from scratch (no new fields present)
     legacy_payload: dict = {
@@ -863,7 +863,7 @@ async def test_handle_cmd_validation_error_does_not_leak_payload_fields() -> Non
     Pydantic's ~50-char ``input_value`` truncation window, so the negative
     assertion is meaningful (i.e. the test fails if sanitization is reverted).
     """
-    from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+    from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange — sensitive value in a typed field that Pydantic echoes
     bad_payload = {

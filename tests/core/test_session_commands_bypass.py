@@ -9,12 +9,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.commands.command_parser import CommandParser
-from lyra.core.messaging.message import InboundMessage, Response, TelegramMeta
-from lyra.core.pool import Pool
-from lyra.core.processors.processor_registry import BaseProcessor, registry
-from lyra.integrations.base import SessionTools
+from factory.core.auth.trust import TrustLevel
+from factory.core.commands.command_parser import CommandParser
+from factory.core.messaging.message import InboundMessage, Response, TelegramMeta
+from factory.core.pool import Pool
+from factory.core.processors.processor_registry import BaseProcessor, registry
+from factory.integrations.base import SessionTools
 from tests.conftest import yield_once
 from tests.helpers import reload_processors
 

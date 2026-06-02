@@ -11,7 +11,7 @@ declared nowhere. Orphans fail CI — unless baselined in the allowlist.
 Re-scoped per ADR-081 (#1530): resolution goes through ``oracle.resolve(token)``,
 NOT a bespoke acl-matrix/contracts resolver. The oracle owns subject knowledge.
 
-Module/logger names (``lyra.adapters.telegram``) resolve as ``kind == "module"``
+Module/logger names (``factory.adapters.telegram``) resolve as ``kind == "module"``
 and are never flagged. Three classes of subject-shaped non-subjects are filtered
 out before resolution to avoid false positives:
   - f-string fragments  (``f"lyra.outbound.{bot}"`` → fragment ``"lyra.outbound."``)

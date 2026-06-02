@@ -79,9 +79,9 @@ def _acl_matrix(root: Path, subjects: list[str]) -> None:
 
 def test_module_live_src(tmp_path: Path) -> None:
     """A .py file under src/ is resolved as an existing module."""
-    _make_src_module(tmp_path, "lyra/core/hub.py", "# hub\n")
+    _make_src_module(tmp_path, "factory/core/hub.py", "# hub\n")
     inv = CodeInventory.build(tmp_path)
-    v = inv.resolve("lyra.core.hub")
+    v = inv.resolve("factory.core.hub")
     assert v == Verdict(exists=True, kind="module")
 
 
@@ -93,14 +93,14 @@ def test_module_live_src(tmp_path: Path) -> None:
 def test_module_dead_project_prefix(tmp_path: Path) -> None:
     """A dotted lyra.* token with no backing file resolves as dead (exists=False).
 
-    When a valid module prefix exists (lyra.core) but the suffix is lowercase
+    When a valid module prefix exists (factory.core) but the suffix is lowercase
     and not in symbols, the oracle cannot distinguish a dead submodule from a
     dead subject reference — it returns kind=subject as a conservative guess.
     Either way exists=False is correct; the gate catches the violation.
     """
-    _make_src_module(tmp_path, "lyra/__init__.py")
+    _make_src_module(tmp_path, "factory/__init__.py")
     inv = CodeInventory.build(tmp_path)
-    v = inv.resolve("lyra.core.ghostmodule")
+    v = inv.resolve("factory.core.ghostmodule")
     # Token is in project namespace → exists=False (dead reference)
     assert v.exists is False
     # kind is subject or module — both result in the ref being flagged
@@ -114,7 +114,7 @@ def test_module_dead_project_prefix(tmp_path: Path) -> None:
 
 def test_symbol_live(tmp_path: Path) -> None:
     """A class defined at top level in src/ resolves as an existing symbol."""
-    _make_src_module(tmp_path, "lyra/core/hub.py", "class Hub: ...\n")
+    _make_src_module(tmp_path, "factory/core/hub.py", "class Hub: ...\n")
     inv = CodeInventory.build(tmp_path)
     v = inv.resolve("Hub")
     assert v == Verdict(exists=True, kind="symbol")
@@ -122,7 +122,7 @@ def test_symbol_live(tmp_path: Path) -> None:
 
 def test_symbol_dead(tmp_path: Path) -> None:
     """A PascalCase name not in src/ resolves as dead symbol."""
-    _make_src_module(tmp_path, "lyra/__init__.py")
+    _make_src_module(tmp_path, "factory/__init__.py")
     inv = CodeInventory.build(tmp_path)
     v = inv.resolve("ZzzGhostClass")
     assert v.exists is False
@@ -135,29 +135,29 @@ def test_symbol_dead(tmp_path: Path) -> None:
 
 
 def test_qualified_symbol_live(tmp_path: Path) -> None:
-    """lyra.core.hub.Hub resolves as live symbol (module + class in that module)."""
-    _make_src_module(tmp_path, "lyra/core/hub.py", "class Hub: ...\n")
+    """factory.core.hub.Hub resolves as live symbol (module + class in that module)."""
+    _make_src_module(tmp_path, "factory/core/hub.py", "class Hub: ...\n")
     inv = CodeInventory.build(tmp_path)
-    v = inv.resolve("lyra.core.hub.Hub")
+    v = inv.resolve("factory.core.hub.Hub")
     assert v == Verdict(exists=True, kind="symbol")
 
 
 def test_qualified_symbol_dead(tmp_path: Path) -> None:
-    """lyra.core.hub.GhostClass → dead symbol (module exists, class absent)."""
-    _make_src_module(tmp_path, "lyra/core/hub.py", "class Hub: ...\n")
+    """factory.core.hub.GhostClass → dead symbol (module exists, class absent)."""
+    _make_src_module(tmp_path, "factory/core/hub.py", "class Hub: ...\n")
     inv = CodeInventory.build(tmp_path)
-    v = inv.resolve("lyra.core.hub.GhostClass")
+    v = inv.resolve("factory.core.hub.GhostClass")
     assert v.exists is False
     assert v.kind == "symbol"
 
 
 def test_qualified_four_segment_symbol_live(tmp_path: Path) -> None:
-    """lyra.outbound.emitter.OutboundEmitter resolves live across four segments."""
+    """factory.outbound.emitter.OutboundEmitter resolves live across four segments."""
     _make_src_module(
-        tmp_path, "lyra/outbound/emitter.py", "class OutboundEmitter: ...\n"
+        tmp_path, "factory/outbound/emitter.py", "class OutboundEmitter: ...\n"
     )
     inv = CodeInventory.build(tmp_path)
-    v = inv.resolve("lyra.outbound.emitter.OutboundEmitter")
+    v = inv.resolve("factory.outbound.emitter.OutboundEmitter")
     assert v == Verdict(exists=True, kind="symbol")
 
 
@@ -169,7 +169,7 @@ def test_qualified_four_segment_symbol_live(tmp_path: Path) -> None:
 def test_substring_collision_no_false_resolve(tmp_path: Path) -> None:
     """WorkerPool does not match just because WorkerPoolClient exists."""
     _make_src_module(
-        tmp_path, "lyra/transport/pool.py", "class WorkerPoolClient: ...\n"
+        tmp_path, "factory/transport/pool.py", "class WorkerPoolClient: ...\n"
     )
     inv = CodeInventory.build(tmp_path)
     # WorkerPoolClient must exist
@@ -236,7 +236,7 @@ def test_subject_dead(tmp_path: Path) -> None:
 
 def test_subject_not_mistaken_for_dead_module(tmp_path: Path) -> None:
     """lyra.clipool.cmd (known subject) does not appear as a dead module."""
-    _make_src_module(tmp_path, "lyra/__init__.py")
+    _make_src_module(tmp_path, "factory/__init__.py")
     _acl_matrix(tmp_path, ["lyra.clipool.cmd"])
     inv = CodeInventory.build(tmp_path)
     v = inv.resolve("lyra.clipool.cmd")
@@ -265,9 +265,9 @@ def test_package_module_live(tmp_path: Path) -> None:
 
 def test_path_live(tmp_path: Path) -> None:
     """A src/ path that exists on disk resolves as existing path."""
-    _make_src_module(tmp_path, "lyra/core/hub.py")
+    _make_src_module(tmp_path, "factory/core/hub.py")
     inv = CodeInventory.build(tmp_path)
-    v = inv.resolve("src/lyra/core/hub.py")
+    v = inv.resolve("src/factory/core/hub.py")
     assert v == Verdict(exists=True, kind="path")
 
 
@@ -287,7 +287,7 @@ def test_package_relative_path_live(tmp_path: Path) -> None:
 def test_path_dead(tmp_path: Path) -> None:
     """A src/ path that does not exist resolves as dead path."""
     inv = CodeInventory.build(tmp_path)
-    v = inv.resolve("src/lyra/core/ghost_file.py")
+    v = inv.resolve("src/factory/core/ghost_file.py")
     assert v == Verdict(exists=False, kind="path")
 
 
@@ -328,7 +328,7 @@ def test_imported_name_lives(tmp_path: Path) -> None:
     """A name imported at module level resolves as an existing symbol."""
     _make_src_module(
         tmp_path,
-        "lyra/core/hub.py",
+        "factory/core/hub.py",
         "from fastapi import FastAPI\nclass Hub: ...\n",
     )
     inv = CodeInventory.build(tmp_path)
@@ -358,14 +358,14 @@ def test_external_name_is_unknown(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "token",
     [
-        "lyra.inbound.<platform>.<bot_id>",
+        "factory.inbound.<platform>.<bot_id>",
         "lyra.{domain}.*",
         "src/**/*.py",
-        "src/lyra/adapters/{platform}/{platform}_inbound.py",
+        "src/factory/adapters/{platform}/{platform}_inbound.py",
         "roxabi_nats.serialize()",
         "roxabi_contracts.voice|image",
-        "src/lyra/core/messaging/message.py:160",
-        "src/lyra/bootstrap/factory/agent_factory.py::_build_per_agent_registry()",
+        "src/factory/core/messaging/message.py:160",
+        "src/factory/bootstrap/factory/agent_factory.py::_build_per_agent_registry()",
         "lyra.*",
         "lyra.outbound.*",
     ],
@@ -386,7 +386,7 @@ def test_template_tokens_are_unknown(tmp_path: Path, token: str) -> None:
 
 def test_syntax_error_in_source_is_collected(tmp_path: Path) -> None:
     """A Python file with a SyntaxError is recorded in inventory.syntax_errors."""
-    bad_file = tmp_path / "src" / "lyra" / "broken.py"
+    bad_file = tmp_path / "src" / "factory" / "broken.py"
     bad_file.parent.mkdir(parents=True, exist_ok=True)
     bad_file.write_text("def oops(:\n    pass\n", encoding="utf-8")
     inv = CodeInventory.build(tmp_path)
@@ -403,19 +403,19 @@ def test_syntax_error_in_source_is_collected(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "token,expected",
     [
-        ("lyra.inbound.<platform>.<bot_id>", True),
+        ("factory.inbound.<platform>.<bot_id>", True),
         ("lyra.{domain}.*", True),
         ("src/**/*.py", True),
         ("lyra.outbound.*", True),
         ("lyra.*", True),
         ("roxabi_nats.serialize()", True),
         ("roxabi_contracts.voice|image", True),
-        ("src/lyra/core/hub.py:160", True),
-        ("src/lyra/bootstrap/factory/file.py::method()", True),
+        ("src/factory/core/hub.py:160", True),
+        ("src/factory/bootstrap/factory/file.py::method()", True),
         ("lyra.clipool.cmd", False),  # real subject
-        ("lyra.core.hub", False),  # real module
+        ("factory.core.hub", False),  # real module
         ("Hub", False),  # real symbol
-        ("src/lyra/core/hub.py", False),  # real path
+        ("src/factory/core/hub.py", False),  # real path
     ],
 )
 def test_is_template_token(token: str, expected: bool) -> None:
@@ -436,10 +436,10 @@ def test_scoped_symbol_resolution_live(tmp_path: Path) -> None:
     _make_src_module(tmp_path, "pkg/mod.py", "class ClassName: ...\n")
     inv = CodeInventory.build(tmp_path)
     # pkg is not a known project prefix, but the module exists and symbol is scoped
-    # Use lyra prefix so it goes through project-prefix resolution
-    _make_src_module(tmp_path, "lyra/mod.py", "class ClassName: ...\n")
+    # Use factory prefix so it goes through project-prefix resolution
+    _make_src_module(tmp_path, "factory/mod.py", "class ClassName: ...\n")
     inv = CodeInventory.build(tmp_path)
-    v = inv.resolve("lyra.mod.ClassName")
+    v = inv.resolve("factory.mod.ClassName")
     assert v == Verdict(exists=True, kind="symbol")
 
 
@@ -452,8 +452,8 @@ def test_scoped_symbol_resolution_dead_commonname(tmp_path: Path) -> None:
     defined/imported in the specific module used as the qualifier.
     """
     # lyra.mod imports nothing; asyncio is imported in lyra.other
-    _make_src_module(tmp_path, "lyra/mod.py", "# empty\n")
-    _make_src_module(tmp_path, "lyra/other.py", "import asyncio\n")
+    _make_src_module(tmp_path, "factory/mod.py", "# empty\n")
+    _make_src_module(tmp_path, "factory/other.py", "import asyncio\n")
     inv = CodeInventory.build(tmp_path)
     # 'asyncio' is in symbols (lyra.other imports it), but NOT in lyra.mod
     assert "asyncio" in inv.symbols
@@ -560,8 +560,8 @@ def test_external_known_name_is_unknown_no_inventory(tmp_path: Path) -> None:
 
 def test_to_dict_determinism(tmp_path: Path) -> None:
     """Two CodeInventory.build() calls over the same tree produce equal to_dict()."""
-    _make_src_module(tmp_path, "lyra/core/hub.py", "class Hub: ...\n")
-    _make_src_module(tmp_path, "lyra/core/agent.py", "class Agent: ...\n")
+    _make_src_module(tmp_path, "factory/core/hub.py", "class Hub: ...\n")
+    _make_src_module(tmp_path, "factory/core/agent.py", "class Agent: ...\n")
     _acl_matrix(tmp_path, ["lyra.turns.write", "lyra.turns.>"])
 
     inv1 = CodeInventory.build(tmp_path)
@@ -573,7 +573,7 @@ def test_to_dict_determinism(tmp_path: Path) -> None:
 
 def test_to_dict_structure(tmp_path: Path) -> None:
     """to_dict() has exactly the three expected keys with correct types."""
-    _make_src_module(tmp_path, "lyra/core/hub.py", "class Hub: ...\n")
+    _make_src_module(tmp_path, "factory/core/hub.py", "class Hub: ...\n")
     inv = CodeInventory.build(tmp_path)
     d = inv.to_dict()
     assert set(d.keys()) == {"modules", "symbols", "subjects"}
@@ -592,25 +592,26 @@ def test_to_dict_structure(tmp_path: Path) -> None:
 # T26 — tighten test_module_dead_project_prefix (FIX 8 note)
 # The original T2 accepts kind in ("module", "subject") because a lowercase
 # ghost token whose prefix IS a valid module falls through to subject-namespace
-# detection after FIX 1: lyra.core is a module, "ghostmodule" is not in
-# symbols[lyra.core], so it falls through the subject check and returns
+# detection after FIX 1: factory.core is a module, "ghostmodule" is not in
+# symbols[factory.core], so it falls through the subject check and returns
 # kind="subject" (lyra. prefix → dead subject).  exists=False is the contract;
 # both kinds are valid gate outcomes.  This test documents that invariant.
 # ---------------------------------------------------------------------------
 
 
 def test_module_dead_project_prefix_kind_documented(tmp_path: Path) -> None:
-    """lyra.core.ghostmodule → exists=False.
+    """factory.core.ghostmodule → exists=False.
 
-    After FIX 1, kind is 'subject' (lyra. prefix, not in subjects set, not a
-    live symbol in lyra.core) rather than 'module'.  Both kinds gate correctly.
-    The dual-kind acceptance in T2 is correct and intentional — this test
-    documents the post-fix behaviour explicitly.
+    The project package prefix (factory.) is now distinct from the NATS subject
+    namespace (lyra.), so a dead reference under the project prefix resolves as
+    kind='module' (exists=False) — a dead-module drift signal — rather than
+    falling through to the subject namespace. Real subjects (lyra.*) still
+    resolve as kind='subject'.
     """
-    _make_src_module(tmp_path, "lyra/__init__.py")
-    _make_src_module(tmp_path, "lyra/core/__init__.py")
+    _make_src_module(tmp_path, "factory/__init__.py")
+    _make_src_module(tmp_path, "factory/core/__init__.py")
     inv = CodeInventory.build(tmp_path)
-    v = inv.resolve("lyra.core.ghostmodule")
+    v = inv.resolve("factory.core.ghostmodule")
     assert v.exists is False
-    # Post-fix: falls to subject-namespace path (lyra. prefix, not in subjects)
-    assert v.kind == "subject"
+    # factory. is the project prefix (not the subject namespace) → dead module.
+    assert v.kind == "module"

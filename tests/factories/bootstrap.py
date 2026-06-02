@@ -9,18 +9,18 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-import lyra.__main__ as main_mod
-import lyra.bootstrap.bootstrap_stores as stores_mod
-import lyra.bootstrap.factory.agent_factory as agent_factory_mod
-import lyra.bootstrap.factory.hub.hub_clipool_init as hub_clipool_init_mod
-import lyra.bootstrap.factory.hub.hub_core as hub_core_mod
-import lyra.bootstrap.factory.unified as unified_mod
-import lyra.bootstrap.factory.wiring_helpers as wiring_helpers_mod
-import lyra.bootstrap.wiring.bootstrap_wiring as wiring_mod
-from lyra.core.agent import Agent
-from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.auth.authenticator import Authenticator as AuthMiddleware
-from lyra.core.hub import Hub
+import factory.__main__ as main_mod
+import factory.bootstrap.bootstrap_stores as stores_mod
+import factory.bootstrap.factory.agent_factory as agent_factory_mod
+import factory.bootstrap.factory.hub.hub_clipool_init as hub_clipool_init_mod
+import factory.bootstrap.factory.hub.hub_core as hub_core_mod
+import factory.bootstrap.factory.unified as unified_mod
+import factory.bootstrap.factory.wiring_helpers as wiring_helpers_mod
+import factory.bootstrap.wiring.bootstrap_wiring as wiring_mod
+from factory.core.agent import Agent
+from factory.core.agent.agent_config import ModelConfig
+from factory.core.auth.authenticator import Authenticator as AuthMiddleware
+from factory.core.hub import Hub
 from roxabi_nats import _version_check as _vc_mod
 
 __all__ = [
@@ -139,7 +139,7 @@ def _patch_nats_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
         hub_clipool_init_mod, "JetStreamAuditSink", lambda: fake_audit_sink
     )
     monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
-    monkeypatch.setenv("LYRA_HEALTH_PORT", "0")
+    monkeypatch.setenv("FACTORY_HEALTH_PORT", "0")
     # Isolate vault dir per test to prevent parallel-worker races on
     # ~/.lyra/discord.db (_ensure_discord_db TOCTOU with -n auto).
     monkeypatch.setenv("ROXABI_FACTORY_DIR", tempfile.mkdtemp())
@@ -157,7 +157,7 @@ def make_fake_stores(
     previously received (fake_keyring, fake_cred_store).  Callers that ignore
     both return values are unaffected.
     """
-    import lyra.bootstrap.credentials as credentials_mod
+    import factory.bootstrap.credentials as credentials_mod
 
     def _fake_load(platform: str, bot_id: str) -> tuple[str, str | None]:
         if platform == "telegram":
@@ -286,7 +286,7 @@ def patch_all(
         side_effect=lambda *a, **kw: next(_bot_auth_results)
     )
     monkeypatch.setattr(wiring_mod, "Authenticator", _mock_auth_cls)
-    # auth.py imports Authenticator directly from lyra.core.auth.authenticator,
+    # auth.py imports Authenticator directly from factory.core.auth.authenticator,
     # so the wiring_mod patch above does not cover it.
     monkeypatch.setattr(
         AuthMiddleware,
@@ -300,7 +300,7 @@ def patch_all(
     _fake_auth_store.close = AsyncMock()
     monkeypatch.setattr(stores_mod, "AuthStore", lambda **kwargs: _fake_auth_store)
 
-    from lyra.core.agent.bot_models import BotRow
+    from factory.core.agent.bot_models import BotRow
 
     _fake_bot_store = MagicMock()
     _fake_bot_store.connect = AsyncMock()
@@ -323,7 +323,7 @@ def patch_all(
     _fake_agent_store.set_bot_agent = AsyncMock()
     monkeypatch.setattr(stores_mod, "AgentStore", lambda **kwargs: _fake_agent_store)
 
-    import lyra.bootstrap.credentials as credentials_mod
+    import factory.bootstrap.credentials as credentials_mod
 
     monkeypatch.setattr(
         credentials_mod,
@@ -351,7 +351,7 @@ def patch_all(
 
 def patch_auth_config_test(monkeypatch: pytest.MonkeyPatch) -> None:
     """Shared setup for TestAuthConfig tests: mock auth/credential stores."""
-    from lyra.core.agent.bot_models import BotRow
+    from factory.core.agent.bot_models import BotRow
 
     monkeypatch.setattr(main_mod, "load_dotenv", lambda: None)
 
@@ -401,7 +401,7 @@ def patch_auth_config_test(monkeypatch: pytest.MonkeyPatch) -> None:
         AsyncMock(return_value={("telegram", "main"): "lyra_default"}),
     )
 
-    import lyra.bootstrap.credentials as credentials_mod
+    import factory.bootstrap.credentials as credentials_mod
 
     monkeypatch.setattr(
         credentials_mod,

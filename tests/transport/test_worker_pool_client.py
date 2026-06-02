@@ -10,10 +10,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.nats.worker_registry import WorkerRegistry
-from lyra.transport._result import Err, InboxStream, Ok, SanitizedError
-from lyra.transport.nats_request_response import NatsTransport
-from lyra.transport.worker_pool_client import WorkerPoolClient
+from factory.nats.worker_registry import WorkerRegistry
+from factory.transport._result import Err, InboxStream, Ok, SanitizedError
+from factory.transport.nats_request_response import NatsTransport
+from factory.transport.worker_pool_client import WorkerPoolClient
 
 
 async def _async_gen(items):
@@ -143,7 +143,9 @@ class TestRequestWithRoutingStructuredLog:
         pool, mock_transport = _make_pool_with_workers("w-1")
         mock_transport.call = AsyncMock(return_value=Ok(b"ok"))
 
-        with caplog.at_level(logging.INFO, logger="lyra.transport.worker_pool_client"):
+        with caplog.at_level(
+            logging.INFO, logger="factory.transport.worker_pool_client"
+        ):
             await pool.request_with_routing(lambda wid: f"subj.{wid}", b"payload")
 
         routing_records = [

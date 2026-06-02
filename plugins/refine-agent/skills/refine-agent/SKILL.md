@@ -57,7 +57,7 @@ lyra agent show {α}
 Also read system TOML if present (for context, not authoritative):
 
 ```bash
-cat ~/projects/lyra/src/lyra/agents/{α}.toml 2>/dev/null || echo "(no TOML — DB-only agent)"
+cat ~/projects/lyra/src/factory/agents/{α}.toml 2>/dev/null || echo "(no TOML — DB-only agent)"
 ```
 
 ∃ persona_name in σ ⇒ attempt to read persona file:

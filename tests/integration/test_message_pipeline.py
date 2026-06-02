@@ -28,10 +28,10 @@ from unittest.mock import patch
 
 import pytest
 
-from lyra.core.config import HubConfig
-from lyra.core.hub.middleware import build_default_pipeline
-from lyra.core.hub.pipeline.message_pipeline import Action
-from lyra.core.messaging.message import Platform
+from factory.core.config import HubConfig
+from factory.core.hub.middleware import build_default_pipeline
+from factory.core.hub.pipeline.message_pipeline import Action
+from factory.core.messaging.message import Platform
 from tests.core.conftest import (
     _make_hub,
     _MockAdapter,
@@ -152,7 +152,7 @@ class TestMessagePipelineTraces:
 
     async def test_no_binding_drops_with_trace(self) -> None:
         """No binding → DROP after platform validation."""
-        from lyra.core.hub import Hub
+        from factory.core.hub import Hub
 
         test_name = "test_no_binding_drops_with_trace"
         steps: list[dict[str, Any]] = []
@@ -177,7 +177,7 @@ class TestMessagePipelineTraces:
 
     async def test_no_agent_drops_with_trace(self) -> None:
         """Binding points to missing agent → DROP with trace."""
-        from lyra.core.hub import Hub
+        from factory.core.hub import Hub
 
         test_name = "test_no_agent_drops_with_trace"
         steps: list[dict[str, Any]] = []

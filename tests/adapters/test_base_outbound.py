@@ -11,10 +11,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.adapters.shared._base_outbound import OutboundAdapterBase
-from lyra.core.messaging.message import InboundMessage, OutboundMessage
-from lyra.core.messaging.render_events import RenderEvent, TextEndRenderEvent
-from lyra.outbound.emitter import OutboundEmitter
+from factory.adapters.shared._base_outbound import OutboundAdapterBase
+from factory.core.messaging.message import InboundMessage, OutboundMessage
+from factory.core.messaging.render_events import RenderEvent, TextEndRenderEvent
+from factory.outbound.emitter import OutboundEmitter
 from tests.adapters.conftest import make_tg_msg
 
 # ---------------------------------------------------------------------------
@@ -265,9 +265,9 @@ class TestOutboundAdapterBaseSendStreaming:
         """Malformed scope_id disables typing (publisher=None) — delivery proceeds."""
         from datetime import datetime, timezone
 
-        from lyra.core.auth.trust import TrustLevel
-        from lyra.core.messaging.message import InboundMessage, TelegramMeta
-        from lyra.transport.typing_publisher import TypingPublisher
+        from factory.core.auth.trust import TrustLevel
+        from factory.core.messaging.message import InboundMessage, TelegramMeta
+        from factory.transport.typing_publisher import TypingPublisher
 
         original_msg = InboundMessage(
             id="msg-1",

@@ -32,8 +32,8 @@ NEW_TOKEN="${1:-}"
 RESOLVED=$(realpath -e "$NEW_TOKEN" 2>/dev/null) \
   || { printf 'Token file not found or unresolvable: %q\n' "$NEW_TOKEN" >&2; exit 2; }
 # Reject paths outside trusted directories.
-[[ "$RESOLVED" == /home/lyra/secrets/* || "$RESOLVED" == /etc/lyra/* ]] \
-  || { echo "Token path outside trusted dirs (/home/lyra/secrets/, /etc/lyra/): $RESOLVED" >&2; exit 2; }
+[[ "$RESOLVED" == /home/factory/secrets/* || "$RESOLVED" == /etc/factory/* ]] \
+  || { echo "Token path outside trusted dirs (/home/factory/secrets/, /etc/factory/): $RESOLVED" >&2; exit 2; }
 chmod 600 "$RESOLVED"
 token_mode=$(stat -c '%a' "$RESOLVED")
 [[ "$token_mode" == "600" ]] || { echo "Token file must be mode 0600 (got $token_mode): $RESOLVED" >&2; exit 2; }

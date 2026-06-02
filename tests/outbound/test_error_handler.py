@@ -14,8 +14,8 @@ import logging
 import httpx
 import pytest
 
-from lyra.outbound.error_handler import OutboundErrorHandler
-from lyra.transport._result import (
+from factory.outbound.error_handler import OutboundErrorHandler
+from factory.transport._result import (
     Err,
     Ok,
     SanitizedError,
@@ -105,7 +105,7 @@ async def test_guard_returns_err_on_exception() -> None:
 
 def test_classify_stream_error_timeout() -> None:
     """StreamChunkTimeout is rendered via the 'error_timeout' key / fallback."""
-    from lyra.core.exceptions import StreamChunkTimeout
+    from factory.core.exceptions import StreamChunkTimeout
 
     handler = _make_handler()
     exc = StreamChunkTimeout(120.0)
@@ -183,12 +183,12 @@ async def test_guard_logs_at_debug_not_exception(
     async def always_fails() -> None:
         raise RuntimeError("internal detail that must not surface")
 
-    with caplog.at_level(logging.DEBUG, logger="lyra.outbound.error_handler"):
+    with caplog.at_level(logging.DEBUG, logger="factory.outbound.error_handler"):
         await handler.guard(always_fails, context="log_test")
 
     # At least one record must be emitted (confirms the code path was hit).
     outbound_records = [
-        r for r in caplog.records if r.name == "lyra.outbound.error_handler"
+        r for r in caplog.records if r.name == "factory.outbound.error_handler"
     ]
     assert outbound_records, "guard() must emit at least one log record on exception"
 

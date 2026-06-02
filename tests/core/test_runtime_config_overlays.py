@@ -11,9 +11,9 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from lyra.core.agent import Agent
-from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.runtime_config import (
+from factory.core.agent import Agent
+from factory.core.agent.agent_config import ModelConfig
+from factory.core.runtime_config import (
     _STYLE_INSTRUCTIONS,
     RuntimeConfig,
     set_param,

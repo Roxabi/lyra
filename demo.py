@@ -3,12 +3,12 @@
 import asyncio
 from datetime import datetime, timezone
 
-from lyra.core.message import InboundMessage, Platform, Response
+from factory.core.message import InboundMessage, Platform, Response
 
-from lyra.core.agent import Agent, AgentBase
-from lyra.core.auth import TrustLevel
-from lyra.core.hub import Hub
-from lyra.core.pool import Pool
+from factory.core.agent import Agent, AgentBase
+from factory.core.auth import TrustLevel
+from factory.core.hub import Hub
+from factory.core.pool import Pool
 
 
 class EchoAgent(AgentBase):

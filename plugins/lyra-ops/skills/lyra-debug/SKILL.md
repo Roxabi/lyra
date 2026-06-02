@@ -85,8 +85,8 @@ Equivalent via Makefile (foreground tail): `make remote hub logs` / `telegram lo
 In-container structured logs (if the hub writes files to the logs volume):
 
 ```bash
-ssh $H "podman exec lyra-hub ls -t /home/lyra/.local/state/lyra/logs/ | head -10"
-ssh $H "podman exec lyra-hub tail -200 /home/lyra/.local/state/lyra/logs/<file>"
+ssh $H "podman exec lyra-hub ls -t /home/factory/.local/state/lyra/logs/ | head -10"
+ssh $H "podman exec lyra-hub tail -200 /home/factory/.local/state/lyra/logs/<file>"
 ```
 
 ## Phase 4 — Diagnosis
@@ -132,7 +132,7 @@ Present fix options via DP(A) (load `${CLAUDE_PLUGIN_ROOT}/../shared/references/
 | Restart specific adapter | `make remote discord reload` / `make remote telegram reload` | Single adapter failed |
 | Restart NATS | `ssh $H "systemctl --user restart lyra-nats"` | NATS connection errors |
 | Clear failed state | `ssh $H "systemctl --user reset-failed lyra-hub"` | Unit stuck in `failed` after start-limit-hit |
-| Check DB locks | `ssh $H "podman exec lyra-hub fuser /home/lyra/.lyra/*.db"` | Persistent DB locked errors |
+| Check DB locks | `ssh $H "podman exec lyra-hub fuser /home/factory/.lyra/*.db"` | Persistent DB locked errors |
 | Reinstall Quadlet units | `make quadlet-install` then `ssh $H "systemctl --user daemon-reload"` | Unit file drift |
 | Full deploy | `make deploy` | Code fix needed on production |
 | Rebuild + push image | `make build && make push && make remote lyra reload` | Image-level fix needed |

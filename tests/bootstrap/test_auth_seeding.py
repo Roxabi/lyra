@@ -1,4 +1,4 @@
-"""Tests for lyra.bootstrap.auth_seeding — seed_grants_from_bots and build_bot_auths."""
+"""Tests for bootstrap.auth_seeding — seed_grants_from_bots and build_bot_auths."""
 
 from __future__ import annotations
 
@@ -7,11 +7,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.bootstrap.auth_seeding import build_bot_auths
-from lyra.bootstrap.wiring.auth import BotAuthDeps
-from lyra.core.agent.bot_models import BotRow
-from lyra.infrastructure.stores.auth_store import AuthStore
-from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
+from factory.bootstrap.auth_seeding import build_bot_auths
+from factory.bootstrap.wiring.auth import BotAuthDeps
+from factory.core.agent.bot_models import BotRow
+from factory.infrastructure.stores.auth_store import AuthStore
+from factory.infrastructure.stores.identity_alias_store import IdentityAliasStore
 from tests.factories.stores import make_auth_store
 from tests.helpers.bot_store import make_bot_store
 
@@ -42,7 +42,7 @@ class TestBootstrapCallsSeedGrantsFromBots:
             # Raise to abort further bootstrap — we only need to verify the call
             raise RuntimeError("test-sentinel: abort after seed")
 
-        import lyra.bootstrap.standalone.hub_standalone as hub_standalone_mod
+        import factory.bootstrap.standalone.hub_standalone as hub_standalone_mod
 
         monkeypatch.setattr(hub_standalone_mod, "seed_grants_from_bots", fake_seed)
 
@@ -88,7 +88,9 @@ class TestBootstrapCallsSeedGrantsFromBots:
             "discord": {"bots": []},
         }
 
-        from lyra.bootstrap.standalone.hub_standalone import _bootstrap_hub_standalone
+        from factory.bootstrap.standalone.hub_standalone import (
+            _bootstrap_hub_standalone,
+        )
 
         # Act — expect the sentinel to bubble up
         with pytest.raises(RuntimeError, match="test-sentinel"):
@@ -226,12 +228,14 @@ class TestAliasStoreParity:
 
         with (
             patch(
-                "lyra.bootstrap.auth_seeding._build_bot_auths",
+                "factory.bootstrap.auth_seeding._build_bot_auths",
                 side_effect=fake_build_bot_auths,
             ),
-            patch("lyra.bootstrap.auth_seeding._load_circuit_config") as mock_circuit,
             patch(
-                "lyra.bootstrap.auth_seeding.multibot_config_from_store"
+                "factory.bootstrap.auth_seeding._load_circuit_config"
+            ) as mock_circuit,
+            patch(
+                "factory.bootstrap.auth_seeding.multibot_config_from_store"
             ) as mock_multi,
         ):
             mock_circuit.return_value = (MagicMock(), frozenset())
@@ -268,12 +272,14 @@ class TestAliasStoreParity:
 
         with (
             patch(
-                "lyra.bootstrap.auth_seeding._build_bot_auths",
+                "factory.bootstrap.auth_seeding._build_bot_auths",
                 side_effect=fake_build_bot_auths,
             ),
-            patch("lyra.bootstrap.auth_seeding._load_circuit_config") as mock_circuit,
             patch(
-                "lyra.bootstrap.auth_seeding.multibot_config_from_store"
+                "factory.bootstrap.auth_seeding._load_circuit_config"
+            ) as mock_circuit,
+            patch(
+                "factory.bootstrap.auth_seeding.multibot_config_from_store"
             ) as mock_multi,
         ):
             mock_circuit.return_value = (MagicMock(), frozenset())

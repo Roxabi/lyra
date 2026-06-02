@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from lyra.nats.queue_groups import (
+from factory.nats.queue_groups import (
     HUB_INBOUND,
     STT_WORKERS,
     TTS_WORKERS,
@@ -21,7 +21,7 @@ class TestAdapterOutbound:
 
     def test_accepts_enum_value_via_str(self) -> None:
         # Regression: Platform enum is str-subclass; callers pass .value explicitly.
-        from lyra.core.messaging.message import Platform
+        from factory.core.messaging.message import Platform
 
         subject = adapter_outbound(Platform.TELEGRAM.value, "abc")
         assert subject == "adapter-outbound-telegram-abc"

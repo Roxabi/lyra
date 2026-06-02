@@ -25,7 +25,7 @@ Consolidate to one `subject_covered` in `_effective.py`, migrate the other two c
 ## Users
 
 - **Primary:** Lyra developers maintaining ACL scripts
-- **Secondary:** CI pipeline (`lyra-acl check grants`, `lyra-check-flows`, `lyra-check-acl-retired` falsification gates)
+- **Secondary:** CI pipeline (`factory-acl check grants`, `lyra-check-flows`, `lyra-check-acl-retired` falsification gates)
 
 ## Expected Behavior
 
@@ -117,4 +117,4 @@ S1 must land before S2/S3 (semantic correctness). S2 and S3 are file-independent
 - [ ] Parametric tests in `tests/scripts/test_effective.py` cover: exact match, `>`, `.*` positive/negative, `.>` positive/negative, mixed grant list
 - [ ] `tests/scripts/test_check_request_reply_flows.py` still passes (subprocess CLI against prod matrix)
 - [ ] `lyra-check-flows` CI step passes (no regression in flow validation)
-- [ ] `lyra-acl check grants` CI step passes (no regression in coverage validation)
+- [ ] `factory-acl check grants` CI step passes (no regression in coverage validation)

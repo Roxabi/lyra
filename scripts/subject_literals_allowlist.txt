@@ -13,3 +13,12 @@
 # it in acl-matrix.json (publish/subscribe grant) or in roxabi-contracts SUBJECTS.
 # Keeping this file empty (rather than deleting it) documents that the gate is
 # strict by design and guards against silent re-introduction of baselined debt.
+
+# ── roxabi-factory rename (lyra→factory) ──────────────────────────────────────
+# `lyra.inbound` is the NatsBus default subject_prefix (src/factory/nats/nats_bus.py).
+# It is a base prefix (real subjects are lyra.inbound.<platform>.<bot>, declared in
+# acl-matrix.json), not a complete subject. Before the package rename it resolved as
+# the module `lyra.inbound`; now the project prefix is `factory.` so the oracle
+# correctly classifies it as a (bare) subject prefix with no exact declaration.
+# To be folded into the NATS-subjects rename workstream (lyra.*→factory.*).
+lyra.inbound

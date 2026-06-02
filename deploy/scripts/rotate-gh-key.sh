@@ -29,8 +29,8 @@ NEW_PEM="${1:-}"
 RESOLVED=$(realpath -e "$NEW_PEM" 2>/dev/null) \
   || { printf 'PEM file not found or unresolvable: %q\n' "$NEW_PEM" >&2; exit 2; }
 # Reject paths outside trusted directories.
-[[ "$RESOLVED" == /home/lyra/secrets/* || "$RESOLVED" == /etc/lyra/* ]] \
-  || { echo "PEM path outside trusted dirs (/home/lyra/secrets/, /etc/lyra/): $RESOLVED" >&2; exit 2; }
+[[ "$RESOLVED" == /home/factory/secrets/* || "$RESOLVED" == /etc/factory/* ]] \
+  || { echo "PEM path outside trusted dirs (/home/factory/secrets/, /etc/factory/): $RESOLVED" >&2; exit 2; }
 
 # Tolerate first-time creation: rm only if exists.
 if podman secret inspect factory-gh-pem &>/dev/null; then
@@ -45,7 +45,7 @@ systemctl --user restart factory-gh-helper.service
 for _ in $(seq 20); do
   if podman ps --filter name=factory-gh-helper --format '{{.Status}}' \
        | grep -q '^Up ' \
-     && podman exec factory-clipool test -S /run/lyra-gh-token/dispenser.sock \
+     && podman exec factory-clipool test -S /run/factory-gh-token/dispenser.sock \
           2>/dev/null; then
     echo "factory-gh-helper restarted, dispenser reachable, secret rotated."
     exit 0

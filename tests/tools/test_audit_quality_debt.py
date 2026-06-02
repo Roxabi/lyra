@@ -455,7 +455,9 @@ def test_parses_noqa_debt_suffix(tmp_path: Path) -> None:
     """# noqa: BLE001 -- DEBT:foo -> bucket=DEBT, slug=foo."""
     # Arrange
     _make_debt_registry(tmp_path, "foo", "open")
-    _make_src_py(tmp_path, "src/lyra/cli/foo.py", "x = 1  # noqa: BLE001 -- DEBT:foo\n")
+    _make_src_py(
+        tmp_path, "src/factory/cli/foo.py", "x = 1  # noqa: BLE001 -- DEBT:foo\n"
+    )
     out = tmp_path / "report.json"
 
     # Act
@@ -475,7 +477,7 @@ def test_parses_noqa_debt_suffix(tmp_path: Path) -> None:
 def test_parses_noqa_bare_untagged(tmp_path: Path) -> None:
     """Bare # noqa: BLE001 (no suffix) -> bucket=UNTAGGED."""
     # Arrange
-    _make_src_py(tmp_path, "src/lyra/x.py", "x = 1  # noqa: BLE001\n")
+    _make_src_py(tmp_path, "src/factory/x.py", "x = 1  # noqa: BLE001\n")
     out = tmp_path / "report.json"
 
     # Act
@@ -492,7 +494,7 @@ def test_parses_noqa_bare_untagged(tmp_path: Path) -> None:
 def test_detects_stale_reference_missing_registry(tmp_path: Path) -> None:
     """DEBT:ghost with no artifacts/debt/ghost.md -> stale_references reason=missing."""
     # Arrange
-    _make_src_py(tmp_path, "src/lyra/x.py", "x = 1  # noqa: C901 -- DEBT:ghost\n")
+    _make_src_py(tmp_path, "src/factory/x.py", "x = 1  # noqa: C901 -- DEBT:ghost\n")
     out = tmp_path / "report.json"
 
     # Act
@@ -509,7 +511,7 @@ def test_detects_stale_reference_drained_registry(tmp_path: Path) -> None:
     """DEBT:paid with status=drained -> stale_references reason=drained."""
     # Arrange
     _make_debt_registry(tmp_path, "paid", "drained")
-    _make_src_py(tmp_path, "src/lyra/x.py", "x = 1  # noqa: C901 -- DEBT:paid\n")
+    _make_src_py(tmp_path, "src/factory/x.py", "x = 1  # noqa: C901 -- DEBT:paid\n")
     out = tmp_path / "report.json"
 
     # Act

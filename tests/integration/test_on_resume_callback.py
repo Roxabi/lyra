@@ -19,12 +19,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.hub import Hub
-from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
-from lyra.core.pool import Pool
-from lyra.core.pool.pool_context import PoolContext
-from lyra.infrastructure.stores.turn_store import TurnStore
-from lyra.transport.turn_publisher import TurnPublisher
+from factory.core.hub import Hub
+from factory.core.lifecycle.circuit_breaker import CircuitRegistry
+from factory.core.pool import Pool
+from factory.core.pool.pool_context import PoolContext
+from factory.infrastructure.stores.turn_store import TurnStore
+from factory.transport.turn_publisher import TurnPublisher
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -62,7 +62,7 @@ def _make_mock_resume_publisher(
     publisher: TurnPublisher, store: TurnStore
 ) -> MagicMock:
     """Return a MagicMock ResumePublisherPort wrapping publisher + store."""
-    from lyra.core.ports.resume_publisher import ResumePublisherPort
+    from factory.core.ports.resume_publisher import ResumePublisherPort
 
     rp = MagicMock(spec=ResumePublisherPort)
     rp.publish_increment_resume_count = publisher.publish_increment_resume_count
@@ -149,11 +149,11 @@ async def test_on_resume_fn_calls_publisher(tmp_path) -> None:
 def test_on_resume_fn_awaited_at_callsites() -> None:
     """SC-10 negative: every callsite of _on_resume_fn uses 'await'.
 
-    Grep all Python files under src/lyra/ for lines that call _on_resume_fn(
+    Grep all Python files under src/factory/ for lines that call _on_resume_fn(
     without a leading 'await'.  A non-awaited call would cause a coroutine
     to be silently discarded, breaking SC-10.
     """
-    src_root = Path(__file__).parents[2] / "src" / "lyra"
+    src_root = Path(__file__).parents[2] / "src" / "factory"
     assert src_root.exists(), f"Source root not found: {src_root}"
 
     non_awaited: list[str] = []
@@ -293,10 +293,10 @@ async def test_on_resume_fn_derives_identity_from_message(tmp_path) -> None:
     mock_pub = _make_mock_publisher()
     hub = _make_hub_with_publisher(mock_pub, turn_store=store)
 
-    from lyra.core.hub.hub_protocol import Binding
-    from lyra.core.hub.middleware import PipelineContext
-    from lyra.core.hub.middleware.middleware_stages import MessagePrepMiddleware
-    from lyra.core.hub.pipeline.message_pipeline import Action, PipelineResult
+    from factory.core.hub.hub_protocol import Binding
+    from factory.core.hub.middleware import PipelineContext
+    from factory.core.hub.middleware.middleware_stages import MessagePrepMiddleware
+    from factory.core.hub.pipeline.message_pipeline import Action, PipelineResult
     from tests.core.conftest import make_inbound_message
 
     agent = MagicMock()

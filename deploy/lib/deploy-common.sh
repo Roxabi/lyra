@@ -13,11 +13,11 @@ export PATH="${HOME}/projects/roxabi-factory/.venv/bin:${HOME}/.local/bin:${PATH
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
 
 # ── Constants ────────────────────────────────────────────────────────────────
-LYRA_DIR="${HOME}/projects/roxabi-factory"
+FACTORY_DIR="${HOME}/projects/roxabi-factory"
 CONVERGE_STAMP="${HOME}/.roxabi/factory/.converge-stamp"
 QUADLET_DIR="${HOME}/.config/containers/systemd"
-LYRA_NKEYS_DIR="${HOME}/.roxabi/factory/nkeys"
-DEPLOY_LOCK="/run/user/$(id -u)/lyra-deploy.lock"
+FACTORY_NKEYS_DIR="${HOME}/.roxabi/factory/nkeys"
+DEPLOY_LOCK="/run/user/$(id -u)/factory-deploy.lock"
 
 # ── flock wrapper ────────────────────────────────────────────────────────────
 # Run a command under an exclusive lock. Exit 0 (no error) if the lock is held.
@@ -39,7 +39,7 @@ with_deploy_lock() {
 compute_convergence_state() {
     local git_head unit_sha auth_sha voicecli_head
 
-    git_head=$(cd "${LYRA_DIR}" && git rev-parse HEAD 2>/dev/null || echo "none")
+    git_head=$(cd "${FACTORY_DIR}" && git rev-parse HEAD 2>/dev/null || echo "none")
 
     if [ -d "${QUADLET_DIR}" ]; then
         unit_sha=$(find "${QUADLET_DIR}" -maxdepth 1 \( -name 'lyra*' -o -name 'factory*' \) -type f -print0 \
@@ -48,8 +48,8 @@ compute_convergence_state() {
         unit_sha="none"
     fi
 
-    if [ -f "${LYRA_NKEYS_DIR}/auth.conf" ]; then
-        auth_sha=$(sha256sum "${LYRA_NKEYS_DIR}/auth.conf" | awk '{print $1}')
+    if [ -f "${FACTORY_NKEYS_DIR}/auth.conf" ]; then
+        auth_sha=$(sha256sum "${FACTORY_NKEYS_DIR}/auth.conf" | awk '{print $1}')
     else
         auth_sha="none"
     fi

@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from lyra.transport.typing_publisher import TypingPublisher
-from lyra.transport.work_scope import WorkScope
+from factory.transport.typing_publisher import TypingPublisher
+from factory.transport.work_scope import WorkScope
 
 
 @pytest.fixture

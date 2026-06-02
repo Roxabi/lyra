@@ -21,9 +21,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.adapters.telegram import TelegramAdapter
-from lyra.adapters.telegram.telegram_normalize import normalize
-from lyra.inbound.attachment_ingest import PendingAttachment
+from factory.adapters.telegram import TelegramAdapter
+from factory.adapters.telegram.telegram_normalize import normalize
+from factory.inbound.attachment_ingest import PendingAttachment
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -179,8 +179,8 @@ async def test_tg_photo_pipeline_stamps_blob_ref() -> None:
     Negative-test contract: if the stage's non-audio loop is deleted (P2 dead branch),
     blob_ref remains None and the assertion fails.
     """
-    from lyra.adapters.telegram.telegram_inbound import handle_message
-    from lyra.inbound.attachment_ingest import IngestCtx
+    from factory.adapters.telegram.telegram_inbound import handle_message
+    from factory.inbound.attachment_ingest import IngestCtx
     from roxabi_contracts import BlobRef
 
     adapter = _make_adapter()
@@ -211,12 +211,12 @@ async def test_tg_photo_pipeline_stamps_blob_ref() -> None:
     mock_dispatcher = MagicMock()
     mock_dispatcher.dispatch = _capture_dispatch
 
-    with patch("lyra.adapters.telegram.telegram_inbound._pipeline") as mock_pipeline:
+    with patch("factory.adapters.telegram.telegram_inbound._pipeline") as mock_pipeline:
         # Build a real InboundPipeline but intercept dispatcher
-        from lyra.inbound.attachment_ingest import AttachmentIngestStage
-        from lyra.inbound.pipeline import InboundPipeline
-        from lyra.inbound.router import Router
-        from lyra.inbound.session_builder import SessionBuilder
+        from factory.inbound.attachment_ingest import AttachmentIngestStage
+        from factory.inbound.pipeline import InboundPipeline
+        from factory.inbound.router import Router
+        from factory.inbound.session_builder import SessionBuilder
 
         real_pipeline = InboundPipeline(
             router=Router(),
@@ -251,8 +251,8 @@ async def test_tg_oversize_photo_reply_no_hub_push() -> None:
     is removed, the error propagates uncaught and no send_message is called —
     the assertion on send_message fails.
     """
-    from lyra.adapters.telegram.telegram_inbound import handle_message
-    from lyra.inbound.attachment_ingest import MAX_ATTACHMENT_INGEST_BYTES, IngestCtx
+    from factory.adapters.telegram.telegram_inbound import handle_message
+    from factory.inbound.attachment_ingest import MAX_ATTACHMENT_INGEST_BYTES, IngestCtx
 
     adapter = _make_adapter()
     # file_size declared as one byte over the cap
@@ -273,11 +273,11 @@ async def test_tg_oversize_photo_reply_no_hub_push() -> None:
     mock_dispatcher = MagicMock()
     mock_dispatcher.dispatch = _capture_dispatch
 
-    with patch("lyra.adapters.telegram.telegram_inbound._pipeline") as mock_pipeline:
-        from lyra.inbound.attachment_ingest import AttachmentIngestStage
-        from lyra.inbound.pipeline import InboundPipeline
-        from lyra.inbound.router import Router
-        from lyra.inbound.session_builder import SessionBuilder
+    with patch("factory.adapters.telegram.telegram_inbound._pipeline") as mock_pipeline:
+        from factory.inbound.attachment_ingest import AttachmentIngestStage
+        from factory.inbound.pipeline import InboundPipeline
+        from factory.inbound.router import Router
+        from factory.inbound.session_builder import SessionBuilder
 
         real_pipeline = InboundPipeline(
             router=Router(),

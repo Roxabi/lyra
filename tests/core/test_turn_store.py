@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.infrastructure.stores.turn_store import TurnStore
+from factory.infrastructure.stores.turn_store import TurnStore
 
 
 @pytest.fixture
@@ -232,8 +232,8 @@ class TestTurnStoreIntegrationWithPool:
         text: str = "hello",
         msg_id: str = "m1",
     ):
-        from lyra.core.auth.trust import TrustLevel
-        from lyra.core.messaging.message import InboundMessage
+        from factory.core.auth.trust import TrustLevel
+        from factory.core.messaging.message import InboundMessage
 
         return InboundMessage(
             id=msg_id,
@@ -261,7 +261,7 @@ class TestTurnStoreIntegrationWithPool:
 
     async def test_pool_append_logs_user_turn(self) -> None:
         """When _turn_publisher is set, append() publishes the user turn."""
-        from lyra.core.pool import Pool
+        from factory.core.pool import Pool
 
         publisher = MagicMock()
         publisher.publish_log_turn = AsyncMock(return_value=None)
@@ -280,8 +280,8 @@ class TestTurnStoreIntegrationWithPool:
 
     async def test_process_one_logs_assistant_turn(self) -> None:
         """_process_one() publishes user + assistant turns via TurnPublisher."""
-        from lyra.core.messaging.message import OutboundMessage, Response
-        from lyra.core.pool import Pool
+        from factory.core.messaging.message import OutboundMessage, Response
+        from factory.core.pool import Pool
 
         publisher = MagicMock()
         publisher.publish_log_turn = AsyncMock(return_value=None)
@@ -313,7 +313,7 @@ class TestTurnStoreIntegrationWithPool:
         pool = Pool(pool_id="p:2", agent_name="stub", ctx=ctx)
         pool._observer.register_turn_publisher(publisher)
 
-        from lyra.core.pool.pool_processor_exec import process_one
+        from factory.core.pool.pool_processor_exec import process_one
 
         msg = self._make_msg(user_id="u2")
         await process_one(msg, agent, pool)
@@ -399,7 +399,7 @@ class TestPoolSessions:
         )
         await db.commit()
 
-        from lyra.infrastructure.stores.turn_store_queries import backfill_sessions
+        from factory.infrastructure.stores.turn_store_queries import backfill_sessions
 
         await backfill_sessions(db)
         await backfill_sessions(db)  # second call must be a no-op

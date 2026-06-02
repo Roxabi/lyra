@@ -361,7 +361,7 @@ draft listed it under the hub provisioner; that was a cross-axis error — `ensu
 creates/binds the bucket (`src/lyra/infrastructure/outbound_audio/stream_setup.py`); the
 adapters do the data-plane `kv.put()` (`src/lyra/adapters/nats/jetstream_audio_dedup.py`).
 
-**Gate logic** (`lyra-acl check grants` subcommand in `scripts/gen_nkeys.py`):
+**Gate logic** (`factory-acl check grants` subcommand in `scripts/gen_nkeys.py`):
 
 For each stream/KV in the manifest:
 1. Assert the provisioner identity's effective publish list (post-group-expansion via
@@ -377,7 +377,7 @@ Failure output: `FAIL: identity 'X' publish[] does not cover required subject 'Y
 **Where it runs.** New CI step after existing `check retired` and `check flows`:
 ```yaml
 - name: Check ACL code coverage
-  run: uv run lyra-acl check grants
+  run: uv run factory-acl check grants
 ```
 Runs pre-push equivalent. Fails exit 1 with structured per-line errors.
 

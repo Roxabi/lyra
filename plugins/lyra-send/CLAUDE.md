@@ -51,5 +51,5 @@ resolve args → find target ID → send → confirm.
 - `~/.lyra/turns.db` — turn history (target ID discovery)
 - `~/.lyra/config.db` — bot secrets
 - `~/.lyra/keyring.key` — encryption key
-- Lyra adapters (`src/lyra/adapters/`) own the inbound side; this plugin owns
+- Lyra adapters (`src/factory/adapters/`) own the inbound side; this plugin owns
   the proactive outbound side independently.

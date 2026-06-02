@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from lyra.cli import lyra_app as app
-from lyra.core.agent.bot_models import BotRow
-from lyra.infrastructure.stores.bot_store import BotStore
+from factory.cli import factory_app as app
+from factory.core.agent.bot_models import BotRow
+from factory.infrastructure.stores.bot_store import BotStore
 from tests.helpers.bot_cli import write_bot_toml
 from tests.helpers.bot_store import db_get, db_upsert
 

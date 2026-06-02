@@ -12,24 +12,28 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.core.config import HubConfig
-from lyra.core.hub.middleware import (
+from factory.core.config import HubConfig
+from factory.core.hub.middleware import (
     MiddlewarePipeline,
     PipelineContext,
     build_default_pipeline,
 )
-from lyra.core.hub.middleware.middleware_stages import (
+from factory.core.hub.middleware.middleware_stages import (
     CommandMiddleware,
     MessagePrepMiddleware,
     RateLimitMiddleware,
     ResolveBindingMiddleware,
     ValidatePlatformMiddleware,
 )
-from lyra.core.hub.middleware.middleware_submit import SubmitToPoolMiddleware
-from lyra.core.hub.middleware.path_validation import resolve_context
-from lyra.core.hub.pipeline.message_pipeline import Action, PipelineResult, ResumeStatus
-from lyra.core.messaging.message import Platform, Response
-from lyra.infrastructure.stores.turn_store import TurnStore
+from factory.core.hub.middleware.middleware_submit import SubmitToPoolMiddleware
+from factory.core.hub.middleware.path_validation import resolve_context
+from factory.core.hub.pipeline.message_pipeline import (
+    Action,
+    PipelineResult,
+    ResumeStatus,
+)
+from factory.core.messaging.message import Platform, Response
+from factory.infrastructure.stores.turn_store import TurnStore
 from roxabi_contracts import BlobRef
 from tests.core.conftest import _make_hub, make_inbound_message
 
@@ -101,7 +105,7 @@ class TestValidatePlatform:
 
 class TestRateLimit:
     async def test_not_limited_calls_next(self) -> None:
-        from lyra.core.hub.hub_protocol import RoutingKey
+        from factory.core.hub.hub_protocol import RoutingKey
 
         mw = RateLimitMiddleware()
         ctx = _make_ctx()
@@ -136,7 +140,7 @@ class TestRateLimit:
 
 class TestResolveBinding:
     async def test_binding_found_calls_next(self) -> None:
-        from lyra.core.hub.hub_protocol import RoutingKey
+        from factory.core.hub.hub_protocol import RoutingKey
 
         mw = ResolveBindingMiddleware()
         ctx = _make_ctx()
@@ -151,8 +155,8 @@ class TestResolveBinding:
         assert ctx.agent is not None
 
     async def test_no_binding_drops(self) -> None:
-        from lyra.core.hub import Hub
-        from lyra.core.hub.hub_protocol import RoutingKey
+        from factory.core.hub import Hub
+        from factory.core.hub.hub_protocol import RoutingKey
 
         hub = Hub()
         # No binding registered
@@ -166,8 +170,8 @@ class TestResolveBinding:
         assert result.action == Action.DROP
 
     async def test_no_agent_drops(self) -> None:
-        from lyra.core.hub import Hub
-        from lyra.core.hub.hub_protocol import RoutingKey
+        from factory.core.hub import Hub
+        from factory.core.hub.hub_protocol import RoutingKey
 
         hub = Hub()
         from tests.core.conftest import _MockAdapter
@@ -193,7 +197,7 @@ class TestResolveBinding:
 
 class TestCreatePool:
     async def test_creates_pool_and_router(self) -> None:
-        from lyra.core.hub.hub_protocol import Binding
+        from factory.core.hub.hub_protocol import Binding
 
         hub = _make_hub()
         agent = hub.agent_registry["lyra"]
@@ -209,7 +213,7 @@ class TestCreatePool:
         assert ctx.pool is not None
 
     async def test_on_resume_fn_wired_when_resume_publisher_present(self) -> None:
-        from lyra.core.hub.hub_protocol import Binding
+        from factory.core.hub.hub_protocol import Binding
 
         hub = _make_hub()
         publisher = MagicMock()
@@ -238,7 +242,7 @@ class TestCreatePool:
         )
 
     async def test_on_resume_fn_not_set_when_resume_publisher_absent(self) -> None:
-        from lyra.core.hub.hub_protocol import Binding
+        from factory.core.hub.hub_protocol import Binding
 
         hub = _make_hub()
         agent = hub.agent_registry["lyra"]
@@ -253,7 +257,7 @@ class TestCreatePool:
         assert ctx.pool._on_resume_fn is None  # type: ignore[attr-defined]
 
     async def test_on_resume_fn_not_overwritten_when_already_set(self) -> None:
-        from lyra.core.hub.hub_protocol import Binding
+        from factory.core.hub.hub_protocol import Binding
 
         hub = _make_hub()
         publisher = MagicMock()
@@ -300,7 +304,7 @@ class TestCommand:
         expected_action: Action,
         next_called: bool,
     ) -> None:
-        from lyra.core.hub.hub_protocol import RoutingKey
+        from factory.core.hub.hub_protocol import RoutingKey
 
         hub = _make_hub()
         pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
@@ -338,7 +342,7 @@ class TestCommand:
 
 class TestSubmitToPool:
     async def test_submits_to_pool(self) -> None:
-        from lyra.core.hub.hub_protocol import RoutingKey
+        from factory.core.hub.hub_protocol import RoutingKey
 
         hub = _make_hub()
         pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
@@ -356,8 +360,8 @@ class TestSubmitToPool:
         assert result.pool is pool
 
     async def test_no_adapter_drops(self) -> None:
-        from lyra.core.hub import Hub
-        from lyra.core.hub.hub_protocol import RoutingKey
+        from factory.core.hub import Hub
+        from factory.core.hub.hub_protocol import RoutingKey
 
         hub = Hub()
         pool = hub.get_or_create_pool("telegram:main:chat:42", "lyra")
@@ -473,7 +477,7 @@ class TestCommandErrorPath:
     )
     async def test_dispatch_raises(self, with_trace: bool) -> None:
         """Command dispatch exception → COMMAND_HANDLED + trace (parametrized)."""
-        from lyra.core.hub.hub_protocol import RoutingKey
+        from factory.core.hub.hub_protocol import RoutingKey
 
         events: list[dict] = []
 
@@ -513,8 +517,11 @@ class TestCommandErrorPath:
 class TestCircuitBreakerDrop:
     async def test_circuit_breaker_open_drops(self) -> None:
         """Open circuit breaker in SubmitToPoolMiddleware → DROP."""
-        from lyra.core.hub.hub_protocol import RoutingKey
-        from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
+        from factory.core.hub.hub_protocol import RoutingKey
+        from factory.core.lifecycle.circuit_breaker import (
+            CircuitBreaker,
+            CircuitRegistry,
+        )
 
         registry = CircuitRegistry()
         cb = CircuitBreaker(name="claude-cli", failure_threshold=1, recovery_timeout=60)
@@ -689,7 +696,7 @@ class TestEmptyPipeline:
 class TestNotifySessionFallthroughMiddleware:
     async def test_notify_called_when_fresh(self) -> None:
         """FRESH status triggers try_notify_user."""
-        from lyra.core.hub.hub_protocol import RoutingKey
+        from factory.core.hub.hub_protocol import RoutingKey
 
         hub = _make_hub()
         pool_id = "telegram:main:chat:42"
@@ -731,7 +738,7 @@ class TestNotifySessionFallthroughMiddleware:
         async def _fake_notify(platform, _a, _o, text, **_kw):
             notify_calls.append((platform, text))
 
-        _patch = "lyra.core.hub.outbound.outbound_errors.try_notify_user"
+        _patch = "factory.core.hub.outbound.outbound_errors.try_notify_user"
         mw = SubmitToPoolMiddleware()
         with patch(_patch, side_effect=_fake_notify):
             result = await mw(msg, ctx, _make_next())
@@ -748,8 +755,8 @@ class TestNotifySessionFallthroughMiddleware:
 
 async def test_stt_middleware_no_msg_manager_replies() -> None:
     """SttMiddleware with hub._msg_manager=None sends an error reply and drops."""
-    from lyra.core.audio_payload import AudioPayload
-    from lyra.core.hub.middleware.middleware_stt import SttMiddleware
+    from factory.core.audio_payload import AudioPayload
+    from factory.core.hub.middleware.middleware_stt import SttMiddleware
 
     hub = _make_hub()
     hub._msg_manager = None  # simulate unconfigured state

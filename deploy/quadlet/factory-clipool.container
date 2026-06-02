@@ -32,11 +32,11 @@ Secret=factory-claude-oauth,type=env,target=CLAUDE_CODE_OAUTH_TOKEN
 # (unlink old inode → rename new) remain transparent to the container.
 # Single-file bind-mounts bind the inode at mount time; after an atomic replace
 # the container holds a Links:0 ghost and never sees the refreshed token.
-Volume=%h/.claude:/home/lyra/.claude:z
-Volume=%h/.claude.json:/home/lyra/.claude.json:z
+Volume=%h/.claude:/home/factory/.claude:z
+Volume=%h/.claude.json:/home/factory/.claude.json:z
 # Workspace — mirrors host ~/projects so claude subprocess picks up per-project CLAUDE.md
-Volume=%h/projects:/home/lyra/projects:z
-Environment=LYRA_CLAUDE_CWD=/home/lyra/projects
+Volume=%h/projects:/home/factory/projects:z
+Environment=FACTORY_CLAUDE_CWD=/home/factory/projects
 # Quadlet does not honor systemd's `-` prefix (silent-if-missing) on
 # EnvironmentFile=; it treats the `-` as a literal path character and produces
 # a malformed `--env-file=-/home/...` arg to podman. Drop the prefix and rely
@@ -48,30 +48,30 @@ EnvironmentFile=%h/.roxabi/factory/env/clipool.env
 # unit (pod containers don't share mount ns, so Tmpfs= per-container yields
 # split filesystems — verified on M₁). See factory-gh-token.volume for full
 # rationale + mode 1777 isolation argument.
-Volume=factory-gh-token.volume:/run/lyra-gh-token:rw
+Volume=factory-gh-token.volume:/run/factory-gh-token:rw
 # Tmpfs for ~/.config/git so the git config template can be sourced read-only;
-# the runtime user has GIT_CONFIG_GLOBAL pointing into the image-baked /etc/lyra
+# the runtime user has GIT_CONFIG_GLOBAL pointing into the image-baked /etc/factory
 # template, so this tmpfs is reserved for any future per-process overrides.
 # Note: ReadOnly=true is preserved — only Tmpfs= additions for credentials.
-Tmpfs=/home/lyra/.config/git:mode=0755
+Tmpfs=/home/factory/.config/git:mode=0755
 
 # PEM secret removed — invariant I-5: PEM mounts only on factory-gh-helper.container.
-# lyra-gh shim (uid 1500) reads tokens via the dispenser socket, never the PEM.
+# factory-gh shim (uid 1500) reads tokens via the dispenser socket, never the PEM.
 
-# LYRA_GH_APP_ID / LYRA_GH_INSTALLATION_ID removed — consumed only by the helper
+# FACTORY_GH_APP_ID / FACTORY_GH_INSTALLATION_ID removed — consumed only by the helper
 # daemon (factory-gh-helper.container). Clipool reads tokens via the dispenser socket.
 
 # Wire git's global config to the image-baked template so the credential
 # helper line resolves transparently for any `git push` from inside Claude.
-Environment=GIT_CONFIG_GLOBAL=/etc/lyra/git.config.tmpl
+Environment=GIT_CONFIG_GLOBAL=/etc/factory/git.config.tmpl
 
 # χ-2 decision: /proc hidepid=2 is intentionally NOT enabled here. Rationale:
 # (a) podman exec introspection (`podman top`, `podman exec ... ps -ef`) is
 # valuable for ops; hidepid=2 breaks it for non-procuser members.
 # (b) defense-in-depth on token isolation already covers the intended attack
-# (token cache 0600/uid 1501; env scoped via `lyra-gh` exec). Revisit if a
+# (token cache 0600/uid 1501; env scoped via `factory-gh` exec). Revisit if a
 # future threat model surfaces /proc/<helper-pid>/environ as a leak vector.
-Exec=lyra adapter clipool
+Exec=factory adapter clipool
 HealthCmd=grep -q clipool /proc/1/cmdline
 HealthInterval=30s
 

@@ -16,10 +16,10 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from lyra.cli import agent_app
-from lyra.core.agent.agent_models import AgentRow
-from lyra.core.agent.bot_models import BotRow
-from lyra.infrastructure.stores.agent_store import AgentStore
+from factory.cli import agent_app
+from factory.core.agent.agent_models import AgentRow
+from factory.core.agent.bot_models import BotRow
+from factory.infrastructure.stores.agent_store import AgentStore
 from tests.helpers.bot_store import db_get, db_upsert
 
 runner = CliRunner()
@@ -263,7 +263,7 @@ class TestDiscordEdit:
             return ""
 
         monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._shared.typer.prompt", _blank_prompt
+            "factory.agent_cmd.platforms._shared.typer.prompt", _blank_prompt
         )
         result = runner.invoke(agent_app, ["discord", "edit", "main"])
         assert result.exit_code == 0, result.output
@@ -312,7 +312,7 @@ class TestDiscordEdit:
             return val
 
         monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._shared.typer.prompt", _seq_prompt
+            "factory.agent_cmd.platforms._shared.typer.prompt", _seq_prompt
         )
         result = runner.invoke(agent_app, ["discord", "edit", "main"])
         assert result.exit_code == 0, result.output
@@ -354,7 +354,7 @@ class TestDiscordEdit:
             return val
 
         monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._shared.typer.prompt", _seq_prompt
+            "factory.agent_cmd.platforms._shared.typer.prompt", _seq_prompt
         )
         result = runner.invoke(agent_app, ["discord", "edit", "main"])
         assert result.exit_code == 0, result.output
@@ -392,7 +392,7 @@ class TestDiscordEdit:
             return val
 
         monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._shared.typer.prompt", _seq_prompt
+            "factory.agent_cmd.platforms._shared.typer.prompt", _seq_prompt
         )
         result = runner.invoke(agent_app, ["discord", "edit", "main"])
         assert result.exit_code == 0, result.output
@@ -607,7 +607,7 @@ class TestDiscordRemove:
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="discord", bot_id="main", agent="lyra"))
         monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._commands.typer.confirm", lambda *a, **k: None
+            "factory.agent_cmd.platforms._commands.typer.confirm", lambda *a, **k: None
         )
         result = runner.invoke(agent_app, ["discord", "remove", "main"])
         assert result.exit_code == 0, result.output
@@ -626,7 +626,7 @@ class TestDiscordRemove:
         def _no(*a, **k):
             raise typer.Abort()
 
-        monkeypatch.setattr("lyra.agent_cmd.platforms._commands.typer.confirm", _no)
+        monkeypatch.setattr("factory.agent_cmd.platforms._commands.typer.confirm", _no)
         result = runner.invoke(agent_app, ["discord", "remove", "main"])
         assert result.exit_code == 1, result.output
         row = db_get(db_path, "discord", "main")
@@ -745,7 +745,7 @@ class TestDiscordValidate:
         secret_name = "factory-bot-discord-main"
         mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
+            "factory.agent_cmd.platforms._commands.subprocess.run", mock_run
         )
 
         result = runner.invoke(agent_app, ["discord", "validate", "main"])
@@ -772,7 +772,7 @@ class TestDiscordValidate:
         secret_name = "factory-bot-discord-main"
         mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
+            "factory.agent_cmd.platforms._commands.subprocess.run", mock_run
         )
 
         result = runner.invoke(agent_app, ["discord", "validate", "main"])
@@ -798,7 +798,7 @@ class TestDiscordValidate:
         secret_name = "factory-bot-discord-main"
         mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
+            "factory.agent_cmd.platforms._commands.subprocess.run", mock_run
         )
 
         result = runner.invoke(agent_app, ["discord", "validate", "main"])
@@ -825,7 +825,7 @@ class TestDiscordValidate:
             return_value=_make_proc(returncode=0, stdout="other-secret")
         )
         monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
+            "factory.agent_cmd.platforms._commands.subprocess.run", mock_run
         )
 
         result = runner.invoke(agent_app, ["discord", "validate", "main"])
@@ -851,7 +851,7 @@ class TestDiscordValidate:
         secret_name = "factory-bot-discord-main"
         mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
+            "factory.agent_cmd.platforms._commands.subprocess.run", mock_run
         )
         result = runner.invoke(agent_app, ["discord", "validate", "main"])
         assert result.exit_code == 1, result.output
@@ -876,7 +876,7 @@ class TestDiscordValidate:
         )
         mock_run = MagicMock(return_value=_make_proc(returncode=1, stdout=""))
         monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
+            "factory.agent_cmd.platforms._commands.subprocess.run", mock_run
         )
         result = runner.invoke(agent_app, ["discord", "validate", "main"])
         assert result.exit_code == 1, result.output
@@ -901,7 +901,7 @@ class TestDiscordValidate:
         secret_name = "factory-bot-discord-main"
         mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
+            "factory.agent_cmd.platforms._commands.subprocess.run", mock_run
         )
         result = runner.invoke(agent_app, ["discord", "validate", "main"])
         assert result.exit_code == 0, result.output

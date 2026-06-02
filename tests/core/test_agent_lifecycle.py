@@ -6,9 +6,9 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 
 import pytest
 
-from lyra.core.messaging.message import InboundMessage, Response
-from lyra.core.messaging.render_events import RenderEvent
-from lyra.core.pool import Pool
+from factory.core.messaging.message import InboundMessage, Response
+from factory.core.messaging.render_events import RenderEvent
+from factory.core.pool import Pool
 
 
 class TestAgentMemoryInjection:
@@ -16,12 +16,12 @@ class TestAgentMemoryInjection:
 
     def test_agent_base_has_memory_attribute_defaulting_none(self) -> None:
         """AgentBase must expose _memory attribute, defaulting to None."""
-        from lyra.core.agent import AgentBase
+        from factory.core.agent import AgentBase
 
         # AgentBase is abstract — check the attribute declaration is present
         assert hasattr(AgentBase, "_memory") or True  # FAILS if not a class attribute
         # Concrete check: a concrete subclass should have _memory=None
-        from lyra.core import Agent
+        from factory.core import Agent
 
         config = Agent(
             name="lyra", system_prompt="You are Lyra.", memory_namespace="lyra"
@@ -44,8 +44,8 @@ class TestAgentMemoryInjection:
         """_memory can be set after construction (Hub injection pattern)."""
         from unittest.mock import MagicMock
 
-        from lyra.core import Agent
-        from lyra.core.agent import AgentBase
+        from factory.core import Agent
+        from factory.core.agent import AgentBase
 
         config = Agent(
             name="lyra", system_prompt="You are Lyra.", memory_namespace="lyra"
@@ -72,7 +72,7 @@ class TestAgentEnsureSystemPrompt:
 
     def test_agent_has_ensure_system_prompt(self) -> None:
         """AgentBase must expose _ensure_system_prompt method."""
-        from lyra.core.agent import AgentBase
+        from factory.core.agent import AgentBase
 
         assert hasattr(AgentBase, "_ensure_system_prompt")  # FAILS
 
@@ -82,8 +82,8 @@ class TestAgentEnsureSystemPrompt:
         the static config system_prompt."""
         from unittest.mock import MagicMock
 
-        from lyra.core import Agent
-        from lyra.core.agent import AgentBase
+        from factory.core import Agent
+        from factory.core.agent import AgentBase
 
         config = Agent(
             name="lyra",
@@ -114,8 +114,8 @@ class TestAgentEnsureSystemPrompt:
         """With memory injected, _ensure_system_prompt prepends the identity anchor."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from lyra.core import Agent
-        from lyra.core.agent import AgentBase
+        from factory.core import Agent
+        from factory.core.agent import AgentBase
 
         config = Agent(
             name="lyra",
@@ -155,7 +155,7 @@ class TestAgentFlushSession:
 
     def test_agent_has_flush_session(self) -> None:
         """AgentBase must expose flush_session method."""
-        from lyra.core.agent import AgentBase
+        from factory.core.agent import AgentBase
 
         assert hasattr(AgentBase, "flush_session")  # FAILS
 
@@ -164,8 +164,8 @@ class TestAgentFlushSession:
         """flush_session must be a no-op when _memory is None."""
         from unittest.mock import MagicMock
 
-        from lyra.core import Agent
-        from lyra.core.agent import AgentBase
+        from factory.core import Agent
+        from factory.core.agent import AgentBase
 
         config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
 
@@ -194,8 +194,8 @@ class TestAgentFlushSession:
         """flush_session must be a no-op when pool.user_id is empty."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from lyra.core import Agent
-        from lyra.core.agent import AgentBase
+        from factory.core import Agent
+        from factory.core.agent import AgentBase
 
         config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
 
@@ -233,7 +233,7 @@ class TestAgentCompact:
 
     def test_agent_has_compact_method(self) -> None:
         """AgentBase must expose a compact() method."""
-        from lyra.core.agent import AgentBase
+        from factory.core.agent import AgentBase
 
         assert hasattr(AgentBase, "compact")  # FAILS
 
@@ -242,8 +242,8 @@ class TestAgentCompact:
         """compact() must be a no-op when context token count is below threshold."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from lyra.core import Agent
-        from lyra.core.agent import AgentBase
+        from factory.core import Agent
+        from factory.core.agent import AgentBase
 
         config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
 
@@ -277,8 +277,8 @@ class TestAgentCompact:
         """compact() calls upsert_session with status='partial' when over threshold."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from lyra.core import Agent
-        from lyra.core.agent import AgentBase
+        from factory.core import Agent
+        from factory.core.agent import AgentBase
 
         config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
 
@@ -333,18 +333,18 @@ class TestAgentExtractionMethods:
 
     def test_agent_has_run_concept_extraction(self) -> None:
         """AgentBase must expose _run_concept_extraction method."""
-        from lyra.core.agent import AgentBase
+        from factory.core.agent import AgentBase
 
         assert hasattr(AgentBase, "_run_concept_extraction")  # FAILS
 
     def test_agent_has_run_preference_extraction(self) -> None:
         """AgentBase must expose _run_preference_extraction method."""
-        from lyra.core.agent import AgentBase
+        from factory.core.agent import AgentBase
 
         assert hasattr(AgentBase, "_run_preference_extraction")  # FAILS
 
     def test_agent_has_extraction_llm_call(self) -> None:
         """AgentBase must expose _extraction_llm_call method."""
-        from lyra.core.agent import AgentBase
+        from factory.core.agent import AgentBase
 
         assert hasattr(AgentBase, "_extraction_llm_call")  # FAILS

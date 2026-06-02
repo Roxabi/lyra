@@ -9,8 +9,8 @@ import pytest
 from click.testing import Result
 from typer.testing import CliRunner
 
-from lyra.cli import agent_app as app
-from lyra.core.agent.agent_seeder import _parse_toml
+from factory.cli import agent_app as app
+from factory.core.agent.agent_seeder import _parse_toml
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -215,7 +215,7 @@ class TestCreate:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Choosing 'u' at the location prompt writes to the user agents dir."""
-        import lyra.cli_agent_create as create_mod
+        import factory.cli_agent_create as create_mod
 
         user_dir = tmp_path / "user_agents"
         monkeypatch.setattr(create_mod, "_user_agents_dir", lambda: user_dir)
@@ -247,7 +247,7 @@ class TestCreate:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Choosing 's' at the location prompt writes to the system agents dir."""
-        import lyra.cli_agent_create as create_mod
+        import factory.cli_agent_create as create_mod
 
         system_dir = tmp_path / "system_agents"
         _user_dir = tmp_path / "user_agents"

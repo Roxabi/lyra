@@ -6,8 +6,8 @@ import asyncio
 
 import pytest
 
-from lyra.adapters.nats.nats_stream_decoder import decode_stream_events
-from lyra.core.exceptions import HubUnavailableError, StreamChunkTimeout
+from factory.adapters.nats.nats_stream_decoder import decode_stream_events
+from factory.core.exceptions import HubUnavailableError, StreamChunkTimeout
 
 
 async def _drain(stream_id: str, q: asyncio.Queue, **kwargs) -> list:
@@ -30,7 +30,7 @@ class TestDecodeStreamEventsHealthCheck:
 
         with pytest.raises(HubUnavailableError):
             # Patch the poll interval to make test fast
-            import lyra.adapters.nats.nats_stream_decoder as mod
+            import factory.adapters.nats.nats_stream_decoder as mod
 
             original = mod._LIVENESS_POLL_SECONDS
             mod._LIVENESS_POLL_SECONDS = 0.05
@@ -50,7 +50,7 @@ class TestDecodeStreamEventsHealthCheck:
             call_count += 1
             return True
 
-        import lyra.adapters.nats.nats_stream_decoder as mod
+        import factory.adapters.nats.nats_stream_decoder as mod
 
         original_poll = mod._LIVENESS_POLL_SECONDS
         original_timeout = mod._CHUNK_TIMEOUT_SECONDS
@@ -70,7 +70,7 @@ class TestDecodeStreamEventsHealthCheck:
         """Without health_check_fn, StreamChunkTimeout is raised after timeout."""
         q: asyncio.Queue[dict] = asyncio.Queue()
 
-        import lyra.adapters.nats.nats_stream_decoder as mod
+        import factory.adapters.nats.nats_stream_decoder as mod
 
         original_poll = mod._LIVENESS_POLL_SECONDS
         original_timeout = mod._CHUNK_TIMEOUT_SECONDS

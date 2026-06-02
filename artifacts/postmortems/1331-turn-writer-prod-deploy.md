@@ -9,7 +9,7 @@
 
 Le déploiement du nouveau Quadlet `lyra-turn-writer` a déclenché 3 incidents en cascade :
 
-1. Rotation accidentelle de **tous** les seeds NATS actifs (`lyra-acl genkeys` mode défaut)
+1. Rotation accidentelle de **tous** les seeds NATS actifs (`factory-acl genkeys` mode défaut)
 2. Échec restart `lyra-nats` (Docker Hub rate-limit sur image au tag perdu)
 3. Bug `vault_dir.mkdir()` sur ReadOnly rootfs
 4. Bug ACL `_INBOX.>` (majuscule) vs `_inbox.<id>.>` (minuscule — convention NATS)
@@ -23,7 +23,7 @@ Downtime utilisateur visible ~30s.
 | ----- | ------------------------------------------------------------------------------ | -------- |
 | 17:25 | Hub déployé sur image `:staging` post-#1331 (auto-update)                      | —        |
 | 17:43 | Audit prod : `lyra-turn-writer` manquant, pas de seed `turn-writer.seed`       | —        |
-| 17:49 | **🔥 `uv run lyra-acl genkeys` (mode défaut) rotation de 11 seeds actifs / 13** | **HIGH** |
+| 17:49 | **🔥 `uv run factory-acl genkeys` (mode défaut) rotation de 11 seeds actifs / 13** | **HIGH** |
 | 17:53 | Récupération seeds depuis Podman secrets M₁ (7/11 récupérables)                | —        |
 | 17:54 | `auth.conf` regénéré (pubkeys M₁ restaurées + 4 satellites en nouveau pubkey)  | —        |
 | 17:55 | `install.sh` exécuté, `lyra-nats-auth` secret rafraîchi                        | —        |
@@ -40,7 +40,7 @@ Downtime utilisateur visible ~30s.
 
 ### 1. Rotation accidentelle des seeds (la pire)
 
-**Cause :** `lyra-acl genkeys` (mode défaut = `_mode_full_provision`) régénère **inconditionnellement** tous les seeds actifs (`scripts/_modes.py:290-297`).
+**Cause :** `factory-acl genkeys` (mode défaut = `_mode_full_provision`) régénère **inconditionnellement** tous les seeds actifs (`scripts/_modes.py:290-297`).
 Pas de mode "add-only" pour intégrer un nouvel identifiant.
 
 ```python
@@ -106,7 +106,7 @@ Avec `ReadOnly=true` + `LYRA_TURNS_DB=/data/turns.db` mais sans `LYRA_VAULT_DIR`
 
 | #   | Action                                                                                                                                                                                                 | Priorité      | Statut |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------- | ------ |
-| 1   | **PR source** : `lyra-acl genkeys --add-identity <name>` pour générer UN seul seed sans toucher aux autres                                                                                              | **HIGH**      | open — tracked in follow-up issue |
+| 1   | **PR source** : `factory-acl genkeys --add-identity <name>` pour générer UN seul seed sans toucher aux autres                                                                                              | **HIGH**      | open — tracked in follow-up issue |
 | 2   | **PR source** : guard `vault_dir.mkdir()` si `LYRA_TURNS_DB` set → skip mkdir, OR try/except OSError                                                                                                    | **HIGH**      | ✅ #1359 / PR #1360 (mkdir → db_path.parent) |
 | 3   | **PR source** : fix `acl-matrix.json` turn-writer `_INBOX.>` → `_inbox.turn-writer.>` (déjà fait live sur M₁)                                                                                           | **HIGH**      | ✅ #1359 / PR #1360 |
 | 4   | **PR source** : `deploy/quadlet/lyra-turn-writer.container` ajouter `Environment=LYRA_VAULT_DIR=/data`                                                                                                  | **HIGH**      | ✅ #1359 / PR #1360 |

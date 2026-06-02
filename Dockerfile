@@ -8,10 +8,10 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
 WORKDIR /app
 
-# Install dependencies. src/ must be present before `uv sync` — lyra is
+# Install dependencies. src/ must be present before `uv sync` — factory is
 # installed editable, and uv only links src files that exist at sync time.
 # Copying src/ after would leave the editable install pointing at an empty
-# dist-info (ImportError: No module named 'lyra' at runtime).
+# dist-info (ImportError: No module named 'factory' at runtime).
 COPY pyproject.toml uv.lock ./
 COPY packages/ packages/
 COPY src/ src/
@@ -24,25 +24,25 @@ FROM ghcr.io/roxabi/base-svc:latest AS svc-runtime
 USER root
 
 # UID 1500 pinned per ADR-053 (Quadlet container UID stability)
-RUN useradd -u 1500 -m lyra
+RUN useradd -u 1500 -m factory
 
-COPY --from=builder --chown=lyra:lyra /app /app
+COPY --from=builder --chown=factory:factory /app /app
 
 WORKDIR /app
 
 ENV PATH="/app/.venv/bin:$PATH"
 
-USER lyra
+USER factory
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD lyra config validate || exit 1
+  CMD factory config validate || exit 1
 
 # ── Agent runtime (clipool — full gh_token tooling) ───────────────────────────
 FROM ghcr.io/roxabi/base:latest AS agent-runtime
 
 USER root
 
-# socat — required by the gh_token shim scripts (git-credential-lyra-gh + lyra-gh)
+# socat — required by the gh_token shim scripts (git-credential-factory-gh + factory-gh)
 # to dial the dispenser Unix socket. Smallest dep that handles UNIX-CONNECT cleanly;
 # BSD nc -U fallback in the shims is for hosts where socat is unavailable.
 RUN apt-get update \
@@ -50,56 +50,56 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 # UID 1500 pinned per ADR-053 (Quadlet container UID stability)
-RUN useradd -u 1500 -m lyra \
- && mkdir -p /home/lyra/projects \
-              /home/lyra/.claude/projects \
-              /home/lyra/.claude/plugins \
-              /home/lyra/.claude/skills \
-              /home/lyra/.claude/shared \
-              /home/lyra/.claude/.git
+RUN useradd -u 1500 -m factory \
+ && mkdir -p /home/factory/projects \
+              /home/factory/.claude/projects \
+              /home/factory/.claude/plugins \
+              /home/factory/.claude/skills \
+              /home/factory/.claude/shared \
+              /home/factory/.claude/.git
 
-COPY --from=builder --chown=lyra:lyra /app /app
+COPY --from=builder --chown=factory:factory /app /app
 
-# ── lyra-gh helper user (#1078) ─────────────────────────────────────────────
-# uid 1501 ≠ 1500 (lyra's uid) so the token cache file
-# /run/lyra-gh-token/token.json (mode 0600 owned by 1501) is unreadable from
-# inside the Claude subprocess. Both users share group lyra-tokenuser
-# (gid 1502) so the credential helper + lyra-gh shim can connect to the
+# ── factory-gh helper user (#1078) ─────────────────────────────────────────────
+# uid 1501 ≠ 1500 (factory's uid) so the token cache file
+# /run/factory-gh-token/token.json (mode 0600 owned by 1501) is unreadable from
+# inside the Claude subprocess. Both users share group factory-tokenuser
+# (gid 1502) so the credential helper + factory-gh shim can connect to the
 # dispenser socket (mode 0660 group rw).
-RUN groupadd -g 1502 lyra-tokenuser \
- && useradd -u 1501 -M -d /nonexistent -s /usr/sbin/nologin -G lyra-tokenuser lyra-gh \
- && usermod -aG lyra-tokenuser lyra
+RUN groupadd -g 1502 factory-tokenuser \
+ && useradd -u 1501 -M -d /nonexistent -s /usr/sbin/nologin -G factory-tokenuser factory-gh \
+ && usermod -aG factory-tokenuser factory
 
 # ── gh_token tools (#1078) ───────────────────────────────────────────────────
 # Copy helper + dispenser Python modules, and shell shims when T6/T7 land.
 # The conditional chmod/ln blocks are no-ops before those tasks ship.
-RUN mkdir -p /opt/lyra-gh /etc/lyra
-COPY --chown=root:root src/lyra/tools/gh_token/ /opt/lyra-gh/
-RUN chmod 0755 /opt/lyra-gh/*.py 2>/dev/null || true \
- && { [ -f /opt/lyra-gh/git-credential-lyra-gh ] && chmod 0755 /opt/lyra-gh/git-credential-lyra-gh || true; } \
- && { [ -f /opt/lyra-gh/lyra-gh ] && chmod 0755 /opt/lyra-gh/lyra-gh && ln -sf /opt/lyra-gh/lyra-gh /usr/local/bin/lyra-gh && ln -sf /opt/lyra-gh/lyra-gh /usr/local/bin/gh || true; }
-COPY --chown=root:root deploy/lyra-gh/git.config.tmpl /etc/lyra/git.config.tmpl
-COPY --chown=root:root deploy/lyra-gh/hooks/ /opt/lyra-gh/hooks/
-RUN chmod 0755 /opt/lyra-gh/hooks/prepare-commit-msg
+RUN mkdir -p /opt/factory-gh /etc/factory
+COPY --chown=root:root src/factory/tools/gh_token/ /opt/factory-gh/
+RUN chmod 0755 /opt/factory-gh/*.py 2>/dev/null || true \
+ && { [ -f /opt/factory-gh/git-credential-factory-gh ] && chmod 0755 /opt/factory-gh/git-credential-factory-gh || true; } \
+ && { [ -f /opt/factory-gh/factory-gh ] && chmod 0755 /opt/factory-gh/factory-gh && ln -sf /opt/factory-gh/factory-gh /usr/local/bin/factory-gh && ln -sf /opt/factory-gh/factory-gh /usr/local/bin/gh || true; }
+COPY --chown=root:root deploy/factory-gh/git.config.tmpl /etc/factory/git.config.tmpl
+COPY --chown=root:root deploy/factory-gh/hooks/ /opt/factory-gh/hooks/
+RUN chmod 0755 /opt/factory-gh/hooks/prepare-commit-msg
 
 # Take `gh` off PATH (AC#5 from #1078): the base image ships /usr/bin/gh which
 # would let any process — including the Claude subprocess — invoke gh directly
 # and inherit the token if one ever leaked into env. Move it to a non-PATH
-# location and point LYRA_GH_BIN at it so the lyra-gh shim still finds it
+# location and point LYRA_GH_BIN at it so the factory-gh shim still finds it
 # without anyone else's `command -v gh` succeeding. /usr/local/bin/gh is a
-# shim alias (→ lyra-gh) so callers that hardcode `gh` also route through the
+# shim alias (→ factory-gh) so callers that hardcode `gh` also route through the
 # dispenser; the shim's LYRA_GH_BIN-first resolution guards against recursion.
 RUN test -x /usr/bin/gh \
- && mv /usr/bin/gh /opt/lyra-gh/gh \
- && chmod 0755 /opt/lyra-gh/gh \
+ && mv /usr/bin/gh /opt/factory-gh/gh \
+ && chmod 0755 /opt/factory-gh/gh \
  || true
-ENV LYRA_GH_BIN=/opt/lyra-gh/gh
+ENV LYRA_GH_BIN=/opt/factory-gh/gh
 
 WORKDIR /app
 
 ENV PATH="/app/.venv/bin:$PATH"
 
-USER lyra
+USER factory
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD lyra config validate || exit 1
+  CMD factory config validate || exit 1

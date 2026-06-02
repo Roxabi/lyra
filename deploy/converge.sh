@@ -20,13 +20,13 @@ _do_converge() {
 
     echo "==> Convergence drift detected — beginning deploy..."
 
-    # 2) Pull lyra staging
-    echo "==> lyra: pulling staging..."
-    (cd "${LYRA_DIR}" && git pull --ff-only origin staging)
+    # 2) Pull factory staging
+    echo "==> factory: pulling staging..."
+    (cd "${FACTORY_DIR}" && git pull --ff-only origin staging)
 
-    # 3) Install lyra quadlet units (no restart)
-    echo "==> lyra: installing quadlet units..."
-    make -C "${LYRA_DIR}" quadlet-install NO_RESTART=1
+    # 3) Install factory quadlet units (no restart)
+    echo "==> factory: installing quadlet units..."
+    make -C "${FACTORY_DIR}" quadlet-install NO_RESTART=1
 
     # 4) Pull voiceCLI if present
     VOICE_DIR="${VOICE_DIR:-${HOME}/projects/voiceCLI}"
@@ -39,11 +39,11 @@ _do_converge() {
 
     # 5) Regenerate auth.conf
     echo "==> NATS: regenerating auth.conf..."
-    lyra-acl genkeys --regen-authconf
+    factory-acl genkeys --regen-authconf
 
     # 6) Install secrets
     echo "==> NATS: installing Podman secrets..."
-    make -C "${LYRA_DIR}" quadlet-secrets-install
+    make -C "${FACTORY_DIR}" quadlet-secrets-install
 
     # 7) Restart NATS (mount-typed secret refresh requires restart)
     echo "==> NATS: restarting factory-nats..."
@@ -51,7 +51,7 @@ _do_converge() {
     systemctl --user is-active --quiet factory-nats \
         || { echo "ERROR: factory-nats failed to reach active state"; exit 1; }
 
-    # 8) Restart lyra NATS clients
+    # 8) Restart factory NATS clients
     echo "==> Lyra: restarting containers..."
     local failed=""
     for svc in factory-hub factory-telegram factory-discord factory-clipool factory-turn-writer factory-gh-helper factory-blobstore; do

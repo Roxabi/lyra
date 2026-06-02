@@ -9,7 +9,7 @@ generated: 2026-05-26
 
 ## Summary
 
-Add a `deploy` field to the `acl-matrix.json` schema with 3 typed variants (container/host/external), then make `lyra-acl genkeys --regenerate` exit 2 + emit a copyable scp manifest when external identities exist and `--ack-external-distribution` is not given. Bump matrix version v2 → v3 with tighter validation.
+Add a `deploy` field to the `acl-matrix.json` schema with 3 typed variants (container/host/external), then make `factory-acl genkeys --regenerate` exit 2 + emit a copyable scp manifest when external identities exist and `--ack-external-distribution` is not given. Bump matrix version v2 → v3 with tighter validation.
 
 ## Architecture
 
@@ -432,7 +432,7 @@ All within `Σ ops ≤ 50` and `|tasks| ≤ 4` (tester-A=5 is OK with all bounde
   - Current external identities list (read from `acl-matrix.json` at write time)
   - scp template `scp <src> $USER@<host>:<target_path>` (placeholder syntax)
   - "What if I forget" referencing the 2026-05-25/26 post-mortem
-  - Cross-ref to `lyra-acl genkeys --ack-external-distribution` flag
+  - Cross-ref to `factory-acl genkeys --ack-external-distribution` flag
 - **Verify:** `grep -c "External seed distribution" docs/ops/nats-authconf-update.md`
 - **Expected:** Output `1` (section header present)
 - **Estimate:** 12 min
@@ -461,8 +461,8 @@ All within `Σ ops ≤ 50` and `|tasks| ≤ 4` (tester-A=5 is OK with all bounde
 - **Verify:**
   ```bash
   uv run pytest tests/scripts/ -v
-  uv run lyra-acl check retired
-  uv run lyra-acl check flows
+  uv run factory-acl check retired
+  uv run factory-acl check flows
   uv run python -c "from pathlib import Path; from scripts._loader import load_matrix; m = load_matrix(Path('deploy/nats/acl-matrix.json')); assert m['version'] == '3'; print('v3 OK')"
   ```
 - **Expected:** All commands succeed; v3 matrix passes all consistency checks

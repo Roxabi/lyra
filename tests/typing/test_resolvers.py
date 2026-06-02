@@ -1,10 +1,10 @@
 """AC8 verification — resolvers are module-level functions (import-only test)."""
 
-from lyra.transport.work_scope import WorkScope
+from factory.transport.work_scope import WorkScope
 
 
 def test_discord_resolver_is_module_level() -> None:
-    from lyra.adapters.discord.adapter import _discord_scope_resolver
+    from factory.adapters.discord.adapter import _discord_scope_resolver
 
     assert callable(_discord_scope_resolver)
     assert (
@@ -16,7 +16,7 @@ def test_discord_resolver_is_module_level() -> None:
 
 
 def test_telegram_resolver_is_module_level() -> None:
-    from lyra.adapters.telegram.telegram import _telegram_scope_resolver
+    from factory.adapters.telegram.telegram import _telegram_scope_resolver
 
     assert callable(_telegram_scope_resolver)
     # Group/supergroup chat: negative chat_id (-100xxx).

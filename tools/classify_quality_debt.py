@@ -14,7 +14,7 @@ Output modes:
                        [{path, line, rule, suggestion, fix_class, reason}, ...]
                        Summary line is suppressed; parse the array length directly.
     --apply            Apply inline suffixes, create registry files, write drain queue.
-    --migrate-policy   One-shot mode: rewrite DEBT:<old-tag> markers in src/lyra/ to
+    --migrate-policy   One-shot mode: rewrite DEBT:<old-tag> markers in src/factory/ to
                        DEBT:<slug> using the built-in mapping table.
 """
 
@@ -239,10 +239,10 @@ def _is_boundary_path(path: str) -> bool:
 
     Replaces the old _is_cli_path with broader coverage:
       - cli/ directory or cli_* filenames (original)
-      - src/lyra/adapters/** (channel boundary event loops)
-      - src/lyra/bootstrap/** (supervisor entry points)
+      - src/factory/adapters/** (channel boundary event loops)
+      - src/factory/bootstrap/** (supervisor entry points)
       - basenames matching command/event dispatchers
-      - src/lyra/tools/** (CLI script entry points)
+      - src/factory/tools/** (CLI script entry points)
     """
     parts = Path(path).parts
     filename = Path(path).stem  # without extension
@@ -258,9 +258,9 @@ def _is_boundary_path(path: str) -> bool:
     if "/adapters/" in lower or "/bootstrap/" in lower:
         return True
 
-    # Tools directory — anchored to src/lyra/tools/ to avoid matching repo-level
+    # Tools directory — anchored to src/factory/tools/ to avoid matching repo-level
     # tools/ (e.g., tools/classify_quality_debt.py itself) when scan scope broadens.
-    if "src/lyra/tools/" in lower or "/lyra/tools/" in lower:
+    if "src/factory/tools/" in lower or "/lyra/tools/" in lower:
         return True
 
     # Command/event dispatcher basenames
@@ -408,13 +408,13 @@ _POLICY_SUFFIX_RE = re.compile(r"(?P<prefix>[-—]+\s*)POLICY:(?P<tag>[a-z][a-z-
 
 
 def _migrate_policy_markers(root: Path) -> tuple[int, int]:
-    """Rewrite POLICY:<tag> suffixes in src/lyra/**/*.py to DEBT:<slug>.
+    """Rewrite POLICY:<tag> suffixes in src/factory/**/*.py to DEBT:<slug>.
 
     Returns (rewritten, unmapped) counts.
     Logs unmapped tags to stderr; leaves those lines unchanged.
     Idempotent: DEBT: markers are unchanged.
     """
-    src_root = root / "src" / "lyra"
+    src_root = root / "src" / "factory"
     rewritten = 0
     unmapped = 0
 
@@ -730,7 +730,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         default=False,
         help=(
-            "One-shot mode: scan src/lyra/**/*.py and rewrite POLICY:<tag> suffixes "
+            "One-shot mode: scan src/factory/**/*.py and rewrite POLICY:<tag> suffixes "
             "to DEBT:<slug> using the built-in mapping table. "
             "Prints summary to stdout; logs unmapped tags to stderr. "
             "Returns non-zero if any unmapped tags are found."
@@ -754,7 +754,7 @@ def main(argv: list[str] | None = None) -> int:
     # --migrate-policy takes precedence: runs its own pipeline and returns.
     if getattr(args, "migrate_policy", False):
         rewritten, unmapped_count = _migrate_policy_markers(root)
-        scanned = sum(1 for _ in (root / "src" / "lyra").rglob("*.py"))
+        scanned = sum(1 for _ in (root / "src" / "factory").rglob("*.py"))
         print(
             f"migrate-policy: scanned={scanned} files, "
             f"rewritten={rewritten} lines, unmapped={unmapped_count}"

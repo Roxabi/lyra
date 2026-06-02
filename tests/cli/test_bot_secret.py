@@ -1,7 +1,7 @@
 """RED tests for `lyra bot secret` subcommands (issue #1057).
 
 These tests MUST FAIL until T2 implements the `secret` sub-app in
-`src/lyra/cli_bot.py`. They exercise:
+`src/factory/cli_bot.py`. They exercise:
   - lyra bot secret install <platform> <bot_id>
       [--from-env VAR] [--webhook-from-env VAR]
   - lyra bot secret rm <platform> <bot_id>
@@ -9,7 +9,7 @@ These tests MUST FAIL until T2 implements the `secret` sub-app in
   - lyra bot secret migrate --vault <dir>
 
 Mock strategy: `subprocess.run` is patched so that no real podman process is
-spawned. The root `lyra_app` from `lyra.cli` is invoked through `CliRunner`
+spawned. The root `factory_app` from `factory.cli` is invoked through `CliRunner`
 to exercise the full Typer command tree (bot → secret).
 """
 
@@ -22,7 +22,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from lyra.cli import lyra_app as app
+from factory.cli import factory_app as app
 
 runner = CliRunner()
 

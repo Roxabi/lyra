@@ -228,7 +228,7 @@
       "retired_at": "2026-05-26",
       "owner": "reserved",
       "description": "Monitoring identity — full pub+sub on lyra.monitor.> namespace.",
-      "notes": "Retired 2026-05-26: no confirmed NKey consumer found in codebase. src/lyra/monitoring/ uses the NATS HTTP endpoint (port 8222), not a NATS NKey credential. lyra-monitor.service/timer removed from deploy/; src/lyra/monitoring/ Python module retained for Monitoring v2 (#1035) spec mining. deploy field intentionally absent per T4 convention (retired identities exempt).",
+      "notes": "Retired 2026-05-26: no confirmed NKey consumer found in codebase. src/factory/monitoring/ uses the NATS HTTP endpoint (port 8222), not a NATS NKey credential. lyra-monitor.service/timer removed from deploy/; src/factory/monitoring/ Python module retained for Monitoring v2 (#1035) spec mining. deploy field intentionally absent per T4 convention (retired identities exempt).",
       "allow_responses": false,
       "publish": [
         "lyra.monitor.>"

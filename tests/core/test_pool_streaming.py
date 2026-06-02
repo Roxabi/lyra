@@ -17,8 +17,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.messaging.message import InboundMessage, Response
-from lyra.core.pool import Pool
+from factory.core.messaging.message import InboundMessage, Response
+from factory.core.pool import Pool
 from tests.conftest import TIMEOUT_IO
 from tests.core.conftest import _make_ctx_mock, make_msg
 
@@ -101,7 +101,7 @@ async def _consume_and_dispatch_cb(
     async for _ in chunks:
         pass
     if outbound is not None:
-        from lyra.core.messaging.message import OutboundMessage as _OM
+        from factory.core.messaging.message import OutboundMessage as _OM
 
         if isinstance(outbound, _OM):
             cb = outbound.metadata.pop("_on_dispatched", None)

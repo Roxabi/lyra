@@ -30,7 +30,7 @@ def _setup_minimal_project(root: Path) -> None:
     deploy = root / "deploy"
     deploy.mkdir(parents=True, exist_ok=True)
     (deploy / "quadlet.toml").write_text(
-        "[component.fake]\ncontainer = \"fake\"\n", encoding="utf-8"
+        '[component.fake]\ncontainer = "fake"\n', encoding="utf-8"
     )
 
     # deploy/nats/acl-matrix.json
@@ -42,10 +42,7 @@ def _setup_minimal_project(root: Path) -> None:
 
     # .importlinter
     (root / ".importlinter").write_text(
-        "[importlinter:contract:1]\n"
-        "name = test\n"
-        "type = layers\n"
-        "layers = src\n",
+        "[importlinter:contract:1]\nname = test\ntype = layers\nlayers = src\n",
         encoding="utf-8",
     )
 

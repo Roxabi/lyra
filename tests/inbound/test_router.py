@@ -4,15 +4,15 @@ from __future__ import annotations
 
 import pytest
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import (
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import (
     DiscordMeta,
     InboundMessage,
     PlatformMeta,
     TelegramMeta,
 )
-from lyra.inbound.context import RouterCtx
-from lyra.inbound.router import RouteDecision, Router
+from factory.inbound.context import RouterCtx
+from factory.inbound.router import RouteDecision, Router
 
 # -- Helpers -----------------------------------------------------------------
 
@@ -274,7 +274,7 @@ class TestRouterUnknownPlatform:
         self, router: Router, router_ctx_telegram: RouterCtx
     ) -> None:
         # Arrange — GenericMeta (not TelegramMeta or DiscordMeta)
-        from lyra.core.messaging.message import GenericMeta
+        from factory.core.messaging.message import GenericMeta
 
         msg = _make_msg(
             platform="unknown",

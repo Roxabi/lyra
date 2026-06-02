@@ -213,7 +213,7 @@ Do NOT remove `$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO` — the adapter needs it
 
 Hub `publish` is unchanged (`$JS.API.>` already covers all provisioning calls).
 
-After removing from adapters, verify via `lyra-acl genkeys --template-only` that the
+After removing from adapters, verify via `factory-acl genkeys --template-only` that the
 rendered auth.conf for telegram-adapter and discord-adapter no longer contains the
 three removed subjects, and still contains `STREAM.INFO.LYRA_OUTBOUND_AUDIO`.
 
@@ -367,13 +367,13 @@ audio-specific subjects directly — all are inherited via `"groups": ["audio-co
 
 ```bash
 # Before migration:
-uv run lyra-acl genkeys --template-only > /tmp/before.conf
+uv run factory-acl genkeys --template-only > /tmp/before.conf
 
 # Apply v4 schema change:
 # (edit acl-matrix.json: version bump + add groups key + move subjects)
 
 # After migration:
-uv run lyra-acl genkeys --template-only > /tmp/after.conf
+uv run factory-acl genkeys --template-only > /tmp/after.conf
 
 diff /tmp/before.conf /tmp/after.conf
 # Expected: empty diff (auth.conf output is identical)
@@ -408,7 +408,7 @@ Initial entries at S5 ship time:
 
 ### check grants logic (gen_nkeys.py)
 
-New subcommand `lyra-acl check grants --matrix <path> --code-subjects <path>`:
+New subcommand `factory-acl check grants --matrix <path> --code-subjects <path>`:
 
 ```
 For each stream in code-subjects.json:
@@ -443,7 +443,7 @@ FAIL: identity 'telegram-adapter' publish[] does not cover required subject
 Add after the `check flows` step:
 ```yaml
 - name: Check ACL code coverage (ADR-079)
-  run: uv run lyra-acl check grants
+  run: uv run factory-acl check grants
        --matrix deploy/nats/acl-matrix.json
        --code-subjects deploy/nats/code-subjects.json
 ```
@@ -464,7 +464,7 @@ Add after the `check flows` step:
 1. CI pipeline green on S5 PR with valid matrix.
 2. Introduce a deliberate missing grant (test branch): CI step fails with correct
    FAIL message, exit 1.
-3. Confirm `lyra-acl check grants` runs in < 2 s locally (no network calls).
+3. Confirm `factory-acl check grants` runs in < 2 s locally (no network calls).
 
 ---
 

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.stores.json_agent_store import JsonAgentStore
+from factory.core.stores.json_agent_store import JsonAgentStore
 
 from .conftest import make_agent_row
 
@@ -334,10 +334,10 @@ class TestMakeAgentStore:
     """make_agent_store() factory: env-var-driven dispatch."""
 
     def test_default_returns_agent_store(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.delenv("LYRA_DB", raising=False)
+        monkeypatch.delenv("FACTORY_DB", raising=False)
 
-        from lyra.bootstrap.factory.agent_store_factory import make_agent_store
-        from lyra.infrastructure.stores.agent_store import AgentStore
+        from factory.bootstrap.factory.agent_store_factory import make_agent_store
+        from factory.infrastructure.stores.agent_store import AgentStore
 
         store = make_agent_store()
         assert isinstance(store, AgentStore)
@@ -345,10 +345,10 @@ class TestMakeAgentStore:
     def test_lyra_db_json_returns_json_store(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_DB", "json")
-        monkeypatch.delenv("LYRA_AGENT_STORE_PATH", raising=False)
+        monkeypatch.setenv("FACTORY_DB", "json")
+        monkeypatch.delenv("FACTORY_AGENT_STORE_PATH", raising=False)
 
-        from lyra.bootstrap.factory.agent_store_factory import make_agent_store
+        from factory.bootstrap.factory.agent_store_factory import make_agent_store
 
         store = make_agent_store()
         assert isinstance(store, JsonAgentStore)
@@ -357,10 +357,10 @@ class TestMakeAgentStore:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         custom_path = tmp_path / "custom_store.json"
-        monkeypatch.setenv("LYRA_DB", "json")
-        monkeypatch.setenv("LYRA_AGENT_STORE_PATH", str(custom_path))
+        monkeypatch.setenv("FACTORY_DB", "json")
+        monkeypatch.setenv("FACTORY_AGENT_STORE_PATH", str(custom_path))
 
-        from lyra.bootstrap.factory.agent_store_factory import make_agent_store
+        from factory.bootstrap.factory.agent_store_factory import make_agent_store
 
         store = make_agent_store()
         assert isinstance(store, JsonAgentStore)
@@ -369,10 +369,10 @@ class TestMakeAgentStore:
     def test_lyra_db_other_value_returns_agent_store(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_DB", "sqlite")
+        monkeypatch.setenv("FACTORY_DB", "sqlite")
 
-        from lyra.bootstrap.factory.agent_store_factory import make_agent_store
-        from lyra.infrastructure.stores.agent_store import AgentStore
+        from factory.bootstrap.factory.agent_store_factory import make_agent_store
+        from factory.infrastructure.stores.agent_store import AgentStore
 
         store = make_agent_store()
         assert isinstance(store, AgentStore)
@@ -439,7 +439,7 @@ show_intermediate = false
         await json_agent_store.seed_from_toml(toml_file)
 
         # Modify the row in store
-        from lyra.core.agent.agent_models import AgentRow
+        from factory.core.agent.agent_models import AgentRow
 
         existing = json_agent_store.get("force-agent")
         assert existing is not None

@@ -6,7 +6,7 @@ deletes CredentialStore. Operators on machines that never seeded a
 config.db bot_secrets table can skip this script entirely.
 
 The script is intentionally self-contained — it does NOT import from the
-deleted `lyra.infrastructure.stores.credential_store` module. It reads
+deleted `factory.infrastructure.stores.credential_store` module. It reads
 `~/.lyra/config.db` directly via the stdlib sqlite3 module and decrypts
 each row with the existing Fernet keyring at `~/.lyra/keyring.key`.
 

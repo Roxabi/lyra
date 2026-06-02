@@ -7,12 +7,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import Attachment, InboundMessage, TelegramMeta
-from lyra.inbound.attachment_ingest import IngestCtx, PendingAttachment
-from lyra.inbound.context import DispatchCtx, InboundContext, RouterCtx, SessionCtx
-from lyra.inbound.pipeline import InboundPipeline
-from lyra.inbound.router import RouteDecision
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import Attachment, InboundMessage, TelegramMeta
+from factory.inbound.attachment_ingest import IngestCtx, PendingAttachment
+from factory.inbound.context import DispatchCtx, InboundContext, RouterCtx, SessionCtx
+from factory.inbound.pipeline import InboundPipeline
+from factory.inbound.router import RouteDecision
 
 # ---------------------------------------------------------------------------
 # Helpers

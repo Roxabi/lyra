@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock, call
 import pytest
 from nats.js.errors import BadRequestError, NotFoundError
 
-from lyra.infrastructure.outbound_audio.stream_setup import (
+from factory.infrastructure.outbound_audio.stream_setup import (
     KV_BUCKET,
     KV_TTL_SECONDS,
     _consumer_config,
@@ -182,7 +182,7 @@ async def test_ensure_kv_idempotent_double_call() -> None:
 
 def test_kv_ttl_exceeds_ack_floor() -> None:
     """KV TTL must exceed ack_wait × max_deliver floor (450 s)."""
-    from lyra.infrastructure.outbound_audio.stream_setup import (
+    from factory.infrastructure.outbound_audio.stream_setup import (
         ACK_WAIT_SECONDS,
         MAX_DELIVER,
     )

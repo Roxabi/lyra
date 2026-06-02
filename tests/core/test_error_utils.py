@@ -1,12 +1,12 @@
-"""Tests for lyra.core.error_utils.safe_error_response."""
+"""Tests for factory.core.error_utils.safe_error_response."""
 
 from __future__ import annotations
 
 import logging
 from unittest.mock import MagicMock
 
-from lyra.core.error_utils import safe_error_response
-from lyra.core.messaging.message import GENERIC_ERROR_REPLY, Response
+from factory.core.error_utils import safe_error_response
+from factory.core.messaging.message import GENERIC_ERROR_REPLY, Response
 
 
 class TestSafeErrorResponse:

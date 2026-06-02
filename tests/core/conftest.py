@@ -9,18 +9,18 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.agent import Agent, AgentBase
-from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.cli.cli_pool import _ProcessEntry
-from lyra.core.hub import Hub
-from lyra.core.messaging.message import (
+from factory.core.agent import Agent, AgentBase
+from factory.core.agent.agent_config import ModelConfig
+from factory.core.cli.cli_pool import _ProcessEntry
+from factory.core.hub import Hub
+from factory.core.messaging.message import (
     InboundMessage,
     OutboundMessage,
     Platform,
     Response,
     RoutingContext,
 )
-from lyra.core.pool import Pool
+from factory.core.pool import Pool
 from tests.factories.agents import (
     FastAgent,
     RecordingAgent,
@@ -100,7 +100,7 @@ __all__ = [
 MESSAGES_TOML_PATH = (
     Path(__file__).resolve().parent.parent.parent
     / "src"
-    / "lyra"
+    / "factory"
     / "data"
     / "messages.toml"
 )
@@ -112,7 +112,7 @@ async def push_to_hub(hub: Hub, msg: InboundMessage) -> None:
     Registers the platform and starts the bus feeders if needed, then
     enqueues via the ``Bus`` Protocol's ``put()`` method.
     """
-    from lyra.core.messaging.inbound_bus import LocalBus
+    from factory.core.messaging.inbound_bus import LocalBus
 
     platform = Platform(msg.platform)
     bus = hub.inbound_bus
@@ -302,7 +302,7 @@ _RC_DC = RoutingContext(platform="discord", bot_id="main", scope_id="channel:456
 @pytest.fixture(autouse=True)
 async def _cleanup_pairing_state(tmp_path: Path):
     """Reset pairing global and close all PairingManagers/AuthStores after each test."""
-    from lyra.infrastructure.stores.pairing import set_pairing_manager
+    from factory.infrastructure.stores.pairing import set_pairing_manager
 
     setattr(_cleanup_pairing_state, "tmp_path", tmp_path)
     yield

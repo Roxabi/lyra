@@ -27,7 +27,7 @@ cd "$(dirname "$0")/../.."
 OUT=$(mktemp)
 trap 'rm -f "$OUT"' EXIT
 
-uv run lyra-acl genkeys --template-only > "$OUT"
+uv run factory-acl genkeys --template-only > "$OUT"
 echo "PASS: template-only produced output ($(wc -l < "$OUT") lines)"
 
 # ── Expected allow-lists loaded from acl-matrix.json (SSoT per #717) ──
@@ -232,9 +232,9 @@ echo "PASS (#754): image-worker ACL + amended hub ACL assertions (5 checks)"
 # Lowercase _inbox.<identity>.> is required for tts-adapter and stt-adapter
 # because both rows carried _inbox.> defensively (nats-py case sensitivity).
 
-LYRA_IDENTITIES=(hub telegram-adapter discord-adapter tts-adapter stt-adapter)
+FACTORY_IDENTITIES=(hub telegram-adapter discord-adapter tts-adapter stt-adapter)
 
-for identity in "${LYRA_IDENTITIES[@]}"; do
+for identity in "${FACTORY_IDENTITIES[@]}"; do
   id_block=$(extract_block "$identity")
   [ -n "$id_block" ] || { echo "FAIL (#715): could not extract block for ${identity}"; exit 1; }
 

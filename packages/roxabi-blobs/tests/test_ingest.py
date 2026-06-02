@@ -335,12 +335,12 @@ class TestPublicImport:
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 if isinstance(node, ast.ImportFrom) and node.module:
                     assert not node.module.startswith("lyra"), (
-                        f"ingest.py must not import lyra.*: found '{node.module}'"
+                        f"ingest.py must not import factory.*: found '{node.module}'"
                     )
                 elif isinstance(node, ast.Import):
                     for alias in node.names:
                         assert not alias.name.startswith("lyra"), (
-                            f"ingest.py must not import lyra.*: found '{alias.name}'"
+                            f"ingest.py must not import factory.*: found '{alias.name}'"
                         )
 
 

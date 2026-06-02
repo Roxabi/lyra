@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.bootstrap.factory.bot_agent_map import resolve_bot_agent_map
+from factory.bootstrap.factory.bot_agent_map import resolve_bot_agent_map
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -12,7 +12,7 @@ import dataclasses
 
 import pytest
 
-from lyra.transport.work_scope import WorkScope
+from factory.transport.work_scope import WorkScope
 
 # Values shared by platform + bot_id (same allowlist + bound).
 SUBJECT_FIELD_REJECTED = [

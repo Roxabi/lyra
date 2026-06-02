@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.runtime_config import RuntimeConfig
+from factory.core.runtime_config import RuntimeConfig
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -113,7 +113,7 @@ class TestSaveLoad:
         tmp_toml.write_text("not valid toml ][")
 
         # Act
-        with caplog.at_level(logging.WARNING, logger="lyra.core.runtime_config"):
+        with caplog.at_level(logging.WARNING, logger="factory.core.runtime_config"):
             loaded = RuntimeConfig.load(tmp_toml)
 
         # Assert — returns default, logs a warning

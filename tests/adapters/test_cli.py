@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from lyra.adapters.shared.cli import CLIAdapter
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage
+from factory.adapters.shared.cli import CLIAdapter
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import InboundMessage
 
 
 def test_on_input_returns_inbound_message() -> None:

@@ -2,7 +2,7 @@
 # config.toml is gitignored — never commit it.
 #
 # ----------------------------------------------------------------------------
-# What lives here vs in the DB (~/.lyra/auth.db)
+# What lives here vs in the DB (~/.roxabi/factory/auth.db)
 # ----------------------------------------------------------------------------
 #
 # config.toml is the bootstrap file — only what cannot live in the DB yet:
@@ -12,18 +12,18 @@
 #   - [[auth.*_bots]]      default trust level + initial owner/trusted grants
 #
 # Everything else is managed in the DB and does NOT belong here:
-#   - Bot tokens / webhook secrets  → `lyra bot add`
-#   - Agent ↔ bot assignments       → `lyra agent assign`
+#   - Bot tokens / webhook secrets  → `factory bot add`
+#   - Agent ↔ bot assignments       → `factory agent assign`
 #                                      (TOML agent= is a one-time fallback
 #                                       if the DB has no mapping yet)
-#   - Agent config (prompt, TTS…)   → `lyra agent init` (seeds from TOML)
-#   - Per-user trust grants         → `lyra auth grant`
+#   - Agent config (prompt, TTS…)   → `factory agent init` (seeds from TOML)
+#   - Per-user trust grants         → `factory auth grant`
 #
 # ----------------------------------------------------------------------------
 
 [defaults]
 cwd = "~/projects"  # working directory for agent subprocesses
-# workspaces.lyra     = "~/projects/lyra"   # adds /lyra slash command
+# workspaces.factory     = "~/projects/roxabi-factory"   # adds /factory slash command
 # workspaces.projects = "~/projects"        # adds /projects slash command
 
 [admin]
@@ -64,7 +64,7 @@ user_ids = [
 # ----------------------------------------------------------------------------
 
 [[telegram.bots]]
-bot_id = "lyra"  # must match the bot_id used in `lyra bot add`
+bot_id = "lyra"  # must match the bot_id used in `factory bot add`
 # bot_username = "MyLyraBot"            # optional — used in help text (default: "lyra_bot")
 # agent = "lyra_default"               # fallback if DB has no bot→agent mapping yet
 
@@ -89,7 +89,7 @@ owner_users = []  # numeric Telegram IDs — seeded into DB on startup
 # ----------------------------------------------------------------------------
 
 [[discord.bots]]
-bot_id = "lyra"  # must match the bot_id used in `lyra bot add`
+bot_id = "lyra"  # must match the bot_id used in `factory bot add`
 # auto_thread = true                    # optional — thread per conversation (default: true)
 # agent = "lyra_default"               # fallback if DB has no bot→agent mapping yet
 

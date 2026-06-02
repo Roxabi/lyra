@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lyra.typing import make_typing_factory
+from factory.typing import make_typing_factory
 
 
 @pytest.mark.asyncio

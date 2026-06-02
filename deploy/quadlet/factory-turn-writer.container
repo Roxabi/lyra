@@ -14,7 +14,7 @@ NoNewPrivileges=true
 ReadOnly=true
 DropCapability=all
 # ADR-054 Decision 2: UserNS=keep-id maps container UID to host UID 1000 (mickael),
-# which owns ~/.roxabi/factory/*. uid=1500 is the lyra service user inside the container.
+# which owns ~/.roxabi/factory/*. uid=1500 is the factory service user inside the container.
 UserNS=keep-id:uid=1500,gid=1500
 # ADR-054 Decision 5 (revised): nkey seed delivered as Podman secret.
 Secret=factory-nats-turn-writer,type=mount,target=factory-nats-turn-writer.seed,uid=1500,gid=1500,mode=0400
@@ -26,16 +26,16 @@ Environment=NATS_URL=nats://factory-nats:4222
 # NOTE: Do NOT add inline # comments after Volume= values; Quadlet does not strip them
 # and Podman receives the literal comment text as a mount-option string (issue #1083).
 Volume=%h/.roxabi/factory/turn-writer/:/data/:z
-Environment=LYRA_TURNS_DB=/data/turns.db
+Environment=FACTORY_TURNS_DB=/data/turns.db
 # ROXABI_FACTORY_DIR=/data ensures bootstrap mkdir targets the writable bind-mount
-# under ReadOnly=true rootfs even when LYRA_TURNS_DB resolution falls back
+# under ReadOnly=true rootfs even when FACTORY_TURNS_DB resolution falls back
 # (defense in depth for #1359).
 Environment=ROXABI_FACTORY_DIR=/data
 Environment=PYTHONUNBUFFERED=1
-Exec=lyra turn-writer
+Exec=factory turn-writer
 HealthCmd=python3 -c 'import urllib.request,sys; r=urllib.request.urlopen("http://127.0.0.1:8083/health",timeout=3); sys.exit(0 if r.status==200 else 1)'
 # Intentional fleet divergence: HTTP probe failure → SIGKILL → Restart=on-failure
-# cycles the unit. Other lyra-* units use shallow process-presence probes where
+# cycles the unit. Other factory-* units use shallow process-presence probes where
 # kill-on-fail is overkill; here the writer's sole-writer contract makes a dead
 # probe a hard failure worth recycling. See ADR-075 and #1349.
 HealthOnFailure=kill

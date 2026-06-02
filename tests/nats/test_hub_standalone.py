@@ -17,8 +17,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from nats.aio.client import Client as NATS
 
-from lyra.bootstrap.infra.lockfile import acquire_lockfile as _acquire_lockfile
-from lyra.bootstrap.infra.lockfile import release_lockfile as _release_lockfile
+from factory.bootstrap.infra.lockfile import acquire_lockfile as _acquire_lockfile
+from factory.bootstrap.infra.lockfile import release_lockfile as _release_lockfile
 from tests.nats.conftest import requires_nats_server
 
 # ---------------------------------------------------------------------------
@@ -36,7 +36,9 @@ class TestNatsUrlGuard:
         raw_config = _test_config()
 
         # Act / Assert — must exit before touching NATS
-        from lyra.bootstrap.standalone.hub_standalone import _bootstrap_hub_standalone
+        from factory.bootstrap.standalone.hub_standalone import (
+            _bootstrap_hub_standalone,
+        )
 
         with pytest.raises(SystemExit) as exc_info:
             await _bootstrap_hub_standalone(raw_config)
@@ -126,8 +128,8 @@ class TestHealthEndpoint:
         # Arrange
         import httpx
 
-        from lyra.bootstrap.infra.health import create_health_app
-        from lyra.core.hub import Hub
+        from factory.bootstrap.infra.health import create_health_app
+        from factory.core.hub import Hub
 
         hub = Hub()
         app = create_health_app(hub)
@@ -150,8 +152,8 @@ class TestHealthEndpoint:
         # Arrange — write a known health secret to tmp_path
         import httpx
 
-        from lyra.bootstrap.infra.health import create_health_app
-        from lyra.core.hub import Hub
+        from factory.bootstrap.infra.health import create_health_app
+        from factory.core.hub import Hub
 
         secret = "test-secret-abc"
         secret_dir = tmp_path / ".roxabi" / "factory" / "secrets"
@@ -185,8 +187,8 @@ class TestHealthEndpoint:
         # Arrange
         import httpx
 
-        from lyra.bootstrap.infra.health import create_health_app
-        from lyra.core.hub import Hub
+        from factory.bootstrap.infra.health import create_health_app
+        from factory.core.hub import Hub
 
         hub = Hub()
         app = create_health_app(hub)
@@ -222,10 +224,10 @@ class TestStandaloneHubPipeline:
         import asyncio
 
         import nats as nats_lib
-        from lyra.core.auth.trust import TrustLevel
-        from lyra.core.hub import Hub
-        from lyra.core.messaging.message import InboundMessage, Platform
-        from lyra.nats.nats_bus import NatsBus
+        from factory.core.auth.trust import TrustLevel
+        from factory.core.hub import Hub
+        from factory.core.messaging.message import InboundMessage, Platform
+        from factory.nats.nats_bus import NatsBus
         from roxabi_nats._serialize import serialize
 
         # Arrange — separate NATS connection for the Hub (mirrors production)
@@ -304,12 +306,12 @@ class TestStandaloneHubPipeline:
         from unittest.mock import MagicMock
 
         import nats as nats_lib
-        from lyra.core.auth.authenticator import Authenticator
-        from lyra.core.auth.identity import Identity
-        from lyra.core.auth.trust import TrustLevel
-        from lyra.core.hub import Hub
-        from lyra.core.messaging.message import InboundMessage, Platform
-        from lyra.nats.nats_bus import NatsBus
+        from factory.core.auth.authenticator import Authenticator
+        from factory.core.auth.identity import Identity
+        from factory.core.auth.trust import TrustLevel
+        from factory.core.hub import Hub
+        from factory.core.messaging.message import InboundMessage, Platform
+        from factory.nats.nats_bus import NatsBus
         from roxabi_nats._serialize import serialize
 
         # Arrange — Hub with NatsBus and a mock Authenticator
@@ -414,21 +416,21 @@ class TestHubStandaloneIdentityName:
 
         with (
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.nats_connect",
+                "factory.bootstrap.standalone.hub_standalone.nats_connect",
                 mock_nats_connect,
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.acquire_lockfile",
+                "factory.bootstrap.standalone.hub_standalone.acquire_lockfile",
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.release_lockfile",
+                "factory.bootstrap.standalone.hub_standalone.release_lockfile",
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.open_stores",
+                "factory.bootstrap.standalone.hub_standalone.open_stores",
                 _fake_open_stores,
             ),
         ):
-            from lyra.bootstrap.standalone.hub_standalone import (
+            from factory.bootstrap.standalone.hub_standalone import (
                 _bootstrap_hub_standalone,
             )
 
@@ -483,15 +485,15 @@ class TestAdapterStandaloneIdentityName:
 
         with (
             patch(
-                "lyra.bootstrap.standalone.adapter_standalone.nats_connect",
+                "factory.bootstrap.standalone.adapter_standalone.nats_connect",
                 mock_nats_connect,
             ),
             patch(
-                "lyra.bootstrap.standalone.adapter_standalone.Platform",
+                "factory.bootstrap.standalone.adapter_standalone.Platform",
                 mock_platform_enum,
             ),
         ):
-            from lyra.bootstrap.standalone.adapter_standalone import (
+            from factory.bootstrap.standalone.adapter_standalone import (
                 _bootstrap_adapter_standalone,
             )
 

@@ -21,7 +21,7 @@ class TestParserProtocolImport:
 
     def test_parser_importable_and_is_protocol(self) -> None:
         # Arrange + Act
-        from lyra.streaming import Parser  # noqa: PLC0415
+        from factory.streaming import Parser  # noqa: PLC0415
 
         # Assert
         assert issubclass(Parser, typing.Protocol)  # type: ignore[arg-type]
@@ -32,7 +32,7 @@ class TestParserTypeParameters:
 
     def test_parser_has_two_type_parameters(self) -> None:
         # Arrange
-        from lyra.streaming import Parser  # noqa: PLC0415
+        from factory.streaming import Parser  # noqa: PLC0415
 
         # Act — __parameters__ is a runtime attribute of Generic classes
         params = Parser.__parameters__  # type: ignore[attr-defined]
@@ -49,7 +49,7 @@ class TestParserMethodNames:
     @pytest.mark.parametrize("method_name", ["feed", "finalize", "is_done"])
     def test_parser_declares_required_method(self, method_name: str) -> None:
         # Arrange
-        from lyra.streaming import Parser  # noqa: PLC0415
+        from factory.streaming import Parser  # noqa: PLC0415
 
         # Act + Assert
         assert hasattr(Parser, method_name), (

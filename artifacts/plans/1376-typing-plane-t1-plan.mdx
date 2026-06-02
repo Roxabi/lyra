@@ -782,7 +782,7 @@ All within caps (|tasks|≤4, Σ ops ≤50, subjects ≤2).
   1. `git pull --ff-only origin staging` (verify no fragment-splice drift from #1379 cascade)
   2. `test -s deploy/nats/auth.conf` (sanity)
   3. `ls deploy/nats/fragments/ 2>/dev/null` (if fragments exist, log state pre-regen)
-  4. `make nats-regen-authconf` (runs `lyra-acl genkeys --regen-authconf` + secret refresh + NATS restart)
+  4. `make nats-regen-authconf` (runs `factory-acl genkeys --regen-authconf` + secret refresh + NATS restart)
 - **Verify:** `grep -E "lyra\.typing\." deploy/nats/auth.conf | wc -l`
 - **Expected:** ≥ 3 lines (hub publish + telegram subscribe + discord subscribe).
 - **Time:** 4 min · **Agent:** devops-A · **Subject:** acl · **Trace:** AC6 · **Phase:** GREEN · **Difficulty:** 2

@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from lyra.core.lifecycle.circuit_breaker import (
+from factory.core.lifecycle.circuit_breaker import (
     CircuitBreaker,
     CircuitOpenError,
     CircuitRegistry,

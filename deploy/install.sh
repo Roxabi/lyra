@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# deploy/install.sh — idempotent Quadlet install for lyra
+# deploy/install.sh — idempotent Quadlet install for factory
 #
 # Absorbs: make quadlet-install + make quadlet-secrets-install
 # Does NOT restart services — defer to operator.
@@ -204,10 +204,10 @@ echo "  [ok]   factory-blobstore.service enabled"
 # Skipping this causes a hub crash-loop on first boot.
 log "Seeding BotStore from config.toml ..."
 run podman run --rm \
-    -v "${HOME}/.roxabi/factory:/home/lyra/.roxabi/factory:z" \
+    -v "${HOME}/.roxabi/factory:/home/factory/.roxabi/factory:z" \
     -v "${HOME}/.roxabi/factory/config.toml:/app/config.toml:ro,z" \
     ghcr.io/roxabi/factory:staging-svc \
-    lyra bot init
+    factory bot init
 
 echo "  [ok]   BotStore seeded"
 

@@ -142,8 +142,7 @@ class TestCheckGrantsFailsMissingConsumerSubject:
         )
         combined = "\n".join(errors)
         assert any(
-            member in combined
-            for member in ("telegram-adapter", "discord-adapter")
+            member in combined for member in ("telegram-adapter", "discord-adapter")
         ), (
             "FAIL message must name an audio-consumer member "
             "(telegram-adapter or discord-adapter); "
@@ -196,16 +195,14 @@ class TestCheckGrantsFailsMissingConsumerSubscribeSubject:
         )
         combined = "\n".join(errors)
         assert any(
-            member in combined
-            for member in ("telegram-adapter", "discord-adapter")
+            member in combined for member in ("telegram-adapter", "discord-adapter")
         ), (
             "FAIL message must name an audio-consumer member "
             "(telegram-adapter or discord-adapter); "
             f"got:\n{combined}"
         )
         assert "subscribe[] does not cover" in combined, (
-            "FAIL message must contain 'subscribe[] does not cover'; "
-            f"got:\n{combined}"
+            f"FAIL message must contain 'subscribe[] does not cover'; got:\n{combined}"
         )
         assert _TARGET_SUBJECT in combined, (
             f"FAIL message must name the dropped subject {_TARGET_SUBJECT!r}; "
@@ -239,13 +236,11 @@ class TestCheckGrantsPassesIdentityNotInGroup:
 
         # Assert — no FAIL line names turn-writer as a consumer-group member
         consumer_group_errors = [
-            e for e in errors
-            if "turn-writer" in e and "consumer-group" in e
+            e for e in errors if "turn-writer" in e and "consumer-group" in e
         ]
         assert consumer_group_errors == [], (
             "turn-writer must produce no consumer-group FAIL lines "
-            "(it is not in audio-consumer); got:\n"
-            + "\n".join(consumer_group_errors)
+            "(it is not in audio-consumer); got:\n" + "\n".join(consumer_group_errors)
         )
 
     def test_check_grants_membership_gates_consumer_group_check(self) -> None:
@@ -321,8 +316,7 @@ class TestCheckGrantsFailsMissingProvisionerIdentity:
         )
         combined = "\n".join(errors)
         assert "missing or retired" in combined, (
-            "FAIL message must contain 'missing or retired'; "
-            f"got:\n{combined}"
+            f"FAIL message must contain 'missing or retired'; got:\n{combined}"
         )
         assert "turn-writer" in combined, (
             "FAIL message must name the missing provisioner 'turn-writer'; "
@@ -371,10 +365,8 @@ class TestCheckGrantsFailsDeadConsumerGroup:
         )
         combined = "\n".join(errors)
         assert "no active members" in combined, (
-            "FAIL message must contain 'no active members'; "
-            f"got:\n{combined}"
+            f"FAIL message must contain 'no active members'; got:\n{combined}"
         )
         assert "audio-consumer" in combined, (
-            "FAIL message must name the dead group 'audio-consumer'; "
-            f"got:\n{combined}"
+            f"FAIL message must name the dead group 'audio-consumer'; got:\n{combined}"
         )

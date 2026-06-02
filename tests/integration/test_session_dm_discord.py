@@ -8,9 +8,9 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
-    from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.messaging.bus import Bus
-    from lyra.core.messaging.message import InboundMessage
+    from factory.adapters.discord import DiscordAdapter
+    from factory.core.messaging.bus import Bus
+    from factory.core.messaging.message import InboundMessage
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from lyra.infrastructure.stores.turn_store import TurnStore
+from factory.infrastructure.stores.turn_store import TurnStore
 
 pytestmark = pytest.mark.asyncio
 
@@ -73,7 +73,7 @@ def _make_discord_adapter(
     turn_store: "TurnStore | None" = None,
 ) -> "DiscordAdapter":
     """Build a DiscordAdapter with optional turn_store injection."""
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     mock_bus = inbound_bus if inbound_bus is not None else MagicMock()
 
@@ -92,7 +92,7 @@ def _make_discord_adapter(
 
 async def test_discord_dm_injects_thread_session_id() -> None:
     """DiscordAdapter with turn_store injects thread_session_id for DMs."""
-    from lyra.adapters.discord.discord_inbound import (
+    from factory.adapters.discord.discord_inbound import (
         handle_message as discord_handle_message,
     )
 
@@ -122,7 +122,7 @@ async def test_discord_dm_injects_thread_session_id() -> None:
     else:
         posted = mock_bus.put.call_args[0][1]
 
-    from lyra.core.messaging.message import DiscordMeta
+    from factory.core.messaging.message import DiscordMeta
 
     assert isinstance(posted.platform_meta, DiscordMeta), (
         f"Expected DiscordMeta, got {posted.platform_meta!r}"
@@ -139,7 +139,7 @@ async def test_discord_dm_no_turn_store_does_not_inject() -> None:
     Verifies backward compatibility — adapters without turn_store still work and
     simply do not inject thread_session_id.
     """
-    from lyra.adapters.discord.discord_inbound import (
+    from factory.adapters.discord.discord_inbound import (
         handle_message as discord_handle_message,
     )
 

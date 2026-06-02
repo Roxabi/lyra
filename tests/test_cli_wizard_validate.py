@@ -12,8 +12,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from lyra.cli import agent_app as app
-from lyra.infrastructure.stores.agent_store import AgentRow, AgentStore
+from factory.cli import agent_app as app
+from factory.infrastructure.stores.agent_store import AgentRow, AgentStore
 
 # ---------------------------------------------------------------------------
 # Helpers

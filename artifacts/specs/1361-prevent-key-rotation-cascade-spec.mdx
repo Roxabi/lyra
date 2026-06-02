@@ -11,7 +11,7 @@ source: artifacts/frames/1361-prevent-key-rotation-cascade-frame.mdx
 
 Promoted from `artifacts/frames/1361-prevent-key-rotation-cascade-frame.mdx`.
 
-`lyra-acl genkeys` today has only two modes for change: `_mode_full_provision` (rotates every seed) and `--regen-authconf` (requires all seeds present, then rewrites auth.conf from existing pubkeys). Neither lets an operator add a single new identity without disturbing the existing ones. The 2026-05-25 turn-writer incident (postmortem `artifacts/postmortems/1331-turn-writer-prod-deploy.md`) demonstrated the cascade: adding `turn-writer` forced a full rotation that only recovered because Podman's secret store still held the prior seeds.
+`factory-acl genkeys` today has only two modes for change: `_mode_full_provision` (rotates every seed) and `--regen-authconf` (requires all seeds present, then rewrites auth.conf from existing pubkeys). Neither lets an operator add a single new identity without disturbing the existing ones. The 2026-05-25 turn-writer incident (postmortem `artifacts/postmortems/1331-turn-writer-prod-deploy.md`) demonstrated the cascade: adding `turn-writer` forced a full rotation that only recovered because Podman's secret store still held the prior seeds.
 
 This spec covers the **Slice A** subset of #1361: items 1, 6, 9. Items 5 (CI integration test), 7 (`make quadlet-preflight`), and 8 (M₂ satellite secret refresh) are deferred to follow-up issues (see Out of Scope below).
 
@@ -33,7 +33,7 @@ The flow is **fully rootless** — same convention as the existing rootless targ
 1. Operator declares the new identity in `deploy/nats/acl-matrix.json` with `status: active`, `created_at`, `owner`, `description`, `publish`, `subscribe` (existing schema, no change).
 2. Operator runs `make nats-add-identity NAME=turn-writer` as themselves (no sudo).
 3. The Makefile target chains:
-   - `uv run --project <repo> lyra-acl genkeys --add-identity turn-writer` — generates `~/.lyra/nkeys/turn-writer.seed` only (if absent), then re-renders `~/.lyra/nkeys/auth.conf` using existing pubkeys for every other active identity (read from existing seeds, never regenerated). Emits `STATE=noop|repaired|added` on stdout.
+   - `uv run --project <repo> factory-acl genkeys --add-identity turn-writer` — generates `~/.lyra/nkeys/turn-writer.seed` only (if absent), then re-renders `~/.lyra/nkeys/auth.conf` using existing pubkeys for every other active identity (read from existing seeds, never regenerated). Emits `STATE=noop|repaired|added` on stdout.
    - Phase 2 (Podman + restart): runs unless **both** `STATE=noop` AND `podman secret inspect lyra-nats-<NAME>` succeeds locally. Otherwise:
      - `podman secret create --replace lyra-nats-<NAME> ~/.lyra/nkeys/<NAME>.seed`
      - `podman secret create --replace lyra-nats-auth ~/.lyra/nkeys/auth.conf` (refresh the server's ACL secret with the new auth.conf — same as existing `nats-regen-authconf` target line 320)
@@ -44,11 +44,11 @@ The flow is **fully rootless** — same convention as the existing rootless targ
 
 Seeds and `auth.conf` propagate across hosts via Syncthing on `~/.lyra/nkeys/`. The Podman secret store does **not** auto-propagate. The same `make nats-add-identity NAME=<x>` is run on every host that consumes that identity:
 
-- **On the authoring host (today: M₁):** lyra-acl emits `STATE=added`; Phase 2 creates the seed + auth.conf secrets and restarts the local NATS server + adapters.
-- **On a receiving host (today: M₂; future: M₃, Mₙ):** Syncthing has already delivered the seed and user-mirror `auth.conf` → lyra-acl emits `STATE=noop`. But `podman secret inspect lyra-nats-<x>` returns non-zero (secret missing locally) → Phase 2 still runs to create the local Podman secret + restart whatever local units consume it (via the `is-active`-gated loop).
-- **On a non-consuming host:** lyra-acl `STATE=noop` AND `podman secret inspect lyra-nats-<x>` succeeds (or no Lyra units run there at all → loop is a no-op).
+- **On the authoring host (today: M₁):** factory-acl emits `STATE=added`; Phase 2 creates the seed + auth.conf secrets and restarts the local NATS server + adapters.
+- **On a receiving host (today: M₂; future: M₃, Mₙ):** Syncthing has already delivered the seed and user-mirror `auth.conf` → factory-acl emits `STATE=noop`. But `podman secret inspect lyra-nats-<x>` returns non-zero (secret missing locally) → Phase 2 still runs to create the local Podman secret + restart whatever local units consume it (via the `is-active`-gated loop).
+- **On a non-consuming host:** factory-acl `STATE=noop` AND `podman secret inspect lyra-nats-<x>` succeeds (or no Lyra units run there at all → loop is a no-op).
 
-The Makefile gating means the verb is **idempotent on every host** and **safe to run anywhere** without operator knowledge of the topology. The lyra-acl tool owns filesystem state (`STATE=noop|repaired|added`); the Makefile owns local Podman store state (`podman secret inspect`). These two concerns are orthogonal — lyra-acl never shells out to Podman.
+The Makefile gating means the verb is **idempotent on every host** and **safe to run anywhere** without operator knowledge of the topology. The factory-acl tool owns filesystem state (`STATE=noop|repaired|added`); the Makefile owns local Podman store state (`podman secret inspect`). These two concerns are orthogonal — factory-acl never shells out to Podman.
 
 **Idempotency** (re-running with an existing identity, item 1 acceptance):
 
@@ -78,13 +78,13 @@ The Makefile gating means the verb is **idempotent on every host** and **safe to
 - `docs/ops/nats-identity-retirement.md` is renamed to `docs/ops/nats-identity-lifecycle.md` via `git mv`.
 - The existing "Adding a new identity" section in that file (currently references `--regen-authconf` as step 2) is **rewritten** to use `make nats-add-identity NAME=<x>` as step 2 — the old verb is the very failure mode this slice prevents, so leaving stale instructions would re-introduce the bug.
 - The rewritten "Adding" section moves to appear above "Retiring".
-- A "Multi-host: running on M₂ / Mₙ" subsection documents that the **same verb** is run on every consuming host (no separate procedure), explains the lyra-acl-STATE × local-Podman-secret gate so operators understand why it is safe, and notes that Syncthing handles seed/auth.conf propagation.
-- A "Recovery — Phase 2 fails after lyra-acl succeeds" subsection documents the safe retry path: re-run `make nats-add-identity NAME=<x>` — idempotent on the filesystem side, `--replace` on the Podman side makes retry safe.
+- A "Multi-host: running on M₂ / Mₙ" subsection documents that the **same verb** is run on every consuming host (no separate procedure), explains the factory-acl-STATE × local-Podman-secret gate so operators understand why it is safe, and notes that Syncthing handles seed/auth.conf propagation.
+- A "Recovery — Phase 2 fails after factory-acl succeeds" subsection documents the safe retry path: re-run `make nats-add-identity NAME=<x>` — idempotent on the filesystem side, `--replace` on the Podman side makes retry safe.
 - All in-repo links to the old filename are updated; no redirect stub (keep the tree clean — `git log --follow` preserves history).
 
 **M₁ ↔ M₂ ↔ Mₙ propagation note** (now first-class, no separate procedure required):
 
-Syncthing propagates `~/.lyra/nkeys/` (seeds + user-mirror `auth.conf`) across hosts. The same `make nats-add-identity NAME=<x>` is the canonical verb on every consuming host: the Phase-2 gate (lyra-acl STATE × local Podman secret presence) makes it self-healing whether the host authored the identity or is catching up from Syncthing. Operators do not need to memorize a per-machine procedure; they run the same target everywhere the identity is consumed.
+Syncthing propagates `~/.lyra/nkeys/` (seeds + user-mirror `auth.conf`) across hosts. The same `make nats-add-identity NAME=<x>` is the canonical verb on every consuming host: the Phase-2 gate (factory-acl STATE × local Podman secret presence) makes it self-healing whether the host authored the identity or is catching up from Syncthing. Operators do not need to memorize a per-machine procedure; they run the same target everywhere the identity is consumed.
 
 What is **not** automated in this slice: auto-discovery of which hosts consume which identities (`hosts.toml` extension). That is the new, reframed item-8 follow-up — see Out of Scope.
 
@@ -131,7 +131,7 @@ classDiagram
 
 ```mermaid
 flowchart TB
-    M[make nats-add-identity NAME=x<br/>run as operator, no sudo] --> A1[uv run lyra-acl genkeys --add-identity x]
+    M[make nats-add-identity NAME=x<br/>run as operator, no sudo] --> A1[uv run factory-acl genkeys --add-identity x]
     A1 --> S[(write x.seed if absent)]
     S --> R[re-render auth.conf<br/>existing pubkeys preserved]
     R --> AC[(write ~/.lyra/nkeys/auth.conf only<br/>system path NOT touched)]
@@ -149,9 +149,9 @@ flowchart TB
 
 | Consumer | Fields/files consumed | When | Status |
 |---|---|---|---|
-| `lyra-acl genkeys --add-identity` | reads `acl-matrix.json[identities]`, reads existing `*.seed` files | invocation | this issue |
-| `lyra-acl genkeys --regen-authconf` | reads all `*.seed`, reads matrix | already exists | unchanged |
-| `lyra-acl genkeys` (full provision) | reads matrix, writes all `*.seed` | already exists | unchanged |
+| `factory-acl genkeys --add-identity` | reads `acl-matrix.json[identities]`, reads existing `*.seed` files | invocation | this issue |
+| `factory-acl genkeys --regen-authconf` | reads all `*.seed`, reads matrix | already exists | unchanged |
+| `factory-acl genkeys` (full provision) | reads matrix, writes all `*.seed` | already exists | unchanged |
 | `make nats-add-identity` | invokes CLI + podman + systemctl | invocation | this issue |
 | `lyra-nats` container | reads mounted `auth.conf` + podman secrets | on restart | unchanged consumer; new identity now reachable |
 | `docs/ops/nats-identity-lifecycle.md` | human-readable | operator opens runbook | this issue (renamed + extended) |
@@ -162,7 +162,7 @@ flowchart TB
 
 | ID | Affordance | Handler | Data touched |
 |---|---|---|---|
-| U1 | `lyra-acl genkeys --add-identity <name>` | new `_mode_add_identity(args)` in `scripts/_modes.py` | matrix (read), `<seeds_dir>/<name>.seed` (write, new), `auth.conf` (write, full re-render with existing+new pubkeys) |
+| U1 | `factory-acl genkeys --add-identity <name>` | new `_mode_add_identity(args)` in `scripts/_modes.py` | matrix (read), `<seeds_dir>/<name>.seed` (write, new), `auth.conf` (write, full re-render with existing+new pubkeys) |
 | U2 | `make nats-add-identity NAME=<x>` | new target in `Makefile` | invokes U1 + `podman secret create` + `systemctl --user restart lyra-nats` |
 
 **File touches:**
@@ -171,7 +171,7 @@ flowchart TB
 |---|---|---|
 | F1 | `scripts/_modes.py` | Add `_mode_add_identity(args)` — **rootless** (no `_require_root()`); parent pattern = `_mode_regen_authconf` (lines 102-128). Matrix-validate + 3-state inspection (no-op / repair / add) + single-seed gen + render auth.conf + write **only** to `~/.lyra/nkeys/auth.conf` (0600 operator) via `atomic_write`. Does **not** touch `/etc/nats/nkeys/auth.conf` (dead path; not consumed by any production reader). Prints `STATE=noop|repaired|added` marker to stdout. |
 | F2 | `scripts/gen_nkeys.py` | Add `--add-identity NAME` argparse flag; dispatch to `_mode_add_identity` |
-| F3 | top-level `Makefile` (alongside existing `nats-regen-authconf`, `nats-setup`, `quadlet-secrets-install` targets) | Add `nats-add-identity` target: invoke `uv run lyra-acl genkeys --add-identity $(NAME)` (no sudo), capture STATE from stdout. Phase 2 gate: skip if `STATE=noop` AND `podman secret inspect lyra-nats-$(NAME)` succeeds; otherwise run `podman secret create --replace lyra-nats-$(NAME) ~/.lyra/nkeys/$(NAME).seed` + `podman secret create --replace lyra-nats-auth ~/.lyra/nkeys/auth.conf` + restart loop `for svc in lyra-nats lyra-hub lyra-telegram lyra-discord lyra-clipool; do systemctl --user is-active --quiet $$svc && systemctl --user restart $$svc; done`. Update `.PHONY` line. Target runs as operator (no root anywhere). |
+| F3 | top-level `Makefile` (alongside existing `nats-regen-authconf`, `nats-setup`, `quadlet-secrets-install` targets) | Add `nats-add-identity` target: invoke `uv run factory-acl genkeys --add-identity $(NAME)` (no sudo), capture STATE from stdout. Phase 2 gate: skip if `STATE=noop` AND `podman secret inspect lyra-nats-$(NAME)` succeeds; otherwise run `podman secret create --replace lyra-nats-$(NAME) ~/.lyra/nkeys/$(NAME).seed` + `podman secret create --replace lyra-nats-auth ~/.lyra/nkeys/auth.conf` + restart loop `for svc in lyra-nats lyra-hub lyra-telegram lyra-discord lyra-clipool; do systemctl --user is-active --quiet $$svc && systemctl --user restart $$svc; done`. Update `.PHONY` line. Target runs as operator (no root anywhere). |
 | F4 | `docs/ops/nats-identity-lifecycle.md` | `git mv` from `nats-identity-retirement.md`; add "Adding an identity" section + "Refreshing a satellite secret on M₂" subsection |
 | F5 | grep-update all in-repo links from `nats-identity-retirement.md` → `nats-identity-lifecycle.md` (check `CONTRIBUTING.md`, other ops docs, postmortems) |
 | F6 | `tests/unit/test_modes_add_identity.py` (new) | unit coverage: success path, idempotency, validation errors, "other seeds untouched" byte-identity assertion |
@@ -186,7 +186,7 @@ flowchart TB
 
 | ID | Slice | Files | Demo |
 |---|---|---|---|
-| S1 | **`--add-identity` CLI verb + tests** | F1, F2, F6 | `uv run pytest tests/unit/test_modes_add_identity.py` green; manual: declare a test identity in matrix, run `sudo lyra-acl genkeys --add-identity test-id`, assert only new seed written + auth.conf updated |
+| S1 | **`--add-identity` CLI verb + tests** | F1, F2, F6 | `uv run pytest tests/unit/test_modes_add_identity.py` green; manual: declare a test identity in matrix, run `sudo factory-acl genkeys --add-identity test-id`, assert only new seed written + auth.conf updated |
 | S2 | **Makefile wrapper** | F3 | `make nats-add-identity NAME=test-id` chains end-to-end on a dev box; second invocation = no-op |
 | S3 | **Runbook rename + content** | F4, F5 | `git mv` clean; new "Adding an identity" section reads correctly; CI grep passes (no dead links) |
 
@@ -194,7 +194,7 @@ Slice ordering: S1 is independent. S2 depends on S1 (target invokes the verb). S
 
 ## Success Criteria
 
-- [ ] `uv run lyra-acl genkeys --add-identity <new-name>` writes exactly one new seed file (`<seeds_dir>/<new-name>.seed`) — verified by SHA-256-comparing every other pre-existing `.seed` byte-for-byte before/after invocation (unit test asserts zero diff)
+- [ ] `uv run factory-acl genkeys --add-identity <new-name>` writes exactly one new seed file (`<seeds_dir>/<new-name>.seed`) — verified by SHA-256-comparing every other pre-existing `.seed` byte-for-byte before/after invocation (unit test asserts zero diff)
 - [ ] `--add-identity <existing-name>` with auth.conf already containing the block: exits 0, prints `STATE=noop` on stdout, modifies zero files (verified via `os.stat().st_mtime` before/after on seed dir + auth.conf)
 - [ ] `--add-identity <existing-name>` with seed present but auth.conf block missing (simulated post-crash state): exits 0, prints `STATE=repaired` on stdout, modifies only `auth.conf` (both copies), seed file untouched
 - [ ] `--add-identity <name-not-in-matrix>` exits non-zero with message naming the matrix file; no seed file is created (verified via `os.path.exists`)
@@ -202,23 +202,23 @@ Slice ordering: S1 is independent. S2 depends on S1 (target invokes the verb). S
 - [ ] `--add-identity <name>` where another active identity is missing its seed file exits non-zero before writing the new seed (no orphan seed left on disk)
 - [ ] `auth.conf` after `--add-identity <new-name>` contains the new identity's pubkey block AND every previously present block — existing blocks are byte-identical when extracted by any auth.conf parser (observable property; assertion may use the project's parser for convenience, but the criterion is "blocks unchanged")
 - [ ] `--add-identity <name>` writes only to `~/.lyra/nkeys/auth.conf` (0600 operator-owned); `/etc/nats/nkeys/auth.conf` mtime is unchanged before/after the invocation (verified via `os.stat`)
-- [ ] `lyra-acl genkeys --add-identity <name>` runs successfully as a non-root user (no `_require_root()` exit); unit test asserts this by invoking the mode without elevating
+- [ ] `factory-acl genkeys --add-identity <name>` runs successfully as a non-root user (no `_require_root()` exit); unit test asserts this by invoking the mode without elevating
 - [ ] `make nats-add-identity NAME=<x>` (new identity, authoring host) end-to-end on a dev box produces: new seed file, new podman secret `lyra-nats-<x>`, refreshed `lyra-nats-auth` secret, restarted `lyra-nats.service` (verified via `podman secret ls` + `systemctl --user is-active lyra-nats.service`)
-- [ ] `make nats-add-identity NAME=<existing>` (full-consistency case, secret already present locally) is a clean no-op chain: lyra-acl prints `STATE=noop`, Makefile sees `podman secret inspect` success, skips `podman secret create` AND `systemctl restart` entirely (verified via instrumentation: zero podman/systemctl mutating invocations after the lyra-acl call)
+- [ ] `make nats-add-identity NAME=<existing>` (full-consistency case, secret already present locally) is a clean no-op chain: factory-acl prints `STATE=noop`, Makefile sees `podman secret inspect` success, skips `podman secret create` AND `systemctl restart` entirely (verified via instrumentation: zero podman/systemctl mutating invocations after the factory-acl call)
 - [ ] `make nats-add-identity NAME=<x>` (receiving-host simulation: seed present, auth.conf has block, but Podman secret missing) creates the Podman secret + runs the restart loop — STATE=noop alone does NOT cause Phase 2 to skip when the Podman secret is absent
 - [ ] `make nats-add-identity` succeeds when invoked by the operator without `sudo`; no `sudo` token appears in the Makefile target body
 - [ ] Restart loop is `is-active`-gated: on a host where only `lyra-nats` is running (no adapters), `systemctl restart` is invoked exactly once for `lyra-nats`; verified via shell trace
 - [ ] `docs/ops/nats-identity-lifecycle.md` exists; `docs/ops/nats-identity-retirement.md` does not exist; `git log --follow docs/ops/nats-identity-lifecycle.md` shows the rename
 - [ ] `rg 'nats-identity-retirement' .` returns no matches in tracked files
-- [ ] `docs/ops/nats-identity-lifecycle.md` has sections "Adding an identity" (with `make nats-add-identity` example, step 2 rewritten from `--regen-authconf` to the new verb), "Retiring an identity" (existing content preserved verbatim), "Recovery — Phase 2 fails after lyra-acl succeeded", and "Multi-host: running on M₁, M₂, Mₙ"
-- [ ] All existing `lyra-acl` modes (`full provision`, `--regen-authconf`, `--regenerate`, `--show`, `--fix-perms`, `--emit-merged-authconf`) continue to pass their existing tests with zero modification
+- [ ] `docs/ops/nats-identity-lifecycle.md` has sections "Adding an identity" (with `make nats-add-identity` example, step 2 rewritten from `--regen-authconf` to the new verb), "Retiring an identity" (existing content preserved verbatim), "Recovery — Phase 2 fails after factory-acl succeeded", and "Multi-host: running on M₁, M₂, Mₙ"
+- [ ] All existing `factory-acl` modes (`full provision`, `--regen-authconf`, `--regenerate`, `--show`, `--fix-perms`, `--emit-merged-authconf`) continue to pass their existing tests with zero modification
 - [ ] `scripts/check-acl-authconf-drift.sh` (existing pre-commit hook) continues to pass on a tree where `--add-identity` was used to add an identity
 
 ## Out of Scope
 
 - **Item 5** — CI integration test booting a container with `ReadOnly=true` + real `auth.conf` + real NATS + pull-subscribe. Carve to new issue `chore(ci): #1361 follow-up — ReadOnly+JetStream+ACL integration test` linked back to #1361.
 - **Item 7** — `make quadlet-preflight` for tagless images. Unrelated to key rotation; carve to new issue `chore(ops): #1361 follow-up — quadlet preflight check for tagless images` linked back to #1361.
-- **Item 8 (reframed)** — Auto-discovery of which identities each host consumes via `hosts.toml` extension. The original item-8 framing ("manually refresh M₂ Podman secrets per identity") is now subsumed by this slice: the same `make nats-add-identity NAME=<x>` is the canonical verb on every host (lyra-acl STATE × local `podman secret inspect` makes it self-healing). What this slice does **not** do is automate the per-host decision of *which identities to add* — that requires extending `~/projects/hosts.toml` with a per-role identity-consumption map (e.g. `lyra-hub` consumes `{hub, telegram-adapter, ..., turn-writer}`; `image-worker` consumes `{image-worker}`) and a wrapper target that iterates. Carve to new issue: `chore(ops): #1361 follow-up — hosts.toml schema extension for per-host NATS identity auto-discovery + fleet-refresh target`.
+- **Item 8 (reframed)** — Auto-discovery of which identities each host consumes via `hosts.toml` extension. The original item-8 framing ("manually refresh M₂ Podman secrets per identity") is now subsumed by this slice: the same `make nats-add-identity NAME=<x>` is the canonical verb on every host (factory-acl STATE × local `podman secret inspect` makes it self-healing). What this slice does **not** do is automate the per-host decision of *which identities to add* — that requires extending `~/projects/hosts.toml` with a per-role identity-consumption map (e.g. `lyra-hub` consumes `{hub, telegram-adapter, ..., turn-writer}`; `image-worker` consumes `{image-worker}`) and a wrapper target that iterates. Carve to new issue: `chore(ops): #1361 follow-up — hosts.toml schema extension for per-host NATS identity auto-discovery + fleet-refresh target`.
 - Multi-identity batch (`--add-identity a,b,c`) — single name per invocation; batching can come later if a use case emerges.
 - Changing the matrix schema, auth.conf renderer output format, or ACL semantics for the new identity (caller defines that in matrix).
 - Auto-creating the matrix entry from CLI flags (`--add-identity x --publish ... --subscribe ...`); matrix edit remains a deliberate human step.

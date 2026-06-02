@@ -6,13 +6,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.ports.tts import (
+from factory.core.ports.tts import (
     SynthesisResult,
     TtsSynthesisError,
     TtsUnavailableError,
 )
-from lyra.nats.audio.nats_tts_client import NatsTtsClient
-from lyra.transport._result import Err, Ok, SanitizedError
+from factory.nats.audio.nats_tts_client import NatsTtsClient
+from factory.transport._result import Err, Ok, SanitizedError
 from roxabi_contracts import BlobRef
 
 _FAKE_BLOB = BlobRef(

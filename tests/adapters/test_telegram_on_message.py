@@ -12,13 +12,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.core.messaging.messages import MessageManager
+from factory.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
+from factory.core.messaging.messages import MessageManager
 
 TOML_PATH = (
     Path(__file__).resolve().parent.parent.parent
     / "src"
-    / "lyra"
+    / "factory"
     / "data"
     / "messages.toml"
 )
@@ -50,7 +50,7 @@ async def test_backpressure_sends_ack_when_bus_full() -> None:
     """When put_nowait raises QueueFull, _on_message sends an ack."""
     import asyncio
 
-    from lyra.adapters.telegram import TelegramAdapter
+    from factory.adapters.telegram import TelegramAdapter
 
     inbound_bus = MagicMock()
     inbound_bus.put = AsyncMock(side_effect=asyncio.QueueFull())
@@ -86,7 +86,7 @@ async def test_backpressure_sends_ack_when_bus_full() -> None:
 async def test_telegram_msg_manager_injection_backpressure_ack() -> None:
     """Injecting a real MessageManager causes _on_message to send the TOML
     'backpressure_ack' string (not the hardcoded fallback) when bus is full."""
-    from lyra.adapters.telegram import TelegramAdapter
+    from factory.adapters.telegram import TelegramAdapter
 
     # Arrange
     mm = MessageManager(TOML_PATH)
@@ -132,7 +132,7 @@ async def test_telegram_msg_manager_injection_backpressure_ack() -> None:
 @pytest.mark.asyncio
 async def test_on_message_drops_bot_text_message() -> None:
     """_on_message drops messages when from_user.is_bot=True."""
-    from lyra.adapters.telegram import TelegramAdapter
+    from factory.adapters.telegram import TelegramAdapter
 
     inbound_bus = MagicMock()
     inbound_bus.put = AsyncMock()
@@ -162,7 +162,7 @@ async def test_on_message_drops_bot_text_message() -> None:
 @pytest.mark.asyncio
 async def test_on_message_drops_and_notifies_when_hub_circuit_open() -> None:
     """SC-11: drops (no bus.put) and notifies user when hub circuit is OPEN."""
-    from lyra.adapters.telegram import TelegramAdapter
+    from factory.adapters.telegram import TelegramAdapter
 
     # Arrange
     registry = _make_open_registry("hub")

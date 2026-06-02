@@ -9,7 +9,7 @@ generated: 2026-05-18
 
 ## Summary
 
-Ship a generic `renderer-roundtrip` CI workflow that validates 3 renderers (lyra-acl genkeys, deploy/nats/nats.conf, gen-certs.sh) via their actual downstream consumers (`nats-server -t -c`, `openssl verify`), plus a standards doc + cross-link from testing.md. `systemd-analyze verify` is documented as a canonical consumer for future static units but has no current target (all `deploy/*.service` are retired in favor of Quadlet-generated units).
+Ship a generic `renderer-roundtrip` CI workflow that validates 3 renderers (factory-acl genkeys, deploy/nats/nats.conf, gen-certs.sh) via their actual downstream consumers (`nats-server -t -c`, `openssl verify`), plus a standards doc + cross-link from testing.md. `systemd-analyze verify` is documented as a canonical consumer for future static units but has no current target (all `deploy/*.service` are retired in favor of Quadlet-generated units).
 
 ## Architecture
 
@@ -23,7 +23,7 @@ flowchart TD
 
     subgraph helper ["tools/check_renderer_roundtrip.sh"]
         T1{T1 dispatch}
-        T1 -->|lyra-acl| L[lyra-acl subcmd]
+        T1 -->|factory-acl| L[factory-acl subcmd]
         T1 -->|nats-conf| C[nats-conf subcmd]
         T1 -->|gen-certs| G[gen-certs subcmd]
     end
@@ -54,7 +54,7 @@ flowchart LR
         WF[jobs: J1, J2, J3]
     end
     subgraph helper ["tools/check_renderer_roundtrip.sh"]
-        H_lyra[lyra-acl: render + parse]
+        H_lyra[factory-acl: render + parse]
         H_natsconf[nats-conf: stub + parse]
         H_certs[gen-certs: render + verify + parse]
     end
@@ -110,7 +110,7 @@ flowchart LR
 | Spec criterion | Trace | Task |
 |---|---|---|
 | Workflow + conventions | SC1 | T4 |
-| Slice 1 — lyra-acl 62-char fail | SC2 | T6 (RED-GATE V1) |
+| Slice 1 — factory-acl 62-char fail | SC2 | T6 (RED-GATE V1) |
 | Slice 2 — nats.conf stray `}` fail | SC3 | T7 (RED-GATE V2) |
 | Slice 3 — gen-certs invalid cert fail | SC4 | T8 (RED-GATE V3) |
 | Clean staging all green | SC5 | T4 + RED-GATEs invert |
@@ -122,7 +122,7 @@ Coverage: 8/8 SCs traced (J4/systemd scope dropped — see spec Context).
 
 ## Micro-Tasks
 
-### V1 — lyra-acl parse-gate
+### V1 — factory-acl parse-gate
 
 **T1 [P] — F2: `CERT_DIR` overridable in gen-certs.sh** *(devops, GREEN, difficulty 1)*
 
@@ -138,7 +138,7 @@ Coverage: 8/8 SCs traced (J4/systemd scope dropped — see spec Context).
 
 - File: `docs/standards/renderer-roundtrip.md` (new)
 - Sections (each non-empty): Pattern · When to apply · Required shape · Worked example · Failure modes · Reviewer checklist
-- Worked example: full verbatim invocation `bash tools/check_renderer_roundtrip.sh lyra-acl $TMPDIR`
+- Worked example: full verbatim invocation `bash tools/check_renderer_roundtrip.sh factory-acl $TMPDIR`
 - Reviewer checklist line: "Does this PR add or modify a config renderer? If yes, verify a roundtrip test in `renderer-roundtrip.yml` covers it."
 - Verify: `test -f docs/standards/renderer-roundtrip.md && grep -c '^## ' docs/standards/renderer-roundtrip.md`
 - Expected: `6` (six top-level sections)
@@ -151,12 +151,12 @@ Coverage: 8/8 SCs traced (J4/systemd scope dropped — see spec Context).
 - File: `tools/check_renderer_roundtrip.sh` (new)
 - Shebang `#!/usr/bin/env bash`, `set -euo pipefail`, dispatch on `$1`
 - Subcommands:
-  - `lyra-acl <tmpdir>`: invoke `lyra-acl genkeys --regen-authconf` → parse output → assert ∀ nkey: len==56 ∧ no embedded `\n` in quoted strings → `nats-server -t -c $tmpdir/auth.conf`
+  - `factory-acl <tmpdir>`: invoke `factory-acl genkeys --regen-authconf` → parse output → assert ∀ nkey: len==56 ∧ no embedded `\n` in quoted strings → `nats-server -t -c $tmpdir/auth.conf`
   - `nats-conf <tmpdir>`: create stub `$tmpdir/nkeys/auth.conf` (empty authorization block) → `nats-server -t -c deploy/nats/nats.conf` then `deploy/nats/nats-container.conf`
   - `gen-certs <tmpdir>`: `CERT_DIR=$tmpdir bash deploy/nats/gen-certs.sh` → `openssl verify -CAfile $tmpdir/ca.crt $tmpdir/server.crt` → emit minimal TLS-only nats config to `$tmpdir/tls.conf` referencing those paths → `nats-server -t -c $tmpdir/tls.conf`
 - Extensible: adding a new subcommand (case branch) is the canonical way to register a new renderer
 - Error format: `expected X, got Y` style diffs on invariant violations
-- Verify: `bash -n tools/check_renderer_roundtrip.sh && tools/check_renderer_roundtrip.sh 2>&1 | grep -E 'lyra-acl|nats-conf|gen-certs'`
+- Verify: `bash -n tools/check_renderer_roundtrip.sh && tools/check_renderer_roundtrip.sh 2>&1 | grep -E 'factory-acl|nats-conf|gen-certs'`
 - Expected: usage line listing all 3 subcommands
 - Spec trace: T1 affordance (W1 wiring), SC2–SC4
 
@@ -164,12 +164,12 @@ Coverage: 8/8 SCs traced (J4/systemd scope dropped — see spec Context).
 
 - File: `.github/workflows/renderer-roundtrip.yml` (new)
 - Top-level: `permissions: contents: read`, `concurrency: group: renderer-roundtrip-${{ github.ref }}, cancel-in-progress: true`
-- Triggers: `pull_request` (paths: `lyra-acl/**`, `deploy/nats/**`, `tools/check_renderer_roundtrip.sh`, `.github/workflows/renderer-roundtrip.yml`), `workflow_dispatch`
+- Triggers: `pull_request` (paths: `factory-acl/**`, `deploy/nats/**`, `tools/check_renderer_roundtrip.sh`, `.github/workflows/renderer-roundtrip.yml`), `workflow_dispatch`
 - Each job: `runs-on: ubuntu-latest`, `timeout-minutes: 10`, `actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6`, `set -euo pipefail` in run blocks
 - Composite install step `Install nats-server` (all 3 jobs): NATS_VERSION=2.10.22 tarball+SHA256, mirror `.github/workflows/ci.yml` lines 28–42
 - Cache nats-server tarball: `actions/cache@<pinned>` keyed on `nats-server-${{ env.NATS_VERSION }}-${{ runner.arch }}`
 - Jobs (3 parallel):
-  - J1 `lyra-acl-parse`: install nats-server → `lyra-acl genkeys --regen-authconf` → `tools/check_renderer_roundtrip.sh lyra-acl $RUNNER_TEMP/lyra-acl`
+  - J1 `factory-acl-parse`: install nats-server → `factory-acl genkeys --regen-authconf` → `tools/check_renderer_roundtrip.sh factory-acl $RUNNER_TEMP/factory-acl`
   - J2 `nats-conf-parse`: install nats-server → `tools/check_renderer_roundtrip.sh nats-conf $RUNNER_TEMP/nats-conf`
   - J3 `gen-certs-roundtrip`: install nats-server → `tools/check_renderer_roundtrip.sh gen-certs $RUNNER_TEMP/certs`
 - Verify: `yamllint .github/workflows/renderer-roundtrip.yml && grep -c '^  [a-z-]*:$' .github/workflows/renderer-roundtrip.yml`
@@ -188,7 +188,7 @@ Coverage: 8/8 SCs traced (J4/systemd scope dropped — see spec Context).
 
 **T6 — RED-GATE V1: J1 fails on 62-char nkey** *(tester, RED-GATE, difficulty 2, blockedBy T4)*
 
-- Locally: patch `lyra-acl genkeys` to emit 62-char nkeys → run `act -j lyra-acl-parse` (or push to a throwaway branch) → confirm J1 fails with output containing `expected 56` and `got 62` → revert patch
+- Locally: patch `factory-acl genkeys` to emit 62-char nkeys → run `act -j factory-acl-parse` (or push to a throwaway branch) → confirm J1 fails with output containing `expected 56` and `got 62` → revert patch
 - Verify: J1 fails with the expected diff strings
 - Spec trace: SC2
 
@@ -204,7 +204,7 @@ Coverage: 8/8 SCs traced (J4/systemd scope dropped — see spec Context).
 
 **T10 — RED-GATE V4: docs complete** *(tester, RED-GATE, difficulty 1, blockedBy T5)*
 
-- Confirm `docs/standards/renderer-roundtrip.md` has all 6 non-empty sections, reviewer-checklist item present, worked example contains the verbatim `tools/check_renderer_roundtrip.sh lyra-acl` invocation
+- Confirm `docs/standards/renderer-roundtrip.md` has all 6 non-empty sections, reviewer-checklist item present, worked example contains the verbatim `tools/check_renderer_roundtrip.sh factory-acl` invocation
 - Confirm `docs/standards/testing.md` links to `renderer-roundtrip.md`
 - Spec trace: SC6, SC7, SC8
 
@@ -227,7 +227,7 @@ Coverage: 8/8 SCs traced (J4/systemd scope dropped — see spec Context).
 
 | Task | Agent instance | blockedBy | Subject |
 |------|---------------|-----------|---------|
-| T3 | devops-A | T1 | T1 helper: tools/check_renderer_roundtrip.sh with lyra-acl/nats-conf/gen-certs subcommands |
+| T3 | devops-A | T1 | T1 helper: tools/check_renderer_roundtrip.sh with factory-acl/nats-conf/gen-certs subcommands |
 | T5 | doc-writer-A | T2 | L1: cross-link from docs/standards/testing.md to renderer-roundtrip.md |
 
 ### Wave 3 — after T3, 1 agent

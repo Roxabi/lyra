@@ -315,9 +315,7 @@ class TestLyraOutboundAudioSentKv:
         members = _active_members(matrix, "audio-consumer")
 
         # Assert
-        assert members, (
-            "audio-consumer must have at least one active member; got none"
-        )
+        assert members, "audio-consumer must have at least one active member; got none"
         assert any(m in members for m in ("telegram-adapter", "discord-adapter")), (
             f"Expected telegram-adapter or discord-adapter "
             f"in audio-consumer; got: {members}"

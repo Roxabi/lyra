@@ -29,8 +29,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from lyra.infrastructure.stores.turn_store import TurnStore
-from lyra.infrastructure.turn_writer.writer import TurnWriter
+from factory.infrastructure.stores.turn_store import TurnStore
+from factory.infrastructure.turn_writer.writer import TurnWriter
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.turns import (
     IncrementResumeCountPayload,

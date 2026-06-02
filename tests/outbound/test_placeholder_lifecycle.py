@@ -10,23 +10,23 @@ from collections.abc import AsyncIterator
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.messaging import (
+from factory.core.messaging import (
     RenderEvent,
     TextDeltaRenderEvent,
     ToolCallArgsRenderEvent,
     ToolCallEndRenderEvent,
     ToolCallStartRenderEvent,
 )
-from lyra.core.messaging.message import OutboundMessage
-from lyra.outbound._placeholder_lifecycle import (
+from factory.core.messaging.message import OutboundMessage
+from factory.outbound._placeholder_lifecycle import (
     _deliver_final,
     _deliver_text_chunks,
     _drain_fallback,
     _handle_typing_tail,
     _send_placeholder,
 )
-from lyra.outbound.emitter import OutboundEmitter as StreamingSession
-from lyra.transport._result import Err, Ok, SanitizedError
+from factory.outbound.emitter import OutboundEmitter as StreamingSession
+from factory.transport._result import Err, Ok, SanitizedError
 
 # ---------------------------------------------------------------------------
 # Helpers

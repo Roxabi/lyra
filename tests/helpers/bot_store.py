@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from lyra.core.agent.bot_models import BotRow
-from lyra.infrastructure.stores.bot_store import BotStore
+from factory.core.agent.bot_models import BotRow
+from factory.infrastructure.stores.bot_store import BotStore
 
 
 def make_bot_row(

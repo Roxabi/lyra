@@ -52,9 +52,7 @@ def build_effective_json(matrix: LoadedMatrix) -> dict:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Render effective ACL JSON fixture."
-    )
+    parser = argparse.ArgumentParser(description="Render effective ACL JSON fixture.")
     parser.add_argument(
         "--dry-run",
         action="store_true",

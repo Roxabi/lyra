@@ -2,12 +2,12 @@
 
 The gate has three modes:
 - Full mode: agent_name + agent_email both present → injects all 4 vars
-  (GIT_COMMITTER_NAME, GIT_COMMITTER_EMAIL, LYRA_AGENT, LYRA_SESSION_ID).
+  (GIT_COMMITTER_NAME, GIT_COMMITTER_EMAIL, FACTORY_AGENT, FACTORY_SESSION_ID).
 - Trailers-only mode: agent_name present, agent_email=None → injects
-  LYRA_AGENT + LYRA_SESSION_ID only (no GIT_COMMITTER_* vars).
+  FACTORY_AGENT + FACTORY_SESSION_ID only (no GIT_COMMITTER_* vars).
 - Off: agent_name=None → no identity vars injected (image-baked identity).
 
-_SAFE_ENV_KEYS must NOT contain any GIT_* or LYRA_* key — those are
+_SAFE_ENV_KEYS must NOT contain any GIT_* or FACTORY_* key — those are
 synthesised at spawn time, not inherited from the parent environment.
 """
 
@@ -15,8 +15,8 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, patch
 
-from lyra.core.cli.cli_pool import CliPool
-from lyra.core.cli.cli_pool_worker import _SAFE_ENV_KEYS
+from factory.core.cli.cli_pool import CliPool
+from factory.core.cli.cli_pool_worker import _SAFE_ENV_KEYS
 
 from .conftest_cli_pool import (
     _PATCH_TARGET,
@@ -34,7 +34,7 @@ class TestSpawnLayeredIdentityGate:
     async def test_full_mode_injects_all_four_vars(self) -> None:
         """Full mode: agent_name + agent_email + lyra_session_id → all 4 vars injected.
 
-        GIT_COMMITTER_NAME, GIT_COMMITTER_EMAIL, LYRA_AGENT, LYRA_SESSION_ID
+        GIT_COMMITTER_NAME, GIT_COMMITTER_EMAIL, FACTORY_AGENT, FACTORY_SESSION_ID
         must all be present in the subprocess env with matching values.
         """
         # Arrange
@@ -58,13 +58,13 @@ class TestSpawnLayeredIdentityGate:
         env = spawn_mock.call_args.kwargs["env"]
         assert env.get("GIT_COMMITTER_NAME") == "agent-X"
         assert env.get("GIT_COMMITTER_EMAIL") == "x@y.com"
-        assert env.get("LYRA_AGENT") == "agent-X"
-        assert env.get("LYRA_SESSION_ID") == "S-123"
+        assert env.get("FACTORY_AGENT") == "agent-X"
+        assert env.get("FACTORY_SESSION_ID") == "S-123"
 
     async def test_trailers_only_mode_omits_git_committer_vars(self) -> None:
         """Trailers-only mode: agent_name present, agent_email=None.
 
-        LYRA_AGENT and LYRA_SESSION_ID are injected; GIT_COMMITTER_NAME and
+        FACTORY_AGENT and FACTORY_SESSION_ID are injected; GIT_COMMITTER_NAME and
         GIT_COMMITTER_EMAIL must be absent (subprocess falls back to the
         image-baked template identity for the committer field).
         """
@@ -87,8 +87,8 @@ class TestSpawnLayeredIdentityGate:
         # Assert
         assert spawn_mock.call_count == 1
         env = spawn_mock.call_args.kwargs["env"]
-        assert env.get("LYRA_AGENT") == "agent-X"
-        assert env.get("LYRA_SESSION_ID") == "S-456"
+        assert env.get("FACTORY_AGENT") == "agent-X"
+        assert env.get("FACTORY_SESSION_ID") == "S-456"
         assert "GIT_COMMITTER_NAME" not in env
         assert "GIT_COMMITTER_EMAIL" not in env
 
@@ -121,8 +121,8 @@ class TestSpawnLayeredIdentityGate:
         env = spawn_mock.call_args.kwargs["env"]
         assert "GIT_COMMITTER_NAME" not in env
         assert "GIT_COMMITTER_EMAIL" not in env
-        assert "LYRA_AGENT" not in env
-        assert "LYRA_SESSION_ID" not in env
+        assert "FACTORY_AGENT" not in env
+        assert "FACTORY_SESSION_ID" not in env
 
     async def test_newline_in_identity_vars_is_stripped(self) -> None:
         """Newlines in agent_name / agent_email / lyra_session_id must be stripped
@@ -153,10 +153,10 @@ class TestSpawnLayeredIdentityGate:
         assert spawn_mock.call_count == 1
         env = spawn_mock.call_args.kwargs["env"]
         for key in (
-            "LYRA_AGENT",
+            "FACTORY_AGENT",
             "GIT_COMMITTER_NAME",
             "GIT_COMMITTER_EMAIL",
-            "LYRA_SESSION_ID",
+            "FACTORY_SESSION_ID",
         ):
             assert "\n" not in env.get(key, ""), (
                 f"{key} still contains a newline — trailer-smuggling guard missing"
@@ -190,27 +190,27 @@ class TestSpawnLayeredIdentityGate:
         # Assert — empty string is rejected, no identity vars injected
         assert spawn_mock.call_count == 1
         env = spawn_mock.call_args.kwargs["env"]
-        assert "LYRA_AGENT" not in env
-        assert "LYRA_SESSION_ID" not in env
+        assert "FACTORY_AGENT" not in env
+        assert "FACTORY_SESSION_ID" not in env
         assert "GIT_COMMITTER_NAME" not in env
         assert "GIT_COMMITTER_EMAIL" not in env
 
     def test_safe_env_keys_contains_no_git_or_lyra_keys(self) -> None:
-        """_SAFE_ENV_KEYS must not contain any GIT_* or LYRA_* key (#1150 SC8).
+        """_SAFE_ENV_KEYS must not contain any GIT_* or FACTORY_* key (#1150 SC8).
 
         Identity vars are synthesised at spawn time via an explicit post-filter
         merge step, not by extending the inherited-env allowlist.  This test
         is a merge-blocker: deleting the guard from _spawn would still leave
-        _SAFE_ENV_KEYS clean, but adding a GIT_* or LYRA_* key to _SAFE_ENV_KEYS
+        _SAFE_ENV_KEYS clean, but adding a GIT_* or FACTORY_* key to _SAFE_ENV_KEYS
         would violate the design contract.
         """
         # Arrange / Act
         git_or_lyra_in_allowlist = {
-            k for k in _SAFE_ENV_KEYS if k.startswith(("GIT_", "LYRA_"))
+            k for k in _SAFE_ENV_KEYS if k.startswith(("GIT_", "FACTORY_"))
         }
 
         # Assert
         assert not git_or_lyra_in_allowlist, (
-            f"_SAFE_ENV_KEYS must not contain GIT_* or LYRA_* keys "
+            f"_SAFE_ENV_KEYS must not contain GIT_* or FACTORY_* keys "
             f"(found: {git_or_lyra_in_allowlist})"
         )

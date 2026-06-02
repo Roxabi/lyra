@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core import Hub
-from lyra.core.messaging.message import (
+from factory.core import Hub
+from factory.core.messaging.message import (
     OutboundAudio,
     OutboundAudioChunk,
     Platform,

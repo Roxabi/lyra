@@ -1,8 +1,8 @@
 """Tests for bootstrap credential resolution — /run/secrets/ read path (issue #1057).
 
 Verifies that the adapter reads bot tokens from the filesystem path
-os.environ.get("LYRA_RUN_SECRETS_DIR", "/run/secrets") via the
-lyra.bootstrap.credentials.load_bot_token helper, rather than from
+os.environ.get("FACTORY_RUN_SECRETS_DIR", "/run/secrets") via the
+factory.bootstrap.credentials.load_bot_token helper, rather than from
 CredentialStore (which was deleted in #1057).
 """
 
@@ -18,13 +18,13 @@ import pytest
 async def test_adapter_reads_token_from_run_secrets(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """TelegramAdapter receives the token read from LYRA_RUN_SECRETS_DIR."""
+    """TelegramAdapter receives the token read from FACTORY_RUN_SECRETS_DIR."""
     # Arrange
     run_secrets_dir = tmp_path / "run-secrets"
     run_secrets_dir.mkdir()
     (run_secrets_dir / "bot_token-mybot").write_text("TKN_VAL")
 
-    monkeypatch.setenv("LYRA_RUN_SECRETS_DIR", str(run_secrets_dir))
+    monkeypatch.setenv("FACTORY_RUN_SECRETS_DIR", str(run_secrets_dir))
     monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
 
     raw_config = {"telegram": {"bots": [{"bot_id": "mybot"}]}}
@@ -52,23 +52,23 @@ async def test_adapter_reads_token_from_run_secrets(
     mock_inbound_bus.start = AsyncMock()
     mock_inbound_bus.stop = AsyncMock()
 
-    from lyra.bootstrap.standalone.adapter_standalone import (
+    from factory.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
 
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
-        patch("lyra.adapters.telegram.TelegramAdapter", side_effect=_capture_tg),
+        patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("factory.adapters.telegram.TelegramAdapter", side_effect=_capture_tg),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
+            "factory.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=True),
         ),
-        patch("lyra.bootstrap.credentials._is_prod_env", return_value=False),
+        patch("factory.bootstrap.credentials._is_prod_env", return_value=False),
     ):
         # Act
         await _bootstrap_adapter_standalone(raw_config, "telegram", _stop=stop)
@@ -88,7 +88,7 @@ async def test_adapter_reads_webhook_when_present(
     (run_secrets_dir / "bot_token-mybot").write_text("TKN_VAL")
     (run_secrets_dir / "bot_webhook-mybot").write_text("WHK_VAL")
 
-    monkeypatch.setenv("LYRA_RUN_SECRETS_DIR", str(run_secrets_dir))
+    monkeypatch.setenv("FACTORY_RUN_SECRETS_DIR", str(run_secrets_dir))
     monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
 
     raw_config = {"telegram": {"bots": [{"bot_id": "mybot"}]}}
@@ -116,23 +116,23 @@ async def test_adapter_reads_webhook_when_present(
     mock_inbound_bus.start = AsyncMock()
     mock_inbound_bus.stop = AsyncMock()
 
-    from lyra.bootstrap.standalone.adapter_standalone import (
+    from factory.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
 
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
-        patch("lyra.adapters.telegram.TelegramAdapter", side_effect=_capture_tg),
+        patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("factory.adapters.telegram.TelegramAdapter", side_effect=_capture_tg),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
+            "factory.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=True),
         ),
-        patch("lyra.bootstrap.credentials._is_prod_env", return_value=False),
+        patch("factory.bootstrap.credentials._is_prod_env", return_value=False),
     ):
         # Act
         await _bootstrap_adapter_standalone(raw_config, "telegram", _stop=stop)
@@ -152,7 +152,7 @@ async def test_adapter_omits_webhook_when_absent(
     run_secrets_dir.mkdir()
     (run_secrets_dir / "bot_token-mybot").write_text("TKN_VAL")
 
-    monkeypatch.setenv("LYRA_RUN_SECRETS_DIR", str(run_secrets_dir))
+    monkeypatch.setenv("FACTORY_RUN_SECRETS_DIR", str(run_secrets_dir))
     monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
 
     raw_config = {"telegram": {"bots": [{"bot_id": "mybot"}]}}
@@ -180,23 +180,23 @@ async def test_adapter_omits_webhook_when_absent(
     mock_inbound_bus.start = AsyncMock()
     mock_inbound_bus.stop = AsyncMock()
 
-    from lyra.bootstrap.standalone.adapter_standalone import (
+    from factory.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
 
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
-        patch("lyra.adapters.telegram.TelegramAdapter", side_effect=_capture_tg),
+        patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("factory.adapters.telegram.TelegramAdapter", side_effect=_capture_tg),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
+            "factory.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=True),
         ),
-        patch("lyra.bootstrap.credentials._is_prod_env", return_value=False),
+        patch("factory.bootstrap.credentials._is_prod_env", return_value=False),
     ):
         # Act
         await _bootstrap_adapter_standalone(raw_config, "telegram", _stop=stop)
@@ -218,7 +218,7 @@ async def test_adapter_handles_multi_bot(
     (run_secrets_dir / "bot_token-bot1").write_text("TOKEN_BOT1")
     (run_secrets_dir / "bot_token-bot2").write_text("TOKEN_BOT2")
 
-    monkeypatch.setenv("LYRA_RUN_SECRETS_DIR", str(run_secrets_dir))
+    monkeypatch.setenv("FACTORY_RUN_SECRETS_DIR", str(run_secrets_dir))
     monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
 
     raw_config = {"telegram": {"bots": [{"bot_id": "bot1"}, {"bot_id": "bot2"}]}}
@@ -253,23 +253,23 @@ async def test_adapter_handles_multi_bot(
     mock_inbound_bus.start = AsyncMock()
     mock_inbound_bus.stop = AsyncMock()
 
-    from lyra.bootstrap.standalone.adapter_standalone import (
+    from factory.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
 
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
-        patch("lyra.adapters.telegram.TelegramAdapter", side_effect=_capture_tg),
+        patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("factory.adapters.telegram.TelegramAdapter", side_effect=_capture_tg),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
+            "factory.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=True),
         ),
-        patch("lyra.bootstrap.credentials._is_prod_env", return_value=False),
+        patch("factory.bootstrap.credentials._is_prod_env", return_value=False),
     ):
         # Act
         await _bootstrap_adapter_standalone(raw_config, "telegram", _stop=stop)
@@ -291,7 +291,7 @@ async def test_discord_adapter_handles_multi_bot(
     (run_secrets_dir / "bot_token-bot1").write_text("DC_TOKEN_BOT1")
     (run_secrets_dir / "bot_token-bot2").write_text("DC_TOKEN_BOT2")
 
-    monkeypatch.setenv("LYRA_RUN_SECRETS_DIR", str(run_secrets_dir))
+    monkeypatch.setenv("FACTORY_RUN_SECRETS_DIR", str(run_secrets_dir))
     monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
     monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path / "vault"))
 
@@ -344,35 +344,35 @@ async def test_discord_adapter_handles_multi_bot(
     mock_thread_store = AsyncMock()
     mock_turn_store = AsyncMock()
 
-    from lyra.bootstrap.standalone.adapter_standalone import (
+    from factory.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
 
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
-        patch("lyra.adapters.discord.DiscordAdapter", side_effect=_capture_dc),
+        patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("factory.adapters.discord.DiscordAdapter", side_effect=_capture_dc),
         patch(
-            "lyra.infrastructure.stores.agent_store.AgentStore",
+            "factory.infrastructure.stores.agent_store.AgentStore",
             return_value=mock_agent_store,
         ),
         patch(
-            "lyra.infrastructure.stores.thread_store.ThreadStore",
+            "factory.infrastructure.stores.thread_store.ThreadStore",
             return_value=mock_thread_store,
         ),
         patch(
-            "lyra.infrastructure.stores.turn_store.TurnStore",
+            "factory.infrastructure.stores.turn_store.TurnStore",
             return_value=mock_turn_store,
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_discord.NatsOutboundListener",
+            "factory.bootstrap.wiring.standalone_discord.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_discord.wait_for_hub",
+            "factory.bootstrap.wiring.standalone_discord.wait_for_hub",
             AsyncMock(return_value=True),
         ),
-        patch("lyra.bootstrap.credentials._is_prod_env", return_value=False),
+        patch("factory.bootstrap.credentials._is_prod_env", return_value=False),
     ):
         # Act
         await _bootstrap_adapter_standalone(raw_config, "discord", _stop=stop)

@@ -9,8 +9,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from lyra.cli import lyra_app
-from lyra.cli_ops import _expand_subject, _is_permission_error, _load_matrix
+from factory.cli import factory_app
+from factory.cli_ops import _expand_subject, _is_permission_error, _load_matrix
 
 runner = CliRunner()
 
@@ -149,9 +149,9 @@ def test_verify_all_pass(tmp_path: Path, matrix_two: Path) -> None:
     seeds = _seed_dir(tmp_path, ["hub", "monitor"])
     # Each identity: deny only its `lyra.verify.deny.<name>` probe.
     deny = [{"lyra.verify.deny.hub"}, {"lyra.verify.deny.monitor"}]
-    with patch("lyra.cli_ops.nats.connect", _patched_connect(deny)):
+    with patch("factory.cli_ops.nats.connect", _patched_connect(deny)):
         result = runner.invoke(
-            lyra_app,
+            factory_app,
             [
                 "ops",
                 "verify",
@@ -178,9 +178,9 @@ def test_verify_pub_failure_reports_first_offender(
         {"lyra.outbound.telegram.verify", "lyra.verify.deny.hub"},
         {"lyra.verify.deny.monitor"},
     ]
-    with patch("lyra.cli_ops.nats.connect", _patched_connect(deny)):
+    with patch("factory.cli_ops.nats.connect", _patched_connect(deny)):
         result = runner.invoke(
-            lyra_app,
+            factory_app,
             [
                 "ops",
                 "verify",
@@ -201,9 +201,9 @@ def test_verify_deny_failure(tmp_path: Path, matrix_two: Path) -> None:
     seeds = _seed_dir(tmp_path, ["hub", "monitor"])
     # Server *accepts* the verify-deny probe → deny check fails.
     deny = [set(), set()]
-    with patch("lyra.cli_ops.nats.connect", _patched_connect(deny)):
+    with patch("factory.cli_ops.nats.connect", _patched_connect(deny)):
         result = runner.invoke(
-            lyra_app,
+            factory_app,
             [
                 "ops",
                 "verify",
@@ -220,9 +220,9 @@ def test_verify_deny_failure(tmp_path: Path, matrix_two: Path) -> None:
 def test_verify_skips_when_seed_missing(tmp_path: Path, matrix_two: Path) -> None:
     seeds = _seed_dir(tmp_path, ["hub"])  # monitor.seed missing
     deny = [{"lyra.verify.deny.hub"}]
-    with patch("lyra.cli_ops.nats.connect", _patched_connect(deny)):
+    with patch("factory.cli_ops.nats.connect", _patched_connect(deny)):
         result = runner.invoke(
-            lyra_app,
+            factory_app,
             [
                 "ops",
                 "verify",
@@ -240,9 +240,9 @@ def test_verify_skips_when_seed_missing(tmp_path: Path, matrix_two: Path) -> Non
 def test_verify_only_filter(tmp_path: Path, matrix_two: Path) -> None:
     seeds = _seed_dir(tmp_path, ["hub", "monitor"])
     deny = [{"lyra.verify.deny.monitor"}]
-    with patch("lyra.cli_ops.nats.connect", _patched_connect(deny)):
+    with patch("factory.cli_ops.nats.connect", _patched_connect(deny)):
         result = runner.invoke(
-            lyra_app,
+            factory_app,
             [
                 "ops",
                 "verify",
@@ -261,7 +261,7 @@ def test_verify_only_filter(tmp_path: Path, matrix_two: Path) -> None:
 def test_verify_only_unknown_identity(tmp_path: Path, matrix_two: Path) -> None:
     seeds = _seed_dir(tmp_path, ["hub", "monitor"])
     result = runner.invoke(
-        lyra_app,
+        factory_app,
         [
             "ops",
             "verify",
@@ -283,9 +283,9 @@ def test_verify_handles_empty_publish_list(tmp_path: Path) -> None:
     _write_matrix(matrix, {"silent": {"publish": [], "subscribe": []}})
     seeds = _seed_dir(tmp_path, ["silent"])
     deny = [{"lyra.verify.deny.silent"}]
-    with patch("lyra.cli_ops.nats.connect", _patched_connect(deny)):
+    with patch("factory.cli_ops.nats.connect", _patched_connect(deny)):
         result = runner.invoke(
-            lyra_app,
+            factory_app,
             [
                 "ops",
                 "verify",
@@ -335,9 +335,9 @@ def test_verify_handles_post_flush_error_arrival(
         fake.set_error_cb(kwargs.get("error_cb"))
         return fake
 
-    with patch("lyra.cli_ops.nats.connect", side_effect=_factory):
+    with patch("factory.cli_ops.nats.connect", side_effect=_factory):
         result = runner.invoke(
-            lyra_app,
+            factory_app,
             [
                 "ops",
                 "verify",
@@ -357,7 +357,7 @@ def test_verify_rejects_seed_outside_seeds_dir(tmp_path: Path) -> None:
     _write_matrix(matrix, {"../escape": {"publish": ["lyra.foo"], "subscribe": []}})
     seeds = _seed_dir(tmp_path, [])
     result = runner.invoke(
-        lyra_app,
+        factory_app,
         [
             "ops",
             "verify",

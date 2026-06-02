@@ -8,12 +8,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lyra.bootstrap.infra.git_ownership_probe import (
+from factory.bootstrap.infra.git_ownership_probe import (
     PROBE_ENV_VAR,
     run_git_ownership_probe,
 )
 
-_PATCH_TARGET = "lyra.bootstrap.infra.git_ownership_probe.subprocess.run"
+_PATCH_TARGET = "factory.bootstrap.infra.git_ownership_probe.subprocess.run"
 
 
 class TestRunGitOwnershipProbeSuccess:
@@ -98,7 +98,7 @@ class TestRunGitOwnershipProbePathResolution:
     def test_env_override_resolves_before_default(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """When LYRA_OWNERSHIP_PROBE_PATH is set, it is used when no arg given."""
+        """When FACTORY_OWNERSHIP_PROBE_PATH is set, it is used when no arg given."""
         monkeypatch.setenv(PROBE_ENV_VAR, str(tmp_path))
 
         mock_result = MagicMock()
@@ -114,7 +114,7 @@ class TestRunGitOwnershipProbePathResolution:
     def test_explicit_arg_resolves_before_env(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Explicit repo_path wins over LYRA_OWNERSHIP_PROBE_PATH env var."""
+        """Explicit repo_path wins over FACTORY_OWNERSHIP_PROBE_PATH env var."""
         env_dir = tmp_path / "env_dir"
         env_dir.mkdir()
         explicit_dir = tmp_path / "explicit_dir"

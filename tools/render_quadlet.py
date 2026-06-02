@@ -16,7 +16,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from lyra.infrastructure.stores.bot_store import BotStore
+from factory.infrastructure.stores.bot_store import BotStore
 
 MARKER = "{{bot_secrets}}"
 _BOT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")

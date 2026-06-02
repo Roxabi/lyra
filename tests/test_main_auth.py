@@ -7,11 +7,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-import lyra.__main__ as main_mod
-import lyra.bootstrap.factory.agent_factory as agent_factory_mod
-from lyra.bootstrap.factory.agent_factory import CreateAgentDeps
-from lyra.core.agent import Agent
-from lyra.core.agent.agent_config import ModelConfig
+import factory.__main__ as main_mod
+import factory.bootstrap.factory.agent_factory as agent_factory_mod
+from factory.bootstrap.factory.agent_factory import CreateAgentDeps
+from factory.core.agent import Agent
+from factory.core.agent.agent_config import ModelConfig
 from tests.conftest import patch_auth_config_test
 
 # ---------------------------------------------------------------------------
@@ -21,7 +21,7 @@ from tests.conftest import patch_auth_config_test
 
 class TestAgentFactory:
     def test_cli_backend_creates_simple_agent(self) -> None:
-        from lyra.agents.simple_agent import SimpleAgent
+        from factory.agents.simple_agent import SimpleAgent
 
         config = Agent(
             name="test",
@@ -78,7 +78,7 @@ class TestAuthConfig:
         patch_auth_config_test(monkeypatch)
         monkeypatch.setattr(main_mod, "_load_raw_config", lambda: {})
         # Override BotStore so get_all returns empty roster — no bots in DB.
-        import lyra.bootstrap.bootstrap_stores as stores_mod_local
+        import factory.bootstrap.bootstrap_stores as stores_mod_local
 
         _empty_bot_store = MagicMock()
         _empty_bot_store.connect = AsyncMock()
@@ -98,7 +98,7 @@ class TestAuthConfig:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Missing discord auth is allowed when telegram is configured."""
-        from lyra.core.agent.agent_models import AgentRow
+        from factory.core.agent.agent_models import AgentRow
 
         patch_auth_config_test(monkeypatch)
         # Use the multi-bot format (telegram_bots) since load_multibot_config
@@ -117,7 +117,7 @@ class TestAuthConfig:
             backend="claude-cli",
             model="claude-sonnet-4-5",
         )
-        import lyra.bootstrap.bootstrap_stores as stores_mod_local
+        import factory.bootstrap.bootstrap_stores as stores_mod_local
 
         _fake_agent_store = MagicMock()
         _fake_agent_store.connect = AsyncMock()
@@ -143,8 +143,8 @@ class TestAuthConfig:
         """Invalid default_trust in BotStore causes SystemExit when _main() runs."""
         from unittest.mock import MagicMock
 
-        import lyra.bootstrap.bootstrap_stores as stores_mod_local
-        from lyra.core.agent.bot_models import BotRow
+        import factory.bootstrap.bootstrap_stores as stores_mod_local
+        from factory.core.agent.bot_models import BotRow
 
         patch_auth_config_test(monkeypatch)
         _fake_bot_store = MagicMock()

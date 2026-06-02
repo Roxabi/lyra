@@ -1,4 +1,4 @@
-"""Guard: scripts/ modules must not import from lyra.*"""
+"""Guard: scripts/ modules must not import from factory.*"""
 
 import ast
 from pathlib import Path
@@ -20,7 +20,7 @@ def _get_imports(path: Path) -> list[str]:
 
 
 def test_no_lyra_imports_in_scripts() -> None:
-    """Guard: scripts/* must not import from lyra.*"""
+    """Guard: scripts/* must not import from factory.*"""
     violations: list[str] = []
     for py_file in SCRIPTS_DIR.glob("*.py"):
         if py_file.name.startswith("_") and py_file.name == "__init__.py":

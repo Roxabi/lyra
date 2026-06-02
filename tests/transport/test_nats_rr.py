@@ -10,8 +10,8 @@ from unittest.mock import AsyncMock, MagicMock
 import nats.errors
 import pytest
 
-from lyra.transport._result import Err, Ok
-from lyra.transport.nats_request_response import NatsTransport
+from factory.transport._result import Err, Ok
+from factory.transport.nats_request_response import NatsTransport
 
 
 @pytest.mark.asyncio
@@ -95,7 +95,7 @@ async def test_open_inbox_cleanup_on_early_break():
 @pytest.mark.asyncio
 async def test_open_inbox_yields_inbox_stream():
     """CM yields InboxStream with inbox_subject set from nc.new_inbox()."""
-    from lyra.transport._result import InboxStream
+    from factory.transport._result import InboxStream
 
     nc = AsyncMock()
     mock_sub = AsyncMock()

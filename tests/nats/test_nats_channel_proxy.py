@@ -15,8 +15,8 @@ from unittest.mock import AsyncMock, MagicMock
 import nats.errors
 import pytest
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import (
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import (
     InboundMessage,
     OutboundAttachment,
     OutboundAudio,
@@ -24,12 +24,12 @@ from lyra.core.messaging.message import (
     OutboundMessage,
     Platform,
 )
-from lyra.core.messaging.render_events import (
+from factory.core.messaging.render_events import (
     RunFinishedRenderEvent,
     TextDeltaRenderEvent,
     ToolCallStartRenderEvent,
 )
-from lyra.nats.nats_channel_proxy import NatsChannelProxy
+from factory.nats.nats_channel_proxy import NatsChannelProxy
 from tests.helpers.messages import make_test_blobref
 
 # ---------------------------------------------------------------------------
@@ -112,7 +112,7 @@ def test_normalize_audio_raises() -> None:
 
 @pytest.mark.asyncio
 async def test_send_publishes_to_correct_subject() -> None:
-    """send() publishes to lyra.outbound.<platform>.<bot_id>."""
+    """send() publishes to factory.outbound.<platform>.<bot_id>."""
     nc = _make_nc()
     proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
     inbound = _make_inbound("msg-abc")
@@ -193,7 +193,7 @@ async def test_send_streaming_publishes_chunks_with_incrementing_seq() -> None:
 
 @pytest.mark.asyncio
 async def test_send_streaming_subject_is_single_outbound_subject() -> None:
-    """Every nc.publish call uses subject lyra.outbound.<platform>.<bot_id>."""
+    """Every nc.publish call uses subject factory.outbound.<platform>.<bot_id>."""
     nc = _make_nc()
     proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
     inbound = _make_inbound("msg-42")
@@ -361,7 +361,7 @@ async def test_send_streaming_drains_iterator_on_publish_failure() -> None:
 
 @pytest.mark.asyncio
 async def test_render_attachment_publishes_to_outbound_subject() -> None:
-    """render_attachment() publishes to lyra.outbound.<platform>.<bot_id>."""
+    """render_attachment() publishes to factory.outbound.<platform>.<bot_id>."""
     nc = _make_nc()
     proxy = NatsChannelProxy(nc=nc, platform=Platform.TELEGRAM, bot_id="main")
     inbound = _make_inbound("msg-att")
@@ -562,7 +562,7 @@ async def test_render_audio_stream_drains_and_logs(
             consumed.append(i)
             yield chunk
 
-    with caplog.at_level(logging.WARNING, logger="lyra.nats.nats_channel_proxy"):
+    with caplog.at_level(logging.WARNING, logger="factory.nats.nats_channel_proxy"):
         await proxy.render_audio_stream(_chunks(), inbound)
 
     nc.publish.assert_not_awaited()
@@ -595,7 +595,7 @@ async def test_render_voice_stream_drains_and_logs(
                 chunk_index=i,
             )
 
-    with caplog.at_level(logging.WARNING, logger="lyra.nats.nats_channel_proxy"):
+    with caplog.at_level(logging.WARNING, logger="factory.nats.nats_channel_proxy"):
         await proxy.render_voice_stream(_chunks(), inbound)
 
     nc.publish.assert_not_awaited()
@@ -635,7 +635,7 @@ async def test_send_includes_stream_id() -> None:
 
 def test_is_terminal_stream_error():
     """stream_error event type is always terminal regardless of done flag."""
-    from lyra.nats.render_event_codec import NatsRenderEventCodec
+    from factory.nats.render_event_codec import NatsRenderEventCodec
 
     codec = NatsRenderEventCodec()
     assert codec.is_terminal("stream_error") is True

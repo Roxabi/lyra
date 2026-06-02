@@ -22,8 +22,8 @@ import pytest
 # wiring modules.  If these paths move, mypy/pyright will NOT catch it — but
 # the patched tests will start failing immediately, making the drift visible.
 _PATCH_TARGETS = (
-    "lyra.bootstrap.wiring.standalone_telegram.start_audio_consumer",
-    "lyra.bootstrap.wiring.standalone_discord.start_audio_consumer",
+    "factory.bootstrap.wiring.standalone_telegram.start_audio_consumer",
+    "factory.bootstrap.wiring.standalone_discord.start_audio_consumer",
 )
 
 

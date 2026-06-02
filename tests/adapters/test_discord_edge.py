@@ -10,17 +10,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.core.messaging.message import DiscordMeta
-from lyra.core.messaging.messages import MessageManager
+from factory.core.auth.trust import TrustLevel
+from factory.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
+from factory.core.messaging.message import DiscordMeta
+from factory.core.messaging.messages import MessageManager
 
 from .conftest import attach_typing_cm
 
 TOML_PATH = (
     Path(__file__).resolve().parent.parent.parent
     / "src"
-    / "lyra"
+    / "factory"
     / "data"
     / "messages.toml"
 )
@@ -53,7 +53,7 @@ def test_missing_discord_token_raises_on_load(
     """load_discord_config() raises SystemExit when DISCORD_TOKEN env var is absent."""
     monkeypatch.delenv("DISCORD_TOKEN", raising=False)
 
-    from lyra.adapters.discord.discord_config import load_discord_config
+    from factory.adapters.discord.discord_config import load_discord_config
 
     with pytest.raises(SystemExit, match="DISCORD_TOKEN"):
         load_discord_config()
@@ -69,7 +69,7 @@ async def test_backpressure_sends_ack_when_bus_full() -> None:
     """When inbound queue is full, put raises QueueFull and adapter sends ack."""
     import asyncio
 
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     inbound_bus = MagicMock()
     inbound_bus.put = AsyncMock(side_effect=asyncio.QueueFull())
@@ -113,7 +113,7 @@ async def test_on_message_drops_silently_when_hub_circuit_open() -> None:
     For the circuit-open notification path see
     test_on_message_notifies_user_when_hub_circuit_open_dm below.
     """
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     # Arrange
     registry = _make_open_registry("hub")
@@ -151,7 +151,7 @@ async def test_on_message_drops_silently_when_hub_circuit_open() -> None:
 @pytest.mark.asyncio
 async def test_on_message_notifies_user_when_hub_circuit_open_dm() -> None:
     """SC-11b: DM reaches push_to_hub_guarded; circuit-open drops and notifies user."""
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     # Arrange — hub circuit is OPEN
     registry = _make_open_registry("hub")
@@ -202,8 +202,8 @@ async def test_send_skips_when_discord_circuit_open() -> None:
     """SC-13 (updated): adapter.send() no longer checks the CB.
     CB check is owned by OutboundDispatcher. Adapter always delivers.
     """
-    from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.messaging.message import InboundMessage, OutboundMessage
+    from factory.adapters.discord import DiscordAdapter
+    from factory.core.messaging.message import InboundMessage, OutboundMessage
 
     # Arrange
     registry = _make_open_registry("discord")
@@ -260,7 +260,7 @@ async def test_send_skips_when_discord_circuit_open() -> None:
 async def test_discord_msg_manager_injection_backpressure_ack() -> None:
     """Injecting a real MessageManager causes on_message to reply with the TOML
     'backpressure_ack' string (not the hardcoded fallback) when bus is full."""
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     # Arrange
     mm = MessageManager(TOML_PATH)
@@ -315,7 +315,7 @@ async def test_close_does_not_call_thread_store_close() -> None:
 
     The call was removed in PR #995; teardown is now the bootstrap's responsibility.
     """
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     # Arrange
     mock_thread_store = AsyncMock()
@@ -341,8 +341,8 @@ async def test_close_does_not_call_thread_store_close() -> None:
 
 def test_normalize_empty_text() -> None:
     """normalize() with content="" produces msg.text == ""."""
-    from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.messaging.message import InboundMessage
+    from factory.adapters.discord import DiscordAdapter
+    from factory.core.messaging.message import InboundMessage
 
     adapter = DiscordAdapter(
         bot_id="main",

@@ -64,4 +64,4 @@ Persistent gates are enumerated in `.claude/stack.yml` `quality_gates`. One-off 
 
 ## Scope
 
-`tools/` = project-root tooling only. ¬confuse with `src/lyra/tools/` (gh_token helper — unrelated).
+`tools/` = project-root tooling only. ¬confuse with `src/factory/tools/` (gh_token helper — unrelated).

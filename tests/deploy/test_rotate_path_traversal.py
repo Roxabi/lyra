@@ -20,7 +20,7 @@ ROTATE_GH = SCRIPTS_DIR / "rotate-gh-key.sh"
 ROTATE_CLAUDE = SCRIPTS_DIR / "rotate-claude-oauth.sh"
 
 # Trusted dirs defined in the hardened scripts.
-TRUSTED_DIRS = ["/home/lyra/secrets", "/etc/lyra"]
+TRUSTED_DIRS = ["/home/factory/secrets", "/etc/factory"]
 
 
 def _run_script(script: Path, arg: str) -> subprocess.CompletedProcess[str]:
@@ -66,7 +66,7 @@ class TestRotateGhKeyPathTraversal:
         )
         assert any(
             kw in result.stderr.lower()
-            for kw in ("trusted", "outside", "/home/lyra/secrets", "/etc/lyra")
+            for kw in ("trusted", "outside", "/home/factory/secrets", "/etc/factory")
         ), f"Expected trusted-dir rejection in stderr; got: {result.stderr!r}"
 
     def test_missing_file_is_rejected(self, tmp_path: Path) -> None:
@@ -95,7 +95,7 @@ class TestRotateGhKeyPathTraversal:
         )
         assert any(
             kw in result.stderr.lower()
-            for kw in ("trusted", "outside", "/home/lyra/secrets", "/etc/lyra")
+            for kw in ("trusted", "outside", "/home/factory/secrets", "/etc/factory")
         ), f"Expected trusted-dir rejection in stderr; got: {result.stderr!r}"
 
 
@@ -124,7 +124,7 @@ class TestRotateClaudeOauthPathTraversal:
         )
         assert any(
             kw in result.stderr.lower()
-            for kw in ("trusted", "outside", "/home/lyra/secrets", "/etc/lyra")
+            for kw in ("trusted", "outside", "/home/factory/secrets", "/etc/factory")
         ), f"Expected rejection message in stderr; got: {result.stderr!r}"
 
     def test_path_outside_trusted_dir_is_rejected(self, tmp_path: Path) -> None:
@@ -141,7 +141,7 @@ class TestRotateClaudeOauthPathTraversal:
         )
         assert any(
             kw in result.stderr.lower()
-            for kw in ("trusted", "outside", "/home/lyra/secrets", "/etc/lyra")
+            for kw in ("trusted", "outside", "/home/factory/secrets", "/etc/factory")
         ), f"Expected trusted-dir rejection in stderr; got: {result.stderr!r}"
 
     def test_no_args_prints_usage(self) -> None:
@@ -166,7 +166,7 @@ class TestRotateClaudeOauthPathTraversal:
         evil_target.chmod(0o600)
 
         # Symlink lives in /tmp (outside trusted dirs) — simulates a link that
-        # could be placed inside /home/lyra/secrets/ in the real TOCTOU scenario.
+        # could be placed inside /home/factory/secrets/ in the real TOCTOU scenario.
         link = tmp_path / "link.tok"
         link.symlink_to(evil_target)
 
@@ -178,7 +178,7 @@ class TestRotateClaudeOauthPathTraversal:
         )
         assert any(
             kw in result.stderr.lower()
-            for kw in ("trusted", "outside", "/home/lyra/secrets", "/etc/lyra")
+            for kw in ("trusted", "outside", "/home/factory/secrets", "/etc/factory")
         ), f"Expected trusted-dir rejection in stderr; got: {result.stderr!r}"
 
     def test_crlf_in_path_argument_is_rejected(self, tmp_path: Path) -> None:

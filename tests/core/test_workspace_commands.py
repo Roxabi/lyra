@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lyra.core.commands.workspace_commands import _constrain_to_base
+from factory.core.commands.workspace_commands import _constrain_to_base
 
 
 class TestConstrainToBase:

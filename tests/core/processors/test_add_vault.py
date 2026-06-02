@@ -10,17 +10,17 @@ from datetime import datetime, timezone
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.commands.add_vault.handlers import (
+from factory.commands.add_vault.handlers import (
     _MAX_CONTENT_CHARS,
     _NOTE_CATEGORY,
     _NOTE_TYPE,
     cmd_add_vault,
 )
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.commands.command_parser import CommandContext
-from lyra.core.exceptions import VaultWriteFailed
-from lyra.core.messaging.message import InboundMessage
-from lyra.integrations.base import SessionTools
+from factory.core.auth.trust import TrustLevel
+from factory.core.commands.command_parser import CommandContext
+from factory.core.exceptions import VaultWriteFailed
+from factory.core.messaging.message import InboundMessage
+from factory.integrations.base import SessionTools
 
 # ---------------------------------------------------------------------------
 # Helpers

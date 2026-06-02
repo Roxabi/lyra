@@ -20,16 +20,16 @@ from unittest.mock import AsyncMock, MagicMock
 
 import discord
 
-from lyra.adapters.discord import DiscordAdapter
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import (
+from factory.adapters.discord import DiscordAdapter
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import (
     Button,
     DiscordMeta,
     InboundMessage,
     OutboundMessage,
     TelegramMeta,
 )
-from lyra.core.messaging.render_events import (
+from factory.core.messaging.render_events import (
     TextDeltaRenderEvent,
     TextEndRenderEvent,
     TextStartRenderEvent,
@@ -147,7 +147,7 @@ class TestDiscordMakeEmitter:
     def test_make_emitter_returns_outbound_emitter(self) -> None:
         """_make_emitter() must return an OutboundEmitter instance."""
         # Arrange
-        from lyra.outbound.emitter import OutboundEmitter
+        from factory.outbound.emitter import OutboundEmitter
 
         adapter = _make_dc_adapter()
         original_msg = _make_dc_inbound()
@@ -161,7 +161,7 @@ class TestDiscordMakeEmitter:
 
     def test_make_emitter_with_none_outbound(self) -> None:
         """_make_emitter() must not raise when outbound=None."""
-        from lyra.outbound.emitter import OutboundEmitter
+        from factory.outbound.emitter import OutboundEmitter
 
         adapter = _make_dc_adapter()
         original_msg = _make_dc_inbound()
@@ -172,7 +172,7 @@ class TestDiscordMakeEmitter:
 
     def test_make_emitter_non_discord_falls_back(self) -> None:
         """_make_emitter() with non-discord inbound falls back to legacy callbacks."""
-        from lyra.outbound.emitter import OutboundEmitter
+        from factory.outbound.emitter import OutboundEmitter
 
         adapter = _make_dc_adapter()
         tg_msg = InboundMessage(
@@ -196,7 +196,7 @@ class TestDiscordMakeEmitter:
 
     def test_make_emitter_thread_context(self) -> None:
         """_make_emitter() with thread_id uses thread channel as send_to."""
-        from lyra.outbound.emitter import OutboundEmitter
+        from factory.outbound.emitter import OutboundEmitter
 
         adapter = _make_dc_adapter()
         original_msg = _make_dc_inbound(channel_id=333, message_id=555, thread_id=777)

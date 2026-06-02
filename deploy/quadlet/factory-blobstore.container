@@ -35,10 +35,10 @@ Environment=NATS_NKEY_SEED_PATH=/run/secrets/factory-nats-blobstore.seed
 Secret=factory_blobstore_token,type=mount,uid=1500,gid=1500,mode=0400,target=/run/secrets/factory_blobstore_token
 # Blob data directory — bind-mount so data persists across container restarts.
 # Host path mirrors the FsBlobStore default (~/.roxabi/factory/blobstore); container path resolves
-# under the lyra home (/home/lyra/.roxabi/factory/blobstore via UserNS=keep-id).
+# under the factory home (/home/factory/.roxabi/factory/blobstore via UserNS=keep-id).
 # NOTE: Do NOT add inline # comments after Volume= values; Quadlet passes them to
 # Podman as mount-option strings (issue #1083).
-Volume=/data/factory/blobs:/home/lyra/.roxabi/factory/blobstore:z
+Volume=/data/factory/blobs:/home/factory/.roxabi/factory/blobstore:z
 # config.toml — required by the staging-svc image variant (svc-runtime entrypoint
 # reads config at startup; see docs/ops/container-publishing.md §svc-runtime).
 Volume=%h/.roxabi/factory/config.toml:/app/config.toml:ro,z
@@ -50,7 +50,7 @@ Volume=%h/.roxabi/factory/config.toml:/app/config.toml:ro,z
 # Bearer token remains the sole auth boundary on a misconfigured host (guard circumvented).
 # Accepted for V8; document in deploy/CLAUDE.md §Residual risks.
 PublishPort=${TAILSCALE_IPV4}:8449:8449
-Exec=lyra blobstore serve --token-path /run/secrets/factory_blobstore_token --host 0.0.0.0 --port 8449
+Exec=factory blobstore serve --token-path /run/secrets/factory_blobstore_token --host 0.0.0.0 --port 8449
 HealthCmd=grep -q blobstore /proc/1/cmdline
 HealthInterval=30s
 

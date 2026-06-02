@@ -25,27 +25,27 @@ from unittest.mock import AsyncMock, MagicMock
 import nats.errors
 import pytest
 
-from lyra.adapters.nats.jetstream_audio_consumer import (
+from factory.adapters.nats.jetstream_audio_consumer import (
     MAX_DELIVER,
     JetStreamAudioConsumer,
 )
-from lyra.adapters.nats.jetstream_audio_dedup import (
+from factory.adapters.nats.jetstream_audio_dedup import (
     DEDUP_MAX_ENTRIES,
     DEDUP_TTL,
     InMemorySentSet,
 )
-from lyra.adapters.nats.jetstream_audio_envelope import (
+from factory.adapters.nats.jetstream_audio_envelope import (
     decode_audio_envelope,
     num_delivered,
 )
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import (
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import (
     InboundMessage,
     OutboundAudio,
     OutboundMessage,
     Platform,
 )
-from lyra.core.messaging.voice_notify import VOICE_UNDELIVERED_MSG
+from factory.core.messaging.voice_notify import VOICE_UNDELIVERED_MSG
 from roxabi_contracts.blob_ref import BlobRef
 
 # ---------------------------------------------------------------------------

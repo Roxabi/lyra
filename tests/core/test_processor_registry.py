@@ -6,12 +6,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lyra.core.processors.processor_registry import (
+from factory.core.processors.processor_registry import (
     BaseProcessor,
     ProcessorRegistry,
     registry,
 )
-from lyra.integrations.base import SessionTools
+from factory.integrations.base import SessionTools
 from tests.helpers import reload_processors
 
 # ---------------------------------------------------------------------------
@@ -232,13 +232,13 @@ class TestCommandsAndDescriptions:
 
 
 # ---------------------------------------------------------------------------
-# Module-level singleton: importing lyra.core.processors registers built-ins
+# Module-level singleton: importing factory.core.processors registers built-ins
 # ---------------------------------------------------------------------------
 
 
 class TestModuleSingletonRegistration:
     def test_import_registers_expected_commands(self) -> None:
-        """Importing lyra.core.processors populates the module singleton."""
+        """Importing factory.core.processors populates the module singleton."""
         # Arrange — clear then force reload to re-trigger @register decorators.
         # Needed because a preceding conftest may have called registry.clear() after
         # the modules were already imported (Python caches them and skips re-execution).

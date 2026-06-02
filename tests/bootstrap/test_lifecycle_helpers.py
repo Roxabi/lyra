@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.bootstrap.lifecycle.lifecycle_helpers import (
+from factory.bootstrap.lifecycle.lifecycle_helpers import (
     close_safely,
     setup_signal_handlers,
     teardown_buses,
@@ -21,7 +21,7 @@ def test_setup_signal_handlers_registers_sigint_and_sigterm() -> None:
     mock_loop = MagicMock()
     stop = asyncio.Event()
 
-    _target = "lyra.bootstrap.lifecycle.lifecycle_helpers.asyncio.get_running_loop"
+    _target = "factory.bootstrap.lifecycle.lifecycle_helpers.asyncio.get_running_loop"
     with patch(_target, return_value=mock_loop):
         setup_signal_handlers(stop)
 
@@ -36,7 +36,7 @@ def test_setup_signal_handlers_uses_stop_event() -> None:
     mock_loop = MagicMock()
     stop = asyncio.Event()
 
-    _target = "lyra.bootstrap.lifecycle.lifecycle_helpers.asyncio.get_running_loop"
+    _target = "factory.bootstrap.lifecycle.lifecycle_helpers.asyncio.get_running_loop"
     with patch(_target, return_value=mock_loop):
         setup_signal_handlers(stop)
 
@@ -115,7 +115,7 @@ class TestCloseSafely:
     async def test_empty_coros_is_noop(self) -> None:
         """close_safely with no coroutines returns immediately; gather not called."""
         # Arrange / Act / Assert — must not raise and must not call asyncio.gather
-        _target = "lyra.bootstrap.lifecycle.lifecycle_helpers.asyncio.gather"
+        _target = "factory.bootstrap.lifecycle.lifecycle_helpers.asyncio.gather"
         with patch(_target) as mock_gather:
             await close_safely("no-op-label")
             mock_gather.assert_not_called()
@@ -168,7 +168,7 @@ class TestCloseSafely:
         import logging
 
         with caplog.at_level(
-            logging.ERROR, logger="lyra.bootstrap.lifecycle.lifecycle_helpers"
+            logging.ERROR, logger="factory.bootstrap.lifecycle.lifecycle_helpers"
         ):
             await close_safely("tg-adapters", bad_coro())
 
@@ -191,7 +191,7 @@ class TestCloseSafely:
 
         # Act — capture at DEBUG so we see the debug record
         with caplog.at_level(
-            logging.DEBUG, logger="lyra.bootstrap.lifecycle.lifecycle_helpers"
+            logging.DEBUG, logger="factory.bootstrap.lifecycle.lifecycle_helpers"
         ):
             await close_safely("shutdown-label", cancelled_coro())
 
@@ -219,7 +219,7 @@ class TestCloseSafely:
         import logging
 
         with caplog.at_level(
-            logging.ERROR, logger="lyra.bootstrap.lifecycle.lifecycle_helpers"
+            logging.ERROR, logger="factory.bootstrap.lifecycle.lifecycle_helpers"
         ):
             await close_safely("multi-fail", bad_a(), bad_b())
 
@@ -244,7 +244,7 @@ class TestCloseSafely:
         import logging
 
         with caplog.at_level(
-            logging.ERROR, logger="lyra.bootstrap.lifecycle.lifecycle_helpers"
+            logging.ERROR, logger="factory.bootstrap.lifecycle.lifecycle_helpers"
         ):
             await close_safely("mixed-label", cancelled_coro(), erroring_coro())
 

@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.core.messaging.message import OutboundMessage
-from lyra.outbound.emitter import OutboundEmitter
-from lyra.transport.work_scope import WorkScope
+from factory.core.messaging.message import OutboundMessage
+from factory.outbound.emitter import OutboundEmitter
+from factory.transport.work_scope import WorkScope
 
 
 def _make_formatter() -> MagicMock:
@@ -52,7 +52,7 @@ class TestStartTyping:
         tp = AsyncMock()
         emitter = _make_emitter(typing_publisher=tp, work_scope=scope)
 
-        with patch("lyra.outbound.emitter.is_typing_enabled", return_value=True):
+        with patch("factory.outbound.emitter.is_typing_enabled", return_value=True):
             await emitter._start_typing()
 
         tp.publish_started.assert_awaited_once_with(scope)
@@ -70,7 +70,7 @@ class TestStartTyping:
             typing_scope_id=42,
         )
 
-        with patch("lyra.outbound.emitter.is_typing_enabled", return_value=True):
+        with patch("factory.outbound.emitter.is_typing_enabled", return_value=True):
             await emitter._start_typing()
 
         tp.publish_started.assert_not_awaited()
@@ -87,7 +87,7 @@ class TestStartTyping:
             typing_scope_id=42,
         )
 
-        with patch("lyra.outbound.emitter.is_typing_enabled", return_value=True):
+        with patch("factory.outbound.emitter.is_typing_enabled", return_value=True):
             await emitter._start_typing()
 
         typing.start_typing.assert_awaited_once_with(42)
@@ -107,7 +107,7 @@ class TestStartTyping:
             typing_scope_id=42,
         )
 
-        with patch("lyra.outbound.emitter.is_typing_enabled", return_value=False):
+        with patch("factory.outbound.emitter.is_typing_enabled", return_value=False):
             await emitter._start_typing()
 
         tp.publish_started.assert_not_awaited()
@@ -140,7 +140,7 @@ class TestGuardKillingNegative:
             typing_scope_id=42,
         )
 
-        with patch("lyra.outbound.emitter.is_typing_enabled", return_value=True):
+        with patch("factory.outbound.emitter.is_typing_enabled", return_value=True):
             await emitter._start_typing()
 
         typing.start_typing.assert_awaited_once_with(42)
@@ -164,7 +164,7 @@ class TestGuardKillingNegative:
             typing_scope_id=42,
         )
 
-        with patch("lyra.outbound.emitter.is_typing_enabled", return_value=True):
+        with patch("factory.outbound.emitter.is_typing_enabled", return_value=True):
             await emitter._cancel_typing()
 
         typing.cancel_typing.assert_awaited_once_with(42)
@@ -189,7 +189,7 @@ class TestGuardKillingNegative:
             typing_scope_id=42,
         )
 
-        with patch("lyra.outbound.emitter.is_typing_enabled", return_value=False):
+        with patch("factory.outbound.emitter.is_typing_enabled", return_value=False):
             await emitter._start_typing()
 
         tp.publish_started.assert_not_awaited()
@@ -215,7 +215,7 @@ class TestGuardKillingNegative:
             typing_scope_id=42,
         )
 
-        with patch("lyra.outbound.emitter.is_typing_enabled", return_value=False):
+        with patch("factory.outbound.emitter.is_typing_enabled", return_value=False):
             await emitter._cancel_typing()
 
         tp.publish_ended.assert_not_awaited()
@@ -232,7 +232,7 @@ class TestCancelTyping:
         tp = AsyncMock()
         emitter = _make_emitter(typing_publisher=tp, work_scope=scope)
 
-        with patch("lyra.outbound.emitter.is_typing_enabled", return_value=True):
+        with patch("factory.outbound.emitter.is_typing_enabled", return_value=True):
             await emitter._cancel_typing()
 
         tp.publish_ended.assert_awaited_once_with(scope)
@@ -250,7 +250,7 @@ class TestCancelTyping:
             typing_scope_id=42,
         )
 
-        with patch("lyra.outbound.emitter.is_typing_enabled", return_value=True):
+        with patch("factory.outbound.emitter.is_typing_enabled", return_value=True):
             await emitter._cancel_typing()
 
         tp.publish_ended.assert_not_awaited()
@@ -267,7 +267,7 @@ class TestCancelTyping:
             typing_scope_id=42,
         )
 
-        with patch("lyra.outbound.emitter.is_typing_enabled", return_value=True):
+        with patch("factory.outbound.emitter.is_typing_enabled", return_value=True):
             await emitter._cancel_typing()
 
         typing.cancel_typing.assert_awaited_once_with(42)
@@ -287,7 +287,7 @@ class TestCancelTyping:
             typing_scope_id=42,
         )
 
-        with patch("lyra.outbound.emitter.is_typing_enabled", return_value=False):
+        with patch("factory.outbound.emitter.is_typing_enabled", return_value=False):
             await emitter._cancel_typing()
 
         tp.publish_ended.assert_not_awaited()

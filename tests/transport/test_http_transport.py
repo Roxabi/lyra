@@ -1,7 +1,7 @@
 import pytest
 
-from lyra.transport._result import Err
-from lyra.transport.http_transport import HttpTransport
+from factory.transport._result import Err
+from factory.transport.http_transport import HttpTransport
 
 
 @pytest.mark.asyncio

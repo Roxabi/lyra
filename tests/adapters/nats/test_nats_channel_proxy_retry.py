@@ -21,11 +21,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import nats.errors
 import pytest
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage, OutboundAudio, Platform
-from lyra.nats.audio_publish import _AUDIO_PUBLISH_MAX_ATTEMPTS
-from lyra.nats.nats_channel_proxy import NatsChannelProxy
-from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import InboundMessage, OutboundAudio, Platform
+from factory.nats.audio_publish import _AUDIO_PUBLISH_MAX_ATTEMPTS
+from factory.nats.nats_channel_proxy import NatsChannelProxy
+from factory.nats.type_registry import TYPE_REGISTRY_RESOLVER
 from roxabi_contracts.blob_ref import BlobRef
 
 # ---------------------------------------------------------------------------
@@ -94,10 +94,10 @@ async def test_r1_transient_then_success_no_notification() -> None:
     audio = _make_audio()
 
     _sleep_patch = patch(
-        "lyra.nats.audio_publish.asyncio.sleep", new_callable=AsyncMock
+        "factory.nats.audio_publish.asyncio.sleep", new_callable=AsyncMock
     )
     _notify_patch = patch(
-        "lyra.nats.nats_channel_proxy.notify_audio_publish_failed",
+        "factory.nats.nats_channel_proxy.notify_audio_publish_failed",
         new_callable=AsyncMock,
     )
     with _sleep_patch as mock_sleep, _notify_patch as mock_notify:
@@ -140,10 +140,10 @@ async def test_r2_two_transient_then_success_no_notification() -> None:
     audio = _make_audio()
 
     _sleep_patch = patch(
-        "lyra.nats.audio_publish.asyncio.sleep", new_callable=AsyncMock
+        "factory.nats.audio_publish.asyncio.sleep", new_callable=AsyncMock
     )
     _notify_patch = patch(
-        "lyra.nats.nats_channel_proxy.notify_audio_publish_failed",
+        "factory.nats.nats_channel_proxy.notify_audio_publish_failed",
         new_callable=AsyncMock,
     )
     with _sleep_patch as mock_sleep, _notify_patch as mock_notify:
@@ -179,10 +179,10 @@ async def test_r3_persistent_failure_exhausts_attempts_and_notifies() -> None:
     audio = _make_audio()
 
     _sleep_patch = patch(
-        "lyra.nats.audio_publish.asyncio.sleep", new_callable=AsyncMock
+        "factory.nats.audio_publish.asyncio.sleep", new_callable=AsyncMock
     )
     _notify_patch = patch(
-        "lyra.nats.nats_channel_proxy.notify_audio_publish_failed",
+        "factory.nats.nats_channel_proxy.notify_audio_publish_failed",
         new_callable=AsyncMock,
     )
     with _sleep_patch, _notify_patch as mock_notify:

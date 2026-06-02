@@ -5,10 +5,10 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from lyra.bootstrap.factory.hub.hub_cli_pool import build_cli_pool
-from lyra.core.agent import Agent
-from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.cli.cli_pool import CliPoolDeps
+from factory.bootstrap.factory.hub.hub_cli_pool import build_cli_pool
+from factory.core.agent import Agent
+from factory.core.agent.agent_config import ModelConfig
+from factory.core.cli.cli_pool import CliPoolDeps
 
 
 def _make_cli_agent(name: str = "test_agent") -> Agent:
@@ -23,12 +23,12 @@ def _make_cli_agent(name: str = "test_agent") -> Agent:
 class TestBuildCliPoolAuditSinkWiring:
     async def test_build_cli_pool_passes_audit_sink_to_pool(self) -> None:
         """build_cli_pool forwards audit_sink kwarg to CliPool constructor."""
-        from lyra.infrastructure.audit.jetstream_sink import JetStreamAuditSink
+        from factory.infrastructure.audit.jetstream_sink import JetStreamAuditSink
 
         agent_configs = {"a": _make_cli_agent()}
         sink = JetStreamAuditSink()
 
-        with patch("lyra.bootstrap.factory.hub.hub_cli_pool.CliPool") as MockCliPool:
+        with patch("factory.bootstrap.factory.hub.hub_cli_pool.CliPool") as MockCliPool:
             mock_pool = MagicMock()
             mock_pool.start = AsyncMock()
             MockCliPool.return_value = mock_pool
@@ -43,7 +43,7 @@ class TestBuildCliPoolAuditSinkWiring:
         """build_cli_pool defaults audit_sink=None when not provided."""
         agent_configs = {"a": _make_cli_agent()}
 
-        with patch("lyra.bootstrap.factory.hub.hub_cli_pool.CliPool") as MockCliPool:
+        with patch("factory.bootstrap.factory.hub.hub_cli_pool.CliPool") as MockCliPool:
             mock_pool = MagicMock()
             mock_pool.start = AsyncMock()
             MockCliPool.return_value = mock_pool
@@ -58,13 +58,13 @@ class TestBuildCliPoolAuditSinkWiring:
 class TestJetStreamAuditSinkBootstrapIntegration:
     async def test_provision_is_imported_before_cli_pool(self) -> None:
         """JetStreamAuditSink must be importable in hub_clipool_init."""
-        import lyra.bootstrap.factory.hub.hub_clipool_init as hub_clipool_init_mod
+        import factory.bootstrap.factory.hub.hub_clipool_init as hub_clipool_init_mod
 
         assert hasattr(hub_clipool_init_mod, "JetStreamAuditSink")
 
     async def test_audit_sink_skip_permissions_event_fields(self) -> None:
         """A spawn with skip_permissions=True emits event with that field True."""
-        from lyra.core.cli.cli_pool import CliPool
+        from factory.core.cli.cli_pool import CliPool
         from tests.core.conftest_cli_pool import make_fake_proc
 
         events: list[object] = []
@@ -80,7 +80,7 @@ class TestJetStreamAuditSinkBootstrapIntegration:
         fake_proc = make_fake_proc([])
 
         with patch(
-            "lyra.core.cli.cli_pool_spawn.asyncio.create_subprocess_exec",
+            "factory.core.cli.cli_pool_spawn.asyncio.create_subprocess_exec",
             return_value=fake_proc,
         ):
             await pool._spawn("p:1", model)
@@ -93,7 +93,7 @@ class TestJetStreamAuditSinkBootstrapIntegration:
 
     async def test_audit_sink_skip_permissions_false_emits_false(self) -> None:
         """A spawn with skip_permissions=False emits the field as False."""
-        from lyra.core.cli.cli_pool import CliPool
+        from factory.core.cli.cli_pool import CliPool
         from tests.core.conftest_cli_pool import make_fake_proc
 
         events: list[object] = []
@@ -109,7 +109,7 @@ class TestJetStreamAuditSinkBootstrapIntegration:
         fake_proc = make_fake_proc([])
 
         with patch(
-            "lyra.core.cli.cli_pool_spawn.asyncio.create_subprocess_exec",
+            "factory.core.cli.cli_pool_spawn.asyncio.create_subprocess_exec",
             return_value=fake_proc,
         ):
             await pool._spawn("p:2", model)

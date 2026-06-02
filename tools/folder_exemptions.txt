@@ -10,4 +10,4 @@
 # factory_data_dir → $ROXABI_FACTORY_DIR). Top-level is correct for a
 # broadly-imported zero-dep resolver; cli_* decomposition (the real bloat)
 # is the follow-up. Plan: artifacts/plans/lyra-to-roxabi-factory-rename.md
-src/lyra  # 13 files — roxabi-factory rename (paths.py SSoT); cli_* split = follow-up
+src/factory  # 13 files — roxabi-factory rename (paths.py SSoT); cli_* split = follow-up

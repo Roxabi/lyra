@@ -8,10 +8,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.cli.cli_pool import CliPool, CliPoolDeps, _ProcessEntry
-from lyra.core.cli.cli_protocol import StreamingIterator
-from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent
+from factory.core.agent.agent_config import ModelConfig
+from factory.core.cli.cli_pool import CliPool, CliPoolDeps, _ProcessEntry
+from factory.core.cli.cli_protocol import StreamingIterator
+from factory.core.messaging.events import ResultLlmEvent, TextLlmEvent
 from tests.conftest import yield_once
 
 from .conftest_cli_pool import (

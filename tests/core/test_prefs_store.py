@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from lyra.infrastructure.stores.prefs_store import PrefsStore, UserPrefs
+from factory.infrastructure.stores.prefs_store import PrefsStore, UserPrefs
 
 # ---------------------------------------------------------------------------
 # Fixtures

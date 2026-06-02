@@ -78,7 +78,7 @@ uv run pre-commit install
 
 A channel adapter normalizes messages from one platform into `InboundMessage` objects and sends `OutboundMessage` objects back via the platform API.
 
-**1. Add a `Platform` variant** in `src/lyra/core/message.py`:
+**1. Add a `Platform` variant** in `src/factory/core/message.py`:
 
 ```python
 class Platform(str, Enum):
@@ -87,7 +87,7 @@ class Platform(str, Enum):
     SIGNAL   = "signal"        # new
 ```
 
-**2. Create `src/lyra/adapters/signal.py`** inheriting `OutboundAdapterBase`:
+**2. Create `src/factory/adapters/signal.py`** inheriting `OutboundAdapterBase`:
 
 ```python
 from lyra.adapters._base_outbound import OutboundAdapterBase
@@ -115,11 +115,11 @@ class SignalAdapter(OutboundAdapterBase):
 
 `send_streaming()` is provided by `OutboundAdapterBase` — do not override it. Platform-specific streaming behaviour belongs in `_make_streaming_callbacks()`.
 
-See `src/lyra/adapters/_shared.py` for shared normalization helpers and render functions (audio, attachments).
+See `src/factory/adapters/_shared.py` for shared normalization helpers and render functions (audio, attachments).
 
 **3. Implement `_normalize()`** to parse raw platform payloads into `InboundMessage` objects, and any platform-specific render methods (`render_audio`, `render_attachment`, etc.) as needed.
 
-**4. Register it in `src/lyra/bootstrap/hub_standalone.py`** (and `adapter_standalone.py` for the adapter side):
+**4. Register it in `src/factory/bootstrap/hub_standalone.py`** (and `adapter_standalone.py` for the adapter side):
 
 Add the platform's inbound/outbound NATS subjects to `_bootstrap_hub_standalone()` and wire
 a new `_bootstrap_adapter_standalone()` branch for the new platform. The hub registers the
@@ -140,7 +140,7 @@ hub.register_binding(Platform.SIGNAL, bot_id, "*", "lyra", ...)
 
 An agent is a stateless singleton defined by a TOML seed file and stored in the AgentStore (SQLite at `~/.lyra/auth.db`).
 
-**1. Create a TOML seed** in `src/lyra/agents/my_agent.toml`:
+**1. Create a TOML seed** in `src/factory/agents/my_agent.toml`:
 
 ```toml
 [agent]
@@ -180,13 +180,13 @@ agent = "my_agent"
 lyra agent assign my_agent --platform telegram --bot my_bot
 ```
 
-For a custom agent class (beyond `SimpleAgent`), subclass `AgentBase` from `src/lyra/core/agent.py` and implement `process()`.
+For a custom agent class (beyond `SimpleAgent`), subclass `AgentBase` from `src/factory/core/agent.py` and implement `process()`.
 
 ## Adding a config renderer
 
 A *renderer* is any tool or static file that produces output consumed by an external binary (`nats-server`, `podman`/Quadlet, `systemd`, `openssl`). Any new renderer in `deploy/` or any new CLI that writes a config file must come with a roundtrip test in `tools/check_renderer_roundtrip.sh` + a CI job in `.github/workflows/renderer-roundtrip.yml`.
 
-See **[docs/standards/renderer-roundtrip.md](docs/standards/renderer-roundtrip.md)** for the pattern, the required shape (render → consumer parse → invariant assertions), the worked example (`lyra-acl`), and the reviewer checklist. Skipping this leads to bugs accepted at write-time and rejected at reboot — see #1083 and #1089.
+See **[docs/standards/renderer-roundtrip.md](docs/standards/renderer-roundtrip.md)** for the pattern, the required shape (render → consumer parse → invariant assertions), the worked example (`factory-acl`), and the reviewer checklist. Skipping this leads to bugs accepted at write-time and rejected at reboot — see #1083 and #1089.
 
 ## Code review expectations
 
@@ -330,7 +330,7 @@ After creating the ADR file, add its slug to `docs/architecture/adr/meta.json`.
 ## Project structure
 
 ```
-src/lyra/
+src/factory/
   core/           — hub, pool, agent, message (no external I/O)
   adapters/       — one file per channel (Telegram, Discord, ...)
   agents/         — agent implementations + TOML configs

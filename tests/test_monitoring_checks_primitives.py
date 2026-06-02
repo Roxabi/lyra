@@ -21,8 +21,8 @@ class TestCheckProcess:
             calls.append(cmd)
             return MagicMock(returncode=0, stdout="active\n")
 
-        monkeypatch.setattr("lyra.monitoring.checks.subprocess.run", mock_run)
-        from lyra.monitoring.checks import check_process
+        monkeypatch.setattr("factory.monitoring.checks.subprocess.run", mock_run)
+        from factory.monitoring.checks import check_process
 
         results = check_process(["lyra-telegram"])
         assert len(results) == 1
@@ -36,10 +36,10 @@ class TestCheckProcess:
     def test_inactive_service(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """check_process fails when systemctl --user is-active returns non-zero."""
         monkeypatch.setattr(
-            "lyra.monitoring.checks.subprocess.run",
+            "factory.monitoring.checks.subprocess.run",
             lambda *a, **kw: MagicMock(returncode=3, stdout="inactive\n"),
         )
-        from lyra.monitoring.checks import check_process
+        from factory.monitoring.checks import check_process
 
         results = check_process(["lyra-telegram"])
         assert len(results) == 1
@@ -54,8 +54,8 @@ class TestCheckProcess:
             code, out = statuses[name]
             return MagicMock(returncode=code, stdout=out + "\n")
 
-        monkeypatch.setattr("lyra.monitoring.checks.subprocess.run", mock_run)
-        from lyra.monitoring.checks import check_process
+        monkeypatch.setattr("factory.monitoring.checks.subprocess.run", mock_run)
+        from factory.monitoring.checks import check_process
 
         results = check_process(["lyra-hub", "lyra-telegram"])
         assert len(results) == 2
@@ -72,8 +72,8 @@ class TestCheckProcess:
             calls.append(cmd)
             return MagicMock(returncode=0, stdout="active\n")
 
-        monkeypatch.setattr("lyra.monitoring.checks.subprocess.run", mock_run)
-        from lyra.monitoring.checks import check_process
+        monkeypatch.setattr("factory.monitoring.checks.subprocess.run", mock_run)
+        from factory.monitoring.checks import check_process
 
         check_process(["lyra-hub", "lyra-telegram", "lyra-discord"])
         for cmd in calls:
@@ -88,7 +88,7 @@ class TestCheckProcess:
 class TestCheckQueueDepth:
     def test_below_threshold(self) -> None:
         """SC-4: check_queue_depth passes when queue_size < threshold."""
-        from lyra.monitoring.checks import check_queue_depth
+        from factory.monitoring.checks import check_queue_depth
 
         result = check_queue_depth({"queue_size": 10}, 80)
         assert result.passed is True
@@ -96,14 +96,14 @@ class TestCheckQueueDepth:
 
     def test_above_threshold(self) -> None:
         """SC-4: check_queue_depth fails when queue_size >= threshold."""
-        from lyra.monitoring.checks import check_queue_depth
+        from factory.monitoring.checks import check_queue_depth
 
         result = check_queue_depth({"queue_size": 90}, 80)
         assert result.passed is False
 
     def test_at_exact_threshold(self) -> None:
         """Boundary: queue_size == threshold should fail (uses strict <)."""
-        from lyra.monitoring.checks import check_queue_depth
+        from factory.monitoring.checks import check_queue_depth
 
         result = check_queue_depth({"queue_size": 80}, 80)
         assert result.passed is False
@@ -117,7 +117,7 @@ class TestCheckQueueDepth:
 class TestCheckCircuits:
     def test_all_closed(self) -> None:
         """SC-4: check_circuits passes when all circuits are closed."""
-        from lyra.monitoring.checks import check_circuits
+        from factory.monitoring.checks import check_circuits
 
         health_json = {
             "circuits": {
@@ -131,7 +131,7 @@ class TestCheckCircuits:
 
     def test_open_circuit(self) -> None:
         """SC-4: check_circuits fails when any circuit is open."""
-        from lyra.monitoring.checks import check_circuits
+        from factory.monitoring.checks import check_circuits
 
         health_json = {
             "circuits": {
@@ -154,12 +154,12 @@ class TestCheckDisk:
         import shutil
 
         monkeypatch.setattr(
-            "lyra.monitoring.checks_varz.shutil.disk_usage",
+            "factory.monitoring.checks_varz.shutil.disk_usage",
             lambda path: shutil._ntuple_diskusage(
                 total=100 * 1024**3, used=50 * 1024**3, free=50 * 1024**3
             ),
         )
-        from lyra.monitoring.checks import check_disk
+        from factory.monitoring.checks import check_disk
 
         result = check_disk("/", 1)
         assert result.passed is True
@@ -170,14 +170,14 @@ class TestCheckDisk:
         import shutil
 
         monkeypatch.setattr(
-            "lyra.monitoring.checks_varz.shutil.disk_usage",
+            "factory.monitoring.checks_varz.shutil.disk_usage",
             lambda path: shutil._ntuple_diskusage(
                 total=100 * 1024**3,
                 used=int(99.5 * 1024**3),
                 free=int(0.5 * 1024**3),
             ),
         )
-        from lyra.monitoring.checks import check_disk
+        from factory.monitoring.checks import check_disk
 
         result = check_disk("/", 1)
         assert result.passed is False

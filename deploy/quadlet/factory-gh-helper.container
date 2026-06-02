@@ -9,7 +9,7 @@ StartLimitIntervalSec=60
 StartLimitBurst=5
 
 [Container]
-# Same image as clipool — lyra-gh user (uid 1501) + lyra-tokenuser group (gid 1502)
+# Same image as clipool — factory-gh user (uid 1501) + factory-tokenuser group (gid 1502)
 # are baked into the image at Dockerfile lines 49–51. No separate helper image needed.
 Image=ghcr.io/roxabi/factory:staging
 ContainerName=factory-gh-helper
@@ -18,7 +18,7 @@ ReadOnly=true
 NoNewPrivileges=true
 DropCapability=all
 
-# uid 1501 = lyra-gh user (created in Dockerfile); gid 1502 = lyra-tokenuser.
+# uid 1501 = factory-gh user (created in Dockerfile); gid 1502 = factory-tokenuser.
 # Primary group 1502 ensures the dispenser socket (mode 0660) is created with
 # gid=1502 so uid 1500 (member of gid 1502) can connect — invariant I-3.
 User=1501
@@ -32,9 +32,9 @@ Secret=factory-gh-pem,type=mount,target=gh-app.pem,mode=0400,uid=1501,gid=1501
 # App ID + install_id are public, invariant across M₁/M₂ post single-App decision
 # (Decision Log 2026-05-06). Inlined here (not per-host env file) per deployment-binding
 # taxonomy: these belong in git-versioned unit files, not runtime data or Podman secrets.
-Environment=LYRA_GH_APP_ID=3619198
-Environment=LYRA_GH_INSTALLATION_ID=129952244
-Environment=LYRA_GH_PEM_PATH=/run/secrets/gh-app.pem
+Environment=FACTORY_GH_APP_ID=3619198
+Environment=FACTORY_GH_INSTALLATION_ID=129952244
+Environment=FACTORY_GH_PEM_PATH=/run/secrets/gh-app.pem
 
 # Token-mint runtime state — shared with factory-clipool via Quadlet .volume unit.
 # Pod containers do NOT share mount namespaces; Tmpfs= on sibling containers
@@ -42,9 +42,9 @@ Environment=LYRA_GH_PEM_PATH=/run/secrets/gh-app.pem
 # tmpfs-backed named volume into both containers (verified on M₁ Podman 5.7.0).
 # See factory-gh-token.volume for mode/isolation rationale (file-level perms enforce
 # I-2/I-3; sticky 1777 dir mode allows uid 1500/1501 cohabitation).
-Volume=factory-gh-token.volume:/run/lyra-gh-token:rw
+Volume=factory-gh-token.volume:/run/factory-gh-token:rw
 
-Exec=python -m lyra.tools.gh_token.daemon
+Exec=python -m factory.tools.gh_token.daemon
 HealthCmd=grep -q gh_token /proc/1/cmdline
 HealthInterval=30s
 

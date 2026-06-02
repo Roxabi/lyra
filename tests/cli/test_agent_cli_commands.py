@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from lyra.cli import agent_app
+from factory.cli import agent_app
 
 # ---------------------------------------------------------------------------
 # Shared runner

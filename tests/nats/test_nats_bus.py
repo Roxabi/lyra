@@ -16,15 +16,15 @@ from datetime import datetime, timezone
 import pytest
 from nats.aio.client import Client as NATS
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.bus import Bus
-from lyra.core.messaging.message import (
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.bus import Bus
+from factory.core.messaging.message import (
     DiscordMeta,
     InboundMessage,
     Platform,
     TelegramMeta,
 )
-from lyra.nats.nats_bus import NatsBus
+from factory.nats.nats_bus import NatsBus
 from roxabi_nats._serialize import serialize
 from tests.nats.conftest import requires_nats_server
 

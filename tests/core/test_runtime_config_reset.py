@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from lyra.core.runtime_config import RuntimeConfig
+from factory.core.runtime_config import RuntimeConfig
 
 # ---------------------------------------------------------------------------
 # reset()

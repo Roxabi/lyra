@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
-from lyra.adapters.discord.voice.discord_voice_commands import (
+from factory.adapters.discord.voice.discord_voice_commands import (
     VOICE_COMMANDS,
     register_voice_app_commands,
 )
@@ -91,7 +91,7 @@ class TestOnReadySync:
     @pytest.mark.asyncio()
     async def test_sync_failure_does_not_crash(self) -> None:
         """If tree.sync() raises, on_ready should log warning and continue."""
-        from lyra.adapters.discord import DiscordAdapter
+        from factory.adapters.discord import DiscordAdapter
 
         adapter = DiscordAdapter(
             bot_id="test",
@@ -130,7 +130,7 @@ class TestOnReadySync:
 
     @pytest.mark.asyncio()
     async def test_sync_called_per_guild(self) -> None:
-        from lyra.adapters.discord import DiscordAdapter
+        from factory.adapters.discord import DiscordAdapter
 
         adapter = DiscordAdapter(
             bot_id="test",
@@ -170,7 +170,7 @@ class TestOnReadySync:
 class TestTextFallbackPreserved:
     @pytest.mark.asyncio()
     async def test_text_join_still_works(self) -> None:
-        from lyra.adapters.discord.voice.discord_voice_commands import (
+        from factory.adapters.discord.voice.discord_voice_commands import (
             handle_voice_command,
         )
 
@@ -190,7 +190,7 @@ class TestTextFallbackPreserved:
 
     @pytest.mark.asyncio()
     async def test_text_leave_still_works(self) -> None:
-        from lyra.adapters.discord.voice.discord_voice_commands import (
+        from factory.adapters.discord.voice.discord_voice_commands import (
             handle_voice_command,
         )
 

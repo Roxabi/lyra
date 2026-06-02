@@ -7,11 +7,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.commands import session_commands
-from lyra.core.messaging.message import Response
-from lyra.core.pool import Pool
-from lyra.core.stores.turn_store_protocol import SessionRow
-from lyra.infrastructure.stores.turn_store import TurnStore
+from factory.core.commands import session_commands
+from factory.core.messaging.message import Response
+from factory.core.pool import Pool
+from factory.core.stores.turn_store_protocol import SessionRow
+from factory.infrastructure.stores.turn_store import TurnStore
 
 from .conftest import make_message
 

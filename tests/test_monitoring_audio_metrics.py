@@ -28,8 +28,8 @@ import pytest
 
 
 def _make_inbound() -> object:
-    from lyra.core.auth.trust import TrustLevel
-    from lyra.core.messaging.message import InboundMessage, Platform
+    from factory.core.auth.trust import TrustLevel
+    from factory.core.messaging.message import InboundMessage, Platform
 
     return InboundMessage(
         id="sid-t11",
@@ -50,7 +50,7 @@ def _make_consumer(
     send_audio: AsyncMock | None = None,
     send_text: AsyncMock | None = None,
 ) -> object:
-    from lyra.adapters.nats.jetstream_audio_consumer import JetStreamAudioConsumer
+    from factory.adapters.nats.jetstream_audio_consumer import JetStreamAudioConsumer
 
     js = MagicMock()
     return JetStreamAudioConsumer(
@@ -69,8 +69,8 @@ def _make_nats_msg(
 ) -> MagicMock:
     import json
 
-    from lyra.core.auth.trust import TrustLevel
-    from lyra.core.messaging.message import InboundMessage, OutboundAudio, Platform
+    from factory.core.auth.trust import TrustLevel
+    from factory.core.messaging.message import InboundMessage, OutboundAudio, Platform
     from roxabi_contracts.blob_ref import BlobRef
     from roxabi_nats._serialize import serialize
 
@@ -124,7 +124,7 @@ async def test_terminal_drop_counter_increments(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """audio_terminal_drop_total increments by 1 each time _handle_terminal fires."""
-    import lyra.adapters.nats.jetstream_audio_consumer as mod
+    import factory.adapters.nats.jetstream_audio_consumer as mod
 
     monkeypatch.setattr(mod, "audio_terminal_drop_total", 0)
 
@@ -148,8 +148,8 @@ async def test_terminal_drop_counter_increments_via_process(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Counter increments when _process routes to _handle_terminal."""
-    import lyra.adapters.nats.jetstream_audio_consumer as mod
-    from lyra.adapters.nats.jetstream_audio_consumer import MAX_DELIVER
+    import factory.adapters.nats.jetstream_audio_consumer as mod
+    from factory.adapters.nats.jetstream_audio_consumer import MAX_DELIVER
 
     monkeypatch.setattr(mod, "audio_terminal_drop_total", 0)
 
@@ -166,7 +166,7 @@ async def test_terminal_drop_counter_not_incremented_on_success(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Counter does NOT increment on a successful send."""
-    import lyra.adapters.nats.jetstream_audio_consumer as mod
+    import factory.adapters.nats.jetstream_audio_consumer as mod
 
     monkeypatch.setattr(mod, "audio_terminal_drop_total", 0)
 
@@ -186,7 +186,7 @@ async def test_redelivery_counter_increments_on_second_delivery(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """audio_redelivery_total increments when num_delivered > 1."""
-    import lyra.adapters.nats.jetstream_audio_consumer as mod
+    import factory.adapters.nats.jetstream_audio_consumer as mod
 
     monkeypatch.setattr(mod, "audio_redelivery_total", 0)
 
@@ -203,7 +203,7 @@ async def test_redelivery_counter_not_incremented_on_first_delivery(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """audio_redelivery_total does NOT increment for first delivery."""
-    import lyra.adapters.nats.jetstream_audio_consumer as mod
+    import factory.adapters.nats.jetstream_audio_consumer as mod
 
     monkeypatch.setattr(mod, "audio_redelivery_total", 0)
 
@@ -235,13 +235,13 @@ _STREAM_JSZ = {
 @pytest.mark.anyio
 async def test_consumer_lag_passes_below_threshold() -> None:
     """num_pending=5 < threshold=50 → passed=True."""
-    from lyra.monitoring.checks_audio import check_audio_consumer_lag
+    from factory.monitoring.checks_audio import check_audio_consumer_lag
 
     mock_resp = MagicMock()
     mock_resp.status_code = 200
     mock_resp.json.return_value = _STREAM_JSZ
 
-    with patch("lyra.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
+    with patch("factory.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -261,7 +261,7 @@ async def test_consumer_lag_passes_below_threshold() -> None:
 @pytest.mark.anyio
 async def test_consumer_lag_fails_above_threshold() -> None:
     """num_pending=80 > threshold=50 → passed=False."""
-    from lyra.monitoring.checks_audio import check_audio_consumer_lag
+    from factory.monitoring.checks_audio import check_audio_consumer_lag
 
     data = {
         "streams": [
@@ -277,7 +277,7 @@ async def test_consumer_lag_fails_above_threshold() -> None:
     mock_resp.status_code = 200
     mock_resp.json.return_value = data
 
-    with patch("lyra.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
+    with patch("factory.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -296,12 +296,12 @@ async def test_consumer_lag_fails_above_threshold() -> None:
 @pytest.mark.anyio
 async def test_consumer_lag_skips_when_stream_absent() -> None:
     """404 from /jsz → passed=True (stream not yet provisioned)."""
-    from lyra.monitoring.checks_audio import check_audio_consumer_lag
+    from factory.monitoring.checks_audio import check_audio_consumer_lag
 
     mock_resp = MagicMock()
     mock_resp.status_code = 404
 
-    with patch("lyra.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
+    with patch("factory.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -317,9 +317,9 @@ async def test_consumer_lag_skips_when_stream_absent() -> None:
 @pytest.mark.anyio
 async def test_consumer_lag_fails_on_http_error() -> None:
     """Connection error → passed=False (detail is exc type name, not message)."""
-    from lyra.monitoring.checks_audio import check_audio_consumer_lag
+    from factory.monitoring.checks_audio import check_audio_consumer_lag
 
-    with patch("lyra.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
+    with patch("factory.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -367,7 +367,7 @@ async def test_consumer_lag_age_warn_when_old_last_active() -> None:
     """pending>0 + last_active older than lag_age_warn_s → passed=False."""
     from datetime import datetime, timedelta, timezone
 
-    from lyra.monitoring.checks_audio import check_audio_consumer_lag
+    from factory.monitoring.checks_audio import check_audio_consumer_lag
 
     # 25 hours ago — exceeds the 72000s (20h) default threshold
     old_ts = (datetime.now(timezone.utc) - timedelta(hours=25)).isoformat()
@@ -377,7 +377,7 @@ async def test_consumer_lag_age_warn_when_old_last_active() -> None:
     mock_resp.status_code = 200
     mock_resp.json.return_value = data
 
-    with patch("lyra.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
+    with patch("factory.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -398,7 +398,7 @@ async def test_consumer_lag_age_ok_when_recent_last_active() -> None:
     """pending>0 + last_active within lag_age_warn_s → passed=True."""
     from datetime import datetime, timedelta, timezone
 
-    from lyra.monitoring.checks_audio import check_audio_consumer_lag
+    from factory.monitoring.checks_audio import check_audio_consumer_lag
 
     # 5 minutes ago — well within the 20h threshold
     recent_ts = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
@@ -408,7 +408,7 @@ async def test_consumer_lag_age_ok_when_recent_last_active() -> None:
     mock_resp.status_code = 200
     mock_resp.json.return_value = data
 
-    with patch("lyra.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
+    with patch("factory.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -427,7 +427,7 @@ async def test_consumer_lag_age_ok_when_no_pending() -> None:
     """pending==0 → age check skipped → passed=True regardless of last_active."""
     from datetime import datetime, timedelta, timezone
 
-    from lyra.monitoring.checks_audio import check_audio_consumer_lag
+    from factory.monitoring.checks_audio import check_audio_consumer_lag
 
     # Very old timestamp — but pending=0 so the age check must not fire
     old_ts = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
@@ -437,7 +437,7 @@ async def test_consumer_lag_age_ok_when_no_pending() -> None:
     mock_resp.status_code = 200
     mock_resp.json.return_value = data
 
-    with patch("lyra.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
+    with patch("factory.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -459,7 +459,7 @@ async def test_consumer_lag_age_ok_when_no_pending() -> None:
 @pytest.mark.anyio
 async def test_stream_usage_passes_below_threshold() -> None:
     """10% usage < 80% threshold → passed=True."""
-    from lyra.monitoring.checks_audio import check_audio_stream_usage
+    from factory.monitoring.checks_audio import check_audio_stream_usage
 
     data = {
         "streams": [
@@ -474,7 +474,7 @@ async def test_stream_usage_passes_below_threshold() -> None:
     mock_resp.status_code = 200
     mock_resp.json.return_value = data
 
-    with patch("lyra.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
+    with patch("factory.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -491,7 +491,7 @@ async def test_stream_usage_passes_below_threshold() -> None:
 @pytest.mark.anyio
 async def test_stream_usage_fails_above_threshold() -> None:
     """90% usage > 80% threshold → passed=False."""
-    from lyra.monitoring.checks_audio import check_audio_stream_usage
+    from factory.monitoring.checks_audio import check_audio_stream_usage
 
     max_b = 33554432
     used_b = int(max_b * 0.90)
@@ -508,7 +508,7 @@ async def test_stream_usage_fails_above_threshold() -> None:
     mock_resp.status_code = 200
     mock_resp.json.return_value = data
 
-    with patch("lyra.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
+    with patch("factory.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -525,7 +525,7 @@ async def test_stream_usage_fails_above_threshold() -> None:
 @pytest.mark.anyio
 async def test_stream_usage_uses_fallback_max_bytes() -> None:
     """When config.max_bytes absent, fallback 32 MiB constant used."""
-    from lyra.monitoring.checks_audio import (
+    from factory.monitoring.checks_audio import (
         _FALLBACK_MAX_BYTES,
         check_audio_stream_usage,
     )
@@ -543,7 +543,7 @@ async def test_stream_usage_uses_fallback_max_bytes() -> None:
     mock_resp.status_code = 200
     mock_resp.json.return_value = data
 
-    with patch("lyra.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
+    with patch("factory.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -559,12 +559,12 @@ async def test_stream_usage_uses_fallback_max_bytes() -> None:
 @pytest.mark.anyio
 async def test_stream_usage_skips_when_stream_absent() -> None:
     """404 from /jsz → passed=True (stream not yet provisioned)."""
-    from lyra.monitoring.checks_audio import check_audio_stream_usage
+    from factory.monitoring.checks_audio import check_audio_stream_usage
 
     mock_resp = MagicMock()
     mock_resp.status_code = 404
 
-    with patch("lyra.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
+    with patch("factory.monitoring.checks_audio.httpx.AsyncClient") as mock_client_cls:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -584,7 +584,7 @@ async def test_stream_usage_skips_when_stream_absent() -> None:
 
 def test_monitoring_config_audio_threshold_defaults() -> None:
     """MonitoringConfig exposes audio thresholds with correct defaults."""
-    from lyra.monitoring.config import MonitoringConfig
+    from factory.monitoring.config import MonitoringConfig
 
     cfg = MonitoringConfig(telegram_token="t", telegram_admin_chat_id="1")
     assert cfg.audio_lag_pending_threshold == 50
@@ -594,7 +594,7 @@ def test_monitoring_config_audio_threshold_defaults() -> None:
 
 def test_monitoring_config_audio_thresholds_overrideable() -> None:
     """Audio thresholds can be overridden via TOML-style kwargs."""
-    from lyra.monitoring.config import MonitoringConfig
+    from factory.monitoring.config import MonitoringConfig
 
     cfg = MonitoringConfig(
         telegram_token="t",
@@ -618,8 +618,8 @@ async def test_run_checks_includes_audio_checks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """run_checks result set includes audio:consumer_lag and audio:stream_usage."""
-    from lyra.monitoring.checks import run_checks
-    from lyra.monitoring.config import MonitoringConfig
+    from factory.monitoring.checks import run_checks
+    from factory.monitoring.config import MonitoringConfig
 
     config = MonitoringConfig(
         telegram_token="t",
@@ -630,12 +630,12 @@ async def test_run_checks_includes_audio_checks(
 
     # Mock systemctl
     monkeypatch.setattr(
-        "lyra.monitoring.checks.subprocess.run",
+        "factory.monitoring.checks.subprocess.run",
         MagicMock(return_value=MagicMock(returncode=0, stdout="active\n")),
     )
     # Mock podman logs (log-scan checks)
     monkeypatch.setattr(
-        "lyra.monitoring.checks_log.subprocess.run",
+        "factory.monitoring.checks_log.subprocess.run",
         MagicMock(return_value=MagicMock(returncode=0, stdout="", stderr="")),
     )
 
@@ -672,12 +672,13 @@ async def test_run_checks_includes_audio_checks(
     mock_client.get = _mock_get
 
     with (
-        patch("lyra.monitoring.checks.httpx.AsyncClient", return_value=mock_client),
+        patch("factory.monitoring.checks.httpx.AsyncClient", return_value=mock_client),
         patch(
-            "lyra.monitoring.checks_varz.httpx.AsyncClient", return_value=mock_client
+            "factory.monitoring.checks_varz.httpx.AsyncClient", return_value=mock_client
         ),
         patch(
-            "lyra.monitoring.checks_audio.httpx.AsyncClient", return_value=mock_client
+            "factory.monitoring.checks_audio.httpx.AsyncClient",
+            return_value=mock_client,
         ),
     ):
         report = await run_checks(config)

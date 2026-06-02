@@ -9,17 +9,17 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.commands.command_parser import CommandContext
-from lyra.core.exceptions import ScrapeFailed
-from lyra.core.messaging.message import InboundMessage
-from lyra.core.processors._scraping import (
+from factory.core.auth.trust import TrustLevel
+from factory.core.commands.command_parser import CommandContext
+from factory.core.exceptions import ScrapeFailed
+from factory.core.messaging.message import InboundMessage
+from factory.core.processors._scraping import (
     _SAFE_SCRAPE_MAX_CHARS,
     ScrapingProcessor,
     _extract_and_validate_url,
     _scrape_with_fallback,
 )
-from lyra.integrations.base import SessionTools
+from factory.integrations.base import SessionTools
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -434,7 +434,7 @@ class TestRejectsPrivateIps:
             (socket.AF_INET, socket.SOCK_STREAM, 0, "", ("127.0.0.1", 0))
         ]
         with patch(
-            "lyra.core.processors._scraping.asyncio.to_thread",
+            "factory.core.processors._scraping.asyncio.to_thread",
             return_value=loopback_addrinfo,
         ):
             _, err = await _extract_and_validate_url(

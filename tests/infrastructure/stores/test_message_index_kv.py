@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from nats.js.errors import BadRequestError, KeyNotFoundError
 
-from lyra.infrastructure.stores.message_index_kv import (
+from factory.infrastructure.stores.message_index_kv import (
     KV_BUCKET,
     MessageIndexKvStore,
     _sanitize_key_part,

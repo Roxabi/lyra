@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.transport.turn_publisher import TurnPublisher
+from factory.transport.turn_publisher import TurnPublisher
 from roxabi_contracts.turns import SUBJECTS, TurnWriteEvent
 
 # ---------------------------------------------------------------------------

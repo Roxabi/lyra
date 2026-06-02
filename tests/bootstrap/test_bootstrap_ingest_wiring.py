@@ -9,13 +9,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lyra.bootstrap.wiring.ingest_wiring import (
+from factory.bootstrap.wiring.ingest_wiring import (
     _assert_blobstore_configured_if_url_set,
     build_ingest,
     wire_ingest,
 )
-from lyra.core.ports.blobstore import BlobStorePort
-from lyra.inbound.attachment_ingest import (
+from factory.core.ports.blobstore import BlobStorePort
+from factory.inbound.attachment_ingest import (
     AttachmentIngestStage,
     IngestCtx,
 )
@@ -56,22 +56,22 @@ class TestAssertBlobstoreConfiguredIfUrlSet:
     """_assert_blobstore_configured_if_url_set — env-signal prod guard."""
 
     def test_url_set_store_none_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """LYRA_BLOBSTORE_URL set + store None → RuntimeError (misconfiguration).
+        """FACTORY_BLOBSTORE_URL set + store None → RuntimeError (misconfiguration).
 
         Negative: if the guard is removed or the env-signal check is inverted,
         production silently no-ops instead of failing fast at startup.
         """
-        monkeypatch.setenv("LYRA_BLOBSTORE_URL", "http://blobstore.example.com")
+        monkeypatch.setenv("FACTORY_BLOBSTORE_URL", "http://blobstore.example.com")
         ingest_ctx = IngestCtx(store=None)
 
-        with pytest.raises(RuntimeError, match="LYRA_BLOBSTORE_URL"):
+        with pytest.raises(RuntimeError, match="FACTORY_BLOBSTORE_URL"):
             _assert_blobstore_configured_if_url_set(ingest_ctx)
 
     def test_url_set_store_present_no_raise(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """LYRA_BLOBSTORE_URL set + store present → no raise (correct config)."""
-        monkeypatch.setenv("LYRA_BLOBSTORE_URL", "http://blobstore.example.com")
+        """FACTORY_BLOBSTORE_URL set + store present → no raise (correct config)."""
+        monkeypatch.setenv("FACTORY_BLOBSTORE_URL", "http://blobstore.example.com")
         mock_store = MagicMock(spec=BlobStorePort)
         ingest_ctx = IngestCtx(store=mock_store)
 
@@ -81,12 +81,12 @@ class TestAssertBlobstoreConfiguredIfUrlSet:
     def test_url_unset_store_none_no_raise(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """LYRA_BLOBSTORE_URL unset + store None → no raise (honors #1540 degradation).
+        """FACTORY_BLOBSTORE_URL unset + store None → no raise (#1540).
 
         Negative: if the guard fires unconditionally on store=None, dev/CLI mode
         would always error — breaking the #1540 graceful-degradation contract.
         """
-        monkeypatch.delenv("LYRA_BLOBSTORE_URL", raising=False)
+        monkeypatch.delenv("FACTORY_BLOBSTORE_URL", raising=False)
         ingest_ctx = IngestCtx(store=None)
 
         # Should not raise — degraded path is intentional
@@ -100,7 +100,7 @@ class TestWireIngest:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """wire_ingest(obj, store) → obj._ingest_ctx.store is store."""
-        monkeypatch.delenv("LYRA_BLOBSTORE_URL", raising=False)
+        monkeypatch.delenv("FACTORY_BLOBSTORE_URL", raising=False)
         mock_store = MagicMock(spec=BlobStorePort)
         adapter = types.SimpleNamespace()
 
@@ -112,7 +112,7 @@ class TestWireIngest:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """wire_ingest(obj, None) with URL unset → ctx.store is None, no raise."""
-        monkeypatch.delenv("LYRA_BLOBSTORE_URL", raising=False)
+        monkeypatch.delenv("FACTORY_BLOBSTORE_URL", raising=False)
         adapter = types.SimpleNamespace()
 
         wire_ingest(adapter, None)
@@ -123,8 +123,8 @@ class TestWireIngest:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """wire_ingest(obj, None) with URL set → RuntimeError (misconfiguration)."""
-        monkeypatch.setenv("LYRA_BLOBSTORE_URL", "http://blobstore.example.com")
+        monkeypatch.setenv("FACTORY_BLOBSTORE_URL", "http://blobstore.example.com")
         adapter = types.SimpleNamespace()
 
-        with pytest.raises(RuntimeError, match="LYRA_BLOBSTORE_URL"):
+        with pytest.raises(RuntimeError, match="FACTORY_BLOBSTORE_URL"):
             wire_ingest(adapter, None)

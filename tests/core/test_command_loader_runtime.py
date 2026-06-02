@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from lyra.core.commands.command_loader import CommandLoader, LoadedPlugin
+from factory.core.commands.command_loader import CommandLoader, LoadedPlugin
 
 from .conftest import make_plugin
 

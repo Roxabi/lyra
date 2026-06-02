@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from lyra.core.agent.agent_models import AgentRow
+from factory.core.agent.agent_models import AgentRow
 
 
 class TestAgentRowEffortField:

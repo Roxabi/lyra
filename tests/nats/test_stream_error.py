@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock
 import nats.errors
 import pytest
 
-from lyra.nats.stream_error import publish_stream_error, publish_stream_errors
+from factory.nats.stream_error import publish_stream_error, publish_stream_errors
 
 
 @pytest.mark.asyncio

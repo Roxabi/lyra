@@ -1,0 +1,271 @@
+"""Shared helpers for NATS streaming on the adapter side.
+
+Owns:
+- ``decode_stream_events``: async generator that decodes streamed chunks into
+  render events, enforcing sequence ordering and bounded timeout.
+- ``handle_stream_error`` / ``remember_terminated``: stream_error envelope
+  handling (poison-pill dispatch + tombstone tracking).
+
+Extracted from :class:`NatsOutboundListener` so the listener stays under the
+repo-wide 300-line cap and so chunk-level protocol details are isolated from
+the subscription lifecycle.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+from collections.abc import Callable, Coroutine
+from typing import TYPE_CHECKING, Any, AsyncGenerator
+
+from factory.core.exceptions import HubUnavailableError, StreamChunkTimeout
+
+if TYPE_CHECKING:
+    from factory.core.hub.hub_protocol import RenderEvent
+    from factory.nats.render_event_codec import NatsRenderEventCodec
+
+log = logging.getLogger(__name__)
+
+_CHUNK_TIMEOUT_SECONDS = 120.0
+_LIVENESS_POLL_SECONDS = 5.0
+_MAX_TERMINATED_STREAMS = 500
+
+
+async def _wait_for_chunk(
+    stream_id: str,
+    q: asyncio.Queue[dict],
+    health_check_fn: "Callable[[], Coroutine[Any, Any, bool]] | None",
+) -> dict:
+    """Poll *q* in short intervals, checking hub liveness between polls.
+
+    Raises :exc:`HubUnavailableError` when *health_check_fn* returns ``False``.
+    Raises :exc:`StreamChunkTimeout` after ``_CHUNK_TIMEOUT_SECONDS`` without a chunk.
+    """
+    poll = min(_LIVENESS_POLL_SECONDS, _CHUNK_TIMEOUT_SECONDS)
+    elapsed_idle = 0.0
+    while True:
+        try:
+            return await asyncio.wait_for(q.get(), timeout=poll)
+        except TimeoutError:
+            elapsed_idle += poll
+            if health_check_fn is not None:
+                healthy = await health_check_fn()
+                if not healthy:
+                    log.warning(
+                        "NatsOutboundListener: hub health check failed, aborting"
+                        " stream stream_id=%r",
+                        stream_id,
+                    )
+                    raise HubUnavailableError(
+                        f"hub health check failed during stream"
+                        f" (stream_id={stream_id!r})"
+                    )
+            if elapsed_idle >= _CHUNK_TIMEOUT_SECONDS:
+                log.warning(
+                    "NatsOutboundListener: stream timed out waiting for chunk"
+                    " stream_id=%r (120s)",
+                    stream_id,
+                )
+                raise StreamChunkTimeout(
+                    f"no chunk received for {_CHUNK_TIMEOUT_SECONDS:.0f}s"
+                    f" (stream_id={stream_id!r})"
+                )
+            poll = min(_LIVENESS_POLL_SECONDS, _CHUNK_TIMEOUT_SECONDS - elapsed_idle)
+
+
+async def decode_stream_events(
+    stream_id: str,
+    q: asyncio.Queue[dict],
+    *,
+    counter: dict[str, int] | None = None,
+    health_check_fn: "Callable[[], Coroutine[Any, Any, bool]] | None" = None,
+    codec: "NatsRenderEventCodec | None" = None,
+) -> AsyncGenerator["RenderEvent", None]:
+    """Drain chunks from *q* and yield decoded :class:`RenderEvent` objects.
+
+    Enforces an in-order sequence check (warns on gaps) and bails out on a
+    bounded per-chunk timeout so a stalled stream cannot park the drain task
+    forever.
+
+    Args:
+        stream_id:       Logical stream identifier (used only for log correlation).
+        q:               Queue populated by :meth:`NatsOutboundListener._handle_chunk`.
+        counter:         Caller-owned mutable dict passed through to
+                         :meth:`NatsRenderEventCodec.decode` for version-mismatch
+                         drop counting.  ``None`` skips counting.
+        health_check_fn: Optional async callable returning ``True`` when the hub is
+                         healthy.  Called every ``_LIVENESS_POLL_SECONDS`` while
+                         waiting for the next chunk.  When it returns ``False``,
+                         :exc:`HubUnavailableError` is raised immediately instead of
+                         waiting for the full 120 s backstop.  Defaults to ``None``
+                         (liveness check skipped; existing behaviour preserved).
+        codec:           Optional cached codec instance.  ``None`` constructs a
+                         fresh one per call — fine for tests, but the production
+                         caller (``NatsOutboundListener``) passes its cached
+                         ``self._codec`` to avoid rebuilding the 15-entry registry
+                         on every inbound stream.
+
+    Yields:
+        Decoded render events until a terminal chunk arrives or the timeout
+        elapses.  ``stream_keepalive`` chunks (#687) reset the idle timer and
+        are not yielded.
+    """
+    from factory.nats.render_event_codec import NatsRenderEventCodec
+
+    _codec = codec if codec is not None else NatsRenderEventCodec()
+    expected_seq = 0
+    while True:
+        chunk = await _wait_for_chunk(stream_id, q, health_check_fn)
+        seq = chunk.get("seq")
+        if seq is not None and seq != expected_seq:
+            log.warning(
+                "NatsOutboundListener: out-of-order chunk"
+                " stream_id=%r expected_seq=%d got_seq=%d",
+                stream_id,
+                expected_seq,
+                seq,
+            )
+        expected_seq += 1
+        event_type = chunk.get("event_type")
+        if event_type is None:
+            log.warning(
+                "decode_stream_events: chunk missing event_type field,"
+                " stream_id=%r; aborting stream",
+                stream_id,
+            )
+            break
+        # Keepalive sentinel (#687): resets per-chunk idle timer; not yielded.
+        # Returning to the top of the while loop calls _wait_for_chunk again,
+        # which starts a fresh elapsed_idle counter — effectively resetting the
+        # 120 s timeout without delivering any render event to the caller.
+        if event_type == "stream_keepalive":
+            continue
+        # stream_error is a transport-layer sentinel, not a render event —
+        # terminate the stream without passing it through the codec.
+        if event_type == "stream_error":
+            break
+        payload = chunk.get("payload", {})
+        event = _codec.decode(event_type, payload, counter=counter)
+        if event is not None:
+            yield event
+        if _codec.is_terminal(event_type):
+            break
+
+
+def remember_terminated(listener: Any, stream_id: str) -> None:
+    """Record a terminated stream_id on the listener with FIFO eviction.
+
+    ``_terminated_streams`` is an ``OrderedDict[stream_id, monotonic_ts]``:
+    - Eviction on cap: ``popitem(last=False)`` drops the oldest insertion.
+    - Timestamp lets the TTL reaper evict entries that outlive the cache.
+
+    Re-tombstoning a known stream_id (idempotent call) refreshes both the
+    timestamp *and* the insertion order so FIFO eviction reflects recency.
+    """
+    listener._terminated_streams.pop(stream_id, None)
+    if len(listener._terminated_streams) >= _MAX_TERMINATED_STREAMS:
+        listener._terminated_streams.popitem(last=False)
+    listener._terminated_streams[stream_id] = time.monotonic()
+
+
+def reap_tombstones(listener: Any, ttl_seconds: float) -> None:
+    """Evict tombstones older than *ttl_seconds* from the listener (#570)."""
+    now = time.monotonic()
+    stale = [
+        sid
+        for sid, ts in list(listener._terminated_streams.items())
+        if now - ts > ttl_seconds
+    ]
+    for sid in stale:
+        listener._terminated_streams.pop(sid, None)
+
+
+async def run_reaper_loop(listener: Any) -> None:
+    """Periodic reaper: reap cache entries and tombstones at TTL_SECONDS.
+
+    Transient exceptions are logged and swallowed so the reaper survives
+    partial-teardown races and library hiccups; ``CancelledError``
+    propagates so ``stop()`` can cleanly cancel the task.
+    """
+    from factory.adapters.shared._inbound_cache import (
+        REAPER_INTERVAL_SECONDS,
+        TTL_SECONDS,
+    )
+
+    while True:
+        await asyncio.sleep(REAPER_INTERVAL_SECONDS)
+        try:
+            listener._cache._reap()
+            reap_tombstones(listener, TTL_SECONDS)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            log.exception("run_reaper_loop: transient failure, continuing")
+
+
+def handle_stream_error(listener: Any, data: dict) -> None:
+    """Handle stream_error envelope — terminate or clean up the stream.
+
+    Security: stream_error envelopes are trusted at the NATS auth layer
+    (per-subject publish permissions). Defense-in-depth: only act on
+    stream_ids we have local state for, matching ``_handle_send`` /
+    ``_handle_attachment``'s pattern. Forged envelopes with unknown
+    stream_ids are logged and dropped without touching any state,
+    preventing tombstone-set pollution via random IDs.
+    """
+    stream_id = data.get("stream_id")
+    if stream_id is None:
+        return
+
+    q = listener._stream_queues.get(stream_id)
+    if q is not None:
+        # Active stream — enqueue poison pill to terminate the drain loop.
+        try:
+            q.put_nowait({"event_type": "stream_error", "done": True})
+        except asyncio.QueueFull:
+            # Queue full — put_nowait cannot block, so the poison pill is
+            # dropped. The tombstone written below still rejects any late
+            # chunks. _drain_stream is not stranded: its idle q.get() will
+            # time out after _CHUNK_TIMEOUT_SECONDS (120 s), which is the
+            # documented bounded recovery path. No separate abort signal is
+            # needed because that timeout IS the bound.
+            log.warning(
+                "NatsOutboundListener: stream queue full, poison pill dropped"
+                " — stream will self-terminate via %ds idle timeout"
+                " (stream_id=%r)",
+                int(_CHUNK_TIMEOUT_SECONDS),
+                stream_id,
+            )
+        remember_terminated(listener, stream_id)
+        return
+
+    # No queue. Only act if we actually have state for this stream_id —
+    # mirrors `_handle_send`'s unknown-stream_id handling and bounds the
+    # blast radius of forged stream_error envelopes.
+    known = (
+        stream_id in listener._cache  # InboundCache.__contains__
+        or stream_id in listener._stream_outbound
+        or stream_id in listener._stream_tasks
+    )
+    if not known:
+        log.warning(
+            "NatsOutboundListener: stream_error for unknown stream_id=%r"
+            " — no state to clean up",
+            stream_id,
+        )
+        return
+
+    # Legitimate race: error before first chunk, or after stream_end
+    # already cleaned up. Record tombstone first so any late chunks that
+    # beat the cache pop are rejected.
+    remember_terminated(listener, stream_id)
+    listener._cache.pop(stream_id)
+    listener._stream_outbound.pop(stream_id, None)
+    # Symmetry with _drain_stream's finally block — ensure no stale entries.
+    listener._stream_tasks.pop(stream_id, None)
+    listener._stream_queues.pop(stream_id, None)
+    log.warning(
+        "NatsOutboundListener: stream_error for finished stream_id=%r",
+        stream_id,
+    )

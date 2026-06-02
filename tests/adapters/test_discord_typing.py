@@ -10,8 +10,11 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from lyra.core.messaging.message import OutboundMessage
-from lyra.core.messaging.render_events import TextDeltaRenderEvent, TextEndRenderEvent
+from factory.core.messaging.message import OutboundMessage
+from factory.core.messaging.render_events import (
+    TextDeltaRenderEvent,
+    TextEndRenderEvent,
+)
 from tests.conftest import yield_once
 
 from .conftest import make_dc_inbound_msg
@@ -26,7 +29,7 @@ async def test_discord_typing_worker_uses_typing_context_manager() -> None:
     """_discord_typing_worker calls channel.typing() and exits cleanly on cancel."""
     import asyncio
 
-    from lyra.adapters.discord import _discord_typing_worker
+    from factory.adapters.discord import _discord_typing_worker
 
     mock_channel = AsyncMock()
     mock_channel.typing = AsyncMock()
@@ -48,7 +51,7 @@ async def test_discord_typing_worker_uses_typing_context_manager() -> None:
 @pytest.mark.asyncio
 async def test_discord_typing_worker_handles_exception_gracefully() -> None:
     """_discord_typing_worker logs and exits cleanly when channel resolution fails."""
-    from lyra.adapters.discord import _discord_typing_worker
+    from factory.adapters.discord import _discord_typing_worker
 
     async def resolve(_channel_id: int) -> None:
         raise discord.HTTPException(MagicMock(), "channel not found")
@@ -63,12 +66,12 @@ async def test_start_typing_creates_background_task(
 ) -> None:
     """_start_typing() creates a task in _typing_tasks for the given channel.
 
-    Legacy-path test: forces LYRA_TYPING_ENABLED=false so the shim routes
+    Legacy-path test: forces FACTORY_TYPING_ENABLED=false so the shim routes
     to ThrottleCapability rather than typing_publisher.
     """
-    monkeypatch.setenv("LYRA_TYPING_ENABLED", "false")
+    monkeypatch.setenv("FACTORY_TYPING_ENABLED", "false")
 
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -93,7 +96,7 @@ async def test_start_typing_creates_background_task(
 async def test_cancel_typing_cancels_task() -> None:
     """_cancel_typing() cancels the background task and removes it from the dict."""
 
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -116,7 +119,7 @@ async def test_cancel_typing_cancels_task() -> None:
 @pytest.mark.asyncio
 async def test_send_cancels_typing_task_at_start() -> None:
     """send() calls _cancel_typing() before writing the response."""
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -149,7 +152,7 @@ async def test_send_cancels_typing_task_at_start() -> None:
 @pytest.mark.asyncio
 async def test_send_streaming_cancels_typing_task_at_start() -> None:
     """send_streaming() calls _cancel_typing() before writing the response."""
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -202,9 +205,9 @@ async def test_on_message_does_not_cancel_typing_when_message_queued(
     ``finally: _cancel_typing`` bug cancelled typing immediately after the
     synchronous hub.put(), so the indicator never showed during processing.
     """
-    monkeypatch.setenv("LYRA_TYPING_ENABLED", "false")
+    monkeypatch.setenv("FACTORY_TYPING_ENABLED", "false")
 
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     inbound_bus = MagicMock()
     inbound_bus.put = AsyncMock()  # succeeds — no QueueFull
@@ -248,7 +251,7 @@ async def test_on_message_cancels_typing_when_message_dropped_queue_full() -> No
     """on_message() must cancel typing immediately when the bus is full (QueueFull)."""
     import asyncio as _asyncio
 
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     inbound_bus = MagicMock()
     inbound_bus.put = AsyncMock(side_effect=_asyncio.QueueFull())

@@ -11,8 +11,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.hub import Hub
-from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
+from factory.core.hub import Hub
+from factory.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
 
 # Backward-compatible re-exports from bootstrap factories
 from tests.factories.bootstrap import (  # noqa: F401
@@ -45,7 +45,7 @@ __all__ = [
 # is a one-line change here rather than a grep-across-13-files exercise.
 # ---------------------------------------------------------------------------
 
-_LOAD_BOT_TOKEN_PATH = "lyra.bootstrap.credentials.load_bot_token"
+_LOAD_BOT_TOKEN_PATH = "factory.bootstrap.credentials.load_bot_token"
 
 # ---------------------------------------------------------------------------
 # Health endpoint shared constants
@@ -117,8 +117,8 @@ def pytest_configure(config: pytest.Config) -> None:
 # wiring modules.  If these paths move, tests that rely on this no-op will
 # start seeing real NATS calls and fail immediately — making drift visible.
 _AUDIO_CONSUMER_PATCH_TARGETS = (
-    "lyra.bootstrap.wiring.standalone_telegram.start_audio_consumer",
-    "lyra.bootstrap.wiring.standalone_discord.start_audio_consumer",
+    "factory.bootstrap.wiring.standalone_telegram.start_audio_consumer",
+    "factory.bootstrap.wiring.standalone_discord.start_audio_consumer",
 )
 
 # Narrow allowlist: only these test-file name fragments trigger the no-op.
@@ -173,7 +173,7 @@ def _noop_audio_consumer_root(request: pytest.FixtureRequest) -> object:
 @pytest.fixture
 def patch_agent_store(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     """Patch AgentStore in main_mod with a MagicMock. Returns the fake store."""
-    import lyra.__main__ as main_mod
+    import factory.__main__ as main_mod
 
     _fake_agent_store = MagicMock()
     _fake_agent_store.connect = AsyncMock()

@@ -6,8 +6,8 @@ import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.cli.cli_protocol import StreamingIterator, send_and_read_stream
-from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent
+from factory.core.cli.cli_protocol import StreamingIterator, send_and_read_stream
+from factory.core.messaging.events import ResultLlmEvent, TextLlmEvent
 from roxabi_contracts.errors import WorkerError
 
 from .conftest import (

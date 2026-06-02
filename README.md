@@ -181,7 +181,7 @@ Agent and bot configs stored in `~/.lyra/config.db` (SQLite). TOML files are see
 ## Project structure
 
 ```
-src/lyra/
+src/factory/
   core/        — hub, pool, agent, memory, auth, commands
   adapters/    — Telegram, Discord, CLI
   nats/        — NatsBus, NatsChannelProxy

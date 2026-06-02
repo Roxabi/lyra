@@ -12,8 +12,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lyra.core.messaging.message import InboundMessage, Response
-from lyra.core.pool import Pool
+from factory.core.messaging.message import InboundMessage, Response
+from factory.core.pool import Pool
 from tests.conftest import TIMEOUT_IO, _drain, yield_once
 from tests.core.conftest import FastAgent, SlowAgent, make_msg
 
@@ -212,7 +212,7 @@ class TestPoolTimeout:
         ctx_mock._agents["test_agent"] = agent
         msg = make_msg()
 
-        with caplog.at_level(logging.ERROR, logger="lyra.core.pool_processor"):
+        with caplog.at_level(logging.ERROR, logger="factory.core.pool_processor"):
             fast_pool.submit(msg)
             await _drain(fast_pool, timeout=TIMEOUT_IO)
 
@@ -227,7 +227,7 @@ class TestPoolTimeout:
         ctx_mock._agents["test_agent"] = agent
         msg = make_msg()
 
-        with caplog.at_level(logging.ERROR, logger="lyra.core.pool_processor"):
+        with caplog.at_level(logging.ERROR, logger="factory.core.pool_processor"):
             fast_pool.submit(msg)
             await _drain(fast_pool, timeout=TIMEOUT_IO)
 

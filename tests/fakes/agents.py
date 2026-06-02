@@ -6,8 +6,8 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage, OutboundMessage
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import InboundMessage, OutboundMessage
 
 if __name__ == "__main__":
     # Prevent direct execution; these are test-only doubles.

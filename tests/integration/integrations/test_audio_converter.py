@@ -1,4 +1,4 @@
-"""Tests for FfmpegConverter (lyra.integrations.audio)."""
+"""Tests for FfmpegConverter (factory.integrations.audio)."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.integrations.audio import FfmpegConverter
-from lyra.integrations.base import AudioConversionFailed, AudioConverter
+from factory.integrations.audio import FfmpegConverter
+from factory.integrations.base import AudioConversionFailed, AudioConverter
 
 
 class TestFfmpegConverterProtocol:
@@ -90,7 +90,7 @@ class TestFfmpegConverterConvert:
 
         with patch("asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)):
             with patch(
-                "lyra.integrations.audio.asyncio.wait_for",
+                "factory.integrations.audio.asyncio.wait_for",
                 side_effect=asyncio.TimeoutError,
             ):
                 with pytest.raises(AudioConversionFailed) as exc_info:

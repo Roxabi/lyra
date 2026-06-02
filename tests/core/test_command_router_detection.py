@@ -18,28 +18,28 @@ from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
 if TYPE_CHECKING:
-    from lyra.core.hub.hub_protocol import ChannelAdapter
+    from factory.core.hub.hub_protocol import ChannelAdapter
 
 import pytest
 
-from lyra.core.agent import Agent, AgentBase
-from lyra.core.commands.command_loader import CommandLoader
-from lyra.core.commands.command_router import CommandRouter, CommandRouterDeps
-from lyra.core.messaging.message import (
+from factory.core.agent import Agent, AgentBase
+from factory.core.commands.command_loader import CommandLoader
+from factory.core.commands.command_router import CommandRouter, CommandRouterDeps
+from factory.core.messaging.message import (
     InboundMessage,
     OutboundMessage,
     Platform,
     Response,
 )
-from lyra.core.messaging.messages import MessageManager
-from lyra.core.pool import Pool
+from factory.core.messaging.messages import MessageManager
+from factory.core.pool import Pool
 
 from .conftest import make_echo_plugin_dir, make_message, make_router, push_to_hub
 
 TOML_PATH = (
     Path(__file__).resolve().parent.parent.parent
     / "src"
-    / "lyra"
+    / "factory"
     / "data"
     / "messages.toml"
 )
@@ -180,7 +180,7 @@ class TestHotReloadUpdatesCommands:
             ) -> Response:
                 return Response(content="ok")
 
-        from lyra.core.agent.agent_config import ModelConfig
+        from factory.core.agent.agent_config import ModelConfig
 
         (tmp_path / "plugins").mkdir()
         plugins_dir = make_echo_plugin_dir(tmp_path / "plugins")
@@ -235,7 +235,7 @@ class TestPassthroughNonCommandInHub:
                 process_calls.append(msg)
                 return Response(content="agent reply")
 
-        hub_mod = __import__("lyra.core.hub", fromlist=["Hub"])
+        hub_mod = __import__("factory.core.hub", fromlist=["Hub"])
         Hub = hub_mod.Hub
         hub = Hub()
 
@@ -286,7 +286,7 @@ class TestPassthroughNonCommandInHub:
                 process_calls.append(msg)
                 return Response(content="should not be reached")
 
-        hub_mod = __import__("lyra.core.hub", fromlist=["Hub"])
+        hub_mod = __import__("factory.core.hub", fromlist=["Hub"])
         Hub = hub_mod.Hub
         hub = Hub()
         config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")

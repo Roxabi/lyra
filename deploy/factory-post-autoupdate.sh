@@ -43,7 +43,7 @@ main() {
     rm -f "${CONVERGE_STAMP}"
 
     echo "==> Running make converge..."
-    make -C "${LYRA_DIR}" converge
+    make -C "${FACTORY_DIR}" converge
 }
 
 with_deploy_lock main

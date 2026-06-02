@@ -204,7 +204,7 @@ originating agent and session via two independent channels:
 - **Committer field** — `GIT_COMMITTER_NAME` / `GIT_COMMITTER_EMAIL` override the
   image-baked template identity on the commit object itself (full mode only).
 - **Message trailers** — `Lyra-Session-Id` and `Lyra-Agent` are appended by the
-  `prepare-commit-msg` hook (`deploy/lyra-gh/hooks/prepare-commit-msg`) whenever
+  `prepare-commit-msg` hook (`deploy/factory-gh/hooks/prepare-commit-msg`) whenever
   `FACTORY_SESSION_ID` and `FACTORY_AGENT` are present in the subprocess environment.
 
 ### Querying attribution
@@ -243,7 +243,7 @@ satisfies the attribution goal for reviewers and audit tooling.
 
 ### Push identity is unchanged
 
-`git push` authentication is owned by `git-credential-lyra-gh` (GitHub App). Setting
+`git push` authentication is owned by `git-credential-factory-gh` (GitHub App). Setting
 `GIT_COMMITTER_EMAIL` affects commit metadata only — it does not gate push authorization.
 GitHub maps the push to the App's bot identity server-side regardless of what the
 committer field contains.

@@ -4,7 +4,7 @@ Operator notes on how `git` behaves inside the `factory-clipool` container. Not 
 
 ## SSH → HTTPS URL rewrite
 
-`deploy/lyra-gh/git.config.tmpl` is loaded as `GIT_CONFIG_GLOBAL` inside `factory-clipool`. It contains:
+`deploy/factory-gh/git.config.tmpl` is loaded as `GIT_CONFIG_GLOBAL` inside `factory-clipool`. It contains:
 
 ```ini
 [url "https://github.com/"]
@@ -18,7 +18,7 @@ These rules silently rewrite SSH-form GitHub remote URLs to HTTPS at command tim
 
 ## Authentication
 
-Git uses HTTPS + a credential helper (`/opt/lyra-gh/git-credential-lyra-gh`) which fetches a fresh GitHub App installation token from the `factory-gh-helper` sidecar over a Unix socket. Tokens have a 1 h TTL and are refreshed proactively.
+Git uses HTTPS + a credential helper (`/opt/factory-gh/git-credential-factory-gh`) which fetches a fresh GitHub App installation token from the `factory-gh-helper` sidecar over a Unix socket. Tokens have a 1 h TTL and are refreshed proactively.
 
 → `docs/ops/gh-key-rotation.md` — rotating the App PEM.
 
@@ -38,6 +38,6 @@ The image-baked config trusts repos under `/home/factory/projects/*` via `safe.d
 
 ## Cross-References
 
-- [`deploy/lyra-gh/git.config.tmpl`](../../deploy/lyra-gh/git.config.tmpl) — the config loaded as `GIT_CONFIG_GLOBAL`
+- [`deploy/factory-gh/git.config.tmpl`](../../deploy/factory-gh/git.config.tmpl) — the config loaded as `GIT_CONFIG_GLOBAL`
 - [`deploy/quadlet/factory-clipool.container`](../../deploy/quadlet/factory-clipool.container) — env wiring (`GIT_CONFIG_GLOBAL`, mounts)
 - [`docs/ops/gh-key-rotation.md`](gh-key-rotation.md) — PEM rotation runbook

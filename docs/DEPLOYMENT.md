@@ -81,7 +81,7 @@ make lyra reload        # restart containers
 
 **Graceful drain** — on restart, the running container finishes any in-flight Claude CLI turns (up to 60 s) before stopping. Conversations that complete within the window are transparent to users; only turns that outlast 60 s receive a "please resend" notification.
 
-**Deploy log** — every run is appended to `~/.local/state/lyra/logs/deploy.log`.
+**Deploy log** — every run is appended to `~/.local/state/factory/logs/deploy.log`.
 
 ## 2. Configure environment
 

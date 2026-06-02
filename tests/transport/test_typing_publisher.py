@@ -59,15 +59,18 @@ async def test_flag_off_no_publish(scope: WorkScope) -> None:
 
 @pytest.mark.asyncio
 async def test_publish_error_swallow(scope: WorkScope) -> None:
-    """AC5: publish error swallowed; ref-count NOT rolled back (best-effort)."""
+    """AC5: publish error swallowed; ref-count stays at 0 on publish failure.
+
+    Blocker 6 fix: refcount is only committed after a successful first publish.
+    On failure the refcount is not incremented, so a later ended() no-ops cleanly.
+    """
     nc = AsyncMock()
     nc.publish.side_effect = RuntimeError("boom")
     pub = TypingPublisher(nc, enabled=True)
     await pub.publish_started(scope)  # AC5 — must not raise
-    # AC5 — best-effort: ref-count remains incremented despite publish failure.
-    # A regression that rolled back on error would fail this assertion.
+    # Refcount stays at 0 (key absent) — consistent with wire state.
     key = (scope.platform, scope.bot_id, scope.scope_id)
-    assert pub._refcount[key] == 1
+    assert key not in pub._refcount
 
 
 @pytest.mark.asyncio
@@ -113,6 +116,7 @@ async def test_scope_calls_publish_ended_on_normal_exit(scope: WorkScope) -> Non
     pub.publish_started.assert_not_awaited()
     async with pub.scope(scope):
         pass
+    pub.publish_started.assert_awaited_once_with(scope)
     pub.publish_ended.assert_awaited_once_with(scope)
 
 

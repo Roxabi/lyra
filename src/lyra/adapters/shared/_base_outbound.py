@@ -15,6 +15,7 @@ discord.Client correctly).
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
@@ -29,6 +30,8 @@ if TYPE_CHECKING:
     from lyra.core.messaging.message import InboundMessage, OutboundMessage
     from lyra.core.messaging.render_events import RenderEvent
     from lyra.transport.typing_publisher import TypingPublisher
+
+log = logging.getLogger(__name__)
 
 __all__ = ["OutboundAdapterBase"]
 
@@ -78,6 +81,7 @@ class OutboundAdapterBase(ABC):
             try:
                 _sid = int(original_msg.scope_id.rsplit(":", 1)[-1])
             except ValueError:
+                log.warning("malformed scope_id %r", original_msg.scope_id)
                 _sid = 0  # fallback: WorkScope.scope_id is int
             emitter._work_scope = WorkScope(
                 platform=original_msg.platform,
@@ -96,9 +100,7 @@ class OutboundAdapterBase(ABC):
         """
         self._tool_display_config = config
 
-    def configure_typing_publisher(
-        self, publisher: "TypingPublisher | None"
-    ) -> None:
+    def configure_typing_publisher(self, publisher: "TypingPublisher | None") -> None:
         """Store the per-instance typing publisher (post-construction setter).
 
         Mirrors configure_tool_display pattern — avoids MRO issues on Discord.

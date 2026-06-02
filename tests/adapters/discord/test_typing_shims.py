@@ -124,7 +124,7 @@ def test_dc_cancel_typing_enabled_no_publisher_is_noop(monkeypatch: Any) -> None
 
 def test_dc_start_typing_disabled_calls_legacy_path(monkeypatch: Any) -> None:
     """_start_typing with flag=false routes to TypingTaskManager.start."""
-    import inspect
+    import asyncio
 
     adapter = _make_adapter(monkeypatch, "false")
     mock_publisher = AsyncMock()
@@ -137,7 +137,8 @@ def test_dc_start_typing_disabled_calls_legacy_path(monkeypatch: Any) -> None:
     assert mock_start.call_args.args[0] == 555
     coro_factory = mock_start.call_args.args[1]
     coro = coro_factory()
-    assert inspect.iscoroutine(coro)
+    assert asyncio.iscoroutine(coro)
+    coro.close()  # prevent RuntimeWarning: coroutine was never awaited
 
     mock_publisher.publish_started.assert_not_called()
     mock_publisher.publish_ended.assert_not_called()

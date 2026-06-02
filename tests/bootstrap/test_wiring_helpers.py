@@ -742,6 +742,8 @@ class TestWireAdapters:
         )
         stores = MagicMock()
         fake_nc = MagicMock()
+        # TypingListener.start() awaits nc.subscribe(...) — must be awaitable (#1377).
+        fake_nc.subscribe = AsyncMock()
         vault_dir = Path("/tmp/fake_vault")
 
         from lyra.bootstrap.wiring.bootstrap_wiring import (

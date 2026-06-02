@@ -114,6 +114,114 @@ class TestStartTyping:
         typing.start_typing.assert_awaited_once_with(42)
 
 
+class TestGuardKillingNegative:
+    """Guard-killing tests (Blockers 3 & 4).
+
+    Each test would FAIL if its targeted guard were deleted from
+    _start_typing / _cancel_typing.
+    """
+
+    @pytest.mark.asyncio
+    async def test_typing_publisher_none_guard_start_typing(self):
+        """Blocker 3: typing_publisher=None + work_scope set + enabled → legacy path.
+
+        If the 'typing_publisher is not None' guard were removed, the remaining
+        'is_typing_enabled() and _work_scope is not None' would be True →
+        None.publish_started(...) → AttributeError.
+        """
+        scope = WorkScope(
+            platform="telegram", bot_id="main", scope_id=1, trace_id="abc"
+        )
+        typing = AsyncMock()
+        emitter = _make_emitter(
+            typing_publisher=None,
+            work_scope=scope,
+            typing=typing,
+            typing_scope_id=42,
+        )
+
+        with patch("lyra.outbound.emitter.is_typing_enabled", return_value=True):
+            await emitter._start_typing()
+
+        typing.start_typing.assert_awaited_once_with(42)
+
+    @pytest.mark.asyncio
+    async def test_typing_publisher_none_guard_cancel_typing(self):
+        """Blocker 3: typing_publisher=None + work_scope set + enabled → legacy path.
+
+        If the 'typing_publisher is not None' guard were removed, the remaining
+        'is_typing_enabled() and _work_scope is not None' would be True →
+        None.publish_ended(...) → AttributeError.
+        """
+        scope = WorkScope(
+            platform="telegram", bot_id="main", scope_id=1, trace_id="abc"
+        )
+        typing = AsyncMock()
+        emitter = _make_emitter(
+            typing_publisher=None,
+            work_scope=scope,
+            typing=typing,
+            typing_scope_id=42,
+        )
+
+        with patch("lyra.outbound.emitter.is_typing_enabled", return_value=True):
+            await emitter._cancel_typing()
+
+        typing.cancel_typing.assert_awaited_once_with(42)
+
+    @pytest.mark.asyncio
+    async def test_is_typing_enabled_false_guard_start_typing(self):
+        """Blocker 4: is_typing_enabled=False + publisher set + scope set → legacy.
+
+        If the 'is_typing_enabled()' guard were removed, 'typing_publisher is not None
+        and _work_scope is not None' would be True → publish_started called →
+        assertion would fail.
+        """
+        scope = WorkScope(
+            platform="telegram", bot_id="main", scope_id=1, trace_id="abc"
+        )
+        tp = AsyncMock()
+        typing = AsyncMock()
+        emitter = _make_emitter(
+            typing_publisher=tp,
+            work_scope=scope,
+            typing=typing,
+            typing_scope_id=42,
+        )
+
+        with patch("lyra.outbound.emitter.is_typing_enabled", return_value=False):
+            await emitter._start_typing()
+
+        tp.publish_started.assert_not_awaited()
+        typing.start_typing.assert_awaited_once_with(42)
+
+    @pytest.mark.asyncio
+    async def test_is_typing_enabled_false_guard_cancel_typing(self):
+        """Blocker 4: is_typing_enabled=False + publisher set + scope set → legacy.
+
+        If the 'is_typing_enabled()' guard were removed, 'typing_publisher is not None
+        and _work_scope is not None' would be True → publish_ended called →
+        assertion would fail.
+        """
+        scope = WorkScope(
+            platform="telegram", bot_id="main", scope_id=1, trace_id="abc"
+        )
+        tp = AsyncMock()
+        typing = AsyncMock()
+        emitter = _make_emitter(
+            typing_publisher=tp,
+            work_scope=scope,
+            typing=typing,
+            typing_scope_id=42,
+        )
+
+        with patch("lyra.outbound.emitter.is_typing_enabled", return_value=False):
+            await emitter._cancel_typing()
+
+        tp.publish_ended.assert_not_awaited()
+        typing.cancel_typing.assert_awaited_once_with(42)
+
+
 class TestCancelTyping:
     @pytest.mark.asyncio
     async def test_pub_sub_path_awaited(self):

@@ -194,6 +194,7 @@ async def _wire_adapters(deps: WireAdaptersDeps) -> WiredAdapters:
         )
     )
 
+    tg_typing_listeners: list[TypingListener] = []
     for adapter in tg_adapters:
         tg_typing_listener = TypingListener(
             nc=deps.nc,
@@ -203,7 +204,9 @@ async def _wire_adapters(deps: WireAdaptersDeps) -> WiredAdapters:
             manager=adapter._typing,
         )
         await tg_typing_listener.start()
+        tg_typing_listeners.append(tg_typing_listener)
 
+    dc_typing_listeners: list[TypingListener] = []
     for adapter, _bot_cfg, _token in dc_adapters:
         dc_typing_listener = TypingListener(
             nc=deps.nc,
@@ -215,6 +218,7 @@ async def _wire_adapters(deps: WireAdaptersDeps) -> WiredAdapters:
             manager=adapter._typing,
         )
         await dc_typing_listener.start()
+        dc_typing_listeners.append(dc_typing_listener)
 
     return WiredAdapters(
         tg_adapters=tg_adapters,
@@ -222,6 +226,8 @@ async def _wire_adapters(deps: WireAdaptersDeps) -> WiredAdapters:
         dc_adapters=[DiscordAdapterEntry(*t) for t in dc_adapters],
         dc_dispatchers=dc_dispatchers,
         dc_thread_store=dc_thread_store,
+        tg_typing_listeners=tg_typing_listeners,
+        dc_typing_listeners=dc_typing_listeners,
     )
 
 

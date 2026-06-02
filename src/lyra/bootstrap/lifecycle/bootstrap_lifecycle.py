@@ -96,6 +96,10 @@ async def run_lifecycle(  # noqa: C901 — DEBT:migration-sequence-bootstrap —
     await asyncio.gather(*tasks, return_exceptions=True)
     await teardown_buses(hub.inbound_bus)
     await teardown_dispatchers(wired.tg_dispatchers + wired.dc_dispatchers)
+    await close_safely(
+        "typing-listeners",
+        *[tl.stop() for tl in wired.tg_typing_listeners + wired.dc_typing_listeners],
+    )
     # proxies is only populated in three-process hub_standalone mode; unified mode
     # runs adapters in-process (platform SDKs) and does not use NatsChannelProxy.
     for proxy in resources.proxies:

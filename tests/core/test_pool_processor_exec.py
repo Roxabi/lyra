@@ -94,19 +94,19 @@ class TestGuardedProcessOneTypingScope:
             pool.typing_publisher.publish_ended.assert_awaited_once()
 
     @pytest.mark.asyncio
-    async def test_disabled_flag_with_publisher_present(
-        self, monkeypatch, pool, agent, msg
-    ):
+    async def test_disabled_flag_with_publisher_present(self, pool, agent, msg):
         """LYRA_TYPING_ENABLED=false skips typing scope even when publisher is present."""  # noqa: E501
-        monkeypatch.setenv("LYRA_TYPING_ENABLED", "false")
-
         with patch(
-            "lyra.core.pool.pool_processor_exec.process_one",
-            new=AsyncMock(return_value=None),
+            "lyra.core.pool.pool_processor_exec.is_typing_enabled",
+            return_value=False,
         ):
-            await guarded_process_one(msg, agent, pool)
-            pool.typing_publisher.publish_started.assert_not_awaited()
-            pool.typing_publisher.publish_ended.assert_not_awaited()
+            with patch(
+                "lyra.core.pool.pool_processor_exec.process_one",
+                new=AsyncMock(return_value=None),
+            ):
+                await guarded_process_one(msg, agent, pool)
+                pool.typing_publisher.publish_started.assert_not_awaited()
+                pool.typing_publisher.publish_ended.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_malformed_scope_id_fallback(self, pool, agent, msg):

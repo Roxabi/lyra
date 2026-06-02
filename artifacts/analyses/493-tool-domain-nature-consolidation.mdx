@@ -1,0 +1,190 @@
+---
+title: "Tool system — domain-nature taxonomy & #493 revalidation"
+description: "Addendum to the #493 tool-system articulation. Revalidates D1-D16 as-is, adds the missing layer #493 left implicit — a classification of roxabi-contracts wire domains by NATURE (tool vs plomberie) — and sequences the reclassification after the in-flight lyra.*→factory.* subject migration (#1670). Resolves gh + llm as plomberie via the tool-surface≠tool-nature rule."
+issue: 493
+parent: artifacts/analyses/493-tool-system-articulation-analysis.mdx
+tier: F-full
+date: 2026-06-02
+status: design-locked (revalidated)
+---
+
+## Why this doc
+
+`493-tool-system-articulation-analysis.mdx` (2026-05-27) is the SSoT for the tool layer.
+It resolved **worker ≠ tool**, the **5-layer taxonomy** (L0a/L0b/L1/L2/L3), the **uniform
+dispatcher**, the per-agent Quadlet `@` template, and 16 decisions (D1-D16). It left **one
+layer implicit**: the `roxabi-contracts` wire domains are listed flat — tool-nature and
+architecture-nature mixed — with **no classification by nature** (no ADR does this).
+
+2026-06-02 design session closes that gap:
+
+| Ref | Decision | Outcome |
+|---|---|---|
+| **a** | Status of the #493 design | **D1-D16 revalidated as-is** — no re-opening. Unblocks B-track. |
+| **b** | Domain-nature taxonomy | **Adopted** (§2 below) — the missing layer. |
+| **c** | Sequencing vs #1670 | **#1670 in-flight → let it land.** Design now, migrate as a single follow-on pass. **No parallel contracts reorg while #1670 runs.** |
+| **gh** | classification | **Plomberie** — "particular tool", stays infra (§2.3). |
+| **llm** | classification | **Plomberie** — engine substrate (§2.3). |
+
+Companion / addendum to the parent SSoT. Does not supersede it — extends it additively.
+
+---
+
+## 1. The rule (what gh + llm crystallise)
+
+A contract domain is **tool-nature** (belongs under `tool/`) **iff**:
+
+1. its sole raison d'être is to expose a capability the **LLM invokes**, **and**
+2. it is **not** the agent's own **engine / control substrate**.
+
+Everything else is **plomberie** (architecture): engine substrate, work bus, persistence,
+security, observability, delivery.
+
+> **Corollary — "particular tool" rule:** a plomberie domain MAY surface a tool without
+> becoming tool-nature. `gh` exposes a built-in L0a (`gh.list_prs`); `llm` exposes
+> `llm.generate` as an L0b. Neither promotes its **wire domain** to `tool/`.
+> **Tool-surface ≠ tool-nature.**
+
+This is why the original flat list felt "mixed": two orthogonal cuts were collapsed —
+ADR-084's **work/infra** cut (does it carry `job_id`) and this **tool/plomberie** cut (is it
+an LLM capability surface). They are independent. `cli` is work-bearing **and** plomberie;
+`voice` is work-bearing **and** tool.
+
+---
+
+## 2. Domain-nature taxonomy (the missing layer)
+
+### 2.1 Two natures, one consumer plane
+
+```
+TOOL  (capability surfaces, LLM-invoked)         PLOMBERIE  (everything else)
+  voice  · image                                   substrate : cli · llm
+  + future: postiz · xcli · vault · scrape          work bus : jobs
+            · camoufox                               infra    : gh
+                                                     persist  : turns · blob
+            ▲ exposed via registry                  security : verify · audit
+            │                                        obs      : event
+  ┌─────────┴── consume ──────────┐                 delivery : outbound
+  │  CONSUMERS (run the loop)      │
+  │   harness  ·  worker (jobs)    │ ◀── read ToolRegistry → see what's available
+  └────────────────────────────────┘
+```
+
+`harness` and `worker` are **not** tools and **not** plain plomberie — they are the
+**consumer plane**: they run the agentic loop / job loop and reach the `tool/` plane
+**through the registry** (uniform dispatcher, §4 of parent). They see `image.generate`
+and `bash` identically; transport is invisible.
+
+### 2.2 Classification table
+
+| Domain | Nature | Rationale |
+|---|---|---|
+| `voice` | **tool** | capability satellite — `voice.tts` / `voice.stt`. Only exists to be invoked. |
+| `image` | **tool** | capability satellite — `image.generate`. |
+| *(future)* `postiz` `xcli` `vault` `scrape` `camoufox` | **tool** | capability satellites (some `transport=stdio/http`, no Quadlet — 493 D11). |
+| `cli` | plomberie | clipool `claude-cli` dispatch — the **engine's own LLM transport**, not a picked tool. |
+| `llm` | plomberie | inference substrate + `llm.lifecycle.swap` control plane. **Engine, not tool** (ruling). |
+| `jobs` | plomberie | work bus (`JobEnvelope`). Composites surface as `RemoteTool`, but the bus is infra. |
+| `gh` | plomberie | `MintFailureEvent` = token-mint plumbing. "Particular tool" — stays infra (ruling). |
+| `turns` | plomberie | JetStream turn persistence (`TurnWriteEvent`). |
+| `blob` | plomberie | blob refs / content-addressed storage. |
+| `verify` | plomberie | ACL deny-probe (security). |
+| `audit` | plomberie | security event contracts. |
+| `event` | plomberie | `LyraEvent` / `LyraMetric` (observability). |
+| `outbound` | plomberie | outbound-audio delivery. |
+
+**Name-collision note (`gh`):** the wire domain `gh` (`MintFailureEvent`, plomberie) and the
+built-in tool `gh` (L0a, 493 D5, compiled in the harness) are **two different things sharing a
+name**. Accepted as-is — the tool is in-process (no wire domain), the contract domain is infra.
+No rename. Same shape applies to `llm`.
+
+### 2.3 Target package shape
+
+```
+roxabi-contracts/src/roxabi_contracts/
+├─ tool/                  ← NEW grouping (nature = capability surface)
+│   ├─ voice/   (moved)
+│   ├─ image/   (moved)
+│   └─ <future capability satellites>
+├─ tools/                 ← from 493 D1/B2 — PROTOCOLS, not wire schemas
+│   │                       (InProcessTool, RemoteTool, ToolResult, ToolManifest, ToolHints)
+│   └─ …
+├─ cli/  jobs/  llm/  gh/  turns/  blob_*  verify/  audit/  event/  outbound/   ← flat plomberie
+```
+
+Two distinct `tool*` things — keep them separate and unambiguous:
+- **`tool/`** = the *wire schemas* of capability satellites, grouped by nature.
+- **`tools/`** (493 D1) = the *protocol layer* (how any worker exposes a tool). Untouched by this doc.
+
+### 2.4 Subject grammar — DECIDED: nature infix (2026-06-02)
+
+Nature reflects in the **subject**, not just the package.
+
+| Option | Subject for voice.tts | |
+|---|---|---|
+| package-only | `factory.voice.tts.request` | rejected — reorg invisible on the wire |
+| **nature infix** ✅ | `factory.tool.voice.tts.request` | **chosen** — harness/worker subscribe/discover the **tool plane** distinctly (`factory.tool.>`), serving the registry/isolation goal directly |
+
+Applies to **tool-nature domains only** (`voice`, `image`, +future). Plomberie subjects keep
+`factory.<domain>.*`. The `factory.tool.>` prefix becomes the addressable tool plane for the
+consumer side. Lands in the post-#1670 migration (§4).
+
+---
+
+## 3. #493 revalidation (decision a)
+
+D1-D16 **accepted as-is**, no re-opening. §16 checklist item "D1-D16 user-validated" → checked
+(2026-06-02). This unblocks the parked B-track:
+
+- **B1** — breaking-change ADR on `roxabi-contracts` for `agent_id` field (D16)
+- **B2** — `roxabi-contracts/tools/` protocol submodule (D1) — *now also hosts the `tool/` nature grouping spec*
+- **B4** — `roxabi-tools-sdk` package (D9)
+
+The taxonomy **slots under D1**: D1 created `tools/` (protocols); this doc organizes the **wire
+domains those protocols govern** by nature. No conflict, pure extension.
+
+---
+
+## 4. Sequencing (decision c)
+
+```
+#1670 (lyra.*→factory.* subjects, streams, KV, ACL)   ◀ IN FLIGHT — let land, do NOT touch contracts in parallel
+   │
+   ▼
+follow-on migration (single pass, post-#1670):
+   1. re-parent  voice/ image/  →  tool/voice  tool/image
+   2. subject infix (§2.4):  factory.<cap>.*  →  factory.tool.<cap>.*   (tool-nature domains only)
+   3. update importers (hub clients, satellites) + ACL subject prefixes
+   4. additive minor bump on roxabi-contracts (re-export shims for 1 cycle)
+```
+
+Rationale for "after, not riding": #1670 is mid-migration of the *same* package. Two concurrent
+reorgs of `roxabi-contracts` = collision. Design is locked now; the diff applies as one clean
+follow-on once #1670 is green.
+
+---
+
+## 5. Vision reconnection
+
+`~/projects/docs/vision-roxabi-factory.md` was written as if the tool layer did not exist
+(workers = "réutilisation, rien de neuf"; Postiz/Camoufox = bare "outbound adapters"). Patched to:
+
+- Reference the tool model (parent #493 + this doc) as the SSoT for **how modules plug in** —
+  they are **tools** (L0b / `stdio` / `http`), not bespoke adapters.
+- Resolve open **Décision B** (X: container CLI vs skill) → **493 D11** (`RemoteTool`,
+  `transport=stdio/http`, no Quadlet). The "tool vs contract frontier" I'd flagged is now answered
+  by the domain-nature taxonomy, not a new open question.
+
+---
+
+## 6. Next executable (post-design)
+
+| When | Action |
+|---|---|
+| ~~now~~ | §2.4 subject-grammar — ✅ **DECIDED: `tool.` infix** (`factory.tool.<cap>.*`), 2026-06-02 |
+| now | B1 — open breaking-change ADR for `agent_id` (D16) — parked dependency of everything |
+| now (parallel) | B2 `roxabi-contracts/tools/` + B4 `roxabi-tools-sdk` skeleton — design-unblocked |
+| **after #1670 green** | migration issue: re-parent `voice`/`image` under `tool/` (+ infix per §2.4) |
+
+Tracks A (Postiz token, EnvFile rollout) and C (harness `@` template, POC) from the parent doc
+are unaffected by this taxonomy and remain parallel-safe.

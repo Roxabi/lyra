@@ -14,6 +14,11 @@ date: 2026-05-27
 
 This document captures the full design synthesis from 5 internal/external research agents + 3 domain reviewers (architect, devops, axial-adr-review). It is the **reference articulation** for the tool layer across Lyra and satellites. Companion to `harness-epic-consolidated.md`.
 
+> **Revalidated 2026-06-02** — D1-D16 accepted as-is; extended with the **domain-nature
+> taxonomy** in [`493-tool-domain-nature-consolidation.mdx`](./493-tool-domain-nature-consolidation.mdx).
+> `gh` + `llm` classified **plomberie** (tool-surface ≠ tool-nature). Reclassification rides
+> **after #1670** (lyra.*→factory.* subject migration, in flight).
+
 ---
 
 ## 1. Context — the scattered state
@@ -575,7 +580,7 @@ t3 ──── D1-D6 (satellite migration, parallel)
 
 ## 16. Resume checklist (work-in-progress tracker)
 
-- [ ] D1-D16 user-validated
+- [x] D1-D16 user-validated (2026-06-02 — see `493-tool-domain-nature-consolidation.mdx`; gh+llm = plomberie)
 - [ ] Track A1 — Postiz token migration (15 min, security)
 - [ ] Track A2-A3 — EnvironmentFile rollout (imageCLI + voiceCLI)
 - [ ] Track B1 — Breaking-change ADR on `roxabi-contracts` for `agent_id`

@@ -187,34 +187,49 @@ class TurnStore(SqliteStore, TurnStoreSessionMixin):
         db = self._db_or_raise()
         ts = datetime.now(UTC).isoformat()
         meta_str = json.dumps(metadata or {})
-        await db.execute(
-            _INSERT,
-            (
-                pool_id,
-                session_id,
-                role,
-                platform,
-                user_id,
-                content,
-                message_id,
-                reply_message_id,
-                ts,
-                meta_str,
-            ),
-        )
-        # Ensure session row exists — idempotent, safe on restart
-        await db.execute(
-            "INSERT OR IGNORE INTO pool_sessions"
-            " (session_id, pool_id, started_at, last_active_at)"
-            " VALUES (?, ?, ?, ?)",
-            (session_id, pool_id, ts, ts),
-        )
-        # Update session activity timestamp — tolerant: 0-row OK
-        await db.execute(
-            "UPDATE pool_sessions SET last_active_at = ? WHERE session_id = ?",
-            (ts, session_id),
-        )
-        await db.commit()
+        # Explicit transaction boundary: three DML statements must commit or
+        # rollback together.  aiosqlite with isolation_level='' auto-opens an
+        # implicit deferred transaction on the first DML but does NOT
+        # auto-rollback on exception.  Without BEGIN/ROLLBACK, a partial
+        # failure (e.g. disk-full after _INSERT but before the pool_sessions
+        # INSERT) leaves an open transaction on the connection; the next
+        # successful _log_turn call's db.commit() would commit the orphaned
+        # partial write as a ghost row.  Explicit BEGIN/ROLLBACK closes that
+        # hole while preserving the re-raise semantics that let the JetStream
+        # caller NACK and trigger redelivery (#1637).
+        await db.execute("BEGIN")
+        try:
+            await db.execute(
+                _INSERT,
+                (
+                    pool_id,
+                    session_id,
+                    role,
+                    platform,
+                    user_id,
+                    content,
+                    message_id,
+                    reply_message_id,
+                    ts,
+                    meta_str,
+                ),
+            )
+            # Ensure session row exists — idempotent, safe on restart
+            await db.execute(
+                "INSERT OR IGNORE INTO pool_sessions"
+                " (session_id, pool_id, started_at, last_active_at)"
+                " VALUES (?, ?, ?, ?)",
+                (session_id, pool_id, ts, ts),
+            )
+            # Update session activity timestamp — tolerant: 0-row OK
+            await db.execute(
+                "UPDATE pool_sessions SET last_active_at = ? WHERE session_id = ?",
+                (ts, session_id),
+            )
+            await db.commit()
+        except Exception:
+            await db.execute("ROLLBACK")
+            raise
 
     async def get_turns(
         self, pool_id: str, user_id: str, limit: int = 50

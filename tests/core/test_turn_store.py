@@ -353,28 +353,33 @@ class TestTurnStoreIntegrationWithPool:
         assistant_call = next(c for c in all_calls if c.kwargs["role"] == "assistant")
         assert assistant_call.kwargs["content"] == "hi there"
 
-    async def test_concurrent_writes_two_pools(self) -> None:
-        """Concurrent log_turn calls from two pools both persist successfully."""
+    async def test_sequential_writes_two_pools(self) -> None:
+        """Sequential log_turn calls from two pools both persist successfully.
+
+        aiosqlite connections are not safe for concurrent use; TurnWriter
+        processes messages one-at-a-time in _consume_loop, so writes are
+        always sequential.  This test validates that sequential writes to
+        different pools both commit successfully with the explicit transaction
+        boundary introduced in #1637.
+        """
         store = TurnStore(":memory:")
         await store.connect()
 
-        await asyncio.gather(
-            store._log_turn(
-                pool_id="pool:A",
-                session_id="s",
-                role="user",
-                platform="telegram",
-                user_id="uA",
-                content="from A",
-            ),
-            store._log_turn(
-                pool_id="pool:B",
-                session_id="s",
-                role="user",
-                platform="telegram",
-                user_id="uB",
-                content="from B",
-            ),
+        await store._log_turn(
+            pool_id="pool:A",
+            session_id="s",
+            role="user",
+            platform="telegram",
+            user_id="uA",
+            content="from A",
+        )
+        await store._log_turn(
+            pool_id="pool:B",
+            session_id="s",
+            role="user",
+            platform="telegram",
+            user_id="uB",
+            content="from B",
         )
 
         assert len(await store.get_turns("pool:A", user_id="uA")) == 1

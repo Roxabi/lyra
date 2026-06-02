@@ -7,20 +7,36 @@ only handles text messages that reach the pipeline.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from factory.core.auth.trust import TrustLevel
 
 if TYPE_CHECKING:
-    from factory.adapters.discord.adapter import DiscordAdapter
     from factory.core.messaging.message import InboundMessage
     from factory.inbound.context import InboundContext
+
+
+class _DiscordNormalizer(Protocol):
+    """Narrow protocol: the normalize signature used by DiscordWireParser.
+
+    Satisfied by ``DiscordAdapter`` without importing it.
+    """
+
+    def normalize(
+        self,
+        raw: Any,
+        *,
+        thread_id: int | None = None,
+        channel_id: int | None = None,
+        trust_level: TrustLevel = TrustLevel.TRUSTED,
+        is_admin: bool = False,
+    ) -> "InboundMessage": ...
 
 
 class DiscordWireParser:
     """WireParser implementation for Discord (discord.py).
 
-    Delegates normalization to ``DiscordAdapter.normalize`` to preserve all
+    Delegates normalization to the adapter's ``normalize`` method to preserve all
     existing behaviour.  Bot-author messages are filtered early (return ``None``).
 
     ``thread_id`` and ``channel_id`` are passed as ``None`` here — the resolved
@@ -28,7 +44,7 @@ class DiscordWireParser:
     via ``dataclasses.replace`` on the returned ``InboundMessage``.
     """
 
-    def __init__(self, adapter: "DiscordAdapter") -> None:
+    def __init__(self, adapter: _DiscordNormalizer) -> None:
         self._adapter = adapter
 
     def parse(self, raw: Any, ctx: "InboundContext") -> "InboundMessage | None":

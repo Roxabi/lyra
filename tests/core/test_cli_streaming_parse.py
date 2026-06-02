@@ -1161,3 +1161,130 @@ def test_open_tool_blocks_shallow_copy_isolation() -> None:
         "parser internal state was mutated by external dict operation — "
         "dict(...) shallow-copy wrapper missing in _open_tool_blocks property"
     )
+
+
+# ---------------------------------------------------------------------------
+# Protocol alias tests: finalize() and is_done() (#1667)
+# ---------------------------------------------------------------------------
+
+
+class TestFinalizeAndIsDone:
+    """CliStreamingParser.finalize() and is_done() Protocol methods (#1667).
+
+    Falsification rules:
+      * test_is_done_false_before_result: deleting or stubbing ``_done = False``
+        in __init__ causes this to fail.
+      * test_is_done_true_after_result_event: reverting ``self._done = True`` in
+        ``_handle_result`` causes this to fail.
+      * test_finalize_sets_done: removing ``self._done = True`` from ``finalize``
+        causes this to fail.
+      * test_finalize_returns_buffered_events: removing ``return self._pending``
+        from ``finalize`` causes this to fail.
+      * test_parse_line_noop_after_finalize: removing the ``if self._done`` early-
+        return at the top of ``parse_line`` causes this to fail.
+      * test_is_done_true_after_finalize: deleting ``self._done = True`` from
+        ``finalize`` causes this to fail.
+    """
+
+    def test_is_done_false_before_result(self) -> None:
+        """is_done() returns False on a freshly constructed parser."""
+        parser = CliStreamingParser(pool_id=DEFAULT_POOL_ID)
+
+        assert parser.is_done() is False
+
+    def test_is_done_true_after_result_event(self) -> None:
+        """is_done() returns True once a result event has been parsed."""
+        parser = CliStreamingParser(pool_id=DEFAULT_POOL_ID)
+        result_line = json.dumps(
+            {
+                "type": "result",
+                "session_id": "sess-finalize-1",
+                "duration_ms": 10,
+                "is_error": False,
+            }
+        )
+
+        parser.parse_line(result_line)
+
+        assert parser.is_done() is True
+
+    def test_finalize_sets_done(self) -> None:
+        """finalize() marks the parser as done even mid-stream."""
+        parser = CliStreamingParser(pool_id=DEFAULT_POOL_ID)
+        # Feed a normal line that does NOT set _done
+        text_line = json.dumps(
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "delta": {"type": "text_delta", "text": "hello"},
+                },
+            }
+        )
+        parser.parse_line(text_line)
+        assert parser.is_done() is False, "precondition: not done before finalize"
+
+        parser.finalize()
+
+        assert parser.is_done() is True
+
+    def test_finalize_returns_buffered_events(self) -> None:
+        """finalize() returns the live pending deque (events buffered mid-stream)."""
+        import json  # noqa: PLC0415 — local import for test isolation
+
+        parser = CliStreamingParser(pool_id=DEFAULT_POOL_ID)
+        text_line = json.dumps(
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "delta": {"type": "text_delta", "text": "buffered"},
+                },
+            }
+        )
+        # Feed the line; the resulting TextLlmEvent sits in _pending
+        pending = parser.parse_line(text_line)
+        assert len(pending) == 1, "precondition: one event in pending"
+
+        returned = parser.finalize()
+
+        # finalize() returns the same pending deque (the live buffer)
+        assert len(returned) == 1
+        assert isinstance(returned[0], TextLlmEvent)
+        assert returned[0].text == "buffered"
+
+    def test_is_done_true_after_finalize(self) -> None:
+        """is_done() returns True immediately after finalize()."""
+        parser = CliStreamingParser(pool_id=DEFAULT_POOL_ID)
+
+        parser.finalize()
+
+        assert parser.is_done() is True
+
+    def test_parse_line_noop_after_finalize(self) -> None:
+        """parse_line() is a no-op once finalize() has been called.
+
+        Falsification: removing the ``if self._done`` early-return at the top of
+        ``parse_line`` causes this test to fail because the text_delta would be
+        appended to _pending after finalize.
+        """
+        parser = CliStreamingParser(pool_id=DEFAULT_POOL_ID)
+        parser.finalize()
+
+        text_line = json.dumps(
+            {
+                "type": "stream_event",
+                "event": {
+                    "type": "content_block_delta",
+                    "delta": {"type": "text_delta", "text": "should not appear"},
+                },
+            }
+        )
+        parser.parse_line(text_line)
+
+        # pending must still be empty (finalize drained nothing, parse_line was
+        # a no-op) — the deque returned by finalize is the live object, so we
+        # check it directly.
+        assert len(parser._pending) == 0, (
+            "parse_line appended an event after finalize — early-return guard missing"
+        )

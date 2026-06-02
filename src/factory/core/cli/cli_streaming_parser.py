@@ -103,9 +103,9 @@ class CliStreamingParser:
     Parses NDJSON lines from the CLI subprocess stdout into LlmEvent objects.
     Maintains session state (session_id, error) across parse calls.
 
-    Only ``parse_line`` is implemented today. The ``Parser`` Protocol's
-    ``feed``/``finalize``/``is_done`` shape is the target for future stream
-    sources — see streaming/CLAUDE.md §Protocol is structural.
+    Implements the ``factory.streaming.Parser[str, LlmEvent]`` Protocol via
+    ``feed`` (alias of ``parse_line``), ``finalize``, and ``is_done``.
+    Composed, not inherited — see streaming/CLAUDE.md §Protocol is structural.
     """
 
     def __init__(self, pool_id: str) -> None:
@@ -165,6 +165,33 @@ class CliStreamingParser:
         Mutations to the returned dict do NOT affect parser state.
         """
         return dict(self._sm_tool_blocks.open_blocks)
+
+    # -- Parser[str, LlmEvent] Protocol aliases (see streaming/CLAUDE.md §Protocol)
+    # -- ``feed`` is the protocol name; ``parse_line`` is the legacy public API.
+    # -- Both are kept for backward compatibility with existing callers.
+
+    def feed(self, item: str) -> deque[LlmEvent]:
+        """Parser Protocol alias for ``parse_line``.
+
+        Satisfies ``factory.streaming.Parser[str, LlmEvent].feed`` so that
+        this class passes ``isinstance(parser, Parser)`` checks and can be
+        used wherever a ``Parser`` is expected without an adapter layer.
+        """
+        return self.parse_line(item)
+
+    def finalize(self) -> deque[LlmEvent]:
+        """Parser Protocol: flush any remaining buffered events.
+
+        For ``CliStreamingParser`` the pending deque is drained incrementally
+        by ``parse_line``; ``finalize`` returns whatever is still buffered
+        (e.g. after a truncated stream) and marks the parser as done.
+        """
+        self._done = True
+        return self._pending
+
+    def is_done(self) -> bool:
+        """Parser Protocol: return True once a terminal result event was parsed."""
+        return self._done
 
     def parse_line(self, line: str) -> deque[LlmEvent]:
         """Parse a JSON line, update state, and return events to yield.

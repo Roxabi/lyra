@@ -10,8 +10,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-from factory.core.agent.agent_config import ModelConfig
-from factory.core.messaging.events import LlmEvent
+from factory.core.ports.llm_types import LlmEvent, ModelConfig
 
 if TYPE_CHECKING:
     from roxabi_contracts.errors import WorkerError

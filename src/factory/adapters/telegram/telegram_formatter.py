@@ -14,6 +14,7 @@ from factory.core.messaging.render_events import (
     ReasoningStartRenderEvent,
 )
 from factory.outbound._reasoning_accum import ReasoningAccumulator
+from factory.outbound.formatter import BaseFormatter
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -23,7 +24,7 @@ if TYPE_CHECKING:
 log = logging.getLogger("factory.adapters.telegram")
 
 
-class TelegramFormatter:
+class TelegramFormatter(BaseFormatter):
     """OutboundFormatter impl for Telegram (MarkdownV2 escape, 4096 chunk).
 
     Encapsulates chunking, escaping, button rendering, trace rendering

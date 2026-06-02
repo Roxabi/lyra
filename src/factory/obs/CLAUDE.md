@@ -1,4 +1,4 @@
-# CLAUDE.md — lyra.obs
+# CLAUDE.md — factory.obs
 
 ## Role
 

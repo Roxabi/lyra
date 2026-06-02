@@ -16,7 +16,7 @@ with the wire contract (ADR-044 (absorbed into ADR-049)/049) but is versioned in
 ```toml
 [tool.uv.sources]
 roxabi-nats = {
-  git = "https://github.com/Roxabi/lyra.git",
+  git = "https://github.com/Roxabi/roxabi-factory.git",
   subdirectory = "packages/roxabi-nats",
   tag = "roxabi-nats/vX.Y.Z"
 }

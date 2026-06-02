@@ -80,7 +80,7 @@ At least one section must be present. A missing section logs a warning and disab
 - [x] `Authenticator` (identity resolver) in `src/factory/core/auth/authenticator.py`
 - [x] `GuardChain` (composable guard pipeline) in `src/factory/core/auth/guard.py`
 - [x] `TrustLevel` enum in `src/factory/core/auth/trust.py`
-- [x] Config-driven trust_map (TOML), parsed in src/lyra/core/auth.py
+- [x] Config-driven trust_map (TOML), parsed in src/factory/core/auth.py
 - [x] Integrated in TelegramAdapter + DiscordAdapter
 - [x] CLIAdapter (trust = OWNER by default)
 - [x] Rejection logging
@@ -91,7 +91,7 @@ At least one section must be present. A missing section logs a warning and disab
 
 `owner_users` in `[auth.telegram]` / `[auth.discord]` are automatically added to the admin set at startup — no need to duplicate IDs in `[admin].user_ids`. Extra non-owner admins can be added there explicitly.
 
-Module-level registry: lyra.core.admin — `is_admin(user_id)` / `set_admin_user_ids()` / `get_admin_user_ids()`. Plugins use `is_admin()` to gate admin-only commands without needing access to the config layer.
+Module-level registry: factory.core.admin — `is_admin(user_id)` / `set_admin_user_ids()` / `get_admin_user_ids()`. Plugins use `is_admin()` to gate admin-only commands without needing access to the config layer.
 
 ---
 
@@ -187,7 +187,7 @@ Every NATS identity must connect with `inbox_prefix="_INBOX.<identity-name>"`. T
 
 ### Security event audit
 
-`CliPool` subprocess spawns (carrying `skip_permissions`, tools allowlist, model, PID, pool_id, agent_name) are audited via a port/adapter split that respects import layer boundaries. `AuditSink` is a `Protocol` defined in `factory.core.cli` — the port. `JetStreamAuditSink` in `factory.infrastructure.audit` is the concrete adapter; it publishes `SecurityEvent` (a `roxabi-contracts` Pydantic model) to the `LYRA_AUDIT` JetStream stream (`lyra.audit.>`, FILE storage, 90-day retention, 1 GiB cap). When JetStream is unavailable, the sink falls back to the lyra.security logger without crashing the runtime. Both `hub_standalone.py` and the unified `lyra start` bootstrap (`wiring_helpers.py:309`) wire the sink. → ADR-057
+`CliPool` subprocess spawns (carrying `skip_permissions`, tools allowlist, model, PID, pool_id, agent_name) are audited via a port/adapter split that respects import layer boundaries. `AuditSink` is a `Protocol` defined in `factory.core.cli` — the port. `JetStreamAuditSink` in `factory.infrastructure.audit` is the concrete adapter; it publishes `SecurityEvent` (a `roxabi-contracts` Pydantic model) to the `LYRA_AUDIT` JetStream stream (`lyra.audit.>`, FILE storage, 90-day retention, 1 GiB cap). When JetStream is unavailable, the sink falls back to the lyra.security logger without crashing the runtime. Both `hub_standalone.py` and the unified `factory start` bootstrap (`wiring_helpers.py:309`) wire the sink. → ADR-057
 
 ### ACL request/reply derivation
 

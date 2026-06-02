@@ -33,10 +33,10 @@ not add it to the Protocol until all drivers implement it.
 The NATS LLM driver is a 3-layer composition (since #1278):
 
 ```
-LlmClient (lyra.llm.llm_client)
-   ├─ pool: WorkerPoolClient (lyra.transport.worker_pool_client)
-   │     └─ transport: NatsTransport (lyra.transport.nats_request_response)
-   └─ codec: LlmCodec (lyra.llm.codec)
+LlmClient (factory.llm.llm_client)
+   ├─ pool: WorkerPoolClient (factory.transport.worker_pool_client)
+   │     └─ transport: NatsTransport (factory.transport.nats_request_response)
+   └─ codec: LlmCodec (factory.llm.codec)
 ```
 
 - `LlmClient`: implements `LlmProvider`; orchestrates encode → pool → decode.

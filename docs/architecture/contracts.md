@@ -51,7 +51,7 @@ registry, adopted on `TtsResponse`, `SttResponse`, `ImageResponse`, `LlmResponse
 
 The `[testing]` extra is the only install path that pulls transport code; production installs have
 zero `nats-py` dependency. Three production-contamination guards on test doubles: extras gate,
-`LYRA_ENV` assertion, loopback-only NATS URL check. This package absorbed the voice contract
+`FACTORY_ENV` assertion, loopback-only NATS URL check. This package absorbed the voice contract
 (ADR-044), the image contract (ADR-050), and the unified error envelope (ADR-066).
 
 → ADR-049

@@ -7,7 +7,7 @@ Shared Pydantic schemas for Lyra cross-project NATS contracts. Per-domain submod
 ```toml
 [tool.uv.sources]
 roxabi-contracts = {
-  git = "https://github.com/Roxabi/lyra.git",
+  git = "https://github.com/Roxabi/roxabi-factory.git",
   subdirectory = "packages/roxabi-contracts",
   tag = "roxabi-contracts/v0.1.0"
 }
@@ -22,7 +22,7 @@ Satellites pin `roxabi-contracts` (and `roxabi-nats`) by git tag. Without an aut
 {
   "packageRules": [{
     "matchDatasources": ["git-refs"],
-    "matchSourceUrls": ["https://github.com/Roxabi/lyra"],
+    "matchSourceUrls": ["https://github.com/Roxabi/roxabi-factory"],
     "matchPackageNames": ["roxabi-nats", "roxabi-contracts"],
     "groupName": "roxabi sdk",
     "schedule": ["before 6am on monday"]
@@ -161,7 +161,7 @@ Three non-bypassable guards prevent production contamination
    bare `roxabi-contracts` install (no `[testing]` extra) fails with
    `ModuleNotFoundError: No module named 'nats'` before any runtime code runs.
 2. **Environment assertion.** `__init__` raises `RuntimeError` when
-   `LYRA_ENV=production`. No override flag.
+   `FACTORY_ENV=production`. No override flag.
 3. **Loopback-only URL.** `start()` raises `ValueError` on any non-loopback
    NATS URL (`127.0.0.1`, `localhost`, `::1`, `0:0:0:0:0:0:0:1` are the only
    accepted hosts). No override.

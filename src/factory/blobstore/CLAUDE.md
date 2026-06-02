@@ -4,7 +4,7 @@
 
 HTTP-fronted BlobStore service: FastAPI process that exposes `FsBlobStore` over HTTP on
 port 8449. Peer-of-adapters per Framing B (spec §Context). Receives blob writes and reads,
-backs them with `FsBlobStore` on `~/.lyra/blobs/`, and is the only process that touches
+backs them with `FsBlobStore` on `~/.roxabi/factory/blobs/`, and is the only process that touches
 `FsBlobStore` directly. All other consumers (same-host or cross-host) use `HttpBlobStore`
 from `packages/roxabi-blobs`.
 
@@ -13,7 +13,7 @@ Entry point: `lyra blobstore serve`.
 
 ## Host topology
 
-Runs on M₁ (`lyra-hub` role) only. M₂ workers connect via:
+Runs on M₁ (`factory-hub` role) only. M₂ workers connect via:
 
 ```
 http://roxabituwer.goose-logarithm.ts.net:8449
@@ -21,7 +21,7 @@ http://roxabituwer.goose-logarithm.ts.net:8449
 
 ## Image
 
-`ghcr.io/roxabi/lyra:staging-svc`. Three-strikes rule defers a dedicated
+`ghcr.io/roxabi/factory:staging-svc`. Three-strikes rule defers a dedicated
 `ghcr.io/roxabi/blobstore` image to ≥3 cross-repo consumers (#1334 + ADR-073).
 
 ## Boot order invariant
@@ -36,7 +36,7 @@ intentionally loud; re-provision deferred to next container restart.
 
 ## Token semantics
 
-- Bearer token read **once at startup** from `/run/secrets/lyra_blobstore_token`
+- Bearer token read **once at startup** from `/run/secrets/factory_blobstore_token`
   (Podman `type=mount` secret, ADR-054 (absorbed into ADR-055)).
 - Stored in memory for the process lifetime. Re-read requires container restart — NOT a
   `HUP`. Sending `SIGHUP` does NOT rotate the in-memory token.

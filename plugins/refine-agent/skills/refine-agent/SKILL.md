@@ -11,12 +11,12 @@ allowed-tools: Bash, Read, Glob
 
 Let:
 - α = agent name (from $ARGUMENTS or user input)
-- σ = current agent state (from `lyra agent show`)
+- σ = current agent state (from `factory agent show`)
 - Σ = confirmed changes dict { field → new_value }
 - N = iteration count in refinement loop
 
 Interactively refine a Lyra agent's profile. Reads current config, proposes targeted
-changes, and applies them via `lyra agent patch`.
+changes, and applies them via `factory agent patch`.
 
 ## Entry
 
@@ -31,7 +31,7 @@ changes, and applies them via `lyra agent patch`.
 ¬∃ $ARGUMENTS ⇒ run:
 
 ```bash
-lyra agent list
+factory agent list
 ```
 
 Ask user via DP(A): "Which agent would you like to refine?" with agent names as
@@ -40,10 +40,10 @@ Ask user via DP(A): "Which agent would you like to refine?" with agent names as
 Verify α exists:
 
 ```bash
-lyra agent show {α}
+factory agent show {α}
 ```
 
-¬∃ α in output ⇒ "Agent '{α}' not found. Run `lyra agent list` to see available agents."
+¬∃ α in output ⇒ "Agent '{α}' not found. Run `factory agent list` to see available agents."
 Stop.
 
 ## Step 2 — Read Profile
@@ -51,13 +51,13 @@ Stop.
 Capture full agent config as σ:
 
 ```bash
-lyra agent show {α}
+factory agent show {α}
 ```
 
 Also read system TOML if present (for context, not authoritative):
 
 ```bash
-cat ~/projects/lyra/src/factory/agents/{α}.toml 2>/dev/null || echo "(no TOML — DB-only agent)"
+cat ~/projects/roxabi-factory/src/factory/agents/{α}.toml 2>/dev/null || echo "(no TOML — DB-only agent)"
 ```
 
 ∃ persona_name in σ ⇒ attempt to read persona file:
@@ -115,13 +115,13 @@ N = 0. Repeat while operator has not said done/exit/quit:
 ∀ (field, value) in Σ, apply via:
 
 ```bash
-lyra agent patch {α} --json '{"{field}": {value}}'
+factory agent patch {α} --json '{"{field}": {value}}'
 ```
 
 For nested JSON fields (e.g. `voice_json`), build full replacement object:
 
 ```bash
-lyra agent patch {α} --json '{"voice_json": {"tts": {"engine": "kokoro", "voice": "nova"}, "stt": {"engine": "whisper"}}}'
+factory agent patch {α} --json '{"voice_json": {"tts": {"engine": "kokoro", "voice": "nova"}, "stt": {"engine": "whisper"}}}'
 ```
 
 Show applied diff after all patches:
@@ -132,7 +132,7 @@ Applied to {α}:
   model      → claude-haiku-4-5-20251001
 ```
 
-Remind operator: "Run `lyra agent init --force` or restart lyra adapters for voice/model
+Remind operator: "Run `factory agent init --force` or restart lyra adapters for voice/model
 changes to take effect."
 
 ## Completion
@@ -149,6 +149,6 @@ Output:
 - Σ = ∅ after loop ⇒ "No changes applied." (¬run patch).
 - Persona file not found ⇒ use `persona_json` from DB only (¬block on missing file).
 - Operator asks about a field not in AgentRow ⇒ clarify which fields are patchable, show
-  field list from `lyra agent show` output.
+  field list from `factory agent show` output.
 
 $ARGUMENTS

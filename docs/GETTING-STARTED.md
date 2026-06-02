@@ -19,7 +19,7 @@ Three ways to run lyra — pick the one that matches your goal.
 
 | Tier | Goal | Setup |
 |------|------|-------|
-| **1. Library** | Import `lyra` in your own code | `uv add "lyra @ git+https://github.com/Roxabi/lyra.git@staging"` — nothing else |
+| **1. Library** | Import `lyra` in your own code | `uv add "lyra @ git+https://github.com/Roxabi/roxabi-factory.git@staging"` — nothing else |
 | **2. Standalone** | Run lyra on one machine (dev or personal use) | See **Tier 2** below — 5 commands, no containers, no separate NATS server |
 | **3. Full production** | 24/7 hub with adapters, auto-deploy, monitoring | Continue to **Step 1** below — this guide covers Machine 1 hub setup |
 
@@ -27,15 +27,15 @@ Three ways to run lyra — pick the one that matches your goal.
 
 ## Tier 2 — Standalone (unified mode)
 
-For single-machine dev or personal use. `lyra start` runs hub + adapters in one process and auto-starts an embedded nats-server when `NATS_URL` is unset.
+For single-machine dev or personal use. `factory start` runs hub + adapters in one process and auto-starts an embedded nats-server when `NATS_URL` is unset.
 
 ```bash
-git clone git@github.com:Roxabi/lyra.git ~/projects/lyra
-cd ~/projects/lyra && uv sync
+git clone git@github.com:Roxabi/roxabi-factory.git ~/projects/roxabi-factory
+cd ~/projects/roxabi-factory && uv sync
 cp config.toml.example config.toml   # edit owner_users with your IDs
-lyra agent init                      # seed agents DB from bundled TOML
-lyra bot secret install telegram lyra   # store token encrypted
-lyra start                           # hub + telegram + discord in one process
+factory agent init                      # seed agents DB from bundled TOML
+factory bot secret install telegram lyra   # store token encrypted
+factory start                           # hub + telegram + discord in one process
 ```
 
 No containers. No systemd. No `make deploy`. Stop with `Ctrl+C`.
@@ -148,7 +148,7 @@ ssh-copy-id yourname@<MACHINE_1_IP>
 
 ```bash
 ssh yourname@<MACHINE_1_IP>
-curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra/staging/deploy/provision.sh | ADMIN_USER=yourname bash
+curl -fsSL https://raw.githubusercontent.com/Roxabi/roxabi-factory/staging/deploy/provision.sh | ADMIN_USER=yourname bash
 ```
 
 The script handles:
@@ -199,8 +199,8 @@ ssh yourname@<MACHINE_1_IP>
 # Add your GitHub SSH key if not already done
 # https://github.com/settings/keys → paste output of: cat ~/.ssh/id_ed25519.pub
 
-git clone git@github.com:Roxabi/lyra.git ~/projects/lyra
-cd ~/projects/lyra && python3 deploy/setup.py
+git clone git@github.com:Roxabi/roxabi-factory.git ~/projects/roxabi-factory
+cd ~/projects/roxabi-factory && python3 deploy/setup.py
 ```
 
 `deploy/setup.py` will:
@@ -214,8 +214,8 @@ cd ~/projects/lyra && python3 deploy/setup.py
 4. `make quadlet-install` — install Quadlet units to `~/.config/containers/systemd/`
 5. Create log directories (`~/.local/state/*/logs/`)
 6. Scaffold `config.toml` from example
-7. Seed agents into the DB (`lyra agent init`)
-8. Seed bots into BotStore (`lyra bot init`)
+7. Seed agents into the DB (`factory agent init`)
+8. Seed bots into BotStore (`factory bot init`)
 9. Install Claude Code plugins:
    - **Mandatory:** `web-intel`, `agent-browser`, `lyra-send`, `refine-agent`
    - **Conditional:** `voice-cli` (auto-installed if voiceCLI was installed)
@@ -236,7 +236,7 @@ The setup scaffolded `config.toml` from the example. Fill in:
 ### 1. Auth config (`config.toml`)
 
 ```bash
-cd ~/projects/lyra
+cd ~/projects/roxabi-factory
 nano config.toml
 ```
 
@@ -244,7 +244,7 @@ Fill in your user IDs in the `owner_users` arrays:
 - Telegram ID: message [@userinfobot](https://t.me/userinfobot) on Telegram
 - Discord ID: Settings → Advanced → Developer Mode → right-click your username → Copy User ID
 
-> **Agents vs Bots:** Your setup already created a default agent (`lyra`) in the DB (`lyra agent init`). An **agent** is the AI brain (model, persona, tools). A **bot** is the platform identity (Telegram bot token, Discord bot token). One agent can answer many bots. Step 2 and 3 below are about creating the *platform identity* (bot), not the AI brain (agent).
+> **Agents vs Bots:** Your setup already created a default agent (`lyra`) in the DB (`factory agent init`). An **agent** is the AI brain (model, persona, tools). A **bot** is the platform identity (Telegram bot token, Discord bot token). One agent can answer many bots. Step 2 and 3 below are about creating the *platform identity* (bot), not the AI brain (agent).
 
 ### 2. Create your bots
 
@@ -264,16 +264,16 @@ Fill in your user IDs in the `owner_users` arrays:
 Bot tokens are **not** stored in `.env`. They are delivered as Podman `type=mount` secrets:
 
 ```bash
-lyra bot secret install telegram lyra
-lyra bot secret install discord lyra
+factory bot secret install telegram lyra
+factory bot secret install discord lyra
 ```
 
-These create `lyra-bot-telegram-lyra` and `lyra-bot-discord-lyra` in the Podman secret store.
+These create `factory-bot-telegram-lyra` and `factory-bot-discord-lyra` in the Podman secret store.
 
-> **Note:** Bot tokens are encrypted in `~/.lyra/config.db` — not in `.env`. The `.env` file is for:
+> **Note:** Bot tokens are encrypted in `~/.roxabi/factory/config.db` — not in `.env`. The `.env` file is for:
 > - `DEPLOY_HOST`, `DEPLOY_DIR` — remote deployment target
-> - `LYRA_HEALTH_SECRET` — bearer token for health endpoint
-> - Voice settings (`LYRA_STT_ENABLED`, `LYRA_TTS_ENGINE`, etc.)
+> - `FACTORY_HEALTH_SECRET` — bearer token for health endpoint
+> - Voice settings (`FACTORY_STT_ENABLED`, `FACTORY_TTS_ENGINE`, etc.)
 >
 > See `.env.example` for all available options.
 
@@ -291,12 +291,12 @@ Follow the prompts to authenticate. Lyra uses Claude Code as its LLM backend —
 
 ## Step 10 — NATS setup (production only)
 
-For **single-machine development**, no NATS setup is required. `lyra start` auto-starts an embedded nats-server when `NATS_URL` is not set.
+For **single-machine development**, no NATS setup is required. `factory start` auto-starts an embedded nats-server when `NATS_URL` is not set.
 
 For **production** (Quadlet containers on `roxabi.network`):
 
 ```bash
-cd ~/projects/lyra
+cd ~/projects/roxabi-factory
 
 # Generate nkeys and auth.conf for all identities
 make nats-setup
@@ -308,10 +308,10 @@ make quadlet-secrets-install
 > If `nk` is not installed: `apt install nats-tools` (or download from https://github.com/nats-io/nkeys/releases and place at `/usr/local/bin/nk`).
 
 `make nats-setup` generates:
-- `~/.lyra/nkeys/*.seed` — nkey seed files for each identity (hub, telegram-adapter, discord-adapter, clipool-worker)
-- `~/.lyra/nkeys/auth.conf` — merged auth config for NATS
+- `~/.roxabi/factory/nkeys/*.seed` — nkey seed files for each identity (hub, telegram-adapter, discord-adapter, clipool-worker)
+- `~/.roxabi/factory/nkeys/auth.conf` — merged auth config for NATS
 
-The Quadlet NATS container (`lyra-nats.container`) runs rootless on `roxabi.network` with no TLS (container-to-container traffic is internal). Clients connect via `NATS_URL=nats://lyra-nats:4222`.
+The Quadlet NATS container (`factory-nats.container`) runs rootless on `roxabi.network` with no TLS (container-to-container traffic is internal). Clients connect via `NATS_URL=nats://factory-nats:4222`.
 
 ---
 
@@ -330,54 +330,54 @@ make quadlet-install
 make quadlet-secrets-install
 
 # Start all Lyra containers now
-systemctl --user start lyra-nats.service
+systemctl --user start factory-nats.service
 sleep 3  # wait for NATS to be ready
-systemctl --user start lyra-hub.service lyra-telegram.service lyra-discord.service lyra-clipool.service
+systemctl --user start factory-hub.service factory-telegram.service factory-discord.service factory-clipool.service
 ```
 
 Or use the Makefile dispatcher:
 ```bash
-make lyra start
+make factory start
 ```
 
 ## Step 12 — Health monitoring
 
-> **Removed.** The legacy host-timer units (`lyra-monitor.{service,timer}`) have been removed from `deploy/`. Only the Python module `src/lyra/monitoring/` is retained for [Monitoring v2 (#1035)](https://github.com/Roxabi/lyra/issues/1035) spec mining. Skip this step on new installs.
+> **Removed.** The legacy host-timer units (`lyra-monitor.{service,timer}`) have been removed from `deploy/`. Only the Python module `src/factory/monitoring/` is retained for [Monitoring v2 (#1035)](https://github.com/Roxabi/roxabi-factory/issues/1035) spec mining. Skip this step on new installs.
 
 If you still want a quick way to check hub health from the command line, hit the health endpoint directly:
 
 ```bash
 # Generate the health secret used by /health/detail
-mkdir -p ~/.lyra/env
-openssl rand -hex 32 > ~/.lyra/env/health_secret
-chmod 600 ~/.lyra/env/health_secret
-echo "LYRA_HEALTH_SECRET=$(cat ~/.lyra/env/health_secret)" >> ~/.lyra/env/hub.env
+mkdir -p ~/.roxabi/factory/env
+openssl rand -hex 32 > ~/.roxabi/factory/env/health_secret
+chmod 600 ~/.roxabi/factory/env/health_secret
+echo "FACTORY_HEALTH_SECRET=$(cat ~/.roxabi/factory/env/health_secret)" >> ~/.roxabi/factory/env/hub.env
 
 # Reload the hub so the new EnvironmentFile value is picked up
-systemctl --user restart lyra-hub.service
+systemctl --user restart factory-hub.service
 
-# Probe (after lyra-hub.service is running)
-curl -fsS -H "Authorization: Bearer $(cat ~/.lyra/env/health_secret)" \
+# Probe (after factory-hub.service is running)
+curl -fsS -H "Authorization: Bearer $(cat ~/.roxabi/factory/env/health_secret)" \
   http://127.0.0.1:8443/health/detail | jq .
 ```
 
 ## Step 13 — Verify services
 
 ```bash
-cd ~/projects/lyra
+cd ~/projects/roxabi-factory
 systemctl --user status 'lyra-*.service'
 ```
 
 You should see all eight units active:
 ```
-lyra-nats.service         active (running)
-lyra-hub.service          active (running)
-lyra-telegram.service     active (running)
-lyra-discord.service      active (running)
-lyra-clipool.service      active (running)
-lyra-gh-helper.service    active (running)
-lyra-turn-writer.service  active (running)
-lyra-blobstore.service    active (running)
+factory-nats.service         active (running)
+factory-hub.service          active (running)
+factory-telegram.service     active (running)
+factory-discord.service      active (running)
+factory-clipool.service      active (running)
+factory-gh-helper.service    active (running)
+factory-turn-writer.service  active (running)
+factory-blobstore.service    active (running)
 ```
 
 Or check the full container list:
@@ -387,8 +387,8 @@ podman ps --format "table {{.Names}}\t{{.Status}}"
 
 Check the logs:
 ```bash
-make lyra logs        # journalctl for lyra-hub
-make lyra errors      # journalctl for lyra-hub (errors only)
+make lyra logs        # journalctl for factory-hub
+make lyra errors      # journalctl for factory-hub (errors only)
 ```
 
 ---
@@ -403,13 +403,13 @@ What happens under the hood:
 1. The adapter (standalone process) normalizes your message into an `InboundMessage`
 2. It publishes to NATS (`lyra.inbound.<platform>.<bot_id>`)
 3. The Hub picks it up via its `NatsBus` subscription and resolves the routing
-4. The Hub publishes the turn to NATS (`lyra.clipool.cmd`); the `lyra-clipool` worker receives it and spawns the `claude` subprocess, streaming replies back via NATS (`lyra.clipool.heartbeat`)
+4. The Hub publishes the turn to NATS (`lyra.clipool.cmd`); the `factory-clipool` worker receives it and spawns the `claude` subprocess, streaming replies back via NATS (`lyra.clipool.heartbeat`)
 5. The Hub publishes the response to NATS (`lyra.outbound.<platform>.<bot_id>`)
 6. The `NatsOutboundListener` in the adapter process receives it and dispatches to the platform
 
 ---
 
-## Step 15 — Set up lyra agent account (optional)
+## Step 15 — Set up factory agent account (optional)
 
 Generate a dedicated SSH key for the agent on Machine 2:
 
@@ -436,23 +436,23 @@ ssh -i ~/.ssh/lyra_agent lyra@<MACHINE_1_IP> "id && git --version"
 |------|-------|
 | Admin access | `ssh yourname@<IP>` |
 | Agent access | `ssh -i ~/.ssh/lyra_agent lyra@<IP>` (optional) |
-| Lyra project | `~/projects/lyra/` |
+| Lyra project | `~/projects/roxabi-factory/` |
 | VoiceCLI project | `~/projects/voiceCLI/` (if installed) |
 | Quadlet units | `~/.config/containers/systemd/lyra-*.container` |
 | VoiceCLI Quadlet units | `~/.config/containers/systemd/voicecli-*.container` (if voiceCLI installed) |
-| Config | `~/projects/lyra/config.toml` |
-| Credentials | `~/.lyra/config.db` (bot config) + Podman secrets (bot tokens) |
-| Nkey seeds | `~/.lyra/nkeys/*.seed` |
-| Podman secrets | `podman secret ls` (lyra-nats-auth, lyra-nats-hub, lyra-nats-telegram, lyra-nats-discord, lyra-nats-clipool) |
-| Logs | `journalctl --user -u lyra-hub` |
+| Config | `~/projects/roxabi-factory/config.toml` |
+| Credentials | `~/.roxabi/factory/config.db` (bot config) + Podman secrets (bot tokens) |
+| Nkey seeds | `~/.roxabi/factory/nkeys/*.seed` |
+| Podman secrets | `podman secret ls` (factory-nats-auth, factory-nats-hub, factory-nats-telegram, factory-nats-discord, factory-nats-clipool) |
+| Logs | `journalctl --user -u factory-hub` |
 | Diagrams | `~/.roxabi/forge/` (if installed) |
 | Firewall | UFW, SSH only |
 
-**Daily commands** (from `~/projects/lyra`):
+**Daily commands** (from `~/projects/roxabi-factory`):
 ```bash
 make lyra status     # status of all lyra containers
 make lyra reload     # restart hub + adapters + clipool
-make lyra logs       # journalctl for lyra-hub
+make lyra logs       # journalctl for factory-hub
 make deploy          # pull latest staging, install quadlet units (from Machine 2)
 ```
 
@@ -463,7 +463,7 @@ make deploy          # pull latest staging, install quadlet units (from Machine 
 You can test the hub routing without any platform tokens:
 
 ```bash
-cd ~/projects/lyra
+cd ~/projects/roxabi-factory
 uv run python demo.py
 ```
 

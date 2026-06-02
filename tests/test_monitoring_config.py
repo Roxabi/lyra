@@ -55,7 +55,7 @@ class TestMonitoringConfigToml:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """SC-5: TOML values override defaults."""
-        config_file = tmp_path / "lyra.toml"
+        config_file = tmp_path / "config.toml"
         config_file.write_text(
             "[monitoring]\n"
             "check_interval_minutes = 10\n"
@@ -84,7 +84,7 @@ class TestMonitoringConfigToml:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """SC-6: Idle check is opt-in with quiet hours."""
-        config_file = tmp_path / "lyra.toml"
+        config_file = tmp_path / "config.toml"
         config_file.write_text(
             "[monitoring]\n"
             "idle_check_enabled = true\n"

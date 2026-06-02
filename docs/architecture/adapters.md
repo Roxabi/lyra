@@ -38,12 +38,12 @@ Agent management commands (`create`, `list`, `validate`, etc.) are exposed via a
 dedicated `[project.scripts]` entry in `pyproject.toml`:
 
 ```
-lyra-agent = "lyra.cli:agent_main"
+factory-agent = "factory.cli:agent_main"
 ```
 
 `__main__.py` is single-purpose (daemon bootstrap) and untouched by CLI dispatch.
 `cli.py` is the sole home of CLI logic and is independently testable without `sys.argv`
-patching. Invocation is `uv run lyra-agent <sub-command>`, consistent with the
+patching. Invocation is `uv run factory-agent <sub-command>`, consistent with the
 `voicecli` / `imagecli` conventions. supervisord, `make lyra`, and the production deploy
 path are unaffected. → ADR-020
 
@@ -57,7 +57,7 @@ path, read back via `tmp_path.read_bytes()`, and deleted via `tmp_path.unlink(mi
 the inbound pipeline carries forward without touching the filesystem again.
 No transcription/STT-service call site is involved; the old `try/finally`-at-transcribe
 ownership model has been superseded by this immediate-read-and-unlink pattern.
-A startup-time stale-file sweep of `LYRA_AUDIO_TMP` remains recommended as a safety net
+A startup-time stale-file sweep of `FACTORY_AUDIO_TMP` remains recommended as a safety net
 for crash-orphaned files (deferred). → ADR-013
 
 ### Inbound audio routing
@@ -102,7 +102,7 @@ routing or trust. → ADR-023
 ### STT/TTS NATS decoupling
 
 `lyra_stt` and `lyra_tts` run as independent NATS adapter services alongside
-`lyra_hub`, `lyra_telegram`, and `lyra_discord`. The hub never imports `voicecli`.
+`factory_hub`, `factory_telegram`, and `factory_discord`. The hub never imports `voicecli`.
 `AudioPipeline` calls `NatsSttClient.transcribe()` and `NatsTtsClient.synthesize()`
 over NATS request-reply (`lyra.voice.stt.request` / `lyra.voice.tts.request`). Both
 clients satisfy `STTProtocol` / `TtsProtocol` structural interfaces. On NATS timeout, `STTUnavailableError` is raised;
@@ -198,7 +198,7 @@ runs post-NATS inside the hub process. See `ARCHITECTURE.md §Inbound Message Pi
   before a third platform adapter is added.
 - `OutboundDispatcher._queue` is unbounded; `queue_maxsize` constructor parameter and a
   sensible default are recommended but not yet added.
-- Startup-time stale temp-file sweep of `LYRA_AUDIO_TMP` on hub restart is deferred.
+- Startup-time stale temp-file sweep of `FACTORY_AUDIO_TMP` on hub restart is deferred.
 - Multi-agent `AgentTTSConfig` — until Option B is verified at `AudioPipeline` /
   TTSService call sites, multi-agent deployments should log a warning when two agents
   differ in `AgentTTSConfig`.

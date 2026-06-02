@@ -35,7 +35,7 @@
 Hub-and-spoke AI agent engine. One hub routes inbound messages from multiple platforms (Telegram, Discord, CLI) to per-conversation pools backed by a Claude CLI subprocess. Responses stream back through NATS to the originating adapter. All state is per-pool; agents are immutable singletons. Multiple bots per platform are supported via independent bindings.
 
 ```
-lyra_telegram                     lyra_hub                      lyra_discord
+factory_telegram                     factory_hub                      factory_discord
 ─────────────                   ─────────────                  ─────────────
 aiogram long-poll                NatsBus                       discord.py gateway
       │                              │                              │
@@ -53,14 +53,14 @@ aiogram long-poll                NatsBus                       discord.py gatewa
       ◄──────────────────────────────┴──────────────────────────────▶
 ```
 
-All four processes run on Machine 1 (hub). NATS topics: `lyra.inbound.<platform>.<bot_id>` (adapter→hub), `lyra.outbound.<platform>.<bot_id>` (hub→adapter). `lyra start` runs hub + adapters in one process with embedded NATS.
+All four processes run on Machine 1 (hub). NATS topics: `lyra.inbound.<platform>.<bot_id>` (adapter→hub), `lyra.outbound.<platform>.<bot_id>` (hub→adapter). `factory start` runs hub + adapters in one process with embedded NATS.
 
 ---
 
 ## Key Invariants
 
 1. **Library first** — `lyra` is a Python library; CLI is a thin shell. `uv add --editable path/to/lyra` works.
-2. **No side effects on import** — engines load lazily; `import lyra` is instant.
+2. **No side effects on import** — engines load lazily; `import factory` is instant.
 3. **Agent = stateless singleton** — immutable config (prompt, permissions, namespace). All mutable state lives in the Pool.
 4. **Adapters send `trust=PUBLIC`** — trust resolution is Hub-side only (C3 pattern). Adapters never decide who may speak.
 5. **User-scoped memory** — every memory query must include `user_id`. Even stats, aggregate per user.
@@ -73,9 +73,9 @@ All four processes run on Machine 1 (hub). NATS topics: `lyra.inbound.<platform>
 
 | Concept | What it is | Where it lives | Managed by |
 |---|---|---|---|
-| **Bot** | Platform identity (`@RoxabiLyraBot`). Owns token, `bot_id`, `platform`. | `config.toml` → `BotStore` (`config.db` `bots`) | `lyra bot init` |
-| **Agent** | AI brain. `model`, `backend`, `persona`, `tools`, `plugins`. | `src/lyra/agents/*.toml` → `AgentStore` (`config.db` `agents`) | `lyra agent init` |
-| **Binding** | `bot_id` → `agent_name` for a conversation scope. | `config.db` `bot_agent_map` | `lyra agent assign` / `unassign` |
+| **Bot** | Platform identity (`@RoxabiLyraBot`). Owns token, `bot_id`, `platform`. | `config.toml` → `BotStore` (`config.db` `bots`) | `factory bot init` |
+| **Agent** | AI brain. `model`, `backend`, `persona`, `tools`, `plugins`. | `src/factory/agents/*.toml` → `AgentStore` (`config.db` `agents`) | `factory agent init` |
+| **Binding** | `bot_id` → `agent_name` for a conversation scope. | `config.db` `bot_agent_map` | `factory agent assign` / `unassign` |
 
 Routing: `(platform, bot_id, scope_id)` → `(agent, pool_id)`. One pool per scope. Scope = `chat:{id}` | `thread:{id}` | `channel:{id}`.
 

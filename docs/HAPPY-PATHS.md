@@ -666,7 +666,7 @@ After response generated:
   → TurnStore.log_turn(pool_id, session_id, "user", user_text, inbound.id)
   → TurnStore.log_turn(pool_id, session_id, "assistant", response_text, outbound_id)
   → fire-and-forget: asyncio.create_task() — never blocks message processing
-  → writes to ~/.lyra/turns.db (SQLite):
+  → writes to ~/.roxabi/factory/turns.db (SQLite):
     → table: conversation_turns
     → columns: pool_id, session_id, role, content, user_id,
                inbound_message_id, reply_message_id, timestamp

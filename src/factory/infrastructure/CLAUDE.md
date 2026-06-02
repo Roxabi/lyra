@@ -2,7 +2,7 @@
 
 ## ADR-048 (absorbed into ADR-059) invariant
 
-Protocols → `lyra.core.stores/` | Implementations → `lyra.infrastructure.stores/`
+Protocols → `factory.core.stores/` | Implementations → `factory.infrastructure.stores/`
 
 Never place a SQLite or I/O implementation in `core/`; never place a Protocol in `infrastructure/`.
 Stores impl ⊂ infrastructure, protocols ⊂ core/stores. Past migration history in git log.
@@ -10,7 +10,7 @@ Stores impl ⊂ infrastructure, protocols ⊂ core/stores. Past migration histor
 ## Layer ordering
 
 ```
-lyra.core (protocols) ← lyra.llm | lyra.nats ← lyra.infrastructure (implementations) ← lyra.adapters ← lyra.bootstrap
+factory.core (protocols) ← factory.llm | factory.nats ← factory.infrastructure (implementations) ← factory.adapters ← factory.bootstrap
 ```
 
 ## BlobStore adapter invariants

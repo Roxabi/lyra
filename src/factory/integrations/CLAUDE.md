@@ -1,4 +1,4 @@
-# CLAUDE.md — lyra.integrations
+# CLAUDE.md — factory.integrations
 
 ## Role
 
@@ -58,7 +58,7 @@ processors      (src/factory/core/processors/)
 simple_agent    (src/factory/agents/simple_agent.py)
 bootstrap factory
         ↓
-  lyra.integrations   ← you are here
+  factory.integrations   ← you are here
         ↓
   external world (systemd, vault CLI, web-intel, ffmpeg)
 ```

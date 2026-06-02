@@ -218,7 +218,7 @@ When adding new code, ask:
 ## File Placement Rules
 
 ```
-src/lyra/
+src/factory/
 ├── core/                    # KERNEL
 │   ├── events.py            # frozen event types
 │   ├── protocols.py         # Port definitions
@@ -277,7 +277,7 @@ src/lyra/
 
 ### Hexagonal canonical model
 
-Four layers, innermost to outermost: **Domain** (entities, port protocols, business rules — zero I/O imports) → **Application** (use cases, command handlers — depends on Domain ports only) → **Infrastructure** (SQLite stores, NATS transport, model loaders — implements Domain ports; lives in `lyra.infrastructure.*` per ADR-048) → **Adapters** (Telegram, Discord, CLI, NATS adapters — outermost ring, never imported by inner layers).
+Four layers, innermost to outermost: **Domain** (entities, port protocols, business rules — zero I/O imports) → **Application** (use cases, command handlers — depends on Domain ports only) → **Infrastructure** (SQLite stores, NATS transport, model loaders — implements Domain ports; lives in `factory.infrastructure.*` per ADR-048) → **Adapters** (Telegram, Discord, CLI, NATS adapters — outermost ring, never imported by inner layers).
 
 The **CLI protocol circular import** (ADR-060, absorbed here) established the canonical fix shape: when a CLI protocol port was co-located with its Infrastructure importer, the solution was to define the port in `factory.core` (Domain) and have Infrastructure import it from there. The **Composition Root** (`src/factory/bootstrap/`) is the only site that wires concrete Infrastructure implementations to Domain ports. → ADR-059 (absorbs ADR-048, ADR-060)
 
@@ -297,7 +297,7 @@ NullMessageManager replaces `if hub._msg_manager is None: return _DROP` guards, 
 
 - Domain layer imports nothing outside its own module (no I/O libs, no adapters, no infrastructure)
 - Application orchestrates Domain via ports defined in Domain; it never imports Infrastructure concretions
-- Infrastructure implements ports; lives in `lyra.infrastructure.*`; is the only layer that may hold migration runners and connection pools
+- Infrastructure implements ports; lives in `factory.infrastructure.*`; is the only layer that may hold migration runners and connection pools
 - Adapters are the outer ring; never imported by inner layers; lateral adapter-to-adapter imports are forbidden
 - All user-visible errors are LyraUserError subclasses raised at the point of failure
 - All unhandled pipeline errors are caught at ErrorBoundaryMiddleware and translated into a user reply, never silently dropped

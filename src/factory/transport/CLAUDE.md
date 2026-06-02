@@ -3,14 +3,14 @@
 ## Purpose
 
 Domain-agnostic NATS transport primitives consumed by all domain worker clients
-(`lyra.nats.*_client`, `factory.llm.llm_client`). Lives here, NOT in `packages/roxabi-nats/`.
+(`factory.nats.*_client`, `factory.llm.llm_client`). Lives here, NOT in `packages/roxabi-nats/`.
 
 ## Layer contract
 
 ```
 NatsTransport          — call() + open_inbox() CM; owns NATS inbox lifecycle
 WorkerPoolClient       — routing + CB + heartbeat subscription; registry via DI
-DomainClient           — thin wrapper in lyra.nats / lyra.llm (compose pool + codec)
+DomainClient           — thin wrapper in factory.nats / factory.llm (compose pool + codec)
 ```
 
 ## Key invariants

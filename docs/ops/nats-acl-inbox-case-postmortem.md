@@ -158,7 +158,7 @@ lyra only while voicecli still uses uppercase is an identical silent breakage.
 **Safe deploy order:**
 1. `acl-matrix.json` update (add lowercase, keep uppercase during transition)
 2. `gen-nkeys.sh --regen-authconf` → `make quadlet-secrets-install`
-3. `make lyra-nats reload`
+3. `make factory-nats reload`
 4. Redeploy containers one at a time, verify each reconnects
 5. Once all services confirmed on lowercase: drop uppercase entries, repeat 2–4
 
@@ -330,8 +330,8 @@ No documented procedure for the full sequence. Until written:
 
 1. `gen-nkeys.sh --regenerate` (has auto-restore on failure)
 2. `make quadlet-secrets-install`
-3. `make lyra-nats reload`
-4. Verify each service reconnects: `make lyra-hub logs`, `make lyra-clipool logs`, etc.
+3. `make factory-nats reload`
+4. Verify each service reconnects: `make factory-hub logs`, `make factory-clipool logs`, etc.
 
 ---
 
@@ -380,8 +380,8 @@ Four independent analyses were run after the initial postmortem: architect, prod
 
 #### Why-chain 4: `acl-matrix.json` is not the operational SSoT
 
-1. The sequence to apply an ACL change to production is: edit JSON → `gen-nkeys.sh --regen-authconf` → `make quadlet-secrets-install` → `make lyra-nats reload` — four distinct manual actions.
-2. Podman secrets are immutable once created; updating requires delete + recreate, a separate command from reloading NATS. A `make lyra-nats reload` executed before `make quadlet-secrets-install` silently reloads NATS against the old `auth.conf`.
+1. The sequence to apply an ACL change to production is: edit JSON → `gen-nkeys.sh --regen-authconf` → `make quadlet-secrets-install` → `make factory-nats reload` — four distinct manual actions.
+2. Podman secrets are immutable once created; updating requires delete + recreate, a separate command from reloading NATS. A `make factory-nats reload` executed before `make quadlet-secrets-install` silently reloads NATS against the old `auth.conf`.
 3. The four steps are separate Makefile targets with independent dependencies. No atomic wrapper exists; no dependency chain prevents partial execution.
 4. No post-apply verification step exists at any stage. There is no automatic check that NATS is now enforcing the new ACL, that each service reconnected, or that no permission violations appear in the first 30 seconds after reload.
 5. **Root:** `acl-matrix.json` was designed as the SSoT for one-time provisioning (ADR-046). As ACL changes became frequent operational work (#949, ADR-051 rollout, etc.), the multi-step manual pipeline became a routine hazard rather than a rare provisioning activity. Every ACL change is an opportunity to leave the system silently inconsistent.

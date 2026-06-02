@@ -107,7 +107,7 @@ jobs:
       - name: Check architecture snapshot freshness
         run: bash tools/check_architecture_snapshot.sh
 
-      - name: Check debt expiry (stale DEBT: markers)
+      - name: "Check debt expiry (stale DEBT: markers)"
         run: bash tools/check_debt_expiry.sh
 
       - name: Enforce import layers

@@ -13,7 +13,7 @@ Usage (from repo root, after NATS is running):
 
 Env:
     NATS_URL              default nats://127.0.0.1:4222
-    NATS_NKEY_SEED_PATH   default ~/.lyra/nkeys/hub.seed
+    NATS_NKEY_SEED_PATH   default ~/.roxabi/factory/nkeys/hub.seed
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ log = logging.getLogger(__name__)
 
 NATS_URL = os.environ.get("NATS_URL", "nats://127.0.0.1:4222")
 NKEY_PATH = os.environ.get(
-    "NATS_NKEY_SEED_PATH", str(Path.home() / ".lyra/nkeys/hub.seed")
+    "NATS_NKEY_SEED_PATH", str(Path.home() / ".roxabi/factory/nkeys/hub.seed")
 )
 
 STREAMS: dict[str, dict] = {

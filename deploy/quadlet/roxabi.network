@@ -1,5 +1,5 @@
 [Unit]
-Description=Shared Roxabi container bridge network (lyra + voicecli)
+Description=Shared Roxabi container bridge network (factory + voicecli)
 
 [Network]
 Driver=bridge

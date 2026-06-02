@@ -16,9 +16,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.cli.cli_pool import CliPool, CliPoolDeps
-from lyra.core.cli.cli_pool_worker import _ProcessEntry
+from factory.core.agent.agent_config import ModelConfig
+from factory.core.cli.cli_pool import CliPool, CliPoolDeps
+from factory.core.cli.cli_pool_worker import _ProcessEntry
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -179,7 +179,7 @@ class TestDispatchControlResumeAndReset:
         """Valid session_id: resume_direct called, ACK has ok=True, resumed=True."""
         import json
 
-        from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+        from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
         from roxabi_contracts.cli.models import CliControlCmd
 
         # Arrange
@@ -210,7 +210,7 @@ class TestDispatchControlResumeAndReset:
         """Missing session_id: ACK has ok=False, resume_direct not called."""
         import json
 
-        from lyra.adapters.clipool.clipool_worker import CliPoolNatsWorker
+        from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
         from roxabi_contracts.cli.models import CliControlCmd
 
         # Arrange
@@ -251,7 +251,7 @@ class TestNoTurnStoreInWorker:
                 "grep",
                 "-i",
                 "turn_store\\|TurnStore",
-                "src/lyra/adapters/clipool/clipool_worker.py",
+                "src/factory/adapters/clipool/clipool_worker.py",
             ],
             capture_output=True,
             text=True,

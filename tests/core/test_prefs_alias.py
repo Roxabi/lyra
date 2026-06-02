@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
-from lyra.infrastructure.stores.prefs_store import PrefsStore
+from factory.infrastructure.stores.identity_alias_store import IdentityAliasStore
+from factory.infrastructure.stores.prefs_store import PrefsStore
 
 # ---------------------------------------------------------------------------
 # Fixtures

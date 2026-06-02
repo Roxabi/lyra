@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from lyra.core.messaging.message import (
+from factory.core.messaging.message import (
     Button,
     DiscordMeta,
     OutboundMessage,
@@ -24,7 +24,7 @@ from .conftest import attach_typing_cm, make_dc_inbound_msg
 
 def _make_discord_adapter():
     """Build a DiscordAdapter with a MagicMock hub."""
-    from lyra.adapters.discord import DiscordAdapter  # ImportError expected in RED
+    from factory.adapters.discord import DiscordAdapter  # ImportError expected in RED
 
     return DiscordAdapter(
         bot_id="main",
@@ -43,7 +43,7 @@ async def test_own_message_is_filtered() -> None:
     """When message.author == adapter._bot_user, inbound_bus.put is never called."""
     from datetime import datetime, timezone
 
-    from lyra.adapters.discord import DiscordAdapter  # ImportError expected in RED
+    from factory.adapters.discord import DiscordAdapter  # ImportError expected in RED
 
     inbound_bus = MagicMock()
     inbound_bus.put = AsyncMock()
@@ -79,7 +79,7 @@ async def test_own_message_is_filtered() -> None:
 @pytest.mark.asyncio
 async def test_send_reply_on_mention() -> None:
     """adapter.send() calls msg.reply(text) when is_mention=True."""
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -109,7 +109,7 @@ async def test_send_reply_on_mention() -> None:
 @pytest.mark.asyncio
 async def test_send_reply_on_no_mention() -> None:
     """send() still replies to the trigger message even when is_mention=False."""
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -139,7 +139,7 @@ async def test_send_reply_on_no_mention() -> None:
 @pytest.mark.asyncio
 async def test_send_stores_reply_message_id_channel_send() -> None:
     """send() via msg.reply() stores sent message id in metadata."""
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -171,7 +171,7 @@ async def test_send_stores_reply_message_id_channel_send() -> None:
 @pytest.mark.asyncio
 async def test_send_stores_reply_message_id_msg_reply() -> None:
     """send() via msg.reply() stores sent message id in outbound.metadata."""
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -203,7 +203,7 @@ async def test_send_stores_reply_message_id_msg_reply() -> None:
 @pytest.mark.asyncio
 async def test_send_no_reply_message_id_on_failure() -> None:
     """send() must NOT set reply_message_id in metadata when the send call throws."""
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -255,14 +255,14 @@ class TestDiscordOutboundMessage:
 
     def test_render_text_empty_returns_no_chunks(self) -> None:
         """render_text("") returns [] — no empty-string chunk to send to the API."""
-        from lyra.adapters.discord.discord_formatting import render_text
+        from factory.adapters.discord.discord_formatting import render_text
 
         chunks = render_text("")
         assert chunks == []
 
     def test_render_text_chunks_at_2000(self) -> None:
         """render_text("x" * 2500) returns 2 chunks, each <= 2000 characters."""
-        from lyra.adapters.discord.discord_formatting import render_text
+        from factory.adapters.discord.discord_formatting import render_text
 
         text = "x" * 2500
         chunks = render_text(text)
@@ -271,14 +271,14 @@ class TestDiscordOutboundMessage:
 
     def test_render_buttons_none_when_empty(self) -> None:
         """render_buttons([]) returns None."""
-        from lyra.adapters.discord.discord_formatting import render_buttons
+        from factory.adapters.discord.discord_formatting import render_buttons
 
         result = render_buttons([])
         assert result is None
 
     def test_render_buttons_returns_view(self) -> None:
         """render_buttons([Button("Yes","yes")]) returns a discord.ui.View."""
-        from lyra.adapters.discord.discord_formatting import render_buttons
+        from factory.adapters.discord.discord_formatting import render_buttons
 
         result = render_buttons([Button("Yes", "yes")])
         assert isinstance(result, discord.ui.View)
@@ -350,7 +350,7 @@ async def test_discord_mro_instantiation() -> None:
 
     import discord
 
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -369,9 +369,9 @@ async def test_discord_fallback_sets_reply_message_id() -> None:
 
     import discord
 
-    from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.auth.trust import TrustLevel
-    from lyra.core.messaging.message import InboundMessage, OutboundMessage
+    from factory.adapters.discord import DiscordAdapter
+    from factory.core.auth.trust import TrustLevel
+    from factory.core.messaging.message import InboundMessage, OutboundMessage
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -414,7 +414,7 @@ async def test_discord_fallback_sets_reply_message_id() -> None:
     outbound = OutboundMessage.from_text("")
 
     async def _events():
-        from lyra.core.messaging.render_events import (
+        from factory.core.messaging.render_events import (
             TextDeltaRenderEvent,
             TextEndRenderEvent,
         )
@@ -440,9 +440,9 @@ async def test_build_streaming_noop_on_non_discord_msg() -> None:
     """
     from datetime import datetime, timezone
 
-    from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.auth.trust import TrustLevel
-    from lyra.core.messaging.message import InboundMessage
+    from factory.adapters.discord import DiscordAdapter
+    from factory.core.auth.trust import TrustLevel
+    from factory.core.messaging.message import InboundMessage
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -478,8 +478,8 @@ async def test_build_streaming_noop_on_non_discord_msg() -> None:
 @pytest.mark.asyncio
 async def test_streaming_edit_placeholder_text() -> None:
     """DiscordFormatter.edit_placeholder_text calls ph.edit(content=..., embed=None)."""
-    from lyra.adapters.discord import DiscordAdapter
-    from lyra.adapters.discord.discord_formatter import DiscordFormatter
+    from factory.adapters.discord import DiscordAdapter
+    from factory.adapters.discord.discord_formatter import DiscordFormatter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -511,8 +511,8 @@ async def test_streaming_send_message_multi_chunk() -> None:
     Non-last chunks go through send_with_retry; last chunk goes via direct send.
     Returns the last sent message id.
     """
-    from lyra.adapters.discord import DiscordAdapter
-    from lyra.adapters.discord.discord_formatter import DiscordFormatter
+    from factory.adapters.discord import DiscordAdapter
+    from factory.adapters.discord.discord_formatter import DiscordFormatter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -542,8 +542,8 @@ async def test_streaming_send_message_multi_chunk() -> None:
 @pytest.mark.asyncio
 async def test_streaming_send_message_failure() -> None:
     """DiscordFormatter.send_message logs exception and returns None when send raises."""  # noqa: E501
-    from lyra.adapters.discord import DiscordAdapter
-    from lyra.adapters.discord.discord_formatter import DiscordFormatter
+    from factory.adapters.discord import DiscordAdapter
+    from factory.adapters.discord.discord_formatter import DiscordFormatter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -575,7 +575,7 @@ async def test_streaming_send_message_failure() -> None:
 @pytest.mark.asyncio
 async def test_send_intermediate_starts_typing() -> None:
     """send() with outbound.intermediate=True calls adapter._start_typing."""
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -614,9 +614,9 @@ async def test_send_thread_context_uses_channel_send() -> None:
     """send() with thread_id set uses messageable.send() not reply()."""
     from datetime import datetime, timezone
 
-    from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.auth.trust import TrustLevel
-    from lyra.core.messaging.message import InboundMessage
+    from factory.adapters.discord import DiscordAdapter
+    from factory.core.auth.trust import TrustLevel
+    from factory.core.messaging.message import InboundMessage
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -662,9 +662,9 @@ async def test_send_thread_context_with_view() -> None:
     """send() with thread_id + buttons calls messageable.send(chunk, view=...)."""
     from datetime import datetime, timezone
 
-    from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.auth.trust import TrustLevel
-    from lyra.core.messaging.message import Button, InboundMessage
+    from factory.adapters.discord import DiscordAdapter
+    from factory.core.auth.trust import TrustLevel
+    from factory.core.messaging.message import Button, InboundMessage
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -712,9 +712,9 @@ async def test_send_invalid_inbound_returns_early() -> None:
     """send() with a non-discord InboundMessage returns without calling any API."""
     from datetime import datetime, timezone
 
-    from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.auth.trust import TrustLevel
-    from lyra.core.messaging.message import InboundMessage
+    from factory.adapters.discord import DiscordAdapter
+    from factory.core.auth.trust import TrustLevel
+    from factory.core.messaging.message import InboundMessage
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -755,8 +755,8 @@ async def test_typing_worker_retry_resolve() -> None:
     import asyncio
     from unittest.mock import AsyncMock as _AsyncMock  # noqa: PLC0415
 
-    import lyra.adapters.discord.discord_outbound as _outbound_mod
-    from lyra.adapters.discord.discord_outbound import _discord_typing_worker
+    import factory.adapters.discord.discord_outbound as _outbound_mod
+    from factory.adapters.discord.discord_outbound import _discord_typing_worker
 
     call_count = 0
     mock_channel = _AsyncMock()
@@ -790,8 +790,8 @@ async def test_typing_worker_bailout_after_3_errors() -> None:
     """_discord_typing_worker returns after 3 consecutive channel.typing() failures."""
     from unittest.mock import AsyncMock as _AsyncMock
 
-    import lyra.adapters.discord.discord_outbound as _outbound_mod
-    from lyra.adapters.discord.discord_outbound import _discord_typing_worker
+    import factory.adapters.discord.discord_outbound as _outbound_mod
+    from factory.adapters.discord.discord_outbound import _discord_typing_worker
 
     mock_channel = _AsyncMock()
     mock_channel.typing = _AsyncMock(

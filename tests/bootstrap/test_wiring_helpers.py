@@ -9,13 +9,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-import lyra.bootstrap.factory.agent_factory as agent_factory_mod
-import lyra.bootstrap.factory.hub.hub_clipool_init as hub_clipool_init_mod
-import lyra.bootstrap.factory.hub.hub_core as hub_core_mod
-import lyra.bootstrap.factory.wiring_helpers as wiring_helpers_mod
-from lyra.bootstrap.factory.agent_factory import _init_bot_auths_and_agents
-from lyra.bootstrap.factory.hub_builder import _build_hub, _init_clipool
-from lyra.bootstrap.factory.wiring_helpers import (
+import factory.bootstrap.factory.agent_factory as agent_factory_mod
+import factory.bootstrap.factory.hub.hub_clipool_init as hub_clipool_init_mod
+import factory.bootstrap.factory.hub.hub_core as hub_core_mod
+import factory.bootstrap.factory.wiring_helpers as wiring_helpers_mod
+from factory.bootstrap.factory.agent_factory import _init_bot_auths_and_agents
+from factory.bootstrap.factory.hub_builder import _build_hub, _init_clipool
+from factory.bootstrap.factory.wiring_helpers import (
     _init_inbound_bus,
     _init_pairing,
     _init_voice_services,
@@ -25,7 +25,7 @@ from lyra.bootstrap.factory.wiring_helpers import (
     _seed_auth,
     _wire_adapters,
 )
-from lyra.bootstrap.types import (
+from factory.bootstrap.types import (
     BotAuthBundle,
     BuildHubDeps,
     CliPoolBundle,
@@ -34,12 +34,12 @@ from lyra.bootstrap.types import (
     WireAdaptersDeps,
     WiredAdapters,
 )
-from lyra.core.agent import Agent
-from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.hub import Hub
-from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.core.messaging.tool_display_config import ToolDisplayConfig
-from lyra.nats.queue_groups import HUB_INBOUND
+from factory.core.agent import Agent
+from factory.core.agent.agent_config import ModelConfig
+from factory.core.hub import Hub
+from factory.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
+from factory.core.messaging.tool_display_config import ToolDisplayConfig
+from factory.nats.queue_groups import HUB_INBOUND
 
 # ---------------------------------------------------------------------------
 # T3 — Simple phase helpers
@@ -88,7 +88,7 @@ class TestSeedAuth:
             seed_calls.append((auth_store, bot_store))
 
         monkeypatch.setattr(
-            "lyra.bootstrap.auth_seeding.seed_grants_from_bots",
+            "factory.bootstrap.auth_seeding.seed_grants_from_bots",
             fake_seed,
         )
 
@@ -220,15 +220,15 @@ class TestInitVoiceServices:
         fake_llm = MagicMock()
 
         monkeypatch.setattr(
-            "lyra.bootstrap.factory.voice_overlay.init_nats_stt",
+            "factory.bootstrap.factory.voice_overlay.init_nats_stt",
             lambda nc: fake_stt,
         )
         monkeypatch.setattr(
-            "lyra.bootstrap.factory.voice_overlay.init_nats_tts",
+            "factory.bootstrap.factory.voice_overlay.init_nats_tts",
             lambda nc: fake_tts,
         )
         monkeypatch.setattr(
-            "lyra.bootstrap.factory.llm_overlay.init_nats_llm",
+            "factory.bootstrap.factory.llm_overlay.init_nats_llm",
             AsyncMock(return_value=fake_llm),
         )
         fake_nc = MagicMock()
@@ -545,7 +545,7 @@ class TestInitClipool:
     async def test_init_clipool_constructs_bundle_provisions_and_starts(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from lyra.core.cli.cli_pool import CliPoolDeps
+        from factory.core.cli.cli_pool import CliPoolDeps
 
         # Arrange
         monkeypatch.setattr(
@@ -577,13 +577,13 @@ class TestInitClipool:
 
         mock_llm_client = MagicMock()
         monkeypatch.setattr(
-            "lyra.bootstrap.factory.hub.hub_clipool_init.build_llm_client",
+            "factory.bootstrap.factory.hub.hub_clipool_init.build_llm_client",
             AsyncMock(return_value=mock_llm_client),
         )
 
         mock_worker = MagicMock()
         monkeypatch.setattr(
-            "lyra.adapters.clipool.clipool_worker.CliPoolNatsWorker",
+            "factory.adapters.clipool.clipool_worker.CliPoolNatsWorker",
             lambda *a, **kw: mock_worker,
         )
 
@@ -667,7 +667,7 @@ class TestRegisterAgents:
         mem_agent._memory.set_alias_store = MagicMock()
         hub.agent_registry = {"mem_agent": mem_agent}
 
-        from lyra.bootstrap.factory.agent_factory import ResolveAgentsDeps
+        from factory.bootstrap.factory.agent_factory import ResolveAgentsDeps
 
         # Act
         _register_agents(
@@ -746,7 +746,7 @@ class TestWireAdapters:
         fake_nc.subscribe = AsyncMock()
         vault_dir = Path("/tmp/fake_vault")
 
-        from lyra.bootstrap.wiring.bootstrap_wiring import (
+        from factory.bootstrap.wiring.bootstrap_wiring import (
             DiscordWiringDeps,
             TelegramWiringDeps,
         )

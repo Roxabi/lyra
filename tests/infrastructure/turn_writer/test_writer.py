@@ -27,8 +27,8 @@ from uuid import uuid4
 import nats.errors
 import pytest
 
-from lyra.infrastructure.stores.turn_store import TurnStore
-from lyra.infrastructure.turn_writer.writer import TurnWriter
+from factory.infrastructure.stores.turn_store import TurnStore
+from factory.infrastructure.turn_writer.writer import TurnWriter
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.turns import (
     EndSessionPayload,
@@ -443,7 +443,7 @@ async def test_consume_loop_propagates_connection_closed_error(
     w._sub = mock_sub
 
     # Act + Assert: the loop propagates rather than swallowing the error.
-    with patch("lyra.infrastructure.turn_writer.writer.log") as mock_log:
+    with patch("factory.infrastructure.turn_writer.writer.log") as mock_log:
         with pytest.raises(nats.errors.ConnectionClosedError):
             await w._consume_loop()
 

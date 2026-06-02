@@ -29,7 +29,7 @@ git pull
 make nats-regen-authconf
 ```
 
-This runs `scripts/gen_nkeys.py` (entry point `lyra-acl genkeys --regen-authconf`) to re-derive `auth.conf` from all existing seeds, back up the previous `auth.conf`, recreate the Podman secret, then runs `systemctl --user restart lyra-nats` to recreate the container with the refreshed mount.
+This runs `scripts/gen_nkeys.py` (entry point `factory-acl genkeys --regen-authconf`) to re-derive `auth.conf` from all existing seeds, back up the previous `auth.conf`, recreate the Podman secret, then runs `systemctl --user restart lyra-nats` to recreate the container with the refreshed mount.
 
 > **Why restart and not SIGHUP?** Podman secrets declared `type=mount` in `deploy/quadlet/lyra-nats.container` are tmpfs bind-mounts bound at container init. `podman secret create --replace` updates the secret store, but the file inside the running container still resolves to the old tmpfs content. `nats-server` re-reads its config path on SIGHUP, but the path itself is stale — so ACL changes silently fail to apply. Container recreation is the only way to refresh a mount-typed secret. Confirmed during PR #1292 deploy (2026-05-20); see #1293 for the broader ACL-hardening epic.
 >
@@ -64,7 +64,7 @@ Send a message to the bot on any channel and confirm a reply arrives. This valid
 
 ### When it runs
 
-`lyra-acl genkeys --regenerate` (and the default full-provision path) exits 2 and emits an
+`factory-acl genkeys --regenerate` (and the default full-provision path) exits 2 and emits an
 scp manifest on stderr whenever any active identity has `deploy.type=external` in
 `acl-matrix.json` and `--ack-external-distribution` is **not** passed. Seeds and `auth.conf`
 are already committed at that point — only fan-out to the remote host is outstanding. Pass
@@ -106,7 +106,7 @@ insufficient as a safeguard. Issue #1379 introduced the fail-loud guard — exit
 
 ### Cross-references
 
-- CLI flag: `lyra-acl genkeys --ack-external-distribution`
+- CLI flag: `factory-acl genkeys --ack-external-distribution`
 - Schema: `deploy/nats/acl-matrix.json` → identity `.deploy.type=external`
 - Source: `scripts/_modes.py::_emit_external_manifest`, `scripts/_modes.py::_operator_user`
 - Issue: #1379
@@ -115,7 +115,7 @@ insufficient as a safeguard. Issue #1379 introduced the fail-loud guard — exit
 
 ## Rollback
 
-`lyra-acl genkeys --regen-authconf` (`scripts/gen_nkeys.py`) backs up `auth.conf` to `~/.lyra/nkeys/auth.conf.bak.<timestamp>` before overwriting. To revert:
+`factory-acl genkeys --regen-authconf` (`scripts/gen_nkeys.py`) backs up `auth.conf` to `~/.lyra/nkeys/auth.conf.bak.<timestamp>` before overwriting. To revert:
 
 ```bash
 # Replace TIMESTAMP with the backup suffix printed by `make nats-regen-authconf` in step 2
@@ -166,7 +166,7 @@ for its `announce_hub_ready` log line, then restart adapters.
 ## Cross-references
 
 - `deploy/nats/acl-matrix.json` — ACL SSoT
-- `scripts/gen_nkeys.py` (entry point `lyra-acl`) — renders `auth.conf` from the matrix
+- `scripts/gen_nkeys.py` (entry point `factory-acl`) — renders `auth.conf` from the matrix
 - [nkey-rotation.md](nkey-rotation.md) — compromise rotation (seed replacement)
 - [ADR-046](../architecture/adr/046-nkey-provisioning-declarative-authconf.mdx) — provisioning invariants
 - [ADR-079](../architecture/adr/079-audio-nats-contract-axial-consolidation.mdx) — audio NATS axial migration, sole-provisioner pattern

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from lyra.core import Hub
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.config import HubConfig
-from lyra.core.messaging.message import InboundMessage, Platform, TelegramMeta
+from factory.core import Hub
+from factory.core.auth.trust import TrustLevel
+from factory.core.config import HubConfig
+from factory.core.messaging.message import InboundMessage, Platform, TelegramMeta
 from tests.core.conftest import make_inbound_message
 
 # ---------------------------------------------------------------------------
@@ -19,7 +19,7 @@ class TestScopeIdRouting:
     """RoutingKey uses scope_id (not user_id) as the 3rd field."""
 
     def test_routing_key_has_scope_id_field(self) -> None:
-        from lyra.core.hub import RoutingKey
+        from factory.core.hub import RoutingKey
 
         key = RoutingKey(
             platform=Platform.TELEGRAM,
@@ -30,7 +30,7 @@ class TestScopeIdRouting:
         assert not hasattr(key, "user_id")
 
     def test_to_pool_id_uses_scope_id(self) -> None:
-        from lyra.core.hub import RoutingKey
+        from factory.core.hub import RoutingKey
 
         key = RoutingKey(
             platform=Platform.TELEGRAM,
@@ -191,7 +191,7 @@ class TestRateTimestampsCleanup:
         # Advance monotonic clock past the 1-second window
         now_plus_2 = hub._rate_timestamps[key][0] + 2
         with unittest.mock.patch(
-            "lyra.core.hub.hub_rate_limit.time.monotonic", return_value=now_plus_2
+            "factory.core.hub.hub_rate_limit.time.monotonic", return_value=now_plus_2
         ):
             result = hub._is_rate_limited(msg)
 

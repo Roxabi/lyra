@@ -20,9 +20,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
-from lyra.adapters.discord import DiscordAdapter
-from lyra.adapters.discord.discord_normalize import NormalizeDeps, normalize
-from lyra.inbound.attachment_ingest import PendingAttachment
+from factory.adapters.discord import DiscordAdapter
+from factory.adapters.discord.discord_normalize import NormalizeDeps, normalize
+from factory.inbound.attachment_ingest import PendingAttachment
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -160,8 +160,8 @@ async def test_dc_multi_attachment_pipeline_stamps_all_blob_refs() -> None:
     Negative-test contract: if the non-audio loop in AttachmentIngestStage is
     deleted (P2 dead branch), all blob_refs remain None — assertion fails.
     """
-    from lyra.adapters.discord.discord_inbound import handle_message
-    from lyra.inbound.attachment_ingest import IngestCtx
+    from factory.adapters.discord.discord_inbound import handle_message
+    from factory.inbound.attachment_ingest import IngestCtx
     from roxabi_contracts import BlobRef
 
     adapter = _make_adapter()
@@ -208,11 +208,11 @@ async def test_dc_multi_attachment_pipeline_stamps_all_blob_refs() -> None:
     mock_dispatcher = MagicMock()
     mock_dispatcher.dispatch = _capture_dispatch
 
-    with patch("lyra.adapters.discord.discord_inbound._pipeline") as mock_pipeline:
-        from lyra.inbound.attachment_ingest import AttachmentIngestStage
-        from lyra.inbound.pipeline import InboundPipeline
-        from lyra.inbound.router import Router
-        from lyra.inbound.session_builder import SessionBuilder
+    with patch("factory.adapters.discord.discord_inbound._pipeline") as mock_pipeline:
+        from factory.inbound.attachment_ingest import AttachmentIngestStage
+        from factory.inbound.pipeline import InboundPipeline
+        from factory.inbound.router import Router
+        from factory.inbound.session_builder import SessionBuilder
 
         real_pipeline = InboundPipeline(
             router=Router(),
@@ -252,8 +252,8 @@ async def test_dc_oversize_attachment_reply_no_hub_push() -> None:
     is removed, the error propagates uncaught and message.reply is never called —
     assertion fails.
     """
-    from lyra.adapters.discord.discord_inbound import handle_message
-    from lyra.inbound.attachment_ingest import MAX_ATTACHMENT_INGEST_BYTES, IngestCtx
+    from factory.adapters.discord.discord_inbound import handle_message
+    from factory.inbound.attachment_ingest import MAX_ATTACHMENT_INGEST_BYTES, IngestCtx
 
     adapter = _make_adapter()
 
@@ -279,11 +279,11 @@ async def test_dc_oversize_attachment_reply_no_hub_push() -> None:
     mock_dispatcher = MagicMock()
     mock_dispatcher.dispatch = _capture_dispatch
 
-    with patch("lyra.adapters.discord.discord_inbound._pipeline") as mock_pipeline:
-        from lyra.inbound.attachment_ingest import AttachmentIngestStage
-        from lyra.inbound.pipeline import InboundPipeline
-        from lyra.inbound.router import Router
-        from lyra.inbound.session_builder import SessionBuilder
+    with patch("factory.adapters.discord.discord_inbound._pipeline") as mock_pipeline:
+        from factory.inbound.attachment_ingest import AttachmentIngestStage
+        from factory.inbound.pipeline import InboundPipeline
+        from factory.inbound.router import Router
+        from factory.inbound.session_builder import SessionBuilder
 
         real_pipeline = InboundPipeline(
             router=Router(),

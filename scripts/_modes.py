@@ -78,7 +78,9 @@ def _require_root() -> None:
     if os.environ.get("AUTH_DIR"):
         return  # test override: AUTH_DIR redirects system paths — no root needed
     if os.geteuid() != 0:
-        print("error: must be run as root (sudo lyra-acl genkeys ...)", file=sys.stderr)
+        print(
+            "error: must be run as root (sudo factory-acl genkeys ...)", file=sys.stderr
+        )
         sys.exit(1)
 
 
@@ -151,7 +153,7 @@ def _mode_regen_authconf(args: argparse.Namespace) -> None:
         seed_file = seeds_dir / f"{name}.seed"
         if not seed_file.exists():
             print(
-                f"error: missing seed: {seed_file} — run 'uv run lyra-acl genkeys'",
+                f"error: missing seed: {seed_file} — run 'uv run factory-acl genkeys'",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -315,7 +317,7 @@ def _mode_emit_merged_authconf(args: argparse.Namespace) -> None:
         if not seed_file.exists():
             print(
                 f"error: missing lyra seed: {seed_file}"
-                " — run 'uv run lyra-acl genkeys'",
+                " — run 'uv run factory-acl genkeys'",
                 file=sys.stderr,
             )
             sys.exit(1)

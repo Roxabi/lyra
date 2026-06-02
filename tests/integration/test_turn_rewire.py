@@ -18,9 +18,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.infrastructure.stores.turn_store import TurnStore
-from lyra.infrastructure.turn_writer.writer import TurnWriter
-from lyra.transport.turn_publisher import TurnPublisher
+from factory.infrastructure.stores.turn_store import TurnStore
+from factory.infrastructure.turn_writer.writer import TurnWriter
+from factory.transport.turn_publisher import TurnPublisher
 from roxabi_contracts.turns import TurnWriteEvent
 
 # ---------------------------------------------------------------------------

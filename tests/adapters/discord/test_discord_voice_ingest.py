@@ -17,9 +17,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
-from lyra.adapters.discord import DiscordAdapter
-from lyra.adapters.discord.discord_audio import handle_audio
-from lyra.core.auth.trust import TrustLevel
+from factory.adapters.discord import DiscordAdapter
+from factory.adapters.discord.discord_audio import handle_audio
+from factory.core.auth.trust import TrustLevel
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -79,7 +79,7 @@ async def test_dc_voice_routes_via_pipeline_not_direct_push() -> None:
     mock_pipeline.run = AsyncMock(return_value=None)
 
     # handle_audio shares discord_inbound._pipeline (single pipeline per adapter)
-    with patch("lyra.adapters.discord.discord_inbound._pipeline", mock_pipeline):
+    with patch("factory.adapters.discord.discord_inbound._pipeline", mock_pipeline):
         await handle_audio(adapter, message, audio_attachment, TrustLevel.PUBLIC)
 
     # Assert: pipeline.run was called exactly once
@@ -116,7 +116,7 @@ async def test_dc_eager_read_and_pending_attachment_routed() -> None:
     mock_pipeline.run = AsyncMock(side_effect=_capture_run)
 
     # handle_audio shares discord_inbound._pipeline (single pipeline per adapter)
-    with patch("lyra.adapters.discord.discord_inbound._pipeline", mock_pipeline):
+    with patch("factory.adapters.discord.discord_inbound._pipeline", mock_pipeline):
         await handle_audio(adapter, message, audio_attachment, TrustLevel.PUBLIC)
 
     # Attachment was read eagerly (synchronously in the handler).
@@ -153,7 +153,7 @@ async def test_dc_too_large_reply_no_pipeline() -> None:
     mock_pipeline = MagicMock()
     mock_pipeline.run = AsyncMock(return_value=None)
 
-    with patch("lyra.adapters.discord.discord_inbound._pipeline", mock_pipeline):
+    with patch("factory.adapters.discord.discord_inbound._pipeline", mock_pipeline):
         await handle_audio(adapter, message, oversized, TrustLevel.PUBLIC)
 
     # (a) Reply was sent
@@ -191,7 +191,7 @@ async def test_dc_download_failed_reply_no_pipeline() -> None:
     mock_pipeline = MagicMock()
     mock_pipeline.run = AsyncMock(return_value=None)
 
-    with patch("lyra.adapters.discord.discord_inbound._pipeline", mock_pipeline):
+    with patch("factory.adapters.discord.discord_inbound._pipeline", mock_pipeline):
         await handle_audio(adapter, message, attachment, TrustLevel.PUBLIC)
 
     # (a) Reply was sent
@@ -230,7 +230,7 @@ async def test_dc_invalid_magic_reply_no_pipeline() -> None:
     mock_pipeline = MagicMock()
     mock_pipeline.run = AsyncMock(return_value=None)
 
-    with patch("lyra.adapters.discord.discord_inbound._pipeline", mock_pipeline):
+    with patch("factory.adapters.discord.discord_inbound._pipeline", mock_pipeline):
         await handle_audio(adapter, message, attachment, TrustLevel.PUBLIC)
 
     # (a) Reply was sent

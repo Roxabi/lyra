@@ -18,22 +18,22 @@ from typing import TYPE_CHECKING, cast
 from unittest.mock import MagicMock
 
 if TYPE_CHECKING:
-    from lyra.core.hub.hub_protocol import ChannelAdapter
+    from factory.core.hub.hub_protocol import ChannelAdapter
 
 import pytest
 
-from lyra.core.agent import Agent, AgentBase
-from lyra.core.commands.builtin_commands import HelpCommandDeps
-from lyra.core.commands.command_loader import CommandLoader
-from lyra.core.commands.command_parser import CommandParser
-from lyra.core.commands.command_router import CommandRouter, CommandRouterDeps
-from lyra.core.messaging.message import (
+from factory.core.agent import Agent, AgentBase
+from factory.core.commands.builtin_commands import HelpCommandDeps
+from factory.core.commands.command_loader import CommandLoader
+from factory.core.commands.command_parser import CommandParser
+from factory.core.commands.command_router import CommandRouter, CommandRouterDeps
+from factory.core.messaging.message import (
     InboundMessage,
     OutboundMessage,
     Platform,
     Response,
 )
-from lyra.core.pool import Pool
+from factory.core.pool import Pool
 
 from .conftest import make_echo_plugin_dir, make_message, make_router, push_to_hub
 
@@ -130,7 +130,7 @@ class TestBangPrefixFallthrough:
                 process_calls.append(msg)
                 return Response(content="agent reply")
 
-        hub_mod = __import__("lyra.core.hub", fromlist=["Hub"])
+        hub_mod = __import__("factory.core.hub", fromlist=["Hub"])
         Hub = hub_mod.Hub
         hub = Hub()
         config = Agent(name="lyra", system_prompt="", memory_namespace="lyra")
@@ -244,7 +244,7 @@ class TestBareUrlDetection:
         from unittest.mock import AsyncMock
         from unittest.mock import MagicMock as MM
 
-        from lyra.integrations.base import SessionTools
+        from factory.integrations.base import SessionTools
 
         router = make_router(tmp_path)
         handler = AsyncMock(return_value=Response(content="added"))
@@ -321,7 +321,7 @@ class TestSessionCommands:
     ):
         from unittest.mock import AsyncMock, MagicMock
 
-        from lyra.integrations.base import SessionTools
+        from factory.integrations.base import SessionTools
 
         router = make_router(tmp_path)
         router._session_driver = driver or MagicMock()
@@ -359,7 +359,7 @@ class TestSessionCommands:
     ) -> None:
         from unittest.mock import AsyncMock, MagicMock
 
-        from lyra.integrations.base import SessionTools
+        from factory.integrations.base import SessionTools
 
         router = make_router(tmp_path)
         router._session_driver = None
@@ -381,7 +381,7 @@ class TestSessionCommands:
     ) -> None:
         import asyncio
 
-        from lyra.integrations.base import SessionTools
+        from factory.integrations.base import SessionTools
 
         router = make_router(tmp_path)
         router._session_driver = MagicMock()
@@ -404,7 +404,7 @@ class TestSessionCommands:
     def test_register_conflict_with_builtin_raises(self, tmp_path: Path) -> None:
         from unittest.mock import AsyncMock, MagicMock
 
-        from lyra.integrations.base import SessionTools
+        from factory.integrations.base import SessionTools
 
         router = make_router(tmp_path)
         handler = AsyncMock(return_value=Response(content="x"))
@@ -415,7 +415,7 @@ class TestSessionCommands:
     def test_register_conflict_with_plugin_raises(self, tmp_path: Path) -> None:
         from unittest.mock import AsyncMock, MagicMock
 
-        from lyra.integrations.base import SessionTools
+        from factory.integrations.base import SessionTools
 
         router = make_router(tmp_path)  # has echo plugin
         handler = AsyncMock(return_value=Response(content="x"))
@@ -426,8 +426,8 @@ class TestSessionCommands:
     def test_help_includes_session_commands_section(self, tmp_path: Path) -> None:
         from unittest.mock import AsyncMock, MagicMock
 
-        from lyra.core.commands.builtin_commands import help_command
-        from lyra.integrations.base import SessionTools
+        from factory.core.commands.builtin_commands import help_command
+        from factory.integrations.base import SessionTools
 
         router = make_router(tmp_path)
         handler = AsyncMock(return_value=Response(content="x"))
@@ -452,8 +452,8 @@ class TestSessionCommands:
         self, tmp_path: Path
     ) -> None:
         """Processor cmds gated by passthroughs in /help (#359)."""
-        from lyra.core.commands.builtin_commands import help_command
-        from lyra.core.processors.processor_registry import (
+        from factory.core.commands.builtin_commands import help_command
+        from factory.core.processors.processor_registry import (
             BaseProcessor,
             ProcessorEntry,
             registry,
@@ -516,7 +516,7 @@ class TestSessionCommands:
     @pytest.mark.asyncio
     async def test_help_dispatch_passes_passthroughs(self, tmp_path: Path) -> None:
         """Router dispatch /help passes passthroughs to help_command (#359)."""
-        from lyra.core.processors.processor_registry import (
+        from factory.core.processors.processor_registry import (
             BaseProcessor,
             ProcessorEntry,
             registry,
@@ -546,7 +546,7 @@ class TestSessionCommands:
         import asyncio as _asyncio
         from unittest.mock import MagicMock
 
-        from lyra.integrations.base import SessionTools
+        from factory.integrations.base import SessionTools
 
         received_args: list[list[str]] = []
 

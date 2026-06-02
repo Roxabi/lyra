@@ -77,9 +77,9 @@ At least one section must be present. A missing section logs a warning and disab
 
 ### Implementation — ✅ Shipped (#151, refactored #313/#314)
 
-- [x] `Authenticator` (identity resolver) in `src/lyra/core/auth/authenticator.py`
-- [x] `GuardChain` (composable guard pipeline) in `src/lyra/core/auth/guard.py`
-- [x] `TrustLevel` enum in `src/lyra/core/auth/trust.py`
+- [x] `Authenticator` (identity resolver) in `src/factory/core/auth/authenticator.py`
+- [x] `GuardChain` (composable guard pipeline) in `src/factory/core/auth/guard.py`
+- [x] `TrustLevel` enum in `src/factory/core/auth/trust.py`
 - [x] Config-driven trust_map (TOML), parsed in src/lyra/core/auth.py
 - [x] Integrated in TelegramAdapter + DiscordAdapter
 - [x] CLIAdapter (trust = OWNER by default)
@@ -151,7 +151,7 @@ COMMAND_ROUTING = {
 
 `CommandParser` is shipped and wired into `middleware_pool.py` and Discord voice commands. The ComplexityEstimator / SmartRoutingDecorator exists in code but is disabled: `smart_routing.enabled=true` is rejected by the validator and `create` wizard. Model selection is fixed per agent config. The `COMPLEXITY_TO_MODEL` routing table below is therefore not active.
 
-- [x] `CommandParser` + `CommandContext` — `src/lyra/core/commands/command_parser.py`
+- [x] `CommandParser` + `CommandContext` — `src/factory/core/commands/command_parser.py`
 - [x] Command routing in `CommandRouter`
 - [ ] ComplexityEstimator with configurable signals — code exists, wiring disabled
 - [ ] `COMPLEXITY_TO_MODEL` mapping in config — not active
@@ -187,7 +187,7 @@ Every NATS identity must connect with `inbox_prefix="_INBOX.<identity-name>"`. T
 
 ### Security event audit
 
-`CliPool` subprocess spawns (carrying `skip_permissions`, tools allowlist, model, PID, pool_id, agent_name) are audited via a port/adapter split that respects import layer boundaries. `AuditSink` is a `Protocol` defined in `lyra.core.cli` — the port. `JetStreamAuditSink` in `lyra.infrastructure.audit` is the concrete adapter; it publishes `SecurityEvent` (a `roxabi-contracts` Pydantic model) to the `LYRA_AUDIT` JetStream stream (`lyra.audit.>`, FILE storage, 90-day retention, 1 GiB cap). When JetStream is unavailable, the sink falls back to the lyra.security logger without crashing the runtime. Both `hub_standalone.py` and the unified `lyra start` bootstrap (`wiring_helpers.py:309`) wire the sink. → ADR-057
+`CliPool` subprocess spawns (carrying `skip_permissions`, tools allowlist, model, PID, pool_id, agent_name) are audited via a port/adapter split that respects import layer boundaries. `AuditSink` is a `Protocol` defined in `factory.core.cli` — the port. `JetStreamAuditSink` in `factory.infrastructure.audit` is the concrete adapter; it publishes `SecurityEvent` (a `roxabi-contracts` Pydantic model) to the `LYRA_AUDIT` JetStream stream (`lyra.audit.>`, FILE storage, 90-day retention, 1 GiB cap). When JetStream is unavailable, the sink falls back to the lyra.security logger without crashing the runtime. Both `hub_standalone.py` and the unified `lyra start` bootstrap (`wiring_helpers.py:309`) wire the sink. → ADR-057
 
 ### ACL request/reply derivation
 

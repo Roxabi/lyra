@@ -36,7 +36,7 @@ domain to parity with voice (ADR-044) and image (ADR-046/050).
 
 - Canonical envelopes (`LlmRequest`, `LlmChunkEvent`, `LlmResponse`) and subject
   constants already exist in `roxabi-contracts` — must use them, not re-define
-- ACL regeneration uses `sudo lyra-acl genkeys --regenerate` — YAML source is
+- ACL regeneration uses `sudo factory-acl genkeys --regenerate` — YAML source is
   the SSoT, `auth.conf` is generated
 - Coordinated merge with llmCLI #12: either PR alone leaves the harness path
   red (this PR alone = no responder; llmCLI #12 alone = ACL still blocks) — both

@@ -123,7 +123,7 @@ def test_ble001_cli_toplevel_suggests_boundary_broad_catch(
 ) -> None:
     """BLE001 in cli_*.py -> DEBT:boundary-broad-catch, fix_class=easy."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/cli/cli_main.py"
+    sp = "src/factory/cli/cli_main.py"
     _src(tmp_path, sp, "def handle():  # noqa: BLE001\n    pass\n")
     _write_report(rpt, [_row(sp, "BLE001")])
 
@@ -141,7 +141,7 @@ def test_ble001_cli_toplevel_suggests_boundary_broad_catch(
 def test_b008_typer_option_suggests_typer_default_option(tmp_path: Path) -> None:
     """B008 on line with typer.Option( -> DEBT:typer-default-option, easy."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/cli/args.py"
+    sp = "src/factory/cli/args.py"
     _src(
         tmp_path,
         sp,
@@ -166,7 +166,7 @@ def test_plr0913_wiring_path_suggests_wiring_bootstrap_deps(
 ) -> None:
     """PLR0913 in bootstrap/* -> DEBT:wiring-bootstrap-deps, easy."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/bootstrap/wire.py"
+    sp = "src/factory/bootstrap/wire.py"
     _src(tmp_path, sp, "def build(a, b, c, d, e, f, g):  # noqa: PLR0913\n    pass\n")
     _write_report(rpt, [_row(sp, "PLR0913")])
 
@@ -187,7 +187,7 @@ def test_c901_migration_function_suggests_migration_sequence(
 ) -> None:
     """C901 on def _atomic_*(...): -> DEBT:migration-sequence-bootstrap, medium."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/db/migrations.py"
+    sp = "src/factory/db/migrations.py"
     _src(
         tmp_path,
         sp,
@@ -210,8 +210,8 @@ def test_c901_migration_function_suggests_migration_sequence(
 def test_f401_in_init_is_reexport_legacy(tmp_path: Path) -> None:
     """F401 in __init__.py -> DEBT:re-export-init (Rule 5)."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/x/__init__.py"
-    _src(tmp_path, sp, "from lyra.x.impl import Foo  # noqa: F401\n")
+    sp = "src/factory/x/__init__.py"
+    _src(tmp_path, sp, "from factory.x.impl import Foo  # noqa: F401\n")
     _write_report(rpt, [_row(sp, "F401")])
 
     cp = _run(tmp_path, rpt)
@@ -231,24 +231,24 @@ def test_classification_ratio_above_80pct(tmp_path: Path) -> None:
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
     rows: list[dict[str, Any]] = []
     for i in range(2):
-        p = f"src/lyra/cli/cli_cmd{i}.py"
+        p = f"src/factory/cli/cli_cmd{i}.py"
         _src(tmp_path, p, "def h():  # noqa: BLE001\n    pass\n")
         rows.append(_row(p, "BLE001"))
     for i in range(2):
-        p = f"src/lyra/cli/opt{i}.py"
+        p = f"src/factory/cli/opt{i}.py"
         _src(tmp_path, p, "def cmd(x=typer.Option(0)):  # noqa: B008\n    pass\n")
         rows.append(_row(p, "B008"))
     for i in range(2):
-        p = f"src/lyra/bootstrap/wire{i}.py"
+        p = f"src/factory/bootstrap/wire{i}.py"
         _src(tmp_path, p, "def w(a,b,c,d,e,f,g):  # noqa: PLR0913\n    pass\n")
         rows.append(_row(p, "PLR0913"))
     for i in range(2):
-        p = f"src/lyra/db/mig{i}.py"
+        p = f"src/factory/db/mig{i}.py"
         _src(tmp_path, p, f"def _atomic_step{i}(x):  # noqa: C901\n    pass\n")
         rows.append(_row(p, "C901"))
     for i in range(2):
-        p = f"src/lyra/mod{i}/__init__.py"
-        _src(tmp_path, p, "from lyra.x import Foo  # noqa: F401\n")
+        p = f"src/factory/mod{i}/__init__.py"
+        _src(tmp_path, p, "from factory.x import Foo  # noqa: F401\n")
         rows.append(_row(p, "F401"))
     _write_report(rpt, rows)
 
@@ -268,7 +268,7 @@ def test_apply_writes_inline_debt_suffix(tmp_path: Path) -> None:
     """--apply writes the inline DEBT:<slug> suffix on UNTAGGED rows."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
     _debt_dir(tmp_path)
-    sp = "src/lyra/cli/cli_main.py"
+    sp = "src/factory/cli/cli_main.py"
     _src(tmp_path, sp, "def h():  # noqa: BLE001\n    pass\n")
     _write_report(rpt, [_row(sp, "BLE001")])
 
@@ -289,7 +289,7 @@ def test_apply_is_idempotent(tmp_path: Path) -> None:
     """
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
     _debt_dir(tmp_path)
-    sp = "src/lyra/cli/cli_main.py"
+    sp = "src/factory/cli/cli_main.py"
     _src(tmp_path, sp, "def h():  # noqa: BLE001\n    pass\n")
     _write_report(rpt, [_row(sp, "BLE001")])
 
@@ -329,7 +329,7 @@ def test_apply_produces_drain_queue_with_cap(tmp_path: Path) -> None:
     _debt_dir(tmp_path)
     rows: list[dict[str, Any]] = []
     for i in range(55):
-        p = f"src/lyra/bootstrap/wire{i}.py"
+        p = f"src/factory/bootstrap/wire{i}.py"
         _src(tmp_path, p, "def w(a,b,c,d,e,f,g):  # noqa: PLR0913\n    pass\n")
         rows.append(_row(p, "PLR0913"))
     _write_report(rpt, rows)
@@ -353,9 +353,9 @@ def test_apply_produces_drain_queue_with_cap(tmp_path: Path) -> None:
 
 
 def test_ble001_adapter_path_is_boundary_broad_catch(tmp_path: Path) -> None:
-    """BLE001 in src/lyra/adapters/* -> DEBT:boundary-broad-catch, easy."""
+    """BLE001 in src/factory/adapters/* -> DEBT:boundary-broad-catch, easy."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/adapters/telegram/handler.py"
+    sp = "src/factory/adapters/telegram/handler.py"
     _src(tmp_path, sp, "def run():  # noqa: BLE001\n    pass\n")
     _write_report(rpt, [_row(sp, "BLE001")])
 
@@ -372,9 +372,9 @@ def test_ble001_adapter_path_is_boundary_broad_catch(tmp_path: Path) -> None:
 
 
 def test_ble001_bootstrap_path_is_boundary_broad_catch(tmp_path: Path) -> None:
-    """BLE001 in src/lyra/bootstrap/* -> DEBT:boundary-broad-catch, easy."""
+    """BLE001 in src/factory/bootstrap/* -> DEBT:boundary-broad-catch, easy."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/bootstrap/startup.py"
+    sp = "src/factory/bootstrap/startup.py"
     _src(tmp_path, sp, "def start():  # noqa: BLE001\n    pass\n")
     _write_report(rpt, [_row(sp, "BLE001")])
 
@@ -393,7 +393,7 @@ def test_ble001_hub_listener_basename_is_boundary_broad_catch(
 ) -> None:
     """BLE001 in hub_events.py -> DEBT:boundary-broad-catch (hub_* match)."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/core/hub_events.py"
+    sp = "src/factory/core/hub_events.py"
     _src(tmp_path, sp, "def listen():  # noqa: BLE001\n    pass\n")
     _write_report(rpt, [_row(sp, "BLE001")])
 
@@ -410,7 +410,7 @@ def test_ble001_hub_listener_basename_is_boundary_broad_catch(
 def test_ble001_nats_listener_is_boundary_broad_catch(tmp_path: Path) -> None:
     """BLE001 in nats_outbound_listener.py -> DEBT:boundary-broad-catch."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/adapters/nats/nats_outbound_listener.py"
+    sp = "src/factory/adapters/nats/nats_outbound_listener.py"
     _src(tmp_path, sp, "def consume():  # noqa: BLE001\n    pass\n")
     _write_report(rpt, [_row(sp, "BLE001")])
 
@@ -427,7 +427,7 @@ def test_ble001_nats_listener_is_boundary_broad_catch(tmp_path: Path) -> None:
 def test_ble001_fallback_is_boundary_broad_catch(tmp_path: Path) -> None:
     """BLE001 anywhere -> DEBT:boundary-broad-catch (rule-only fallback)."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/core/utils.py"
+    sp = "src/factory/core/utils.py"
     _src(tmp_path, sp, "def helper():  # noqa: BLE001\n    pass\n")
     _write_report(rpt, [_row(sp, "BLE001")])
 
@@ -451,7 +451,7 @@ def test_plr0913_dispatcher_basename_is_wiring_bootstrap_deps(
 ) -> None:
     """PLR0913 in *_dispatch.py -> DEBT:wiring-bootstrap-deps, easy."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/core/message_dispatch.py"
+    sp = "src/factory/core/message_dispatch.py"
     _src(tmp_path, sp, "def route(a,b,c,d,e,f,g):  # noqa: PLR0913\n    pass\n")
     _write_report(rpt, [_row(sp, "PLR0913")])
 
@@ -472,7 +472,7 @@ def test_plr0913_builder_basename_is_wiring_bootstrap_deps(
 ) -> None:
     """PLR0913 in agent_builder.py -> DEBT:wiring-bootstrap-deps."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/agents/agent_builder.py"
+    sp = "src/factory/agents/agent_builder.py"
     _src(tmp_path, sp, "def build(a,b,c,d,e,f,g):  # noqa: PLR0913\n    pass\n")
     _write_report(rpt, [_row(sp, "PLR0913")])
 
@@ -491,7 +491,7 @@ def test_plr0913_authenticator_basename_is_wiring_bootstrap_deps(
 ) -> None:
     """PLR0913 in authenticator.py -> DEBT:wiring-bootstrap-deps."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/core/authenticator.py"
+    sp = "src/factory/core/authenticator.py"
     _src(tmp_path, sp, "def auth(a,b,c,d,e,f,g):  # noqa: PLR0913\n    pass\n")
     _write_report(rpt, [_row(sp, "PLR0913")])
 
@@ -508,7 +508,7 @@ def test_plr0913_authenticator_basename_is_wiring_bootstrap_deps(
 def test_plr0913_fallback_is_wiring_bootstrap_deps(tmp_path: Path) -> None:
     """PLR0913 anywhere -> DEBT:wiring-bootstrap-deps (rule-only fallback)."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/core/processor.py"
+    sp = "src/factory/core/processor.py"
     _src(tmp_path, sp, "def do(a,b,c,d,e,f,g):  # noqa: PLR0913\n    pass\n")
     _write_report(rpt, [_row(sp, "PLR0913")])
 
@@ -532,7 +532,7 @@ def test_c901_bootstrap_main_is_migration_sequence_bootstrap(
 ) -> None:
     """C901 on def main() in bootstrap/** -> DEBT:migration-sequence-bootstrap."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/bootstrap/entry.py"
+    sp = "src/factory/bootstrap/entry.py"
     _src(tmp_path, sp, "def main():  # noqa: C901\n    pass\n")
     _write_report(rpt, [_row(sp, "C901")])
 
@@ -551,7 +551,7 @@ def test_c901_bootstrap_standalone_is_migration_sequence_bootstrap(
 ) -> None:
     """C901 on def hub_standalone() in bootstrap/** -> migration-sequence-bootstrap."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/bootstrap/hub.py"
+    sp = "src/factory/bootstrap/hub.py"
     _src(tmp_path, sp, "def hub_standalone():  # noqa: C901\n    pass\n")
     _write_report(rpt, [_row(sp, "C901")])
 
@@ -568,7 +568,7 @@ def test_c901_bootstrap_standalone_is_migration_sequence_bootstrap(
 def test_c901_dispatcher_basename_is_wiring_bootstrap_deps(tmp_path: Path) -> None:
     """C901 in message_pipeline.py -> DEBT:wiring-bootstrap-deps (dispatcher)."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/core/message_pipeline.py"
+    sp = "src/factory/core/message_pipeline.py"
     _src(tmp_path, sp, "def process():  # noqa: C901\n    pass\n")
     _write_report(rpt, [_row(sp, "C901")])
 
@@ -585,7 +585,7 @@ def test_c901_dispatcher_basename_is_wiring_bootstrap_deps(tmp_path: Path) -> No
 def test_c901_unrelated_path_falls_back_to_complexity_residual(tmp_path: Path) -> None:
     """C901 in a non-bootstrap, non-dispatcher path -> DEBT:complexity-residual."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/core/helpers.py"
+    sp = "src/factory/core/helpers.py"
     _src(tmp_path, sp, "def complex_helper():  # noqa: C901\n    pass\n")
     _write_report(rpt, [_row(sp, "C901")])
 
@@ -609,7 +609,7 @@ def test_plr0915_bootstrap_main_is_migration_sequence_bootstrap(
 ) -> None:
     """PLR0915 on def main() in bootstrap/** -> migration-sequence-bootstrap."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/bootstrap/runner.py"
+    sp = "src/factory/bootstrap/runner.py"
     _src(tmp_path, sp, "def main():  # noqa: PLR0915\n    pass\n")
     _write_report(rpt, [_row(sp, "PLR0915")])
 
@@ -627,7 +627,7 @@ def test_plr0915_bootstrap_main_is_migration_sequence_bootstrap(
 def test_plr0915_dispatcher_path_is_wiring_bootstrap_deps(tmp_path: Path) -> None:
     """PLR0915 in event_emitter.py -> DEBT:wiring-bootstrap-deps."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/core/event_emitter.py"
+    sp = "src/factory/core/event_emitter.py"
     _src(tmp_path, sp, "def emit():  # noqa: PLR0915\n    pass\n")
     _write_report(rpt, [_row(sp, "PLR0915")])
 
@@ -646,7 +646,7 @@ def test_plr0915_fallback_is_complexity_residual(
 ) -> None:
     """PLR0915 in non-bootstrap, non-dispatcher path -> complexity-residual."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/core/utils.py"
+    sp = "src/factory/core/utils.py"
     _src(tmp_path, sp, "def do_stuff():  # noqa: PLR0915\n    pass\n")
     _write_report(rpt, [_row(sp, "PLR0915")])
 
@@ -668,8 +668,8 @@ def test_plr0915_fallback_is_complexity_residual(
 def test_f401_in_init_is_reexport_init(tmp_path: Path) -> None:
     """F401 in __init__.py -> DEBT:re-export-init, easy (was needs_review)."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/x/__init__.py"
-    _src(tmp_path, sp, "from lyra.x.impl import Foo  # noqa: F401\n")
+    sp = "src/factory/x/__init__.py"
+    _src(tmp_path, sp, "from factory.x.impl import Foo  # noqa: F401\n")
     _write_report(rpt, [_row(sp, "F401")])
 
     cp = _run(tmp_path, rpt)
@@ -687,8 +687,8 @@ def test_f401_in_init_is_reexport_init(tmp_path: Path) -> None:
 def test_f401_not_in_init_is_reexport_init(tmp_path: Path) -> None:
     """F401 anywhere -> DEBT:re-export-init (rule-only classification)."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/core/types.py"
-    _src(tmp_path, sp, "from lyra.x.impl import Foo  # noqa: F401\n")
+    sp = "src/factory/core/types.py"
+    _src(tmp_path, sp, "from factory.x.impl import Foo  # noqa: F401\n")
     _write_report(rpt, [_row(sp, "F401")])
 
     cp = _run(tmp_path, rpt)
@@ -708,7 +708,7 @@ def test_f401_not_in_init_is_reexport_init(tmp_path: Path) -> None:
 def test_e402_is_module_level_patch_fixtures(tmp_path: Path) -> None:
     """E402 -> DEBT:module-level-patch-fixtures, easy."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/core/patching.py"
+    sp = "src/factory/core/patching.py"
     _src(tmp_path, sp, "import os  # noqa: E402\n")
     _write_report(rpt, [_row(sp, "E402")])
 
@@ -727,7 +727,7 @@ def test_e402_is_module_level_patch_fixtures(tmp_path: Path) -> None:
 def test_e402_no_path_filter(tmp_path: Path) -> None:
     """E402 fires regardless of path (no path filter)."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/adapters/discord/setup.py"
+    sp = "src/factory/adapters/discord/setup.py"
     _src(tmp_path, sp, "import sys  # noqa: E402\n")
     _write_report(rpt, [_row(sp, "E402")])
 
@@ -751,7 +751,7 @@ def test_plr0912_bootstrap_entry_is_migration_sequence_bootstrap(
 ) -> None:
     """PLR0912 on def bootstrap_hub() in bootstrap/** -> migration-sequence."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/bootstrap/hub.py"
+    sp = "src/factory/bootstrap/hub.py"
     _src(tmp_path, sp, "def bootstrap_hub():  # noqa: PLR0912\n    pass\n")
     _write_report(rpt, [_row(sp, "PLR0912")])
 
@@ -769,7 +769,7 @@ def test_plr0912_bootstrap_entry_is_migration_sequence_bootstrap(
 def test_plr0912_dispatcher_is_wiring_bootstrap_deps(tmp_path: Path) -> None:
     """PLR0912 in outbound_processor.py -> DEBT:wiring-bootstrap-deps."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/core/outbound_processor.py"
+    sp = "src/factory/core/outbound_processor.py"
     _src(tmp_path, sp, "def route():  # noqa: PLR0912\n    pass\n")
     _write_report(rpt, [_row(sp, "PLR0912")])
 
@@ -793,7 +793,7 @@ def test_report_unnecessary_isinstance_is_defensive_narrow(
 ) -> None:
     """reportUnnecessaryIsInstance -> DEBT:defensive-narrow-payloads, easy."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/core/types.py"
+    sp = "src/factory/core/types.py"
     _src(
         tmp_path,
         sp,
@@ -820,7 +820,7 @@ def test_report_unused_class_is_protocol_private_ducktyping(
 ) -> None:
     """reportUnusedClass -> DEBT:protocol-private-ducktyping, easy."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/core/protocols.py"
+    sp = "src/factory/core/protocols.py"
     _src(
         tmp_path,
         sp,
@@ -843,7 +843,7 @@ def test_report_unused_class_is_protocol_private_ducktyping(
 def test_union_attr_is_defensive_narrow_payloads(tmp_path: Path) -> None:
     """union-attr -> DEBT:defensive-narrow-payloads, easy."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/core/resolver.py"
+    sp = "src/factory/core/resolver.py"
     _src(tmp_path, sp, "x.method()  # type: ignore[union-attr]\n")
     _write_report(rpt, [_row(sp, "union-attr")])
 
@@ -862,7 +862,7 @@ def test_union_attr_is_defensive_narrow_payloads(tmp_path: Path) -> None:
 def test_misc_type_ignore_is_defensive_narrow_payloads(tmp_path: Path) -> None:
     """misc (type: ignore[misc]) -> DEBT:defensive-narrow-payloads, easy."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/core/compat.py"
+    sp = "src/factory/core/compat.py"
     _src(tmp_path, sp, "result = fn()  # type: ignore[misc]\n")
     _write_report(rpt, [_row(sp, "misc")])
 
@@ -886,7 +886,7 @@ def test_misc_type_ignore_is_defensive_narrow_payloads(tmp_path: Path) -> None:
 def test_plc0415_is_deferred_import_debt(tmp_path: Path) -> None:
     """PLC0415 -> DEBT:plc0415-deferred-import, easy."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/core/lazy.py"
+    sp = "src/factory/core/lazy.py"
     _src(
         tmp_path,
         sp,
@@ -910,7 +910,7 @@ def test_plc0415_apply_creates_debt_registry(tmp_path: Path) -> None:
     """--apply with PLC0415 creates artifacts/debt/plc0415-deferred-import.md."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
     _debt_dir(tmp_path)
-    sp = "src/lyra/core/lazy.py"
+    sp = "src/factory/core/lazy.py"
     _src(
         tmp_path,
         sp,
@@ -943,7 +943,7 @@ def _run_json(root: Path, report: Path) -> subprocess.CompletedProcess[str]:
 def test_json_mode_emits_valid_json_array(tmp_path: Path) -> None:
     """--dry-run --json emits a JSON array, not TSV."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/cli/cli_main.py"
+    sp = "src/factory/cli/cli_main.py"
     _src(tmp_path, sp, "def h():  # noqa: BLE001\n    pass\n")
     _write_report(rpt, [_row(sp, "BLE001")])
 
@@ -963,7 +963,7 @@ def test_json_mode_emits_valid_json_array(tmp_path: Path) -> None:
 def test_json_mode_no_tsv_header(tmp_path: Path) -> None:
     """--dry-run --json stdout contains no TSV 'path\\tline' header line."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/bootstrap/startup.py"
+    sp = "src/factory/bootstrap/startup.py"
     _src(tmp_path, sp, "def start():  # noqa: BLE001\n    pass\n")
     _write_report(rpt, [_row(sp, "BLE001")])
 
@@ -977,7 +977,7 @@ def test_json_mode_no_tsv_header(tmp_path: Path) -> None:
 def test_json_mode_needs_review_rows_included(tmp_path: Path) -> None:
     """--dry-run --json includes needs_review rows with empty suggestion."""
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
-    sp = "src/lyra/core/utils.py"
+    sp = "src/factory/core/utils.py"
     # Use an unknown rule so it falls to needs_review (every known rule classifies).
     _src(tmp_path, sp, "x = 1  # noqa: UNKNOWN999\n")
     _write_report(rpt, [_row(sp, "UNKNOWN999")])
@@ -1033,7 +1033,7 @@ def test_apply_writes_once_for_multiple_debt_tags(tmp_path: Path) -> None:
     # Arrange
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
     _debt_dir(tmp_path)
-    sp = "src/lyra/cli/cli_cmd.py"
+    sp = "src/factory/cli/cli_cmd.py"
     # Two BLE001 violations on separate lines -> DEBT:boundary-broad-catch
     _src(
         tmp_path,
@@ -1083,7 +1083,7 @@ def test_apply_dedup_guard_fires_on_duplicate_line(tmp_path: Path) -> None:
     # Arrange
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
     _debt_dir(tmp_path)
-    sp = "src/lyra/cli/cli_main.py"
+    sp = "src/factory/cli/cli_main.py"
     # Source file: single BLE001 noqa on line 1
     _src(tmp_path, sp, "def h():  # noqa: BLE001\n    pass\n")
     # Report: TWO rows both pointing at line 1 of the same file
@@ -1127,7 +1127,7 @@ def test_drain_queue_carries_reason_field(tmp_path: Path) -> None:
     # Arrange
     rpt = tmp_path / "artifacts" / "quality-debt-report.json"
     _debt_dir(tmp_path)
-    sp = "src/lyra/bootstrap/wire.py"
+    sp = "src/factory/bootstrap/wire.py"
     _src(tmp_path, sp, "def build(a, b, c, d, e, f, g):  # noqa: PLR0913\n    pass\n")
     _write_report(rpt, [_row(sp, "PLR0913")])
 
@@ -1199,7 +1199,7 @@ def test_apply_does_not_write_outside_root(tmp_path: Path) -> None:
     relative_escape = f"../escape_target_{tmp_path.name}/should_not_be_written.py"
 
     # Also plant a legitimate row so the apply path has something to do
-    sp = "src/lyra/cli/cli_main.py"
+    sp = "src/factory/cli/cli_main.py"
     _src(tmp_path, sp, "def h():  # noqa: BLE001\n    pass\n")
     _write_report(
         rpt,

@@ -1,7 +1,7 @@
 [project]
-name = "lyra"
+name = "factory"
 version = "0.2.1"
-description = "Lyra by Roxabi — Personal AI agent engine"
+description = "Roxabi Factory — Personal AI agent engine"
 license = { text = "AGPL-3.0-or-later" }
 requires-python = ">=3.12,<3.13"
 dependencies = [
@@ -33,13 +33,13 @@ dependencies = [
 ]
 
 [project.scripts]
-lyra = "lyra.cli:lyra_main"
-lyra-agent = "lyra.cli:agent_main"
-lyra-acl = "scripts.gen_nkeys:main"
-lyra-genkeys = "scripts.gen_nkeys:alias_genkeys"
-lyra-check-acl-retired = "scripts.gen_nkeys:_check_retired"
-lyra-check-flows = "scripts.gen_nkeys:_check_flows"
-lyra-check-grants = "scripts.gen_nkeys:_check_grants"
+factory = "factory.cli:factory_main"
+factory-agent = "factory.cli:agent_main"
+factory-acl = "scripts.gen_nkeys:main"
+factory-genkeys = "scripts.gen_nkeys:alias_genkeys"
+factory-check-acl-retired = "scripts.gen_nkeys:_check_retired"
+factory-check-flows = "scripts.gen_nkeys:_check_flows"
+factory-check-grants = "scripts.gen_nkeys:_check_grants"
 
 [build-system]
 requires = ["hatchling"]
@@ -84,7 +84,7 @@ roxabi-blobs = { workspace = true }
 roxabi-vault = { git = "https://github.com/Roxabi/roxabi-vault.git", branch = "staging" }
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/lyra", "scripts"]
+packages = ["src/factory", "scripts"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -96,7 +96,7 @@ filterwarnings = [
     "ignore:websockets.legacy is deprecated:DeprecationWarning",
     "ignore:websockets.server.WebSocketServerProtocol is deprecated:DeprecationWarning",
     # Temporary suppression — remove when #1035 lands (module deletion)
-    "ignore:lyra.monitoring is deprecated:DeprecationWarning",
+    "ignore:factory.monitoring is deprecated:DeprecationWarning",
 ]
 markers = [
     "nats_integration: NATS integration tests requiring Docker Compose",
@@ -106,7 +106,7 @@ markers = [
 
 [tool.coverage.run]
 branch = true
-source = ["lyra", "roxabi_nats", "roxabi_contracts", "roxabi_blobs"]
+source = ["factory", "roxabi_nats", "roxabi_contracts", "roxabi_blobs"]
 
 [tool.coverage.report]
 show_missing = true

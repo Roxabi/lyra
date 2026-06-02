@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from lyra.agent_cmd.bots.init import _merge_bots
+from factory.agent_cmd.bots.init import _merge_bots
 
 
 class TestMergeBotsUnknownKey:

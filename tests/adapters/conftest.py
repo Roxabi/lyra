@@ -14,11 +14,11 @@ from unittest.mock import AsyncMock, MagicMock
 import httpx
 import pytest
 
-from lyra.adapters.discord import DiscordAdapter
-from lyra.adapters.telegram import TelegramAdapter
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.core.messaging.message import InboundMessage, TelegramMeta
+from factory.adapters.discord import DiscordAdapter
+from factory.adapters.telegram import TelegramAdapter
+from factory.core.auth.trust import TrustLevel
+from factory.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
+from factory.core.messaging.message import InboundMessage, TelegramMeta
 
 # Backward-compatible re-exports from adapter factories
 from tests.factories.adapters import (  # noqa: F401

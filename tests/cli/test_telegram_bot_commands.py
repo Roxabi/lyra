@@ -12,10 +12,10 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from lyra.cli import agent_app
-from lyra.core.agent.agent_models import AgentRow
-from lyra.core.agent.bot_models import BotRow
-from lyra.infrastructure.stores.agent_store import AgentStore
+from factory.cli import agent_app
+from factory.core.agent.agent_models import AgentRow
+from factory.core.agent.bot_models import BotRow
+from factory.infrastructure.stores.agent_store import AgentStore
 from tests.helpers.bot_store import db_get, db_upsert
 
 runner = CliRunner()
@@ -62,13 +62,13 @@ class TestTelegramList:
         assert "list" in result.output.lower()
 
     def test_empty_db(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(agent_app, ["telegram", "list"])
         assert result.exit_code == 0, result.output
         assert "no telegram bots" in result.output.lower()
 
     def test_with_bots(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="telegram", bot_id="main", agent="lyra"))
         db_upsert(db_path, BotRow(platform="telegram", bot_id="beta", agent="beta"))
@@ -81,7 +81,7 @@ class TestTelegramList:
     def test_ignores_other_platforms(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="discord", bot_id="dc1", agent="lyra"))
 
@@ -106,7 +106,7 @@ class TestTelegramShow:
         assert "bot_id" in result.output.lower()
 
     def test_missing_bot(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(agent_app, ["telegram", "show", "ghost"])
         assert result.exit_code == 1, result.output
         assert "not found" in result.output.lower()
@@ -114,7 +114,7 @@ class TestTelegramShow:
     def test_existing_bot(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(
             db_path,
@@ -136,7 +136,7 @@ class TestTelegramShow:
     def test_invalid_bot_id(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(agent_app, ["telegram", "show", "../../evil"])
         assert result.exit_code == 2, result.output
         assert "invalid" in result.output.lower()
@@ -158,7 +158,7 @@ class TestTelegramAdd:
         assert "bot_id" in result.output.lower()
 
     def test_add_minimal(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(agent_app, ["telegram", "add", "main"])
         assert result.exit_code == 0, result.output
         assert "added" in result.output.lower()
@@ -172,7 +172,7 @@ class TestTelegramAdd:
     def test_add_with_options(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(
             agent_app,
             [
@@ -204,7 +204,7 @@ class TestTelegramAdd:
     def test_add_invalid_bot_id(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(agent_app, ["telegram", "add", "../../evil"])
         assert result.exit_code == 2, result.output
         assert "invalid" in result.output.lower()
@@ -212,7 +212,7 @@ class TestTelegramAdd:
     def test_add_invalid_default_trust(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(
             agent_app,
             ["telegram", "add", "main", "--default-trust", "evil"],
@@ -237,7 +237,7 @@ class TestTelegramEdit:
         assert "bot_id" in result.output.lower()
 
     def test_missing_bot(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(agent_app, ["telegram", "edit", "ghost"])
         assert result.exit_code == 1, result.output
         assert "not found" in result.output.lower()
@@ -246,7 +246,7 @@ class TestTelegramEdit:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """All blank prompts → no changes."""
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="telegram", bot_id="main", agent="lyra"))
 
@@ -259,7 +259,7 @@ class TestTelegramEdit:
             return ""
 
         monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._shared.typer.prompt", _blank_prompt
+            "factory.agent_cmd.platforms._shared.typer.prompt", _blank_prompt
         )
         result = runner.invoke(agent_app, ["telegram", "edit", "main"])
         assert result.exit_code == 0, result.output
@@ -269,7 +269,7 @@ class TestTelegramEdit:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Provide new values for all prompts."""
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(
             db_path,
@@ -308,7 +308,7 @@ class TestTelegramEdit:
             return val
 
         monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._shared.typer.prompt", _seq_prompt
+            "factory.agent_cmd.platforms._shared.typer.prompt", _seq_prompt
         )
         result = runner.invoke(agent_app, ["telegram", "edit", "main"])
         assert result.exit_code == 0, result.output
@@ -329,7 +329,7 @@ class TestTelegramEdit:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Invalid int for thread_hot_hours prints error and skips field."""
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(
             db_path,
@@ -350,7 +350,7 @@ class TestTelegramEdit:
             return val
 
         monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._shared.typer.prompt", _seq_prompt
+            "factory.agent_cmd.platforms._shared.typer.prompt", _seq_prompt
         )
         result = runner.invoke(agent_app, ["telegram", "edit", "main"])
         assert result.exit_code == 0, result.output
@@ -363,7 +363,7 @@ class TestTelegramEdit:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """'-' input clears list fields."""
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(
             db_path,
@@ -388,7 +388,7 @@ class TestTelegramEdit:
             return val
 
         monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._shared.typer.prompt", _seq_prompt
+            "factory.agent_cmd.platforms._shared.typer.prompt", _seq_prompt
         )
         result = runner.invoke(agent_app, ["telegram", "edit", "main"])
         assert result.exit_code == 0, result.output
@@ -416,7 +416,7 @@ class TestTelegramPatch:
         assert "bot_id" in result.output.lower()
 
     def test_missing_bot(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(
             agent_app, ["telegram", "patch", "ghost", "--agent", "x"]
         )
@@ -424,7 +424,7 @@ class TestTelegramPatch:
         assert "not found" in result.output.lower()
 
     def test_patch_agent(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="telegram", bot_id="main", agent="lyra"))
 
@@ -441,7 +441,7 @@ class TestTelegramPatch:
     def test_patch_no_fields(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="telegram", bot_id="main", agent="lyra"))
 
@@ -452,7 +452,7 @@ class TestTelegramPatch:
     def test_patch_owner_users(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="telegram", bot_id="main", agent="lyra"))
 
@@ -469,7 +469,7 @@ class TestTelegramPatch:
     def test_patch_webhook_enabled(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(
             db_path,
@@ -488,7 +488,7 @@ class TestTelegramPatch:
     def test_patch_default_trust(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(
             db_path,
@@ -511,7 +511,7 @@ class TestTelegramPatch:
     def test_patch_auto_thread(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(
             db_path,
@@ -528,7 +528,7 @@ class TestTelegramPatch:
     def test_patch_thread_hot_hours(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(
             db_path,
@@ -548,7 +548,7 @@ class TestTelegramPatch:
     def test_patch_default_trust_invalid(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="telegram", bot_id="main", agent="lyra"))
         result = runner.invoke(
@@ -575,7 +575,7 @@ class TestTelegramRemove:
         assert "bot_id" in result.output.lower()
 
     def test_missing_bot(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(agent_app, ["telegram", "remove", "ghost", "--yes"])
         assert result.exit_code == 1, result.output
         assert "not found" in result.output.lower()
@@ -583,7 +583,7 @@ class TestTelegramRemove:
     def test_remove_with_yes(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="telegram", bot_id="main", agent="lyra"))
 
@@ -597,7 +597,7 @@ class TestTelegramRemove:
     def test_remove_invalid_bot_id(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(agent_app, ["telegram", "remove", "../../evil", "--yes"])
         assert result.exit_code == 2, result.output
         assert "invalid" in result.output.lower()
@@ -606,11 +606,11 @@ class TestTelegramRemove:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Confirm deletion without --yes flag (mock confirm=yes)."""
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="telegram", bot_id="main", agent="lyra"))
         monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._commands.typer.confirm", lambda *a, **k: None
+            "factory.agent_cmd.platforms._commands.typer.confirm", lambda *a, **k: None
         )
         result = runner.invoke(agent_app, ["telegram", "remove", "main"])
         assert result.exit_code == 0, result.output
@@ -622,14 +622,14 @@ class TestTelegramRemove:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Decline deletion without --yes flag (mock confirm=no)."""
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="telegram", bot_id="main", agent="lyra"))
 
         def _no(*a, **k):
             raise typer.Abort()
 
-        monkeypatch.setattr("lyra.agent_cmd.platforms._commands.typer.confirm", _no)
+        monkeypatch.setattr("factory.agent_cmd.platforms._commands.typer.confirm", _no)
         result = runner.invoke(agent_app, ["telegram", "remove", "main"])
         assert result.exit_code == 1, result.output
         row = db_get(db_path, "telegram", "main")
@@ -652,7 +652,7 @@ class TestTelegramAssign:
         assert "bot_id" in result.output.lower()
 
     def test_missing_bot(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(
             agent_app, ["telegram", "assign", "ghost", "--agent", "lyra"]
         )
@@ -660,7 +660,7 @@ class TestTelegramAssign:
         assert "not found" in result.output.lower()
 
     def test_assign(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="telegram", bot_id="main", agent=""))
 
@@ -691,13 +691,13 @@ class TestTelegramUnassign:
         assert "bot_id" in result.output.lower()
 
     def test_missing_bot(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(agent_app, ["telegram", "unassign", "ghost"])
         assert result.exit_code == 1, result.output
         assert "not found" in result.output.lower()
 
     def test_unassign(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(db_path, BotRow(platform="telegram", bot_id="main", agent="lyra"))
 
@@ -726,13 +726,13 @@ class TestTelegramValidate:
         assert "bot_id" in result.output.lower()
 
     def test_missing_bot(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(agent_app, ["telegram", "validate", "ghost"])
         assert result.exit_code == 1, result.output
         assert "not found" in result.output.lower()
 
     def test_validate_ok(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         _seed_agent(db_path, "lyra")
         db_upsert(
@@ -745,10 +745,10 @@ class TestTelegramValidate:
             ),
         )
 
-        secret_name = "lyra-bot-telegram-main"
+        secret_name = "factory-bot-telegram-main"
         mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
+            "factory.agent_cmd.platforms._commands.subprocess.run", mock_run
         )
 
         result = runner.invoke(agent_app, ["telegram", "validate", "main"])
@@ -760,7 +760,7 @@ class TestTelegramValidate:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Bot with no agent assigned skips agent check and still passes."""
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         db_upsert(
             db_path,
@@ -772,10 +772,10 @@ class TestTelegramValidate:
             ),
         )
 
-        secret_name = "lyra-bot-telegram-main"
+        secret_name = "factory-bot-telegram-main"
         mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
+            "factory.agent_cmd.platforms._commands.subprocess.run", mock_run
         )
 
         result = runner.invoke(agent_app, ["telegram", "validate", "main"])
@@ -785,7 +785,7 @@ class TestTelegramValidate:
     def test_validate_no_owners(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         _seed_agent(db_path, "lyra")
         db_upsert(
@@ -798,10 +798,10 @@ class TestTelegramValidate:
             ),
         )
 
-        secret_name = "lyra-bot-telegram-main"
+        secret_name = "factory-bot-telegram-main"
         mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
+            "factory.agent_cmd.platforms._commands.subprocess.run", mock_run
         )
 
         result = runner.invoke(agent_app, ["telegram", "validate", "main"])
@@ -811,7 +811,7 @@ class TestTelegramValidate:
     def test_validate_no_secret(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         _seed_agent(db_path, "lyra")
         db_upsert(
@@ -828,7 +828,7 @@ class TestTelegramValidate:
             return_value=_make_proc(returncode=0, stdout="other-secret")
         )
         monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
+            "factory.agent_cmd.platforms._commands.subprocess.run", mock_run
         )
 
         result = runner.invoke(agent_app, ["telegram", "validate", "main"])
@@ -839,7 +839,7 @@ class TestTelegramValidate:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Agent referenced by bot does not exist in AgentStore."""
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         _seed_agent(db_path, "lyra")
         db_upsert(
@@ -851,10 +851,10 @@ class TestTelegramValidate:
                 owner_users=["alice"],
             ),
         )
-        secret_name = "lyra-bot-telegram-main"
+        secret_name = "factory-bot-telegram-main"
         mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
+            "factory.agent_cmd.platforms._commands.subprocess.run", mock_run
         )
         result = runner.invoke(agent_app, ["telegram", "validate", "main"])
         assert result.exit_code == 1, result.output
@@ -865,7 +865,7 @@ class TestTelegramValidate:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """subprocess.run returns non-zero exit code."""
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         _seed_agent(db_path, "lyra")
         db_upsert(
@@ -879,7 +879,7 @@ class TestTelegramValidate:
         )
         mock_run = MagicMock(return_value=_make_proc(returncode=1, stdout=""))
         monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
+            "factory.agent_cmd.platforms._commands.subprocess.run", mock_run
         )
         result = runner.invoke(agent_app, ["telegram", "validate", "main"])
         assert result.exit_code == 1, result.output
@@ -889,7 +889,7 @@ class TestTelegramValidate:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Validate that subprocess.run was called with correct arguments."""
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         _seed_agent(db_path, "lyra")
         db_upsert(
@@ -901,10 +901,10 @@ class TestTelegramValidate:
                 owner_users=["alice"],
             ),
         )
-        secret_name = "lyra-bot-telegram-main"
+        secret_name = "factory-bot-telegram-main"
         mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
-            "lyra.agent_cmd.platforms._commands.subprocess.run", mock_run
+            "factory.agent_cmd.platforms._commands.subprocess.run", mock_run
         )
         result = runner.invoke(agent_app, ["telegram", "validate", "main"])
         assert result.exit_code == 0, result.output
@@ -926,7 +926,7 @@ class TestTelegramValidate:
     def test_validate_invalid_bot_id(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         result = runner.invoke(agent_app, ["telegram", "validate", "../../evil"])
         assert result.exit_code == 2, result.output
         assert "invalid" in result.output.lower()

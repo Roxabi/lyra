@@ -7,11 +7,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from lyra.core.auth.authenticator import Authenticator, AuthenticatorDeps
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.hub.hub_protocol import Binding, RoutingKey
-from lyra.core.hub.identity_resolver import IdentityResolver
-from lyra.core.messaging.message import InboundMessage, Platform, TelegramMeta
+from factory.core.auth.authenticator import Authenticator, AuthenticatorDeps
+from factory.core.auth.trust import TrustLevel
+from factory.core.hub.hub_protocol import Binding, RoutingKey
+from factory.core.hub.identity_resolver import IdentityResolver
+from factory.core.messaging.message import InboundMessage, Platform, TelegramMeta
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -296,7 +296,7 @@ class TestHubDelegation:
 
     def test_hub_resolve_identity_delegates(self) -> None:
         """Hub.resolve_identity delegates to IdentityResolver."""
-        from lyra.core.hub import Hub
+        from factory.core.hub import Hub
 
         hub = Hub()
         # Register an authenticator
@@ -308,7 +308,7 @@ class TestHubDelegation:
 
     def test_hub_resolve_binding_delegates(self) -> None:
         """Hub.resolve_binding delegates to IdentityResolver."""
-        from lyra.core.hub import Hub
+        from factory.core.hub import Hub
 
         hub = Hub()
         hub.register_binding(
@@ -321,7 +321,7 @@ class TestHubDelegation:
 
     def test_hub_resolve_message_trust_delegates(self) -> None:
         """Hub._resolve_message_trust delegates to IdentityResolver."""
-        from lyra.core.hub import Hub
+        from factory.core.hub import Hub
 
         hub = Hub()
         auth = make_authenticator(default=TrustLevel.TRUSTED)

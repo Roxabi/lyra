@@ -14,7 +14,7 @@ description: Current truth for all store, persistence, and event-bus decisions i
 Covers the five persistence surfaces in Lyra: memory scope (what is actually stored at runtime),
 the agent config store (SQLite, write-through cache), the thread store (Discord thread
 persistence), the blobstore (content-addressed binary archive), and the event bus wiring
-pattern. The hexagonal placement of all stores within `lyra.infrastructure` is canonical in
+pattern. The hexagonal placement of all stores within `factory.infrastructure` is canonical in
 `architecture-patterns.md` — not repeated here.
 
 ## Current state
@@ -118,7 +118,7 @@ async def write(self, user_id: str, content: str, level: MemoryLevel, session_id
 
 ### Agent store (SQLite)
 
-`AgentStore` lives at `lyra.infrastructure.stores.agent_store` (moved from `lyra.core` during
+`AgentStore` lives at `factory.infrastructure.stores.agent_store` (moved from `factory.core` during
 ADR-059 remediation) and inherits from `SqliteStore`. Three tables: `agents`, `bot_agent_map`,
 `agent_runtime_state`. Write ordering is DB-first: `execute` → `commit` → update in-memory
 cache, consistent with `AuthStore`. Cache covers `agents` and `bot_map` (sync `get()` path);
@@ -128,7 +128,7 @@ cache; a closed store must not be reused. → ADR-024
 
 ### DB-first agent config + hot-reload
 
-The SQLite `agents` table is the single runtime source of truth. TOMLs under `src/lyra/agents/`
+The SQLite `agents` table is the single runtime source of truth. TOMLs under `src/factory/agents/`
 are seed-only files, consumed exclusively by `lyra agent init` and `lyra agent validate`. At
 runtime, `AgentBase._maybe_reload()` compares `AgentRow.updated_at` (ISO-8601 string, O(1)
 dict lookup from the `AgentStore` cache) against a locally cached timestamp; on change it calls
@@ -218,8 +218,8 @@ is a violation of this boundary from V8 onwards.
 #### BlobStorePort (ADR-082)
 
 In-process callers (audio paths, inbound attachment ingest) consume blob storage via the
-hexagonal driven-port `BlobStorePort` defined in `src/lyra/core/ports/blobstore.py`. The
-concrete adapter `HttpBlobStoreAdapter` (in `src/lyra/infrastructure/blobstore_adapter.py`)
+hexagonal driven-port `BlobStorePort` defined in `src/factory/core/ports/blobstore.py`. The
+concrete adapter `HttpBlobStoreAdapter` (in `src/factory/infrastructure/blobstore_adapter.py`)
 wraps `HttpBlobStore` and owns the single storage→wire `BlobRef` conversion seam via
 `BlobRef.from_store_ref()`. An empty `store_key` after a live `put()` raises `ValueError`
 immediately — PENDING refs were retired in #1553 and the guard now rejects any empty key.
@@ -293,7 +293,7 @@ guard pattern is gone; the bus is either injected or absent. → ADR-022 (amende
 
 ## See also
 
-- Hex layer canonical (`lyra.infrastructure`) → `architecture-patterns.md` (absorbs ADR-048)
+- Hex layer canonical (`factory.infrastructure`) → `architecture-patterns.md` (absorbs ADR-048)
 - Vault as memory backend → `~/projects/roxabi-vault/`
 - JetStream volume isolation → ADR-067 Neutral + issue #1055
 

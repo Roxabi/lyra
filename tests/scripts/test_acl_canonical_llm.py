@@ -48,7 +48,7 @@ def test_llm_worker_publishes_canonical_heartbeat(matrix: dict) -> None:
 
 
 def test_no_legacy_request_subject_in_auth_conf(auth_conf_text: str) -> None:
-    # quoted "lyra.llm.request" without ".generate." must not appear
+    # quoted "factory.llm.request" without ".generate." must not appear
     assert not re.search(r'"lyra\.llm\.request"', auth_conf_text)
 
 
@@ -61,8 +61,8 @@ def test_matrix_no_legacy_subjects(matrix: dict) -> None:
     for ident, body in matrix["identities"].items():
         for direction in ("publish", "subscribe"):
             for subj in body.get(direction, []):
-                assert subj != "lyra.llm.request", (
-                    f"{ident}.{direction} has legacy lyra.llm.request"
+                assert subj != "factory.llm.request", (
+                    f"{ident}.{direction} has legacy factory.llm.request"
                 )
                 assert subj != "lyra.llm.health.*", (
                     f"{ident}.{direction} has legacy lyra.llm.health.*"

@@ -139,7 +139,7 @@ status: review
 | #1124 | rotate-* script hardening | **ADJUST** | OS-3 done (PR #1118 commit `a4a37f6c`). Reste: OS-1 decision, OS-2 (chmod race), OS-4 (`tr -d '\n'` consistency) |
 | #1095 | slim non-clipool services (~5GB) | **STALE** | Out-of-repo (roxabi-container). Park backlog. |
 | #1093 | isolate test fakes (tests/fakes/ + importlinter) | KEEP | Root cause 2026-05-06 incident toujours non-fixé |
-| #1091 | roundtrip CI lyra-acl genkeys | KEEP | **P1-high**, nats-server already in CI, just wire workflow |
+| #1091 | roundtrip CI factory-acl genkeys | KEEP | **P1-high**, nats-server already in CI, just wire workflow |
 | #1085 | lyra-monitor systemctl is-active | **ADJUST** | 60% done : check_process wired. Reste: clipool+nats in service_names, restart-loop detection, journal-tail in alerts |
 | #1079 | Extract TurnStoreProtocol | KEEP | 6 `ignore_imports` debt entries dans `.importlinter` confirment violation live |
 

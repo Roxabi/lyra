@@ -83,7 +83,7 @@ flowchart LR
 ## Bootstrap Context
 
 - Render-equality is enforced two ways: (a) CI drift gate `scripts/check-acl-authconf-drift.sh`
-  regenerates auth.conf via `lyra-acl genkeys --template-only` and textually diffs the
+  regenerates auth.conf via `factory-acl genkeys --template-only` and textually diffs the
   committed file → committed `auth.conf` MUST be regenerated + committed (T5); (b) the
   T8 regression test proves v4≡v3 set-equality.
 - `parse_auth_conf` returns `ParsedAuthConf.users: tuple[...]` (order-sensitive). T8 wraps
@@ -202,7 +202,7 @@ Verify: `uv run pytest tests/scripts/test_renderer.py -q`.
 Verify: `uv run python -c "from pathlib import Path; from scripts._loader import load_matrix; m=load_matrix(Path('deploy/nats/acl-matrix.json')); print(m['version'], list(m['groups']))"` → `4 ['audio-consumer']`.
 
 **T5 [GREEN] · diff 1 · dep T4 · SC: auth.conf** — `deploy/nats/auth.conf`
-Run `uv run lyra-acl genkeys --template-only > deploy/nats/auth.conf`.
+Run `uv run factory-acl genkeys --template-only > deploy/nats/auth.conf`.
 Verify: `bash scripts/check-acl-authconf-drift.sh` → exit 0.
 
 **T6 [VERIFY] · diff 3 · dep T4,T5 · SC: gates** — acl CI gates

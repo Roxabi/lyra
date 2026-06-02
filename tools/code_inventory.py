@@ -3,7 +3,7 @@
 
 Provides CodeInventory.build() which performs a single AST-based pass over
 src/**/*.py and packages/*/src/**/*.py to collect:
-  - modules: set of dotted module names (lyra.core.hub, roxabi_nats.connect, …)
+  - modules: set of dotted module names (factory.core.hub, roxabi_nats.connect, …)
   - symbols: dict mapping bare name → set of defining module paths
   - subjects: frozenset of NATS subject literals and wildcard patterns
 
@@ -57,12 +57,12 @@ class Verdict:
 def _compute_project_prefixes() -> frozenset[str]:
     """Derive project namespace prefixes from packages/ layout at import time.
 
-    Always includes "lyra" (the main package).  Adds one prefix per
+    Always includes "factory" (the main package).  Adds one prefix per
     packages/<pkg>/src/ directory, converting hyphens to underscores so the
     dotted module name matches the filesystem layout.  A new package added to
     packages/ is then automatically covered without editing this file.
     """
-    prefixes: set[str] = {"lyra"}
+    prefixes: set[str] = {"factory"}
     packages_dir = Path(__file__).resolve().parent.parent / "packages"
     if packages_dir.is_dir():
         for pkg_dir in packages_dir.iterdir():
@@ -292,7 +292,7 @@ def _is_template_by_shape(token: str) -> bool:
         if re.search(r":\d", token):
             return True
         return False
-    # Non-path tokens with slash (lyra.outbound/, lyra.adapters/__init__.py)
+    # Non-path tokens with slash (lyra.outbound/, factory.adapters/__init__.py)
     if "/" in token:
         return True
     # NATS namespace doc-patterns: lyra.* or lyra.something.*

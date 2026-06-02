@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from lyra.core.processors.vault_add import _parse_tags, _parse_title
+from factory.core.processors.vault_add import _parse_tags, _parse_title
 
 # ---------------------------------------------------------------------------
 # _parse_title()

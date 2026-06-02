@@ -54,25 +54,25 @@ def normalize_event_dict(d: dict[str, Any]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Repo bootstrap — add src/ to sys.path so we import lyra without installing
+# Repo bootstrap — add src/ to sys.path so we import factory without installing
 # ---------------------------------------------------------------------------
 
 _REPO_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_REPO_ROOT / "src"))
 
-from lyra.core.messaging.events import (  # noqa: E402
+from factory.core.messaging.events import (  # noqa: E402
     ResultLlmEvent,
     TextLlmEvent,
     ToolUseEndLlmEvent,
     ToolUseLlmEvent,
 )
-from lyra.core.messaging.render_events import (  # noqa: E402
+from factory.core.messaging.render_events import (  # noqa: E402
     TextChunkRenderEvent,
     TextDeltaRenderEvent,
     TextEndRenderEvent,
     TextStartRenderEvent,
 )
-from lyra.core.processors.stream_processor import StreamProcessor  # noqa: E402
+from factory.core.processors.stream_processor import StreamProcessor  # noqa: E402
 
 # v1 baseline = explicitly drop the Slice 2 (#1099) v2 Text family so the
 # script is idempotent on any branch from Slice 2 onward.

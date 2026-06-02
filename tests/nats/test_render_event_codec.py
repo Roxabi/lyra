@@ -14,7 +14,7 @@ import typing
 
 import pytest
 
-from lyra.core.messaging.render_events import (
+from factory.core.messaging.render_events import (
     SCHEMA_VERSION_REASONING_DELTA_RENDER_EVENT,
     SCHEMA_VERSION_REASONING_END_RENDER_EVENT,
     SCHEMA_VERSION_REASONING_START_RENDER_EVENT,
@@ -43,7 +43,7 @@ from lyra.core.messaging.render_events import (
     ToolCallResultRenderEvent,
     ToolCallStartRenderEvent,
 )
-from lyra.nats.render_event_codec import NatsRenderEventCodec
+from factory.nats.render_event_codec import NatsRenderEventCodec
 
 
 class TestRenderEventCodecVersionCheck:
@@ -83,7 +83,7 @@ class TestRenderEventCodecVersionCheck:
         codec = NatsRenderEventCodec()
         counter: dict[str, int] = {}
 
-        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+        with caplog.at_level(logging.ERROR, logger="factory.nats._version_check"):
             result = codec.decode(
                 "text_start",
                 {"schema_version": 99, "message_id": "msg_001"},
@@ -101,7 +101,7 @@ class TestRenderEventCodecVersionCheck:
         codec = NatsRenderEventCodec()
         counter: dict[str, int] = {}
 
-        with caplog.at_level(logging.WARNING, logger="lyra.nats.render_event_codec"):
+        with caplog.at_level(logging.WARNING, logger="factory.nats.render_event_codec"):
             result = codec.decode(
                 "text",
                 {"schema_version": 1, "text": "hi", "is_final": True},
@@ -235,7 +235,7 @@ class TestToolCallCodecRoundTrip:
         codec = NatsRenderEventCodec()
         counter: dict[str, int] = {}
 
-        with caplog.at_level(logging.ERROR, logger="lyra.nats._version_check"):
+        with caplog.at_level(logging.ERROR, logger="factory.nats._version_check"):
             result = codec.decode(
                 "tool_call_start",
                 {"schema_version": 99, "tool_call_id": "x", "tool_name": "Read"},
@@ -509,14 +509,14 @@ class TestDecodeErrorAbort:
         bad_payload: dict,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        with caplog.at_level(logging.ERROR, logger="lyra.nats.render_event_codec"):
+        with caplog.at_level(logging.ERROR, logger="factory.nats.render_event_codec"):
             result = codec.decode(event_type, bad_payload)
         assert result is None, f"Expected None for {event_type!r} with bad payload"
         exception_records = [
             r
             for r in caplog.records
             if r.levelno >= logging.ERROR
-            and r.name == "lyra.nats.render_event_codec"
+            and r.name == "factory.nats.render_event_codec"
             and "decode failed" in r.getMessage()
         ]
         assert exception_records, (
@@ -628,14 +628,14 @@ async def test_decode_missing_event_type_breaks_first(
     """decode_stream_events breaks on None event_type BEFORE the stream_error check."""
     import asyncio
 
-    from lyra.adapters.nats.nats_stream_decoder import decode_stream_events
+    from factory.adapters.nats.nats_stream_decoder import decode_stream_events
 
     q: asyncio.Queue[dict] = asyncio.Queue()
     await q.put({})
 
     events = []
     with caplog.at_level(
-        logging.WARNING, logger="lyra.adapters.nats.nats_stream_decoder"
+        logging.WARNING, logger="factory.adapters.nats.nats_stream_decoder"
     ):
         async for event in decode_stream_events("test-stream", q):
             events.append(event)
@@ -672,7 +672,7 @@ def test_decode_synthetic_sentinel_no_warning(
 ) -> None:
     """decode("stream_end", {}) returns None, no log.warning("unknown event_type")."""
     codec = NatsRenderEventCodec()
-    with caplog.at_level(logging.WARNING, logger="lyra.nats.render_event_codec"):
+    with caplog.at_level(logging.WARNING, logger="factory.nats.render_event_codec"):
         result_end = codec.decode("stream_end", {})
         result_error = codec.decode("stream_error", {})
 

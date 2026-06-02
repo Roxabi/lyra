@@ -20,12 +20,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.core.messaging.render_events import (
+from factory.core.messaging.render_events import (
     ReasoningDeltaRenderEvent,
     ReasoningEndRenderEvent,
     ReasoningStartRenderEvent,
 )
-from lyra.outbound.throttle import STREAMING_EDIT_INTERVAL
+from factory.outbound.throttle import STREAMING_EDIT_INTERVAL
 from tests.adapters.conftest import _make_telegram_adapter
 
 # ---------------------------------------------------------------------------
@@ -44,7 +44,7 @@ def _make_trace_send_mock(message_id: int = 501) -> MagicMock:
 
 def _make_formatter(adapter, *, reply_to: int | None = None):
     """Build a TelegramFormatter for tests."""
-    from lyra.adapters.telegram.telegram_formatter import TelegramFormatter
+    from factory.adapters.telegram.telegram_formatter import TelegramFormatter
 
     return TelegramFormatter(
         adapter,
@@ -143,7 +143,7 @@ class TestTelegramReasoningRendering:
                 return window
 
         with patch(
-            "lyra.outbound._reasoning_accum.time.monotonic",
+            "factory.outbound._reasoning_accum.time.monotonic",
             side_effect=fake_monotonic,
         ):
             # Act — session pre-supplies trace_obj (non-None) as per new contract

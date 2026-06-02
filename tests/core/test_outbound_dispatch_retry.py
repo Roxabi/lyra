@@ -17,8 +17,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.core.hub.outbound._dispatch import _send_with_retry
-from lyra.core.messaging.message import OutboundMessage
+from factory.core.hub.outbound._dispatch import _send_with_retry
+from factory.core.messaging.message import OutboundMessage
 from tests.core.conftest import make_dispatcher_msg
 
 # ---------------------------------------------------------------------------

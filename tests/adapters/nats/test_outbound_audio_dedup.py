@@ -34,18 +34,18 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from nats.js.errors import KeyNotFoundError
 
-import lyra.adapters.nats.jetstream_audio_consumer as jac
-from lyra.adapters.nats.jetstream_audio_consumer import (
+import factory.adapters.nats.jetstream_audio_consumer as jac
+from factory.adapters.nats.jetstream_audio_consumer import (
     MAX_DELIVER,
     JetStreamAudioConsumer,
 )
-from lyra.adapters.nats.jetstream_audio_dedup import (
+from factory.adapters.nats.jetstream_audio_dedup import (
     InMemorySentSet,
     KvSentSet,
     _KvLike,
 )
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import (
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import (
     InboundMessage,
     OutboundAudio,
     Platform,

@@ -14,9 +14,9 @@ from __future__ import annotations
 import logging
 import unittest.mock as mock
 
-from lyra.tools.gh_token.rate_limit import RateLimiter
+from factory.tools.gh_token.rate_limit import RateLimiter
 
-_RL_SLEEP = "lyra.tools.gh_token.rate_limit.asyncio.sleep"
+_RL_SLEEP = "factory.tools.gh_token.rate_limit.asyncio.sleep"
 
 
 class FakeClock:
@@ -66,7 +66,9 @@ async def test_wait_logs_warning_when_actually_sleeps(caplog) -> None:
 
     # Act
     with mock.patch(_RL_SLEEP, side_effect=fake_sleep):
-        with caplog.at_level(logging.WARNING, logger="lyra.tools.gh_token.rate_limit"):
+        with caplog.at_level(
+            logging.WARNING, logger="factory.tools.gh_token.rate_limit"
+        ):
             await rl.wait()
 
     # Assert — actually slept AND warning was emitted
@@ -109,7 +111,9 @@ async def test_wait_no_log_when_no_sleep_needed(caplog) -> None:
 
     # Act
     with mock.patch(_RL_SLEEP, side_effect=fake_sleep):
-        with caplog.at_level(logging.WARNING, logger="lyra.tools.gh_token.rate_limit"):
+        with caplog.at_level(
+            logging.WARNING, logger="factory.tools.gh_token.rate_limit"
+        ):
             await rl.wait()
 
     # Assert — no sleep, no warning

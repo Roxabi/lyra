@@ -26,9 +26,9 @@ from datetime import datetime, timezone
 import pytest
 from nats.aio.client import Client as NATS
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage, Platform
-from lyra.core.messaging.render_events import (
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import InboundMessage, Platform
+from factory.core.messaging.render_events import (
     ReasoningDeltaRenderEvent,
     ReasoningEndRenderEvent,
     ReasoningStartRenderEvent,
@@ -45,8 +45,8 @@ from lyra.core.messaging.render_events import (
     ToolCallResultRenderEvent,
     ToolCallStartRenderEvent,
 )
-from lyra.nats.nats_channel_proxy import NatsChannelProxy
-from lyra.nats.render_event_codec import NatsRenderEventCodec
+from factory.nats.nats_channel_proxy import NatsChannelProxy
+from factory.nats.render_event_codec import NatsRenderEventCodec
 from tests.nats.conftest import requires_nats_server
 
 pytestmark = [requires_nats_server]

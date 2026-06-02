@@ -1,4 +1,4 @@
-"""RED-phase tests for lyra.blobstore.serve — skeleton boot (N5, N6, S1 auth)."""
+"""RED-phase tests for factory.blobstore.serve — skeleton boot (N5, N6, S1 auth)."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import pathlib
 import pytest
 from fastapi.testclient import TestClient
 
-from lyra.blobstore.serve import build_app
+from factory.blobstore.serve import build_app
 
 # ---------------------------------------------------------------------------
 # Shared fixture

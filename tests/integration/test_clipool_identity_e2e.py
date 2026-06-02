@@ -17,10 +17,10 @@ from pathlib import Path
 
 
 def _find_hook() -> Path:
-    """Locate deploy/lyra-gh/hooks/prepare-commit-msg relative to repo root."""
+    """Locate deploy/factory-gh/hooks/prepare-commit-msg relative to repo root."""
     # Walk up from this file to the repo root (contains pyproject.toml).
     for parent in Path(__file__).resolve().parents:
-        hook = parent / "deploy" / "lyra-gh" / "hooks" / "prepare-commit-msg"
+        hook = parent / "deploy" / "factory-gh" / "hooks" / "prepare-commit-msg"
         if hook.exists():
             return hook
     raise FileNotFoundError(
@@ -72,13 +72,13 @@ class TestClipoolIdentityE2E:
     """End-to-end attribution via prepare-commit-msg hook (#1150 SC6)."""
 
     def test_full_mode_attribution(self, tmp_path: Path) -> None:
-        """Full mode: GIT_COMMITTER_* + LYRA_* env → committer + trailers correct.
+        """Full mode: GIT_COMMITTER_* + FACTORY_* env → committer + trailers correct.
 
         Given env:
           GIT_COMMITTER_NAME=agent-X
           GIT_COMMITTER_EMAIL=x@y.com
-          LYRA_AGENT=agent-X
-          LYRA_SESSION_ID=S-e2e
+          FACTORY_AGENT=agent-X
+          FACTORY_SESSION_ID=S-e2e
 
         Expected git log format:
           agent-X|x@y.com|S-e2e|agent-X
@@ -90,8 +90,8 @@ class TestClipoolIdentityE2E:
         identity_env = {
             "GIT_COMMITTER_NAME": "agent-X",
             "GIT_COMMITTER_EMAIL": "x@y.com",
-            "LYRA_AGENT": "agent-X",
-            "LYRA_SESSION_ID": "S-e2e",
+            "FACTORY_AGENT": "agent-X",
+            "FACTORY_SESSION_ID": "S-e2e",
         }
 
         # Act — commit with identity env vars set
@@ -116,11 +116,11 @@ class TestClipoolIdentityE2E:
         )
 
     def test_trailers_only_mode_attribution(self, tmp_path: Path) -> None:
-        """Trailers-only mode: LYRA_* only → trailers correct; committer unchanged.
+        """Trailers-only mode: FACTORY_* only → trailers correct; committer unchanged.
 
         Given env:
-          LYRA_AGENT=agent-X
-          LYRA_SESSION_ID=S-trailers
+          FACTORY_AGENT=agent-X
+          FACTORY_SESSION_ID=S-trailers
           (NO GIT_COMMITTER_* vars)
 
         The committer name/email will be whatever git's user.* config says
@@ -131,11 +131,11 @@ class TestClipoolIdentityE2E:
         _init_repo(repo)
 
         trailers_env = {
-            "LYRA_AGENT": "agent-X",
-            "LYRA_SESSION_ID": "S-trailers",
+            "FACTORY_AGENT": "agent-X",
+            "FACTORY_SESSION_ID": "S-trailers",
         }
 
-        # Act — commit with LYRA_* vars but no GIT_COMMITTER_* vars
+        # Act — commit with FACTORY_* vars but no GIT_COMMITTER_* vars
         subprocess.run(
             [
                 "git",

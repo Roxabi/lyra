@@ -14,18 +14,18 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.agent.agent_config import AgentTTSConfig
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.hub import Hub
-from lyra.core.hub.hub_protocol import ChannelAdapter
-from lyra.core.messaging.message import InboundMessage, Platform, Response
-from lyra.core.messaging.render_events import RenderEvent
-from lyra.core.pool import Pool
+from factory.core.agent.agent_config import AgentTTSConfig
+from factory.core.auth.trust import TrustLevel
+from factory.core.hub import Hub
+from factory.core.hub.hub_protocol import ChannelAdapter
+from factory.core.messaging.message import InboundMessage, Platform, Response
+from factory.core.messaging.render_events import RenderEvent
+from factory.core.pool import Pool
 from tests.core.conftest import FakeSTT, MockAdapter
 from tests.helpers.messages import make_test_blobref
 
 if TYPE_CHECKING:
-    from lyra.core.ports.stt import STTProtocol
+    from factory.core.ports.stt import STTProtocol
 
 
 # DEBT:v1-stubs — for skipped tests; rewrite for v2 (#1192 S3 follow-up)
@@ -45,7 +45,7 @@ class TestSynthesizeDispatchAgentTTS:
     @pytest.mark.asyncio()
     async def test_agent_tts_forwarded_to_synthesize(self):
         """When agent_tts is passed, it reaches TtsProtocol.synthesize()."""
-        from lyra.core.ports.tts import SynthesisResult
+        from factory.core.ports.tts import SynthesisResult
 
         agent_tts = AgentTTSConfig(engine="agent_eng", voice="agent_vox")
 
@@ -87,7 +87,7 @@ class TestSynthesizeDispatchAgentTTS:
     @pytest.mark.asyncio()
     async def test_agent_tts_none_no_regression(self):
         """Without agent_tts, synthesize() is called without it."""
-        from lyra.core.ports.tts import SynthesisResult
+        from factory.core.ports.tts import SynthesisResult
 
         mock_tts = MagicMock()
         mock_tts.synthesize = AsyncMock(
@@ -133,9 +133,9 @@ class TestResolveAgentTTS:
 
     def test_resolve_agent_tts_returns_config_from_registry(self):
         """resolve_agent_tts returns the agent's tts config for a bound message."""
-        from lyra.core import Agent
-        from lyra.core.agent import AgentBase
-        from lyra.core.agent.agent_config import AgentTTSConfig, AgentVoiceConfig
+        from factory.core import Agent
+        from factory.core.agent import AgentBase
+        from factory.core.agent.agent_config import AgentTTSConfig, AgentVoiceConfig
 
         # Arrange — build a concrete AgentBase subclass
         class FakeAgent(AgentBase):
@@ -229,11 +229,11 @@ class TestDispatchResponseAgentTTSE2E:
     @pytest.mark.asyncio()
     async def test_dispatch_response_voice_calls_synthesize_with_agent_tts(self):
         """Voice-modality dispatch_response synthesizes audio with agent_tts."""
-        from lyra.core import Agent
-        from lyra.core.agent import AgentBase
-        from lyra.core.agent.agent_config import AgentTTSConfig, AgentVoiceConfig
-        from lyra.core.hub.hub_protocol import ChannelAdapter
-        from lyra.core.ports.tts import SynthesisResult
+        from factory.core import Agent
+        from factory.core.agent import AgentBase
+        from factory.core.agent.agent_config import AgentTTSConfig, AgentVoiceConfig
+        from factory.core.hub.hub_protocol import ChannelAdapter
+        from factory.core.ports.tts import SynthesisResult
 
         # Arrange — concrete agent with custom TTS
         class FakeAgent(AgentBase):
@@ -337,7 +337,7 @@ class TestTtsUnavailableFallback:
         """
         import logging
 
-        from lyra.core.ports.tts import TtsUnavailableError
+        from factory.core.ports.tts import TtsUnavailableError
 
         # Arrange
         mock_tts = MagicMock()
@@ -364,7 +364,7 @@ class TestTtsUnavailableFallback:
         )
 
         # Act
-        with caplog.at_level(logging.WARNING, logger="lyra.core.tts_dispatch"):
+        with caplog.at_level(logging.WARNING, logger="factory.core.tts_dispatch"):
             await hub._audio_pipeline.synthesize_and_dispatch_audio(
                 msg, "Hello from Lyra"
             )
@@ -419,7 +419,7 @@ class TestTtsUnavailableFallback:
         )
 
         # Act
-        with caplog.at_level(logging.ERROR, logger="lyra.core.tts_dispatch"):
+        with caplog.at_level(logging.ERROR, logger="factory.core.tts_dispatch"):
             await hub._audio_pipeline.synthesize_and_dispatch_audio(
                 msg, "Hello from Lyra"
             )
@@ -448,7 +448,7 @@ class TestTtsUnavailableFallback:
         """
         import logging
 
-        from lyra.core.ports.tts import TtsSynthesisError
+        from factory.core.ports.tts import TtsSynthesisError
 
         # Arrange
         mock_tts = MagicMock()
@@ -482,7 +482,7 @@ class TestTtsUnavailableFallback:
         )
 
         # Act
-        with caplog.at_level(logging.WARNING, logger="lyra.core.tts_dispatch"):
+        with caplog.at_level(logging.WARNING, logger="factory.core.tts_dispatch"):
             await hub._audio_pipeline.synthesize_and_dispatch_audio(
                 msg, "Hello from Lyra"
             )
@@ -507,7 +507,7 @@ class TestTtsUnavailableFallback:
         """TtsUnavailableError log message includes the exception cause."""
         import logging
 
-        from lyra.core.ports.tts import TtsUnavailableError
+        from factory.core.ports.tts import TtsUnavailableError
 
         mock_tts = MagicMock()
         mock_tts.synthesize = AsyncMock(
@@ -534,7 +534,7 @@ class TestTtsUnavailableFallback:
             modality="voice",
         )
 
-        with caplog.at_level(logging.WARNING, logger="lyra.core.tts_dispatch"):
+        with caplog.at_level(logging.WARNING, logger="factory.core.tts_dispatch"):
             await hub._audio_pipeline.synthesize_and_dispatch_audio(
                 msg, "Hello from Lyra"
             )
@@ -562,7 +562,7 @@ class TestDispatchStreamingTTSFallback:
         """Voice dispatch_streaming: TTS failure → dispatch_response NOT called."""
         from datetime import datetime, timezone
 
-        from lyra.core.ports.tts import TtsUnavailableError
+        from factory.core.ports.tts import TtsUnavailableError
 
         # Arrange
         mock_tts = MagicMock()

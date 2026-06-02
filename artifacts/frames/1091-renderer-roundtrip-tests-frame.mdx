@@ -13,7 +13,7 @@ Two prod incidents in 2026-Q2 share one pattern: a renderer (tool that writes a 
 | # | Renderer | Bug | Consumer | Bite latency |
 |---|---|---|---|---|
 | #1083 | Quadlet generator | inline `#` in `Volume=` value | `podman` | ~47 h |
-| #1089 | `lyra-acl genkeys --regen-authconf` | nkeys rendered at 62 chars (valid = 56) | `nats-server` | minutes (M₁ down 2026-05-06) |
+| #1089 | `factory-acl genkeys --regen-authconf` | nkeys rendered at 62 chars (valid = 56) | `nats-server` | minutes (M₁ down 2026-05-06) |
 
 Audit shows the renderer→consumer roundtrip pattern already exists in 3 isolated silos (`test_parity_e2e.py`, `test_genkeys_modes.py::TestRenderedNkeyLength`, `.github/workflows/quadlet-lint.yml`) but is not generalized, not documented, and not applied to all known renderers in the repo. Three renderers currently have no roundtrip gate at all: `deploy/nats/nats.conf`, `deploy/nats/gen-certs.sh`, `deploy/lyra-monitor.{service,timer}`.
 
@@ -30,7 +30,7 @@ The bite latency makes this a high-leverage gap: every incident costs hours of p
 - Pattern must be lightweight enough that contributors actually apply it — heavy fixtures defeat the purpose.
 - Standards doc must live under `docs/standards/` and cross-link from `docs/standards/testing.md` (existing testing conventions home).
 - No mocking the consumer — the whole point is to use the real downstream binary.
-- Pattern applies to both **generated** files (lyra-acl) and **static** files consumed by an external binary (nats.conf, lyra-monitor.service).
+- Pattern applies to both **generated** files (factory-acl) and **static** files consumed by an external binary (nats.conf, lyra-monitor.service).
 
 ## Out of Scope
 

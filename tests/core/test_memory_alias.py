@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
-from lyra.core.memory.memory import MemoryManager, SessionSnapshot
-from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
+from factory.core.memory.memory import MemoryManager, SessionSnapshot
+from factory.infrastructure.stores.identity_alias_store import IdentityAliasStore
 
 # ---------------------------------------------------------------------------
 # Fixtures

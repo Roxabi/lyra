@@ -297,7 +297,7 @@ When the subject→identity ACL matrix changes (spec #706), regenerate nkeys and
 
 ```bash
 cd ~/projects/lyra
-lyra-acl genkeys --regen-authconf
+factory-acl genkeys --regen-authconf
 ```
 
 This rotates all nkeys — old seeds are backed up to `~/.lyra/nkeys.bak.{epoch}/` and the old

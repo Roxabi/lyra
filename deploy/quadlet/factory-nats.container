@@ -1,0 +1,39 @@
+[Unit]
+Description=Lyra NATS server
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+Image=docker.io/library/nats:2.10.29-alpine
+ContainerName=factory-nats
+Network=roxabi.network
+# Hardening — defense in depth (see issue #652).
+NoNewPrivileges=true
+ReadOnly=true
+DropCapability=all
+# Sole NATS on the host — host nats.service is retired (big-bang consolidation).
+# 4222 exposed on all interfaces — LAN clients (e.g. voice-client on M₂) connect via NKey auth.
+PublishPort=4222:4222
+# HTTP monitoring — localhost only, consumed by `python -m factory.monitoring` (checks_varz.py).
+PublishPort=127.0.0.1:8222:8222
+Volume=%h/projects/roxabi-factory/deploy/nats/nats-container.conf:/etc/nats/nats.conf:ro,z
+# Writable exception to ReadOnly=true — JetStream persistence (rootfs flag only in Podman).
+# NOTE: Do NOT add inline # comments after Volume= values; Quadlet does not strip them
+# and Podman receives the literal comment text as a mount-option string (issue #1083).
+Volume=factory-jetstream.volume:/var/lib/nats/jetstream:z
+# ADR-054 Decision 5 (revised): file-based credentials delivered as Podman secrets
+# (type=mount, tmpfs-backed). Replaces single-file .volume wrappers which failed
+# with "loop device setup" in Podman 5.x. Bootstrap: `make quadlet-secrets-install`.
+Secret=factory-nats-auth,type=mount,target=/etc/nats/nkeys/auth.conf,mode=0444
+Exec=nats-server -c /etc/nats/nats.conf
+HealthCmd=pgrep -f nats-server
+HealthInterval=30s
+
+[Service]
+Restart=on-failure
+RestartSec=10
+# Cap at 2 full cores — keeps NATS from starving hub/adapters under load.
+CPUQuota=200%
+
+[Install]
+WantedBy=default.target

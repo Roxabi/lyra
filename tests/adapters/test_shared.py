@@ -5,22 +5,22 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.adapters.shared._shared import (
+from factory.adapters.shared._shared import (
     IntermediateTextState,
     chunk_text,
     send_with_retry,
 )
-from lyra.core.messaging.message import OutboundMessage
-from lyra.core.messaging.render_events import (
+from factory.core.messaging.message import OutboundMessage
+from factory.core.messaging.render_events import (
     RenderEvent,
     TextChunkRenderEvent,
     TextDeltaRenderEvent,
     TextEndRenderEvent,
     TextStartRenderEvent,
 )
-from lyra.outbound._emitter_run import _run_event_loop
-from lyra.outbound._placeholder_lifecycle import _drain_fallback
-from lyra.outbound.emitter import OutboundEmitter as StreamingSession
+from factory.outbound._emitter_run import _run_event_loop
+from factory.outbound._placeholder_lifecycle import _drain_fallback
+from factory.outbound.emitter import OutboundEmitter as StreamingSession
 
 # ---------------------------------------------------------------------------
 # Helpers shared by v2 Text dispatch tests

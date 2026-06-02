@@ -12,7 +12,7 @@ Lyra uses two types of configuration files with distinct responsibilities:
 | File | Type | Versioned | Purpose |
 |------|------|-----------|---------|
 | `config.toml` | Instance config | No | Deployment wiring: bots, tokens, auth, defaults |
-| lyra.toml | Instance config | No | Monitoring thresholds (read by `lyra.monitoring` only) |
+| lyra.toml | Instance config | No | Monitoring thresholds (read by `factory.monitoring` only) |
 | `~/.lyra/config.db` | Runtime DB | No | Agents, credentials, grants, user prefs (SQLite) |
 | `~/.lyra/turns.db` | Runtime DB | No | Conversation turns, pool sessions |
 | `~/.lyra/discord.db` | Runtime DB | No | Discord thread data (owned by Discord adapter) |
@@ -21,7 +21,7 @@ Lyra uses two types of configuration files with distinct responsibilities:
 | `~/.lyra/agents/<name>.toml` | Seed source | No | Agent seed: imported into DB by `lyra agent init` |
 | `src/lyra/agents/<name>.toml` | Seed source | Yes | Agent seed: system defaults, imported into DB |
 | `src/lyra/commands/<name>/plugin.toml` | System data | Yes | Plugin manifest: commands, handlers |
-| `src/lyra/data/messages.toml` | System data | Yes | i18n strings |
+| `src/factory/data/messages.toml` | System data | Yes | i18n strings |
 | `pyproject.toml` | System data | Yes | Package metadata, dependencies, tool config |
 
 **Rule:** if a value is machine-specific, personal, or secret → `config.toml`. Everything else → versioned.
@@ -406,7 +406,7 @@ After restoring, run `make quadlet-install` to re-render the Quadlet and restart
 
 ## lyra.toml — Monitoring Only
 
-Read exclusively by `lyra.monitoring`. Hub does NOT read this file.
+Read exclusively by `factory.monitoring`. Hub does NOT read this file.
 
 ### `[monitoring]` — Thresholds
 

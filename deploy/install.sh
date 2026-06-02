@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# deploy/install.sh — idempotent Quadlet install for lyra
+# deploy/install.sh — idempotent Quadlet install for factory
 #
 # Absorbs: make quadlet-install + make quadlet-secrets-install
 # Does NOT restart services — defer to operator.
@@ -11,15 +11,15 @@
 #   ./deploy/install.sh --force      # force --replace on secrets even if present
 #
 # Hard constraints (S5, grandfathered):
-#   nkey seeds: ~/.lyra/nkeys/
-#   env files:  ~/.lyra/env/
+#   nkey seeds: ~/.roxabi/factory/nkeys/
+#   env files:  ~/.roxabi/factory/env/
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 QUADLET_SRC="${SCRIPT_DIR}/quadlet"
 QUADLET_DST="${HOME}/.config/containers/systemd"
-NKEYS_DIR="${HOME}/.lyra/nkeys"
+NKEYS_DIR="${HOME}/.roxabi/factory/nkeys"
 
 DRY_RUN=0
 SECRETS_ONLY=0
@@ -47,7 +47,7 @@ warn() { echo "WARN: $*" >&2; }
 
 # ── 1. Verify nkeys dir ──────────────────────────────────────────────────────
 
-log "Checking ~/.lyra/nkeys/ ..."
+log "Checking ~/.roxabi/factory/nkeys/ ..."
 if [[ ! -d "${NKEYS_DIR}" ]]; then
   echo "ERROR: ${NKEYS_DIR} not found. Run: make nats-setup" >&2
   exit 1
@@ -64,22 +64,22 @@ if [[ "$DRY_RUN" -eq 0 ]] \
 fi
 
 declare -A SEEDS=(
-  [lyra-nats-auth]="${NKEYS_DIR}/auth.conf"
-  [lyra-nats-hub]="${NKEYS_DIR}/hub.seed"
-  [lyra-nats-telegram]="${NKEYS_DIR}/telegram-adapter.seed"
-  [lyra-nats-discord]="${NKEYS_DIR}/discord-adapter.seed"
-  [lyra-nats-clipool]="${NKEYS_DIR}/clipool-worker.seed"
-  [lyra-nats-blobstore]="${NKEYS_DIR}/blobstore.seed"
-  [lyra-nats-turn-writer]="${NKEYS_DIR}/turn-writer.seed"
-  [lyra_blobstore_token]="${HOME}/.lyra/blobstore.tok"
+  [factory-nats-auth]="${NKEYS_DIR}/auth.conf"
+  [factory-nats-hub]="${NKEYS_DIR}/hub.seed"
+  [factory-nats-telegram]="${NKEYS_DIR}/telegram-adapter.seed"
+  [factory-nats-discord]="${NKEYS_DIR}/discord-adapter.seed"
+  [factory-nats-clipool]="${NKEYS_DIR}/clipool-worker.seed"
+  [factory-nats-blobstore]="${NKEYS_DIR}/blobstore.seed"
+  [factory-nats-turn-writer]="${NKEYS_DIR}/turn-writer.seed"
+  [factory_blobstore_token]="${HOME}/.roxabi/factory/blobstore.tok"
 )
 
 # ── 2. Generate blobstore bearer token (idempotent) ────────────────────────
 
-BLOBSTORE_TOK="${HOME}/.lyra/blobstore.tok"
+BLOBSTORE_TOK="${HOME}/.roxabi/factory/blobstore.tok"
 if [[ ! -f "${BLOBSTORE_TOK}" || "$FORCE" -eq 1 ]]; then
   log "Generating blobstore bearer token → ${BLOBSTORE_TOK} ..."
-  run mkdir -p "${HOME}/.lyra"
+  run mkdir -p "${HOME}/.roxabi/factory"
   if [[ "$DRY_RUN" -eq 0 ]]; then
     (umask 0077; openssl rand -base64 48 > "${BLOBSTORE_TOK}")
   else
@@ -91,7 +91,7 @@ fi
 
 # ── 3. Bootstrap blobstore.env (idempotent) ─────────────────────────────────
 
-ENV_FILE="${HOME}/.lyra/env/blobstore.env"
+ENV_FILE="${HOME}/.roxabi/factory/env/blobstore.env"
 if [[ ! -f "${ENV_FILE}" || "$FORCE" -eq 1 ]]; then
   log "Generating ${ENV_FILE} ..."
   run mkdir -p "$(dirname "${ENV_FILE}")"
@@ -135,28 +135,28 @@ for secret_name in "${!SEEDS[@]}"; do
 done
 
 # Optional secrets — skip if source files absent (not fatal)
-if [[ -f "${HOME}/.lyra/gh-app.pem" ]]; then
-  already_exists=$(podman secret ls --format '{{.Name}}' 2>/dev/null | grep -Fx "lyra-gh-pem" || true)
+if [[ -f "${HOME}/.roxabi/factory/gh-app.pem" ]]; then
+  already_exists=$(podman secret ls --format '{{.Name}}' 2>/dev/null | grep -Fx "factory-gh-pem" || true)
   if [[ -n "${already_exists}" && "$FORCE" -eq 0 ]]; then
-    echo "  [skip] lyra-gh-pem already exists"
+    echo "  [skip] factory-gh-pem already exists"
   else
-    run podman secret create --replace lyra-gh-pem "${HOME}/.lyra/gh-app.pem"
-    echo "  [ok]   lyra-gh-pem"
+    run podman secret create --replace factory-gh-pem "${HOME}/.roxabi/factory/gh-app.pem"
+    echo "  [ok]   factory-gh-pem"
   fi
 else
-  warn "~/.lyra/gh-app.pem not found — lyra-gh-pem secret not created"
+  warn "~/.roxabi/factory/gh-app.pem not found — factory-gh-pem secret not created"
 fi
 
-if [[ -f "${HOME}/.lyra/claude-oauth.tok" ]]; then
-  already_exists=$(podman secret ls --format '{{.Name}}' 2>/dev/null | grep -Fx "lyra-claude-oauth" || true)
+if [[ -f "${HOME}/.roxabi/factory/claude-oauth.tok" ]]; then
+  already_exists=$(podman secret ls --format '{{.Name}}' 2>/dev/null | grep -Fx "factory-claude-oauth" || true)
   if [[ -n "${already_exists}" && "$FORCE" -eq 0 ]]; then
-    echo "  [skip] lyra-claude-oauth already exists"
+    echo "  [skip] factory-claude-oauth already exists"
   else
-    run bash -c "tr -d '\\n' < '${HOME}/.lyra/claude-oauth.tok' | podman secret create --replace lyra-claude-oauth -"
-    echo "  [ok]   lyra-claude-oauth"
+    run bash -c "tr -d '\\n' < '${HOME}/.roxabi/factory/claude-oauth.tok' | podman secret create --replace factory-claude-oauth -"
+    echo "  [ok]   factory-claude-oauth"
   fi
 else
-  warn "~/.lyra/claude-oauth.tok not found — lyra-claude-oauth secret not created"
+  warn "~/.roxabi/factory/claude-oauth.tok not found — factory-claude-oauth secret not created"
 fi
 
 if [[ "$SECRETS_ONLY" -eq 1 ]]; then
@@ -167,17 +167,17 @@ fi
 # ── 5. Ensure data directories ──────────────────────────────────────────────
 
 log "Ensuring data directories ..."
-run mkdir -p /data/lyra/blobs
+run mkdir -p /data/factory/blobs
 if [[ "$DRY_RUN" -eq 0 ]]; then
-  if ! findmnt /data/lyra/blobs >/dev/null 2>&1; then
-    warn "/data/lyra/blobs is not a mount point — add to /etc/fstab with noatime,nodiratime"
+  if ! findmnt /data/factory/blobs >/dev/null 2>&1; then
+    warn "/data/factory/blobs is not a mount point — add to /etc/fstab with noatime,nodiratime"
   fi
 fi
-echo "  [ok]   /data/lyra/blobs"
-run ln -sf /data/lyra/blobs "${HOME}/.lyra/blobstore"
-echo "  [ok]   ${HOME}/.lyra/blobstore → /data/lyra/blobs"
-run mkdir -p "${HOME}/.lyra/turn-writer"
-echo "  [ok]   ~/.lyra/turn-writer/"
+echo "  [ok]   /data/factory/blobs"
+run ln -sf /data/factory/blobs "${HOME}/.roxabi/factory/blobstore"
+echo "  [ok]   ${HOME}/.roxabi/factory/blobstore → /data/factory/blobs"
+run mkdir -p "${HOME}/.roxabi/factory/turn-writer"
+echo "  [ok]   ~/.roxabi/factory/turn-writer/"
 
 # ── 6. Copy Quadlet units ────────────────────────────────────────────────────
 
@@ -195,25 +195,25 @@ log "Reloading systemd user daemon ..."
 run systemctl --user daemon-reload
 echo "  [ok]   daemon-reload"
 
-log "Enabling lyra-blobstore.service ..."
-run systemctl --user enable lyra-blobstore.service
-echo "  [ok]   lyra-blobstore.service enabled"
+log "Enabling factory-blobstore.service ..."
+run systemctl --user enable factory-blobstore.service
+echo "  [ok]   factory-blobstore.service enabled"
 
 # ── 8. Seed BotStore from config.toml (idempotent) ─────────────────────────
 # Required since #1416: Authenticator reads from BotStore, not config.toml.
 # Skipping this causes a hub crash-loop on first boot.
 log "Seeding BotStore from config.toml ..."
 run podman run --rm \
-    -v "${HOME}/.lyra:/home/lyra/.lyra:z" \
-    -v "${HOME}/.lyra/config.toml:/app/config.toml:ro,z" \
-    ghcr.io/roxabi/lyra:staging-svc \
-    lyra bot init
+    -v "${HOME}/.roxabi/factory:/home/factory/.roxabi/factory:z" \
+    -v "${HOME}/.roxabi/factory/config.toml:/app/config.toml:ro,z" \
+    ghcr.io/roxabi/factory:staging-svc \
+    factory bot init
 
 echo "  [ok]   BotStore seeded"
 
 # ── 9. Install sync timer + service (idempotent) ───────────────────────────
 
-log "Installing lyra-quadlet-sync timer + service ..."
+log "Installing factory-quadlet-sync timer + service ..."
 run make quadlet-sync-install
 
-log "Done. Services NOT restarted — run: systemctl --user start lyra-nats lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-gh-helper lyra-turn-writer lyra-blobstore"
+log "Done. Services NOT restarted — run: systemctl --user start factory-nats factory-hub factory-telegram factory-discord factory-clipool factory-gh-helper factory-turn-writer factory-blobstore"

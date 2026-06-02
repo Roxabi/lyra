@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Lyra by Roxabi — Machine 1 post-install provisioning script
-# Usage: curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra/staging/deploy/provision.sh | bash
-#        curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra/staging/deploy/provision.sh | ADMIN_USER=yourname bash
-#        curl -fsSL https://raw.githubusercontent.com/Roxabi/lyra/staging/deploy/provision.sh | ADMIN_USER=yourname AGENT_USER=myagent bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/Roxabi/roxabi-factory/staging/deploy/provision.sh | bash
+#        curl -fsSL https://raw.githubusercontent.com/Roxabi/roxabi-factory/staging/deploy/provision.sh | ADMIN_USER=yourname bash
+#        curl -fsSL https://raw.githubusercontent.com/Roxabi/roxabi-factory/staging/deploy/provision.sh | ADMIN_USER=yourname AGENT_USER=myagent bash
 set -euo pipefail
 # Pin locale so [a-z] / [0-9] regex classes are ASCII-only regardless of host locale.
 export LC_ALL=C
@@ -22,8 +22,8 @@ section() { echo -e "\n${GREEN}=== $1 ===${NC}"; }
 
 # Admin user (defaults to current user, override with ADMIN_USER=yourname)
 ADMIN_USER="${ADMIN_USER:-$(whoami)}"
-# Agent user (defaults to lyra, override with AGENT_USER=anotherame)
-AGENT_USER="${AGENT_USER:-lyra}"
+# Agent user (defaults to factory, override with AGENT_USER=anotherame)
+AGENT_USER="${AGENT_USER:-factory}"
 # Validate usernames — reject shell metachars since values are env-driven (curl|bash).
 # Matches POSIX NAME_REGEX used by useradd: [a-z_][a-z0-9_-]* (max 32 chars).
 USER_RE='^[a-z_][a-z0-9_-]{0,31}$'
@@ -287,7 +287,7 @@ warn "Remember to update local/machines.md with: Podman $(podman --version 2>/de
 # ── Security ─────────────────────────────────────────────────────────────────
 
 section "SSH hardening"
-SSHD_CONF="/etc/ssh/sshd_config.d/lyra.conf"
+SSHD_CONF="/etc/ssh/sshd_config.d/factory.conf"
 if [ -f "$SSHD_CONF" ]; then
   info "SSH hardening already configured."
 else
@@ -349,7 +349,7 @@ section "Agent account ($AGENT_USER)"
 if id "$AGENT_USER" &>/dev/null; then
   warn "User '$AGENT_USER' already exists, skipping."
 else
-  sudo useradd -m -s /bin/bash -c "Lyra by Roxabi AI agent" "$AGENT_USER"
+  sudo useradd -m -s /bin/bash -c "Roxabi Factory AI agent" "$AGENT_USER"
   sudo passwd -l "$AGENT_USER"
   sudo mkdir -p /home/"$AGENT_USER"/.ssh
   sudo chmod 700 /home/"$AGENT_USER"/.ssh
@@ -380,42 +380,42 @@ fi
 # ── Lyra env-file dir (Quadlet EnvironmentFile= targets) ─────────────────────
 
 section "Lyra env-file directory"
-LYRA_ENV_DIR="/home/$ADMIN_USER/.lyra/env"
-sudo -u "$ADMIN_USER" install -d -m 0700 "$LYRA_ENV_DIR"
+FACTORY_ENV_DIR="/home/$ADMIN_USER/.roxabi/factory/env"
+sudo -u "$ADMIN_USER" install -d -m 0700 "$FACTORY_ENV_DIR"
 # Quadlet EnvironmentFile= cannot use systemd's `-` silent-if-missing prefix;
 # touch an empty file so the unit starts even when no per-host overrides exist.
-sudo -u "$ADMIN_USER" touch "$LYRA_ENV_DIR/clipool.env"
-sudo -u "$ADMIN_USER" chmod 0600 "$LYRA_ENV_DIR/clipool.env"
-info "Lyra env-file dir prepared at $LYRA_ENV_DIR (clipool.env touched)."
+sudo -u "$ADMIN_USER" touch "$FACTORY_ENV_DIR/clipool.env"
+sudo -u "$ADMIN_USER" chmod 0600 "$FACTORY_ENV_DIR/clipool.env"
+info "Lyra env-file dir prepared at $FACTORY_ENV_DIR (clipool.env touched)."
 
 # ── Lyra GitHub App PEM (Podman secret) ─────────────────────────────────────
 
 section "Lyra GitHub App PEM (Podman secret)"
 GH_PEM_PATH="${GH_PEM_PATH:-}"
 # Trusted dirs for secret files — same allowlist as rotate-gh-key.sh / rotate-claude-oauth.sh.
-LYRA_SECRETS_TRUSTED='/home/lyra/secrets/*|/etc/lyra/*'
+FACTORY_SECRETS_TRUSTED='/home/factory/secrets/*|/etc/factory/*'
 if sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
-     podman secret inspect lyra-gh-pem &>/dev/null; then
-  info "Podman secret 'lyra-gh-pem' already present, skipping."
+     podman secret inspect factory-gh-pem &>/dev/null; then
+  info "Podman secret 'factory-gh-pem' already present, skipping."
 else
   if [[ -z "$GH_PEM_PATH" ]]; then
-    warn "GH_PEM_PATH not set — skipping lyra-gh-pem bootstrap."
-    warn "  Re-run with: GH_PEM_PATH=/abs/path/to/lyra-app.pem $0"
+    warn "GH_PEM_PATH not set — skipping factory-gh-pem bootstrap."
+    warn "  Re-run with: GH_PEM_PATH=/abs/path/to/factory-app.pem $0"
   else
     RESOLVED_PEM=$(realpath -e "$GH_PEM_PATH" 2>/dev/null) \
       || error "PEM file not found or unresolvable: $(printf '%q' "$GH_PEM_PATH")"
-    [[ "$RESOLVED_PEM" == /home/lyra/secrets/* || "$RESOLVED_PEM" == /etc/lyra/* ]] \
-      || error "GH_PEM_PATH outside trusted dirs (/home/lyra/secrets/, /etc/lyra/): $RESOLVED_PEM"
+    [[ "$RESOLVED_PEM" == /home/factory/secrets/* || "$RESOLVED_PEM" == /etc/factory/* ]] \
+      || error "GH_PEM_PATH outside trusted dirs (/home/factory/secrets/, /etc/factory/): $RESOLVED_PEM"
     sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
-      podman secret create lyra-gh-pem "$RESOLVED_PEM" \
-      || error "Failed to create podman secret lyra-gh-pem"
-    info "Podman secret 'lyra-gh-pem' created from $RESOLVED_PEM."
+      podman secret create factory-gh-pem "$RESOLVED_PEM" \
+      || error "Failed to create podman secret factory-gh-pem"
+    info "Podman secret 'factory-gh-pem' created from $RESOLVED_PEM."
   fi
 fi
 
 # ── Lyra Claude Code OAuth token (Podman secret) ────────────────────────────
 #
-# The `claude` subprocess in lyra-clipool uses a 1-year OAuth setup-token
+# The `claude` subprocess in factory-clipool uses a 1-year OAuth setup-token
 # (auth precedence #5) instead of the interactive-OAuth credentials file
 # (#6), because the latter's auto-refresh is broken in non-TTY subprocess
 # contexts (anthropics/claude-code#50743). Bootstrap the token by running
@@ -426,18 +426,18 @@ fi
 section "Lyra Claude Code OAuth token (Podman secret)"
 CLAUDE_OAUTH_TOKEN_PATH="${CLAUDE_OAUTH_TOKEN_PATH:-}"
 if sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
-     podman secret inspect lyra-claude-oauth &>/dev/null; then
-  info "Podman secret 'lyra-claude-oauth' already present, skipping."
+     podman secret inspect factory-claude-oauth &>/dev/null; then
+  info "Podman secret 'factory-claude-oauth' already present, skipping."
 else
   if [[ -z "$CLAUDE_OAUTH_TOKEN_PATH" ]]; then
-    warn "CLAUDE_OAUTH_TOKEN_PATH not set — skipping lyra-claude-oauth bootstrap."
-    warn "  Generate the token: install -m 0600 /dev/null ~/.lyra/claude-oauth.tok && claude setup-token > ~/.lyra/claude-oauth.tok"
-    warn "  Re-run with: CLAUDE_OAUTH_TOKEN_PATH=~/.lyra/claude-oauth.tok $0"
+    warn "CLAUDE_OAUTH_TOKEN_PATH not set — skipping factory-claude-oauth bootstrap."
+    warn "  Generate the token: install -m 0600 /dev/null ~/.roxabi/factory/claude-oauth.tok && claude setup-token > ~/.roxabi/factory/claude-oauth.tok"
+    warn "  Re-run with: CLAUDE_OAUTH_TOKEN_PATH=~/.roxabi/factory/claude-oauth.tok $0"
   else
     RESOLVED_TOKEN=$(realpath -e "$CLAUDE_OAUTH_TOKEN_PATH" 2>/dev/null) \
       || error "Token file not found or unresolvable: $(printf '%q' "$CLAUDE_OAUTH_TOKEN_PATH")"
-    [[ "$RESOLVED_TOKEN" == /home/lyra/secrets/* || "$RESOLVED_TOKEN" == /etc/lyra/* ]] \
-      || error "CLAUDE_OAUTH_TOKEN_PATH outside trusted dirs (/home/lyra/secrets/, /etc/lyra/): $RESOLVED_TOKEN"
+    [[ "$RESOLVED_TOKEN" == /home/factory/secrets/* || "$RESOLVED_TOKEN" == /etc/factory/* ]] \
+      || error "CLAUDE_OAUTH_TOKEN_PATH outside trusted dirs (/home/factory/secrets/, /etc/factory/): $RESOLVED_TOKEN"
     # Auto-fix mode (operator's `>` redirect may inherit umask 0644); then assert.
     chmod 600 "$RESOLVED_TOKEN"
     token_mode=$(stat -c '%a' "$RESOLVED_TOKEN")
@@ -445,9 +445,9 @@ else
     # Pipe via `tr -d '\n'` so a trailing newline (common from `cmd > file`)
     # cannot leak into the secret value and silently break auth at runtime.
     sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" bash -c \
-      "tr -d '\n' < \"$RESOLVED_TOKEN\" | podman secret create lyra-claude-oauth -" \
-      || error "Failed to create podman secret lyra-claude-oauth"
-    info "Podman secret 'lyra-claude-oauth' created from $RESOLVED_TOKEN."
+      "tr -d '\n' < \"$RESOLVED_TOKEN\" | podman secret create factory-claude-oauth -" \
+      || error "Failed to create podman secret factory-claude-oauth"
+    info "Podman secret 'factory-claude-oauth' created from $RESOLVED_TOKEN."
     # Wipe source file — best-effort. shred is a no-op on CoW filesystems
     # (btrfs, tmpfs, ZFS); rely on encrypted home for at-rest protection.
     shred -u "$RESOLVED_TOKEN" || rm -f "$RESOLVED_TOKEN"
@@ -472,7 +472,7 @@ fi
 # confidence about persistent user services.
 
 # Note: lyra-monitor.{service,timer} host-timer units have been removed from deploy/
-# (superseded by Monitoring v2, tracked in #1035). Python module src/lyra/monitoring/
+# (superseded by Monitoring v2, tracked in #1035). Python module src/factory/monitoring/
 # is retained for spec mining. ¬install any lyra-monitor units on new hosts.
 
 section "Node.js"
@@ -544,15 +544,15 @@ if [ "${NEEDS_REBOOT:-false}" = true ]; then
 else
   echo ""
   info "Next steps:"
-  echo "  1. Clone lyra:"
+  echo "  1. Clone roxabi-factory:"
   echo ""
-  echo "     git clone git@github.com:Roxabi/lyra.git ~/projects/lyra"
+  echo "     git clone git@github.com:Roxabi/roxabi-factory.git ~/projects/roxabi-factory"
   echo ""
-  echo "  2. Run the lyra setup (clones optional modules, installs Quadlets if this host has the lyra-hub role):"
+  echo "  2. Run the factory setup (clones optional modules, installs Quadlets if this host has the factory-hub role):"
   echo ""
-  echo "     cd ~/projects/lyra && python3 deploy/setup.py"
+  echo "     cd ~/projects/roxabi-factory && python3 deploy/setup.py"
   echo ""
-  echo "  3. For multi-repo deploys across hosts (lyra + voiceCLI + llmCLI + imageCLI), use the cross-repo deployer:"
+  echo "  3. For multi-repo deploys across hosts (roxabi-factory + voiceCLI + llmCLI + imageCLI), use the cross-repo deployer:"
   echo ""
   echo "     ~/projects/deploy.sh        # idempotent, role-aware via ~/projects/hosts.toml"
   echo ""
@@ -562,6 +562,6 @@ else
   echo ""
   echo "  5. Recommended — NATS setup for multi-machine production (embedded nats-server covers dev/single-machine use):"
   echo ""
-  echo "     cd ~/projects/lyra && make nats-setup"
+  echo "     cd ~/projects/roxabi-factory && make nats-setup"
   echo ""
 fi

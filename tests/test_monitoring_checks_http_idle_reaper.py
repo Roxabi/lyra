@@ -15,7 +15,7 @@ import pytest
 class TestCheckHttpHealth:
     async def test_healthy_endpoint(self) -> None:
         """SC-4: check_http_health passes when endpoint returns 200."""
-        from lyra.monitoring.checks import check_http_health
+        from factory.monitoring.checks import check_http_health
 
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -26,7 +26,7 @@ class TestCheckHttpHealth:
             "circuits": {"claude-cli": {"state": "closed"}},
         }
 
-        with patch("lyra.monitoring.checks.httpx.AsyncClient") as mock_client_cls:
+        with patch("factory.monitoring.checks.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.get.return_value = mock_response
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -44,9 +44,9 @@ class TestCheckHttpHealth:
         """SC-4: check_http_health fails when endpoint is unreachable."""
         import httpx
 
-        from lyra.monitoring.checks import check_http_health
+        from factory.monitoring.checks import check_http_health
 
-        with patch("lyra.monitoring.checks.httpx.AsyncClient") as mock_client_cls:
+        with patch("factory.monitoring.checks.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.get.side_effect = httpx.ConnectError("Connection refused")
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -67,7 +67,7 @@ class TestCheckHttpHealth:
 class TestCheckIdle:
     def test_within_threshold(self) -> None:
         """SC-6: check_idle passes when last_message_age_s is within threshold."""
-        from lyra.monitoring.checks import check_idle
+        from factory.monitoring.checks import check_idle
 
         result = check_idle(
             {"last_message_age_s": 3600.0},  # 1 hour
@@ -79,11 +79,11 @@ class TestCheckIdle:
 
     def test_exceeds_threshold(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """SC-6: check_idle fails when last_message_age_s exceeds threshold."""
-        from lyra.monitoring import checks
+        from factory.monitoring import checks
 
         # Pin time to midday so quiet window (00:00-08:00) never suppresses.
         mock_now = datetime(2026, 3, 10, 12, 0, 0, tzinfo=timezone.utc)
-        with patch("lyra.monitoring.checks.datetime") as mock_dt:
+        with patch("factory.monitoring.checks.datetime") as mock_dt:
             mock_dt.now.return_value = mock_now
             mock_dt.strptime = datetime.strptime
             result = checks.check_idle(
@@ -96,11 +96,11 @@ class TestCheckIdle:
 
     def test_skips_during_quiet_hours(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """SC-6: check_idle passes during quiet hours regardless of age."""
-        from lyra.monitoring import checks
+        from factory.monitoring import checks
 
         # Mock current time to 03:00
         mock_now = datetime(2026, 3, 10, 3, 0, 0, tzinfo=timezone.utc)
-        with patch("lyra.monitoring.checks.datetime") as mock_dt:
+        with patch("factory.monitoring.checks.datetime") as mock_dt:
             mock_dt.now.return_value = mock_now
             mock_dt.strptime = datetime.strptime
             result = checks.check_idle(
@@ -116,10 +116,10 @@ class TestCheckIdle:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Quiet hours wrapping midnight (22:00-06:00) at 23:30."""
-        from lyra.monitoring import checks
+        from factory.monitoring import checks
 
         mock_now = datetime(2026, 3, 10, 23, 30, 0, tzinfo=timezone.utc)
-        with patch("lyra.monitoring.checks.datetime") as mock_dt:
+        with patch("factory.monitoring.checks.datetime") as mock_dt:
             mock_dt.now.return_value = mock_now
             mock_dt.strptime = datetime.strptime
             result = checks.check_idle(
@@ -135,10 +135,10 @@ class TestCheckIdle:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """12:00 is NOT in quiet hours for wrap 22:00-06:00."""
-        from lyra.monitoring import checks
+        from factory.monitoring import checks
 
         mock_now = datetime(2026, 3, 10, 12, 0, 0, tzinfo=timezone.utc)
-        with patch("lyra.monitoring.checks.datetime") as mock_dt:
+        with patch("factory.monitoring.checks.datetime") as mock_dt:
             mock_dt.now.return_value = mock_now
             mock_dt.strptime = datetime.strptime
             result = checks.check_idle(
@@ -151,7 +151,7 @@ class TestCheckIdle:
 
     def test_null_last_message_passes(self) -> None:
         """SC-6: check_idle passes when last_message_age_s is null (no messages yet)."""
-        from lyra.monitoring.checks import check_idle
+        from factory.monitoring.checks import check_idle
 
         result = check_idle(
             {"last_message_age_s": None},
@@ -172,7 +172,7 @@ class TestCheckReaper:
 
     def test_healthy_reaper(self) -> None:
         """SC-12: Reaper alive with recent sweep -> passes."""
-        from lyra.monitoring.checks import check_reaper
+        from factory.monitoring.checks import check_reaper
 
         result = check_reaper({"reaper_alive": True, "reaper_last_sweep_age": 60.0})
         assert result.passed is True
@@ -180,7 +180,7 @@ class TestCheckReaper:
 
     def test_stale_reaper(self) -> None:
         """SC-12: Sweep age > 120s -> fails."""
-        from lyra.monitoring.checks import check_reaper
+        from factory.monitoring.checks import check_reaper
 
         result = check_reaper({"reaper_alive": True, "reaper_last_sweep_age": 180.0})
         assert result.passed is False
@@ -188,7 +188,7 @@ class TestCheckReaper:
 
     def test_dead_reaper(self) -> None:
         """SC-11: Reaper not running -> fails."""
-        from lyra.monitoring.checks import check_reaper
+        from factory.monitoring.checks import check_reaper
 
         result = check_reaper({"reaper_alive": False, "reaper_last_sweep_age": None})
         assert result.passed is False
@@ -196,14 +196,14 @@ class TestCheckReaper:
 
     def test_alive_no_sweep_yet(self) -> None:
         """SC-11: Reaper alive but no sweep yet (before first iteration) -> passes."""
-        from lyra.monitoring.checks import check_reaper
+        from factory.monitoring.checks import check_reaper
 
         result = check_reaper({"reaper_alive": True, "reaper_last_sweep_age": None})
         assert result.passed is True
 
     def test_at_threshold_boundary(self) -> None:
         """Boundary: exactly 120s -> passes (uses <=)."""
-        from lyra.monitoring.checks import check_reaper
+        from factory.monitoring.checks import check_reaper
 
         result = check_reaper({"reaper_alive": True, "reaper_last_sweep_age": 120.0})
         assert result.passed is True

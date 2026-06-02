@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from lyra.streaming.event_emitter import EventEmitter
-from lyra.transport import SanitizedError
+from factory.streaming.event_emitter import EventEmitter
+from factory.transport import SanitizedError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -219,7 +219,7 @@ class TestTypeVariance:
 
     def test_render_event_type(self) -> None:
         # Arrange — use real RunErrorRenderEvent as OutT representative
-        from lyra.core.messaging.render_events import RunErrorRenderEvent
+        from factory.core.messaging.render_events import RunErrorRenderEvent
 
         def render_translator(err: SanitizedError) -> RunErrorRenderEvent:
             return RunErrorRenderEvent(run_id="run-1", message=err.message)
@@ -241,7 +241,7 @@ class TestTypeVariance:
 
     def test_llm_event_type(self) -> None:
         # Arrange — use real ResultLlmEvent as OutT representative
-        from lyra.core.messaging.events import ResultLlmEvent
+        from factory.core.messaging.events import ResultLlmEvent
 
         def llm_translator(err: SanitizedError) -> ResultLlmEvent:
             return ResultLlmEvent(

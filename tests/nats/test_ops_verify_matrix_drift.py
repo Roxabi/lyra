@@ -13,8 +13,8 @@ from pathlib import Path
 
 import pytest
 
-from lyra.cli_ops import _load_matrix
-from lyra.ops_audit import audit_matrix_inbox_drift, format_drift_finding
+from factory.cli_ops import _load_matrix
+from factory.ops_audit import audit_matrix_inbox_drift, format_drift_finding
 
 # ---------------------------------------------------------------------------
 # Test 1 — clean fixture: all lyra-owned identities use scoped subjects

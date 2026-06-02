@@ -18,8 +18,8 @@ coverage.xml
 .ruff_cache/
 .claude/worktrees/
 .claude/*.lock
-src/lyra/agents/lyra_runtime.toml
-lyra.toml
+src/factory/agents/lyra_runtime.toml
+factory.toml
 config.toml
 
 node_modules/

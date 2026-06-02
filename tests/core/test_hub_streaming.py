@@ -7,20 +7,20 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core import Agent, AgentBase, Hub, Pool
-from lyra.core.hub.hub_protocol import ChannelAdapter
-from lyra.core.messaging.message import (
+from factory.core import Agent, AgentBase, Hub, Pool
+from factory.core.hub.hub_protocol import ChannelAdapter
+from factory.core.messaging.message import (
     InboundMessage,
     OutboundMessage,
     Platform,
     Response,
 )
-from lyra.core.messaging.render_events import (
+from factory.core.messaging.render_events import (
     RenderEvent,
     TextDeltaRenderEvent,
     TextEndRenderEvent,
 )
-from lyra.core.ports.tts import TtsProtocol
+from factory.core.ports.tts import TtsProtocol
 from tests.conftest import TIMEOUT_FAST, TIMEOUT_SLOW
 from tests.core.conftest import MockAdapter, make_inbound_message, push_to_hub
 
@@ -266,7 +266,7 @@ class TestDispatchStreaming:
         self,
     ) -> None:
         """Voice + dispatcher path: text streams via dispatcher, TTS after."""
-        from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
+        from factory.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 
         hub = Hub(tts=cast(TtsProtocol, MagicMock()))
         _mock_synth = AsyncMock()

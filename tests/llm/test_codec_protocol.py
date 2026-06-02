@@ -1,5 +1,5 @@
-from lyra.llm.cli_nats_codec import CliNatsCodec
-from lyra.llm.codec import LlmCodec
+from factory.llm.cli_nats_codec import CliNatsCodec
+from factory.llm.codec import LlmCodec
 
 
 def test_cli_nats_codec_satisfies_protocol() -> None:

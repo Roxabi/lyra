@@ -40,8 +40,8 @@ def patch_blobstore_client(monkeypatch: pytest.MonkeyPatch) -> None:
     the TelegramAdapter and DiscordAdapter __init__ to auto-wire a mock store when
     blob_store is not explicitly provided.
     """
-    from lyra.adapters.discord import DiscordAdapter
-    from lyra.adapters.telegram import TelegramAdapter
+    from factory.adapters.discord import DiscordAdapter
+    from factory.adapters.telegram import TelegramAdapter
 
     mock_store = _make_mock_blob_store()
 

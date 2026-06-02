@@ -14,8 +14,8 @@ description: Current truth for Telegram, Discord, CLI, and audio adapter decisio
 Inbound channel adapters are the processes that receive platform events (Telegram webhooks,
 Discord gateway messages, CLI input, voice audio) and deliver them to the hub over NATS.
 This page covers Telegram webhook dispatch, Discord adapter, CLI entry points, audio routing
-in/out, TTS preference overlay, the adapter-side inbound stage pipeline (`lyra.inbound`),
-and the outbound stage composition model (`lyra.outbound`). It excludes the CliPool worker
+in/out, TTS preference overlay, the adapter-side inbound stage pipeline (`factory.inbound`),
+and the outbound stage composition model (`factory.outbound`). It excludes the CliPool worker
 harness (see `workers-tooling.md`) and routing key conventions (see `messaging.md`).
 
 ---
@@ -53,7 +53,7 @@ Temp files for binary media (audio, images) are written and immediately consumed
 the adapter. In `telegram_inbound.py` the audio bytes are downloaded, written to a temp
 path, read back via `tmp_path.read_bytes()`, and deleted via `tmp_path.unlink(missing_ok=True)`
 — all within the same handler. The already-fetched bytes are then wrapped in a
-`PendingAttachment` closure (`lyra.inbound.attachment_ingest.PendingAttachment`) that
+`PendingAttachment` closure (`factory.inbound.attachment_ingest.PendingAttachment`) that
 the inbound pipeline carries forward without touching the filesystem again.
 No transcription/STT-service call site is involved; the old `try/finally`-at-transcribe
 ownership model has been superseded by this immediate-read-and-unlink pattern.
@@ -65,7 +65,7 @@ for crash-orphaned files (deferred). → ADR-013
 `InboundAudio` was formerly a dead type — produced by both adapters via `normalize_audio()`
 but never enqueued, with audio repacked redundantly into `InboundMessage + Attachment`.
 This double-normalization is resolved: `InboundAudio` was superseded by `AudioPayload`
-(`src/lyra/core/audio_payload.py`), which both adapters produce and `AudioPipeline`
+(`src/factory/core/audio_payload.py`), which both adapters produce and `AudioPipeline`
 consumes. `normalize_audio()` is present on the `ChannelAdapter` Protocol
 (`hub_protocol.py:36`). Open items: `start()` / `stop()` lifecycle methods are still
 absent from the Protocol; `platform_meta: dict` → typed PlatformContext migration is
@@ -81,7 +81,7 @@ Four findings from the Phase 1b review, resolved as of 2026-05-08:
   `send_streaming()`) adopted; implemented — `telegram_outbound.py` sets
   `outbound.metadata["reply_message_id"]` from the sent message ID after each platform call.
 - **C (OutboundAudio mutability):** `OutboundAudio` is `@dataclass(frozen=True)` in
-  `src/lyra/core/messaging/message.py`, consistent with all other envelope types.
+  `src/factory/core/messaging/message.py`, consistent with all other envelope types.
 - **D (adapter backpressure inconsistency):** Per-scope lock fan-out with `_scope_locks`
   and `_SCOPE_REAP_THRESHOLD` in `outbound_dispatcher.py`.
 
@@ -118,14 +118,14 @@ Deployment via Quadlet units (`deploy/quadlet/lyra-stt.container`,
 Added in Epic #1277 Phase 2 (#1279). ADR-073 records the stage-axis pivot decision.
 
 All platform adapters inherit `OutboundAdapterBase` (`adapters/shared/_base_outbound.py`).
-Outbound streaming is orchestrated by `OutboundEmitter` (`lyra.outbound.emitter`), which
+Outbound streaming is orchestrated by `OutboundEmitter` (`factory.outbound.emitter`), which
 composes three stage protocols:
 
 | Stage | Protocol / class | Module |
 |-------|-----------------|--------|
-| Formatter | `OutboundFormatter` | `lyra.outbound.formatter` |
-| Throttle | `ThrottleCapability` | `lyra.outbound.throttle` |
-| Error handler | `OutboundErrorHandler` | `lyra.outbound.error_handler` |
+| Formatter | `OutboundFormatter` | `factory.outbound.formatter` |
+| Throttle | `ThrottleCapability` | `factory.outbound.throttle` |
+| Error handler | `OutboundErrorHandler` | `factory.outbound.error_handler` |
 
 Each adapter implements `_make_emitter()` (abstract on `OutboundAdapterBase`): it
 constructs the platform formatter (`telegram_formatter.py` or `discord_formatter.py`)
@@ -140,7 +140,7 @@ they implement the `OutboundFormatter` Protocol and own all platform I/O mechani
 
 ## Inbound stage pipeline
 
-Added in Epic #1277 Phase 3 (#1280). `lyra.inbound.pipeline.InboundPipeline` runs **adapter-side**
+Added in Epic #1277 Phase 3 (#1280). `factory.inbound.pipeline.InboundPipeline` runs **adapter-side**
 (pre-NATS) inside each adapter process.
 
 Pipeline shape:

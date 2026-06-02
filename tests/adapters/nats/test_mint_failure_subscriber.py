@@ -48,7 +48,7 @@ def _make_nats_msg(
 
 async def test_subscribes_to_correct_subject_on_start() -> None:
     """start() subscribes to lyra.gh.mint_failure.> wildcard."""
-    from lyra.adapters.nats.mint_failure_subscriber import (
+    from factory.adapters.nats.mint_failure_subscriber import (
         _SUBSCRIBE_SUBJECT,
         MintFailureSubscriber,
     )
@@ -74,7 +74,7 @@ async def test_subscribes_to_correct_subject_on_start() -> None:
 
 async def test_handle_publishes_telegram_outbound() -> None:
     """Valid MintFailureEvent -> nc.publish called with correct subject and payload."""
-    from lyra.adapters.nats.mint_failure_subscriber import MintFailureSubscriber
+    from factory.adapters.nats.mint_failure_subscriber import MintFailureSubscriber
 
     nc = AsyncMock()
     subscriber = MintFailureSubscriber(
@@ -127,7 +127,7 @@ async def test_handle_logs_and_swallows_bad_payload(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Garbage payload must not raise — subscriber logs warning and keeps running."""
-    from lyra.adapters.nats.mint_failure_subscriber import MintFailureSubscriber
+    from factory.adapters.nats.mint_failure_subscriber import MintFailureSubscriber
 
     nc = AsyncMock()
     subscriber = MintFailureSubscriber(
@@ -138,7 +138,7 @@ async def test_handle_logs_and_swallows_bad_payload(
 
     bad_msg = _make_nats_msg(b"not valid json at all !!!!")
 
-    logger_name = "lyra.adapters.nats.mint_failure_subscriber"
+    logger_name = "factory.adapters.nats.mint_failure_subscriber"
     with caplog.at_level(logging.WARNING, logger=logger_name):
         await subscriber._handle(bad_msg)
 
@@ -156,7 +156,7 @@ async def test_handle_logs_and_swallows_bad_payload(
 
 async def test_stop_unsubscribes() -> None:
     """start() then stop() must call unsubscribe() on the subscription."""
-    from lyra.adapters.nats.mint_failure_subscriber import MintFailureSubscriber
+    from factory.adapters.nats.mint_failure_subscriber import MintFailureSubscriber
 
     nc = AsyncMock()
     fake_sub = AsyncMock()
@@ -183,7 +183,7 @@ async def test_stop_unsubscribes() -> None:
 
 async def test_stop_without_start_is_noop() -> None:
     """stop() before start() does not raise."""
-    from lyra.adapters.nats.mint_failure_subscriber import MintFailureSubscriber
+    from factory.adapters.nats.mint_failure_subscriber import MintFailureSubscriber
 
     nc = AsyncMock()
     subscriber = MintFailureSubscriber(

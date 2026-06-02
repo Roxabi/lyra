@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.bootstrap.bootstrap_stores import (
+from factory.bootstrap.bootstrap_stores import (
     _atomic_table_copy,
     _ensure_config_db,
     _ensure_discord_db,
@@ -334,7 +334,7 @@ class TestOpenStoresLifecycle:
           3. hub.shutdown() is called (must NOT close turn_store)
           4. open_stores context exits — finally block must close turn_store once
         """
-        from lyra.core.hub import Hub
+        from factory.core.hub import Hub
 
         # Arrange — one mock per store that open_stores constructs
         mock_turn = _make_store_mock()
@@ -350,6 +350,7 @@ class TestOpenStoresLifecycle:
         mock_ensure_kv = AsyncMock()
 
         captured_js = None
+
         def _capture_js(*args, **kwargs):
             nonlocal captured_js
             captured_js = args[0] if args else kwargs.get("js")
@@ -361,40 +362,40 @@ class TestOpenStoresLifecycle:
         # The mocks' connect() and close() are async no-ops by default.
         with (
             patch(
-                "lyra.bootstrap.bootstrap_stores.AuthStore",
+                "factory.bootstrap.bootstrap_stores.AuthStore",
                 return_value=mock_auth,
             ),
             patch(
-                "lyra.bootstrap.bootstrap_stores.IdentityAliasStore",
+                "factory.bootstrap.bootstrap_stores.IdentityAliasStore",
                 return_value=mock_alias,
             ),
             patch(
-                "lyra.bootstrap.bootstrap_stores.AgentStore",
+                "factory.bootstrap.bootstrap_stores.AgentStore",
                 return_value=mock_agent,
             ),
             patch(
-                "lyra.bootstrap.bootstrap_stores.TurnStore",
+                "factory.bootstrap.bootstrap_stores.TurnStore",
                 return_value=mock_turn,
             ),
             patch(
-                "lyra.bootstrap.bootstrap_stores.BotStore",
+                "factory.bootstrap.bootstrap_stores.BotStore",
                 return_value=mock_bot,
             ),
             patch(
-                "lyra.bootstrap.bootstrap_stores.PrefsStore",
+                "factory.bootstrap.bootstrap_stores.PrefsStore",
                 return_value=mock_prefs,
             ),
             patch(
-                "lyra.bootstrap.bootstrap_stores.MessageIndexKvStore",
+                "factory.bootstrap.bootstrap_stores.MessageIndexKvStore",
                 side_effect=_capture_js,
             ),
             patch(
-                "lyra.bootstrap.bootstrap_stores.ensure_kv",
+                "factory.bootstrap.bootstrap_stores.ensure_kv",
                 mock_ensure_kv,
             ),
             # Migration guards touch the filesystem; bypass them for lifecycle tests.
-            patch("lyra.bootstrap.bootstrap_stores._ensure_config_db"),
-            patch("lyra.bootstrap.bootstrap_stores._ensure_discord_db"),
+            patch("factory.bootstrap.bootstrap_stores._ensure_config_db"),
+            patch("factory.bootstrap.bootstrap_stores._ensure_discord_db"),
         ):
             # Act — enter open_stores, wire hub, call hub.shutdown(), then exit
             async with open_stores(tmp_path, nc=mock_nc) as stores:
@@ -421,7 +422,7 @@ class TestOpenStoresLifecycle:
         This is the negative half of the regression: if hub.shutdown() is called
         WITHOUT the open_stores context exiting, close() must not be called at all.
         """
-        from lyra.core.hub import Hub
+        from factory.core.hub import Hub
 
         # Arrange
         mock_turn = _make_store_mock()
@@ -439,31 +440,31 @@ class TestOpenStoresLifecycle:
         """open_stores without nc raises RuntimeError."""
         with (
             patch(
-                "lyra.bootstrap.bootstrap_stores.AuthStore",
+                "factory.bootstrap.bootstrap_stores.AuthStore",
                 return_value=AsyncMock(),
             ),
             patch(
-                "lyra.bootstrap.bootstrap_stores.IdentityAliasStore",
+                "factory.bootstrap.bootstrap_stores.IdentityAliasStore",
                 return_value=AsyncMock(),
             ),
             patch(
-                "lyra.bootstrap.bootstrap_stores.AgentStore",
+                "factory.bootstrap.bootstrap_stores.AgentStore",
                 return_value=AsyncMock(),
             ),
             patch(
-                "lyra.bootstrap.bootstrap_stores.TurnStore",
+                "factory.bootstrap.bootstrap_stores.TurnStore",
                 return_value=AsyncMock(),
             ),
             patch(
-                "lyra.bootstrap.bootstrap_stores.BotStore",
+                "factory.bootstrap.bootstrap_stores.BotStore",
                 return_value=AsyncMock(),
             ),
             patch(
-                "lyra.bootstrap.bootstrap_stores.PrefsStore",
+                "factory.bootstrap.bootstrap_stores.PrefsStore",
                 return_value=AsyncMock(),
             ),
-            patch("lyra.bootstrap.bootstrap_stores._ensure_config_db"),
-            patch("lyra.bootstrap.bootstrap_stores._ensure_discord_db"),
+            patch("factory.bootstrap.bootstrap_stores._ensure_config_db"),
+            patch("factory.bootstrap.bootstrap_stores._ensure_discord_db"),
         ):
             with pytest.raises(
                 RuntimeError, match="NATS connection \\(nc\\) is required"

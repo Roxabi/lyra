@@ -17,8 +17,8 @@ import pytest
 async def test_lyra_turns_db_set_skips_vault_dir_mkdir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """LYRA_TURNS_DB set → mkdir targets its parent, never Path.home()/.lyra."""
-    from lyra.bootstrap.standalone.worker_standalone import (
+    """FACTORY_TURNS_DB set → mkdir targets its parent, never Path.home()/.lyra."""
+    from factory.bootstrap.standalone.worker_standalone import (
         _bootstrap_turn_writer_standalone,
     )
 
@@ -30,14 +30,14 @@ async def test_lyra_turns_db_set_skips_vault_dir_mkdir(
     unwritable_root = tmp_path / "ro"
     unwritable_root.mkdir(mode=0o555)
     monkeypatch.setenv("HOME", str(unwritable_root / "nobody"))
-    monkeypatch.setenv("LYRA_TURNS_DB", str(db_path))
+    monkeypatch.setenv("FACTORY_TURNS_DB", str(db_path))
     monkeypatch.setenv("NATS_URL", "nats://invalid:4222")
-    monkeypatch.delenv("LYRA_VAULT_DIR", raising=False)
+    monkeypatch.delenv("ROXABI_FACTORY_DIR", raising=False)
 
     # Make the connect call fail early so we exit before NATS state is touched —
     # the only behavior under test is path resolution + mkdir.
     with patch(
-        "lyra.bootstrap.standalone.worker_standalone.nats_connect",
+        "factory.bootstrap.standalone.worker_standalone.nats_connect",
         side_effect=ConnectionError("stub: skip NATS"),
     ):
         with pytest.raises(SystemExit):
@@ -52,21 +52,21 @@ async def test_lyra_turns_db_set_skips_vault_dir_mkdir(
 async def test_no_lyra_turns_db_falls_back_to_vault_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """LYRA_TURNS_DB unset → mkdir targets LYRA_VAULT_DIR (dev-mode path)."""
-    from lyra.bootstrap.standalone.worker_standalone import (
+    """FACTORY_TURNS_DB unset → mkdir targets ROXABI_FACTORY_DIR (dev-mode path)."""
+    from factory.bootstrap.standalone.worker_standalone import (
         _bootstrap_turn_writer_standalone,
     )
 
     vault = tmp_path / "vault"
-    monkeypatch.delenv("LYRA_TURNS_DB", raising=False)
-    monkeypatch.setenv("LYRA_VAULT_DIR", str(vault))
+    monkeypatch.delenv("FACTORY_TURNS_DB", raising=False)
+    monkeypatch.setenv("ROXABI_FACTORY_DIR", str(vault))
     monkeypatch.setenv("NATS_URL", "nats://invalid:4222")
 
     with patch(
-        "lyra.bootstrap.standalone.worker_standalone.nats_connect",
+        "factory.bootstrap.standalone.worker_standalone.nats_connect",
         side_effect=ConnectionError("stub: skip NATS"),
     ):
         with pytest.raises(SystemExit):
             await _bootstrap_turn_writer_standalone({})
 
-    assert vault.exists(), "vault dir should be created when LYRA_TURNS_DB unset"
+    assert vault.exists(), "vault dir should be created when FACTORY_TURNS_DB unset"

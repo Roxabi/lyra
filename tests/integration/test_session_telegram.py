@@ -8,16 +8,16 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
-    from lyra.adapters.telegram import TelegramAdapter
-    from lyra.core.messaging.bus import Bus
-    from lyra.core.messaging.message import InboundMessage
+    from factory.adapters.telegram import TelegramAdapter
+    from factory.core.messaging.bus import Bus
+    from factory.core.messaging.message import InboundMessage
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.infrastructure.stores.turn_store import TurnStore
+from factory.infrastructure.stores.turn_store import TurnStore
 
 pytestmark = pytest.mark.asyncio
 
@@ -82,7 +82,7 @@ def _make_telegram_adapter(
     turn_store: "TurnStore | None" = None,
 ) -> tuple["TelegramAdapter", MagicMock]:
     """Build a TelegramAdapter with optional turn_store injection."""
-    from lyra.adapters.telegram import TelegramAdapter
+    from factory.adapters.telegram import TelegramAdapter
 
     mock_bus = inbound_bus if inbound_bus is not None else MagicMock()
     if inbound_bus is None:
@@ -106,7 +106,7 @@ def _make_telegram_adapter(
 
 async def test_telegram_private_injects_thread_session_id() -> None:
     """TelegramAdapter with turn_store injects thread_session_id for private chats."""
-    from lyra.adapters.telegram.telegram_inbound import (
+    from factory.adapters.telegram.telegram_inbound import (
         handle_message as telegram_handle_message,
     )
 
@@ -146,7 +146,7 @@ async def test_telegram_private_injects_thread_session_id() -> None:
     else:
         posted = mock_bus.put.call_args[0][1]
 
-    from lyra.core.messaging.message import TelegramMeta
+    from factory.core.messaging.message import TelegramMeta
 
     assert isinstance(posted.platform_meta, TelegramMeta), (
         f"Expected TelegramMeta, got {posted.platform_meta!r}"
@@ -164,7 +164,7 @@ async def test_telegram_no_turn_store_no_injection() -> None:
     Currently this trivially passes (no injection exists). It becomes a meaningful
     regression guard once injection is added.
     """
-    from lyra.adapters.telegram.telegram_inbound import (
+    from factory.adapters.telegram.telegram_inbound import (
         handle_message as telegram_handle_message,
     )
 

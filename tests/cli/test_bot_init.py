@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from lyra.cli import lyra_app as app
-from lyra.core.agent.bot_models import BotRow
-from lyra.infrastructure.stores.bot_store import BotStore
+from factory.cli import factory_app as app
+from factory.core.agent.bot_models import BotRow
+from factory.infrastructure.stores.bot_store import BotStore
 from tests.helpers.bot_cli import write_bot_toml
 from tests.helpers.bot_store import db_get, db_upsert
 
@@ -50,7 +50,7 @@ class TestBotInitErrors:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # Arrange — empty tmp_path, no config.toml anywhere
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         monkeypatch.chdir(tmp_path)
 
         # Act
@@ -64,7 +64,7 @@ class TestBotInitErrors:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # Arrange — write broken TOML
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         write_bot_toml(tmp_path, "this is [[[not valid")
 
         # Act
@@ -78,7 +78,7 @@ class TestBotInitErrors:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # Spec edge case: config.toml with no bot arrays → exit 0, 0 seeded.
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         write_bot_toml(tmp_path, "[server]\nfoo = 1\n")  # valid TOML, no bot arrays
 
         result = runner.invoke(app, ["bot", "init"])
@@ -99,7 +99,7 @@ class TestBotInitSeed:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # Arrange
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         write_bot_toml(
             tmp_path,
             '[[telegram.bots]]\nbot_id="main"\nagent="a"\n',
@@ -122,7 +122,7 @@ class TestBotInitSeed:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # Arrange
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         write_bot_toml(
             tmp_path,
             '[[telegram.bots]]\nbot_id="main"\nagent="a"\n',
@@ -156,7 +156,7 @@ class TestBotInitSeed:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # Arrange
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         write_bot_toml(
             tmp_path,
             '[[telegram.bots]]\nbot_id="main"\nagent="a"\n',
@@ -185,7 +185,7 @@ class TestBotInitSeed:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # --force on a fresh DB with no prior rows must still seed normally.
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         write_bot_toml(
             tmp_path,
             '[[telegram.bots]]\nbot_id="main"\nagent="a"\n',
@@ -203,7 +203,7 @@ class TestBotInitSeed:
         # list deduplication across [[telegram.bots]] and [[auth.telegram_bots]].
         # _add_entries order: telegram.bots first, auth.telegram_bots last →
         # auth.telegram_bots scalar values win.
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         write_bot_toml(
             tmp_path,
             "[[telegram.bots]]\n"
@@ -232,7 +232,7 @@ class TestBotInitSeed:
     ) -> None:
         # Arrange — minimal TOML that omits auto_thread and thread_hot_hours
         # so that dataclass defaults apply (conservative: False / 24).
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         write_bot_toml(
             tmp_path,
             '[[telegram.bots]]\nagent="a"\n',
@@ -266,7 +266,7 @@ class TestBotInitValidation:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # bot_id with path-traversal characters must be rejected and counted as error.
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         write_bot_toml(
             tmp_path,
             '[[telegram.bots]]\nbot_id="../../evil"\nagent="a"\n',

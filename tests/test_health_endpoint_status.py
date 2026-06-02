@@ -13,11 +13,11 @@ from unittest.mock import Mock
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from lyra.bootstrap.infra.health import Secrets
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.hub import Hub
-from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
-from lyra.core.messaging.message import (
+from factory.bootstrap.infra.health import Secrets
+from factory.core.auth.trust import TrustLevel
+from factory.core.hub import Hub
+from factory.core.lifecycle.circuit_breaker import CircuitRegistry
+from factory.core.messaging.message import (
     InboundMessage,
     Platform,
     TelegramMeta,
@@ -33,7 +33,7 @@ from tests.core.conftest import push_to_hub
 class TestHealthUnauthenticated:
     async def test_no_token_returns_ok_only(self, hub: Hub) -> None:
         """#207: Unauthenticated /health returns only {"ok": true}."""
-        from lyra.bootstrap.infra.health import create_health_app
+        from factory.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub, secrets=Mock(spec=Secrets, health_secret=""))
         transport = ASGITransport(app=app)
@@ -45,7 +45,7 @@ class TestHealthUnauthenticated:
 
     async def test_wrong_token_returns_ok_only(self, hub: Hub) -> None:
         """#207: Wrong Bearer token still returns minimal response."""
-        from lyra.bootstrap.infra.health import create_health_app
+        from factory.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub)
         transport = ASGITransport(app=app)
@@ -60,7 +60,7 @@ class TestHealthUnauthenticated:
 
     async def test_no_secret_configured_returns_ok_only(self, hub: Hub) -> None:
         """#207: When no secret is configured, always minimal."""
-        from lyra.bootstrap.infra.health import create_health_app
+        from factory.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub, secrets=Mock(spec=Secrets, health_secret=""))
         transport = ASGITransport(app=app)
@@ -74,7 +74,7 @@ class TestHealthUnauthenticated:
 
     async def test_empty_secret_env_returns_ok_only(self, hub: Hub) -> None:
         """#207: Empty health_secret still returns minimal response."""
-        from lyra.bootstrap.infra.health import create_health_app
+        from factory.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub, secrets=Mock(spec=Secrets, health_secret=""))
         transport = ASGITransport(app=app)
@@ -97,7 +97,7 @@ class TestHealthEndpoint:
 
     async def test_health_returns_json(self, hub: Hub) -> None:
         """SC-2: /health/detail returns JSON with expected keys."""
-        from lyra.bootstrap.infra.health import create_health_app
+        from factory.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub, secrets=self.secrets)
         transport = ASGITransport(app=app)
@@ -117,7 +117,7 @@ class TestHealthEndpoint:
 
     async def test_health_queue_size_reflects_staging(self, hub: Hub) -> None:
         """SC-2: queue_size reflects the staging queue depth."""
-        from lyra.bootstrap.infra.health import create_health_app
+        from factory.bootstrap.infra.health import create_health_app
 
         msg = InboundMessage(
             id="msg-health-1",
@@ -148,8 +148,8 @@ class TestHealthEndpoint:
         """S2-6: /health/detail reports per-platform queue depths."""
         from unittest.mock import MagicMock
 
-        from lyra.bootstrap.infra.health import create_health_app
-        from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
+        from factory.bootstrap.infra.health import create_health_app
+        from factory.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 
         hub.register_adapter(Platform.TELEGRAM, "main", MagicMock())
         tg_dispatcher = OutboundDispatcher(
@@ -185,7 +185,7 @@ class TestHealthEndpoint:
 
     async def test_health_uptime_positive(self, hub: Hub) -> None:
         """SC-2: uptime_s is a positive number."""
-        from lyra.bootstrap.infra.health import create_health_app
+        from factory.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub, secrets=self.secrets)
         transport = ASGITransport(app=app)
@@ -199,7 +199,7 @@ class TestHealthEndpoint:
         self, hub: Hub
     ) -> None:
         """SC-2: last_message_age_s is null when no messages have been processed."""
-        from lyra.bootstrap.infra.health import create_health_app
+        from factory.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub, secrets=self.secrets)
         transport = ASGITransport(app=app)
@@ -211,7 +211,7 @@ class TestHealthEndpoint:
 
     async def test_health_last_message_age_after_processing(self, hub: Hub) -> None:
         """SC-3: last_message_age_s reflects time since last processed message."""
-        from lyra.bootstrap.infra.health import create_health_app
+        from factory.bootstrap.infra.health import create_health_app
 
         hub._outbound_router._last_processed_at = time.monotonic()
 
@@ -226,7 +226,7 @@ class TestHealthEndpoint:
 
     async def test_health_circuits_all_closed(self, hub: Hub) -> None:
         """SC-2: circuits shows state for all registered circuits."""
-        from lyra.bootstrap.infra.health import create_health_app
+        from factory.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub, secrets=self.secrets)
         transport = ASGITransport(app=app)
@@ -244,7 +244,7 @@ class TestHealthEndpoint:
         self, hub: Hub, circuit_registry: CircuitRegistry
     ) -> None:
         """SC-2: circuits reflects open circuit state."""
-        from lyra.bootstrap.infra.health import create_health_app
+        from factory.bootstrap.infra.health import create_health_app
 
         cb = circuit_registry.get("claude-cli")
         assert cb is not None
@@ -278,7 +278,7 @@ class TestNatsHealthProbe:
     ) -> None:
         """No NATS_URL → no `nats` and no `status` keys in the response."""
         monkeypatch.delenv("NATS_URL", raising=False)
-        from lyra.bootstrap.infra.health import create_health_app
+        from factory.bootstrap.infra.health import create_health_app
 
         # nc omitted — mirrors unified mode
         app = create_health_app(hub, secrets=self.secrets)
@@ -302,7 +302,7 @@ class TestNatsHealthProbe:
         nc = MagicMock()
         nc.is_connected = True
 
-        from lyra.bootstrap.infra.health import create_health_app
+        from factory.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub, nc=nc, secrets=self.secrets)
         transport = ASGITransport(app=app)
@@ -324,7 +324,7 @@ class TestNatsHealthProbe:
         nc = MagicMock()
         nc.is_connected = False
 
-        from lyra.bootstrap.infra.health import create_health_app
+        from factory.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub, nc=nc, secrets=self.secrets)
         transport = ASGITransport(app=app)
@@ -340,7 +340,7 @@ class TestNatsHealthProbe:
     ) -> None:
         """NATS_URL set but nc=None (caller didn't wire it) → unreachable."""
         monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
-        from lyra.bootstrap.infra.health import create_health_app
+        from factory.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub, secrets=self.secrets)
         transport = ASGITransport(app=app)
@@ -367,12 +367,12 @@ class TestNatsHealthProbe:
         # PropertyMock models the real @property semantics on nats-py client.
         type(nc).is_connected = PropertyMock(side_effect=RuntimeError("boom"))
 
-        from lyra.bootstrap.infra.health import create_health_app
+        from factory.bootstrap.infra.health import create_health_app
 
         app = create_health_app(hub, nc=nc, secrets=self.secrets)
         transport = ASGITransport(app=app)
 
-        with caplog.at_level(_logging.DEBUG, logger="lyra.bootstrap.infra.health"):
+        with caplog.at_level(_logging.DEBUG, logger="factory.bootstrap.infra.health"):
             async with AsyncClient(
                 transport=transport, base_url="http://test"
             ) as client:
@@ -383,7 +383,7 @@ class TestNatsHealthProbe:
         assert data["status"] == "degraded"
         assert any(
             "_probe_nats" in r.getMessage()
-            and r.name == "lyra.bootstrap.infra.health"
+            and r.name == "factory.bootstrap.infra.health"
             and r.levelno == _logging.DEBUG
             for r in caplog.records
         )

@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.infrastructure.stores.auth_store import AuthStore
+from factory.core.auth.trust import TrustLevel
+from factory.infrastructure.stores.auth_store import AuthStore
 from tests.core.conftest import make_auth_store
 
 # ---------------------------------------------------------------------------

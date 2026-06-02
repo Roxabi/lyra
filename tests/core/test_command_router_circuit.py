@@ -19,16 +19,16 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.commands.command_loader import CommandLoader
-from lyra.core.commands.command_parser import CommandParser
-from lyra.core.commands.command_router import (
+from factory.core.auth.trust import TrustLevel
+from factory.core.commands.command_loader import CommandLoader
+from factory.core.commands.command_parser import CommandParser
+from factory.core.commands.command_router import (
     CommandConfig,
     CommandRouter,
     CommandRouterDeps,
 )
-from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.core.messaging.message import InboundMessage, Response, TelegramMeta
+from factory.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
+from factory.core.messaging.message import InboundMessage, Response, TelegramMeta
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -176,8 +176,8 @@ class TestPluginsConfig:
     """agent_row_to_config() parses plugins_json and commands_json from AgentRow."""
 
     def test_commands_enabled_from_agent_row(self) -> None:
-        from lyra.core.agent.agent_db_loader import agent_row_to_config
-        from lyra.core.agent.agent_models import AgentRow
+        from factory.core.agent.agent_db_loader import agent_row_to_config
+        from factory.core.agent.agent_models import AgentRow
 
         row = AgentRow(
             name="test_agent",
@@ -191,8 +191,8 @@ class TestPluginsConfig:
         assert agent.commands_enabled == ("echo", "weather")
 
     def test_commands_enabled_defaults_to_empty(self) -> None:
-        from lyra.core.agent.agent_db_loader import agent_row_to_config
-        from lyra.core.agent.agent_models import AgentRow
+        from factory.core.agent.agent_db_loader import agent_row_to_config
+        from factory.core.agent.agent_models import AgentRow
 
         row = AgentRow(
             name="test_agent",
@@ -206,8 +206,8 @@ class TestPluginsConfig:
         assert agent.commands_enabled == ()
 
     def test_command_config_parsed_from_commands_json(self) -> None:
-        from lyra.core.agent.agent_db_loader import agent_row_to_config
-        from lyra.core.agent.agent_models import AgentRow
+        from factory.core.agent.agent_db_loader import agent_row_to_config
+        from factory.core.agent.agent_models import AgentRow
 
         commands_data = {
             "/help": {

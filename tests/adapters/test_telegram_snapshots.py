@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.messaging.render_events import (
+from factory.core.messaging.render_events import (
     RunFinishedRenderEvent,
     RunStartedRenderEvent,
     TextDeltaRenderEvent,
@@ -138,7 +138,7 @@ class TestTelegramSnapshots:
 
         Expected: final edit_message_text starts with ❌ (error prefix).
         """
-        from lyra.core.messaging.render_events import RunErrorRenderEvent
+        from factory.core.messaging.render_events import RunErrorRenderEvent
 
         adapter, bot = _make_adapter_with_bot()
         msg = _make_telegram_message()

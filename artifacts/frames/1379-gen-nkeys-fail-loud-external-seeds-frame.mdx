@@ -8,7 +8,7 @@ date: 2026-05-26
 
 ## Problem
 
-`lyra-acl genkeys --regenerate` régénère tous les seeds NATS sur M₁ et reconstruit `auth.conf`, mais n'a aucune notion de **où le seed doit vivre pour être utilisable**. Toutes les identités sont traitées identiquement : seed écrit dans `~/.lyra/nkeys/{name}.seed`, ACL emise dans auth.conf, secret podman rechargé.
+`factory-acl genkeys --regenerate` régénère tous les seeds NATS sur M₁ et reconstruit `auth.conf`, mais n'a aucune notion de **où le seed doit vivre pour être utilisable**. Toutes les identités sont traitées identiquement : seed écrit dans `~/.lyra/nkeys/{name}.seed`, ACL emise dans auth.conf, secret podman rechargé.
 
 Pour les identités **container-locales** (10 sur 12 : hub, voice-stt, voice-tts, adapters, workers, turn-writer) ça suffit — le seed est consommé via Podman secret sur la même machine.
 
@@ -18,7 +18,7 @@ Pour les identités **externes** (`voice-client` sur M₂ aujourd'hui ; futurs `
 
 ## Who
 
-- **Primary :** opérateur (Mickael) qui exécute `lyra-acl genkeys --regenerate` sur M₁ après chaque modification d'ACL ou rotation
+- **Primary :** opérateur (Mickael) qui exécute `factory-acl genkeys --regenerate` sur M₁ après chaque modification d'ACL ou rotation
 - **Secondary :**
   - Clients externes consommant des seeds NATS : `voice-client` (M₂, voicecli dictate aujourd'hui)
   - Identités externes futures (`image-client`, `llm-client`)
@@ -41,7 +41,7 @@ Pour les identités **externes** (`voice-client` sur M₂ aujourd'hui ; futurs `
 
 ## Premise Validity
 
-**Success in 6 months :** chaque exécution de `lyra-acl genkeys --regenerate` se termine soit en succès complet (tous clients reachable après procédure), soit en exit non-zéro avec un manifest scp copiable visible dans stderr. Zéro incident de type "regen-puis-client-locked-out-silencieusement" entre maintenant et 2026-11-26.
+**Success in 6 months :** chaque exécution de `factory-acl genkeys --regenerate` se termine soit en succès complet (tous clients reachable après procédure), soit en exit non-zéro avec un manifest scp copiable visible dans stderr. Zéro incident de type "regen-puis-client-locked-out-silencieusement" entre maintenant et 2026-11-26.
 
 **Failure in 6 months :** ≥1 incident où un regen laisse un client externe (voice-client ou futur image/llm-client) verrouillé pendant >1h sans notification opérateur, de la même forme que 2026-05-25/26 (~14h, ~30 erreurs auth/min côté serveur, blocage côté client). Métrique observable : count d'incidents matchant ce shape dans le journal d'incidents Roxabi.
 

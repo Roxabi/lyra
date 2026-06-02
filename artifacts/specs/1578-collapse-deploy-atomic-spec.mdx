@@ -26,7 +26,7 @@ Any deploy trigger (staging merge, autoupdate, or manual) converges the host to 
    - Pulls `origin/staging` for `lyra` (and `voiceCLI` if `VOICE_DIR` is present)
    - Runs `make quadlet-install NO_RESTART=1` (render units, daemon-reload, no restart)
    - If `voiceCLI` is present, runs `make -C "$$VOICE_DIR" quadlet-install NO_RESTART=1`
-   - Runs `lyra-acl genkeys --regen-authconf`
+   - Runs `factory-acl genkeys --regen-authconf`
    - Runs `make quadlet-secrets-install`
    - Restarts `lyra-nats` (first, to refresh `type=mount` secrets)
    - Restarts `lyra-hub lyra-telegram lyra-discord lyra-clipool lyra-turn-writer lyra-gh-helper lyra-blobstore`
@@ -40,7 +40,7 @@ Any deploy trigger (staging merge, autoupdate, or manual) converges the host to 
 
 4. **Failure notification:** If `make converge` fails, `lyra-deploy-failure.service` (triggered by `OnFailure`) logs to journal. A follow-up issue will add Telegram/Discord alerting (deferred, out of scope for this cycle).
 
-5. **PATH fix:** Both `lyra-quadlet-sync.service` and `lyra-post-autoupdate.service` include `%h/projects/lyra/.venv/bin` in `PATH`, making `lyra-acl`, `uv`, and `lyra` available headless.
+5. **PATH fix:** Both `lyra-quadlet-sync.service` and `lyra-post-autoupdate.service` include `%h/projects/lyra/.venv/bin` in `PATH`, making `factory-acl`, `uv`, and `lyra` available headless.
 
 6. **Unit installation:** New systemd units (`lyra-post-autoupdate.service`, `lyra-post-autoupdate.timer`, `lyra-deploy-failure.service`) are installed by `make quadlet-sync-install` (expanded to include these units).
 
@@ -94,7 +94,7 @@ flowchart TD
     subgraph Makefile
         M1[make converge] --> M2[git pull]
         M1 --> M3[make quadlet-install NO_RESTART=1]
-        M1 --> M4[lyra-acl genkeys --regen-authconf]
+        M1 --> M4[factory-acl genkeys --regen-authconf]
         M1 --> M5[make quadlet-secrets-install]
         M1 --> M6[systemctl restart lyra-*]
     end
@@ -141,7 +141,7 @@ flowchart TD
 - [ ] `deploy/CLAUDE.md` documents the new `make converge` verb and trigger wiring
 - [ ] voiceCLI pull + quadlet-install is included in `make converge` when `VOICE_DIR` is present
 - [ ] `lyra-turn-writer`, `lyra-gh-helper`, and `lyra-blobstore` are included in the restart list
-- [ ] No references to `lyra-acl`, `uv`, or `lyra` fail with "command not found" in headless service context
+- [ ] No references to `factory-acl`, `uv`, or `lyra` fail with "command not found" in headless service context
 
 ## [NEEDS CLARIFICATION]
 

@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.monitoring.config import MonitoringConfig
-from lyra.monitoring.models import CheckResult, DiagnosisReport, HealthReport
+from factory.monitoring.config import MonitoringConfig
+from factory.monitoring.models import CheckResult, DiagnosisReport, HealthReport
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -75,7 +75,7 @@ class TestEscalateToLLM:
         self, config: MonitoringConfig, failed_report: HealthReport
     ) -> None:
         """escalate_to_llm uses Claude CLI when available."""
-        from lyra.monitoring.escalation import escalate_to_llm
+        from factory.monitoring.escalation import escalate_to_llm
 
         mock_proc = AsyncMock()
         mock_proc.returncode = 0
@@ -87,15 +87,15 @@ class TestEscalateToLLM:
 
         with (
             patch(
-                "lyra.monitoring.escalation.shutil.which",
+                "factory.monitoring.escalation.shutil.which",
                 return_value="/usr/bin/claude",
             ),
             patch(
-                "lyra.monitoring.escalation.asyncio.create_subprocess_exec",
+                "factory.monitoring.escalation.asyncio.create_subprocess_exec",
                 return_value=mock_proc,
             ),
             patch(
-                "lyra.monitoring.escalation.asyncio.wait_for",
+                "factory.monitoring.escalation.asyncio.wait_for",
                 return_value=mock_proc.communicate.return_value,
             ),
         ):
@@ -109,9 +109,9 @@ class TestEscalateToLLM:
         self, config: MonitoringConfig, failed_report: HealthReport
     ) -> None:
         """SC-9: escalate_to_llm raises RuntimeError when the claude CLI is missing."""
-        from lyra.monitoring.escalation import escalate_to_llm
+        from factory.monitoring.escalation import escalate_to_llm
 
-        with patch("lyra.monitoring.escalation.shutil.which", return_value=None):
+        with patch("factory.monitoring.escalation.shutil.which", return_value=None):
             with pytest.raises(RuntimeError, match="claude CLI not installed"):
                 await escalate_to_llm(failed_report, config)
 
@@ -126,13 +126,15 @@ class TestSendTelegramAlert:
         self, config: MonitoringConfig, diagnosis: DiagnosisReport
     ) -> None:
         """SC-8: send_telegram_alert sends formatted message to admin chat."""
-        from lyra.monitoring.escalation import send_telegram_alert
+        from factory.monitoring.escalation import send_telegram_alert
 
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"ok": True}
 
-        with patch("lyra.monitoring.escalation.httpx.AsyncClient") as mock_client_cls:
+        with patch(
+            "factory.monitoring.escalation.httpx.AsyncClient"
+        ) as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post.return_value = mock_response
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -150,13 +152,15 @@ class TestSendTelegramAlert:
         self, config: MonitoringConfig, diagnosis: DiagnosisReport
     ) -> None:
         """Telegram payload must not contain parse_mode (HTML injection)."""
-        from lyra.monitoring.escalation import send_telegram_alert
+        from factory.monitoring.escalation import send_telegram_alert
 
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"ok": True}
 
-        with patch("lyra.monitoring.escalation.httpx.AsyncClient") as mock_client_cls:
+        with patch(
+            "factory.monitoring.escalation.httpx.AsyncClient"
+        ) as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post.return_value = mock_response
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -181,13 +185,15 @@ class TestSendTelegramRawAlert:
         self, config: MonitoringConfig, failed_report: HealthReport
     ) -> None:
         """SC-9: send_telegram_raw_alert sends raw check results."""
-        from lyra.monitoring.escalation import send_telegram_raw_alert
+        from factory.monitoring.escalation import send_telegram_raw_alert
 
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"ok": True}
 
-        with patch("lyra.monitoring.escalation.httpx.AsyncClient") as mock_client_cls:
+        with patch(
+            "factory.monitoring.escalation.httpx.AsyncClient"
+        ) as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post.return_value = mock_response
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -204,9 +210,11 @@ class TestSendTelegramRawAlert:
         """SC-10: send_telegram_raw_alert raises when Telegram is unreachable."""
         import httpx
 
-        from lyra.monitoring.escalation import send_telegram_raw_alert
+        from factory.monitoring.escalation import send_telegram_raw_alert
 
-        with patch("lyra.monitoring.escalation.httpx.AsyncClient") as mock_client_cls:
+        with patch(
+            "factory.monitoring.escalation.httpx.AsyncClient"
+        ) as mock_client_cls:
             mock_client = AsyncMock()
             mock_client.post.side_effect = httpx.ConnectError("Telegram unreachable")
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -228,13 +236,13 @@ class TestRunFallbackChain:
     @pytest.fixture()
     def _mock_config(self, monkeypatch: pytest.MonkeyPatch, tmp_path):
         """Set env vars so load_monitoring_config() succeeds."""
-        monkeypatch.setenv("LYRA_CONFIG", str(tmp_path / "nonexistent.toml"))
+        monkeypatch.setenv("FACTORY_CONFIG", str(tmp_path / "nonexistent.toml"))
         monkeypatch.setenv("TELEGRAM_TOKEN", "fake")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "fake")
         monkeypatch.setenv("TELEGRAM_ADMIN_CHAT_ID", "12345")
         # Mock disk usage for check_disk
         monkeypatch.setattr(
-            "lyra.monitoring.checks_varz.shutil.disk_usage",
+            "factory.monitoring.checks_varz.shutil.disk_usage",
             lambda _: shutil._ntuple_diskusage(
                 total=100 * 1024**3,
                 used=50 * 1024**3,
@@ -243,14 +251,14 @@ class TestRunFallbackChain:
         )
         # Mock podman logs for log-scan checks
         monkeypatch.setattr(
-            "lyra.monitoring.checks_log.subprocess.run",
+            "factory.monitoring.checks_log.subprocess.run",
             MagicMock(return_value=MagicMock(returncode=0, stdout="", stderr="")),
         )
         # Mock inode usage for check_inode_pct
         import os as _os
 
         monkeypatch.setattr(
-            "lyra.monitoring.checks_varz.os.statvfs",
+            "factory.monitoring.checks_varz.os.statvfs",
             lambda _: _os.statvfs_result(
                 (
                     100 * 1024**3,
@@ -273,10 +281,10 @@ class TestRunFallbackChain:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """All checks pass → exit 0, no LLM call."""
-        from lyra.monitoring.__main__ import _run
+        from factory.monitoring.__main__ import _run
 
         monkeypatch.setattr(
-            "lyra.monitoring.checks.subprocess.run",
+            "factory.monitoring.checks.subprocess.run",
             MagicMock(return_value=MagicMock(returncode=0, stdout="active\n")),
         )
 
@@ -289,7 +297,7 @@ class TestRunFallbackChain:
             "circuits": {"claude-cli": {"state": "closed"}},
         }
 
-        with patch("lyra.monitoring.checks.httpx.AsyncClient") as mock_cls:
+        with patch("factory.monitoring.checks.httpx.AsyncClient") as mock_cls:
             mc = AsyncMock()
             mc.get.return_value = mock_resp
             mc.__aenter__ = AsyncMock(return_value=mc)
@@ -311,11 +319,11 @@ class TestRunFallbackChain:
         not installed (no HTTP fallback to Anthropic API).  The _run() fallback
         chain catches the RuntimeError and calls send_telegram_raw_alert.
         """
-        from lyra.monitoring.__main__ import _run
+        from factory.monitoring.__main__ import _run
 
         # Process check fails → anomaly
         monkeypatch.setattr(
-            "lyra.monitoring.checks.subprocess.run",
+            "factory.monitoring.checks.subprocess.run",
             MagicMock(return_value=MagicMock(returncode=3, stdout="inactive\n")),
         )
 
@@ -325,9 +333,9 @@ class TestRunFallbackChain:
 
         with (
             # CLI not installed → escalate_to_llm raises RuntimeError immediately
-            patch("lyra.monitoring.escalation.shutil.which", return_value=None),
-            patch("lyra.monitoring.checks.httpx.AsyncClient") as checks_cls,
-            patch("lyra.monitoring.escalation.httpx.AsyncClient") as esc_cls,
+            patch("factory.monitoring.escalation.shutil.which", return_value=None),
+            patch("factory.monitoring.checks.httpx.AsyncClient") as checks_cls,
+            patch("factory.monitoring.escalation.httpx.AsyncClient") as esc_cls,
         ):
             # HTTP health check fails (hub down)
             mc_checks = AsyncMock()
@@ -360,19 +368,19 @@ class TestRunFallbackChain:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """Anomaly + LLM fails + Telegram fails → log only → exit 1."""
-        from lyra.monitoring.__main__ import _run
+        from factory.monitoring.__main__ import _run
 
         monkeypatch.setattr(
-            "lyra.monitoring.checks.subprocess.run",
+            "factory.monitoring.checks.subprocess.run",
             MagicMock(return_value=MagicMock(returncode=3, stdout="inactive\n")),
         )
 
         import httpx
 
         with (
-            patch("lyra.monitoring.escalation.shutil.which", return_value=None),
-            patch("lyra.monitoring.checks.httpx.AsyncClient") as checks_cls,
-            patch("lyra.monitoring.escalation.httpx.AsyncClient") as esc_cls,
+            patch("factory.monitoring.escalation.shutil.which", return_value=None),
+            patch("factory.monitoring.checks.httpx.AsyncClient") as checks_cls,
+            patch("factory.monitoring.escalation.httpx.AsyncClient") as esc_cls,
         ):
             mc_checks = AsyncMock()
             mc_checks.get.side_effect = httpx.ConnectError("refused")

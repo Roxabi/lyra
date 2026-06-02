@@ -1,5 +1,6 @@
 # File size exemptions — file_length gate (metric: SLOC, cap 300, per .claude/stack.yml)
 # Each entry MUST have a tracking issue. Format: <path>  # <N> lines — <issue> <description>
 # The declared count is a local cap (still measured in SLOC); exceeding it fails the gate.
-# Currently EMPTY: under SLOC@300 no src file qualifies (max is cli_streaming_parser.py at 291 SLOC).
-# The prior 14 entries were wc -l artifacts (docstrings + blank lines), dissolved by the metric switch.
+# Currently EMPTY: under SLOC@300 no src file qualifies (max ~291 SLOC).
+# The prior wc -l entries were docstring/blank/comment artifacts, dissolved by the metric switch
+# (re-confirmed after the lyra→roxabi-factory rename: still 0 files ≥300 SLOC).

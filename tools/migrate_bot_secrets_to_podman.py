@@ -6,12 +6,12 @@ deletes CredentialStore. Operators on machines that never seeded a
 config.db bot_secrets table can skip this script entirely.
 
 The script is intentionally self-contained — it does NOT import from the
-deleted `lyra.infrastructure.stores.credential_store` module. It reads
+deleted `factory.infrastructure.stores.credential_store` module. It reads
 `~/.lyra/config.db` directly via the stdlib sqlite3 module and decrypts
 each row with the existing Fernet keyring at `~/.lyra/keyring.key`.
 
 After a successful run:
-  1. Inspect: `podman secret ls --filter name=lyra-bot-`
+  1. Inspect: `podman secret ls --filter name=factory-bot-`
   2. Generate the Quadlet fragment: `make quadlet-bot-secrets-render`
   3. Paste the per-platform fragments into the matching .container files.
   4. Restart adapters: `systemctl --user restart lyra-telegram lyra-discord`
@@ -130,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
             skipped.append(f"{platform}/{bot_id}: token decryption failed")
             continue
         _podman_secret_create(
-            f"lyra-bot-{platform}-{bot_id}",
+            f"factory-bot-{platform}-{bot_id}",
             token.encode(),
             dry_run=args.dry_run,
         )
@@ -142,7 +142,7 @@ def main(argv: list[str] | None = None) -> int:
                 skipped.append(f"{platform}/{bot_id}: webhook decryption failed")
                 continue
             _podman_secret_create(
-                f"lyra-bot-{platform}-{bot_id}-webhook",
+                f"factory-bot-{platform}-{bot_id}-webhook",
                 webhook.encode(),
                 dry_run=args.dry_run,
             )
@@ -161,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.dry_run:
         print(
             "\nNext steps:\n"
-            "  1. podman secret ls --filter name=lyra-bot-\n"
+            "  1. podman secret ls --filter name=factory-bot-\n"
             "  2. make quadlet-bot-secrets-render\n"
             "  3. paste the .bot-secrets.{telegram,discord}.fragment lines "
             "into the matching .container files\n"

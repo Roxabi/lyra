@@ -21,8 +21,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from aiogram.types import BufferedInputFile
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import (
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import (
     DiscordMeta,
     InboundMessage,
     OutboundAudioChunk,

@@ -3,7 +3,7 @@
 ## Scope
 
 Container deployment artifacts for Lyra on prod (`roxabituwer`, M₁).
-Subdirs: `quadlet/` | `nats/` | `scripts/` | `lib/` | `lyra-gh/` | `systemd/`
+Subdirs: `quadlet/` | `nats/` | `scripts/` | `lib/` | `factory-gh/` | `systemd/`
 
 ¬docker, ¬docker-compose for prod. Runtime stack: **Podman 5.x (native on Ubuntu 26.04 LTS)
 + Quadlet generators + systemd user units**.
@@ -83,7 +83,7 @@ deploy verb for M₁. It reconciles the running system with the desired state de
 | Property | Mechanism |
 |---|---|
 | **Change-gated** | Computes a convergence fingerprint (`git HEAD` + rendered Quadlet unit checksums + `auth.conf` SHA). If the current state matches the last recorded stamp (`~/.lyra/.converge-stamp`), the script exits immediately with `Already converged — nothing to do.` |
-| **Idempotent** | Running `make converge` twice on an unchanged tree is a no-op. Individual steps (git pull, `make quadlet-install`, `lyra-acl genkeys`, secret install, restarts) are each idempotent or guarded. |
+| **Idempotent** | Running `make converge` twice on an unchanged tree is a no-op. Individual steps (git pull, `make quadlet-install`, `factory-acl genkeys`, secret install, restarts) are each idempotent or guarded. |
 | **Atomic** | A `flock` file lock (`/run/user/<uid>/lyra-deploy.lock`) prevents concurrent converges. If the lock is held, the second invocation exits 0 silently. The full sequence (pull → install → regen auth → secrets → restart NATS → restart clients) is executed as a single critical section. |
 
 ### Convergence sequence
@@ -91,10 +91,10 @@ deploy verb for M₁. It reconciles the running system with the desired state de
 1. **Change-gate** — skip if already converged.
 2. **Pull** — `git pull origin staging` in `~/projects/lyra` (and `~/projects/voiceCLI` if present).
 3. **Install Quadlet units** — `make quadlet-install NO_RESTART=1` (renders units, copies to `~/.config/containers/systemd`, `daemon-reload`, seeds BotStore).
-4. **Regenerate auth.conf** — `lyra-acl genkeys --regen-authconf` (renders `nkeys/` → `auth.conf`).
+4. **Regenerate auth.conf** — `factory-acl genkeys --regen-authconf` (renders `nkeys/` → `auth.conf`).
 5. **Install secrets** — `make quadlet-secrets-install` (recreates Podman secrets from host key files).
 6. **Restart NATS** — `systemctl --user restart lyra-nats` (mount-typed secrets require container restart, not HUP, to refresh). Waits for `is-active`.
-7. **Restart lyra clients** — `lyra-hub`, `lyra-telegram`, `lyra-discord`, `lyra-clipool`, `lyra-turn-writer`, `lyra-gh-helper`, `lyra-blobstore` (only if already active; any failure aborts the converge).
+7. **Restart lyra clients** — `lyra-hub`, `lyra-telegram`, `lyra-discord`, `lyra-clipool`, `lyra-turn-writer`, `factory-gh-helper`, `lyra-blobstore` (only if already active; any failure aborts the converge).
 8. **Restart voiceCLI** — `voicecli-tts`, `voicecli-stt` (if voiceCLI directory exists).
 9. **Record stamp** — writes the new convergence fingerprint to `~/.lyra/.converge-stamp`.
 
@@ -174,7 +174,7 @@ by design. The guard is now the authoritative rejection point.
 
 ### Known residual risk — clipool `core.hooksPath` override (tracked #1245)
 
-The clipool unit sets `core.hooksPath = /opt/lyra-gh/hooks` via `GIT_CONFIG_GLOBAL`
+The clipool unit sets `core.hooksPath = /opt/factory-gh/hooks` via `GIT_CONFIG_GLOBAL`
 so the image-baked `prepare-commit-msg` hook fires on every commit. The workspace
 volume is mounted RW; a malicious subprocess (uid 1500) could write a per-repo
 `.git/config` containing its own `[core] hooksPath = …` that **overrides** the

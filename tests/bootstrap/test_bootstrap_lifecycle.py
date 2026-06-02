@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from lyra.bootstrap.lifecycle.bootstrap_lifecycle import LifecycleResources
+from factory.bootstrap.lifecycle.bootstrap_lifecycle import LifecycleResources
 
 
 def _make_hub() -> MagicMock:
@@ -49,7 +49,7 @@ async def _watchdog_immediate(tasks: object, stop: asyncio.Event) -> None:
 
 async def test_run_lifecycle_closes_dc_thread_store() -> None:
     """F6a: run_lifecycle calls dc_thread_store.close() once after adapter teardown."""
-    from lyra.bootstrap.lifecycle.bootstrap_lifecycle import run_lifecycle
+    from factory.bootstrap.lifecycle.bootstrap_lifecycle import run_lifecycle
 
     hub = _make_hub()
     dc_thread_store = AsyncMock()
@@ -60,7 +60,7 @@ async def test_run_lifecycle_closes_dc_thread_store() -> None:
 
     with (
         patch(
-            "lyra.bootstrap.factory.utils.watchdog",
+            "factory.bootstrap.factory.utils.watchdog",
             side_effect=_watchdog_immediate,
         ),
         patch("uvicorn.Server.serve", new_callable=AsyncMock),
@@ -86,7 +86,7 @@ async def test_run_lifecycle_none_dc_thread_store_is_noop() -> None:
 
     The None guard must prevent any close() call on the thread store.
     """
-    from lyra.bootstrap.lifecycle.bootstrap_lifecycle import run_lifecycle
+    from factory.bootstrap.lifecycle.bootstrap_lifecycle import run_lifecycle
 
     hub = _make_hub()
     mock_store = AsyncMock()  # would fail loudly if close() were called
@@ -97,7 +97,7 @@ async def test_run_lifecycle_none_dc_thread_store_is_noop() -> None:
 
     with (
         patch(
-            "lyra.bootstrap.factory.utils.watchdog",
+            "factory.bootstrap.factory.utils.watchdog",
             side_effect=_watchdog_immediate,
         ),
         patch("uvicorn.Server.serve", new_callable=AsyncMock),

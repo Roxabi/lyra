@@ -11,10 +11,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.commands.search.handlers import cmd_search
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage, Response
-from lyra.integrations.base import SessionTools
+from factory.commands.search.handlers import cmd_search
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import InboundMessage, Response
+from factory.integrations.base import SessionTools
 
 
 def make_message(text: str = "/search hello") -> InboundMessage:

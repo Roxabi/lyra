@@ -16,7 +16,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from lyra.infrastructure.stores.bot_store import BotStore
+from factory.infrastructure.stores.bot_store import BotStore
 
 MARKER = "{{bot_secrets}}"
 _BOT_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
@@ -41,7 +41,7 @@ def render_secrets(platform: str, bots: list) -> str:
     for bot in bots:
         bot_id = bot.bot_id
         lines.append(
-            f"Secret=lyra-bot-{platform}-{bot_id},"
+            f"Secret=factory-bot-{platform}-{bot_id},"
             f"type=mount,"
             f"target=bot_token-{bot_id},"
             f"mode=0400,"
@@ -50,7 +50,7 @@ def render_secrets(platform: str, bots: list) -> str:
         )
         if bot.webhook_enabled is True:
             lines.append(
-                f"Secret=lyra-bot-{platform}-{bot_id}-webhook,"
+                f"Secret=factory-bot-{platform}-{bot_id}-webhook,"
                 f"type=mount,"
                 f"target=bot_webhook-{bot_id},"
                 f"mode=0400,"

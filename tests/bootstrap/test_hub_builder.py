@@ -1,19 +1,19 @@
-"""Tests for lyra.bootstrap.factory.hub_builder — build_cli_pool and register_agents."""
+"""Tests for bootstrap.hub_builder — build_cli_pool and register_agents."""
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from lyra.bootstrap.factory.hub_builder import (
+from factory.bootstrap.factory.hub_builder import (
     build_cli_pool,
     build_llm_client,
     register_agents,
 )
-from lyra.core.agent import Agent
-from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.hub import Hub
-from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.llm.llm_client import LlmClient
+from factory.core.agent import Agent
+from factory.core.agent.agent_config import ModelConfig
+from factory.core.hub import Hub
+from factory.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
+from factory.llm.llm_client import LlmClient
 
 # ---------------------------------------------------------------------------
 # test_build_cli_pool_returns_none_without_claude_cli
@@ -104,7 +104,7 @@ class TestRegisterAgents:
         fake_msg_manager = MagicMock()
         raw_config: dict = {}
 
-        import lyra.bootstrap.factory.hub.hub_agent_registration as hub_agent_reg_mod
+        import factory.bootstrap.factory.hub.hub_agent_registration as hub_agent_reg_mod
 
         with (
             patch.object(hub, "register_agent") as mock_register,

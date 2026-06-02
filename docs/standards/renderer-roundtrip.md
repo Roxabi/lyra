@@ -18,7 +18,7 @@ A *renderer* is any tool or static file that produces output consumed by an exte
 Two prod incidents drove this pattern:
 
 - **#1083** — a `#` character in a Quadlet `Volume=` line was consumed without error at deploy but caused podman to misparse the unit file at next container start.
-- **#1089** — `lyra-acl genkeys` emitted 62-char nkeys instead of the required 56; nats-server accepted the auth.conf at initial load but rejected the keys on restart.
+- **#1089** — `factory-acl genkeys` emitted 62-char nkeys instead of the required 56; nats-server accepted the auth.conf at initial load but rejected the keys on restart.
 
 The fix: every renderer must be exercised in CI by invoking the actual downstream binary in parse/check mode on its output, with exit-code and structural-invariant assertions, before the PR is merged.
 
@@ -75,12 +75,12 @@ Consumer exit code 0 is necessary but not sufficient. Add explicit assertions fo
 
 ## Worked example
 
-`lyra-acl genkeys` renders an `auth.conf` block containing nkeys and seeds. Bug #1089: the keygen utility emitted 62-char public keys. nats-server accepted the auth.conf without error on the initial load but failed to authenticate connections at restart because the keys did not match the internal nkeys format.
+`factory-acl genkeys` renders an `auth.conf` block containing nkeys and seeds. Bug #1089: the keygen utility emitted 62-char public keys. nats-server accepted the auth.conf without error on the initial load but failed to authenticate connections at restart because the keys did not match the internal nkeys format.
 
 The roundtrip test covers this renderer:
 
 ```bash
-bash tools/check_renderer_roundtrip.sh lyra-acl "$(mktemp -d)"
+bash tools/check_renderer_roundtrip.sh factory-acl "$(mktemp -d)"
 ```
 
 The helper generates a fresh keyset into the supplied tmpdir, renders an auth.conf, runs `nats-server -t -c` on it, then asserts three invariants:

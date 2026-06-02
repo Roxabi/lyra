@@ -5,7 +5,7 @@
 # check/dry-run mode. Intended for CI (renderer-roundtrip.yml) and local runs.
 #
 # Usage:
-#   tools/check_renderer_roundtrip.sh lyra-acl  <tmpdir>
+#   tools/check_renderer_roundtrip.sh factory-acl  <tmpdir>
 #   tools/check_renderer_roundtrip.sh nats-conf <tmpdir>
 #   tools/check_renderer_roundtrip.sh gen-certs <tmpdir>
 #
@@ -25,7 +25,7 @@ usage() {
 Usage: tools/check_renderer_roundtrip.sh <subcommand> <tmpdir>
 
 Subcommands:
-  lyra-acl   Render auth.conf via lyra-acl genkeys and parse with nats-server
+  factory-acl   Render auth.conf via factory-acl genkeys and parse with nats-server
   nats-conf  Parse deploy/nats/nats.conf + nats-container.conf with nats-server
   gen-certs  Run gen-certs.sh, verify cert chain with openssl, parse TLS stanza
   self-test  Falsifiable self-test: constructs known-bad inputs and asserts each
@@ -50,7 +50,7 @@ require_nats_server() {
 require_nk() {
   if ! command -v nk &>/dev/null; then
     echo "error: nk not found on PATH" >&2
-    echo "  In CI: installed by the 'Install nk' step in renderer-roundtrip.yml (lyra-acl-parse job)." >&2
+    echo "  In CI: installed by the 'Install nk' step in renderer-roundtrip.yml (factory-acl-parse job)." >&2
     echo "  Locally: install nkeys v0.4.15 from https://github.com/nats-io/nkeys/releases" >&2
     exit 1
   fi
@@ -153,8 +153,8 @@ check_no_embedded_newlines() {
   echo "    no embedded newlines in quoted strings OK" >&2
 }
 
-# ── SUBCOMMAND: lyra-acl ──────────────────────────────────────────────────────
-# Exercises the bug from #1089: lyra-acl genkeys renders auth.conf, then
+# ── SUBCOMMAND: factory-acl ──────────────────────────────────────────────────────
+# Exercises the bug from #1089: factory-acl genkeys renders auth.conf, then
 # nats-server -t -c parse-gates it. Three semantic invariants are enforced:
 #   (a) every nkey value is exactly 56 characters
 #   (b) nk seed→pubkey round-trip matches stored nkey
@@ -173,7 +173,7 @@ cmd_lyra_acl() {
     exit 1
   fi
 
-  echo "==> lyra-acl: generating seeds from acl-matrix.json into ${seeds_dir}" >&2
+  echo "==> factory-acl: generating seeds from acl-matrix.json into ${seeds_dir}" >&2
 
   # Read identity names from the acl-matrix.json map and generate a real seed
   # for each one using nk. The seed (private key) is written to <identity>.seed.
@@ -191,37 +191,37 @@ cmd_lyra_acl() {
     nk -gen user > "${seeds_dir}/${identity}.seed"
   done <<< "${identities}"
 
-  echo "==> lyra-acl: rendering auth.conf into ${seeds_dir}" >&2
+  echo "==> factory-acl: rendering auth.conf into ${seeds_dir}" >&2
 
-  # Run lyra-acl genkeys --regen-authconf.
+  # Run factory-acl genkeys --regen-authconf.
   # SEEDS_DIR redirects the read path (seeds) and the write path (auth.conf).
   # Seeds now always exist — no fallback to --template-only.
   SEEDS_DIR="${seeds_dir}" uv run --directory "${REPO_ROOT}" \
-    lyra-acl genkeys --regen-authconf
+    factory-acl genkeys --regen-authconf
 
   local auth_conf="${seeds_dir}/auth.conf"
   if [[ ! -f "${auth_conf}" ]]; then
-    echo "error: lyra-acl genkeys did not produce ${auth_conf}" >&2
+    echo "error: factory-acl genkeys did not produce ${auth_conf}" >&2
     exit 1
   fi
 
-  echo "==> lyra-acl: parse-gating with nats-server -t -c" >&2
+  echo "==> factory-acl: parse-gating with nats-server -t -c" >&2
   nats-server -t -c "${auth_conf}"
 
   # Read the file once for all invariant checks.
   local content
   content="$(cat "${auth_conf}")"
 
-  echo "==> lyra-acl: checking nkey lengths (expected 56)" >&2
+  echo "==> factory-acl: checking nkey lengths (expected 56)" >&2
   check_nkey_lengths "${content}" || exit 1
 
-  echo "==> lyra-acl: verifying seed→pubkey round-trip with nk" >&2
+  echo "==> factory-acl: verifying seed→pubkey round-trip with nk" >&2
   check_roundtrip "${content}" "${seeds_dir}" || exit 1
 
-  echo "==> lyra-acl: checking for embedded newlines in quoted strings" >&2
+  echo "==> factory-acl: checking for embedded newlines in quoted strings" >&2
   check_no_embedded_newlines "${content}" || exit 1
 
-  echo "==> lyra-acl: all checks passed" >&2
+  echo "==> factory-acl: all checks passed" >&2
 }
 
 # ── SUBCOMMAND: nats-conf ─────────────────────────────────────────────────────
@@ -460,8 +460,8 @@ SUBCOMMAND="$1"
 shift
 
 case "${SUBCOMMAND}" in
-  lyra-acl)
-    [[ $# -ge 1 ]] || { echo "error: lyra-acl requires <tmpdir>" >&2; usage; }
+  factory-acl)
+    [[ $# -ge 1 ]] || { echo "error: factory-acl requires <tmpdir>" >&2; usage; }
     cmd_lyra_acl "$1"
     ;;
   nats-conf)

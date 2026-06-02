@@ -15,8 +15,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.adapters.telegram import TelegramAdapter
-from lyra.adapters.telegram.telegram_inbound import handle_voice_message
+from factory.adapters.telegram import TelegramAdapter
+from factory.adapters.telegram.telegram_inbound import handle_voice_message
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -77,9 +77,9 @@ async def test_tg_voice_routes_via_pipeline_not_direct_push(
     mock_pipeline.run = AsyncMock(return_value=None)
 
     with (
-        patch("lyra.adapters.telegram.telegram_inbound._pipeline", mock_pipeline),
+        patch("factory.adapters.telegram.telegram_inbound._pipeline", mock_pipeline),
         patch(
-            "lyra.adapters.telegram.telegram_inbound._download_audio",
+            "factory.adapters.telegram.telegram_inbound._download_audio",
             new_callable=AsyncMock,
             return_value=(audio_file, 5.0),
         ),
@@ -122,9 +122,9 @@ async def test_tg_eager_download_and_pending_attachment_set(
     mock_pipeline.run = _capture_run
 
     with (
-        patch("lyra.adapters.telegram.telegram_inbound._pipeline", mock_pipeline),
+        patch("factory.adapters.telegram.telegram_inbound._pipeline", mock_pipeline),
         patch(
-            "lyra.adapters.telegram.telegram_inbound._download_audio",
+            "factory.adapters.telegram.telegram_inbound._download_audio",
             new_callable=AsyncMock,
             return_value=(audio_file, 5.0),
         ) as mock_download,
@@ -163,9 +163,9 @@ async def test_tg_too_large_reply_no_pipeline(
     mock_pipeline.run = AsyncMock(return_value=None)
 
     with (
-        patch("lyra.adapters.telegram.telegram_inbound._pipeline", mock_pipeline),
+        patch("factory.adapters.telegram.telegram_inbound._pipeline", mock_pipeline),
         patch(
-            "lyra.adapters.telegram.telegram_inbound._download_audio",
+            "factory.adapters.telegram.telegram_inbound._download_audio",
             new_callable=AsyncMock,
             side_effect=ValueError("file too large"),
         ),
@@ -206,9 +206,9 @@ async def test_tg_download_failed_reply_no_pipeline(
     mock_pipeline.run = AsyncMock(return_value=None)
 
     with (
-        patch("lyra.adapters.telegram.telegram_inbound._pipeline", mock_pipeline),
+        patch("factory.adapters.telegram.telegram_inbound._pipeline", mock_pipeline),
         patch(
-            "lyra.adapters.telegram.telegram_inbound._download_audio",
+            "factory.adapters.telegram.telegram_inbound._download_audio",
             new_callable=AsyncMock,
             side_effect=RuntimeError("connection reset"),
         ),

@@ -6,7 +6,7 @@ import asyncio
 
 import pytest
 
-from lyra.bootstrap.factory.utils import watchdog
+from factory.bootstrap.factory.utils import watchdog
 from tests.conftest import yield_once
 
 

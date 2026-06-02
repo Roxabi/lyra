@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lyra.core.commands.command_loader import CommandLoader
-from lyra.core.commands.command_router import CommandRouter, CommandRouterDeps
-from lyra.core.config import RouterConfig
+from factory.core.commands.command_loader import CommandLoader
+from factory.core.commands.command_router import CommandRouter, CommandRouterDeps
+from factory.core.config import RouterConfig
 
 __all__ = [
     "make_echo_plugin_dir",
@@ -55,8 +55,8 @@ def make_echo_plugin_dir(tmpdir: Path) -> Path:
         'handler = "cmd_echo"\n'
     )
     (plugin_dir / "handlers.py").write_text(
-        "from lyra.core.messaging.message import Response, InboundMessage\n"
-        "from lyra.core.pool import Pool\n"
+        "from factory.core.messaging.message import Response, InboundMessage\n"
+        "from factory.core.pool import Pool\n"
         "async def cmd_echo(\n"
         "    msg: InboundMessage, pool: Pool, args: list[str]\n"
         ") -> Response:\n"

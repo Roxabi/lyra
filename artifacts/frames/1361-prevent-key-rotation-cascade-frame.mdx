@@ -8,7 +8,7 @@ date: 2026-05-25
 
 ## Problem
 
-`lyra-acl genkeys` today exposes two modes: `_mode_full_provision` (rotates every seed) and `--regen-authconf` (requires all existing seeds to be present on disk). There is no path to add a single new identity without touching the others.
+`factory-acl genkeys` today exposes two modes: `_mode_full_provision` (rotates every seed) and `--regen-authconf` (requires all existing seeds to be present on disk). There is no path to add a single new identity without touching the others.
 
 On 2026-05-25, adding `turn-writer` for #1331 forced a full rotation. Recovery succeeded only because the Podman secret store still held the prior seeds and could repopulate them; an operator working on a fresh host would have lost the active identities for ≥30 minutes of forensics on top of the 41-minute deploy. The root cause was an absent CLI verb, not operator error — the safe path did not exist.
 

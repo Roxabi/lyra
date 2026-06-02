@@ -14,10 +14,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.hub.outbound._dispatch import _handle_post_send
-from lyra.core.hub.outbound.outbound_errors import _SEND_ERROR_MSG
-from lyra.core.messaging.message import OutboundMessage
-from lyra.core.messaging.utils.callbacks import TrustedCallback
+from factory.core.hub.outbound._dispatch import _handle_post_send
+from factory.core.hub.outbound.outbound_errors import _SEND_ERROR_MSG
+from factory.core.messaging.message import OutboundMessage
+from factory.core.messaging.utils.callbacks import TrustedCallback
 from tests.core.conftest import make_dispatcher_msg
 
 # ---------------------------------------------------------------------------

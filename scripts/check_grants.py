@@ -130,8 +130,7 @@ def _check_consumer_group(
     members = [
         name
         for name, identity in matrix["identities"].items()
-        if identity["status"] == "active"
-        and cg in identity.get("groups", [])
+        if identity["status"] == "active" and cg in identity.get("groups", [])
     ]
     if not members:
         return [

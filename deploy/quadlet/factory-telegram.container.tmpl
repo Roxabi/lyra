@@ -1,0 +1,57 @@
+[Unit]
+Description=Lyra Telegram adapter
+# After= orders startup; no Requires=/BindsTo= so a hub restart does not
+# propagate a stop to the adapter. Adapters reconnect to NATS on their own
+# once the hub is back; tearing them down blocks auto-recovery.
+After=factory-hub.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+# Image digest pinning for localhost/factory:latest tracks on a follow-up issue
+# (CI tag-by-SHA strategy).
+Image=ghcr.io/roxabi/factory:staging-svc
+Label=io.containers.autoupdate=registry
+ContainerName=factory-telegram
+Network=roxabi.network
+# Hardening — defense in depth (see issue #652).
+NoNewPrivileges=true
+ReadOnly=true
+DropCapability=all
+# ADR-054 Decision 2: UserNS=keep-id maps container UID to host UID 1000 (mickael),
+# which owns ~/.roxabi/factory/*. Replaces User=factory (UID 1500) which could not read host files.
+UserNS=keep-id:uid=1500,gid=1500
+# Bot tokens delivered via Podman secrets (superseded by #1057).
+# See `## Bot credentials` in docs/CONFIGURATION.md.
+Environment=NATS_URL=nats://factory-nats:4222
+# ADR-054 Decision 5 (revised): nkey seed delivered as Podman secret.
+Secret=factory-nats-telegram,type=mount,target=factory-nats-telegram.seed,uid=1500,gid=1500,mode=0400
+Environment=NATS_NKEY_SEED_PATH=/run/secrets/factory-nats-telegram.seed
+# Typing-indicator NATS plane (#1376). Sibling: deploy/quadlet/hub.env.example
+# — flipping the hub flag without updating this adapter flag causes split-brain.
+Environment=FACTORY_TYPING_ENABLED=false
+# BlobStore — required for AttachmentIngestStage to persist inbound attachments (#1551 S8).
+# Without these the prod assert fails and ingest silently no-ops.
+Environment=FACTORY_BLOBSTORE_URL=http://factory-blobstore:8449
+Environment=FACTORY_BLOBSTORE_TOKEN_PATH=/run/secrets/factory_blobstore_token
+Secret=factory_blobstore_token,type=mount,uid=1500,gid=1500,mode=0400,target=/run/secrets/factory_blobstore_token
+# Per-bot Secret= directives are rendered at install time from
+# ~/.roxabi/factory/config.toml's [[auth.<platform>_bots]] enumeration.
+# Use `make quadlet-install` to render them. See docs/QUADLET-DEPLOYMENT.md.
+# Rendered by tools/render_quadlet.py (str.replace, not Jinja2 or Go-template).
+{{bot_secrets}}
+Volume=factory-data.volume:/home/factory/.roxabi/factory:z
+# Inline single-file bind mount — see rationale in factory-hub.container.
+Volume=%h/.roxabi/factory/config.toml:/app/config.toml:ro,z
+Exec=factory adapter telegram
+HealthCmd=grep -q telegram /proc/1/cmdline
+HealthInterval=30s
+
+[Service]
+Restart=on-failure
+RestartSec=10
+# Cap at 2 full cores — prevents a runaway worker from starving hub + NATS.
+CPUQuota=200%
+
+[Install]
+WantedBy=default.target

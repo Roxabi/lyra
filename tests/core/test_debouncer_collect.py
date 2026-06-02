@@ -7,8 +7,8 @@ import asyncio
 
 import pytest
 
-from lyra.core.lifecycle.debouncer import MessageDebouncer
-from lyra.core.messaging.message import InboundMessage
+from factory.core.lifecycle.debouncer import MessageDebouncer
+from factory.core.messaging.message import InboundMessage
 from tests.conftest import TIMEOUT_FAST, TIMEOUT_IO
 from tests.core.conftest import make_debouncer_msg
 

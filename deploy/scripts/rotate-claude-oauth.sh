@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Lyra Claude Code OAuth token rotation — replaces the lyra-claude-oauth Podman
-# secret and restarts lyra-clipool so the new env var is picked up.
+# Lyra Claude Code OAuth token rotation — replaces the factory-claude-oauth Podman
+# secret and restarts factory-clipool so the new env var is picked up.
 #
 # Why a clipool restart: Podman Secret=type=env binds the secret value to the
 # container's environment at start time. Unlike type=mount (file backed by
@@ -19,7 +19,7 @@
 #
 # Acceptance (#1108): script gate is the 30s `podman ps` poll loop below
 # (line 51-58). Measured 0.617s end-to-end on M₁ (Podman 5.7.0, 2026-05-07)
-# from `secret rm` to lyra-clipool reporting `Up`.
+# from `secret rm` to factory-clipool reporting `Up`.
 set -euo pipefail
 export LC_ALL=C
 # shellcheck source=../lib/env.sh
@@ -32,31 +32,31 @@ NEW_TOKEN="${1:-}"
 RESOLVED=$(realpath -e "$NEW_TOKEN" 2>/dev/null) \
   || { printf 'Token file not found or unresolvable: %q\n' "$NEW_TOKEN" >&2; exit 2; }
 # Reject paths outside trusted directories.
-[[ "$RESOLVED" == /home/lyra/secrets/* || "$RESOLVED" == /etc/lyra/* ]] \
-  || { echo "Token path outside trusted dirs (/home/lyra/secrets/, /etc/lyra/): $RESOLVED" >&2; exit 2; }
+[[ "$RESOLVED" == /home/factory/secrets/* || "$RESOLVED" == /etc/factory/* ]] \
+  || { echo "Token path outside trusted dirs (/home/factory/secrets/, /etc/factory/): $RESOLVED" >&2; exit 2; }
 chmod 600 "$RESOLVED"
 token_mode=$(stat -c '%a' "$RESOLVED")
 [[ "$token_mode" == "600" ]] || { echo "Token file must be mode 0600 (got $token_mode): $RESOLVED" >&2; exit 2; }
 
 # Tolerate first-time creation: rm only if exists.
-if podman secret inspect lyra-claude-oauth &>/dev/null; then
-  podman secret rm lyra-claude-oauth
+if podman secret inspect factory-claude-oauth &>/dev/null; then
+  podman secret rm factory-claude-oauth
 fi
 # Pipe via `tr -d '\n'` so a trailing newline (common from `cmd > file`) cannot
 # leak into the secret value and silently break auth at runtime.
-tr -d '\n' < "$RESOLVED" | podman secret create lyra-claude-oauth -
+tr -d '\n' < "$RESOLVED" | podman secret create factory-claude-oauth -
 # Wipe source file — best-effort. shred is a no-op on CoW filesystems
 # (btrfs, tmpfs, ZFS); rely on encrypted home for at-rest protection.
 shred -u "$RESOLVED" || rm -f "$RESOLVED"
-systemctl --user restart lyra-clipool.service
+systemctl --user restart factory-clipool.service
 
 # Gate on clipool Up — env vars are picked up at container start, so once the
 # container reports Up the new token is in effect. Bound the wait at 30s
 # (60×0.5s) — clipool has heavier startup than the gh-helper sidecar.
 for _ in $(seq 60); do
-  if podman ps --filter name=lyra-clipool --format '{{.Status}}' \
+  if podman ps --filter name=factory-clipool --format '{{.Status}}' \
        | grep -q '^Up '; then
-    echo "lyra-clipool restarted, secret rotated."
+    echo "factory-clipool restarted, secret rotated."
     exit 0
   fi
   sleep 0.5

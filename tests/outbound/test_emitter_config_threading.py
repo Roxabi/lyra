@@ -25,14 +25,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import discord
 
-from lyra.core.messaging.message import InboundMessage, OutboundMessage
-from lyra.core.messaging.render_events import (
+from factory.core.messaging.message import InboundMessage, OutboundMessage
+from factory.core.messaging.render_events import (
     RenderEvent,
     ToolCallArgsRenderEvent,
     ToolCallEndRenderEvent,
     ToolCallStartRenderEvent,
 )
-from lyra.core.messaging.tool_display_config import ToolDisplayConfig
+from factory.core.messaging.tool_display_config import ToolDisplayConfig
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -89,7 +89,7 @@ def _make_tg_adapter(tool_display_config: ToolDisplayConfig | None = None):
     configure_tool_display() post-construction. Passing None skips the setter
     call so send_streaming falls back to ToolDisplayConfig() defaults.
     """
-    from lyra.adapters.telegram import TelegramAdapter
+    from factory.adapters.telegram import TelegramAdapter
 
     adapter = TelegramAdapter(
         bot_id="main",
@@ -109,8 +109,8 @@ def _make_tg_adapter(tool_display_config: ToolDisplayConfig | None = None):
 def _make_tg_inbound(chat_id: int = 42, message_id: int = 10) -> InboundMessage:
     from datetime import datetime, timezone
 
-    from lyra.core.auth.trust import TrustLevel
-    from lyra.core.messaging.message import TelegramMeta
+    from factory.core.auth.trust import TrustLevel
+    from factory.core.messaging.message import TelegramMeta
 
     return InboundMessage(
         id=f"telegram:tg:user:1:0:{message_id}",
@@ -145,7 +145,7 @@ def _make_dc_adapter(tool_display_config: ToolDisplayConfig | None = None):
     configure_tool_display() post-construction. Passing None skips the setter
     call so send_streaming falls back to ToolDisplayConfig() defaults.
     """
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -168,8 +168,8 @@ def _make_dc_adapter(tool_display_config: ToolDisplayConfig | None = None):
 def _make_dc_inbound(channel_id: int = 333) -> InboundMessage:
     from datetime import datetime, timezone
 
-    from lyra.core.auth.trust import TrustLevel
-    from lyra.core.messaging.message import DiscordMeta
+    from factory.core.auth.trust import TrustLevel
+    from factory.core.messaging.message import DiscordMeta
 
     return InboundMessage(
         id="discord:dc:user:1:0:0",

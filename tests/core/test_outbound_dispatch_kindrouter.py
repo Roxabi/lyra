@@ -1,7 +1,7 @@
 """KindRouter unit tests — RED phase for _resolve_item / RoutedPayload extraction.
 
 These tests import `_resolve_item` and `RoutedPayload` from
-`lyra.core.hub.outbound._dispatch`, which do not yet exist.  They are
+`factory.core.hub.outbound._dispatch`, which do not yet exist.  They are
 intended to drive the extraction of the kind-routing logic (lines 37-73 of
 `_dispatch.py`) into a standalone, testable unit.
 """
@@ -11,8 +11,8 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from unittest.mock import MagicMock
 
-from lyra.core.hub.outbound._dispatch import RoutedPayload, _resolve_item
-from lyra.core.messaging.message import (
+from factory.core.hub.outbound._dispatch import RoutedPayload, _resolve_item
+from factory.core.messaging.message import (
     OutboundAttachment,
     OutboundAudio,
     OutboundAudioChunk,

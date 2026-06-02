@@ -18,8 +18,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import DiscordMeta, InboundMessage, OutboundAttachment
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import (
+    DiscordMeta,
+    InboundMessage,
+    OutboundAttachment,
+)
 
 from .conftest import (
     make_dc_attach_adapter,

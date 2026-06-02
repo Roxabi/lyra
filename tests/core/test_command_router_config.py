@@ -14,12 +14,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.commands.command_loader import CommandLoader
-from lyra.core.commands.command_parser import CommandParser
-from lyra.core.commands.command_router import CommandRouter, CommandRouterDeps
-from lyra.core.messaging.message import InboundMessage, Response, TelegramMeta
-from lyra.core.pool import Pool
+from factory.core.auth.trust import TrustLevel
+from factory.core.commands.command_loader import CommandLoader
+from factory.core.commands.command_parser import CommandParser
+from factory.core.commands.command_router import CommandRouter, CommandRouterDeps
+from factory.core.messaging.message import InboundMessage, Response, TelegramMeta
+from factory.core.pool import Pool
 
 from .conftest import make_message, make_router
 
@@ -33,7 +33,7 @@ def make_config_router(
     with_holder: bool = True,
 ) -> CommandRouter:
     """Build a CommandRouter with runtime_config_holder set."""
-    from lyra.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
+    from factory.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
 
     plugins_dir = tmp_path / "plugins"
     plugins_dir.mkdir(exist_ok=True)

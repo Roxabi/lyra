@@ -7,9 +7,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lyra.transport.typing_publisher import TypingPublisher
-from lyra.transport.work_scope import WorkScope
-from lyra.typing.listener import typing_publisher_shim
+from factory.transport.typing_publisher import TypingPublisher
+from factory.transport.work_scope import WorkScope
+from factory.typing.listener import typing_publisher_shim
 
 
 class TestOnDoneCallback:
@@ -21,8 +21,8 @@ class TestOnDoneCallback:
         async def _failing_method(_scope: WorkScope) -> None:
             raise RuntimeError("boom")
 
-        with patch("lyra.typing.listener.is_typing_enabled", return_value=True):
-            with patch("lyra.typing.listener.log.warning") as mock_warning:
+        with patch("factory.typing.listener.is_typing_enabled", return_value=True):
+            with patch("factory.typing.listener.log.warning") as mock_warning:
                 result = typing_publisher_shim(
                     platform="telegram",
                     bot_id="main",
@@ -48,8 +48,8 @@ class TestOnDoneCallback:
         async def _slow_method(_):
             await asyncio.sleep(10)
 
-        with patch("lyra.typing.listener.is_typing_enabled", return_value=True):
-            with patch("lyra.typing.listener.log.warning") as mock_warning:
+        with patch("factory.typing.listener.is_typing_enabled", return_value=True):
+            with patch("factory.typing.listener.log.warning") as mock_warning:
                 result = typing_publisher_shim(
                     platform="telegram",
                     bot_id="main",
@@ -79,8 +79,8 @@ class TestOnDoneCallback:
             seen_scope = scope
             await asyncio.sleep(0)
 
-        with patch("lyra.typing.listener.is_typing_enabled", return_value=True):
-            with patch("lyra.typing.listener.uuid4") as mock_uuid:
+        with patch("factory.typing.listener.is_typing_enabled", return_value=True):
+            with patch("factory.typing.listener.uuid4") as mock_uuid:
                 mock_uuid.return_value.hex = "deadbeef1234"
                 result = typing_publisher_shim(
                     platform="telegram",

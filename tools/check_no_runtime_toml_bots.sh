@@ -13,11 +13,11 @@
 #           (auth_seeding.py, factory/agent_factory.py) — replaced by BotStore.get_all()
 #
 # Exclusions:
-#   src/lyra/agent_cmd/bots/init.py    — sanctioned seed consumer (lyra bot init)
-#   src/lyra/config.py                 — parser internals (sections are still parsed for compat)
+#   src/factory/agent_cmd/bots/init.py    — sanctioned seed consumer (lyra bot init)
+#   src/factory/config.py                 — parser internals (sections are still parsed for compat)
 #
 # Sanctioned load_multibot_config() caller NOT in SC#9 target list:
-#   src/lyra/cli.py                    — `lyra config validate` CLI introspection only (¬boot path)
+#   src/factory/cli.py                    — `lyra config validate` CLI introspection only (¬boot path)
 #
 # Run locally: bash tools/check_no_runtime_toml_bots.sh
 # Run in CI:   quality gate (no_runtime_toml_bots in .claude/stack.yml)
@@ -33,10 +33,10 @@ fail=0
 # or .get("telegram_bots") / .get("discord_bots") outside the seed-only consumer.
 violations_7a=$(grep -rn \
     'raw\[["'"'"']\(telegram\|discord\)["'"'"']\]\[["'"'"']bots["'"'"']\]\|auth_block\.get("telegram_bots"\|auth_block\.get("discord_bots"' \
-    src/lyra/ \
+    src/factory/ \
     --include="*.py" \
-    | grep -v 'src/lyra/agent_cmd/bots/init\.py:' \
-    | grep -v 'src/lyra/config\.py:' \
+    | grep -v 'src/factory/agent_cmd/bots/init\.py:' \
+    | grep -v 'src/factory/config\.py:' \
     || true)
 if [ -n "$violations_7a" ]; then
     echo "FAIL (SC#7a): runtime TOML bot roster read detected — [[telegram.bots]] / [[discord.bots]] are seed-only (#1420)." >&2
@@ -50,10 +50,10 @@ fi
 # outside the seed-only consumer.
 violations_7b=$(grep -rn \
     'raw_config\[["'"'"']auth["'"'"']\]\[["'"'"']\(telegram_bots\|discord_bots\)["'"'"']\]' \
-    src/lyra/ \
+    src/factory/ \
     --include="*.py" \
-    | grep -v 'src/lyra/agent_cmd/bots/init\.py:' \
-    | grep -v 'src/lyra/config\.py:' \
+    | grep -v 'src/factory/agent_cmd/bots/init\.py:' \
+    | grep -v 'src/factory/config\.py:' \
     || true)
 if [ -n "$violations_7b" ]; then
     echo "FAIL (SC#7b): runtime TOML bot roster read detected — [[auth.telegram_bots]] / [[auth.discord_bots]] are seed-only (#1420)." >&2
@@ -67,12 +67,12 @@ fi
 # _init_bot_auths_and_agents after #1283 Phase 6) must source the bot roster from
 # BotStore.get_all(), not load_multibot_config(raw_config).
 violations_9=$(grep -n 'load_multibot_config(' \
-    src/lyra/bootstrap/auth_seeding.py \
-    src/lyra/bootstrap/factory/agent_factory.py \
+    src/factory/bootstrap/auth_seeding.py \
+    src/factory/bootstrap/factory/agent_factory.py \
     2>/dev/null || true)
 if [ -n "$violations_9" ]; then
     echo "FAIL (SC#9): load_multibot_config() called in boot path — boot paths must use BotStore.get_all() (#1420)." >&2
-    echo "  Files: src/lyra/bootstrap/auth_seeding.py, src/lyra/bootstrap/factory/agent_factory.py" >&2
+    echo "  Files: src/factory/bootstrap/auth_seeding.py, src/factory/bootstrap/factory/agent_factory.py" >&2
     printf '%s\n' "$violations_9" | sed 's/^/  /' >&2
     fail=1
 fi

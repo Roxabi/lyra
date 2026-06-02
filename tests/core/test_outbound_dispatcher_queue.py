@@ -6,10 +6,13 @@ import asyncio
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
-from lyra.core.lifecycle.circuit_breaker import CircuitBreaker
-from lyra.core.messaging.message import OutboundMessage
-from lyra.core.messaging.render_events import TextDeltaRenderEvent, TextEndRenderEvent
+from factory.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
+from factory.core.lifecycle.circuit_breaker import CircuitBreaker
+from factory.core.messaging.message import OutboundMessage
+from factory.core.messaging.render_events import (
+    TextDeltaRenderEvent,
+    TextEndRenderEvent,
+)
 
 from .conftest import make_dispatcher_msg
 
@@ -156,7 +159,7 @@ class TestOutboundDispatcherCircuitBreaker:
 
         cb = CircuitBreaker(name="telegram", failure_threshold=5)
         # Put in half-open state: open then let recovery time elapse (mock)
-        from lyra.core.lifecycle.circuit_breaker import CircuitState
+        from factory.core.lifecycle.circuit_breaker import CircuitState
 
         cb._state = CircuitState.HALF_OPEN
 
@@ -170,7 +173,7 @@ class TestOutboundDispatcherCircuitBreaker:
             await asyncio.sleep(0.05)
             adapter.send.assert_awaited_once()
             # CB should be closed after successful send
-            from lyra.core.lifecycle.circuit_breaker import CircuitState
+            from factory.core.lifecycle.circuit_breaker import CircuitState
 
             assert cb._state == CircuitState.CLOSED
         finally:
@@ -209,7 +212,7 @@ class TestOutboundDispatcherCircuitBreaker:
 def test_enqueue_accepts_outbound_message() -> None:
     """OutboundDispatcher.enqueue() must accept an OutboundMessage payload
     without raising TypeError (issue #138, U3)."""
-    from lyra.core.messaging.message import OutboundMessage
+    from factory.core.messaging.message import OutboundMessage
 
     # Arrange
     adapter = MagicMock()

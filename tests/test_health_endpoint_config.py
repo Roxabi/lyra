@@ -12,8 +12,8 @@ from unittest.mock import Mock
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from lyra.bootstrap.infra.health import Secrets, create_health_app
-from lyra.core.hub import Hub
+from factory.bootstrap.infra.health import Secrets, create_health_app
+from factory.core.hub import Hub
 from tests.conftest import AUTH_HEADERS, HEALTH_SECRET
 
 # ---------------------------------------------------------------------------
@@ -74,7 +74,7 @@ class TestHealthReaperFields:
         """cli_pool with active reaper → reaper_alive=True."""
         from unittest.mock import MagicMock
 
-        from lyra.core.cli.cli_pool import CliPool
+        from factory.core.cli.cli_pool import CliPool
 
         cli_pool = CliPool()
         # Simulate a running reaper task
@@ -100,7 +100,7 @@ class TestHealthReaperFields:
         """cli_pool started but no sweep yet → reaper_alive=True, age=None."""
         from unittest.mock import MagicMock
 
-        from lyra.core.cli.cli_pool import CliPool
+        from factory.core.cli.cli_pool import CliPool
 
         cli_pool = CliPool()
         mock_task = MagicMock()

@@ -1,4 +1,4 @@
-"""Tests for lyra.bootstrap.infra.health.Secrets."""
+"""Tests for factory.bootstrap.infra.health.Secrets."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from lyra.bootstrap.infra.health import Secrets
+from factory.bootstrap.infra.health import Secrets
 
 
 class TestSecrets:
@@ -63,7 +63,9 @@ class TestSecrets:
         secret_file.chmod(0o000)
 
         try:
-            with caplog.at_level(logging.WARNING, logger="lyra.bootstrap.infra.health"):
+            with caplog.at_level(
+                logging.WARNING, logger="factory.bootstrap.infra.health"
+            ):
                 result = Secrets(vault_dir=vault_dir)._read("locked_secret")
             assert result == ""
             assert "Could not read secret" in caplog.text

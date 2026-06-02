@@ -7,11 +7,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core import Agent, AgentBase, Hub, Pool
-from lyra.core.config import HubConfig
-from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.core.messaging.message import InboundMessage, Response
-from lyra.core.messaging.render_events import RenderEvent
+from factory.core import Agent, AgentBase, Hub, Pool
+from factory.core.config import HubConfig
+from factory.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
+from factory.core.messaging.message import InboundMessage, Response
+from factory.core.messaging.render_events import RenderEvent
 from tests.core.conftest import make_inbound_message
 
 # ---------------------------------------------------------------------------
@@ -273,7 +273,7 @@ class TestHubShutdownStoreLifecycle:
 class TestRecordCircuitFailure:
     def test_provider_error_subclass_records_anthropic_cb(self) -> None:
         """ProviderAuthError (subclass) trips both hub and claude-cli CBs."""
-        from lyra.errors import ProviderAuthError
+        from factory.errors import ProviderAuthError
 
         hub_cb = CircuitBreaker("hub", failure_threshold=5)
         cli_cb = CircuitBreaker("claude-cli", failure_threshold=5)

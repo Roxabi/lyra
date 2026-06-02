@@ -11,9 +11,9 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
-from lyra.llm.cli_pool_codec import CliPoolCodec
-from lyra.transport._result import Err, Ok, SanitizedError
+from factory.core.messaging.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
+from factory.llm.cli_pool_codec import CliPoolCodec
+from factory.transport._result import Err, Ok, SanitizedError
 
 CONTRACT_VERSION = "1"
 _TRACE_ID = "trace-test-1"

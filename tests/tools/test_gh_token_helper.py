@@ -1,4 +1,4 @@
-"""Unit tests for lyra.tools.gh_token.helper and dispenser.
+"""Unit tests for factory.tools.gh_token.helper and dispenser.
 
 Covers: InstallationToken expiry logic, JWTSigner (RS256 round-trip,
 password-rejection), TokenCache (atomic write, perms, corrupt/expired
@@ -53,15 +53,15 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
 
-from lyra.tools.gh_token.dispenser import Dispenser
-from lyra.tools.gh_token.helper import (
+from factory.tools.gh_token.dispenser import Dispenser
+from factory.tools.gh_token.helper import (
     InstallationToken,
     JWTSigner,
     MintError,
     TokenCache,
     mint,
 )
-from lyra.tools.gh_token.rate_limit import RateLimiter
+from factory.tools.gh_token.rate_limit import RateLimiter
 from roxabi_contracts.gh import MintFailureEvent
 
 # ── fixtures ──────────────────────────────────────────────────────────────────
@@ -464,7 +464,7 @@ async def test_dispenser_forces_mint_when_cached_token_near_expiry(
     assert result.token == "ghs_fresh"
 
 
-_RL_SLEEP = "lyra.tools.gh_token.rate_limit.asyncio.sleep"
+_RL_SLEEP = "factory.tools.gh_token.rate_limit.asyncio.sleep"
 
 
 # ── Section G: RateLimiter ────────────────────────────────────────────────────
@@ -678,7 +678,7 @@ def test_token_cache_parent_dir_must_exist(tmp_path: Path) -> None:
     """TokenCache.write fails with OSError when the parent directory is missing.
 
     Documents the operational contract: the Quadlet ``Tmpfs=`` directive is
-    responsible for creating ``/run/lyra-gh-token/`` before the helper process
+    responsible for creating ``/run/factory-gh-token/`` before the helper process
     starts. If that mount is absent, write() raises rather than silently swallowing
     the error — a clear failure is preferable to a cold-cache loop.
     """

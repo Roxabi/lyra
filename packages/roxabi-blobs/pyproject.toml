@@ -16,8 +16,8 @@ dependencies = [
 testing = ["pytest>=8.4", "pytest-asyncio>=1.1", "pytest-cov>=6.0"]
 
 [project.urls]
-Repository = "https://github.com/Roxabi/lyra"
-Issues = "https://github.com/Roxabi/lyra/issues"
+Repository = "https://github.com/Roxabi/roxabi-factory"
+Issues = "https://github.com/Roxabi/roxabi-factory/issues"
 
 [build-system]
 requires = ["hatchling"]

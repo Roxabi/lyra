@@ -1,4 +1,4 @@
-"""Unit tests for lyra.tools.gh_token.daemon entrypoint.
+"""Unit tests for factory.tools.gh_token.daemon entrypoint.
 
 Exercises config loading + a short daemon spin-up with a stubbed httpx
 transport: prove the dispenser binds the socket, refresh loop runs, and
@@ -19,7 +19,7 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from lyra.tools.gh_token.daemon import (
+from factory.tools.gh_token.daemon import (
     DaemonConfigError,
     _load_config,
     run_daemon,
@@ -47,11 +47,11 @@ def daemon_env(monkeypatch, tmp_path: Path) -> dict[str, Path]:
     sock = tmp_path / "dispenser.sock"
     cache = tmp_path / "token.json"
 
-    monkeypatch.setenv("LYRA_GH_APP_ID", "12345")
-    monkeypatch.setenv("LYRA_GH_INSTALLATION_ID", "67890")
-    monkeypatch.setenv("LYRA_GH_PEM_PATH", str(pem))
-    monkeypatch.setenv("LYRA_GH_DISPENSER_SOCK", str(sock))
-    monkeypatch.setenv("LYRA_GH_CACHE_PATH", str(cache))
+    monkeypatch.setenv("FACTORY_GH_APP_ID", "12345")
+    monkeypatch.setenv("FACTORY_GH_INSTALLATION_ID", "67890")
+    monkeypatch.setenv("FACTORY_GH_PEM_PATH", str(pem))
+    monkeypatch.setenv("FACTORY_GH_DISPENSER_SOCK", str(sock))
+    monkeypatch.setenv("FACTORY_GH_CACHE_PATH", str(cache))
     return {"pem": pem, "sock": sock, "cache": cache}
 
 
@@ -66,25 +66,25 @@ def test_load_config_happy_path(daemon_env: dict[str, Path]) -> None:
 
 
 def test_load_config_missing_app_id(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.delenv("LYRA_GH_APP_ID", raising=False)
-    monkeypatch.setenv("LYRA_GH_INSTALLATION_ID", "67890")
-    monkeypatch.setenv("LYRA_GH_PEM_PATH", str(_make_pem(tmp_path)))
-    with pytest.raises(DaemonConfigError, match="LYRA_GH_APP_ID"):
+    monkeypatch.delenv("FACTORY_GH_APP_ID", raising=False)
+    monkeypatch.setenv("FACTORY_GH_INSTALLATION_ID", "67890")
+    monkeypatch.setenv("FACTORY_GH_PEM_PATH", str(_make_pem(tmp_path)))
+    with pytest.raises(DaemonConfigError, match="FACTORY_GH_APP_ID"):
         _load_config()
 
 
 def test_load_config_non_numeric_install_id(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("LYRA_GH_APP_ID", "12345")
-    monkeypatch.setenv("LYRA_GH_INSTALLATION_ID", "abc")
-    monkeypatch.setenv("LYRA_GH_PEM_PATH", str(_make_pem(tmp_path)))
+    monkeypatch.setenv("FACTORY_GH_APP_ID", "12345")
+    monkeypatch.setenv("FACTORY_GH_INSTALLATION_ID", "abc")
+    monkeypatch.setenv("FACTORY_GH_PEM_PATH", str(_make_pem(tmp_path)))
     with pytest.raises(DaemonConfigError, match="numeric"):
         _load_config()
 
 
 def test_load_config_pem_missing(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("LYRA_GH_APP_ID", "12345")
-    monkeypatch.setenv("LYRA_GH_INSTALLATION_ID", "67890")
-    monkeypatch.setenv("LYRA_GH_PEM_PATH", str(tmp_path / "does-not-exist.pem"))
+    monkeypatch.setenv("FACTORY_GH_APP_ID", "12345")
+    monkeypatch.setenv("FACTORY_GH_INSTALLATION_ID", "67890")
+    monkeypatch.setenv("FACTORY_GH_PEM_PATH", str(tmp_path / "does-not-exist.pem"))
     with pytest.raises(DaemonConfigError, match="not found"):
         _load_config()
 
@@ -121,7 +121,9 @@ async def test_daemon_binds_socket_and_serves(
         kwargs["transport"] = _stub_transport()
         return real_async_client(*args, **kwargs)  # type: ignore[arg-type]
 
-    monkeypatch.setattr("lyra.tools.gh_token.daemon.httpx.AsyncClient", _client_factory)
+    monkeypatch.setattr(
+        "factory.tools.gh_token.daemon.httpx.AsyncClient", _client_factory
+    )
 
     task = asyncio.create_task(run_daemon(cfg))
     sock_path: Path = cfg.sock_path
@@ -169,7 +171,9 @@ async def test_daemon_creates_exactly_one_task(
         kwargs["transport"] = _stub_transport()
         return real_async_client(*args, **kwargs)  # type: ignore[arg-type]
 
-    monkeypatch.setattr("lyra.tools.gh_token.daemon.httpx.AsyncClient", _client_factory)
+    monkeypatch.setattr(
+        "factory.tools.gh_token.daemon.httpx.AsyncClient", _client_factory
+    )
 
     created_coro_names: list[str] = []
     real_create_task = asyncio.create_task
@@ -186,7 +190,7 @@ async def test_daemon_creates_exactly_one_task(
         return real_create_task(_short_circuit())
 
     monkeypatch.setattr(
-        "lyra.tools.gh_token.daemon.asyncio.create_task", _tracking_create_task
+        "factory.tools.gh_token.daemon.asyncio.create_task", _tracking_create_task
     )
 
     # run_daemon will exit via CancelledError propagation from the gather.
@@ -223,7 +227,9 @@ async def test_daemon_unlinks_stale_socket_on_start(
         kwargs["transport"] = _stub_transport()
         return real_async_client(*args, **kwargs)  # type: ignore[arg-type]
 
-    monkeypatch.setattr("lyra.tools.gh_token.daemon.httpx.AsyncClient", _client_factory)
+    monkeypatch.setattr(
+        "factory.tools.gh_token.daemon.httpx.AsyncClient", _client_factory
+    )
 
     task = asyncio.create_task(run_daemon(cfg))
     for _ in range(20):

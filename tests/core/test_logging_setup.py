@@ -1,4 +1,4 @@
-"""Unit tests for lyra.core.logging_setup.setup_logging (#1020)."""
+"""Unit tests for factory.core.logging_setup.setup_logging (#1020)."""
 
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ from unittest.mock import patch
 
 import pytest
 
-import lyra.core.logging_setup as _ls_mod
-from lyra.bootstrap.factory.config import LoggingConfig, _load_logging_config
-from lyra.core.logging_setup import setup_logging
-from lyra.core.trace import TelegramTokenFilter, TraceIdFilter
+import factory.core.logging_setup as _ls_mod
+from factory.bootstrap.factory.config import LoggingConfig, _load_logging_config
+from factory.core.logging_setup import setup_logging
+from factory.core.trace import TelegramTokenFilter, TraceIdFilter
 
 # ──────────────────────────────────────────────────────────────────────
 # Fixture: reset module sentinel + root logger state before each test

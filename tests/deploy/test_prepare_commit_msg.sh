@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Smoke test for deploy/lyra-gh/hooks/prepare-commit-msg.
+# Smoke test for deploy/factory-gh/hooks/prepare-commit-msg.
 #
 # Sets up a temp git repo, installs the hook, and verifies:
 #   A. Both env vars set → trailers appended exactly once.
 #   B. --amend with env vars set → trailer count still exactly 1 each.
 #   C. No env vars set → no trailers appended.
-#   D. Only LYRA_AGENT set (LYRA_SESSION_ID unset) → no trailers appended.
+#   D. Only FACTORY_AGENT set (FACTORY_SESSION_ID unset) → no trailers appended.
 #
 # Usage: bash tests/deploy/test_prepare_commit_msg.sh
 set -euo pipefail
@@ -55,7 +55,7 @@ assert_count() {
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-HOOK_SRC="$REPO_ROOT/deploy/lyra-gh/hooks/prepare-commit-msg"
+HOOK_SRC="$REPO_ROOT/deploy/factory-gh/hooks/prepare-commit-msg"
 
 if [ ! -f "$HOOK_SRC" ]; then
     echo "ERROR: hook not found at $HOOK_SRC" >&2
@@ -85,7 +85,7 @@ chmod +x "$REPO/.git/hooks/prepare-commit-msg"
 
 (
     cd "$REPO"
-    LYRA_SESSION_ID=abc LYRA_AGENT=agent-X git commit --allow-empty -m "msg-A"
+    FACTORY_SESSION_ID=abc FACTORY_AGENT=agent-X git commit --allow-empty -m "msg-A"
 )
 
 TRAILERS_A="$(git -C "$REPO" log -1 --format="%(trailers)")"
@@ -101,7 +101,7 @@ assert_count "A: Lyra-Agent appears exactly once" "$TRAILERS_A" "Lyra-Agent" 1
 
 (
     cd "$REPO"
-    LYRA_SESSION_ID=abc LYRA_AGENT=agent-X git commit --allow-empty --amend --no-edit
+    FACTORY_SESSION_ID=abc FACTORY_AGENT=agent-X git commit --allow-empty --amend --no-edit
 )
 
 TRAILERS_B="$(git -C "$REPO" log -1 --format="%(trailers)")"
@@ -115,7 +115,7 @@ assert_count "B: Lyra-Agent still exactly once after --amend" "$TRAILERS_B" "Lyr
 
 (
     cd "$REPO"
-    unset LYRA_SESSION_ID LYRA_AGENT || true
+    unset FACTORY_SESSION_ID FACTORY_AGENT || true
     git commit --allow-empty -m "no env"
 )
 
@@ -125,13 +125,13 @@ assert_not_contains "C: no Lyra-Session-Id trailer" "$TRAILERS_C" "Lyra-Session-
 assert_not_contains "C: no Lyra-Agent trailer" "$TRAILERS_C" "Lyra-Agent"
 
 # ---------------------------------------------------------------------------
-# Case D — only LYRA_AGENT set, LYRA_SESSION_ID unset: hook is no-op
+# Case D — only FACTORY_AGENT set, FACTORY_SESSION_ID unset: hook is no-op
 # ---------------------------------------------------------------------------
 
 (
     cd "$REPO"
-    unset LYRA_SESSION_ID || true
-    LYRA_AGENT=agent-X git commit --allow-empty -m "partial env"
+    unset FACTORY_SESSION_ID || true
+    FACTORY_AGENT=agent-X git commit --allow-empty -m "partial env"
 )
 
 TRAILERS_D="$(git -C "$REPO" log -1 --format="%(trailers)")"

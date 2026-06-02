@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi.testclient import TestClient
 
-from lyra.blobstore.serve import build_app
+from factory.blobstore.serve import build_app
 
 # Small PNG-like payload for PUT tests.
 _PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"x" * 100
@@ -455,7 +455,7 @@ class TestErrorPaths:
         reason=(
             "V8 ships without a pre-read 413 gate — oversized blobs that exceed "
             "FsBlobStore's internal cap surface as BlobWriteError → 500. "
-            "Documented in src/lyra/blobstore/CLAUDE.md §Oversized-blob handling."
+            "Documented in src/factory/blobstore/CLAUDE.md §Oversized-blob handling."
         )
     )
     def test_put_oversized_blob_returns_413_per_s2_decision(

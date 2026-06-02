@@ -18,8 +18,8 @@ import sys
 import textwrap
 from pathlib import Path
 
-from lyra.core.agent.bot_models import BotRow
-from lyra.infrastructure.stores.bot_store import BotStore
+from factory.core.agent.bot_models import BotRow
+from factory.infrastructure.stores.bot_store import BotStore
 from tests.helpers.bot_store import db_upsert
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -61,7 +61,7 @@ def make_tmpl(tmp_path: Path, *, with_marker: bool = True) -> Path:
         Description=lyra-telegram adapter
 
         [Container]
-        Image=ghcr.io/roxabi/lyra:latest
+        Image=ghcr.io/roxabi/factory:latest
         Secret=lyra-nats-creds,type=mount,target=nats_creds,mode=0400,uid=1500,gid=1500
         {marker}
 
@@ -141,7 +141,7 @@ def test_happy_path(tmp_path: Path) -> None:
     # Each bot's Secret= line has the full required attributes
     for bot_id in ("aryl", "lyra"):
         expected = (
-            f"Secret=lyra-bot-telegram-{bot_id},"
+            f"Secret=factory-bot-telegram-{bot_id},"
             f"type=mount,"
             f"target=bot_token-{bot_id},"
             f"mode=0400,"
@@ -154,8 +154,8 @@ def test_happy_path(tmp_path: Path) -> None:
         )
 
     # aryl must appear BEFORE lyra (sorted order)
-    idx_aryl = content.index("Secret=lyra-bot-telegram-aryl")
-    idx_lyra = content.index("Secret=lyra-bot-telegram-lyra")
+    idx_aryl = content.index("Secret=factory-bot-telegram-aryl")
+    idx_lyra = content.index("Secret=factory-bot-telegram-lyra")
     assert idx_aryl < idx_lyra, (
         "Secret= lines must be sorted by bot_id: aryl before lyra\n"
         f"aryl at {idx_aryl}, lyra at {idx_lyra}\n{content}"
@@ -225,12 +225,12 @@ def test_empty_bots(tmp_path: Path) -> None:
         "when bot list is empty"
     )
 
-    # No Secret=lyra-bot-telegram-* lines
+    # No Secret=factory-bot-telegram-* lines
     secret_lines = [
-        ln for ln in content.splitlines() if "Secret=lyra-bot-telegram-" in ln
+        ln for ln in content.splitlines() if "Secret=factory-bot-telegram-" in ln
     ]
     assert secret_lines == [], (
-        "Expected no Secret=lyra-bot-telegram-* lines for empty bot list; "
+        "Expected no Secret=factory-bot-telegram-* lines for empty bot list; "
         f"got {secret_lines!r}"
     )
 
@@ -362,7 +362,7 @@ def test_webhook_enabled_happy_path(tmp_path: Path) -> None:
     content = dest.read_text()
 
     expected_token = (
-        "Secret=lyra-bot-telegram-lyra,"
+        "Secret=factory-bot-telegram-lyra,"
         "type=mount,"
         "target=bot_token-lyra,"
         "mode=0400,"
@@ -370,7 +370,7 @@ def test_webhook_enabled_happy_path(tmp_path: Path) -> None:
         "gid=1500"
     )
     expected_webhook = (
-        "Secret=lyra-bot-telegram-lyra-webhook,"
+        "Secret=factory-bot-telegram-lyra-webhook,"
         "type=mount,"
         "target=bot_webhook-lyra,"
         "mode=0400,"
@@ -498,7 +498,7 @@ def test_webhook_enabled_discord(tmp_path: Path) -> None:
 
     render_secrets() is platform-agnostic via {platform} substitution. This test
     confirms the discord branch substitutes correctly:
-    lyra-bot-discord-<bot_id>-webhook, target=bot_webhook-<bot_id>.
+    factory-bot-discord-<bot_id>-webhook, target=bot_webhook-<bot_id>.
 
     Spec trace: #1398 G12 — Discord platform parity
     Negative sentinel: if render_secrets() hard-codes 'telegram' instead of using
@@ -541,7 +541,7 @@ def test_webhook_enabled_discord(tmp_path: Path) -> None:
     content = dest.read_text()
 
     expected_webhook = (
-        "Secret=lyra-bot-discord-lyra-webhook,"
+        "Secret=factory-bot-discord-lyra-webhook,"
         "type=mount,"
         "target=bot_webhook-lyra,"
         "mode=0400,"

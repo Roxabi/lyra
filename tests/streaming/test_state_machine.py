@@ -6,7 +6,7 @@ drain snapshot-and-clear, type-variance smoke, and instance independence.
 
 from __future__ import annotations
 
-from lyra.streaming.state_machine import StateMachine
+from factory.streaming.state_machine import StateMachine
 
 
 class TestOpen:

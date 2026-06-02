@@ -1,4 +1,4 @@
-"""Tests for lyra.agents.simple_agent: extract_text and SimpleAgent.process."""
+"""Tests for factory.agents.simple_agent: extract_text and SimpleAgent.process."""
 
 from __future__ import annotations
 
@@ -9,20 +9,20 @@ from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 if TYPE_CHECKING:
-    from lyra.core.cli.cli_pool import CliPool
-    from lyra.llm.base import LlmProvider
+    from factory.core.cli.cli_pool import CliPool
+    from factory.llm.base import LlmProvider
 
-from lyra.agents.simple_agent import SimpleAgent
-from lyra.core.agent import Agent
-from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import (
+from factory.agents.simple_agent import SimpleAgent
+from factory.core.agent import Agent
+from factory.core.agent.agent_config import ModelConfig
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import (
     InboundMessage,
     Response,
     TelegramMeta,
 )
-from lyra.core.pool import Pool
-from lyra.llm.base import LlmResult
+from factory.core.pool import Pool
+from factory.llm.base import LlmResult
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -556,7 +556,7 @@ class TestSimpleAgentCliLifecycle:
 
 def make_agent_with_nats_driver(provider: object, nats_driver: object) -> SimpleAgent:
     """Return a SimpleAgent wired with a LlmClient (4-process NATS mode)."""
-    from lyra.llm.llm_client import LlmClient
+    from factory.llm.llm_client import LlmClient
 
     config = Agent(
         name="lyra",
@@ -714,7 +714,7 @@ class TestSimpleAgentResetBackend:
 class TestSimpleAgentSessionToolsFailure:
     def test_session_tools_build_failure_sets_none(self, monkeypatch: Any) -> None:
         """When SessionTools construction fails, _session_tools is None and no crash."""
-        from lyra.integrations import vault_cli, web_intel
+        from factory.integrations import vault_cli, web_intel
 
         monkeypatch.setattr(
             web_intel, "WebIntelScraper", MagicMock(side_effect=RuntimeError("no bin"))

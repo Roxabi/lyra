@@ -27,10 +27,10 @@ Entries are generated automatically by `/promote` and committed to staging befor
 
 ### Removed
 
-- `TextRenderEvent` (`event_type="text"`) removed from `src/lyra/core/messaging/render_events.py`.
+- `TextRenderEvent` (`event_type="text"`) removed from `src/factory/core/messaging/render_events.py`.
 - `ToolSummaryRenderEvent` (`event_type="tool_summary"`) removed from
-  `src/lyra/core/messaging/render_events.py`.
-- `src/lyra/core/messaging/tool_recap_format.py` removed (v1 tool summary formatting helper,
+  `src/factory/core/messaging/render_events.py`.
+- `src/factory/core/messaging/tool_recap_format.py` removed (v1 tool summary formatting helper,
   no longer referenced after v1 cutover).
 - v1 registry entries (`text`, `tool_summary`) removed from `NatsRenderEventCodec`.
 - `show_tool_recap` key removed from the agent TOML schema (dead code, never wired to the

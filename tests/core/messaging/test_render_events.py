@@ -1,9 +1,9 @@
-"""Tests for v2 Text dataclasses in lyra.core.messaging.render_events (T3 / #1099).
+"""Tests for v2 Text dataclasses in factory.core.messaging.render_events (T3 / #1099).
 
 Covers: TextStartRenderEvent, TextDeltaRenderEvent, TextEndRenderEvent,
 TextChunkRenderEvent — instantiation, frozen contract, schema_version default.
 
-Source: src/lyra/core/messaging/render_events.py
+Source: src/factory/core/messaging/render_events.py
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from lyra.core.messaging.render_events import (
+from factory.core.messaging.render_events import (
     SCHEMA_VERSION_TEXT_CHUNK_RENDER_EVENT,
     SCHEMA_VERSION_TEXT_DELTA_RENDER_EVENT,
     SCHEMA_VERSION_TEXT_END_RENDER_EVENT,
@@ -248,7 +248,7 @@ class TestNegativeGuards:
 
     def test_schema_constants_are_imported_from_module(self) -> None:
         """If T2 removes a constant, this import itself fails."""
-        import lyra.core.messaging.render_events as m
+        import factory.core.messaging.render_events as m
 
         assert hasattr(m, "SCHEMA_VERSION_TEXT_START_RENDER_EVENT")
         assert hasattr(m, "SCHEMA_VERSION_TEXT_DELTA_RENDER_EVENT")

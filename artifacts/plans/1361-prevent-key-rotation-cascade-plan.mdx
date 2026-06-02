@@ -9,7 +9,7 @@ generated: 2026-05-25
 
 ## Summary
 
-Implement rootless `lyra-acl genkeys --add-identity NAME` (3-state STATE machine), rootless `make nats-add-identity NAME=<x>` target with Phase-2 gate (`STATE × podman secret inspect`), and rename `docs/ops/nats-identity-retirement.md` → `nats-identity-lifecycle.md` with rewritten "Adding" + new "Multi-host" + "Recovery" sections. Six files, three slices, no schema or interface breaks.
+Implement rootless `factory-acl genkeys --add-identity NAME` (3-state STATE machine), rootless `make nats-add-identity NAME=<x>` target with Phase-2 gate (`STATE × podman secret inspect`), and rename `docs/ops/nats-identity-retirement.md` → `nats-identity-lifecycle.md` with rewritten "Adding" + new "Multi-host" + "Recovery" sections. Six files, three slices, no schema or interface breaks.
 
 ## Architecture
 
@@ -27,7 +27,7 @@ flowchart TD
     end
 
     subgraph MK["Makefile (operator-owned, no sudo)"]
-      M1["uv run lyra-acl genkeys --add-identity $(NAME)"]
+      M1["uv run factory-acl genkeys --add-identity $(NAME)"]
       M2{"STATE=noop AND<br/>podman secret inspect lyra-nats-$(NAME) OK?"}
       M3["podman secret create --replace<br/>lyra-nats-$(NAME), lyra-nats-auth"]
       M4["restart loop:<br/>for svc in lyra-nats hub telegram discord clipool:<br/>is-active → restart"]
@@ -179,7 +179,7 @@ Coverage: 19/19. Uncovered: 0. Untraced tasks: 0.
   def test_add_identity_writes_only_new_seed(tmp_path):
       # Setup: matrix with hub + telegram-adapter (active), turn-writer (active)
       # Pre-write: hub.seed + telegram-adapter.seed already exist (random bytes)
-      # Act: subprocess run lyra-acl genkeys --add-identity turn-writer
+      # Act: subprocess run factory-acl genkeys --add-identity turn-writer
       # Assert: STATE=added on stdout, exit 0,
       #         turn-writer.seed created, hub.seed + telegram-adapter.seed SHA-256 unchanged,
       #         auth.conf contains all three pubkey blocks
@@ -280,7 +280,7 @@ Coverage: 19/19. Uncovered: 0. Untraced tasks: 0.
   ```makefile
   nats-add-identity:  ## add a single NATS identity rootless; restart consumers
   	@test -n "$(NAME)" || (echo "usage: make nats-add-identity NAME=<x>"; exit 2)
-  	@state=$$(uv run --project . lyra-acl genkeys --add-identity "$(NAME)" \
+  	@state=$$(uv run --project . factory-acl genkeys --add-identity "$(NAME)" \
   	          | tee /dev/stderr | grep -oE 'STATE=(noop|repaired|added)' || echo STATE=unknown); \
   	if [ "$$state" = "STATE=noop" ] && podman secret inspect "lyra-nats-$(NAME)" >/dev/null 2>&1; then \
   	  echo "no-op: $(NAME) already provisioned + secret present locally"; \
@@ -335,14 +335,14 @@ Coverage: 19/19. Uncovered: 0. Untraced tasks: 0.
 
 **T13 [GREEN]** — Add "Multi-host: running on M₂ / Mₙ" subsection
 - File: same
-- Snippet: ~15-line subsection explaining: same verb on every consuming host; lyra-acl STATE × local Podman secret gate; Syncthing handles seed/auth.conf propagation; restart loop is `is-active`-gated so it's safe everywhere.
+- Snippet: ~15-line subsection explaining: same verb on every consuming host; factory-acl STATE × local Podman secret gate; Syncthing handles seed/auth.conf propagation; restart loop is `is-active`-gated so it's safe everywhere.
 - Verify: `grep -n 'Multi-host\|Mₙ\|Syncthing' docs/ops/nats-identity-lifecycle.md`
 - Expected: ≥1 match for each term
 - Time: 12 min · Difficulty: 2 · Spec trace: SC-17 · Agent: doc-writer · Instance: doc-writer-A · Subject: runbook
 
 **T14 [GREEN + RED-GATE V3]** — Add "Recovery — Phase 2 fails" subsection + grep-update all in-repo links + verify
 - File: same + any tracked file referencing `nats-identity-retirement`
-- Snippet (recovery): "re-run `make nats-add-identity NAME=<x>` — lyra-acl is idempotent on filesystem; `--replace` makes Podman side safe; restart loop is idempotent."
+- Snippet (recovery): "re-run `make nats-add-identity NAME=<x>` — factory-acl is idempotent on filesystem; `--replace` makes Podman side safe; restart loop is idempotent."
 - Sub-step (links): `rg -l 'nats-identity-retirement' .` → edit each to `nats-identity-lifecycle`. Likely candidates: `docs/ops/*.md`, `artifacts/postmortems/*.md`, `CONTRIBUTING.md`.
 - Verify:
   ```bash

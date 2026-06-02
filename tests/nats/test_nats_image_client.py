@@ -6,13 +6,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.nats.image.nats_image_client import (
+from factory.nats.image.nats_image_client import (
     ImageGenParams,
     ImageUnavailableError,
     NatsImageClient,
 )
-from lyra.nats.image.nats_image_codec import ImageResult
-from lyra.transport._result import Err, Ok, SanitizedError
+from factory.nats.image.nats_image_codec import ImageResult
+from factory.transport._result import Err, Ok, SanitizedError
 from roxabi_contracts.image import ImageResponse
 
 

@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, patch
 import nats.errors
 import pytest
 
-from lyra.nats.audio_publish import (
+from factory.nats.audio_publish import (
     _AUDIO_PUBLISH_MAX_ATTEMPTS,
     publish_audio_with_retry,
 )
@@ -19,7 +19,7 @@ async def test_publish_audio_with_retry_first_attempt_succeeds_no_sleep() -> Non
     js = AsyncMock()
     js.publish.side_effect = None
 
-    with patch("lyra.nats.audio_publish.asyncio.sleep") as mock_sleep:
+    with patch("factory.nats.audio_publish.asyncio.sleep") as mock_sleep:
         await publish_audio_with_retry(js, "subject", b"payload", "stream-id")
 
     js.publish.assert_awaited_once()
@@ -32,7 +32,7 @@ async def test_publish_audio_with_retry_all_attempts_fail_sleep_count() -> None:
     js = AsyncMock()
     js.publish.side_effect = nats.errors.Error("publish failed")
 
-    with patch("lyra.nats.audio_publish.asyncio.sleep") as mock_sleep:
+    with patch("factory.nats.audio_publish.asyncio.sleep") as mock_sleep:
         with pytest.raises(nats.errors.Error):
             await publish_audio_with_retry(js, "subject", b"payload", "stream-id")
 

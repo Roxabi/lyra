@@ -595,7 +595,7 @@ class TestCheckContractVersion:
             counter=counter,
         )
 
-                # Assert — producers always stamp strings
+        # Assert — producers always stamp strings
         # (ADR-044 (absorbed into ADR-049)); bare int is malformed
         assert result is False
         assert counter == {"InboundMessage:contract": 1}

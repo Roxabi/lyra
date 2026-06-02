@@ -10,8 +10,8 @@ import json
 
 import pytest
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import (
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import (
     InboundMessage,
     OutboundAttachment,
     OutboundMessage,

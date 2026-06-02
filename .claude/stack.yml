@@ -6,7 +6,7 @@ package_manager: uv
 
 backend:
   framework: typer
-  path: src/lyra
+  path: src/factory
 
 build:
   formatter: ruff
@@ -29,7 +29,7 @@ docs:
   format: md
 
 commands:
-  dev: uv run lyra
+  dev: uv run factory
   test: uv run pytest
   lint: uv run ruff check .
   format: uv run ruff format .

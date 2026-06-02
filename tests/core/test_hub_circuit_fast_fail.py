@@ -8,13 +8,13 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from lyra.core import Hub, Pool
+from factory.core import Hub, Pool
 
 if TYPE_CHECKING:
-    from lyra.core.agent import AgentBase
-    from lyra.core.hub.hub_protocol import ChannelAdapter
-from lyra.core.lifecycle.circuit_breaker import CircuitBreaker
-from lyra.core.messaging.message import (
+    from factory.core.agent import AgentBase
+    from factory.core.hub.hub_protocol import ChannelAdapter
+from factory.core.lifecycle.circuit_breaker import CircuitBreaker
+from factory.core.messaging.message import (
     InboundMessage,
     OutboundMessage,
     Platform,

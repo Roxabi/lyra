@@ -32,11 +32,11 @@ requires_nats_server = pytest.mark.skipif(
 
 @pytest.fixture(autouse=True)
 def _clear_lyra_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("LYRA_ENV", raising=False)
+    monkeypatch.delenv("FACTORY_ENV", raising=False)
 
 
 def test_g2_prod_env_raises(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("LYRA_ENV", "production")
+    monkeypatch.setenv("FACTORY_ENV", "production")
     with pytest.raises(RuntimeError, match="FakeImageWorker cannot run in production"):
         FakeImageWorker()
 
@@ -44,7 +44,7 @@ def test_g2_prod_env_raises(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_g2_prod_env_raises_even_when_g3_would_pass(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("LYRA_ENV", "production")
+    monkeypatch.setenv("FACTORY_ENV", "production")
     with pytest.raises(RuntimeError):
         FakeImageWorker(nats_url="nats://127.0.0.1:4222")
 
@@ -65,7 +65,7 @@ async def test_g3_non_loopback_raises(bad_url: str) -> None:
 
 
 async def test_g3_non_loopback_raises_when_g2_unset() -> None:
-    """Guard 3 fires even with LYRA_ENV unset — proves G3 independent of G2."""
+    """Guard 3 fires even with FACTORY_ENV unset — proves G3 independent of G2."""
     w = FakeImageWorker(nats_url="nats://10.0.0.5:4222")
     with pytest.raises(ValueError, match="loopback"):
         await w.start()
@@ -79,7 +79,7 @@ def test_g2_prod_env_case_insensitive(
     prod_value: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Guard 2 uses casefold — every case variant of 'production' must fire."""
-    monkeypatch.setenv("LYRA_ENV", prod_value)
+    monkeypatch.setenv("FACTORY_ENV", prod_value)
     with pytest.raises(RuntimeError, match="cannot run in production"):
         FakeImageWorker()
 

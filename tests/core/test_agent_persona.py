@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from lyra.core.persona import compose_system_prompt_from_json
+from factory.core.persona import compose_system_prompt_from_json
 
 
 class TestComposeSystemPromptFromJson:

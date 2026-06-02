@@ -15,14 +15,14 @@ from .models import BlobRef
 # Default write (and overall/read) timeout raised from 5 s to 30 s to accommodate
 # 20 MiB non-audio CDN→PUT transfers (#1552 / parent Open-Q1).  connect stays at
 # 5 s — it is unaffected by payload size.
-_raw_write_timeout = os.environ.get("LYRA_BLOBSTORE_WRITE_TIMEOUT_S")
+_raw_write_timeout = os.environ.get("FACTORY_BLOBSTORE_WRITE_TIMEOUT_S")
 try:
     _DEFAULT_WRITE_TIMEOUT_S: float = (
         float(_raw_write_timeout) if _raw_write_timeout else 30.0
     )
 except ValueError:
     raise ValueError(
-        f"LYRA_BLOBSTORE_WRITE_TIMEOUT_S must be a float, got {_raw_write_timeout!r}"
+        f"FACTORY_BLOBSTORE_WRITE_TIMEOUT_S must be a float, got {_raw_write_timeout!r}"
     ) from None
 
 
@@ -30,7 +30,7 @@ class HttpBlobStore:
     """HTTP client for a remote `lyra blobstore serve` service.
 
     Per-request timeout: connect=5 s, write/read/pool=``timeout`` seconds
-    (default 30 s, overridable via ``LYRA_BLOBSTORE_WRITE_TIMEOUT_S`` env var).
+    (default 30 s, overridable via ``FACTORY_BLOBSTORE_WRITE_TIMEOUT_S`` env var).
     """
 
     def __init__(

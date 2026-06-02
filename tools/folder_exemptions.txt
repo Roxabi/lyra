@@ -5,3 +5,9 @@
 # V4 of #760 completed under #773 — core/, adapters/, bootstrap/ decomposed
 # into cohesive subdirs. core/hub/ deferred to V5 (follow-up issue).
 # V5 completed under #848 — core/hub/ decomposed into middleware/, outbound/, pipeline/.
+#
+# roxabi-factory rename added paths.py (dependency-free data-dir SSoT,
+# factory_data_dir → $ROXABI_FACTORY_DIR). Top-level is correct for a
+# broadly-imported zero-dep resolver; cli_* decomposition (the real bloat)
+# is the follow-up. Plan: artifacts/plans/lyra-to-roxabi-factory-rename.md
+src/factory  # 13 files — roxabi-factory rename (paths.py SSoT); cli_* split = follow-up

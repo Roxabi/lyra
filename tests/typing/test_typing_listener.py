@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.transport.typing_event import TypingEvent
-from lyra.transport.work_scope import WorkScope
-from lyra.typing.listener import TypingListener
+from factory.transport.typing_event import TypingEvent
+from factory.transport.work_scope import WorkScope
+from factory.typing.listener import TypingListener
 
 
 def _make_msg(event: TypingEvent) -> MagicMock:

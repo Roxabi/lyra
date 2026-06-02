@@ -7,14 +7,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import (
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import (
     DiscordMeta,
     InboundMessage,
     OutboundMessage,
     TelegramMeta,
 )
-from lyra.core.messaging.render_events import (
+from factory.core.messaging.render_events import (
     TextDeltaRenderEvent,
     TextEndRenderEvent,
     ToolCallStartRenderEvent,
@@ -89,7 +89,7 @@ async def error_events():
 
 class TestTelegramStreaming:
     def _make_adapter(self):
-        from lyra.adapters.telegram import TelegramAdapter
+        from factory.adapters.telegram import TelegramAdapter
 
         adapter = TelegramAdapter(
             bot_id="main",
@@ -216,7 +216,7 @@ class TestTelegramStreaming:
         """When outbound.intermediate=True, _start_typing is called after send."""
         adapter, _ = self._make_adapter()
         msg = make_tg_message()
-        from lyra.core.messaging.message import OutboundMessage
+        from factory.core.messaging.message import OutboundMessage
 
         outbound = OutboundMessage.from_text("")
         outbound.intermediate = True
@@ -257,7 +257,7 @@ class TestTelegramStreaming:
 
 class TestDiscordStreaming:
     def _make_adapter(self):
-        from lyra.adapters.discord import DiscordAdapter
+        from factory.adapters.discord import DiscordAdapter
 
         adapter = DiscordAdapter(
             bot_id="main",
@@ -340,7 +340,7 @@ class TestDiscordStreaming:
         """When outbound.intermediate=True, _start_typing is called after send."""
         adapter, _, _ = self._make_adapter()
         msg = make_dc_message()
-        from lyra.core.messaging.message import OutboundMessage
+        from factory.core.messaging.message import OutboundMessage
 
         outbound = OutboundMessage.from_text("")
         outbound.intermediate = True
@@ -363,7 +363,7 @@ class TestTelegramIntermediateText:
     """TextDeltaRenderEvent edits placeholder with accumulated text (v2)."""
 
     def _make_adapter(self):
-        from lyra.adapters.telegram import TelegramAdapter
+        from factory.adapters.telegram import TelegramAdapter
 
         adapter = TelegramAdapter(
             bot_id="main",
@@ -433,7 +433,7 @@ class TestDiscordIntermediateText:
     """TextDeltaRenderEvent edits placeholder with accumulated text (v2)."""
 
     def _make_adapter(self):
-        from lyra.adapters.discord import DiscordAdapter
+        from factory.adapters.discord import DiscordAdapter
 
         adapter = DiscordAdapter(
             bot_id="main",
@@ -470,7 +470,7 @@ class TestDiscordIntermediateText:
 
     async def test_intermediate_truncates_to_discord_max(self) -> None:
         """Text longer than DISCORD_MAX_LENGTH is handled correctly."""
-        from lyra.adapters.shared._shared import DISCORD_MAX_LENGTH
+        from factory.adapters.shared._shared import DISCORD_MAX_LENGTH
 
         adapter, _, placeholder = self._make_adapter()
         msg = make_dc_message()
@@ -501,7 +501,7 @@ async def test_telegram_streaming_fallback_sends_all_chunks() -> None:
 
     Regression for: only chunks_rendered[0] was sent, truncating long responses.
     """
-    from lyra.adapters.telegram import TelegramAdapter
+    from factory.adapters.telegram import TelegramAdapter
 
     adapter = TelegramAdapter(
         bot_id="main",

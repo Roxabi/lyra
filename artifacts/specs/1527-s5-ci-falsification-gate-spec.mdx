@@ -20,7 +20,7 @@ the NATS subjects the code calls are a subset of the subjects the ACL grants.
 
 ## Goal
 
-A CI gate, `lyra-acl check grants`, that fails the build when any provisioner or consumer-group
+A CI gate, `factory-acl check grants`, that fails the build when any provisioner or consumer-group
 identity's **effective** (post-group-expansion) ACL does not cover the JetStream/KV subjects the
 code requires for that resource — keyed by stream/KV, never by identity.
 
@@ -31,7 +31,7 @@ code requires for that resource — keyed by stream/KV, never by identity.
 
 ## Expected Behavior
 
-`uv run lyra-acl check grants --matrix deploy/nats/acl-matrix.json --code-subjects deploy/nats/code-subjects.json`
+`uv run factory-acl check grants --matrix deploy/nats/acl-matrix.json --code-subjects deploy/nats/code-subjects.json`
 
 1. Load + validate matrix (`load_matrix` — reuses existing group-ref validation).
 2. Load + validate the code-subjects manifest (new `load_code_subjects`).
@@ -115,7 +115,7 @@ flowchart TD
 |---|---|---|---|
 | `render_auth_conf` | `effective_grants(matrix)` | every genkeys/regen | refactor to call extracted fn (this issue) |
 | `check_grants` | `effective_grants`, `subject_covered`, manifest | CI + local | new (this issue) |
-| `ci.yml` | `lyra-acl check grants` exit code | every PR | new (this issue) |
+| `ci.yml` | `factory-acl check grants` exit code | every PR | new (this issue) |
 | `check-acl-matrix-spec.sh` (jq) | its own expansion | CI | unchanged (bash; cannot share Python — documented divergence) |
 
 ## Breadboard
@@ -124,9 +124,9 @@ flowchart TD
 
 | ID | Affordance | Handler | Data |
 |---|---|---|---|
-| C1 | `lyra-acl check grants --matrix P --code-subjects P` | `_cmd_check_grants` (gen_nkeys.py) → `check_grants.run()` | matrix + manifest |
+| C1 | `factory-acl check grants --matrix P --code-subjects P` | `_cmd_check_grants` (gen_nkeys.py) → `check_grants.run()` | matrix + manifest |
 | C2 | `lyra-check-grants` (pyproject script alias) | `gen_nkeys._check_grants` → `main(["check","grants",…])` | — |
-| C3 | CI step "Check ACL code coverage (ADR-079)" | `uv run lyra-acl check grants …` | exit 0/1 |
+| C3 | CI step "Check ACL code coverage (ADR-079)" | `uv run factory-acl check grants …` | exit 0/1 |
 
 ### Module wiring
 
@@ -138,7 +138,7 @@ flowchart TD
 | M4 | `scripts/gen_nkeys.py` (edit) | `_cmd_check_grants` (imports `check_grants.run`), `check grants` subparser, `_check_grants` alias | **Explicit edit:** `gen_nkeys.py:272` `ck_sub = ck.add_subparsers(... metavar="{retired,flows}")` → `"{retired,flows,grants}"` (devops 2026-05-31); add `ck_grants` subparser with `--matrix` + `--code-subjects` args mirroring `ck_flows` (L286-293); `_check_grants` console alias mirrors `_check_flows` (L312-313) |
 | M5 | `pyproject.toml` (edit) | `lyra-check-grants = "scripts.gen_nkeys:_check_grants"` | — |
 | M6 | `deploy/nats/code-subjects.json` (new) | the manifest | **transcribe ADR-079 §d JSON verbatim (ADR L291-352)** — audio stream, `LYRA_TURNS` stream, audio KV; `version: "1"`; add `_comment` on the dual-listed `$KV.…>` subject |
-| M7 | `.github/workflows/ci.yml` (edit) | new step after "Check request-reply flows" | `uv run lyra-acl check grants --matrix … --code-subjects …` |
+| M7 | `.github/workflows/ci.yml` (edit) | new step after "Check request-reply flows" | `uv run factory-acl check grants --matrix … --code-subjects …` |
 
 ### FAIL output format
 
@@ -154,7 +154,7 @@ Provisioner variant: `(stream LYRA_TURNS, provisioner)`. KV variant: `(kv lyra_o
 | # | Slice | Demo-able outcome |
 |---|---|---|
 | S5.1 | Extract `effective_grants` + `subject_covered` into `_effective.py`; refactor `render_auth_conf` to use it | `test_renderer.py` green; auth.conf drift gate green (byte-identical) |
-| S5.2 | `check_grants.py` + manifest + CLI wiring + pyproject alias + CI step + tests | `lyra-acl check grants` exits 0 on real matrix; unit tests prove it exits 1 on each removed grant; CI step present |
+| S5.2 | `check_grants.py` + manifest + CLI wiring + pyproject alias + CI step + tests | `factory-acl check grants` exits 0 on real matrix; unit tests prove it exits 1 on each removed grant; CI step present |
 
 Single PR (F-lite). S5.1 lands first in the diff so S5.2 builds on the shared fn.
 
@@ -164,7 +164,7 @@ Single PR (F-lite). S5.1 lands first in the diff so S5.2 builds on the shared fn
 - [ ] `render_auth_conf` calls `effective_grants`; `uv run pytest tests/scripts/test_renderer.py` passes.
 - [ ] `bash scripts/check-acl-authconf-drift.sh` passes (rendered auth.conf byte-identical to committed golden).
 - [ ] `deploy/nats/code-subjects.json` exists, valid JSON, keyed by resource (streams + kv_buckets), with entries for `LYRA_OUTBOUND_AUDIO`, `lyra_outbound_audio_sent`, `LYRA_TURNS`.
-- [ ] `uv run lyra-acl check grants` exits 0 on the committed matrix + manifest and prints an `OK` line with the resource count.
+- [ ] `uv run factory-acl check grants` exits 0 on the committed matrix + manifest and prints an `OK` line with the resource count.
 - [ ] `lyra-check-grants` console-script alias resolves and runs the same check.
 - [ ] CI workflow has a step running the gate after "Check request-reply flows".
 - [ ] Unit `test_check_grants_passes_on_valid_matrix` — exit 0 on real matrix+manifest.

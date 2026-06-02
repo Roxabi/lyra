@@ -9,7 +9,7 @@ Tests the non-audio branch of the central attachment ingest stage:
   - source metadata never branches stage logic (axial guard)
 
 These tests will FAIL at collection until the GREEN implementation lands in
-``lyra.inbound.attachment_ingest`` (T4).  Missing symbols:
+``factory.inbound.attachment_ingest`` (T4).  Missing symbols:
   - MAX_ATTACHMENT_INGEST_BYTES
   - AttachmentIngestError
   - PendingAttachment.size field
@@ -22,10 +22,10 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from lyra.core.audio_payload import AudioPayload
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import Attachment, InboundMessage
-from lyra.inbound.attachment_ingest import (  # noqa: E402 — module imports below do not exist yet (RED)
+from factory.core.audio_payload import AudioPayload
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import Attachment, InboundMessage
+from factory.inbound.attachment_ingest import (  # noqa: E402 — module imports below do not exist yet (RED)
     MAX_ATTACHMENT_INGEST_BYTES,
     AttachmentIngestError,
     AttachmentIngestStage,

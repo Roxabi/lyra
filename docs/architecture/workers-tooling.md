@@ -51,7 +51,7 @@ External CLIs (voicecli, imagecli, gws, scraper) follow a 3-layer Install–Wrap
 
 #### Tool-provider protocol
 
-`ScrapeProvider` and `VaultProvider` are async Protocols defined in `lyra.integrations.base`. Concrete implementations (`WebIntelScraper`, `VaultCli`) live in `lyra.integrations.web_intel` and `lyra.integrations.vault_cli`. Both are bundled into a `SessionTools` dataclass injected into every `SessionCommandEntry` as a required (non-optional) parameter. `session_helpers.py` (which previously hardcoded subprocess invocations inside `lyra.core`) is deleted. The `commands/search` plugin receives `VaultProvider` via a module-level injectable set at agent startup, a separate injection path from `SessionCommandEntry`. → ADR-030
+`ScrapeProvider` and `VaultProvider` are async Protocols defined in `factory.integrations.base`. Concrete implementations (`WebIntelScraper`, `VaultCli`) live in `factory.integrations.web_intel` and `factory.integrations.vault_cli`. Both are bundled into a `SessionTools` dataclass injected into every `SessionCommandEntry` as a required (non-optional) parameter. `session_helpers.py` (which previously hardcoded subprocess invocations inside `lyra.core`) is deleted. The `commands/search` plugin receives `VaultProvider` via a module-level injectable set at agent startup, a separate injection path from `SessionCommandEntry`. → ADR-030
 
 #### Model selection (ComplexityEstimator)
 
@@ -99,7 +99,7 @@ Slash commands that need conversation history are implemented as `BaseProcessor`
 
 #### Importlinter port-import fix
 
-The `shared-modules-independence` contract enforces peer isolation between 8 floating modules (`lyra.obs`, lyra.stt, lyra.tts, `lyra.errors`, `lyra.config`, `lyra.integrations`, `lyra.monitoring`, `lyra.agent_cmd`). As of 2026-05-08, 4 `ignore_imports` suppressions remain. The target is 2: fix `lyra.core.agent.agent` to import `STTProtocol`/`TtsProtocol` from `lyra.core.ports.*` (not from lyra.stt/lyra.tts), and introduce SessionToolsProtocol in lyra.core.ports.integrations so `processor_registry.py` no longer imports the concrete `SessionTools` from `lyra.integrations.base`. The two remaining suppressions (`core/ports/stt.py → lyra.stt:TranscriptionResult` and `core/ports/tts.py → lyra.tts:SynthesisResult`) are TYPE_CHECKING-only and track a separate result-type migration. → ADR-061
+The `shared-modules-independence` contract enforces peer isolation between 8 floating modules (`factory.obs`, lyra.stt, lyra.tts, `factory.errors`, `factory.config`, `factory.integrations`, `factory.monitoring`, `factory.agent_cmd`). As of 2026-05-08, 4 `ignore_imports` suppressions remain. The target is 2: fix `factory.core.agent.agent` to import `STTProtocol`/`TtsProtocol` from `lyra.core.ports.*` (not from lyra.stt/lyra.tts), and introduce SessionToolsProtocol in lyra.core.ports.integrations so `processor_registry.py` no longer imports the concrete `SessionTools` from `factory.integrations.base`. The two remaining suppressions (`core/ports/stt.py → lyra.stt:TranscriptionResult` and `core/ports/tts.py → lyra.tts:SynthesisResult`) are TYPE_CHECKING-only and track a separate result-type migration. → ADR-061
 
 #### Health monitoring layer boundaries
 

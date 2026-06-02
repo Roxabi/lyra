@@ -9,14 +9,14 @@ from typing import Any
 
 import pytest
 
-from lyra.core.hub.event_bus import PipelineEventBus
-from lyra.core.hub.middleware import (
+from factory.core.hub.event_bus import PipelineEventBus
+from factory.core.hub.middleware import (
     MiddlewarePipeline,
     PipelineContext,
 )
-from lyra.core.hub.pipeline.audit_consumer import AuditConsumer
-from lyra.core.hub.pipeline.message_pipeline import Action, PipelineResult
-from lyra.core.hub.pipeline.pipeline_events import (
+from factory.core.hub.pipeline.audit_consumer import AuditConsumer
+from factory.core.hub.pipeline.message_pipeline import Action, PipelineResult
+from factory.core.hub.pipeline.pipeline_events import (
     CommandDispatched,
     MessageDropped,
     MessageReceived,
@@ -371,7 +371,7 @@ class TestMiddlewarePipelineEmission:
 
     async def test_real_drop_stage_emits_events(self) -> None:
         """ValidatePlatformMiddleware emits MessageDropped for unknown platform."""
-        from lyra.core.hub.middleware.middleware_stages import (
+        from factory.core.hub.middleware.middleware_stages import (
             ValidatePlatformMiddleware,
         )
 
@@ -402,19 +402,19 @@ class TestMiddlewarePipelineEmission:
 
 class TestEventBusConfig:
     def test_default_queue_maxsize(self) -> None:
-        from lyra.bootstrap.factory.config import EventBusConfig
+        from factory.bootstrap.factory.config import EventBusConfig
 
         cfg = EventBusConfig()
         assert cfg.queue_maxsize == 1000
 
     def test_load_with_explicit_value(self) -> None:
-        from lyra.bootstrap.factory.config import _load_event_bus_config
+        from factory.bootstrap.factory.config import _load_event_bus_config
 
         cfg = _load_event_bus_config({"event_bus": {"queue_maxsize": 42}})
         assert cfg.queue_maxsize == 42
 
     def test_load_with_empty_config(self) -> None:
-        from lyra.bootstrap.factory.config import _load_event_bus_config
+        from factory.bootstrap.factory.config import _load_event_bus_config
 
         cfg = _load_event_bus_config({})
         assert cfg.queue_maxsize == 1000

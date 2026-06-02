@@ -6,8 +6,8 @@ import logging
 
 import pytest
 
-from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.cli.cli_protocol import build_cmd
+from factory.core.agent.agent_config import ModelConfig
+from factory.core.cli.cli_protocol import build_cmd
 
 
 class TestBuildCmdSkipPermissionsAudit:
@@ -16,12 +16,12 @@ class TestBuildCmdSkipPermissionsAudit:
     def test_warning_logged_when_skip_permissions_true(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        """WARNING emitted at lyra.core.cli.protocol.cli_protocol_types
+        """WARNING emitted at factory.core.cli.protocol.cli_protocol_types
         when skip_permissions=True."""
         model_config = ModelConfig(skip_permissions=True)
 
         with caplog.at_level(
-            logging.WARNING, logger="lyra.core.cli.protocol.cli_protocol_types"
+            logging.WARNING, logger="factory.core.cli.protocol.cli_protocol_types"
         ):
             cmd, prompt_file = build_cmd(model_config)
 
@@ -41,7 +41,7 @@ class TestBuildCmdSkipPermissionsAudit:
         model_config = ModelConfig(skip_permissions=False)
 
         with caplog.at_level(
-            logging.WARNING, logger="lyra.core.cli.protocol.cli_protocol_types"
+            logging.WARNING, logger="factory.core.cli.protocol.cli_protocol_types"
         ):
             cmd, prompt_file = build_cmd(model_config)
 
@@ -57,7 +57,7 @@ class TestBuildCmdSkipPermissionsAudit:
         model_config = ModelConfig(skip_permissions=True)
 
         with caplog.at_level(
-            logging.WARNING, logger="lyra.core.cli.protocol.cli_protocol_types"
+            logging.WARNING, logger="factory.core.cli.protocol.cli_protocol_types"
         ):
             build_cmd(model_config)
 

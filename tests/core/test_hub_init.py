@@ -8,14 +8,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lyra.core import (
+from factory.core import (
     Agent,
     AgentBase,
     Hub,
     Pool,
 )
-from lyra.core.messaging.inbound_bus import LocalBus
-from lyra.core.messaging.message import (
+from factory.core.messaging.inbound_bus import LocalBus
+from factory.core.messaging.message import (
     InboundMessage,
     Platform,
 )
@@ -92,7 +92,7 @@ class TestAgent:
 
 class TestHubInit:
     def test_inbound_bus_exists(self) -> None:
-        from lyra.core.messaging.inbound_bus import LocalBus
+        from factory.core.messaging.inbound_bus import LocalBus
 
         hub = Hub()
         assert Hub.BUS_SIZE == 100

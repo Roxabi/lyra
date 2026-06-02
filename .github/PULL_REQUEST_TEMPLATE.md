@@ -23,7 +23,7 @@ Tick this section when adding/modifying a `RenderEvent` subtype, the
 `StreamProcessor` emission path, or any wire boundary in the hub↔adapter
 streaming pipeline. Otherwise leave blank.
 
-- [ ] `RenderEvent` union in `src/lyra/core/messaging/render_events.py` updated
+- [ ] `RenderEvent` union in `src/factory/core/messaging/render_events.py` updated
 - [ ] `NatsRenderEventCodec.encode` branch added (forced by `assert_never`)
 - [ ] `NatsRenderEventCodec.decode` branch added with matching `event_type` string + schema-version check
 - [ ] Codec round-trip test in `tests/nats/test_render_event_codec.py` for every new subtype

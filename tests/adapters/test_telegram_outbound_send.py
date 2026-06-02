@@ -14,8 +14,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from aiogram.exceptions import TelegramAPIError
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import (  # noqa: F401
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import (  # noqa: F401
     DiscordMeta,
     InboundMessage,
     OutboundMessage,
@@ -34,7 +34,7 @@ async def test_send_calls_bot_send_message() -> None:
 
     Verifies chat_id and text are passed correctly.
     """
-    from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
+    from factory.adapters.telegram import TelegramAdapter  # ImportError expected in RED
 
     bot = AsyncMock()
 
@@ -87,7 +87,7 @@ async def test_send_skips_when_platform_context_is_not_telegram(
 ) -> None:
     """adapter.send() with a non-telegram platform InboundMessage must not call
     bot.send_message."""
-    from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
+    from factory.adapters.telegram import TelegramAdapter  # ImportError expected in RED
 
     bot = AsyncMock()
 
@@ -119,7 +119,7 @@ async def test_send_skips_when_platform_context_is_not_telegram(
         trust_level=TrustLevel.TRUSTED,
     )
 
-    with caplog.at_level(logging.WARNING, logger="lyra.adapters.telegram"):
+    with caplog.at_level(logging.WARNING, logger="factory.adapters.telegram"):
         await adapter.send(original_msg, OutboundMessage.from_text("hi"))
 
     bot.send_message.assert_not_awaited()
@@ -134,7 +134,7 @@ async def test_send_skips_when_platform_context_is_not_telegram(
 @pytest.mark.asyncio
 async def test_send_stores_reply_message_id_in_metadata() -> None:
     """adapter.send() stores bot reply message_id in outbound.metadata."""
-    from lyra.adapters.telegram import TelegramAdapter
+    from factory.adapters.telegram import TelegramAdapter
 
     # Arrange
     bot = AsyncMock()
@@ -192,8 +192,8 @@ async def test_send_always_delivers_regardless_of_circuit_state() -> None:
     """SC-13 (updated): adapter.send() no longer checks the circuit breaker.
     CB check is owned by OutboundDispatcher. Adapter always delivers.
     """
-    from lyra.adapters.telegram import TelegramAdapter
-    from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
+    from factory.adapters.telegram import TelegramAdapter
+    from factory.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
 
     # Arrange — circuit is OPEN but adapter should still send (CB check in dispatcher)
     registry = CircuitRegistry()
@@ -300,7 +300,7 @@ async def test_streaming_send_placeholder_with_reply() -> None:
     """TelegramFormatter.send_placeholder calls bot.send_message with
     reply_to_message_id when reply_to is set.
     """
-    from lyra.adapters.telegram.telegram_formatter import TelegramFormatter
+    from factory.adapters.telegram.telegram_formatter import TelegramFormatter
 
     adapter = _make_telegram_adapter()
     sent_mock = SimpleNamespace(message_id=42)
@@ -329,7 +329,7 @@ async def test_streaming_send_placeholder_no_reply() -> None:
     """TelegramFormatter.send_placeholder sends without reply_to_message_id
     when reply_to is None.
     """
-    from lyra.adapters.telegram.telegram_formatter import TelegramFormatter
+    from factory.adapters.telegram.telegram_formatter import TelegramFormatter
 
     adapter = _make_telegram_adapter()
     sent_mock = SimpleNamespace(message_id=10)
@@ -355,7 +355,7 @@ async def test_streaming_send_placeholder_no_reply() -> None:
 @pytest.mark.asyncio
 async def test_streaming_edit_placeholder_text() -> None:
     """TelegramFormatter.edit_placeholder_text calls bot.edit_message_text."""
-    from lyra.adapters.telegram.telegram_formatter import TelegramFormatter
+    from factory.adapters.telegram.telegram_formatter import TelegramFormatter
 
     adapter = _make_telegram_adapter()
     adapter.bot = AsyncMock()
@@ -381,7 +381,7 @@ async def test_streaming_edit_placeholder_text() -> None:
 @pytest.mark.asyncio
 async def test_streaming_edit_placeholder_text_failure() -> None:
     """TelegramFormatter.edit_placeholder_text swallows TelegramAPIError silently."""
-    from lyra.adapters.telegram.telegram_formatter import TelegramFormatter
+    from factory.adapters.telegram.telegram_formatter import TelegramFormatter
 
     adapter = _make_telegram_adapter()
     adapter.bot = AsyncMock()
@@ -407,7 +407,7 @@ async def test_streaming_edit_placeholder_text_failure() -> None:
 @pytest.mark.asyncio
 async def test_streaming_send_message() -> None:
     """TelegramFormatter.send_message renders chunks and returns last message_id."""
-    from lyra.adapters.telegram.telegram_formatter import TelegramFormatter
+    from factory.adapters.telegram.telegram_formatter import TelegramFormatter
 
     adapter = _make_telegram_adapter()
     sent_mock = SimpleNamespace(message_id=99)
@@ -432,7 +432,7 @@ async def test_streaming_send_message() -> None:
 @pytest.mark.asyncio
 async def test_streaming_send_fallback_with_text() -> None:
     """TelegramFormatter.send_fallback with non-empty text renders and sends."""
-    from lyra.adapters.telegram.telegram_formatter import TelegramFormatter
+    from factory.adapters.telegram.telegram_formatter import TelegramFormatter
 
     adapter = _make_telegram_adapter()
     sent_mock = SimpleNamespace(message_id=88)
@@ -457,7 +457,7 @@ async def test_streaming_send_fallback_with_text() -> None:
 @pytest.mark.asyncio
 async def test_streaming_send_fallback_empty_text() -> None:
     """TelegramFormatter.send_fallback with empty string uses placeholder_text."""
-    from lyra.adapters.telegram.telegram_formatter import TelegramFormatter
+    from factory.adapters.telegram.telegram_formatter import TelegramFormatter
 
     adapter = _make_telegram_adapter()
     sent_mock = SimpleNamespace(message_id=77)
@@ -490,7 +490,7 @@ async def test_send_intermediate_starts_typing() -> None:
 
     Covers L147.
     """
-    from lyra.adapters.telegram.telegram_outbound import send
+    from factory.adapters.telegram.telegram_outbound import send
 
     adapter = _make_telegram_adapter()
     sent_mock = SimpleNamespace(message_id=1)
@@ -516,7 +516,7 @@ async def test_send_no_reply_to() -> None:
     """When message_id=None in platform_meta, reply_to_message_id not passed.
     Covers L139-140.
     """
-    from lyra.adapters.telegram.telegram_outbound import send
+    from factory.adapters.telegram.telegram_outbound import send
 
     adapter = _make_telegram_adapter()
     sent_mock = SimpleNamespace(message_id=1)
@@ -558,7 +558,7 @@ async def test_typing_worker_bailout_after_3_failures() -> None:
 
     Covers L53-67.
     """
-    from lyra.adapters.telegram.telegram_outbound import _typing_worker
+    from factory.adapters.telegram.telegram_outbound import _typing_worker
 
     bot = AsyncMock()
     bot.send_chat_action = AsyncMock(
@@ -566,7 +566,7 @@ async def test_typing_worker_bailout_after_3_failures() -> None:
     )
 
     # Patch asyncio.sleep to avoid real delays
-    sleep_target = "lyra.adapters.telegram.telegram_outbound.asyncio.sleep"
+    sleep_target = "factory.adapters.telegram.telegram_outbound.asyncio.sleep"
     with patch(sleep_target, new_callable=AsyncMock):
         await _typing_worker(bot, chat_id=123, interval=0.0)
 

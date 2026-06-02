@@ -97,7 +97,7 @@ class TestHttpBlobStoreAdapterPut:
     async def test_put_returns_wire_blobref(self) -> None:
         """put() returns a roxabi_contracts.BlobRef converted from storage ref."""
         # Arrange
-        from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
+        from factory.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
         from roxabi_contracts.blob_ref import BlobRef as WireBlobRef
 
         storage_ref = _make_storage_ref(store_key="sha256:abc123")
@@ -118,7 +118,7 @@ class TestHttpBlobStoreAdapterPut:
         the timestamp won't match the storage ref's value.
         """
         # Arrange
-        from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
+        from factory.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
 
         expected_created_at = datetime(2024, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
         storage_ref = _make_storage_ref(store_key="sha256:abc123")
@@ -134,7 +134,7 @@ class TestHttpBlobStoreAdapterPut:
     async def test_put_carries_provenance_fields(self) -> None:
         """put() carries platform_ref, platform_message_id, filename, source, store_key."""  # noqa: E501
         # Arrange
-        from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
+        from factory.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
 
         storage_ref = _make_storage_ref(
             store_key="sha256:abc123", include_platform_ref=True
@@ -162,7 +162,7 @@ class TestHttpBlobStoreAdapterPut:
     async def test_put_delegates_to_wrapped_store(self) -> None:
         """put() delegates to the wrapped store with the exact same arguments."""
         # Arrange
-        from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
+        from factory.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
 
         storage_ref = _make_storage_ref()
         fake_store = _make_fake_http_store(put_return=storage_ref)
@@ -205,7 +205,7 @@ class TestHttpBlobStoreAdapterPendingGuard:
         after a live ingest indicates a storage contract violation (#1553).
         """
         # Arrange
-        from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
+        from factory.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
         from roxabi_blobs.models import BlobRef as StorageBlobRef
 
         # Build a storage ref with empty store_key — contract violation for live ingest.
@@ -237,7 +237,7 @@ class TestHttpBlobStoreAdapterDelegation:
     async def test_get_delegates_to_wrapped_store(self) -> None:
         """get() returns bytes directly from the wrapped store."""
         # Arrange
-        from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
+        from factory.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
 
         payload = b"raw bytes from store"
         fake_store = _make_fake_http_store(get_return=payload)
@@ -253,7 +253,7 @@ class TestHttpBlobStoreAdapterDelegation:
     async def test_exists_returns_none_when_wrapped_store_returns_none(self) -> None:
         """exists() returns None when the wrapped store reports no match."""
         # Arrange
-        from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
+        from factory.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
 
         fake_store = _make_fake_http_store(exists_return=None)
         adapter = HttpBlobStoreAdapter(fake_store)
@@ -268,7 +268,7 @@ class TestHttpBlobStoreAdapterDelegation:
     async def test_exists_converts_full_storage_ref_to_wire_blobref(self) -> None:
         """exists() converts a non-sentinel storage ref to a wire BlobRef."""
         # Arrange
-        from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
+        from factory.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
         from roxabi_contracts.blob_ref import BlobRef as WireBlobRef
 
         storage_ref = _make_storage_ref(store_key="sha256:abc123")
@@ -292,7 +292,7 @@ class TestHttpBlobStoreAdapterDelegation:
         or worse, a corrupt BlobRef with content_hash="" will propagate downstream.
         """
         # Arrange
-        from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
+        from factory.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
 
         sentinel_ref = _make_storage_ref(store_key="sha256:existing", is_sentinel=True)
         fake_store = _make_fake_http_store(exists_return=sentinel_ref)
@@ -327,7 +327,7 @@ class TestHttpBlobStoreAdapterErrorTranslation:
         # Arrange
         import roxabi_blobs
         import roxabi_contracts
-        from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
+        from factory.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
 
         fake_store = _make_fake_http_store()
         cast(AsyncMock, fake_store.get).side_effect = roxabi_blobs.BlobNotFoundError(
@@ -367,7 +367,7 @@ class TestHttpBlobStoreAdapterServerErrorTranslation:
         import httpx
 
         import roxabi_contracts
-        from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
+        from factory.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
 
         fake_store = _make_fake_http_store()
         # Build a minimal httpx.HTTPStatusError for a 503 response
@@ -396,7 +396,7 @@ class TestHttpBlobStoreAdapterServerErrorTranslation:
         import httpx
 
         import roxabi_contracts
-        from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
+        from factory.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
 
         fake_store = _make_fake_http_store()
         request = httpx.Request("PUT", "http://blobstore/blobs")
@@ -427,7 +427,7 @@ class TestHttpBlobStoreAdapterServerErrorTranslation:
         import httpx
 
         import roxabi_contracts
-        from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
+        from factory.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
 
         fake_store = _make_fake_http_store()
         request = httpx.Request("PUT", "http://blobstore/blobs")
@@ -455,7 +455,7 @@ class TestHttpBlobStoreAdapterServerErrorTranslation:
         import httpx
 
         import roxabi_contracts
-        from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
+        from factory.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
 
         fake_store = _make_fake_http_store()
         request = httpx.Request("PUT", "http://blobstore.internal/blobs?token=secret")
@@ -489,8 +489,8 @@ class TestHttpBlobStoreAdapterProtocolConformance:
         isinstance() will return False and this test fails.
         """
         # Arrange
-        from lyra.core.ports.blobstore import BlobStorePort
-        from lyra.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
+        from factory.core.ports.blobstore import BlobStorePort
+        from factory.infrastructure.blobstore_adapter import HttpBlobStoreAdapter
 
         fake_store = _make_fake_http_store()
         adapter = HttpBlobStoreAdapter(fake_store)

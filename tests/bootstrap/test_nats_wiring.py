@@ -1,4 +1,4 @@
-"""Tests for lyra.bootstrap.wiring.nats_wiring — wire_nats_telegram_proxies."""
+"""Tests for factory.bootstrap.wiring.nats_wiring — wire_nats_telegram_proxies."""
 
 from __future__ import annotations
 
@@ -7,14 +7,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lyra.bootstrap.wiring.nats_wiring import (
+from factory.bootstrap.wiring.nats_wiring import (
     NatsTgWiringDeps,
     wire_nats_telegram_proxies,
 )
-from lyra.config import TelegramBotConfig
-from lyra.core.auth.authenticator import Authenticator
-from lyra.core.hub import Hub
-from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
+from factory.config import TelegramBotConfig
+from factory.core.auth.authenticator import Authenticator
+from factory.core.hub import Hub
+from factory.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
 
 # ---------------------------------------------------------------------------
 # test_wire_nats_telegram_proxies_skips_missing_bot
@@ -45,7 +45,7 @@ class TestWireNatsTelegramProxies:
 
         # Act
         with caplog.at_level(
-            logging.WARNING, logger="lyra.bootstrap.wiring.nats_wiring"
+            logging.WARNING, logger="factory.bootstrap.wiring.nats_wiring"
         ):  # noqa: E501
             proxies, dispatchers = wire_nats_telegram_proxies(
                 NatsTgWiringDeps(

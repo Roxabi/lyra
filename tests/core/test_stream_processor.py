@@ -1,4 +1,4 @@
-"""Tests for lyra.core.processors.stream_processor — StreamProcessor (S3)."""
+"""Tests for factory.core.processors.stream_processor — StreamProcessor (S3)."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from typing import AsyncIterator
 
 import pytest
 
-from lyra.core.messaging.events import (
+from factory.core.messaging.events import (
     ResultLlmEvent,
     TextLlmEvent,
     ThinkingLlmEvent,
@@ -18,7 +18,7 @@ from lyra.core.messaging.events import (
     ToolUseEndLlmEvent,
     ToolUseLlmEvent,
 )
-from lyra.core.messaging.render_events import (
+from factory.core.messaging.render_events import (
     ReasoningDeltaRenderEvent,
     ReasoningEndRenderEvent,
     ReasoningStartRenderEvent,
@@ -35,8 +35,8 @@ from lyra.core.messaging.render_events import (
     ToolCallResultRenderEvent,
     ToolCallStartRenderEvent,
 )
-from lyra.core.processors.stream_processor import StreamProcessor
-from lyra.core.trace import TraceContext
+from factory.core.processors.stream_processor import StreamProcessor
+from factory.core.trace import TraceContext
 from roxabi_contracts.errors import KNOWN_CODES, WorkerError
 
 _RUN_LIFECYCLE_TYPES = (
@@ -662,7 +662,7 @@ class TestStreamProcessor:
         # Arrange
         _root = Path(__file__).resolve().parent.parent.parent
         source_path = (
-            _root / "src" / "lyra" / "core" / "processors" / "stream_processor.py"
+            _root / "src" / "factory" / "core" / "processors" / "stream_processor.py"
         )
 
         if not source_path.exists():
@@ -878,7 +878,7 @@ class TestRunLifecycle:
 
     def test_schema_versions(self) -> None:
         """Each new event type carries its own SCHEMA_VERSION_* constant."""
-        from lyra.core.messaging.render_events import (
+        from factory.core.messaging.render_events import (
             SCHEMA_VERSION_RUN_ERROR_RENDER_EVENT,
             SCHEMA_VERSION_RUN_FINISHED_RENDER_EVENT,
             SCHEMA_VERSION_RUN_STARTED_RENDER_EVENT,

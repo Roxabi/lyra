@@ -19,13 +19,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.adapters.nats.nats_stream_decoder import decode_stream_events
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.exceptions import StreamChunkTimeout
-from lyra.core.messaging.message import InboundMessage, Platform
-from lyra.core.messaging.render_events import TextChunkRenderEvent
-from lyra.nats.nats_channel_proxy import NatsChannelProxy
-from lyra.nats.render_event_codec import NatsRenderEventCodec
+from factory.adapters.nats.nats_stream_decoder import decode_stream_events
+from factory.core.auth.trust import TrustLevel
+from factory.core.exceptions import StreamChunkTimeout
+from factory.core.messaging.message import InboundMessage, Platform
+from factory.core.messaging.render_events import TextChunkRenderEvent
+from factory.nats.nats_channel_proxy import NatsChannelProxy
+from factory.nats.render_event_codec import NatsRenderEventCodec
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -110,7 +110,7 @@ class TestPublishesKeepaliveDuringIdle:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """At least 3 keepalive envelopes published; seq is monotonically increasing."""
-        import lyra.nats.keepalive as keepalive_mod  # noqa: PLC0415
+        import factory.nats.keepalive as keepalive_mod  # noqa: PLC0415
 
         fast_interval = 0.05  # 50 ms
         monkeypatch.setattr(keepalive_mod, "KEEPALIVE_INTERVAL_S", fast_interval)
@@ -195,7 +195,7 @@ class TestDeadStreamNoKeepaliveRaisesTimeout:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """StreamChunkTimeout raised when no chunks and no keepalives arrive."""
-        import lyra.adapters.nats.nats_stream_decoder as mod
+        import factory.adapters.nats.nats_stream_decoder as mod
 
         monkeypatch.setattr(mod, "_LIVENESS_POLL_SECONDS", 0.05)
         monkeypatch.setattr(mod, "_CHUNK_TIMEOUT_SECONDS", 0.2)
@@ -236,7 +236,7 @@ class TestKeepaliveSeqDoesNotCorruptRealChunkSeq:
             await q.put(chunk)
 
         with caplog.at_level(
-            logging.WARNING, logger="lyra.adapters.nats.nats_stream_decoder"
+            logging.WARNING, logger="factory.adapters.nats.nats_stream_decoder"
         ):
             events = await _drain(stream_id, q)
 
@@ -265,7 +265,7 @@ class TestOldAdapterIgnoresUnknownEventType:
         self, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """stream_keepalive removed from sentinels: logs warning, returns None."""
-        import lyra.nats.render_event_codec as codec_mod
+        import factory.nats.render_event_codec as codec_mod
 
         # Patch _SYNTHETIC_NON_TERMINALS to simulate the pre-PR codec that
         # did not recognize stream_keepalive.
@@ -278,7 +278,7 @@ class TestOldAdapterIgnoresUnknownEventType:
         codec = NatsRenderEventCodec()
         keepalive_payload: dict = {}
 
-        with caplog.at_level(logging.WARNING, logger="lyra.nats.render_event_codec"):
+        with caplog.at_level(logging.WARNING, logger="factory.nats.render_event_codec"):
             result = codec.decode("stream_keepalive", keepalive_payload)
 
         # Must not raise; must return None (dropped)
@@ -316,7 +316,7 @@ class TestKeepaliveTimeGuardSkipsPublish:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Mock time.monotonic to return just below threshold; nc.publish is skipped."""
-        import lyra.nats.keepalive as keepalive_mod  # noqa: PLC0415
+        import factory.nats.keepalive as keepalive_mod  # noqa: PLC0415
 
         fast_interval = 0.05
         monkeypatch.setattr(keepalive_mod, "KEEPALIVE_INTERVAL_S", fast_interval)

@@ -83,9 +83,7 @@ class TestEffectiveGrantsIncludesGrouplessIdentity:
 
 
 class TestEffectiveGrantsExpandsGroups:
-    def test_effective_grants_expands_groups(
-        self, prod_matrix: LoadedMatrix
-    ) -> None:
+    def test_effective_grants_expands_groups(self, prod_matrix: LoadedMatrix) -> None:
         """telegram-adapter's effective publish contains $JS.ACK.LYRA_OUTBOUND_AUDIO.>
         which comes exclusively from the audio-consumer group and is absent from
         telegram-adapter's inline publish list.

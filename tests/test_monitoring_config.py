@@ -14,12 +14,12 @@ class TestMonitoringConfigDefaults:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """SC-5: Default thresholds applied when no config file."""
-        monkeypatch.setenv("LYRA_CONFIG", str(tmp_path / "nonexistent.toml"))
+        monkeypatch.setenv("FACTORY_CONFIG", str(tmp_path / "nonexistent.toml"))
         monkeypatch.setenv("TELEGRAM_TOKEN", "fake-token")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-fake")
         monkeypatch.setenv("TELEGRAM_ADMIN_CHAT_ID", "12345")
 
-        from lyra.monitoring.config import load_monitoring_config
+        from factory.monitoring.config import load_monitoring_config
 
         config = load_monitoring_config()
 
@@ -35,12 +35,12 @@ class TestMonitoringConfigDefaults:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """SC-5: Secrets come from env vars, not TOML."""
-        monkeypatch.setenv("LYRA_CONFIG", str(tmp_path / "nonexistent.toml"))
+        monkeypatch.setenv("FACTORY_CONFIG", str(tmp_path / "nonexistent.toml"))
         monkeypatch.setenv("TELEGRAM_TOKEN", "tg-token-123")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-key-456")
         monkeypatch.setenv("TELEGRAM_ADMIN_CHAT_ID", "99999")
 
-        from lyra.monitoring.config import load_monitoring_config
+        from factory.monitoring.config import load_monitoring_config
 
         config = load_monitoring_config()
 
@@ -63,12 +63,12 @@ class TestMonitoringConfigToml:
             "min_disk_free_gb = 5\n"
             'health_endpoint_url = "http://localhost:9000/health"\n'
         )
-        monkeypatch.setenv("LYRA_CONFIG", str(config_file))
+        monkeypatch.setenv("FACTORY_CONFIG", str(config_file))
         monkeypatch.setenv("TELEGRAM_TOKEN", "fake")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "fake")
         monkeypatch.setenv("TELEGRAM_ADMIN_CHAT_ID", "12345")
 
-        from lyra.monitoring.config import load_monitoring_config
+        from factory.monitoring.config import load_monitoring_config
 
         config = load_monitoring_config()
 
@@ -91,12 +91,12 @@ class TestMonitoringConfigToml:
             'quiet_start = "00:00"\n'
             'quiet_end = "08:00"\n'
         )
-        monkeypatch.setenv("LYRA_CONFIG", str(config_file))
+        monkeypatch.setenv("FACTORY_CONFIG", str(config_file))
         monkeypatch.setenv("TELEGRAM_TOKEN", "fake")
         monkeypatch.setenv("ANTHROPIC_API_KEY", "fake")
         monkeypatch.setenv("TELEGRAM_ADMIN_CHAT_ID", "12345")
 
-        from lyra.monitoring.config import load_monitoring_config
+        from factory.monitoring.config import load_monitoring_config
 
         config = load_monitoring_config()
 
@@ -108,12 +108,12 @@ class TestMonitoringConfigToml:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """SC-5: Missing env var secrets raise clear error."""
-        monkeypatch.setenv("LYRA_CONFIG", str(tmp_path / "nonexistent.toml"))
+        monkeypatch.setenv("FACTORY_CONFIG", str(tmp_path / "nonexistent.toml"))
         monkeypatch.delenv("TELEGRAM_TOKEN", raising=False)
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         monkeypatch.delenv("TELEGRAM_ADMIN_CHAT_ID", raising=False)
 
-        from lyra.monitoring.config import load_monitoring_config
+        from factory.monitoring.config import load_monitoring_config
 
         with pytest.raises(ValueError, match="TELEGRAM_TOKEN"):
             load_monitoring_config()
@@ -124,7 +124,7 @@ class TestMonitoringConfigValidation:
 
     def test_invalid_quiet_start_format(self) -> None:
         """quiet_start must be HH:MM zero-padded."""
-        from lyra.monitoring.config import MonitoringConfig
+        from factory.monitoring.config import MonitoringConfig
 
         with pytest.raises(ValueError, match="must be HH:MM"):
             MonitoringConfig(
@@ -136,7 +136,7 @@ class TestMonitoringConfigValidation:
 
     def test_invalid_quiet_end_format(self) -> None:
         """quiet_end must be HH:MM zero-padded."""
-        from lyra.monitoring.config import MonitoringConfig
+        from factory.monitoring.config import MonitoringConfig
 
         with pytest.raises(ValueError, match="must be HH:MM"):
             MonitoringConfig(

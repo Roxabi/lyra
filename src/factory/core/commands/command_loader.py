@@ -23,6 +23,8 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+_DEFAULT_PRIORITY = 100  # const-ok: default command priority
+
 AsyncHandler = Callable[["InboundMessage", "Pool", list[str]], "Awaitable[Response]"]
 
 
@@ -42,7 +44,7 @@ class PluginManifest:
     name: str
     description: str = ""
     version: str = "0.1.0"
-    priority: int = 100
+    priority: int = _DEFAULT_PRIORITY
     enabled: bool = True
     timeout: float = 30.0
     commands: tuple[CommandSpec, ...] = field(default=())
@@ -72,7 +74,7 @@ def _parse_manifest(data: dict) -> PluginManifest:
         name=data["name"],
         description=data.get("description", ""),
         version=data.get("version", "0.1.0"),
-        priority=int(data.get("priority", 100)),
+        priority=int(data.get("priority", _DEFAULT_PRIORITY)),
         enabled=bool(data.get("enabled", True)),
         timeout=float(data.get("timeout", 30.0)),
         commands=commands,

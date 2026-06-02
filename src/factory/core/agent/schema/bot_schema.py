@@ -33,7 +33,7 @@ _SELECT_BOTS = (
     "FROM bots"
 )
 
-_N_BOT_COLS = 11
+_N_BOT_COLS = 11  # const-ok: bot table column count
 
 _UPSERT_BOT = (
     f"INSERT INTO bots (platform, bot_id, agent, webhook_enabled, default_trust, "

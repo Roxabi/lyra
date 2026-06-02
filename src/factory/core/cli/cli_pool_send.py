@@ -28,14 +28,14 @@ log = logging.getLogger(__name__)
 class CliPoolDeps:
     """Dependencies for CliPool constructor."""
 
-    idle_ttl: int = 1200
-    default_timeout: int = 1200  # 20 min × 3 retries = 60 min max idle
+    idle_ttl: int = 1200  # const-ok: 20-min idle TTL for CLI pool entries
+    default_timeout: int = 1200  # const-ok: 20 min × 3 retries = 60 min max idle
     on_reap: Callable[[str, str], Coroutine[Any, Any, None]] | None = field(
         default=None
     )
-    reaper_interval: int = 60
+    reaper_interval: int = 60  # const-ok: reaper poll interval in seconds
     kill_timeout: float = 5.0
-    read_buffer_bytes: int = 1024 * 1024
+    read_buffer_bytes: int = 1024 * 1024  # const-ok: 1 MiB read buffer per subprocess
     stdin_drain_timeout: float = 10.0
     max_idle_retries: int = 3
     intermediate_timeout: float = 5.0

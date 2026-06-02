@@ -62,7 +62,7 @@ class Hub(
 ):
     """Central hub: Bus + OutboundDispatchers + adapter registry + pools."""
 
-    BUS_SIZE = 100
+    BUS_SIZE = 100  # const-ok: named constant definition — canonical bus queue depth
 
     def __init__(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
         self,

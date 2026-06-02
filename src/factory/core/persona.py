@@ -6,7 +6,7 @@ the system prompt. Legacy TOML-based loading was removed in #346 cleanup.
 
 from __future__ import annotations
 
-_MAX_PROMPT_BYTES = 64 * 1024  # 64 KB
+from factory.core.config.limits import MAX_PROMPT_BYTES as _MAX_PROMPT_BYTES
 
 # Appended to every composed system prompt — infrastructure protocol, not persona.
 _VOICE_TRANSCRIPT_INSTRUCTION = (

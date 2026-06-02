@@ -56,7 +56,9 @@ class SessionManager:
         turn_store = pool.turn_store
         if turn_store is not None and pool.user_id:
             # Fetch both user and assistant turns from TurnStore (newest first).
-            raw = await turn_store.get_turns(pool.pool_id, pool.user_id, limit=20)
+            raw = await turn_store.get_turns(
+                pool.pool_id, pool.user_id, limit=TurnStoreConfig.SUMMARY_TURN_LIMIT
+            )
             # Reverse to chronological order and format with role prefix.
             turns = [f"{t['role']}: {t['content']}" for t in reversed(raw)]
         else:
@@ -96,7 +98,9 @@ class SessionManager:
             # Derive token estimate from TurnStore — includes both user and
             # assistant turns, restoring pre-#666 full-conversation accounting.
             raw = await turn_store.get_turns(
-                pool.pool_id, pool.user_id, limit=TurnStoreConfig.COMPACT_TURN_FETCH_LIMIT
+                pool.pool_id,
+                pool.user_id,
+                limit=TurnStoreConfig.COMPACT_TURN_FETCH_LIMIT,
             )
             token_est = sum(len(t["content"]) // 4 for t in raw)
         else:

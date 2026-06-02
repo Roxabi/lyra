@@ -48,7 +48,7 @@ The reusable workflow accepts four inputs:
 
 | Input | Required | Default | Description |
 |---|---|---|---|
-| `image_name` | yes | — | Full registry path, e.g. `ghcr.io/roxabi/lyra` |
+| `image_name` | yes | — | Full registry path, e.g. `ghcr.io/roxabi/factory` |
 | `release_please_component` | yes | — | Component name as used in the release-please tag, e.g. `lyra` |
 | `dockerfile_path` | no | `./Dockerfile` | Path to the Dockerfile relative to the build context |
 | `build_context` | no | `.` | Docker build context path |
@@ -69,7 +69,7 @@ jobs:
     uses: Roxabi/.github/.github/workflows/publish-container.yml@v1
     secrets: inherit
     with:
-      image_name: ghcr.io/roxabi/lyra
+      image_name: ghcr.io/roxabi/factory
       release_please_component: lyra
       # Manifest format (oci-mediatypes=false) is handled by the reusable workflow.
       # No extra inputs are needed to preserve HEALTHCHECK.
@@ -90,10 +90,10 @@ release-please. This ensures a daemon-reload never silently pulls a different la
 
 ```ini
 # Before (floating staging tag):
-Image=ghcr.io/roxabi/lyra:staging
+Image=ghcr.io/roxabi/factory:staging
 
 # After first release cut (semver pin):
-Image=ghcr.io/roxabi/lyra:1.0.0
+Image=ghcr.io/roxabi/factory:1.0.0
 ```
 
 **Rule B — pre-release / staging validation:** use `:staging` so that each push to the
@@ -129,14 +129,14 @@ containers. No manual intervention is needed after a staging merge.
 
 | Container | Image | AutoUpdate |
 |---|---|---|
-| lyra-hub | `ghcr.io/roxabi/lyra:staging-svc` | registry |
-| lyra-telegram | `ghcr.io/roxabi/lyra:staging-svc` | registry |
-| lyra-discord | `ghcr.io/roxabi/lyra:staging-svc` | registry |
-| lyra-clipool | `ghcr.io/roxabi/lyra:staging` | registry |
-| lyra-gh-helper | `ghcr.io/roxabi/lyra:staging` | registry |
+| factory-hub | `ghcr.io/roxabi/factory:staging-svc` | registry |
+| factory-telegram | `ghcr.io/roxabi/factory:staging-svc` | registry |
+| factory-discord | `ghcr.io/roxabi/factory:staging-svc` | registry |
+| factory-clipool | `ghcr.io/roxabi/factory:staging` | registry |
+| factory-gh-helper | `ghcr.io/roxabi/factory:staging` | registry |
 | voicecli-tts | `ghcr.io/roxabi/voicecli-tts:staging` | registry |
 | voicecli-stt | `ghcr.io/roxabi/voicecli-stt:staging` | registry |
-| lyra-nats | pinned by digest | none (pinned) |
+| factory-nats | pinned by digest | none (pinned) |
 
 ### Verify
 
@@ -172,20 +172,20 @@ podman auto-update
 If auto-update is disabled or you need an immediate deploy without waiting for the timer:
 
 ```bash
-podman pull ghcr.io/roxabi/lyra:staging
+podman pull ghcr.io/roxabi/factory:staging
 systemctl --user daemon-reload
-systemctl --user restart lyra-hub lyra-telegram lyra-discord lyra-clipool
+systemctl --user restart factory-hub factory-telegram factory-discord factory-clipool
 ```
 
 Verify all four units are healthy:
 
 ```bash
-systemctl --user is-active lyra-hub lyra-telegram lyra-discord lyra-clipool
+systemctl --user is-active factory-hub factory-telegram factory-discord factory-clipool
 curl -fsS localhost:8443/health
 ```
 
 `is-active` prints `active` for each unit on success. The health endpoint is served by
-`lyra-hub` on `127.0.0.1:8443` (published via PublishPort in the Quadlet unit).
+`factory-hub` on `127.0.0.1:8443` (published via PublishPort in the Quadlet unit).
 
 ---
 
@@ -210,16 +210,16 @@ Edit the `Image=` line in the affected `.container` file back to the previous se
 reload and restart:
 
 ```bash
-# Edit deploy/quadlet/lyra-hub.container (and telegram/discord as needed):
-#   Image=ghcr.io/roxabi/lyra:1.0.0   ← revert to previous known-good tag
+# Edit deploy/quadlet/factory-hub.container (and telegram/discord as needed):
+#   Image=ghcr.io/roxabi/factory:1.0.0   ← revert to previous known-good tag
 
 systemctl --user daemon-reload
-systemctl --user restart lyra-hub lyra-telegram lyra-discord lyra-clipool
+systemctl --user restart factory-hub factory-telegram factory-discord factory-clipool
 ```
 
 The previous image layer is still present in the local podman store as long as it has not been
 pruned, so the restart is immediate with no pull required. Confirm with
-`systemctl --user is-active lyra-hub lyra-telegram lyra-discord lyra-clipool`.
+`systemctl --user is-active factory-hub factory-telegram factory-discord factory-clipool`.
 
 ---
 
@@ -234,11 +234,11 @@ logs on still-old receivers and may drop events silently.
 
 | Unit | Image |
 |---|---|
-| `lyra-hub` | `ghcr.io/roxabi/lyra:<tag>` |
-| `lyra-telegram` | `ghcr.io/roxabi/lyra:<tag>` |
-| `lyra-discord` | `ghcr.io/roxabi/lyra:<tag>` |
+| `factory-hub` | `ghcr.io/roxabi/factory:<tag>` |
+| `factory-telegram` | `ghcr.io/roxabi/factory:<tag>` |
+| `factory-discord` | `ghcr.io/roxabi/factory:<tag>` |
 
-`lyra-clipool` is intentionally **excluded** from the schema-floor restart sequence — it is on
+`factory-clipool` is intentionally **excluded** from the schema-floor restart sequence — it is on
 the LLM-driver path (`lyra.clipool.cmd`), not a `RenderEvent` receiver, and does not participate
 in the schema handshake. This omission is deliberate; do not add it back when reading the generic
 "M₁ manual pull + restart" pattern above.
@@ -253,21 +253,21 @@ The auto-update timer must NOT fire mid-restart — a 5-minute window between hu
 restarts produces partial-version skew. The procedure is therefore manual: stop the timer,
 restart the three units atomically, then re-enable the timer.
 
-1. Merge the schema-bump PR to `staging` — CI publishes `ghcr.io/roxabi/lyra:staging`.
+1. Merge the schema-bump PR to `staging` — CI publishes `ghcr.io/roxabi/factory:staging`.
 2. On M₁, stop the auto-update timer to prevent mid-restart skew:
    ```bash
    systemctl --user stop podman-auto-update.timer
    ```
 3. Pull the new image and restart hub + telegram + discord atomically:
    ```bash
-   podman pull ghcr.io/roxabi/lyra:staging
-   systemctl --user restart lyra-hub lyra-telegram lyra-discord
+   podman pull ghcr.io/roxabi/factory:staging
+   systemctl --user restart factory-hub factory-telegram factory-discord
    ```
 4. Re-enable the auto-update timer:
    ```bash
    systemctl --user start podman-auto-update.timer
    ```
-5. Confirm with `systemctl --user is-active lyra-hub lyra-telegram lyra-discord` and
+5. Confirm with `systemctl --user is-active factory-hub factory-telegram factory-discord` and
    `curl -fsS localhost:8443/health`.
 
 For production semver releases, pin all three units to the same `X.Y.Z` tag simultaneously.
@@ -301,8 +301,8 @@ Steps for a new Roxabi project (voiceCLI, 2ndBrain, imageCLI, llmCLI) to adopt t
 
 - `.github/workflows/publish.yml` — lyra caller workflow
 - `Roxabi/.github/.github/workflows/publish-container.yml@v1` — reusable workflow (upstream)
-- `deploy/quadlet/lyra-hub.container` — `Image=` reference example
-- `deploy/quadlet/lyra-telegram.container` — `Image=` reference example
-- `deploy/quadlet/lyra-discord.container` — `Image=` reference example
-- `deploy/quadlet/lyra-clipool.container` — `Image=` reference example
-- [#920](https://github.com/Roxabi/lyra/issues/920) — container publishing pattern epic
+- `deploy/quadlet/factory-hub.container` — `Image=` reference example
+- `deploy/quadlet/factory-telegram.container` — `Image=` reference example
+- `deploy/quadlet/factory-discord.container` — `Image=` reference example
+- `deploy/quadlet/factory-clipool.container` — `Image=` reference example
+- [#920](https://github.com/Roxabi/roxabi-factory/issues/920) — container publishing pattern epic

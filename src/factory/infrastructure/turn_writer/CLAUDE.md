@@ -14,7 +14,7 @@ ADR-075 authorises this sublayer (axial: `stage-of-pipeline` →
 ## Invariants
 
 - **Sole writer**: only this subsystem mutates `turns.db`. Hub + adapters
-  mount the file read-only (per `deploy/quadlet/lyra-hub.container` T26).
+  mount the file read-only (per `deploy/quadlet/factory-hub.container` T26).
 - **Durable consumer**: `LYRA_TURNS` stream + `turn-writer-v1` consumer
   with AckExplicit, AckWait=60s, MaxDeliver=5, MaxAge=24h, WorkQueue
   retention. Horizontal scaling via shared durable name (queue group
@@ -33,8 +33,8 @@ ADR-075 authorises this sublayer (axial: `stage-of-pipeline` →
 
 ## Process boundary
 
-Runs as its own systemd unit: `lyra-turn-writer.container`. Entry point:
-`lyra turn-writer` CLI subcommand → `_bootstrap_turn_writer_standalone`.
+Runs as its own systemd unit: `factory-turn-writer.container`. Entry point:
+`factory turn-writer` CLI subcommand → `_bootstrap_turn_writer_standalone`.
 
 NATS user: `turn-writer` (subscribes `lyra.turns.>`, publishes _INBOX.>
 for ACK path, JetStream API scoped to `LYRA_TURNS` + `turn-writer-v1`
@@ -52,7 +52,7 @@ process start).
 `health.py` exposes `GET /health` (writer task + NATS + DB liveness) and
 `GET /metrics` (Prometheus text exposition with
 `turn_writer_lag_seconds`). Default port 8083; override via
-`LYRA_TURN_WRITER_HEALTH_PORT`.
+`FACTORY_TURN_WRITER_HEALTH_PORT`.
 
 ## What NOT to do
 

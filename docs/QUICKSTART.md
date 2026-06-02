@@ -17,7 +17,7 @@ Get Lyra running and send your first message in about 5 minutes.
 ## 1. Install
 
 ```bash
-git clone https://github.com/Roxabi/lyra
+git clone https://github.com/Roxabi/roxabi-factory
 cd lyra
 uv sync
 
@@ -56,20 +56,20 @@ DISCORD_TOKEN=MTIz...                      # from Discord Developer Portal → B
 
 ## 3. Configure the agent (optional)
 
-Agents are managed via **AgentStore** (SQLite at `~/.lyra/config.db`). TOML files in `src/lyra/agents/` (system defaults) and `~/.lyra/agents/` (user overrides) are seed sources — import them into the DB on first setup:
+Agents are managed via **AgentStore** (SQLite at `~/.roxabi/factory/config.db`). TOML files in `src/factory/agents/` (system defaults) and `~/.roxabi/factory/agents/` (user overrides) are seed sources — import them into the DB on first setup:
 
 ```bash
 # First-time: seed DB from TOML files
-lyra agent init
+factory agent init
 
 # List all agents in DB
-lyra agent list
+factory agent list
 
 # Edit an agent interactively (changes take effect on restart)
-lyra agent edit lyra_default
+factory agent edit lyra_default
 
 # Validate an agent
-lyra agent validate lyra_default
+factory agent validate lyra_default
 ```
 
 Agent seeds are TOML files — no Python needed:
@@ -90,20 +90,20 @@ tools = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
 system = """You are Lyra, a personal AI assistant..."""
 ```
 
-**User-level overrides**: put your customised TOML at `~/.lyra/agents/<name>.toml` — it takes precedence over the system default at `init` time.
+**User-level overrides**: put your customised TOML at `~/.roxabi/factory/agents/<name>.toml` — it takes precedence over the system default at `init` time.
 
-**Second agent**: duplicate any `.toml` under a new name, run `lyra agent init`, then add a `[[telegram.bots]]` or `[[discord.bots]]` entry in `config.toml` pointing `agent = "<name>"`. No Python changes needed.
+**Second agent**: duplicate any `.toml` under a new name, run `factory agent init`, then add a `[[telegram.bots]]` or `[[discord.bots]]` entry in `config.toml` pointing `agent = "<name>"`. No Python changes needed.
 
 ## 4. Run
 
 ```bash
-lyra start
+factory start
 ```
 
 Expected output:
 
 ```
-2026-01-01 12:00:00 INFO lyra.__main__: Lyra started — Telegram + Discord adapters running.
+2026-01-01 12:00:00 INFO factory.__main__: Lyra started — Telegram + Discord adapters running.
 ```
 
 Lyra is now:
@@ -167,7 +167,7 @@ If the hub logs `Processing your request…`, the bounded queue (100) is full. T
 
 Lyra supports running multiple bots (each with its own persona and model) — all sharing the hub and adapter processes. The short version:
 
-1. Create an agent TOML in `src/lyra/agents/<name>.toml` for the new persona. Copy `lyra_default.toml` and edit `[agent].name`, `[model].model`, and `[prompt]`. Then run `lyra agent init` to import it into the DB.
+1. Create an agent TOML in `src/factory/agents/<name>.toml` for the new persona. Copy `lyra_default.toml` and edit `[agent].name`, `[model].model`, and `[prompt]`. Then run `factory agent init` to import it into the DB.
 2. Add `[[telegram.bots]]` and/or `[[discord.bots]]` entries to `config.toml`, each with a unique `bot_id` and `agent = "<name>"`.
 3. Add matching `[[auth.telegram_bots]]` / `[[auth.discord_bots]]` entries and the new bot tokens to `.env`.
 

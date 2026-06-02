@@ -263,7 +263,7 @@ class Authenticator:
                     alias_store=alias_store,
                 )
             log.warning(
-                "Missing [auth.%s] in lyra.toml -- %s adapter will be disabled",
+                "Missing [auth.%s] in config.toml -- %s adapter will be disabled",
                 section,
                 section,
             )

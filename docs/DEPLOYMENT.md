@@ -11,27 +11,27 @@ Lyra runs as **six containers** on a shared `roxabi.network` bridge, managed by 
 ```
 Machine 1 (roxabituwer, 192.168.1.16)
 ├── systemd --user (linger enabled)
-│   ├── lyra-nats.service         ← Quadlet NATS container (port 4222, roxabi.network)
-│   ├── lyra-hub.service          ← hub container (NatsBus, pool, routing, memory)
-│   ├── lyra-telegram.service     ← Telegram adapter container
-│   ├── lyra-discord.service      ← Discord adapter container
-│   ├── lyra-clipool.service      ← CliPool NATS worker (Claude subprocesses)
-│   └── lyra-gh-helper.service    ← GitHub App token-mint helper (lyra-gh.pod)
+│   ├── factory-nats.service         ← Quadlet NATS container (port 4222, roxabi.network)
+│   ├── factory-hub.service          ← hub container (NatsBus, pool, routing, memory)
+│   ├── factory-telegram.service     ← Telegram adapter container
+│   ├── factory-discord.service      ← Discord adapter container
+│   ├── factory-clipool.service      ← CliPool NATS worker (Claude subprocesses)
+│   └── factory-gh-helper.service    ← GitHub App token-mint helper (factory-gh.pod)
 ├── Quadlet unit files: ~/.config/containers/systemd/
 │   ├── roxabi.network
-│   ├── lyra-hub.container
-│   ├── lyra-telegram.container
-│   ├── lyra-discord.container
-│   ├── lyra-clipool.container
-│   ├── lyra-nats.container
-│   ├── lyra-gh-helper.container
-│   ├── lyra-gh.pod
-│   └── lyra-*.volume
-├── config: ~/projects/lyra/config.toml
-├── credentials: ~/.lyra/config.db (bot config) + Podman secrets (bot tokens)
-├── nkey seeds: ~/.lyra/nkeys/*.seed
-├── Podman secrets: lyra-nats-auth, lyra-nats-hub, lyra-nats-telegram, lyra-nats-discord, lyra-nats-clipool
-└── logs: journalctl --user -u lyra-hub
+│   ├── factory-hub.container
+│   ├── factory-telegram.container
+│   ├── factory-discord.container
+│   ├── factory-clipool.container
+│   ├── factory-nats.container
+│   ├── factory-gh-helper.container
+│   ├── factory-gh.pod
+│   └── factory-*.volume
+├── config: ~/projects/roxabi-factory/config.toml
+├── credentials: ~/.roxabi/factory/config.db (bot config) + Podman secrets (bot tokens)
+├── nkey seeds: ~/.roxabi/factory/nkeys/*.seed
+├── Podman secrets: factory-nats-auth, factory-nats-hub, factory-nats-telegram, factory-nats-discord, factory-nats-clipool
+└── logs: journalctl --user -u factory-hub
 ```
 
 ## Prerequisites
@@ -48,7 +48,7 @@ Machine 1 requires:
 
 ### Auto-update from GHCR (canonical, since #929)
 
-Production pulls images from GitHub Container Registry. CI publishes `ghcr.io/roxabi/lyra:staging` on every staging merge. Quadlet's `Label=io.containers.autoupdate=registry` paired with `podman-auto-update.timer` (daily by default; configure a drop-in for shorter intervals) restarts the container as soon as a new digest is published — no manual intervention needed after a merge.
+Production pulls images from GitHub Container Registry. CI publishes `ghcr.io/roxabi/factory:staging` on every staging merge. Quadlet's `Label=io.containers.autoupdate=registry` paired with `podman-auto-update.timer` (daily by default; configure a drop-in for shorter intervals) restarts the container as soon as a new digest is published — no manual intervention needed after a merge.
 
 ```bash
 # Verify the timer is active (one-time, on Machine 1)
@@ -65,14 +65,14 @@ See [ops/container-publishing.md](ops/container-publishing.md#auto-update-flow) 
 When CI is unavailable and you must rebuild from a local checkout (Machine 2):
 
 ```bash
-make build              # podman build → localhost/lyra:dev
+make build              # podman build → localhost/factory:dev
 make push               # podman save | ssh M1 podman load
 ```
 
 On Machine 1:
 
 ```bash
-cd ~/projects/lyra
+cd ~/projects/roxabi-factory
 make quadlet-install    # copy unit files to ~/.config/containers/systemd/
 make lyra reload        # restart containers
 ```
@@ -85,23 +85,23 @@ make lyra reload        # restart containers
 
 ## 2. Configure environment
 
-**Credentials (tokens):** Bot tokens are stored as Podman secrets (`lyra-bot-<platform>-<bot_id>`). Adapters mount them at container start.
+**Credentials (tokens):** Bot tokens are stored as Podman secrets (`factory-bot-<platform>-<bot_id>`). Adapters mount them at container start.
 
 ```bash
 # Store bot tokens (run once per bot)
-lyra bot secret install telegram lyra
-lyra bot secret install discord lyra
+factory bot secret install telegram lyra
+factory bot secret install discord lyra
 ```
 
 **Environment inline in `.container` files:** NATS connection vars are set directly in each Quadlet unit:
 
 ```ini
-# In lyra-hub.container, lyra-telegram.container, etc.
-Environment=NATS_URL=nats://lyra-nats:4222
-Environment=NATS_NKEY_SEED_PATH=/run/secrets/lyra-nats-hub.seed
+# In factory-hub.container, factory-telegram.container, etc.
+Environment=NATS_URL=nats://factory-nats:4222
+Environment=NATS_NKEY_SEED_PATH=/run/secrets/factory-nats-hub.seed
 ```
 
-**Nkey secrets:** Seed files are mounted as Podman secrets from `~/.lyra/nkeys/`:
+**Nkey secrets:** Seed files are mounted as Podman secrets from `~/.roxabi/factory/nkeys/`:
 
 ```bash
 # Generate nkeys + auth.conf
@@ -111,12 +111,12 @@ make nats-setup
 make quadlet-secrets-install
 ```
 
-Volume + secret layout is documented inline in `deploy/quadlet/lyra-hub.container` and the other unit files.
+Volume + secret layout is documented inline in `deploy/quadlet/factory-hub.container` and the other unit files.
 
 ## Multi-Bot Deployment
 
 Multiple bots are configured in `config.toml` — no container changes needed. The five-container
-topology (`lyra-nats`, `lyra-hub`, `lyra-telegram`, `lyra-discord`, `lyra-clipool`) is fixed regardless of how many bots
+topology (`factory-nats`, `factory-hub`, `factory-telegram`, `factory-discord`, `factory-clipool`) is fixed regardless of how many bots
 are configured.
 
 ### Adding a second bot
@@ -134,7 +134,7 @@ owner_users = []
 
 2. Store the bot token:
 ```bash
-lyra bot secret install telegram aryl
+factory bot secret install telegram aryl
 ```
 
 3. Restart containers:
@@ -144,14 +144,14 @@ make lyra reload
 
 ### Resource considerations
 
-All bots share the `lyra-hub` container for routing and the `lyra-clipool` container for Claude subprocess execution.
-Adapter containers (`lyra-telegram`, `lyra-discord`) are lightweight thin NATS clients.
+All bots share the `factory-hub` container for routing and the `factory-clipool` container for Claude subprocess execution.
+Adapter containers (`factory-telegram`, `factory-discord`) are lightweight thin NATS clients.
 
 - **CPU / RAM**: each additional bot adds a small constant overhead. At personal-use scale this
   is negligible — expect under 50 MB additional RAM per bot across hub and clipool.
 - **CliPool contention**: simultaneous long-running LLM requests from multiple bots compete for
-  subprocess slots in the shared `lyra-clipool` container.
-- **Crash scope**: an unhandled exception in `lyra-hub` takes down all bot routing at once. The
+  subprocess slots in the shared `factory-clipool` container.
+- **Crash scope**: an unhandled exception in `factory-hub` takes down all bot routing at once. The
   adapter containers survive independently. systemd `Restart=on-failure` brings everything back.
 
 ---
@@ -160,7 +160,7 @@ Adapter containers (`lyra-telegram`, `lyra-discord`) are lightweight thin NATS c
 
 ```bash
 # One-time setup on Machine 1 — installs units and reloads systemd
-cd ~/projects/lyra
+cd ~/projects/roxabi-factory
 make quadlet-install
 
 # Enable the auto-update timer (only needed if provision.sh was not run)
@@ -185,12 +185,12 @@ All commands can be run from Machine 1 or from Machine 2 via SSH (`make remote <
 
 ```bash
 # From Machine 1
-cd ~/projects/lyra
+cd ~/projects/roxabi-factory
 make lyra          # status
 make lyra reload   # restart
 make lyra stop     # stop
-make lyra logs     # tail lyra-hub stdout
-make lyra errors   # tail lyra-hub stderr
+make lyra logs     # tail factory-hub stdout
+make lyra errors   # tail factory-hub stderr
 
 # From Machine 2 (via SSH)
 make remote status
@@ -202,11 +202,11 @@ make remote errors
 ## 5. Enable debug logging
 
 Lyra logs go to journald. The log level defaults to `INFO`. To enable debug output, set
-`LOG_LEVEL=DEBUG` in `~/.lyra/env/hub.env` and restart:
+`LOG_LEVEL=DEBUG` in `~/.roxabi/factory/env/hub.env` and restart:
 
 ```bash
 make lyra reload
-journalctl --user -u lyra-hub -f
+journalctl --user -u factory-hub -f
 ```
 
 ## 6. Monitor VRAM (Machine 1)
@@ -246,7 +246,7 @@ Machine connection is read from `.env`:
 ```bash
 # .env (on your dev machine)
 DEPLOY_HOST=user@your-hub-ip          # SSH user@host for production hub
-DEPLOY_DIR=~/projects/lyra            # project path on the production host
+DEPLOY_DIR=~/projects/roxabi-factory            # project path on the production host
 ```
 
 ### Deploy (pull + test + restart)
@@ -280,11 +280,11 @@ loginctl enable-linger $USER
 systemctl --user enable --now podman-auto-update.timer
 
 # Check all Lyra unit statuses
-systemctl --user status 'lyra-*.service' lyra-nats.service
+systemctl --user status 'factory-*.service' factory-nats.service
 
 # View journald logs
-journalctl --user -u lyra-hub --no-pager -n 50
-journalctl --user -u lyra-telegram --no-pager -n 50
+journalctl --user -u factory-hub --no-pager -n 50
+journalctl --user -u factory-telegram --no-pager -n 50
 ```
 
 ---
@@ -296,18 +296,18 @@ When the subject→identity ACL matrix changes (spec #706), regenerate nkeys and
 ### Regenerate
 
 ```bash
-cd ~/projects/lyra
+cd ~/projects/roxabi-factory
 factory-acl genkeys --regen-authconf
 ```
 
-This rotates all nkeys — old seeds are backed up to `~/.lyra/nkeys.bak.{epoch}/` and the old
+This rotates all nkeys — old seeds are backed up to `~/.roxabi/factory/nkeys.bak.{epoch}/` and the old
 `auth.conf` is backed up before any files are overwritten.
 
 ### Update Podman secret and reload
 
 ```bash
 make quadlet-secrets-install   # recreate Podman secrets from new seeds
-systemctl --user restart lyra-nats.service
+systemctl --user restart factory-nats.service
 ```
 
 ### Reconnect clients
@@ -317,7 +317,7 @@ Restart adapters and clipool so they reconnect with new credentials:
 ```bash
 make telegram reload && make discord reload
 make clipool reload
-systemctl --user restart lyra-hub.service  # hub last
+systemctl --user restart factory-hub.service  # hub last
 ```
 
 > Voice workers (TTS/STT) live in the voiceCLI project and are reloaded via its own Makefile
@@ -336,14 +336,14 @@ tools/check-nats-acls.sh --since "$(date -Iseconds)" --window 90
 **Container fails to start — "Missing required env var"**
 The env file is either missing, has wrong permissions, or references an unset variable. Check:
 ```bash
-journalctl --user -u lyra-hub --no-pager -n 50
+journalctl --user -u factory-hub --no-pager -n 50
 make lyra errors
 ```
 
 **Container restarts in a loop**
 systemd `Restart=on-failure` retries on crash. Check the journal for the root cause:
 ```bash
-journalctl --user -u lyra-hub -f
+journalctl --user -u factory-hub -f
 ```
 
 **`uv` not found (inside container)**

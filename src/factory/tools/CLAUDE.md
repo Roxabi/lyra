@@ -1,6 +1,6 @@
 # src/factory/tools/ — In-container helper utilities
 
-Helper processes that run inside `lyra-clipool` but with **isolated identity** from Claude (uid 1500).
+Helper processes that run inside `factory-clipool` but with **isolated identity** from Claude (uid 1500).
 Each helper module is self-contained — pure stdlib + project deps, no hub/core imports at module level.
 
 ## gh_token/ — dispenser

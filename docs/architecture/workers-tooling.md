@@ -19,11 +19,11 @@ Runtime workers (CliPool subprocess pool, satellite adapters), tool integration 
 
 #### CliPool cwd resolution
 
-`_LYRA_ROOT` is resolved via a `pyproject.toml` anchor walk (`_find_project_root()`), not a fixed `.parent.parent...` chain. The anchor pattern is robust to file moves and editable installs; it fails loudly at import time if no `pyproject.toml` is found. The fixed parent-chain pattern is prohibited in any path-resolution code that must survive layout changes. `SimpleAgent.__init__` annotates `config` as `Agent` (not `AgentBase.__class__`). → ADR-004
+`_FACTORY_ROOT` is resolved via a `pyproject.toml` anchor walk (`_find_project_root()`), not a fixed `.parent.parent...` chain. The anchor pattern is robust to file moves and editable installs; it fails loudly at import time if no `pyproject.toml` is found. The fixed parent-chain pattern is prohibited in any path-resolution code that must survive layout changes. `SimpleAgent.__init__` annotates `config` as `Agent` (not `AgentBase.__class__`). → ADR-004
 
 #### CliPool Claude OAuth token
 
-`lyra-clipool.container` injects `CLAUDE_CODE_OAUTH_TOKEN` via `Secret=lyra-claude-oauth,type=env,target=CLAUDE_CODE_OAUTH_TOKEN`. The `claude` CLI has no `--token-file` flag; env is the only delivery path. `ANTHROPIC_API_KEY` is explicitly excluded from `_SAFE_ENV_KEYS` (enforced by unit test) to prevent silent rerouting to Console pay-per-token billing. Token rotation is manual, annual. Re-run the Podman #28075 verification recipe after any Podman version bump on M₁. → ADR-071
+`factory-clipool.container` injects `CLAUDE_CODE_OAUTH_TOKEN` via `Secret=factory-claude-oauth,type=env,target=CLAUDE_CODE_OAUTH_TOKEN`. The `claude` CLI has no `--token-file` flag; env is the only delivery path. `ANTHROPIC_API_KEY` is explicitly excluded from `_SAFE_ENV_KEYS` (enforced by unit test) to prevent silent rerouting to Console pay-per-token billing. Token rotation is manual, annual. Re-run the Podman #28075 verification recipe after any Podman version bump on M₁. → ADR-071
 
 #### Wildcard binding & per-scope pools
 
@@ -31,7 +31,7 @@ Phase 1 used a shared `telegram:main:*` pool; all users shared one lock and one 
 
 #### Multi-bot startup
 
-Each active agent gets its own `ProviderRegistry` (with a SmartRoutingDecorator configured from that agent's `smart_routing` config) and its own `MessageManager` (keyed to that agent's `i18n_language`). `CliPool` is a single shared instance — it is a process-management resource, not a per-agent config resource. Construction lives in `src/lyra/bootstrap/factory/agent_factory.py::_build_per_agent_registry()`. A startup warning fires when `len(agent_names) > 1` and agents have differing routing configs or languages. → ADR-019
+Each active agent gets its own `ProviderRegistry` (with a SmartRoutingDecorator configured from that agent's `smart_routing` config) and its own `MessageManager` (keyed to that agent's `i18n_language`). `CliPool` is a single shared instance — it is a process-management resource, not a per-agent config resource. Construction lives in `src/factory/bootstrap/factory/agent_factory.py::_build_per_agent_registry()`. A startup warning fires when `len(agent_names) > 1` and agents have differing routing configs or languages. → ADR-019
 
 #### Pool callback wiring
 
@@ -51,7 +51,7 @@ External CLIs (voicecli, imagecli, gws, scraper) follow a 3-layer Install–Wrap
 
 #### Tool-provider protocol
 
-`ScrapeProvider` and `VaultProvider` are async Protocols defined in `factory.integrations.base`. Concrete implementations (`WebIntelScraper`, `VaultCli`) live in `factory.integrations.web_intel` and `factory.integrations.vault_cli`. Both are bundled into a `SessionTools` dataclass injected into every `SessionCommandEntry` as a required (non-optional) parameter. `session_helpers.py` (which previously hardcoded subprocess invocations inside `lyra.core`) is deleted. The `commands/search` plugin receives `VaultProvider` via a module-level injectable set at agent startup, a separate injection path from `SessionCommandEntry`. → ADR-030
+`ScrapeProvider` and `VaultProvider` are async Protocols defined in `factory.integrations.base`. Concrete implementations (`WebIntelScraper`, `VaultCli`) live in `factory.integrations.web_intel` and `factory.integrations.vault_cli`. Both are bundled into a `SessionTools` dataclass injected into every `SessionCommandEntry` as a required (non-optional) parameter. `session_helpers.py` (which previously hardcoded subprocess invocations inside `factory.core`) is deleted. The `commands/search` plugin receives `VaultProvider` via a module-level injectable set at agent startup, a separate injection path from `SessionCommandEntry`. → ADR-030
 
 #### Model selection (ComplexityEstimator)
 
@@ -99,7 +99,7 @@ Slash commands that need conversation history are implemented as `BaseProcessor`
 
 #### Importlinter port-import fix
 
-The `shared-modules-independence` contract enforces peer isolation between 8 floating modules (`factory.obs`, lyra.stt, lyra.tts, `factory.errors`, `factory.config`, `factory.integrations`, `factory.monitoring`, `factory.agent_cmd`). As of 2026-05-08, 4 `ignore_imports` suppressions remain. The target is 2: fix `factory.core.agent.agent` to import `STTProtocol`/`TtsProtocol` from `lyra.core.ports.*` (not from lyra.stt/lyra.tts), and introduce SessionToolsProtocol in lyra.core.ports.integrations so `processor_registry.py` no longer imports the concrete `SessionTools` from `factory.integrations.base`. The two remaining suppressions (`core/ports/stt.py → lyra.stt:TranscriptionResult` and `core/ports/tts.py → lyra.tts:SynthesisResult`) are TYPE_CHECKING-only and track a separate result-type migration. → ADR-061
+The `shared-modules-independence` contract enforces peer isolation between 8 floating modules (`factory.obs`, factory.stt, factory.tts, `factory.errors`, `factory.config`, `factory.integrations`, `factory.monitoring`, `factory.agent_cmd`). As of 2026-05-08, 4 `ignore_imports` suppressions remain. The target is 2: fix `factory.core.agent.agent` to import `STTProtocol`/`TtsProtocol` from `factory.core.ports.*` (not from factory.stt/factory.tts), and introduce SessionToolsProtocol in factory.core.ports.integrations so `processor_registry.py` no longer imports the concrete `SessionTools` from `factory.integrations.base`. The two remaining suppressions (`core/ports/stt.py → factory.stt:TranscriptionResult` and `core/ports/tts.py → factory.tts:SynthesisResult`) are TYPE_CHECKING-only and track a separate result-type migration. → ADR-061
 
 #### Health monitoring layer boundaries
 
@@ -113,7 +113,7 @@ When `CliPool.send()` receives a `ModelConfig` that differs from the one used to
 
 ## Key invariants
 
-- `_find_project_root()` anchor walk is the only permitted pattern for locating `_LYRA_ROOT`; fixed `.parent` chains are prohibited.
+- `_find_project_root()` anchor walk is the only permitted pattern for locating `_FACTORY_ROOT`; fixed `.parent` chains are prohibited.
 - `ANTHROPIC_API_KEY` must never appear in `_SAFE_ENV_KEYS`; the unit test `test_anthropic_api_key_not_forwarded` is load-bearing.
 - `configure_pool(pool)` must be called before `_resolve_context` on every message; lazy callback wiring inside `process()` is insufficient.
 - Each agent gets its own `ProviderRegistry` and `MessageManager`; `CliPool` is the only shared process resource.
@@ -128,7 +128,7 @@ When `CliPool.send()` receives a `ModelConfig` that differs from the one used to
 
 ## Open questions / known gaps
 
-- ADR-061: 4 `ignore_imports` remain — target is 2; lyra.core.ports.integrations (SessionToolsProtocol) not yet created; import sites in `agent.py` and `processor_registry.py` not yet updated.
+- ADR-061: 4 `ignore_imports` remain — target is 2; factory.core.ports.integrations (SessionToolsProtocol) not yet created; import sites in `agent.py` and `processor_registry.py` not yet updated.
 - ADR-007: non-streaming path (`cli_pool.py`) still silently ignores model-config mismatch; migration gated on model-selector SLM.
 - ADR-005 / #112: CliPool subprocess isolation (one subprocess per scope) and memory-namespace isolation per scope are not yet implemented; only Hub-layer pool isolation is complete.
 - ADR-038: audit of `cli_protocol.py` for silent-failure paths not confirmed complete; some empty-stdout failures may not yet reach `cb.record_failure()`.

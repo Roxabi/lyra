@@ -12,21 +12,21 @@ Lyra uses two types of configuration files with distinct responsibilities:
 | File | Type | Versioned | Purpose |
 |------|------|-----------|---------|
 | `config.toml` | Instance config | No | Deployment wiring: bots, tokens, auth, defaults |
-| lyra.toml | Instance config | No | Monitoring thresholds (read by `factory.monitoring` only) |
-| `~/.lyra/config.db` | Runtime DB | No | Agents, credentials, grants, user prefs (SQLite) |
-| `~/.lyra/turns.db` | Runtime DB | No | Conversation turns, pool sessions |
-| `~/.lyra/discord.db` | Runtime DB | No | Discord thread data (owned by Discord adapter) |
-| `~/.lyra/auth.db` | Runtime DB | No | Auth grants, identity aliases (legacy name, still used) |
-| `~/.lyra/message_index.db` | Runtime DB | No | Message index for search/retrieval |
-| `~/.lyra/agents/<name>.toml` | Seed source | No | Agent seed: imported into DB by `lyra agent init` |
-| `src/lyra/agents/<name>.toml` | Seed source | Yes | Agent seed: system defaults, imported into DB |
-| `src/lyra/commands/<name>/plugin.toml` | System data | Yes | Plugin manifest: commands, handlers |
+| `config.toml` | Instance config | No | Monitoring thresholds — `[monitoring]` section of the same `config.toml`, read by `factory.monitoring` |
+| `~/.roxabi/factory/config.db` | Runtime DB | No | Agents, credentials, grants, user prefs (SQLite) |
+| `~/.roxabi/factory/turns.db` | Runtime DB | No | Conversation turns, pool sessions |
+| `~/.roxabi/factory/discord.db` | Runtime DB | No | Discord thread data (owned by Discord adapter) |
+| `~/.roxabi/factory/auth.db` | Runtime DB | No | Auth grants, identity aliases (legacy name, still used) |
+| `~/.roxabi/factory/message_index.db` | Runtime DB | No | Message index for search/retrieval |
+| `~/.roxabi/factory/agents/<name>.toml` | Seed source | No | Agent seed: imported into DB by `factory agent init` |
+| `src/factory/agents/<name>.toml` | Seed source | Yes | Agent seed: system defaults, imported into DB |
+| `src/factory/commands/<name>/plugin.toml` | System data | Yes | Plugin manifest: commands, handlers |
 | `src/factory/data/messages.toml` | System data | Yes | i18n strings |
 | `pyproject.toml` | System data | Yes | Package metadata, dependencies, tool config |
 
 **Rule:** if a value is machine-specific, personal, or secret → `config.toml`. Everything else → versioned.
 
-**Agent rule:** TOML files define what agents *should be*. The DB holds what they *are* at runtime. Startup reads from the DB only — TOML changes require `lyra agent init` (or `--force`) to take effect.
+**Agent rule:** TOML files define what agents *should be*. The DB holds what they *are* at runtime. Startup reads from the DB only — TOML changes require `factory agent init` (or `--force`) to take effect.
 
 ---
 
@@ -37,43 +37,43 @@ Lyra uses two types of configuration files with distinct responsibilities:
 Resolution order (first match wins):
 
 ```
-1. $LYRA_CONFIG           (if set, must be under $HOME)
-2. $LYRA_VAULT_DIR/config.toml
+1. $FACTORY_CONFIG           (if set, must be under $HOME)
+2. $FACTORY_VAULT_DIR/config.toml
 3. ./config.toml          (cwd)
 4. Empty dict (defaults)
 ```
 
-The path is validated to be under `$HOME` when set via `LYRA_CONFIG`.
+The path is validated to be under `$HOME` when set via `FACTORY_CONFIG`.
 
-### lyra.toml — Monitoring only
+### config.toml — Monitoring (`[monitoring]` section)
 
 Resolution order:
 
 ```
-1. $LYRA_CONFIG           (if set, must be under $HOME)
-2. ./lyra.toml           (cwd)
+1. $FACTORY_CONFIG           (if set, must be under $HOME)
+2. ./config.toml           (cwd)
 3. Empty dict (defaults)
 ```
 
-**Note:** Hub uses `config.toml`, monitoring uses lyra.toml. If you set `$LYRA_CONFIG`, it must contain both `[monitoring]` and any other sections you need.
+**Note:** Hub and monitoring both read `config.toml` (monitoring reads the `[monitoring]` section). If you set `$FACTORY_CONFIG`, it must contain `[monitoring]` plus any other sections you need.
 
 ### `messages.toml` — i18n strings
 
 Resolution order:
 
 ```
-1. $LYRA_MESSAGES_CONFIG  (if set, must end in .toml and be under $HOME)
+1. $FACTORY_MESSAGES_CONFIG  (if set, must end in .toml and be under $HOME)
 2. ./messages.toml        (cwd)
-3. src/lyra/data/messages.toml  (bundled)
+3. src/factory/data/messages.toml  (bundled)
 ```
 
-### Store directory (`~/.lyra/`)
+### Store directory (`~/.roxabi/factory/`)
 
-Controlled by `LYRA_VAULT_DIR`:
+Controlled by `FACTORY_VAULT_DIR`:
 
 ```
-$LYRA_VAULT_DIR  (if set)
-~/.lyra          (default)
+$FACTORY_VAULT_DIR  (if set)
+~/.roxabi/factory          (default)
 ```
 
 Databases created under this directory:
@@ -96,7 +96,7 @@ Databases created under this directory:
 [defaults]
 cwd = "~/projects"              # default working directory for agent subprocesses
 persona = "lyra_default"        # fallback persona if agent doesn't specify one
-workspaces.lyra = "~/projects/lyra"    # adds /lyra slash command
+workspaces.lyra = "~/projects/roxabi-factory"    # adds /lyra slash command
 workspaces.projects = "~/projects"     # adds /projects slash command
 ```
 
@@ -114,9 +114,9 @@ hardcoded default              (cwd = "~", persona = none)
 
 ```toml
 [agents.lyra_default]
-cwd = "~/projects/lyra"
+cwd = "~/projects/roxabi-factory"
 persona = "dev-assistant"
-workspaces.lyra = "~/projects/lyra"
+workspaces.lyra = "~/projects/roxabi-factory"
 ```
 
 Merged with `[defaults]` — agent-specific values win. Workspaces are deep-merged.
@@ -312,15 +312,15 @@ Services: `claude-cli`, `telegram`, `discord`, `hub`.
 
 ## Bot credentials
 
-Bot tokens and webhook secrets are stored as **Podman secrets**, not in `~/.lyra/config.db`. Adapter containers mount these via `Secret=` directives in `deploy/quadlet/lyra-<platform>.container`; the adapter process reads each token at bootstrap from `/run/secrets/bot_token-<bot_id>` (and optionally `/run/secrets/bot_webhook-<bot_id>`).
+Bot tokens and webhook secrets are stored as **Podman secrets**, not in `~/.roxabi/factory/config.db`. Adapter containers mount these via `Secret=` directives in `deploy/quadlet/factory-<platform>.container`; the adapter process reads each token at bootstrap from `/run/secrets/bot_token-<bot_id>` (and optionally `/run/secrets/bot_webhook-<bot_id>`).
 
 ### CLI
 
 | Command | Purpose |
 |---|---|
-| `lyra bot secret install <platform> <bot_id> [--from-env TOK] [--webhook-from-env WHK]` | Create or replace a bot's token (and optional webhook secret) |
-| `lyra bot secret rm <platform> <bot_id>` | Remove the bot's token + webhook secret |
-| `lyra bot secret list` | List provisioned bot secrets (filtered by `lyra-bot-` prefix) |
+| `factory bot secret install <platform> <bot_id> [--from-env TOK] [--webhook-from-env WHK]` | Create or replace a bot's token (and optional webhook secret) |
+| `factory bot secret rm <platform> <bot_id>` | Remove the bot's token + webhook secret |
+| `factory bot secret list` | List provisioned bot secrets (filtered by `factory-bot-` prefix) |
 | *(not a subcommand)* `python3 tools/migrate_bot_secrets_to_podman.py` | One-shot operator script — migrates pre-#1057 `bot_secrets` rows from `config.db` to Podman secrets; run once on M₁ then discard. See [§ Migrating from pre-#1057 `bot_secrets` rows](#migrating-from-pre-1057-bot_secrets-rows) |
 
 `<bot_id>` must match `^[A-Za-z0-9_-]+$` (alphanumeric, hyphen, underscore — slash-free for safe Podman secret names and tmpfs mount targets).
@@ -330,8 +330,8 @@ Bot tokens and webhook secrets are stored as **Podman secrets**, not in `~/.lyra
 Each bot expects one `Secret=` line per credential in the appropriate `.container` file:
 
 ```
-Secret=lyra-bot-telegram-<bot_id>,type=mount,target=bot_token-<bot_id>,mode=0400,uid=1500,gid=1500
-Secret=lyra-bot-telegram-<bot_id>-webhook,type=mount,target=bot_webhook-<bot_id>,mode=0400,uid=1500,gid=1500
+Secret=factory-bot-telegram-<bot_id>,type=mount,target=bot_token-<bot_id>,mode=0400,uid=1500,gid=1500
+Secret=factory-bot-telegram-<bot_id>-webhook,type=mount,target=bot_webhook-<bot_id>,mode=0400,uid=1500,gid=1500
 ```
 
 (Omit the webhook line if the bot does not use webhooks.)
@@ -340,22 +340,22 @@ Re-render the Quadlet after any secret provisioning change:
 
 ```bash
 make quadlet-install
-# Renders per-bot Secret= directives from ~/.lyra/config.toml into
-# lyra-telegram.container and lyra-discord.container, then reloads units.
+# Renders per-bot Secret= directives from ~/.roxabi/factory/config.toml into
+# factory-telegram.container and factory-discord.container, then reloads units.
 ```
 
 After running `make quadlet-install`, restart the adapter to remount: `make telegram-adapter restart` (or `discord-adapter`). `type=mount` secrets are tmpfs binds; `podman secret create --replace` updates the store but the in-container file is stale until container restart.
 
 ### Migrating from pre-#1057 `bot_secrets` rows
 
-Operators on M₁ with a pre-existing `~/.lyra/config.db` `bot_secrets` table run the one-shot migration script — it reads each row, decrypts via the existing Fernet keyring, and provisions a Podman secret per `(platform, bot_id)`. The script is self-contained (it does NOT depend on the deleted `CredentialStore` class) and idempotent:
+Operators on M₁ with a pre-existing `~/.roxabi/factory/config.db` `bot_secrets` table run the one-shot migration script — it reads each row, decrypts via the existing Fernet keyring, and provisions a Podman secret per `(platform, bot_id)`. The script is self-contained (it does NOT depend on the deleted `CredentialStore` class) and idempotent:
 
 ```bash
 python3 tools/migrate_bot_secrets_to_podman.py            # apply
 python3 tools/migrate_bot_secrets_to_podman.py --dry-run  # preview
 ```
 
-After migration: run `make quadlet-install` to re-render the Quadlet with the newly-provisioned secrets, restart the adapters, and optionally drop the now-orphan `bot_secrets` table (`sqlite3 ~/.lyra/config.db 'DROP TABLE bot_secrets'`). The script prints the same post-migration checklist on success.
+After migration: run `make quadlet-install` to re-render the Quadlet with the newly-provisioned secrets, restart the adapters, and optionally drop the now-orphan `bot_secrets` table (`sqlite3 ~/.roxabi/factory/config.db 'DROP TABLE bot_secrets'`). The script prints the same post-migration checklist on success.
 
 ### Rationale
 
@@ -363,16 +363,16 @@ webhook_secret packing: separate secret (not packed into JSON). This matches the
 
 ### Production guard
 
-`LYRA_RUN_SECRETS_DIR` lets tests and local development point at a temporary directory instead of `/run/secrets`. In production this override is **ignored** as a defense-in-depth measure: an attacker with env-write access on a prod host cannot redirect token reads to a path they control.
+`FACTORY_RUN_SECRETS_DIR` lets tests and local development point at a temporary directory instead of `/run/secrets`. In production this override is **ignored** as a defense-in-depth measure: an attacker with env-write access on a prod host cannot redirect token reads to a path they control.
 
 The guard activates when **either** condition is true:
 
 | Condition | Detection |
 |---|---|
 | Inside a container | `/run/.containerenv` exists (Podman runtime marker) |
-| Explicit prod mode | `LYRA_ENV=prod` |
+| Explicit prod mode | `FACTORY_ENV=prod` |
 
-When active, `load_bot_token` logs a warning and falls back to `/run/secrets` regardless of the env variable. Operators should **never** set `LYRA_RUN_SECRETS_DIR=` in Quadlet `.container` files — the override is intended for local dev and CI only.
+When active, `load_bot_token` logs a warning and falls back to `/run/secrets` regardless of the env variable. Operators should **never** set `FACTORY_RUN_SECRETS_DIR=` in Quadlet `.container` files — the override is intended for local dev and CI only.
 
 ### Backup
 
@@ -381,30 +381,30 @@ Podman secrets are the authoritative copy of bot tokens. There is no automatic b
 **Snapshot all bot secrets:**
 
 ```bash
-podman secret ls --filter name=lyra-bot- --format '{{.Name}}' | \
+podman secret ls --filter name=factory-bot- --format '{{.Name}}' | \
   xargs -n1 --no-run-if-empty podman secret inspect --showsecret | \
   jq -s '[.[] | {name: .[0].Spec.Name, data: .[0].SecretData}]' \
-  > lyra-bot-secrets-$(date +%Y%m%d).json
+  > factory-bot-secrets-$(date +%Y%m%d).json
 ```
 
-**Recommended cadence:** snapshot after every token rotation or bot provisioning change. Store the JSON file in your usual infrastructure backup location (e.g. alongside `~/.lyra/config.db` backups, or in your password-manager/secret-manager's export path).
+**Recommended cadence:** snapshot after every token rotation or bot provisioning change. Store the JSON file in your usual infrastructure backup location (e.g. alongside `~/.roxabi/factory/config.db` backups, or in your password-manager/secret-manager's export path).
 
 **Restore a secret from snapshot:**
 
 ```bash
 # Re-create a single secret from the snapshot file
-cat lyra-bot-secrets-YYYYMMDD.json | \
-  jq -r '.[] | select(.name == "lyra-bot-telegram-mybot") | .data' | \
-  podman secret create lyra-bot-telegram-mybot -
+cat factory-bot-secrets-YYYYMMDD.json | \
+  jq -r '.[] | select(.name == "factory-bot-telegram-mybot") | .data' | \
+  podman secret create factory-bot-telegram-mybot -
 ```
 
-After restoring, run `make quadlet-install` to re-render the Quadlet and restart the affected adapter. Per-bot Secret= directives are rendered at install time; no fragment files need separate backup. Source of truth is `~/.lyra/config.toml`.
+After restoring, run `make quadlet-install` to re-render the Quadlet and restart the affected adapter. Per-bot Secret= directives are rendered at install time; no fragment files need separate backup. Source of truth is `~/.roxabi/factory/config.toml`.
 
 **Note:** The snapshot contains raw secret data. Encryption-at-rest for the snapshot file is out of scope for this document; handle it according to your organization's secret-management policy.
 
 ---
 
-## lyra.toml — Monitoring Only
+## config.toml — Monitoring Only
 
 Read exclusively by `factory.monitoring`. Hub does NOT read this file.
 
@@ -423,7 +423,7 @@ min_disk_free_gb = 1                          # disk alert threshold (default: 1
 health_endpoint_url = "http://localhost:8443/health/detail"
 diagnostic_model = "claude-haiku-4-5-20251001"
 disk_check_path = "/"                         # filesystem to check (default: "/")
-service_names = ["lyra-hub", "lyra-telegram", "lyra-discord"]
+service_names = ["factory-hub", "factory-telegram", "factory-discord"]
 health_secret = ""                            # optional health endpoint auth
 ```
 
@@ -435,10 +435,10 @@ health_secret = ""                            # optional health endpoint auth
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LYRA_CONFIG` | — | Path to `config.toml` (hub) or lyra.toml (monitoring) |
-| `LYRA_VAULT_DIR` | `~/.lyra` | Store directory for all databases |
-| `LYRA_MESSAGES_CONFIG` | bundled | Path to custom `messages.toml` |
-| `LYRA_DB` | — | Override database path (test only) |
+| `FACTORY_CONFIG` | — | Path to `config.toml` (hub) or config.toml (monitoring) |
+| `FACTORY_VAULT_DIR` | `~/.roxabi/factory` | Store directory for all databases |
+| `FACTORY_MESSAGES_CONFIG` | bundled | Path to custom `messages.toml` |
+| `FACTORY_DB` | — | Override database path (test only) |
 
 ### Telegram
 
@@ -466,23 +466,23 @@ health_secret = ""                            # optional health endpoint auth
 
 Read by `init_blobstore()` in each adapter process (Telegram, Discord) + unified at startup.
 Token is read **once** at startup (restart-not-HUP — the value is never re-read without a
-process restart). If `LYRA_BLOBSTORE_TOKEN_PATH` points to an absent file, `blob_store`
+process restart). If `FACTORY_BLOBSTORE_TOKEN_PATH` points to an absent file, `blob_store`
 degrades to `None`: audio attachments are disabled and a warning is logged; no crash occurs.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LYRA_BLOBSTORE_URL` | `http://localhost:8449` | BlobStore service base URL |
-| `LYRA_BLOBSTORE_TOKEN_PATH` | `~/.lyra/blobstore.tok` | Path to bearer-token file; read once at startup |
+| `FACTORY_BLOBSTORE_URL` | `http://localhost:8449` | BlobStore service base URL |
+| `FACTORY_BLOBSTORE_TOKEN_PATH` | `~/.roxabi/factory/blobstore.tok` | Path to bearer-token file; read once at startup |
 
 #### BlobStore env file
 
-`~/.lyra/env/blobstore.env` is a Quadlet env file consumed by `lyra-blobstore.container` at
-container start via `EnvironmentFile=%h/.lyra/env/blobstore.env`. It is NOT loaded by the
-lyra application itself.
+`~/.roxabi/factory/env/blobstore.env` is a Quadlet env file consumed by `factory-blobstore.container` at
+container start via `EnvironmentFile=%h/.roxabi/factory/env/blobstore.env`. It is NOT loaded by the
+factory application itself.
 
 | File | Versioned | Purpose |
 |------|-----------|---------|
-| `~/.lyra/env/blobstore.env` (on M₁) | No (operator copy) | Live env file read by the container at startup |
+| `~/.roxabi/factory/env/blobstore.env` (on M₁) | No (operator copy) | Live env file read by the container at startup |
 
 **Bootstrap:** `deploy/install.sh` §1c generates this file idempotently — it skips creation
 if the file already exists, and regenerates it with `--force`.
@@ -492,20 +492,20 @@ Variables written by install.sh:
 | Variable | Source | Notes |
 |----------|--------|-------|
 | `TAILSCALE_IPV4` | `tailscale ip -4 \| head -1` at bootstrap | Empty string if Tailscale is absent at install time — the unit's ExecStartPre guard rejects start when unset (fail-closed; see `deploy/CLAUDE.md §Known residual risk`) |
-| `NATS_URL` | Omitted from the file | Supplied exclusively by the unit's inline `Environment=NATS_URL=nats://lyra-nats:4222`; omitting it from the env file prevents an empty value in systemd scope from shadowing the inline directive |
+| `NATS_URL` | Omitted from the file | Supplied exclusively by the unit's inline `Environment=NATS_URL=nats://factory-nats:4222`; omitting it from the env file prevents an empty value in systemd scope from shadowing the inline directive |
 
 File permissions: `0600` (set atomically via `umask 0077` subshell in install.sh).
 
 **Recovery:** delete the file and re-run install.sh to regenerate.
 
 ```bash
-rm ~/.lyra/env/blobstore.env
+rm ~/.roxabi/factory/env/blobstore.env
 ./deploy/install.sh --force
 ```
 
 Load order: N/A — this is a Quadlet env file, not an application config file. The bearer
 token and blob data path are delivered via `Secret=` and `Volume=` directives in
-`deploy/quadlet/lyra-blobstore.container` (not via env vars).
+`deploy/quadlet/factory-blobstore.container` (not via env vars).
 
 #### JetStream persistent storage
 
@@ -513,20 +513,20 @@ JetStream is enabled via the config file stanza in `deploy/nats/nats-container.c
 
 | Unit | Host path | Container path |
 |------|-----------|----------------|
-| `lyra-jetstream.volume` | `~/.lyra/nats/jetstream` | `/var/lib/nats/jetstream` |
+| `factory-jetstream.volume` | `~/.roxabi/factory/nats/jetstream` | `/var/lib/nats/jetstream` |
 
 **First-time setup (production, uid 1500):**
 
 ```bash
-make quadlet-install                          # creates ~/.lyra/nats/jetstream at mode 0700
-podman unshare chown 1500:1500 ~/.lyra/nats/jetstream
+make quadlet-install                          # creates ~/.roxabi/factory/nats/jetstream at mode 0700
+podman unshare chown 1500:1500 ~/.roxabi/factory/nats/jetstream
 make quadlet-secrets-install                  # skip if secrets already installed
-systemctl --user restart lyra-nats
+systemctl --user restart factory-nats
 ```
 
 **Dev (no fixed uid mapping):** `make quadlet-install` is sufficient — omit the `podman unshare chown` step.
 
-**Upgrade:** after `make quadlet-install`, run `systemctl --user daemon-reload && systemctl --user restart lyra-nats` to pick up unit file changes.
+**Upgrade:** after `make quadlet-install`, run `systemctl --user daemon-reload && systemctl --user restart factory-nats` to pick up unit file changes.
 
 **Lint:** before deploying, validate all Quadlet unit files locally:
 
@@ -540,34 +540,34 @@ Runs `podman quadlet --dryrun` (parse errors) and a comment-guard that rejects i
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LYRA_STT_MODEL` | `large-v3-turbo` | Whisper model size |
-| `LYRA_STT_TIMEOUT` | `15` | STT timeout in seconds |
-| `LYRA_TTS_ENGINE` | — | TTS engine (per-adapter in voiceCLI container) |
-| `LYRA_TTS_VOICE` | — | TTS voice ID |
-| `LYRA_TTS_LANGUAGE` | — | TTS language code |
-| `LYRA_TTS_TIMEOUT` | — | TTS timeout in seconds |
-| `LYRA_AUDIO_TMP` | — | Audio temp directory |
-| `LYRA_MAX_AUDIO_BYTES` | — | Max audio file size |
+| `FACTORY_STT_MODEL` | `large-v3-turbo` | Whisper model size |
+| `FACTORY_STT_TIMEOUT` | `15` | STT timeout in seconds |
+| `FACTORY_TTS_ENGINE` | — | TTS engine (per-adapter in voiceCLI container) |
+| `FACTORY_TTS_VOICE` | — | TTS voice ID |
+| `FACTORY_TTS_LANGUAGE` | — | TTS language code |
+| `FACTORY_TTS_TIMEOUT` | — | TTS timeout in seconds |
+| `FACTORY_AUDIO_TMP` | — | Audio temp directory |
+| `FACTORY_MAX_AUDIO_BYTES` | — | Max audio file size |
 
 ### Health endpoint
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LYRA_HEALTH_HOST` | — | Health endpoint host |
-| `LYRA_HEALTH_PORT` | — | Health endpoint port |
-| `LYRA_HEALTH_SECRET` | — | Health endpoint auth secret |
+| `FACTORY_HEALTH_HOST` | — | Health endpoint host |
+| `FACTORY_HEALTH_PORT` | — | Health endpoint port |
+| `FACTORY_HEALTH_SECRET` | — | Health endpoint auth secret |
 
 ### Misc
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LYRA_AGENT_STORE_PATH` | — | Override agent store path |
-| `LYRA_CLAUDE_CWD` | — | Claude CLI working directory |
-| `LYRA_WEB_INTEL_PATH` | — | Web intel output path |
+| `FACTORY_AGENT_STORE_PATH` | — | Override agent store path |
+| `FACTORY_CLAUDE_CWD` | — | Claude CLI working directory |
+| `FACTORY_WEB_INTEL_PATH` | — | Web intel output path |
 
 ---
 
-## Runtime databases — `~/.lyra/`
+## Runtime databases — `~/.roxabi/factory/`
 
 | Database | Contents |
 |----------|----------|
@@ -583,22 +583,22 @@ Runs `podman quadlet --dryrun` (parse errors) and a comment-guard that rejects i
 
 ## Agent definitions — SQLite DB + TOML seeds
 
-Agents are stored in **`~/.lyra/config.db`** (SQLite). This is the runtime source of truth.
+Agents are stored in **`~/.roxabi/factory/config.db`** (SQLite). This is the runtime source of truth.
 
-TOML files are **seed sources** — imported via `lyra agent init`. After import, TOML edits have no effect until re-imported.
+TOML files are **seed sources** — imported via `factory agent init`. After import, TOML edits have no effect until re-imported.
 
 ### CLI workflow
 
 ```bash
-lyra agent init              # seed DB from TOML files
-lyra agent init --force      # force re-import (overwrites DB rows)
-lyra agent list              # list all agents in DB
-lyra agent show <name>       # show full config for one agent
-lyra agent edit <name>       # edit an agent in DB interactively
-lyra agent validate <name>   # schema + constraint checks
-lyra agent delete <name>     # delete an agent (refuses if bot assigned)
-lyra agent assign <name> --platform telegram --bot <bot_id>
-lyra agent unassign --platform telegram --bot <bot_id>
+factory agent init              # seed DB from TOML files
+factory agent init --force      # force re-import (overwrites DB rows)
+factory agent list              # list all agents in DB
+factory agent show <name>       # show full config for one agent
+factory agent edit <name>       # edit an agent in DB interactively
+factory agent validate <name>   # schema + constraint checks
+factory agent delete <name>     # delete an agent (refuses if bot assigned)
+factory agent assign <name> --platform telegram --bot <bot_id>
+factory agent unassign --platform telegram --bot <bot_id>
 ```
 
 ### TOML format (seed files)
@@ -632,8 +632,8 @@ enabled = ["echo"]
 ```
 startup
   ├── _load_raw_config() → config.toml
-  │     ├── $LYRA_CONFIG (validated under $HOME)
-  │     ├── $LYRA_VAULT_DIR/config.toml
+  │     ├── $FACTORY_CONFIG (validated under $HOME)
+  │     ├── $FACTORY_VAULT_DIR/config.toml
   │     ├── cwd/config.toml
   │     └── {} (empty → all defaults)
   │
@@ -648,7 +648,7 @@ startup
   │     ├── [logging], [message_index], [pairing]
   │     └── [tool_display]
   │
-  └── AgentStore.connect() → ~/.lyra/config.db
+  └── AgentStore.connect() → ~/.roxabi/factory/config.db
         └── for each bot → resolve agent from DB
               ├── bot_agent_map row (highest priority)
               └── if missing → config.toml bot.agent → auto-seed
@@ -662,8 +662,8 @@ it runs `deploy/quadlet-install-verify.sh`, which:
 
 1. Runs `systemctl --user daemon-reload` — triggers the Quadlet generator to
    produce fresh `.service` units from the copied files.
-2. Restarts (or starts) each container unit: `lyra-nats`, `lyra-hub`,
-   `lyra-telegram`, `lyra-discord`, `lyra-clipool`.
+2. Restarts (or starts) each container unit: `factory-nats`, `factory-hub`,
+   `factory-telegram`, `factory-discord`, `factory-clipool`.
 3. Waits up to 10 s per unit and checks `systemctl --user is-active`.
 4. If any unit is not `active`, dumps the last 20 lines of
    `journalctl --user -u <unit>` and exits non-zero — the deploy fails loudly.
@@ -684,7 +684,7 @@ copy runs.  Use this when:
 - Performing a manual recovery where one or more units are intentionally not
   running (e.g. after an nkey rotation before new seeds are in place).
 - Deploying on a host that does not yet have the full secrets set up (initial
-  bootstrap before `~/.lyra/env/` files exist).
+  bootstrap before `~/.roxabi/factory/env/` files exist).
 
 After fixing the underlying issue, run a normal `make quadlet-install` (without
 `NO_RESTART=1`) to verify all units come up.
@@ -694,12 +694,12 @@ After fixing the underlying issue, run a normal `make quadlet-install` (without
 
 ## Monitoring — removed; superseded by Monitoring v2 (#1035)
 
-The host-timer units (`lyra-monitor.{service,timer}`) have been removed from `deploy/`. The Python module `src/lyra/monitoring/` is retained for [Monitoring v2 (#1035)](https://github.com/Roxabi/lyra/issues/1035) spec mining. It pokes `systemctl --user`, `podman logs`, and host loopback ports — none of which translate cleanly to a containerised world — and offers no UI beyond a Telegram message.
+The host-timer units (`lyra-monitor.{service,timer}`) have been removed from `deploy/`. The Python module `src/factory/monitoring/` is retained for [Monitoring v2 (#1035)](https://github.com/Roxabi/roxabi-factory/issues/1035) spec mining. It pokes `systemctl --user`, `podman logs`, and host loopback ports — none of which translate cleanly to a containerised world — and offers no UI beyond a Telegram message.
 
 For ad-hoc hub-health probes, hit `/health/detail` directly:
 
 ```bash
-curl -fsS -H "Authorization: Bearer $LYRA_HEALTH_SECRET" \
+curl -fsS -H "Authorization: Bearer $FACTORY_HEALTH_SECRET" \
   http://127.0.0.1:8443/health/detail | jq .
 ```
 
@@ -710,7 +710,7 @@ curl -fsS -H "Authorization: Bearer $LYRA_HEALTH_SECRET" \
 Enable when running `voicecli_tts` / `voicecli_stt` via voiceCLI:
 
 ```bash
-LYRA_STT_MODEL=large-v3-turbo   # faster-whisper model
+FACTORY_STT_MODEL=large-v3-turbo   # faster-whisper model
 ```
 
 Hub probes STT/TTS adapters at startup via NATS heartbeats. Workers are discovered dynamically — no explicit enable flag needed.

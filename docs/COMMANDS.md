@@ -15,7 +15,7 @@ After `uv sync`, activate the virtual environment to put `lyra` on your PATH:
 ```bash
 source .venv/bin/activate
 # Or add .venv/bin to your PATH permanently in ~/.bashrc:
-# export PATH="$HOME/projects/lyra/.venv/bin:$PATH"
+# export PATH="$HOME/projects/roxabi-factory/.venv/bin:$PATH"
 ```
 
 ### Subcommands
@@ -24,7 +24,7 @@ source .venv/bin/activate
 
 | Command | Description |
 |---------|-------------|
-| `lyra` / `lyra start` | Start hub + adapters in one process (auto-starts embedded NATS if `NATS_URL` is not set) |
+| `lyra` / `factory start` | Start hub + adapters in one process (auto-starts embedded NATS if `NATS_URL` is not set) |
 | `lyra --version` / `lyra -V` | Print the installed version |
 | `lyra --help` | List all available subcommands |
 
@@ -32,36 +32,36 @@ source .venv/bin/activate
 
 | Command | Description |
 |---------|-------------|
-| `lyra agent init` | Seed DB from TOML files (first-time setup) |
-| `lyra agent init --force` | Overwrite existing DB rows with TOML |
-| `lyra agent list` | List all discovered agents |
-| `lyra agent show <name>` | Full config for one agent |
-| `lyra agent create` | Interactively create a new agent TOML |
-| `lyra agent edit <name>` | Edit an agent interactively in DB |
-| `lyra agent validate <name>` | Validate agent config in DB |
-| `lyra agent assign <name> --platform <p> --bot <id>` | Assign agent to a bot |
-| `lyra agent unassign --platform <p> --bot <id>` | Remove a bot-agent mapping |
-| `lyra agent delete <name>` | Delete agent (refuses if bot still assigned) |
-| `lyra agent patch <name> --json <json_object>` | Apply a partial JSON patch to an agent |
-| `lyra agent refine <name>` | Interactively refine agent persona/voice |
+| `factory agent init` | Seed DB from TOML files (first-time setup) |
+| `factory agent init --force` | Overwrite existing DB rows with TOML |
+| `factory agent list` | List all discovered agents |
+| `factory agent show <name>` | Full config for one agent |
+| `factory agent create` | Interactively create a new agent TOML |
+| `factory agent edit <name>` | Edit an agent interactively in DB |
+| `factory agent validate <name>` | Validate agent config in DB |
+| `factory agent assign <name> --platform <p> --bot <id>` | Assign agent to a bot |
+| `factory agent unassign --platform <p> --bot <id>` | Remove a bot-agent mapping |
+| `factory agent delete <name>` | Delete agent (refuses if bot still assigned) |
+| `factory agent patch <name> --json <json_object>` | Apply a partial JSON patch to an agent |
+| `factory agent refine <name>` | Interactively refine agent persona/voice |
 
 **Bot management**
 
 | Command | Description |
 |---------|-------------|
-| `lyra bot init` | Seed BotStore from `config.toml` (idempotent) |
-| `lyra bot init --force` | Overwrite existing BotStore rows |
-| `lyra bot secret install <platform> <bot_id>` | Store bot token as Podman secret |
-| `lyra bot secret install <platform> <bot_id>-webhook` | Store webhook secret as Podman secret |
+| `factory bot init` | Seed BotStore from `config.toml` (idempotent) |
+| `factory bot init --force` | Overwrite existing BotStore rows |
+| `factory bot secret install <platform> <bot_id>` | Store bot token as Podman secret |
+| `factory bot secret install <platform> <bot_id>-webhook` | Store webhook secret as Podman secret |
 
 **Hub and adapter (production four-process mode)**
 
 | Command | Description |
 |---------|-------------|
-| `lyra hub` | Start the standalone Hub process (requires NATS) |
-| `lyra adapter telegram` | Start the standalone Telegram adapter (requires NATS) |
-| `lyra adapter discord` | Start the standalone Discord adapter (requires NATS) |
-| `lyra adapter clipool` | Start the standalone CliPool NATS worker (requires NATS) |
+| `factory hub` | Start the standalone Hub process (requires NATS) |
+| `factory adapter telegram` | Start the standalone Telegram adapter (requires NATS) |
+| `factory adapter discord` | Start the standalone Discord adapter (requires NATS) |
+| `factory adapter clipool` | Start the standalone CliPool NATS worker (requires NATS) |
 
 **Config management**
 
@@ -70,14 +70,14 @@ source .venv/bin/activate
 | `lyra config show` | Print the resolved `config.toml` |
 | `lyra config validate` | Validate `config.toml` against the schema |
 
-> `lyra-agent` still works but prints a deprecation warning. Migrate to `lyra agent <subcommand>`.
+> `factory-agent` still works but prints a deprecation warning. Migrate to `factory agent <subcommand>`.
 
 ### Agent config directories
 
 Lyra searches for agent TOML files in two locations, in order of precedence:
 
-1. `~/.lyra/agents/` — user-level configs (take precedence)
-2. `src/lyra/agents/` — project-level configs (bundled defaults)
+1. `~/.roxabi/factory/agents/` — user-level configs (take precedence)
+2. `src/factory/agents/` — project-level configs (bundled defaults)
 
 If the same agent name exists in both directories, the user-level file wins.
 
@@ -87,10 +87,10 @@ The `[defaults]` section in `config.toml` lets you set machine-wide fallbacks fo
 
 ```toml
 [defaults]
-cwd = "~/projects/lyra"
+cwd = "~/projects/roxabi-factory"
 
 [defaults.workspaces]
-lyra     = "~/projects/lyra"
+lyra     = "~/projects/roxabi-factory"
 projects = "~/projects"
 ```
 
@@ -194,7 +194,7 @@ Incoming message
 | `/explain <url>` | Scrape URL → plain-language explanation | `web-intel:scrape` |
 | `/summarize <url>` | Scrape URL → bullet-point summary | `web-intel:scrape` |
 | `/search <query>` | Full-text search over vault | `vault` (plugin) |
-| `<url>` (bare) | Auto-rewritten to `/vault-add <url>` (configured in `src/lyra/data/patterns.toml`) | — |
+| `<url>` (bare) | Auto-rewritten to `/vault-add <url>` (configured in `src/factory/data/patterns.toml`) | — |
 | `/workspace <name> [question]` | Switch working directory to named workspace | — (builtin) |
 | `/workspace ls` | List configured workspaces | — (builtin) |
 
@@ -238,7 +238,7 @@ Sending a bare URL (no slash command prefix) is automatically rewritten to `/vau
 https://example.com/article   →   /vault-add https://example.com/article
 ```
 
-The detection uses `CommandRouter._BARE_URL_RE` (`^https?://\S+$`). The target command is read from `src/lyra/data/patterns.toml` `[bare_url].command` — change it there to reroute bare URLs to a different command without touching Python.
+The detection uses `CommandRouter._BARE_URL_RE` (`^https?://\S+$`). The target command is read from `src/factory/data/patterns.toml` `[bare_url].command` — change it there to reroute bare URLs to a different command without touching Python.
 
 ### `/search <query>` — Vault full-text search
 
@@ -262,7 +262,7 @@ Runs `vault search <query>` and returns matching results. Stateless — no LLM c
 Processor commands use `BaseProcessor` from `processor_registry.py` and are registered with the `@register` decorator. Each processor implements `pre()` (enriches the message before pool submission) and optionally `post()` (side effects after the LLM response). Because they run inside the normal pool flow, responses appear in conversation history and are available for follow-up questions.
 
 ```python
-from lyra.core.processor_registry import BaseProcessor, register
+from factory.core.processor_registry import BaseProcessor, register
 
 @register("/my-cmd", description="Do something: /my-cmd <url>")
 class MyCmdProcessor(BaseProcessor):
@@ -279,13 +279,13 @@ Workspaces are named directory shortcuts defined in the agent TOML under `[works
 ### Configuration
 
 ```toml
-# src/lyra/agents/lyra_default.toml
+# src/factory/agents/lyra_default.toml
 
 [model]
-cwd = "~/projects/lyra"   # optional: fixed default cwd for this agent
+cwd = "~/projects/roxabi-factory"   # optional: fixed default cwd for this agent
 
 [workspaces]
-lyra        = "~/projects/lyra"
+lyra        = "~/projects/roxabi-factory"
 projects    = "~/projects"
 roxabi-vault = "~/.roxabi-vault"
 ```
@@ -300,8 +300,8 @@ Syntax: /workspace <name>
         /workspace
 ```
 
-- `/workspace lyra` — sets the workspace to `~/projects/lyra`, responds with a context confirmation
-- `/workspace lyra what's the last commit?` — sets the workspace, then forwards the question to Claude with `cwd=~/projects/lyra`
+- `/workspace lyra` — sets the workspace to `~/projects/roxabi-factory`, responds with a context confirmation
+- `/workspace lyra what's the last commit?` — sets the workspace, then forwards the question to Claude with `cwd=~/projects/roxabi-factory`
 - `/workspace ls` — lists all configured workspaces with their paths
 - `/workspace` — same as `/workspace ls`
 
@@ -409,10 +409,10 @@ Lyra: ⚠ Command timed out.
 
 ## Configuration
 
-Built-in commands are implemented in `src/lyra/core/builtin_commands.py` and workspace commands in `src/lyra/core/workspace_commands.py`. Plugin commands are declared in each plugin's `plugin.toml`:
+Built-in commands are implemented in `src/factory/core/builtin_commands.py` and workspace commands in `src/factory/core/workspace_commands.py`. Plugin commands are declared in each plugin's `plugin.toml`:
 
 ```toml
-# src/lyra/commands/echo/plugin.toml
+# src/factory/commands/echo/plugin.toml
 
 [[commands]]
 name = "echo"
@@ -423,7 +423,7 @@ handler = "cmd_echo"
 Plugins are enabled per-agent in the agent TOML config:
 
 ```toml
-# src/lyra/agents/lyra_default.toml
+# src/factory/agents/lyra_default.toml
 
 [plugins]
 enabled = ["echo"]

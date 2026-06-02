@@ -11,16 +11,16 @@ The 2026-04-27 incident showed that a bad image deploy caused 3h15m of silent fa
 
 ## Canary rollout procedure
 
-Use `lyra-telegram` (aryl bot) as the canary unit — lowest user impact, fastest to verify.
+Use `factory-telegram` (aryl bot) as the canary unit — lowest user impact, fastest to verify.
 
 **Step 1 — Deploy canary**
 
 ```bash
 # Pull new image
-podman pull ghcr.io/roxabi/lyra:staging
+podman pull ghcr.io/roxabi/factory:staging
 
 # Restart canary unit only
-systemctl --user restart lyra-telegram.service
+systemctl --user restart factory-telegram.service
 ```
 
 **Step 2 — Smoke test the canary** (see below — run immediately after restart)
@@ -30,7 +30,7 @@ systemctl --user restart lyra-telegram.service
 Watch logs for errors:
 
 ```bash
-journalctl --user -u lyra-telegram -f
+journalctl --user -u factory-telegram -f
 ```
 
 If the smoke test passed and no errors appear after 5 minutes, proceed.
@@ -38,9 +38,9 @@ If the smoke test passed and no errors appear after 5 minutes, proceed.
 **Step 4 — Promote to remaining units**
 
 ```bash
-systemctl --user restart lyra-discord.service
-systemctl --user restart lyra-clipool.service
-systemctl --user restart lyra-hub.service
+systemctl --user restart factory-discord.service
+systemctl --user restart factory-clipool.service
+systemctl --user restart factory-hub.service
 ```
 
 Restart hub last — it is the sole consumer of inbound queues.
@@ -65,10 +65,10 @@ Tests the critical path: hub receives a message, dispatches to clipool, clipool 
 
 ```bash
 # After sending the test message, check hub dispatched and received a reply:
-journalctl --user -u lyra-hub --since "1 min ago" | grep -E "clipool|stream_gen|timeout|dispatch"
+journalctl --user -u factory-hub --since "1 min ago" | grep -E "clipool|stream_gen|timeout|dispatch"
 
 # Check NATS for permission violations:
-journalctl --user -u lyra-nats --since "1 min ago" | grep -i "violation"
+journalctl --user -u factory-nats --since "1 min ago" | grep -i "violation"
 ```
 
 Pass criteria:
@@ -122,11 +122,11 @@ If the smoke test fails after canary deploy:
 
 ```bash
 # Roll back to previous image tag
-podman pull ghcr.io/roxabi/lyra:<previous-tag>
-systemctl --user restart lyra-telegram.service
+podman pull ghcr.io/roxabi/factory:<previous-tag>
+systemctl --user restart factory-telegram.service
 ```
 
-Previous image tag is in the release notes or `podman image ls ghcr.io/roxabi/lyra`.
+Previous image tag is in the release notes or `podman image ls ghcr.io/roxabi/factory`.
 
 If the failure is an ACL/NATS issue (permission violations in logs), see [nats-authconf-update.md](nats-authconf-update.md) rollback section instead.
 

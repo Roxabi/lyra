@@ -3,8 +3,8 @@
 ## Purpose
 
 Conversational CLI plugin for refining a Lyra agent profile (persona, voice,
-passthroughs, model). Wraps `lyra agent refine` — do NOT touch lyra source code,
-`~/.lyra/auth.db` directly, or any file outside this plugin directory.
+passthroughs, model). Wraps `factory agent refine` — do NOT touch lyra source code,
+`~/.roxabi/factory/auth.db` directly, or any file outside this plugin directory.
 
 ## Skill
 
@@ -14,14 +14,14 @@ Trigger: `/refine-agent [agent-name]`
 
 ## Storage contract
 
-Agents live in `~/.lyra/config.db` (SQLite). TOML files are seed-only:
+Agents live in `~/.roxabi/factory/config.db` (SQLite). TOML files are seed-only:
 
 | Source | Role |
 |--------|------|
 | `src/factory/agents/<name>.toml` | bundled system defaults |
-| `~/.lyra/agents/<name>.toml` | user-level override (machine-specific, gitignored) |
+| `~/.roxabi/factory/agents/<name>.toml` | user-level override (machine-specific, gitignored) |
 
-Reads use `lyra agent show`. Writes use `lyra agent patch` → DB only.
+Reads use `factory agent show`. Writes use `factory agent patch` → DB only.
 No TOML file is written by this plugin.
 
 → `docs/agent-management.md` — full CLI reference + DB schema
@@ -30,9 +30,9 @@ No TOML file is written by this plugin.
 
 | Command | Mode | Use when |
 |---------|------|----------|
-| `lyra agent refine` | conversational (this plugin) | exploring or uncertain about target value |
-| `lyra agent edit` | interactive field editor | direct field mutation, value known |
-| `lyra agent patch --json` | non-interactive JSON merge | scripted or single-field update |
+| `factory agent refine` | conversational (this plugin) | exploring or uncertain about target value |
+| `factory agent edit` | interactive field editor | direct field mutation, value known |
+| `factory agent patch --json` | non-interactive JSON merge | scripted or single-field update |
 
 ## Refinable fields
 
@@ -56,8 +56,8 @@ No TOML file is written by this plugin.
   → lyra adapter restart          # operator step; ¬done by plugin
 ```
 
-Override TOML (`~/.lyra/agents/<name>.toml`) takes precedence on next
-`lyra agent init --force` — patch DB directly to avoid init reverting changes.
+Override TOML (`~/.roxabi/factory/agents/<name>.toml`) takes precedence on next
+`factory agent init --force` — patch DB directly to avoid init reverting changes.
 
 ## Boundaries
 

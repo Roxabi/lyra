@@ -19,12 +19,12 @@ locally and makes HTTP calls inline.
 
 ## Auth / identity model
 
-Tokens are stored encrypted in `~/.lyra/config.db` (`bot_secrets` table), encrypted
-with a Fernet key at `~/.lyra/keyring.key`. The skill decrypts at call time, holds the
+Tokens are stored encrypted in `~/.roxabi/factory/config.db` (`bot_secrets` table), encrypted
+with a Fernet key at `~/.roxabi/factory/keyring.key`. The skill decrypts at call time, holds the
 token in a local variable only, and never prints or persists it. Populated by
-`lyra bot secret install` (creates Podman secret) and read by the skill from `config.db`.
+`factory bot secret install` (creates Podman secret) and read by the skill from `config.db`.
 
-Target identity (who to send to) is resolved from `~/.lyra/turns.db` — the plugin
+Target identity (who to send to) is resolved from `~/.roxabi/factory/turns.db` — the plugin
 queries recent turns to surface known `chat_id` (Telegram) or `channel_id`/`thread_id`
 (Discord), then asks the user to confirm if ambiguous.
 
@@ -39,7 +39,7 @@ queries recent turns to surface known `chat_id` (Telegram) or `channel_id`/`thre
 
 - Telegram: bot cannot initiate with a user who has never messaged it first.
 - Discord: bot must have `Send Messages` permission in the target channel.
-- Both: `lyra bot secret install` must have run to populate `bot_secrets`.
+- Both: `factory bot secret install` must have run to populate `bot_secrets`.
 
 ## Skill entry point
 
@@ -48,8 +48,8 @@ resolve args → find target ID → send → confirm.
 
 ## Lyra cross-references
 
-- `~/.lyra/turns.db` — turn history (target ID discovery)
-- `~/.lyra/config.db` — bot secrets
-- `~/.lyra/keyring.key` — encryption key
+- `~/.roxabi/factory/turns.db` — turn history (target ID discovery)
+- `~/.roxabi/factory/config.db` — bot secrets
+- `~/.roxabi/factory/keyring.key` — encryption key
 - Lyra adapters (`src/factory/adapters/`) own the inbound side; this plugin owns
   the proactive outbound side independently.

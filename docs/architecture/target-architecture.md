@@ -328,7 +328,7 @@ Every hub↔adapter envelope carries `schema_version: int`.
 1. Bump `SCHEMA_VERSION_<ENVELOPE>` constant
 2. Update `schema_version` field default on envelope
 3. Coordinate simultaneous deploy of hub + adapters
-4. Verify: `grep SCHEMA_VERSION_ src/lyra/core/messaging/*.py`
+4. Verify: `grep SCHEMA_VERSION_ src/factory/core/messaging/*.py`
 
 ---
 

@@ -13,6 +13,8 @@ from __future__ import annotations
 
 from typing import Protocol, TypedDict, runtime_checkable
 
+from factory.core.config.turn_store_config import TurnStoreConfig
+
 __all__ = ["SessionRow", "TurnRow", "TurnStoreProtocol"]
 
 
@@ -53,10 +55,17 @@ class TurnStoreProtocol(Protocol):
     """
 
     async def get_turns(
-        self, pool_id: str, user_id: str, limit: int = 50
+        self,
+        pool_id: str,
+        user_id: str,
+        limit: int = TurnStoreConfig.DEFAULT_GET_TURNS_LIMIT,
     ) -> list[TurnRow]: ...
 
-    async def list_sessions(self, pool_id: str, limit: int = 5) -> list[SessionRow]: ...
+    async def list_sessions(
+        self,
+        pool_id: str,
+        limit: int = TurnStoreConfig.DEFAULT_LIST_SESSIONS_LIMIT,
+    ) -> list[SessionRow]: ...
 
     async def get_cli_session(self, session_id: str) -> str | None: ...
 

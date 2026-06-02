@@ -357,7 +357,7 @@ class TestNatsHealthProbe:
         monkeypatch: pytest.MonkeyPatch,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """#449 edge: `nc.is_connected` raising AttributeError → unreachable + DEBUG log."""
+        """#449 edge: `nc.is_connected` raises AttributeError -> unreachable + DEBUG."""
         import logging as _logging
 
         monkeypatch.setenv("NATS_URL", "nats://localhost:4222")

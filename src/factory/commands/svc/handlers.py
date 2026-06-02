@@ -88,5 +88,10 @@ async def cmd_svc(msg: InboundMessage, pool: Pool, args: list[str]) -> Response:
         if exc.reason == "not_available":
             return Response(content="systemctl --user not found.")
         return safe_error_response(exc, log, "svc plugin")
-    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+    except OSError as exc:  # <issue:1639> genuine handler boundary
+        # PermissionError (OSError subclass) can escape SystemctlManager.control()
+        # if the systemctl binary exists but is not executable — not caught by the
+        # FileNotFoundError guard inside the integration layer.
+        # This handler MUST return Response and never raise (plugin command contract).
+        log.exception("svc plugin: OS error during service control: %s", exc)
         return safe_error_response(exc, log, "svc plugin")

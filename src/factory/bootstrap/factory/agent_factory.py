@@ -180,7 +180,7 @@ def _create_agent(deps: CreateAgentDeps) -> AgentBase:
                 session_tools = SessionTools(
                     scraper=WebIntelScraper(), vault=VaultCli()
                 )
-            except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
+            except (OSError, ImportError, RuntimeError, ValueError):  # <issue:1639>
                 log.warning(
                     "agent_factory: could not build SessionTools — passing None",
                     exc_info=True,

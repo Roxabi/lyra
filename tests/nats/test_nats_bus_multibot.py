@@ -103,10 +103,10 @@ class TestMultiBotRegistration:
         try:
             # Act — publish to both subjects independently
             await nc.publish(
-                f"lyra.inbound.{Platform.TELEGRAM.value}.bot-a", _s.serialize(msg_a)
+                f"factory.inbound.{Platform.TELEGRAM.value}.bot-a", _s.serialize(msg_a)
             )
             await nc.publish(
-                f"lyra.inbound.{Platform.TELEGRAM.value}.bot-b", _s.serialize(msg_b)
+                f"factory.inbound.{Platform.TELEGRAM.value}.bot-b", _s.serialize(msg_b)
             )
 
             # Allow NATS delivery
@@ -208,7 +208,7 @@ class TestMultiBotBackwardCompat:
         msg = _make_msg(Platform.TELEGRAM)
 
         try:
-            # Act — put() should publish to lyra.inbound.telegram.main
+            # Act — put() should publish to factory.inbound.telegram.main
             await publisher.put(Platform.TELEGRAM, msg)
             received = await asyncio.wait_for(subscriber.get(), timeout=2.0)
 

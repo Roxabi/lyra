@@ -55,7 +55,8 @@ class TestPositiveCase:
     ) -> None:
         """check_request_reply_flows.py exits 0 for v2-prod fixture.
 
-        v2-prod has hub → clipool-worker flow; hub publishes lyra.clipool.cmd → covered.
+        v2-prod has hub → clipool-worker flow; hub publishes factory.clipool.cmd →
+        covered.
         """
         path = _write_matrix(tmp_path, prod_matrix)
         result = _run_cli(path)
@@ -78,7 +79,7 @@ class TestMissingRequesterIdentity:
             {
                 "requester": "nonexistent-requester",
                 "responder": "clipool-worker",
-                "subject": "lyra.test.cmd",
+                "subject": "factory.test.cmd",
             }
         )
         path = _write_matrix(tmp_path, matrix)
@@ -99,7 +100,7 @@ class TestMissingRequesterIdentity:
             {
                 "requester": "ghost-requester",
                 "responder": "hub",
-                "subject": "lyra.ghost.cmd",
+                "subject": "factory.ghost.cmd",
             }
         )
         path = _write_matrix(tmp_path, matrix)
@@ -122,7 +123,7 @@ class TestMissingResponderIdentity:
             {
                 "requester": "hub",
                 "responder": "nonexistent-worker",
-                "subject": "lyra.clipool.cmd",
+                "subject": "factory.clipool.cmd",
             }
         )
         path = _write_matrix(tmp_path, matrix)
@@ -141,7 +142,7 @@ class TestMissingResponderIdentity:
             {
                 "requester": "hub",
                 "responder": "phantom-responder",
-                "subject": "lyra.clipool.cmd",
+                "subject": "factory.clipool.cmd",
             }
         )
         path = _write_matrix(tmp_path, matrix)
@@ -155,7 +156,7 @@ class TestSubjectNotCoveredByPublish:
     def test_subject_not_covered_exits_nonzero(self, tmp_path: Path) -> None:
         """CLI exits non-zero when requester's publish[] doesn't cover the flow subject.
 
-        hub publishes lyra.foo.> but the flow subject is lyra.bar.cmd — no match.
+        hub publishes factory.foo.> but the flow subject is factory.bar.cmd — no match.
         # verified: removing subject-coverage check causes exit 0 → fails
         """
         matrix = {
@@ -164,7 +165,7 @@ class TestSubjectNotCoveredByPublish:
                 {
                     "requester": "hub",
                     "responder": "clipool-worker",
-                    "subject": "lyra.bar.cmd",
+                    "subject": "factory.bar.cmd",
                 }
             ],
             "identities": {
@@ -174,7 +175,7 @@ class TestSubjectNotCoveredByPublish:
                     "owner": "lyra",
                     "description": "hub",
                     "allow_responses": False,
-                    "publish": ["lyra.foo.>"],
+                    "publish": ["factory.foo.>"],
                     "subscribe": [],
                 },
                 "clipool-worker": {
@@ -184,7 +185,7 @@ class TestSubjectNotCoveredByPublish:
                     "description": "clipool worker",
                     "allow_responses": True,
                     "publish": [],
-                    "subscribe": ["lyra.bar.cmd"],
+                    "subscribe": ["factory.bar.cmd"],
                 },
             },
         }
@@ -194,11 +195,17 @@ class TestSubjectNotCoveredByPublish:
         assert result.returncode != 0
 
     def test_exact_subject_mismatch_exits_nonzero(self, tmp_path: Path) -> None:
-        """CLI exits non-zero: publish lyra.foo doesn't cover subject lyra.foo.bar."""
+        """CLI exits non-zero: publish factory.foo doesn't cover subject
+        factory.foo.bar.
+        """
         matrix = {
             "version": "2",
             "request_reply_flows": [
-                {"requester": "hub", "responder": "worker", "subject": "lyra.foo.bar"}
+                {
+                    "requester": "hub",
+                    "responder": "worker",
+                    "subject": "factory.foo.bar",
+                }
             ],
             "identities": {
                 "hub": {
@@ -207,7 +214,7 @@ class TestSubjectNotCoveredByPublish:
                     "owner": "lyra",
                     "description": "hub",
                     "allow_responses": False,
-                    "publish": ["lyra.foo"],
+                    "publish": ["factory.foo"],
                     "subscribe": [],
                 },
                 "worker": {
@@ -217,7 +224,7 @@ class TestSubjectNotCoveredByPublish:
                     "description": "worker",
                     "allow_responses": True,
                     "publish": [],
-                    "subscribe": ["lyra.foo.bar"],
+                    "subscribe": ["factory.foo.bar"],
                 },
             },
         }
@@ -229,10 +236,13 @@ class TestSubjectNotCoveredByPublish:
 
 class TestSubjectCoveredByWildcard:
     def test_wildcard_suffix_covers_subject(self, tmp_path: Path) -> None:
-        """CLI exits 0: requester publishes lyra.clipool.> covering lyra.clipool.cmd.
+        """CLI exits 0: requester publishes factory.clipool.> covering
+        factory.clipool.cmd.
 
-        NATS wildcard: lyra.clipool.> matches lyra.clipool.cmd (and any sub-level).
-        # verified: removing wildcard matching causes lyra.clipool.cmd to fail
+        NATS wildcard: factory.clipool.> matches factory.clipool.cmd
+        (and any sub-level).
+
+        # verified: removing wildcard matching causes factory.clipool.cmd to fail
         """
         matrix = {
             "version": "2",
@@ -240,7 +250,7 @@ class TestSubjectCoveredByWildcard:
                 {
                     "requester": "hub",
                     "responder": "clipool-worker",
-                    "subject": "lyra.clipool.cmd",
+                    "subject": "factory.clipool.cmd",
                 }
             ],
             "identities": {
@@ -250,7 +260,7 @@ class TestSubjectCoveredByWildcard:
                     "owner": "lyra",
                     "description": "hub",
                     "allow_responses": False,
-                    "publish": ["lyra.clipool.>"],
+                    "publish": ["factory.clipool.>"],
                     "subscribe": [],
                 },
                 "clipool-worker": {
@@ -260,7 +270,7 @@ class TestSubjectCoveredByWildcard:
                     "description": "clipool worker",
                     "allow_responses": True,
                     "publish": [],
-                    "subscribe": ["lyra.clipool.cmd"],
+                    "subscribe": ["factory.clipool.cmd"],
                 },
             },
         }
@@ -277,7 +287,11 @@ class TestSubjectCoveredByWildcard:
         matrix = {
             "version": "2",
             "request_reply_flows": [
-                {"requester": "hub", "responder": "worker", "subject": "lyra.exact.cmd"}
+                {
+                    "requester": "hub",
+                    "responder": "worker",
+                    "subject": "factory.exact.cmd",
+                }
             ],
             "identities": {
                 "hub": {
@@ -286,7 +300,7 @@ class TestSubjectCoveredByWildcard:
                     "owner": "lyra",
                     "description": "hub",
                     "allow_responses": False,
-                    "publish": ["lyra.exact.cmd"],
+                    "publish": ["factory.exact.cmd"],
                     "subscribe": [],
                 },
                 "worker": {
@@ -296,7 +310,7 @@ class TestSubjectCoveredByWildcard:
                     "description": "worker",
                     "allow_responses": True,
                     "publish": [],
-                    "subscribe": ["lyra.exact.cmd"],
+                    "subscribe": ["factory.exact.cmd"],
                 },
             },
         }

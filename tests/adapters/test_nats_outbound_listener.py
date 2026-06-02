@@ -222,7 +222,7 @@ async def test_start_subscribes_and_stop_unsubscribes() -> None:
     await listener.start()
     nc.subscribe.assert_called_once()
     subject = nc.subscribe.call_args[0][0]
-    assert subject == "lyra.outbound.telegram.main"
+    assert subject == "factory.outbound.telegram.main"
 
     await listener.stop()
     mock_sub.unsubscribe.assert_called_once()
@@ -530,7 +530,7 @@ def test_valid_bot_id_accepted(bot_id: str) -> None:
     listener = NatsOutboundListener(
         ListenerDeps(nc=nc, platform=Platform.TELEGRAM, bot_id=bot_id, adapter=adapter)
     )
-    assert listener._subject == f"lyra.outbound.telegram.{bot_id}"
+    assert listener._subject == f"factory.outbound.telegram.{bot_id}"
 
 
 @pytest.mark.parametrize(

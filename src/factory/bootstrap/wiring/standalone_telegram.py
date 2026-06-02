@@ -117,7 +117,7 @@ async def bootstrap_telegram_standalone(  # noqa: PLR0915 — DEBT:wiring-bootst
                 blob_store=blob_store,
             )
             typing_deps = TypingDeps(
-                subject=f"lyra.typing.telegram.{bot_id}",
+                subject=f"factory.typing.telegram.{bot_id}",
                 scope_resolver=_telegram_scope_resolver,
                 worker_factory=partial(_typing_worker, adapter.bot),
             )

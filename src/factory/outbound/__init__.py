@@ -1,4 +1,4 @@
-"""lyra.outbound — stage-axis outbound composition package.
+"""factory.outbound — stage-axis outbound composition package.
 
 Stages: formatter / throttle / error_handler / emitter.
 See src/factory/outbound/CLAUDE.md for invariants and composition contract.

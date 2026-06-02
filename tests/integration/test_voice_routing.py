@@ -50,8 +50,8 @@ pytestmark = [
     pytest.mark.skipif(not _nats_available(), reason="NATS server not available"),
 ]
 
-HB_SUBJECT = "lyra.voice.stt.heartbeat"
-STT_REQUEST_SUBJECT = "lyra.voice.stt.request"
+HB_SUBJECT = "factory.voice.stt.heartbeat"
+STT_REQUEST_SUBJECT = "factory.voice.stt.request"
 COMPOSE_PROJECT = "lyra-test"
 
 
@@ -228,7 +228,7 @@ class TestWorkerHeartbeatFlow:
 
         # Send to per-worker subject (stt-tower-01 is the default stub)
         reply = await nats_client.request(
-            "lyra.voice.stt.request.stt-tower-01",
+            "factory.voice.stt.request.stt-tower-01",
             json.dumps(request).encode(),
             timeout=5.0,
         )

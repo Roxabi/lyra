@@ -88,7 +88,7 @@ class TestPublishLogTurn:
         )
         call_args = mock_js.publish.call_args[0]
         subject, raw = call_args
-        assert subject == "lyra.turns.write"
+        assert subject == "factory.turns.write"
         assert isinstance(raw, bytes)
 
     @pytest.mark.anyio
@@ -153,7 +153,7 @@ class TestPublishStartSession:
             trace_id=_TRACE_ID,
         )
         subject = mock_js.publish.call_args[0][0]
-        assert subject == "lyra.turns.write"
+        assert subject == "factory.turns.write"
 
 
 # ---------------------------------------------------------------------------
@@ -188,7 +188,7 @@ class TestPublishEndSession:
             trace_id=_TRACE_ID,
         )
         subject = mock_js.publish.call_args[0][0]
-        assert subject == "lyra.turns.write"
+        assert subject == "factory.turns.write"
 
 
 # ---------------------------------------------------------------------------
@@ -226,7 +226,7 @@ class TestPublishSetCliSession:
             trace_id=_TRACE_ID,
         )
         subject = mock_js.publish.call_args[0][0]
-        assert subject == "lyra.turns.write"
+        assert subject == "factory.turns.write"
 
 
 # ---------------------------------------------------------------------------
@@ -264,7 +264,7 @@ class TestPublishIncrementResumeCount:
             trace_id=_TRACE_ID,
         )
         subject = mock_js.publish.call_args[0][0]
-        assert subject == "lyra.turns.write"
+        assert subject == "factory.turns.write"
 
 
 # ---------------------------------------------------------------------------

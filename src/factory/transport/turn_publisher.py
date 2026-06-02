@@ -1,6 +1,6 @@
-"""TurnPublisher — publish TurnWriteEvent to lyra.turns.write awaiting JetStream PubAck.
+"""TurnPublisher — publish TurnWriteEvent to factory.turns.write.
 
-Awaiting PubAck guarantees the event is persisted in the stream before the
+Awaits JetStream PubAck; guarantees the event is persisted in the stream before the
 inbound message is acked.  End-to-end delivery is at-least-once via JetStream.
 
 ``trace_id`` is a required field on ``ContractEnvelope`` (min_length=1 constraint).
@@ -44,7 +44,7 @@ log = logging.getLogger(__name__)
 
 
 class TurnPublisher:
-    """Publish TurnWriteEvent to lyra.turns.write, awaiting JetStream PubAck.
+    """Publish TurnWriteEvent to factory.turns.write, awaiting JetStream PubAck.
 
     ``js`` must be a ``nats.js.client.JetStreamContext`` obtained via
     ``nc.jetstream()``.  ``JetStreamContext.publish()`` awaits the server

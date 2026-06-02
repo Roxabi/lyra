@@ -140,8 +140,8 @@ removed from adapter identities and owned exclusively by the hub), the restart
 sequence is **order-sensitive**:
 
 1. Regenerate `auth.conf` + restart `factory-nats` (step 2 above, `make nats-regen-authconf`).
-2. **Restart `factory-hub` first** — so it re-provisions stream `LYRA_OUTBOUND_AUDIO`
-   and KV bucket `KV_lyra_outbound_audio_sent` before signalling `announce_hub_ready`.
+2. **Restart `factory-hub` first** — so it re-provisions stream `FACTORY_OUTBOUND_AUDIO`
+   and KV bucket `KV_factory_outbound_audio_sent` before signalling `announce_hub_ready`.
 3. **Only then** restart `factory-telegram` and `factory-discord` — they call `wait_for_hub`
    which blocks until the hub has finished provisioning, then bind (not create) stream+KV.
 

@@ -60,8 +60,8 @@ zero `nats-py` dependency. Three production-contamination guards on test doubles
 
 `WorkerRegistry` (at `src/factory/nats/worker_registry.py`) is the single routing truth for hub-side
 voice clients (`NatsSttClient`, `NatsTtsClient`, `NatsImageClient`). Requests are published
-directly to per-worker subjects (`lyra.voice.stt.request.<worker_id>`,
-`lyra.voice.tts.request.<worker_id>`, `lyra.image.request.<worker_id>`). NATS queue-group
+directly to per-worker subjects (`factory.voice.stt.request.<worker_id>`,
+`factory.voice.tts.request.<worker_id>`, `factory.image.request.<worker_id>`). NATS queue-group
 fallback is removed — it created dual-LB disagreement when heartbeat view and TCP subscription
 view diverged.
 

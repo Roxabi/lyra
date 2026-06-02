@@ -173,7 +173,7 @@ def _extract_subject_literals(
         if id(node) in skip:
             continue
         value = node.value
-        if not value.lower().startswith("lyra."):
+        if not value.lower().startswith(("lyra.", "factory.")):
             continue
         if " " in value or _looks_like_filename(value):
             continue

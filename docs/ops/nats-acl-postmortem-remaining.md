@@ -72,11 +72,11 @@ Declare all hub→responder flows explicitly at the top of the schema:
 ```json
 {
   "request_reply_flows": [
-    { "requester": "hub", "responder": "clipool-worker", "subject": "lyra.clipool.cmd" },
-    { "requester": "hub", "responder": "voice-tts",      "subject": "lyra.voice.tts.request" },
-    { "requester": "hub", "responder": "voice-stt",      "subject": "lyra.voice.stt.request" },
-    { "requester": "hub", "responder": "image-worker",   "subject": "lyra.image.generate.request" },
-    { "requester": "hub", "responder": "llm-worker",     "subject": "lyra.llm.request" }
+    { "requester": "hub", "responder": "clipool-worker", "subject": "factory.clipool.cmd" },
+    { "requester": "hub", "responder": "voice-tts",      "subject": "factory.voice.tts.request" },
+    { "requester": "hub", "responder": "voice-stt",      "subject": "factory.voice.stt.request" },
+    { "requester": "hub", "responder": "image-worker",   "subject": "factory.image.generate.request" },
+    { "requester": "hub", "responder": "llm-worker",     "subject": "factory.llm.request" }
   ],
   "identities": { ... }
 }
@@ -140,10 +140,10 @@ Add `/health/ready` endpoint that performs a real NATS round-trip:
 ```python
 @app.get("/health/ready")
 async def health_ready() -> dict:
-    # Send a request to lyra.system.ready and wait for reply
+    # Send a request to factory.system.ready and wait for reply
     # If nc is None (unified mode) or round-trip fails within 2s → return 503
     try:
-        await nc.request("lyra.system.ready", b"", timeout=2.0)
+        await nc.request("factory.system.ready", b"", timeout=2.0)
         return {"status": "ready"}
     except Exception:
         raise HTTPException(status_code=503, detail="NATS round-trip failed")

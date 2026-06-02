@@ -235,7 +235,7 @@ class TestStandaloneHubPipeline:
 
         bot_id = "test_bot"
         platform = Platform.TELEGRAM
-        inbound_subject = f"lyra.inbound.{platform.value}.{bot_id}"
+        inbound_subject = f"factory.inbound.{platform.value}.{bot_id}"
 
         inbound_bus: NatsBus[InboundMessage] = NatsBus(
             nc=hub_nc, bot_id=bot_id, item_type=InboundMessage
@@ -319,7 +319,7 @@ class TestStandaloneHubPipeline:
 
         bot_id = "trust_bot"
         platform = Platform.TELEGRAM
-        inbound_subject = f"lyra.inbound.{platform.value}.{bot_id}"
+        inbound_subject = f"factory.inbound.{platform.value}.{bot_id}"
 
         inbound_bus: NatsBus[InboundMessage] = NatsBus(
             nc=hub_nc, bot_id=bot_id, item_type=InboundMessage

@@ -53,7 +53,7 @@ from roxabi_contracts.blob_ref import BlobRef
 # ---------------------------------------------------------------------------
 
 _DURABLE = "outbound-audio-telegram"
-_FILTER = "lyra.outbound.audio.telegram.>"
+_FILTER = "factory.outbound.audio.telegram.>"
 _STREAM_ID = "msg-test-001"
 
 
@@ -129,7 +129,7 @@ def _make_nats_msg(  # noqa: PLR0913
 
     msg = MagicMock()
     msg.data = data
-    msg.subject = f"lyra.outbound.audio.telegram.{resolved_inbound.bot_id}"
+    msg.subject = f"factory.outbound.audio.telegram.{resolved_inbound.bot_id}"
     msg.ack = AsyncMock()
     msg.nak = AsyncMock()
     msg.term = AsyncMock()
@@ -579,14 +579,14 @@ async def test_connection_closed_error_logs_and_exits(
 async def test_start_subscribes_with_exact_5_token_filter_subject() -> None:
     """start() passes the EXACT 5-token filter_subject to pull_subscribe.
 
-    Contract: per-bot consumers use "lyra.outbound.audio.{platform}.{bot_id}"
+    Contract: per-bot consumers use "factory.outbound.audio.{platform}.{bot_id}"
     with NO trailing '.>'.  A subject ending in '.>' would silently never match
     the 5-token publish target and break audio delivery.
 
     This test FAILS if filter_subject is changed to end in '.>'.
     """
     # Arrange — use the exact per-bot subject format from bootstrap
-    exact_subject = "lyra.outbound.audio.telegram.bot123"
+    exact_subject = "factory.outbound.audio.telegram.bot123"
     consumer = _make_consumer()
     consumer._filter_subject = exact_subject
 

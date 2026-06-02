@@ -73,7 +73,7 @@ class TypingPublisher:
             await self.publish_ended(work_scope)
 
     async def _publish(self, event: TypingEvent) -> bool:
-        subject = f"lyra.typing.{event.scope.platform}.{event.scope.bot_id}"
+        subject = f"factory.typing.{event.scope.platform}.{event.scope.bot_id}"
         try:
             await self._nc.publish(subject, event.model_dump_json().encode("utf-8"))
             return True

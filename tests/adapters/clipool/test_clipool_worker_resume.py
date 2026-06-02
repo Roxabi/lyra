@@ -83,7 +83,9 @@ def _control_payload(**overrides: object) -> dict:
     return base
 
 
-def _make_nats_msg(subject: str = "lyra.clipool.control", reply: str = "_INBOX.test"):
+def _make_nats_msg(
+    subject: str = "factory.clipool.control", reply: str = "_INBOX.test"
+):
     msg = MagicMock()
     msg.subject = subject
     msg.reply = reply

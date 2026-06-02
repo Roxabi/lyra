@@ -12,7 +12,7 @@ __all__ = ["SUBJECTS"]
 class _Subjects:
     """Frozen namespace for turns-domain subject literals."""
 
-    turn_write: Literal["lyra.turns.write"] = "lyra.turns.write"
+    turn_write: Literal["factory.turns.write"] = "factory.turns.write"
 
 
 SUBJECTS = _Subjects()

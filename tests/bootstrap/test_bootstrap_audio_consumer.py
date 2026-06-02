@@ -4,7 +4,7 @@ Asserts that bootstrap_telegram_standalone / bootstrap_discord_standalone:
   1. Call start_audio_consumer after astart() + typing-listener, passing js from
      nc.jetstream(), the correct platform string, bot_id, and adapter instance.
   2. Pass per-bot durable ("outbound-audio-{platform}-{bot_id}") and filter
-     ("lyra.outbound.audio.{platform}.{bot_id}.>") to ensure_consumer + ctor.
+     ("factory.outbound.audio.{platform}.{bot_id}.>") to ensure_consumer + ctor.
   3. Wire adapter.render_audio as send_audio and adapter.send as send_text.
   4. Call consumer.start() and consumer.stop() (via _close_tg/dc_wired).
   5. astart-failure path: start_audio_consumer is never called.
@@ -156,19 +156,19 @@ async def test_bootstrap_audio_consumer_telegram_provisions_and_starts() -> None
     assert captured_calls[0]["adapter"] is mock_adapter
 
     # S3 bind-only: js.key_value() called with KV_BUCKET (hub already provisioned).
-    mock_js.key_value.assert_awaited_once_with("lyra_outbound_audio_sent")
+    mock_js.key_value.assert_awaited_once_with("factory_outbound_audio_sent")
     # Consumer created with per-bot durable/filter
     mock_ensure_consumer.assert_awaited_once_with(
         mock_js,
         durable="outbound-audio-telegram-main",
-        filter_subject="lyra.outbound.audio.telegram.main",
+        filter_subject="factory.outbound.audio.telegram.main",
     )
 
     # Constructor: per-bot durable + filter, correct send bindings
     mock_consumer_cls.assert_called_once()
     _, ctor_kwargs = mock_consumer_cls.call_args
     assert ctor_kwargs["durable"] == "outbound-audio-telegram-main"
-    assert ctor_kwargs["filter_subject"] == "lyra.outbound.audio.telegram.main"
+    assert ctor_kwargs["filter_subject"] == "factory.outbound.audio.telegram.main"
     assert ctor_kwargs["send_audio"] == mock_adapter.render_audio
     assert ctor_kwargs["send_text"] == mock_adapter.send
 
@@ -361,17 +361,17 @@ async def test_bootstrap_audio_consumer_discord_provisions_and_starts() -> None:
     assert captured_calls[0]["adapter"] is mock_adapter_dc
 
     # S3 bind-only: js.key_value() called with KV_BUCKET (hub already provisioned).
-    mock_js.key_value.assert_awaited_once_with("lyra_outbound_audio_sent")
+    mock_js.key_value.assert_awaited_once_with("factory_outbound_audio_sent")
     mock_ensure_consumer_dc.assert_awaited_once_with(
         mock_js,
         durable="outbound-audio-discord-main",
-        filter_subject="lyra.outbound.audio.discord.main",
+        filter_subject="factory.outbound.audio.discord.main",
     )
 
     mock_consumer_cls_dc.assert_called_once()
     _, ctor_kwargs_dc = mock_consumer_cls_dc.call_args
     assert ctor_kwargs_dc["durable"] == "outbound-audio-discord-main"
-    assert ctor_kwargs_dc["filter_subject"] == "lyra.outbound.audio.discord.main"
+    assert ctor_kwargs_dc["filter_subject"] == "factory.outbound.audio.discord.main"
     assert ctor_kwargs_dc["send_audio"] == mock_adapter_dc.render_audio
     assert ctor_kwargs_dc["send_text"] == mock_adapter_dc.send
 
@@ -462,7 +462,7 @@ async def test_start_audio_consumer_returns_real_consumer_on_success() -> None:
     assert result is mock_consumer
     mock_consumer.start.assert_awaited_once()
     # S3 bind-only: js.key_value called with KV_BUCKET
-    mock_js.key_value.assert_awaited_once_with("lyra_outbound_audio_sent")
+    mock_js.key_value.assert_awaited_once_with("factory_outbound_audio_sent")
 
 
 # ---------------------------------------------------------------------------
@@ -502,7 +502,7 @@ async def test_start_audio_consumer_uses_key_value_bind_not_ensure_kv() -> None:
     """start_audio_consumer uses js.key_value() (bind) not ensure_kv() (S3).
 
     Verifies that:
-    - js.key_value is awaited with KV_BUCKET ("lyra_outbound_audio_sent")
+    - js.key_value is awaited with KV_BUCKET ("factory_outbound_audio_sent")
     - ensure_kv is NOT in the call chain
     """
     from factory.bootstrap.standalone.audio_consumer_bootstrap import (

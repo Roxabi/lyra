@@ -122,7 +122,7 @@ class NatsChannelProxy:
         self, original_msg: InboundMessage, outbound: OutboundMessage
     ) -> None:
         """Publish an outbound text message to NATS."""
-        subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
+        subject = f"factory.outbound.{self._platform.value}.{self._bot_id}"
         envelope = {
             "type": "send",
             "stream_id": original_msg.id,
@@ -139,7 +139,7 @@ class NatsChannelProxy:
         outbound: OutboundMessage | None = None,
     ) -> None:
         """Publish streaming chunks to NATS; keepalive prevents per-chunk timeout (#687)."""  # noqa: E501
-        subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
+        subject = f"factory.outbound.{self._platform.value}.{self._bot_id}"
 
         if outbound is not None:
             header = {
@@ -219,7 +219,7 @@ class NatsChannelProxy:
         eliminating the race window between list() and clear() when a concurrent
         exception-path discard fires mid-iteration.
         """
-        subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
+        subject = f"factory.outbound.{self._platform.value}.{self._bot_id}"
         stream_ids = self._active_streams
         self._active_streams = set()
         await _publish_stream_errors(self._nc, subject, stream_ids, reason)
@@ -286,7 +286,7 @@ class NatsChannelProxy:
         self, msg: OutboundAttachment, inbound: InboundMessage
     ) -> None:
         """Publish an outbound attachment to NATS."""
-        subject = f"lyra.outbound.{self._platform.value}.{self._bot_id}"
+        subject = f"factory.outbound.{self._platform.value}.{self._bot_id}"
         envelope = {
             "type": "attachment",
             "stream_id": inbound.id,

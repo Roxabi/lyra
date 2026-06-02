@@ -1,6 +1,6 @@
 """CliPoolCodec — encode/decode boundary for the NATS CliPool path.
 
-Implements LlmCodec Protocol for lyra.clipool.cmd / lyra.clipool.control.
+Implements LlmCodec Protocol for factory.clipool.cmd / factory.clipool.control.
 Encodes CliCmdPayload; decodes CliChunkEvent into LlmResult / LlmEvent.
 """
 
@@ -58,7 +58,7 @@ def _validate_worker_error(we: WorkerError | None) -> WorkerError | None:
 
 
 class CliPoolCodec:
-    """Codec for CliPool-over-NATS (lyra.clipool.cmd)."""
+    """Codec for CliPool-over-NATS (factory.clipool.cmd)."""
 
     def encode(
         self,

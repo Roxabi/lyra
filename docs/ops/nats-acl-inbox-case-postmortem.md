@@ -10,7 +10,7 @@ or other features were tested for availability.
 
 Root cause: hub's subscribe ACL was missing the lowercase _inbox.hub.> variant,
 so clipool replies never reached the hub after a new image was deployed. Symptom
-was `_stream_gen timeout on lyra.clipool.cmd` in hub logs and repeated
+was `_stream_gen timeout on factory.clipool.cmd` in hub logs and repeated
 permissions violation for publish to "_inbox.hub.*" in clipool logs.
 Detection lag: **2h44m** from first failure to mitigation start. No alert fired;
 discovered via manual log inspection.
@@ -88,7 +88,7 @@ to _INBOX.hub.<NUID> did not match the hub's subscription to _INBOX.hub.>.
 > reply-path ACLs) is the only durable defence.
 
 Exact failure chain:
-1. Hub publishes to `lyra.clipool.cmd` with `reply="_INBOX.hub.TOKEN"`
+1. Hub publishes to `factory.clipool.cmd` with `reply="_INBOX.hub.TOKEN"`
 2. Clipool receives message, attempts to publish streaming chunks to _INBOX.hub.TOKEN
 3. NATS reports permission violation (displayed as lowercase in error)
 4. Hub subscription _INBOX.hub.> receives nothing → `_stream_gen` times out
@@ -172,13 +172,13 @@ inferable from the request-reply pattern at runtime.
 
 ```json
 "clipool-worker": {
-  "publish": ["lyra.clipool.heartbeat", "lyra.system.ready", "_inbox.hub.>"]
+  "publish": ["factory.clipool.heartbeat", "factory.system.ready", "_inbox.hub.>"]
 },
 "voice-tts": {
-  "publish": ["lyra.voice.tts.heartbeat", "lyra.system.ready", "_inbox.hub.>"]
+  "publish": ["factory.voice.tts.heartbeat", "factory.system.ready", "_inbox.hub.>"]
 },
 "voice-stt": {
-  "publish": ["lyra.voice.stt.heartbeat", "lyra.system.ready", "_inbox.hub.>"]
+  "publish": ["factory.voice.stt.heartbeat", "factory.system.ready", "_inbox.hub.>"]
 },
 "image-worker": {
   "publish": ["...", "_inbox.hub.>"]   // same pattern — also uses allow_responses
@@ -523,7 +523,7 @@ Four independent analyses were run after the initial postmortem: architect, prod
 1. No documented rotation schedule or policy. No SLA on when rotation must run, no triggering conditions.
 2. Seed files have filesystem mtime but that is not an integrity-protected audit record. No credential database, no rotation log.
 3. Security audit logging was not a requirement when `gen-nkeys.sh` was written.
-4. The NATS audit stream (`lyra.audit.>`) covers application-level message events, not infrastructure credential operations.
+4. The NATS audit stream (`factory.audit.>`) covers application-level message events, not infrastructure credential operations.
 5. **Root:** The audit stream was designed top-down from application requirements, not bottom-up from security requirements. Credential management is a shell script invoked by a human operator, outside any audit framework.
 
 #### Why-chain 4: Misconfigured ACL can ship without authorization correctness verification in CI
@@ -552,7 +552,7 @@ Four independent analyses were run after the initial postmortem: architect, prod
 | `clipool-worker` | Intercept all LLM dispatch commands (full prompt + context). Inject arbitrary LLM responses into hub's reply stream — affecting all 4 channels simultaneously. |
 | `voice-tts` / `voice-stt` | Intercept all voice requests. Inject false TTS/STT responses. Publish false heartbeats (suppress worker availability). |
 | `image-worker` | Intercept all image generation requests (prompt content). Inject false image responses. |
-| `telegram-adapter` | Read all Telegram inbound messages. Publish to `lyra.inbound.telegram.>` — inject messages into hub as if from Telegram. |
+| `telegram-adapter` | Read all Telegram inbound messages. Publish to `factory.inbound.telegram.>` — inject messages into hub as if from Telegram. |
 | `tts-adapter` (retired) | Same capability as `voice-tts` — but identity should have no running service and has no monitoring. Compromise is maximally stealthy. |
 | `llm-worker` | Intercept all LLM requests (full user prompt + context). Inject false LLM responses. |
 
@@ -600,13 +600,13 @@ Add a section to `acl-matrix.json` that names flows explicitly:
 ```json
 {
   "request_reply_flows": [
-    { "requester": "hub", "responder": "clipool-worker", "subject": "lyra.clipool.cmd" },
-    { "requester": "hub", "responder": "voice-tts",      "subject": "lyra.voice.tts.cmd" }
+    { "requester": "hub", "responder": "clipool-worker", "subject": "factory.clipool.cmd" },
+    { "requester": "hub", "responder": "voice-tts",      "subject": "factory.voice.tts.cmd" }
   ],
 
   "identities": {
-    "hub":            { "subscribe": ["lyra.system.>"], "publish": ["lyra.clipool.cmd"] },
-    "clipool-worker": { "subscribe": ["lyra.clipool.cmd"], "publish": ["lyra.clipool.heartbeat"] }
+    "hub":            { "subscribe": ["factory.system.>"], "publish": ["factory.clipool.cmd"] },
+    "clipool-worker": { "subscribe": ["factory.clipool.cmd"], "publish": ["factory.clipool.heartbeat"] }
   }
 }
 ```

@@ -29,7 +29,7 @@ from roxabi_nats.driver_base import NatsDriverBase  # ImportError expected (RED)
 # Concrete subclass — minimal stub for testing
 # ---------------------------------------------------------------------------
 
-HB_SUBJECT = "lyra.clipool.heartbeat.*"
+HB_SUBJECT = "factory.clipool.heartbeat.*"
 
 
 class _ConcreteDriver(NatsDriverBase):
@@ -106,7 +106,7 @@ class TestStreamGen:
 
         async def _run() -> None:
             nonlocal collected
-            gen = driver._dict_stream_gen("lyra.clipool.exec", {"cmd": "echo hi"})
+            gen = driver._dict_stream_gen("factory.clipool.exec", {"cmd": "echo hi"})
 
             # Consume the generator in a task; inject chunks from this coroutine.
             async def _consume() -> None:
@@ -153,7 +153,7 @@ class TestStreamGen:
         collected: list[dict] = []
 
         async def _run() -> None:
-            gen = driver._dict_stream_gen("lyra.clipool.exec", {"cmd": "ls"})
+            gen = driver._dict_stream_gen("factory.clipool.exec", {"cmd": "ls"})
 
             async def _consume() -> None:
                 async for chunk in gen:
@@ -195,7 +195,7 @@ class TestStreamGen:
         # Act — no messages pushed; queue.get will time out after timeout seconds.
         async def _run() -> None:
             async for chunk in driver._dict_stream_gen(
-                "lyra.clipool.exec", {"cmd": "ls"}
+                "factory.clipool.exec", {"cmd": "ls"}
             ):
                 collected.append(chunk)
 
@@ -237,7 +237,7 @@ class TestStreamGen:
         keepalive_pump_done = asyncio.Event()
 
         async def _run() -> None:
-            gen = driver._dict_stream_gen("lyra.clipool.exec", {"cmd": "ls"})
+            gen = driver._dict_stream_gen("factory.clipool.exec", {"cmd": "ls"})
 
             async def _consume() -> None:
                 async for chunk in gen:
@@ -507,13 +507,13 @@ class TestRequest:
         nc.request = AsyncMock(return_value=mock_reply)
 
         # Act
-        result = await driver._request("lyra.clipool.ping", {"msg": "ping"})
+        result = await driver._request("factory.clipool.ping", {"msg": "ping"})
 
         # Assert
         assert result == reply_data
         nc.request.assert_awaited_once()
         call_args = nc.request.call_args
-        assert call_args.args[0] == "lyra.clipool.ping"
+        assert call_args.args[0] == "factory.clipool.ping"
 
     @pytest.mark.asyncio
     async def test_request_sends_json_encoded_payload(self) -> None:
@@ -528,7 +528,7 @@ class TestRequest:
         nc.request = AsyncMock(return_value=mock_reply)
 
         # Act
-        await driver._request("lyra.clipool.exec", payload)
+        await driver._request("factory.clipool.exec", payload)
 
         # Assert — the bytes sent are valid JSON matching the payload
         sent_bytes: bytes = nc.request.call_args.args[1]
@@ -547,7 +547,7 @@ class TestRequest:
         nc.request = AsyncMock(return_value=mock_reply)
 
         # Act
-        await driver._request("lyra.clipool.exec", {})
+        await driver._request("factory.clipool.exec", {})
 
         # Assert
         call_kwargs = nc.request.call_args.kwargs
@@ -565,7 +565,7 @@ class TestRequest:
         nc.request = AsyncMock(return_value=mock_reply)
 
         # Act
-        await driver._request("lyra.clipool.exec", {}, timeout=5.0)
+        await driver._request("factory.clipool.exec", {}, timeout=5.0)
 
         # Assert
         call_kwargs = nc.request.call_args.kwargs
@@ -746,7 +746,9 @@ class TestStreamGenLiveness:
         from roxabi_nats.driver_base import WorkerUnavailableError
 
         with pytest.raises(WorkerUnavailableError):
-            async for _ in driver._dict_stream_gen("lyra.clipool.exec", {"cmd": "ls"}):
+            async for _ in driver._dict_stream_gen(
+                "factory.clipool.exec", {"cmd": "ls"}
+            ):
                 pass
 
     @pytest.mark.asyncio

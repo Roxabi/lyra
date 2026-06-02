@@ -1,5 +1,5 @@
 [Unit]
-Description=Lyra TurnWriter — JetStream subscriber for lyra.turns.write
+Description=Lyra TurnWriter — JetStream subscriber for factory.turns.write
 After=factory-nats.service
 Requires=factory-nats.service
 StartLimitIntervalSec=60

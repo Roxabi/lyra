@@ -79,7 +79,7 @@ async def test_ensure_stream_idempotent_double_call() -> None:
 # ---------------------------------------------------------------------------
 
 DURABLE = "outbound-audio-telegram"
-FILTER = "lyra.outbound.audio.telegram.>"
+FILTER = "factory.outbound.audio.telegram.>"
 
 
 @pytest.mark.anyio
@@ -205,10 +205,10 @@ def test_stream_uses_limits_retention() -> None:
 def test_kv_bucket_name() -> None:
     """KV bucket name must match contract constant."""
     cfg = _kv_config()
-    assert cfg.bucket == KV_BUCKET == "lyra_outbound_audio_sent"
+    assert cfg.bucket == KV_BUCKET == "factory_outbound_audio_sent"
 
 
 def test_stream_name_matches_contract() -> None:
     """Stream name must match STREAM_AUDIO from roxabi_contracts.outbound."""
     cfg = _stream_config()
-    assert cfg.name == STREAM_AUDIO == "LYRA_OUTBOUND_AUDIO"
+    assert cfg.name == STREAM_AUDIO == "FACTORY_OUTBOUND_AUDIO"

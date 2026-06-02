@@ -33,7 +33,7 @@ independently managed.
 
 The existing Telegram and Discord adapters have already solved this class of problem: they
 run as independent supervisor processes that communicate with the hub over NATS
-(`lyra.inbound.*` / `lyra.outbound.*`). The same pattern applies here.
+(`factory.inbound.*` / `factory.outbound.*`). The same pattern applies here.
 
 Two places in the hub currently perform voice work:
 
@@ -85,12 +85,12 @@ voicecli import, and gives independent operational control over each voice servi
 
 ### NATS Subject Catalogue (voice tier)
 
-Follows ADR-035 domain-first naming. All voice subjects live under `lyra.voice.*`.
+Follows ADR-035 domain-first naming. All voice subjects live under `factory.voice.*`.
 
 | Subject | Direction | Publisher | Subscriber | Payload |
 |---------|-----------|-----------|------------|---------|
-| `lyra.voice.stt.request` | hub → stt adapter | Hub | `lyra_stt` | `SttRequest` (JSON) |
-| `lyra.voice.tts.request` | hub → tts adapter | Hub | `lyra_tts` | `TtsRequest` (JSON) |
+| `factory.voice.stt.request` | hub → stt adapter | Hub | `lyra_stt` | `SttRequest` (JSON) |
+| `factory.voice.tts.request` | hub → tts adapter | Hub | `lyra_tts` | `TtsRequest` (JSON) |
 
 Both use NATS **request-reply** (core NATS `nc.request()` / `nc.publish(reply_to)`).
 The hub sends a request with a reply-to inbox (`_INBOX.*`); the adapter publishes the
@@ -176,7 +176,7 @@ Entry point: `lyra adapter stt` → `_bootstrap_stt_adapter_standalone()` in
 
 Responsibilities:
 1. Connect to NATS.
-2. Subscribe to `lyra.voice.stt.request` (queue group `stt-workers` for future
+2. Subscribe to `factory.voice.stt.request` (queue group `stt-workers` for future
    multi-instance scaling).
 3. On each message: decode audio from base64, write to a temp file, call
    `voicecli.transcribe()` (which already handles daemon-first / in-process fallback),
@@ -194,7 +194,7 @@ Entry point: `lyra adapter tts` → `_bootstrap_tts_adapter_standalone()` in
 
 Responsibilities:
 1. Connect to NATS.
-2. Subscribe to `lyra.voice.tts.request` (queue group `tts-workers`).
+2. Subscribe to `factory.voice.tts.request` (queue group `tts-workers`).
 3. On each message: call `voicecli.generate_async()`, merge WAV chunks, convert to
    OGG/Opus, compute duration and waveform, return `TtsResponse` to reply-to inbox.
 4. Same isolation contract as the STT adapter: no lyra hub imports.
@@ -210,7 +210,7 @@ stays inside the adapter.
 wrappers:
 
 - `NatsSttClient` in `src/lyra/nats/nats_stt_client.py` — wraps `nc.request()` to
-  `lyra.voice.stt.request`, serializes/deserializes `SttRequest`/`SttResponse`.
+  `factory.voice.stt.request`, serializes/deserializes `SttRequest`/`SttResponse`.
 - `NatsTtsClient` in `src/lyra/nats/nats_tts_client.py` — same pattern for TTS.
 
 Both clients expose the same interface as the old `STTService` / `TTSService` so that
@@ -286,15 +286,15 @@ Per ADR-035, new voice subjects extend the catalogue under a new domain tier:
 
 ```
 # Identity: hub (updated)
-publish   ["lyra.outbound.>", "lyra.llm.request", "_INBOX.>"]
-subscribe ["lyra.inbound.>"]
+publish   ["factory.outbound.>", "factory.llm.request", "_INBOX.>"]
+subscribe ["factory.inbound.>"]
 
 # Identity: stt-adapter (new)
-subscribe ["lyra.voice.stt.request"]
+subscribe ["factory.voice.stt.request"]
 publish   ["_INBOX.>"]
 
 # Identity: tts-adapter (new)
-subscribe ["lyra.voice.tts.request"]
+subscribe ["factory.voice.tts.request"]
 publish   ["_INBOX.>"]
 ```
 
@@ -357,7 +357,7 @@ old `STTService`/`TTSService` code stays in place until step 3 is complete and t
   touching the hub.
 - Consistent with the existing Telegram/Discord adapter pattern — no new architectural
   primitives.
-- NATS request-reply is observable: `nats sub "lyra.voice.>"` captures all voice traffic
+- NATS request-reply is observable: `nats sub "factory.voice.>"` captures all voice traffic
   for debugging.
 
 ### Negative

@@ -1,6 +1,6 @@
 ---
 title: "ADR-016: LLM Provider Protocol and Driver Registry"
-description: Extract LLM dispatch into a dedicated lyra.llm module with a Protocol, concrete drivers, composable decorators, and a ProviderRegistry.
+description: Extract LLM dispatch into a dedicated factory.llm module with a Protocol, concrete drivers, composable decorators, and a ProviderRegistry.
 superseded_by: "historical (#666 SDK removal)"
 ---
 
@@ -44,12 +44,12 @@ Introduce an `LlmAgent` ABC with `_dispatch()` that subclasses override.
 
 ### Option C: Protocol + adapter registry + composable decorators (chosen)
 
-Define an `LlmProvider` Protocol in `lyra.llm.base`. Implement concrete drivers
-(`AnthropicSdkDriver`, `ClaudeCliDriver`) in `lyra.llm.drivers.*`. Wrap drivers
+Define an `LlmProvider` Protocol in `factory.llm.base`. Implement concrete drivers
+(`AnthropicSdkDriver`, `ClaudeCliDriver`) in `factory.llm.drivers.*`. Wrap drivers
 with `RetryDecorator` and `CircuitBreakerDecorator` via composition. Register
 wrapped providers in a `ProviderRegistry`. Wire at startup in `__main__.py`.
 
-- **Pros:** Dependency direction is clean (agents import from `lyra.llm`, never
+- **Pros:** Dependency direction is clean (agents import from `factory.llm`, never
   the reverse). Adding a driver requires no changes to agents or the registry
   contract. Decorators are composable and independently testable. `isinstance()`
   structural checks work via `@runtime_checkable`.
@@ -57,15 +57,15 @@ wrapped providers in a `ProviderRegistry`. Wire at startup in `__main__.py`.
 
 ## Decision
 
-Option C was adopted. The `lyra.llm` package is a pure infrastructure module
+Option C was adopted. The `factory.llm` package is a pure infrastructure module
 that sits between `lyra.core` (which owns `ModelConfig`) and `lyra.agents`
 (which consume `LlmProvider`). The dependency rule is:
 
 ```
-lyra.agents → lyra.llm → lyra.core
+lyra.agents → factory.llm → lyra.core
 ```
 
-`lyra.llm` imports from `lyra.core` only. `lyra.agents` imports from `lyra.llm`
+`factory.llm` imports from `lyra.core` only. `lyra.agents` imports from `factory.llm`
 only the `LlmProvider` Protocol and `LlmResult`. No upward dependency exists.
 Wiring (`ProviderRegistry` construction, decorator chaining) lives entirely in
 `lyra.__main__`.
@@ -99,7 +99,7 @@ triggering retry cycles.
 ### Neutral
 
 - `TOOLS` for the SDK driver is a module-level constant in
-  `lyra.llm.drivers.sdk`. As per ADR-010, this will evolve into an injectable
+  `factory.llm.drivers.sdk`. As per ADR-010, this will evolve into an injectable
   tool registry when a second tool is added.
 - `lyra.__main__._create_agent` retains a fallback driver-construction path
   (lines 166–173) that is unreachable in production. It should be removed in

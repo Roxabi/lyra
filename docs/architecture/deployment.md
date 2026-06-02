@@ -22,7 +22,7 @@
 
 | Responsibility | Mechanism |
 |---|---|
-| Receive platform messages | NATS `lyra.inbound.<platform>.<bot_id>` |
+| Receive platform messages | NATS `factory.inbound.<platform>.<bot_id>` |
 | Auth / trust resolution | C3 pattern — adapters always send PUBLIC, hub resolves |
 | Rate limiting | Per-user throttle (middleware stage 4) |
 | STT | Audio → text (middleware stage 5) |
@@ -31,7 +31,7 @@
 | Session mapping | `lyra_session_id → cli_session_id` in `turns.db` |
 | Command dispatch | `/slash` commands |
 | Dispatch to CliPool | Pass message + resume UUID |
-| Dispatch responses | NATS `lyra.outbound.<platform>.<bot_id>` |
+| Dispatch responses | NATS `factory.outbound.<platform>.<bot_id>` |
 
 ### Middleware pipeline (in order)
 
@@ -49,8 +49,8 @@ Both adapters write `turns.db` (conversation turns + pool sessions, held open fo
 |---|---|
 | Platform auth | HMAC webhook (Telegram) / gateway token (Discord) |
 | Normalize | Platform event → `InboundMessage(trust=PUBLIC)` |
-| Publish inbound | → NATS `lyra.inbound.<platform>.<bot_id>` |
-| Receive outbound | ← NATS `lyra.outbound.<platform>.<bot_id>` → platform API |
+| Publish inbound | → NATS `factory.inbound.<platform>.<bot_id>` |
+| Receive outbound | ← NATS `factory.outbound.<platform>.<bot_id>` → platform API |
 | Thread tracking | `discord.db` (Discord only) |
 
 > Adapters **must never** derive trust level — always send `PUBLIC`. Trust is
@@ -151,13 +151,13 @@ Adapter mounts are per-file inline binds (not the full `factory-data.volume`) �
 
 | Topic | Direction | Purpose |
 |---|---|---|
-| `lyra.inbound.telegram.<bot_id>` | Adapter → Hub | Telegram messages |
-| `lyra.inbound.discord.<bot_id>` | Adapter → Hub | Discord messages |
-| `lyra.outbound.telegram.<bot_id>` | Hub → Adapter | Responses to Telegram |
-| `lyra.outbound.discord.<bot_id>` | Hub → Adapter | Responses to Discord |
-| `lyra.clipool.cmd` | Hub → CliPool | Submit turn + resume UUID |
-| `lyra.clipool.heartbeat` | CliPool → Hub | Periodic worker health announcements |
-| `lyra.clipool.control` | Hub → CliPool | Control commands (reset, drain) |
+| `factory.inbound.telegram.<bot_id>` | Adapter → Hub | Telegram messages |
+| `factory.inbound.discord.<bot_id>` | Adapter → Hub | Discord messages |
+| `factory.outbound.telegram.<bot_id>` | Hub → Adapter | Responses to Telegram |
+| `factory.outbound.discord.<bot_id>` | Hub → Adapter | Responses to Discord |
+| `factory.clipool.cmd` | Hub → CliPool | Submit turn + resume UUID |
+| `factory.clipool.heartbeat` | CliPool → Hub | Periodic worker health announcements |
+| `factory.clipool.control` | Hub → CliPool | Control commands (reset, drain) |
 
 ---
 
@@ -166,7 +166,7 @@ Adapter mounts are per-file inline binds (not the full `factory-data.volume`) �
 | | Before | Status |
 |---|---|---|
 | Hub ↔ Adapter | Already NATS (3-process mode) | Same, containerized |
-| Hub ↔ CliPool | In-process (stdio, method calls) | ✅ Done (#941) — NATS protocol (`lyra.clipool.cmd` / `lyra.clipool.heartbeat`) |
+| Hub ↔ CliPool | In-process (stdio, method calls) | ✅ Done (#941) — NATS protocol (`factory.clipool.cmd` / `factory.clipool.heartbeat`) |
 | DBs | All in `~/.roxabi/factory/` on one host | Split across volumes per container |
 | Session resume | In-process `_resume_session_ids` dict | Hub sends UUID over NATS |
 

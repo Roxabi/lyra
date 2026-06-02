@@ -55,7 +55,7 @@ class TestCheckGrantsPassesOnValidMatrix:
 
 class TestCheckGrantsFailsMissingProvisionerSubject:
     def test_check_grants_fails_missing_provisioner_subject(self) -> None:
-        """Removing $JS.API.STREAM.CREATE.LYRA_TURNS from turn-writer publish
+        """Removing $JS.API.STREAM.CREATE.FACTORY_TURNS from turn-writer publish
         causes run() to return a FAIL line mentioning that subject.
 
         Why turn-writer (not hub): hub has $JS.API.> which covers everything —
@@ -67,13 +67,14 @@ class TestCheckGrantsFailsMissingProvisionerSubject:
         the test fails the assertion only when the subject IS covered — i.e.,
         when we do NOT mutate. The mutation causes the guard to fire.
         """
-        _TARGET_SUBJECT = "$JS.API.STREAM.CREATE.LYRA_TURNS"
+        _TARGET_SUBJECT = "$JS.API.STREAM.CREATE.FACTORY_TURNS"
 
         # Arrange — confirm turn-writer has no broad wildcard before mutating
         matrix = load_matrix(_REAL_MATRIX_JSON)
         tw_publish = matrix["identities"]["turn-writer"]["publish"]
         assert _TARGET_SUBJECT in tw_publish, (
-            "Pre-condition: turn-writer must publish $JS.API.STREAM.CREATE.LYRA_TURNS"
+            "Pre-condition: turn-writer must publish"
+            " $JS.API.STREAM.CREATE.FACTORY_TURNS"
         )
         assert "$JS.API.>" not in tw_publish, (
             "turn-writer must NOT have $JS.API.> — broad wildcard would mask the drop"
@@ -93,8 +94,8 @@ class TestCheckGrantsFailsMissingProvisionerSubject:
             f"{_TARGET_SUBJECT!r} is removed from turn-writer publish"
         )
         combined = "\n".join(errors)
-        assert "LYRA_TURNS" in combined, (
-            f"FAIL message must mention LYRA_TURNS; got:\n{combined}"
+        assert "FACTORY_TURNS" in combined, (
+            f"FAIL message must mention FACTORY_TURNS; got:\n{combined}"
         )
         assert _TARGET_SUBJECT in combined, (
             f"FAIL message must mention the missing subject {_TARGET_SUBJECT!r}; "
@@ -108,11 +109,11 @@ class TestCheckGrantsFailsMissingProvisionerSubject:
 
 class TestCheckGrantsFailsMissingConsumerSubject:
     def test_check_grants_fails_missing_consumer_subject(self) -> None:
-        """Removing $JS.ACK.LYRA_OUTBOUND_AUDIO.> from the audio-consumer group's
+        """Removing $JS.ACK.FACTORY_OUTBOUND_AUDIO.> from the audio-consumer group's
         publish in the matrix causes run() to return a FAIL line naming an
         affected member identity (telegram-adapter or discord-adapter).
 
-        The audio-consumer group is the sole source of $JS.ACK.LYRA_OUTBOUND_AUDIO.>
+        The audio-consumer group is the sole source of $JS.ACK.FACTORY_OUTBOUND_AUDIO.>
         for its members. Removing it from the group means neither member's
         effective grants cover it.
 
@@ -120,7 +121,7 @@ class TestCheckGrantsFailsMissingConsumerSubject:
         even after this mutation — the removal only matters because the guard
         cross-checks member effective grants against consumer_subjects.
         """
-        _TARGET_SUBJECT = "$JS.ACK.LYRA_OUTBOUND_AUDIO.>"
+        _TARGET_SUBJECT = "$JS.ACK.FACTORY_OUTBOUND_AUDIO.>"
 
         # Arrange — verify the subject is in the group
         matrix = load_matrix(_REAL_MATRIX_JSON)
@@ -160,11 +161,11 @@ class TestCheckGrantsFailsMissingConsumerSubject:
 
 class TestCheckGrantsFailsMissingConsumerSubscribeSubject:
     def test_check_grants_fails_missing_consumer_subscribe_subject(self) -> None:
-        """Removing $KV.lyra_outbound_audio_sent.> from the audio-consumer group's
+        """Removing $KV.factory_outbound_audio_sent.> from the audio-consumer group's
         subscribe list causes run() to return a FAIL line naming an affected member
         (telegram-adapter or discord-adapter) and the dropped subject.
 
-        $KV.lyra_outbound_audio_sent.> is the sole entry in both the group's
+        $KV.factory_outbound_audio_sent.> is the sole entry in both the group's
         subscribe list (matrix) and the embedded RESOURCES kv consumer_subjects.
         Removing it from the group means no member's effective subscribe grants
         cover it.
@@ -173,7 +174,7 @@ class TestCheckGrantsFailsMissingConsumerSubscribeSubject:
         run() returns [] even after this mutation — the gap is only caught by
         that loop. With the loop present, the removal causes the gate to flip RED.
         """
-        _TARGET_SUBJECT = "$KV.lyra_outbound_audio_sent.>"
+        _TARGET_SUBJECT = "$KV.factory_outbound_audio_sent.>"
 
         # Arrange — confirm the subject is in the group subscribe
         matrix = load_matrix(_REAL_MATRIX_JSON)
@@ -255,7 +256,7 @@ class TestCheckGrantsPassesIdentityNotInGroup:
         that membership is the gate.  With the filter present, turn-writer only
         appears in the FAIL output after it has been added to the group.
         """
-        _TARGET_SUBJECT = "$KV.lyra_outbound_audio_sent.>"
+        _TARGET_SUBJECT = "$KV.factory_outbound_audio_sent.>"
 
         # Arrange — confirm turn-writer is NOT in audio-consumer initially
         matrix = load_matrix(_REAL_MATRIX_JSON)

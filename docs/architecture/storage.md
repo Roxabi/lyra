@@ -289,7 +289,7 @@ guard pattern is gone; the bus is either injected or absent. → ADR-022 (amende
 - v1 BlobStore is single-host but ecosystem-transparent: cross-host consumers use `HttpBlobStore`
   (V8 HTTP service); MinIO swap is triggered only by disk pressure, HA need, or S3 demand. → ADR-068
 - TurnStore + L3 memory (including L1 sessions — `pool_sessions` table in `turns.db`) use direct-write to SQLite (co-located, ADR-068 pattern α deviation). Tolerated until either (a) the TurnStore α-refactor issue (#1331) lands, OR (b) a 3rd adapter is added on top of TurnStore — whichever comes first (ADR-073 three-strikes rule).
-- JetStream KV `lyra-state` is used exclusively for hub readiness signaling (`hub.ready` key, `roxabi_nats/readiness.py`). It is NOT a session store.
+- JetStream KV `factory-state` is used exclusively for hub readiness signaling (`hub.ready` key, `roxabi_nats/readiness.py`). It is NOT a session store.
 
 ## See also
 

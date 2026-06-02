@@ -30,16 +30,16 @@ def _active_members(matrix, group_name: str) -> list[str]:
     ]
 
 
-# ── LYRA_OUTBOUND_AUDIO stream ───────────────────────────────────────────────
+# ── FACTORY_OUTBOUND_AUDIO stream ───────────────────────────────────────────────
 
 
 class TestLyraOutboundAudioStream:
-    """LYRA_OUTBOUND_AUDIO stream — provisioner: hub, consumer_group: audio-consumer."""
+    """FACTORY_OUTBOUND_AUDIO stream — provisioner: hub, group: audio-consumer."""
 
     def test_hub_provisioner_publish_covers_stream_subjects(self) -> None:
-        """hub publish[] covers the three LYRA_OUTBOUND_AUDIO provisioning subjects.
+        """hub publish[] covers the three FACTORY_OUTBOUND_AUDIO provisioning subjects.
 
-        # verified: if $JS.API.STREAM.CREATE.LYRA_OUTBOUND_AUDIO (or any of the
+        # verified: if $JS.API.STREAM.CREATE.FACTORY_OUTBOUND_AUDIO (or any of the
         other two) is removed from hub's publish grants, subject_covered still
         returns True because hub has the broad $JS.API.> wildcard.  The happy-path
         assertion therefore survives individual subject removal, but the test
@@ -54,19 +54,19 @@ class TestLyraOutboundAudioStream:
 
         # Act + Assert
         subjects = [
-            "$JS.API.STREAM.CREATE.LYRA_OUTBOUND_AUDIO",
-            "$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO",
-            "$JS.API.STREAM.UPDATE.LYRA_OUTBOUND_AUDIO",
+            "$JS.API.STREAM.CREATE.FACTORY_OUTBOUND_AUDIO",
+            "$JS.API.STREAM.INFO.FACTORY_OUTBOUND_AUDIO",
+            "$JS.API.STREAM.UPDATE.FACTORY_OUTBOUND_AUDIO",
         ]
         for subj in subjects:
             assert subject_covered(subj, hub_pub), (
                 f"hub publish[] must cover {subj!r} "
-                "for LYRA_OUTBOUND_AUDIO provisioning"
+                "for FACTORY_OUTBOUND_AUDIO provisioning"
             )
 
     def test_audio_consumer_members_publish_covers_stream_subjects(self) -> None:
         """Every active audio-consumer member publish[] covers the required
-        LYRA_OUTBOUND_AUDIO consumer subjects.
+        FACTORY_OUTBOUND_AUDIO consumer subjects.
         """
         # Arrange
         matrix = load_matrix(_REAL_MATRIX_JSON)
@@ -74,22 +74,22 @@ class TestLyraOutboundAudioStream:
 
         # Act + Assert
         subjects = [
-            "$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO",
-            "$JS.API.CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO.>",
-            "$JS.API.CONSUMER.INFO.LYRA_OUTBOUND_AUDIO.*",
-            "$JS.API.CONSUMER.MSG.NEXT.LYRA_OUTBOUND_AUDIO.*",
-            "$JS.ACK.LYRA_OUTBOUND_AUDIO.>",
+            "$JS.API.STREAM.INFO.FACTORY_OUTBOUND_AUDIO",
+            "$JS.API.CONSUMER.CREATE.FACTORY_OUTBOUND_AUDIO.>",
+            "$JS.API.CONSUMER.INFO.FACTORY_OUTBOUND_AUDIO.*",
+            "$JS.API.CONSUMER.MSG.NEXT.FACTORY_OUTBOUND_AUDIO.*",
+            "$JS.ACK.FACTORY_OUTBOUND_AUDIO.>",
         ]
         for member in _active_members(matrix, "audio-consumer"):
             m_pub, _ = grants[member]
             for subj in subjects:
                 assert subject_covered(subj, m_pub), (
                     f"{member!r} publish[] must cover {subj!r} "
-                    "for LYRA_OUTBOUND_AUDIO consumer"
+                    "for FACTORY_OUTBOUND_AUDIO consumer"
                 )
 
     def test_audio_consumer_publish_fails_when_subject_dropped(self) -> None:
-        """Removing $JS.ACK.LYRA_OUTBOUND_AUDIO.> from audio-consumer group publish
+        """Removing $JS.ACK.FACTORY_OUTBOUND_AUDIO.> from audio-consumer group publish
         causes member effective grants to lose coverage.
 
         # verified: if the audio-consumer group grant is removed, the member's
@@ -99,7 +99,7 @@ class TestLyraOutboundAudioStream:
         # Arrange — pre-condition: subject must exist before we drop it
         matrix = load_matrix(_REAL_MATRIX_JSON)
         group_pub = matrix.get("groups", {})["audio-consumer"]["publish"]
-        target = "$JS.ACK.LYRA_OUTBOUND_AUDIO.>"
+        target = "$JS.ACK.FACTORY_OUTBOUND_AUDIO.>"
         assert target in group_pub, (
             f"Pre-condition: {target!r} must be in audio-consumer group publish"
         )
@@ -118,14 +118,14 @@ class TestLyraOutboundAudioStream:
             )
 
 
-# ── LYRA_TURNS stream ────────────────────────────────────────────────────────
+# ── FACTORY_TURNS stream ────────────────────────────────────────────────────────
 
 
 class TestLyraTurnsStream:
-    """LYRA_TURNS stream — provisioner: turn-writer, no consumer_group."""
+    """FACTORY_TURNS stream — provisioner: turn-writer, no consumer_group."""
 
     def test_turn_writer_provisioner_publish_covers_stream_subjects(self) -> None:
-        """turn-writer publish[] covers all six LYRA_TURNS provisioning subjects.
+        """turn-writer publish[] covers all six FACTORY_TURNS provisioning subjects.
 
         turn-writer has NO broad wildcard ($JS.API.> or >), so each subject is
         individually required. Removing any one would cause this assertion to fail.
@@ -137,20 +137,21 @@ class TestLyraTurnsStream:
 
         # Act + Assert
         subjects = [
-            "$JS.API.STREAM.CREATE.LYRA_TURNS",
-            "$JS.API.STREAM.INFO.LYRA_TURNS",
-            "$JS.API.STREAM.UPDATE.LYRA_TURNS",
-            "$JS.API.CONSUMER.CREATE.LYRA_TURNS.turn-writer-v1.>",
-            "$JS.API.CONSUMER.INFO.LYRA_TURNS.turn-writer-v1",
-            "$JS.API.CONSUMER.MSG.NEXT.LYRA_TURNS.turn-writer-v1",
+            "$JS.API.STREAM.CREATE.FACTORY_TURNS",
+            "$JS.API.STREAM.INFO.FACTORY_TURNS",
+            "$JS.API.STREAM.UPDATE.FACTORY_TURNS",
+            "$JS.API.CONSUMER.CREATE.FACTORY_TURNS.turn-writer-v1.>",
+            "$JS.API.CONSUMER.INFO.FACTORY_TURNS.turn-writer-v1",
+            "$JS.API.CONSUMER.MSG.NEXT.FACTORY_TURNS.turn-writer-v1",
         ]
         for subj in subjects:
             assert subject_covered(subj, tw_pub), (
-                f"turn-writer publish[] must cover {subj!r} for LYRA_TURNS provisioning"
+                f"turn-writer publish[] must cover {subj!r}"
+                " for FACTORY_TURNS provisioning"
             )
 
     def test_turn_writer_provisioner_fails_when_subject_dropped(self) -> None:
-        """Removing $JS.API.STREAM.CREATE.LYRA_TURNS from turn-writer publish
+        """Removing $JS.API.STREAM.CREATE.FACTORY_TURNS from turn-writer publish
         causes subject_covered to return False.
 
         # verified: turn-writer has no broad wildcard, so the drop is not masked.
@@ -161,7 +162,7 @@ class TestLyraTurnsStream:
         # Arrange — pre-condition
         matrix = load_matrix(_REAL_MATRIX_JSON)
         tw_publish = matrix["identities"]["turn-writer"]["publish"]
-        target = "$JS.API.STREAM.CREATE.LYRA_TURNS"
+        target = "$JS.API.STREAM.CREATE.FACTORY_TURNS"
         assert target in tw_publish, (
             f"Pre-condition: {target!r} must be in turn-writer publish"
         )
@@ -184,16 +185,16 @@ class TestLyraTurnsStream:
         )
 
 
-# ── lyra_outbound_audio_sent KV bucket ───────────────────────────────────────
+# ── factory_outbound_audio_sent KV bucket ───────────────────────────────────────
 
 
 class TestLyraOutboundAudioSentKv:
-    """lyra_outbound_audio_sent KV bucket — provisioner: hub,
+    """factory_outbound_audio_sent KV bucket — provisioner: hub,
     consumer_group: audio-consumer.
     """
 
     def test_hub_provisioner_publish_covers_kv_subjects(self) -> None:
-        """hub publish[] covers the two KV_lyra_outbound_audio_sent provisioning
+        """hub publish[] covers the two KV_factory_outbound_audio_sent provisioning
         subjects."""
         # Arrange
         matrix = load_matrix(_REAL_MATRIX_JSON)
@@ -202,18 +203,18 @@ class TestLyraOutboundAudioSentKv:
 
         # Act + Assert
         subjects = [
-            "$JS.API.STREAM.CREATE.KV_lyra_outbound_audio_sent",
-            "$JS.API.STREAM.INFO.KV_lyra_outbound_audio_sent",
+            "$JS.API.STREAM.CREATE.KV_factory_outbound_audio_sent",
+            "$JS.API.STREAM.INFO.KV_factory_outbound_audio_sent",
         ]
         for subj in subjects:
             assert subject_covered(subj, hub_pub), (
                 f"hub publish[] must cover {subj!r} "
-                "for KV_lyra_outbound_audio_sent provisioning"
+                "for KV_factory_outbound_audio_sent provisioning"
             )
 
     def test_audio_consumer_members_publish_covers_kv_subjects(self) -> None:
         """Every active audio-consumer member publish[] covers the required
-        KV_lyra_outbound_audio_sent consumer subjects.
+        KV_factory_outbound_audio_sent consumer subjects.
         """
         # Arrange
         matrix = load_matrix(_REAL_MATRIX_JSON)
@@ -221,16 +222,16 @@ class TestLyraOutboundAudioSentKv:
 
         # Act + Assert
         subjects = [
-            "$JS.API.STREAM.INFO.KV_lyra_outbound_audio_sent",
-            "$JS.API.STREAM.MSG.GET.KV_lyra_outbound_audio_sent",
-            "$KV.lyra_outbound_audio_sent.>",
+            "$JS.API.STREAM.INFO.KV_factory_outbound_audio_sent",
+            "$JS.API.STREAM.MSG.GET.KV_factory_outbound_audio_sent",
+            "$KV.factory_outbound_audio_sent.>",
         ]
         for member in _active_members(matrix, "audio-consumer"):
             m_pub, _ = grants[member]
             for subj in subjects:
                 assert subject_covered(subj, m_pub), (
                     f"{member!r} publish[] must cover {subj!r} "
-                    "for KV_lyra_outbound_audio_sent consumer"
+                    "for KV_factory_outbound_audio_sent consumer"
                 )
 
     def test_audio_consumer_members_subscribe_covers_kv_subjects(self) -> None:
@@ -240,17 +241,17 @@ class TestLyraOutboundAudioSentKv:
         grants = effective_grants(matrix)
 
         # Act + Assert
-        subjects = ["$KV.lyra_outbound_audio_sent.>"]
+        subjects = ["$KV.factory_outbound_audio_sent.>"]
         for member in _active_members(matrix, "audio-consumer"):
             _, m_sub = grants[member]
             for subj in subjects:
                 assert subject_covered(subj, m_sub), (
                     f"{member!r} subscribe[] must cover {subj!r} "
-                    "for KV_lyra_outbound_audio_sent consumer"
+                    "for KV_factory_outbound_audio_sent consumer"
                 )
 
     def test_audio_consumer_publish_fails_when_kv_subject_dropped(self) -> None:
-        """Removing $KV.lyra_outbound_audio_sent.> from audio-consumer group publish
+        """Removing $KV.factory_outbound_audio_sent.> from audio-consumer group publish
         causes member effective grants to lose coverage.
 
         # verified: the group grant is the sole source of this publish subject for
@@ -259,7 +260,7 @@ class TestLyraOutboundAudioSentKv:
         # Arrange — pre-condition
         matrix = load_matrix(_REAL_MATRIX_JSON)
         group_pub = matrix.get("groups", {})["audio-consumer"]["publish"]
-        target = "$KV.lyra_outbound_audio_sent.>"
+        target = "$KV.factory_outbound_audio_sent.>"
         assert target in group_pub, (
             f"Pre-condition: {target!r} must be in audio-consumer group publish"
         )
@@ -278,15 +279,15 @@ class TestLyraOutboundAudioSentKv:
             )
 
     def test_audio_consumer_subscribe_fails_when_kv_subject_dropped(self) -> None:
-        """Removing $KV.lyra_outbound_audio_sent.> from audio-consumer group subscribe
-        causes member effective grants to lose coverage.
+        """Removing $KV.factory_outbound_audio_sent.> from audio-consumer group
+        subscribe causes member effective grants to lose coverage.
 
         # verified: the group grant is the sole source of this subscribe subject.
         """
         # Arrange — pre-condition
         matrix = load_matrix(_REAL_MATRIX_JSON)
         group_sub = matrix.get("groups", {})["audio-consumer"]["subscribe"]
-        target = "$KV.lyra_outbound_audio_sent.>"
+        target = "$KV.factory_outbound_audio_sent.>"
         assert target in group_sub, (
             f"Pre-condition: {target!r} must be in audio-consumer group subscribe"
         )

@@ -20,7 +20,10 @@ from roxabi_contracts.errors import WorkerError
 
 
 class ImageRequest(ContractEnvelope):
-    """Image generation request. Canonical subject: ``lyra.image.generate.request``."""
+    """Image generation request.
+
+    Canonical subject: ``factory.image.generate.request``.
+    """
 
     request_id: Annotated[str, StringConstraints(min_length=1)]
     prompt: Annotated[str, StringConstraints(min_length=1)]
@@ -83,7 +86,7 @@ class ImageResponse(ContractEnvelope):
 class ImageHeartbeat(ContractEnvelope):
     """Inbound heartbeat from an image worker satellite.
 
-    Canonical subject: ``lyra.image.heartbeat``. Consumers populate a
+    Canonical subject: ``factory.image.heartbeat``. Consumers populate a
     worker registry keyed by ``worker_id`` and prune stale entries via
     ``ts``.
     """

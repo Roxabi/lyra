@@ -39,21 +39,21 @@ factory_telegram                     factory_hub                      factory_di
 ─────────────                   ─────────────                  ─────────────
 aiogram long-poll                NatsBus                       discord.py gateway
       │                              │                              │
-      │ lyra.inbound.telegram.<bot>  │ lyra.inbound.discord.<bot>   │
+      │ factory.inbound.telegram.<bot>  │ factory.inbound.discord.<bot>   │
       ├─────────────────────────────▶│◄─────────────────────────────┤
       │                              │ InboundBus → Hub → resolve_binding()
       │                              │                              │
       │                              │ get_or_create_pool()         │
       │                              │                              │
-      │                    lyra.clipool.cmd ──▶ lyra_clipool process│
+      │                    factory.clipool.cmd ──▶ lyra_clipool process│
       │                              │         │                    │
-      │                    lyra.clipool.heartbeat ◄─┘              │
+      │                    factory.clipool.heartbeat ◄─┘              │
       │                              │                              │
-      │ lyra.outbound.telegram.<bot>   │  lyra.outbound.discord.<bot> │
+      │ factory.outbound.telegram.<bot>   │  factory.outbound.discord.<bot> │
       ◄──────────────────────────────┴──────────────────────────────▶
 ```
 
-All four processes run on Machine 1 (hub). NATS topics: `lyra.inbound.<platform>.<bot_id>` (adapter→hub), `lyra.outbound.<platform>.<bot_id>` (hub→adapter). `factory start` runs hub + adapters in one process with embedded NATS.
+All four processes run on Machine 1 (hub). NATS topics: `factory.inbound.<platform>.<bot_id>` (adapter→hub), `factory.outbound.<platform>.<bot_id>` (hub→adapter). `factory start` runs hub + adapters in one process with embedded NATS.
 
 ---
 

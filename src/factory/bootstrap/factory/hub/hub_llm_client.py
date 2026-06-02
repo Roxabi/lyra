@@ -30,7 +30,7 @@ async def build_llm_client(
     pool = WorkerPoolClient(
         transport,
         registry=WorkerRegistry(),
-        hb_subject="lyra.clipool.heartbeat",
+        hb_subject="factory.clipool.heartbeat",
         validate_worker_id=validate_worker_id,
         name="clipool",
     )
@@ -39,5 +39,5 @@ async def build_llm_client(
         pool,
         CliPoolCodec(),
         timeout=timeout,
-        request_subject="lyra.clipool.cmd",
+        request_subject="factory.clipool.cmd",
     )

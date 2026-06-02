@@ -88,7 +88,7 @@ class _FakeKv:
 # ---------------------------------------------------------------------------
 
 _DURABLE = "outbound-audio-telegram"
-_FILTER = "lyra.outbound.audio.telegram.>"
+_FILTER = "factory.outbound.audio.telegram.>"
 
 
 def _make_consumer_kv(
@@ -163,7 +163,7 @@ def _make_nats_msg(stream_id: str, num_delivered_val: int = 1) -> MagicMock:
 
     msg = MagicMock()
     msg.data = data
-    msg.subject = "lyra.outbound.audio.telegram.sc6-bot"
+    msg.subject = "factory.outbound.audio.telegram.sc6-bot"
     msg.ack = AsyncMock()
     msg.nak = AsyncMock()
     msg.term = AsyncMock()

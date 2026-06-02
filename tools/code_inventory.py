@@ -316,6 +316,7 @@ def _looks_like_nats_subject(val: str) -> bool:
     lower = val.lower()
     return (
         lower.startswith("lyra.")
+        or lower.startswith("factory.")
         or lower.startswith("$js.")
         or lower.startswith("$kv.")
         or lower.startswith("_inbox.")
@@ -598,7 +599,10 @@ class CodeInventory:
     def _looks_like_subject_token(self, token: str) -> bool:
         """Return True if token looks like a NATS subject (no dots, project-ns)."""
         lower = token.lower()
-        if any(lower.startswith(p) for p in ("lyra.", "$js.", "$kv.", "_inbox.")):
+        if any(
+            lower.startswith(p)
+            for p in ("lyra.", "factory.", "$js.", "$kv.", "_inbox.")
+        ):
             return True
         return token in self.subjects
 
@@ -674,7 +678,7 @@ class CodeInventory:
         lower = token.lower()
         if any(lower.startswith(p) for p in ("$js.", "$kv.", "_inbox.")):
             return Verdict(exists=False, kind="subject")
-        if lower.startswith("lyra."):
+        if lower.startswith("lyra.") or lower.startswith("factory."):
             return Verdict(exists=False, kind="subject")
 
         # 4. Project namespace root not found as module or subject

@@ -49,11 +49,11 @@ class TestBlobAuditEventShape:
     """BlobAuditEvent inherits ContractEnvelope and carries V8-required fields."""
 
     def test_blob_audit_event_subject_is_lyra_audit_blobs_op(self) -> None:
-        """subject_for(op) returns the canonical lyra.audit.blobs.{op} NATS subject."""
-        assert BlobAuditEvent.subject_for(op="put") == "lyra.audit.blobs.put"
-        assert BlobAuditEvent.subject_for(op="get") == "lyra.audit.blobs.get"
-        assert BlobAuditEvent.subject_for(op="exists") == "lyra.audit.blobs.exists"
-        assert BlobAuditEvent.subject_for(op="delete") == "lyra.audit.blobs.delete"
+        """subject_for(op) returns factory.audit.blobs.{op} NATS subject."""
+        assert BlobAuditEvent.subject_for(op="put") == "factory.audit.blobs.put"
+        assert BlobAuditEvent.subject_for(op="get") == "factory.audit.blobs.get"
+        assert BlobAuditEvent.subject_for(op="exists") == "factory.audit.blobs.exists"
+        assert BlobAuditEvent.subject_for(op="delete") == "factory.audit.blobs.delete"
 
     def test_blob_audit_event_has_required_fields(self) -> None:
         """Instantiating BlobAuditEvent with all spec-mandated fields succeeds."""
@@ -110,10 +110,10 @@ class TestBlobAuditEventShape:
 
 
 class TestBlobAuditSinkPublish:
-    """BlobAuditSink.emit() publishes to lyra.audit.blobs.{op} via JetStream."""
+    """BlobAuditSink.emit() publishes to factory.audit.blobs.{op} via JetStream."""
 
     async def test_blob_audit_sink_publishes_to_correct_subject(self) -> None:
-        """emit(event) calls js.publish with subject=lyra.audit.blobs.{op}."""
+        """emit(event) calls js.publish with subject=factory.audit.blobs.{op}."""
         js = AsyncMock()
         js.publish = AsyncMock()
 
@@ -130,7 +130,7 @@ class TestBlobAuditSinkPublish:
         subject_used = (
             call_args.args[0] if call_args.args else call_args.kwargs.get("subject")
         )
-        assert subject_used == "lyra.audit.blobs.put"
+        assert subject_used == "factory.audit.blobs.put"
 
         payload_used = (
             call_args.args[1]
@@ -144,7 +144,7 @@ class TestBlobAuditSinkPublish:
         assert recovered["result"] == "ok"
 
     async def test_blob_audit_sink_publishes_correct_subject_for_get(self) -> None:
-        """Subject varies per op — get -> lyra.audit.blobs.get."""
+        """Subject varies per op — get -> factory.audit.blobs.get."""
         js = AsyncMock()
         js.publish = AsyncMock()
         sink = BlobAuditSink()
@@ -154,7 +154,7 @@ class TestBlobAuditSinkPublish:
         await sink.emit(_make_event(op="get"))
 
         subject_used = js.publish.call_args.args[0]
-        assert subject_used == "lyra.audit.blobs.get"
+        assert subject_used == "factory.audit.blobs.get"
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +218,7 @@ class TestBlobAuditSinkDegradation:
 
 
 class TestBlobstoreKVReadiness:
-    """After build_app startup, blobstore.ready=b'true' is written to lyra-state KV."""
+    """After build_app startup, blobstore.ready=b'true' written to factory-state KV."""
 
     async def test_blobstore_ready_kv_announce_after_startup(
         self, tmp_path: pathlib.Path

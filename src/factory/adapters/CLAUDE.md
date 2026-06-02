@@ -17,7 +17,7 @@ No business logic, LLM calls, or agent logic lives here.
 - Formatting logic belongs in `{platform}_formatting.py`; never inline it in inbound or outbound.
 - Do NOT use `async with channel.typing():` on Discord — it auto-refreshes and triggers 429s.
   Call `await channel.typing()` manually every 9 s (`_discord_typing_worker`).
-- Compose typing `factory_builder` via `lyra.typing.make_typing_factory(worker_fn)` —
+- Compose typing `factory_builder` via `factory.typing.make_typing_factory(worker_fn)` —
   defined in `src/factory/typing/listener.py`. Never hand-write a per-adapter
   `_build_*_typing_factory` closure. Stage-axis helper avoids N×M drift (N platforms
   × M typing concerns). Watch-trigger: a 3rd platform or a 2nd typing concern (e.g.
@@ -91,9 +91,9 @@ process. Hub sends LLM requests via `LlmClient` (composed from `WorkerPoolClient
 Enables independent lifecycle and horizontal scaling.
 
 NATS subjects:
-- `lyra.clipool.cmd` — LLM requests from hub
-- `lyra.clipool.control` — control commands (reset, heartbeat)
-- `lyra.clipool.heartbeat` — periodic health announcements
+- `factory.clipool.cmd` — LLM requests from hub
+- `factory.clipool.control` — control commands (reset, heartbeat)
+- `factory.clipool.heartbeat` — periodic health announcements
 
 ## Pipeline stages
 

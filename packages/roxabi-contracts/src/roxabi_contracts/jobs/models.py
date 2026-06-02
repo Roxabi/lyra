@@ -19,7 +19,7 @@ __all__ = ["JobEnvelope", "JobResult", "JobProgress"]
 
 
 class JobEnvelope(ContractEnvelope):
-    """Job submission envelope. Canonical subject: lyra.jobs.<job_name>."""
+    """Job submission envelope. Canonical subject: factory.jobs.<job_name>."""
 
     job_id: str
     job_name: str
@@ -79,7 +79,7 @@ class JobResult(ContractEnvelope):
 
 
 class JobProgress(ContractEnvelope):
-    """Job progress event. Published to lyra.progress.<job_id> (best-effort)."""
+    """Job progress event. Published to factory.progress.<job_id> (best-effort)."""
 
     job_id: str
     step: Annotated[str, StringConstraints(min_length=1)]

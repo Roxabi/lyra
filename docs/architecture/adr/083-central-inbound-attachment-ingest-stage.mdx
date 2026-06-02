@@ -24,7 +24,7 @@ Inbound attachments (voice, image, document, video, sticker, animation, GIF) fro
 2. **N×M implementation surface.** Ingest logic (download → hash → store → emit `BlobRef`) must be duplicated per platform × per attachment type. At N=2 platforms, M=7 types, that is up to 14 implementation points. Each new adapter or new attachment type amplifies this.
 3. **PENDING_STORE_KEY sentinel persists on the wire.** `SttRequest(blob_ref)` carries `store_key=PENDING_STORE_KEY`; STT workers must implement a `platform_ref` fallback path. This fallback adds complexity in `nats_stt_client.py`, is undocumented in the STT worker contract, and blocks `PENDING_STORE_KEY` removal.
 
-This is precisely the N×M duplication pattern ADR-073 identifies as the primary architectural anti-pattern. The `inbound-no-adapters` importlinter contract (#1287) already forbids `lyra.inbound` modules from importing `discord` or `aiogram`, establishing the boundary this ADR formalizes.
+This is precisely the N×M duplication pattern ADR-073 identifies as the primary architectural anti-pattern. The `inbound-no-adapters` importlinter contract (#1287) already forbids `factory.inbound` modules from importing `discord` or `aiogram`, establishing the boundary this ADR formalizes.
 
 Epic #1277 §11 explicitly absorbs issues #1065 (Telegram adapter eager-ingest), #1066 (Discord adapter eager-ingest), and #1067 (workers consume real `BlobRef`) into the stage axis. Issue #1537 is the delivery issue for this ADR.
 
@@ -43,7 +43,7 @@ Each adapter implements its own ingest path: Telegram `handle_voice_message` cal
 
 A single `AttachmentIngestStage` module in `src/lyra/inbound/` receives a platform-agnostic `PendingAttachment` descriptor (containing a `FetchFn: Callable[[], Awaitable[bytes]]` closure) produced by adapters during normalization. The stage calls `ingest_bytes_to_blob_ref()` once per attachment, stamping a real `BlobRef` before the message reaches the bus.
 
-- **Pros:** Single ingest implementation regardless of N or M. Importlinter contract satisfied — no platform types in `lyra.inbound`. Fetch failure handling is centralized. Blob durability guaranteed before `SttMiddleware` runs — STT failure no longer loses audio. Fetch closures follow the established `functools.partial` hook pattern already used by `pre_route_hook` / `pre_session_hook`.
+- **Pros:** Single ingest implementation regardless of N or M. Importlinter contract satisfied — no platform types in `factory.inbound`. Fetch failure handling is centralized. Blob durability guaranteed before `SttMiddleware` runs — STT failure no longer loses audio. Fetch closures follow the established `functools.partial` hook pattern already used by `pre_route_hook` / `pre_session_hook`.
 - **Cons:** Adapters must be refactored to emit `PendingAttachment` descriptors rather than stamping `PENDING_STORE_KEY` inline. `InboundContext` gains an `IngestCtx` field. `InboundPipeline.run()` gains one new stage insertion. `Attachment` dataclass gains a `blob_ref` field.
 
 ## Decision

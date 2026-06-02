@@ -1,7 +1,7 @@
 """NATS KV-backed message-to-session index for reply-to resume (#1059).
 
 Phase 5 of #1049: replaces SQLite message_index.db with a NATS KV bucket
-``lyra-msg-index``. TTL is configured at bucket creation time (retention_days
+``factory-msg-index``. TTL is configured at bucket creation time (retention_days
 → seconds). NATS handles expiry natively — no manual cleanup.
 """
 
@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-KV_BUCKET = "lyra-msg-index"
+KV_BUCKET = "factory-msg-index"
 
 
 def _kv_config(retention_days: int) -> KeyValueConfig:
@@ -33,7 +33,7 @@ def _kv_config(retention_days: int) -> KeyValueConfig:
 
 
 async def ensure_kv(js: "JetStreamContext", retention_days: int = 90) -> "KeyValue":
-    """Create or bind KV bucket lyra-msg-index idempotently.
+    """Create or bind KV bucket factory-msg-index idempotently.
 
     TTL = retention_days * 86400 seconds (default 90 days).
     Returns the bound KeyValue handle.

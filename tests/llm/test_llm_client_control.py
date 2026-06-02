@@ -30,7 +30,7 @@ from factory.transport.worker_pool_client import WorkerPoolClient
 from roxabi_contracts.cli.models import CliControlAck
 from roxabi_contracts.envelope import CONTRACT_VERSION
 
-_SUBJECT_CONTROL = "lyra.clipool.control"
+_SUBJECT_CONTROL = "factory.clipool.control"
 
 # ---------------------------------------------------------------------------
 # Fake transport

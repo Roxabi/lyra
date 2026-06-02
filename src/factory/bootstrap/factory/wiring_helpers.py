@@ -198,7 +198,7 @@ async def _wire_adapters(deps: WireAdaptersDeps) -> WiredAdapters:
     for adapter in tg_adapters:
         tg_typing_listener = TypingListener(
             nc=deps.nc,
-            subject=f"lyra.typing.telegram.{adapter._bot_id}",
+            subject=f"factory.typing.telegram.{adapter._bot_id}",
             resolver=_telegram_scope_resolver,
             factory_builder=make_typing_factory(partial(_typing_worker, adapter.bot)),
             manager=adapter._typing,
@@ -210,7 +210,7 @@ async def _wire_adapters(deps: WireAdaptersDeps) -> WiredAdapters:
     for adapter, _bot_cfg, _token in dc_adapters:
         dc_typing_listener = TypingListener(
             nc=deps.nc,
-            subject=f"lyra.typing.discord.{adapter._bot_id}",
+            subject=f"factory.typing.discord.{adapter._bot_id}",
             resolver=_discord_scope_resolver,
             factory_builder=make_typing_factory(
                 partial(_discord_typing_worker, adapter._resolve_channel)

@@ -41,7 +41,7 @@ _REQUIRED: list[tuple[type[BaseModel], dict[str, Any]]] = [
             "worker_id": "img-1",
             "service": "image",
             "host": "h",
-            "subject": "lyra.image.generate.request",
+            "subject": "factory.image.generate.request",
             "queue_group": "image_workers",
             "ts": 1.0,
         },

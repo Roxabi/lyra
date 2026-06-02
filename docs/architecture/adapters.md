@@ -104,7 +104,7 @@ routing or trust. → ADR-023
 `lyra_stt` and `lyra_tts` run as independent NATS adapter services alongside
 `factory_hub`, `factory_telegram`, and `factory_discord`. The hub never imports `voicecli`.
 `AudioPipeline` calls `NatsSttClient.transcribe()` and `NatsTtsClient.synthesize()`
-over NATS request-reply (`lyra.voice.stt.request` / `lyra.voice.tts.request`). Both
+over NATS request-reply (`factory.voice.stt.request` / `factory.voice.tts.request`). Both
 clients satisfy `STTProtocol` / `TtsProtocol` structural interfaces. On NATS timeout, `STTUnavailableError` is raised;
 `AudioPipeline` treats it identically to `stt is None` (sends `stt_unavailable` reply).
 Hub starts and processes text immediately regardless of whether voice adapters are up.

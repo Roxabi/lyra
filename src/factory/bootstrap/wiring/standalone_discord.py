@@ -158,7 +158,7 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
                 blob_store=blob_store,
             )
             typing_deps = TypingDeps(
-                subject=f"lyra.typing.discord.{bot_id}",
+                subject=f"factory.typing.discord.{bot_id}",
                 scope_resolver=_discord_scope_resolver,
                 worker_factory=partial(
                     _discord_typing_worker, adapter_dc._resolve_channel

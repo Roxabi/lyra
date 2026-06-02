@@ -44,7 +44,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   Adapter subclasses must declare their TYPE_CHECKING-only type hints at construction:
   ```python
   adapter = MyAdapter(
-      subject="lyra.inbound.tg.main",
+      subject="factory.inbound.tg.main",
       queue_group="lyra-hub",
       envelope_name="InboundMessage",
       schema_version=1,

@@ -16,7 +16,7 @@ related: [035, 045, 065, 073, 075]
 
 Accepted — 2026-05-26.
 
-The decision is ratified now; the third plane (`lyra.typing.*`) lands operationally with
+The decision is ratified now; the third plane (`factory.typing.*`) lands operationally with
 Epic #1375 / T1 (#1376). The ADR documents the pattern that already underlies the messages
 and persistence planes and prescribes where the new plane fits.
 
@@ -52,8 +52,8 @@ Three planes are recognised. Every NATS subject in Lyra MUST belong to exactly o
 | Plane | Subject prefix | NATS type | Durability | Producers | Consumers | When to use |
 |---|---|---|---|---|---|---|
 | **Messages** | `lyra.{inbound,outbound}.<platform>.<bot_id>` | Core | ephemeral | adapters ↔ hub | hub, adapters | bidirectional hub↔adapter routing of user content |
-| **Persistence** | `lyra.turns.>` | JetStream durable (stream `LYRA_TURNS`, `MaxAge=24h`, WorkQueue) | durable | hub | turn-writer | append-only state changes (turn log, session lifecycle, resume counts) requiring at-least-once delivery |
-| **Typing / Lifecycle** *(NEW)* | `lyra.typing.<platform>.<bot_id>` | Core | ephemeral | hub (future: workers) | adapters | ephemeral display-feedback events (typing indicators; future progress UX) — lossy-OK because consumer state auto-expires |
+| **Persistence** | `factory.turns.>` | JetStream durable (stream `FACTORY_TURNS`, `MaxAge=24h`, WorkQueue) | durable | hub | turn-writer | append-only state changes (turn log, session lifecycle, resume counts) requiring at-least-once delivery |
+| **Typing / Lifecycle** *(NEW)* | `factory.typing.<platform>.<bot_id>` | Core | ephemeral | hub (future: workers) | adapters | ephemeral display-feedback events (typing indicators; future progress UX) — lossy-OK because consumer state auto-expires |
 
 Plane membership is a frontmatter property of the subject, not of the message: the same
 envelope shape may appear on Messages and Persistence (a `TurnEvelope` is shipped over the
@@ -111,9 +111,9 @@ each other:
 
 | Subject | Plane | Why it is NOT typing |
 |---|---|---|
-| `lyra.progress.<job_id>` (#1044) | Workers (TBD) | Progress is **job-internal** — reports "step 3/7" inside a long-running compute job. Typing is **display feedback** — reports "the bot is thinking about your scope right now." Same wire shape, different semantic owner; conflating them would force progress to be keyed on `WorkScope` rather than `job_id`. |
-| `lyra.clipool.heartbeat` | Health (control-plane) | Internal liveness of a subprocess runner. Not user-facing, not scoped to a conversation. Lives alongside `lyra.{voice,llm,image}.heartbeat` and `lyra.system.ready` — a control-plane that may eventually become its own catalogued plane but is not the same shape as Typing. |
-| `$KV.lyra-state.hub.ready` | KV (control-plane) | Persistent flag in JetStream KV, watched by adapters. Lifecycle owned by the **store**, not by a producer-publish event. |
+| `factory.progress.<job_id>` (#1044) | Workers (TBD) | Progress is **job-internal** — reports "step 3/7" inside a long-running compute job. Typing is **display feedback** — reports "the bot is thinking about your scope right now." Same wire shape, different semantic owner; conflating them would force progress to be keyed on `WorkScope` rather than `job_id`. |
+| `factory.clipool.heartbeat` | Health (control-plane) | Internal liveness of a subprocess runner. Not user-facing, not scoped to a conversation. Lives alongside `lyra.{voice,llm,image}.heartbeat` and `factory.system.ready` — a control-plane that may eventually become its own catalogued plane but is not the same shape as Typing. |
+| `$KV.factory-state.hub.ready` | KV (control-plane) | Persistent flag in JetStream KV, watched by adapters. Lifecycle owned by the **store**, not by a producer-publish event. |
 
 If a future emitter sits between "job-internal" and "display feedback" (e.g. TTS rendering
 progress visible to the user), the rule is: **does the consumer need it to drive UX it will
@@ -182,9 +182,9 @@ the design question — surface it, do not silently file a new plane.
   per-subject re-deliberation.
 - Typing indicator bugs of the #1374 class (orphan tasks from key drift) become structurally
   impossible: the publisher owns the keying contract, subscribers are the only side-effect site.
-- Future worker subjects (#1044) have a documented home: progress events on `lyra.progress.*`,
-  user-facing typing on `lyra.typing.*` — same publisher, different planes, different durability.
-- Adapter authors get a single grep target (`lyra.typing.<platform>.*`) for "what is the bot
+- Future worker subjects (#1044) have a documented home: progress events on `factory.progress.*`,
+  user-facing typing on `factory.typing.*` — same publisher, different planes, different durability.
+- Adapter authors get a single grep target (`factory.typing.<platform>.*`) for "what is the bot
   currently telling this scope," instead of inspecting `_start_typing/_cancel_typing` call sites
   scattered across inbound, outbound, and audio modules.
 
@@ -193,11 +193,11 @@ the design question — surface it, do not silently file a new plane.
 - **Per-plane ACL surface grows.** Each plane requires its own ACL entries in
   `deploy/nats/auth.conf` for every identity that publishes or subscribes. Tracked in
   `artifacts/specs/706-per-role-nkeys-acls-spec.mdx` (T1 of Epic #1375 adds
-  `lyra.typing.>` grants).
+  `factory.typing.>` grants).
 - **Worker pub grants MUST be per-platform/bot, not plane-wildcard** (when #1044 lands).
   A future worker identity publishing on the Typing plane must hold a grant on
-  `lyra.typing.<platform>.<bot_id>` matching the job's assigned scope — never the
-  plane-level wildcard `lyra.typing.>`. The wildcard would let any worker publish typing
+  `factory.typing.<platform>.<bot_id>` matching the job's assigned scope — never the
+  plane-level wildcard `factory.typing.>`. The wildcard would let any worker publish typing
   on behalf of any bot, regardless of the job's relationship to that bot. Refreshing the
   grant means rewriting `auth.conf` and restarting `lyra-nats` (`systemctl --user restart
   lyra-nats`); the `type=mount` secret pattern (per
@@ -232,7 +232,7 @@ is required.
 
 ### B. Use JetStream for typing with a short `max_age`
 
-Reuse the `LYRA_TURNS`-style durable consumer pattern for typing, with `max_age=10s` to keep
+Reuse the `FACTORY_TURNS`-style durable consumer pattern for typing, with `max_age=10s` to keep
 storage bounded.
 
 - **Rejected.** Typing has no recovery value past its on-screen lifetime. Paying JetStream's
@@ -260,7 +260,7 @@ Collapse Typing and any future ephemeral subjects into one open-ended plane.
 
 - **ADR-073** — Axis of Decomposition: Stage of Pipeline (primary axial; transport sub-axis
   positioning).
-- **ADR-075** — TurnWriter subscriber-writer sublayer (established `lyra.turns.>` Persistence
+- **ADR-075** — TurnWriter subscriber-writer sublayer (established `factory.turns.>` Persistence
   plane; same shape this ADR extends).
 - **ADR-035** — NATS subject naming convention (`lyra.{domain}.{qualifier...}` rule the
   Typing plane inherits).
@@ -269,8 +269,8 @@ Collapse Typing and any future ephemeral subjects into one open-ended plane.
   sibling subjects").
 - Epic **#1277** — stage-axis refactor (primary-axis epic ADR-073 ratifies).
 - Epic **#1044** — workers (future consumer of Typing plane; introduces
-  `lyra.progress.<job_id>` as a sibling, not a member).
-- Epic **#1375** — typing-indicator lifecycle via `lyra.typing.*` (operational landing of
+  `factory.progress.<job_id>` as a sibling, not a member).
+- Epic **#1375** — typing-indicator lifecycle via `factory.typing.*` (operational landing of
   this ADR; T1 ships the publisher/listener, T2 closes #1374).
 - Spec: `artifacts/specs/706-per-role-nkeys-acls-spec.mdx` — ACL grants for the new plane.
 - Domain page: `docs/architecture/messaging.md` — SSoT for messaging/NATS current truth;

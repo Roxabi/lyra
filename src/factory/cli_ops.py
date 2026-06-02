@@ -1,7 +1,7 @@
 """lyra ops — operational sanity checks.
 
 `lyra ops verify` walks ``deploy/nats/acl-matrix.json`` and, per identity,
-publishes on every allowed subject (expect success) plus one `lyra.verify.deny.*`
+publishes on every allowed subject (expect success) plus one `factory.verify.deny.*`
 probe (expect permission violation). Reads ``NATS_URL``/``NATS_CA_CERT`` from
 env; seeds from ``~/.roxabi/factory/nkeys/<id>.seed`` (override via ``--seeds-dir``).
 """

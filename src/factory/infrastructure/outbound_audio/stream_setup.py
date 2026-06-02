@@ -1,14 +1,14 @@
 """JetStream stream + durable consumer + KV bootstrap for outbound-audio.
 
-Stream LYRA_OUTBOUND_AUDIO: subject lyra.outbound.audio.>, retention Limits
+Stream FACTORY_OUTBOUND_AUDIO: subject factory.outbound.audio.>, retention Limits
 (NOT WorkQueue — multiple per-platform consumers attach, N×M fan-out),
 MaxAge=24h, MaxBytes=32MiB, duplicate_window=60s.
 
 Consumer (durable, pull): AckExplicit, AckWait=90s, MaxDeliver=5,
 filter_subject parameterised by bootstrap caller (e.g.
-lyra.outbound.audio.telegram.{bot_id} — exact 5-token subject, no ".>").
+factory.outbound.audio.telegram.{bot_id} — exact 5-token subject, no ".>").
 
-KV bucket lyra_outbound_audio_sent: TTL=900s.
+KV bucket factory_outbound_audio_sent: TTL=900s.
   Arithmetic: ack_wait × max_deliver = 90 × 5 = 450s floor;
   900s (15 min) gives ≥2× headroom for retry jitter and slow consumers
   while bounding the dedup-key storage window.
@@ -47,7 +47,7 @@ log = logging.getLogger(__name__)
 # Stream constants
 # ---------------------------------------------------------------------------
 
-STREAM_SUBJECTS = ["lyra.outbound.audio.>"]
+STREAM_SUBJECTS = ["factory.outbound.audio.>"]
 ACK_WAIT_SECONDS = 90.0
 MAX_DELIVER = 5
 MAX_AGE_SECONDS = 24 * 60 * 60  # 24 h — silent-loss bound (D4)
@@ -56,7 +56,7 @@ DUPLICATE_WINDOW_SECONDS = 60  # 60 s dedup window
 
 # KV bucket: TTL = ack_wait × max_deliver × 2 (headroom)
 # Floor: 90 × 5 = 450 s; we use 900 s (15 min) for ≥2× retry-jitter margin.
-KV_BUCKET = "lyra_outbound_audio_sent"
+KV_BUCKET = "factory_outbound_audio_sent"
 KV_TTL_SECONDS = 900.0  # 90 × 5 = 450 s floor → 900 s (15 min) with headroom
 
 
@@ -103,7 +103,7 @@ def _kv_config() -> KeyValueConfig:
 
 
 async def ensure_stream(js: "JetStreamContext") -> None:
-    """Create or update LYRA_OUTBOUND_AUDIO stream idempotently.
+    """Create or update FACTORY_OUTBOUND_AUDIO stream idempotently.
 
     Pattern: try add_stream first; on BadRequestError (already exists) try
     update_stream to converge config. Any other nats.errors.Error is re-raised.
@@ -139,7 +139,7 @@ async def ensure_consumer(
         js: JetStreamContext bound to the NATS connection.
         durable: Durable consumer name (e.g. "outbound-audio-telegram").
         filter_subject: Exact per-bot subject (e.g.
-            "lyra.outbound.audio.telegram.123456") — no trailing ".>".
+            "factory.outbound.audio.telegram.123456") — no trailing ".>".
     """
     cfg = _consumer_config(durable=durable, filter_subject=filter_subject)
     try:
@@ -163,7 +163,7 @@ async def ensure_consumer(
 
 
 async def ensure_kv(js: "JetStreamContext") -> KeyValue:
-    """Create or bind KV bucket lyra_outbound_audio_sent idempotently.
+    """Create or bind KV bucket factory_outbound_audio_sent idempotently.
 
     TTL=900s (15 min).
     Arithmetic: ack_wait=90s × max_deliver=5 = 450s floor; 900s ≥2× headroom

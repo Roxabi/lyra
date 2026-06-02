@@ -26,7 +26,7 @@ from factory.core.messaging.events import ResultLlmEvent, TextLlmEvent, ToolUseL
 # ---------------------------------------------------------------------------
 
 
-def _make_nats_msg(subject: str = "lyra.clipool.cmd", reply: str = "_INBOX.test"):
+def _make_nats_msg(subject: str = "factory.clipool.cmd", reply: str = "_INBOX.test"):
     msg = MagicMock()
     msg.subject = subject
     msg.reply = reply
@@ -86,7 +86,7 @@ def _make_pool() -> MagicMock:
 
 
 def test_extra_subjects_includes_control() -> None:
-    """_extra_subjects() returns exactly ['lyra.clipool.control']."""
+    """_extra_subjects() returns exactly ['factory.clipool.control']."""
     from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange
@@ -96,7 +96,7 @@ def test_extra_subjects_includes_control() -> None:
     worker = CliPoolNatsWorker(pool)
 
     # Assert
-    assert worker._extra_subjects() == ["lyra.clipool.control"]
+    assert worker._extra_subjects() == ["factory.clipool.control"]
 
 
 # ---------------------------------------------------------------------------
@@ -105,15 +105,15 @@ def test_extra_subjects_includes_control() -> None:
 
 
 async def test_handle_routes_control_by_subject() -> None:
-    """msg.subject == 'lyra.clipool.control' -> _handle_control; else -> _handle_cmd."""
+    """factory.clipool.control -> _handle_control; other subjects -> _handle_cmd."""
     from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange
     pool = _make_pool()
     worker = CliPoolNatsWorker(pool)
 
-    control_msg = _make_nats_msg(subject="lyra.clipool.control")
-    cmd_msg = _make_nats_msg(subject="lyra.clipool.cmd")
+    control_msg = _make_nats_msg(subject="factory.clipool.control")
+    cmd_msg = _make_nats_msg(subject="factory.clipool.cmd")
 
     with (
         patch.object(worker, "_handle_control", new_callable=AsyncMock) as mock_ctrl,
@@ -148,7 +148,7 @@ async def test_handle_cmd_stream_calls_pool_send_streaming() -> None:
     nc = AsyncMock()
     worker._nc = nc
 
-    msg = _make_nats_msg(subject="lyra.clipool.cmd", reply="_INBOX.reply")
+    msg = _make_nats_msg(subject="factory.clipool.cmd", reply="_INBOX.reply")
     payload = _cmd_payload(stream=True)
 
     # Act
@@ -174,7 +174,7 @@ async def test_handle_cmd_nonstream_calls_pool_send() -> None:
     nc = AsyncMock()
     worker._nc = nc
 
-    msg = _make_nats_msg(subject="lyra.clipool.cmd", reply="_INBOX.reply")
+    msg = _make_nats_msg(subject="factory.clipool.cmd", reply="_INBOX.reply")
     payload = _cmd_payload(stream=False)
 
     # Act
@@ -200,7 +200,7 @@ async def test_handle_cmd_send_streaming_exception_publishes_error() -> None:
     worker = CliPoolNatsWorker(pool)
     nc = AsyncMock()
     worker._nc = nc
-    msg = _make_nats_msg(subject="lyra.clipool.cmd", reply="_INBOX.test.1")
+    msg = _make_nats_msg(subject="factory.clipool.cmd", reply="_INBOX.test.1")
     payload = _cmd_payload(stream=True)
 
     # Act
@@ -229,7 +229,7 @@ async def test_handle_cmd_publishes_done_chunk_after_stream() -> None:
     nc = AsyncMock()
     worker._nc = nc
 
-    msg = _make_nats_msg(subject="lyra.clipool.cmd", reply="_INBOX.reply")
+    msg = _make_nats_msg(subject="factory.clipool.cmd", reply="_INBOX.reply")
 
     # Act
     await worker._handle_cmd(msg, _cmd_payload(stream=True))
@@ -381,7 +381,7 @@ async def test_handle_control_parse_failure_replies_error_ack() -> None:
     worker = CliPoolNatsWorker(pool)
     nc = AsyncMock()
     worker._nc = nc
-    msg = _make_nats_msg(subject="lyra.clipool.control", reply="_INBOX.test.ctrl")
+    msg = _make_nats_msg(subject="factory.clipool.control", reply="_INBOX.test.ctrl")
     bad_payload = {"op": "invalid_op_not_in_literal"}  # will fail validation
 
     # Act
@@ -404,7 +404,7 @@ async def test_handle_control_dispatch_exception_replies_ok_false() -> None:
     worker = CliPoolNatsWorker(pool)
     nc = AsyncMock()
     worker._nc = nc
-    msg = _make_nats_msg(subject="lyra.clipool.control", reply="_INBOX.test.ctrl2")
+    msg = _make_nats_msg(subject="factory.clipool.control", reply="_INBOX.test.ctrl2")
     payload = _control_payload(op="reset")
 
     # Act
@@ -426,7 +426,7 @@ async def test_handle_control_reset() -> None:
     nc = AsyncMock()
     worker._nc = nc
 
-    msg = _make_nats_msg(subject="lyra.clipool.control", reply="_INBOX.ctrl")
+    msg = _make_nats_msg(subject="factory.clipool.control", reply="_INBOX.ctrl")
     payload = _control_payload(op="reset", pool_id="pool-x")
 
     # Act
@@ -458,7 +458,7 @@ async def test_handle_control_resume_and_reset() -> None:
     nc = AsyncMock()
     worker._nc = nc
 
-    msg = _make_nats_msg(subject="lyra.clipool.control", reply="_INBOX.ctrl")
+    msg = _make_nats_msg(subject="factory.clipool.control", reply="_INBOX.ctrl")
     _sid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
     payload = _control_payload(op="resume_and_reset", pool_id="pool-y", session_id=_sid)
 
@@ -490,7 +490,7 @@ async def test_handle_control_switch_cwd(monkeypatch: pytest.MonkeyPatch) -> Non
     nc = AsyncMock()
     worker._nc = nc
 
-    msg = _make_nats_msg(subject="lyra.clipool.control", reply="_INBOX.ctrl")
+    msg = _make_nats_msg(subject="factory.clipool.control", reply="_INBOX.ctrl")
     payload = _control_payload(op="switch_cwd", pool_id="pool-z", cwd="/tmp/workspace")
 
     # Act
@@ -560,7 +560,7 @@ def test_heartbeat_payload_empty_pool() -> None:
 
 
 def test_constructor_passes_correct_subject_and_queue_group() -> None:
-    """Constructor sets subject='lyra.clipool.cmd' and queue_group='clipool-workers'."""
+    """Constructor sets subject='factory.clipool.cmd', queue_group='clipool-workers'."""
     from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange / Act
@@ -568,7 +568,7 @@ def test_constructor_passes_correct_subject_and_queue_group() -> None:
     worker = CliPoolNatsWorker(pool)
 
     # Assert
-    assert worker.subject == "lyra.clipool.cmd"
+    assert worker.subject == "factory.clipool.cmd"
     assert worker.queue_group == "clipool-workers"
 
 

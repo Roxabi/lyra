@@ -86,59 +86,59 @@
 
 
 ### blobstore
-- **Publish:** $JS.API.>, $KV.lyra-state.>, lyra.audit.>
+- **Publish:** $JS.API.>, $KV.factory-state.>, factory.audit.>
 - **Subscribe:** _inbox.blobstore.>
 
 ### clipool-worker
-- **Publish:** $JS.API.>, lyra.clipool.heartbeat, lyra.event.>, lyra.metric.>, lyra.system.ready
-- **Subscribe:** $KV.lyra-state.>, _inbox.clipool-worker.>, lyra.clipool.cmd, lyra.clipool.control
+- **Publish:** $JS.API.>, factory.clipool.heartbeat, factory.event.>, factory.metric.>, factory.system.ready
+- **Subscribe:** $KV.factory-state.>, _inbox.clipool-worker.>, factory.clipool.cmd, factory.clipool.control
 
 ### dashboard-reader
-- **Subscribe:** lyra.event.>, lyra.metric.>
+- **Subscribe:** factory.event.>, factory.metric.>
 
 ### discord-adapter
-- **Publish:** $JS.API.CONSUMER.CREATE.*, $JS.API.DIRECT.GET.LYRA_STATE.hub.ready, $JS.API.INFO, $JS.API.STREAM.INFO.KV_lyra-state, $JS.API.STREAM.MSG.GET.KV_lyra-state, lyra.event.>, lyra.inbound.discord.>, lyra.metric.>, lyra.system.ready, lyra.turns.write
-- **Subscribe:** $KV.lyra-state.>, _inbox.discord-adapter.*.*, _inbox.discord-adapter.>, lyra.outbound.audio.>, lyra.outbound.discord.>, lyra.typing.discord.>
+- **Publish:** $JS.API.CONSUMER.CREATE.*, $JS.API.DIRECT.GET.KV_factory-state.hub.ready, $JS.API.INFO, $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.event.>, factory.inbound.discord.>, factory.metric.>, factory.system.ready, factory.turns.write
+- **Subscribe:** $KV.factory-state.>, _inbox.discord-adapter.*.*, _inbox.discord-adapter.>, factory.outbound.audio.>, factory.outbound.discord.>, factory.typing.discord.>
 
 ### hub
-- **Publish:** $JS.API.>, $KV.lyra-msg-index.>, $KV.lyra-state.>, lyra.audit.>, lyra.clipool.cmd, lyra.clipool.control, lyra.event.>, lyra.image.generate.request, lyra.llm.generate.request, lyra.metric.>, lyra.outbound.audio.>, lyra.outbound.discord.>, lyra.outbound.telegram.>, lyra.turns.write, lyra.typing.>, lyra.voice.stt.request, lyra.voice.stt.request.>, lyra.voice.tts.request, lyra.voice.tts.request.>
-- **Subscribe:** _inbox.hub.>, lyra.clipool.heartbeat, lyra.gh.mint_failure.>, lyra.image.heartbeat, lyra.inbound.discord.>, lyra.inbound.telegram.>, lyra.llm.heartbeat, lyra.system.ready, lyra.voice.stt.heartbeat, lyra.voice.tts.heartbeat
+- **Publish:** $JS.API.>, $KV.factory-msg-index.>, $KV.factory-state.>, factory.audit.>, factory.clipool.cmd, factory.clipool.control, factory.event.>, factory.image.generate.request, factory.llm.generate.request, factory.metric.>, factory.outbound.audio.>, factory.outbound.discord.>, factory.outbound.telegram.>, factory.turns.write, factory.typing.>, factory.voice.stt.request, factory.voice.stt.request.>, factory.voice.tts.request, factory.voice.tts.request.>
+- **Subscribe:** _inbox.hub.>, factory.clipool.heartbeat, factory.gh.mint_failure.>, factory.image.heartbeat, factory.inbound.discord.>, factory.inbound.telegram.>, factory.llm.heartbeat, factory.system.ready, factory.voice.stt.heartbeat, factory.voice.tts.heartbeat
 
 ### image-worker
-- **Publish:** $JS.API.>, lyra.image.heartbeat
-- **Subscribe:** $KV.lyra-state.>, _inbox.image-worker.>, lyra.image.generate.request
+- **Publish:** $JS.API.>, factory.image.heartbeat
+- **Subscribe:** $KV.factory-state.>, _inbox.image-worker.>, factory.image.generate.request
 
 ### llm-operator
-- **Publish:** lyra.llm.lifecycle.>
+- **Publish:** factory.llm.lifecycle.>
 - **Subscribe:** _inbox.llm-operator.>
 
 ### llm-worker
-- **Publish:** $JS.API.>, lyra.llm.heartbeat
-- **Subscribe:** $KV.lyra-state.>, _inbox.llmcli-llm.>, lyra.llm.generate.request, lyra.llm.lifecycle.>
+- **Publish:** $JS.API.>, factory.llm.heartbeat
+- **Subscribe:** $KV.factory-state.>, _inbox.llmcli-llm.>, factory.llm.generate.request, factory.llm.lifecycle.>
 
 ### monitor
-- **Publish:** lyra.monitor.>
-- **Subscribe:** lyra.monitor.>
+- **Publish:** factory.monitor.>
+- **Subscribe:** factory.monitor.>
 
 ### telegram-adapter
-- **Publish:** $JS.API.CONSUMER.CREATE.*, $JS.API.DIRECT.GET.LYRA_STATE.hub.ready, $JS.API.INFO, $JS.API.STREAM.INFO.KV_lyra-state, $JS.API.STREAM.MSG.GET.KV_lyra-state, lyra.event.>, lyra.inbound.telegram.>, lyra.metric.>, lyra.system.ready, lyra.turns.write
-- **Subscribe:** $KV.lyra-state.>, _inbox.telegram-adapter.*.*, _inbox.telegram-adapter.>, lyra.outbound.audio.>, lyra.outbound.telegram.>, lyra.typing.telegram.>
+- **Publish:** $JS.API.CONSUMER.CREATE.*, $JS.API.DIRECT.GET.KV_factory-state.hub.ready, $JS.API.INFO, $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.event.>, factory.inbound.telegram.>, factory.metric.>, factory.system.ready, factory.turns.write
+- **Subscribe:** $KV.factory-state.>, _inbox.telegram-adapter.*.*, _inbox.telegram-adapter.>, factory.outbound.audio.>, factory.outbound.telegram.>, factory.typing.telegram.>
 
 ### turn-writer
-- **Publish:** $JS.API.CONSUMER.CREATE.LYRA_TURNS.turn-writer-v1.>, $JS.API.CONSUMER.INFO.LYRA_TURNS.turn-writer-v1, $JS.API.CONSUMER.MSG.NEXT.LYRA_TURNS.turn-writer-v1, $JS.API.STREAM.CREATE.LYRA_TURNS, $JS.API.STREAM.INFO.LYRA_TURNS, $JS.API.STREAM.UPDATE.LYRA_TURNS, _inbox.turn-writer.>
-- **Subscribe:** _inbox.turn-writer.>, lyra.turns.>
+- **Publish:** $JS.API.CONSUMER.CREATE.FACTORY_TURNS.turn-writer-v1.>, $JS.API.CONSUMER.INFO.FACTORY_TURNS.turn-writer-v1, $JS.API.CONSUMER.MSG.NEXT.FACTORY_TURNS.turn-writer-v1, $JS.API.STREAM.CREATE.FACTORY_TURNS, $JS.API.STREAM.INFO.FACTORY_TURNS, $JS.API.STREAM.UPDATE.FACTORY_TURNS, _inbox.turn-writer.>
+- **Subscribe:** _inbox.turn-writer.>, factory.turns.>
 
 ### voice-client
-- **Publish:** lyra.voice.stt.request, lyra.voice.tts.request
+- **Publish:** factory.voice.stt.request, factory.voice.tts.request
 - **Subscribe:** _inbox.voice-client.>
 
 ### voice-stt
-- **Publish:** $JS.API.>, lyra.system.ready, lyra.voice.stt.heartbeat
-- **Subscribe:** $KV.lyra-state.>, _inbox.voice-stt.>, lyra.voice.stt.request, lyra.voice.stt.request.>
+- **Publish:** $JS.API.>, factory.system.ready, factory.voice.stt.heartbeat
+- **Subscribe:** $KV.factory-state.>, _inbox.voice-stt.>, factory.voice.stt.request, factory.voice.stt.request.>
 
 ### voice-tts
-- **Publish:** $JS.API.>, lyra.system.ready, lyra.voice.tts.heartbeat
-- **Subscribe:** $KV.lyra-state.>, _inbox.voice-tts.>, lyra.voice.tts.request, lyra.voice.tts.request.>
+- **Publish:** $JS.API.>, factory.system.ready, factory.voice.tts.heartbeat
+- **Subscribe:** $KV.factory-state.>, _inbox.voice-tts.>, factory.voice.tts.request, factory.voice.tts.request.>
 
 ## Process Topology
 

@@ -56,7 +56,7 @@ def _make_consumer(
     return JetStreamAudioConsumer(
         js,
         durable="outbound-audio-telegram",
-        filter_subject="lyra.outbound.audio.telegram.>",
+        filter_subject="factory.outbound.audio.telegram.>",
         send_audio=send_audio or AsyncMock(),
         send_text=send_text or AsyncMock(),
     )
@@ -104,7 +104,7 @@ def _make_nats_msg(
     }
     msg = MagicMock()
     msg.data = json.dumps(envelope).encode()
-    msg.subject = f"lyra.outbound.audio.telegram.{inbound.bot_id}"
+    msg.subject = f"factory.outbound.audio.telegram.{inbound.bot_id}"
     msg.ack = AsyncMock()
     msg.nak = AsyncMock()
     msg.term = AsyncMock()
@@ -220,7 +220,7 @@ async def test_redelivery_counter_not_incremented_on_first_delivery(
 _STREAM_JSZ = {
     "streams": [
         {
-            "name": "LYRA_OUTBOUND_AUDIO",
+            "name": "FACTORY_OUTBOUND_AUDIO",
             "config": {"max_bytes": 33554432},
             "state": {"bytes": 1024},
             "consumers": [
@@ -266,7 +266,7 @@ async def test_consumer_lag_fails_above_threshold() -> None:
     data = {
         "streams": [
             {
-                "name": "LYRA_OUTBOUND_AUDIO",
+                "name": "FACTORY_OUTBOUND_AUDIO",
                 "config": {},
                 "state": {},
                 "consumers": [{"name": "outbound-audio-telegram", "num_pending": 80}],
@@ -347,7 +347,7 @@ def _make_lag_jsz(
     return {
         "streams": [
             {
-                "name": "LYRA_OUTBOUND_AUDIO",
+                "name": "FACTORY_OUTBOUND_AUDIO",
                 "config": {"max_bytes": 33554432},
                 "state": {"bytes": 1024},
                 "consumers": [
@@ -464,7 +464,7 @@ async def test_stream_usage_passes_below_threshold() -> None:
     data = {
         "streams": [
             {
-                "name": "LYRA_OUTBOUND_AUDIO",
+                "name": "FACTORY_OUTBOUND_AUDIO",
                 "config": {"max_bytes": 33554432},
                 "state": {"bytes": 3355443},  # ~10%
             }
@@ -498,7 +498,7 @@ async def test_stream_usage_fails_above_threshold() -> None:
     data = {
         "streams": [
             {
-                "name": "LYRA_OUTBOUND_AUDIO",
+                "name": "FACTORY_OUTBOUND_AUDIO",
                 "config": {"max_bytes": max_b},
                 "state": {"bytes": used_b},
             }
@@ -533,7 +533,7 @@ async def test_stream_usage_uses_fallback_max_bytes() -> None:
     data = {
         "streams": [
             {
-                "name": "LYRA_OUTBOUND_AUDIO",
+                "name": "FACTORY_OUTBOUND_AUDIO",
                 "config": {},  # no max_bytes
                 "state": {"bytes": 100},
             }

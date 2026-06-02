@@ -1,6 +1,6 @@
 """TurnWriter — JetStream subscriber that persists turn events to SQLite.
 
-Consumes `lyra.turns.write` and dispatches per-kind handlers. Each handler
+Consumes `factory.turns.write` and dispatches per-kind handlers. Each handler
 implements its own idempotence strategy (UNIQUE constraint catch, INSERT OR
 IGNORE, high-water mark + processed_events catch).
 
@@ -36,7 +36,7 @@ _FETCH_TIMEOUT = 5.0  # seconds — short to keep the loop responsive
 
 
 class TurnWriter:
-    """Subscribe to lyra.turns.write, persist via TurnStore mutators.
+    """Subscribe to factory.turns.write, persist via TurnStore mutators.
 
     The writer runs as a long-lived task. `start()` subscribes and spawns the
     consume loop; `stop()` cancels and drains. Call `ensure_stream` and
@@ -58,7 +58,7 @@ class TurnWriter:
         self._oldest_pending: datetime | None = None
 
     async def start(self) -> None:
-        """Subscribe to LYRA_TURNS/turn-writer-v1 and begin processing.
+        """Subscribe to FACTORY_TURNS/turn-writer-v1 and begin processing.
 
         Requires ensure_stream() + ensure_consumer() to have been called first
         so the durable consumer exists before we bind.

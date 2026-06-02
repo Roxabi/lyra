@@ -12,11 +12,11 @@ from roxabi_contracts.image.subjects import per_worker_image
 
 
 def test_image_request_subject() -> None:
-    assert SUBJECTS.image_request == "lyra.image.generate.request"
+    assert SUBJECTS.image_request == "factory.image.generate.request"
 
 
 def test_image_heartbeat_subject() -> None:
-    assert SUBJECTS.image_heartbeat == "lyra.image.heartbeat"
+    assert SUBJECTS.image_heartbeat == "factory.image.heartbeat"
 
 
 def test_queue_group_constant() -> None:
@@ -24,7 +24,7 @@ def test_queue_group_constant() -> None:
 
 
 def test_per_worker_helper() -> None:
-    assert per_worker_image("w1") == "lyra.image.generate.request.w1"
+    assert per_worker_image("w1") == "factory.image.generate.request.w1"
 
 
 _UNSAFE_WORKER_IDS = [

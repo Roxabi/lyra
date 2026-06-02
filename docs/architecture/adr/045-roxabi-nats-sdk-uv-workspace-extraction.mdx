@@ -151,7 +151,7 @@ Until a trigger fires, colocation with ADR-044 is strictly more valuable than Py
 | Issue | Blocker? | Status | Reason |
 |---|---|---|---|
 | #705 | Yes | Done | `queue_groups.py:9` imports `Platform` from `lyra.core.message` — must be decoupled before extraction |
-| #706 | Yes | Done | Per-role NATS nkeys + subject ACLs — without them, plugins installing the SDK inherit the hub nkey and can publish to `lyra.inbound.*` |
+| #706 | Yes | Done | Per-role NATS nkeys + subject ACLs — without them, plugins installing the SDK inherit the hub nkey and can publish to `factory.inbound.*` |
 | #707 | No | — | `contract_version` inbound validation (follow-up, non-blocking) |
 | #708 | No | — | `O_NOFOLLOW` on `NATS_CA_CERT` path (follow-up, non-blocking) |
 
@@ -217,7 +217,7 @@ This ADR absorbs the decisions from the following superseded ADRs (2026-05-08 co
 8. Shutdown — on SIGTERM/SIGINT: stop listeners, call `adapter.close()`, stop `inbound_bus`, close `nc`.
 
 **Rejected patterns (physically realized in code):**
-- `lyra.outbound.stream.*` subject hierarchy — rejected; all outbound flows on `lyra.outbound.{platform}.{bot_id}` with `stream_id` multiplexing.
+- `factory.outbound.stream.*` subject hierarchy — rejected; all outbound flows on `factory.outbound.{platform}.{bot_id}` with `stream_id` multiplexing.
 - `NatsOutboundEnvelope.original_msg` — rejected; listener maintains a local `_cache` dict keyed by `msg_id`.
 
 ### ADR-040 — NATS Messaging Architecture Review (9-Finding Issues Table)
@@ -255,9 +255,9 @@ Systematic structural review of the NATS layer. Key findings and resolution stat
 
 | Domain | Subjects | Queue group | lyra nkey identity | Satellite adapter module | Status |
 |---|---|---|---|---|---|
-| STT | `lyra.voice.stt.request`, `lyra.voice.stt.heartbeat` | `STT_WORKERS` | `stt-adapter` | `voicecli/src/voicecli/nats/stt_adapter.py` | Partial |
-| TTS | `lyra.voice.tts.request`, `lyra.voice.tts.heartbeat` | `TTS_WORKERS` | `tts-adapter` | `voicecli/src/voicecli/nats/tts_adapter.py` | Partial |
-| Image | `lyra.image.generate.request`, `lyra.image.heartbeat` | `IMAGE_WORKERS` | `image-worker` | `imagecli/src/imagecli/nats/adapter.py` | Shipped |
+| STT | `factory.voice.stt.request`, `factory.voice.stt.heartbeat` | `STT_WORKERS` | `stt-adapter` | `voicecli/src/voicecli/nats/stt_adapter.py` | Partial |
+| TTS | `factory.voice.tts.request`, `factory.voice.tts.heartbeat` | `TTS_WORKERS` | `tts-adapter` | `voicecli/src/voicecli/nats/tts_adapter.py` | Partial |
+| Image | `factory.image.generate.request`, `factory.image.heartbeat` | `IMAGE_WORKERS` | `image-worker` | `imagecli/src/imagecli/nats/adapter.py` | Shipped |
 | Memory | TBD — requires contract ADR | TBD | TBD | `roxabi-vault` TBD | TBD |
 
 **Satellite grep-gate enforcement pattern:**

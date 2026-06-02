@@ -3,7 +3,7 @@
 ## Purpose
 
 Sole writer to `turns.db` post-refactor (#1331). Subscribes to
-`lyra.turns.write` JetStream subject and persists turn events via
+`factory.turns.write` JetStream subject and persists turn events via
 `TurnStore` private mutators.
 
 ## ADR
@@ -15,7 +15,7 @@ ADR-075 authorises this sublayer (axial: `stage-of-pipeline` →
 
 - **Sole writer**: only this subsystem mutates `turns.db`. Hub + adapters
   mount the file read-only (per `deploy/quadlet/factory-hub.container` T26).
-- **Durable consumer**: `LYRA_TURNS` stream + `turn-writer-v1` consumer
+- **Durable consumer**: `FACTORY_TURNS` stream + `turn-writer-v1` consumer
   with AckExplicit, AckWait=60s, MaxDeliver=5, MaxAge=24h, WorkQueue
   retention. Horizontal scaling via shared durable name (queue group
   semantics; `queue_group` on pull consumers is not supported by nats-py
@@ -36,8 +36,8 @@ ADR-075 authorises this sublayer (axial: `stage-of-pipeline` →
 Runs as its own systemd unit: `factory-turn-writer.container`. Entry point:
 `factory turn-writer` CLI subcommand → `_bootstrap_turn_writer_standalone`.
 
-NATS user: `turn-writer` (subscribes `lyra.turns.>`, publishes _INBOX.>
-for ACK path, JetStream API scoped to `LYRA_TURNS` + `turn-writer-v1`
+NATS user: `turn-writer` (subscribes `factory.turns.>`, publishes _INBOX.>
+for ACK path, JetStream API scoped to `FACTORY_TURNS` + `turn-writer-v1`
 only — see `deploy/nats/auth.conf`).
 
 ## Stream / consumer bootstrap
@@ -59,4 +59,4 @@ process start).
 - ¬add a second writer of `turns.db` anywhere in the tree
 - ¬expose public mutators on TurnStore (would re-open the duplication N×M trap)
 - ¬change ack semantics without re-running the crash-recovery test (SC-8)
-- ¬widen the NATS user's JetStream API allow-list beyond LYRA_TURNS
+- ¬widen the NATS user's JetStream API allow-list beyond FACTORY_TURNS

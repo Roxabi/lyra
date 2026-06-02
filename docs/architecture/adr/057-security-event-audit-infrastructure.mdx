@@ -57,7 +57,7 @@ Three design forces are in tension:
 **Option B** is adopted.
 
 - `lyra.core.cli.audit_sink.AuditSink` — `Protocol` with a single `async emit(SecurityEvent) -> None` method. This is the port.
-- `lyra.infrastructure.audit.JetStreamAuditSink` — concrete adapter; publishes to NATS JetStream stream `LYRA_AUDIT`; falls back to `lyra.security` logger when degraded.
+- `lyra.infrastructure.audit.JetStreamAuditSink` — concrete adapter; publishes to NATS JetStream stream `FACTORY_AUDIT`; falls back to `lyra.security` logger when degraded.
 - `SecurityEvent` is a pure Pydantic model in `roxabi_contracts.audit`, inheriting `ContractEnvelope`. No transport imports.
 - `CliPool` accepts `audit_sink: AuditSink | None` at construction time. `None` disables auditing without a code branch inside the pool.
 - Fire-and-forget emission via `asyncio.create_task()` anchored in `CliPool._audit_tasks: set[asyncio.Task[None]]` with a done-callback discard — prevents GC collection before completion.
@@ -66,8 +66,8 @@ Three design forces are in tension:
 
 | Field | Value | Rationale |
 |-------|-------|-----------|
-| Name | `LYRA_AUDIT` | Distinct stream for audit; segregated from operational messages |
-| Subjects | `lyra.audit.>` | Wildcard; accommodates future event kinds under this hierarchy |
+| Name | `FACTORY_AUDIT` | Distinct stream for audit; segregated from operational messages |
+| Subjects | `factory.audit.>` | Wildcard; accommodates future event kinds under this hierarchy |
 | Retention | `LIMITS` | Bounded by age and size; not work-queue semantics |
 | Storage | `FILE` | Survives NATS server restart |
 | Max age | 90 days | Compliance window; operator may override |
@@ -76,9 +76,9 @@ Three design forces are in tension:
 
 ### Subject naming
 
-Current publication subject: `lyra.audit.security`.
+Current publication subject: `factory.audit.security`.
 
-A future revision should adopt `lyra.audit.security.<pool_id>.<agent_name>` to enable
+A future revision should adopt `factory.audit.security.<pool_id>.<agent_name>` to enable
 server-side JetStream consumer filter expressions. The stream wildcard already covers
 this; only the publish call in `JetStreamAuditSink.emit()` needs updating when that
 filtering use case arises.
@@ -86,7 +86,7 @@ filtering use case arises.
 ### Lifecycle
 
 `JetStreamAuditSink.provision(nc)` is called at bootstrap after the NATS connection
-is established and before `build_cli_pool()`. This ensures the `LYRA_AUDIT` stream
+is established and before `build_cli_pool()`. This ensures the `FACTORY_AUDIT` stream
 exists before any subprocess spawns. On shutdown, a `drain()` method (to be added)
 must be called before `nc.close()` to flush in-flight `_audit_tasks`; without it,
 events emitted in the final seconds of operation may be silently dropped.

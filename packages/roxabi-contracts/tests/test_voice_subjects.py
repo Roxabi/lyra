@@ -14,19 +14,19 @@ from roxabi_contracts.voice.subjects import per_worker_stt, per_worker_tts
 
 
 def test_tts_request_subject() -> None:
-    assert SUBJECTS.tts_request == "lyra.voice.tts.request"
+    assert SUBJECTS.tts_request == "factory.voice.tts.request"
 
 
 def test_tts_heartbeat_subject() -> None:
-    assert SUBJECTS.tts_heartbeat == "lyra.voice.tts.heartbeat"
+    assert SUBJECTS.tts_heartbeat == "factory.voice.tts.heartbeat"
 
 
 def test_stt_request_subject() -> None:
-    assert SUBJECTS.stt_request == "lyra.voice.stt.request"
+    assert SUBJECTS.stt_request == "factory.voice.stt.request"
 
 
 def test_stt_heartbeat_subject() -> None:
-    assert SUBJECTS.stt_heartbeat == "lyra.voice.stt.heartbeat"
+    assert SUBJECTS.stt_heartbeat == "factory.voice.stt.heartbeat"
 
 
 def test_queue_group_constants() -> None:
@@ -35,8 +35,8 @@ def test_queue_group_constants() -> None:
 
 
 def test_per_worker_helpers() -> None:
-    assert per_worker_tts("w1") == "lyra.voice.tts.request.w1"
-    assert per_worker_stt("w2") == "lyra.voice.stt.request.w2"
+    assert per_worker_tts("w1") == "factory.voice.tts.request.w1"
+    assert per_worker_stt("w2") == "factory.voice.stt.request.w2"
 
 
 _UNSAFE_WORKER_IDS = [

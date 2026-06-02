@@ -1,6 +1,6 @@
 """Tests for roxabi_contracts.verify subjects + deny-probe helper.
 
-``lyra.verify.deny`` is a reserved sentinel (ungranted negative-control probe).
+``factory.verify.deny`` is a reserved sentinel (ungranted negative-control probe).
 These tests pin the canonical prefix and the helper's validation boundaries.
 """
 
@@ -16,8 +16,8 @@ from roxabi_contracts.verify import SUBJECTS, verify_deny
 
 
 def test_deny_prefix_canonical() -> None:
-    """SUBJECTS.deny_prefix is the canonical lyra.verify.deny literal."""
-    assert SUBJECTS.deny_prefix == "lyra.verify.deny"
+    """SUBJECTS.deny_prefix is the canonical factory.verify.deny literal."""
+    assert SUBJECTS.deny_prefix == "factory.verify.deny"
 
 
 # ---------------------------------------------------------------------------
@@ -34,8 +34,8 @@ def test_deny_prefix_canonical() -> None:
     ],
 )
 def test_verify_deny_happy(identity: str) -> None:
-    """verify_deny produces lyra.verify.deny.<identity> for valid identity names."""
-    assert verify_deny(identity) == f"lyra.verify.deny.{identity}"
+    """verify_deny produces factory.verify.deny.<identity> for valid identity names."""
+    assert verify_deny(identity) == f"factory.verify.deny.{identity}"
 
 
 # ---------------------------------------------------------------------------

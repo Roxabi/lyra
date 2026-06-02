@@ -55,7 +55,7 @@ class NatsBus(Generic[T]):
         nc: Already-connected NATS client.
         bot_id: Default bot id for ``register()`` when no explicit one given.
         item_type: Concrete type for deserialization.
-        subject_prefix: NATS subject prefix (default: ``"lyra.inbound"``).
+        subject_prefix: NATS subject prefix (default: ``"factory.inbound"``).
         publish_only: If True, ``start()`` is no-op and ``get()`` raises.
     """
 
@@ -64,7 +64,7 @@ class NatsBus(Generic[T]):
         nc: NATS,
         bot_id: str,
         item_type: type[T],
-        subject_prefix: str = "lyra.inbound",
+        subject_prefix: str = "factory.inbound",
         *,
         staging_maxsize: int = 500,
         queue_group: str = "",

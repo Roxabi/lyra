@@ -23,8 +23,8 @@ runner = CliRunner()
 @pytest.mark.parametrize(
     ("subject", "expected"),
     [
-        ("lyra.outbound.telegram.>", "lyra.outbound.telegram.verify"),
-        ("lyra.llm.health.*", "lyra.llm.health.verify"),
+        ("factory.outbound.telegram.>", "factory.outbound.telegram.verify"),
+        ("factory.llm.health.*", "factory.llm.health.verify"),
         ("lyra.foo.*.bar", "lyra.foo.verify.bar"),
         ("lyra.simple", "lyra.simple"),
         ("_INBOX.>", "_INBOX.verify"),
@@ -121,7 +121,10 @@ def matrix_two(tmp_path: Path) -> Path:
         p,
         {
             "hub": {
-                "publish": ["lyra.outbound.telegram.>", "lyra.llm.generate.request"],
+                "publish": [
+                    "factory.outbound.telegram.>",
+                    "factory.llm.generate.request",
+                ],
                 "subscribe": [],
             },
             "monitor": {
@@ -147,8 +150,8 @@ def _patched_connect(deny_per_call: list[set[str]]) -> AsyncMock:
 
 def test_verify_all_pass(tmp_path: Path, matrix_two: Path) -> None:
     seeds = _seed_dir(tmp_path, ["hub", "monitor"])
-    # Each identity: deny only its `lyra.verify.deny.<name>` probe.
-    deny = [{"lyra.verify.deny.hub"}, {"lyra.verify.deny.monitor"}]
+    # Each identity: deny only its `factory.verify.deny.<name>` probe.
+    deny = [{"factory.verify.deny.hub"}, {"factory.verify.deny.monitor"}]
     with patch("factory.cli_ops.nats.connect", _patched_connect(deny)):
         result = runner.invoke(
             factory_app,
@@ -175,8 +178,8 @@ def test_verify_pub_failure_reports_first_offender(
     seeds = _seed_dir(tmp_path, ["hub", "monitor"])
     # Hub: deny on an *allowed* subject + the verify-deny probe.
     deny = [
-        {"lyra.outbound.telegram.verify", "lyra.verify.deny.hub"},
-        {"lyra.verify.deny.monitor"},
+        {"factory.outbound.telegram.verify", "factory.verify.deny.hub"},
+        {"factory.verify.deny.monitor"},
     ]
     with patch("factory.cli_ops.nats.connect", _patched_connect(deny)):
         result = runner.invoke(
@@ -191,7 +194,7 @@ def test_verify_pub_failure_reports_first_offender(
             ],
         )
     assert result.exit_code == 1
-    assert "FAIL hub pub lyra.outbound.telegram.verify" in result.stdout
+    assert "FAIL hub pub factory.outbound.telegram.verify" in result.stdout
     # Summary line still reports counts after the FAIL row.
     assert "2/3 pub checks passed" in result.stdout
     assert "2/2 deny checks passed" in result.stdout
@@ -214,12 +217,12 @@ def test_verify_deny_failure(tmp_path: Path, matrix_two: Path) -> None:
             ],
         )
     assert result.exit_code == 1
-    assert "FAIL hub deny lyra.verify.deny.hub" in result.stdout
+    assert "FAIL hub deny factory.verify.deny.hub" in result.stdout
 
 
 def test_verify_skips_when_seed_missing(tmp_path: Path, matrix_two: Path) -> None:
     seeds = _seed_dir(tmp_path, ["hub"])  # monitor.seed missing
-    deny = [{"lyra.verify.deny.hub"}]
+    deny = [{"factory.verify.deny.hub"}]
     with patch("factory.cli_ops.nats.connect", _patched_connect(deny)):
         result = runner.invoke(
             factory_app,
@@ -239,7 +242,7 @@ def test_verify_skips_when_seed_missing(tmp_path: Path, matrix_two: Path) -> Non
 
 def test_verify_only_filter(tmp_path: Path, matrix_two: Path) -> None:
     seeds = _seed_dir(tmp_path, ["hub", "monitor"])
-    deny = [{"lyra.verify.deny.monitor"}]
+    deny = [{"factory.verify.deny.monitor"}]
     with patch("factory.cli_ops.nats.connect", _patched_connect(deny)):
         result = runner.invoke(
             factory_app,
@@ -282,7 +285,7 @@ def test_verify_handles_empty_publish_list(tmp_path: Path) -> None:
     matrix = tmp_path / "matrix.json"
     _write_matrix(matrix, {"silent": {"publish": [], "subscribe": []}})
     seeds = _seed_dir(tmp_path, ["silent"])
-    deny = [{"lyra.verify.deny.silent"}]
+    deny = [{"factory.verify.deny.silent"}]
     with patch("factory.cli_ops.nats.connect", _patched_connect(deny)):
         result = runner.invoke(
             factory_app,
@@ -327,7 +330,7 @@ def test_verify_handles_post_flush_error_arrival(
 ) -> None:
     """Permission error arriving on the next event-loop tick is still caught."""
     seeds = _seed_dir(tmp_path, ["hub", "monitor"])
-    deny = [{"lyra.verify.deny.hub"}, {"lyra.verify.deny.monitor"}]
+    deny = [{"factory.verify.deny.hub"}, {"factory.verify.deny.monitor"}]
     iterator = iter(deny)
 
     async def _factory(url, **kwargs):  # noqa: ARG001

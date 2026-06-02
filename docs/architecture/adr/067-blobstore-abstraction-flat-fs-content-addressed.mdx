@@ -174,7 +174,7 @@ All consumers speak the same `BlobStore` Protocol; the concrete impl is injected
 |---|---|---|
 | `put(bytes, mime?, ...)` → `BlobRef` | `PUT /blobs` (Content-Type: mime) | body=bytes → `{store_key, content_hash, size, …}` |
 | `get(store_key)` → bytes | `GET /blobs/<store_key>` | streams response body |
-| `exists(store_key)` → bool | `HEAD /blobs/<store_key>` (auth: bearer; audit: `lyra.audit.blobs.exists`) | server resolves `content_hash` via ≤2 SQLite SELECTs (store_path lookup + content_hash fallback); 0 calls to `store.exists()` → 200 / 401 / 404 |
+| `exists(store_key)` → bool | `HEAD /blobs/<store_key>` (auth: bearer; audit: `factory.audit.blobs.exists`) | server resolves `content_hash` via ≤2 SQLite SELECTs (store_path lookup + content_hash fallback); 0 calls to `store.exists()` → 200 / 401 / 404 |
 | `delete(store_key)` | `DELETE /blobs/<store_key>` | 204 |
 | (v2 — #1334) `put_multipart(stream)` | `POST /blobs/multipart` + `PUT /blobs/multipart/<id>/<part>` + `POST /blobs/multipart/<id>/complete` | S3-compat multipart flow |
 | (v2 — #1334) `get_stream(store_key)` | `GET /blobs/<store_key>` with `Range:` header support | chunked transfer |
@@ -196,7 +196,7 @@ Per ADR-068, `store_key` is opaque to the client: never assume FS-path semantics
 - **Mechanism:** single shared bearer token. HTTP header `Authorization: Bearer <tok>`.
 - **Storage:** Podman secret `lyra_blobstore_token`, `type=mount` (per ADR-054 secret hardening — NOT `type=env`).
 - **Rotation:** manual via `podman secret create` + `systemctl --user restart lyra-blobstore.service`.
-- **Audit (Phase-2-compatible from day one):** blobstore emits `{subject, op, store_key, ts, result}` to `LYRA_AUDIT` JetStream stream (β pattern, ADR-068). Phase 1 emits `subject = "service:<token_holder>"`; Phase 2 emits real `agent/<id>` or `user/<id>` — no schema change at the boundary.
+- **Audit (Phase-2-compatible from day one):** blobstore emits `{subject, op, store_key, ts, result}` to `FACTORY_AUDIT` JetStream stream (β pattern, ADR-068). Phase 1 emits `subject = "service:<token_holder>"`; Phase 2 emits real `agent/<id>` or `user/<id>` — no schema change at the boundary.
 - **Limitations** (acceptable for Phase 1, trigger for Phase 2 if violated):
   - No per-identity scoping (read = write, all blobs accessible to any token-holder).
   - No per-{agent, user} audit attribution (only the service is identified).

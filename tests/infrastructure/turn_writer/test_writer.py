@@ -471,7 +471,7 @@ async def test_consume_loop_nacks_on_log_turn_db_failure(
     done_event = asyncio.Event()
 
     mock_msg = MagicMock()
-    mock_msg.subject = "lyra.turns.write"
+    mock_msg.subject = "factory.turns.write"
     mock_msg.data = (
         TurnWriteEvent(
             contract_version=CONTRACT_VERSION,

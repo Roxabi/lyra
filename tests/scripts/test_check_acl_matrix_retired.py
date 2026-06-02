@@ -236,7 +236,7 @@ class TestRetiredInFlows:
                 {
                     "requester": "hub",
                     "responder": "voice-tts",
-                    "subject": "lyra.voice.tts.request.>",
+                    "subject": "factory.voice.tts.request.>",
                 },
             ],
             "identities": {

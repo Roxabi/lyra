@@ -14,7 +14,7 @@
 #
 # Troubleshooting:
 #   If you see "Permissions Violation" in the broker log: check that the inbox
-#   subject (_INBOX.>) and the request subject (lyra.llm.generate.request) are
+#   subject (_INBOX.>) and the request subject (factory.llm.generate.request) are
 #   both in the canonical ACL allow-list. See docs/architecture/messaging.md § ACL.
 #
 # Requires: nats CLI, jq
@@ -110,7 +110,7 @@ echo "[smoke_llm_e2e] request_id=${REQUEST_ID} timeout=${TIMEOUT}s" >&2
 # F3: capture stderr separately so nats exit codes surface and creds are scrubbed
 REPLY_ERR=$(mktemp)
 trap 'rm -f "$REPLY_ERR"' EXIT
-if ! REPLY="$(nats req lyra.llm.generate.request "$PAYLOAD" --timeout="${TIMEOUT}s" --server "$NATS_URL" 2>"$REPLY_ERR")"; then
+if ! REPLY="$(nats req factory.llm.generate.request "$PAYLOAD" --timeout="${TIMEOUT}s" --server "$NATS_URL" 2>"$REPLY_ERR")"; then
     echo "[smoke_llm_e2e] FAIL — nats req exited non-zero" >&2
     sed 's|nats://[^:]*:[^@]*@|nats://***:***@|g' "$REPLY_ERR" >&2
     exit 1

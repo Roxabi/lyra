@@ -21,15 +21,15 @@ class _Subjects:
     rather than silently returning None (cf. ADR-049 §API ergonomics).
 
     Each field is typed as a ``Literal[...]`` — a typo in the default
-    value (e.g. ``"lyra.image.generate.reuqest"``) fails type-checking
+    value (e.g. ``"factory.image.generate.reuqest"``) fails type-checking
     independently of the runtime string-equality assertions in
     ``tests/test_image_subjects.py``.
     """
 
-    image_request: Literal["lyra.image.generate.request"] = (
-        "lyra.image.generate.request"
+    image_request: Literal["factory.image.generate.request"] = (
+        "factory.image.generate.request"
     )
-    image_heartbeat: Literal["lyra.image.heartbeat"] = "lyra.image.heartbeat"
+    image_heartbeat: Literal["factory.image.heartbeat"] = "factory.image.heartbeat"
     image_workers: Literal["image_workers"] = "image_workers"
 
 
@@ -37,7 +37,7 @@ SUBJECTS = _Subjects()
 
 
 def per_worker_image(worker_id: str) -> str:
-    """Per-worker image request subject: ``lyra.image.generate.request.{worker_id}``.
+    """Per-worker image request subject: ``factory.image.generate.request.{worker_id}``.
 
     Raises ``ValueError`` if ``worker_id`` contains characters outside
     ``[A-Za-z0-9_-]`` — see ``validate_worker_id``.

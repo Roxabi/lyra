@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Smoke test for lyra → imagecli image-domain round-trip.
 
-Publishes one lyra.image.generate.request and asserts ok:true on the reply.
+Publishes one factory.image.generate.request and asserts ok:true on the reply.
 Run on Machine 1 (hub host) after imagecli_gen is RUNNING under the new
 image-worker nkey. Capture stdout as rollout evidence:
 

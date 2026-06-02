@@ -37,7 +37,7 @@ Security boundary semantics UNCHANGED: `SanitizedError.message` still never carr
 ## WorkScope (#1393)
 
 `WorkScope` is a frozen dataclass whose `platform` and `bot_id` fields are
-interpolated directly into NATS subjects (e.g. `lyra.typing.{platform}.{bot_id}`).
+interpolated directly into NATS subjects (e.g. `factory.typing.{platform}.{bot_id}`).
 Both MUST match `^[A-Za-z0-9_-]{1,48}$`; `trace_id` MUST match
 `^[A-Za-z0-9_-]{1,128}$`. Enforced in `__post_init__` — `ValueError` on violation.
 Callers MUST NOT catch-and-ignore: a violation indicates a bug or an inbound
@@ -48,7 +48,7 @@ attack and the publish must abort, not silently downgrade.
 ## TurnPublisher (#1331)
 
 `TurnPublisher` (transport-level) publishes `TurnWriteEvent` to JetStream
-subject `lyra.turns.write`, awaiting PubAck before returning. Used by
+subject `factory.turns.write`, awaiting PubAck before returning. Used by
 pool/observer/inbound rewire (#1331) to replace direct TurnStore mutator
 calls. Required `trace_id: str` per call (non-empty; threaded from
 inbound msg.id when available, else uuid4().hex).

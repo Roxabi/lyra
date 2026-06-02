@@ -401,10 +401,10 @@ make lyra errors      # journalctl for factory-hub (errors only)
 
 What happens under the hood:
 1. The adapter (standalone process) normalizes your message into an `InboundMessage`
-2. It publishes to NATS (`lyra.inbound.<platform>.<bot_id>`)
+2. It publishes to NATS (`factory.inbound.<platform>.<bot_id>`)
 3. The Hub picks it up via its `NatsBus` subscription and resolves the routing
-4. The Hub publishes the turn to NATS (`lyra.clipool.cmd`); the `factory-clipool` worker receives it and spawns the `claude` subprocess, streaming replies back via NATS (`lyra.clipool.heartbeat`)
-5. The Hub publishes the response to NATS (`lyra.outbound.<platform>.<bot_id>`)
+4. The Hub publishes the turn to NATS (`factory.clipool.cmd`); the `factory-clipool` worker receives it and spawns the `claude` subprocess, streaming replies back via NATS (`factory.clipool.heartbeat`)
+5. The Hub publishes the response to NATS (`factory.outbound.<platform>.<bot_id>`)
 6. The `NatsOutboundListener` in the adapter process receives it and dispatches to the platform
 
 ---

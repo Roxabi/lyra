@@ -16,7 +16,7 @@ Accepted
 
 `src/lyra/core/session_helpers.py` hardcodes subprocess invocation for two external tools (web-intel scraper, vault CLI) inside Lyra's core layer. This violates the dependency rule: core defines abstractions, infrastructure implements them. Session commands (`/vault-add`, `/explain`, `/summarize`, `/search`) import directly from `session_helpers`, binding the session command layer to specific external tool implementations and their subprocess mechanics.
 
-The existing `LlmProvider` Protocol in `lyra.llm.base` (ADR-016) establishes the pattern: a Protocol in an infrastructure-adjacent module, concrete drivers in a dedicated package, wired at agent init. This decision applies the same pattern to external tool access.
+The existing `LlmProvider` Protocol in `factory.llm.base` (ADR-016) establishes the pattern: a Protocol in an infrastructure-adjacent module, concrete drivers in a dedicated package, wired at agent init. This decision applies the same pattern to external tool access.
 
 Two additional design questions arose during spec review (issue #360):
 

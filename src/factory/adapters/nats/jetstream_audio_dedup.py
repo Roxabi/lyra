@@ -10,7 +10,7 @@ Two implementations sharing the same async interface:
     JetStream KV-backed set. Survives restarts. Best-effort dedup: check-then-
     act is not atomic (separate get + put, no CAS / put-if-absent), so
     exactly-once across concurrent replicas is not guaranteed. Current single-
-    process deployment is unaffected. Uses the ``lyra_outbound_audio_sent``
+    process deployment is unaffected. Uses the ``factory_outbound_audio_sent``
     bucket provisioned by ``ensure_kv`` (TTL=900s).
 
 Interface contract (both impls must satisfy)::

@@ -65,7 +65,7 @@ Three protocol shapes were considered.
 
 ### Option A: Persistent outbound subject + streaming envelope (recommended)
 
-Each `RenderEvent` is published as one NATS message on `lyra.outbound.{platform}.{bot_id}`
+Each `RenderEvent` is published as one NATS message on `factory.outbound.{platform}.{bot_id}`
 (ADR-035 Tier 1). Messages carry a `NatsChunkEnvelope` that identifies the logical stream,
 enforces ordering, and marks termination.
 
@@ -134,7 +134,7 @@ streaming UX regression it causes.
 
 ### `NatsChunkEnvelope`
 
-Published on `lyra.outbound.{platform}.{bot_id}` (one message per `RenderEvent`):
+Published on `factory.outbound.{platform}.{bot_id}` (one message per `RenderEvent`):
 
 ```typescript
 interface NatsChunkEnvelope {
@@ -236,7 +236,7 @@ Reserved error codes:
 
 ### `NatsInboundEnvelope`
 
-Published on `lyra.inbound.{platform}.{bot_id}` by Adapters (informational, not part
+Published on `factory.inbound.{platform}.{bot_id}` by Adapters (informational, not part
 of this ADR — specified in Slice C implementation):
 
 ```typescript
@@ -350,10 +350,10 @@ When implementing NatsBus in Slice C2:
    - Wrap each `RenderEvent` in `NatsChunkEnvelope` with monotonically incrementing
      `seq`.
    - Set `done=True` on the last chunk (the `TextRenderEvent(is_final=True)`).
-   - Publish all chunks to `lyra.outbound.{platform}.{bot_id}` via `nc.publish()`.
+   - Publish all chunks to `factory.outbound.{platform}.{bot_id}` via `nc.publish()`.
 
 2. **Adapter side (stream reassembly):**
-   - Subscribe to `lyra.outbound.{platform}.{bot_id}`.
+   - Subscribe to `factory.outbound.{platform}.{bot_id}`.
    - Route incoming envelopes to per-`stream_id` queues (an `asyncio.Queue` per
      active stream).
    - In the consumer coroutine: `async for envelope in stream_queue` → deserialize

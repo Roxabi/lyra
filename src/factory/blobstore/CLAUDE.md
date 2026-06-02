@@ -52,7 +52,7 @@ Auth middleware **allowlist** (bypass bearer check): `/healthz`, `/metrics`.
 ## Audit semantics
 
 Every op (PUT / GET / HEAD / DELETE) emits a `BlobAuditEvent` on
-`lyra.audit.blobs.{op}` — **including 401s** (subject `"anonymous"`, result
+`factory.audit.blobs.{op}` — **including 401s** (subject `"anonymous"`, result
 `"unauthorized"`). If NATS publish fails, sink degrades to lyra.security logger.
 
 `BlobAuditEvent` defined in `packages/roxabi-contracts/src/roxabi_contracts/audit/blobs.py`.

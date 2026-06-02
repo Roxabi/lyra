@@ -122,7 +122,7 @@ async def test_send_publishes_to_correct_subject() -> None:
 
     nc.publish.assert_awaited_once()
     _subject, _payload = nc.publish.call_args.args
-    assert _subject == "lyra.outbound.telegram.main"
+    assert _subject == "factory.outbound.telegram.main"
 
 
 @pytest.mark.asyncio
@@ -206,7 +206,7 @@ async def test_send_streaming_subject_is_single_outbound_subject() -> None:
         ),
     )
 
-    expected = "lyra.outbound.telegram.main"
+    expected = "factory.outbound.telegram.main"
     for call in nc.publish.call_args_list:
         subject, _ = call.args
         assert subject == expected
@@ -376,7 +376,7 @@ async def test_render_attachment_publishes_to_outbound_subject() -> None:
 
     nc.publish.assert_awaited_once()
     subject, payload = nc.publish.call_args.args
-    assert subject == "lyra.outbound.telegram.main"
+    assert subject == "factory.outbound.telegram.main"
 
     envelope = json.loads(payload.decode("utf-8"))
     assert envelope["type"] == "attachment"
@@ -410,7 +410,7 @@ async def test_render_audio_publishes_to_nats() -> None:
     js = nc.jetstream()
     js.publish.assert_awaited_once()
     subject, payload = js.publish.await_args.args
-    assert subject == "lyra.outbound.audio.telegram.main"
+    assert subject == "factory.outbound.audio.telegram.main"
     data = json.loads(payload)
     assert data["type"] == "audio"
     assert data["stream_id"] == "msg-audio"
@@ -429,7 +429,7 @@ async def test_render_audio_publish_subject_and_header() -> None:
 
     Asserts:
     - js.publish is called (not nc.publish)
-    - subject is lyra.outbound.audio.<platform>.<bot_id>
+    - subject is factory.outbound.audio.<platform>.<bot_id>
     - Nats-Msg-Id header == inbound.id (stream_id)
     - PubAck is awaited (js.publish is awaited, not fire-and-forget)
     """
@@ -448,7 +448,7 @@ async def test_render_audio_publish_subject_and_header() -> None:
     subj, _payload = call.args
     headers = call.kwargs.get("headers") or {}
 
-    assert subj == "lyra.outbound.audio.telegram.bot1"
+    assert subj == "factory.outbound.audio.telegram.bot1"
     assert headers.get("Nats-Msg-Id") == "stream-123"
     # nc.publish (core, at-most-once) must NOT be called
     nc.publish.assert_not_awaited()
@@ -484,7 +484,7 @@ async def test_render_audio_puback_fail_dispatches_notification() -> None:
     # (a) notification dispatched via legacy text subject
     nc.publish.assert_awaited_once()
     notif_subject, notif_payload_bytes = nc.publish.await_args.args
-    assert notif_subject == "lyra.outbound.telegram.main"
+    assert notif_subject == "factory.outbound.telegram.main"
 
     notif_data = json.loads(notif_payload_bytes)
     assert notif_data["type"] == "send"
@@ -516,7 +516,7 @@ async def test_render_audio_puback_fail_timeout_dispatches_notification() -> Non
 
     nc.publish.assert_awaited_once()
     notif_subject, _ = nc.publish.await_args.args
-    assert notif_subject == "lyra.outbound.telegram.main"
+    assert notif_subject == "factory.outbound.telegram.main"
 
 
 @pytest.mark.asyncio
@@ -684,7 +684,7 @@ async def test_publish_stream_errors_publishes_for_active() -> None:
     # One publish call per active stream_id
     assert nc.publish.await_count == 2
 
-    subject = f"lyra.outbound.{proxy._platform.value}.{proxy._bot_id}"
+    subject = f"factory.outbound.{proxy._platform.value}.{proxy._bot_id}"
     published_envelopes = []
     for call in nc.publish.call_args_list:
         call_subject, call_payload = call.args

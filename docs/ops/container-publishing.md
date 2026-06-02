@@ -239,7 +239,7 @@ logs on still-old receivers and may drop events silently.
 | `factory-discord` | `ghcr.io/roxabi/factory:<tag>` |
 
 `factory-clipool` is intentionally **excluded** from the schema-floor restart sequence — it is on
-the LLM-driver path (`lyra.clipool.cmd`), not a `RenderEvent` receiver, and does not participate
+the LLM-driver path (`factory.clipool.cmd`), not a `RenderEvent` receiver, and does not participate
 in the schema handshake. This omission is deliberate; do not add it back when reading the generic
 "M₁ manual pull + restart" pattern above.
 

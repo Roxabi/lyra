@@ -67,12 +67,12 @@ async def _provision_nats(app: FastAPI, nc: NATS) -> None:
     js = nc.jetstream()  # provision() succeeded — JetStream is available
     try:
         try:
-            kv = await js.key_value("lyra-state")
+            kv = await js.key_value("factory-state")
         except BucketNotFoundError:
             from nats.js.api import KeyValueConfig, StorageType
 
             kv = await js.create_key_value(
-                KeyValueConfig(bucket="lyra-state", storage=StorageType.FILE)
+                KeyValueConfig(bucket="factory-state", storage=StorageType.FILE)
             )
         await kv.put("blobstore.ready", b"true")
         _log.info("Blobstore KV ready announced")

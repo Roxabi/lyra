@@ -24,8 +24,6 @@ layers =
 ignore_imports =
     # Downward TYPE_CHECKING imports (ADR-048 transition) — DEBT:importlinter-adr048-transition
     factory.core.agent.agent_refiner -> factory.infrastructure.stores.agent_store
-    factory.core.auth.authenticator -> factory.infrastructure.stores.auth_store
-    factory.core.auth.authenticator -> factory.infrastructure.stores.identity_alias_store
     factory.core.agent.agent -> factory.infrastructure.stores.agent_store
     factory.core.memory.memory -> factory.infrastructure.stores.identity_alias_store
     factory.core.hub.hub -> factory.infrastructure.stores.identity_alias_store

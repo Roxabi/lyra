@@ -134,7 +134,7 @@ T+0:08  Start voicecli workers
           systemctl --user start voicecli-tts.service voicecli-stt.service
 
 T+0:09  Verify
-          systemctl --user status 'lyra-*.service' 'voicecli-*.service' --no-pager | grep -E 'Active|Main PID'
+          systemctl --user status 'factory-*.service' 'voicecli-*.service' --no-pager | grep -E 'Active|Main PID'
           journalctl --user --since "2 min ago" | grep -iE 'nats|connect|auth|error' | grep -v debug
 
 T+0:10  Smoke test
@@ -156,7 +156,7 @@ sudo cp /etc/nats/nkeys/auth.conf /root/auth.conf.bak-$(date +%Y%m%d)
 # Verify final state
 podman network ls       # roxabi.network only (no lyra.network, no voicecli.network)
 podman secret ls        # factory-nats-auth, lyra-nkey-*, voicecli-nats-{tts,stt}
-systemctl --user list-units 'lyra-*' 'voicecli-*'
+systemctl --user list-units 'factory-*' 'voicecli-*'
 sudo systemctl status nats.service    # inactive (disabled)
 ```
 
@@ -166,7 +166,7 @@ Bots are already stopped at this point — rollback is purely recovery; no user-
 
 ```bash
 # 1. Stop any partially-started Quadlet units
-systemctl --user stop 'lyra-*' 'voicecli-*'
+systemctl --user stop 'factory-*' 'voicecli-*'
 
 # 2. Restore old nats.container from git
 git show HEAD~1:deploy/quadlet/nats.container > /tmp/nats.container

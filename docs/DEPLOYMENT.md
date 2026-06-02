@@ -26,7 +26,7 @@ Machine 1 (roxabituwer, 192.168.1.16)
 │   ├── factory-nats.container
 │   ├── factory-gh-helper.container
 │   ├── factory-gh.pod
-│   └── lyra-*.volume
+│   └── factory-*.volume
 ├── config: ~/projects/roxabi-factory/config.toml
 ├── credentials: ~/.roxabi/factory/config.db (bot config) + Podman secrets (bot tokens)
 ├── nkey seeds: ~/.roxabi/factory/nkeys/*.seed
@@ -280,7 +280,7 @@ loginctl enable-linger $USER
 systemctl --user enable --now podman-auto-update.timer
 
 # Check all Lyra unit statuses
-systemctl --user status 'lyra-*.service' factory-nats.service
+systemctl --user status 'factory-*.service' factory-nats.service
 
 # View journald logs
 journalctl --user -u factory-hub --no-pager -n 50

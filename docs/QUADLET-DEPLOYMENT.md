@@ -46,7 +46,7 @@ systemctl --user start factory-nats factory-hub factory-telegram factory-discord
 uv run python deploy/nats/bootstrap_streams.py
 
 # 6. Verify
-systemctl --user status 'lyra-*'
+systemctl --user status 'factory-*'
 podman ps
 ```
 
@@ -162,7 +162,7 @@ End-to-end flow for adding a new bot:
 
 4. Verify the adapter is healthy:
    ```bash
-   systemctl --user status lyra-<platform>
+   systemctl --user status factory-<platform>
    ```
    Expected: `Active: active (running)` with `NRestarts=0`.
 
@@ -180,7 +180,7 @@ Three artefacts prevent re-introduction of the manual-splice pattern:
 
 `~/.roxabi/factory/config.toml` is Syncthing-synced across M₁, M₂, and laptop. That means `[[auth.telegram_bots]]` and `[[auth.discord_bots]]` enumerate **all bots across all hosts** in one shared file. `make quadlet-install` runs `factory bot init` first (seeds `BotStore` from `config.toml`), then `render_quadlet.py` reads from `BotStore` — so the rendered Quadlet on every host includes `Secret=` lines for every configured bot.
 
-However, Podman secrets (`factory-bot-<platform>-<bot_id>`) are **host-local** and must be installed per host. A mismatch — `config.toml` lists a bot but its Podman secret is absent — causes `systemctl --user start lyra-<platform>` to fail immediately:
+However, Podman secrets (`factory-bot-<platform>-<bot_id>`) are **host-local** and must be installed per host. A mismatch — `config.toml` lists a bot but its Podman secret is absent — causes `systemctl --user start factory-<platform>` to fail immediately:
 
 ```
 Error: looking up secret name "factory-bot-telegram-<bot_id>": no such secret
@@ -353,7 +353,7 @@ sudo mount -o remount,noatime,nodiratime /data/factory/blobs
 
 ```bash
 # Service status
-systemctl --user status 'lyra-*'
+systemctl --user status 'factory-*'
 
 # Running containers
 podman ps --filter 'name=lyra'

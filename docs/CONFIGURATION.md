@@ -312,7 +312,7 @@ Services: `claude-cli`, `telegram`, `discord`, `hub`.
 
 ## Bot credentials
 
-Bot tokens and webhook secrets are stored as **Podman secrets**, not in `~/.roxabi/factory/config.db`. Adapter containers mount these via `Secret=` directives in `deploy/quadlet/lyra-<platform>.container`; the adapter process reads each token at bootstrap from `/run/secrets/bot_token-<bot_id>` (and optionally `/run/secrets/bot_webhook-<bot_id>`).
+Bot tokens and webhook secrets are stored as **Podman secrets**, not in `~/.roxabi/factory/config.db`. Adapter containers mount these via `Secret=` directives in `deploy/quadlet/factory-<platform>.container`; the adapter process reads each token at bootstrap from `/run/secrets/bot_token-<bot_id>` (and optionally `/run/secrets/bot_webhook-<bot_id>`).
 
 ### CLI
 

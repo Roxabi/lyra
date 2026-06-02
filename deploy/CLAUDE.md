@@ -16,7 +16,7 @@ Cross-repo adoption checklist → `docs/ops/container-publishing.md § Cross-rep
 ## Unit naming convention
 
 Authoritative unit manifest: `deploy/quadlet.toml`.
-Pattern: `lyra-<component>.container` → `ContainerName=lyra-<component>` → `lyra-<component>.service`.
+Pattern: `factory-<component>.container` → `ContainerName=factory-<component>` → `factory-<component>.service`.
 Telegram and discord units are rendered from `.container.tmpl` at deploy time (bot-token injection).
 Network: all units attach to `roxabi.network` (defined in `quadlet/roxabi.network`).
 

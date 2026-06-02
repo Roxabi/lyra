@@ -68,7 +68,7 @@ If you prefer to inspect raw identity counts, the legacy manual equivalent is st
 sudo ./deploy/nats/gen-nkeys.sh --show
 # Verify seed count matches expected 10 identities.
 
-systemctl --user status 'lyra-*.service'
+systemctl --user status 'factory-*.service'
 # All units should be active (running) before you begin.
 ```
 
@@ -178,7 +178,7 @@ systemctl --user restart factory-hub.service
 After each restart, wait for the unit to reach `active (running)` state before restarting the next one:
 
 ```bash
-systemctl --user status 'lyra-*.service'
+systemctl --user status 'factory-*.service'
 # Confirm the restarted unit shows active (running) before continuing.
 ```
 
@@ -222,7 +222,7 @@ journalctl --user -u voicecli-stt --since "5 min ago" | grep -i "nats\|connected
 **6.3 Confirm unit states:**
 
 ```bash
-systemctl --user status 'lyra-*.service'
+systemctl --user status 'factory-*.service'
 ```
 
 All units should show `active (running)`. Any unit in `failed` state immediately after restart indicates an auth failure — see Rollback.

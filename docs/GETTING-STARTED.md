@@ -365,7 +365,7 @@ curl -fsS -H "Authorization: Bearer $(cat ~/.roxabi/factory/env/health_secret)" 
 
 ```bash
 cd ~/projects/roxabi-factory
-systemctl --user status 'lyra-*.service'
+systemctl --user status 'factory-*.service'
 ```
 
 You should see all eight units active:
@@ -438,7 +438,7 @@ ssh -i ~/.ssh/lyra_agent lyra@<MACHINE_1_IP> "id && git --version"
 | Agent access | `ssh -i ~/.ssh/lyra_agent lyra@<IP>` (optional) |
 | Lyra project | `~/projects/roxabi-factory/` |
 | VoiceCLI project | `~/projects/voiceCLI/` (if installed) |
-| Quadlet units | `~/.config/containers/systemd/lyra-*.container` |
+| Quadlet units | `~/.config/containers/systemd/factory-*.container` |
 | VoiceCLI Quadlet units | `~/.config/containers/systemd/voicecli-*.container` (if voiceCLI installed) |
 | Config | `~/projects/roxabi-factory/config.toml` |
 | Credentials | `~/.roxabi/factory/config.db` (bot config) + Podman secrets (bot tokens) |

@@ -86,3 +86,8 @@ quality_gates:
     enabled: true
     stage: pre-push
     script: tools/check_architecture_snapshot.sh
+
+  debt_expiry:
+    enabled: true
+    stage: pre-push
+    script: tools/check_debt_expiry.sh

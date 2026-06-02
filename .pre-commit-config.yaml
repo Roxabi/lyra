@@ -113,3 +113,10 @@ repos:
     pass_filenames: false
     stages:
     - pre-push
+  - id: check-debt-expiry
+    name: debt expiry (stale DEBT: markers without issue ref)
+    entry: tools/check_debt_expiry.sh
+    language: system
+    pass_filenames: false
+    stages:
+    - pre-push

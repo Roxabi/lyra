@@ -93,6 +93,48 @@ def test_e():
 PYEOF
 EXIT_E=$(run_gate)
 [ "$EXIT_E" -eq 0 ] && pass "E: mock sleep line → skipped, exit 0" || fail "E: mock sleep line → skipped, exit 0" "got $EXIT_E"
+rm -f "$REPO/tests/test_e.py"
+
+# --- Case F — MULTI-LINE sleep with comment on the closing ')' line → exit 0 ---
+cat > "$REPO/tests/test_f.py" << 'PYEOF'
+import asyncio
+
+
+async def test_f():
+    await asyncio.sleep(
+        0.1
+    )  # NATS delivery window
+PYEOF
+EXIT_F=$(run_gate)
+[ "$EXIT_F" -eq 0 ] && pass "F: multi-line sleep, comment on ')' → exit 0" || fail "F: multi-line sleep, comment on ')' → exit 0" "got $EXIT_F"
+rm -f "$REPO/tests/test_f.py"
+
+# --- Case G — MULTI-LINE sleep with NO comment anywhere → flagged, exit 1 ---
+cat > "$REPO/tests/test_g.py" << 'PYEOF'
+import asyncio
+
+
+async def test_g():
+    await asyncio.sleep(
+        0.1
+    )
+PYEOF
+EXIT_G=$(run_gate)
+[ "$EXIT_G" -eq 1 ] && pass "G: multi-line sleep, no comment → flagged, exit 1" || fail "G: multi-line sleep, no comment → flagged, exit 1" "got $EXIT_G"
+rm -f "$REPO/tests/test_g.py"
+
+# --- Case H — sleep() referenced only in a docstring → not a real call, exit 0 ---
+cat > "$REPO/tests/test_h.py" << 'PYEOF'
+import asyncio
+
+
+async def yield_once():
+    """Yield to the loop once. Replaces asyncio.sleep(0)."""
+    await asyncio.sleep(0)  # event-based
+PYEOF
+EXIT_H=$(run_gate)
+[ "$EXIT_H" -eq 0 ] && pass "H: docstring sleep ref + commented call → exit 0" || fail "H: docstring sleep ref + commented call → exit 0" "got $EXIT_H"
+rm -f "$REPO/tests/test_h.py"
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"

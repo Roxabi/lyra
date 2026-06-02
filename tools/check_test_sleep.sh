@@ -47,61 +47,62 @@ if [ ! -d "$SCAN_ROOT" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Scan: grep for actual sleep invocations, filter out non-invocations
+# Scan: find sleep() invocations — MULTI-LINE AWARE.
+# The sync comment may sit on ANY line of the call, e.g. on the closing ')' of a
+# multi-line  `await asyncio.sleep(\n    0.1\n)  # NATS delivery window`.
+# We walk each statement from `.sleep(` until its parentheses balance, then check
+# the whole span for the comment (and for mock/patch markers → skip).
 # ---------------------------------------------------------------------------
-FAIL=0
-VIOLATION_COUNT=0
+VIOLATIONS="$(
+    find "$SCAN_ROOT" -type f -name '*.py' -print0 2>/dev/null \
+    | xargs -0 -r awk '
+        function flush() {
+            if (!instmt) return
+            if (buf !~ /# event-based/ && buf !~ /# NATS delivery window/ \
+                && buf !~ /patch|[Mm]ock|_RL_SLEEP/)
+                printf "%s:%d\n", sfile, sline
+            instmt = 0; depth = 0; buf = ""
+        }
+        BEGIN { SQ = sprintf("%c", 39) }   # apostrophe char, for docstring detection
+        FNR == 1 { flush() }
+        {
+            if (!instmt) {
+                if ($0 ~ /(asyncio\.sleep|time\.sleep)[ \t]*\(/) {
+                    t = $0; sub(/^[ \t]+/, "", t)
+                    c1 = substr(t, 1, 1)
+                    if (c1 == "#" || c1 == "\"" || c1 == SQ) next   # comment-only / docstring line
+                    if ($0 ~ /asyncio\.sleep[ \t]*=/) next   # reassignment, not a call
+                    seg = $0; sub(/.*(asyncio\.sleep|time\.sleep)[ \t]*/, "", seg)
+                    op = seg; cl = seg
+                    depth = gsub(/\(/, "", op) - gsub(/\)/, "", cl)
+                    instmt = 1; sfile = FILENAME; sline = FNR; buf = $0
+                    if (depth <= 0) flush()                  # single-line call
+                }
+                next
+            }
+            buf = buf "\n" $0
+            op = $0; cl = $0
+            depth += gsub(/\(/, "", op) - gsub(/\)/, "", cl)
+            if (depth <= 0) flush()                          # statement closed
+        }
+        END { flush() }
+    '
+)"
 
-while IFS= read -r match; do
-    # Extract file and line content
-    file="${match%%:*}"
-    rest="${match#*:}"
-    lineno="${rest%%:*}"
-    content="${rest#*:}"
-
-    # Skip comment-only lines and docstring lines — not real invocations
-    trimmed="${content#"${content%%[![:space:]]*}"}"  # lstrip
-    case "$trimmed" in
-        "#"*|'"""'*|"'''"*) continue ;;
-    esac
-
-    # Skip mock/patch lines — these are not real sleeps
-    if echo "$content" | grep -qE 'patch|[Mm]ock|_RL_SLEEP|asyncio\.sleep\s*='; then
-        continue
-    fi
-
-    # Skip lines that already have the required comment
-    if echo "$content" | grep -qF '# event-based'; then
-        continue
-    fi
-    if echo "$content" | grep -qF '# NATS delivery window'; then
-        continue
-    fi
-
-    # Violation
-    if [ "$VIOLATION_COUNT" -eq 0 ]; then
-        echo "" >&2
-        echo "FAIL: raw sleep() calls in tests without sync comment:" >&2
-    fi
-    echo "  ${file}:${lineno}: ${content}" >&2
-    echo "::error file=${file},line=${lineno}::raw sleep() — add '# event-based' or '# NATS delivery window' comment"
-    VIOLATION_COUNT=$((VIOLATION_COUNT + 1))
-    FAIL=1
-done < <(
-    grep -rn "asyncio\.sleep(\|time\.sleep(" "$SCAN_ROOT" \
-        --include="*.py" \
-        2>/dev/null \
-    || true
-)
-
-if [ "$FAIL" -eq 0 ]; then
-    echo "check_test_sleep: no raw sleep() calls found in ${SCAN_ROOT} — OK"
-else
+if [ -n "$VIOLATIONS" ]; then
     echo "" >&2
-    echo "Found ${VIOLATION_COUNT} raw sleep() call(s) without sync comment." >&2
-    echo "Remediation: add one of the following inline comments on the same line:" >&2
-    echo "  # event-based   — event loop yield, cancellation park, or filesystem timing" >&2
-    echo "  # NATS delivery window   — waiting for NATS message propagation" >&2
+    echo "FAIL: raw sleep() calls in tests without sync comment:" >&2
+    while IFS= read -r v; do
+        [ -n "$v" ] || continue
+        echo "  ${v}" >&2
+        echo "::error file=${v%:*},line=${v##*:}::raw sleep() — add '# event-based' or '# NATS delivery window' comment"
+    done <<< "$VIOLATIONS"
+    cnt="$(printf '%s\n' "$VIOLATIONS" | grep -c .)"
+    echo "" >&2
+    echo "Found ${cnt} raw sleep() call(s) without sync comment." >&2
+    echo "Add '# event-based' or '# NATS delivery window' on any line of the call." >&2
+    exit 1
 fi
 
-exit $FAIL
+echo "check_test_sleep: no raw sleep() calls found in ${SCAN_ROOT} — OK"
+exit 0

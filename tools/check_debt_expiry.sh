@@ -106,7 +106,8 @@ for file in "${FILES[@]}"; do
 
         # Presence of a GitHub issue reference (#NNN) on the same line
         # means an active remediation path exists → skip expiry check.
-        if echo "$content" | grep -qP '#\d{1,6}\b'; then
+        # Use ERE (-E) instead of -P for portability across GNU grep and macOS BSD grep.
+        if echo "$content" | grep -qE '#[0-9]{1,6}([^0-9]|$)'; then
             continue
         fi
 

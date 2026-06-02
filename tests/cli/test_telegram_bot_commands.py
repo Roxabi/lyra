@@ -60,6 +60,7 @@ class TestTelegramList:
         )
         assert result.exit_code == 0, result.output
         assert "list" in result.output.lower()
+        assert "list all telegram bots" in result.output.lower()
 
     def test_empty_db(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
@@ -104,6 +105,7 @@ class TestTelegramShow:
         )
         assert result.exit_code == 0, result.output
         assert "bot_id" in result.output.lower()
+        assert "show full config for a telegram bot" in result.output.lower()
 
     def test_missing_bot(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
@@ -156,6 +158,7 @@ class TestTelegramAdd:
         )
         assert result.exit_code == 0, result.output
         assert "bot_id" in result.output.lower()
+        assert "add a telegram bot" in result.output.lower()
 
     def test_add_minimal(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
@@ -235,6 +238,7 @@ class TestTelegramEdit:
         )
         assert result.exit_code == 0, result.output
         assert "bot_id" in result.output.lower()
+        assert "interactively edit a telegram bot" in result.output.lower()
 
     def test_missing_bot(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
@@ -414,6 +418,7 @@ class TestTelegramPatch:
         )
         assert result.exit_code == 0, result.output
         assert "bot_id" in result.output.lower()
+        assert "patch a single field of a telegram bot" in result.output.lower()
 
     def test_missing_bot(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
@@ -573,6 +578,7 @@ class TestTelegramRemove:
         )
         assert result.exit_code == 0, result.output
         assert "bot_id" in result.output.lower()
+        assert "remove a telegram bot" in result.output.lower()
 
     def test_missing_bot(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
@@ -650,6 +656,7 @@ class TestTelegramAssign:
         )
         assert result.exit_code == 0, result.output
         assert "bot_id" in result.output.lower()
+        assert "assign an agent to a telegram bot" in result.output.lower()
 
     def test_missing_bot(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
@@ -689,6 +696,7 @@ class TestTelegramUnassign:
         )
         assert result.exit_code == 0, result.output
         assert "bot_id" in result.output.lower()
+        assert "unassign the agent from a telegram bot" in result.output.lower()
 
     def test_missing_bot(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
@@ -724,6 +732,7 @@ class TestTelegramValidate:
         )
         assert result.exit_code == 0, result.output
         assert "bot_id" in result.output.lower()
+        assert "validate a telegram bot configuration" in result.output.lower()
 
     def test_missing_bot(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))

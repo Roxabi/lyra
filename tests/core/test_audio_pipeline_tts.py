@@ -301,7 +301,7 @@ class TestDispatchResponseAgentTTSE2E:
         await hub.dispatch_response(msg, Response(content="Hi there"))
 
         # Wait briefly for the background TTS task to complete
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.1)  # event-based
 
         # Assert — synthesize was called with the agent's tts config
         mock_tts.synthesize.assert_awaited()
@@ -596,7 +596,7 @@ class TestDispatchStreamingTTSFallback:
         # Act
         await hub.dispatch_streaming(msg, _fake_chunks())
         # Allow background TTS task to complete
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.1)  # event-based
 
         # Assert - dispatch_response must NOT be called (#621)
         hub.dispatch_audio.assert_not_awaited()

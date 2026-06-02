@@ -130,7 +130,7 @@ async def test_daemon_binds_socket_and_serves(
 
     # Wait for socket to materialise (bounded).
     for _ in range(20):
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.05)  # event-based
         if sock_path.exists():
             break
     assert sock_path.exists(), "dispenser socket did not appear within 1s"
@@ -233,7 +233,7 @@ async def test_daemon_unlinks_stale_socket_on_start(
 
     task = asyncio.create_task(run_daemon(cfg))
     for _ in range(20):
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.05)  # event-based
         if sock_path.exists() and stat.S_ISSOCK(sock_path.stat().st_mode):
             # We need the NEW socket bound by the daemon — confirm by
             # successfully connecting.

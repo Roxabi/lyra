@@ -86,7 +86,7 @@ class TestCollect:
         inbox.put_nowait(m1)
 
         async def _delay_put() -> None:
-            await asyncio.sleep(0.15)  # well after 50ms window
+            await asyncio.sleep(0.15)  # event-based — well after 50ms window
             inbox.put_nowait(m2)
 
         asyncio.create_task(_delay_put())

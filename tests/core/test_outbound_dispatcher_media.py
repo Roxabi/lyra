@@ -51,7 +51,7 @@ class TestOutboundDispatcherAudio:
                 blob_ref=make_test_blobref(b"fake-ogg"), mime_type="audio/ogg"
             )
             dispatcher.enqueue_audio(inbound, audio)
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
             adapter.render_audio.assert_awaited_once_with(audio, inbound)
             assert cb._state == CircuitState.CLOSED
         finally:
@@ -73,7 +73,7 @@ class TestOutboundDispatcherAudio:
                 blob_ref=make_test_blobref(b"fake-ogg"), mime_type="audio/ogg"
             )
             dispatcher.enqueue_audio(inbound, audio)
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
             adapter.render_audio.assert_not_awaited()
             assert dispatcher.qsize() == 0
         finally:
@@ -93,7 +93,7 @@ class TestOutboundDispatcherAudio:
                 blob_ref=make_test_blobref(b"fake-ogg"), mime_type="audio/ogg"
             )
             dispatcher.enqueue_audio(inbound, audio)
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
             assert cb._failure_count >= 1
         finally:
             await dispatcher.stop()
@@ -120,7 +120,7 @@ class TestOutboundDispatcherAttachment:
             inbound = make_dispatcher_msg()
             attachment = _make_attachment()
             dispatcher.enqueue_attachment(inbound, attachment)
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
             adapter.render_attachment.assert_awaited_once_with(attachment, inbound)
             assert cb._state == CircuitState.CLOSED
         finally:
@@ -140,7 +140,7 @@ class TestOutboundDispatcherAttachment:
             inbound = make_dispatcher_msg()
             attachment = _make_attachment()
             dispatcher.enqueue_attachment(inbound, attachment)
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
             adapter.render_attachment.assert_not_awaited()
             assert dispatcher.qsize() == 0
         finally:
@@ -158,7 +158,7 @@ class TestOutboundDispatcherAttachment:
             inbound = make_dispatcher_msg()
             attachment = _make_attachment()
             dispatcher.enqueue_attachment(inbound, attachment)
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
             assert cb._failure_count >= 1
         finally:
             await dispatcher.stop()
@@ -188,7 +188,7 @@ class TestOutboundDispatcherAudioStream:
 
             it = chunks()
             dispatcher.enqueue_audio_stream(inbound, it)
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
             adapter.render_audio_stream.assert_awaited_once()
             call_args = adapter.render_audio_stream.call_args[0]
             assert call_args[0] is it
@@ -222,7 +222,7 @@ class TestOutboundDispatcherAudioStream:
                     )
 
             dispatcher.enqueue_audio_stream(inbound, chunks())
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
             adapter.render_audio_stream.assert_not_awaited()
             assert len(drained) == 3  # iterator fully consumed
 
@@ -249,7 +249,7 @@ class TestOutboundDispatcherAudioStream:
                 )
 
             dispatcher.enqueue_audio_stream(inbound, chunks())
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
             assert cb._failure_count >= 1
 
         finally:
@@ -281,7 +281,7 @@ class TestOutboundDispatcherVoiceStream:
 
             it = chunks()
             dispatcher.enqueue_voice_stream(inbound, it)
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
 
             # Assert — render_voice_stream(chunks, inbound) — chunks first
             adapter.render_voice_stream.assert_awaited_once()
@@ -318,7 +318,7 @@ class TestOutboundDispatcherVoiceStream:
                     )
 
             dispatcher.enqueue_voice_stream(inbound, chunks())
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
 
             # Assert
             adapter.render_voice_stream.assert_not_awaited()
@@ -352,7 +352,7 @@ class TestOutboundDispatcherVoiceStream:
                     )
 
             dispatcher.enqueue_voice_stream(inbound, chunks())
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(0.05)  # event-based
 
             # Assert — iterator drained, render not called
             adapter.render_voice_stream.assert_not_awaited()

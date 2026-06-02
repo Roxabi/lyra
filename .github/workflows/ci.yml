@@ -68,6 +68,9 @@ jobs:
       - name: Check file length
         run: bash tools/check_file_length.sh
 
+      - name: "Check file exemption expiry (stale exemptions without valid date)"
+        run: bash tools/check_file_exemptions.sh
+
       - name: Check qg.conf drift (stack.yml is source of truth)
         run: bash scripts/check-qg-conf-drift.sh
 
@@ -109,6 +112,9 @@ jobs:
 
       - name: "Check debt expiry (stale DEBT: markers)"
         run: bash tools/check_debt_expiry.sh
+
+      - name: "Check test sleep (raw sleep without sync comment)"
+        run: bash tools/check_test_sleep.sh
 
       - name: Enforce import layers
         run: uv run lint-imports

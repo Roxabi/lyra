@@ -44,7 +44,7 @@ def _make_sink() -> MagicMock:
 async def _drain_tasks() -> None:
     """Yield control so fire-and-forget tasks run to completion."""
     for _ in range(5):
-        await asyncio.sleep(0)
+        await asyncio.sleep(0)  # event-based
 
 
 # ---------------------------------------------------------------------------
@@ -142,7 +142,7 @@ class TestCliSpawnAuditEmit:
             await pool._spawn(_POOL_ID, _MODEL)
 
         # Task exists in the set before gate releases.
-        await asyncio.sleep(0)
+        await asyncio.sleep(0)  # event-based
         assert len(pool._audit_tasks) == 1
 
         gate.set()

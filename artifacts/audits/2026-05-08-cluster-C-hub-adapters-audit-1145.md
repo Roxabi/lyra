@@ -2,7 +2,7 @@
 
 ## Method
 
-Read all 21 cluster C ADRs (001, 003–007, 010, 013–015, 019–021, 023–024, 026, 029–031, 038–039). Cross-referenced against `src/lyra/core/hub/`, `src/lyra/core/cli/`, `src/lyra/core/agent/`, `src/lyra/core/processors/`, `src/lyra/core/messaging/`, `src/lyra/adapters/`, `src/lyra/integrations/`, `src/lyra/nats/`, `src/lyra/bootstrap/`, and `src/lyra/infrastructure/stores/`. Used the T1 audit (`artifacts/1145-adr-audit.md`) as prior for cross-cluster context. ADR-021 was already flagged as a full-archive candidate in T1; code confirms. Primary validation tools: targeted `grep` runs (~30 tool calls total for code phase).
+Read all 21 cluster C ADRs (001, 003–007, 010, 013–015, 019–021, 023–024, 026, 029–031, 038–039). Cross-referenced against `src/lyra/core/hub/`, `src/lyra/core/cli/`, `src/lyra/core/agent/`, `src/lyra/core/processors/`, `src/lyra/core/messaging/`, `src/lyra/adapters/`, `src/lyra/integrations/`, `src/lyra/nats/`, `src/lyra/bootstrap/`, and `src/lyra/infrastructure/stores/`. Used the T1 audit (`artifacts/audits/2026-05-08-adr-consolidation-audit-1145.md`) as prior for cross-cluster context. ADR-021 was already flagged as a full-archive candidate in T1; code confirms. Primary validation tools: targeted `grep` runs (~30 tool calls total for code phase).
 
 ---
 

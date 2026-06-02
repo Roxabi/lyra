@@ -29,7 +29,7 @@ async def _wait_until(predicate: Callable[[], bool], timeout: float = 5.0) -> No
     while not predicate():
         if loop.time() >= deadline:
             return
-        await asyncio.sleep(0.01)
+        await asyncio.sleep(0.01)  # NATS delivery window
 
 
 @requires_nats_server

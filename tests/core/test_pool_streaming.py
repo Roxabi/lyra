@@ -335,7 +335,7 @@ class TestPoolStreaming:
             ) -> collections.abc.AsyncIterator[TextRenderEvent]:
                 async def _gen() -> collections.abc.AsyncIterator[TextRenderEvent]:
                     yield TextRenderEvent(text="first", is_final=False)
-                    await asyncio.sleep(0.05)
+                    await asyncio.sleep(0.05)  # event-based
                     yield TextRenderEvent(text="second", is_final=True)
 
                 return _gen()

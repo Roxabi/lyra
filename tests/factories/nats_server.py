@@ -54,7 +54,7 @@ def nats_server_url() -> Generator[str, None, None]:
             with socket.create_connection(("127.0.0.1", port), timeout=0.2):
                 break
         except OSError:
-            time.sleep(0.05)
+            time.sleep(0.05)  # event-based
     else:
         proc.terminate()
         raise RuntimeError(f"nats-server did not start on port {port}")

@@ -110,7 +110,7 @@ class TestMultiBotRegistration:
             )
 
             # Allow NATS delivery
-            await asyncio.sleep(0.15)
+            await asyncio.sleep(0.15)  # NATS delivery window
 
             # Assert — staging queue received both messages
             assert subscriber.staging_qsize() == 2

@@ -1,0 +1,100 @@
+# hardcoded_constants_baseline.txt — grandfather baseline for check_hardcoded_constants.sh
+#
+# DO NOT EDIT MANUALLY. Regenerate with:
+#   bash tools/check_hardcoded_constants.sh --generate-baseline > tools/hardcoded_constants_baseline.txt
+#
+# This file grandfathers the set of hardcoded numeric constants that existed in
+# src/factory/core/ when the gate was introduced (issue #1654). It must be burned
+# down incrementally — new code MUST NOT add entries here; add a named Config
+# constant instead. Track the burn-down via the follow-up issue linked in #1654.
+#
+# SIGNATURE FORMAT: <relpath>:<normalized-line>
+#   relpath         = file path relative to repo root
+#   normalized-line = line with leading + trailing whitespace stripped
+# Line numbers are omitted so reformatting does not cause false positives.
+src/factory/core/agent/agent_builder.py:history_size=int(sr_data.get("history_size", 50)),
+src/factory/core/agent/agent_config.py:history_size: int = 50
+src/factory/core/agent/agent_config.py:_MAX_PROMPT_BYTES = 64 * 1024  # 64 KB
+src/factory/core/agent/agent_models.py:"""Construct an AgentRow from a raw aiosqlite SELECT tuple (24 columns)."""
+src/factory/core/agent/agent_models.py:"""One row from the agents table (24 columns after #1335 dropped dead column)."""
+src/factory/core/agent/agent.py:pool.user_id, ns, first_msg=first_msg, token_budget=700
+src/factory/core/agent/agent_refiner.py:self, io: TerminalIO, *, max_turns: int = 20
+src/factory/core/agent/bot_models.py:DEFAULT_THREAD_HOT_HOURS: int = 24
+src/factory/core/agent/bot_models.py:if len(row) != 11:
+src/factory/core/agent/schema/bot_schema.py:_N_BOT_COLS = 11
+src/factory/core/cli/cli_pool.py:pool = CliPool(idle_ttl=1200)
+src/factory/core/cli/cli_pool_send.py:default_timeout: int = 1200  # 20 min × 3 retries = 60 min max idle
+src/factory/core/cli/cli_pool_send.py:idle_ttl: int = 1200
+src/factory/core/cli/cli_pool_send.py:read_buffer_bytes: int = 1024 * 1024
+src/factory/core/cli/cli_pool_send.py:reaper_interval: int = 60
+src/factory/core/cli/cli_streaming_parser.py:_BUS_BOUND_MESSAGE_MAX_LEN = 200
+src/factory/core/cli/protocol/cli_non_streaming.py:default_timeout: float = 300,
+src/factory/core/cli/protocol/cli_protocol_types.py:proc: asyncio.subprocess.Process, limit: int = 512
+src/factory/core/cli/protocol/cli_streaming.py:default_timeout: float = 300,
+src/factory/core/commands/builtin_commands.py:lines.append(f"  {'cancel_on_new_message':<20} {rc.cancel_on_new_message}")
+src/factory/core/commands/builtin_commands.py:lines.append(f"  {'debounce_ms':<20} {rc.debounce_ms}")
+src/factory/core/commands/builtin_commands.py:lines.append(f"  {'extra_instructions':<20} {extra}")
+src/factory/core/commands/builtin_commands.py:lines.append(f"  {'language':<20} {rc.language}")
+src/factory/core/commands/builtin_commands.py:lines.append(f"  {'max_steps':<20} {rc.max_steps or '(model default)'}")
+src/factory/core/commands/builtin_commands.py:lines.append(f"  {'model':<20} {rc.model or '(persona default)'}")
+src/factory/core/commands/builtin_commands.py:lines.append(f"  {name:<12} {state_str}")
+src/factory/core/commands/builtin_commands.py:lines.append(f"  {'style':<20} {rc.style}")
+src/factory/core/commands/builtin_commands.py:lines.append(f"  {'temperature':<20} {rc.temperature}")
+src/factory/core/commands/builtin_commands.py:state_str = f"{status.state.value.upper():<10} (ok)"
+src/factory/core/commands/command_loader.py:priority: int = 100
+src/factory/core/commands/command_loader.py:priority=int(data.get("priority", 100)),
+src/factory/core/commands/session_commands.py:if seconds < 3600:
+src/factory/core/commands/session_commands.py:if seconds < 60:
+src/factory/core/commands/session_commands.py:if seconds < 86400:
+src/factory/core/commands/session_commands.py:_TITLE_MAX = 60
+src/factory/core/commands/session_commands.py:title = _truncate(target.get("first_user_msg"), 40)
+src/factory/core/config/bus_config.py:DEFAULT_MAXSIZE: int = 100
+src/factory/core/config/bus_config.py:DEFAULT_QUEUE_DEPTH: int = 100
+src/factory/core/config/bus_config.py:DEFAULT_STAGING_MAXSIZE: int = 500
+src/factory/core/config/dispatch_config.py:MAX_TRANSCRIPT_LEN: int = 2000
+src/factory/core/config/__init__.py:debounce_ms: int = 300  # DEFAULT_DEBOUNCE_MS
+src/factory/core/config/__init__.py:max_merged_chars: int = 4096
+src/factory/core/config/__init__.py:max_pools: int = 500  # hard cap on pool count
+src/factory/core/config/__init__.py:rate_limit: int = 20
+src/factory/core/config/__init__.py:rate_window: int = 60
+src/factory/core/config/lifecycle_config.py:CIRCUIT_RECOVERY_TIMEOUT: int = 60
+src/factory/core/config/lifecycle_config.py:DEFAULT_DEBOUNCE_MS: int = 300
+src/factory/core/config/memory_config.py:DEFAULT_PREF_LIMIT: int = 10
+src/factory/core/config/memory_config.py:DEFAULT_PREF_TOKEN_BUDGET: int = 300
+src/factory/core/config/memory_config.py:DEFAULT_TOKEN_BUDGET: int = 1000
+src/factory/core/config/platform_config.py:COMPACT_TAIL: int = 10
+src/factory/core/config/platform_config.py:DEFAULT_CONTEXT_TOKENS: int = 200_000
+src/factory/core/config/turn_store_config.py:DEFAULT_GET_TURNS_LIMIT: int = 50
+src/factory/core/hub/event_bus.py:bus = PipelineEventBus(maxsize=1000)
+src/factory/core/hub/event_bus.py:def __init__(self, maxsize: int = 1000) -> None:
+src/factory/core/hub/hub.py:BUS_SIZE = 100
+src/factory/core/hub/middleware/middleware_stt.py:timeout_s = getattr(hub._stt, "timeout_ms", 30000) / 1000.0
+src/factory/core/hub/outbound/outbound_errors.py:_NOTIFY_TS_REAP_THRESHOLD = 512  # reap stale circuit-notify timestamps when > this size
+src/factory/core/hub/outbound/outbound_errors.py:Retryable: network errors, 5xx server errors, rate-limit (429).
+src/factory/core/hub/outbound/outbound_errors.py:return status == 429 or status >= 500
+src/factory/core/hub/outbound/outbound_errors.py:_SCOPE_REAP_THRESHOLD = 256  # reap idle scope locks when dict exceeds this size
+src/factory/core/lifecycle/circuit_breaker.py:cb = CircuitBreaker(name="openai", failure_threshold=5, recovery_timeout=60)
+src/factory/core/lifecycle/debouncer.py:_MAX_MERGED_CHARS = 4096
+src/factory/core/lifecycle/session_lifecycle.py:raw = await turn_store.get_turns(pool.pool_id, pool.user_id, limit=20)
+src/factory/core/lifecycle/session_lifecycle.py:raw = await turn_store.get_turns(pool.pool_id, pool.user_id, limit=500)
+src/factory/core/messaging/bus.py:self, platform: Platform, maxsize: int = 100, bot_id: str | None = None
+src/factory/core/messaging/inbound_bus.py:bus.register(Platform.DISCORD, maxsize=100)
+src/factory/core/messaging/inbound_bus.py:bus.register(Platform.TELEGRAM, maxsize=100)
+src/factory/core/messaging/tool_display_config.py:bash_max_len: int = 80
+src/factory/core/messaging/tool_display_config.py:throttle_ms: int = 2000
+src/factory/core/persona.py:_MAX_PROMPT_BYTES = 64 * 1024  # 64 KB
+src/factory/core/processors/_scraping.py:_SAFE_SCRAPE_MAX_CHARS = 32_000  # B5: prompt-injection + DoS guard
+src/factory/core/processors/stream_text.py:Format: ``"reasoning-<12-char-hex>"``. Mirrors ``_mint_text_block_id``
+src/factory/core/processors/stream_text.py:Format: ``"text-<12-char-hex>"``. Mirrors the ``synthetic-<uuid4>`` shape
+src/factory/core/processors/stream_tool.py:_MAX_CONTENT_BYTES = 65_536
+src/factory/core/runtime_config.py:debounce_ms: int = 300
+src/factory/core/runtime_config.py:if iv < 0 or iv > 5000:
+src/factory/core/runtime_config.py:if iv > 50:
+src/factory/core/runtime_config.py:if len(value) > 500:
+src/factory/core/stores/identity_alias_store_protocol.py:ttl_seconds: int = 300,
+src/factory/core/stores/pairing_config.py:_MAX_CODE_ATTEMPTS = 10
+src/factory/core/stores/pairing_config.py:rate_limit_window: int = 300
+src/factory/core/stores/pairing_config.py:session_max_age_days: int = 30
+src/factory/core/stores/pairing_config.py:ttl_seconds: int = 3600
+src/factory/core/trace.py:r"(?<!\w)(\d{8,12}:[A-Za-z0-9+/._=-]{30,})(?![A-Za-z0-9+/._=-])"
+src/factory/core/tts_dispatch.py:if len(text) < 10:

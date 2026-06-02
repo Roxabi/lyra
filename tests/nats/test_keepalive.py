@@ -122,7 +122,7 @@ class TestPublishesKeepaliveDuringIdle:
         # Events iterator that sleeps for 10 * interval before yielding anything,
         # simulating an LLM tool-call that takes a while.
         async def _slow_events() -> AsyncIterator:
-            await asyncio.sleep(10 * fast_interval)
+            await asyncio.sleep(10 * fast_interval)  # event-based
             # Yield nothing — keepalives should have fired before this returns
             return
             yield  # make it an async generator
@@ -336,7 +336,7 @@ class TestKeepaliveTimeGuardSkipsPublish:
                 nc, "subject", "stream-id", seq_box, last_publish_box
             )
         )
-        await asyncio.sleep(fast_interval * 3)
+        await asyncio.sleep(fast_interval * 3)  # NATS delivery window
         task.cancel()
         try:
             await task

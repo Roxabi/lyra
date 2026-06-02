@@ -505,7 +505,9 @@ async def test_consume_loop_nacks_on_log_turn_db_failure(
         fetch_call_count += 1
         if fetch_call_count == 1:
             return [mock_msg]
-        await asyncio.sleep(3600)  # park — will be interrupted by task.cancel()
+        await asyncio.sleep(
+            3600
+        )  # park — will be interrupted by task.cancel()  # event-based
         return []  # unreachable
 
     mock_sub = MagicMock()

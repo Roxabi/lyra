@@ -246,7 +246,7 @@ class TestNatsBusEdgeCases:
         try:
             # Act — put a message, brief pause for NATS delivery, check staging
             await publisher.put(Platform.TELEGRAM, msg)
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(0.1)  # NATS delivery window
 
             # staging_qsize() returns a non-negative integer
             size_before = subscriber.staging_qsize()
@@ -341,7 +341,7 @@ class TestNatsBusQueueGroup:
 
             # Yield to the event loop so the NATS client task can deliver
             # messages into each subscriber's staging queue.
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.5)  # NATS delivery window
 
             received_a: list = []
             received_b: list = []

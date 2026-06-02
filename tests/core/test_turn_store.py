@@ -118,7 +118,7 @@ class TestTurnStoreLogTurn:
                 user_id="u",
                 content=c,
             )
-            await asyncio.sleep(0.01)  # ensure distinct timestamps
+            await asyncio.sleep(0.01)  # event-based — ensure distinct timestamps
         rows = await store.get_turns("pool:ord", user_id="u")
         assert rows[0]["content"] == "third"
         assert rows[-1]["content"] == "first"
@@ -342,7 +342,7 @@ class TestTurnStoreIntegrationWithPool:
 
         msg = self._make_msg(user_id="u2")
         await process_one(msg, agent, pool)
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.05)  # event-based
 
         # Verify both user and assistant turns were published
         assert publisher.publish_log_turn.call_count >= 2
@@ -456,7 +456,7 @@ class TestPoolSessions:
             before = _row[0]
 
         # Small sleep to guarantee the timestamp advances.
-        await asyncio.sleep(0.01)
+        await asyncio.sleep(0.01)  # event-based
 
         await store._log_turn(
             pool_id="pool:ts",
@@ -481,7 +481,9 @@ class TestPoolSessions:
         """get_last_session returns the most recently started session, not first."""
         # Arrange — register two sessions with a measurable time gap
         await store._start_session("sess-first", "pool:order")
-        await asyncio.sleep(0.01)  # ensure distinct last_active_at timestamps
+        await asyncio.sleep(
+            0.01
+        )  # event-based — ensure distinct last_active_at timestamps
         await store._start_session("sess-second", "pool:order")
 
         # Act

@@ -318,7 +318,7 @@ async def test_discord_adapter_handles_multi_bot(
         async def _start(token: str) -> None:
             captured_start_tokens.append(token)
             # Yield once so cancellation can land in the same loop tick.
-            await asyncio.sleep(0)
+            await asyncio.sleep(0)  # event-based
 
         mock.start = AsyncMock(side_effect=_start)
         return mock

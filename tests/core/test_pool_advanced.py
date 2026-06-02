@@ -77,7 +77,7 @@ class TestPoolUnknownAgentDrain:
         pool._inbox.put_nowait(msg2)
 
         task = asyncio.create_task(pool._processor.process_loop())
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.1)  # event-based
 
         ctx_mock.dispatch_response.assert_not_called()
         assert pool._inbox.empty()

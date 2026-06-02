@@ -61,7 +61,7 @@ TIMEOUT_SLOW = 5.0  # Multi-step coordination, CI variance buffer
 
 async def yield_once() -> None:
     """Yield control to the event loop once. Replaces asyncio.sleep(0)."""
-    await asyncio.sleep(0)
+    await asyncio.sleep(0)  # event-based
 
 
 async def _drain(pool: Any, *, timeout: float = TIMEOUT_IO) -> None:

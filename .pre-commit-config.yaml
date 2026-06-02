@@ -31,6 +31,11 @@ repos:
     entry: tools/check_file_exemptions.sh
     language: system
     pass_filenames: false
+  - id: check-hardcoded-constants
+    name: check-hardcoded-constants (new numeric literals in src/factory/core/)
+    entry: tools/check_hardcoded_constants.sh
+    language: system
+    pass_filenames: false
   - id: check-file-length-roxabi-nats
     name: check-file-length (roxabi-nats)
     entry: bash -c "QG_FILE_ROOT=packages/roxabi-nats/src/ QG_FILE_EXEMPTIONS=packages/roxabi-nats/tools/file_exemptions.txt tools/check_file_length.sh"

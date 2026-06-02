@@ -71,6 +71,9 @@ jobs:
       - name: "Check file exemption expiry (stale exemptions without valid date)"
         run: bash tools/check_file_exemptions.sh
 
+      - name: "Check hardcoded constants (new numeric literals in src/factory/core/)"
+        run: bash tools/check_hardcoded_constants.sh
+
       - name: Check qg.conf drift (stack.yml is source of truth)
         run: bash scripts/check-qg-conf-drift.sh
 

@@ -92,6 +92,12 @@ quality_gates:
     stage: pre-push
     script: tools/check_debt_expiry.sh
 
+  hardcoded_constants:
+    enabled: true
+    script: tools/check_hardcoded_constants.sh
+    description: block new hardcoded numeric literals in src/factory/core/ (baseline-grandfather strategy — #1654)
+    baseline: tools/hardcoded_constants_baseline.txt
+
   file_exemptions:
     enabled: true
     script: tools/check_file_exemptions.sh

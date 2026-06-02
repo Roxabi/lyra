@@ -7,14 +7,18 @@ Audio helpers live in _shared_audio; text utilities live in _shared_text;
 streaming state classes live in _shared_streaming.
 All are re-exported here so existing importers continue to work without
 changes.
+
+push_to_hub_guarded / PushGuardDeps have been relocated to
+factory.core.messaging.push_guard (ADR-073 / #1666).
+TypingTaskManager has been relocated to factory.typing.task_manager.
+OutboundListener has been relocated to factory.core.ports.outbound_listener.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable, Coroutine
-from dataclasses import dataclass, field
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from factory.adapters.shared._shared_audio import (
@@ -31,13 +35,11 @@ from factory.adapters.shared._shared_text import (
     sanitize_filename,
     truncate_caption,
 )
-from factory.core.lifecycle.circuit_breaker import CircuitRegistry
-from factory.core.messaging.message import InboundMessage, Platform
+from factory.core.messaging.push_guard import PushGuardDeps, push_to_hub_guarded
 from factory.outbound._streaming_state import IntermediateTextState, StreamState
+from factory.typing.task_manager import TypingTaskManager
 
 if TYPE_CHECKING:
-    from factory.adapters.shared.outbound_listener import OutboundListener
-    from factory.core.messaging.bus import Bus
     from factory.core.messaging.messages import MessageManager
 
 __all__ = [
@@ -64,67 +66,6 @@ __all__ = [
 ]
 
 log = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class PushGuardDeps:
-    """Frozen deps for push_to_hub_guarded.
-
-    Each field is a distinct guard/callback dependency.
-    """
-
-    inbound_bus: "Bus[Any]"
-    platform: Platform
-    msg: InboundMessage
-    circuit_registry: CircuitRegistry | None
-    on_drop: Callable[[], None] | None
-    send_backpressure: Callable[[str], Awaitable[None]]
-    get_msg: Callable[[str, str], str]
-    outbound_listener: "OutboundListener | None" = field(default=None)
-
-
-async def push_to_hub_guarded(deps: PushGuardDeps) -> None:
-    """Put *msg* on the inbound bus with circuit-open and backpressure guards.
-
-    *on_drop* is called before early return in both circuit-open and QueueFull
-    cases. *send_backpressure* sends the backpressure ack to the user.
-    Always returns normally.
-
-    *outbound_listener* — when provided, ``cache_inbound(msg)`` is called
-    before enqueuing so that outbound NATS correlation can resolve the original
-    message by stream_id.  Must be called here (not by the caller) to guarantee
-    the cache is populated before the hub can dispatch a response.
-    """
-    if deps.outbound_listener is not None:
-        deps.outbound_listener.cache_inbound(deps.msg)
-
-    if deps.circuit_registry is not None:
-        cb = deps.circuit_registry.get("hub")
-        if cb is not None and cb.is_open():
-            log.warning(
-                "hub_circuit_open",
-                extra={
-                    "platform": deps.platform.value,
-                    "user_id": deps.msg.user_id,
-                    "dropped": True,
-                },
-            )
-            if deps.on_drop is not None:
-                deps.on_drop()
-            text = deps.get_msg(
-                "circuit_open_ack",
-                "I'm temporarily overloaded, please try again in a moment.",
-            )
-            await deps.send_backpressure(text)
-            return
-
-    try:
-        await deps.inbound_bus.put(deps.platform, deps.msg)
-    except asyncio.QueueFull:
-        if deps.on_drop is not None:
-            deps.on_drop()
-        text = deps.get_msg("backpressure_ack", "Processing your request…")
-        await deps.send_backpressure(text)
 
 
 # Shared base set of allowed file extensions for outbound attachment filenames.
@@ -161,47 +102,6 @@ def resolve_msg(
 ) -> str:
     """Return a localised message string, falling back when no manager."""
     return manager.get(key, platform=platform) if manager is not None else fallback
-
-
-class TypingTaskManager:
-    """Manages per-channel typing indicator background tasks.
-
-    Extracted from TelegramAdapter and DiscordAdapter to eliminate identical
-    task-management logic. Each adapter keeps its own typing coroutine factory;
-    this class only manages the task dict lifecycle.
-    """
-
-    def __init__(self) -> None:
-        self._tasks: dict[int, asyncio.Task[None]] = {}
-
-    def start(
-        self,
-        target: int,
-        coro_factory: Callable[[], Coroutine[Any, Any, None]],
-    ) -> None:
-        """Cancel any existing task for *target* and start a new one."""
-        existing = self._tasks.pop(target, None)
-        if existing and not existing.done():
-            existing.cancel()
-        self._tasks[target] = asyncio.create_task(
-            coro_factory(),
-            name=f"typing:{target}",
-        )
-
-    def cancel(self, target: int) -> None:
-        """Cancel and remove the typing task for *target* (no-op if absent)."""
-        task = self._tasks.pop(target, None)
-        if task and not task.done():
-            task.cancel()
-
-    async def cancel_all(self) -> None:
-        """Cancel all pending typing tasks and await their completion."""
-        tasks = list(self._tasks.values())
-        self._tasks.clear()
-        for task in tasks:
-            task.cancel()
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def parse_reply_to_id(reply_to_id: str | None) -> int | None:

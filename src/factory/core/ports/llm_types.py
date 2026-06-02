@@ -34,6 +34,12 @@ if TYPE_CHECKING:
 # ModelConfig
 # ---------------------------------------------------------------------------
 
+# Literal default kept here to preserve the ports isolation contract
+# (stdlib + pydantic only — no factory.* imports at runtime).
+# AgentDefaultsConfig.DEFAULT_MODEL must equal this value; both files
+# hold the same string so either can be the canonical reference point.
+_DEFAULT_MODEL: str = "claude-opus-4-6"
+
 _VALID_BACKENDS: frozenset[str] = frozenset({"claude-cli", "nats"})
 
 
@@ -58,7 +64,7 @@ class ModelConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     backend: str = "claude-cli"
-    model: str = "claude-opus-4-6"
+    model: str = _DEFAULT_MODEL
     max_turns: int | None = None  # None = unlimited (0 sentinel in DB)
     tools: tuple[str, ...] = ()
     # cwd is spawn-routing config, not model identity.

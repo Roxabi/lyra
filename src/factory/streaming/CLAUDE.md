@@ -37,13 +37,13 @@ Three primitives, all composed (not inherited):
   `RunError`/error envelope). Currently neither consumer uses `flush()` because they yield events
   directly; documented for future consumers.
 
-- **Protocol is structural** — `Parser` is `@runtime_checkable` but consumers do NOT satisfy
-  it at the method-name level today: `CliStreamingParser` exposes `parse_line` and
-  `StreamProcessor` exposes `process` (legacy public API). `isinstance(consumer, Parser)` would
-  return `False`. The Protocol documents the *target shape* for future stream sources
-  (NATS-stream, SSE); a follow-up issue will add `feed = parse_line` / `finalize` / `is_done`
-  aliases on the consumers once they're needed, at which point isinstance-conformance tests
-  can be added back. Until then, treat the Protocol as a shape-doc, not a runtime contract.
+- **Protocol is structural** — `Parser` is `@runtime_checkable`. `CliStreamingParser`
+  satisfies it at the method-name level: it exposes `feed` (alias of `parse_line`),
+  `finalize`, and `is_done` — therefore `isinstance(CliStreamingParser(), Parser)` returns
+  `True`. `StreamProcessor` still exposes only `process` (legacy public API) and does NOT
+  yet satisfy the Protocol — `isinstance(stream_processor_instance, Parser)` returns `False`.
+  Conformance for `StreamProcessor` is deferred; when its aliases land, isinstance-conformance
+  tests should be added to `tests/streaming/test_parser_protocol.py`.
 
 ## Out of scope
 

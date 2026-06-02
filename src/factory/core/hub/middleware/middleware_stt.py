@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 
 from factory.core.ports.stt import STTNoiseError, STTUnavailableError
 
+from ...config.dispatch_config import DispatchConfig
 from ...messaging.message import InboundMessage, Response, TelegramMeta
 from ...messaging.messages import _FALLBACKS
 from ..pipeline.pipeline_types import _DROP, PipelineResult
@@ -28,7 +29,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-MAX_TRANSCRIPT_LEN = 2000
+MAX_TRANSCRIPT_LEN = DispatchConfig.MAX_TRANSCRIPT_LEN
 
 _STT_STAGE_OUTCOMES: dict[str, int] = {
     "success": 0,

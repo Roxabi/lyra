@@ -68,6 +68,9 @@ jobs:
       - name: Check file length
         run: bash tools/check_file_length.sh
 
+      - name: Check qg.conf drift (stack.yml is source of truth)
+        run: bash scripts/check-qg-conf-drift.sh
+
       - name: Check duplicate test basenames
         run: bash tools/check_duplicate_test_basenames.sh
 

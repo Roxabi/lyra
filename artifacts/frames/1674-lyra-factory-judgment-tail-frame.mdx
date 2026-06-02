@@ -1,0 +1,97 @@
+---
+title: "docs: finish lyra→factory — deferred judgment-tail"
+issue: 1674
+status: approved
+tier: F-lite
+date: 2026-06-02
+---
+
+## Problem
+
+#1668 completed the mechanical/structural `lyra→factory` rename of living docs (deploy
+units, secrets, paths, container user, config filename, `lyra.<module>` refs) —
+ground-truthed against `src/`+`deploy/` with the KEEP-set held invariant. It deliberately
+deferred a **judgment-dependent tail**: occurrences where a token cannot be renamed by sed
+because it needs per-occurrence prose review or author/code knowledge.
+
+Why now: stale names that no longer resolve in `src/` actively mislead contributors and
+threaten the `doc_drift` gate. Ground-truthing during framing surfaced one item that is
+bigger than the issue implied — the `LyraUserError` doc references describe an entire
+error/middleware subsystem (`LyraUserError`, `ErrorBoundaryMiddleware`,
+`AudioDownloadError`/`SttError`) that **no longer exists** in `src/factory/`. The real
+contract lives in `core/exceptions.py` (`StreamChunkTimeout`, `WorkerUnavailableError`,
+`HubUnavailableError`, `ScrapeFailed`, `VaultWriteFailed`) with user-visible handling in
+`core/hub/middleware/` + `inbound/dispatcher.py`. That doc section needs a rewrite against
+the current pipeline, not a rename. The user chose to do this rewrite inside #1674.
+
+Observable impact: a contributor reading `docs/standards/backend-patterns.md` or
+`docs/architecture/architecture-patterns.md` is told to "raise `LyraUserError` subclasses"
+— a class that does not exist.
+
+## Who
+
+- **Primary:** contributors / Claude agents reading living docs to learn the error-handling
+  contract, config conventions, and deploy layout. They currently hit names absent from the code.
+- **Secondary:** the `doc_drift` quality gate (must stay green); future `/dev` runs that
+  trust docs as ground-truth.
+
+## Constraints
+
+- **KEEP-set invariant** (carried from #1668): `lyra`/`Lyra` is KEPT when it denotes — the
+  Lyra **persona/agent/bot** (`lyra_default`, `bot_id = "lyra"`, `aryl`, `memory_namespace`,
+  `workspaces.lyra` example), a **NATS subject** (`lyra.*`) or **JetStream stream** (`LYRA_*`),
+  or **dated ADR/history**. Only stale *module/path/config/symbol* refs are renamed.
+- Doc-only + `.env.example`. No runtime code behavior change (the `STT_MODEL_SIZE`
+  `_deprecated_env` fallback in `voice_overlay.py` stays — only its `.env.example` advert is dropped).
+- Error-section rewrite (item D) must match the **actual** current contract — verified against
+  `src/factory/core/exceptions.py` + `core/hub/middleware/` + `inbound/dispatcher.py`, not from memory.
+- Single domain (docs/prose) → F-lite.
+
+## Out of Scope
+
+- NATS subjects `lyra.*` + JetStream streams `LYRA_*` → wire-contract workstream **#1670** (KEEP here).
+- Host-side identity (`ssh lyra@<IP>`, host `/home/lyra/.ssh`, `chown lyra:lyra`) → **Part 2** prod cutover.
+- Archived/history docs: `CHANGELOG.md`, `docs/history/**`, `docs/architecture/adr/**`,
+  `artifacts/**` — traceability archive, not living docs.
+- Removing the `_deprecated_env("STT_MODEL_SIZE", …)` code fallback — back-compat, harmless, KEEP.
+
+## Per-item disposition (ground-truthed during framing)
+
+| Item | Ground-truth | Disposition |
+|---|---|---|
+| F · ~337 bare `Lyra/lyra` prose words | persona/product/agent name | KEEP persona/product/agent; fix only stale module/path/config refs (per-occurrence) |
+| D · `LyraUserError` + error section (`backend-patterns.md`, `architecture-patterns.md`) | subsystem absent from `src/`; real base classes in `core/exceptions.py`; handling in `core/hub/middleware/` + `inbound/dispatcher.py` | **Rewrite** the error-handling doc section to the current contract — **in this issue** (user decision) |
+| C · `~/.local/state/lyra/logs/deploy.log` (`DEPLOYMENT.md` ×1) | deploy-script log dir; `deploy/setup.py` creates `~/.local/state/*/logs/`; code never refs `.local/state` | rename `lyra`→`factory` |
+| A · `workspaces.lyra` / `/lyra` alias (`CONFIGURATION.md`) | the Lyra-agent example (`lyra_default`, `bot_id="lyra"` throughout) | **KEEP** — persona example, not a stale ref |
+| B · ADR-043 `lyra/scripts/deploy.sh`, `deploy-lib.sh` (`deployment.md`) | dated ADR history | KEEP as history |
+| E · `STT_MODEL_SIZE` (`.env.example`, commented) | live deprecated alias → `FACTORY_STT_MODEL` via `_deprecated_env` | drop the `.env.example` advert line; KEEP code fallback |
+
+## Premise Validity
+
+**Success in 6 months:** Living docs carry zero stale `lyra` *symbol/path/module/config*
+refs; every surviving `lyra`/`Lyra` is an intentional KEEP (persona/agent/bot, NATS subject,
+dated ADR history). The `doc_drift` gate stays green; a contributor reading docs never meets
+a name absent from `src/`+`deploy/`. The error-handling doc section names the actual classes.
+
+**Failure in 6 months:** A grep of living docs for `{LyraUserError, ~/.local/state/lyra,
+STT_MODEL_SIZE advertised as current}` returns > 0 hits after #1674 closes, **or** the
+`backend-patterns.md` / `architecture-patterns.md` error section still names
+`ErrorBoundaryMiddleware` / `Audio*Error` / `LyraUserError` classes that do not exist in
+`src/factory/`. (Falsifiable: grep count = 0 is the bar; observable any time after close.)
+
+**Simplest alternative:** Leave the tail — "it's just docs."
+**Why not simplest:** Names that don't resolve in code mislead every contributor who trusts
+the docs and erode the `doc_drift` gate's value; #1674 exists precisely because #1668 proved
+these items need per-occurrence judgment, not bulk sed. The error section is actively wrong,
+not merely outdated.
+
+## Complexity
+
+**Tier: F-lite** — single domain (living docs + `.env.example`), clear enumerated scope
+(6 items, dispositions locked), but item D is a genuine section rewrite requiring code
+verification rather than a mechanical edit.
+
+Signals observed:
+- Single domain (docs/prose), no new architecture, no runtime behavior change.
+- Multiple files but bounded (~6 doc files + `.env.example`).
+- One judgment-heavy item (D) needs ground-truth investigation → gates (frame/spec) justified over S-tier.

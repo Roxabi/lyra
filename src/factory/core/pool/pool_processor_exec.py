@@ -22,15 +22,12 @@ from uuid import uuid4
 from factory.transport.typing_publisher import is_typing_enabled
 from factory.transport.work_scope import WorkScope
 
-from ..messaging.message import GENERIC_ERROR_REPLY, OutboundMessage, Response
-from ..messaging.utils.callbacks import TrustedCallback
+from ..messaging.message import GENERIC_ERROR_REPLY, Response
 from ..trace import TraceContext
-from .pool_observer import TurnLogDeps
 from .pool_processor_streaming import (
-    StreamLogDeps,
-    build_streaming_capture,
-    build_streaming_turn_logger,
-    run_streaming_turn_post,
+    DispatchDeps,
+    dispatch_non_streaming,
+    dispatch_streaming,
 )
 
 log = logging.getLogger(__name__)
@@ -128,170 +125,117 @@ async def guarded_process_one(  # noqa: PLR0915 — DEBT:complexity-residual
         TraceContext.reset_agent_name(token_an)
 
 
-async def process_one(  # noqa: C901, PLR0915 — DEBT:complexity-residual — session-id update adds branches
-    msg: InboundMessage, agent: AgentBase, pool: Pool
-) -> None:
+async def process_one(msg: InboundMessage, agent: AgentBase, pool: Pool) -> None:
     """Run agent.process and dispatch result (streaming or non-streaming)."""
     await pool.append(msg)
-
-    # Inject voice modality — must happen before _original_msg is
-    # captured so dispatch_streaming sees it.  Covers:
-    #   - pool.voice_mode toggle (/voice → /text)
-    #   - /voice <prompt> one-shot (agent rewrites text internally,
-    #     but _original_msg needs modality set here)
-    #   - voice messages (modality already "voice" from audio pipeline)
-    if msg.modality != "voice" and (
-        pool.voice_mode or (msg.text and msg.text.strip().lower().startswith("/voice "))
-    ):
-        import dataclasses
-
-        msg = dataclasses.replace(msg, modality="voice")
+    msg = _inject_voice_modality(msg, pool)
 
     _ensure_fn = getattr(agent, "_ensure_system_prompt", None)
     if _ensure_fn is not None:
         await _ensure_fn(pool)  # S3 — cache system prompt
 
-    # Processor pre-hook: enrich message before LLM (B1 — issue #363).
-    # pool.append gets the original so history shows the real command;
-    # agent.process gets the enriched version so the LLM sees scraped content.
-    _processor = None
-    _original_msg = msg
-    if msg.command is not None:
-        _session_tools = getattr(agent, "_session_tools", None)
-        if _session_tools is not None:
-            # Import inside the function to avoid circular imports:
-            # processors → processor_registry → message;
-            # pool_processor also imports message.
-            # Python caches modules in sys.modules after the first import,
-            # so this is effectively free (one dict lookup) on every call.
-            # registers processors via @register decorators
-            importlib.import_module("factory.core.processors")
-            from factory.core.processors.processor_registry import (
-                registry as _proc_registry,
-            )
+    _processor, _original_msg, msg, _early_return = await _run_processor_pre(
+        msg, agent, pool
+    )
+    if _early_return:
+        return
 
-            _cmd_name = f"{msg.command.prefix}{msg.command.name}"
-            _processor = _proc_registry.build(_cmd_name, _session_tools)
-            if _processor is not None:
-                try:
-                    msg = await _processor.pre(msg)
-                except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
-                    log.warning(
-                        "Processor pre() failed for %s", _cmd_name, exc_info=True
-                    )
-                    # Surface the error rather than falling through to the LLM
-                    # with an unmodified message (confusing non-response).
-                    _error_reply = pool._msg(
-                        "generic",
-                        f"Command {_cmd_name} failed to prepare. Please try again.",
-                    )
-                    await _safe_dispatch(msg, Response(content=_error_reply), pool)
-                    return
+    result = await _invoke_agent(agent, msg, pool, _processor, _original_msg)
 
-    result = agent.process(msg, pool)
-    if not isinstance(result, collections.abc.AsyncIterator):  # pyright: ignore[reportUnnecessaryIsInstance] — DEBT:defensive-narrow-payloads
-        # Regular coroutine — await to get the actual result
-        try:
-            result = await result  # type: ignore[misc] — DEBT:defensive-narrow-payloads  # coroutine → Response|AsyncIterator
-        except Exception as exc:
-            pool._ctx.record_circuit_failure(exc)
-            raise
-        # Processor post-hook: side effects after LLM response (B1 — issue #363).
-        if _processor is not None and isinstance(result, Response):
-            try:
-                result = await _processor.post(_original_msg, result)
-            except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
-                log.warning("Processor post() failed", exc_info=True)
-
-    # Capture values for the deferred turn-logging callback (#316).
-    _platform = pool.medium or str(msg.platform)
-    _user_id = pool.user_id or msg.user_id
+    _deps = DispatchDeps(
+        pool=pool,
+        original_msg=_original_msg,
+        platform=pool.medium or str(msg.platform),
+        user_id=pool.user_id or msg.user_id,
+    )
 
     if isinstance(result, collections.abc.AsyncIterator):
-        # Streaming path — delegate to helpers in pool_processor_streaming.py
-        _result_iter_for_sid = result
-        _content_parts: list[str] = []
-        _stream_done = asyncio.Event() if _processor is not None else None
-
-        # Wrap iterator to capture text content and signal completion
-        result = build_streaming_capture(
-            _result_iter_for_sid,
-            _content_parts,
-            pool,
-            _stream_done,
-        )
-
-        # Build outbound with turn-logging callback
-        _outbound, _log_callback = build_streaming_turn_logger(
-            StreamLogDeps(
-                pool=pool,
-                result_iter_for_sid=_result_iter_for_sid,
-                original_msg=_original_msg,
-                platform=_platform,
-                user_id=_user_id,
-                content_parts=_content_parts,
-            )
-        )
-        pool._inflight_stream_outbound = _outbound
-        _outbound.metadata["_on_dispatched"] = TrustedCallback(_log_callback)
-
-        try:
-            await pool._ctx.dispatch_streaming(_original_msg, result, _outbound)
-            pool._ctx.record_circuit_success()
-        except BaseException as exc:
-            pool._ctx.record_circuit_failure(exc)
-            raise
-
-        # Fallback session_id update for no-dispatcher path
-        _stream_sid = getattr(_result_iter_for_sid, "session_id", None)
-        if _stream_sid and pool.session_id != _stream_sid:
-            await pool._observer.end_session_async(pool.session_id)
-            pool.session_id = _stream_sid
-
-        # Processor post-hook for streaming agents (#372)
-        await run_streaming_turn_post(
-            _processor, _stream_done, _original_msg, _content_parts
-        )
+        await dispatch_streaming(result, _processor, _deps)
     else:
-        pool._ctx.record_circuit_success()
-        # Update session_id with the real Claude CLI session UUID (#316).
-        if isinstance(result, Response):  # pyright: ignore[reportUnnecessaryIsInstance] — DEBT:defensive-narrow-payloads
-            _cli_session_id = result.metadata.get("session_id")
-            if _cli_session_id:
-                if pool.session_id != _cli_session_id:
-                    await pool._observer.end_session_async(pool.session_id)
-                pool.session_id = _cli_session_id
-        # Attach deferred turn-logging callback after adapter sends (#316).
-        if isinstance(result, Response):  # pyright: ignore[reportUnnecessaryIsInstance] — DEBT:defensive-narrow-payloads
-            _content = result.content
-
-            async def _log_turn(outbound: OutboundMessage) -> None:
-                _reply_id = outbound.metadata.get("reply_message_id")
-                await pool._observer.log_turn_async(
-                    TurnLogDeps(
-                        role="assistant",
-                        platform=_platform,
-                        user_id=_user_id,
-                        content=_content,
-                        reply_message_id=(
-                            str(_reply_id) if _reply_id is not None else None
-                        ),
-                    )
-                )
-                # Index assistant turn for reply-to session routing (#341).
-                await pool._observer.index_turn_async(
-                    str(_reply_id) if _reply_id is not None else None,
-                    session_id=pool.session_id,
-                    role="assistant",
-                )
-
-            result.metadata["_on_dispatched"] = TrustedCallback(_log_turn)
-        await pool._ctx.dispatch_response(_original_msg, result)
-        await pool._observer.session_update_async(_original_msg)
+        await dispatch_non_streaming(result, _deps)
 
     _compact_fn = getattr(agent, "compact", None)
     if _compact_fn is not None:
         await _compact_fn(pool)  # S5 — check compaction threshold after each turn
+
+
+def _inject_voice_modality(msg: InboundMessage, pool: Pool) -> InboundMessage:
+    """Inject voice modality when pool or command requires it.
+
+    Must happen before _original_msg is captured so dispatch_streaming sees it.
+    Covers pool.voice_mode toggle, /voice <prompt> one-shot, and audio messages.
+    """
+    if msg.modality != "voice" and (
+        pool.voice_mode or (msg.text and msg.text.strip().lower().startswith("/voice "))
+    ):
+        import dataclasses
+
+        return dataclasses.replace(msg, modality="voice")
+    return msg
+
+
+async def _invoke_agent(
+    agent: AgentBase,
+    msg: InboundMessage,
+    pool: Pool,
+    processor: object | None,
+    original_msg: InboundMessage,
+) -> object:
+    """Call agent.process, await coroutine if needed, run processor post-hook."""
+    result = agent.process(msg, pool)
+    if isinstance(result, collections.abc.AsyncIterator):  # pyright: ignore[reportUnnecessaryIsInstance] — DEBT:defensive-narrow-payloads
+        return result
+    # Regular coroutine — await to get the actual result
+    try:
+        result = await result  # type: ignore[misc] — DEBT:defensive-narrow-payloads  # coroutine → Response|AsyncIterator
+    except Exception as exc:
+        pool._ctx.record_circuit_failure(exc)
+        raise
+    # Processor post-hook: side effects after LLM response (B1 — issue #363).
+    if processor is not None and isinstance(result, Response):
+        try:
+            result = await processor.post(original_msg, result)  # type: ignore[misc] — DEBT:defensive-narrow-payloads
+        except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
+            log.warning("Processor post() failed", exc_info=True)
+    return result
+
+
+async def _run_processor_pre(
+    msg: InboundMessage, agent: AgentBase, pool: Pool
+) -> tuple[object | None, InboundMessage, InboundMessage, bool]:
+    """Run processor pre-hook if applicable (B1 — issue #363).
+
+    Returns (processor, original_msg, enriched_msg, early_return).
+    early_return=True means pre-hook failed; error dispatched; caller must return.
+    """
+    _processor = None
+    _original_msg = msg
+    if msg.command is None:
+        return None, _original_msg, msg, False
+    _session_tools = getattr(agent, "_session_tools", None)
+    if _session_tools is None:
+        return None, _original_msg, msg, False
+    # Lazy import — avoids circular dependency (processors→registry→message);
+    # sys.modules caches it after first call (effectively free on repeat calls).
+    importlib.import_module("factory.core.processors")  # registers via @register
+    from factory.core.processors.processor_registry import registry as _proc_registry
+
+    _cmd_name = f"{msg.command.prefix}{msg.command.name}"
+    _processor = _proc_registry.build(_cmd_name, _session_tools)
+    if _processor is None:
+        return None, _original_msg, msg, False
+    try:
+        msg = await _processor.pre(msg)
+    except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
+        log.warning("Processor pre() failed for %s", _cmd_name, exc_info=True)
+        # Surface the error rather than falling through to the LLM
+        # with an unmodified message (confusing non-response).
+        _error_reply = pool._msg(
+            "generic", f"Command {_cmd_name} failed to prepare. Please try again."
+        )
+        await _safe_dispatch(msg, Response(content=_error_reply), pool)
+        return None, _original_msg, msg, True
+    return _processor, _original_msg, msg, False
 
 
 async def _safe_dispatch(msg: InboundMessage, response: Response, pool: Pool) -> None:

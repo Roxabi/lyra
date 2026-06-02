@@ -759,6 +759,8 @@ async def test_dispenser_calls_publisher_on_mint_error(
     assert len(spy.calls) == 1, (
         f"Expected publisher.publish() called once; got {len(spy.calls)} calls"
     )
+    assert isinstance(spy.calls[0], MintError)
+    assert spy.calls[0].http_status == 500
 
 
 @pytest.mark.asyncio

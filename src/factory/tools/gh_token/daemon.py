@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import signal
 import socket
 import sys
@@ -110,8 +111,6 @@ def _safe_machine_name(raw: str) -> str:
     dots for namespacing; for the ``machine`` subject segment we need a stricter
     check so we inline one here.
     """
-    import re
-
     if re.fullmatch(r"[A-Za-z0-9_-]+", raw):
         return raw
     return "unknown"
@@ -138,6 +137,13 @@ async def run_daemon(config: DaemonConfig) -> None:
     else:
         raw_machine = os.environ.get("FACTORY_MACHINE", socket.gethostname())
         machine = _safe_machine_name(raw_machine)
+        if machine != raw_machine:
+            log.warning(
+                "FACTORY_MACHINE %r is not a valid NATS subject token"
+                " — publishing mint-failures as %r",
+                raw_machine,
+                machine,
+            )
         try:
             nc = await nats_connect(nats_url, identity_name="gh-helper")
             publisher = MintFailurePublisher(nc, machine)
@@ -151,48 +157,50 @@ async def run_daemon(config: DaemonConfig) -> None:
             publisher = None
     # ─────────────────────────────────────────────────────────────────────────
 
-    async with httpx.AsyncClient(
-        timeout=httpx.Timeout(10.0),
-        limits=httpx.Limits(max_keepalive_connections=0),
-    ) as http:
-        dispenser = Dispenser(
-            cache=cache,
-            signer=signer,
-            http=http,
-            app_id=config.app_id,
-            install_id=config.install_id,
-            lock=lock,
-            rate_limiter=rate_limiter,
-            publisher=publisher,
-        )
+    try:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(10.0),
+            limits=httpx.Limits(max_keepalive_connections=0),
+        ) as http:
+            dispenser = Dispenser(
+                cache=cache,
+                signer=signer,
+                http=http,
+                app_id=config.app_id,
+                install_id=config.install_id,
+                lock=lock,
+                rate_limiter=rate_limiter,
+                publisher=publisher,
+            )
 
-        config.sock_path.parent.mkdir(parents=True, exist_ok=True)
-        if config.sock_path.exists():
-            config.sock_path.unlink()
+            config.sock_path.parent.mkdir(parents=True, exist_ok=True)
+            if config.sock_path.exists():
+                config.sock_path.unlink()
 
-        server = await dispenser.serve(config.sock_path)
-        log.info(
-            "factory-gh-helper daemon started — app_id=%s install_id=%s",
-            config.app_id,
-            config.install_id,
-        )
+            server = await dispenser.serve(config.sock_path)
+            log.info(
+                "factory-gh-helper daemon started — app_id=%s install_id=%s",
+                config.app_id,
+                config.install_id,
+            )
 
-        task: asyncio.Task[None] = asyncio.create_task(server.serve_forever())
+            task: asyncio.Task[None] = asyncio.create_task(server.serve_forever())
 
-        try:
-            await asyncio.gather(task)
-        except asyncio.CancelledError:
-            log.info("factory-gh-helper daemon shutting down")
-        finally:
-            server.close()
-            await server.wait_closed()
-            task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
-            if nc is not None:
-                try:
-                    await nc.drain()
-                except Exception:  # noqa: BLE001 — best-effort drain on shutdown
-                    pass
+            try:
+                await asyncio.gather(task)
+            except asyncio.CancelledError:
+                log.info("factory-gh-helper daemon shutting down")
+            finally:
+                server.close()
+                await server.wait_closed()
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+    finally:
+        if nc is not None:
+            try:
+                await nc.drain()
+            except Exception:  # noqa: BLE001 — best-effort drain on shutdown
+                pass
 
 
 def _install_signal_handlers(loop: asyncio.AbstractEventLoop) -> None:

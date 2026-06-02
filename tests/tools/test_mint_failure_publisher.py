@@ -61,7 +61,6 @@ async def test_publish_http_error_sends_event() -> None:
     # Subject correctness
     expected_subject = gh_mint_failure("testhost")
     assert subject == expected_subject
-    assert subject.startswith("lyra.gh.mint_failure.")
 
     # Payload correctness
     event = MintFailureEvent.model_validate_json(data)

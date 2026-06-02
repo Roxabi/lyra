@@ -9,6 +9,9 @@ from factory.core.config import (
     PoolConfig,
     RouterConfig,
 )
+from factory.core.config.agent_defaults_config import AgentDefaultsConfig
+from factory.core.config.dispatch_config import DispatchConfig
+from factory.core.config.lifecycle_config import LifecycleConfig
 from factory.core.lifecycle import session_lifecycle
 
 
@@ -150,3 +153,79 @@ class TestPlatformConfigWiring:
             session_lifecycle.SessionManager._compact_context_tokens
             == PlatformConfig.DEFAULT_CONTEXT_TOKENS
         )
+
+
+class TestDispatchConfigWiring:
+    """Verify _dispatch.py and middleware_stt.py delegate to DispatchConfig."""
+
+    def test_backoff_delays_delegates_to_dispatch_config(self) -> None:
+        """_dispatch._BACKOFF_DELAYS must equal DispatchConfig.BACKOFF_DELAYS."""
+        from factory.core.hub.outbound._dispatch import _BACKOFF_DELAYS
+
+        assert _BACKOFF_DELAYS == DispatchConfig.BACKOFF_DELAYS
+
+    def test_max_attempts_delegates_to_dispatch_config(self) -> None:
+        """_dispatch._MAX_ATTEMPTS must equal DispatchConfig.MAX_ATTEMPTS."""
+        from factory.core.hub.outbound._dispatch import _MAX_ATTEMPTS
+
+        assert _MAX_ATTEMPTS == DispatchConfig.MAX_ATTEMPTS
+
+    def test_max_transcript_len_delegates_to_dispatch_config(self) -> None:
+        """middleware_stt.MAX_TRANSCRIPT_LEN == DispatchConfig.MAX_TRANSCRIPT_LEN."""
+        from factory.core.hub.middleware.middleware_stt import MAX_TRANSCRIPT_LEN
+
+        assert MAX_TRANSCRIPT_LEN == DispatchConfig.MAX_TRANSCRIPT_LEN
+
+
+class TestLifecycleConfigWiring:
+    """Verify circuit_breaker.py and debouncer.py delegate to LifecycleConfig."""
+
+    def test_circuit_breaker_default_failure_threshold_delegates_to_lifecycle_config(
+        self,
+    ) -> None:
+        """CircuitBreaker() default failure_threshold == CIRCUIT_FAILURE_THRESHOLD."""
+        from factory.core.lifecycle.circuit_breaker import CircuitBreaker
+
+        cb = CircuitBreaker("test-delegation")
+        assert cb.failure_threshold == LifecycleConfig.CIRCUIT_FAILURE_THRESHOLD
+
+    def test_circuit_breaker_default_recovery_timeout_delegates_to_lifecycle_config(
+        self,
+    ) -> None:
+        """CircuitBreaker() default recovery_timeout == CIRCUIT_RECOVERY_TIMEOUT."""
+        from factory.core.lifecycle.circuit_breaker import CircuitBreaker
+
+        cb = CircuitBreaker("test-delegation")
+        assert cb.recovery_timeout == LifecycleConfig.CIRCUIT_RECOVERY_TIMEOUT
+
+    def test_debouncer_default_debounce_ms_delegates_to_lifecycle_config(
+        self,
+    ) -> None:
+        """debouncer.DEFAULT_DEBOUNCE_MS == LifecycleConfig.DEFAULT_DEBOUNCE_MS."""
+        from factory.core.lifecycle.debouncer import DEFAULT_DEBOUNCE_MS
+
+        assert DEFAULT_DEBOUNCE_MS == LifecycleConfig.DEFAULT_DEBOUNCE_MS
+
+
+class TestAgentDefaultsConfigWiring:
+    """Verify ModelConfig and agent_seeder defaults delegate to AgentDefaultsConfig."""
+
+    def test_model_config_default_model_delegates_to_agent_defaults_config(
+        self,
+    ) -> None:
+        """ModelConfig() default model == AgentDefaultsConfig.DEFAULT_MODEL."""
+        from factory.core.ports.llm_types import ModelConfig
+
+        assert ModelConfig().model == AgentDefaultsConfig.DEFAULT_MODEL
+
+    def test_llm_types_default_model_literal_matches_agent_defaults_config(
+        self,
+    ) -> None:
+        """_DEFAULT_MODEL in llm_types must equal AgentDefaultsConfig.DEFAULT_MODEL.
+
+        This test fails if either side is updated without updating the other,
+        ensuring the two independent literals stay in sync.
+        """
+        from factory.core.ports.llm_types import _DEFAULT_MODEL
+
+        assert _DEFAULT_MODEL == AgentDefaultsConfig.DEFAULT_MODEL

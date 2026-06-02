@@ -18,9 +18,16 @@ from factory.adapters.shared._shared_text import (
     sanitize_filename,
     truncate_caption,
 )
+from factory.adapters.shared.base_platform_adapter import BasePlatformAdapter
 from factory.adapters.shared.cli import CLIAdapter
 from factory.adapters.shared.outbound_listener import OutboundListener
+from factory.adapters.shared.platform_send import (
+    ChunkSender,
+    SendContext,
+    send_chunked_message,
+)
 from factory.outbound.emitter import OutboundEmitter as StreamingSession
+from factory.outbound.formatter import BaseFormatter
 
 __all__ = [
     "OutboundAdapterBase",
@@ -38,4 +45,10 @@ __all__ = [
     "sanitize_filename",
     "send_with_retry",
     "truncate_caption",
+    # New in #1660 — shared formatter contract + platform send loop + adapter alias
+    "BaseFormatter",
+    "BasePlatformAdapter",
+    "ChunkSender",
+    "SendContext",
+    "send_chunked_message",
 ]

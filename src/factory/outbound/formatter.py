@@ -7,10 +7,18 @@ and tool-recap callbacks.
 
 The Protocol's edit_reasoning and edit_tool_recap have no-op default callables
 exported from this module so adapters that don't opt in render nothing.
+
+``BaseFormatter`` (ABC) lives here as the nominal inheritance contract for
+``TelegramFormatter`` / ``DiscordFormatter``.  It mirrors the ``OutboundFormatter``
+Protocol shape so static-analysis tools (pyright) get full nominal visibility into
+the contract while ``OutboundEmitter`` continues to use the structural Protocol.
+ADR-073 §Decision: stage primitives live in their stage module, not in per-adapter
+dirs or adapter-shared dirs.
 """
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
@@ -151,3 +159,90 @@ class BadFormatter:
         self, trace_obj: Any, lines: list[str], done: bool
     ) -> None:
         pass
+
+
+class BaseFormatter(ABC):
+    """Abstract base for platform outbound formatters (nominal ABC contract).
+
+    Mirrors ``OutboundFormatter`` Protocol shape so static-analysis tools
+    (pyright) have full nominal visibility into the contract.  Placed here
+    (stage module) per ADR-073 §Decision: stage primitives live in their
+    stage module, not in per-adapter dirs or adapter-shared dirs.
+
+    ``OutboundEmitter`` uses the structural ``OutboundFormatter`` Protocol;
+    ``TelegramFormatter`` / ``DiscordFormatter`` inherit this ABC so that
+    any missing method raises ``TypeError`` at class-definition time.
+
+    Per-platform state (e.g. ``ReasoningAccumulator``, last-edit timestamp)
+    is managed by the subclass — this base imposes no constructor shape to
+    preserve MRO flexibility (Discord multiple-inheritance pattern).
+    """
+
+    # ------------------------------------------------------------------
+    # Pure formatting — no I/O
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def placeholder_text(self) -> str:
+        """Return the placeholder text shown while the response is being generated."""
+
+    @abstractmethod
+    def chunk(self, text: str) -> list[str]:
+        """Split *text* into platform-legal chunks (respects max-length)."""
+
+    @abstractmethod
+    def render_text(self, text: str) -> list[str]:
+        """Escape and split *text* into platform-legal chunks."""
+
+    @abstractmethod
+    def render_buttons(self, buttons: Any) -> Any:
+        """Convert generic button spec to platform-native button/view object."""
+
+    @abstractmethod
+    def dim_italic(self, text: str) -> str:
+        """Wrap *text* in dim-italic markup for the platform."""
+
+    @abstractmethod
+    def get_msg(self, key: str, fallback: str) -> str:
+        """Return a localised message string via the adapter's message manager."""
+
+    # ------------------------------------------------------------------
+    # Platform I/O mechanics
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    async def send_placeholder(self) -> tuple[Any, int]:
+        """Send the initial placeholder; returns (message_object, message_id)."""
+
+    @abstractmethod
+    async def edit_placeholder_text(self, ph: Any, text: str) -> None:
+        """Edit the placeholder message *ph* to display *text*."""
+
+    @abstractmethod
+    async def send_trace_placeholder(self) -> tuple[Any, int | None]:
+        """Send the trace-indicator placeholder; returns (message_object, message_id)."""  # noqa: E501
+
+    @abstractmethod
+    async def send_message(self, text: str) -> int | None:
+        """Send *text* as a final (non-streaming) message; returns message_id or None."""  # noqa: E501
+
+    @abstractmethod
+    async def send_fallback(self, text: str) -> int | None:
+        """Send *text* as fallback when normal delivery fails; returns message_id or None."""  # noqa: E501
+
+    @abstractmethod
+    async def edit_reasoning(
+        self,
+        trace_obj: Any,
+        event: "ReasoningStartRenderEvent | ReasoningDeltaRenderEvent | ReasoningEndRenderEvent",  # noqa: E501
+    ) -> None:
+        """Render a reasoning event into the trace placeholder."""
+
+    @abstractmethod
+    async def edit_tool_recap(
+        self,
+        trace_obj: Any,
+        lines: list[str],
+        done: bool,
+    ) -> None:
+        """Render tool-recap card *lines* into the trace placeholder."""

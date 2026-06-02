@@ -14,7 +14,7 @@
 ```toml
 [tool.uv.sources]
 roxabi-blobs = {
-  git = "https://github.com/Roxabi/lyra.git",
+  git = "https://github.com/Roxabi/roxabi-factory.git",
   subdirectory = "packages/roxabi-blobs",
   tag = "roxabi-blobs/vX.Y.Z"
 }

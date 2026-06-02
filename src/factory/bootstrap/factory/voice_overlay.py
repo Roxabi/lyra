@@ -11,8 +11,9 @@ import logging
 import os
 import socket
 import warnings
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
 from factory.paths import factory_data_dir
@@ -39,34 +40,61 @@ def _deprecated_env(old_var: str, new_var: str) -> str | None:
     return val
 
 
-def init_nats_tts(nc: "NATS") -> "NatsTtsClient":
-    """Create NatsTtsClient (3-layer). Call ``await client.start()`` to activate hb."""
-    from factory.nats.audio.nats_tts_client import NatsTtsClient
-    from factory.nats.audio.nats_tts_codec import TtsCodec
+@dataclass(frozen=True)
+class _NatsWorkerSpec:
+    """Domain-specific parameters for a 3-layer NATS worker client."""
+
+    hb_subject: str
+    validate_worker_id: Any
+    name: str
+    domain_client_cls: type
+    codec: Any
+    extra_kwargs: dict[str, Any] = field(default_factory=dict)
+
+
+def _init_nats_worker(nc: "NATS", spec: _NatsWorkerSpec) -> Any:
+    """Build a 3-layer NATS worker client (transport → pool → domain client).
+
+    All ``init_nats_*`` public helpers delegate here; callers only differ in the
+    domain-specific ``_NatsWorkerSpec``.
+    """
     from factory.nats.worker_registry import WorkerRegistry
     from factory.transport.nats_request_response import NatsTransport
     from factory.transport.worker_pool_client import WorkerPoolClient
-    from roxabi_contracts.voice import SUBJECTS, validate_worker_id
 
     transport = NatsTransport(nc)
     pool = WorkerPoolClient(
         transport,
         registry=WorkerRegistry(),
+        hb_subject=spec.hb_subject,
+        validate_worker_id=spec.validate_worker_id,
+        name=spec.name,
+    )
+    return spec.domain_client_cls(pool, spec.codec, nc=nc, **spec.extra_kwargs)
+
+
+def init_nats_tts(nc: "NATS") -> "NatsTtsClient":
+    """Create NatsTtsClient (3-layer). Call ``await client.start()`` to activate hb."""
+    from factory.nats.audio.nats_tts_client import NatsTtsClient
+    from factory.nats.audio.nats_tts_codec import TtsCodec
+    from roxabi_contracts.voice import SUBJECTS, validate_worker_id
+
+    spec = _NatsWorkerSpec(
         hb_subject=SUBJECTS.tts_heartbeat,
         validate_worker_id=validate_worker_id,
         name="tts",
+        domain_client_cls=NatsTtsClient,
+        codec=TtsCodec(),
     )
+    client = _init_nats_worker(nc, spec)
     log.info("TTS client created (3-layer) — availability via heartbeat")
-    return NatsTtsClient(pool, TtsCodec(), nc=nc)
+    return client  # type: ignore[return-value]
 
 
 def init_nats_stt(nc: "NATS") -> "NatsSttClient":
     """Create NatsSttClient (3-layer). Call ``await client.start()`` to activate hb."""
     from factory.nats.stt.nats_stt_client import NatsSttClient
     from factory.nats.stt.nats_stt_codec import SttCodec
-    from factory.nats.worker_registry import WorkerRegistry
-    from factory.transport.nats_request_response import NatsTransport
-    from factory.transport.worker_pool_client import WorkerPoolClient
     from roxabi_contracts.voice import SUBJECTS, validate_worker_id
 
     model = (
@@ -74,39 +102,37 @@ def init_nats_stt(nc: "NATS") -> "NatsSttClient":
         or _deprecated_env("STT_MODEL_SIZE", "FACTORY_STT_MODEL")
         or "large-v3-turbo"
     )
-    transport = NatsTransport(nc)
-    pool = WorkerPoolClient(
-        transport,
-        registry=WorkerRegistry(),
+    spec = _NatsWorkerSpec(
         hb_subject=SUBJECTS.stt_heartbeat,
         validate_worker_id=validate_worker_id,
         name="stt",
+        domain_client_cls=NatsSttClient,
+        codec=SttCodec(),
+        extra_kwargs={"model": model},
     )
+    client = _init_nats_worker(nc, spec)
     log.info(
         "STT client created (3-layer, model=%s) — availability via heartbeat", model
     )
-    return NatsSttClient(pool, SttCodec(), model=model, nc=nc)
+    return client  # type: ignore[return-value]
 
 
 def init_nats_image(nc: "NATS") -> "NatsImageClient":
     """Create NatsImageClient (3-layer). Call ``client.start()`` to start hb."""
     from factory.nats.image.nats_image_client import NatsImageClient
     from factory.nats.image.nats_image_codec import ImageCodec
-    from factory.nats.worker_registry import WorkerRegistry
-    from factory.transport.nats_request_response import NatsTransport
-    from factory.transport.worker_pool_client import WorkerPoolClient
     from roxabi_contracts.image import SUBJECTS, validate_worker_id
 
-    transport = NatsTransport(nc)
-    pool = WorkerPoolClient(
-        transport,
-        registry=WorkerRegistry(),
+    spec = _NatsWorkerSpec(
         hb_subject=SUBJECTS.image_heartbeat,
         validate_worker_id=validate_worker_id,
         name="image",
+        domain_client_cls=NatsImageClient,
+        codec=ImageCodec(),
     )
+    client = _init_nats_worker(nc, spec)
     log.info("Image client created (3-layer) — availability via heartbeat")
-    return NatsImageClient(pool, ImageCodec(), nc=nc)
+    return client  # type: ignore[return-value]
 
 
 def init_blobstore() -> "BlobStorePort | None":

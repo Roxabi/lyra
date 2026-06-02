@@ -1,6 +1,6 @@
 # Multi-Bot Support
 
-Run multiple bots — each with its own persona, model, and auth policy — without duplicating infrastructure. All bots share the hub container (`lyra-hub`) and are served by the same adapter containers (`lyra-telegram`, `lyra-discord`).
+Run multiple bots — each with its own persona, model, and auth policy — without duplicating infrastructure. All bots share the hub container (`factory-hub`) and are served by the same adapter containers (`factory-telegram`, `factory-discord`).
 
 ## What multi-bot support enables
 
@@ -46,7 +46,7 @@ The flat `[telegram]` and `[discord]` sections use `bot_id = "main"` internally.
 
 Replace the flat sections with `[[telegram.bots]]` and `[[discord.bots]]` arrays. Each entry takes a `bot_id` that must match a corresponding `[[auth.telegram_bots]]` or `[[auth.discord_bots]]` entry.
 
-> **Note:** In production multi-bot deployments, tokens are delivered via per-bot Podman secrets mounted at `/run/secrets/bot_token-<bot_id>` — provision them with `lyra bot secret install <platform> <bot_id>` (see the `## Bot credentials` section in `docs/CONFIGURATION.md`). The `token` fields below illustrate the legacy single-bot `env:` path only.
+> **Note:** In production multi-bot deployments, tokens are delivered via per-bot Podman secrets mounted at `/run/secrets/bot_token-<bot_id>` — provision them with `factory bot secret install <platform> <bot_id>` (see the `## Bot credentials` section in `docs/CONFIGURATION.md`). The `token` fields below illustrate the legacy single-bot `env:` path only.
 
 ```toml
 [admin]
@@ -105,7 +105,7 @@ Every `bot_id` string is arbitrary but must be unique per platform and consisten
 
 ## Agent TOML: defining a persona
 
-Each bot references an agent by name (`agent = "aryl_default"`). Agent configs live at `src/lyra/agents/<name>.toml`.
+Each bot references an agent by name (`agent = "aryl_default"`). Agent configs live at `src/factory/agents/<name>.toml`.
 
 ```toml
 [agent]
@@ -117,13 +117,13 @@ show_intermediate = false
 backend = "claude-cli"
 model = "claude-haiku-4-5-20251001"
 max_turns = 20
-cwd = "~/projects/lyra"
+cwd = "~/projects/roxabi-factory"
 
 # [prompt]
 # system = "..."  # Optional: raw string overrides persona composition
 
 [workspaces]
-lyra     = "~/projects/lyra"
+lyra     = "~/projects/roxabi-factory"
 projects = "~/projects"
 ```
 
@@ -250,7 +250,7 @@ The `CliPool` is the Claude CLI subprocess pool. It is shared across all agents 
    - Discord: Discord Developer Portal → New Application → Bot → Reset Token → enable Message Content Intent
 
 2. **Create the agent TOML** (if using a new persona)
-   - Copy `src/lyra/agents/lyra_default.toml` to `src/lyra/agents/<name>.toml`
+   - Copy `src/factory/agents/lyra_default.toml` to `src/factory/agents/<name>.toml`
    - Edit `name`, `memory_namespace`, `model`, and `[prompt]`
    - Do not enable `smart_routing` (`enabled = false` or omit the section)
 
@@ -310,7 +310,7 @@ The `CliPool` is the Claude CLI subprocess pool. It is shared across all agents 
 | `bot_id` must be unique per platform | Two Telegram bots cannot share the same `bot_id` |
 | `auth_bots` entry required per bot | A bot without a matching auth entry is silently skipped at startup — add `[[auth.telegram_bots]]` / `[[auth.discord_bots]]` entry or the bot will not start. The process exits only if ALL bots lack auth. |
 | `CliPool` is shared | All bots share the subprocess pool — heavy concurrent use increases subprocess contention |
-| Shared hub container | All bots route through `lyra-hub` — a hub crash affects all bots (systemd `Restart=on-failure` recovers automatically) |
+| Shared hub container | All bots route through `factory-hub` — a hub crash affects all bots (systemd `Restart=on-failure` recovers automatically) |
 
 ---
 
@@ -320,8 +320,8 @@ The `CliPool` is the Claude CLI subprocess pool. It is shared across all agents 
 Check the logs for registration and ready messages:
 ```bash
 make lyra logs
-# Telegram: INFO lyra.__main__: Registered Telegram bot bot_id='<name>' agent='<agent>'
-# Discord:  INFO lyra.adapters.discord: Discord bot ready: <BotUsername> (id=<id>)
+# Telegram: INFO factory.__main__: Registered Telegram bot bot_id='<name>' agent='<agent>'
+# Discord:  INFO factory.adapters.discord: Discord bot ready: <BotUsername> (id=<id>)
 ```
 If the line is missing, the bot was skipped at startup — see below.
 

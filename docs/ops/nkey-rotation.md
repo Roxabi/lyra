@@ -13,18 +13,18 @@ Rotation replaces the seed file (private key material) for one or more identitie
 ## Identity → Systemd Unit Map
 
 > Production runs Podman Quadlet units (as of #611). The restart commands in Step 5 use
-> `systemctl --user` accordingly. NATS runs as `lyra-nats.service` (Quadlet container).
+> `systemctl --user` accordingly. NATS runs as `factory-nats.service` (Quadlet container).
 
 | Identity (seed file) | Systemd unit | Log command |
 |---|---|---|
-| `hub.seed` | `lyra-hub.service` | `journalctl --user -u lyra-hub` |
-| `telegram-adapter.seed` | `lyra-telegram.service` | `journalctl --user -u lyra-telegram` |
-| `discord-adapter.seed` | `lyra-discord.service` | `journalctl --user -u lyra-discord` |
-| `clipool-worker.seed` | `lyra-clipool.service` | `journalctl --user -u lyra-clipool` |
+| `hub.seed` | `factory-hub.service` | `journalctl --user -u factory-hub` |
+| `telegram-adapter.seed` | `factory-telegram.service` | `journalctl --user -u factory-telegram` |
+| `discord-adapter.seed` | `factory-discord.service` | `journalctl --user -u factory-discord` |
+| `clipool-worker.seed` | `factory-clipool.service` | `journalctl --user -u factory-clipool` |
 | `voice-tts.seed` | `voicecli-tts.service` (voiceCLI project) | `journalctl --user -u voicecli-tts` |
 | `voice-stt.seed` | `voicecli-stt.service` (voiceCLI project) | `journalctl --user -u voicecli-stt` |
 
-All seeds live in `~/.lyra/nkeys/` on Machine 1. The merged `auth.conf` is stored as Podman secret `lyra-nats-auth`.
+All seeds live in `~/.roxabi/factory/nkeys/` on Machine 1. The merged `auth.conf` is stored as Podman secret `factory-nats-auth`.
 
 ---
 
@@ -68,7 +68,7 @@ If you prefer to inspect raw identity counts, the legacy manual equivalent is st
 sudo ./deploy/nats/gen-nkeys.sh --show
 # Verify seed count matches expected 10 identities.
 
-systemctl --user status 'lyra-*.service'
+systemctl --user status 'factory-*.service'
 # All units should be active (running) before you begin.
 ```
 
@@ -86,8 +86,8 @@ For each identity being rotated, back up its seed before deletion. Use a timesta
 
 IDENTITY=telegram-adapter
 TS=$(date +%Y%m%d-%H%M%S)
-cp ~/.lyra/nkeys/${IDENTITY}.seed ~/.lyra/nkeys/${IDENTITY}.seed.bak-${TS}
-chmod 0600 ~/.lyra/nkeys/${IDENTITY}.seed.bak-${TS}
+cp ~/.roxabi/factory/nkeys/${IDENTITY}.seed ~/.roxabi/factory/nkeys/${IDENTITY}.seed.bak-${TS}
+chmod 0600 ~/.roxabi/factory/nkeys/${IDENTITY}.seed.bak-${TS}
 ```
 
 The backup preserves the compromised material for forensic reference. It is never re-used to authenticate.
@@ -102,11 +102,11 @@ Delete the seed file for each compromised identity, then run `--regen-authconf`.
 # On Machine 1 — requires sudo.
 
 # 3.1 Delete the compromised seed(s).
-rm ~/.lyra/nkeys/${IDENTITY}.seed
+rm ~/.roxabi/factory/nkeys/${IDENTITY}.seed
 # Repeat rm for each additional compromised identity.
 
 # 3.2 Re-render auth.conf with the new public key(s).
-cd ~/projects/lyra
+cd ~/projects/roxabi-factory
 factory-acl genkeys --regen-authconf
 ```
 
@@ -115,7 +115,7 @@ Expected output includes:
 - `[+] Derived pubkey from existing seed: <identity>` for unchanged identities
 - `[+] Backed up auth.conf → /etc/nats/nkeys/auth.conf.bak.<timestamp>`
 - `[+] auth.conf re-rendered from 10 existing seeds.`
-- `[+] Next: sudo systemctl reload lyra-nats.service`
+- `[+] Next: sudo systemctl reload factory-nats.service`
 
 If `nats-server` is on PATH and `/etc/nats/nats.conf` exists, the script validates the new config via `nats-server -t` before writing. A validation failure restores the backup automatically.
 
@@ -128,7 +128,7 @@ If `nats-server` is on PATH and `/etc/nats/nats.conf` exists, the script validat
 make quadlet-secrets-install
 
 # Restart NATS container to pick up new secret
-systemctl --user restart lyra-nats.service
+systemctl --user restart factory-nats.service
 ```
 
 Record the restart timestamp — you will need it for the verification step:
@@ -146,7 +146,7 @@ The container restart evicts all existing connections. All clients will reconnec
 
 Restart affected units in this order: workers first, adapters second, hub last. Workers and adapters first — they are reconnect-tolerant (circuit breaker in roxabi-nats) and can queue at NATS while the hub is briefly down. Hub last — it is the sole consumer of inbound queues; restarting it last minimises the window where inbound messages could fill NATS queues with no consumer.
 
-Only restart units that use a rotated identity. If only `telegram-adapter` was rotated, restart only `lyra-telegram`. If `hub` was rotated, restart all units.
+Only restart units that use a rotated identity. If only `telegram-adapter` was rotated, restart only `factory-telegram`. If `hub` was rotated, restart all units.
 
 **5.1 voicecli workers** (if `voice-tts.seed` or `voice-stt.seed` was rotated — voiceCLI project):
 
@@ -165,20 +165,20 @@ systemctl --user restart imagecli-gen.service
 **5.3 Lyra adapters** (if any adapter seed was rotated):
 
 ```bash
-systemctl --user restart lyra-telegram.service
-systemctl --user restart lyra-discord.service
+systemctl --user restart factory-telegram.service
+systemctl --user restart factory-discord.service
 ```
 
 **5.4 Lyra hub** (if `hub.seed` was rotated):
 
 ```bash
-systemctl --user restart lyra-hub.service
+systemctl --user restart factory-hub.service
 ```
 
 After each restart, wait for the unit to reach `active (running)` state before restarting the next one:
 
 ```bash
-systemctl --user status 'lyra-*.service'
+systemctl --user status 'factory-*.service'
 # Confirm the restarted unit shows active (running) before continuing.
 ```
 
@@ -194,7 +194,7 @@ Run `lyra ops verify` for a quick ACL matrix check (ADR-046 invariant 5) before 
 tools/check-nats-acls.sh --since "${RELOAD_TS}" --window 90 | tee ~/nkey-rotation-evidence.txt
 ```
 
-Expected output on success: `OK: no Permissions Violation in lyra-nats.service over 90s window`
+Expected output on success: `OK: no Permissions Violation in factory-nats.service over 90s window`
 
 If violations are detected, the script prints the offending lines and exits 1. Jump to **Rollback** immediately.
 
@@ -204,13 +204,13 @@ All container stdout/stderr goes to journald. Check with `journalctl --user`:
 
 ```bash
 # Hub
-journalctl --user -u lyra-hub --since "5 min ago" | grep -i "nats\|connected\|ready\|auth\|error"
+journalctl --user -u factory-hub --since "5 min ago" | grep -i "nats\|connected\|ready\|auth\|error"
 
 # Telegram adapter
-journalctl --user -u lyra-telegram --since "5 min ago" | grep -i "nats\|connected\|ready\|auth\|error"
+journalctl --user -u factory-telegram --since "5 min ago" | grep -i "nats\|connected\|ready\|auth\|error"
 
 # Discord adapter
-journalctl --user -u lyra-discord --since "5 min ago" | grep -i "nats\|connected\|ready\|auth\|error"
+journalctl --user -u factory-discord --since "5 min ago" | grep -i "nats\|connected\|ready\|auth\|error"
 
 # voicecli workers (if rotated)
 # Note: voicecli connects via tls://127.0.0.1:4222 — connection errors here may
@@ -222,7 +222,7 @@ journalctl --user -u voicecli-stt --since "5 min ago" | grep -i "nats\|connected
 **6.3 Confirm unit states:**
 
 ```bash
-systemctl --user status 'lyra-*.service'
+systemctl --user status 'factory-*.service'
 ```
 
 All units should show `active (running)`. Any unit in `failed` state immediately after restart indicates an auth failure — see Rollback.
@@ -233,7 +233,7 @@ Send a message through Telegram or Discord to the bot and confirm a response arr
 **6.5 Verify the new seed is in place and perms are correct:**
 
 ```bash
-ls -la ~/.lyra/nkeys/ | grep "${IDENTITY}"
+ls -la ~/.roxabi/factory/nkeys/ | grep "${IDENTITY}"
 # Should show 0600 permissions, owner mickael, no backup file as active seed.
 ```
 
@@ -248,7 +248,7 @@ Rollback restores the pre-rotation seed and auth.conf so the old credentials wor
 **7.1 Identify the backup files:**
 
 ```bash
-ls ~/.lyra/nkeys/*.bak-*
+ls ~/.roxabi/factory/nkeys/*.bak-*
 # Note the timestamp suffix from Step 2.
 
 ls /etc/nats/nkeys/auth.conf.bak.*
@@ -263,19 +263,19 @@ ls /etc/nats/nkeys/auth.conf.bak.*
 # Replace BAK_TS with the actual timestamp from your Step 2 output (format: YYYYMMDD-HHMMSS).
 BAK_TS=YYYYMMDD-HHMMSS  # ← replace with timestamp from Step 2 output
 
-cp ~/.lyra/nkeys/${IDENTITY}.seed.bak-${BAK_TS} ~/.lyra/nkeys/${IDENTITY}.seed
-chmod 0600 ~/.lyra/nkeys/${IDENTITY}.seed
+cp ~/.roxabi/factory/nkeys/${IDENTITY}.seed.bak-${BAK_TS} ~/.roxabi/factory/nkeys/${IDENTITY}.seed
+chmod 0600 ~/.roxabi/factory/nkeys/${IDENTITY}.seed
 ```
 
 **7.3 Restore auth.conf and restart NATS:**
 
 ```bash
 # Replace CONF_BAK with the actual backup filename from Step 3 output (format: YYYYMMDD-HHMMSS).
-CONF_BAK=~/.lyra/nkeys/auth.conf.bak.YYYYMMDD-HHMMSS  # ← replace with timestamp from Step 3 output
+CONF_BAK=~/.roxabi/factory/nkeys/auth.conf.bak.YYYYMMDD-HHMMSS  # ← replace with timestamp from Step 3 output
 
-cp "${CONF_BAK}" ~/.lyra/nkeys/auth.conf
+cp "${CONF_BAK}" ~/.roxabi/factory/nkeys/auth.conf
 make quadlet-secrets-install   # recreate Podman secret
-systemctl --user restart lyra-nats.service
+systemctl --user restart factory-nats.service
 ```
 
 **7.4 Reverse-order restart** (workers first, hub last — same order as Step 5).
@@ -287,12 +287,12 @@ systemctl --user restart voicecli-tts.service
 systemctl --user restart voicecli-stt.service
 systemctl --user status voicecli-tts.service voicecli-stt.service
 
-systemctl --user restart lyra-telegram.service
-systemctl --user restart lyra-discord.service
-systemctl --user status lyra-telegram.service lyra-discord.service
+systemctl --user restart factory-telegram.service
+systemctl --user restart factory-discord.service
+systemctl --user status factory-telegram.service factory-discord.service
 
-systemctl --user restart lyra-hub.service
-systemctl --user status lyra-hub.service
+systemctl --user restart factory-hub.service
+systemctl --user status factory-hub.service
 ```
 
 **7.5 Re-run verification** (Step 6) to confirm the rollback restored service. Then escalate: the rotation failed, the compromised seed is live again, and the compromise signal must be reassessed before the next attempt.
@@ -306,20 +306,20 @@ After verification passes (Step 6), dispose of the seed backup. Compromised key 
 **Option A — delete:**
 
 ```bash
-rm ~/.lyra/nkeys/${IDENTITY}.seed.bak-${TS}
+rm ~/.roxabi/factory/nkeys/${IDENTITY}.seed.bak-${TS}
 ```
 
 **Option B — move to forensics archive:**
 
 ```bash
-mkdir -p ~/.lyra/forensics
-mv ~/.lyra/nkeys/${IDENTITY}.seed.bak-${TS} ~/.lyra/forensics/
+mkdir -p ~/.roxabi/factory/forensics
+mv ~/.roxabi/factory/nkeys/${IDENTITY}.seed.bak-${TS} ~/.roxabi/factory/forensics/
 ```
 
-Use Option B if you need to preserve the seed for incident investigation. In either case, confirm no `.bak-*` file remains in `~/.lyra/nkeys/`:
+Use Option B if you need to preserve the seed for incident investigation. In either case, confirm no `.bak-*` file remains in `~/.roxabi/factory/nkeys/`:
 
 ```bash
-ls ~/.lyra/nkeys/*.bak-* 2>/dev/null && echo "WARNING: backup files still present"
+ls ~/.roxabi/factory/nkeys/*.bak-* 2>/dev/null && echo "WARNING: backup files still present"
 ```
 
 > **TODO:** consider automating backup cleanup via a retention hook in gen-nkeys.sh.
@@ -329,7 +329,7 @@ ls ~/.lyra/nkeys/*.bak-* 2>/dev/null && echo "WARNING: backup files still presen
 ## 9. Cross-References
 
 - [ADR-046](../architecture/adr/046-nkey-provisioning-declarative-authconf.mdx) — declarative provisioning invariants, `--regen-authconf` semantics, `lyra ops verify` (Invariant 5)
-- [#561](https://github.com/Roxabi/lyra/issues/561) — parent epic (NATS nkey provisioning)
-- [#714](https://github.com/Roxabi/lyra/issues/714) — per-role ACL rework
+- [#561](https://github.com/Roxabi/roxabi-factory/issues/561) — parent epic (NATS nkey provisioning)
+- [#714](https://github.com/Roxabi/roxabi-factory/issues/714) — per-role ACL rework
 - [`deploy/nats/gen-nkeys.sh`](../../deploy/nats/gen-nkeys.sh) — seed generation and auth.conf rendering
 - [`tools/check-nats-acls.sh`](../../tools/check-nats-acls.sh) — ACL violation detector used in Step 6.1

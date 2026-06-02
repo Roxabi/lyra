@@ -1,10 +1,10 @@
 # Clipool — Git Behavior Reference
 
-Operator notes on how `git` behaves inside the `lyra-clipool` container. Not a runbook — see `gh-key-rotation.md` for procedures.
+Operator notes on how `git` behaves inside the `factory-clipool` container. Not a runbook — see `gh-key-rotation.md` for procedures.
 
 ## SSH → HTTPS URL rewrite
 
-`deploy/lyra-gh/git.config.tmpl` is loaded as `GIT_CONFIG_GLOBAL` inside `lyra-clipool`. It contains:
+`deploy/lyra-gh/git.config.tmpl` is loaded as `GIT_CONFIG_GLOBAL` inside `factory-clipool`. It contains:
 
 ```ini
 [url "https://github.com/"]
@@ -18,7 +18,7 @@ These rules silently rewrite SSH-form GitHub remote URLs to HTTPS at command tim
 
 ## Authentication
 
-Git uses HTTPS + a credential helper (`/opt/lyra-gh/git-credential-lyra-gh`) which fetches a fresh GitHub App installation token from the `lyra-gh-helper` sidecar over a Unix socket. Tokens have a 1 h TTL and are refreshed proactively.
+Git uses HTTPS + a credential helper (`/opt/lyra-gh/git-credential-lyra-gh`) which fetches a fresh GitHub App installation token from the `factory-gh-helper` sidecar over a Unix socket. Tokens have a 1 h TTL and are refreshed proactively.
 
 → `docs/ops/gh-key-rotation.md` — rotating the App PEM.
 
@@ -34,10 +34,10 @@ Set image-baked in `git.config.tmpl`. Per-agent attribution is tracked as a foll
 
 ## Safe directory
 
-The image-baked config trusts repos under `/home/lyra/projects/*` via `safe.directory`. This works around uid drift between host (1000) and container (1500) on bind-mounted Syncthing trees. Tracked for replacement with proper `idmap` in issue #1149.
+The image-baked config trusts repos under `/home/factory/projects/*` via `safe.directory`. This works around uid drift between host (1000) and container (1500) on bind-mounted Syncthing trees. Tracked for replacement with proper `idmap` in issue #1149.
 
 ## Cross-References
 
 - [`deploy/lyra-gh/git.config.tmpl`](../../deploy/lyra-gh/git.config.tmpl) — the config loaded as `GIT_CONFIG_GLOBAL`
-- [`deploy/quadlet/lyra-clipool.container`](../../deploy/quadlet/lyra-clipool.container) — env wiring (`GIT_CONFIG_GLOBAL`, mounts)
+- [`deploy/quadlet/factory-clipool.container`](../../deploy/quadlet/factory-clipool.container) — env wiring (`GIT_CONFIG_GLOBAL`, mounts)
 - [`docs/ops/gh-key-rotation.md`](gh-key-rotation.md) — PEM rotation runbook

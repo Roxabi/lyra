@@ -18,12 +18,11 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-# Patch targets: must match where start_audio_consumer is imported in the
-# wiring modules.  If these paths move, mypy/pyright will NOT catch it — but
-# the patched tests will start failing immediately, making the drift visible.
+# Patch target: must match where start_audio_consumer is imported.
+# After #1663 refactor, the call site moved into _standalone_wiring_common —
+# a single patch covers both Telegram and Discord paths.
 _PATCH_TARGETS = (
-    "factory.bootstrap.wiring.standalone_telegram.start_audio_consumer",
-    "factory.bootstrap.wiring.standalone_discord.start_audio_consumer",
+    "factory.bootstrap.wiring._standalone_wiring_common.start_audio_consumer",
 )
 
 
@@ -39,8 +38,5 @@ def _noop_audio_consumer(request: pytest.FixtureRequest) -> object:
         return
 
     noop = AsyncMock(return_value=AsyncMock())
-    with (
-        patch(_PATCH_TARGETS[0], noop),
-        patch(_PATCH_TARGETS[1], noop),
-    ):
+    with patch(_PATCH_TARGETS[0], noop):
         yield

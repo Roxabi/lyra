@@ -46,7 +46,7 @@ async def test_adapter_raises_bootstrap_error_on_missing_token(
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
         patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
         patch(
-            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            "factory.bootstrap.wiring._standalone_wiring_common.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(

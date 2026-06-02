@@ -102,7 +102,7 @@ Error messages must name the violation, the location, and the observed value. Ex
 ```
 nkey expected length 56, got 62 at user 'hub'
 cert chain: leaf.crt does not verify against ca.crt (openssl exit 2)
-volume line contains '#': 'Volume=/data/lyra#backup:/backup' in lyra-hub.container
+volume line contains '#': 'Volume=/data/lyra#backup:/backup' in factory-hub.container
 ```
 
 Bad: `Error: validation failed` — this is not actionable. The developer must be able to fix the issue without re-running locally.

@@ -223,6 +223,31 @@ class TestTurnStoreErrors:
                 content="hi",
             )
 
+    async def test_log_turn_reraises_on_db_failure(self, store: TurnStore) -> None:
+        """_log_turn re-raises sqlite3.OperationalError — no silent turn loss (#1637).
+
+        Previously the exception was caught and swallowed, causing the JetStream
+        caller to ACK a message whose turn was never persisted.  After the fix,
+        the exception must propagate so the caller can NACK and trigger redelivery.
+        """
+        from unittest.mock import AsyncMock, patch
+
+        db = store._db_or_raise()
+        with patch.object(
+            db,
+            "execute",
+            new=AsyncMock(side_effect=sqlite3.OperationalError("disk I/O error")),
+        ):
+            with pytest.raises(sqlite3.OperationalError, match="disk I/O error"):
+                await store._log_turn(
+                    pool_id="p",
+                    session_id="s",
+                    role="user",
+                    platform="telegram",
+                    user_id="u",
+                    content="will fail",
+                )
+
 
 class TestTurnStoreIntegrationWithPool:
     def _make_msg(
@@ -328,28 +353,33 @@ class TestTurnStoreIntegrationWithPool:
         assistant_call = next(c for c in all_calls if c.kwargs["role"] == "assistant")
         assert assistant_call.kwargs["content"] == "hi there"
 
-    async def test_concurrent_writes_two_pools(self) -> None:
-        """Concurrent log_turn calls from two pools both persist successfully."""
+    async def test_sequential_writes_two_pools(self) -> None:
+        """Sequential log_turn calls from two pools both persist successfully.
+
+        aiosqlite connections are not safe for concurrent use; TurnWriter
+        processes messages one-at-a-time in _consume_loop, so writes are
+        always sequential.  This test validates that sequential writes to
+        different pools both commit successfully with the explicit transaction
+        boundary introduced in #1637.
+        """
         store = TurnStore(":memory:")
         await store.connect()
 
-        await asyncio.gather(
-            store._log_turn(
-                pool_id="pool:A",
-                session_id="s",
-                role="user",
-                platform="telegram",
-                user_id="uA",
-                content="from A",
-            ),
-            store._log_turn(
-                pool_id="pool:B",
-                session_id="s",
-                role="user",
-                platform="telegram",
-                user_id="uB",
-                content="from B",
-            ),
+        await store._log_turn(
+            pool_id="pool:A",
+            session_id="s",
+            role="user",
+            platform="telegram",
+            user_id="uA",
+            content="from A",
+        )
+        await store._log_turn(
+            pool_id="pool:B",
+            session_id="s",
+            role="user",
+            platform="telegram",
+            user_id="uB",
+            content="from B",
         )
 
         assert len(await store.get_turns("pool:A", user_id="uA")) == 1

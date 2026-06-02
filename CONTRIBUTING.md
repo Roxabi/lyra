@@ -4,7 +4,7 @@
 
 ```bash
 # 1. Clone and install dependencies
-git clone https://github.com/Roxabi/lyra.git
+git clone https://github.com/Roxabi/roxabi-factory.git
 cd lyra
 uv sync
 
@@ -90,8 +90,8 @@ class Platform(str, Enum):
 **2. Create `src/factory/adapters/signal.py`** inheriting `OutboundAdapterBase`:
 
 ```python
-from lyra.adapters._base_outbound import OutboundAdapterBase
-from lyra.adapters._shared_streaming import PlatformCallbacks
+from factory.adapters._base_outbound import OutboundAdapterBase
+from factory.adapters._shared_streaming import PlatformCallbacks
 
 class SignalAdapter(OutboundAdapterBase):
     async def send(self, original_msg: InboundMessage, outbound: OutboundMessage) -> None:
@@ -128,7 +128,7 @@ adapter via `hub.register_adapter(Platform.SIGNAL, bot_id, proxy)` where `proxy`
 
 ```python
 # In hub_standalone.py — register NATS proxy for the new adapter
-from lyra.nats.nats_channel_proxy import NatsChannelProxy
+from factory.nats.nats_channel_proxy import NatsChannelProxy
 proxy = NatsChannelProxy(nc, f"lyra.outbound.signal.{bot_id}")
 hub.register_adapter(Platform.SIGNAL, bot_id, proxy)
 hub.register_binding(Platform.SIGNAL, bot_id, "*", "lyra", ...)
@@ -138,7 +138,7 @@ hub.register_binding(Platform.SIGNAL, bot_id, "*", "lyra", ...)
 
 ## Adding an agent
 
-An agent is a stateless singleton defined by a TOML seed file and stored in the AgentStore (SQLite at `~/.lyra/auth.db`).
+An agent is a stateless singleton defined by a TOML seed file and stored in the AgentStore (SQLite at `~/.roxabi/factory/auth.db`).
 
 **1. Create a TOML seed** in `src/factory/agents/my_agent.toml`:
 
@@ -161,8 +161,8 @@ system = """You are ..."""
 **2. Import into the AgentStore**:
 
 ```bash
-lyra agent init          # imports all TOML seeds into the DB
-lyra agent list          # verify it appears
+factory agent init          # imports all TOML seeds into the DB
+factory agent list          # verify it appears
 ```
 
 **3. Wire a bot to the agent** in `config.toml`:
@@ -177,7 +177,7 @@ agent = "my_agent"
 **4. Assign the bot** (if not auto-assigned at startup):
 
 ```bash
-lyra agent assign my_agent --platform telegram --bot my_bot
+factory agent assign my_agent --platform telegram --bot my_bot
 ```
 
 For a custom agent class (beyond `SimpleAgent`), subclass `AgentBase` from `src/factory/core/agent.py` and implement `process()`.

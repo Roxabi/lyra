@@ -117,8 +117,9 @@ def pytest_configure(config: pytest.Config) -> None:
 # wiring modules.  If these paths move, tests that rely on this no-op will
 # start seeing real NATS calls and fail immediately — making drift visible.
 _AUDIO_CONSUMER_PATCH_TARGETS = (
-    "factory.bootstrap.wiring.standalone_telegram.start_audio_consumer",
-    "factory.bootstrap.wiring.standalone_discord.start_audio_consumer",
+    # After #1663: start_audio_consumer lives in _standalone_wiring_common,
+    # shared by both standalone_telegram and standalone_discord.
+    "factory.bootstrap.wiring._standalone_wiring_common.start_audio_consumer",
 )
 
 # Narrow allowlist: only these test-file name fragments trigger the no-op.
@@ -158,10 +159,7 @@ def _noop_audio_consumer_root(request: pytest.FixtureRequest) -> object:
     from unittest.mock import AsyncMock, patch
 
     noop = AsyncMock(return_value=AsyncMock())
-    with (
-        patch(_AUDIO_CONSUMER_PATCH_TARGETS[0], noop),
-        patch(_AUDIO_CONSUMER_PATCH_TARGETS[1], noop),
-    ):
+    with patch(_AUDIO_CONSUMER_PATCH_TARGETS[0], noop):
         yield
 
 

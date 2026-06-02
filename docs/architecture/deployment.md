@@ -12,7 +12,7 @@
 │  TG / DC     │←────────────────│             │←────────────│  (Claude)    │
 └──────────────┘  NATS outbound  └──────┬──────┘  NATS reply  └──────┬───────┘
                                         │                             │
-                                   ~/.lyra/                     ~/.claude/
+                                   ~/.roxabi/factory/                     ~/.claude/
                                    (volume)                     (volume)
 ```
 
@@ -82,7 +82,7 @@ Resume (restart / reply-to):
   Claude reads ~/.claude/projects/<cwd>/<cli_sid>.jsonl → continues
 ```
 
-CliPool does **not** need `~/.lyra/` — it only receives the resume UUID as a
+CliPool does **not** need `~/.roxabi/factory/` — it only receives the resume UUID as a
 command argument from the Hub over NATS.
 
 ---
@@ -96,7 +96,7 @@ All trust resolution is Hub-side. Adapters are untrusted normalizers.
 |---|---|---|
 | Transport auth | Telegram HMAC webhook secret; Discord gateway token | Adapter container |
 | Trust resolution | C3 — adapters always send PUBLIC, hub resolves via Authenticator | Hub middleware stage 2–3 |
-| `auth.db` | Identity grants, trust assignments, cross-platform aliases | Hub container (`~/.lyra/auth.db`) |
+| `auth.db` | Identity grants, trust assignments, cross-platform aliases | Hub container (`~/.roxabi/factory/auth.db`) |
 | Secrets | Bot tokens delivered as Podman secrets (`type=mount`) — see ADR-074 | `/run/secrets/bot_token-<bot_id>` inside adapter containers |
 | NATS channel | TLS + auth tokens required in production | Infrastructure |
 
@@ -135,15 +135,15 @@ resumes it rather than starting fresh.
 
 | File | Container(s) | Access | Contents |
 |---|---|---|---|
-| `~/.lyra/auth.db` | Hub | rw | Auth grants, identity aliases |
-| `~/.lyra/config.db` | Hub | rw | Agent registry, user prefs (bot secrets removed — see ADR-074) |
-| `~/.lyra/turns.db` | Hub, Telegram, Discord | rw | Conversation turns, pool sessions, lyra→cli session map |
-| `~/.lyra/message_index.db` | Hub | rw | reply-to session routing index |
-| `~/.lyra/keyring.key` | Hub | rw | Encryption key for `config.db` sibling stores (bot-secrets path removed — safe to delete once no remaining consumers; see ADR-074) |
-| `~/.lyra/discord.db` | Discord | rw | Thread ownership + session cache |
+| `~/.roxabi/factory/auth.db` | Hub | rw | Auth grants, identity aliases |
+| `~/.roxabi/factory/config.db` | Hub | rw | Agent registry, user prefs (bot secrets removed — see ADR-074) |
+| `~/.roxabi/factory/turns.db` | Hub, Telegram, Discord | rw | Conversation turns, pool sessions, lyra→cli session map |
+| `~/.roxabi/factory/message_index.db` | Hub | rw | reply-to session routing index |
+| `~/.roxabi/factory/keyring.key` | Hub | rw | Encryption key for `config.db` sibling stores (bot-secrets path removed — safe to delete once no remaining consumers; see ADR-074) |
+| `~/.roxabi/factory/discord.db` | Discord | rw | Thread ownership + session cache |
 | `~/.claude/` | CliPool | rw | Claude session `.jsonl` files (required for `--resume`) |
 
-Adapter mounts are per-file inline binds (not the full `lyra-data.volume`) — adapters never touch `auth.db` or `message_index.db`.
+Adapter mounts are per-file inline binds (not the full `factory-data.volume`) — adapters never touch `auth.db` or `message_index.db`.
 
 ---
 
@@ -167,7 +167,7 @@ Adapter mounts are per-file inline binds (not the full `lyra-data.volume`) — a
 |---|---|---|
 | Hub ↔ Adapter | Already NATS (3-process mode) | Same, containerized |
 | Hub ↔ CliPool | In-process (stdio, method calls) | ✅ Done (#941) — NATS protocol (`lyra.clipool.cmd` / `lyra.clipool.heartbeat`) |
-| DBs | All in `~/.lyra/` on one host | Split across volumes per container |
+| DBs | All in `~/.roxabi/factory/` on one host | Split across volumes per container |
 | Session resume | In-process `_resume_session_ids` dict | Hub sends UUID over NATS |
 
 ---
@@ -183,22 +183,22 @@ Seven design questions deferred from ADR-053 are closed here. Each applies to al
 - **D1 — Image registry namespace:** Project-named, no `roxabi-` prefix. CI/prod images go to `ghcr.io/roxabi/<project>`; local dev builds use `localhost/<project>-<service>:dev`. The `roxabi-` prefix is reserved for genuinely shared SDKs (e.g. `roxabi-nats`), not per-project container images.
 - **D2 — NATS topology:** Per-project NATS during migration; shared NATS at Phase 4. Each project runs its own `<project>-nats.container` on an incrementing port (Lyra: 4223, voiceCLI: 4224, …) until Phase 4 consolidates onto a single `nats.container` at port 4222 on `roxabi.network`.
 - **D3 — Podman network:** NATS-bus participants share `roxabi.network` at Phase 4; HTTP-only projects (forge, intel, idna, live) use isolated per-project networks. Topology follows communication intent.
-- **D4 — Env file path:** `~/.<project>/env/<service>.env` per project. Lyra uses `~/.lyra/env/hub.env`; voiceCLI uses `~/.voicecli/env/tts.env`. Centralizing under `~/.roxabi/env/` is deferred — the per-project runtime root is already established.
+- **D4 — Env file path:** `~/.<project>/env/<service>.env` per project. Lyra uses `~/.roxabi/factory/env/hub.env`; voiceCLI uses `~/.voicecli/env/tts.env`. Centralizing under `~/.roxabi/env/` is deferred — the per-project runtime root is already established.
 - **D5 — Deploy script:** Shared shell library at `lyra/scripts/deploy-lib.sh`, installed to `~/.local/lib/roxabi/deploy-lib.sh` at bootstrap. Superseded in practice by `podman auto-update.timer` (GHCR registry auto-pull) + `make full-deploy` as manual fallback (#1035).
 - **D6 — Upgrade coordination:** Independent releases by default; batch coordination only for shared-infra breaking changes (NATS auth.conf change, Phase 4 NATS consolidation, `roxabi.network` rename, breaking NATS contract version bump per ADR-049).
 - **D7 — Shared infra home:** Lyra repo. NATS config, auth.conf, nkey issuance, Quadlet patterns, and deploy scripts live in `lyra/` because Lyra created the patterns. No `roxabi-infra` repo will be created.
 
 ### Container publishing workflow
 
-CI builds container images and pushes them to GHCR via a reusable GHA workflow (`Roxabi/.github/.github/workflows/publish-container.yml@v1`). Live reference: `.github/workflows/publish.yml`. Key invariants resolved in ADR-056: actions are SHA-pinned (no floating action tags), semver parsing strips the `lyra/` tag prefix, `LYRA_IMAGE` (local build) is separated from `GHCR_IMAGE` (registry name), and `secrets: inherit` was dropped in favor of the built-in `GITHUB_TOKEN`. Production hosts pull from GHCR via `podman auto-update` — images are never built on the production host. → ADR-056
+CI builds container images and pushes them to GHCR via a reusable GHA workflow (`Roxabi/.github/.github/workflows/publish-container.yml@v1`). Live reference: `.github/workflows/publish.yml`. Key invariants resolved in ADR-056: actions are SHA-pinned (no floating action tags), semver parsing strips the `lyra/` tag prefix, `FACTORY_IMAGE` (local build) is separated from `GHCR_IMAGE` (registry name), and `secrets: inherit` was dropped in favor of the built-in `GITHUB_TOKEN`. Production hosts pull from GHCR via `podman auto-update` — images are never built on the production host. → ADR-056
 
 ### Credential store
 
-File-based credentials (nkey seeds, NATS auth tokens) are delivered as Podman secrets using `type=mount`, placing the secret at a predictable path inside the container without exposing it as an environment variable. Naming convention: `<project>-nats-<identity>` (e.g. `lyra-nats-hub`). All containers use `UserNS=keep-id:uid=1500,gid=1500` so container processes run as host UID 1000 (`mickael`) — files in `~/.lyra/` are readable without `chown`. The `lyra-data.volume` is a bind-mount of `%h/.lyra` (`Type=none; Device=%h/.lyra; Options=bind`). Adapter data mounts use `:z` (read-write), not `:ro`. → ADR-054
+File-based credentials (nkey seeds, NATS auth tokens) are delivered as Podman secrets using `type=mount`, placing the secret at a predictable path inside the container without exposing it as an environment variable. Naming convention: `<project>-nats-<identity>` (e.g. `factory-nats-hub`). All containers use `UserNS=keep-id:uid=1500,gid=1500` so container processes run as host UID 1000 (`mickael`) — files in `~/.roxabi/factory/` are readable without `chown`. The `factory-data.volume` is a bind-mount of `%h/.roxabi/factory` (`Type=none; Device=%h/.roxabi/factory; Options=bind`). Adapter data mounts use `:z` (read-write), not `:ro`. → ADR-054
 
 ### SELinux Z-label policy
 
-All Quadlet bind-mount volumes carry `:z` for portability. On the current production host (Ubuntu 26.04 LTS, AppArmor-only), `:z` is a no-op at runtime. On SELinux hosts, `:z` relabels the bind-mounted directory so the container process can read it — it is load-bearing. Do not drop `:z` from bind-mounts. The JetStream volume (`lyra-jetstream.volume`) uses `Device=%h/.lyra/nats/jetstream` and retains `Volume=lyra-jetstream.volume:/var/lib/nats/jetstream:z` in `lyra-nats.container`. → ADR-068
+All Quadlet bind-mount volumes carry `:z` for portability. On the current production host (Ubuntu 26.04 LTS, AppArmor-only), `:z` is a no-op at runtime. On SELinux hosts, `:z` relabels the bind-mounted directory so the container process can read it — it is load-bearing. Do not drop `:z` from bind-mounts. The JetStream volume (`factory-jetstream.volume`) uses `Device=%h/.roxabi/factory/nats/jetstream` and retains `Volume=factory-jetstream.volume:/var/lib/nats/jetstream:z` in `factory-nats.container`. → ADR-068
 
 ### Historical: supervisord era (ADR-041)
 

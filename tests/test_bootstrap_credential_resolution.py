@@ -61,7 +61,7 @@ async def test_adapter_reads_token_from_run_secrets(
         patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
         patch("factory.adapters.telegram.TelegramAdapter", side_effect=_capture_tg),
         patch(
-            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            "factory.bootstrap.wiring._standalone_wiring_common.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
@@ -125,7 +125,7 @@ async def test_adapter_reads_webhook_when_present(
         patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
         patch("factory.adapters.telegram.TelegramAdapter", side_effect=_capture_tg),
         patch(
-            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            "factory.bootstrap.wiring._standalone_wiring_common.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
@@ -189,7 +189,7 @@ async def test_adapter_omits_webhook_when_absent(
         patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
         patch("factory.adapters.telegram.TelegramAdapter", side_effect=_capture_tg),
         patch(
-            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            "factory.bootstrap.wiring._standalone_wiring_common.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
@@ -262,7 +262,7 @@ async def test_adapter_handles_multi_bot(
         patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
         patch("factory.adapters.telegram.TelegramAdapter", side_effect=_capture_tg),
         patch(
-            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            "factory.bootstrap.wiring._standalone_wiring_common.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
@@ -365,7 +365,7 @@ async def test_discord_adapter_handles_multi_bot(
             return_value=mock_turn_store,
         ),
         patch(
-            "factory.bootstrap.wiring.standalone_discord.NatsOutboundListener",
+            "factory.bootstrap.wiring._standalone_wiring_common.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(

@@ -234,3 +234,61 @@ class TestDiscordReasoningRendering:
     # events reach this callback. Coverage is in
     # tests/core/test_stream_processor.py::TestReasoning::
     # test_show_intermediate_false_emits_no_reasoning_events.
+
+
+# ---------------------------------------------------------------------------
+# BaseFormatter ABC guard tests (#1660 review — negative-test rule)
+# ---------------------------------------------------------------------------
+
+
+class TestBaseFormatterABCEnforcement:
+    """Verify that BaseFormatter ABC raises TypeError when abstract methods are absent.
+
+    Negative-test rule: deleting ``class DiscordFormatter(BaseFormatter)`` and
+    restoring ``class DiscordFormatter:`` must break at least one test.  These
+    tests fail when ``BaseFormatter`` inheritance is removed because an
+    incomplete subclass can then be instantiated without TypeError.
+
+    Root cause (P5 audit): silent drift when new methods are added to one
+    formatter but not the other.  Correction class: Archi (interface/contract
+    layer).  Level L = interface/contract, not symptom layer.
+    """
+
+    def test_incomplete_subclass_raises_type_error(self) -> None:
+        """Incomplete BaseFormatter subclass raises TypeError on instantiation.
+
+        Falsification guard: if BaseFormatter stops being an ABC
+        (e.g. inheritance removed), TypeError is never raised and the
+        assertion fails — activating the guard.
+        """
+        from factory.outbound.formatter import BaseFormatter
+
+        class _Incomplete(BaseFormatter):
+            pass  # implements nothing
+
+        with pytest.raises(TypeError):
+            _Incomplete()  # type: ignore[abstract]
+
+    def test_discord_formatter_is_base_formatter_subclass(self) -> None:
+        """DiscordFormatter must be a subclass of BaseFormatter (nominal contract).
+
+        Removing ``class DiscordFormatter(BaseFormatter)`` causes this test
+        to fail, enforcing the inheritance chain at the class level.
+        """
+        from factory.adapters.discord.discord_formatter import DiscordFormatter
+        from factory.outbound.formatter import BaseFormatter
+
+        assert issubclass(DiscordFormatter, BaseFormatter), (
+            "DiscordFormatter must inherit BaseFormatter "
+            "(stage-axis formatter ABC — ADR-073)"
+        )
+
+    def test_telegram_formatter_is_base_formatter_subclass(self) -> None:
+        """TelegramFormatter must be a subclass of BaseFormatter (nominal contract)."""
+        from factory.adapters.telegram.telegram_formatter import TelegramFormatter
+        from factory.outbound.formatter import BaseFormatter
+
+        assert issubclass(TelegramFormatter, BaseFormatter), (
+            "TelegramFormatter must inherit BaseFormatter "
+            "(stage-axis formatter ABC — ADR-073)"
+        )

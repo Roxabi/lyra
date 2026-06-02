@@ -472,8 +472,8 @@ The key constraint: **Omni (~8 GB) and TTS+STT (~3 GB) cannot coexist on the RTX
 │  roxabituwer (prod, RTX 3080 12 GB, 24/7)           │
 │                                                     │
 │  lyra_omni     (~8 GB)  ← Qwen2.5-Omni-7B INT4     │
-│  lyra_telegram           ← adapter (no VRAM)        │
-│  lyra_discord            ← adapter (no VRAM)        │
+│  factory_telegram           ← adapter (no VRAM)        │
+│  factory_discord            ← adapter (no VRAM)        │
 │                                                     │
 │  Voice mode:  Omni handles voice-to-voice natively   │
 │  HQ TTS/STT:  calls ROXABITOWER API                  │
@@ -498,8 +498,8 @@ The key constraint: **Omni (~8 GB) and TTS+STT (~3 GB) cannot coexist on the RTX
 │  lyra_omni:    STOPPED (VRAM freed)                  │
 │  voicecli_tts  (~2.6 GB)  ← loaded locally           │
 │  voicecli_stt  (~0.5 GB)  ← loaded locally           │
-│  lyra_telegram              ← adapter (no VRAM)      │
-│  lyra_discord               ← adapter (no VRAM)      │
+│  factory_telegram              ← adapter (no VRAM)      │
+│  factory_discord               ← adapter (no VRAM)      │
 │                                                     │
 │  Pipeline mode:                                      │
 │    Audio → Whisper (STT) → Claude API → Qwen3-TTS    │
@@ -691,8 +691,8 @@ New: HTTP API wrapper process (or extend existing daemons to also listen on TCP)
 **roxabituwer** (new — all programs present, mode manager controls which are running):
 ```ini
 [program:lyra_omni]
-command=%(ENV_HOME)s/projects/lyra/scripts/run_omni.sh
-directory=%(ENV_HOME)s/projects/lyra
+command=%(ENV_HOME)s/projects/roxabi-factory/scripts/run_omni.sh
+directory=%(ENV_HOME)s/projects/roxabi-factory
 autostart=false           # mode manager decides
 autorestart=unexpected
 # Serves Qwen2.5-Omni-7B INT4 via vLLM-Omni on port 8901

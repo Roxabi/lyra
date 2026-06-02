@@ -9,21 +9,16 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-from factory.adapters.nats.nats_outbound_listener import (
-    ListenerDeps,
-    NatsOutboundListener,
-)
 from factory.bootstrap import credentials
 from factory.bootstrap.factory.config import AdapterConfigBundle
 from factory.bootstrap.factory.voice_overlay import init_blobstore
 from factory.bootstrap.lifecycle.lifecycle_helpers import close_safely
 from factory.bootstrap.lifecycle.signal_handlers import setup_shutdown_event
-from factory.bootstrap.standalone.audio_consumer_bootstrap import start_audio_consumer
-from factory.bootstrap.wiring.bootstrap_wiring import wire_ingest
-from factory.core.messaging.bus import Bus
-from factory.core.messaging.message import InboundMessage, Platform
-from factory.nats.queue_groups import adapter_outbound
-from factory.transport.typing_publisher import TypingPublisher
+from factory.bootstrap.wiring._standalone_wiring_common import (
+    TypingDeps,
+    wire_bot_common,
+)
+from factory.core.messaging.message import Platform
 from roxabi_nats.readiness import wait_for_hub
 
 log = logging.getLogger(__name__)
@@ -106,82 +101,41 @@ async def bootstrap_telegram_standalone(  # noqa: PLR0915 — DEBT:wiring-bootst
 
     async def _wire_bot(bot_cfg: Any, token: str, webhook_secret: str | None) -> tuple:
         """Wire a single Telegram bot with NATS, typing listener, and audio consumer."""
-        bot_id = bot_cfg.bot_id
-
         from factory.adapters.telegram import TelegramAdapter
         from factory.adapters.telegram.telegram import _telegram_scope_resolver
         from factory.adapters.telegram.telegram_outbound import _typing_worker
-        from factory.nats.nats_bus import NatsBus
-        from factory.typing import TypingListener, make_typing_factory
 
-        inbound_bus: Bus[InboundMessage] = NatsBus(
-            nc=nc,
-            bot_id=bot_id,
-            item_type=InboundMessage,
-            publish_only=True,
-        )
-        inbound_bus.register(platform_enum)
-        await inbound_bus.start()
+        bot_id = bot_cfg.bot_id
 
-        adapter = TelegramAdapter(
-            bot_id=bot_id,
-            token=token,
-            inbound_bus=inbound_bus,
-            webhook_secret=webhook_secret or "",
-            turn_store=tg_turn_store,
-            blob_store=blob_store,
-        )
-        adapter.configure_tool_display(config_bundle.tool_display)
-        adapter.configure_typing_publisher(TypingPublisher(nc))
-        await adapter.resolve_identity()
-        wire_ingest(adapter, blob_store)
-
-        listener = NatsOutboundListener(
-            ListenerDeps(
-                nc=nc,
-                platform=platform_enum,
+        def _tg_adapter_factory(inbound_bus: Any) -> tuple:
+            adapter = TelegramAdapter(
                 bot_id=bot_id,
-                adapter=adapter,
-                queue_group=adapter_outbound(platform_enum.value, bot_id),
+                token=token,
+                inbound_bus=inbound_bus,
+                webhook_secret=webhook_secret or "",
+                turn_store=tg_turn_store,
+                blob_store=blob_store,
             )
-        )
-        adapter._outbound_listener = listener
-        try:
-            await adapter.astart()
-        except Exception:
-            await close_safely(
-                "tg-adapter-start",
-                adapter.close(),
-                inbound_bus.stop(),
+            typing_deps = TypingDeps(
+                subject=f"lyra.typing.telegram.{bot_id}",
+                scope_resolver=_telegram_scope_resolver,
+                worker_factory=partial(_typing_worker, adapter.bot),
             )
-            raise
+            return adapter, typing_deps
 
-        tg_typing_listener = TypingListener(
+        return await wire_bot_common(
             nc=nc,
-            subject=f"lyra.typing.telegram.{bot_id}",
-            resolver=_telegram_scope_resolver,
-            factory_builder=make_typing_factory(partial(_typing_worker, adapter.bot)),
-            manager=adapter._typing,
+            platform_enum=platform_enum,
+            bot_id=bot_id,
+            adapter_factory=_tg_adapter_factory,
+            config_bundle=config_bundle,
+            js=js,
+            blob_store=blob_store,
+            resolve_identity=True,
         )
-        try:
-            await tg_typing_listener.start()
-        except Exception:
-            await close_safely(
-                "tg-typing-start",
-                tg_typing_listener.stop(),
-                adapter.close(),
-                inbound_bus.stop(),
-            )
-            raise
-
-        # Audio consumer: started strictly after astart() + typing, so no
-        # cleanup needed in either astart or typing failure paths above.
-        consumer = await start_audio_consumer(js, platform_enum.value, bot_id, adapter)
-
-        return (adapter, inbound_bus, tg_typing_listener, consumer)
 
     # ADR-079 S3: wait_for_hub is a load-bearing barrier — it MUST precede
-    # start_audio_consumer (called inside _wire_bot). The hub sets hub.ready only
+    # start_audio_consumer (called inside wire_bot_common). The hub sets hub.ready only
     # after ensure_stream + ensure_kv complete, so this call guarantees stream + KV
     # exist before any adapter bind/consume attempt. Moving it after the loop would
     # reintroduce the cold-boot race (BucketNotFoundError / missing-stream).

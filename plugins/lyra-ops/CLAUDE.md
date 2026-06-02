@@ -13,12 +13,12 @@ Claude Code plugin via `roxabi-plugins` (or loaded locally from this path).
 
 - All production access goes through `make remote <unit> <action>` or explicit
   `ssh $H "..."` calls — never direct Python imports or lyra source references.
-- `$H` := `DEPLOY_HOST` read from `~/projects/lyra/.env` on the local machine.
+- `$H` := `DEPLOY_HOST` read from `~/projects/roxabi-factory/.env` on the local machine.
 - Production runtime: Podman Quadlet (rootless systemd --user units).
 - Health endpoint: `http://localhost:8443/health/detail` (loopback on `$H`,
-  bearer token from `~/.lyra/secrets/health_secret`).
+  bearer token from `~/.roxabi/factory/secrets/health_secret`).
 - Logs: `journalctl --user -u <unit>` on `$H`. In-container files via
-  `podman exec lyra-hub`.
+  `podman exec factory-hub`.
 
 ## Isolation rules
 

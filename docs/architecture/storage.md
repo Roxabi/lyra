@@ -37,7 +37,7 @@ five-level taxonomy in `ARCHITECTURE.md` is the long-term target. → ADR-008
 |-------|------|-----------|
 | L0 Working | `dict` in memory, scoped by `pool_id` | Pool-scoped |
 | L1 Session | Store keyed by `(user_id, session_id)` | User + session scoped |
-| L2 Episodic | `~/.lyra/memory/episodic/{user_id}/YYYY-MM-DD/` — user_id in path | User-scoped path |
+| L2 Episodic | `~/.roxabi/factory/memory/episodic/{user_id}/YYYY-MM-DD/` — user_id in path | User-scoped path |
 | L3 Semantic | SQLite, `WHERE user_id = ?` mandatory on all queries | User-scoped query |
 | L4 Procedural | Global (skills = agent capabilities, not user data) | Global |
 
@@ -129,11 +129,11 @@ cache; a closed store must not be reused. → ADR-024
 ### DB-first agent config + hot-reload
 
 The SQLite `agents` table is the single runtime source of truth. TOMLs under `src/factory/agents/`
-are seed-only files, consumed exclusively by `lyra agent init` and `lyra agent validate`. At
+are seed-only files, consumed exclusively by `factory agent init` and `factory agent validate`. At
 runtime, `AgentBase._maybe_reload()` compares `AgentRow.updated_at` (ISO-8601 string, O(1)
 dict lookup from the `AgentStore` cache) against a locally cached timestamp; on change it calls
 `agent_row_to_config()`. No TOML is read post-startup. No background polling timer — reload is
-lazy, per-message. `lyra agent edit` changes are visible on the next inbound message with no
+lazy, per-message. `factory agent edit` changes are visible on the next inbound message with no
 daemon restart. Persona files (`.persona.toml`) remain file-based; persona hot-reload requires
 a DB `upsert()` to trigger. → ADR-029
 
@@ -151,29 +151,29 @@ The `wire_discord_adapters` function returns `(adapters, dispatchers, thread_sto
 
 Binary payloads (Telegram/Discord attachments, STT/TTS audio) are stored behind a `BlobStore`
 Protocol with three methods: `put`, `get`, `exists`. The v1 backend is `FsBlobStore`: a
-SHA-256-addressed flat-FS tree (`/data/lyra/blobs/<sha[:2]>/<sha>`) plus a SQLite index at
-`/data/lyra/blobs/index.sqlite` (two tables: `blobs` keyed by `content_hash`; `blob_refs` for
-per-ingestion provenance). The backend runs on `lyra-hub` role (M₁) and is exposed via a
-dedicated Quadlet container `lyra-blobstore.container` (FastAPI on TCP `:8449`, image
-`ghcr.io/roxabi/lyra` + `lyra blobstore serve` subcommand) — V8 issue #1330. Host paths:
-`~/.lyra/blobs/` (data, bind-mount into container) and `~/.roxabi/lyra/env/blobstore.env`
+SHA-256-addressed flat-FS tree (`/data/factory/blobs/<sha[:2]>/<sha>`) plus a SQLite index at
+`/data/factory/blobs/index.sqlite` (two tables: `blobs` keyed by `content_hash`; `blob_refs` for
+per-ingestion provenance). The backend runs on `factory-hub` role (M₁) and is exposed via a
+dedicated Quadlet container `factory-blobstore.container` (FastAPI on TCP `:8449`, image
+`ghcr.io/roxabi/factory` + `lyra blobstore serve` subcommand) — V8 issue #1330. Host paths:
+`~/.roxabi/factory/blobs/` (data, bind-mount into container) and `~/.roxabi/factory/env/blobstore.env`
 (Quadlet env). Direct-FS access is reserved for co-located writers only (telegram_normalize,
 hub middleware); all other consumers (e.g., M₂ image-worker) use `HttpBlobStore` — the store
-host is invisible to them. Auth: shared bearer token via Podman secret `lyra_blobstore_token`
+host is invisible to them. Auth: shared bearer token via Podman secret `factory_blobstore_token`
 (`type=mount`) in Phase 1 → per-identity JWT or `auth.db` lookup + `blob_grants` table in
 Phase 2 (see ADR-067 §Auth plane). Dedup: `put()` hashes first; if `blobs.content_hash`
 exists, only a new `blob_refs` row is appended. Write durability order: write file → `fsync`
 → INSERT. Backup (Phase 1): Restic → Cloudflare R2 daily, `index.sqlite` snapshotted via
 SQLite `.backup` API before FS tarball (atomicity invariant). `audio_b64` / `audio_bytes` in
 `roxabi-contracts` are deprecated; removal is a coordinated atomic migration across contracts
-→ voiceCLI workers → lyra adapters. Adapters download eagerly at ingress (Telegram URL valid
+→ voiceCLI workers → factory adapters. Adapters download eagerly at ingress (Telegram URL valid
 ≥1h; Discord CDN URLs expire ~24h). Raw bytes never traverse NATS. MinIO swap triggers: disk
 >70% on blobstore volume, HA requirement, or ML S3 demand. → ADR-067 (amended), ADR-068
 
 #### HTTP service (V8 — #1330)
 
-`lyra-blobstore` is a dedicated Quadlet container (`lyra-blobstore.service`) that exposes
-`FsBlobStore` over HTTP on port `8449`. It runs on the `lyra-hub` role (M₁, `roxabituwer`)
+`factory-blobstore` is a dedicated Quadlet container (`factory-blobstore.service`) that exposes
+`FsBlobStore` over HTTP on port `8449`. It runs on the `factory-hub` role (M₁, `roxabituwer`)
 only — same host as the data volume.
 
 Six endpoints (N1–N6 per spec):
@@ -190,12 +190,12 @@ Six endpoints (N1–N6 per spec):
 async. Zero `lyra.*` imports; importable from voiceCLI, imageCLI, and any other cross-repo
 consumer without pulling in the Lyra runtime.
 
-**Auth (Phase 1):** shared bearer token via Podman secret `lyra_blobstore_token`
-(`type=mount`, `/run/secrets/lyra_blobstore_token`, uid=1500, gid=1500, mode=0400).
+**Auth (Phase 1):** shared bearer token via Podman secret `factory_blobstore_token`
+(`type=mount`, `/run/secrets/factory_blobstore_token`, uid=1500, gid=1500, mode=0400).
 Unauthorized requests return `401` with an audit row (`result: "unauthorized"`).
 
 **Wiring:** same-host clients (Telegram, Discord, clipool adapters) use Quadlet DNS
-`http://lyra-blobstore:8449`. Cross-host clients use Tailnet MagicDNS (see `## Cross-host
+`http://factory-blobstore:8449`. Cross-host clients use Tailnet MagicDNS (see `## Cross-host
 access pattern` below). The Protocol call-site is identical in both cases.
 
 #### Cross-host access pattern
@@ -211,7 +211,7 @@ Transport encryption is provided by Tailnet (WireGuard) — V8 is HTTP at the ap
 layer. A future phase may add mTLS at the app layer if the Tailnet boundary is broadened
 (tracked as TBD in ADR-067 §Auth plane Phase 2).
 
-**Topology rule:** only the `lyra-blobstore` process uses `FsBlobStore` directly. Every
+**Topology rule:** only the `factory-blobstore` process uses `FsBlobStore` directly. Every
 other process — hub, adapters, M₂ workers — constructs `HttpBlobStore`. Direct-FS access
 is a violation of this boundary from V8 onwards.
 
@@ -254,7 +254,7 @@ guard pattern is gone; the bus is either injected or absent. → ADR-022 (amende
 - **DB-first writes:** all `AgentStore` writes commit to SQLite before updating the in-memory
   cache. Cache is never ahead of DB on the success path.
 - **DB is runtime authority:** `agents` table is the single runtime source of truth for agent
-  config. TOMLs are read only during `lyra agent init` / `lyra agent validate`.
+  config. TOMLs are read only during `factory agent init` / `factory agent validate`.
 - **Blob content-addressed:** every binary payload is stored by SHA-256 hash; identical content
   written N times occupies one file.
 - **Blob write order:** file → `fsync` → INSERT into `blob_refs` / `blobs`. Reversed order
@@ -277,9 +277,9 @@ guard pattern is gone; the bus is either injected or absent. → ADR-022 (amende
   AnthropicAgent does). The gap pre-dates ADR-029 and surfaces on every
   `_rebuild_command_router()` call. Fix: `SimpleAgent._register_session_commands()` override.
 - Persona hot-reload (changing `.persona.toml` without a DB `upsert()`) no longer fires
-  automatically post ADR-029. Operators must run `lyra agent edit` or `lyra agent init --force`.
+  automatically post ADR-029. Operators must run `factory agent edit` or `factory agent init --force`.
 - The TOML fallback path in `multibot.py` (degraded mode for users who have not run
-  `lyra agent init`) emits a startup warning but remains in the codebase. It is a known
+  `factory agent init`) emits a startup warning but remains in the codebase. It is a known
   transitional artifact.
 - `_wire_adapters` return tuple is now 5 elements; revisit if it reaches 6+.
 - BlobStore backup atomicity: naive `tar` of FS + DB while live produces an inconsistent

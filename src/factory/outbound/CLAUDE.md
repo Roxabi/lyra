@@ -32,7 +32,7 @@ formatter/throttle/error_handler methods directly.
   `DiscordAdapter.__init__` flows to `discord.Client(intents=intents)` via
   `super().__init__(intents=intents)`. Do NOT add `__init__` to any class in the
   `OutboundAdapterBase` inheritance chain.
-- **Single broad-catch site in the emitter.** `OutboundErrorHandler.guard` is the single semantic broad-catch site in `lyra.outbound/`. Two additional terminal sites in `OutboundEmitter.run` and `_run_event_loop` capture stream errors with broad-catch — these are intentional (terminal stream-error path).
+- **Single broad-catch site in the emitter.** `OutboundErrorHandler.guard` is the single semantic broad-catch site in `factory.outbound/`. Two additional terminal sites in `OutboundEmitter.run` and `_run_event_loop` capture stream errors with broad-catch — these are intentional (terminal stream-error path).
 
 ## State + recap helpers
 

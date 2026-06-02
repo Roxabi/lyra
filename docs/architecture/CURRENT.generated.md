@@ -24,7 +24,7 @@
 
 - **Type:** layers
 - **Layers:** factory.bootstrap, factory.adapters | factory.blobstore, factory.outbound, factory.infrastructure, factory.llm | factory.nats, factory.core, factory.typing, factory.streaming, factory.transport
-- **Ignore imports:** factory.core.agent.agent_refiner -> factory.infrastructure.stores.agent_store, factory.core.auth.authenticator -> factory.infrastructure.stores.auth_store, factory.core.auth.authenticator -> factory.infrastructure.stores.identity_alias_store, factory.core.agent.agent -> factory.infrastructure.stores.agent_store, factory.core.memory.memory -> factory.infrastructure.stores.identity_alias_store, factory.core.hub.hub -> factory.infrastructure.stores.identity_alias_store, factory.core.hub.hub_registration -> factory.infrastructure.stores.identity_alias_store, factory.core.hub.hub -> factory.infrastructure.stores.pairing, factory.core.hub.hub -> factory.infrastructure.stores.prefs_store
+- **Ignore imports:** factory.core.agent.agent_refiner -> factory.infrastructure.stores.agent_store, factory.core.agent.agent -> factory.infrastructure.stores.agent_store, factory.core.memory.memory -> factory.infrastructure.stores.identity_alias_store, factory.core.hub.hub -> factory.infrastructure.stores.identity_alias_store, factory.core.hub.hub_registration -> factory.infrastructure.stores.identity_alias_store, factory.core.hub.hub -> factory.infrastructure.stores.pairing, factory.core.hub.hub -> factory.infrastructure.stores.prefs_store
 - **Allow indirect imports:** False
 
 ### Commands must not import Infrastructure directly

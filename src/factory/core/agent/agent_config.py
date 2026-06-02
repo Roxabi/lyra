@@ -2,11 +2,16 @@ from __future__ import annotations
 
 from enum import Enum
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, field_serializer, field_validator
 
 from ..commands.command_router import CommandConfig
+
+# ModelConfig is the canonical LLM port value type — defined in core/ports/llm_types.py
+# so that llm.py (the driven port) is self-contained. Re-exported here for
+# backward compatibility with all callers that import from agent_config.
+from ..ports.llm_types import ModelConfig as ModelConfig  # noqa: F401
 
 _VALID_BACKENDS: frozenset[str] = frozenset({"claude-cli", "nats"})
 _MAX_PROMPT_BYTES = 64 * 1024  # 64 KB
@@ -29,81 +34,6 @@ _WORKSPACE_BUILTIN_CONFLICTS = frozenset(
         "search",
     }
 )
-
-
-class ModelConfig(BaseModel):
-    """Per-agent model configuration.
-
-    backend: execution backend — "claude-cli" (Claude Code subscription)
-             or "nats" (multi-provider via NATS → llmCLI worker).
-    model:   model identifier passed to the backend CLI.
-    max_turns: max agentic turns per conversation turn.
-             None (or 0 in DB) means unlimited — the backend imposes no cap.
-             Default is None (unlimited). Set an explicit positive integer to
-             throttle long-running agents.
-    tools:   allowed tools (empty = backend defaults).
-    cwd:     working directory for the Claude subprocess (claude-cli only).
-             None → defaults to the Lyra project root.
-             Useful to point a dedicated agent at another project so it reads
-             that project's CLAUDE.md and has access to its files.
-    This will evolve into an intelligent model selection system.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    backend: str = "claude-cli"
-    model: str = "claude-opus-4-6"
-    max_turns: int | None = None  # None = unlimited (0 sentinel in DB)
-    tools: tuple[str, ...] = ()
-    # cwd is spawn-routing config, not model identity.
-    # Changing cwd should not trigger the "model_config mismatch" warning
-    # in CliPool.send() — that check is for backend/model/tools changes only.
-    cwd: Path | None = None
-    skip_permissions: bool = False
-    streaming: bool = False
-    # #1101 — per-agent extended-thinking config (effort token budget)
-    effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
-
-    @field_validator("backend")
-    @classmethod
-    def _validate_backend(cls, v: str) -> str:
-        # Pydantic-level guard so direct construction (tests, NATS payload
-        # deserialization, ad-hoc code) cannot bypass _VALID_BACKENDS.
-        # _validate_backend_model (agent_builder) keeps the agent-name context
-        # in its error message and remains the canonical load-time check.
-        if v not in _VALID_BACKENDS:
-            raise ValueError(
-                f"Invalid backend {v!r}: must be one of {sorted(_VALID_BACKENDS)}"
-            )
-        return v
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, ModelConfig):
-            return NotImplemented
-        return (
-            self.backend == other.backend
-            and self.model == other.model
-            and self.max_turns == other.max_turns
-            and self.tools == other.tools
-            and self.skip_permissions == other.skip_permissions
-            and self.streaming == other.streaming
-            and self.effort == other.effort
-            # cwd excluded — spawn-routing config, not model identity
-        )
-
-    def __hash__(self) -> int:
-        return hash(
-            (
-                self.backend,
-                self.model,
-                self.max_turns,
-                self.tools,
-                self.skip_permissions,
-                self.streaming,
-                self.effort,
-                # cwd intentionally excluded
-            )
-        )
 
 
 class Complexity(Enum):

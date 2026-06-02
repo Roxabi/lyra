@@ -17,6 +17,7 @@ from ...messaging.message import InboundMessage, OutboundMessage, Response
 from ...messaging.render_events import RenderEvent, TextDeltaRenderEvent
 
 if TYPE_CHECKING:
+    from ...ports.tts import TtsProtocol
     from ...tts_dispatch import AudioPipeline
 
 
@@ -30,7 +31,7 @@ class TtsDispatch:
     def __init__(
         self,
         audio_pipeline: "AudioPipeline | None" = None,
-        tts: "object | None" = None,
+        tts: "TtsProtocol | None" = None,
         memory_tasks: "set[asyncio.Task] | None" = None,
     ) -> None:
         self._audio_pipeline = audio_pipeline
@@ -41,7 +42,7 @@ class TtsDispatch:
         """Update audio pipeline reference."""
         self._audio_pipeline = pipeline
 
-    def set_tts(self, tts: "object | None") -> None:
+    def set_tts(self, tts: "TtsProtocol | None") -> None:
         """Update TTS reference."""
         self._tts = tts
 

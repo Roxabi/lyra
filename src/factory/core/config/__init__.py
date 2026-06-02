@@ -20,6 +20,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from .agent_defaults_config import AgentDefaultsConfig
 from .bus_config import BusConfig
 from .memory_config import MemoryConfig
 from .platform_config import PlatformConfig
@@ -142,6 +143,7 @@ def load_discord_config() -> DiscordConfig:
 
 
 __all__ = [
+    "AgentDefaultsConfig",
     "BusConfig",
     "DiscordConfig",
     "HubConfig",

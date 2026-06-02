@@ -9,6 +9,8 @@ import tomllib
 from pathlib import Path
 from typing import Any, Protocol
 
+from factory.core.config.agent_defaults_config import AgentDefaultsConfig
+
 from .agent_models import AgentRow
 
 log = logging.getLogger(__name__)
@@ -77,7 +79,7 @@ def _parse_toml(path: Path) -> AgentRow | None:  # noqa: PLR0915 — DEBT:comple
         return model_section.get(key) or agent_section.get(key, default)
 
     backend = _m("backend", "claude-cli")
-    model = _m("model", "claude-3-5-haiku-20241022")
+    model = _m("model", AgentDefaultsConfig.DEFAULT_SEEDER_MODEL)
     _mt = _m("max_turns", None)
     max_turns = None if not _mt else int(_mt)  # 0 or absent → None (unlimited)
     tools_json = json.dumps(_m("tools", []))

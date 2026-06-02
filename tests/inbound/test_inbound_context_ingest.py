@@ -4,24 +4,24 @@ These tests will FAIL at collection (ImportError / TypeError) until the GREEN
 implementation lands:
 - ``InboundContext.ingest: IngestCtx | None = None`` (trailing field)
 - ``InboundPipeline.__init__(..., ingest_stage=None)`` stored as ``self._ingest_stage``
-- ``lyra.inbound.attachment_ingest.AttachmentIngestStage``
+- ``factory.inbound.attachment_ingest.AttachmentIngestStage``
 """
 
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.audio_payload import AudioPayload
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage, TelegramMeta
-from lyra.inbound.attachment_ingest import (  # noqa: E402 — module does not exist yet (RED)
+from factory.core.audio_payload import AudioPayload
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import InboundMessage, TelegramMeta
+from factory.inbound.attachment_ingest import (  # noqa: E402 — module does not exist yet (RED)
     AttachmentIngestStage,
     IngestCtx,
     PendingAttachment,
 )
-from lyra.inbound.context import DispatchCtx, InboundContext, RouterCtx, SessionCtx
-from lyra.inbound.pipeline import InboundPipeline
-from lyra.inbound.prebuilt_parser import PrebuiltParser
+from factory.inbound.context import DispatchCtx, InboundContext, RouterCtx, SessionCtx
+from factory.inbound.pipeline import InboundPipeline
+from factory.inbound.prebuilt_parser import PrebuiltParser
 
 # ---------------------------------------------------------------------------
 # Helpers — minimal real sub-contexts

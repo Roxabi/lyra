@@ -8,10 +8,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.core.pool import Pool
-from lyra.core.pool.pool_processor_exec import guarded_process_one
-from lyra.transport.typing_publisher import TypingPublisher
-from lyra.transport.work_scope import WorkScope
+from factory.core.pool import Pool
+from factory.core.pool.pool_processor_exec import guarded_process_one
+from factory.transport.typing_publisher import TypingPublisher
+from factory.transport.work_scope import WorkScope
 from tests.core.conftest import _make_ctx_mock
 from tests.factories.messages import make_inbound_message
 
@@ -19,7 +19,7 @@ from tests.factories.messages import make_inbound_message
 class TestGuardedProcessOneTypingScope:
     @pytest.fixture
     def pool(self, monkeypatch):
-        monkeypatch.setenv("LYRA_TYPING_ENABLED", "true")
+        monkeypatch.setenv("FACTORY_TYPING_ENABLED", "true")
         ctx = _make_ctx_mock()
         pool = Pool(
             pool_id="telegram:main:chat:1",
@@ -47,7 +47,7 @@ class TestGuardedProcessOneTypingScope:
     async def test_success_path_scope_entered_and_exited(self, pool, agent, msg):
         """Success path: typing_publisher.scope() is entered and exited."""
         with patch(
-            "lyra.core.pool.pool_processor_exec.process_one",
+            "factory.core.pool.pool_processor_exec.process_one",
             new=AsyncMock(return_value=None),
         ):
             await guarded_process_one(msg, agent, pool)
@@ -58,7 +58,7 @@ class TestGuardedProcessOneTypingScope:
     async def test_exception_path_scope_entered_and_exited(self, pool, agent, msg):
         """Exception path: scope entered and exited even on exception."""
         with patch(
-            "lyra.core.pool.pool_processor_exec.process_one",
+            "factory.core.pool.pool_processor_exec.process_one",
             new=AsyncMock(side_effect=RuntimeError("boom")),
         ):
             await guarded_process_one(msg, agent, pool)
@@ -69,7 +69,7 @@ class TestGuardedProcessOneTypingScope:
     async def test_cancelled_path_scope_entered_and_exited(self, pool, agent, msg):
         """Cancellation path: scope entered and exited on CancelledError."""
         with patch(
-            "lyra.core.pool.pool_processor_exec.process_one",
+            "factory.core.pool.pool_processor_exec.process_one",
             new=AsyncMock(side_effect=asyncio.CancelledError()),
         ):
             with pytest.raises(asyncio.CancelledError):
@@ -86,7 +86,7 @@ class TestGuardedProcessOneTypingScope:
             await asyncio.sleep(1.0)
 
         with patch(
-            "lyra.core.pool.pool_processor_exec.process_one",
+            "factory.core.pool.pool_processor_exec.process_one",
             new=_slow_process,
         ):
             await guarded_process_one(msg, agent, pool)
@@ -95,13 +95,13 @@ class TestGuardedProcessOneTypingScope:
 
     @pytest.mark.asyncio
     async def test_disabled_flag_with_publisher_present(self, pool, agent, msg):
-        """LYRA_TYPING_ENABLED=false skips typing scope even when publisher is present."""  # noqa: E501
+        """FACTORY_TYPING_ENABLED=false skips typing scope even when publisher is present."""  # noqa: E501
         with patch(
-            "lyra.core.pool.pool_processor_exec.is_typing_enabled",
+            "factory.core.pool.pool_processor_exec.is_typing_enabled",
             return_value=False,
         ):
             with patch(
-                "lyra.core.pool.pool_processor_exec.process_one",
+                "factory.core.pool.pool_processor_exec.process_one",
                 new=AsyncMock(return_value=None),
             ):
                 await guarded_process_one(msg, agent, pool)
@@ -114,11 +114,11 @@ class TestGuardedProcessOneTypingScope:
         bad_msg = make_inbound_message(scope_id="not_a_number")
 
         with patch(
-            "lyra.core.pool.pool_processor_exec.process_one",
+            "factory.core.pool.pool_processor_exec.process_one",
             new=AsyncMock(return_value=None),
         ):
             with patch(
-                "lyra.core.pool.pool_processor_exec.WorkScope",
+                "factory.core.pool.pool_processor_exec.WorkScope",
             ) as mock_ws:
                 mock_ws.return_value = WorkScope(
                     platform=bad_msg.platform,
@@ -136,7 +136,7 @@ class TestGuardedProcessOneTypingScope:
         pool.typing_publisher = None
 
         with patch(
-            "lyra.core.pool.pool_processor_exec.process_one",
+            "factory.core.pool.pool_processor_exec.process_one",
             new=AsyncMock(return_value=None),
         ) as mock_process_one:
             await guarded_process_one(msg, agent, pool)

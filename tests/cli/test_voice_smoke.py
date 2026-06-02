@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from typer.testing import CliRunner
 
-from lyra.cli import lyra_app
+from factory.cli import factory_app
 
 runner = CliRunner()
 
@@ -114,7 +114,7 @@ def restore_event_loop():
 def _patch_nats(nc_mock: AsyncMock):
     """Patch nats_connect to return the given mock NATS client."""
     return patch(
-        "lyra.cli_voice_smoke.nats_connect",
+        "factory.cli_voice_smoke.nats_connect",
         new=AsyncMock(return_value=nc_mock),
     )
 
@@ -130,7 +130,7 @@ class TestVoiceSmokeHappyPath:
         nc = _make_nc_mock(_tts_ok_response(), _stt_ok_response("one two three"))
 
         with _patch_nats(nc):
-            result = runner.invoke(lyra_app, ["voice-smoke"])
+            result = runner.invoke(factory_app, ["voice-smoke"])
 
         assert result.exit_code == 0, (
             f"Expected 0, got {result.exit_code}:\n{result.output}"
@@ -144,7 +144,7 @@ class TestVoiceSmokeHappyPath:
         nc = _make_nc_mock(_tts_ok_response(), _stt_ok_response("voice test"))
 
         with _patch_nats(nc):
-            result = runner.invoke(lyra_app, ["voice-smoke"])
+            result = runner.invoke(factory_app, ["voice-smoke"])
 
         assert "test-tts-blob" in result.output
         assert str(_FAKE_AUDIO_SIZE) in result.output
@@ -154,7 +154,7 @@ class TestVoiceSmokeHappyPath:
         nc = _make_nc_mock(_tts_ok_response(), _stt_ok_response("voice cutover ok"))
 
         with _patch_nats(nc):
-            result = runner.invoke(lyra_app, ["voice-smoke"])
+            result = runner.invoke(factory_app, ["voice-smoke"])
 
         assert "voice cutover ok" in result.output
 
@@ -163,7 +163,7 @@ class TestVoiceSmokeHappyPath:
         nc = _make_nc_mock(_tts_ok_response(), _stt_ok_response("ONE TWO THREE"))
 
         with _patch_nats(nc):
-            result = runner.invoke(lyra_app, ["voice-smoke"])
+            result = runner.invoke(factory_app, ["voice-smoke"])
 
         assert result.exit_code == 0
 
@@ -172,10 +172,10 @@ class TestVoiceSmokeHappyPath:
         nc = _make_nc_mock(_tts_ok_response(), _stt_ok_response("one"))
 
         with patch(
-            "lyra.cli_voice_smoke.nats_connect", new=AsyncMock(return_value=nc)
+            "factory.cli_voice_smoke.nats_connect", new=AsyncMock(return_value=nc)
         ) as mock_connect:
             result = runner.invoke(
-                lyra_app, ["voice-smoke", "--nats-url", "nats://myserver:4222"]
+                factory_app, ["voice-smoke", "--nats-url", "nats://myserver:4222"]
             )
 
         mock_connect.assert_called_once_with(
@@ -192,9 +192,9 @@ class TestVoiceSmokeHappyPath:
         nc = _make_nc_mock(_tts_ok_response(), _stt_ok_response("one"))
 
         with patch(
-            "lyra.cli_voice_smoke.nats_connect", new=AsyncMock(return_value=nc)
+            "factory.cli_voice_smoke.nats_connect", new=AsyncMock(return_value=nc)
         ) as mock_connect:
-            runner.invoke(lyra_app, ["voice-smoke"])
+            runner.invoke(factory_app, ["voice-smoke"])
 
         mock_connect.assert_called_once()
         assert mock_connect.call_args.kwargs.get("identity_name") == "hub"
@@ -214,7 +214,7 @@ class TestVoiceSmokeTtsFailure:
         nc.drain = AsyncMock()
 
         with _patch_nats(nc):
-            result = runner.invoke(lyra_app, ["voice-smoke"])
+            result = runner.invoke(factory_app, ["voice-smoke"])
 
         assert result.exit_code == 1
 
@@ -231,7 +231,7 @@ class TestVoiceSmokeTtsFailure:
         nc.drain = AsyncMock()
 
         with _patch_nats(nc):
-            result = runner.invoke(lyra_app, ["voice-smoke"])
+            result = runner.invoke(factory_app, ["voice-smoke"])
 
         assert result.exit_code == 1
 
@@ -242,7 +242,7 @@ class TestVoiceSmokeTtsFailure:
         nc.drain = AsyncMock()
 
         with _patch_nats(nc):
-            result = runner.invoke(lyra_app, ["voice-smoke", "--timeout", "5"])
+            result = runner.invoke(factory_app, ["voice-smoke", "--timeout", "5"])
 
         assert result.exit_code == 1
         assert "lyra_tts" in result.output or "TTS" in result.output
@@ -254,7 +254,7 @@ class TestVoiceSmokeTtsFailure:
         nc.drain = AsyncMock()
 
         with _patch_nats(nc):
-            result = runner.invoke(lyra_app, ["voice-smoke", "--timeout", "7"])
+            result = runner.invoke(factory_app, ["voice-smoke", "--timeout", "7"])
 
         # The error message includes the timeout value
         assert "7" in result.output
@@ -279,7 +279,7 @@ class TestVoiceSmokeSttFailure:
         nc.drain = AsyncMock()
 
         with _patch_nats(nc):
-            result = runner.invoke(lyra_app, ["voice-smoke"])
+            result = runner.invoke(factory_app, ["voice-smoke"])
 
         assert result.exit_code == 1
 
@@ -296,7 +296,7 @@ class TestVoiceSmokeSttFailure:
         nc.drain = AsyncMock()
 
         with _patch_nats(nc):
-            result = runner.invoke(lyra_app, ["voice-smoke"])
+            result = runner.invoke(factory_app, ["voice-smoke"])
 
         assert result.exit_code == 1
 
@@ -313,7 +313,7 @@ class TestVoiceSmokeSttFailure:
         nc.drain = AsyncMock()
 
         with _patch_nats(nc):
-            result = runner.invoke(lyra_app, ["voice-smoke"])
+            result = runner.invoke(factory_app, ["voice-smoke"])
 
         assert result.exit_code == 1
         assert "lyra_stt" in result.output or "STT" in result.output
@@ -330,7 +330,7 @@ class TestVoiceSmokeMismatch:
         nc = _make_nc_mock(_tts_ok_response(), _stt_ok_response("hello world"))
 
         with _patch_nats(nc):
-            result = runner.invoke(lyra_app, ["voice-smoke"])
+            result = runner.invoke(factory_app, ["voice-smoke"])
 
         assert result.exit_code == 1
         assert "mismatch" in result.output.lower() or "FAIL" in result.output
@@ -340,7 +340,7 @@ class TestVoiceSmokeMismatch:
         nc = _make_nc_mock(_tts_ok_response(), _stt_ok_response("voice"))
 
         with _patch_nats(nc):
-            result = runner.invoke(lyra_app, ["voice-smoke"])
+            result = runner.invoke(factory_app, ["voice-smoke"])
 
         assert result.exit_code == 0
 
@@ -350,7 +350,7 @@ class TestVoiceSmokeMismatch:
         for kw in keywords:
             nc = _make_nc_mock(_tts_ok_response(), _stt_ok_response(kw))
             with _patch_nats(nc):
-                result = runner.invoke(lyra_app, ["voice-smoke"])
+                result = runner.invoke(factory_app, ["voice-smoke"])
             assert result.exit_code == 0, (
                 f"keyword {kw!r} should pass but got exit {result.exit_code}"
             )
@@ -365,10 +365,10 @@ class TestVoiceSmokeConnectionFailure:
     def test_exits_one_on_nats_connection_error(self) -> None:
         """nats_connect raising an exception → exit 1."""
         with patch(
-            "lyra.cli_voice_smoke.nats_connect",
+            "factory.cli_voice_smoke.nats_connect",
             new=AsyncMock(side_effect=Exception("connection refused")),
         ):
-            result = runner.invoke(lyra_app, ["voice-smoke"])
+            result = runner.invoke(factory_app, ["voice-smoke"])
 
         assert result.exit_code == 1
 
@@ -381,7 +381,7 @@ class TestVoiceSmokeConnectionFailure:
 class TestVoiceSmokeHelp:
     def test_help_flag_shows_command(self) -> None:
         """--help outputs something about the round-trip smoke test."""
-        result = runner.invoke(lyra_app, ["voice-smoke", "--help"])
+        result = runner.invoke(factory_app, ["voice-smoke", "--help"])
 
         assert result.exit_code == 0
         assert "smoke" in result.output.lower() or "TTS" in result.output
@@ -407,7 +407,7 @@ class TestRequireVoicecliWorker:
         )
         with _patch_nats(nc):
             result = runner.invoke(
-                lyra_app,
+                factory_app,
                 ["voice-smoke", "--require-voicecli-worker", "--heartbeat-wait", "1"],
             )
         assert result.exit_code == 0
@@ -423,7 +423,7 @@ class TestRequireVoicecliWorker:
         )
         with _patch_nats(nc):
             result = runner.invoke(
-                lyra_app,
+                factory_app,
                 ["voice-smoke", "--require-voicecli-worker", "--heartbeat-wait", "0.5"],
             )
         assert result.exit_code == 1
@@ -438,7 +438,7 @@ class TestRequireVoicecliWorker:
         )
         with _patch_nats(nc):
             result = runner.invoke(
-                lyra_app,
+                factory_app,
                 ["voice-smoke", "--require-voicecli-worker", "--heartbeat-wait", "0.5"],
             )
         assert result.exit_code == 1
@@ -464,7 +464,7 @@ class TestRequireVoicecliWorker:
 
         with _patch_nats(nc):
             result = runner.invoke(
-                lyra_app,
+                factory_app,
                 ["voice-smoke", "--require-voicecli-worker", "--heartbeat-wait", "0.5"],
             )
         assert result.exit_code == 1
@@ -474,7 +474,7 @@ class TestRequireVoicecliWorker:
         """Without --require-voicecli-worker, no subscribe happens."""
         nc = _make_nc_mock(_tts_ok_response(), _stt_ok_response())
         with _patch_nats(nc):
-            result = runner.invoke(lyra_app, ["voice-smoke"])
+            result = runner.invoke(factory_app, ["voice-smoke"])
         assert result.exit_code == 0
         # subscribe is not called on the default path.
         nc.subscribe.assert_not_called()
@@ -495,7 +495,7 @@ class TestGenericExceptionBranches:
         nc.close = AsyncMock()
         nc.request = AsyncMock(side_effect=RuntimeError("boom"))
         with _patch_nats(nc):
-            result = runner.invoke(lyra_app, ["voice-smoke"])
+            result = runner.invoke(factory_app, ["voice-smoke"])
         assert result.exit_code == 1
         assert "TTS request error" in result.output
         assert "boom" in result.output
@@ -512,7 +512,7 @@ class TestGenericExceptionBranches:
             ]
         )
         with _patch_nats(nc):
-            result = runner.invoke(lyra_app, ["voice-smoke"])
+            result = runner.invoke(factory_app, ["voice-smoke"])
         assert result.exit_code == 1
         assert "STT request error" in result.output
         assert "stt-crash" in result.output
@@ -524,7 +524,7 @@ class TestGenericExceptionBranches:
         nc.close = AsyncMock()
         nc.request = AsyncMock(return_value=SimpleNamespace(data=b"not-json"))
         with _patch_nats(nc):
-            result = runner.invoke(lyra_app, ["voice-smoke"])
+            result = runner.invoke(factory_app, ["voice-smoke"])
         assert result.exit_code == 1
         assert "TTS response is not valid JSON" in result.output
 
@@ -540,7 +540,7 @@ class TestGenericExceptionBranches:
             ]
         )
         with _patch_nats(nc):
-            result = runner.invoke(lyra_app, ["voice-smoke"])
+            result = runner.invoke(factory_app, ["voice-smoke"])
         assert result.exit_code == 1
         assert "STT response is not valid JSON" in result.output
 
@@ -556,8 +556,8 @@ class TestNatsUrlEnvFallback:
         monkeypatch.setenv("NATS_URL", "nats://envhost:4222")
         nc = _make_nc_mock(_tts_ok_response(), _stt_ok_response())
         connect_mock = AsyncMock(return_value=nc)
-        with patch("lyra.cli_voice_smoke.nats_connect", new=connect_mock):
-            result = runner.invoke(lyra_app, ["voice-smoke"])
+        with patch("factory.cli_voice_smoke.nats_connect", new=connect_mock):
+            result = runner.invoke(factory_app, ["voice-smoke"])
         assert result.exit_code == 0
         # First positional arg to nats_connect is the URL.
         connect_mock.assert_awaited_once()
@@ -573,7 +573,7 @@ class TestOkFalseErrorDetailPropagation:
             _stt_ok_response(),
         )
         with _patch_nats(nc):
-            result = runner.invoke(lyra_app, ["voice-smoke"])
+            result = runner.invoke(factory_app, ["voice-smoke"])
         assert result.exit_code == 1
         assert "TTS worker crashed" in result.output
 
@@ -584,6 +584,6 @@ class TestOkFalseErrorDetailPropagation:
             {"ok": False, "error": "whisper OOM"},
         )
         with _patch_nats(nc):
-            result = runner.invoke(lyra_app, ["voice-smoke"])
+            result = runner.invoke(factory_app, ["voice-smoke"])
         assert result.exit_code == 1
         assert "whisper OOM" in result.output

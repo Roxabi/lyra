@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import (
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import (
     DiscordMeta,
     InboundMessage,
     Platform,
@@ -14,7 +14,7 @@ from lyra.core.messaging.message import (
 )
 
 if TYPE_CHECKING:
-    from lyra.core.messaging.message import Attachment, RoutingContext
+    from factory.core.messaging.message import Attachment, RoutingContext
 
 __all__ = [
     "make_debouncer_msg",
@@ -39,7 +39,7 @@ def make_message(
     Auto-parses CommandContext and attaches it to the message, mirroring
     what the Hub pipeline does.
     """
-    from lyra.core.commands.command_parser import CommandParser
+    from factory.core.commands.command_parser import CommandParser
 
     _parser = CommandParser()
     cmd_ctx = _parser.parse(content)
@@ -70,7 +70,7 @@ def make_inbound_message(  # noqa: PLR0913
     modality: str | None = None,
 ) -> InboundMessage:
     """Build a minimal InboundMessage for hub tests."""
-    from lyra.core.messaging.message import GenericMeta
+    from factory.core.messaging.message import GenericMeta
 
     if platform == "telegram":
         _scope = scope_id if scope_id is not None else "chat:42"

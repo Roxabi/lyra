@@ -1,4 +1,4 @@
-"""Unit tests for multi-bot config parsing functions in lyra.config (issue #231).
+"""Unit tests for multi-bot config parsing functions in factory.config (issue #231).
 
 Credentials (token, webhook_secret) are no longer stored in config dataclasses
 — they are resolved at bootstrap time from CredentialStore (#262).
@@ -10,8 +10,8 @@ import logging
 
 import pytest
 
-import lyra.core.agent.bot_models as bot_models
-from lyra.config import (
+import factory.core.agent.bot_models as bot_models
+from factory.config import (
     DISCORD_DEFAULT_AUTO_THREAD,
     DISCORD_DEFAULT_THREAD_HOT_HOURS,
     DiscordBotConfig,
@@ -24,7 +24,7 @@ from lyra.config import (
     load_multibot_config,
     multibot_config_from_store,
 )
-from lyra.core.agent.bot_models import BotRow
+from factory.core.agent.bot_models import BotRow
 
 # ---------------------------------------------------------------------------
 # TestResolveValue
@@ -54,7 +54,7 @@ class TestResolveValue:
         # Arrange
         monkeypatch.delenv("MY_VAR", raising=False)
         # Act
-        with caplog.at_level(logging.WARNING, logger="lyra.config"):
+        with caplog.at_level(logging.WARNING, logger="factory.config"):
             result = _resolve_value("env:MY_VAR")
         # Assert
         assert result == ""
@@ -63,7 +63,7 @@ class TestResolveValue:
     def test_env_prefix_empty_string(self, caplog: pytest.LogCaptureFixture) -> None:
         # Arrange — "env:" with no var name
         # Act
-        with caplog.at_level(logging.WARNING, logger="lyra.config"):
+        with caplog.at_level(logging.WARNING, logger="factory.config"):
             result = _resolve_value("env:")
         # Assert
         assert result == ""

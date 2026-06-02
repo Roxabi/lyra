@@ -39,7 +39,7 @@ async def store(
         # Import deferred to fixture body so FsBlobStore variant still collects
         # even if http_store module is absent (RED phase masks collection via the
         # top-level import above, but the pattern is correct for GREEN phase).
-        from lyra.blobstore.serve import build_app  # noqa: PLC0415
+        from factory.blobstore.serve import build_app  # noqa: PLC0415
 
         blob_root = tmp_path / "blobs"
         blob_root.mkdir()
@@ -116,7 +116,7 @@ class TestBlobStoreProtocol:
         argument for FsBlobStore (which looks up by content_hash). For
         HttpBlobStore the argument is structurally a store_key — the server-side
         HEAD handler does dual lookup (store_path then content_hash fallback,
-        see src/lyra/blobstore/CLAUDE.md §HEAD handler dual lookup), so the call
+        see src/factory/blobstore/CLAUDE.md §HEAD handler dual lookup), so the call
         succeeds pre-delete and fails post-delete on both backends.
         """
         # Arrange

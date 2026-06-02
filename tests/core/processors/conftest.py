@@ -1,7 +1,7 @@
 """Shared fixtures for processor tests.
 
 Autouse: clear the global ProcessorRegistry before each test to prevent
-cross-test contamination when lyra.core.processors has already been imported
+cross-test contamination when factory.core.processors has already been imported
 and registered its built-in commands (B11).
 """
 
@@ -11,7 +11,7 @@ from collections.abc import Generator
 
 import pytest
 
-from lyra.core.processors.processor_registry import registry
+from factory.core.processors.processor_registry import registry
 
 
 @pytest.fixture(autouse=True)

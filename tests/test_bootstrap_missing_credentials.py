@@ -1,7 +1,7 @@
 """Tests for bootstrap error on missing /run/secrets/ token file (issue #1057).
 
 Verifies that the adapter bootstrap raises when the expected secret file
-bot_token-<bot_id> is absent from LYRA_RUN_SECRETS_DIR, and that the error
+bot_token-<bot_id> is absent from FACTORY_RUN_SECRETS_DIR, and that the error
 message contains the expected path and the install command hint.
 
 Tests are RED until T9 lands the implementation.
@@ -20,11 +20,11 @@ async def test_adapter_raises_bootstrap_error_on_missing_token(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """Missing bot_token-mybot → error raised with path hint and install command."""
-    # Arrange — LYRA_RUN_SECRETS_DIR exists but contains no token file for "mybot"
+    # Arrange — FACTORY_RUN_SECRETS_DIR exists but contains no token file for "mybot"
     run_secrets_dir = tmp_path / "run-secrets"
     run_secrets_dir.mkdir()
 
-    monkeypatch.setenv("LYRA_RUN_SECRETS_DIR", str(run_secrets_dir))
+    monkeypatch.setenv("FACTORY_RUN_SECRETS_DIR", str(run_secrets_dir))
     monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
 
     raw_config = {"telegram": {"bots": [{"bot_id": "mybot"}]}}
@@ -38,22 +38,22 @@ async def test_adapter_raises_bootstrap_error_on_missing_token(
     mock_inbound_bus.start = AsyncMock()
     mock_inbound_bus.stop = AsyncMock()
 
-    from lyra.bootstrap.standalone.adapter_standalone import (
+    from factory.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
 
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
+            "factory.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=True),
         ),
-        patch("lyra.bootstrap.credentials._is_prod_env", return_value=False),
+        patch("factory.bootstrap.credentials._is_prod_env", return_value=False),
     ):
         # Act + Assert — error raised with path hint and install command
         with pytest.raises(

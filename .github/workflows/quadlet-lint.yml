@@ -24,8 +24,8 @@ jobs:
 
       - name: Install Podman 5.x
         # ubuntu-latest (24.04) ships Podman 4.9.3 which does not recognise the
-        # 'Pod=' Quadlet directive (introduced in Podman 5.0).  lyra-clipool.container
-        # and lyra-gh-helper.container both use 'Pod=lyra-gh.pod', so the dryrun
+        # 'Pod=' Quadlet directive (introduced in Podman 5.0).  factory-clipool.container
+        # and factory-gh-helper.container both use 'Pod=factory-gh.pod', so the dryrun
         # step fails on the default runner Podman.
         #
         # Fix: pull Podman 5.x from Ubuntu 25.04 (plucky) universe.  We add the
@@ -78,7 +78,7 @@ jobs:
 
       - name: Quadlet HealthCmd double-quote check
         # The Quadlet generator silently drops the closing double-quote from
-        # HealthCmd= values, producing ["CMD-SHELL","pgrep -f \"lyra X"] which
+        # HealthCmd= values, producing ["CMD-SHELL","pgrep -f \"factory X"] which
         # /bin/sh rejects with "Syntax error: Unterminated quoted string".
         # All containers report unhealthy indefinitely.  Fix: use /proc/1/cmdline
         # (no quotes needed).  Reject any HealthCmd= containing a double-quote.
@@ -124,7 +124,7 @@ jobs:
 
       - name: Template purity check
         # Enforces tracked deploy/quadlet/*.container.tmpl invariants (#1369):
-        #  - no `Secret=lyra-bot-*` lines (must come from render at install time)
+        #  - no `Secret=factory-bot-*` lines (must come from render at install time)
         #  - no `# --- BEGIN ... ---` splice blocks
         #  - tools/render_quadlet.py exists
         run: bash tools/check_quadlet_template_purity.sh

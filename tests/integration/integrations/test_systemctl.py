@@ -1,4 +1,4 @@
-"""Tests for SystemctlManager (lyra.integrations.systemctl)."""
+"""Tests for SystemctlManager (factory.integrations.systemctl)."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.integrations.base import ServiceControlFailed
-from lyra.integrations.systemctl import SystemctlManager
+from factory.integrations.base import ServiceControlFailed
+from factory.integrations.systemctl import SystemctlManager
 
 
 class TestSystemctlManagerControl:
@@ -28,8 +28,8 @@ class TestSystemctlManagerControl:
 
         argv = calls[0]
         assert argv[:3] == ["systemctl", "--user", "status"]
-        assert "lyra-hub.service" in argv
-        assert "lyra-nats.service" in argv
+        assert "factory-hub.service" in argv
+        assert "factory-nats.service" in argv
         assert "voicecli-stt.service" in argv
 
     @pytest.mark.asyncio
@@ -48,7 +48,7 @@ class TestSystemctlManagerControl:
 
         argv = calls[0]
         assert argv[:3] == ["systemctl", "--user", "restart"]
-        assert "lyra-hub.service" in argv
+        assert "factory-hub.service" in argv
         assert "voicecli-stt.service" not in argv
 
     @pytest.mark.asyncio
@@ -117,7 +117,7 @@ class TestSystemctlManagerControl:
 
         with patch("asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)):
             with patch(
-                "lyra.integrations.systemctl.asyncio.wait_for",
+                "factory.integrations.systemctl.asyncio.wait_for",
                 side_effect=asyncio.TimeoutError,
             ):
                 with pytest.raises(ServiceControlFailed) as excinfo:

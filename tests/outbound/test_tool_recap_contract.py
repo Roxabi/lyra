@@ -8,12 +8,12 @@ from __future__ import annotations
 
 import json
 
-from lyra.core.messaging.render_events import (
+from factory.core.messaging.render_events import (
     ToolCallArgsRenderEvent,
     ToolCallEndRenderEvent,
     ToolCallStartRenderEvent,
 )
-from lyra.outbound._tool_recap import (
+from factory.outbound._tool_recap import (
     ToolRecapAccumulator,
     format_recap_lines,
 )

@@ -58,11 +58,11 @@ Replace hand-written `_inbox.{requester}.>` grants with a declarative `request_r
 **CI enforcement:** `scripts/check_request_reply_flows.py` validates:
 1. Both requester and responder identities exist in `acl-matrix.json`
 2. The requester's `publish[]` covers the flow `subject`
-3. `uv run lyra-acl genkeys --template-only` output contains the derived `_inbox.{requester}.>` grant (postcondition)
+3. `uv run factory-acl genkeys --template-only` output contains the derived `_inbox.{requester}.>` grant (postcondition)
 4. Regression guards: injecting an unknown responder or unknown requester must cause exit 1
 
 **ACL spec table:** the `_inbox.hub.>` row is present in the auto-generated spec table. The spec table is regenerated from `acl-matrix.json` by `scripts/render_acl_spec.py` (the hand-maintained sentinel-sync checker `check-acl-matrix-spec.sh` no longer exists; freshness is enforced by `scripts/check-acl-specs-drift.sh` in CI and pre-push).
 
 **`--emit-merged-authconf`:** `clipool-worker` added to `MERGED_LYRA_IDENTITIES` to ensure the derived grant is present in the merged auth.conf used by the lyra+voicecli combined deployment.
 
-**Inspecting effective grants:** run `uv run lyra-acl genkeys --template-only` — the output shows the full auth.conf including derived inbox grants not visible in `acl-matrix.json` alone.
+**Inspecting effective grants:** run `uv run factory-acl genkeys --template-only` — the output shows the full auth.conf including derived inbox grants not visible in `acl-matrix.json` alone.

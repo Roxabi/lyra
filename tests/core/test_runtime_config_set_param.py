@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from lyra.core.runtime_config import (
+from factory.core.runtime_config import (
     RuntimeConfig,
     _parse_cancel_on_new_message,
     _parse_debounce_ms,

@@ -35,7 +35,7 @@ def _cred_store_patches(token: str, webhook_secret: str = "") -> tuple:
 @pytest.mark.asyncio
 async def test_telegram_bootstrap_wires_listener_and_calls_astart() -> None:
     """Telegram standalone bootstrap: NatsOutboundListener wired, astart() called."""
-    from lyra.bootstrap.standalone.adapter_standalone import (
+    from factory.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
 
@@ -62,14 +62,14 @@ async def test_telegram_bootstrap_wires_listener_and_calls_astart() -> None:
     (load_token_patch,) = _cred_store_patches("test-token", "webhook-secret")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
-        patch("lyra.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
+        patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("factory.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=mock_listener,
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
+            "factory.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=True),
         ),
         load_token_patch,
@@ -86,7 +86,7 @@ async def test_telegram_bootstrap_wires_listener_and_calls_astart() -> None:
 @pytest.mark.asyncio
 async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
     """Discord standalone bootstrap: NatsOutboundListener wired, astart() called."""
-    from lyra.bootstrap.standalone.adapter_standalone import (
+    from factory.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
 
@@ -108,14 +108,14 @@ async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
     (load_token_patch_dc,) = _cred_store_patches("discord-token")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus_dc),
-        patch("lyra.adapters.discord.DiscordAdapter", return_value=mock_adapter_dc),
+        patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus_dc),
+        patch("factory.adapters.discord.DiscordAdapter", return_value=mock_adapter_dc),
         patch(
-            "lyra.bootstrap.wiring.standalone_discord.NatsOutboundListener",
+            "factory.bootstrap.wiring.standalone_discord.NatsOutboundListener",
             return_value=mock_listener_dc,
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_discord.wait_for_hub",
+            "factory.bootstrap.wiring.standalone_discord.wait_for_hub",
             AsyncMock(return_value=True),
         ),
         load_token_patch_dc,
@@ -132,7 +132,7 @@ async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
 @pytest.mark.asyncio
 async def test_nats_url_missing_exits() -> None:
     """Missing NATS_URL env var → sys.exit before any NATS connection."""
-    from lyra.bootstrap.standalone.adapter_standalone import (
+    from factory.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
 
@@ -146,7 +146,7 @@ async def test_nats_url_missing_exits() -> None:
 @pytest.mark.asyncio
 async def test_nc_close_called_even_on_exception() -> None:
     """nc.close() is called in finally block even when bootstrap raises."""
-    from lyra.bootstrap.standalone.adapter_standalone import (
+    from factory.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
 
@@ -154,10 +154,10 @@ async def test_nc_close_called_even_on_exception() -> None:
     (load_token_patch_exc,) = _cred_store_patches("t")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", side_effect=RuntimeError("boom")),
+        patch("factory.nats.nats_bus.NatsBus", side_effect=RuntimeError("boom")),
         # ADR-079 S3: wait_for_hub now precedes the wiring loop.
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
+            "factory.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=None),
         ),
         load_token_patch_exc,
@@ -172,7 +172,7 @@ async def test_nc_close_called_even_on_exception() -> None:
 @pytest.mark.asyncio
 async def test_telegram_astart_failure_cleans_up_wired_resources() -> None:
     """astart() raises mid-loop -> wired + current bot resources cleaned up."""
-    from lyra.bootstrap.standalone.adapter_standalone import (
+    from factory.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
 
@@ -212,15 +212,15 @@ async def test_telegram_astart_failure_cleans_up_wired_resources() -> None:
     (load_token_patch,) = _cred_store_patches("test-token")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", side_effect=_make_bus),
-        patch("lyra.adapters.telegram.TelegramAdapter", side_effect=_make_adapter),
+        patch("factory.nats.nats_bus.NatsBus", side_effect=_make_bus),
+        patch("factory.adapters.telegram.TelegramAdapter", side_effect=_make_adapter),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         # ADR-079 S3: wait_for_hub now precedes the wiring loop.
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
+            "factory.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=None),
         ),
         load_token_patch,
@@ -239,7 +239,7 @@ async def test_telegram_astart_failure_cleans_up_wired_resources() -> None:
 @pytest.mark.asyncio
 async def test_discord_astart_failure_cleans_up_wired_resources() -> None:
     """astart() raises mid-loop -> wired + current bot resources cleaned up."""
-    from lyra.bootstrap.standalone.adapter_standalone import (
+    from factory.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
 
@@ -286,15 +286,15 @@ async def test_discord_astart_failure_cleans_up_wired_resources() -> None:
     (load_token_patch,) = _cred_store_patches("discord-token")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", side_effect=_make_bus),
-        patch("lyra.adapters.discord.DiscordAdapter", side_effect=_make_adapter),
+        patch("factory.nats.nats_bus.NatsBus", side_effect=_make_bus),
+        patch("factory.adapters.discord.DiscordAdapter", side_effect=_make_adapter),
         patch(
-            "lyra.bootstrap.wiring.standalone_discord.NatsOutboundListener",
+            "factory.bootstrap.wiring.standalone_discord.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         # ADR-079 S3: wait_for_hub now precedes the wiring loop.
         patch(
-            "lyra.bootstrap.wiring.standalone_discord.wait_for_hub",
+            "factory.bootstrap.wiring.standalone_discord.wait_for_hub",
             AsyncMock(return_value=None),
         ),
         load_token_patch,

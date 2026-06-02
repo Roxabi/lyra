@@ -14,8 +14,8 @@ dependencies = ["pydantic>=2"]
 testing = ["scipy>=1.11"]
 
 [project.urls]
-Repository = "https://github.com/Roxabi/lyra"
-Issues = "https://github.com/Roxabi/lyra/issues"
+Repository = "https://github.com/Roxabi/roxabi-factory"
+Issues = "https://github.com/Roxabi/roxabi-factory/issues"
 
 [build-system]
 requires = ["hatchling"]

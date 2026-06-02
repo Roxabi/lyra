@@ -8,12 +8,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-import lyra.commands.svc.handlers as svc_mod
-from lyra.commands.svc.handlers import _sanitize_svc_output, cmd_svc
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage
-from lyra.core.pool import Pool
-from lyra.integrations.base import ServiceControlFailed
+import factory.commands.svc.handlers as svc_mod
+from factory.commands.svc.handlers import _sanitize_svc_output, cmd_svc
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import InboundMessage
+from factory.core.pool import Pool
+from factory.integrations.base import ServiceControlFailed
 
 
 def _make_msg(text: str = "/svc status", *, is_admin: bool = True) -> InboundMessage:

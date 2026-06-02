@@ -1,4 +1,4 @@
-"""Tests for VaultCli (lyra.integrations.vault_cli)."""
+"""Tests for VaultCli (factory.integrations.vault_cli)."""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.core.exceptions import VaultWriteFailed
-from lyra.integrations.base import VaultProvider
-from lyra.integrations.vault_cli import VaultCli
+from factory.core.exceptions import VaultWriteFailed
+from factory.integrations.base import VaultProvider
+from factory.integrations.vault_cli import VaultCli
 
 
 def _make_proc(returncode=0, stdout=b"", stderr=b""):
@@ -78,7 +78,7 @@ class TestVaultCliAdd:
         proc = _make_proc()
         proc.kill = MagicMock()
         proc.wait = AsyncMock()
-        wait_for_path = "lyra.integrations.vault_cli.asyncio.wait_for"
+        wait_for_path = "factory.integrations.vault_cli.asyncio.wait_for"
         with patch("asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)):
             with patch(wait_for_path, side_effect=asyncio.TimeoutError):
                 with pytest.raises(VaultWriteFailed):
@@ -159,7 +159,7 @@ class TestVaultCliSearch:
         proc = _make_proc()
         proc.kill = MagicMock()
         proc.wait = AsyncMock()
-        wait_for_path = "lyra.integrations.vault_cli.asyncio.wait_for"
+        wait_for_path = "factory.integrations.vault_cli.asyncio.wait_for"
         with patch("asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)):
             with patch(wait_for_path, side_effect=asyncio.TimeoutError):
                 result = await VaultCli().search("query")

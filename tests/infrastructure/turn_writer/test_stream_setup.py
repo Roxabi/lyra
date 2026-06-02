@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, call
 import pytest
 from nats.js.errors import NotFoundError
 
-from lyra.infrastructure.turn_writer.stream_setup import (
+from factory.infrastructure.turn_writer.stream_setup import (
     CONSUMER_NAME,
     STREAM_NAME,
     _consumer_config,

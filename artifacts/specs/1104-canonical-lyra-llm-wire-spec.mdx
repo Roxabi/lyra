@@ -76,7 +76,7 @@ path unblocked, sister PR llmCLI [PR #18](https://github.com/Roxabi/llmCLI/pull/
 
 ## Expected Behavior
 
-1. Operator regenerates `deploy/nats/auth.conf` via `sudo lyra-acl genkeys
+1. Operator regenerates `deploy/nats/auth.conf` via `sudo factory-acl genkeys
    --regenerate`. The output references only canonical subjects for the LLM
    domain — no `lyra.llm.request` (legacy) or `lyra.llm.health.*` (legacy).
 2. Hub bootstrap (single-process and standalone) constructs `NatsLlmClient`
@@ -202,7 +202,7 @@ handling); only the per-worker subject derivation is dropped. The unused
 
 | # | Slice | Covers | Demo | Files (est.) |
 |---|-------|--------|------|--------------|
-| 1 | **ACL canonical migration** — flip YAML source for `hub` + `llm-worker` nkeys, regenerate `auth.conf`, add regression test asserting subject set | N1, N2, N3, N4 | `grep -E "lyra\.llm\.(request\|health\.\*)" deploy/nats/auth.conf` returns nothing; positive grep for canonical subjects | ACL YAML source (under `lyra-acl genkeys`), `deploy/nats/auth.conf`, 1 regression test |
+| 1 | **ACL canonical migration** — flip YAML source for `hub` + `llm-worker` nkeys, regenerate `auth.conf`, add regression test asserting subject set | N1, N2, N3, N4 | `grep -E "lyra\.llm\.(request\|health\.\*)" deploy/nats/auth.conf` returns nothing; positive grep for canonical subjects | ACL YAML source (under `factory-acl genkeys`), `deploy/nats/auth.conf`, 1 regression test |
 | 2 | **Hub bootstrap switch + client publish fix** — `init_nats_llm` returns `NatsLlmClient`; update type annotations across overlay/wiring/builder/standalone; switch `NatsLlmClient` stream + non-stream call sites to `SUBJECTS.generate_request` (drop per-worker publish + unused import) | B1, B2, B3, B4, B5 | Hub starts, log line `NatsLlmClient: initialised`; mock NATS test exercises `client.stream()` end-to-end with canonical subject assertions | `llm_overlay.py`, `wiring_helpers.py`, `hub_builder.py`, `agent_factory.py`, `hub_standalone_helpers.py`, `nats_llm_client.py` |
 | 3 | **Driver deprecation + test migration** — add `# DEPRECATED` header citing follow-up removal issue, migrate/rename `tests/llm/drivers/test_nats_driver.py` to exercise `NatsLlmClient` envelope path | C1 | Existing hub LLM tests pass; deprecated module not imported at runtime startup; legacy wire-format tests removed | `llm/drivers/nats_driver.py`, `tests/llm/drivers/test_*` |
 

@@ -1,0 +1,87 @@
+[Unit]
+Description=Lyra CliPool Worker
+After=factory-nats.service
+After=factory-gh-pod.service
+# No Requires= on NATS — clipool connects directly; hub restarts must not cascade.
+# BindsTo= the pod so clipool is stopped when the pod (and helper) are torn down.
+BindsTo=factory-gh-pod.service
+# Rate-limit restarts so a crash-loop cannot spam GitHub /app/installations/{id}/access_tokens
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+Image=ghcr.io/roxabi/factory:staging
+ContainerName=factory-clipool
+# Pod= moves network + user namespace ownership to factory-gh.pod.
+# UserNS=keep-id:uid=1500 is now declared on the pod (factory-gh.pod [Pod] section)
+# and shared by both containers. Removed from this unit to avoid conflict.
+Pod=factory-gh.pod
+NoNewPrivileges=true
+ReadOnly=true
+DropCapability=all
+# UserNS moved to factory-gh.pod [Pod] section — do not re-declare here.
+# Network= moved to factory-gh.pod — pod owns the network namespace.
+Environment=NATS_URL=nats://factory-nats:4222
+Secret=factory-nats-clipool,type=mount,target=factory-nats-clipool.seed,uid=1500,gid=1500,mode=0400
+Environment=NATS_NKEY_SEED_PATH=/run/secrets/factory-nats-clipool.seed
+# Claude Code auth — 1-year setup-token bypasses the broken OAuth refresh
+# path in non-TTY subprocess contexts (anthropics/claude-code#50743).
+# Bootstrap: `claude setup-token | podman secret create factory-claude-oauth -`
+Secret=factory-claude-oauth,type=env,target=CLAUDE_CODE_OAUTH_TOKEN
+# ~/.claude/ — directory mount (not file mounts) so Syncthing's atomic renames
+# (unlink old inode → rename new) remain transparent to the container.
+# Single-file bind-mounts bind the inode at mount time; after an atomic replace
+# the container holds a Links:0 ghost and never sees the refreshed token.
+Volume=%h/.claude:/home/factory/.claude:z
+Volume=%h/.claude.json:/home/factory/.claude.json:z
+# Workspace — mirrors host ~/projects so claude subprocess picks up per-project CLAUDE.md
+Volume=%h/projects:/home/factory/projects:z
+Environment=FACTORY_CLAUDE_CWD=/home/factory/projects
+# Quadlet does not honor systemd's `-` prefix (silent-if-missing) on
+# EnvironmentFile=; it treats the `-` as a literal path character and produces
+# a malformed `--env-file=-/home/...` arg to podman. Drop the prefix and rely
+# on provision.sh to ensure the file exists (touch it empty if no overrides).
+EnvironmentFile=%h/.roxabi/factory/env/clipool.env
+
+# ── GitHub App identity (#1078) ─────────────────────────────────────────────
+# Token-mint runtime state — shared with factory-gh-helper via Quadlet .volume
+# unit (pod containers don't share mount ns, so Tmpfs= per-container yields
+# split filesystems — verified on M₁). See factory-gh-token.volume for full
+# rationale + mode 1777 isolation argument.
+Volume=factory-gh-token.volume:/run/factory-gh-token:rw
+# Tmpfs for ~/.config/git so the git config template can be sourced read-only;
+# the runtime user has GIT_CONFIG_GLOBAL pointing into the image-baked /etc/factory
+# template, so this tmpfs is reserved for any future per-process overrides.
+# Note: ReadOnly=true is preserved — only Tmpfs= additions for credentials.
+Tmpfs=/home/factory/.config/git:mode=0755
+
+# PEM secret removed — invariant I-5: PEM mounts only on factory-gh-helper.container.
+# factory-gh shim (uid 1500) reads tokens via the dispenser socket, never the PEM.
+
+# FACTORY_GH_APP_ID / FACTORY_GH_INSTALLATION_ID removed — consumed only by the helper
+# daemon (factory-gh-helper.container). Clipool reads tokens via the dispenser socket.
+
+# Wire git's global config to the image-baked template so the credential
+# helper line resolves transparently for any `git push` from inside Claude.
+Environment=GIT_CONFIG_GLOBAL=/etc/factory/git.config.tmpl
+
+# χ-2 decision: /proc hidepid=2 is intentionally NOT enabled here. Rationale:
+# (a) podman exec introspection (`podman top`, `podman exec ... ps -ef`) is
+# valuable for ops; hidepid=2 breaks it for non-procuser members.
+# (b) defense-in-depth on token isolation already covers the intended attack
+# (token cache 0600/uid 1501; env scoped via `factory-gh` exec). Revisit if a
+# future threat model surfaces /proc/<helper-pid>/environ as a leak vector.
+Exec=factory adapter clipool
+HealthCmd=grep -q clipool /proc/1/cmdline
+HealthInterval=30s
+
+[Service]
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=120
+CPUQuota=400%
+ExecStartPre=/bin/bash -c 'test -e %h/.claude.json || echo "{}" > %h/.claude.json'
+ExecStartPre=/bin/bash -c 'test -e %h/.claude/.credentials.json || echo "{}" > %h/.claude/.credentials.json'
+
+[Install]
+WantedBy=default.target

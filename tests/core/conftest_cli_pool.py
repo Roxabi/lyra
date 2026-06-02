@@ -6,7 +6,7 @@ import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.agent.agent_config import ModelConfig
+from factory.core.agent.agent_config import ModelConfig
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -84,4 +84,4 @@ RESULT_LINE = _ndjson(
     }
 )
 
-_PATCH_TARGET = "lyra.core.cli.cli_pool_spawn.asyncio.create_subprocess_exec"
+_PATCH_TARGET = "factory.core.cli.cli_pool_spawn.asyncio.create_subprocess_exec"

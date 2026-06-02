@@ -9,7 +9,7 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "lyra",
+    "factory",
     "roxabi-blobs",
     "roxabi-contracts",
     "roxabi-nats",
@@ -422,6 +422,89 @@ wheels = [
 ]
 
 [[package]]
+name = "factory"
+version = "0.2.1"
+source = { editable = "." }
+dependencies = [
+    { name = "aiogram" },
+    { name = "cryptography" },
+    { name = "discord-py", extra = ["voice"] },
+    { name = "fastapi" },
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "python-dotenv" },
+    { name = "pyyaml" },
+    { name = "roxabi-blobs" },
+    { name = "roxabi-nats" },
+    { name = "roxabi-vault" },
+    { name = "tabulate" },
+    { name = "telegramify-markdown" },
+    { name = "tomli-w" },
+    { name = "typer" },
+    { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "grandalf" },
+    { name = "import-linter" },
+    { name = "jsonschema" },
+    { name = "pip-audit" },
+    { name = "pip-licenses" },
+    { name = "pre-commit" },
+    { name = "pyright" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-timeout" },
+    { name = "pytest-xdist" },
+    { name = "roxabi-blobs", extra = ["testing"] },
+    { name = "roxabi-contracts", extra = ["testing"] },
+    { name = "roxabi-nats", extra = ["testing"] },
+    { name = "ruff" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "aiogram", specifier = ">=3.28.2" },
+    { name = "cryptography", specifier = ">=48.0.0" },
+    { name = "discord-py", extras = ["voice"], specifier = ">=2.7.1" },
+    { name = "fastapi", specifier = ">=0.136.3" },
+    { name = "httpx", extras = ["asyncio"], specifier = ">=0.28" },
+    { name = "pydantic", specifier = ">=2.13.4" },
+    { name = "python-dotenv", specifier = ">=1.2.2" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "roxabi-blobs", editable = "packages/roxabi-blobs" },
+    { name = "roxabi-nats", editable = "packages/roxabi-nats" },
+    { name = "roxabi-vault", git = "https://github.com/Roxabi/roxabi-vault.git?branch=staging" },
+    { name = "tabulate", specifier = ">=0.9" },
+    { name = "telegramify-markdown", specifier = ">=1.1.5" },
+    { name = "tomli-w", specifier = ">=1.0" },
+    { name = "typer", specifier = ">=0.25.1" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.46.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "grandalf", specifier = ">=0.8" },
+    { name = "import-linter", specifier = ">=2.11,<3" },
+    { name = "jsonschema", specifier = ">=4.26.0" },
+    { name = "pip-audit", specifier = ">=2.10.0" },
+    { name = "pip-licenses", specifier = ">=5.5.5" },
+    { name = "pre-commit", specifier = ">=4.6.0" },
+    { name = "pyright", specifier = ">=1.1.409" },
+    { name = "pytest", specifier = ">=9.0.3" },
+    { name = "pytest-asyncio", specifier = ">=1.3.0" },
+    { name = "pytest-cov", specifier = ">=7.1.0" },
+    { name = "pytest-timeout", specifier = ">=2.4.0" },
+    { name = "pytest-xdist", specifier = ">=3.8.0" },
+    { name = "roxabi-blobs", extras = ["testing"], editable = "packages/roxabi-blobs" },
+    { name = "roxabi-contracts", extras = ["testing"], editable = "packages/roxabi-contracts" },
+    { name = "roxabi-nats", extras = ["testing"], editable = "packages/roxabi-nats" },
+    { name = "ruff", specifier = ">=0.15.14" },
+]
+
+[[package]]
 name = "fastapi"
 version = "0.136.3"
 source = { registry = "https://pypi.org/simple" }
@@ -639,89 +722,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/40/71/d89bb0e71b1415453980fd32315f2a037aad9f7f70f695c7cec7035feb13/license_expression-30.4.4.tar.gz", hash = "sha256:73448f0aacd8d0808895bdc4b2c8e01a8d67646e4188f887375398c761f340fd", size = 186402, upload-time = "2025-07-22T11:13:32.17Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/af/40/791891d4c0c4dab4c5e187c17261cedc26285fd41541577f900470a45a4d/license_expression-30.4.4-py3-none-any.whl", hash = "sha256:421788fdcadb41f049d2dc934ce666626265aeccefddd25e162a26f23bcbf8a4", size = 120615, upload-time = "2025-07-22T11:13:31.217Z" },
-]
-
-[[package]]
-name = "lyra"
-version = "0.2.1"
-source = { editable = "." }
-dependencies = [
-    { name = "aiogram" },
-    { name = "cryptography" },
-    { name = "discord-py", extra = ["voice"] },
-    { name = "fastapi" },
-    { name = "httpx" },
-    { name = "pydantic" },
-    { name = "python-dotenv" },
-    { name = "pyyaml" },
-    { name = "roxabi-blobs" },
-    { name = "roxabi-nats" },
-    { name = "roxabi-vault" },
-    { name = "tabulate" },
-    { name = "telegramify-markdown" },
-    { name = "tomli-w" },
-    { name = "typer" },
-    { name = "uvicorn", extra = ["standard"] },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "grandalf" },
-    { name = "import-linter" },
-    { name = "jsonschema" },
-    { name = "pip-audit" },
-    { name = "pip-licenses" },
-    { name = "pre-commit" },
-    { name = "pyright" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "pytest-timeout" },
-    { name = "pytest-xdist" },
-    { name = "roxabi-blobs", extra = ["testing"] },
-    { name = "roxabi-contracts", extra = ["testing"] },
-    { name = "roxabi-nats", extra = ["testing"] },
-    { name = "ruff" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "aiogram", specifier = ">=3.28.2" },
-    { name = "cryptography", specifier = ">=48.0.0" },
-    { name = "discord-py", extras = ["voice"], specifier = ">=2.7.1" },
-    { name = "fastapi", specifier = ">=0.136.3" },
-    { name = "httpx", extras = ["asyncio"], specifier = ">=0.28" },
-    { name = "pydantic", specifier = ">=2.13.4" },
-    { name = "python-dotenv", specifier = ">=1.2.2" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "roxabi-blobs", editable = "packages/roxabi-blobs" },
-    { name = "roxabi-nats", editable = "packages/roxabi-nats" },
-    { name = "roxabi-vault", git = "https://github.com/Roxabi/roxabi-vault.git?branch=staging" },
-    { name = "tabulate", specifier = ">=0.9" },
-    { name = "telegramify-markdown", specifier = ">=1.1.5" },
-    { name = "tomli-w", specifier = ">=1.0" },
-    { name = "typer", specifier = ">=0.25.1" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.46.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "grandalf", specifier = ">=0.8" },
-    { name = "import-linter", specifier = ">=2.11,<3" },
-    { name = "jsonschema", specifier = ">=4.26.0" },
-    { name = "pip-audit", specifier = ">=2.10.0" },
-    { name = "pip-licenses", specifier = ">=5.5.5" },
-    { name = "pre-commit", specifier = ">=4.6.0" },
-    { name = "pyright", specifier = ">=1.1.409" },
-    { name = "pytest", specifier = ">=9.0.3" },
-    { name = "pytest-asyncio", specifier = ">=1.3.0" },
-    { name = "pytest-cov", specifier = ">=7.1.0" },
-    { name = "pytest-timeout", specifier = ">=2.4.0" },
-    { name = "pytest-xdist", specifier = ">=3.8.0" },
-    { name = "roxabi-blobs", extras = ["testing"], editable = "packages/roxabi-blobs" },
-    { name = "roxabi-contracts", extras = ["testing"], editable = "packages/roxabi-contracts" },
-    { name = "roxabi-nats", extras = ["testing"], editable = "packages/roxabi-nats" },
-    { name = "ruff", specifier = ">=0.15.14" },
 ]
 
 [[package]]

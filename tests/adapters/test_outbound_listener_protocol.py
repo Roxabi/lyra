@@ -20,11 +20,14 @@ import inspect
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
 
-from lyra.adapters.nats.nats_outbound_listener import ListenerDeps, NatsOutboundListener
-from lyra.adapters.shared.outbound_listener import OutboundListener
-from lyra.core.audio_payload import AudioPayload
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage, Platform, TelegramMeta
+from factory.adapters.nats.nats_outbound_listener import (
+    ListenerDeps,
+    NatsOutboundListener,
+)
+from factory.adapters.shared.outbound_listener import OutboundListener
+from factory.core.audio_payload import AudioPayload
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import InboundMessage, Platform, TelegramMeta
 from roxabi_contracts import BlobRef
 
 # Module-level static structural check. mypy/pyright verify that

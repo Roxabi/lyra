@@ -31,21 +31,21 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.cli.cli_streaming_parser import CliStreamingParser
-from lyra.core.messaging.events import (
+from factory.core.cli.cli_streaming_parser import CliStreamingParser
+from factory.core.messaging.events import (
     LlmEvent,
     ResultLlmEvent,
     TextLlmEvent,
 )
-from lyra.core.messaging.render_events import (
+from factory.core.messaging.render_events import (
     ReasoningDeltaRenderEvent,
     ReasoningEndRenderEvent,
     ReasoningStartRenderEvent,
     RenderEvent,
 )
-from lyra.core.processors.stream_processor import StreamProcessor
-from lyra.outbound._emitter_run import _run_event_loop
-from lyra.outbound.emitter import OutboundEmitter as StreamingSession
+from factory.core.processors.stream_processor import StreamProcessor
+from factory.outbound._emitter_run import _run_event_loop
+from factory.outbound.emitter import OutboundEmitter as StreamingSession
 
 # DEBT:v1-stubs — for skipped tests; rewrite for v2 (#1192 S3 follow-up)
 # Typed as Any so pyright doesn't flag v1-shape access in skipped tests.

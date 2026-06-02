@@ -25,7 +25,7 @@ from unittest.mock import MagicMock, PropertyMock
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from lyra.infrastructure.turn_writer.health import TurnWriterHealthServer
+from factory.infrastructure.turn_writer.health import TurnWriterHealthServer
 
 # ---------------------------------------------------------------------------
 # Helpers

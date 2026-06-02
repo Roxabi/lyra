@@ -14,13 +14,13 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.commands.command_loader import CommandLoader
-from lyra.core.commands.command_registry import (
+from factory.core.commands.command_loader import CommandLoader
+from factory.core.commands.command_registry import (
     CommandParam,
     PlatformCommand,
     collect_commands,
 )
-from lyra.core.commands.command_router import CommandRouter, CommandRouterDeps
+from factory.core.commands.command_router import CommandRouter, CommandRouterDeps
 
 # ---------------------------------------------------------------------------
 # collect_commands() unit tests
@@ -136,7 +136,7 @@ class TestCommandMetadata:
         (plugin_dir / "handlers.py").write_text(
             textwrap.dedent("""\
                 async def cmd_echo(msg, pool, args):
-                    from lyra.core.messaging.message import Response
+                    from factory.core.messaging.message import Response
                     return Response(content=" ".join(args))
             """)
         )
@@ -172,7 +172,7 @@ class TestGetCommandDescriptions:
         (plugin_dir / "handlers.py").write_text(
             textwrap.dedent("""\
                 async def cmd_foo(msg, pool, args):
-                    from lyra.core.messaging.message import Response
+                    from factory.core.messaging.message import Response
                     return Response(content="foo")
             """)
         )

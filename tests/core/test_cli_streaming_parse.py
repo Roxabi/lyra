@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.cli.cli_protocol import CliStreamingParser, StreamingIterator
-from lyra.core.messaging.events import (
+from factory.core.cli.cli_protocol import CliStreamingParser, StreamingIterator
+from factory.core.messaging.events import (
     ResultLlmEvent,
     TextLlmEvent,
     ThinkingLlmEvent,

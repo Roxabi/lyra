@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.messaging.render_events import (
+from factory.core.messaging.render_events import (
     RunFinishedRenderEvent,
     RunStartedRenderEvent,
     TextDeltaRenderEvent,
@@ -37,7 +37,7 @@ from tests.adapters.conftest import make_dc_inbound_msg
 
 def _make_discord_adapter():
     """Build a DiscordAdapter with placeholder + channel mocked."""
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -160,7 +160,7 @@ class TestDiscordSnapshots:
 
         Expected: final placeholder.edit starts with ❌ prefix.
         """
-        from lyra.core.messaging.render_events import RunErrorRenderEvent
+        from factory.core.messaging.render_events import RunErrorRenderEvent
 
         adapter = _make_discord_adapter()
         _, placeholder = _attach_channel(adapter)

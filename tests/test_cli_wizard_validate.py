@@ -12,8 +12,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from lyra.cli import agent_app as app
-from lyra.infrastructure.stores.agent_store import AgentRow, AgentStore
+from factory.cli import agent_app as app
+from factory.infrastructure.stores.agent_store import AgentRow, AgentStore
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -55,7 +55,7 @@ class TestValidate:
     ) -> None:
         """Valid agent in DB exits 0 with no warnings."""
         # Arrange
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         _seed_agent(tmp_path / "config.db", name="validagent")
 
         # Act
@@ -72,7 +72,7 @@ class TestValidate:
     ) -> None:
         """smart_routing enabled is rejected on any backend — validator is backend-agnostic."""  # noqa: E501
         # Arrange -- any backend with smart_routing enabled should fail validation
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         _seed_agent(
             tmp_path / "config.db",
             name="mismatch",
@@ -90,7 +90,7 @@ class TestValidate:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Non-existent agent name exits non-zero with 'not found' message."""
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
 
         # Act
         result = runner.invoke(app, ["validate", "ghost"])

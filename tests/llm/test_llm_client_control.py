@@ -23,10 +23,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.llm.cli_nats_codec import CliNatsCodec
-from lyra.llm.llm_client import LlmClient
-from lyra.transport._result import Ok, SanitizedError
-from lyra.transport.worker_pool_client import WorkerPoolClient
+from factory.llm.cli_nats_codec import CliNatsCodec
+from factory.llm.llm_client import LlmClient
+from factory.transport._result import Ok, SanitizedError
+from factory.transport.worker_pool_client import WorkerPoolClient
 from roxabi_contracts.cli.models import CliControlAck
 from roxabi_contracts.envelope import CONTRACT_VERSION
 
@@ -338,7 +338,7 @@ class TestResumeAndReset:
     @pytest.mark.asyncio
     async def test_resume_and_reset_returns_false_on_transport_err(self) -> None:
         """When transport returns Err, resume_and_reset returns False."""
-        from lyra.transport._result import Err
+        from factory.transport._result import Err
 
         err = SanitizedError(
             code="transport.timeout", message="TimeoutError", retryable=True

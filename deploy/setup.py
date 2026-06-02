@@ -3,7 +3,7 @@
 
 Run from a fresh checkout:
 
-    cd ~/projects/lyra
+    cd ~/projects/roxabi-factory
     python3 deploy/setup.py            # interactive
     python3 deploy/setup.py --all      # install all optional modules without prompts
 
@@ -18,7 +18,7 @@ import sys
 import tomllib
 from pathlib import Path
 
-LYRA_DIR = Path(os.environ.get("LYRA_DIR", Path.home() / "projects" / "lyra"))
+FACTORY_DIR = Path(os.environ.get("FACTORY_DIR", Path.home() / "projects" / "roxabi-factory"))
 HOSTS_TOML = Path(os.environ.get("HOSTS_TOML", Path.home() / "projects" / "hosts.toml"))
 
 
@@ -129,10 +129,10 @@ def check_prereqs() -> bool:
 # ── Module installation ─────────────────────────────────────────────────────
 
 
-def install_lyra(lyra_dir: Path) -> None:
-    print("Installing lyra...")
-    run(["uv", "sync"], cwd=lyra_dir)
-    print("  ✓  lyra installed")
+def install_lyra(factory_dir: Path) -> None:
+    print("Installing factory...")
+    run(["uv", "sync"], cwd=factory_dir)
+    print("  ✓  factory installed")
 
 
 def install_optional_module(
@@ -168,9 +168,9 @@ def install_optional_module(
 # ── Config scaffolding ──────────────────────────────────────────────────────
 
 
-def scaffold_env(lyra_dir: Path) -> None:
-    env_file = lyra_dir / ".env"
-    example = lyra_dir / ".env.example"
+def scaffold_env(factory_dir: Path) -> None:
+    env_file = factory_dir / ".env"
+    example = factory_dir / ".env.example"
     if env_file.exists():
         print("  ✓  .env already exists")
         return
@@ -179,12 +179,12 @@ def scaffold_env(lyra_dir: Path) -> None:
         return
     shutil.copy(example, env_file)
     print("  ✓  .env created from .env.example")
-    print(f"       → Edit {lyra_dir}/.env and fill in DEPLOY_HOST/DEPLOY_DIR")
+    print(f"       → Edit {factory_dir}/.env and fill in DEPLOY_HOST/DEPLOY_DIR")
 
 
-def scaffold_config_toml(lyra_dir: Path) -> None:
-    config_file = lyra_dir / "config.toml"
-    example = lyra_dir / "config.toml.example"
+def scaffold_config_toml(factory_dir: Path) -> None:
+    config_file = factory_dir / "config.toml"
+    example = factory_dir / "config.toml.example"
     if config_file.exists():
         print("  ✓  config.toml already exists")
         return
@@ -193,49 +193,49 @@ def scaffold_config_toml(lyra_dir: Path) -> None:
         return
     shutil.copy(example, config_file)
     print("  ✓  config.toml created from config.toml.example")
-    print(f"       → Edit {lyra_dir}/config.toml and fill in your user IDs")
+    print(f"       → Edit {factory_dir}/config.toml and fill in your user IDs")
 
 
-def init_agents(lyra_dir: Path) -> None:
-    """Run lyra agent init to seed the DB from TOML files."""
-    agent_init = lyra_dir / ".venv" / "bin" / "lyra"
+def init_agents(factory_dir: Path) -> None:
+    """Run factory agent init to seed the DB from TOML files."""
+    agent_init = factory_dir / ".venv" / "bin" / "factory"
     if not agent_init.exists():
-        print("  ✗  lyra CLI not found in venv — skipping agent init")
+        print("  ✗  factory CLI not found in venv — skipping agent init")
         return
     result = subprocess.run(
         [str(agent_init), "agent", "init"],
-        cwd=lyra_dir,
+        cwd=factory_dir,
         capture_output=True,
         text=True,
     )
     if result.returncode == 0:
-        print("  ✓  lyra agent init — agents seeded into DB")
+        print("  ✓  factory agent init — agents seeded into DB")
     else:
         # Non-fatal — may fail if DB already has agents
         print(
-            "  !  lyra agent init skipped "
+            "  !  factory agent init skipped "
             f"({result.stderr.strip() or 'already initialized'})"
         )
 
 
-def init_bots(lyra_dir: Path) -> None:
-    """Run lyra bot init to seed BotStore from config.toml (#1416)."""
-    bot_init = lyra_dir / ".venv" / "bin" / "lyra"
+def init_bots(factory_dir: Path) -> None:
+    """Run factory bot init to seed BotStore from config.toml (#1416)."""
+    bot_init = factory_dir / ".venv" / "bin" / "factory"
     if not bot_init.exists():
-        print("  ✗  lyra CLI not found in venv — skipping bot init")
+        print("  ✗  factory CLI not found in venv — skipping bot init")
         return
     result = subprocess.run(
         [str(bot_init), "bot", "init"],
-        cwd=lyra_dir,
+        cwd=factory_dir,
         capture_output=True,
         text=True,
     )
     if result.returncode == 0:
-        print("  ✓  lyra bot init — bots seeded into BotStore")
+        print("  ✓  factory bot init — bots seeded into BotStore")
     else:
         # Non-fatal — may fail if DB already has bots
         print(
-            "  !  lyra bot init skipped "
+            "  !  factory bot init skipped "
             f"({result.stderr.strip() or 'already initialized'})"
         )
 
@@ -243,7 +243,7 @@ def init_bots(lyra_dir: Path) -> None:
 def create_log_dirs() -> None:
     """Create XDG-compliant log directories used by Quadlet bind mounts."""
     state = Path.home() / ".local" / "state"
-    for app in ("lyra", "voicecli"):
+    for app in ("factory", "voicecli"):
         log_dir = state / app / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
     print("  ✓  Log directories created (~/.local/state/*/logs/)")
@@ -289,7 +289,7 @@ def symlink_voicecli(voicecli_dir: Path) -> None:
 
 
 def setup_plugins(
-    lyra_dir: Path | None,
+    factory_dir: Path | None,
     voicecli_dir: Path | None,
     include_optional: bool,
 ) -> None:
@@ -311,7 +311,7 @@ def setup_plugins(
     ).stdout
 
     for label, path in [
-        ("lyra-marketplace", lyra_dir),
+        ("lyra-marketplace", factory_dir),
         ("voicecli-marketplace", voicecli_dir),
     ]:
         if not path or not path.exists():
@@ -428,13 +428,13 @@ def setup_plugins(
 # ── Quadlet install + auto-start ────────────────────────────────────────────
 
 
-def install_quadlet_units(lyra_dir: Path, host_roles: set[str]) -> None:
-    # If we know the roles AND lyra-hub is not in them, skip cleanly.
-    if host_roles and "lyra-hub" not in host_roles:
-        print("  skip  Quadlet install (host lacks 'lyra-hub' role)")
+def install_quadlet_units(factory_dir: Path, host_roles: set[str]) -> None:
+    # If we know the roles AND factory-hub is not in them, skip cleanly.
+    if host_roles and "factory-hub" not in host_roles:
+        print("  skip  Quadlet install (host lacks 'factory-hub' role)")
         return
-    print("Installing Quadlet units (lyra)...")
-    result = subprocess.run(["make", "quadlet-install"], cwd=lyra_dir)
+    print("Installing Quadlet units (factory)...")
+    result = subprocess.run(["make", "quadlet-install"], cwd=factory_dir)
     if result.returncode == 0:
         print("  ✓  Quadlet units installed at ~/.config/containers/systemd/")
     else:
@@ -444,7 +444,7 @@ def install_quadlet_units(lyra_dir: Path, host_roles: set[str]) -> None:
 
 
 def enable_linger(host_roles: set[str]) -> None:
-    container_roles = {"lyra-hub", "voice-worker", "llm-worker", "image-worker"}
+    container_roles = {"factory-hub", "voice-worker", "llm-worker", "image-worker"}
     if host_roles and not (host_roles & container_roles):
         print("  skip  linger (host runs no containers)")
         return
@@ -493,11 +493,11 @@ def main() -> None:
         sys.exit(1)
     print()
 
-    lyra_dir = LYRA_DIR
+    factory_dir = FACTORY_DIR
     voicecli_dir: Path | None = None
 
     # Phase 1: install lyra (this repo)
-    install_lyra(lyra_dir)
+    install_lyra(factory_dir)
     print()
 
     # Phase 2: optional sibling modules
@@ -512,7 +512,7 @@ def main() -> None:
     # Re-sync lyra with voice extra if voiceCLI was installed
     if voicecli_dir:
         print("Re-syncing lyra with voice support...")
-        run(["uv", "sync", "--extra", "voice"], cwd=lyra_dir)
+        run(["uv", "sync", "--extra", "voice"], cwd=factory_dir)
         print()
 
     # Phase 3: post-setup scaffolding
@@ -526,34 +526,34 @@ def main() -> None:
         print("  skip  forge")
     if voicecli_dir:
         symlink_voicecli(voicecli_dir)
-    scaffold_env(lyra_dir)
-    scaffold_config_toml(lyra_dir)
-    init_agents(lyra_dir)
-    init_bots(lyra_dir)
+    scaffold_env(factory_dir)
+    scaffold_config_toml(factory_dir)
+    init_agents(factory_dir)
+    init_bots(factory_dir)
     print()
 
     # Phase 4: Claude Code plugins
-    setup_plugins(lyra_dir, voicecli_dir, include_optional)
+    setup_plugins(factory_dir, voicecli_dir, include_optional)
 
     # Phase 5: Quadlet install + linger
-    install_quadlet_units(lyra_dir, host_roles)
+    install_quadlet_units(factory_dir, host_roles)
     enable_linger(host_roles)
 
     print()
     print("─" * 40)
     print("Setup complete!")
     print()
-    print("  systemctl --user status 'lyra-*.service'  unit status")
+    print("  systemctl --user status 'factory-*.service'  unit status")
     print("  make lyra reload                          restart all containers")
     print("  make lyra logs                            tail journalctl")
     print()
 
     # Manual steps
     manual_steps: list[str] = []
-    config_file = lyra_dir / "config.toml"
+    config_file = factory_dir / "config.toml"
     if config_file.exists() and "owner_users = []" in config_file.read_text():
         manual_steps.append(
-            f"Fill in your user IDs in config.toml:\n     nano {lyra_dir}/config.toml"
+            f"Fill in your user IDs in config.toml:\n     nano {factory_dir}/config.toml"
         )
 
     manual_steps.append(
@@ -574,7 +574,7 @@ def main() -> None:
 
     manual_steps.append(
         "Start Quadlet containers:\n"
-        "     make lyra start  # OR: systemctl --user start lyra-nats lyra-hub lyra-telegram lyra-discord lyra-clipool"
+        "     make lyra start  # OR: systemctl --user start factory-nats factory-hub factory-telegram factory-discord factory-clipool"
     )
 
     if manual_steps:
@@ -586,7 +586,7 @@ def main() -> None:
 
     print(
         "Note: Health monitoring host-timer units (lyra-monitor.{service,timer}) have been removed from deploy/. "
-        "Python module src/lyra/monitoring/ is retained for Monitoring v2 (#1035) spec mining."
+        "Python module src/factory/monitoring/ is retained for Monitoring v2 (#1035) spec mining."
     )
 
 

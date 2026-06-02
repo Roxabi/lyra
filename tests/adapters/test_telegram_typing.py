@@ -12,8 +12,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from aiogram.exceptions import TelegramAPIError
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.render_events import TextDeltaRenderEvent, TextEndRenderEvent
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.render_events import (
+    TextDeltaRenderEvent,
+    TextEndRenderEvent,
+)
 
 # ---------------------------------------------------------------------------
 # T1.4 — Unit tests for _typing_loop
@@ -24,7 +27,7 @@ from lyra.core.messaging.render_events import TextDeltaRenderEvent, TextEndRende
 async def test_typing_loop_sends_chat_action_immediately() -> None:
     """On entry, bot.send_chat_action called with (chat_id, "typing")."""
 
-    from lyra.adapters.telegram import _typing_loop  # ImportError expected in RED
+    from factory.adapters.telegram import _typing_loop  # ImportError expected in RED
 
     bot = AsyncMock()
     chat_id = 123
@@ -40,7 +43,7 @@ async def test_typing_loop_refreshes_after_interval() -> None:
     """After interval elapses, send_chat_action called again."""
     import asyncio
 
-    from lyra.adapters.telegram import _typing_loop  # ImportError expected in RED
+    from factory.adapters.telegram import _typing_loop  # ImportError expected in RED
 
     bot = AsyncMock()
     chat_id = 456
@@ -58,7 +61,7 @@ async def test_typing_loop_cancels_background_task_on_exit() -> None:
     """After context exits, no further send_chat_action calls are made."""
     import asyncio
 
-    from lyra.adapters.telegram import _typing_loop  # ImportError expected in RED
+    from factory.adapters.telegram import _typing_loop  # ImportError expected in RED
 
     bot = AsyncMock()
     chat_id = 789
@@ -77,7 +80,7 @@ async def test_typing_loop_cancels_background_task_on_exit() -> None:
 @pytest.mark.asyncio
 async def test_typing_loop_swallows_send_chat_action_exception() -> None:
     """If send_chat_action raises, no exception propagates out of the context."""
-    from lyra.adapters.telegram import _typing_loop  # ImportError expected in RED
+    from factory.adapters.telegram import _typing_loop  # ImportError expected in RED
 
     bot = AsyncMock()
     bot.send_chat_action.side_effect = TelegramAPIError(
@@ -93,7 +96,7 @@ async def test_typing_loop_swallows_send_chat_action_exception() -> None:
 @pytest.mark.asyncio
 async def test_typing_loop_cancels_on_body_exception() -> None:
     """If body raises, finally still cancels the loop cleanly."""
-    from lyra.adapters.telegram import _typing_loop  # ImportError expected in RED
+    from factory.adapters.telegram import _typing_loop  # ImportError expected in RED
 
     bot = AsyncMock()
     chat_id = 222
@@ -122,13 +125,13 @@ async def test_send_cancels_typing_task(monkeypatch: pytest.MonkeyPatch) -> None
     The typing indicator is a background task started by _start_typing() (called
     in _on_message). send() cancels it via _cancel_typing() before sending the reply.
 
-    Legacy-path test: forces LYRA_TYPING_ENABLED=false.
+    Legacy-path test: forces FACTORY_TYPING_ENABLED=false.
     """
-    monkeypatch.setenv("LYRA_TYPING_ENABLED", "false")
+    monkeypatch.setenv("FACTORY_TYPING_ENABLED", "false")
     import asyncio
 
-    from lyra.adapters.telegram import TelegramAdapter
-    from lyra.core.messaging.message import (
+    from factory.adapters.telegram import TelegramAdapter
+    from factory.core.messaging.message import (
         InboundMessage,
         OutboundMessage,
         TelegramMeta,
@@ -195,13 +198,13 @@ async def test_send_streaming_cancels_typing_task_after_placeholder(
     (_on_message / _on_voice_message). send_streaming() itself no longer
     creates a new typing loop — it only cancels the pre-existing task.
 
-    Legacy-path test: forces LYRA_TYPING_ENABLED=false.
+    Legacy-path test: forces FACTORY_TYPING_ENABLED=false.
     """
-    monkeypatch.setenv("LYRA_TYPING_ENABLED", "false")
+    monkeypatch.setenv("FACTORY_TYPING_ENABLED", "false")
     import asyncio
 
-    from lyra.adapters.telegram import TelegramAdapter
-    from lyra.core.messaging.message import InboundMessage, TelegramMeta
+    from factory.adapters.telegram import TelegramAdapter
+    from factory.core.messaging.message import InboundMessage, TelegramMeta
 
     # Arrange
     bot = AsyncMock()

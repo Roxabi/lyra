@@ -16,12 +16,19 @@ import asyncio
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
-from lyra.core.hub.outbound.outbound_errors import _SCOPE_REAP_THRESHOLD
-from lyra.core.lifecycle.circuit_breaker import CircuitBreaker
-from lyra.core.messaging.message import InboundMessage, OutboundMessage, RoutingContext
-from lyra.core.messaging.render_events import TextDeltaRenderEvent, TextEndRenderEvent
-from lyra.core.messaging.utils.callbacks import TrustedCallback
+from factory.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
+from factory.core.hub.outbound.outbound_errors import _SCOPE_REAP_THRESHOLD
+from factory.core.lifecycle.circuit_breaker import CircuitBreaker
+from factory.core.messaging.message import (
+    InboundMessage,
+    OutboundMessage,
+    RoutingContext,
+)
+from factory.core.messaging.render_events import (
+    TextDeltaRenderEvent,
+    TextEndRenderEvent,
+)
+from factory.core.messaging.utils.callbacks import TrustedCallback
 from tests.conftest import TIMEOUT_IO
 
 from .conftest import make_dispatcher_msg
@@ -191,7 +198,7 @@ async def test_circuit_open_debounce_suppresses_second_notification() -> None:
             notify_calls.append(str(args[3]))
 
         _patch = patch(
-            "lyra.core.hub.outbound.outbound_dispatcher.try_notify_user",
+            "factory.core.hub.outbound.outbound_dispatcher.try_notify_user",
             side_effect=fake_notify,
         )
         with _patch:
@@ -287,7 +294,7 @@ async def test_failed_send_notifies_user() -> None:
     try:
         msg = make_dispatcher_msg()
         _patch = patch(
-            "lyra.core.hub.outbound.outbound_dispatcher.try_notify_user",
+            "factory.core.hub.outbound.outbound_dispatcher.try_notify_user",
             side_effect=fake_notify,
         )
         with _patch:
@@ -360,7 +367,7 @@ class TestRetryExhaustion:
             with (
                 patch("asyncio.sleep", new=AsyncMock()),
                 patch(
-                    "lyra.core.hub.outbound.outbound_dispatcher.try_notify_user",
+                    "factory.core.hub.outbound.outbound_dispatcher.try_notify_user",
                     new=notify_mock,
                 ),
             ):

@@ -173,7 +173,7 @@ class TestFalsePositiveFilters:
 
     def test_module_path_not_flagged(self, tmp_path: Path) -> None:
         """A real module path resolves as kind=module, never an orphan subject."""
-        _write_py(tmp_path, "mod.py", 'NAME = "lyra.commands"\n')
+        _write_py(tmp_path, "mod.py", 'NAME = "factory.commands"\n')
         result = _run([tmp_path], allowlist=_empty_allowlist(tmp_path))
         assert result.returncode == 0, result.stdout
 

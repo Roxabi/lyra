@@ -83,6 +83,6 @@ def subject_covered(subject: str, grants: list[str]) -> bool:
                 return True
         if grant.endswith(".*"):
             prefix = grant[:-1]  # "lyra.foo."
-            if subject.startswith(prefix) and "." not in subject[len(prefix):]:
+            if subject.startswith(prefix) and "." not in subject[len(prefix) :]:
                 return True
     return False

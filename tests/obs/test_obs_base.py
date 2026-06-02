@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from lyra.obs import (
+from factory.obs import (
     NoOpObsProvider,
     ObsCapabilities,
     ObservabilityProvider,

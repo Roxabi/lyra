@@ -1,4 +1,4 @@
-"""Tests for lyra.core.pool.pool_observer.PoolObserver.
+"""Tests for factory.core.pool.pool_observer.PoolObserver.
 
 Covers:
 - turn logging (log_turn_async) with/without TurnStore
@@ -14,8 +14,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.messaging.message import TelegramMeta
-from lyra.core.pool.pool_observer import PoolObserver, TurnLogDeps
+from factory.core.messaging.message import TelegramMeta
+from factory.core.pool.pool_observer import PoolObserver, TurnLogDeps
 from tests.core.conftest import make_inbound_message
 
 # ---------------------------------------------------------------------------
@@ -285,7 +285,7 @@ class TestLogTurnAsyncErrorPath:
         publisher.publish_log_turn = AsyncMock(side_effect=RuntimeError("NATS error"))
         obs.register_turn_publisher(publisher)
 
-        with caplog.at_level(logging.ERROR, logger="lyra.core.pool.pool_observer"):
+        with caplog.at_level(logging.ERROR, logger="factory.core.pool.pool_observer"):
             # Act — must not raise
             await obs.log_turn_async(
                 TurnLogDeps(
@@ -310,7 +310,7 @@ class TestSessionUpdateAsyncErrorPath:
 
         msg = make_inbound_message()
 
-        with caplog.at_level(logging.ERROR, logger="lyra.core.pool.pool_observer"):
+        with caplog.at_level(logging.ERROR, logger="factory.core.pool.pool_observer"):
             # Act — must not raise
             await obs.session_update_async(msg)
 
@@ -331,7 +331,7 @@ class TestAppendErrorPath:
 
         msg = make_inbound_message()
 
-        with caplog.at_level(logging.ERROR, logger="lyra.core.pool.pool_observer"):
+        with caplog.at_level(logging.ERROR, logger="factory.core.pool.pool_observer"):
             # Act — must not raise
             await obs.append(msg, session_id=_SESSION_ID)
 
@@ -351,7 +351,7 @@ class TestIndexTurnAsyncErrorPath:
         mi.upsert = AsyncMock(side_effect=RuntimeError("index DB error"))
         obs.register_message_index(mi)
 
-        with caplog.at_level(logging.ERROR, logger="lyra.core.pool.pool_observer"):
+        with caplog.at_level(logging.ERROR, logger="factory.core.pool.pool_observer"):
             # Act — must not raise
             await obs.index_turn_async("msg-42", session_id=_SESSION_ID, role="user")
 

@@ -15,11 +15,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 from tests.conftest import _drain
 
-from lyra.agents.simple_agent import SimpleAgent
-from lyra.core.agent import Agent
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage, Response, TelegramMeta
-from lyra.core.pool import Pool
+from factory.agents.simple_agent import SimpleAgent
+from factory.core.agent import Agent
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import InboundMessage, Response, TelegramMeta
+from factory.core.pool import Pool
 
 from .fake_drivers import FakeClaudeCliDriver, FakeStt, FakeTts
 
@@ -48,7 +48,7 @@ def _parse_toml_config(toml: str) -> Agent:
     system_prompt = agent_section.get("system_prompt", "")
     memory_namespace = agent_section.get("memory_namespace", name)
 
-    from lyra.core.agent.agent_config import ModelConfig
+    from factory.core.agent.agent_config import ModelConfig
 
     model_cfg = ModelConfig(
         backend=model_section.get("backend", "claude-cli"),

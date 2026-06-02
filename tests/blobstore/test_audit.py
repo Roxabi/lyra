@@ -10,8 +10,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-# lyra.blobstore.audit_sink does not exist yet — RED until T13 lands.
-from lyra.blobstore.audit_sink import (
+# factory.blobstore.audit_sink does not exist yet — RED until T13 lands.
+from factory.blobstore.audit_sink import (
     BlobAuditSink,  # type: ignore[import-not-found]  # noqa: F401
 )
 from roxabi_contracts.audit.blobs import BlobAuditEvent
@@ -230,7 +230,7 @@ class TestBlobstoreKVReadiness:
         """
         import httpx
 
-        from lyra.blobstore.serve import build_app
+        from factory.blobstore.serve import build_app
 
         blob_root = tmp_path / "blobs"
         blob_root.mkdir()

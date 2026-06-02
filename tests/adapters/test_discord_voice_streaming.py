@@ -10,15 +10,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.adapters.discord import DiscordAdapter
-from lyra.adapters.discord.voice.discord_voice import (
+from factory.adapters.discord import DiscordAdapter
+from factory.adapters.discord.voice.discord_voice import (
     PCMQueueSource,
     VoiceMode,
     VoiceSession,
     VoiceSessionManager,
 )
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import (
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import (
     DiscordMeta,
     GenericMeta,
     InboundMessage,
@@ -116,7 +116,7 @@ class TestVSMStream:
 
         # Act — patch PCMQueueSource so stream() assigns the mock as the fresh source
         with patch(
-            "lyra.adapters.discord.voice.discord_voice.PCMQueueSource",
+            "factory.adapters.discord.voice.discord_voice.PCMQueueSource",
             return_value=new_source,  # noqa: E501
         ):
             await vsm.stream("1", chunks())
@@ -177,7 +177,7 @@ class TestVSMStream:
 
         # Act — patch PCMQueueSource so stream() assigns the mock as the fresh source
         with patch(
-            "lyra.adapters.discord.voice.discord_voice.PCMQueueSource",
+            "factory.adapters.discord.voice.discord_voice.PCMQueueSource",
             return_value=new_source,  # noqa: E501
         ):
             await vsm.stream("1", chunks())
@@ -200,7 +200,7 @@ class TestVSMStream:
 
         # Act — patch PCMQueueSource so stream() assigns the mock as the fresh source
         with patch(
-            "lyra.adapters.discord.voice.discord_voice.PCMQueueSource",
+            "factory.adapters.discord.voice.discord_voice.PCMQueueSource",
             return_value=new_source,  # noqa: E501
         ):
             await vsm.stream("1", chunks())

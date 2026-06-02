@@ -2,7 +2,7 @@ name: publish
 on:
   push:
     branches: [staging]
-    tags: ['lyra/v*']
+    tags: ['factory/v*']
 permissions:
   contents: read
   packages: write
@@ -21,7 +21,7 @@ jobs:
       - name: Compute image tags
         id: tags
         run: |
-          REG=ghcr.io/roxabi/lyra
+          REG=ghcr.io/roxabi/factory
           if [[ "$GITHUB_REF" == refs/heads/staging ]]; then
             {
               echo "bake_set<<EOF"
@@ -57,4 +57,4 @@ jobs:
       - name: Verify forbidden binaries absent (SC-3)
         run: |
           docker run --rm ${{ steps.tags.outputs.svc_tag }} \
-            sh -c 'which bun claude corepack node lyra-gh 2>/dev/null && exit 1 || exit 0'
+            sh -c 'which bun claude corepack node factory-gh 2>/dev/null && exit 1 || exit 0'

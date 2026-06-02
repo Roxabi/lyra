@@ -1,4 +1,4 @@
-"""Unit tests for lyra.core.messaging.utils.error_extractor._extract_worker_error."""
+"""Unit tests for factory.core.messaging.utils.error_extractor._extract_worker_error."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from lyra.core.messaging.utils.error_extractor import _extract_worker_error
+from factory.core.messaging.utils.error_extractor import _extract_worker_error
 from roxabi_contracts.errors import WorkerError
 
 # ---------------------------------------------------------------------------
@@ -84,7 +84,7 @@ class TestExtractWorkerError:
         reply = _ReplyContradiction(is_error=False, worker_error=we)
 
         with caplog.at_level(
-            logging.WARNING, logger="lyra.core.messaging.utils.error_extractor"
+            logging.WARNING, logger="factory.core.messaging.utils.error_extractor"
         ):
             result = _extract_worker_error(reply)
 
@@ -101,7 +101,7 @@ class TestExtractWorkerError:
         reply = _ReplyOkContradiction(ok=True, worker_error=we)
 
         with caplog.at_level(
-            logging.WARNING, logger="lyra.core.messaging.utils.error_extractor"
+            logging.WARNING, logger="factory.core.messaging.utils.error_extractor"
         ):
             result = _extract_worker_error(reply)
 

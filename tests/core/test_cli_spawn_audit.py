@@ -9,9 +9,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import nats.errors
 import pytest
 
-from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.cli.cli_pool import CliPool, CliPoolDeps
-from lyra.core.trace import TraceContext
+from factory.core.agent.agent_config import ModelConfig
+from factory.core.cli.cli_pool import CliPool, CliPoolDeps
+from factory.core.trace import TraceContext
 
 from .conftest_cli_pool import make_fake_proc
 
@@ -20,14 +20,14 @@ _MODEL = ModelConfig(model="claude-opus-4-6")
 
 
 def test_audit_sink_importable_from_cli_pool() -> None:
-    """AuditSink must be importable from lyra.core.cli.cli_pool."""
-    from lyra.core.cli.cli_pool import AuditSink
+    """AuditSink must be importable from factory.core.cli.cli_pool."""
+    from factory.core.cli.cli_pool import AuditSink
 
     assert AuditSink is not None
 
 
 # Patch target for the subprocess call (asyncio is shared across the mixin).
-_WORKER_PATCH = "lyra.core.cli.cli_pool_spawn.asyncio.create_subprocess_exec"
+_WORKER_PATCH = "factory.core.cli.cli_pool_spawn.asyncio.create_subprocess_exec"
 
 
 # ---------------------------------------------------------------------------
@@ -206,7 +206,7 @@ class TestJetStreamAuditSinkEmit:
         """emit() must catch exceptions and log at WARNING — never raises."""
         from datetime import UTC, datetime
 
-        from lyra.infrastructure.audit.jetstream_sink import JetStreamAuditSink
+        from factory.infrastructure.audit.jetstream_sink import JetStreamAuditSink
         from roxabi_contracts.audit import SecurityEvent
         from roxabi_contracts.envelope import CONTRACT_VERSION
 
@@ -244,7 +244,7 @@ class TestJetStreamAuditSinkEmit:
         """In degraded mode emit() writes JSON to lyra.security at WARNING."""
         from datetime import UTC, datetime
 
-        from lyra.infrastructure.audit.jetstream_sink import JetStreamAuditSink
+        from factory.infrastructure.audit.jetstream_sink import JetStreamAuditSink
         from roxabi_contracts.audit import SecurityEvent
         from roxabi_contracts.envelope import CONTRACT_VERSION
 

@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
-from lyra.infrastructure.stores.agent_store import AgentRow, AgentStore
-from lyra.infrastructure.stores.auth_store import AuthStore
-from lyra.infrastructure.stores.pairing import PairingConfig, PairingManager
+from factory.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
+from factory.infrastructure.stores.agent_store import AgentRow, AgentStore
+from factory.infrastructure.stores.auth_store import AuthStore
+from factory.infrastructure.stores.pairing import PairingConfig, PairingManager
 from tests.helpers.bot_store import make_bot_store
 
 __all__ = [
@@ -109,7 +109,7 @@ async def json_agent_store(tmp_path: Path):
     Use this in tests that exercise agent configuration logic but do not
     specifically test the SQLite implementation.  Faster and DB-free.
     """
-    from lyra.core.stores.json_agent_store import JsonAgentStore
+    from factory.core.stores.json_agent_store import JsonAgentStore
 
     store = JsonAgentStore(path=tmp_path / "agents_test.json")
     await store.connect()

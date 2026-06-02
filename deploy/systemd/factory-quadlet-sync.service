@@ -1,0 +1,13 @@
+[Unit]
+Description=Lyra Quadlet sync — pull staging and conditional install
+After=network-online.target
+Wants=network-online.target
+OnFailure=factory-deploy-failure.service
+
+[Service]
+Type=oneshot
+ExecStart=%h/projects/roxabi-factory/deploy/factory-quadlet-sync.sh
+WorkingDirectory=%h/projects/roxabi-factory
+Environment="PATH=%h/projects/roxabi-factory/.venv/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+StandardOutput=journal
+StandardError=journal

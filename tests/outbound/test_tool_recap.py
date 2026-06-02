@@ -1,6 +1,6 @@
 """RED tests for ToolDisplayConfig wiring into ToolRecapAccumulator (#1336 Slice 1).
 
-All tests import from lyra.outbound._tool_recap (future path after T2 file move)
+All tests import from factory.outbound._tool_recap (future path after T2 file move)
 and assert ToolRecapAccumulator(config=...) which lands in T5. Tests are
 intentionally RED until Phase B Slices 1-2 are implemented.
 """
@@ -11,16 +11,16 @@ import json
 
 import pytest
 
-from lyra.core.messaging.render_events import (
+from factory.core.messaging.render_events import (
     ToolCallArgsRenderEvent,
     ToolCallEndRenderEvent,
     ToolCallStartRenderEvent,
 )
-from lyra.core.messaging.tool_display_config import ToolDisplayConfig
+from factory.core.messaging.tool_display_config import ToolDisplayConfig
 
-# RED import: lyra.outbound._tool_recap does not exist yet (T2 will create it
+# RED import: factory.outbound._tool_recap does not exist yet (T2 will create it
 # by moving adapters/shared/_tool_recap.py → outbound/_tool_recap.py)
-from lyra.outbound._tool_recap import ToolRecapAccumulator, format_recap_lines
+from factory.outbound._tool_recap import ToolRecapAccumulator, format_recap_lines
 
 # ---------------------------------------------------------------------------
 # Helpers

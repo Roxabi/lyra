@@ -140,9 +140,9 @@ flowchart LR
 
 | Field | Value |
 |-------|-------|
-| Description | Run the 3 CI ACL checks locally to confirm no regression: `lyra-check-flows`, `lyra-check-acl-retired`, `lyra-acl check grants`. |
+| Description | Run the 3 CI ACL checks locally to confirm no regression: `lyra-check-flows`, `lyra-check-acl-retired`, `factory-acl check grants`. |
 | Files | CI workflows (read-only) |
-| Verify command | `uv run lyra-check-flows && uv run lyra-check-acl-retired && uv run lyra-acl check grants --matrix deploy/nats/acl-matrix.json --code-subjects deploy/nats/code-subjects.json` |
+| Verify command | `uv run lyra-check-flows && uv run lyra-check-acl-retired && uv run factory-acl check grants --matrix deploy/nats/acl-matrix.json --code-subjects deploy/nats/code-subjects.json` |
 | Expected output | All exit 0 |
 | Time estimate | 5 min |
 | [P] | N |
@@ -166,7 +166,7 @@ flowchart LR
 | SC7: Parametric tests in `test_effective.py` | ✓ | T1 |
 | SC8: `test_check_request_reply_flows.py` passes | ✓ | T2, T3 |
 | SC9: `lyra-check-flows` CI green | ✓ | T4 |
-| SC10: `lyra-acl check grants` CI green | ✓ | T4 |
+| SC10: `factory-acl check grants` CI green | ✓ | T4 |
 
 **Coverage:** 10/10 ✓
 

@@ -34,7 +34,7 @@ prevention layer — the falsification gate that would have caught all 6 bugs at
 - ACL matrix v4 — `deploy/nats/acl-matrix.json`: top-level `groups` key, `audio-consumer`
   group (8 pub + 2 sub) defined once, referenced by `telegram-adapter` + `discord-adapter`
   via `"groups": ["audio-consumer"]`; `hub` is the audio stream/KV provisioner (S3/S4).
-- `lyra-acl` CLI — `scripts/gen_nkeys.py:271`: `check {retired,flows}` sub-subcommand group.
+- `factory-acl` CLI — `scripts/gen_nkeys.py:271`: `check {retired,flows}` sub-subcommand group.
 - Reusable primitives (S4-aware):
   - `scripts/_renderer.py:54` `render_auth_conf(matrix, pubkeys)` — renders effective
     `auth.conf` *post group-expansion*.
@@ -50,7 +50,7 @@ prevention layer — the falsification gate that would have caught all 6 bugs at
 - `deploy/nats/code-subjects.json` — manifest **keyed by stream/KV resource** (NOT by
   identity → avoids N×adapter platform-axis growth, per ADR-079 §d). Each entry names the
   provisioner identity + optional consumer-group + the pub/sub subjects the code requires.
-- `lyra-acl check grants --matrix … --code-subjects …` — for each resource: resolve the
+- `factory-acl check grants --matrix … --code-subjects …` — for each resource: resolve the
   provisioner's (and each consumer-group member's) **effective** grants *post group-expansion*
   and assert every required subject is `_subject_covered` by them; else print a precise FAIL
   line and `exit 1`.
@@ -74,7 +74,7 @@ prevention layer — the falsification gate that would have caught all 6 bugs at
 - `deploy/nats/code-subjects.json` (new manifest) + initial entries: `LYRA_OUTBOUND_AUDIO`
   stream + `lyra_outbound_audio_sent` KV (both: provisioner hub, consumer-group audio-consumer);
   `LYRA_TURNS` stream (provisioner turn-writer, no consumer-group) — per parent plan.
-- `check grants` logic + CLI wiring under `lyra-acl check`.
+- `check grants` logic + CLI wiring under `factory-acl check`.
 - CI step in `ci.yml` after `check flows`.
 - Unit tests (pass on valid matrix; fail on missing provisioner subject / missing consumer
   subject; identity-not-in-group not checked).

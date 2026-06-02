@@ -59,26 +59,26 @@ Seeds and `auth.conf` propagate across hosts via Syncthing on `~/.lyra/nkeys/`. 
 
 How the gate works:
 
-- lyra-acl emits `STATE=noop|repaired|added` based on filesystem state (seed present in `~/.lyra/nkeys/` and identity block present in `auth.conf`).
-- The Makefile additionally checks `podman secret inspect lyra-nats-<NAME>`. Phase 2 (secret create + restart) runs when **either** lyra-acl mutated the filesystem **or** the local Podman secret is missing.
+- factory-acl emits `STATE=noop|repaired|added` based on filesystem state (seed present in `~/.lyra/nkeys/` and identity block present in `auth.conf`).
+- The Makefile additionally checks `podman secret inspect lyra-nats-<NAME>`. Phase 2 (secret create + restart) runs when **either** factory-acl mutated the filesystem **or** the local Podman secret is missing.
 
 Per-host behavior:
 
-- **Authoring host (e.g. M₁):** lyra-acl emits `STATE=added`; Phase 2 runs locally — creates the seed secret and refreshes `lyra-nats-auth`, then restarts `lyra-nats` and adapters.
-- **Receiving host (e.g. M₂, after Syncthing delivered seed + auth.conf):** lyra-acl emits `STATE=noop` (filesystem already consistent), but `podman secret inspect lyra-nats-<NAME>` returns non-zero (secret not yet in the local Podman store) → Phase 2 still runs to create the local secret and restart any local Lyra units.
-- **Non-consuming host:** lyra-acl emits `STATE=noop` AND `podman secret inspect` succeeds → true no-op; Phase 2 is skipped entirely.
+- **Authoring host (e.g. M₁):** factory-acl emits `STATE=added`; Phase 2 runs locally — creates the seed secret and refreshes `lyra-nats-auth`, then restarts `lyra-nats` and adapters.
+- **Receiving host (e.g. M₂, after Syncthing delivered seed + auth.conf):** factory-acl emits `STATE=noop` (filesystem already consistent), but `podman secret inspect lyra-nats-<NAME>` returns non-zero (secret not yet in the local Podman store) → Phase 2 still runs to create the local secret and restart any local Lyra units.
+- **Non-consuming host:** factory-acl emits `STATE=noop` AND `podman secret inspect` succeeds → true no-op; Phase 2 is skipped entirely.
 
 The restart loop is `systemctl --user is-active`-gated over `{lyra-nats, lyra-hub, lyra-telegram, lyra-discord, lyra-clipool}` — nats first, then adapters in declared `After=` order. On a host with no Lyra units running, the loop is a complete no-op. The verb is safe to run on any host without knowledge of its topology.
 
 ---
 
-### Recovery — Phase 2 fails after lyra-acl succeeded
+### Recovery — Phase 2 fails after factory-acl succeeded
 
-**Scenario:** lyra-acl already mutated the filesystem (new seed + new `auth.conf` written and `STATE=added` emitted), but a subsequent `podman secret create --replace` or `systemctl --user restart` call failed (e.g. transient daemon error, stale socket, permissions hiccup).
+**Scenario:** factory-acl already mutated the filesystem (new seed + new `auth.conf` written and `STATE=added` emitted), but a subsequent `podman secret create --replace` or `systemctl --user restart` call failed (e.g. transient daemon error, stale socket, permissions hiccup).
 
-**Recovery:** re-run `make nats-add-identity NAME=<name>`. On the second invocation, lyra-acl finds the seed and auth.conf block already consistent and emits `STATE=noop`. The Makefile gate then checks `podman secret inspect lyra-nats-<NAME>` — if the secret is missing or stale, Phase 2 runs again. `--replace` makes the Podman call safe regardless of prior state.
+**Recovery:** re-run `make nats-add-identity NAME=<name>`. On the second invocation, factory-acl finds the seed and auth.conf block already consistent and emits `STATE=noop`. The Makefile gate then checks `podman secret inspect lyra-nats-<NAME>` — if the secret is missing or stale, Phase 2 runs again. `--replace` makes the Podman call safe regardless of prior state.
 
-There is no double-rotation risk: lyra-acl's `added` path only generates a seed when the seed file is absent. The existing seed file on disk is preserved on every subsequent invocation.
+There is no double-rotation risk: factory-acl's `added` path only generates a seed when the seed file is absent. The existing seed file on disk is preserved on every subsequent invocation.
 
 ---
 
@@ -124,7 +124,7 @@ parity fixture `tests/scripts/fixtures/v3-current.json` from `acl-matrix.json` u
 `gen-nkeys.sh` skips retired identities when rendering `auth.conf`. The retired identity's public key is no longer present in any permissions block after this step.
 
 ```bash
-lyra-acl genkeys --regen-authconf
+factory-acl genkeys --regen-authconf
 ```
 
 **6. Commit.**
@@ -180,14 +180,14 @@ Exit 0 on success; exit 1 with per-error messages on failure. The check runs in 
 
 ## Future
 
-A `--retire <name>` subcommand for `lyra-acl` is planned. It will automate steps 1–7 of the retiring flow above (update JSON, remove flows, validate, update spec, regen auth.conf, commit). Until it ships, follow this runbook manually.
+A `--retire <name>` subcommand for `factory-acl` is planned. It will automate steps 1–7 of the retiring flow above (update JSON, remove flows, validate, update spec, regen auth.conf, commit). Until it ships, follow this runbook manually.
 
 ---
 
 ## Cross-references
 
 - [`deploy/nats/acl-matrix.json`](../../deploy/nats/acl-matrix.json) — identity registry
-- [`scripts/gen_nkeys.py`](../../scripts/gen_nkeys.py) / `lyra-acl` — seed generation and auth.conf rendering
+- [`scripts/gen_nkeys.py`](../../scripts/gen_nkeys.py) / `factory-acl` — seed generation and auth.conf rendering
 - [`scripts/check-acl-matrix-retired.sh`](../../scripts/check-acl-matrix-retired.sh) — lifecycle field validator
 - [`scripts/render_acl_spec.py`](../../scripts/render_acl_spec.py) + [`scripts/render_acl_parity.py`](../../scripts/render_acl_parity.py) — spec table and parity fixture generators (`make nats-regen-specs`)
 - [`scripts/check-acl-specs-drift.sh`](../../scripts/check-acl-specs-drift.sh) — spec/fixture drift gate (CI + pre-push)

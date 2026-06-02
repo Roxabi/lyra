@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.core.messaging import (
+from factory.core.messaging import (
     RenderEvent,
     RunErrorRenderEvent,
     RunFinishedRenderEvent,
@@ -25,13 +25,13 @@ from lyra.core.messaging import (
     ToolCallResultRenderEvent,
     ToolCallStartRenderEvent,
 )
-from lyra.core.messaging.message import OutboundMessage
-from lyra.outbound._emitter_run import (
+from factory.core.messaging.message import OutboundMessage
+from factory.outbound._emitter_run import (
     _prepend,
     _run_emitter,
     _run_event_loop,
 )
-from lyra.outbound.emitter import OutboundEmitter as StreamingSession
+from factory.outbound.emitter import OutboundEmitter as StreamingSession
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -196,7 +196,7 @@ class TestRunEventLoop:
 
     async def test_routes_reasoning_events_to_edit_reasoning(self) -> None:
         """Reasoning* events are routed through fmt.edit_reasoning."""
-        from lyra.core.messaging import (
+        from factory.core.messaging import (
             ReasoningDeltaRenderEvent,
             ReasoningEndRenderEvent,
             ReasoningStartRenderEvent,
@@ -332,12 +332,12 @@ class TestRunEmitter:
 
         # Force _send_placeholder to return None by making guard return Err
         async def _failing_guard(call, *, context):
-            from lyra.transport._result import Err, SanitizedError
+            from factory.transport._result import Err, SanitizedError
 
             if context == "send_placeholder":
                 return Err(SanitizedError(code="test", message="Boom", retryable=False))
             # Let other calls through
-            from lyra.transport._result import Ok
+            from factory.transport._result import Ok
 
             return Ok(await call())
 
@@ -374,7 +374,7 @@ class TestRunEmitter:
             raise RuntimeError("placeholder boom")
 
         with patch(
-            "lyra.outbound._emitter_run._send_placeholder",
+            "factory.outbound._emitter_run._send_placeholder",
             side_effect=_failing_send_placeholder,
         ):
             with pytest.raises(RuntimeError, match="placeholder boom"):

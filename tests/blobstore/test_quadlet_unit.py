@@ -1,4 +1,4 @@
-"""Snapshot test for deploy/quadlet/lyra-blobstore.container — H1 (#1362)."""
+"""Snapshot test for deploy/quadlet/factory-blobstore.container — H1 (#1362)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import re
 import subprocess
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
-QUADLET_UNIT = REPO_ROOT / "deploy" / "quadlet" / "lyra-blobstore.container"
+QUADLET_UNIT = REPO_ROOT / "deploy" / "quadlet" / "factory-blobstore.container"
 
 # Match the whitespace-safe guard shape: tr -d strips whitespace then -n tests
 # the residue. An inert stub or the old bare `[ -n "${TAILSCALE_IPV4}" ]` form

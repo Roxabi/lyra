@@ -8,8 +8,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.agent.agent_models import AgentRow
-from lyra.core.agent.agent_refiner import (
+from factory.core.agent.agent_models import AgentRow
+from factory.core.agent.agent_refiner import (
     AgentRefiner,
     RefinementCancelled,
     RefinementPatch,
@@ -60,7 +60,7 @@ class TestPatchCommand:
     def cli(self):
         from typer.testing import CliRunner
 
-        from lyra.cli_agent import agent_app
+        from factory.cli_agent import agent_app
 
         return CliRunner(), agent_app
 
@@ -70,7 +70,7 @@ class TestPatchCommand:
 
         from typer.testing import CliRunner
 
-        from lyra.cli_agent import agent_app
+        from factory.cli_agent import agent_app
 
         row = make_row()
         mock_store = make_store(row)
@@ -82,7 +82,7 @@ class TestPatchCommand:
 
         # Act
         with mock_patch(
-            "lyra.agent_cmd.agents.edit_cmd._connect_store", side_effect=fake_connect
+            "factory.agent_cmd.agents.edit_cmd._connect_store", side_effect=fake_connect
         ):
             result = runner.invoke(
                 agent_app,
@@ -99,7 +99,7 @@ class TestPatchCommand:
 
         from typer.testing import CliRunner
 
-        from lyra.cli_agent import agent_app
+        from factory.cli_agent import agent_app
 
         row = make_row()
         mock_store = make_store(row)
@@ -111,7 +111,7 @@ class TestPatchCommand:
 
         # Act
         with mock_patch(
-            "lyra.agent_cmd.agents.edit_cmd._connect_store", side_effect=fake_connect
+            "factory.agent_cmd.agents.edit_cmd._connect_store", side_effect=fake_connect
         ):
             result = runner.invoke(
                 agent_app,
@@ -127,7 +127,7 @@ class TestPatchCommand:
 
         from typer.testing import CliRunner
 
-        from lyra.cli_agent import agent_app
+        from factory.cli_agent import agent_app
 
         row = make_row()
         mock_store = make_store(row)
@@ -139,7 +139,7 @@ class TestPatchCommand:
 
         # Act
         with mock_patch(
-            "lyra.agent_cmd.agents.edit_cmd._connect_store", side_effect=fake_connect
+            "factory.agent_cmd.agents.edit_cmd._connect_store", side_effect=fake_connect
         ):
             runner.invoke(
                 agent_app,
@@ -164,7 +164,7 @@ class TestPatchInvalidJson:
         # Arrange
         from typer.testing import CliRunner
 
-        from lyra.cli_agent import agent_app
+        from factory.cli_agent import agent_app
 
         # Typer's CliRunner merges stderr into output by default — no mix_stderr needed
         runner = CliRunner()
@@ -184,7 +184,7 @@ class TestPatchInvalidJson:
         # Arrange
         from typer.testing import CliRunner
 
-        from lyra.cli_agent import agent_app
+        from factory.cli_agent import agent_app
 
         runner = CliRunner()
 
@@ -323,7 +323,7 @@ class TestRefineCommand:
 
         from typer.testing import CliRunner
 
-        from lyra.cli_agent import agent_app
+        from factory.cli_agent import agent_app
 
         row = make_row()
         store = make_store(row)
@@ -335,11 +335,11 @@ class TestRefineCommand:
 
         with (
             mock_patch(
-                "lyra.agent_cmd.agents.edit_cmd._connect_store",
+                "factory.agent_cmd.agents.edit_cmd._connect_store",
                 side_effect=fake_connect,
             ),
             mock_patch(
-                "lyra.core.agent.agent_refiner.AgentRefiner.run_session",
+                "factory.core.agent.agent_refiner.AgentRefiner.run_session",
                 new_callable=AsyncMock,
                 return_value=RefinementPatch(fields={"model": "claude-opus-4-6"}),
             ),
@@ -357,7 +357,7 @@ class TestRefineCommand:
 
         from typer.testing import CliRunner
 
-        from lyra.cli_agent import agent_app
+        from factory.cli_agent import agent_app
 
         row = make_row()
         store = make_store(row)
@@ -369,11 +369,11 @@ class TestRefineCommand:
 
         with (
             mock_patch(
-                "lyra.agent_cmd.agents.edit_cmd._connect_store",
+                "factory.agent_cmd.agents.edit_cmd._connect_store",
                 side_effect=fake_connect,
             ),
             mock_patch(
-                "lyra.core.agent.agent_refiner.AgentRefiner.run_session",
+                "factory.core.agent.agent_refiner.AgentRefiner.run_session",
                 new_callable=AsyncMock,
                 side_effect=RefinementCancelled(),
             ),
@@ -391,7 +391,7 @@ class TestRefineCommand:
 
         from typer.testing import CliRunner
 
-        from lyra.cli_agent import agent_app
+        from factory.cli_agent import agent_app
 
         store = make_store(row=None)  # agent not found
 
@@ -401,7 +401,7 @@ class TestRefineCommand:
         runner = CliRunner()
 
         with mock_patch(
-            "lyra.agent_cmd.agents.edit_cmd._connect_store", side_effect=fake_connect
+            "factory.agent_cmd.agents.edit_cmd._connect_store", side_effect=fake_connect
         ):
             result = runner.invoke(agent_app, ["refine", "unknown_agent"])
 

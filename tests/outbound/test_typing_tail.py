@@ -11,8 +11,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.messaging.message import OutboundMessage
-from lyra.outbound._placeholder_lifecycle import _handle_typing_tail
+from factory.core.messaging.message import OutboundMessage
+from factory.outbound._placeholder_lifecycle import _handle_typing_tail
 
 
 def _make_emitter(*, intermediate: bool = False) -> MagicMock:

@@ -4,7 +4,7 @@
 #
 # Lyra by Roxabi — NATS setup (install + configure + start)
 #
-# Usage: cd ~/projects/lyra && make nats-setup
+# Usage: cd ~/projects/roxabi-factory && make nats-setup
 #
 # Does everything in one idempotent pass:
 #   1. nats-server binary
@@ -16,7 +16,7 @@
 #   7. Verify nkey enforcement is active
 #
 # Safe to re-run after upgrades, re-provisioning, or permission drift.
-# To rotate keys: sudo rm -f /etc/nats/nkeys/auth.conf && rm -rf ~/.lyra/nkeys && make nats-setup
+# To rotate keys: sudo rm -f /etc/nats/nkeys/auth.conf && rm -rf ~/.roxabi/factory/nkeys && make nats-setup
 
 set -euo pipefail
 # shellcheck source=../lib/env.sh
@@ -33,8 +33,8 @@ error()   { echo -e "${RED}[x]${NC} $1"; exit 1; }
 section() { echo -e "\n${GREEN}=== $1 ===${NC}"; }
 
 NATS_VERSION="2.10.22"  # pinned — bump when upgrading
-LYRA_DIR=$(cd "$(dirname "$0")/../.." && pwd)
-NATS_CONF_SRC="${LYRA_DIR}/deploy/nats/nats.conf"
+FACTORY_DIR=$(cd "$(dirname "$0")/../.." && pwd)
+NATS_CONF_SRC="${FACTORY_DIR}/deploy/nats/nats.conf"
 NATS_CONF_DST="/etc/nats/nats.conf"
 NKEYS_AUTH="/etc/nats/nkeys/auth.conf"
 
@@ -100,7 +100,7 @@ section "TLS certs"
 if [ -f /etc/nats/certs/server.crt ] && [ -f /etc/nats/certs/server.key ]; then
   info "TLS certs already present."
 else
-  sudo "${LYRA_DIR}/deploy/nats/gen-certs.sh"
+  sudo "${FACTORY_DIR}/deploy/nats/gen-certs.sh"
 fi
 
 # ── 6. nkeys ─────────────────────────────────────────────────────────────
@@ -108,14 +108,14 @@ fi
 section "nkeys"
 if [ -f "${NKEYS_AUTH}" ]; then
   info "auth.conf exists — re-rendering from current seeds (idempotent)."
-  sudo uv run --project "${LYRA_DIR}" lyra-acl genkeys --regen-authconf
-  sudo uv run --project "${LYRA_DIR}" lyra-acl genkeys --fix-perms
+  sudo uv run --project "${FACTORY_DIR}" factory-acl genkeys --regen-authconf
+  sudo uv run --project "${FACTORY_DIR}" factory-acl genkeys --fix-perms
 else
   # Fresh install: no consumer is reading external seeds yet, so the manual
   # fan-out manifest has nothing to block — pre-ack the external-distribution
   # guard so the cold-path provision completes. Operator must still scp the
   # external seeds (voice-client → M₂, etc.) before those clients can connect.
-  sudo uv run --project "${LYRA_DIR}" lyra-acl genkeys --ack-external-distribution
+  sudo uv run --project "${FACTORY_DIR}" factory-acl genkeys --ack-external-distribution
 fi
 sudo test -f "${NKEYS_AUTH}" || error "Key generation failed — auth.conf missing"
 
@@ -128,7 +128,7 @@ if command -v nats &>/dev/null; then
   if [ "$rc" -ne 0 ] && echo "$output" | grep -qiE "authoriz|permission|auth"; then
     info "Unauthenticated connections rejected — nkey enforcement ACTIVE."
   else
-    error "nkey enforcement NOT confirmed (rc=$rc). Check: journalctl -u lyra-nats.service -n 20"
+    error "nkey enforcement NOT confirmed (rc=$rc). Check: journalctl -u factory-nats.service -n 20"
   fi
 else
   warn "nats CLI not installed — skipping. Verify manually: nats sub '>' (should fail without nkey)"
@@ -137,15 +137,15 @@ fi
 section "Done"
 
 # ── 10. Wire NATS env vars into .env ─────────────────────────────────────
-LYRA_USER="${SUDO_USER:-$(id -un)}"
-# Security: validate LYRA_USER before any use — SUDO_USER is attacker-controllable
+FACTORY_USER="${SUDO_USER:-$(id -un)}"
+# Security: validate FACTORY_USER before any use — SUDO_USER is attacker-controllable
 # (sudo -E / env_keep). Reject anything that doesn't look like a valid Unix username.
 # Regex matches deploy/provision.sh USER_RE — 32-char POSIX cap.
-[[ "$LYRA_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] \
-  || error "Invalid LYRA_USER: $LYRA_USER"
-LYRA_HOME=$(getent passwd "$LYRA_USER" | cut -d: -f6)
-ENV_FILE="${LYRA_DIR}/.env"
-HUB_SEED="${LYRA_HOME}/.lyra/nkeys/hub.seed"
+[[ "$FACTORY_USER" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] \
+  || error "Invalid FACTORY_USER: $FACTORY_USER"
+FACTORY_HOME=$(getent passwd "$FACTORY_USER" | cut -d: -f6)
+ENV_FILE="${FACTORY_DIR}/.env"
+HUB_SEED="${FACTORY_HOME}/.roxabi/factory/nkeys/hub.seed"
 NATS_CA="/etc/nats/certs/ca.crt"
 if [ -f "${ENV_FILE}" ]; then
   # NATS_URL — use tls:// scheme for TLS-enabled server
@@ -177,4 +177,4 @@ else
 fi
 
 info "NATS setup complete."
-sudo uv run --project "${LYRA_DIR}" lyra-acl genkeys --show
+sudo uv run --project "${FACTORY_DIR}" factory-acl genkeys --show

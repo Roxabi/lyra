@@ -1,6 +1,6 @@
 [importlinter]
 root_packages =
-    lyra
+    factory
     tests
     scripts
 source_roots =
@@ -12,33 +12,33 @@ include_external_packages = True
 name = Clean architecture layers (transport ← streaming ← core ← llm/nats ← infrastructure ← adapters ← bootstrap)
 type = layers
 layers =
-    lyra.bootstrap
-    lyra.adapters | lyra.blobstore
-    lyra.outbound
-    lyra.infrastructure
-    lyra.llm | lyra.nats
-    lyra.core
-    lyra.typing
-    lyra.streaming
-    lyra.transport
+    factory.bootstrap
+    factory.adapters | factory.blobstore
+    factory.outbound
+    factory.infrastructure
+    factory.llm | factory.nats
+    factory.core
+    factory.typing
+    factory.streaming
+    factory.transport
 ignore_imports =
     # Downward TYPE_CHECKING imports (ADR-048 transition) — DEBT:importlinter-adr048-transition
-    lyra.core.agent.agent_refiner -> lyra.infrastructure.stores.agent_store
-    lyra.core.auth.authenticator -> lyra.infrastructure.stores.auth_store
-    lyra.core.auth.authenticator -> lyra.infrastructure.stores.identity_alias_store
-    lyra.core.agent.agent -> lyra.infrastructure.stores.agent_store
-    lyra.core.memory.memory -> lyra.infrastructure.stores.identity_alias_store
-    lyra.core.hub.hub -> lyra.infrastructure.stores.identity_alias_store
-    lyra.core.hub.hub_registration -> lyra.infrastructure.stores.identity_alias_store
+    factory.core.agent.agent_refiner -> factory.infrastructure.stores.agent_store
+    factory.core.auth.authenticator -> factory.infrastructure.stores.auth_store
+    factory.core.auth.authenticator -> factory.infrastructure.stores.identity_alias_store
+    factory.core.agent.agent -> factory.infrastructure.stores.agent_store
+    factory.core.memory.memory -> factory.infrastructure.stores.identity_alias_store
+    factory.core.hub.hub -> factory.infrastructure.stores.identity_alias_store
+    factory.core.hub.hub_registration -> factory.infrastructure.stores.identity_alias_store
     # TYPE_CHECKING imports for migrated stores (#935) — DEBT:importlinter-adr048-transition
-    lyra.core.hub.hub -> lyra.infrastructure.stores.pairing
-    lyra.core.hub.hub -> lyra.infrastructure.stores.prefs_store
+    factory.core.hub.hub -> factory.infrastructure.stores.pairing
+    factory.core.hub.hub -> factory.infrastructure.stores.prefs_store
 
 [importlinter:contract:core-stores-no-sqlite]
 name = core/stores protocols must not import SQLite drivers
 type = forbidden
 source_modules =
-    lyra.core.stores
+    factory.core.stores
 forbidden_modules =
     aiosqlite
     sqlite3
@@ -48,113 +48,113 @@ allow_indirect_imports = true
 name = Commands must not import Infrastructure directly
 type = forbidden
 source_modules =
-    lyra.commands
+    factory.commands
 forbidden_modules =
-    lyra.infrastructure
+    factory.infrastructure
 allow_indirect_imports = true
 
 [importlinter:contract:agents-no-bootstrap]
 name = Agents must not import Composition Root
 type = forbidden
 source_modules =
-    lyra.agents
+    factory.agents
 forbidden_modules =
-    lyra.bootstrap
+    factory.bootstrap
 ignore_imports =
     # Transitional: TYPE_CHECKING import pending protocol extraction (ADR-059 V9) — DEBT:importlinter-adr048-transition
-    lyra.agents.simple_agent -> lyra.infrastructure.stores.agent_store
+    factory.agents.simple_agent -> factory.infrastructure.stores.agent_store
 
 [importlinter:contract:shared-modules-independence]
 name = Shared floating modules must not import each other (peer isolation)
 type = independence
 modules =
-    lyra.obs
-    lyra.errors
-    lyra.config
-    lyra.integrations
-    lyra.monitoring
-    lyra.agent_cmd
+    factory.obs
+    factory.errors
+    factory.config
+    factory.integrations
+    factory.monitoring
+    factory.agent_cmd
 ignore_imports =
-    # Transitive paths through lyra.core — not peer coupling; importlinter's independence
+    # Transitive paths through factory.core — not peer coupling; importlinter's independence
     # contract traces all paths between listed modules, including through unlisted ones.
     # These are permitted imports (floating → core), detected transitively. (#977)
     # — DEBT:importlinter-shared-modules-transitive
-    lyra.core.processors.processor_registry -> lyra.integrations.base
+    factory.core.processors.processor_registry -> factory.integrations.base
 
 [importlinter:contract:bootstrap-types-no-subpackages]
 name = bootstrap/types.py must not import from bootstrap subpackages (neutral shared module invariant)
 type = forbidden
 source_modules =
-    lyra.bootstrap.types
+    factory.bootstrap.types
 forbidden_modules =
-    lyra.bootstrap.factory
-    lyra.bootstrap.lifecycle
-    lyra.bootstrap.standalone
-    lyra.bootstrap.wiring
+    factory.bootstrap.factory
+    factory.bootstrap.lifecycle
+    factory.bootstrap.standalone
+    factory.bootstrap.wiring
 allow_indirect_imports = true
 
-# NOTE: lyra.blobstore is intentionally absent from source_modules below — it is a
+# NOTE: factory.blobstore is intentionally absent from source_modules below — it is a
 # peer-layer service (own systemd unit + NATS attach, ADR-073), not a shared floating
-# module. See src/lyra/blobstore/CLAUDE.md "peer-of-adapters" placement.
+# module. See src/factory/blobstore/CLAUDE.md "peer-of-adapters" placement.
 [importlinter:contract:shared-modules-upper-boundary]
 name = Shared floating modules must not import bootstrap, adapters, or infrastructure
 type = forbidden
 source_modules =
-    lyra.obs
-    lyra.errors
-    lyra.config
-    lyra.integrations
-    lyra.monitoring
-    lyra.agent_cmd
+    factory.obs
+    factory.errors
+    factory.config
+    factory.integrations
+    factory.monitoring
+    factory.agent_cmd
 forbidden_modules =
-    lyra.bootstrap
-    lyra.adapters
-    lyra.infrastructure
+    factory.bootstrap
+    factory.adapters
+    factory.infrastructure
 allow_indirect_imports = true
 
 [importlinter:contract:no-streaming-emitter-shim]
 name = adapters must not re-introduce the legacy streaming-emitter shim (#1279 T28)
 type = forbidden
 source_modules =
-    lyra.adapters
+    factory.adapters
 forbidden_modules =
-    lyra.adapters.shared._shared_streaming_emitter
-    lyra.adapters.shared._shared_streaming
+    factory.adapters.shared._shared_streaming_emitter
+    factory.adapters.shared._shared_streaming
 allow_indirect_imports = true
 
 [importlinter:contract:adapters-no-bot-store]
 name = Adapters must not import BotStore directly (use BotStoreProtocol instead)
 type = forbidden
 source_modules =
-    lyra.adapters
+    factory.adapters
 forbidden_modules =
-    lyra.infrastructure.stores.bot_store
+    factory.infrastructure.stores.bot_store
 allow_indirect_imports = true
 
 [importlinter:contract:inbound-no-adapters]
 name = inbound stages must not import adapters (stage-axis invariant, ADR-073 / #1287)
 type = forbidden
 source_modules =
-    lyra.inbound
+    factory.inbound
 forbidden_modules =
-    lyra.adapters
+    factory.adapters
 allow_indirect_imports = true
 ignore_imports =
     # DEBT:inbound-adapters-transition (#1287) — stage→shared coupling pending relocation
-    # of push_to_hub_guarded + shared types to lyra.core/lyra.shared (deferred; see #1283 Phase 6).
-    lyra.inbound.dispatcher -> lyra.adapters.shared._shared
-    lyra.inbound.context -> lyra.adapters.shared._shared
-    lyra.inbound.context -> lyra.adapters.shared.outbound_listener
+    # of push_to_hub_guarded + shared types to factory.core/factory.shared (deferred; see #1283 Phase 6).
+    factory.inbound.dispatcher -> factory.adapters.shared._shared
+    factory.inbound.context -> factory.adapters.shared._shared
+    factory.inbound.context -> factory.adapters.shared.outbound_listener
     # DEBT:inbound-adapters-wireparser (#1287) — wire parsers reference concrete adapter
     # classes under TYPE_CHECKING only (platform-parser coupling, separate concern).
-    lyra.inbound.wire_parser_telegram -> lyra.adapters.telegram.telegram
-    lyra.inbound.wire_parser_discord -> lyra.adapters.discord.adapter
+    factory.inbound.wire_parser_telegram -> factory.adapters.telegram.telegram
+    factory.inbound.wire_parser_discord -> factory.adapters.discord.adapter
 
 [importlinter:contract:tests-fakes-isolation]
 name = Production code must not import tests.fakes
 type = forbidden
 source_modules =
-    lyra
+    factory
     scripts
 forbidden_modules =
     tests

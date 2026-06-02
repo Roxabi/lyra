@@ -7,9 +7,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.inbound_bus import LocalBus
-from lyra.core.messaging.message import (
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.inbound_bus import LocalBus
+from factory.core.messaging.message import (
     DiscordMeta,
     InboundMessage,
     Platform,

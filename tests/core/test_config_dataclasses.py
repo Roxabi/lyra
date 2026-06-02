@@ -2,7 +2,7 @@
 
 import pytest
 
-from lyra.core.config import HubConfig, PoolConfig, RouterConfig
+from factory.core.config import HubConfig, PoolConfig, RouterConfig
 
 
 class TestHubConfig:

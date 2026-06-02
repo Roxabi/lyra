@@ -14,8 +14,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from lyra.cli import agent_app
-from lyra.infrastructure.stores.agent_store import AgentRow, AgentStore
+from factory.cli import agent_app
+from factory.infrastructure.stores.agent_store import AgentRow, AgentStore
 
 # ---------------------------------------------------------------------------
 # Shared runner
@@ -69,7 +69,7 @@ class TestAgentEditCommand:
     ) -> None:
         """edit of a non-existent agent exits non-zero with 'not found' message."""
         # Arrange
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
 
         # Act
         result = runner.invoke(agent_app, ["edit", "nonexistent"])
@@ -83,7 +83,7 @@ class TestAgentEditCommand:
     ) -> None:
         """edit with all-blank inputs exits 0 and prints 'No changes'."""
         # Arrange
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         _seed_agent(tmp_path / "config.db", name="edit-nochange")
 
         # Act -- send 8 blank lines (editable fields) + "N" for TTS init prompt
@@ -99,7 +99,7 @@ class TestAgentEditCommand:
     ) -> None:
         """edit with a non-blank model input persists the new value in DB."""
         # Arrange
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         _seed_agent(db_path, name="edit-update", model="claude-sonnet-4-6")
 
@@ -139,7 +139,7 @@ class TestAgentDeleteHappyPath:
     ) -> None:
         """delete an existing agent exits 0 and removes it from DB."""
         # Arrange
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         _seed_agent(db_path, name="to-delete")
 
@@ -173,7 +173,7 @@ class TestAgentAssignHappyPath:
     ) -> None:
         """assign an existing agent exits 0 and prints 'Assigned'."""
         # Arrange
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         _seed_agent(tmp_path / "config.db", name="assign-me")
 
         # Act
@@ -200,7 +200,7 @@ class TestAgentValidateDBPath:
     ) -> None:
         """validate a well-formed agent from DB exits 0 and prints 'OK'."""
         # Arrange
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         _seed_agent(
             tmp_path / "config.db",
             name="valid-agent",
@@ -220,7 +220,7 @@ class TestAgentValidateDBPath:
     ) -> None:
         """validate exits 1 when smart_routing.enabled=true but backend=claude-cli."""
         # Arrange
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         _seed_agent(
             tmp_path / "config.db",
             name="mismatch-agent",
@@ -249,7 +249,7 @@ class TestAgentEditTTS:
     ) -> None:
         """T1: edit with pre-existing voice_json updates voice field in DB."""
         # Arrange
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         _seed_agent(
             db_path,
@@ -289,7 +289,7 @@ class TestAgentEditTTS:
     ) -> None:
         """T2: edit with no voice_json, answer 'y' to init, provide engine value."""
         # Arrange
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         _seed_agent(db_path, name="tts-init")
 
@@ -322,7 +322,7 @@ class TestAgentEditTTS:
     ) -> None:
         """T3: exaggeration and cfg_weight inputs are stored as floats, not strings."""
         # Arrange
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         _seed_agent(db_path, name="tts-float")
 
@@ -357,7 +357,7 @@ class TestAgentEditTTS:
     ) -> None:
         """T8: invalid float input for exaggeration is skipped, field unchanged."""
         # Arrange
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(tmp_path))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         _seed_agent(
             db_path,

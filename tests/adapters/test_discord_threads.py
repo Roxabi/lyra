@@ -22,7 +22,7 @@ class TestDiscordAutoThread:
     @pytest.mark.asyncio
     async def test_auto_thread_created_on_mention_in_text_channel(self) -> None:
         """@mention in a text channel with auto_thread=True → create_thread() called."""
-        from lyra.adapters.discord import DiscordAdapter
+        from factory.adapters.discord import DiscordAdapter
 
         # Arrange
         inbound_bus = MagicMock()
@@ -67,7 +67,7 @@ class TestDiscordAutoThread:
         # Assert — inbound_bus.put was called and the InboundMessage has thread_id
         inbound_bus.put.assert_awaited_once()
         _platform_arg, hub_msg = inbound_bus.put.call_args[0]
-        from lyra.core.messaging.message import DiscordMeta
+        from factory.core.messaging.message import DiscordMeta
 
         assert isinstance(hub_msg.platform_meta, DiscordMeta)
         assert hub_msg.platform_meta.thread_id == 9999
@@ -76,7 +76,7 @@ class TestDiscordAutoThread:
     @pytest.mark.asyncio
     async def test_auto_thread_not_created_in_existing_thread(self) -> None:
         """@mention in an existing thread channel does NOT call create_thread()."""
-        from lyra.adapters.discord import DiscordAdapter
+        from factory.adapters.discord import DiscordAdapter
 
         # Arrange
         inbound_bus = MagicMock()
@@ -118,7 +118,7 @@ class TestDiscordAutoThread:
     @pytest.mark.asyncio
     async def test_auto_thread_disabled(self) -> None:
         """auto_thread=False → create_thread() is never called even on @mention."""
-        from lyra.adapters.discord import DiscordAdapter
+        from factory.adapters.discord import DiscordAdapter
 
         # Arrange
         inbound_bus = MagicMock()
@@ -156,7 +156,7 @@ class TestDiscordAutoThread:
     @pytest.mark.asyncio
     async def test_auto_thread_exception_fallback(self) -> None:
         """create_thread() raising Exception: message still processed in original ch."""
-        from lyra.adapters.discord import DiscordAdapter
+        from factory.adapters.discord import DiscordAdapter
 
         # Arrange
         inbound_bus = MagicMock()
@@ -196,7 +196,7 @@ class TestDiscordAutoThread:
     @pytest.mark.asyncio
     async def test_auto_thread_exception_recovers_partial_thread(self) -> None:
         """create_thread() raises but Discord created the thread: recover thread_id."""
-        from lyra.adapters.discord import DiscordAdapter
+        from factory.adapters.discord import DiscordAdapter
 
         # Arrange
         inbound_bus = MagicMock()
@@ -242,7 +242,7 @@ class TestDiscordAutoThread:
         inbound_bus.put.assert_awaited_once()
         _platform_arg, hub_msg = inbound_bus.put.call_args[0]
         assert hub_msg.scope_id == "thread:8888"
-        from lyra.core.messaging.message import DiscordMeta
+        from factory.core.messaging.message import DiscordMeta
 
         assert isinstance(hub_msg.platform_meta, DiscordMeta)
         assert hub_msg.platform_meta.thread_id == 8888
@@ -250,7 +250,7 @@ class TestDiscordAutoThread:
 
     def test_discord_config_auto_thread_default_true(self) -> None:
         """DiscordConfig() has auto_thread=True by default (S5-5)."""
-        from lyra.adapters.discord.discord_config import DiscordConfig
+        from factory.adapters.discord.discord_config import DiscordConfig
 
         # Arrange / Act
         config = DiscordConfig(token="dummy-token")
@@ -272,11 +272,11 @@ class TestPersistThreadSessionEviction:
         """Cache at 500 entries: adding one more evicts oldest, inserts new."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from lyra.adapters.discord.discord_threads import (
+        from factory.adapters.discord.discord_threads import (
             ThreadPersistDeps,
             persist_thread_session,
         )
-        from lyra.core.stores.thread_store_protocol import ThreadSession
+        from factory.core.stores.thread_store_protocol import ThreadSession
 
         # Arrange — cache pre-filled to the limit (500 entries)
         cache: dict[str, ThreadSession] = {
@@ -286,7 +286,7 @@ class TestPersistThreadSessionEviction:
         mock_store = MagicMock()
         mock_store.update_session = AsyncMock()
 
-        from lyra.core.messaging.message import DiscordMeta
+        from factory.core.messaging.message import DiscordMeta
 
         mock_msg = MagicMock()
         mock_msg.platform_meta = DiscordMeta(
@@ -320,12 +320,12 @@ class TestPersistThreadSessionEviction:
         """Non-DiscordMeta platform_meta → early return, update_session not called."""
         from unittest.mock import AsyncMock, MagicMock
 
-        from lyra.adapters.discord.discord_threads import (
+        from factory.adapters.discord.discord_threads import (
             ThreadPersistDeps,
             persist_thread_session,
         )
-        from lyra.core.messaging.message import TelegramMeta
-        from lyra.core.stores.thread_store_protocol import ThreadSession
+        from factory.core.messaging.message import TelegramMeta
+        from factory.core.stores.thread_store_protocol import ThreadSession
 
         cache: dict[str, ThreadSession] = {}
         mock_store = MagicMock()
@@ -364,7 +364,7 @@ class TestPersistThreadClaimFailurePath:
         """persist_thread_claim raising RuntimeError: message still reaches bus."""
         from unittest.mock import patch
 
-        from lyra.adapters.discord import DiscordAdapter
+        from factory.adapters.discord import DiscordAdapter
 
         # Arrange
         inbound_bus = MagicMock()
@@ -406,7 +406,7 @@ class TestPersistThreadClaimFailurePath:
 
         # Patch persist_thread_claim to raise
         with patch(
-            "lyra.adapters.discord.discord_inbound.persist_thread_claim",
+            "factory.adapters.discord.discord_inbound.persist_thread_claim",
             AsyncMock(side_effect=RuntimeError("DB error")),
         ):
             # Act — must not raise
@@ -429,8 +429,8 @@ class TestRetrieveThreadSession:
         """Cache hit: returns value without calling get_session."""
         from unittest.mock import AsyncMock
 
-        from lyra.adapters.discord.discord_threads import retrieve_thread_session
-        from lyra.core.stores.thread_store_protocol import ThreadSession
+        from factory.adapters.discord.discord_threads import retrieve_thread_session
+        from factory.core.stores.thread_store_protocol import ThreadSession
 
         store = AsyncMock()
         cache: dict[str, ThreadSession] = {"123": ThreadSession("sess-a", "pool-a")}
@@ -445,8 +445,8 @@ class TestRetrieveThreadSession:
         """Cache hit moves the accessed key to end (LRU promotion)."""
         from unittest.mock import AsyncMock
 
-        from lyra.adapters.discord.discord_threads import retrieve_thread_session
-        from lyra.core.stores.thread_store_protocol import ThreadSession
+        from factory.adapters.discord.discord_threads import retrieve_thread_session
+        from factory.core.stores.thread_store_protocol import ThreadSession
 
         store = AsyncMock()
         cache: dict[str, ThreadSession] = {
@@ -465,8 +465,8 @@ class TestRetrieveThreadSession:
         """Cache miss: calls get_session and warms the cache on a hit."""
         from unittest.mock import AsyncMock
 
-        from lyra.adapters.discord.discord_threads import retrieve_thread_session
-        from lyra.core.stores.thread_store_protocol import ThreadSession
+        from factory.adapters.discord.discord_threads import retrieve_thread_session
+        from factory.core.stores.thread_store_protocol import ThreadSession
 
         store = AsyncMock()
         store.get_session.return_value = ThreadSession("sess-b", "pool-b")
@@ -483,8 +483,8 @@ class TestRetrieveThreadSession:
         """Cache miss with (None, None) from store: cache stays empty."""
         from unittest.mock import AsyncMock
 
-        from lyra.adapters.discord.discord_threads import retrieve_thread_session
-        from lyra.core.stores.thread_store_protocol import ThreadSession
+        from factory.adapters.discord.discord_threads import retrieve_thread_session
+        from factory.core.stores.thread_store_protocol import ThreadSession
 
         store = AsyncMock()
         store.get_session.return_value = ThreadSession(None, None)
@@ -500,8 +500,8 @@ class TestRetrieveThreadSession:
         """Cache at 500 entries: miss with a store hit evicts the oldest key."""
         from unittest.mock import AsyncMock
 
-        from lyra.adapters.discord.discord_threads import retrieve_thread_session
-        from lyra.core.stores.thread_store_protocol import ThreadSession
+        from factory.adapters.discord.discord_threads import retrieve_thread_session
+        from factory.core.stores.thread_store_protocol import ThreadSession
 
         store = AsyncMock()
         store.get_session.return_value = ThreadSession("sess-new", "pool-new")
@@ -522,8 +522,8 @@ class TestRetrieveThreadSession:
         """Partial ThreadSession (session_id set, pool_id=None): cache stays empty."""
         from unittest.mock import AsyncMock
 
-        from lyra.adapters.discord.discord_threads import retrieve_thread_session
-        from lyra.core.stores.thread_store_protocol import ThreadSession
+        from factory.adapters.discord.discord_threads import retrieve_thread_session
+        from factory.core.stores.thread_store_protocol import ThreadSession
 
         store = AsyncMock()
         store.get_session.return_value = ThreadSession("sess-x", None)
@@ -549,7 +549,7 @@ class TestRestoreHotThreads:
         """store returns string IDs → result is a set of ints."""
         from unittest.mock import AsyncMock
 
-        from lyra.adapters.discord.discord_threads import restore_hot_threads
+        from factory.adapters.discord.discord_threads import restore_hot_threads
 
         store = AsyncMock()
         store.get_thread_ids.return_value = ["123", "456", "789"]
@@ -563,7 +563,7 @@ class TestRestoreHotThreads:
         """store returns no thread IDs → empty set."""
         from unittest.mock import AsyncMock
 
-        from lyra.adapters.discord.discord_threads import restore_hot_threads
+        from factory.adapters.discord.discord_threads import restore_hot_threads
 
         store = AsyncMock()
         store.get_thread_ids.return_value = []
@@ -577,7 +577,7 @@ class TestRestoreHotThreads:
         """get_thread_ids is called with a non-None active_since datetime."""
         from unittest.mock import AsyncMock
 
-        from lyra.adapters.discord.discord_threads import restore_hot_threads
+        from factory.adapters.discord.discord_threads import restore_hot_threads
 
         store = AsyncMock()
         store.get_thread_ids.return_value = []

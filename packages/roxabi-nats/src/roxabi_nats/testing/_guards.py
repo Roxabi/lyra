@@ -22,8 +22,8 @@ ALLOWED_LOOPBACK_HOSTS: frozenset[str] = frozenset(
 
 
 def assert_not_production(cls_name: str) -> None:
-    """Guard 2 — raises RuntimeError when LYRA_ENV=production (case-insensitive)."""
-    if os.environ.get("LYRA_ENV", "").casefold() == "production":
+    """Guard 2 — raises RuntimeError when FACTORY_ENV=production (case-insensitive)."""
+    if os.environ.get("FACTORY_ENV", "").casefold() == "production":
         raise RuntimeError(f"{cls_name} cannot run in production")
 
 

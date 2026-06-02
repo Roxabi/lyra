@@ -61,7 +61,7 @@ lyra agent telegram validate <bot_id>        # check agent exists, owners non-em
 
 Precedence (later overrides earlier):
 
-1. `src/lyra/agents/` — bundled system defaults
+1. `src/factory/agents/` — bundled system defaults
 2. `~/.lyra/agents/` — user-level overrides (machine-specific, gitignored)
 
 Override via `LYRA_VAULT_DIR` env var: `$LYRA_VAULT_DIR/agents/`.

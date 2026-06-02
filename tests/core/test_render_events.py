@@ -1,6 +1,6 @@
-"""Tests for lyra.core.messaging.render_events — RenderEvent type system (S1).
+"""Tests for factory.core.messaging.render_events — RenderEvent type system (S1).
 
-Source: src/lyra/core/messaging/render_events.py
+Source: src/factory/core/messaging/render_events.py
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from lyra.core.messaging.render_events import (
+from factory.core.messaging.render_events import (
     FileEditSummary,
     RenderEvent,
     SilentCounts,
@@ -112,7 +112,7 @@ class TestFileEditSummary:
 
 class TestRenderEventUnion:
     def test_union_exported_from_module(self) -> None:
-        from lyra.core.messaging.render_events import (
+        from factory.core.messaging.render_events import (
             RenderEvent as _RenderEvent,  # noqa: F401
         )
 
@@ -128,7 +128,7 @@ class TestRenderEventUnion:
         """
         import re
 
-        import lyra.core.messaging.render_events as _mod
+        import factory.core.messaging.render_events as _mod
 
         def _class_to_schema_const(name: str) -> str:
             """Convert CamelCase class name to SCHEMA_VERSION_UPPER_SNAKE_CASE."""
@@ -156,7 +156,7 @@ class TestRenderEventUnion:
 
 class TestToolCallEvents:
     def test_tool_call_start_frozen_and_default_schema(self) -> None:
-        from lyra.core.messaging.render_events import (
+        from factory.core.messaging.render_events import (
             SCHEMA_VERSION_TOOL_CALL_START_RENDER_EVENT,
             ToolCallStartRenderEvent,
         )
@@ -169,7 +169,7 @@ class TestToolCallEvents:
             e.tool_call_id = "x"  # type: ignore[misc]
 
     def test_tool_call_args_frozen_and_default_schema(self) -> None:
-        from lyra.core.messaging.render_events import (
+        from factory.core.messaging.render_events import (
             SCHEMA_VERSION_TOOL_CALL_ARGS_RENDER_EVENT,
             ToolCallArgsRenderEvent,
         )
@@ -181,7 +181,7 @@ class TestToolCallEvents:
             e.delta = "y"  # type: ignore[misc]
 
     def test_tool_call_end_frozen_and_default_schema(self) -> None:
-        from lyra.core.messaging.render_events import (
+        from factory.core.messaging.render_events import (
             SCHEMA_VERSION_TOOL_CALL_END_RENDER_EVENT,
             ToolCallEndRenderEvent,
         )
@@ -192,7 +192,7 @@ class TestToolCallEvents:
             e.tool_call_id = "x"  # type: ignore[misc]
 
     def test_tool_call_result_frozen_and_default_schema(self) -> None:
-        from lyra.core.messaging.render_events import (
+        from factory.core.messaging.render_events import (
             SCHEMA_VERSION_TOOL_CALL_RESULT_RENDER_EVENT,
             ToolCallResultRenderEvent,
         )
@@ -208,7 +208,7 @@ class TestToolCallEvents:
             e.content = "y"  # type: ignore[misc]
 
     def test_tool_call_events_in_union(self) -> None:
-        from lyra.core.messaging.render_events import (
+        from factory.core.messaging.render_events import (
             ToolCallArgsRenderEvent,
             ToolCallEndRenderEvent,
             ToolCallResultRenderEvent,
@@ -231,7 +231,7 @@ class TestToolCallEvents:
 
 class TestReasoningEvents:
     def test_reasoning_events_frozen(self) -> None:
-        from lyra.core.messaging.render_events import (
+        from factory.core.messaging.render_events import (
             SCHEMA_VERSION_REASONING_DELTA_RENDER_EVENT,
             SCHEMA_VERSION_REASONING_END_RENDER_EVENT,
             SCHEMA_VERSION_REASONING_START_RENDER_EVENT,
@@ -269,7 +269,7 @@ class TestReasoningEvents:
             e_end.message_id = "x"  # type: ignore[misc]
 
     def test_reasoning_events_in_union(self) -> None:
-        from lyra.core.messaging.render_events import (
+        from factory.core.messaging.render_events import (
             ReasoningDeltaRenderEvent,
             ReasoningEndRenderEvent,
             ReasoningStartRenderEvent,
@@ -281,7 +281,7 @@ class TestReasoningEvents:
         assert ReasoningEndRenderEvent in union_args
 
     def test_reasoning_constants_exported(self) -> None:
-        import lyra.core.messaging.render_events as _mod
+        import factory.core.messaging.render_events as _mod
 
         assert "SCHEMA_VERSION_REASONING_START_RENDER_EVENT" in _mod.__all__
         assert "SCHEMA_VERSION_REASONING_DELTA_RENDER_EVENT" in _mod.__all__
@@ -306,8 +306,8 @@ class TestHexagonalBoundary:
         # Anchor to this file's location so the test works from any cwd.
         _root = Path(__file__).resolve().parent.parent.parent
         paths = [
-            _root / "src" / "lyra" / "core" / "messaging" / "events.py",
-            _root / "src" / "lyra" / "core" / "messaging" / "render_events.py",
+            _root / "src" / "factory" / "core" / "messaging" / "events.py",
+            _root / "src" / "factory" / "core" / "messaging" / "render_events.py",
         ]
         for path in paths:
             assert path.exists(), f"Source not found: {path}"

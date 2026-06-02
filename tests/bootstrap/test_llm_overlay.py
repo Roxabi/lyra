@@ -6,8 +6,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from lyra.bootstrap.factory.llm_overlay import init_nats_llm
-from lyra.llm.llm_client import LlmClient
+from factory.bootstrap.factory.llm_overlay import init_nats_llm
+from factory.llm.llm_client import LlmClient
 from roxabi_contracts.llm import SUBJECTS
 
 

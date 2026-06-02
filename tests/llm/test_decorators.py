@@ -1,7 +1,7 @@
 """Tests for RetryDecorator and CircuitBreakerDecorator.
 
 RED phase — these tests will fail until S4 implementation lands.
-Source: src/lyra/llm/decorators.py
+Source: src/factory/llm/decorators.py
 """
 
 from __future__ import annotations
@@ -10,10 +10,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.lifecycle.circuit_breaker import CircuitBreaker
-from lyra.llm.base import LlmResult
-from lyra.llm.decorators import (
+from factory.core.agent.agent_config import ModelConfig
+from factory.core.lifecycle.circuit_breaker import CircuitBreaker
+from factory.llm.base import LlmResult
+from factory.llm.decorators import (
     CircuitBreakerDecorator,
     RetryDecorator,
 )

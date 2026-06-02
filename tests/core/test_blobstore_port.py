@@ -12,7 +12,9 @@ class TestBlobStorePortConformance:
     def test_conforming_class_is_instance(self) -> None:
         """A class implementing put/get/exists satisfies BlobStorePort."""
         # Arrange
-        from lyra.core.ports.blobstore import BlobStorePort  # RED — does not exist yet
+        from factory.core.ports.blobstore import (
+            BlobStorePort,
+        )  # RED — does not exist yet
 
         class MockBlobStore:
             async def put(  # noqa: PLR0913
@@ -36,7 +38,9 @@ class TestBlobStorePortConformance:
     def test_non_conforming_class_missing_put_is_not_instance(self) -> None:
         """A class missing `put` does NOT satisfy BlobStorePort."""
         # Arrange
-        from lyra.core.ports.blobstore import BlobStorePort  # RED — does not exist yet
+        from factory.core.ports.blobstore import (
+            BlobStorePort,
+        )  # RED — does not exist yet
 
         class NoPut:
             async def get(self, store_key: str) -> bytes: ...

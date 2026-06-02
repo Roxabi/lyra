@@ -8,11 +8,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lyra.commands.identity.handlers import cmd_link, cmd_unlink
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage, TelegramMeta
-from lyra.core.pool import Pool
-from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
+from factory.commands.identity.handlers import cmd_link, cmd_unlink
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import InboundMessage, TelegramMeta
+from factory.core.pool import Pool
+from factory.infrastructure.stores.identity_alias_store import IdentityAliasStore
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -167,8 +167,8 @@ class TestLinkComplete:
 @pytest.mark.asyncio
 async def test_link_complete_blocked_initiator_rejected(tmp_path: Path) -> None:
     """SC #13: /link rejected if either identity is BLOCKED."""
-    from lyra.core.auth.authenticator import Authenticator, AuthenticatorDeps
-    from lyra.infrastructure.stores.auth_store import AuthStore
+    from factory.core.auth.authenticator import Authenticator, AuthenticatorDeps
+    from factory.infrastructure.stores.auth_store import AuthStore
 
     store = IdentityAliasStore(db_path=tmp_path / "alias.db")
     await store.connect()

@@ -23,13 +23,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import discord
 import pytest
 
-from lyra.adapters.discord import DiscordAdapter
-from lyra.core.messaging.render_events import (
+from factory.adapters.discord import DiscordAdapter
+from factory.core.messaging.render_events import (
     ReasoningDeltaRenderEvent,
     ReasoningEndRenderEvent,
     ReasoningStartRenderEvent,
 )
-from lyra.outbound.throttle import STREAMING_EDIT_INTERVAL
+from factory.outbound.throttle import STREAMING_EDIT_INTERVAL
 from tests.adapters.conftest import make_dc_inbound_msg
 
 # ---------------------------------------------------------------------------
@@ -65,7 +65,7 @@ def _make_messageable_with_trace_obj() -> tuple[AsyncMock, AsyncMock]:
 
 def _make_formatter(adapter: DiscordAdapter) -> Any:
     """Build a DiscordFormatter for tests."""
-    from lyra.adapters.discord.discord_formatter import DiscordFormatter
+    from factory.adapters.discord.discord_formatter import DiscordFormatter
 
     return DiscordFormatter(
         adapter,
@@ -157,7 +157,7 @@ class TestDiscordReasoningRendering:
                 return window
 
         with patch(
-            "lyra.outbound._reasoning_accum.time.monotonic",
+            "factory.outbound._reasoning_accum.time.monotonic",
             side_effect=fake_monotonic,
         ):
             # Act — session supplies trace_obj (post-#1214 contract).

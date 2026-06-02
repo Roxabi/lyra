@@ -7,15 +7,15 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.agent import Agent
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage
-from lyra.core.pool import Pool
-from lyra.core.ports.stt import STTProtocol, TranscriptionResult
-from lyra.llm.base import LlmResult
+from factory.core.agent import Agent
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import InboundMessage
+from factory.core.pool import Pool
+from factory.core.ports.stt import STTProtocol, TranscriptionResult
+from factory.llm.base import LlmResult
 
 if TYPE_CHECKING:
-    from lyra.core.messaging.message import (
+    from factory.core.messaging.message import (
         Response,
     )
 
@@ -87,7 +87,7 @@ class FastAgent:
 
 
 def make_text_message(text: str = "hello") -> InboundMessage:
-    from lyra.core.messaging.message import TelegramMeta
+    from factory.core.messaging.message import TelegramMeta
 
     return InboundMessage(
         id="msg-text",
@@ -110,7 +110,7 @@ def make_pool(pool_id: str = "telegram:main:alice") -> Pool:
 
 
 def make_config() -> Agent:
-    from lyra.core.agent.agent_config import ModelConfig
+    from factory.core.agent.agent_config import ModelConfig
 
     return Agent(
         name="lyra",

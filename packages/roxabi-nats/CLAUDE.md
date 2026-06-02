@@ -72,5 +72,5 @@ release tag.
 
 ¬import from `lyra.*` (no hub domain dependency). ¬define `lyra.*` NATS subjects
 (those belong to contract ADRs). ¬add hub-coupled modules (Cohort B stays in
-`src/lyra/nats/`). New additions must pass the Cohort A test: zero `lyra.core`
+`src/factory/nats/`). New additions must pass the Cohort A test: zero `factory.core`
 imports.

@@ -9,15 +9,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.core.cli.cli_pool import CliPool, _ProcessEntry
-from lyra.core.config import HubConfig
-from lyra.core.hub import Hub
-from lyra.core.messaging.message import Platform
-from lyra.core.pool import Pool
-from lyra.transport.typing_publisher import TypingPublisher
+from factory.core.cli.cli_pool import CliPool, _ProcessEntry
+from factory.core.config import HubConfig
+from factory.core.hub import Hub
+from factory.core.messaging.message import Platform
+from factory.core.pool import Pool
+from factory.transport.typing_publisher import TypingPublisher
 
 if TYPE_CHECKING:
-    from lyra.core.agent import AgentBase
+    from factory.core.agent import AgentBase
 from tests.core.conftest_cli_pool import (
     _PATCH_TARGET,
     ASSISTANT_LINE,

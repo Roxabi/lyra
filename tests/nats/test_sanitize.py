@@ -13,14 +13,14 @@ import logging
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
-    from lyra.infrastructure.stores.turn_store import TurnStore
+    from factory.infrastructure.stores.turn_store import TurnStore
 
 import pytest
 
-from lyra.core.hub.middleware import PipelineContext
-from lyra.core.hub.middleware.path_validation import resolve_context
-from lyra.core.hub.pipeline.message_pipeline import ResumeStatus
-from lyra.core.messaging.message import TelegramMeta
+from factory.core.hub.middleware import PipelineContext
+from factory.core.hub.middleware.path_validation import resolve_context
+from factory.core.hub.pipeline.message_pipeline import ResumeStatus
+from factory.core.messaging.message import TelegramMeta
 from tests.core.conftest import _make_hub, make_inbound_message
 
 # ---------------------------------------------------------------------------
@@ -60,9 +60,13 @@ class TestNatsBusSanitization:
 
     def test_handler_sanitizes_platform_meta(self) -> None:
         """Typed TelegramMeta round-trips cleanly via serialize → deserialize."""
-        from lyra.core.auth.trust import TrustLevel
-        from lyra.core.messaging.message import InboundMessage, Platform, TelegramMeta
-        from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
+        from factory.core.auth.trust import TrustLevel
+        from factory.core.messaging.message import (
+            InboundMessage,
+            Platform,
+            TelegramMeta,
+        )
+        from factory.nats.type_registry import TYPE_REGISTRY_RESOLVER
         from roxabi_nats._serialize import deserialize, serialize
 
         msg = InboundMessage(
@@ -87,9 +91,9 @@ class TestNatsBusSanitization:
 
     def test_discord_meta_round_trips(self) -> None:
         """DiscordMeta round-trips cleanly; max-overlap decode picks DiscordMeta."""
-        from lyra.core.auth.trust import TrustLevel
-        from lyra.core.messaging.message import DiscordMeta, InboundMessage, Platform
-        from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
+        from factory.core.auth.trust import TrustLevel
+        from factory.core.messaging.message import DiscordMeta, InboundMessage, Platform
+        from factory.nats.type_registry import TYPE_REGISTRY_RESOLVER
         from roxabi_nats._serialize import deserialize, serialize
 
         msg = InboundMessage(
@@ -118,9 +122,9 @@ class TestNatsBusSanitization:
 
     def test_generic_meta_round_trips(self) -> None:
         """GenericMeta (no fields) round-trips as GenericMeta, not TelegramMeta."""
-        from lyra.core.auth.trust import TrustLevel
-        from lyra.core.messaging.message import GenericMeta, InboundMessage, Platform
-        from lyra.nats.type_registry import TYPE_REGISTRY_RESOLVER
+        from factory.core.auth.trust import TrustLevel
+        from factory.core.messaging.message import GenericMeta, InboundMessage, Platform
+        from factory.nats.type_registry import TYPE_REGISTRY_RESOLVER
         from roxabi_nats._serialize import deserialize, serialize
 
         msg = InboundMessage(
@@ -177,7 +181,9 @@ class TestScopeValidation:
         )
 
         # Act
-        with caplog.at_level(logging.WARNING, logger="lyra.core.hub.path_validation"):
+        with caplog.at_level(
+            logging.WARNING, logger="factory.core.hub.path_validation"
+        ):
             status = await resolve_context(msg, pool, pool_id, ctx)
 
         # Assert
@@ -244,7 +250,9 @@ class TestScopeValidation:
         )
 
         # Act
-        with caplog.at_level(logging.WARNING, logger="lyra.core.hub.path_validation"):
+        with caplog.at_level(
+            logging.WARNING, logger="factory.core.hub.path_validation"
+        ):
             status = await resolve_context(msg, pool, pool_id, ctx)
 
         # Assert
@@ -274,7 +282,7 @@ class TestScopeValidation:
 
         # Act
         with caplog.at_level(
-            logging.DEBUG, logger="lyra.core.hub.middleware.path_validation"
+            logging.DEBUG, logger="factory.core.hub.middleware.path_validation"
         ):
             status = await resolve_context(msg, pool, pool_id, ctx)
 

@@ -7,7 +7,7 @@ description: "Analysis of deploy target collapse and autoupdate atomicity gap"
 
 > Overlapping deploy paths today: deploy, full-deploy, quadlet-install, quadlet-sync-install, nats-regen-authconf, nats-setup, install.sh, provision.sh, lyra-quadlet-sync.sh, setup.py (28 make targets total). Image autoupdate (image-only) silently wins and leaves git/auth.conf/units stale — the root cause of the 2026-05-31 incident.
 >
-> Do: collapse to one `make deploy` (pull -> render -> regen auth.conf -> secrets -> restart, atomic), triggered on staging merge / from the autoupdate hook so config converges with code. Fix non-interactive PATH (.venv/bin for lyra-acl/uv/lyra) so it runs headless without aborting half-applied.
+> Do: collapse to one `make deploy` (pull -> render -> regen auth.conf -> secrets -> restart, atomic), triggered on staging merge / from the autoupdate hook so config converges with code. Fix non-interactive PATH (.venv/bin for factory-acl/uv/lyra) so it runs headless without aborting half-applied.
 
 — Issue #1578, 2026-05-31
 
@@ -17,7 +17,7 @@ description: "Analysis of deploy target collapse and autoupdate atomicity gap"
 
 2. **Autoupdate gap:** `lyra-quadlet-sync.sh` runs every 5 minutes and only calls `make quadlet-install` when `deploy/quadlet/`, `Makefile`, or `tools/render_quadlet.py` changed. It does **not** detect image digest changes. `podman-auto-update.timer` (daily) restarts containers when the image changes, but leaves git checkout, auth.conf, and Quadlet units stale. This was the root cause of the 2026-05-31 incident.
 
-3. **PATH fragility:** `lyra-quadlet-sync.service` sets `PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin`. It does **not** include `.venv/bin`, where `lyra-acl` (used by `nats-regen-authconf` and `full-deploy`) lives. Running headless causes "command not found" mid-deploy, leaving the system half-converged.
+3. **PATH fragility:** `lyra-quadlet-sync.service` sets `PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin`. It does **not** include `.venv/bin`, where `factory-acl` (used by `nats-regen-authconf` and `full-deploy`) lives. Running headless causes "command not found" mid-deploy, leaving the system half-converged.
 
 4. **voiceCLI convergence gap:** `full-deploy` currently pulls and installs `voiceCLI` units too. The new atomic verb must handle this or document the gap.
 
@@ -104,7 +104,7 @@ flowchart TD
     G --> H
     H --> I[git pull origin staging]
     I --> J[make quadlet-install]
-    J --> K[lyra-acl genkeys --regen-authconf]
+    J --> K[factory-acl genkeys --regen-authconf]
     K --> L[make quadlet-secrets-install]
     L --> M[systemctl restart lyra-nats]
     M --> N[systemctl restart lyra-hub lyra-telegram lyra-discord lyra-clipool]
@@ -116,6 +116,6 @@ flowchart TD
 
 1. **podman-auto-update integration:** `podman-auto-update.service` is a system unit (not user). A `OnSuccess` drop-in for the user instance may not fire. Verified approach: `lyra-post-autoupdate.timer` polls `podman images` digest against GHCR every 5 minutes (same cadence as sync), and `lyra-post-autoupdate.service` runs `make converge` when a change is detected.
 2. **Atomicity edge case:** If `git pull` succeeds but `nats-regen-authconf` fails, the host has new code but stale auth. `make converge` stops before restart. No rollback mechanism yet (deferred). Operator must manually run `make nats-regen-authconf` and `make converge` again.
-3. **Sudo in headless service:** `full-deploy` currently runs `sudo env "PATH=$$PATH" lyra-acl genkeys --regen-authconf`. The new `make converge` must run `lyra-acl` without sudo (or the service must have passwordless sudo for `lyra-acl`). The `nats-regen-authconf` Makefile target already runs `lyra-acl` without sudo, so this is consistent.
+3. **Sudo in headless service:** `full-deploy` currently runs `sudo env "PATH=$$PATH" factory-acl genkeys --regen-authconf`. The new `make converge` must run `factory-acl` without sudo (or the service must have passwordless sudo for `factory-acl`). The `nats-regen-authconf` Makefile target already runs `factory-acl` without sudo, so this is consistent.
 4. **`lyra bot init` fragility:** `make quadlet-install` runs `uv run lyra bot init`. Memory notes this currently throws pydantic validation errors on re-seed; a mid-deploy failure here leaves units copied but not verified. `make converge` must tolerate this step (e.g., `|| true` with explicit warning) or fix it first.
 5. **voiceCLI convergence:** `make converge` should include `voiceCLI` pull + quadlet-install if `VOICE_DIR` is present. This is optional for the first iteration but should be documented.

@@ -34,7 +34,7 @@ limits by switching chats.
 
 ### RoutingContext
 
-`RoutingContext` is the outbound companion to `RoutingKey` — it carries the per-response routing struct needed for the adapter to deliver a response to exactly the right bot, chat, and thread. Defined in `src/lyra/core/messaging/message.py`.
+`RoutingContext` is the outbound companion to `RoutingKey` — it carries the per-response routing struct needed for the adapter to deliver a response to exactly the right bot, chat, and thread. Defined in `src/factory/core/messaging/message.py`.
 
 ```python
 class RoutingContext:
@@ -186,7 +186,7 @@ is treated as `STREAM_ABORTED`.
 
 ### NATS render-event codec
 
-The `NatsRenderEventCodec` (source: `src/lyra/nats/render_event_codec.py`) encodes and decodes
+The `NatsRenderEventCodec` (source: `src/factory/nats/render_event_codec.py`) encodes and decodes
 `RenderEvent` instances to/from the wire chunk format. Both `NatsChannelProxy` (hub, encodes) and
 `NatsOutboundListener` (adapter, decodes) import from this single class.
 
@@ -218,7 +218,7 @@ Both maps are built once in `__init__` and are immutable thereafter. `decode()` 
 (issue #1113). `code` is `None` only for events serialized before the taxonomy landed.
 
 The v1 events `TextDeltaRenderEvent` (`event_type="text"`) and `ToolCallResultRenderEvent`
-(`event_type="tool_summary"`) have been removed from `src/lyra/core/messaging/render_events.py`
+(`event_type="tool_summary"`) have been removed from `src/factory/core/messaging/render_events.py`
 and from the registry (issue #1192, Slice 3). All consumer paths and dual-emit sites have been
 migrated to v2. Adding a new `RenderEvent` subtype requires a single registry insertion;
 TestRegistryCompleteness fails loudly at CI if the registry is missing a union member.
@@ -227,11 +227,11 @@ TestRegistryCompleteness fails loudly at CI if the registry is missing a union m
 
 ### Schema versioning
 
-Every hub↔adapter envelope (`InboundMessage`, `AudioPayload`, `OutboundMessage`) carries a `schema_version: int` field guarded by a `SCHEMA_VERSION_*` module-level constant in `src/lyra/core/messaging/message.py` and `src/lyra/core/messaging/render_events.py`. The outer NatsChunkEnvelope (`{stream_id, seq, event_type, payload, done}`) is intentionally unversioned — only the inner payload is guarded.
+Every hub↔adapter envelope (`InboundMessage`, `AudioPayload`, `OutboundMessage`) carries a `schema_version: int` field guarded by a `SCHEMA_VERSION_*` module-level constant in `src/factory/core/messaging/message.py` and `src/factory/core/messaging/render_events.py`. The outer NatsChunkEnvelope (`{stream_id, seq, event_type, payload, done}`) is intentionally unversioned — only the inner payload is guarded.
 
 **Schema version bump procedure (4 steps):**
 
-1. Bump the `SCHEMA_VERSION_<ENVELOPE>` constant in `src/lyra/core/messaging/message.py` or `src/lyra/core/messaging/render_events.py` by 1.
+1. Bump the `SCHEMA_VERSION_<ENVELOPE>` constant in `src/factory/core/messaging/message.py` or `src/factory/core/messaging/render_events.py` by 1.
 2. Update the `schema_version` field default on the corresponding envelope to match.
 3. Coordinate a simultaneous deploy of `lyra_hub` + `lyra_telegram` + `lyra_discord`. Rolling deploys across a version bump produce loud ERROR logs on still-old receivers.
 4. Verify: `grep SCHEMA_VERSION_ src/lyra/core/*.py`.
@@ -255,7 +255,7 @@ part of the adapter startup path.
 
 ## Transport layer
 
-Added in Epic #1277 (#1278). The transport layer (`src/lyra/transport/`) provides
+Added in Epic #1277 (#1278). The transport layer (`src/factory/transport/`) provides
 domain-agnostic primitives consumed by all domain worker clients.
 
 ### Three-layer composition
@@ -284,7 +284,7 @@ DomainClient            — thin wrapper in lyra.nats / lyra.llm
 - `stream_request(subject, payload)` — opens inbox CM, publishes, iterates chunks.
 - `start(nc)` / `stop()` — heartbeat subscription lifecycle.
 
-**Domain clients** (`lyra.nats.*_client`, `lyra.llm.llm_client`) are thin wrappers that
+**Domain clients** (`lyra.nats.*_client`, `factory.llm.llm_client`) are thin wrappers that
 compose a `WorkerPoolClient` with a codec. They must NOT add a second circuit-breaker.
 
 ### Typed boundary

@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from lyra.infrastructure.stores.base.message_index import MessageIndex
+from factory.infrastructure.stores.base.message_index import MessageIndex
 
 
 @pytest.fixture
@@ -134,7 +134,7 @@ class TestMessageIndexProtocolConformance:
 
     async def test_message_index_isinstance_check(self, tmp_path) -> None:
         """MessageIndex satisfies MessageIndexProtocol (runtime_checkable check)."""
-        from lyra.core.stores.message_index_protocol import MessageIndexProtocol
+        from factory.core.stores.message_index_protocol import MessageIndexProtocol
 
         # Arrange — minimal real instance (no connect needed for isinstance check)
         store = MessageIndex(db_path=tmp_path / "conformance.db")
@@ -146,16 +146,16 @@ class TestMessageIndexProtocolConformance:
         """MessageIndexKvStore satisfies MessageIndexProtocol."""
         from unittest.mock import AsyncMock
 
-        from lyra.core.stores.message_index_protocol import MessageIndexProtocol
-        from lyra.infrastructure.stores.message_index_kv import MessageIndexKvStore
+        from factory.core.stores.message_index_protocol import MessageIndexProtocol
+        from factory.infrastructure.stores.message_index_kv import MessageIndexKvStore
 
         store = MessageIndexKvStore(AsyncMock())
         assert isinstance(store, MessageIndexProtocol)
 
     def test_message_index_protocol_exported_from_package(self) -> None:
-        """MessageIndexProtocol is importable from lyra.core.stores."""
-        from lyra.core.stores import MessageIndexProtocol as _MIP
-        from lyra.core.stores.message_index_protocol import MessageIndexProtocol
+        """MessageIndexProtocol is importable from factory.core.stores."""
+        from factory.core.stores import MessageIndexProtocol as _MIP
+        from factory.core.stores.message_index_protocol import MessageIndexProtocol
 
         assert _MIP is MessageIndexProtocol
 
@@ -165,7 +165,7 @@ class TestMessageIndexProtocolConformance:
         Lifecycle is owned by bootstrap_stores.open_stores() — re-adding close()
         to the protocol would silently break teardown ownership.
         """
-        from lyra.core.stores.message_index_protocol import MessageIndexProtocol
+        from factory.core.stores.message_index_protocol import MessageIndexProtocol
 
         expected = {"resolve", "upsert"}
         actual: set[str] = getattr(MessageIndexProtocol, "__protocol_attrs__", set())

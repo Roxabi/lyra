@@ -1,7 +1,7 @@
 """Tests for ClaudeCliDriver.
 
 RED phase — these tests will fail until S3 implementation lands.
-Source: src/lyra/llm/drivers/cli.py
+Source: src/factory/llm/drivers/cli.py
 
 Note: AsyncMock accepts arbitrary kwargs silently, which can hide signature
 mismatches. We rely on pyright (strict mode) to catch these. If a test passes
@@ -13,10 +13,10 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.cli.cli_pool import CliResult
-from lyra.llm.base import LlmResult
-from lyra.llm.drivers.cli import ClaudeCliDriver
+from factory.core.agent.agent_config import ModelConfig
+from factory.core.cli.cli_pool import CliResult
+from factory.llm.base import LlmResult
+from factory.llm.drivers.cli import ClaudeCliDriver
 
 # ---------------------------------------------------------------------------
 # Helpers

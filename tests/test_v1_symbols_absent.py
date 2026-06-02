@@ -72,7 +72,7 @@ def _is_comment_match(grep_line: str) -> bool:
 # Sanity test — make sure the pattern would catch a real regression if introduced.
 # Embeds the literal so it doesn't itself re-import the symbol.
 def test_pattern_would_catch_real_import() -> None:
-    sample = "from lyra.core.messaging.render_events import ToolSummaryRenderEvent"
+    sample = "from factory.core.messaging.render_events import ToolSummaryRenderEvent"
     pattern = FORBIDDEN_PATTERNS[2][1]
     assert re.search(pattern, sample), (
         "Import-pattern guard does not catch real import statements."

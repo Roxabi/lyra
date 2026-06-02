@@ -1,13 +1,13 @@
-"""Integration tests for the POSIX-sh shell shims: git-credential-lyra-gh and lyra-gh.
+"""Integration tests for the shell shims: git-credential-factory-gh and factory-gh.
 
 Scope reduction vs. plan T8:
   The plan mentioned "git push against git daemon test repo" as a verification
   vector. That was softened here to direct subprocess invocations of the
-  credential helper and lyra-gh shim. Rationale: git daemon setup is highly
+  credential helper and factory-gh shim. Rationale: git daemon setup is highly
   environment-dependent (port allocation, repo init, pack-refs) and adds no
   additional protocol coverage — the git credential protocol contract is fully
   exercised by running the helper binary directly with stdin/stdout assertions.
-  The token-to-child-env contract is exercised by lyra-gh + gh_stub_bin.
+  The token-to-child-env contract is exercised by factory-gh + gh_stub_bin.
 
 Pre-flight:
   Both shims use socat (preferred) or BSD nc -U to reach the dispenser socket.
@@ -55,10 +55,12 @@ _SKIP_NO_TRANSPORT = pytest.mark.skipif(
 
 # ── paths to the shell scripts ────────────────────────────────────────────────
 
-_TOOLS_DIR = Path(__file__).parent.parent.parent / "src" / "lyra" / "tools" / "gh_token"
+_TOOLS_DIR = (
+    Path(__file__).parent.parent.parent / "src" / "factory" / "tools" / "gh_token"
+)
 
-_GIT_CREDENTIAL_SCRIPT = _TOOLS_DIR / "git-credential-lyra-gh"
-_LYRA_GH_SCRIPT = _TOOLS_DIR / "lyra-gh"
+_GIT_CREDENTIAL_SCRIPT = _TOOLS_DIR / "git-credential-factory-gh"
+_LYRA_GH_SCRIPT = _TOOLS_DIR / "factory-gh"
 
 
 # ── mock dispenser fixture ─────────────────────────────────────────────────────
@@ -160,7 +162,7 @@ async def _run_subprocess_in_thread(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# A — git-credential-lyra-gh get emits credential lines
+# A — git-credential-factory-gh get emits credential lines
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
@@ -171,7 +173,7 @@ async def test_git_credential_lyra_gh_get_emits_credential_lines(
 ) -> None:
     """get action: stdout must contain username= and password= lines from dispenser."""
     # Arrange
-    env = _base_env(LYRA_GH_DISPENSER_SOCK=str(mock_dispenser))
+    env = _base_env(FACTORY_GH_DISPENSER_SOCK=str(mock_dispenser))
 
     # Act — offload to thread so the event loop remains free to serve the socket
     result = await _run_subprocess_in_thread(
@@ -199,7 +201,7 @@ async def test_git_credential_lyra_gh_get_emits_credential_lines(
 def test_git_credential_lyra_gh_store_is_noop() -> None:
     """store action: exits 0 with no output (token storage is not needed)."""
     # Arrange
-    env = _base_env(LYRA_GH_DISPENSER_SOCK="/tmp/does-not-matter.sock")
+    env = _base_env(FACTORY_GH_DISPENSER_SOCK="/tmp/does-not-matter.sock")
 
     # Act
     result = subprocess.run(
@@ -223,7 +225,7 @@ def test_git_credential_lyra_gh_store_is_noop() -> None:
 def test_git_credential_lyra_gh_erase_is_noop() -> None:
     """erase action: exits 0 with no output (tokens are minted on demand)."""
     # Arrange
-    env = _base_env(LYRA_GH_DISPENSER_SOCK="/tmp/does-not-matter.sock")
+    env = _base_env(FACTORY_GH_DISPENSER_SOCK="/tmp/does-not-matter.sock")
 
     # Act
     result = subprocess.run(
@@ -247,7 +249,7 @@ def test_git_credential_lyra_gh_erase_is_noop() -> None:
 def test_git_credential_lyra_gh_unknown_action_errors() -> None:
     """Unknown action: exits non-zero with a message on stderr."""
     # Arrange
-    env = _base_env(LYRA_GH_DISPENSER_SOCK="/tmp/does-not-matter.sock")
+    env = _base_env(FACTORY_GH_DISPENSER_SOCK="/tmp/does-not-matter.sock")
 
     # Act
     result = subprocess.run(
@@ -263,7 +265,7 @@ def test_git_credential_lyra_gh_unknown_action_errors() -> None:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# E — lyra-gh passes token to child via GH_TOKEN env
+# E — factory-gh passes token to child via GH_TOKEN env
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
@@ -273,11 +275,11 @@ async def test_lyra_gh_shim_exec_passes_token_to_child(
     mock_dispenser: Path,
     gh_stub_bin: Path,
 ) -> None:
-    """lyra-gh resolves a token and exec-replaces into the stub with GH_TOKEN set."""
+    """factory-gh resolves a token and exec-replaces into the stub with GH_TOKEN set."""
     # Arrange
     env = _base_env(
-        LYRA_GH_DISPENSER_SOCK=str(mock_dispenser),
-        LYRA_GH_BIN=str(gh_stub_bin),
+        FACTORY_GH_DISPENSER_SOCK=str(mock_dispenser),
+        FACTORY_GH_BIN=str(gh_stub_bin),
     )
 
     # Act — offload to thread so the event loop remains free to serve the socket
@@ -300,7 +302,7 @@ async def test_lyra_gh_shim_exec_passes_token_to_child(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# F — lyra-gh does not leak token to parent process
+# F — factory-gh does not leak token to parent process
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
@@ -313,8 +315,8 @@ async def test_lyra_gh_shim_does_not_leak_token_to_parent(
     """Token must not appear in the test process's own environment after exit."""
     # Arrange — ensure GH_TOKEN is not already set in the test runner
     env = _base_env(
-        LYRA_GH_DISPENSER_SOCK=str(mock_dispenser),
-        LYRA_GH_BIN=str(gh_stub_bin),
+        FACTORY_GH_DISPENSER_SOCK=str(mock_dispenser),
+        FACTORY_GH_BIN=str(gh_stub_bin),
     )
     env.pop("GH_TOKEN", None)
 
@@ -333,7 +335,7 @@ async def test_lyra_gh_shim_does_not_leak_token_to_parent(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# G — lyra-gh fails when dispenser is unreachable
+# G — factory-gh fails when dispenser is unreachable
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
@@ -341,11 +343,11 @@ async def test_lyra_gh_shim_does_not_leak_token_to_parent(
 def test_lyra_gh_shim_fails_when_dispenser_unreachable(
     tmp_path: Path,
 ) -> None:
-    """lyra-gh exits non-zero and must not emit the token in error output."""
+    """factory-gh exits non-zero and must not emit the token in error output."""
     # Arrange
     env = _base_env(
-        LYRA_GH_DISPENSER_SOCK="/tmp/does-not-exist-lyra-gh-test.sock",
-        LYRA_GH_BIN="/bin/true",  # won't be reached, but must be a valid path
+        FACTORY_GH_DISPENSER_SOCK="/tmp/does-not-exist-factory-gh-test.sock",
+        FACTORY_GH_BIN="/bin/true",  # won't be reached, but must be a valid path
     )
 
     # Act
@@ -366,7 +368,7 @@ def test_lyra_gh_shim_fails_when_dispenser_unreachable(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# H (optional) — lyra-gh fails when gh binary is missing
+# H (optional) — factory-gh fails when gh binary is missing
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
@@ -375,11 +377,11 @@ def test_lyra_gh_shim_fails_when_dispenser_unreachable(
 async def test_lyra_gh_shim_fails_when_gh_bin_missing(
     mock_dispenser: Path,
 ) -> None:
-    """lyra-gh exits non-zero and prints a helpful message when gh binary is absent."""
+    """factory-gh exits non-zero and errors when gh is absent."""
     # Arrange
     env = _base_env(
-        LYRA_GH_DISPENSER_SOCK=str(mock_dispenser),
-        LYRA_GH_BIN="/tmp/does-not-exist-gh-bin",
+        FACTORY_GH_DISPENSER_SOCK=str(mock_dispenser),
+        FACTORY_GH_BIN="/tmp/does-not-exist-gh-bin",
     )
 
     # Act — offload to thread so the event loop remains free to serve the socket

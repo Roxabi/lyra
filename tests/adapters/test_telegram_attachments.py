@@ -10,14 +10,14 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from lyra.inbound.attachment_ingest import MAX_ATTACHMENT_INGEST_BYTES
+from factory.inbound.attachment_ingest import MAX_ATTACHMENT_INGEST_BYTES
 
 
 class TestTelegramAttachments:
     """TelegramAdapter.normalize() extracts non-audio attachments."""
 
     def _make_adapter(self):
-        from lyra.adapters.telegram import TelegramAdapter
+        from factory.adapters.telegram import TelegramAdapter
 
         return TelegramAdapter(
             bot_id="main",

@@ -18,12 +18,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from lyra.adapters.shared._shared_audio import (
+from factory.adapters.shared._shared_audio import (
     buffer_and_render_audio,
     buffer_audio_chunks,
 )
-from lyra.core.messaging.message import OutboundAudio, OutboundAudioChunk
-from lyra.core.ports.blobstore import BlobStorePort
+from factory.core.messaging.message import OutboundAudio, OutboundAudioChunk
+from factory.core.ports.blobstore import BlobStorePort
 from roxabi_contracts import BlobRef
 
 # ---------------------------------------------------------------------------
@@ -244,8 +244,8 @@ class TestBufferAndRenderAudioCreatedAt:
         async def _capture_render_fn(audio: OutboundAudio, inbound: object) -> None:
             received.append(audio)
 
-        from lyra.core.auth.trust import TrustLevel
-        from lyra.core.messaging.message import InboundMessage, TelegramMeta
+        from factory.core.auth.trust import TrustLevel
+        from factory.core.messaging.message import InboundMessage, TelegramMeta
 
         inbound = InboundMessage(
             id="msg-test-1540",

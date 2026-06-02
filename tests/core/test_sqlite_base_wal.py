@@ -7,7 +7,7 @@ import sqlite3
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from lyra.infrastructure.stores.base.sqlite_base import (
+from factory.infrastructure.stores.base.sqlite_base import (
     SqliteStore,
 )
 

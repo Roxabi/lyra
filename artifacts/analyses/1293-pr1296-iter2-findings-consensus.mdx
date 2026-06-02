@@ -27,7 +27,7 @@ asked the panel to debate each, then apply all.
 
 | # | Consensus ρ |
 |---|-------------|
-| F1 | Replace `@test -d "$(LYRA_NKEYS_DIR)"` (line 290) with `@test -s "$(LYRA_NKEYS_DIR)/auth.conf"` placed immediately before `podman secret create`. Post-genkeys size-check is strictly stronger than `test -f` (catches zero-byte writes per security's corrupt-write concern) AND fixes the placement (guard now precedes the operation it protects). Drop pre-genkeys `test -d` as redundant — `lyra-acl` exits non-zero on missing dir; `make` aborts. |
+| F1 | Replace `@test -d "$(LYRA_NKEYS_DIR)"` (line 290) with `@test -s "$(LYRA_NKEYS_DIR)/auth.conf"` placed immediately before `podman secret create`. Post-genkeys size-check is strictly stronger than `test -f` (catches zero-byte writes per security's corrupt-write concern) AND fixes the placement (guard now precedes the operation it protects). Drop pre-genkeys `test -d` as redundant — `factory-acl` exits non-zero on missing dir; `make` aborts. |
 | F2 | Add one-line comment above the rollback `make quadlet-secrets-install`: full reinstall is intentional (rollback = atomic restore of all secrets), not a bug introduced by the iter-1 B2 scoping. |
 | F3 | Rename `$(PROD)` → `$(DEPLOY_HOST)` in the postmortem-remaining `nats-rotate-secrets` snippet. `$(DEPLOY_HOST)` is the canonical defined variable used by `full-deploy`, `remote`, and other remote recipes. |
 | F4 | No action. Historical bare-metal rollout step in a closed ADR; editing post-hoc rewrites a completed migration record. |
@@ -42,7 +42,7 @@ corrupt/empty writes. The hybrid (`test -s` post-genkeys) is strictly
 stronger than `test -f` (also catches empty files) AND addresses security's
 corrupt-write framing AND satisfies the "guard immediately before consumer"
 semantic from architect/devops. Pre-genkeys `test -d` is dropped: if the
-directory is missing, `lyra-acl genkeys --regen-authconf` exits non-zero on
+directory is missing, `factory-acl genkeys --regen-authconf` exits non-zero on
 its own and `make` propagates the failure — `test -d` adds no information.
 
 **F3 — 2-1 majority.** Architect + devops chose `$(DEPLOY_HOST)` (canonical
@@ -54,7 +54,7 @@ it diverges from existing Makefile convention and adds maintenance cost.
 
 ### Trade-offs
 
-- F1 hybrid creates an implicit contract: `lyra-acl genkeys --regen-authconf`
+- F1 hybrid creates an implicit contract: `factory-acl genkeys --regen-authconf`
   MUST write a non-empty `auth.conf` to `$(LYRA_NKEYS_DIR)` or the recipe
   aborts before the destructive `podman secret create --replace`. This is
   the desired fail-safe property.
@@ -67,7 +67,7 @@ it diverges from existing Makefile convention and adds maintenance cost.
 | ω | Proposed by | Rejected because |
 |---|-------------|------------------|
 | F1 Solution 1 alone (`test -d` pre-genkeys) | security | Catches misconfiguration but not corrupt writes; weaker than hybrid. |
-| F1 maximalist (both `test -d` pre + `test -s` post) | security | Belt-and-suspenders; `test -d` adds no signal since `lyra-acl` would fail first. |
+| F1 maximalist (both `test -d` pre + `test -s` post) | security | Belt-and-suspenders; `test -d` adds no signal since `factory-acl` would fail first. |
 | F1 Solution 2 with `test -f` instead of `test -s` | architect/devops | `test -s` is strictly stronger (catches zero-byte file) at same cost. |
 | F3 literal hostname `roxabituwer` | security | Divergent from `$(DEPLOY_HOST)` convention used by all other remote recipes. |
 | F3 `PROD ?= roxabituwer` default | security | Introduces a second variable for the same concept; noise vs. SSoT. |
@@ -77,7 +77,7 @@ it diverges from existing Makefile convention and adds maintenance cost.
 
 - **F1 — security:** would have preferred a pre-genkeys `test -d` as primary
   guard (fail-fast on misconfiguration); accepted the hybrid because
-  post-genkeys `test -s` covers the same misconfiguration case (via lyra-acl
+  post-genkeys `test -s` covers the same misconfiguration case (via factory-acl
   failure → make abort) plus the corrupt-write case.
 - **F3 — security:** would have preferred a literal hostname; accepted
   `$(DEPLOY_HOST)` once aligned with the defined-variable invariant.

@@ -75,7 +75,7 @@ class TestHubStandaloneReadinessOrdering:
         hub_standalone_path = (
             Path(__file__).parents[2]
             / "src"
-            / "lyra"
+            / "factory"
             / "bootstrap"
             / "standalone"
             / "hub_standalone.py"
@@ -84,7 +84,7 @@ class TestHubStandaloneReadinessOrdering:
             f"hub_standalone.py not found at {hub_standalone_path}"
         )
 
-        import lyra.bootstrap.standalone.hub_standalone as _mod
+        import factory.bootstrap.standalone.hub_standalone as _mod
 
         func = _mod._bootstrap_hub_standalone
         func_source = inspect.getsource(func)
@@ -122,7 +122,7 @@ class TestHubAudioProvisioningBeforeReady:
         verify that ensure_stream is called before announce_hub_ready.  This
         guarantees the stream is provisioned before adapters unblock.
         """
-        import lyra.bootstrap.standalone.hub_standalone as _mod
+        import factory.bootstrap.standalone.hub_standalone as _mod
 
         func = _mod._bootstrap_hub_standalone
         func_source = inspect.getsource(func)
@@ -155,7 +155,7 @@ class TestHubAudioProvisioningBeforeReady:
         assert that the calls are actually awaited. See
         TestHubAudioProvisioningBehavioral for the runtime companion.
         """
-        import lyra.bootstrap.standalone.hub_standalone as _mod
+        import factory.bootstrap.standalone.hub_standalone as _mod
 
         func = _mod._bootstrap_hub_standalone
         func_source = inspect.getsource(func)
@@ -256,50 +256,52 @@ class TestHubAudioProvisioningBehavioral:
             call_order.append("announce_hub_ready")
             raise SystemExit("test-sentinel: stop after announce_hub_ready")
 
-        from lyra.bootstrap.standalone.hub_standalone import _bootstrap_hub_standalone
+        from factory.bootstrap.standalone.hub_standalone import (
+            _bootstrap_hub_standalone,
+        )
 
         with (
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.nats_connect",
+                "factory.bootstrap.standalone.hub_standalone.nats_connect",
                 AsyncMock(return_value=mock_nc),
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.acquire_lockfile",
+                "factory.bootstrap.standalone.hub_standalone.acquire_lockfile",
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.release_lockfile",
+                "factory.bootstrap.standalone.hub_standalone.release_lockfile",
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.open_stores",
+                "factory.bootstrap.standalone.hub_standalone.open_stores",
                 fake_open_stores,
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.seed_grants_from_bots",
+                "factory.bootstrap.standalone.hub_standalone.seed_grants_from_bots",
                 AsyncMock(),
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.build_bot_auths",
+                "factory.bootstrap.standalone.hub_standalone.build_bot_auths",
                 return_value=(MagicMock(), [], [], []),
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone._resolve_bot_agent_map",
+                "factory.bootstrap.standalone.hub_standalone._resolve_bot_agent_map",
                 AsyncMock(return_value={}),
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.load_agent_configs",
+                "factory.bootstrap.standalone.hub_standalone.load_agent_configs",
                 return_value={"default": MagicMock()},
             ),
             # _load_messages is lazily imported; patch at the source module.
             patch(
-                "lyra.bootstrap.factory.config._load_messages",
+                "factory.bootstrap.factory.config._load_messages",
                 return_value=MagicMock(),
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.build_pairing_manager",
+                "factory.bootstrap.standalone.hub_standalone.build_pairing_manager",
                 AsyncMock(return_value=MagicMock()),
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone._build_hub_and_wire",
+                "factory.bootstrap.standalone.hub_standalone._build_hub_and_wire",
                 AsyncMock(
                     return_value=(
                         MagicMock(
@@ -313,28 +315,28 @@ class TestHubAudioProvisioningBehavioral:
                 ),
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.start_mint_failure_subscriber",
+                "factory.bootstrap.standalone.hub_standalone.start_mint_failure_subscriber",
                 AsyncMock(return_value=MagicMock()),
             ),
             # ensure_stream/ensure_kv are lazily imported inside the function body;
             # patch at source module path so the local import picks up the stub.
             patch(
-                "lyra.infrastructure.outbound_audio.stream_setup.ensure_stream",
+                "factory.infrastructure.outbound_audio.stream_setup.ensure_stream",
                 side_effect=_record_ensure_stream,
             ),
             patch(
-                "lyra.infrastructure.outbound_audio.stream_setup.ensure_kv",
+                "factory.infrastructure.outbound_audio.stream_setup.ensure_kv",
                 side_effect=_record_ensure_kv,
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.announce_hub_ready",
+                "factory.bootstrap.standalone.hub_standalone.announce_hub_ready",
                 side_effect=_record_announce_hub_ready,
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.log_contracts_version",
+                "factory.bootstrap.standalone.hub_standalone.log_contracts_version",
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.build_inbound_bus",
+                "factory.bootstrap.standalone.hub_standalone.build_inbound_bus",
                 return_value=(AsyncMock(), MagicMock()),
             ),
         ):
@@ -382,50 +384,52 @@ class TestHubAudioProvisioningBehavioral:
 
         mock_announce = AsyncMock()
 
-        from lyra.bootstrap.standalone.hub_standalone import _bootstrap_hub_standalone
+        from factory.bootstrap.standalone.hub_standalone import (
+            _bootstrap_hub_standalone,
+        )
 
         with (
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.nats_connect",
+                "factory.bootstrap.standalone.hub_standalone.nats_connect",
                 AsyncMock(return_value=mock_nc),
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.acquire_lockfile",
+                "factory.bootstrap.standalone.hub_standalone.acquire_lockfile",
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.release_lockfile",
+                "factory.bootstrap.standalone.hub_standalone.release_lockfile",
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.open_stores",
+                "factory.bootstrap.standalone.hub_standalone.open_stores",
                 fake_open_stores,
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.seed_grants_from_bots",
+                "factory.bootstrap.standalone.hub_standalone.seed_grants_from_bots",
                 AsyncMock(),
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.build_bot_auths",
+                "factory.bootstrap.standalone.hub_standalone.build_bot_auths",
                 return_value=(MagicMock(), [], [], []),
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone._resolve_bot_agent_map",
+                "factory.bootstrap.standalone.hub_standalone._resolve_bot_agent_map",
                 AsyncMock(return_value={}),
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.load_agent_configs",
+                "factory.bootstrap.standalone.hub_standalone.load_agent_configs",
                 return_value={"default": MagicMock()},
             ),
             # _load_messages is lazily imported; patch at the source module.
             patch(
-                "lyra.bootstrap.factory.config._load_messages",
+                "factory.bootstrap.factory.config._load_messages",
                 return_value=MagicMock(),
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.build_pairing_manager",
+                "factory.bootstrap.standalone.hub_standalone.build_pairing_manager",
                 AsyncMock(return_value=MagicMock()),
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone._build_hub_and_wire",
+                "factory.bootstrap.standalone.hub_standalone._build_hub_and_wire",
                 AsyncMock(
                     return_value=(
                         MagicMock(
@@ -439,27 +443,27 @@ class TestHubAudioProvisioningBehavioral:
                 ),
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.start_mint_failure_subscriber",
+                "factory.bootstrap.standalone.hub_standalone.start_mint_failure_subscriber",
                 AsyncMock(return_value=MagicMock()),
             ),
             # ensure_stream/ensure_kv are lazily imported; patch at source module.
             patch(
-                "lyra.infrastructure.outbound_audio.stream_setup.ensure_stream",
+                "factory.infrastructure.outbound_audio.stream_setup.ensure_stream",
                 side_effect=nats.errors.Error("stream create denied"),
             ),
             patch(
-                "lyra.infrastructure.outbound_audio.stream_setup.ensure_kv",
+                "factory.infrastructure.outbound_audio.stream_setup.ensure_kv",
                 AsyncMock(),
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.announce_hub_ready",
+                "factory.bootstrap.standalone.hub_standalone.announce_hub_ready",
                 mock_announce,
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.log_contracts_version",
+                "factory.bootstrap.standalone.hub_standalone.log_contracts_version",
             ),
             patch(
-                "lyra.bootstrap.standalone.hub_standalone.build_inbound_bus",
+                "factory.bootstrap.standalone.hub_standalone.build_inbound_bus",
                 return_value=(AsyncMock(), MagicMock()),
             ),
         ):

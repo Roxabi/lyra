@@ -9,10 +9,10 @@ import json
 from datetime import datetime, timezone
 from typing import Any
 
-from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent
-from lyra.llm.llm_codec import LlmCodec
-from lyra.transport._result import Err, Ok, SanitizedError
+from factory.core.agent.agent_config import ModelConfig
+from factory.core.messaging.events import ResultLlmEvent, TextLlmEvent
+from factory.llm.llm_codec import LlmCodec
+from factory.transport._result import Err, Ok, SanitizedError
 
 CONTRACT_VERSION = "1"
 

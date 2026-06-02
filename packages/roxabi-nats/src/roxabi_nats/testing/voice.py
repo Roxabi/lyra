@@ -7,7 +7,7 @@ contamination. See spec #764 and ADR-049 §Test-double pattern.
 Guard 1 (import-time): nats-py is imported at module top; installing
     roxabi-nats WITHOUT the [testing] extra fails with
     ModuleNotFoundError at import.
-Guard 2 (env): __init__ raises RuntimeError when LYRA_ENV == "production".
+Guard 2 (env): __init__ raises RuntimeError when FACTORY_ENV == "production".
 Guard 3 (loopback): start() raises ValueError on non-loopback NATS URL.
 """
 

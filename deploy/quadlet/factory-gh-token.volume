@@ -1,0 +1,32 @@
+# Quadlet volume unit for the GitHub App token-mint runtime state (#1078).
+#
+# WHY a named volume (not Tmpfs= per container):
+#   Pod containers in Podman share the network namespace but NOT the mount
+#   namespace. Two `Tmpfs=` declarations on sibling containers create two
+#   independent empty filesystems — the helper's dispenser socket lands in
+#   helper's tmpfs, and clipool's factory-gh shim looking at /run/factory-gh-token
+#   sees its own (empty) tmpfs. A named Quadlet volume mounted into both
+#   containers gives them a SHARED view (verified on M₁ Podman 5.7.0).
+#
+# WHY tmpfs driver:
+#   Token cache is RAM-only state. Persisting to disk would survive container
+#   restarts unnecessarily and could leak the JWT across reboot/audit windows.
+#   tmpfs driver here keeps the same semantics as the original Tmpfs= design.
+#
+# Mode 1777 (sticky world-writable):
+#   - Helper (uid 1501) and clipool (uid 1500) are different uids; neither
+#     owns the volume root. Both need write to create/connect socket.
+#   - File-level perms enforce isolation:
+#       cache /run/factory-gh-token/token.json  → 0600 owned uid 1501  (I-2)
+#       socket /run/factory-gh-token/dispenser.sock → 0660 group factory-tokenuser (I-3)
+#   - Sticky bit prevents either uid from deleting the other's files.
+#
+# Quadlet generates `factory-gh-token-volume.service` from this file.
+[Volume]
+Driver=local
+Type=tmpfs
+Device=tmpfs
+Options=size=4M,mode=1777
+
+[Install]
+WantedBy=default.target

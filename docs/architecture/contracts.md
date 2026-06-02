@@ -58,7 +58,7 @@ zero `nats-py` dependency. Three production-contamination guards on test doubles
 
 ### Voice registry routing
 
-`WorkerRegistry` (at `src/lyra/nats/worker_registry.py`) is the single routing truth for hub-side
+`WorkerRegistry` (at `src/factory/nats/worker_registry.py`) is the single routing truth for hub-side
 voice clients (`NatsSttClient`, `NatsTtsClient`, `NatsImageClient`). Requests are published
 directly to per-worker subjects (`lyra.voice.stt.request.<worker_id>`,
 `lyra.voice.tts.request.<worker_id>`, `lyra.image.request.<worker_id>`). NATS queue-group

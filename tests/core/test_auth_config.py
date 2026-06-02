@@ -9,16 +9,16 @@ import logging
 
 import pytest
 
-from lyra.core.agent.bot_models import BotRow
-from lyra.core.auth.authenticator import (
+from factory.core.agent.bot_models import BotRow
+from factory.core.auth.authenticator import (
     Authenticator as AuthMiddleware,
 )
-from lyra.core.auth.authenticator import (
+from factory.core.auth.authenticator import (
     FromBotStoreDeps,
 )
-from lyra.core.auth.trust import TrustLevel
-from lyra.infrastructure.stores.auth_store import AuthStore
-from lyra.infrastructure.stores.bot_store import BotStore
+from factory.core.auth.trust import TrustLevel
+from factory.infrastructure.stores.auth_store import AuthStore
+from factory.infrastructure.stores.bot_store import BotStore
 
 # ---------------------------------------------------------------------------
 # TestFromConfig
@@ -122,7 +122,7 @@ class TestFromConfig:
     def test_missing_section_warning_logged(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        with caplog.at_level(logging.WARNING, logger="lyra.core.auth"):
+        with caplog.at_level(logging.WARNING, logger="factory.core.auth"):
             result = AuthMiddleware.from_config({}, "telegram")
         assert result is None
         assert "telegram" in caplog.text
@@ -196,7 +196,7 @@ class TestFromBotStore:
         self, bot_store: BotStore, caplog: pytest.LogCaptureFixture
     ) -> None:
         # Act
-        with caplog.at_level(logging.WARNING, logger="lyra.core.auth"):
+        with caplog.at_level(logging.WARNING, logger="factory.core.auth"):
             auth = AuthMiddleware.from_bot_store(
                 FromBotStoreDeps(
                     platform="telegram", bot_id="lyra", bot_store=bot_store

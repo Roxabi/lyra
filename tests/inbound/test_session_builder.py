@@ -7,16 +7,16 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import (
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import (
     DiscordMeta,
     InboundMessage,
     PlatformMeta,
     TelegramMeta,
 )
-from lyra.core.stores.thread_store_protocol import ThreadSession
-from lyra.inbound.context import SessionCtx
-from lyra.inbound.session_builder import SessionBuilder
+from factory.core.stores.thread_store_protocol import ThreadSession
+from factory.inbound.context import SessionCtx
+from factory.inbound.session_builder import SessionBuilder
 
 # ---------------------------------------------------------------------------
 # Helpers

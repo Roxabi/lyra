@@ -7,7 +7,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from lyra.blobstore.serve import build_app
+from factory.blobstore.serve import build_app
 from roxabi_blobs.http_store import HttpBlobStore  # does not exist yet — RED
 
 # ---------------------------------------------------------------------------

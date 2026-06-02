@@ -21,7 +21,7 @@ class TestUnifiedNoBuildCliPool:
     def test_unified_no_direct_cli_pool_in_bootstrap(self) -> None:
         """After T22, unified.py must not import or call build_cli_pool."""
         # RED-phase: replace with runtime assertion when T22 ships
-        import lyra.bootstrap.factory.unified as unified_mod
+        import factory.bootstrap.factory.unified as unified_mod
 
         importlib.reload(unified_mod)
         source = inspect.getsource(unified_mod)
@@ -42,9 +42,9 @@ class TestUnifiedLlmClientWired:
         if the helper is inlined back into unified.py in a future change.
         """
         # RED-phase: replace with runtime assertion when T22 ships
-        import lyra.bootstrap.factory.hub_builder as hub_builder_mod
-        import lyra.bootstrap.factory.unified as unified_mod
-        import lyra.bootstrap.factory.wiring_helpers as helpers_mod
+        import factory.bootstrap.factory.hub_builder as hub_builder_mod
+        import factory.bootstrap.factory.unified as unified_mod
+        import factory.bootstrap.factory.wiring_helpers as helpers_mod
 
         importlib.reload(unified_mod)
         combined = (
@@ -67,10 +67,10 @@ class TestUnifiedLlmClientWired:
         if the helper is inlined back into unified.py in a future change.
         """
         # RED-phase: replace with runtime assertion when T22 ships
-        import lyra.bootstrap.factory.hub.hub_clipool_init as hub_clipool_init_mod
-        import lyra.bootstrap.factory.hub_builder as hub_builder_mod
-        import lyra.bootstrap.factory.unified as unified_mod
-        import lyra.bootstrap.factory.wiring_helpers as helpers_mod
+        import factory.bootstrap.factory.hub.hub_clipool_init as hub_clipool_init_mod
+        import factory.bootstrap.factory.hub_builder as hub_builder_mod
+        import factory.bootstrap.factory.unified as unified_mod
+        import factory.bootstrap.factory.wiring_helpers as helpers_mod
 
         importlib.reload(unified_mod)
         combined = (
@@ -94,18 +94,18 @@ class TestUnifiedCliPoolNatsWorkerInstantiated:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """After T22, _bootstrap_unified must instantiate CliPoolNatsWorker."""
-        import lyra.bootstrap.factory.unified as unified_mod
+        import factory.bootstrap.factory.unified as unified_mod
 
         try:
-            import lyra.adapters.clipool.clipool_worker as _clipool_worker_mod
+            import factory.adapters.clipool.clipool_worker as _clipool_worker_mod
 
             _ = _clipool_worker_mod.CliPoolNatsWorker
         except (ImportError, AttributeError):
             pytest.skip("CliPoolNatsWorker not importable — dependency missing")
 
-        import lyra.bootstrap.factory.hub.hub_clipool_init as hub_clipool_init_mod
-        import lyra.bootstrap.factory.hub_builder as hub_builder_mod
-        import lyra.bootstrap.factory.wiring_helpers as helpers_mod
+        import factory.bootstrap.factory.hub.hub_clipool_init as hub_clipool_init_mod
+        import factory.bootstrap.factory.hub_builder as hub_builder_mod
+        import factory.bootstrap.factory.wiring_helpers as helpers_mod
 
         # RED-phase: replace with runtime assertion when T22 ships
         combined = (
@@ -129,8 +129,8 @@ class TestUnifiedWorkerTaskCreated:
         (_run_clipool_worker_task).  We inspect both modules.
         """
         # RED-phase: replace with runtime assertion when T22 ships
-        import lyra.bootstrap.factory.unified as unified_mod
-        import lyra.bootstrap.factory.wiring_helpers as helpers_mod
+        import factory.bootstrap.factory.unified as unified_mod
+        import factory.bootstrap.factory.wiring_helpers as helpers_mod
 
         importlib.reload(unified_mod)
         combined = inspect.getsource(unified_mod) + inspect.getsource(helpers_mod)

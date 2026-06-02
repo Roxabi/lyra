@@ -8,16 +8,16 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.bootstrap.factory.voice_overlay import (
+from factory.bootstrap.factory.voice_overlay import (
     init_blobstore,
     init_nats_image,
     init_nats_stt,
     init_nats_tts,
     probe_voice_services,
 )
-from lyra.nats.audio.nats_tts_client import NatsTtsClient
-from lyra.nats.image.nats_image_client import NatsImageClient
-from lyra.nats.stt.nats_stt_client import NatsSttClient
+from factory.nats.audio.nats_tts_client import NatsTtsClient
+from factory.nats.image.nats_image_client import NatsImageClient
+from factory.nats.stt.nats_stt_client import NatsSttClient
 
 
 @pytest.fixture()
@@ -31,7 +31,7 @@ class TestInitBlobstore:
     ) -> None:
         """init_blobstore must not raise when token file is missing — returns None."""
         monkeypatch.setenv(
-            "LYRA_BLOBSTORE_TOKEN_PATH", "/nonexistent/path/blobstore.tok"
+            "FACTORY_BLOBSTORE_TOKEN_PATH", "/nonexistent/path/blobstore.tok"
         )
         result = init_blobstore()
         assert result is None
@@ -40,12 +40,12 @@ class TestInitBlobstore:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         """init_blobstore returns a BlobStorePort when token file exists."""
-        from lyra.core.ports.blobstore import BlobStorePort
+        from factory.core.ports.blobstore import BlobStorePort
 
         tok = tmp_path / "blobstore.tok"
         tok.write_text("test-token")
-        monkeypatch.setenv("LYRA_BLOBSTORE_TOKEN_PATH", str(tok))
-        monkeypatch.setenv("LYRA_BLOBSTORE_URL", "http://localhost:8449")
+        monkeypatch.setenv("FACTORY_BLOBSTORE_TOKEN_PATH", str(tok))
+        monkeypatch.setenv("FACTORY_BLOBSTORE_URL", "http://localhost:8449")
         result = init_blobstore()
         assert result is not None
         assert isinstance(result, BlobStorePort)
@@ -64,8 +64,8 @@ class TestInitBlobstore:
         """
         tok = tmp_path / "blobstore.tok"
         tok.write_text("")  # empty file — token is missing
-        monkeypatch.setenv("LYRA_BLOBSTORE_TOKEN_PATH", str(tok))
-        monkeypatch.setenv("LYRA_BLOBSTORE_URL", "http://localhost:8449")
+        monkeypatch.setenv("FACTORY_BLOBSTORE_TOKEN_PATH", str(tok))
+        monkeypatch.setenv("FACTORY_BLOBSTORE_URL", "http://localhost:8449")
         with pytest.raises(OSError):
             init_blobstore()
 
@@ -79,8 +79,8 @@ class TestInitBlobstore:
         """
         tok = tmp_path / "blobstore.tok"
         tok.write_text("   \n   ")  # whitespace-only
-        monkeypatch.setenv("LYRA_BLOBSTORE_TOKEN_PATH", str(tok))
-        monkeypatch.setenv("LYRA_BLOBSTORE_URL", "http://localhost:8449")
+        monkeypatch.setenv("FACTORY_BLOBSTORE_TOKEN_PATH", str(tok))
+        monkeypatch.setenv("FACTORY_BLOBSTORE_URL", "http://localhost:8449")
         with pytest.raises(OSError):
             init_blobstore()
 
@@ -89,7 +89,7 @@ class TestInitNatsStt:
     def test_returns_client_with_model(
         self, mock_nc: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_STT_MODEL", "tiny")
+        monkeypatch.setenv("FACTORY_STT_MODEL", "tiny")
         monkeypatch.delenv("STT_MODEL_SIZE", raising=False)
         client = init_nats_stt(mock_nc)
         assert isinstance(client, NatsSttClient)
@@ -99,8 +99,8 @@ class TestInitNatsStt:
         self, mock_nc: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """init_nats_stt always returns a NatsSttClient — no flag gate."""
-        monkeypatch.delenv("LYRA_STT_ENABLED", raising=False)
-        monkeypatch.delenv("LYRA_STT_MODEL", raising=False)
+        monkeypatch.delenv("FACTORY_STT_ENABLED", raising=False)
+        monkeypatch.delenv("FACTORY_STT_MODEL", raising=False)
         monkeypatch.delenv("STT_MODEL_SIZE", raising=False)
         client = init_nats_stt(mock_nc)
         assert isinstance(client, NatsSttClient)
@@ -108,7 +108,7 @@ class TestInitNatsStt:
     def test_deprecated_fallback_emits_warning(
         self, mock_nc: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.delenv("LYRA_STT_MODEL", raising=False)
+        monkeypatch.delenv("FACTORY_STT_MODEL", raising=False)
         monkeypatch.setenv("STT_MODEL_SIZE", "medium")
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
@@ -124,7 +124,7 @@ class TestInitNatsStt:
     def test_new_var_wins_over_deprecated(
         self, mock_nc: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("LYRA_STT_MODEL", "tiny")
+        monkeypatch.setenv("FACTORY_STT_MODEL", "tiny")
         monkeypatch.setenv("STT_MODEL_SIZE", "large")
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always")
@@ -146,7 +146,7 @@ class TestInitNatsTts:
         self, mock_nc: MagicMock, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """init_nats_tts always returns a NatsTtsClient — no flag gate."""
-        monkeypatch.delenv("LYRA_TTS_ENABLED", raising=False)
+        monkeypatch.delenv("FACTORY_TTS_ENABLED", raising=False)
         client = init_nats_tts(mock_nc)
         assert isinstance(client, NatsTtsClient)
 
@@ -205,8 +205,8 @@ class TestInitBlobstoreLoopbackWarning:
 
         tok = tmp_path / "blobstore.tok"
         tok.write_text("test-token")
-        monkeypatch.setenv("LYRA_BLOBSTORE_TOKEN_PATH", str(tok))
-        monkeypatch.setenv("LYRA_BLOBSTORE_URL", url)
+        monkeypatch.setenv("FACTORY_BLOBSTORE_TOKEN_PATH", str(tok))
+        monkeypatch.setenv("FACTORY_BLOBSTORE_URL", url)
 
         with caplog.at_level(logging.WARNING):
             result = init_blobstore()

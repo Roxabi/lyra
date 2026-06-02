@@ -6,8 +6,8 @@ description: Standards for authoring agents, TOML configuration, plugin commands
 # Agents and Plugins — Lyra
 
 > Status: LIVING
-> Scope: `src/lyra/agents/`, `src/lyra/commands/`, `src/lyra/core/agent/`
-> Source: `src/lyra/agents/CLAUDE.md`, `src/lyra/commands/CLAUDE.md`
+> Scope: `src/factory/agents/`, `src/factory/commands/`, `src/factory/core/agent/`
+> Source: `src/factory/agents/CLAUDE.md`, `src/factory/commands/CLAUDE.md`
 
 ---
 
@@ -101,7 +101,7 @@ lyra agent assign <name> --bot telegram:main  # assign to bot
 
 ### Plugin structure
 
-Each plugin is a subdirectory under `src/lyra/commands/` with two files:
+Each plugin is a subdirectory under `src/factory/commands/` with two files:
 
 ```
 commands/

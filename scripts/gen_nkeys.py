@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """gen_nkeys.py — NATS nkey provisioning CLI (Slice 2: key-aware modes).
 
-Umbrella entry point: lyra-acl <subcommand>
+Umbrella entry point: factory-acl <subcommand>
 Aliases: lyra-genkeys, lyra-check-acl-retired, lyra-check-flows
 """
 
@@ -166,7 +166,7 @@ def _cmd_check_grants(args: argparse.Namespace) -> None:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="lyra-acl",
+        prog="factory-acl",
         description="NATS nkey provisioning and ACL validation CLI",
     )
     sub = parser.add_subparsers(dest="subcommand", metavar="<subcommand>")

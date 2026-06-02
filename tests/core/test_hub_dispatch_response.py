@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 
-from lyra.core import Hub, Response
-from lyra.core.messaging.message import (
+from factory.core import Hub, Response
+from factory.core.messaging.message import (
     InboundMessage,
     OutboundAttachment,
     OutboundMessage,
@@ -16,7 +16,7 @@ from lyra.core.messaging.message import (
 from tests.core.conftest import make_inbound_message
 
 if TYPE_CHECKING:
-    from lyra.core.hub.hub_protocol import ChannelAdapter
+    from factory.core.hub.hub_protocol import ChannelAdapter
 
 # ---------------------------------------------------------------------------
 # T5 — dispatch_response

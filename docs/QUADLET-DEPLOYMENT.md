@@ -437,7 +437,7 @@ and KV dedup bucket `lyra_outbound_audio_sent`. See ADR-077 for the full decisio
 
 ```bash
 # On M₁ (roxabituwer) — regen auth.conf from real nkey seeds in ~/.lyra/nkeys/
-sudo env "PATH=$PATH" lyra-acl genkeys --regen-authconf
+sudo env "PATH=$PATH" factory-acl genkeys --regen-authconf
 
 # Re-install the NATS auth secret from the regenerated file
 podman secret create --replace lyra-nats-auth ~/.lyra/nkeys/auth.conf
@@ -572,9 +572,9 @@ inactive. Remove them only if a full ACL audit is underway (requires regen + `ly
 
 - ADR-077 — `lyra.outbound.audio.*` subject naming + JetStream design decision
 - `deploy/nats/acl-matrix.json` — full ACL grant matrix (hub + telegram-adapter + discord-adapter identities)
-- `src/lyra/infrastructure/outbound_audio/stream_setup.py` — stream/consumer/KV config constants
-- `src/lyra/bootstrap/standalone/audio_consumer_bootstrap.py` — adapter boot sequence
-- `src/lyra/monitoring/checks_audio.py` — `audio:consumer_lag` + `audio:stream_usage` probes
+- `src/factory/infrastructure/outbound_audio/stream_setup.py` — stream/consumer/KV config constants
+- `src/factory/bootstrap/standalone/audio_consumer_bootstrap.py` — adapter boot sequence
+- `src/factory/monitoring/checks_audio.py` — `audio:consumer_lag` + `audio:stream_usage` probes
 - `deploy/CLAUDE.md` — `type=mount` secret restart requirement (general invariant)
 
 ## References

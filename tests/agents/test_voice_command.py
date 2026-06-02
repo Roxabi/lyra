@@ -16,20 +16,20 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.adapters.telegram import TelegramAdapter
-from lyra.agents.simple_agent import SimpleAgent
-from lyra.core.agent import Agent
-from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import (
+from factory.adapters.telegram import TelegramAdapter
+from factory.agents.simple_agent import SimpleAgent
+from factory.core.agent import Agent
+from factory.core.agent.agent_config import ModelConfig
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import (
     InboundMessage,
     OutboundAudio,
     Response,
     TelegramMeta,
 )
-from lyra.core.pool import Pool
-from lyra.core.ports.tts import TtsProtocol
-from lyra.core.runtime_config import RuntimeConfig
+from factory.core.pool import Pool
+from factory.core.ports.tts import TtsProtocol
+from factory.core.runtime_config import RuntimeConfig
 from tests.helpers.messages import make_test_blobref
 
 # ---------------------------------------------------------------------------
@@ -71,7 +71,7 @@ def _make_agent_config() -> Agent:
 
 
 def _make_mock_provider() -> MagicMock:
-    from lyra.llm.base import LlmResult
+    from factory.llm.base import LlmResult
 
     provider = MagicMock()
     provider.capabilities = {"streaming": False, "auth": "api_key"}

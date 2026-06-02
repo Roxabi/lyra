@@ -16,7 +16,7 @@ import json
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.messaging.render_events import (
+from factory.core.messaging.render_events import (
     RenderEvent,
     RunFinishedRenderEvent,
     RunStartedRenderEvent,

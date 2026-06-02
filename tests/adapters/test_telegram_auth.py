@@ -17,8 +17,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
+from factory.core.auth.trust import TrustLevel
+from factory.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
 
 # ---------------------------------------------------------------------------
 # File-local helpers
@@ -48,7 +48,7 @@ async def test_missing_secret_returns_401() -> None:
     """POST /webhooks/telegram/main without X-Telegram-Bot-Api-Secret-Token → 401."""
     import httpx
 
-    from lyra.adapters.telegram import TelegramAdapter
+    from factory.adapters.telegram import TelegramAdapter
 
     adapter = TelegramAdapter(
         bot_id="main",
@@ -75,7 +75,7 @@ def test_missing_token_raises_on_load(monkeypatch: pytest.MonkeyPatch) -> None:
     """load_config() raises SystemExit with 'TELEGRAM_TOKEN' when env var is absent."""
     monkeypatch.delenv("TELEGRAM_TOKEN", raising=False)
 
-    from lyra.config import load_config
+    from factory.config import load_config
 
     with pytest.raises(SystemExit, match="TELEGRAM_TOKEN"):
         load_config()
@@ -91,7 +91,7 @@ async def test_get_status_endpoint_returns_all_circuits() -> None:
     """SC-14: GET /status → JSON with all 4 circuit states."""
     import httpx
 
-    from lyra.adapters.telegram import TelegramAdapter
+    from factory.adapters.telegram import TelegramAdapter
 
     registry = CircuitRegistry()
     for name in ("claude-cli", "telegram", "discord", "hub"):
@@ -135,7 +135,7 @@ class TestTelegramAdapterInbound:
     @pytest.mark.asyncio
     async def test_any_user_forwarded_with_public_trust(self) -> None:
         """All users reach the bus with trust_level=PUBLIC (Hub resolves trust)."""
-        from lyra.adapters.telegram import TelegramAdapter
+        from factory.adapters.telegram import TelegramAdapter
 
         inbound_bus = MagicMock()
         inbound_bus.put = AsyncMock()
@@ -158,7 +158,7 @@ class TestTelegramAdapterInbound:
         """Bot-authored messages are filtered before reaching the bus."""
         from unittest.mock import patch
 
-        from lyra.adapters.telegram import TelegramAdapter
+        from factory.adapters.telegram import TelegramAdapter
 
         inbound_bus = MagicMock()
         inbound_bus.put = AsyncMock()
@@ -196,7 +196,7 @@ class TestTelegramAdapterInbound:
         """
         from unittest.mock import patch
 
-        from lyra.adapters.telegram import TelegramAdapter
+        from factory.adapters.telegram import TelegramAdapter
 
         adapter = TelegramAdapter(
             bot_id="main",
@@ -227,13 +227,14 @@ class TestTelegramAdapterInbound:
         mock_pipeline.run = AsyncMock(return_value=None)
         with (
             patch(
-                "lyra.adapters.telegram.telegram_inbound._download_audio", new=_fake_dl
+                "factory.adapters.telegram.telegram_inbound._download_audio",
+                new=_fake_dl,
             ),
             patch(
-                "lyra.adapters.telegram.telegram_inbound.normalize_audio"
+                "factory.adapters.telegram.telegram_inbound.normalize_audio"
             ) as mock_norm_audio,
             patch(
-                "lyra.adapters.telegram.telegram_inbound._pipeline",
+                "factory.adapters.telegram.telegram_inbound._pipeline",
                 mock_pipeline,
             ),
         ):

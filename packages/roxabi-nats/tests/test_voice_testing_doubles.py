@@ -42,12 +42,12 @@ requires_nats_server = pytest.mark.skipif(
 
 @pytest.fixture(autouse=True)
 def _clear_lyra_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("LYRA_ENV", raising=False)
+    monkeypatch.delenv("FACTORY_ENV", raising=False)
 
 
 @pytest.mark.parametrize("cls", [FakeTtsWorker, FakeSttWorker])
 def test_g2_prod_env_raises(cls, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("LYRA_ENV", "production")
+    monkeypatch.setenv("FACTORY_ENV", "production")
     with pytest.raises(RuntimeError, match=f"{cls.__name__} cannot run in production"):
         cls()
 
@@ -56,7 +56,7 @@ def test_g2_prod_env_raises(cls, monkeypatch: pytest.MonkeyPatch) -> None:
 def test_g2_prod_env_raises_even_when_g3_would_pass(
     cls, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("LYRA_ENV", "production")
+    monkeypatch.setenv("FACTORY_ENV", "production")
     with pytest.raises(RuntimeError):
         cls(nats_url="nats://127.0.0.1:4222")
 
@@ -106,7 +106,7 @@ async def test_g3_accepts_ipv6_loopback_full(cls) -> None:
 
 @pytest.mark.parametrize("cls", [FakeTtsWorker, FakeSttWorker])
 async def test_g3_non_loopback_raises_when_g2_unset(cls) -> None:
-    """Guard 3 fires even with LYRA_ENV unset — proves G3 independent of G2."""
+    """Guard 3 fires even with FACTORY_ENV unset — proves G3 independent of G2."""
     w = cls(nats_url="nats://10.0.0.5:4222")
     with pytest.raises(ValueError, match="loopback"):
         await w.start()
@@ -332,7 +332,7 @@ def test_voice_init_does_not_expose_testing() -> None:
 def test_g2_prod_env_case_insensitive(
     cls, value: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("LYRA_ENV", value)
+    monkeypatch.setenv("FACTORY_ENV", value)
     with pytest.raises(RuntimeError, match=f"{cls.__name__} cannot run in production"):
         cls()
 

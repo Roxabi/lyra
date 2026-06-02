@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 
-from lyra.core.messaging.render_events import (
+from factory.core.messaging.render_events import (
     RenderEvent,
     RunFinishedRenderEvent,
     RunStartedRenderEvent,
@@ -40,7 +40,7 @@ _TRACE_MSG_ID = 999
 
 def _make_discord_adapter():
     """Build a DiscordAdapter with mocked internals."""
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     return DiscordAdapter(
         bot_id="main",
@@ -288,7 +288,7 @@ async def test_intermediate_edit_uses_blue_color_and_working_title() -> None:
         # 10s gap between each call → always past debounce interval
         return float(_call_count * 10)
 
-    _patch_target = "lyra.outbound.emitter.time.monotonic"
+    _patch_target = "factory.outbound.emitter.time.monotonic"
     with patch(_patch_target, _fake_monotonic):
         # Act — drive tool events; debounce is bypassed by time patch
         await adapter.send_streaming(

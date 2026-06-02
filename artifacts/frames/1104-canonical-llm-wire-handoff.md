@@ -33,7 +33,7 @@ Edits required:
 
 Then regenerate `deploy/nats/auth.conf`:
 ```bash
-sudo env "PATH=$PATH" lyra-acl genkeys --regenerate
+sudo env "PATH=$PATH" factory-acl genkeys --regenerate
 ```
 
 Validation gates that must stay green:

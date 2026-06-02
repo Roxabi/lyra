@@ -12,7 +12,7 @@ class TestMissingEnvVars:
         monkeypatch.delenv("TELEGRAM_TOKEN", raising=False)
         monkeypatch.delenv("TELEGRAM_WEBHOOK_SECRET", raising=False)
 
-        from lyra.adapters.telegram import load_config
+        from factory.adapters.telegram import load_config
 
         with pytest.raises(SystemExit, match="TELEGRAM_TOKEN"):
             load_config()
@@ -23,7 +23,7 @@ class TestMissingEnvVars:
         monkeypatch.setenv("TELEGRAM_TOKEN", "fake")
         monkeypatch.delenv("TELEGRAM_WEBHOOK_SECRET", raising=False)
 
-        from lyra.adapters.telegram import load_config
+        from factory.adapters.telegram import load_config
 
         with pytest.raises(SystemExit, match="TELEGRAM_WEBHOOK_SECRET"):
             load_config()
@@ -31,7 +31,7 @@ class TestMissingEnvVars:
     def test_missing_discord_token_exits(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("DISCORD_TOKEN", raising=False)
 
-        from lyra.adapters.discord.discord_config import load_discord_config
+        from factory.adapters.discord.discord_config import load_discord_config
 
         with pytest.raises(SystemExit, match="DISCORD_TOKEN"):
             load_discord_config()

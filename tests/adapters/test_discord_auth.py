@@ -15,8 +15,8 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage, Platform
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import InboundMessage, Platform
 
 # ---------------------------------------------------------------------------
 # Auth helper
@@ -83,7 +83,7 @@ class TestDiscordAdapterInbound:
     @pytest.mark.asyncio
     async def test_any_user_forwarded_with_public_trust(self) -> None:
         """All users reach the bus with trust_level=PUBLIC (Hub resolves trust)."""
-        from lyra.adapters.discord import DiscordAdapter
+        from factory.adapters.discord import DiscordAdapter
 
         inbound_bus = MagicMock()
         inbound_bus.put = AsyncMock()
@@ -106,7 +106,7 @@ class TestDiscordAdapterInbound:
         """Bot-authored messages are filtered before reaching the bus."""
         from unittest.mock import patch
 
-        from lyra.adapters.discord import DiscordAdapter
+        from factory.adapters.discord import DiscordAdapter
 
         inbound_bus = MagicMock()
         adapter = DiscordAdapter(
@@ -137,7 +137,7 @@ class TestDiscordAdapterInbound:
     @pytest.mark.asyncio
     async def test_user_with_roles_forwarded_with_public_trust(self) -> None:
         """User with roles is forwarded with PUBLIC trust (roles irrelevant at adapter)."""  # noqa: E501
-        from lyra.adapters.discord import DiscordAdapter
+        from factory.adapters.discord import DiscordAdapter
 
         inbound_bus = MagicMock()
         inbound_bus.put = AsyncMock()
@@ -166,9 +166,9 @@ class TestHubTrustResolution:
 
     def test_resolves_trust_from_authenticator(self) -> None:
         """Hub re-resolves trust on dequeued message."""
-        from lyra.core.auth.authenticator import Authenticator, AuthenticatorDeps
-        from lyra.core.hub.hub import Hub
-        from lyra.core.messaging.message import InboundMessage, Platform
+        from factory.core.auth.authenticator import Authenticator, AuthenticatorDeps
+        from factory.core.hub.hub import Hub
+        from factory.core.messaging.message import InboundMessage, Platform
 
         store = MagicMock()
         store.check.return_value = TrustLevel.TRUSTED
@@ -199,8 +199,8 @@ class TestHubTrustResolution:
 
     def test_no_authenticator_returns_message_unchanged(self) -> None:
         """Hub returns message unchanged when no authenticator registered."""
-        from lyra.core.hub.hub import Hub
-        from lyra.core.messaging.message import InboundMessage
+        from factory.core.hub.hub import Hub
+        from factory.core.messaging.message import InboundMessage
 
         hub = Hub()
 
@@ -236,10 +236,10 @@ class TestTrustGuardMiddleware:
         """Message with BLOCKED trust level is dropped; next() not called."""
         from unittest.mock import AsyncMock
 
-        from lyra.core.hub.middleware import PipelineContext
-        from lyra.core.hub.middleware.middleware_stages import TrustGuardMiddleware
-        from lyra.core.hub.pipeline.message_pipeline import _DROP
-        from lyra.core.messaging.message import InboundMessage
+        from factory.core.hub.middleware import PipelineContext
+        from factory.core.hub.middleware.middleware_stages import TrustGuardMiddleware
+        from factory.core.hub.pipeline.message_pipeline import _DROP
+        from factory.core.messaging.message import InboundMessage
 
         mw = TrustGuardMiddleware()
         next_fn = AsyncMock()
@@ -262,9 +262,9 @@ class TestTrustGuardMiddleware:
         """Message with PUBLIC/TRUSTED trust level passes to next middleware."""
         from unittest.mock import AsyncMock
 
-        from lyra.core.hub.middleware import PipelineContext
-        from lyra.core.hub.middleware.middleware_stages import TrustGuardMiddleware
-        from lyra.core.messaging.message import InboundMessage
+        from factory.core.hub.middleware import PipelineContext
+        from factory.core.hub.middleware.middleware_stages import TrustGuardMiddleware
+        from factory.core.messaging.message import InboundMessage
 
         mw = TrustGuardMiddleware()
         sentinel = object()
@@ -296,10 +296,10 @@ class TestHubTrustResolutionEdgeCases:
         """Empty string user_id → auth.resolve() is called with None."""
         from unittest.mock import MagicMock
 
-        from lyra.core.auth.authenticator import Authenticator
-        from lyra.core.auth.identity import Identity
-        from lyra.core.hub.hub import Hub
-        from lyra.core.messaging.message import Platform
+        from factory.core.auth.authenticator import Authenticator
+        from factory.core.auth.identity import Identity
+        from factory.core.hub.hub import Hub
+        from factory.core.messaging.message import Platform
 
         # Arrange
         auth = MagicMock(spec=Authenticator)
@@ -321,9 +321,9 @@ class TestHubTrustResolutionEdgeCases:
 
     def test_invalid_platform_returns_message_unchanged(self) -> None:
         """Invalid platform string causes early return — message object is unchanged."""
-        from lyra.core.auth.authenticator import Authenticator, AuthenticatorDeps
-        from lyra.core.hub.hub import Hub
-        from lyra.core.messaging.message import Platform
+        from factory.core.auth.authenticator import Authenticator, AuthenticatorDeps
+        from factory.core.hub.hub import Hub
+        from factory.core.messaging.message import Platform
 
         # Arrange
         store = MagicMock()
@@ -353,9 +353,9 @@ class TestHubTrustResolutionEdgeCases:
         """
         from unittest.mock import MagicMock
 
-        from lyra.core.auth.authenticator import Authenticator
-        from lyra.core.hub.hub import Hub
-        from lyra.core.messaging.message import Platform
+        from factory.core.auth.authenticator import Authenticator
+        from factory.core.hub.hub import Hub
+        from factory.core.messaging.message import Platform
 
         # Arrange
         auth = MagicMock(spec=Authenticator)
@@ -381,7 +381,7 @@ class TestHubResolveIdentity:
 
     def test_resolve_identity_invalid_platform_returns_public(self) -> None:
         """Unknown platform returns PUBLIC (ValueError caught internally)."""
-        from lyra.core.hub.hub import Hub
+        from factory.core.hub.hub import Hub
 
         # Arrange
         hub = Hub()

@@ -15,7 +15,7 @@ pytestmark = pytest.mark.asyncio
 
 
 def _make_pool(pool_id: str = "telegram:main:chat:42"):
-    from lyra.core.pool import Pool
+    from factory.core.pool import Pool
 
     ctx = MagicMock()
     ctx.get_agent = MagicMock(return_value=None)

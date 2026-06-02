@@ -13,14 +13,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.commands.command_loader import CommandLoader
-from lyra.core.commands.command_parser import CommandParser
-from lyra.core.commands.command_router import CommandRouter, CommandRouterDeps
-from lyra.core.messaging.message import InboundMessage, Response
-from lyra.core.pool import Pool
-from lyra.integrations.base import SessionTools
-from lyra.llm.base import LlmProvider, LlmResult
+from factory.core.auth.trust import TrustLevel
+from factory.core.commands.command_loader import CommandLoader
+from factory.core.commands.command_parser import CommandParser
+from factory.core.commands.command_router import CommandRouter, CommandRouterDeps
+from factory.core.messaging.message import InboundMessage, Response
+from factory.core.pool import Pool
+from factory.integrations.base import SessionTools
+from factory.llm.base import LlmProvider, LlmResult
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -72,7 +72,7 @@ async def _stub_vault_add(msg, driver, tools, args, timeout):  # noqa: ARG001
         return Response(content="Usage: /vault-add <url>")
     url = args[0]
     content = await tools.scraper.scrape(url, timeout=timeout / 3)
-    from lyra.core.agent.agent_config import ModelConfig
+    from factory.core.agent.agent_config import ModelConfig
 
     model_cfg = ModelConfig(backend="claude-cli", model="claude-haiku-4-5-20251001")
     result = await driver.complete(
@@ -91,7 +91,7 @@ async def _stub_explain(msg, driver, tools, args, timeout):  # noqa: ARG001
         return Response(content="Usage: /explain <url>")
     url = args[0]
     content = await tools.scraper.scrape(url, timeout=timeout / 3)
-    from lyra.core.agent.agent_config import ModelConfig
+    from factory.core.agent.agent_config import ModelConfig
 
     model_cfg = ModelConfig(backend="claude-cli", model="claude-haiku-4-5-20251001")
     result = await driver.complete(
@@ -110,7 +110,7 @@ async def _stub_summarize(msg, driver, tools, args, timeout):  # noqa: ARG001
         return Response(content="Usage: /summarize <url>")
     url = args[0]
     content = await tools.scraper.scrape(url, timeout=timeout / 3)
-    from lyra.core.agent.agent_config import ModelConfig
+    from factory.core.agent.agent_config import ModelConfig
 
     model_cfg = ModelConfig(backend="claude-cli", model="claude-haiku-4-5-20251001")
     result = await driver.complete(
@@ -239,7 +239,7 @@ class TestSearchPlugin:
 
     @pytest.mark.asyncio
     async def test_search_uses_vault_search(self, tmp_path: Path) -> None:
-        from lyra.commands.search.handlers import cmd_search
+        from factory.commands.search.handlers import cmd_search
 
         tools, _, vault = make_mock_tools()
         vault_search: AsyncMock = AsyncMock(return_value="Result: python basics")

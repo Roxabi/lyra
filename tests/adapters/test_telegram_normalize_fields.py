@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lyra.core.messaging.message import InboundMessage, TelegramMeta
+from factory.core.messaging.message import InboundMessage, TelegramMeta
 
 # ---------------------------------------------------------------------------
 # T3 — _normalize() builds correct TelegramContext for private chat
@@ -21,7 +21,7 @@ from lyra.core.messaging.message import InboundMessage, TelegramMeta
 
 def test_normalize_private_chat_context() -> None:
     """normalize() on a private-chat message produces correct platform_meta."""
-    from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
+    from factory.adapters.telegram import TelegramAdapter  # ImportError expected in RED
 
     adapter = TelegramAdapter(
         bot_id="main",
@@ -60,7 +60,7 @@ def test_normalize_private_chat_context() -> None:
 
 def test_is_mention_false_in_private_chat() -> None:
     """Private chat → is_mention=False regardless of entities."""
-    from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
+    from factory.adapters.telegram import TelegramAdapter  # ImportError expected in RED
 
     adapter = TelegramAdapter(
         bot_id="main",
@@ -84,7 +84,7 @@ def test_is_mention_false_in_private_chat() -> None:
 
 def test_is_mention_true_when_entity_at_offset_zero() -> None:
     """Group chat with @mention entity at offset 0 matching bot username → True."""
-    from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
+    from factory.adapters.telegram import TelegramAdapter  # ImportError expected in RED
 
     adapter = TelegramAdapter(
         bot_id="main",
@@ -116,7 +116,7 @@ def test_is_mention_true_when_entity_at_offset_zero() -> None:
 
 def test_token_not_in_logs(caplog: pytest.LogCaptureFixture) -> None:
     """After _normalize(), no log record contains the bot token string."""
-    from lyra.adapters.telegram import TelegramAdapter  # ImportError expected in RED
+    from factory.adapters.telegram import TelegramAdapter  # ImportError expected in RED
 
     adapter = TelegramAdapter(
         bot_id="main",
@@ -133,7 +133,7 @@ def test_token_not_in_logs(caplog: pytest.LogCaptureFixture) -> None:
         entities=None,
     )
 
-    with caplog.at_level(logging.DEBUG, logger="lyra.adapters.telegram"):
+    with caplog.at_level(logging.DEBUG, logger="factory.adapters.telegram"):
         adapter.normalize(aiogram_msg)
 
     for record in caplog.records:
@@ -147,7 +147,7 @@ def test_token_not_in_logs(caplog: pytest.LogCaptureFixture) -> None:
 
 def test_normalize_captures_message_id() -> None:
     """normalize() captures message_id in platform_meta."""
-    from lyra.adapters.telegram import TelegramAdapter
+    from factory.adapters.telegram import TelegramAdapter
 
     # Arrange
     adapter = TelegramAdapter(
@@ -180,7 +180,7 @@ def test_normalize_message_id_none_when_absent() -> None:
     Note: real aiogram Message objects always have message_id (required Bot API field).
     This test exercises the getattr defensive fallback used by SimpleNamespace stubs.
     """
-    from lyra.adapters.telegram import TelegramAdapter
+    from factory.adapters.telegram import TelegramAdapter
 
     # Arrange
     adapter = TelegramAdapter(
@@ -214,7 +214,7 @@ def test_normalize_message_id_none_when_absent() -> None:
 
 def test_normalize_captures_topic_and_message_id_for_forum() -> None:
     """Forum supergroup: both topic_id and message_id captured simultaneously."""
-    from lyra.adapters.telegram import TelegramAdapter
+    from factory.adapters.telegram import TelegramAdapter
 
     # Arrange
     adapter = TelegramAdapter(
@@ -246,7 +246,7 @@ def test_normalize_captures_topic_and_message_id_for_forum() -> None:
 
 def test_normalize_empty_text() -> None:
     """normalize() with text=None produces msg.text == \"\"."""
-    from lyra.adapters.telegram import TelegramAdapter
+    from factory.adapters.telegram import TelegramAdapter
 
     adapter = TelegramAdapter(
         bot_id="main",
@@ -275,7 +275,7 @@ def test_normalize_sets_reply_to_id_when_reply_present() -> None:
     """normalize() sets reply_to_id from raw.reply_to_message.message_id."""
     from types import SimpleNamespace
 
-    from lyra.adapters.telegram import TelegramAdapter
+    from factory.adapters.telegram import TelegramAdapter
 
     adapter = TelegramAdapter(
         bot_id="main",
@@ -301,7 +301,7 @@ def test_normalize_sets_reply_to_id_when_reply_present() -> None:
 
 def test_normalize_reply_to_id_none_when_no_reply() -> None:
     """normalize() sets reply_to_id to None when raw.reply_to_message is absent."""
-    from lyra.adapters.telegram import TelegramAdapter
+    from factory.adapters.telegram import TelegramAdapter
 
     adapter = TelegramAdapter(
         bot_id="main",
@@ -331,7 +331,7 @@ def test_normalize_reply_to_id_none_when_no_reply() -> None:
 
 def test_normalize_group_chat_user_scoped_scope_id() -> None:
     """Group chat → scope_id includes user_id suffix."""
-    from lyra.adapters.telegram import TelegramAdapter
+    from factory.adapters.telegram import TelegramAdapter
 
     adapter = TelegramAdapter(
         bot_id="main",
@@ -359,7 +359,7 @@ def test_normalize_group_chat_user_scoped_scope_id() -> None:
 
 def test_normalize_group_chat_no_mention_shared_scope() -> None:
     """Group chat without @mention → scope_id is shared (no user suffix, #592)."""
-    from lyra.adapters.telegram import TelegramAdapter
+    from factory.adapters.telegram import TelegramAdapter
 
     adapter = TelegramAdapter(
         bot_id="main",
@@ -385,7 +385,7 @@ def test_normalize_group_chat_no_mention_shared_scope() -> None:
 
 def test_normalize_forum_topic_shared_scope_id() -> None:
     """Forum topic in supergroup → scope_id is shared (no user suffix, #592)."""
-    from lyra.adapters.telegram import TelegramAdapter
+    from factory.adapters.telegram import TelegramAdapter
 
     adapter = TelegramAdapter(
         bot_id="main",
@@ -412,7 +412,7 @@ def test_normalize_forum_topic_shared_scope_id() -> None:
 
 def test_normalize_private_chat_scope_id_unchanged() -> None:
     """Private chat → scope_id has no user suffix (regression)."""
-    from lyra.adapters.telegram import TelegramAdapter
+    from factory.adapters.telegram import TelegramAdapter
 
     adapter = TelegramAdapter(
         bot_id="main",
@@ -437,9 +437,9 @@ def test_normalize_private_chat_scope_id_unchanged() -> None:
 
 def test_two_users_same_group_share_pool_id() -> None:
     """Two users in the same group → same scope_id → same pool_id (#592)."""
-    from lyra.adapters.telegram import TelegramAdapter
-    from lyra.core.hub.hub_protocol import RoutingKey
-    from lyra.core.messaging.message import Platform
+    from factory.adapters.telegram import TelegramAdapter
+    from factory.core.hub.hub_protocol import RoutingKey
+    from factory.core.messaging.message import Platform
 
     adapter = TelegramAdapter(
         bot_id="main",

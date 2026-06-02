@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from lyra.core.auth.authenticator import Authenticator, AuthenticatorDeps
-from lyra.core.auth.trust import TrustLevel
-from lyra.infrastructure.stores.auth_store import AuthStore
-from lyra.infrastructure.stores.identity_alias_store import IdentityAliasStore
+from factory.core.auth.authenticator import Authenticator, AuthenticatorDeps
+from factory.core.auth.trust import TrustLevel
+from factory.infrastructure.stores.auth_store import AuthStore
+from factory.infrastructure.stores.identity_alias_store import IdentityAliasStore
 
 # ---------------------------------------------------------------------------
 # Fixtures

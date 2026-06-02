@@ -16,12 +16,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.tools.gh_token.dispenser import MIN_TOKEN_TTL_SECONDS, Dispenser
-from lyra.tools.gh_token.helper import InstallationToken, MintError, TokenCache
+from factory.tools.gh_token.dispenser import MIN_TOKEN_TTL_SECONDS, Dispenser
+from factory.tools.gh_token.helper import InstallationToken, MintError, TokenCache
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-_MINT_PATH = "lyra.tools.gh_token.dispenser.mint"
+_MINT_PATH = "factory.tools.gh_token.dispenser.mint"
 
 
 def _make_token(ttl_minutes: int) -> InstallationToken:

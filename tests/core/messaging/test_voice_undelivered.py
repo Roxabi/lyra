@@ -4,15 +4,15 @@ Validates:
 - VOICE_UNDELIVERED_MSG constant presence and tone.
 - notify_undelivered() returns an OutboundMessage with the expected text.
 - No str(exc) leakage — context kwarg is NOT embedded in the returned payload.
-- notify_undelivered is importable from both lyra.core.messaging and
-  lyra.core.messaging.voice_notify (canonical path).
+- notify_undelivered is importable from both factory.core.messaging and
+  factory.core.messaging.voice_notify (canonical path).
 - The returned OutboundMessage is usable via OutboundMessage.to_text().
 """
 
 from __future__ import annotations
 
-from lyra.core.messaging.message import OutboundMessage
-from lyra.core.messaging.voice_notify import (
+from factory.core.messaging.message import OutboundMessage
+from factory.core.messaging.voice_notify import (
     VOICE_UNDELIVERED_MSG,
     notify_undelivered,
 )
@@ -86,11 +86,11 @@ def test_notify_undelivered_no_context_does_not_raise() -> None:
 
 def test_importable_from_lyra_core_messaging() -> None:
     """VOICE_UNDELIVERED_MSG and notify_undelivered must be re-exported from
-    lyra.core.messaging so consumers can use the short import path."""
-    from lyra.core.messaging import (  # noqa: PLC0415
+    factory.core.messaging so consumers can use the short import path."""
+    from factory.core.messaging import (  # noqa: PLC0415
         VOICE_UNDELIVERED_MSG as MSG,
     )
-    from lyra.core.messaging import (
+    from factory.core.messaging import (
         notify_undelivered as fn,
     )
 

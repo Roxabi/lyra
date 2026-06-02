@@ -1,0 +1,58 @@
+#!/bin/sh
+# factory-gh — invoke `gh` with a fresh installation token sourced from the
+# factory-gh dispenser Unix socket (#1078).
+#
+# Both `factory-gh` and `gh` invoke this shim — /usr/local/bin/gh is symlinked
+# here, so plain `gh …` and `factory-gh …` are equivalent and both go through the
+# dispenser. The token is scoped to the child process via `env GH_TOKEN=… gh
+# "$@"` and never enters the parent shell's environment (AC isolation-#2).
+
+set -eu
+
+SOCK="${FACTORY_GH_DISPENSER_SOCK:-/run/factory-gh-token/dispenser.sock}"
+
+# Resolve `gh` binary explicitly — search PATH but accept FACTORY_GH_BIN override.
+GH_BIN="${FACTORY_GH_BIN:-}"
+if [ -z "$GH_BIN" ]; then
+  GH_BIN=$(command -v gh 2>/dev/null || true)
+fi
+# Guard against shim self-reference regardless of resolution source. Both the
+# PATH fallback (when FACTORY_GH_BIN is unset) and an explicit FACTORY_GH_BIN that
+# points at /usr/local/bin/gh (which symlinks to this shim) would otherwise
+# loop forever via the exec at the end of this script.
+if [ -n "$GH_BIN" ]; then
+  SELF=$(readlink -f "$0" 2>/dev/null || echo "$0")
+  RESOLVED=$(readlink -f "$GH_BIN" 2>/dev/null || echo "$GH_BIN")
+  if [ "$RESOLVED" = "$SELF" ]; then
+    echo "factory-gh: \`gh\` resolves to this shim (loop hazard) — set FACTORY_GH_BIN to the real gh binary." >&2
+    exit 127
+  fi
+fi
+if [ -z "$GH_BIN" ] || [ ! -x "$GH_BIN" ]; then
+  echo "factory-gh: gh CLI not found. Set FACTORY_GH_BIN to its absolute path or install gh into the container." >&2
+  exit 127
+fi
+
+# Talk to the dispenser. Reuse the shim transport selection from
+# git-credential-factory-gh (T6) — socat preferred, BSD nc -U fallback.
+read_dispenser() {
+  if command -v socat >/dev/null 2>&1; then
+    printf 'get\n' | socat -t 2 - "UNIX-CONNECT:${SOCK}"
+  elif command -v nc >/dev/null 2>&1 && nc -h 2>&1 | grep -q -- '-U'; then
+    printf 'get\n' | nc -U -w 2 "${SOCK}"
+  else
+    echo "factory-gh: neither socat nor BSD nc -U available" >&2
+    return 1
+  fi
+}
+
+# Extract password=… line and strip the prefix — never echo or log the token.
+TOKEN=$(read_dispenser | sed -n 's/^password=//p')
+
+if [ -z "$TOKEN" ]; then
+  echo "factory-gh: dispenser returned no token (check helper status)" >&2
+  exit 1
+fi
+
+# exec replaces the shim — no env var leaks back to the caller after `gh` exits.
+exec env GH_TOKEN="$TOKEN" "$GH_BIN" "$@"

@@ -61,7 +61,7 @@ requires `[testing]` extra).
 
 ## Consumer expectations
 
-**Lyra hub/adapters** (`src/lyra/nats/`) — workspace dependency, uses
+**Lyra hub/adapters** (`src/factory/nats/`) — workspace dependency, uses
 `[testing]` extra in dev/CI.
 
 **Satellite services** (voiceCLI, imageCLI, roxabi-vault, future) — pin by git

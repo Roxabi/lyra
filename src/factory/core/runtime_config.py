@@ -1,0 +1,293 @@
+"""RuntimeConfig — mutable overlay for agent runtime parameters (issue #135)."""
+
+from __future__ import annotations
+
+import logging
+import re
+import tomllib
+from collections.abc import Callable
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from pydantic import BaseModel, ConfigDict
+from pydantic_core import PydanticUndefinedType
+
+if TYPE_CHECKING:
+    from factory.core.agent import Agent
+
+log = logging.getLogger(__name__)
+
+_STYLES = {"concise", "detailed", "technical", "friendly"}
+_STYLE_INSTRUCTIONS: dict[str, str] = {
+    "detailed": (
+        "Provide thorough, detailed explanations. Elaborate on context and reasoning."
+    ),
+    "technical": (
+        "Use precise technical language. Prefer exact terms over approximations."
+    ),
+    "friendly": "Be warm and conversational. Use an approachable, casual tone.",
+}
+_VALID_PARAMS = {
+    "style",
+    "language",
+    "temperature",
+    "model",
+    "max_steps",
+    "extra_instructions",
+    "debounce_ms",
+    "cancel_on_new_message",
+}
+
+
+class EffectiveConfig(BaseModel):
+    """Resolved configuration used by the agent for a single process() call."""
+
+    model_config = ConfigDict(frozen=True)
+
+    model: str
+    temperature: float
+    system_prompt: str
+    max_turns: int | None  # None = unlimited
+
+
+class RuntimeConfig(BaseModel):
+    """Mutable overlay for agent runtime parameters.
+
+    Fields mirror _VALID_PARAMS. Defaults produce no-op overlay behaviour.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    style: str = "concise"
+    language: str = "auto"
+    temperature: float = 0.7
+    model: str | None = None
+    max_steps: int | None = None
+    extra_instructions: str = ""
+    debounce_ms: int = 300
+    cancel_on_new_message: bool = False
+
+    def overlay(self, base: Agent) -> EffectiveConfig:
+        """Build EffectiveConfig by merging this overlay on top of base Agent config."""
+        parts: list[str] = [base.system_prompt] if base.system_prompt else []
+
+        # "concise" is the no-op default, intentionally absent from _STYLE_INSTRUCTIONS.
+        # The != "concise" guard preserves this: even if "concise" is later added to the
+        # dict, it won't be injected — keeping concise a true no-injection default.
+        if self.style != "concise" and self.style in _STYLE_INSTRUCTIONS:
+            parts.append(_STYLE_INSTRUCTIONS[self.style])
+
+        if self.language != "auto":
+            parts.append(f"Reply in {self.language}.")
+
+        if self.extra_instructions:
+            parts.append(self.extra_instructions)
+
+        system_prompt = "\n\n".join(parts)
+
+        return EffectiveConfig(
+            model=self.model or base.llm_config.model,
+            temperature=self.temperature,
+            system_prompt=system_prompt,
+            max_turns=self.max_steps or base.llm_config.max_turns,
+        )
+
+    def save(self, path: Path) -> None:
+        """Write only non-default values to a flat TOML file."""
+        data: dict[str, object] = {}
+        for key in _VALID_PARAMS:
+            field_info = RuntimeConfig.model_fields.get(key)
+            default = field_info.default if field_info is not None else None
+            if isinstance(default, PydanticUndefinedType):
+                continue
+            value = getattr(self, key)
+            if value != default:
+                data[key] = value
+
+        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        path.write_text(_write_flat_toml(data))
+        path.chmod(0o600)
+
+    @classmethod
+    def load(cls, path: Path) -> RuntimeConfig:
+        """Load RuntimeConfig from a TOML file.
+
+        Returns cls() if file is absent or corrupt.
+        """
+        if not path.exists():
+            return cls()
+        try:
+            with path.open("rb") as f:
+                data = tomllib.load(f)
+        except (tomllib.TOMLDecodeError, OSError) as exc:
+            log.warning("Corrupt runtime config at %s — using defaults: %s", path, exc)
+            return cls()
+
+        rc = cls()
+        for key, value in data.items():
+            if key not in _VALID_PARAMS:
+                log.warning("Unknown runtime config key %r in %s — skipping", key, path)
+                continue
+            try:
+                # Convert TOML-parsed native types (float, int) to str so set_param
+                # can validate and coerce them. str(0.7) → "0.7" → float("0.7") = 0.7
+                # round-trips cleanly for all values that tomllib produces in practice.
+                str_value = value if isinstance(value, str) else str(value)
+                rc = set_param(rc, key, str_value)
+            except ValueError as exc:
+                log.warning(
+                    "Invalid runtime config value for %r: %s — skipping", key, exc
+                )
+        return rc
+
+    @classmethod
+    def reset(
+        cls,
+        instance: RuntimeConfig | None = None,
+        key: str | None = None,
+    ) -> RuntimeConfig:
+        """Reset all fields (key=None) or a single field to its default.
+
+        Raises ValueError for unknown key.
+        """
+        if key is None:
+            return cls()
+        if key not in _VALID_PARAMS:
+            raise ValueError(f"Unknown config key: {key!r}")
+        if instance is None:
+            instance = cls()
+        field_info = cls.model_fields.get(key)
+        default = field_info.default if field_info is not None else None
+        return instance.model_copy(update={key: default})
+
+
+def _write_flat_toml(data: dict[str, object]) -> str:
+    """Serialize a flat dict to TOML string. Caller must filter out None values."""
+    lines = []
+    for key, value in data.items():
+        if isinstance(value, str):
+            lines.append(f'{key} = "{value}"')
+        elif isinstance(value, bool):
+            lines.append(f"{key} = {'true' if value else 'false'}")
+        elif isinstance(value, (int, float)):
+            lines.append(f"{key} = {value}")
+    return "\n".join(lines) + "\n" if lines else ""
+
+
+def _parse_style(value: str) -> str:
+    if value not in _STYLES:
+        raise ValueError(f"Invalid style {value!r}. Valid: {sorted(_STYLES)}")
+    return value
+
+
+def _parse_temperature(value: str) -> float:
+    try:
+        fval = float(value)
+    except (ValueError, TypeError):
+        raise ValueError(f"temperature must be a float between 0 and 1, got {value!r}")
+    if not 0.0 <= fval <= 1.0:
+        raise ValueError(f"temperature must be between 0 and 1, got {fval}")
+    return fval
+
+
+def _parse_max_steps(value: str) -> int:
+    try:
+        iv = int(value)
+    except (ValueError, TypeError):
+        raise ValueError(f"max_steps must be a positive integer, got {value!r}")
+    if iv <= 0:
+        raise ValueError(f"max_steps must be a positive integer (≥1), got {iv}")
+    if iv > 50:
+        raise ValueError(f"max_steps too large ({iv}). Maximum is 50.")
+    return iv
+
+
+def _parse_model(value: str) -> str | None:
+    if value.lower() in ("", "none"):
+        return None
+    if not re.match(r"^[a-zA-Z0-9_.:-]+$", value):
+        raise ValueError(
+            f"Invalid model ID {value!r}. "
+            "Only alphanumerics, '.', '_', ':', '-' are allowed."
+        )
+    return value
+
+
+def _parse_language(value: str) -> str:
+    if value != "auto" and not re.match(r"^[a-z]{2,8}$", value):
+        raise ValueError(
+            f"Invalid language {value!r}. "
+            "Use 'auto' or a 2-8 char lowercase code (e.g. 'fr', 'en')."
+        )
+    return value
+
+
+def _parse_debounce_ms(value: str) -> int:
+    try:
+        iv = int(value)
+    except (ValueError, TypeError):
+        raise ValueError(f"debounce_ms must be an integer (0–5000), got {value!r}")
+    if iv < 0 or iv > 5000:
+        raise ValueError(f"debounce_ms must be between 0 and 5000, got {iv}")
+    return iv
+
+
+def _parse_cancel_on_new_message(value: str) -> bool:
+    if value.lower() in ("true", "1", "yes", "on"):
+        return True
+    if value.lower() in ("false", "0", "no", "off"):
+        return False
+    raise ValueError(f"cancel_on_new_message must be true or false, got {value!r}")
+
+
+def _parse_extra_instructions(value: str) -> str:
+    if len(value) > 500:
+        raise ValueError(
+            f"extra_instructions too long ({len(value)} chars). Max is 500."
+        )
+    return value
+
+
+_PARSERS: dict[str, Callable[[str], object]] = {
+    "style": _parse_style,
+    "temperature": _parse_temperature,
+    "max_steps": _parse_max_steps,
+    "model": _parse_model,
+    "language": _parse_language,
+    "debounce_ms": _parse_debounce_ms,
+    "cancel_on_new_message": _parse_cancel_on_new_message,
+    "extra_instructions": _parse_extra_instructions,
+}
+
+
+def set_param(rc: RuntimeConfig, key: str, value: str) -> RuntimeConfig:
+    """Validate and apply a single key=value update to RuntimeConfig.
+
+    Returns a new RuntimeConfig instance via model_copy().
+    Raises ValueError on unknown key or invalid value.
+    """
+    if key not in _VALID_PARAMS:
+        raise ValueError(f"Unknown config key: {key!r}. Valid: {sorted(_VALID_PARAMS)}")
+
+    parser = _PARSERS[key]
+    parsed = parser(value)
+    return rc.model_copy(update={key: parsed})
+
+
+class RuntimeConfigHolder:
+    """Mutable single-cell container shared by the agent and CommandRouter.
+
+    Both hold the *same* holder instance. Mutations replace `holder.value`
+    (a new RuntimeConfig), so all readers see the updated config immediately.
+
+    Concurrency contract: designed for use on a single asyncio event loop.
+    `.value` assignment is GIL-atomic in CPython — no locking is needed provided
+    no coroutine yields between reading and re-assigning the same holder.
+    If porting to free-threaded Python (PEP 703) or adding run_in_executor
+    paths, protect mutations with an asyncio.Lock.
+    """
+
+    __slots__ = ("value",)
+
+    def __init__(self, value: RuntimeConfig) -> None:
+        self.value = value

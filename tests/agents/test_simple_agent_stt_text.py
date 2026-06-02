@@ -15,9 +15,9 @@ from __future__ import annotations
 from typing import cast
 from unittest.mock import AsyncMock
 
-from lyra.agents.simple_agent import SimpleAgent
-from lyra.core.messaging.message import InboundMessage, Response
-from lyra.core.ports.stt import TranscriptionResult
+from factory.agents.simple_agent import SimpleAgent
+from factory.core.messaging.message import InboundMessage, Response
+from factory.core.ports.stt import TranscriptionResult
 
 from .conftest import (
     make_cli_pool,

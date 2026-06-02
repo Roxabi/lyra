@@ -11,7 +11,7 @@ generated: 2026-05-31
 
 Extract the matrix→effective-grants expansion into a shared `scripts/_effective.py`
 (called by both `render_auth_conf` and the new gate, so they cannot diverge), then add
-`lyra-acl check grants` — a CI falsification gate that asserts the NATS subjects the code
+`factory-acl check grants` — a CI falsification gate that asserts the NATS subjects the code
 requires per stream/KV (manifest `deploy/nats/code-subjects.json`, transcribed verbatim
 from ADR-079 §d) are ⊆ each provisioner/consumer identity's effective ACL grants.
 
@@ -45,7 +45,7 @@ flowchart TD
     EG --> RUN
     SC --> RUN
     M --> LCS --> RUN
-    RUN --> CLI["lyra-acl check grants"]
+    RUN --> CLI["factory-acl check grants"]
     CLI --> CI[".github/workflows/ci.yml step"]
 ```
 
@@ -174,7 +174,7 @@ Covered: 15/15 success criteria. Untraced tasks: 0. Exemptions: none.
 | `render_auth_conf` calls `effective_grants`; test_renderer green | T2 |
 | `check-acl-authconf-drift.sh` passes (byte-identical) | T2 (RED-GATE) |
 | `code-subjects.json` exists, resource-keyed, 3 entries | T3 |
-| `lyra-acl check grants` exit 0 on committed matrix+manifest, OK line | T4, T5 |
+| `factory-acl check grants` exit 0 on committed matrix+manifest, OK line | T4, T5 |
 | `lyra-check-grants` alias resolves | T5 |
 | CI step after "Check request-reply flows" | T5 |
 | `test_check_grants_passes_on_valid_matrix` | T6 |
@@ -263,10 +263,10 @@ Verify: `cd <worktree> && uv run python scripts/check_grants.py --matrix deploy/
 - `.github/workflows/ci.yml` after the "Check request-reply flows" step (`uv run lyra-check-flows`):
   ```yaml
   - name: Check ACL code coverage (ADR-079)
-    run: uv run lyra-acl check grants --matrix deploy/nats/acl-matrix.json --code-subjects deploy/nats/code-subjects.json
+    run: uv run factory-acl check grants --matrix deploy/nats/acl-matrix.json --code-subjects deploy/nats/code-subjects.json
   ```
-Verify: `uv run lyra-acl check grants` → exit 0 OK line; `uv run lyra-check-grants` → same;
-`uv run lyra-acl check --help` lists `grants`.
+Verify: `uv run factory-acl check grants` → exit 0 OK line; `uv run lyra-check-grants` → same;
+`uv run factory-acl check --help` lists `grants`.
 
 ### Slice 3 — Tests (tester-A · subject: acl-tests)
 
@@ -300,7 +300,7 @@ Verify: `uv run pytest tests/scripts/test_effective.py -q` green.
 - After Slice 1 (T2): `uv run pytest tests/scripts/test_renderer.py -q` green **AND**
   `bash scripts/check-acl-authconf-drift.sh` exit 0 (refactor is byte-identical — the
   prod-safety proof). ← hard gate before Slice 2 builds on the shared fn.
-- After Slice 2 (T5): `uv run lyra-acl check grants` exit 0 on real matrix+manifest.
+- After Slice 2 (T5): `uv run factory-acl check grants` exit 0 on real matrix+manifest.
 - After Slice 3 (T6,T7): `uv run pytest tests/scripts/ -q` green; `uv run ruff check scripts/ tests/scripts/`; `uv run pyright scripts/`.
 
 ## Task Seeding Blueprint

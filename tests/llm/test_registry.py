@@ -1,7 +1,7 @@
 """Tests for ProviderRegistry.
 
 RED phase — these tests will fail until S1 implementation lands.
-Source: src/lyra/llm/registry.py
+Source: src/factory/llm/registry.py
 
 Integration tests: real ProviderRegistry wired with mock drivers.
 """
@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lyra.llm.registry import ProviderRegistry
+from factory.llm.registry import ProviderRegistry
 
 # ---------------------------------------------------------------------------
 # Helpers

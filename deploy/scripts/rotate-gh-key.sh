@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Lyra GitHub App PEM rotation — replaces the lyra-gh-pem Podman secret and
+# Lyra GitHub App PEM rotation — replaces the factory-gh-pem Podman secret and
 # restarts the helper container that mounts it.
 #
-# Sidecar Pod design (post #1078): the PEM is consumed only by lyra-gh-helper
-# (uid 1501). lyra-clipool reads tokens via the dispenser socket, never the PEM,
+# Sidecar Pod design (post #1078): the PEM is consumed only by factory-gh-helper
+# (uid 1501). factory-clipool reads tokens via the dispenser socket, never the PEM,
 # so it does NOT need to restart for a key rotation. The downtime budget covers
 # the helper restart window during which the dispenser socket is briefly absent.
 #
@@ -15,7 +15,7 @@
 # Usage: rotate-gh-key.sh /abs/path/to/new.pem
 #
 # Acceptance (#1078 AC#15): ≤10s end-to-end from `secret rm` to dispenser
-# socket reachable from inside lyra-clipool. Measured 2026-05-06 on M₁
+# socket reachable from inside factory-clipool. Measured 2026-05-06 on M₁
 # (Podman 5.7.0): 0.58s.
 set -euo pipefail
 export LC_ALL=C
@@ -29,25 +29,25 @@ NEW_PEM="${1:-}"
 RESOLVED=$(realpath -e "$NEW_PEM" 2>/dev/null) \
   || { printf 'PEM file not found or unresolvable: %q\n' "$NEW_PEM" >&2; exit 2; }
 # Reject paths outside trusted directories.
-[[ "$RESOLVED" == /home/lyra/secrets/* || "$RESOLVED" == /etc/lyra/* ]] \
-  || { echo "PEM path outside trusted dirs (/home/lyra/secrets/, /etc/lyra/): $RESOLVED" >&2; exit 2; }
+[[ "$RESOLVED" == /home/factory/secrets/* || "$RESOLVED" == /etc/factory/* ]] \
+  || { echo "PEM path outside trusted dirs (/home/factory/secrets/, /etc/factory/): $RESOLVED" >&2; exit 2; }
 
 # Tolerate first-time creation: rm only if exists.
-if podman secret inspect lyra-gh-pem &>/dev/null; then
-  podman secret rm lyra-gh-pem
+if podman secret inspect factory-gh-pem &>/dev/null; then
+  podman secret rm factory-gh-pem
 fi
-podman secret create lyra-gh-pem "$RESOLVED"
-systemctl --user restart lyra-gh-helper.service
+podman secret create factory-gh-pem "$RESOLVED"
+systemctl --user restart factory-gh-helper.service
 
 # Gate on helper Up AND dispenser socket reachable from clipool — the latter is
 # the actual user-visible criterion (clipool must be able to mint tokens again).
 # Bound the wait at 10s (20×0.5s).
 for _ in $(seq 20); do
-  if podman ps --filter name=lyra-gh-helper --format '{{.Status}}' \
+  if podman ps --filter name=factory-gh-helper --format '{{.Status}}' \
        | grep -q '^Up ' \
-     && podman exec lyra-clipool test -S /run/lyra-gh-token/dispenser.sock \
+     && podman exec factory-clipool test -S /run/factory-gh-token/dispenser.sock \
           2>/dev/null; then
-    echo "lyra-gh-helper restarted, dispenser reachable, secret rotated."
+    echo "factory-gh-helper restarted, dispenser reachable, secret rotated."
     exit 0
   fi
   sleep 0.5

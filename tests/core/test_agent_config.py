@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from lyra.core.agent.agent_config import ModelConfig
+from factory.core.agent.agent_config import ModelConfig
 
 
 class TestModelConfig:
@@ -24,25 +24,25 @@ class TestModelConfig:
         assert cfg.tools == ()
 
     def test_backend_litellm_rejected(self) -> None:
-        from lyra.core.agent.agent_builder import _validate_backend_model
+        from factory.core.agent.agent_builder import _validate_backend_model
 
         with pytest.raises(ValueError, match="Invalid backend"):
             _validate_backend_model("litellm", "claude-opus-4-6", "test-agent")
 
     def test_backend_ollama_rejected(self) -> None:
-        from lyra.core.agent.agent_builder import _validate_backend_model
+        from factory.core.agent.agent_builder import _validate_backend_model
 
         with pytest.raises(ValueError, match="Invalid backend"):
             _validate_backend_model("ollama", "claude-opus-4-6", "test-agent")
 
     def test_backend_nats_accepted(self) -> None:
-        from lyra.core.agent.agent_builder import _validate_backend_model
+        from factory.core.agent.agent_builder import _validate_backend_model
 
         # must not raise
         _validate_backend_model("nats", "claude-sonnet-4-6", "test-agent")
 
     def test_backend_claude_cli_accepted(self) -> None:
-        from lyra.core.agent.agent_builder import _validate_backend_model
+        from factory.core.agent.agent_builder import _validate_backend_model
 
         # must not raise
         _validate_backend_model("claude-cli", "claude-opus-4-6", "test-agent")

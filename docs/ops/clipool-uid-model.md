@@ -29,7 +29,7 @@ absent from `deploy/lyra-gh/git.config.tmpl`.
 
 ## Regression catch — startup probe
 
-`src/lyra/bootstrap/infra/git_ownership_probe.py` runs at clipool startup. It invokes
+`src/factory/bootstrap/infra/git_ownership_probe.py` runs at clipool startup. It invokes
 `git rev-parse HEAD` on a known bind-mounted repo (default:
 `/home/lyra/projects/lyra`; overridable via `LYRA_OWNERSHIP_PROBE_PATH`). If the userns
 mapping ever breaks — for example because someone removes `keep-id` from `lyra-gh.pod`
@@ -63,7 +63,7 @@ Upstream tracking: https://github.com/containers/podman/issues/24918
 
 - `deploy/quadlet/lyra-gh.pod` — line `UserNS=keep-id:uid=1500,gid=1500`
 - `deploy/lyra-gh/git.config.tmpl` — post-T2 state: no `[safe]` block
-- `src/lyra/bootstrap/infra/git_ownership_probe.py` — startup ownership probe
+- `src/factory/bootstrap/infra/git_ownership_probe.py` — startup ownership probe
 - `artifacts/specs/1149-safe-directory-idmap-spec.mdx` — full rationale, Podman #24918
   empirical validation, and threat model
 - ADR-055 (`docs/architecture/adr/055-quadlet-ecosystem-conventions.mdx`) — absorbed ADR-054

@@ -19,7 +19,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.bootstrap.factory.config import _load_tool_display_config
+from factory.bootstrap.factory.config import _load_tool_display_config
 from tests.conftest import _LOAD_BOT_TOKEN_PATH
 
 # ---------------------------------------------------------------------------
@@ -60,15 +60,15 @@ async def test_wired_path_threads_tool_display_config_to_telegram() -> None:
     contract is now: construct without the kwarg, then call configure_tool_display()
     on the returned instance.
     """
-    from lyra.bootstrap.wiring.bootstrap_wiring import (
+    from factory.bootstrap.wiring.bootstrap_wiring import (
         TelegramWiringDeps,
         wire_telegram_adapters,
     )
-    from lyra.config import TelegramBotConfig
-    from lyra.core.auth.authenticator import Authenticator, AuthenticatorDeps
-    from lyra.core.auth.trust import TrustLevel
-    from lyra.core.hub.hub import Hub
-    from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
+    from factory.config import TelegramBotConfig
+    from factory.core.auth.authenticator import Authenticator, AuthenticatorDeps
+    from factory.core.auth.trust import TrustLevel
+    from factory.core.hub.hub import Hub
+    from factory.core.lifecycle.circuit_breaker import CircuitRegistry
 
     raw_config = {"tool_display": {"bash_max_len": 200, "show": {"web_fetch": False}}}
 
@@ -96,7 +96,7 @@ async def test_wired_path_threads_tool_display_config_to_telegram() -> None:
 
     with (
         patch(
-            "lyra.bootstrap.wiring.bootstrap_wiring.TelegramAdapter",
+            "factory.bootstrap.wiring.bootstrap_wiring.TelegramAdapter",
             side_effect=_capture_adapter,
         ),
         patch(
@@ -141,15 +141,15 @@ async def test_wired_path_threads_tool_display_config_to_discord() -> None:
     contract is now: construct without the kwarg, then call configure_tool_display()
     on the returned instance.
     """
-    from lyra.bootstrap.wiring.bootstrap_wiring import (
+    from factory.bootstrap.wiring.bootstrap_wiring import (
         DiscordWiringDeps,
         wire_discord_adapters,
     )
-    from lyra.config import DiscordBotConfig
-    from lyra.core.auth.authenticator import Authenticator, AuthenticatorDeps
-    from lyra.core.auth.trust import TrustLevel
-    from lyra.core.hub.hub import Hub
-    from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
+    from factory.config import DiscordBotConfig
+    from factory.core.auth.authenticator import Authenticator, AuthenticatorDeps
+    from factory.core.auth.trust import TrustLevel
+    from factory.core.hub.hub import Hub
+    from factory.core.lifecycle.circuit_breaker import CircuitRegistry
 
     # Confirm loader parses correctly — the adapter must receive equivalent values.
     loader_result = _load_tool_display_config(
@@ -180,7 +180,7 @@ async def test_wired_path_threads_tool_display_config_to_discord() -> None:
 
     with (
         patch(
-            "lyra.bootstrap.wiring.bootstrap_wiring.DiscordAdapter",
+            "factory.bootstrap.wiring.bootstrap_wiring.DiscordAdapter",
             side_effect=_capture_discord_adapter,
         ),
         patch(
@@ -188,7 +188,7 @@ async def test_wired_path_threads_tool_display_config_to_discord() -> None:
             return_value=("dc-token", None),
         ),
         patch(
-            "lyra.infrastructure.stores.thread_store.ThreadStore",
+            "factory.infrastructure.stores.thread_store.ThreadStore",
             return_value=mock_thread_store,
         ),
     ):
@@ -235,15 +235,15 @@ async def test_wired_path_with_absent_tool_display_section_uses_defaults() -> No
     ToolDisplayConfig() defaults — both paths are acceptable. This test verifies
     the wiring_helpers path which passes a default ToolDisplayConfig(), not None.
     """
-    from lyra.bootstrap.wiring.bootstrap_wiring import (
+    from factory.bootstrap.wiring.bootstrap_wiring import (
         TelegramWiringDeps,
         wire_telegram_adapters,
     )
-    from lyra.config import TelegramBotConfig
-    from lyra.core.auth.authenticator import Authenticator, AuthenticatorDeps
-    from lyra.core.auth.trust import TrustLevel
-    from lyra.core.hub.hub import Hub
-    from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
+    from factory.config import TelegramBotConfig
+    from factory.core.auth.authenticator import Authenticator, AuthenticatorDeps
+    from factory.core.auth.trust import TrustLevel
+    from factory.core.hub.hub import Hub
+    from factory.core.lifecycle.circuit_breaker import CircuitRegistry
 
     # No [tool_display] section — loader returns defaults
     tool_display_cfg = _load_tool_display_config({})
@@ -268,7 +268,7 @@ async def test_wired_path_with_absent_tool_display_section_uses_defaults() -> No
 
     with (
         patch(
-            "lyra.bootstrap.wiring.bootstrap_wiring.TelegramAdapter",
+            "factory.bootstrap.wiring.bootstrap_wiring.TelegramAdapter",
             side_effect=_capture_adapter,
         ),
         patch(
@@ -315,7 +315,7 @@ async def test_standalone_path_threads_tool_display_config_to_telegram() -> None
     bootstrap contract is now: construct without the kwarg, then call
     configure_tool_display() on the returned instance with the parsed config.
     """
-    from lyra.bootstrap.standalone.adapter_standalone import (
+    from factory.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
 
@@ -358,17 +358,17 @@ async def test_standalone_path_threads_tool_display_config_to_telegram() -> None
 
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
         patch(
-            "lyra.adapters.telegram.TelegramAdapter",
+            "factory.adapters.telegram.TelegramAdapter",
             side_effect=_capture_tg_adapter,
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=mock_listener,
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
+            "factory.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=True),
         ),
         patch(
@@ -376,23 +376,23 @@ async def test_standalone_path_threads_tool_display_config_to_telegram() -> None
             return_value=("test-token", None),
         ),
         patch(
-            "lyra.infrastructure.stores.turn_store.TurnStore",
+            "factory.infrastructure.stores.turn_store.TurnStore",
             return_value=mock_turn_store,
         ),
         patch(
-            "lyra.adapters.telegram.telegram._telegram_scope_resolver",
+            "factory.adapters.telegram.telegram._telegram_scope_resolver",
             MagicMock(),
         ),
         patch(
-            "lyra.adapters.telegram.telegram_outbound._typing_worker",
+            "factory.adapters.telegram.telegram_outbound._typing_worker",
             MagicMock(),
         ),
         patch(
-            "lyra.typing.TypingListener",
+            "factory.typing.TypingListener",
             return_value=mock_tg_typing_listener,
         ),
         patch(
-            "lyra.typing.make_typing_factory",
+            "factory.typing.make_typing_factory",
             return_value=MagicMock(),
         ),
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
@@ -421,7 +421,7 @@ async def test_standalone_path_threads_tool_display_config_to_discord() -> None:
     from DiscordAdapter.__init__; the standalone bootstrap must call the setter
     after construction (adapter_standalone.py callsite).
     """
-    from lyra.bootstrap.standalone.adapter_standalone import (
+    from factory.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
 
@@ -465,17 +465,17 @@ async def test_standalone_path_threads_tool_display_config_to_discord() -> None:
 
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
         patch(
-            "lyra.adapters.discord.DiscordAdapter",
+            "factory.adapters.discord.DiscordAdapter",
             side_effect=_capture_dc_adapter,
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_discord.NatsOutboundListener",
+            "factory.bootstrap.wiring.standalone_discord.NatsOutboundListener",
             return_value=mock_listener,
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_discord.wait_for_hub",
+            "factory.bootstrap.wiring.standalone_discord.wait_for_hub",
             AsyncMock(return_value=True),
         ),
         patch(
@@ -483,19 +483,19 @@ async def test_standalone_path_threads_tool_display_config_to_discord() -> None:
             return_value=("test-token", None),
         ),
         patch(
-            "lyra.infrastructure.stores.thread_store.ThreadStore",
+            "factory.infrastructure.stores.thread_store.ThreadStore",
             return_value=mock_thread_store,
         ),
         patch(
-            "lyra.infrastructure.stores.turn_store.TurnStore",
+            "factory.infrastructure.stores.turn_store.TurnStore",
             return_value=mock_turn_store,
         ),
         patch(
-            "lyra.typing.TypingListener",
+            "factory.typing.TypingListener",
             return_value=mock_dc_typing_listener,
         ),
         patch(
-            "lyra.typing.make_typing_factory",
+            "factory.typing.make_typing_factory",
             return_value=MagicMock(),
         ),
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),

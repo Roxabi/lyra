@@ -16,7 +16,7 @@ class TestWatchChannels:
     @pytest.mark.asyncio
     async def test_watch_channel_message_processed_without_mention(self) -> None:
         """Message in a watch channel is processed even without @mention."""
-        from lyra.adapters.discord import DiscordAdapter
+        from factory.adapters.discord import DiscordAdapter
 
         inbound_bus = MagicMock()
         inbound_bus.put = AsyncMock()
@@ -60,7 +60,7 @@ class TestWatchChannels:
     @pytest.mark.asyncio
     async def test_watch_channel_creates_auto_thread(self) -> None:
         """Watch channel message triggers auto-thread creation."""
-        from lyra.adapters.discord import DiscordAdapter
+        from factory.adapters.discord import DiscordAdapter
 
         inbound_bus = MagicMock()
         inbound_bus.put = AsyncMock()
@@ -102,7 +102,7 @@ class TestWatchChannels:
         create_thread_mock.assert_awaited_once()
         inbound_bus.put.assert_awaited_once()
         _platform_arg, hub_msg = inbound_bus.put.call_args[0]
-        from lyra.core.messaging.message import DiscordMeta
+        from factory.core.messaging.message import DiscordMeta
 
         assert isinstance(hub_msg.platform_meta, DiscordMeta)
         assert hub_msg.platform_meta.thread_id == 8888
@@ -110,7 +110,7 @@ class TestWatchChannels:
     @pytest.mark.asyncio
     async def test_non_watch_channel_still_filtered(self) -> None:
         """Message in a non-watch channel without mention is still filtered out."""
-        from lyra.adapters.discord import DiscordAdapter
+        from factory.adapters.discord import DiscordAdapter
 
         inbound_bus = MagicMock()
         inbound_bus.put = AsyncMock()
@@ -144,7 +144,7 @@ class TestWatchChannels:
     @pytest.mark.asyncio
     async def test_watch_channel_auto_thread_disabled(self) -> None:
         """Watch channel + auto_thread=False: message processed, no thread created."""
-        from lyra.adapters.discord import DiscordAdapter
+        from factory.adapters.discord import DiscordAdapter
 
         inbound_bus = MagicMock()
         inbound_bus.put = AsyncMock()
@@ -189,7 +189,7 @@ class TestWatchChannels:
     @pytest.mark.asyncio
     async def test_watch_channel_thread_followup_not_treated_as_watch(self) -> None:
         """Thread message uses owned-thread path, not watch channel."""
-        from lyra.adapters.discord import DiscordAdapter
+        from factory.adapters.discord import DiscordAdapter
 
         inbound_bus = MagicMock()
         inbound_bus.put = AsyncMock()
@@ -228,7 +228,7 @@ class TestWatchChannels:
     @pytest.mark.asyncio
     async def test_watch_channel_create_thread_exception_fallback(self) -> None:
         """Watch channel + create_thread raises: message still processed."""
-        from lyra.adapters.discord import DiscordAdapter
+        from factory.adapters.discord import DiscordAdapter
 
         inbound_bus = MagicMock()
         inbound_bus.put = AsyncMock()

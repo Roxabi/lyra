@@ -8,14 +8,14 @@ from unittest.mock import AsyncMock, MagicMock
 
 import discord
 
-from lyra.inbound.attachment_ingest import MAX_ATTACHMENT_INGEST_BYTES
+from factory.inbound.attachment_ingest import MAX_ATTACHMENT_INGEST_BYTES
 
 
 class TestDiscordAttachments:
     """DiscordAdapter.normalize() extracts non-audio attachments."""
 
     def _make_adapter(self):
-        from lyra.adapters.discord import DiscordAdapter
+        from factory.adapters.discord import DiscordAdapter
 
         adapter = DiscordAdapter(
             bot_id="main",

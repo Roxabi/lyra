@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-import lyra.bootstrap.factory.config.config_loader as config_loader_mod
-from lyra.bootstrap.factory.config import (
+import factory.bootstrap.factory.config.config_loader as config_loader_mod
+from factory.bootstrap.factory.config import (
     _load_circuit_config,
     _load_raw_config,
 )
@@ -25,8 +25,8 @@ class TestLoadCircuitConfigDefaults:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """SC-16: Missing lyra.toml → 4 CBs with failure_threshold=5, recovery_timeout=60."""  # noqa: E501
-        # Arrange — point LYRA_CONFIG at a nonexistent file
-        monkeypatch.setenv("LYRA_CONFIG", str(tmp_path / "nonexistent.toml"))
+        # Arrange — point FACTORY_CONFIG at a nonexistent file
+        monkeypatch.setenv("FACTORY_CONFIG", str(tmp_path / "nonexistent.toml"))
         monkeypatch.setattr(
             config_loader_mod,
             "_validate_config_path",
@@ -52,9 +52,9 @@ class TestLoadCircuitConfigDefaults:
     def test_load_circuit_config_uses_defaults_when_env_not_set(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """SC-16: LYRA_CONFIG unset and no lyra.toml in cwd → defaults returned."""
+        """SC-16: FACTORY_CONFIG unset and no lyra.toml in cwd → defaults returned."""
         # Arrange — unset env var and ensure cwd has no lyra.toml
-        monkeypatch.delenv("LYRA_CONFIG", raising=False)
+        monkeypatch.delenv("FACTORY_CONFIG", raising=False)
         monkeypatch.chdir(tmp_path)
 
         # Act
@@ -86,7 +86,7 @@ class TestLoadCircuitConfigTomlOverrides:
             "[admin]\n"
             "user_ids = ['telegram:tg:user:42']\n"
         )
-        monkeypatch.setenv("LYRA_CONFIG", str(config))
+        monkeypatch.setenv("FACTORY_CONFIG", str(config))
         monkeypatch.setattr(
             config_loader_mod,
             "_validate_config_path",
@@ -119,7 +119,7 @@ class TestLoadCircuitConfigTomlOverrides:
         config.write_text(
             "[admin]\nuser_ids = ['telegram:tg:user:1', 'discord:dc:user:2']\n"
         )
-        monkeypatch.setenv("LYRA_CONFIG", str(config))
+        monkeypatch.setenv("FACTORY_CONFIG", str(config))
         monkeypatch.setattr(
             config_loader_mod,
             "_validate_config_path",
@@ -142,7 +142,7 @@ class TestLoadCircuitConfigTomlOverrides:
         # Arrange
         config = tmp_path / "lyra.toml"
         config.write_text("[circuit_breaker.hub]\nrecovery_timeout = 120\n")
-        monkeypatch.setenv("LYRA_CONFIG", str(config))
+        monkeypatch.setenv("FACTORY_CONFIG", str(config))
         monkeypatch.setattr(
             config_loader_mod,
             "_validate_config_path",
@@ -171,7 +171,7 @@ class TestLoadCliPoolConfig:
 
     def test_defaults_when_section_missing(self) -> None:
         """SC-1: Missing [cli_pool] → hardcoded defaults preserved."""
-        from lyra.bootstrap.factory.config import _load_cli_pool_config
+        from factory.bootstrap.factory.config import _load_cli_pool_config
 
         result = _load_cli_pool_config({})
         assert result.idle_ttl == 1200
@@ -180,7 +180,7 @@ class TestLoadCliPoolConfig:
 
     def test_overrides_from_toml(self) -> None:
         """SC-1: TOML values override defaults."""
-        from lyra.bootstrap.factory.config import _load_cli_pool_config
+        from factory.bootstrap.factory.config import _load_cli_pool_config
 
         raw = {
             "cli_pool": {
@@ -196,7 +196,7 @@ class TestLoadCliPoolConfig:
 
     def test_partial_override_keeps_defaults(self) -> None:
         """SC-1: Only turn_timeout set → idle_ttl and default_timeout keep defaults."""
-        from lyra.bootstrap.factory.config import _load_cli_pool_config
+        from factory.bootstrap.factory.config import _load_cli_pool_config
 
         raw = {"cli_pool": {"turn_timeout": 600}}
         result = _load_cli_pool_config(raw)
@@ -215,14 +215,14 @@ class TestLoadPoolConfig:
 
     def test_defaults_when_section_missing(self) -> None:
         """Missing [pool] → hardcoded defaults returned."""
-        from lyra.bootstrap.factory.config import _load_pool_config
+        from factory.bootstrap.factory.config import _load_pool_config
 
         result = _load_pool_config({})
         assert result.safe_dispatch_timeout == 10.0
 
     def test_overrides_from_toml(self) -> None:
         """TOML values override defaults."""
-        from lyra.bootstrap.factory.config import _load_pool_config
+        from factory.bootstrap.factory.config import _load_pool_config
 
         raw = {"pool": {"safe_dispatch_timeout": 30.0}}
         result = _load_pool_config(raw)
@@ -239,7 +239,7 @@ class TestLoadLlmConfig:
 
     def test_defaults_when_section_missing(self) -> None:
         """Missing [llm] → hardcoded defaults returned."""
-        from lyra.bootstrap.factory.config import _load_llm_config
+        from factory.bootstrap.factory.config import _load_llm_config
 
         result = _load_llm_config({})
         assert result.max_retries == 3
@@ -247,7 +247,7 @@ class TestLoadLlmConfig:
 
     def test_overrides_from_toml(self) -> None:
         """TOML values override defaults."""
-        from lyra.bootstrap.factory.config import _load_llm_config
+        from factory.bootstrap.factory.config import _load_llm_config
 
         raw = {"llm": {"max_retries": 5, "backoff_base": 2.0}}
         result = _load_llm_config(raw)
@@ -256,7 +256,7 @@ class TestLoadLlmConfig:
 
     def test_partial_override_keeps_defaults(self) -> None:
         """Only max_retries set → backoff_base keeps default."""
-        from lyra.bootstrap.factory.config import _load_llm_config
+        from factory.bootstrap.factory.config import _load_llm_config
 
         raw = {"llm": {"max_retries": 10}}
         result = _load_llm_config(raw)
@@ -274,7 +274,7 @@ class TestLoadInboundBusConfig:
 
     def test_defaults_when_section_missing(self) -> None:
         """Missing [inbound_bus] → hardcoded defaults returned."""
-        from lyra.bootstrap.factory.config import _load_inbound_bus_config
+        from factory.bootstrap.factory.config import _load_inbound_bus_config
 
         result = _load_inbound_bus_config({})
         assert result.queue_depth_threshold == 100
@@ -283,7 +283,7 @@ class TestLoadInboundBusConfig:
 
     def test_overrides_from_toml(self) -> None:
         """TOML values override defaults."""
-        from lyra.bootstrap.factory.config import _load_inbound_bus_config
+        from factory.bootstrap.factory.config import _load_inbound_bus_config
 
         raw = {
             "inbound_bus": {
@@ -299,7 +299,7 @@ class TestLoadInboundBusConfig:
 
     def test_partial_override_keeps_defaults(self) -> None:
         """Only staging_maxsize set → other keys keep defaults."""
-        from lyra.bootstrap.factory.config import _load_inbound_bus_config
+        from factory.bootstrap.factory.config import _load_inbound_bus_config
 
         raw = {"inbound_bus": {"staging_maxsize": 2000}}
         result = _load_inbound_bus_config(raw)
@@ -318,7 +318,7 @@ class TestLoadDebouncerConfig:
 
     def test_defaults_when_section_missing(self) -> None:
         """Missing [debouncer] → hardcoded defaults returned."""
-        from lyra.bootstrap.factory.config import _load_debouncer_config
+        from factory.bootstrap.factory.config import _load_debouncer_config
 
         result = _load_debouncer_config({})
         assert result.default_debounce_ms == 300
@@ -326,7 +326,7 @@ class TestLoadDebouncerConfig:
 
     def test_overrides_from_toml(self) -> None:
         """TOML values override defaults."""
-        from lyra.bootstrap.factory.config import _load_debouncer_config
+        from factory.bootstrap.factory.config import _load_debouncer_config
 
         raw = {"debouncer": {"default_debounce_ms": 500, "max_merged_chars": 8192}}
         result = _load_debouncer_config(raw)
@@ -335,7 +335,7 @@ class TestLoadDebouncerConfig:
 
     def test_partial_override_keeps_defaults(self) -> None:
         """Only max_merged_chars set → default_debounce_ms keeps default."""
-        from lyra.bootstrap.factory.config import _load_debouncer_config
+        from factory.bootstrap.factory.config import _load_debouncer_config
 
         raw = {"debouncer": {"max_merged_chars": 1024}}
         result = _load_debouncer_config(raw)
@@ -350,14 +350,14 @@ class TestLoadDebouncerConfig:
 
 class TestBuildAgentOverrides:
     def test_defaults_only(self) -> None:
-        from lyra.bootstrap.factory.config import _build_agent_overrides
+        from factory.bootstrap.factory.config import _build_agent_overrides
 
         raw = {"defaults": {"cwd": "/tmp"}}
         result = _build_agent_overrides(raw, "test")
         assert result.cwd == "/tmp"
 
     def test_agent_specific_wins(self) -> None:
-        from lyra.bootstrap.factory.config import _build_agent_overrides
+        from factory.bootstrap.factory.config import _build_agent_overrides
 
         raw = {
             "defaults": {"cwd": "/default"},
@@ -367,7 +367,7 @@ class TestBuildAgentOverrides:
         assert result.cwd == "/specific"
 
     def test_workspace_deep_merge(self) -> None:
-        from lyra.bootstrap.factory.config import _build_agent_overrides
+        from factory.bootstrap.factory.config import _build_agent_overrides
 
         raw = {
             "defaults": {"workspaces": {"a": "/a", "b": "/b"}},
@@ -377,7 +377,7 @@ class TestBuildAgentOverrides:
         assert result.workspaces == {"a": "/a", "b": "/b2", "c": "/c"}
 
     def test_empty_config(self) -> None:
-        from lyra.bootstrap.factory.config import _build_agent_overrides
+        from factory.bootstrap.factory.config import _build_agent_overrides
 
         result = _build_agent_overrides({}, "nonexistent")
         assert result.cwd is None

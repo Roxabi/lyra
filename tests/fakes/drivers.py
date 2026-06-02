@@ -6,11 +6,11 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
-from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.messaging.events import LlmEvent, ResultLlmEvent, TextLlmEvent
-from lyra.core.ports.stt import TranscriptionResult
-from lyra.core.ports.tts import SynthesisResult
-from lyra.llm.base import LlmResult
+from factory.core.agent.agent_config import ModelConfig
+from factory.core.messaging.events import LlmEvent, ResultLlmEvent, TextLlmEvent
+from factory.core.ports.stt import TranscriptionResult
+from factory.core.ports.tts import SynthesisResult
+from factory.llm.base import LlmResult
 from roxabi_contracts import BlobRef
 
 

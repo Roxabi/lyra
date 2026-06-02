@@ -10,7 +10,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.messaging.render_events import (
+from factory.core.messaging.render_events import (
     RenderEvent,
     RunFinishedRenderEvent,
     RunStartedRenderEvent,
@@ -21,7 +21,7 @@ from lyra.core.messaging.render_events import (
     ToolCallEndRenderEvent,
     ToolCallStartRenderEvent,
 )
-from lyra.outbound.emitter import OutboundEmitter as StreamingSession
+from factory.outbound.emitter import OutboundEmitter as StreamingSession
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -191,7 +191,7 @@ async def test_edit_tool_recap_on_formatter_is_callable() -> None:
     """
     from unittest.mock import MagicMock
 
-    from lyra.adapters.telegram.telegram_formatter import TelegramFormatter
+    from factory.adapters.telegram.telegram_formatter import TelegramFormatter
 
     adapter_mock = MagicMock()
     adapter_mock.bot = MagicMock()

@@ -6,14 +6,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lyra.bootstrap.wiring.bootstrap_wiring import TelegramWiringDeps
-from lyra.config import TelegramBotConfig
-from lyra.core.auth.authenticator import Authenticator, AuthenticatorDeps
-from lyra.core.auth.trust import (
+from factory.bootstrap.wiring.bootstrap_wiring import TelegramWiringDeps
+from factory.config import TelegramBotConfig
+from factory.core.auth.authenticator import Authenticator, AuthenticatorDeps
+from factory.core.auth.trust import (
     TrustLevel,  # noqa: F401 — used in Authenticator(default=)
 )
-from lyra.core.hub.hub import Hub
-from lyra.core.messaging.message import Platform
+from factory.core.hub.hub import Hub
+from factory.core.messaging.message import Platform
 from tests.conftest import _LOAD_BOT_TOKEN_PATH
 
 # ---------------------------------------------------------------------------
@@ -24,8 +24,8 @@ from tests.conftest import _LOAD_BOT_TOKEN_PATH
 @pytest.mark.asyncio
 async def test_wire_telegram_adapters_registers_authenticator() -> None:
     """wire_telegram_adapters() must call hub.register_authenticator() with the auth."""
-    from lyra.bootstrap.wiring.bootstrap_wiring import wire_telegram_adapters
-    from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
+    from factory.bootstrap.wiring.bootstrap_wiring import wire_telegram_adapters
+    from factory.core.lifecycle.circuit_breaker import CircuitRegistry
 
     # Arrange — real Hub so register_authenticator actually records the call
     hub = Hub()
@@ -52,7 +52,7 @@ async def test_wire_telegram_adapters_registers_authenticator() -> None:
 
     with (
         patch(
-            "lyra.bootstrap.wiring.bootstrap_wiring.TelegramAdapter",
+            "factory.bootstrap.wiring.bootstrap_wiring.TelegramAdapter",
             return_value=mock_adapter_instance,
         ),
         patch(
@@ -84,8 +84,8 @@ async def test_wire_telegram_adapters_registers_authenticator() -> None:
 @pytest.mark.asyncio
 async def test_wire_telegram_no_nats_listener_in_dev_mode() -> None:
     """wire_telegram_adapters() does NOT create NatsOutboundListener (dev mode only)."""
-    from lyra.bootstrap.wiring.bootstrap_wiring import wire_telegram_adapters
-    from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
+    from factory.bootstrap.wiring.bootstrap_wiring import wire_telegram_adapters
+    from factory.core.lifecycle.circuit_breaker import CircuitRegistry
 
     hub = Hub()
     bot_cfg = TelegramBotConfig(bot_id="main")
@@ -101,7 +101,7 @@ async def test_wire_telegram_no_nats_listener_in_dev_mode() -> None:
 
     with (
         patch(
-            "lyra.bootstrap.wiring.bootstrap_wiring.TelegramAdapter",
+            "factory.bootstrap.wiring.bootstrap_wiring.TelegramAdapter",
             return_value=mock_adapter_instance,
         ),
         patch(
@@ -127,8 +127,8 @@ async def test_wire_telegram_no_nats_listener_in_dev_mode() -> None:
 @pytest.mark.asyncio
 async def test_wire_telegram_adapters_skips_missing_agent_mapping() -> None:
     """wire_telegram_adapters() skips bots not in bot_agent_map without raising."""
-    from lyra.bootstrap.wiring.bootstrap_wiring import wire_telegram_adapters
-    from lyra.core.lifecycle.circuit_breaker import CircuitRegistry
+    from factory.bootstrap.wiring.bootstrap_wiring import wire_telegram_adapters
+    from factory.core.lifecycle.circuit_breaker import CircuitRegistry
 
     # Arrange
     hub = Hub()

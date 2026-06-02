@@ -10,7 +10,7 @@ date: 2026-05-31
 
 Today Lyra has 28 overlapping deploy targets in the Makefile (deploy, full-deploy, quadlet-install, quadlet-sync-install, nats-regen-authconf, nats-setup, install.sh, provision.sh, lyra-quadlet-sync.sh, setup.py, and others). Image autoupdate (image-only) silently wins and leaves git checkout, auth.conf, and Quadlet units stale. This was the root cause of the 2026-05-31 incident where the host ran an outdated config layer while the image was fresh.
 
-Additionally, non-interactive PATH is broken: `.venv/bin` for `lyra-acl`, `uv`, and `lyra` is not available in headless contexts, causing partial deploy aborts mid-run.
+Additionally, non-interactive PATH is broken: `.venv/bin` for `factory-acl`, `uv`, and `lyra` is not available in headless contexts, causing partial deploy aborts mid-run.
 
 ## Who
 

@@ -1,10 +1,10 @@
 """Typing shim tests for TelegramAdapter (T14, #1377).
 
 Covers the conditional typing plane (pub/sub vs legacy ThrottleCapability):
-1. LYRA_TYPING_ENABLED=true  -> _start_typing delegates to typing_publisher
-2. LYRA_TYPING_ENABLED=true  -> _cancel_typing delegates to typing_publisher
-3. LYRA_TYPING_ENABLED=false -> _start_typing calls legacy path
-4. LYRA_TYPING_ENABLED=false -> _cancel_typing calls legacy path
+1. FACTORY_TYPING_ENABLED=true  -> _start_typing delegates to typing_publisher
+2. FACTORY_TYPING_ENABLED=true  -> _cancel_typing delegates to typing_publisher
+3. FACTORY_TYPING_ENABLED=false -> _start_typing calls legacy path
+4. FACTORY_TYPING_ENABLED=false -> _cancel_typing calls legacy path
 5. No double calls (publisher is NOT touched when flag=false)
 """
 
@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from lyra.adapters.telegram import TelegramAdapter
+from factory.adapters.telegram import TelegramAdapter
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -22,7 +22,7 @@ from lyra.adapters.telegram import TelegramAdapter
 
 def _make_adapter(monkeypatch: Any, enabled: str) -> TelegramAdapter:
     """Minimal TelegramAdapter with env flag pre-seeded."""
-    monkeypatch.setenv("LYRA_TYPING_ENABLED", enabled)
+    monkeypatch.setenv("FACTORY_TYPING_ENABLED", enabled)
     adapter = TelegramAdapter(
         bot_id="main",
         token="tok",
@@ -32,7 +32,7 @@ def _make_adapter(monkeypatch: Any, enabled: str) -> TelegramAdapter:
 
 
 # ---------------------------------------------------------------------------
-# Pub/sub path (LYRA_TYPING_ENABLED=true)
+# Pub/sub path (FACTORY_TYPING_ENABLED=true)
 # ---------------------------------------------------------------------------
 
 
@@ -44,7 +44,7 @@ def test_tg_start_typing_enabled_delegates_to_publisher(monkeypatch: Any) -> Non
 
     with patch.object(adapter._typing, "start") as mock_start:
         with patch(
-            "lyra.adapters.telegram.telegram.TraceContext.get_trace_id",
+            "factory.adapters.telegram.telegram.TraceContext.get_trace_id",
             return_value="trace_tg_123",
         ):
             with patch("asyncio.create_task") as mock_create_task:
@@ -75,7 +75,7 @@ def test_tg_cancel_typing_enabled_delegates_to_publisher(monkeypatch: Any) -> No
 
     with patch.object(adapter._typing, "cancel") as mock_cancel:
         with patch(
-            "lyra.adapters.telegram.telegram.TraceContext.get_trace_id",
+            "factory.adapters.telegram.telegram.TraceContext.get_trace_id",
             return_value="trace_tg_456",
         ):
             with patch("asyncio.create_task") as mock_create_task:
@@ -121,7 +121,7 @@ def test_tg_cancel_typing_enabled_no_publisher_is_noop(monkeypatch: Any) -> None
 
 
 # ---------------------------------------------------------------------------
-# Legacy path (LYRA_TYPING_ENABLED=false)
+# Legacy path (FACTORY_TYPING_ENABLED=false)
 # ---------------------------------------------------------------------------
 
 

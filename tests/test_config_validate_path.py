@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from lyra.bootstrap.factory.config import _load_raw_config, _validate_config_path
+from factory.bootstrap.factory.config import _load_raw_config, _validate_config_path
 
 
 class TestValidateConfigPath:
@@ -81,7 +81,7 @@ class TestLoadRawConfig:
         _write_toml(explicit, '[test]\nkey = "explicit"')
         vault = tmp_path / "vault"
         _write_toml(vault / "config.toml", '[test]\nkey = "vault"')
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(vault))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(vault))
 
         result = _load_raw_config(str(explicit))
 
@@ -90,13 +90,13 @@ class TestLoadRawConfig:
     def test_lyra_config_env_wins_over_vault(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """$LYRA_CONFIG takes precedence over $LYRA_VAULT_DIR/config.toml."""
+        """$FACTORY_CONFIG takes precedence over $ROXABI_FACTORY_DIR/config.toml."""
         env_cfg = tmp_path / "env.toml"
         _write_toml(env_cfg, '[test]\nkey = "env"')
         vault = tmp_path / "vault"
         _write_toml(vault / "config.toml", '[test]\nkey = "vault"')
-        monkeypatch.setenv("LYRA_CONFIG", str(env_cfg))
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(vault))
+        monkeypatch.setenv("FACTORY_CONFIG", str(env_cfg))
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(vault))
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
 
         result = _load_raw_config()
@@ -106,11 +106,11 @@ class TestLoadRawConfig:
     def test_vault_dir_config_found(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """$LYRA_VAULT_DIR/config.toml loaded when no explicit path or $LYRA_CONFIG."""
+        """Loads config.toml from $ROXABI_FACTORY_DIR when no path/env set."""
         vault = tmp_path / ".lyra"
         _write_toml(vault / "config.toml", '[test]\nkey = "vault"')
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(vault))
-        monkeypatch.delenv("LYRA_CONFIG", raising=False)
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(vault))
+        monkeypatch.delenv("FACTORY_CONFIG", raising=False)
         monkeypatch.chdir(tmp_path)  # no config.toml in cwd
 
         result = _load_raw_config()
@@ -120,13 +120,13 @@ class TestLoadRawConfig:
     def test_cwd_fallback_when_vault_absent(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Falls back to cwd/config.toml when $LYRA_VAULT_DIR/config.toml is absent."""
+        """Falls back to cwd/config.toml when $ROXABI_FACTORY_DIR has none."""
         vault = tmp_path / ".lyra"
         vault.mkdir()  # exists but no config.toml inside
         cwd_cfg = tmp_path / "config.toml"
         _write_toml(cwd_cfg, '[test]\nkey = "cwd"')
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(vault))
-        monkeypatch.delenv("LYRA_CONFIG", raising=False)
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(vault))
+        monkeypatch.delenv("FACTORY_CONFIG", raising=False)
         monkeypatch.chdir(tmp_path)
 
         result = _load_raw_config()
@@ -139,8 +139,8 @@ class TestLoadRawConfig:
         """Returns empty dict when no config file exists anywhere."""
         vault = tmp_path / ".lyra"
         vault.mkdir()
-        monkeypatch.setenv("LYRA_VAULT_DIR", str(vault))
-        monkeypatch.delenv("LYRA_CONFIG", raising=False)
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(vault))
+        monkeypatch.delenv("FACTORY_CONFIG", raising=False)
         monkeypatch.chdir(tmp_path)
 
         result = _load_raw_config()

@@ -2,7 +2,7 @@
 
 import pytest
 
-from lyra.core.messaging.message import Response
+from factory.core.messaging.message import Response
 
 from .agent_harness import agent_harness
 

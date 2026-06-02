@@ -15,9 +15,9 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.adapters.shared._base_outbound import OutboundAdapterBase
-from lyra.core.messaging.tool_display_config import ToolDisplayConfig
-from lyra.outbound.emitter import OutboundEmitter
+from factory.adapters.shared._base_outbound import OutboundAdapterBase
+from factory.core.messaging.tool_display_config import ToolDisplayConfig
+from factory.outbound.emitter import OutboundEmitter
 
 # ---------------------------------------------------------------------------
 # Minimal concrete subclass (OutboundAdapterBase is abstract)

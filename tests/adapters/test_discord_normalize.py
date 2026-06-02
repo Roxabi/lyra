@@ -16,8 +16,8 @@ import pytest
 
 def test_normalize_builds_correct_discord_context() -> None:
     """normalize() on a discord message produces correct platform_meta."""
-    from lyra.adapters.discord import DiscordAdapter  # ImportError expected in RED
-    from lyra.core.messaging.message import DiscordMeta, InboundMessage
+    from factory.adapters.discord import DiscordAdapter  # ImportError expected in RED
+    from factory.core.messaging.message import DiscordMeta, InboundMessage
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -55,7 +55,7 @@ def test_normalize_builds_correct_discord_context() -> None:
 
 def test_is_mention_true_when_bot_in_mentions() -> None:
     """bot_user present in message.mentions → is_mention is True."""
-    from lyra.adapters.discord import DiscordAdapter  # ImportError expected in RED
+    from factory.adapters.discord import DiscordAdapter  # ImportError expected in RED
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -87,7 +87,7 @@ def test_is_mention_true_when_bot_in_mentions() -> None:
 
 def test_is_mention_false_when_bot_not_in_mentions() -> None:
     """bot_user absent from message.mentions → is_mention is False."""
-    from lyra.adapters.discord import DiscordAdapter  # ImportError expected in RED
+    from factory.adapters.discord import DiscordAdapter  # ImportError expected in RED
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -119,7 +119,7 @@ def test_is_mention_false_when_bot_not_in_mentions() -> None:
 
 def test_normalize_bot_user_none_is_mention_false() -> None:
     """When _bot_user is None (pre-on_ready), is_mention must be False — never raise."""
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -150,7 +150,7 @@ def test_normalize_bot_user_none_is_mention_false() -> None:
 
 def test_mention_prefix_stripped_from_content() -> None:
     """@mention prefix (<@id>) is stripped from text before delivery."""
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -178,7 +178,7 @@ def test_mention_prefix_stripped_from_content() -> None:
 
 def test_mention_prefix_stripped_nickname_variant() -> None:
     """@mention prefix with nickname format (<@!id>) is also stripped."""
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -210,8 +210,8 @@ def test_mention_prefix_stripped_nickname_variant() -> None:
 
 def test_normalize_dm_no_guild() -> None:
     """DM messages (guild=None) normalize with guild_id=None — no AttributeError."""
-    from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.messaging.message import DiscordMeta, InboundMessage
+    from factory.adapters.discord import DiscordAdapter
+    from factory.core.messaging.message import DiscordMeta, InboundMessage
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -246,7 +246,7 @@ def test_normalize_dm_no_guild() -> None:
 
 def test_normalize_uses_display_name_when_present() -> None:
     """When author has display_name, it takes precedence over name."""
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -274,7 +274,7 @@ def test_normalize_uses_display_name_when_present() -> None:
 
 def test_normalize_falls_back_to_name_when_display_name_none() -> None:
     """When display_name is None, falls back to name."""
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -309,7 +309,7 @@ def test_discord_token_not_in_logs(
     """The Discord bot token must never appear in log output at any log level."""
     import logging
 
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     secret_token = "super-secret-discord-token-xyz"
     monkeypatch.setenv("DISCORD_TOKEN", secret_token)
@@ -347,8 +347,8 @@ def test_discord_token_not_in_logs(
 
 def test_normalize_guild_channel_user_scoped_scope_id() -> None:
     """Guild text channel → scope_id includes user_id suffix."""
-    from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.messaging.message import InboundMessage
+    from factory.adapters.discord import DiscordAdapter
+    from factory.core.messaging.message import InboundMessage
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -376,7 +376,7 @@ def test_normalize_guild_channel_user_scoped_scope_id() -> None:
 
 def test_normalize_dm_scope_id_unchanged() -> None:
     """Discord DM (guild=None) → scope_id has no user suffix (regression)."""
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -402,7 +402,7 @@ def test_normalize_dm_scope_id_unchanged() -> None:
 
 def test_normalize_thread_scope_id_unchanged() -> None:
     """Discord thread → scope_id uses thread: prefix, no user suffix (regression)."""
-    from lyra.adapters.discord import DiscordAdapter
+    from factory.adapters.discord import DiscordAdapter
 
     adapter = DiscordAdapter(
         bot_id="main",
@@ -433,9 +433,9 @@ def test_two_users_same_guild_channel_share_pool_id() -> None:
 
     Guild channels are no longer user-scoped: all users in a channel share one pool.
     """
-    from lyra.adapters.discord import DiscordAdapter
-    from lyra.core.hub.hub_protocol import RoutingKey
-    from lyra.core.messaging.message import Platform
+    from factory.adapters.discord import DiscordAdapter
+    from factory.core.hub.hub_protocol import RoutingKey
+    from factory.core.messaging.message import Platform
 
     adapter = DiscordAdapter(
         bot_id="main",

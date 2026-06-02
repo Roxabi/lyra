@@ -1,0 +1,22 @@
+# git config template for factory subprocess (#1078)
+# Loaded via GIT_CONFIG_GLOBAL=/etc/factory/git.config.tmpl in the Quadlet env.
+# Note on email: GitHub App commits resolve to
+# <app_id>+lyra-bot[bot]@users.noreply.github.com server-side.
+# The fallback below is human-readable; the noreply mapping handles bot identity.
+[user]
+    name = lyra[bot]
+    email = lyra-bot@users.noreply.github.com
+[credential]
+    helper = /opt/factory-gh/git-credential-factory-gh
+[init]
+    defaultBranch = main
+# Force HTTPS for github.com so the factory-gh credential helper handles auth.
+# The factory-clipool container is ReadOnly=true with no ~/.ssh and no SSH key,
+# so any SSH-form remote (git@github.com:..., ssh://git@github.com/...) would
+# fail with 'Host key verification failed'. insteadOf rewrites at command time
+# without mutating per-repo remotes on the host.
+[url "https://github.com/"]
+    insteadOf = git@github.com:
+    insteadOf = ssh://git@github.com/
+[core]
+    hooksPath = /opt/factory-gh/hooks

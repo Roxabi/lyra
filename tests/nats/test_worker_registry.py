@@ -6,7 +6,7 @@ import time
 
 import pytest
 
-from lyra.nats.worker_registry import (
+from factory.nats.worker_registry import (
     DEFAULT_ACTIVE_WEIGHT,
     DEFAULT_VRAM_WEIGHT,
     MAX_WORKERS,

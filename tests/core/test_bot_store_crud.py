@@ -7,8 +7,8 @@ from unittest.mock import patch
 
 import pytest
 
-from lyra.core.agent.bot_models import BotRow
-from lyra.infrastructure.stores.bot_store import BotStore
+from factory.core.agent.bot_models import BotRow
+from factory.infrastructure.stores.bot_store import BotStore
 from tests.helpers.bot_store import make_bot_row, make_bot_store
 
 # ---------------------------------------------------------------------------
@@ -111,7 +111,7 @@ class TestBotCRUD:
 
         # Act — first upsert
         with patch(
-            "lyra.infrastructure.stores.bot_store._utc_now_iso",
+            "factory.infrastructure.stores.bot_store._utc_now_iso",
             return_value="2024-01-01T00:00:00+00:00",
         ):
             await bot_store.upsert(row)
@@ -120,7 +120,7 @@ class TestBotCRUD:
 
         # Act — second upsert with different timestamp
         with patch(
-            "lyra.infrastructure.stores.bot_store._utc_now_iso",
+            "factory.infrastructure.stores.bot_store._utc_now_iso",
             return_value="2024-01-02T00:00:00+00:00",
         ):
             await bot_store.upsert(row)
@@ -294,7 +294,7 @@ class TestBotRowConversion:
         # bypassing BotStore validation. Then reconnect and verify graceful coerce.
         import aiosqlite
 
-        from lyra.core.agent.schema.bot_schema import _CREATE_BOTS
+        from factory.core.agent.schema.bot_schema import _CREATE_BOTS
 
         db_path = tmp_path / "bots.db"
         async with aiosqlite.connect(str(db_path)) as db:

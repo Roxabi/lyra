@@ -11,17 +11,17 @@ Covers:
 
 from __future__ import annotations
 
-from lyra.core.messaging.render_events import (
+from factory.core.messaging.render_events import (
     ReasoningDeltaRenderEvent,
     ReasoningEndRenderEvent,
     ReasoningStartRenderEvent,
 )
-from lyra.outbound._reasoning_accum import (
+from factory.outbound._reasoning_accum import (
     REASONING_MAX_LEN,
     REASONING_TRUNC_LEN,
     ReasoningAccumulator,
 )
-from lyra.outbound.throttle import STREAMING_EDIT_INTERVAL
+from factory.outbound.throttle import STREAMING_EDIT_INTERVAL
 
 _MSG_ID = "test-msg-1"
 

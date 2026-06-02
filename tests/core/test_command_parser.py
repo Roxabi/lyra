@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from lyra.core.commands.command_parser import CommandParser
+from factory.core.commands.command_parser import CommandParser
 
 
 @pytest.fixture

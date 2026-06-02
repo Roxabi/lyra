@@ -18,7 +18,7 @@ Agents live in `~/.lyra/config.db` (SQLite). TOML files are seed-only:
 
 | Source | Role |
 |--------|------|
-| `src/lyra/agents/<name>.toml` | bundled system defaults |
+| `src/factory/agents/<name>.toml` | bundled system defaults |
 | `~/.lyra/agents/<name>.toml` | user-level override (machine-specific, gitignored) |
 
 Reads use `lyra agent show`. Writes use `lyra agent patch` → DB only.
@@ -61,4 +61,4 @@ Override TOML (`~/.lyra/agents/<name>.toml`) takes precedence on next
 
 ## Boundaries
 
-¬edit `src/lyra/` | ¬write TOML files | ¬call DB directly | ¬restart adapters
+¬edit `src/factory/` | ¬write TOML files | ¬call DB directly | ¬restart adapters

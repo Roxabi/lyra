@@ -3,13 +3,13 @@
 import logging
 
 import roxabi_contracts
-from lyra.core.messaging.utils.metrics import (
+from factory.core.messaging.utils.metrics import (
     emit_populated_total,
     emit_received_total,
     log_contracts_version,
 )
 
-_METRICS_LOGGER = "lyra.core.messaging.utils.metrics"
+_METRICS_LOGGER = "factory.core.messaging.utils.metrics"
 
 
 def _has(records: list[logging.LogRecord], expected: str) -> bool:

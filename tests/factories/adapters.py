@@ -8,10 +8,10 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from lyra.adapters.discord import DiscordAdapter
-from lyra.adapters.telegram import TelegramAdapter
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import DiscordMeta, InboundMessage, TelegramMeta
+from factory.adapters.discord import DiscordAdapter
+from factory.adapters.telegram import TelegramAdapter
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import DiscordMeta, InboundMessage, TelegramMeta
 
 __all__ = [
     "attach_typing_cm",

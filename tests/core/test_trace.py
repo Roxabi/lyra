@@ -8,13 +8,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.hub.middleware import PipelineContext
-from lyra.core.hub.middleware.middleware_stages import (
+from factory.core.hub.middleware import PipelineContext
+from factory.core.hub.middleware.middleware_stages import (
     MessagePrepMiddleware,
     TraceMiddleware,
 )
-from lyra.core.hub.pipeline.message_pipeline import Action, PipelineResult
-from lyra.core.trace import TraceContext, TraceIdFilter
+from factory.core.hub.pipeline.message_pipeline import Action, PipelineResult
+from factory.core.trace import TraceContext, TraceIdFilter
 from tests.core.conftest import _make_hub, make_inbound_message
 
 # ──────────────────────────────────────────────────────────────────────
@@ -211,8 +211,8 @@ class TestTraceMiddleware:
 class TestPoolIdContextVar:
     async def test_create_pool_sets_pool_id_contextvar(self) -> None:
         """MessagePrepMiddleware must set pool_id in TraceContext."""
-        from lyra.core.hub.hub import Binding, RoutingKey
-        from lyra.core.messaging.message import Platform
+        from factory.core.hub.hub import Binding, RoutingKey
+        from factory.core.messaging.message import Platform
 
         captured_pool_ids: list[str | None] = []
 
@@ -297,7 +297,7 @@ class TestGuardedProcessOneAgentName:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """agent_name ContextVar must equal pool.agent_name during execution."""
-        from lyra.core.pool.pool_processor_exec import guarded_process_one
+        from factory.core.pool.pool_processor_exec import guarded_process_one
 
         captured: list[str | None] = []
 
@@ -323,7 +323,7 @@ class TestGuardedProcessOneAgentName:
         msg.bot_id = "main"
 
         monkeypatch.setattr(
-            "lyra.core.pool.pool_processor_exec.process_one", _fake_process
+            "factory.core.pool.pool_processor_exec.process_one", _fake_process
         )
         await guarded_process_one(msg, agent, pool)
 
@@ -333,7 +333,7 @@ class TestGuardedProcessOneAgentName:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """agent_name ContextVar must be None after guarded_process_one returns."""
-        from lyra.core.pool.pool_processor_exec import guarded_process_one
+        from factory.core.pool.pool_processor_exec import guarded_process_one
 
         async def _fake_process(*_args: object) -> None:
             del _args
@@ -357,7 +357,7 @@ class TestGuardedProcessOneAgentName:
         msg.bot_id = "main"
 
         monkeypatch.setattr(
-            "lyra.core.pool.pool_processor_exec.process_one", _fake_process
+            "factory.core.pool.pool_processor_exec.process_one", _fake_process
         )
         await guarded_process_one(msg, agent, pool)
 
@@ -384,7 +384,7 @@ class TestTelegramTokenFilter:
         )
 
     def test_redacts_token_in_telegram_url(self) -> None:
-        from lyra.core.trace import TelegramTokenFilter
+        from factory.core.trace import TelegramTokenFilter
 
         filt = TelegramTokenFilter()
         url = (
@@ -397,7 +397,7 @@ class TestTelegramTokenFilter:
         assert "bot8500388193:<REDACTED>" in record.getMessage()
 
     def test_preserves_bot_id_for_debuggability(self) -> None:
-        from lyra.core.trace import TelegramTokenFilter
+        from factory.core.trace import TelegramTokenFilter
 
         filt = TelegramTokenFilter()
         record = self._make_record(
@@ -409,7 +409,7 @@ class TestTelegramTokenFilter:
 
     def test_redacts_in_args_interpolation(self) -> None:
         """% args format — filter must run getMessage() to expose the token."""
-        from lyra.core.trace import TelegramTokenFilter
+        from factory.core.trace import TelegramTokenFilter
 
         filt = TelegramTokenFilter()
         record = self._make_record(
@@ -420,7 +420,7 @@ class TestTelegramTokenFilter:
         assert "secret_token_xyz-123" not in record.getMessage()
 
     def test_passes_through_unrelated_messages(self) -> None:
-        from lyra.core.trace import TelegramTokenFilter
+        from factory.core.trace import TelegramTokenFilter
 
         filt = TelegramTokenFilter()
         record = self._make_record("normal log line, no secrets here")
@@ -428,14 +428,14 @@ class TestTelegramTokenFilter:
         assert record.getMessage() == "normal log line, no secrets here"
 
     def test_never_suppresses_records(self) -> None:
-        from lyra.core.trace import TelegramTokenFilter
+        from factory.core.trace import TelegramTokenFilter
 
         filt = TelegramTokenFilter()
         record = self._make_record("anything")
         assert filt.filter(record) is True
 
     def test_redacts_bare_token_in_config_dump(self) -> None:
-        from lyra.core.trace import TelegramTokenFilter
+        from factory.core.trace import TelegramTokenFilter
 
         filt = TelegramTokenFilter()
         record = self._make_record(
@@ -446,7 +446,7 @@ class TestTelegramTokenFilter:
         assert "<REDACTED>" in record.getMessage()
 
     def test_redacts_bare_token_in_exception_repr(self) -> None:
-        from lyra.core.trace import TelegramTokenFilter
+        from factory.core.trace import TelegramTokenFilter
 
         filt = TelegramTokenFilter()
         record = self._make_record(
@@ -459,7 +459,7 @@ class TestTelegramTokenFilter:
 
     def test_bare_token_not_over_matched_by_short_secret(self) -> None:
         """Secrets shorter than 30 chars are not bot tokens — must not be redacted."""
-        from lyra.core.trace import TelegramTokenFilter
+        from factory.core.trace import TelegramTokenFilter
 
         filt = TelegramTokenFilter()
         record = self._make_record("ratio=12345678:short")
@@ -468,7 +468,7 @@ class TestTelegramTokenFilter:
 
     def test_bare_token_not_matched_when_id_too_short(self) -> None:
         """IDs shorter than 8 digits do not match the digit-count floor."""
-        from lyra.core.trace import TelegramTokenFilter
+        from factory.core.trace import TelegramTokenFilter
 
         filt = TelegramTokenFilter()
         record = self._make_record("id=1234567:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
@@ -477,7 +477,7 @@ class TestTelegramTokenFilter:
 
     def test_url_token_already_redacted_before_bare_pass(self) -> None:
         """URL pattern runs first; bare pass must not double-redact."""
-        from lyra.core.trace import TelegramTokenFilter
+        from factory.core.trace import TelegramTokenFilter
 
         filt = TelegramTokenFilter()
         url = (

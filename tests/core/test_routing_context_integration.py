@@ -15,13 +15,16 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.messaging.message import (
+from factory.core.messaging.message import (
     OutboundMessage,
     Platform,
     Response,
     RoutingContext,
 )
-from lyra.core.messaging.render_events import TextDeltaRenderEvent, TextEndRenderEvent
+from factory.core.messaging.render_events import (
+    TextDeltaRenderEvent,
+    TextEndRenderEvent,
+)
 
 from .conftest import _RC_DC, _RC_TG, make_routing_inbound
 
@@ -32,7 +35,7 @@ from .conftest import _RC_DC, _RC_TG, make_routing_inbound
 
 class TestTelegramNormalizeRouting:
     def test_routing_populated(self) -> None:
-        from lyra.adapters.telegram import TelegramAdapter
+        from factory.adapters.telegram import TelegramAdapter
 
         adapter = TelegramAdapter(
             bot_id="main",
@@ -65,7 +68,7 @@ class TestTelegramNormalizeRouting:
         assert msg.routing.reply_to_message_id == "999"
 
     def test_routing_with_topic(self) -> None:
-        from lyra.adapters.telegram import TelegramAdapter
+        from factory.adapters.telegram import TelegramAdapter
 
         adapter = TelegramAdapter(
             bot_id="main",
@@ -96,7 +99,7 @@ class TestTelegramNormalizeRouting:
 
     def test_routing_platform_meta_is_copy(self) -> None:
         """RoutingContext.platform_meta must not alias InboundMessage.platform_meta."""
-        from lyra.adapters.telegram import TelegramAdapter
+        from factory.adapters.telegram import TelegramAdapter
 
         adapter = TelegramAdapter(
             bot_id="main",
@@ -132,7 +135,7 @@ class TestTelegramNormalizeRouting:
 
 class TestDiscordNormalizeRouting:
     def test_routing_populated(self) -> None:
-        from lyra.adapters.discord import DiscordAdapter
+        from factory.adapters.discord import DiscordAdapter
 
         adapter = DiscordAdapter.__new__(DiscordAdapter)
         adapter._bot_id = "main"
@@ -173,7 +176,7 @@ class TestVerifyRoutingDirect:
     """Direct unit tests for _verify_routing (no async queue needed)."""
 
     def test_none_passes(self) -> None:
-        from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
+        from factory.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 
         d = OutboundDispatcher(
             platform_name="telegram", adapter=MagicMock(), bot_id="main"
@@ -181,7 +184,7 @@ class TestVerifyRoutingDirect:
         assert d._verify_routing(None) is True
 
     def test_matching_passes(self) -> None:
-        from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
+        from factory.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 
         d = OutboundDispatcher(
             platform_name="telegram", adapter=MagicMock(), bot_id="main"
@@ -189,7 +192,7 @@ class TestVerifyRoutingDirect:
         assert d._verify_routing(_RC_TG) is True
 
     def test_platform_mismatch_fails(self) -> None:
-        from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
+        from factory.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 
         d = OutboundDispatcher(
             platform_name="telegram", adapter=MagicMock(), bot_id="main"
@@ -197,7 +200,7 @@ class TestVerifyRoutingDirect:
         assert d._verify_routing(_RC_DC) is False
 
     def test_bot_id_mismatch_fails(self) -> None:
-        from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
+        from factory.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 
         rc = RoutingContext(platform="telegram", bot_id="other", scope_id="chat:123")
         d = OutboundDispatcher(
@@ -213,7 +216,7 @@ class TestVerifyRoutingDirect:
 
 class TestDispatcherRoutingIntegration:
     async def test_matching_routing_passes(self) -> None:
-        from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
+        from factory.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 
         adapter = MagicMock()
         adapter.send = AsyncMock()
@@ -232,7 +235,7 @@ class TestDispatcherRoutingIntegration:
             await dispatcher.stop()
 
     async def test_mismatched_platform_drops(self) -> None:
-        from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
+        from factory.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 
         adapter = MagicMock()
         adapter.send = AsyncMock()
@@ -254,7 +257,7 @@ class TestDispatcherRoutingIntegration:
             await dispatcher.stop()
 
     async def test_mismatched_bot_id_drops(self) -> None:
-        from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
+        from factory.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 
         adapter = MagicMock()
         adapter.send = AsyncMock()
@@ -277,7 +280,7 @@ class TestDispatcherRoutingIntegration:
 
     async def test_none_routing_passes(self) -> None:
         """Backward compat: no routing context → message is delivered."""
-        from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
+        from factory.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 
         adapter = MagicMock()
         adapter.send = AsyncMock()
@@ -296,7 +299,7 @@ class TestDispatcherRoutingIntegration:
 
     async def test_streaming_mismatched_routing_drops_and_drains(self) -> None:
         """Streaming with mismatched routing: message dropped, iterator drained."""
-        from lyra.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
+        from factory.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 
         adapter = MagicMock()
         adapter.send_streaming = AsyncMock()
@@ -337,7 +340,7 @@ class TestDispatcherRoutingIntegration:
 
 class TestHubDispatchPropagation:
     async def test_dispatch_response_propagates_routing(self) -> None:
-        from lyra.core.hub import Hub
+        from factory.core.hub import Hub
 
         hub = Hub()
         adapter = MagicMock()
@@ -354,7 +357,7 @@ class TestHubDispatchPropagation:
 
     async def test_dispatch_response_does_not_overwrite_existing(self) -> None:
         """When outbound already has routing, hub must not overwrite it."""
-        from lyra.core.hub import Hub
+        from factory.core.hub import Hub
 
         hub = Hub()
         adapter = MagicMock()
@@ -374,7 +377,7 @@ class TestHubDispatchPropagation:
         assert sent_outbound.routing is rc_outbound
 
     async def test_dispatch_streaming_propagates_routing(self) -> None:
-        from lyra.core.hub import Hub
+        from factory.core.hub import Hub
 
         hub = Hub()
         adapter = MagicMock()

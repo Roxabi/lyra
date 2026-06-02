@@ -10,9 +10,9 @@ import pytest
 from nats.aio.client import Client as NATS
 
 import nats
-from lyra.transport.typing_publisher import TypingPublisher
-from lyra.transport.work_scope import WorkScope
-from lyra.typing.listener import TypingListener
+from factory.transport.typing_publisher import TypingPublisher
+from factory.transport.work_scope import WorkScope
+from factory.typing.listener import TypingListener
 from tests.nats.conftest import requires_nats_server
 
 

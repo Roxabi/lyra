@@ -20,7 +20,7 @@ import asyncio
 import os
 import sys
 
-from lyra.nats.image.nats_image_client import (
+from factory.nats.image.nats_image_client import (
     ImageGenParams,
     ImageUnavailableError,
     NatsImageClient,

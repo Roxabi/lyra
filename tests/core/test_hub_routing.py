@@ -7,8 +7,8 @@ import logging
 
 import pytest
 
-from lyra.core import Agent, AgentBase, Hub, Pool, Response
-from lyra.core.messaging.message import InboundMessage, Platform
+from factory.core import Agent, AgentBase, Hub, Pool, Response
+from factory.core.messaging.message import InboundMessage, Platform
 from tests.core.conftest import MockAdapter, make_inbound_message, push_to_hub
 
 # ---------------------------------------------------------------------------
@@ -111,7 +111,7 @@ class TestUnmatchedRouting:
         hub = Hub()
         msg = make_inbound_message(platform="telegram", user_id="nobody")
         await push_to_hub(hub, msg)
-        with caplog.at_level(logging.WARNING, logger="lyra.core.hub"):
+        with caplog.at_level(logging.WARNING, logger="factory.core.hub"):
             # run() loops forever — use a short timeout to exercise one iteration
             try:
                 await asyncio.wait_for(hub.run(), timeout=0.1)
@@ -166,7 +166,7 @@ class TestAgentRegistryMiss:
         msg = make_inbound_message(platform="telegram", bot_id="main", user_id="alice")
         await push_to_hub(hub, msg)
 
-        with caplog.at_level(logging.WARNING, logger="lyra.core.hub"):
+        with caplog.at_level(logging.WARNING, logger="factory.core.hub"):
             try:
                 await asyncio.wait_for(hub.run(), timeout=0.2)
             except asyncio.TimeoutError:
@@ -204,7 +204,7 @@ class TestMissingAdapterDrop:
         msg = make_inbound_message(platform="telegram", bot_id="main", user_id="alice")
         await push_to_hub(hub, msg)
 
-        with caplog.at_level(logging.ERROR, logger="lyra.core.hub"):
+        with caplog.at_level(logging.ERROR, logger="factory.core.hub"):
             try:
                 await asyncio.wait_for(hub.run(), timeout=0.2)
             except asyncio.TimeoutError:
@@ -220,7 +220,7 @@ class TestMissingAdapterDrop:
 
 
 def test_generic_error_reply_is_user_facing_string() -> None:
-    from lyra.core.messaging.message import GENERIC_ERROR_REPLY
+    from factory.core.messaging.message import GENERIC_ERROR_REPLY
 
     assert GENERIC_ERROR_REPLY == "Something went wrong. Please try again."
 
@@ -232,7 +232,7 @@ def test_generic_error_reply_is_user_facing_string() -> None:
 
 def test_hub_has_no_pairing_gate_drop() -> None:
     """Hub._pairing_gate_drop must not exist — auth is resolved at adapter level."""
-    from lyra.core.hub import Hub
+    from factory.core.hub import Hub
 
     assert not hasattr(Hub, "_pairing_gate_drop"), (
         "Hub._pairing_gate_drop must be removed — auth is resolved at adapter level"

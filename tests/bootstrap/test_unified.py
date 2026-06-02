@@ -14,7 +14,7 @@ from unittest.mock import ANY, AsyncMock, MagicMock
 import nats.errors
 import pytest
 
-from lyra.bootstrap.types import LifecycleResources
+from factory.bootstrap.types import LifecycleResources
 from tests.factories.bootstrap import _patch_nats_stubs
 
 
@@ -22,8 +22,8 @@ from tests.factories.bootstrap import _patch_nats_stubs
 def _patch_unified_boundaries(  # noqa: PLR0915
     monkeypatch: pytest.MonkeyPatch,
 ) -> dict[str, Any]:
-    """Patch every boundary collaborator inside lyra.bootstrap.factory.unified."""
-    import lyra.bootstrap.factory.unified as unified_mod
+    """Patch every boundary collaborator inside factory.bootstrap.factory.unified."""
+    import factory.bootstrap.factory.unified as unified_mod
 
     # Already patched by _patch_nats_stubs: ensure_nats, acquire_lockfile,
     # release_lockfile, nc, embedded.  We re-patch release_lockfile below
@@ -230,7 +230,7 @@ async def test_ensure_nats_called_first(
     _patch_unified_boundaries: dict[str, Any],
 ) -> None:
     """ensure_nats is awaited before acquire_lockfile and before any helpers."""
-    from lyra.bootstrap.factory.unified import _bootstrap_unified
+    from factory.bootstrap.factory.unified import _bootstrap_unified
 
     order = _patch_unified_boundaries["order"]
 
@@ -249,7 +249,7 @@ async def test_sequence_order(
     _patch_unified_boundaries: dict[str, Any],
 ) -> None:
     """Helpers called in correct order inside the try block."""
-    from lyra.bootstrap.factory.unified import _bootstrap_unified
+    from factory.bootstrap.factory.unified import _bootstrap_unified
 
     order = _patch_unified_boundaries["order"]
 
@@ -307,7 +307,7 @@ async def test_run_lifecycle_awaited_with_resources(
     _patch_unified_boundaries: dict[str, Any],
 ) -> None:
     """run_lifecycle awaited with correct LifecycleResources."""
-    from lyra.bootstrap.factory.unified import _bootstrap_unified
+    from factory.bootstrap.factory.unified import _bootstrap_unified
 
     fake_pm = _patch_unified_boundaries["fake_pm"]
     fake_nc = _patch_unified_boundaries["fake_nc"]
@@ -341,7 +341,7 @@ async def test_cleanup_finally(
     _patch_unified_boundaries: dict[str, Any],
 ) -> None:
     """On exception inside try, finally still runs all cleanup."""
-    from lyra.bootstrap.factory.unified import _bootstrap_unified
+    from factory.bootstrap.factory.unified import _bootstrap_unified
 
     fake_nc = _patch_unified_boundaries["fake_nc"]
     fake_embedded = _patch_unified_boundaries["fake_embedded"]
@@ -382,7 +382,7 @@ async def test_nats_close_error_in_finally_still_cleans_up(
     _patch_unified_boundaries: dict[str, Any],
 ) -> None:
     """Even if nc.close() raises nats.errors.Error in finally, cleanup continues."""
-    from lyra.bootstrap.factory.unified import _bootstrap_unified
+    from factory.bootstrap.factory.unified import _bootstrap_unified
 
     fake_nc = _patch_unified_boundaries["fake_nc"]
     fake_embedded = _patch_unified_boundaries["fake_embedded"]
@@ -408,7 +408,7 @@ async def test_normal_exit_cancels_worker(
     _patch_unified_boundaries: dict[str, Any],
 ) -> None:
     """On normal exit, clipool_worker_task.cancel() is called."""
-    from lyra.bootstrap.factory.unified import _bootstrap_unified
+    from factory.bootstrap.factory.unified import _bootstrap_unified
 
     fake_task = _patch_unified_boundaries["fake_task"]
     gather = _patch_unified_boundaries["gather"]

@@ -8,79 +8,79 @@
 ### Adapters must not import BotStore directly (use BotStoreProtocol instead)
 
 - **Type:** forbidden
-- **Source modules:** lyra.adapters
-- **Forbidden modules:** lyra.infrastructure.stores.bot_store
+- **Source modules:** factory.adapters
+- **Forbidden modules:** factory.infrastructure.stores.bot_store
 - **Allow indirect imports:** True
 
 ### Agents must not import Composition Root
 
 - **Type:** forbidden
-- **Source modules:** lyra.agents
-- **Forbidden modules:** lyra.bootstrap
-- **Ignore imports:** lyra.agents.simple_agent -> lyra.infrastructure.stores.agent_store
+- **Source modules:** factory.agents
+- **Forbidden modules:** factory.bootstrap
+- **Ignore imports:** factory.agents.simple_agent -> factory.infrastructure.stores.agent_store
 - **Allow indirect imports:** False
 
 ### Clean architecture layers (transport ← streaming ← core ← llm/nats ← infrastructure ← adapters ← bootstrap)
 
 - **Type:** layers
-- **Layers:** lyra.bootstrap, lyra.adapters | lyra.blobstore, lyra.outbound, lyra.infrastructure, lyra.llm | lyra.nats, lyra.core, lyra.typing, lyra.streaming, lyra.transport
-- **Ignore imports:** lyra.core.agent.agent_refiner -> lyra.infrastructure.stores.agent_store, lyra.core.auth.authenticator -> lyra.infrastructure.stores.auth_store, lyra.core.auth.authenticator -> lyra.infrastructure.stores.identity_alias_store, lyra.core.agent.agent -> lyra.infrastructure.stores.agent_store, lyra.core.memory.memory -> lyra.infrastructure.stores.identity_alias_store, lyra.core.hub.hub -> lyra.infrastructure.stores.identity_alias_store, lyra.core.hub.hub_registration -> lyra.infrastructure.stores.identity_alias_store, lyra.core.hub.hub -> lyra.infrastructure.stores.pairing, lyra.core.hub.hub -> lyra.infrastructure.stores.prefs_store
+- **Layers:** factory.bootstrap, factory.adapters | factory.blobstore, factory.outbound, factory.infrastructure, factory.llm | factory.nats, factory.core, factory.typing, factory.streaming, factory.transport
+- **Ignore imports:** factory.core.agent.agent_refiner -> factory.infrastructure.stores.agent_store, factory.core.auth.authenticator -> factory.infrastructure.stores.auth_store, factory.core.auth.authenticator -> factory.infrastructure.stores.identity_alias_store, factory.core.agent.agent -> factory.infrastructure.stores.agent_store, factory.core.memory.memory -> factory.infrastructure.stores.identity_alias_store, factory.core.hub.hub -> factory.infrastructure.stores.identity_alias_store, factory.core.hub.hub_registration -> factory.infrastructure.stores.identity_alias_store, factory.core.hub.hub -> factory.infrastructure.stores.pairing, factory.core.hub.hub -> factory.infrastructure.stores.prefs_store
 - **Allow indirect imports:** False
 
 ### Commands must not import Infrastructure directly
 
 - **Type:** forbidden
-- **Source modules:** lyra.commands
-- **Forbidden modules:** lyra.infrastructure
+- **Source modules:** factory.commands
+- **Forbidden modules:** factory.infrastructure
 - **Allow indirect imports:** True
 
 ### Production code must not import tests.fakes
 
 - **Type:** forbidden
-- **Source modules:** lyra, scripts
+- **Source modules:** factory, scripts
 - **Forbidden modules:** tests
 - **Allow indirect imports:** True
 
 ### Shared floating modules must not import bootstrap, adapters, or infrastructure
 
 - **Type:** forbidden
-- **Source modules:** lyra.obs, lyra.errors, lyra.config, lyra.integrations, lyra.monitoring, lyra.agent_cmd
-- **Forbidden modules:** lyra.bootstrap, lyra.adapters, lyra.infrastructure
+- **Source modules:** factory.obs, factory.errors, factory.config, factory.integrations, factory.monitoring, factory.agent_cmd
+- **Forbidden modules:** factory.bootstrap, factory.adapters, factory.infrastructure
 - **Allow indirect imports:** True
 
 ### Shared floating modules must not import each other (peer isolation)
 
 - **Type:** independence
-- **Ignore imports:** lyra.core.processors.processor_registry -> lyra.integrations.base
+- **Ignore imports:** factory.core.processors.processor_registry -> factory.integrations.base
 - **Allow indirect imports:** False
 
 ### adapters must not re-introduce the legacy streaming-emitter shim (#1279 T28)
 
 - **Type:** forbidden
-- **Source modules:** lyra.adapters
-- **Forbidden modules:** lyra.adapters.shared._shared_streaming_emitter, lyra.adapters.shared._shared_streaming
+- **Source modules:** factory.adapters
+- **Forbidden modules:** factory.adapters.shared._shared_streaming_emitter, factory.adapters.shared._shared_streaming
 - **Allow indirect imports:** True
 
 ### bootstrap/types.py must not import from bootstrap subpackages (neutral shared module invariant)
 
 - **Type:** forbidden
-- **Source modules:** lyra.bootstrap.types
-- **Forbidden modules:** lyra.bootstrap.factory, lyra.bootstrap.lifecycle, lyra.bootstrap.standalone, lyra.bootstrap.wiring
+- **Source modules:** factory.bootstrap.types
+- **Forbidden modules:** factory.bootstrap.factory, factory.bootstrap.lifecycle, factory.bootstrap.standalone, factory.bootstrap.wiring
 - **Allow indirect imports:** True
 
 ### core/stores protocols must not import SQLite drivers
 
 - **Type:** forbidden
-- **Source modules:** lyra.core.stores
+- **Source modules:** factory.core.stores
 - **Forbidden modules:** aiosqlite, sqlite3
 - **Allow indirect imports:** True
 
 ### inbound stages must not import adapters (stage-axis invariant, ADR-073 / #1287)
 
 - **Type:** forbidden
-- **Source modules:** lyra.inbound
-- **Forbidden modules:** lyra.adapters
-- **Ignore imports:** lyra.inbound.dispatcher -> lyra.adapters.shared._shared, lyra.inbound.context -> lyra.adapters.shared._shared, lyra.inbound.context -> lyra.adapters.shared.outbound_listener, lyra.inbound.wire_parser_telegram -> lyra.adapters.telegram.telegram, lyra.inbound.wire_parser_discord -> lyra.adapters.discord.adapter
+- **Source modules:** factory.inbound
+- **Forbidden modules:** factory.adapters
+- **Ignore imports:** factory.inbound.dispatcher -> factory.adapters.shared._shared, factory.inbound.context -> factory.adapters.shared._shared, factory.inbound.context -> factory.adapters.shared.outbound_listener, factory.inbound.wire_parser_telegram -> factory.adapters.telegram.telegram, factory.inbound.wire_parser_discord -> factory.adapters.discord.adapter
 - **Allow indirect imports:** True
 
 ## NATS Subjects & Identities
@@ -145,43 +145,43 @@
 
 
 ### blobstore
-- **Container:** lyra-blobstore.container
-- **Required secrets:** lyra_blobstore_token
-- **Host roles:** lyra-hub
+- **Container:** factory-blobstore.container
+- **Required secrets:** factory_blobstore_token
+- **Host roles:** factory-hub
 
 ### clipool
-- **Container:** lyra-clipool.container
-- **Required secrets:** lyra-nats-clipool
-- **Host roles:** lyra-hub
+- **Container:** factory-clipool.container
+- **Required secrets:** factory-nats-clipool
+- **Host roles:** factory-hub
 
 ### discord
-- **Container:** lyra-discord.container
-- **Required secrets:** lyra-nats-discord
-- **Host roles:** lyra-hub
+- **Container:** factory-discord.container
+- **Required secrets:** factory-nats-discord
+- **Host roles:** factory-hub
 
 ### gh-helper
-- **Container:** lyra-gh-helper.container
-- **Host roles:** lyra-hub
+- **Container:** factory-gh-helper.container
+- **Host roles:** factory-hub
 
 ### hub
-- **Container:** lyra-hub.container
-- **Required secrets:** lyra-nats-hub
-- **Host roles:** lyra-hub
+- **Container:** factory-hub.container
+- **Required secrets:** factory-nats-hub
+- **Host roles:** factory-hub
 
 ### nats
-- **Container:** lyra-nats.container
-- **Required secrets:** lyra-nats-auth
-- **Host roles:** lyra-hub
+- **Container:** factory-nats.container
+- **Required secrets:** factory-nats-auth
+- **Host roles:** factory-hub
 
 ### telegram
-- **Container:** lyra-telegram.container
-- **Required secrets:** lyra-nats-telegram
-- **Host roles:** lyra-hub
+- **Container:** factory-telegram.container
+- **Required secrets:** factory-nats-telegram
+- **Host roles:** factory-hub
 
 ### turn-writer
-- **Container:** lyra-turn-writer.container
-- **Required secrets:** lyra-nats-turn-writer
-- **Host roles:** lyra-hub
+- **Container:** factory-turn-writer.container
+- **Required secrets:** factory-nats-turn-writer
+- **Host roles:** factory-hub
 
 ---
 *Generated by tools/generate_architecture_snapshot.py — DO NOT EDIT BY HAND*

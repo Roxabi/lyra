@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from lyra.core.messaging.message import (
+from factory.core.messaging.message import (
     GenericMeta,
     OutboundMessage,
     Response,
@@ -28,7 +28,7 @@ from .conftest import _RC_DC, _RC_TG, make_routing_inbound
 
 class TestRoutingContext:
     def test_importable_from_core(self) -> None:
-        from lyra.core import RoutingContext as RC  # noqa: F401
+        from factory.core import RoutingContext as RC  # noqa: F401
 
         assert RC is RoutingContext
 

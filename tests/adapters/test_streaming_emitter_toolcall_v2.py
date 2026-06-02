@@ -12,8 +12,8 @@ from __future__ import annotations
 from typing import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.core.messaging.message import OutboundMessage
-from lyra.core.messaging.render_events import (
+from factory.core.messaging.message import OutboundMessage
+from factory.core.messaging.render_events import (
     RenderEvent,
     RunFinishedRenderEvent,
     RunStartedRenderEvent,
@@ -25,7 +25,7 @@ from lyra.core.messaging.render_events import (
     ToolCallResultRenderEvent,
     ToolCallStartRenderEvent,
 )
-from lyra.outbound.emitter import OutboundEmitter as StreamingSession
+from factory.outbound.emitter import OutboundEmitter as StreamingSession
 
 
 def _make_formatter(**overrides) -> MagicMock:

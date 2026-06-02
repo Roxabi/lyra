@@ -6,7 +6,7 @@ asserts the set matches exactly.  Adding a second call site causes an immediate
 failure with a clear diff.
 
 Approach: INVENTORY
-  - Walk src/lyra/nats/ and src/lyra/core/hub/ source files
+  - Walk src/factory/nats/ and src/factory/core/hub/ source files
   - Grep for the literal function name ``sanitize_platform_meta``
   - Assert the call-site inventory matches the expected set
 
@@ -50,8 +50,8 @@ EXPECTED_CALL_SITES: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 _SEARCH_ROOTS = [
-    Path("src/lyra/nats"),
-    Path("src/lyra/core/hub"),
+    Path("src/factory/nats"),
+    Path("src/factory/core/hub"),
 ]
 
 _CALL_PATTERN = re.compile(r"\bsanitize_platform_meta\s*\(")

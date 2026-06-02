@@ -50,7 +50,7 @@ def _mock_patches():
 class TestRegisterAll:
     @pytest.mark.asyncio()
     async def test_registers_commands(self, config_file: Path) -> None:
-        from lyra.cli_setup import _register_all
+        from factory.cli_setup import _register_all
 
         mock_plugin_loader = _mock_patches()
 
@@ -62,10 +62,10 @@ class TestRegisterAll:
                 return_value=("fake_token", "fake_secret"),
             ),
             patch(
-                "lyra.core.commands.command_loader.CommandLoader",
+                "factory.core.commands.command_loader.CommandLoader",
                 return_value=mock_plugin_loader,
             ),
-            patch("lyra.cli_setup._register_telegram_bot", mock_register),
+            patch("factory.cli_setup._register_telegram_bot", mock_register),
         ):
             await _register_all(str(config_file))
 
@@ -84,7 +84,7 @@ class TestRegisterAll:
 
     @pytest.mark.asyncio()
     async def test_no_bots_configured(self, empty_config: Path) -> None:
-        from lyra.cli_setup import _register_all
+        from factory.cli_setup import _register_all
 
         # Should not raise — prints message and returns
         with (
@@ -93,7 +93,7 @@ class TestRegisterAll:
                 return_value=(MagicMock(), None),
             ),
             patch(
-                "lyra.core.commands.command_loader.CommandLoader",
+                "factory.core.commands.command_loader.CommandLoader",
                 return_value=MagicMock(),
             ),
         ):
@@ -109,8 +109,8 @@ class TestRegisterAll:
         """
         from click.exceptions import Exit as ClickExit
 
-        from lyra.cli_setup import _register_all
-        from lyra.errors import MissingCredentialsError
+        from factory.cli_setup import _register_all
+        from factory.errors import MissingCredentialsError
 
         with (
             patch(
@@ -118,7 +118,7 @@ class TestRegisterAll:
                 side_effect=MissingCredentialsError("telegram", "test_bot"),
             ),
             patch(
-                "lyra.core.commands.command_loader.CommandLoader",
+                "factory.core.commands.command_loader.CommandLoader",
                 return_value=MagicMock(
                     get_command_descriptions=MagicMock(return_value={})
                 ),
@@ -129,7 +129,7 @@ class TestRegisterAll:
 
     @pytest.mark.asyncio()
     async def test_idempotent_rerun(self, config_file: Path) -> None:
-        from lyra.cli_setup import _register_all
+        from factory.cli_setup import _register_all
 
         mock_plugin_loader = _mock_patches()
         mock_register = AsyncMock(return_value="test_bot_user")
@@ -140,10 +140,10 @@ class TestRegisterAll:
                 return_value=("fake_token", "fake_secret"),
             ),
             patch(
-                "lyra.core.commands.command_loader.CommandLoader",
+                "factory.core.commands.command_loader.CommandLoader",
                 return_value=mock_plugin_loader,
             ),
-            patch("lyra.cli_setup._register_telegram_bot", mock_register),
+            patch("factory.cli_setup._register_telegram_bot", mock_register),
         ):
             await _register_all(str(config_file))
             await _register_all(str(config_file))
@@ -154,7 +154,7 @@ class TestRegisterAll:
     async def test_config_not_found(self, tmp_path: Path) -> None:
         from click.exceptions import Exit as ClickExit
 
-        from lyra.cli_setup import _register_all
+        from factory.cli_setup import _register_all
 
         with pytest.raises((SystemExit, ClickExit)):
             await _register_all(str(tmp_path / "nonexistent.toml"))

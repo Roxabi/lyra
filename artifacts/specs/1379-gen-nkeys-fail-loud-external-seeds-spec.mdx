@@ -11,17 +11,17 @@ promoted_from: artifacts/frames/1379-gen-nkeys-fail-loud-external-seeds-frame.md
 
 Promoted from `artifacts/frames/1379-gen-nkeys-fail-loud-external-seeds-frame.mdx`.
 
-Incident 2026-05-25/26 : `lyra-acl genkeys --regenerate` a régénéré le seed `voice-client` sur M₁ sans propagation à M₂ → ~14h d'auth-fail silencieux côté NATS, voicecli `dictate nats` bloqué. Hotfix manuel par scp.
+Incident 2026-05-25/26 : `factory-acl genkeys --regenerate` a régénéré le seed `voice-client` sur M₁ sans propagation à M₂ → ~14h d'auth-fail silencieux côté NATS, voicecli `dictate nats` bloqué. Hotfix manuel par scp.
 
 Root cause : le schéma `deploy/nats/acl-matrix.json` n'exprime pas la topologie de déploiement par identité. `scripts/_modes.py::_mode_full_provision` itère uniformément, écrit chaque seed dans `seeds_dir`, et ne sait pas qu'un sous-ensemble doit voyager hors-machine pour être utilisable.
 
 ## Goal
 
-Toute exécution de `lyra-acl genkeys --regenerate` se termine soit en succès complet, soit en exit non-zéro avec un manifest scp copiable — jamais en succès silencieux qui laisse un client externe verrouillé.
+Toute exécution de `factory-acl genkeys --regenerate` se termine soit en succès complet, soit en exit non-zéro avec un manifest scp copiable — jamais en succès silencieux qui laisse un client externe verrouillé.
 
 ## Users
 
-- **Primary** : opérateur (Mickael) qui exécute `lyra-acl genkeys --regenerate` sur M₁ après modification d'ACL ou rotation
+- **Primary** : opérateur (Mickael) qui exécute `factory-acl genkeys --regenerate` sur M₁ après modification d'ACL ou rotation
 - **Secondary** :
   - `voice-client` (M₂, voicecli dictate)
   - Futurs `image-client`, `llm-client`
@@ -31,14 +31,14 @@ Toute exécution de `lyra-acl genkeys --regenerate` se termine soit en succès c
 
 ### Cas 1 — Matrice sans externals
 
-`lyra-acl genkeys --regenerate --yes` se comporte comme aujourd'hui : génère seeds, écrit auth.conf, exit 0.
+`factory-acl genkeys --regenerate --yes` se comporte comme aujourd'hui : génère seeds, écrit auth.conf, exit 0.
 
 ### Cas 2 — Matrice avec externals, sans flag d'ack
 
 **Important** : seeds et auth.conf sont écrits AVANT l'exit-2. NATS sera reconfiguré immédiatement ; les clients externes restent verrouillés jusqu'au fan-out. L'exit-2 est un sentinel "regen done, manual action required", pas un rollback.
 
 ```
-$ sudo lyra-acl genkeys --regenerate --yes
+$ sudo factory-acl genkeys --regenerate --yes
 [generates seeds in ~/.lyra/nkeys/]
 [writes /etc/nats/nkeys/auth.conf]
 ⚠ External seeds require manual fan-out (seeds + auth.conf already committed):
@@ -54,7 +54,7 @@ $ echo $?
 ### Cas 3 — Matrice avec externals + flag d'ack
 
 ```
-$ sudo lyra-acl genkeys --regenerate --yes --ack-external-distribution
+$ sudo factory-acl genkeys --regenerate --yes --ack-external-distribution
 [generates seeds]
 [writes auth.conf]
 ℹ External seeds (fan-out required by operator):
@@ -150,7 +150,7 @@ flowchart LR
 
 | ID | Type | Surface | Handler | Data |
 |---|---|---|---|---|
-| U1 | CLI flag | `lyra-acl genkeys --regenerate --ack-external-distribution` | `_cmd_genkeys → _mode_regenerate → _mode_full_provision` | `args.ack_external_distribution` (bool) |
+| U1 | CLI flag | `factory-acl genkeys --regenerate --ack-external-distribution` | `_cmd_genkeys → _mode_regenerate → _mode_full_provision` | `args.ack_external_distribution` (bool) |
 | N1 | Stderr block | "⚠ External seeds require manual fan-out:" | `_emit_external_manifest()` | externals list |
 | N2 | Exit code 2 | sentinel for "regen done, manual action required" | `_mode_full_provision` | — |
 | S1 | Schema field | `identity.deploy: Deploy` | `_validate_identity → _validate_deploy` | `Deploy` TypedDict variants |
@@ -159,7 +159,7 @@ flowchart LR
 ### Wiring
 
 ```
-User runs: sudo lyra-acl genkeys --regenerate --yes [--ack-external-distribution]
+User runs: sudo factory-acl genkeys --regenerate --yes [--ack-external-distribution]
   ↓
 _cmd_genkeys → _mode_regenerate (backup + wipe) → _mode_full_provision
   ↓
@@ -239,7 +239,7 @@ gk.add_argument(
 )
 ```
 
-**Demo** : `sudo AUTH_DIR=/tmp/test-auth lyra-acl genkeys --regenerate --yes` sur matrice de test contenant voice-client → exit 2 + manifest sur stderr. Ajouter `--ack-external-distribution` → exit 0 + manifest toujours visible (warning).
+**Demo** : `sudo AUTH_DIR=/tmp/test-auth factory-acl genkeys --regenerate --yes` sur matrice de test contenant voice-client → exit 2 + manifest sur stderr. Ajouter `--ack-external-distribution` → exit 0 + manifest toujours visible (warning).
 
 ### Slice 3 — Migration v2 → v3 + docs  [implements S2-completion]
 
@@ -253,7 +253,7 @@ Documenter dans `docs/ops/nats-authconf-update.md` : nouvelle section "**Externa
 
 Auditer call-sites de `genkeys --regenerate` — résultat préliminaire (revue devops) : zéro call-site dans le repo utilise `--regenerate` ; uniquement `--regen-authconf`, `--fix-perms`, `--template-only`. L'exit-2 est donc safe. Documenter l'audit comme un commit message ou comment dans la PR.
 
-**Demo** : matrice v3 committée passe `bun lyra-acl check retired` + `check flows` + `load_matrix` sans erreur. `docs/ops/nats-authconf-update.md` contient la nouvelle section. `lyra-acl genkeys --regenerate --yes` exit 2 sur matrice v3 sans flag d'ack. Avec flag → exit 0.
+**Demo** : matrice v3 committée passe `bun factory-acl check retired` + `check flows` + `load_matrix` sans erreur. `docs/ops/nats-authconf-update.md` contient la nouvelle section. `factory-acl genkeys --regenerate --yes` exit 2 sur matrice v3 sans flag d'ack. Avec flag → exit 0.
 
 ## Success Criteria
 
@@ -265,8 +265,8 @@ Auditer call-sites de `genkeys --regenerate` — résultat préliminaire (revue 
 - [ ] `scripts/gen_nkeys.py` accepte le flag `--ack-external-distribution` sur le sous-parser `genkeys`
 - [ ] `scripts/_modes.py::_mode_full_provision` retourne `list[tuple[str, DeployExternal]]` (¬sys.exit en interne)
 - [ ] Caller (`_mode_regenerate` ∨ `_cmd_genkeys`) appelle `_emit_external_manifest` puis `sys.exit(2)` si externals ≠ ∅ ∧ ¬ack
-- [ ] `lyra-acl genkeys --regenerate --yes` sur matrice avec externals retourne exit code 2 + manifest sur stderr
-- [ ] `lyra-acl genkeys --regenerate --yes --ack-external-distribution` retourne exit code 0 + manifest toujours visible sur stderr (warning)
+- [ ] `factory-acl genkeys --regenerate --yes` sur matrice avec externals retourne exit code 2 + manifest sur stderr
+- [ ] `factory-acl genkeys --regenerate --yes --ack-external-distribution` retourne exit code 0 + manifest toujours visible sur stderr (warning)
 - [ ] Manifest contient `scp <seed_src> <user>@<host>:<target_path>` par identité externe, où `<user>` = `os.environ.get("SUDO_USER") or getpass.getuser()` (¬hardcodé `mickael`)
 - [ ] `tests/scripts/test_genkeys_modes.py` couvre les 4 cas du § Expected Behavior
 - [ ] `tests/scripts/test_loader.py` couvre : (a) v2 sans deploy charge OK, (b) v2 avec deploy charge OK, (c) v3 sans deploy sur identité active → `_die`, (d) external sans `target_path` → `_die`, (e) container sans `secret` → `_die`

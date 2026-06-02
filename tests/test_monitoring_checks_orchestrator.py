@@ -14,8 +14,8 @@ import pytest
 class TestRunChecks:
     async def test_all_pass(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """SC-4, SC-11: run_checks returns all_passed=True when all checks pass."""
-        from lyra.monitoring.checks import run_checks
-        from lyra.monitoring.config import MonitoringConfig
+        from factory.monitoring.checks import run_checks
+        from factory.monitoring.config import MonitoringConfig
 
         config = MonitoringConfig(
             check_interval_minutes=5,
@@ -36,13 +36,13 @@ class TestRunChecks:
 
         # Mock systemctl --user is-active
         monkeypatch.setattr(
-            "lyra.monitoring.checks.subprocess.run",
+            "factory.monitoring.checks.subprocess.run",
             MagicMock(return_value=MagicMock(returncode=0, stdout="active\n")),
         )
 
         # Mock podman logs for log-scan checks (empty output → 0 matches → passed)
         monkeypatch.setattr(
-            "lyra.monitoring.checks_log.subprocess.run",
+            "factory.monitoring.checks_log.subprocess.run",
             MagicMock(return_value=MagicMock(returncode=0, stdout="", stderr="")),
         )
 
@@ -73,7 +73,7 @@ class TestRunChecks:
         # Single patch covers all monitoring modules: checks.py, checks_varz.py, and
         # checks_audio.py all reference the same httpx module object, so patching
         # httpx.AsyncClient via any one of those namespaces patches it globally.
-        with patch("lyra.monitoring.checks.httpx.AsyncClient") as mock_client_cls:
+        with patch("factory.monitoring.checks.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
 
             def _mock_get(url: str, **_kwargs: object) -> MagicMock:  # type: ignore
@@ -91,7 +91,7 @@ class TestRunChecks:
             import shutil
 
             monkeypatch.setattr(
-                "lyra.monitoring.checks_varz.shutil.disk_usage",
+                "factory.monitoring.checks_varz.shutil.disk_usage",
                 lambda _: shutil._ntuple_diskusage(
                     total=100 * 1024**3, used=50 * 1024**3, free=50 * 1024**3
                 ),
@@ -100,7 +100,7 @@ class TestRunChecks:
             import os as _os
 
             monkeypatch.setattr(
-                "lyra.monitoring.checks_varz.os.statvfs",
+                "factory.monitoring.checks_varz.os.statvfs",
                 lambda _: _os.statvfs_result(
                     (
                         100 * 1024**3,
@@ -139,8 +139,8 @@ class TestRunChecks:
 
     async def test_failure_detected(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """SC-11: run_checks returns all_passed=False when a check fails."""
-        from lyra.monitoring.checks import run_checks
-        from lyra.monitoring.config import MonitoringConfig
+        from factory.monitoring.checks import run_checks
+        from factory.monitoring.config import MonitoringConfig
 
         config = MonitoringConfig(
             check_interval_minutes=5,
@@ -161,13 +161,13 @@ class TestRunChecks:
 
         # Process check fails — systemctl returns inactive
         monkeypatch.setattr(
-            "lyra.monitoring.checks.subprocess.run",
+            "factory.monitoring.checks.subprocess.run",
             MagicMock(return_value=MagicMock(returncode=3, stdout="inactive\n")),
         )
 
         # Mock podman logs for log-scan checks
         monkeypatch.setattr(
-            "lyra.monitoring.checks_log.subprocess.run",
+            "factory.monitoring.checks_log.subprocess.run",
             MagicMock(return_value=MagicMock(returncode=0, stdout="", stderr="")),
         )
 
@@ -178,7 +178,7 @@ class TestRunChecks:
         jsz_response = MagicMock()
         jsz_response.status_code = 404
 
-        with patch("lyra.monitoring.checks.httpx.AsyncClient") as mock_client_cls:
+        with patch("factory.monitoring.checks.httpx.AsyncClient") as mock_client_cls:
             mock_client = AsyncMock()
 
             def _mock_get_failure(url: str, **_kwargs: object) -> MagicMock:  # type: ignore
@@ -194,7 +194,7 @@ class TestRunChecks:
             import shutil
 
             monkeypatch.setattr(
-                "lyra.monitoring.checks_varz.shutil.disk_usage",
+                "factory.monitoring.checks_varz.shutil.disk_usage",
                 lambda _: shutil._ntuple_diskusage(
                     total=100 * 1024**3, used=50 * 1024**3, free=50 * 1024**3
                 ),
@@ -203,7 +203,7 @@ class TestRunChecks:
             import os as _os
 
             monkeypatch.setattr(
-                "lyra.monitoring.checks_varz.os.statvfs",
+                "factory.monitoring.checks_varz.os.statvfs",
                 lambda _: _os.statvfs_result(
                     (
                         100 * 1024**3,

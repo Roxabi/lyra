@@ -9,9 +9,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.hub.middleware.path_validation import resolve_context
-from lyra.core.messaging.message import InboundMessage, Platform
+from factory.core.auth.trust import TrustLevel
+from factory.core.hub.middleware.path_validation import resolve_context
+from factory.core.messaging.message import InboundMessage, Platform
 
 pytestmark = pytest.mark.asyncio
 
@@ -49,7 +49,7 @@ def _make_inbound_message(
 
 
 def _make_pool(pool_id: str = "telegram:main:chat:42"):
-    from lyra.core.pool import Pool
+    from factory.core.pool import Pool
 
     ctx = MagicMock()
     ctx.get_agent = MagicMock(return_value=None)

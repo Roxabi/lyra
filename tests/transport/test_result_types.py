@@ -1,4 +1,4 @@
-"""Unit tests for lyra.transport._result boundary types (SC-07, U1, U5)."""
+"""Unit tests for factory.transport._result boundary types (SC-07, U1, U5)."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from typing import AsyncIterator
 
 import pytest
 
-from lyra.transport import SanitizedError
-from lyra.transport._result import Err, InboxStream, Ok, Result
+from factory.transport import SanitizedError
+from factory.transport._result import Err, InboxStream, Ok, Result
 from roxabi_contracts.errors import KNOWN_CODES
 
 

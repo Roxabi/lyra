@@ -7,10 +7,10 @@ from tests.fakes import (
     FakeTts,
 )
 
-from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent
-from lyra.core.ports.stt import TranscriptionResult
-from lyra.core.ports.tts import SynthesisResult
+from factory.core.agent.agent_config import ModelConfig
+from factory.core.messaging.events import ResultLlmEvent, TextLlmEvent
+from factory.core.ports.stt import TranscriptionResult
+from factory.core.ports.tts import SynthesisResult
 from roxabi_contracts import BlobRef
 
 _FAKE_BLOB = BlobRef(

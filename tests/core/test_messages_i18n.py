@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lyra.core.messaging.messages import MessageManager
+from factory.core.messaging.messages import MessageManager
 
 from .conftest import MESSAGES_TOML_PATH
 
@@ -98,8 +98,8 @@ class TestAgentI18nLanguage:
 
     def test_i18n_language_defaults_to_en(self) -> None:
         # Arrange -- AgentRow without explicit fallback_language (defaults to "en")
-        from lyra.core.agent.agent_db_loader import agent_row_to_config
-        from lyra.core.agent.agent_models import AgentRow
+        from factory.core.agent.agent_db_loader import agent_row_to_config
+        from factory.core.agent.agent_models import AgentRow
 
         row = AgentRow(
             name="nolangage",
@@ -115,8 +115,8 @@ class TestAgentI18nLanguage:
 
     def test_i18n_language_reads_fr(self) -> None:
         # Arrange -- AgentRow with fallback_language = "fr"
-        from lyra.core.agent.agent_db_loader import agent_row_to_config
-        from lyra.core.agent.agent_models import AgentRow
+        from factory.core.agent.agent_db_loader import agent_row_to_config
+        from factory.core.agent.agent_models import AgentRow
 
         row = AgentRow(
             name="frenchagent",
@@ -133,8 +133,8 @@ class TestAgentI18nLanguage:
 
     def test_i18n_language_explicit_en(self) -> None:
         # Arrange -- AgentRow explicitly sets "en"
-        from lyra.core.agent.agent_db_loader import agent_row_to_config
-        from lyra.core.agent.agent_models import AgentRow
+        from factory.core.agent.agent_db_loader import agent_row_to_config
+        from factory.core.agent.agent_models import AgentRow
 
         row = AgentRow(
             name="enagent",
@@ -164,11 +164,11 @@ class TestHotReloadPreservesMsgManager:
         """msg_manager survives CommandRouter rebuild on config hot-reload."""
         from unittest.mock import MagicMock
 
-        from lyra.core.agent import Agent, AgentBase
-        from lyra.core.agent.agent_config import ModelConfig
-        from lyra.core.agent.agent_models import AgentRow
-        from lyra.core.messaging.message import InboundMessage, Response
-        from lyra.core.pool import Pool
+        from factory.core.agent import Agent, AgentBase
+        from factory.core.agent.agent_config import ModelConfig
+        from factory.core.agent.agent_models import AgentRow
+        from factory.core.messaging.message import InboundMessage, Response
+        from factory.core.pool import Pool
 
         # Create a concrete subclass of AgentBase for testing
         class ConcreteAgent(AgentBase):
@@ -219,11 +219,14 @@ class TestHotReloadPreservesMsgManager:
         """msg_manager survives CommandRouter rebuild on plugin hot-reload."""
         import os
 
-        from lyra.core.agent import Agent, AgentBase
-        from lyra.core.agent.agent_config import ModelConfig
-        from lyra.core.commands.command_router import CommandRouter, CommandRouterDeps
-        from lyra.core.messaging.message import InboundMessage, Response
-        from lyra.core.pool import Pool
+        from factory.core.agent import Agent, AgentBase
+        from factory.core.agent.agent_config import ModelConfig
+        from factory.core.commands.command_router import (
+            CommandRouter,
+            CommandRouterDeps,
+        )
+        from factory.core.messaging.message import InboundMessage, Response
+        from factory.core.pool import Pool
 
         # Create a plugins directory with a minimal echo plugin
         plugins_dir = tmp_path / "plugins"
@@ -240,8 +243,8 @@ class TestHotReloadPreservesMsgManager:
         )
         handlers_path = plugin_dir / "handlers.py"
         handlers_path.write_text(
-            "from lyra.core.messaging.message import Response, InboundMessage\n"
-            "from lyra.core.pool import Pool\n"
+            "from factory.core.messaging.message import Response, InboundMessage\n"
+            "from factory.core.pool import Pool\n"
             "async def cmd_echo("
             "msg: InboundMessage, pool: Pool, args: list[str]) -> Response:\n"
             '    return Response(content=" ".join(args))\n'
@@ -283,8 +286,8 @@ class TestHotReloadPreservesMsgManager:
         # Act -- simulate plugin handlers.py change (content + mtime)
         old_cr = agent.command_router
         handlers_path.write_text(
-            "from lyra.core.messaging.message import Response, InboundMessage\n"
-            "from lyra.core.pool import Pool\n"
+            "from factory.core.messaging.message import Response, InboundMessage\n"
+            "from factory.core.pool import Pool\n"
             "async def cmd_echo("
             "msg: InboundMessage, pool: Pool, args: list[str]) -> Response:\n"
             '    return Response(content="v2: " + " ".join(args))\n'
@@ -303,10 +306,10 @@ class TestHotReloadPreservesMsgManager:
     def test_msg_manager_none_when_not_injected(self, tmp_path: Path) -> None:
         """When msg_manager is not passed, command_router._msg_manager is None
         (backward-compatible with existing code paths -- SC-9)."""
-        from lyra.core.agent import Agent, AgentBase
-        from lyra.core.agent.agent_config import ModelConfig
-        from lyra.core.messaging.message import InboundMessage, Response
-        from lyra.core.pool import Pool
+        from factory.core.agent import Agent, AgentBase
+        from factory.core.agent.agent_config import ModelConfig
+        from factory.core.messaging.message import InboundMessage, Response
+        from factory.core.pool import Pool
 
         class ConcreteAgent(AgentBase):
             async def process(

@@ -74,10 +74,10 @@ async def test_bootstrap_audio_consumer_telegram_provisions_and_starts() -> None
     underlying ensure_*/JetStreamAudioConsumer via a side_effect that calls through
     to the real start_audio_consumer so provisioning assertions hold.
     """
-    from lyra.bootstrap.standalone.adapter_standalone import (
+    from factory.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
-    from lyra.bootstrap.standalone.audio_consumer_bootstrap import (
+    from factory.bootstrap.standalone.audio_consumer_bootstrap import (
         start_audio_consumer as real_start_audio_consumer,
     )
 
@@ -117,28 +117,28 @@ async def test_bootstrap_audio_consumer_telegram_provisions_and_starts() -> None
     (load_token,) = _cred_patch()
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
-        patch("lyra.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
+        patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("factory.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
+            "factory.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=True),
         ),
         # Override the conftest no-op with a capturing call-through.
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.start_audio_consumer",
+            "factory.bootstrap.wiring.standalone_telegram.start_audio_consumer",
             side_effect=_capturing_start_audio_consumer,
         ),
         # S3: ensure_consumer still called per-bot; ensure_stream/ensure_kv removed.
         patch(
-            "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_consumer",
+            "factory.bootstrap.standalone.audio_consumer_bootstrap.ensure_consumer",
             new_callable=AsyncMock,
         ) as mock_ensure_consumer,
         patch(
-            "lyra.bootstrap.standalone.audio_consumer_bootstrap.JetStreamAudioConsumer",
+            "factory.bootstrap.standalone.audio_consumer_bootstrap.JetStreamAudioConsumer",
             return_value=mock_consumer,
         ) as mock_consumer_cls,
         load_token,
@@ -180,7 +180,7 @@ async def test_bootstrap_audio_consumer_telegram_provisions_and_starts() -> None
 @pytest.mark.asyncio
 async def test_bootstrap_audio_consumer_telegram_stop_called_in_teardown() -> None:
     """Telegram: consumer.stop() called via _close_tg_wired in teardown finally."""
-    from lyra.bootstrap.standalone.adapter_standalone import (
+    from factory.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
 
@@ -205,18 +205,18 @@ async def test_bootstrap_audio_consumer_telegram_stop_called_in_teardown() -> No
     (load_token,) = _cred_patch()
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
-        patch("lyra.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
+        patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("factory.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
+            "factory.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=True),
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.start_audio_consumer",
+            "factory.bootstrap.wiring.standalone_telegram.start_audio_consumer",
             AsyncMock(return_value=mock_consumer),
         ),
         load_token,
@@ -233,7 +233,7 @@ async def test_bootstrap_audio_consumer_telegram_stop_called_in_teardown() -> No
 @pytest.mark.asyncio
 async def test_bootstrap_audio_consumer_tg_no_consumer_on_astart_failure() -> None:
     """Telegram astart failure: start_audio_consumer never called."""
-    from lyra.bootstrap.standalone.adapter_standalone import (
+    from factory.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
 
@@ -250,20 +250,20 @@ async def test_bootstrap_audio_consumer_tg_no_consumer_on_astart_failure() -> No
     (load_token,) = _cred_patch()
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
-        patch("lyra.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
+        patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("factory.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         # ADR-079 S3: wait_for_hub now precedes the wiring loop; must be patched
         # so this test doesn't attempt real NATS KV operations on the mock nc.
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
+            "factory.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=None),
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.start_audio_consumer",
+            "factory.bootstrap.wiring.standalone_telegram.start_audio_consumer",
             new_callable=AsyncMock,
         ) as mock_start_consumer,
         load_token,
@@ -284,10 +284,10 @@ async def test_bootstrap_audio_consumer_tg_no_consumer_on_astart_failure() -> No
 @pytest.mark.asyncio
 async def test_bootstrap_audio_consumer_discord_provisions_and_starts() -> None:
     """Discord: start_audio_consumer called with correct js/platform/bot_id/adapter."""
-    from lyra.bootstrap.standalone.adapter_standalone import (
+    from factory.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
-    from lyra.bootstrap.standalone.audio_consumer_bootstrap import (
+    from factory.bootstrap.standalone.audio_consumer_bootstrap import (
         start_audio_consumer as real_start_audio_consumer,
     )
 
@@ -324,27 +324,27 @@ async def test_bootstrap_audio_consumer_discord_provisions_and_starts() -> None:
     (load_token_dc,) = _cred_patch("discord-token")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus_dc),
-        patch("lyra.adapters.discord.DiscordAdapter", return_value=mock_adapter_dc),
+        patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus_dc),
+        patch("factory.adapters.discord.DiscordAdapter", return_value=mock_adapter_dc),
         patch(
-            "lyra.bootstrap.wiring.standalone_discord.NatsOutboundListener",
+            "factory.bootstrap.wiring.standalone_discord.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_discord.wait_for_hub",
+            "factory.bootstrap.wiring.standalone_discord.wait_for_hub",
             AsyncMock(return_value=True),
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_discord.start_audio_consumer",
+            "factory.bootstrap.wiring.standalone_discord.start_audio_consumer",
             side_effect=_capturing_start_audio_consumer,
         ),
         # S3: ensure_consumer still called per-bot; ensure_stream/ensure_kv removed.
         patch(
-            "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_consumer",
+            "factory.bootstrap.standalone.audio_consumer_bootstrap.ensure_consumer",
             new_callable=AsyncMock,
         ) as mock_ensure_consumer_dc,
         patch(
-            "lyra.bootstrap.standalone.audio_consumer_bootstrap.JetStreamAudioConsumer",
+            "factory.bootstrap.standalone.audio_consumer_bootstrap.JetStreamAudioConsumer",
             return_value=mock_consumer_dc,
         ) as mock_consumer_cls_dc,
         load_token_dc,
@@ -394,8 +394,10 @@ async def test_start_audio_consumer_returns_null_on_key_value_failure() -> None:
     """
     import nats.errors
 
-    from lyra.adapters.nats.null_audio_consumer import NullAudioConsumer
-    from lyra.bootstrap.standalone.audio_consumer_bootstrap import start_audio_consumer
+    from factory.adapters.nats.null_audio_consumer import NullAudioConsumer
+    from factory.bootstrap.standalone.audio_consumer_bootstrap import (
+        start_audio_consumer,
+    )
 
     mock_js = MagicMock()
     mock_js.key_value = AsyncMock(side_effect=nats.errors.Error("bucket not found"))
@@ -408,14 +410,16 @@ async def test_start_audio_consumer_returns_null_on_key_value_failure() -> None:
 @pytest.mark.asyncio
 async def test_start_audio_consumer_returns_null_on_ensure_consumer_failure() -> None:
     """start_audio_consumer returns NullAudioConsumer when ensure_consumer raises."""
-    from lyra.adapters.nats.null_audio_consumer import NullAudioConsumer
-    from lyra.bootstrap.standalone.audio_consumer_bootstrap import start_audio_consumer
+    from factory.adapters.nats.null_audio_consumer import NullAudioConsumer
+    from factory.bootstrap.standalone.audio_consumer_bootstrap import (
+        start_audio_consumer,
+    )
 
     mock_js = MagicMock()
     mock_js.key_value = AsyncMock(return_value=MagicMock())
 
     with patch(
-        "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_consumer",
+        "factory.bootstrap.standalone.audio_consumer_bootstrap.ensure_consumer",
         new_callable=AsyncMock,
         side_effect=RuntimeError("consumer create failed"),
     ):
@@ -430,8 +434,10 @@ async def test_start_audio_consumer_returns_real_consumer_on_success() -> None:
 
     S3: bind-only path — js.key_value() called with KV_BUCKET, not ensure_kv.
     """
-    from lyra.adapters.nats.jetstream_audio_consumer import JetStreamAudioConsumer
-    from lyra.bootstrap.standalone.audio_consumer_bootstrap import start_audio_consumer
+    from factory.adapters.nats.jetstream_audio_consumer import JetStreamAudioConsumer
+    from factory.bootstrap.standalone.audio_consumer_bootstrap import (
+        start_audio_consumer,
+    )
 
     mock_js = MagicMock()
     mock_kv = MagicMock()
@@ -443,11 +449,11 @@ async def test_start_audio_consumer_returns_real_consumer_on_success() -> None:
 
     with (
         patch(
-            "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_consumer",
+            "factory.bootstrap.standalone.audio_consumer_bootstrap.ensure_consumer",
             new_callable=AsyncMock,
         ),
         patch(
-            "lyra.bootstrap.standalone.audio_consumer_bootstrap.JetStreamAudioConsumer",
+            "factory.bootstrap.standalone.audio_consumer_bootstrap.JetStreamAudioConsumer",
             return_value=mock_consumer,
         ),
     ):
@@ -474,12 +480,12 @@ def test_start_audio_consumer_does_not_import_ensure_stream() -> None:
     provision the stream/KV.
 
     NOTE on prior tautological version: the previous test patched
-    ``lyra.infrastructure.outbound_audio.stream_setup.ensure_stream`` — a path that
+    ``factory.infrastructure.outbound_audio.stream_setup.ensure_stream`` — a path that
     audio_consumer_bootstrap never imports. ``assert_not_awaited()`` on that mock
     could never fail regardless of what the module does, so it provided zero
     protection. This structural ``hasattr`` check directly tests the invariant.
     """
-    import lyra.bootstrap.standalone.audio_consumer_bootstrap as acb
+    import factory.bootstrap.standalone.audio_consumer_bootstrap as acb
 
     assert not hasattr(acb, "ensure_stream"), (
         "audio_consumer_bootstrap must not import ensure_stream — "
@@ -499,7 +505,7 @@ async def test_start_audio_consumer_uses_key_value_bind_not_ensure_kv() -> None:
     - js.key_value is awaited with KV_BUCKET ("lyra_outbound_audio_sent")
     - ensure_kv is NOT in the call chain
     """
-    from lyra.bootstrap.standalone.audio_consumer_bootstrap import (
+    from factory.bootstrap.standalone.audio_consumer_bootstrap import (
         KV_BUCKET,
         start_audio_consumer,
     )
@@ -510,11 +516,11 @@ async def test_start_audio_consumer_uses_key_value_bind_not_ensure_kv() -> None:
 
     with (
         patch(
-            "lyra.bootstrap.standalone.audio_consumer_bootstrap.ensure_consumer",
+            "factory.bootstrap.standalone.audio_consumer_bootstrap.ensure_consumer",
             new_callable=AsyncMock,
         ),
         patch(
-            "lyra.bootstrap.standalone.audio_consumer_bootstrap.JetStreamAudioConsumer",
+            "factory.bootstrap.standalone.audio_consumer_bootstrap.JetStreamAudioConsumer",
             return_value=AsyncMock(),
         ),
     ):
@@ -526,7 +532,7 @@ async def test_start_audio_consumer_uses_key_value_bind_not_ensure_kv() -> None:
 @pytest.mark.asyncio
 async def test_null_audio_consumer_stop_is_awaitable_noop() -> None:
     """NullAudioConsumer.stop() is awaitable and completes without error."""
-    from lyra.adapters.nats.null_audio_consumer import NullAudioConsumer
+    from factory.adapters.nats.null_audio_consumer import NullAudioConsumer
 
     sentinel = NullAudioConsumer()
     # Must not raise; return value is None.
@@ -537,8 +543,8 @@ async def test_null_audio_consumer_stop_is_awaitable_noop() -> None:
 @pytest.mark.asyncio
 async def test_teardown_calls_stop_on_null_sentinel_without_error() -> None:
     """Teardown calls .stop() on NullAudioConsumer — no if-guards, no error."""
-    from lyra.adapters.nats.null_audio_consumer import NullAudioConsumer
-    from lyra.bootstrap.standalone.adapter_standalone import (
+    from factory.adapters.nats.null_audio_consumer import NullAudioConsumer
+    from factory.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
 
@@ -565,18 +571,18 @@ async def test_teardown_calls_stop_on_null_sentinel_without_error() -> None:
     (load_token,) = _cred_patch()
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
-        patch("lyra.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
+        patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("factory.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
+            "factory.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=True),
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.start_audio_consumer",
+            "factory.bootstrap.wiring.standalone_telegram.start_audio_consumer",
             AsyncMock(return_value=null_consumer),
         ),
         load_token,
@@ -604,7 +610,7 @@ async def test_wait_for_hub_called_before_start_audio_consumer_telegram() -> Non
     Method: record call order via a shared list with side_effect callbacks on
     both mocks. Assert wait_for_hub index < start_audio_consumer index.
     """
-    from lyra.bootstrap.standalone.adapter_standalone import (
+    from factory.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
 
@@ -638,18 +644,18 @@ async def test_wait_for_hub_called_before_start_audio_consumer_telegram() -> Non
     (load_token,) = _cred_patch()
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
-        patch("lyra.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
+        patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch("factory.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.wait_for_hub",
+            "factory.bootstrap.wiring.standalone_telegram.wait_for_hub",
             side_effect=_recording_wait_for_hub,
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_telegram.start_audio_consumer",
+            "factory.bootstrap.wiring.standalone_telegram.start_audio_consumer",
             side_effect=_recording_start_audio_consumer,
         ),
         load_token,
@@ -677,7 +683,7 @@ async def test_wait_for_hub_called_before_start_audio_consumer_discord() -> None
 
     Mirror of the Telegram ordering test (ADR-079 S3 / B1 regression guard).
     """
-    from lyra.bootstrap.standalone.adapter_standalone import (
+    from factory.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
 
@@ -709,18 +715,18 @@ async def test_wait_for_hub_called_before_start_audio_consumer_discord() -> None
     (load_token_dc,) = _cred_patch("discord-token")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("lyra.nats.nats_bus.NatsBus", return_value=mock_inbound_bus_dc),
-        patch("lyra.adapters.discord.DiscordAdapter", return_value=mock_adapter_dc),
+        patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus_dc),
+        patch("factory.adapters.discord.DiscordAdapter", return_value=mock_adapter_dc),
         patch(
-            "lyra.bootstrap.wiring.standalone_discord.NatsOutboundListener",
+            "factory.bootstrap.wiring.standalone_discord.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_discord.wait_for_hub",
+            "factory.bootstrap.wiring.standalone_discord.wait_for_hub",
             side_effect=_recording_wait_for_hub,
         ),
         patch(
-            "lyra.bootstrap.wiring.standalone_discord.start_audio_consumer",
+            "factory.bootstrap.wiring.standalone_discord.start_audio_consumer",
             side_effect=_recording_start_audio_consumer,
         ),
         load_token_dc,

@@ -18,10 +18,10 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
-from lyra.adapters.telegram import TelegramAdapter
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage, OutboundMessage, TelegramMeta
-from lyra.core.messaging.render_events import (
+from factory.adapters.telegram import TelegramAdapter
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import InboundMessage, OutboundMessage, TelegramMeta
+from factory.core.messaging.render_events import (
     TextDeltaRenderEvent,
     TextEndRenderEvent,
     TextStartRenderEvent,
@@ -88,7 +88,7 @@ class TestTelegramMakeEmitter:
     def test_make_emitter_returns_outbound_emitter(self) -> None:
         """_make_emitter() must return an OutboundEmitter instance."""
         # Arrange
-        from lyra.outbound.emitter import OutboundEmitter
+        from factory.outbound.emitter import OutboundEmitter
 
         adapter, _ = _make_tg_adapter_with_bot()
         original_msg = _make_tg_inbound()
@@ -102,7 +102,7 @@ class TestTelegramMakeEmitter:
 
     def test_make_emitter_with_none_outbound(self) -> None:
         """_make_emitter() must not raise when outbound=None."""
-        from lyra.outbound.emitter import OutboundEmitter
+        from factory.outbound.emitter import OutboundEmitter
 
         adapter, _ = _make_tg_adapter_with_bot()
         original_msg = _make_tg_inbound()
@@ -113,9 +113,9 @@ class TestTelegramMakeEmitter:
 
     def test_make_emitter_non_telegram_falls_back(self) -> None:
         """_make_emitter() with non-telegram inbound falls back to legacy callbacks."""
-        from lyra.core.auth.trust import TrustLevel
-        from lyra.core.messaging.message import DiscordMeta
-        from lyra.outbound.emitter import OutboundEmitter
+        from factory.core.auth.trust import TrustLevel
+        from factory.core.messaging.message import DiscordMeta
+        from factory.outbound.emitter import OutboundEmitter
 
         adapter, _ = _make_tg_adapter_with_bot()
         discord_msg = InboundMessage(

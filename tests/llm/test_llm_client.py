@@ -12,13 +12,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.agent.agent_config import ModelConfig
-from lyra.core.messaging.events import ResultLlmEvent, TextLlmEvent
-from lyra.core.ports.llm import LlmResult
-from lyra.llm.llm_client import LlmClient
-from lyra.llm.llm_codec import LlmCodec
-from lyra.transport._result import Err, Ok, SanitizedError
-from lyra.transport.worker_pool_client import WorkerPoolClient
+from factory.core.agent.agent_config import ModelConfig
+from factory.core.messaging.events import ResultLlmEvent, TextLlmEvent
+from factory.core.ports.llm import LlmResult
+from factory.llm.llm_client import LlmClient
+from factory.llm.llm_codec import LlmCodec
+from factory.transport._result import Err, Ok, SanitizedError
+from factory.transport.worker_pool_client import WorkerPoolClient
 
 CONTRACT_VERSION = "1"
 

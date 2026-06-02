@@ -7,10 +7,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.config import PoolConfig
-from lyra.core.messaging.message import InboundMessage, TelegramMeta
-from lyra.core.pool import Pool
+from factory.core.auth.trust import TrustLevel
+from factory.core.config import PoolConfig
+from factory.core.messaging.message import InboundMessage, TelegramMeta
+from factory.core.pool import Pool
 
 __all__ = [
     "ctx_mock",

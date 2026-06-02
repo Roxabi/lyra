@@ -1,10 +1,10 @@
 """Typing shim tests for DiscordAdapter (T13, #1377).
 
 Covers the conditional typing plane (pub/sub vs legacy ThrottleCapability):
-1. LYRA_TYPING_ENABLED=true  -> _start_typing delegates to typing_publisher
-2. LYRA_TYPING_ENABLED=true  -> _cancel_typing delegates to typing_publisher
-3. LYRA_TYPING_ENABLED=false -> _start_typing calls legacy path
-4. LYRA_TYPING_ENABLED=false -> _cancel_typing calls legacy path
+1. FACTORY_TYPING_ENABLED=true  -> _start_typing delegates to typing_publisher
+2. FACTORY_TYPING_ENABLED=true  -> _cancel_typing delegates to typing_publisher
+3. FACTORY_TYPING_ENABLED=false -> _start_typing calls legacy path
+4. FACTORY_TYPING_ENABLED=false -> _cancel_typing calls legacy path
 5. No double calls (publisher is NOT touched when flag=false)
 """
 
@@ -15,7 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 
-from lyra.adapters.discord import DiscordAdapter
+from factory.adapters.discord import DiscordAdapter
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -24,7 +24,7 @@ from lyra.adapters.discord import DiscordAdapter
 
 def _make_adapter(monkeypatch: Any, enabled: str) -> DiscordAdapter:
     """Minimal DiscordAdapter with env flag pre-seeded."""
-    monkeypatch.setenv("LYRA_TYPING_ENABLED", enabled)
+    monkeypatch.setenv("FACTORY_TYPING_ENABLED", enabled)
     adapter = DiscordAdapter(
         bot_id="main",
         inbound_bus=MagicMock(),
@@ -34,7 +34,7 @@ def _make_adapter(monkeypatch: Any, enabled: str) -> DiscordAdapter:
 
 
 # ---------------------------------------------------------------------------
-# Pub/sub path (LYRA_TYPING_ENABLED=true)
+# Pub/sub path (FACTORY_TYPING_ENABLED=true)
 # ---------------------------------------------------------------------------
 
 
@@ -46,7 +46,7 @@ def test_dc_start_typing_enabled_delegates_to_publisher(monkeypatch: Any) -> Non
 
     with patch.object(adapter._typing, "start") as mock_start:
         with patch(
-            "lyra.adapters.discord.adapter.TraceContext.get_trace_id",
+            "factory.adapters.discord.adapter.TraceContext.get_trace_id",
             return_value="trace_dc_123",
         ):
             with patch("asyncio.create_task") as mock_create_task:
@@ -77,7 +77,7 @@ def test_dc_cancel_typing_enabled_delegates_to_publisher(monkeypatch: Any) -> No
 
     with patch.object(adapter._typing, "cancel") as mock_cancel:
         with patch(
-            "lyra.adapters.discord.adapter.TraceContext.get_trace_id",
+            "factory.adapters.discord.adapter.TraceContext.get_trace_id",
             return_value="trace_dc_456",
         ):
             with patch("asyncio.create_task") as mock_create_task:
@@ -124,7 +124,7 @@ def test_dc_cancel_typing_enabled_no_publisher_is_noop(monkeypatch: Any) -> None
 
 
 # ---------------------------------------------------------------------------
-# Legacy path (LYRA_TYPING_ENABLED=false)
+# Legacy path (FACTORY_TYPING_ENABLED=false)
 # ---------------------------------------------------------------------------
 
 

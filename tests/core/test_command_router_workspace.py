@@ -8,10 +8,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from lyra.core.commands.command_loader import CommandLoader
-from lyra.core.commands.command_router import CommandRouter, CommandRouterDeps
-from lyra.core.messaging.message import Response
-from lyra.core.pool import Pool
+from factory.core.commands.command_loader import CommandLoader
+from factory.core.commands.command_router import CommandRouter, CommandRouterDeps
+from factory.core.messaging.message import Response
+from factory.core.pool import Pool
 
 from .conftest import make_message
 

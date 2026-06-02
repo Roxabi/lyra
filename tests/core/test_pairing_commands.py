@@ -7,9 +7,9 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from lyra.commands.pairing.handlers import cmd_invite, cmd_join, cmd_unpair
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.pool import Pool
+from factory.commands.pairing.handlers import cmd_invite, cmd_join, cmd_unpair
+from factory.core.auth.trust import TrustLevel
+from factory.core.pool import Pool
 
 from .conftest import (
     _PAIRING_ADMIN_ID as _ADMIN_ID,

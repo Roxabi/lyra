@@ -7,10 +7,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage
-from lyra.inbound.context import DispatchCtx
-from lyra.inbound.dispatcher import Dispatcher
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import InboundMessage
+from factory.inbound.context import DispatchCtx
+from factory.inbound.dispatcher import Dispatcher
 
 # ---------------------------------------------------------------------------
 # Helpers

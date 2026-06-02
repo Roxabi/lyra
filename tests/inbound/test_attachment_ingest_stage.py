@@ -4,17 +4,17 @@ All tests call the stage directly:
     AttachmentIngestStage().run(msg, IngestCtx(store=...))
 
 These tests will FAIL at collection until the GREEN implementation lands in
-``lyra.inbound.attachment_ingest``.
+``factory.inbound.attachment_ingest``.
 """
 
 from __future__ import annotations
 
 from unittest.mock import AsyncMock
 
-from lyra.core.audio_payload import AudioPayload
-from lyra.core.auth.trust import TrustLevel
-from lyra.core.messaging.message import InboundMessage
-from lyra.inbound.attachment_ingest import (  # noqa: E402 — module does not exist yet (RED)
+from factory.core.audio_payload import AudioPayload
+from factory.core.auth.trust import TrustLevel
+from factory.core.messaging.message import InboundMessage
+from factory.inbound.attachment_ingest import (  # noqa: E402 — module does not exist yet (RED)
     AttachmentIngestStage,
     IngestCtx,
     PendingAttachment,

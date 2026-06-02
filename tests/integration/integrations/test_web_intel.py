@@ -1,4 +1,4 @@
-"""Tests for WebIntelScraper (lyra.integrations.web_intel)."""
+"""Tests for WebIntelScraper (factory.integrations.web_intel)."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from lyra.core.exceptions import ScrapeFailed
-from lyra.integrations.base import ScrapeProvider
-from lyra.integrations.web_intel import WebIntelScraper
+from factory.core.exceptions import ScrapeFailed
+from factory.integrations.base import ScrapeProvider
+from factory.integrations.web_intel import WebIntelScraper
 
 
 def _make_proc(returncode=0, stdout=b"", stderr=b""):
@@ -75,7 +75,7 @@ class TestWebIntelScraper:
         proc = _make_proc()
         proc.kill = MagicMock()
         proc.wait = AsyncMock()
-        wait_for_path = "lyra.integrations.web_intel.asyncio.wait_for"
+        wait_for_path = "factory.integrations.web_intel.asyncio.wait_for"
         with patch("asyncio.create_subprocess_exec", new=AsyncMock(return_value=proc)):
             with patch(wait_for_path, side_effect=asyncio.TimeoutError):
                 with pytest.raises(ScrapeFailed) as exc:
@@ -103,11 +103,11 @@ class TestWebIntelScraper:
     async def test_env_var_overrides_plugin_root(self, monkeypatch, tmp_path):
         # Patch _TRUSTED_BASE to tmp_path.parent so tmp_path passes validation.
         monkeypatch.setattr(WebIntelScraper, "_TRUSTED_BASE", tmp_path.parent)
-        monkeypatch.setenv("LYRA_WEB_INTEL_PATH", str(tmp_path))
+        monkeypatch.setenv("FACTORY_WEB_INTEL_PATH", str(tmp_path))
         scraper = WebIntelScraper()
         assert scraper._root == tmp_path.resolve()
 
     def test_env_var_outside_trusted_base_raises(self, monkeypatch):
-        monkeypatch.setenv("LYRA_WEB_INTEL_PATH", "/tmp/evil-path")
+        monkeypatch.setenv("FACTORY_WEB_INTEL_PATH", "/tmp/evil-path")
         with pytest.raises(ValueError, match="outside the trusted base"):
             WebIntelScraper()

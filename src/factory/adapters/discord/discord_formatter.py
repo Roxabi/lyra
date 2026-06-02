@@ -10,6 +10,12 @@ import discord
 from factory.adapters.discord.discord_formatting import render_buttons, render_text
 from factory.adapters.shared._shared import DISCORD_MAX_LENGTH, send_with_retry
 from factory.adapters.shared.base_formatter import BaseFormatter
+from factory.core.messaging.render_events import (
+    ReasoningDeltaRenderEvent,
+    ReasoningEndRenderEvent,
+    ReasoningStartRenderEvent,
+)
+from factory.outbound._reasoning_accum import ReasoningAccumulator
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -32,7 +38,9 @@ _PartialMessageable = (
 class DiscordFormatter(BaseFormatter):
     """OutboundFormatter impl for Discord (DISCORD_MAX_LENGTH chunk, ui.View buttons).
 
-    Inherits common formatting and trace-rendering from BaseFormatter.
+    Inherits the BaseFormatter ABC contract; stores per-instance state directly
+    (no super().__init__() — BaseFormatter is an ABC with no __init__).
+
     Discord-specific divergences:
 
     - ``send_placeholder``: reply-vs-thread logic (``should_reply`` guard +
@@ -53,17 +61,25 @@ class DiscordFormatter(BaseFormatter):
         should_reply: bool = False,
         original_msg: "InboundMessage | None" = None,
     ) -> None:
-        super().__init__(
-            adapter=adapter,
-            send_to_id=send_to_id,
-            get_msg=get_msg,
-            placeholder_text=placeholder_text,
-        )
+        self._adapter = adapter
+        self._send_to_id = send_to_id
+        self._get_msg = get_msg
+        self._placeholder_text = placeholder_text
         self._reply_msg_id = reply_msg_id
         self._should_reply = should_reply
         self._original_msg = original_msg
+        self._reasoning = ReasoningAccumulator()
 
-    # ── Pure-formatting axis overrides ────────────────────────────────────────
+    # ── Pure-formatting axis implementations ──────────────────────────────────
+
+    def placeholder_text(self) -> str:
+        return self._placeholder_text
+
+    def dim_italic(self, text: str) -> str:
+        return f"*{text}*"
+
+    def get_msg(self, key: str, fallback: str) -> str:
+        return self._get_msg(key, fallback)
 
     def chunk(self, text: str) -> list[str]:
         return render_text(text, DISCORD_MAX_LENGTH)
@@ -142,6 +158,28 @@ class DiscordFormatter(BaseFormatter):
         if self._original_msg is not None:
             await _send(self._adapter, self._original_msg, fallback_outbound)
         return fallback_outbound.metadata.get("reply_message_id")
+
+    async def edit_reasoning(
+        self,
+        trace_obj: Any,
+        event: ReasoningStartRenderEvent
+        | ReasoningDeltaRenderEvent
+        | ReasoningEndRenderEvent,
+    ) -> None:
+        """Render reasoning events as dim italic text in the trace placeholder.
+
+        trace_obj=None means placeholder send failed — bail silently.
+        Delta edits are throttled by ReasoningAccumulator.
+        """
+        if trace_obj is None:
+            return
+        text, should_edit = self._reasoning.process(event)
+        if should_edit and text is not None:
+            display = self.dim_italic(text)[-DISCORD_MAX_LENGTH:]
+            await send_with_retry(
+                lambda d=display: trace_obj.edit(content=d, embed=None),
+                label="Reasoning trace edit",
+            )
 
     async def edit_tool_recap(
         self,

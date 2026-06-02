@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 
 from aiogram.exceptions import TelegramAPIError
 
-from factory.adapters.shared.platform_send import send_chunked_message
+from factory.adapters.shared.platform_send import SendContext, send_chunked_message
 from factory.adapters.telegram.telegram_formatting import (
     _render_buttons,
     _render_text,
@@ -164,11 +164,11 @@ async def send(
         sent = await adapter.bot.send_message(**kwargs)
         return sent.message_id
 
-    await send_chunked_message(
+    ctx = SendContext(
         chunks=chunks,
         buttons=keyboard,
         outbound=outbound,
         adapter=adapter,
         scope_id=chat_id,
-        send_chunk=send_chunk,
     )
+    await send_chunked_message(ctx, send_chunk)

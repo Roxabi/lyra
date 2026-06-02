@@ -17,7 +17,7 @@ from factory.adapters.discord.discord_formatting import (
 from factory.adapters.shared._shared import (
     DISCORD_MAX_LENGTH,
 )
-from factory.adapters.shared.platform_send import send_chunked_message
+from factory.adapters.shared.platform_send import SendContext, send_chunked_message
 from factory.core.messaging.message import (
     InboundMessage,
     OutboundMessage,
@@ -162,18 +162,17 @@ async def send(  # noqa: C901 — DEBT:adapter-dispatch-complexity
 
     async def _send_chunk(
         chunk: str,
-        chunk_view: Any,
-        *,
         is_first: bool,
         is_last: bool,
-    ) -> Any:
-        """Send one chunk with reply-to (all chunks when should_reply) and view (last).
+        buttons: Any,
+    ) -> int:
+        """Send one chunk, matching ChunkSender protocol from platform_send.
 
-        is_first / is_last are provided by send_chunked_message per its contract.
-        When should_reply is True, every chunk is sent as a reply (not just the first)
-        — this matches original behaviour where msg_obj.reply() was used for all chunks.
+        platform_send passes buttons only on the last chunk (buttons=None otherwise).
+        When should_reply is True, every chunk is sent as a reply — this matches
+        original behaviour where msg_obj.reply() was used for all chunks.
         """
-        del is_first, is_last  # view attachment handled by caller via chunk_view arg
+        del is_first  # reply-on-all-chunks: is_first not needed for Discord logic
         if should_reply:
             if reply_msg_id is None:
                 raise RuntimeError(
@@ -182,25 +181,25 @@ async def send(  # noqa: C901 — DEBT:adapter-dispatch-complexity
             msg_obj = cast(_PartialMessageable, messageable).get_partial_message(
                 reply_msg_id
             )
-            if chunk_view is not None:
-                return await msg_obj.reply(chunk, view=chunk_view)
-            return await msg_obj.reply(chunk)
-        if chunk_view is not None:
-            return await messageable.send(chunk, view=chunk_view)
-        return await messageable.send(chunk)
+            if is_last and buttons is not None:
+                sent = await msg_obj.reply(chunk, view=buttons)
+            else:
+                sent = await msg_obj.reply(chunk)
+        else:
+            if is_last and buttons is not None:
+                sent = await messageable.send(chunk, view=buttons)
+            else:
+                sent = await messageable.send(chunk)
+        return sent.id
 
-    last_id = await send_chunked_message(
+    ctx = SendContext(
         chunks=chunks,
-        view=view,
-        send_chunk=_send_chunk,
+        buttons=view,
+        outbound=outbound,
+        adapter=adapter,
+        scope_id=send_to_id,
     )
-    if last_id is not None:
-        outbound.metadata["reply_message_id"] = last_id
-
-    if outbound.intermediate:
-        adapter._start_typing(send_to_id)
-    else:
-        adapter._cancel_typing(send_to_id)
+    await send_chunked_message(ctx, _send_chunk)
 
     log.debug(
         "stored reply_message_id=%s for msg_id=%s",

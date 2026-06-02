@@ -125,11 +125,9 @@ class BaseFormatter(ABC):
     async def edit_reasoning(
         self,
         trace_obj: Any,
-        event: (
-            "ReasoningStartRenderEvent"
-            " | ReasoningDeltaRenderEvent"
-            " | ReasoningEndRenderEvent"
-        ),
+        event: ReasoningStartRenderEvent
+        | ReasoningDeltaRenderEvent
+        | ReasoningEndRenderEvent,
     ) -> None:
         """Render a reasoning event into the trace placeholder.
 

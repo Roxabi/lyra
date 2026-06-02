@@ -80,6 +80,29 @@ class TestMonitoringConfigToml:
         assert config.health_endpoint_timeout_s == 5
         assert config.idle_threshold_hours == 6
 
+    def test_load_from_cwd_default_when_env_unset(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """SC-3: bare default is config.toml in cwd when $FACTORY_CONFIG unset.
+
+        Guards the resolver default (config.py: env.get("FACTORY_CONFIG",
+        "config.toml")). If the default regressed to "lyra.toml", the cwd
+        config.toml would not be read and this assertion would fail.
+        """
+        config_file = tmp_path / "config.toml"
+        config_file.write_text("[monitoring]\ncheck_interval_minutes = 11\n")
+        monkeypatch.delenv("FACTORY_CONFIG", raising=False)
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("TELEGRAM_TOKEN", "fake")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "fake")
+        monkeypatch.setenv("TELEGRAM_ADMIN_CHAT_ID", "12345")
+
+        from factory.monitoring.config import load_monitoring_config
+
+        config = load_monitoring_config()
+
+        assert config.check_interval_minutes == 11
+
     def test_idle_check_opt_in(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -85,15 +85,15 @@ RUN chmod 0755 /opt/factory-gh/hooks/prepare-commit-msg
 # Take `gh` off PATH (AC#5 from #1078): the base image ships /usr/bin/gh which
 # would let any process — including the Claude subprocess — invoke gh directly
 # and inherit the token if one ever leaked into env. Move it to a non-PATH
-# location and point LYRA_GH_BIN at it so the factory-gh shim still finds it
+# location and point FACTORY_GH_BIN at it so the factory-gh shim still finds it
 # without anyone else's `command -v gh` succeeding. /usr/local/bin/gh is a
 # shim alias (→ factory-gh) so callers that hardcode `gh` also route through the
-# dispenser; the shim's LYRA_GH_BIN-first resolution guards against recursion.
+# dispenser; the shim's FACTORY_GH_BIN-first resolution guards against recursion.
 RUN test -x /usr/bin/gh \
  && mv /usr/bin/gh /opt/factory-gh/gh \
  && chmod 0755 /opt/factory-gh/gh \
  || true
-ENV LYRA_GH_BIN=/opt/factory-gh/gh
+ENV FACTORY_GH_BIN=/opt/factory-gh/gh
 
 WORKDIR /app
 

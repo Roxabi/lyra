@@ -25,6 +25,8 @@ import asyncio
 import logging
 from typing import Generic, TypeVar
 
+from factory.core.config.bus_config import BusConfig
+
 from .message import Platform
 
 log = logging.getLogger(__name__)
@@ -56,8 +58,8 @@ class LocalBus(Generic[T]):
     def __init__(
         self,
         name: str = "inbound",
-        queue_depth_threshold: int = 100,
-        staging_maxsize: int = 500,
+        queue_depth_threshold: int = BusConfig.DEFAULT_QUEUE_DEPTH,
+        staging_maxsize: int = BusConfig.DEFAULT_STAGING_MAXSIZE,
     ) -> None:
         self._name = name
         self._queues: dict[Platform, asyncio.Queue[T]] = {}
@@ -67,7 +69,10 @@ class LocalBus(Generic[T]):
         self._depth_exceeded = False
 
     def register(
-        self, platform: Platform, maxsize: int = 100, bot_id: str | None = None
+        self,
+        platform: Platform,
+        maxsize: int = BusConfig.DEFAULT_MAXSIZE,
+        bot_id: str | None = None,
     ) -> None:
         """Register a bounded queue for the given platform.
 

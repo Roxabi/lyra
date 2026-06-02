@@ -15,9 +15,11 @@ from factory.core.auth.identity import Identity
 from factory.core.auth.trust import TrustLevel
 
 if TYPE_CHECKING:
+    from factory.core.stores.auth_store_protocol import AuthStoreProtocol
     from factory.core.stores.bot_store_protocol import BotStoreProtocol
-    from factory.infrastructure.stores.auth_store import AuthStore
-    from factory.infrastructure.stores.identity_alias_store import IdentityAliasStore
+    from factory.core.stores.identity_alias_store_protocol import (
+        IdentityAliasStoreProtocol,
+    )
 
 log = logging.getLogger(__name__)
 
@@ -45,12 +47,12 @@ class AuthenticatorDeps:
     Collapsed from PLR0913 parameter list (#1494).
     """
 
-    store: AuthStore | None = None
+    store: AuthStoreProtocol | None = None
     role_map: dict[str, TrustLevel] = field(default_factory=dict)
     default: TrustLevel = TrustLevel.BLOCKED
     public_commands: list[str] | None = None
     admin_user_ids: frozenset[str] = frozenset()
-    alias_store: IdentityAliasStore | None = None
+    alias_store: IdentityAliasStoreProtocol | None = None
 
 
 @dataclass(frozen=True)
@@ -63,9 +65,9 @@ class FromBotStoreDeps:
     platform: str = ""
     bot_id: str = ""
     bot_store: BotStoreProtocol | None = None
-    store: AuthStore | None = None
+    store: AuthStoreProtocol | None = None
     admin_user_ids: frozenset[str] = frozenset()
-    alias_store: IdentityAliasStore | None = None
+    alias_store: IdentityAliasStoreProtocol | None = None
 
 
 class Authenticator:
@@ -196,9 +198,9 @@ class Authenticator:
     @classmethod
     def _cli_sentinel(
         cls,
-        store: AuthStore | None,
+        store: AuthStoreProtocol | None,
         admin_user_ids: frozenset[str] = frozenset(),
-        alias_store: IdentityAliasStore | None = None,
+        alias_store: IdentityAliasStoreProtocol | None = None,
     ) -> Authenticator:
         return cls(
             AuthenticatorDeps(
@@ -215,9 +217,9 @@ class Authenticator:
         cls,
         section_cfg: dict,
         context_label: str,
-        store: AuthStore | None,
+        store: AuthStoreProtocol | None,
         admin_user_ids: frozenset[str] = frozenset(),
-        alias_store: IdentityAliasStore | None = None,
+        alias_store: IdentityAliasStoreProtocol | None = None,
     ) -> Authenticator:
         raw_default: str = section_cfg.get("default", "")
         try:
@@ -248,9 +250,9 @@ class Authenticator:
         cls,
         raw: dict,
         section: str,
-        store: AuthStore | None = None,
+        store: AuthStoreProtocol | None = None,
         admin_user_ids: frozenset[str] = frozenset(),
-        alias_store: IdentityAliasStore | None = None,
+        alias_store: IdentityAliasStoreProtocol | None = None,
     ) -> Authenticator | None:
         auth_block: dict = raw.get("auth", {})
         section_cfg: dict | None = auth_block.get(section)

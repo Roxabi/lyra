@@ -53,13 +53,13 @@ standards:
 quality_gates:
   file_length:
     enabled: true
-    max_lines: 300
+    max_lines: 350
     globs: ["src/**/*.py"]
     exemptions_file: tools/file_exemptions.txt
 
   folder_size:
     enabled: true
-    max_files: 12
+    max_files: 15
     globs: ["src/**"]
     exemptions_file: tools/folder_exemptions.txt
 

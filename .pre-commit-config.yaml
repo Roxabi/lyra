@@ -92,6 +92,13 @@ repos:
     pass_filenames: false
     stages:
     - pre-push
+  - id: qg-conf-drift
+    name: qg.conf drift (stack.yml is source of truth)
+    entry: scripts/check-qg-conf-drift.sh
+    language: system
+    pass_filenames: false
+    stages:
+    - pre-push
   - id: acl-specs-drift
     name: ACL spec/fixture drift (acl-matrix.json is source of truth)
     entry: scripts/check-acl-specs-drift.sh

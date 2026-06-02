@@ -24,7 +24,7 @@ Scripts are driven by `.claude/stack.yml` `quality_gates` block — that block i
 
 Add a doc to the gate → list it (or its dir) in `_collect_scan_files()`; regenerate via `--update-baseline` (new dead refs join the #1536 burn-down).
 
-Runtime config: `tools/qg.conf` (seeded from `stack.yml` by `/release-setup`); scripts fall back to hardcoded defaults when absent.
+Runtime config: `tools/qg.conf` (seeded from `stack.yml` by `/release-setup`); scripts fall back to hardcoded defaults when absent. `qg.conf` is generated-but-committed → drift-gated by `scripts/check-qg-conf-drift.sh` (pre-push + CI): it re-renders from `stack.yml` (cookbook N4a logic) and diffs, so the two can't silently desync. Fix drift via `/release-setup --force`.
 
 ## Exit-code contract (hard rule — #1162 hotfix)
 

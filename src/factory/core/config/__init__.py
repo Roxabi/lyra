@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, Callable
 from pydantic import BaseModel, ConfigDict, Field
 
 from .bus_config import BusConfig
+from .lifecycle_config import LifecycleConfig
 from .memory_config import MemoryConfig
 from .platform_config import PlatformConfig
 from .turn_store_config import TurnStoreConfig
@@ -145,6 +146,7 @@ __all__ = [
     "BusConfig",
     "DiscordConfig",
     "HubConfig",
+    "LifecycleConfig",
     "MemoryConfig",
     "PlatformConfig",
     "PoolConfig",

@@ -28,6 +28,8 @@ import time
 from dataclasses import dataclass
 from enum import Enum
 
+from factory.core.config.lifecycle_config import LifecycleConfig
+
 log = logging.getLogger(__name__)
 
 
@@ -70,8 +72,8 @@ class CircuitBreaker:
     def __init__(
         self,
         name: str,
-        failure_threshold: int = 5,
-        recovery_timeout: int = 60,
+        failure_threshold: int = LifecycleConfig.CIRCUIT_FAILURE_THRESHOLD,
+        recovery_timeout: int = LifecycleConfig.CIRCUIT_RECOVERY_TIMEOUT,
     ) -> None:
         self.name = name
         self.failure_threshold = failure_threshold

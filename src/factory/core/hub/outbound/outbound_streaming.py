@@ -17,6 +17,7 @@ from ...messaging.utils.callbacks import unwrap_callback
 
 if TYPE_CHECKING:
     from ...messaging.render_events import RenderEvent
+    from ...ports.tts import TtsProtocol
     from ...tts_dispatch import AudioPipeline
     from ..hub_protocol import ChannelAdapter
     from .outbound_dispatcher import OutboundDispatcher
@@ -34,7 +35,7 @@ class StreamingDispatch:
         adapters: dict[tuple[Platform, str], "ChannelAdapter"],
         dispatchers: dict[tuple[Platform, str], "OutboundDispatcher"],
         tts_dispatch: "TtsDispatch",
-        get_tts: Callable[[], object | None],
+        get_tts: "Callable[[], TtsProtocol | None]",
         get_audio_pipeline: Callable[[], "AudioPipeline | None"],
     ) -> None:
         self._adapters = adapters

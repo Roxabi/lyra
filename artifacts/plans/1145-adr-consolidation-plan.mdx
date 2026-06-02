@@ -122,7 +122,7 @@ flowchart LR
 
 #### T1 [doc-writer-A] — Re-audit buckets and produce decisions document
 
-- **Files:** `artifacts/1145-adr-audit.md` (write), `docs/architecture/adr/*.mdx` (read all 72)
+- **Files:** `artifacts/audits/2026-05-08-adr-consolidation-audit-1145.md` (write), `docs/architecture/adr/*.mdx` (read all 72)
 - **Snippet shape:**
   ```md
   # ADR consolidation audit (2026-05-08)
@@ -139,7 +139,7 @@ flowchart LR
   ## Final live ADR count estimate
   - 30 ± 2 after this PR
   ```
-- **Verify:** `test -f artifacts/1145-adr-audit.md && grep -c "^## Bucket:" artifacts/1145-adr-audit.md`
+- **Verify:** `test -f artifacts/audits/2026-05-08-adr-consolidation-audit-1145.md && grep -c "^## Bucket:" artifacts/audits/2026-05-08-adr-consolidation-audit-1145.md`
 - **Expected:** file exists; ≥4 buckets sectioned; explicit decisions for ADR-066..071 and 017 collision and meta.json layout
 - **Time:** 30–45 min
 - **Spec trace:** S1, SC-7
@@ -317,7 +317,7 @@ For each merge task below, the recipe is the same:
 
 | Task | Agent instance | blockedBy | Subject |
 |------|---------------|-----------|---------|
-| T1 | doc-writer-A | — | Audit & decisions doc (`artifacts/1145-adr-audit.md`) |
+| T1 | doc-writer-A | — | Audit & decisions doc (`artifacts/audits/2026-05-08-adr-consolidation-audit-1145.md`) |
 
 ### Wave 2 — after T1, 5 agents ∥
 

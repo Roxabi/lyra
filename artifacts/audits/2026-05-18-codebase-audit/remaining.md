@@ -1,7 +1,7 @@
 ---
 title: Audit 2026-05-18 — Findings restants à instruire
 status: open
-parent: 2026-05-18-codebase-audit.md
+parent: summary.md
 updated: 2026-05-19
 ---
 
@@ -11,8 +11,8 @@ Snapshot post-implémentation. Source de vérité pour ce qui n'a pas été tran
 
 ## Contexte
 
-- **Audit origine** : `artifacts/analyses/2026-05-18-codebase-audit.md` (livrable principal, 7 clusters, 26 findings)
-- **Sub-livrables** : `audit-2026-05-18/{01-cartography, 02-hexagonal, 03-mutualisation, 04-simplification}.md`
+- **Audit origine** : `summary.md` (livrable principal, 7 clusters, 26 findings)
+- **Sub-livrables** : `{01-cartography, 02-hexagonal, 03-mutualisation, 04-simplification}.md`
 - **Sessions d'implémentation** : 2026-05-18 (2 sessions consécutives, 7 PRs)
 
 ## Implémenté (mergé)
@@ -74,8 +74,8 @@ Snapshot post-implémentation. Source de vérité pour ce qui n'a pas été tran
 
 ## TODO mineur
 
-- [ ] Mettre à jour `2026-05-18-codebase-audit.md` (livrable principal) pour ajouter section "Fausses pistes" listant 2.1 + 2.2. Cosmétique, ¬bloquant.
+- [ ] Mettre à jour `summary.md` (livrable principal) pour ajouter section "Fausses pistes" listant 2.1 + 2.2. Cosmétique, ¬bloquant.
 
 ## Lien retour
 
-→ `2026-05-18-codebase-audit.md` (livrable principal) — pour les findings initiaux pleins.
+→ `summary.md` (livrable principal) — pour les findings initiaux pleins.

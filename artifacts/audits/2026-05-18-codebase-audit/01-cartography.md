@@ -136,15 +136,15 @@ Tous les 18 slugs ont statut **open**.
 
 ### Résumé audits #1145
 
-- **1145-adr-audit** (`artifacts/1145-adr-audit.md`) — T1 : audit des 72 ADRs ; classification archive/bucket/live ; identification 5 buckets thématiques (NATS Core → ADR-045, Contracts → ADR-049, Storage → ADR-048, Streaming → ADR-059, Deploy → Quadlet). ADR-036, ADR-066 identifiés comme drifted / à rattacher.
+- **1145-adr-audit** (`artifacts/audits/2026-05-08-adr-consolidation-audit-1145.md`) — T1 : audit des 72 ADRs ; classification archive/bucket/live ; identification 5 buckets thématiques (NATS Core → ADR-045, Contracts → ADR-049, Storage → ADR-048, Streaming → ADR-059, Deploy → Quadlet). ADR-036, ADR-066 identifiés comme drifted / à rattacher.
 
-- **Cluster A** (`artifacts/1145-cluster-A-arch-layering-audit.md`) — 14 ADRs vérifiés code-as-truth. ADR-002 (pool atomicity) et ADR-006 (hub run-loop) ont drifted vers l'architecture middleware pipeline. ADR-016 (LlmProvider/AnthropicSdkDriver) = FULL-ARCHIVE confirmé.
+- **Cluster A** (`artifacts/audits/2026-05-08-cluster-A-arch-layering-audit-1145.md`) — 14 ADRs vérifiés code-as-truth. ADR-002 (pool atomicity) et ADR-006 (hub run-loop) ont drifted vers l'architecture middleware pipeline. ADR-016 (LlmProvider/AnthropicSdkDriver) = FULL-ARCHIVE confirmé.
 
-- **Cluster B** (`artifacts/1145-cluster-B-nats-contracts-audit.md`) — 17 ADRs NATS/contracts/voice. ADR-035 stale status ("Draft" mais impl complète). ADR-036 diverge du wire format réel (ADR-040 Finding 2 = vérité). Contrats roxabi-nats et roxabi-contracts validés conformes.
+- **Cluster B** (`artifacts/audits/2026-05-08-cluster-B-nats-contracts-audit-1145.md`) — 17 ADRs NATS/contracts/voice. ADR-035 stale status ("Draft" mais impl complète). ADR-036 diverge du wire format réel (ADR-040 Finding 2 = vérité). Contrats roxabi-nats et roxabi-contracts validés conformes.
 
-- **Cluster C** (`artifacts/1145-cluster-C-hub-adapters-audit.md`) — 21 ADRs hub/adapters/dispatch. ADR-001/003/004/005 = KEEP-LIVE-ACCURATE. ADR-006 = drifted (pipeline middleware). ADR-021 = FULL-ARCHIVE.
+- **Cluster C** (`artifacts/audits/2026-05-08-cluster-C-hub-adapters-audit-1145.md`) — 21 ADRs hub/adapters/dispatch. ADR-001/003/004/005 = KEEP-LIVE-ACCURATE. ADR-006 = drifted (pipeline middleware). ADR-021 = FULL-ARCHIVE.
 
-- **Cluster D** (`artifacts/1145-cluster-D-deploy-streaming-audit.md`) — 20 ADRs deploy/streaming. ADR-012/016/018 = FULL-ARCHIVE (AnthropicSdkDriver disparu). Pattern `deploy/quadlet/*.container` confirmé conforme.
+- **Cluster D** (`artifacts/audits/2026-05-08-cluster-D-deploy-streaming-audit-1145.md`) — 20 ADRs deploy/streaming. ADR-012/016/018 = FULL-ARCHIVE (AnthropicSdkDriver disparu). Pattern `deploy/quadlet/*.container` confirmé conforme.
 
 ### Findings #1145 : résolus vs ouverts
 

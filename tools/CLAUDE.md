@@ -26,6 +26,8 @@ Add a doc to the gate → list it (or its dir) in `_collect_scan_files()`; regen
 
 Runtime config: `tools/qg.conf` (seeded from `stack.yml` by `/release-setup`); scripts fall back to hardcoded defaults when absent. `qg.conf` is generated-but-committed → drift-gated by `scripts/check-qg-conf-drift.sh` (pre-push + CI): it re-renders from `stack.yml` (cookbook N4a logic) and diffs, so the two can't silently desync. Fix drift via `/release-setup --force`.
 
+`file_length` runs in **SLOC mode** (`QG_FILE_METRIC=sloc`, `metric: sloc` in `stack.yml`): the cap counts source lines only — blanks, comments and docstrings excluded — via `radon` (a dev dep; Node repos would use `npx sloc`). `check_file_length.sh` sources `check_lib.sh` for the exemption helpers. Exemption counts (`# N lines`) are SLOC too. Switching back to raw `wc -l` = set `metric: raw` (or drop the key) and re-run `/release-setup --force`.
+
 ## Exit-code contract (hard rule — #1162 hotfix)
 
 Exit code = "script ran OK" vs "script broke" — NEVER "violations found".

@@ -179,4 +179,5 @@ dev = [
     "roxabi-blobs[testing]",
     "roxabi-contracts[testing]",
     "roxabi-nats[testing]",
+    "radon>=6.0",
 ]

@@ -1,5 +1,5 @@
-# File size exemptions (≤350 lines per file)
-# Each entry must have a tracking issue.
-# Format: <path>  # <lines> lines — <issue> <description>
-src/lyra/adapters/clipool/clipool_worker.py  # 390 lines — DEBT:file-exemptions — #1016 WorkerError population + exception classifier; #1215 +9 lines (sanitization log.warning + comments at 4 sites); #1150 +5 lines (agent identity kwargs forwarded to pool.send); #1147 +1 line (wait_ready=False worker semantics); #1152 +2 lines (ADR annotation wrap)
-src/lyra/core/cli/cli_streaming_parser.py  # 442 lines — DEBT:file-exemptions — #1100 ToolCall streamed events + #1101 thinking-block recognition + #1219 bus-message sanitization (log.warning + comment) + #1252 path-(a) scrubber + #1282 Slice 2 sub-handler split + Slice 4 EventEmitter wiring + StateMachine composition + compat properties + #1282 1b1: F7 shallow-copy on compat properties + #1321 doc hygiene (name-collision docstring + Parser shape qualifier)
+# File size exemptions — file_length gate (metric: SLOC, cap 300, per .claude/stack.yml)
+# Each entry MUST have a tracking issue. Format: <path>  # <N> lines — <issue> <description>
+# The declared count is a local cap (still measured in SLOC); exceeding it fails the gate.
+# Currently EMPTY: under SLOC@300 no src file qualifies (max is cli_streaming_parser.py at 291 SLOC).
+# The prior 14 entries were wc -l artifacts (docstrings + blank lines), dissolved by the metric switch.

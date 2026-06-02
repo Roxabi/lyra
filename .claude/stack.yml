@@ -53,7 +53,8 @@ standards:
 quality_gates:
   file_length:
     enabled: true
-    max_lines: 350
+    max_lines: 300
+    metric: sloc
     globs: ["src/**/*.py"]
     exemptions_file: tools/file_exemptions.txt
 

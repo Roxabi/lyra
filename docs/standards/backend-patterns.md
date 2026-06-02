@@ -231,12 +231,12 @@ Do NOT create plugin names that conflict with built-ins: `help`, `stop`, `circui
 
 ```
 Exception
-├── LyraUserError               # base for all user-visible errors (lyra.core.errors)
+├── LyraUserError               # base for all user-visible errors (factory.core.errors)
 │   ├── AudioDownloadError
 │   ├── AudioTooLargeError
 │   ├── AudioInvalidFormatError
 │   └── SttError
-├── ProviderError               # LLM driver errors (src/lyra/errors.py)
+├── ProviderError               # LLM driver errors (src/factory/errors.py)
 │   ├── ProviderAuthError       # retryable=False
 │   ├── ProviderRateLimitError  # retryable=True
 │   └── ProviderApiError        # retryable=False by default

@@ -43,11 +43,11 @@ is superseded — see RenderEvent v2 below.
 The pipeline is a strict hexagonal layering enforced by import-linter:
 
 ```
-LlmEvent          (lyra.core.messaging.events)          — port, provider-agnostic
+LlmEvent          (factory.core.messaging.events)          — port, provider-agnostic
     ↓
-StreamProcessor   (lyra.core.stream_processor) — domain, config-driven, no network deps
+StreamProcessor   (factory.core.stream_processor) — domain, config-driven, no network deps
     ↓
-RenderEvent       (lyra.core.messaging.render_events) — adapter-facing, no platform types
+RenderEvent       (factory.core.messaging.render_events) — adapter-facing, no platform types
 ```
 
 `LlmEvent` owns per-token/per-chunk semantics from the LLM source. `StreamProcessor` handles
@@ -104,10 +104,10 @@ Every new event carries a `SCHEMA_VERSION_*` constant (ADR-049 discipline). `run
   `streaming`) triggers an automatic process respawn via the existing mismatch check.
 - Every `RenderEvent` subtype carries its own `SCHEMA_VERSION_*` constant. → See `messaging.md` (Schema versioning) and `ARCHITECTURE.md` (Schema versioning section) for the bump procedure and receiver policy.
 - **Error envelope on `ResultLlmEvent`** — `error_text` and `worker_error` are populated together by drivers/parsers on terminal failure events: `worker_error` carries the structured taxonomy (`domain`, `code`, `message`, `retryable`); `error_text` is an in-process presentation cache of `worker_error.message` consumed directly by adapter renderers. `error_text` is **not a wire-contract field** — only `worker_error` exists on NATS contracts. Neither field is a shim for the other (ADR-066 archive Status, issue #1029).
-- `lyra-clipool` is excluded from the RenderEvent co-deploy gate (it is an `LlmEvent`
+- `factory-clipool` is excluded from the RenderEvent co-deploy gate (it is an `LlmEvent`
   producer only, no `render_events` import). Slices that change `LlmEvent` shape include it.
-- Slices that introduce new `RenderEvent` types require co-deploying `lyra-hub` +
-  `lyra-telegram` + `lyra-discord`. Receivers drop unknown schema versions with a rate-limited
+- Slices that introduce new `RenderEvent` types require co-deploying `factory-hub` +
+  `factory-telegram` + `factory-discord`. Receivers drop unknown schema versions with a rate-limited
   ERROR log (one per envelope name per 60s); they do not raise.
 
 ## Open questions / known gaps

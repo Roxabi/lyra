@@ -21,16 +21,16 @@ An agent is a class that implements `AgentBase` (defined in `core/agent.py`) and
 
 ### Agent store
 
-Agent config is stored in SQLite (`~/.lyra/config.db`). TOML files are **seed sources only** — the runtime reads from the DB, not TOML.
+Agent config is stored in SQLite (`~/.roxabi/factory/config.db`). TOML files are **seed sources only** — the runtime reads from the DB, not TOML.
 
 ```
-~/.lyra/agents/<name>.toml   ← user overrides (gitignored, machine-specific)
-         ↓  lyra agent init [--force]
-~/.lyra/config.db            ← runtime source of truth
+~/.roxabi/factory/agents/<name>.toml   ← user overrides (gitignored, machine-specific)
+         ↓  factory agent init [--force]
+~/.roxabi/factory/config.db            ← runtime source of truth
 ```
 
 After editing any TOML file:
-1. `lyra agent init --force` — re-seed the DB.
+1. `factory agent init --force` — re-seed the DB.
 2. Restart the daemon.
 
 The DB is NOT updated automatically on file change. There is no file watcher.
@@ -62,7 +62,7 @@ enabled = ["echo", "search"]   # plugin names to enable for this agent
 voice = "Sohee"
 
 [workspaces]
-lyra = "~/projects/lyra"       # /workspace lyra → switches cwd
+lyra = "~/projects/roxabi-factory"       # /workspace lyra → switches cwd
 ```
 
 **`cwd` does NOT go in agent TOML** — it is machine-specific and belongs in `config.toml [defaults]`.
@@ -74,7 +74,7 @@ lyra = "~/projects/lyra"       # /workspace lyra → switches cwd
 ### Agent lifecycle
 
 ```
-1. Startup:  AgentStore.connect() → lyra agent init → DB seeded
+1. Startup:  AgentStore.connect() → factory agent init → DB seeded
 2. Register: hub.register_agent(agent)
 3. Message:  PoolManager.get_or_create_pool() → pool.submit(msg)
              → agent.handle(msg, pool)
@@ -85,14 +85,14 @@ lyra = "~/projects/lyra"       # /workspace lyra → switches cwd
 ### CLI commands
 
 ```bash
-lyra agent list                     # list all agents in DB
-lyra agent show <name>              # show agent config
-lyra agent init                     # seed DB from TOML files (idempotent)
-lyra agent init --force             # overwrite existing DB entries
-lyra agent edit <name>              # open TOML in $EDITOR
-lyra agent create                   # interactive wizard
-lyra agent delete <name>            # remove from DB
-lyra agent assign <name> --bot telegram:main  # assign to bot
+factory agent list                     # list all agents in DB
+factory agent show <name>              # show agent config
+factory agent init                     # seed DB from TOML files (idempotent)
+factory agent init --force             # overwrite existing DB entries
+factory agent edit <name>              # open TOML in $EDITOR
+factory agent create                   # interactive wizard
+factory agent delete <name>            # remove from DB
+factory agent assign <name> --bot telegram:main  # assign to bot
 ```
 
 ---
@@ -214,7 +214,7 @@ A plugin not listed in `enabled` is discovered but not registered for that agent
 
 ALWAYS return `Response(content=...)` from command handlers — never `None`, never raise.
 
-ALWAYS run `lyra agent init --force` after editing a TOML file, then restart the daemon.
+ALWAYS run `factory agent init --force` after editing a TOML file, then restart the daemon.
 
 ALWAYS set `[agent.smart_routing] enabled = false` — the validator rejects `true`.
 

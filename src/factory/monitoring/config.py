@@ -18,7 +18,7 @@ _SERVICE_NAME_RE = re.compile(r"^[a-zA-Z0-9_@.\-]+$")
 class MonitoringConfig(BaseModel):
     """Configuration for the monitoring system.
 
-    Thresholds come from [monitoring] section in lyra.toml.
+    Thresholds come from [monitoring] section in config.toml.
     Secrets come from environment variables.
     """
 
@@ -126,12 +126,12 @@ class MonitoringConfig(BaseModel):
 def load_monitoring_config(config_path: str | None = None) -> MonitoringConfig:
     """Load monitoring config from TOML thresholds + env var secrets.
 
-    Config path resolution: config_path arg → $FACTORY_CONFIG → lyra.toml in cwd.
+    Config path resolution: config_path arg → $FACTORY_CONFIG → config.toml in cwd.
     Missing config file → all defaults for thresholds.
     Missing required env vars → ValueError.
     """
     # Load TOML thresholds
-    path = config_path or os.environ.get("FACTORY_CONFIG", "lyra.toml")
+    path = config_path or os.environ.get("FACTORY_CONFIG", "config.toml")
     raw: dict[str, object] = {}
     try:
         with open(path, "rb") as f:

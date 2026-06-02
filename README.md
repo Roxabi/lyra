@@ -2,7 +2,7 @@
 
 **Personal AI agent engine** — hub-and-spoke, asyncio, multi-channel.
 
-[![CI](https://github.com/Roxabi/lyra/actions/workflows/ci.yml/badge.svg)](https://github.com/Roxabi/lyra/actions/workflows/ci.yml)
+[![CI](https://github.com/Roxabi/roxabi-factory/actions/workflows/ci.yml/badge.svg)](https://github.com/Roxabi/roxabi-factory/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)
 ![uv](https://img.shields.io/badge/uv-package%20manager-DE5FE9)
 ![asyncio](https://img.shields.io/badge/concurrency-asyncio-0ea5e9)
@@ -21,13 +21,13 @@ It's for developers who want a persistent personal AI without giving up ownershi
 ## How it works
 
 1. **Channel adapters** (Telegram, Discord) run as separate processes. They normalize incoming messages and publish them over NATS (`lyra.inbound.<platform>.<bot_id>`).
-2. **The Hub** (`lyra-hub` process) subscribes to NATS, routes each message to the right agent via typed `(platform, bot_id, scope_id)` bindings — one pool per conversation scope (chat, thread, channel).
+2. **The Hub** (`factory-hub` process) subscribes to NATS, routes each message to the right agent via typed `(platform, bot_id, scope_id)` bindings — one pool per conversation scope (chat, thread, channel).
 3. **The Agent** processes the message, calls the LLM, and publishes the response over NATS (`lyra.outbound.<platform>.<bot_id>`). The adapter's `NatsOutboundListener` delivers it to the platform.
 
 ## Architecture
 
 ```
-lyra-telegram          lyra-hub                lyra-discord
+factory-telegram          factory-hub                factory-discord
     │                     │                        │
     │  inbound.telegram   │      clipool.cmd       │  inbound.discord
     ├────────────────────►├───────────────────────►│
@@ -42,9 +42,9 @@ lyra-telegram          lyra-hub                lyra-discord
               NATS message bus
 ```
 
-**Production**: Four independent processes (`lyra-hub`, `lyra-telegram`, `lyra-discord`, `lyra-clipool`) communicate via NATS. Each runs in its own container.
+**Production**: Four independent processes (`factory-hub`, `factory-telegram`, `factory-discord`, `factory-clipool`) communicate via NATS. Each runs in its own container.
 
-**Development**: `lyra start` runs everything in one process with an embedded NATS server.
+**Development**: `factory start` runs everything in one process with an embedded NATS server.
 
 ## Features
 
@@ -86,14 +86,14 @@ cp config.toml.example config.toml
 # Edit config.toml: set bot_id, agent, owner_users
 
 # 3. Store credentials (encrypted)
-lyra bot secret install telegram <bot_id>
+factory bot secret install telegram <bot_id>
 
 # 4. Seed DB from TOML
-lyra agent init              # agents
-lyra bot init                # bots (required since #1416)
+factory agent init              # agents
+factory bot init                # bots (required since #1416)
 
 # 5. Run
-lyra start
+factory start
 ```
 
 See [QUICKSTART.md](docs/QUICKSTART.md) for full setup — bot creation, environment variables, first message.
@@ -104,36 +104,36 @@ See [QUICKSTART.md](docs/QUICKSTART.md) for full setup — bot creation, environ
 
 ```bash
 lyra                        # start unified (hub + adapters, embedded NATS)
-lyra start                  # same as above
-lyra hub                    # standalone hub (requires external NATS)
-lyra adapter telegram       # standalone Telegram adapter
-lyra adapter discord        # standalone Discord adapter
-lyra adapter clipool        # standalone CliPool worker
+factory start                  # same as above
+factory hub                    # standalone hub (requires external NATS)
+factory adapter telegram       # standalone Telegram adapter
+factory adapter discord        # standalone Discord adapter
+factory adapter clipool        # standalone CliPool worker
 ```
 
 ### Agent management
 
 ```bash
-lyra agent init             # seed DB from TOML files
-lyra agent init --force     # overwrite existing
-lyra agent list             # list all agents
-lyra agent show <name>      # full config for one agent
-lyra agent edit <name>      # interactive edit
-lyra agent patch <name>     # patch fields via JSON
-lyra agent validate <name>  # validate schema
-lyra agent create           # create new agent (writes TOML)
-lyra agent assign <agent>   # assign agent to a bot
-lyra agent unassign         # unassign agent from a bot
-lyra agent refine <name>    # LLM-guided profile refinement
+factory agent init             # seed DB from TOML files
+factory agent init --force     # overwrite existing
+factory agent list             # list all agents
+factory agent show <name>      # full config for one agent
+factory agent edit <name>      # interactive edit
+factory agent patch <name>     # patch fields via JSON
+factory agent validate <name>  # validate schema
+factory agent create           # create new agent (writes TOML)
+factory agent assign <agent>   # assign agent to a bot
+factory agent unassign         # unassign agent from a bot
+factory agent refine <name>    # LLM-guided profile refinement
 ```
 
 ### Bot management
 
 ```bash
-lyra bot init                                      # seed BotStore from config.toml
-lyra bot init --force                              # overwrite existing rows
-lyra bot secret install telegram <bot_id>          # store encrypted token
-lyra bot secret install discord <bot_id>
+factory bot init                                      # seed BotStore from config.toml
+factory bot init --force                              # overwrite existing rows
+factory bot secret install telegram <bot_id>          # store encrypted token
+factory bot secret install discord <bot_id>
 ```
 
 ### Configuration
@@ -176,7 +176,7 @@ Two files:
 - `config.toml` — bot instances, auth rules, adapter settings
 - `.env` — secrets: `NATS_URL`, `ANTHROPIC_API_KEY` (optional for CLI driver)
 
-Agent and bot configs stored in `~/.lyra/config.db` (SQLite). TOML files are seed sources — import with `lyra agent init` (agents) and `lyra bot init` (bots).
+Agent and bot configs stored in `~/.roxabi/factory/config.db` (SQLite). TOML files are seed sources — import with `factory agent init` (agents) and `factory bot init` (bots).
 
 ## Project structure
 

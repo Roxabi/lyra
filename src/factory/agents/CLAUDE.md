@@ -24,20 +24,20 @@ non-`None` at construction time is active.
 
 TOML and persona file changes are picked up on the **next** `process()` call — no daemon restart
 needed for content edits. Schema changes (new fields, backend swap) still require
-`lyra agent init --force` + restart.
+`factory agent init --force` + restart.
 
 ## TOML → DB seeding rule
 
-TOML files are **seed-only**. The runtime reads from SQLite (`~/.lyra/config.db`), never from TOML
+TOML files are **seed-only**. The runtime reads from SQLite (`~/.roxabi/factory/config.db`), never from TOML
 directly.
 
 ```
-~/.lyra/agents/<name>.toml   ← edit here
+~/.roxabi/factory/agents/<name>.toml   ← edit here
          ↓  lyra agent init [--force]
-~/.lyra/config.db            ← runtime SSoT
+~/.roxabi/factory/config.db            ← runtime SSoT
 ```
 
-After any TOML edit: `lyra agent init --force` + daemon restart (no file watcher).
+After any TOML edit: `factory agent init --force` + daemon restart (no file watcher).
 
 `cwd` is machine-specific — set in `config.toml [defaults]`, NOT in agent TOML.
 

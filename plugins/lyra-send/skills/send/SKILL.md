@@ -52,8 +52,8 @@ python3 - <<'EOF'
 from pathlib import Path
 import sqlite3, json
 
-lyra_dir = Path.home() / '.lyra'
-conn = sqlite3.connect(lyra_dir / 'turns.db')
+factory_dir = Path.home() / '.lyra'
+conn = sqlite3.connect(factory_dir / 'turns.db')
 # Show recent unique telegram chat IDs with last message preview
 rows = conn.execute("""
     SELECT platform_meta, content, created_at
@@ -81,8 +81,8 @@ python3 - <<'EOF'
 from pathlib import Path
 import sqlite3, json
 
-lyra_dir = Path.home() / '.lyra'
-conn = sqlite3.connect(lyra_dir / 'turns.db')
+factory_dir = Path.home() / '.lyra'
+conn = sqlite3.connect(factory_dir / 'turns.db')
 rows = conn.execute("""
     SELECT platform_meta, content, created_at
     FROM turns
@@ -121,10 +121,10 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 import sqlite3, requests
 
-lyra_dir = Path.home() / '.lyra'
-key = (lyra_dir / 'keyring.key').read_bytes()
+factory_dir = Path.home() / '.lyra'
+key = (factory_dir / 'keyring.key').read_bytes()
 f = Fernet(key)
-conn = sqlite3.connect(lyra_dir / 'config.db')
+conn = sqlite3.connect(factory_dir / 'config.db')
 row = conn.execute(
     'SELECT token FROM bot_secrets WHERE bot_id=? AND platform=?',
     ('lyra', 'telegram')
@@ -150,10 +150,10 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 import sqlite3, requests
 
-lyra_dir = Path.home() / '.lyra'
-key = (lyra_dir / 'keyring.key').read_bytes()
+factory_dir = Path.home() / '.lyra'
+key = (factory_dir / 'keyring.key').read_bytes()
 f = Fernet(key)
-conn = sqlite3.connect(lyra_dir / 'config.db')
+conn = sqlite3.connect(factory_dir / 'config.db')
 row = conn.execute(
     'SELECT token FROM bot_secrets WHERE bot_id=? AND platform=?',
     ('lyra', 'telegram')
@@ -181,10 +181,10 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 import sqlite3, requests
 
-lyra_dir = Path.home() / '.lyra'
-key = (lyra_dir / 'keyring.key').read_bytes()
+factory_dir = Path.home() / '.lyra'
+key = (factory_dir / 'keyring.key').read_bytes()
 f = Fernet(key)
-conn = sqlite3.connect(lyra_dir / 'config.db')
+conn = sqlite3.connect(factory_dir / 'config.db')
 row = conn.execute(
     'SELECT token FROM bot_secrets WHERE bot_id=? AND platform=?',
     ('lyra', 'telegram')
@@ -210,10 +210,10 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 import sqlite3, requests
 
-lyra_dir = Path.home() / '.lyra'
-key = (lyra_dir / 'keyring.key').read_bytes()
+factory_dir = Path.home() / '.lyra'
+key = (factory_dir / 'keyring.key').read_bytes()
 f = Fernet(key)
-conn = sqlite3.connect(lyra_dir / 'config.db')
+conn = sqlite3.connect(factory_dir / 'config.db')
 row = conn.execute(
     'SELECT token FROM bot_secrets WHERE bot_id=? AND platform=?',
     ('lyra', 'telegram')
@@ -241,10 +241,10 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 import sqlite3, requests
 
-lyra_dir = Path.home() / '.lyra'
-key = (lyra_dir / 'keyring.key').read_bytes()
+factory_dir = Path.home() / '.lyra'
+key = (factory_dir / 'keyring.key').read_bytes()
 f = Fernet(key)
-conn = sqlite3.connect(lyra_dir / 'config.db')
+conn = sqlite3.connect(factory_dir / 'config.db')
 row = conn.execute(
     'SELECT token FROM bot_secrets WHERE bot_id=? AND platform=?',
     ('lyra', 'discord')
@@ -271,10 +271,10 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 import sqlite3, requests
 
-lyra_dir = Path.home() / '.lyra'
-key = (lyra_dir / 'keyring.key').read_bytes()
+factory_dir = Path.home() / '.lyra'
+key = (factory_dir / 'keyring.key').read_bytes()
 f = Fernet(key)
-conn = sqlite3.connect(lyra_dir / 'config.db')
+conn = sqlite3.connect(factory_dir / 'config.db')
 row = conn.execute(
     'SELECT token FROM bot_secrets WHERE bot_id=? AND platform=?',
     ('lyra', 'discord')
@@ -296,13 +296,13 @@ EOF
 ```
 
 If output starts with `ERROR` → stop and tell the user: "No Lyra bot token found for
-`{platform}`. Make sure `lyra agent init` has been run."
+`{platform}`. Make sure `factory agent init` has been run."
 
 ## Step 4 — Confirm
 
 If `ok: True` (Telegram) or status 200 (Discord) → "✅ Sent successfully."
 Otherwise → show the error message and suggest checking:
-- Token validity (`lyra agent init --force`)
+- Token validity (`factory agent init --force`)
 - That the bot has previously spoken with this user/channel (Telegram bots can't
   initiate conversations with users who have never messaged them first)
 - Discord: that the bot has permission to post in the target channel

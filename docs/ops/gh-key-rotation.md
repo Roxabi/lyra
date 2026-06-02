@@ -110,10 +110,10 @@ Look for absence of MintFailure lines. A successful token mint by the helper con
 From inside the clipool container, exercise the dispenser path with the new PEM:
 
 ```bash
-podman exec factory-clipool lyra-gh issue list --repo Roxabi/roxabi-factory --limit 1
+podman exec factory-clipool factory-gh issue list --repo Roxabi/roxabi-factory --limit 1
 ```
 
-Expected: a real issue line is printed. The `lyra-gh` shim resolves a fresh installation token from the new PEM via the dispenser socket and runs `gh` with `GH_TOKEN` scoped to the single subprocess invocation.
+Expected: a real issue line is printed. The `factory-gh` shim resolves a fresh installation token from the new PEM via the dispenser socket and runs `gh` with `GH_TOKEN` scoped to the single subprocess invocation.
 
 **3.4 Wipe the staging copy of the PEM from the host.**
 

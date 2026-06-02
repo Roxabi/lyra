@@ -283,9 +283,19 @@ The **CLI protocol circular import** (ADR-060, absorbed here) established the ca
 
 ### Typed error boundary
 
-LyraUserError (defined in `factory.core.exceptions`) is the base class for all errors that must produce a user-visible reply. Subclasses (AudioDownloadError, AudioTooLargeError, AudioInvalidFormatError, SttError) map to specific failure modes and carry a `key` for `MessageManager` template lookup plus a `fallback_text` for degraded mode.
+User-visible errors are handled at two distinct sites, each using domain-specific exception types:
 
-ErrorBoundaryMiddleware sits at position 0 of the pipeline — it catches LyraUserError and any unhandled exception, dispatches a reply, and returns `_DROP`. It is a safety net for pipeline-internal failures; adapter-level download failures raise typed exceptions before the pipeline and are caught in the adapter's download function directly.
+**Stream errors** (`OutboundErrorHandler.classify_stream_error` in `factory.outbound.error_handler`) — maps terminal stream exceptions to message template keys for the platform adapter:
+- `StreamChunkTimeout` (defined in `factory.core.exceptions`) → template key `error_timeout`
+- Any other stream exception → template key `error_stream`
+- stream ends with no final text but had tool events (`final_text is None and had_tool_events`) → template key `error_no_final`
+
+**STT errors** (`factory.core.hub.middleware.middleware_stt.SttMiddleware`) — catches speech-to-text exceptions inline in the inbound pipeline and dispatches a template-keyed reply before returning `_DROP`:
+- `STTNoiseError` (defined in `factory.core.ports.stt`) → template key `stt_noise`
+- `STTUnavailableError` (defined in `factory.core.ports.stt`) → template key `stt_unavailable`
+- `asyncio.TimeoutError` or any other exception → template key `stt_failed`
+
+Cross-layer exceptions (`StreamChunkTimeout`, `WorkerUnavailableError`, `HubUnavailableError`, `ScrapeFailed`, `VaultWriteFailed`) live in `factory.core.exceptions` to avoid downward imports — they are raised in outer layers but defined in core.
 
 NullMessageManager replaces `if hub._msg_manager is None: return _DROP` guards, making misconfiguration observable instead of silently dropping messages. → ADR-058
 
@@ -299,8 +309,8 @@ NullMessageManager replaces `if hub._msg_manager is None: return _DROP` guards, 
 - Application orchestrates Domain via ports defined in Domain; it never imports Infrastructure concretions
 - Infrastructure implements ports; lives in `factory.infrastructure.*`; is the only layer that may hold migration runners and connection pools
 - Adapters are the outer ring; never imported by inner layers; lateral adapter-to-adapter imports are forbidden
-- All user-visible errors are LyraUserError subclasses raised at the point of failure
-- All unhandled pipeline errors are caught at ErrorBoundaryMiddleware and translated into a user reply, never silently dropped
+- User-visible errors are handled at typed catch sites: `SttMiddleware` for STT failures (template-keyed reply + `_DROP`), `OutboundErrorHandler.classify_stream_error` for terminal stream errors (template keys `error_timeout` / `error_stream`)
+- Domain exception types are defined at the innermost layer they logically belong to: STT errors in `factory.core.ports.stt`, cross-layer runtime errors in `factory.core.exceptions`
 - Shared UI-primitive constants (`GENERIC_ERROR_REPLY`) live in `factory.core.messaging.message`, not in hub or adapter modules
 - Concrete implementations are instantiated only in the Composition Root (`factory.bootstrap`); no factory that selects concretions may live in Domain or Application
 

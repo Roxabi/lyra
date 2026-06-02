@@ -85,8 +85,8 @@ Equivalent via Makefile (foreground tail): `make remote hub logs` / `telegram lo
 In-container structured logs (if the hub writes files to the logs volume):
 
 ```bash
-ssh $H "podman exec factory-hub ls -t /home/factory/.local/state/lyra/logs/ | head -10"
-ssh $H "podman exec factory-hub tail -200 /home/factory/.local/state/lyra/logs/<file>"
+ssh $H "podman exec factory-hub ls -t /home/factory/.local/state/factory/logs/ | head -10"
+ssh $H "podman exec factory-hub tail -200 /home/factory/.local/state/factory/logs/<file>"
 ```
 
 ## Phase 4 — Diagnosis

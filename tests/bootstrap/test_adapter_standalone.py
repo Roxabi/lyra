@@ -10,6 +10,9 @@ import pytest
 
 from tests.conftest import _LOAD_BOT_TOKEN_PATH
 
+# Patch target for helpers that moved into the shared common module.
+_COMMON = "factory.bootstrap.wiring._standalone_wiring_common"
+
 
 def _make_raw_config(platform: str) -> dict:
     if platform == "telegram":
@@ -62,10 +65,10 @@ async def test_telegram_bootstrap_wires_listener_and_calls_astart() -> None:
     (load_token_patch,) = _cred_store_patches("test-token", "webhook-secret")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
+        patch(f"{_COMMON}.NatsBus", return_value=mock_inbound_bus),
         patch("factory.adapters.telegram.TelegramAdapter", return_value=mock_adapter),
         patch(
-            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            f"{_COMMON}.NatsOutboundListener",
             return_value=mock_listener,
         ),
         patch(
@@ -108,10 +111,10 @@ async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
     (load_token_patch_dc,) = _cred_store_patches("discord-token")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus_dc),
+        patch(f"{_COMMON}.NatsBus", return_value=mock_inbound_bus_dc),
         patch("factory.adapters.discord.DiscordAdapter", return_value=mock_adapter_dc),
         patch(
-            "factory.bootstrap.wiring.standalone_discord.NatsOutboundListener",
+            f"{_COMMON}.NatsOutboundListener",
             return_value=mock_listener_dc,
         ),
         patch(
@@ -154,7 +157,7 @@ async def test_nc_close_called_even_on_exception() -> None:
     (load_token_patch_exc,) = _cred_store_patches("t")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("factory.nats.nats_bus.NatsBus", side_effect=RuntimeError("boom")),
+        patch(f"{_COMMON}.NatsBus", side_effect=RuntimeError("boom")),
         # ADR-079 S3: wait_for_hub now precedes the wiring loop.
         patch(
             "factory.bootstrap.wiring.standalone_telegram.wait_for_hub",
@@ -212,10 +215,10 @@ async def test_telegram_astart_failure_cleans_up_wired_resources() -> None:
     (load_token_patch,) = _cred_store_patches("test-token")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("factory.nats.nats_bus.NatsBus", side_effect=_make_bus),
+        patch(f"{_COMMON}.NatsBus", side_effect=_make_bus),
         patch("factory.adapters.telegram.TelegramAdapter", side_effect=_make_adapter),
         patch(
-            "factory.bootstrap.wiring.standalone_telegram.NatsOutboundListener",
+            f"{_COMMON}.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         # ADR-079 S3: wait_for_hub now precedes the wiring loop.
@@ -286,10 +289,10 @@ async def test_discord_astart_failure_cleans_up_wired_resources() -> None:
     (load_token_patch,) = _cred_store_patches("discord-token")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
-        patch("factory.nats.nats_bus.NatsBus", side_effect=_make_bus),
+        patch(f"{_COMMON}.NatsBus", side_effect=_make_bus),
         patch("factory.adapters.discord.DiscordAdapter", side_effect=_make_adapter),
         patch(
-            "factory.bootstrap.wiring.standalone_discord.NatsOutboundListener",
+            f"{_COMMON}.NatsOutboundListener",
             return_value=AsyncMock(),
         ),
         # ADR-079 S3: wait_for_hub now precedes the wiring loop.

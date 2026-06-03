@@ -1,5 +1,6 @@
 {
   "version": "4",
+  "_secrets_note": "Each identity's deploy.secret field is derived — cross-checked by tools/check_secrets_drift.sh (check (c)). quadlet.toml [component.<name>].required_secrets is the declared SSoT (container-deployment-standard.md S2). Removing deploy.secret entries is a tracked follow-up (ADR-064 fan-out); do NOT remove them until that migration lands.",
   "groups": {
     "audio-consumer": {
       "description": "Durable outbound-audio JetStream consumer + dedup-KV grants (ADR-079 §b). Referenced by platform adapters; defined once to prevent N×M drift.",

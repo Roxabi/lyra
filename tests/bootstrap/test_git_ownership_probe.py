@@ -1,7 +1,9 @@
-"""Tests for run_git_ownership_probe (#1149)."""
+"""Tests for run_git_ownership_probe (#1149, #1718)."""
 
 from __future__ import annotations
 
+import logging
+import os
 import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -12,6 +14,8 @@ from factory.bootstrap.infra.git_ownership_probe import (
     PROBE_ENV_VAR,
     run_git_ownership_probe,
 )
+
+_LOGGER_NAME = "factory.bootstrap.infra.git_ownership_probe"
 
 _PATCH_TARGET = "factory.bootstrap.infra.git_ownership_probe.subprocess.run"
 
@@ -131,3 +135,162 @@ class TestRunGitOwnershipProbePathResolution:
 
         mock_run.assert_called_once()
         assert mock_run.call_args.kwargs["cwd"] == str(explicit_dir)
+
+
+class TestRunGitOwnershipProbeSymlink:
+    """Tests for symlink detection introduced in #1718."""
+
+    def test_dangling_absolute_symlink_emits_relative_hint_and_exits(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Dangling absolute symlink → log.error with RELATIVE hint + SystemExit(1).
+
+        The symlink exists on the filesystem but its absolute target does not,
+        which is the cross-namespace container scenario.
+        """
+        # Arrange — create a symlink whose absolute target does not exist
+        link = tmp_path / "factory-bridge"
+        nonexistent_absolute = "/tmp/roxabi-probe-does-not-exist-1718"
+        os.symlink(nonexistent_absolute, str(link))
+        assert os.path.islink(str(link)), "sanity: symlink must exist"
+        assert not os.path.isdir(str(link)), "sanity: target must not resolve"
+
+        # Act + Assert exit
+        with caplog.at_level(logging.ERROR, logger=_LOGGER_NAME):
+            with pytest.raises(SystemExit) as exc_info:
+                run_git_ownership_probe(repo_path=str(link))
+
+        assert exc_info.value.code == 1
+
+        # Assert remediation hint is present in at least one error record
+        error_messages = [
+            r.getMessage() for r in caplog.records if r.levelno == logging.ERROR
+        ]
+        assert any("RELATIVE" in msg for msg in error_messages), (
+            f"Expected 'RELATIVE' remediation hint in error log, got: {error_messages}"
+        )
+        assert any("ln -sfr" in msg for msg in error_messages), (
+            f"Expected 'ln -sfr' remediation hint in error log, got: {error_messages}"
+        )
+
+    def test_dangling_absolute_symlink_does_not_emit_generic_missing_message(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Dangling absolute symlink must NOT produce the generic 'does not exist' text.
+
+        Negative guard: verifies the symlink branch fires rather than the fallthrough.
+        """
+        # Arrange
+        link = tmp_path / "factory-bridge-2"
+        os.symlink("/tmp/roxabi-probe-absent-1718b", str(link))
+
+        # Act
+        with caplog.at_level(logging.ERROR, logger=_LOGGER_NAME):
+            with pytest.raises(SystemExit):
+                run_git_ownership_probe(repo_path=str(link))
+
+        error_messages = [
+            r.getMessage() for r in caplog.records if r.levelno == logging.ERROR
+        ]
+        assert not any("does not exist" in msg for msg in error_messages), (
+            "Dangling symlink must not trigger the generic 'does not exist' error; "
+            f"got: {error_messages}"
+        )
+
+    def test_relative_symlink_to_real_dir_passes(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        """Relative symlink that resolves to an actual directory → probe succeeds.
+
+        subprocess.run is mocked to return success so the git binary is not needed.
+        """
+        # Arrange — real_dir exists; link is a relative symlink inside tmp_path
+        real_dir = tmp_path / "real_repo"
+        real_dir.mkdir()
+        link = tmp_path / "factory-rel-link"
+        # relative target: just the directory name (same parent)
+        os.symlink("real_repo", str(link))
+        assert os.path.isdir(str(link)), "sanity: relative symlink must resolve"
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stderr = ""
+
+        # Act + Assert — no exception
+        with patch(_PATCH_TARGET, return_value=mock_result) as mock_run:
+            result = run_git_ownership_probe(repo_path=str(link))
+
+        assert result is None
+        mock_run.assert_called_once()
+
+    def test_genuine_missing_non_symlink_path_uses_generic_message(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A plain missing path (not a symlink) → generic 'does not exist' error,
+        NOT the cross-namespace symlink hint.
+
+        Verifies the original pre-#1718 path is unchanged.
+        """
+        # Arrange — path that does not exist and is not a symlink
+        monkeypatch.delenv(PROBE_ENV_VAR, raising=False)
+        missing = str(tmp_path / "genuinely_absent_directory")
+        assert not os.path.exists(missing), "sanity: path must not exist"
+        assert not os.path.islink(missing), "sanity: path must not be a symlink"
+
+        # Act
+        with caplog.at_level(logging.ERROR, logger=_LOGGER_NAME):
+            with pytest.raises(SystemExit) as exc_info:
+                run_git_ownership_probe(repo_path=missing)
+
+        assert exc_info.value.code == 1
+
+        error_messages = [
+            r.getMessage() for r in caplog.records if r.levelno == logging.ERROR
+        ]
+        assert any("does not exist" in msg for msg in error_messages), (
+            f"Expected generic 'does not exist' error, got: {error_messages}"
+        )
+        assert not any("RELATIVE" in msg for msg in error_messages), (
+            "Generic missing-path must NOT produce the symlink remediation hint; "
+            f"got: {error_messages}"
+        )
+
+    def test_symlink_to_regular_file_emits_relative_hint_and_exits(
+        self,
+        tmp_path: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Symlink pointing to a regular file (not a dir) → RELATIVE hint + exit(1).
+
+        os.path.islink(target) is True but os.path.isdir(target) is False,
+        so the same branch fires as for dangling absolute symlinks.
+        """
+        # Arrange — symlink → regular file (valid target, but not a directory)
+        real_file = tmp_path / "not_a_dir.txt"
+        real_file.write_text("content", encoding="utf-8")
+        link = tmp_path / "factory-file-link"
+        os.symlink(str(real_file), str(link))
+        assert os.path.islink(str(link)), "sanity: symlink must exist"
+        assert not os.path.isdir(str(link)), "sanity: target is a file, not a dir"
+
+        # Act
+        with caplog.at_level(logging.ERROR, logger=_LOGGER_NAME):
+            with pytest.raises(SystemExit) as exc_info:
+                run_git_ownership_probe(repo_path=str(link))
+
+        assert exc_info.value.code == 1
+
+        error_messages = [
+            r.getMessage() for r in caplog.records if r.levelno == logging.ERROR
+        ]
+        assert any("RELATIVE" in msg for msg in error_messages), (
+            f"Expected 'RELATIVE' remediation hint in error log, got: {error_messages}"
+        )

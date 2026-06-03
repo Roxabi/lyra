@@ -14,22 +14,22 @@ host_roles = ["factory-hub"]
 
 [component.telegram]
 container = "factory-telegram.container"
-required_secrets = ["factory-nats-telegram"]
+required_secrets = ["factory-nats-telegram", "factory_blobstore_token"]
 host_roles = ["factory-hub"]
 
 [component.discord]
 container = "factory-discord.container"
-required_secrets = ["factory-nats-discord"]
+required_secrets = ["factory-nats-discord", "factory_blobstore_token"]
 host_roles = ["factory-hub"]
 
 [component.clipool]
 container = "factory-clipool.container"
-required_secrets = ["factory-nats-clipool"]
+required_secrets = ["factory-nats-clipool", "factory-claude-oauth"]
 host_roles = ["factory-hub"]
 
 [component.gh-helper]
 container = "factory-gh-helper.container"
-required_secrets = []
+required_secrets = ["factory-gh-pem", "factory-nats-gh-helper"]
 host_roles = ["factory-hub"]
 
 [component.turn-writer]
@@ -39,5 +39,5 @@ host_roles = ["factory-hub"]
 
 [component.blobstore]
 container = "factory-blobstore.container"
-required_secrets = ["factory_blobstore_token"]
+required_secrets = ["factory-nats-blobstore", "factory_blobstore_token"]
 host_roles = ["factory-hub"]

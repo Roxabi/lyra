@@ -28,6 +28,22 @@ def run_git_ownership_probe(repo_path: str | None = None) -> None:
     """
     target = repo_path or os.environ.get(PROBE_ENV_VAR) or DEFAULT_PROBE_PATH
 
+    if os.path.islink(target) and not os.path.isdir(target):
+        # Symlink exists but its target does not resolve to a directory — the most
+        # common cause in container deployments is an absolute bridge symlink whose
+        # target path is valid on the host but absent inside the container mount-ns.
+        # Absolute targets dangle across container mount-namespaces; relative targets
+        # survive because they are resolved relative to the symlink's own directory.
+        log.error(
+            "git ownership probe: cross-namespace bridge symlink must be RELATIVE"
+            " — absolute target dangles across the container mount-ns"
+            " (target=%s, link=%s); fix: re-create symlink with a relative target"
+            " (e.g. ln -sfr <src> <link>)",
+            os.readlink(target),
+            target,
+        )
+        sys.exit(1)
+
     if not os.path.isdir(target):
         log.error(
             "git ownership probe: target directory does not exist (target=%s)", target

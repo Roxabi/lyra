@@ -14,6 +14,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Callable, cast
 
+from factory.paths import factory_data_dir
 from scripts._acl_models import ExternalDeploy, LoadedMatrix
 from scripts._loader import load_matrix
 from scripts._nk import (
@@ -58,11 +59,17 @@ def atomic_write(path: Path, content: str, mode: int) -> None:
 
 
 def _seeds_dir() -> Path:
-    """Return seeds directory, overridable via SEEDS_DIR env var."""
+    """Return seeds directory, overridable via SEEDS_DIR env var.
+
+    Default: ``factory_data_dir()/"nkeys"`` — honors ``ROXABI_FACTORY_DIR`` and
+    matches ``cli_ops.py``, ``install.sh``, and ``Makefile``.
+    Override: set ``SEEDS_DIR`` to an absolute path (used by tests and one-off
+    operator overrides).
+    """
     env = os.environ.get("SEEDS_DIR")
     if env:
         return Path(env)
-    return operator_home() / ".lyra" / "nkeys"
+    return factory_data_dir() / "nkeys"
 
 
 def _auth_dir() -> Path:
@@ -73,13 +80,42 @@ def _auth_dir() -> Path:
     return Path("/etc/nats/nkeys")
 
 
+def _etc_nats_write_enabled() -> bool:
+    """Return True when the opt-in /etc/nats dual-write path is active.
+
+    Enabled by: ``FACTORY_ACL_WRITE_ETC_NATS=1`` environment variable.
+    The host ``nats.service`` is retired; auth.conf is now delivered via Podman
+    secret (``factory-nats-auth``).  The /etc/nats/nkeys write path is vestigial
+    and opt-in only.  Normal seed generation is rootless and writes exclusively
+    to ``factory_data_dir()/nkeys``.
+    """
+    return os.environ.get("FACTORY_ACL_WRITE_ETC_NATS", "0") == "1"
+
+
 def _require_root() -> None:
-    """Exit 1 unless running as root. Skipped when AUTH_DIR env var is set (tests)."""
+    """Exit 1 unless running as root.
+
+    Called only when the opt-in /etc/nats write path is active
+    (``FACTORY_ACL_WRITE_ETC_NATS=1``).  Skipped when ``AUTH_DIR`` env var
+    is set (test override: AUTH_DIR redirects system paths to a tmp dir).
+
+    Sanctioned rootless paths: ``--regen-authconf`` and ``--add-identity``.
+    For full seed generation without /etc/nats writes, run without sudo;
+    ``FACTORY_ACL_WRITE_ETC_NATS=1`` opt-in is only needed when the legacy
+    host nats.service is still active on the target machine.
+    """
     if os.environ.get("AUTH_DIR"):
         return  # test override: AUTH_DIR redirects system paths — no root needed
     if os.geteuid() != 0:
         print(
-            "error: must be run as root (sudo factory-acl genkeys ...)", file=sys.stderr
+            "error: --write-etc-nats path requires root"
+            " (sudo factory-acl genkeys --write-etc-nats ...).\n"
+            "For rootless seed generation use: factory-acl genkeys\n"
+            "To re-derive auth.conf from existing seeds: factory-acl genkeys"
+            " --regen-authconf\n"
+            "To provision a single new identity: factory-acl genkeys"
+            " --add-identity NAME",
+            file=sys.stderr,
         )
         sys.exit(1)
 
@@ -328,7 +364,7 @@ def _mode_emit_merged_authconf(args: argparse.Namespace) -> None:
         if not seed_file.exists():
             print(
                 f"error: missing voicecli seed: {seed_file}"
-                " — copy seed from ~/.lyra/nkeys/",
+                " — copy seed from the voiceCLI host (see VOICECLI_SEEDS_DIR)",
                 file=sys.stderr,
             )
             sys.exit(1)
@@ -339,69 +375,115 @@ def _mode_emit_merged_authconf(args: argparse.Namespace) -> None:
     atomic_write(auth_conf, content, 0o600)
 
 
+def _confirm_wipe() -> None:
+    """Prompt operator to confirm destructive wipe; exit non-zero on refusal."""
+    if sys.stdin.isatty():
+        reply = input(
+            "This will wipe seeds and auth.conf"
+            " (backups will be created). Continue? [y/N] "
+        )
+        if not reply.strip().lower().startswith("y"):
+            print("Aborted.", file=sys.stderr)
+            sys.exit(0)
+    else:
+        print(
+            "error: stdin is not a TTY — pass --yes to confirm non-interactive wipe",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
+def _backup_seeds(seeds_dir: Path, epoch: int) -> str | None:
+    """Back up and wipe seeds_dir; return backup path or None if dir absent."""
+    if not seeds_dir.exists():
+        return None
+    backup = str(seeds_dir) + f".bak.{epoch}"
+    shutil.copytree(str(seeds_dir), backup)
+    shutil.rmtree(str(seeds_dir))
+    return backup
+
+
+def _backup_etc_auth(epoch: int) -> str | None:
+    """Back up and unlink /etc/nats/nkeys/auth.conf; return backup path or None."""
+    auth_conf = _auth_dir() / "auth.conf"
+    if not auth_conf.exists():
+        return None
+    backup = str(auth_conf) + f".bak.{epoch}"
+    shutil.copy2(str(auth_conf), backup)
+    auth_conf.unlink()
+    return backup
+
+
+def _restore_on_failure(
+    seeds_dir: Path,
+    backup_seeds: str | None,
+    backup_auth: str | None,
+    write_etc: bool,
+) -> None:
+    """Restore backups after a failed provision attempt."""
+    if backup_seeds and Path(backup_seeds).exists() and not seeds_dir.exists():
+        shutil.copytree(backup_seeds, str(seeds_dir))
+    if write_etc and backup_auth:
+        auth_conf = _auth_dir() / "auth.conf"
+        if Path(backup_auth).exists() and not auth_conf.exists():
+            shutil.copy2(backup_auth, str(auth_conf))
+
+
 def _mode_regenerate(args: argparse.Namespace) -> None:
-    """--regenerate: atomic backup + wipe + full regen (root required)."""
-    _require_root()
+    """--regenerate: atomic backup + wipe + full regen.
 
-    if not args.yes:
-        import sys as _sys
+    Rootless by default — writes exclusively to ``factory_data_dir()/nkeys``.
+    When ``FACTORY_ACL_WRITE_ETC_NATS=1`` is set, also backs up and wipes
+    ``/etc/nats/nkeys/auth.conf`` (requires root).
 
-        if _sys.stdin.isatty():
-            reply = input(
-                "This will wipe seeds and auth.conf"
-                " (backups will be created). Continue? [y/N] "
-            )
-            if not reply.strip().lower().startswith("y"):
-                print("Aborted.", file=sys.stderr)
-                sys.exit(0)
-        else:
-            print(
-                "error: stdin is not a TTY"
-                " — pass --yes to confirm non-interactive wipe",
-                file=sys.stderr,
-            )
-            sys.exit(1)
-
-    seeds_dir = _seeds_dir()
-    auth_dir = _auth_dir()
-    auth_conf = auth_dir / "auth.conf"
+    Sanctioned rootless paths for incremental changes: ``--regen-authconf``
+    and ``--add-identity`` (no wipe, no root).
+    """
     import time
 
-    epoch = int(time.time())
-    backup_auth: str | None = None
-    backup_seeds: str | None = None
+    write_etc = _etc_nats_write_enabled()
+    if write_etc:
+        _require_root()
 
-    if auth_conf.exists():
-        backup_auth = str(auth_conf) + f".bak.{epoch}"
-        shutil.copy2(str(auth_conf), backup_auth)
-    if seeds_dir.exists():
-        backup_seeds = str(seeds_dir) + f".bak.{epoch}"
-        shutil.copytree(str(seeds_dir), backup_seeds)
-        shutil.rmtree(str(seeds_dir))
-    if auth_conf.exists():
-        auth_conf.unlink()
+    if not args.yes:
+        _confirm_wipe()
+
+    seeds_dir = _seeds_dir()
+    epoch = int(time.time())
+    backup_seeds = _backup_seeds(seeds_dir, epoch)
+    backup_auth = _backup_etc_auth(epoch) if write_etc else None
 
     externals: list[tuple[str, ExternalDeploy]] = []
     try:
         externals = _mode_full_provision(args)
     except BaseException:
-        if backup_seeds and Path(backup_seeds).exists() and not seeds_dir.exists():
-            shutil.copytree(backup_seeds, str(seeds_dir))
-        if backup_auth and Path(backup_auth).exists() and not auth_conf.exists():
-            shutil.copy2(backup_auth, str(auth_conf))
+        _restore_on_failure(seeds_dir, backup_seeds, backup_auth, write_etc)
         raise
     # OUTSIDE try/except — safe to exit without triggering rollback
     _handle_externals(externals, seeds_dir, args)
 
 
 def _mode_show(args: argparse.Namespace) -> None:
-    """--show: print current auth.conf (root required)."""
-    _require_root()
-    auth_dir = _auth_dir()
-    auth_conf = auth_dir / "auth.conf"
+    """--show: print current auth.conf.
+
+    Default (rootless): reads ``factory_data_dir()/nkeys/auth.conf`` (the
+    Podman-secret source).  When ``FACTORY_ACL_WRITE_ETC_NATS=1`` is set,
+    reads from ``/etc/nats/nkeys/auth.conf`` instead (requires root).
+
+    Sanctioned rootless path: ``factory-acl genkeys --show``
+    (reads the operator-owned copy in ``factory_data_dir()/nkeys``).
+    """
+    if _etc_nats_write_enabled():
+        _require_root()
+        auth_conf = _auth_dir() / "auth.conf"
+    else:
+        auth_conf = _seeds_dir() / "auth.conf"
+
     if not auth_conf.exists():
         print(
-            f"error: auth.conf not found at {auth_conf} — run without --show first",
+            f"error: auth.conf not found at {auth_conf}"
+            " — run 'factory-acl genkeys' or 'factory-acl genkeys --regen-authconf'"
+            " first",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -409,11 +491,20 @@ def _mode_show(args: argparse.Namespace) -> None:
 
 
 def _mode_fix_perms(args: argparse.Namespace) -> None:
-    """--fix-perms: re-apply permissions and ownership (root required)."""
-    _require_root()
+    """--fix-perms: re-apply permissions and ownership.
+
+    Default (rootless): re-applies permissions on ``factory_data_dir()/nkeys``
+    (operator-owned seeds + auth.conf).  When ``FACTORY_ACL_WRITE_ETC_NATS=1``
+    is set, also fixes ``/etc/nats/nkeys/auth.conf`` ownership (requires root).
+
+    Sanctioned rootless path: ``factory-acl genkeys --fix-perms``
+    (re-applies 0700/0600 on operator-owned nkeys dir without sudo).
+    """
+    write_etc = _etc_nats_write_enabled()
+    if write_etc:
+        _require_root()
+
     seeds_dir = _seeds_dir()
-    auth_dir = _auth_dir()
-    auth_conf = auth_dir / "auth.conf"
     uid, gid = _operator_uid_gid()
 
     if seeds_dir.exists():
@@ -423,23 +514,38 @@ def _mode_fix_perms(args: argparse.Namespace) -> None:
             seed_file.chmod(0o600)
             os.chown(seed_file, uid, gid)
 
-    if auth_conf.exists():
-        auth_conf.chmod(0o640)
-        if not os.environ.get("AUTH_DIR"):
-            nats_gid = grp.getgrnam("nats").gr_gid
-            os.chown(auth_conf, 0, nats_gid)
+    if write_etc:
+        auth_dir = _auth_dir()
+        auth_conf = auth_dir / "auth.conf"
+        if auth_conf.exists():
+            auth_conf.chmod(0o640)
+            if not os.environ.get("AUTH_DIR"):
+                nats_gid = grp.getgrnam("nats").gr_gid
+                os.chown(auth_conf, 0, nats_gid)
 
 
 def _mode_full_provision(args: argparse.Namespace) -> list[tuple[str, ExternalDeploy]]:
-    """Default mode: generate all nkeys + dual-write auth.conf (root required).
+    """Default mode: generate all nkeys + write auth.conf to seeds_dir (rootless).
+
+    The /etc/nats/nkeys dual-write is opt-in via ``FACTORY_ACL_WRITE_ETC_NATS=1``
+    (vestigial: host ``nats.service`` is retired; auth.conf is delivered to the
+    ``factory-nats`` container via Podman secret ``factory-nats-auth``).  Root is
+    only required when the opt-in /etc/nats write path is active.
+
+    Normal path: rootless, writes exclusively to ``factory_data_dir()/nkeys``.
+    Operator-owned seeds are created with mode 0600.
 
     Returns list of (name, deploy) tuples for external identities found in active set.
     Caller is responsible for fan-out manifest + exit code (must run OUTSIDE
     _mode_regenerate's try/except BaseException rollback block).
+
+    Sanctioned rootless paths: ``--regen-authconf`` and ``--add-identity``.
     """
-    _require_root()
+    write_etc = _etc_nats_write_enabled()
+    if write_etc:
+        _require_root()
+
     seeds_dir = _seeds_dir()
-    auth_dir = _auth_dir()
     matrix = load_matrix(args.matrix)
     provider = _get_provider()
     uid, gid = _operator_uid_gid()
@@ -447,8 +553,11 @@ def _mode_full_provision(args: argparse.Namespace) -> list[tuple[str, ExternalDe
     seeds_dir.mkdir(parents=True, exist_ok=True)
     seeds_dir.chmod(0o700)
     os.chown(seeds_dir, uid, gid)
-    auth_dir.mkdir(parents=True, exist_ok=True)
-    auth_dir.chmod(0o750)
+
+    if write_etc:
+        auth_dir = _auth_dir()
+        auth_dir.mkdir(parents=True, exist_ok=True)
+        auth_dir.chmod(0o750)
 
     active = {
         name: identity
@@ -467,14 +576,19 @@ def _mode_full_provision(args: argparse.Namespace) -> list[tuple[str, ExternalDe
 
     content = render_auth_conf(matrix, pubkeys)
 
-    # System write: /etc/nats/nkeys/auth.conf (0640, root:nats)
-    system_conf = auth_dir / "auth.conf"
-    atomic_write(system_conf, content, 0o640)
-    if not os.environ.get("AUTH_DIR"):
-        nats_gid = grp.getgrnam("nats").gr_gid
-        os.chown(system_conf, 0, nats_gid)
+    if write_etc:
+        # Opt-in system write: /etc/nats/nkeys/auth.conf (0640, root:nats)
+        # Only needed when the legacy host nats.service is still active.
+        # Set FACTORY_ACL_WRITE_ETC_NATS=1 to enable.
+        auth_dir = _auth_dir()
+        system_conf = auth_dir / "auth.conf"
+        atomic_write(system_conf, content, 0o640)
+        if not os.environ.get("AUTH_DIR"):
+            nats_gid = grp.getgrnam("nats").gr_gid
+            os.chown(system_conf, 0, nats_gid)
 
-    # User mirror: ~/.lyra/nkeys/auth.conf (0600, operator-owned)
+    # Primary write: factory_data_dir()/nkeys/auth.conf (0600, operator-owned)
+    # This is the source file for the factory-nats-auth Podman secret.
     user_conf = seeds_dir / "auth.conf"
     atomic_write(user_conf, content, 0o600)
     os.chown(user_conf, uid, gid)

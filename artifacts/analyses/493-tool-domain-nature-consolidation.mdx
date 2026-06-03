@@ -147,7 +147,7 @@ all use the PROVIDER sense; #1044 uses the CONSUMER sense.
 | **workerEngine** | plomberie · runtime | a **coded sequence** — deterministic workflow/pipeline; orchestrates steps that call **harness** (agentic), **tools**, and **internal code** | composite `JobHandler` (#1052) |
 | **harness** | plomberie · agentic | a **pure** agentic turn (LLM + in-turn tools); **no** workflow/pipeline logic; a *callee* of workerEngine | #1490 harness loop |
 | **worker** | plomberie · compute | a deployed instance running a workerEngine; consumes tools (CONSUMER sense) | `code-worker` |
-| **provider** *(ex-"worker")* | plomberie · backend | the satellite that **backs** a remote tool. **Not** a worker. | imageCLI, voiceCLI |
+| **provider** *(ex-"worker")* | plomberie · backend | **the role** — backs ≥1 tool; transport-agnostic. **Not** a worker. | imageCLI · voiceCLI · postiz · xcli |
 | **tool** | tool-nature | a capability surface invoked by harness / workerEngine (§2.2) | `voice.tts`, `image.generate` |
 
 ```
@@ -166,10 +166,19 @@ worker  (compute instance)
 So workerEngine sits **above** harness and **invokes** it — `harness` is a callee, not a sub-type.
 Epics #1490 (harness) and #1044 (workerEngine / code-worker) stay **separate and layered**, not unified.
 
-**Placement.** `workerEngine` + `worker` are runtime, not contract domains; the wire domains
-behind them (`jobs`, harness-turn) stay plomberie (§2.2). `provider` renames the PROVIDER sense
-of "worker" — non-trivial blast radius (`WorkerRegistry`, `hosts.toml` roles, parent §5/glossary)
-→ **rides the #1670 rename**, not a separate pass (§6).
+**provider vs satellite** (not competing — genus/species). `provider` = the **role** (backs a
+tool). `satellite` = a **deployment kind** (off-host NATS container, heartbeat-discovered) = a
+*subset* of providers. `provider` is the umbrella because `postiz` / `xcli` back tools via
+`stdio` / `http` (493 D11) but are **not** satellites. So: `worker→provider` in the model/contracts;
+`satellite` retained for the NATS-deployed kind; `WorkerRegistry → SatelliteRegistry` (it tracks
+the heartbeat satellites specifically — and dodges the existing **LLM** `ProviderRegistry`).
+
+**Placement & dependency.** `workerEngine` + `worker` are runtime, not contract domains; the wire
+domains behind them (`jobs`, harness-turn) stay plomberie (§2.2). The `worker→provider` rename is
+**separable from #1670** — it touches `hosts.toml` roles, `WorkerRegistry`, NATS accounts, **not**
+the `roxabi-contracts` wire #1670 reorganizes. Batch it with #1670's `hosts.toml` / ACL edits for
+efficiency; it is **not blocked by** #1670. (Only the `tool/` reparent + `factory.tool.*` infix
+ride #1670.)
 
 ---
 
@@ -227,7 +236,7 @@ follow-on once #1670 is green.
 | now | B1 — open breaking-change ADR for `agent_id` (D16) — parked dependency of everything |
 | now (parallel) | B2 `roxabi-contracts/tools/` + B4 `roxabi-tools-sdk` skeleton — design-unblocked |
 | **after #1670 green** | migration issue: re-parent `voice`/`image` under `tool/` (+ infix per §2.4) |
-| **after #1670 green** | vocab rename (§2.5): tool-backing satellites `worker`→`provider` — `WorkerRegistry`, `hosts.toml` `*-worker` roles, parent §5/glossary |
+| separable (batch w/ #1670) | `worker`→`provider` rename — `WorkerRegistry`→`SatelliteRegistry`, `hosts.toml` `*-worker`, parent §5/glossary. **Not** blocked by #1670 (≠ contracts wire) |
 | — | #1490 (harness) and #1044 (workerEngine) are **layered, not unified** — workerEngine *calls* harness (§2.5) |
 
 Tracks A (Postiz token, EnvFile rollout) and C (harness `@` template, POC) from the parent doc

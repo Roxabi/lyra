@@ -107,3 +107,9 @@ quality_gates:
     enabled: true
     stage: pre-push
     script: tools/check_test_sleep.sh
+
+  secrets_drift:
+    enabled: true
+    stage: pre-push
+    script: tools/check_secrets_drift.sh
+    description: assert unit Secret= names ⊆ quadlet.toml required_secrets, quadlet.toml == manifest, factory-nats-* seeds have acl-matrix factory+container identities (changes under deploy/)

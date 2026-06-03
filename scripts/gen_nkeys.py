@@ -199,17 +199,27 @@ def _build_parser() -> argparse.ArgumentParser:
     gk.add_argument(
         "--regenerate",
         action="store_true",
-        help="Backup + wipe + regenerate all nkeys (root required)",
+        help=(
+            "Backup + wipe + regenerate all nkeys (rootless by default;"
+            " root required only when FACTORY_ACL_WRITE_ETC_NATS=1)"
+        ),
     )
     gk.add_argument(
         "--show",
         action="store_true",
-        help="Print current auth.conf (root required)",
+        help=(
+            "Print current auth.conf (rootless by default;"
+            " root required only when FACTORY_ACL_WRITE_ETC_NATS=1)"
+        ),
     )
     gk.add_argument(
         "--fix-perms",
         action="store_true",
-        help="Re-apply 0600/0640 permissions to seeds and auth.conf (root required)",
+        help=(
+            "Re-apply 0600/0640 permissions to seeds and auth.conf"
+            " (rootless by default; root required only when"
+            " FACTORY_ACL_WRITE_ETC_NATS=1)"
+        ),
     )
     gk.add_argument(
         "--yes",

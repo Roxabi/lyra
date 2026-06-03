@@ -1,0 +1,103 @@
+---
+title: "#1718 — cutover-exposed code defects: technical analysis"
+description: "8 rename-independent deploy/seed defects; #9 reshaped into a quadlet.toml-SSoT secrets-derivation + drift gate (standard-aligned)."
+---
+
+## Source
+
+Issue #1718 (postmortem of the #1670 `factory.*` prod cutover, `artifacts/postmortems/2026-06-03-1670-prod-cutover-blockers.md`). 8 genuine code defects exposed by the cutover, rename-independent. Tracker #1710, epic #1671.
+
+Design driven interactively (2026-06-03) with 3 expert agents (architect, devops, axial) — see `## Fit Check`.
+
+## Problem
+
+The deploy + seed path has three failure themes, all of which bit a live prod host during the cutover:
+
+1. **Secret-list drift (#9, +#13)** — the per-container NATS-secret list is hand-maintained in `deploy/install.sh` `SEEDS` (line 66) and `Makefile quadlet-secrets-install` (line 208) and **drifted** (install.sh missing `factory-nats-gh-helper`). Neither derives from any SSoT. The ecosystem standard already *mandates* `deploy/quadlet.toml` `required_secrets` as the per-repo manifest (`~/projects/docs/container-deployment-standard.md` S2) — but **nothing enforced it**, and it is itself wrong on 5/8 components.
+2. **Non-atomic install (#12, root-caused by #11)** — `make quadlet-install` runs `rm -f $QUADLET_DIR/factory*` (line 151) *before* a fallible `uv run factory bot init` (line 162). `bot init` fails (#11), aborting mid-sequence → units deleted-but-not-recopied → half-installed deployment that can brick a live host.
+3. **Identity / data-dir split-brain (#7, #10) + symlink hazards (#13, #14)** — `factory-acl genkeys` writes seeds to `~/.lyra/nkeys` while everything else reads `~/.roxabi/factory/nkeys` (#10); its root guard mis-owns rootless seeds (#7); install.sh symlink + cross-ns bridge symlink assumptions break (#13, #14).
+
+## Outcome
+
+A fresh operator runs `deploy/install.sh` / `make quadlet-install` on a clean or live host → healthy deployment, zero manual fixups. Adding an ACL identity auto-propagates to the installed secret set; a drift gate makes silent drift impossible. `factory-acl` resolves one data dir, honors `ROXABI_FACTORY_DIR`, and does not need root for rootless seed generation.
+
+## Appetite
+
+One focused cycle. F-full (multi-domain), but each defect is a bounded fix; #9 is the only one with real design weight.
+
+## Shapes — defect #9 (the only one needing a shape decision)
+
+Three options were debated; **all 3 agents rejected B** (target-axis-trap), and the final model aligns to the *existing ecosystem standard* (S2) rather than a factory-local invention.
+
+### Shape A — new `deploy/containers/<name>.toml` descriptor (1 file/container)
+SSoT for the deploy facet; remove `deploy` block from acl-matrix. **Rejected:** duplicates `quadlet.toml`, which already models this; off-standard; more churn.
+
+### Shape B — descriptor = total SSoT, acl-matrix generated
+**Rejected unanimously:** axial `target-axis-trap` — puts NATS subjects (transport axis) into per-container descriptors (deploy axis); re-roots the entire ADR-064 ACL pipeline (706 spec, v3-current fixture, auth.conf, CURRENT.generated.md). Max blast radius.
+
+### Shape C — `quadlet.toml` is the declared SSoT (standard-aligned) ◀ chosen
+`deploy/quadlet.toml` `required_secrets` is **already** the per-repo manifest the ecosystem standard mandates (S2) and the sketched central `~/projects/deploy.sh` consumes. Make it authoritative:
+
+```
+DECLARED SSoT (S2 standard — edited by humans, read by cross-repo deploy.sh):
+    deploy/quadlet.toml  required_secrets   per [component.<name>]
+        │  install.sh + Makefile derive from it (python tomllib read → committed
+        │  deploy/generated/secrets-manifest.sh, sourced by install.sh — zero
+        │  runtime python dep on M₁)
+        ▼
+GATE (enforcement — factory = reference impl, tools/check_*.sh, pre-push + CI on deploy/):
+    required_secrets  ==  Secret= directives in deploy/quadlet/*.container(.tmpl)
+                          (runtime-enforced ground truth; filter owner=factory)
+                      ==  acl-matrix identities where deploy.type==container
+                          AND owner=="factory"  (NATS axis cross-check)
+    secret in a unit with no required_secrets entry  →  HARD FAIL
+    optional secrets (gh-pem, claude-oauth)          →  SKIP log, ¬gate failure
+```
+
+**Why the units are the gate authority, not the SSoT:** a `Secret=` missing from a unit hard-fails container boot — runtime-self-validating. They are the perfect *validator*, but the *declared* SSoT stays `quadlet.toml` to honor S2 and feed the cross-repo `deploy.sh` + the `architecture_snapshot` gate (which already reads `required_secrets`).
+
+## Fit Check
+
+Chosen: **Shape C** — 3× GO from architect / devops / axial on the refined model.
+
+- **Standard alignment** — `container-deployment-standard.md` S2 already declares `quadlet.toml` the per-repo secrets manifest. Shape C makes the existing-but-unenforced standard *true*; the units+acl-matrix cross-check is the missing enforcement that would have caught #1670. Factory is the documented **reference implementation**; voiceCLI/llmCLI/imageCLI adopt the same pattern per-repo (deploy is a **doc-standard + per-repo deliverables**, NOT a shared package — unlike `roxabi-contracts`/`roxabi-nats`).
+- **Axial** — acl-matrix stays NATS-axis SSoT; `quadlet.toml`/units own the deploy axis; gate is read-only cross-check (consistency invariant, ¬second SSoT). Follow-up: annotate/remove `deploy.secret` from acl-matrix once the gate ships (closes residual dual-assertion on that field).
+- **Ops** — committed generated manifest = zero runtime python dep; `make converge` + auto-update timers unaffected (Makefile migration is a follow-up pass). Gate is repo-only set-membership, never touches live Podman.
+
+### Cross-repo boundary (scoping trap — codify in gate)
+
+`deploy/quadlet/` in this repo holds **only `factory-*` units (7 NATS-seed identities + auth.conf)**. acl-matrix lists 14 identities across owners:
+
+| owner / type | identities | unit lives | secret installed by |
+|---|---|---|---|
+| factory / container | hub, telegram-adapter, discord-adapter, clipool-worker, turn-writer, blobstore, gh-helper | **this repo** | this repo |
+| voicecli / container | voice-tts, voice-stt | voiceCLI repo (runs on M₁) | voiceCLI |
+| external | llm-worker, llm-operator, image-worker, voice-client | llmCLI/imageCLI (M₂) | those repos |
+| host | dashboard-reader | seed file, ¬podman secret | — |
+
+acl-matrix lists voice/external identities only because it renders the **merged `auth.conf`** (the M₁ NATS server must authorize all connecting identities). The gate cross-check **MUST filter `owner=="factory"`** or it false-positives on `voicecli-nats-*`.
+
+## The other 7 defects — scoped resolutions (no shape decision)
+
+| # | Site | Root cause (verified) | Fix |
+|---|------|----------------------|-----|
+| **#13** | `install.sh:177` | `ln -sf /data/factory/blobs ~/.roxabi/factory/blobstore` doesn't replace a pre-existing **directory** | absorbed into the install.sh rewrite (#9): guard — if target is a non-symlink dir, error w/ hint or replace safely |
+| **#7** | `scripts/_modes.py:76` `_require_root()` | guards writes to `_auth_dir()` = `/etc/nats/nkeys`, but the **host `nats.service` is retired** (auth.conf now delivered via Podman secret) → `/etc/nats/nkeys` is **vestigial**; running full `genkeys` as root mis-owns rootless seeds in `~/.roxabi/factory/nkeys` | make the `/etc/nats` dual-write opt-in; drop blanket root requirement for seed generation; document `--regen-authconf`/`--add-identity` as the sanctioned rootless path |
+| **#10** | `scripts/_modes.py:60` `_seeds_dir()` | defaults to `operator_home()/".lyra"/"nkeys"`; honors `SEEDS_DIR` only, **not** `ROXABI_FACTORY_DIR` → divergent from `cli_ops.py:33` (`factory_data_dir()/nkeys`), install.sh, Makefile | `_seeds_dir()` default → `factory_data_dir()/"nkeys"` (import `factory.paths`); keep `SEEDS_DIR` override → unifies all four + honors env var |
+| **#11** | `agent_cmd/bots/init.py:36,172` + `bot_models.py:41` | `_BotSeedEntry.owner_users: list[str]` (pydantic, `extra="forbid"`) rejects int IDs from `config.toml` (`owner_users=[7377831990]`); `_merge_bots` also silently drops non-str; `BotRow.owner_users` is `list[str]` too. `default` key already handled (init.py:48) | coerce int→str: field validator on `_BotSeedEntry` (accept `list[int\|str]`→str) + change merge reject-non-str (line 172) to coerce. Canonical storage stays `list[str]` |
+| **#12** | `Makefile:151,162` | destructive `rm -f` precedes fallible `bot init` | move `uv run factory bot init` **before** the `rm` (it only needs config.db, independent of unit copy) → destructive section runs only if seed succeeded |
+| **#14** | `bootstrap/infra/git_ownership_probe.py:31` | `os.path.isdir(target)` on an **absolute** bridge symlink that dangles in the container mount-ns returns False → generic "does not exist" → crash-loop | (a) codify "cross-ns bridge symlinks MUST be relative" in `container-deployment-standard.md`; (b) probe: detect dangling-symlink case → emit remediation hint instead of bare crash |
+
+### Files impacted (≥3 → table)
+
+| Area | Files |
+|---|---|
+| #9 secrets SSoT | `deploy/quadlet.toml`, `deploy/install.sh`, `Makefile`, `tools/emit_secrets_manifest.py` (new), `deploy/generated/secrets-manifest.sh` (generated), `tools/check_secrets_drift.sh` (new gate), `.claude/stack.yml`, `deploy/nats/acl-matrix.json` (annotate deploy.secret) |
+| #7/#10 genkeys | `scripts/_modes.py`, tests `tests/scripts/test_genkeys_modes*.py`, `tests/scripts/test_file_modes.py` |
+| #11 bot seed | `src/factory/agent_cmd/bots/init.py`, tests |
+| #12 Makefile | `Makefile` |
+| #14 probe | `src/factory/bootstrap/infra/git_ownership_probe.py`, `~/projects/docs/container-deployment-standard.md`, tests |
+
+### Open traces for /implement
+- #7: confirm no remaining live consumer of `/etc/nats/nkeys` before relaxing (host nats.service retired per `deploy/CLAUDE.md`).
+- #9: decide whether the required/optional/generated policy lives in `quadlet.toml` itself or a sibling `deploy/secrets-policy.toml` (devops favored a small sibling file).

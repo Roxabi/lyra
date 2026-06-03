@@ -148,6 +148,7 @@ quadlet-lint:  ## lint Quadlet unit files: dryrun parse check + inline-comment g
 
 quadlet-install: quadlet-preflight  ## install Quadlet units → reload + verify (NO_RESTART=1 skips restart/verify)
 	@mkdir -p "$(QUADLET_DIR)"
+	@uv run factory bot init
 	@rm -f "$(QUADLET_DIR)"/factory*.{network,volume,container,pod} "$(QUADLET_DIR)"/factory*.{network,volume,container,pod} "$(QUADLET_DIR)/nats.container" \
 	       "$(QUADLET_DIR)/roxabi.network" "$(QUADLET_DIR)/factory-nats.container"
 	@cp deploy/quadlet/roxabi.network                  "$(QUADLET_DIR)/roxabi.network"
@@ -159,7 +160,6 @@ quadlet-install: quadlet-preflight  ## install Quadlet units → reload + verify
 	@chmod 0700 "$(HOME)/.roxabi/factory/nats/jetstream"
 	@cp deploy/quadlet/factory-nats.container             "$(QUADLET_DIR)/factory-nats.container"
 	@cp deploy/quadlet/factory-hub.container              "$(QUADLET_DIR)/factory-hub.container"
-	@uv run factory bot init
 	@uv run python tools/render_quadlet.py \
 		--platform telegram \
 		--db "$(HOME)/.roxabi/factory/config.db" \

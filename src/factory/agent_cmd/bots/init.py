@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 import typer
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
 from factory.cli_bot import _connect_bot_store, bot_app
 from factory.core.agent.bot_models import (
@@ -33,9 +33,16 @@ class _BotSeedEntry(BaseModel):
     default_trust: Literal["owner", "trusted", "public", "blocked"] = cast(
         Literal["owner", "trusted", "public", "blocked"], DEFAULT_TRUST
     )
-    owner_users: list[str] = []
-    trusted_users: list[str] = []
+    owner_users: list[int | str] = []
+    trusted_users: list[int | str] = []
     trusted_roles: list[str] = []
+
+    @field_validator("owner_users", "trusted_users", mode="after")
+    @classmethod
+    def _coerce_user_ids_to_str(cls, v: list[int | str]) -> list[str]:
+        """Coerce int Telegram user IDs to str; canonical storage shape is list[str]."""
+        return [str(el) for el in v]
+
     auto_thread: bool = DEFAULT_AUTO_THREAD
     thread_hot_hours: int = DEFAULT_THREAD_HOT_HOURS
     # Real config.toml keys that appear in [[telegram.bots]] / [[discord.bots]]
@@ -169,8 +176,7 @@ def _merge_bots(raw: dict[str, Any]) -> tuple[list[BotRow], int]:  # noqa: C901 
                     continue
                 list_keys = ("owner_users", "trusted_users", "trusted_roles")
                 if k in list_keys and isinstance(v, list):
-                    if not all(isinstance(el, str) for el in v):
-                        continue  # reject non-string elements silently
+                    v = [str(el) for el in v]  # coerce int IDs → str
                     existing = merged[key].get(k, [])
                     if isinstance(existing, list):
                         merged[key][k] = list(dict.fromkeys(existing + v))

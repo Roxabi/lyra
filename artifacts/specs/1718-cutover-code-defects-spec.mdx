@@ -1,0 +1,60 @@
+---
+title: "#1718 — cutover code defects: solution spec"
+issue: 1718
+status: approved
+tier: F-full
+date: 2026-06-03
+---
+
+## Overview
+
+Fix 8 rename-independent deploy/seed defects exposed by the #1670 cutover. The spine is **#9**: make `deploy/quadlet.toml` `required_secrets` the *enforced* per-repo secrets SSoT (already mandated by `container-deployment-standard.md` S2), with `install.sh`/`Makefile` deriving from it and a drift gate cross-checking against the runtime-enforced unit `Secret=` directives + acl-matrix (NATS axis). The other 7 are bounded fixes. Companion analysis: `artifacts/analyses/1718-cutover-code-defects-analysis.mdx`.
+
+## Acceptance Criteria
+
+### #9 — secrets SSoT + drift gate
+- `deploy/quadlet.toml` `required_secrets` is **complete and correct** for all 8 components (matches each unit's `Secret=` directives, owner=factory scope). The 5 current drifts fixed: telegram/discord (+`factory_blobstore_token`), clipool (+`factory-claude-oauth`), gh-helper (`factory-gh-pem`,`factory-nats-gh-helper`), blobstore (+`factory-nats-blobstore`).
+- A committed `deploy/generated/secrets-manifest.sh` is **generated** by `tools/emit_secrets_manifest.py` from `quadlet.toml` + a `deploy/secrets-policy.toml` (name→`nats-seed|generated|optional`). `install.sh` sources it; no hand-maintained `SEEDS` array; no runtime python dependency.
+- `install.sh` installs `factory-nats-gh-helper` (the original #9 miss) — verified by `--dry-run` listing it.
+- Drift gate `tools/check_secrets_drift.sh` (registered in `.claude/stack.yml quality_gates`, pre-push + CI on `deploy/`) **fails** when: (a) a unit `Secret=` name has no `required_secrets` entry, (b) `required_secrets` ≠ generated manifest, (c) a `factory-nats-*` unit secret ≠ acl-matrix `owner==factory` container identity. Optional secrets (gh-pem, claude-oauth) → SKIP, not failure. Cross-check **filters `owner=="factory"`** (no voicecli/external false-positive).
+- `tools/generate_architecture_snapshot.py` still produces a clean `CURRENT.generated.md` (architecture_snapshot gate green) with the completed `required_secrets`.
+
+### #13 — blob symlink over existing dir
+- `install.sh` blobstore-symlink step is idempotent against a **pre-existing directory** at `~/.roxabi/factory/blobstore`: replaces/links safely or errors with a remediation hint — never silently misplaces blobs.
+
+### #7 — genkeys root guard vs rootless seeds
+- Full `factory-acl genkeys` seed generation runs **rootless** (no `sudo`) writing to `factory_data_dir()/nkeys` owned by the operator. The `/etc/nats/nkeys` dual-write is opt-in (vestigial: host `nats.service` retired). `--regen-authconf`/`--add-identity` documented as the sanctioned rootless paths. No seed is ever created root-owned by the normal path.
+
+### #10 — nkeys dir split-brain
+- `scripts/_modes.py` `_seeds_dir()` resolves to `factory_data_dir()/"nkeys"` (== `cli_ops.py`, install.sh, Makefile), honors `ROXABI_FACTORY_DIR`, keeps `SEEDS_DIR` test override. No code path resolves `~/.lyra/nkeys`.
+
+### #11 — _BotSeedEntry int owner_users
+- `uv run factory bot init` succeeds against the live `config.toml` shape (`owner_users = [<int>]`, `default` key): int IDs coerced to `str`, no validation error, rows seeded. Idempotent re-run still skips existing.
+
+### #12 — non-atomic quadlet-install
+- `make quadlet-install` performs `factory bot init` **before** the destructive `rm -f`. A `bot init` failure aborts the target **before** any unit is deleted → never half-installed.
+
+### #14 — cross-ns bridge symlink
+- `container-deployment-standard.md` codifies "cross-namespace bridge symlinks MUST be relative".
+- `git_ownership_probe` detects a dangling/absolute-symlink target and emits a **remediation hint** (must be relative) instead of the generic "does not exist" crash.
+
+## Slices
+
+| Slice | Defects | Files | Depends on | Agent |
+|-------|---------|-------|-----------|-------|
+| **S1 — secrets SSoT spine** | #9, #13 | `deploy/quadlet.toml`, `deploy/secrets-policy.toml` (new), `tools/emit_secrets_manifest.py` (new), `deploy/generated/secrets-manifest.sh` (gen), `deploy/install.sh` (rewrite SEEDS+symlink), `Makefile` | — | devops |
+| **S2 — drift gate** | #9 | `tools/check_secrets_drift.sh` (new), `.claude/stack.yml`, `deploy/nats/acl-matrix.json` (annotate `deploy.secret` as derived) | S1 | devops |
+| **S3 — genkeys unification** | #7, #10 | `scripts/_modes.py` | — | backend |
+| **S4 — bot seed coercion** | #11 | `src/factory/agent_cmd/bots/init.py` | — | backend |
+| **S5 — atomic install** | #12 | `Makefile` | S1 (same file — sequence after S1) | devops |
+| **S6 — ownership probe + standard** | #14 | `src/factory/bootstrap/infra/git_ownership_probe.py`, `~/projects/docs/container-deployment-standard.md` | — | backend |
+| **S7 — tests** | all | `tests/scripts/test_genkeys_modes*.py`, bot-init tests, gate tests, probe tests | S1–S6 | tester |
+
+S3, S4, S6 are independent (parallel). S1→S2→S5 sequence (S5 edits the same Makefile region as S1). S7 last.
+
+## Risks
+
+- **#7 vestigial-path assumption** — confirm zero live consumer of `/etc/nats/nkeys` before relaxing root guard (host nats.service retired per `deploy/CLAUDE.md`). If a consumer exists, keep root only for the opt-in `/etc/nats` write.
+- **Parsing `.tmpl` Secret= lines** — templates have static `Secret=` lines; `{{bot_secrets}}` injects per-bot tokens (S20) and is **excluded** from `required_secrets`. Emitter contract: `name = value.split(",")[0]`.
+- **install.sh robustness** — generated manifest is committed; install.sh must still run if the emitter was not re-run (gate catches staleness in CI, not at prod install time).
+- **acl-matrix `deploy.secret` annotation** — gate makes it derived; full removal is a follow-up to avoid touching the ADR-064 fan-out in this issue.

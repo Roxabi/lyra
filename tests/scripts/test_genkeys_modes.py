@@ -230,27 +230,85 @@ class TestRegenerateMode:
             "not a stub message"
         )
 
-    def test_regenerate_with_yes_requires_root(self) -> None:
-        """--regenerate --yes without root must exit 1 with a root-required message.
+    def test_regenerate_with_yes_rootless_succeeds(self, tmp_path: Path) -> None:
+        """--regenerate --yes without root must exit 0 (rootless by default).
 
-        SC-6: even with --yes, full provisioning (seed generation + system write)
-        requires root because it writes to /etc/nats/nkeys/.
-        Will FAIL now: mode raises SystemExit("not yet implemented in this slice").
+        NEW CONTRACT (#1718 / #7): --regenerate is rootless by default.
+        Root is only required for the opt-in /etc/nats write path
+        (FACTORY_ACL_WRITE_ETC_NATS=1). Without that env var, --regenerate --yes
+        must write seeds to factory_data_dir()/nkeys and exit 0.
+
+        Verified: reverting _mode_full_provision to always call _require_root()
+        would cause a non-zero exit here (root check fires → exit 1).
         """
-        # Act — non-root, --yes skips TTY check but root check must still fire
+        # Arrange — tmp dirs so no disk pollution; AUTH_DIR set to prevent any
+        # accidental /etc path access
+        seeds_dir = tmp_path / "nkeys"
+        auth_dir = tmp_path / "auth"
+        auth_dir.mkdir(parents=True)
+
+        # Act — rootless, --yes, FACTORY_ACL_WRITE_ETC_NATS NOT set
         result = _run_genkeys(
             [
                 "--regenerate",
                 "--yes",
                 "--matrix",
                 str(_MATRIX_FIXTURE),
-            ]
+            ],
+            env={
+                "SEEDS_DIR": str(seeds_dir),
+                "AUTH_DIR": str(auth_dir),
+            },
         )
 
-        # Assert
+        # Assert — rootless path exits 0
+        assert result.returncode == 0, (
+            "Expected exit 0 for rootless --regenerate --yes; "
+            f"got {result.returncode}\nstderr: {result.stderr}"
+        )
+        assert "not yet implemented" not in result.stderr
+        # Seeds must have been written to seeds_dir
+        assert seeds_dir.exists(), "seeds_dir must be created by --regenerate"
+        user_conf = seeds_dir / "auth.conf"
+        assert user_conf.exists(), (
+            "auth.conf must be written to seeds_dir by rootless --regenerate"
+        )
+
+    def test_regenerate_with_etc_nats_opt_in_requires_root(
+        self, tmp_path: Path
+    ) -> None:
+        """--regenerate with FACTORY_ACL_WRITE_ETC_NATS=1 requires root (or AUTH_DIR).
+
+        When the opt-in env var is set, _require_root() is called. Without real root
+        AND without an AUTH_DIR override, the process must exit non-zero with an
+        appropriate error.
+
+        Verified: removing the `if write_etc: _require_root()` guard from
+        _mode_full_provision would cause exit 0 here instead of non-zero.
+        """
+        # Arrange — run without AUTH_DIR override so _require_root() fires for real
+        seeds_dir = tmp_path / "nkeys"
+        seeds_dir.mkdir(parents=True)
+
+        result = _run_genkeys(
+            [
+                "--regenerate",
+                "--yes",
+                "--matrix",
+                str(_MATRIX_FIXTURE),
+            ],
+            env={
+                "SEEDS_DIR": str(seeds_dir),
+                # AUTH_DIR deliberately NOT set — _require_root() checks real uid
+                "FACTORY_ACL_WRITE_ETC_NATS": "1",
+            },
+        )
+
+        # Assert — non-root CI must exit non-zero (root check fires)
         assert result.returncode != 0, (
-            "Expected non-zero exit for --regenerate --yes without root; "
-            f"got {result.returncode}"
+            "Expected non-zero exit for --regenerate --yes with "
+            "FACTORY_ACL_WRITE_ETC_NATS=1 on a non-root user; "
+            f"got {result.returncode}\nstderr: {result.stderr}"
         )
         assert "not yet implemented" not in result.stderr
 
@@ -294,53 +352,104 @@ class TestRegenerateMode:
         )
 
 
-# ── T19.5 — --show requires root ─────────────────────────────────────────────
+# ── T19.5 — --show rootless reads seeds_dir + opt-in requires root ───────────
 
 
 class TestShowMode:
-    def test_show_requires_root(self) -> None:
-        """--show without root must exit 1 with a root-required message.
+    def test_show_rootless_reads_seeds_dir(self, tmp_path: Path) -> None:
+        """--show (rootless default) reads SEEDS_DIR/auth.conf and exits 0.
 
-        SC-6: --show reads /etc/nats/nkeys/auth.conf which is root:nats 0640.
-        A non-root user cannot read it; the CLI must check and exit 1.
-        Will FAIL now: mode raises SystemExit("not yet implemented in this slice").
+        NEW CONTRACT (#1718 / #7): --show is rootless by default.
+        It reads factory_data_dir()/nkeys/auth.conf (via _seeds_dir()).
+        Root is only required when FACTORY_ACL_WRITE_ETC_NATS=1 is set.
+
+        Verified: reverting _mode_show to always call _require_root() would
+        cause a non-zero exit here on non-root CI.
         """
+        # Arrange — write an auth.conf into the tmp seeds dir
+        seeds_dir = tmp_path / "nkeys"
+        seeds_dir.mkdir(parents=True)
+        auth_conf = seeds_dir / "auth.conf"
+        auth_conf.write_text("authorization { # test content }\n")
+        auth_conf.chmod(0o600)
+
         # Act
         result = _run_genkeys(
             [
                 "--show",
                 "--matrix",
                 str(_MATRIX_FIXTURE),
-            ]
+            ],
+            env={"SEEDS_DIR": str(seeds_dir)},
         )
 
-        # Assert
+        # Assert — exits 0 and prints the auth.conf content
+        assert result.returncode == 0, (
+            f"Expected exit 0 for rootless --show; got {result.returncode}\n"
+            f"stderr: {result.stderr}"
+        )
+        assert "authorization" in result.stdout, (
+            f"--show must print auth.conf content to stdout; got: {result.stdout!r}"
+        )
+        assert "not yet implemented" not in result.stderr
+
+    def test_show_opt_in_requires_root(self, tmp_path: Path) -> None:
+        """--show with FACTORY_ACL_WRITE_ETC_NATS=1 requires root (exits non-zero).
+
+        When the opt-in env var is set, _mode_show calls _require_root().
+        Without real root AND without an AUTH_DIR override, the process must
+        exit non-zero.
+
+        Verified: removing the `if _etc_nats_write_enabled(): _require_root()`
+        guard from _mode_show would cause exit 0 here instead of non-zero.
+        """
+        # Arrange — seeds_dir exists (to avoid the missing-auth.conf exit-1 path)
+        seeds_dir = tmp_path / "nkeys"
+        seeds_dir.mkdir(parents=True)
+
+        # Act — AUTH_DIR deliberately NOT set so _require_root() checks real uid
+        result = _run_genkeys(
+            [
+                "--show",
+                "--matrix",
+                str(_MATRIX_FIXTURE),
+            ],
+            env={
+                "SEEDS_DIR": str(seeds_dir),
+                "FACTORY_ACL_WRITE_ETC_NATS": "1",
+            },
+        )
+
+        # Assert — non-root CI must exit non-zero (root check fires)
         assert result.returncode != 0, (
-            f"Expected non-zero exit for --show without root; got {result.returncode}"
+            "Expected non-zero exit for --show with FACTORY_ACL_WRITE_ETC_NATS=1 "
+            f"on a non-root user; got {result.returncode}\nstderr: {result.stderr}"
         )
         assert "not yet implemented" not in result.stderr
 
 
-# ── T19.6 — default mode dual-write ──────────────────────────────────────────
+# ── T19.6 — default mode rootless write + opt-in dual-write ──────────────────
 
 
-class TestDefaultModeDualWrite:
-    def test_default_mode_dual_write(self, tmp_path: Path) -> None:
-        """Default mode (no flag) writes system auth.conf AND user auth.conf.
+class TestDefaultModeWrite:
+    def test_default_mode_writes_seeds_dir_only(self, tmp_path: Path) -> None:
+        """Default mode (no flag, no opt-in) writes auth.conf to seeds_dir ONLY.
 
-        SC-2 / spec default-mode-dual-write: the full provisioning path writes
-        /etc/nats/nkeys/auth.conf (system, 0640, root:nats) AND mirrors a copy
-        to ~/.lyra/nkeys/auth.conf (user, 0600, operator).
-        This test uses tmp_path overrides for both paths.
-        Will FAIL now: mode raises SystemExit("not yet implemented in this slice").
+        NEW CONTRACT (#1718 / #7): default full-provision is rootless and writes
+        exclusively to factory_data_dir()/nkeys/auth.conf. It does NOT write to
+        AUTH_DIR (/etc/nats/nkeys) unless FACTORY_ACL_WRITE_ETC_NATS=1 is set.
+
+        Verified: reverting _mode_full_provision to always write to _auth_dir()
+        would cause the AUTH_DIR file to appear, breaking the "must not exist"
+        assertion below.
         """
-        # Arrange — tmp directories for both write targets
+        # Arrange — separate dirs so we can assert AUTH_DIR is untouched
         system_auth_dir = tmp_path / "etc_nats_nkeys"
         system_auth_dir.mkdir(parents=True)
         user_seeds_dir = tmp_path / "user_nkeys"
         user_seeds_dir.mkdir(parents=True)
 
-        # Act
+        # Act — no FACTORY_ACL_WRITE_ETC_NATS set
         result = _run_genkeys(
             [
                 "--matrix",
@@ -352,19 +461,68 @@ class TestDefaultModeDualWrite:
             },
         )
 
-        # Assert — both files must exist after the call
         system_conf = system_auth_dir / "auth.conf"
         user_conf = user_seeds_dir / "auth.conf"
 
         assert result.returncode == 0, (
-            f"Expected exit 0 for default mode; got {result.returncode}\n"
+            f"Expected exit 0 for rootless default mode; got {result.returncode}\n"
             f"stderr: {result.stderr}"
         )
+        # Primary write: seeds_dir/auth.conf must exist
+        assert user_conf.exists(), (
+            "auth.conf must be written to SEEDS_DIR by rootless default mode"
+        )
+        # System path: AUTH_DIR must NOT be written in default (rootless) mode
+        assert not system_conf.exists(), (
+            "auth.conf must NOT be written to AUTH_DIR in default (rootless) mode; "
+            "set FACTORY_ACL_WRITE_ETC_NATS=1 to opt-in to the /etc/nats dual-write"
+        )
+        assert "not yet implemented" not in result.stderr
+
+    def test_opt_in_mode_writes_both_seeds_dir_and_auth_dir(
+        self, tmp_path: Path
+    ) -> None:
+        """With FACTORY_ACL_WRITE_ETC_NATS=1 default mode writes BOTH targets.
+
+        The opt-in /etc/nats dual-write is vestigial (host nats.service retired)
+        but must remain functional. AUTH_DIR override bypasses the real root check
+        so this test runs without sudo.
+
+        Verified: removing the `if write_etc:` block from _mode_full_provision
+        would cause system_conf to remain absent, failing the second assertion.
+        """
+        # Arrange
+        system_auth_dir = tmp_path / "etc_nats_nkeys"
+        system_auth_dir.mkdir(parents=True)
+        user_seeds_dir = tmp_path / "user_nkeys"
+        user_seeds_dir.mkdir(parents=True)
+
+        # Act — opt-in enabled; AUTH_DIR override bypasses _require_root()
+        result = _run_genkeys(
+            [
+                "--matrix",
+                str(_MATRIX_FIXTURE),
+            ],
+            env={
+                "SEEDS_DIR": str(user_seeds_dir),
+                "AUTH_DIR": str(system_auth_dir),
+                "FACTORY_ACL_WRITE_ETC_NATS": "1",
+            },
+        )
+
+        system_conf = system_auth_dir / "auth.conf"
+        user_conf = user_seeds_dir / "auth.conf"
+
+        assert result.returncode == 0, (
+            f"Expected exit 0 for opt-in dual-write mode; got {result.returncode}\n"
+            f"stderr: {result.stderr}"
+        )
+        # Both targets must be written when opt-in is active
         assert system_conf.exists(), (
-            "System auth.conf must be written to AUTH_DIR by default mode"
+            "System auth.conf must be written to AUTH_DIR when opt-in flag set"
         )
         assert user_conf.exists(), (
-            "User auth.conf must be mirrored to SEEDS_DIR by default mode"
+            "User auth.conf must be written to SEEDS_DIR even in opt-in mode"
         )
         assert "not yet implemented" not in result.stderr
 

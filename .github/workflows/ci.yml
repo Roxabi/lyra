@@ -113,6 +113,9 @@ jobs:
           fi
           uv run python tools/check_doc_drift.py
 
+      - name: Check secrets drift (unit Secret= / quadlet.toml / manifest / acl-matrix)
+        run: bash tools/check_secrets_drift.sh
+
       - name: Check architecture snapshot freshness
         run: bash tools/check_architecture_snapshot.sh
 

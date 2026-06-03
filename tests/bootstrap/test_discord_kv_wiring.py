@@ -9,6 +9,7 @@ Tests verify:
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 import subprocess
 from contextlib import asynccontextmanager
@@ -16,6 +17,11 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
+
+def _noop_task() -> "asyncio.Task[None]":
+    """Zero-delay cancel-safe stub task — not a timing wait."""
+    return asyncio.create_task(asyncio.sleep(0))  # event-based
 
 # ---------------------------------------------------------------------------
 # Assertion 1 — No AgentStore / config.db in _bootstrap_discord_setup
@@ -216,9 +222,7 @@ class TestDiscordWireBotReceivesWatchChannels:
             ),
             patch(
                 "factory.bootstrap.wiring.standalone_discord.start_watch_channels_task",
-                AsyncMock(
-                    return_value=asyncio.create_task(asyncio.sleep(0))
-                ),
+                AsyncMock(return_value=_noop_task()),
             ),
             patch(
                 "factory.bootstrap.wiring.standalone_discord.wire_bot_common",

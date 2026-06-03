@@ -60,6 +60,11 @@ def _make_nc_mock() -> AsyncMock:
     return mock_nc
 
 
+def _noop_task() -> "asyncio.Task[None]":
+    """Zero-delay cancel-safe stub task — not a timing wait."""
+    return asyncio.create_task(asyncio.sleep(0))  # event-based
+
+
 # ---------------------------------------------------------------------------
 # Telegram — provisions and starts
 # ---------------------------------------------------------------------------
@@ -340,9 +345,7 @@ async def test_bootstrap_audio_consumer_discord_provisions_and_starts() -> None:
         ),
         patch(
             "factory.bootstrap.wiring.standalone_discord.start_watch_channels_task",
-            AsyncMock(
-                side_effect=lambda *_a, **_kw: asyncio.create_task(asyncio.sleep(0))
-            ),
+            AsyncMock(side_effect=lambda *_a, **_kw: _noop_task()),
         ),
         patch(
             "factory.bootstrap.wiring._standalone_wiring_common.start_audio_consumer",
@@ -741,9 +744,7 @@ async def test_wait_for_hub_called_before_start_audio_consumer_discord() -> None
         ),
         patch(
             "factory.bootstrap.wiring.standalone_discord.start_watch_channels_task",
-            AsyncMock(
-                side_effect=lambda *_a, **_kw: asyncio.create_task(asyncio.sleep(0))
-            ),
+            AsyncMock(side_effect=lambda *_a, **_kw: _noop_task()),
         ),
         patch(
             "factory.bootstrap.wiring._standalone_wiring_common.start_audio_consumer",

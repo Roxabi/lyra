@@ -15,6 +15,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 
+def _noop_task() -> "asyncio.Task[None]":
+    """Zero-delay cancel-safe stub task — not a timing wait."""
+    return asyncio.create_task(asyncio.sleep(0))  # event-based
+
+
 async def test_adapter_reads_token_from_run_secrets(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -370,9 +375,7 @@ async def test_discord_adapter_handles_multi_bot(
         ),
         patch(
             "factory.bootstrap.wiring.standalone_discord.start_watch_channels_task",
-            AsyncMock(
-                side_effect=lambda *_a, **_kw: asyncio.create_task(asyncio.sleep(0))
-            ),
+            AsyncMock(side_effect=lambda *_a, **_kw: _noop_task()),
         ),
         patch("factory.bootstrap.credentials._is_prod_env", return_value=False),
     ):

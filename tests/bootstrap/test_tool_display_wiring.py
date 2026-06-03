@@ -22,6 +22,12 @@ import pytest
 from factory.bootstrap.factory.config import _load_tool_display_config
 from tests.conftest import _LOAD_BOT_TOKEN_PATH
 
+
+def _noop_task() -> "asyncio.Task[None]":
+    """Zero-delay cancel-safe stub task — not a timing wait."""
+    return asyncio.create_task(asyncio.sleep(0))  # event-based
+
+
 # ---------------------------------------------------------------------------
 # Helper — minimal raw_config dicts
 # ---------------------------------------------------------------------------
@@ -484,9 +490,7 @@ async def test_standalone_path_threads_tool_display_config_to_discord() -> None:
         ),
         patch(
             "factory.bootstrap.wiring.standalone_discord.start_watch_channels_task",
-            AsyncMock(
-                side_effect=lambda *_a, **_kw: asyncio.create_task(asyncio.sleep(0))
-            ),
+            AsyncMock(side_effect=lambda *_a, **_kw: _noop_task()),
         ),
         patch(
             _LOAD_BOT_TOKEN_PATH,

@@ -73,7 +73,7 @@ TOOL  (capability surfaces, LLM-invoked)         PLOMBERIE  (everything else)
 `harness` and `worker` are **not** tools and **not** plain plomberie — they are the
 **consumer plane**: they run the agentic loop / job loop and reach the `tool/` plane
 **through the registry** (uniform dispatcher, §4 of parent). They see `image.generate`
-and `bash` identically; transport is invisible. Their shared runtime is named in §2.5.
+and `bash` identically; transport is invisible. How they layer (workerEngine *calls* harness) is set in §2.5.
 
 ### 2.2 Classification table
 
@@ -140,26 +140,31 @@ resolves a pre-existing overload: **"worker" means two opposite things today.**
 `WorkerRegistry` and the `voice-worker` / `image-worker` / `llm-worker` roles in `hosts.toml`
 all use the PROVIDER sense; #1044 uses the CONSUMER sense.
 
-**Resolution (2026-06-03).** Four terms; all plomberie except `tool`:
+**Resolution (2026-06-03).** Five terms; all plomberie except `tool`:
 
 | Term | Nature | Definition | Examples |
 |---|---|---|---|
-| **workerEngine** | plomberie · runtime | the orchestration runtime — drives `{ tools · code · llm/harness }`. Calls tools; is **not** one. | the harness loop, generalized |
-| **worker** | plomberie · compute | a compute instance running **on** the workerEngine; consumes tools (the CONSUMER sense) | `code-worker`, agent/harness-worker |
-| **provider** *(ex-"worker")* | plomberie · backend | the satellite process that **backs** a remote tool. **Not** a worker. | imageCLI, voiceCLI |
-| **tool** | tool-nature | a capability surface the engine invokes (§2.2) | `voice.tts`, `image.generate` |
+| **workerEngine** | plomberie · runtime | a **coded sequence** — deterministic workflow/pipeline; orchestrates steps that call **harness** (agentic), **tools**, and **internal code** | composite `JobHandler` (#1052) |
+| **harness** | plomberie · agentic | a **pure** agentic turn (LLM + in-turn tools); **no** workflow/pipeline logic; a *callee* of workerEngine | #1490 harness loop |
+| **worker** | plomberie · compute | a deployed instance running a workerEngine; consumes tools (CONSUMER sense) | `code-worker` |
+| **provider** *(ex-"worker")* | plomberie · backend | the satellite that **backs** a remote tool. **Not** a worker. | imageCLI, voiceCLI |
+| **tool** | tool-nature | a capability surface invoked by harness / workerEngine (§2.2) | `voice.tts`, `image.generate` |
 
 ```
-workerEngine (runtime)  orchestrates → { tools · code · llm/harness }
-   │ runs
-   ▼
-worker (compute on engine) ──invokes──▶ tool ──backed by──▶ provider (satellite)
+worker  (compute instance)
+  └─ runs ─▶ workerEngine  =  coded pipeline (deterministic workflow)
+                │ calls, as steps:
+                ├─▶ harness            pure agentic turn (LLM + in-turn tools) · no pipeline logic
+                ├─▶ tools  ──backed by──▶ provider (satellite)
+                └─▶ internal code
 ```
 
-**Harness = the agentic flavor of the workerEngine** (adopted 2026-06-03). Spec #1490 shows the
-harness *is* a custom ~200-line loop — a runtime, not a job. So: one engine, two roles —
-`harness` (agentic turns) + `code-worker` (code+llm jobs). This makes **epics #1490 + #1044
-candidates to unify under one runtime** — a scope decision, flagged here, not forced.
+**Harness ≠ a flavor of workerEngine** (ruling 2026-06-03). They are **distinct, layered**:
+- **harness** = *pure* agentic — one LLM turn (LLM + in-turn tools), **no** workflow/pipeline logic (#1490).
+- **workerEngine** = the **coded pipeline** (deterministic workflow); it *calls* harness, tools, and internal code as steps.
+
+So workerEngine sits **above** harness and **invokes** it — `harness` is a callee, not a sub-type.
+Epics #1490 (harness) and #1044 (workerEngine / code-worker) stay **separate and layered**, not unified.
 
 **Placement.** `workerEngine` + `worker` are runtime, not contract domains; the wire domains
 behind them (`jobs`, harness-turn) stay plomberie (§2.2). `provider` renames the PROVIDER sense
@@ -223,7 +228,7 @@ follow-on once #1670 is green.
 | now (parallel) | B2 `roxabi-contracts/tools/` + B4 `roxabi-tools-sdk` skeleton — design-unblocked |
 | **after #1670 green** | migration issue: re-parent `voice`/`image` under `tool/` (+ infix per §2.4) |
 | **after #1670 green** | vocab rename (§2.5): tool-backing satellites `worker`→`provider` — `WorkerRegistry`, `hosts.toml` `*-worker` roles, parent §5/glossary |
-| open | scope call: unify `workerEngine` runtime across epics #1490 (harness) + #1044 (code-worker)? |
+| — | #1490 (harness) and #1044 (workerEngine) are **layered, not unified** — workerEngine *calls* harness (§2.5) |
 
 Tracks A (Postiz token, EnvFile rollout) and C (harness `@` template, POC) from the parent doc
 are unaffected by this taxonomy and remain parallel-safe.

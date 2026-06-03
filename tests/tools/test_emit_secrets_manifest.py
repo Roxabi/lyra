@@ -6,8 +6,9 @@ T14 contract map:
   C — policy classification correct (nats-seed / nats-auth / generated / optional)
   D — gate happy path: current tree → exit 0
   E — gate drift detection: unit Secret= with no required_secrets entry → exit non-zero
-  F — owner=factory filter: voicecli-nats-* → no false-positive failure
+  F — owner=factory filter: acl-matrix owner/type partitioning; current tree passes
   G — optional secret absent → SKIP not failure
+  I — --list-unit-secrets CLI mode: prints secret names for a given unit file
 """
 
 from __future__ import annotations
@@ -353,13 +354,38 @@ class TestGateDriftDetection:
 
 @pytest.mark.skipif(not shutil.which("jq"), reason="jq not available")
 class TestOwnerFactoryFilter:
-    """voicecli-nats-* / external identities must NOT cause false-positive failures.
+    """Bidirectional check (c) mutation tests — owner=factory filter is load-bearing.
 
-    This is the core correctness check: check (c) filters by
-    owner=='factory' AND deploy.type=='container'.  External identities
-    (voicecli-nats-tts, voicecli-nats-stt, llm-worker, image-worker …)
-    must be silently ignored even though they share the same NATS cluster.
+    check (c) is now bidirectional:
+      Forward:  every factory-nats-* in quadlet.toml required_secrets must have a
+                matching acl-matrix identity (owner=factory, type=container).
+      Reverse:  every acl-matrix identity (owner=factory, type=container) whose
+                deploy.secret matches factory-nats-* must appear in quadlet.toml
+                required_secrets.
+
+    The owner==factory filter is load-bearing for the REVERSE direction: without
+    it, external identities (e.g. voicecli-nats-tts with owner=voicecli) enter
+    ACL_SECRETS and trigger a spurious reverse violation because their secrets
+    are not in quadlet.toml.
     """
+
+    def _copy_deploy_tree(self, tmp_path: Path) -> Path:
+        """Copy deploy/ subtree to tmp so we can mutate it safely."""
+        shutil.copytree(str(REPO_ROOT / "deploy"), str(tmp_path / "deploy"))
+        return tmp_path
+
+    def _gate_env(self, work: Path) -> dict[str, str]:
+        """Build env overrides pointing the gate at the tmp deploy tree."""
+        return {
+            **os.environ,
+            "QUADLET_TOML": str(work / "deploy" / "quadlet.toml"),
+            "POLICY_TOML": str(work / "deploy" / "secrets-policy.toml"),
+            "QUADLET_DIR": str(work / "deploy" / "quadlet"),
+            "MANIFEST_SH": str(
+                work / "deploy" / "generated" / "secrets-manifest.sh"
+            ),
+            "ACL_MATRIX": str(work / "deploy" / "nats" / "acl-matrix.json"),
+        }
 
     def _factory_container_secrets(self) -> set[str]:
         """Identities where owner=factory AND type=container."""
@@ -373,6 +399,8 @@ class TestOwnerFactoryFilter:
                 and identity.get("deploy", {}).get("type") == "container"
             )
         }
+
+    # ── data-partition tests (kept — verify ACL matrix is correctly partitioned)
 
     def test_voicecli_identities_not_factory_container(self) -> None:
         """voicecli-nats-tts and voicecli-nats-stt have owner=voicecli, not factory."""
@@ -407,24 +435,152 @@ class TestOwnerFactoryFilter:
             f"Got:      {sorted(factory_container_secrets)}"
         )
 
-    def test_gate_does_not_fail_with_external_identities_present(self) -> None:
-        """Gate exits 0 even though acl-matrix has voicecli-nats-* identities.
+    # ── mutation test 1: reverse direction (quadlet.toml missing a nats secret)
 
-        NEGATIVE TEST: if the owner=factory+container filter is deleted from
-        check_secrets_drift.sh, voicecli-nats-tts/stt would appear as
-        required seeds that have no matching quadlet.toml entry, causing a
-        false-positive failure. With the filter, the gate must still pass.
+    def test_reverse_direction_fails_when_quadlet_missing_nats_secret(
+        self, tmp_path: Path
+    ) -> None:
+        """Removing factory-nats-* from quadlet required_secrets → FAIL (c) reverse.
+
+        Mutation: delete factory-nats-gh-helper from the gh-helper component's
+        required_secrets in quadlet.toml. The acl-matrix still has the identity,
+        so the reverse check detects the dangling ACL entry.
+
+        Regression signal: if the reverse direction is removed from
+        check_secrets_drift.sh, this test passes on the mutated tree (no
+        reverse violation raised) — the regression is invisible.
         """
-        result = subprocess.run(
+        work = self._copy_deploy_tree(tmp_path)
+        qtoml_path = work / "deploy" / "quadlet.toml"
+
+        # Mutate: remove factory-nats-gh-helper from required_secrets.
+        original = qtoml_path.read_text()
+        # The entry is in a list — remove the quoted element and any trailing comma.
+        mutated = original.replace('"factory-nats-gh-helper"', "")
+        # Clean up any double-comma or comma-before-close-bracket artefacts.
+        import re as _re
+
+        mutated = _re.sub(r",\s*,", ",", mutated)
+        mutated = _re.sub(r",\s*\]", "]", mutated)
+        mutated = _re.sub(r"\[\s*,", "[", mutated)
+        qtoml_path.write_text(mutated)
+
+        # Mutated tree: gate must fail.
+        result_fail = subprocess.run(
             ["bash", str(GATE_SCRIPT)],
             cwd=str(REPO_ROOT),
             capture_output=True,
             text=True,
+            env=self._gate_env(work),
         )
-        assert result.returncode == 0, (
-            "Gate must pass the current tree regardless of external"
-            " acl-matrix identities.\n"
-            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        assert result_fail.returncode != 0, (
+            "Gate must fail when factory-nats-gh-helper is absent from"
+            " quadlet.toml required_secrets but present in acl-matrix.\n"
+            f"stdout:\n{result_fail.stdout}\nstderr:\n{result_fail.stderr}"
+        )
+        combined_fail = result_fail.stdout + result_fail.stderr
+        assert "(c) reverse" in combined_fail, (
+            "Failure output must mention '(c) reverse' to distinguish from forward"
+            " check.\n"
+            f"stdout:\n{result_fail.stdout}\nstderr:\n{result_fail.stderr}"
+        )
+        assert "factory-nats-gh-helper" in combined_fail, (
+            "Failure output must name the offending secret.\n"
+            f"stdout:\n{result_fail.stdout}\nstderr:\n{result_fail.stderr}"
+        )
+
+        # Unmutated tree (fresh copy): gate must pass.
+        work2 = self._copy_deploy_tree(tmp_path / "clean")
+        result_ok = subprocess.run(
+            ["bash", str(GATE_SCRIPT)],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            env=self._gate_env(work2),
+        )
+        assert result_ok.returncode == 0, (
+            "Gate must pass on the unmutated tree.\n"
+            f"stdout:\n{result_ok.stdout}\nstderr:\n{result_ok.stderr}"
+        )
+
+    # ── mutation test 2: filter is load-bearing (external identity promoted to factory)
+
+    def test_filter_load_bearing_promoted_external_identity_triggers_reverse(
+        self, tmp_path: Path
+    ) -> None:
+        """Promoting a voicecli identity to owner=factory triggers FAIL (c) reverse.
+
+        Mutation: flip voice-tts from owner=voicecli → owner=factory (type=container
+        already set). Its secret voicecli-nats-tts is not in quadlet.toml
+        required_secrets, so the reverse check raises a violation.
+
+        This test proves the owner==factory filter is load-bearing for the reverse
+        direction: if the filter were removed (ACL_SECRETS became all-container
+        identities regardless of owner), external identities with non-factory-nats-*
+        secrets would NOT match the factory-nats-* pattern guard in the reverse loop
+        — BUT if one had a factory-nats-* secret, it would be caught.  The more
+        direct proof is that a mutated identity WITH owner=factory and a secret that
+        IS factory-nats-prefixed (but absent from quadlet.toml) is caught, validating
+        the round-trip through ACL_SECRETS.
+
+        Regression signal: if the select(owner=="factory") filter is deleted AND the
+        acl-matrix ever acquires an external identity with a factory-nats-* secret,
+        the gate would miss a real violation.  This test fails if the reverse
+        direction disappears from check_secrets_drift.sh.
+        """
+        work = self._copy_deploy_tree(tmp_path)
+        acl_path = work / "deploy" / "nats" / "acl-matrix.json"
+
+        # Mutate: promote voice-tts → owner=factory, keep type=container.
+        # Its deploy.secret (voicecli-nats-tts) is not in quadlet.toml — reverse
+        # check will complain IF the secret matches factory-nats-*.  To make this
+        # a clean factory-nats-* reverse violation, we also change the secret name.
+        with acl_path.open() as f:
+            matrix = json.load(f)
+
+        matrix["identities"]["voice-tts"]["owner"] = "factory"
+        # Rename its deploy secret to a factory-nats-* name not in quadlet.toml.
+        matrix["identities"]["voice-tts"]["deploy"]["secret"] = (
+            "factory-nats-orphan-tts"
+        )
+
+        acl_path.write_text(json.dumps(matrix, indent=2))
+
+        # Mutated tree: gate must fail on the reverse check.
+        result_fail = subprocess.run(
+            ["bash", str(GATE_SCRIPT)],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            env=self._gate_env(work),
+        )
+        assert result_fail.returncode != 0, (
+            "Gate must fail when a factory+container acl-matrix identity has a"
+            " factory-nats-* secret not in quadlet.toml required_secrets.\n"
+            f"stdout:\n{result_fail.stdout}\nstderr:\n{result_fail.stderr}"
+        )
+        combined_fail = result_fail.stdout + result_fail.stderr
+        assert "(c) reverse" in combined_fail, (
+            "Reverse direction must be triggered by the promoted identity.\n"
+            f"stdout:\n{result_fail.stdout}\nstderr:\n{result_fail.stderr}"
+        )
+        assert "factory-nats-orphan-tts" in combined_fail, (
+            "Failure output must name the offending orphan secret.\n"
+            f"stdout:\n{result_fail.stdout}\nstderr:\n{result_fail.stderr}"
+        )
+
+        # Unmutated tree: gate must pass.
+        work2 = self._copy_deploy_tree(tmp_path / "clean")
+        result_ok = subprocess.run(
+            ["bash", str(GATE_SCRIPT)],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            env=self._gate_env(work2),
+        )
+        assert result_ok.returncode == 0, (
+            "Gate must pass on the unmutated tree.\n"
+            f"stdout:\n{result_ok.stdout}\nstderr:\n{result_ok.stderr}"
         )
 
     def test_acl_check_c_output_shows_ok(self) -> None:
@@ -545,3 +701,121 @@ class TestEmitterIntegration:
             f"stdout: {result.stdout}\nstderr: {result.stderr}"
         )
         assert "factory-orphan-undeclared" in result.stderr
+
+
+# ---------------------------------------------------------------------------
+# Section I — --list-unit-secrets CLI mode
+# ---------------------------------------------------------------------------
+
+
+class TestListUnitSecretsCLI:
+    """--list-unit-secrets <unit_file> prints one secret name per line."""
+
+    def test_gh_helper_unit_lists_expected_secrets(self) -> None:
+        """factory-gh-helper.container lists gh-pem and nats-gh-helper secrets."""
+        unit = QUADLET_DIR / "factory-gh-helper.container"
+        result = subprocess.run(
+            [sys.executable, str(EMIT_SCRIPT), "--list-unit-secrets", str(unit)],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0, (
+            f"--list-unit-secrets failed.\nstderr: {result.stderr}"
+        )
+        names = result.stdout.strip().splitlines()
+        assert "factory-gh-pem" in names
+        assert "factory-nats-gh-helper" in names
+
+    def test_hub_unit_lists_hub_seed(self) -> None:
+        """factory-hub.container lists factory-nats-hub."""
+        unit = QUADLET_DIR / "factory-hub.container"
+        result = subprocess.run(
+            [sys.executable, str(EMIT_SCRIPT), "--list-unit-secrets", str(unit)],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        names = result.stdout.strip().splitlines()
+        assert "factory-nats-hub" in names
+
+    def test_bot_secrets_placeholder_excluded_from_cli_output(
+        self, tmp_path: Path
+    ) -> None:
+        """{{bot_secrets}} placeholder must not appear in --list-unit-secrets output."""
+        unit = tmp_path / "factory-telegram.container.tmpl"
+        unit.write_text(
+            "[Container]\n"
+            "Secret={{bot_secrets}}\n"
+            "Secret=factory-nats-telegram,type=mount\n"
+        )
+        result = subprocess.run(
+            [sys.executable, str(EMIT_SCRIPT), "--list-unit-secrets", str(unit)],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        names = result.stdout.strip().splitlines()
+        assert "{{bot_secrets}}" not in names
+        assert names == ["factory-nats-telegram"]
+
+    def test_nonexistent_unit_exits_2(self, tmp_path: Path) -> None:
+        """--list-unit-secrets with a nonexistent file exits 2."""
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(EMIT_SCRIPT),
+                "--list-unit-secrets",
+                str(tmp_path / "does-not-exist.container"),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 2
+
+    def test_empty_unit_produces_no_output(self, tmp_path: Path) -> None:
+        """Unit with no Secret= lines produces empty stdout."""
+        unit = tmp_path / "factory-nats.container"
+        unit.write_text("[Container]\nImage=nats:latest\n")
+        result = subprocess.run(
+            [sys.executable, str(EMIT_SCRIPT), "--list-unit-secrets", str(unit)],
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == ""
+
+
+# ---------------------------------------------------------------------------
+# Section J — optional secrets have concrete sources (not n/a)
+# ---------------------------------------------------------------------------
+
+
+class TestOptionalSecretConcreteSources:
+    """factory-gh-pem and factory-claude-oauth have concrete source paths."""
+
+    def test_optional_secrets_have_concrete_sources_in_policy(self) -> None:
+        """Optional secrets must resolve to concrete file paths, not 'n/a'."""
+        with POLICY_TOML.open("rb") as f:
+            policy = tomllib.load(f)
+        expected = {
+            "factory-gh-pem": "gh-app.pem",
+            "factory-claude-oauth": "claude-oauth.tok",
+        }
+        for name, expected_source in expected.items():
+            entry = policy.get("secret", {}).get(name, {})
+            assert entry.get("source") == expected_source, (
+                f"{name} source should be {expected_source!r},"
+                f" got {entry.get('source')!r}"
+            )
+
+    def test_optional_secrets_have_concrete_sources_in_manifest(self) -> None:
+        """Regenerated manifest must list concrete source paths for optional secrets."""
+        manifest_text = MANIFEST_SH.read_text()
+        # factory-gh-pem → gh-app.pem
+        assert '[factory-gh-pem]="gh-app.pem"' in manifest_text, (
+            "factory-gh-pem must map to gh-app.pem in SECRET_SOURCES"
+        )
+        # factory-claude-oauth → claude-oauth.tok
+        assert '[factory-claude-oauth]="claude-oauth.tok"' in manifest_text, (
+            "factory-claude-oauth must map to claude-oauth.tok in SECRET_SOURCES"
+        )

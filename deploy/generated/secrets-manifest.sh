@@ -6,8 +6,8 @@
 # (relative to the factory data dir, e.g. ~/.roxabi/factory/)
 # Value 'n/a' = no file-based source (generated or externally provisioned).
 declare -A SECRET_SOURCES=(
-    [factory-claude-oauth]="n/a"
-    [factory-gh-pem]="n/a"
+    [factory-claude-oauth]="claude-oauth.tok"
+    [factory-gh-pem]="gh-app.pem"
     [factory-nats-auth]="nkeys/auth.conf"
     [factory-nats-blobstore]="nkeys/blobstore.seed"
     [factory-nats-clipool]="nkeys/clipool-worker.seed"

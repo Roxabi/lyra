@@ -67,6 +67,11 @@ fi
 # Defines: SECRET_SOURCES (name → relative path under ~/.roxabi/factory/, or 'n/a')
 #          SECRET_POLICY  (name → nats-seed | nats-auth | generated | optional)
 # NO runtime Python dependency — pure bash.
+if [[ ! -f "${SCRIPT_DIR}/generated/secrets-manifest.sh" ]]; then
+  echo "ERROR: ${SCRIPT_DIR}/generated/secrets-manifest.sh not found." >&2
+  echo "       run: python3 tools/emit_secrets_manifest.py" >&2
+  exit 2
+fi
 source "${SCRIPT_DIR}/generated/secrets-manifest.sh"
 
 # Resolve SECRET_SOURCES relative paths to absolute host paths.
@@ -168,22 +173,13 @@ for secret_name in "${!SECRET_POLICY[@]}"; do
       fi
       ;;
     optional)
-      # Resolve source path from SEEDS if available, else derive from SECRET_SOURCES.
-      _rel="${SECRET_SOURCES[$secret_name]:-n/a}"
+      # Resolve source path uniformly via SECRET_SOURCES (policy always has a concrete source).
+      _rel="${SECRET_SOURCES[${secret_name}]:-n/a}"
       if [[ "${_rel}" == "n/a" ]]; then
-        # Source path is not file-based — handle known special cases.
-        case "${secret_name}" in
-          factory-gh-pem)
-            _src="${FACTORY_DATA_DIR}/gh-app.pem" ;;
-          factory-claude-oauth)
-            _src="${FACTORY_DATA_DIR}/claude-oauth.tok" ;;
-          *)
-            warn "optional secret ${secret_name}: unknown source path — skipping"
-            continue ;;
-        esac
-      else
-        _src="${FACTORY_DATA_DIR}/${_rel}"
+        warn "optional secret ${secret_name}: no source path in secrets-policy.toml — skipping"
+        continue
       fi
+      _src="${FACTORY_DATA_DIR}/${_rel}"
       if [[ ! -f "${_src}" ]]; then
         warn "${_src} not found — ${secret_name} secret not created"
         continue
@@ -194,7 +190,7 @@ for secret_name in "${!SECRET_POLICY[@]}"; do
       else
         # factory-claude-oauth requires stripping trailing newline.
         if [[ "${secret_name}" == "factory-claude-oauth" ]]; then
-          run bash -c "tr -d '\\n' < '${_src}' | podman secret create --replace ${secret_name} -"
+          run bash -c "tr -d '\\n' < '${_src}' | podman secret create --replace '${secret_name}' -"
         else
           run podman secret create --replace "${secret_name}" "${_src}"
         fi
@@ -226,6 +222,7 @@ echo "  [ok]   /data/factory/blobs"
 # #13: guard against a pre-existing non-symlink directory at the blobstore target.
 # ln -sf silently fails to replace a directory — blobs would land in the wrong path.
 _blobstore_link="${HOME}/.roxabi/factory/blobstore"
+_blobstore_blocked=0
 if [[ -e "${_blobstore_link}" && ! -L "${_blobstore_link}" ]]; then
   # Target exists and is NOT a symlink (i.e. a real directory or regular file).
   if [[ -d "${_blobstore_link}" ]]; then
@@ -235,6 +232,7 @@ if [[ -e "${_blobstore_link}" && ! -L "${_blobstore_link}" ]]; then
       run rm -rf "${_blobstore_link}"
     elif [[ "$DRY_RUN" -eq 1 ]]; then
       warn "${_blobstore_link} is a non-empty directory — would BLOCK install (run without --dry-run to see full error)"
+      _blobstore_blocked=1
     else
       echo "ERROR: ${_blobstore_link} is a non-empty directory (not a symlink)." >&2
       echo "       Blobs would be silently misplaced. Remediation:" >&2
@@ -245,15 +243,18 @@ if [[ -e "${_blobstore_link}" && ! -L "${_blobstore_link}" ]]; then
     fi
   elif [[ "$DRY_RUN" -eq 1 ]]; then
     warn "${_blobstore_link} exists and is not a symlink or directory — would BLOCK install"
+    _blobstore_blocked=1
   else
     echo "ERROR: ${_blobstore_link} exists and is not a symlink or directory." >&2
     echo "       Remove it manually then re-run install.sh" >&2
     exit 1
   fi
 fi
-run ln -sf /data/factory/blobs "${_blobstore_link}"
-echo "  [ok]   ${_blobstore_link} → /data/factory/blobs"
-unset _blobstore_link
+if [[ "$_blobstore_blocked" -eq 0 ]]; then
+  run ln -sf /data/factory/blobs "${_blobstore_link}"
+  echo "  [ok]   ${_blobstore_link} → /data/factory/blobs"
+fi
+unset _blobstore_link _blobstore_blocked
 run mkdir -p "${HOME}/.roxabi/factory/turn-writer"
 echo "  [ok]   ~/.roxabi/factory/turn-writer/"
 

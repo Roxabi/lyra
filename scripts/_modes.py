@@ -108,9 +108,10 @@ def _require_root() -> None:
         return  # test override: AUTH_DIR redirects system paths — no root needed
     if os.geteuid() != 0:
         print(
-            "error: --write-etc-nats path requires root"
-            " (sudo factory-acl genkeys --write-etc-nats ...).\n"
-            "For rootless seed generation use: factory-acl genkeys\n"
+            "error: writing /etc/nats/nkeys requires root.\n"
+            "Re-run with: sudo FACTORY_ACL_WRITE_ETC_NATS=1 factory-acl genkeys\n"
+            "(default rootless seed generation needs no sudo — just run:"
+            " factory-acl genkeys)\n"
             "To re-derive auth.conf from existing seeds: factory-acl genkeys"
             " --regen-authconf\n"
             "To provision a single new identity: factory-acl genkeys"
@@ -450,8 +451,10 @@ def _mode_regenerate(args: argparse.Namespace) -> None:
 
     seeds_dir = _seeds_dir()
     epoch = int(time.time())
-    backup_seeds = _backup_seeds(seeds_dir, epoch)
+    # _backup_etc_auth runs FIRST (non-destructive copy) so that if it raises,
+    # seeds_dir has not yet been wiped and no rollback is needed.
     backup_auth = _backup_etc_auth(epoch) if write_etc else None
+    backup_seeds = _backup_seeds(seeds_dir, epoch)
 
     externals: list[tuple[str, ExternalDeploy]] = []
     try:
@@ -513,6 +516,10 @@ def _mode_fix_perms(args: argparse.Namespace) -> None:
         for seed_file in seeds_dir.glob("*.seed"):
             seed_file.chmod(0o600)
             os.chown(seed_file, uid, gid)
+        auth_conf = seeds_dir / "auth.conf"
+        if auth_conf.exists():
+            auth_conf.chmod(0o600)
+            os.chown(auth_conf, uid, gid)
 
     if write_etc:
         auth_dir = _auth_dir()

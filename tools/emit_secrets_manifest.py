@@ -49,32 +49,30 @@ def parse_unit_secret_names(unit_path: pathlib.Path) -> list[str]:
     return names
 
 
-def collect_unit_secrets_index() -> dict[str, list[str]]:
-    """Return {component_name: [secret_name, ...]} from the actual unit files."""
-    index: dict[str, list[str]] = {}
-    for unit_file in QUADLET_DIR.iterdir():
-        if not (
-            unit_file.suffix in (".container", ".tmpl")
-            or unit_file.name.endswith(".container.tmpl")
-        ):
-            continue
-        # Derive component name: factory-<component>.container(.tmpl) → <component>
-        stem = unit_file.name
-        for suffix in (".container.tmpl", ".container"):
-            if stem.endswith(suffix):
-                stem = stem[: -len(suffix)]
-                break
-        if stem.startswith("factory-"):
-            component = stem[len("factory-") :]
-        else:
-            component = stem
-        secrets = parse_unit_secret_names(unit_file)
-        if secrets:
-            index[component] = secrets
-    return index
+def list_unit_secrets_cli(unit_path: pathlib.Path) -> int:
+    """CLI mode: print one secret name per line for a given unit file and exit."""
+    if not unit_path.exists():
+        print(f"ERROR: unit file not found: {unit_path}", file=sys.stderr)
+        return 2
+    for name in parse_unit_secret_names(unit_path):
+        print(name)
+    return 0
 
 
 def main() -> int:
+    # CLI mode: --list-unit-secrets <unit_file>
+    if len(sys.argv) >= 3 and sys.argv[1] == "--list-unit-secrets":
+        return list_unit_secrets_cli(pathlib.Path(sys.argv[2]))
+    if len(sys.argv) == 2 and sys.argv[1] in ("-h", "--help"):
+        print(
+            "Usage:\n"
+            "  emit_secrets_manifest.py"
+            "                         -- generate manifest\n"
+            "  emit_secrets_manifest.py --list-unit-secrets <f>"
+            " -- list secret names in unit file"
+        )
+        return 0
+
     with QUADLET_TOML.open("rb") as f:
         quadlet = tomllib.load(f)
     with POLICY_TOML.open("rb") as f:
@@ -101,8 +99,16 @@ def main() -> int:
             )
             continue
         p = policies[sname]
-        source_entries.append(f'    [{sname}]="{p["source"]}"')
-        policy_entries.append(f'    [{sname}]="{p["policy"]}"')
+        src = p.get("source")
+        pol = p.get("policy")
+        if src is None or pol is None:
+            errors.append(
+                f"  {sname!r}: malformed entry in secrets-policy.toml"
+                f" (missing {'source' if src is None else 'policy'} key)"
+            )
+            continue
+        source_entries.append(f'    [{sname}]="{src}"')
+        policy_entries.append(f'    [{sname}]="{pol}"')
 
     if errors:
         print(

@@ -43,7 +43,7 @@ _do_converge() {
 
     # 6) Install secrets
     echo "==> NATS: installing Podman secrets..."
-    make -C "${FACTORY_DIR}" quadlet-secrets-install
+    bash "${FACTORY_DIR}/deploy/install.sh" --secrets-only
 
     # 7) Restart NATS (mount-typed secret refresh requires restart)
     echo "==> NATS: restarting factory-nats..."

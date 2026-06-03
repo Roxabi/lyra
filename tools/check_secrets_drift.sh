@@ -21,15 +21,24 @@
 #     python3 tools/emit_secrets_manifest.py
 #
 # CHECK (c) — NATS seeds ↔ acl-matrix identities (factory + container scope)
-#   Every factory-nats-* secret in quadlet.toml required_secrets MUST
-#   correspond to an acl-matrix identity where BOTH:
-#     owner  == "factory"
-#     deploy.type == "container"
-#   The auth bundle secret (factory-nats-auth) is explicitly excluded — it is
-#   the NATS server auth.conf, not an NKey identity seed.
-#   This filter prevents false-positives from voicecli-nats-* or other external
-#   identities (the acl-matrix lists 14 identities across owners because it
-#   renders the merged auth.conf; only 7 are factory container identities).
+#   Bidirectional equality check (spec #9 "≠" intent):
+#
+#   Forward: every factory-nats-* secret in quadlet.toml required_secrets MUST
+#     correspond to an acl-matrix identity where BOTH:
+#       owner  == "factory"
+#       deploy.type == "container"
+#     (catches a quadlet secret with no backing identity)
+#
+#   Reverse: every acl-matrix identity with owner=="factory" &&
+#     deploy.type=="container" whose deploy.secret is factory-nats-* MUST
+#     appear in quadlet.toml required_secrets.
+#     (catches a factory NATS identity whose secret is declared nowhere in a unit)
+#
+#   The owner=="factory" && deploy.type=="container" filter makes the REVERSE
+#   direction load-bearing — it prevents false-positives from voicecli-nats-*
+#   and other external identities present in the merged acl-matrix.
+#   The auth bundle secret (factory-nats-auth) is excluded from both directions:
+#   it is the NATS server auth.conf, not an NKey identity seed.
 #
 # OPTIONAL SECRETS
 #   Secrets with policy=optional (factory-gh-pem, factory-claude-oauth) are
@@ -107,25 +116,11 @@ fail=0
 # ── HELPERS ───────────────────────────────────────────────────────────────────
 
 # parse_unit_secrets <unit_file>
-# Emit one secret name per line, applying the same parse contract as
-# tools/emit_secrets_manifest.py:parse_unit_secret_names():
-#   name = value.split(",")[0].strip()
-# Excludes the {{bot_secrets}} template placeholder.
+# Emit one secret name per line using tools/emit_secrets_manifest.py's
+# parse_unit_secret_names() — single parse rule, no PCRE, no bash reimplementation.
 parse_unit_secrets() {
     local unit_file="$1"
-    grep "^Secret=" "$unit_file" | while IFS= read -r line; do
-        local value="${line#Secret=}"
-        # Skip bot_secrets placeholder
-        if [[ "$value" == *"$BOT_SECRETS_PLACEHOLDER"* ]]; then
-            continue
-        fi
-        # Split on first comma, strip whitespace — mirrors Python .split(",")[0].strip()
-        local name
-        name="$(printf '%s' "$value" | cut -d',' -f1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
-        if [[ -n "$name" ]]; then
-            printf '%s\n' "$name"
-        fi
-    done
+    python3 "${REPO_ROOT}/tools/emit_secrets_manifest.py" --list-unit-secrets "${unit_file}"
 }
 
 # load_quadlet_required_secrets
@@ -165,8 +160,17 @@ PYEOF
 # Emit secret names declared in secrets-manifest.sh (lines of the form
 #     [name]="..."
 # inside the SECRET_SOURCES declare -A block), one per line, sorted.
+# Uses python3 to avoid PCRE / non-GNU-grep dependency.
 load_manifest_secret_names() {
-    grep -oP '^\s+\[\K[^\]]+(?=\]="[^"]*")' "$MANIFEST_SH" | sort -u
+    python3 - "$MANIFEST_SH" <<'PYEOF'
+import sys, re, pathlib
+text = pathlib.Path(sys.argv[1]).read_text()
+seen = set()
+for m in re.finditer(r'^\s+\[([^\]]+)\]="[^"]*"', text, re.MULTILINE):
+    seen.add(m.group(1))
+for name in sorted(seen):
+    print(name)
+PYEOF
 }
 
 # load_acl_factory_container_secrets
@@ -271,8 +275,26 @@ else
 fi
 
 # ── CHECK (c) — factory-nats-* seeds ↔ acl-matrix factory+container ids ──────
-# factory-nats-auth is excluded: it is the NATS server auth.conf bundle, not an
-# identity seed — the NATS server has no acl-matrix identity entry.
+# Bidirectional: BOTH directions must hold.
+#
+# Forward:  every factory-nats-* secret in quadlet.toml required_secrets must
+#           exist as deploy.secret of an acl-matrix identity with
+#           owner=="factory" && deploy.type=="container".
+#           (catches a quadlet secret with no backing identity)
+#
+# Reverse:  every acl-matrix identity with owner=="factory" &&
+#           deploy.type=="container" whose deploy.secret matches factory-nats-*
+#           must appear in quadlet.toml required_secrets.
+#           (catches a factory NATS identity whose secret is declared nowhere)
+#
+# The owner=="factory" && type=="container" filter makes the REVERSE direction
+# load-bearing: it prevents false-positives from voicecli-nats-* / external
+# identities that are also present in the merged acl-matrix.
+#
+# factory-nats-auth is excluded from both directions: it is the NATS server
+# auth.conf bundle, not an NKey identity seed; the NATS server has no
+# acl-matrix identity entry.
+# Optional secrets → SKIP (logged, not failed).
 
 declare -A ACL_SET=()
 for s in "${ACL_SECRETS[@]}"; do
@@ -280,8 +302,10 @@ for s in "${ACL_SECRETS[@]}"; do
 done
 
 nats_seed_violations=()
+nats_reverse_violations=()
 nats_skip_optional=()
 
+# Forward direction: quadlet factory-nats-* ⊆ ACL_SET
 for s in "${QUADLET_SECRETS[@]}"; do
     # Only inspect factory-nats-* seeds (not auth bundle, not non-NATS secrets)
     [[ "$s" == factory-nats-* ]] || continue
@@ -298,20 +322,45 @@ for s in "${QUADLET_SECRETS[@]}"; do
     fi
 done
 
+# Reverse direction: ACL factory+container factory-nats-* ⊆ QUADLET_SET
+for s in "${ACL_SECRETS[@]}"; do
+    # Only inspect factory-nats-* names (filter already ensures owner==factory && type==container)
+    [[ "$s" == factory-nats-* ]] || continue
+    [[ "$s" == "factory-nats-auth" ]] && continue  # excluded: auth.conf bundle, not a seed
+
+    # Optional secrets are skipped
+    if [[ -n "${OPTIONAL_SET[$s]+_}" ]]; then
+        continue
+    fi
+
+    if [[ -z "${QUADLET_SET[$s]+_}" ]]; then
+        nats_reverse_violations+=("$s")
+    fi
+done
+
 for s in "${nats_skip_optional[@]}"; do
     echo "check_secrets_drift (c): SKIP optional secret: $s"
 done
 
-if [[ ${#nats_seed_violations[@]} -gt 0 ]]; then
+if [[ ${#nats_seed_violations[@]} -gt 0 || ${#nats_reverse_violations[@]} -gt 0 ]]; then
     echo "" >&2
-    echo "FAIL (c): factory-nats-* seeds in quadlet.toml have no matching acl-matrix identity (owner=factory, deploy.type=container):" >&2
-    for s in "${nats_seed_violations[@]}"; do
-        echo "  $s" >&2
-        echo "::error file=deploy/nats/acl-matrix.json::NATS seed $s has no factory container identity in acl-matrix.json — add the identity or remove the secret"
-    done
+    if [[ ${#nats_seed_violations[@]} -gt 0 ]]; then
+        echo "FAIL (c) forward: factory-nats-* seeds in quadlet.toml have no matching acl-matrix identity (owner=factory, deploy.type=container):" >&2
+        for s in "${nats_seed_violations[@]}"; do
+            echo "  $s" >&2
+            echo "::error file=deploy/nats/acl-matrix.json::NATS seed $s has no factory container identity in acl-matrix.json — add the identity or remove the secret"
+        done
+    fi
+    if [[ ${#nats_reverse_violations[@]} -gt 0 ]]; then
+        echo "FAIL (c) reverse: acl-matrix factory+container identities have no matching quadlet.toml required_secrets entry:" >&2
+        for s in "${nats_reverse_violations[@]}"; do
+            echo "  $s" >&2
+            echo "::error file=deploy/quadlet.toml::acl-matrix factory container identity $s has no required_secrets entry in quadlet.toml — add it or remove the identity"
+        done
+    fi
     fail=1
 else
-    echo "check_secrets_drift (c): all factory-nats-* seeds have a matching acl-matrix identity — OK"
+    echo "check_secrets_drift (c): factory-nats-* seeds ↔ acl-matrix factory+container identities — OK (bidirectional)"
 fi
 
 # ── SUMMARY ───────────────────────────────────────────────────────────────────

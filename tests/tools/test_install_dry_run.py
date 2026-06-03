@@ -13,16 +13,15 @@ We override HOME to a tmp dir so tests don't touch the real ~/.roxabi/factory.
 The script sources deploy/generated/secrets-manifest.sh (SCRIPT_DIR-relative,
 not HOME-relative) so the manifests used are the real committed ones.
 
-Seed file creation: the validation loop (lines 119-137) checks seed files even
-under --dry-run, so we must create stub seed files under
-<HOME_TMP>/.roxabi/factory/<rel_path> for all non-optional, file-based secrets.
+Seed file creation: the validation loop in install.sh checks seed file existence
+under --dry-run for non-optional, file-based secrets.  We create stub files for
+all required (non-optional, non-generated, source != 'n/a') secrets.
 
-IMPL DEFECT (reported, not patched here):
-  install.sh wires SEEDS[factory_blobstore_token] unconditionally (line 99) to
-  ~/.roxabi/factory/blobstore.tok, but in --dry-run mode the token file is never
-  created (the openssl rand command is gated by DRY_RUN==0). The validation loop
-  then fails with "Missing seed file: blobstore.tok". The workaround here is to
-  pre-create a stub blobstore.tok so the dry-run test path is reachable.
+Generated-policy secrets (factory_blobstore_token) are skipped by the validation
+loop when DRY_RUN=1 (install.sh lines ~135-137), so no stub is needed for them.
+
+Optional secrets (factory-gh-pem, factory-claude-oauth) are resolved via the
+uniform SECRET_SOURCES map in install.sh; their absence is silently skipped.
 """
 
 from __future__ import annotations
@@ -87,11 +86,10 @@ def _parse_policy() -> dict[str, str]:
 def _create_stub_seeds(home_tmp: Path) -> None:
     """Create stub seed files for all non-optional, file-based secrets.
 
-    The validation loop in install.sh (lines 119-137) checks seed file
-    existence even under --dry-run. We create stubs for all required secrets.
-
-    Workaround for dry-run impl defect: blobstore.tok is wired into SEEDS
-    unconditionally but never created under --dry-run. Pre-create a stub.
+    The validation loop in install.sh checks seed file existence under --dry-run
+    for non-optional, non-generated secrets with a concrete source path.
+    Generated-policy secrets are skipped by the loop when DRY_RUN=1.
+    Optional secrets are never validated (skipped by policy check).
     """
     sources = _parse_manifest_sources()
     policies = _parse_policy()
@@ -101,17 +99,11 @@ def _create_stub_seeds(home_tmp: Path) -> None:
         if rel == "n/a":
             continue
         policy = policies.get(name, "")
-        if policy == "optional":
-            continue  # optional secrets are not validated
+        if policy in ("optional", "generated"):
+            continue  # optional: never validated; generated: skipped under --dry-run
         dest = factory_data / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(f"stub-seed-for-{name}\n")
-
-    # Workaround: blobstore.tok is validated but never created in --dry-run.
-    blobstore_tok = factory_data / "blobstore.tok"
-    if not blobstore_tok.exists():
-        blobstore_tok.parent.mkdir(parents=True, exist_ok=True)
-        blobstore_tok.write_text("stub-blobstore-token\n")
 
     # Ensure the nkeys dir exists (required by the NKEYS_DIR guard).
     nkeys = factory_data / "nkeys"

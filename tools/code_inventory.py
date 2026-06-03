@@ -678,10 +678,22 @@ class CodeInventory:
         lower = token.lower()
         if any(lower.startswith(p) for p in ("$js.", "$kv.", "_inbox.")):
             return Verdict(exists=False, kind="subject")
-        if lower.startswith("lyra.") or lower.startswith("factory."):
+        # `lyra.` is the legacy NATS subject namespace — a dead `lyra.X` is a dead
+        # subject. `factory.` is special post-#1670: it is BOTH the Python package
+        # prefix AND the live subject root. Real `factory.*` subjects resolve above
+        # via the subjects set; for a DEAD `factory.X` we disambiguate by module
+        # shape — a real submodule prefix (`factory.<sub>…` in modules) means a dead
+        # module/submodule, otherwise the token is subject-shaped → orphan subject
+        # (so check_subject_literals can flag undeclared `factory.*` literals).
+        if lower.startswith("lyra."):
+            return Verdict(exists=False, kind="subject")
+        if lower.startswith("factory."):
+            if any(".".join(parts[:k]) in self.modules for k in range(2, len(parts))):
+                return Verdict(exists=False, kind="module")
             return Verdict(exists=False, kind="subject")
 
-        # 4. Project namespace root not found as module or subject
+        # 4. Project namespace root not found as module or subject (non-factory
+        # project prefixes, e.g. roxabi_nats, are pure module namespaces).
         if parts[0] in _PROJECT_PREFIXES:
             return Verdict(exists=False, kind="module")
 

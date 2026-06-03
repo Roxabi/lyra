@@ -589,24 +589,23 @@ def test_to_dict_structure(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# T26 — tighten test_module_dead_project_prefix (FIX 8 note)
-# The original T2 accepts kind in ("module", "subject") because a lowercase
-# ghost token whose prefix IS a valid module falls through to subject-namespace
-# detection after FIX 1: factory.core is a module, "ghostmodule" is not in
-# symbols[factory.core], so it falls through the subject check and returns
-# kind="subject" (lyra. prefix → dead subject).  exists=False is the contract;
-# both kinds are valid gate outcomes.  This test documents that invariant.
+# T26 — test_module_dead_project_prefix (updated #1670)
+# Post-#1670 the NATS subject root and the Python package prefix BOTH became
+# `factory.`. A dead `factory.X` whose prefix IS a real module (factory.core)
+# but whose leaf is absent is a dead MODULE reference (kind="module",
+# exists=False) — real subjects resolve via the acl-matrix/contracts subjects
+# set, and only a stray legacy `lyra.X` falls through to kind="subject".
 # ---------------------------------------------------------------------------
 
 
 def test_module_dead_project_prefix_kind_documented(tmp_path: Path) -> None:
-    """factory.core.ghostmodule → exists=False.
+    """factory.core.ghostmodule → exists=False, kind='module'.
 
-    The project package prefix (factory.) is now distinct from the NATS subject
-    namespace (lyra.), so a dead reference under the project prefix resolves as
-    kind='module' (exists=False) — a dead-module drift signal — rather than
-    falling through to the subject namespace. Real subjects (lyra.*) still
-    resolve as kind='subject'.
+    Post-#1670 `factory.` is both the project package prefix and the live NATS
+    subject root. A dead reference whose prefix is a real module (factory.core)
+    but whose leaf is absent resolves as kind='module' (a dead-module drift
+    signal), NOT subject — real subjects resolve via the subjects set, and only a
+    stray legacy `lyra.X` falls through to kind='subject'.
     """
     _make_src_module(tmp_path, "factory/__init__.py")
     _make_src_module(tmp_path, "factory/core/__init__.py")

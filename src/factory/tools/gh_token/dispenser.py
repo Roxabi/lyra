@@ -23,6 +23,7 @@ import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import httpx
 
@@ -34,6 +35,9 @@ from factory.tools.gh_token.helper import (
     mint,
 )
 from factory.tools.gh_token.rate_limit import RateLimiter
+
+if TYPE_CHECKING:
+    from factory.tools.gh_token.mint_failure_publisher import MintFailurePublisher
 
 log = logging.getLogger(__name__)
 
@@ -65,6 +69,7 @@ class Dispenser:
         install_id: str,
         lock: asyncio.Lock | None = None,
         rate_limiter: RateLimiter | None = None,
+        publisher: "MintFailurePublisher | None" = None,
     ) -> None:
         self._cache = cache
         self._signer = signer
@@ -73,6 +78,7 @@ class Dispenser:
         self._install_id = install_id
         self._lock = lock if lock is not None else asyncio.Lock()
         self._rate_limiter = rate_limiter if rate_limiter is not None else RateLimiter()
+        self._publisher = publisher
 
     # ── public ────────────────────────────────────────────────────────────────
 
@@ -162,6 +168,8 @@ class Dispenser:
                     log.warning("Dispenser: mint failed: %s", exc)
                     writer.write(b"error=mint failed\n")
                     await writer.drain()
+                    if self._publisher is not None:
+                        await self._publisher.publish(exc)
                     return
 
                 response = (

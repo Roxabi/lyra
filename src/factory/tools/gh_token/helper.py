@@ -8,7 +8,6 @@ Unix socket dispenser (serve() on /run/factory-gh-token/dispenser.sock) lives in
 dispenser.py — it imports the primitives defined here (TokenCache, JWTSigner,
 InstallationToken, MintError, mint).
 
-TODO(T4): MintError → publish as MintFailureEvent on NATS (roxabi-contracts gh/ schema)
 """
 
 from __future__ import annotations
@@ -52,7 +51,7 @@ class InstallationToken:
 class MintError(Exception):
     """Raised when a GitHub installation token cannot be minted.
 
-    Carries structured context for the caller and for T4's failure-event path.
+    Carries structured context for the caller.
     """
 
     def __init__(

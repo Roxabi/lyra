@@ -96,7 +96,9 @@ class SessionManager:
             # Derive token estimate from TurnStore — includes both user and
             # assistant turns, restoring pre-#666 full-conversation accounting.
             raw = await turn_store.get_turns(
-                pool.pool_id, pool.user_id, limit=TurnStoreConfig.COMPACT_TURN_FETCH_LIMIT
+                pool.pool_id,
+                pool.user_id,
+                limit=TurnStoreConfig.COMPACT_TURN_FETCH_LIMIT,
             )
             token_est = sum(len(t["content"]) // 4 for t in raw)
         else:

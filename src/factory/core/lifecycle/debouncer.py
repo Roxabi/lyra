@@ -29,7 +29,7 @@ log = logging.getLogger(__name__)
 
 # Backward-compatible re-export — SSoT is LifecycleConfig.
 DEFAULT_DEBOUNCE_MS: int = LifecycleConfig.DEFAULT_DEBOUNCE_MS
-_MAX_MERGED_CHARS = 4096
+_MAX_MERGED_CHARS = LifecycleConfig.MAX_MERGED_CHARS
 
 
 class MessageDebouncer:

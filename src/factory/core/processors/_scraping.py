@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-_SAFE_SCRAPE_MAX_CHARS = 32_000  # B5: prompt-injection + DoS guard
+_SAFE_SCRAPE_MAX_CHARS = 32_000  # const-ok: B5 prompt-injection + DoS guard ceiling
 
 
 async def _is_private_ip(hostname: str) -> bool:

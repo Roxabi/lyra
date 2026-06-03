@@ -25,7 +25,7 @@ async def send_and_read(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps — pro
     message: str,
     pool_id: str,
     *,
-    default_timeout: float = 300,
+    default_timeout: float = 300,  # const-ok: 5-min non-streaming default timeout
     opts: CliProtocolOptions = CliProtocolOptions(),
 ) -> CliResult:
     """Write *message* to *entry*'s stdin as NDJSON, then read until a result.
@@ -62,7 +62,7 @@ async def read_until_result(  # noqa: C901, PLR0915 — DEBT:complexity-residual
     entry: _ProcessEntry,
     *,
     pool_id: str,
-    default_timeout: float = 300,
+    default_timeout: float = 300,  # const-ok: 5-min non-streaming default timeout
     opts: CliProtocolOptions = CliProtocolOptions(),
 ) -> CliResult:
     """Read stdout lines from *entry*'s process until a ``result`` event arrives.

@@ -25,12 +25,12 @@ class PipelineEventBus:
 
     Usage::
 
-        bus = PipelineEventBus(maxsize=1000)
+        bus = PipelineEventBus()
         queue = bus.subscribe()          # consumer gets a Queue
         bus.emit(MessageReceived(...))   # fans out to all subscribers
     """
 
-    def __init__(self, maxsize: int = 1000) -> None:
+    def __init__(self, maxsize: int = 1000) -> None:  # const-ok: named param default
         self._maxsize = maxsize
         self._subscribers: list[asyncio.Queue[PipelineEvent]] = []
         self._last_warn: dict[int, float] = {}

@@ -34,6 +34,8 @@ from .agent_db_loader import (
 
 log = logging.getLogger(__name__)
 
+_IDENTITY_RECALL_TOKEN_BUDGET = 700  # const-ok: identity-recall token budget
+
 
 class AgentBase(ABC, SessionManager):
     """Abstract base for concrete agent implementations.
@@ -223,7 +225,10 @@ class AgentBase(ABC, SessionManager):
             await self._memory.save_identity_anchor(ns, anchor)
         first_msg = pool.history[-1].text if pool.history else ""
         memory_block = await self._memory.recall(
-            pool.user_id, ns, first_msg=first_msg, token_budget=700
+            pool.user_id,
+            ns,
+            first_msg=first_msg,
+            token_budget=_IDENTITY_RECALL_TOKEN_BUDGET,
         )
         parts = [anchor]
         if memory_block:

@@ -24,7 +24,7 @@ def _utc_now_iso() -> str:
 
 @dataclass
 class AgentRow:
-    """One row from the agents table (24 columns after #1335 dropped dead column)."""
+    """One row from the agents table (#1335 dropped a dead column)."""
 
     name: str
     backend: str
@@ -55,7 +55,7 @@ class AgentRow:
 
     @classmethod
     def from_db_row(cls, row: tuple[Any, ...]) -> "AgentRow":
-        """Construct an AgentRow from a raw aiosqlite SELECT tuple (24 columns)."""
+        """Construct an AgentRow from a raw aiosqlite SELECT tuple."""
         (
             name,
             backend,

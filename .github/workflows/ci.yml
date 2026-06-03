@@ -74,6 +74,9 @@ jobs:
       - name: "Check hardcoded constants (new numeric literals in src/factory/core/)"
         run: bash tools/check_hardcoded_constants.sh
 
+      - name: Test hardcoded-constants gate
+        run: bash tests/tools/test_check_hardcoded_constants.sh
+
       - name: Check qg.conf drift (stack.yml is source of truth)
         run: bash scripts/check-qg-conf-drift.sh
 

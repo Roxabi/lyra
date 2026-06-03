@@ -44,7 +44,7 @@ log = logging.getLogger(__name__)
 _NON_SENSITIVE_TOOL_NAMES: frozenset[str] = frozenset(
     {"glob", "grep", "ls", "todoread", "todowrite"}
 )
-_MAX_CONTENT_BYTES = 65_536
+_MAX_CONTENT_BYTES = 65_536  # const-ok: tool result size cap (64 KiB)
 _REDACTED_PLACEHOLDER = "[redacted — tool output suppressed for security]"
 _TRUNCATED_SENTINEL = "…[truncated]"
 

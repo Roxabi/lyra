@@ -56,7 +56,7 @@ class CliPool(  # noqa: E501 — DEBT:lint-residual
 
     Usage::
 
-        pool = CliPool(idle_ttl=1200)
+        pool = CliPool()
         await pool.start()
 
         result = await pool.send(pool_id, message, model_config)

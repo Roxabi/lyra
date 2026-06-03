@@ -21,7 +21,8 @@ from .builtin_commands import require_admin
 log = logging.getLogger(__name__)
 
 _DEFAULT_LIMIT = 5
-_TITLE_MAX = 60
+_TITLE_MAX = 60  # const-ok: session-list title truncation width
+_TITLE_RESUME = 40  # const-ok: resume-title truncation width
 
 
 def _format_age(iso_ts: str | None) -> str:
@@ -36,11 +37,11 @@ def _format_age(iso_ts: str | None) -> str:
     seconds = int((datetime.now(UTC) - ts).total_seconds())
     if seconds < 0:
         return "?"
-    if seconds < 60:
+    if seconds < 60:  # const-ok: seconds-per-minute
         return f"{seconds}s ago"
-    if seconds < 3600:
+    if seconds < 3600:  # const-ok: seconds-per-hour
         return f"{seconds // 60}m ago"
-    if seconds < 86400:
+    if seconds < 86400:  # const-ok: seconds-per-day
         return f"{seconds // 3600}h ago"
     return f"{seconds // 86400}d ago"
 
@@ -109,7 +110,7 @@ async def _cmd_resume(msg: InboundMessage, args: list[str], pool: Pool) -> Respo
     accepted = await pool.resume_session(cli_sid)
     if not accepted:
         return Response(content=f"Resume of session #{idx} was refused by the backend.")
-    title = _truncate(target.get("first_user_msg"), 40)
+    title = _truncate(target.get("first_user_msg"), _TITLE_RESUME)
     return Response(content=f"Resumed #{idx}: {title}")
 
 

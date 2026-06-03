@@ -22,8 +22,8 @@ class MemoryConfig:
             (min(DEFAULT_PREF_TOKEN_BUDGET, token_budget)).
     """
 
-    DEFAULT_TOKEN_BUDGET: int = 1000
+    DEFAULT_TOKEN_BUDGET: int = 1000  # const-ok: named config default
     DEFAULT_RECALL_LIMIT: int = 5
     DEFAULT_CONCEPT_LIMIT: int = 8
-    DEFAULT_PREF_LIMIT: int = 10
-    DEFAULT_PREF_TOKEN_BUDGET: int = 300
+    DEFAULT_PREF_LIMIT: int = 10  # const-ok: named config default
+    DEFAULT_PREF_TOKEN_BUDGET: int = 300  # const-ok: named config default

@@ -13,7 +13,7 @@ Usage::
     from factory.core.messaging.message import InboundMessage, Platform
 
     bus: Bus[InboundMessage] = LocalBus(name="inbound")
-    bus.register(Platform.TELEGRAM, maxsize=100)
+    bus.register(Platform.TELEGRAM)
     await bus.start()
     ...
     await bus.stop()
@@ -42,8 +42,8 @@ class LocalBus(Generic[T]):
     Lifecycle::
 
         bus: Bus[InboundMessage] = LocalBus(name="inbound")
-        bus.register(Platform.TELEGRAM, maxsize=100)
-        bus.register(Platform.DISCORD, maxsize=100)
+        bus.register(Platform.TELEGRAM)
+        bus.register(Platform.DISCORD)
         await bus.start()          # spawns feeder tasks
         ...
         await bus.stop()           # cancels feeder tasks

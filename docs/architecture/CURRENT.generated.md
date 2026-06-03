@@ -148,21 +148,22 @@
 
 ### blobstore
 - **Container:** factory-blobstore.container
-- **Required secrets:** factory_blobstore_token
+- **Required secrets:** factory-nats-blobstore, factory_blobstore_token
 - **Host roles:** factory-hub
 
 ### clipool
 - **Container:** factory-clipool.container
-- **Required secrets:** factory-nats-clipool
+- **Required secrets:** factory-claude-oauth, factory-nats-clipool
 - **Host roles:** factory-hub
 
 ### discord
 - **Container:** factory-discord.container
-- **Required secrets:** factory-nats-discord
+- **Required secrets:** factory-nats-discord, factory_blobstore_token
 - **Host roles:** factory-hub
 
 ### gh-helper
 - **Container:** factory-gh-helper.container
+- **Required secrets:** factory-gh-pem, factory-nats-gh-helper
 - **Host roles:** factory-hub
 
 ### hub
@@ -177,7 +178,7 @@
 
 ### telegram
 - **Container:** factory-telegram.container
-- **Required secrets:** factory-nats-telegram
+- **Required secrets:** factory-nats-telegram, factory_blobstore_token
 - **Host roles:** factory-hub
 
 ### turn-writer

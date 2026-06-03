@@ -81,7 +81,7 @@ and `bash` identically; transport is invisible. How they layer (workerEngine *ca
 |---|---|---|
 | `voice` | **tool** | capability satellite — `voice.tts` / `voice.stt`. Only exists to be invoked. |
 | `image` | **tool** | capability satellite — `image.generate`. |
-| *(future)* `postiz` `xcli` `vault` `scrape` `camoufox` | **tool** | capability satellites (some `transport=stdio/http`, no Quadlet — 493 D11). |
+| *(future)* `postiz` `xcli` `vault` `scrape` `camoufox` | **tool** | tool-nature; provider = **satellite** if self-hosted (Postiz), else cloud/stdio (§2.5 discriminator · D11 revisit). |
 | `cli` | plomberie | clipool `claude-cli` dispatch — the **engine's own LLM transport**, not a picked tool. |
 | `llm` | plomberie | inference substrate + `llm.lifecycle.swap` control plane. **Engine, not tool** (ruling). |
 | `jobs` | plomberie | work bus (`JobEnvelope`). Composites surface as `RemoteTool`, but the bus is infra. |
@@ -147,7 +147,7 @@ all use the PROVIDER sense; #1044 uses the CONSUMER sense.
 | **workerEngine** | plomberie · runtime | a **coded sequence** — deterministic workflow/pipeline; orchestrates steps that call **harness** (agentic), **tools**, and **internal code** | composite `JobHandler` (#1052) |
 | **harness** | plomberie · agentic | a **pure** agentic turn (LLM + in-turn tools); **no** workflow/pipeline logic; a *callee* of workerEngine | #1490 harness loop |
 | **worker** | plomberie · compute | a deployed instance running a workerEngine; consumes tools (CONSUMER sense) | `code-worker` |
-| **provider** *(ex-"worker")* | plomberie · backend | **the role** — backs ≥1 tool; transport-agnostic. **Not** a worker. | imageCLI · voiceCLI · postiz · xcli |
+| **provider** *(ex-"worker")* | plomberie · backend | **the role** — backs ≥1 tool; transport-agnostic. **Not** a worker. | imageCLI · voiceCLI · postiz *(satellite)* · X/GitHub API *(cloud, ¬satellite)* |
 | **tool** | tool-nature | a capability surface invoked by harness / workerEngine (§2.2) | `voice.tts`, `image.generate` |
 
 ```
@@ -167,11 +167,31 @@ So workerEngine sits **above** harness and **invokes** it — `harness` is a cal
 Epics #1490 (harness) and #1044 (workerEngine / code-worker) stay **separate and layered**, not unified.
 
 **provider vs satellite** (not competing — genus/species). `provider` = the **role** (backs a
-tool). `satellite` = a **deployment kind** (off-host NATS container, heartbeat-discovered) = a
-*subset* of providers. `provider` is the umbrella because `postiz` / `xcli` back tools via
-`stdio` / `http` (493 D11) but are **not** satellites. So: `worker→provider` in the model/contracts;
-`satellite` retained for the NATS-deployed kind; `WorkerRegistry → SatelliteRegistry` (it tracks
-the heartbeat satellites specifically — and dodges the existing **LLM** `ProviderRegistry`).
+tool). `satellite` = a **deployment kind**: a persistent process **we run** that speaks our NATS
+protocol and **heartbeats** into `SatelliteRegistry` — a *subset* of providers.
+
+**Discriminator** — *self-hosted backing → satellite; cloud/third-party or one-shot CLI → non-satellite:*
+
+| Backing | Provider shape | Heartbeat |
+|---|---|---|
+| self-hosted process we run (imageCLI, voiceCLI, **Postiz**) | NATS satellite adapter | ✅ |
+| cloud API we don't host (X, GitHub) · one-shot stdio CLI | in-proc HTTP / stdio client | ✗ — nothing of ours to monitor |
+
+`provider` is the umbrella because a cloud-API-backed or one-shot tool is a provider but **never**
+a satellite. `worker→provider` in the model/contracts; `satellite` retained for the NATS-deployed
+kind; `WorkerRegistry → SatelliteRegistry` (tracks the heartbeat satellites; dodges the existing
+**LLM** `ProviderRegistry`).
+
+**Three layers — do not conflate** (the Postiz lesson):
+- **backing service** — the app we self-host (`roxabi-postiz` = forked Postiz: web+DB+Redis, docker-compose, **HTTP**). Infra, like Postgres. **A running container ≠ a heartbeat** — it speaks HTTP, not our NATS. ¬tool ¬provider ¬satellite.
+- **provider** — the adapter exposing the tool. For a self-hosted backing → a **NATS satellite** (`roxabi-tools-sdk` NATSMicroAdapter) that fronts the HTTP app and heartbeats.
+- **tool** — `postiz.create_post` (tool-nature, `factory.tool.postiz.*`).
+
+> **Revisit 493 D11** — D11 deployed Postiz/XCLI as *"no Quadlet, bash CLI direct from hub"* on the
+> premise they were trivial low-frequency CLIs. **False for Postiz**: `roxabi-postiz` is a self-hosted
+> heavy app (fork). Postiz's *provider* should be a **NATS satellite adapter** (uniform with
+> voice/image, heartbeat), not a bash CLI. XCLI: same test — self-hosted backing → satellite; cloud
+> X-API → non-satellite.
 
 **Placement & dependency.** `workerEngine` + `worker` are runtime, not contract domains; the wire
 domains behind them (`jobs`, harness-turn) stay plomberie (§2.2). The `worker→provider` rename is

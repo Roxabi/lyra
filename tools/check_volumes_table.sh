@@ -41,12 +41,35 @@ if [ ! -d "${QUADLET_DIR}" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Extract the "adapter prose claim" from deployment.md.
+# Extract the ## Volumes section from deployment.md.
 #
-# We look for the sentinel sentence that describes adapter volume behaviour.
-# This is the specific claim introduced pre-#1060 that is known to be drifted:
-#   "Adapter mounts are per-file inline binds (not the full `factory-data.volume`)"
-# If that sentence is present, we fail immediately — it contradicts the quadlets.
+# All checks (prose-sentinel and named-volume cross-check) are scoped to this
+# section only — scanning the whole file would cause false positives if a future
+# historical/ADR/migration section quotes the old stale claim (#11).
+# ---------------------------------------------------------------------------
+IN_VOLUMES_SECTION=0
+VOLUMES_TABLE_CONTENT=""
+while IFS= read -r line; do
+    if echo "${line}" | grep -qE '^## Volumes'; then
+        IN_VOLUMES_SECTION=1
+        continue
+    fi
+    if [ "${IN_VOLUMES_SECTION}" -eq 1 ]; then
+        if echo "${line}" | grep -qE '^(---$|## )'; then
+            IN_VOLUMES_SECTION=0
+            break
+        fi
+        VOLUMES_TABLE_CONTENT="${VOLUMES_TABLE_CONTENT}
+${line}"
+    fi
+done < "${DEPLOYMENT_DOC}"
+
+# ---------------------------------------------------------------------------
+# Prose-sentinel check — scoped to ## Volumes section only (#11).
+#
+# Detects the stale claim "Adapter mounts are per-file inline binds (not the
+# full factory-data.volume)" if it reappears inside the Volumes section.
+# A future historical/ADR note elsewhere in the file does NOT trigger this.
 # ---------------------------------------------------------------------------
 ADAPTER_CLAIM_LINE=""
 while IFS= read -r line; do
@@ -58,13 +81,13 @@ while IFS= read -r line; do
         ADAPTER_CLAIM_LINE="${line}"
         break
     fi
-done < "${DEPLOYMENT_DOC}"
+done <<< "${VOLUMES_TABLE_CONTENT}"
 
 DRIFT_FOUND=0
 
 if [ -n "${ADAPTER_CLAIM_LINE}" ]; then
     echo "" >&2
-    echo "FAIL: deployment.md claims adapters do NOT mount factory-data.volume, but quadlet templates show they do." >&2
+    echo "FAIL: deployment.md ## Volumes section claims adapters do NOT mount factory-data.volume, but quadlet templates show they do." >&2
     echo "" >&2
     echo "  Doc claim: ${ADAPTER_CLAIM_LINE}" >&2
     echo "" >&2
@@ -88,24 +111,6 @@ fi
 # quadlet files and verify the volume name appears in the Volumes table.
 # ---------------------------------------------------------------------------
 
-# Extract Volumes table rows: lines between "## Volumes" and the next "---" or "##"
-IN_VOLUMES_TABLE=0
-VOLUMES_TABLE_CONTENT=""
-while IFS= read -r line; do
-    if echo "${line}" | grep -qE '^## Volumes'; then
-        IN_VOLUMES_TABLE=1
-        continue
-    fi
-    if [ "${IN_VOLUMES_TABLE}" -eq 1 ]; then
-        if echo "${line}" | grep -qE '^(---$|## )'; then
-            IN_VOLUMES_TABLE=0
-            break
-        fi
-        VOLUMES_TABLE_CONTENT="${VOLUMES_TABLE_CONTENT}
-${line}"
-    fi
-done < "${DEPLOYMENT_DOC}"
-
 # Collect named volumes used in adapter quadlet files
 ADAPTER_TEMPLATES=()
 for f in "${QUADLET_DIR}"/factory-discord.container.tmpl \
@@ -115,8 +120,14 @@ for f in "${QUADLET_DIR}"/factory-discord.container.tmpl \
     [ -f "${f}" ] && ADAPTER_TEMPLATES+=("${f}")
 done
 
+# #10: missing adapter templates = script/config error, not a clean pass.
+# If all four candidate files are absent the gate cannot verify anything —
+# treat as exit 2 (script error) so CI does not silently go green.
 if [ ${#ADAPTER_TEMPLATES[@]} -eq 0 ]; then
-    echo "WARN: no adapter quadlet files found in ${QUADLET_DIR}" >&2
+    echo "ERROR: no adapter quadlet files found in ${QUADLET_DIR}" >&2
+    echo "  Expected at least one of: factory-discord.container{,.tmpl} factory-telegram.container{,.tmpl}" >&2
+    echo "  If the files were renamed, update ADAPTER_TEMPLATES in tools/check_volumes_table.sh." >&2
+    exit 2
 fi
 
 for tmpl in "${ADAPTER_TEMPLATES[@]}"; do

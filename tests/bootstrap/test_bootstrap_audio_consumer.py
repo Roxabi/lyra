@@ -345,7 +345,7 @@ async def test_bootstrap_audio_consumer_discord_provisions_and_starts() -> None:
         ),
         patch(
             "factory.bootstrap.wiring.standalone_discord.start_watch_channels_task",
-            AsyncMock(side_effect=lambda *_a, **_kw: _noop_task()),
+            MagicMock(side_effect=lambda *_a, **_kw: _noop_task()),
         ),
         patch(
             "factory.bootstrap.wiring._standalone_wiring_common.start_audio_consumer",
@@ -744,7 +744,7 @@ async def test_wait_for_hub_called_before_start_audio_consumer_discord() -> None
         ),
         patch(
             "factory.bootstrap.wiring.standalone_discord.start_watch_channels_task",
-            AsyncMock(side_effect=lambda *_a, **_kw: _noop_task()),
+            MagicMock(side_effect=lambda *_a, **_kw: _noop_task()),
         ),
         patch(
             "factory.bootstrap.wiring._standalone_wiring_common.start_audio_consumer",

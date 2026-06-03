@@ -183,7 +183,11 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
         _bots: list[tuple[str, str]] = [
             ("telegram", cfg.bot_id) for cfg, _ in tg_bot_auths
         ] + [("discord", cfg.bot_id) for cfg, _ in dc_bot_auths]
-        await publish_watch_channels(_audio_js, stores.agent, _bots)
+        try:
+            await publish_watch_channels(_audio_js, stores.agent, _bots)
+        except nats.errors.Error as exc:
+            log.critical("hub: failed to publish watch_channels: %s", exc)
+            raise
 
         await announce_hub_ready(nc)
         readiness_sub = await start_readiness_responder(nc, [hub.inbound_bus])

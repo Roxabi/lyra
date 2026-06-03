@@ -7,11 +7,14 @@ JetStream interactions are mocked via unittest.mock.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 from factory.bootstrap.wiring.kv_watch_channels import (
+    _kv_key,
     _parse_ids,
+    publish_watch_channels,
     seed_watch_channels,
 )
 
@@ -219,3 +222,142 @@ class TestParseIds:
 
     def test_duplicate_ids_deduplicated_by_frozenset(self) -> None:
         assert _parse_ids([1, 1, 2]) == frozenset({1, 2})
+
+
+# ---------------------------------------------------------------------------
+# Tests — _kv_key (SC4: platform-agnostic key template)
+# ---------------------------------------------------------------------------
+
+
+class TestKvKey:
+    def test_discord_key_format(self) -> None:
+        """_kv_key builds the correct key for discord/mybot."""
+        assert _kv_key("discord", "mybot") == "bot.discord.mybot.watch_channels"
+
+    def test_telegram_key_format(self) -> None:
+        """_kv_key builds the correct key for telegram/x — no discord literal."""
+        assert _kv_key("telegram", "x") == "bot.telegram.x.watch_channels"
+
+    def test_platform_agnostic_no_discord_literal_in_template(self) -> None:
+        """Key template contains no hardcoded platform — SC4.
+
+        Negative guard: if the template were hard-coded to 'discord', the
+        telegram assertion above would already fail.  This test makes the
+        intent explicit: substitute any platform string and it round-trips.
+        """
+        # Arrange
+        platform = "slack"
+        bot_id = "b1"
+
+        # Act
+        key = _kv_key(platform, bot_id)
+
+        # Assert
+        assert key == "bot.slack.b1.watch_channels"
+        assert "discord" not in key
+
+
+# ---------------------------------------------------------------------------
+# Tests — publish_watch_channels (SC4 hub-side write)
+# ---------------------------------------------------------------------------
+
+
+def _make_publish_js(kv: Any) -> MagicMock:
+    """Build a js mock whose key_value() returns *kv* (happy path)."""
+    js = MagicMock()
+    js.key_value = AsyncMock(return_value=kv)
+    return js
+
+
+class TestPublishWatchChannels:
+    async def test_single_bot_puts_correct_key_and_value(self) -> None:
+        """publish_watch_channels writes key=bot.discord.b1.watch_channels.
+
+        Happy path: js.key_value resolves immediately (bucket exists).
+        Asserts kv.put awaited with exact key and JSON-encoded value.
+        """
+        # Arrange
+        kv = MagicMock()
+        kv.put = AsyncMock()
+        js = _make_publish_js(kv)
+
+        agent_store = MagicMock()
+        agent_store.get_bot_settings.return_value = {"watch_channels": [1, 2]}
+
+        # Act
+        await publish_watch_channels(js, agent_store, [("discord", "b1")])
+
+        # Assert
+        kv.put.assert_awaited_once_with(
+            "bot.discord.b1.watch_channels",
+            json.dumps([1, 2]).encode(),
+        )
+
+    async def test_two_bots_different_platforms_put_distinct_keys(self) -> None:
+        """publish_watch_channels is platform-agnostic: two bots → two distinct keys.
+
+        Proves key template does not hard-code 'discord'.
+        """
+        # Arrange
+        kv = MagicMock()
+        kv.put = AsyncMock()
+        js = _make_publish_js(kv)
+
+        def _get_settings(platform: str, bot_id: str) -> dict:
+            return {
+                ("discord", "b1"): {"watch_channels": [10, 20]},
+                ("telegram", "b2"): {"watch_channels": [30]},
+            }[(platform, bot_id)]
+
+        agent_store = MagicMock()
+        agent_store.get_bot_settings.side_effect = _get_settings
+
+        # Act
+        await publish_watch_channels(
+            js, agent_store, [("discord", "b1"), ("telegram", "b2")]
+        )
+
+        # Assert — two puts, platform-specific keys
+        assert kv.put.await_count == 2
+        calls = kv.put.await_args_list
+        assert calls[0].args == (
+            "bot.discord.b1.watch_channels",
+            json.dumps([10, 20]).encode(),
+        )
+        assert calls[1].args == (
+            "bot.telegram.b2.watch_channels",
+            json.dumps([30]).encode(),
+        )
+
+    async def test_empty_watch_channels_writes_empty_json_array(self) -> None:
+        """publish_watch_channels writes '[]' when watch_channels is absent."""
+        # Arrange
+        kv = MagicMock()
+        kv.put = AsyncMock()
+        js = _make_publish_js(kv)
+
+        agent_store = MagicMock()
+        agent_store.get_bot_settings.return_value = {}  # no watch_channels key
+
+        # Act
+        await publish_watch_channels(js, agent_store, [("discord", "b1")])
+
+        # Assert
+        kv.put.assert_awaited_once_with(
+            "bot.discord.b1.watch_channels",
+            b"[]",
+        )
+
+    async def test_empty_bots_list_does_not_call_put(self) -> None:
+        """publish_watch_channels with no bots performs zero puts."""
+        # Arrange
+        kv = MagicMock()
+        kv.put = AsyncMock()
+        js = _make_publish_js(kv)
+        agent_store = MagicMock()
+
+        # Act
+        await publish_watch_channels(js, agent_store, [])
+
+        # Assert
+        kv.put.assert_not_awaited()

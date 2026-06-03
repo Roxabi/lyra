@@ -375,7 +375,7 @@ async def test_discord_adapter_handles_multi_bot(
         ),
         patch(
             "factory.bootstrap.wiring.standalone_discord.start_watch_channels_task",
-            AsyncMock(side_effect=lambda *_a, **_kw: _noop_task()),
+            MagicMock(side_effect=lambda *_a, **_kw: _noop_task()),
         ),
         patch("factory.bootstrap.credentials._is_prod_env", return_value=False),
     ):

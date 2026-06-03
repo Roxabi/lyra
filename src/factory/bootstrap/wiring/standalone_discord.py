@@ -28,10 +28,7 @@ from roxabi_nats.readiness import wait_for_hub
 log = logging.getLogger(__name__)
 
 
-async def _bootstrap_discord_setup(
-    raw_config: dict,
-    vault_dir: Path,
-) -> tuple:
+async def _bootstrap_discord_setup(raw_config: dict) -> tuple:
     """Load Discord config and credentials."""
     from factory.config import DiscordMultiConfig
 
@@ -114,7 +111,7 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
     _stop: asyncio.Event | None = None,
 ) -> None:
     """Bootstrap a standalone Discord adapter process connected to NATS."""
-    dc_multi_cfg, dc_creds = await _bootstrap_discord_setup(raw_config, vault_dir)
+    dc_multi_cfg, dc_creds = await _bootstrap_discord_setup(raw_config)
     dc_thread_store, dc_turn_store = await _create_dc_stores(vault_dir)
     js = nc.jetstream()
     blob_store = init_blobstore()
@@ -190,6 +187,10 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
         try:
             wired = await _wire_bot(bot_cfg, token, watch_channels)
         except Exception:
+            # Cancel any watch tasks already started before cleaning up.
+            for t in watch_tasks:
+                t.cancel()
+            await asyncio.gather(*watch_tasks, return_exceptions=True)
             await _close_dc_wired("dc-wired", wired_dc)
             await dc_thread_store.close()
             await dc_turn_store.close()
@@ -197,7 +198,7 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
 
         wired_dc.append(wired)
         adapter_dc = wired[0]
-        task = await start_watch_channels_task(
+        task = start_watch_channels_task(
             js,
             "discord",
             bot_id,

@@ -55,7 +55,6 @@ class TestDiscordSetupNoAgentStore:
                 ]
             }
         }
-        vault_dir = Path("/tmp/test-vault")
 
         with (
             patch(
@@ -68,7 +67,7 @@ class TestDiscordSetupNoAgentStore:
             ),
         ):
             # Act — must not raise
-            result = await _mod._bootstrap_discord_setup(raw_config, vault_dir)
+            result = await _mod._bootstrap_discord_setup(raw_config)
 
         # Assert — returns (dc_multi_cfg, dc_creds) tuple without raising
         dc_multi_cfg, dc_creds = result
@@ -222,7 +221,7 @@ class TestDiscordWireBotReceivesWatchChannels:
             ),
             patch(
                 "factory.bootstrap.wiring.standalone_discord.start_watch_channels_task",
-                AsyncMock(return_value=_noop_task()),
+                MagicMock(return_value=_noop_task()),
             ),
             patch(
                 "factory.bootstrap.wiring.standalone_discord.wire_bot_common",

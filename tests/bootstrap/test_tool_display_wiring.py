@@ -490,7 +490,7 @@ async def test_standalone_path_threads_tool_display_config_to_discord() -> None:
         ),
         patch(
             "factory.bootstrap.wiring.standalone_discord.start_watch_channels_task",
-            AsyncMock(side_effect=lambda *_a, **_kw: _noop_task()),
+            MagicMock(side_effect=lambda *_a, **_kw: _noop_task()),
         ),
         patch(
             _LOAD_BOT_TOKEN_PATH,

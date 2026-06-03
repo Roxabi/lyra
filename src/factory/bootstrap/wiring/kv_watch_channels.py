@@ -20,6 +20,8 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from factory.bootstrap.factory.utils import _log_task_failure
+
 log = logging.getLogger(__name__)
 
 _BUCKET = "factory-state"
@@ -41,6 +43,8 @@ def _skip_tombstone(entry: Any) -> bool:
 
 def _parse_ids(raw: Any) -> frozenset[int]:
     """Coerce each element of *raw* to int, silently skipping invalid values."""
+    if not isinstance(raw, (list, tuple)):
+        return frozenset()
     result: list[int] = []
     for ch in raw:
         try:
@@ -48,6 +52,32 @@ def _parse_ids(raw: Any) -> frozenset[int]:
         except (TypeError, ValueError):
             log.warning("watch_channels: invalid channel id %r — skipping", ch)
     return frozenset(result)
+
+
+async def _open_or_create_kv(js: Any) -> Any:
+    """Open or create the factory-state KV bucket (hub-only provisioner path).
+
+    Handles the cold-boot race: bucket may not exist on the first hub start
+    because announce_hub_ready (which calls this indirectly) runs *after*
+    publish_watch_channels.  Only publish_watch_channels uses this helper;
+    adapter-side readers use plain js.key_value() (bind-only, relying on
+    wait_for_hub to guarantee the bucket exists first).
+    """
+    from nats.js.api import KeyValueConfig, StorageType
+    from nats.js.errors import BadRequestError, BucketNotFoundError
+
+    try:
+        return await js.key_value(_BUCKET)
+    except BucketNotFoundError:
+        pass
+
+    try:
+        return await js.create_key_value(
+            KeyValueConfig(bucket=_BUCKET, storage=StorageType.FILE)
+        )
+    except BadRequestError:
+        # Lost the creation race — another process created it; open it.
+        return await js.key_value(_BUCKET)
 
 
 # ---------------------------------------------------------------------------
@@ -95,7 +125,15 @@ async def seed_watch_channels(
                         bot_id,
                     )
                     return frozenset()
-                ids = _parse_ids(json.loads(entry.value))
+                try:
+                    ids = _parse_ids(json.loads(entry.value))
+                except (json.JSONDecodeError, TypeError):
+                    log.warning(
+                        "seed_watch_channels: bad KV payload for %s/%s — empty set",
+                        platform,
+                        bot_id,
+                    )
+                    return frozenset()
                 log.debug(
                     "seed_watch_channels: %s/%s → %d channel(s)",
                     platform,
@@ -137,7 +175,15 @@ async def _watch_channels_loop(
                 )
                 on_update(frozenset())
                 continue
-            ids = _parse_ids(json.loads(entry.value))
+            try:
+                ids = _parse_ids(json.loads(entry.value))
+            except (json.JSONDecodeError, TypeError):
+                log.warning(
+                    "watch_channels_task: bad KV payload for %s/%s — skipping",
+                    platform,
+                    bot_id,
+                )
+                continue
             log.debug(
                 "watch_channels_task: %s/%s update → %d channel(s)",
                 platform,
@@ -152,7 +198,7 @@ async def _watch_channels_loop(
         await watcher.stop()
 
 
-async def start_watch_channels_task(
+def start_watch_channels_task(
     js: Any,
     platform: str,
     bot_id: str,
@@ -178,6 +224,7 @@ async def start_watch_channels_task(
         _watch_channels_loop(js, platform, bot_id, on_update),
         name=f"watch_channels:{platform}:{bot_id}",
     )
+    task.add_done_callback(_log_task_failure)
     return task
 
 
@@ -191,12 +238,15 @@ async def publish_watch_channels(
     Hub-side helper: reads ``watch_channels`` from the agent store for each
     ``(platform, bot_id)`` pair and publishes it as a JSON-encoded bytes value.
 
+    Uses create-or-open so the hub can run publish_watch_channels before
+    announce_hub_ready on a fresh NATS deployment (cold-boot safety).
+
     Args:
         js: JetStream context (``nc.jetstream()``).
         agent_store: Store exposing ``get_bot_settings(platform, bot_id) -> dict``.
         bots: List of ``(platform, bot_id)`` pairs to publish.
     """
-    kv = await js.key_value(_BUCKET)
+    kv = await _open_or_create_kv(js)
     for platform, bot_id in bots:
         settings = agent_store.get_bot_settings(platform, bot_id)
         ids: list[Any] = settings.get("watch_channels", [])

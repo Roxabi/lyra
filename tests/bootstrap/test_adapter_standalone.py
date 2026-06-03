@@ -135,7 +135,7 @@ async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
         ),
         patch(
             "factory.bootstrap.wiring.standalone_discord.start_watch_channels_task",
-            AsyncMock(return_value=_watcher_task),
+            MagicMock(return_value=_watcher_task),
         ),
         load_token_patch_dc,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
@@ -326,7 +326,7 @@ async def test_discord_astart_failure_cleans_up_wired_resources() -> None:
         ),
         patch(
             "factory.bootstrap.wiring.standalone_discord.start_watch_channels_task",
-            AsyncMock(return_value=_watcher_task),
+            MagicMock(return_value=_watcher_task),
         ),
         load_token_patch,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),

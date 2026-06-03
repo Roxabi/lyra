@@ -156,10 +156,10 @@ Single slice (config.db-only scope) → no smart-split. Live-write + volume-drop
 
 ## Deferred Follow-ups (siblings of #1060 under epic #1049)
 
-1. **CLI live-write** `factory bot set-watch-channels <platform> <bot> <ids…>` — writes config.db
+1. **CLI live-write** (#1720) `factory bot set-watch-channels <platform> <bot> <ids…>` — writes config.db
    (wires the currently-dead `set_bot_settings`) + `kv.put` via hub creds → running adapter updates
    without restart. `blocked-by #1060`, `parent #1049`. (Product-lead: split now, don't cut at impl.)
-2. **Volume-drop** from `factory-discord`/`factory-telegram` `.tmpl` — gated on Phase 4 (turns.db→KV)
+2. **Volume-drop** (#1721) from `factory-discord`/`factory-telegram` `.tmpl` — gated on Phase 4 (turns.db→KV)
    + the discord.db phase. Only after no adapter file-opens the volume.
 
 ## Out of Scope

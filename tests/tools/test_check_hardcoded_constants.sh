@@ -151,6 +151,114 @@ fi
 rm -f "$CORE_DIR/test_d.py"
 
 # ---------------------------------------------------------------------------
+# Case F — f-string format spec width literal is NOT flagged (exit 0)
+# Proves the f-string format-spec skip rule fires for {x:<20} style widths.
+# ---------------------------------------------------------------------------
+cat > "$CORE_DIR/test_f.py" << 'PYEOF'
+lines = []
+lines.append(f"  {'name':<20} {value}")
+state_str = f"{status.upper():<10} (ok)"
+PYEOF
+
+# Empty baseline — the f-string skip rule must fire, not the baseline
+printf '# empty baseline\n' > "$BASELINE"
+
+EXIT_F=$(run_gate)
+if [ "$EXIT_F" -eq 0 ]; then
+    pass "F: f-string format spec {x:<20} → exit 0 (f-string skip rule)"
+else
+    fail "F: f-string format spec {x:<20} → exit 0" "got exit $EXIT_F (f-string skip rule missing or broken)"
+fi
+
+rm -f "$CORE_DIR/test_f.py"
+
+# ---------------------------------------------------------------------------
+# Case G — regex quantifier preceded by backslash escape class is NOT flagged
+# Proves the regex-quantifier skip rule fires for \d{8,12} style patterns.
+# ---------------------------------------------------------------------------
+cat > "$CORE_DIR/test_g.py" << 'PYEOF'
+import re
+PATTERN = re.compile(r"(?<!\w)(\d{8,12}:[A-Za-z0-9]+)")
+PYEOF
+
+# Empty baseline — the regex-quantifier skip rule must fire
+printf '# empty baseline\n' > "$BASELINE"
+
+EXIT_G=$(run_gate)
+if [ "$EXIT_G" -eq 0 ]; then
+    pass "G: regex quantifier \\d{8,12} → exit 0 (regex-quantifier skip rule)"
+else
+    fail "G: regex quantifier \\d{8,12} → exit 0" "got exit $EXIT_G (regex-quantifier skip rule missing or broken)"
+fi
+
+rm -f "$CORE_DIR/test_g.py"
+
+# ---------------------------------------------------------------------------
+# Case H — plain magic number (no marker) is still flagged (exit 1)
+# False-negative guard: proves the skip rules did not blind the gate to
+# genuine usage-site magic numbers.
+# ---------------------------------------------------------------------------
+cat > "$CORE_DIR/test_h.py" << 'PYEOF'
+_planted = 4096
+PYEOF
+
+# Empty baseline — no grandfathering; the gate must catch the literal
+printf '# empty baseline\n' > "$BASELINE"
+
+EXIT_H=$(run_gate)
+if [ "$EXIT_H" -eq 1 ]; then
+    pass "H: plain magic number _planted = 4096 → exit 1 (gate still catches it)"
+else
+    fail "H: plain magic number _planted = 4096 → exit 1" "got exit $EXIT_H (skip rules over-fired or gate broken)"
+fi
+
+rm -f "$CORE_DIR/test_h.py"
+
+# ---------------------------------------------------------------------------
+# Case I — co-located real magic number + f-string format spec is flagged
+# Regression guard: the old `next`-based rule skipped the WHOLE line, so a
+# real literal on the same line as a valid f-string format spec escaped the
+# gate.  The gsub-based fix strips the f-string token and then detects the
+# remaining literal.
+# ---------------------------------------------------------------------------
+cat > "$CORE_DIR/test_i.py" << 'PYEOF'
+BUFFER_SIZE = 4096; label = f"{name:<20}"
+PYEOF
+
+# Empty baseline — gate must flag the 4096 literal (exit 1)
+printf '# empty baseline\n' > "$BASELINE"
+
+EXIT_I=$(run_gate)
+if [ "$EXIT_I" -eq 1 ]; then
+    pass "I: real magic number + f-string format spec on same line → exit 1 (gate flags the literal)"
+else
+    fail "I: real magic number + f-string format spec on same line → exit 1" "got exit $EXIT_I (gsub fix missing or broken)"
+fi
+
+rm -f "$CORE_DIR/test_i.py"
+
+# ---------------------------------------------------------------------------
+# Case G3 — Python set literal {10, 20} (no backslash prefix) IS flagged
+# Documents that the regex-quantifier strip rule does NOT exempt plain set or
+# dict literals — only patterns preceded by a \d/\w/\s escape class are stripped.
+# ---------------------------------------------------------------------------
+cat > "$CORE_DIR/test_g3.py" << 'PYEOF'
+allowed = {10, 20}
+PYEOF
+
+# Empty baseline — gate must flag the literals (exit 1)
+printf '# empty baseline\n' > "$BASELINE"
+
+EXIT_G3=$(run_gate)
+if [ "$EXIT_G3" -eq 1 ]; then
+    pass "G3: plain set literal {10, 20} → exit 1 (regex-quantifier rule does NOT exempt it)"
+else
+    fail "G3: plain set literal {10, 20} → exit 1" "got exit $EXIT_G3 (regex-quantifier strip over-fired — strips set literals too)"
+fi
+
+rm -f "$CORE_DIR/test_g3.py"
+
+# ---------------------------------------------------------------------------
 # Case E — real src/factory/core/ tree passes (exit 0)
 # Proves the committed baseline grandfathers all constants at current HEAD.
 # ---------------------------------------------------------------------------

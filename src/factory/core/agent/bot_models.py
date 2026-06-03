@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from factory.core.agent.agent_models import _utc_now_iso
+from factory.core.agent.schema.bot_schema import _N_BOT_COLS
 
 log = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ __all__ = [
 # "blocked" = fail-safe; auto_thread=False = opt-in; 24h = conservative.
 DEFAULT_TRUST: str = "blocked"
 DEFAULT_AUTO_THREAD: bool = False
-DEFAULT_THREAD_HOT_HOURS: int = 24
+DEFAULT_THREAD_HOT_HOURS: int = 24  # const-ok: thread-hot window default, single SSoT
 
 _VALID_TRUST_LEVELS = {"owner", "trusted", "public", "blocked"}
 
@@ -54,8 +55,8 @@ class BotRow:
     @classmethod
     def from_db_row(cls, row: tuple[Any, ...]) -> "BotRow":
         """Construct a BotRow from a raw aiosqlite SELECT tuple."""
-        if len(row) != 11:
-            raise ValueError(f"Expected 11 columns, got {len(row)}")
+        if len(row) != _N_BOT_COLS:
+            raise ValueError(f"Expected {_N_BOT_COLS} columns, got {len(row)}")
         (
             platform,
             bot_id,

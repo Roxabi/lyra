@@ -56,7 +56,9 @@ class SessionManager:
         turn_store = pool.turn_store
         if turn_store is not None and pool.user_id:
             # Fetch both user and assistant turns from TurnStore (newest first).
-            raw = await turn_store.get_turns(pool.pool_id, pool.user_id, limit=20)
+            raw = await turn_store.get_turns(
+                pool.pool_id, pool.user_id, limit=TurnStoreConfig.SUMMARY_TURN_LIMIT
+            )
             # Reverse to chronological order and format with role prefix.
             turns = [f"{t['role']}: {t['content']}" for t in reversed(raw)]
         else:

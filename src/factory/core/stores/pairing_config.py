@@ -22,7 +22,7 @@ class PairingError(Exception):
 
 _SAFE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
-_MAX_CODE_ATTEMPTS = 10
+_MAX_CODE_ATTEMPTS = 10  # const-ok: max brute-force attempts before code invalidation
 
 _CREATE_PAIRING_CODES = """
 CREATE TABLE IF NOT EXISTS pairing_codes (
@@ -48,11 +48,11 @@ class PairingConfig(BaseModel):
 
     alphabet: str = _SAFE_ALPHABET
     code_length: int = 8
-    ttl_seconds: int = 3600
+    ttl_seconds: int = 3600  # const-ok: pairing code expiry (1 hour)
     max_pending: int = 3
-    session_max_age_days: int = 30
+    session_max_age_days: int = 30  # const-ok: paired session lifetime (30 days)
     rate_limit_attempts: int = 5
-    rate_limit_window: int = 300
+    rate_limit_window: int = 300  # const-ok: rate-limit sliding window (5 min)
     enabled: bool = False
 
 

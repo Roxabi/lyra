@@ -22,6 +22,6 @@ class BusConfig:
         DEFAULT_STAGING_MAXSIZE: Staging queue maxsize (items).
     """
 
-    DEFAULT_MAXSIZE: int = 100
-    DEFAULT_QUEUE_DEPTH: int = 100
-    DEFAULT_STAGING_MAXSIZE: int = 500
+    DEFAULT_MAXSIZE: int = 100  # const-ok: named config default
+    DEFAULT_QUEUE_DEPTH: int = 100  # const-ok: named config default
+    DEFAULT_STAGING_MAXSIZE: int = 500  # const-ok: named config default

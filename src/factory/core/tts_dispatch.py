@@ -97,7 +97,7 @@ def _detect_language(
     """
     if not languages:
         return default_language
-    if len(text) < 10:
+    if len(text) < 10:  # const-ok: min-length heuristic
         return default_language
     lower = text.lower()
     best_lang = default_language

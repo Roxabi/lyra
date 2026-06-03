@@ -156,6 +156,7 @@ class CliLlmProvider:
 _CONFIRM_WORDS: frozenset[str] = frozenset(
     {"confirm", "yes", "done", "apply", "ok", "y"}
 )
+_MAX_REFINER_TURNS = 20  # const-ok: refiner turn cap
 
 
 class AgentRefiner:
@@ -200,7 +201,7 @@ class AgentRefiner:
     # ------------------------------------------------------------------
 
     async def run_session(
-        self, io: TerminalIO, *, max_turns: int = 20
+        self, io: TerminalIO, *, max_turns: int = _MAX_REFINER_TURNS
     ) -> RefinementPatch:
         """LLM-driven Q&A loop. Returns patch on user confirmation.
 

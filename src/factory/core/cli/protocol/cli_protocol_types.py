@@ -27,7 +27,8 @@ log = logging.getLogger(__name__)
 
 
 async def _read_stderr_snippet(
-    proc: asyncio.subprocess.Process, limit: int = 512
+    proc: asyncio.subprocess.Process,
+    limit: int = 512,  # const-ok: stderr read limit
 ) -> str:
     """Read up to *limit* bytes from proc.stderr without blocking.
 

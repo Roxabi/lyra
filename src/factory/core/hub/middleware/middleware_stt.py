@@ -108,7 +108,8 @@ class SttMiddleware:
             return _DROP
 
         # 4. Transcription block.
-        timeout_s = getattr(hub._stt, "timeout_ms", 30000) / 1000.0
+        _timeout_ms = getattr(hub._stt, "timeout_ms", 30000)  # const-ok: 30s fallback
+        timeout_s = _timeout_ms / 1000.0
         if msg.audio is None:  # guaranteed by modality == "voice", guard for -O safety
             return _DROP
 

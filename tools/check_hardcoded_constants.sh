@@ -105,6 +105,10 @@ emit_signatures() {
     #   - blank lines
     #   - lines containing Config. or Protocol. (sanctioned indirections)
     #   - lines containing # const-ok: (inline exemption)
+    #   - f-string format specs: {expr:[<>^=]?N} or {expr:.Nf} etc. (width/precision literals
+    #     stripped from content via gsub so co-located real literals are still caught)
+    #   - regex quantifiers immediately preceded by a backslash escape class \d\D\w\W\s\S
+    #     (stripped via gsub for the same reason)
     # Emits: <relpath>:<normalized-line>
     awk '
         {
@@ -126,6 +130,25 @@ emit_signatures() {
 
             # Skip lines with inline exemption marker
             if (index(content, "# const-ok:") > 0) next
+
+            # Strip f-string format specs: a {…} brace group whose content
+            # contains a format-spec (:[<>^=]?[0-9]+(\.[0-9]+)?[dfeg]?).
+            # Matches patterns like f"{x:<20}", f"{v:.2f}", f"{n:08d}".
+            # gsub (not next) so a co-located real magic number on the same
+            # line is still caught by the downstream numeric-literal check.
+            gsub(/\{[^}]*:[<>^=]?[0-9]+(\.[0-9]+)?[dfeg]?[^}]*\}/, "", content)
+
+            # Strip regex quantifiers that are immediately preceded by a
+            # backslash escape class (\d \D \w \W \s \S).
+            # Matches: \d{8,12}, \w{3}, \s{1,4}, etc.
+            # Does NOT match plain set/dict literals like {10, 20} (no preceding \escape).
+            # gsub (not next) so a co-located real magic number is still caught.
+            gsub(/\\[dDwWsS]\{[0-9]+(,[0-9]*)?\}/, "", content)
+
+            # After stripping exempt tokens, re-check that the residual content
+            # still contains a flagged numeric literal (mirrors the grep pre-filter
+            # pattern).  If the gsubs cleared all flagged tokens, skip the line.
+            if (!match(content, /[=,(<>!][[:space:]]*[0-9][0-9]/)) next
 
             # Normalize: strip leading + trailing whitespace from content
             normalized = content

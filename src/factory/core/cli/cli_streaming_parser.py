@@ -46,7 +46,7 @@ _SESSION_LOST_SUBTYPES = frozenset({"session_expired", "session_lost", "resume_f
 
 # Max length of bus-bound CLI error messages. Upstream wire content is
 # unbounded; trim before publishing to keep the NATS payload predictable.
-_BUS_BOUND_MESSAGE_MAX_LEN = 200
+_BUS_BOUND_MESSAGE_MAX_LEN = 200  # const-ok: bus-bound error message length cap
 
 
 def _scrub_cli_error_text(text: str) -> str:

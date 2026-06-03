@@ -35,7 +35,7 @@ class StreamingIterator:
         pool_id: str,
         *,
         pool_reset_fn: Callable[[], Awaitable[None]] | None = None,
-        default_timeout: float = 300,
+        default_timeout: float = 300,  # const-ok: 5-min streaming default timeout
         opts: CliProtocolOptions = CliProtocolOptions(),
     ) -> None:
         assert isinstance(entry, _ProcessEntry)
@@ -180,7 +180,7 @@ async def send_and_read_stream(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps 
     pool_id: str,
     *,
     pool_reset_fn: Callable[[], Awaitable[None]] | None = None,
-    default_timeout: float = 300,
+    default_timeout: float = 300,  # const-ok: 5-min streaming default timeout
     opts: CliProtocolOptions = CliProtocolOptions(),
 ) -> StreamingIterator:
     """Write *message* to stdin and return a StreamingIterator[LlmEvent].

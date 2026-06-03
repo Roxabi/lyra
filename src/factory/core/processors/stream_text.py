@@ -31,7 +31,7 @@ log = logging.getLogger(__name__)
 def _mint_text_block_id() -> str:
     """Per-block message id for the v2 Text triplet (Slice 2, #1099).
 
-    Format: ``"text-<12-char-hex>"``. Mirrors the ``synthetic-<uuid4>`` shape
+    Format: ``"text-<hex>"``. Mirrors the ``synthetic-<uuid4>`` shape
     used by ``run_id`` minting; distinguishable via prefix. Module-level helper.
     """
     return f"text-{uuid4().hex[:12]}"
@@ -40,7 +40,7 @@ def _mint_text_block_id() -> str:
 def _mint_reasoning_block_id() -> str:
     """Per-block message id for a reasoning block (Slice 4, #1101).
 
-    Format: ``"reasoning-<12-char-hex>"``. Mirrors ``_mint_text_block_id``
+    Format: ``"reasoning-<hex>"``. Mirrors ``_mint_text_block_id``
     — same uuid4 approach, distinguishable via prefix.
     """
     return f"reasoning-{uuid4().hex[:12]}"

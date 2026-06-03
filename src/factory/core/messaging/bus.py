@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from typing import Protocol, TypeVar
 
+from factory.core.config.bus_config import BusConfig
+
 from .message import Platform
 
 T = TypeVar("T")
@@ -32,7 +34,10 @@ class Bus(Protocol[T]):
     """
 
     def register(
-        self, platform: Platform, maxsize: int = 100, bot_id: str | None = None
+        self,
+        platform: Platform,
+        maxsize: int = BusConfig.DEFAULT_MAXSIZE,
+        bot_id: str | None = None,
     ) -> None:
         """Register a bounded queue for the given platform.
 

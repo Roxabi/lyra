@@ -6,7 +6,7 @@ provider, allowing it time to recover before probing again.
 
 Usage::
 
-    cb = CircuitBreaker(name="openai", failure_threshold=5, recovery_timeout=60)
+    cb = CircuitBreaker(name="openai", failure_threshold=5, recovery_timeout=…)
     registry = CircuitRegistry()
     registry.register(cb)
 

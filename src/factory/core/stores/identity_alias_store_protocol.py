@@ -27,7 +27,7 @@ class IdentityAliasStoreProtocol(Protocol):
         self,
         initiator_id: str,
         platform: str,
-        ttl_seconds: int = 300,
+        ttl_seconds: int = 300,  # const-ok: challenge expiry default (5 min)
     ) -> str: ...
 
     async def validate_challenge(self, code: str) -> tuple[bool, str, str]: ...

@@ -86,10 +86,11 @@ def _build_smart_routing_from_dict(sr_data: dict) -> SmartRoutingConfig:
         if model_id:
             routing_table[level] = model_id
     hcc = sr_data.get("high_complexity_commands", [])
+    _default_history_size = SmartRoutingConfig.model_fields["history_size"].default
     return SmartRoutingConfig(
         enabled=bool(sr_data.get("enabled", False)),
         routing_table=routing_table,
-        history_size=int(sr_data.get("history_size", 50)),
+        history_size=int(sr_data.get("history_size", _default_history_size)),
         high_complexity_commands=tuple(hcc),
     )
 

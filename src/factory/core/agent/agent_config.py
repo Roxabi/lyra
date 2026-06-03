@@ -7,6 +7,9 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, field_serializer, field_validator
 
 from ..commands.command_router import CommandConfig
+from ..config.limits import (
+    MAX_PROMPT_BYTES as MAX_PROMPT_BYTES,  # noqa: F401 — re-export for callers
+)
 
 # ModelConfig is the canonical LLM port value type — defined in core/ports/llm_types.py
 # so that llm.py (the driven port) is self-contained. Re-exported here for
@@ -14,7 +17,6 @@ from ..commands.command_router import CommandConfig
 from ..ports.llm_types import ModelConfig as ModelConfig  # noqa: F401
 
 _VALID_BACKENDS: frozenset[str] = frozenset({"claude-cli", "nats"})
-_MAX_PROMPT_BYTES = 64 * 1024  # 64 KB
 
 _WORKSPACE_BUILTIN_CONFLICTS = frozenset(
     {
@@ -52,7 +54,7 @@ class SmartRoutingConfig(BaseModel):
 
     enabled: bool = False
     routing_table: dict[Complexity, str] = {}
-    history_size: int = 50
+    history_size: int = 50  # const-ok: SmartRouting rolling window, single SSoT
     high_complexity_commands: tuple[str, ...] = ()
 
     @field_validator("routing_table", mode="before")

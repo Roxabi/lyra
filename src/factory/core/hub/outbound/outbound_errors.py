@@ -21,8 +21,8 @@ log = logging.getLogger(__name__)
 _SEND_ERROR_MSG = "⚠️ I encountered an error sending my response. Please try again."
 _CIRCUIT_OPEN_MSG = "⚠️ I'm temporarily unavailable. Please try again in a moment."
 _CIRCUIT_NOTIFY_DEBOUNCE = 60.0  # seconds between circuit-open notifications per chat
-_SCOPE_REAP_THRESHOLD = 256  # reap idle scope locks when dict exceeds this size
-_NOTIFY_TS_REAP_THRESHOLD = 512  # reap stale circuit-notify timestamps when > this size
+_SCOPE_REAP_THRESHOLD = 256  # const-ok: reap idle scope locks above this size
+_NOTIFY_TS_REAP_THRESHOLD = 512  # const-ok: reap stale notify timestamps above this
 
 # Queue item shapes (heterogeneous tuple — see OutboundDispatcher._dispatch_item):
 #   ("send",         InboundMessage, OutboundMessage)
@@ -46,7 +46,7 @@ def _is_transient_error(exc: BaseException) -> bool:
     hard imports of aiogram or discord.py at import time (those packages may
     not be installed in all environments).
 
-    Retryable: network errors, 5xx server errors, rate-limit (429).
+    Retryable: network errors, 5xx server errors, rate-limit responses.
     Not retryable: 4xx client errors (bad token, chat not found, forbidden).
     """
     cls = type(exc)
@@ -72,7 +72,7 @@ def _is_transient_error(exc: BaseException) -> bool:
         # For generic TelegramAPIError, check status code attribute
         status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
         if status is not None and isinstance(status, int):
-            return status == 429 or status >= 500
+            return status == 429 or status >= 500  # const-ok: HTTP status codes
         return False
 
     # discord.py: HTTPException with status >= 500 or 429 is transient
@@ -81,7 +81,7 @@ def _is_transient_error(exc: BaseException) -> bool:
             return True
         status = getattr(exc, "status", None)
         if status is not None and isinstance(status, int):
-            return status == 429 or status >= 500
+            return status == 429 or status >= 500  # const-ok: HTTP status codes
         return False
 
     return False

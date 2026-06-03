@@ -63,8 +63,8 @@ class ToolDisplayConfig(BaseModel):
     names_threshold: int = 5
     bash_group_threshold: int = 3
     files_group_threshold: int = 3
-    bash_max_len: int = 80
-    throttle_ms: int = 2000
+    bash_max_len: int = 80  # const-ok: named config default
+    throttle_ms: int = 2000  # const-ok: named config default
     """Min ms between streaming edits. Future consumers must wire through
     factory.outbound.throttle.ThrottleCapability (not per-adapter logic) per
     ADR-073 — single stage primitive, not per-platform variants."""

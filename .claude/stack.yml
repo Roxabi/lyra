@@ -113,3 +113,9 @@ quality_gates:
     stage: pre-push
     script: tools/check_secrets_drift.sh
     description: assert unit Secret= names ⊆ quadlet.toml required_secrets, quadlet.toml == manifest, factory-nats-* seeds have acl-matrix factory+container identities (changes under deploy/)
+
+  volumes_table:
+    enabled: true
+    stage: pre-push
+    script: tools/check_volumes_table.sh
+    description: verify deployment.md Volumes table prose matches Volume= directives in adapter quadlet templates

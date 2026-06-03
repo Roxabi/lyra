@@ -479,6 +479,16 @@ async def test_standalone_path_threads_tool_display_config_to_discord() -> None:
             AsyncMock(return_value=True),
         ),
         patch(
+            "factory.bootstrap.wiring.standalone_discord.seed_watch_channels",
+            AsyncMock(return_value=frozenset()),
+        ),
+        patch(
+            "factory.bootstrap.wiring.standalone_discord.start_watch_channels_task",
+            AsyncMock(
+                side_effect=lambda *_a, **_kw: asyncio.create_task(asyncio.sleep(0))
+            ),
+        ),
+        patch(
             _LOAD_BOT_TOKEN_PATH,
             return_value=("test-token", None),
         ),

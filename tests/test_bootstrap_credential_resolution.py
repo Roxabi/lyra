@@ -337,10 +337,6 @@ async def test_discord_adapter_handles_multi_bot(
     mock_inbound_bus.start = AsyncMock()
     mock_inbound_bus.stop = AsyncMock()
 
-    # Patch stores so they don't touch real SQLite during bootstrap.
-    mock_agent_store = AsyncMock()
-    mock_agent_store.get_bot_settings = MagicMock(return_value={})
-
     mock_thread_store = AsyncMock()
     mock_turn_store = AsyncMock()
 
@@ -352,10 +348,6 @@ async def test_discord_adapter_handles_multi_bot(
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
         patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
         patch("factory.adapters.discord.DiscordAdapter", side_effect=_capture_dc),
-        patch(
-            "factory.infrastructure.stores.agent_store.AgentStore",
-            return_value=mock_agent_store,
-        ),
         patch(
             "factory.infrastructure.stores.thread_store.ThreadStore",
             return_value=mock_thread_store,
@@ -371,6 +363,16 @@ async def test_discord_adapter_handles_multi_bot(
         patch(
             "factory.bootstrap.wiring.standalone_discord.wait_for_hub",
             AsyncMock(return_value=True),
+        ),
+        patch(
+            "factory.bootstrap.wiring.standalone_discord.seed_watch_channels",
+            AsyncMock(return_value=frozenset()),
+        ),
+        patch(
+            "factory.bootstrap.wiring.standalone_discord.start_watch_channels_task",
+            AsyncMock(
+                side_effect=lambda *_a, **_kw: asyncio.create_task(asyncio.sleep(0))
+            ),
         ),
         patch("factory.bootstrap.credentials._is_prod_env", return_value=False),
     ):

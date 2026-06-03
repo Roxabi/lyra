@@ -335,6 +335,16 @@ async def test_bootstrap_audio_consumer_discord_provisions_and_starts() -> None:
             AsyncMock(return_value=True),
         ),
         patch(
+            "factory.bootstrap.wiring.standalone_discord.seed_watch_channels",
+            AsyncMock(return_value=frozenset()),
+        ),
+        patch(
+            "factory.bootstrap.wiring.standalone_discord.start_watch_channels_task",
+            AsyncMock(
+                side_effect=lambda *_a, **_kw: asyncio.create_task(asyncio.sleep(0))
+            ),
+        ),
+        patch(
             "factory.bootstrap.wiring._standalone_wiring_common.start_audio_consumer",
             side_effect=_capturing_start_audio_consumer,
         ),
@@ -724,6 +734,16 @@ async def test_wait_for_hub_called_before_start_audio_consumer_discord() -> None
         patch(
             "factory.bootstrap.wiring.standalone_discord.wait_for_hub",
             side_effect=_recording_wait_for_hub,
+        ),
+        patch(
+            "factory.bootstrap.wiring.standalone_discord.seed_watch_channels",
+            AsyncMock(return_value=frozenset()),
+        ),
+        patch(
+            "factory.bootstrap.wiring.standalone_discord.start_watch_channels_task",
+            AsyncMock(
+                side_effect=lambda *_a, **_kw: asyncio.create_task(asyncio.sleep(0))
+            ),
         ),
         patch(
             "factory.bootstrap.wiring._standalone_wiring_common.start_audio_consumer",

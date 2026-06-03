@@ -212,6 +212,7 @@ quadlet-secrets-install:  ## (re)create Podman secrets from ~/.roxabi/factory/nk
 	@podman secret create --replace factory-nats-telegram          "$(FACTORY_NKEYS_DIR)/telegram-adapter.seed"
 	@podman secret create --replace factory-nats-discord           "$(FACTORY_NKEYS_DIR)/discord-adapter.seed"
 	@podman secret create --replace factory-nats-clipool           "$(FACTORY_NKEYS_DIR)/clipool-worker.seed"
+	@podman secret create --replace factory-nats-gh-helper         "$(FACTORY_NKEYS_DIR)/gh-helper.seed"
 	@if [ -f "$(HOME)/.roxabi/factory/gh-app.pem" ]; then \
 		podman secret create --replace factory-gh-pem "$(HOME)/.roxabi/factory/gh-app.pem"; \
 		echo "factory-gh-pem secret created from ~/.roxabi/factory/gh-app.pem"; \

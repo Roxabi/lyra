@@ -25,7 +25,7 @@ class TurnStoreConfig:
     DEFAULT_LIST_SESSIONS_LIMIT: int = 5
     """Default maximum number of sessions returned by ``list_sessions``."""
 
-    COMPACT_TURN_FETCH_LIMIT: int = 500  # const-ok: named config default
+    COMPACT_TURN_FETCH_LIMIT: int = 500  # const-ok: compaction fetch default (#1662)
     """Bulk-read limit for compaction turn-fetch (full-history token estimate)."""
 
     SUMMARY_TURN_LIMIT: int = 20  # const-ok: named config default

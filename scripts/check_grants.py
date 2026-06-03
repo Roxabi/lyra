@@ -65,6 +65,16 @@ RESOURCES = [
         None,
     ),
     (
+        "publisher",
+        "gh-helper",
+        "gh-helper",
+        [
+            "lyra.gh.mint_failure.>",
+        ],
+        None,
+        None,
+    ),
+    (
         "kv",
         "lyra_outbound_audio_sent",
         "hub",

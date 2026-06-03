@@ -1,0 +1,101 @@
+---
+title: "Helper-side NATS publish for MintFailureEvent (#1078 follow-up)"
+issue: 1082
+status: approved
+tier: F-lite
+date: 2026-06-02
+---
+
+## Problem
+
+The GitHub App token-mint **helper** (`factory.tools.gh_token.daemon`, uid 1501 inside
+`factory-gh.pod`) is the sole minter of installation tokens. By design it is isolated from
+the clipool worker (uid 1500) so the App private key and minted token never reach Claude's
+subprocess — ADR-046 / #1078. That isolation makes its **failures invisible**: on a 401/404,
+timeout, or unreadable PEM the dispenser raises `MintError` (`dispenser.py:161`), logs a
+warning to its own uid-1501 journal, and returns `error=mint failed` to the caller. No alert
+reaches operators.
+
+The consumer half is already built and **inert**: the `MintFailureEvent` schema
+(`roxabi_contracts/gh/models.py`), the `gh_mint_failure(machine)` subject helper, and the hub
+`MintFailureSubscriber` → Telegram path (#1078 T17, #1545) all exist. `acl-matrix.json` even
+declares the hub's *subscribe* grant on `lyra.gh.mint_failure.>` — and its own notes flag that
+"the gh-helper publisher identity is not yet declared … so the grant is inert until that lands
+(TODO T4)". The producer is the missing link:
+
+```
+src/factory/tools/gh_token/helper.py:11
+  TODO(T4): MintError → publish as MintFailureEvent on NATS (roxabi-contracts gh/ schema)
+```
+
+This issue wires the producer: the helper gets its own publish-only NATS identity and emits a
+`MintFailureEvent` on every `MintError`, lighting up the dormant alert path.
+
+## Who
+
+- **Primary:** Roxabi operators — currently blind to token-mint failures; gain a proactive
+  Telegram alert when GitHub credentials break (revoked install, rotated/expired key, API outage).
+- **Secondary:** the `/dev` + clipool GitHub-token consumers — a degraded mint surfaces as an
+  ops signal instead of opaque downstream failures.
+
+## Constraints
+
+- **Preserve the uid-1501/1500 isolation boundary (ADR-046).** Use a dedicated publish-only
+  `gh-helper` nkey — **not** a widened clipool grant (design decided in issue body 2026-05-18,
+  Option A). The identity may publish to `lyra.gh.mint_failure.>` **and nothing else**.
+- **Publish is best-effort and MUST NOT block or break minting.** A NATS outage cannot degrade
+  the helper's primary job (dispensing tokens). Publish failure → log + swallow, justified inline
+  per CLAUDE.md `except Exception` rule.
+- Helper reaches NATS via `roxabi.network`; `factory-gh.pod` is already `After=factory-nats`.
+  Reuse the `roxabi-nats` SDK connection pattern (same as the subscriber) + `roxabi_contracts.gh`.
+- Subject namespace stays `lyra.gh.mint_failure.<machine>` (legacy `lyra.*` prefix retained in
+  contracts — do **not** rename). `machine` sourced from host identity (env).
+- `gen_nkeys.py` auto-derives seeds from `acl-matrix.json` `identities` → adding the identity
+  there generates `gh-helper.seed`. `Makefile:quadlet-secrets-install` has a hardcoded secret
+  list → one new `podman secret create` line.
+- `import-linter` (`.importlinter`) must permit `factory.tools.gh_token` → `roxabi_nats` /
+  `roxabi_contracts` (subscriber in `adapters/nats` already does this — verify layer rule covers tools).
+
+## Out of Scope
+
+- The hub subscriber, Telegram formatting, ops-chat routing (#1078 T17 — done).
+- Renaming the `lyra.*` NATS namespace to `roxabi.*` (separate infra rename, parked).
+- Retry/backoff or circuit-breaking on the mint itself.
+- Durability of failure events (fire-and-forget core NATS, **not** JetStream).
+- RED-GATE V6 / T18 test authoring beyond the unit-level publish assertion — full e2e
+  simulation is the acceptance check, tracked under #1078 T18.
+
+## Premise Validity
+
+**Success in 6 months:** Forcing a mint failure (revoke installation / point PEM at a bad file)
+produces a Telegram alert in the ops chat within seconds, end-to-end. `lyra-acl check` confirms
+the `gh-helper` identity can publish **only** to `lyra.gh.mint_failure.>`. The `TODO(T4)` is gone
+and RED-GATE V6 (T18) is unblocked.
+
+**Failure in 6 months (falsifiable):** A simulated mint failure produces **no** message on
+`lyra.gh.mint_failure.>` and **no** Telegram alert (observable boolean) — OR an ACL check shows
+the helper identity holds publish grants beyond `lyra.gh.mint_failure.>` (isolation regression)
+— OR a NATS outage during a mint is observed to break/stall token dispensing (best-effort
+violated). Any one ⇒ the change failed its purpose.
+
+**Simplest alternative:** Leave the helper log-only — `MintError` to stderr/journald, operators
+scrape container logs or wire a journald alert rule.
+**Why not simplest:** the helper's journal is uid-1501-isolated and not surfaced to the ops
+alert path; log-scraping is reactive, not a push alert; and it strands the already-built
+subscriber + Telegram pipeline. A credential-path failure warrants a proactive alert over the
+one subject the helper is permitted to touch.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (helper NATS-publish wiring + nkey provisioning),
+no new architecture, design pre-decided. ~6 files:
+
+- `deploy/nats/acl-matrix.json` — add publish-only `gh-helper` identity.
+- `Makefile` (`quadlet-secrets-install`) — provision `gh-helper.seed` secret.
+- `deploy/quadlet/factory-gh-helper.container` — mount seed (uid 1501) + NATS URL env.
+- `src/factory/tools/gh_token/daemon.py` — connect NATS, inject publisher into the dispenser.
+- `src/factory/tools/gh_token/{dispenser,helper}.py` — publish `MintFailureEvent` on `MintError`; remove TODO(T4).
+- `tests/tools/...` — mint-failure→publish unit test + publish-only ACL assertion.
+
+Signals: single cohesive subsystem · authoritative design in issue body · all consumer-side
+contracts/scaffolds pre-exist · no unknowns beyond verifying the import-linter layer rule.

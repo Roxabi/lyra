@@ -244,18 +244,18 @@ def test_job_progress_pct_boundary(pct: float | None, should_raise: bool) -> Non
 
 
 def test_subjects_jobs_submit() -> None:
-    """jobs_submit produces lyra.jobs.<job_name>."""
-    assert jobs_submit("vault.add-from-url") == "lyra.jobs.vault.add-from-url"
+    """jobs_submit produces factory.jobs.<job_name>."""
+    assert jobs_submit("vault.add-from-url") == "factory.jobs.vault.add-from-url"
 
 
 def test_subjects_jobs_result() -> None:
-    """jobs_result produces lyra.results.<job_id>."""
-    assert jobs_result("job-uuid-1234") == "lyra.results.job-uuid-1234"
+    """jobs_result produces factory.results.<job_id>."""
+    assert jobs_result("job-uuid-1234") == "factory.results.job-uuid-1234"
 
 
 def test_subjects_jobs_progress() -> None:
-    """jobs_progress produces lyra.progress.<job_id>."""
-    assert jobs_progress("job-uuid-1234") == "lyra.progress.job-uuid-1234"
+    """jobs_progress produces factory.progress.<job_id>."""
+    assert jobs_progress("job-uuid-1234") == "factory.progress.job-uuid-1234"
 
 
 def test_job_envelope_accepts_inbox_reply_to() -> None:

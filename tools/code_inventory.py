@@ -316,6 +316,7 @@ def _looks_like_nats_subject(val: str) -> bool:
     lower = val.lower()
     return (
         lower.startswith("lyra.")
+        or lower.startswith("factory.")
         or lower.startswith("$js.")
         or lower.startswith("$kv.")
         or lower.startswith("_inbox.")
@@ -598,7 +599,10 @@ class CodeInventory:
     def _looks_like_subject_token(self, token: str) -> bool:
         """Return True if token looks like a NATS subject (no dots, project-ns)."""
         lower = token.lower()
-        if any(lower.startswith(p) for p in ("lyra.", "$js.", "$kv.", "_inbox.")):
+        if any(
+            lower.startswith(p)
+            for p in ("lyra.", "factory.", "$js.", "$kv.", "_inbox.")
+        ):
             return True
         return token in self.subjects
 
@@ -668,21 +672,53 @@ class CodeInventory:
         # 3. NATS subject check (before declaring project token dead)
         if _subject_matches_any(token, self.subjects):
             return Verdict(exists=True, kind="subject")
-        # Subject-namespace token not in subjects set → dead subject reference.
-        # $JS/$KV/_inbox namespaces are always NATS-owned (not project prefixes),
-        # so bypass the _PROJECT_PREFIXES guard and return kind=subject directly.
-        lower = token.lower()
-        if any(lower.startswith(p) for p in ("$js.", "$kv.", "_inbox.")):
-            return Verdict(exists=False, kind="subject")
-        if lower.startswith("lyra."):
-            return Verdict(exists=False, kind="subject")
 
-        # 4. Project namespace root not found as module or subject
+        # 3b. Dead subject-namespace disambiguation ($JS/$KV/_inbox, lyra.*, factory.*)
+        namespace_verdict = self._resolve_dead_namespace(token, parts)
+        if namespace_verdict is not None:
+            return namespace_verdict
+
+        # 4. Project namespace root not found as module or subject (non-factory
+        # project prefixes, e.g. roxabi_nats, are pure module namespaces).
         if parts[0] in _PROJECT_PREFIXES:
             return Verdict(exists=False, kind="module")
 
         # 5. External / unknown
         return Verdict(exists=False, kind="unknown")
+
+    def _resolve_dead_namespace(self, token: str, parts: list[str]) -> Verdict | None:
+        """Verdict for a token in a NATS subject namespace, or None if not owned.
+
+        A subject-namespace token not in the live subjects set is a dead subject
+        reference. $JS/$KV/_inbox namespaces are always NATS-owned (not project
+        prefixes), so they bypass the _PROJECT_PREFIXES guard → kind=subject.
+
+        `lyra.` is the legacy NATS subject namespace — a dead `lyra.X` is a dead
+        subject. `factory.` is special post-#1670: it is BOTH the Python package
+        prefix AND the live subject root. Real `factory.*` subjects resolve in the
+        caller via the subjects set; for a DEAD `factory.X` we disambiguate by
+        module shape — a real submodule prefix (`factory.<sub>…` in modules) means
+        a dead module/submodule, otherwise the token is subject-shaped → orphan
+        subject (so check_subject_literals can flag undeclared `factory.*` literals).
+
+        Known limitation (#1670 review): a few prefixes are BOTH a module dir AND a
+        live subject root — `factory.inbound`, `factory.outbound`, `factory.typing`.
+        A *dead* token under one of these (e.g. a not-yet-declared
+        `factory.inbound.newplatform.bot`) resolves here as kind=module, so
+        check_subject_literals would not flag it as an orphan subject. Impact is
+        low: every currently-declared subject in these namespaces is covered by a
+        `>` wildcard in the subjects set and resolves in the caller (step 3) before
+        reaching this method — only a future, undeclared literal would be missed.
+        See test_resolve_dead_factory_module_subject_collision.
+        """
+        lower = token.lower()
+        if any(lower.startswith(p) for p in ("$js.", "$kv.", "_inbox.", "lyra.")):
+            return Verdict(exists=False, kind="subject")
+        if lower.startswith("factory."):
+            if any(".".join(parts[:k]) in self.modules for k in range(2, len(parts))):
+                return Verdict(exists=False, kind="module")
+            return Verdict(exists=False, kind="subject")
+        return None
 
     def _resolve_bare(self, token: str) -> Verdict:
         """Resolve a bare word (no dots).

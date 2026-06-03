@@ -125,7 +125,7 @@ def nats_server_jetstream_url(
     port = _free_port()
     url = f"nats://127.0.0.1:{port}"
     # Isolated store dir per session — without -sd, nats-server defaults to
-    # /tmp/nats/jetstream and the KV_lyra-state stream persists across runs,
+    # /tmp/nats/jetstream and the KV_factory-state stream persists across runs,
     # causing kv.get() to return KeyNotFoundError from stale purge tombstones.
     store_dir = tmp_path_factory.mktemp("nats_js")
     proc = subprocess.Popen(

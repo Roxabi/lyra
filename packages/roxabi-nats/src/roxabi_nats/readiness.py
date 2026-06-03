@@ -1,6 +1,6 @@
 """NATS readiness probe — hub readiness responder and adapter probe.
 
-The hub writes ``hub.ready = b'true'`` to the ``lyra-state`` KV bucket via
+The hub writes ``hub.ready = b'true'`` to the ``factory-state`` KV bucket via
 ``announce_hub_ready()``; adapters call ``wait_for_hub()`` which reads the
 same key via JetStream KV (fast path) or watches for it (watch path).
 
@@ -26,7 +26,7 @@ from nats.aio.subscription import Subscription
 
 log = logging.getLogger(__name__)
 
-READINESS_SUBJECT = "lyra.system.ready"
+READINESS_SUBJECT = "factory.system.ready"
 PROBE_TIMEOUT_S = 30.0
 
 
@@ -38,7 +38,7 @@ class _HasSubscriptionCount(Protocol):
 
 
 async def _open_or_create_lyra_state_kv(js: object) -> KeyValue:
-    """Open or create the lyra-state KV bucket (hub-only).
+    """Open or create the factory-state KV bucket (hub-only).
 
     Handles the concurrent-creation race: if create_key_value raises
     BadRequestError (another process won the race between our key_value miss
@@ -48,21 +48,21 @@ async def _open_or_create_lyra_state_kv(js: object) -> KeyValue:
     from nats.js.errors import BadRequestError, BucketNotFoundError
 
     try:
-        return await js.key_value("lyra-state")  # type: ignore[union-attr]
+        return await js.key_value("factory-state")  # type: ignore[union-attr]
     except BucketNotFoundError:
         pass
 
     try:
         return await js.create_key_value(  # type: ignore[union-attr]
-            KeyValueConfig(bucket="lyra-state", storage=StorageType.FILE)
+            KeyValueConfig(bucket="factory-state", storage=StorageType.FILE)
         )
     except BadRequestError:
         # Lost the creation race — bucket exists now; open it.
-        return await js.key_value("lyra-state")  # type: ignore[union-attr]
+        return await js.key_value("factory-state")  # type: ignore[union-attr]
 
 
 async def announce_hub_ready(nc: NATS) -> None:
-    """Write hub.ready = b'true' to lyra-state KV bucket on hub startup.
+    """Write hub.ready = b'true' to factory-state KV bucket on hub startup.
 
     Adapters call wait_for_hub() to read this key instead of using a
     request/reply probe — compatible with allow_responses: false ACLs.
@@ -78,7 +78,7 @@ async def announce_hub_ready(nc: NATS) -> None:
         log.warning("Hub KV unavailable — JetStream not enabled")
         return
     except Exception:
-        log.exception("announce_hub_ready: unexpected error opening lyra-state KV")
+        log.exception("announce_hub_ready: unexpected error opening factory-state KV")
         return
 
     await kv.put("hub.ready", b"true")
@@ -88,7 +88,7 @@ async def announce_hub_ready(nc: NATS) -> None:
 async def start_readiness_responder(
     nc: NATS, buses: Sequence[_HasSubscriptionCount]
 ) -> Subscription:
-    """Subscribe to ``lyra.system.ready`` and reply with hub status on each request.
+    """Subscribe to ``factory.system.ready`` and reply with hub status on each request.
 
     Args:
         nc: Already-connected NATS client.
@@ -144,7 +144,7 @@ async def _kv_watch_for_ready(kv: KeyValue, remaining: float) -> bool:
 
 
 async def _open_kv_with_retry(js: object, deadline: float) -> KeyValue | None:
-    """Wait for hub to provision the lyra-state bucket, retrying on absence.
+    """Wait for hub to provision the factory-state bucket, retrying on absence.
 
     Returns the open KeyValue handle, or None when the deadline expires before
     the bucket appears. Raises on errors other than BucketNotFoundError (e.g.
@@ -154,7 +154,7 @@ async def _open_kv_with_retry(js: object, deadline: float) -> KeyValue | None:
 
     while True:
         try:
-            return await js.key_value("lyra-state")  # type: ignore[union-attr]
+            return await js.key_value("factory-state")  # type: ignore[union-attr]
         except BucketNotFoundError:
             remaining = deadline - time.monotonic()
             if remaining <= 0.5:
@@ -172,7 +172,7 @@ async def wait_for_hub(
     Compatible with allow_responses: false ACLs — no inbox subjects used.
     Returns True if hub.ready key is found, False on timeout or JetStream unavailable.
 
-    Adapters must not create the lyra-state bucket — only the hub provisions it
+    Adapters must not create the factory-state bucket — only the hub provisions it
     via announce_hub_ready(). If the bucket is absent, this function retries
     key_value() until the hub provisions it or the timeout expires.
 

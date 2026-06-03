@@ -187,7 +187,7 @@ Every NATS identity must connect with `inbox_prefix="_INBOX.<identity-name>"`. T
 
 ### Security event audit
 
-`CliPool` subprocess spawns (carrying `skip_permissions`, tools allowlist, model, PID, pool_id, agent_name) are audited via a port/adapter split that respects import layer boundaries. `AuditSink` is a `Protocol` defined in `factory.core.cli` — the port. `JetStreamAuditSink` in `factory.infrastructure.audit` is the concrete adapter; it publishes `SecurityEvent` (a `roxabi-contracts` Pydantic model) to the `LYRA_AUDIT` JetStream stream (`lyra.audit.>`, FILE storage, 90-day retention, 1 GiB cap). When JetStream is unavailable, the sink falls back to the lyra.security logger without crashing the runtime. Both `hub_standalone.py` and the unified `factory start` bootstrap (`wiring_helpers.py:309`) wire the sink. → ADR-057
+`CliPool` subprocess spawns (carrying `skip_permissions`, tools allowlist, model, PID, pool_id, agent_name) are audited via a port/adapter split that respects import layer boundaries. `AuditSink` is a `Protocol` defined in `factory.core.cli` — the port. `JetStreamAuditSink` in `factory.infrastructure.audit` is the concrete adapter; it publishes `SecurityEvent` (a `roxabi-contracts` Pydantic model) to the `FACTORY_AUDIT` JetStream stream (`factory.audit.>`, FILE storage, 90-day retention, 1 GiB cap). When JetStream is unavailable, the sink falls back to the lyra.security logger without crashing the runtime. Both `hub_standalone.py` and the unified `factory start` bootstrap (`wiring_helpers.py:309`) wire the sink. → ADR-057
 
 ### ACL request/reply derivation
 
@@ -204,7 +204,7 @@ Responder inbox grants are no longer hand-written. A `request_reply_flows` secti
 - Every supervisor program references its own named seed file; missing seed → process exits non-zero (no silent fallback to another identity's seed).
 - Every identity's `nats_connect` call supplies `inbox_prefix="_INBOX.<identity>"` — the bus-wide _INBOX.> grant is retired for all roles.
 - Responder inbox grants are derived from `request_reply_flows` in `acl-matrix.json` — no hand-written `_inbox.<requester>.>` entries in identity publish lists.
-- `CliPool` subprocess spawns are audited to `LYRA_AUDIT` JetStream stream; NATS unavailability degrades to logger, not crash.
+- `CliPool` subprocess spawns are audited to `FACTORY_AUDIT` JetStream stream; NATS unavailability degrades to logger, not crash.
 - Advisory provisioning checks (`warn_subid_overlap`) distinguish missing files (skip silently) from unreadable files (warn operator); they do not suppress the check without notice.
 
 ### See also

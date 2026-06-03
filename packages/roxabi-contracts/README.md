@@ -73,10 +73,10 @@ from roxabi_contracts.voice import (
 
 `SUBJECTS` is a frozen namespace exposing:
 
-- `SUBJECTS.tts_request` → `"lyra.voice.tts.request"`
-- `SUBJECTS.tts_heartbeat` → `"lyra.voice.tts.heartbeat"`
-- `SUBJECTS.stt_request` → `"lyra.voice.stt.request"`
-- `SUBJECTS.stt_heartbeat` → `"lyra.voice.stt.heartbeat"`
+- `SUBJECTS.tts_request` → `"factory.voice.tts.request"`
+- `SUBJECTS.tts_heartbeat` → `"factory.voice.tts.heartbeat"`
+- `SUBJECTS.stt_request` → `"factory.voice.stt.request"`
+- `SUBJECTS.stt_heartbeat` → `"factory.voice.stt.heartbeat"`
 - `SUBJECTS.tts_workers` → `"tts_workers"` (queue group)
 - `SUBJECTS.stt_workers` → `"stt_workers"` (queue group)
 
@@ -121,9 +121,9 @@ from roxabi_contracts.jobs import JobEnvelope, JobResult, JobProgress, jobs_subm
 
 | Subject | Model | Transport | Purpose |
 |---|---|---|---|
-| `lyra.jobs.<job_name>` | `JobEnvelope` | JetStream durable | Submit a job |
-| `lyra.results.<job_id>` | `JobResult` | Core NATS reply | Job completion reply |
-| `lyra.progress.<job_id>` | `JobProgress` | Core NATS pub/sub | Streaming progress (best-effort) |
+| `factory.jobs.<job_name>` | `JobEnvelope` | JetStream durable | Submit a job |
+| `factory.results.<job_id>` | `JobResult` | Core NATS reply | Job completion reply |
+| `factory.progress.<job_id>` | `JobProgress` | Core NATS pub/sub | Streaming progress (best-effort) |
 
 Subject strings are produced by the helpers `jobs_submit(job_name)`, `jobs_result(job_id)`, and `jobs_progress(job_id)`. Each helper validates its argument via `validate_job_token` (rejects empty strings and NATS wildcard characters).
 

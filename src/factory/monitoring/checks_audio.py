@@ -1,7 +1,7 @@
 """Outbound-audio JetStream health checks (#1482 T11).
 
 Two probes:
-  check_audio_consumer_lag  — polls NATS HTTP /jsz for LYRA_OUTBOUND_AUDIO
+  check_audio_consumer_lag  — polls NATS HTTP /jsz for FACTORY_OUTBOUND_AUDIO
                                consumer num_pending and oldest-message age
   check_audio_stream_usage  — polls NATS HTTP /jsz for stream num_bytes vs
                                max_bytes (stream-fullness alert)
@@ -10,9 +10,9 @@ Both use the NATS HTTP monitoring API at nats_monitor_url (default
 http://127.0.0.1:8222), the same base URL used by check_nats_varz in
 checks_varz.py.
 
-Subject grammar: lyra.outbound.audio.<platform>.<bot_id>
-Stream: LYRA_OUTBOUND_AUDIO  (max_age=86400s, max_bytes=32MiB, AckWait=90s,
-                               MaxDeliver=5)
+Subject grammar: factory.outbound.audio.<platform>.<bot_id>
+Stream: FACTORY_OUTBOUND_AUDIO  (max_age=86400s, max_bytes=32MiB, AckWait=90s,
+                                 MaxDeliver=5)
 Consumers: outbound-audio-telegram, outbound-audio-discord (durable pull)
 
 Alert thresholds (configurable via MonitoringConfig):
@@ -33,11 +33,13 @@ from datetime import datetime, timezone
 
 import httpx
 
+from roxabi_contracts.outbound.subjects import STREAM_AUDIO
+
 from .models import CheckResult
 
 log = logging.getLogger(__name__)
 
-_STREAM_NAME = "LYRA_OUTBOUND_AUDIO"
+_STREAM_NAME = STREAM_AUDIO
 # Consumers to check: outbound-audio-<platform>
 _CONSUMER_PREFIXES = ("outbound-audio-",)
 
@@ -86,9 +88,9 @@ async def check_audio_consumer_lag(
     lag_age_warn_s: int = 72000,
     timeout: int = 5,
 ) -> CheckResult:
-    """Check LYRA_OUTBOUND_AUDIO consumer lag via NATS HTTP /jsz.
+    """Check FACTORY_OUTBOUND_AUDIO consumer lag via NATS HTTP /jsz.
 
-    Queries ``/jsz?consumers=1&name=LYRA_OUTBOUND_AUDIO`` and iterates
+    Queries ``/jsz?consumers=1&name=FACTORY_OUTBOUND_AUDIO`` and iterates
     over all consumers whose names start with ``outbound-audio-``.
 
     Fails if any consumer has:
@@ -195,9 +197,9 @@ async def check_audio_stream_usage(
     warn_pct: int = 80,
     timeout: int = 5,
 ) -> CheckResult:
-    """Check LYRA_OUTBOUND_AUDIO stream byte usage vs max_bytes.
+    """Check FACTORY_OUTBOUND_AUDIO stream byte usage vs max_bytes.
 
-    Queries ``/jsz?name=LYRA_OUTBOUND_AUDIO`` (no consumers detail needed).
+    Queries ``/jsz?name=FACTORY_OUTBOUND_AUDIO`` (no consumers detail needed).
     Fails when ``state.bytes / config.max_bytes >= warn_pct / 100``.
 
     Falls back to the compiled-in 32 MiB constant if ``config.max_bytes``

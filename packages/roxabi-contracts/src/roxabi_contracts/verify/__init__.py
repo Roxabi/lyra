@@ -1,6 +1,6 @@
 """ACL-verification contract surface.
 
-Public API: SUBJECTS namespace + deny-probe subject helper. ``lyra.verify.deny``
+Public API: SUBJECTS namespace + deny-probe subject helper. ``factory.verify.deny``
 is a reserved sentinel (ungranted negative-control), not a wire schema — see
 ``subjects`` for the rationale.
 """

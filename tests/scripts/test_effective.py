@@ -48,7 +48,7 @@ class TestEffectiveGrantsIncludesGrouplessIdentity:
     ) -> None:
         """turn-writer (no 'groups', no request_reply_flow) is present in
         effective_grants and its publish list contains its inline subject
-        $JS.API.STREAM.CREATE.LYRA_TURNS.
+        $JS.API.STREAM.CREATE.FACTORY_TURNS.
 
         Guards the requirement: group-less identities must NOT be silently
         dropped (e.g. by a KeyError on the missing 'groups' key or a wrong
@@ -65,7 +65,7 @@ class TestEffectiveGrantsIncludesGrouplessIdentity:
         assert "groups" not in tw_identity, (
             "turn-writer must have no 'groups' key for this test to be meaningful"
         )
-        assert "$JS.API.STREAM.CREATE.LYRA_TURNS" in tw_identity["publish"]
+        assert "$JS.API.STREAM.CREATE.FACTORY_TURNS" in tw_identity["publish"]
 
         # Act
         grants = effective_grants(prod_matrix)
@@ -76,23 +76,23 @@ class TestEffectiveGrantsIncludesGrouplessIdentity:
             "group-less identities must not be dropped"
         )
         pub, _ = grants["turn-writer"]
-        assert "$JS.API.STREAM.CREATE.LYRA_TURNS" in pub, (
+        assert "$JS.API.STREAM.CREATE.FACTORY_TURNS" in pub, (
             "turn-writer effective publish must contain its inline subject "
-            "$JS.API.STREAM.CREATE.LYRA_TURNS"
+            "$JS.API.STREAM.CREATE.FACTORY_TURNS"
         )
 
 
 class TestEffectiveGrantsExpandsGroups:
     def test_effective_grants_expands_groups(self, prod_matrix: LoadedMatrix) -> None:
-        """telegram-adapter's effective publish contains $JS.ACK.LYRA_OUTBOUND_AUDIO.>
-        which comes exclusively from the audio-consumer group and is absent from
-        telegram-adapter's inline publish list.
+        """telegram-adapter's effective publish contains
+        $JS.ACK.FACTORY_OUTBOUND_AUDIO.> which comes exclusively from the
+        audio-consumer group and is absent from telegram-adapter's inline publish list.
 
         Proves that group expansion fires: if the for-gname loop in effective_grants
         is removed, the audio-consumer subjects are missing from the result.
 
         # verified: deleting the group-expansion loop causes this assertion to fail —
-        # $JS.ACK.LYRA_OUTBOUND_AUDIO.> is only present in audio-consumer.publish,
+        # $JS.ACK.FACTORY_OUTBOUND_AUDIO.> is only present in audio-consumer.publish,
         # not in telegram-adapter's inline publish list.
         """
         # Arrange — verify the matrix invariants this test depends on
@@ -102,14 +102,14 @@ class TestEffectiveGrantsExpandsGroups:
             "telegram-adapter must reference the audio-consumer group"
         )
         # The subject must NOT be in the inline publish list
-        assert "$JS.ACK.LYRA_OUTBOUND_AUDIO.>" not in tg_identity["publish"], (
-            "$JS.ACK.LYRA_OUTBOUND_AUDIO.> must not be in telegram-adapter's "
+        assert "$JS.ACK.FACTORY_OUTBOUND_AUDIO.>" not in tg_identity["publish"], (
+            "$JS.ACK.FACTORY_OUTBOUND_AUDIO.> must not be in telegram-adapter's "
             "inline publish — it must come from the group only"
         )
         # The subject must be in the group
         group_pub = prod_matrix.get("groups", {})["audio-consumer"]["publish"]
-        assert "$JS.ACK.LYRA_OUTBOUND_AUDIO.>" in group_pub, (
-            "$JS.ACK.LYRA_OUTBOUND_AUDIO.> must be in audio-consumer group publish"
+        assert "$JS.ACK.FACTORY_OUTBOUND_AUDIO.>" in group_pub, (
+            "$JS.ACK.FACTORY_OUTBOUND_AUDIO.> must be in audio-consumer group publish"
         )
 
         # Act
@@ -118,9 +118,9 @@ class TestEffectiveGrantsExpandsGroups:
         # Assert — group-sourced subject present after expansion
         assert "telegram-adapter" in grants
         pub, _ = grants["telegram-adapter"]
-        assert "$JS.ACK.LYRA_OUTBOUND_AUDIO.>" in pub, (
+        assert "$JS.ACK.FACTORY_OUTBOUND_AUDIO.>" in pub, (
             "telegram-adapter effective publish must contain "
-            "$JS.ACK.LYRA_OUTBOUND_AUDIO.> after audio-consumer group expansion"
+            "$JS.ACK.FACTORY_OUTBOUND_AUDIO.> after audio-consumer group expansion"
         )
 
 

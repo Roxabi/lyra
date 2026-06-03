@@ -53,7 +53,7 @@ from tests.helpers.messages import make_test_blobref
 # ---------------------------------------------------------------------------
 
 _DURABLE = "outbound-audio-telegram"
-_FILTER = "lyra.outbound.audio.telegram.>"
+_FILTER = "factory.outbound.audio.telegram.>"
 
 
 def _make_consumer(
@@ -127,7 +127,7 @@ def _make_nats_msg(
 
     msg = MagicMock()
     msg.data = data
-    msg.subject = "lyra.outbound.audio.telegram.123456"
+    msg.subject = "factory.outbound.audio.telegram.123456"
     msg.ack = AsyncMock()
     msg.nak = AsyncMock()
     msg.term = AsyncMock()
@@ -361,7 +361,7 @@ async def test_sc4_publish_fail_dispatches_notification_no_raise() -> None:
     # Assert (a): notification dispatched via legacy text subject
     nc.publish.assert_awaited_once()
     notif_subject, notif_payload_bytes = nc.publish.await_args.args
-    assert notif_subject == "lyra.outbound.telegram.main"
+    assert notif_subject == "factory.outbound.telegram.main"
 
     notif_data = json.loads(notif_payload_bytes)
     assert notif_data["type"] == "send"
@@ -397,7 +397,7 @@ async def test_sc4_publish_fail_timeout_dispatches_notification() -> None:
     # Assert: notification sent to legacy text subject
     nc.publish.assert_awaited_once()
     notif_subject, _ = nc.publish.await_args.args
-    assert notif_subject == "lyra.outbound.telegram.main"
+    assert notif_subject == "factory.outbound.telegram.main"
 
 
 @pytest.mark.anyio

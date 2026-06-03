@@ -22,17 +22,17 @@ from factory.ops_audit import audit_matrix_inbox_drift, format_drift_finding
 
 _CLEAN_IDENTITIES: dict[str, dict] = {
     "hub": {
-        "publish": ["lyra.outbound.telegram.>"],
-        "subscribe": ["lyra.inbound.telegram.>", "_INBOX.hub.>"],
+        "publish": ["factory.outbound.telegram.>"],
+        "subscribe": ["factory.inbound.telegram.>", "_INBOX.hub.>"],
     },
     "telegram-adapter": {
-        "publish": ["lyra.inbound.telegram.>"],
-        "subscribe": ["lyra.outbound.telegram.>", "_INBOX.telegram-adapter.>"],
+        "publish": ["factory.inbound.telegram.>"],
+        "subscribe": ["factory.outbound.telegram.>", "_INBOX.telegram-adapter.>"],
     },
     # satellite — must not be flagged even with bare _INBOX.>
     "voice-tts": {
-        "publish": ["lyra.voice.tts.heartbeat", "_INBOX.>"],
-        "subscribe": ["lyra.voice.tts.request.>"],
+        "publish": ["factory.voice.tts.heartbeat", "_INBOX.>"],
+        "subscribe": ["factory.voice.tts.request.>"],
     },
 }
 
@@ -47,7 +47,7 @@ def test_audit_clean_returns_empty() -> None:
 
 _DRIFT_HUB: dict[str, dict] = {
     "hub": {
-        "publish": ["lyra.outbound.telegram.>"],
+        "publish": ["factory.outbound.telegram.>"],
         "subscribe": ["_INBOX.>", "lyra.>"],
     },
 }
@@ -68,7 +68,7 @@ def test_audit_flags_hub_subscribe_drift() -> None:
 
 _DRIFT_LOWERCASE: dict[str, dict] = {
     "tts-adapter": {
-        "publish": ["lyra.voice.tts.heartbeat"],
+        "publish": ["factory.voice.tts.heartbeat"],
         "subscribe": ["_INBOX.tts-adapter.>", "_inbox.>"],
     },
 }
@@ -90,7 +90,7 @@ def test_audit_flags_lowercase_inbox_drift() -> None:
 _SATELLITE_ONLY: dict[str, dict] = {
     "voice-tts": {
         "publish": ["_INBOX.>"],
-        "subscribe": ["lyra.voice.tts.request.>"],
+        "subscribe": ["factory.voice.tts.request.>"],
     },
 }
 
@@ -106,15 +106,15 @@ def test_audit_satellite_excluded() -> None:
 _MULTI_DRIFT: dict[str, dict] = {
     "hub": {
         "publish": ["_INBOX.>"],
-        "subscribe": ["lyra.inbound.telegram.>"],
+        "subscribe": ["factory.inbound.telegram.>"],
     },
     "discord-adapter": {
-        "publish": ["lyra.inbound.discord.>"],
+        "publish": ["factory.inbound.discord.>"],
         "subscribe": ["_INBOX.>"],
     },
     # clean one in the middle — should not appear
     "telegram-adapter": {
-        "publish": ["lyra.inbound.telegram.>"],
+        "publish": ["factory.inbound.telegram.>"],
         "subscribe": ["_INBOX.telegram-adapter.>"],
     },
 }

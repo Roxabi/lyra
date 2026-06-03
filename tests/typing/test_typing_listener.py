@@ -39,7 +39,7 @@ async def test_dispatch_started_calls_manager_start_with_factory() -> None:
         return _factory
 
     listener = TypingListener(
-        nc, "lyra.typing.discord.x", resolver, builder, mgr, enabled=True
+        nc, "factory.typing.discord.x", resolver, builder, mgr, enabled=True
     )
     scope = WorkScope(platform="discord", bot_id="x", scope_id=42, trace_id="t")
     await listener._on_msg(_make_msg(TypingEvent(kind="started", scope=scope, ts=1.0)))

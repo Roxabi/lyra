@@ -1,6 +1,6 @@
 """TTS engine selection logic — parameter merging for voiceCLI generate calls.
 
-Adapter concern: voiceCLI-specific kwarg construction. Lives in lyra.nats (not core/)
+Adapter concern: voiceCLI-specific kwarg construction. Lives in factory.nats (not core/)
 because it references AgentTTSConfig (via TYPE_CHECKING) and is consumed exclusively
 by nats_tts_client.py. Dead code TTSConfig/load_tts_config not included (issue #1221).
 """

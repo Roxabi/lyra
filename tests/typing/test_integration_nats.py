@@ -52,7 +52,7 @@ async def test_publisher_to_listener_e2e_discord(nats_server_url: str) -> None:
 
     listener = TypingListener(
         nc_sub,
-        "lyra.typing.discord.x",
+        "factory.typing.discord.x",
         resolver,
         builder,
         mgr,

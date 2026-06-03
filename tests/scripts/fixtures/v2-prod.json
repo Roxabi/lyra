@@ -1,37 +1,37 @@
 {
   "version": "2",
   "request_reply_flows": [
-    { "requester": "hub", "responder": "clipool-worker", "subject": "lyra.clipool.cmd" }
+    { "requester": "hub", "responder": "clipool-worker", "subject": "factory.clipool.cmd" }
   ],
   "identities": {
     "hub": {
       "status": "active",
       "created_at": "2026-04-21",
-      "owner": "lyra",
+      "owner": "factory",
       "description": "Hub core — routes inbound messages, dispatches to voice/LLM/image/clipool workers.",
       "allow_responses": false,
       "publish": [
-        "lyra.outbound.telegram.>",
-        "lyra.outbound.discord.>",
-        "lyra.voice.tts.request.>",
-        "lyra.voice.stt.request.>",
-        "lyra.llm.generate.request",
-        "lyra.image.generate.request",
-        "lyra.clipool.cmd",
-        "lyra.clipool.control",
-        "lyra.audit.>",
+        "factory.outbound.telegram.>",
+        "factory.outbound.discord.>",
+        "factory.voice.tts.request.>",
+        "factory.voice.stt.request.>",
+        "factory.llm.generate.request",
+        "factory.image.generate.request",
+        "factory.clipool.cmd",
+        "factory.clipool.control",
+        "factory.audit.>",
         "$JS.API.>",
-        "$KV.lyra-state.>"
+        "$KV.factory-state.>"
       ],
       "subscribe": [
-        "lyra.inbound.telegram.>",
-        "lyra.inbound.discord.>",
-        "lyra.voice.tts.heartbeat",
-        "lyra.voice.stt.heartbeat",
-        "lyra.llm.heartbeat",
-        "lyra.system.ready",
-        "lyra.image.heartbeat",
-        "lyra.clipool.heartbeat",
+        "factory.inbound.telegram.>",
+        "factory.inbound.discord.>",
+        "factory.voice.tts.heartbeat",
+        "factory.voice.stt.heartbeat",
+        "factory.llm.heartbeat",
+        "factory.system.ready",
+        "factory.image.heartbeat",
+        "factory.clipool.heartbeat",
         "_inbox.hub.>"
       ]
     },
@@ -42,31 +42,31 @@
       "description": "voicecli nats-serve TTS worker.",
       "allow_responses": true,
       "publish": [
-        "lyra.voice.tts.heartbeat",
-        "lyra.system.ready"
+        "factory.voice.tts.heartbeat",
+        "factory.system.ready"
       ],
       "subscribe": [
-        "lyra.voice.tts.request",
-        "lyra.voice.tts.request.>",
+        "factory.voice.tts.request",
+        "factory.voice.tts.request.>",
         "_inbox.voice-tts.>"
       ]
     },
     "clipool-worker": {
       "status": "active",
       "created_at": "2026-04-27",
-      "owner": "lyra",
+      "owner": "factory",
       "description": "CliPool NATS worker — receives claude subprocess dispatch commands from hub.",
       "allow_responses": true,
       "publish": [
-        "lyra.clipool.heartbeat",
-        "lyra.system.ready",
+        "factory.clipool.heartbeat",
+        "factory.system.ready",
         "$JS.API.>"
       ],
       "subscribe": [
-        "lyra.clipool.cmd",
-        "lyra.clipool.control",
+        "factory.clipool.cmd",
+        "factory.clipool.control",
         "_inbox.clipool-worker.>",
-        "$KV.lyra-state.>"
+        "$KV.factory-state.>"
       ]
     }
   }

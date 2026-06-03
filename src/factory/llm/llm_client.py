@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-_SUBJECT_CONTROL = "lyra.clipool.control"
+_SUBJECT_CONTROL = "factory.clipool.control"
 
 
 class _CliSessionStore(Protocol):

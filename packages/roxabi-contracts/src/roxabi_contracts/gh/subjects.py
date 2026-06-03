@@ -21,13 +21,13 @@ class _Subjects:
     The dynamic suffix (machine) is appended by the helper function below.
     """
 
-    mint_failure_prefix: Literal["lyra.gh.mint_failure"] = "lyra.gh.mint_failure"
+    mint_failure_prefix: Literal["factory.gh.mint_failure"] = "factory.gh.mint_failure"
 
 
 SUBJECTS = _Subjects()
 
 
 def gh_mint_failure(machine: str) -> str:
-    """Mint-failure subject: lyra.gh.mint_failure.<machine>."""
+    """Mint-failure subject: factory.gh.mint_failure.<machine>."""
     validate_job_token(machine)
-    return f"lyra.gh.mint_failure.{machine}"
+    return f"factory.gh.mint_failure.{machine}"

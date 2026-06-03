@@ -19,7 +19,7 @@ The PR #1535 implementation used a **textual resolver**: it guessed a token's se
 
 - `module.ClassName` was mis-resolved as a module path → 6 live classes (`OutboundEmitter`, `LlmClient`, and others) were wrongly baselined as dead.
 - Substring `grep` with no word boundary → a deleted symbol "resolved" via a longer name that happened to contain it (`WorkerPool` passing because `WorkerPoolClient` exists) — a structural false negative.
-- NATS subjects (`lyra.clipool.cmd`) were misclassified as dead Python modules — the resolver had no subject source.
+- NATS subjects (`factory.clipool.cmd`) were misclassified as dead Python modules — the resolver had no subject source.
 - Single-word class names (`Hub`) were silently skipped by an `upper >= 2` heuristic; `_SKIP_SYMBOLS` was hand-maintained, inverting the "code is the SSoT" axiom.
 - Approximately 25 of 121 baseline entries were resolver artefacts, not genuine doc-rot — corrupting the #1536 burn-down and violating the "falsification step" principle identified in prior feedback.
 

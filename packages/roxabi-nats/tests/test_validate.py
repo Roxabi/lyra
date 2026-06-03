@@ -20,7 +20,7 @@ class TestValidToken:
             "a",
             "Z",
             "0",
-            "lyra.inbound.telegram.bot_1",
+            "factory.inbound.telegram.bot_1",
             "queue-group-alpha",
             "hub_primary",
             "v1.2.3",
@@ -40,7 +40,7 @@ class TestRejectedToken:
             "lyra.>",
             ">",
             "*",
-            "lyra.inbound.*.bot",
+            "factory.inbound.*.bot",
             "lyra inbound",
             " leading-space",
             "trailing-space ",
@@ -101,7 +101,7 @@ class TestRejectedSingleToken:
     @pytest.mark.parametrize(
         "value",
         [
-            "lyra.inbound",
+            "factory.inbound",
             "v1.2.3",
             "a.b.c",
             "lyra.*",

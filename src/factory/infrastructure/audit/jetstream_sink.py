@@ -1,4 +1,7 @@
-"""JetStreamAuditSink — publishes SecurityEvent to NATS JetStream LYRA_AUDIT stream."""
+"""JetStreamAuditSink — publishes SecurityEvent to NATS JetStream.
+
+Stream: FACTORY_AUDIT.
+"""
 
 from __future__ import annotations
 
@@ -16,7 +19,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 _security_log = logging.getLogger("lyra.security")
 
-_SUBJECT_PREFIX = "lyra.audit.security"
+_SUBJECT_PREFIX = "factory.audit.security"
 _SUBJECT_PRIVILEGED = f"{_SUBJECT_PREFIX}.privileged"
 _SUBJECT_NORMAL = f"{_SUBJECT_PREFIX}.normal"
 
@@ -37,7 +40,7 @@ class JetStreamAuditSink:
         self._degraded: bool = False
 
     async def provision(self, nc: NatsClient) -> None:
-        """Create or update LYRA_AUDIT stream; mark degraded if unavailable."""
+        """Create or update FACTORY_AUDIT stream; mark degraded if unavailable."""
         from nats.js.api import RetentionPolicy, StorageType, StreamConfig
         from nats.js.errors import BadRequestError
 
@@ -52,8 +55,8 @@ class JetStreamAuditSink:
             return
 
         cfg = StreamConfig(
-            name="LYRA_AUDIT",
-            subjects=["lyra.audit.>"],
+            name="FACTORY_AUDIT",
+            subjects=["factory.audit.>"],
             retention=RetentionPolicy.LIMITS,
             storage=StorageType.FILE,
             max_age=90 * 86400,

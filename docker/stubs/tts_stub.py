@@ -2,11 +2,11 @@
 """TTS NATS stub — returns silent WAV bytes, publishes heartbeats.
 
 Subscribes to:
-  lyra.voice.tts.request           (queue group: tts-workers)
-  lyra.voice.tts.request.<worker_id>  (direct routing for load-aware #603)
+  factory.voice.tts.request           (queue group: tts-workers)
+  factory.voice.tts.request.<worker_id>  (direct routing for load-aware #603)
 
 Publishes:
-  lyra.voice.tts.heartbeat         (every 5s)
+  factory.voice.tts.heartbeat         (every 5s)
 
 Response envelope matches `roxabi_contracts.voice.TtsResponse` (ok,
 request_id, contract_version, trace_id, issued_at, audio_b64, mime_type,
@@ -83,7 +83,7 @@ async def heartbeat_loop(nc: nats.aio.client.Client) -> None:
             "uptime_s": int(time.monotonic() - _start),
             "ts": int(time.time()),
         }
-        await nc.publish("lyra.voice.tts.heartbeat", json.dumps(payload).encode())
+        await nc.publish("factory.voice.tts.heartbeat", json.dumps(payload).encode())
         await asyncio.sleep(HB_INTERVAL)
 
 
@@ -91,8 +91,10 @@ async def main() -> None:
     print(f"[tts-stub] connecting to {NATS_URL} as {WORKER_ID}", flush=True)
     nc = await nats.connect(NATS_URL)
 
-    await nc.subscribe("lyra.voice.tts.request", queue="tts-workers", cb=handle_request)
-    await nc.subscribe(f"lyra.voice.tts.request.{WORKER_ID}", cb=handle_request)
+    await nc.subscribe(
+        "factory.voice.tts.request", queue="tts-workers", cb=handle_request
+    )
+    await nc.subscribe(f"factory.voice.tts.request.{WORKER_ID}", cb=handle_request)
     print(f"[tts-stub] ready — queue=tts-workers worker={WORKER_ID}", flush=True)
 
     loop = asyncio.get_running_loop()

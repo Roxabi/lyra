@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Bootstrap lyra-events and lyra-metrics JetStream streams.
+"""Bootstrap factory-events and factory-metrics JetStream streams.
 
 Idempotent — safe to run multiple times. Uses the add→BadRequestError→update
 pattern mirroring turn_writer/stream_setup.py.
 
 Retention policy (ops decision #1183):
-  lyra-events  — 24 h hot  (MaxAge=86400 s)
-  lyra-metrics — 7 d warm (MaxAge=604800 s)
+  factory-events  — 24 h hot  (MaxAge=86400 s)
+  factory-metrics — 7 d warm (MaxAge=604800 s)
 
 Usage (from repo root, after NATS is running):
     uv run python deploy/nats/bootstrap_streams.py
@@ -38,16 +38,16 @@ NKEY_PATH = os.environ.get(
 )
 
 STREAMS: dict[str, dict] = {
-    "lyra-events": {
-        "subjects": ["lyra.event.>"],
+    "factory-events": {
+        "subjects": ["factory.event.>"],
         "retention": RetentionPolicy.LIMITS,
         "max_age": 24 * 60 * 60,  # 24 hours (hot)
         "max_bytes": 512 * 1024 * 1024,  # 512 MiB
         "storage": StorageType.FILE,
         "duplicate_window": 120,  # 2 min dedup
     },
-    "lyra-metrics": {
-        "subjects": ["lyra.metric.>"],
+    "factory-metrics": {
+        "subjects": ["factory.metric.>"],
         "retention": RetentionPolicy.LIMITS,
         "max_age": 7 * 24 * 60 * 60,  # 7 days (warm)
         "max_bytes": 256 * 1024 * 1024,  # 256 MiB
@@ -88,7 +88,11 @@ async def main() -> int:
         log.error("NKey seed not found at %s", NKEY_PATH)
         return 1
 
-    kwargs: dict = {"servers": NATS_URL, "nkeys_seed_str": seed, "inbox_prefix": "_inbox.hub"}
+    kwargs: dict = {
+        "servers": NATS_URL,
+        "nkeys_seed_str": seed,
+        "inbox_prefix": "_inbox.hub",
+    }
     nc = None
     try:
         nc = await nats.connect(**kwargs)

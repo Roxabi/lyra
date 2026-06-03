@@ -155,7 +155,7 @@ Domain → nothing from outer layers
 **Examples of correct Domain placement:**
 - `AgentStoreProtocol` — port for agent config persistence.
 - `AuditSink` — port for security event emission (ADR-057).
-- `LlmProvider` — port for LLM inference (currently misplaced in `lyra.llm` — see Consequences).
+- `LlmProvider` — port for LLM inference (currently misplaced in `factory.llm` — see Consequences).
 - `TTSEngine` ABC — port for speech synthesis (currently misplaced alongside CUDA factories in voiceCLI).
 - `STTEngine` — port for speech recognition (currently absent in voiceCLI — must be created).
 - `ThreadStoreProtocol`, `IdentityAliasStoreProtocol` — missing ports that must be added.
@@ -210,7 +210,7 @@ Domain → nothing from outer layers
 
 **Anti-pattern (resolved in #980):** `adapters/discord/adapter.py:51` imports concrete `ThreadStore` (SQLite). The adapter must receive a `ThreadStoreProtocol` via injection and import only the protocol from Domain. The current code (`adapters/discord/adapter.py:77`) now receives `ThreadStoreProtocol` by injection — the audit row above is preserved as historical context.
 
-**Note on `lyra.llm` and `lyra.nats`:** These currently sit between `infrastructure` and `adapters` in the importlinter layering. `lyra.llm` hosts the `LlmProvider` port — this port belongs in `lyra.core` (Domain). `lyra.nats` is the NATS transport SDK bridge layer (see roxabi-nats guidance below). The existing layering contract is preserved for compatibility; the `LlmProvider` port migration is tracked as a P1 item in Consequences.
+**Note on `factory.llm` and `lyra.nats`:** These currently sit between `infrastructure` and `adapters` in the importlinter layering. `factory.llm` hosts the `LlmProvider` port — this port belongs in `lyra.core` (Domain). `lyra.nats` is the NATS transport SDK bridge layer (see roxabi-nats guidance below). The existing layering contract is preserved for compatibility; the `LlmProvider` port migration is tracked as a P1 item in Consequences.
 
 ### Composition Root
 
@@ -331,7 +331,7 @@ allow_indirect_imports = true
 ### Lyra — P1
 
 5. Add `ThreadStoreProtocol` to `core/stores/`; update `adapters/discord/adapter.py:51` to receive it by injection.
-6. Move `LlmProvider` port from `lyra.llm.base` to `lyra.core.ports.llm` (or `lyra.core.llm`); update `lyra.llm` implementations to import the protocol from `core`.
+6. Move `LlmProvider` port from `factory.llm.base` to `lyra.core.ports.llm` (or `lyra.core.llm`); update `factory.llm` implementations to import the protocol from `core`.
 7. Move `STTProtocol`, `TtsProtocol` from `stt/__init__.py`, `tts/__init__.py` to `lyra.core.ports`; add importlinter forbidden contracts covering these modules.
 8. Add `lyra.commands` and `lyra.agents` to the layers contract in `.importlinter` at the Application tier. **Status (2026-05-08):** `lyra.commands` and `lyra.agents` are absent from the layers contract but have dedicated `forbidden` contracts (`commands-no-infra`, `agents-no-bootstrap`). Practical enforcement is in place via forbidden contracts; the specific layers entry remains an open gap.
 9. Restructure `config.py` to eliminate the `adapters.discord` + `adapters.telegram` imports (extract adapter config into adapter modules).

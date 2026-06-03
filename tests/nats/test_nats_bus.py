@@ -586,7 +586,7 @@ class TestNatsBusVersionMismatch:
         bus.register(Platform.TELEGRAM)
         await bus.start()
 
-        subject = "lyra.inbound.telegram.main"
+        subject = "factory.inbound.telegram.main"
 
         try:
             # Act — publish a properly serialized v1 message
@@ -606,7 +606,7 @@ class TestNatsBusVersionMismatch:
         bus.register(Platform.TELEGRAM)
         await bus.start()
 
-        subject = "lyra.inbound.telegram.main"
+        subject = "factory.inbound.telegram.main"
 
         try:
             # Act — publish JSON without the schema_version key
@@ -630,7 +630,7 @@ class TestNatsBusVersionMismatch:
         bus.register(Platform.TELEGRAM)
         await bus.start()
 
-        subject = "lyra.inbound.telegram.main"
+        subject = "factory.inbound.telegram.main"
 
         try:
             # Act — publish a future-version payload that this receiver cannot handle
@@ -660,7 +660,7 @@ class TestNatsBusVersionMismatch:
         bus.register(Platform.TELEGRAM)
         await bus.start()
 
-        subject = "lyra.inbound.telegram.main"
+        subject = "factory.inbound.telegram.main"
 
         try:
             # Act — publish four messages; only the two v1s should arrive
@@ -698,7 +698,7 @@ class TestNatsBusVersionMismatch:
         bus.register(Platform.TELEGRAM)
         await bus.start()
 
-        subject = "lyra.inbound.telegram.main"
+        subject = "factory.inbound.telegram.main"
 
         try:
             # Act — publish JSON with schema_version: "1" (string, not int)

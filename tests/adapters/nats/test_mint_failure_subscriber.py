@@ -33,7 +33,7 @@ def _make_event(**overrides: Any) -> MintFailureEvent:
 
 
 def _make_nats_msg(
-    data: bytes, subject: str = "lyra.gh.mint_failure.roxabituwer"
+    data: bytes, subject: str = "factory.gh.mint_failure.roxabituwer"
 ) -> MagicMock:
     msg = MagicMock()
     msg.data = data
@@ -47,7 +47,7 @@ def _make_nats_msg(
 
 
 async def test_subscribes_to_correct_subject_on_start() -> None:
-    """start() subscribes to lyra.gh.mint_failure.> wildcard."""
+    """start() subscribes to factory.gh.mint_failure.> wildcard."""
     from factory.adapters.nats.mint_failure_subscriber import (
         _SUBSCRIBE_SUBJECT,
         MintFailureSubscriber,
@@ -64,7 +64,7 @@ async def test_subscribes_to_correct_subject_on_start() -> None:
     nc.subscribe.assert_called_once()
     call_args = nc.subscribe.call_args
     assert call_args[0][0] == _SUBSCRIBE_SUBJECT
-    assert call_args[0][0] == "lyra.gh.mint_failure.>"
+    assert call_args[0][0] == "factory.gh.mint_failure.>"
 
 
 # ---------------------------------------------------------------------------
@@ -87,7 +87,7 @@ async def test_handle_publishes_telegram_outbound() -> None:
         machine="M1", reason="github_api_404", http_status=404, retries=3
     )
     raw = event.model_dump_json().encode()
-    msg = _make_nats_msg(raw, subject="lyra.gh.mint_failure.M1")
+    msg = _make_nats_msg(raw, subject="factory.gh.mint_failure.M1")
 
     await subscriber._handle(msg)
 
@@ -95,7 +95,7 @@ async def test_handle_publishes_telegram_outbound() -> None:
     publish_subject, publish_payload = nc.publish.call_args[0]
 
     # Subject must target the ops telegram bot
-    assert publish_subject == "lyra.outbound.telegram.main"
+    assert publish_subject == "factory.outbound.telegram.main"
 
     # Payload is a JSON "send" envelope
     envelope = json.loads(publish_payload)

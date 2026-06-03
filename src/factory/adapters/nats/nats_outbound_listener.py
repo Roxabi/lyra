@@ -66,7 +66,7 @@ class NatsOutboundListener:
         self._adapter = deps.adapter
         self._queue_group = deps.queue_group
         self._resolver = deps.resolver
-        self._subject = f"lyra.outbound.{deps.platform.value}.{deps.bot_id}"
+        self._subject = f"factory.outbound.{deps.platform.value}.{deps.bot_id}"
         self._cache = InboundCache(resolver=deps.resolver)
         self._codec = NatsRenderEventCodec(resolver=deps.resolver)
         self._stream_queues: dict[str, asyncio.Queue[dict]] = {}

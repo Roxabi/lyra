@@ -17,7 +17,7 @@ class NullAudioConsumer:
 
     Teardown in _close_tg_wired / _close_dc_wired calls consumer.stop()
     unconditionally; this sentinel makes that safe regardless of whether audio
-    provisioning succeeded.  Audio messages accumulate on LYRA_OUTBOUND_AUDIO
+    provisioning succeeded.  Audio messages accumulate on FACTORY_OUTBOUND_AUDIO
     (buffered by JetStream up to MaxAge=24h) and are delivered when the next
     adapter restart succeeds.
     """

@@ -87,7 +87,7 @@ async def notify_audio_publish_failed(
     the failure is logged but never re-raised so the hub loop stays alive.
     No ``str(exc)`` content reaches the bus (SanitizedError discipline).
     """
-    text_subject = f"lyra.outbound.{platform.value}.{bot_id}"
+    text_subject = f"factory.outbound.{platform.value}.{bot_id}"
     notif = notify_undelivered(context="hub-audio-publish-fail")
     notif_envelope = {
         "type": "send",

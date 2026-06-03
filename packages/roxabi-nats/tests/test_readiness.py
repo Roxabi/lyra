@@ -1,7 +1,7 @@
-"""Tests for the NATS readiness probe (lyra.nats.readiness).
+"""Tests for the NATS readiness probe (factory.nats.readiness).
 
 Covered behaviours:
-- start_readiness_responder() replies to lyra.system.ready with a valid JSON payload
+- start_readiness_responder() replies to factory.system.ready with a valid JSON payload
 - start_readiness_responder() handles buses=[] (sum of empty = 0)
 - wait_for_hub() returns True via KV immediate path when hub.ready key exists
 - wait_for_hub() returns True via KV watch when key appears mid-probe
@@ -60,8 +60,8 @@ class FakeBus:
 
 class TestReadinessConstants:
     def test_readiness_subject_value(self) -> None:
-        """READINESS_SUBJECT must equal 'lyra.system.ready'."""
-        assert READINESS_SUBJECT == "lyra.system.ready"
+        """READINESS_SUBJECT must equal 'factory.system.ready'."""
+        assert READINESS_SUBJECT == "factory.system.ready"
 
     def test_probe_timeout_is_positive(self) -> None:
         """PROBE_TIMEOUT_S must be a positive float."""
@@ -269,7 +269,7 @@ class TestAnnounceHubReady:
 
         # Assert — key is present and has the expected value
         js = nc_js.jetstream()
-        kv = await js.key_value("lyra-state")
+        kv = await js.key_value("factory-state")
         entry = await kv.get("hub.ready")
         assert entry.value == b"true"
 
@@ -283,7 +283,7 @@ class TestAnnounceHubReady:
         """announce_hub_ready called twice raises no exception; key stays b'true'."""
         # Arrange — purge so prior tests in the session don't bleed in
         try:
-            kv_setup = await nc_js.jetstream().key_value("lyra-state")
+            kv_setup = await nc_js.jetstream().key_value("factory-state")
             await kv_setup.purge("hub.ready")
         except Exception:  # noqa: BLE001  # test teardown: kv bucket may not exist
             pass  # bucket may not exist yet — that's fine
@@ -294,7 +294,7 @@ class TestAnnounceHubReady:
 
         # Assert — key still holds the expected value
         js = nc_js.jetstream()
-        kv = await js.key_value("lyra-state")
+        kv = await js.key_value("factory-state")
         entry = await kv.get("hub.ready")
         assert entry.value == b"true"
 
@@ -354,7 +354,7 @@ class TestWaitForHubKV:
         # announce_hub_ready below land before the probe ever reaches kv.get,
         # silently forcing the immediate path instead of the watch path.
         await announce_hub_ready(nc_js)
-        kv_setup = await nc_js.jetstream().key_value("lyra-state")
+        kv_setup = await nc_js.jetstream().key_value("factory-state")
         await kv_setup.purge("hub.ready")
         # Arrange — adapter connects before hub writes the key
         adapter_nc = await nats.connect(nats_server_jetstream_url)
@@ -382,7 +382,7 @@ class TestWaitForHubKV:
         """wait_for_hub returns False and logs WARNING when key never appears."""
         # Arrange — purge hub.ready so earlier tests in the session don't bleed in
         try:
-            kv_setup = await nc_js.jetstream().key_value("lyra-state")
+            kv_setup = await nc_js.jetstream().key_value("factory-state")
             await kv_setup.purge("hub.ready")
         except Exception:  # noqa: BLE001  # test teardown: kv bucket may not exist
             pass  # bucket may not exist yet — that's fine for this test
@@ -452,7 +452,7 @@ class TestWaitForHubKV:
         # Arrange — pre-create bucket so the probe reaches the watch path
         # (see test_kv_watch_returns_true_after_key_written for details).
         await announce_hub_ready(nc_js)
-        kv_setup = await nc_js.jetstream().key_value("lyra-state")
+        kv_setup = await nc_js.jetstream().key_value("factory-state")
         await kv_setup.purge("hub.ready")
         # Arrange — race path: key written after probe begins
         adapter_nc = await nats.connect(nats_server_jetstream_url)

@@ -105,7 +105,7 @@ Supporting rules:
 roles, dangerously close names: **`WorkEnvelope` composes `WorkScope` — it does not replace it,
 and `WorkScope` is NOT promoted to a job id.**
 
-Per ADR-076 (three NATS planes), the **typing** plane (`lyra.typing.*`, display-feedback) is
+Per ADR-076 (three NATS planes), the **typing** plane (`factory.typing.*`, display-feedback) is
 currently scope-keyed via an in-Pool ref-count (no `job_id`). It becomes job-tree-driven in
 #1624 — typing derived from root-job open/close — at which point "turn active for scope X" is
 read from the job tree (the SSoT this ADR's `job_id`/`parent_job_id` provides) instead of a

@@ -112,8 +112,8 @@ Option A's blast radius (11+ files, 4 layers) is real but bounded. The 5-phase r
 phase independently mergeable to `staging` — de-risks execution. The `complete()` path is
 untouched throughout, preserving zero regression on all non-streaming turns.
 
-The dependency rule is enforced: `llm/events.py` imports nothing outside `lyra.llm`;
-`core/stream_processor.py` imports from `lyra.llm.events` and `core/render_events` only;
+The dependency rule is enforced: `llm/events.py` imports nothing outside `factory.llm`;
+`core/stream_processor.py` imports from `factory.llm.events` and `core/render_events` only;
 channel adapters import `RenderEvent` from `core/render_events` only — no platform types
 cross the hexagonal boundary.
 

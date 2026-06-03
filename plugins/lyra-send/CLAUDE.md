@@ -14,7 +14,7 @@ directly:
 - Telegram → `https://api.telegram.org/bot{token}/send{Message,Photo,Voice}`
 - Discord  → `https://discord.com/api/v10/channels/{id}/messages`
 
-There is no `lyra.outbound.*` NATS subject involved. The skill reads credentials
+There is no `factory.outbound.*` NATS subject involved. The skill reads credentials
 locally and makes HTTP calls inline.
 
 ## Auth / identity model

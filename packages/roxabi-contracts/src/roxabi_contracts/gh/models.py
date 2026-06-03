@@ -4,7 +4,7 @@ Pure Pydantic. No NATS imports. No transport logic. Every model subclasses
 ContractEnvelope, which provides (contract_version, trace_id, issued_at)
 plus ConfigDict(extra="ignore") for forward-compat.
 
-Canonical subject for MintFailureEvent: ``lyra.gh.mint_failure.<machine>``.
+Canonical subject for MintFailureEvent: ``factory.gh.mint_failure.<machine>``.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ __all__ = ["MintFailureEvent"]
 class MintFailureEvent(ContractEnvelope):
     """GitHub App token mint failure event.
 
-    Canonical subject: ``lyra.gh.mint_failure.<machine>``.
+    Canonical subject: ``factory.gh.mint_failure.<machine>``.
     Published by a satellite when it fails to obtain a GitHub App installation
     token. The ``machine`` field identifies the emitting host; ``reason``
     carries a short failure label; ``http_status`` is set when the failure

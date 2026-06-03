@@ -15,7 +15,7 @@ class BlobAuditEvent(ContractEnvelope):
     """Emitted on every BlobStore HTTP operation (put/get/exists/delete).
 
     trace_id/issued_at/contract_version inherited from ContractEnvelope.
-    Published on ``lyra.audit.blobs.<op>`` — use :meth:`subject_for` to
+    Published on ``factory.audit.blobs.<op>`` — use :meth:`subject_for` to
     derive the correct subject at call sites.
 
     Parallel to SecurityEvent; does NOT extend it.
@@ -58,7 +58,7 @@ class BlobAuditEvent(ContractEnvelope):
 
         Examples::
 
-            BlobAuditEvent.subject_for("put")    # "lyra.audit.blobs.put"
-            BlobAuditEvent.subject_for("delete")  # "lyra.audit.blobs.delete"
+            BlobAuditEvent.subject_for("put")    # "factory.audit.blobs.put"
+            BlobAuditEvent.subject_for("delete")  # "factory.audit.blobs.delete"
         """
-        return f"lyra.audit.blobs.{op}"
+        return f"factory.audit.blobs.{op}"

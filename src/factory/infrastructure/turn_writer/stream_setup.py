@@ -1,10 +1,10 @@
 """JetStream stream + durable consumer bootstrap for TurnWriter.
 
-Stream LYRA_TURNS: subject lyra.turns.>, retention WorkQueue,
+Stream FACTORY_TURNS: subject factory.turns.>, retention WorkQueue,
 MaxAge=24h, MaxBytes=256MiB. Idempotent — safe to call on each writer boot.
 
 Consumer turn-writer-v1: durable, AckExplicit, AckWait=60s, MaxDeliver=5,
-filter_subject=lyra.turns.write.
+filter_subject=factory.turns.write.
 
 Note: nats-py does not expose a queue_group field on ConsumerConfig directly —
   queue group semantics are achieved via durable name sharing across replicas.
@@ -34,10 +34,10 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-STREAM_NAME = "LYRA_TURNS"
+STREAM_NAME = "FACTORY_TURNS"
 CONSUMER_NAME = "turn-writer-v1"
 QUEUE_GROUP = "turn-writer"
-SUBJECT_FILTER = "lyra.turns.write"
+SUBJECT_FILTER = "factory.turns.write"
 ACK_WAIT_SECONDS = 60.0
 MAX_DELIVER = 5
 MAX_AGE_SECONDS = 24 * 60 * 60  # 24 h
@@ -47,7 +47,7 @@ MAX_BYTES = 256 * 1024 * 1024  # 256 MiB
 def _stream_config() -> StreamConfig:
     return StreamConfig(
         name=STREAM_NAME,
-        subjects=["lyra.turns.>"],
+        subjects=["factory.turns.>"],
         retention=RetentionPolicy.WORK_QUEUE,
         storage=StorageType.FILE,
         max_age=float(MAX_AGE_SECONDS),
@@ -69,7 +69,7 @@ def _consumer_config() -> ConsumerConfig:
 
 
 async def ensure_stream(js: "JetStreamContext") -> None:
-    """Create or update LYRA_TURNS stream idempotently.
+    """Create or update FACTORY_TURNS stream idempotently.
 
     Pattern mirrors JetStreamAuditSink.provision: try add_stream first;
     on BadRequestError (already exists) try update_stream to converge config.

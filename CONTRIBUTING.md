@@ -124,12 +124,12 @@ See `src/factory/adapters/_shared.py` for shared normalization helpers and rende
 Add the platform's inbound/outbound NATS subjects to `_bootstrap_hub_standalone()` and wire
 a new `_bootstrap_adapter_standalone()` branch for the new platform. The hub registers the
 adapter via `hub.register_adapter(Platform.SIGNAL, bot_id, proxy)` where `proxy` is a
-`NatsChannelProxy` routing to `lyra.outbound.signal.<bot_id>`.
+`NatsChannelProxy` routing to `factory.outbound.signal.<bot_id>`.
 
 ```python
 # In hub_standalone.py — register NATS proxy for the new adapter
 from factory.nats.nats_channel_proxy import NatsChannelProxy
-proxy = NatsChannelProxy(nc, f"lyra.outbound.signal.{bot_id}")
+proxy = NatsChannelProxy(nc, f"factory.outbound.signal.{bot_id}")
 hub.register_adapter(Platform.SIGNAL, bot_id, proxy)
 hub.register_binding(Platform.SIGNAL, bot_id, "*", "lyra", ...)
 ```

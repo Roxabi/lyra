@@ -11,7 +11,7 @@ from roxabi_contracts.turns.subjects import SUBJECTS
 
 
 def test_turn_write_subject() -> None:
-    assert SUBJECTS.turn_write == "lyra.turns.write"
+    assert SUBJECTS.turn_write == "factory.turns.write"
 
 
 def test_subjects_is_frozen() -> None:

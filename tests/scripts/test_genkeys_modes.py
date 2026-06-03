@@ -158,17 +158,17 @@ class TestEmitMergedAuthconf:
         seeds_dir = tmp_path / "nkeys"
         voicecli_seeds_dir = tmp_path / "voicecli_nkeys"
         matrix_data = json.loads(_MATRIX_FIXTURE.read_text())
-        lyra_identities = [
+        factory_identities = [
             name
             for name, ident in matrix_data["identities"].items()
-            if ident["status"] == "active" and ident["owner"] == "lyra"
+            if ident["status"] == "active" and ident["owner"] == "factory"
         ]
         voicecli_identities = [
             name
             for name, ident in matrix_data["identities"].items()
             if ident["status"] == "active" and ident["owner"] == "voicecli"
         ]
-        _write_fake_seeds(seeds_dir, lyra_identities)
+        _write_fake_seeds(seeds_dir, factory_identities)
         _write_fake_seeds(voicecli_seeds_dir, voicecli_identities)
 
         # Act
@@ -476,8 +476,8 @@ def _make_matrix(
             "owner": "lyra",
             "description": "hub",
             "allow_responses": False,
-            "publish": ["lyra.out.>"],
-            "subscribe": ["lyra.in.>"],
+            "publish": ["factory.out.>"],
+            "subscribe": ["factory.in.>"],
             "deploy": {"type": "container", "secret": "lyra-nats-hub"},
         },
         "clipool-worker": {
@@ -486,8 +486,8 @@ def _make_matrix(
             "owner": "lyra",
             "description": "clipool worker",
             "allow_responses": True,
-            "publish": ["lyra.clipool.heartbeat"],
-            "subscribe": ["lyra.clipool.cmd"],
+            "publish": ["factory.clipool.heartbeat"],
+            "subscribe": ["factory.clipool.cmd"],
             "deploy": {"type": "container", "secret": "lyra-nats-clipool"},
         },
     }
@@ -498,8 +498,8 @@ def _make_matrix(
             "owner": "voicecli",
             "description": "voice client on M2",
             "allow_responses": False,
-            "publish": ["lyra.voice.>"],
-            "subscribe": ["lyra.voice.response.>"],
+            "publish": ["factory.voice.>"],
+            "subscribe": ["factory.voice.response.>"],
             "deploy": {
                 "type": "external",
                 "host": external_host,

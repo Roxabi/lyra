@@ -92,8 +92,8 @@ class TestInboxGrantFromFlow:
     def test_inbox_grant_from_flow(self) -> None:
         """Responder's publish allow contains _inbox.<requester>.> from flows.
 
-        SC-6: derived inbox grants — for flow (hub → clipool-worker, lyra.clipool.cmd),
-        clipool-worker's publish allow must include _inbox.hub.>
+        SC-6: derived inbox grants — for flow (hub → clipool-worker,
+        factory.clipool.cmd), clipool-worker's publish allow must include _inbox.hub.>
         # verified: removing flow-derivation logic → _inbox.hub.> absent → fails
         """
         matrix: LoadedMatrix = {
@@ -102,7 +102,7 @@ class TestInboxGrantFromFlow:
                 {
                     "requester": "hub",
                     "responder": "clipool-worker",
-                    "subject": "lyra.clipool.cmd",
+                    "subject": "factory.clipool.cmd",
                 }
             ],
             "identities": {
@@ -112,7 +112,7 @@ class TestInboxGrantFromFlow:
                     "owner": "lyra",
                     "description": "hub",
                     "allow_responses": False,
-                    "publish": ["lyra.clipool.cmd"],
+                    "publish": ["factory.clipool.cmd"],
                     "subscribe": ["_inbox.hub.>"],
                 },
                 "clipool-worker": {
@@ -121,8 +121,8 @@ class TestInboxGrantFromFlow:
                     "owner": "lyra",
                     "description": "clipool worker",
                     "allow_responses": True,
-                    "publish": ["lyra.clipool.heartbeat"],
-                    "subscribe": ["lyra.clipool.cmd"],
+                    "publish": ["factory.clipool.heartbeat"],
+                    "subscribe": ["factory.clipool.cmd"],
                 },
             },
         }
@@ -173,18 +173,18 @@ class TestAclRegressionS3AdapterNoStreamCreate:
 
     Renders deploy/nats/acl-matrix.json via render_auth_conf and parses the
     per-adapter user blocks.  Asserts the 3 subjects removed in S3 are absent
-    and that STREAM.INFO.LYRA_OUTBOUND_AUDIO is still present (needed by
+    and that STREAM.INFO.FACTORY_OUTBOUND_AUDIO is still present (needed by
     pull_subscribe's stream_info call).
     """
 
     _REMOVED_SUBJECTS = frozenset(
         {
-            "$JS.API.STREAM.CREATE.LYRA_OUTBOUND_AUDIO",
-            "$JS.API.STREAM.UPDATE.LYRA_OUTBOUND_AUDIO",
-            "$JS.API.STREAM.CREATE.KV_lyra_outbound_audio_sent",
+            "$JS.API.STREAM.CREATE.FACTORY_OUTBOUND_AUDIO",
+            "$JS.API.STREAM.UPDATE.FACTORY_OUTBOUND_AUDIO",
+            "$JS.API.STREAM.CREATE.KV_factory_outbound_audio_sent",
         }
     )
-    _RETAINED_SUBJECT = "$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO"
+    _RETAINED_SUBJECT = "$JS.API.STREAM.INFO.FACTORY_OUTBOUND_AUDIO"
 
     def _render_and_parse(self, prod_matrix: LoadedMatrix) -> dict:
         """Render prod matrix and return {identity_name: ParsedUser}."""
@@ -333,8 +333,8 @@ class TestGrouplessMatrixBackwardCompat:
         users_by_name = {u.comment_name: u for u in parsed.users}
 
         hub = users_by_name["hub"]
-        assert "lyra.outbound.telegram.>" in hub.publish_allow
-        assert "lyra.inbound.telegram.>" in hub.subscribe_allow
+        assert "factory.outbound.telegram.>" in hub.publish_allow
+        assert "factory.inbound.telegram.>" in hub.subscribe_allow
 
 
 class TestGrantGroupEquality:
@@ -360,14 +360,14 @@ class TestGrantGroupEquality:
 
     _AUDIO_GROUP_PUBLISH = frozenset(
         {
-            "$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO",
-            "$JS.API.CONSUMER.CREATE.LYRA_OUTBOUND_AUDIO.>",
-            "$JS.API.CONSUMER.INFO.LYRA_OUTBOUND_AUDIO.*",
-            "$JS.API.CONSUMER.MSG.NEXT.LYRA_OUTBOUND_AUDIO.*",
-            "$JS.API.STREAM.INFO.KV_lyra_outbound_audio_sent",
-            "$JS.API.STREAM.MSG.GET.KV_lyra_outbound_audio_sent",
-            "$JS.ACK.LYRA_OUTBOUND_AUDIO.>",
-            "$KV.lyra_outbound_audio_sent.>",
+            "$JS.API.STREAM.INFO.FACTORY_OUTBOUND_AUDIO",
+            "$JS.API.CONSUMER.CREATE.FACTORY_OUTBOUND_AUDIO.>",
+            "$JS.API.CONSUMER.INFO.FACTORY_OUTBOUND_AUDIO.*",
+            "$JS.API.CONSUMER.MSG.NEXT.FACTORY_OUTBOUND_AUDIO.*",
+            "$JS.API.STREAM.INFO.KV_factory_outbound_audio_sent",
+            "$JS.API.STREAM.MSG.GET.KV_factory_outbound_audio_sent",
+            "$JS.ACK.FACTORY_OUTBOUND_AUDIO.>",
+            "$KV.factory_outbound_audio_sent.>",
         }
     )
 
@@ -452,7 +452,7 @@ class TestGrantGroupEquality:
         rendered/parsed telegram-adapter subscribe_allow set after group expansion.
 
         # verified: deleting sub_allow[name].extend(g.get("subscribe", [])) from
-        # _renderer.py causes this test to fail — $KV.lyra_outbound_audio_sent.>
+        # _renderer.py causes this test to fail — $KV.factory_outbound_audio_sent.>
         # is absent from telegram-adapter subscribe_allow.
         """
         # Arrange
@@ -465,10 +465,10 @@ class TestGrantGroupEquality:
         # Act
         tg_sub = users["telegram-adapter"].subscribe_allow
 
-        # Assert — $KV.lyra_outbound_audio_sent.> is the group's subscribe subject
-        assert "$KV.lyra_outbound_audio_sent.>" in tg_sub, (
+        # Assert — $KV.factory_outbound_audio_sent.> is the group's subscribe subject
+        assert "$KV.factory_outbound_audio_sent.>" in tg_sub, (
             "telegram-adapter subscribe_allow is missing "
-            "$KV.lyra_outbound_audio_sent.> "
+            "$KV.factory_outbound_audio_sent.> "
             "— group subscribe expansion did not fire"
         )
 
@@ -498,8 +498,8 @@ class TestGrantGroupEquality:
                     "created_at": "2026-05-01",
                     "description": "hub test identity",
                     "allow_responses": False,
-                    "publish": ["lyra.outbound.telegram.>"],
-                    "subscribe": ["lyra.inbound.telegram.>"],
+                    "publish": ["factory.outbound.telegram.>"],
+                    "subscribe": ["factory.inbound.telegram.>"],
                     "deploy": {"type": "container", "secret": "lyra-nats-hub"},
                     "groups": ["empty-group"],
                 },
@@ -520,10 +520,10 @@ class TestGrantGroupEquality:
 
         # Assert — allow sets equal the inline grants exactly (no subjects added)
         hub = users["hub"]
-        assert hub.publish_allow == frozenset({"lyra.outbound.telegram.>"}), (
+        assert hub.publish_allow == frozenset({"factory.outbound.telegram.>"}), (
             f"unexpected publish_allow: {hub.publish_allow!r}"
         )
-        assert hub.subscribe_allow == frozenset({"lyra.inbound.telegram.>"}), (
+        assert hub.subscribe_allow == frozenset({"factory.inbound.telegram.>"}), (
             f"unexpected subscribe_allow: {hub.subscribe_allow!r}"
         )
 

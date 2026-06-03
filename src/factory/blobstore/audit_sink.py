@@ -1,4 +1,7 @@
-"""BlobAuditSink — publishes BlobAuditEvent to NATS JetStream lyra.audit.blobs.<op>."""
+"""BlobAuditSink — publishes BlobAuditEvent to NATS JetStream.
+
+Subject: factory.audit.blobs.<op>.
+"""
 
 from __future__ import annotations
 
@@ -35,7 +38,7 @@ class BlobAuditSink:
     async def provision(self, nc: NatsClient) -> None:
         """Attach to JetStream; mark degraded on failure.
 
-        Stream LYRA_AUDIT is shared and managed by JetStreamAuditSink — this sink
+        Stream FACTORY_AUDIT is shared and managed by JetStreamAuditSink — this sink
         only takes a jetstream handle and falls back to the lyra.security logger
         on error. The `account_info()` probe forces a live JetStream RPC at boot
         so degradation is detected synchronously, not deferred to first emit().

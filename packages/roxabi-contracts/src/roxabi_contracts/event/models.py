@@ -5,8 +5,8 @@ Two envelope models:
   LyraMetric — typed metrics (counters, gauges, histograms)
 
 Canonical subject patterns:
-  lyra.event.<service>.<kind>
-  lyra.metric.<service>.<name>
+  factory.event.<service>.<kind>
+  factory.metric.<service>.<name>
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ from roxabi_contracts.envelope import ContractEnvelope
 
 
 class LyraEvent(ContractEnvelope):
-    """Structured operational event. Published to ``lyra.event.<service>.<kind>``."""
+    """Structured operational event. Published to ``factory.event.<service>.<kind>``."""
 
     service: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_-]*$")]
     kind: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9._-]*$")]
@@ -37,7 +37,7 @@ class LyraEvent(ContractEnvelope):
 
 
 class LyraMetric(ContractEnvelope):
-    """Typed metric. Published to ``lyra.metric.<service>.<name>``."""
+    """Typed metric. Published to ``factory.metric.<service>.<name>``."""
 
     service: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9_-]*$")]
     name: Annotated[str, StringConstraints(pattern=r"^[a-z][a-z0-9._-]*$")]

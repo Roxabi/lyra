@@ -150,7 +150,7 @@ def _run_adapter(platform: str) -> None:
 
 @factory_app.command("turn-writer")
 def _turn_writer() -> None:
-    """Run standalone TurnWriter process (subscribes to lyra.turns.write)."""
+    """Run standalone TurnWriter process (subscribes to factory.turns.write)."""
     from factory.bootstrap.standalone.worker_standalone import (
         _bootstrap_turn_writer_standalone,
     )

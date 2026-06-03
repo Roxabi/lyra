@@ -1,6 +1,6 @@
 """JetStreamAudioConsumer — durable JetStream pull consumer for outbound audio.
 
-Delivers ``lyra.outbound.audio.<platform>.<bot_id>`` messages to the platform
+Delivers ``factory.outbound.audio.<platform>.<bot_id>`` messages to the platform
 adapter with exactly-once-effective semantics (Model A):
 
   - Ack ONLY after a confirmed successful platform send.
@@ -65,7 +65,7 @@ TextSendFn = Callable[[InboundMessage, OutboundMessage], Awaitable[None]]
 
 
 class JetStreamAudioConsumer:
-    """Durable pull consumer for LYRA_OUTBOUND_AUDIO stream.
+    """Durable pull consumer for FACTORY_OUTBOUND_AUDIO stream.
 
     Lifecycle::
 

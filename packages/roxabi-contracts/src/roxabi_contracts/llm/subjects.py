@@ -20,15 +20,19 @@ class _Subjects:
     rather than silently returning None.
     """
 
-    generate_request: Literal["lyra.llm.generate.request"] = "lyra.llm.generate.request"
-    heartbeat: Literal["lyra.llm.heartbeat"] = "lyra.llm.heartbeat"
+    generate_request: Literal["factory.llm.generate.request"] = (
+        "factory.llm.generate.request"
+    )
+    heartbeat: Literal["factory.llm.heartbeat"] = "factory.llm.heartbeat"
     llm_workers: Literal["llm-workers"] = "llm-workers"
-    lifecycle_swap: Literal["lyra.llm.lifecycle.swap"] = "lyra.llm.lifecycle.swap"
-    lifecycle_stop: Literal["lyra.llm.lifecycle.stop"] = "lyra.llm.lifecycle.stop"
-    lifecycle_status: Literal["lyra.llm.lifecycle.status"] = "lyra.llm.lifecycle.status"
-    lifecycle_list: Literal["lyra.llm.lifecycle.list"] = "lyra.llm.lifecycle.list"
-    lifecycle_reload_catalog: Literal["lyra.llm.lifecycle.reload-catalog"] = (
-        "lyra.llm.lifecycle.reload-catalog"  # noqa: E501
+    lifecycle_swap: Literal["factory.llm.lifecycle.swap"] = "factory.llm.lifecycle.swap"
+    lifecycle_stop: Literal["factory.llm.lifecycle.stop"] = "factory.llm.lifecycle.stop"
+    lifecycle_status: Literal["factory.llm.lifecycle.status"] = (
+        "factory.llm.lifecycle.status"
+    )
+    lifecycle_list: Literal["factory.llm.lifecycle.list"] = "factory.llm.lifecycle.list"
+    lifecycle_reload_catalog: Literal["factory.llm.lifecycle.reload-catalog"] = (
+        "factory.llm.lifecycle.reload-catalog"  # noqa: E501
     )
 
 
@@ -36,7 +40,7 @@ SUBJECTS = _Subjects()
 
 
 def per_worker_llm(worker_id: str) -> str:
-    """Per-worker LLM request subject: ``lyra.llm.generate.request.{worker_id}``.
+    """Per-worker LLM request subject: ``factory.llm.generate.request.{worker_id}``.
 
     Raises ``ValueError`` if ``worker_id`` contains characters outside
     ``[A-Za-z0-9_-]`` — see ``validate_worker_id``.

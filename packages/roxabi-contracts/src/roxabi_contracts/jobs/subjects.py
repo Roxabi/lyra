@@ -23,27 +23,27 @@ class _Subjects:
     subjects — jobs subjects are always parameterised.
     """
 
-    submit_prefix: Literal["lyra.jobs"] = "lyra.jobs"
-    result_prefix: Literal["lyra.results"] = "lyra.results"
-    progress_prefix: Literal["lyra.progress"] = "lyra.progress"
+    submit_prefix: Literal["factory.jobs"] = "factory.jobs"
+    result_prefix: Literal["factory.results"] = "factory.results"
+    progress_prefix: Literal["factory.progress"] = "factory.progress"
 
 
 SUBJECTS = _Subjects()
 
 
 def jobs_submit(job_name: str) -> str:
-    """Submit subject: lyra.jobs.<job_name>."""
+    """Submit subject: factory.jobs.<job_name>."""
     validate_job_token(job_name)
-    return f"lyra.jobs.{job_name}"
+    return f"factory.jobs.{job_name}"
 
 
 def jobs_result(job_id: str) -> str:
-    """Result subject: lyra.results.<job_id>."""
+    """Result subject: factory.results.<job_id>."""
     validate_job_token(job_id)
-    return f"lyra.results.{job_id}"
+    return f"factory.results.{job_id}"
 
 
 def jobs_progress(job_id: str) -> str:
-    """Progress subject: lyra.progress.<job_id>."""
+    """Progress subject: factory.progress.<job_id>."""
     validate_job_token(job_id)
-    return f"lyra.progress.{job_id}"
+    return f"factory.progress.{job_id}"

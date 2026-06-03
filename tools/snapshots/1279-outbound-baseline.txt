@@ -7,7 +7,7 @@ src/factory/outbound/error_handler.py:74:        except Exception as exc:  # noq
 src/factory/adapters/discord/discord_outbound.py:85:            except Exception as exc:
 src/factory/adapters/discord/discord_outbound.py:274:                except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch — resilient: caller has no fallback for partial streams
 src/factory/adapters/discord/discord_outbound.py:317:        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
-src/factory/outbound/CLAUDE.md:38:  `except Exception` in `lyra.outbound/`. Two terminal sites in `OutboundEmitter.run`
+src/factory/outbound/CLAUDE.md:38:  `except Exception` in `factory.outbound/`. Two terminal sites in `OutboundEmitter.run`
 src/factory/outbound/emitter.py:399:        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — terminal, migrated in S7
 src/factory/outbound/emitter.py:503:        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — terminal, migrated in S7
 src/factory/adapters/discord/discord_formatter.py:138:        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch

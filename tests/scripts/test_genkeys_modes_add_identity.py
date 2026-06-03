@@ -36,8 +36,8 @@ _TINY_MATRIX: dict = {
             "owner": "lyra",
             "description": "Hub core.",
             "allow_responses": False,
-            "publish": ["lyra.outbound.>"],
-            "subscribe": ["lyra.inbound.>"],
+            "publish": ["factory.outbound.>"],
+            "subscribe": ["factory.inbound.>"],
         },
         "telegram-adapter": {
             "status": "active",
@@ -45,8 +45,8 @@ _TINY_MATRIX: dict = {
             "owner": "lyra",
             "description": "Telegram adapter.",
             "allow_responses": False,
-            "publish": ["lyra.inbound.telegram.>"],
-            "subscribe": ["lyra.outbound.telegram.>"],
+            "publish": ["factory.inbound.telegram.>"],
+            "subscribe": ["factory.outbound.telegram.>"],
         },
         "turn-writer": {
             "status": "active",
@@ -54,8 +54,8 @@ _TINY_MATRIX: dict = {
             "owner": "lyra",
             "description": "Turn writer subscriber.",
             "allow_responses": False,
-            "publish": ["lyra.turns.>"],
-            "subscribe": ["lyra.turns.>"],
+            "publish": ["factory.turns.>"],
+            "subscribe": ["factory.turns.>"],
         },
     },
 }

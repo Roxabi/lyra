@@ -140,7 +140,7 @@ def init_blobstore() -> BlobStorePort:
 
 ### Orthogonality to ADR-073
 
-This ADR does not define a new pipeline axis. ADR-073's stage axis governs how the inbound pipeline is decomposed. This ADR governs the hexagonal consumption contract for a single cross-cutting capability. `AttachmentIngestStage` (ADR-083) receives `BlobStorePort` via `IngestCtx.store: BlobStorePort | None` — the port is injected, the stage is axis-pure. The boundary is enforced **structurally** by the `clean-architecture-layers` import-linter contract (`.importlinter`), which places `lyra.infrastructure` above `lyra.core`/`lyra.inbound`: the stage can import the `core/ports` Protocol but never the concrete `infrastructure/blobstore_adapter.py`.
+This ADR does not define a new pipeline axis. ADR-073's stage axis governs how the inbound pipeline is decomposed. This ADR governs the hexagonal consumption contract for a single cross-cutting capability. `AttachmentIngestStage` (ADR-083) receives `BlobStorePort` via `IngestCtx.store: BlobStorePort | None` — the port is injected, the stage is axis-pure. The boundary is enforced **structurally** by the `clean-architecture-layers` import-linter contract (`.importlinter`), which places `lyra.infrastructure` above `lyra.core`/`factory.inbound`: the stage can import the `core/ports` Protocol but never the concrete `infrastructure/blobstore_adapter.py`.
 
 ## Consequences
 

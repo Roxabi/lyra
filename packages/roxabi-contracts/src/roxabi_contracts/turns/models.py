@@ -1,4 +1,4 @@
-"""Turn-write event models. Canonical subject: ``lyra.turns.write``."""
+"""Turn-write event models. Canonical subject: ``factory.turns.write``."""
 
 from __future__ import annotations
 
@@ -74,7 +74,7 @@ TurnWritePayload = Annotated[
 
 
 class TurnWriteEvent(ContractEnvelope):
-    """Event published to lyra.turns.write.
+    """Event published to factory.turns.write.
 
     Idempotence strategy (per kind):
       - log_turn: UNIQUE(platform, message_id) on conversation_turns.

@@ -40,7 +40,7 @@ def _make_js() -> MagicMock:
 
 class TestJetStreamAuditSinkProvision:
     async def test_provision_creates_stream(self) -> None:
-        """provision() calls js.add_stream with LYRA_AUDIT config."""
+        """provision() calls js.add_stream with FACTORY_AUDIT config."""
         sink = JetStreamAuditSink()
         js = _make_js()
         nc = _make_nc(js)
@@ -49,8 +49,8 @@ class TestJetStreamAuditSinkProvision:
 
         js.add_stream.assert_awaited_once()
         cfg = js.add_stream.call_args[0][0]
-        assert cfg.name == "LYRA_AUDIT"
-        assert "lyra.audit.>" in cfg.subjects
+        assert cfg.name == "FACTORY_AUDIT"
+        assert "factory.audit.>" in cfg.subjects
 
     async def test_provision_stream_config_retention(self) -> None:
         """Provisioned stream has 90-day retention and 1GiB max_bytes."""
@@ -154,7 +154,7 @@ class TestJetStreamAuditSinkSubjectRouting:
     """#942 — skip_permissions routes to dedicated NATS subjects."""
 
     async def test_emit_privileged_subject_when_skip_permissions_true(self) -> None:
-        """emit() uses lyra.audit.security.privileged when skip_permissions=True."""
+        """emit() uses factory.audit.security.privileged when skip_permissions=True."""
         import json
 
         sink = JetStreamAuditSink()
@@ -171,7 +171,7 @@ class TestJetStreamAuditSinkSubjectRouting:
         assert json.loads(payload)["skip_permissions"] is True
 
     async def test_emit_normal_subject_when_skip_permissions_false(self) -> None:
-        """emit() uses lyra.audit.security.normal when skip_permissions=False."""
+        """emit() uses factory.audit.security.normal when skip_permissions=False."""
         import json
 
         sink = JetStreamAuditSink()

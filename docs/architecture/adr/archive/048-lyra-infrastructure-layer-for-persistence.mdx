@@ -15,7 +15,7 @@ Superseded by ADR-059 — infrastructure layer concept absorbed into the canonic
 Import-linter enforces the following dependency order (innermost to outermost):
 
 ```
-lyra.core ← lyra.llm | lyra.nats ← lyra.adapters ← lyra.bootstrap
+lyra.core ← factory.llm | lyra.nats ← lyra.adapters ← lyra.bootstrap
 ```
 
 `lyra.core` is the innermost layer. By the dependency rule, it must have zero infrastructure dependencies — no database drivers, no I/O libraries, no framework imports.
@@ -85,7 +85,7 @@ Keep all 13 files in `core/stores/`. Extract protocols for all stores (following
 
 ### Option C: New `lyra.infrastructure` layer for persistence (chosen)
 
-Add `src/lyra/infrastructure/` as a new module sitting between `lyra.llm | lyra.nats` and `lyra.adapters` in the layering order. Move the 10 SQLite implementation files there. Leave protocols, the JSON test double, and the `PairingConfig` dataclass in `src/lyra/core/stores/`.
+Add `src/lyra/infrastructure/` as a new module sitting between `factory.llm | lyra.nats` and `lyra.adapters` in the layering order. Move the 10 SQLite implementation files there. Leave protocols, the JSON test double, and the `PairingConfig` dataclass in `src/lyra/core/stores/`.
 
 - **Pros:** Clean taxonomy — `adapters/` = I/O transport channels; `infrastructure/` = persistence, telemetry, filesystem. The dependency rule is fully restored: `lyra.core` becomes genuinely infrastructure-free. Import-linter can enforce both the new layer ordering and an explicit forbidden contract on `core/stores/`. Opens a principled extension point for future cross-cutting concerns (`infrastructure/telemetry/`, `infrastructure/fs/`) without polluting either `core/` or `adapters/`. Dependency inversion is preserved: protocols in `core/`, implementations in `infrastructure/`, callers type-hint against protocols.
 - **Cons:** Adds one layer to the import graph. Import-linter contract requires a new `lyra.infrastructure` entry. 84 import lines across `src/lyra/` and `tests/` must be updated (56 module-level + 28 function-body). Three to four PRs of mechanical work.
@@ -135,7 +135,7 @@ Protocols remain in `src/lyra/core/stores/`. The directory name `stores/` is ret
 
 The `.importlinter` contract file gains two changes:
 
-**1. Extended layering contract** — `lyra.infrastructure` is inserted between `lyra.llm | lyra.nats` and `lyra.adapters`:
+**1. Extended layering contract** — `lyra.infrastructure` is inserted between `factory.llm | lyra.nats` and `lyra.adapters`:
 
 ```ini
 [importlinter:contract:clean-architecture-layers]
@@ -145,7 +145,7 @@ layers =
     lyra.bootstrap
     lyra.adapters
     lyra.infrastructure
-    lyra.llm | lyra.nats
+    factory.llm | lyra.nats
     lyra.core
 ```
 

@@ -24,7 +24,7 @@ Amended
 Hub-side voice clients (`NatsSttClient`, `NatsTtsClient`) historically routed requests through two load balancers in series:
 
 1. **Registry-first selection** — `WorkerRegistry.pick_least_loaded()` chose the least-loaded worker from its heartbeat-driven view of alive workers.
-2. **NATS queue-group fallback** — If the registry-selected worker timed out or returned no response, the request was re-published to a queue-group subject (e.g., `lyra.voice.stt.request`) where any subscribed worker could pick it up.
+2. **NATS queue-group fallback** — If the registry-selected worker timed out or returned no response, the request was re-published to a queue-group subject (e.g., `factory.voice.stt.request`) where any subscribed worker could pick it up.
 
 These two views could disagree:
 
@@ -44,7 +44,7 @@ On request failure (timeout or `NoRespondersError`), hub-side clients walk the r
 
 ### Rule
 
-Hub-side voice clients (`NatsSttClient`, `NatsTtsClient`, `NatsImageClient`) MUST route requests exclusively via `WorkerRegistry.ordered_by_score()`. The `_walk_registry()` method iterates candidates in ascending score order, sending each request to the per-worker subject (`lyra.voice.{stt,tts}.request.<worker_id>`). No fallback to queue-group subjects is permitted.
+Hub-side voice clients (`NatsSttClient`, `NatsTtsClient`, `NatsImageClient`) MUST route requests exclusively via `WorkerRegistry.ordered_by_score()`. The `_walk_registry()` method iterates candidates in ascending score order, sending each request to the per-worker subject (`factory.voice.{stt,tts}.request.<worker_id>`). No fallback to queue-group subjects is permitted.
 
 ### Eviction and re-admission
 
@@ -62,9 +62,9 @@ Requests are published to per-worker subjects:
 
 | Service | Per-worker subject pattern |
 |---|---|
-| STT | `lyra.voice.stt.request.<worker_id>` |
-| TTS | `lyra.voice.tts.request.<worker_id>` |
-| Image | `lyra.image.request.<worker_id>` |
+| STT | `factory.voice.stt.request.<worker_id>` |
+| TTS | `factory.voice.tts.request.<worker_id>` |
+| Image | `factory.image.request.<worker_id>` |
 
 Workers subscribe to their specific subject (not a queue-group wildcard). This ensures that a request routed to `<worker_id>` is delivered only to that worker, not load-balanced across the queue group.
 
@@ -92,7 +92,7 @@ Workers subscribe to their specific subject (not a queue-group wildcard). This e
 
 ### Neutral
 
-- **Per-worker subscription model.** Workers must subscribe to their specific per-worker subject (`lyra.voice.stt.request.<worker_id>`), not a queue-group wildcard. This is already the case for the current implementation; the ADR formalizes it as a rule.
+- **Per-worker subscription model.** Workers must subscribe to their specific per-worker subject (`factory.voice.stt.request.<worker_id>`), not a queue-group wildcard. This is already the case for the current implementation; the ADR formalizes it as a rule.
 
 ### Follow-up
 

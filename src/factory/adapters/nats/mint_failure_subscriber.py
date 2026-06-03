@@ -1,4 +1,4 @@
-"""MintFailureSubscriber — NATS subscriber for lyra.gh.mint_failure.> events.
+"""MintFailureSubscriber — NATS subscriber for factory.gh.mint_failure.> events.
 
 Subscribes to GitHub App token mint failures and forwards Telegram alerts to
 the configured ops chat via the existing NATS outbound path.
@@ -28,11 +28,14 @@ from roxabi_nats._serialize import serialize
 
 log = logging.getLogger(__name__)
 
-_SUBSCRIBE_SUBJECT = "lyra.gh.mint_failure.>"
+_SUBSCRIBE_SUBJECT = "factory.gh.mint_failure.>"
 
 
 class MintFailureSubscriber:
-    """Subscribes to lyra.gh.mint_failure.> and forwards alerts to ops Telegram chat."""
+    """Subscribes to factory.gh.mint_failure.> and forwards Telegram alerts.
+
+    Alerts are forwarded to the configured ops chat via the NATS outbound path.
+    """
 
     def __init__(
         self,
@@ -44,11 +47,13 @@ class MintFailureSubscriber:
         self._nc = nc
         self._ops_telegram_bot_id = ops_telegram_bot_id
         self._ops_telegram_chat_id = ops_telegram_chat_id
-        self._subject = f"lyra.outbound.{Platform.TELEGRAM.value}.{ops_telegram_bot_id}"
+        self._subject = (
+            f"factory.outbound.{Platform.TELEGRAM.value}.{ops_telegram_bot_id}"
+        )
         self._sub: Any = None  # nats.aio.subscription.Subscription | None
 
     async def start(self) -> None:
-        """Subscribe to lyra.gh.mint_failure.> on the hub NATS connection."""
+        """Subscribe to factory.gh.mint_failure.> on the hub NATS connection."""
         self._sub = await self._nc.subscribe(_SUBSCRIBE_SUBJECT, cb=self._handle)
         log.info(
             "MintFailureSubscriber started — subject=%r ops_chat=%d bot=%r",

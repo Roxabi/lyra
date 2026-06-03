@@ -244,6 +244,40 @@ def test_subject_not_mistaken_for_dead_module(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# T9b — factory. namespace collision: live subjects resolve; dead undeclared
+#       subject under a module/subject-prefix collision is a KNOWN limitation
+#       (#1670 review — see _resolve_dead_namespace docstring)
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_live_factory_inbound_subject(tmp_path: Path) -> None:
+    """Declared factory.inbound.* subject → kind=subject (step 3 wildcard match)."""
+    _make_src_module(tmp_path, "factory/inbound/__init__.py")
+    _acl_matrix(tmp_path, ["factory.inbound.telegram.>"])
+    inv = CodeInventory.build(tmp_path)
+    v = inv.resolve("factory.inbound.telegram.main")
+    assert v == Verdict(exists=True, kind="subject")
+
+
+def test_resolve_dead_factory_module_subject_collision(tmp_path: Path) -> None:
+    """KNOWN limitation: a dead, UNDECLARED subject under a prefix that is BOTH a
+    module dir AND a subject root (factory.inbound) resolves as kind=module, not
+    kind=subject — so check_subject_literals would not flag it as an orphan subject.
+
+    Impact is low: every *declared* subject in these namespaces is covered by a `>`
+    wildcard and resolves at step 3 before reaching _resolve_dead_namespace (see
+    test_resolve_live_factory_inbound_subject). This test pins the current behavior
+    so a future improvement to the disambiguation is an intentional, visible change.
+    """
+    _make_src_module(tmp_path, "factory/inbound/__init__.py")
+    _acl_matrix(tmp_path, ["factory.inbound.telegram.>"])
+    inv = CodeInventory.build(tmp_path)
+    # factory.inbound is a real module dir → dead undeclared token misclassifies
+    v = inv.resolve("factory.inbound.newplatform.bot")
+    assert v == Verdict(exists=False, kind="module")  # documented limitation
+
+
+# ---------------------------------------------------------------------------
 # T10 — packages/ layout resolves module names correctly
 # ---------------------------------------------------------------------------
 
@@ -589,24 +623,23 @@ def test_to_dict_structure(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# T26 — tighten test_module_dead_project_prefix (FIX 8 note)
-# The original T2 accepts kind in ("module", "subject") because a lowercase
-# ghost token whose prefix IS a valid module falls through to subject-namespace
-# detection after FIX 1: factory.core is a module, "ghostmodule" is not in
-# symbols[factory.core], so it falls through the subject check and returns
-# kind="subject" (lyra. prefix → dead subject).  exists=False is the contract;
-# both kinds are valid gate outcomes.  This test documents that invariant.
+# T26 — test_module_dead_project_prefix (updated #1670)
+# Post-#1670 the NATS subject root and the Python package prefix BOTH became
+# `factory.`. A dead `factory.X` whose prefix IS a real module (factory.core)
+# but whose leaf is absent is a dead MODULE reference (kind="module",
+# exists=False) — real subjects resolve via the acl-matrix/contracts subjects
+# set, and only a stray legacy `lyra.X` falls through to kind="subject".
 # ---------------------------------------------------------------------------
 
 
 def test_module_dead_project_prefix_kind_documented(tmp_path: Path) -> None:
-    """factory.core.ghostmodule → exists=False.
+    """factory.core.ghostmodule → exists=False, kind='module'.
 
-    The project package prefix (factory.) is now distinct from the NATS subject
-    namespace (lyra.), so a dead reference under the project prefix resolves as
-    kind='module' (exists=False) — a dead-module drift signal — rather than
-    falling through to the subject namespace. Real subjects (lyra.*) still
-    resolve as kind='subject'.
+    Post-#1670 `factory.` is both the project package prefix and the live NATS
+    subject root. A dead reference whose prefix is a real module (factory.core)
+    but whose leaf is absent resolves as kind='module' (a dead-module drift
+    signal), NOT subject — real subjects resolve via the subjects set, and only a
+    stray legacy `lyra.X` falls through to kind='subject'.
     """
     _make_src_module(tmp_path, "factory/__init__.py")
     _make_src_module(tmp_path, "factory/core/__init__.py")

@@ -106,12 +106,12 @@ NATS type (Core vs JetStream), the durability contract, and the keying shape:
 
 | Plane | Subject prefix | NATS type | Durability | Producers | Consumers | When to use |
 |---|---|---|---|---|---|---|
-| Messages | `lyra.{inbound,outbound}.<platform>.<bot_id>` | Core | ephemeral | adapters ↔ hub | hub, adapters | bidirectional hub↔adapter routing of user content |
-| Persistence | `lyra.turns.>` | JetStream durable (stream `LYRA_TURNS`, `MaxAge=24h`, WorkQueue) | durable | hub, telegram-adapter, discord-adapter | turn-writer | append-only state changes requiring at-least-once delivery |
-| Typing / Lifecycle | `lyra.typing.<platform>.<bot_id>` | Core | ephemeral | hub (future: workers) | adapters | ephemeral display-feedback events (typing indicators; future progress UX) — lossy-OK because consumer state auto-expires |
-| Audio delivery | `lyra.outbound.audio.<platform>.<bot_id>` | JetStream durable (stream `LYRA_OUTBOUND_AUDIO`, `MaxAge=24h`, Limits retention) | durable | hub | audio-consumer per bot (`outbound-audio-{platform}-{bot_id}`) | durable outbound audio chunks — exactly-once delivery to bot audio sender; dedup via KV `lyra_outbound_audio_sent` (TTL=900s) |
+| Messages | `factory.{inbound,outbound}.<platform>.<bot_id>` | Core | ephemeral | adapters ↔ hub | hub, adapters | bidirectional hub↔adapter routing of user content |
+| Persistence | `factory.turns.>` | JetStream durable (stream `FACTORY_TURNS`, `MaxAge=24h`, WorkQueue) | durable | hub, telegram-adapter, discord-adapter | turn-writer | append-only state changes requiring at-least-once delivery |
+| Typing / Lifecycle | `factory.typing.<platform>.<bot_id>` | Core | ephemeral | hub (future: workers) | adapters | ephemeral display-feedback events (typing indicators; future progress UX) — lossy-OK because consumer state auto-expires |
+| Audio delivery | `factory.outbound.audio.<platform>.<bot_id>` | JetStream durable (stream `FACTORY_OUTBOUND_AUDIO`, `MaxAge=24h`, Limits retention) | durable | hub | audio-consumer per bot (`outbound-audio-{platform}-{bot_id}`) | durable outbound audio chunks — exactly-once delivery to bot audio sender; dedup via KV `factory_outbound_audio_sent` (TTL=900s) |
 
-> Note: clipool-worker is intentionally excluded from publishing `lyra.turns.write`. It is a downstream command worker, not a user-message source — the upstream adapter records the turn before the dispatch reaches clipool. See ADR-075 and acl-matrix.json (`clipool-worker.notes`) for the full rationale.
+> Note: clipool-worker is intentionally excluded from publishing `factory.turns.write`. It is a downstream command worker, not a user-message source — the upstream adapter records the turn before the dispatch reaches clipool. See ADR-075 and acl-matrix.json (`clipool-worker.notes`) for the full rationale.
 
 **Choosing a plane when adding a subject:**
 
@@ -125,34 +125,34 @@ NATS type (Core vs JetStream), the durability contract, and the keying shape:
 **Distinguish from sibling subjects** — these are NOT typing-plane members despite the
 surface resemblance:
 
-- `lyra.progress.<job_id>` (#1044, future) — job-internal progress, keyed on `job_id`, not on
+- `factory.progress.<job_id>` (#1044, future) — job-internal progress, keyed on `job_id`, not on
   `WorkScope`.
-- `lyra.clipool.heartbeat` and the `*.heartbeat` family — internal liveness, control-plane.
-- `$KV.lyra-state.hub.ready` — persistent flag in JetStream KV, watched by adapters.
+- `factory.clipool.heartbeat` and the `*.heartbeat` family — internal liveness, control-plane.
+- `$KV.factory-state.hub.ready` — persistent flag in JetStream KV, watched by adapters.
 
 → ADR-076
 
 ### NATS subject naming
 
-All subjects follow `lyra.{domain}.{qualifier...}` (domain-first, NATS convention
+All subjects follow `factory.{domain}.{qualifier...}` (domain-first, NATS convention
 `{app}.{noun}.{verb...}`). Live subjects:
 
 | Subject | Direction | Purpose |
 |---|---|---|
-| `lyra.inbound.{platform}.{bot_id}` | adapter → hub | User message delivery |
-| `lyra.outbound.{platform}.{bot_id}` | hub → adapter | Response chunk delivery |
-| `lyra.outbound.audio.<platform>.<bot_id>` | hub → audio-consumer | Durable outbound audio chunks (JetStream, stream `LYRA_OUTBOUND_AUDIO`); filter is exact 5-token subject; consumer durable = `outbound-audio-{platform}-{bot_id}` |
-| `lyra.typing.{platform}.{bot_id}` | hub → adapter | Ephemeral typing indicator lifecycle (Typing plane — Epic #1375, lands with T1 #1376) |
-| `lyra.llm.generate.request` | hub → worker | LLM compute offload |
-| `lyra.llm.health.{worker_id}` | worker → hub | Satellite LLM worker heartbeats |
-| `lyra.clipool.cmd` | hub → CliPool | Submit turn + resume UUID |
-| `lyra.clipool.heartbeat` | CliPool → hub | CliPool subprocess runner health announcements |
-| `lyra.clipool.control` | hub → CliPool | Control commands (reset, drain) |
-| `lyra.voice.tts.heartbeat` | voice-tts → hub | TTS worker liveness signal for hub availability checks |
-| `lyra.voice.stt.heartbeat` | voice-stt → hub | STT worker liveness signal for hub availability checks |
-| `lyra.llm.heartbeat` | llm-worker → hub | LLM worker liveness signal for hub availability checks |
-| `lyra.image.heartbeat` | image-worker → hub | Image worker liveness signal for hub availability checks |
-| `lyra.system.ready` | adapters + workers → hub | Startup ready announcement; hub tracks liveness on subscribe |
+| `factory.inbound.{platform}.{bot_id}` | adapter → hub | User message delivery |
+| `factory.outbound.{platform}.{bot_id}` | hub → adapter | Response chunk delivery |
+| `factory.outbound.audio.<platform>.<bot_id>` | hub → audio-consumer | Durable outbound audio chunks (JetStream, stream `FACTORY_OUTBOUND_AUDIO`); filter is exact 5-token subject; consumer durable = `outbound-audio-{platform}-{bot_id}` |
+| `factory.typing.{platform}.{bot_id}` | hub → adapter | Ephemeral typing indicator lifecycle (Typing plane — Epic #1375, lands with T1 #1376) |
+| `factory.llm.generate.request` | hub → worker | LLM compute offload |
+| `factory.llm.health.{worker_id}` | worker → hub | Satellite LLM worker heartbeats |
+| `factory.clipool.cmd` | hub → CliPool | Submit turn + resume UUID |
+| `factory.clipool.heartbeat` | CliPool → hub | CliPool subprocess runner health announcements |
+| `factory.clipool.control` | hub → CliPool | Control commands (reset, drain) |
+| `factory.voice.tts.heartbeat` | voice-tts → hub | TTS worker liveness signal for hub availability checks |
+| `factory.voice.stt.heartbeat` | voice-stt → hub | STT worker liveness signal for hub availability checks |
+| `factory.llm.heartbeat` | llm-worker → hub | LLM worker liveness signal for hub availability checks |
+| `factory.image.heartbeat` | image-worker → hub | Image worker liveness signal for hub availability checks |
+| `factory.system.ready` | adapters + workers → hub | Startup ready announcement; hub tracks liveness on subscribe |
 
 System-plane subjects (JetStream API + KV bucket) are governed by per-identity grants in
 `deploy/nats/acl-matrix.json` rather than restated here; see ADR-045 / ADR-046 + #1293.
@@ -160,13 +160,13 @@ System-plane subjects (JetStream API + KV bucket) are governed by per-identity g
 | Subject | Direction | Purpose |
 |---|---|---|
 | `$JS.API.>` | hub + adapters + workers → server | JetStream API surface for KV reads and consumer create (currently wildcard; tighter scoping in #1293) |
-| `$KV.lyra-state.>` | hub → server (write); adapters + workers ← server (read) | Direct KV bucket access — hub publishes `hub.ready`, others watch via `wait_for_hub` |
+| `$KV.factory-state.>` | hub → server (write); adapters + workers ← server (read) | Direct KV bucket access — hub publishes `hub.ready`, others watch via `wait_for_hub` |
 
 `{platform}` is lowercase ASCII (`telegram`, `discord`). `{bot_id}` is a numeric string
 matching `^[1-9][0-9]*$` — a leading-zero or non-numeric value produces a shadow subject
 that bypasses per-bot ACL rules; this is a startup error. `scope_id` is intentionally
 absent from subjects; the hub resolves it from the envelope body. Control-plane subjects
-(`lyra.hub.command.*`, `lyra.monitor.*`) are reserved but not yet implemented.
+(`factory.hub.command.*`, `factory.monitor.*`) are reserved but not yet implemented.
 
 → ADR-035
 
@@ -240,14 +240,14 @@ Every hub↔adapter envelope (`InboundMessage`, `AudioPayload`, `OutboundMessage
 
 ### Hub readiness probe
 
-On startup the hub writes `hub.ready = b"true"` to the `lyra-state` JetStream KV bucket
+On startup the hub writes `hub.ready = b"true"` to the `factory-state` JetStream KV bucket
 via `announce_hub_ready(nc)`. Adapters probe via `wait_for_hub(nc)`: immediate
 `kv.get("hub.ready")`, falling back to `kv.watch("hub.ready")` if the key is absent.
 The key persists across adapter restarts — adapters starting after the hub see the key
 immediately. If JetStream is unavailable, the probe degrades gracefully (WARNING log,
-adapter starts anyway). The hub is the sole creator of the `lyra-state` bucket; adapters
+adapter starts anyway). The hub is the sole creator of the `factory-state` bucket; adapters
 that encounter `BucketNotFoundError` log a WARNING and return False rather than racing
-to provision. The legacy `start_readiness_responder` on `lyra.system.ready` remains for
+to provision. The legacy `start_readiness_responder` on `factory.system.ready` remains for
 identities with `allow_responses: true` (health endpoints, CLI tools) but is no longer
 part of the adapter startup path.
 
@@ -312,8 +312,8 @@ providers. Domain clients compose via
 - `scope_id` is resolved from the inbound envelope body, never encoded in the NATS subject.
 - `stream_id` for request-response turns is generated by the Adapter and copied by the Hub into all outbound chunks.
 - Any gap in `seq` or timeout waiting for the next chunk is treated as fatal `STREAM_ABORTED` — no reorder buffer.
-- Hub is the sole creator of the `lyra-state` KV bucket; adapters must not provision it.
-- Control-plane subjects (`lyra.hub.command.*`) must remain deny-listed until a dedicated ADR approves their payloads.
+- Hub is the sole creator of the `factory-state` KV bucket; adapters must not provision it.
+- Control-plane subjects (`factory.hub.command.*`) must remain deny-listed until a dedicated ADR approves their payloads.
 
 ## Open questions / known gaps
 
@@ -321,7 +321,7 @@ providers. Domain clients compose via
 - Multi-adapter deployments (multiple adapter instances per bot) are not yet supported; the current model assumes one adapter per bot. `stream_id` in the subject token is identified as the future path if needed.
 - JetStream-only environments lose readiness probe coverage; adapters start unconditionally — operators must monitor for WARNING logs.
 - Incremental text chunks (`is_final=false`) are reserved for V2 and not produced by the current `StreamProcessor`.
-- Control-plane subjects (`lyra.hub.command.*`, `lyra.monitor.health`) are reserved but no ADR has approved their payloads or publisher identity.
+- Control-plane subjects (`factory.hub.command.*`, `factory.monitor.health`) are reserved but no ADR has approved their payloads or publisher identity.
 
 ## See also
 

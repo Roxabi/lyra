@@ -2,7 +2,7 @@
 
 Covers:
   - Happy path: clean source (declared subjects + module/logger names) exits 0
-  - Orphan path: an undeclared lyra.* subject literal exits 1 and is listed
+  - Orphan path: an undeclared factory.* subject literal exits 1 and is listed
   - Falsification pair: clean exits 0, known-orphan exits 1 (detection alive)
   - False-positive filters: f-string fragments, getLogger() args, filenames
   - Module/logger names that resolve via the oracle are not flagged
@@ -16,8 +16,8 @@ Exit-code contract (mirrors sibling scanners):
   Exit 2 = oracle hit a SyntaxError in scanned source
 
 The oracle builds its subject inventory from the real repo root (default --root),
-so declared subjects like ``lyra.turns.write`` resolve live while fabricated ones
-like ``lyra.totally.fake.orphan`` are orphans.
+so declared subjects like ``factory.turns.write`` resolve live while fabricated ones
+like ``factory.totally.fake.orphan`` are orphans.
 """
 
 from __future__ import annotations
@@ -31,9 +31,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CLI = REPO_ROOT / "scripts" / "check_subject_literals.py"
 
 # A fabricated subject the oracle cannot resolve (kind=subject, exists=False).
-ORPHAN = "lyra.totally.fake.orphan"
+ORPHAN = "factory.totally.fake.orphan"
 # A subject that IS declared in acl-matrix.json (resolves live).
-DECLARED = "lyra.turns.write"
+DECLARED = "factory.turns.write"
 
 
 def _run(

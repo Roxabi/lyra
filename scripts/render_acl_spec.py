@@ -28,7 +28,7 @@ DEFAULT_MATRIX = Path("deploy/nats/acl-matrix.json")
 DEFAULT_SPEC = Path("artifacts/specs/706-per-role-nkeys-acls-spec.mdx")
 
 
-SUBJECT_FILTERS = ("lyra.", "_inbox.", "$JS.API.", "$KV.")
+SUBJECT_FILTERS = ("lyra.", "factory.", "_inbox.", "$JS.API.", "$KV.")
 
 
 def _filter_subjects(subjects: set[str]) -> list[str]:

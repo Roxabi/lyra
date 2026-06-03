@@ -1,6 +1,6 @@
 [Unit]
 Description=Lyra JetStream persistent storage — bind-mount %h/.roxabi/factory/nats/jetstream into the NATS container
-# Provides durable backing for JetStream streams and KV buckets (lyra-turns, lyra-msg-index).
+# Provides durable backing for JetStream streams and KV buckets (factory-turns, factory-msg-index).
 # quadlet-install creates this directory automatically (install -d -m 0700).
 # On production (uid 1500): podman unshare chown 1500:1500 ~/.roxabi/factory/nats/jetstream
 # Moves JetStream state to a dedicated NATS subtree (~/.roxabi/factory/nats/) separate from

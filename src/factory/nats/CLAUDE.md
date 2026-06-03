@@ -43,19 +43,19 @@ is in the llm package.
 
 ## Subject naming scheme
 
-Pattern: `lyra.{domain}.{qualifier...}`
+Pattern: `factory.{domain}.{qualifier...}`
 
 | Subject | Direction | Purpose |
 |---------|-----------|---------|
-| `lyra.inbound.{platform}.{bot_id}` | adapter → hub | User message delivery |
-| `lyra.outbound.{platform}.{bot_id}` | hub → adapter | Text response chunk delivery (Core, at-most-once — unchanged) |
-| `lyra.outbound.audio.{platform}.{bot_id}` | hub → adapter | Audio delivery (JetStream `LYRA_OUTBOUND_AUDIO` `MaxAge=24h`, durable pull consumer `outbound-audio-{platform}-{bot_id}`, at-least-once + KV dedup `lyra_outbound_audio_sent` — ADR-077) |
-| `lyra.llm.generate.request` | hub → worker | LLM compute (queue-group dispatched) |
-| `lyra.llm.health.{worker_id}` | worker → hub | LLM worker heartbeats |
+| `factory.inbound.{platform}.{bot_id}` | adapter → hub | User message delivery |
+| `factory.outbound.{platform}.{bot_id}` | hub → adapter | Text response chunk delivery (Core, at-most-once — unchanged) |
+| `factory.outbound.audio.{platform}.{bot_id}` | hub → adapter | Audio delivery (JetStream `FACTORY_OUTBOUND_AUDIO` `MaxAge=24h`, durable pull consumer `outbound-audio-{platform}-{bot_id}`, at-least-once + KV dedup `factory_outbound_audio_sent` — ADR-077) |
+| `factory.llm.generate.request` | hub → worker | LLM compute (queue-group dispatched) |
+| `factory.llm.health.{worker_id}` | worker → hub | LLM worker heartbeats |
 `{platform}` = lowercase ASCII (`telegram`, `discord`).
 `{bot_id}` matches `^[A-Za-z0-9_-]{1,48}$` (validated via WorkScope / nats_channel_proxy).
 `{scope_id}` is intentionally absent from subjects — resolved from the envelope body.
-Per-worker score-routed subjects (`lyra.llm.generate.request.{worker_id}`) were removed
+Per-worker score-routed subjects (`factory.llm.generate.request.{worker_id}`) were removed
 in #1104 to match the canonical ACL allow list; do NOT reintroduce them.
 
 ## Envelope and encoding contract

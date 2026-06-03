@@ -7,23 +7,27 @@ from roxabi_contracts.event.subjects import per_service_event, per_service_metri
 
 
 def test_event_all_subject() -> None:
-    assert SUBJECTS.event_all == "lyra.event.>"
+    assert SUBJECTS.event_all == "factory.event.>"
 
 
 def test_metric_all_subject() -> None:
-    assert SUBJECTS.metric_all == "lyra.metric.>"
+    assert SUBJECTS.metric_all == "factory.metric.>"
 
 
 def test_per_service_event() -> None:
-    assert per_service_event("hub", "startup") == "lyra.event.hub.startup"
+    assert per_service_event("hub", "startup") == "factory.event.hub.startup"
 
 
 def test_per_service_event_nested_kind() -> None:
-    assert per_service_event("llm", "lifecycle.swap") == "lyra.event.llm.lifecycle.swap"
+    assert (
+        per_service_event("llm", "lifecycle.swap") == "factory.event.llm.lifecycle.swap"
+    )
 
 
 def test_per_service_metric() -> None:
-    assert per_service_metric("hub", "request.count") == "lyra.metric.hub.request.count"
+    assert (
+        per_service_metric("hub", "request.count") == "factory.metric.hub.request.count"
+    )
 
 
 def test_per_service_event_rejects_dot_in_service() -> None:

@@ -244,12 +244,12 @@ class TestLoadMatrixNegatives:
                 {
                     "requester": "hub",
                     "responder": "clipool-worker",
-                    "subject": "lyra.clipool.cmd",
+                    "subject": "factory.clipool.cmd",
                 },
                 {
                     "requester": "hub",
                     "responder": "clipool-worker",
-                    "subject": "lyra.clipool.other",
+                    "subject": "factory.clipool.other",
                 },
             ],
             "identities": {
@@ -553,8 +553,8 @@ class TestLoadMatrixV4Groups:
             "request_reply_flows": [],
             "groups": {
                 "audio-consumers": {
-                    "publish": ["$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO"],
-                    "subscribe": ["lyra.outbound.audio.>"],
+                    "publish": ["$JS.API.STREAM.INFO.FACTORY_OUTBOUND_AUDIO"],
+                    "subscribe": ["factory.outbound.audio.>"],
                 }
             },
             "identities": {
@@ -588,12 +588,12 @@ class TestLoadMatrixV4Groups:
             "groups": {
                 "audio-consumers": {
                     "description": "Adapter audio grant bundle",
-                    "publish": ["$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO"],
-                    "subscribe": ["lyra.outbound.audio.>"],
+                    "publish": ["$JS.API.STREAM.INFO.FACTORY_OUTBOUND_AUDIO"],
+                    "subscribe": ["factory.outbound.audio.>"],
                 },
                 "kv-readers": {
                     "publish": [],
-                    "subscribe": ["$KV.lyra-state.>"],
+                    "subscribe": ["$KV.factory-state.>"],
                 },
             },
             "identities": {
@@ -617,13 +617,13 @@ class TestLoadMatrixV4Groups:
         ag = groups["audio-consumers"]
         assert isinstance(ag["publish"], list)
         assert isinstance(ag["subscribe"], list)
-        assert "$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO" in ag["publish"]
-        assert "lyra.outbound.audio.>" in ag["subscribe"]
+        assert "$JS.API.STREAM.INFO.FACTORY_OUTBOUND_AUDIO" in ag["publish"]
+        assert "factory.outbound.audio.>" in ag["subscribe"]
 
         kv = groups["kv-readers"]
         assert isinstance(kv["publish"], list)
         assert kv["publish"] == []
-        assert "$KV.lyra-state.>" in kv["subscribe"]
+        assert "$KV.factory-state.>" in kv["subscribe"]
 
 
 class TestLoadMatrixV4GroupsNegatives:
@@ -643,7 +643,7 @@ class TestLoadMatrixV4GroupsNegatives:
             "request_reply_flows": [],
             "groups": {
                 "audio-consumers": {
-                    "publish": ["$JS.API.STREAM.INFO.LYRA_OUTBOUND_AUDIO"],
+                    "publish": ["$JS.API.STREAM.INFO.FACTORY_OUTBOUND_AUDIO"],
                     "subscribe": [],
                 }
             },

@@ -113,7 +113,7 @@ The host `nats.service` (4222, TLS) and port 4222 are physically exclusive — t
 
 During migration, port assignments are: host 4222 (system NATS), Lyra 4223, voiceCLI 4224; subsequent projects increment. Port assignment is per-project and tracked in each project's `deploy/quadlet/` documentation.
 
-**Auth.conf during migration:** each project's per-project NATS authorizes only its own nkey identities for intra-project traffic. **Cross-project authorizations persist on Lyra's NATS until Phase 4**: voiceCLI workers publish `lyra.voice.*` subjects consumed by Lyra's hub, so `voice-tts` and `voice-stt` nkeys remain in Lyra's auth.conf throughout the migration window. This is duplicated cross-bus authorization, not a collision — the Phase 4 merged auth.conf (Step 1 above) deduplicates.
+**Auth.conf during migration:** each project's per-project NATS authorizes only its own nkey identities for intra-project traffic. **Cross-project authorizations persist on Lyra's NATS until Phase 4**: voiceCLI workers publish `factory.voice.*` subjects consumed by Lyra's hub, so `voice-tts` and `voice-stt` nkeys remain in Lyra's auth.conf throughout the migration window. This is duplicated cross-bus authorization, not a collision — the Phase 4 merged auth.conf (Step 1 above) deduplicates.
 
 ---
 

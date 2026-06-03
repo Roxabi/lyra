@@ -92,7 +92,7 @@ A `lyra ops verify` CLI command (or equivalent script) MUST be able to: (a) pars
 3. Update supervisor envs to point each adapter to its own seed (fix the hub.seed fallback).
 4. Restart adapters in order: telegram, discord, tts, stt, hub.
 5. Run `tools/check-nats-acls.sh --since @{reload-timestamp}` — zero `Permissions Violation` lines is the pass signal.
-6. Verify voicecli workers reconnect (heartbeats appear on `lyra.voice.*.heartbeat`).
+6. Verify voicecli workers reconnect (heartbeats appear on `factory.voice.*.heartbeat`).
 
 ### Lane sequencing
 

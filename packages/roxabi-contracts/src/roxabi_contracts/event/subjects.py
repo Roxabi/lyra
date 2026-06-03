@@ -4,8 +4,8 @@ Canonical values — literal strings (no f-strings, no derivation) so grep
 can locate every reference across the monorepo.
 
 Subject hierarchy:
-  lyra.event.<service>.<kind>   — operational events
-  lyra.metric.<service>.<name>  — typed metrics
+  factory.event.<service>.<kind>   — operational events
+  factory.metric.<service>.<name>  — typed metrics
 """
 
 from __future__ import annotations
@@ -32,8 +32,8 @@ class _Subjects:
     rather than silently returning None.
     """
 
-    event_all: Literal["lyra.event.>"] = "lyra.event.>"
-    metric_all: Literal["lyra.metric.>"] = "lyra.metric.>"
+    event_all: Literal["factory.event.>"] = "factory.event.>"
+    metric_all: Literal["factory.metric.>"] = "factory.metric.>"
 
 
 SUBJECTS = _Subjects()
@@ -56,22 +56,22 @@ def _validate_namespaced(token: str) -> None:
 
 
 def per_service_event(service: str, kind: str) -> str:
-    """Per-service event subject: ``lyra.event.{service}.{kind}``.
+    """Per-service event subject: ``factory.event.{service}.{kind}``.
 
     Raises ``ValueError`` if ``service`` contains characters outside
     ``[A-Za-z0-9_-]`` or if ``kind`` is not a valid namespaced token.
     """
     _validate_segment(service)
     _validate_namespaced(kind)
-    return f"lyra.event.{service}.{kind}"
+    return f"factory.event.{service}.{kind}"
 
 
 def per_service_metric(service: str, name: str) -> str:
-    """Per-service metric subject: ``lyra.metric.{service}.{name}``.
+    """Per-service metric subject: ``factory.metric.{service}.{name}``.
 
     Raises ``ValueError`` if ``service`` contains characters outside
     ``[A-Za-z0-9_-]`` or if ``name`` is not a valid namespaced token.
     """
     _validate_segment(service)
     _validate_namespaced(name)
-    return f"lyra.metric.{service}.{name}"
+    return f"factory.metric.{service}.{name}"

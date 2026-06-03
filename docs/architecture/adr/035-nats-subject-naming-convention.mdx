@@ -21,7 +21,7 @@ frozen so that it can be consistently referenced in NatsBus, adapter clients, nk
 policies, health monitoring, and operator runbooks.
 
 The subject scheme also needs to be compatible with Slice B subjects
-(`lyra.llm.request`, `lyra.llm.health.{worker_id}`) which are already specified in
+(`factory.llm.request`, `factory.llm.health.{worker_id}`) which are already specified in
 the #445 spec.
 
 Three naming structures were considered for Hub IPC subjects.
@@ -31,29 +31,29 @@ Three naming structures were considered for Hub IPC subjects.
 ### Option A: Domain-first hierarchy — `lyra.{domain}.{qualifier...}` (recommended)
 
 ```
-lyra.inbound.{platform}.{bot_id}       # adapter → hub
-lyra.outbound.{platform}.{bot_id}      # hub → adapter
-lyra.llm.request                       # hub → llm worker
-lyra.llm.health.{worker_id}            # llm worker → hub monitor
+factory.inbound.{platform}.{bot_id}       # adapter → hub
+factory.outbound.{platform}.{bot_id}      # hub → adapter
+factory.llm.request                       # hub → llm worker
+factory.llm.health.{worker_id}            # llm worker → hub monitor
 lyra.hub.command.{cmd}                 # control plane → hub
 ```
 
 ACL examples with nkey permissions:
 ```
 # adapter process (telegram): can publish inbound, subscribe outbound
-publish   ["lyra.inbound.telegram.>"]
-subscribe ["lyra.outbound.telegram.>"]
+publish   ["factory.inbound.telegram.>"]
+subscribe ["factory.outbound.telegram.>"]
 
 # hub process: subscribes all inbound, publishes all outbound + llm
-publish   ["lyra.outbound.>", "lyra.llm.request"]
-subscribe ["lyra.inbound.>"]
+publish   ["factory.outbound.>", "factory.llm.request"]
+subscribe ["factory.inbound.>"]
 
 # llm-worker: subscribes llm.request, publishes llm.health
-publish   ["lyra.llm.health.>"]
-subscribe ["lyra.llm.request"]
+publish   ["factory.llm.health.>"]
+subscribe ["factory.llm.request"]
 ```
 
-- **Pros:** Domain segments map directly to nkey ACL wildcards. `lyra.inbound.>` grants
+- **Pros:** Domain segments map directly to nkey ACL wildcards. `factory.inbound.>` grants
   access to all platforms at once — useful for the hub identity. Adding a new platform
   (voice, SMS) requires no ACL schema change. Subject tokens are readable on the wire
   (`nats sub "lyra.>"`). Consistent with Slice B subjects already in the spec.
@@ -71,8 +71,8 @@ lyra.hub-to-adapter.telegram.12345
 - **Pros:** Direction is the first differentiator — matches mental model for IPC.
 - **Cons:** `adapter-to-hub` and `hub-to-adapter` are verbose compared to `inbound`/`outbound`.
   Direction-first groups unrelated platforms together under the same prefix
-  (`lyra.inbound.*`) — harder to write per-platform ACLs. Does not align with the
-  Slice B subject scheme (`lyra.llm.request` is domain-first, not direction-first).
+  (`factory.inbound.*`) — harder to write per-platform ACLs. Does not align with the
+  Slice B subject scheme (`factory.llm.request` is domain-first, not direction-first).
 
 **Scope:** S
 
@@ -106,8 +106,8 @@ across the entire subject namespace.
 
 | Subject | Direction | Publisher | Subscriber | Payload type |
 |---------|-----------|-----------|------------|--------------|
-| `lyra.inbound.{platform}.{bot_id}` | adapter → hub | Adapter | Hub / NatsBus | `NatsInboundEnvelope` (TBD — Slice C) |
-| `lyra.outbound.{platform}.{bot_id}` | hub → adapter | Hub / NatsBus | Adapter | `NatsChunkEnvelope` (JSON, ADR-036) |
+| `factory.inbound.{platform}.{bot_id}` | adapter → hub | Adapter | Hub / NatsBus | `NatsInboundEnvelope` (TBD — Slice C) |
+| `factory.outbound.{platform}.{bot_id}` | hub → adapter | Hub / NatsBus | Adapter | `NatsChunkEnvelope` (JSON, ADR-036) |
 
 `{platform}` is the lowercase platform name (`telegram`, `discord`).
 `{bot_id}` is the numeric bot ID string (consistent with ADR-001 routing key scheme).
@@ -128,8 +128,8 @@ across the entire subject namespace.
 
 | Subject | Direction | Publisher | Subscriber | Payload type |
 |---------|-----------|-----------|------------|--------------|
-| `lyra.llm.request` | hub → worker | Hub / NatsLlmDriver | LLM worker (queue group `workers`) | `LlmRequestEnvelope` (JSON) |
-| `lyra.llm.health.{worker_id}` | worker → hub | LLM worker | Hub / NatsHealthMonitor | `LlmHeartbeat` (JSON) |
+| `factory.llm.request` | hub → worker | Hub / NatsLlmDriver | LLM worker (queue group `workers`) | `LlmRequestEnvelope` (JSON) |
+| `factory.llm.health.{worker_id}` | worker → hub | LLM worker | Hub / NatsHealthMonitor | `LlmHeartbeat` (JSON) |
 
 ### Tier 3 — Control Plane (reserved, Slice D+)
 
@@ -168,27 +168,27 @@ Three nkey user identities, each with minimum-privilege subject permissions:
 
 ```
 # Identity: hub
-publish   ["lyra.outbound.>", "lyra.llm.request"]
-subscribe ["lyra.inbound.>"]
+publish   ["factory.outbound.>", "factory.llm.request"]
+subscribe ["factory.inbound.>"]
 
 # Identity: telegram-adapter (one identity per platform)
-publish   ["lyra.inbound.telegram.>"]
-subscribe ["lyra.outbound.telegram.>"]
+publish   ["factory.inbound.telegram.>"]
+subscribe ["factory.outbound.telegram.>"]
 
 # Identity: llm-worker
-publish   ["lyra.llm.health.>"]
-subscribe ["lyra.llm.request"]
+publish   ["factory.llm.health.>"]
+subscribe ["factory.llm.request"]
 ```
 
 The `monitor` identity (Slice A, A3 NATS health probe) is scoped to health subjects only:
 
 ```
 # Identity: monitor
-subscribe ["lyra.llm.health.>", "lyra.monitor.health"]
+subscribe ["factory.llm.health.>", "lyra.monitor.health"]
 ```
 
 > **Security note:** `lyra.>` is intentionally **not** granted to the monitor identity.
-> `lyra.inbound.>` carries raw user messages and `lyra.outbound.>` carries LLM
+> `factory.inbound.>` carries raw user messages and `factory.outbound.>` carries LLM
 > responses — neither is needed for health monitoring. Granting `lyra.>` would create
 > a passive surveillance path if the monitor process were compromised.
 
@@ -198,7 +198,7 @@ subscribe ["lyra.llm.health.>", "lyra.monitor.health"]
 
 - All NATS subjects share a common `lyra.` prefix — `nats sub "lyra.>"` captures the
   entire system for debugging.
-- Domain-scoped ACL wildcards (`lyra.inbound.>`, `lyra.outbound.>`) map one-to-one to
+- Domain-scoped ACL wildcards (`factory.inbound.>`, `factory.outbound.>`) map one-to-one to
   process identities. Adding a new adapter platform requires no ACL schema change.
 - Subject names are human-readable in `nats sub` output without decoding.
 
@@ -212,5 +212,5 @@ subscribe ["lyra.llm.health.>", "lyra.monitor.health"]
 - JetStream stream names (Slice D) will mirror subject prefixes:
   `LYRA_INBOUND`, `LYRA_OUTBOUND`, `LYRA_LLM`. No naming conflict with Core subjects.
 - Subject naming is unaffected by the number of Hub replicas (future horizontal
-  scaling) — each Hub replica subscribes to the same `lyra.inbound.>` subject,
+  scaling) — each Hub replica subscribes to the same `factory.inbound.>` subject,
   and NATS queue groups handle load distribution.

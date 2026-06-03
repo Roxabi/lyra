@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass
 
-# `platform` and `bot_id` flow into NATS subjects (`lyra.typing.{platform}.{bot_id}`
+# `platform` and `bot_id` flow into NATS subjects (`factory.typing.{platform}.{bot_id}`
 # and others). NATS specials `.`, `*`, `>` would create wildcard-matching subjects;
 # the length cap bounds subject size and the error-message log line.
 _TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{1,48}$")

@@ -21,8 +21,8 @@ The current architecture maps Option A to an effective Option B-via-NATS:
 
 - `lyra_hub` — standalone hub process (`lyra hub`, `_bootstrap_hub_standalone()`)
 - `lyra_telegram` / `lyra_discord` — thin NATS clients (`lyra adapter <platform>`,
-  `_bootstrap_adapter_standalone()`), coordinated over `lyra.inbound.<platform>.<bot_id>`
-  and `lyra.outbound.<platform>.<bot_id>` subjects.
+  `_bootstrap_adapter_standalone()`), coordinated over `factory.inbound.<platform>.<bot_id>`
+  and `factory.outbound.<platform>.<bot_id>` subjects.
 
 The "Upgrade Path to Option B" section below was the seed of this migration.
 

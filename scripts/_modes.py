@@ -290,7 +290,7 @@ def _mode_add_identity(args: argparse.Namespace) -> None:
 
 
 def _mode_emit_merged_authconf(args: argparse.Namespace) -> None:
-    """--emit-merged-authconf: merge lyra + voicecli seeds into one auth.conf."""
+    """--emit-merged-authconf: merge factory + voicecli seeds into one auth.conf."""
     seeds_dir = _seeds_dir()
     voicecli_seeds_dir = Path(
         os.environ.get(
@@ -300,10 +300,10 @@ def _mode_emit_merged_authconf(args: argparse.Namespace) -> None:
     matrix = load_matrix(args.matrix)
     provider = _get_provider()
 
-    lyra_names = [
+    factory_names = [
         name
         for name, ident in matrix["identities"].items()
-        if ident["status"] == "active" and ident["owner"] == "lyra"
+        if ident["status"] == "active" and ident["owner"] == "factory"
     ]
     voicecli_names = [
         name
@@ -312,11 +312,11 @@ def _mode_emit_merged_authconf(args: argparse.Namespace) -> None:
     ]
 
     pubkeys: dict[str, str] = {}
-    for name in lyra_names:
+    for name in factory_names:
         seed_file = seeds_dir / f"{name}.seed"
         if not seed_file.exists():
             print(
-                f"error: missing lyra seed: {seed_file}"
+                f"error: missing factory seed: {seed_file}"
                 " — run 'uv run factory-acl genkeys'",
                 file=sys.stderr,
             )

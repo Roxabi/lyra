@@ -19,7 +19,7 @@ from roxabi_contracts.errors import WorkerError
 
 
 class LlmRequest(ContractEnvelope):
-    """LLM generation request. Canonical subject: ``lyra.llm.generate.request``."""
+    """LLM generation request. Canonical subject: ``factory.llm.generate.request``."""
 
     request_id: Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{1,128}$")]
     messages: list[dict]
@@ -68,7 +68,7 @@ class LlmResponse(ContractEnvelope):
 
 
 class LifecycleRequest(ContractEnvelope):
-    """Lifecycle control request. Canonical subjects: ``lyra.llm.lifecycle.*``."""
+    """Lifecycle control request. Canonical subjects: ``factory.llm.lifecycle.*``."""
 
     request_id: Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{1,128}$")]
     host: Optional[str] = Field(None, pattern=r"^[A-Za-z0-9._-]{0,253}$")

@@ -10,7 +10,7 @@ from scripts._acl_models import Flow, GroupDefinition, Identity, LoadedMatrix
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _VALID_VERSIONS = {"1", "2", "3", "4"}
 _VALID_STATUSES = {"active", "retired"}
-_VALID_OWNERS = {"lyra", "voicecli", "imagecli", "reserved"}
+_VALID_OWNERS = {"lyra", "factory", "voicecli", "imagecli", "reserved"}
 _REQUIRED_FIELDS = (
     "owner",
     "status",

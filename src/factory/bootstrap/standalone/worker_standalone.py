@@ -60,7 +60,7 @@ async def _bootstrap_clipool_standalone(raw_config: dict) -> None:
         timeout=cli_pool_cfg.default_timeout,
         identity_name="clipool-worker",
     )
-    log.info("clipool: starting CliPoolNatsWorker on lyra.clipool.cmd")
+    log.info("clipool: starting CliPoolNatsWorker on factory.clipool.cmd")
     try:
         await worker.run(nats_url)
     finally:

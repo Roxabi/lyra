@@ -108,7 +108,7 @@ Rules: add/delete/move → update P | new subdir with non-obvious invariants →
 | `adapter clipool` | `factory adapter clipool` | `_bootstrap_clipool_standalone()` |
 | `turn-writer` | `factory turn-writer` | `_bootstrap_turn_writer_standalone()` |
 
-Topics: `lyra.inbound.<platform>.<bot_id>` | `lyra.outbound.<platform>.<bot_id>`
+Topics: `factory.inbound.<platform>.<bot_id>` | `factory.outbound.<platform>.<bot_id>`
 
 Unified: `factory start` → hub + adapters in 1 process + embedded NATS
 

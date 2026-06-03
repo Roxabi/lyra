@@ -5,7 +5,7 @@ bootstrap_discord_standalone (via standalone_telegram.py / standalone_discord.py
 after the adapter's astart() and typing-listener start() succeed.
 
 Ordering contract (post-S3 / ADR-079 sole-provisioner):
-    # Stream LYRA_OUTBOUND_AUDIO and KV lyra_outbound_audio_sent are provisioned
+    # Stream FACTORY_OUTBOUND_AUDIO and KV factory_outbound_audio_sent are provisioned
     # by the hub before announce_hub_ready (ADR-079 sole-provisioner). Adapters
     # are bind-only: js.key_value() binds the existing bucket; ensure_consumer()
     # creates the per-bot durable consumer. Do NOT call ensure_stream/ensure_kv here.
@@ -24,7 +24,7 @@ to (platform, bot_id) so each bot's consumer is bound to its own adapter send
 paths and receives only its own audio messages.
 
     durable        = "outbound-audio-{platform}-{bot_id}"
-    filter_subject = "lyra.outbound.audio.{platform}.{bot_id}"
+    filter_subject = "factory.outbound.audio.{platform}.{bot_id}"
 """
 
 from __future__ import annotations
@@ -54,14 +54,14 @@ async def start_audio_consumer(
 ) -> JetStreamAudioConsumer | NullAudioConsumer:
     """Bind KV + create durable consumer, then start a JetStreamAudioConsumer.
 
-    The hub provisions stream LYRA_OUTBOUND_AUDIO and KV lyra_outbound_audio_sent
+    The hub provisions stream FACTORY_OUTBOUND_AUDIO and KV factory_outbound_audio_sent
     before announce_hub_ready (ADR-079 sole-provisioner). This function is
     bind-only for the KV (js.key_value) and creates the per-bot durable consumer
     via ensure_consumer. Do NOT call ensure_stream/ensure_kv here.
 
     On any failure, logs at ERROR level and returns a NullAudioConsumer sentinel
     instead of raising.  The adapter boots and serves text fully; audio messages
-    accumulate on LYRA_OUTBOUND_AUDIO (JetStream buffers up to MaxAge=24h) and
+    accumulate on FACTORY_OUTBOUND_AUDIO (JetStream buffers up to MaxAge=24h) and
     are delivered when the next adapter restart succeeds (ADR-079 §c).
 
     Args:
@@ -82,7 +82,7 @@ async def start_audio_consumer(
         kv = await js.key_value(KV_BUCKET)
 
         durable = f"outbound-audio-{platform}-{bot_id}"
-        filter_subject = f"lyra.outbound.audio.{platform}.{bot_id}"
+        filter_subject = f"factory.outbound.audio.{platform}.{bot_id}"
 
         await ensure_consumer(js, durable=durable, filter_subject=filter_subject)
 

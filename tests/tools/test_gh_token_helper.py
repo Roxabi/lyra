@@ -29,7 +29,7 @@ to construct a ``MintFailureEvent`` envelope. However the helper does NOT yet wi
 a NATS publish call: doing so would require injecting a NATS connection + nkey into
 helper.py, which is a separate design decision deferred to:
 
-- **T17** (hub subscriber) — defines the consumer side of ``lyra.gh.mint_failure.*``
+- **T17** (hub subscriber) — defines the consumer side of ``factory.gh.mint_failure.*``
 - **T18** (E2E host smoke) — exercises the full publish→subscribe→Telegram path
 
 The T5 test ``test_mint_error_translates_to_mint_failure_event_payload`` documents

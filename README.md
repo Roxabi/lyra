@@ -20,9 +20,9 @@ It's for developers who want a persistent personal AI without giving up ownershi
 
 ## How it works
 
-1. **Channel adapters** (Telegram, Discord) run as separate processes. They normalize incoming messages and publish them over NATS (`lyra.inbound.<platform>.<bot_id>`).
+1. **Channel adapters** (Telegram, Discord) run as separate processes. They normalize incoming messages and publish them over NATS (`factory.inbound.<platform>.<bot_id>`).
 2. **The Hub** (`factory-hub` process) subscribes to NATS, routes each message to the right agent via typed `(platform, bot_id, scope_id)` bindings — one pool per conversation scope (chat, thread, channel).
-3. **The Agent** processes the message, calls the LLM, and publishes the response over NATS (`lyra.outbound.<platform>.<bot_id>`). The adapter's `NatsOutboundListener` delivers it to the platform.
+3. **The Agent** processes the message, calls the LLM, and publishes the response over NATS (`factory.outbound.<platform>.<bot_id>`). The adapter's `NatsOutboundListener` delivers it to the platform.
 
 ## Architecture
 

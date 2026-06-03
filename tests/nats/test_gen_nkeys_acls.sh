@@ -156,15 +156,15 @@ grep -qE '# image-worker$' "$OUT" \
 echo "PASS (#754-1): image-worker block present"
 
 # ── (#754-2) image-worker publish allow-list ───────────────────────────────────
-# Expected: lyra.image.heartbeat + _INBOX.> + _inbox.> (defensive inbox entries
+# Expected: factory.image.heartbeat + _INBOX.> + _inbox.> (defensive inbox entries
 # mirror voice-tts/voice-stt for reply-path robustness; see #804 review fix).
 iw_block=$(extract_block image-worker)
 [ -n "$iw_block" ] || { echo "FAIL: could not extract image-worker block"; exit 1; }
 
-# Must contain lyra.image.heartbeat in the publish line
+# Must contain factory.image.heartbeat in the publish line
 iw_pub_line=$(echo "$iw_block" | grep -E 'publish:[[:space:]]*\{[[:space:]]*allow:' | head -1)
-echo "$iw_pub_line" | grep -q '"lyra.image.heartbeat"' \
-  || { echo "FAIL: image-worker publish must allow lyra.image.heartbeat"; exit 1; }
+echo "$iw_pub_line" | grep -q '"factory.image.heartbeat"' \
+  || { echo "FAIL: image-worker publish must allow factory.image.heartbeat"; exit 1; }
 
 # Must contain both inbox forms
 echo "$iw_pub_line" | grep -q '"_INBOX.>"' \
@@ -172,50 +172,50 @@ echo "$iw_pub_line" | grep -q '"_INBOX.>"' \
 echo "$iw_pub_line" | grep -q '"_inbox.>"' \
   || { echo "FAIL: image-worker publish must allow _inbox.>"; exit 1; }
 
-# Must NOT contain any other lyra.* subject in the publish line
-extra_pub=$(echo "$iw_pub_line" | grep -oE '"lyra\.[^"]+"' | grep -v '"lyra\.image\.heartbeat"' || true)
+# Must NOT contain any other factory.* subject in the publish line
+extra_pub=$(echo "$iw_pub_line" | grep -oE '"factory\.[^"]+"' | grep -v '"factory\.image\.heartbeat"' || true)
 [ -z "$extra_pub" ] \
-  || { echo "FAIL: image-worker publish has unexpected lyra.* subject(s): ${extra_pub}"; exit 1; }
-echo "PASS (#754-2): image-worker publish allow-list == [\"lyra.image.heartbeat\", \"_INBOX.>\", \"_inbox.>\"]"
+  || { echo "FAIL: image-worker publish has unexpected factory.* subject(s): ${extra_pub}"; exit 1; }
+echo "PASS (#754-2): image-worker publish allow-list == [\"factory.image.heartbeat\", \"_INBOX.>\", \"_inbox.>\"]"
 
-# ── (#754-3) image-worker subscribe allow-list == ["lyra.image.generate.request"] ──
-# Must contain lyra.image.generate.request in the subscribe line
+# ── (#754-3) image-worker subscribe allow-list == ["factory.image.generate.request"] ──
+# Must contain factory.image.generate.request in the subscribe line
 echo "$iw_block" | grep -E 'subscribe:[[:space:]]*\{[[:space:]]*allow:' \
-  | grep -q '"lyra.image.generate.request"' \
-  || { echo "FAIL: image-worker subscribe must allow lyra.image.generate.request"; exit 1; }
+  | grep -q '"factory.image.generate.request"' \
+  || { echo "FAIL: image-worker subscribe must allow factory.image.generate.request"; exit 1; }
 
-# Must NOT contain any other lyra.* subject in the subscribe line
+# Must NOT contain any other factory.* subject in the subscribe line
 iw_sub_line=$(echo "$iw_block" | grep -E 'subscribe:[[:space:]]*\{[[:space:]]*allow:' | head -1)
-extra_sub=$(echo "$iw_sub_line" | grep -oE '"lyra\.[^"]+"' | grep -v '"lyra\.image\.generate\.request"' || true)
+extra_sub=$(echo "$iw_sub_line" | grep -oE '"factory\.[^"]+"' | grep -v '"factory\.image\.generate\.request"' || true)
 [ -z "$extra_sub" ] \
-  || { echo "FAIL: image-worker subscribe has unexpected lyra.* subject(s): ${extra_sub}"; exit 1; }
-echo "PASS (#754-3): image-worker subscribe allow-list == [\"lyra.image.generate.request\"]"
+  || { echo "FAIL: image-worker subscribe has unexpected factory.* subject(s): ${extra_sub}"; exit 1; }
+echo "PASS (#754-3): image-worker subscribe allow-list == [\"factory.image.generate.request\"]"
 
-# ── (#754-4) hub publish gained lyra.image.generate.request ──────────────────
+# ── (#754-4) hub publish gained factory.image.generate.request ──────────────────
 hub_block=$(extract_block hub)
 [ -n "$hub_block" ] || { echo "FAIL: could not extract hub block"; exit 1; }
 
 echo "$hub_block" | grep -E 'publish:[[:space:]]*\{[[:space:]]*allow:' \
-  | grep -q '"lyra.image.generate.request"' \
-  || { echo "FAIL: hub publish must include lyra.image.generate.request"; exit 1; }
-echo "PASS (#754-4): hub publish allow-list includes lyra.image.generate.request"
+  | grep -q '"factory.image.generate.request"' \
+  || { echo "FAIL: hub publish must include factory.image.generate.request"; exit 1; }
+echo "PASS (#754-4): hub publish allow-list includes factory.image.generate.request"
 
-# ── (#754-5) hub subscribe gained lyra.image.heartbeat ───────────────────────
+# ── (#754-5) hub subscribe gained factory.image.heartbeat ───────────────────────
 echo "$hub_block" | grep -E 'subscribe:[[:space:]]*\{[[:space:]]*allow:' \
-  | grep -q '"lyra.image.heartbeat"' \
-  || { echo "FAIL: hub subscribe must include lyra.image.heartbeat"; exit 1; }
-echo "PASS (#754-5): hub subscribe allow-list includes lyra.image.heartbeat"
+  | grep -q '"factory.image.heartbeat"' \
+  || { echo "FAIL: hub subscribe must include factory.image.heartbeat"; exit 1; }
+echo "PASS (#754-5): hub subscribe allow-list includes factory.image.heartbeat"
 
-# ── (#754-6) no other identity may access lyra.image.* ───────────────────────
+# ── (#754-6) no other identity may access factory.image.* ───────────────────────
 OTHER_IDENTITIES=(telegram-adapter discord-adapter tts-adapter stt-adapter voice-tts voice-stt llm-worker monitor)
 for other_id in "${OTHER_IDENTITIES[@]}"; do
   other_block=$(extract_block "$other_id")
   [ -n "$other_block" ] || { echo "FAIL: could not extract block for ${other_id}"; exit 1; }
-  leak=$(echo "$other_block" | grep -oE '"lyra\.image\.[^"]+"' || true)
+  leak=$(echo "$other_block" | grep -oE '"factory\.image\.[^"]+"' || true)
   [ -z "$leak" ] \
-    || { echo "FAIL: ${other_id} must not have lyra.image.* access, found: ${leak}"; exit 1; }
+    || { echo "FAIL: ${other_id} must not have factory.image.* access, found: ${leak}"; exit 1; }
 done
-echo "PASS (#754-6): no other identity has lyra.image.* access"
+echo "PASS (#754-6): no other identity has factory.image.* access"
 
 echo ""
 echo "PASS (#754): image-worker ACL + amended hub ACL assertions (5 checks)"

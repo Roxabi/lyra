@@ -172,7 +172,7 @@ async def test_render_event_wire_round_trip(event_type: type, nc: NATS) -> None:
     """
     original = _SAMPLE_BY_TYPE[event_type]
     inbound = _make_inbound(f"stream-{event_type.__name__}")
-    subject = f"lyra.outbound.{Platform.TELEGRAM.value}.main"
+    subject = f"factory.outbound.{Platform.TELEGRAM.value}.main"
 
     received: list[dict] = []
     parse_errors: list[bytes] = []

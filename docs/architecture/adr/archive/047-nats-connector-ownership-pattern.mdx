@@ -13,12 +13,12 @@ Superseded by ADR-045 — all 7 ownership rules, subject/nkey ownership table, s
 Three prior ADRs collectively establish how lyra communicates with satellite processes over NATS:
 
 - [ADR-039](039-stt-tts-nats-adapter-decoupling.mdx) — Introduced STT/TTS as independent NATS satellite processes. Established the satellite-as-process pattern; ADR-047 clarifies that the satellite also owns the NATS worker code.
-- [ADR-044](044-lyra-voicecli-nats-contract.mdx) — Froze the `lyra.voice.*` wire contract (`contract_version: "1"`, subject names, queue groups, envelope schemas). Established that contracts are lyra-owned ADRs. This is the canonical contract ADR; all future domains follow its shape.
+- [ADR-044](044-lyra-voicecli-nats-contract.mdx) — Froze the `factory.voice.*` wire contract (`contract_version: "1"`, subject names, queue groups, envelope schemas). Established that contracts are lyra-owned ADRs. This is the canonical contract ADR; all future domains follow its shape.
 - [ADR-045](045-roxabi-nats-sdk-uv-workspace-extraction.mdx) — Extracted NATS transport primitives into `packages/roxabi-nats/` (a uv workspace subpackage). The boundary is transport-vs-domain: `roxabi_nats` is pure transport; all `lyra.*` knowledge — contract text and hub-side publisher — stays in lyra even though the worker process lives in the satellite repo.
 
 None of these ADRs stated the ownership rule explicitly. That gap was addressed by observing what was actually shipping:
 
-- **imageCLI#50** (closed, completed 2026-04-15) — `imagecli nats-serve` subscribes to `lyra.image.generate.request` using `NatsAdapterBase`. Satellite-owned worker, lyra-owned contract. Pattern confirmed working.
+- **imageCLI#50** (closed, completed 2026-04-15) — `imagecli nats-serve` subscribes to `factory.image.generate.request` using `NatsAdapterBase`. Satellite-owned worker, lyra-owned contract. Pattern confirmed working.
 - **lyra#658** (epic, in flight) — voiceCLI becomes a satellite daemon (`voicecli nats-serve`). Lyra publishes to topic contracts and never imports voiceCLI symbols.
 - **lyra#690** (S4, open) — delete `src/lyra/bootstrap/stt_adapter_standalone.py` + `tts_adapter_standalone.py` + `lyra adapter stt/tts` subcommands + `lyra_stt.conf` + `lyra_tts.conf`.
 - **lyra#691** (S5, open) — drop voiceCLI from `pyproject.toml`, clean `deploy.sh`, audit CI extras.
@@ -61,7 +61,7 @@ The rules are:
 4. Worker processes live in the satellite repo as a CLI entry point (`voicecli nats-serve`, `imagecli nats-serve`, etc.). The worker MUST enforce a max-payload byte limit BEFORE calling `deserialize()`. Default 1 MB. Domains with legitimate binary payloads (audio, image) MUST declare the cap in their contract ADR. See `packages/roxabi-nats/src/roxabi_nats/_serialize.py:243` — `base64.b64decode` has no size cap; the limit is enforced by the caller. Workers MUST also sanitize user-controlled fields (text prompts, file paths, filenames) listed in the contract ADR before calling the satellite library.
 5. Hub-side client code (publishers, heartbeat listeners) stays at `src/lyra/nats/nats_<domain>_client.py` in the lyra repo. This is the hub's half of the request/reply contract.
 6. Each worker role has its own NATS nkey with subject-scoped ACL. Identities are provisioned by lyra in `gen-nkeys.sh` ([ADR-046](046-nats-nkey-provisioning.mdx), Invariant 2) and the resulting seed is distributed to the satellite host.
-7. Every new `lyra.<domain>.*` subject namespace requires a contract ADR **before** any satellite ships a worker subscribing to it. New top-level domains (e.g. `lyra.memory.*`, `lyra.llm.*`) require new contract ADRs. New actions within an existing domain amend the existing contract ADR.
+7. Every new `lyra.<domain>.*` subject namespace requires a contract ADR **before** any satellite ships a worker subscribing to it. New top-level domains (e.g. `lyra.memory.*`, `factory.llm.*`) require new contract ADRs. New actions within an existing domain amend the existing contract ADR.
 
 The `src/lyra/connectors/` directory referenced in the earlier draft of this ADR is **NOT created**. Worker code lives in satellite repos.
 
@@ -112,9 +112,9 @@ If `voicecli_{stt,tts}` fails post-cutover: re-enable `lyra_{stt,tts}` from `con
 
 | Domain | Subjects | Queue group | lyra nkey identity | Satellite adapter module | Status |
 |---|---|---|---|---|---|
-| STT | `lyra.voice.stt.request`, `lyra.voice.stt.heartbeat` | `STT_WORKERS` | `stt-adapter` | `voicecli/src/voicecli/nats/stt_adapter.py` | Partial |
-| TTS | `lyra.voice.tts.request`, `lyra.voice.tts.heartbeat` | `TTS_WORKERS` | `tts-adapter` | `voicecli/src/voicecli/nats/tts_adapter.py` | Partial |
-| Image | `lyra.image.generate.request`, `lyra.image.heartbeat` | `IMAGE_WORKERS` | `image-worker` | `imagecli/src/imagecli/nats/adapter.py` | Shipped |
+| STT | `factory.voice.stt.request`, `factory.voice.stt.heartbeat` | `STT_WORKERS` | `stt-adapter` | `voicecli/src/voicecli/nats/stt_adapter.py` | Partial |
+| TTS | `factory.voice.tts.request`, `factory.voice.tts.heartbeat` | `TTS_WORKERS` | `tts-adapter` | `voicecli/src/voicecli/nats/tts_adapter.py` | Partial |
+| Image | `factory.image.generate.request`, `factory.image.heartbeat` | `IMAGE_WORKERS` | `image-worker` | `imagecli/src/imagecli/nats/adapter.py` | Shipped |
 | Memory | TBD — requires contract ADR | TBD | TBD | `roxabi-vault` TBD | TBD |
 
 Status legend: **Shipped** — contract ADR accepted, hub client merged, satellite module live, nkey identity provisioned. **Partial** — contract ADR accepted and satellite module live, but lyra-side migration still in flight (tracked by open issues). **TBD** — contract ADR not yet written. Per-row shipping details (issue numbers, supervisor entries, nkey provisioning commits) live in the corresponding contract ADR's References section (ADR-044 for STT/TTS, ADR-050 for Image).
@@ -135,7 +135,7 @@ Every domain that moves from "TBD" to shipped requires:
 
 ### imageCLI migration state
 
-imageCLI#50 shipped a satellite-owned worker via the SDK on 2026-04-15. `imagecli nats-serve` subscribes to `lyra.image.generate.request` using `NatsAdapterBase`. Lyra-side work completed via #754: contract ADR-050, `src/lyra/nats/nats_image_client.py` hub client, `image-worker` nkey, `imagecli_gen` supervisor entry. See ADR-050 References.
+imageCLI#50 shipped a satellite-owned worker via the SDK on 2026-04-15. `imagecli nats-serve` subscribes to `factory.image.generate.request` using `NatsAdapterBase`. Lyra-side work completed via #754: contract ADR-050, `src/lyra/nats/nats_image_client.py` hub client, `image-worker` nkey, `imagecli_gen` supervisor entry. See ADR-050 References.
 
 ### Enforcement
 

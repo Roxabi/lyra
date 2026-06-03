@@ -53,13 +53,13 @@ Thresholds (`bash_max_len`, `group_threshold`, `names_threshold`) are config-dri
 
 Outbound audio uses a separate durable JetStream path, NOT the text-chunk Core path:
 
-- Subject: `lyra.outbound.audio.<platform>.<bot_id>` (5 tokens — distinct from 4-token text path)
-- Stream: `LYRA_OUTBOUND_AUDIO` (Limits retention, `MaxAge=24h`)
+- Subject: `factory.outbound.audio.<platform>.<bot_id>` (5 tokens — distinct from 4-token text path)
+- Stream: `FACTORY_OUTBOUND_AUDIO` (Limits retention, `MaxAge=24h`)
 - Consumer: durable pull `outbound-audio-{platform}-{bot_id}` (one per bot, e.g. `outbound-audio-telegram-main`, `outbound-audio-discord-main`)
-- Dedup: KV bucket `lyra_outbound_audio_sent` keyed on `stream_id`
+- Dedup: KV bucket `factory_outbound_audio_sent` keyed on `stream_id`
 
 Hub publishes and returns immediately (stateless, Model A). Adapter owns the ACK after
-platform API confirms. Text path (`lyra.outbound.<platform>.<bot_id>`, Core) is unchanged.
+platform API confirms. Text path (`factory.outbound.<platform>.<bot_id>`, Core) is unchanged.
 
 ACL and stream provisioning: T7 (ACL grants) and T14 (stream/consumer/KV bootstrap) — both provisioned, see ADR-079.
 

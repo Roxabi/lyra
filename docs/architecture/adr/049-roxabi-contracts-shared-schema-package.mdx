@@ -21,7 +21,7 @@ Two problems remain after that stack lands:
 **1. Contract-as-document, not contract-as-code.**
 Today the voice contract lives in ADR-044's prose + tables. The envelope fields (`contract_version`, `trace_id`, `text`, `voice`, `audio`, `sample_rate`) are re-implemented independently in lyra's `NatsTtsClient` and voiceCLI's `tts_adapter.py`. Nothing prevents a payload field rename in the ADR from silently diverging between the two repos. Grep-gate (ADR-047 §14.3) catches stray subject literals but not payload drift.
 
-When `lyra.image.*` and `lyra.memory.*` are added as contract ADRs (per ADR-047 §4, pending work), the drift surface multiplies. Every new domain is a fresh opportunity for lyra and satellite to disagree on a field name, default, or type.
+When `factory.image.*` and `lyra.memory.*` are added as contract ADRs (per ADR-047 §4, pending work), the drift surface multiplies. Every new domain is a fresh opportunity for lyra and satellite to disagree on a field name, default, or type.
 
 **2. E2E testing requires the full stack.**
 Today, running an end-to-end voice test from lyra requires:
@@ -58,8 +58,8 @@ A shared contracts package — domain schemas + subject constants + canned fixtu
   - Single source of truth. Publisher and subscriber import identical Pydantic models; drift becomes a type error.
   - One package, multiple domains — shared envelope helpers (`ContractEnvelope` base, `trace_id` semantics, `contract_version` mixin) live once, not per-domain.
   - Test fixtures (silence WAV, pixel PNG, canned memory query results) ship with the contract — every publisher and subscriber gets them for free.
-  - Enables the pytest test-double pattern: `roxabi_contracts.voice.testing.FakeTtsWorker` subscribes to `lyra.voice.tts.request` and replies with fixture data. Lyra E2E runs in-process, no GPU, no voiceCLI. Satellite E2E runs in-process, no lyra hub.
-  - Clean extension: adding `lyra.memory.*` or `lyra.llm.*` is a new submodule + tag bump, not a new repo or package.
+  - Enables the pytest test-double pattern: `roxabi_contracts.voice.testing.FakeTtsWorker` subscribes to `factory.voice.tts.request` and replies with fixture data. Lyra E2E runs in-process, no GPU, no voiceCLI. Satellite E2E runs in-process, no lyra hub.
+  - Clean extension: adding `lyra.memory.*` or `factory.llm.*` is a new submodule + tag bump, not a new repo or package.
 - **Cons:**
   - One contract bump in one domain forces consumers of *other* domains to pick up a new version on their next lock update (if they pin tightly). Mitigated by semver: patch/minor for additive changes, major for breaks.
   - Workspace member count grows from 1 (`roxabi-nats`) to 2. `uv.lock` size grows modestly.
@@ -285,7 +285,7 @@ A hub test failure continues to fail the same job as subpackage tests — this i
 | ADR-045 merged + `roxabi-nats/v0.1.0` tagged | Yes | Already done. |
 | ADR-047 merged | Yes | Establishes subject ownership. Already done. |
 | voiceCLI#69 not yet merged | Yes | Must open against `roxabi-contracts/v0.1.0` tag, not pre-empt it. |
-| `lyra.image.*` contract ADR | No | Blocks Phase 2 only. |
+| `factory.image.*` contract ADR | No | Blocks Phase 2 only. |
 
 ### Migration plan
 
@@ -308,7 +308,7 @@ Phase 1 — bootstrap the package and port voice:
 
 Phase 2 — image:
 
-1. Land the pending `lyra.image.*` contract ADR.
+1. Land the pending `factory.image.*` contract ADR.
 2. Add `roxabi_contracts.image/` submodule (models, subjects, fixtures, testing).
 3. Lyra ships `NatsImageClient` publisher.
 4. imageCLI's satellite-side subscriber (already shipped per truth §14.1) switches to the contract import.
@@ -355,7 +355,7 @@ CI check: a `tests/test_fixture_provenance.py` asserts each fixture is byte-iden
 
 - `CONTRACT_VERSION` constant migrates from `roxabi_nats.adapter_base` to `roxabi_contracts.envelope`. A compat re-export stays in `roxabi_nats` for one release cycle (until `roxabi-nats/v0.3.0`), then is removed. The `roxabi-nats/v0.3.0` release MUST carry a `BREAKING CHANGE:` trailer in its Conventional Commit so release-please surfaces the removal prominently in the changelog and so Renovate opens a major-bump PR in each satellite — any external pin on `roxabi_nats.CONTRACT_VERSION` breaks at that point and requires a source update.
 - ADR-044 remains the human-readable voice contract; it gains a canonical link to `roxabi_contracts.voice`. Future contract ADRs follow the same pattern.
-- Subject constants move from scattered `f"lyra.voice.tts.request"` literals into `SUBJECTS.tts_request`. Grep-gate in each satellite (ADR-047 §14.3) is updated: the check shifts from "no `lyra.*` string literal outside adapter module" to "no `import roxabi_contracts.<domain>` outside the designated adapter module." One PR per satellite to update the gate configuration.
+- Subject constants move from scattered `f"factory.voice.tts.request"` literals into `SUBJECTS.tts_request`. Grep-gate in each satellite (ADR-047 §14.3) is updated: the check shifts from "no `lyra.*` string literal outside adapter module" to "no `import roxabi_contracts.<domain>` outside the designated adapter module." One PR per satellite to update the gate configuration.
 
 ## Update 2026-05-08
 
@@ -373,10 +373,10 @@ This ADR absorbs the decisions from the following superseded ADRs (2026-05-08 co
 
 | Subject | Direction | Producer | Consumer | Purpose |
 |---|---|---|---|---|
-| `lyra.voice.stt.request` | request-reply | `NatsSttClient.transcribe` (hub) | `SttAdapterStandalone.handle` (satellite) | Transcribe audio to text |
-| `lyra.voice.tts.request` | request-reply | `NatsTtsClient.synthesize` (hub) | `TtsAdapterStandalone.handle` (satellite) | Synthesize speech from text |
-| `lyra.voice.stt.heartbeat` | fire-and-forget | `SttAdapterStandalone` (satellite) | `NatsSttClient._on_heartbeat` (hub) | Liveness + capacity |
-| `lyra.voice.tts.heartbeat` | fire-and-forget | `TtsAdapterStandalone` (satellite) | `NatsTtsClient._on_heartbeat` (hub) | Liveness + capacity |
+| `factory.voice.stt.request` | request-reply | `NatsSttClient.transcribe` (hub) | `SttAdapterStandalone.handle` (satellite) | Transcribe audio to text |
+| `factory.voice.tts.request` | request-reply | `NatsTtsClient.synthesize` (hub) | `TtsAdapterStandalone.handle` (satellite) | Synthesize speech from text |
+| `factory.voice.stt.heartbeat` | fire-and-forget | `SttAdapterStandalone` (satellite) | `NatsSttClient._on_heartbeat` (hub) | Liveness + capacity |
+| `factory.voice.tts.heartbeat` | fire-and-forget | `TtsAdapterStandalone` (satellite) | `NatsTtsClient._on_heartbeat` (hub) | Liveness + capacity |
 
 **Queue group names:** `STT_WORKERS` for STT; `TTS_WORKERS` for TTS. Replies use NATS request-reply inbox; no dedicated reply subject.
 
@@ -392,10 +392,10 @@ This ADR absorbs the decisions from the following superseded ADRs (2026-05-08 co
 
 | Subject | Type | Direction | Producer | Consumer | Purpose |
 |---|---|---|---|---|---|
-| `lyra.image.generate.request` | request-reply | hub → satellite | `NatsImageClient` (hub) | `ImageNatsAdapter.handle` (satellite) | Generate image from prompt |
-| `lyra.image.heartbeat` | fire-and-forget | satellite → hub | `ImageNatsAdapter` (satellite) | `NatsImageClient._on_heartbeat` (hub) | Liveness + capacity |
+| `factory.image.generate.request` | request-reply | hub → satellite | `NatsImageClient` (hub) | `ImageNatsAdapter.handle` (satellite) | Generate image from prompt |
+| `factory.image.heartbeat` | fire-and-forget | satellite → hub | `ImageNatsAdapter` (satellite) | `NatsImageClient._on_heartbeat` (hub) | Liveness + capacity |
 
-**Heartbeat subject reconciliation note:** The heartbeat subject is `lyra.image.heartbeat` (NOT `lyra.image.generate.heartbeat`). Heartbeats are worker-level liveness signals, not scoped to a single verb. This matches the shipped satellite code (`imagecli/src/imagecli/nats/adapter.py:18`) and is consistent with future additional image-domain verbs sharing the same worker heartbeat.
+**Heartbeat subject reconciliation note:** The heartbeat subject is `factory.image.heartbeat` (NOT `factory.image.generate.heartbeat`). Heartbeats are worker-level liveness signals, not scoped to a single verb. This matches the shipped satellite code (`imagecli/src/imagecli/nats/adapter.py:18`) and is consistent with future additional image-domain verbs sharing the same worker heartbeat.
 
 **Queue group:** `IMAGE_WORKERS`. Replies use NATS request-reply inbox; no dedicated reply subject.
 

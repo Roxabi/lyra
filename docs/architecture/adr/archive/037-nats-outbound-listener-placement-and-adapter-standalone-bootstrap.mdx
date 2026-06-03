@@ -15,7 +15,7 @@ clients. Two design questions arise that affect multiple modules and the `nats/`
 `adapters/` dependency boundary:
 
 1. Where should `NatsOutboundListener` (the background coroutine that subscribes to
-   `lyra.outbound.{platform}.{bot_id}` and calls `adapter.send` / `adapter.send_streaming`)
+   `factory.outbound.{platform}.{bot_id}` and calls `adapter.send` / `adapter.send_streaming`)
    live — in `lyra/nats/` alongside `NatsBus` and `NatsChannelProxy`, or in
    `lyra/adapters/`?
 
@@ -28,7 +28,7 @@ Background ADRs:
   persistent outbound subject)
 
 The spec for #458 also introduced `NatsOutboundEnvelope.original_msg` (embedding the
-full `InboundMessage` in the outbound envelope) and a separate `lyra.outbound.stream.*`
+full `InboundMessage` in the outbound envelope) and a separate `factory.outbound.stream.*`
 subject hierarchy for streaming. Both diverge from ADR-036 and are resolved here.
 
 ## Options Considered
@@ -88,15 +88,15 @@ keyed by `msg_id`. The outbound envelope carries only `msg_id` (for non-streamin
 ### 2. Align streaming with ADR-036 single-subject model
 
 The spec proposed a separate subject hierarchy
-`lyra.outbound.stream.{platform}.{bot_id}.{msg_id}` for streaming chunks. ADR-036
+`factory.outbound.stream.{platform}.{bot_id}.{msg_id}` for streaming chunks. ADR-036
 explicitly rejected ephemeral per-request subjects (Option B in ADR-036) in favour of
-a single persistent subject `lyra.outbound.{platform}.{bot_id}` with `stream_id`
+a single persistent subject `factory.outbound.{platform}.{bot_id}` with `stream_id`
 multiplexing.
 
 **Adopted design:** All outbound messages (single-shot and streaming) flow on
-`lyra.outbound.{platform}.{bot_id}`. Streaming chunks use `NatsChunkEnvelope` as
+`factory.outbound.{platform}.{bot_id}`. Streaming chunks use `NatsChunkEnvelope` as
 specified in ADR-036: `stream_id` multiplexing, monotonically incrementing `seq`, gap
-detection, `done=true` on the final chunk. The `lyra.outbound.stream.*` subject pattern
+detection, `done=true` on the final chunk. The `factory.outbound.stream.*` subject pattern
 is not implemented.
 
 ## Bootstrap Contract for `adapter_standalone.py`

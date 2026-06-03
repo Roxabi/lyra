@@ -43,11 +43,11 @@ Replace hand-written `_inbox.{requester}.>` grants with a declarative `request_r
 
 ```json
 "request_reply_flows": [
-  { "requester": "hub", "responder": "clipool-worker", "subject": "lyra.clipool.cmd" },
-  { "requester": "hub", "responder": "voice-tts",      "subject": "lyra.voice.tts.request.>" },
-  { "requester": "hub", "responder": "voice-stt",      "subject": "lyra.voice.stt.request.>" },
-  { "requester": "hub", "responder": "image-worker",   "subject": "lyra.image.generate.request" },
-  { "requester": "hub", "responder": "llm-worker",     "subject": "lyra.llm.request" }
+  { "requester": "hub", "responder": "clipool-worker", "subject": "factory.clipool.cmd" },
+  { "requester": "hub", "responder": "voice-tts",      "subject": "factory.voice.tts.request.>" },
+  { "requester": "hub", "responder": "voice-stt",      "subject": "factory.voice.stt.request.>" },
+  { "requester": "hub", "responder": "image-worker",   "subject": "factory.image.generate.request" },
+  { "requester": "hub", "responder": "llm-worker",     "subject": "factory.llm.request" }
 ]
 ```
 

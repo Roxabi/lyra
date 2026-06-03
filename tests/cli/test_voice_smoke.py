@@ -305,7 +305,7 @@ class TestVoiceSmokeSttFailure:
         nc = AsyncMock()
 
         async def _tts_then_timeout(subject, payload, *args, **kwargs):  # noqa: ANN001
-            if subject == "lyra.voice.tts.request":
+            if subject == "factory.voice.tts.request":
                 return _nats_reply(_tts_ok_response())
             raise TimeoutError()
 

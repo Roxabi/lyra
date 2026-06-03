@@ -168,8 +168,8 @@ def test_mint_failure_reason_empty_rejected() -> None:
 
 
 def test_subject_helper_happy() -> None:
-    """gh_mint_failure produces lyra.gh.mint_failure.<machine>."""
-    assert gh_mint_failure("M1") == "lyra.gh.mint_failure.M1"
+    """gh_mint_failure produces factory.gh.mint_failure.<machine>."""
+    assert gh_mint_failure("M1") == "factory.gh.mint_failure.M1"
 
 
 # ---------------------------------------------------------------------------

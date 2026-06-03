@@ -47,7 +47,7 @@ class TestNatsAdapterBaseConstruction:
         """Constructing with valid tokens raises no exception."""
         # Arrange / Act / Assert — no exception raised
         adapter = _ConcreteAdapter(
-            subject="lyra.inbound.telegram.main",
+            subject="factory.inbound.telegram.main",
             queue_group="telegram_workers",
             envelope_name="InboundMessage",
             schema_version=1,
@@ -76,7 +76,7 @@ class TestNatsAdapterBaseConstruction:
         # Act / Assert
         with pytest.raises(ValueError, match="queue_group"):
             _ConcreteAdapter(
-                subject="lyra.inbound.telegram.main",
+                subject="factory.inbound.telegram.main",
                 queue_group=bad_group,
                 envelope_name="InboundMessage",
                 schema_version=1,
@@ -85,7 +85,7 @@ class TestNatsAdapterBaseConstruction:
     def test_all_fields_stored_correctly(self) -> None:
         """All constructor arguments are stored as instance attributes."""
         # Arrange
-        subject = "lyra.inbound.telegram.main"
+        subject = "factory.inbound.telegram.main"
         queue_group = "telegram_workers"
         envelope_name = "InboundMessage"
         schema_version = 2
@@ -117,7 +117,7 @@ class TestNatsAdapterBaseConstruction:
         """Default timeout and drain_timeout are 30.0 when not supplied."""
         # Arrange / Act
         adapter = _ConcreteAdapter(
-            subject="lyra.inbound.discord.main",
+            subject="factory.inbound.discord.main",
             queue_group="discord_workers",
             envelope_name="InboundMessage",
             schema_version=1,
@@ -138,7 +138,7 @@ class TestValidateEnvelope:
 
     def _make_adapter(self, *, schema_version: int = 1) -> _ConcreteAdapter:
         return _ConcreteAdapter(
-            subject="lyra.inbound.telegram.main",
+            subject="factory.inbound.telegram.main",
             queue_group="telegram_workers",
             envelope_name="InboundMessage",
             schema_version=schema_version,
@@ -213,7 +213,7 @@ class TestValidateEnvelope:
         """_drop_count is keyed by envelope_name, not by subject."""
         # Arrange
         adapter = _ConcreteAdapter(
-            subject="lyra.inbound.telegram.main",
+            subject="factory.inbound.telegram.main",
             queue_group="telegram_workers",
             envelope_name="CustomEnvelope",
             schema_version=1,
@@ -283,7 +283,7 @@ class TestShutdown:
         """nc.drain() is awaited before nc.close()."""
         # Arrange
         adapter = _ConcreteAdapter(
-            subject="lyra.inbound.telegram.main",
+            subject="factory.inbound.telegram.main",
             queue_group="telegram_workers",
             envelope_name="InboundMessage",
             schema_version=1,
@@ -307,7 +307,7 @@ class TestShutdown:
         """nc.drain() and nc.close() are each called exactly once."""
         # Arrange
         adapter = _ConcreteAdapter(
-            subject="lyra.inbound.telegram.main",
+            subject="factory.inbound.telegram.main",
             queue_group="telegram_workers",
             envelope_name="InboundMessage",
             schema_version=1,
@@ -327,7 +327,7 @@ class TestShutdown:
         """nc.unsubscribe() is NOT called — drain subsumes subscription teardown."""
         # Arrange
         adapter = _ConcreteAdapter(
-            subject="lyra.inbound.telegram.main",
+            subject="factory.inbound.telegram.main",
             queue_group="telegram_workers",
             envelope_name="InboundMessage",
             schema_version=1,
@@ -346,7 +346,7 @@ class TestShutdown:
         """_shutdown is a no-op when _nc has not been set (pre-run state)."""
         # Arrange
         adapter = _ConcreteAdapter(
-            subject="lyra.inbound.telegram.main",
+            subject="factory.inbound.telegram.main",
             queue_group="telegram_workers",
             envelope_name="InboundMessage",
             schema_version=1,
@@ -367,7 +367,7 @@ class TestHealth:
 
     def _make_adapter(self) -> _ConcreteAdapter:
         return _ConcreteAdapter(
-            subject="lyra.inbound.telegram.main",
+            subject="factory.inbound.telegram.main",
             queue_group="telegram_workers",
             envelope_name="InboundMessage",
             schema_version=2,
@@ -476,7 +476,7 @@ class TestHealth:
         result = adapter.health()
 
         # Assert
-        assert result["subject"] == "lyra.inbound.telegram.main"
+        assert result["subject"] == "factory.inbound.telegram.main"
         assert result["queue_group"] == "telegram_workers"
 
     def test_schema_version_in_health(self) -> None:
@@ -501,7 +501,7 @@ class TestRun:
 
     def _make_adapter(self) -> _ConcreteAdapter:
         return _ConcreteAdapter(
-            subject="lyra.inbound.telegram.main",
+            subject="factory.inbound.telegram.main",
             queue_group="telegram_workers",
             envelope_name="InboundMessage",
             schema_version=1,
@@ -566,7 +566,7 @@ class TestRun:
 
         # Assert
         mock_nc.subscribe.assert_awaited_once_with(
-            "lyra.inbound.telegram.main",
+            "factory.inbound.telegram.main",
             queue="telegram_workers",
             cb=adapter._dispatch,
         )
@@ -728,7 +728,7 @@ class TestDispatch:
 
     def _make_adapter(self) -> _ConcreteAdapter:
         return _ConcreteAdapter(
-            subject="lyra.inbound.telegram.main",
+            subject="factory.inbound.telegram.main",
             queue_group="telegram_workers",
             envelope_name="InboundMessage",
             schema_version=1,
@@ -791,7 +791,7 @@ class TestHeartbeatConstruction:
 
     def _make_adapter(self, **kwargs) -> _ConcreteAdapter:
         return _ConcreteAdapter(
-            subject="lyra.inbound.telegram.main",
+            subject="factory.inbound.telegram.main",
             queue_group="telegram_workers",
             envelope_name="InboundMessage",
             schema_version=1,
@@ -801,10 +801,10 @@ class TestHeartbeatConstruction:
     def test_heartbeat_subject_stored(self) -> None:
         """heartbeat_subject kwarg is stored on the adapter."""
         # Arrange / Act
-        adapter = self._make_adapter(heartbeat_subject="lyra.voice.stt.heartbeat")
+        adapter = self._make_adapter(heartbeat_subject="factory.voice.stt.heartbeat")
 
         # Assert
-        assert adapter._heartbeat_subject == "lyra.voice.stt.heartbeat"
+        assert adapter._heartbeat_subject == "factory.voice.stt.heartbeat"
 
     def test_heartbeat_interval_stored(self) -> None:
         """heartbeat_interval kwarg is stored (default 5.0)."""
@@ -841,14 +841,14 @@ class TestHeartbeatConstruction:
         """NatsAdapterBase subclass with no heartbeat kwargs still works."""
         # Arrange / Act — no heartbeat kwargs, must not raise
         adapter = _ConcreteAdapter(
-            subject="lyra.inbound.telegram.main",
+            subject="factory.inbound.telegram.main",
             queue_group="telegram_workers",
             envelope_name="InboundMessage",
             schema_version=1,
         )
 
         # Assert — basic fields are still intact
-        assert adapter.subject == "lyra.inbound.telegram.main"
+        assert adapter.subject == "factory.inbound.telegram.main"
         assert adapter._heartbeat_subject is None
 
 
@@ -862,11 +862,11 @@ class TestHeartbeatLoop:
 
     def _make_adapter(self, **kwargs) -> _ConcreteAdapter:
         return _ConcreteAdapter(
-            subject="lyra.inbound.telegram.main",
+            subject="factory.inbound.telegram.main",
             queue_group="telegram_workers",
             envelope_name="InboundMessage",
             schema_version=1,
-            heartbeat_subject="lyra.voice.stt.heartbeat",
+            heartbeat_subject="factory.voice.stt.heartbeat",
             **kwargs,
         )
 
@@ -896,7 +896,7 @@ class TestHeartbeatLoop:
         # Assert
         assert len(publish_calls) == 1
         subject, data = publish_calls[0]
-        assert subject == "lyra.voice.stt.heartbeat"
+        assert subject == "factory.voice.stt.heartbeat"
         payload = json.loads(data)
         assert "worker_id" in payload
         assert "service" in payload
@@ -1001,11 +1001,11 @@ class TestHeartbeatShutdown:
 
     def _make_adapter(self, **kwargs) -> _ConcreteAdapter:
         return _ConcreteAdapter(
-            subject="lyra.inbound.telegram.main",
+            subject="factory.inbound.telegram.main",
             queue_group="telegram_workers",
             envelope_name="InboundMessage",
             schema_version=1,
-            heartbeat_subject="lyra.voice.stt.heartbeat",
+            heartbeat_subject="factory.voice.stt.heartbeat",
             **kwargs,
         )
 
@@ -1053,7 +1053,7 @@ class TestHeartbeatShutdown:
         """_shutdown() works normally when no heartbeat task was created."""
         # Arrange
         adapter = _ConcreteAdapter(
-            subject="lyra.inbound.telegram.main",
+            subject="factory.inbound.telegram.main",
             queue_group="telegram_workers",
             envelope_name="InboundMessage",
             schema_version=1,
@@ -1077,7 +1077,7 @@ class TestHeartbeatRun:
 
     def _make_adapter(self, **kwargs) -> _ConcreteAdapter:
         return _ConcreteAdapter(
-            subject="lyra.inbound.telegram.main",
+            subject="factory.inbound.telegram.main",
             queue_group="telegram_workers",
             envelope_name="InboundMessage",
             schema_version=1,
@@ -1088,7 +1088,7 @@ class TestHeartbeatRun:
     async def test_heartbeat_task_created_when_subject_set(self) -> None:
         """run() creates _heartbeat_task when heartbeat_subject is set."""
         # Arrange
-        adapter = self._make_adapter(heartbeat_subject="lyra.voice.stt.heartbeat")
+        adapter = self._make_adapter(heartbeat_subject="factory.voice.stt.heartbeat")
         stop = asyncio.Event()
 
         mock_nc = AsyncMock()
@@ -1194,7 +1194,7 @@ class TestWaitReadyOptOut:
 
     def _make_adapter(self, *, wait_ready: bool = True) -> _ConcreteAdapter:
         return _ConcreteAdapter(
-            subject="lyra.inbound.telegram.main",
+            subject="factory.inbound.telegram.main",
             queue_group="telegram_workers",
             envelope_name="InboundMessage",
             schema_version=1,

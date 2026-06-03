@@ -10,21 +10,21 @@ Superseded by ADR-049 — image subjects table, heartbeat subject reconciliation
 
 ## Context
 
-imageCLI#50 (closed 2026-04-15) shipped `imagecli nats-serve`, a satellite process that subscribes to `lyra.image.generate.request` using `NatsAdapterBase` from `roxabi-nats`. The satellite is fully operational; it is the lyra-side contract documentation that is missing.
+imageCLI#50 (closed 2026-04-15) shipped `imagecli nats-serve`, a satellite process that subscribes to `factory.image.generate.request` using `NatsAdapterBase` from `roxabi-nats`. The satellite is fully operational; it is the lyra-side contract documentation that is missing.
 
-ADR-047 (§ imageCLI migration state) explicitly notes the remaining lyra-side work: contract ADR for `lyra.image.*`, `src/lyra/nats/nats_image_client.py`, and the `image-worker` nkey in `gen-nkeys.sh`. This ADR delivers the first item.
+ADR-047 (§ imageCLI migration state) explicitly notes the remaining lyra-side work: contract ADR for `factory.image.*`, `src/lyra/nats/nats_image_client.py`, and the `image-worker` nkey in `gen-nkeys.sh`. This ADR delivers the first item.
 
-As with the voice domain (ADR-044), the wire contract must be frozen so that both sides can evolve safely. This ADR freezes the subjects, payload schemas, error codes, max-payload cap, and sanitization obligations for all `lyra.image.*` traffic.
+As with the voice domain (ADR-044), the wire contract must be frozen so that both sides can evolve safely. This ADR freezes the subjects, payload schemas, error codes, max-payload cap, and sanitization obligations for all `factory.image.*` traffic.
 
 ### Heartbeat subject reconciliation
 
-Issue #754 originally referenced the heartbeat subject as `lyra.image.generate.heartbeat`. The shipped satellite at `imagecli/src/imagecli/nats/adapter.py:18` defines:
+Issue #754 originally referenced the heartbeat subject as `factory.image.generate.heartbeat`. The shipped satellite at `imagecli/src/imagecli/nats/adapter.py:18` defines:
 
 ```python
-HEARTBEAT_SUBJECT = "lyra.image.heartbeat"
+HEARTBEAT_SUBJECT = "factory.image.heartbeat"
 ```
 
-This ADR aligns to the **shipped subject** (`lyra.image.heartbeat`). The `generate` segment is omitted because heartbeats are worker-level liveness signals, not tied to a single verb. This is consistent with the naming convention in ADR-035 and the voicecli heartbeat pattern in ADR-044.
+This ADR aligns to the **shipped subject** (`factory.image.heartbeat`). The `generate` segment is omitted because heartbeats are worker-level liveness signals, not tied to a single verb. This is consistent with the naming convention in ADR-035 and the voicecli heartbeat pattern in ADR-044.
 
 Cross-references: imageCLI#50 (satellite implementation), `artifacts/specs/754-lyra-image-domain-integration-spec.mdx` (lyra-side spec).
 
@@ -34,8 +34,8 @@ Cross-references: imageCLI#50 (satellite implementation), `artifacts/specs/754-l
 
 | Subject | Type | Direction | Producer | Consumer | Purpose |
 |---|---|---|---|---|---|
-| `lyra.image.generate.request` | request-reply | hub → satellite | `NatsImageClient` (hub) | `ImageNatsAdapter.handle` (satellite) | Generate image from prompt |
-| `lyra.image.heartbeat` | fire-and-forget | satellite → hub | `ImageNatsAdapter` (satellite) | `NatsImageClient._on_heartbeat` (hub) | Liveness + capacity |
+| `factory.image.generate.request` | request-reply | hub → satellite | `NatsImageClient` (hub) | `ImageNatsAdapter.handle` (satellite) | Generate image from prompt |
+| `factory.image.heartbeat` | fire-and-forget | satellite → hub | `ImageNatsAdapter` (satellite) | `NatsImageClient._on_heartbeat` (hub) | Liveness + capacity |
 
 Queue group (load balancing across satellite replicas): `IMAGE_WORKERS`. Replies use the NATS request-reply inbox; no dedicated reply subject.
 
@@ -52,7 +52,7 @@ Every payload listed below carries `contract_version: "1"` as a top-level string
 - The field is **additive**, not a handshake. A `"2"` sender and a `"1"` reader continue to work as long as no other field has been removed or reinterpreted between versions. When an incompatible change is needed, it ships as a new subject (or a new ADR), not a bumped version.
 - The goal is **observability** — logs and metrics on both sides can filter by version, and operators can diagnose mismatches on the wire without guessing.
 
-### Request — `lyra.image.generate.request`
+### Request — `factory.image.generate.request`
 
 ```json
 {
@@ -170,7 +170,7 @@ Exactly one of `image_b64` or `file_path` MUST be present on a success reply. Bo
 
 The hub raises `ImageUnavailableError` (or equivalent) on `ok: false` regardless of the specific `error` value — the token is for logs and metrics, not for branching control flow.
 
-### Heartbeat — `lyra.image.heartbeat`
+### Heartbeat — `factory.image.heartbeat`
 
 ```json
 {
@@ -180,7 +180,7 @@ The hub raises `ImageUnavailableError` (or equivalent) on `ok: false` regardless
   "worker_id": "image-roxabituwer-1713531130",
   "service": "image_workers",
   "host": "roxabituwer",
-  "subject": "lyra.image.generate.request",
+  "subject": "factory.image.generate.request",
   "queue_group": "IMAGE_WORKERS",
   "ts": 1713531130.0,
   "engine_loaded": "flux2-klein",
@@ -198,7 +198,7 @@ The hub raises `ImageUnavailableError` (or equivalent) on `ok: false` regardless
 | `worker_id` | string | ✓ | Unique per process; hub indexes freshness by this key; drop heartbeat if absent |
 | `service` | string | ✓ | Populated by `NatsAdapterBase.heartbeat_payload` |
 | `host` | string | ✓ | Populated by `NatsAdapterBase.heartbeat_payload` |
-| `subject` | string | ✓ | Always `lyra.image.generate.request` |
+| `subject` | string | ✓ | Always `factory.image.generate.request` |
 | `queue_group` | string | ✓ | Always `IMAGE_WORKERS` |
 | `ts` | float | ✓ | Unix timestamp (seconds) of emission |
 | `engine_loaded` | string \| null | — | Currently loaded engine name; null if no engine warmed |
@@ -245,7 +245,7 @@ Path validation uses `Path.resolve()` to canonicalize before the `relative_to` c
 
 **Why NATS at all.** Image generation is GPU-bound and requires a heavy separate venv (torch, diffusers, ComfyUI). Making it a request-reply service over NATS lets it run on the same host (or a different one) without the hub importing imageCLI's dependencies. It gives load balancing via queue groups, liveness tracking via heartbeats, and zero-downtime worker replacement — all on the messaging layer. This is the same rationale as the voice domain (ADR-044).
 
-**Why these subjects.** `lyra.image.generate.request` follows the `<namespace>.<capability>.<action>.<verb>` shape from ADR-035. The heartbeat subject uses `lyra.image.heartbeat` (no `generate` qualifier) because it is a worker-level liveness signal, not scoped to a single verb. This matches the shipped satellite code (`adapter.py:18`) and is consistent with future additional image-domain verbs (e.g. `lyra.image.upscale.request`) sharing the same worker heartbeat.
+**Why these subjects.** `factory.image.generate.request` follows the `<namespace>.<capability>.<action>.<verb>` shape from ADR-035. The heartbeat subject uses `factory.image.heartbeat` (no `generate` qualifier) because it is a worker-level liveness signal, not scoped to a single verb. This matches the shipped satellite code (`adapter.py:18`) and is consistent with future additional image-domain verbs (e.g. `factory.image.upscale.request`) sharing the same worker heartbeat.
 
 **Why `contract_version` additive not a handshake.** A handshake would require hub and satellite to negotiate on connect, reintroducing the kind of coupling the NATS migration is trying to eliminate. An additive string makes the contract self-describing on the wire without any state on either side. When a breaking change is needed, it ships as a new subject or a new ADR — not a wire negotiation. This is the same decision as ADR-044.
 
@@ -273,7 +273,7 @@ Path validation uses `Path.resolve()` to canonicalize before the `relative_to` c
 
 ## Relation to other ADRs
 
-- **ADR-035** — NATS subject naming convention. `lyra.image.generate.request` and `lyra.image.heartbeat` follow the `<namespace>.<capability>.<action>.<verb>` and `<namespace>.<capability>.<verb>` shapes respectively.
+- **ADR-035** — NATS subject naming convention. `factory.image.generate.request` and `factory.image.heartbeat` follow the `<namespace>.<capability>.<action>.<verb>` and `<namespace>.<capability>.<verb>` shapes respectively.
 - **ADR-044** — lyra ↔ voicecli NATS voice contract. The canonical contract ADR shape. This ADR follows its structure exactly: subjects table, payload encoding, `contract_version`, request/reply schemas, error codes, heartbeat, max-payload, sanitization contract.
 - **ADR-046** — nkey provisioning is declarative. Invariant 2 (IDENTITIES is the single source of truth) requires the `image-worker` nkey identity to be added to `gen-nkeys.sh` before the hub client ships. The `image-worker` identity is now provisioned; ADR-047's subject ownership table reflects Status: Shipped.
 - **ADR-047** — NATS connector ownership pattern. This ADR is the lyra-owned half of the image domain. The satellite-owned half is `imagecli/src/imagecli/nats/adapter.py` (shipped by imageCLI#50). Rule 4 of ADR-047 requires this ADR to declare the max-payload cap — done in the Max payload section above.

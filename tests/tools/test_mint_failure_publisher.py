@@ -41,7 +41,7 @@ async def test_publish_http_error_sends_event() -> None:
 
     Verifies:
     - exactly one publish call is made
-    - subject == gh_mint_failure("testhost") and starts with "lyra.gh.mint_failure."
+    - subject == gh_mint_failure("testhost") and starts with "factory.gh.mint_failure."
     - deserialized event has reason="github_api_401", http_status=401,
       machine="testhost", retries=0
     """

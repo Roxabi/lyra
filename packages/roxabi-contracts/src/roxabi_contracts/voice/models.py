@@ -20,7 +20,7 @@ from roxabi_contracts.errors import WorkerError
 
 
 class TtsRequest(ContractEnvelope):
-    """TTS synthesis request. Canonical subject: ``lyra.voice.tts.request``."""
+    """TTS synthesis request. Canonical subject: ``factory.voice.tts.request``."""
 
     request_id: Annotated[str, StringConstraints(min_length=1)]
     text: Annotated[str, StringConstraints(min_length=1)]
@@ -73,7 +73,7 @@ class TtsResponse(ContractEnvelope):
 
 
 class SttRequest(ContractEnvelope):
-    """STT transcription request. Canonical subject: ``lyra.voice.stt.request``."""
+    """STT transcription request. Canonical subject: ``factory.voice.stt.request``."""
 
     request_id: Annotated[str, StringConstraints(min_length=1)]
     blob_ref: BlobRef

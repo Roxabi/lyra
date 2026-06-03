@@ -2,8 +2,8 @@
 
 (ADR-054 (absorbed into ADR-055)).
 
-Subscribes to ``lyra.clipool.cmd`` (queue group ``clipool-workers``) and
-``lyra.clipool.control``.  Routes inbound messages to _handle_cmd or
+Subscribes to ``factory.clipool.cmd`` (queue group ``clipool-workers``) and
+``factory.clipool.control``.  Routes inbound messages to _handle_cmd or
 _handle_control based on subject.  Streams CLI output back to the caller
 via NATS request-reply inbox.
 """
@@ -33,9 +33,9 @@ from roxabi_nats.adapter_base import NatsAdapterBase
 
 log = logging.getLogger(__name__)
 
-_CMD_SUBJECT = "lyra.clipool.cmd"
-_CONTROL_SUBJECT = "lyra.clipool.control"
-_HEARTBEAT_SUBJECT = "lyra.clipool.heartbeat"
+_CMD_SUBJECT = "factory.clipool.cmd"
+_CONTROL_SUBJECT = "factory.clipool.control"
+_HEARTBEAT_SUBJECT = "factory.clipool.heartbeat"
 _QUEUE_GROUP = "clipool-workers"
 _ENVELOPE_NAME = "CliCmdPayload"
 _SCHEMA_VERSION = 1
@@ -111,8 +111,8 @@ class CliPoolNatsWorker(NatsAdapterBase):
     """NATS worker adapter that exposes CliPool over request-reply subjects.
 
     Routing:
-      - ``lyra.clipool.cmd``     (queue group) → _handle_cmd
-      - ``lyra.clipool.control`` (broadcast)   → _handle_control
+      - ``factory.clipool.cmd``     (queue group) → _handle_cmd
+      - ``factory.clipool.control`` (broadcast)   → _handle_control
 
     The caller sends a JSON envelope (CliCmdPayload / CliControlCmd) and
     provides a reply-to inbox.  Streaming chunks are published to that inbox

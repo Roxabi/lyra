@@ -193,6 +193,11 @@ User question: "Est-ce qu'on considère les workers comme des tools, un bundle d
 
 **Answer**: A worker is **not** a tool. A worker is a service that **exposes** tools.
 
+> **Refined 2026-06-03** — this "worker" is a tool **provider** (exposes tools). A second,
+> opposite sense exists — `worker` = a compute unit running *on* the engine (epic #1044,
+> *consumes* tools). Disambiguated in [`493-tool-domain-nature-consolidation.mdx`](./493-tool-domain-nature-consolidation.mdx)
+> §2.5: **workerEngine** (runtime) · **worker** (compute-on-engine) · **provider** (this row's satellite).
+
 | | Worker | Tool |
 |---|---|---|
 | Nature | Long-running NATS service | Surface of invocation visible to LLM |

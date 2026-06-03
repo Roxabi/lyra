@@ -138,6 +138,7 @@ When `CliPool.send()` receives a `ModelConfig` that differs from the one used to
 
 ## See also
 
+- **Tool model & taxonomy → `tool-architecture.md`** (the conceptual layer above this impl page)
 - Adapters → `adapters.md`
 - Deployment & Quadlet → `deployment.md`
 - Security & credentials → `security-routing.md` (ADR-071 cross-listed)

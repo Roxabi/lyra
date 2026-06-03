@@ -25,7 +25,7 @@ dependencies = [
     "roxabi-nats",
     # Workspace presence for V1 (#1063); consumers wire BlobStore in V2+ (#1064-#1068).
     "roxabi-blobs",
-    "typer>=0.25.1",
+    "typer>=0.26.7",
     "tomli-w>=1.0",
     "telegramify-markdown>=1.1.5",
     "tabulate>=0.9",

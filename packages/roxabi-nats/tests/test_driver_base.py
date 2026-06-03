@@ -766,7 +766,7 @@ class TestStreamGenLiveness:
         nc.subscribe = AsyncMock(return_value=sub_mock)
 
         collected: list[dict] = []
-        async for chunk in driver._dict_stream_gen("lyra.test.exec", {"cmd": "ls"}):
+        async for chunk in driver._dict_stream_gen("factory.test.exec", {"cmd": "ls"}):
             collected.append(chunk)
 
         # Falls back to timeout exit — no error raised

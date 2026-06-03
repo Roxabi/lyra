@@ -1,4 +1,4 @@
-"""lyra.nats — hub-coupled NATS transport modules.
+"""factory.nats — hub-coupled NATS transport modules.
 
 Transport primitives (NatsAdapterBase, nats_connect, circuit breaker,
 version checks, sanitizers, serializer) now live in the roxabi_nats

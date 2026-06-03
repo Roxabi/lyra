@@ -700,6 +700,16 @@ class CodeInventory:
         module shape — a real submodule prefix (`factory.<sub>…` in modules) means
         a dead module/submodule, otherwise the token is subject-shaped → orphan
         subject (so check_subject_literals can flag undeclared `factory.*` literals).
+
+        Known limitation (#1670 review): a few prefixes are BOTH a module dir AND a
+        live subject root — `factory.inbound`, `factory.outbound`, `factory.typing`.
+        A *dead* token under one of these (e.g. a not-yet-declared
+        `factory.inbound.newplatform.bot`) resolves here as kind=module, so
+        check_subject_literals would not flag it as an orphan subject. Impact is
+        low: every currently-declared subject in these namespaces is covered by a
+        `>` wildcard in the subjects set and resolves in the caller (step 3) before
+        reaching this method — only a future, undeclared literal would be missed.
+        See test_resolve_dead_factory_module_subject_collision.
         """
         lower = token.lower()
         if any(lower.startswith(p) for p in ("$js.", "$kv.", "_inbox.", "lyra.")):

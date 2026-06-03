@@ -172,10 +172,10 @@ echo "$iw_pub_line" | grep -q '"_INBOX.>"' \
 echo "$iw_pub_line" | grep -q '"_inbox.>"' \
   || { echo "FAIL: image-worker publish must allow _inbox.>"; exit 1; }
 
-# Must NOT contain any other lyra.* subject in the publish line
-extra_pub=$(echo "$iw_pub_line" | grep -oE '"lyra\.[^"]+"' | grep -v '"lyra\.image\.heartbeat"' || true)
+# Must NOT contain any other factory.* subject in the publish line
+extra_pub=$(echo "$iw_pub_line" | grep -oE '"factory\.[^"]+"' | grep -v '"factory\.image\.heartbeat"' || true)
 [ -z "$extra_pub" ] \
-  || { echo "FAIL: image-worker publish has unexpected lyra.* subject(s): ${extra_pub}"; exit 1; }
+  || { echo "FAIL: image-worker publish has unexpected factory.* subject(s): ${extra_pub}"; exit 1; }
 echo "PASS (#754-2): image-worker publish allow-list == [\"factory.image.heartbeat\", \"_INBOX.>\", \"_inbox.>\"]"
 
 # ── (#754-3) image-worker subscribe allow-list == ["factory.image.generate.request"] ──
@@ -184,11 +184,11 @@ echo "$iw_block" | grep -E 'subscribe:[[:space:]]*\{[[:space:]]*allow:' \
   | grep -q '"factory.image.generate.request"' \
   || { echo "FAIL: image-worker subscribe must allow factory.image.generate.request"; exit 1; }
 
-# Must NOT contain any other lyra.* subject in the subscribe line
+# Must NOT contain any other factory.* subject in the subscribe line
 iw_sub_line=$(echo "$iw_block" | grep -E 'subscribe:[[:space:]]*\{[[:space:]]*allow:' | head -1)
-extra_sub=$(echo "$iw_sub_line" | grep -oE '"lyra\.[^"]+"' | grep -v '"lyra\.image\.generate\.request"' || true)
+extra_sub=$(echo "$iw_sub_line" | grep -oE '"factory\.[^"]+"' | grep -v '"factory\.image\.generate\.request"' || true)
 [ -z "$extra_sub" ] \
-  || { echo "FAIL: image-worker subscribe has unexpected lyra.* subject(s): ${extra_sub}"; exit 1; }
+  || { echo "FAIL: image-worker subscribe has unexpected factory.* subject(s): ${extra_sub}"; exit 1; }
 echo "PASS (#754-3): image-worker subscribe allow-list == [\"factory.image.generate.request\"]"
 
 # ── (#754-4) hub publish gained factory.image.generate.request ──────────────────
@@ -211,7 +211,7 @@ OTHER_IDENTITIES=(telegram-adapter discord-adapter tts-adapter stt-adapter voice
 for other_id in "${OTHER_IDENTITIES[@]}"; do
   other_block=$(extract_block "$other_id")
   [ -n "$other_block" ] || { echo "FAIL: could not extract block for ${other_id}"; exit 1; }
-  leak=$(echo "$other_block" | grep -oE '"lyra\.image\.[^"]+"' || true)
+  leak=$(echo "$other_block" | grep -oE '"factory\.image\.[^"]+"' || true)
   [ -z "$leak" ] \
     || { echo "FAIL: ${other_id} must not have factory.image.* access, found: ${leak}"; exit 1; }
 done

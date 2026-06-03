@@ -1,6 +1,6 @@
 """Whisper-specific helpers for STT noise detection + MIME mapping.
 
-Adapter layer (lyra.nats), not port layer.
+Adapter layer (factory.nats), not port layer.
 """
 
 WHISPER_NOISE_TOKENS = {"[music]", "[applause]", "[laughter]", "[silence]", "[noise]"}

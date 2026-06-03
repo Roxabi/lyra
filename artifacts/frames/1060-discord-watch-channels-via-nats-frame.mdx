@@ -1,0 +1,76 @@
+---
+title: Discord watch_channels via NATS — close last adapter→config.db read
+issue: 1060
+status: approved
+tier: F-lite
+date: 2026-06-03
+---
+
+## Problem
+
+The standalone Discord adapter is the **last adapter process that opens `config.db`**. At boot,
+`src/factory/bootstrap/wiring/standalone_discord.py:46-69` (`_bootstrap_discord_setup`) opens
+`AgentStore(db_path=vault_dir / "config.db")` solely to read each bot's `watch_channels`. This single
+read is what forces the `factory-data.volume` mount onto the Discord (and Telegram) Quadlet
+containers. Blocker #1057 (bot_secrets → Podman secrets) is now CLOSED, so the credential side no
+longer needs the volume — this read is the only thing keeping it adapter-mounted. Closing it makes
+`factory-data.volume` hub-only and lets epic #1049 (deprecate file-based shared state) fully close.
+
+This is Phase 6 (final) of #1049.
+
+## Who
+
+- **Primary:** Ops/operator (Mickael) — gains runtime control of `watch_channels` (change a watched
+  channel without restarting the Discord adapter) and a tighter container security posture (no
+  `~/.roxabi/factory` data volume mounted into adapter containers).
+- **Secondary:** The factory deployment surface — `factory-data.volume` collapses to a single hub
+  mount, simplifying the volumes/SELinux story and the deployment docs.
+
+## Constraints
+
+- NATS-only adapter↔hub boundary (ADR-045/049); no shared-filesystem reads from adapter processes.
+- Reuse existing patterns: `ensure_kv` (hub_standalone.py:163-170), `kv.watch()` ephemeral consumer,
+  `wait_for_hub` readiness barrier (ADR-079 S3 — load-bearing ordering before KV bind).
+- ACL changes fan out to 4 derived artifacts (auth.conf, 706 spec table, v3-current fixture,
+  CURRENT.generated.md) — must regen together or CI red-walks one gate at a time.
+- NATS ACL changes are restart-not-HUP on `factory-nats` (config.db secret anchor).
+- File-length / folder-size / import-layer quality gates apply (stack.yml).
+
+## Out of Scope
+
+- The hub-embedded `bootstrap_wiring.py:_load_watch_channels` path — the hub legitimately owns
+  `config.db`; only the **standalone adapter** read is in scope.
+- Telegram has no `config.db` read post-#1057; its only remaining adapter mount is the inline
+  `config.toml` bind (bot enumeration) — that stays. We only drop `factory-data.volume` from it.
+- Migrating other `bot_settings` keys to KV — scope is `watch_channels` only.
+
+## Premise Validity
+
+**Success in 6 months:** `factory-data.volume` is hub-only; `grep -r 'AgentStore.*config.db'` finds
+zero hits in any standalone adapter process; epic #1049 is closed; an operator can change a bot's
+`watch_channels` and a running Discord adapter applies it with no restart.
+
+**Failure in 6 months:** (falsifiable) ≥1 standalone adapter still opens `config.db`, OR
+`factory-discord.container.tmpl` / `factory-telegram.container.tmpl` still carries
+`Volume=factory-data.volume`, OR the falsification lint never landed (boolean: absent from pre-push)
+and the docs Volumes table has drifted from the Quadlet `Volume=` lines.
+
+**Simplest alternative:** Option A — hub publishes `watch_channels` on a NATS subject at boot; the
+adapter applies it on first delivery. No KV bucket, no watch loop.
+**Why not simplest:** Option A loses live-update (operator must restart the adapter to change watched
+channels) and introduces a hub-up-before-adapter boot-ordering dependency. The 2026-05-18 decision
+already selected live-watch for the operational benefit; reusing the existing `factory-state` KV
+bucket (design fork B2) makes the live-watch path marginal extra cost over the static broadcast.
+
+## Complexity
+
+**Tier: F-lite** — single feature (one read path → KV), heavy reuse of existing KV/ACL machinery, but
+spans NATS/bootstrap/deploy/ACL/docs/tooling with two real design forks (B1 new bucket vs B2 reuse
+`factory-state`; who publishes the KV key — CLI vs hub) that a spec must resolve.
+
+Signals observed:
+- ~10-15 files across 3+ domains (backend/NATS, devops/Quadlet+ACL, docs, tooling).
+- ACL 4-artifact regen fan-out + new falsification pre-push lint.
+- Design unknowns are design-fork *choices* (spec-resolvable), not architecture discovery → F-lite,
+  not F-full.
+- κ ≈ 6.

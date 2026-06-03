@@ -196,7 +196,8 @@ migration *exposed* — they would bite any future operator regardless of the re
    rename + a back-compat symlink over absolute bridges (#14, R3 below).
 8. **RELEASE** — automate satellite lockstep: a re-pin should be `uv lock --upgrade` + rebuild +
    redeploy, fully scripted per satellite; forbid hardcoded wire-subject literals in satellites
-   (they must import from `roxabi_contracts`) — add a gate (R4 below).
+   (they must import from `roxabi_contracts`) — add a gate (R4 below). Add `pytest-timeout` to every
+   satellite so a leaked real-resource test fails fast instead of hanging CI for an hour (R7 below).
 9. **OPS** — add a repo↔deployed-host config-drift check (quadlet units, env files) so uncommitted
    edits like the M₂ mem-caps (R5 below) surface before a hard reset eats them.
 
@@ -205,7 +206,8 @@ migration *exposed* — they would bite any future operator regardless of the re
 ## Resolution — full sequence (2026-06-03)
 
 The cutover and all follow-on cleanup completed the same day. Final state: **`factory.*` is sole
-prod, zero `lyra.*` on the wire, 0 ACL violations system-wide, voice dictate confirmed working.**
+prod, zero `lyra.*` on the wire, 0 ACL violations system-wide, voice dictate confirmed working, and
+all three satellites (llmCLI, voiceCLI, imageCLI) re-pinned + merged (issues #105/#189/#104 closed).**
 
 ### Timeline
 
@@ -219,6 +221,7 @@ prod, zero `lyra.*` on the wire, 0 ACL violations system-wide, voice dictate con
 | ~15–16 | **Satellite re-pin** — llmCLI PR #107, voiceCLI PR #190 | contracts 0.4.0/0.6.0 → 0.7.0; images rebuilt; workers redeployed; **0 violations** |
 | 16:23 | **Purge** — `~/.lyra` (archived 48M), 14 lyra-* secrets, `image prune -a`, remote → `roxabi-factory.git`, worktrees pruned | factory-* green; lyra fully gone |
 | — | **llmCLI quadlet mem-caps** committed (PR #108) | repo↔host drift closed |
+| ~17–18 | **Satellite re-pin (imageCLI)** — PR #107 (issue #104) | contracts 0.6.0→0.7.0, URLs→roxabi-factory.git; worker DORMANT (image rebuilt, no redeploy); CI exposed a latent test hang → fixed in-PR (R7) |
 
 ### New findings surfaced during cleanup (beyond the cutover blocker table)
 
@@ -248,6 +251,20 @@ prod, zero `lyra.*` on the wire, 0 ACL violations system-wide, voice dictate con
 - **R6 — `image prune -a` ≠ free lunch.** Removing lyra images + `prune -a` freed ~5GB total, but
   ~11.5GB of "reclaimable" remained: it is held by **other M₁ projects' images** (voiceCLI / hermes /
   imageCLI), not lyra. Reported honestly; not force-removed. "Reclaimable" is host-wide, not per-app.
+
+- **R7 — satellite re-pin CI exposed a latent test-isolation bug (imageCLI).** imageCLI #107's CI
+  hung ~56 min on `tests/nats/test_integration.py::test_adapter_handles_generation_failure`. A
+  faulthandler dump pinned it: the test patched `get_engine` + `preflight_check` but **not**
+  `model_registry.model_registry.get`, and `ImageNatsAdapter.handle()`'s no-LoRA path resolves the
+  engine via `model_registry.get()` — so the **real Flux2 diffusion pipeline** loaded and ran a
+  50-step inference (CI: multi-GB HF model download; cached host: ~1h). Pre-existing latent bug
+  (same class as imageCLI #103), unrelated to the wire rename — the re-pin's CI was simply the gate
+  that surfaced it (deps shifted just enough to flip the real engine from fast-fail to actually
+  loading). Fix: add the missing mock (1 line, sibling pattern) → full suite **302 passed / 70s**.
+  Lessons: (a) treat each satellite's CI as a real regression gate, not a rubber stamp; (b) add
+  `pytest-timeout` to satellites so a leaked real-resource test **fails fast** instead of hanging the
+  runner for an hour; (c) faulthandler (`-o faulthandler_timeout=N`) turns an opaque CI hang into a
+  precise stack in one run.
 
 ### Recoverable artifacts (kept post-purge)
 

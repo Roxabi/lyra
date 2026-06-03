@@ -215,6 +215,50 @@ fi
 rm -f "$CORE_DIR/test_h.py"
 
 # ---------------------------------------------------------------------------
+# Case I — co-located real magic number + f-string format spec is flagged
+# Regression guard: the old `next`-based rule skipped the WHOLE line, so a
+# real literal on the same line as a valid f-string format spec escaped the
+# gate.  The gsub-based fix strips the f-string token and then detects the
+# remaining literal.
+# ---------------------------------------------------------------------------
+cat > "$CORE_DIR/test_i.py" << 'PYEOF'
+BUFFER_SIZE = 4096; label = f"{name:<20}"
+PYEOF
+
+# Empty baseline — gate must flag the 4096 literal (exit 1)
+printf '# empty baseline\n' > "$BASELINE"
+
+EXIT_I=$(run_gate)
+if [ "$EXIT_I" -eq 1 ]; then
+    pass "I: real magic number + f-string format spec on same line → exit 1 (gate flags the literal)"
+else
+    fail "I: real magic number + f-string format spec on same line → exit 1" "got exit $EXIT_I (gsub fix missing or broken)"
+fi
+
+rm -f "$CORE_DIR/test_i.py"
+
+# ---------------------------------------------------------------------------
+# Case G3 — Python set literal {10, 20} (no backslash prefix) IS flagged
+# Documents that the regex-quantifier strip rule does NOT exempt plain set or
+# dict literals — only patterns preceded by a \d/\w/\s escape class are stripped.
+# ---------------------------------------------------------------------------
+cat > "$CORE_DIR/test_g3.py" << 'PYEOF'
+allowed = {10, 20}
+PYEOF
+
+# Empty baseline — gate must flag the literals (exit 1)
+printf '# empty baseline\n' > "$BASELINE"
+
+EXIT_G3=$(run_gate)
+if [ "$EXIT_G3" -eq 1 ]; then
+    pass "G3: plain set literal {10, 20} → exit 1 (regex-quantifier rule does NOT exempt it)"
+else
+    fail "G3: plain set literal {10, 20} → exit 1" "got exit $EXIT_G3 (regex-quantifier strip over-fired — strips set literals too)"
+fi
+
+rm -f "$CORE_DIR/test_g3.py"
+
+# ---------------------------------------------------------------------------
 # Case E — real src/factory/core/ tree passes (exit 0)
 # Proves the committed baseline grandfathers all constants at current HEAD.
 # ---------------------------------------------------------------------------

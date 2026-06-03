@@ -324,6 +324,21 @@
         "_inbox.blobstore.>"
       ],
       "deploy": { "type": "container", "secret": "lyra-nats-blobstore" }
+    },
+    "gh-helper": {
+      "status": "active",
+      "created_at": "2026-06-02",
+      "owner": "lyra",
+      "description": "publish-only mint-failure alerts, #1082",
+      "allow_responses": false,
+      "publish": [
+        "lyra.gh.mint_failure.>"
+      ],
+      "subscribe": [],
+      "deploy": {
+        "type": "container",
+        "secret": "factory-nats-gh-helper"
+      }
     }
   }
 }

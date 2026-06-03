@@ -100,6 +100,9 @@
 - **Publish:** $JS.API.CONSUMER.CREATE.*, $JS.API.DIRECT.GET.KV_factory-state.hub.ready, $JS.API.INFO, $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.event.>, factory.inbound.discord.>, factory.metric.>, factory.system.ready, factory.turns.write
 - **Subscribe:** $KV.factory-state.>, _inbox.discord-adapter.*.*, _inbox.discord-adapter.>, factory.outbound.audio.>, factory.outbound.discord.>, factory.typing.discord.>
 
+### gh-helper
+- **Publish:** lyra.gh.mint_failure.>
+
 ### hub
 - **Publish:** $JS.API.>, $KV.factory-msg-index.>, $KV.factory-state.>, factory.audit.>, factory.clipool.cmd, factory.clipool.control, factory.event.>, factory.image.generate.request, factory.llm.generate.request, factory.metric.>, factory.outbound.audio.>, factory.outbound.discord.>, factory.outbound.telegram.>, factory.turns.write, factory.typing.>, factory.voice.stt.request, factory.voice.stt.request.>, factory.voice.tts.request, factory.voice.tts.request.>
 - **Subscribe:** _inbox.hub.>, factory.clipool.heartbeat, factory.gh.mint_failure.>, factory.image.heartbeat, factory.inbound.discord.>, factory.inbound.telegram.>, factory.llm.heartbeat, factory.system.ready, factory.voice.stt.heartbeat, factory.voice.tts.heartbeat

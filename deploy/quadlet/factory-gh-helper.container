@@ -36,6 +36,12 @@ Environment=FACTORY_GH_APP_ID=3619198
 Environment=FACTORY_GH_INSTALLATION_ID=129952244
 Environment=FACTORY_GH_PEM_PATH=/run/secrets/gh-app.pem
 
+# NATS NKey seed — publish-only identity for mint-failure alerts (#1082).
+Secret=factory-nats-gh-helper,type=mount,target=factory-nats-gh-helper.seed,uid=1501,gid=1501,mode=0400
+Environment=NATS_URL=nats://factory-nats:4222
+Environment=NATS_NKEY_SEED_PATH=/run/secrets/factory-nats-gh-helper.seed
+Environment=FACTORY_MACHINE=roxabituwer
+
 # Token-mint runtime state — shared with factory-clipool via Quadlet .volume unit.
 # Pod containers do NOT share mount namespaces; Tmpfs= on sibling containers
 # creates two independent filesystems. factory-gh-token.volume mounts the same

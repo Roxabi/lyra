@@ -693,3 +693,100 @@ def test_token_cache_parent_dir_must_exist(tmp_path: Path) -> None:
     # Act / Assert — must not silently swallow; OS error propagates
     with pytest.raises(OSError):
         cache.write(it)
+
+
+# ── Section K: Dispenser + MintFailurePublisher integration ──────────────────
+#
+# T10: verifies that Dispenser calls publisher.publish(exc) after writing the
+# error response, and that publisher=None is a safe no-op.
+
+
+class SpyPublisher:
+    """Minimal MintFailurePublisher spy that records publish() calls."""
+
+    def __init__(self) -> None:
+        self.calls: list[MintError] = []
+
+    async def publish(self, exc: MintError) -> None:  # type: ignore[override]
+        self.calls.append(exc)
+
+
+@pytest.mark.asyncio
+async def test_dispenser_calls_publisher_on_mint_error(
+    rsa_pem_path: Path, tmp_path: Path
+) -> None:
+    """Spy publisher is called exactly once with the MintError after error reply.
+
+    Verifies:
+    - socket response is b"error=mint failed\\n" (error written before publish)
+    - spy.publish(exc) was awaited exactly once with the raised MintError
+    - publisher call happens after the error bytes are sent (order preserved)
+
+    Negative-test note: removing the `if self._publisher is not None:` branch from
+    dispenser._handle() would NOT break this test (spy would still be called via
+    direct assignment). Removing the `await self._publisher.publish(exc)` call
+    entirely would cause `assert len(spy.calls) == 1` to fail — that is the
+    meaningful guard.
+    """
+    # Arrange — transport always returns 500 so mint() raises MintError
+    transport = _mock_transport(500, '{"message":"Internal Server Error"}')
+    signer = JWTSigner(rsa_pem_path)
+    cache = TokenCache(tmp_path / "token.json")
+    http = httpx.AsyncClient(transport=transport)
+    spy = SpyPublisher()
+    dispenser = Dispenser(
+        cache,
+        signer,
+        http,
+        app_id="12345",
+        install_id="123",
+        publisher=spy,  # type: ignore[arg-type]
+    )
+
+    sock_path = tmp_path / "d.sock"
+    server = await dispenser.serve(sock_path)
+    try:
+        response = await _round_trip(sock_path, b"get\n")
+    finally:
+        server.close()
+        await server.wait_closed()
+
+    # Assert — error reply sent to client
+    assert response == b"error=mint failed\n", (
+        f"Expected 'error=mint failed\\n', got {response!r}"
+    )
+    # Assert — publisher was called exactly once
+    assert len(spy.calls) == 1, (
+        f"Expected publisher.publish() called once; got {len(spy.calls)} calls"
+    )
+    assert isinstance(spy.calls[0], MintError)
+    assert spy.calls[0].http_status == 500
+
+
+@pytest.mark.asyncio
+async def test_dispenser_publisher_none_no_crash_on_mint_error(
+    rsa_pem_path: Path, tmp_path: Path
+) -> None:
+    """Dispenser with publisher=None handles MintError without crash.
+
+    Verifies that the `if self._publisher is not None:` guard prevents
+    AttributeError when no publisher is injected. Removing the guard would
+    cause `await None.publish(exc)` → AttributeError, failing the round-trip.
+    """
+    # Arrange — transport always returns 500 so mint() raises MintError
+    transport = _mock_transport(500, '{"message":"Internal Server Error"}')
+    dispenser, _ = _make_dispenser(rsa_pem_path, tmp_path, transport=transport)
+    # publisher defaults to None — no injection needed
+
+    sock_path = tmp_path / "d.sock"
+    server = await dispenser.serve(sock_path)
+    try:
+        response = await _round_trip(sock_path, b"get\n")
+    finally:
+        server.close()
+        await server.wait_closed()
+
+    # Assert — error reply received, no exception propagated
+    assert response == b"error=mint failed\n", (
+        f"Expected 'error=mint failed\\n', got {response!r}"
+    )

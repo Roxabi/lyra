@@ -69,7 +69,7 @@ RESOURCES = [
         "gh-helper",
         "gh-helper",
         [
-            "lyra.gh.mint_failure.>",
+            "factory.gh.mint_failure.>",
         ],
         None,
         None,

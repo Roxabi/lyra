@@ -672,25 +672,11 @@ class CodeInventory:
         # 3. NATS subject check (before declaring project token dead)
         if _subject_matches_any(token, self.subjects):
             return Verdict(exists=True, kind="subject")
-        # Subject-namespace token not in subjects set → dead subject reference.
-        # $JS/$KV/_inbox namespaces are always NATS-owned (not project prefixes),
-        # so bypass the _PROJECT_PREFIXES guard and return kind=subject directly.
-        lower = token.lower()
-        if any(lower.startswith(p) for p in ("$js.", "$kv.", "_inbox.")):
-            return Verdict(exists=False, kind="subject")
-        # `lyra.` is the legacy NATS subject namespace — a dead `lyra.X` is a dead
-        # subject. `factory.` is special post-#1670: it is BOTH the Python package
-        # prefix AND the live subject root. Real `factory.*` subjects resolve above
-        # via the subjects set; for a DEAD `factory.X` we disambiguate by module
-        # shape — a real submodule prefix (`factory.<sub>…` in modules) means a dead
-        # module/submodule, otherwise the token is subject-shaped → orphan subject
-        # (so check_subject_literals can flag undeclared `factory.*` literals).
-        if lower.startswith("lyra."):
-            return Verdict(exists=False, kind="subject")
-        if lower.startswith("factory."):
-            if any(".".join(parts[:k]) in self.modules for k in range(2, len(parts))):
-                return Verdict(exists=False, kind="module")
-            return Verdict(exists=False, kind="subject")
+
+        # 3b. Dead subject-namespace disambiguation ($JS/$KV/_inbox, lyra.*, factory.*)
+        namespace_verdict = self._resolve_dead_namespace(token, parts)
+        if namespace_verdict is not None:
+            return namespace_verdict
 
         # 4. Project namespace root not found as module or subject (non-factory
         # project prefixes, e.g. roxabi_nats, are pure module namespaces).
@@ -699,6 +685,30 @@ class CodeInventory:
 
         # 5. External / unknown
         return Verdict(exists=False, kind="unknown")
+
+    def _resolve_dead_namespace(self, token: str, parts: list[str]) -> Verdict | None:
+        """Verdict for a token in a NATS subject namespace, or None if not owned.
+
+        A subject-namespace token not in the live subjects set is a dead subject
+        reference. $JS/$KV/_inbox namespaces are always NATS-owned (not project
+        prefixes), so they bypass the _PROJECT_PREFIXES guard → kind=subject.
+
+        `lyra.` is the legacy NATS subject namespace — a dead `lyra.X` is a dead
+        subject. `factory.` is special post-#1670: it is BOTH the Python package
+        prefix AND the live subject root. Real `factory.*` subjects resolve in the
+        caller via the subjects set; for a DEAD `factory.X` we disambiguate by
+        module shape — a real submodule prefix (`factory.<sub>…` in modules) means
+        a dead module/submodule, otherwise the token is subject-shaped → orphan
+        subject (so check_subject_literals can flag undeclared `factory.*` literals).
+        """
+        lower = token.lower()
+        if any(lower.startswith(p) for p in ("$js.", "$kv.", "_inbox.", "lyra.")):
+            return Verdict(exists=False, kind="subject")
+        if lower.startswith("factory."):
+            if any(".".join(parts[:k]) in self.modules for k in range(2, len(parts))):
+                return Verdict(exists=False, kind="module")
+            return Verdict(exists=False, kind="subject")
+        return None
 
     def _resolve_bare(self, token: str) -> Verdict:
         """Resolve a bare word (no dots).

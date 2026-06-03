@@ -101,7 +101,7 @@
 - **Subscribe:** $KV.factory-state.>, _inbox.discord-adapter.*.*, _inbox.discord-adapter.>, factory.outbound.audio.>, factory.outbound.discord.>, factory.typing.discord.>
 
 ### gh-helper
-- **Publish:** lyra.gh.mint_failure.>
+- **Publish:** factory.gh.mint_failure.>
 
 ### hub
 - **Publish:** $JS.API.>, $KV.factory-msg-index.>, $KV.factory-state.>, factory.audit.>, factory.clipool.cmd, factory.clipool.control, factory.event.>, factory.image.generate.request, factory.llm.generate.request, factory.metric.>, factory.outbound.audio.>, factory.outbound.discord.>, factory.outbound.telegram.>, factory.turns.write, factory.typing.>, factory.voice.stt.request, factory.voice.stt.request.>, factory.voice.tts.request, factory.voice.tts.request.>

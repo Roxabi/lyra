@@ -6,8 +6,8 @@
 # gate now requires every raw lyra.* subject literal in src/ to resolve — no
 # baselined debt remains.
 #
-#   - lyra.gh.mint_failure.>  → hub subscribe grant in deploy/nats/acl-matrix.json
-#   - lyra.verify.deny        → roxabi_contracts.verify.SUBJECTS (reserved sentinel)
+#   - factory.gh.mint_failure.>  → hub subscribe grant in deploy/nats/acl-matrix.json
+#   - factory.verify.deny        → roxabi_contracts.verify.SUBJECTS (reserved sentinel)
 #
 # DO NOT add entries here. The correct fix for a new orphan subject is to declare
 # it in acl-matrix.json (publish/subscribe grant) or in roxabi-contracts SUBJECTS.

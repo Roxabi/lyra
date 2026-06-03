@@ -148,7 +148,7 @@ async def run_daemon(config: DaemonConfig) -> None:
             nc = await nats_connect(nats_url, identity_name="gh-helper")
             publisher = MintFailurePublisher(nc, machine)
             log.info(
-                "mint-failure publishing enabled — subject lyra.gh.mint_failure.%s",
+                "mint-failure publishing enabled — subject factory.gh.mint_failure.%s",
                 machine,
             )
         except Exception as exc:  # noqa: BLE001 — must not crash daemon (BindsTo → pod teardown)

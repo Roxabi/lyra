@@ -1,6 +1,6 @@
 """Best-effort NATS publisher for GitHub token-mint failures.
 
-Publishes a MintFailureEvent on ``lyra.gh.mint_failure.<machine>`` whenever
+Publishes a MintFailureEvent on ``factory.gh.mint_failure.<machine>`` whenever
 a MintError is raised. Publication is fire-and-forget: any NATS error is
 logged and swallowed so that a NATS outage never breaks or stalls token minting.
 """

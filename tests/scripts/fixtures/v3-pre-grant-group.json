@@ -328,11 +328,11 @@
     "gh-helper": {
       "status": "active",
       "created_at": "2026-06-02",
-      "owner": "lyra",
+      "owner": "factory",
       "description": "publish-only mint-failure alerts, #1082",
       "allow_responses": false,
       "publish": [
-        "lyra.gh.mint_failure.>"
+        "factory.gh.mint_failure.>"
       ],
       "subscribe": [],
       "deploy": {

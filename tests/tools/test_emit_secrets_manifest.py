@@ -381,7 +381,9 @@ class TestOwnerFactoryFilter:
             "QUADLET_TOML": str(work / "deploy" / "quadlet.toml"),
             "POLICY_TOML": str(work / "deploy" / "secrets-policy.toml"),
             "QUADLET_DIR": str(work / "deploy" / "quadlet"),
-            "MANIFEST_SH": str(work / "deploy" / "generated" / "secrets-manifest.sh"),
+            "MANIFEST_SH": str(
+                work / "deploy" / "generated" / "secrets-manifest.sh"
+            ),
             "ACL_MATRIX": str(work / "deploy" / "nats" / "acl-matrix.json"),
         }
 

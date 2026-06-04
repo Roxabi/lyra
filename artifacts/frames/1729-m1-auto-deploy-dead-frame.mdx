@@ -1,0 +1,89 @@
+---
+title: "M₁ auto-deploy is dead: timer install + AutoUpdate-label defects"
+issue: 1729
+status: approved
+tier: F-lite
+date: 2026-06-04
+---
+
+## Problem
+
+`docs/ops/container-publishing.md` promises M₁ (`roxabituwer`) auto-deploys every staging
+merge with *"no manual intervention"* — images via `podman-auto-update.timer`, git checkout +
+quadlet re-render via `factory-quadlet-sync.timer`. On M₁ right now both are dead:
+`podman-auto-update.timer` is **disabled** and `factory-quadlet-sync.timer` is **not-found**.
+Every staging merge silently drifts prod from the repo (image **and** the git checkout that
+renders `auth.conf`/quadlets); ACL/auth.conf changes never reach NATS without a manual
+`factory-acl genkeys --regen-authconf` + secret refresh + `factory-nats` restart.
+
+Investigation shows the units are **present in the repo** — the failure is a cluster of
+install/label defects, not missing source:
+
+1. **AutoUpdate label coverage gap.** Only `factory-telegram` + `factory-discord`
+   (`*.container.tmpl`) carry `Label=io.containers.autoupdate=registry`. The 6 static
+   `.container` files (hub, clipool, gh-helper, nats, turn-writer, blobstore) lack it →
+   `podman auto-update` skips them even when its timer runs. The doc
+   (`container-publishing.md:123`) asserts *every* `.container` must have the label.
+2. **`enable` without `--now`.** `make quadlet-sync-install` (Makefile:197–198) enables
+   `factory-quadlet-sync.timer` + `factory-post-autoupdate.timer` but never starts them →
+   installed-but-dormant until reboot.
+3. **5-minute cadence never provisioned.** Doc claims `OnCalendar=*:0/5`; `podman-auto-update`
+   ships daily by default. `provision.sh` enables the timer but installs no `OnCalendar`
+   override drop-in.
+4. **Operational gap on M₁.** Neither `install.sh` step 9 (`make quadlet-sync-install`) nor a
+   re-`provision.sh` was run on M₁ after these paths landed → timer absent, host timer disabled.
+5. **Doc↔reality drift.** "No manual intervention" + "every 5 minutes" describe a path that
+   was never fully wired.
+
+## Who
+
+- **Primary:** Mickael / ops — every staging merge currently requires a manual M₁ pull +
+  image restart + (for ACL changes) authconf regen + secret refresh + NATS restart.
+- **Secondary:** every contributor whose merged change silently fails to reach prod, and any
+  downstream consumer relying on prod tracking staging.
+
+## Constraints
+
+- Single host in scope: M₁ (`factory-hub` role). M₂ unaffected.
+- Rootless Podman + systemd `--user`; `podman-auto-update.timer` is an apt-provided static unit.
+- Idempotent installers only — no `--force`; re-runnable `make`/`install.sh` targets.
+- `factory-nats` ACL/auth.conf changes need restart-not-HUP (per repo convention) — the sync
+  path's `make converge` must respect that.
+- Fix must be testable in repo (label presence, `--now`, drop-in) **and** carry a host runbook
+  for the one-time M₁ remediation (which is operational, not code).
+
+## Out of Scope
+
+- Rewriting the deploy mechanism (collapse/atomic deploy = #1578/#1380 territory).
+- Monitoring v2 / host-timer alerting (superseded, #1035).
+- M₂ deploy path; secret-rotation redesign.
+- Auto-update cadence policy debate beyond reconciling doc with the chosen value.
+
+## Premise Validity
+
+**Success in 6 months:** A staging merge that changes an image **and** a quadlet/auth.conf
+reaches M₁ with zero manual steps; `systemctl --user is-enabled podman-auto-update.timer` →
+`enabled` and `is-active factory-quadlet-sync.timer` → `active` on M₁; all 8 container units
+carry the AutoUpdate label; doc matches observed behaviour.
+
+**Failure in 6 months:** After the fix, ≥1 staging merge in a 3-merge window still requires a
+manual M₁ pull/restart to reach prod, OR `podman auto-update --dry-run` on M₁ reports <8
+containers as registry-tracked. (Falsifiable: observable counts + a 3-merge horizon.)
+
+**Simplest alternative:** Manually run `make quadlet-sync-install` + `systemctl --user enable
+--now podman-auto-update.timer` on M₁ once and close the issue.
+**Why not simplest:** It re-greens M₁ today but leaves the three latent code defects (label gap,
+missing `--now`, no 5-min drop-in) — the next re-provision or fresh host reproduces the exact
+outage, and 6 of 8 containers still never image-update. The repo must encode the fix, not just
+the host.
+
+## Complexity
+
+**Tier: F-lite** — single domain (devops/deploy), clear bounded scope: 6 `.container` label
+adds + 1 Makefile target (`--now` + optional drop-in) + `provision.sh`/`install.sh`
+reconciliation + 1 doc + a host runbook. No new architecture, no cross-layer boundary.
+
+Signals observed:
+- Single domain (deploy/systemd/quadlet) + 1 doc.
+- ~8–10 files, no new patterns, root cause fully diagnosed (no remaining unknowns).
+- Operational remediation is a runbook step, not code — keeps code change small.

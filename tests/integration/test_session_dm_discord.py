@@ -157,11 +157,26 @@ async def test_discord_dm_no_turn_store_does_not_inject() -> None:
 
     await discord_handle_message(adapter, fake_dm)
 
+    # Unconditional: a message must have been dispatched (vacuous guard removed)
+    assert mock_bus.put_nowait.called or mock_bus.put.called, (
+        "message must be dispatched"
+    )
+
+    # Extract the posted InboundMessage — handle both put_nowait and put paths
     if mock_bus.put_nowait.called:
         posted = mock_bus.put_nowait.call_args[0][1]
-        assert "thread_session_id" not in posted.platform_meta, (
-            "thread_session_id must not appear in platform_meta without a turn_store"
-        )
+    else:
+        posted = mock_bus.put.call_args[0][1]
+
+    from factory.core.messaging.message import DiscordMeta
+
+    assert isinstance(posted.platform_meta, DiscordMeta), (
+        f"Expected DiscordMeta, got {posted.platform_meta!r}"
+    )
+    assert posted.platform_meta.thread_session_id is None, (
+        "thread_session_id must be None in platform_meta without a turn_store, "
+        f"got platform_meta={posted.platform_meta!r}"
+    )
 
 
 async def test_discord_dm_turn_store_attribute_stored() -> None:

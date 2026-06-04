@@ -37,19 +37,22 @@ class TestKvLastSessionStoreRoundTrip:
         """set_last_session + get_last_session returns the stored value."""
         # Arrange
         kv = AsyncMock()
-        entry = MagicMock()
-        entry.value = b"sess-abc"
-        kv.get.return_value = entry
         js = AsyncMock()
         js.key_value.return_value = kv
         store = KvLastSessionStore(js, retention_days=90)
         await store.connect()
 
-        # Act
+        # Act — set first; seed kv.get AFTER set so a missing put would surface
         await store.set_last_session("pool-tg-main", "sess-abc")
+
+        # Seed the read return value only now — ensures put was called before get
+        entry = MagicMock()
+        entry.value = b"sess-abc"
+        kv.get.return_value = entry
+
         result = await store.get_last_session("pool-tg-main")
 
-        # Assert
+        # Assert — Negative: removing the put call causes kv.put assertion to fail
         kv.put.assert_awaited_once_with("last_session.pool-tg-main", b"sess-abc")
         kv.get.assert_awaited_once_with("last_session.pool-tg-main")
         assert result == "sess-abc"

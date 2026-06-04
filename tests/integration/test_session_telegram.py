@@ -186,11 +186,26 @@ async def test_telegram_no_turn_store_no_injection() -> None:
 
     await telegram_handle_message(adapter, fake_msg)
 
+    # Unconditional: a message must have been dispatched (vacuous guard removed)
+    assert mock_bus.put_nowait.called or mock_bus.put.called, (
+        "message must be dispatched"
+    )
+
+    # Extract the posted InboundMessage — handle both put_nowait and put paths
     if mock_bus.put_nowait.called:
         posted = mock_bus.put_nowait.call_args[0][1]
-        assert "thread_session_id" not in posted.platform_meta, (
-            "thread_session_id must not appear in platform_meta without turn_store"
-        )
+    else:
+        posted = mock_bus.put.call_args[0][1]
+
+    from factory.core.messaging.message import TelegramMeta
+
+    assert isinstance(posted.platform_meta, TelegramMeta), (
+        f"Expected TelegramMeta, got {posted.platform_meta!r}"
+    )
+    assert posted.platform_meta.thread_session_id is None, (
+        "thread_session_id must be None in platform_meta without a turn_store, "
+        f"got platform_meta={posted.platform_meta!r}"
+    )
 
 
 async def test_telegram_turn_store_attribute_stored() -> None:

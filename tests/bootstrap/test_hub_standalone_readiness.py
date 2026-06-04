@@ -329,6 +329,10 @@ class TestHubAudioProvisioningBehavioral:
                 side_effect=_record_ensure_kv,
             ),
             patch(
+                "factory.bootstrap.standalone.hub_standalone.publish_watch_channels",
+                AsyncMock(),
+            ),
+            patch(
                 "factory.bootstrap.standalone.hub_standalone.announce_hub_ready",
                 side_effect=_record_announce_hub_ready,
             ),

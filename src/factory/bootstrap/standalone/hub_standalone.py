@@ -30,6 +30,7 @@ from factory.bootstrap.standalone.hub_standalone_helpers import (
     load_agent_configs,
     start_mint_failure_subscriber,
 )
+from factory.bootstrap.wiring.kv_watch_channels import publish_watch_channels
 from factory.core.messaging.utils.metrics import log_contracts_version
 from factory.paths import factory_data_dir
 from roxabi_nats import nats_connect
@@ -175,6 +176,17 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
                 "Cause: %s. RestartSec will recover. (ADR-079 S3)",
                 exc,
             )
+            raise
+
+        # Publish each bot's watch_channels into factory-state KV before
+        # announcing readiness so adapters see the value on first seed (SC6).
+        _bots: list[tuple[str, str]] = [
+            ("telegram", cfg.bot_id) for cfg, _ in tg_bot_auths
+        ] + [("discord", cfg.bot_id) for cfg, _ in dc_bot_auths]
+        try:
+            await publish_watch_channels(_audio_js, stores.agent, _bots)
+        except nats.errors.Error as exc:
+            log.critical("hub: failed to publish watch_channels: %s", exc)
             raise
 
         await announce_hub_ready(nc)

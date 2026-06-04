@@ -135,15 +135,16 @@ resumes it rather than starting fresh.
 
 | File | Container(s) | Access | Contents |
 |---|---|---|---|
-| `~/.roxabi/factory/auth.db` | Hub | rw | Auth grants, identity aliases |
-| `~/.roxabi/factory/config.db` | Hub | rw | Agent registry, user prefs (bot secrets removed — see ADR-074) |
-| `~/.roxabi/factory/turns.db` | Hub, Telegram, Discord | rw | Conversation turns, pool sessions, lyra→cli session map |
-| `~/.roxabi/factory/message_index.db` | Hub | rw | reply-to session routing index |
-| `~/.roxabi/factory/keyring.key` | Hub | rw | Encryption key for `config.db` sibling stores (bot-secrets path removed — safe to delete once no remaining consumers; see ADR-074) |
-| `~/.roxabi/factory/discord.db` | Discord | rw | Thread ownership + session cache |
+| `~/.roxabi/factory/auth.db` | Hub, Telegram, Discord (via `factory-data.volume`) | rw | Auth grants, identity aliases |
+| `~/.roxabi/factory/config.db` | Hub, Telegram, Discord (via `factory-data.volume`) | rw | Agent registry, user prefs (bot secrets removed — see ADR-074) |
+| `~/.roxabi/factory/turns.db` | Hub (ro overlay), Telegram, Discord (via `factory-data.volume`) | rw | Conversation turns, pool sessions, lyra→cli session map |
+| `~/.roxabi/factory/message_index.db` | Hub, Telegram, Discord (via `factory-data.volume`) | rw | reply-to session routing index |
+| `~/.roxabi/factory/keyring.key` | Hub, Telegram, Discord (via `factory-data.volume`) | rw | Encryption key for `config.db` sibling stores (bot-secrets path removed — safe to delete once no remaining consumers; see ADR-074) |
+| `~/.roxabi/factory/discord.db` | Discord (via `factory-data.volume`) | rw | Thread ownership + session cache |
+| `~/.roxabi/factory/config.toml` | Hub, Telegram, Discord (inline bind, ro) | ro | Runtime config (per-bot entries) |
 | `~/.claude/` | CliPool | rw | Claude session `.jsonl` files (required for `--resume`) |
 
-Adapter mounts are per-file inline binds (not the full `factory-data.volume`) — adapters never touch `auth.db` or `message_index.db`.
+Adapter containers (Telegram, Discord) mount the full `factory-data.volume` at `/home/factory/.roxabi/factory:z` — the same named volume as the Hub. An additional inline single-file bind (`Volume=%h/.roxabi/factory/config.toml:/app/config.toml:ro,z`) overlays `config.toml` read-only. Narrowing the adapter mount to per-file binds is deferred to #1721.
 
 ---
 

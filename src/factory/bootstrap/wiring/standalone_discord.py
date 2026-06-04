@@ -18,19 +18,19 @@ from factory.bootstrap.wiring._standalone_wiring_common import (
     TypingDeps,
     wire_bot_common,
 )
+from factory.bootstrap.wiring.kv_watch_channels import (
+    seed_watch_channels,
+    start_watch_channels_task,
+)
 from factory.core.messaging.message import Platform
 from roxabi_nats.readiness import wait_for_hub
 
 log = logging.getLogger(__name__)
 
 
-async def _bootstrap_discord_setup(
-    raw_config: dict,
-    vault_dir: Path,
-) -> tuple:
-    """Load Discord config, credentials, and watch channels."""
+async def _bootstrap_discord_setup(raw_config: dict) -> tuple:
+    """Load Discord config and credentials."""
     from factory.config import DiscordMultiConfig
-    from factory.infrastructure.stores.agent_store import AgentStore
 
     dc_multi_cfg = DiscordMultiConfig.model_validate(raw_config.get("discord", {}))
     if not dc_multi_cfg.bots:
@@ -43,30 +43,7 @@ async def _bootstrap_discord_setup(
         dc_creds[bot_id] = token
         log.info("read token from /run/secrets/bot_token-%s", bot_id)
 
-    # Read per-bot settings then close — don't hold config.db open
-    # during the long-lived adapter lifecycle (short-lived reads, same pattern).
-    agent_store = AgentStore(db_path=vault_dir / "config.db")
-    await agent_store.connect()
-    dc_bot_watch_channels: dict[str, frozenset[int]] = {}
-    try:
-        for bot_cfg in dc_multi_cfg.bots:
-            bot_settings = agent_store.get_bot_settings("discord", bot_cfg.bot_id)
-            raw_ids = bot_settings.get("watch_channels", [])
-            valid: list[int] = []
-            for ch in raw_ids:
-                try:
-                    valid.append(int(ch))
-                except (ValueError, TypeError):
-                    log.warning(
-                        "watch_channels: invalid channel id %r for bot %r — skipping",
-                        ch,
-                        bot_cfg.bot_id,
-                    )
-            dc_bot_watch_channels[bot_cfg.bot_id] = frozenset(valid)
-    finally:
-        await agent_store.close()
-
-    return dc_multi_cfg, dc_creds, dc_bot_watch_channels
+    return dc_multi_cfg, dc_creds
 
 
 async def _create_dc_stores(vault_dir: Path) -> tuple:
@@ -96,6 +73,7 @@ async def _bootstrap_discord_teardown(
     dc_thread_store: Any,
     dc_turn_store: Any,
     stop_dc: asyncio.Event,
+    watch_tasks: list[asyncio.Task[None]],
 ) -> None:
     """Run shutdown sequence for all wired Discord adapters."""
     start_tasks = [
@@ -104,6 +82,10 @@ async def _bootstrap_discord_teardown(
     ]
     try:
         await stop_dc.wait()
+        # Cancel KV watcher tasks first
+        for t in watch_tasks:
+            t.cancel()
+        await asyncio.gather(*watch_tasks, return_exceptions=True)
         await close_safely("dc-adapters", *[a.close() for a, _, _, _, _ in wired_dc])
         for t in start_tasks:
             t.cancel()
@@ -129,16 +111,17 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
     _stop: asyncio.Event | None = None,
 ) -> None:
     """Bootstrap a standalone Discord adapter process connected to NATS."""
-    dc_multi_cfg, dc_creds, dc_bot_watch_channels = await _bootstrap_discord_setup(
-        raw_config, vault_dir
-    )
+    dc_multi_cfg, dc_creds = await _bootstrap_discord_setup(raw_config)
     dc_thread_store, dc_turn_store = await _create_dc_stores(vault_dir)
     js = nc.jetstream()
     blob_store = init_blobstore()
 
     wired_dc: list[tuple] = []  # (DiscordAdapter, str, Bus, TypingListener, Consumer)
+    watch_tasks: list[asyncio.Task[None]] = []
 
-    async def _wire_bot(bot_cfg: Any, token: str) -> tuple:
+    async def _wire_bot(
+        bot_cfg: Any, token: str, watch_channels: frozenset[int]
+    ) -> tuple:
         """Wire a single Discord bot with NATS, typing listener, and audio consumer."""
         from factory.adapters.discord import DiscordAdapter
         from factory.adapters.discord.adapter import _discord_scope_resolver
@@ -153,7 +136,7 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
                 auto_thread=bot_cfg.auto_thread,
                 thread_hot_hours=bot_cfg.thread_hot_hours,
                 thread_store=dc_thread_store,
-                watch_channels=dc_bot_watch_channels.get(bot_id, frozenset()),
+                watch_channels=watch_channels,
                 turn_store=dc_turn_store,
                 blob_store=blob_store,
             )
@@ -199,15 +182,29 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
             continue
         token = dc_creds[bot_id]
 
+        watch_channels = await seed_watch_channels(js, "discord", bot_id)
+
         try:
-            wired = await _wire_bot(bot_cfg, token)
+            wired = await _wire_bot(bot_cfg, token, watch_channels)
         except Exception:
+            # Cancel any watch tasks already started before cleaning up.
+            for t in watch_tasks:
+                t.cancel()
+            await asyncio.gather(*watch_tasks, return_exceptions=True)
             await _close_dc_wired("dc-wired", wired_dc)
             await dc_thread_store.close()
             await dc_turn_store.close()
             raise
 
         wired_dc.append(wired)
+        adapter_dc = wired[0]
+        task = start_watch_channels_task(
+            js,
+            "discord",
+            bot_id,
+            lambda s, a=adapter_dc: setattr(a, "_watch_channels", s),
+        )
+        watch_tasks.append(task)
         log.info(
             "adapter_standalone: Discord bot_id=%s ready (NATS mode)",
             bot_id,
@@ -220,7 +217,7 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
     stop_dc = setup_shutdown_event(_stop)
     try:
         await _bootstrap_discord_teardown(
-            wired_dc, dc_thread_store, dc_turn_store, stop_dc
+            wired_dc, dc_thread_store, dc_turn_store, stop_dc, watch_tasks
         )
     finally:
         if blob_store is not None:

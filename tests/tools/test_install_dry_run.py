@@ -211,17 +211,25 @@ class TestBlobstoreDataDir:
         combined = result.stdout + result.stderr
         # §5: `run mkdir -p <HOME>/.roxabi/factory/blobstore` → [dry-run] mkdir -p ...
         # and `echo "  [ok]   <HOME>/.roxabi/factory/blobstore"` (always printed)
+        # Pin to the §5 path token (.roxabi/factory/blobstore with slash) so the
+        # filter excludes unrelated lines like "factory-blobstore.service enabled"
+        # which use a hyphen instead.
         blobstore_lines = [
             line
             for line in combined.splitlines()
-            if "blobstore" in line and ("mkdir" in line or "[ok]" in line)
+            if ".roxabi/factory/blobstore" in line
+            and ("mkdir" in line or "[ok]" in line)
         ]
         assert blobstore_lines, (
             "Dry-run must log a mkdir or [ok] line for the blobstore data dir.\n"
             f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
-        assert "mkdir" in combined and "blobstore" in combined, (
-            "Dry-run output must mention both 'mkdir' and 'blobstore'.\n"
+        assert any(
+            "[dry-run] mkdir" in line and ".roxabi/factory/blobstore" in line
+            for line in combined.splitlines()
+        ), (
+            "Dry-run must emit '[dry-run] mkdir ... .roxabi/factory/blobstore'"
+            " (§5 mkdir absent).\n"
             f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
 

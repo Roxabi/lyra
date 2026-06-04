@@ -284,7 +284,7 @@ log "Ensuring data directories ..."
 run mkdir -p "${HOME}/.roxabi/factory/blobstore"
 echo "  [ok]   ${HOME}/.roxabi/factory/blobstore"
 run mkdir -p "${HOME}/.roxabi/factory/turn-writer"
-echo "  [ok]   ~/.roxabi/factory/turn-writer/"
+echo "  [ok]   ${HOME}/.roxabi/factory/turn-writer/"
 
 # ── 6. Copy Quadlet units ────────────────────────────────────────────────────
 

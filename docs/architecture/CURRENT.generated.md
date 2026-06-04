@@ -97,7 +97,7 @@
 - **Subscribe:** factory.event.>, factory.metric.>
 
 ### discord-adapter
-- **Publish:** $JS.API.CONSUMER.CREATE.*, $JS.API.DIRECT.GET.KV_factory-state.hub.ready, $JS.API.INFO, $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.event.>, factory.inbound.discord.>, factory.metric.>, factory.system.ready, factory.turns.write
+- **Publish:** $JS.API.CONSUMER.CREATE.*, $JS.API.DIRECT.GET.KV_factory-state.hub.ready, $JS.API.INFO, $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, $JS.API.STREAM.NAMES, factory.event.>, factory.inbound.discord.>, factory.metric.>, factory.system.ready, factory.turns.write
 - **Subscribe:** $KV.factory-state.>, _inbox.discord-adapter.*.*, _inbox.discord-adapter.>, factory.outbound.audio.>, factory.outbound.discord.>, factory.typing.discord.>
 
 ### gh-helper
@@ -124,7 +124,7 @@
 - **Subscribe:** factory.monitor.>
 
 ### telegram-adapter
-- **Publish:** $JS.API.CONSUMER.CREATE.*, $JS.API.DIRECT.GET.KV_factory-state.hub.ready, $JS.API.INFO, $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.event.>, factory.inbound.telegram.>, factory.metric.>, factory.system.ready, factory.turns.write
+- **Publish:** $JS.API.CONSUMER.CREATE.*, $JS.API.DIRECT.GET.KV_factory-state.hub.ready, $JS.API.INFO, $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, $JS.API.STREAM.NAMES, factory.event.>, factory.inbound.telegram.>, factory.metric.>, factory.system.ready, factory.turns.write
 - **Subscribe:** $KV.factory-state.>, _inbox.telegram-adapter.*.*, _inbox.telegram-adapter.>, factory.outbound.audio.>, factory.outbound.telegram.>, factory.typing.telegram.>
 
 ### turn-writer

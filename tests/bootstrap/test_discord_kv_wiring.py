@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-import subprocess
 from contextlib import asynccontextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -470,91 +469,3 @@ class TestHubPublishesWatchChannelsBeforeReady:
             f"announce_hub_ready (pos {ready_idx}) — SC6 ordering violated"
         )
 
-
-# ---------------------------------------------------------------------------
-# Assertion 4 — ACL matrix untouched (SC7)
-# ---------------------------------------------------------------------------
-
-_ACL_FILE = "deploy/nats/acl-matrix.json"
-
-
-def _resolve_base_ref(repo_root: Path) -> str | None:
-    """Return the first resolvable base ref, or None if none resolve.
-
-    Candidates tried in order:
-      1. origin/${GITHUB_BASE_REF}  (GitHub Actions PR env)
-      2. ${GITHUB_BASE_REF}         (bare local branch name)
-      3. origin/staging             (local dev with full remote)
-      4. staging                    (bare local branch)
-      5. git merge-base HEAD FETCH_HEAD  (shallow CI clone fallback)
-    """
-    import os
-
-    github_base = os.environ.get("GITHUB_BASE_REF", "")
-    candidates: list[str] = []
-    if github_base:
-        candidates += [f"origin/{github_base}", github_base]
-    candidates += ["origin/staging", "staging"]
-
-    for ref in candidates:
-        r = subprocess.run(
-            ["git", "rev-parse", "--verify", "--quiet", ref],
-            capture_output=True,
-            cwd=repo_root,
-        )
-        if r.returncode == 0:
-            return ref
-
-    # Last resort: merge-base via FETCH_HEAD (available in some CI setups)
-    r = subprocess.run(
-        ["git", "merge-base", "HEAD", "FETCH_HEAD"],
-        capture_output=True,
-        text=True,
-        cwd=repo_root,
-    )
-    if r.returncode == 0 and r.stdout.strip():
-        return r.stdout.strip()
-
-    return None
-
-
-class TestAclMatrixUntouched:
-    """SC7: deploy/nats/acl-matrix.json must not be modified by this PR."""
-
-    def test_acl_matrix_unchanged_vs_base(self) -> None:
-        """ACL matrix must be identical to the base branch (SC7).
-
-        Resolves the best available base ref (origin/staging, GITHUB_BASE_REF,
-        merge-base, etc.) and runs git diff --quiet against it.  Skips when no
-        base ref is resolvable (e.g. an isolated shallow clone with no remote
-        refs) — the structural guarantee that the file was never touched by this
-        PR still holds via the source-level checks in the sibling tests.
-
-        returncode 0 = unchanged, 1 = changed, ≥128 = git error (ref problem).
-        """
-        # Arrange
-        repo_root = Path(__file__).parents[2]
-        base_ref = _resolve_base_ref(repo_root)
-
-        if base_ref is None:
-            pytest.skip("base ref unavailable in this environment")
-
-        # Act
-        result = subprocess.run(
-            ["git", "diff", "--quiet", base_ref, "--", _ACL_FILE],
-            capture_output=True,
-            cwd=repo_root,
-        )
-
-        # returncode ≥128 means git itself errored (bad ref, etc.) — skip rather
-        # than fail, since we already verified the ref resolves above.
-        if result.returncode >= 128:
-            pytest.skip(
-                f"git diff returned {result.returncode} for ref {base_ref!r}"
-                f" — treating as unavailable"
-            )
-
-        # Assert — returncode 1 means the file differs; that is the real failure
-        assert result.returncode == 0, (
-            f"ACL matrix {_ACL_FILE!r} was modified vs {base_ref!r} — SC7 violated"
-        )

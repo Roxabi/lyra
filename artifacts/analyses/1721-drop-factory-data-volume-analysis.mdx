@@ -1,0 +1,156 @@
+---
+title: "Drop factory-data.volume from adapters — last-session via NATS KV"
+description: "Shape the residual turns.db read + discord.db mount so the shared volume becomes hub-only (epic #1049 close)"
+---
+
+## Source
+
+> "Option 2 is better for long term?" → yes. Re-spec of #1721; the body gates on phases that
+> already landed (#1058 turns.db write-path, #1060 watch_channels). Verified residual coupling
+> at commit `9beb1fb3`: adapters file-open `turns.db` (`get_last_session` read) + `discord.db`
+> (ThreadStore) on the shared `factory-data.volume`.
+
+## Problem
+
+`factory-data.volume` is still mounted by hub + telegram + discord. Two adapter store-opens keep
+it there:
+
+1. **turns.db** — `TurnStore` opened in `standalone_{discord,telegram}.py`. The only runtime use
+   is **one read**: `session_builder.py:94 get_last_session(pool_id)` (resume-vs-new decision).
+   Writes already left the adapter — `turn_writer` is sole writer (ADR-075/#1331), fed by the
+   adapter's own `TurnPublisher.publish_start_session` over NATS.
+2. **discord.db** — `ThreadStore` (thread_id → session_id). Discord-only; hub never touches it.
+
+Naively dropping `Volume=` crashes adapters at store-connect (`ReadOnly=true`, no tmpfs — the
+#944 failure reverted in `ba6f113c`).
+
+## Outcome
+
+`Volume=factory-data.volume` only in `factory-hub.container`; adapters resolve last-session over
+NATS; no adapter file-opens a store on a host path the hub also mounts; `volumes_table` gate
+green against reality; epic #1049 closed. (discord.db keeps a SQLite mount, but **adapter-private**
+— not shared with hub, so not a shared-FS violation.)
+
+## Appetite
+
+1-week cycle (~half-to-1 day net code; the heavy lifting — turn_writer, JetStream, adapter KV
+plumbing — already exists from #1058/#1059/#1060).
+
+## Current data flow
+
+```mermaid
+flowchart LR
+  subgraph adapter[discord/telegram adapter container]
+    SB[SessionBuilder] -->|"get_last_session(pool_id)"| TS[(turns.db file)]
+    SB -->|"publish_start_session (NATS)"| TP[TurnPublisher]
+    TH[ThreadStore] --> DDB[(discord.db file)]
+  end
+  TP -->|factory.turns.write| TW[turn_writer container]
+  TW -->|"_start_session"| TS
+  TS -. shared factory-data.volume .- TW
+```
+
+The read (`TS`) and write (`TW`) of turns.db are **already cross-process** over the shared volume.
+Option 2 replaces the shared-file edge with a KV edge — same async-writer model.
+
+## Shapes
+
+### Shape A — turn_writer publishes `last_session` → KV; SessionBuilder reads KV  ← recommended
+
+- `turn_writer._handle_start_session` (already has `self._js`) additionally
+  `kv.put(f"last_session.{pool_id}", session_id)`. Optional symmetric clear on `_handle_end_session`.
+- New KV bucket `factory-turns-meta`, provisioned idempotently mirroring
+  `message_index_kv.py` (#1059) — create on turn_writer/hub boot, adapter **binds** (read-only).
+- `SessionBuilder` reads `kv.get` instead of `ctx.turn_store.get_last_session` (inject a tiny
+  KV-backed reader into `SessionCtx`, replacing `turn_store` for this lookup).
+- Adapters drop `TurnStore` wiring + the turns.db open. JetStream handle already present (#1060).
+- discord.db → **discord-private volume** (`factory-discord-data.volume`, discord-only) or a
+  narrow inline bind; ThreadStore unchanged.
+
+**Trade-offs:**
+- Pro: closes the last shared-file holdout for real; consistency model **unchanged** (turn_writer
+  already the async out-of-process writer); reuses #1059 KV pattern + #1060 adapter KV plumbing.
+- Pro: telegram adapter no longer mounts the volume at all (no discord.db there).
+- Con: one new bucket to provision; SessionCtx wiring touched; discord still needs a (private) mount.
+
+**Rough scope:** M
+
+### Shape B — Hub request/reply for last-session (no bucket)
+
+- `SessionBuilder` sends NATS request `factory.session.last_session` (pool_id) → hub handler reads
+  its own turns.db, replies. No KV.
+
+**Trade-offs:**
+- Pro: no new bucket; strongly consistent (hub reads own db).
+- Con: **synchronous round-trip in the inbound hot path** → added latency + hard failure coupling
+  (hub slow/down ⇒ session resolution blocks); net-new request/reply subject + hub handler;
+  heavier than A for no consistency gain (A's model already matches today's).
+
+**Rough scope:** M-L
+
+## Fit Check
+
+Shape A fits the appetite and the NATS-first direction; B adds hot-path coupling for a consistency
+property we don't need (today's file read is already eventually-consistent vs turn_writer). A's
+only real unknown — publish-lag — is **not new**: SessionBuilder already reads turns.db that
+turn_writer writes asynchronously after the adapter's publish, so an instant double-message can
+already miss the prior session and the path already degrades to new-session (`session_builder.py:97`).
+KV `get` has equal-or-better read-after-write latency than cross-container SQLite visibility.
+
+**Sub-decision (bucket) — resolved in spec:** new `factory-turns-meta` bucket (clean separation,
+mirrors `factory-msg-index` #1059, own TTL = turns retention) **vs** reuse `factory-state`
+(adapter already binds it for watch_channels — zero new bucket, but blends session-lifecycle data
+into config-state semantics/TTL). Lean: **new bucket** for separation + established pattern.
+
+**Eliminated:** Shape B (unnecessary coupling). Option-1 per-file binds (from the frame) stays
+eliminated — it keeps the physical turns.db shared.
+
+### Files impacted
+
+| File | Change |
+|------|--------|
+| `src/factory/infrastructure/turn_writer/writer.py` | `kv.put(last_session.*)` in `_handle_start_session` (+ bucket handle) |
+| `src/factory/infrastructure/turn_writer/stream_setup.py` (or new `*_kv.py`) | provision `factory-turns-meta` bucket (mirror `message_index_kv.py`) |
+| `src/factory/inbound/session_builder.py` | read last-session from KV reader, not `turn_store` |
+| `src/factory/inbound/*` (SessionCtx) | inject KV-backed last-session reader |
+| `src/factory/bootstrap/wiring/standalone_discord.py` | drop `TurnStore`; discord.db mount only |
+| `src/factory/bootstrap/wiring/standalone_telegram.py` | drop `TurnStore` (no stores left → no volume) |
+| `deploy/quadlet/factory-telegram.container.tmpl` | remove `Volume=factory-data.volume` |
+| `deploy/quadlet/factory-discord.container.tmpl` | swap shared volume → discord-private volume |
+| `deploy/quadlet/factory-discord-data.volume` (new) | discord-private volume unit |
+| `deploy/quadlet.toml` + `deploy/install.sh` | register new volume / drop adapter mount |
+| `docs/architecture/deployment.md` | Volumes table → reality (keep `volumes_table` gate green) |
+
+## Open questions for /spec
+
+1. Bucket: new `factory-turns-meta` vs reuse `factory-state` (lean: new).
+2. discord.db: dedicated `factory-discord-data.volume` vs narrow inline bind on the discord adapter.
+3. KV miss / cold-boot: degrade-to-new-session is acceptable for the first message after a cold
+   start before any `last_session.*` key exists (already true today via the file path).
+
+## Review feedback incorporated (architect / devops / product-lead)
+
+- **Provisioner = hub `open_stores`** (`bootstrap_stores.py:294`, where `factory-msg-index` #1059 is
+  provisioned) — **not** turn_writer (adapters never call `open_stores`). turn_writer (put) and
+  adapter (get) **bind** the bucket; both use the idempotent **create-or-bind** (`ensure_kv`,
+  `BadRequestError` catch) pattern from `message_index_kv.py`, NOT a bare `key_value()`, so a cold
+  restart before hub provisioning degrades to new-session instead of crashing.
+- **Cold-boot guard (deliverable):** KV reader returns `None` on missing bucket/key (catch
+  `KeyNotFoundError`/`NoKeysError`) → mirrors the existing `session_builder.py:95-98` degrade path.
+- **discord.db data migration (deliverable):** the live `discord.db` lives inside the shared volume
+  at `~/.roxabi/factory/discord.db`; the new private volume starts empty → active Discord
+  thread→session links lost. Add a one-time copy step (host path) before the converge that drops
+  the shared mount. `_build_thread_path` is the only consumer and bypasses turn_store entirely
+  (architect — no turns coupling there).
+- **ACL (spec check):** confirm `factory-turns-meta` KV subject perms — turn-writer publish
+  (`$KV.factory-turns-meta.>`) + adapter get. factory-state already grants adapters KV access
+  (#1060); verify the same scope covers the new bucket, else an `acl-matrix.json` grant is needed →
+  **ACL regen fan-out** (auth.conf + 706 spec + v3-current fixture + CURRENT.generated.md). secrets_drift
+  is unaffected (no new `Secret=`).
+- **deployment.md `## Volumes` is already stale** (devops): it still lists `turns.db` +
+  `message_index.db` mounted by adapters (message_index is KV since #1059). Update must remove those
+  stale adapter rows AND add the `factory-discord-data.volume` row — `check_volumes_table.sh` (prose
+  sentinel + Volume= cross-check) will red otherwise.
+- **Explicit binary ACs:** `volumes_table` gate green post-cutover; epic #1049 AC#2 (delete prod
+  `~/.roxabi/factory/turns.db`) — decide in /spec: in-scope one-line ops step vs follow-up.
+- **Tier note:** unknowns are bounded → effectively F-lite; kept F-full (epic-closing, cheap rigor).

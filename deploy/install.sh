@@ -302,9 +302,6 @@ log "Reloading systemd user daemon ..."
 run systemctl --user daemon-reload
 echo "  [ok]   daemon-reload"
 
-log "Enabling factory-blobstore.service ..."
-run systemctl --user enable factory-blobstore.service
-echo "  [ok]   factory-blobstore.service enabled"
 
 # ── 8. Seed BotStore from config.toml (idempotent) ─────────────────────────
 # Required since #1416: Authenticator reads from BotStore, not config.toml.

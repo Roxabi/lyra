@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from factory.infrastructure.stores.turn_store import TurnStore
+from factory.core.ports.last_session_store import LastSessionStore
 
 pytestmark = pytest.mark.asyncio
 
@@ -35,6 +35,9 @@ class _FakeTurnStore:
 
     async def get_last_session(self, pool_id: str) -> str | None:
         return self._session_id
+
+    async def set_last_session(self, pool_id: str, session_id: str) -> None:
+        pass
 
     async def increment_resume_count(self, session_id: str) -> None:
         pass
@@ -79,7 +82,7 @@ def _make_telegram_adapter(
     bot_id: str = "main",
     token: str = "test-token-secret",
     inbound_bus: "Bus[InboundMessage] | None" = None,
-    turn_store: "TurnStore | None" = None,
+    last_session: "LastSessionStore | None" = None,
 ) -> tuple["TelegramAdapter", MagicMock]:
     """Build a TelegramAdapter with optional turn_store injection."""
     from factory.adapters.telegram import TelegramAdapter
@@ -93,7 +96,7 @@ def _make_telegram_adapter(
             bot_id=bot_id,
             token=token,
             inbound_bus=mock_bus,
-            turn_store=turn_store,
+            last_session=last_session,
         ),
         mock_bus,
     )
@@ -119,7 +122,7 @@ async def test_telegram_private_injects_thread_session_id() -> None:
 
     adapter, mock_bus = _make_telegram_adapter(
         inbound_bus=mock_bus,
-        turn_store=cast("TurnStore", fake_turn_store),
+        last_session=cast("LastSessionStore", fake_turn_store),
     )
 
     # Wire a fake bot so _on_message can call bot.send_message if needed
@@ -194,8 +197,10 @@ async def test_telegram_turn_store_attribute_stored() -> None:
     """TelegramAdapter must expose _turn_store after construction."""
     fake_turn_store = _FakeTurnStore("session-xyz")
 
-    adapter, _ = _make_telegram_adapter(turn_store=cast("TurnStore", fake_turn_store))
+    adapter, _ = _make_telegram_adapter(
+        last_session=cast("LastSessionStore", fake_turn_store)
+    )
 
-    assert adapter._turn_store is fake_turn_store, (
-        "TelegramAdapter must store turn_store as _turn_store attribute"
+    assert adapter._last_session is fake_turn_store, (
+        "TelegramAdapter must store last_session as _last_session attribute"
     )

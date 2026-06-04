@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock
 import discord
 import pytest
 
-from factory.infrastructure.stores.turn_store import TurnStore
+from factory.core.ports.last_session_store import LastSessionStore
 
 pytestmark = pytest.mark.asyncio
 
@@ -36,6 +36,9 @@ class _FakeTurnStore:
 
     async def get_last_session(self, pool_id: str) -> str | None:
         return self._session_id
+
+    async def set_last_session(self, pool_id: str, session_id: str) -> None:
+        pass
 
     async def increment_resume_count(self, session_id: str) -> None:
         pass
@@ -70,9 +73,9 @@ def _make_dm_message(channel_id: int = 555, user_id: int = 42) -> SimpleNamespac
 def _make_discord_adapter(
     bot_id: str = "main",
     inbound_bus: "Bus[InboundMessage] | None" = None,
-    turn_store: "TurnStore | None" = None,
+    last_session: "LastSessionStore | None" = None,
 ) -> "DiscordAdapter":
-    """Build a DiscordAdapter with optional turn_store injection."""
+    """Build a DiscordAdapter with optional last_session injection."""
     from factory.adapters.discord import DiscordAdapter
 
     mock_bus = inbound_bus if inbound_bus is not None else MagicMock()
@@ -81,7 +84,7 @@ def _make_discord_adapter(
         bot_id=bot_id,
         inbound_bus=mock_bus,
         intents=discord.Intents.none(),
-        turn_store=turn_store,
+        last_session=last_session,
     )
 
 
@@ -103,7 +106,7 @@ async def test_discord_dm_injects_thread_session_id() -> None:
 
     adapter = _make_discord_adapter(
         inbound_bus=mock_bus,
-        turn_store=cast("TurnStore", fake_turn_store),
+        last_session=cast("LastSessionStore", fake_turn_store),
     )
     adapter._bot_user = SimpleNamespace(id=999, bot=True)
 
@@ -166,9 +169,9 @@ async def test_discord_dm_turn_store_attribute_stored() -> None:
     fake_turn_store = _FakeTurnStore("session-xyz")
 
     adapter = _make_discord_adapter(
-        turn_store=cast("TurnStore", fake_turn_store),
+        last_session=cast("LastSessionStore", fake_turn_store),
     )
 
-    assert adapter._turn_store is fake_turn_store, (
-        "DiscordAdapter must store turn_store as _turn_store attribute"
+    assert adapter._last_session is fake_turn_store, (
+        "DiscordAdapter must store last_session as _last_session attribute"
     )

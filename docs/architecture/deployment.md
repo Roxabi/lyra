@@ -139,13 +139,13 @@ resumes it rather than starting fresh.
 | `factory-data.volume` | `~/.roxabi/factory/config.db` | Hub only | rw | Agent registry, user prefs (bot secrets removed — see ADR-074) |
 | `factory-data.volume` | `~/.roxabi/factory/turns.db` | Hub (rw, via turn-writer ADR-075) | rw | Conversation turns, pool sessions, lyra→cli session map |
 | `factory-data.volume` | `~/.roxabi/factory/keyring.key` | Hub only | rw | Encryption key for `config.db` sibling stores (see ADR-074) |
-| `factory-discord-data.volume` | `~/.roxabi/factory-discord/discord.db` | Discord only | rw | Thread ownership + session cache |
+| `factory-discord-data.volume` | `~/.roxabi/factory/discord/discord.db` | Discord only | rw | Thread ownership + session cache |
 | `factory-data.volume` | `~/.roxabi/factory/config.toml` | Hub (inline bind, ro) | ro | Runtime config (per-bot entries) |
 | inline bind | `~/.roxabi/factory/config.toml` | Telegram, Discord (inline bind, ro) | ro | Runtime config (per-bot entries) |
 | `factory-jetstream.volume` | `~/.roxabi/factory/nats/jetstream` | NATS | rw | JetStream persistence |
 | `~/.claude/` (inline) | `~/.claude/` | CliPool | rw | Claude session `.jsonl` files (required for `--resume`) |
 
-`factory-data.volume` is mounted **only** by `factory-hub` (#1721). Adapters use per-file inline binds for `config.toml` and the Discord-private `factory-discord-data.volume` for `discord.db`. Telegram mounts no data volume — last-session is resolved via NATS KV (`factory-turns-meta`). Discord resolves last-session via NATS KV as well; `discord.db` is the thread-ownership store only.
+`factory-data.volume` is mounted **only** by `factory-hub` (#1721). Adapters use per-file inline binds for `config.toml` and the Discord-private `factory-discord-data.volume` for `discord.db`. `factory-discord-data.volume` is a named podman-managed volume (podman auto-creates it; no host bind required), mounted inside the Discord container at `/home/factory/.roxabi/factory/discord` — a separate mount point that keeps `discord.db` isolated from the hub's bind. Telegram mounts no data volume — last-session is resolved via NATS KV (`factory-turns-meta`). Discord resolves last-session via NATS KV as well; `discord.db` is the thread-ownership store only.
 
 ---
 
@@ -196,7 +196,7 @@ CI builds container images and pushes them to GHCR via a reusable GHA workflow (
 
 ### Credential store
 
-File-based credentials (nkey seeds, NATS auth tokens) are delivered as Podman secrets using `type=mount`, placing the secret at a predictable path inside the container without exposing it as an environment variable. Naming convention: `<project>-nats-<identity>` (e.g. `factory-nats-hub`). All containers use `UserNS=keep-id:uid=1500,gid=1500` so container processes run as host UID 1000 (`mickael`) — files in `~/.roxabi/factory/` are readable without `chown`. The `factory-data.volume` is a bind-mount of `%h/.roxabi/factory` (`Type=none; Device=%h/.roxabi/factory; Options=bind`), mounted **only** by `factory-hub` (#1721). The Discord-private `factory-discord-data.volume` is a bind-mount of `%h/.roxabi/factory-discord` (`Type=none; Device=%h/.roxabi/factory-discord; Options=bind`), mounted only by `factory-discord`. All data mounts use `:z`. → ADR-054
+File-based credentials (nkey seeds, NATS auth tokens) are delivered as Podman secrets using `type=mount`, placing the secret at a predictable path inside the container without exposing it as an environment variable. Naming convention: `<project>-nats-<identity>` (e.g. `factory-nats-hub`). All containers use `UserNS=keep-id:uid=1500,gid=1500` so container processes run as host UID 1000 (`mickael`) — files in `~/.roxabi/factory/` are readable without `chown`. The `factory-data.volume` is a bind-mount of `%h/.roxabi/factory` (`Type=none; Device=%h/.roxabi/factory; Options=bind`), mounted **only** by `factory-hub` (#1721). The Discord-private `factory-discord-data.volume` is a **named** podman-managed volume (no host bind; podman auto-creates it), mounted only by `factory-discord` at `/home/factory/.roxabi/factory/discord` — the Discord container does not mount the hub's `factory-data.volume` parent. All data mounts use `:z`. → ADR-054
 
 ### SELinux Z-label policy
 

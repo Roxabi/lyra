@@ -102,6 +102,7 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
     """Bootstrap a standalone Discord adapter process connected to NATS."""
     dc_multi_cfg, dc_creds = await _bootstrap_discord_setup(raw_config)
     discord_dir = factory_discord_data_dir()
+    discord_dir.mkdir(parents=True, exist_ok=True)
     (dc_thread_store,) = await _create_dc_stores(discord_dir)
     js = nc.jetstream()
     blob_store = init_blobstore()

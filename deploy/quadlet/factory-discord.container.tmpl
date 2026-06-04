@@ -40,7 +40,7 @@ Secret=factory_blobstore_token,type=mount,uid=1500,gid=1500,mode=0400,target=/ru
 # Use `make quadlet-install` to render them. See docs/QUADLET-DEPLOYMENT.md.
 # Rendered by tools/render_quadlet.py (str.replace, not Jinja2 or Go-template).
 {{bot_secrets}}
-Volume=factory-discord-data.volume:/home/factory/.roxabi/factory-discord:z
+Volume=factory-discord-data.volume:/home/factory/.roxabi/factory/discord:z
 # Inline single-file bind mount — see rationale in factory-hub.container.
 Volume=%h/.roxabi/factory/config.toml:/app/config.toml:ro,z
 Exec=factory adapter discord

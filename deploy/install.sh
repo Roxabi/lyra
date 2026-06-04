@@ -257,8 +257,6 @@ fi
 unset _blobstore_link _blobstore_blocked
 run mkdir -p "${HOME}/.roxabi/factory/turn-writer"
 echo "  [ok]   ~/.roxabi/factory/turn-writer/"
-run mkdir -p "${HOME}/.roxabi/factory-discord"
-echo "  [ok]   ~/.roxabi/factory-discord/"
 
 # ── 6. Copy Quadlet units ────────────────────────────────────────────────────
 

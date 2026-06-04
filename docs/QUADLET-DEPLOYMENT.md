@@ -61,28 +61,39 @@ make quadlet-install    # copy units + daemon-reload
 systemctl --user restart factory-hub factory-telegram factory-discord factory-clipool
 ```
 
-## One-time migration: discord.db → private volume (#1721)
+## One-time migration: discord.db → private named volume (#1721)
 
 Issue #1721 moves `discord.db` from the hub-shared `factory-data.volume` to a
-Discord-private `factory-discord-data.volume` (`~/.roxabi/factory-discord/`).
+Discord-private named volume `factory-discord-data` (podman-managed, mounted at
+`/home/factory/.roxabi/factory/discord` inside the Discord container).
 Before the converge that applies these changes, run the steps below on M₁ to
 preserve active thread→session links. The new volume starts empty; missing the
 copy means the Discord adapter cold-starts with an empty ThreadStore (all active
 thread sessions lost).
 
-### Step A — Copy discord.db before the converge
+### Step A — Copy discord.db into the named volume before the converge
+
+The old `discord.db` is at `~/.roxabi/factory/discord.db` (inside the shared hub bind).
+The new home is the named volume `factory-discord-data`, which podman creates on first
+use. Copy the file in now using a temporary container that mounts both source and target:
 
 ```bash
 # On M₁ (roxabituwer), before running make converge / make quadlet-install:
-mkdir -p ~/.roxabi/factory-discord
-cp ~/.roxabi/factory/discord.db ~/.roxabi/factory-discord/discord.db
+# Stop the Discord adapter if running (safe — hub continues independently):
+systemctl --user stop factory-discord || true
+
+# Create the named volume if not yet created, then copy discord.db into it:
+podman run --rm \
+  -v factory-discord-data:/dst \
+  -v ~/.roxabi/factory:/src:ro \
+  alpine cp /src/discord.db /dst/discord.db
 ```
 
-Verify the copy:
+Verify the copy landed in the volume:
 
 ```bash
-ls -lh ~/.roxabi/factory-discord/discord.db
-sqlite3 ~/.roxabi/factory-discord/discord.db "SELECT count(*) FROM discord_threads;" 2>/dev/null || true
+podman run --rm -v factory-discord-data:/data:ro alpine \
+  sh -c 'ls -lh /data/discord.db && echo OK'
 ```
 
 ### Step B — Converge
@@ -91,9 +102,9 @@ sqlite3 ~/.roxabi/factory-discord/discord.db "SELECT count(*) FROM discord_threa
 make converge
 ```
 
-The converge installs the new `factory-discord-data.volume` unit, renders the updated
-`factory-discord.container`, daemon-reloads, and restarts all services. After converge,
-`factory-discord` mounts `~/.roxabi/factory-discord` and opens `discord.db` from there.
+The converge installs the updated `factory-discord-data.volume` unit, renders the updated
+`factory-discord.container` (which now mounts `factory-discord-data` at
+`~/.roxabi/factory/discord`), daemon-reloads, and restarts all services.
 
 ### Step C — Verify the Discord adapter is healthy
 
@@ -103,6 +114,13 @@ systemctl --user status factory-discord
 journalctl --user -u factory-discord -n 20 | grep -E "ThreadStore|discord\.db|error" || true
 ```
 
+Confirm Discord mounts the named volume (not the hub's factory-data.volume):
+
+```bash
+# Should show factory-discord-data.volume at ~/.roxabi/factory/discord
+podman inspect factory-discord --format '{{range .Mounts}}{{.Name}} → {{.Destination}}{{"\n"}}{{end}}' | grep discord || true
+```
+
 Confirm Telegram no longer mounts any data volume:
 
 ```bash
@@ -110,13 +128,14 @@ Confirm Telegram no longer mounts any data volume:
 grep "factory-data.volume" ~/.config/containers/systemd/factory-telegram.container || echo "OK — no shared volume"
 ```
 
-### Step D — Prod turns.db cleanup (epic #1049 AC#2)
+### Step D — Verify no adapter holds turns.db open (epic #1049 AC#2)
 
-After Step C confirms a healthy converge, manually delete the `turns.db` file from the
-hub-shared volume on M₁. This is the final step of epic #1049 AC#2: the adapters no longer
-open `turns.db`, so the file is exclusively written by `factory-turn-writer` and read by
-`factory-hub`. The file itself is NOT deleted — this step removes the old adapter-side
-`turns.db` that predated the turn-writer consolidation (ADR-075).
+After Step C confirms a healthy converge, verify that no adapter process holds `turns.db`
+open. Post-migration the canonical `turns.db` at `~/.roxabi/factory/turns.db` is **kept** —
+it is exclusively written by `factory-turn-writer` and read by `factory-hub` (D5 / ADR-075).
+Epic #1049 AC#2 is satisfied by confirming the adapters no longer open it (they now resolve
+last-session via the `factory-turns-meta` KV bucket), **not** by deleting the hub's store.
+Only a stale adapter-side copy at a *separate legacy location*, if one exists, should be removed.
 
 > **Only delete the file if you have confirmed** that the turn-writer service is healthy
 > and turns are flowing (`journalctl --user -u factory-turn-writer -n 20`). Do NOT delete

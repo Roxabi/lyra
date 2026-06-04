@@ -21,8 +21,12 @@ def factory_discord_data_dir() -> Path:
     """Resolve the Discord adapter private data dir.
 
     Override with ``$ROXABI_FACTORY_DISCORD_DIR``; defaults to
-    ``~/.roxabi/factory-discord``.  This dir is on a separate private volume
-    (``factory-discord-data.volume``) not shared with ``factory-hub``.
+    ``~/.roxabi/factory/discord`` (a sub-path of ``factory_data_dir()``).
+    In production the named volume ``factory-discord-data`` is mounted at
+    the in-container path ``~/.roxabi/factory/discord``; the Discord adapter
+    never mounts the hub's ``factory-data.volume`` parent.
     """
-    default = str(Path.home() / ".roxabi" / "factory-discord")
-    return Path(os.environ.get("ROXABI_FACTORY_DISCORD_DIR", default))
+    env = os.environ.get("ROXABI_FACTORY_DISCORD_DIR")
+    if env:
+        return Path(env)
+    return factory_data_dir() / "discord"

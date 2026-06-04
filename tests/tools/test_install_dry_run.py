@@ -212,8 +212,8 @@ class TestBlobstoreDataDir:
         # §5: `run mkdir -p <HOME>/.roxabi/factory/blobstore` → [dry-run] mkdir -p ...
         # and `echo "  [ok]   <HOME>/.roxabi/factory/blobstore"` (always printed)
         # Pin to the §5 path token (.roxabi/factory/blobstore with slash) so the
-        # filter excludes unrelated lines like "factory-blobstore.service enabled"
-        # which use a hyphen instead.
+        # filter excludes unrelated lines like "factory-nats-blobstore already exists"
+        # which use a hyphen instead of a slash.
         blobstore_lines = [
             line
             for line in combined.splitlines()
@@ -260,6 +260,63 @@ class TestBlobstoreDataDir:
         )
         assert "would BLOCK" not in combined, (
             "Dry-run must NOT emit 'would BLOCK' for a non-empty blobstore dir.\n"
+            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Section C — regression: blobstore Quadlet unit must NOT be explicitly enabled
+# ---------------------------------------------------------------------------
+
+
+class TestBlobstoreServiceNotExplicitlyEnabled:
+    """Guard against re-adding `systemctl enable factory-blobstore.service` (#1746).
+
+    Quadlet units are generator-managed: they auto-enable via [Install]
+    WantedBy=default.target at daemon-reload, exactly like every other factory-*
+    unit. `systemctl --user enable` on a generated unit fails with
+    "Unit ... is transient or generated", and under `set -euo pipefail` that
+    aborts install.sh before §9 (timer install) and §10 (auto-update enable).
+
+    Note: the dry-run wrapper only echoes commands; it cannot reproduce the live
+    failure (the `run` function prints "[dry-run] ..." instead of executing).
+    This test guards against the broken line being re-added, not the runtime abort.
+    """
+
+    def test_blobstore_service_not_explicitly_enabled(self, tmp_path: Path) -> None:
+        """Dry-run must NOT contain `systemctl --user enable factory-blobstore.service`.
+
+        Regression test for #1746: explicit enable on a Quadlet-generated unit
+        caused install.sh to abort under set -euo pipefail before §9/§10.
+        """
+        _create_stub_seeds(tmp_path)
+
+        result = _run_install_dry_run(tmp_path)
+
+        assert result.returncode == 0, (
+            f"install.sh --dry-run exited {result.returncode}.\n"
+            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        )
+        combined = result.stdout + result.stderr
+        # The broken line was:
+        #   run systemctl --user enable factory-blobstore.service
+        # Under --dry-run `run` emits:
+        #   [dry-run] systemctl --user enable factory-blobstore.service
+        # Match any line that both enables AND names the blobstore unit, so the
+        # guard also catches re-introductions that append `--now` (the sibling
+        # §10 `enable --now podman-auto-update.timer` makes that variant likely).
+        offenders = [
+            line
+            for line in combined.splitlines()
+            if "enable" in line and "factory-blobstore.service" in line
+        ]
+        assert not offenders, (
+            "install.sh must NOT `systemctl --user enable` factory-blobstore.service"
+            " (any variant, incl. `--now`).\n"
+            "Quadlet units auto-enable via [Install] WantedBy= at daemon-reload;\n"
+            "explicit enable fails on generated units and aborts install.sh"
+            " before §9/§10 (#1746).\n"
+            f"offending lines: {offenders}\n"
             f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
 

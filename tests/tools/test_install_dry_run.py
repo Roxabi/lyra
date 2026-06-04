@@ -393,7 +393,11 @@ declare -A SECRET_POLICY=(
         )
 
     def test_value_with_shell_metachars_is_rejected(self, tmp_path: Path) -> None:
-        """A data line with $(...) or ; in value must be rejected by charset gate."""
+        """A data line with $(...) or ; in value must be rejected by charset gate.
+
+        The parser rejects the malformed data line and exits 2 before reaching the
+        seed-validation loop — so exit code must be exactly 2, not 1 (missing seed).
+        """
         install_sh, manifest_path = _make_deploy_tree(tmp_path / "repo")
         manifest_path.write_text(
             """\
@@ -412,9 +416,15 @@ declare -A SECRET_POLICY=(
 
         result = _run_install_from_tree(install_sh, home_tmp)
 
-        assert result.returncode != 0, (
-            "install.sh must exit non-zero on value with shell metacharacters.\n"
+        assert result.returncode == 2, (
+            f"install.sh must exit 2 (parse rejection) on value with shell "
+            f"metacharacters, got {result.returncode}.\n"
             f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        )
+        combined = result.stderr + result.stdout
+        assert "refusing" in combined.lower() or "unexpected" in combined.lower(), (
+            "stderr must mention refusing/unexpected on charset rejection.\n"
+            f"stderr:\n{result.stderr}"
         )
 
     def test_legit_manifest_still_parses(self, tmp_path: Path) -> None:
@@ -435,4 +445,40 @@ declare -A SECRET_POLICY=(
             "factory-nats-hub must appear in dry-run output "
             "(proves SECRET_SOURCES + SECRET_POLICY were populated).\n"
             f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        )
+
+    def test_value_with_dotdot_path_is_rejected(self, tmp_path: Path) -> None:
+        """A SECRET_SOURCES value containing '..' must be rejected with exit 2.
+
+        Defense-in-depth: a tampered manifest must not be able to point
+        `podman secret create` at an arbitrary operator-readable file via
+        path traversal (e.g. ../../etc/shadow).
+        """
+        install_sh, manifest_path = _make_deploy_tree(tmp_path / "repo")
+        manifest_path.write_text(
+            """\
+# header
+declare -A SECRET_SOURCES=(
+    [factory-nats-hub]="../../etc/shadow"
+)
+declare -A SECRET_POLICY=(
+    [factory-nats-hub]="nats-seed"
+)
+"""
+        )
+        home_tmp = tmp_path / "home"
+        nkeys = home_tmp / ".roxabi" / "factory" / "nkeys"
+        nkeys.mkdir(parents=True)
+
+        result = _run_install_from_tree(install_sh, home_tmp)
+
+        assert result.returncode == 2, (
+            f"install.sh must exit 2 (parse rejection) on '..' value, "
+            f"got {result.returncode}.\n"
+            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        )
+        combined = result.stderr + result.stdout
+        assert "refusing" in combined.lower() or ".." in combined, (
+            "stderr must mention refusing or '..' on dotdot rejection.\n"
+            f"stderr:\n{result.stderr}"
         )

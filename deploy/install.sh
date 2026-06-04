@@ -78,7 +78,9 @@ _parse_secrets_manifest() {
   declare -gA SECRET_POLICY=()
   local current=""
   local lineno=0
-  while IFS= read -r line; do
+  # The `|| [[ -n "$line" ]]` clause ensures a final data line without a trailing
+  # newline is still processed (read returns non-zero at EOF but may have read data).
+  while IFS= read -r line || [[ -n "$line" ]]; do
     lineno=$(( lineno + 1 ))
     # Skip comment lines
     if [[ "$line" =~ ^[[:space:]]*# ]]; then
@@ -88,7 +90,11 @@ _parse_secrets_manifest() {
     if [[ "$line" =~ ^[[:space:]]*$ ]]; then
       continue
     fi
-    # Known block headers
+    # Known block headers — exact string match is intentional fail-closed behaviour.
+    # This parser requires the exact header strings emitted by tools/emit_secrets_manifest.py.
+    # Any drift in the generator's formatting (leading whitespace, quoting, etc.) is
+    # rejected with exit 2 by design — keep emit_secrets_manifest.py and this parser
+    # in lockstep; ¬loosen to a regex.
     if [[ "$line" == 'declare -A SECRET_SOURCES=(' ]]; then
       current="SECRET_SOURCES"
       continue
@@ -110,6 +116,13 @@ _parse_secrets_manifest() {
       fi
       local _key="${BASH_REMATCH[1]}"
       local _val="${BASH_REMATCH[2]}"
+      # Reject values containing a '..' segment — defense-in-depth against a tampered
+      # manifest pointing `podman secret create` at an arbitrary operator-readable file
+      # via path traversal.  No legitimate secret source path or policy word contains '..'.
+      if [[ "$_val" == *..* ]]; then
+        echo "ERROR: secrets-manifest.sh: refusing manifest value with '..' path segment on line ${lineno}: ${line}" >&2
+        exit 2
+      fi
       if [[ "$current" == "SECRET_SOURCES" ]]; then
         SECRET_SOURCES["${_key}"]="${_val}"
       else

@@ -92,11 +92,12 @@ deploy verb for M₁. It reconciles the running system with the desired state de
 2. **Pull** — `git pull origin staging` in `~/projects/roxabi-factory` (and `~/projects/voiceCLI` if present).
 3. **Install Quadlet units** — `make quadlet-install NO_RESTART=1` (renders units, copies to `~/.config/containers/systemd`, `daemon-reload`, seeds BotStore).
 4. **Regenerate auth.conf** — `factory-acl genkeys --regen-authconf` (renders `nkeys/` → `auth.conf`).
-5. **Install secrets** — `make quadlet-secrets-install` (recreates Podman secrets from host key files).
-6. **Restart NATS** — `systemctl --user restart factory-nats` (mount-typed secrets require container restart, not HUP, to refresh). Waits for `is-active`.
-7. **Restart lyra clients** — `factory-hub`, `factory-telegram`, `factory-discord`, `factory-clipool`, `factory-turn-writer`, `factory-gh-helper`, `factory-blobstore` (only if already active; any failure aborts the converge).
-8. **Restart voiceCLI** — `voicecli-tts`, `voicecli-stt` (if voiceCLI directory exists).
-9. **Record stamp** — writes the new convergence fingerprint to `~/.roxabi/factory/.converge-stamp`.
+5. **Rotate auth secret** — `podman secret create --replace factory-nats-auth <nkeys>/auth.conf` (unconditional; ensures the new auth.conf is in the Podman secret store before NATS restarts).
+6. **Install secrets** — `make quadlet-secrets-install` (recreates remaining Podman secrets from host key files; `factory-nats-auth` already replaced in step 5).
+7. **Restart NATS** — `systemctl --user restart factory-nats` (mount-typed secrets require container restart, not HUP, to refresh). Waits for `is-active`.
+8. **Restart lyra clients** — `factory-hub`, `factory-telegram`, `factory-discord`, `factory-clipool`, `factory-turn-writer`, `factory-gh-helper`, `factory-blobstore` (only if already active; any failure aborts the converge).
+9. **Restart voiceCLI** — `voicecli-tts`, `voicecli-stt` (if voiceCLI directory exists).
+10. **Record stamp** — writes the new convergence fingerprint to `~/.roxabi/factory/.converge-stamp`.
 
 ### Trigger wiring
 

@@ -9,7 +9,7 @@ set -euo pipefail
 source "$(dirname "$0")/lib/deploy-common.sh"
 
 # Guard against concurrent runs (exit 0 if locked)
-with_deploy_lock _do_converge
+# NOTE: with_deploy_lock is called at the END of this file, after _do_converge is defined.
 
 _do_converge() {
     # 1) Change-gate: already converged?
@@ -41,7 +41,13 @@ _do_converge() {
     echo "==> NATS: regenerating auth.conf..."
     factory-acl genkeys --regen-authconf
 
-    # 6) Install secrets
+    # 5a) Rotate factory-nats-auth Podman secret so NATS picks up the new auth.conf
+    #     on the upcoming restart (type=mount secrets are stale until container restart;
+    #     --replace here ensures the new tmpfs content is ready before step 7).
+    echo "==> NATS: rotating factory-nats-auth secret..."
+    podman secret create --replace factory-nats-auth "${FACTORY_NKEYS_DIR}/auth.conf"
+
+    # 6) Install remaining secrets (skips factory-nats-auth — already replaced above)
     echo "==> NATS: installing Podman secrets..."
     bash "${FACTORY_DIR}/deploy/install.sh" --secrets-only
 
@@ -76,3 +82,5 @@ _do_converge() {
 
     echo "==> Converge complete."
 }
+
+with_deploy_lock _do_converge

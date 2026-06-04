@@ -295,4 +295,10 @@ echo "  [ok]   BotStore seeded"
 log "Installing factory-quadlet-sync timer + service ..."
 run make quadlet-sync-install
 
+# ── 10. Enable host podman-auto-update timer ────────────────────────────────
+
+log "Enabling podman-auto-update.timer (5-min cadence) ..."
+run systemctl --user enable --now podman-auto-update.timer
+echo "  [ok]   podman-auto-update.timer enabled"
+
 log "Done. Services NOT restarted — run: systemctl --user start factory-nats factory-hub factory-telegram factory-discord factory-clipool factory-gh-helper factory-turn-writer factory-blobstore"

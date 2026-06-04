@@ -7,6 +7,7 @@ StartLimitBurst=5
 
 [Container]
 Image=ghcr.io/roxabi/factory:staging-svc
+Label=io.containers.autoupdate=registry
 ContainerName=factory-turn-writer
 Network=roxabi.network
 # Hardening — defense in depth (see issue #652).

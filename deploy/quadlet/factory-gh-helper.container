@@ -12,6 +12,7 @@ StartLimitBurst=5
 # Same image as clipool — factory-gh user (uid 1501) + factory-tokenuser group (gid 1502)
 # are baked into the image at Dockerfile lines 49–51. No separate helper image needed.
 Image=ghcr.io/roxabi/factory:staging
+Label=io.containers.autoupdate=registry
 ContainerName=factory-gh-helper
 Pod=factory-gh.pod
 ReadOnly=true

@@ -481,7 +481,58 @@ systemctl --user status podman-auto-update.timer
 | NATS auth failure in logs | Stale auth.conf | `make nats-regen-authconf` + restart NATS |
 | `factory-gh-helper` fails | Missing `factory-gh-pem` | Install PEM secret (see above) |
 | Container restart loop | `RestartSec=10` applies — check logs | `journalctl --user -u <svc> -n 50` |
-| Auto-update not pulling | Timer inactive | `systemctl --user start podman-auto-update.timer` |
+| Auto-update not pulling | Timer inactive or misconfigured | See M₁ auto-update remediation runbook below |
+
+## M₁ auto-update remediation runbook
+
+Run when `podman auto-update` has stopped pulling new images (all three timers must be
+enabled and active for fully hands-off deploys):
+
+### 1. Re-install the drop-in + enable the quadlet-sync timer
+
+```bash
+cd ~/projects/roxabi-factory
+make quadlet-sync-install   # installs drop-in + systemctl --user enable --now factory-quadlet-sync.timer
+```
+
+### 2. Enable/start the three timers
+
+Run `daemon-reload` first so the drop-in override is loaded before the timers are activated. Then restart `podman-auto-update.timer` so any changed `OnCalendar=` schedule takes effect on an already-active timer.
+
+```bash
+systemctl --user daemon-reload
+systemctl --user enable --now podman-auto-update.timer
+systemctl --user enable --now factory-quadlet-sync.timer
+systemctl --user enable --now factory-post-autoupdate.timer
+systemctl --user restart podman-auto-update.timer
+```
+
+### 3. Verify timer state
+
+Check all three timers are enabled and active:
+
+```bash
+systemctl --user is-enabled podman-auto-update.timer factory-quadlet-sync.timer factory-post-autoupdate.timer
+systemctl --user is-active  podman-auto-update.timer factory-quadlet-sync.timer factory-post-autoupdate.timer
+```
+
+Expected output: three lines of `enabled` then three lines of `active`.
+
+### 4. Verify registry tracking
+
+```bash
+podman auto-update --dry-run
+```
+
+Expected: 7 containers listed with `registry` tracking (`factory-hub`, `factory-telegram`,
+`factory-discord`, `factory-clipool`, `factory-gh-helper`, `factory-turn-writer`,
+`factory-blobstore`). `factory-nats` must NOT appear — it is pinned by digest with no
+autoupdate label.
+
+### 5. Record output on issue #1729
+
+Copy the output of `podman auto-update --dry-run` and the three `is-enabled`/`is-active`
+results as a comment on issue #1729. This is the SC9 prod-green verification check.
 
 ## Pitfall: double-quotes in HealthCmd= are dropped by the Quadlet generator
 

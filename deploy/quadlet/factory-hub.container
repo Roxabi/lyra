@@ -11,6 +11,7 @@ StartLimitBurst=5
 # (CI tag-by-SHA strategy). Upstream registry images (e.g. nats.container)
 # are pinned by digest directly.
 Image=ghcr.io/roxabi/factory:staging-svc
+Label=io.containers.autoupdate=registry
 ContainerName=factory-hub
 Network=roxabi.network
 # Hardening — defense in depth (see issue #652).

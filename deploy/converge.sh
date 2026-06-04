@@ -52,8 +52,15 @@ _do_converge() {
     bash "${FACTORY_DIR}/deploy/install.sh" --secrets-only
 
     # 7) Restart NATS (mount-typed secret refresh requires restart)
+    #    NB: plain restart, NOT `restart --wait` — `--wait` blocks until the unit
+    #    *deactivates*, which never happens for a long-running daemon, so it hung the
+    #    entire converge (#1738). The is-active poll below is the readiness gate.
     echo "==> NATS: restarting factory-nats..."
-    systemctl --user restart --wait factory-nats
+    systemctl --user restart factory-nats
+    for _ in $(seq 1 10); do
+        systemctl --user is-active --quiet factory-nats && break
+        sleep 1
+    done
     systemctl --user is-active --quiet factory-nats \
         || { echo "ERROR: factory-nats failed to reach active state"; exit 1; }
 

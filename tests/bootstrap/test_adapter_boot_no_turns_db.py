@@ -18,12 +18,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
-def _noop_task() -> "asyncio.Task[None]":
-    """Zero-delay cancel-safe stub task."""
-    return asyncio.create_task(asyncio.sleep(0))
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -303,10 +297,6 @@ class TestDiscordStandaloneNoTurnsDb:
             patch(
                 "factory.bootstrap.wiring.standalone_discord.seed_watch_channels",
                 AsyncMock(return_value=frozenset()),
-            ),
-            patch(
-                "factory.bootstrap.wiring.standalone_discord.start_watch_channels_task",
-                MagicMock(return_value=_noop_task()),
             ),
             patch(
                 "factory.bootstrap.wiring.standalone_discord.wire_bot_common",

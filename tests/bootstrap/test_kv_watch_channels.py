@@ -1,8 +1,8 @@
 """Unit tests for factory.bootstrap.wiring.kv_watch_channels.
 
-Covers seed_watch_channels (one-shot KV read) and the internal helpers
-_parse_ids / _skip_tombstone.  No real NATS server is involved — all
-JetStream interactions are mocked via unittest.mock.
+Covers seed_watch_channels (one-shot kv.get path) and the internal helpers
+_parse_ids / _kv_key.  No real NATS server is involved — all JetStream
+interactions are mocked via unittest.mock.
 """
 
 from __future__ import annotations
@@ -19,141 +19,104 @@ from factory.bootstrap.wiring.kv_watch_channels import (
 )
 
 # ---------------------------------------------------------------------------
-# Helpers — async iterator that yields a fixed sequence of entries
+# Helpers
 # ---------------------------------------------------------------------------
 
 
-class _FakeWatcher:
-    """Async-iterator and async-context-manager that yields *entries* in order.
-
-    seed_watch_channels calls:
-        watcher = await kv.watch(key)          → _FakeWatcher instance
-        async for entry in watcher: ...        → yields from self._entries
-        await watcher.stop()                   → no-op (tracked via mock)
-    """
-
-    def __init__(self, entries: list[Any]) -> None:
-        self._entries = iter(entries)
-        self.stop = AsyncMock()
-
-    def __aiter__(self) -> "_FakeWatcher":
-        return self
-
-    async def __anext__(self) -> Any:
-        try:
-            return next(self._entries)
-        except StopIteration:
-            raise StopAsyncIteration
-
-
-def _make_entry(value: bytes, operation: Any = None) -> MagicMock:
-    """Build a minimal KV entry object."""
+def _make_entry(value: bytes) -> MagicMock:
+    """Build a minimal KV entry object with the given bytes value."""
     entry = MagicMock()
     entry.value = value
-    entry.operation = operation
     return entry
 
 
-def _make_js(watcher: _FakeWatcher) -> MagicMock:
-    """Build a js mock whose key_value(...).watch(...) returns *watcher*."""
-    kv = MagicMock()
-    kv.watch = AsyncMock(return_value=watcher)
+def _make_js(kv: MagicMock) -> MagicMock:
+    """Build a js mock whose key_value(...) returns *kv*."""
     js = MagicMock()
     js.key_value = AsyncMock(return_value=kv)
     return js
 
 
+def _make_kv(get_return=None, get_side_effect=None) -> MagicMock:
+    """Build a kv mock whose kv.get() returns *get_return* or raises *get_side_effect*.
+    """
+    kv = MagicMock()
+    if get_side_effect is not None:
+        kv.get = AsyncMock(side_effect=get_side_effect)
+    else:
+        kv.get = AsyncMock(return_value=get_return)
+    return kv
+
+
 # ---------------------------------------------------------------------------
-# Tests — seed_watch_channels
+# Tests — seed_watch_channels (kv.get path)
 # ---------------------------------------------------------------------------
 
 
 class TestSeedWatchChannels:
-    async def test_returns_frozenset_of_ids_from_first_real_put_entry(self) -> None:
-        """(a) First real entry with value=[1,2] and no tombstone operation → {1, 2}."""
+    async def test_returns_frozenset_of_ids_from_valid_entry(self) -> None:
+        """(a) kv.get returns entry with value=b'[1,2]' → frozenset({1, 2}).
+
+        Negative guard: deleting the kv.get call or the _parse_ids call causes
+        the function to return frozenset() or raise — this test would fail.
+        """
         # Arrange
-        entry = _make_entry(b"[1, 2]", operation=None)
-        watcher = _FakeWatcher([entry])
-        js = _make_js(watcher)
+        entry = _make_entry(b"[1, 2]")
+        kv = _make_kv(get_return=entry)
+        js = _make_js(kv)
 
         # Act
         result = await seed_watch_channels(js, "discord", "mybot", timeout=2.0)
 
         # Assert
         assert result == frozenset({1, 2})
-        watcher.stop.assert_awaited_once()
+        kv.get.assert_awaited_once_with("bot.discord.mybot.watch_channels")
 
-    async def test_returns_empty_frozenset_after_none_sentinel_and_timeout(
-        self,
-    ) -> None:
-        """(b) None sentinel then no further entries → frozenset() on timeout.
+    async def test_returns_empty_frozenset_on_key_not_found_error(self) -> None:
+        """(b) kv.get raises KeyNotFoundError → frozenset().
 
-        timeout=0.05 keeps the test fast without violating the test_sleep gate
-        (no real sleep call — asyncio.timeout drives the wait).
+        This covers missing key, DEL tombstone, and PURGE tombstone — nats-py
+        re-raises all three as KeyNotFoundError inside kv.get().
+
+        Negative guard: removing the KeyNotFoundError handler causes the error
+        to propagate instead of returning frozenset().
         """
-        # Arrange — only a None sentinel; no subsequent real entry
-        watcher = _FakeWatcher([None])
-        js = _make_js(watcher)
+        # Arrange
+        from nats.js.errors import KeyNotFoundError
+
+        kv = _make_kv(get_side_effect=KeyNotFoundError())
+        js = _make_js(kv)
 
         # Act
-        result = await seed_watch_channels(js, "discord", "mybot", timeout=0.05)
-
-        # Assert
-        assert result == frozenset()
-        watcher.stop.assert_awaited_once()
-
-    async def test_returns_empty_frozenset_on_purge_tombstone(self) -> None:
-        """(c) First real entry has operation='PURGE' → tombstone → frozenset().
-
-        json.loads must never be called on the (empty/tombstone) value.
-        Verified implicitly: entry.value is b"" (json.loads(b"") would raise),
-        but the function returns before reaching that line.
-        """
-        # Arrange — tombstone entry; value intentionally unparseable
-        entry = _make_entry(b"", operation="PURGE")
-        watcher = _FakeWatcher([entry])
-        js = _make_js(watcher)
-
-        # Act — must not raise even though entry.value is not valid JSON
         result = await seed_watch_channels(js, "discord", "mybot", timeout=2.0)
 
         # Assert
         assert result == frozenset()
-        watcher.stop.assert_awaited_once()
 
     async def test_skips_non_int_channel_id_in_mixed_value(self) -> None:
-        """(d) value=['x', 3] → 'x' is skipped, only 3 survives → frozenset({3})."""
+        """(c) entry value=b'["x",3]' → 'x' skipped, only 3 survives → frozenset({3}).
+        """
         # Arrange
-        entry = _make_entry(b'["x", 3]', operation=None)
-        watcher = _FakeWatcher([entry])
-        js = _make_js(watcher)
+        entry = _make_entry(b'["x", 3]')
+        kv = _make_kv(get_return=entry)
+        js = _make_js(kv)
 
         # Act
         result = await seed_watch_channels(js, "discord", "mybot", timeout=2.0)
 
         # Assert
         assert result == frozenset({3})
-        watcher.stop.assert_awaited_once()
 
-    async def test_put_operation_string_treated_as_real_entry(self) -> None:
-        """First real entry with operation='PUT' (explicit string) → ids returned."""
+    async def test_returns_empty_frozenset_on_json_decode_error(self) -> None:
+        """(d) entry value=b'not json' → JSONDecodeError guarded → frozenset().
+
+        Negative guard: removing the (json.JSONDecodeError, TypeError) handler
+        causes json.loads to raise and propagate instead of returning frozenset().
+        """
         # Arrange
-        entry = _make_entry(b"[10, 20]", operation="PUT")
-        watcher = _FakeWatcher([entry])
-        js = _make_js(watcher)
-
-        # Act
-        result = await seed_watch_channels(js, "discord", "mybot", timeout=2.0)
-
-        # Assert
-        assert result == frozenset({10, 20})
-
-    async def test_del_tombstone_returns_empty_frozenset(self) -> None:
-        """DEL operation is a tombstone — must return frozenset() like PURGE."""
-        # Arrange
-        entry = _make_entry(b"", operation="DEL")
-        watcher = _FakeWatcher([entry])
-        js = _make_js(watcher)
+        entry = _make_entry(b"not json")
+        kv = _make_kv(get_return=entry)
+        js = _make_js(kv)
 
         # Act
         result = await seed_watch_channels(js, "discord", "mybot", timeout=2.0)
@@ -161,31 +124,68 @@ class TestSeedWatchChannels:
         # Assert
         assert result == frozenset()
 
-    async def test_none_sentinel_then_real_entry_returns_ids(self) -> None:
-        """None sentinel followed by a real entry → ids from real entry returned."""
-        # Arrange
-        real_entry = _make_entry(b"[5, 6]", operation=None)
-        watcher = _FakeWatcher([None, real_entry])
-        js = _make_js(watcher)
+    async def test_returns_empty_frozenset_on_timeout(self) -> None:
+        """kv.get raises TimeoutError → frozenset() (timeout guard).
+
+        timeout=0.01 keeps the test fast; asyncio.timeout wraps kv.get so
+        a TimeoutError raised by kv.get is treated the same as a real timeout.
+        """
+        # Arrange — simulate timeout by having kv.get raise TimeoutError
+        kv = _make_kv(get_side_effect=TimeoutError())
+        js = _make_js(kv)
 
         # Act
         result = await seed_watch_channels(js, "discord", "mybot", timeout=2.0)
 
         # Assert
-        assert result == frozenset({5, 6})
+        assert result == frozenset()
 
-    async def test_stop_is_always_called_even_on_tombstone(self) -> None:
-        """watcher.stop() is always called (finally block) — negative tombstone path."""
+    async def test_key_not_found_covers_deleted_key_path(self) -> None:
+        """KeyNotFoundError from kv.get covers deleted/purged key → frozenset().
+
+        Explicit documentation: nats-py raises KeyNotFoundError for DEL and
+        PURGE tombstones when accessed via kv.get(), so a single
+        KeyNotFoundError handler covers all three absent-key cases.
+        """
         # Arrange
-        entry = _make_entry(b"", operation="PURGE")
-        watcher = _FakeWatcher([entry])
-        js = _make_js(watcher)
+        from nats.js.errors import KeyNotFoundError
+
+        kv = _make_kv(get_side_effect=KeyNotFoundError())
+        js = _make_js(kv)
+
+        # Act
+        result = await seed_watch_channels(js, "discord", "mybot", timeout=2.0)
+
+        # Assert — deleted key = frozenset(), same as missing key
+        assert result == frozenset()
+
+    async def test_js_key_value_called_with_factory_state_bucket(self) -> None:
+        """js.key_value is called with 'factory-state' bucket name."""
+        # Arrange
+        from nats.js.errors import KeyNotFoundError
+
+        kv = _make_kv(get_side_effect=KeyNotFoundError())
+        js = _make_js(kv)
 
         # Act
         await seed_watch_channels(js, "discord", "mybot", timeout=2.0)
 
-        # Assert — stop called exactly once via finally
-        watcher.stop.assert_awaited_once()
+        # Assert
+        js.key_value.assert_awaited_once_with("factory-state")
+
+    async def test_returns_correct_ids_for_telegram_platform(self) -> None:
+        """Platform is passed through to the KV key (platform-agnostic)."""
+        # Arrange
+        entry = _make_entry(b"[7, 8]")
+        kv = _make_kv(get_return=entry)
+        js = _make_js(kv)
+
+        # Act
+        result = await seed_watch_channels(js, "telegram", "bot1", timeout=2.0)
+
+        # Assert
+        assert result == frozenset({7, 8})
+        kv.get.assert_awaited_once_with("bot.telegram.bot1.watch_channels")
 
 
 # ---------------------------------------------------------------------------

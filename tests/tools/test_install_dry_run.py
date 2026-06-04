@@ -302,14 +302,21 @@ class TestBlobstoreServiceNotExplicitlyEnabled:
         #   run systemctl --user enable factory-blobstore.service
         # Under --dry-run `run` emits:
         #   [dry-run] systemctl --user enable factory-blobstore.service
-        # If this assertion fires, the line was re-added and must be removed.
-        bad = "systemctl --user enable factory-blobstore.service"
-        assert bad not in combined, (
-            "install.sh must NOT call `systemctl --user enable"
-            " factory-blobstore.service`.\n"
+        # Match any line that both enables AND names the blobstore unit, so the
+        # guard also catches re-introductions that append `--now` (the sibling
+        # §10 `enable --now podman-auto-update.timer` makes that variant likely).
+        offenders = [
+            line
+            for line in combined.splitlines()
+            if "enable" in line and "factory-blobstore.service" in line
+        ]
+        assert not offenders, (
+            "install.sh must NOT `systemctl --user enable` factory-blobstore.service"
+            " (any variant, incl. `--now`).\n"
             "Quadlet units auto-enable via [Install] WantedBy= at daemon-reload;\n"
             "explicit enable fails on generated units and aborts install.sh"
             " before §9/§10 (#1746).\n"
+            f"offending lines: {offenders}\n"
             f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
 

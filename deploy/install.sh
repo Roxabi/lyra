@@ -281,49 +281,8 @@ fi
 # ── 5. Ensure data directories ──────────────────────────────────────────────
 
 log "Ensuring data directories ..."
-run mkdir -p /data/factory/blobs
-if [[ "$DRY_RUN" -eq 0 ]]; then
-  if ! findmnt /data/factory/blobs >/dev/null 2>&1; then
-    warn "/data/factory/blobs is not a mount point — add to /etc/fstab with noatime,nodiratime"
-  fi
-fi
-echo "  [ok]   /data/factory/blobs"
-# #13: guard against a pre-existing non-symlink directory at the blobstore target.
-# ln -sf silently fails to replace a directory — blobs would land in the wrong path.
-_blobstore_link="${HOME}/.roxabi/factory/blobstore"
-_blobstore_blocked=0
-if [[ -e "${_blobstore_link}" && ! -L "${_blobstore_link}" ]]; then
-  # Target exists and is NOT a symlink (i.e. a real directory or regular file).
-  if [[ -d "${_blobstore_link}" ]]; then
-    # Check if empty — safe to remove; non-empty requires operator action.
-    if [[ -z "$(ls -A "${_blobstore_link}" 2>/dev/null)" ]]; then
-      log "Removing empty directory ${_blobstore_link} to replace with symlink ..."
-      run rm -rf "${_blobstore_link}"
-    elif [[ "$DRY_RUN" -eq 1 ]]; then
-      warn "${_blobstore_link} is a non-empty directory — would BLOCK install (run without --dry-run to see full error)"
-      _blobstore_blocked=1
-    else
-      echo "ERROR: ${_blobstore_link} is a non-empty directory (not a symlink)." >&2
-      echo "       Blobs would be silently misplaced. Remediation:" >&2
-      echo "         1. Move existing blobs: sudo mv ${_blobstore_link}/* /data/factory/blobs/" >&2
-      echo "         2. Remove directory:    rmdir ${_blobstore_link}" >&2
-      echo "         3. Re-run install.sh" >&2
-      exit 1
-    fi
-  elif [[ "$DRY_RUN" -eq 1 ]]; then
-    warn "${_blobstore_link} exists and is not a symlink or directory — would BLOCK install"
-    _blobstore_blocked=1
-  else
-    echo "ERROR: ${_blobstore_link} exists and is not a symlink or directory." >&2
-    echo "       Remove it manually then re-run install.sh" >&2
-    exit 1
-  fi
-fi
-if [[ "$_blobstore_blocked" -eq 0 ]]; then
-  run ln -sf /data/factory/blobs "${_blobstore_link}"
-  echo "  [ok]   ${_blobstore_link} → /data/factory/blobs"
-fi
-unset _blobstore_link _blobstore_blocked
+run mkdir -p "${HOME}/.roxabi/factory/blobstore"
+echo "  [ok]   ${HOME}/.roxabi/factory/blobstore"
 run mkdir -p "${HOME}/.roxabi/factory/turn-writer"
 echo "  [ok]   ~/.roxabi/factory/turn-writer/"
 

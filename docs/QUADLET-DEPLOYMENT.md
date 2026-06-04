@@ -358,11 +358,11 @@ mandatory (ADR-054). Keep the prior source file as `.prev` until rotation is con
 
 ## Backing up the BlobStore
 
-> **Host vs container path:** `/data/factory/blobs` is the canonical host path. `~/.roxabi/factory/blobstore` is the container view (bind-mounted into `factory-blobstore` via `Volume=/data/factory/blobs:/home/factory/.roxabi/factory/blobstore:z`). All backup and restore commands below reference the canonical host path.
+> **Host vs container path:** `~/.roxabi/factory/blobstore` is both the canonical host path and the container view (bind-mounted via `Volume=%h/.roxabi/factory/blobstore:/home/factory/.roxabi/factory/blobstore:z`). All backup and restore commands below reference this path.
 
 The BlobStore consists of two parts that must be snapshotted in order: the SQLite index
-(`/data/factory/blobs/index.sqlite`) first, then the content-addressed shard tree
-(`/data/factory/blobs/`). Reversing the order risks capturing a `blob_refs` row
+(`~/.roxabi/factory/blobstore/index.sqlite`) first, then the content-addressed shard tree
+(`~/.roxabi/factory/blobstore/`). Reversing the order risks capturing a `blob_refs` row
 whose shard file was not yet in the snapshot — a phantom row at restore time.
 
 `FsBlobStore` uses a per-instance `asyncio.Lock`, not a global write-quiesce. A concurrent
@@ -373,12 +373,12 @@ row was NOT captured in the DB snapshot. The restore invariant handles this safe
 1. Snapshot the SQLite index (atomic per the SQLite `.backup` API):
    ```bash
    mkdir -p /tmp/blobstore-snapshot
-   sqlite3 /data/factory/blobs/index.sqlite ".backup '/tmp/blobstore-snapshot/index.sqlite'"
+   sqlite3 ~/.roxabi/factory/blobstore/index.sqlite ".backup '/tmp/blobstore-snapshot/index.sqlite'"
    ```
 
 2. Snapshot the shard tree together with the DB snapshot (use hardlinks to minimise disk usage):
    ```bash
-   cp -al /data/factory/blobs /tmp/blobstore-snapshot/blobs
+   cp -al ~/.roxabi/factory/blobstore /tmp/blobstore-snapshot/blobs
    ```
    For off-host backup, pipe through Restic or similar:
    ```bash
@@ -420,29 +420,6 @@ bug that the step-1-before-step-2 ordering prevents.
 
 → See `docs/architecture/storage.md` (BlobStore section) for the write-durability invariant
 that underpins this restore procedure.
-
-## Host-level mount requirements
-
-The `/data/factory/blobs` filesystem must be mounted with `noatime` and `nodiratime` on the host. This prevents every blob read (GET, HEAD, or consistency check) from updating the inode `atime`, which would otherwise generate unnecessary write I/O and accelerate SSD wear on the content-addressed shard tree.
-
-Verify current mount options:
-
-```bash
-findmnt -n -o OPTIONS /data/factory/blobs
-```
-
-If `noatime` is missing, update `/etc/fstab` and remount:
-
-```bash
-# Example fstab entry
-/dev/mapper/data-lyra-blobs  /data/factory/blobs  ext4  defaults,noatime,nodiratime  0  2
-```
-
-Apply without reboot:
-
-```bash
-sudo mount -o remount,noatime,nodiratime /data/factory/blobs
-```
 
 ## Diagnostic
 

@@ -18,10 +18,7 @@ from factory.bootstrap.wiring._standalone_wiring_common import (
     TypingDeps,
     wire_bot_common,
 )
-from factory.bootstrap.wiring.kv_watch_channels import (
-    seed_watch_channels,
-    start_watch_channels_task,
-)
+from factory.bootstrap.wiring.kv_watch_channels import seed_watch_channels
 from factory.core.messaging.message import Platform
 from roxabi_nats.readiness import wait_for_hub
 
@@ -73,7 +70,6 @@ async def _bootstrap_discord_teardown(
     dc_thread_store: Any,
     dc_turn_store: Any,
     stop_dc: asyncio.Event,
-    watch_tasks: list[asyncio.Task[None]],
 ) -> None:
     """Run shutdown sequence for all wired Discord adapters."""
     start_tasks = [
@@ -82,10 +78,6 @@ async def _bootstrap_discord_teardown(
     ]
     try:
         await stop_dc.wait()
-        # Cancel KV watcher tasks first
-        for t in watch_tasks:
-            t.cancel()
-        await asyncio.gather(*watch_tasks, return_exceptions=True)
         await close_safely("dc-adapters", *[a.close() for a, _, _, _, _ in wired_dc])
         for t in start_tasks:
             t.cancel()
@@ -117,7 +109,6 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
     blob_store = init_blobstore()
 
     wired_dc: list[tuple] = []  # (DiscordAdapter, str, Bus, TypingListener, Consumer)
-    watch_tasks: list[asyncio.Task[None]] = []
 
     async def _wire_bot(
         bot_cfg: Any, token: str, watch_channels: frozenset[int]
@@ -187,24 +178,12 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
         try:
             wired = await _wire_bot(bot_cfg, token, watch_channels)
         except Exception:
-            # Cancel any watch tasks already started before cleaning up.
-            for t in watch_tasks:
-                t.cancel()
-            await asyncio.gather(*watch_tasks, return_exceptions=True)
             await _close_dc_wired("dc-wired", wired_dc)
             await dc_thread_store.close()
             await dc_turn_store.close()
             raise
 
         wired_dc.append(wired)
-        adapter_dc = wired[0]
-        task = start_watch_channels_task(
-            js,
-            "discord",
-            bot_id,
-            lambda s, a=adapter_dc: setattr(a, "_watch_channels", s),
-        )
-        watch_tasks.append(task)
         log.info(
             "adapter_standalone: Discord bot_id=%s ready (NATS mode)",
             bot_id,
@@ -217,7 +196,7 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
     stop_dc = setup_shutdown_event(_stop)
     try:
         await _bootstrap_discord_teardown(
-            wired_dc, dc_thread_store, dc_turn_store, stop_dc, watch_tasks
+            wired_dc, dc_thread_store, dc_turn_store, stop_dc
         )
     finally:
         if blob_store is not None:

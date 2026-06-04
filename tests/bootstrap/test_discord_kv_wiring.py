@@ -17,11 +17,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
-def _noop_task() -> "asyncio.Task[None]":
-    """Zero-delay cancel-safe stub task — not a timing wait."""
-    return asyncio.create_task(asyncio.sleep(0))  # event-based
-
 # ---------------------------------------------------------------------------
 # Assertion 1 — No AgentStore / config.db in _bootstrap_discord_setup
 # ---------------------------------------------------------------------------
@@ -115,8 +110,6 @@ class TestDiscordWireBotReceivesWatchChannels:
         The key assertion is on the DiscordAdapter constructor call kwargs.
         """
         # Arrange
-        import asyncio
-
         from factory.bootstrap.wiring.standalone_discord import (
             bootstrap_discord_standalone,
         )
@@ -217,10 +210,6 @@ class TestDiscordWireBotReceivesWatchChannels:
             patch(
                 "factory.bootstrap.wiring.standalone_discord.seed_watch_channels",
                 AsyncMock(return_value=seeded_channels),
-            ),
-            patch(
-                "factory.bootstrap.wiring.standalone_discord.start_watch_channels_task",
-                MagicMock(return_value=_noop_task()),
             ),
             patch(
                 "factory.bootstrap.wiring.standalone_discord.wire_bot_common",

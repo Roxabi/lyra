@@ -14,11 +14,6 @@ from tests.conftest import _LOAD_BOT_TOKEN_PATH
 _COMMON = "factory.bootstrap.wiring._standalone_wiring_common"
 
 
-def _noop_task() -> "asyncio.Task[None]":
-    """Zero-delay cancel-safe stub task — not a timing wait."""
-    return asyncio.create_task(asyncio.sleep(0))  # event-based
-
-
 def _make_raw_config(platform: str) -> dict:
     if platform == "telegram":
         return {"telegram": {"bots": [{"bot_id": "main"}]}}
@@ -113,9 +108,6 @@ async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
     mock_inbound_bus_dc.start = AsyncMock()
     mock_inbound_bus_dc.stop = AsyncMock()
 
-    # Cancel-safe task stub for start_watch_channels_task.
-    _watcher_task = _noop_task()
-
     (load_token_patch_dc,) = _cred_store_patches("discord-token")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
@@ -132,10 +124,6 @@ async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
         patch(
             "factory.bootstrap.wiring.standalone_discord.seed_watch_channels",
             AsyncMock(return_value=frozenset()),
-        ),
-        patch(
-            "factory.bootstrap.wiring.standalone_discord.start_watch_channels_task",
-            MagicMock(return_value=_watcher_task),
         ),
         load_token_patch_dc,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
@@ -302,10 +290,6 @@ async def test_discord_astart_failure_cleans_up_wired_resources() -> None:
     def _make_bus(*args, **kwargs):
         return bus_queue.pop(0)
 
-    # Cancel-safe task stub for the first bot's watch task (second bot fails before
-    # start_watch_channels_task is reached).
-    _watcher_task = _noop_task()
-
     (load_token_patch,) = _cred_store_patches("discord-token")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
@@ -323,10 +307,6 @@ async def test_discord_astart_failure_cleans_up_wired_resources() -> None:
         patch(
             "factory.bootstrap.wiring.standalone_discord.seed_watch_channels",
             AsyncMock(return_value=frozenset()),
-        ),
-        patch(
-            "factory.bootstrap.wiring.standalone_discord.start_watch_channels_task",
-            MagicMock(return_value=_watcher_task),
         ),
         load_token_patch,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),

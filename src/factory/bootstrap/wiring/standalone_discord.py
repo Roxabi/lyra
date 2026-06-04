@@ -20,6 +20,8 @@ from factory.bootstrap.wiring._standalone_wiring_common import (
 )
 from factory.bootstrap.wiring.kv_watch_channels import seed_watch_channels
 from factory.core.messaging.message import Platform
+from factory.infrastructure.stores.turn_session_kv import KvLastSessionStore
+from factory.paths import factory_discord_data_dir
 from roxabi_nats.readiness import wait_for_hub
 
 log = logging.getLogger(__name__)
@@ -43,16 +45,13 @@ async def _bootstrap_discord_setup(raw_config: dict) -> tuple:
     return dc_multi_cfg, dc_creds
 
 
-async def _create_dc_stores(vault_dir: Path) -> tuple:
-    """Create and connect Discord thread + turn stores."""
+async def _create_dc_stores(discord_dir: Path) -> tuple:
+    """Create and connect Discord thread store (private dir) + KV last-session store."""
     from factory.infrastructure.stores.thread_store import ThreadStore
-    from factory.infrastructure.stores.turn_store import TurnStore
 
-    dc_thread_store = ThreadStore(db_path=vault_dir / "discord.db")
+    dc_thread_store = ThreadStore(db_path=discord_dir / "discord.db")
     await dc_thread_store.connect()
-    dc_turn_store = TurnStore(db_path=vault_dir / "turns.db")
-    await dc_turn_store.connect()
-    return dc_thread_store, dc_turn_store
+    return (dc_thread_store,)
 
 
 async def _close_dc_wired(label: str, wired_dc: list[tuple]) -> None:
@@ -68,7 +67,6 @@ async def _close_dc_wired(label: str, wired_dc: list[tuple]) -> None:
 async def _bootstrap_discord_teardown(
     wired_dc: list[tuple],
     dc_thread_store: Any,
-    dc_turn_store: Any,
     stop_dc: asyncio.Event,
 ) -> None:
     """Run shutdown sequence for all wired Discord adapters."""
@@ -90,7 +88,6 @@ async def _bootstrap_discord_teardown(
             "dc-audio", *[consumer.stop() for _, _, _, _, consumer in wired_dc]
         )
         await dc_thread_store.close()
-        await dc_turn_store.close()
 
 
 async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap composition root
@@ -104,9 +101,14 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
 ) -> None:
     """Bootstrap a standalone Discord adapter process connected to NATS."""
     dc_multi_cfg, dc_creds = await _bootstrap_discord_setup(raw_config)
-    dc_thread_store, dc_turn_store = await _create_dc_stores(vault_dir)
+    discord_dir = factory_discord_data_dir()
+    (dc_thread_store,) = await _create_dc_stores(discord_dir)
     js = nc.jetstream()
     blob_store = init_blobstore()
+
+    # KV last-session store — adapter reads/writes factory-turns-meta bucket.
+    # Must await .connect() AFTER wait_for_hub (hub provisions the bucket).
+    dc_kv_last_session = KvLastSessionStore(js)
 
     wired_dc: list[tuple] = []  # (DiscordAdapter, str, Bus, TypingListener, Consumer)
 
@@ -128,7 +130,7 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
                 thread_hot_hours=bot_cfg.thread_hot_hours,
                 thread_store=dc_thread_store,
                 watch_channels=watch_channels,
-                turn_store=dc_turn_store,
+                last_session=dc_kv_last_session,
                 blob_store=blob_store,
             )
             typing_deps = TypingDeps(
@@ -167,6 +169,9 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
     # reintroduce the cold-boot race (BucketNotFoundError / missing-stream).
     await wait_for_hub(nc)
 
+    # Bind KV bucket after hub has provisioned it.
+    await dc_kv_last_session.connect()
+
     for bot_cfg in dc_multi_cfg.bots:
         bot_id = bot_cfg.bot_id
         if bot_id not in dc_creds:
@@ -180,7 +185,6 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
         except Exception:
             await _close_dc_wired("dc-wired", wired_dc)
             await dc_thread_store.close()
-            await dc_turn_store.close()
             raise
 
         wired_dc.append(wired)
@@ -191,13 +195,10 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
 
     if not wired_dc:
         await dc_thread_store.close()
-        await dc_turn_store.close()
         sys.exit("No Discord adapters started — check credentials")
     stop_dc = setup_shutdown_event(_stop)
     try:
-        await _bootstrap_discord_teardown(
-            wired_dc, dc_thread_store, dc_turn_store, stop_dc
-        )
+        await _bootstrap_discord_teardown(wired_dc, dc_thread_store, stop_dc)
     finally:
         if blob_store is not None:
             await blob_store.aclose()  # type: ignore[union-attr]  # concrete HttpBlobStoreAdapter; aclose not on port

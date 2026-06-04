@@ -19,6 +19,7 @@ from factory.bootstrap.wiring._standalone_wiring_common import (
     wire_bot_common,
 )
 from factory.core.messaging.message import Platform
+from factory.infrastructure.stores.turn_session_kv import KvLastSessionStore
 from roxabi_nats.readiness import wait_for_hub
 
 log = logging.getLogger(__name__)
@@ -26,11 +27,9 @@ log = logging.getLogger(__name__)
 
 async def _bootstrap_telegram_setup(
     raw_config: dict,
-    vault_dir: Path,
 ) -> tuple:
-    """Load Telegram config, credentials, and connect turn store."""
+    """Load Telegram config and credentials."""
     from factory.config import TelegramMultiConfig
-    from factory.infrastructure.stores.turn_store import TurnStore
 
     tg_multi_cfg = TelegramMultiConfig.model_validate(raw_config.get("telegram", {}))
     if not tg_multi_cfg.bots:
@@ -42,10 +41,7 @@ async def _bootstrap_telegram_setup(
         tg_creds[bot_id] = credentials.load_bot_token("telegram", bot_id)
         log.info("read token from /run/secrets/bot_token-%s", bot_id)
 
-    tg_turn_store = TurnStore(db_path=vault_dir / "turns.db")
-    await tg_turn_store.connect()
-
-    return tg_multi_cfg, tg_creds, tg_turn_store
+    return tg_multi_cfg, tg_creds
 
 
 async def _close_tg_wired(label: str, wired: list[tuple]) -> None:
@@ -60,7 +56,6 @@ async def _close_tg_wired(label: str, wired: list[tuple]) -> None:
 
 async def _bootstrap_telegram_teardown(
     wired: list[tuple],
-    tg_turn_store: Any,
     stop: asyncio.Event,
 ) -> None:
     """Run shutdown sequence for all wired Telegram adapters."""
@@ -78,7 +73,6 @@ async def _bootstrap_telegram_teardown(
         await asyncio.gather(*poll_tasks, return_exceptions=True)
     finally:
         await _close_tg_wired("tg", wired)
-        await tg_turn_store.close()
 
 
 async def bootstrap_telegram_standalone(  # noqa: PLR0915 — DEBT:wiring-bootstrap-deps
@@ -91,11 +85,13 @@ async def bootstrap_telegram_standalone(  # noqa: PLR0915 — DEBT:wiring-bootst
     _stop: asyncio.Event | None = None,
 ) -> None:
     """Bootstrap a standalone Telegram adapter process connected to NATS."""
-    tg_multi_cfg, tg_creds, tg_turn_store = await _bootstrap_telegram_setup(
-        raw_config, vault_dir
-    )
+    tg_multi_cfg, tg_creds = await _bootstrap_telegram_setup(raw_config)
     js = nc.jetstream()
     blob_store = init_blobstore()
+
+    # KV last-session store — adapter reads/writes factory-turns-meta bucket.
+    # Must await .connect() AFTER wait_for_hub (hub provisions the bucket).
+    tg_kv_last_session = KvLastSessionStore(js)
 
     wired: list[tuple] = []  # (TelegramAdapter, Bus, TypingListener, AudioConsumer)
 
@@ -113,7 +109,7 @@ async def bootstrap_telegram_standalone(  # noqa: PLR0915 — DEBT:wiring-bootst
                 token=token,
                 inbound_bus=inbound_bus,
                 webhook_secret=webhook_secret or "",
-                turn_store=tg_turn_store,
+                last_session=tg_kv_last_session,
                 blob_store=blob_store,
             )
             typing_deps = TypingDeps(
@@ -141,6 +137,9 @@ async def bootstrap_telegram_standalone(  # noqa: PLR0915 — DEBT:wiring-bootst
     # reintroduce the cold-boot race (BucketNotFoundError / missing-stream).
     await wait_for_hub(nc)
 
+    # Bind KV bucket after hub has provisioned it.
+    await tg_kv_last_session.connect()
+
     for bot_cfg in tg_multi_cfg.bots:
         bot_id = bot_cfg.bot_id
         if bot_id not in tg_creds:
@@ -151,7 +150,6 @@ async def bootstrap_telegram_standalone(  # noqa: PLR0915 — DEBT:wiring-bootst
             wired_bot = await _wire_bot(bot_cfg, token, webhook_secret)
         except Exception:
             await _close_tg_wired("tg-wired", wired)
-            await tg_turn_store.close()
             raise
 
         wired.append(wired_bot)
@@ -161,12 +159,11 @@ async def bootstrap_telegram_standalone(  # noqa: PLR0915 — DEBT:wiring-bootst
         )
 
     if not wired:
-        await tg_turn_store.close()
         sys.exit("No Telegram adapters started — check credentials")
 
     stop = setup_shutdown_event(_stop)
     try:
-        await _bootstrap_telegram_teardown(wired, tg_turn_store, stop)
+        await _bootstrap_telegram_teardown(wired, stop)
     finally:
         if blob_store is not None:
             await blob_store.aclose()  # type: ignore[union-attr]  # concrete HttpBlobStoreAdapter; aclose not on port

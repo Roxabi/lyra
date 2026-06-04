@@ -100,16 +100,18 @@ deploy verb for M₁. It reconciles the running system with the desired state de
 
 ### Trigger wiring
 
-Two systemd user timers drive convergence **automatically**:
+Three systemd user timers drive convergence **automatically**:
 
 | Timer | Period | Service | Role |
 |---|---|---|---|
+| `podman-auto-update.timer` | `*:0/5` (5 min) | `podman-auto-update.service` | Host-static apt unit (installed by `provision.sh`/`install.sh`); drop-in sets `OnCalendar=*:0/5`. Polls GHCR digests for containers labelled `io.containers.autoupdate=registry`; pulls and restarts on new digest. |
 | `factory-quadlet-sync.timer` | `*:0/5` (5 min) | `factory-quadlet-sync.service` | Pulls `origin/staging` for lyra. If `deploy/quadlet/**`, Makefile, or `tools/render_quadlet.py` changed, runs `make quadlet-install` (conditional, no full converge). |
 | `factory-post-autoupdate.timer` | `*:0/5` (5 min) | `factory-post-autoupdate.service` | Checks whether `podman-auto-update` has pulled a new image digest. On digest change, triggers the full `make converge` sequence (including auth.conf regen + secret refresh + restarts). |
 
+`podman-auto-update` handles **image pulls** (CI-driven, registry-labelled containers).
 `factory-quadlet-sync` handles **unit/template changes** (code-driven).
-`factory-post-autoupdate` handles **image digest changes** (CI-driven).
-Both are required for fully hands-off deploys.
+`factory-post-autoupdate` handles **post-pull convergence** (restarts + auth.conf regen).
+All three are required for fully hands-off deploys.
 
 ### Failure notification path
 

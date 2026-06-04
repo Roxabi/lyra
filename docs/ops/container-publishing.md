@@ -107,7 +107,22 @@ Switching between the two is a one-line edit to the `.container` file followed b
 ## Auto-Update Flow
 
 Since #929, prod (M₁) uses `podman auto-update` to automatically pull new images and restart
-containers. No manual intervention is needed after a staging merge.
+containers. Auto-deploy holds *provided the three timers described below are enabled and active
+on M₁*. See `docs/QUADLET-DEPLOYMENT.md` (M₁ auto-update remediation runbook) if any timer
+is inactive.
+
+### Three-timer model
+
+Three systemd `--user` timers on M₁ drive fully hands-off deploys, each firing every 5 minutes:
+
+| Timer | Role |
+|---|---|
+| `podman-auto-update.timer` | Polls GHCR digests for containers labelled `io.containers.autoupdate=registry`; pulls and restarts on new digest. Static apt unit; drop-in sets `OnCalendar=*:0/5`. |
+| `factory-quadlet-sync.timer` | `git pull --ff-only origin staging`; on `deploy/**` changes runs `make converge` (Quadlet unit/template updates). |
+| `factory-post-autoupdate.timer` | Detects image-digest changes produced by `podman-auto-update`; on change triggers the full `make converge` (auth.conf regen + secret refresh + restarts). |
+
+All three must be enabled and active for fully automatic deploys. Check with
+`systemctl --user is-enabled` and `is-active` for each timer name.
 
 ### How it works
 
@@ -129,14 +144,17 @@ containers. No manual intervention is needed after a staging merge.
 
 | Container | Image | AutoUpdate |
 |---|---|---|
-| factory-hub | `ghcr.io/roxabi/factory:staging-svc` | registry |
-| factory-telegram | `ghcr.io/roxabi/factory:staging-svc` | registry |
-| factory-discord | `ghcr.io/roxabi/factory:staging-svc` | registry |
-| factory-clipool | `ghcr.io/roxabi/factory:staging` | registry |
-| factory-gh-helper | `ghcr.io/roxabi/factory:staging` | registry |
-| voicecli-tts | `ghcr.io/roxabi/voicecli-tts:staging` | registry |
-| voicecli-stt | `ghcr.io/roxabi/voicecli-stt:staging` | registry |
-| factory-nats | pinned by digest | none (pinned) |
+| `factory-nats` | pinned by digest | none (pinned) |
+| `factory-hub` | `ghcr.io/roxabi/factory:staging-svc` | registry |
+| `factory-telegram` | `ghcr.io/roxabi/factory:staging-svc` | registry |
+| `factory-discord` | `ghcr.io/roxabi/factory:staging-svc` | registry |
+| `factory-clipool` | `ghcr.io/roxabi/factory:staging` | registry |
+| `factory-gh-helper` | `ghcr.io/roxabi/factory:staging` | registry |
+| `factory-turn-writer` | `ghcr.io/roxabi/factory:staging` | registry |
+| `factory-blobstore` | `ghcr.io/roxabi/factory:staging` | registry |
+
+> `factory-nats` is pinned by digest and carries no `io.containers.autoupdate=registry` label — it is intentionally excluded from the auto-update cycle; bump manually.
+> voiceCLI units are managed by the voiceCLI repo and its own Quadlet manifests — see that repo for its auto-update configuration.
 
 ### Verify
 
@@ -174,18 +192,24 @@ If auto-update is disabled or you need an immediate deploy without waiting for t
 ```bash
 podman pull ghcr.io/roxabi/factory:staging
 systemctl --user daemon-reload
-systemctl --user restart factory-hub factory-telegram factory-discord factory-clipool
+systemctl --user restart factory-hub factory-telegram factory-discord factory-clipool \
+  factory-turn-writer factory-gh-helper factory-blobstore
 ```
 
-Verify all four units are healthy:
+Verify all seven service units are healthy (converge order matches `make converge` step 7):
 
 ```bash
-systemctl --user is-active factory-hub factory-telegram factory-discord factory-clipool
+systemctl --user is-active \
+  factory-hub factory-telegram factory-discord factory-clipool \
+  factory-turn-writer factory-gh-helper factory-blobstore
 curl -fsS localhost:8443/health
 ```
 
 `is-active` prints `active` for each unit on success. The health endpoint is served by
 `factory-hub` on `127.0.0.1:8443` (published via PublishPort in the Quadlet unit).
+
+> `factory-nats` is excluded from this restart sequence — it is pinned by digest and managed
+> separately. See `docs/QUADLET-DEPLOYMENT.md` for NATS rotation procedures.
 
 ---
 

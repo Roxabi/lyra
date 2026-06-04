@@ -155,6 +155,7 @@ quadlet-install: quadlet-preflight  ## install Quadlet units → reload + verify
 	@cp deploy/quadlet/factory-data.volume                "$(QUADLET_DIR)/factory-data.volume"
 	@cp deploy/quadlet/factory-jetstream.volume           "$(QUADLET_DIR)/factory-jetstream.volume"
 	@cp deploy/quadlet/factory-gh-token.volume            "$(QUADLET_DIR)/factory-gh-token.volume"
+	@cp deploy/quadlet/factory-discord-data.volume        "$(QUADLET_DIR)/factory-discord-data.volume"
 	@install -d -m 0700 "$(HOME)/.roxabi/factory/nats/jetstream"
 	@chmod 0700 "$(HOME)/.roxabi/factory/nats"
 	@chmod 0700 "$(HOME)/.roxabi/factory/nats/jetstream"

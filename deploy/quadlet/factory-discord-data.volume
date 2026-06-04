@@ -6,3 +6,4 @@ Description=Lyra Discord adapter private data — named volume for discord.db (#
 
 [Volume]
 Label=app=factory
+VolumeName=factory-discord-data

@@ -6,7 +6,6 @@ import asyncio
 import logging
 import sys
 from functools import partial
-from pathlib import Path
 from typing import Any
 
 from factory.bootstrap import credentials
@@ -75,11 +74,10 @@ async def _bootstrap_telegram_teardown(
         await _close_tg_wired("tg", wired)
 
 
-async def bootstrap_telegram_standalone(  # noqa: PLR0915 — DEBT:wiring-bootstrap-deps
+async def bootstrap_telegram_standalone(
     nc: Any,
     raw_config: dict,
     config_bundle: AdapterConfigBundle,
-    vault_dir: Path,
     platform_enum: Platform,
     *,
     _stop: asyncio.Event | None = None,

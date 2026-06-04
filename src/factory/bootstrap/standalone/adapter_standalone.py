@@ -53,9 +53,6 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
     except (nats.errors.Error, OSError) as exc:
         sys.exit(f"Failed to connect to NATS at {scrub_nats_url(nats_url)!r}: {exc}")
 
-    vault_dir = factory_data_dir()
-    vault_dir.mkdir(parents=True, exist_ok=True)
-
     try:
         if platform == "telegram":
             from factory.bootstrap.wiring.standalone_telegram import (
@@ -66,7 +63,6 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
                 nc,
                 raw_config,
                 config_bundle,
-                vault_dir,
                 platform_enum,
                 _stop=_stop,
             )
@@ -74,6 +70,13 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
             from factory.bootstrap.wiring.standalone_discord import (
                 bootstrap_discord_standalone,
             )
+
+            # Discord needs the factory data dir parent to exist so its private
+            # named volume mount-point is reachable.  Telegram is stateless
+            # post-#1721 and its container has a read-only ~/.roxabi — do NOT
+            # mkdir for telegram (#1734).
+            vault_dir = factory_data_dir()
+            vault_dir.mkdir(parents=True, exist_ok=True)
 
             await bootstrap_discord_standalone(
                 nc,

@@ -28,7 +28,9 @@ remote_digest() {
 }
 
 local_digest() {
-    podman images --format '{{.Digest}}' "$1" 2>/dev/null | head -n1 || true
+    # image inspect returns exactly one digest (or errors when absent) — no
+    # multi-line ambiguity from `podman images` listing dangling layers.
+    podman image inspect --format '{{.Digest}}' "$1" 2>/dev/null || true
 }
 
 main() {

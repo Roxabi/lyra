@@ -150,8 +150,8 @@ All three must be enabled and active for fully automatic deploys. Check with
 | `factory-discord` | `ghcr.io/roxabi/factory:staging-svc` | registry |
 | `factory-clipool` | `ghcr.io/roxabi/factory:staging` | registry |
 | `factory-gh-helper` | `ghcr.io/roxabi/factory:staging` | registry |
-| `factory-turn-writer` | `ghcr.io/roxabi/factory:staging` | registry |
-| `factory-blobstore` | `ghcr.io/roxabi/factory:staging` | registry |
+| `factory-turn-writer` | `ghcr.io/roxabi/factory:staging-svc` | registry |
+| `factory-blobstore` | `ghcr.io/roxabi/factory:staging-svc` | registry |
 
 > `factory-nats` is pinned by digest and carries no `io.containers.autoupdate=registry` label — it is intentionally excluded from the auto-update cycle; bump manually.
 > voiceCLI units are managed by the voiceCLI repo and its own Quadlet manifests — see that repo for its auto-update configuration.
@@ -189,8 +189,11 @@ podman auto-update
 
 If auto-update is disabled or you need an immediate deploy without waiting for the timer:
 
+CI publishes both tags in parallel: `:staging` is used by `factory-clipool` and `factory-gh-helper`; `:staging-svc` is used by `factory-hub`, `factory-telegram`, `factory-discord`, `factory-turn-writer`, and `factory-blobstore`. Both must be pulled for a complete manual refresh.
+
 ```bash
 podman pull ghcr.io/roxabi/factory:staging
+podman pull ghcr.io/roxabi/factory:staging-svc
 systemctl --user daemon-reload
 systemctl --user restart factory-hub factory-telegram factory-discord factory-clipool \
   factory-turn-writer factory-gh-helper factory-blobstore

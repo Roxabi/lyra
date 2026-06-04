@@ -497,11 +497,14 @@ make quadlet-sync-install   # installs drop-in + systemctl --user enable --now f
 
 ### 2. Enable/start the three timers
 
+Run `daemon-reload` first so the drop-in override is loaded before the timers are activated. Then restart `podman-auto-update.timer` so any changed `OnCalendar=` schedule takes effect on an already-active timer.
+
 ```bash
+systemctl --user daemon-reload
 systemctl --user enable --now podman-auto-update.timer
 systemctl --user enable --now factory-quadlet-sync.timer
 systemctl --user enable --now factory-post-autoupdate.timer
-systemctl --user daemon-reload
+systemctl --user restart podman-auto-update.timer
 ```
 
 ### 3. Verify timer state

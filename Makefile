@@ -196,6 +196,7 @@ quadlet-sync-install:  ## install systemd sync timers + services → daemon-relo
 	@cp "$(QUADLET_SYNC_SRC)/podman-auto-update.timer.d/override.conf" "$(QUADLET_SYNC_DST)/podman-auto-update.timer.d/"
 	@echo "Sync units copied to $(QUADLET_SYNC_DST)"
 	@systemctl --user daemon-reload
+	@systemctl --user restart podman-auto-update.timer
 	@systemctl --user enable --now factory-quadlet-sync.timer
 	@systemctl --user enable --now factory-post-autoupdate.timer
 	@echo "[ok] factory-quadlet-sync.timer + factory-post-autoupdate.timer enabled."

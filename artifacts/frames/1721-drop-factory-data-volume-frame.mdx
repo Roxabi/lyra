@@ -1,0 +1,94 @@
+---
+title: Drop factory-data.volume from discord/telegram adapters (epic #1049 close)
+issue: 1721
+status: approved
+tier: F-full
+date: 2026-06-04
+---
+
+## Problem
+
+Epic #1049 targets a hub-only `factory-data.volume`: adapters reach hub state **exclusively
+through NATS**, with no shared filesystem. Children #1055–1060 landed (JetStream volume,
+keyring/bot secrets, turns.db write-path → JetStream turn_writer, message_index → KV,
+watch_channels → KV). The volume drop is the last step — but the issue body is stale: it
+gates on "Phase 4 (turns.db)" and a "discord.db phase" as if unstarted.
+
+Verified current reality (commit `9beb1fb3`):
+
+- `factory-data.volume` is still mounted by **all three** containers — hub, telegram, discord
+  (`factory-{discord,telegram}.container.tmpl:43`).
+- Adapters still **file-open** stores on that mount:
+  - `standalone_discord.py:56` + `standalone_telegram.py:45` → `TurnStore(turns.db)`
+  - `standalone_discord.py:54` → `ThreadStore(discord.db)`
+- The turns.db **write** path already left the adapters: `turn_writer` is sole writer
+  (ADR-075/#1331, JetStream). The adapter `TurnStore` surface is **read-only** — the only
+  hub↔adapter coupling is a single call: `session_builder.py:94 get_last_session(pool_id)`.
+
+So the residual shared state is one KV-replaceable read (turns last-session) plus a
+discord-private store (discord.db). Containers are `ReadOnly=true` with no tmpfs → naively
+removing `Volume=` crashes adapters at store-connect (the #944 failure mode, reverted in
+`ba6f113c`).
+
+## Who
+
+- **Primary:** Ops/deploy (M₁ `factory-hub` role) — wants the shared mount gone so adapter
+  containers carry no hub state and the Volumes table stops drifting from reality.
+- **Secondary:** Hub/adapter runtime — session-continuity resolution moves from a local file
+  read to a NATS KV read in the inbound hot path; must degrade safely.
+
+## Constraints
+
+- Adapter containers are `ReadOnly=true`, no tmpfs at `/home/factory/.roxabi/factory` →
+  every store an adapter opens needs a real mount or a NATS path.
+- `turn_writer` is the **sole** turns.db writer (ADR-075) — the KV last-session publish must
+  originate there, not from adapters.
+- `volumes_table` + `secrets_drift` pre-push gates must stay green (newly added to stack.yml).
+- Axial boundaries: change crosses `core`/`infrastructure` + adapter layers → PR carries
+  `dev-core:axial-adr-review`.
+- No new ACL identity if avoidable; reuse existing buckets/creds where the pattern fits.
+- ¬`--force` / ¬`--hard` / ¬`--amend`.
+
+## Out of Scope
+
+- Multi-host NATS clustering (separate epic).
+- `auth.db` / `config.db` migrations — stay SQLite, hub-only (already satisfied for adapters).
+- Reworking the turns.db **write** path — already done (#1058/#1331, turn_writer).
+- discord.db schema/format changes — it stays SQLite; only its **mount** moves (adapter-private,
+  not shared) — no NATS migration (no hub↔adapter sharing exists for it).
+
+## Premise Validity
+
+**Success in 6 months:** `Volume=factory-data.volume` appears **only** in
+`factory-hub.container`; `grep -r factory-data.volume deploy/quadlet/factory-{discord,telegram}*`
+returns nothing; no adapter process file-opens a store on a host path shared with the hub;
+adapters resolve last-session via NATS KV; `volumes_table` gate green; epic #1049 closed.
+
+**Failure in 6 months (falsifiable):** after cutover, **any** of — (a) `grep Volume=factory-data`
+still matches an adapter quadlet template; (b) adapter `TurnStore`/`ThreadStore` still opens a
+file on a host path the hub also mounts (shared-file count > 0); (c) session-continuity
+regression: `get_last_session` resolution-failure rate exceeds the pre-cutover baseline over
+2 sprint cycles. Any of these observable post-merge = the migration did not achieve its goal.
+
+**Simplest alternative:** Option 1 — give adapters narrow per-file inline binds for turns.db +
+discord.db (mirror the working `factory-hub.container:39` last-mount-wins pattern) and drop the
+broad volume.
+**Why not simplest:** it keeps the **same physical turns.db** shared across hub + adapters
+behind narrower mounts — the shared-FS coupling the epic exists to eliminate. It re-introduces
+exactly the "per-file inline binds" approach reverted in `ba6f113c` (#944) and would pass the
+`volumes_table` gate while the substance (cross-container file sharing) remains — a semantic
+lie the next operator rediscovers. Option 2 (KV read) closes the last file holdout for real and
+aligns with NATS-first (ADR-045/049).
+
+## Complexity
+
+**Tier: F-full** — multi-domain + new arch (KV-backed session-continuity resolution replacing a
+hot-path file read) + a genuine consistency unknown (KV publish-lag vs instant reply).
+
+Signals observed:
+- Crosses 4 domains: backend (turn_writer publish + SessionBuilder read), bootstrap (drop adapter
+  store wiring), devops (quadlet volumes + discord-private volume), docs (deployment.md table).
+- New pattern: turn_writer publishes `last_session` → KV; SessionBuilder reads KV with
+  degrade-to-new-session fallback (failure already tolerated at `session_builder.py:97`).
+- Unknown to resolve in /analyze: publish-lag ordering, bucket choice/TTL, cold-boot semantics.
+- Epic-closing migration with a runtime failure mode → warrants a recorded analysis before spec.

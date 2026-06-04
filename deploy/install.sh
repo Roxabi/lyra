@@ -302,7 +302,6 @@ log "Reloading systemd user daemon ..."
 run systemctl --user daemon-reload
 echo "  [ok]   daemon-reload"
 
-
 # ── 8. Seed BotStore from config.toml (idempotent) ─────────────────────────
 # Required since #1416: Authenticator reads from BotStore, not config.toml.
 # Skipping this causes a hub crash-loop on first boot.

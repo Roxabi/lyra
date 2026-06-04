@@ -43,7 +43,7 @@
 
 ## Adapters — platform bridges
 
-Both adapters write `turns.db` (conversation turns + pool sessions, held open for full lifetime). Discord also writes `discord.db` (thread ownership + session cache).
+Discord writes `discord.db` (thread ownership + session cache) from its private volume. Telegram has no local store.
 
 | Responsibility | Detail |
 |---|---|
@@ -133,18 +133,19 @@ resumes it rather than starting fresh.
 
 ## Volumes
 
-| File | Container(s) | Access | Contents |
-|---|---|---|---|
-| `~/.roxabi/factory/auth.db` | Hub, Telegram, Discord (via `factory-data.volume`) | rw | Auth grants, identity aliases |
-| `~/.roxabi/factory/config.db` | Hub, Telegram, Discord (via `factory-data.volume`) | rw | Agent registry, user prefs (bot secrets removed — see ADR-074) |
-| `~/.roxabi/factory/turns.db` | Hub (ro overlay), Telegram, Discord (via `factory-data.volume`) | rw | Conversation turns, pool sessions, lyra→cli session map |
-| `~/.roxabi/factory/message_index.db` | Hub, Telegram, Discord (via `factory-data.volume`) | rw | reply-to session routing index |
-| `~/.roxabi/factory/keyring.key` | Hub, Telegram, Discord (via `factory-data.volume`) | rw | Encryption key for `config.db` sibling stores (bot-secrets path removed — safe to delete once no remaining consumers; see ADR-074) |
-| `~/.roxabi/factory/discord.db` | Discord (via `factory-data.volume`) | rw | Thread ownership + session cache |
-| `~/.roxabi/factory/config.toml` | Hub, Telegram, Discord (inline bind, ro) | ro | Runtime config (per-bot entries) |
-| `~/.claude/` | CliPool | rw | Claude session `.jsonl` files (required for `--resume`) |
+| Volume | File | Container(s) | Access | Contents |
+|---|---|---|---|---|
+| `factory-data.volume` | `~/.roxabi/factory/auth.db` | Hub only | rw | Auth grants, identity aliases |
+| `factory-data.volume` | `~/.roxabi/factory/config.db` | Hub only | rw | Agent registry, user prefs (bot secrets removed — see ADR-074) |
+| `factory-data.volume` | `~/.roxabi/factory/turns.db` | Hub (rw, via turn-writer ADR-075) | rw | Conversation turns, pool sessions, lyra→cli session map |
+| `factory-data.volume` | `~/.roxabi/factory/keyring.key` | Hub only | rw | Encryption key for `config.db` sibling stores (see ADR-074) |
+| `factory-discord-data.volume` | `~/.roxabi/factory-discord/discord.db` | Discord only | rw | Thread ownership + session cache |
+| `factory-data.volume` | `~/.roxabi/factory/config.toml` | Hub (inline bind, ro) | ro | Runtime config (per-bot entries) |
+| inline bind | `~/.roxabi/factory/config.toml` | Telegram, Discord (inline bind, ro) | ro | Runtime config (per-bot entries) |
+| `factory-jetstream.volume` | `~/.roxabi/factory/nats/jetstream` | NATS | rw | JetStream persistence |
+| `~/.claude/` (inline) | `~/.claude/` | CliPool | rw | Claude session `.jsonl` files (required for `--resume`) |
 
-Adapter containers (Telegram, Discord) mount the full `factory-data.volume` at `/home/factory/.roxabi/factory:z` — the same named volume as the Hub. An additional inline single-file bind (`Volume=%h/.roxabi/factory/config.toml:/app/config.toml:ro,z`) overlays `config.toml` read-only. Narrowing the adapter mount to per-file binds is deferred to #1721.
+`factory-data.volume` is mounted **only** by `factory-hub` (#1721). Adapters use per-file inline binds for `config.toml` and the Discord-private `factory-discord-data.volume` for `discord.db`. Telegram mounts no data volume — last-session is resolved via NATS KV (`factory-turns-meta`). Discord resolves last-session via NATS KV as well; `discord.db` is the thread-ownership store only.
 
 ---
 
@@ -195,7 +196,7 @@ CI builds container images and pushes them to GHCR via a reusable GHA workflow (
 
 ### Credential store
 
-File-based credentials (nkey seeds, NATS auth tokens) are delivered as Podman secrets using `type=mount`, placing the secret at a predictable path inside the container without exposing it as an environment variable. Naming convention: `<project>-nats-<identity>` (e.g. `factory-nats-hub`). All containers use `UserNS=keep-id:uid=1500,gid=1500` so container processes run as host UID 1000 (`mickael`) — files in `~/.roxabi/factory/` are readable without `chown`. The `factory-data.volume` is a bind-mount of `%h/.roxabi/factory` (`Type=none; Device=%h/.roxabi/factory; Options=bind`). Adapter data mounts use `:z` (read-write), not `:ro`. → ADR-054
+File-based credentials (nkey seeds, NATS auth tokens) are delivered as Podman secrets using `type=mount`, placing the secret at a predictable path inside the container without exposing it as an environment variable. Naming convention: `<project>-nats-<identity>` (e.g. `factory-nats-hub`). All containers use `UserNS=keep-id:uid=1500,gid=1500` so container processes run as host UID 1000 (`mickael`) — files in `~/.roxabi/factory/` are readable without `chown`. The `factory-data.volume` is a bind-mount of `%h/.roxabi/factory` (`Type=none; Device=%h/.roxabi/factory; Options=bind`), mounted **only** by `factory-hub` (#1721). The Discord-private `factory-discord-data.volume` is a bind-mount of `%h/.roxabi/factory-discord` (`Type=none; Device=%h/.roxabi/factory-discord; Options=bind`), mounted only by `factory-discord`. All data mounts use `:z`. → ADR-054
 
 ### SELinux Z-label policy
 

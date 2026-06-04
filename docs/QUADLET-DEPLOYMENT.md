@@ -61,6 +61,82 @@ make quadlet-install    # copy units + daemon-reload
 systemctl --user restart factory-hub factory-telegram factory-discord factory-clipool
 ```
 
+## One-time migration: discord.db → private volume (#1721)
+
+Issue #1721 moves `discord.db` from the hub-shared `factory-data.volume` to a
+Discord-private `factory-discord-data.volume` (`~/.roxabi/factory-discord/`).
+Before the converge that applies these changes, run the steps below on M₁ to
+preserve active thread→session links. The new volume starts empty; missing the
+copy means the Discord adapter cold-starts with an empty ThreadStore (all active
+thread sessions lost).
+
+### Step A — Copy discord.db before the converge
+
+```bash
+# On M₁ (roxabituwer), before running make converge / make quadlet-install:
+mkdir -p ~/.roxabi/factory-discord
+cp ~/.roxabi/factory/discord.db ~/.roxabi/factory-discord/discord.db
+```
+
+Verify the copy:
+
+```bash
+ls -lh ~/.roxabi/factory-discord/discord.db
+sqlite3 ~/.roxabi/factory-discord/discord.db "SELECT count(*) FROM discord_threads;" 2>/dev/null || true
+```
+
+### Step B — Converge
+
+```bash
+make converge
+```
+
+The converge installs the new `factory-discord-data.volume` unit, renders the updated
+`factory-discord.container`, daemon-reloads, and restarts all services. After converge,
+`factory-discord` mounts `~/.roxabi/factory-discord` and opens `discord.db` from there.
+
+### Step C — Verify the Discord adapter is healthy
+
+```bash
+systemctl --user status factory-discord
+# Expected: Active: active (running), NRestarts=0
+journalctl --user -u factory-discord -n 20 | grep -E "ThreadStore|discord\.db|error" || true
+```
+
+Confirm Telegram no longer mounts any data volume:
+
+```bash
+# Should print nothing (no factory-data.volume mount in telegram unit)
+grep "factory-data.volume" ~/.config/containers/systemd/factory-telegram.container || echo "OK — no shared volume"
+```
+
+### Step D — Prod turns.db cleanup (epic #1049 AC#2)
+
+After Step C confirms a healthy converge, manually delete the `turns.db` file from the
+hub-shared volume on M₁. This is the final step of epic #1049 AC#2: the adapters no longer
+open `turns.db`, so the file is exclusively written by `factory-turn-writer` and read by
+`factory-hub`. The file itself is NOT deleted — this step removes the old adapter-side
+`turns.db` that predated the turn-writer consolidation (ADR-075).
+
+> **Only delete the file if you have confirmed** that the turn-writer service is healthy
+> and turns are flowing (`journalctl --user -u factory-turn-writer -n 20`). Do NOT delete
+> if the turn-writer shows errors.
+
+```bash
+# Confirm turn-writer is healthy first
+systemctl --user status factory-turn-writer
+journalctl --user -u factory-turn-writer -n 20
+
+# ONLY after confirming healthy — remove the legacy adapter-side turns.db if it exists
+# at a separate legacy location. The canonical turns.db at ~/.roxabi/factory/turns.db
+# is kept (hub reads it; turn-writer writes it).
+# Epic #1049 AC#2 refers to verifying no adapter process holds turns.db open:
+lsof ~/.roxabi/factory/turns.db 2>/dev/null || echo "No process has turns.db open (expected)"
+```
+
+Epic #1049 may be closed only after AC#3 (keyring.key) and AC#4 (config.db) are also
+verified (see spec D10). Do NOT auto-close the epic on merge.
+
 ## Auto-sync for Quadlet file changes
 
 Tracked Quadlet files (`deploy/quadlet/**`, Makefile, `tools/render_quadlet.py`) are

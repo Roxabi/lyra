@@ -55,7 +55,7 @@ class SessionBuilder:
         meta = msg.platform_meta
 
         # (a) No stores — test/CLI mode; nothing to inject.
-        if ts is None and th is None:
+        if ts is None and th is None and ctx.last_session is None:
             return msg
 
         # Discriminate path: Discord with thread_store present uses meta inspection.
@@ -68,9 +68,9 @@ class SessionBuilder:
             # (d) Discord owned thread — ThreadStore read + write-through cache.
             return await self._build_thread_path(msg, ctx)
 
-        # (b) / (c) TurnStore path — Telegram or Discord DM.
-        # Require turn_store; if absent fall through to no-op (edge: discord + no ts).
-        if ts is None:
+        # (b) / (c) TurnStore / last_session path — Telegram or Discord DM.
+        # Require turn_store OR last_session; if both absent fall through to no-op.
+        if ts is None and ctx.last_session is None:
             return msg
         return await self._build_turnstore_path(msg, ctx)
 
@@ -81,24 +81,24 @@ class SessionBuilder:
     async def _build_turnstore_path(
         self, msg: InboundMessage, ctx: SessionCtx
     ) -> InboundMessage:
-        """Path (b)/(c): inject prior session_id from TurnStore + persist closure."""
-        ts = ctx.turn_store
-        assert ts is not None  # guarded by caller
-
+        """Path (b)/(c): inject prior session_id from last_session port."""
         meta = msg.platform_meta
         _platform = _platform_enum(msg.platform)
         _pool_id = RoutingKey(_platform, msg.bot_id, msg.scope_id).to_pool_id()
 
         _prior_session_id: str | None = None
-        try:
-            _prior_session_id = await ts.get_last_session(_pool_id)
-        except (sqlite3.Error, RuntimeError):
-            log.exception(
-                "SessionBuilder: TurnStore.get_last_session failed pool_id=%s", _pool_id
-            )
+        if ctx.last_session is not None:
+            try:
+                _prior_session_id = await ctx.last_session.get_last_session(_pool_id)
+            except Exception:
+                log.exception(
+                    "SessionBuilder: last_session.get_last_session failed pool_id=%s",
+                    _pool_id,
+                )
 
         # Capture by value so the closure is safe after build() returns.
         _publisher = ctx.turn_publisher
+        _last_session = ctx.last_session
         _platform_str = msg.platform
         _user_id = msg.user_id
 
@@ -106,18 +106,19 @@ class SessionBuilder:
             _msg: InboundMessage, session_id: str, pool_id: str
         ) -> None:
             # Publishes start_session via TurnPublisher (NATS) if available.
-            # Closure captures _publisher, _platform_str, _user_id and is called
-            # by the turn handler after a session_id has been assigned.
-            if _publisher is None:
-                return
-            # trace_id: use session_id as lifecycle correlation key
-            await _publisher.publish_start_session(
-                pool_id=pool_id,
-                session_id=session_id,
-                platform=_platform_str,
-                user_id=_msg.user_id or _user_id,
-                trace_id=session_id,
-            )
+            # Closure captures _publisher, _last_session, _platform_str, _user_id
+            # and is called by the turn handler after a session_id has been assigned.
+            if _publisher is not None:
+                # trace_id: use session_id as lifecycle correlation key
+                await _publisher.publish_start_session(
+                    pool_id=pool_id,
+                    session_id=session_id,
+                    platform=_platform_str,
+                    user_id=_msg.user_id or _user_id,
+                    trace_id=session_id,
+                )
+            if _last_session is not None:
+                await _last_session.set_last_session(pool_id, session_id)
 
         _replacements: dict = {"session_update_fn": _turnstore_update_fn}
         if _prior_session_id is not None and isinstance(

@@ -14,6 +14,46 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+# ---------------------------------------------------------------------------
+# Autouse KV stub (#1721)
+# ---------------------------------------------------------------------------
+
+# KvLastSessionStore patch targets — identical to tests/bootstrap/conftest.py.
+_KV_STORE_TG = "factory.bootstrap.wiring.standalone_telegram.KvLastSessionStore"
+_KV_STORE_DC = "factory.bootstrap.wiring.standalone_discord.KvLastSessionStore"
+_DC_STORES = "factory.bootstrap.wiring.standalone_discord._create_dc_stores"
+
+
+def _make_kv_store_stub() -> MagicMock:
+    """Return a KvLastSessionStore class stub (connect/close = AsyncMock)."""
+    stub = MagicMock()
+    stub.return_value.connect = AsyncMock()
+    stub.return_value.close = AsyncMock()
+    return stub
+
+
+def _make_dc_thread_store_stub() -> AsyncMock:
+    ts = AsyncMock()
+    ts.connect = AsyncMock()
+    ts.close = AsyncMock()
+    return ts
+
+
+@pytest.fixture(autouse=True)
+def _noop_kv_last_session() -> object:
+    """Stub KvLastSessionStore for all credential-resolution tests (#1721).
+
+    These tests assert token/credential resolution, NOT KV behaviour.
+    Prevents real NATS calls from the new KvLastSessionStore wiring.
+    """
+    _dc_ts = _make_dc_thread_store_stub()
+    with (
+        patch(_KV_STORE_TG, _make_kv_store_stub()),
+        patch(_KV_STORE_DC, _make_kv_store_stub()),
+        patch(_DC_STORES, AsyncMock(return_value=(_dc_ts,))),
+    ):
+        yield
+
 
 async def test_adapter_reads_token_from_run_secrets(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch

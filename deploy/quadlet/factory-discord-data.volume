@@ -1,0 +1,8 @@
+[Unit]
+Description=Lyra Discord adapter private data — named volume for discord.db (#1721).
+# Named podman volume (podman-managed, no host bind) — used by the Discord adapter
+# container only.  Mounted at /home/factory/.roxabi/factory/discord inside
+# factory-discord, keeping discord.db isolated from the hub-shared factory-data.volume.
+
+[Volume]
+Label=app=factory

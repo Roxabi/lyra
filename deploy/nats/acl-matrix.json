@@ -89,7 +89,10 @@
         "$JS.API.INFO",
         "$JS.API.CONSUMER.CREATE.*",
         "$JS.API.STREAM.INFO.KV_factory-state",
-        "$JS.API.STREAM.MSG.GET.KV_factory-state"
+        "$JS.API.STREAM.MSG.GET.KV_factory-state",
+        "$KV.factory-turns-meta.>",
+        "$JS.API.STREAM.INFO.KV_factory-turns-meta",
+        "$JS.API.STREAM.MSG.GET.KV_factory-turns-meta"
       ],
       "subscribe": [
         "factory.outbound.telegram.>",
@@ -119,7 +122,10 @@
         "$JS.API.INFO",
         "$JS.API.CONSUMER.CREATE.*",
         "$JS.API.STREAM.INFO.KV_factory-state",
-        "$JS.API.STREAM.MSG.GET.KV_factory-state"
+        "$JS.API.STREAM.MSG.GET.KV_factory-state",
+        "$KV.factory-turns-meta.>",
+        "$JS.API.STREAM.INFO.KV_factory-turns-meta",
+        "$JS.API.STREAM.MSG.GET.KV_factory-turns-meta"
       ],
       "subscribe": [
         "factory.outbound.discord.>",

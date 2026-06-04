@@ -31,6 +31,7 @@ if TYPE_CHECKING:
     from factory.core.lifecycle.circuit_breaker import CircuitRegistry
     from factory.core.messaging.bus import Bus
     from factory.core.messaging.messages import MessageManager
+    from factory.core.ports.last_session_store import LastSessionStore
     from factory.core.ports.outbound_listener import OutboundListener
     from factory.core.stores import TurnStoreProtocol
     from factory.core.stores.thread_store_protocol import (
@@ -74,6 +75,7 @@ class SessionCtx:
     thread_store: ThreadStoreProtocol | None
     turn_publisher: TurnPublisher | None = None
     thread_sessions_cache: dict[str, ThreadSession] = field(default_factory=dict)
+    last_session: LastSessionStore | None = None
 
 
 @dataclass(frozen=True)

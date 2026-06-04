@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, TypeVar
 
 if TYPE_CHECKING:
@@ -14,6 +13,7 @@ from factory.adapters.discord import DiscordAdapter
 from factory.adapters.telegram import TelegramAdapter
 from factory.bootstrap import credentials
 from factory.bootstrap.wiring.ingest_wiring import wire_ingest
+from factory.bootstrap.wiring.last_session_wiring import TurnStoreLastSession
 from factory.config import (
     DiscordBotConfig,
     TelegramBotConfig,
@@ -26,7 +26,7 @@ from factory.core.messaging.messages import MessageManager
 from factory.core.messaging.tool_display_config import ToolDisplayConfig
 from factory.infrastructure.stores.agent_store import AgentStore
 from factory.infrastructure.stores.thread_store import ThreadStore
-from factory.paths import factory_data_dir
+from factory.paths import factory_discord_data_dir
 
 log = logging.getLogger(__name__)
 
@@ -203,6 +203,7 @@ async def wire_telegram_adapters(
 
     def _adapter_factory(bot_id: str) -> TelegramAdapter:
         tg_token, tg_webhook_secret = credentials.load_bot_token("telegram", bot_id)
+        _ts = deps.hub._turn_store
         return TelegramAdapter(
             bot_id=bot_id,
             token=tg_token,
@@ -210,7 +211,7 @@ async def wire_telegram_adapters(
             webhook_secret=tg_webhook_secret or "",
             circuit_registry=deps.circuit_registry,
             msg_manager=deps.msg_manager,
-            turn_store=deps.hub._turn_store,
+            last_session=TurnStoreLastSession(_ts) if _ts is not None else None,
             blob_store=deps.blob_store,
         )
 
@@ -250,14 +251,19 @@ async def wire_discord_adapters(
     """
     # Shared ThreadStore for all Discord adapters (#417/S4)
     # One connection to discord.db — shared across all Discord bots.
-    _vault = Path(deps.vault_dir) if deps.vault_dir else factory_data_dir()
+    # Always use the private discord data dir (factory_discord_data_dir honours
+    # $ROXABI_FACTORY_DISCORD_DIR) so both `factory start` and the standalone
+    # discord process write to the same location (#1721 success-criterion 3).
     thread_store: ThreadStore | None = None
     if deps.dc_bot_auths:
-        thread_store = ThreadStore(db_path=_vault / "discord.db")
+        _dc_dir = factory_discord_data_dir()
+        _dc_dir.mkdir(parents=True, exist_ok=True)
+        thread_store = ThreadStore(db_path=_dc_dir / "discord.db")
         await thread_store.connect()
 
     def _adapter_factory(bot_id: str) -> DiscordAdapter:
         bot_cfg = next(cfg for cfg, _ in deps.dc_bot_auths if cfg.bot_id == bot_id)
+        _ts = deps.hub._turn_store
         return DiscordAdapter(
             bot_id=bot_id,
             inbound_bus=deps.hub.inbound_bus,
@@ -267,7 +273,7 @@ async def wire_discord_adapters(
             thread_hot_hours=bot_cfg.thread_hot_hours,
             thread_store=thread_store,
             watch_channels=_load_watch_channels(deps.agent_store, bot_id),
-            turn_store=deps.hub._turn_store,
+            last_session=TurnStoreLastSession(_ts) if _ts is not None else None,
             blob_store=deps.blob_store,
         )
 

@@ -61,9 +61,10 @@ def build_discord_inbound_ctx(
             watch_channels=adapter._watch_channels if adapter._watch_channels else None,
         ),
         session=SessionCtx(
-            turn_store=adapter._turn_store,
+            turn_store=None,
             thread_store=adapter._thread_store,
             thread_sessions_cache=adapter._thread_sessions,
+            last_session=adapter._last_session,
         ),
         dispatch=DispatchCtx(
             inbound_bus=adapter._inbound_bus,

@@ -61,6 +61,101 @@ make quadlet-install    # copy units + daemon-reload
 systemctl --user restart factory-hub factory-telegram factory-discord factory-clipool
 ```
 
+## One-time migration: discord.db → private named volume (#1721)
+
+Issue #1721 moves `discord.db` from the hub-shared `factory-data.volume` to a
+Discord-private named volume `factory-discord-data` (podman-managed, mounted at
+`/home/factory/.roxabi/factory/discord` inside the Discord container).
+Before the converge that applies these changes, run the steps below on M₁ to
+preserve active thread→session links. The new volume starts empty; missing the
+copy means the Discord adapter cold-starts with an empty ThreadStore (all active
+thread sessions lost).
+
+### Step A — Copy discord.db into the named volume before the converge
+
+The old `discord.db` is at `~/.roxabi/factory/discord.db` (inside the shared hub bind).
+The new home is the named volume `factory-discord-data`, which podman creates on first
+use. Copy the file in now using a temporary container that mounts both source and target:
+
+```bash
+# On M₁ (roxabituwer), before running make converge / make quadlet-install:
+# Stop the Discord adapter if running (safe — hub continues independently):
+systemctl --user stop factory-discord || true
+
+# Create the named volume if not yet created, then copy discord.db into it:
+podman run --rm \
+  -v factory-discord-data:/dst \
+  -v ~/.roxabi/factory:/src:ro \
+  alpine cp /src/discord.db /dst/discord.db
+```
+
+Verify the copy landed in the volume:
+
+```bash
+podman run --rm -v factory-discord-data:/data:ro alpine \
+  sh -c 'ls -lh /data/discord.db && echo OK'
+```
+
+### Step B — Converge
+
+```bash
+make converge
+```
+
+The converge installs the updated `factory-discord-data.volume` unit, renders the updated
+`factory-discord.container` (which now mounts `factory-discord-data` at
+`~/.roxabi/factory/discord`), daemon-reloads, and restarts all services.
+
+### Step C — Verify the Discord adapter is healthy
+
+```bash
+systemctl --user status factory-discord
+# Expected: Active: active (running), NRestarts=0
+journalctl --user -u factory-discord -n 20 | grep -E "ThreadStore|discord\.db|error" || true
+```
+
+Confirm Discord mounts the named volume (not the hub's factory-data.volume):
+
+```bash
+# Should show factory-discord-data.volume at ~/.roxabi/factory/discord
+podman inspect factory-discord --format '{{range .Mounts}}{{.Name}} → {{.Destination}}{{"\n"}}{{end}}' | grep discord || true
+```
+
+Confirm Telegram no longer mounts any data volume:
+
+```bash
+# Should print nothing (no factory-data.volume mount in telegram unit)
+grep "factory-data.volume" ~/.config/containers/systemd/factory-telegram.container || echo "OK — no shared volume"
+```
+
+### Step D — Verify no adapter holds turns.db open (epic #1049 AC#2)
+
+After Step C confirms a healthy converge, verify that no adapter process holds `turns.db`
+open. Post-migration the canonical `turns.db` at `~/.roxabi/factory/turns.db` is **kept** —
+it is exclusively written by `factory-turn-writer` and read by `factory-hub` (D5 / ADR-075).
+Epic #1049 AC#2 is satisfied by confirming the adapters no longer open it (they now resolve
+last-session via the `factory-turns-meta` KV bucket), **not** by deleting the hub's store.
+Only a stale adapter-side copy at a *separate legacy location*, if one exists, should be removed.
+
+> **Only delete the file if you have confirmed** that the turn-writer service is healthy
+> and turns are flowing (`journalctl --user -u factory-turn-writer -n 20`). Do NOT delete
+> if the turn-writer shows errors.
+
+```bash
+# Confirm turn-writer is healthy first
+systemctl --user status factory-turn-writer
+journalctl --user -u factory-turn-writer -n 20
+
+# ONLY after confirming healthy — remove the legacy adapter-side turns.db if it exists
+# at a separate legacy location. The canonical turns.db at ~/.roxabi/factory/turns.db
+# is kept (hub reads it; turn-writer writes it).
+# Epic #1049 AC#2 refers to verifying no adapter process holds turns.db open:
+lsof ~/.roxabi/factory/turns.db 2>/dev/null || echo "No process has turns.db open (expected)"
+```
+
+Epic #1049 may be closed only after AC#3 (keyring.key) and AC#4 (config.db) are also
+verified (see spec D10). Do NOT auto-close the epic on merge.
+
 ## Auto-sync for Quadlet file changes
 
 Tracked Quadlet files (`deploy/quadlet/**`, Makefile, `tools/render_quadlet.py`) are

@@ -13,6 +13,27 @@ from tests.conftest import _LOAD_BOT_TOKEN_PATH
 # Patch target for helpers that moved into the shared common module.
 _COMMON = "factory.bootstrap.wiring._standalone_wiring_common"
 
+# Patch paths for the KV last-session stores added in #1721.
+_KV_STORE_TG = "factory.bootstrap.wiring.standalone_telegram.KvLastSessionStore"
+_KV_STORE_DC = "factory.bootstrap.wiring.standalone_discord.KvLastSessionStore"
+_DC_STORES = "factory.bootstrap.wiring.standalone_discord._create_dc_stores"
+
+
+def _make_kv_store_stub() -> MagicMock:
+    """Return a KvLastSessionStore stub with connect/close as AsyncMock."""
+    stub = MagicMock()
+    stub.return_value.connect = AsyncMock()
+    stub.return_value.close = AsyncMock()
+    return stub
+
+
+def _make_dc_thread_store_stub() -> AsyncMock:
+    """Return a Discord ThreadStore stub for _create_dc_stores."""
+    ts = AsyncMock()
+    ts.connect = AsyncMock()
+    ts.close = AsyncMock()
+    return ts
+
 
 def _make_raw_config(platform: str) -> dict:
     if platform == "telegram":
@@ -75,6 +96,7 @@ async def test_telegram_bootstrap_wires_listener_and_calls_astart() -> None:
             "factory.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=True),
         ),
+        patch(_KV_STORE_TG, _make_kv_store_stub()),
         load_token_patch,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
     ):
@@ -108,6 +130,7 @@ async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
     mock_inbound_bus_dc.start = AsyncMock()
     mock_inbound_bus_dc.stop = AsyncMock()
 
+    _dc_thread_store = _make_dc_thread_store_stub()
     (load_token_patch_dc,) = _cred_store_patches("discord-token")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
@@ -125,6 +148,8 @@ async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
             "factory.bootstrap.wiring.standalone_discord.seed_watch_channels",
             AsyncMock(return_value=frozenset()),
         ),
+        patch(_KV_STORE_DC, _make_kv_store_stub()),
+        patch(_DC_STORES, AsyncMock(return_value=(_dc_thread_store,))),
         load_token_patch_dc,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
     ):
@@ -167,6 +192,7 @@ async def test_nc_close_called_even_on_exception() -> None:
             "factory.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=None),
         ),
+        patch(_KV_STORE_TG, _make_kv_store_stub()),
         load_token_patch_exc,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
         pytest.raises(RuntimeError, match="boom"),
@@ -230,6 +256,7 @@ async def test_telegram_astart_failure_cleans_up_wired_resources() -> None:
             "factory.bootstrap.wiring.standalone_telegram.wait_for_hub",
             AsyncMock(return_value=None),
         ),
+        patch(_KV_STORE_TG, _make_kv_store_stub()),
         load_token_patch,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
         pytest.raises(RuntimeError, match="boom"),
@@ -290,6 +317,7 @@ async def test_discord_astart_failure_cleans_up_wired_resources() -> None:
     def _make_bus(*args, **kwargs):
         return bus_queue.pop(0)
 
+    _dc_thread_store_fail = _make_dc_thread_store_stub()
     (load_token_patch,) = _cred_store_patches("discord-token")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
@@ -308,6 +336,8 @@ async def test_discord_astart_failure_cleans_up_wired_resources() -> None:
             "factory.bootstrap.wiring.standalone_discord.seed_watch_channels",
             AsyncMock(return_value=frozenset()),
         ),
+        patch(_KV_STORE_DC, _make_kv_store_stub()),
+        patch(_DC_STORES, AsyncMock(return_value=(_dc_thread_store_fail,))),
         load_token_patch,
         patch.dict(os.environ, {"NATS_URL": "nats://localhost:4222"}),
         pytest.raises(RuntimeError, match="boom"),

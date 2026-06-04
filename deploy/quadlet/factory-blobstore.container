@@ -12,6 +12,7 @@ StartLimitBurst=5
 # as factory-hub.container. Dedicated blobstore image blocked until Protocol v2 + ≥3
 # cross-repo consumers; see analysis §Shape A rationale.
 Image=ghcr.io/roxabi/factory:staging-svc
+Label=io.containers.autoupdate=registry
 ContainerName=factory-blobstore
 Network=roxabi.network
 # Hardening — defense in depth (see issue #652).

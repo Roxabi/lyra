@@ -11,7 +11,7 @@ Implements [ADR-067](../../docs/architecture/adr/067-blobstore-abstraction-flat-
 ```python
 from roxabi_blobs import BlobStore, BlobRef, BlobNotFoundError, BlobWriteError
 
-async with FsBlobStore(root=Path("/data/factory/blobs")) as store:
+async with FsBlobStore(root=Path.home() / ".roxabi/factory/blobstore") as store:
     ref = await store.put(data, mime="audio/ogg", source="telegram")
     bytes_back = await store.get(ref.store_key)
     found = await store.exists(ref.content_hash)

@@ -38,8 +38,7 @@ def _make_js(kv: MagicMock) -> MagicMock:
 
 
 def _make_kv(get_return=None, get_side_effect=None) -> MagicMock:
-    """Build a kv mock whose kv.get() returns *get_return* or raises *get_side_effect*.
-    """
+    """Build a kv mock whose kv.get() returns *get_return* or raises *get_side_effect*."""
     kv = MagicMock()
     if get_side_effect is not None:
         kv.get = AsyncMock(side_effect=get_side_effect)
@@ -94,8 +93,7 @@ class TestSeedWatchChannels:
         assert result == frozenset()
 
     async def test_skips_non_int_channel_id_in_mixed_value(self) -> None:
-        """(c) entry value=b'["x",3]' → 'x' skipped, only 3 survives → frozenset({3}).
-        """
+        """(c) entry value=b'["x",3]' → 'x' skipped, only 3 survives → frozenset({3})."""
         # Arrange
         entry = _make_entry(b'["x", 3]')
         kv = _make_kv(get_return=entry)

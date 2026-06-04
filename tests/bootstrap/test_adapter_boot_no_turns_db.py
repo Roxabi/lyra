@@ -109,7 +109,6 @@ class TestTelegramStandaloneNoTurnsDb:
         from factory.core.messaging.message import Platform
 
         config_bundle = MagicMock(spec=AdapterConfigBundle)
-        vault_dir = tmp_path
 
         mock_nc = AsyncMock()
         mock_js = AsyncMock()
@@ -163,7 +162,6 @@ class TestTelegramStandaloneNoTurnsDb:
                 nc=mock_nc,
                 raw_config=raw_config,
                 config_bundle=config_bundle,
-                vault_dir=vault_dir,
                 platform_enum=Platform.TELEGRAM,
                 _stop=stop,
             )
@@ -185,8 +183,138 @@ class TestTelegramStandaloneNoTurnsDb:
 
 
 # ---------------------------------------------------------------------------
-# SC2: standalone_discord.py source does NOT reference TurnStore for turns.db
+# SC1b: _bootstrap_adapter_standalone does NOT mkdir for telegram (#1734 D5)
 # ---------------------------------------------------------------------------
+
+
+class TestTelegramAdapterStandaloneNoMkdir:
+    """_bootstrap_adapter_standalone must NOT call mkdir for telegram platform.
+
+    Telegram containers have a read-only ~/.roxabi — any mkdir attempt crashes
+    the container with OSError EROFS.  The mkdir must be Discord-only (#1734 D5).
+    """
+
+    def test_adapter_standalone_source_guards_mkdir_to_discord(self) -> None:
+        """Source-level guard: vault_dir.mkdir only reachable from discord branch.
+
+        Inspect adapter_standalone.py source and verify that the 'mkdir' call
+        only appears inside the 'discord' conditional, not before the if/elif.
+        """
+        import factory.bootstrap.standalone.adapter_standalone as _mod
+
+        source = inspect.getsource(_mod)
+        lines = source.splitlines()
+        mkdir_idx = next(
+            (i for i, ln in enumerate(lines) if "vault_dir.mkdir" in ln), None
+        )
+        discord_branch_idx = next(
+            (i for i, ln in enumerate(lines) if 'platform == "discord"' in ln), None
+        )
+        assert mkdir_idx is not None, "vault_dir.mkdir not found in adapter_standalone"
+        assert discord_branch_idx is not None, (
+            '"discord" branch not found in adapter_standalone'
+        )
+        assert mkdir_idx > discord_branch_idx, (
+            "vault_dir.mkdir appears BEFORE the discord branch — "
+            "telegram would also trigger mkdir, crashing on read-only fs"
+        )
+
+    def test_adapter_standalone_source_no_mkdir_in_telegram_branch(self) -> None:
+        """Source-level guard: no mkdir call in the telegram branch.
+
+        Parse adapter_standalone source and verify that between the
+        'if platform == "telegram"' and 'elif platform == "discord"' lines
+        there is no 'mkdir' call.
+        """
+        import factory.bootstrap.standalone.adapter_standalone as _mod
+
+        source = inspect.getsource(_mod)
+        lines = source.splitlines()
+
+        tg_branch_idx = next(
+            (i for i, ln in enumerate(lines) if 'platform == "telegram"' in ln), None
+        )
+        dc_branch_idx = next(
+            (i for i, ln in enumerate(lines) if 'platform == "discord"' in ln), None
+        )
+        assert tg_branch_idx is not None, (
+            "telegram branch not found in adapter_standalone"
+        )
+        assert dc_branch_idx is not None, (
+            "discord branch not found in adapter_standalone"
+        )
+
+        telegram_block = lines[tg_branch_idx:dc_branch_idx]
+        mkdir_in_tg = [ln for ln in telegram_block if "mkdir" in ln]
+        assert not mkdir_in_tg, (
+            "mkdir call found in the telegram branch of adapter_standalone — "
+            f"lines: {mkdir_in_tg}"
+        )
+
+    async def test_telegram_adapter_standalone_factory_data_dir_not_called(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """Behavioral: factory_data_dir() is NOT called when platform=telegram.
+
+        Patches factory_data_dir to raise if invoked, then runs the telegram
+        path of _bootstrap_adapter_standalone.  If factory_data_dir is called,
+        the test fails immediately — no read-only-fs simulation needed.
+        """
+        monkeypatch.setenv("NATS_URL", "nats://fake:4222")
+
+        stop = asyncio.Event()
+        stop.set()
+
+        mock_nc = AsyncMock()
+        mock_nc.close = AsyncMock()
+
+        def _raise_if_called() -> Path:
+            raise AssertionError(
+                "factory_data_dir() called for telegram — crashes on read-only fs"
+            )
+
+        with (
+            patch(
+                "factory.bootstrap.standalone.adapter_standalone.nats_connect",
+                AsyncMock(return_value=mock_nc),
+            ),
+            patch(
+                "factory.bootstrap.standalone.adapter_standalone.log_contracts_version",
+            ),
+            patch(
+                "factory.bootstrap.standalone.adapter_standalone.build_adapter_config_bundle",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "factory.bootstrap.standalone.adapter_standalone.factory_data_dir",
+                side_effect=_raise_if_called,
+            ),
+            patch(
+                "factory.bootstrap.wiring.standalone_telegram.bootstrap_telegram_standalone",
+                AsyncMock(),
+            ),
+        ):
+            from factory.bootstrap.standalone.adapter_standalone import (
+                _bootstrap_adapter_standalone,
+            )
+
+            # Import after patching so the lazy import inside the telegram branch
+            # resolves to the patched version.
+            with patch(
+                "factory.bootstrap.standalone.adapter_standalone"
+                ".bootstrap_telegram_standalone",
+                AsyncMock(),
+                create=True,
+            ):
+                pass  # just ensuring the module-level patches are active
+
+            await _bootstrap_adapter_standalone(
+                raw_config={"telegram": {"bots": [{"bot_id": "bot1"}]}},
+                platform="telegram",
+                _stop=stop,
+            )
 
 
 class TestDiscordStandaloneNoTurnsDb:

@@ -173,7 +173,7 @@ jobs:
       - name: Run integration tests
         env:
           NATS_URL: nats://localhost:4222
-          LYRA_TYPING_ENABLED: ${{ matrix.typing_enabled }}
+          FACTORY_TYPING_ENABLED: ${{ matrix.typing_enabled }}
         run: uv run pytest tests/integration/ -v
 
       - name: Tear down Docker environment

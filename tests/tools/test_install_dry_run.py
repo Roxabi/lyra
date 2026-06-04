@@ -2,9 +2,8 @@
 
 Contract map:
   A — dry-run lists all 7 factory-nats-* (incl. factory-nats-gh-helper — the #9 miss)
-  B — blob symlink guard (#13): non-empty non-symlink dir at blobstore target
-      → dry-run warns with remediation hint
-  C — empty non-symlink dir at blobstore target → dry-run logs rm action
+  B — blobstore data dir: dry-run logs mkdir of ~/.roxabi/factory/blobstore;
+      pre-existing content never blocks
   D — missing nkeys dir → exits 1 (pre-condition gate)
 
 Implementation note: deploy/install.sh uses $HOME for all data paths.
@@ -191,97 +190,68 @@ class TestDryRunListsAllNatsSecrets:
 
 
 # ---------------------------------------------------------------------------
-# Section B — blob symlink guard: non-empty non-symlink dir → warn in dry-run
+# Section B — blobstore data dir: mkdir logged; pre-existing content never blocks
 # ---------------------------------------------------------------------------
 
 
-class TestBlobSymlinkGuardDryRun:
-    """#13: non-empty non-symlink blobstore dir → dry-run emits WARN."""
+class TestBlobstoreDataDir:
+    """§5 creates ~/.roxabi/factory/blobstore as a plain dir; no guard logic."""
 
-    def test_nonempty_dir_triggers_warn_in_dry_run(self, tmp_path: Path) -> None:
-        """Dry-run warns when blobstore is a non-empty real directory."""
+    def test_blobstore_dir_is_created(self, tmp_path: Path) -> None:
+        """Fresh HOME with no blobstore dir: dry-run logs mkdir for blobstore."""
         _create_stub_seeds(tmp_path)
-
-        blobstore_dir = tmp_path / ".roxabi" / "factory" / "blobstore"
-        blobstore_dir.mkdir(parents=True, exist_ok=True)
-        (blobstore_dir / "existing-blob.bin").write_bytes(b"data")
+        # No blobstore dir pre-created — let install.sh handle it.
 
         result = _run_install_dry_run(tmp_path)
 
+        assert result.returncode == 0, (
+            f"install.sh --dry-run exited {result.returncode}.\n"
+            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        )
         combined = result.stdout + result.stderr
-        assert (
-            "WARN" in combined or "warn" in combined.lower() or "BLOCK" in combined
-        ), (
-            "Dry-run must warn about non-empty blobstore dir blocking install.\n"
+        # §5: `run mkdir -p <HOME>/.roxabi/factory/blobstore` → [dry-run] mkdir -p ...
+        # and `echo "  [ok]   <HOME>/.roxabi/factory/blobstore"` (always printed)
+        blobstore_lines = [
+            line
+            for line in combined.splitlines()
+            if "blobstore" in line and ("mkdir" in line or "[ok]" in line)
+        ]
+        assert blobstore_lines, (
+            "Dry-run must log a mkdir or [ok] line for the blobstore data dir.\n"
             f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
-        assert "blobstore" in combined.lower(), (
-            "Warning must mention blobstore.\n"
-            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
-        )
-
-    def test_nonempty_dir_warning_communicates_block(self, tmp_path: Path) -> None:
-        """Dry-run warning for non-empty blobstore dir uses 'BLOCK' text."""
-        _create_stub_seeds(tmp_path)
-
-        blobstore_dir = tmp_path / ".roxabi" / "factory" / "blobstore"
-        blobstore_dir.mkdir(parents=True, exist_ok=True)
-        (blobstore_dir / "data.bin").write_bytes(b"\x00" * 16)
-
-        result = _run_install_dry_run(tmp_path)
-
-        combined = result.stdout + result.stderr
-        # Script text: "would BLOCK install (run without --dry-run to see full error)"
-        assert "BLOCK" in combined or "non-empty" in combined.lower(), (
-            "Dry-run must communicate that non-empty dir blocks live install.\n"
+        assert "mkdir" in combined and "blobstore" in combined, (
+            "Dry-run output must mention both 'mkdir' and 'blobstore'.\n"
             f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
 
-    def test_empty_dir_at_blobstore_dry_runs_rm(self, tmp_path: Path) -> None:
-        """Empty non-symlink dir at blobstore: dry-run logs rm or ln action.
+    def test_preexisting_nonempty_blobstore_does_not_block(
+        self, tmp_path: Path
+    ) -> None:
+        """Pre-existing blobs in blobstore dir must never block dry-run.
 
-        The live path removes the empty dir; dry-run logs the action without
-        executing.
+        §5 removed the symlink guard entirely.  A real dir with content is
+        the expected production state — install must not error or warn on it.
         """
         _create_stub_seeds(tmp_path)
 
         blobstore_dir = tmp_path / ".roxabi" / "factory" / "blobstore"
         blobstore_dir.mkdir(parents=True, exist_ok=True)
-        # Empty directory — safe to remove per install.sh logic.
+        (blobstore_dir / "existing-blob.bin").write_bytes(b"\x00" * 64)
 
         result = _run_install_dry_run(tmp_path)
 
         combined = result.stdout + result.stderr
-        # Script must log the rm or subsequent ln action.
-        assert "[dry-run] rm" in combined or "[dry-run] ln" in combined, (
-            "Dry-run must log the rm or ln action for blobstore symlink.\n"
+        assert result.returncode == 0, (
+            "Dry-run must exit 0 even when blobstore dir is non-empty.\n"
             f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
-
-
-# ---------------------------------------------------------------------------
-# Section C — dry-run proceeds normally when blobstore target is a symlink
-# ---------------------------------------------------------------------------
-
-
-class TestBlobSymlinkGuardSymlink:
-    """When blobstore target is already a symlink, dry-run must not warn."""
-
-    def test_existing_symlink_does_not_trigger_guard(self, tmp_path: Path) -> None:
-        """If blobstore is already a symlink, dry-run proceeds without error."""
-        _create_stub_seeds(tmp_path)
-
-        blobstore_link = tmp_path / ".roxabi" / "factory" / "blobstore"
-        blobstore_link.parent.mkdir(parents=True, exist_ok=True)
-        fake_target = tmp_path / "blobs"
-        fake_target.mkdir()
-        blobstore_link.symlink_to(fake_target)
-
-        result = _run_install_dry_run(tmp_path)
-
-        # Should not produce blobstore-guard ERROR
-        assert result.returncode == 0, (
-            "Dry-run must succeed when blobstore is already a symlink.\n"
+        assert "BLOCK" not in combined, (
+            "Dry-run must NOT emit 'BLOCK' for a non-empty blobstore dir.\n"
+            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        )
+        assert "would BLOCK" not in combined, (
+            "Dry-run must NOT emit 'would BLOCK' for a non-empty blobstore dir.\n"
             f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
 
@@ -385,8 +355,7 @@ declare -A SECRET_POLICY=(
         )
         combined = result.stderr + result.stdout
         assert "refusing" in combined.lower() or "unexpected" in combined.lower(), (
-            "stderr must mention refusing/unexpected line.\n"
-            f"stderr:\n{result.stderr}"
+            f"stderr must mention refusing/unexpected line.\nstderr:\n{result.stderr}"
         )
         assert not sentinel.exists(), (
             "Sentinel file was created — injected command executed! Parser is broken."

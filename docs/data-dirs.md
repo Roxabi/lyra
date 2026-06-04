@@ -5,7 +5,7 @@ Lyra stores runtime data in two root locations:
 | Host path | Purpose | Container path |
 |---|---|---|
 | `~/.roxabi/factory/` | Application vault (databases, secrets, config, env) | `/home/factory/.roxabi/factory` (via `factory-data.volume`) |
-| `/data/factory/blobs/` | BlobStore shard tree + SQLite index | `/home/factory/.roxabi/factory/blobstore` (via bind-mount in `factory-blobstore.container`) |
+| `~/.roxabi/factory/blobstore/` | BlobStore shard tree + SQLite index | `/home/factory/.roxabi/factory/blobstore` (via bind-mount in `factory-blobstore.container`) |
 
 ---
 
@@ -23,13 +23,11 @@ Lyra stores runtime data in two root locations:
 | `nkeys/` | NATS nkey seeds and `auth.conf` | **Synced** |
 | `env/` | Quadlet env files (`hub.env`, `blobstore.env`) | **Synced** |
 | `nats/jetstream/` | JetStream persistent storage | **Excluded** (host-local, large WAL files) |
-| `blobstore/` | **Symlink / container view** — points to `/data/factory/blobs/` | **Excluded** (canonical path is `/data/factory/blobs/`) |
-
-**Note:** `~/.roxabi/factory/blobstore/` is a bind-mount view from the container perspective. The canonical host directory is `/data/factory/blobs/`. Backups and Syncthing exclusions must reference the canonical path.
+| `blobstore/` | BlobStore shard tree + SQLite index (real directory) | **Excluded** (large binary data — see Syncthing exclusions below) |
 
 ---
 
-## `/data/factory/blobs/` — BlobStore canonical host path
+## `~/.roxabi/factory/blobstore/` — BlobStore host path
 
 | Subdirectory / File | Purpose |
 |---|---|
@@ -55,8 +53,7 @@ Syncthing syncs `~/.roxabi/factory/` across M₁, M₂, and laptop. The followin
 | Path | Reason |
 |---|---|
 | `~/.roxabi/factory/nats/jetstream/` | Host-local JetStream WAL; large, not portable |
-| `~/.roxabi/factory/blobstore/` | Redirects to `/data/factory/blobs/`; large binary data |
-| `/data/factory/blobs/` | Canonical BlobStore host path; excluded from Syncthing |
+| `~/.roxabi/factory/blobstore/` | Large append-only binary data; high churn — excluded from Syncthing |
 
 Exclusion rule (add to `.stignore` in `~/.roxabi/factory/`):
 
@@ -65,5 +62,3 @@ Exclusion rule (add to `.stignore` in `~/.roxabi/factory/`):
 nats/jetstream
 blobstore
 ```
-
-The `/data/factory/blobs/` path is outside `~/.roxabi/factory/` so it does not need an `.stignore` rule — it is excluded by simply not adding it to Syncthing at all.

@@ -151,8 +151,8 @@ The `wire_discord_adapters` function returns `(adapters, dispatchers, thread_sto
 
 Binary payloads (Telegram/Discord attachments, STT/TTS audio) are stored behind a `BlobStore`
 Protocol with three methods: `put`, `get`, `exists`. The v1 backend is `FsBlobStore`: a
-SHA-256-addressed flat-FS tree (`/data/factory/blobs/<sha[:2]>/<sha>`) plus a SQLite index at
-`/data/factory/blobs/index.sqlite` (two tables: `blobs` keyed by `content_hash`; `blob_refs` for
+SHA-256-addressed flat-FS tree (`~/.roxabi/factory/blobstore/<sha[:2]>/<sha>`) plus a SQLite index at
+`~/.roxabi/factory/blobstore/index.sqlite` (two tables: `blobs` keyed by `content_hash`; `blob_refs` for
 per-ingestion provenance). The backend runs on `factory-hub` role (M₁) and is exposed via a
 dedicated Quadlet container `factory-blobstore.container` (FastAPI on TCP `:8449`, image
 `ghcr.io/roxabi/factory` + `lyra blobstore serve` subcommand) — V8 issue #1330. Host paths:

@@ -192,10 +192,12 @@ quadlet-sync-install:  ## install systemd sync timers + services → daemon-relo
 	@cp "$(QUADLET_SYNC_SRC)/factory-post-autoupdate.service"  "$(QUADLET_SYNC_DST)/"
 	@cp "$(QUADLET_SYNC_SRC)/factory-post-autoupdate.timer"    "$(QUADLET_SYNC_DST)/"
 	@cp "$(QUADLET_SYNC_SRC)/factory-deploy-failure.service"    "$(QUADLET_SYNC_DST)/"
+	@mkdir -p "$(QUADLET_SYNC_DST)/podman-auto-update.timer.d"
+	@cp "$(QUADLET_SYNC_SRC)/podman-auto-update.timer.d/override.conf" "$(QUADLET_SYNC_DST)/podman-auto-update.timer.d/"
 	@echo "Sync units copied to $(QUADLET_SYNC_DST)"
 	@systemctl --user daemon-reload
-	@systemctl --user enable factory-quadlet-sync.timer
-	@systemctl --user enable factory-post-autoupdate.timer
+	@systemctl --user enable --now factory-quadlet-sync.timer
+	@systemctl --user enable --now factory-post-autoupdate.timer
 	@echo "[ok] factory-quadlet-sync.timer + factory-post-autoupdate.timer enabled."
 
 quadlet-authconf-merged:  ## render merged auth.conf (factory + voicecli identities) → ~/.roxabi/factory/nkeys/auth.conf

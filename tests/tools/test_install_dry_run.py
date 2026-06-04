@@ -308,3 +308,131 @@ class TestPreConditionGate:
             "Error message must mention nkeys dir.\n"
             f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Section E — strict manifest parser regression tests
+# ---------------------------------------------------------------------------
+
+
+def _make_deploy_tree(base: Path) -> tuple[Path, Path]:
+    """Create a minimal deploy/ + deploy/generated/ tree in base.
+
+    Returns (install_sh_copy, manifest_path).
+    The real install.sh is copied into base/deploy/install.sh.
+    The manifest is placed at base/deploy/generated/secrets-manifest.sh.
+    SCRIPT_DIR resolves to base/deploy/ so the parser reads our crafted manifest.
+    """
+    deploy_dir = base / "deploy"
+    generated_dir = deploy_dir / "generated"
+    generated_dir.mkdir(parents=True)
+    install_dst = deploy_dir / "install.sh"
+    install_dst.write_bytes(INSTALL_SCRIPT.read_bytes())
+    manifest_path = generated_dir / "secrets-manifest.sh"
+    return install_dst, manifest_path
+
+
+def _run_install_from_tree(
+    install_sh: Path,
+    home_tmp: Path,
+    extra_env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess:  # type: ignore[type-arg]
+    """Run a copy of install.sh from its own deploy/ dir with HOME=home_tmp."""
+    env = {**os.environ, "HOME": str(home_tmp)}
+    if extra_env:
+        env.update(extra_env)
+    return subprocess.run(
+        ["bash", str(install_sh), "--dry-run"],
+        cwd=str(install_sh.parent.parent),  # repo root equivalent
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+
+class TestManifestStrictParse:
+    """Strict parser security regression tests (replaces `source`)."""
+
+    def test_injected_command_line_is_rejected(self, tmp_path: Path) -> None:
+        """A bare shell statement in the manifest must NOT execute and exit non-zero.
+
+        Proof: sentinel file must NOT be created even if the manifest were sourced.
+        """
+        sentinel = tmp_path / "pwned"
+        install_sh, manifest_path = _make_deploy_tree(tmp_path / "repo")
+        # Craft a manifest that would execute `touch <sentinel>` if sourced.
+        manifest_path.write_text(
+            f"""\
+# header
+declare -A SECRET_SOURCES=(
+    [factory-nats-hub]="nkeys/hub.seed"
+)
+touch {sentinel}
+declare -A SECRET_POLICY=(
+    [factory-nats-hub]="nats-seed"
+)
+"""
+        )
+        home_tmp = tmp_path / "home"
+        nkeys = home_tmp / ".roxabi" / "factory" / "nkeys"
+        nkeys.mkdir(parents=True)
+
+        result = _run_install_from_tree(install_sh, home_tmp)
+
+        assert result.returncode != 0, (
+            "install.sh must exit non-zero on injected command line.\n"
+            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        )
+        combined = result.stderr + result.stdout
+        assert "refusing" in combined.lower() or "unexpected" in combined.lower(), (
+            "stderr must mention refusing/unexpected line.\n"
+            f"stderr:\n{result.stderr}"
+        )
+        assert not sentinel.exists(), (
+            "Sentinel file was created — injected command executed! Parser is broken."
+        )
+
+    def test_value_with_shell_metachars_is_rejected(self, tmp_path: Path) -> None:
+        """A data line with $(...) or ; in value must be rejected by charset gate."""
+        install_sh, manifest_path = _make_deploy_tree(tmp_path / "repo")
+        manifest_path.write_text(
+            """\
+# header
+declare -A SECRET_SOURCES=(
+    [factory-nats-hub]="nkeys/$(evil)"
+)
+declare -A SECRET_POLICY=(
+    [factory-nats-hub]="nats-seed"
+)
+"""
+        )
+        home_tmp = tmp_path / "home"
+        nkeys = home_tmp / ".roxabi" / "factory" / "nkeys"
+        nkeys.mkdir(parents=True)
+
+        result = _run_install_from_tree(install_sh, home_tmp)
+
+        assert result.returncode != 0, (
+            "install.sh must exit non-zero on value with shell metacharacters.\n"
+            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        )
+
+    def test_legit_manifest_still_parses(self, tmp_path: Path) -> None:
+        """The real committed manifest must drive a successful --dry-run.
+
+        Asserts both SECRET_SOURCES and SECRET_POLICY were populated by verifying
+        factory-nats-hub appears in the dry-run output.
+        """
+        _create_stub_seeds(tmp_path)
+        result = _run_install_dry_run(tmp_path)
+
+        assert result.returncode == 0, (
+            "install.sh --dry-run must succeed with the real committed manifest.\n"
+            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        )
+        combined = result.stdout + result.stderr
+        assert "factory-nats-hub" in combined, (
+            "factory-nats-hub must appear in dry-run output "
+            "(proves SECRET_SOURCES + SECRET_POLICY were populated).\n"
+            f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        )

@@ -195,28 +195,35 @@ class TestTelegramAdapterStandaloneNoMkdir:
     """
 
     def test_adapter_standalone_source_guards_mkdir_to_discord(self) -> None:
-        """Source-level guard: vault_dir.mkdir only reachable from discord branch.
+        """Source guard: no mkdir in adapter_standalone; mkdir is discord-only.
 
-        Inspect adapter_standalone.py source and verify that the 'mkdir' call
-        only appears inside the 'discord' conditional, not before the if/elif.
+        #28 relocated the data-dir mkdir from adapter_standalone.py into
+        bootstrap_discord_standalone (standalone_discord.py).  This two-part assertion
+        verifies the post-#28 structural guarantee of #1734 D5:
+
+        Part 1 — adapter_standalone.py contains NO mkdir at all (read-only telegram
+        path can never trigger a filesystem write, regardless of platform).
+
+        Part 2 — standalone_discord.py's bootstrap_discord_standalone DOES contain
+        mkdir (discord-only guarantee: the discord container has a writable data dir).
         """
-        import factory.bootstrap.standalone.adapter_standalone as _mod
+        import factory.bootstrap.standalone.adapter_standalone as _adapter_mod
+        import factory.bootstrap.wiring.standalone_discord as _discord_mod
 
-        source = inspect.getsource(_mod)
-        lines = source.splitlines()
-        mkdir_idx = next(
-            (i for i, ln in enumerate(lines) if "vault_dir.mkdir" in ln), None
+        # Part 1: no mkdir anywhere in adapter_standalone — structural telegram safety
+        adapter_source = inspect.getsource(_adapter_mod)
+        assert "mkdir" not in adapter_source, (
+            "mkdir found in adapter_standalone.py — "
+            "any mkdir here would be reachable from the telegram path, "
+            "crashing on read-only fs (#1734 D5)"
         )
-        discord_branch_idx = next(
-            (i for i, ln in enumerate(lines) if 'platform == "discord"' in ln), None
-        )
-        assert mkdir_idx is not None, "vault_dir.mkdir not found in adapter_standalone"
-        assert discord_branch_idx is not None, (
-            '"discord" branch not found in adapter_standalone'
-        )
-        assert mkdir_idx > discord_branch_idx, (
-            "vault_dir.mkdir appears BEFORE the discord branch — "
-            "telegram would also trigger mkdir, crashing on read-only fs"
+
+        # Part 2: mkdir present in bootstrap_discord_standalone — discord-only
+        discord_fn = _discord_mod.bootstrap_discord_standalone
+        discord_func_source = inspect.getsource(discord_fn)
+        assert "mkdir" in discord_func_source, (
+            "mkdir not found in bootstrap_discord_standalone (standalone_discord.py) — "
+            "discord data-dir creation missing (#28 relocation invariant)"
         )
 
     def test_adapter_standalone_source_no_mkdir_in_telegram_branch(self) -> None:
@@ -251,70 +258,23 @@ class TestTelegramAdapterStandaloneNoMkdir:
             f"lines: {mkdir_in_tg}"
         )
 
-    async def test_telegram_adapter_standalone_factory_data_dir_not_called(
-        self,
-        monkeypatch: pytest.MonkeyPatch,
-        tmp_path: Path,
-    ) -> None:
-        """Behavioral: factory_data_dir() is NOT called when platform=telegram.
+    def test_telegram_adapter_standalone_factory_data_dir_not_called(self) -> None:
+        """Source-level guard: factory_data_dir absent from adapter_standalone.
 
-        Patches factory_data_dir to raise if invoked, then runs the telegram
-        path of _bootstrap_adapter_standalone.  If factory_data_dir is called,
-        the test fails immediately — no read-only-fs simulation needed.
+        #28 removed factory_data_dir from adapter_standalone.py entirely — the
+        discord data-dir mkdir now lives in standalone_discord.py.  This assertion
+        verifies that adapter_standalone.py does not import or call factory_data_dir,
+        so the telegram path can never trigger a data-dir creation on a read-only fs
+        (#1734 D5).
         """
-        monkeypatch.setenv("NATS_URL", "nats://fake:4222")
+        import factory.bootstrap.standalone.adapter_standalone as _mod
 
-        stop = asyncio.Event()
-        stop.set()
-
-        mock_nc = AsyncMock()
-        mock_nc.close = AsyncMock()
-
-        def _raise_if_called() -> Path:
-            raise AssertionError(
-                "factory_data_dir() called for telegram — crashes on read-only fs"
-            )
-
-        with (
-            patch(
-                "factory.bootstrap.standalone.adapter_standalone.nats_connect",
-                AsyncMock(return_value=mock_nc),
-            ),
-            patch(
-                "factory.bootstrap.standalone.adapter_standalone.log_contracts_version",
-            ),
-            patch(
-                "factory.bootstrap.standalone.adapter_standalone.build_adapter_config_bundle",
-                return_value=MagicMock(),
-            ),
-            patch(
-                "factory.bootstrap.standalone.adapter_standalone.factory_data_dir",
-                side_effect=_raise_if_called,
-            ),
-            patch(
-                "factory.bootstrap.wiring.standalone_telegram.bootstrap_telegram_standalone",
-                AsyncMock(),
-            ),
-        ):
-            from factory.bootstrap.standalone.adapter_standalone import (
-                _bootstrap_adapter_standalone,
-            )
-
-            # Import after patching so the lazy import inside the telegram branch
-            # resolves to the patched version.
-            with patch(
-                "factory.bootstrap.standalone.adapter_standalone"
-                ".bootstrap_telegram_standalone",
-                AsyncMock(),
-                create=True,
-            ):
-                pass  # just ensuring the module-level patches are active
-
-            await _bootstrap_adapter_standalone(
-                raw_config={"telegram": {"bots": [{"bot_id": "bot1"}]}},
-                platform="telegram",
-                _stop=stop,
-            )
+        source = inspect.getsource(_mod)
+        assert "factory_data_dir" not in source, (
+            "factory_data_dir found in adapter_standalone.py — "
+            "this would be reachable from the telegram path and crash on read-only fs "
+            "(#1734 D5; #28 relocated mkdir to standalone_discord.py)"
+        )
 
 
 class TestDiscordStandaloneNoTurnsDb:
@@ -379,7 +339,6 @@ class TestDiscordStandaloneNoTurnsDb:
         from factory.core.messaging.message import Platform
 
         config_bundle = MagicMock(spec=AdapterConfigBundle)
-        vault_dir = tmp_path
 
         mock_nc = AsyncMock()
         mock_js = AsyncMock()
@@ -447,7 +406,6 @@ class TestDiscordStandaloneNoTurnsDb:
                 nc=mock_nc,
                 raw_config=raw_config,
                 config_bundle=config_bundle,
-                vault_dir=vault_dir,
                 platform_enum=Platform.DISCORD,
                 _stop=stop,
             )

@@ -262,7 +262,15 @@ async def wire_discord_adapters(
         await thread_store.connect()
 
     def _adapter_factory(bot_id: str) -> DiscordAdapter:
-        bot_cfg = next(cfg for cfg, _ in deps.dc_bot_auths if cfg.bot_id == bot_id)
+        # Finding #18: use default=None to avoid StopIteration on missing bot_id
+        _bot_cfg = next(
+            (cfg for cfg, _ in deps.dc_bot_auths if cfg.bot_id == bot_id), None
+        )
+        if _bot_cfg is None:
+            raise ValueError(
+                f"_adapter_factory: bot_id={bot_id!r} not found in dc_bot_auths"
+            )
+        bot_cfg = _bot_cfg
         _ts = deps.hub._turn_store
         return DiscordAdapter(
             bot_id=bot_id,

@@ -14,7 +14,7 @@ import re
 import shutil
 import sqlite3
 import tempfile
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncGenerator
@@ -51,12 +51,36 @@ _SENTINEL_DDL = (
 )
 
 
+def _copy_indices(
+    src: sqlite3.Connection,
+    dst: sqlite3.Connection,
+    tables: tuple[str, ...],
+) -> None:
+    """Copy all indices for *tables* from *src* to *dst*, skipping duplicates."""
+    idx_rows = src.execute(
+        "SELECT sql FROM sqlite_master"
+        " WHERE type='index' AND sql IS NOT NULL AND tbl_name IN (%s)"
+        % ",".join("?" for _ in tables),
+        tables,
+    ).fetchall()
+    for (idx_sql,) in idx_rows:
+        if not _DDL_INDEX_RE.match(idx_sql):
+            log.warning(
+                "Skipping unexpected DDL from sqlite_master: %r", idx_sql[:80]
+            )
+            continue
+        try:
+            dst.execute(idx_sql)
+        except sqlite3.OperationalError:
+            pass  # index may already exist
+
+
 def _has_sentinel(db_path: Path) -> bool:
     """Check whether config.db has the _migration_complete sentinel."""
     if not db_path.exists():
         return False
     try:
-        with sqlite3.connect(str(db_path)) as conn:
+        with closing(sqlite3.connect(str(db_path))) as conn:
             cur = conn.execute(
                 "SELECT name FROM sqlite_master"
                 " WHERE type='table' AND name='_migration_complete'"
@@ -70,6 +94,13 @@ def _has_sentinel(db_path: Path) -> bool:
 
 
 _IDENT_RE = __import__("re").compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+# Compiled once at module level (finding #42 — was recompiled per loop iteration)
+_DDL_INDEX_RE = re.compile(
+    r"^CREATE\s+(UNIQUE\s+)?INDEX\s+"
+    r"(IF\s+NOT\s+EXISTS\s+)?[A-Za-z_][A-Za-z0-9_]*\s+ON\b",
+    re.IGNORECASE,
+)
 
 
 def _atomic_table_copy(  # noqa: C901 — DEBT:migration-sequence-bootstrap — sequential migration steps
@@ -94,6 +125,7 @@ def _atomic_table_copy(  # noqa: C901 — DEBT:migration-sequence-bootstrap — 
     src: sqlite3.Connection | None = None
     dst: sqlite3.Connection | None = None
     total_rows = 0
+    _success = False  # tracks whether we reach the atomic rename (finding #43)
     try:
         os.close(fd)
         src = sqlite3.connect(str(src_path))
@@ -133,26 +165,7 @@ def _atomic_table_copy(  # noqa: C901 — DEBT:migration-sequence-bootstrap — 
             log.debug("Migrated %d rows for table %s", len(rows), table)
 
         # Copy indices for migrated tables
-        idx_rows = src.execute(
-            "SELECT sql FROM sqlite_master"
-            " WHERE type='index' AND sql IS NOT NULL AND tbl_name IN (%s)"
-            % ",".join("?" for _ in tables),
-            tables,
-        ).fetchall()
-        for (idx_sql,) in idx_rows:
-            _DDL_INDEX_RE = (
-                r"^CREATE\s+(UNIQUE\s+)?INDEX\s+"
-                r"(IF\s+NOT\s+EXISTS\s+)?[A-Za-z_][A-Za-z0-9_]*\s+ON\b"
-            )
-            if not re.match(_DDL_INDEX_RE, idx_sql, re.IGNORECASE):
-                log.warning(
-                    "Skipping unexpected DDL from sqlite_master: %r", idx_sql[:80]
-                )
-                continue
-            try:
-                dst.execute(idx_sql)
-            except sqlite3.OperationalError:
-                pass  # index may already exist
+        _copy_indices(src, dst, tables)
 
         # Sentinel — marks migration as complete
         dst.execute(_SENTINEL_DDL)
@@ -160,11 +173,16 @@ def _atomic_table_copy(  # noqa: C901 — DEBT:migration-sequence-bootstrap — 
             "INSERT INTO _migration_complete (migrated_at) VALUES (datetime('now'))"
         )
         dst.commit()
+        _success = True
     finally:
         if src is not None:
             src.close()
         if dst is not None:
             dst.close()
+        # Clean up the temp file if the try block did not complete successfully
+        # (finding #43 — mkstemp file was otherwise leaked on failure)
+        if not _success:
+            tmp_path.unlink(missing_ok=True)
 
     # Atomic rename (same filesystem)
     shutil.move(str(tmp_path), str(dst_path))

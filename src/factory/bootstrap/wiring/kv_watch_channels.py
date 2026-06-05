@@ -69,7 +69,12 @@ async def _open_or_create_kv(js: Any) -> Any:
         return await js.create_key_value(
             KeyValueConfig(bucket=_BUCKET, storage=StorageType.FILE)
         )
-    except BadRequestError:
+    except BadRequestError as exc:
+        # Verify this is the "stream name already in use" error (err_code 10058)
+        # before falling back — a BadRequestError for a different reason must
+        # propagate so the real cause is not silently swallowed (#20).
+        if exc.err_code != 10058:
+            raise
         # Lost the creation race — another process created it; open it.
         return await js.key_value(_BUCKET)
 
@@ -105,13 +110,25 @@ async def seed_watch_channels(
     Returns:
         Parsed channel IDs as a frozenset of ints.
     """
-    from nats.js.errors import KeyNotFoundError
+    from nats.js.errors import BucketNotFoundError, KeyNotFoundError
 
     key = _kv_key(platform, bot_id)
-    kv = await js.key_value(_BUCKET)
     try:
         async with asyncio.timeout(timeout):
+            # Both js.key_value() and kv.get() are network calls — bind and
+            # fetch together under the same timeout (#6).
+            kv = await js.key_value(_BUCKET)
             entry = await kv.get(key)
+    except BucketNotFoundError:
+        # Hub has not provisioned factory-state yet (cold-boot race) — degrade
+        # gracefully rather than propagating (#21).
+        log.debug(
+            "seed_watch_channels: bucket %s not found for %s/%s — empty set",
+            _BUCKET,
+            platform,
+            bot_id,
+        )
+        return frozenset()
     except KeyNotFoundError:
         # Covers missing key, DEL tombstone, and PURGE tombstone — nats-py
         # re-raises KeyDeletedError as KeyNotFoundError inside kv.get().

@@ -107,7 +107,7 @@ class TestRegisterAll:
         error, and _register_all raises typer.Exit(1) after collecting the
         error count.
         """
-        from click.exceptions import Exit as ClickExit
+        import typer
 
         from factory.cli_setup import _register_all
         from factory.errors import MissingCredentialsError
@@ -123,7 +123,7 @@ class TestRegisterAll:
                     get_command_descriptions=MagicMock(return_value={})
                 ),
             ),
-            pytest.raises((SystemExit, ClickExit)),
+            pytest.raises((SystemExit, typer.Exit)),
         ):
             await _register_all(str(config_file))
 
@@ -152,9 +152,9 @@ class TestRegisterAll:
 
     @pytest.mark.asyncio()
     async def test_config_not_found(self, tmp_path: Path) -> None:
-        from click.exceptions import Exit as ClickExit
+        import typer
 
         from factory.cli_setup import _register_all
 
-        with pytest.raises((SystemExit, ClickExit)):
+        with pytest.raises((SystemExit, typer.Exit)):
             await _register_all(str(tmp_path / "nonexistent.toml"))

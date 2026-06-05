@@ -4,8 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from click.testing import Result
-from typer.testing import CliRunner
+from typer.testing import CliRunner, Result
 
 from factory.cli import agent_app as app
 

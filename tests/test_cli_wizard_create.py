@@ -6,8 +6,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
-from click.testing import Result
-from typer.testing import CliRunner
+from typer.testing import CliRunner, Result
 
 from factory.cli import agent_app as app
 from factory.core.agent.agent_seeder import _parse_toml

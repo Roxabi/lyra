@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from nats.js.errors import KeyNotFoundError, NoKeysError
 
 from factory.infrastructure.stores.turn_session_kv import (
@@ -117,11 +118,13 @@ class TestKvLastSessionStoreConnectMissingBucket:
         Negative: if connect() raises, adapter boot crashes before hub provisions
         the bucket — violating the cold-boot degrade-to-new-session contract.
         """
-        import nats.errors
+        from nats.js.errors import BucketNotFoundError
 
-        # Arrange — simulate bucket not found
+        # Arrange — simulate a missing bucket (cold boot). #7 narrowed connect()'s
+        # catch to BucketNotFoundError, so the mock must raise that exact type —
+        # a generic nats.errors.Error now correctly propagates instead of degrading.
         js = AsyncMock()
-        js.key_value.side_effect = nats.errors.Error("bucket not found")
+        js.key_value.side_effect = BucketNotFoundError()
         store = KvLastSessionStore(js)
 
         # Act — must not raise
@@ -157,6 +160,30 @@ class TestKvLastSessionStoreConnectMissingBucket:
 
         # Assert — no KV call happened (no crash either)
         js.key_value.assert_not_awaited()
+
+    async def test_connect_non_bucket_error_propagates(self) -> None:
+        """connect() propagates non-BucketNotFoundError NATS errors (#7).
+
+        #7 narrowed connect()'s catch to BucketNotFoundError only — errors such
+        as nats.errors.TimeoutError (NATS unreachable) must NOT silently degrade
+        _kv to None; they must propagate so the caller can handle real failures.
+
+        Negative: if connect() reverted to catching all nats.errors.Error, this
+        test would stop raising and the silent-degrade bug would reappear.
+        """
+        import nats.errors
+
+        # Arrange — a timeout is a real NATS failure, NOT a cold-boot bucket miss
+        js = AsyncMock()
+        js.key_value.side_effect = nats.errors.TimeoutError()
+        store = KvLastSessionStore(js)
+
+        # Act + Assert — must raise, must NOT silently set _kv=None
+        with pytest.raises(nats.errors.TimeoutError):
+            await store.connect()
+
+        # _kv must remain None (uninitialised), not silently degraded
+        assert store._kv is None
 
     async def test_connect_sets_kv_on_success(self) -> None:
         """connect() sets _kv to the bound KeyValue handle on success."""

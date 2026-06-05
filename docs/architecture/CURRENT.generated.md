@@ -86,11 +86,11 @@
 
 
 ### blobstore
-- **Publish:** $JS.API.>, $KV.factory-state.>, factory.audit.>
+- **Publish:** $JS.API.INFO, $JS.API.STREAM.CREATE.KV_factory-state, $JS.API.STREAM.INFO.KV_factory-state, $KV.factory-state.>, factory.audit.>
 - **Subscribe:** _inbox.blobstore.>
 
 ### clipool-worker
-- **Publish:** $JS.API.>, factory.clipool.heartbeat, factory.event.>, factory.metric.>, factory.system.ready
+- **Publish:** $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.clipool.heartbeat, factory.event.>, factory.metric.>, factory.system.ready
 - **Subscribe:** $KV.factory-state.>, _inbox.clipool-worker.>, factory.clipool.cmd, factory.clipool.control
 
 ### dashboard-reader
@@ -98,7 +98,7 @@
 
 ### discord-adapter
 - **Publish:** $JS.API.CONSUMER.CREATE.*, $JS.API.DIRECT.GET.KV_factory-state.hub.ready, $JS.API.INFO, $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.INFO.KV_factory-turns-meta, $JS.API.STREAM.MSG.GET.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-turns-meta, $KV.factory-turns-meta.>, factory.event.>, factory.inbound.discord.>, factory.metric.>, factory.system.ready, factory.turns.write
-- **Subscribe:** $KV.factory-state.>, _inbox.discord-adapter.*.*, _inbox.discord-adapter.>, factory.outbound.audio.>, factory.outbound.discord.>, factory.typing.discord.>
+- **Subscribe:** $KV.factory-state.>, _inbox.discord-adapter.>, factory.outbound.audio.>, factory.outbound.discord.>, factory.typing.discord.>
 
 ### gh-helper
 - **Publish:** factory.gh.mint_failure.>
@@ -108,7 +108,7 @@
 - **Subscribe:** _inbox.hub.>, factory.clipool.heartbeat, factory.gh.mint_failure.>, factory.image.heartbeat, factory.inbound.discord.>, factory.inbound.telegram.>, factory.llm.heartbeat, factory.system.ready, factory.voice.stt.heartbeat, factory.voice.tts.heartbeat
 
 ### image-worker
-- **Publish:** $JS.API.>, factory.image.heartbeat
+- **Publish:** $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.image.heartbeat
 - **Subscribe:** $KV.factory-state.>, _inbox.image-worker.>, factory.image.generate.request
 
 ### llm-operator
@@ -116,7 +116,7 @@
 - **Subscribe:** _inbox.llm-operator.>
 
 ### llm-worker
-- **Publish:** $JS.API.>, factory.llm.heartbeat
+- **Publish:** $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.llm.heartbeat
 - **Subscribe:** $KV.factory-state.>, _inbox.llmcli-llm.>, factory.llm.generate.request, factory.llm.lifecycle.>
 
 ### monitor
@@ -125,7 +125,7 @@
 
 ### telegram-adapter
 - **Publish:** $JS.API.CONSUMER.CREATE.*, $JS.API.DIRECT.GET.KV_factory-state.hub.ready, $JS.API.INFO, $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.INFO.KV_factory-turns-meta, $JS.API.STREAM.MSG.GET.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-turns-meta, $KV.factory-turns-meta.>, factory.event.>, factory.inbound.telegram.>, factory.metric.>, factory.system.ready, factory.turns.write
-- **Subscribe:** $KV.factory-state.>, _inbox.telegram-adapter.*.*, _inbox.telegram-adapter.>, factory.outbound.audio.>, factory.outbound.telegram.>, factory.typing.telegram.>
+- **Subscribe:** $KV.factory-state.>, _inbox.telegram-adapter.>, factory.outbound.audio.>, factory.outbound.telegram.>, factory.typing.telegram.>
 
 ### turn-writer
 - **Publish:** $JS.API.CONSUMER.CREATE.FACTORY_TURNS.turn-writer-v1.>, $JS.API.CONSUMER.INFO.FACTORY_TURNS.turn-writer-v1, $JS.API.CONSUMER.MSG.NEXT.FACTORY_TURNS.turn-writer-v1, $JS.API.STREAM.CREATE.FACTORY_TURNS, $JS.API.STREAM.INFO.FACTORY_TURNS, $JS.API.STREAM.UPDATE.FACTORY_TURNS, _inbox.turn-writer.>
@@ -136,11 +136,11 @@
 - **Subscribe:** _inbox.voice-client.>
 
 ### voice-stt
-- **Publish:** $JS.API.>, factory.system.ready, factory.voice.stt.heartbeat
+- **Publish:** $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.system.ready, factory.voice.stt.heartbeat
 - **Subscribe:** $KV.factory-state.>, _inbox.voice-stt.>, factory.voice.stt.request, factory.voice.stt.request.>
 
 ### voice-tts
-- **Publish:** $JS.API.>, factory.system.ready, factory.voice.tts.heartbeat
+- **Publish:** $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.system.ready, factory.voice.tts.heartbeat
 - **Subscribe:** $KV.factory-state.>, _inbox.voice-tts.>, factory.voice.tts.request, factory.voice.tts.request.>
 
 ## Process Topology

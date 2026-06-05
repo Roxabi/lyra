@@ -17,21 +17,24 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("factory.inbound.session_builder")
 
+# Named constant for the in-memory thread-session LRU cache size (#45).
+_THREAD_SESSION_CACHE_SIZE = 500
+
 
 class SessionBuilder:
     """Builds session context for an inbound message.
 
-    Reads ``SessionCtx.turn_store``, ``SessionCtx.thread_store``, and
+    Reads ``SessionCtx.last_session``, ``SessionCtx.thread_store``, and
     ``SessionCtx.thread_sessions_cache`` to resolve or create a session.
     Returns an updated ``InboundMessage`` with ``session_update_fn`` populated.
 
-    Handles four cases without importing platform libraries:
+    Handles three cases without importing platform libraries:
 
-    (a) Both None  — test/CLI: no session persistence, return msg unchanged.
-    (b) turn_store only — Telegram: DM/group via TurnStore.
-    (c) Both, DM — Discord DM (guild_id=None, thread_id=None): turn_store only,
-        same as (b).
-    (d) Both, owned thread — Discord thread: ThreadStore read + write-through cache.
+    (a) All stores None  — test/CLI: no session persistence, return msg unchanged.
+    (b) last_session present, no thread_store — Telegram/Discord DM: session
+        persistence via ``LastSessionStore`` (KV or TurnStoreLastSession adapter).
+    (d) thread_store present, Discord owned thread — ThreadStore read +
+        write-through cache; ``last_session`` unused on this path.
 
     The ``session_update_fn`` closure captures stores and IDs by reference and is
     safe to call after ``build`` returns — the inbound turn handler invokes it once
@@ -90,7 +93,7 @@ class SessionBuilder:
         if ctx.last_session is not None:
             try:
                 _prior_session_id = await ctx.last_session.get_last_session(_pool_id)
-            except Exception:
+            except (OSError, RuntimeError):  # infrastructure errors only (#17)
                 log.exception(
                     "SessionBuilder: last_session.get_last_session failed pool_id=%s",
                     _pool_id,
@@ -163,7 +166,7 @@ class SessionBuilder:
                     thread_id=_thread_id_str, bot_id=msg.bot_id
                 )
                 if _ts_result.is_resolved:
-                    if len(_cache) >= 500:
+                    if len(_cache) >= _THREAD_SESSION_CACHE_SIZE:  # (#45)
                         _oldest = next(iter(_cache))
                         del _cache[_oldest]
                     _cache[_thread_id_str] = _ts_result
@@ -186,6 +189,8 @@ class SessionBuilder:
             # Closure captures _th, _bid, _cache, _thread_id_str and is called
             # by the turn handler after a session_id has been assigned.
             # Safe to call after build() returns.
+            # Exceptions propagate raw — pool_observer.session_update_async is
+            # the single logging site for update-closure failures (#22, #47).
             _inner_meta = _msg.platform_meta
             _tid: int | None = (
                 _inner_meta.thread_id if isinstance(_inner_meta, DiscordMeta) else None
@@ -193,29 +198,22 @@ class SessionBuilder:
             if _tid is None:
                 return
             _tid_str = str(_tid)
-            try:
-                await _th.update_session(
-                    thread_id=_tid_str,
-                    bot_id=_bid,
-                    session_id=session_id,
-                    pool_id=pool_id,
+            await _th.update_session(
+                thread_id=_tid_str,
+                bot_id=_bid,
+                session_id=session_id,
+                pool_id=pool_id,
+            )
+            if len(_cache) >= _THREAD_SESSION_CACHE_SIZE:  # (#45)
+                _oldest_key = next(iter(_cache))
+                del _cache[_oldest_key]
+                log.debug(
+                    "SessionBuilder: evicted thread_sessions cache entry"
+                    " thread_id=%s (cache full)",
+                    _oldest_key,
                 )
-                if len(_cache) >= 500:
-                    _oldest_key = next(iter(_cache))
-                    del _cache[_oldest_key]
-                    log.debug(
-                        "SessionBuilder: evicted thread_sessions cache entry"
-                        " thread_id=%s (cache full)",
-                        _oldest_key,
-                    )
-                _cache.pop(_tid_str, None)
-                _cache[_tid_str] = ThreadSession(session_id=session_id, pool_id=pool_id)
-            except (sqlite3.Error, RuntimeError):
-                log.exception(
-                    "SessionBuilder: ThreadStore.update_session failed thread_id=%s",
-                    _tid_str,
-                )
-                raise
+            _cache.pop(_tid_str, None)
+            _cache[_tid_str] = ThreadSession(session_id=session_id, pool_id=pool_id)
 
         _replacements: dict = {"session_update_fn": _thread_update_fn}
         if _stored is not None and _stored.session_id is not None:
@@ -228,13 +226,8 @@ class SessionBuilder:
 def _platform_enum(platform: str) -> Platform:
     """Map adapter platform string to ``Platform`` enum.
 
-    Falls back to ``Platform.TELEGRAM`` only to keep the function total;
-    unknown values are logged so callers can diagnose misconfiguration.
+    Raises ``ValueError`` for unknown platform strings (#46).
+    Callers receive a hard failure rather than silently routing to the wrong
+    platform — misconfiguration must surface as an error, not a wrong default.
     """
-    try:
-        return Platform(platform)
-    except ValueError:
-        log.warning(
-            "SessionBuilder: unknown platform %r, defaulting to TELEGRAM", platform
-        )
-        return Platform.TELEGRAM
+    return Platform(platform)

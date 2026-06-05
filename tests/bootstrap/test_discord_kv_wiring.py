@@ -133,7 +133,6 @@ class TestDiscordWireBotReceivesWatchChannels:
         from factory.core.messaging.message import Platform
 
         config_bundle = MagicMock(spec=AdapterConfigBundle)
-        vault_dir = Path("/tmp/test-vault")
 
         mock_nc = AsyncMock()
         mock_js = MagicMock()
@@ -233,7 +232,6 @@ class TestDiscordWireBotReceivesWatchChannels:
                 nc=mock_nc,
                 raw_config=raw_config,
                 config_bundle=config_bundle,
-                vault_dir=vault_dir,
                 platform_enum=Platform.DISCORD,
                 _stop=stop,
             )

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal, NotRequired, TypedDict
 
-Owner = Literal["lyra", "factory", "voicecli", "imagecli", "reserved"]
+Owner = Literal["factory", "voicecli", "imagecli", "reserved"]
 Status = Literal["active", "retired"]
 
 

@@ -87,7 +87,6 @@
         "factory.outbound.audio.>",
         "factory.typing.telegram.>",
         "_inbox.telegram-adapter.>",
-        "_inbox.telegram-adapter.*.*",
         "$KV.factory-state.>",
         "$KV.factory_outbound_audio_sent.>"
       ],
@@ -128,7 +127,6 @@
         "factory.outbound.audio.>",
         "factory.typing.discord.>",
         "_inbox.discord-adapter.>",
-        "_inbox.discord-adapter.*.*",
         "$KV.factory-state.>",
         "$KV.factory_outbound_audio_sent.>"
       ],
@@ -144,7 +142,8 @@
       "publish": [
         "factory.voice.tts.heartbeat",
         "factory.system.ready",
-        "$JS.API.>"
+        "$JS.API.STREAM.INFO.KV_factory-state",
+        "$JS.API.STREAM.MSG.GET.KV_factory-state"
       ],
       "subscribe": [
         "factory.voice.tts.request",
@@ -164,7 +163,8 @@
       "publish": [
         "factory.voice.stt.heartbeat",
         "factory.system.ready",
-        "$JS.API.>"
+        "$JS.API.STREAM.INFO.KV_factory-state",
+        "$JS.API.STREAM.MSG.GET.KV_factory-state"
       ],
       "subscribe": [
         "factory.voice.stt.request",
@@ -183,7 +183,8 @@
       "allow_responses": true,
       "publish": [
         "factory.llm.heartbeat",
-        "$JS.API.>"
+        "$JS.API.STREAM.INFO.KV_factory-state",
+        "$JS.API.STREAM.MSG.GET.KV_factory-state"
       ],
       "subscribe": [
         "factory.llm.generate.request",
@@ -217,7 +218,8 @@
       "allow_responses": true,
       "publish": [
         "factory.image.heartbeat",
-        "$JS.API.>"
+        "$JS.API.STREAM.INFO.KV_factory-state",
+        "$JS.API.STREAM.MSG.GET.KV_factory-state"
       ],
       "subscribe": [
         "factory.image.generate.request",
@@ -253,7 +255,8 @@
         "factory.system.ready",
         "factory.event.>",
         "factory.metric.>",
-        "$JS.API.>"
+        "$JS.API.STREAM.INFO.KV_factory-state",
+        "$JS.API.STREAM.MSG.GET.KV_factory-state"
       ],
       "subscribe": [
         "factory.clipool.cmd",
@@ -323,7 +326,9 @@
       "allow_responses": true,
       "publish": [
         "factory.audit.>",
-        "$JS.API.>",
+        "$JS.API.INFO",
+        "$JS.API.STREAM.INFO.KV_factory-state",
+        "$JS.API.STREAM.CREATE.KV_factory-state",
         "$KV.factory-state.>"
       ],
       "subscribe": [

@@ -157,6 +157,12 @@ async def handle_message(adapter: "TelegramAdapter", msg: Any) -> None:
                 msg.chat.id,
             )
         return
+    except Exception:  # always-return boundary (#4): unhandled errors must not
+        # reach aiogram — Telegram would retry the update indefinitely.
+        log.exception(
+            "Unhandled exception in handle_message for chat_id=%s",
+            msg.chat.id,
+        )
 
 
 async def handle_voice_message(adapter: "TelegramAdapter", msg: Any) -> None:  # noqa: C901
@@ -293,10 +299,18 @@ async def handle_voice_message(adapter: "TelegramAdapter", msg: Any) -> None:  #
     async def _send_bp(text: str) -> None:
         await adapter.bot.send_message(**_make_send_kwargs(chat_id, text, message_id))
 
-    await _pipeline.run(
-        hub_audio,
-        inbound_ctx,
-        PrebuiltParser(),
-        send_backpressure=_send_bp,
-        on_drop=lambda: adapter._cancel_typing(chat_id),
-    )
+    try:
+        await _pipeline.run(
+            hub_audio,
+            inbound_ctx,
+            PrebuiltParser(),
+            send_backpressure=_send_bp,
+            on_drop=lambda: adapter._cancel_typing(chat_id),
+        )
+    except Exception:  # always-return boundary (#4): unhandled errors must not
+        # reach aiogram — Telegram would retry the update indefinitely.
+        log.exception(
+            "Unhandled exception in handle_voice_message for chat_id=%s user_id=%s",
+            chat_id,
+            user_id,
+        )

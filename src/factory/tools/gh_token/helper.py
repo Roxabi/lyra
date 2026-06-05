@@ -218,15 +218,17 @@ async def mint(
 
     try:
         resp = await http.post(url, headers=headers)
-    except httpx.ConnectError as exc:
+    except httpx.RequestError as exc:
         raise MintError(
-            reason=f"network error connecting to GitHub API: {exc}",
+            reason=f"network/transport error: {exc}",
             http_status=None,
             retries=0,
         ) from exc
-    except httpx.TransportError as exc:
+    except (
+        httpx.StreamError
+    ) as exc:  # StreamError → RuntimeError, not under RequestError (#54)
         raise MintError(
-            reason=f"network/transport error: {exc}",
+            reason=f"stream error communicating with GitHub API: {exc}",
             http_status=None,
             retries=0,
         ) from exc

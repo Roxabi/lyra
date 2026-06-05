@@ -19,7 +19,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar
+
+if TYPE_CHECKING:
+    from nats.js.client import JetStreamContext
 
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
@@ -196,6 +199,15 @@ class NatsBus(Generic[T]):
     def subscription_count(self) -> int:
         """Return the number of active NATS subscriptions."""
         return len(self._subscriptions)
+
+    @property
+    def nc(self) -> NATS:
+        """Return the underlying NATS client (public accessor — finding #19)."""
+        return self._nc
+
+    def jetstream(self) -> "JetStreamContext":
+        """Return a JetStream context from the underlying NATS client (finding #19)."""
+        return self._nc.jetstream()
 
     def version_mismatch_count(self, envelope_name: str) -> int:
         """Cumulative drops for *envelope_name* — summed across all check kinds."""

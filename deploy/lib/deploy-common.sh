@@ -42,7 +42,7 @@ compute_convergence_state() {
     git_head=$(cd "${FACTORY_DIR}" && git rev-parse HEAD 2>/dev/null || echo "none")
 
     if [ -d "${QUADLET_DIR}" ]; then
-        unit_sha=$(find "${QUADLET_DIR}" -maxdepth 1 \( -name 'lyra*' -o -name 'factory*' \) -type f -print0 \
+        unit_sha=$(find "${QUADLET_DIR}" -maxdepth 1 -name 'factory*' -type f -print0 \
             | sort -z | xargs -0 -r sha256sum | sha256sum | awk '{print $1}')
     else
         unit_sha="none"

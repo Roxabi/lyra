@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import ssl
 import sys
 
 import nats.errors
@@ -12,7 +13,6 @@ import nats.errors
 from factory.bootstrap.factory.config import build_adapter_config_bundle
 from factory.core.messaging.message import Platform
 from factory.core.messaging.utils.metrics import log_contracts_version
-from factory.paths import factory_data_dir
 from roxabi_nats import nats_connect
 from roxabi_nats.connect import scrub_nats_url
 
@@ -50,7 +50,10 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
             "adapter_standalone: connected to NATS at %s",
             scrub_nats_url(nats_url),
         )
-    except (nats.errors.Error, OSError) as exc:
+    except (nats.errors.Error, OSError, asyncio.TimeoutError, ssl.SSLError) as exc:
+        # Broadened to include asyncio.TimeoutError (connect hangs) and
+        # ssl.SSLError (TLS handshake failure) — both surfaced during NATS
+        # connection setup and must be treated as fatal startup errors (#8).
         sys.exit(f"Failed to connect to NATS at {scrub_nats_url(nats_url)!r}: {exc}")
 
     try:
@@ -71,18 +74,10 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
                 bootstrap_discord_standalone,
             )
 
-            # Discord needs the factory data dir parent to exist so its private
-            # named volume mount-point is reachable.  Telegram is stateless
-            # post-#1721 and its container has a read-only ~/.roxabi — do NOT
-            # mkdir for telegram (#1734).
-            vault_dir = factory_data_dir()
-            vault_dir.mkdir(parents=True, exist_ok=True)
-
             await bootstrap_discord_standalone(
                 nc,
                 raw_config,
                 config_bundle,
-                vault_dir,
                 platform_enum,
                 _stop=_stop,
             )

@@ -46,7 +46,8 @@ sudo apt install -y \
   fail2ban ufw \
   build-essential python3-dev portaudio19-dev \
   ffmpeg wtype wl-clipboard \
-  libgirepository-2.0-dev libcairo2-dev
+  libgirepository-2.0-dev libcairo2-dev \
+  jq skopeo
 
 section "moviepy (dedicated venv)"
 MOVIEPY_VENV="$HOME/.venvs/moviepy"
@@ -365,7 +366,11 @@ section "GitHub SSH host key"
 if ssh-keygen -F github.com &>/dev/null; then
   info "GitHub host key already in known_hosts."
 else
-  ssh-keyscan github.com >> "$HOME/.ssh/known_hosts" 2>/dev/null
+  _gh_hostkey=$(ssh-keyscan github.com 2>&1)
+  if [ -z "$_gh_hostkey" ]; then
+    error "ssh-keyscan github.com returned empty output — network issue?"
+  fi
+  printf '%s\n' "$_gh_hostkey" >> "$HOME/.ssh/known_hosts"
   info "GitHub host key added to known_hosts."
 fi
 
@@ -520,17 +525,17 @@ fi
 # ── Git config ───────────────────────────────────────────────────────────────
 
 section "Git config"
-if git config --global user.name &>/dev/null; then
-  info "Git user.name: $(git config --global user.name)"
+if sudo -u "$ADMIN_USER" HOME="$ADMIN_HOME" git config --global user.name &>/dev/null; then
+  info "Git user.name: $(sudo -u "$ADMIN_USER" HOME="$ADMIN_HOME" git config --global user.name)"
 else
   read -rp "Git user.name: " GIT_NAME
-  git config --global user.name "$GIT_NAME"
+  sudo -u "$ADMIN_USER" HOME="$ADMIN_HOME" git config --global user.name "$GIT_NAME"
 fi
-if git config --global user.email &>/dev/null; then
-  info "Git user.email: $(git config --global user.email)"
+if sudo -u "$ADMIN_USER" HOME="$ADMIN_HOME" git config --global user.email &>/dev/null; then
+  info "Git user.email: $(sudo -u "$ADMIN_USER" HOME="$ADMIN_HOME" git config --global user.email)"
 else
   read -rp "Git user.email: " GIT_EMAIL
-  git config --global user.email "$GIT_EMAIL"
+  sudo -u "$ADMIN_USER" HOME="$ADMIN_HOME" git config --global user.email "$GIT_EMAIL"
 fi
 
 # ── Done ─────────────────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
@@ -11,6 +12,8 @@ from factory.core.messaging.push_guard import PushGuardDeps, push_to_hub_guarded
 if TYPE_CHECKING:
     from factory.core.messaging.message import InboundMessage
     from factory.inbound.context import DispatchCtx
+
+log = logging.getLogger(__name__)
 
 
 def _default_get_msg(key: str, display_fallback: str = "") -> str:
@@ -53,10 +56,29 @@ class Dispatcher:
         get_msg: Callable[[str, str], str] = (
             _catalog_get_msg if _catalog is not None else _default_get_msg
         )
+        # Finding #3: guard the Platform enum lookup before push_to_hub_guarded
+        # is called — an unregistered or misspelled platform value raises KeyError
+        # here, before the guard in push_guard.py has any chance to intercept it.
+        try:
+            platform = Platform[msg.platform.upper()]
+        except KeyError:
+            log.warning(
+                "dispatcher_unknown_platform",
+                extra={
+                    "platform": msg.platform,
+                    "user_id": msg.user_id,
+                    "dropped": True,
+                },
+            )
+            if on_drop is not None:
+                on_drop()
+            text = get_msg("backpressure_ack", "Processing your request…")
+            await send_backpressure(text)
+            return
         await push_to_hub_guarded(
             PushGuardDeps(
                 inbound_bus=ctx.inbound_bus,
-                platform=Platform[msg.platform.upper()],
+                platform=platform,
                 msg=msg,
                 circuit_registry=ctx.circuit_registry,
                 on_drop=on_drop,

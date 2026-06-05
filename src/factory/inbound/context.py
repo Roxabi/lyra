@@ -69,9 +69,15 @@ class SessionCtx:
     ``turn_publisher`` is the NATS publisher used by ``SessionBuilder`` to
     publish ``start_session`` events instead of writing TurnStore directly.
     When ``None`` (test/CLI mode), session persistence is skipped.
+
+    ``turn_store`` is a legacy field retained for structural compatibility (#48).
+    All adapters pass ``turn_store=None``; ``SessionBuilder`` only checks
+    ``is None`` (it never reads or writes through it).  Active session
+    persistence is handled by ``last_session`` (``LastSessionStore``) on the
+    turnstore path and by ``thread_store`` on the Discord-thread path.
     """
 
-    turn_store: TurnStoreProtocol | None
+    turn_store: TurnStoreProtocol | None  # legacy — always None in production (#48)
     thread_store: ThreadStoreProtocol | None
     turn_publisher: TurnPublisher | None = None
     thread_sessions_cache: dict[str, ThreadSession] = field(default_factory=dict)

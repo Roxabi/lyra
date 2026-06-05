@@ -37,7 +37,7 @@ Volume=factory-data.volume:/home/factory/.roxabi/factory:z
 # T26 (#1331): hub is now a READER — turns.db must be ro; factory-turn-writer owns writes.
 # Specific bind-mount after the broad factory-data volume; Podman last-mount-wins on the
 # same path, so this ro overlay takes precedence over the rw volume for turns.db alone.
-Volume=%h/.roxabi/factory/turns.db:/home/factory/.roxabi/factory/turns.db:ro,z
+Volume=%h/.roxabi/factory/turn-writer/turns.db:/home/factory/.roxabi/factory/turns.db:ro,z
 # Inline single-file bind mount — Quadlet .volume units wrapping a single file
 # either fail with loop-device errors or are silently downgraded to empty named
 # volumes (IsADirectoryError at read time). Inline Volume= does a direct bind.

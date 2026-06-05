@@ -94,7 +94,6 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
     nc: Any,
     raw_config: dict,
     config_bundle: AdapterConfigBundle,
-    vault_dir: Path,
     platform_enum: Platform,
     *,
     _stop: asyncio.Event | None = None,
@@ -179,9 +178,10 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
             continue
         token = dc_creds[bot_id]
 
-        watch_channels = await seed_watch_channels(js, "discord", bot_id)
-
         try:
+            # seed_watch_channels is inside the try so that any error
+            # (e.g. NATS disconnect mid-loop) triggers the cleanup path (#21).
+            watch_channels = await seed_watch_channels(js, "discord", bot_id)
             wired = await _wire_bot(bot_cfg, token, watch_channels)
         except Exception:
             await _close_dc_wired("dc-wired", wired_dc)
@@ -201,5 +201,6 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
     try:
         await _bootstrap_discord_teardown(wired_dc, dc_thread_store, stop_dc)
     finally:
+        await dc_kv_last_session.close()  # release KV handle (#49)
         if blob_store is not None:
             await blob_store.aclose()  # type: ignore[union-attr]  # concrete HttpBlobStoreAdapter; aclose not on port

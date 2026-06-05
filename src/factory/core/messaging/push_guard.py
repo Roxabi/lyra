@@ -82,3 +82,19 @@ async def push_to_hub_guarded(deps: PushGuardDeps) -> None:
             deps.on_drop()
         text = deps.get_msg("backpressure_ack", "Processing your request…")
         await deps.send_backpressure(text)
+    except KeyError:
+        # Finding #3: Bus.put raises KeyError for an unregistered platform.
+        # Treat it the same as QueueFull so this function truly always returns
+        # normally (as the docstring guarantees).
+        log.warning(
+            "push_guard_unregistered_platform",
+            extra={
+                "platform": deps.platform.value,
+                "user_id": deps.msg.user_id,
+                "dropped": True,
+            },
+        )
+        if deps.on_drop is not None:
+            deps.on_drop()
+        text = deps.get_msg("backpressure_ack", "Processing your request…")
+        await deps.send_backpressure(text)

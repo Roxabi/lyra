@@ -163,5 +163,6 @@ async def bootstrap_telegram_standalone(
     try:
         await _bootstrap_telegram_teardown(wired, stop)
     finally:
+        await tg_kv_last_session.close()  # release KV handle (#50)
         if blob_store is not None:
             await blob_store.aclose()  # type: ignore[union-attr]  # concrete HttpBlobStoreAdapter; aclose not on port

@@ -31,7 +31,7 @@ def _make_wire_bot_common_stub():
     stubbed object with the right async methods.
     """
 
-    async def _fake_wire_bot_common(*, adapter_factory, **_kw):
+    async def _fake_wire_bot_common(*, adapter_factory, **_):
         mock_inbound_bus = AsyncMock()
         mock_inbound_bus.stop = AsyncMock()
         mock_typing_listener = AsyncMock()
@@ -195,28 +195,51 @@ class TestTelegramAdapterStandaloneNoMkdir:
     """
 
     def test_adapter_standalone_source_guards_mkdir_to_discord(self) -> None:
-        """Source-level guard: vault_dir.mkdir only reachable from discord branch.
+        """Source guard: no mkdir in adapter_standalone; mkdir is discord-only.
 
-        Inspect adapter_standalone.py source and verify that the 'mkdir' call
-        only appears inside the 'discord' conditional, not before the if/elif.
+        #28 relocated the data-dir mkdir from adapter_standalone.py into
+        bootstrap_discord_standalone (standalone_discord.py).  This two-part assertion
+        verifies the post-#28 structural guarantee of #1734 D5:
+
+        Part 1 — adapter_standalone.py contains NO mkdir at all (read-only telegram
+        path can never trigger a filesystem write, regardless of platform).
+
+        Part 2 — standalone_discord.py's bootstrap_discord_standalone DOES contain
+        mkdir (discord-only guarantee: the discord container has a writable data dir).
+
+        Why source-inspection here (in addition to behavioral tests below):
+        Source inspection catches structural regressions that survive behavioral mocking
+        — e.g. a new helper imported at module level whose mkdir call is not reachable
+        from the exercised code path.  The behavioral tests (see
+        test_telegram_standalone_never_calls_mkdir and
+        test_discord_standalone_calls_mkdir) provide the stronger runtime guarantee
+        for the hot paths; this test provides a cheap belt-and-suspenders static layer.
         """
-        import factory.bootstrap.standalone.adapter_standalone as _mod
+        import factory.bootstrap.standalone.adapter_standalone as _adapter_mod
+        import factory.bootstrap.wiring.standalone_discord as _discord_mod
 
-        source = inspect.getsource(_mod)
-        lines = source.splitlines()
-        mkdir_idx = next(
-            (i for i, ln in enumerate(lines) if "vault_dir.mkdir" in ln), None
+        # Part 1: no mkdir in _bootstrap_adapter_standalone — structural safety.
+        # Uses getsource on the specific function (not the module) so unrelated
+        # module-level helpers don't produce false-positives.
+        # The behavioral test (test_telegram_standalone_never_calls_mkdir) provides
+        # the stronger runtime guarantee; this is a cheap static layer.
+        adapter_fn = _adapter_mod._bootstrap_adapter_standalone
+        adapter_source = inspect.getsource(adapter_fn)
+        assert "mkdir" not in adapter_source, (
+            "mkdir found in _bootstrap_adapter_standalone — "
+            "any mkdir here would be reachable from the telegram path, "
+            "crashing on read-only fs (#1734 D5)"
         )
-        discord_branch_idx = next(
-            (i for i, ln in enumerate(lines) if 'platform == "discord"' in ln), None
-        )
-        assert mkdir_idx is not None, "vault_dir.mkdir not found in adapter_standalone"
-        assert discord_branch_idx is not None, (
-            '"discord" branch not found in adapter_standalone'
-        )
-        assert mkdir_idx > discord_branch_idx, (
-            "vault_dir.mkdir appears BEFORE the discord branch — "
-            "telegram would also trigger mkdir, crashing on read-only fs"
+
+        # Part 2: mkdir present in bootstrap_discord_standalone — discord-only.
+        # Uses inspect.getsource on the specific function (not the module) so a
+        # rename of the function would be caught by AttributeError, not silently
+        # pass with a module-wide grep that matches an unrelated helper.
+        discord_fn = _discord_mod.bootstrap_discord_standalone
+        discord_func_source = inspect.getsource(discord_fn)
+        assert "mkdir" in discord_func_source, (
+            "mkdir not found in bootstrap_discord_standalone (standalone_discord.py) — "
+            "discord data-dir creation missing (#28 relocation invariant)"
         )
 
     def test_adapter_standalone_source_no_mkdir_in_telegram_branch(self) -> None:
@@ -251,70 +274,220 @@ class TestTelegramAdapterStandaloneNoMkdir:
             f"lines: {mkdir_in_tg}"
         )
 
-    async def test_telegram_adapter_standalone_factory_data_dir_not_called(
+    def test_telegram_adapter_standalone_factory_data_dir_not_called(self) -> None:
+        """Source-level guard: factory_data_dir absent from adapter_standalone.
+
+        #28 removed factory_data_dir from adapter_standalone.py entirely — the
+        discord data-dir mkdir now lives in standalone_discord.py.  This assertion
+        verifies that adapter_standalone.py does not import or call factory_data_dir,
+        so the telegram path can never trigger a data-dir creation on a read-only fs
+        (#1734 D5).
+        """
+        import factory.bootstrap.standalone.adapter_standalone as _mod
+
+        source = inspect.getsource(_mod)
+        assert "factory_data_dir" not in source, (
+            "factory_data_dir found in adapter_standalone.py — "
+            "this would be reachable from the telegram path and crash on read-only fs "
+            "(#1734 D5; #28 relocated mkdir to standalone_discord.py)"
+        )
+
+    async def test_telegram_standalone_never_calls_mkdir(
         self,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """Behavioral: factory_data_dir() is NOT called when platform=telegram.
+        """Behavioral: bootstrap_telegram_standalone never calls Path.mkdir (#1734 D5).
 
-        Patches factory_data_dir to raise if invoked, then runs the telegram
-        path of _bootstrap_adapter_standalone.  If factory_data_dir is called,
-        the test fails immediately — no read-only-fs simulation needed.
+        Drives the full telegram boot path with real module wiring (no source-text
+        scanning).  pathlib.Path.mkdir is patched at the pathlib level so any mkdir
+        call — even through helpers — is caught.
+
+        Negative: if mkdir is ever added to standalone_telegram.py (or a function it
+        calls without the patch seam), this test catches it at runtime.
         """
-        monkeypatch.setenv("NATS_URL", "nats://fake:4222")
+        monkeypatch.setenv("ROXABI_FACTORY_DISCORD_DIR", str(tmp_path))
+        from factory.bootstrap.wiring.standalone_telegram import (
+            bootstrap_telegram_standalone,
+        )
 
         stop = asyncio.Event()
         stop.set()
 
-        mock_nc = AsyncMock()
-        mock_nc.close = AsyncMock()
+        raw_config = {"telegram": {"bots": [{"bot_id": "testbot"}]}}
+        from factory.bootstrap.factory.config import AdapterConfigBundle
+        from factory.core.messaging.message import Platform
 
-        def _raise_if_called() -> Path:
-            raise AssertionError(
-                "factory_data_dir() called for telegram — crashes on read-only fs"
-            )
+        config_bundle = MagicMock(spec=AdapterConfigBundle)
+
+        mock_nc = AsyncMock()
+        mock_js = AsyncMock()
+        mock_nc.jetstream = MagicMock(return_value=mock_js)
+
+        captured_kwargs: dict = {}
+
+        def _make_tg_adapter(**kwargs):
+            captured_kwargs.update(kwargs)
+            mock_adapter = MagicMock()
+            mock_adapter._bot_id = "testbot"
+            mock_adapter.dp = MagicMock()
+            mock_adapter.dp.start_polling = AsyncMock(return_value=None)
+            mock_adapter.dp.stop_polling = AsyncMock(return_value=None)
+            mock_adapter.close = AsyncMock()
+            return mock_adapter
+
+        wire_stub = _make_wire_bot_common_stub()
+        mock_mkdir = MagicMock()
 
         with (
             patch(
-                "factory.bootstrap.standalone.adapter_standalone.nats_connect",
-                AsyncMock(return_value=mock_nc),
+                "factory.bootstrap.credentials.load_bot_token",
+                return_value=("fake-token", None),
             ),
             patch(
-                "factory.bootstrap.standalone.adapter_standalone.log_contracts_version",
+                "factory.bootstrap.wiring.standalone_telegram.init_blobstore",
+                return_value=None,
             ),
             patch(
-                "factory.bootstrap.standalone.adapter_standalone.build_adapter_config_bundle",
-                return_value=MagicMock(),
+                "factory.bootstrap.wiring.standalone_telegram.wait_for_hub",
+                AsyncMock(return_value=None),
             ),
             patch(
-                "factory.bootstrap.standalone.adapter_standalone.factory_data_dir",
-                side_effect=_raise_if_called,
+                "factory.bootstrap.wiring.standalone_telegram.wire_bot_common",
+                side_effect=wire_stub,
             ),
             patch(
-                "factory.bootstrap.wiring.standalone_telegram.bootstrap_telegram_standalone",
+                "factory.adapters.telegram.TelegramAdapter",
+                side_effect=_make_tg_adapter,
+            ),
+            patch(
+                "factory.bootstrap.lifecycle.signal_handlers.setup_shutdown_event",
+                return_value=stop,
+            ),
+            patch(
+                "factory.bootstrap.lifecycle.lifecycle_helpers.close_safely",
                 AsyncMock(),
             ),
+            patch("pathlib.Path.mkdir", mock_mkdir),
         ):
-            from factory.bootstrap.standalone.adapter_standalone import (
-                _bootstrap_adapter_standalone,
-            )
-
-            # Import after patching so the lazy import inside the telegram branch
-            # resolves to the patched version.
-            with patch(
-                "factory.bootstrap.standalone.adapter_standalone"
-                ".bootstrap_telegram_standalone",
-                AsyncMock(),
-                create=True,
-            ):
-                pass  # just ensuring the module-level patches are active
-
-            await _bootstrap_adapter_standalone(
-                raw_config={"telegram": {"bots": [{"bot_id": "bot1"}]}},
-                platform="telegram",
+            await bootstrap_telegram_standalone(
+                nc=mock_nc,
+                raw_config=raw_config,
+                config_bundle=config_bundle,
+                platform_enum=Platform.TELEGRAM,
                 _stop=stop,
             )
+
+        # Negative: if mkdir is added to the telegram boot path, call_count > 0
+        mock_mkdir.assert_not_called()
+
+    async def test_discord_standalone_calls_mkdir(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """Behavioral: bootstrap_discord_standalone calls Path.mkdir for discord dir.
+
+        Drives the full discord boot path and verifies mkdir IS called — confirming
+        the #28 relocation placed mkdir in the discord path only (#1734 D5).
+
+        Negative: if the mkdir is accidentally removed from standalone_discord.py,
+        this test fails, catching the regression before prod deploys to a container
+        that relies on the directory being created.
+        """
+        monkeypatch.setenv("ROXABI_FACTORY_DISCORD_DIR", str(tmp_path))
+
+        from factory.bootstrap.wiring.standalone_discord import (
+            bootstrap_discord_standalone,
+        )
+
+        stop = asyncio.Event()
+        stop.set()
+
+        raw_config = {
+            "discord": {
+                "bots": [
+                    {"bot_id": "testbot", "auto_thread": False, "thread_hot_hours": 4}
+                ]
+            }
+        }
+        from factory.bootstrap.factory.config import AdapterConfigBundle
+        from factory.core.messaging.message import Platform
+
+        config_bundle = MagicMock(spec=AdapterConfigBundle)
+
+        mock_nc = AsyncMock()
+        mock_js = AsyncMock()
+        mock_nc.jetstream = MagicMock(return_value=mock_js)
+
+        captured_kwargs: dict = {}
+
+        def _make_dc_adapter(**kwargs):
+            captured_kwargs.update(kwargs)
+            mock_adapter = MagicMock()
+            mock_adapter._bot_id = "testbot"
+            mock_adapter._watch_channels = frozenset()
+            mock_adapter._resolve_channel = MagicMock()
+            mock_adapter.close = AsyncMock()
+            mock_adapter.start = AsyncMock()
+            return mock_adapter
+
+        mock_thread_store = AsyncMock()
+        mock_thread_store.connect = AsyncMock()
+        mock_thread_store.close = AsyncMock()
+
+        wire_stub = _make_wire_bot_common_stub()
+        mock_mkdir = MagicMock()
+
+        with (
+            patch(
+                "factory.bootstrap.credentials.load_bot_token",
+                return_value=("fake-token", None),
+            ),
+            patch(
+                "factory.bootstrap.wiring.standalone_discord._create_dc_stores",
+                AsyncMock(return_value=(mock_thread_store,)),
+            ),
+            patch(
+                "factory.bootstrap.wiring.standalone_discord.init_blobstore",
+                return_value=None,
+            ),
+            patch(
+                "factory.bootstrap.wiring.standalone_discord.wait_for_hub",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "factory.bootstrap.wiring.standalone_discord.seed_watch_channels",
+                AsyncMock(return_value=frozenset()),
+            ),
+            patch(
+                "factory.bootstrap.wiring.standalone_discord.wire_bot_common",
+                side_effect=wire_stub,
+            ),
+            patch(
+                "factory.adapters.discord.DiscordAdapter",
+                side_effect=_make_dc_adapter,
+            ),
+            patch(
+                "factory.bootstrap.lifecycle.signal_handlers.setup_shutdown_event",
+                return_value=stop,
+            ),
+            patch(
+                "factory.bootstrap.lifecycle.lifecycle_helpers.close_safely",
+                AsyncMock(),
+            ),
+            patch("pathlib.Path.mkdir", mock_mkdir),
+        ):
+            await bootstrap_discord_standalone(
+                nc=mock_nc,
+                raw_config=raw_config,
+                config_bundle=config_bundle,
+                platform_enum=Platform.DISCORD,
+                _stop=stop,
+            )
+
+        # Negative: removing the mkdir from standalone_discord.py causes this to fail
+        mock_mkdir.assert_called()
 
 
 class TestDiscordStandaloneNoTurnsDb:
@@ -379,7 +552,6 @@ class TestDiscordStandaloneNoTurnsDb:
         from factory.core.messaging.message import Platform
 
         config_bundle = MagicMock(spec=AdapterConfigBundle)
-        vault_dir = tmp_path
 
         mock_nc = AsyncMock()
         mock_js = AsyncMock()
@@ -447,7 +619,6 @@ class TestDiscordStandaloneNoTurnsDb:
                 nc=mock_nc,
                 raw_config=raw_config,
                 config_bundle=config_bundle,
-                vault_dir=vault_dir,
                 platform_enum=Platform.DISCORD,
                 _stop=stop,
             )

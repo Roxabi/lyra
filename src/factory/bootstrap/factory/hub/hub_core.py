@@ -48,7 +48,8 @@ def _build_hub(deps: BuildHubDeps) -> Hub:
     )
 
     # Wire TurnPublisher + ResumePublisherAdapter before Hub construction
-    js = deps.inbound_bus._nc.jetstream()
+    # Finding #19: use public accessor instead of ._nc
+    js = deps.inbound_bus.jetstream()
     turn_publisher = TurnPublisher(js)
     adapter = TurnPublisherAdapter(turn_publisher, deps.stores.turn)
 
@@ -72,7 +73,8 @@ def _build_hub(deps: BuildHubDeps) -> Hub:
     hub.set_alias_store(deps.stores.identity_alias)
     hub.set_turn_publisher(turn_publisher)
 
-    typing_publisher = TypingPublisher(deps.inbound_bus._nc)
+    # Finding #19: use public accessor instead of ._nc
+    typing_publisher = TypingPublisher(deps.inbound_bus.nc)
     hub.set_typing_publisher(typing_publisher)
 
     return hub

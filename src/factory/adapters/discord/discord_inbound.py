@@ -270,6 +270,54 @@ async def _warn_oversize_reply(message: Any) -> None:
         )
 
 
+async def _run_pipeline_guarded(
+    adapter: "DiscordAdapter",
+    message: Any,
+    send_to_id: int,
+) -> None:
+    """Run InboundPipeline with the always-return boundary (#5).
+
+    Extracted to keep handle_message below C901 complexity=10.
+    The broad except must NOT be removed — any unhandled error must NOT
+    propagate to discord.py or it crashes the gateway connection,
+    triggering a reconnect loop.  (#5)
+    """
+    parser = _parser_cache.get(id(adapter))
+    if parser is None:
+        parser = DiscordWireParser(adapter)
+        _parser_cache[id(adapter)] = parser
+
+    _ingest = getattr(adapter, "_ingest_ctx", None)
+    inbound_ctx = build_discord_inbound_ctx(adapter, ingest=_ingest)
+
+    pre_route = functools.partial(_discord_pre_route_hook, adapter=adapter)
+    pre_session = functools.partial(
+        _discord_pre_session_hook, raw_message=message, adapter=adapter
+    )
+
+    async def _dc_backpressure(text: str) -> None:
+        await message.reply(text)
+
+    try:
+        await _pipeline.run(
+            message,
+            inbound_ctx,
+            parser,
+            pre_route_hook=pre_route,
+            pre_session_hook=pre_session,
+            send_backpressure=_dc_backpressure,
+            on_drop=lambda: adapter._cancel_typing(send_to_id),
+        )
+    except AttachmentIngestError as e:
+        await message.reply(e.user_message)
+    except Exception:  # always-return boundary (#5): unhandled errors must not
+        # reach discord.py — that would crash the gateway → reconnect loop.
+        log.exception(
+            "Unhandled exception in handle_message for message id=%s",
+            message.id,
+        )
+
+
 async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:
     """Handle incoming Gateway message.
 
@@ -318,32 +366,4 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:
     send_to_id = message.channel.id
     adapter._start_typing(send_to_id)
 
-    # Per-adapter parser — avoid recreating each message.
-    parser = _parser_cache.get(id(adapter))
-    if parser is None:
-        parser = DiscordWireParser(adapter)
-        _parser_cache[id(adapter)] = parser
-
-    _ingest = getattr(adapter, "_ingest_ctx", None)
-    inbound_ctx = build_discord_inbound_ctx(adapter, ingest=_ingest)
-
-    pre_route = functools.partial(_discord_pre_route_hook, adapter=adapter)
-    pre_session = functools.partial(
-        _discord_pre_session_hook, raw_message=message, adapter=adapter
-    )
-
-    async def _dc_backpressure(text: str) -> None:
-        await message.reply(text)
-
-    try:
-        await _pipeline.run(
-            message,
-            inbound_ctx,
-            parser,
-            pre_route_hook=pre_route,
-            pre_session_hook=pre_session,
-            send_backpressure=_dc_backpressure,
-            on_drop=lambda: adapter._cancel_typing(send_to_id),
-        )
-    except AttachmentIngestError as e:
-        await message.reply(e.user_message)
+    await _run_pipeline_guarded(adapter, message, send_to_id)

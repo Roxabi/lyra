@@ -90,8 +90,8 @@ section "Firewall"
 if sudo ufw status | grep -q "4222"; then
   info "UFW NATS rule already exists."
 else
-  sudo ufw allow from 192.168.1.0/24 to any port 4222 proto tcp comment "NATS (LAN)"
-  info "UFW: port 4222 allowed from 192.168.1.0/24."
+  sudo ufw allow from "${FACTORY_LAN_SUBNET:-192.168.1.0/24}" to any port 4222 proto tcp comment "NATS (LAN)"
+  info "UFW: port 4222 allowed from ${FACTORY_LAN_SUBNET:-192.168.1.0/24}."
 fi
 
 # ── 5. TLS certs ─────────────────────────────────────────────────────────

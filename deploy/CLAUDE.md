@@ -107,11 +107,11 @@ Three systemd user timers drive convergence **automatically**:
 |---|---|---|---|
 | `podman-auto-update.timer` | `*:0/5` (5 min) | `podman-auto-update.service` | Host-static apt unit (installed by `provision.sh`/`install.sh`); drop-in sets `OnCalendar=*:0/5`. Polls GHCR digests for containers labelled `io.containers.autoupdate=registry`; pulls and restarts on new digest. |
 | `factory-quadlet-sync.timer` | `*:0/5` (5 min) | `factory-quadlet-sync.service` | Pulls `origin/staging` for lyra. If `deploy/quadlet/**`, Makefile, or `tools/render_quadlet.py` changed, runs `make quadlet-install` (conditional, no full converge). |
-| `factory-post-autoupdate.timer` | `*:0/5` (5 min) | `factory-post-autoupdate.service` | Checks whether `podman-auto-update` has pulled a new image digest. On digest change, triggers the full `make converge` sequence (including auth.conf regen + secret refresh + restarts). |
+| `factory-post-autoupdate.timer` | `*:2/5` (5 min, offset +2 min — #1751) | `factory-post-autoupdate.service` | Checks whether `podman-auto-update` has pulled a new image digest. On digest change, triggers the full `make converge` sequence (including auth.conf regen + secret refresh + restarts). Fires 2 min after `factory-quadlet-sync` so the `.converge-stamp` short-circuit in `converge.sh` deduplicates the two converge runs when both are triggered on the same staging merge. |
 
 `podman-auto-update` handles **image pulls** (CI-driven, registry-labelled containers).
-`factory-quadlet-sync` handles **unit/template changes** (code-driven).
-`factory-post-autoupdate` handles **post-pull convergence** (restarts + auth.conf regen).
+`factory-quadlet-sync` handles **unit/template changes** (code-driven); fires at `*:0/5`.
+`factory-post-autoupdate` handles **post-pull convergence** (restarts + auth.conf regen); fires at `*:2/5` (2 min later) so the stamp short-circuit prevents a redundant converge when quadlet-sync already ran.
 All three are required for fully hands-off deploys.
 
 ### Failure notification path

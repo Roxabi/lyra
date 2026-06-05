@@ -178,6 +178,18 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
             )
             raise
 
+        from factory.infrastructure.audit import JetStreamAuditSink
+
+        _audit_sink = JetStreamAuditSink()
+        await _audit_sink.provision(nc)
+        if _audit_sink._degraded:  # noqa: SLF001
+            log.critical(
+                "hub_standalone: FACTORY_AUDIT stream provision failed — "
+                "security audit degraded for this process lifetime. "
+                "RestartSec will recover."
+            )
+            raise RuntimeError("FACTORY_AUDIT provision failed")
+
         # Publish each bot's watch_channels into factory-state KV before
         # announcing readiness so adapters see the value on first seed (SC6).
         _bots: list[tuple[str, str]] = [

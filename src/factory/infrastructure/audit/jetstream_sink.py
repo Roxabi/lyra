@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from nats.js.client import JetStreamContext
 
 log = logging.getLogger(__name__)
-_security_log = logging.getLogger("lyra.security")
+_security_log = logging.getLogger("factory.security")
 
 _SUBJECT_PREFIX = "factory.audit.security"
 _SUBJECT_PRIVILEGED = f"{_SUBJECT_PREFIX}.privileged"

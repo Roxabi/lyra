@@ -5,8 +5,10 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from nats.js.errors import KeyNotFoundError, NoKeysError
+from nats.js.errors import InvalidKeyError, KeyNotFoundError, NoKeysError
+from nats.js.kv import VALID_KEY_RE
 
+from factory.infrastructure.stores._kv_keys import kv_safe_part
 from factory.infrastructure.stores.turn_session_kv import (
     KV_BUCKET,
     KvLastSessionStore,
@@ -199,6 +201,111 @@ class TestKvLastSessionStoreConnectMissingBucket:
 
         # Assert
         assert store._kv is kv
+
+
+class TestKvSafePart:
+    """Direct unit tests for kv_safe_part sanitizer."""
+
+    def test_colon_pool_id_produces_no_colon(self) -> None:
+        """kv_safe_part must strip colons from pool_ids like telegram:lyra:N."""
+        result = kv_safe_part("telegram:lyra:7377831990")
+        assert ":" not in result
+
+    def test_colon_pool_id_matches_valid_key_re(self) -> None:
+        """kv_safe_part output must satisfy nats VALID_KEY_RE."""
+        result = kv_safe_part("telegram:lyra:7377831990")
+        assert VALID_KEY_RE.match(result), f"Key {result!r} rejected by VALID_KEY_RE"
+
+    def test_safe_value_unchanged(self) -> None:
+        """kv_safe_part must not mangle already-valid key parts."""
+        assert kv_safe_part("pool-tg-main") == "pool-tg-main"
+
+    def test_all_invalid_chars_replaced(self) -> None:
+        """kv_safe_part replaces all out-of-set chars including spaces and wildcards."""
+        result = kv_safe_part("a:b.c*d>e f")
+        assert VALID_KEY_RE.match(result)
+        assert ":" not in result
+        assert "*" not in result
+        assert ">" not in result
+        assert " " not in result
+
+
+class TestKvLastSessionStoreColonPoolId:
+    """#1775 regression: colon pool_ids must not raise InvalidKeyError."""
+
+    async def test_get_last_session_colon_pool_id_no_raise(self) -> None:
+        """get_last_session with a colon pool_id must not raise; key must be valid."""
+        kv = AsyncMock()
+        kv.get.side_effect = KeyNotFoundError
+        js = AsyncMock()
+        js.key_value.return_value = kv
+        store = KvLastSessionStore(js)
+        await store.connect()
+
+        # Must not raise — previously crashed with InvalidKeyError
+        result = await store.get_last_session("telegram:lyra:7377831990")
+        assert result is None
+
+        # The key sent to kv.get must satisfy NATS VALID_KEY_RE and contain no ':'
+        called_key = kv.get.call_args[0][0]
+        assert ":" not in called_key, f"Colon in KV key: {called_key!r}"
+        assert VALID_KEY_RE.match(called_key), (
+            f"Key {called_key!r} rejected by VALID_KEY_RE"
+        )
+
+    async def test_set_last_session_colon_pool_id_no_raise(self) -> None:
+        """set_last_session with a colon pool_id must not raise; key must be valid."""
+        kv = AsyncMock()
+        js = AsyncMock()
+        js.key_value.return_value = kv
+        store = KvLastSessionStore(js)
+        await store.connect()
+
+        # Must not raise
+        await store.set_last_session("telegram:lyra:7377831990", "sess-xyz")
+
+        called_key = kv.put.call_args[0][0]
+        assert ":" not in called_key, f"Colon in KV key: {called_key!r}"
+        assert VALID_KEY_RE.match(called_key), (
+            f"Key {called_key!r} rejected by VALID_KEY_RE"
+        )
+
+    async def test_get_last_session_invalid_key_error_returns_none(self) -> None:
+        """get_last_session degrades to None on InvalidKeyError (defense-in-depth)."""
+        kv = AsyncMock()
+        kv.get.side_effect = InvalidKeyError("bad-key")
+        js = AsyncMock()
+        js.key_value.return_value = kv
+        store = KvLastSessionStore(js)
+        await store.connect()
+
+        result = await store.get_last_session("pool-tg-main")
+        assert result is None
+
+    async def test_set_last_session_invalid_key_error_is_noop(self) -> None:
+        """set_last_session degrades silently on InvalidKeyError (defense-in-depth)."""
+        kv = AsyncMock()
+        kv.put.side_effect = InvalidKeyError("bad-key")
+        js = AsyncMock()
+        js.key_value.return_value = kv
+        store = KvLastSessionStore(js)
+        await store.connect()
+
+        # Must not raise
+        await store.set_last_session("pool-tg-main", "sess-abc")
+
+    async def test_key_before_after_sanitize(self) -> None:
+        """Assert exact key transformation: colon→underscore in the KV key."""
+        kv = AsyncMock()
+        kv.get.side_effect = KeyNotFoundError
+        js = AsyncMock()
+        js.key_value.return_value = kv
+        store = KvLastSessionStore(js)
+        await store.connect()
+
+        await store.get_last_session("telegram:lyra:7377831990")
+        called_key = kv.get.call_args[0][0]
+        assert called_key == "last_session.telegram_lyra_7377831990"
 
 
 class TestEnsureKv:

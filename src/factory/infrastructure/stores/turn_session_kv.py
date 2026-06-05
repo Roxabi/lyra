@@ -14,7 +14,12 @@ from typing import TYPE_CHECKING
 
 import nats.errors
 from nats.js.api import KeyValueConfig, StorageType
-from nats.js.errors import BadRequestError, KeyNotFoundError, NoKeysError
+from nats.js.errors import (
+    BadRequestError,
+    BucketNotFoundError,
+    KeyNotFoundError,
+    NoKeysError,
+)
 
 if TYPE_CHECKING:
     from nats.js.client import JetStreamContext
@@ -65,7 +70,8 @@ class KvLastSessionStore:
     exist yet (adapter boots before hub provisions it), ``self._kv`` is set to
     ``None`` and a warning is logged — the store degrades gracefully: every
     ``get_last_session`` returns ``None`` (new-session path) and
-    ``set_last_session`` is a no-op.  NEVER raises during cold-boot.
+    ``set_last_session`` is a no-op.  Other NATS errors from ``connect()``
+    propagate; callers must handle them.
     """
 
     def __init__(self, js: "JetStreamContext", retention_days: int = 90) -> None:
@@ -76,12 +82,17 @@ class KvLastSessionStore:
     async def connect(self) -> None:
         """Bind to an existing ``factory-turns-meta`` bucket.
 
-        Degrades (``_kv=None`` + warning) if the bucket is missing — never
-        raises.
+        Degrades (``_kv=None`` + warning) on ``BucketNotFoundError`` — the hub
+        has not provisioned the bucket yet (cold-boot).  All other NATS errors
+        propagate; callers must handle them.
         """
         try:
             self._kv = await self._js.key_value(KV_BUCKET)
-        except nats.errors.Error:
+        except BucketNotFoundError:
+            # Cold-boot degradation: hub has not provisioned the bucket yet.
+            # All other nats.errors.Error (ConnectionClosedError,
+            # AuthorizationError, …) propagate — they indicate real problems
+            # that the caller must handle (#7).
             log.warning(
                 "turns-meta: KV bucket %s not found during bind — "
                 "last-session store will degrade to new-session until hub "
@@ -110,7 +121,11 @@ class KvLastSessionStore:
             return
         try:
             await self._kv.put(f"last_session.{pool_id}", session_id.encode())
-        except nats.errors.Error:
+        except (nats.errors.TimeoutError, nats.errors.ConnectionClosedError):
+            # Transient connection errors only: degrade silently (#44).
+            # AuthorizationError, BadRequestError, and other non-transient
+            # nats.errors.Error subclasses propagate to signal configuration
+            # or permission problems that require operator attention.
             log.warning(
                 "turns-meta: set_last_session failed pool_id=%s — "
                 "next message will start a new session",

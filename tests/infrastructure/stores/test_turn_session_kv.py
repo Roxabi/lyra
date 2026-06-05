@@ -117,11 +117,13 @@ class TestKvLastSessionStoreConnectMissingBucket:
         Negative: if connect() raises, adapter boot crashes before hub provisions
         the bucket — violating the cold-boot degrade-to-new-session contract.
         """
-        import nats.errors
+        from nats.js.errors import BucketNotFoundError
 
-        # Arrange — simulate bucket not found
+        # Arrange — simulate a missing bucket (cold boot). #7 narrowed connect()'s
+        # catch to BucketNotFoundError, so the mock must raise that exact type —
+        # a generic nats.errors.Error now correctly propagates instead of degrading.
         js = AsyncMock()
-        js.key_value.side_effect = nats.errors.Error("bucket not found")
+        js.key_value.side_effect = BucketNotFoundError()
         store = KvLastSessionStore(js)
 
         # Act — must not raise

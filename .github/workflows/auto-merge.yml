@@ -50,12 +50,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
-      - name: Update all reviewed PRs targeting this branch
+      - name: Update all open non-draft PRs targeting this branch
         run: |
           BRANCH="${GITHUB_REF_NAME}"
-          PRS=$(gh pr list --base "$BRANCH" --label reviewed --state open --json number,headRefOid --jq '.[]')
+          PRS=$(gh pr list --base "$BRANCH" --state open --json number,headRefOid,isDraft --jq '.[] | select(.isDraft | not)')
           if [ -z "$PRS" ]; then
-            echo "No reviewed PRs targeting $BRANCH"
+            echo "No open non-draft PRs targeting $BRANCH"
             exit 0
           fi
           echo "$PRS" | while IFS= read -r pr; do

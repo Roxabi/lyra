@@ -1,0 +1,43 @@
+# Auto-merge Dependabot PRs by feeding them into the existing reviewed-label
+# machinery in auto-merge.yml. Runs in pull_request_target context so the PAT
+# Actions secret is available — Dependabot-triggered runs receive only Dependabot
+# secrets, not Actions secrets, so a normal pull_request trigger could not use PAT.
+#
+# SAFE: never checks out or executes PR code. It only reads dependabot metadata via
+# the API and applies a label. No `actions/checkout`, no run of PR-authored scripts.
+#
+# Cascade: dependabot opens PR -> (patch|minor) -> add `reviewed` label via PAT ->
+#   PAT-applied label fires auto-merge.yml `labeled` event -> arms GitHub auto-merge
+#   -> update-behind-prs keeps it current on each staging push -> merges when green.
+# Major bumps are NOT labelled -> they wait for human review.
+name: Dependabot Auto-merge
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  reviewed-label:
+    name: Label dependabot patch/minor reviewed
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@21025c705c08248db411dc16f3619e6b5f9ea21a  # v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Add reviewed label (patch/minor only)
+        if: >-
+          steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+          steps.meta.outputs.update-type == 'version-update:semver-minor'
+        run: gh pr edit "$PR_URL" --add-label reviewed
+        env:
+          GH_TOKEN: ${{ secrets.PAT }}
+          PR_URL: ${{ github.event.pull_request.html_url }}

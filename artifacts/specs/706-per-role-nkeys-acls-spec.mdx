@@ -25,7 +25,7 @@ The row will grant `subscribe: factory.typing.>` to `code-worker` (it consumes t
 <!-- acl-matrix:begin -->
 | Subject | hub | telegram-adapter | discord-adapter | voice-tts | voice-stt | llm-worker | llm-operator | image-worker | clipool-worker | dashboard-reader | voice-client | turn-writer | blobstore | gh-helper |
 |---|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|:-:|
-| `$JS.API.>` | PUB | — | — | PUB | PUB | PUB | — | PUB | PUB | — | — | — | PUB | — |
+| `$JS.API.>` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `$JS.API.CONSUMER.CREATE.*` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — |
 | `$JS.API.CONSUMER.CREATE.FACTORY_OUTBOUND_AUDIO.>` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — |
 | `$JS.API.CONSUMER.CREATE.FACTORY_TURNS.turn-writer-v1.>` | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — |
@@ -34,14 +34,15 @@ The row will grant `subscribe: factory.typing.>` to `code-worker` (it consumes t
 | `$JS.API.CONSUMER.MSG.NEXT.FACTORY_OUTBOUND_AUDIO.*` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — |
 | `$JS.API.CONSUMER.MSG.NEXT.FACTORY_TURNS.turn-writer-v1` | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — |
 | `$JS.API.DIRECT.GET.KV_factory-state.hub.ready` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — |
-| `$JS.API.INFO` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — |
+| `$JS.API.INFO` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | PUB | — |
 | `$JS.API.STREAM.CREATE.FACTORY_TURNS` | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — |
+| `$JS.API.STREAM.CREATE.KV_factory-state` | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — |
 | `$JS.API.STREAM.INFO.FACTORY_OUTBOUND_AUDIO` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — |
 | `$JS.API.STREAM.INFO.FACTORY_TURNS` | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — |
-| `$JS.API.STREAM.INFO.KV_factory-state` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — |
+| `$JS.API.STREAM.INFO.KV_factory-state` | — | PUB | PUB | PUB | PUB | PUB | — | PUB | PUB | — | — | — | PUB | — |
 | `$JS.API.STREAM.INFO.KV_factory-turns-meta` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — |
 | `$JS.API.STREAM.INFO.KV_factory_outbound_audio_sent` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — |
-| `$JS.API.STREAM.MSG.GET.KV_factory-state` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — |
+| `$JS.API.STREAM.MSG.GET.KV_factory-state` | — | PUB | PUB | PUB | PUB | PUB | — | PUB | PUB | — | — | — | — | — |
 | `$JS.API.STREAM.MSG.GET.KV_factory-turns-meta` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — |
 | `$JS.API.STREAM.MSG.GET.KV_factory_outbound_audio_sent` | — | PUB | PUB | — | — | — | — | — | — | — | — | — | — | — |
 | `$JS.API.STREAM.UPDATE.FACTORY_TURNS` | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — |
@@ -51,13 +52,11 @@ The row will grant `subscribe: factory.typing.>` to `code-worker` (it consumes t
 | `$KV.factory_outbound_audio_sent.>` | — | PUB+SUB | PUB+SUB | — | — | — | — | — | — | — | — | — | — | — |
 | `_inbox.blobstore.>` | — | — | — | — | — | — | — | — | — | — | — | — | SUB | — |
 | `_inbox.clipool-worker.>` | — | — | — | — | — | — | — | — | SUB | — | — | — | — | — |
-| `_inbox.discord-adapter.*.*` | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — |
 | `_inbox.discord-adapter.>` | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — |
 | `_inbox.hub.>` | SUB | — | — | PUB | PUB | PUB | — | PUB | PUB | — | — | — | — | — |
 | `_inbox.image-worker.>` | — | — | — | — | — | — | — | SUB | — | — | — | — | — | — |
 | `_inbox.llm-operator.>` | — | — | — | — | — | — | SUB | — | — | — | — | — | — | — |
 | `_inbox.llmcli-llm.>` | — | — | — | — | — | SUB | — | — | — | — | — | — | — | — |
-| `_inbox.telegram-adapter.*.*` | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — |
 | `_inbox.telegram-adapter.>` | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — |
 | `_inbox.turn-writer.>` | — | — | — | — | — | — | — | — | — | — | — | PUB+SUB | — | — |
 | `_inbox.voice-client.>` | — | — | — | PUB | PUB | — | — | — | — | — | SUB | — | — | — |

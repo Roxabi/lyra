@@ -109,7 +109,7 @@ class TestInboxGrantFromFlow:
                 "hub": {
                     "status": "active",
                     "created_at": "2026-04-21",
-                    "owner": "lyra",
+                    "owner": "factory",
                     "description": "hub",
                     "allow_responses": False,
                     "publish": ["factory.clipool.cmd"],
@@ -118,7 +118,7 @@ class TestInboxGrantFromFlow:
                 "clipool-worker": {
                     "status": "active",
                     "created_at": "2026-04-27",
-                    "owner": "lyra",
+                    "owner": "factory",
                     "description": "clipool worker",
                     "allow_responses": True,
                     "publish": ["factory.clipool.heartbeat"],
@@ -494,7 +494,7 @@ class TestGrantGroupEquality:
             "identities": {
                 "hub": {
                     "status": "active",
-                    "owner": "lyra",
+                    "owner": "factory",
                     "created_at": "2026-05-01",
                     "description": "hub test identity",
                     "allow_responses": False,

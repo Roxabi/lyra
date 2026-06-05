@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import stat
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -97,6 +98,10 @@ class Dispenser:
         """
         server = await asyncio.start_unix_server(self._handle, str(sock_path))
         # chmod after bind — asyncio creates socket with process umask (typically 0700).
+        # S_ISSOCK guard prevents chmoding an unrelated file on TOCTOU race (#53).
+        st = os.stat(sock_path)
+        if not stat.S_ISSOCK(st.st_mode):
+            raise RuntimeError(f"{sock_path} exists but is not a socket")
         os.chmod(sock_path, 0o660)
         log.info("Dispenser listening on %s (mode 0660)", sock_path)
         return server

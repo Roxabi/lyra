@@ -34,6 +34,7 @@ import socket
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import httpx
 
@@ -42,6 +43,9 @@ from factory.tools.gh_token.helper import JWTSigner, TokenCache
 from factory.tools.gh_token.mint_failure_publisher import MintFailurePublisher
 from factory.tools.gh_token.rate_limit import RateLimiter
 from roxabi_nats import nats_connect
+
+if TYPE_CHECKING:
+    from nats.aio.client import Client as NATS
 
 log = logging.getLogger(__name__)
 
@@ -62,6 +66,7 @@ class DaemonConfig:
     sock_path: Path
     cache_path: Path
     rate_limit_s: float
+    signer: JWTSigner
 
 
 def _load_config() -> DaemonConfig:
@@ -93,27 +98,105 @@ def _load_config() -> DaemonConfig:
     if not pem_path.is_file():
         raise DaemonConfigError(f"PEM file not found: {pem_path_raw}")
 
+    rate_limit_raw = os.environ.get("FACTORY_GH_RATE_LIMIT_S", "").strip()
+    if not rate_limit_raw:
+        rate_limit_s = 10.0
+    else:
+        try:
+            rate_limit_s = float(rate_limit_raw)
+        except ValueError:
+            raise DaemonConfigError(
+                "FACTORY_GH_RATE_LIMIT_S must be a numeric value,"
+                f" got {rate_limit_raw!r}"
+            )
+
+    try:
+        signer = JWTSigner(pem_path)
+    except (ValueError, TypeError) as exc:
+        raise DaemonConfigError(f"invalid PEM key at {pem_path}: {exc}") from exc
+
     return DaemonConfig(
         app_id=app_id,
         install_id=install_id,
         pem_path=pem_path,
         sock_path=Path(os.environ.get("FACTORY_GH_DISPENSER_SOCK", _DEFAULT_SOCK)),
         cache_path=Path(os.environ.get("FACTORY_GH_CACHE_PATH", _DEFAULT_CACHE)),
-        rate_limit_s=float(os.environ.get("FACTORY_GH_RATE_LIMIT_S", "10")),
+        rate_limit_s=rate_limit_s,
+        signer=signer,
     )
 
 
 def _safe_machine_name(raw: str) -> str:
-    """Return *raw* if it is a valid single NATS subject token, else ``"unknown"``.
+    """Sanitize *raw* to a valid single NATS subject token.
 
     A valid token contains only ``[A-Za-z0-9_-]`` characters (no dots, spaces,
     wildcards, or ``>``). validate_job_token from roxabi-contracts allows internal
     dots for namespacing; for the ``machine`` subject segment we need a stricter
     check so we inline one here.
+
+    Invalid characters are replaced with ``_`` to preserve per-machine
+    observability rather than collapsing all bad names to ``"unknown"`` (#26).
     """
     if re.fullmatch(r"[A-Za-z0-9_-]+", raw):
         return raw
-    return "unknown"
+    return re.sub(r"[^A-Za-z0-9_-]", "_", raw) or "unknown"
+
+
+async def _connect_nats_publisher(
+    nats_url: str,
+) -> tuple["NATS | None", "MintFailurePublisher | None"]:
+    """Best-effort NATS connect for mint-failure publishing.
+
+    Returns ``(nc, publisher)``; both are ``None`` when NATS is unavailable
+    or no URL is configured — the daemon must never crash due to NATS (#27).
+    """
+    if not nats_url:
+        log.info("mint-failure publishing disabled — no NATS_URL")
+        return None, None
+
+    raw_machine = os.environ.get("FACTORY_MACHINE", socket.gethostname())
+    machine = _safe_machine_name(raw_machine)
+    if machine != raw_machine:
+        log.warning(
+            "FACTORY_MACHINE %r is not a valid NATS subject token"
+            " — publishing mint-failures as %r",
+            raw_machine,
+            machine,
+        )
+    try:
+        nc = await nats_connect(nats_url, identity_name="gh-helper")
+        publisher = MintFailurePublisher(nc, machine)
+        log.info(
+            "mint-failure publishing enabled"
+            " — subject factory.gh.mint_failure.%s",
+            machine,
+        )
+        return nc, publisher
+    except Exception as exc:  # noqa: BLE001 — must not crash daemon (#27: BindsTo → pod teardown)
+        log.warning(
+            "mint-failure publishing DISABLED — NATS connect to %r failed: %s"
+            " (daemon continues, mint failures will NOT be published)",
+            nats_url,
+            exc,
+        )
+        return None, None
+
+
+def _prepare_sock_path(config: DaemonConfig) -> None:
+    """Create the socket directory and remove any stale socket file.
+
+    Raises DaemonConfigError (mapped to exit code 2 by _amain) on
+    filesystem errors so the daemon fails fast rather than leaving a
+    broken socket in place.
+    """
+    try:
+        config.sock_path.parent.mkdir(parents=True, exist_ok=True)
+        if config.sock_path.exists():
+            config.sock_path.unlink()
+    except OSError as exc:
+        raise DaemonConfigError(
+            f"cannot prepare socket path {config.sock_path}: {exc}"
+        ) from exc
 
 
 async def run_daemon(config: DaemonConfig) -> None:
@@ -122,40 +205,12 @@ async def run_daemon(config: DaemonConfig) -> None:
     Token refresh is lazy — the dispenser mints on demand when the cached
     token TTL drops below 15 min. No background refresh task is started.
     """
-    signer = JWTSigner(config.pem_path)
     cache = TokenCache(config.cache_path)
     rate_limiter = RateLimiter(min_interval_s=config.rate_limit_s)
     lock = asyncio.Lock()
 
-    # ── NATS: best-effort connect for mint-failure publishing ─────────────────
     nats_url = os.environ.get("NATS_URL", "").strip()
-    nc = None
-    publisher: MintFailurePublisher | None = None
-
-    if not nats_url:
-        log.info("mint-failure publishing disabled — no NATS_URL")
-    else:
-        raw_machine = os.environ.get("FACTORY_MACHINE", socket.gethostname())
-        machine = _safe_machine_name(raw_machine)
-        if machine != raw_machine:
-            log.warning(
-                "FACTORY_MACHINE %r is not a valid NATS subject token"
-                " — publishing mint-failures as %r",
-                raw_machine,
-                machine,
-            )
-        try:
-            nc = await nats_connect(nats_url, identity_name="gh-helper")
-            publisher = MintFailurePublisher(nc, machine)
-            log.info(
-                "mint-failure publishing enabled — subject factory.gh.mint_failure.%s",
-                machine,
-            )
-        except Exception as exc:  # noqa: BLE001 — must not crash daemon (BindsTo → pod teardown)
-            log.warning("mint-failure NATS connect failed: %s", exc)
-            nc = None
-            publisher = None
-    # ─────────────────────────────────────────────────────────────────────────
+    nc, publisher = await _connect_nats_publisher(nats_url)
 
     try:
         async with httpx.AsyncClient(
@@ -164,7 +219,7 @@ async def run_daemon(config: DaemonConfig) -> None:
         ) as http:
             dispenser = Dispenser(
                 cache=cache,
-                signer=signer,
+                signer=config.signer,
                 http=http,
                 app_id=config.app_id,
                 install_id=config.install_id,
@@ -173,9 +228,7 @@ async def run_daemon(config: DaemonConfig) -> None:
                 publisher=publisher,
             )
 
-            config.sock_path.parent.mkdir(parents=True, exist_ok=True)
-            if config.sock_path.exists():
-                config.sock_path.unlink()
+            _prepare_sock_path(config)
 
             server = await dispenser.serve(config.sock_path)
             log.info(
@@ -193,13 +246,22 @@ async def run_daemon(config: DaemonConfig) -> None:
             finally:
                 server.close()
                 await server.wait_closed()
-                task.cancel()
+                # task is already cancelled via CancelledError propagation (#51);
+                # cancel() here is a no-op safety net for rare early-exit paths.
+                if not task.done():  # noqa: SIM102 — guard against double-cancel noise (#52)
+                    task.cancel()
                 await asyncio.gather(task, return_exceptions=True)
     finally:
         if nc is not None:
             try:
-                await nc.drain()
-            except Exception:  # noqa: BLE001 — best-effort drain on shutdown
+                await asyncio.wait_for(nc.drain(), timeout=5.0)  # #9: bounded drain
+            except asyncio.TimeoutError:
+                log.warning("NATS drain timed out after 5 s — forcing close")
+                try:
+                    await nc.close()
+                except Exception:  # noqa: BLE001 — best-effort close after drain timeout (#9)
+                    pass
+            except Exception:  # noqa: BLE001 — best-effort drain on shutdown (#9)
                 pass
 
 
@@ -226,6 +288,9 @@ async def _amain() -> int:
 
     try:
         await run_daemon(config)
+    except DaemonConfigError as exc:
+        log.error("config error: %s", exc)
+        return 2
     except asyncio.CancelledError:
         pass
     return 0

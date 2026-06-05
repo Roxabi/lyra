@@ -17,9 +17,12 @@ from nats.js.api import KeyValueConfig, StorageType
 from nats.js.errors import (
     BadRequestError,
     BucketNotFoundError,
+    InvalidKeyError,
     KeyNotFoundError,
     NoKeysError,
 )
+
+from factory.infrastructure.stores._kv_keys import kv_safe_part
 
 if TYPE_CHECKING:
     from nats.js.client import JetStreamContext
@@ -109,18 +112,22 @@ class KvLastSessionStore:
         """Return the most-recent session_id for *pool_id*, or ``None`` on miss."""
         if self._kv is None:
             return None
+        safe_pool_id = kv_safe_part(pool_id)
         try:
-            entry = await self._kv.get(f"last_session.{pool_id}")
+            entry = await self._kv.get(f"last_session.{safe_pool_id}")
             return entry.value.decode() if entry.value else None
-        except (KeyNotFoundError, NoKeysError):
+        except (KeyNotFoundError, NoKeysError, InvalidKeyError):
+            # InvalidKeyError: defense-in-depth — an unsanitized key reaching
+            # nats-py degrades to new-session rather than crashing the pipeline.
             return None
 
     async def set_last_session(self, pool_id: str, session_id: str) -> None:
         """Persist *session_id* as the most-recent session for *pool_id*."""
         if self._kv is None:
             return
+        safe_pool_id = kv_safe_part(pool_id)
         try:
-            await self._kv.put(f"last_session.{pool_id}", session_id.encode())
+            await self._kv.put(f"last_session.{safe_pool_id}", session_id.encode())
         except (nats.errors.TimeoutError, nats.errors.ConnectionClosedError):
             # Transient connection errors only: degrade silently (#44).
             # AuthorizationError, BadRequestError, and other non-transient
@@ -128,6 +135,14 @@ class KvLastSessionStore:
             # or permission problems that require operator attention.
             log.warning(
                 "turns-meta: set_last_session failed pool_id=%s — "
+                "next message will start a new session",
+                pool_id,
+            )
+        except InvalidKeyError:
+            # Defense-in-depth: sanitizer should prevent this; if it fires,
+            # degrade (warn + no-op) rather than crashing the inbound pipeline.
+            log.warning(
+                "turns-meta: set_last_session invalid KV key for pool_id=%s — "
                 "next message will start a new session",
                 pool_id,
             )

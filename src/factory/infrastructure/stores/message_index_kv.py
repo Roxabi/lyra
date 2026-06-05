@@ -14,6 +14,8 @@ import nats.errors
 from nats.js.api import KeyValueConfig, StorageType
 from nats.js.errors import BadRequestError, KeyNotFoundError
 
+from factory.infrastructure.stores._kv_keys import kv_safe_part
+
 if TYPE_CHECKING:
     from nats.js.client import JetStreamContext
     from nats.js.kv import KeyValue
@@ -52,17 +54,26 @@ async def ensure_kv(js: "JetStreamContext", retention_days: int = 90) -> "KeyVal
 
 
 def _sanitize_key_part(value: str) -> str:
-    """Replace NATS subject metacharacters with a safe placeholder."""
-    return value.replace(".", "_").replace("*", "_").replace(">", "_")
+    """Replace any char outside the NATS KV valid set with ``_``.
+
+    Delegates to ``kv_safe_part``; preserved for backward-compat import in tests.
+    Covers ``.``, ``*``, ``>``, ``:`` and any other out-of-set character.
+    """
+    return kv_safe_part(value)
 
 
 class MessageIndexKvStore:
     """NATS KV-backed message-to-session index for reply-to resume.
 
-    Key format: ``<pool_id>:<platform_msg_id>`` — key parts are sanitized
-    so that ``.``, ``*``, and ``>`` are replaced with ``_`` because these
-    characters act as subject token separators or wildcards in NATS subjects.
+    Key format: ``<pool_id>=<platform_msg_id>`` — both parts are sanitized via
+    ``kv_safe_part`` so that any character outside ``[-/_=.A-Za-z0-9]`` (including
+    ``.``, ``*``, ``>``, and ``:`` from pool_ids like ``telegram:lyra:...``) is
+    replaced with ``_``.  The join delimiter is ``=`` (a valid KV character).
     Value: ``session_id`` (UTF-8 bytes)
+
+    Note: the delimiter was changed from ``:`` to ``=`` in #1775 because ``:`` is
+    rejected by ``nats.js.kv.VALID_KEY_RE``.  No live entries exist under the old
+    format — colon pool_ids always raised ``InvalidKeyError`` before this fix.
     """
 
     def __init__(self, js: "JetStreamContext", retention_days: int = 90) -> None:
@@ -89,13 +100,13 @@ class MessageIndexKvStore:
         if platform_msg_id is None:
             return
         kv = self._require_kv()
-        key = f"{_sanitize_key_part(pool_id)}:{_sanitize_key_part(platform_msg_id)}"
+        key = f"{kv_safe_part(pool_id)}={kv_safe_part(platform_msg_id)}"
         await kv.put(key, session_id.encode())
 
     async def resolve(self, pool_id: str, platform_msg_id: str) -> str | None:
         """O(1) KV lookup — return session_id or None."""
         kv = self._require_kv()
-        key = f"{_sanitize_key_part(pool_id)}:{_sanitize_key_part(platform_msg_id)}"
+        key = f"{kv_safe_part(pool_id)}={kv_safe_part(platform_msg_id)}"
         try:
             entry = await kv.get(key)
             return entry.value.decode() if entry.value else None

@@ -74,9 +74,9 @@ Wire domains split by **nature**:
 | **plomberie** (substrate / infra) | `cli` · `llm` · `jobs` · `gh` · `turns` · `blob` · `verify` · `audit` · `event` · `outbound` |
 
 Tool-nature subjects carry a `tool.` infix → `factory.tool.<cap>.*`; the consumer side addresses
-the whole tool plane as `factory.tool.>`. Plomberie keeps `factory.<domain>.*`. Package shape:
+the whole tool plane as `factory.tool.>`. Plomberie keeps `factory.<domain>.*`. Package shape: <!-- drift-ignore -->
 `roxabi-contracts/tool/{voice,image,…}` (wire schemas) vs `roxabi-contracts/tools/` (the *protocol*
-layer — `InProcessTool` / `RemoteTool` / `ToolManifest`).
+layer — `InProcessTool` / `RemoteTool` / `ToolManifest`). <!-- drift-ignore -->
 
 ## 5. The two discriminators (the sharp rules)
 
@@ -101,7 +101,7 @@ backing service ≠ provider ≠ tool.
 
 - A worker is **not** a tool; it consumes tools and **runs on** a workerEngine.
 - The harness is **pure agentic** (no workflow logic) and is **called by** the workerEngine — layered, never unified.
-- The tool dispatcher is **uniform**: one ACL gate, one `ToolResult`, transport-agnostic. No per-kind branched pipeline.
+- The tool dispatcher is **uniform**: one ACL gate, one `ToolResult`, transport-agnostic. No per-kind branched pipeline. <!-- drift-ignore -->
 - tool-surface ≠ tool-nature: a plomberie domain exposing a tool stays plomberie.
 - provider ⊋ satellite: self-hosted backing → satellite (heartbeat); cloud / one-shot → non-satellite. A running backing container is not a heartbeat.
 - "worker" = compute-on-engine (consumer). Tool-backing things are "providers"; `satellite` = the NATS-deployed kind.

@@ -57,12 +57,16 @@ _do_converge() {
     #    entire converge (#1738). The is-active poll below is the readiness gate.
     echo "==> NATS: restarting factory-nats..."
     systemctl --user restart factory-nats
-    for _ in $(seq 1 10); do
+    for _ in $(seq 1 30); do
         systemctl --user is-active --quiet factory-nats && break
+        if systemctl --user is-failed --quiet factory-nats; then
+            echo "ERROR: factory-nats entered failed state"
+            exit 1
+        fi
         sleep 1
     done
     systemctl --user is-active --quiet factory-nats \
-        || { echo "ERROR: factory-nats failed to reach active state"; exit 1; }
+        || { echo "ERROR: factory-nats failed to reach active state within 30 s"; exit 1; }
 
     # 8) Restart factory NATS clients
     echo "==> Lyra: restarting containers..."

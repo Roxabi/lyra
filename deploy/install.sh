@@ -285,6 +285,15 @@ run mkdir -p "${HOME}/.roxabi/factory/blobstore"
 echo "  [ok]   ${HOME}/.roxabi/factory/blobstore"
 run mkdir -p "${HOME}/.roxabi/factory/turn-writer"
 echo "  [ok]   ${HOME}/.roxabi/factory/turn-writer/"
+# Pre-create turns.db as a regular file so Podman never materialises it as a
+# directory on first boot (both factory-turn-writer and factory-hub bind-mount it;
+# findings #1 + #2 — IsADirectoryError risk at SQLite open time).
+if [[ ! -e "${HOME}/.roxabi/factory/turn-writer/turns.db" ]]; then
+  run touch "${HOME}/.roxabi/factory/turn-writer/turns.db"
+  echo "  [ok]   ${HOME}/.roxabi/factory/turn-writer/turns.db (pre-created)"
+else
+  echo "  [skip] ${HOME}/.roxabi/factory/turn-writer/turns.db already exists"
+fi
 
 # ── 6. Copy Quadlet units ────────────────────────────────────────────────────
 
@@ -309,7 +318,7 @@ log "Seeding BotStore from config.toml ..."
 run podman run --rm \
     -v "${HOME}/.roxabi/factory:/home/factory/.roxabi/factory:z" \
     -v "${HOME}/.roxabi/factory/config.toml:/app/config.toml:ro,z" \
-    ghcr.io/roxabi/factory:staging-svc \
+    ghcr.io/roxabi/factory:staging \
     factory bot init
 
 echo "  [ok]   BotStore seeded"

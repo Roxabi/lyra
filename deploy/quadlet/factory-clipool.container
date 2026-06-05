@@ -82,7 +82,7 @@ RestartSec=10
 TimeoutStopSec=120
 CPUQuota=400%
 ExecStartPre=/bin/bash -c 'test -e %h/.claude.json || echo "{}" > %h/.claude.json'
-ExecStartPre=/bin/bash -c 'test -e %h/.claude/.credentials.json || echo "{}" > %h/.claude/.credentials.json'
+ExecStartPre=/bin/bash -c 'test -e %h/.claude/.credentials.json || { mkdir -p %h/.claude && echo "{}" > %h/.claude/.credentials.json; }'
 
 [Install]
 WantedBy=default.target

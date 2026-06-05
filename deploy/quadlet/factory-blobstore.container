@@ -73,7 +73,7 @@ EnvironmentFile=%h/.roxabi/factory/env/blobstore.env
 # already constructed (and could read as 0.0.0.0). This guard prevents the
 # CONTAINER from entering running state, so no traffic is ever served.
 # Operationally equivalent to closing the port (nothing accepts traffic).
-ExecStartPre=/bin/sh -c 'v=$(printf %s "${TAILSCALE_IPV4}" | tr -d "[:space:]"); [ -n "$v" ] || exit 1'
+ExecStartPre=/bin/sh -c 'v=$(printf "%s" "${TAILSCALE_IPV4}" | tr -d "[:space:]"); [ -n "$v" ] || exit 1'
 Restart=on-failure
 RestartSec=10
 # Cold-path I/O service — 1 full core is sufficient; prevents it from starving

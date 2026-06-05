@@ -24,7 +24,18 @@ IMAGES=(
 # ── Digest comparison ────────────────────────────────────────────────────────
 
 remote_digest() {
-    skopeo inspect "docker://$1" | jq -r '.Digest'
+    local image="$1" attempt delay out
+    for attempt in 1 2 3; do
+        if out=$(skopeo inspect "docker://${image}" 2>/dev/null); then
+            printf '%s' "$out" | jq -r '.Digest'
+            return 0
+        fi
+        delay=$(( attempt * 2 ))
+        echo "skopeo inspect failed (attempt ${attempt}/3), retrying in ${delay}s..." >&2
+        sleep "${delay}"
+    done
+    echo "skopeo inspect failed after 3 attempts for ${image}" >&2
+    return 1
 }
 
 local_digest() {

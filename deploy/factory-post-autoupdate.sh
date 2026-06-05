@@ -38,26 +38,36 @@ remote_digest() {
     return 1
 }
 
-local_digest() {
-    # image inspect returns exactly one digest (or errors when absent) — no
-    # multi-line ambiguity from `podman images` listing dangling layers.
-    podman image inspect --format '{{.Digest}}' "$1" 2>/dev/null || true
+local_repo_digests() {
+    # All registry digests the local image is known by (index + per-arch).
+    # Empty output when the image is absent (cold pull) → treated as drift.
+    podman image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$1" 2>/dev/null \
+        | sed 's/.*@//' || true
 }
 
 main() {
     local drifted=()
 
     for image in "${IMAGES[@]}"; do
-        local remote_digest_val local_digest_val
+        local remote_digest_val local_digests_val
         remote_digest_val=$(remote_digest "${image}")
-        local_digest_val=$(local_digest "${image}")
+        local_digests_val=$(local_repo_digests "${image}")
 
-        if [ -n "${local_digest_val}" ] && [ "${remote_digest_val}" = "${local_digest_val}" ]; then
+        # An image is unchanged iff the remote index digest appears (exact line
+        # match) in the local RepoDigests set. Using RepoDigests rather than
+        # .Digest fixes the false-drift bug (#1749): podman image inspect
+        # .Digest returns the per-platform (amd64) digest while skopeo returns
+        # the OCI index digest — they are always different on multi-arch images.
+        # RepoDigests contains BOTH the index and per-arch digests so the index
+        # digest from the remote will match here when the local image is current.
+        if [ -n "${remote_digest_val}" ] && echo "${local_digests_val}" | grep -Fxq "${remote_digest_val}"; then
             echo "Image digest unchanged (${image})."
+            echo "  remote: ${remote_digest_val}"
+            echo "  local:  ${local_digests_val:-<not present>}"
         else
             echo "Image digest drift detected (${image}):"
             echo "  remote: ${remote_digest_val}"
-            echo "  local:  ${local_digest_val:-<not present>}"
+            echo "  local:  ${local_digests_val:-<not present>}"
             drifted+=("${image}")
         fi
     done
@@ -80,4 +90,12 @@ main() {
     make -C "${FACTORY_DIR}" converge
 }
 
-with_deploy_lock main
+# Do NOT wrap main() in with_deploy_lock here. converge.sh already ends with
+# `with_deploy_lock _do_converge`, so wrapping here too would cause the outer
+# flock to hold the lock while calling make converge → converge.sh's inner
+# flock -n fails → _do_converge silently exits 0 and no converge runs. (#1749)
+# The pull + stamp-invalidate above are idempotent and safe to run unlocked;
+# converge.sh's lock provides the necessary mutual exclusion.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    main "$@"
+fi

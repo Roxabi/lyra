@@ -203,10 +203,10 @@ class TestJetStreamAuditSinkSubjectRouting:
         sink._js = js  # type: ignore[attr-defined]
 
         event = _make_event(skip_permissions=True)
-        with caplog.at_level(logging.WARNING, logger="lyra.security"):
+        with caplog.at_level(logging.WARNING, logger="factory.security"):
             await sink.emit(event)  # type: ignore[arg-type]
 
         js.publish.assert_not_awaited()
-        security_records = [r for r in caplog.records if r.name == "lyra.security"]
+        security_records = [r for r in caplog.records if r.name == "factory.security"]
         assert len(security_records) == 1
         assert _SUBJECT_PRIVILEGED in security_records[0].message

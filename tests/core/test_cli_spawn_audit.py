@@ -230,11 +230,11 @@ class TestJetStreamAuditSinkEmit:
             pid=1,
         )
 
-        with caplog.at_level(logging.WARNING, logger="lyra.security"):
+        with caplog.at_level(logging.WARNING, logger="factory.security"):
             await sink.emit(event)  # must not raise
 
-        # Publish failure routes to lyra.security with "AUDIT: emit failed" prefix
-        security_records = [r for r in caplog.records if r.name == "lyra.security"]
+        # Publish failure routes to factory.security with "AUDIT: emit failed" prefix
+        security_records = [r for r in caplog.records if r.name == "factory.security"]
         assert len(security_records) == 1
         assert security_records[0].message.startswith("AUDIT: emit failed")
 
@@ -265,13 +265,13 @@ class TestJetStreamAuditSinkEmit:
             pid=2,
         )
 
-        with caplog.at_level(logging.WARNING, logger="lyra.security"):
+        with caplog.at_level(logging.WARNING, logger="factory.security"):
             await sink.emit(event)
 
-        security_records = [r for r in caplog.records if r.name == "lyra.security"]
+        security_records = [r for r in caplog.records if r.name == "factory.security"]
         assert len(security_records) == 1
-        # Degraded mode must route exclusively to lyra.security
-        assert all(r.name == "lyra.security" for r in security_records)
+        # Degraded mode must route exclusively to factory.security
+        assert all(r.name == "factory.security" for r in security_records)
         import json
 
         # Message format: "AUDIT DEGRADED [<subject>]: <json>"

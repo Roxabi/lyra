@@ -242,6 +242,9 @@ class TestHubAudioProvisioningBehavioral:
         monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
         raw_config = _test_config()
         mock_nc, fake_open_stores = _make_hub_stubs()
+        mock_nc.jetstream.return_value = MagicMock(
+            add_stream=AsyncMock(), update_stream=AsyncMock()
+        )
 
         call_order: list[str] = []
 

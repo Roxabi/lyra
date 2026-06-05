@@ -98,7 +98,7 @@ Every platform adapter must implement `ChannelAdapter` (defined in `core/hub/hub
 | `render_audio_stream(chunks, inbound)` | Stream TTS audio chunks |
 | `render_attachment(msg, inbound)` | Send an attachment |
 
-Do NOT override `send_streaming()` in a concrete adapter — it is a concrete method on `OutboundAdapterBase` that delegates to `StreamingSession`. Platform differences belong in `_make_streaming_callbacks()`.
+Do NOT override `send_streaming()` in a concrete adapter — it is a concrete method on `OutboundAdapterBase` that drives the `OutboundEmitter` returned by `_make_emitter()`. Platform differences belong in `_make_emitter()`.
 
 ### Inbound push
 
@@ -318,7 +318,7 @@ NEVER add business logic to `Hub` — it belongs in Middleware, Pool, or Agent.
 
 NEVER call store async methods before `connect()` or from synchronous code.
 
-NEVER override `send_streaming()` in a concrete adapter — put differences in `_make_streaming_callbacks()`.
+NEVER override `send_streaming()` in a concrete adapter — put differences in `_make_emitter()`.
 
 NEVER put platform-specific code in `core/` — that belongs in `adapters/`.
 

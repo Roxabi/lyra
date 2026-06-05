@@ -6,7 +6,7 @@
 
 ## How to read this docs tree
 
-**Start here for current state**: 13 living domain pages, each the single source of truth for its area.
+**Start here for current state**: 14 living domain pages, each the single source of truth for its area.
 
 | Domain page | What it owns |
 |---|---|
@@ -18,6 +18,7 @@
 | [deployment.md](architecture/deployment.md) | C3 container split, Quadlet ecosystem, autodeploy, hardware specs |
 | [contracts.md](architecture/contracts.md) | roxabi-nats SDK, roxabi-contracts schemas, voice routing |
 | [workers-tooling.md](architecture/workers-tooling.md) | CliPool, processor registry, tool integration, importlinter |
+| [tool-architecture.md](architecture/tool-architecture.md) | Tool taxonomy (5-layer + domain-nature), runtime vocab (workerEngine/harness/worker/provider/satellite), the two discriminators |
 | [architecture-patterns.md](architecture/architecture-patterns.md) | Clean / Hexagonal / Kernel patterns + engineering invariants |
 | [testing-conventions.md](architecture/testing-conventions.md) | Test taxonomy, fixture policy, mock boundaries, CI gate conventions |
 | [voice-to-voice-analysis.md](architecture/voice-to-voice-analysis.md) | Voice pipeline design, audio latency budgets, STT/TTS adapter contracts |

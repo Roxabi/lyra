@@ -6,6 +6,8 @@ Runbook for installing, operating, and rotating secrets in the Lyra Quadlet depl
 → Component manifest: `deploy/quadlet.toml`
 → Idempotent install script: `deploy/install.sh`
 
+> **Deployment-state caveat (2026-06).** M₁ (`roxabituwer`) currently runs the **legacy `lyra-*` infra** — units `lyra-*`, secrets `lyra-nats-*` / `lyra-bot-*`, data dir `~/.lyra`, repo `~/projects/lyra`, image `ghcr.io/roxabi/lyra:staging{,-svc}`. The `factory-*` names throughout this runbook are the **post-Phase-2 infra-rename target**; that migration (data move `~/.lyra`→`~/.roxabi/factory`, secret + unit + image-repo rename) is **pending**, tracked in **#1710** (combined with the #1670 `factory.*` wire cutover). Until it lands, mentally translate `factory-*`→`lyra-*` when operating M₁.
+
 ## Architecture
 
 Eight containers on `roxabi.network` (systemd `--user`, linger enabled):

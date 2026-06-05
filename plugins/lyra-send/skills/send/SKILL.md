@@ -52,7 +52,7 @@ python3 - <<'EOF'
 from pathlib import Path
 import sqlite3, json
 
-factory_dir = Path.home() / '.lyra'
+factory_dir = Path.home() / '.roxabi' / 'factory'
 conn = sqlite3.connect(factory_dir / 'turns.db')
 # Show recent unique telegram chat IDs with last message preview
 rows = conn.execute("""
@@ -81,7 +81,7 @@ python3 - <<'EOF'
 from pathlib import Path
 import sqlite3, json
 
-factory_dir = Path.home() / '.lyra'
+factory_dir = Path.home() / '.roxabi' / 'factory'
 conn = sqlite3.connect(factory_dir / 'turns.db')
 rows = conn.execute("""
     SELECT platform_meta, content, created_at
@@ -121,7 +121,7 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 import sqlite3, requests
 
-factory_dir = Path.home() / '.lyra'
+factory_dir = Path.home() / '.roxabi' / 'factory'
 key = (factory_dir / 'keyring.key').read_bytes()
 f = Fernet(key)
 conn = sqlite3.connect(factory_dir / 'config.db')
@@ -150,7 +150,7 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 import sqlite3, requests
 
-factory_dir = Path.home() / '.lyra'
+factory_dir = Path.home() / '.roxabi' / 'factory'
 key = (factory_dir / 'keyring.key').read_bytes()
 f = Fernet(key)
 conn = sqlite3.connect(factory_dir / 'config.db')
@@ -181,7 +181,7 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 import sqlite3, requests
 
-factory_dir = Path.home() / '.lyra'
+factory_dir = Path.home() / '.roxabi' / 'factory'
 key = (factory_dir / 'keyring.key').read_bytes()
 f = Fernet(key)
 conn = sqlite3.connect(factory_dir / 'config.db')
@@ -210,7 +210,7 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 import sqlite3, requests
 
-factory_dir = Path.home() / '.lyra'
+factory_dir = Path.home() / '.roxabi' / 'factory'
 key = (factory_dir / 'keyring.key').read_bytes()
 f = Fernet(key)
 conn = sqlite3.connect(factory_dir / 'config.db')
@@ -241,7 +241,7 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 import sqlite3, requests
 
-factory_dir = Path.home() / '.lyra'
+factory_dir = Path.home() / '.roxabi' / 'factory'
 key = (factory_dir / 'keyring.key').read_bytes()
 f = Fernet(key)
 conn = sqlite3.connect(factory_dir / 'config.db')
@@ -271,7 +271,7 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 import sqlite3, requests
 
-factory_dir = Path.home() / '.lyra'
+factory_dir = Path.home() / '.roxabi' / 'factory'
 key = (factory_dir / 'keyring.key').read_bytes()
 f = Fernet(key)
 conn = sqlite3.connect(factory_dir / 'config.db')

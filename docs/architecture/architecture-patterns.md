@@ -297,7 +297,7 @@ User-visible errors are handled at two distinct sites, each using domain-specifi
 
 Cross-layer exceptions (`StreamChunkTimeout`, `WorkerUnavailableError`, `HubUnavailableError`, `ScrapeFailed`, `VaultWriteFailed`) live in `factory.core.exceptions` to avoid downward imports — they are raised in outer layers but defined in core.
 
-NullMessageManager replaces `if hub._msg_manager is None: return _DROP` guards, making misconfiguration observable instead of silently dropping messages. → ADR-058
+ADR-058 specifies a `NullMessageManager` to replace the `if hub._msg_manager is None: return _DROP` guards (making misconfiguration observable instead of silently dropping messages), but it is **not yet implemented** — the live pattern remains the `_DROP` guard in `SttMiddleware`. → ADR-058 <!-- drift-ignore -->
 
 ### Generic error reply placement
 

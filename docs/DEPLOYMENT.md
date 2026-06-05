@@ -81,7 +81,7 @@ make lyra reload        # restart containers
 
 **Graceful drain** — on restart, the running container finishes any in-flight Claude CLI turns (up to 60 s) before stopping. Conversations that complete within the window are transparent to users; only turns that outlast 60 s receive a "please resend" notification.
 
-**Deploy log** — every run is appended to `~/.local/state/factory/logs/deploy.log`.
+**Deploy log** — deploy runs log to journald (the converge services use `StandardOutput=journal`). Inspect with `journalctl --user -u factory-quadlet-sync` or `journalctl --user -u factory-post-autoupdate`.
 
 ## 2. Configure environment
 

@@ -97,23 +97,18 @@ class SignalAdapter(OutboundAdapterBase):
     async def send(self, original_msg: InboundMessage, outbound: OutboundMessage) -> None:
         ...
 
-    def _make_streaming_callbacks(self, original_msg, outbound) -> PlatformCallbacks:
-        return PlatformCallbacks(
-            send_placeholder=...,
-            edit_placeholder_text=...,
-            edit_placeholder_tool=...,
-            send_message=...,
-            send_fallback=...,
-            chunk_text=...,
-            start_typing=...,
-            cancel_typing=...,
-        )
+    def _make_emitter(
+        self,
+        original_msg: InboundMessage,
+        outbound: OutboundMessage | None,
+    ) -> OutboundEmitter:
+        ...
 
     def _start_typing(self, scope_id): ...
     def _cancel_typing(self, scope_id): ...
 ```
 
-`send_streaming()` is provided by `OutboundAdapterBase` — do not override it. Platform-specific streaming behaviour belongs in `_make_streaming_callbacks()`.
+`send_streaming()` is provided by `OutboundAdapterBase` — do not override it. Platform-specific streaming behaviour belongs in `_make_emitter()`.
 
 See `src/factory/adapters/_shared.py` for shared normalization helpers and render functions (audio, attachments).
 

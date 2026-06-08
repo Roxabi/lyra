@@ -17,11 +17,15 @@
 #      anywhere on the line.
 #   5. The line is not a pure comment or blank.
 #
-# BASELINE-GRANDFATHER
-# --------------------
-# Existing constants at the time the gate was introduced are grandfathered
-# in tools/hardcoded_constants_baseline.txt.  A flagged line is a violation
-# ONLY IF its signature is NOT in the baseline.
+# BASELINE-GRANDFATHER (optional, retired)
+# ----------------------------------------
+# Constants that existed when the gate was introduced (#1654) were once
+# grandfathered in an optional baseline file (CONST_BASELINE_FILE).  The
+# burn-down completed (#1698) and the file was deleted (#1706).  An ABSENT
+# baseline is now treated as the EMPTY SET (no grandfathered entries) — every
+# flagged line is a violation.  If a baseline file is present, a flagged line
+# is a violation ONLY IF its signature is NOT in it.  Do NOT reintroduce a
+# baseline file — there is nothing left to grandfather.
 #
 # SIGNATURE FORMAT
 # ----------------
@@ -45,11 +49,12 @@
 # EXIT-CODE CONTRACT (consistent with all gate scripts — tools/CLAUDE.md)
 #   0 = clean (no new violations)
 #   1 = violations found (merge-blocking)
-#   2 = script error (missing dep / bad git state / missing baseline)
+#   2 = script error (missing dep / bad git state)
 #
 # ENVIRONMENT OVERRIDES
 #   CONST_SCAN_ROOT      — directory to scan (default: src/factory/core/)
-#   CONST_BASELINE_FILE  — path to baseline (default: tools/hardcoded_constants_baseline.txt)
+#   CONST_BASELINE_FILE  — path to an optional baseline (default:
+#                          tools/hardcoded_constants_baseline.txt; absent = empty set)
 #
 # RUN LOCALLY
 #   bash tools/check_hardcoded_constants.sh
@@ -165,15 +170,12 @@ emit_signatures() {
 # ---------------------------------------------------------------------------
 if [ "${1:-}" = "--generate-baseline" ]; then
     {
-        echo "# hardcoded_constants_baseline.txt — grandfather baseline for check_hardcoded_constants.sh"
+        echo "# DIAGNOSTIC LISTING — current hardcoded numeric constants in src/factory/core/"
         echo "#"
-        echo "# DO NOT EDIT MANUALLY. Regenerate with:"
-        echo "#   bash tools/check_hardcoded_constants.sh --generate-baseline > tools/hardcoded_constants_baseline.txt"
-        echo "#"
-        echo "# This file grandfathers the set of hardcoded numeric constants that existed in"
-        echo "# src/factory/core/ when the gate was introduced (issue #1654). It must be burned"
-        echo "# down incrementally — new code MUST NOT add entries here; add a named Config"
-        echo "# constant instead. Track the burn-down via the follow-up issue linked in #1654."
+        echo "# The grandfather baseline was retired (#1698 burn-down → #1706 deletion). This"
+        echo "# mode is now a read-only diagnostic: it prints every signature the gate would"
+        echo "# flag at HEAD. Do NOT commit this output as a baseline — an absent baseline is"
+        echo "# treated as the empty set, and reintroducing one would re-grandfather debt."
         echo "#"
         echo "# SIGNATURE FORMAT: <relpath>:<normalized-line>"
         echo "#   relpath         = file path relative to repo root"
@@ -182,16 +184,6 @@ if [ "${1:-}" = "--generate-baseline" ]; then
     }
     scan_tree "$SCAN_ROOT" | emit_signatures | sort -u
     exit 0
-fi
-
-# ---------------------------------------------------------------------------
-# Normal gate mode: baseline must exist
-# ---------------------------------------------------------------------------
-if [ ! -f "$BASELINE_FILE" ]; then
-    echo "ERROR: baseline file $BASELINE_FILE not found." >&2
-    echo "  Generate it with:" >&2
-    echo "    bash tools/check_hardcoded_constants.sh --generate-baseline > $BASELINE_FILE" >&2
-    exit 2
 fi
 
 # ---------------------------------------------------------------------------
@@ -206,9 +198,14 @@ if [ -z "$ALL_SORTED" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Load baseline (sorted, comments stripped)
+# Load baseline (sorted, comments stripped). An ABSENT baseline file is the
+# empty set (no grandfathered entries) — every flagged signature is a violation.
 # ---------------------------------------------------------------------------
-BASELINE_SORTED="$(grep -v '^[[:space:]]*#\|^[[:space:]]*$' "$BASELINE_FILE" | sort -u)"
+if [ -f "$BASELINE_FILE" ]; then
+    BASELINE_SORTED="$(grep -v '^[[:space:]]*#\|^[[:space:]]*$' "$BASELINE_FILE" | sort -u)"
+else
+    BASELINE_SORTED=""
+fi
 
 # ---------------------------------------------------------------------------
 # Set-difference: violations = flagged signatures NOT in baseline
@@ -237,9 +234,9 @@ while IFS= read -r v; do
 done <<< "$VIOLATIONS"
 cnt="$(printf '%s\n' "$VIOLATIONS" | grep -c .)"
 echo "" >&2
-echo "Found ${cnt} new hardcoded constant(s) not in ${BASELINE_FILE}." >&2
+echo "Found ${cnt} new hardcoded constant(s) in ${SCAN_ROOT}." >&2
 echo "Remediation options:" >&2
 echo "  1. Replace the literal with a named constant in a Config class." >&2
 echo "  2. Add '# const-ok: <reason>' on the line if the literal is genuinely un-configurable." >&2
-echo "  Do NOT add entries to the baseline file — it is a burn-down target." >&2
+echo "  Do NOT reintroduce a grandfather baseline — it was retired in #1706." >&2
 exit 1

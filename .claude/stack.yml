@@ -95,8 +95,7 @@ quality_gates:
   hardcoded_constants:
     enabled: true
     script: tools/check_hardcoded_constants.sh
-    description: block new hardcoded numeric literals in src/factory/core/ (baseline-grandfather strategy — #1654)
-    baseline: tools/hardcoded_constants_baseline.txt
+    description: block new hardcoded numeric literals in src/factory/core/ (grandfather baseline burned down → retired, #1654/#1698/#1706)
 
   file_exemptions:
     enabled: true

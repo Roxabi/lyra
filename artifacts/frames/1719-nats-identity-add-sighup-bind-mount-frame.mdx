@@ -1,0 +1,72 @@
+---
+title: NATS identity-add forces full-fleet restart — evaluate SIGHUP/bind-mount auth.conf delivery
+issue: 1719
+status: approved
+tier: F-full
+date: 2026-06-08
+---
+
+## Problem
+
+Adding a NATS identity via `make nats-add-identity NAME=<x>` currently restarts `factory-nats`
+**and all 7 `FACTORY_NATS_CLIENTS`** (`Makefile:356-377`). This is a deploy-delivery property,
+not a NATS limitation: `auth.conf` is delivered as a Podman `type=mount` secret (tmpfs,
+bound-at-init), so `podman secret create --replace` updates the store but the in-container file
+stays **stale until container restart** (documented in `deploy/CLAUDE.md`). `nats-server` itself
+supports `SIGHUP`/`--signal reload` live config reload without dropping connections.
+
+The cost: every identity add forces a full-fleet bounce — momentary connection loss across the
+whole factory mesh for an operation that should be live and non-disruptive.
+
+## Who
+
+- **Primary:** operator running `make nats-add-identity` on M₁ — wants to add an identity
+  without bouncing the running agent/bot fleet.
+- **Secondary:** all 7 NATS clients (hub, telegram, discord, clipool, turn-writer, gh-helper,
+  blobstore) — currently force-restarted; their live sessions drop on every add.
+
+## Constraints
+
+- **Security weighting:** `auth.conf` holds only PUBLIC nkeys (`U…`) + ACLs, **no private seeds**
+  — the tmpfs-isolation argument is weaker for auth.conf than for seed files.
+- **SIGHUP-under-Quadlet is unverified** — must confirm `systemctl --user reload`/`podman kill
+  --signal HUP` reliably triggers `nats-server` config reload without dropping connections.
+- **CI gates:** `secrets_drift` (unit `Secret=` ⊆ quadlet.toml required_secrets; seeds carry
+  acl-matrix identities) and `volumes_table` (deployment.md Volumes table ↔ `Volume=` directives)
+  both gate `deploy/` changes — a delivery-model change must keep them green.
+- **#1390 stale-subject-auth** applies to ACL *changes*, not pure adds.
+
+## Out of Scope
+
+- Seed files (`factory-nats-<id>`) stay `type=mount` — they carry PRIVATE keys. Only `auth.conf`
+  delivery + the client-restart fan-out are reconsidered.
+- ACL-change semantics (#1390) — this issue targets the pure-add path.
+
+## Premise Validity
+
+**Success in 6 months:** `make nats-add-identity NAME=<x>` brings a new identity live with ≤1
+service restart (factory-nats only, ideally a SIGHUP reload with none), zero forced restart of
+the 7 `FACTORY_NATS_CLIENTS`, and no dropped connections during the operation.
+
+**Failure in 6 months:** (falsifiable) identity-add still restarts ≥2 of the 7 clients, OR a
+measured connection-drop occurs during an add, OR the change is reverted because SIGHUP reload
+proved unreliable under Quadlet (≥1 prod incident within 3 months of shipping).
+
+**Simplest alternative:** Option 2 only — keep `type=mount` auth.conf; for a pure add, restart
+only `factory-nats` and let clients reconnect via `allow_reconnect`, dropping the client fan-out.
+**Why not simplest:** `factory-nats` still bounces (momentary server-side connection drop) and the
+documented stale-tmpfs property remains. Only bind-mount + SIGHUP (Option 1) delivers true
+zero-drop live reload — the stated goal.
+
+## Complexity
+
+**Tier: F-full** — crosses deploy (Quadlet unit + secret/volume delivery model), security
+(secret-isolation tradeoff for auth.conf), and Makefile (identity-add restart fan-out), with a
+genuine unknown (SIGHUP reload reliability under rootless Quadlet) whose answer determines the
+solution shape.
+
+Signals observed:
+- Multiple domains: deploy + security + Makefile/tooling.
+- Unknown requiring investigation: SIGHUP-under-Quadlet live reload behavior.
+- "Evaluate" deliverable: the proposal's two options must be assessed, not just implemented.
+- Touches CI gates `secrets_drift` + `volumes_table` (delivery-model change).

@@ -79,10 +79,66 @@ write_convergence_state() {
     compute_convergence_state > "${CONVERGE_STAMP}"
 }
 
-# Return 0 if the system is already converged (current == last recorded).
-is_converged() {
-    local current last
-    current=$(compute_convergence_state)
-    last=$(read_convergence_state)
-    [ "${current}" = "${last}" ]
+# Classify the kind of drift between a recorded stamp and the current state.
+#
+# Contract:
+#   _classify_drift <last> <current>
+#
+#   Both arguments are fingerprints in the format produced by compute_convergence_state:
+#     <git_head>:<unit_sha>:<auth_sha>:<voicecli_head>
+#   Any field may be the sentinel "none".
+#
+# Stdout (one word):
+#   none       — no change (current == last, or last == "none" sentinel meaning no stamp)
+#   auth       — ONLY auth_sha (field 2) differs; all structural fields are identical
+#   structural — at least one structural field (git_head, unit_sha, voicecli_head) differs
+#
+# The function always succeeds (exit 0); callers branch on stdout.
+_classify_drift() {
+    local last="${1}"
+    local current="${2}"
+
+    # Identical — no drift at all
+    if [ "${last}" = "${current}" ]; then
+        echo "none"
+        return 0
+    fi
+
+    # No recorded stamp yet — treat as structural so a full converge runs
+    if [ "${last}" = "none" ]; then
+        echo "structural"
+        return 0
+    fi
+
+    # Field-count guard: fingerprints must have exactly 4 colon-separated fields.
+    # A future schema extension (5th field) would silently merge into the last variable
+    # without this check. Fail-safe to "structural" to force a full converge rather than
+    # risk misclassification (e.g. treating a revocation as auth-only).
+    local last_fields cur_fields
+    last_fields=$(awk -F: '{print NF}' <<< "${last}")
+    cur_fields=$(awk -F:  '{print NF}' <<< "${current}")
+    if [ "${last_fields}" -ne 4 ] || [ "${cur_fields}" -ne 4 ]; then
+        echo "structural"
+        return 0
+    fi
+
+    # Split both fingerprints into named fields (always 4 colon-separated fields)
+    local last_git last_unit last_auth last_voice
+    local cur_git  cur_unit  cur_auth  cur_voice
+
+    IFS=':' read -r last_git last_unit last_auth last_voice <<< "${last}"
+    IFS=':' read -r cur_git  cur_unit  cur_auth  cur_voice  <<< "${current}"
+
+    # Check structural fields first
+    if [ "${last_git}"   != "${cur_git}"   ] \
+    || [ "${last_unit}"  != "${cur_unit}"  ] \
+    || [ "${last_voice}" != "${cur_voice}" ]; then
+        echo "structural"
+        return 0
+    fi
+
+    # Structural fields match; auth_sha is the only thing that can differ here
+    # (we already ruled out full equality above).
+    echo "auth"
+    return 0
 }

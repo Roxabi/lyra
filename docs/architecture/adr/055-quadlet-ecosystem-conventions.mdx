@@ -450,7 +450,7 @@ ADR-054 fixed two runtime failures from ADR-053's Quadlet assumptions. All decis
 - **D2:** `UserNS=keep-id:uid=1500,gid=1500` in all containers (replaces `User=lyra`). Container processes run as host UID 1000 (`mickael`); all `~/.lyra/` files are readable without permission errors.
 - **D3:** Adapter data mounts use `:z` (read-write) without `:ro`.
 - **D4:** `telegram.env.example` and `discord.env.example` are deleted. `hub.env.example` is retained for `LYRA_HEALTH_SECRET` and `LYRA_HEALTH_PORT`.
-- **D5:** File-based credentials (nkey seeds, NATS auth) are delivered as Podman secrets (`type=mount`). `config.toml` is mounted inline via `Volume=%h/.lyra/config.toml:/app/config.toml:ro,z`. No `.volume` units wrapping single files (they trigger Podman's loop-device code path).
+- **D5:** File-based credentials (nkey seeds, NATS auth) are delivered as Podman secrets (`type=mount`). `config.toml` is mounted inline via `Volume=%h/.lyra/config.toml:/app/config.toml:ro,z`. No `.volume` units wrapping single files (they trigger Podman's loop-device code path). **⚠️ Amended by ADR-085 (2026-06-08):** `auth.conf` (public bundle, `U…` nkeys + ACLs only, no `S…` seeds) is exempt from this rule — it is delivered as an inline bind mount to enable SIGHUP live reload. Private nkey seed files remain `type=mount`.
 
 ---
 

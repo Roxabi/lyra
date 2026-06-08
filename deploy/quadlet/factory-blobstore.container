@@ -1,5 +1,5 @@
 [Unit]
-Description=Lyra BlobStore HTTP service
+Description=Factory BlobStore HTTP service
 # Soft dependency — audit sink degrades to logger if NATS unreachable at startup;
 # blobstore can boot and serve HTTP traffic without NATS (see spec §Boot failure modes).
 After=factory-nats.service

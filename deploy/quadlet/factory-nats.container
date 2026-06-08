@@ -25,7 +25,9 @@ Volume=factory-jetstream.volume:/var/lib/nats/jetstream:z
 # ADR-054 Decision 5 (revised): file-based credentials delivered as Podman secrets
 # (type=mount, tmpfs-backed). Replaces single-file .volume wrappers which failed
 # with "loop device setup" in Podman 5.x. Bootstrap: `make quadlet-secrets-install`.
-Secret=factory-nats-auth,type=mount,target=/etc/nats/nkeys/auth.conf,mode=0444
+# ADR-085: auth.conf (public ACL bundle) delivered as inline bind mount + SIGHUP reload
+# instead of type=mount secret. Private NKey seeds remain type=mount per ADR-054.
+Volume=%h/.roxabi/factory/nkeys/auth.conf:/etc/nats/nkeys/auth.conf:ro,z
 Exec=nats-server -c /etc/nats/nats.conf
 HealthCmd=pgrep -f nats-server
 HealthInterval=30s
@@ -33,6 +35,7 @@ HealthInterval=30s
 [Service]
 Restart=on-failure
 RestartSec=10
+ExecReload=/usr/bin/podman kill --signal=HUP factory-nats
 # Cap at 2 full cores — keeps NATS from starving hub/adapters under load.
 CPUQuota=200%
 

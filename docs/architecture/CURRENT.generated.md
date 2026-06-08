@@ -173,7 +173,6 @@
 
 ### nats
 - **Container:** factory-nats.container
-- **Required secrets:** factory-nats-auth
 - **Host roles:** factory-hub
 
 ### telegram

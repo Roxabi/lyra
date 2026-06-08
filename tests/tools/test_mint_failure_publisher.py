@@ -60,9 +60,10 @@ async def test_publish_http_error_sends_event() -> None:
 
     subject, data = fake_nc.calls[0]
 
-    # Subject correctness
-    expected_subject = gh_mint_failure("testhost")
-    assert subject == expected_subject
+    # Subject correctness — assert the literal so the test cannot pass on a
+    # buggy gh_mint_failure (avoids comparing the impl against itself).
+    assert subject == "factory.gh.mint_failure.testhost"
+    assert subject == gh_mint_failure("testhost")
 
     # Payload correctness
     event = MintFailureEvent.model_validate_json(data)

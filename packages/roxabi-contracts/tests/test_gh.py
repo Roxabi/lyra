@@ -79,6 +79,36 @@ def test_mint_failure_rejects_bad_machine(machine: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# test_mint_failure_accepts_valid_machine
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "machine",
+    [
+        pytest.param("M1", id="short-alnum"),
+        pytest.param("roxabituwer", id="hostname"),
+        pytest.param("host-01", id="hyphen"),
+        pytest.param("host_01", id="underscore"),
+    ],
+)
+def test_mint_failure_accepts_valid_machine(machine: str) -> None:
+    """field_validator accepts single-segment machines (alnum, hyphen, underscore).
+
+    Guards the acceptance boundary so an over-tightened regex (e.g. dropping
+    digits or hyphens) would be caught, not just the reject path.
+    """
+    # Arrange
+    payload: dict[str, Any] = {**sample_mint_failure, "machine": machine}
+
+    # Act
+    inst = MintFailureEvent.model_validate(payload)
+
+    # Assert
+    assert inst.machine == machine
+
+
+# ---------------------------------------------------------------------------
 # test_mint_failure_http_status_none_allowed
 # ---------------------------------------------------------------------------
 
@@ -173,9 +203,18 @@ def test_mint_failure_reason_empty_rejected() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_subject_helper_happy() -> None:
-    """gh_mint_failure produces factory.gh.mint_failure.<machine>."""
-    assert gh_mint_failure("M1") == "factory.gh.mint_failure.M1"
+@pytest.mark.parametrize(
+    "machine",
+    [
+        pytest.param("M1", id="short-alnum"),
+        pytest.param("roxabituwer", id="hostname"),
+        pytest.param("host-01", id="hyphen"),
+        pytest.param("host_01", id="underscore"),
+    ],
+)
+def test_subject_helper_happy(machine: str) -> None:
+    """gh_mint_failure produces a 4-segment factory.gh.mint_failure.<machine>."""
+    assert gh_mint_failure(machine) == f"factory.gh.mint_failure.{machine}"
 
 
 # ---------------------------------------------------------------------------

@@ -211,7 +211,6 @@ quadlet-authconf-merged:  ## render merged auth.conf (factory + voicecli identit
 FACTORY_NKEYS_DIR := $(HOME)/.roxabi/factory/nkeys
 quadlet-secrets-install:  ## (re)create Podman secrets from ~/.roxabi/factory/nkeys/*
 	@test -d "$(FACTORY_NKEYS_DIR)" || { echo "ERROR: $(FACTORY_NKEYS_DIR) not found"; exit 1; }
-	@podman secret create --replace factory-nats-auth              "$(FACTORY_NKEYS_DIR)/auth.conf"
 	@podman secret create --replace factory-nats-hub               "$(FACTORY_NKEYS_DIR)/hub.seed"
 	@podman secret create --replace factory-nats-telegram          "$(FACTORY_NKEYS_DIR)/telegram-adapter.seed"
 	@podman secret create --replace factory-nats-discord           "$(FACTORY_NKEYS_DIR)/discord-adapter.seed"
@@ -334,12 +333,11 @@ nats-regen-specs:             ## re-render ACL spec table + parity fixture from 
 	@uv run python scripts/render_acl_parity.py
 	@echo "[ok] ACL spec + parity fixture regenerated"
 
-nats-regen-authconf:          ## re-render auth.conf, refresh factory-nats-auth secret only, restart all NATS clients
+nats-regen-authconf:          ## re-render auth.conf from acl-matrix.json, restart factory-nats + all NATS clients (#1390)
 	@factory-acl genkeys --regen-authconf
 	@test -s "$(FACTORY_NKEYS_DIR)/auth.conf" \
 		|| { echo "ERROR: $(FACTORY_NKEYS_DIR)/auth.conf missing or empty after genkeys"; exit 1; }
 	@# auth.conf only — seed rotation is a different runbook (nkey-rotation.md).
-	@podman secret create --replace factory-nats-auth "$(FACTORY_NKEYS_DIR)/auth.conf"
 	@# Restart, not HUP — see docs/ops/nats-authconf-update.md.
 	@systemctl --user restart factory-nats
 	@systemctl --user is-active --wait factory-nats \
@@ -367,14 +365,12 @@ nats-add-identity:  ## add a single NATS identity rootless; idempotent after ful
 	  exit 0; \
 	fi; \
 	podman secret create --replace "factory-nats-$(NAME)" "$(FACTORY_NKEYS_DIR)/$(NAME).seed"; \
-	podman secret create --replace factory-nats-auth "$(FACTORY_NKEYS_DIR)/auth.conf"; \
-	failed=""; \
-	for svc in factory-nats $(FACTORY_NATS_CLIENTS); do \
-	  if systemctl --user is-active --quiet $$svc; then \
-	    systemctl --user restart $$svc || { echo "ERROR: restart $$svc failed"; failed="$$failed $$svc"; }; \
-	  fi; \
-	done; \
-	[ -z "$$failed" ] || { echo "ERROR: restart failed for:$$failed"; exit 1; }
+	if systemctl --user is-active --quiet factory-nats; then \
+	  systemctl --user reload factory-nats; \
+	  echo "reloaded factory-nats (SIGHUP)"; \
+	else \
+	  echo "factory-nats not active — auth.conf updated on host, will load on next start"; \
+	fi
 
 test:
 	uv run pytest -v

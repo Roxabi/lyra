@@ -144,6 +144,7 @@ resumes it rather than starting fresh.
 | inline bind | `~/.roxabi/factory/config.toml` | Telegram, Discord (inline bind, ro) | ro | Runtime config (per-bot entries) |
 | `factory-jetstream.volume` | `~/.roxabi/factory/nats/jetstream` | NATS | rw | JetStream persistence |
 | `~/.claude/` (inline) | `~/.claude/` | CliPool | rw | Claude session `.jsonl` files (required for `--resume`) |
+| inline bind | `~/.roxabi/factory/nkeys/auth.conf` | NATS (factory-nats) | ro | Public ACL bundle (`U…` nkeys + permission blocks); inline bind mount for live SIGHUP reload (ADR-085) |
 
 `factory-data.volume` is mounted **only** by `factory-hub` (#1721). Adapters use per-file inline binds for `config.toml` and the Discord-private `factory-discord-data.volume` for `discord.db`. `factory-discord-data.volume` is a named podman-managed volume (podman auto-creates it; no host bind required), mounted inside the Discord container at `/home/factory/.roxabi/factory/discord` — a separate mount point that keeps `discord.db` isolated from the hub's bind. Telegram mounts no data volume — last-session is resolved via NATS KV (`factory-turns-meta`). Discord resolves last-session via NATS KV as well; `discord.db` is the thread-ownership store only.
 
@@ -222,7 +223,7 @@ The proposal was superseded by the Quadlet + `podman auto-update` path before `r
 
 - All production deployment uses Quadlet (no supervisord)
 - Container images come from GHCR, never built on the production host
-- Credentials use `type=mount` Podman secrets (nkey seeds, NATS auth tokens)
+- Credentials use `type=mount` Podman secrets (nkey seeds, NATS auth tokens) — **exception:** `auth.conf` (public ACL bundle, `U…` keys only, no private seeds) is delivered as an inline bind mount for live SIGHUP reload; private NKey seed files remain `type=mount` per ADR-054 D5 (ADR-085)
 - All Quadlet bind-mount volumes carry `:z` for portability
 - All containers use `UserNS=keep-id:uid=1500,gid=1500` (host UID 1000)
 - Deploy coordination is independent per project; batch only for NATS auth.conf changes or Phase 4 consolidation

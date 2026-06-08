@@ -29,7 +29,7 @@ The host `nats.service` is retired (big-bang consolidation). Hub and adapters de
 `After=factory-nats.service` / `Requires=factory-nats.service` so systemd boots NATS first.
 
 NATS config: `nats/nats-container.conf` (bind-mounted read-only).
-Auth credentials: Podman secret `factory-nats-auth` (type=mount, tmpfs-backed).
+Auth credentials: `auth.conf` delivered as an **inline bind mount** (`Volume=%h/.roxabi/factory/nkeys/auth.conf:/etc/nats/nkeys/auth.conf:ro,z`) — NOT a Podman secret. See ADR-085. Private NKey seeds remain `type=mount` Podman secrets per ADR-054.
 NATS version: pinned by digest in `factory-nats.container` — ¬autoupdate, bump manually.
 
 ---
@@ -92,12 +92,14 @@ deploy verb for M₁. It reconciles the running system with the desired state de
 2. **Pull** — `git pull origin staging` in `~/projects/roxabi-factory` (and `~/projects/voiceCLI` if present).
 3. **Install Quadlet units** — `make quadlet-install NO_RESTART=1` (renders units, copies to `~/.config/containers/systemd`, `daemon-reload`, seeds BotStore).
 4. **Regenerate auth.conf** — `factory-acl genkeys --regen-authconf` (renders `nkeys/` → `auth.conf`).
-5. **Rotate auth secret** — `podman secret create --replace factory-nats-auth <nkeys>/auth.conf` (unconditional; ensures the new auth.conf is in the Podman secret store before NATS restarts).
-6. **Install secrets** — `make quadlet-secrets-install` (recreates remaining Podman secrets from host key files; `factory-nats-auth` already replaced in step 5).
-7. **Restart NATS** — `systemctl --user restart factory-nats` (mount-typed secrets require container restart, not HUP, to refresh). Waits for `is-active`.
-8. **Restart lyra clients** — `factory-hub`, `factory-telegram`, `factory-discord`, `factory-clipool`, `factory-turn-writer`, `factory-gh-helper`, `factory-blobstore` (only if already active; any failure aborts the converge).
-9. **Restart voiceCLI** — `voicecli-tts`, `voicecli-stt` (if voiceCLI directory exists).
-10. **Record stamp** — writes the new convergence fingerprint to `~/.roxabi/factory/.converge-stamp`.
+5. **Install secrets** — `make quadlet-secrets-install` (recreates Podman secrets from host key files; `factory-nats-auth` is no longer a secret — `auth.conf` is now an inline bind mount per ADR-085).
+6. **Restart NATS** — operator-path choices for targeted operations:
+   - **Pure identity add** (`make nats-add-identity`): atomic write to `auth.conf` on host → `systemctl --user reload factory-nats` (fires `ExecReload=` → `podman kill --signal=HUP factory-nats`). Zero client restarts, zero dropped connections.
+   - **ACL permission change** (`make nats-regen-authconf`): atomic write to `auth.conf` on host → `systemctl --user restart factory-nats` (required per #1390 — stale-subject-auth risk on ACL changes). Waits for `is-active`.
+   Converge always **restarts** factory-nats on any drift (auth → factory-nats only; structural → factory-nats + clients) — it never reloads, because it cannot prove a change is a pure identity-add (#1390). Clients reconnect automatically via `allow_reconnect`.
+7. **Restart lyra clients** — `factory-hub`, `factory-telegram`, `factory-discord`, `factory-clipool`, `factory-turn-writer`, `factory-gh-helper`, `factory-blobstore` (only if already active; any failure aborts the converge). Restarted only on **structural** drift. On **auth-only** drift, converge restarts factory-nats alone; clients reconnect via `allow_reconnect` without explicit restart.
+8. **Restart voiceCLI** — `voicecli-tts`, `voicecli-stt` (if voiceCLI directory exists).
+9. **Record stamp** — writes the new convergence fingerprint to `~/.roxabi/factory/.converge-stamp`.
 
 ### Trigger wiring
 
@@ -132,8 +134,8 @@ Monitor: `journalctl --user -t factory-deploy-failure -f`
 # Full atomic converge (operator-initiated)
 make converge
 
-# Check convergence state without changing anything
-bash -c 'source deploy/lib/deploy-common.sh; is_converged && echo "Converged" || echo "Drift"'
+# Check convergence state without changing anything (prints none|auth|structural)
+bash -c 'source deploy/lib/deploy-common.sh; _classify_drift "$(read_convergence_state)" "$(compute_convergence_state)"'
 ```
 
 ---
@@ -143,7 +145,8 @@ bash -c 'source deploy/lib/deploy-common.sh; is_converged && echo "Converged" ||
 `NoNewPrivileges=true` | `ReadOnly=true` | `DropCapability=all`
 `UserNS=keep-id:uid=1500,gid=1500` for lyra units (UID 1500 = `lyra`)
 Secrets via `type=mount` (tmpfs) — ¬env vars, ¬volume wrappers for credentials.
-Operational consequence: `type=mount` secrets are bound at container init — `--replace` updates the store but the in-container tmpfs file is stale. ACL/secret changes require container restart (not HUP) to refresh. See [`docs/ops/nats-authconf-update.md`](../docs/ops/nats-authconf-update.md).
+Operational consequence: `type=mount` secrets are bound at container init — `--replace` updates the store but the in-container tmpfs file is stale. ACL permission changes require container restart (not HUP) to refresh (#1390). See [`docs/ops/nats-authconf-update.md`](../docs/ops/nats-authconf-update.md).
+**Carve-out (ADR-085):** `auth.conf` (the public ACL bundle — `U…` nkeys + permission blocks, no private seeds) is delivered as an **inline bind mount**, not a `type=mount` secret. This allows live SIGHUP reload for pure identity-add operations without client restarts. Private NKey seed files (e.g. `factory-nats-hub.seed`) remain `type=mount` per ADR-054 D5.
 ¬inline `#` comments after `Volume=` values — Quadlet passes them to Podman as mount options.
 
 ### Secret naming convention

@@ -13,7 +13,7 @@ from typing import Annotated
 
 from pydantic import Field, StringConstraints, field_validator
 
-from roxabi_contracts._nats_utils import validate_job_token
+from roxabi_contracts._nats_utils import _validate_subject_segment
 from roxabi_contracts.envelope import ContractEnvelope
 
 __all__ = ["MintFailureEvent"]
@@ -32,8 +32,10 @@ class MintFailureEvent(ContractEnvelope):
 
     machine: str
     """Host identifier, e.g. ``"M1"`` or ``"roxabituwer"``.
-    Same charset rules as job_id: alphanumeric, hyphens, underscores,
-    internal dots allowed for namespacing — no wildcards, no boundary dots.
+    A single NATS subject segment: ``[A-Za-z0-9_-]+`` only — no dots,
+    wildcards, or ``>``. Dots are rejected so ``machine`` always occupies
+    exactly one segment of the 4-segment ``factory.gh.mint_failure.<machine>``
+    subject, matching the daemon's ``_safe_machine_name`` sanitizer (#1708).
     """
 
     reason: Annotated[str, StringConstraints(min_length=1)]
@@ -51,5 +53,7 @@ class MintFailureEvent(ContractEnvelope):
     @field_validator("machine")
     @classmethod
     def _validate_machine(cls, v: str) -> str:
-        validate_job_token(v)
+        # machine is a single subject segment, not a dotted job token — reject
+        # internal dots so it can never widen the 4-segment subject (#1708).
+        _validate_subject_segment(v)
         return v

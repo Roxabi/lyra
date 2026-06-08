@@ -60,16 +60,52 @@ def test_mint_failure_extra_ignore() -> None:
         pytest.param(".leading-dot", id="leading-dot"),
         pytest.param("trailing.", id="trailing-dot"),
         pytest.param("a..b", id="consecutive-dots"),
+        pytest.param("roxabituwer.local", id="internal-dot"),
     ],
 )
 def test_mint_failure_rejects_bad_machine(machine: str) -> None:
-    """field_validator on machine rejects wildcards and boundary dot violations."""
+    """field_validator on machine rejects wildcards and any dots (#1708).
+
+    machine is a single subject segment of factory.gh.mint_failure.<machine>;
+    even internal dots are rejected so the subject stays 4 segments, matching
+    the daemon's _safe_machine_name sanitizer.
+    """
     # Arrange
     payload: dict[str, Any] = {**sample_mint_failure, "machine": machine}
 
     # Act / Assert
     with pytest.raises(ValidationError):
         MintFailureEvent.model_validate(payload)
+
+
+# ---------------------------------------------------------------------------
+# test_mint_failure_accepts_valid_machine
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "machine",
+    [
+        pytest.param("M1", id="short-alnum"),
+        pytest.param("roxabituwer", id="hostname"),
+        pytest.param("host-01", id="hyphen"),
+        pytest.param("host_01", id="underscore"),
+    ],
+)
+def test_mint_failure_accepts_valid_machine(machine: str) -> None:
+    """field_validator accepts single-segment machines (alnum, hyphen, underscore).
+
+    Guards the acceptance boundary so an over-tightened regex (e.g. dropping
+    digits or hyphens) would be caught, not just the reject path.
+    """
+    # Arrange
+    payload: dict[str, Any] = {**sample_mint_failure, "machine": machine}
+
+    # Act
+    inst = MintFailureEvent.model_validate(payload)
+
+    # Assert
+    assert inst.machine == machine
 
 
 # ---------------------------------------------------------------------------
@@ -167,9 +203,18 @@ def test_mint_failure_reason_empty_rejected() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_subject_helper_happy() -> None:
-    """gh_mint_failure produces factory.gh.mint_failure.<machine>."""
-    assert gh_mint_failure("M1") == "factory.gh.mint_failure.M1"
+@pytest.mark.parametrize(
+    "machine",
+    [
+        pytest.param("M1", id="short-alnum"),
+        pytest.param("roxabituwer", id="hostname"),
+        pytest.param("host-01", id="hyphen"),
+        pytest.param("host_01", id="underscore"),
+    ],
+)
+def test_subject_helper_happy(machine: str) -> None:
+    """gh_mint_failure produces a 4-segment factory.gh.mint_failure.<machine>."""
+    assert gh_mint_failure(machine) == f"factory.gh.mint_failure.{machine}"
 
 
 # ---------------------------------------------------------------------------
@@ -186,9 +231,10 @@ def test_subject_helper_happy() -> None:
         pytest.param(".leading-dot", id="leading-dot"),
         pytest.param("trailing.", id="trailing-dot"),
         pytest.param("a..b", id="consecutive-dots"),
+        pytest.param("roxabituwer.local", id="internal-dot"),
     ],
 )
 def test_subject_helper_rejects_bad_token(bad_token: str) -> None:
-    """gh_mint_failure raises ValueError for wildcards, empty strings, dot errors."""
+    """gh_mint_failure rejects wildcards, empty strings, and any dots (#1708)."""
     with pytest.raises(ValueError):
         gh_mint_failure(bad_token)

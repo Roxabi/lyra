@@ -36,11 +36,20 @@ class MintFailurePublisher:
     Wraps a NATS client and a machine identifier. ``publish()`` never raises —
     NATS errors are logged at WARNING level and swallowed so that callers can
     fire-and-forget without disrupting the token-minting critical path.
+
+    ``__init__`` validates ``machine`` (single subject segment, no dots) and
+    precomputes the publish subject, so an invalid machine fails fast at
+    construction rather than being silently swallowed by ``publish()``. This
+    protects every caller, not just the daemon path that pre-sanitizes via
+    ``_safe_machine_name`` (#1708).
     """
 
     def __init__(self, nc: "NATS", machine: str) -> None:
         self._nc = nc
         self._machine = machine
+        # Validate + precompute subject here so a bad machine raises ValueError
+        # at construction instead of being swallowed by the best-effort publish.
+        self._subject = gh_mint_failure(machine)
 
     async def publish(self, exc: MintError) -> None:
         """Publish a MintFailureEvent for *exc*. Best-effort — never raises."""
@@ -54,7 +63,8 @@ class MintFailurePublisher:
                 http_status=exc.http_status,
                 retries=exc.retries,
             )
-            subject = gh_mint_failure(self._machine)
-            await self._nc.publish(subject, event.model_dump_json().encode("utf-8"))
+            await self._nc.publish(
+                self._subject, event.model_dump_json().encode("utf-8")
+            )
         except Exception as pub_exc:  # noqa: BLE001 — best-effort publish; must not break token minting
             log.warning("mint_failure_publisher: publish failed: %s", pub_exc)

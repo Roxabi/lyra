@@ -78,7 +78,9 @@ class SessionCtx:
     ``thread_store`` on the Discord-thread path.
     """
 
-    turn_store: TurnStoreProtocol | None  # legacy — always None in production (#48)
+    turn_store: (
+        TurnStoreProtocol | None
+    )  # legacy — always None; unread by SessionBuilder (#48, #1731)
     thread_store: ThreadStoreProtocol | None
     turn_publisher: TurnPublisher | None = None
     thread_sessions_cache: dict[str, ThreadSession] = field(default_factory=dict)

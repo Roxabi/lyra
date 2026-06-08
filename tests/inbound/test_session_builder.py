@@ -148,7 +148,7 @@ class TestSessionBuilderPathB:
         """last_session port consulted; prior session propagated to TelegramMeta.
 
         Negative: removing the ctx.last_session.get_last_session call in
-        _build_turnstore_path means thread_session_id is never populated and
+        _build_last_session_path means thread_session_id is never populated and
         resume-session is silently broken.
         """
         # Arrange
@@ -508,7 +508,7 @@ class TestSessionBuilderLastSessionPort:
 
     @pytest.mark.asyncio
     async def test_set_last_session_called_in_update_fn(self) -> None:
-        """_turnstore_update_fn calls last_session.set_last_session after assign.
+        """_last_session_update_fn calls last_session.set_last_session after assign.
 
         Negative: if the update closure omits the set_last_session call, KV is never
         written and all future messages start a new session (silent regression).
@@ -543,7 +543,7 @@ class TestSessionBuilderLastSessionPort:
         """D9 invariant (#1731): turn_store alone does not trigger session wiring.
 
         The old guard ``if ts is None and ctx.last_session is None`` let a
-        turn_store-only "hub path" enter ``_build_turnstore_path``. Post-#1721
+        turn_store-only "hub path" enter ``_build_last_session_path``. Post-#1721
         adapters always pass ``turn_store=None``, so #1731 simplified the gate to
         ``if ctx.last_session is None`` — making replace-not-supplement a code
         invariant rather than a deployment property.
@@ -553,18 +553,18 @@ class TestSessionBuilderLastSessionPort:
         """
         # Arrange — turn_store present, no last_session, no thread_store
         ts = _make_turn_store(last_session=None)
-        pub = _make_turn_publisher()
         builder = SessionBuilder()
         msg = _make_msg(platform="telegram", platform_meta=TelegramMeta(chat_id=1))
         ctx = _make_session_ctx_with_last_session(
             turn_store=ts,
             last_session=None,
-            turn_publisher=pub,
         )
 
         # Act
         result = await builder.build(msg, ctx)
 
-        # Assert — last_session is the sole gate: msg returned unchanged, no wiring.
+        # Assert — last_session is the sole gate: msg returned unchanged, no wiring,
+        # and turn_store is never consulted (D9 code invariant).
         assert result is msg
         assert result.session_update_fn is None
+        ts.get_last_session.assert_not_awaited()

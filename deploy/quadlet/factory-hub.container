@@ -1,5 +1,5 @@
 [Unit]
-Description=Lyra Hub
+Description=Factory Hub
 After=factory-nats.service
 After=factory-blobstore.service
 Requires=factory-nats.service

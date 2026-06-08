@@ -30,9 +30,11 @@ class SessionBuilder:
 
     Handles three cases without importing platform libraries:
 
-    (a) All stores None  — test/CLI: no session persistence, return msg unchanged.
-    (b) last_session present, no thread_store — Telegram/Discord DM: session
-        persistence via ``LastSessionStore`` (KV or TurnStoreLastSession adapter).
+    (a) ``thread_store`` and ``last_session`` both None — test/CLI: no session
+        persistence, return msg unchanged.
+    (b)/(c) ``last_session`` present, no owned Discord thread — Telegram/Discord DM:
+        session persistence via ``LastSessionStore`` (KV-backed). ``last_session``
+        is the sole gate for this path; ``turn_store`` does not participate (#48).
     (d) thread_store present, Discord owned thread — ThreadStore read +
         write-through cache; ``last_session`` unused on this path.
 
@@ -53,12 +55,11 @@ class SessionBuilder:
         with ``session_update_fn`` set and, when applicable, ``platform_meta``
         updated with the prior ``thread_session_id``.
         """
-        ts = ctx.turn_store
         th = ctx.thread_store
         meta = msg.platform_meta
 
         # (a) No stores — test/CLI mode; nothing to inject.
-        if ts is None and th is None and ctx.last_session is None:
+        if th is None and ctx.last_session is None:
             return msg
 
         # Discriminate path: Discord with thread_store present uses meta inspection.
@@ -71,9 +72,10 @@ class SessionBuilder:
             # (d) Discord owned thread — ThreadStore read + write-through cache.
             return await self._build_thread_path(msg, ctx)
 
-        # (b) / (c) TurnStore / last_session path — Telegram or Discord DM.
-        # Require turn_store OR last_session; if both absent fall through to no-op.
-        if ts is None and ctx.last_session is None:
+        # (b) / (c) last_session path — Telegram or Discord DM.
+        # D9 (replace-not-supplement): last_session is the sole gate for this path.
+        # turn_store is always None from adapters (#48) and no longer participates.
+        if ctx.last_session is None:
             return msg
         return await self._build_turnstore_path(msg, ctx)
 

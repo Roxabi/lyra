@@ -70,11 +70,12 @@ class SessionCtx:
     publish ``start_session`` events instead of writing TurnStore directly.
     When ``None`` (test/CLI mode), session persistence is skipped.
 
-    ``turn_store`` is a legacy field retained for structural compatibility (#48).
-    All adapters pass ``turn_store=None``; ``SessionBuilder`` only checks
-    ``is None`` (it never reads or writes through it).  Active session
-    persistence is handled by ``last_session`` (``LastSessionStore``) on the
-    turnstore path and by ``thread_store`` on the Discord-thread path.
+    ``turn_store`` is a legacy field retained for structural/constructor
+    compatibility (#48). All adapters pass ``turn_store=None`` and
+    ``SessionBuilder`` no longer references it at all (the dead resume-guard arm
+    was removed in #1731).  Active session persistence is handled by
+    ``last_session`` (``LastSessionStore``) on the last-session path and by
+    ``thread_store`` on the Discord-thread path.
     """
 
     turn_store: TurnStoreProtocol | None  # legacy — always None in production (#48)

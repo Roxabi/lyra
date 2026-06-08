@@ -167,7 +167,17 @@ TTL reap     → safety net for crash-before-terminal or lost terminal
 
 The hub's inbound router is ONE shared module (axial N×M — no per-platform copy; same
 rationale as the typing factory / ADR-073). Workers declare a **concurrency_mode** as a typed
-capability in their contract:
+capability in their contract.
+
+**Guardrail:** the **concurrency_router** is a single inbound stage living under `factory/inbound/`,
+bound by each adapter via `functools.partial` (same pattern as `pre_route_hook` / `pre_session_hook`).
+An `.importlinter` contract (like `inbound-no-adapters`, #1287) forbids importing it from
+`factory.adapters` — it must never become a per-adapter copy.
+
+**Axis primacy:** module decomposition follows the **stage axis** (lifecycle: parse → route →
+session → dispatch), NOT the executor-shape axis (Shapes A/B/C/D). Executor shape is a runtime
+classification injected via strategy/protocol objects into the single shared stage — it is not a
+code-organization boundary.
 
 | Mode | Pool-scoped? | Index entry? | Behaviour |
 |---|---|---|---|
@@ -203,6 +213,13 @@ J  (root run, job_id=J)
 **Ports survive:** `LlmProvider`, `TtsProtocol`, `STTProtocol`, `AuditSink` in `core/ports/`
 are unchanged. Only the transport adapter migrates from request-reply to sub-job pub/sub.
 Sub-jobs are observable and steerable via the `factory.job.<id>.*` subtree.
+
+**Guardrail:** the job pub/sub transport is a SINGLE shared primitive in `factory.transport`
+(one publish/subscribe mechanism) that each port's wiring composes — NOT a per-port NATS
+implementation. Rolling separate subscribe/publish logic per adapter
+(LlmJobAdapter + TtsJobAdapter + SttJobAdapter + ImageJobAdapter) is the N×M trap (ADR-073).
+Precedent: OutboundAdapterBase defines the streaming mechanism once; per-platform adapters
+override only the formatter.
 
 ---
 

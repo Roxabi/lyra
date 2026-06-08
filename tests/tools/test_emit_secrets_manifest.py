@@ -214,12 +214,6 @@ class TestPolicyClassification:
                 f"{name} should have policy=nats-seed"
             )
 
-    def test_nats_auth_has_nats_auth_policy(self) -> None:
-        """factory-nats-auth carries policy=nats-auth (not nats-seed)."""
-        with POLICY_TOML.open("rb") as f:
-            policy = tomllib.load(f)
-        assert policy["secret"]["factory-nats-auth"]["policy"] == "nats-auth"
-
     def test_optional_secrets_have_optional_policy(self) -> None:
         """factory-gh-pem and factory-claude-oauth carry policy=optional."""
         with POLICY_TOML.open("rb") as f:

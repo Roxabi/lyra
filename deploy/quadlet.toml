@@ -4,7 +4,7 @@ uid = 1500
 
 [component.nats]
 container = "factory-nats.container"
-required_secrets = ["factory-nats-auth"]
+required_secrets = []
 host_roles = ["factory-hub"]
 
 [component.hub]

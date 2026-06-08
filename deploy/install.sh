@@ -294,6 +294,17 @@ if [[ ! -e "${HOME}/.roxabi/factory/turn-writer/turns.db" ]]; then
 else
   echo "  [skip] ${HOME}/.roxabi/factory/turn-writer/turns.db already exists"
 fi
+# Pre-render auth.conf as a regular file so Podman never materialises it as a
+# directory on first boot (factory-nats bind-mounts it inline; if the host file
+# is absent, Podman creates a directory at the mount target, breaking nats-server).
+if [[ ! -e "${NKEYS_DIR}/auth.conf" ]]; then
+  run mkdir -p "${NKEYS_DIR}"
+  log "Rendering auth.conf (first boot) → ${NKEYS_DIR}/auth.conf ..."
+  run factory-acl genkeys --emit-merged-authconf
+  echo "  [ok]   ${NKEYS_DIR}/auth.conf (rendered)"
+else
+  echo "  [skip] ${NKEYS_DIR}/auth.conf already exists"
+fi
 
 # ── 6. Copy Quadlet units ────────────────────────────────────────────────────
 

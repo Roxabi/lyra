@@ -1,12 +1,18 @@
-"""CI shell-test for nats-add-identity Phase-2 restart branch (issue #1365).
+"""CI shell-test for nats-add-identity Shape-C reload behavior (issue #1719).
 
-Stubs podman + systemctl via PATH override to assert the restart loop
-is invoked correctly per the Phase-2 gate (STATE × secret presence).
+Supersedes the #1365 restart-fan-out behavior.  auth.conf is now a bind-mount
+(not a secret), so there is no `factory-nats-auth` secret create, and NATS
+clients are NOT restarted on identity-add — only `systemctl --user reload
+factory-nats` (SIGHUP) is issued so the server picks up the new public nkey
+from the already-updated bind-mounted auth.conf.
+
+Stubs podman + systemctl via PATH override to assert the reload path is invoked
+correctly per the Phase-2 gate (STATE × secret presence).
 
 Coverage:
-  (a) STATE=added → Phase 2 always runs (restart + secret create).
-  (b) STATE=noop + secret present → Phase 2 skipped (no restart).
-  (c) STATE=noop + secret missing → Phase 2 runs (receiving host case).
+  (a) STATE=added → seed secret create + reload (no auth secret, no fan-out).
+  (b) STATE=noop + secret present → clean no-op (no secret create, no reload).
+  (c) STATE=noop + secret missing → seed secret create + reload (receiving-host case).
 """
 
 from __future__ import annotations
@@ -17,16 +23,6 @@ import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent.parent
-
-_EXPECTED_RESTART_SVCS = [
-    "factory-nats",
-    "factory-hub",
-    "factory-telegram",
-    "factory-discord",
-    "factory-clipool",
-    "factory-turn-writer",
-    "factory-gh-helper",
-]
 
 
 def _run_with_stubs(
@@ -64,7 +60,7 @@ def _run_with_stubs(
         )
         (stubs / "podman").chmod(0o755)
 
-        # ── stub: systemctl (all services "active", restart logs) ────────────────────
+        # ── stub: systemctl (all services "active", reload logs) ────────────────────
         (stubs / "systemctl").write_text(
             f'#!/bin/sh\necho "$@" >> "{systemctl_log}"\nexit 0\n',
             encoding="utf-8",
@@ -90,12 +86,12 @@ def _run_with_stubs(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# A — STATE=added → Phase 2 always runs
+# A — STATE=added → seed secret create + reload (no auth secret, no fan-out)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def test_restart_runs_when_state_added() -> None:
-    """STATE=added forces Phase 2 regardless of secret presence."""
+def test_reload_runs_when_state_added() -> None:
+    """STATE=added: seed created + factory-nats reloaded; no auth secret, no fan-out."""
     result, podman_lines, systemctl_lines = _run_with_stubs(
         uv_state="added", podman_inspect_ok=False
     )
@@ -104,30 +100,35 @@ def test_restart_runs_when_state_added() -> None:
         f"expected exit 0, got {result.returncode}; stderr={result.stderr!r}"
     )
 
+    # Per-identity seed secret MUST be created (type=mount, stays present).
     assert any(
         "secret create --replace factory-nats-test-identity" in line
         for line in podman_lines
     ), "podman secret create factory-nats-test-identity not called"
+
+    # factory-nats-auth was removed (bind-mount now) — must NOT appear.
+    assert not any(
+        "factory-nats-auth" in line for line in podman_lines
+    ), "podman must NOT create factory-nats-auth (it is a bind-mount, not a secret)"
+
+    # SIGHUP reload — not restart.
     assert any(
-        "secret create --replace factory-nats-auth" in line for line in podman_lines
-    ), "podman secret create factory-nats-auth not called"
+        "reload factory-nats" in line for line in systemctl_lines
+    ), "systemctl reload factory-nats not called"
 
-    for svc in _EXPECTED_RESTART_SVCS:
-        assert any(f"restart {svc}" in line for line in systemctl_lines), (
-            f"systemctl restart {svc} not called"
-        )
-        assert any(f"is-active --quiet {svc}" in line for line in systemctl_lines), (
-            f"systemctl is-active {svc} not called"
-        )
+    # 0-fan-out invariant: no client services restarted (#1719 core point).
+    assert not any(
+        "restart " in line for line in systemctl_lines
+    ), "systemctl restart must NOT be called (0-fan-out contract)"
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# B — STATE=noop + secret present → Phase 2 skipped
+# B — STATE=noop + secret present → clean no-op (no secret create, no reload)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def test_restart_skipped_when_noop_and_secret_present() -> None:
-    """STATE=noop ∧ secret present → clean no-op; no restart, no secret create."""
+def test_reload_skipped_when_noop_and_secret_present() -> None:
+    """STATE=noop ∧ secret present → clean no-op; no secret create, no reload."""
     result, podman_lines, systemctl_lines = _run_with_stubs(
         uv_state="noop", podman_inspect_ok=True
     )
@@ -147,14 +148,19 @@ def test_restart_skipped_when_noop_and_secret_present() -> None:
         "systemctl restart must NOT be called in no-op case"
     )
 
+    # Clean no-op: no reload either.
+    assert not any("reload" in line for line in systemctl_lines), (
+        "systemctl reload must NOT be called in no-op case"
+    )
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# C — STATE=noop + secret missing → Phase 2 runs (receiving host)
+# C — STATE=noop + secret missing → seed create + reload (receiving host)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
-def test_restart_runs_when_noop_but_secret_missing() -> None:
-    """STATE=noop ∧ secret missing → receiving-host catch-up; Phase 2 runs."""
+def test_reload_runs_when_noop_but_secret_missing() -> None:
+    """STATE=noop ∧ secret missing → catch-up: seed create + reload, no fan-out."""
     result, podman_lines, systemctl_lines = _run_with_stubs(
         uv_state="noop", podman_inspect_ok=False
     )
@@ -163,15 +169,23 @@ def test_restart_runs_when_noop_but_secret_missing() -> None:
         f"expected exit 0, got {result.returncode}; stderr={result.stderr!r}"
     )
 
+    # Per-identity seed secret MUST be created.
     assert any(
         "secret create --replace factory-nats-test-identity" in line
         for line in podman_lines
     ), "podman secret create factory-nats-test-identity not called"
-    assert any(
-        "secret create --replace factory-nats-auth" in line for line in podman_lines
-    ), "podman secret create factory-nats-auth not called"
 
-    for svc in _EXPECTED_RESTART_SVCS:
-        assert any(f"restart {svc}" in line for line in systemctl_lines), (
-            f"systemctl restart {svc} not called"
-        )
+    # factory-nats-auth is a bind-mount — must NOT be created.
+    assert not any(
+        "factory-nats-auth" in line for line in podman_lines
+    ), "podman must NOT create factory-nats-auth (it is a bind-mount, not a secret)"
+
+    # SIGHUP reload — not restart.
+    assert any(
+        "reload factory-nats" in line for line in systemctl_lines
+    ), "systemctl reload factory-nats not called"
+
+    # 0-fan-out invariant: no client services restarted.
+    assert not any(
+        "restart " in line for line in systemctl_lines
+    ), "systemctl restart must NOT be called (0-fan-out contract)"

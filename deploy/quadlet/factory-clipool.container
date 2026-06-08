@@ -1,5 +1,5 @@
 [Unit]
-Description=Lyra CliPool Worker
+Description=Factory CliPool Worker
 After=factory-nats.service
 After=factory-gh-pod.service
 # No Requires= on NATS — clipool connects directly; hub restarts must not cascade.

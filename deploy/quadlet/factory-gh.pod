@@ -1,5 +1,5 @@
 [Unit]
-Description=Lyra GitHub App pod (clipool + token-mint helper)
+Description=Factory GitHub App pod (clipool + token-mint helper)
 # Order after NATS: clipool needs NATS; helper only needs the tmpfs (available immediately).
 # No Requires= on clipool so a hub restart does not cascade.
 After=factory-nats.service

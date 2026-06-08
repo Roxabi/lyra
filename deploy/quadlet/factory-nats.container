@@ -1,5 +1,5 @@
 [Unit]
-Description=Lyra NATS server
+Description=Factory NATS server
 StartLimitIntervalSec=60
 StartLimitBurst=5
 

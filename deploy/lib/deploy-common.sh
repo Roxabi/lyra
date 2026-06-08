@@ -79,14 +79,6 @@ write_convergence_state() {
     compute_convergence_state > "${CONVERGE_STAMP}"
 }
 
-# Return 0 if the system is already converged (current == last recorded).
-is_converged() {
-    local current last
-    current=$(compute_convergence_state)
-    last=$(read_convergence_state)
-    [ "${current}" = "${last}" ]
-}
-
 # Classify the kind of drift between a recorded stamp and the current state.
 #
 # Contract:
@@ -114,6 +106,18 @@ _classify_drift() {
 
     # No recorded stamp yet — treat as structural so a full converge runs
     if [ "${last}" = "none" ]; then
+        echo "structural"
+        return 0
+    fi
+
+    # Field-count guard: fingerprints must have exactly 4 colon-separated fields.
+    # A future schema extension (5th field) would silently merge into the last variable
+    # without this check. Fail-safe to "structural" to force a full converge rather than
+    # risk misclassification (e.g. treating a revocation as auth-only).
+    local last_fields cur_fields
+    last_fields=$(awk -F: '{print NF}' <<< "${last}")
+    cur_fields=$(awk -F:  '{print NF}' <<< "${current}")
+    if [ "${last_fields}" -ne 4 ] || [ "${cur_fields}" -ne 4 ]; then
         echo "structural"
         return 0
     fi

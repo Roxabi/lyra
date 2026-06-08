@@ -163,6 +163,15 @@ class TestAtomicWrite:
             recorded.append((src, dst))
             real_replace(src, dst)
 
+        # NOTE: monkeypatch fragility — this patches `os.replace` via the `_modes`
+        # module object (i.e. `_modes.os.replace`).  The intercept works only because
+        # `atomic_write` in _modes.py calls `os.replace(...)` through the module
+        # attribute at call-time, not through a name imported at module load time.
+        # If `atomic_write` is ever refactored to `from os import replace` at the top
+        # level (binding a bare name), `setattr(_modes.os, "replace", ...)` will no
+        # longer intercept the call and this test will silently pass with 0% coverage
+        # of the replace path.  Prefer patching via the module object, and if the
+        # import style changes, update the patch target to `_modes.replace`.
         monkeypatch.setattr(_modes.os, "replace", capturing_replace)
 
         atomic_write(dest, "CONTENT", 0o600)

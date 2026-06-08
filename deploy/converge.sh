@@ -50,18 +50,12 @@ _do_converge() {
     echo "==> NATS: installing Podman secrets..."
     bash "${FACTORY_DIR}/deploy/install.sh" --secrets-only
 
-    # 7) Reload or restart NATS depending on drift kind
-    if [ "${_drift_kind}" = "auth" ]; then
-        # auth-only drift: live SIGHUP — auth.conf already updated on host via bind mount;
-        # no client restarts needed, zero dropped connections.
-        echo "==> NATS: auth-only drift → live reload, 0 clients restarted."
-        systemctl --user reload factory-nats
-    else
-        # structural drift: full restart required (image/unit/voiceCLI changed, or first run)
-        # NB: plain restart, NOT `restart --wait` — `--wait` blocks until the unit
-        # *deactivates*, which never happens for a long-running daemon, so it hung the
-        # entire converge (#1738). The is-active poll below is the readiness gate.
-        echo "==> NATS: structural drift → restarting factory-nats..."
+    # 7) Restart NATS (always — converge cannot prove a pure identity-add; #1390)
+    # NB: plain restart, NOT `restart --wait` — `--wait` blocks until the unit
+    # *deactivates*, which never happens for a long-running daemon, so it hung the
+    # entire converge (#1738). The is-active poll below is the readiness gate.
+    _restart_nats() {
+        echo "==> NATS: restarting factory-nats..."
         systemctl --user restart factory-nats
         for _ in $(seq 1 30); do
             systemctl --user is-active --quiet factory-nats && break
@@ -73,6 +67,18 @@ _do_converge() {
         done
         systemctl --user is-active --quiet factory-nats \
             || { echo "ERROR: factory-nats failed to reach active state within 30 s"; exit 1; }
+    }
+
+    if [ "${_drift_kind}" = "auth" ]; then
+        # auth-only drift: restart NATS server so fresh ACL eval is forced on all subjects
+        # (#1390 — SIGHUP is unsafe for revocations; converge cannot distinguish pure add).
+        # Clients auto-reconnect via allow_reconnect — no explicit client fan-out needed.
+        echo "==> NATS: auth-only drift → restart factory-nats only (clients reconnect via allow_reconnect)."
+        _restart_nats
+    else
+        # structural drift: full restart required (image/unit/voiceCLI changed, or first run)
+        echo "==> NATS: structural drift → restarting factory-nats + clients..."
+        _restart_nats
 
         # 8) Restart factory NATS clients (only on structural drift)
         echo "==> Lyra: restarting containers..."

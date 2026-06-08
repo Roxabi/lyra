@@ -89,6 +89,26 @@ def _classify(last: str, current: str) -> str:
             "A:b:X:d",
             "structural",
         ),
+        # 8. None-sentinel guard — non-tautological case: current fields 0,1,3 all
+        #    equal "none" (matching last_git/unit/voice when split from "none"), so
+        #    WITHOUT the `last == "none"` early-exit guard the function would fall
+        #    through to field comparison, find only auth_sha differs ("X" vs "none"),
+        #    and emit "auth" — not "structural". Deleting the guard turns this RED.
+        (
+            "none",
+            "none:none:X:none",
+            "structural",
+        ),
+        # 9. Field-count guard: 5-field current fingerprint → structural (fail-safe).
+        #    Deleting the NF!=4 guard lets the function IFS-split and reach the
+        #    field comparison; "a"=="a", "b"=="b", "c" (field 4 overflows into field
+        #    3) ≠ "d" so it still emits structural — but the guard is the explicit
+        #    contract for schema-extension safety. Test exercises the guard path.
+        (
+            "a:b:c:d",
+            "a:b:c:d:e",
+            "structural",
+        ),
     ],
     ids=[
         "equal_fingerprints→none",
@@ -98,6 +118,8 @@ def _classify(last: str, current: str) -> str:
         "field1_unit_differs→structural",
         "field3_voice_differs→structural",
         "auth_and_structural_both_differ→structural_dominates",
+        "none_sentinel_nontautological→structural",
+        "field_count_5_fields→structural",
     ],
 )
 def test_classify_drift(last: str, current: str, expected: str) -> None:
@@ -121,5 +143,13 @@ def test_classify_drift(last: str, current: str, expected: str) -> None:
       block) → falls through to `echo "auth"` → emits "auth" not "structural" → RED
     - auth_and_structural_both_differ→structural_dominates: same as above — if the
       structural guard is deleted, emits "auth" → RED.
+    - none_sentinel_nontautological→structural: current="none:none:X:none" means
+      fields 0,1,3 all equal "none" which matches IFS-split of last="none" (all 4
+      vars get "none"). Only auth_sha differs ("X" vs "none"). Without the
+      `last == "none"` early-exit guard the function emits "auth", not "structural"
+      → deletion of that guard makes this test RED.
+    - field_count_5_fields→structural: current has 5 colon-fields; deleting the
+      NF!=4 guard lets IFS-split proceed with overflow behaviour, but the contract
+      is that any non-4-field fingerprint must always fail-safe to structural.
     """
     assert _classify(last, current) == expected

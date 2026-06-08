@@ -229,6 +229,24 @@ class TestPolicyClassification:
             policy = tomllib.load(f)
         assert policy["secret"]["factory_blobstore_token"]["policy"] == "generated"
 
+    def test_factory_nats_auth_absent_from_policy(self) -> None:
+        """factory-nats-auth must NOT appear in secrets-policy.toml (ADR-085).
+
+        auth.conf is delivered as a bind-mount, not a Podman secret.  Any entry
+        for factory-nats-auth would contradict ADR-085 and risk creating a stale
+        secret that silently shadows the bind-mount on the next converge.
+
+        Non-tautology: if the entry is added to secrets-policy.toml, this test
+        fails immediately — there is no code path that allows the key while this
+        assertion is present.
+        """
+        with POLICY_TOML.open("rb") as f:
+            policy = tomllib.load(f)
+        assert "factory-nats-auth" not in policy.get("secret", {}), (
+            "factory-nats-auth must NOT be in secrets-policy.toml: "
+            "auth.conf is a bind-mount (ADR-085), not a Podman secret"
+        )
+
 
 # ---------------------------------------------------------------------------
 # Section D — gate happy path (current tree)

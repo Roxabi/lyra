@@ -93,11 +93,11 @@ deploy verb for M₁. It reconciles the running system with the desired state de
 3. **Install Quadlet units** — `make quadlet-install NO_RESTART=1` (renders units, copies to `~/.config/containers/systemd`, `daemon-reload`, seeds BotStore).
 4. **Regenerate auth.conf** — `factory-acl genkeys --regen-authconf` (renders `nkeys/` → `auth.conf`).
 5. **Install secrets** — `make quadlet-secrets-install` (recreates Podman secrets from host key files; `factory-nats-auth` is no longer a secret — `auth.conf` is now an inline bind mount per ADR-085).
-6. **Reload or restart NATS** — determined by the nature of the auth.conf change:
+6. **Restart NATS** — operator-path choices for targeted operations:
    - **Pure identity add** (`make nats-add-identity`): atomic write to `auth.conf` on host → `systemctl --user reload factory-nats` (fires `ExecReload=` → `podman kill --signal=HUP factory-nats`). Zero client restarts, zero dropped connections.
    - **ACL permission change** (`make nats-regen-authconf`): atomic write to `auth.conf` on host → `systemctl --user restart factory-nats` (required per #1390 — stale-subject-auth risk on ACL changes). Waits for `is-active`.
-   Converge always uses the restart path (step 4 may change ACLs; converge cannot distinguish pure identity-add).
-7. **Restart lyra clients** — `factory-hub`, `factory-telegram`, `factory-discord`, `factory-clipool`, `factory-turn-writer`, `factory-gh-helper`, `factory-blobstore` (only if already active; any failure aborts the converge). Skipped when step 6 issued only a reload.
+   Converge always **restarts** factory-nats on any drift (auth → factory-nats only; structural → factory-nats + clients) — it never reloads, because it cannot prove a change is a pure identity-add (#1390). Clients reconnect automatically via `allow_reconnect`.
+7. **Restart lyra clients** — `factory-hub`, `factory-telegram`, `factory-discord`, `factory-clipool`, `factory-turn-writer`, `factory-gh-helper`, `factory-blobstore` (only if already active; any failure aborts the converge). Restarted only on **structural** drift. On **auth-only** drift, converge restarts factory-nats alone; clients reconnect via `allow_reconnect` without explicit restart.
 8. **Restart voiceCLI** — `voicecli-tts`, `voicecli-stt` (if voiceCLI directory exists).
 9. **Record stamp** — writes the new convergence fingerprint to `~/.roxabi/factory/.converge-stamp`.
 
@@ -134,8 +134,8 @@ Monitor: `journalctl --user -t factory-deploy-failure -f`
 # Full atomic converge (operator-initiated)
 make converge
 
-# Check convergence state without changing anything
-bash -c 'source deploy/lib/deploy-common.sh; is_converged && echo "Converged" || echo "Drift"'
+# Check convergence state without changing anything (prints none|auth|structural)
+bash -c 'source deploy/lib/deploy-common.sh; _classify_drift "$(read_convergence_state)" "$(compute_convergence_state)"'
 ```
 
 ---

@@ -227,7 +227,7 @@ log "Installing Podman secrets ..."
 for secret_name in "${!SECRET_POLICY[@]}"; do
   _policy="${SECRET_POLICY[$secret_name]}"
   case "${_policy}" in
-    nats-seed|nats-auth|generated)
+    nats-seed|generated)
       seed_path="${SEEDS[$secret_name]:-}"
       if [[ -z "${seed_path}" ]]; then
         warn "No source path resolved for ${secret_name} (policy=${_policy}) — skipping"

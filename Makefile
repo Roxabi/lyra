@@ -333,7 +333,7 @@ nats-regen-specs:             ## re-render ACL spec table + parity fixture from 
 	@uv run python scripts/render_acl_parity.py
 	@echo "[ok] ACL spec + parity fixture regenerated"
 
-nats-regen-authconf:          ## re-render auth.conf, refresh factory-nats-auth secret only, restart all NATS clients
+nats-regen-authconf:          ## re-render auth.conf from acl-matrix.json, restart factory-nats + all NATS clients (#1390)
 	@factory-acl genkeys --regen-authconf
 	@test -s "$(FACTORY_NKEYS_DIR)/auth.conf" \
 		|| { echo "ERROR: $(FACTORY_NKEYS_DIR)/auth.conf missing or empty after genkeys"; exit 1; }
@@ -365,7 +365,12 @@ nats-add-identity:  ## add a single NATS identity rootless; idempotent after ful
 	  exit 0; \
 	fi; \
 	podman secret create --replace "factory-nats-$(NAME)" "$(FACTORY_NKEYS_DIR)/$(NAME).seed"; \
-	systemctl --user reload factory-nats
+	if systemctl --user is-active --quiet factory-nats; then \
+	  systemctl --user reload factory-nats; \
+	  echo "reloaded factory-nats (SIGHUP)"; \
+	else \
+	  echo "factory-nats not active — auth.conf updated on host, will load on next start"; \
+	fi
 
 test:
 	uv run pytest -v

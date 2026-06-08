@@ -1,0 +1,112 @@
+---
+title: "ADR-085: Public ACL bundle delivered via bind mount + SIGHUP reload (auth.conf carve-out from ADR-055 type=mount rule)"
+description: Exempts auth.conf (public nkeys U… + ACLs only, no S… seeds) from the ADR-055/ADR-054 D5 type=mount secret-isolation rule. Delivers auth.conf as an inline Podman bind mount so nats-server can reload live via SIGHUP, eliminating the full-fleet restart on identity-add.
+status: accepted
+amends: "ADR-055"
+date: 2026-06-08
+id: "085"
+---
+
+> **Current truth** → [`docs/architecture/deployment.md`](../deployment.md){#current-truth}
+> This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+
+## Status
+
+Accepted — 2026-06-08
+
+**Amends:** ADR-055 (`## Supersedes → ### ADR-054 → D5`) — carves out `auth.conf` (public bundle only) from the `type=mount` secret-delivery rule. Private nkey seed files remain `type=mount` per ADR-054 D5 / ADR-055.
+
+---
+
+## Context
+
+`make nats-add-identity NAME=<x>` forces a full-fleet restart of `factory-nats` and all 7 `FACTORY_NATS_CLIENTS` (hub, telegram, discord, clipool, turn-writer, gh-helper, blobstore). The root cause is a delivery-model property: `auth.conf` is currently a Podman `type=mount` secret (tmpfs, bound at container init). When the operator runs `podman secret create --replace factory-nats-auth`, the secret store is updated but the in-container tmpfs file stays **stale until container restart** — documented in `deploy/CLAUDE.md`. `nats-server` supports live config reload via `SIGHUP` (`--signal reload`) without dropping connections, but the stale tmpfs makes SIGHUP useless for `type=mount`-delivered files.
+
+The downstream effect: every identity add forces a full-fleet bounce — momentary connection loss across the whole factory mesh for an operation that should be live and non-disruptive. This was identified in frame `artifacts/frames/1719-nats-identity-add-sighup-bind-mount-frame.mdx`.
+
+Key material properties (from analysis `artifacts/analyses/1719-nats-identity-add-sighup-bind-mount-analysis.mdx`):
+
+- **F1:** `auth.conf` holds only PUBLIC nkeys (`U…`) + ACL permission blocks. No private seeds (`S…`) are present. The tmpfs-isolation argument for `type=mount` applies to secrets-at-rest; it is structurally weaker for a file that contains no private material.
+- **F2:** `nats-container.conf` is already delivered as an inline bind mount (`Volume=%h/.roxabi/factory/nats.conf:/etc/nats/nats.conf:ro,z`) — the pattern is proven in production on Podman 5.x without loop-device issues.
+- **F3:** The "loop device setup" failure from ADR-054 / ADR-055 was specific to `.volume` unit wrappers, not inline `Volume=` directives. Inline bind mounts are unaffected.
+- **F4:** `deploy/CLAUDE.md` contains an explicit hardening invariant forbidding volume-wrapped credentials. This ADR provides the explicit carve-out required to exempt `auth.conf` via an inline bind mount (not a `.volume` wrapper — F3 confirms inline is safe).
+- **F5:** `nats-container.conf` includes `auth.conf` via `include "nkeys/auth.conf"`. SIGHUP re-reads the full config tree, so a SIGHUP after writing `auth.conf` on the host is sufficient to bring the new identity live.
+- **F6:** No `ExecReload=` exists in `factory-nats.container` — it must be added.
+- **F7:** `auth.conf` re-renders are always full (not incremental). Writes must be atomic (`os.rename` / `tempfile + rename`) to prevent nats-server from reading a partial file during a concurrent SIGHUP.
+- **F13:** An inline bind mount requires the host file to exist before container start; if the path is absent, Podman creates a directory at that path. The provisioning path must ensure the file pre-exists.
+
+---
+
+## Options Considered
+
+### Option A: Inline bind mount + SIGHUP reload (chosen)
+
+Deliver `auth.conf` via an inline `Volume=` directive in `factory-nats.container`:
+
+```
+Volume=%h/.roxabi/factory/nkeys/auth.conf:/etc/nats/nkeys/auth.conf:ro,z
+ExecReload=/usr/bin/podman kill --signal=HUP factory-nats
+```
+
+After `nats-add-identity` writes and atomically renames the new `auth.conf` on the host, the operator (or Makefile) issues `systemctl --user reload factory-nats`. The Quadlet unit's `ExecReload=` fires `podman kill --signal=HUP factory-nats`, nats-server re-reads the config tree, and the new identity is live — **no container restart, no dropped connections**.
+
+- **Pros:** true zero-drop live reload for pure identity-add; `auth.conf` content is public (`U…` keys only, no secrets-at-rest to protect); pattern is already in use for `nats-container.conf` (F2, F3); eliminates the 7-client restart fan-out.
+- **Cons:** requires host file to pre-exist before container start (F13 — mitigated by provisioning gate); `:z` relabels the actual host file (F14, acceptable for a non-secret file); atomic write discipline required (F7); SIGHUP under rootless Quadlet needs an M₁ spike to confirm reliability before shipping (F12).
+
+**ACL-change boundary:** pure identity-add (new `U…` key appended, no permission block changes to existing subjects) is safe under SIGHUP. ACL *changes* to existing subjects — adding or restricting publish/subscribe rules — remain in restart territory per #1390 (stale-subject-auth concern scoped out of #1719). The Makefile must preserve the restart path for ACL changes and only use SIGHUP for pure adds.
+
+### Option B: Keep type=mount, restart factory-nats only (rejected — simplest alternative)
+
+Drop the 7-client fan-out; on identity add, restart only `factory-nats` and allow clients to reconnect via `allow_reconnect`.
+
+Rejected: `factory-nats` still bounces (server-side connection drop). The tmpfs-staleness property persists — the file stays stale until restart, so the architectural problem is not resolved. This option fails the zero-drop success criterion stated in the frame. Cited explicitly in `artifacts/frames/1719-nats-identity-add-sighup-bind-mount-frame.mdx` as the "simplest alternative" and "why not simplest."
+
+---
+
+## Decision
+
+`auth.conf` — the **public ACL bundle** containing only `U…` nkeys and per-identity ACL permission blocks — is **exempt** from the ADR-054 D5 / ADR-055 `type=mount` secret-isolation rule.
+
+It is delivered as an inline Podman bind mount in `factory-nats.container`:
+
+```
+Volume=%h/.roxabi/factory/nkeys/auth.conf:/etc/nats/nkeys/auth.conf:ro,z
+```
+
+The `factory-nats-auth` Podman secret is removed. `ExecReload=` is added to the Quadlet unit:
+
+```
+ExecReload=/usr/bin/podman kill --signal=HUP factory-nats
+```
+
+**Scope boundary:**
+
+| Artifact | Delivery | Rationale |
+|----------|----------|-----------|
+| `auth.conf` (public bundle) | Inline bind mount (this ADR) | Public material only; live SIGHUP reload required |
+| `factory-nats-<identity>.seed` files | `type=mount` Podman secret | Private `S…` seeds; tmpfs isolation is correct |
+
+The carve-out is ONLY for the public bundle. Private nkey seed files remain `type=mount` per ADR-054 D5.
+
+**Operational boundary:**
+
+| Operation | Mechanism | Rationale |
+|-----------|-----------|-----------|
+| Pure identity add (new `U…` key, no permission changes) | Atomic write + SIGHUP | Zero-drop, no client restarts |
+| ACL permission changes (existing subject rules modified) | Atomic write + `factory-nats` restart | #1390 stale-subject-auth risk; out of scope for #1719 |
+
+**Pre-conditions for shipping:**
+
+1. M₁ spike (F12): confirm `systemctl --user reload factory-nats` → `ExecReload=` → `podman kill --signal HUP` reliably triggers nats-server config reload without connection drops under rootless Podman/Quadlet.
+2. Provisioning path (F13): ensure `auth.conf` exists on the host before `factory-nats` first start (create during `make nats-add-identity` if absent, or in the install runbook).
+3. Atomic write (F7): `nats-add-identity` writes via `tempfile + os.rename` to prevent partial-read on concurrent SIGHUP.
+4. `converge.sh` (F11): update the converge script's auth.conf handling to issue a SIGHUP (not a restart) when auth.conf changes due to a pure identity-add.
+
+---
+
+## Consequences
+
+- `make nats-add-identity NAME=<x>` brings a new identity live with a SIGHUP reload of `factory-nats` — zero client restarts, zero dropped connections.
+- `factory-nats-auth` is removed from `quadlet.toml` required_secrets and from `factory-nats.container` `Secret=` directives. The `secrets_drift` gate must remain green after removal.
+- The `volumes_table` CI gate must be updated: `deployment.md` Volumes table gains an `auth.conf` bind-mount entry for `factory-nats`.
+- `deploy/CLAUDE.md` hardening invariant must be amended to document this carve-out explicitly (task T8).

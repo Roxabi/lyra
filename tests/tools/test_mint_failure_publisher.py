@@ -8,6 +8,8 @@ Covers:
 
 from __future__ import annotations
 
+import pytest
+
 from factory.tools.gh_token.helper import MintError
 from factory.tools.gh_token.mint_failure_publisher import MintFailurePublisher
 from roxabi_contracts.gh.models import MintFailureEvent
@@ -112,3 +114,27 @@ async def test_publish_swallows_nats_error() -> None:
 
     # Act + Assert — must return normally (no exception)
     await publisher.publish(exc)
+
+
+# ── T9.4 — fail-fast on invalid machine at construction ───────────────────────
+
+
+@pytest.mark.parametrize(
+    "bad_machine",
+    [
+        pytest.param("roxabituwer.local", id="internal-dot"),
+        pytest.param("bad*machine", id="wildcard-asterisk"),
+        pytest.param("bad>machine", id="wildcard-gt"),
+        pytest.param("", id="empty-string"),
+    ],
+)
+def test_init_rejects_invalid_machine(bad_machine: str) -> None:
+    """__init__ rejects machines that are not a valid subject segment (#1708).
+
+    A dotted/wildcard machine would otherwise widen or corrupt the
+    factory.gh.mint_failure.<machine> subject; failing fast at construction
+    surfaces the misconfiguration instead of letting publish() swallow it.
+    """
+    fake_nc = FakeNC()
+    with pytest.raises(ValueError):
+        MintFailurePublisher(fake_nc, bad_machine)  # type: ignore[arg-type]

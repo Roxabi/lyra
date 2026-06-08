@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from roxabi_contracts._nats_utils import validate_job_token
+from roxabi_contracts._nats_utils import _validate_subject_segment
 
 __all__ = [
     "SUBJECTS",
@@ -28,6 +28,10 @@ SUBJECTS = _Subjects()
 
 
 def gh_mint_failure(machine: str) -> str:
-    """Mint-failure subject: factory.gh.mint_failure.<machine>."""
-    validate_job_token(machine)
+    """Mint-failure subject: factory.gh.mint_failure.<machine>.
+
+    ``machine`` must be a single subject segment (no dots) so the result is
+    always 4 segments — see ``_validate_subject_segment`` (#1708).
+    """
+    _validate_subject_segment(machine)
     return f"factory.gh.mint_failure.{machine}"

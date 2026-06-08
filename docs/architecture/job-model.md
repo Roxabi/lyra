@@ -239,9 +239,12 @@ The job subtree (`factory.job.<id>.*`) IS the trace — no separate observabilit
 **Blocked-by chains:**
 
 ```
-#1793 (A: taxonomy) → #1795 (E: result pub/sub) → #1798 (F: sub-jobs)
-#1044  (B: worker fleet) → #1796 (C: registry) → {#1797 (D: router), #1799 (G: steer), #1800 (H: dashboard)}
-#1796  (C: registry) → #1797 (D: router) → #1799 (G: steer)
+#1793 (A: taxonomy) → #1795 (E: result pub/sub)
+#1794 (B: amend ADR-084) → #1796 (C: registry)
+#1778 (Shape A: JobContext) → #1796 (C: registry)
+#1796 (C: registry) → #1797 (D: router) → #1799 (G: steer)
+#1796 (C: registry) → {#1799 (G: steer), #1800 (H: dashboard)}
+#1795 (E) + #1796 (C) → #1798 (F: sub-jobs)
 Epic #1792 blocked-by #1778 / #1619 / #1203
 ```
 

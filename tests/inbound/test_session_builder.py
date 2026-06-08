@@ -148,7 +148,7 @@ class TestSessionBuilderPathB:
         """last_session port consulted; prior session propagated to TelegramMeta.
 
         Negative: removing the ctx.last_session.get_last_session call in
-        _build_turnstore_path means thread_session_id is never populated and
+        _build_last_session_path means thread_session_id is never populated and
         resume-session is silently broken.
         """
         # Arrange
@@ -466,10 +466,12 @@ class TestSessionBuilderLastSessionPort:
     async def test_builder_degrades_to_new_session_when_last_session_is_none(
         self,
     ) -> None:
-        """last_session=None in ctx → msg returned with session_update_fn (new session).
+        """last_session=None in ctx → msg returned unchanged (path a, no wiring).
 
-        When both turn_store and last_session are None, path (a) returns unchanged msg.
-        When only last_session is None but turn_store present, it degrades gracefully.
+        With no thread_store and no last_session, path (a) returns the unchanged msg.
+        Since #1731, turn_store no longer participates in this gate — see
+        ``test_turn_store_present_last_session_none_returns_unchanged`` for the
+        turn_store-present case.
         """
         # Arrange — last_session=None, no turn_store either → path (a)
         builder = SessionBuilder()
@@ -506,7 +508,7 @@ class TestSessionBuilderLastSessionPort:
 
     @pytest.mark.asyncio
     async def test_set_last_session_called_in_update_fn(self) -> None:
-        """_turnstore_update_fn calls last_session.set_last_session after assign.
+        """_last_session_update_fn calls last_session.set_last_session after assign.
 
         Negative: if the update closure omits the set_last_session call, KV is never
         written and all future messages start a new session (silent regression).
@@ -535,29 +537,34 @@ class TestSessionBuilderLastSessionPort:
         )
 
     @pytest.mark.asyncio
-    async def test_set_last_session_not_called_when_last_session_is_none(
+    async def test_turn_store_present_last_session_none_returns_unchanged(
         self,
     ) -> None:
-        """update closure skips set_last_session when last_session is None.
+        """D9 invariant (#1731): turn_store alone does not trigger session wiring.
 
-        Negative: if the closure always calls set_last_session regardless of None,
-        AttributeError crashes the update path for hub-side wiring (TurnStoreLastSession
-        set=no-op is correct, but None would crash).
+        The old guard ``if ts is None and ctx.last_session is None`` let a
+        turn_store-only "hub path" enter ``_build_last_session_path``. Post-#1721
+        adapters always pass ``turn_store=None``, so #1731 simplified the gate to
+        ``if ctx.last_session is None`` — making replace-not-supplement a code
+        invariant rather than a deployment property.
+
+        Negative: if the resume-guard still consulted turn_store, this would attach
+        a session_update_fn instead of returning the msg unchanged.
         """
-        # Arrange — turn_store only (hub path), no last_session
+        # Arrange — turn_store present, no last_session, no thread_store
         ts = _make_turn_store(last_session=None)
-        pub = _make_turn_publisher()
         builder = SessionBuilder()
         msg = _make_msg(platform="telegram", platform_meta=TelegramMeta(chat_id=1))
         ctx = _make_session_ctx_with_last_session(
             turn_store=ts,
             last_session=None,
-            turn_publisher=pub,
         )
 
         # Act
         result = await builder.build(msg, ctx)
-        assert result.session_update_fn is not None
 
-        # Invoke closure — must not raise even with last_session=None
-        await result.session_update_fn(result, "sess-hub", "telegram:main:chat:123")
+        # Assert — last_session is the sole gate: msg returned unchanged, no wiring,
+        # and turn_store is never consulted (D9 code invariant).
+        assert result is msg
+        assert result.session_update_fn is None
+        ts.get_last_session.assert_not_awaited()

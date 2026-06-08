@@ -8,7 +8,6 @@
 declare -A SECRET_SOURCES=(
     [factory-claude-oauth]="claude-oauth.tok"
     [factory-gh-pem]="gh-app.pem"
-    [factory-nats-auth]="nkeys/auth.conf"
     [factory-nats-blobstore]="nkeys/blobstore.seed"
     [factory-nats-clipool]="nkeys/clipool-worker.seed"
     [factory-nats-discord]="nkeys/discord-adapter.seed"
@@ -24,7 +23,6 @@ declare -A SECRET_SOURCES=(
 declare -A SECRET_POLICY=(
     [factory-claude-oauth]="optional"
     [factory-gh-pem]="optional"
-    [factory-nats-auth]="nats-auth"
     [factory-nats-blobstore]="nats-seed"
     [factory-nats-clipool]="nats-seed"
     [factory-nats-discord]="nats-seed"

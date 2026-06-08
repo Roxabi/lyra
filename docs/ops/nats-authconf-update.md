@@ -29,11 +29,22 @@ git pull
 make nats-regen-authconf
 ```
 
-This runs `scripts/gen_nkeys.py` (entry point `factory-acl genkeys --regen-authconf`) to re-derive `auth.conf` from all existing seeds, back up the previous `auth.conf`, recreate the Podman secret, then runs `systemctl --user restart factory-nats` to recreate the container with the refreshed mount.
+This runs `scripts/gen_nkeys.py` (entry point `factory-acl genkeys --regen-authconf`) to re-derive `auth.conf` from all existing seeds, back up the previous `auth.conf`, write the new `auth.conf` atomically to the host bind-mount path, then runs `systemctl --user restart factory-nats` to recreate the container.
 
-> **Why restart and not SIGHUP?** Podman secrets declared `type=mount` in `deploy/quadlet/factory-nats.container` are tmpfs bind-mounts bound at container init. `podman secret create --replace` updates the secret store, but the file inside the running container still resolves to the old tmpfs content. `nats-server` re-reads its config path on SIGHUP, but the path itself is stale — so ACL changes silently fail to apply. Container recreation is the only way to refresh a mount-typed secret. Confirmed during PR #1292 deploy (2026-05-20); see #1293 for the broader ACL-hardening epic.
+> **Two reload paths — choose based on the change type:**
 >
-> **What about `type=env`?** It does not avoid the restart requirement. Podman injects `type=env` secrets into the container's environment at start; SIGHUP does not re-exec the entrypoint and does not update `environ`, so the value is also baked in. `type=env` would trade `type=mount`'s init-bound tmpfs for an `environ`-baked value with the additional cost of secret content being visible to `podman inspect`. Both forms require container recreation for ACL changes; `type=mount` is preferred by the hardening invariants in [`deploy/CLAUDE.md`](../../deploy/CLAUDE.md#hardening-invariants).
+> **Path A — Pure identity add (`make nats-add-identity NAME=<x>`):**
+> `auth.conf` is delivered as an inline bind mount (`Volume=%h/.roxabi/factory/nkeys/auth.conf:/etc/nats/nkeys/auth.conf:ro,z`) in `deploy/quadlet/factory-nats.container` (ADR-085). After writing the new `auth.conf` atomically on the host, the operator (or Makefile) issues `systemctl --user reload factory-nats`. The unit's `ExecReload=` fires `podman kill --signal=HUP factory-nats`; nats-server re-reads its config tree and the new identity is live immediately — **zero client restarts, zero dropped connections.** Use this path when only adding a new `U…` nkey with no changes to existing permission blocks.
+>
+> **Path B — ACL permission change (`make nats-regen-authconf`):**
+> A `systemctl --user restart factory-nats` is required. The inline bind mount means the new `auth.conf` content on the host IS visible to the container (no stale tmpfs), so SIGHUP would technically re-read the correct file — however, #1390 identified that nats-server can serve stale subject-auth decisions after an ACL permissions change until the server is fully restarted. Container recreation is therefore required for any change that adds, removes, or restricts publish/subscribe rules in existing permission blocks. All 7 NATS clients (`FACTORY_NATS_CLIENTS`) are also restarted to flush cached auth state.
+>
+> **Summary table:**
+>
+> | Operation | Mechanism | Client restart? |
+> |-----------|-----------|----------------|
+> | Add new identity (`U…` key, no permission changes) | `make nats-add-identity` → SIGHUP reload | No |
+> | Change ACL permission blocks | `make nats-regen-authconf` → restart | Yes (#1390) |
 
 **3. Verify — no permission violations**
 
@@ -120,10 +131,9 @@ insufficient as a safeguard. Issue #1379 introduced the fail-loud guard — exit
 ```bash
 # Replace TIMESTAMP with the backup suffix printed by `make nats-regen-authconf` in step 2
 cp ~/.roxabi/factory/nkeys/auth.conf.bak.TIMESTAMP ~/.roxabi/factory/nkeys/auth.conf
-# Rollback uses the full `quadlet-secrets-install` (all 5 secrets) — broader
-# than the scoped forward path (`nats-regen-authconf` only touches factory-nats-auth).
-# Intentional: emergency rollback restores a known-good snapshot atomically.
-make quadlet-secrets-install
+# auth.conf is an inline bind mount (ADR-085) — no secret recreate needed.
+# The file on the host IS the file the container reads.
+# Restart (not SIGHUP) because ACL permission blocks may have changed.
 systemctl --user restart factory-nats
 ```
 
@@ -170,3 +180,4 @@ for its `announce_hub_ready` log line, then restart adapters.
 - [nkey-rotation.md](nkey-rotation.md) — compromise rotation (seed replacement)
 - [ADR-046](../architecture/adr/046-nkey-provisioning-declarative-authconf.mdx) — provisioning invariants
 - [ADR-079](../architecture/adr/079-audio-nats-contract-axial-consolidation.mdx) — audio NATS axial migration, sole-provisioner pattern
+- [ADR-085](../architecture/adr/085-public-aclbundle-bindmount-sighup.mdx) — auth.conf carve-out from type=mount, SIGHUP reload for identity-add

@@ -60,6 +60,10 @@ git -C "$REPO" commit -m "init" >/dev/null 2>&1
 # scans the right directory.
 CORE_DIR="$REPO/src/factory/core"
 mkdir -p "$CORE_DIR"
+# Baseline invariant: the core dir starts empty so each case owns exactly one
+# fixture file. Cases clean their own fixture after running; this guards against
+# a leaked fixture if a future case forgets to.
+rm -f "$CORE_DIR"/*.py
 
 # Baseline file inside the temp repo — we control its contents per test.
 BASELINE="$REPO/tools/baseline.txt"
@@ -281,9 +285,8 @@ rm -f "$CORE_DIR/test_g3.py"
 # Case J — ABSENT baseline + clean tree → exit 0 (#1706)
 # Empty src/factory/core/ (no flagged constants) with no baseline file must be
 # treated as the empty set, not a hard error.  Guards the old exit-2 behaviour.
+# (Prior cases clean their own fixtures; the harness-setup reset is the backstop.)
 # ---------------------------------------------------------------------------
-# Ensure the temp core tree has no flagged constants for this case.
-rm -f "$CORE_DIR"/*.py
 cat > "$CORE_DIR/test_j.py" << 'PYEOF'
 import os  # no numeric literals here
 PYEOF

@@ -225,7 +225,7 @@ if [ -z "$VIOLATIONS" ]; then
 fi
 
 echo "" >&2
-echo "FAIL: new hardcoded numeric constants in ${SCAN_ROOT} (not in baseline):" >&2
+echo "FAIL: hardcoded numeric constants found in ${SCAN_ROOT}:" >&2
 while IFS= read -r v; do
     [ -n "$v" ] || continue
     filepath="${v%%:*}"

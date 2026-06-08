@@ -1,5 +1,5 @@
 [Unit]
-Description=Lyra GitHub App token-mint helper (uid 1501)
+Description=Factory GitHub App token-mint helper (uid 1501)
 # Part of factory-gh.pod — must start before clipool connects to the dispenser.
 # BindsTo= ensures helper and clipool are stopped together; if the helper crashes
 # permanently the pod is torn down rather than leaving clipool without a token source.

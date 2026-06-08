@@ -130,9 +130,11 @@ def _safe_machine_name(raw: str) -> str:
     """Sanitize *raw* to a valid single NATS subject token.
 
     A valid token contains only ``[A-Za-z0-9_-]`` characters (no dots, spaces,
-    wildcards, or ``>``). validate_job_token from roxabi-contracts allows internal
-    dots for namespacing; for the ``machine`` subject segment we need a stricter
-    check so we inline one here.
+    wildcards, or ``>``) — the same charset the contract enforces on
+    ``MintFailureEvent.machine`` via ``_validate_subject_segment`` (#1708). We
+    inline a *sanitizer* here rather than reusing the contract *validator*
+    because the daemon must never crash on a misconfigured ``FACTORY_MACHINE``:
+    bad characters are replaced, not rejected.
 
     Invalid characters are replaced with ``_`` to preserve per-machine
     observability rather than collapsing all bad names to ``"unknown"`` (#26).
@@ -167,8 +169,7 @@ async def _connect_nats_publisher(
         nc = await nats_connect(nats_url, identity_name="gh-helper")
         publisher = MintFailurePublisher(nc, machine)
         log.info(
-            "mint-failure publishing enabled"
-            " — subject factory.gh.mint_failure.%s",
+            "mint-failure publishing enabled — subject factory.gh.mint_failure.%s",
             machine,
         )
         return nc, publisher

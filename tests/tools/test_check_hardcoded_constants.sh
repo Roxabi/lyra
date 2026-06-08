@@ -6,10 +6,15 @@
 #   B. A NEW hardcoded constant (not in baseline) fails (exit 1).
 #   C. A line referencing Config.SOMETHING passes (exit 0) — sanctioned indirection.
 #   D. An inline-exempt line (# const-ok: <reason>) passes (exit 0).
-#   E. The real src/factory/core/ tree passes (exit 0) — proves baseline covers current HEAD.
+#   E. The real src/factory/core/ tree passes (exit 0) with NO baseline present —
+#      proves the burn-down (#1698) left zero flagged constants at HEAD.
+#   J. An ABSENT baseline + clean tree → exit 0 (absent = empty set, #1706).
+#   K. An ABSENT baseline + a new magic number → exit 1 (#1706).
 #
 # Cases C and D are the critical negative tests: they prove the exemption guards
 # prevent false positives.  Delete a guard → the case breaks → CI catches it.
+# Cases J and K pin the #1706 contract: a missing baseline file is the empty set,
+# not a hard error (the gate used to exit 2 on a missing baseline).
 #
 # Fixtures for A–D are written to a temporary git repo so the gate (which calls
 # git rev-parse to resolve repo root) works correctly.  Real source is NOT mutated.
@@ -55,6 +60,10 @@ git -C "$REPO" commit -m "init" >/dev/null 2>&1
 # scans the right directory.
 CORE_DIR="$REPO/src/factory/core"
 mkdir -p "$CORE_DIR"
+# Baseline invariant: the core dir starts empty so each case owns exactly one
+# fixture file. Cases clean their own fixture after running; this guards against
+# a leaked fixture if a future case forgets to.
+rm -f "$CORE_DIR"/*.py
 
 # Baseline file inside the temp repo — we control its contents per test.
 BASELINE="$REPO/tools/baseline.txt"
@@ -67,6 +76,20 @@ run_gate() {
         cd "$REPO"
         CONST_SCAN_ROOT="src/factory/core/" \
         CONST_BASELINE_FILE="tools/baseline.txt" \
+        bash "$GATE" >/dev/null 2>&1
+    )
+    echo $?
+}
+
+# Helper: run gate against the temp repo with NO baseline file present.
+# Points CONST_BASELINE_FILE at a path that does not exist — the gate must
+# treat it as the empty set (#1706), never exit 2.
+run_gate_no_baseline() {
+    rm -f "$REPO/tools/absent-baseline.txt"
+    (
+        cd "$REPO"
+        CONST_SCAN_ROOT="src/factory/core/" \
+        CONST_BASELINE_FILE="tools/absent-baseline.txt" \
         bash "$GATE" >/dev/null 2>&1
     )
     echo $?
@@ -259,11 +282,49 @@ fi
 rm -f "$CORE_DIR/test_g3.py"
 
 # ---------------------------------------------------------------------------
-# Case E — real src/factory/core/ tree passes (exit 0)
-# Proves the committed baseline grandfathers all constants at current HEAD.
+# Case J — ABSENT baseline + clean tree → exit 0 (#1706)
+# Empty src/factory/core/ (no flagged constants) with no baseline file must be
+# treated as the empty set, not a hard error.  Guards the old exit-2 behaviour.
+# (Prior cases clean their own fixtures; the harness-setup reset is the backstop.)
 # ---------------------------------------------------------------------------
-if [ ! -f "$REAL_BASELINE" ]; then
-    fail "E: real tree → exit 0" "baseline file not found at $REAL_BASELINE"
+cat > "$CORE_DIR/test_j.py" << 'PYEOF'
+import os  # no numeric literals here
+PYEOF
+
+EXIT_J=$(run_gate_no_baseline)
+if [ "$EXIT_J" -eq 0 ]; then
+    pass "J: absent baseline + clean tree → exit 0 (empty-set semantics)"
+else
+    fail "J: absent baseline + clean tree → exit 0" "got exit $EXIT_J (absent baseline not treated as empty set)"
+fi
+
+rm -f "$CORE_DIR/test_j.py"
+
+# ---------------------------------------------------------------------------
+# Case K — ABSENT baseline + new magic number → exit 1 (#1706)
+# With no baseline to grandfather it, an un-marked literal is a violation.
+# ---------------------------------------------------------------------------
+cat > "$CORE_DIR/test_k.py" << 'PYEOF'
+POOL_SIZE = 64
+PYEOF
+
+EXIT_K=$(run_gate_no_baseline)
+if [ "$EXIT_K" -eq 1 ]; then
+    pass "K: absent baseline + new magic number → exit 1 (still merge-blocking)"
+else
+    fail "K: absent baseline + new magic number → exit 1" "got exit $EXIT_K (absent baseline swallowed the violation)"
+fi
+
+rm -f "$CORE_DIR/test_k.py"
+
+# ---------------------------------------------------------------------------
+# Case E — real src/factory/core/ tree passes (exit 0) with NO baseline
+# The grandfather baseline was retired (#1706); the gate runs against the live
+# tree with its default (now-absent) baseline path and must come back clean,
+# proving the #1698 burn-down left zero flagged constants at HEAD.
+# ---------------------------------------------------------------------------
+if [ -f "$REAL_BASELINE" ]; then
+    fail "E: real tree → exit 0 (no baseline)" "baseline file still present at $REAL_BASELINE — it was meant to be deleted in #1706"
 else
     EXIT_E=$(
         cd "$REPO_ROOT"
@@ -271,9 +332,9 @@ else
         echo $?
     )
     if [ "$EXIT_E" -eq 0 ]; then
-        pass "E: real src/factory/core/ tree → exit 0"
+        pass "E: real src/factory/core/ tree → exit 0 (no baseline, empty-set semantics)"
     else
-        fail "E: real src/factory/core/ tree → exit 0" "got exit $EXIT_E (baseline out of sync with HEAD)"
+        fail "E: real src/factory/core/ tree → exit 0 (no baseline)" "got exit $EXIT_E (new un-grandfathered constant at HEAD, or gate error)"
     fi
 fi
 

@@ -12,7 +12,7 @@ from factory.paths import factory_data_dir
 
 blobstore_app = typer.Typer(name="blobstore", help="BlobStore HTTP service.")
 
-_DEFAULT_TOKEN_PATH = Path("/run/secrets/lyra_blobstore_token")
+_DEFAULT_TOKEN_PATH = Path("/run/secrets/factory_blobstore_token")
 
 
 @blobstore_app.command()

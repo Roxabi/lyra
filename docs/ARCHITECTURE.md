@@ -6,7 +6,7 @@
 
 ## How to read this docs tree
 
-**Start here for current state**: 14 living domain pages, each the single source of truth for its area.
+**Start here for current state**: 15 living domain pages, each the single source of truth for its area.
 
 | Domain page | What it owns |
 |---|---|
@@ -23,6 +23,7 @@
 | [testing-conventions.md](architecture/testing-conventions.md) | Test taxonomy, fixture policy, mock boundaries, CI gate conventions |
 | [voice-to-voice-analysis.md](architecture/voice-to-voice-analysis.md) | Voice pipeline design, audio latency budgets, STT/TTS adapter contracts |
 | [target-architecture.md](architecture/target-architecture.md) | Hexagonal/Ports & Adapters layout as implemented (file paths, module structure) |
+| [job-model.md](architecture/job-model.md) | Job model — `job_id`=run, lifecycle, active-jobs registry, `factory.job.<id>.*` taxonomy, transport tiers, sub-jobs, runtime control |
 | [CURRENT.generated.md](architecture/CURRENT.generated.md) | Machine-generated inventory SSoT — layers, subjects, topology, entry points |
 
 **Decision archive** — 59 active ADRs (26 archived) in [`architecture/adr/`](architecture/adr/) preserve historical reasoning. Each ADR has a redirect banner to its domain page. **Read ADRs only when you need the *why* behind a decision**, not the *what*. Index grouped by domain in [`adr/meta.json`](architecture/adr/meta.json).

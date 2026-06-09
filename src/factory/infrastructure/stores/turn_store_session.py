@@ -20,7 +20,6 @@ from factory.infrastructure.stores.turn_store_queries import (
     get_cli_session,
     get_cli_session_by_pool,
     get_last_session,
-    get_session_pool_id,
     list_sessions_for_pool,
 )
 
@@ -59,13 +58,6 @@ class TurnStoreSessionMixin:
         conversation_turns. Returns a session from creation, not first reply.
         """
         return await get_last_session(self._db_or_raise(), pool_id)
-
-    async def get_session_pool_id(self, session_id: str) -> str | None:
-        """Return the pool_id for a session, or None if not found.
-
-        Used for scope validation at the NATS trust boundary (#525).
-        """
-        return await get_session_pool_id(self._db_or_raise(), session_id)
 
     async def _set_cli_session(self, session_id: str, cli_session_id: str) -> None:
         """Store the CLI session ID for a Lyra session (for --resume after restart)."""

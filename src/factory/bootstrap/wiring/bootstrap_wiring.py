@@ -13,7 +13,6 @@ from factory.adapters.discord import DiscordAdapter
 from factory.adapters.telegram import TelegramAdapter
 from factory.bootstrap import credentials
 from factory.bootstrap.wiring.ingest_wiring import wire_ingest
-from factory.bootstrap.wiring.last_session_wiring import TurnStoreLastSession
 from factory.config import (
     DiscordBotConfig,
     TelegramBotConfig,
@@ -203,7 +202,6 @@ async def wire_telegram_adapters(
 
     def _adapter_factory(bot_id: str) -> TelegramAdapter:
         tg_token, tg_webhook_secret = credentials.load_bot_token("telegram", bot_id)
-        _ts = deps.hub._turn_store
         return TelegramAdapter(
             bot_id=bot_id,
             token=tg_token,
@@ -211,7 +209,6 @@ async def wire_telegram_adapters(
             webhook_secret=tg_webhook_secret or "",
             circuit_registry=deps.circuit_registry,
             msg_manager=deps.msg_manager,
-            last_session=TurnStoreLastSession(_ts) if _ts is not None else None,
             blob_store=deps.blob_store,
         )
 
@@ -271,7 +268,6 @@ async def wire_discord_adapters(
                 f"_adapter_factory: bot_id={bot_id!r} not found in dc_bot_auths"
             )
         bot_cfg = _bot_cfg
-        _ts = deps.hub._turn_store
         return DiscordAdapter(
             bot_id=bot_id,
             inbound_bus=deps.hub.inbound_bus,
@@ -281,7 +277,6 @@ async def wire_discord_adapters(
             thread_hot_hours=bot_cfg.thread_hot_hours,
             thread_store=thread_store,
             watch_channels=_load_watch_channels(deps.agent_store, bot_id),
-            last_session=TurnStoreLastSession(_ts) if _ts is not None else None,
             blob_store=deps.blob_store,
         )
 

@@ -77,10 +77,7 @@
         "$JS.ACK.FACTORY_OUTBOUND_AUDIO.>",
         "$KV.factory_outbound_audio_sent.>",
         "$JS.API.STREAM.INFO.KV_factory-state",
-        "$JS.API.STREAM.MSG.GET.KV_factory-state",
-        "$KV.factory-turns-meta.>",
-        "$JS.API.STREAM.INFO.KV_factory-turns-meta",
-        "$JS.API.STREAM.MSG.GET.KV_factory-turns-meta"
+        "$JS.API.STREAM.MSG.GET.KV_factory-state"
       ],
       "subscribe": [
         "factory.outbound.telegram.>",
@@ -117,10 +114,7 @@
         "$JS.ACK.FACTORY_OUTBOUND_AUDIO.>",
         "$KV.factory_outbound_audio_sent.>",
         "$JS.API.STREAM.INFO.KV_factory-state",
-        "$JS.API.STREAM.MSG.GET.KV_factory-state",
-        "$KV.factory-turns-meta.>",
-        "$JS.API.STREAM.INFO.KV_factory-turns-meta",
-        "$JS.API.STREAM.MSG.GET.KV_factory-turns-meta"
+        "$JS.API.STREAM.MSG.GET.KV_factory-state"
       ],
       "subscribe": [
         "factory.outbound.discord.>",

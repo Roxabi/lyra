@@ -1,21 +1,17 @@
-"""Tests for platform_meta sanitization and scope validation (issue #525).
+"""Tests for platform_meta sanitization and path-3 session resume (post-#1777).
 
 Covers:
 - sanitize_platform_meta() pure-function behaviour (allowlist, underscore strip,
   debug logging)
-- Path 2 scope validation in SubmitToPoolMiddleware
+- Path-3 last-session resume in resolve_context (path-2 removed in #1777)
 """
 
 from __future__ import annotations
 
-import dataclasses
-import logging
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from factory.infrastructure.stores.turn_store import TurnStore
-
-import pytest
 
 from factory.core.hub.middleware import PipelineContext
 from factory.core.hub.middleware.path_validation import resolve_context
@@ -29,19 +25,17 @@ from tests.core.conftest import _make_hub, make_inbound_message
 
 
 class _FakeTurnStore:
-    """Minimal TurnStore stub for scope-validation tests.
+    """Minimal TurnStore stub for path-3 resume tests (post-#1777).
 
-    Callers configure *session_map* to control what get_session_pool_id returns.
+    Callers configure *pool_map* to control what get_last_session returns
+    for a given pool_id. path-2 (get_session_pool_id) is gone.
     """
 
-    def __init__(self, session_map: dict[str, str | None] | None = None) -> None:
-        self._session_map: dict[str, str | None] = session_map or {}
-
-    async def get_session_pool_id(self, session_id: str) -> str | None:
-        return self._session_map.get(session_id)
+    def __init__(self, pool_map: dict[str, str | None] | None = None) -> None:
+        self._pool_map: dict[str, str | None] = pool_map or {}
 
     async def get_last_session(self, pid: str) -> str | None:
-        return None
+        return self._pool_map.get(pid)
 
     async def increment_resume_count(self, sid: str) -> None:
         pass
@@ -149,57 +143,104 @@ class TestNatsBusSanitization:
 
 
 # ---------------------------------------------------------------------------
-# TestScopeValidation — Path 2 scope-check in SubmitToPoolMiddleware
+# TestScopeValidation — Path-3 last-session resume in resolve_context
 # ---------------------------------------------------------------------------
 
 
 class TestScopeValidation:
-    """resolve_context Path 2 rejects thread_session_id from wrong pool."""
+    """resolve_context path-3 behaviour post-#1777 (path-2 removed).
 
-    async def test_cross_scope_thread_session_id_rejected(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """Cross-scope session → SKIPPED + warning."""
+    Path-3: TurnStore.get_last_session(pool_id) → resume if session found,
+    SKIPPED otherwise. No cross-scope validation or thread_session_id routing.
+    """
+
+    async def test_no_prior_session_returns_skipped(self) -> None:
+        """TurnStore has no record for pool → SKIPPED (silent, expected)."""
         # Arrange
         pool_id = "telegram:main:chat:99"
         hub = _make_hub()
-        # TurnStore says this session belongs to a *different* pool
         hub._turn_store = cast(
             "TurnStore",
-            _FakeTurnStore({"sess-1": "telegram:main:chat:OTHER"}),
+            _FakeTurnStore({}),  # empty map → None for all pool_ids
         )
         pool = hub.get_or_create_pool(pool_id, "lyra")
         ctx = PipelineContext(hub=hub)
-
-        _base = make_inbound_message(scope_id="chat:99")
-        assert isinstance(_base.platform_meta, TelegramMeta)
-        msg = dataclasses.replace(
-            _base,
-            platform_meta=dataclasses.replace(
-                _base.platform_meta, thread_session_id="sess-1"
-            ),
-        )
+        msg = make_inbound_message(scope_id="chat:99")
 
         # Act
-        with caplog.at_level(
-            logging.WARNING, logger="factory.core.hub.path_validation"
-        ):
-            status = await resolve_context(msg, pool, pool_id, ctx)
+        status = await resolve_context(msg, pool, pool_id, ctx)
 
         # Assert
         assert status == ResumeStatus.SKIPPED
-        warning_text = " ".join(r.getMessage() for r in caplog.records)
-        assert "scope mismatch" in warning_text
 
-    async def test_same_scope_thread_session_id_accepted(self) -> None:
-        """session registered to the same pool → resume is attempted and RESUMED."""
+    async def test_prior_session_returns_resumed(self) -> None:
+        """TurnStore has a last session for this pool → resume attempted → RESUMED."""
         # Arrange
         pool_id = "telegram:main:chat:42"
         hub = _make_hub()
-        # TurnStore says this session belongs to the *same* pool
         hub._turn_store = cast(
             "TurnStore",
-            _FakeTurnStore({"sess-live": pool_id}),
+            _FakeTurnStore({pool_id: "sess-live"}),
+        )
+        pool = hub.get_or_create_pool(pool_id, "lyra")
+
+        async def _accepted_resume(sid: str) -> bool:
+            return True
+
+        pool._session_resume_fn = _accepted_resume  # type: ignore[attr-defined]
+
+        ctx = PipelineContext(hub=hub)
+        msg = make_inbound_message(scope_id="chat:42")
+
+        # Act
+        status = await resolve_context(msg, pool, pool_id, ctx)
+
+        # Assert
+        assert status == ResumeStatus.RESUMED
+
+    async def test_unknown_pool_id_returns_skipped(self) -> None:
+        """TurnStore returns None for this pool_id → SKIPPED."""
+        # Arrange
+        pool_id = "telegram:main:chat:42"
+        hub = _make_hub()
+        hub._turn_store = cast(
+            "TurnStore",
+            _FakeTurnStore({"telegram:main:chat:OTHER": "sess-other"}),
+        )
+        pool = hub.get_or_create_pool(pool_id, "lyra")
+        ctx = PipelineContext(hub=hub)
+        msg = make_inbound_message(scope_id="chat:42")
+
+        # Act
+        status = await resolve_context(msg, pool, pool_id, ctx)
+
+        # Assert — pool_id not in map → get_last_session returns None → SKIPPED
+        assert status == ResumeStatus.SKIPPED
+
+    async def test_no_turn_store_returns_skipped(self) -> None:
+        """No TurnStore wired → path-3 returns None silently → SKIPPED."""
+        # Arrange
+        pool_id = "telegram:main:chat:42"
+        hub = _make_hub()
+        assert hub._turn_store is None
+        pool = hub.get_or_create_pool(pool_id, "lyra")
+        ctx = PipelineContext(hub=hub)
+        msg = make_inbound_message(scope_id="chat:42")
+
+        # Act
+        status = await resolve_context(msg, pool, pool_id, ctx)
+
+        # Assert — guard: hub._turn_store is None → path-3 returns None → SKIPPED
+        assert status == ResumeStatus.SKIPPED
+
+    async def test_path3_fires_without_thread_session_id(self) -> None:
+        """Path-3 resumes based on pool_id only; thread_session_id is not consulted."""
+        # Arrange
+        pool_id = "telegram:main:chat:42"
+        hub = _make_hub()
+        hub._turn_store = cast(
+            "TurnStore",
+            _FakeTurnStore({pool_id: "sess-path3"}),
         )
         pool = hub.get_or_create_pool(pool_id, "lyra")
 
@@ -210,118 +251,24 @@ class TestScopeValidation:
 
         ctx = PipelineContext(hub=hub)
 
-        _base = make_inbound_message(scope_id="chat:42")
-        assert isinstance(_base.platform_meta, TelegramMeta)
-        msg = dataclasses.replace(
-            _base,
-            platform_meta=dataclasses.replace(
-                _base.platform_meta, thread_session_id="sess-live"
-            ),
-        )
+        # Message with no thread_session_id — path-3 must still work
+        msg = make_inbound_message(scope_id="chat:42")
+        assert isinstance(msg.platform_meta, TelegramMeta)
 
         # Act
         status = await resolve_context(msg, pool, pool_id, ctx)
 
-        # Assert
+        # Assert — path-3 fires from pool_id lookup, not thread_session_id
         assert status == ResumeStatus.RESUMED
 
-    async def test_unknown_session_id_rejected(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """get_session_pool_id returns None (unknown session) → SKIPPED + warning."""
+    async def test_no_prior_session_does_not_call_resume(self) -> None:
+        """When get_last_session returns None, pool.resume_session is never called."""
         # Arrange
         pool_id = "telegram:main:chat:42"
         hub = _make_hub()
-        # TurnStore has no record of this session
-        hub._turn_store = cast(
-            "TurnStore",
-            _FakeTurnStore({}),  # empty map → None for all session_ids
-        )
-        pool = hub.get_or_create_pool(pool_id, "lyra")
-        ctx = PipelineContext(hub=hub)
-
-        _base = make_inbound_message(scope_id="chat:42")
-        assert isinstance(_base.platform_meta, TelegramMeta)
-        msg = dataclasses.replace(
-            _base,
-            platform_meta=dataclasses.replace(
-                _base.platform_meta, thread_session_id="sess-ghost"
-            ),
-        )
-
-        # Act
-        with caplog.at_level(
-            logging.WARNING, logger="factory.core.hub.path_validation"
-        ):
-            status = await resolve_context(msg, pool, pool_id, ctx)
-
-        # Assert
-        assert status == ResumeStatus.SKIPPED
-        warning_text = " ".join(r.getMessage() for r in caplog.records)
-        assert "scope mismatch" in warning_text
-
-    async def test_no_turn_store_skips_path2(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        """No TurnStore → cannot validate scope → SKIPPED (safe default)."""
-        # Arrange
-        pool_id = "telegram:main:chat:42"
-        hub = _make_hub()
-        assert hub._turn_store is None
-        pool = hub.get_or_create_pool(pool_id, "lyra")
-        ctx = PipelineContext(hub=hub)
-
-        _base = make_inbound_message(scope_id="chat:42")
-        assert isinstance(_base.platform_meta, TelegramMeta)
-        msg = dataclasses.replace(
-            _base,
-            platform_meta=dataclasses.replace(
-                _base.platform_meta, thread_session_id="sess-any"
-            ),
-        )
-
-        # Act
-        with caplog.at_level(
-            logging.DEBUG, logger="factory.core.hub.middleware.path_validation"
-        ):
-            status = await resolve_context(msg, pool, pool_id, ctx)
-
-        # Assert
-        assert status == ResumeStatus.SKIPPED
-        debug_text = " ".join(r.getMessage() for r in caplog.records)
-        assert "no TurnStore" in debug_text
-
-    async def test_path2_not_triggered_without_thread_session_id(self) -> None:
-        """When thread_session_id is absent, scope validation is never consulted."""
-        # Arrange
-        pool_id = "telegram:main:chat:42"
-        hub = _make_hub()
-        # Even with a TurnStore wired, Path 2 must not fire
         hub._turn_store = cast(
             "TurnStore",
             _FakeTurnStore({}),
-        )
-        pool = hub.get_or_create_pool(pool_id, "lyra")
-        ctx = PipelineContext(hub=hub)
-
-        msg = make_inbound_message(scope_id="chat:42")
-        assert isinstance(msg.platform_meta, TelegramMeta)
-        assert msg.platform_meta.thread_session_id is None
-
-        # Act
-        status = await resolve_context(msg, pool, pool_id, ctx)
-
-        # Assert — no thread_session_id means Path 2 is skipped entirely
-        assert status == ResumeStatus.SKIPPED
-
-    async def test_cross_scope_does_not_resume_session(self) -> None:
-        """A cross-scope session must never call pool.resume_session."""
-        # Arrange
-        pool_id = "telegram:main:chat:42"
-        hub = _make_hub()
-        hub._turn_store = cast(
-            "TurnStore",
-            _FakeTurnStore({"sess-cross": "telegram:main:chat:DIFFERENT"}),
         )
         pool = hub.get_or_create_pool(pool_id, "lyra")
 
@@ -334,15 +281,7 @@ class TestScopeValidation:
         pool._session_resume_fn = _track_resume  # type: ignore[attr-defined]
 
         ctx = PipelineContext(hub=hub)
-
-        _base = make_inbound_message(scope_id="chat:42")
-        assert isinstance(_base.platform_meta, TelegramMeta)
-        msg = dataclasses.replace(
-            _base,
-            platform_meta=dataclasses.replace(
-                _base.platform_meta, thread_session_id="sess-cross"
-            ),
-        )
+        msg = make_inbound_message(scope_id="chat:42")
 
         # Act
         status = await resolve_context(msg, pool, pool_id, ctx)

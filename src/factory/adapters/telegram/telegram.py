@@ -16,7 +16,6 @@ if TYPE_CHECKING:
     from factory.adapters.shared.outbound_listener import OutboundListener
     from factory.core.messaging.bus import Bus
     from factory.core.ports.blobstore import BlobStorePort
-    from factory.core.ports.last_session_store import LastSessionStore
     from factory.inbound.attachment_ingest import IngestCtx
     from factory.outbound.emitter import OutboundEmitter
 
@@ -81,7 +80,6 @@ class TelegramAdapter(OutboundAdapterBase):
         webhook_secret: str = "",
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
-        last_session: "LastSessionStore | None" = None,
         blob_store: "BlobStorePort | None" = None,
     ) -> None:
         super().__init__()  # no-op today, future-proofs cooperative chain
@@ -97,7 +95,6 @@ class TelegramAdapter(OutboundAdapterBase):
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
         self._guard_chain: GuardChain = GuardChain([BlockedGuard()])
-        self._last_session: "LastSessionStore | None" = last_session
         self._blob_store: "BlobStorePort | None" = blob_store
         _raw_tmp = os.environ.get("FACTORY_AUDIO_TMP") or None
         if _raw_tmp is not None:

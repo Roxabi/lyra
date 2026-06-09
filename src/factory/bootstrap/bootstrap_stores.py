@@ -30,9 +30,6 @@ from factory.infrastructure.stores.message_index_kv import (
     ensure_kv,
 )
 from factory.infrastructure.stores.prefs_store import PrefsStore
-from factory.infrastructure.stores.turn_session_kv import (
-    ensure_kv as ensure_turns_meta_kv,
-)
 from factory.infrastructure.stores.turn_store import TurnStore
 
 log = logging.getLogger(__name__)
@@ -313,7 +310,6 @@ async def open_stores(
             )
         js = nc.jetstream()
         await ensure_kv(js)
-        await ensure_turns_meta_kv(js)
         message_index_store = MessageIndexKvStore(js)
         await message_index_store.connect()
 

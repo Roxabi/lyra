@@ -135,6 +135,13 @@ class TurnStore(SqliteStore, TurnStoreSessionMixin):
         except sqlite3.OperationalError as exc:
             if "duplicate column" not in str(exc).lower():
                 raise
+        # v5 migration: reserve cwd column for #1805 (unwired, nullable).
+        try:
+            await db.execute("ALTER TABLE pool_sessions ADD COLUMN cwd TEXT")
+            await db.commit()
+        except sqlite3.OperationalError as exc:
+            if "duplicate column" not in str(exc).lower():
+                raise
         # Gate backfill: skip if pool_sessions already has rows
         async with db.execute("SELECT 1 FROM pool_sessions LIMIT 1") as cur:
             if await cur.fetchone() is None:

@@ -561,9 +561,9 @@ class TestResolveContextMiddleware:
         assert status == ResumeStatus.SKIPPED
 
     async def test_thread_session_accepted_returns_resumed(self) -> None:
-        """thread_session_id + accepted → RESUMED."""
+        """Pool with a prior session resumes via path-3 (post-#1777 SSoT collapse)."""
         hub = _make_hub()
-        pool_id = "telegram:main:chat:42"
+        pool_id = "discord:main:thread:777"
         pool = hub.get_or_create_pool(pool_id, "lyra")
 
         async def _fake_resume(sid: str) -> bool:
@@ -571,10 +571,10 @@ class TestResolveContextMiddleware:
 
         pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
 
-        # Wire fake TurnStore so scope validation passes (#525).
+        # Path-3: TurnStore.get_last_session(pool_id) → stored session id.
         class _FakeTurnStore:
-            async def get_session_pool_id(self, session_id: str) -> str | None:
-                return pool_id
+            async def get_last_session(self, pid: str) -> str | None:
+                return "tss-1" if pid == pool_id else None
 
             async def increment_resume_count(self, sid: str) -> None:
                 pass
@@ -582,20 +582,14 @@ class TestResolveContextMiddleware:
         hub._turn_store = cast(TurnStore, _FakeTurnStore())
 
         ctx = PipelineContext(hub=hub)
-        _base = make_inbound_message(scope_id="chat:42")
-        msg = dataclasses.replace(
-            _base,
-            platform_meta=dataclasses.replace(
-                _base.platform_meta, thread_session_id="tss-1"
-            ),
-        )
+        msg = make_inbound_message(scope_id="thread:777")
 
         status = await resolve_context(msg, pool, pool.pool_id, ctx)
 
         assert status == ResumeStatus.RESUMED
 
-    async def test_thread_session_rejected_returns_fresh(self) -> None:
-        """thread_session_id rejected → FRESH."""
+    async def test_thread_session_rejected_returns_skipped(self) -> None:
+        """thread_session_id rejected → SKIPPED (path-2 deleted; FRESH removed)."""
         hub = _make_hub()
         pool_id = "telegram:main:chat:42"
         pool = hub.get_or_create_pool(pool_id, "lyra")
@@ -605,11 +599,8 @@ class TestResolveContextMiddleware:
 
         pool._session_resume_fn = _fake_resume  # type: ignore[attr-defined]
 
-        # Wire fake TurnStore so scope validation passes (#525).
+        # Path-3: TurnStore.get_last_session returns None → falls through to SKIPPED.
         class _FakeTurnStore:
-            async def get_session_pool_id(self, session_id: str) -> str | None:
-                return pool_id
-
             async def get_last_session(self, pid: str) -> str | None:
                 return None
 
@@ -619,17 +610,11 @@ class TestResolveContextMiddleware:
         hub._turn_store = cast(TurnStore, _FakeTurnStore())
 
         ctx = PipelineContext(hub=hub)
-        _base = make_inbound_message(scope_id="chat:42")
-        msg = dataclasses.replace(
-            _base,
-            platform_meta=dataclasses.replace(
-                _base.platform_meta, thread_session_id="tss-dead"
-            ),
-        )
+        msg = make_inbound_message(scope_id="chat:42")
 
         status = await resolve_context(msg, pool, pool.pool_id, ctx)
 
-        assert status == ResumeStatus.FRESH
+        assert status == ResumeStatus.SKIPPED
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -694,8 +679,11 @@ class TestEmptyPipeline:
 
 
 class TestNotifySessionFallthroughMiddleware:
-    async def test_notify_called_when_fresh(self) -> None:
-        """FRESH status triggers try_notify_user."""
+    async def test_no_notify_when_skipped(self) -> None:
+        """SC-5: SKIPPED resume emits no session-fallthrough notification.
+
+        path-2 fallthrough + ResumeStatus.FRESH removed in #1777.
+        """
         from factory.core.hub.hub_protocol import RoutingKey
 
         hub = _make_hub()
@@ -707,11 +695,8 @@ class TestNotifySessionFallthroughMiddleware:
 
         pool._session_resume_fn = _rejected_resume  # type: ignore[attr-defined]
 
-        # Wire fake TurnStore so scope validation passes (#525).
+        # Wire fake TurnStore (no prior session — path-3 returns None → SKIPPED).
         class _FakeTurnStore:
-            async def get_session_pool_id(self, session_id: str) -> str | None:
-                return pool_id
-
             async def get_last_session(self, pid: str) -> str | None:
                 return None
 
@@ -720,13 +705,7 @@ class TestNotifySessionFallthroughMiddleware:
 
         hub._turn_store = cast(TurnStore, _FakeTurnStore())
 
-        _base = make_inbound_message(scope_id="chat:42")
-        msg = dataclasses.replace(
-            _base,
-            platform_meta=dataclasses.replace(
-                _base.platform_meta, thread_session_id="tss-dead"
-            ),
-        )
+        msg = make_inbound_message(scope_id="chat:42")
         ctx = PipelineContext(
             hub=hub,
             pool=pool,
@@ -744,8 +723,8 @@ class TestNotifySessionFallthroughMiddleware:
             result = await mw(msg, ctx, _make_next())
 
         assert result.action == Action.SUBMIT_TO_POOL
-        assert len(notify_calls) == 1
-        assert "starting fresh" in notify_calls[0][1]
+        # After #1777: SKIPPED is silent — no notification sent.
+        assert len(notify_calls) == 0
 
 
 # ──────────────────────────────────────────────────────────────────────

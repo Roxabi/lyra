@@ -67,23 +67,6 @@ async def get_last_session(db: aiosqlite.Connection, pool_id: str) -> str | None
         return None
 
 
-async def get_session_pool_id(db: aiosqlite.Connection, session_id: str) -> str | None:
-    """Return the pool_id for a session, or None if not found.
-
-    Used for scope validation at the NATS trust boundary (#525).
-    """
-    try:
-        async with db.execute(
-            "SELECT pool_id FROM pool_sessions WHERE session_id = ?",
-            (session_id,),
-        ) as cur:
-            row = await cur.fetchone()
-            return row[0] if row else None
-    except sqlite3.Error:
-        log.exception("get_session_pool_id failed (session=%s)", session_id)
-        return None
-
-
 async def get_cli_session(db: aiosqlite.Connection, session_id: str) -> str | None:
     """Return the CLI session ID for a Lyra session, or None."""
     try:

@@ -348,7 +348,6 @@ class TestOpenStoresLifecycle:
         mock_nc = AsyncMock()
         mock_nc.jetstream = MagicMock(return_value=MagicMock())
         mock_ensure_kv = AsyncMock()
-        mock_ensure_turns_meta_kv = AsyncMock()
 
         captured_js = None
 
@@ -393,10 +392,6 @@ class TestOpenStoresLifecycle:
             patch(
                 "factory.bootstrap.bootstrap_stores.ensure_kv",
                 mock_ensure_kv,
-            ),
-            patch(
-                "factory.bootstrap.bootstrap_stores.ensure_turns_meta_kv",
-                mock_ensure_turns_meta_kv,
             ),
             # Migration guards touch the filesystem; bypass them for lifecycle tests.
             patch("factory.bootstrap.bootstrap_stores._ensure_config_db"),

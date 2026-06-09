@@ -18,7 +18,6 @@ from factory.bootstrap.wiring._standalone_wiring_common import (
     wire_bot_common,
 )
 from factory.core.messaging.message import Platform
-from factory.infrastructure.stores.turn_session_kv import KvLastSessionStore
 from roxabi_nats.readiness import wait_for_hub
 
 log = logging.getLogger(__name__)
@@ -87,10 +86,6 @@ async def bootstrap_telegram_standalone(
     js = nc.jetstream()
     blob_store = init_blobstore()
 
-    # KV last-session store — adapter reads/writes factory-turns-meta bucket.
-    # Must await .connect() AFTER wait_for_hub (hub provisions the bucket).
-    tg_kv_last_session = KvLastSessionStore(js)
-
     wired: list[tuple] = []  # (TelegramAdapter, Bus, TypingListener, AudioConsumer)
 
     async def _wire_bot(bot_cfg: Any, token: str, webhook_secret: str | None) -> tuple:
@@ -107,7 +102,6 @@ async def bootstrap_telegram_standalone(
                 token=token,
                 inbound_bus=inbound_bus,
                 webhook_secret=webhook_secret or "",
-                last_session=tg_kv_last_session,
                 blob_store=blob_store,
             )
             typing_deps = TypingDeps(
@@ -135,9 +129,6 @@ async def bootstrap_telegram_standalone(
     # reintroduce the cold-boot race (BucketNotFoundError / missing-stream).
     await wait_for_hub(nc)
 
-    # Bind KV bucket after hub has provisioned it.
-    await tg_kv_last_session.connect()
-
     for bot_cfg in tg_multi_cfg.bots:
         bot_id = bot_cfg.bot_id
         if bot_id not in tg_creds:
@@ -163,6 +154,5 @@ async def bootstrap_telegram_standalone(
     try:
         await _bootstrap_telegram_teardown(wired, stop)
     finally:
-        await tg_kv_last_session.close()  # release KV handle (#50)
         if blob_store is not None:
             await blob_store.aclose()  # type: ignore[union-attr]  # concrete HttpBlobStoreAdapter; aclose not on port

@@ -2,21 +2,17 @@
 
 ``SubmitToPoolMiddleware`` is the final stage in the default pipeline.
 It validates the adapter, checks the circuit breaker, attempts session
-resume via three paths, and returns ``SUBMIT_TO_POOL``.
+resume via two paths, and returns ``SUBMIT_TO_POOL``.
 """
 
 from __future__ import annotations
 
 import logging
 
-from ...messaging.message import (
-    InboundMessage,
-    Platform,
-)
+from ...messaging.message import InboundMessage
 from ..pipeline.pipeline_events import MessageDropped, PoolSubmitted
 from ..pipeline.pipeline_types import (
     DROP,
-    SESSION_FALLTHROUGH_MSG,
     Action,
     PipelineResult,
     ResumeStatus,
@@ -114,33 +110,7 @@ class SubmitToPoolMiddleware:
             )
         )
 
-        if status == ResumeStatus.FRESH:
-            await self._notify_session_fallthrough(msg, ctx)
+        # #1777: no fresh-fallback notice (mirror that triggered it is gone);
+        # proper "couldn't resume" UX returns with #1805.
 
         return PipelineResult(action=Action.SUBMIT_TO_POOL, pool=pool, msg=msg)
-
-    async def _notify_session_fallthrough(
-        self, msg: InboundMessage, ctx: PipelineContext
-    ) -> None:
-        """Send a pre-response notice when Path 2 resume fails."""
-        from ..outbound.outbound_errors import try_notify_user
-
-        try:
-            platform = Platform(msg.platform)
-        except ValueError:
-            return
-        adapter = ctx.hub.adapter_registry.get((platform, msg.bot_id))
-        if adapter is None:
-            return
-        circuit = (
-            ctx.hub.circuit_registry.get(msg.platform)
-            if ctx.hub.circuit_registry is not None
-            else None
-        )
-        await try_notify_user(
-            msg.platform,
-            adapter,
-            msg,
-            SESSION_FALLTHROUGH_MSG,
-            circuit=circuit,
-        )

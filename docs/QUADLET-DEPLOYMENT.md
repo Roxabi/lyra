@@ -136,7 +136,7 @@ After Step C confirms a healthy converge, verify that no adapter process holds `
 open. Post-migration the canonical `turns.db` at `~/.roxabi/factory/turns.db` is **kept** —
 it is exclusively written by `factory-turn-writer` and read by `factory-hub` (D5 / ADR-075).
 Epic #1049 AC#2 is satisfied by confirming the adapters no longer open it (they now resolve
-last-session via the `factory-turns-meta` KV bucket), **not** by deleting the hub's store.
+last-session via `turns.db` path-3 (`get_last_session`)), **not** by deleting the hub's store.
 Only a stale adapter-side copy at a *separate legacy location*, if one exists, should be removed.
 
 > **Only delete the file if you have confirmed** that the turn-writer service is healthy

@@ -29,23 +29,14 @@ class ResumeStatus(enum.Enum):
     """Outcome of _resolve_context() — how session continuity was handled.
 
     RESUMED  — a session was successfully resumed via any path.
-    FRESH    — Path 2 (thread-session-resume) was attempted but rejected;
-               Claude will start fresh. The user should be notified.
-    SKIPPED  — no resume was attempted (pool busy, group chat, first use, etc.).
+    SKIPPED  — no resume was attempted (pool busy, first use, etc.).
                Silent: this is expected behaviour.
+
+    Note: FRESH was removed in #1777 (path-2 thread-session-resume deleted).
     """
 
     RESUMED = "resumed"
-    FRESH = "fresh"
     SKIPPED = "skipped"
-
-
-SESSION_FALLTHROUGH_MSG = (
-    "⚠️ Couldn't resume your previous session \u2014 starting fresh."
-)
-
-# Legacy alias — kept for any external code that may import the private name.
-_SESSION_FALLTHROUGH_MSG = SESSION_FALLTHROUGH_MSG
 
 
 @dataclass(frozen=True)
@@ -69,6 +60,5 @@ __all__ = [
     "DROP",
     "PipelineResult",
     "ResumeStatus",
-    "SESSION_FALLTHROUGH_MSG",
     "TraceHook",
 ]

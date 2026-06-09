@@ -1,0 +1,159 @@
+---
+title: "Single SSoT for last-session — code-grounded change map"
+description: "Grounds the ratified job-model design (§8-11) against current code: confirms D1/Q6-Q9, corrects two drift points, surfaces the FRESH-notification blocker, and produces an ordered ~18-file change map."
+---
+
+## Source
+
+Issue #1777 (re-scoped frame `artifacts/frames/1777-single-ssot-last-session-frame.mdx`). The
+architectural decisions are already ratified in `artifacts/analyses/job-model-concept-analysis.md`
+§8–11 (D1–D4 locked; Q6–Q8 resolved; Q9 product; Q10 split to #1805). This analysis is the
+**code-grounding pass** the prior doc explicitly deferred ("re-verify at impl time, may have
+drifted") — it verifies anchors U1–U5 against the current worktree and produces the concrete,
+ordered change map for the spec.
+
+Verified by a 6-region parallel read + reconcile (7 agents, 103 tool-uses) — see
+`artifacts/analyses/1777-single-ssot-last-session-analysis.mdx` provenance below.
+
+## Problem
+
+Three disjoint stores hold "last session per pool"; the two adapter mirrors are never cleared by
+`/clear` → resurrection. `turns.db` `pool_sessions` is already canonical and self-heals. (Full
+problem statement: the frame.)
+
+## Outcome
+
+`turns.db` `pool_sessions` is the **sole** SSoT for Shape-A last-session; adapters hold nothing for
+resume; `/clear` is genuinely fresh; reply-to (path-1) survives `/clear`; the `LastSessionStore`
+port is collapsed. No regression in resume for Telegram DM, Discord DM, or Discord threads.
+
+## Appetite
+
+One focused cycle. The change is **predominantly deletion** (path-2, two store surfaces, one port)
++ one additive migration (`cwd` reservation). No new subsystems.
+
+## Grounded design — what the code confirms
+
+| Anchor | Status | Evidence |
+|---|---|---|
+| path-2 isolated (`_resume_path2` 105-167 + `_build_last_session_path` 87-136) | ✅ confirmed | no interleave with path-1/3 |
+| Discord thread `scope_id = thread:{thread_id}` already set | ✅ confirmed | `discord_normalize.py:69-73`, `discord_inbound.py:240` → path-3 finds it in turns.db today |
+| `KvLastSessionStore` = last-session only, **no** message_index | ✅ confirmed | message_index is `MessageIndexKvStore` (`message_index_kv.py`, bucket `factory-msg-index`) |
+| message_index writer = `PoolObserver.index_turn_async` (hub turn loop, not adapter) | ✅ confirmed (U3) | `pool_observer.py:199-218` |
+| `set_last_session` already a deliberate no-op (ADR-075) | ✅ confirmed | `last_session_wiring.py:40-42` |
+| path-3 already calls `turn_store.get_last_session` directly (port bypassed) | ✅ confirmed | `path_validation.py:181` |
+| core holds `TurnStoreProtocol.get_last_session` → collapse needs no new protocol | ✅ confirmed | `turn_store_protocol.py:74` |
+| no import-linter contract blocks the collapse | ✅ confirmed | `.importlinter` (inbound→core OK; no infra leak) |
+| `/clear` self-heals (reset_session → start_session → turn-writer `INSERT OR IGNORE`) | ✅ confirmed (U?) | `pool.py:238-258`, `writer.py:182-186`, `turn_store_session.py:43-53` (+ dual self-heal in `_log_turn`) |
+| path-1 survives `/clear` (MessageIndex not cleared) | ✅ confirmed | written at turn-time, keyed by platform_msg_id |
+| `is_idle` non-atomic but no concurrent hijack (single asyncio consumer) | ✅ confirmed (U5) | `pool.py:194-197`, `hub.py:205-222` one-message-at-a-time loop |
+| `cwd` column reservable via v5 `try/except ALTER TABLE` (v4 cli_session_id precedent) | ✅ confirmed | `turn_store.py:125-137` |
+
+### Drift corrections to the design doc (job-model-concept-analysis.md §8–11)
+
+1. **Q7 wording** — the KvLastSessionStore branch is **not** in `_build_thread_path`; it's in a
+   separate `_build_last_session_path` (Telegram + Discord DM). `_build_thread_path` (Discord
+   threads) holds the **ThreadStore `update_session`** write-back (that's the Q8/D3 target). So the
+   inbound change is *two* deletions: delete `_build_last_session_path` (path-2 KV) **and** strip the
+   ThreadStore session-pointer read/write from `_build_thread_path`.
+2. **Discord-thread routing** — after path-2 removal, Discord threads must **not** be routed through
+   `_build_last_session_path` (that IS path-2, deleted); they resume **hub-side via path-3** using
+   the already-wired `scope_id=thread:{thread_id}` pool_id. No adapter-side lookup remains.
+
+## Open decision — FRESH-status notification (BLOCKER, product/UX)
+
+`ResumeStatus.FRESH` is returned **only** when path-2 was attempted-but-rejected
+(`path_validation.py:52`). `middleware_submit.py:117` reacts to FRESH by calling
+`_notify_session_fallthrough` → `try_notify_user` → a **real platform message**
+(`SESSION_FALLTHROUGH_MSG`: "couldn't resume your previous session, starting fresh"). Removing
+path-2 makes FRESH unreachable and silently drops this user-facing notice.
+
+```
+── Decision: FRESH-status notification after path-2 removal ──
+Context:  FRESH only fired on path-2 reject; it drives a real "starting fresh" user notice.
+          Post-#1777 the mirror-divergence that triggered it no longer exists; genuine
+          "couldn't resume a dead session" detection is #1805/F2 scope.
+Target:   no silent UX regression; keep #1777 clean.
+
+Options:
+  1. Drop the notice in #1777; document the behavior change; re-introduce a proper
+     "couldn't resume → fresh" notice in #1805 where dead-resume detection lives   ← recommended
+  2. Re-trigger the notice on a new path-3 condition now (requires resume-failure
+     detection = #1805 scope pulled forward into #1777)
+  3. Keep FRESH in the enum, repurpose its meaning (deferred semantics)
+Recommended: Option 1 — the notice was a band-aid for the mirror we're deleting; proper
+             fresh-fallback UX belongs with #1805's --resume-failure detection.
+```
+
+## Sub-decision — ThreadStore session-pointer columns
+
+Dropping `session_id`/`pool_id` columns from `discord.db` needs SQLite ≥3.35 `DROP COLUMN`
+(destructive, version-gated). Recommended: **stop reading/writing them, leave the columns dead**
+(additive-only schema philosophy — same as the `try/except ADD COLUMN` pattern). A later cleanup
+can drop them. → bake into spec; no DROP migration in #1777.
+
+## Change map (ordered, code-grounded)
+
+| # | File | Change |
+|---|------|--------|
+| 1 | `infrastructure/stores/turn_session_kv.py` | **Delete file** — `KvLastSessionStore` + `ensure_kv` (bucket `factory-turns-meta` obsolete) |
+| 2 | `bootstrap/bootstrap_stores.py` | remove `ensure_turns_meta_kv` import (33-35) + call (316) |
+| 2 | `bootstrap/standalone/hub_standalone.py` | remove `ensure_kv` import (164) + call (171) |
+| 3 | `core/hub/middleware/path_validation.py` | delete `_resume_path2` (105-167); `resolve_context` → `return SKIPPED`; drop `DiscordMeta`/`TelegramMeta` import + `get_session_pool_id` call **(gated on FRESH decision)** |
+| 4 | `core/hub/middleware/middleware_submit.py` | drop/repurpose `_notify_session_fallthrough` + FRESH branch (117-146) per FRESH decision |
+| 5 | `core/stores/turn_store_protocol.py` | remove `get_session_pool_id` (dead) |
+| 5 | `infrastructure/stores/turn_store_queries.py` | remove `get_session_pool_id` SQL (dead) |
+| 6 | `inbound/session_builder.py` | delete `_build_last_session_path` (87-136); strip `_build_thread_path` ThreadStore read (158-176) + `update_session` write-back (204-209) + `thread_session_id` injection (224) |
+| 6 | `core/stores/thread_store_protocol.py` | remove `ThreadSession` dataclass + `get_session` + `update_session`; keep `claim`/`is_owned`/`get_thread_ids`/`release` |
+| 7 | `infrastructure/stores/thread_store.py` | remove `get_session`/`update_session` impls; **leave columns dead** (no DROP) |
+| 7 | `adapters/discord/discord_threads.py` | remove `persist_thread_session` + `retrieve_thread_session` |
+| 7 | `inbound/context.py` | remove `thread_sessions_cache` + `last_session` fields + `ThreadSession` import; update docstring (doc_drift) |
+| 7 | `adapters/discord/adapter.py` | remove `ThreadSession` import + `_thread_sessions` + `last_session` param/field |
+| 8 | `core/ports/last_session_store.py` | **Delete port** (Q6) |
+| 8 | `bootstrap/wiring/last_session_wiring.py` | **Delete** `TurnStoreLastSession` wrapper |
+| 8 | `bootstrap/wiring/bootstrap_wiring.py` | remove `last_session=TurnStoreLastSession(...)` (214, 284) |
+| 8 | `bootstrap/wiring/standalone_telegram.py` | remove `KvLastSessionStore` import (21) + instance (92) + wiring (110) |
+| 8 | `bootstrap/wiring/standalone_discord.py` | remove `KvLastSessionStore` import (23) + instance (111) + wiring (133) |
+| 8 | `adapters/telegram/telegram.py` | remove `last_session` param/field (84, 100) |
+| 9 | `infrastructure/stores/turn_store.py` | **add** v5 `ALTER TABLE pool_sessions ADD COLUMN cwd TEXT` (try/except; reserved, not wired) |
+| 9 | `inbound/CLAUDE.md` | update path-2 / `persist_thread_session` prose (doc_drift gate) |
+
+## Risks
+
+- **FRESH notification** (blocker above) — must be decided before path_validation finalization.
+- **Atomicity**: `ThreadSession` removal touches 6 files; KvLastSessionStore wiring touches the
+  adapter ctor signatures — must land together or startup import errors cascade.
+- **Telegram/DM resume coverage**: after path-2 removal, Telegram DMs rely solely on path-3
+  (`get_last_session(pool_id)`). Verify `telegram:bot:scope` pool_id is stable across reconnects.
+- **Test fixtures**: sweep for `ResumeStatus.FRESH` assertions, `ThreadStoreProtocol` fakes
+  implementing `update_session`, and direct `KvLastSessionStore`/`ensure_kv` imports.
+- **Migration string-match**: v5 reuses the `'duplicate column' in str(exc)` guard — fine, matches
+  the proven v4 pattern.
+
+## Test targets (regression)
+
+- Telegram pool_id round-trip → path-3 returns prior session from turns.db (not KV).
+- Discord thread resume via path-3 (`discord:bot:{id}:thread:{tid}`), no `retrieve_thread_session`.
+- Discord DM resume via path-3.
+- **path-1 survives `/clear`**: reply to pre-clear message resumes via MessageIndex, not turns.db.
+- `/clear` self-heal: new session_id in pool_sessions; old no longer returned by get_last_session.
+- FRESH→SKIPPED guard: Telegram DM no-prior-session → SKIPPED; `_notify_session_fallthrough` NOT called.
+- ThreadStore ownership (`claim`/`is_owned`/`get_thread_ids`/`release`) intact post-removal.
+- `get_session_pool_id` dead-code: pyright clean; no callers.
+- `factory-turns-meta` bucket not provisioned at startup.
+
+## Fit Check — recommended sequencing
+
+The shape is **locked (D1 ownership consolidation)** — no alternative architecture in play; the
+genuine choices are the FRESH decision (above) and column-drop-vs-dead (above). Recommended single
+PR, applied in change-map order (deletions bottom-up: KV store → path-2 → store surfaces → port →
+migration), so the suite stays green at each layer. Eliminated alternative: the "add `clear` to
+both mirrors" patch (frame's simplest-alternative) — leaves the duplication, strictly worse.
+
+---
+
+_Provenance: grounded by parallel region-readers R1–R6 + reconcile against the #1777 worktree on
+2026-06-09. Anchors U1–U5 from job-model-concept-analysis.md §12 resolved: U1 (`_build_thread_path`
+= ThreadStore, not KV), U2 (ThreadStore claim KEEP / update_session+get_session DROP), U3
+(message_index writer = PoolObserver), U4 (deferred to #1805 — CLI --resume failure mode), U5
+(is_idle safe under single-consumer loop)._

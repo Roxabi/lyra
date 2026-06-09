@@ -25,7 +25,7 @@ parse → AttachmentIngestStage (store-conditional; no-store path clears pending
 
 - `router.py`, `session_builder.py`, `dispatcher.py`, `pipeline.py` must NOT import `discord` or `aiogram`. Platform isolation lives in `wire_parser_telegram.py` / `wire_parser_discord.py` and adapter-side hooks.
 - Stages depend on `factory.core` only — never `factory.adapters`. Enforced by `.importlinter` (`inbound-no-adapters` contract, #1287). Known violations are tagged `DEBT:inbound-adapters-transition` / `DEBT:inbound-adapters-wireparser` and listed as `ignore_imports` in that contract pending relocation to `factory.core`/factory.shared (deferred to #1283 Phase 6).
-- `InboundContext`, `RouterCtx`, `SessionCtx`, `DispatchCtx` are `@dataclass(frozen=True)`. The container references are frozen; the mutable collections they carry (`RouterCtx.owned_threads: set`, `SessionCtx.thread_sessions_cache: dict`) are mutated in place by hooks and `SessionBuilder`. Document this contract on `context.py` module docstring.
+- `InboundContext`, `RouterCtx`, `SessionCtx`, `DispatchCtx` are `@dataclass(frozen=True)`. The container references are frozen; the mutable collections they carry (`RouterCtx.owned_threads: set`) are mutated in place by hooks and `SessionBuilder`. Document this contract on `context.py` module docstring.
 - Hook signatures (verified post-Phase-3):
   - `pre_route_hook(InboundMessage, InboundContext) -> Awaitable[None]` — may mutate
     `RouterCtx.owned_threads`. Never returns a value; the pipeline continues with the same
@@ -45,7 +45,7 @@ parse → AttachmentIngestStage (store-conditional; no-store path clears pending
 - ¬ add platform-specific code (`discord.*`, `aiogram.*`) to generic stage modules — extend `wire_parser_<platform>.py` or the adapter-side hook instead.
 - ¬ raise exceptions from `Router.decide` — return `RouteDecision.DROP`.
 - ¬ mutate the frozen dataclass container itself; only the mutable collections it carries.
-- ¬ move Discord thread API helpers (`persist_thread_claim`, `persist_thread_session`, `retrieve_thread_session`) here — they import `discord` and stay in `adapters/discord/discord_threads.py`.
+- ¬ move Discord thread API helpers (`persist_thread_claim`) here — they import `discord` and stay in `adapters/discord/discord_threads.py`. The thread-session write-back helpers were removed in #1777; last-session now resolves solely via `turns.db` path-3 (`get_last_session`).
 - ¬ store `send_backpressure` in `DispatchCtx`. The closure captures the raw platform
   message, which is only known per-call. Pass it as a direct argument to
   `Dispatcher.dispatch` / `InboundPipeline.run`.

@@ -273,6 +273,8 @@ class TestTelegramAdapterStandaloneNoMkdir:
 
         # Negative: if mkdir is added to the telegram boot path, call_count > 0
         mock_mkdir.assert_not_called()
+        # Regression lock: last_session removed in #1777; must not re-appear.
+        assert "last_session" not in captured_kwargs
 
     async def test_discord_standalone_calls_mkdir(
         self,
@@ -381,6 +383,8 @@ class TestTelegramAdapterStandaloneNoMkdir:
 
         # Negative: removing the mkdir from standalone_discord.py causes this to fail
         mock_mkdir.assert_called()
+        # Regression lock: last_session removed in #1777; must not re-appear.
+        assert "last_session" not in captured_kwargs
 
 
 class TestDiscordStandaloneNoTurnsDb:
@@ -399,4 +403,3 @@ class TestDiscordStandaloneNoTurnsDb:
         assert "turns.db" not in source, (
             "standalone_discord references 'turns.db' — must use KV only"
         )
-

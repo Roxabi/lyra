@@ -24,6 +24,7 @@ from factory.core.messaging.message import (
     PlatformMeta,
     TelegramMeta,
 )
+from factory.core.stores.thread_store_protocol import ThreadStoreProtocol
 from factory.inbound.context import SessionCtx
 from factory.inbound.session_builder import SessionBuilder
 
@@ -63,7 +64,7 @@ def _make_msg(
 
 
 def _make_thread_store() -> MagicMock:
-    th = MagicMock()
+    th = MagicMock(spec=ThreadStoreProtocol)
     th.get_session = AsyncMock(return_value=None)
     th.update_session = AsyncMock(return_value=None)
     return th
@@ -302,5 +303,7 @@ class TestSessionBuilderPathD:
         # Act — must not raise.
         await update_fn(updated_msg, "sess-x", "pool-x")
 
-        # Assert — no store write regardless.
+        # Assert — closure must not call th.update_session regardless of thread_id
+        # value in the passed msg. Guards against a regression where a None-thread_id
+        # branch inside the closure attempts a write-back instead of returning early.
         th.update_session.assert_not_awaited()

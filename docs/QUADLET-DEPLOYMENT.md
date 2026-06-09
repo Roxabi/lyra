@@ -136,7 +136,7 @@ After Step C confirms a healthy converge, verify that no adapter process holds `
 open. Post-migration the canonical `turns.db` at `~/.roxabi/factory/turns.db` is **kept** —
 it is exclusively written by `factory-turn-writer` and read by `factory-hub` (D5 / ADR-075).
 Epic #1049 AC#2 is satisfied by confirming the adapters no longer open it (they now resolve
-last-session via `turns.db` path-3 (`get_last_session`)), **not** by deleting the hub's store.
+last-session via `turns.db` path-3 (`get_last_session`), **not** by deleting the hub's store.
 Only a stale adapter-side copy at a *separate legacy location*, if one exists, should be removed.
 
 > **Only delete the file if you have confirmed** that the turn-writer service is healthy
@@ -680,6 +680,14 @@ To purge explicitly (optional, operator-driven):
 nats stream rm FACTORY_OUTBOUND_AUDIO --force
 # KV bucket is a stream internally; removing the stream also drops the KV bucket
 nats stream rm KV_factory_outbound_audio_sent --force
+```
+
+**`factory-turns-meta` KV bucket (dormant since #1777)**
+
+The `factory-turns-meta` NATS-KV bucket was written by the deleted `KvLastSessionStore` path (path-2, removed in #1777). It is no longer written or read by any component and is safe to delete:
+
+```bash
+nats kv del factory-turns-meta
 ```
 
 **ACL grants: safe to leave**

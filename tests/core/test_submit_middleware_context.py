@@ -1,5 +1,5 @@
 """Tests for resolve_context() — reply-to-resume,
-MessageIndex integration (#244, #341), and session-fallthrough notification (#380)."""
+MessageIndex integration (#244, #341), and path-1→path-3→SKIPPED resume matrix."""
 
 from __future__ import annotations
 
@@ -80,7 +80,7 @@ class _FakeTurnStoreLastSession:
         pass
 
 
-class _WrongPoolTurnStore:
+class _NoLastSessionTurnStore:
     """TurnStore stub — get_last_session returns None (no prior session, SKIPPED)."""
 
     async def get_last_session(self, _pid: str) -> str | None:
@@ -91,7 +91,6 @@ class _WrongPoolTurnStore:
 
     async def close(self) -> None:
         pass
-
 
 
 # -------------------------------------------------------------------
@@ -429,7 +428,7 @@ class TestResolveContextResumeStatus:
                 _FakeTurnStoreScope("telegram:main:chat:42"),
                 ResumeStatus.SKIPPED,
                 None,
-                id="path2_rejected_no_path3",
+                id="path3_no_last_session",
             ),
             pytest.param(
                 "telegram:main:chat:42:user:tg:user:alice",
@@ -441,7 +440,7 @@ class TestResolveContextResumeStatus:
                 _FakeTurnStoreScope("telegram:main:chat:42:user:tg:user:alice"),
                 ResumeStatus.SKIPPED,
                 None,
-                id="path2_rejected_group_chat",
+                id="path3_group_chat",
             ),
             pytest.param(
                 "telegram:main:chat:42:user:tg:user:alice",
@@ -464,7 +463,7 @@ class TestResolveContextResumeStatus:
                 False,
                 None,
                 False,
-                _WrongPoolTurnStore(),
+                _NoLastSessionTurnStore(),
                 ResumeStatus.SKIPPED,
                 None,
                 id="path2_scope_mismatch",

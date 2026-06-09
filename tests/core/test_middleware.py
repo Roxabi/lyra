@@ -680,12 +680,9 @@ class TestEmptyPipeline:
 
 class TestNotifySessionFallthroughMiddleware:
     async def test_no_notify_when_skipped(self) -> None:
-        """SKIPPED (path-2 deleted, FRESH removed) → try_notify_user never called.
+        """SC-5: SKIPPED resume emits no session-fallthrough notification.
 
-        RED test: currently fails because the source still calls
-        _notify_session_fallthrough when status == ResumeStatus.FRESH.
-        After #1777 deletes path-2 and ResumeStatus.FRESH, resolve_context
-        will return SKIPPED here, and this test turns GREEN.
+        path-2 fallthrough + ResumeStatus.FRESH removed in #1777.
         """
         from factory.core.hub.hub_protocol import RoutingKey
 

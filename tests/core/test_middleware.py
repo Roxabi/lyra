@@ -594,8 +594,8 @@ class TestResolveContextMiddleware:
 
         assert status == ResumeStatus.RESUMED
 
-    async def test_thread_session_rejected_returns_fresh(self) -> None:
-        """thread_session_id rejected → FRESH."""
+    async def test_thread_session_rejected_returns_skipped(self) -> None:
+        """thread_session_id rejected → SKIPPED (path-2 deleted in #1777; FRESH removed)."""
         hub = _make_hub()
         pool_id = "telegram:main:chat:42"
         pool = hub.get_or_create_pool(pool_id, "lyra")
@@ -629,7 +629,7 @@ class TestResolveContextMiddleware:
 
         status = await resolve_context(msg, pool, pool.pool_id, ctx)
 
-        assert status == ResumeStatus.FRESH
+        assert status == ResumeStatus.SKIPPED
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -694,8 +694,14 @@ class TestEmptyPipeline:
 
 
 class TestNotifySessionFallthroughMiddleware:
-    async def test_notify_called_when_fresh(self) -> None:
-        """FRESH status triggers try_notify_user."""
+    async def test_no_notify_when_skipped(self) -> None:
+        """SKIPPED status (path-2 deleted, FRESH removed in #1777) → try_notify_user never called.
+
+        RED test: currently fails because the source still calls
+        _notify_session_fallthrough when status == ResumeStatus.FRESH.
+        After #1777 deletes path-2 and ResumeStatus.FRESH, resolve_context
+        will return SKIPPED here, and this test turns GREEN.
+        """
         from factory.core.hub.hub_protocol import RoutingKey
 
         hub = _make_hub()
@@ -744,8 +750,8 @@ class TestNotifySessionFallthroughMiddleware:
             result = await mw(msg, ctx, _make_next())
 
         assert result.action == Action.SUBMIT_TO_POOL
-        assert len(notify_calls) == 1
-        assert "starting fresh" in notify_calls[0][1]
+        # After #1777: SKIPPED is silent — no notification sent.
+        assert len(notify_calls) == 0
 
 
 # ──────────────────────────────────────────────────────────────────────

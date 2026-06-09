@@ -99,24 +99,6 @@ class _WrongPoolTurnStore:
         pass
 
 
-class _FakeTurnStoreRescue:
-    """TurnStore stub for Path 3 rescue: scope ok + last_session present."""
-
-    def __init__(self, pool_id: str) -> None:
-        self._pool_id = pool_id
-
-    async def get_session_pool_id(self, _session_id: str) -> str | None:
-        return self._pool_id
-
-    async def get_last_session(self, _pid: str) -> str | None:
-        return "last-sess"
-
-    async def increment_resume_count(self, _sid: str) -> None:
-        pass
-
-    async def close(self) -> None:
-        pass
-
 
 # -------------------------------------------------------------------
 # Helper
@@ -448,19 +430,7 @@ class TestResolveContextResumeStatus:
                 None,
                 id="path1_resumed",
             ),
-            pytest.param(
-                "telegram:main:chat:42",
-                "chat:42",
-                None,
-                "tss-1",
-                False,
-                None,
-                True,
-                _FakeTurnStoreScope("telegram:main:chat:42"),
-                ResumeStatus.RESUMED,
-                None,
-                id="path2_accepted",
-            ),
+            # path2_accepted removed: path-2 (_resume_path2) deleted in #1777.
             pytest.param(
                 "telegram:main:chat:42",
                 "chat:42",
@@ -470,7 +440,7 @@ class TestResolveContextResumeStatus:
                 None,
                 False,
                 _FakeTurnStoreScope("telegram:main:chat:42"),
-                ResumeStatus.FRESH,
+                ResumeStatus.SKIPPED,  # RED: currently FRESH (path-2 not yet deleted)
                 None,
                 id="path2_rejected_no_path3",
             ),
@@ -483,7 +453,7 @@ class TestResolveContextResumeStatus:
                 None,
                 False,
                 _FakeTurnStoreScope("telegram:main:chat:42:user:tg:user:alice"),
-                ResumeStatus.FRESH,
+                ResumeStatus.SKIPPED,  # RED: currently FRESH (path-2 not yet deleted)
                 None,
                 id="path2_rejected_group_chat",
             ),
@@ -587,69 +557,8 @@ class TestResolveContextResumeStatus:
         if expected_resume_calls is not None:
             assert actual_calls == expected_resume_calls
 
-    @pytest.mark.parametrize(
-        "pool_id,scope_id,thread_session_id,busy,rescue,expected",
-        [
-            pytest.param(
-                "telegram:main:chat:42",
-                "chat:42",
-                "tss-busy",
-                True,
-                False,
-                ResumeStatus.SKIPPED,
-                id="path2_busy_pool",
-            ),
-            pytest.param(
-                "telegram:main:chat:42",
-                "chat:42",
-                "__auto__",
-                False,
-                False,
-                ResumeStatus.SKIPPED,
-                id="path2_already_on_session",
-            ),
-            pytest.param(
-                "telegram:main:chat:42",
-                "chat:42",
-                "tss-dead",
-                False,
-                True,
-                ResumeStatus.RESUMED,
-                id="path2_rejected_path3_rescued",
-            ),
-        ],
-    )
-    async def test_resume_status_edge(  # noqa: PLR0913
-        self,
-        pool_id: str,
-        scope_id: str,
-        thread_session_id: str,
-        busy: bool,
-        rescue: bool,
-        expected: ResumeStatus,
-    ) -> None:
-        kwargs: dict = {}
-        resume_calls: list[str] = []
-        if rescue:
-
-            async def _rescue_fn(sid: str) -> bool:
-                resume_calls.append(sid)
-                return len(resume_calls) > 1
-
-            kwargs["resume_fn"] = _rescue_fn
-            kwargs["turn_store"] = _FakeTurnStoreRescue(pool_id)
-        else:
-            kwargs["turn_store"] = _FakeTurnStoreScope(pool_id)
-        status = await self._run(
-            pool_id,
-            scope_id,
-            thread_session_id=thread_session_id,
-            busy=busy,
-            **kwargs,
-        )
-        assert status == expected
-        if rescue:
-            assert len(resume_calls) == 2
+    # test_resume_status_edge removed: all three params tested path-2 logic
+    # (_resume_path2, thread_session_id field) deleted in #1777.
 
 
 # -------------------------------------------------------------------
@@ -663,12 +572,12 @@ class TestPath3DeadBackendGuard:
     async def test_path3_falls_through_when_backend_dead_and_session_matches(
         self,
     ) -> None:
-        """last_sid == pool.session_id + is_backend_alive() False → NOT SKIPPED.
+        """last_sid == pool.session_id + is_backend_alive() False → SKIPPED.
 
-        The dead-backend guard must not return SKIPPED immediately when the
-        pool's current session_id matches the stored last session but the
-        backend is dead.  With path2_attempted=True (a thread_session_id was
-        present but rejected), the final result must be FRESH — not SKIPPED.
+        RED test: currently returns FRESH because path-2 is attempted (thread_session_id
+        present) and rejected, setting path2_attempted=True which overrides SKIPPED.
+        After #1777 deletes path-2 and ResumeStatus.FRESH, this test turns GREEN:
+        dead-backend guard falls through → SKIPPED (no path-2 to set FRESH).
         """
         pool_id = "telegram:main:chat:42"
         hub = _make_hub()
@@ -711,10 +620,10 @@ class TestPath3DeadBackendGuard:
 
         status = await resolve_context(msg, pool, pool_id, ctx)
 
-        # If the dead-backend guard had returned SKIPPED at the inner check,
-        # the result would be SKIPPED.  Falling through gives FRESH because
-        # path2 was attempted but rejected.
-        assert status == ResumeStatus.FRESH
+        # After #1777: path-2 deleted → no path2_attempted flag → falls through
+        # the dead-backend guard and returns SKIPPED (not FRESH).
+        # RED: currently returns FRESH because path-2 sets path2_attempted=True.
+        assert status == ResumeStatus.SKIPPED
 
     async def test_path3_skips_when_backend_alive_and_session_matches(
         self,
@@ -756,10 +665,16 @@ class TestPath3DeadBackendGuard:
 
 
 class TestNotifySessionFallthrough:
-    """SubmitToPoolMiddleware sends a pre-response notice iff status is FRESH (#380)."""
+    """SubmitToPoolMiddleware: SKIPPED is silent — no notification (#380, #1777)."""
 
-    async def test_notify_called_when_fresh(self) -> None:
-        """FRESH status triggers try_notify_user before pool submit."""
+    async def test_no_notify_when_path2_rejected(self) -> None:
+        """SKIPPED (path-2 rejected, no path-3) → try_notify_user never called.
+
+        RED test: currently fails because the source still calls
+        _notify_session_fallthrough when status == ResumeStatus.FRESH.
+        After #1777 deletes path-2 and ResumeStatus.FRESH, resolve_context
+        returns SKIPPED here (no notification), and this test turns GREEN.
+        """
         pool_id = "telegram:main:chat:42"
         hub = _make_hub()
         pool = hub.get_or_create_pool(pool_id, "lyra")
@@ -803,10 +718,8 @@ class TestNotifySessionFallthrough:
             result = await mw(msg, ctx, _noop_next)
 
         assert result.action == Action.SUBMIT_TO_POOL
-        assert len(notify_calls) == 1
-        platform_called, text_called = notify_calls[0]
-        assert platform_called == "telegram"
-        assert "starting fresh" in text_called
+        # After #1777: SKIPPED is silent — no notification sent.
+        assert len(notify_calls) == 0
 
     async def test_no_notify_when_resumed(self) -> None:
         """RESUMED status — no notification sent."""
@@ -887,3 +800,207 @@ class TestNotifySessionFallthrough:
 
         assert result.action == Action.SUBMIT_TO_POOL
         assert notify_calls == []
+
+
+# -------------------------------------------------------------------
+# T3.1 + T3.2 — /clear session rotation (#1777)
+# -------------------------------------------------------------------
+
+
+class TestClearSessionResume:
+    """/clear rotates session_id; path-1 and path-3 behave correctly afterwards.
+
+    T3.1 — after reset_session(), path-3 encounters the NEW session_id as
+           last_session, fires the same-session guard, and returns SKIPPED.
+           GREEN test (path-3 behaviour is not changed by #1777).
+
+    T3.2 — after reset_session(), a message with reply_to_id still resolves
+           via path-1 (RESUMED), regardless of platform.
+           GREEN tests (path-1 is not changed by #1777).
+
+    Both groups are GREEN now and after #1777 lands — they guard against
+    regressions that could be introduced alongside the path-2 deletion.
+    """
+
+    # ------------------------------------------------------------------
+    # T3.1 — /clear rotates session_id; path-3 same-session guard fires
+    # ------------------------------------------------------------------
+
+    async def test_clear_rotates_session_id_and_path3_skips(self) -> None:
+        """reset_session() gives pool a new uuid; path-3 sees it as current → SKIPPED.
+
+        Arrange: TurnStore.get_last_session returns the NEW (post-clear)
+        session_id.  Path-3 detects last_sid == pool.session_id (same-session
+        guard) and backend is alive → returns SKIPPED.
+        """
+        pool_id = "telegram:main:chat:42"
+        hub = _make_hub()
+        pool = hub.get_or_create_pool(pool_id, "lyra")
+
+        old_sid = pool.session_id
+        await pool.reset_session()
+        new_sid = pool.session_id
+
+        # Rotation must have happened
+        assert new_sid != old_sid
+
+        # TurnStore returns the NEW session_id as the last known session
+        class _AfterClearTurnStore:
+            async def get_last_session(self, _pid: str) -> str | None:
+                return new_sid
+
+            async def increment_resume_count(self, _sid: str) -> None:
+                pass
+
+            async def close(self) -> None:
+                pass
+
+        hub._turn_store = cast("TurnStore", _AfterClearTurnStore())
+
+        msg = make_inbound_message(scope_id="chat:42")
+        ctx = _make_ctx(hub)
+
+        status = await resolve_context(msg, pool, pool_id, ctx)
+
+        # last_sid == pool.session_id + backend alive → same-session guard → SKIPPED
+        assert status == ResumeStatus.SKIPPED
+
+    # ------------------------------------------------------------------
+    # T3.2 — reply-to survives /clear (path-1 still fires after reset)
+    # ------------------------------------------------------------------
+
+    async def test_reply_to_resumed_after_clear_telegram_dm(self) -> None:
+        """Telegram DM: reply_to_id resolves via MessageIndex after reset_session()."""
+        import dataclasses as _dc
+
+        pool_id = "telegram:main:chat:42"
+        hub = _make_hub()
+        pool = hub.get_or_create_pool(pool_id, "lyra")
+
+        await pool.reset_session()
+
+        reply_session = "sess-after-clear-tg"
+        msg_index = _StubMessageIndex(mapping={(pool_id, "reply-msg-1"): reply_session})
+        hub._message_index = cast("MessageIndex", msg_index)
+
+        async def _accepted_resume(_sid: str) -> bool:
+            return True
+
+        pool._session_resume_fn = _accepted_resume
+        hub._turn_store = cast("TurnStore", _FakeTurnStoreScope(pool_id))
+
+        msg = _dc.replace(
+            make_inbound_message(scope_id="chat:42"),
+            reply_to_id="reply-msg-1",
+        )
+        ctx = _make_ctx(hub)
+
+        status = await resolve_context(msg, pool, pool_id, ctx)
+
+        # Path-1 must have resolved the reply and resumed
+        assert status == ResumeStatus.RESUMED
+        assert msg_index.resolve_calls == [(pool_id, "reply-msg-1")]
+
+    async def test_reply_to_resumed_after_clear_discord_dm(self) -> None:
+        """Discord DM: reply_to_id resolves via MessageIndex after reset_session()."""
+        import dataclasses as _dc
+
+        from factory.core.messaging.message import DiscordMeta
+
+        pool_id = "discord:main:channel:333"
+        hub = _make_hub()
+        pool = hub.get_or_create_pool(pool_id, "lyra")
+
+        await pool.reset_session()
+
+        reply_session = "sess-after-clear-dc"
+        msg_index = _StubMessageIndex(mapping={(pool_id, "reply-msg-2"): reply_session})
+        hub._message_index = cast("MessageIndex", msg_index)
+
+        async def _accepted_resume(_sid: str) -> bool:
+            return True
+
+        pool._session_resume_fn = _accepted_resume
+
+        class _DiscordScopeStore:
+            async def get_session_pool_id(self, _session_id: str) -> str | None:
+                return pool_id
+
+            async def get_last_session(self, _pid: str) -> str | None:
+                return None
+
+            async def increment_resume_count(self, _sid: str) -> None:
+                pass
+
+            async def close(self) -> None:
+                pass
+
+        hub._turn_store = cast("TurnStore", _DiscordScopeStore())
+
+        _meta = DiscordMeta(
+            channel_id=333, message_id=555, guild_id=111, channel_type="text"
+        )
+        msg = _dc.replace(
+            make_inbound_message(
+                platform="discord", scope_id="channel:333", platform_meta=_meta
+            ),
+            reply_to_id="reply-msg-2",
+        )
+        ctx = _make_ctx(hub)
+
+        status = await resolve_context(msg, pool, pool_id, ctx)
+
+        assert status == ResumeStatus.RESUMED
+        assert msg_index.resolve_calls == [(pool_id, "reply-msg-2")]
+
+    async def test_reply_to_resumed_after_clear_discord_thread(self) -> None:
+        """Discord thread: reply_to_id resolves via MessageIndex after reset_session()."""
+        import dataclasses as _dc
+
+        from factory.core.messaging.message import DiscordMeta
+
+        pool_id = "discord:main:thread:777"
+        hub = _make_hub()
+        pool = hub.get_or_create_pool(pool_id, "lyra")
+
+        await pool.reset_session()
+
+        reply_session = "sess-after-clear-thread"
+        msg_index = _StubMessageIndex(mapping={(pool_id, "reply-msg-3"): reply_session})
+        hub._message_index = cast("MessageIndex", msg_index)
+
+        async def _accepted_resume(_sid: str) -> bool:
+            return True
+
+        pool._session_resume_fn = _accepted_resume
+
+        class _ThreadScopeStore:
+            async def get_session_pool_id(self, _session_id: str) -> str | None:
+                return pool_id
+
+            async def get_last_session(self, _pid: str) -> str | None:
+                return None
+
+            async def increment_resume_count(self, _sid: str) -> None:
+                pass
+
+            async def close(self) -> None:
+                pass
+
+        hub._turn_store = cast("TurnStore", _ThreadScopeStore())
+
+        _meta = DiscordMeta(
+            channel_id=777, message_id=888, guild_id=111, channel_type="public_thread"
+        )
+        msg = _dc.replace(
+            make_inbound_message(
+                platform="discord", scope_id="thread:777", platform_meta=_meta
+            ),
+            reply_to_id="reply-msg-3",
+        )
+        ctx = _make_ctx(hub)
+
+        status = await resolve_context(msg, pool, pool_id, ctx)
+
+        assert status == ResumeStatus.RESUMED
+        assert msg_index.resolve_calls == [(pool_id, "reply-msg-3")]

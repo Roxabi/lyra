@@ -1,32 +1,15 @@
-"""Thread ownership tracking and session persistence for DiscordAdapter."""
+"""Thread ownership tracking for DiscordAdapter."""
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
-from factory.core.messaging.message import DiscordMeta
-from factory.core.stores.thread_store_protocol import ThreadSession
-
 if TYPE_CHECKING:
-    from factory.core.messaging.message import InboundMessage
     from factory.core.stores.thread_store_protocol import ThreadStoreProtocol
 
 log = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class ThreadPersistDeps:
-    """Frozen DI object for persist_thread_session() — replaces PLR0913 param list."""
-
-    thread_store: "ThreadStoreProtocol"
-    msg: "InboundMessage"
-    session_id: str
-    pool_id: str
-    bot_id: str
-    cache: dict[str, ThreadSession]
 
 
 async def persist_thread_claim(
@@ -55,51 +38,6 @@ async def persist_thread_claim(
         )
 
 
-async def persist_thread_session(deps: ThreadPersistDeps) -> None:
-    """Persist session_id and pool_id for a thread after a successful turn."""
-    thread_store, msg, session_id, pool_id, bot_id, cache = (
-        deps.thread_store,
-        deps.msg,
-        deps.session_id,
-        deps.pool_id,
-        deps.bot_id,
-        deps.cache,
-    )
-    if not isinstance(msg.platform_meta, DiscordMeta):
-        return
-    thread_id: int | None = msg.platform_meta.thread_id
-    if thread_id is None:
-        return
-    try:
-        await thread_store.update_session(
-            thread_id=str(thread_id),
-            bot_id=bot_id,
-            session_id=session_id,
-            pool_id=pool_id,
-        )
-        if len(cache) >= 500:
-            oldest_key = next(iter(cache))
-            del cache[oldest_key]
-            log.debug(
-                "ThreadStore: evicted oldest thread_sessions"
-                " entry thread_id=%s (cache full)",
-                oldest_key,
-            )
-        _key = str(thread_id)
-        cache.pop(_key, None)
-        cache[_key] = ThreadSession(session_id=session_id, pool_id=pool_id)
-        log.debug(
-            "ThreadStore: persisted session_id=%s pool_id=%s for thread_id=%s",
-            session_id,
-            pool_id,
-            thread_id,
-        )
-    except Exception:
-        log.exception(
-            "ThreadStore: failed to persist session for thread_id=%s", thread_id
-        )
-
-
 async def restore_hot_threads(
     thread_store: "ThreadStoreProtocol",
     bot_id: str,
@@ -123,32 +61,3 @@ async def restore_hot_threads(
     return owned
 
 
-async def retrieve_thread_session(
-    thread_store: "ThreadStoreProtocol",
-    thread_id: str,
-    bot_id: str,
-    cache: dict[str, ThreadSession],
-) -> ThreadSession:
-    """Look up session_id and pool_id for an owned thread.
-
-    Checks the in-memory *cache* first; on a miss, queries ThreadStore and
-    warms the cache on a hit.
-    """
-    cached = cache.get(thread_id)
-    if cached is not None:
-        cache[thread_id] = cache.pop(thread_id)
-        return cached
-
-    ts = await thread_store.get_session(thread_id=thread_id, bot_id=bot_id)
-    if ts.is_resolved:
-        if len(cache) >= 500:
-            _oldest = next(iter(cache))
-            del cache[_oldest]
-        cache[thread_id] = ts
-        log.debug(
-            "ThreadStore: retrieved session_id=%s pool_id=%s for thread_id=%s",
-            ts.session_id,
-            ts.pool_id,
-            thread_id,
-        )
-    return ts

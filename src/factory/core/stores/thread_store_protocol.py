@@ -6,24 +6,13 @@ Implementations live in factory.infrastructure.stores; this protocol lives in co
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
 
-@dataclass(frozen=True)
-class ThreadSession:
-    session_id: str | None
-    pool_id: str | None
-
-    @property
-    def is_resolved(self) -> bool:
-        return self.session_id is not None and self.pool_id is not None
-
-
 @runtime_checkable
 class ThreadStoreProtocol(Protocol):
-    """Structural protocol for Discord thread ownership and session persistence."""
+    """Structural protocol for Discord thread ownership persistence."""
 
     async def get_thread_ids(
         self,
@@ -33,8 +22,6 @@ class ThreadStoreProtocol(Protocol):
 
     async def is_owned(self, thread_id: str, bot_id: str) -> bool: ...
 
-    async def get_session(self, thread_id: str, bot_id: str) -> ThreadSession: ...
-
     async def claim(
         self,
         thread_id: str,
@@ -43,6 +30,4 @@ class ThreadStoreProtocol(Protocol):
         guild_id: str | None = None,
     ) -> None: ...
 
-    async def update_session(
-        self, thread_id: str, bot_id: str, session_id: str, pool_id: str
-    ) -> None: ...
+    async def release(self, thread_id: str, bot_id: str) -> None: ...

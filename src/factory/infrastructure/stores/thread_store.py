@@ -20,11 +20,11 @@ from __future__ import annotations
 import logging
 from datetime import UTC, datetime
 
-from factory.core.stores.thread_store_protocol import ThreadSession
 from factory.infrastructure.stores.base.sqlite_base import SqliteStore
 
 log = logging.getLogger(__name__)
 
+# session_id/pool_id columns orphaned by #1777 — dead (additive schema).
 _CREATE_TABLE = """
 CREATE TABLE IF NOT EXISTS discord_threads (
     thread_id  TEXT NOT NULL,
@@ -104,22 +104,6 @@ class ThreadStore(SqliteStore):
         ) as cur:
             return await cur.fetchone() is not None
 
-    async def get_session(self, thread_id: str, bot_id: str) -> ThreadSession:
-        """Return ThreadSession for (thread_id, bot_id).
-
-        Returns an unresolved ThreadSession (is_resolved=False) if not found.
-        """
-        db = self._require_db()
-        async with db.execute(
-            "SELECT session_id, pool_id FROM discord_threads "
-            "WHERE thread_id = ? AND bot_id = ?",
-            (thread_id, bot_id),
-        ) as cur:
-            row = await cur.fetchone()
-        if row is None:
-            return ThreadSession(session_id=None, pool_id=None)
-        return ThreadSession(session_id=row[0], pool_id=row[1])
-
     # ------------------------------------------------------------------
     # Writes
     # ------------------------------------------------------------------
@@ -141,19 +125,6 @@ class ThreadStore(SqliteStore):
             "ON CONFLICT(thread_id, bot_id) DO UPDATE SET "
             "updated_at=excluded.updated_at",
             (thread_id, bot_id, channel_id, guild_id, now),
-        )
-        await db.commit()
-
-    async def update_session(
-        self, thread_id: str, bot_id: str, session_id: str, pool_id: str
-    ) -> None:
-        """Persist Claude session_id and pool_id for a thread (future resumption)."""
-        db = self._require_db()
-        now = datetime.now(UTC).isoformat()
-        await db.execute(
-            "UPDATE discord_threads SET session_id=?, pool_id=?, updated_at=? "
-            "WHERE thread_id=? AND bot_id=?",
-            (session_id, pool_id, now, thread_id, bot_id),
         )
         await db.commit()
 

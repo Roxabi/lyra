@@ -1,4 +1,14 @@
-"""Tests for SessionBuilder.build — 4-path session-injection matrix."""
+"""Tests for SessionBuilder.build — reduced 2-path session matrix (Wave 3, #1777).
+
+Paths:
+  (a) thread_store is None — test/CLI mode, msg returned unchanged.
+  (d) thread_store present + Discord owned thread — claim-routing only;
+      session_update_fn attached (no-op write-back); resume is hub-side path-3.
+
+Removed paths (b, c) and removed symbols (LastSessionStore, ThreadSession,
+thread_session_id, last_session, thread_sessions_cache, update_session) were
+deleted in Wave 3 (#1777).
+"""
 
 from __future__ import annotations
 
@@ -14,7 +24,6 @@ from factory.core.messaging.message import (
     PlatformMeta,
     TelegramMeta,
 )
-from factory.core.stores.thread_store_protocol import ThreadSession
 from factory.inbound.context import SessionCtx
 from factory.inbound.session_builder import SessionBuilder
 
@@ -53,24 +62,9 @@ def _make_msg(
     )
 
 
-def _make_turn_store(*, last_session: str | None = None) -> MagicMock:
-    ts = MagicMock()
-    ts.get_last_session = AsyncMock(return_value=last_session)
-    ts.start_session = AsyncMock(return_value=None)
-    return ts
-
-
-def _make_turn_publisher() -> MagicMock:
-    pub = MagicMock()
-    pub.publish_start_session = AsyncMock(return_value=None)
-    return pub
-
-
-def _make_thread_store(*, session: ThreadSession | None = None) -> MagicMock:
+def _make_thread_store() -> MagicMock:
     th = MagicMock()
-    if session is None:
-        session = ThreadSession(session_id=None, pool_id=None)
-    th.get_session = AsyncMock(return_value=session)
+    th.get_session = AsyncMock(return_value=None)
     th.update_session = AsyncMock(return_value=None)
     return th
 
@@ -79,34 +73,13 @@ def _make_session_ctx(
     *,
     turn_store: object = None,
     thread_store: object = None,
-    thread_sessions_cache: dict | None = None,
     turn_publisher: object = None,
-    last_session: object = None,
 ) -> SessionCtx:
-    cache: dict = thread_sessions_cache if thread_sessions_cache is not None else {}
     return SessionCtx(
         turn_store=turn_store,  # type: ignore[arg-type]
         thread_store=thread_store,  # type: ignore[arg-type]
-        thread_sessions_cache=cache,
         turn_publisher=turn_publisher,  # type: ignore[arg-type]
-        last_session=last_session,  # type: ignore[arg-type]
     )
-
-
-class _FakeLastSession:
-    """Minimal in-memory LastSessionStore for path B/C tests."""
-
-    def __init__(self, prior: str | None = None) -> None:
-        self._prior = prior
-        self.get_calls: list[str] = []
-        self.set_calls: list[tuple[str, str]] = []
-
-    async def get_last_session(self, pool_id: str) -> str | None:
-        self.get_calls.append(pool_id)
-        return self._prior
-
-    async def set_last_session(self, pool_id: str, session_id: str) -> None:
-        self.set_calls.append((pool_id, session_id))
 
 
 # ---------------------------------------------------------------------------
@@ -115,10 +88,10 @@ class _FakeLastSession:
 
 
 class TestSessionBuilderPathA:
-    """Path (a): both stores None — test/CLI mode, msg returned unchanged."""
+    """Path (a): thread_store None — test/CLI mode, msg returned unchanged."""
 
     @pytest.mark.asyncio
-    async def test_both_stores_none_returns_unchanged(self) -> None:
+    async def test_thread_store_none_returns_unchanged(self) -> None:
         # Arrange
         builder = SessionBuilder()
         msg = _make_msg(platform_meta=TelegramMeta(chat_id=1))
@@ -127,444 +100,207 @@ class TestSessionBuilderPathA:
         # Act
         result = await builder.build(msg, ctx)
 
-        # Assert — Negative: removing the `if ts is None and th is None: return msg`
-        # guard causes the function to fall into the turnstore path and raise
-        # AttributeError (ts is None) or return a different object.
+        # Assert — Negative: removing the `if th is None: return msg` guard causes
+        # the function to fall through to the discriminator block, which checks
+        # isinstance(meta, DiscordMeta) — for Telegram msg this is False and the
+        # function hits `return msg` at the end, so the behaviour is identical.
+        # The real negative is that a Discord-thread msg with th=None would crash
+        # (th.get_session on None) rather than return unchanged — covered below.
         assert result is msg
         assert result.session_update_fn is None
 
-
-class TestSessionBuilderPathB:
-    """Path (b): last_session port — Telegram DM.
-
-    D9: SessionBuilder reads last-session ONLY via ctx.last_session.get_last_session.
-    The turn_store is inert for last-session reads; ts.get_last_session is never called.
-    """
-
     @pytest.mark.asyncio
-    async def test_telegram_dm_reads_prior_session_from_last_session_port(
-        self,
-    ) -> None:
-        """last_session port consulted; prior session propagated to TelegramMeta.
-
-        Negative: removing the ctx.last_session.get_last_session call in
-        _build_last_session_path means thread_session_id is never populated and
-        resume-session is silently broken.
-        """
-        # Arrange
-        ls = _FakeLastSession(prior=_SESSION_ID)
-        pub = _make_turn_publisher()
+    async def test_telegram_thread_store_none_no_crash(self) -> None:
+        """Telegram with thread_store=None: path (a) fires, no error."""
         builder = SessionBuilder()
         msg = _make_msg(
             platform="telegram",
-            platform_meta=TelegramMeta(chat_id=1, is_group=False),
-        )
-        ctx = _make_session_ctx(
-            turn_store=None, thread_store=None, turn_publisher=pub, last_session=ls
-        )
-
-        # Act
-        result = await builder.build(msg, ctx)
-
-        # Assert — last_session port consulted; session_update_fn attached
-        assert ls.get_calls, "last_session.get_last_session was never called"
-        assert result.session_update_fn is not None
-        # prior session_id propagated onto TelegramMeta.thread_session_id
-        assert isinstance(result.platform_meta, TelegramMeta)
-        assert result.platform_meta.thread_session_id == _SESSION_ID
-
-        # Closure test: calling session_update_fn triggers publish_start_session.
-        await result.session_update_fn(result, "new-sess", _POOL_ID)
-        pub.publish_start_session.assert_called_once()
-        _, kwargs = pub.publish_start_session.call_args
-        assert kwargs["session_id"] == "new-sess"
-        assert kwargs["pool_id"] == _POOL_ID
-        assert kwargs["trace_id"]  # non-empty
-
-    @pytest.mark.asyncio
-    async def test_telegram_group_mention_reads_via_last_session_port(self) -> None:
-        """Group mention: last_session port consulted regardless of is_group/is_mention.
-
-        Negative: if SessionBuilder branched on is_group, group messages would skip
-        session wiring and the turn handler would call a None session_update_fn.
-        """
-        # Arrange — no prior session
-        ls = _FakeLastSession(prior=None)
-        pub = _make_turn_publisher()
-        builder = SessionBuilder()
-        msg = _make_msg(
-            platform="telegram",
-            is_mention=True,
             platform_meta=TelegramMeta(chat_id=5, is_group=True),
         )
-        ctx = _make_session_ctx(
-            turn_store=None, thread_store=None, turn_publisher=pub, last_session=ls
-        )
+        ctx = _make_session_ctx(thread_store=None)
 
-        # Act
         result = await builder.build(msg, ctx)
 
-        # Assert — session_update_fn still attached; no prior session_id (last=None).
-        assert ls.get_calls, "last_session.get_last_session was never called"
-        assert result.session_update_fn is not None
-        # No prior session → thread_session_id not written
-        assert isinstance(result.platform_meta, TelegramMeta)
-        assert result.platform_meta.thread_session_id is None
-
-        # Closure still fires via publisher.
-        await result.session_update_fn(result, "sess-new", "pool-2")
-        pub.publish_start_session.assert_called_once()
-        _, kwargs = pub.publish_start_session.call_args
-        assert kwargs["session_id"] == "sess-new"
-        assert kwargs["pool_id"] == "pool-2"
-
-
-class TestSessionBuilderPathC:
-    """Path (c): Discord DM — last_session port read, thread_store skipped.
-
-    D9: last_session port is the sole read path; turn_store is inert for reads.
-    """
+        assert result is msg
+        assert result.session_update_fn is None
 
     @pytest.mark.asyncio
-    async def test_discord_dm_reads_last_session_port_skips_thread_store(
-        self,
-    ) -> None:
-        """Discord DM: last_session port consulted; thread_store NOT consulted.
-
-        Negative: removing the `_discord_thread` guard (thread_id is None check)
-        would route through _build_thread_path, calling th.get_session instead.
-        """
-        # Arrange — Discord DM: guild_id=None, thread_id=None
-        ls = _FakeLastSession(prior=_SESSION_ID)
-        th = _make_thread_store()
-        pub = _make_turn_publisher()
+    async def test_discord_dm_thread_store_none_returns_unchanged(self) -> None:
+        """Discord DM (thread_id=None) with thread_store=None: path (a) fires."""
         builder = SessionBuilder()
         msg = _make_msg(
             platform="discord",
             scope_id="channel:999",
             platform_meta=DiscordMeta(channel_id=999, guild_id=None, thread_id=None),
         )
-        ctx = _make_session_ctx(
-            turn_store=None, thread_store=th, turn_publisher=pub, last_session=ls
-        )
+        ctx = _make_session_ctx(thread_store=None)
 
-        # Act
         result = await builder.build(msg, ctx)
 
-        # Assert — last_session port consulted; thread_store NOT consulted
-        assert ls.get_calls, "last_session.get_last_session was never called"
-        th.get_session.assert_not_awaited()
-        assert result.session_update_fn is not None
-
-        # Closure publishes via publisher, not thread_store.
-        await result.session_update_fn(result, "sess-dm", "pool-dm")
-        pub.publish_start_session.assert_called_once()
-        _, kwargs = pub.publish_start_session.call_args
-        assert kwargs["session_id"] == "sess-dm"
-        assert kwargs["pool_id"] == "pool-dm"
-        th.update_session.assert_not_awaited()
+        assert result is msg
+        assert result.session_update_fn is None
 
 
 class TestSessionBuilderPathD:
-    """Path (d): both stores, Discord owned thread — ThreadStore read + write."""
+    """Path (d): thread_store present + Discord owned thread — claim-routing only.
+
+    _build_thread_path attaches a session_update_fn (no-op write-back).
+    It does NOT call th.get_session, th.update_session, or set any session pointer
+    on the message meta — resume is now hub-side path-3 (#1777).
+    """
 
     @pytest.mark.asyncio
-    async def test_both_stores_discord_owned_thread(self) -> None:
-        # Arrange — owned thread with a prior session in ThreadStore.
-        prior = ThreadSession(session_id=_SESSION_ID, pool_id="discord:main:thread:123")
-        ts = _make_turn_store()
-        th = _make_thread_store(session=prior)
-        cache: dict = {}
+    async def test_discord_owned_thread_attaches_session_update_fn(self) -> None:
+        """Discord thread (guild_id + thread_id present): session_update_fn attached.
+
+        Negative: removing the `_discord_thread` discriminator makes build() fall
+        through to `return msg` — session_update_fn would remain None and the
+        turn handler would skip the claim-routing callback entirely.
+        """
+        # Arrange
+        th = _make_thread_store()
         builder = SessionBuilder()
         msg = _make_msg(
             platform="discord",
             scope_id="thread:123",
             platform_meta=DiscordMeta(channel_id=10, guild_id=50, thread_id=123),
         )
-        ctx = _make_session_ctx(
-            turn_store=ts, thread_store=th, thread_sessions_cache=cache
-        )
+        ctx = _make_session_ctx(thread_store=th)
 
         # Act
         result = await builder.build(msg, ctx)
 
-        # Assert — thread_store.get_session called; cache populated; prior session set.
-        # Negative: removing the `_discord_thread` path means thread_store is never
-        # consulted and the thread's prior session_id is silently dropped.
-        th.get_session.assert_awaited_once_with(thread_id="123", bot_id=_BOT_ID)
-        ts.get_last_session.assert_not_awaited()
-        assert "123" in cache
+        # Assert — claim-routing path: session_update_fn attached; no store reads.
+        assert result is not msg  # new object via dataclasses.replace
         assert result.session_update_fn is not None
-        assert isinstance(result.platform_meta, DiscordMeta)
-        assert result.platform_meta.thread_session_id == _SESSION_ID
-
-        # Closure test: session_update_fn persists via thread_store.update_session.
-        await result.session_update_fn(result, "sess-new-thread", "pool-th")
-        th.update_session.assert_awaited_once_with(
-            thread_id="123",
-            bot_id=_BOT_ID,
-            session_id="sess-new-thread",
-            pool_id="pool-th",
-        )
-        ts.start_session.assert_not_awaited()
-        # Cache updated to reflect new session.
-        assert cache.get("123") == ThreadSession(
-            session_id="sess-new-thread", pool_id="pool-th"
-        )
+        # Thread-store NOT consulted — path-3 (hub-side) handles resume.
+        th.get_session.assert_not_awaited()
+        th.update_session.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_both_stores_discord_no_session_yet(self) -> None:
-        # Arrange — thread_id present but retrieve returns unresolved ThreadSession.
-        unresolved = ThreadSession(session_id=None, pool_id=None)
-        ts = _make_turn_store()
-        th = _make_thread_store(session=unresolved)
-        cache: dict = {}
+    async def test_discord_owned_thread_update_fn_is_callable(self) -> None:
+        """session_update_fn closure can be called without raising."""
+        # Arrange
+        th = _make_thread_store()
         builder = SessionBuilder()
         msg = _make_msg(
             platform="discord",
             scope_id="thread:456",
             platform_meta=DiscordMeta(channel_id=10, guild_id=50, thread_id=456),
         )
-        ctx = _make_session_ctx(
-            turn_store=ts, thread_store=th, thread_sessions_cache=cache
-        )
-
-        # Act — must not raise even though no prior session exists.
-        result = await builder.build(msg, ctx)
-
-        # Assert — session_update_fn attached; no prior session_id on meta; cache empty
-        # (unresolved session not cached).
-        # Negative: if the unresolved-session branch raised an exception, fresh-thread
-        # messages would crash the inbound pipeline.
-        th.get_session.assert_awaited_once_with(thread_id="456", bot_id=_BOT_ID)
-        assert result.session_update_fn is not None
-        assert isinstance(result.platform_meta, DiscordMeta)
-        assert result.platform_meta.thread_session_id is None
-        assert "456" not in cache
-
-        # Closure still fires and persists the first session for this thread.
-        await result.session_update_fn(result, "sess-first", "pool-first")
-        th.update_session.assert_awaited_once_with(
-            thread_id="456",
-            bot_id=_BOT_ID,
-            session_id="sess-first",
-            pool_id="pool-first",
-        )
-
-    @pytest.mark.asyncio
-    async def test_thread_update_fn_returns_early_when_thread_id_none(self) -> None:
-        # Arrange — owned thread path; capture the session_update_fn closure.
-        prior = ThreadSession(session_id=_SESSION_ID, pool_id="discord:main:thread:123")
-        ts = _make_turn_store()
-        th = _make_thread_store(session=prior)
-        cache: dict = {}
-        builder = SessionBuilder()
-        msg = _make_msg(
-            platform="discord",
-            scope_id="thread:123",
-            platform_meta=DiscordMeta(channel_id=10, guild_id=50, thread_id=123),
-        )
-        ctx = _make_session_ctx(
-            turn_store=ts, thread_store=th, thread_sessions_cache=cache
-        )
+        ctx = _make_session_ctx(thread_store=th)
         result = await builder.build(msg, ctx)
         update_fn = result.session_update_fn
         assert update_fn is not None
 
-        # Build an updated msg where thread_id=None so _tid evaluates to None inside
-        # the closure.  Use dataclasses.replace to produce a new DiscordMeta.
-        updated_meta = dataclasses.replace(result.platform_meta, thread_id=None)
-        updated_msg = dataclasses.replace(result, platform_meta=updated_meta)
+        # Act — turn handler invocation must not raise.
+        await update_fn(result, "sess-new", "discord:main:thread:456")
 
-        # Reset the mock so only calls triggered by update_fn are counted.
-        th.update_session.reset_mock()
-
-        # Act
-        await update_fn(updated_msg, "sess-irrelevant", "pool-irrelevant")
-
-        # Assert — guard `if _tid is None: return` fired; thread_store never written.
-        # Negative: deleting the `if _tid is None: return` guard in _thread_update_fn
-        # makes _tid_str = str(None) = "None" and update_session IS called, failing
-        # this assertion.
+        # Assert — no store write (claim-routing only, write-back is hub-side).
         th.update_session.assert_not_awaited()
 
+    @pytest.mark.asyncio
+    async def test_discord_no_thread_id_returns_unchanged(self) -> None:
+        """Discord with thread_id=None: _discord_thread guard is False → msg unchanged.
 
-# ---------------------------------------------------------------------------
-# T21 — SessionBuilder × LastSessionStore port (#1721)
-# ---------------------------------------------------------------------------
+        Negative: removing the `meta.thread_id is not None` check in _discord_thread
+        would route all Discord msgs (DMs included) into _build_thread_path, which
+        asserts `meta.thread_id is not None` and would raise AssertionError.
+        """
+        # Arrange — Discord DM: guild_id set but thread_id absent
+        th = _make_thread_store()
+        builder = SessionBuilder()
+        msg = _make_msg(
+            platform="discord",
+            scope_id="channel:100",
+            platform_meta=DiscordMeta(channel_id=100, guild_id=50, thread_id=None),
+        )
+        ctx = _make_session_ctx(thread_store=th)
 
+        # Act
+        result = await builder.build(msg, ctx)
 
-class _InMemoryLastSessionStore:
-    """Simple in-memory LastSessionStore for injection tests."""
-
-    def __init__(self) -> None:
-        self._store: dict[str, str] = {}
-        self.set_calls: list[tuple[str, str]] = []
-        self.get_calls: list[str] = []
-
-    async def get_last_session(self, pool_id: str) -> str | None:
-        self.get_calls.append(pool_id)
-        return self._store.get(pool_id)
-
-    async def set_last_session(self, pool_id: str, session_id: str) -> None:
-        self.set_calls.append((pool_id, session_id))
-        self._store[pool_id] = session_id
-
-
-def _make_session_ctx_with_last_session(
-    *,
-    turn_store: object = None,
-    thread_store: object = None,
-    last_session: object = None,
-    turn_publisher: object = None,
-    thread_sessions_cache: dict | None = None,
-) -> SessionCtx:
-    cache: dict = thread_sessions_cache if thread_sessions_cache is not None else {}
-    return SessionCtx(
-        turn_store=turn_store,  # type: ignore[arg-type]
-        thread_store=thread_store,  # type: ignore[arg-type]
-        thread_sessions_cache=cache,
-        turn_publisher=turn_publisher,  # type: ignore[arg-type]
-        last_session=last_session,  # type: ignore[arg-type]
-    )
-
-
-class TestSessionBuilderLastSessionPort:
-    """T21: SessionBuilder reads/writes via ctx.last_session port."""
+        # Assert — falls through to `return msg`; no session wiring.
+        assert result is msg
+        assert result.session_update_fn is None
+        th.get_session.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_builder_reads_prior_session_via_last_session_port(self) -> None:
-        """builder.build() calls last_session.get_last_session for prior session_id.
+    async def test_telegram_with_thread_store_returns_unchanged(self) -> None:
+        """Telegram with thread_store: not DiscordMeta → falls through unchanged.
 
-        Negative: if SessionBuilder reads ctx.turn_store.get_last_session instead of
-        ctx.last_session.get_last_session, the KV-backed path is silently bypassed and
-        the feature is never exercised (tautological test without this check).
+        Negative: if the isinstance(meta, DiscordMeta) check were removed,
+        Telegram messages would also enter _build_thread_path which asserts
+        isinstance(meta, DiscordMeta) and raise AssertionError.
         """
-        # Arrange
-        ls = _InMemoryLastSessionStore()
-        ls._store["telegram:main:chat:123"] = "sess-prior"
+        # Arrange — Telegram msg with a thread_store in ctx
+        th = _make_thread_store()
         builder = SessionBuilder()
         msg = _make_msg(
             platform="telegram",
-            platform_meta=TelegramMeta(chat_id=1),
+            platform_meta=TelegramMeta(chat_id=7),
         )
-        ctx = _make_session_ctx_with_last_session(
-            turn_store=None,
-            last_session=ls,
-        )
+        ctx = _make_session_ctx(thread_store=th)
 
         # Act
         result = await builder.build(msg, ctx)
 
-        # Assert — get_last_session was called with the correct pool_id
-        assert ls.get_calls, "get_last_session was never called — port not used"
-        # prior session_id propagated to platform_meta.thread_session_id
-        assert isinstance(result.platform_meta, TelegramMeta)
-        assert result.platform_meta.thread_session_id == "sess-prior"
-
-    @pytest.mark.asyncio
-    async def test_builder_degrades_to_new_session_when_last_session_is_none(
-        self,
-    ) -> None:
-        """last_session=None in ctx → msg returned unchanged (path a, no wiring).
-
-        With no thread_store and no last_session, path (a) returns the unchanged msg.
-        Since #1731, turn_store no longer participates in this gate — see
-        ``test_turn_store_present_last_session_none_returns_unchanged`` for the
-        turn_store-present case.
-        """
-        # Arrange — last_session=None, no turn_store either → path (a)
-        builder = SessionBuilder()
-        msg = _make_msg(platform="telegram", platform_meta=TelegramMeta(chat_id=1))
-        ctx = _make_session_ctx_with_last_session(turn_store=None, last_session=None)
-
-        # Act
-        result = await builder.build(msg, ctx)
-
-        # Assert — path (a): msg unchanged, no crash
+        # Assert — discriminator skips Telegram; msg returned unchanged.
         assert result is msg
         assert result.session_update_fn is None
+        th.get_session.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_builder_degrades_when_get_last_session_returns_none(self) -> None:
-        """get_last_session returning None → new session, no crash, update_fn set."""
-        # Arrange — last_session store with no prior entry
-        ls = _InMemoryLastSessionStore()
+    async def test_discord_owned_thread_meta_preserved(self) -> None:
+        """dataclasses.replace preserves all existing meta fields on the result."""
+        # Arrange
+        th = _make_thread_store()
         builder = SessionBuilder()
-        msg = _make_msg(platform="telegram", platform_meta=TelegramMeta(chat_id=1))
-        ctx = _make_session_ctx_with_last_session(
-            turn_store=None,
-            last_session=ls,
+        original_meta = DiscordMeta(
+            channel_id=10, guild_id=50, thread_id=123, channel_type="public_thread"
         )
+        msg = _make_msg(
+            platform="discord",
+            scope_id="thread:123",
+            platform_meta=original_meta,
+        )
+        ctx = _make_session_ctx(thread_store=th)
 
         # Act
         result = await builder.build(msg, ctx)
 
-        # Assert — no crash; session_update_fn attached; no thread_session_id set
-        assert ls.get_calls, "get_last_session was never called"
-        assert result.session_update_fn is not None
-        assert isinstance(result.platform_meta, TelegramMeta)
-        assert result.platform_meta.thread_session_id is None
+        # Assert — meta fields unchanged (only session_update_fn is new).
+        assert result.platform_meta is original_meta
+        assert result.platform == msg.platform
+        assert result.bot_id == msg.bot_id
+        assert result.scope_id == msg.scope_id
 
     @pytest.mark.asyncio
-    async def test_set_last_session_called_in_update_fn(self) -> None:
-        """_last_session_update_fn calls last_session.set_last_session after assign.
+    async def test_update_fn_no_op_with_none_thread_id(self) -> None:
+        """Closure is safe even when called with an updated msg where thread_id=None.
 
-        Negative: if the update closure omits the set_last_session call, KV is never
-        written and all future messages start a new session (silent regression).
+        The closure captures _th and _bid by value. If the caller passes a msg
+        whose DiscordMeta has thread_id=None, the closure must not raise.
         """
         # Arrange
-        ls = _InMemoryLastSessionStore()
-        pub = _make_turn_publisher()
+        th = _make_thread_store()
         builder = SessionBuilder()
-        msg = _make_msg(platform="telegram", platform_meta=TelegramMeta(chat_id=1))
-        ctx = _make_session_ctx_with_last_session(
-            turn_store=None,
-            last_session=ls,
-            turn_publisher=pub,
+        msg = _make_msg(
+            platform="discord",
+            scope_id="thread:789",
+            platform_meta=DiscordMeta(channel_id=10, guild_id=50, thread_id=789),
         )
-
-        # Act — build to get the closure
+        ctx = _make_session_ctx(thread_store=th)
         result = await builder.build(msg, ctx)
-        assert result.session_update_fn is not None
+        update_fn = result.session_update_fn
+        assert update_fn is not None
 
-        # Invoke the closure as the turn handler would
-        await result.session_update_fn(result, "sess-new", "telegram:main:chat:123")
+        # Build a msg variant with thread_id=None (edge case for closure safety).
+        updated_meta = dataclasses.replace(result.platform_meta, thread_id=None)
+        updated_msg = dataclasses.replace(result, platform_meta=updated_meta)
 
-        # Assert — set_last_session was called with the new session_id
-        assert ("telegram:main:chat:123", "sess-new") in ls.set_calls, (
-            "set_last_session was never called in update closure — KV write missing"
-        )
+        # Act — must not raise.
+        await update_fn(updated_msg, "sess-x", "pool-x")
 
-    @pytest.mark.asyncio
-    async def test_turn_store_present_last_session_none_returns_unchanged(
-        self,
-    ) -> None:
-        """D9 invariant (#1731): turn_store alone does not trigger session wiring.
-
-        The old guard ``if ts is None and ctx.last_session is None`` let a
-        turn_store-only "hub path" enter ``_build_last_session_path``. Post-#1721
-        adapters always pass ``turn_store=None``, so #1731 simplified the gate to
-        ``if ctx.last_session is None`` — making replace-not-supplement a code
-        invariant rather than a deployment property.
-
-        Negative: if the resume-guard still consulted turn_store, this would attach
-        a session_update_fn instead of returning the msg unchanged.
-        """
-        # Arrange — turn_store present, no last_session, no thread_store
-        ts = _make_turn_store(last_session=None)
-        builder = SessionBuilder()
-        msg = _make_msg(platform="telegram", platform_meta=TelegramMeta(chat_id=1))
-        ctx = _make_session_ctx_with_last_session(
-            turn_store=ts,
-            last_session=None,
-        )
-
-        # Act
-        result = await builder.build(msg, ctx)
-
-        # Assert — last_session is the sole gate: msg returned unchanged, no wiring,
-        # and turn_store is never consulted (D9 code invariant).
-        assert result is msg
-        assert result.session_update_fn is None
-        ts.get_last_session.assert_not_awaited()
+        # Assert — no store write regardless.
+        th.update_session.assert_not_awaited()

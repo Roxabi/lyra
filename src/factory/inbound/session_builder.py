@@ -4,12 +4,9 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-import sqlite3
 from typing import TYPE_CHECKING
 
-from factory.core.hub.hub_protocol import RoutingKey
-from factory.core.messaging.message import DiscordMeta, Platform, TelegramMeta
-from factory.core.stores.thread_store_protocol import ThreadSession
+from factory.core.messaging.message import DiscordMeta
 
 if TYPE_CHECKING:
     from factory.core.messaging.message import InboundMessage
@@ -17,26 +14,19 @@ if TYPE_CHECKING:
 
 log = logging.getLogger("factory.inbound.session_builder")
 
-# Named constant for the in-memory thread-session LRU cache size (#45).
-_THREAD_SESSION_CACHE_SIZE = 500
-
 
 class SessionBuilder:
     """Builds session context for an inbound message.
 
-    Reads ``SessionCtx.last_session``, ``SessionCtx.thread_store``, and
-    ``SessionCtx.thread_sessions_cache`` to resolve or create a session.
+    Reads ``SessionCtx.thread_store`` to resolve or create a session.
     Returns an updated ``InboundMessage`` with ``session_update_fn`` populated.
 
-    Handles three cases without importing platform libraries:
+    Handles two cases without importing platform libraries:
 
-    (a) ``thread_store`` and ``last_session`` both None — test/CLI: no session
-        persistence, return msg unchanged.
-    (b)/(c) ``last_session`` present, no owned Discord thread — Telegram/Discord DM:
-        session persistence via ``LastSessionStore`` (KV-backed). ``last_session``
-        is the sole gate for this path; ``turn_store`` does not participate (#48).
-    (d) thread_store present, Discord owned thread — ThreadStore read +
-        write-through cache; ``last_session`` unused on this path.
+    (a) ``thread_store`` None — test/CLI: no session persistence, return msg
+        unchanged.
+    (d) thread_store present, Discord owned thread — claim-routing only;
+        resume is hub-side path-3 via ``scope_id=thread:{thread_id}``.
 
     The ``session_update_fn`` closure captures stores and IDs by reference and is
     safe to call after ``build`` returns — the inbound turn handler invokes it once
@@ -50,100 +40,40 @@ class SessionBuilder:
     async def build(self, msg: InboundMessage, ctx: SessionCtx) -> InboundMessage:
         """Resolve session and return *msg* enriched with session context.
 
-        Returns the original *msg* unchanged when ``thread_store`` and
-        ``last_session`` are both None (path a).
+        Returns the original *msg* unchanged when ``thread_store`` is None (path a).
         Otherwise returns a new ``InboundMessage`` via ``dataclasses.replace``
-        with ``session_update_fn`` set and, when applicable, ``platform_meta``
-        updated with the prior ``thread_session_id``.
+        with ``session_update_fn`` set.
         """
         th = ctx.thread_store
         meta = msg.platform_meta
 
         # (a) No stores — test/CLI mode; nothing to inject.
-        if th is None and ctx.last_session is None:
+        if th is None:
             return msg
 
         # Discriminate path: Discord with thread_store present uses meta inspection.
         _discord_thread = (
             isinstance(meta, DiscordMeta)
-            and th is not None
             and meta.thread_id is not None
         )
         if _discord_thread:
-            # (d) Discord owned thread — ThreadStore read + write-through cache.
+            # (d) Discord owned thread — claim-routing only; resume is hub-side path-3.
             return await self._build_thread_path(msg, ctx)
 
-        # (b) / (c) last_session path — Telegram or Discord DM.
-        # D9 (replace-not-supplement): last_session is the sole gate for this path.
-        # turn_store is always None from adapters (#48) and no longer participates.
-        if ctx.last_session is None:
-            return msg
-        return await self._build_last_session_path(msg, ctx)
+        return msg
 
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 
-    async def _build_last_session_path(
-        self, msg: InboundMessage, ctx: SessionCtx
-    ) -> InboundMessage:
-        """Path (b)/(c): inject prior session_id from the last_session port."""
-        assert ctx.last_session is not None  # guarded by caller (build)
-        meta = msg.platform_meta
-        _platform = _platform_enum(msg.platform)
-        _pool_id = RoutingKey(_platform, msg.bot_id, msg.scope_id).to_pool_id()
-
-        _prior_session_id: str | None = None
-        try:
-            _prior_session_id = await ctx.last_session.get_last_session(_pool_id)
-        except (OSError, RuntimeError):  # infrastructure errors only (#17)
-            log.exception(
-                "SessionBuilder: last_session.get_last_session failed pool_id=%s",
-                _pool_id,
-            )
-
-        # Capture by value so the closure is safe after build() returns.
-        _publisher = ctx.turn_publisher
-        _last_session = ctx.last_session
-        _platform_str = msg.platform
-        _user_id = msg.user_id
-
-        async def _last_session_update_fn(
-            _msg: InboundMessage, session_id: str, pool_id: str
-        ) -> None:
-            # Publishes start_session via TurnPublisher (NATS) if available, then
-            # records the new session via the last_session port.
-            # Closure captures _publisher, _last_session, _platform_str, _user_id
-            # and is called by the turn handler after a session_id has been assigned.
-            if _publisher is not None:
-                # trace_id: use session_id as lifecycle correlation key
-                await _publisher.publish_start_session(
-                    pool_id=pool_id,
-                    session_id=session_id,
-                    platform=_platform_str,
-                    user_id=_msg.user_id or _user_id,
-                    trace_id=session_id,
-                )
-            await _last_session.set_last_session(pool_id, session_id)
-
-        _replacements: dict = {"session_update_fn": _last_session_update_fn}
-        if _prior_session_id is not None and isinstance(
-            meta, (TelegramMeta, DiscordMeta)
-        ):
-            _replacements["platform_meta"] = dataclasses.replace(
-                meta, thread_session_id=_prior_session_id
-            )
-        return dataclasses.replace(msg, **_replacements)
-
     async def _build_thread_path(
         self, msg: InboundMessage, ctx: SessionCtx
     ) -> InboundMessage:
-        """Path (d): Discord owned thread — cache/ThreadStore read + persist closure.
+        """Path (d): Discord owned thread — claim-routing only.
 
-        Retrieves the prior session for this thread (cache-first, then ThreadStore).
-        Falls back gracefully when ``retrieve_thread_session`` returns an unresolved
-        ``ThreadSession`` (session_id=None) — the turn will start fresh with no
-        prior context, and the update closure will still persist the new session_id.
+        Discord thread is its own pool; resume is hub-side path-3 via
+        ``scope_id=thread:{thread_id}``.  Session persistence is no longer
+        performed here (#1777).
         """
         th = ctx.thread_store
         assert th is not None  # guarded by caller
@@ -152,35 +82,6 @@ class SessionBuilder:
         assert isinstance(meta, DiscordMeta)  # guarded by caller
         assert meta.thread_id is not None  # guarded by caller
 
-        _thread_id_str = str(meta.thread_id)
-        _cache: dict[str, ThreadSession] = ctx.thread_sessions_cache
-
-        _stored: ThreadSession | None = None
-        try:
-            # Inline the retrieve logic to avoid importing discord_threads
-            # (which imports discord) — see spec invariant.
-            _cached = _cache.get(_thread_id_str)
-            if _cached is not None:
-                # LRU move-to-end
-                _cache[_thread_id_str] = _cache.pop(_thread_id_str)
-                _stored = _cached
-            else:
-                _ts_result = await th.get_session(
-                    thread_id=_thread_id_str, bot_id=msg.bot_id
-                )
-                if _ts_result.is_resolved:
-                    if len(_cache) >= _THREAD_SESSION_CACHE_SIZE:  # (#45)
-                        _oldest = next(iter(_cache))
-                        del _cache[_oldest]
-                    _cache[_thread_id_str] = _ts_result
-                _stored = _ts_result if _ts_result.is_resolved else None
-        except (sqlite3.Error, RuntimeError):
-            log.exception(
-                "SessionBuilder: ThreadStore.get_session failed thread_id=%s",
-                _thread_id_str,
-            )
-            _stored = None
-
         # Capture by value so the closure is safe after build() returns.
         _th = th
         _bid = msg.bot_id
@@ -188,49 +89,11 @@ class SessionBuilder:
         async def _thread_update_fn(
             _msg: InboundMessage, session_id: str, pool_id: str
         ) -> None:
-            # Write-through: update ThreadStore and the in-memory cache.
-            # Closure captures _th, _bid, _cache, _thread_id_str and is called
-            # by the turn handler after a session_id has been assigned.
-            # Safe to call after build() returns.
-            # Exceptions propagate raw — pool_observer.session_update_async is
-            # the single logging site for update-closure failures (#22, #47).
-            _inner_meta = _msg.platform_meta
-            _tid: int | None = (
-                _inner_meta.thread_id if isinstance(_inner_meta, DiscordMeta) else None
-            )
-            if _tid is None:
-                return
-            _tid_str = str(_tid)
-            await _th.update_session(
-                thread_id=_tid_str,
-                bot_id=_bid,
-                session_id=session_id,
-                pool_id=pool_id,
-            )
-            if len(_cache) >= _THREAD_SESSION_CACHE_SIZE:  # (#45)
-                _oldest_key = next(iter(_cache))
-                del _cache[_oldest_key]
-                log.debug(
-                    "SessionBuilder: evicted thread_sessions cache entry"
-                    " thread_id=%s (cache full)",
-                    _oldest_key,
-                )
-            _cache.pop(_tid_str, None)
-            _cache[_tid_str] = ThreadSession(session_id=session_id, pool_id=pool_id)
+            # Closure captures _th, _bid and is called by the turn handler after
+            # a session_id has been assigned.
+            # Thread-path resume is now hub-side (path-3); no store write here.
+            _ = (_th, _bid, session_id, pool_id)  # suppress unused-capture lint
 
-        _replacements: dict = {"session_update_fn": _thread_update_fn}
-        if _stored is not None and _stored.session_id is not None:
-            _replacements["platform_meta"] = dataclasses.replace(
-                meta, thread_session_id=_stored.session_id
-            )
-        return dataclasses.replace(msg, **_replacements)
+        return dataclasses.replace(msg, session_update_fn=_thread_update_fn)
 
 
-def _platform_enum(platform: str) -> Platform:
-    """Map adapter platform string to ``Platform`` enum.
-
-    Raises ``ValueError`` for unknown platform strings (#46).
-    Callers receive a hard failure rather than silently routing to the wrong
-    platform — misconfiguration must surface as an error, not a wrong default.
-    """
-    return Platform(platform)

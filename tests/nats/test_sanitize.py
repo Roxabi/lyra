@@ -254,7 +254,6 @@ class TestScopeValidation:
         # Message with no thread_session_id — path-3 must still work
         msg = make_inbound_message(scope_id="chat:42")
         assert isinstance(msg.platform_meta, TelegramMeta)
-        assert msg.platform_meta.thread_session_id is None
 
         # Act
         status = await resolve_context(msg, pool, pool_id, ctx)

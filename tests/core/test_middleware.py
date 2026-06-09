@@ -698,11 +698,8 @@ class TestNotifySessionFallthroughMiddleware:
 
         pool._session_resume_fn = _rejected_resume  # type: ignore[attr-defined]
 
-        # Wire fake TurnStore so scope validation passes (#525).
+        # Wire fake TurnStore (no prior session — path-3 returns None → SKIPPED).
         class _FakeTurnStore:
-            async def get_session_pool_id(self, session_id: str) -> str | None:
-                return pool_id
-
             async def get_last_session(self, pid: str) -> str | None:
                 return None
 
@@ -711,13 +708,7 @@ class TestNotifySessionFallthroughMiddleware:
 
         hub._turn_store = cast(TurnStore, _FakeTurnStore())
 
-        _base = make_inbound_message(scope_id="chat:42")
-        msg = dataclasses.replace(
-            _base,
-            platform_meta=dataclasses.replace(
-                _base.platform_meta, thread_session_id="tss-dead"
-            ),
-        )
+        msg = make_inbound_message(scope_id="chat:42")
         ctx = PipelineContext(
             hub=hub,
             pool=pool,

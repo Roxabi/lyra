@@ -35,7 +35,6 @@ class TelegramMeta:
     message_id: int | None = None
     topic_id: int | None = None
     is_group: bool = False
-    thread_session_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -45,7 +44,6 @@ class DiscordMeta:
     guild_id: int | None = None
     thread_id: int | None = None
     channel_type: str | None = None
-    thread_session_id: str | None = None
 
 
 @dataclass(frozen=True)

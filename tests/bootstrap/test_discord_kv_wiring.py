@@ -1,11 +1,9 @@
-"""Integration tests for Discord KV wiring — SC1/SC6/SC7.
+"""Integration tests for Discord KV wiring — SC1/SC6.
 
 Tests verify:
   1. No AgentStore / config.db read in _bootstrap_discord_setup (SC1).
   2. Discord adapter receives watch_channels seeded from KV (SC1 / _wire_bot).
   3. publish_watch_channels is awaited before announce_hub_ready in hub (SC6).
-  4. ACL matrix (deploy/nats/acl-matrix.json) grants factory-turns-meta KV subjects
-     to telegram/discord adapters but NOT to turn-writer (#1721 T10).
 """
 
 from __future__ import annotations
@@ -13,7 +11,6 @@ from __future__ import annotations
 import asyncio
 import inspect
 from contextlib import asynccontextmanager
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -460,84 +457,3 @@ class TestHubPublishesWatchChannelsBeforeReady:
             f"announce_hub_ready (pos {ready_idx}) — SC6 ordering violated"
         )
 
-
-# ---------------------------------------------------------------------------
-# Assertion 4 — ACL matrix factory-turns-meta grants (#1721 T10)
-# ---------------------------------------------------------------------------
-
-_ACL_FILE = "deploy/nats/acl-matrix.json"
-
-
-class TestAclMatrixTurnsMetaGrants:
-    """#1721 T10: deploy/nats/acl-matrix.json must grant factory-turns-meta KV
-    subjects to telegram-adapter and discord-adapter but NOT to turn-writer.
-
-    The prior SC7 guard (acl-matrix.json unchanged vs base) is replaced by this
-    positive assertion because #1721 intentionally modifies the ACL matrix to add
-    KV grants for the new factory-turns-meta bucket.  All drift gates (authconf,
-    706 spec, secrets) pass after the T10 regen chain.
-    """
-
-    # The three KV subjects that adapters need to read last-session from
-    # factory-turns-meta via KvLastSessionStore (#1721).
-    _TURNS_META_SUBJECTS = frozenset(
-        {
-            "$KV.factory-turns-meta.>",
-            "$JS.API.STREAM.INFO.KV_factory-turns-meta",
-            "$JS.API.STREAM.MSG.GET.KV_factory-turns-meta",
-        }
-    )
-
-    def _load_acl_matrix(self) -> dict:
-        import json  # noqa: PLC0415
-
-        acl_path = Path(__file__).parents[2] / _ACL_FILE
-        return json.loads(acl_path.read_text())
-
-    def test_telegram_adapter_has_turns_meta_grants(self) -> None:
-        """telegram-adapter publish list must contain all three factory-turns-meta
-        subjects added by #1721 T10.
-
-        Negative: if KvLastSessionStore grants are removed from acl-matrix.json,
-        this test fails immediately — the adapter would lose bucket-bind access.
-        """
-        matrix = self._load_acl_matrix()
-        tg_publish = frozenset(matrix["identities"]["telegram-adapter"]["publish"])
-        missing = self._TURNS_META_SUBJECTS - tg_publish
-        assert not missing, (
-            f"telegram-adapter publish is missing factory-turns-meta grants: "
-            f"{missing!r} — #1721 T10 violated"
-        )
-
-    def test_discord_adapter_has_turns_meta_grants(self) -> None:
-        """discord-adapter publish list must contain all three factory-turns-meta
-        subjects added by #1721 T10.
-
-        Negative: if KvLastSessionStore grants are removed from acl-matrix.json,
-        this test fails immediately — the adapter would lose bucket-bind access.
-        """
-        matrix = self._load_acl_matrix()
-        dc_publish = frozenset(matrix["identities"]["discord-adapter"]["publish"])
-        missing = self._TURNS_META_SUBJECTS - dc_publish
-        assert not missing, (
-            f"discord-adapter publish is missing factory-turns-meta grants: "
-            f"{missing!r} — #1721 T10 violated"
-        )
-
-    def test_turn_writer_does_not_have_turns_meta_grants(self) -> None:
-        """turn-writer must NOT receive factory-turns-meta KV grants.
-
-        turn-writer writes to factory.turns.write (FACTORY_TURNS stream) — it
-        has no role in last-session KV management.  Adding these subjects to
-        turn-writer would violate least-privilege.
-
-        Negative: if turns-meta subjects are mistakenly added to turn-writer,
-        this test fails — the principle-of-least-privilege invariant is broken.
-        """
-        matrix = self._load_acl_matrix()
-        tw_publish = frozenset(matrix["identities"]["turn-writer"]["publish"])
-        unexpected = self._TURNS_META_SUBJECTS & tw_publish
-        assert not unexpected, (
-            f"turn-writer publish unexpectedly contains factory-turns-meta grants: "
-            f"{unexpected!r} — least-privilege violated (#1721 T10)"
-        )

@@ -10,8 +10,6 @@ by pipeline stages:
 - ``RouterCtx.owned_threads`` — ``set[int]`` mutated by ``pre_route_hook``
   (e.g. ``owned_threads.add(thread_id)`` after cold-path ``is_owned`` warmup or
   auto-thread creation).
-- ``SessionCtx.thread_sessions_cache`` — ``dict[str, ThreadSession]`` written
-  through by ``SessionBuilder`` via ``persist_thread_session``.
 
 This is intentional: mutable refs are **shared by reference** with the adapter
 instance so warm-up state persists across messages within a single adapter
@@ -22,7 +20,7 @@ are unchanged.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -31,13 +29,9 @@ if TYPE_CHECKING:
     from factory.core.lifecycle.circuit_breaker import CircuitRegistry
     from factory.core.messaging.bus import Bus
     from factory.core.messaging.messages import MessageManager
-    from factory.core.ports.last_session_store import LastSessionStore
     from factory.core.ports.outbound_listener import OutboundListener
     from factory.core.stores import TurnStoreProtocol
-    from factory.core.stores.thread_store_protocol import (
-        ThreadSession,
-        ThreadStoreProtocol,
-    )
+    from factory.core.stores.thread_store_protocol import ThreadStoreProtocol
     from factory.inbound.attachment_ingest import IngestCtx
     from factory.transport.turn_publisher import TurnPublisher
     from factory.typing.task_manager import TypingTaskManager
@@ -62,10 +56,6 @@ class RouterCtx:
 class SessionCtx:
     """Session-building-stage context.
 
-    ``thread_sessions_cache`` is a **mutable dict** (frozen-container,
-    mutable-contents contract): ``SessionBuilder`` writes through to it via
-    ``persist_thread_session`` so cached entries survive across messages.
-
     ``turn_publisher`` is the NATS publisher used by ``SessionBuilder`` to
     publish ``start_session`` events instead of writing TurnStore directly.
     When ``None`` (test/CLI mode), session persistence is skipped.
@@ -74,7 +64,6 @@ class SessionCtx:
     compatibility (#48). All adapters pass ``turn_store=None`` and
     ``SessionBuilder`` no longer references it at all (the dead resume-guard arm
     was removed in #1731).  Active session persistence is handled by
-    ``last_session`` (``LastSessionStore``) on the last-session path and by
     ``thread_store`` on the Discord-thread path.
     """
 
@@ -83,8 +72,6 @@ class SessionCtx:
     )  # legacy — always None; unread by SessionBuilder (#48, #1731)
     thread_store: ThreadStoreProtocol | None
     turn_publisher: TurnPublisher | None = None
-    thread_sessions_cache: dict[str, ThreadSession] = field(default_factory=dict)
-    last_session: LastSessionStore | None = None
 
 
 @dataclass(frozen=True)

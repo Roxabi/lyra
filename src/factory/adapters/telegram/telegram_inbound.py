@@ -110,7 +110,6 @@ async def handle_message(adapter: "TelegramAdapter", msg: Any) -> None:
         ),
         session=SessionCtx(
             turn_store=None,
-            last_session=adapter._last_session,
             thread_store=None,  # Telegram has no thread model
         ),
         dispatch=DispatchCtx(
@@ -283,7 +282,6 @@ async def handle_voice_message(adapter: "TelegramAdapter", msg: Any) -> None:  #
         ),
         session=SessionCtx(
             turn_store=None,
-            last_session=adapter._last_session,
             thread_store=None,  # Telegram has no thread model
         ),
         dispatch=DispatchCtx(

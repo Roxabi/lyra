@@ -20,7 +20,6 @@ from factory.bootstrap.wiring._standalone_wiring_common import (
 )
 from factory.bootstrap.wiring.kv_watch_channels import seed_watch_channels
 from factory.core.messaging.message import Platform
-from factory.infrastructure.stores.turn_session_kv import KvLastSessionStore
 from factory.paths import factory_discord_data_dir
 from roxabi_nats.readiness import wait_for_hub
 
@@ -106,10 +105,6 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
     js = nc.jetstream()
     blob_store = init_blobstore()
 
-    # KV last-session store — adapter reads/writes factory-turns-meta bucket.
-    # Must await .connect() AFTER wait_for_hub (hub provisions the bucket).
-    dc_kv_last_session = KvLastSessionStore(js)
-
     wired_dc: list[tuple] = []  # (DiscordAdapter, str, Bus, TypingListener, Consumer)
 
     async def _wire_bot(
@@ -130,7 +125,6 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
                 thread_hot_hours=bot_cfg.thread_hot_hours,
                 thread_store=dc_thread_store,
                 watch_channels=watch_channels,
-                last_session=dc_kv_last_session,
                 blob_store=blob_store,
             )
             typing_deps = TypingDeps(
@@ -169,9 +163,6 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
     # reintroduce the cold-boot race (BucketNotFoundError / missing-stream).
     await wait_for_hub(nc)
 
-    # Bind KV bucket after hub has provisioned it.
-    await dc_kv_last_session.connect()
-
     for bot_cfg in dc_multi_cfg.bots:
         bot_id = bot_cfg.bot_id
         if bot_id not in dc_creds:
@@ -201,6 +192,5 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
     try:
         await _bootstrap_discord_teardown(wired_dc, dc_thread_store, stop_dc)
     finally:
-        await dc_kv_last_session.close()  # release KV handle (#49)
         if blob_store is not None:
             await blob_store.aclose()  # type: ignore[union-attr]  # concrete HttpBlobStoreAdapter; aclose not on port

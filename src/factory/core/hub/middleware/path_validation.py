@@ -1,16 +1,15 @@
 """Session resume path validation for SubmitToPoolMiddleware.
 
-Three resume paths (priority order):
+Two resume paths (priority order):
 1. reply-to-resume via MessageIndex (#341)
-2. thread-session-resume
-3. last-active-session from TurnStore
+2. last-active-session from TurnStore (#1777: path-2 removed)
 """
 
 from __future__ import annotations
 
 import logging
 
-from ...messaging.message import DiscordMeta, InboundMessage, TelegramMeta
+from ...messaging.message import InboundMessage
 from ...pool import Pool
 from ..pipeline.pipeline_types import ResumeStatus
 from .middleware import PipelineContext
@@ -26,30 +25,24 @@ async def resolve_context(
 ) -> ResumeStatus:
     """Attempt session resume before pool.submit().
 
-    Three paths (priority order): (1) reply-to-resume,
-    (2) thread-session-resume, (3) last-active-session from TurnStore.
+    Two paths (priority order): (1) reply-to-resume via MessageIndex,
+    (2) last-active-session from TurnStore. Path-2 (thread-session-resume)
+    was removed in #1777.
 
     Returns:
         RESUMED  -- a session was successfully resumed via any path.
-        FRESH    -- Path 2 was attempted but rejected (session pruned /
-                    invalid / expired); Claude will start fresh. The
-                    caller should notify the user.
-        SKIPPED  -- no resume was attempted (pool busy, group chat,
-                    first use, no TurnStore, ...). Silent and expected.
+        SKIPPED  -- no resume was attempted (pool busy, first use,
+                    no TurnStore, ...). Silent and expected.
     """
     result = await _resume_path1(msg, pool, pool_id, ctx)
     if result is not None:
         return result
 
-    path2_result, path2_attempted = await _resume_path2(msg, pool, pool_id, ctx)
-    if path2_result is not None:
-        return path2_result
-
     result = await _resume_path3(msg, pool, pool_id, ctx)
     if result is not None:
         return result
 
-    return ResumeStatus.FRESH if path2_attempted else ResumeStatus.SKIPPED
+    return ResumeStatus.SKIPPED
 
 
 async def _resume_path1(
@@ -100,71 +93,6 @@ async def _resume_path1(
         pool_id,
     )
     return ResumeStatus.RESUMED
-
-
-async def _resume_path2(
-    msg: InboundMessage,
-    pool: Pool,
-    pool_id: str,
-    ctx: PipelineContext,
-) -> tuple[ResumeStatus | None, bool]:
-    """Path 2: thread-session-resume. Returns (status|None, attempted)."""
-    hub = ctx.hub
-    thread_session_id: str | None = None
-    if isinstance(msg.platform_meta, (TelegramMeta, DiscordMeta)):
-        thread_session_id = msg.platform_meta.thread_session_id
-    if thread_session_id is None:
-        return None, False
-
-    # Scope-validate: session must belong to this pool (#525).
-    if hub._turn_store is None:
-        # No TurnStore -> cannot validate scope -> safe default: skip.
-        log.debug(
-            "thread-session-resume: no TurnStore -- skipping %r",
-            thread_session_id,
-        )
-        return ResumeStatus.SKIPPED, False
-
-    session_pool = await hub._turn_store.get_session_pool_id(thread_session_id)
-    if session_pool is None or session_pool != pool_id:
-        log.warning(
-            "thread-session-resume: scope mismatch for %r -- "
-            "expected pool %r, got %r -- skipping",
-            thread_session_id,
-            pool_id,
-            session_pool,
-        )
-        return ResumeStatus.SKIPPED, False
-
-    if not pool.is_idle:
-        log.info(
-            "thread-session-resume: pool %r busy -- skipping %r",
-            pool_id,
-            thread_session_id,
-        )
-        return ResumeStatus.SKIPPED, False
-
-    if thread_session_id == pool.session_id:
-        log.debug(
-            "thread-session-resume: pool %r already on session %r -- skipping",
-            pool_id,
-            thread_session_id,
-        )
-        return ResumeStatus.SKIPPED, False
-
-    log.info(
-        "thread-session-resume: resuming %r for pool %r",
-        thread_session_id,
-        pool_id,
-    )
-    accepted = await pool.resume_session(thread_session_id)
-    if accepted:
-        return ResumeStatus.RESUMED, True
-    log.info(
-        "thread-session-resume: session %r not accepted -- falling through to Path 3",
-        thread_session_id,
-    )
-    return None, True
 
 
 async def _resume_path3(

@@ -8,16 +8,14 @@ without modification.
 
 from .pipeline_types import (  # noqa: F401 — DEBT:re-export-init
     DROP,
-    SESSION_FALLTHROUGH_MSG,
     Action,
     PipelineResult,
     ResumeStatus,
     TraceHook,
 )
 
-# Legacy private-name aliases.
+# Legacy private-name alias.
 _DROP = DROP
-_SESSION_FALLTHROUGH_MSG = SESSION_FALLTHROUGH_MSG
 
 __all__ = [
     "Action",
@@ -25,7 +23,5 @@ __all__ = [
     "_DROP",
     "PipelineResult",
     "ResumeStatus",
-    "SESSION_FALLTHROUGH_MSG",
-    "_SESSION_FALLTHROUGH_MSG",
     "TraceHook",
 ]

@@ -43,9 +43,6 @@ class _FakeTurnStore:
     async def increment_resume_count(self, session_id: str) -> None:
         pass
 
-    async def get_session_pool_id(self, session_id: str) -> str | None:
-        return None
-
     async def log_turn(self, **_kwargs) -> None:
         pass
 

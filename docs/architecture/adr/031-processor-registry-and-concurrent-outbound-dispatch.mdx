@@ -7,6 +7,12 @@ status: accepted
 > **Current truth** → [`docs/architecture/workers-tooling.md`](../workers-tooling.md){#current-truth}
 > This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
 
+> **Superseded in part (#372):** the "`post()` non-streaming only" constraint — and its
+> `NotImplementedError` guard for streaming agents — no longer holds. Streaming agents now run
+> the post-hook via `run_streaming_turn_post()` after the stream is fully consumed, and the
+> guard was removed. Affected below: Option B *Cons*, Constraint 1, and the *Negative*
+> consequence "incompatible with streaming agents". The rest of this ADR stands.
+
 
 ## Status
 
@@ -114,10 +120,11 @@ a new module in `src/lyra/core/processors/` — no edits to core files.
 
 ### Constraints that follow from these decisions
 
-1. `BaseProcessor.post()` is only invoked in the non-streaming branch of `_process_one`.
-   A processor registered against a streaming agent raises `NotImplementedError` at
-   request time. Agent authors who need post-hook behaviour must override `process()` to
-   return a `Response`.
+1. **[Superseded #372 — see banner]** `BaseProcessor.post()` was originally invoked only in
+   the non-streaming branch of `_process_one`; a processor registered against a streaming
+   agent raised `NotImplementedError` at request time. As of #372, `post()` also runs in the
+   streaming branch via `run_streaming_turn_post()` once the stream is fully consumed, and the
+   `NotImplementedError` guard was removed — no `process()` override is required.
 
 2. `processors/__init__.py` must import every processor module to trigger registration.
    Adding a new processor file without updating `__init__.py` silently makes it invisible.
@@ -146,8 +153,8 @@ a new module in `src/lyra/core/processors/` — no edits to core files.
 
 ### Negative
 
-- Processors are incompatible with streaming agents. This is an explicit, documented
-  constraint, but it is enforced at runtime rather than at registration time.
+- ~~Processors are incompatible with streaming agents.~~ **[Superseded #372]** streaming
+  agents now invoke the post-hook via `run_streaming_turn_post()` after the stream is consumed.
 - `processors/__init__.py` must be kept in sync with the processors package; a missing
   import produces a silent registration gap.
 - `_session_handlers` and `ProcessorRegistry` coexist without a documented migration

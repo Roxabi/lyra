@@ -425,3 +425,63 @@ class TestPoolStreaming:
         assert pool.session_id == "session-from-iterator", (
             f"expected session_id from original iterator, got {pool.session_id!r}"
         )
+
+
+class TestRunStreamingTurnPost:
+    """run_streaming_turn_post — processor post-hook on the streaming path (#372)."""
+
+    async def test_invokes_post_with_joined_content_after_stream_done(self) -> None:
+        from factory.core.pool.pool_processor_streaming import run_streaming_turn_post
+
+        processor = MagicMock()
+        processor.post = AsyncMock()
+        done = asyncio.Event()
+        done.set()
+        msg = make_msg("hi")
+
+        await run_streaming_turn_post(processor, done, msg, ["foo", "bar"])
+
+        processor.post.assert_awaited_once()
+        sent_msg, sent_resp = processor.post.await_args.args
+        assert sent_msg is msg
+        assert sent_resp.content == "foobar"
+
+    async def test_noop_when_processor_none(self) -> None:
+        from factory.core.pool.pool_processor_streaming import run_streaming_turn_post
+
+        # processor None → returns before awaiting the event: no hang, no error.
+        await run_streaming_turn_post(None, asyncio.Event(), make_msg("hi"), ["x"])
+
+    async def test_cancellation_propagates_into_post_hook(self) -> None:
+        """#1820: awaiting post() directly (not via `await create_task`) means a
+        cancelled turn cancels the post-hook instead of orphaning it as a detached
+        task. Under the old `await asyncio.create_task(...)` pattern this assertion
+        failed — the inner task kept running after the awaiter was cancelled.
+        """
+        from factory.core.pool.pool_processor_streaming import run_streaming_turn_post
+
+        started = asyncio.Event()
+        cancelled = asyncio.Event()
+
+        async def slow_post(_msg: InboundMessage, _resp: Response) -> None:
+            started.set()
+            try:
+                await asyncio.Event().wait()  # block until cancelled (no timing sleep)
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+        processor = MagicMock()
+        processor.post = slow_post
+        done = asyncio.Event()
+        done.set()
+
+        task = asyncio.create_task(
+            run_streaming_turn_post(processor, done, make_msg("hi"), ["x"])
+        )
+        await asyncio.wait_for(started.wait(), timeout=TIMEOUT_IO)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert cancelled.is_set(), "post-hook must observe cancellation"

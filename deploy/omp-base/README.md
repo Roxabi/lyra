@@ -1,6 +1,7 @@
 # deploy/omp-base/ — omp binary carrier image
 
-Origin: #1810 (pin + carrier image). Parent: #1807 (agent-runtime eval, omp ratified 2026-06-10).
+Origin: #1810 (pin + carrier image). Parent: #1490 (pluggable harness
+runtime — omp alongside clipool; ratified 2026-06-10 via spike #1807).
 
 ## Purpose
 

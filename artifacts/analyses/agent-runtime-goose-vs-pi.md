@@ -1,6 +1,6 @@
 ---
 title: Agent-runtime evaluation — Goose vs Pi-family for the lyra-harness NATS worker
-status: DECIDED (direction) — gated on spike #1807
+status: RATIFIED 2026-06-10 (spike #1807 🟢 GREEN) — 4 claims corrected post-spike, see banner
 date: 2026-06-09
 source: multi-agent workflow (goose-vs-pi-nats-fit, 2 passes, ~350k tokens) + hand-verification
 relates: "#1490 (harness epic), #1807 (spike), #1792 (Shape D), #1799 (steer), #1044 (worker fleet), #493 (ToolHandler)"
@@ -11,6 +11,19 @@ relates: "#1490 (harness epic), #1807 (spike), #1792 (Shape D), #1799 (steer), #
 > Which OSS agent runtime should run *inside* the `lyra-harness` NATS worker (#1490),
 > replacing the `claude -p`/clipool agent loop? Decision direction: **Pi-family (oh-my-pi
 > runtime + earendil/pi anchor), NOT Goose.** Final commit gated on spike **#1807**.
+
+> [!WARNING]
+> **Ratified 2026-06-10 — spike #1807 🟢 GREEN (`1807-spike-result.md`), decision recorded on
+> [#1490](https://github.com/Roxabi/roxabi-factory/issues/1490#issuecomment-4666813172).
+> Four claims below are superseded by spike-verified facts — read these corrections before citing:**
+>
+> 1. **Runtime is *pluggable*, clipool is NOT retired** — `omp_rpc` joins clipool/`claude -p` as a
+>    per-agent/per-job backend (§8 "replaces the custom loop" / "phased rollout" is stale → #1813).
+> 2. **Footprint: prebuilt `omp-linux-x64` standalone binary ~175 MB; Bun never enters the image**
+>    (§7 C2 "~90 MB Bun runtime, Bun pinned" is stale on both axes → #1810).
+> 3. **`LITELLM_BASE_URL` env override does not exist** — baseUrl is hard-coded
+>    `http://localhost:4000/v1`, TS-constructor only (§6 "zero code" provider line is stale → #1811).
+> 4. **"Bun footprint" spike gate (§8): resolved moot** by the prebuilt binary — no Bun-in-image concern.
 
 ## 1. Why this evaluation
 

@@ -1,0 +1,104 @@
+name: omp-base
+on:
+  pull_request:
+    paths: ['deploy/omp-base/**']
+  push:
+    branches: [staging]
+    paths: ['deploy/omp-base/**']
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Parse and validate pins from Containerfile
+        id: pins
+        run: |
+          VER=$(grep '^ARG OMP_VERSION=' deploy/omp-base/Containerfile | cut -d= -f2)
+          SHA=$(grep '^ARG OMP_SHA256=' deploy/omp-base/Containerfile | cut -d= -f2)
+          if [[ ! "$VER" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "ERROR: OMP_VERSION '${VER}' does not match ^v[0-9]+\.[0-9]+\.[0-9]+$" >&2
+            exit 1
+          fi
+          if [[ ! "$SHA" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "ERROR: OMP_SHA256 '${SHA}' does not match ^[0-9a-f]{64}$" >&2
+            exit 1
+          fi
+          TAG="${VER#v}"
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      - name: Build smoke stage
+        uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75 # v6.9.0
+        with:
+          context: deploy/omp-base
+          file: deploy/omp-base/Containerfile
+          target: smoke
+          load: true
+          tags: omp-smoke:${{ steps.pins.outputs.tag }}
+          cache-from: type=gha,scope=omp-base
+          cache-to: type=gha,mode=max,scope=omp-base
+
+      - name: Verify smoke binary version
+        run: |
+          docker run --rm omp-smoke:${{ steps.pins.outputs.tag }} omp --version \
+            | grep -Fx "omp/${{ steps.pins.outputs.tag }}"
+
+  publish:
+    if: github.ref == 'refs/heads/staging'
+    needs: build-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Parse and validate pins from Containerfile
+        id: pins
+        run: |
+          VER=$(grep '^ARG OMP_VERSION=' deploy/omp-base/Containerfile | cut -d= -f2)
+          SHA=$(grep '^ARG OMP_SHA256=' deploy/omp-base/Containerfile | cut -d= -f2)
+          if [[ ! "$VER" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "ERROR: OMP_VERSION '${VER}' does not match ^v[0-9]+\.[0-9]+\.[0-9]+$" >&2
+            exit 1
+          fi
+          if [[ ! "$SHA" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "ERROR: OMP_SHA256 '${SHA}' does not match ^[0-9a-f]{64}$" >&2
+            exit 1
+          fi
+          TAG="${VER#v}"
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      - name: Build carrier stage
+        uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75 # v6.9.0
+        with:
+          context: deploy/omp-base
+          file: deploy/omp-base/Containerfile
+          target: carrier
+          load: true
+          tags: ghcr.io/roxabi/factory-omp-base:${{ steps.pins.outputs.tag }}
+          cache-from: type=gha,scope=omp-base
+
+      - name: Immutability guard — skip push if tag already published
+        run: |
+          TAG="${{ steps.pins.outputs.tag }}"
+          IMAGE="ghcr.io/roxabi/factory-omp-base:${TAG}"
+          if docker manifest inspect "${IMAGE}" > /dev/null 2>&1; then
+            echo "::warning::tag ${TAG} already published, skipping push (content change requires a version bump)"
+            exit 0
+          fi
+          docker push "${IMAGE}"

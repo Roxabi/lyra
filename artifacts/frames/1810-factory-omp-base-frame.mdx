@@ -1,0 +1,87 @@
+---
+title: "factory-omp-base image — bake prebuilt omp-linux-x64 binary"
+issue: 1810
+status: approved
+tier: F-lite
+date: 2026-06-10
+---
+
+## Problem
+
+The `omp_rpc` harness runtime (spike #1807 GREEN, ratified 2026-06-10) needs the
+`omp` binary available inside the M₁ Quadlet stack before the OmpWorker (#1812)
+can exist. oh-my-pi ships a prebuilt standalone `omp-linux-x64` ELF (~175 MB;
+exactly 183,777,408 B) via GitHub releases — no `bun install`, `node_modules`,
+or Rust toolchain at runtime. Upstream is alpha with daily churn from a solo
+maintainer, so the binary must be **pinned by sha256 and verified at image
+build**, with bumps gated by an integration test in factory CI.
+
+Without this image, #1812 (OmpWorker, F-full) and #1813 (runtime-selection) are
+blocked — and they are the path off the Anthropic programmatic-billing cliff
+(2026-06-15) for NATS job workers.
+
+## Who
+
+- **Primary:** OmpWorker container (#1812) — builds its runtime stage `FROM`
+  this image; inherits a verified, immutable omp binary layer.
+- **Secondary:** operators bumping the omp pin — single-PR flow with CI digest
+  verification instead of manual host provisioning.
+
+## Constraints
+
+- Pin anchor: `omp-linux-x64` **v15.10.8**, 183,777,408 B, sha256
+  `b877091c91ebdc8c8d907c4b62681895cd3ae049815858aea7b69ac1d53b7c7b`. The
+  GitHub-release download MUST be verified against this digest at build
+  (guards upstream retag — alpha, solo maintainer).
+- Container conventions: `docs/ops/container-publishing.md` — pinned base,
+  non-root UID 1500 (ADR-053), no build tools in final image, GHCR via
+  `ghcr.io/roxabi/*`.
+- Image home decision (2026-06-10): **dedicated image in roxabi-factory** —
+  `deploy/omp-base/Containerfile` + path-triggered publish workflow →
+  `ghcr.io/roxabi/factory-omp-base:<omp-version>` (immutable tag = omp
+  version). Built only on pin bump, NOT on every staging push — keeps the
+  175 MB layer out of the hot publish path and lets the bump-gating
+  integration test live in the same repo as `omp_rpc` consumers.
+- `deploy/omp/models.yml` (#1811) is the runtime config the eventual worker
+  mounts via `PI_CODING_AGENT_DIR` — this image does not embed it.
+
+## Out of Scope
+
+- **Quadlet unit + `deploy/quadlet.toml` component entry + secrets** → #1812.
+  `secrets_drift` CHECKs (b)+(c) hard-couple any toml component to the
+  generated secrets-manifest and an acl-matrix identity; the omp-worker
+  identity + `factory.jobs.omp` contracts are #1812's scope. The issue's
+  S7/S8/S12 checkbox is conditioned on "the same PR that adds the Quadlet
+  unit" — that is #1812's PR. A unit shipped now would crash-loop (no worker
+  entrypoint exists).
+- OmpWorker code, `omp-rpc` Python dependency wiring, NATS ACL fan-out → #1812.
+- Runtime selection clipool⟷omp → #1813.
+- roxabi-ml-base changes — image home is roxabi-factory (decision above).
+
+## Premise Validity
+
+**Success in 6 months:** OmpWorker runs on M₁ from an image whose runtime stage
+is `FROM ghcr.io/roxabi/factory-omp-base:<ver>`; omp pin bumps are single PRs
+that CI gates with digest verification + an omp_rpc integration test; job
+workers run without Anthropic programmatic billing.
+
+**Failure in 6 months:** by 2026-12, zero Quadlet units reference
+`factory-omp-base` (image built but unconsumed), OR the pin is frozen at
+v15.10.8 with ≥3 open upstream-breakage issues (fork churn unmanageable) →
+retire the image, fall back to clipool-only runtime.
+
+**Simplest alternative:** bind-mount the binary from the M₁ host
+(`/opt/omp/omp-linux-x64` volume into existing containers).
+**Why not simplest:** no digest verification at deploy time; M₁ host becomes a
+manually-provisioned snowflake outside `factory-quadlet-sync` git convergence;
+violates the image-only deploy standard (auto-update pulls images, not host
+files).
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (devops/CI), no unknowns; the
+spike already proved the binary runs standalone.
+
+Signals observed: `size:F-lite` label; ~4–6 files (Containerfile, workflow,
+ops doc, CLAUDE.md registry); one domain; reference patterns exist
+(`publish.yml`, roxabi-ml-base `build-base.yml`).

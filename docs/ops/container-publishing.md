@@ -327,6 +327,7 @@ Steps for a new Roxabi project (voiceCLI, 2ndBrain, imageCLI, llmCLI) to adopt t
 ## Cross-references
 
 - `.github/workflows/publish.yml` — lyra caller workflow
+- `.github/workflows/omp-base.yml` — path-triggered build+publish for the omp binary carrier image (`ghcr.io/roxabi/factory-omp-base`, immutable version tags); separate from the main bake pipeline — see `deploy/omp-base/README.md`
 - `Roxabi/.github/.github/workflows/publish-container.yml@v1` — reusable workflow (upstream)
 - `deploy/quadlet/factory-hub.container` — `Image=` reference example
 - `deploy/quadlet/factory-telegram.container` — `Image=` reference example

@@ -77,11 +77,13 @@ Full steps → `../spikes/1807/RUNBOOK.md`.
 
 ---
 
-## Decision gate (per #1807) — GREEN ⇒ recommended follow-ups
+## Decision gate (per #1807) — GREEN ⇒ ratified direction
 
-Out of scope here (this spike validated the linchpin only). If ratified under #1490:
+**Ratified 2026-06-10:** supersede #1490's "custom thin loop" Runtime decision — the harness runtime becomes **pluggable**, with `omp_rpc` added as a backend **alongside** clipool/`claude -p`. **clipool is NOT retired** — runtime is a per-agent / per-job choice.
 
-1. **Production `OmpWorker`** (`factory.jobs.omp` dispatch → `factory.job.<id>.{progress,result,opened,closed,steer}`), Python `NatsAdapterBase` driving `omp --mode rpc`.
-2. **`factory-omp-base`** image — bake the ~175 MB prebuilt binary; pin the omp release SHA + integration test on bump.
-3. **LiteLLM on `:4000`** in the factory pod (or sidecar forward) — resolve the hard-coded baseUrl.
-4. **Supersede** #1490 "custom thin loop" Runtime decision; retire clipool/`claude -p` after parity.
+Follow-ups under #1490 (out of scope here — this spike validated the linchpin only):
+
+1. **Production `OmpWorker`** — Python `NatsAdapterBase` driving `omp --mode rpc`; `factory.jobs.omp` dispatch → `factory.job.<id>.{progress,result,opened,closed,steer}`.
+2. **`factory-omp-base`** image — bake the ~175 MB prebuilt `omp-linux-x64` binary; pin the omp release SHA + integration test on bump.
+3. **LiteLLM on `:4000`** in the factory pod (or sidecar-forward `:4000→:18091`) — resolve the hard-coded baseUrl.
+4. **Runtime selection** — config-driven choice of backend (clipool/`claude -p` ⟷ `omp_rpc`) per agent/job; both coexist.

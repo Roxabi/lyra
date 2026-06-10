@@ -117,9 +117,9 @@ async def run_streaming_turn_post(
     await stream_done_event.wait()  # type: ignore[misc] — DEBT:defensive-narrow-payloads
     streamed = Response(content="".join(content_parts))
     try:
-        # processor.post is a coroutine
-        import asyncio
-
-        await asyncio.create_task(processor.post(original_msg, streamed))  # type: ignore[misc] — DEBT:defensive-narrow-payloads
+        # processor.post is a coroutine; await it directly so cancellation of
+        # this turn propagates into the post-hook (await-on-create_task orphaned
+        # the task under cancellation, #1820).
+        await processor.post(original_msg, streamed)  # type: ignore[misc] — DEBT:defensive-narrow-payloads
     except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
         log.warning("Processor post() failed (streaming)", exc_info=True)

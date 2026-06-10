@@ -42,6 +42,7 @@
     "075-turn-writer-subscriber",
     "078-turn-store-protocol",
     "082-blobstore-driven-port",
+    "087-memory-ssot-cortex",
     "---Security & Routing---",
     "046-nkey-provisioning-declarative-authconf",
     "051-per-identity-nats-inbox-prefix",

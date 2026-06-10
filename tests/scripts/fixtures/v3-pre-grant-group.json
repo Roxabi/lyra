@@ -62,7 +62,6 @@
       "publish": [
         "factory.inbound.telegram.>",
         "factory.system.ready",
-        "factory.turns.write",
         "factory.event.>",
         "factory.metric.>",
         "$JS.API.DIRECT.GET.KV_factory-state.hub.ready",
@@ -99,7 +98,6 @@
       "publish": [
         "factory.inbound.discord.>",
         "factory.system.ready",
-        "factory.turns.write",
         "factory.event.>",
         "factory.metric.>",
         "$JS.API.DIRECT.GET.KV_factory-state.hub.ready",

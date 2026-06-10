@@ -68,6 +68,12 @@ uv pip install -e /home/mickael/projects/external_repos/oh-my-pi/python/omp-rpc
 | `LITELLM_API_KEY` | (unset) | Optional — LiteLLM `allowUnauthenticated: true` |
 | `OMP_LITELLM_BASE_URL` | `http://localhost:4000/v1` | **Informational only** — no env-var override path exists into omp's `LiteLLMModelManagerConfig.baseUrl`. See note below. |
 
+> **SUPERSEDED 2026-06-10 (#1811):** the "hard-coded baseUrl" claim below is wrong —
+> `localhost:4000/v1` is only a default (`config?.baseUrl ?? …`). omp's
+> `models.yml` (`providers.litellm.baseUrl`, config dir relocatable via
+> `PI_CODING_AGENT_DIR`) overrides it with priority 1. See `deploy/omp/README.md`.
+> The env-var part stays true: no `LITELLM_BASE_URL` env var exists.
+
 **LITELLM_BASE_URL gap**: The LiteLLM `baseUrl` is hard-coded in
 `packages/ai/src/provider-models/openai-compat.ts:2191` at TS-constructor level.
 No env var (`LITELLM_BASE_URL` does not exist in the codebase). To override from M2

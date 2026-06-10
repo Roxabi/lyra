@@ -134,7 +134,7 @@ rm -rf /tmp/omp_spike_1807
 
 ## Known gaps / risks for live run
 
-1. **No baseUrl env override**: To route to M1 LiteLLM from M2, ssh tunnel or run on M1.
+1. **No baseUrl env override** *(superseded 2026-06-10 — `models.yml` overrides baseUrl, see `deploy/omp/README.md`)*: To route to M1 LiteLLM from M2, ssh tunnel or run on M1.
 2. **omp image footprint**: ~450–700 MB compressed for full pi-runtime image. Quadlet integration
    is a heavyweight commitment — not a single-binary drop-in.
 3. **steer timing non-determinism**: `steer(interruptMode="immediate")` applies between tool

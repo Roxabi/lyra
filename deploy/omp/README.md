@@ -27,7 +27,7 @@ default `http://localhost:4000/v1` is a `config?.baseUrl ?? …` fallback in
 | Variable | Consumer | Semantics |
 |---|---|---|
 | `PI_CODING_AGENT_DIR` | omp (`packages/utils/src/dirs.ts`) | Absolute path of the config dir containing `models.yml`. Mount target for this file in the worker unit. |
-| `LITELLM_API_KEY` | omp `litellm` provider | The proxy bearer key. `models.yml` references it **by name** (`apiKey: LITELLM_API_KEY` = env-name-or-literal semantics) — the value enters the container via the #1812 secret mount, never via this repo. |
+| `LITELLM_API_KEY` | omp `litellm` provider | The proxy bearer key. `models.yml` references it **by name** (`apiKey: LITELLM_API_KEY` = env-name-or-literal semantics) — the value enters the container via the #1812 secret mount, never via this repo. ⚠ Fallback: if the env var is **unset**, omp sends the literal string `LITELLM_API_KEY` as the bearer (`resolveApiKeyConfig` — passes omp's non-empty check, rejected by the proxy) → auth failures with a config that looks correct. #1812 must verify injection before relying on proxy auth. |
 
 ## Why an explicit `models:` list
 

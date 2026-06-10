@@ -552,3 +552,38 @@ class TestNatsSubjectCharset:
             if "." in token or token.startswith("_") or token.startswith("$"):
                 bad = invalid_charset.findall(token)
                 assert not bad, f"Subject token {token!r} contains invalid chars: {bad}"
+
+
+class TestTurnsWriteLeastPrivilege:
+    """#1821: only the hub may publish ``factory.turns.write``.
+
+    The sole writer of TurnWriteEvents is the hub ``TurnPublisher`` — the T27
+    (#1331) adapter dual-write design was never implemented, so the grant was an
+    orphan on the telegram/discord identities and was trimmed (least privilege).
+    These assertions guard against silently re-introducing it via
+    ``deploy/nats/acl-matrix.json``; the parity/equivalence tests do not catch a
+    re-add to the source matrix on their own.
+    """
+
+    def test_adapters_do_not_publish_turns_write(
+        self, prod_matrix: LoadedMatrix
+    ) -> None:
+        """telegram/discord adapter identities must not hold the publish grant.
+
+        # verified: re-adding "factory.turns.write" to either adapter's publish
+        # list in deploy/nats/acl-matrix.json fails this assertion.
+        """
+        for adapter in ("telegram-adapter", "discord-adapter"):
+            publish = prod_matrix["identities"][adapter]["publish"]
+            assert "factory.turns.write" not in publish, (
+                f"{adapter} must not publish factory.turns.write "
+                f"(#1821 least-privilege; sole writer is the hub)"
+            )
+
+    def test_hub_retains_turns_write(self, prod_matrix: LoadedMatrix) -> None:
+        """The hub identity remains the (sole) declared publisher.
+
+        # verified: removing "factory.turns.write" from hub's publish list in
+        # deploy/nats/acl-matrix.json fails this assertion.
+        """
+        assert "factory.turns.write" in prod_matrix["identities"]["hub"]["publish"]

@@ -21,16 +21,10 @@ carrier image lifecycle independent of factory application releases.
 
 ## Pin SSoT
 
-The two `ARG` defaults in `deploy/omp-base/Containerfile` are the **sole pin SSoT** for this
-image. The workflow reads them — no literal pin lives in the workflow file.
-
-| ARG | Value |
-|---|---|
-| `OMP_VERSION` | `v15.10.8` |
-| `OMP_SHA256` | `b877091c91ebdc8c8d907c4b62681895cd3ae049815858aea7b69ac1d53b7c7b` |
-
-Asset: `omp-linux-x64`, 183,777,408 B — from
-[github.com/can1357/oh-my-pi releases](https://github.com/can1357/oh-my-pi/releases).
+The two `ARG` defaults at the top of [`Containerfile`](Containerfile) are the **sole pin SSoT**
+for this image — `OMP_VERSION` (release tag) and `OMP_SHA256` (digest of the `omp-linux-x64`
+asset from [github.com/can1357/oh-my-pi releases](https://github.com/can1357/oh-my-pi/releases)).
+The workflow reads them — no literal pin lives in the workflow file, and none is duplicated here.
 
 The SHA256 is verified at build time (`sha256sum -c`) before the binary is admitted into the
 image. A mismatch fails the CI job immediately.

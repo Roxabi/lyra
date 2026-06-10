@@ -91,7 +91,7 @@ ComplexityEstimator / SmartRoutingDecorator exist in code but are disabled: `sma
 
 #### ProcessorRegistry concurrent dispatch
 
-Slash commands that need conversation history are implemented as `BaseProcessor` subclasses registered via `@register("/cmd")` against a module-level `ProcessorRegistry` singleton. `PoolProcessor._process_one()` calls `pre(msg)` before `agent.process()` and `post(msg, response)` after; responses enter pool history through the normal flow. Self-registration via import in `processors/__init__.py` — a new processor file not listed there is silently invisible. `post()` is only invoked in the non-streaming branch; a streaming agent raises `NotImplementedError` at request time. Outbound delivery uses per-scope `asyncio.Lock` fan-out: tasks for different scopes run concurrently; tasks within the same scope are ordered. Idle locks are reaped when `_scope_locks` exceeds 256 entries. `ProcessorRegistry` handles post-parse execution; pre-parse tokenization is owned by `CommandParser`. → See `security-routing.md` (#commands — CommandParser). → ADR-031
+Slash commands that need conversation history are implemented as `BaseProcessor` subclasses registered via `@register("/cmd")` against a module-level `ProcessorRegistry` singleton. `PoolProcessor._process_one()` calls `pre(msg)` before `agent.process()` and `post(msg, response)` after; responses enter pool history through the normal flow. Self-registration via import in `processors/__init__.py` — a new processor file not listed there is silently invisible. `post()` runs in both branches: inline after `agent.process()` in the non-streaming path, and via `run_streaming_turn_post()` once the stream is fully consumed in the streaming path (#372). Outbound delivery uses per-scope `asyncio.Lock` fan-out: tasks for different scopes run concurrently; tasks within the same scope are ordered. Idle locks are reaped when `_scope_locks` exceeds 256 entries. `ProcessorRegistry` handles post-parse execution; pre-parse tokenization is owned by `CommandParser`. → See `security-routing.md` (#commands — CommandParser). → ADR-031
 
 ---
 
@@ -119,7 +119,7 @@ When `CliPool.send()` receives a `ModelConfig` that differs from the one used to
 - Each agent gets its own `ProviderRegistry` and `MessageManager`; `CliPool` is the only shared process resource.
 - Every `SessionCommandEntry` holds a fully-constructed `SessionTools`; the `tools` parameter is required, not optional.
 - `processors/__init__.py` must import every processor module; a missing import silently gaps the registry.
-- `BaseProcessor.post()` is only invoked in the non-streaming branch; processors are incompatible with streaming agents.
+- `BaseProcessor.post()` runs in both branches — non-streaming (inline) and streaming (via `run_streaming_turn_post()` after the stream is consumed, #372).
 - Health checks are layer-bound: external monitor checks process/endpoint/OS only; circuit breakers own LLM backend health.
 - Per-scope pool isolation is active at the Hub layer; CliPool subprocess isolation and memory-namespace isolation per scope remain open.
 - `type=env` is a documented exception for `CLAUDE_CODE_OAUTH_TOKEN`; all other secrets use `type=mount`. Re-verify after Podman upgrades.

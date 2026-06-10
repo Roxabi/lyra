@@ -16,7 +16,7 @@ Usage:
     python omp_rpc_poc.py --abort         # abort mid-turn
 """
 
-# omp_rpc is an external alpha package, installed only on the live-run box (see RUNBOOK.md).
+# omp_rpc is an external alpha package — live-run box only (see RUNBOOK.md).
 # pyright: reportMissingImports=false
 from __future__ import annotations
 
@@ -66,7 +66,9 @@ OMP_MODEL = os.environ.get("OMP_MODEL", "claude-opus-4-6")
 # To reach M1 Tailnet LiteLLM from M2: export LITELLM_API_KEY="" and make sure
 # omp resolves roxabituwer:4000 — no env-var override path exists without a custom
 # omp config file or custom --command launcher.
-OMP_LITELLM_BASE_URL = os.environ.get("OMP_LITELLM_BASE_URL", "http://localhost:4000/v1")
+OMP_LITELLM_BASE_URL = os.environ.get(
+    "OMP_LITELLM_BASE_URL", "http://localhost:4000/v1"
+)
 OMP_SESSION_DIR = Path(os.environ.get("OMP_SESSION_DIR", "/tmp/omp_spike_1807"))
 OMP_BIN = os.environ.get("OMP_BIN", "omp")  # override with full path if not on PATH
 
@@ -188,7 +190,8 @@ def run_text_turn() -> tuple[bool, str]:
 
 
 def _echo_execute(
-    params: dict[str, Any], ctx: HostToolContext[None]  # type: ignore[type-arg]
+    params: dict[str, Any],
+    ctx: HostToolContext[None],  # type: ignore[type-arg]
 ) -> str:
     """Synchronous host-tool — runs in threading.Thread, safe to block."""
     message = params.get("message", "")
@@ -232,6 +235,7 @@ def run_tool_turn() -> tuple[bool, str]:
             no_session=True,
             custom_tools=(_ECHO_TOOL,),
         ) as client:
+
             def on_tool_start(evt: ToolExecutionStartEvent) -> None:
                 collector.add_tool(
                     ToolUseLlmEvent(
@@ -261,15 +265,13 @@ def run_tool_turn() -> tuple[bool, str]:
                 "Use the echo_host tool with the message 'spike1807'."
             )
 
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — PoC: failure → probe FAIL
         return False, f"exception: {exc}"
 
     tool_calls = collector.tool_events
-    ok = (
-        len(tool_calls) >= 1
-        and tool_calls[0].tool_name == "echo_host"
-    )
-    details = f"tool_calls={[t.tool_name for t in tool_calls]} session_id={_session_id!r}"
+    ok = len(tool_calls) >= 1 and tool_calls[0].tool_name == "echo_host"
+    tool_names = [t.tool_name for t in tool_calls]
+    details = f"tool_calls={tool_names} session_id={_session_id!r}"
     return ok, details
 
 
@@ -310,7 +312,7 @@ def run_steer_probe() -> tuple[bool, str]:
                         "Please keep your reply very short — one sentence max.",
                     )
                     steer_sent.set()
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:  # noqa: BLE001 — PoC: to steer_error
                     steer_error.append(exc)
 
             t = threading.Thread(target=_steer_thread, daemon=True)
@@ -321,7 +323,7 @@ def run_steer_probe() -> tuple[bool, str]:
             )
             t.join(timeout=3.0)
 
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — PoC: failure → probe FAIL
         return False, f"exception: {exc}"
 
     if steer_error:
@@ -361,7 +363,7 @@ def run_abort() -> tuple[bool, str]:
                 time.sleep(0.3)
                 try:
                     client.abort()
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:  # noqa: BLE001 — PoC: to abort_error
                     abort_error.append(exc)
 
             t = threading.Thread(target=_abort_thread, daemon=True)
@@ -377,7 +379,7 @@ def run_abort() -> tuple[bool, str]:
 
             t.join(timeout=3.0)
 
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 — PoC: failure → probe FAIL
         return False, f"exception: {exc}"
 
     ok = len(abort_error) == 0
@@ -394,8 +396,12 @@ def main() -> None:
         description="Spike #1807 — omp-rpc PoC probes",
     )
     parser.add_argument("--text", action="store_true", help="Run probe 1: text turn")
-    parser.add_argument("--tool", action="store_true", help="Run probe 2: host-tool turn")
-    parser.add_argument("--steer", action="store_true", help="Run probe 3: steer injection")
+    parser.add_argument(
+        "--tool", action="store_true", help="Run probe 2: host-tool turn"
+    )
+    parser.add_argument(
+        "--steer", action="store_true", help="Run probe 3: steer injection"
+    )
     parser.add_argument("--abort", action="store_true", help="Run probe 4: abort")
     parser.add_argument("--all", action="store_true", help="Run all probes")
     args = parser.parse_args()
@@ -417,9 +423,14 @@ def main() -> None:
     OMP_SESSION_DIR.mkdir(parents=True, exist_ok=True)
 
     print(f"\nConfig: provider={OMP_PROVIDER!r} model={OMP_MODEL!r} bin={OMP_BIN!r}")
-    print(f"  NOTE: OMP_LITELLM_BASE_URL={OMP_LITELLM_BASE_URL!r} is informational only —")
+    print(
+        f"  NOTE: OMP_LITELLM_BASE_URL={OMP_LITELLM_BASE_URL!r} is informational only —"
+    )
     print("  there is no env-var override path into LiteLLMModelManagerConfig.baseUrl.")
-    print("  omp defaults to http://localhost:4000/v1. Port-forward or ssh-tunnel if needed.\n")
+    print(
+        "  omp defaults to http://localhost:4000/v1. "
+        "Port-forward or ssh-tunnel if needed.\n"
+    )
 
     col_w = 16
     print(f"{'PROBE':<{col_w}}  {'RESULT':<8}  DETAILS")

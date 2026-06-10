@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
   build-smoke:
@@ -16,6 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
+      # duplicated in the publish job — separate runners share no step context
       - name: Parse and validate pins from Containerfile
         id: pins
         run: |
@@ -63,9 +63,13 @@ jobs:
     if: github.ref == 'refs/heads/staging'
     needs: build-smoke
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
+      # re-parsed: separate runner, no shared step context with build-smoke
       - name: Parse and validate pins from Containerfile
         id: pins
         run: |

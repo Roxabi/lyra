@@ -174,6 +174,13 @@ set it via `PI_ROOT`/startup env if a custom launcher is used.
 
 ## C. omp distribution & Bun footprint
 
+> ⚠️ **CORRECTED by the live run (2026-06-10) — see `1807-spike-result.md` §Footprint.**
+> §C below concluded "not a compiled binary / ~450–700 MB". The live run used a **prebuilt
+> standalone ELF binary** `omp-linux-x64` v15.10.8 (~175 MB) from GitHub releases (the
+> `ci-release-build-binaries.ts` output flagged unread in §E). `factory-omp-base` = one ~175 MB
+> binary, no bun install / node_modules / Rust at runtime. The §C source-tree analysis below is
+> the *workspace-clone* path, not the deployment path.
+
 ### C.1 build/ship format
 
 **omp is NOT a compiled single binary.** The `omp` command in the container is a **bash shim**:

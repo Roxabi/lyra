@@ -138,6 +138,7 @@ def run_text_turn() -> tuple[bool, str]:
 
     try:
         with RpcClient(
+            executable=OMP_BIN,
             provider=OMP_PROVIDER,
             model=OMP_MODEL,
             no_session=True,  # we call new_session() manually
@@ -225,6 +226,7 @@ def run_tool_turn() -> tuple[bool, str]:
 
     try:
         with RpcClient(
+            executable=OMP_BIN,
             provider=OMP_PROVIDER,
             model=OMP_MODEL,
             no_session=True,
@@ -291,6 +293,7 @@ def run_steer_probe() -> tuple[bool, str]:
 
     try:
         with RpcClient(
+            executable=OMP_BIN,
             provider=OMP_PROVIDER,
             model=OMP_MODEL,
             no_session=True,
@@ -345,6 +348,7 @@ def run_abort() -> tuple[bool, str]:
 
     try:
         with RpcClient(
+            executable=OMP_BIN,
             provider=OMP_PROVIDER,
             model=OMP_MODEL,
             no_session=True,

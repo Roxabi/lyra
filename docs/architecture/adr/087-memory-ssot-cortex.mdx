@@ -1,0 +1,56 @@
+---
+title: "ADR-087: Long-term Memory SSoT = roxabi-cortex"
+description: "Arbitrate the three concurrent memory designs: roxabi-cortex owns long-term memory; docs/memory-system archived to the cortex repo; factory keeps short-term/working memory only"
+status: accepted
+---
+
+> **Current truth** → [`docs/architecture/storage.md`](../storage.md){#current-truth}
+> This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+
+## Status
+
+Accepted — 2026-06-10
+
+## Context
+
+Three memory designs coexisted with no written arbitration (critical review
+2026-06-09 §6, `artifacts/analyses/architecture-critical-review-2026-06-09.md`):
+
+1. **Factory L0–L4** (storage.md) — partial code: L0 active (pool history), L3
+   partial (per-user SQLite + BM25 + sqlite-vec), L1/L2/L4 deferred.
+2. **`docs/memory-system/`** — spec (April 2026, "ready for implementation"):
+   PostgreSQL/pgvector, knowledge graph, nightly consolidation, Ebbinghaus decay.
+3. **roxabi-cortex** — spec (2026-05-06): DuckDB lake/warehouse split, NATS-only
+   coupling, same core concepts as (2) re-decided with newer choices.
+
+The two specs overlap ~80% — (3) is the direct descendant of (2), reusing its
+terms (Compiled Truth, Retain Job, decay, nightly consolidation). The harness
+design spec (#1490, `artifacts/specs/1490-harness-design-spec.mdx`) already
+pre-selected cortex for memory injection. Keeping (2) in the factory docs tree
+gave readers a false mental model.
+
+## Decision
+
+- **roxabi-cortex is the SSoT for long-term memory.** Factory consumes it as a
+  thin-coupled satellite: one NATS request-reply subject
+  (`roxabi.memory.query.assemble`) at harness context-build time — no shared
+  imports, no direct DB access.
+- **`docs/memory-system/` is removed from this repo** and archived in
+  `roxabi-cortex/docs/archive/memory-system-v0-2026-04/` with a per-file
+  supersession map. Do not implement from the archived spec.
+- **Factory scope shrinks to short-term/working memory** (L0 pool history, L3
+  per-user recall as currently coded) — documented in storage.md. Long-term
+  evolution happens in cortex, not here.
+
+## Consequences
+
+- Open points now owned by the cortex ADR pipeline, to settle **before cortex
+  Mode 2** (cortex as recall SSoT):
+  - entity taxonomy = cortex ADR-009 (critical path, interview pending);
+  - group-chat write attribution (factory pool history is scope-scoped, memory
+    is user-scoped — who is credited?) → cortex ADR-009/010;
+  - namespace: cortex publishes `roxabi.*` while factory just finished the
+    `factory.*` rename — acceptable for a cross-project peer, but must become a
+    written decision (cortex ADR + acl-matrix entry) the day cortex boots.
+- The assemble call enters the harness SLA with graceful degradation: a turn
+  without memory beats a blocked turn (target p95 < 200 ms on the cortex side).

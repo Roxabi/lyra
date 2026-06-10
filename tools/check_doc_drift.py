@@ -93,7 +93,7 @@ def _collect_operational_docs(root: Path, seen: set[Path], out: list[Path]) -> N
 
     Narrative/onboarding/aspirational docs (QUICKSTART, GETTING-STARTED,
     HAPPY-PATHS, COMMANDS, MULTI-BOT, OBSERVABILITY, ROADMAP, vision,
-    code-quality-exceptions, debt-tracking, docs/memory-system/**,
+    code-quality-exceptions, debt-tracking,
     docs/history/**) are EXEMPT by omission — they cite illustrative or future
     code by design, so gating them would produce false positives.
     """

@@ -1,0 +1,31 @@
+# deploy/omp/models.yml — omp (oh-my-pi) provider override → factory LiteLLM proxy (#1811, Option D)
+#
+# Mounted into the omp config dir (relocated via PI_CODING_AGENT_DIR) so the
+# built-in `litellm` provider targets the factory proxy on :18091 instead of
+# its default http://localhost:4000/v1. Pure config — no TCP forward, no
+# upstream patch (options A/B/C superseded; see issue #1811).
+#
+# Invariants:
+# - `apiKey` holds an ENV VAR NAME, not a secret value. omp resolves
+#   `LITELLM_API_KEY` from the environment at runtime — safe to commit.
+# - The explicit `models:` list is REQUIRED, not cosmetic: omp's built-in
+#   discovery resolves the catalog URL from already-known models, not from
+#   this override, so an override-only entry would still discover against
+#   localhost:4000 (chicken-and-egg). Listed models inherit the provider
+#   baseUrl/api; missing capability metadata (context window, cost) backfills
+#   from omp's bundled references on id match.
+# - This list REPLACES discovery: a model added to the proxy is invisible to
+#   omp until it is added here.
+# - Quadlet wiring (secret mount, env injection, volume mount into the worker
+#   unit) is #1812's scope — this file only proves the config pattern.
+
+providers:
+  litellm:
+    baseUrl: http://roxabituwer.goose-logarithm.ts.net:18091/v1
+    api: openai-completions
+    apiKey: LITELLM_API_KEY
+    models:
+      - id: deepseek-v4-pro
+      - id: kimi-k2.6
+      - id: grok-4
+      - id: grok-4-fast

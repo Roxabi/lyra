@@ -6,6 +6,7 @@ Source: src/factory/llm/decorators.py
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncGenerator
 from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -293,6 +294,132 @@ class TestRetryDecorator:
         # Assert — order and identity preserved
         assert events == expected
 
+    async def test_retry_stream_exhausts_retries_then_raises(self) -> None:
+        """Inner ALWAYS raises ConnectionError before first event.
+
+        max_retries=3 → 4 total attempts; ConnectionError propagates after last.
+        Sleep called 3 times with delays [0.1, 0.2, 0.4].
+        """
+        # Arrange
+        call_count = 0
+
+        async def _agen_always_raises():  # type: ignore[no-untyped-def]
+            nonlocal call_count
+            call_count += 1
+            raise ConnectionError("connect refused")
+            yield  # pragma: no cover — unreachable; makes this an async generator
+
+        inner = MagicMock()
+        inner.stream = lambda *a, **k: _agen_always_raises()
+        inner.capabilities = {"streaming": True, "auth": "api_key"}
+
+        decorator = RetryDecorator(inner, max_retries=3, backoff_base=0.1)
+
+        # Act + Assert
+        with patch(
+            "factory.llm.decorators.asyncio.sleep", new_callable=AsyncMock
+        ) as mock_sleep:
+            with pytest.raises(ConnectionError, match="connect refused"):
+                async for _ in decorator.stream(
+                    pool_id="p1",
+                    text="hi",
+                    model_cfg=make_model_cfg(),
+                    system_prompt="",
+                ):
+                    pass
+
+        assert call_count == 4  # 1 initial + 3 retries
+        assert mock_sleep.call_count == 3
+        sleep_args = [call.args[0] for call in mock_sleep.call_args_list]
+        assert sleep_args[0] == pytest.approx(0.1)
+        assert sleep_args[1] == pytest.approx(0.2)
+        assert sleep_args[2] == pytest.approx(0.4)
+
+    async def test_retry_stream_retries_on_terminal_error_event_before_first_event(
+        self,
+    ) -> None:
+        """Attempt 1 yields terminal error before non-terminal → retry.
+
+        Attempt 2 yields TextLlmEvent + success terminal.
+        Consumer receives ONLY attempt-2 events (error event discarded).
+        """
+        # Arrange
+        attempt = 0
+
+        async def _agen_fail_then_succeed():  # type: ignore[no-untyped-def]
+            nonlocal attempt
+            attempt += 1
+            if attempt == 1:
+                yield ResultLlmEvent(is_error=True, duration_ms=1)
+            else:
+                yield TextLlmEvent(text="ok")
+                yield ResultLlmEvent(is_error=False, duration_ms=5)
+
+        inner = MagicMock()
+        inner.stream = lambda *a, **k: _agen_fail_then_succeed()
+        inner.capabilities = {"streaming": True, "auth": "api_key"}
+
+        decorator = RetryDecorator(inner, max_retries=3, backoff_base=0.1)
+
+        # Act
+        events: list = []
+        with patch("factory.llm.decorators.asyncio.sleep", new_callable=AsyncMock):
+            async for event in decorator.stream(
+                pool_id="p1",
+                text="hi",
+                model_cfg=make_model_cfg(),
+                system_prompt="",
+            ):
+                events.append(event)
+
+        # Assert — attempt 2 events only; error event from attempt 1 discarded
+        assert attempt == 2
+        assert len(events) == 2
+        assert isinstance(events[0], TextLlmEvent)
+        assert events[0].text == "ok"
+        assert isinstance(events[1], ResultLlmEvent)
+        assert events[1].is_error is False
+
+    async def test_retry_stream_exhausts_then_forwards_terminal_error(self) -> None:
+        """Inner ALWAYS yields ResultLlmEvent(is_error=True) before non-terminal.
+
+        max_retries=2 → 3 total attempts; consumer receives exactly ONE
+        terminal error event; sleep called 2 times.
+        """
+        # Arrange
+        call_count = 0
+
+        async def _agen_always_error():  # type: ignore[no-untyped-def]
+            nonlocal call_count
+            call_count += 1
+            yield ResultLlmEvent(is_error=True, duration_ms=1)
+
+        inner = MagicMock()
+        inner.stream = lambda *a, **k: _agen_always_error()
+        inner.capabilities = {"streaming": True, "auth": "api_key"}
+
+        decorator = RetryDecorator(inner, max_retries=2, backoff_base=0.1)
+
+        # Act
+        events: list = []
+        with patch(
+            "factory.llm.decorators.asyncio.sleep", new_callable=AsyncMock
+        ) as mock_sleep:
+            async for event in decorator.stream(
+                pool_id="p1",
+                text="hi",
+                model_cfg=make_model_cfg(),
+                system_prompt="",
+            ):
+                events.append(event)
+
+        # Assert — 3 total calls, 2 sleeps, exactly 1 terminal error event surfaced
+        assert call_count == 3
+        assert mock_sleep.call_count == 2
+        assert len(events) == 1
+        assert isinstance(events[0], ResultLlmEvent)
+        assert events[0].is_error is True
+
 
 # ---------------------------------------------------------------------------
 # CircuitBreakerDecorator
@@ -563,6 +690,86 @@ class TestCircuitBreakerDecorator:
         # Assert
         cb.record_failure.assert_not_called()
         cb.release_probe.assert_called_once()
+
+    async def test_cb_stream_records_failure_on_no_terminal_event(self) -> None:
+        """Stream ends with only TextLlmEvent(s) and no ResultLlmEvent (truncation).
+
+        record_failure called once; record_success not called.
+        """
+        # Arrange
+        cb = MagicMock(spec=CircuitBreaker)
+        cb.configure_mock(name="claude-cli")
+        cb.is_open.return_value = False
+
+        async def _agen(events):  # type: ignore[no-untyped-def]
+            for e in events:
+                yield e
+
+        inner = MagicMock()
+        inner.stream = lambda *a, **k: _agen(
+            [
+                TextLlmEvent(text="partial-1"),
+                TextLlmEvent(text="partial-2"),
+                # deliberately no ResultLlmEvent — truncated stream
+            ]
+        )
+        inner.capabilities = {"streaming": True, "auth": "api_key"}
+
+        decorator = CircuitBreakerDecorator(inner, cb)
+
+        # Act — consume fully
+        async for _ in decorator.stream(
+            pool_id="p1",
+            text="hi",
+            model_cfg=make_model_cfg(),
+            system_prompt="",
+        ):
+            pass
+
+        # Assert
+        cb.record_failure.assert_called_once()
+        cb.record_success.assert_not_called()
+
+    async def test_cb_stream_cancel_via_task_cancel_releases_probe(self) -> None:
+        """task.cancel() mid-stream: release_probe called; record_failure not called."""
+        # Arrange
+        cb = MagicMock(spec=CircuitBreaker)
+        cb.configure_mock(name="claude-cli")
+        cb.is_open.return_value = False
+
+        first_event_reached = asyncio.Event()
+
+        async def _agen_slow():  # type: ignore[no-untyped-def]
+            yield TextLlmEvent(text="first")
+            first_event_reached.set()
+            await asyncio.sleep(10)  # blocked — will be cancelled
+            yield ResultLlmEvent(is_error=False, duration_ms=10)
+
+        inner = MagicMock()
+        inner.stream = lambda *a, **k: _agen_slow()
+        inner.capabilities = {"streaming": True, "auth": "api_key"}
+
+        decorator = CircuitBreakerDecorator(inner, cb)
+
+        async def _consume() -> None:
+            async for _ in decorator.stream(
+                pool_id="p1",
+                text="hi",
+                model_cfg=make_model_cfg(),
+                system_prompt="",
+            ):
+                pass
+
+        # Act — start task, wait until it has consumed first event, then cancel
+        task = asyncio.create_task(_consume())
+        await first_event_reached.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        # Assert
+        cb.release_probe.assert_called_once()
+        cb.record_failure.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

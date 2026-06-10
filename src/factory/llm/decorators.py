@@ -80,7 +80,7 @@ class RetryDecorator:
         assert result is not None  # total_attempts ≥ 1
         return result
 
-    async def stream(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
+    async def stream(  # noqa: PLR0913, C901 — DEBT:wiring-bootstrap-deps
         self,
         pool_id: str,
         text: str,
@@ -89,38 +89,55 @@ class RetryDecorator:
         *,
         messages: list[dict] | None = None,
     ) -> AsyncIterator[LlmEvent]:
-        """Retry connect-time failures with exponential backoff.
+        """Retry connect-time and pre-first-event failures with exponential backoff.
 
-        Retries ONLY when the inner generator raises before yielding its first
-        event (connect-time failure). A failure after the first event is
-        propagated immediately — mid-stream retries are not safe because the
-        caller has already received partial data that cannot be replayed.
+        Retries when the inner generator raises before yielding its first
+        non-terminal event, OR when it yields a terminal ResultLlmEvent(is_error=True)
+        before any non-terminal event (connect-time failure). Once any non-terminal
+        event (TextLlmEvent, ThinkingLlmEvent, ToolUse*, ToolResult) has been
+        forwarded, never retry — the stream is live data and cannot be replayed.
         Cancellation (GeneratorExit / CancelledError) is never retried.
+        On retry exhaustion with a terminal error event → forward the event so
+        the consumer sees the failure. On exhaustion with an exception → re-raise.
         """
         total_attempts = self._max_retries + 1
         for attempt in range(total_attempts):
-            first_event_seen = False
+            first_non_terminal_seen = False
+            retry_after_error_event = False
             try:
                 async for event in self._inner.stream(
                     pool_id, text, model_cfg, system_prompt, messages=messages
                 ):
-                    first_event_seen = True
+                    if (
+                        isinstance(event, ResultLlmEvent)
+                        and event.is_error
+                        and not first_non_terminal_seen
+                    ):
+                        # terminal error before any non-terminal event → retryable
+                        if attempt < self._max_retries:
+                            retry_after_error_event = True
+                            break  # discard this terminal error; retry a fresh stream
+                        yield event  # retries exhausted → surface the failure
+                        return
+                    if not isinstance(event, ResultLlmEvent):
+                        first_non_terminal_seen = True
                     yield event
-                return  # stream completed normally
             except (GeneratorExit, asyncio.CancelledError):
-                raise  # never swallow cancellation
+                raise  # never retry cancellation
             except Exception:
-                if first_event_seen or attempt >= self._max_retries:
-                    raise  # mid-stream failure (can't replay) or retries exhausted
-                delay = self._backoff_base * (2**attempt)
-                log.warning(
-                    "stream error (attempt %d/%d) — retrying in %.1fs",
-                    attempt + 1,
-                    total_attempts,
-                    delay,
-                )
-                await asyncio.sleep(delay)
-                # loop → next attempt
+                if first_non_terminal_seen or attempt >= self._max_retries:
+                    raise  # mid-stream (can't replay) or retries exhausted
+            else:
+                if not retry_after_error_event:
+                    return  # stream finished normally (success terminal or clean end)
+            delay = self._backoff_base * (2**attempt)
+            log.warning(
+                "stream connect error (attempt %d/%d) — retrying in %.1fs",
+                attempt + 1,
+                total_attempts,
+                delay,
+            )
+            await asyncio.sleep(delay)
 
     def is_alive(self, pool_id: str) -> bool:
         return self._inner.is_alive(pool_id)
@@ -202,7 +219,7 @@ class CircuitBreakerDecorator:
             async for event in self._inner.stream(
                 pool_id, text, model_cfg, system_prompt, messages=messages
             ):
-                if isinstance(event, ResultLlmEvent):
+                if isinstance(event, ResultLlmEvent) and not outcome_recorded:
                     if event.is_error:
                         self._cb.record_failure()
                     else:

@@ -63,9 +63,10 @@ history naturally because the pool flow is unchanged.
   command requires only one new file — no edits to core modules. The registry pattern
   follows the established `LlmProvider` / driver registry precedent (ADR-016). One
   instance per request avoids shared-state races.
-- **Cons:** `post()` is only called in the non-streaming branch. A processor registered
+- **Cons:** ~~`post()` is only called in the non-streaming branch. A processor registered
   against a streaming agent silently drops its post-hook. A runtime guard
-  (`NotImplementedError`) is added to catch this misconfiguration early.
+  (`NotImplementedError`) is added to catch this misconfiguration early.~~ **[Superseded
+  #372 — see banner]**
 
 ### Option C: Plugin command + manual history append
 

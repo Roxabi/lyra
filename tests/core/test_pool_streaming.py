@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import collections.abc
+import logging
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -449,8 +450,41 @@ class TestRunStreamingTurnPost:
     async def test_noop_when_processor_none(self) -> None:
         from factory.core.pool.pool_processor_streaming import run_streaming_turn_post
 
-        # processor None → returns before awaiting the event: no hang, no error.
-        await run_streaming_turn_post(None, asyncio.Event(), make_msg("hi"), ["x"])
+        # processor None → returns before awaiting the (un-set) event. wait_for makes a
+        # regressed guard fail fast (TimeoutError) rather than hang the suite.
+        await asyncio.wait_for(
+            run_streaming_turn_post(None, asyncio.Event(), make_msg("hi"), ["x"]),
+            timeout=TIMEOUT_IO,
+        )
+
+    async def test_noop_when_stream_done_event_none(self) -> None:
+        from factory.core.pool.pool_processor_streaming import run_streaming_turn_post
+
+        processor = MagicMock()
+        processor.post = AsyncMock()
+        # stream_done_event None → guard returns before touching the event or post().
+        await asyncio.wait_for(
+            run_streaming_turn_post(processor, None, make_msg("hi"), ["x"]),
+            timeout=TIMEOUT_IO,
+        )
+        processor.post.assert_not_awaited()
+
+    async def test_post_exception_is_swallowed(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from factory.core.pool.pool_processor_streaming import run_streaming_turn_post
+
+        processor = MagicMock()
+        processor.post = AsyncMock(side_effect=RuntimeError("boom"))
+        done = asyncio.Event()
+        done.set()
+
+        # Broad boundary catch: a failing post() is logged, never propagated.
+        with caplog.at_level(logging.WARNING):
+            await run_streaming_turn_post(processor, done, make_msg("hi"), ["x"])
+
+        processor.post.assert_awaited_once()
+        assert "Processor post() failed" in caplog.text
 
     async def test_cancellation_propagates_into_post_hook(self) -> None:
         """#1820: awaiting post() directly (not via `await create_task`) means a

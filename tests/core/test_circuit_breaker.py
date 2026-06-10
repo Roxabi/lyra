@@ -211,6 +211,40 @@ def test_half_open_probe_slot_blocks_concurrent_calls(monkeypatch):
     assert cb.is_open() is False  # now CLOSED, open calls pass through
 
 
+# --- release_probe() — RED phase (#1819) ---
+
+
+def test_release_probe_clears_flag_no_transition(monkeypatch):
+    """release_probe() in HALF_OPEN: clears _probe_in_flight; no state transition."""
+    cb = CircuitBreaker("test", failure_threshold=1, recovery_timeout=1)
+    cb.record_failure()
+    original = time.monotonic()
+    monkeypatch.setattr(time, "monotonic", lambda: original + 2)
+    cb.is_open()  # transitions to HALF_OPEN, acquires probe
+    assert cb._state == CircuitState.HALF_OPEN
+    assert cb._probe_in_flight is True
+
+    # Act
+    cb.release_probe()
+
+    # Assert — probe slot cleared, state still HALF_OPEN (not CLOSED or OPEN)
+    assert cb._probe_in_flight is False
+    assert cb._state == CircuitState.HALF_OPEN
+
+
+def test_release_probe_noop_when_closed():
+    """release_probe() in CLOSED state: no-op, no exception."""
+    cb = CircuitBreaker("test", failure_threshold=3, recovery_timeout=60)
+    assert cb._state == CircuitState.CLOSED
+
+    # Act — must not raise
+    cb.release_probe()
+
+    # Assert — state unchanged
+    assert cb._state == CircuitState.CLOSED
+    assert cb._probe_in_flight is False
+
+
 # --- Open timer reset on continued failure ---
 
 

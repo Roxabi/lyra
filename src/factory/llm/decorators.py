@@ -8,7 +8,7 @@ from collections.abc import AsyncIterator
 
 from factory.core.agent.agent_config import ModelConfig
 from factory.core.lifecycle.circuit_breaker import CircuitBreaker
-from factory.core.messaging.events import LlmEvent
+from factory.core.messaging.events import LlmEvent, ResultLlmEvent
 from factory.llm.base import LlmProvider, LlmResult
 
 log = logging.getLogger(__name__)
@@ -89,11 +89,38 @@ class RetryDecorator:
         *,
         messages: list[dict] | None = None,
     ) -> AsyncIterator[LlmEvent]:
-        """Delegate streaming to inner provider (no retry — stream is live data)."""
-        async for event in self._inner.stream(
-            pool_id, text, model_cfg, system_prompt, messages=messages
-        ):
-            yield event
+        """Retry connect-time failures with exponential backoff.
+
+        Retries ONLY when the inner generator raises before yielding its first
+        event (connect-time failure). A failure after the first event is
+        propagated immediately — mid-stream retries are not safe because the
+        caller has already received partial data that cannot be replayed.
+        Cancellation (GeneratorExit / CancelledError) is never retried.
+        """
+        total_attempts = self._max_retries + 1
+        for attempt in range(total_attempts):
+            first_event_seen = False
+            try:
+                async for event in self._inner.stream(
+                    pool_id, text, model_cfg, system_prompt, messages=messages
+                ):
+                    first_event_seen = True
+                    yield event
+                return  # stream completed normally
+            except (GeneratorExit, asyncio.CancelledError):
+                raise  # never swallow cancellation
+            except Exception:
+                if first_event_seen or attempt >= self._max_retries:
+                    raise  # mid-stream failure (can't replay) or retries exhausted
+                delay = self._backoff_base * (2**attempt)
+                log.warning(
+                    "stream error (attempt %d/%d) — retrying in %.1fs",
+                    attempt + 1,
+                    total_attempts,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+                # loop → next attempt
 
     def is_alive(self, pool_id: str) -> bool:
         return self._inner.is_alive(pool_id)
@@ -153,11 +180,45 @@ class CircuitBreakerDecorator:
         *,
         messages: list[dict] | None = None,
     ) -> AsyncIterator[LlmEvent]:
-        """Delegate to inner provider (circuit check applies to complete() only)."""
-        async for event in self._inner.stream(
-            pool_id, text, model_cfg, system_prompt, messages=messages
-        ):
-            yield event
+        """Guard streaming behind the circuit breaker.
+
+        Open circuit → yields exactly one ResultLlmEvent(is_error=True) without
+        calling inner. Closed/half-open → forwards inner events; records
+        success/failure on the terminal ResultLlmEvent. Cancellation
+        (GeneratorExit / CancelledError) releases the probe slot instead of
+        recording a failure so the half-open probe flag is not left stuck.
+        """
+        if self._cb.is_open():
+            status = self._cb.get_status()
+            retry_after = status.retry_after or 0.0
+            msg = f"Circuit '{self._cb.name}' is open. Retry in {retry_after:.0f}s."
+            yield ResultLlmEvent(
+                is_error=True, duration_ms=0, error_text=msg, worker_error=None
+            )
+            return
+
+        outcome_recorded = False
+        try:
+            async for event in self._inner.stream(
+                pool_id, text, model_cfg, system_prompt, messages=messages
+            ):
+                if isinstance(event, ResultLlmEvent):
+                    if event.is_error:
+                        self._cb.record_failure()
+                    else:
+                        self._cb.record_success()  # no-op when CLOSED; intentional
+                    outcome_recorded = True
+                yield event
+            if not outcome_recorded:
+                self._cb.record_failure()  # stream ended with no terminal event
+        except (GeneratorExit, asyncio.CancelledError):
+            if not outcome_recorded:
+                self._cb.release_probe()  # cancelled mid-probe: free slot, no failure
+            raise
+        except Exception:
+            if not outcome_recorded:
+                self._cb.record_failure()
+            raise
 
     def is_alive(self, pool_id: str) -> bool:
         return self._inner.is_alive(pool_id)

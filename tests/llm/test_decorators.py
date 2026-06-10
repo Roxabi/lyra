@@ -742,7 +742,7 @@ class TestCircuitBreakerDecorator:
         async def _agen_slow():  # type: ignore[no-untyped-def]
             yield TextLlmEvent(text="first")
             first_event_reached.set()
-            await asyncio.sleep(10)  # blocked — will be cancelled
+            await asyncio.Event().wait()  # park until cancelled (never set)
             yield ResultLlmEvent(is_error=False, duration_ms=10)
 
         inner = MagicMock()

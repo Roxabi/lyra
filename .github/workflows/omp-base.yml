@@ -13,7 +13,7 @@ jobs:
   build-smoke:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       # duplicated in the publish job — separate runners share no step context
       - name: Parse and validate pins from Containerfile
@@ -44,7 +44,7 @@ jobs:
       - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
 
       - name: Build smoke stage
-        uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75 # v6.9.0
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: deploy/omp-base
           file: deploy/omp-base/Containerfile
@@ -67,7 +67,7 @@ jobs:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       # re-parsed: separate runner, no shared step context with build-smoke
       - name: Parse and validate pins from Containerfile
@@ -95,7 +95,7 @@ jobs:
           echo "version=${VER}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+      - uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -118,7 +118,7 @@ jobs:
 
       - name: Build carrier stage
         if: steps.guard.outputs.skip != 'true'
-        uses: docker/build-push-action@4f58ea79222b3b9dc2c8bbdd6debcef730109a75 # v6.9.0
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: deploy/omp-base
           file: deploy/omp-base/Containerfile

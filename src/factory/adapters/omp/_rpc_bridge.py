@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.errors import WorkerError
 from roxabi_contracts.jobs.models import JobProgress, JobResult
-from roxabi_contracts.jobs.subjects import jobs_progress, jobs_result
+from roxabi_contracts.jobs.subjects import jobs_progress, jobs_result, jobs_steer
 
 if TYPE_CHECKING:
     import nats
@@ -139,14 +139,30 @@ class RpcBridge:
         """Run a prompt through omp_rpc; publishes progress and result to NATS.
 
         Stores job_id on self for callback access during prompt_and_wait.
+        Subscribes factory.job.<job_id>.steer while prompt_and_wait is in flight;
+        unsubscribes unconditionally in the finally block.
         No bare except — exceptions propagate to the caller (OmpWorker.handle).
         """
         self._current_job_id = job_id
         self._in_prompt_await = True
+        nc = self._nc
+
+        async def _handle_steer_msg(msg: Any) -> None:
+            if not self._in_prompt_await:
+                log.debug("rpc_bridge: steer message dropped — no active job")
+                return
+            text = msg.data.decode("utf-8", errors="replace")
+            await self._client.steer(text)
+
+        steer_sub = None
+        if nc is not None:
+            steer_sub = await nc.subscribe(jobs_steer(job_id), cb=_handle_steer_msg)
         try:
             await self._client.prompt_and_wait(prompt)
         finally:
             self._in_prompt_await = False
+            if steer_sub is not None:
+                await steer_sub.unsubscribe()
 
     async def steer(self, job_id: str, text: str) -> None:
         """Fire-and-forget steer; must NOT be called inside prompt_and_wait."""

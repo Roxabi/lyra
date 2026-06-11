@@ -20,12 +20,17 @@ from factory.core.auth.trust import TrustLevel
 from factory.core.messaging.message import InboundMessage, TelegramMeta
 from factory.core.pool.pool_observer import PoolObserver
 from factory.llm.cli_nats_codec import CliNatsCodec
-from roxabi_contracts import new_job_id
+from factory.transport.turn_publisher import TurnPublisher
 from roxabi_contracts.turns import TurnWriteEvent
 
 _MODEL = ModelConfig(backend="nats", model="claude-sonnet-4-6")
 _SESSION_ID = "sess-sc7-test"
 _POOL_ID = "pool:tg:chat:42"
+
+# Hardcoded 32-char hex literal for fixture use — spec SC-7 "explicit root_job_id".
+# Tests that exercise *threading* (not format) use this constant so the fixture
+# is self-contained and decoupled from new_job_id() format changes.
+_ROOT_JOB_ID = "a" * 32
 
 
 def _make_inbound_message_with_root_job_id(root_job_id: str) -> InboundMessage:
@@ -51,7 +56,7 @@ class TestCliNatsCodecRootJobIdThreading:
     """SC-7 / codec leg: adapter receipt → LlmRequest.job_id == minted root."""
 
     def test_encode_with_root_job_id_propagates_to_llm_request(self) -> None:
-        minted = new_job_id()
+        minted = _ROOT_JOB_ID
         codec = CliNatsCodec()
         payload, _ = codec.encode(
             "hello",
@@ -84,7 +89,7 @@ class TestCliNatsCodecRootJobIdThreading:
 
     def test_encode_two_calls_with_same_root_job_id_share_job_id(self) -> None:
         """root_job_id is threaded, not re-minted on every encode call."""
-        minted = new_job_id()
+        minted = _ROOT_JOB_ID
         codec = CliNatsCodec()
         payload1, _ = codec.encode(
             "turn 1", _MODEL, "sys", None, stream=False, root_job_id=minted
@@ -97,7 +102,7 @@ class TestCliNatsCodecRootJobIdThreading:
 
     def test_encode_trace_id_is_independent_of_root_job_id(self) -> None:
         """trace_id is always a fresh UUID; root_job_id does not replace it."""
-        minted = new_job_id()
+        minted = _ROOT_JOB_ID
         codec = CliNatsCodec()
         payload, trace_id = codec.encode(
             "hello", _MODEL, "sys", None, stream=False, root_job_id=minted
@@ -114,13 +119,11 @@ class TestPoolObserverRootJobIdThreading:
     @pytest.mark.anyio
     async def test_append_propagates_root_job_id_to_publish_log_turn(self) -> None:
         """append() with root_job_id-carrying message passes it to publish_log_turn."""
-        minted = new_job_id()
+        minted = _ROOT_JOB_ID
         msg = _make_inbound_message_with_root_job_id(minted)
 
         mock_js = MagicMock()
         mock_js.publish = AsyncMock(return_value=MagicMock())
-
-        from factory.transport.turn_publisher import TurnPublisher
 
         publisher = TurnPublisher(mock_js)
 
@@ -157,8 +160,6 @@ class TestPoolObserverRootJobIdThreading:
         mock_js = MagicMock()
         mock_js.publish = AsyncMock(return_value=MagicMock())
 
-        from factory.transport.turn_publisher import TurnPublisher
-
         publisher = TurnPublisher(mock_js)
         obs = PoolObserver(pool_id=_POOL_ID, session_id_fn=lambda: _SESSION_ID)
         obs.register_turn_publisher(publisher)
@@ -171,3 +172,52 @@ class TestPoolObserverRootJobIdThreading:
         event = TurnWriteEvent.model_validate(json.loads(raw.decode()))
         # Falls back to new_job_id() — must be a non-empty string
         assert isinstance(event.job_id, str) and len(event.job_id) > 0
+
+
+class TestRootJobIdEndToEnd:
+    """SC-7 combined: both legs use the SAME minted value.
+
+    Guards against double-mint regression where PoolObserver.append uses
+    msg.root_job_id but CliNatsCodec.encode mints a fresh ID independently.
+    Both TurnWriteEvent.job_id and LlmRequest.job_id must equal _ROOT_JOB_ID.
+    """
+
+    @pytest.mark.anyio
+    async def test_append_and_encode_share_same_root_job_id(self) -> None:
+        """Single fixed root_job_id propagates through both observer and codec legs."""
+        root_job_id = _ROOT_JOB_ID
+        msg = _make_inbound_message_with_root_job_id(root_job_id)
+
+        # --- Observer leg: InboundMessage → PoolObserver.append → TurnWriteEvent ---
+        mock_js = MagicMock()
+        mock_js.publish = AsyncMock(return_value=MagicMock())
+        publisher = TurnPublisher(mock_js)
+        obs = PoolObserver(pool_id=_POOL_ID, session_id_fn=lambda: _SESSION_ID)
+        obs.register_turn_publisher(publisher)
+        await obs.append(msg, session_id=_SESSION_ID)
+
+        mock_js.publish.assert_called_once()
+        _, raw = mock_js.publish.call_args[0]
+        event = TurnWriteEvent.model_validate(json.loads(raw.decode()))
+
+        # --- Codec leg: msg.root_job_id → CliNatsCodec.encode → LlmRequest ---
+        codec = CliNatsCodec()
+        payload, _ = codec.encode(
+            msg.text or "",
+            _MODEL,
+            "sys",
+            None,
+            stream=False,
+            root_job_id=msg.root_job_id,
+        )
+        body = json.loads(payload)
+
+        # Both legs must carry the SAME root id; no double-mint.
+        assert event.job_id == root_job_id, (
+            f"TurnWriteEvent.job_id {event.job_id!r} != root_job_id {root_job_id!r}"
+        )
+        assert body["job_id"] == root_job_id, (
+            f"LlmRequest.job_id {body['job_id']!r} != root_job_id {root_job_id!r}"
+        )
+        # SC-7: parent_job_id not populated by this issue
+        assert body.get("parent_job_id") is None

@@ -1,0 +1,59 @@
+---
+title: "feat(infra): active-jobs registry — factory-active-jobs NATS-KV (singleton index, hub-writer, TTL)"
+issue: 1796
+status: approved
+tier: F-lite
+date: 2026-06-11
+---
+
+## Problem
+
+The hub's busy/steerable state lives in-process only: `pool._current_task` (`src/factory/core/pool/pool.py:102` — is a run active on this conversation?) and `TypingPublisher._refcount` (`src/factory/transport/typing_publisher.py:27`, keyed `tuple[str, str, int]`). The moment a job runs out-of-process (Shape B workers #1044, Shape D stateful runs #1792), the hub is blind: it cannot answer "is pool X busy?", cannot route an inbound message to `steer | queue | fresh` (#1797), and a dashboard cannot show live jobs (#1800 v1).
+
+#1796 lifts that state into a shared **`factory-active-jobs`** NATS-KV registry — keyed `job_id`, with a `pool_id → job_id` singleton secondary index — so cross-process job state survives and is observable. It is the foundation child of epic #1792: #1797 (router), #1798 (sub-jobs), #1799 (steer), #1800 (dashboard) all read it.
+
+**Drift since issue creation (2026-06-08):** the cited SSoT `artifacts/analyses/job-model-concept-analysis.md` was graduated and archived with a SUPERSEDED banner (`a5a20301`). The live SSoT is **`docs/architecture/job-model.md`** (§Active-jobs registry, §Concurrency, §Observability) — schema, writer rule, liveness model, and mode partition are all ratified there. No design re-litigation needed; the frame anchors on the graduated doc.
+
+## Who
+
+- **Primary:** hub (sole writer — opens/closes/refreshes entries per run) and the #1797 concurrency_router (first reader: `fresh | steer | queue` decision at ingress).
+- **Secondary:** #1800 dashboard v1 (`kv.watch` on the bucket), #1624 worker-driven typing (reads the same active-job state), #1799 steer (resolves `steer_subject` from the entry), ops (live-jobs visibility on M₁).
+
+## Constraints
+
+- **Ratified schema (job-model.md, not re-decidable here):** key = `job_id`; value `{pool_id, status: open|closing, started_at, steer_subject, concurrency_mode, worker_loc?}`; secondary index `pool_id → job_id` **singleton**, enforced for `steer`/`queue` modes only; `parallel` mode is NOT pool-scoped (keyed `job_id` only, no index entry).
+- **Writer = HUB only.** Workers never write the registry. Shape D liveness uses the **heartbeat-message pattern** (precedent `factory.clipool.heartbeat`, `clipool_worker.py` `_HEARTBEAT_SUBJECT` / **ADR-049** heartbeat contract — note: the issue body mis-cites ADR-075, which is the TurnWriter subscriber, not heartbeats): the worker publishes a heartbeat message; the hub consumes it and performs the TTL-refreshing KV re-put. Shapes A/B/C: the hub drives TTL refresh from `pool._current_task`. The spec must fix the heartbeat subjects and refresh cadence explicitly — unresolved producers leave stale `open` entries until TTL lapse (2026-06-08 review refinement).
+- **Lifecycle (ratified):** CLOSE = terminal `JobResult` (authoritative, event-driven delete); heartbeat = TTL refresh fallback; reap = TTL lapse safety net for crash-before-terminal.
+- **KV key charset (project memory, #1721 outage):** `pool_id` contains colons (`telegram:lyra:…`) which nats-py `VALID_KEY_RE` rejects — silent total-outage class. All KV stores MUST key through `src/factory/infrastructure/stores/_kv_keys.py`. The `pool_id → job_id` index keys MUST be sanitized through the same helper.
+- **Provisioning pattern (paved):** hub-only create-or-open **before `announce_hub_ready()`** — the model is `factory-state` in `bootstrap/wiring/kv_watch_channels.py` (hub-only, pre-ready). (`blobstore/serve.py` also does create-or-open but as sidecar best-effort — NOT the model here.) New bucket = new ACL surface: `$KV.factory-active-jobs.>` publish for hub → **ACL fan-out** (regen 4 artifacts + hand-mirror `tests/scripts/fixtures/v3-pre-grant-group.json`; equivalence checks CI-only).
+- **Bucket config pinned day-1:** spec must pin `allow_direct` on `KeyValueConfig` at creation (changing it later = bucket recreation). The choice shapes the #1800 read path and reader ACLs — document the rationale in the spec.
+- **Reader ACL (#1797/#1800):** readers inside the hub process need no new grant. Out-of-hub readers SHOULD use `kv.get` (zero-ACL via #1572 `STREAM.MSG.GET`) rather than `kv.watch` (needs ephemeral-consumer grants); if `kv.watch` is chosen for any reader, it is a separate ACL grant with its own regen pass (#1800's problem, but the spec must not foreclose it).
+- **TTL semantics:** TTL is bucket-level (`max_age`) in NATS KV; per-key refresh = re-put. Heartbeat cadence must be < bucket TTL with margin. Both values = **named constants** (the store module lives under `infrastructure/`, but anything landing under `src/factory/core/` falls under the `hardcoded_constants` gate — named + imported, never inlined).
+- **`parallel` mode preservation (review refinement F4):** the registry replaces `_refcount` only for `steer`/`queue`. For `parallel`, multiple jobs share one `(platform, bot, scope)` — coexistence strategy is an **open spec decision** (options: keep `TypingPublisher._refcount` alongside, registry-side counting); ref-counting semantics must survive either way.
+- **Layering + axial:** store module belongs in `src/factory/infrastructure/stores/` (sibling of `message_index_kv.py`; test anchor `tests/infrastructure/stores/test_message_index_kv.py`, AsyncMock pattern). `folder_size` gate: stores/ = 13 `.py` files today, `QG_FOLDER_MAX=15` (qg.conf) → 14 after addition, no exemption needed. Import-linter layers gate applies — the pool/hub side consumes the store via an injected port/protocol, never `import factory.infrastructure` from `core/`. A PR touching top-level `core/` + `infrastructure/` auto-triggers the `dev-core:axial-adr-review` label (CLAUDE.md) — expected, don't strip it.
+
+## Out of Scope
+
+- The `fresh | steer | queue` routing decision itself — #1797 (concurrency_router, single shared inbound stage).
+- Sub-jobs pub/sub migration (#1798), steer end-to-end (#1799), dashboard (#1800 — including its `kv.watch` ephemeral-consumer ACLs; the registry only has to be watchable).
+- Worker-driven typing rewiring (#1624) — reads this registry later; no typing code changes here.
+- JOBS dispatch stream (#1203) — different tier (at-least-once dispatch); zero file overlap expected (parallel track).
+- Replacing `pool._current_task` as the pool's own internal scheduler state — the registry mirrors run-state for cross-process consumers; the in-process pool keeps its task handle.
+
+## Premise Validity
+
+**Success in 6 months:** `factory-active-jobs` provisioned at hub boot; every envelope-driven run gets an entry at open and a delete at terminal `JobResult`; singleton index enforced for `steer`/`queue`; a killed worker's entry disappears by TTL reap — observed via `nats kv get factory-active-jobs <job_id>` (hub seed) after kill + TTL+margin, and asserted by an integration-level test (faked TTL acceptable). #1797 router reads the registry instead of in-memory state, and #1800 v1 watches it. The cross-process busy/steerable window is queryable by `job_id` AND by `pool_id`.
+
+**Failure in 6 months:** By 2026-12, either (a) the registry has **0 readers** in `src/` (checkable: `grep -r "factory-active-jobs\|active_jobs" src/` shows only the writer) — #1797 still routes from `pool._current_task` in-memory and the bucket is write-only bookkeeping — or (b) stale `open` entries persist past TTL+margin (probe: kill a worker mid-run, `nats kv get` the entry after the TTL window — entry still `open` = liveness wiring broken), forcing readers back to in-memory state. Either condition = the underlying problem (cross-process visibility) is unsolved → redesign the liveness wiring.
+
+**Simplest alternative:** no registry — query state on demand (request-reply ping to pool/workers per inbound message) and keep `TypingPublisher._refcount` as-is.
+**Why not simplest:** Shape D runs outlive a hub restart, so in-memory + ping loses the steer window exactly when it matters; per-message polling adds latency and a read-then-act race at ingress; and there is nothing watchable for the #1800 dashboard. KV gives durable state + TTL liveness + watchability in one paved primitive. Ratified in `docs/architecture/job-model.md` after the 2026-06-08 convergence; the cheaper in-between (reuse `factory-state` bucket) fails on lifecycle semantics — registry entries are ephemeral/TTL'd, `factory-state` is durable config.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (infrastructure/stores + hub wiring), schema and liveness model pre-ratified; the open points (heartbeat subjects/cadence, `allow_direct`, parallel-mode coexistence) are spec-level decisions.
+
+Signals observed:
+- Label `size:F-lite`; design fully converged in job-model.md (no unknowns, no new architecture).
+- Touch surface: one new store module + `_kv_keys` reuse, hub bootstrap wiring, `deploy/nats/acl-matrix.json` + regen artifacts, tests — single domain.
+- Paved precedents for every mechanism: `factory-state` provisioning (hub-only pre-ready), `message_index_kv.py` store shape, ADR-049 heartbeat pattern.

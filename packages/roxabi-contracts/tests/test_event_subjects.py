@@ -31,12 +31,12 @@ def test_per_service_metric() -> None:
 
 
 def test_per_service_event_rejects_dot_in_service() -> None:
-    with pytest.raises(ValueError, match="segment"):
+    with pytest.raises(ValueError, match="NATS subject segment must match"):
         per_service_event("hub.prod", "startup")
 
 
 def test_per_service_event_rejects_wildcard() -> None:
-    with pytest.raises(ValueError, match="segment"):
+    with pytest.raises(ValueError, match="NATS subject segment must match"):
         per_service_event("hub*", "startup")
 
 
@@ -53,3 +53,14 @@ def test_per_service_metric_rejects_consecutive_dots() -> None:
 def test_per_service_metric_rejects_empty() -> None:
     with pytest.raises(ValueError, match="token"):
         per_service_metric("hub", "")
+
+
+_UNSAFE_SEGMENT_IDS = ["hub.prod", "hub*", "hub>", "hub space", ""]
+
+
+@pytest.mark.parametrize("bad_id", _UNSAFE_SEGMENT_IDS)
+def test_segment_charset_rejection(bad_id: str) -> None:
+    with pytest.raises(ValueError, match="NATS subject segment must match"):
+        per_service_event(bad_id, "startup")
+    with pytest.raises(ValueError, match="NATS subject segment must match"):
+        per_service_metric(bad_id, "request.count")

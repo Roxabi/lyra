@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from roxabi_contracts._nats_utils import _validate_subject_segment
+from roxabi_contracts._nats_utils import validate_subject_segment
 
 __all__ = [
     "SUBJECTS",
@@ -44,5 +44,5 @@ def verify_deny(identity: str) -> str:
     Raises ``ValueError`` if ``identity`` contains characters outside
     ``[A-Za-z0-9_-]`` (the acl-matrix identity charset).
     """
-    _validate_subject_segment(identity)
+    validate_subject_segment(identity)
     return f"{SUBJECTS.deny_prefix}.{identity}"

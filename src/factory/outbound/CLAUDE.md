@@ -71,8 +71,9 @@ The architectural-decision record for the stage-axis pivot is deferred to Phase 
 (#1284, epic #1277 final cleanup phase). Until then, the SSoT is
 `artifacts/analyses/1277-stage-axis-refactor-strategy.mdx`.
 
-## DEBT: enforcement-deferred
+## Enforcement: bus-bound str(exc) gate
 
-A pre-commit grep check for bus-bound `str(exc)` patterns on outbound paths was scoped
-out of #1279 — the merge-time AC grep in the spec is the sole gate for this PR.
-Follow-up issue should add a `tools/check_outbound_str_exc.sh` pre-commit hook.
+`tools/check_str_exc_bus_bound.sh` (quality gate, pre-commit) covers `src/factory/outbound/`
+as one of its five bus-bound scan roots. It blocks `str(exc)` / `f"{exc}"` / `repr(exc)` from
+flowing into `SanitizedError` construction or NATS-bus-bound message fields. Escape hatch:
+`# str-exc-ok: <reason>` on the offending line. Debt from #1279 retired by #1835.

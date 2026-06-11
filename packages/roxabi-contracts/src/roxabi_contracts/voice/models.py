@@ -1,8 +1,8 @@
 """Voice-domain NATS contract models.
 
 Pure Pydantic. No NATS imports. No transport logic. Every model subclasses
-ContractEnvelope, which provides (contract_version, trace_id, issued_at)
-plus ConfigDict(extra="ignore") for forward-compat.
+WorkEnvelope, which provides (contract_version, trace_id, issued_at, job_id)
+plus ConfigDict(extra="ignore") for forward-compat (ADR-084).
 
 See artifacts/specs/763-port-voice-domain-spec.mdx §Known drift for the
 rationale on optional-but-invariant fields on response models.
@@ -15,11 +15,11 @@ from typing import Annotated, Self
 from pydantic import StringConstraints, model_validator
 
 from roxabi_contracts.blob_ref import BlobRef
-from roxabi_contracts.envelope import ContractEnvelope
+from roxabi_contracts.envelope import WorkEnvelope
 from roxabi_contracts.errors import WorkerError
 
 
-class TtsRequest(ContractEnvelope):
+class TtsRequest(WorkEnvelope):
     """TTS synthesis request. Canonical subject: ``factory.voice.tts.request``."""
 
     request_id: Annotated[str, StringConstraints(min_length=1)]
@@ -42,7 +42,7 @@ class TtsRequest(ContractEnvelope):
     chunk_size: int | None = None
 
 
-class TtsResponse(ContractEnvelope):
+class TtsResponse(WorkEnvelope):
     """TTS synthesis response.
 
     Success-path invariant (enforced by ``_enforce_success_invariant``):
@@ -72,7 +72,7 @@ class TtsResponse(ContractEnvelope):
         return self
 
 
-class SttRequest(ContractEnvelope):
+class SttRequest(WorkEnvelope):
     """STT transcription request. Canonical subject: ``factory.voice.stt.request``."""
 
     request_id: Annotated[str, StringConstraints(min_length=1)]
@@ -90,7 +90,7 @@ class SttRequest(ContractEnvelope):
     task: str | None = None
 
 
-class SttResponse(ContractEnvelope):
+class SttResponse(WorkEnvelope):
     """STT transcription response.
 
     Success-path invariant (enforced by ``_enforce_success_invariant``):

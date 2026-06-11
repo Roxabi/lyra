@@ -31,7 +31,7 @@ import pytest
 
 from factory.infrastructure.stores.turn_store import TurnStore
 from factory.infrastructure.turn_writer.writer import TurnWriter
-from roxabi_contracts.envelope import CONTRACT_VERSION
+from roxabi_contracts.envelope import CONTRACT_VERSION, new_job_id
 from roxabi_contracts.turns import (
     EndSessionPayload,
     IncrementResumeCountPayload,
@@ -69,6 +69,7 @@ def _event(  # noqa: PLR0913
         trace_id=_TRACE_ID,
         issued_at=_now(),
         event_id=event_id or uuid4(),
+        job_id=new_job_id(),
         pool_id=pool_id,
         session_id=session_id,
         platform=platform,

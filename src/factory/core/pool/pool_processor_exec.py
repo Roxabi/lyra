@@ -262,7 +262,9 @@ async def _process_non_streaming(
     pool._ctx.record_circuit_success()
     if isinstance(result, Response):  # pyright: ignore[reportUnnecessaryIsInstance] — DEBT:defensive-narrow-payloads
         await _update_session_id(result, pool)
-        _capture_turn_log(result, platform, user_id, pool, root_job_id=original_msg.root_job_id)
+        _capture_turn_log(
+            result, platform, user_id, pool, root_job_id=original_msg.root_job_id
+        )
     await pool._ctx.dispatch_response(original_msg, result)  # type: ignore[arg-type] — DEBT:defensive-narrow-payloads
     await pool._observer.session_update_async(original_msg)
 

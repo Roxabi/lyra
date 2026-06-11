@@ -63,6 +63,8 @@ class TestCliNatsCodecRootJobIdThreading:
         )
         body = json.loads(payload)
         assert body["job_id"] == minted
+        # SC-7: parent_job_id not set by this issue; exclude_none=True → key absent
+        assert body.get("parent_job_id") is None
 
     def test_encode_without_root_job_id_mints_fresh_job_id(self) -> None:
         """Backward-compat: omitting root_job_id still produces a valid job_id."""

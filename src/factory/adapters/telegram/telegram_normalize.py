@@ -7,8 +7,6 @@ from dataclasses import dataclass
 from datetime import timezone
 from typing import TYPE_CHECKING, Any
 
-from roxabi_contracts import new_job_id
-
 from factory.adapters.telegram.telegram_attachments import _extract_attachments
 from factory.core.audio_payload import AudioPayload
 from factory.core.auth.trust import TrustLevel
@@ -19,6 +17,7 @@ from factory.core.messaging.message import (
     TelegramMeta,
 )
 from factory.inbound.attachment_ingest import PendingAttachment
+from roxabi_contracts import new_job_id
 
 if TYPE_CHECKING:
     from factory.adapters.telegram import TelegramAdapter

@@ -9,8 +9,6 @@ from typing import TYPE_CHECKING, Any
 
 import discord
 
-from roxabi_contracts import new_job_id
-
 from factory.adapters.discord.discord_formatting import extract_attachments
 from factory.core.auth.trust import TrustLevel
 from factory.core.messaging.message import (
@@ -19,6 +17,7 @@ from factory.core.messaging.message import (
     Platform,
     RoutingContext,
 )
+from roxabi_contracts import new_job_id
 
 if TYPE_CHECKING:
     from factory.adapters.discord import DiscordAdapter

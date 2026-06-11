@@ -22,6 +22,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from factory.tools.gh_token.daemon import (
     DaemonConfigError,
     _load_config,
+    _safe_machine_name,
     run_daemon,
 )
 
@@ -252,3 +253,21 @@ async def test_daemon_unlinks_stale_socket_on_start(
     task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
         await task
+
+
+# ── _safe_machine_name ────────────────────────────────────────────────────────
+
+
+def test_safe_machine_name_passthrough() -> None:
+    """Clean input passes through unchanged."""
+    assert _safe_machine_name("roxabituwer") == "roxabituwer"
+
+
+def test_safe_machine_name_replaces_bad_chars() -> None:
+    """Bad characters (dots, spaces) are replaced with '_', not rejected."""
+    assert _safe_machine_name("my.host") == "my_host"
+
+
+def test_safe_machine_name_unknown_fallback() -> None:
+    """Empty string after replacement returns 'unknown' (empty raw input)."""
+    assert _safe_machine_name("") == "unknown"

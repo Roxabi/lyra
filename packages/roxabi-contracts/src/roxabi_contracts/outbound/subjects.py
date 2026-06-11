@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from roxabi_contracts._nats_utils import _validate_subject_segment
+from roxabi_contracts._nats_utils import validate_subject_segment
 
 __all__ = ["OutboundAudioSubjects", "STREAM_AUDIO"]
 
@@ -31,6 +31,6 @@ class OutboundAudioSubjects:
         Raises ``ValueError`` if either token contains characters outside
         ``[A-Za-z0-9_-]`` (NATS wildcard / subtree / dot injection guard).
         """
-        _validate_subject_segment(platform)
-        _validate_subject_segment(bot_id)
+        validate_subject_segment(platform)
+        validate_subject_segment(bot_id)
         return f"factory.outbound.audio.{platform}.{bot_id}"

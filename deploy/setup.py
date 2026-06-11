@@ -18,7 +18,9 @@ import sys
 import tomllib
 from pathlib import Path
 
-FACTORY_DIR = Path(os.environ.get("FACTORY_DIR", Path.home() / "projects" / "roxabi-factory"))
+FACTORY_DIR = Path(
+    os.environ.get("FACTORY_DIR", Path.home() / "projects" / "roxabi-factory")
+)
 HOSTS_TOML = Path(os.environ.get("HOSTS_TOML", Path.home() / "projects" / "hosts.toml"))
 
 
@@ -544,8 +546,8 @@ def main() -> None:
     print("Setup complete!")
     print()
     print("  systemctl --user status 'factory-*.service'  unit status")
-    print("  make lyra reload                          restart all containers")
-    print("  make lyra logs                            tail journalctl")
+    print("  make factory reload                          restart all containers")
+    print("  make factory logs                            tail journalctl")
     print()
 
     # Manual steps
@@ -564,8 +566,8 @@ def main() -> None:
 
     manual_steps.append(
         "Add bot tokens to the encrypted credential store:\n"
-        "     lyra bot add --platform telegram --bot-id lyra\n"
-        "     lyra bot add --platform discord --bot-id lyra"
+        "     factory bot add --platform telegram --bot-id lyra\n"
+        "     factory bot add --platform discord --bot-id lyra"
     )
 
     manual_steps.append(
@@ -574,7 +576,7 @@ def main() -> None:
 
     manual_steps.append(
         "Start Quadlet containers:\n"
-        "     make lyra start  # OR: systemctl --user start factory-nats factory-hub factory-telegram factory-discord factory-clipool"
+        "     make factory start  # OR: systemctl --user start factory-nats factory-hub factory-telegram factory-discord factory-clipool"
     )
 
     if manual_steps:

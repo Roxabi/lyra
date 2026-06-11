@@ -5,7 +5,7 @@
 ```bash
 # 1. Clone and install dependencies
 git clone https://github.com/Roxabi/roxabi-factory.git
-cd lyra
+cd roxabi-factory
 uv sync
 
 # 2. Configure environment

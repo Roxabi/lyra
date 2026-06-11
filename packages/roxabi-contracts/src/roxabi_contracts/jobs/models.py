@@ -77,3 +77,9 @@ class JobProgress(WorkEnvelope):
     step: Annotated[str, StringConstraints(min_length=1)]
     pct: Annotated[float | None, Field(ge=0.0, le=100.0)] = None
     detail: dict[str, Any] | None = None
+    # Additive omp-worker streaming fields (default=None — wire-compatible, ADR-084)
+    event_type: str | None = None
+    partial_text: str | None = None
+    tool_name: str | None = None
+    tool_id: str | None = None
+    tool_input: dict[str, Any] | None = None

@@ -40,7 +40,7 @@ if TYPE_CHECKING:
 # hold the same string so either can be the canonical reference point.
 _DEFAULT_MODEL: str = "claude-opus-4-6"
 
-_VALID_BACKENDS: frozenset[str] = frozenset({"claude-cli", "nats"})
+_VALID_BACKENDS: frozenset[str] = frozenset({"claude-cli", "nats", "omp-rpc"})
 
 
 class ModelConfig(BaseModel):

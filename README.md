@@ -103,7 +103,7 @@ See [QUICKSTART.md](docs/QUICKSTART.md) for full setup — bot creation, environ
 ### Server
 
 ```bash
-lyra                        # start unified (hub + adapters, embedded NATS)
+factory                        # start unified (hub + adapters, embedded NATS)
 factory start                  # same as above
 factory hub                    # standalone hub (requires external NATS)
 factory adapter telegram       # standalone Telegram adapter
@@ -139,17 +139,17 @@ factory bot secret install discord <bot_id>
 ### Configuration
 
 ```bash
-lyra config show            # display parsed config.toml
-lyra config validate        # validate config + env vars
+factory config show            # display parsed config.toml
+factory config validate        # validate config + env vars
 ```
 
 ### Setup & ops
 
 ```bash
-lyra setup commands         # register /commands with Telegram
-lyra ops verify             # verify NATS ACL permissions
-lyra voice-smoke            # test STT/TTS pipeline
-lyra --version              # print version
+factory setup commands         # register /commands with Telegram
+factory ops verify             # verify NATS ACL permissions
+factory voice-smoke            # test STT/TTS pipeline
+factory --version              # print version
 ```
 
 ## In-chat commands

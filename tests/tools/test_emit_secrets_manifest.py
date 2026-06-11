@@ -426,8 +426,8 @@ class TestOwnerFactoryFilter:
                     " a factory container identity"
                 )
 
-    def test_factory_container_secrets_are_exactly_seven(self) -> None:
-        """Exactly 7 factory container identities in the acl-matrix."""
+    def test_factory_container_secrets_are_exactly_eight(self) -> None:
+        """Exactly 8 factory container identities in the acl-matrix."""
         factory_container_secrets = self._factory_container_secrets()
 
         expected = {
@@ -438,6 +438,7 @@ class TestOwnerFactoryFilter:
             "factory-nats-turn-writer",
             "factory-nats-blobstore",
             "factory-nats-gh-helper",
+            "factory-nats-omp",
         }
         assert factory_container_secrets == expected, (
             "factory container secrets mismatch.\n"
@@ -633,7 +634,7 @@ class TestOptionalSecretSkip:
             assert "SKIP" in result.stdout
 
     def test_policy_toml_optional_count(self) -> None:
-        """Policy file must declare exactly 2 optional secrets."""
+        """Policy file must declare exactly 3 optional secrets."""
         with POLICY_TOML.open("rb") as f:
             policy = tomllib.load(f)
         optionals = [
@@ -641,9 +642,11 @@ class TestOptionalSecretSkip:
             for name, attrs in policy.get("secret", {}).items()
             if attrs.get("policy") == "optional"
         ]
-        assert set(optionals) == {"factory-gh-pem", "factory-claude-oauth"}, (
-            f"Unexpected optional secrets: {optionals}"
-        )
+        assert set(optionals) == {
+            "factory-gh-pem",
+            "factory-claude-oauth",
+            "factory-litellm-key",
+        }, f"Unexpected optional secrets: {optionals}"
 
 
 # ---------------------------------------------------------------------------

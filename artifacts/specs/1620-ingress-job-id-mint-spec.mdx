@@ -1,0 +1,244 @@
+---
+title: "feat(adapters): mint root job_id at ingress"
+issue: 1620
+status: approved
+tier: S
+date: 2026-06-11
+frame: artifacts/frames/1620-ingress-job-id-mint-frame.mdx
+---
+
+## Context
+
+`TurnWriteEvent.job_id` and `LlmRequest.job_id` are today minted fresh per-publication
+via `new_job_id()` at five independent callsites in `turn_publisher.py` (lines 89,
+121, 147, 174, 201) and in `cli_nats_codec.py` (line 90). No single id ties the
+`LlmRequest` that was sent to the `TurnWriteEvent` records that surround it, nor to
+the user message that triggered the whole turn.
+
+ADR-084 assigns `job_id` the role of canonical run identifier (one id per ingress
+event, opaque for internal LLM hops). `#1619` shipped `WorkEnvelope.job_id` with a
+TRANSITIONAL `default_factory=new_job_id` shim and tagged hub-side interim assignments
+(`job_id=request_id`) as `# INTERIM — replaced by #1620`. This issue threads a
+single root id from adapter receipt through `InboundMessage → Pool → TurnPublisher`
+and through `InboundMessage → LlmClient → CliNatsCodec → LlmRequest`.
+
+`trace_id` (platform composite key derived from `InboundMessage.id`, e.g.
+`telegram:user_id:ts:msg_id`) remains independent and is NOT replaced by this change.
+`trace_id` carries the human-readable platform context; `root_job_id` carries the
+opaque ADR-084 run id.
+
+---
+
+## Goal
+
+Mint one `root_job_id = new_job_id()` per adapter ingress event and thread it so that
+every `TurnWriteEvent` and every `LlmRequest` produced by that ingress event carries
+the same id.
+
+Scope is limited to `publish_log_turn` (the only turn-write path that correlates with
+`LlmRequest`). Session lifecycle events (`publish_start_session`, `publish_end_session`,
+`publish_set_cli_session`, `publish_increment_resume_count`) are NOT threaded — they do
+not correspond to a single run and their `job_id` may remain autonomous `new_job_id()`.
+
+---
+
+## Mint Sites
+
+Two platform adapters construct `InboundMessage`. Both are the canonical mint sites.
+All other callsites receive the id via threading — they never call `new_job_id()` for
+the root id.
+
+| Adapter | File | Callsite | Import added |
+|---|---|---|---|
+| Telegram (text) | `src/factory/adapters/telegram/telegram_normalize.py:155` | `normalize()` InboundMessage constructor | `from roxabi_contracts import new_job_id` |
+| Telegram (audio) | `src/factory/adapters/telegram/telegram_normalize.py:231` | `normalize_audio()` InboundMessage constructor | (same import) |
+| Discord (text) | `src/factory/adapters/discord/discord_normalize.py:120` | `normalize()` InboundMessage constructor | `from roxabi_contracts import new_job_id` |
+
+Pattern at each mint site:
+
+```python
+root_job_id=new_job_id(),
+```
+
+added as a keyword argument to the `InboundMessage(...)` constructor call.
+
+---
+
+## Carrier: InboundMessage
+
+`InboundMessage` (`src/factory/core/messaging/message.py:96`) is a
+`@dataclass(frozen=True)` — in-process only, never serialized over NATS (travels via
+`LocalBus` asyncio queue). Adding one optional field is wire-safe; no `WIRE-COMPAT`
+mandate applies.
+
+**Change:** add `root_job_id: str | None = None` as the last field of `InboundMessage`.
+
+`CONTRACT_VERSION` stays `"1"`. No change to `roxabi-contracts`.
+
+---
+
+## Hub Callsites Table
+
+The table below lists every site that must be updated to thread `root_job_id` from
+`InboundMessage` (or its derivatives) instead of calling `new_job_id()` independently.
+
+| File | Line(s) | Current behavior | Target behavior |
+|---|---|---|---|
+| `src/factory/transport/turn_publisher.py` | 89 | `job_id=new_job_id()` inside `publish_log_turn` | accept `root_job_id: str \| None = None` kwarg; use `root_job_id if root_job_id is not None else new_job_id()` |
+| `src/factory/core/pool/pool_observer.py` | 19–28 (`TurnLogDeps`) | `TurnLogDeps` has no `root_job_id` field | add `root_job_id: str \| None = None` as last field (after line 28) |
+| `src/factory/core/pool/pool_observer.py` | 129 | `log_turn_async` calls `publish_log_turn` without `root_job_id` | pass `root_job_id=deps.root_job_id` to `publish_log_turn` |
+| `src/factory/core/pool/pool_observer.py` | 183–190 | `append()` constructs `TurnLogDeps` without `root_job_id` | add `root_job_id=msg.root_job_id` |
+| `src/factory/core/pool/pool_processor_streaming.py` | 89–96 | `log_turn_async(TurnLogDeps(role="assistant", ...))` — no `root_job_id` | add `root_job_id=deps.original_msg.root_job_id` |
+| `src/factory/core/pool/pool_processor_exec.py` | 223–238 | `log_turn_async(TurnLogDeps(role="assistant", ...))` — no `root_job_id` | add `root_job_id: str \| None` param to `_capture_turn_log`; pass `original_msg.root_job_id` from `_process_non_streaming` (line 260 callsite, where `original_msg: InboundMessage` is in scope) |
+| `src/factory/llm/cli_nats_codec.py` | 90 | `job_id=new_job_id()` inside `encode()` | accept `root_job_id: str \| None = None` kwarg; use `root_job_id if root_job_id is not None else new_job_id()` |
+| `src/factory/llm/llm_client.py` | 82, 108 | `self._codec.encode(...)` called without `root_job_id` | **deferred to follow-on issue** — threading `root_job_id` through `LlmClient.complete()`/`stream()` requires a protocol change to `LlmProvider` (breaking all implementors); deferral is noted in Out of Scope |
+
+Session lifecycle callsites in `turn_publisher.py` (lines 121, 147, 174, 201 — methods
+`publish_start_session`, `publish_end_session`, `publish_set_cli_session`,
+`publish_increment_resume_count`) retain `job_id=new_job_id()`. They are NOT modified.
+
+---
+
+## trace_id Behavior
+
+`trace_id` is unaffected by this change. It remains:
+
+- Minted as `InboundMessage.id` at adapter receipt (e.g. `telegram:user_id:ts:msg_id`).
+- Threaded into every `publish_log_turn` call via `pool_observer.log_turn_async`:
+  `trace_id = (deps.message_id or "").strip() or uuid.uuid4().hex` (line 128).
+- Minted fresh as `str(uuid4())` inside `cli_nats_codec.encode()` (line 85) —
+  independent of `root_job_id`.
+
+`root_job_id` and `trace_id` are parallel, independent fields. No merge, no
+replacement.
+
+---
+
+## Expected Behavior
+
+### EB-1 — InboundMessage carries root_job_id
+
+`InboundMessage` has a `root_job_id: str | None = None` field. Both telegram normalize
+callsites (`normalize()` line 155, `normalize_audio()` line 231) and the discord
+normalize callsite (line 120) set it to `new_job_id()`. All other `InboundMessage`
+construction sites (tests, fakes) that do not pass `root_job_id` receive `None`.
+
+### EB-2 — TurnWriteEvent.job_id equals minted root for log_turn events
+
+When `publish_log_turn` receives a non-None `root_job_id`, the `TurnWriteEvent`
+emitted to `factory.turns.write` carries that exact value as `job_id`. When
+`root_job_id` is None (e.g. from a test that does not supply it), `publish_log_turn`
+falls back to `new_job_id()`, preserving backward compatibility.
+
+### EB-3 — LlmRequest.job_id equals minted root
+
+When `cli_nats_codec.encode()` receives a non-None `root_job_id`, the `LlmRequest`
+payload published to `factory.clipool.cmd` carries that exact value as `job_id`. When
+`root_job_id` is None, falls back to `new_job_id()`.
+
+**Note:** The `LlmClient.complete()`/`stream()` → `codec.encode()` call path is
+deferred. Threading `root_job_id` through `LlmClient` requires extending the
+`LlmProvider` Protocol (a breaking change for all implementors including
+`ClaudeCliDriver`); that work is tracked as a follow-on issue (see Out of Scope).
+
+### EB-4 — TurnLogDeps is backward-compatible
+
+All existing `TurnLogDeps(...)` construction sites that do not pass `root_job_id`
+continue to work. The `root_job_id: str | None = None` default satisfies the frozen
+dataclass contract. No existing test requires modification for this field alone.
+
+### EB-5 — Session lifecycle events unaffected
+
+`publish_start_session`, `publish_end_session`, `publish_set_cli_session`,
+`publish_increment_resume_count` continue to call `new_job_id()` independently.
+Their signatures are unchanged.
+
+### EB-6 — No CONTRACT_VERSION bump
+
+`roxabi-contracts` receives no schema change. `CONTRACT_VERSION` remains `"1"`.
+
+---
+
+## Success Criteria
+
+- **SC-1** `InboundMessage` dataclass has field `root_job_id: str | None = None`
+  (verified: `grep -n "root_job_id" src/factory/core/messaging/message.py` returns
+  a line in the dataclass body).
+
+- **SC-2** `telegram_normalize.py` `normalize()` (line ~155) and `normalize_audio()`
+  (line ~231) both pass `root_job_id=new_job_id()` to `InboundMessage`.
+  `discord_normalize.py` `normalize()` (line ~120) does the same.
+
+- **SC-3** `TurnLogDeps` (`pool_observer.py:19–28`) has field
+  `root_job_id: str | None = None` (inserted after existing `reply_message_id` at
+  line 28) and `pool_observer.log_turn_async` passes `root_job_id=deps.root_job_id` to
+  `publish_log_turn`.
+
+- **SC-4** `turn_publisher.publish_log_turn` has kwarg `root_job_id: str | None = None`
+  and uses `root_job_id if root_job_id is not None else new_job_id()` for the
+  `TurnWriteEvent.job_id` field.
+
+- **SC-5** `cli_nats_codec.encode()` has kwarg `root_job_id: str | None = None` and
+  uses `root_job_id if root_job_id is not None else new_job_id()` for
+  `LlmRequest.job_id`.
+  `LlmClient.complete()`/`stream()` threading is **deferred** (requires `LlmProvider`
+  protocol change — tracked as follow-on, see Out of Scope).
+
+- **SC-6 (processor-layer threading)** Both processor paths supply `root_job_id` to
+  `TurnLogDeps`:
+  - **Streaming path** (`pool_processor_streaming.py:89–96`): `TurnLogDeps(...)` gains
+    `root_job_id=deps.original_msg.root_job_id` (`StreamLogDeps.original_msg:
+    InboundMessage` is in scope).
+  - **Exec path** (`pool_processor_exec.py:223–238`): `_capture_turn_log` signature
+    gains `root_job_id: str | None`; callers pass `original_msg.root_job_id` (available
+    in `_process_non_streaming` which already has `original_msg: InboundMessage`; call
+    at line 260 passes it explicitly).
+
+- **SC-7 (end-to-end assertion)** A test that constructs a Telegram `InboundMessage`
+  with an explicit `root_job_id` (32-char hex), passes it through `PoolObserver.append`
+  and then through `CliNatsCodec.encode(root_job_id=msg.root_job_id)`, asserts that:
+  - the `TurnWriteEvent` captured by a mock `TurnPublisher` has `.job_id == root_job_id`
+  - the decoded `LlmRequest` from `encode()` has `.job_id == root_job_id`
+  - `LlmRequest.parent_job_id` is `None` (WorkEnvelope default; this issue does not
+    populate it)
+
+- **SC-8** `pytest` passes with no new failures. `ruff check` passes. `pyright` reports
+  no new errors on modified files.
+
+- **SC-9** `file_length` gate: `turn_publisher.py` SLOC remains ≤ 300 after the
+  signature addition (one kwarg line + one conditional expression = net +2 SLOC;
+  current file is 209 lines, well within threshold).
+
+---
+
+## Out of Scope
+
+| Item | Reason |
+|---|---|
+| `LlmClient.complete()`/`stream()` → `codec.encode()` wiring | Threading `root_job_id` through `LlmClient` requires adding the parameter to the `LlmProvider` Protocol in `core/ports/llm.py` — a breaking change for all implementors (`ClaudeCliDriver`, decorators, test doubles). Deferred to a follow-on issue. |
+| `ClaudeCliDriver` / `CliPool` single-process path | `ClaudeCliDriver` is a registry peer of `LlmClient` (single-process wiring mode). Whether it routes through `TurnPublisher` for `publish_log_turn` is not confirmed for this issue. Deferred with `LlmClient` threading above. |
+| `CliCmdPayload` / `CliChunkEvent` (`#1838`) | WorkEnvelope migration for CLI models is a separate issue. |
+| Session lifecycle `TurnPublisher` callsites (lines 121, 147, 174, 201) | Do not correspond to a single ingress run; retain `new_job_id()`. |
+
+---
+
+## Cross-Lane Coordination
+
+| Issue | Relation | Action required |
+|---|---|---|
+| **#1009** (cli session lifecycle / LlmClient) | Shares `cli_nats_codec.encode()` signature | `root_job_id` is an additive kwarg with default — no conflict; confirm `#1009` callsites still compile |
+| **#1793** (jobs taxonomy — `factory.job.<id>.*`) | Same `TurnPublisher` + `TurnWriteEvent` types | No field conflict; `root_job_id` kwarg is additive — neither issue depends on the other's change; merge order is safe either way |
+| **#1840 / #1841** (contracts rollout + `job_id` hard-required flip) | `#1620` makes all modified producers supply explicit `job_id` | Satisfies #1841 precondition for these callsites; confirm before #1841 flips |
+| **#1838** (cli models onto WorkEnvelope) | Out of scope | `CliCmdPayload` / `CliChunkEvent` not touched by #1620 |
+
+---
+
+## Quality Gates
+
+| Gate | Impact |
+|---|---|
+| `file_length` (300 SLOC) | `turn_publisher.py` +2 lines; well within limit |
+| `import_layers` | No new cross-layer imports (adapters already import `roxabi_contracts`; `pool_observer` already imports from `transport`) |
+| `doc_drift` | No new backtick symbols added to docs |
+| `str_exc_bus_bound` | Not triggered (no `str(exc)` near `SanitizedError`) |
+| Axial review label | PR touches `adapters/` + `core/` — does **not** match either trigger (`inbound/+adapters/` OR `core/+infrastructure/`) per `.github/workflows/axial-review.yml`; label will **not** fire automatically. Human reviewer should apply `dev-core:axial-adr-review` manually if warranted. |

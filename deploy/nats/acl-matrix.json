@@ -66,6 +66,7 @@
         "factory.system.ready",
         "factory.image.heartbeat",
         "factory.clipool.heartbeat",
+        "factory.omp.heartbeat",
         "factory.gh.mint_failure.>",
         "_inbox.hub.>"
       ],
@@ -342,6 +343,31 @@
       ],
       "subscribe": [],
       "deploy": { "type": "container", "secret": "factory-nats-gh-helper" }
+    },
+    "omp-worker": {
+      "status": "active",
+      "created_at": "2026-06-11",
+      "owner": "factory",
+      "description": "OmpWorker — omp_rpc NATS runtime backend (#1812)",
+      "notes": "Additive lane alongside clipool (ratified #1807). Uses post-#1793 canonical factory.job.* subjects (least-privilege single-token wildcard, NOT factory.job.>). Heartbeat mirrors clipool-worker pattern. Steer bridge subscribed worker-side. _inbox prefix derived from ADR-051 Fix 1.",
+      "allow_responses": true,
+      "publish": [
+        "factory.job.*.progress",
+        "factory.job.*.result",
+        "factory.omp.heartbeat",
+        "factory.system.ready",
+        "$JS.API.DIRECT.GET.KV_factory-state.hub.ready",
+        "$JS.API.INFO",
+        "$JS.API.STREAM.INFO.KV_factory-state",
+        "$JS.API.STREAM.MSG.GET.KV_factory-state"
+      ],
+      "subscribe": [
+        "factory.jobs.omp",
+        "factory.job.*.steer",
+        "_inbox.omp-worker.>",
+        "$KV.factory-state.>"
+      ],
+      "deploy": { "type": "container", "secret": "factory-nats-omp" }
     }
   }
 }

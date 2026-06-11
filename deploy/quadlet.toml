@@ -41,3 +41,7 @@ host_roles = ["factory-hub"]
 container = "factory-blobstore.container"
 required_secrets = ["factory-nats-blobstore", "factory_blobstore_token"]
 host_roles = ["factory-hub"]
+
+[component.omp-worker]
+required_secrets = ["factory-nats-omp"]
+host_roles = ["factory-hub"]

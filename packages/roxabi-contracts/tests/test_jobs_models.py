@@ -314,3 +314,51 @@ def test_subjects_rejects_bad_tokens(helper: Any, bad_token: str) -> None:
     """Subject helpers raise ValueError for wildcards, empty strings, dot boundaries."""
     with pytest.raises(ValueError):
         helper(bad_token)
+
+
+# ---------------------------------------------------------------------------
+# test_job_progress_omp_fields — additive omp-worker streaming fields (#1812)
+# ---------------------------------------------------------------------------
+
+
+def test_job_progress_omp_fields_default_none() -> None:
+    """New omp streaming fields all default to None (wire-compatible, ADR-084)."""
+    inst = JobProgress.model_validate(sample_job_progress)
+    assert inst.event_type is None
+    assert inst.partial_text is None
+    assert inst.tool_name is None
+    assert inst.tool_id is None
+    assert inst.tool_input is None
+
+
+def test_job_progress_omp_fields_roundtrip() -> None:
+    """omp streaming fields survive model_dump_json → model_validate_json."""
+    payload: dict[str, Any] = {
+        **sample_job_progress,
+        "event_type": "tool_use",
+        "partial_text": "hello",
+        "tool_name": "bash",
+        "tool_id": "toolu_abc123",
+        "tool_input": {"cmd": "ls"},
+    }
+    inst = JobProgress.model_validate(payload)
+    restored = JobProgress.model_validate_json(inst.model_dump_json())
+
+    assert restored.event_type == "tool_use"
+    assert restored.partial_text == "hello"
+    assert restored.tool_name == "bash"
+    assert restored.tool_id == "toolu_abc123"
+    assert restored.tool_input == {"cmd": "ls"}
+
+
+def test_job_progress_omp_fields_extra_ignored() -> None:
+    """Unknown future omp fields are silently dropped (forward-compat, extra='ignore')."""
+    payload: dict[str, Any] = {
+        **sample_job_progress,
+        "event_type": "thinking",
+        "future_omp_field": "ignored",
+    }
+    inst = JobProgress.model_validate(payload)
+    dumped = inst.model_dump()
+    assert "future_omp_field" not in dumped
+    assert inst.event_type == "thinking"

@@ -105,7 +105,7 @@
 
 ### hub
 - **Publish:** $JS.API.>, $KV.factory-msg-index.>, $KV.factory-state.>, factory.audit.>, factory.clipool.cmd, factory.clipool.control, factory.event.>, factory.image.generate.request, factory.llm.generate.request, factory.metric.>, factory.outbound.audio.>, factory.outbound.discord.>, factory.outbound.telegram.>, factory.turns.write, factory.typing.>, factory.voice.stt.request, factory.voice.stt.request.>, factory.voice.tts.request, factory.voice.tts.request.>
-- **Subscribe:** _inbox.hub.>, factory.clipool.heartbeat, factory.gh.mint_failure.>, factory.image.heartbeat, factory.inbound.discord.>, factory.inbound.telegram.>, factory.llm.heartbeat, factory.system.ready, factory.voice.stt.heartbeat, factory.voice.tts.heartbeat
+- **Subscribe:** _inbox.hub.>, factory.clipool.heartbeat, factory.gh.mint_failure.>, factory.image.heartbeat, factory.inbound.discord.>, factory.inbound.telegram.>, factory.llm.heartbeat, factory.omp.heartbeat, factory.system.ready, factory.voice.stt.heartbeat, factory.voice.tts.heartbeat
 
 ### image-worker
 - **Publish:** $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.image.heartbeat
@@ -122,6 +122,10 @@
 ### monitor
 - **Publish:** factory.monitor.>
 - **Subscribe:** factory.monitor.>
+
+### omp-worker
+- **Publish:** $JS.API.DIRECT.GET.KV_factory-state.hub.ready, $JS.API.INFO, $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.job.*.progress, factory.job.*.result, factory.omp.heartbeat, factory.system.ready
+- **Subscribe:** $KV.factory-state.>, _inbox.omp-worker.>, factory.job.*.steer, factory.jobs.omp
 
 ### telegram-adapter
 - **Publish:** $JS.API.CONSUMER.CREATE.*, $JS.API.DIRECT.GET.KV_factory-state.hub.ready, $JS.API.INFO, $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.event.>, factory.inbound.telegram.>, factory.metric.>, factory.system.ready
@@ -173,6 +177,11 @@
 
 ### nats
 - **Container:** factory-nats.container
+- **Host roles:** factory-hub
+
+### omp-worker
+- **Container:** N/A
+- **Required secrets:** factory-nats-omp
 - **Host roles:** factory-hub
 
 ### telegram

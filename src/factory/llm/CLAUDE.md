@@ -10,8 +10,7 @@ interacts with LLMs through the `LlmProvider` protocol.
 SSoT: `factory.core.ports.llm`. `base.py` is a backward-compatibility shim — import from
 `factory.core.ports.llm` directly in all new code.
 
-`stream()` is duck-typed optional — callers check `hasattr(provider, "stream")`. Do
-not add it to the Protocol until all drivers implement it.
+`stream()` is an optional member of the `LlmProvider` Protocol (declared in `core/ports/llm.py`); callers gate on `getattr(provider, "stream", None)` so non-streaming providers are unaffected. `CircuitBreakerDecorator` and `RetryDecorator` protect the streaming path as of #1819.
 
 `LlmResult`: check `.ok` before using `.result`. `error` is a non-empty string on failure.
 `retryable=False` = caller must NOT retry (quota, bad key). Default `True` = transient.

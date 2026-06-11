@@ -1,0 +1,87 @@
+---
+title: "fix(llm): stream() au Protocol + circuit-breaker/retry sur le chemin streaming"
+issue: 1819
+status: approved
+tier: F-lite
+date: 2026-06-10
+---
+
+## Problem
+
+The `LlmProvider` streaming path is less resilient than the non-streaming path, and the
+**recheck premise correction** narrows (but does not eliminate) the gap the issue describes:
+
+- `complete()` is protected by the full stack: `CircuitBreakerDecorator → RetryDecorator → driver`.
+- `stream()` **is already declared in the Protocol** (`core/ports/llm.py:67-75`) — contrary to the
+  issue body ("hors du Protocol"). It is declared *optional*: callers gate on `hasattr(provider, "stream")`,
+  and `llm/CLAUDE.md` says "do not add it to the Protocol until all drivers implement it" (a doc
+  contradiction, since the signature is already present).
+- The two decorators **do** define `stream()` (`decorators.py:83-96, 147-160`) — but both deliberately
+  pass through with **no protection**:
+  - `RetryDecorator.stream()` → `"no retry — stream is live data"`
+  - `CircuitBreakerDecorator.stream()` → `"circuit check applies to complete() only"`
+- The NATS path (`LlmClient`) already gets circuit-breaking at the **pool layer**
+  (`WorkerPoolClient`, #1278). The fully-unprotected case is the **in-process `ClaudeCliDriver`**
+  streaming path — no pool layer, no CB, no retry.
+
+**Why now:** issue #1814 flips the slice from HITL → auto. Streaming becomes the majority
+user-visible path at higher volume. A wedged/unhealthy `ClaudeCliDriver` during streaming would
+hang every streaming turn with no breaker to trip — the cascade the issue flags. The fix is the
+gating dependency to land **before** the #1814 flip.
+
+## Who
+
+- **Primary:** end users on streaming turns (Telegram/Discord) when the in-process CLI driver is
+  unhealthy — today they get hangs/cascades instead of a clean fail-fast.
+- **Secondary:** operators (no circuit-open signal in logs for streaming → harder to diagnose);
+  the #1814 auto-flip work, which is blocked on this resilience parity.
+
+## Constraints
+
+- **Idempotency:** an async iterator cannot be naively replayed — retry is only safe **before the
+  first event is yielded** (connect/first-token failure). Mid-stream failures must not retry.
+- **Layering:** `llm/` must not import `adapters/` or `infrastructure/`; decorators stay pure.
+- **File length:** `decorators.py` is 164 SLOC; ≤300 SLOC gate applies — keep additions tight.
+- **Doc reconciliation:** `llm/CLAUDE.md` and the `core/ports/llm.py` comment must be brought into
+  agreement on stream()'s Protocol status.
+- **No double-CB on NATS path:** `LlmClient` already carries pool-layer CB; wiring must not stack a
+  second breaker on it (per `llm/CLAUDE.md`: decorator-CB reserved for `ClaudeCliDriver`).
+
+## Out of Scope
+
+- NATS pool-layer circuit-breaking (already delivered in #1278).
+- Making `stream()` a **required** Protocol member across all drivers (drivers that don't stream
+  stay hasattr-gated) — unless trivial.
+- The #1814 HITL→auto flip itself.
+- Per-turn wall-clock deadline (caller responsibility per `llm/CLAUDE.md`).
+
+## Premise Validity
+
+**Success in 6 months:** Streaming turns have resilience parity with `complete()` for the
+in-process driver: when `ClaudeCliDriver` is unhealthy the `CircuitBreakerDecorator.stream()`
+short-circuits (open circuit → error event, no hang) and records success/failure to drive the
+breaker; connect-time stream failures retry; mid-stream failures do not. Verified by unit tests
+covering open-circuit, record-failure-on-stream-error, and no-retry-after-first-event.
+
+**Failure in 6 months:** After the #1814 auto-flip, a `ClaudeCliDriver` streaming outage still
+cascades — observable as a streaming error/timeout spike with **zero** circuit-open short-circuits
+in logs, i.e. `CircuitBreakerDecorator.stream()` still passes through and CB-on-stream test
+coverage is 0. (Falsifiable: breaker never trips on the streaming path under sustained driver
+failure.)
+
+**Simplest alternative:** Leave `stream()` unprotected and rely on the NATS pool-layer CB plus the
+transport's 300s per-chunk timeout.
+**Why not simplest:** the in-process `ClaudeCliDriver` path has **no** pool layer and **no** CB —
+under the #1814 auto volume a wedged CLI subprocess hangs every streaming turn with nothing to
+trip, which is exactly the cascade #1819 exists to prevent. The 300s per-chunk timeout bounds
+silence between chunks, not a never-started stream.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (`llm/decorators.py` + `core/ports/llm.py` +
+`llm/CLAUDE.md`), no new architecture. Confirmed by `size:F-lite` label.
+
+Signals observed:
+- Single domain (LLM provider decorators / ports).
+- ~3 source files + tests; no cross-layer fan-out.
+- One genuine design decision (retry-before-first-event semantics) — bounded, not open-ended.

@@ -168,6 +168,16 @@ class CircuitBreaker:
         elif self._state == CircuitState.OPEN:
             self._opened_at = now  # reset the recovery timer
 
+    def release_probe(self) -> None:
+        """Release a half-open probe slot without recording success/failure.
+
+        Used when a streaming probe turn is cancelled (GeneratorExit /
+        CancelledError) before a terminal outcome — prevents _probe_in_flight
+        from sticking True and freezing the circuit in pseudo-OPEN. No state
+        transition; idempotent (no-op when already cleared / CLOSED).
+        """
+        self._probe_in_flight = False
+
     def get_status(self) -> CircuitStatus:
         """Return a snapshot of the current circuit state.
 

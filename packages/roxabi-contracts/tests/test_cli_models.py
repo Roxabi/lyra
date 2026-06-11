@@ -259,7 +259,7 @@ def test_cli_control_cmd_invalid_op() -> None:
 
 
 def test_cli_control_cmd_optional_fields() -> None:
-    """session_id and cwd are None by default; accepted when provided."""
+    """cli_session_id and cwd default to None; old wire name 'session_id' accepted."""
     # Arrange
     payload_minimal = {**_ENVELOPE, "pool_id": "pool-ctrl", "op": "reset"}
     payload_full = {
@@ -267,7 +267,7 @@ def test_cli_control_cmd_optional_fields() -> None:
         "pool_id": "pool-ctrl",
         "op": "switch_cwd",
         "cwd": "/tmp/workspace",
-        "session_id": "sess-42",
+        "session_id": "sess-42",  # old wire name — accepted via AliasChoices one-minor
     }
 
     # Act
@@ -275,10 +275,10 @@ def test_cli_control_cmd_optional_fields() -> None:
     inst_full = CliControlCmd.model_validate(payload_full)
 
     # Assert
-    assert inst_min.session_id is None
+    assert inst_min.cli_session_id is None
     assert inst_min.cwd is None
     assert inst_full.cwd == "/tmp/workspace"
-    assert inst_full.session_id == "sess-42"
+    assert inst_full.cli_session_id == "sess-42"
 
 
 # ---------------------------------------------------------------------------

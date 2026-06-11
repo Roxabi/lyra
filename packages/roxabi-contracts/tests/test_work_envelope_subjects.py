@@ -52,7 +52,7 @@ from roxabi_contracts.voice.models import (
 # Classification tables
 # ---------------------------------------------------------------------------
 
-#: 13 domain models that carry a job identity → MUST subclass WorkEnvelope.
+#: 17 domain models that carry a job identity → MUST subclass WorkEnvelope.
 WORK_MODELS = {
     JobEnvelope,
     JobResult,
@@ -67,6 +67,11 @@ WORK_MODELS = {
     ImageRequest,
     ImageResponse,
     TurnWriteEvent,
+    # cli models reparented from PENDING (#1838 → S1)
+    CliCmdPayload,
+    CliChunkEvent,
+    CliControlAck,
+    CliControlCmd,
 }
 
 #: 9 infra-plane models — deliberate ContractEnvelope, no job identity.
@@ -82,13 +87,8 @@ INFRA_MODELS = {
     MintFailureEvent,
 }
 
-#: 4 CLI models deferred to #1838 — currently ContractEnvelope.
-PENDING_MODELS = {
-    CliCmdPayload,
-    CliControlCmd,
-    CliChunkEvent,
-    CliControlAck,
-}
+#: PENDING bucket is empty after S1 graduates the 4 cli models (#1838).
+PENDING_MODELS: set = set()
 
 ALL_CLASSIFIED = WORK_MODELS | INFRA_MODELS | PENDING_MODELS
 
@@ -120,11 +120,11 @@ def test_completeness_no_duplicate_across_buckets() -> None:
 
 
 def test_completeness_coverage() -> None:
-    """ALL_CLASSIFIED covers the expected count: 13 WORK + 9 INFRA + 4 PENDING = 26."""
-    assert len(WORK_MODELS) == 13, f"expected 13 WORK models, got {len(WORK_MODELS)}"
+    """ALL_CLASSIFIED covers the expected count: 17 WORK + 9 INFRA + 0 PENDING = 26."""
+    assert len(WORK_MODELS) == 17, f"expected 17 WORK models, got {len(WORK_MODELS)}"
     assert len(INFRA_MODELS) == 9, f"expected 9 INFRA models, got {len(INFRA_MODELS)}"
-    assert len(PENDING_MODELS) == 4, (
-        f"expected 4 PENDING models, got {len(PENDING_MODELS)}"
+    assert len(PENDING_MODELS) == 0, (
+        f"expected 0 PENDING models, got {len(PENDING_MODELS)}"
     )
     assert len(ALL_CLASSIFIED) == 26
 
@@ -149,13 +149,12 @@ def test_work_model_is_subclass_of_work_envelope(model_cls) -> None:
 
 @pytest.mark.parametrize(
     "model_cls",
-    sorted(INFRA_MODELS | PENDING_MODELS, key=lambda c: c.__name__),
+    sorted(INFRA_MODELS, key=lambda c: c.__name__),
 )
 def test_non_work_model_not_subclass_of_work_envelope(model_cls) -> None:
-    """INFRA and PENDING models MUST NOT inherit from WorkEnvelope."""
+    """INFRA models MUST NOT inherit from WorkEnvelope."""
     assert not issubclass(model_cls, WorkEnvelope), (
-        f"{model_cls.__name__} is classified as INFRA/PENDING"
-        " but subclasses WorkEnvelope"
+        f"{model_cls.__name__} is classified as INFRA but subclasses WorkEnvelope"
     )
 
 
@@ -201,3 +200,27 @@ def test_work_envelope_empty_job_id_raises() -> None:
             **_base_fields(),
             job_id="",
         )
+
+
+# ---------------------------------------------------------------------------
+# (f) CliCmdPayload id taxonomy invariant
+# ---------------------------------------------------------------------------
+
+
+def test_cli_cmd_payload_lyra_session_id_not_pool_id() -> None:
+    """lyra_session_id and pool_id are distinct identity axes.
+
+    SC-6: the two ids belong to different granularity levels (conversation vs.
+    worker slot) and MUST NOT be equal in a correctly constructed payload.
+    """
+    from roxabi_contracts.cli.models import CliCmdPayload
+
+    payload = CliCmdPayload(
+        **_base_fields(),
+        pool_id="pool-abc",
+        lyra_session_id="sess-xyz",
+        text="hello",
+        model_cfg={},
+        system_prompt="system",
+    )
+    assert payload.lyra_session_id != payload.pool_id

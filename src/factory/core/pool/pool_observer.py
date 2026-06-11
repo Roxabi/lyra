@@ -26,6 +26,7 @@ class TurnLogDeps:
     content: str
     message_id: str | None = None
     reply_message_id: str | None = None
+    root_job_id: str | None = None
 
 
 class PoolObserver:
@@ -136,6 +137,7 @@ class PoolObserver:
                 message_id=deps.message_id or None,
                 reply_message_id=deps.reply_message_id,
                 trace_id=trace_id,
+                root_job_id=deps.root_job_id,
             )
         except Exception:
             log.error(
@@ -187,6 +189,7 @@ class PoolObserver:
                 user_id=msg.user_id,
                 content=msg.text,
                 message_id=msg.id,
+                root_job_id=msg.root_job_id,
             )
         )
         # Index user turn for reply-to session routing (#341).

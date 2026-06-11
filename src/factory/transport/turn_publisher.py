@@ -78,6 +78,7 @@ class TurnPublisher:
         reply_message_id: str | None = None,
         metadata: dict | None = None,
         trace_id: str,
+        root_job_id: str | None = None,
     ) -> None:
         """Publish a log_turn event (user or assistant message content)."""
         now = datetime.now(UTC)
@@ -86,7 +87,7 @@ class TurnPublisher:
                 contract_version=CONTRACT_VERSION,
                 trace_id=trace_id,
                 issued_at=now,
-                job_id=new_job_id(),
+                job_id=root_job_id if root_job_id is not None else new_job_id(),
                 pool_id=pool_id,
                 session_id=session_id,
                 platform=platform,

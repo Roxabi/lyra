@@ -93,6 +93,7 @@ def build_streaming_turn_logger(
                 user_id=deps.user_id,
                 content="".join(deps.content_parts),
                 reply_message_id=(str(_reply_id) if _reply_id is not None else None),
+                root_job_id=deps.original_msg.root_job_id,
             )
         )
         # Index assistant turn for reply-to session routing (#341).

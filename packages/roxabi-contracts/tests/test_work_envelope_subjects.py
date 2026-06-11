@@ -211,7 +211,7 @@ def test_work_envelope_empty_job_id_raises() -> None:
 def test_cli_cmd_payload_lyra_session_id_not_pool_id() -> None:
     """lyra_session_id and pool_id are distinct identity axes.
 
-    SC-9: the two ids belong to different granularity levels (conversation vs.
+    SC-6: the two ids belong to different granularity levels (conversation vs.
     worker slot) and MUST NOT be equal in a correctly constructed payload.
     """
     from roxabi_contracts.cli.models import CliCmdPayload

@@ -196,21 +196,27 @@ class CliPoolNatsWorker(NatsAdapterBase):
 
         model_cfg = ModelConfig.model_validate(cmd.model_cfg)
 
+        resumed: bool | None = None
         if cmd.resume_session_id:
             resumed = await self._pool.resume_direct(cmd.pool_id, cmd.resume_session_id)
             log.info(
-                "clipool: resume %s pool=%s",
-                "ok" if resumed else "cold-start",
+                "clipool_worker: resume %s pool=%s",
+                "queued" if resumed else "cold-start",
                 cmd.pool_id,
             )
 
         if cmd.stream:
-            await self._handle_cmd_streaming(msg, cmd, model_cfg)
+            await self._handle_cmd_streaming(msg, cmd, model_cfg, resumed=resumed)
         else:
-            await self._handle_cmd_blocking(msg, cmd, model_cfg)
+            await self._handle_cmd_blocking(msg, cmd, model_cfg, resumed=resumed)
 
     async def _handle_cmd_streaming(
-        self, msg: Any, cmd: CliCmdPayload, model_cfg: ModelConfig
+        self,
+        msg: Any,
+        cmd: CliCmdPayload,
+        model_cfg: ModelConfig,
+        *,
+        resumed: bool | None = None,
     ) -> None:
         try:
             iterator = await self._pool.send_streaming(
@@ -241,13 +247,19 @@ class CliPoolNatsWorker(NatsAdapterBase):
                 )
             return
 
+        first_chunk = True
         async for event in iterator:
+            # Attach resume signal to the very first emitted chunk so the hub
+            # can detect "resume applied" (True) vs "cold-start" (False/None).
+            resume_extra: dict = {"resumed": resumed} if first_chunk else {}
+            first_chunk = False
             if isinstance(event, TextLlmEvent):
                 chunk = _make_chunk(
                     cmd.pool_id,
                     event_type="text",
                     text=event.text,
                     done=False,
+                    **resume_extra,
                 )
                 await self.reply(msg, chunk)
             elif isinstance(event, ToolUseLlmEvent):
@@ -262,6 +274,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
                     tool_id=event.tool_id,
                     tool_input=event.input,
                     done=False,
+                    **resume_extra,
                 )
                 await self.reply(msg, chunk)
             elif isinstance(event, ResultLlmEvent):
@@ -288,7 +301,12 @@ class CliPoolNatsWorker(NatsAdapterBase):
         )
 
     async def _handle_cmd_blocking(
-        self, msg: Any, cmd: CliCmdPayload, model_cfg: ModelConfig
+        self,
+        msg: Any,
+        cmd: CliCmdPayload,
+        model_cfg: ModelConfig,
+        *,
+        resumed: bool | None = None,
     ) -> None:
         try:
             result = await self._pool.send(
@@ -322,6 +340,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
             is_error=bool(result.error),
             session_id=result.session_id or None,
             done=True,
+            resumed=resumed,
         )
         await self.reply(msg, chunk)
 

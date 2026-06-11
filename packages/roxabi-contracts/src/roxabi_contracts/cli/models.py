@@ -46,6 +46,9 @@ class CliChunkEvent(WorkEnvelope):
     is_error: bool = False
     done: bool = False
     worker_error: WorkerError | None = None
+    # Set on the first chunk of a resumed turn so the hub can distinguish
+    # "resume applied" (True) from "cold-start" (False) in mixed-version rollouts.
+    resumed: bool | None = None
 
 
 class CliControlCmd(WorkEnvelope):
@@ -63,6 +66,7 @@ class CliControlCmd(WorkEnvelope):
     cli_session_id: str | None = Field(
         default=None,
         validation_alias=AliasChoices("cli_session_id", "session_id"),
+        serialization_alias="session_id",
     )
     cwd: str | None = None
 

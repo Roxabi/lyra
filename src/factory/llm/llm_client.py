@@ -77,6 +77,9 @@ class LlmClient:
         *,
         messages: list[dict] | None = None,
     ) -> LlmResult:
+        # Pop before the call; re-stash on transport failure so the resume is
+        # not silently dropped when the worker is temporarily unreachable.
+        pending_resume = self._pending_resume.pop(pool_id, None)
         payload, trace_id = self._codec.encode(
             text,
             model_cfg,
@@ -85,14 +88,19 @@ class LlmClient:
             stream=False,
             pool_id=pool_id,
             lyra_session_id=self._lyra_sessions.get(pool_id),
-            resume_session_id=self._pending_resume.pop(pool_id, None),
+            resume_session_id=pending_resume,
         )
-        result = await self._pool.request_with_routing(
-            lambda _: self._request_subject,
-            payload,
-            max_attempts=1,
-            timeout=self._timeout,
-        )
+        try:
+            result = await self._pool.request_with_routing(
+                lambda _: self._request_subject,
+                payload,
+                max_attempts=1,
+                timeout=self._timeout,
+            )
+        except Exception:
+            if pending_resume is not None:
+                self._pending_resume.setdefault(pool_id, pending_resume)
+            raise
         return self._codec.decode(result, trace_id)
 
     async def stream(  # noqa: PLR0913 — LlmProvider protocol signature
@@ -104,6 +112,10 @@ class LlmClient:
         *,
         messages: list[dict] | None = None,
     ) -> AsyncIterator[LlmEvent]:
+        # Pop before the generator starts; re-stash on connection failure so
+        # the resume is not lost if the worker is unreachable on the first
+        # attempt (stream path: exception fires before any yield).
+        pending_resume = self._pending_resume.pop(pool_id, None)
         payload, _ = self._codec.encode(
             text,
             model_cfg,
@@ -112,17 +124,22 @@ class LlmClient:
             stream=True,
             pool_id=pool_id,
             lyra_session_id=self._lyra_sessions.get(pool_id),
-            resume_session_id=self._pending_resume.pop(pool_id, None),
+            resume_session_id=pending_resume,
         )
-        async for result in self._pool.stream_request(
-            self._request_subject, payload, timeout=self._timeout
-        ):
-            event = self._codec.decode_chunk(result)
-            if event is None:
-                continue
-            yield event
-            if isinstance(event, ResultLlmEvent):
-                return
+        try:
+            async for result in self._pool.stream_request(
+                self._request_subject, payload, timeout=self._timeout
+            ):
+                event = self._codec.decode_chunk(result)
+                if event is None:
+                    continue
+                yield event
+                if isinstance(event, ResultLlmEvent):
+                    return
+        except Exception:
+            if pending_resume is not None:
+                self._pending_resume.setdefault(pool_id, pending_resume)
+            raise
 
     # ── Control-plane methods (re-homed from CliNatsDriver, Slice S2) ────
 
@@ -165,7 +182,9 @@ class LlmClient:
         complete() or stream() call via CliCmdPayload.resume_session_id — no
         separate NATS control message is sent.
 
-        Returns True iff a cli_session_id was resolved and stashed.
+        Returns True iff a cli_session_id was resolved and stashed ("stash
+        accepted").  True does NOT mean the resume has been applied — the
+        worker applies it on the next CliCmdPayload it receives.
         """
         cli_sid: str | None = None
         if self._turn_store is not None:

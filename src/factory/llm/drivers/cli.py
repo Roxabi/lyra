@@ -37,8 +37,9 @@ class ClaudeCliDriver:
     async def queue_resume(self, pool_id: str, session_id: str) -> bool:
         """Delegate session resume to CliPool.
 
-        Wired into pool._session_resume_fn by SimpleAgent._maybe_register_resume
-        so that pool.resume_session(sid) → CliPool.queue_resume(pool_id, sid).
+        Wired via pool.register_session_callbacks(resume_fn=...) in
+        SimpleAgent._maybe_register_resume so that
+        pool.resume_session(sid) → CliPool.queue_resume(pool_id, sid).
         Returns True if the resume was accepted, False if skipped.
         """
         return await self._pool.queue_resume(pool_id, session_id)

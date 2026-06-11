@@ -402,3 +402,43 @@ class TestHandleCmdEmbeddedResume:
         await worker._handle_cmd(msg, payload)
 
         pool.resume_direct.assert_awaited_once_with("pool-resume-42", _ANOTHER_CLI_SID)
+
+    @pytest.mark.asyncio
+    async def test_handle_cmd_blocking_with_resume_session_id_calls_resume_direct(
+        self,
+    ) -> None:
+        """stream=False + resume_session_id → pool.resume_direct called before send.
+
+        SC-18 (blocking variant): embedded resume path works for non-streaming
+        requests; pool.resume_direct is awaited with the payload's resume_session_id.
+        """
+        from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
+
+        pool = MagicMock(spec=CliPool)
+        pool.resume_direct = AsyncMock(return_value=True)
+        fake_result = MagicMock()
+        fake_result.error = None
+        fake_result.session_id = _VALID_CLI_SID
+        pool.send = AsyncMock(return_value=fake_result)
+
+        worker = CliPoolNatsWorker(pool)
+        msg = MagicMock()
+        msg.reply = "_INBOX.test"
+
+        payload = {
+            "contract_version": "1",
+            "trace_id": "trace-sc18d",
+            "issued_at": datetime.now(timezone.utc).isoformat(),
+            "pool_id": "pool-1",
+            "text": "hello",
+            "model_cfg": {"backend": "claude-cli"},
+            "lyra_session_id": "lyra-session-test",
+            "system_prompt": "",
+            "resume_session_id": _VALID_CLI_SID,
+            "stream": False,
+        }
+
+        with patch.object(worker, "reply", new_callable=AsyncMock):
+            await worker._handle_cmd(msg, payload)
+
+        pool.resume_direct.assert_awaited_once_with("pool-1", _VALID_CLI_SID)

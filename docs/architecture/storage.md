@@ -286,6 +286,7 @@ guard pattern is gone; the bus is either injected or absent. → ADR-022 (amende
   backup. SQLite `.backup` API or WAL checkpoint before FS snapshot is mandatory if a
   backup cron is added. Not yet implemented.
 - Blob mount inode/disk alerts (threshold 80%) are specified in ADR-067 but not yet wired.
+- ~~Blob retention: v1 policy was never-delete (ADR-067 §GC interface).~~ Age-based sweep now implemented (#1836): `FsBlobStore.sweep_older_than(cutoff_ts)` + `factory blobstore sweep --older-than 30d` CLI. Host-level daily timer at 03:00 in `deploy/systemd/factory-blobstore-sweep.{service,timer}`. Hard guard: minimum 7d (FACTORY_OUTBOUND_AUDIO JetStream MaxAge is 24h; 7d provides margin).
 - v1 BlobStore is single-host but ecosystem-transparent: cross-host consumers use `HttpBlobStore`
   (V8 HTTP service); MinIO swap is triggered only by disk pressure, HA need, or S3 demand. → ADR-068
 - TurnStore + L3 memory (including L1 sessions — `pool_sessions` table in `turns.db`) use direct-write to SQLite (co-located, ADR-068 pattern α deviation). Tolerated until either (a) the TurnStore α-refactor issue (#1331) lands, OR (b) a 3rd adapter is added on top of TurnStore — whichever comes first (ADR-073 three-strikes rule).

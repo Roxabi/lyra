@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Any
 
 import discord
 
+from roxabi_contracts import new_job_id
+
 from factory.adapters.discord.discord_formatting import extract_attachments
 from factory.core.auth.trust import TrustLevel
 from factory.core.messaging.message import (
@@ -136,4 +138,5 @@ def normalize(deps: NormalizeDeps) -> InboundMessage:
         platform_meta=platform_meta,
         routing=routing,
         reply_to_id=reply_to_id,
+        root_job_id=new_job_id(),
     )

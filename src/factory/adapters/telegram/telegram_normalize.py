@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from datetime import timezone
 from typing import TYPE_CHECKING, Any
 
+from roxabi_contracts import new_job_id
+
 from factory.adapters.telegram.telegram_attachments import _extract_attachments
 from factory.core.audio_payload import AudioPayload
 from factory.core.auth.trust import TrustLevel
@@ -170,6 +172,7 @@ def normalize(  # noqa: C901 — DEBT:wiring-bootstrap-deps
         platform_meta=platform_meta,
         routing=routing,
         reply_to_id=reply_to_id,
+        root_job_id=new_job_id(),
     )
 
 
@@ -252,4 +255,5 @@ def normalize_audio(  # noqa: PLR0913 — ChannelAdapter protocol; pending is ad
             waveform_b64=None,
         ),
         pending_attachment=pending,
+        root_job_id=new_job_id(),
     )

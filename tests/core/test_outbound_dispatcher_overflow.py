@@ -13,11 +13,19 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncGenerator, AsyncIterator
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from factory.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 from factory.core.hub.outbound.outbound_errors import OUTBOUND_QUEUE_MAXSIZE
-from factory.core.messaging.message import OutboundAudio, OutboundMessage
+from factory.core.messaging.message import (
+    OutboundAudio,
+    OutboundAudioChunk,
+    OutboundMessage,
+)
+from factory.core.messaging.render_events import RenderEvent
 
 from .conftest import make_dispatcher_msg
 
@@ -158,7 +166,7 @@ class TestStreamingIteratorDrain:
         dispatcher.enqueue(msg, OutboundMessage.from_text("placeholder"))
         # Now enqueue a streaming item that will trigger drop-oldest of the placeholder
         # and put the streaming item in the queue
-        chunks_gen = _gen_with_sentinel()
+        chunks_gen = cast(AsyncIterator[RenderEvent], _gen_with_sentinel())
         dispatcher.enqueue_streaming(msg, chunks_gen)
         # Queue: [streaming(chunks_gen)]
 
@@ -186,7 +194,9 @@ class TestStreamingIteratorDrain:
         # Fill the queue with a plain send first
         dispatcher.enqueue(msg, OutboundMessage.from_text("placeholder"))
         # Enqueue audio_stream, which evicts the placeholder
-        dispatcher.enqueue_audio_stream(msg, _audio_gen())
+        dispatcher.enqueue_audio_stream(
+            msg, cast(AsyncIterator[OutboundAudioChunk], _audio_gen())
+        )
         # Enqueue one more item to evict the audio_stream item
         dispatcher.enqueue(msg, OutboundMessage.from_text("evict-audio"))
 
@@ -195,6 +205,33 @@ class TestStreamingIteratorDrain:
 
         assert "audio-done" in drained, (
             "audio_stream iterator was not drained after drop"
+        )
+
+    async def test_dropped_voice_stream_iterator_drained(self) -> None:
+        """A dropped 'voice_stream' item has its AsyncIterator fully consumed."""
+        _, dispatcher = _make_stopped_dispatcher(maxsize=1)
+        msg = make_dispatcher_msg()
+
+        drained: list[str] = []
+
+        async def _voice_gen() -> AsyncIterator[object]:
+            yield object()
+            drained.append("voice-done")
+
+        # Fill the queue with a plain send first
+        dispatcher.enqueue(msg, OutboundMessage.from_text("placeholder"))
+        # Enqueue voice_stream, which evicts the placeholder
+        dispatcher.enqueue_voice_stream(
+            msg, cast(AsyncIterator[OutboundAudioChunk], _voice_gen())
+        )
+        # Enqueue one more item to evict the voice_stream item
+        dispatcher.enqueue(msg, OutboundMessage.from_text("evict-voice"))
+
+        await asyncio.sleep(0)  # event-based
+        await asyncio.sleep(0)  # event-based
+
+        assert "voice-done" in drained, (
+            "voice_stream iterator was not drained after drop"
         )
 
 
@@ -231,6 +268,36 @@ class TestQueueEmptyRace:
         # queue is empty and maxsize=2 — qsize (0) < maxsize (2) → early return
         dispatcher._maybe_drop_oldest()  # noqa: SLF001
         assert dispatcher._queue.qsize() == 0  # noqa: SLF001
+
+    def test_queue_empty_race_exercises_except_branch(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """get_nowait raising QueueEmpty (worker stole the items between the
+        qsize check and the dequeue) is tolerated and the new item still lands."""
+        _, dispatcher = _make_stopped_dispatcher(maxsize=2)
+        msg = make_dispatcher_msg()
+        queue = dispatcher._queue  # noqa: SLF001
+
+        dispatcher.enqueue(msg, OutboundMessage.from_text("first"))
+        dispatcher.enqueue(msg, OutboundMessage.from_text("second"))
+
+        original_get_nowait = queue.get_nowait
+
+        def _racing_get_nowait() -> object:
+            # Simulate the worker draining the queue between the qsize check
+            # and get_nowait: empty it for real, then raise like asyncio.Queue.
+            while queue.qsize():
+                original_get_nowait()
+                queue.task_done()
+            raise asyncio.QueueEmpty
+
+        monkeypatch.setattr(queue, "get_nowait", _racing_get_nowait)
+        # qsize (2) >= maxsize (2) → _maybe_drop_oldest reaches get_nowait,
+        # which raises QueueEmpty; the enqueue must survive and land the item.
+        dispatcher.enqueue(msg, OutboundMessage.from_text("new"))
+        monkeypatch.undo()
+
+        assert queue.qsize() == 1
 
 
 # ---------------------------------------------------------------------------

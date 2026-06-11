@@ -17,7 +17,7 @@ from pydantic import ValidationError
 
 from factory.core.ports.stt import TranscriptionResult
 from factory.transport._result import Err, Result, SanitizedError
-from roxabi_contracts import BlobRef
+from roxabi_contracts import BlobRef, new_job_id
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.voice import SttRequest, SttResponse
 
@@ -51,6 +51,7 @@ class SttCodec:
             contract_version=CONTRACT_VERSION,
             trace_id=str(uuid4()),
             issued_at=datetime.now(timezone.utc),
+            job_id=new_job_id(),
             request_id=str(uuid4()),
             blob_ref=blob_ref,
             mime_type=mime,

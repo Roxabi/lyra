@@ -1,0 +1,10 @@
+[Unit]
+Description=Factory blobstore age-based sweep — daily at 03:00
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+Unit=factory-blobstore-sweep.service
+
+[Install]
+WantedBy=timers.target

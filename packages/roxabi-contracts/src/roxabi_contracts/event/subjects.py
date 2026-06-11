@@ -14,7 +14,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-from roxabi_contracts._nats_utils import _SAFE_SUBJECT_SEGMENT_RE
+from roxabi_contracts._nats_utils import validate_subject_segment
 
 __all__ = ["SUBJECTS", "per_service_event", "per_service_metric"]
 
@@ -39,14 +39,6 @@ class _Subjects:
 SUBJECTS = _Subjects()
 
 
-def _validate_segment(segment: str) -> None:
-    if not _SAFE_SUBJECT_SEGMENT_RE.fullmatch(segment):
-        raise ValueError(
-            f"NATS subject segment must match [A-Za-z0-9_-]+ (got {segment!r}); "
-            "dots, wildcards (* >) and empty segments are rejected"
-        )
-
-
 def _validate_namespaced(token: str) -> None:
     if not _SAFE_NAMESPACED_RE.fullmatch(token):
         raise ValueError(
@@ -61,7 +53,7 @@ def per_service_event(service: str, kind: str) -> str:
     Raises ``ValueError`` if ``service`` contains characters outside
     ``[A-Za-z0-9_-]`` or if ``kind`` is not a valid namespaced token.
     """
-    _validate_segment(service)
+    validate_subject_segment(service)
     _validate_namespaced(kind)
     return f"factory.event.{service}.{kind}"
 
@@ -72,6 +64,6 @@ def per_service_metric(service: str, name: str) -> str:
     Raises ``ValueError`` if ``service`` contains characters outside
     ``[A-Za-z0-9_-]`` or if ``name`` is not a valid namespaced token.
     """
-    _validate_segment(service)
+    validate_subject_segment(service)
     _validate_namespaced(name)
     return f"factory.metric.{service}.{name}"

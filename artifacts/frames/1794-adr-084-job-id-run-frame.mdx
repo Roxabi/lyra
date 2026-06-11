@@ -1,0 +1,75 @@
+---
+title: "docs(adr): amend ADR-084 — job_id = run (not turn), hops != jobs, sub-jobs = parent_job_id"
+issue: 1794
+status: approved
+tier: S
+date: 2026-06-11
+---
+
+## Problem
+
+ADR-084 line 75 labels `job_id` as "(turn)" inside the `cli` id taxonomy sentence. Line 87–88
+frames internal routing as "it then flows hub → harness → satellite (child jobs)". Both are
+under-ratified residue from the now-CLOSED obs epic #1622 (unbuilt); neither reflects the
+decision ratified in `artifacts/analyses/job-model-concept-analysis.md §15.1`. The label
+and the framing contradict line 87 itself ("root `job_id` minted at ingress… the moment a
+user message enters"), which is run-scoped by definition.
+
+The ratified identity pivot (`job_id = run`, not turn; internal LLM hops opaque; sub-jobs
+explicit via `parent_job_id` + `composite_depth`) is documented in `job-model.md` (lines 85–86)
+and in the concept analysis, but the authoritative ADR still carries the contradicting prose.
+Issue #1619 (spec for WorkEnvelope + reparent) implements ADR-084 directly — it needs the
+amended wording as its canonical reference.
+
+Issue #1796 (active-jobs registry, M1 milestone) is explicitly blocked on this amendment:
+the registry design assumes `job_id=run` as a durable, per-message key. Landing #1794 unblocks
+the C-cluster of M1 work (#1796, #1797, #1798, #1799).
+
+## Who
+
+- **Primary:** Mickael (author, human reviewer — approves amendment prose)
+- **Secondary:** #1619 implementer (WorkEnvelope + reparent — consumes amended ADR wording as spec contract); M1 downstream issues #1796/#1797/#1798/#1799 (unblocked once amendment lands)
+
+## Constraints
+
+- **Scope boundary:** only the id-model prose is corrected — Option C (WorkEnvelope/ContractEnvelope split, mandatory `job_id` min_length=1, nullable `parent_job_id` None at root) is RATIFIED and MUST NOT change.
+- **ADR amendment style:** follow ADR-001/ADR-022 house pattern: add `status: amended` to frontmatter (currently absent), add "— amended by #1794" to the `## Status` prose section, add `## Amendment` section at end of file.
+- **Exact line 75 surgery:** only the "(turn)" label is replaced with "(run)" — the surrounding coordinate structure of the id sentence (`cli_session_id · lyra_session_id · job_id · parent_job_id · trace_id`) is preserved.
+- **Lines 87–88 replacement:** "satellite (child jobs), the tree sharing `trace_id`" → framing using sub-jobs / `parent_job_id` consistent with concept-analysis §15.1 and job-model.md.
+- **doc_drift:** `docs/architecture/adr/**` is fully EXEMPT from backtick-symbol checking (confirmed in tools/CLAUDE.md). `WorkEnvelope` remains UNBUILT in src/; the amendment must not introduce a backtick `WorkEnvelope` reference in any scanned domain page (job-model.md already uses bold **WorkEnvelope** correctly — no edit needed there).
+- **Sibling M1 issues in parallel prep:** #1619 (WorkEnvelope spec), #1782 (likely job_id references), #1791 (job model related) — amendment prose must be consistent with these; do not introduce new field names not present in `packages/roxabi-contracts` (`parent_job_id` and `composite_depth` are SHIPPED at :28/:29).
+- **Quality gates:** tier S = single doc file edit, no code change, no import-layer, no hardcoded-constants, no architecture_snapshot impact.
+
+## Out of Scope
+
+- Updating `job-model.md` — already pre-amended (lines 85–86 reference #1794 and state the ratified wording); no edit needed.
+- Implementing WorkEnvelope in `src/` or `packages/` — that is #1619.
+- Updating ingress mint logic or inbound adapters — that is #1620.
+- Folding `request_id` → `job_id` — that is #1621.
+- Subject taxonomy migration (`factory.results.*` → `factory.job.<id>.result`) — that is #1793 (not yet landed).
+- Any change to the obs epic #1622 or its residual references in other ADRs.
+- Updating `meta.json` for Fumadocs if the status field change has no rendering side-effects (verify at review).
+
+## Premise Validity
+
+**Success in 6 months:** ADR-084 carries `status: amended` frontmatter and an `## Amendment` section; the "(turn)" label is gone; no downstream issue or PR references the "(turn)" framing as authoritative; #1619 spec is consistent with the amended ADR wording; `grep '(turn)' docs/` returns zero hits outside of historical context references.
+
+**Failure in 6 months:** A new PR implements job-level logic using turn-granularity `job_id` semantics (one `job_id` per conversational turn), citing ADR-084 as justification — meaning the contradiction was never authoritatively resolved and the old prose kept being read as normative.
+
+**Simplest alternative:** Add a one-line "NOTE: (turn) label is deprecated — see job-model.md" comment directly on line 75, leaving the contradiction in place.
+
+**Why not simplest:** A note leaves the contradiction intact in the ADR's own prose and provides no stable wording for #1619 to import as spec contract. An actual Amendment section with corrected prose is the prescribed house pattern (ADR-001/ADR-022) and is the minimum to unblock #1619 and #1796 cleanly.
+
+_(champs dérivés du contexte — à valider à la review humaine)_
+
+## Complexity
+
+**Tier: S** — single MDX file edit (docs/architecture/adr/084-workenvelope-job-id-invariant.mdx), no code change, no contract schema change, no architecture snapshot impact; all ratified wording already exists in verified source documents.
+
+Signals observed:
+- 1 file in scope (ADR-084 MDX)
+- 0 code files touched
+- Pre-digested ratified wording available verbatim from concept-analysis §15.1 (lines 937–959)
+- No cross-repo coordination required (packages/roxabi-contracts already ships `parent_job_id` + `composite_depth`)
+- doc_drift gate is exempt for `docs/architecture/adr/**`
+- All verification already performed by pre-task agent

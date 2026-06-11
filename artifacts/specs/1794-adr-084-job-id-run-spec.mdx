@@ -1,0 +1,205 @@
+---
+title: "docs(adr): amend ADR-084 — job_id = run (not turn), hops != jobs, sub-jobs = parent_job_id"
+description: "Correct ADR-084's under-ratified id-model prose: replace the '(turn)' label at :75 with '(run)' and replace the 'child jobs' framing at :87–88 with the ratified sub-jobs / parent_job_id model."
+---
+
+## Context
+
+**Promoted from:** [frame](../frames/1794-adr-084-job-id-run-frame.mdx)
+**GitHub issue:** #1794
+**ADR being amended:** `docs/architecture/adr/084-workenvelope-job-id-invariant.mdx`
+**Ratified wording source:** `artifacts/analyses/job-model-concept-analysis.md` §15.1 (lines 937–959)
+**Living SSoT:** `docs/architecture/job-model.md` (already pre-amended at lines 85–86, no edit needed)
+**Related:** #1619 (implements ADR-084 — consumes this amendment as spec contract); #1622 (closed obs epic that introduced the "(turn)" label); #1796/#1797/#1798/#1799 (M1 C-cluster, blocked on this amendment)
+
+ADR-084 line 75 labels `job_id` as "(turn)" inside the `cli` id taxonomy sentence. Lines 87–88
+frame internal routing as "it then flows hub → harness → satellite (child jobs)". Both are
+under-ratified residue from the now-CLOSED obs epic #1622 (unbuilt). The prose at :87 already
+contradicts the label: "root `job_id` minted at ingress (the moment a user message enters)" is
+run-scoped by definition, not turn-scoped.
+
+The ratified identity pivot — `job_id = run`, internal LLM hops opaque, sub-jobs explicit via
+`parent_job_id` + `composite_depth` — lives in the concept analysis §15.1 and is reflected in
+`job-model.md`. The authoritative ADR still carries the contradicting prose, blocking #1619 from
+having a clean canonical reference and blocking #1796 from ratifying its `job_id=run` key model.
+
+Option C (WorkEnvelope/ContractEnvelope split, mandatory `job_id` min_length=1, nullable
+`parent_job_id` None at root) is **ratified and unchanged** by this amendment.
+
+## Goal
+
+Correct the id-model prose in ADR-084 to match the ratified `job_id=run` model, so that #1619
+and the M1 C-cluster have an unambiguous canonical reference.
+
+## Users
+
+- **#1619 implementer** — reads ADR-084 as the spec contract for WorkEnvelope; needs "(run)"
+  not "(turn)" and correct sub-jobs framing before writing code.
+- **M1 downstream issues** (#1796 active-jobs registry, #1797 concurrency router, #1798
+  sub-jobs, #1799 steer e2e) — each assumes `job_id=run` is the durable per-message key;
+  unblocked once this amendment lands.
+- **Future contributors** — encountering ADR-084 as a reference must not be misled into
+  implementing turn-granularity `job_id` logic.
+
+## Expected Behavior
+
+After this amendment lands:
+
+1. `docs/architecture/adr/084-workenvelope-job-id-invariant.mdx` frontmatter carries
+   `status: amended`.
+
+2. The `## Status` prose section reads:
+   `Accepted — amended by #1794 (job_id = run, hops ≠ jobs, sub-jobs via parent_job_id; see Amendment below).`
+
+3. The id taxonomy sentence at line 75 reads:
+   `= pool_id ≈ Langfuse session) · job_id (run) · parent_job_id (nesting) · trace_id (tree).`
+   (only the `(turn)` label is replaced with `(run)`; the coordinate structure is preserved).
+
+4. The supporting rule at lines 87–88 replaces "satellite (child jobs), the tree sharing
+   `trace_id`" with framing consistent with §15.1: internal LLM hops inside a worker are
+   opaque (not job_ids); cross-process decomposition is explicit via `parent_job_id` +
+   `composite_depth`.
+
+5. A `## Amendment` section is appended at the end of ADR-084 containing:
+   - The issue reference (#1794) and date.
+   - The ratified `job_id=run` definition (one entry → full processing → terminal closing
+     message; ≡ run).
+   - The "internal hops opaque" rule (LLM multi-turn inside a worker = not job_ids).
+   - The sub-jobs rule (`parent_job_id` + `composite_depth ≤ 3`; both SHIPPED in
+     `packages/roxabi-contracts`).
+   - A pointer to `job-model.md` as the living SSoT.
+
+6. `job-model.md` is **not edited** (already pre-amended at lines 85–86).
+
+7. No `WorkEnvelope` backtick reference is introduced in any doc_drift-scanned file
+   (ADR files are exempt; job-model.md already uses bold **WorkEnvelope** correctly).
+
+## Edit Plan
+
+### File: `docs/architecture/adr/084-workenvelope-job-id-invariant.mdx`
+
+**Change 1 — Add `status: amended` to frontmatter**
+
+Current frontmatter (lines 1–5):
+```
+---
+title: "ADR-084: WorkEnvelope — the job_id invariant"
+description: Split the NATS contract envelope into WorkEnvelope (mandatory job_id) vs infra ContractEnvelope (trace_id only).
+related: [049, 076, 075, 078]
+---
+```
+
+Amended frontmatter:
+```
+---
+title: "ADR-084: WorkEnvelope — the job_id invariant"
+description: Split the NATS contract envelope into WorkEnvelope (mandatory job_id) vs infra ContractEnvelope (trace_id only).
+related: [049, 076, 075, 078]
+status: amended
+---
+```
+
+**Change 2 — Update `## Status` prose**
+
+Current (line 9):
+```
+Accepted
+```
+
+Amended:
+```
+Accepted — amended by #1794 (job_id = run, hops ≠ jobs, sub-jobs via parent_job_id; see Amendment below).
+```
+
+**Change 3 — Replace `(turn)` with `(run)` at line 75**
+
+Current (line 75):
+```
+= `pool_id` ≈ Langfuse session) · `job_id` (turn) · `parent_job_id` (nesting) · `trace_id` (tree).
+```
+
+Amended (replace label only, preserve coordinate structure):
+```
+= `pool_id` ≈ Langfuse session) · `job_id` (run) · `parent_job_id` (nesting) · `trace_id` (tree).
+```
+
+**Change 4 — Replace the supporting rule at lines 87–88**
+
+Current (lines 87–88):
+```
+- **Root `job_id` minted at ingress** by inbound adapters (the moment a user message
+  enters); it then flows hub → harness → satellite (child jobs), the tree sharing `trace_id`.
+```
+
+Amended (replace "satellite (child jobs), the tree sharing `trace_id`" framing):
+```
+- **Root `job_id` minted at ingress** by inbound adapters (the moment a user message
+  enters); one `job_id` per run (entry → full processing → terminal closing message).
+  Internal worker hops (e.g. cli_pool multi-turn LLM calls) are **opaque** — they are
+  NOT sub-jobs and carry no new `job_id`. Cross-process decomposition into sub-jobs is
+  **explicit** via `parent_job_id` + `composite_depth` (both SHIPPED in
+  `packages/roxabi-contracts`; `composite_depth ≤ 3`). All nodes in a job tree share
+  `trace_id`.
+```
+
+_Note: Change 4 expands the `let: job :=` definition inline (§15.1 form). The Amendment table in Change 5 restates it concisely ("one run = one `job_id`, durable for the whole run") as a quick-reference. §15.1 is the primary source; the Amendment table is the summary._
+
+**Change 5 — Append `## Amendment` section at end of file**
+
+Append after the `## Trail` section. Present as live prose — no outer code fence:
+
+## Amendment: job_id = run, hops ≠ jobs, sub-jobs via parent_job_id (#1794)
+
+_Amended by #1794 (2026-06-11). Author: Mickael._
+
+### id-model correction (replaces under-ratified prose from closed obs epic #1622)
+
+Ratified definition (source: `artifacts/analyses/job-model-concept-analysis.md` §15.1):
+
+~~~
+let: job  := one entry → full processing (internal multi-turn + steer + streaming) → final closing message
+     run  := the atomic unit of observable work (≡ job)
+     ¬turn := job is NOT per-turn
+~~~
+
+| Concept | Status |
+|---|---|
+| `job_id` minted at ingress, per user message | one run = one `job_id` (durable for the whole run) |
+| Internal LLM hops inside a worker (e.g. cli_pool multi-turn) | NOT `job_id`s — opaque, irreducible internal layer |
+| Cross-process decomposition | EXPLICIT sub-jobs via `parent_job_id` + `composite_depth ≤ 3` only |
+
+**What changed:**
+- Line 75: `(turn)` label → `(run)`.
+- Lines 87–88: "satellite (child jobs), the tree sharing `trace_id`" → run-scoped minting +
+  opaque-hops rule + explicit sub-jobs rule.
+
+**What did NOT change:** Option C (WorkEnvelope/ContractEnvelope split, mandatory `job_id`
+min_length=1, nullable `parent_job_id` None at root) is ratified and unchanged.
+
+Living SSoT: `docs/architecture/job-model.md`.
+
+## Success Criteria
+
+- [ ] `grep '(turn)' docs/architecture/adr/084-workenvelope-job-id-invariant.mdx` returns 0 hits.
+- [ ] ADR-084 frontmatter contains `status: amended`.
+- [ ] ADR-084 `## Status` prose contains "amended by #1794".
+- [ ] ADR-084 contains a `## Amendment` section with the ratified `job_id=run` definition table and pointer to `job-model.md`.
+- [ ] `grep -n 'child jobs' docs/architecture/adr/084-workenvelope-job-id-invariant.mdx` returns 0 hits; AND the block replacing lines 87–88 contains both `parent_job_id` and `composite_depth` (verify with `grep -n 'parent_job_id\|composite_depth' docs/architecture/adr/084-workenvelope-job-id-invariant.mdx | grep -v '^[0-9]*:\(57\|75\|82\|111\)')` showing hits in the Change 4 expansion).
+- [ ] `uv run python tools/check_doc_drift.py` passes (ADR files are exempt; no scanned file gains a new unbuilt backtick symbol).
+- [ ] `grep -c 'min_length=1' docs/architecture/adr/084-workenvelope-job-id-invariant.mdx` returns ≥ 1 (Option C presence check); `git diff docs/architecture/adr/084-workenvelope-job-id-invariant.mdx | grep '^[-+]' | grep -E 'WorkEnvelope|ContractEnvelope|min_length|nullable|parent_job_id.*None' | grep -v '^[-+][-+][-+]'` shows no deletions from the Decision section (lines 54–99) other than Changes 3 and 4.
+
+## Open Questions
+
+None. All constraints verified; ratified wording is available verbatim from concept-analysis §15.1.
+
+## Pre-check
+
+1. **Every Success Criteria checkbox binary?** Yes — each is a grep/diff/tool check with a pass/fail outcome.
+2. **Every breadboard ID appears in at least 1 slice?** Not applicable (Tier S — no breadboard/slices).
+3. **Max 5 NEEDS CLARIFICATION?** 0 open questions — no clarifications needed.
+4. **Every affordance in at least 1 slice?** Not applicable (Tier S — single doc edit, no affordances/slices).
+5. **Every edge case has a handling strategy?**
+   - WorkEnvelope UNBUILT: ADR files are exempt from doc_drift; amendment may freely backtick `WorkEnvelope` in ADR-084 without risk.
+   - `composite_depth` / `parent_job_id` backtick references in Amendment section are safe: both SHIPPED in `packages/roxabi-contracts`; ADR files are also exempt regardless.
+   - Coordinate structure at line 75 preserved: only the `(turn)` label token is replaced, surrounding sentence structure is unchanged.
+   - Fumadocs `meta.json`: status field addition is additive only; no rendering side-effect expected (verify at review per frame constraint).

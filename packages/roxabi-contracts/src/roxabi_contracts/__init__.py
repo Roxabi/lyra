@@ -9,6 +9,7 @@ per-domain submodules (voice, image, memory, llm) arrive in later tags.
 
 from importlib.metadata import PackageNotFoundError, version
 
+from ._nats_utils import validate_subject_segment
 from .audit import SecurityEvent
 from .blob_errors import BlobNotFoundError, BlobStoreServerError
 from .blob_ref import BlobRef
@@ -27,4 +28,5 @@ __all__ = [
     "ContractEnvelope",
     "SecurityEvent",
     "__version__",
+    "validate_subject_segment",
 ]

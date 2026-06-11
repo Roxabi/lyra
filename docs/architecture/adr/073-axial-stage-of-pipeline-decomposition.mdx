@@ -89,7 +89,23 @@ telegram = Pipeline(
 Architectural commitments already encoded in code structure:
 
 - `Result[T, E]` return type — callers cannot ignore errors; no exception propagation path.
-- `SanitizedError` boundary — single site in `transport/`, never re-constructed downstream.
+- **SanitizedError boundary — multi-site (sanctioned list).** Construction is permitted at
+  exactly five locations; all others require `dev-core:axial-adr-review`:
+
+  | Site | Layer | Justification |
+  |------|-------|---------------|
+  | `src/factory/transport/` (6 sites) | transport | Canonical boundary — original intent |
+  | `src/factory/outbound/error_handler.py` | outbound | Platform-SDK exception boundary; `type(exc).__name__` only — documented in `outbound/CLAUDE.md` |
+  | `src/factory/core/processors/stream_processor.py` (×2) | core/processors | Infrastructure exception + WorkerError bridge; async-generator context prevents delegation; `_we.message` pre-scrubbed by `_scrub_cli_error_text()` |
+  | `src/factory/core/cli/cli_streaming_parser.py` | core/cli | CLI→bus boundary; f-string uses `type(exc).__name__` only |
+
+  **Enforcement:** `tools/check_str_exc_bus_bound.sh` (quality gate, pre-commit) blocks
+  `str(exc)` / `f"{exc}"` / `repr(exc)` from flowing into `SanitizedError` construction or
+  NATS-bus-bound message fields in the five bus-bound path scopes. Escape hatch:
+  `# str-exc-ok: <reason>`.
+
+  The invariant is: `SanitizedError.message` NEVER carries raw `str(exc)`. The number of
+  construction sites is secondary to this invariant being enforced mechanically.
 - Layering: `transport → streaming → core/processors → adapters/outbound → bootstrap`
   (enforced by `.importlinter` `clean-architecture-layers` contract).
 - Per-subsystem CLAUDE.md files (streaming, transport, inbound, outbound, …) own their

@@ -13,7 +13,7 @@ from ._nats_utils import validate_subject_segment
 from .audit import SecurityEvent
 from .blob_errors import BlobNotFoundError, BlobStoreServerError
 from .blob_ref import BlobRef
-from .envelope import CONTRACT_VERSION, ContractEnvelope
+from .envelope import CONTRACT_VERSION, ContractEnvelope, WorkEnvelope, new_job_id
 
 try:
     __version__: str = version("roxabi-contracts")
@@ -27,6 +27,8 @@ __all__ = [
     "CONTRACT_VERSION",
     "ContractEnvelope",
     "SecurityEvent",
+    "WorkEnvelope",
     "__version__",
+    "new_job_id",
     "validate_subject_segment",
 ]

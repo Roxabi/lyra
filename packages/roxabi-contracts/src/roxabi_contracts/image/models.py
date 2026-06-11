@@ -1,8 +1,9 @@
 """Image-domain NATS contract models.
 
-Pure Pydantic. No NATS imports. No transport logic. Every model subclasses
-ContractEnvelope, which provides (contract_version, trace_id, issued_at)
-plus ConfigDict(extra="ignore") for forward-compat.
+Pure Pydantic. No NATS imports. No transport logic. Work models (ImageRequest,
+ImageResponse) subclass WorkEnvelope, which provides (contract_version,
+trace_id, issued_at, job_id) plus ConfigDict(extra="ignore") for forward-compat
+(ADR-084). ImageHeartbeat is an infra model and stays on ContractEnvelope.
 
 Mirrors the voice-domain shape. See spec #763 and issue #806 for the
 alignment rationale on optional-but-invariant fields on response models.
@@ -15,11 +16,11 @@ from typing import Annotated, Literal, Self
 from pydantic import StringConstraints, model_validator
 
 from roxabi_contracts.blob_ref import BlobRef
-from roxabi_contracts.envelope import ContractEnvelope
+from roxabi_contracts.envelope import ContractEnvelope, WorkEnvelope
 from roxabi_contracts.errors import WorkerError
 
 
-class ImageRequest(ContractEnvelope):
+class ImageRequest(WorkEnvelope):
     """Image generation request.
 
     Canonical subject: ``factory.image.generate.request``.
@@ -42,7 +43,7 @@ class ImageRequest(ContractEnvelope):
     embedding_path: str | None = None
 
 
-class ImageResponse(ContractEnvelope):
+class ImageResponse(WorkEnvelope):
     """Image generation response.
 
     Success-path invariant (enforced by ``_enforce_success_invariant``):

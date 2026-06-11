@@ -10,6 +10,9 @@ __all__ = [
     "jobs_submit",
     "jobs_result",
     "jobs_progress",
+    "jobs_steer",
+    "jobs_opened",
+    "jobs_closed",
 ]
 
 
@@ -24,8 +27,7 @@ class _Subjects:
     """
 
     submit_prefix: Literal["factory.jobs"] = "factory.jobs"
-    result_prefix: Literal["factory.results"] = "factory.results"
-    progress_prefix: Literal["factory.progress"] = "factory.progress"
+    job_prefix: Literal["factory.job"] = "factory.job"
 
 
 SUBJECTS = _Subjects()
@@ -38,12 +40,30 @@ def jobs_submit(job_name: str) -> str:
 
 
 def jobs_result(job_id: str) -> str:
-    """Result subject: factory.results.<job_id>."""
+    """Result subject: factory.job.<job_id>.result."""
     validate_job_token(job_id)
-    return f"factory.results.{job_id}"
+    return f"factory.job.{job_id}.result"
 
 
 def jobs_progress(job_id: str) -> str:
-    """Progress subject: factory.progress.<job_id>."""
+    """Progress subject: factory.job.<job_id>.progress."""
     validate_job_token(job_id)
-    return f"factory.progress.{job_id}"
+    return f"factory.job.{job_id}.progress"
+
+
+def jobs_steer(job_id: str) -> str:
+    """Steer subject: factory.job.<job_id>.steer."""
+    validate_job_token(job_id)
+    return f"factory.job.{job_id}.steer"
+
+
+def jobs_opened(job_id: str) -> str:
+    """Lifecycle open event subject: factory.job.<job_id>.opened."""
+    validate_job_token(job_id)
+    return f"factory.job.{job_id}.opened"
+
+
+def jobs_closed(job_id: str) -> str:
+    """Lifecycle close event subject: factory.job.<job_id>.closed."""
+    validate_job_token(job_id)
+    return f"factory.job.{job_id}.closed"

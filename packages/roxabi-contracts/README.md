@@ -122,10 +122,13 @@ from roxabi_contracts.jobs import JobEnvelope, JobResult, JobProgress, jobs_subm
 | Subject | Model | Transport | Purpose |
 |---|---|---|---|
 | `factory.jobs.<job_name>` | `JobEnvelope` | JetStream durable | Submit a job |
-| `factory.results.<job_id>` | `JobResult` | Core NATS reply | Job completion reply |
-| `factory.progress.<job_id>` | `JobProgress` | Core NATS pub/sub | Streaming progress (best-effort) |
+| `factory.job.<job_id>.result` | `JobResult` | Core NATS reply | Job completion reply |
+| `factory.job.<job_id>.progress` | `JobProgress` | Core NATS pub/sub | Streaming progress (best-effort) |
+| `factory.job.<job_id>.steer` | — | Core NATS pub/sub | Runtime steering commands |
+| `factory.job.<job_id>.opened` | — | Core NATS pub/sub | Lifecycle open event |
+| `factory.job.<job_id>.closed` | — | Core NATS pub/sub | Lifecycle close event |
 
-Subject strings are produced by the helpers `jobs_submit(job_name)`, `jobs_result(job_id)`, and `jobs_progress(job_id)`. Each helper validates its argument via `validate_job_token` (rejects empty strings and NATS wildcard characters).
+Subject strings are produced by the helpers `jobs_submit(job_name)`, `jobs_result(job_id)`, `jobs_progress(job_id)`, `jobs_steer(job_id)`, `jobs_opened(job_id)`, and `jobs_closed(job_id)`. Each helper validates its argument via `validate_job_token` (rejects empty strings and NATS wildcard characters).
 
 ### Models
 

@@ -1,0 +1,180 @@
+---
+title: "feat(harness): OmpWorker — omp_rpc NATS runtime backend (omp --mode rpc)"
+issue: 1812
+status: approved
+tier: F-full
+date: 2026-06-11
+---
+
+## Problem
+
+Factory has two LLM execution backends (`claude-cli`, `nats`) and zero support for
+the omp_rpc runtime ratified on 2026-06-10 (spike #1807 GREEN 4/4). Without an
+`omp-rpc` backend, agents that should run under `omp --mode rpc` cannot be
+scheduled — the hub would have to hardcode a backend choice per job type, or fall
+back to clipool exclusively. With the Anthropic programmatic-billing cliff on
+2026-06-15, factory's NATS job workers need a non-claude-cli path now.
+
+The gap is three-layered:
+
+1. **No `omp-rpc` backend registration** — `ModelConfig._VALID_BACKENDS` contains
+   `{'claude-cli', 'nats'}` only; assigning `backend="omp-rpc"` to an agent raises
+   `ValidationError` at config-load time.
+2. **No OmpWorker NATS adapter** — `src/factory/adapters/clipool/` is the only
+   worker-class adapter; there is no `omp/` peer that subscribes to
+   `factory.jobs.<name>`, drives an `RpcClient` subprocess, and publishes progress
+   + result payloads.
+3. **No Quadlet unit + ACL identity for omp** — `deploy/quadlet.toml` has no
+   `[component.omp]` entry; `deploy/nats/acl-matrix.json` has no `omp-worker`
+   identity; `factory-omp.container` does not exist.
+
+## Who
+
+- **Hub** — gains a new `omp-rpc` backend routing path; no hub code changes
+  expected (hub dispatches via the existing job-submission subjects, worker
+  subscribes independently).
+- **OmpWorker container** — new NATS adapter process; runs on M₁ alongside clipool
+  (NOT replacing it — additive lane per ratification decision 2026-06-10).
+- **Operators** — new Quadlet unit to manage; `PI_CODING_AGENT_DIR` volume mount +
+  `LITELLM_API_KEY` secret rotation added to the M₁ deploy surface.
+- **CI** — ACL equivalence check (`test_v4_render_set_equals_v3_render`) must stay
+  green after `acl-matrix.json` edit; `str_exc_bus_bound` scan must extend to cover
+  `src/factory/adapters/`.
+
+## Constraints
+
+### Dependency ordering
+- **Merge AFTER #1793** (jobs subject rename: `factory.jobs.*` → post-rename
+  subjects). OmpWorker MUST use the renamed subjects; merging before #1793 would
+  hard-couple the worker to the old subject names and require an immediate re-PR.
+
+### Wire contracts
+- `factory.job.<id>.{opened,closed,steer}` subjects referenced in the issue body
+  **do NOT exist in `roxabi_contracts.jobs.subjects`** (current: `factory.jobs.*`,
+  `factory.results.*`, `factory.progress.*`). Spec decision required before
+  implementation: either (a) add per-job subjects to `roxabi-contracts` in this
+  lane, or (b) reuse existing `factory.progress.<job_id>` for lifecycle events and
+  defer per-job subjects to a follow-up.
+
+### ModelConfig backend registration
+- Add `'omp-rpc'` to `_VALID_BACKENDS` in `src/factory/core/ports/llm_types.py`.
+  This is a wire-compat-safe additive change; existing agents are unaffected.
+
+### SLOC constraint
+- `file_exemptions.txt` is EMPTY — 300 SLOC max per `src/` file, no exemptions.
+  `OmpWorker` likely requires a split: `omp_worker.py` (NATS adapter + lifecycle)
+  + `_rpc_bridge.py` (RpcClient wiring + event translation). Plan for two files
+  from the start.
+
+### str_exc_bus_bound gate gap
+- `SCAN_ROOTS` in `tools/check_str_exc_bus_bound.sh` does NOT include
+  `src/factory/adapters/`. OmpWorker `_rpc_bridge.py` will have exception-handling
+  paths that feed NATS bus fields — the gate will NOT catch violations here by
+  default. This lane MUST extend `SCAN_ROOTS` (or add `src/factory/adapters/` to
+  `STR_EXC_SCAN_ROOTS`) so the SanitizedError discipline (ADR-073) is enforced on
+  OmpWorker code. Use `type(exc).__name__`, never `str(exc)` / `f"{exc}"` /
+  `repr(exc)` in bus-bound fields.
+
+### ACL fan-out mandate (BLOCKING)
+- `deploy/nats/acl-matrix.json` edit → MUST regenerate all 4 artifacts:
+  `deploy/nats/auth.conf`, 706-spec, `docs/architecture/CURRENT.generated.md`,
+  v3-current — AND hand-mirror the exact publish/subscribe diff into
+  `tests/scripts/fixtures/v3-pre-grant-group.json` (NOT script-generated; gated by
+  CI-only `test_v4_render_set_equals_v3_render`). Skipping any of the 4 artifacts
+  = red CI that cannot be reproduced locally.
+
+### omp_rpc API surface
+- omp_rpc is **alpha**, pinned to the sha256 in `deploy/omp-base/Containerfile`
+  (`b877091c91ebdc8c8d907c4b62681895cd3ae049815858aea7b69ac1d53b7c7b`). Do NOT
+  upgrade the pin speculatively — every bump requires an integration test run.
+- Callback registration MUST happen BEFORE `new_session()`. Order:
+  `on_message_update` → `on_tool_execution_start` → `on_agent_end` → `new_session()`.
+- `steer()` is between-tool-calls only (fire-and-forget). Never call from inside a
+  `prompt_and_wait` await chain.
+- Do NOT expose `OMP_BIN` as a runtime env var. The binary path must be an
+  image-build constant (`/opt/omp/omp` from the factory-omp-base layer).
+
+### SanitizedError discipline
+- No bare `except Exception` without an inline justification comment.
+- Spike `omp_rpc_poc.py` uses `# noqa: BLE001 — PoC`; this is PoC-only. Production
+  `_rpc_bridge.py` must use `_classify_exception` pattern (see clipool_worker.py).
+
+### Quadlet hardening invariants
+- `NoNewPrivileges=true`, `ReadOnly=true`, `DropCapability=all`,
+  `UserNS=keep-id:uid=1500` (on pod or unit, not both).
+- Secrets: `factory-nats-omp` (type=mount, nkey seed) + `LITELLM_API_KEY`
+  (type=env via `Secret=…,type=env,target=LITELLM_API_KEY`).
+- `deploy/omp/models.yml` must be volume-mounted into the container at the path
+  resolved by `PI_CODING_AGENT_DIR`. The env var relocates the omp config dir —
+  mount `models.yml` there, not into `/etc` or `/opt`.
+- `deploy/quadlet.toml` entry under `[component.omp]` must list both secrets;
+  `secrets_drift` gate checks (b)+(c) will fail CI otherwise.
+- `RestartSec=10` (container-deployment-standard S12).
+
+### Test constraints
+- M₁ LiteLLM proxy upstreams are currently dead (llmCLI#114) — tests MUST NOT
+  require a live LLM endpoint. All unit and integration tests must use fixtures or
+  omp_rpc stubs. M₁ re-validation is a deploy checklist item, not a CI gate.
+
+## Out of Scope
+
+- **Runtime selection (`clipool` ↔ `omp-rpc`)** → #1813. OmpWorker runs as a
+  parallel lane; which runtime an agent uses is governed by `ModelConfig.backend`
+  assignment, not by this issue.
+- **Retiring clipool** — omp-rpc is additive. clipool is NOT retired.
+- **`#493` ToolHandler** — forward-compat seam, not present in `src/factory/`,
+  not a dependency of this lane.
+- **`#1778` JobContext** — forward-compat seam, not present in `src/factory/`,
+  not a dependency of this lane.
+- **`#1799` steer E2E test** — `steer()` is in-scope as a wiring detail of
+  `_rpc_bridge.py`, but a dedicated E2E steer test is #1799's scope.
+- **omp binary pin bump** — pinned at v15.10.8 from #1810. Upgrading the pin is a
+  separate PR with a dedicated integration test.
+- **per-job `factory.job.<id>.*` subjects in roxabi-contracts** — if the spec
+  decision (Constraint §Wire contracts) is to add them, the roxabi-contracts PR
+  is a prerequisite sibling, not part of this PR.
+
+## Premise Validity
+
+**Ratification basis:** spike #1807 ran 4 live probes against omp_rpc on M₁ and M₂;
+all 4 passed. `RpcClient` subprocess lifecycle, callbacks, and `prompt_and_wait`
+are confirmed working at the versions pinned in factory-omp-base (#1810).
+
+**Success in 6 months (by 2026-12):**
+- `factory-omp.container` is deployed on M₁ under `factory-hub` role.
+- At least one agent has `backend="omp-rpc"` in its config and completes job turns
+  end-to-end via the NATS subjects.
+- clipool continues running as a parallel worker without interference.
+
+**Failure in 6 months:**
+- omp_rpc API surface (callback signatures, `prompt_and_wait` return type, event
+  field names) changes in 3+ incompatible ways within 6 months of pin v15.10.8,
+  with no upstream stability signal → retire omp-rpc lane, clipool-only fallback.
+- OmpWorker is deployed but never assigned a job (no agent with `backend="omp-rpc"`)
+  → runtime selection (#1813) must expose it or it is dead code.
+
+**Simplest alternative:** reuse clipool with a model override (force all jobs
+through `nats` backend → llmCLI worker). **Why not:** sidesteps the omp _agentic_
+tool-loop (`host_tool`, `steer`, `on_tool_execution_start`) which is the specific
+differentiator ratified in #1807; llmCLI is non-agentic request-reply.
+
+## Complexity
+
+**Tier: F-full** — crosses four domains:
+
+| Domain | Work |
+|---|---|
+| `roxabi-contracts` (wire) | Spec decision on `factory.job.<id>.*` subjects; possibly a new minor release |
+| `core/ports` (domain) | `_VALID_BACKENDS` extension; possibly `LlmProvider` shim if omp-rpc events must convert to `LlmEvent` |
+| `adapters/omp/` (new) | `OmpWorker` (NatsAdapterBase subclass) + `_rpc_bridge.py` (RpcClient wiring); SLOC split mandatory |
+| `deploy/` (infra/security) | ACL fan-out (4 artifacts + hand-mirror fixture), Quadlet unit, `quadlet.toml`, secrets, `models.yml` volume |
+
+Mandatory pre-implementation steps (blocking):
+1. Resolve wire contracts decision (Constraint §Wire contracts) — add subjects to
+   `roxabi-contracts` or confirm reuse of existing progress subjects.
+2. Confirm `#1793` is merged (or create the OmpWorker branch from the #1793 PR
+   branch if merge is imminent).
+
+Signals observed: `size:F-full` label; 4 independent domain clusters; ACL fan-out
+with CI-only equivalence gate; new Quadlet identity + 2 secrets; alpha dependency
+with fork-risk pin; gate gap that must be patched before the worker exists.

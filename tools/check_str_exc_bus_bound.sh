@@ -9,7 +9,7 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" \
     || { echo "ERROR: not a git repository" >&2; exit 2; }
 cd "$REPO_ROOT"
 
-SCAN_ROOTS="${STR_EXC_SCAN_ROOTS:-src/factory/transport/ src/factory/outbound/ src/factory/core/processors/ src/factory/core/cli/ src/factory/streaming/}"
+SCAN_ROOTS="${STR_EXC_SCAN_ROOTS:-src/factory/transport/ src/factory/outbound/ src/factory/core/processors/ src/factory/core/cli/ src/factory/streaming/ src/factory/adapters/}"
 
 # Build find args for existing dirs only
 FIND_DIRS=()

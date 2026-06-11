@@ -69,7 +69,7 @@ class JobResult(WorkEnvelope):
 
 
 class JobProgress(WorkEnvelope):
-    """Job progress event. Published to factory.progress.<job_id> (best-effort).
+    """Job progress event. Published to factory.job.<job_id>.progress (best-effort).
 
     ``job_id`` inherited from ``WorkEnvelope`` (ADR-084).
     """

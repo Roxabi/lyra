@@ -1,8 +1,9 @@
 """Image-domain NATS contract models.
 
-Pure Pydantic. No NATS imports. No transport logic. Every model subclasses
-ContractEnvelope, which provides (contract_version, trace_id, issued_at)
-plus ConfigDict(extra="ignore") for forward-compat.
+Pure Pydantic. No NATS imports. No transport logic. Work models (ImageRequest,
+ImageResponse) subclass WorkEnvelope, which provides (contract_version,
+trace_id, issued_at, job_id) plus ConfigDict(extra="ignore") for forward-compat
+(ADR-084). ImageHeartbeat is an infra model and stays on ContractEnvelope.
 
 Mirrors the voice-domain shape. See spec #763 and issue #806 for the
 alignment rationale on optional-but-invariant fields on response models.

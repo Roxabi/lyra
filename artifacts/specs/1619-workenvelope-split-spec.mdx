@@ -19,11 +19,13 @@ is a runtime convention — not a type guarantee.
 
 ADR-084 resolves this by introducing `WorkEnvelope(ContractEnvelope)`, which
 adds mandatory `job_id: str` (min_length=1, validated by `validate_job_token`)
-and nullable `parent_job_id: str | None`. All 17 work-plane models are reparented
-to `WorkEnvelope` (15 confirmed pre-spec + `CliChunkEvent` + `CliControlAck`
-resolved as WORK via OQ-1); 9 infra models stay on bare `ContractEnvelope`. A new
-subject→envelope enforcement test replaces convention with assertion. `CONTRACT_VERSION`
-stays `"1"` (additive minor bump; neither field is security-bearing).
+and nullable `parent_job_id: str | None`. 13 work-plane models are reparented
+to `WorkEnvelope` in this PR (S1+S2: jobs, llm, voice, image, turns); 4 CLI work
+models (`CliCmdPayload`, `CliControlCmd`, `CliChunkEvent`, `CliControlAck`)
+classified as WORK via OQ-1/EB-4 but deferred to #1838 (gate: #1009 rename);
+9 infra models stay on bare `ContractEnvelope`. A new model-classification
+enforcement test replaces convention with assertion. `CONTRACT_VERSION` stays `"1"`
+(additive minor bump; neither field is security-bearing).
 
 The M1 downstream issues (#1620 ingress mint, #1621 request_id fold, #1796
 active-jobs registry) treat `job_id` presence on work messages as an upstream
@@ -116,12 +118,15 @@ Two models are absent from the ADR-084 table. This spec resolves the gap:
 | `CliChunkEvent` | WORK | Response side of a work op (cli execution); carries `pool_id` + `event_type`; tied to a running cli session |
 | `CliControlAck` | WORK | Acknowledgement of a work control op (`ok`/`resumed`); reply to `CliControlCmd` |
 
-Both are reparented to `WorkEnvelope` in S3 (same cli minor bump as #1009).
+Both are classified as WORK here. Their actual reparent to `WorkEnvelope` is
+**deferred to #1838**, gated on #1009 (`lyra_session_id` → `cli_session_id`
+rename) to keep the `cli` minor bump atomic.
 `CliHeartbeat` stays on `ContractEnvelope` (INFRA, no change).
 
-Coordinate with #1009: the `cli` reparent MUST co-land with the
-`lyra_session_id` → `cli_session_id` rename in a single `cli` minor bump.
-Do not merge `cli/models.py` changes independently.
+The 4 CLI WORK models (`CliCmdPayload`, `CliControlCmd`, `CliChunkEvent`,
+`CliControlAck`) are tracked in `PENDING_MODELS` in
+`test_work_envelope_subjects.py` and must NOT subclass `WorkEnvelope` until
+#1838 lands. Do not merge `cli/models.py` changes in this PR.
 
 ### EB-5 — Subject→envelope enforcement test
 
@@ -214,10 +219,10 @@ classDiagram
 
     WorkEnvelope <|-- TurnWriteEvent
 
-    WorkEnvelope <|-- CliCmdPayload
-    WorkEnvelope <|-- CliControlCmd
-    WorkEnvelope <|-- CliChunkEvent
-    WorkEnvelope <|-- CliControlAck
+    ContractEnvelope <|-- CliCmdPayload
+    ContractEnvelope <|-- CliControlCmd
+    ContractEnvelope <|-- CliChunkEvent
+    ContractEnvelope <|-- CliControlAck
 
     ContractEnvelope <|-- LifecycleRequest
     ContractEnvelope <|-- LifecycleResponse
@@ -264,7 +269,7 @@ Affordance IDs use `S*` prefix (backend-only; no UI layer).
 | S2-b | `TtsRequest`, `TtsResponse`, `SttRequest`, `SttResponse` reparented | S2 |
 | S2-c | `ImageRequest`, `ImageResponse` reparented (`ImageHeartbeat` untouched) | S2 |
 | S2-d | `TurnWriteEvent` reparented | S2 |
-| S3-a | `CliCmdPayload`, `CliControlCmd`, `CliChunkEvent`, `CliControlAck` reparented (`CliHeartbeat` untouched) | S3 |
+| S3-a | `CliCmdPayload`, `CliControlCmd`, `CliChunkEvent`, `CliControlAck` reparented (`CliHeartbeat` untouched) — **deferred to #1838** (gate: #1009) | S3 |
 | S3-b | `test_work_envelope_subjects.py` — full subject→envelope enforcement | S3 |
 | S3-c | `CHANGELOG.md` minor version entry | S3 |
 
@@ -333,21 +338,20 @@ suite); `isinstance(LlmRequest(..., job_id="test"), WorkEnvelope)` asserts True 
 
 ---
 
-### S3 — CLI reparent + enforcement test + version bump
+### S3 — Classification enforcement test + version bump (CLI reparent deferred)
 
-**Coordination gate:** do NOT merge `cli/models.py` changes until #1009
-(`lyra_session_id` → `cli_session_id` rename) is ready to land in the same PR.
-The combined diff constitutes the single `cli` minor bump per ADR-084.
+> **Note:** The CLI reparent (`CliCmdPayload`, `CliControlCmd`, `CliChunkEvent`,
+> `CliControlAck`) is **deferred to #1838**, gated on #1009
+> (`lyra_session_id` → `cli_session_id` rename) which must co-land in the same
+> `cli` minor bump (ADR-084).  The 4 models are classified as WORK in EB-4 and
+> tracked as `PENDING_MODELS` in `test_work_envelope_subjects.py`.
+>
+> **Do NOT merge `cli/models.py` in this PR.**
 
-**Files:** `cli/models.py`, `tests/test_work_envelope_subjects.py` (new),
+**Files:** `tests/test_work_envelope_subjects.py` (new),
 `tests/test_envelope.py` (addendum), `CHANGELOG.md`
 
-1. In `cli/models.py`:
-   - Change base of `CliCmdPayload`, `CliControlCmd`, `CliChunkEvent`,
-     `CliControlAck` from `ContractEnvelope` to `WorkEnvelope`.
-   - Leave `CliHeartbeat` on `ContractEnvelope`.
-   - Co-land `lyra_session_id` → `cli_session_id` rename (owned by #1009).
-2. Create `tests/test_work_envelope_subjects.py`:
+1. Create `tests/test_work_envelope_subjects.py`:
    - Define `WORK_SUBJECTS: frozenset[str]` — all subject constants from WORK models
      (`factory.jobs.*`, `factory.llm.*` work subjects, `factory.voice.*`,
      `factory.image.generate.*`, `factory.turns.write`, `factory.cli.*` work subjects).
@@ -391,12 +395,12 @@ All criteria are binary (pass / fail).
 | SC-1 | `from roxabi_contracts import WorkEnvelope` succeeds with no import error. |
 | SC-2 | `issubclass(WorkEnvelope, ContractEnvelope)` is `True`. |
 | SC-3 | `WorkEnvelope(contract_version="1", trace_id="t", issued_at=datetime.now(tz=timezone.utc), job_id="")` raises `ValidationError`. (Import: `from datetime import datetime, timezone`) |
-| SC-4 | All 15 non-cli work-plane models for S1+S2 (`JobEnvelope`, `JobResult`, `JobProgress`, `LlmRequest`, `LlmChunkEvent`, `LlmResponse`, `TtsRequest`, `TtsResponse`, `SttRequest`, `SttResponse`, `ImageRequest`, `ImageResponse`, `TurnWriteEvent`, `CliCmdPayload`, `CliControlCmd`) pass `issubclass(M, WorkEnvelope)`. (SC-5 covers the 2 OQ-1 additions from S3.) |
-| SC-5 | `CliChunkEvent` and `CliControlAck` pass `issubclass(M, WorkEnvelope)`. |
+| SC-4 | All 13 work-plane models reparented in this PR (`JobEnvelope`, `JobResult`, `JobProgress`, `LlmRequest`, `LlmChunkEvent`, `LlmResponse`, `TtsRequest`, `TtsResponse`, `SttRequest`, `SttResponse`, `ImageRequest`, `ImageResponse`, `TurnWriteEvent`) pass `issubclass(M, WorkEnvelope)`. (`CliCmdPayload` and `CliControlCmd` are PENDING — deferred to #1838.) |
+| SC-5 | `CliChunkEvent` and `CliControlAck` are PENDING (deferred to #1838, gated on #1009) — `issubclass(M, WorkEnvelope)` is currently `False` for both; they remain on `ContractEnvelope` until #1838 lands. |
 | SC-6 | `LifecycleRequest`, `LifecycleResponse`, `ImageHeartbeat`, `CliHeartbeat` do NOT pass `issubclass(M, WorkEnvelope)`. |
-| SC-7 | `test_work_envelope_subjects.py::test_all_subjects_covered` is green (union coverage). |
-| SC-8 | `test_work_envelope_subjects.py::test_work_subjects_deserialize_to_work_envelope` is green. |
-| SC-9 | `test_work_envelope_subjects.py::test_infra_subjects_not_work_envelope` is green. |
+| SC-7 | `test_work_envelope_subjects.py::test_completeness_coverage` is green (count-based: 13 WORK + 9 INFRA + 4 PENDING = 26). |
+| SC-8 | `test_work_envelope_subjects.py::test_work_model_is_subclass_of_work_envelope` is green (parametrized over 13 WORK models). |
+| SC-9 | `test_work_envelope_subjects.py::test_non_work_model_not_subclass_of_work_envelope` is green (parametrized over 9 INFRA + 4 PENDING models). |
 | SC-10 | `CONTRACT_VERSION` is still `"1"` (locked by `test_contract_version_current_value`). |
 | SC-11 | All pre-existing tests in `packages/roxabi-contracts/tests/` are green. |
 

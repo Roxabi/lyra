@@ -81,7 +81,9 @@ class WorkEnvelope(ContractEnvelope):
 
     # TRANSITIONAL: default_factory keeps pre-#1619 wire messages parseable.
     # Flip to hard-required (remove default) in #1841.
-    job_id: str = Field(default_factory=new_job_id)
+    job_id: Annotated[str, StringConstraints(min_length=1)] = Field(
+        default_factory=new_job_id
+    )
     parent_job_id: str | None = None
 
     @field_validator("job_id", mode="before")

@@ -10,6 +10,8 @@ from roxabi_contracts import (
     WorkEnvelope,
     new_job_id,
 )
+from roxabi_contracts.jobs.models import JobEnvelope
+from roxabi_contracts.turns.models import TurnWriteEvent
 
 
 def test_contract_version_is_positive_digit() -> None:
@@ -122,7 +124,7 @@ def test_work_envelope_explicit_job_id_accepted() -> None:
 
 
 def test_work_envelope_empty_job_id_raises() -> None:
-    """Empty string is explicitly passed — must raise (SC-13)."""
+    """Empty string is explicitly passed — must raise (SC-3)."""
     from pydantic import ValidationError
 
     with pytest.raises(ValidationError):
@@ -163,3 +165,52 @@ def test_work_envelope_wire_compat_missing_job_id() -> None:
     }
     env = WorkEnvelope.model_validate(payload)
     assert len(env.job_id) == 32  # auto-minted
+
+
+# ---------------------------------------------------------------------------
+# Wire-compat: concrete WorkEnvelope subclasses parse without job_id
+# ---------------------------------------------------------------------------
+
+
+def test_turn_write_event_wire_compat_missing_job_id() -> None:
+    """TurnWriteEvent (concrete WorkEnvelope) parses without job_id — TRANSITIONAL.
+
+    Forward-compat invariant: a pre-#1619 TurnWriteEvent wire message that
+    omits job_id must still deserialize cleanly.  The minted id confirms the
+    default_factory is exercised on the subclass, not only on the base class.
+    """
+    from datetime import datetime, timezone
+    from uuid import uuid4
+
+    payload = {
+        "contract_version": "1",
+        "trace_id": "t-turn-wire",
+        "issued_at": "2026-04-16T12:00:00+00:00",
+        "event_id": str(uuid4()),
+        "pool_id": "pool:tg:chat:1",
+        "session_id": "sess-wire-0001",
+        "platform": "telegram",
+        "user_id": "u:wire:1",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "payload": {"kind": "start_session"},
+        # job_id intentionally absent
+    }
+    event = TurnWriteEvent.model_validate(payload)
+    assert event.job_id
+    assert len(event.job_id) == 32
+
+
+def test_job_envelope_wire_compat_missing_job_id() -> None:
+    """JobEnvelope (concrete WorkEnvelope) parses without job_id — TRANSITIONAL."""
+    payload = {
+        "contract_version": "1",
+        "trace_id": "t-job-wire",
+        "issued_at": "2026-04-16T12:00:00+00:00",
+        "job_name": "summarize",
+        "payload": {},
+        "reply_to": "_INBOX.test",
+        # job_id intentionally absent
+    }
+    env = JobEnvelope.model_validate(payload)
+    assert env.job_id
+    assert len(env.job_id) == 32

@@ -1,8 +1,8 @@
 """Voice-domain NATS contract models.
 
 Pure Pydantic. No NATS imports. No transport logic. Every model subclasses
-ContractEnvelope, which provides (contract_version, trace_id, issued_at)
-plus ConfigDict(extra="ignore") for forward-compat.
+WorkEnvelope, which provides (contract_version, trace_id, issued_at, job_id)
+plus ConfigDict(extra="ignore") for forward-compat (ADR-084).
 
 See artifacts/specs/763-port-voice-domain-spec.mdx §Known drift for the
 rationale on optional-but-invariant fields on response models.

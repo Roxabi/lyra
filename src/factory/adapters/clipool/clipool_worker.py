@@ -196,6 +196,14 @@ class CliPoolNatsWorker(NatsAdapterBase):
 
         model_cfg = ModelConfig.model_validate(cmd.model_cfg)
 
+        if cmd.resume_session_id:
+            resumed = await self._pool.resume_direct(cmd.pool_id, cmd.resume_session_id)
+            log.info(
+                "clipool: resume %s pool=%s",
+                "ok" if resumed else "cold-start",
+                cmd.pool_id,
+            )
+
         if cmd.stream:
             await self._handle_cmd_streaming(msg, cmd, model_cfg)
         else:
@@ -347,15 +355,20 @@ class CliPoolNatsWorker(NatsAdapterBase):
             return _make_ack(cmd.pool_id, ok=True)
 
         if cmd.op == "resume_and_reset":
-            if not cmd.session_id:
+            if not cmd.cli_session_id:
                 log.warning(
-                    "clipool_worker: resume_and_reset missing session_id"
+                    "clipool_worker: resume_and_reset missing cli_session_id"
                     " for pool_id=%r",
                     cmd.pool_id,
                 )
                 return _make_ack(cmd.pool_id, ok=False)
-            # cmd.session_id is the cli_session_id resolved by the hub driver.
-            resumed = await self._pool.resume_direct(cmd.pool_id, cmd.session_id)
+            # cmd.cli_session_id is the cli_session_id resolved by the hub driver.
+            resumed = await self._pool.resume_direct(cmd.pool_id, cmd.cli_session_id)
+            log.info(
+                "clipool: resume %s pool=%s",
+                "ok" if resumed else "cold-start",
+                cmd.pool_id,
+            )
             return _make_ack(cmd.pool_id, ok=True, resumed=resumed)
 
         if cmd.op == "switch_cwd":

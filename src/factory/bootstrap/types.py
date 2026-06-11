@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from nats.aio.client import Client as NatsClient
+    from nats.js import JetStreamContext
 
     from factory.adapters.discord import DiscordAdapter
     from factory.adapters.telegram import TelegramAdapter
@@ -51,6 +52,8 @@ class WiredAdapters:
     dc_thread_store: ThreadStore | None
     tg_typing_listeners: list[TypingListener] = field(default_factory=list)
     dc_typing_listeners: list[TypingListener] = field(default_factory=list)
+    tg_consumers: list = field(default_factory=list)
+    dc_consumers: list = field(default_factory=list)
 
 
 @dataclass
@@ -131,3 +134,4 @@ class WireAdaptersDeps:
     vault_dir: Path
     raw_config: dict
     blob_store: "BlobStorePort | None" = None
+    js: "JetStreamContext | None" = None

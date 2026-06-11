@@ -26,6 +26,7 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from roxabi_contracts import new_job_id
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.turns import (
     SUBJECTS,
@@ -85,6 +86,7 @@ class TurnPublisher:
                 contract_version=CONTRACT_VERSION,
                 trace_id=trace_id,
                 issued_at=now,
+                job_id=new_job_id(),
                 pool_id=pool_id,
                 session_id=session_id,
                 platform=platform,
@@ -116,6 +118,7 @@ class TurnPublisher:
                 contract_version=CONTRACT_VERSION,
                 trace_id=trace_id,
                 issued_at=now,
+                job_id=new_job_id(),
                 pool_id=pool_id,
                 session_id=session_id,
                 platform=platform,
@@ -141,6 +144,7 @@ class TurnPublisher:
                 contract_version=CONTRACT_VERSION,
                 trace_id=trace_id,
                 issued_at=now,
+                job_id=new_job_id(),
                 pool_id=pool_id,
                 session_id=session_id,
                 platform=platform,
@@ -167,6 +171,7 @@ class TurnPublisher:
                 contract_version=CONTRACT_VERSION,
                 trace_id=trace_id,
                 issued_at=now,
+                job_id=new_job_id(),
                 pool_id=pool_id,
                 session_id=session_id,
                 platform=platform,
@@ -193,6 +198,7 @@ class TurnPublisher:
                 contract_version=CONTRACT_VERSION,
                 trace_id=trace_id,
                 issued_at=now,
+                job_id=new_job_id(),
                 pool_id=pool_id,
                 session_id=session_id,
                 platform=platform,

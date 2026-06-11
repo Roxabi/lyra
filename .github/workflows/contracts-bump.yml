@@ -20,7 +20,9 @@ on:
         type: string
     secrets:
       PAT:
-        required: true
+        # DEPRECATED — unused since the roxabi-ci App migration (#1850). Kept optional
+        # until callers stop passing it (llmCLI#119), then removed entirely (#1852).
+        required: false
   workflow_dispatch:
     inputs:
       satellite_repo:

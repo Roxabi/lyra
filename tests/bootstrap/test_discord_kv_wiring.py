@@ -456,4 +456,3 @@ class TestHubPublishesWatchChannelsBeforeReady:
             f"publish_watch_channels (pos {pub_idx}) must precede "
             f"announce_hub_ready (pos {ready_idx}) — SC6 ordering violated"
         )
-

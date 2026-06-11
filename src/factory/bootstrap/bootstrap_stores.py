@@ -62,9 +62,7 @@ def _copy_indices(
     ).fetchall()
     for (idx_sql,) in idx_rows:
         if not _DDL_INDEX_RE.match(idx_sql):
-            log.warning(
-                "Skipping unexpected DDL from sqlite_master: %r", idx_sql[:80]
-            )
+            log.warning("Skipping unexpected DDL from sqlite_master: %r", idx_sql[:80])
             continue
         try:
             dst.execute(idx_sql)

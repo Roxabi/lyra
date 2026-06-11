@@ -107,19 +107,19 @@ def test_reload_runs_when_state_added() -> None:
     ), "podman secret create factory-nats-test-identity not called"
 
     # factory-nats-auth was removed (bind-mount now) — must NOT appear.
-    assert not any(
-        "factory-nats-auth" in line for line in podman_lines
-    ), "podman must NOT create factory-nats-auth (it is a bind-mount, not a secret)"
+    assert not any("factory-nats-auth" in line for line in podman_lines), (
+        "podman must NOT create factory-nats-auth (it is a bind-mount, not a secret)"
+    )
 
     # SIGHUP reload — not restart.
-    assert any(
-        "reload factory-nats" in line for line in systemctl_lines
-    ), "systemctl reload factory-nats not called"
+    assert any("reload factory-nats" in line for line in systemctl_lines), (
+        "systemctl reload factory-nats not called"
+    )
 
     # 0-fan-out invariant: no client services restarted (#1719 core point).
-    assert not any(
-        "restart " in line for line in systemctl_lines
-    ), "systemctl restart must NOT be called (0-fan-out contract)"
+    assert not any("restart " in line for line in systemctl_lines), (
+        "systemctl restart must NOT be called (0-fan-out contract)"
+    )
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -176,16 +176,16 @@ def test_reload_runs_when_noop_but_secret_missing() -> None:
     ), "podman secret create factory-nats-test-identity not called"
 
     # factory-nats-auth is a bind-mount — must NOT be created.
-    assert not any(
-        "factory-nats-auth" in line for line in podman_lines
-    ), "podman must NOT create factory-nats-auth (it is a bind-mount, not a secret)"
+    assert not any("factory-nats-auth" in line for line in podman_lines), (
+        "podman must NOT create factory-nats-auth (it is a bind-mount, not a secret)"
+    )
 
     # SIGHUP reload — not restart.
-    assert any(
-        "reload factory-nats" in line for line in systemctl_lines
-    ), "systemctl reload factory-nats not called"
+    assert any("reload factory-nats" in line for line in systemctl_lines), (
+        "systemctl reload factory-nats not called"
+    )
 
     # 0-fan-out invariant: no client services restarted.
-    assert not any(
-        "restart " in line for line in systemctl_lines
-    ), "systemctl restart must NOT be called (0-fan-out contract)"
+    assert not any("restart " in line for line in systemctl_lines), (
+        "systemctl restart must NOT be called (0-fan-out contract)"
+    )

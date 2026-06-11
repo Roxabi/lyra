@@ -152,7 +152,7 @@ class CliPool(  # noqa: E501 — DEBT:lint-residual
         )
         return True
 
-    async def resume_and_reset(self, pool_id: str, session_id: str) -> bool:
+    async def queue_resume(self, pool_id: str, session_id: str) -> bool:
         """Kill process; next _spawn() uses --resume <cli_session_id> (one-shot).
 
         *session_id* is the Lyra-internal UUID from the turn store.  This method
@@ -172,7 +172,7 @@ class CliPool(  # noqa: E501 — DEBT:lint-residual
                 cli_sid = await self._turn_store.get_cli_session_by_pool(pool_id)
         if cli_sid is None:
             log.info(
-                "[pool:%s] resume_and_reset: no persisted CLI session"
+                "[pool:%s] queue_resume: no persisted CLI session"
                 " — starting fresh (lyra_session=%s)",
                 pool_id,
                 session_id,
@@ -180,8 +180,7 @@ class CliPool(  # noqa: E501 — DEBT:lint-residual
             return False
         if not SESSION_ID_RE.match(cli_sid):
             log.warning(
-                "[pool:%s] resume_and_reset: invalid persisted CLI session %r"
-                " — skipping",
+                "[pool:%s] queue_resume: invalid persisted CLI session %r — skipping",
                 pool_id,
                 cli_sid,
             )
@@ -190,7 +189,7 @@ class CliPool(  # noqa: E501 — DEBT:lint-residual
         entry = self._entries.get(pool_id)
         if entry is not None and entry.is_alive() and entry.session_id == cli_sid:
             log.info(
-                "[pool:%s] resume_and_reset: process already on CLI session %s — no-op",
+                "[pool:%s] queue_resume: process already on CLI session %s — no-op",
                 pool_id,
                 cli_sid,
             )
@@ -199,7 +198,7 @@ class CliPool(  # noqa: E501 — DEBT:lint-residual
         await self._kill(pool_id, preserve_session=False)
         self._resume_session_ids[pool_id] = cli_sid
         log.info(
-            "[pool:%s] resume_and_reset: will resume CLI session %s on next"
+            "[pool:%s] queue_resume: will resume CLI session %s on next"
             " spawn (lyra_session=%s)",
             pool_id,
             cli_sid,

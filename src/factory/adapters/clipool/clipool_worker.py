@@ -17,17 +17,19 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from factory.adapters.clipool._worker_helpers import (
+    _classify_exception,
+    _make_ack,
+    _make_chunk,
+)
 from factory.core.agent.agent_config import ModelConfig
 from factory.core.cli.cli_pool import CliPool
 from factory.core.messaging.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 from factory.core.messaging.utils.metrics import emit_populated_total
 from roxabi_contracts.cli.models import (
-    CliChunkEvent,
     CliCmdPayload,
-    CliControlAck,
     CliControlCmd,
 )
-from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.errors import WorkerError
 from roxabi_nats.adapter_base import NatsAdapterBase
 
@@ -40,71 +42,6 @@ _QUEUE_GROUP = "clipool-workers"
 _ENVELOPE_NAME = "CliCmdPayload"
 _SCHEMA_VERSION = 1
 _HEARTBEAT_INTERVAL = 30.0
-
-
-def _classify_exception(exc: BaseException) -> WorkerError:
-    """Map an exception to a ``WorkerError`` with the appropriate code.
-
-    Code selection (per T13 / ADR-066 (absorbed into ADR-049)):
-    - ``asyncio.TimeoutError`` → ``cli.session_lost`` (retryable=True)
-    - ``UnicodeDecodeError`` / ``ValueError`` (parse/decode) → ``cli.parse``
-      (retryable=False)
-    - Any other exception → ``worker.crash`` (retryable=True)
-    """
-    import asyncio
-
-    # Sanitize bus-bound messages (#1215, sibling of #1212). Exception __str__
-    # can embed file paths, byte sequences, or arbitrary text from system
-    # errors — the bus-bound message keeps only the type name. Full traceback
-    # logging is owned by the callers (_handle_cmd_streaming/_handle_cmd_blocking
-    # both call log.exception before invoking this classifier).
-    if isinstance(exc, asyncio.TimeoutError):
-        return WorkerError(
-            code="cli.session_lost",
-            message=f"CLI session timed out: {type(exc).__name__}",
-            retryable=True,
-        )
-    if isinstance(exc, (UnicodeDecodeError, ValueError)):
-        return WorkerError(
-            code="cli.parse",
-            message=f"CLI parse/decode error: {type(exc).__name__}",
-            retryable=False,
-        )
-    return WorkerError(
-        code="worker.crash",
-        message=f"Unhandled worker exception: {type(exc).__name__}",
-        retryable=True,
-    )
-
-
-def _make_chunk(pool_id: str, **kwargs: Any) -> bytes:
-    """Serialise a CliChunkEvent to JSON bytes for NATS publish."""
-    import uuid
-    from datetime import datetime, timezone
-
-    event = CliChunkEvent(
-        contract_version=CONTRACT_VERSION,
-        trace_id=str(uuid.uuid4()),
-        issued_at=datetime.now(timezone.utc),
-        pool_id=pool_id,
-        **kwargs,
-    )
-    return event.model_dump_json().encode()
-
-
-def _make_ack(pool_id: str, **kwargs: Any) -> bytes:
-    """Serialise a CliControlAck to JSON bytes for NATS publish."""
-    import uuid
-    from datetime import datetime, timezone
-
-    ack = CliControlAck(
-        contract_version=CONTRACT_VERSION,
-        trace_id=str(uuid.uuid4()),
-        issued_at=datetime.now(timezone.utc),
-        pool_id=pool_id,
-        **kwargs,
-    )
-    return ack.model_dump_json().encode()
 
 
 class CliPoolNatsWorker(NatsAdapterBase):
@@ -196,13 +133,27 @@ class CliPoolNatsWorker(NatsAdapterBase):
 
         model_cfg = ModelConfig.model_validate(cmd.model_cfg)
 
+        resumed: bool | None = None
+        if cmd.resume_session_id:
+            resumed = await self._pool.resume_direct(cmd.pool_id, cmd.resume_session_id)
+            log.info(
+                "clipool_worker: resume %s pool=%s",
+                "queued" if resumed else "cold-start",
+                cmd.pool_id,
+            )
+
         if cmd.stream:
-            await self._handle_cmd_streaming(msg, cmd, model_cfg)
+            await self._handle_cmd_streaming(msg, cmd, model_cfg, resumed=resumed)
         else:
-            await self._handle_cmd_blocking(msg, cmd, model_cfg)
+            await self._handle_cmd_blocking(msg, cmd, model_cfg, resumed=resumed)
 
     async def _handle_cmd_streaming(
-        self, msg: Any, cmd: CliCmdPayload, model_cfg: ModelConfig
+        self,
+        msg: Any,
+        cmd: CliCmdPayload,
+        model_cfg: ModelConfig,
+        *,
+        resumed: bool | None = None,
     ) -> None:
         try:
             iterator = await self._pool.send_streaming(
@@ -233,13 +184,19 @@ class CliPoolNatsWorker(NatsAdapterBase):
                 )
             return
 
+        first_chunk = True
         async for event in iterator:
+            # Attach resume signal to the very first emitted chunk so the hub
+            # can detect "resume applied" (True) vs "cold-start" (False/None).
+            resume_extra: dict = {"resumed": resumed} if first_chunk else {}
+            first_chunk = False
             if isinstance(event, TextLlmEvent):
                 chunk = _make_chunk(
                     cmd.pool_id,
                     event_type="text",
                     text=event.text,
                     done=False,
+                    **resume_extra,
                 )
                 await self.reply(msg, chunk)
             elif isinstance(event, ToolUseLlmEvent):
@@ -254,6 +211,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
                     tool_id=event.tool_id,
                     tool_input=event.input,
                     done=False,
+                    **resume_extra,
                 )
                 await self.reply(msg, chunk)
             elif isinstance(event, ResultLlmEvent):
@@ -280,7 +238,12 @@ class CliPoolNatsWorker(NatsAdapterBase):
         )
 
     async def _handle_cmd_blocking(
-        self, msg: Any, cmd: CliCmdPayload, model_cfg: ModelConfig
+        self,
+        msg: Any,
+        cmd: CliCmdPayload,
+        model_cfg: ModelConfig,
+        *,
+        resumed: bool | None = None,
     ) -> None:
         try:
             result = await self._pool.send(
@@ -314,6 +277,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
             is_error=bool(result.error),
             session_id=result.session_id or None,
             done=True,
+            resumed=resumed,
         )
         await self.reply(msg, chunk)
 
@@ -347,15 +311,20 @@ class CliPoolNatsWorker(NatsAdapterBase):
             return _make_ack(cmd.pool_id, ok=True)
 
         if cmd.op == "resume_and_reset":
-            if not cmd.session_id:
+            if not cmd.cli_session_id:
                 log.warning(
-                    "clipool_worker: resume_and_reset missing session_id"
+                    "clipool_worker: resume_and_reset missing cli_session_id"
                     " for pool_id=%r",
                     cmd.pool_id,
                 )
                 return _make_ack(cmd.pool_id, ok=False)
-            # cmd.session_id is the cli_session_id resolved by the hub driver.
-            resumed = await self._pool.resume_direct(cmd.pool_id, cmd.session_id)
+            # cmd.cli_session_id is the cli_session_id resolved by the hub driver.
+            resumed = await self._pool.resume_direct(cmd.pool_id, cmd.cli_session_id)
+            log.info(
+                "clipool: resume %s pool=%s",
+                "ok" if resumed else "cold-start",
+                cmd.pool_id,
+            )
             return _make_ack(cmd.pool_id, ok=True, resumed=resumed)
 
         if cmd.op == "switch_cwd":

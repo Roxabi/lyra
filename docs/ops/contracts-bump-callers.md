@@ -40,8 +40,6 @@ jobs:
     with:
       satellite_repo: ${{ github.repository }}
       packages: "roxabi-contracts roxabi-nats"
-    secrets:
-      PAT: ${{ secrets.PAT }}
 ```
 
 ### `Roxabi/voiceCLI`
@@ -63,8 +61,6 @@ jobs:
     with:
       satellite_repo: ${{ github.repository }}
       packages: "roxabi-contracts roxabi-nats roxabi-blobs"
-    secrets:
-      PAT: ${{ secrets.PAT }}
 ```
 
 > Note: voiceCLI CI runs `uv sync --dev --extra all` (no `--frozen`), unlike llmCLI/imageCLI
@@ -90,8 +86,6 @@ jobs:
     with:
       satellite_repo: ${{ github.repository }}
       packages: "roxabi-contracts roxabi-nats roxabi-blobs"
-    secrets:
-      PAT: ${{ secrets.PAT }}
 ```
 
 ---
@@ -103,7 +97,7 @@ For each satellite repo, verify the following before merging the caller workflow
 - [ ] `wire-breaking` label exists in the satellite repo (check `gh label list --repo Roxabi/<sat>`)
 - [ ] `reviewed` label exists in the satellite repo
 - [ ] `auto-merge.yml` workflow exists in the satellite repo and triggers on `reviewed` label
-- [ ] `secrets.PAT` is set in the satellite repo's Actions secrets (repo scope, covering `Roxabi/roxabi-factory`)
+- [ ] org variable `ROXABI_CI_APP_ID` + org secret `ROXABI_CI_APP_PRIVATE_KEY` are visible to the satellite repo (org visibility: all — private repos need repo-level copies, GitHub Free does not propagate org secrets to private repos)
 - [ ] `staging` branch exists and is the default branch in the satellite repo
 
 ---

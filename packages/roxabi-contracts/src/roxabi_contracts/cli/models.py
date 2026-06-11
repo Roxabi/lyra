@@ -5,7 +5,9 @@ from __future__ import annotations
 
 from typing import Literal
 
-from roxabi_contracts.envelope import ContractEnvelope
+from pydantic import AliasChoices, Field
+
+from roxabi_contracts.envelope import ContractEnvelope, WorkEnvelope
 from roxabi_contracts.errors import WorkerError
 
 __all__ = [
@@ -17,7 +19,7 @@ __all__ = [
 ]
 
 
-class CliCmdPayload(ContractEnvelope):
+class CliCmdPayload(WorkEnvelope):
     """Hub -> clipool: run a claude-cli command."""
 
     pool_id: str
@@ -31,7 +33,7 @@ class CliCmdPayload(ContractEnvelope):
     agent_email: str | None = None
 
 
-class CliChunkEvent(ContractEnvelope):
+class CliChunkEvent(WorkEnvelope):
     """Clipool -> hub: one streaming chunk or terminal event."""
 
     pool_id: str
@@ -44,18 +46,32 @@ class CliChunkEvent(ContractEnvelope):
     is_error: bool = False
     done: bool = False
     worker_error: WorkerError | None = None
+    # Set on the first chunk of a resumed turn so the hub can distinguish
+    # "resume applied" (True) from "cold-start" (False) in mixed-version rollouts.
+    resumed: bool | None = None
 
 
-class CliControlCmd(ContractEnvelope):
-    """Hub -> clipool: control operation (reset, resume, cwd switch)."""
+class CliControlCmd(WorkEnvelope):
+    """Hub -> clipool: control operation (reset, resume, cwd switch).
+
+    The ``resume_and_reset`` op literal is DEPRECATED (one-minor tolerance).
+    Producers must migrate to the embedded ``CliCmdPayload.resume_session_id``
+    field. The worker tolerance branch is retained for one minor; mechanical
+    removal is tracked in the follow-up issue (sibling under epic #1044,
+    blocked-by #1009).
+    """
 
     pool_id: str
     op: Literal["reset", "resume_and_reset", "switch_cwd"]
-    session_id: str | None = None
+    cli_session_id: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("cli_session_id", "session_id"),
+        serialization_alias="session_id",
+    )
     cwd: str | None = None
 
 
-class CliControlAck(ContractEnvelope):
+class CliControlAck(WorkEnvelope):
     """Clipool -> hub: reply to CliControlCmd."""
 
     pool_id: str

@@ -9,6 +9,8 @@ status: accepted
 
 > **Partially superseded by ADR-068 (Ecosystem Service Plane)** — §single-host and §workers-direct-FS scopes are subsumed by the Ecosystem Service Plane Protocol rule. The BlobStore backend choice below remains in force; the access pattern is governed by ADR-068.
 
+> **Partially superseded by #1836 (age-based sweep)** — v1 never-delete policy (§GC interface) replaced by age-based sweep. `FsBlobStore.sweep_older_than(cutoff_ts)` + `factory blobstore sweep --older-than 30d` CLI; daily host-level timer in `deploy/systemd/`; 7d minimum guard.
+
 
 ## Status
 

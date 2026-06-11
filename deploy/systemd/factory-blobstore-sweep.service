@@ -1,0 +1,10 @@
+[Unit]
+Description=Factory blobstore age-based sweep — delete blob refs older than 30d
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=podman exec factory-blobstore factory blobstore sweep --older-than 30d
+StandardOutput=journal
+StandardError=journal

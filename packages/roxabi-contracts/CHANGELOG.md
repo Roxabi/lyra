@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.11.0] (2026-06-11)
+
+### Features
+
+* **contracts/cli:** reparent `CliCmdPayload`, `CliChunkEvent`, `CliControlCmd`, `CliControlAck` from `ContractEnvelope` to `WorkEnvelope` ([#1009](https://github.com/Roxabi/roxabi-factory/issues/1009) / [#1838](https://github.com/Roxabi/roxabi-factory/issues/1838)). Adds `job_id` field with transitional `default_factory` shim — old wire messages without `job_id` still deserialize.
+* **contracts/cli:** rename `CliControlCmd.session_id` → `cli_session_id`; old wire name still accepted via `AliasChoices("cli_session_id", "session_id")` for one minor ([#1838](https://github.com/Roxabi/roxabi-factory/issues/1838)).
+
+### Deprecated
+
+* **contracts/cli:** `CliControlCmd.op = "resume_and_reset"` — producers migrated to embedded `CliCmdPayload.resume_session_id` field; worker tolerance retained for one minor; removal tracked in follow-up issue at ship.
+
+### Changed
+
+* **contracts/cli:** resume acceptance semantics changed — "token resolved & queued" (applied at next spawn), not an immediate inline reset via control op.
+
+### BREAKING CHANGES
+
+* `CliCmdPayload`, `CliChunkEvent`, `CliControlCmd`, `CliControlAck` now inherit `WorkEnvelope` (adds mandatory `job_id`; transitional `default_factory` provides backward compat). Consumers that previously assumed `ContractEnvelope` base must update their type annotations.
+* `CliControlCmd.session_id` serialized name changed to `cli_session_id`. Old field name still accepted on ingress for one minor; serialization always emits the new name.
+
+
 ## [0.10.0] (2026-06-11)
 
 ### Features

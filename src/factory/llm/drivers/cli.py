@@ -34,14 +34,15 @@ class ClaudeCliDriver:
         """Delegate workspace switch to CliPool."""
         await self._pool.switch_cwd(pool_id, cwd)
 
-    async def resume_and_reset(self, pool_id: str, session_id: str) -> bool:
+    async def queue_resume(self, pool_id: str, session_id: str) -> bool:
         """Delegate session resume to CliPool.
 
-        Wired into pool._session_resume_fn by SimpleAgent._maybe_register_resume
-        so that pool.resume_session(sid) → CliPool.resume_and_reset(pool_id, sid).
+        Wired via pool.register_session_callbacks(resume_fn=...) in
+        SimpleAgent._maybe_register_resume so that
+        pool.resume_session(sid) → CliPool.queue_resume(pool_id, sid).
         Returns True if the resume was accepted, False if skipped.
         """
-        return await self._pool.resume_and_reset(pool_id, session_id)
+        return await self._pool.queue_resume(pool_id, session_id)
 
     def link_lyra_session(self, pool_id: str, lyra_session_id: str) -> None:
         """Register the current Lyra session for CLI session mapping."""

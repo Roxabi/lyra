@@ -176,20 +176,20 @@ class SimpleAgent(AgentBase):
         """Register session resume callback on the pool.
 
         Hub calls pool.resume_session(session_id) → delegates here →
-        CliPool.resume_and_reset(). Follows the same lazy-wiring pattern as
+        CliPool.queue_resume(). Follows the same lazy-wiring pattern as
         _maybe_register_reset.
         """
         _cli_pool = self._cli_pool  # narrow once; stable capture for lambda
         if _cli_pool is not None:
             _pool_id = pool.pool_id
             pool.register_session_callbacks(
-                resume_fn=lambda sid: _cli_pool.resume_and_reset(_pool_id, sid),
+                resume_fn=lambda sid: _cli_pool.queue_resume(_pool_id, sid),
             )
         elif self._cli_nats_driver is not None:
             _driver = self._cli_nats_driver
             _pool_id = pool.pool_id
             pool.register_session_callbacks(
-                resume_fn=lambda sid: _driver.resume_and_reset(_pool_id, sid),
+                resume_fn=lambda sid: _driver.queue_resume(_pool_id, sid),
             )
 
     def configure_pool(self, pool: Pool) -> None:

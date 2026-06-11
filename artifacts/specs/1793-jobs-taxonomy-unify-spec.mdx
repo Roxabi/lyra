@@ -1,0 +1,103 @@
+---
+title: "feat(contracts): unify jobs taxonomy — factory.job.<id>.* (retire factory.results/.progress siblings)"
+description: "Rename the two top-level sibling subject families in roxabi-contracts to the unified factory.job.<id>.* hierarchy and add new facet helpers."
+---
+
+## Context
+**Promoted from:** [frame](../frames/1793-jobs-taxonomy-unify-frame.mdx)
+**GitHub issue:** #1793
+**SSoT design doc:** `docs/architecture/job-model.md` (§15.6 unified taxonomy)
+**ADR archive (historical only):** `docs/architecture/adr/076-three-nats-planes.mdx` — lines 114, 185, 272 reference old subjects; no gate trigger, no change required.
+
+## Goal
+
+Retire `factory.results.<job_id>` and `factory.progress.<job_id>` as standalone top-level subject families and replace them with `factory.job.<job_id>.result` and `factory.job.<job_id>.progress` (plus new facet helpers for `.steer`, `.opened`, `.closed`) so that `roxabi-contracts` exposes a single unified `factory.job.<id>.*` subject hierarchy before #1812 (OmpWorker) adds real callers.
+
+## Users
+
+- **Contracts maintainer** (this PR's author): performs the mechanical rename within `packages/roxabi-contracts/`.
+- **#1812 (OmpWorker) implementer**: consumes the new `jobs_result()`, `jobs_progress()`, `jobs_steer()`, `jobs_opened()`, `jobs_closed()` helpers as its NATS subject source. This issue is a hard prerequisite for #1812.
+- **CI**: enforces no-old-literal gate via the success criteria grep check.
+
+## Expected Behavior
+
+After this PR merges:
+
+1. Calling `jobs_result("abc-123")` returns `"factory.job.abc-123.result"` (was `"factory.results.abc-123"`).
+2. Calling `jobs_progress("abc-123")` returns `"factory.job.abc-123.progress"` (was `"factory.progress.abc-123"`).
+3. Three new helpers are available: `jobs_steer("abc-123")` → `"factory.job.abc-123.steer"`, `jobs_opened("abc-123")` → `"factory.job.abc-123.opened"`, `jobs_closed("abc-123")` → `"factory.job.abc-123.closed"`. All five helpers delegate validation to `validate_job_token()`.
+4. `SUBJECTS` (`_Subjects` dataclass) exposes a single `job_prefix: Literal["factory.job"] = "factory.job"` field. The old `result_prefix` and `progress_prefix` fields are removed from the dataclass.
+5. `jobs_result` and `jobs_progress` keep their canonical names — only their return values change (no rename, no alias layer). `__all__` in `jobs/__init__.py` continues to export exactly `jobs_result`, `jobs_progress`, plus the three new helpers.
+6. `JobProgress` model docstring (line 72 of `models.py`) reads `"Published to factory.job.<job_id>.progress (best-effort)"` instead of the old `factory.progress.<job_id>` string.
+7. `jobs/__init__.py` re-exports all five helpers in `__all__`.
+8. `README.md` subject table rows for `factory.results.<job_id>` and `factory.progress.<job_id>` are updated to `factory.job.<job_id>.result` and `factory.job.<job_id>.progress`; rows for `.steer`, `.opened`, `.closed` are added.
+9. `CHANGELOG.md` gains a new `## [0.10.0]` head entry documenting the subject rename and new helpers.
+10. `pyproject.toml` version is bumped from `0.9.0` to `0.10.0`.
+11. `docs/architecture/messaging.md` line 128 plain-text reference `factory.progress.<job_id> (#1044, future)` is updated to `factory.job.<job_id>.progress (#1044, #1793)`.
+12. **ACL matrix is not touched.** ACL grants for `factory.job.*.*` subjects are #1812's responsibility.
+
+## Rename Table
+
+| Symbol / constant / doc reference | File:line | Old value | New value |
+|---|---|---|---|
+| `_Subjects.result_prefix` field | `subjects.py:27` | `Literal["factory.results"]` | **REMOVED** — replaced by `job_prefix` |
+| `_Subjects.progress_prefix` field | `subjects.py:28` | `Literal["factory.progress"]` | **REMOVED** — replaced by `job_prefix` |
+| `_Subjects.job_prefix` field | `subjects.py` (new) | — | `Literal["factory.job"] = "factory.job"` |
+| `subjects.py __all__` | `subjects.py:8-13` | `["SUBJECTS", "jobs_submit", "jobs_result", "jobs_progress"]` | add `"jobs_steer"`, `"jobs_opened"`, `"jobs_closed"` |
+| `jobs_result()` return value | `subjects.py:43` | `f"factory.results.{job_id}"` | `f"factory.job.{job_id}.result"` |
+| `jobs_progress()` return value | `subjects.py:49` | `f"factory.progress.{job_id}"` | `f"factory.job.{job_id}.progress"` |
+| `jobs_result()` docstring | `subjects.py:41` | `"Result subject: factory.results.<job_id>."` | `"Result subject: factory.job.<job_id>.result."` |
+| `jobs_progress()` docstring | `subjects.py:47` | `"Progress subject: factory.progress.<job_id>."` | `"Progress subject: factory.job.<job_id>.progress."` |
+| `JobProgress` docstring | `models.py:72` | `"Published to factory.progress.<job_id> (best-effort)"` | `"Published to factory.job.<job_id>.progress (best-effort)"` |
+| Test assertion | `test_jobs_models.py:253` | `== "factory.results.job-uuid-1234"` | `== "factory.job.job-uuid-1234.result"` |
+| Test assertion | `test_jobs_models.py:258` | `== "factory.progress.job-uuid-1234"` | `== "factory.job.job-uuid-1234.progress"` |
+| README subject row | `README.md:125` | `factory.results.<job_id>` | `factory.job.<job_id>.result` |
+| README subject row | `README.md:126` | `factory.progress.<job_id>` | `factory.job.<job_id>.progress` |
+| messaging.md line 128 | `docs/architecture/messaging.md:128` | `factory.progress.<job_id> (#1044, future)` | `factory.job.<job_id>.progress (#1044, #1793)` |
+| `job-model.md` migration table rows | `docs/architecture/job-model.md:110-111` | `factory.results.<job_id>` / `factory.progress.<job_id>` | HISTORICAL — in Supersedes migration table; these rows document the old→new mapping and are intentionally retained. Do NOT update. Excluded from SC1/SC2 grep (see below). |
+
+## New Additions
+
+| Symbol | Subject produced | Where added |
+|---|---|---|
+| `jobs_steer(job_id)` | `factory.job.<job_id>.steer` | `subjects.py` + `jobs/__init__.py` `__all__` |
+| `jobs_opened(job_id)` | `factory.job.<job_id>.opened` | `subjects.py` + `jobs/__init__.py` `__all__` |
+| `jobs_closed(job_id)` | `factory.job.<job_id>.closed` | `subjects.py` + `jobs/__init__.py` `__all__` |
+
+All three new helpers call `validate_job_token(job_id)` and follow the same signature pattern as `jobs_result` / `jobs_progress`. No `str(exc)` / f-string-exc / `repr(exc)` may appear in helper bodies (str_exc_bus_bound gate).
+
+## Versioning and CHANGELOG Sequencing
+
+- **Version bump:** `0.9.0 → 0.10.0` (minor bump — new subjects and three new helpers are additive per contracts CLAUDE.md versioning policy; the `jobs_result`/`jobs_progress` return-value change is wire-breaking in principle, but pre-merge grep confirmed 0 callers outside `roxabi-contracts` itself, so the blast radius is contained to this package).
+- **CHANGELOG head entry** (`## [0.10.0]`) documents: subject rename, new helpers.
+- **Cross-lane coordination:** #1838 (CLI model reparent) also bumps `CHANGELOG.md` and `pyproject.toml`. **#1793 merges first; #1838 rebases on top and stacks its version entry above the `[0.10.0]` block.** Do NOT land concurrently.
+
+## Out of Scope
+
+- `deploy/nats/acl-matrix.json` — ACL grants for `factory.job.*.*` are #1812's responsibility.
+- Satellite rollout (llmCLI, voiceCLI, imageCLI) — tracked in #1840.
+- `job_id` hard-require flip on `WorkEnvelope` — #1841.
+- `factory.job.>` JetStream stream provisioning — infrastructure work, separate.
+- ADR-076 archive cleanup (lines 114, 185, 272) — historical record, no gate trigger; leave as-is or a follow-up docs PR.
+
+## Success Criteria
+
+- [ ] SC1: `grep -r "factory\.results\." packages/ src/ docs/ --include="*.py" --include="*.md" --include="*.mdx" | grep -v "CHANGELOG\|adr/076\|adr/084\|job-model\.md\|artifacts/"` returns 0 hits. (ADR-084 exclusion: verified 0 references to old subjects in its normative body — ADR-084 defines WorkEnvelope semantics and job_id invariant only. `job-model.md` exclusion: lines 110-111 are in an intentional Supersedes migration table. `artifacts/` exclusion: spec file itself contains old strings as documentation.)
+- [ ] SC2: `grep -r "factory\.progress\." packages/ src/ docs/ --include="*.py" --include="*.md" --include="*.mdx" | grep -v "CHANGELOG\|adr/076\|adr/084\|job-model\.md\|artifacts/"` returns 0 hits. (Same exclusion rationale as SC1.)
+- [ ] SC3: `uv run pytest packages/roxabi-contracts/tests/test_jobs_models.py` passes. Requires: (a) assertions at `test_jobs_models.py:253` and `:258` updated to new subject strings; (b) `test_subjects_rejects_bad_tokens` parametrize extended to add 3 bad-token cases each for `jobs_steer`, `jobs_opened`, `jobs_closed`; (c) one positive-case assertion added per new helper (e.g. `assert jobs_steer("job-uuid-1234") == "factory.job.job-uuid-1234.steer"`).
+- [ ] SC4: `python tools/check_doc_drift.py` passes (backticked subject strings in `job-model.md` resolve to code constants in the same PR — code and docs land together).
+- [ ] SC5: `packages/roxabi-contracts/pyproject.toml` version is `0.10.0` and `CHANGELOG.md` has a `## [0.10.0]` head entry covering this rename.
+- [ ] SC6: `python -c "from roxabi_contracts.jobs import jobs_steer, jobs_opened, jobs_closed, jobs_result, jobs_progress; print('ok')"` exits 0 (verifies all five helpers are importable from `jobs/__init__.py`).
+- [ ] SC7: `grep "str(exc)\|repr(exc)\|f\".*{exc}" packages/roxabi-contracts/src/roxabi_contracts/jobs/subjects.py` returns 0 hits (str_exc_bus_bound compliance).
+
+## Open Questions
+
+None — all ambiguities resolved in the frame and established facts.
+
+## Pre-check
+
+1. **Binary SC?** All 7 criteria are pass/fail grep/test/import checks. ✓
+2. **Breadboard IDs in slices?** Tier S — no Breadboard/Slices sections present per template guidance. ✓
+3. **Max 5 NEEDS CLARIFICATION?** 0 open questions. ✓
+4. **Every affordance in at least 1 slice?** N/A (Tier S, no slices). ✓
+5. **Edge cases handled?** No alias layer (Strategy B — canonical names unchanged, return values only); wire-breaking semantics addressed via 0-callers risk mitigation in versioning note; cross-lane CHANGELOG collision addressed via sequencing rule; doc_drift gate addressed via "code and docs land in same PR" constraint; `job-model.md` historical rows excluded from SC1/SC2 with inline justification. ✓

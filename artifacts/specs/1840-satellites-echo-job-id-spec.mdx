@@ -1,0 +1,164 @@
+---
+title: "feat(contracts): satellites echo job_id on response models (3 satellite PRs + contracts-bump callers)"
+description: "Lock-bump all three satellites to roxabi-contracts 0.9.0 and thread job_id from inbound request payload through to every response/chunk model they emit."
+---
+
+## Context
+
+**Promoted from:** [frame](../frames/1840-satellites-echo-job-id-frame.mdx)
+**GitHub issue:** #1840
+**ADR:** ADR-084 (WorkEnvelope job model, Amendment — job_id = one run, internal hops opaque, composite depth max 3)
+**Design SSoT:** `docs/architecture/job-model.md`
+
+`WorkEnvelope.job_id` landed in roxabi-contracts 0.9.0 (#1619) with a `default_factory=new_job_id`
+transitional shim so pre-#1619 wire messages remain parseable. All three satellites are still
+lock-pinned to 0.7.0. When the hub deserializes a satellite response today, the shim fires and
+synthesizes a random `job_id` — wire-safe but correlation-less: the `request.job_id →
+response.job_id` echo chain required by #1793 (jobs taxonomy) and ADR-084 analytics is broken.
+This lane is the gating prerequisite for #1841, which removes `default_factory` (hard-require).
+
+## Goal
+
+Each satellite (llmCLI, voiceCLI, imageCLI) bumps its roxabi-contracts lock to ≥ 0.9.0 and
+propagates `payload.get('job_id')` into every response and chunk model it emits, so the hub
+receives the originating `job_id` rather than a shim-synthesized one.
+
+## Users
+
+**Satellite maintainer** (one developer per satellite PR) — opens a PR against each satellite's
+`staging` branch, applies the `reviewed` label, and lets auto-merge complete.
+
+**Hub / analytics** (downstream) — once all three PRs land, every inbound satellite response
+carries the originating `job_id`; correlation joins (job tracing, composite depth) are sound.
+
+## Expected Behavior
+
+**Single-satellite cycle (llmCLI as example):**
+
+1. Developer opens PR `feat/1840-echo-job-id` against `Roxabi/llmCLI` staging with:
+   - `uv.lock` bumped to roxabi-contracts 0.9.0 SHA (≥ `e8578e52` → current staging HEAD)
+   - `nats/_generation.py` builder call-sites (lines 201, 217, 230) bypass `build_llm_chunk` /
+     `build_llm_response` and construct `LlmChunkEvent` / `LlmResponse` directly (matching the
+     existing error-path pattern at lines 73–99; the builders have no `job_id` parameter and
+     modifying them is out of scope for this lane) — all five construction sites pass
+     `job_id=payload.get('job_id')`
+   - Direct-construction error paths in `_generation.py` (lines 74–86 `LlmChunkEvent`, 87–99
+     `LlmResponse`) also pass `job_id=payload.get('job_id')`
+   - New `.github/workflows/contracts-bump-caller.yml` (Monday 06:00 UTC cron + `workflow_dispatch`,
+     packages `roxabi-contracts roxabi-nats`)
+2. CI runs `uv sync --frozen --all-extras` → passes; unit tests (`pytest -m 'not nats'`) pass.
+3. Developer applies `reviewed` label → auto-merge completes → CI image rebuilt →
+   `ghcr.io/roxabi/llmcli-nats-worker:staging` updated.
+4. Next time the hub dispatches an `LlmRequest` with `job_id="abc123"`, the llmCLI nats-worker
+   reads `payload.get('job_id')` → `"abc123"`, constructs `LlmResponse(job_id="abc123", ...)`,
+   and publishes it. The hub deserializes the response and finds `job_id == "abc123"` — the
+   shim never fires; correlation is preserved.
+5. After all three satellites land, the weekly contracts-bump cron fires each Monday and keeps
+   the lock current automatically.
+
+## Per-Satellite Delivery Table
+
+| Repo | Files modified | New file | Lock gate | Tests | Deploy path |
+|------|---------------|----------|-----------|-------|-------------|
+| `Roxabi/llmCLI` | `nats/_generation.py` (5 direct-construction sites: lines 201, 217, 230 builder call-sites + lines 74–86 `LlmChunkEvent` error path + lines 87–99 `LlmResponse` error path) | `.github/workflows/contracts-bump-caller.yml` (packages: `roxabi-contracts roxabi-nats`) | `uv sync --frozen --all-extras` — hard gate | Unit tests assert echo; NATS integration path covered by existing fixture | autoupdate=registry → `ghcr.io/roxabi/llmcli-nats-worker:staging` (M2 on-demand) |
+| `Roxabi/voiceCLI` | `adapters/nats/synthesize_adapter.py` (TtsResponse + `_err_tts()` error path, ordering fix: extract `job_id` before first early-exit at line 151) · `adapters/nats/transcribe_adapter.py` (extract `job_id` in `handle()`, add `job_id: str \| None = None` param to `_run_transcription()`, thread to SttResponse + `_err_stt()`) | `.github/workflows/contracts-bump-caller.yml` (packages: `roxabi-contracts roxabi-nats roxabi-blobs`) | `uv sync --dev --extra all` — softer gate (CI re-resolves; confirm only `roxabi-contracts` / `roxabi-nats` / `roxabi-blobs` SHAs changed in `uv.lock` diff); run `tools/check-lyra-literals.sh` gate before merge | Unit + e2e paths assert echo on both TTS and STT | autoupdate=registry → `ghcr.io/roxabi/voicecli-{stt,tts}:staging` (M1 live — two units) |
+| `Roxabi/imageCLI` | `nats/adapter.py` (add `job_id=payload.get('job_id')` to `ImageResponse` success path line 231; add `job_id: str \| None = None` param to `_reply_error()` + update all call-sites; replace 3× hardcoded `contract_version='1'` with `CONTRACT_VERSION` import at lines 231, 294, 304) | `.github/workflows/contracts-bump-caller.yml` (packages: `roxabi-contracts roxabi-nats roxabi-blobs`) | `uv lock --check` + `uv sync --frozen` — hard gate | Unit test asserts echo on success and error paths | autoupdate=registry → `ghcr.io/roxabi/imagecli-gen:staging` (M2 dormant, `.disabled`) |
+
+**Key plumbing note — voiceCLI TTS early-exit ordering:**
+`_err_tts()` at line 151 fires before any `job_id` extraction. The fix is to extract
+`job_id = payload.get('job_id')` between `request_id` extraction and the first
+`if not request_id:` early-return check (line 150). Add `job_id: str | None = None`
+as the last parameter to `_err_tts()` and thread it into all 5 call-sites (lines 151,
+168, 179, 221, 234). The local `TtsRequest` dataclass has no `job_id` field — extract
+from `payload` directly in `handle()`.
+
+Note: `_err_tts()` (synthesize_adapter) takes `worker_error: WorkerError`, while
+`_err_stt()` (transcribe_adapter) takes `error: str` — these are asymmetric signatures;
+update each independently.
+
+**Key plumbing note — voiceCLI STT two-layer extraction:**
+`handle()` receives `payload: dict`; the local `SttRequest` dataclass (requests.py) has no
+`job_id` field and must not be modified in this lane. Pattern:
+
+```python
+# in handle(), before req construction:
+job_id = payload.get('job_id')
+req = SttRequest.from_payload(payload)
+...
+await self._run_transcription(msg, req.request_id, req.blob_ref, req.to_overrides(),
+                               trace_id=trace_id, job_id=job_id)
+```
+
+`_run_transcription` signature gains `job_id: str | None = None`; SttResponse and `_err_stt()`
+calls inside it receive `job_id=job_id`. Also update direct `_err_stt()` calls in `handle()`
+before `_run_transcription` is invoked (lines 127-128, 131-133) to pass `job_id=job_id`.
+
+**Key plumbing note — imageCLI `_reply_error`:**
+Current signature: `(self, msg, trace_id, request_id, error, error_detail=None)`.
+Add `job_id: str | None = None` as the last parameter. Update every `self._reply_error(...)` call
+in `handle()` to pass `job_id=job_id` (where `job_id = payload.get('job_id')` is extracted once
+at the top of `handle()`).
+
+**`CONTRACT_VERSION` import fix (imageCLI):**
+Add `from roxabi_contracts.envelope import CONTRACT_VERSION` to adapter.py imports and replace
+`contract_version='1'` at lines 231, 294, 304 (3 sites; line 308 is `request_id=""`, not
+`contract_version`) with `contract_version=CONTRACT_VERSION`.
+This is bundled here (same file, same PR) to prevent a silent regression at the next version bump.
+
+## Coordination
+
+- These three satellite PRs are **independent of each other and of factory batch-2 lanes**
+  (#1793, #1812, #1813, #1838). They touch no factory code and no shared NATS subjects or ACL
+  grants.
+- If #1812 (OmpWorker) merges first and bumps `roxabi-nats` in factory, the satellite lock-bump
+  PR will simply ingest the newer SHA alongside 0.9.0 contracts — harmless.
+- Lane #1841 (hard-require `job_id`) is **blocked** until all three satellite PRs from this
+  issue are merged and deployed. Do not pre-empt by removing `default_factory` in this lane.
+- Factory is **read-only** for this lane; `packages/roxabi-contracts` is already correct.
+- `contracts-bump-caller.yml` PRs auto-merge only when the `reviewed` label is present (Roxabi
+  org auto-merge policy). If the weekly cron fires and the generated PR does not carry the label,
+  it will sit open indefinitely — monitor open PRs after Monday 06:00 UTC and apply the label if
+  stalled.
+- `uv.lock` pins `roxabi-contracts` and `roxabi-nats` by git SHA (not semver). If factory's
+  `staging` branch advances the SHA between when the satellite PR is opened and when it merges,
+  the lock may drift on re-resolve — re-pin to the latest SHA before applying `reviewed`.
+
+## Success Criteria
+
+- [ ] `llmCLI` PR: `_generation.py` all five construction sites (lines 201, 217, 230 — direct-constructed `LlmChunkEvent`/`LlmResponse` replacing builder calls + lines 74–86 `LlmChunkEvent` error path + lines 87–99 `LlmResponse` error path) pass `job_id=payload.get('job_id')`; unit test asserts `response.job_id == request_job_id`.
+- [ ] `voiceCLI` PR: `TtsResponse`, `SttResponse`, and both `_err_*` error paths carry `job_id` echoed from `payload.get('job_id')`; STT two-layer extraction pattern applied (`handle()` extracts, `_run_transcription()` receives new param); unit test asserts echo for both TTS and STT.
+- [ ] `imageCLI` PR: `ImageResponse` and `_reply_error()` (all call-sites) propagate `job_id`; hardcoded `contract_version='1'` replaced with `CONTRACT_VERSION` import at 3 sites (lines 231, 294, 304); unit test asserts echo on success and error paths.
+- [ ] All three satellite repos have `.github/workflows/contracts-bump-caller.yml` installed with correct packages list and `PAT` secret reference.
+- [ ] CI green (all lock gates pass) on each of the three PRs before `reviewed` label is applied.
+- [ ] `#1840` tracking table (in the issue body of https://github.com/Roxabi/roxabi-factory/issues/1840) updated with PR numbers and merge status for all three satellite PRs.
+- [ ] `voiceCLI` PR: `uv.lock` diff shows only `roxabi-contracts`, `roxabi-nats`, `roxabi-blobs` SHA changes (no unintended transitive dep drift).
+
+## Open Questions
+
+None — all prerequisites verified; constraints fully specified in frame and code-reality audit.
+
+## Pre-check
+
+1. **Every Success Criteria binary?** Yes — each criterion is a pass/fail check (code change
+   present, test asserts, CI green, tracking table updated).
+2. **Every breadboard ID in at least 1 slice?** N/A — Tier S skips Breadboard/Slices sections.
+3. **Max 5 NEEDS CLARIFICATION items?** 0 open questions — all risks resolved by verified code
+   evidence; two unverified items from the audit (PAT secret existence on GitHub server;
+   imageCLI squash-only branch protection) are non-blocking (auto-merge.yml confirms PAT
+   reference pattern; squash vs merge is a delivery detail, not a blocker).
+4. **Every affordance in at least 1 slice?** N/A — Tier S; all construction sites enumerated in
+   the delivery table and plumbing notes.
+5. **Every edge case has a handling strategy?**
+   - STT two-layer extraction (no `job_id` on local SttRequest): explicit pattern documented.
+   - imageCLI `_reply_error` call-site fan-out: extract once at top of `handle()`, pass to all
+     call-sites via new optional param.
+   - `job_id` absent on wire (old inbound, `payload.get('job_id')` returns None): do NOT pass
+     `job_id=None` explicitly to the model constructor — `_validate_job_id` (mode="before")
+     receives `None` before the default fires and calls `_SAFE_JOB_TOKEN_RE.fullmatch(None)` →
+     `TypeError`. Use conditional kwarg exclusion: `kwargs = {}; if job_id :=
+     payload.get('job_id'): kwargs['job_id'] = job_id; Model(**kwargs, ...)` — then
+     `default_factory` fires (mints a new UUID hex shim) only when the kwarg is absent entirely.
+     This shim covers missing-`job_id` transitionally until #1841.
+   - imageCLI stale NATS service name (`lyra-nats`): pre-existing, out-of-scope, follow-up to be
+     filed; does not block this lane (unit dormant on M2).
+   - voiceCLI lock drift: confirmed softer gate + uv.lock diff check criterion added to SC-7.

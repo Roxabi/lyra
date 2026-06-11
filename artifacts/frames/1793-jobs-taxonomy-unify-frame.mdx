@@ -1,0 +1,131 @@
+---
+title: "feat(contracts): unify jobs taxonomy — factory.job.<id>.* (retire factory.results/.progress siblings)"
+issue: 1793
+status: approved
+tier: S
+date: 2026-06-11
+---
+
+## Problem
+
+`roxabi-contracts` currently exposes two top-level sibling subject families for
+job outcomes — `factory.results.<job_id>` and `factory.progress.<job_id>` —
+that were defined alongside #1045 before the unified `factory.job.<id>.*`
+taxonomy was ratified in §15.6 of the concept analysis. The NATS subject space
+now has two parallel hierarchies for the same concept: the old siblings live as
+`Literal` constants in `packages/roxabi-contracts/src/roxabi_contracts/jobs/subjects.py`
+(`result_prefix`, `progress_prefix`) and in the `jobs_result()` / `jobs_progress()`
+helper return values, while `docs/architecture/job-model.md` already treats
+`factory.job.<id>.result` and `factory.job.<id>.progress` as the SSoT target.
+
+The window to fix this cheaply is now: confirmed 0 callers of either helper in
+`src/factory`, 0 satellite consumers across llmCLI/voiceCLI/imageCLI, and 0
+references in the ACL matrix. Once #1812 (OmpWorker) lands on top, the new
+`factory.job.<id>.*` subjects gain real in-repo callers and the rename becomes a
+multi-repo coordinated migration instead of a pure contracts refactor.
+
+The `JobProgress` model docstring (line 72 of `models.py`) still references the
+old `factory.progress.<job_id>` string. Satellites deriving the publish subject
+from the model docstring or from the constants would misroute silently at
+runtime — not a type error, not a test failure, just a silent wrong subject.
+
+## Who
+
+- **Primary:** contracts maintainer (roxabi-contracts package)
+- **Secondary:** #1812 (OmpWorker) implementer — this issue is a hard
+  prerequisite; #1812 builds on the post-rename subject constants for
+  `factory.job.<id>.{progress,result,opened,closed,steer}`
+
+## Constraints
+
+- **#1812 dependency:** this issue MUST land before #1812 begins implementation;
+  any scope creep or delay here directly blocks OmpWorker.
+- **Cross-lane CHANGELOG/pyproject contention:** #1838 (CLI model reparent,
+  batch 2) also touches `CHANGELOG.md` and `pyproject.toml`; sequence 1793
+  first, 1838 bumps on top. Do NOT land concurrently.
+- **Version bump rule (contracts CLAUDE.md):** changing the return value of
+  `jobs_result()` / `jobs_progress()` changes the wire subject string — this is
+  a behavioural breaking change for any caller. With 0 confirmed in-repo or
+  satellite callers today, risk is contained; treat as **minor bump (0.9.0 →
+  0.10.0)** per the contracts versioning policy (new subjects = additive-only).
+  If the spec writer chooses to signal stronger intent (subject rename as
+  breaking), 1.0.0 is defensible but requires justification in the PR body.
+- **Deprecation alias mandate:** even with 0 confirmed callers, the contracts
+  policy requires keeping `jobs_result` / `jobs_progress` as deprecated aliases
+  for at least one minor release before removal. Add the aliases in this PR;
+  removal is deferred to a follow-up.
+- **doc_drift gate:** `job-model.md` already backticks `factory.job.<id>.*`
+  subject strings. If the gate checks those literals, they resolve correctly once
+  the code constants land. Code and docs MUST land in the same PR — no
+  partial-merge.
+- **str_exc_bus_bound gate:** subject helper functions produce strings used on
+  the NATS wire; ensure no `str(exc)` / f-string-exc interpolation is introduced
+  in the helpers (ADR-073).
+- **New facets scope boundary:** #1793 scope = rename `result` + `progress`
+  siblings + add `jobs_opened`, `jobs_closed`, `jobs_steer` helpers for the
+  full `factory.job.<id>.*` subtree (needed by #1812 per §15.6 SSoT). Adding
+  these helpers here is in-scope and unblocks #1812 cleanly. Do NOT add ACL
+  grants or produce/subscribe call-sites — those are #1812's job.
+- **ACL fan-out NOT required:** confirmed 0 references to `factory.results`,
+  `factory.progress`, or `factory.job.*` in `deploy/nats/acl-matrix.json`.
+  ACL grant addition for `factory.job.*.{result,progress,steer,opened,closed}`
+  is #1812's responsibility.
+- **Quality gates:** file_length (max 300 SLOC, `subjects.py` is tiny — no
+  risk); hardcoded_constants (not `src/factory/core/`, not applicable);
+  import_layers (contracts package — no intra-factory layer concern).
+
+## Out of Scope
+
+- ACL matrix edits (`deploy/nats/acl-matrix.json`) — deferred to #1812.
+- Satellite rollout of the new constants (llmCLI, voiceCLI, imageCLI) —
+  tracked in #1840 (contracts-bump callers workflow).
+- Flipping `job_id` to hard-required on WorkEnvelope — that is #1841.
+- `factory.job.>` JetStream stream provisioning (§15.7 v2 dashboard) —
+  out of scope for this contracts PR; infrastructure work is separate.
+- ADR-076 archive cleanup (lines 114, 185, 272) — historical record, no gate
+  trigger; leave as-is or update in a follow-up docs PR.
+- `factory.results` promotion to JetStream — explicitly ruled out in §15.4.
+- Removing the deprecated `jobs_result` / `jobs_progress` aliases — one minor
+  release cycle must pass first.
+
+## Premise Validity
+
+**Success in 6 months:** `packages/roxabi-contracts` exports only the
+`factory.job.<id>.*` subject family for per-job facets; `factory.results` and
+`factory.progress` subject strings are absent from all of `src/factory`,
+satellite repos, and the NATS wire subject space; #1812 OmpWorker uses
+`jobs_result()` / `jobs_progress()` / `jobs_steer()` / `jobs_opened()` /
+`jobs_closed()` exclusively; the deprecated aliases have been removed in a
+follow-up tagged release.
+
+**Failure in 6 months:** A new in-repo caller introduces `factory.results.<x>`
+or `factory.progress.<x>` strings directly (bypassing helpers) because the
+migration window closed without a grep gate; OR #1812 is forced to use old
+subject strings because this issue stalls, creating a split taxonomy in
+production.
+
+**Simplest alternative:** Leave the sibling prefixes as-is and only add the
+new `factory.job.<id>.*` helpers alongside them, treating both as valid until
+the old ones have real callers to migrate.
+
+**Why not simplest:** The dual taxonomy would immediately be codified by #1812
+(which uses new subjects) while the old constants remain in `__all__` — any
+future reader or satellite would face two equally-visible but contradictory
+families. The cheap-now window (0 callers, 0 ACL refs) expires once #1812
+lands. Retiring the siblings while cost is zero is the explicit rationale
+stated in the issue body.
+
+_(champs dérivés du contexte — à valider à la review humaine)_
+
+## Complexity
+
+**Tier: S** — Single package (`roxabi-contracts`), 3–4 files modified, 0
+cross-layer concerns, 0 ACL fan-out, 0 satellite consumers to coordinate.
+
+Signals observed:
+- 7 files in scope, all within `packages/roxabi-contracts/` plus 2 doc files
+- 0 callers in `src/factory` (grep-verified)
+- 0 satellite consumers (grep-verified across llmCLI/voiceCLI/imageCLI)
+- 0 ACL matrix changes required
+- Mechanical rename + alias pattern; no architectural decision needed
+- Only sequencing constraint: land before #1812, after current 0.9.0 tag

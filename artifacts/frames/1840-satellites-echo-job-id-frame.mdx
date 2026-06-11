@@ -1,0 +1,158 @@
+---
+title: "feat(contracts): satellites echo job_id on response models (3 satellite PRs + contracts-bump callers)"
+issue: 1840
+status: draft
+tier: S
+date: 2026-06-11
+---
+
+## Problem
+
+`WorkEnvelope.job_id` was introduced in #1619 (roxabi-contracts 0.9.0) with a `default_factory=new_job_id`
+transitional shim so pre-#1619 wire messages remain parseable. All three satellite repos
+(`llmCLI`, `voiceCLI`, `imageCLI`) are still lock-pinned to contracts 0.7.0 (SHA
+`e8578e52…` for llmCLI/voiceCLI, `08ed8d16…` for imageCLI) and therefore do not emit
+`job_id` on their response models (`LlmResponse`, `LlmChunkEvent`, `TtsResponse`,
+`SttResponse`, `ImageResponse`).
+
+The consequence is silent correlation loss: the hub deserializes each satellite response and
+the shim synthesizes a random `new_job_id()`, breaking the `request.job_id → response.job_id`
+echo chain that #1793 (jobs taxonomy) and future analytics depend on. The shim is
+wire-safe but correlation-less — every response from a satellite arrives with an
+unrelated `job_id` that cannot be joined back to the originating job.
+
+This issue is the gating prerequisite for #1841, which will hard-require `job_id` (remove
+`default_factory`) at the next `CONTRACT_VERSION` bump. Until all satellites echo the
+field, #1841 cannot land without breaking deployed workers.
+
+## Who
+
+- **Primary:** satellite maintainer (one developer per satellite PR — llmCLI, voiceCLI,
+  imageCLI); factory repo is read-only for this lane (no factory code change required)
+- **Secondary:** reviewer on each satellite PR (auto-merge via `reviewed` label once CI is
+  green; `wire-breaking` label triggers human hold if CONTRACT_VERSION changes — not
+  expected here)
+
+## Constraints
+
+**Dependency / cross-lane:**
+- `contracts-bump.yml` reusable workflow must be present in `roxabi-factory/.github/workflows/` —
+  confirmed present; callers reference `Roxabi/roxabi-factory/.github/workflows/contracts-bump.yml@staging`
+- roxabi-contracts 0.9.0 must be on `staging` before lock-bump PRs land — confirmed; HEAD is 0.9.0
+- Sibling lane #1812 (OmpWorker) may touch `roxabi-nats` version concurrently; lock-bump PRs
+  must be sequenced after or rebased against any #1812 merge to avoid lock conflicts
+- Lane #1841 (hard-require `job_id`) is blocked until all three satellite PRs from this
+  issue are merged; do not pre-empt by removing `default_factory` in this lane
+
+**Wire-compat:**
+- `ContractEnvelope` carries `model_config = ConfigDict(extra='ignore')` — the `job_id`
+  field added to outbound models is additive and forward-safe; hub-side old code can
+  deserialize new payloads without breakage
+- Satellites currently on 0.7.0 already receive `job_id` on inbound requests (WorkEnvelope
+  shim sets it); they must echo `payload.get('job_id')` (not `request.job_id` via local
+  dataclass, where the local dataclass lacks the field — specifically voiceCLI's local
+  `SttRequest` at `requests.py`)
+- `job_id` values from `new_job_id()` are 32-char hex UUID strings — NATS-subject-safe,
+  no colon/dot sanitization required
+
+**Per-satellite plumbing constraints:**
+- **llmCLI**: `build_llm_response` and `build_llm_chunk` in `llm/builders.py` do not
+  currently pass `job_id`; both the builder call-sites (lines 200/216/229 of
+  `_generation.py`) AND the direct-construction error paths (lines 74–99) must be updated;
+  `payload.get('job_id')` is in scope at all sites
+- **voiceCLI TTS**: `payload` dict is passed through to `_run_synthesis()` — extraction
+  is straightforward (`payload.get('job_id')`)
+- **voiceCLI STT**: `payload` dict is NOT passed to `_run_transcription()`; local
+  `SttRequest` dataclass (requests.py) has no `job_id`; pattern: extract
+  `job_id = payload.get('job_id')` in `handle()` before `req` construction, add
+  `job_id: str | None = None` parameter to `_run_transcription()`, thread it to
+  `SttResponse` and `_err_stt()`; must also update `_err_stt()` error path
+- **imageCLI**: `_reply_error()` has no `job_id` in its signature — add as optional
+  `job_id: str | None = None` parameter and update all call-sites in `handle()`;
+  additionally fix hardcoded `contract_version='1'` (3 sites) to use the `CONTRACT_VERSION`
+  constant import (correctness risk at future version bump)
+
+**Quality gates (per-satellite CI):**
+- llmCLI CI: `uv sync --frozen --all-extras` — lock-bump PR must produce a valid frozen lock
+- voiceCLI CI: `uv sync --dev --extra all` (not `--frozen`) — softer gate; CI re-resolves,
+  may silently pick up transitive dep changes beyond the named packages; confirm only
+  `roxabi-contracts`, `roxabi-nats`, `roxabi-blobs` SHAs changed in `uv.lock` diff
+- imageCLI CI: `uv lock --check` + `uv sync --frozen` — hard lock gate; lock must be
+  self-consistent before tests run
+- voiceCLI `check-lyra-literals.sh` gate — satellite PR must not introduce `lyra.*` literal
+  strings in modified files
+
+**Deploy reality:**
+- voiceCLI (LIVE on M1): `voicecli-stt.container` + `voicecli-tts.container` use
+  `io.containers.autoupdate=registry` pulling `ghcr.io/roxabi/voicecli-{stt,tts}:staging`;
+  container rebuild triggered by CI on merge → autoupdate picks up on next convergence cycle
+- llmCLI nats-worker (M2, on-demand): same autoupdate pattern; deploy risk is low since
+  M2 is not continuously available
+- imageCLI (dormant, `.disabled` unit on M2): rebuild and autoupdate is safe since the
+  unit does not run; note pre-existing stale NATS reference (`Wants=lyra-nats.service`,
+  `NATS_URL=nats://lyra-nats:4222`) in `imagecli-gen.container` — do not fix as part of
+  this lane (file a follow-up)
+- The echo is purely additive; no `CONTRACT_VERSION` bump required in this lane; auto-merge
+  cascade via `reviewed` label is the expected path for all three PRs
+
+## Out of Scope
+
+- Removing `default_factory=new_job_id` from `WorkEnvelope.job_id` — that is #1841 and
+  must not be pre-empted here
+- Any factory-side code changes — factory is read-only for this lane; the contracts package
+  (packages/roxabi-contracts) already has the correct model hierarchy
+- Fixing the imageCLI stale NATS service name (`lyra-nats` → `factory-nats`) in
+  `imagecli-gen.container` — pre-existing issue unrelated to job_id echo; file a follow-up
+- Updating voiceCLI local `SttRequest` dataclass to carry `job_id` as a first-class field —
+  the pattern `payload.get('job_id')` extracted in `handle()` is sufficient; a richer
+  refactor is a separate concern
+- Bumping `CONTRACT_VERSION` — this lane is additive (new field with shim default); version
+  bump policy requires a breaking change, which does not apply here
+- `roxabi-blobs` version changes — only lock-bump for `roxabi-contracts` and `roxabi-nats`
+  (+ `roxabi-blobs` where pinned for lock consistency); no API changes to blobs
+- Factory ACL matrix changes — no NATS subject grants added; existing `factory.inbound.*`
+  and `factory.outbound.*` ACLs cover job_id propagation transparently
+
+## Premise Validity
+
+**Success in 6 months:** Hub-side logs show `job_id` on all inbound `LlmResponse`,
+`TtsResponse`, `SttResponse`, and `ImageResponse` messages matching the originating request's
+`job_id`; the default-mint shim in `WorkEnvelope` is retired (via #1841); no "unrelated
+job_id" correlation loss appears in analytics or tracing after #1841 lands.
+
+**Failure in 6 months:** One or more satellite PRs stall or regress; the hub continues
+synthesizing random `job_id` values on satellite responses; #1841 cannot land because the
+shim cannot be safely removed; analytics built on job correlation silently emit wrong
+lineage data.
+
+**Simplest alternative:** Leave the default-mint shim indefinitely — satellites never set
+`job_id`, hub always synthesizes one; correlation is lost but the system functions.
+
+**Why not simplest:** The shim is explicitly tagged TRANSITIONAL in code with a flip
+note pointing to #1841. Leaving it indefinitely means correlation data built on `job_id`
+(jobs taxonomy #1793, analytics, composite depth tracking from ADR-084) is silently
+incorrect — jobs cannot be traced across the hub→satellite→hub boundary. The shim was
+designed as a short-term bridge, not a permanent policy.
+
+_(champs dérivés du contexte — à valider à la review humaine)_
+
+## Complexity
+
+**Tier: S** — Three independent satellite PRs each touching 2–4 files, no shared state,
+no factory code change, no schema migration, no new abstractions; the only non-trivial
+delta is voiceCLI STT plumbing (two-layer extraction pattern).
+
+Signals observed:
+- All response models already subclass `WorkEnvelope` — `job_id` field is inherited, no
+  model changes needed in satellites
+- llmCLI: builder signature changes + error-path direct constructors — 3–5 lines per site
+- voiceCLI TTS: `payload` in scope → 1-line addition at construction sites
+- voiceCLI STT: new parameter threaded through `_run_transcription()` — ~8 lines touched,
+  single file
+- imageCLI: `_reply_error()` signature extension + 5+ call-site updates + `CONTRACT_VERSION`
+  import fix — largest delta of the three, still clearly S
+- Each satellite gets a new `contracts-bump-caller.yml` (~15 lines, templated from
+  `docs/ops/contracts-bump-callers.md`) — copy-paste work, no logic
+- No factory PR required; `contracts-bump.yml` reusable workflow already present in factory
+- All prerequisite labels (`reviewed`, `wire-breaking`) and `auto-merge.yml` triggers
+  confirmed present in all three satellite repos

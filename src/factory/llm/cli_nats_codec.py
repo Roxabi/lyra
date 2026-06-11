@@ -58,7 +58,7 @@ class CliNatsCodec:
     encode_control: builds CliControlCmd bytes for control-plane operations.
     """
 
-    def encode(
+    def encode(  # noqa: PLR0913 — codec signature mirrors LlmRequest fields (#1620 root_job_id)
         self,
         text: str,
         model_cfg: "ModelConfig",

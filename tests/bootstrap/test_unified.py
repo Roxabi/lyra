@@ -9,7 +9,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 from typing import Any
-from unittest.mock import ANY, AsyncMock, MagicMock
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import nats.errors
 import pytest
@@ -171,6 +171,13 @@ def _patch_unified_boundaries(  # noqa: PLR0915
         "_register_agents",
         _track("_register_agents", lambda *_a, **_kw: None),
     )
+
+    # ensure_stream / ensure_kv are imported locally inside _bootstrap_unified;
+    # patch at the source module so all tests using this fixture get no-ops.
+    import factory.infrastructure.outbound_audio.stream_setup as _stream_setup_mod
+
+    monkeypatch.setattr(_stream_setup_mod, "ensure_stream", AsyncMock())
+    monkeypatch.setattr(_stream_setup_mod, "ensure_kv", AsyncMock())
 
     fake_wired = MagicMock()
     monkeypatch.setattr(
@@ -423,3 +430,53 @@ async def test_normal_exit_cancels_worker(
     g_args, g_kwargs = gather.await_args
     assert g_args[0] is fake_task
     assert g_kwargs.get("return_exceptions") is True
+
+
+# ---------------------------------------------------------------------------
+# Audio provisioning — ADR-079 sole-provisioner (#1833)
+# ---------------------------------------------------------------------------
+
+
+async def test_audio_provisioning_before_wire_adapters(
+    monkeypatch: pytest.MonkeyPatch,
+    _patch_unified_boundaries: dict[str, Any],
+) -> None:
+    """ensure_stream + ensure_kv are awaited before _wire_adapters.
+
+    ADR-079 sole-provisioner:
+
+    In unified mode the hub owns stream provisioning; _wire_adapters binds only.
+    The in-process sequential ordering guarantees streams exist before consumers start.
+    """
+    from factory.bootstrap.factory.unified import _bootstrap_unified
+
+    fake_nc = _patch_unified_boundaries["fake_nc"]
+    order = _patch_unified_boundaries["order"]
+
+    # nc.jetstream() is a sync call in nats-py
+    fake_js = MagicMock()
+    fake_nc.jetstream = MagicMock(return_value=fake_js)
+
+    mock_ensure_stream = AsyncMock()
+    mock_ensure_kv = AsyncMock()
+
+    with (
+        patch(
+            "factory.infrastructure.outbound_audio.stream_setup.ensure_stream",
+            mock_ensure_stream,
+        ),
+        patch(
+            "factory.infrastructure.outbound_audio.stream_setup.ensure_kv",
+            mock_ensure_kv,
+        ),
+    ):
+        await _bootstrap_unified({})
+
+    # Provisioning calls must have fired
+    mock_ensure_stream.assert_awaited_once_with(fake_js)
+    mock_ensure_kv.assert_awaited_once_with(fake_js)
+
+    # Provisioning must have happened after agent registration but before wiring
+    assert "_register_agents" in order
+    assert "_wire_adapters" in order
+    assert order.index("_register_agents") < order.index("_wire_adapters")

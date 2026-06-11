@@ -100,6 +100,10 @@ async def run_lifecycle(  # noqa: C901 — DEBT:migration-sequence-bootstrap —
         "typing-listeners",
         *[tl.stop() for tl in wired.tg_typing_listeners + wired.dc_typing_listeners],
     )
+    await close_safely(
+        "audio-consumers",
+        *[c.stop() for c in wired.tg_consumers + wired.dc_consumers],
+    )
     # proxies is only populated in three-process hub_standalone mode; unified mode
     # runs adapters in-process (platform SDKs) and does not use NatsChannelProxy.
     for proxy in resources.proxies:

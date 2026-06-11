@@ -64,9 +64,17 @@ The **`cli` domain is split**:
 
 | `cli` model | Envelope | Why |
 |---|---|---|
-| `CliControlCmd` | WorkEnvelope | per-turn control of the clipool worker; part of a job |
 | `CliCmdPayload` | WorkEnvelope | per-turn dispatch to the clipool worker; carries `lyra_session_id` → belongs to a job |
+| `CliChunkEvent` | WorkEnvelope | response side of a work op — streaming chunk or terminal event; correlates to the dispatching job |
+| `CliControlCmd` | WorkEnvelope | per-turn control of the clipool worker; part of a job |
+| `CliControlAck` | WorkEnvelope | ack of a work control op; correlated to the same job as `CliControlCmd` |
 | `CliHeartbeat` | ContractEnvelope | worker liveness — no job |
+
+**One-minor deprecations (S1 — #1009/#1838):** `CliControlCmd.session_id` is renamed to
+`cli_session_id`; the old wire name is accepted via `validation_alias=AliasChoices("cli_session_id",
+"session_id")` for one minor release. `CliControlCmd.op` retains the `resume_and_reset` literal
+for one minor; producers must migrate to `CliCmdPayload.resume_session_id`. Mechanical removal of
+both is tracked in the follow-up issue (sibling under epic #1044, blocked-by #1009).
 
 The `cli` reparent is a **breaking** `cli` minor bump (new required `job_id`). It overlaps
 with the session-id cleanup in **#1009** (rename `CliControlCmd.session_id` → `cli_session_id`,

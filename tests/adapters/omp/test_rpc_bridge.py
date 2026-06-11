@@ -39,7 +39,9 @@ _PROGRESS_SUBJECT = f"factory.job.{_JOB_ID}.progress"
 _RESULT_SUBJECT = f"factory.job.{_JOB_ID}.result"
 
 
-def _make_fake_binary(tmp_path: Path, *, matching_digest: bool = True) -> Path:
+def _make_fake_binary(
+    tmp_path: Path, *, matching_digest: bool = True
+) -> tuple[Path, str | None]:
     """Write a fake binary whose sha256 matches (or doesn't) the pinned hash."""
     omp_bin = tmp_path / "omp"
     if matching_digest:
@@ -68,7 +70,7 @@ def _stub_omp_rpc_module() -> tuple[ModuleType, MagicMock]:
 
     rpc_class = MagicMock(return_value=client_instance)
     module = ModuleType("omp_rpc")
-    module.RpcClient = rpc_class
+    module.RpcClient = rpc_class  # type: ignore[attr-defined]
 
     sys.modules["omp_rpc"] = module
     return module, client_instance
@@ -228,7 +230,7 @@ class TestRun:
         client.prompt_and_wait.assert_awaited_once_with("hello")
 
     async def test_run_sets_current_job_id(self, bridge_and_nc) -> None:
-        bridge, nc, client = bridge_and_nc
+        bridge, nc, _client = bridge_and_nc
         await bridge.register(nc)
         await bridge.run(prompt="hello", job_id=_JOB_ID)
         assert bridge._current_job_id == _JOB_ID
@@ -316,7 +318,7 @@ class TestCallbackEvents:
     async def test_on_message_update_publishes_to_progress_subject(
         self, bridge_and_nc
     ) -> None:
-        bridge, nc, client = bridge_and_nc
+        bridge, nc, _client = bridge_and_nc
         nc.subscribe = AsyncMock(return_value=AsyncMock(unsubscribe=AsyncMock()))
         await bridge.register(nc)
         bridge._current_job_id = _JOB_ID
@@ -331,7 +333,7 @@ class TestCallbackEvents:
         assert subject == _PROGRESS_SUBJECT
 
     async def test_on_message_update_payload_fields(self, bridge_and_nc) -> None:
-        bridge, nc, client = bridge_and_nc
+        bridge, nc, _client = bridge_and_nc
         nc.subscribe = AsyncMock(return_value=AsyncMock(unsubscribe=AsyncMock()))
         await bridge.register(nc)
         bridge._current_job_id = _JOB_ID
@@ -349,7 +351,7 @@ class TestCallbackEvents:
 
     async def test_on_message_update_no_str_exc_in_fields(self, bridge_and_nc) -> None:
         """ADR-073: no exception string in published field."""
-        bridge, nc, client = bridge_and_nc
+        bridge, nc, _client = bridge_and_nc
         nc.subscribe = AsyncMock(return_value=AsyncMock(unsubscribe=AsyncMock()))
         await bridge.register(nc)
         bridge._current_job_id = _JOB_ID
@@ -366,7 +368,7 @@ class TestCallbackEvents:
     async def test_on_tool_execution_start_publishes_to_progress_subject(
         self, bridge_and_nc
     ) -> None:
-        bridge, nc, client = bridge_and_nc
+        bridge, nc, _client = bridge_and_nc
         nc.subscribe = AsyncMock(return_value=AsyncMock(unsubscribe=AsyncMock()))
         await bridge.register(nc)
         bridge._current_job_id = _JOB_ID
@@ -382,7 +384,7 @@ class TestCallbackEvents:
         assert subject == _PROGRESS_SUBJECT
 
     async def test_on_tool_execution_start_payload_fields(self, bridge_and_nc) -> None:
-        bridge, nc, client = bridge_and_nc
+        bridge, nc, _client = bridge_and_nc
         nc.subscribe = AsyncMock(return_value=AsyncMock(unsubscribe=AsyncMock()))
         await bridge.register(nc)
         bridge._current_job_id = _JOB_ID
@@ -402,7 +404,7 @@ class TestCallbackEvents:
     async def test_on_agent_end_publishes_to_result_subject(
         self, bridge_and_nc
     ) -> None:
-        bridge, nc, client = bridge_and_nc
+        bridge, nc, _client = bridge_and_nc
         nc.subscribe = AsyncMock(return_value=AsyncMock(unsubscribe=AsyncMock()))
         await bridge.register(nc)
         bridge._current_job_id = _JOB_ID
@@ -416,7 +418,7 @@ class TestCallbackEvents:
         assert subject == _RESULT_SUBJECT
 
     async def test_on_agent_end_payload_status_success(self, bridge_and_nc) -> None:
-        bridge, nc, client = bridge_and_nc
+        bridge, nc, _client = bridge_and_nc
         nc.subscribe = AsyncMock(return_value=AsyncMock(unsubscribe=AsyncMock()))
         await bridge.register(nc)
         bridge._current_job_id = _JOB_ID
@@ -431,7 +433,7 @@ class TestCallbackEvents:
         assert "error" not in payload or payload.get("error") is None
 
     async def test_callback_no_publish_when_nc_is_none(self, bridge_and_nc) -> None:
-        bridge, nc, client = bridge_and_nc
+        bridge, nc, _client = bridge_and_nc
         # Do NOT call register — _nc stays None
         bridge._current_job_id = _JOB_ID
 
@@ -441,7 +443,7 @@ class TestCallbackEvents:
         nc.publish.assert_not_awaited()
 
     async def test_callback_no_publish_when_job_id_is_none(self, bridge_and_nc) -> None:
-        bridge, nc, client = bridge_and_nc
+        bridge, nc, _client = bridge_and_nc
         nc.subscribe = AsyncMock(return_value=AsyncMock(unsubscribe=AsyncMock()))
         await bridge.register(nc)
         # Deliberately omit _current_job_id assignment
@@ -461,7 +463,7 @@ _STEER_SUBJECT = f"factory.job.{_JOB_ID}.steer"
 
 class TestSteerBridge:
     async def test_steer_bridge_subscribes_on_run(self, bridge_and_nc) -> None:
-        bridge, nc, client = bridge_and_nc
+        bridge, nc, _client = bridge_and_nc
         sub_mock = AsyncMock(unsubscribe=AsyncMock())
         nc.subscribe = AsyncMock(return_value=sub_mock)
         await bridge.register(nc)
@@ -469,11 +471,12 @@ class TestSteerBridge:
         await bridge.run(prompt="hello", job_id=_JOB_ID)
 
         nc.subscribe.assert_awaited_once()
+        assert nc.subscribe.await_args is not None
         subscribed_subject = nc.subscribe.await_args.args[0]
         assert subscribed_subject == _STEER_SUBJECT
 
     async def test_steer_bridge_unsubscribes_after_run(self, bridge_and_nc) -> None:
-        bridge, nc, client = bridge_and_nc
+        bridge, nc, _client = bridge_and_nc
         sub_mock = AsyncMock(unsubscribe=AsyncMock())
         nc.subscribe = AsyncMock(return_value=sub_mock)
         await bridge.register(nc)
@@ -555,7 +558,7 @@ class TestSteerBridge:
         self, bridge_and_nc
     ) -> None:
         """If register() was not called, run() must not crash on subscribe."""
-        bridge, nc, client = bridge_and_nc
+        bridge, nc, _client = bridge_and_nc
         # Do NOT call register — _nc stays None
 
         # Should not raise

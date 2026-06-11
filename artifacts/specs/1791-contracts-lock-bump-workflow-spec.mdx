@@ -1,0 +1,270 @@
+---
+title: "infra: reusable workflow to auto-bump NATS satellites' roxabi-contracts/nats lock"
+description: "Factory-hosted reusable GitHub Actions workflow that bumps uv.lock for roxabi-contracts/nats/blobs in llmCLI, voiceCLI, imageCLI on a weekly schedule with wire-breaking detection."
+---
+
+## Context
+
+**Promoted from:** [frame](../frames/1791-contracts-lock-bump-workflow-frame.mdx)
+**GitHub issue:** #1791
+**Milestone:** M1 — Jobs and workers
+**Architecture SSoT:** `docs/architecture/job-model.md`
+**Related issues:** #1619 (WorkEnvelope split), #1793 (subject taxonomy), #1795 (JobResult), #1798 (Shape-D sub-jobs)
+
+Wire-protocol versioning is governed by `CONTRACT_VERSION` in
+`packages/roxabi-contracts/src/roxabi_contracts/envelope.py:16` (value `"1"`; string integer, ADR-044/ADR-049).
+Dependabot (`pip` ecosystem, confirmed) cannot bump git-branch sources — all three satellites pin
+`roxabi-contracts`, `roxabi-nats`, and (where applicable) `roxabi-blobs` via
+`[tool.uv.sources] branch = "staging"`. A weekly custom cron workflow is the only automated path.
+
+## Goal
+
+Provide a factory-hosted `workflow_call` + `workflow_dispatch` workflow that satellite repos invoke on a weekly schedule to bump their `uv.lock` for `roxabi-contracts`, `roxabi-nats`, and `roxabi-blobs`; wire-compatible bumps auto-merge via existing `reviewed`-label cascade; `CONTRACT_VERSION` bumps open a `wire-breaking`-labelled PR held for human review.
+
+## Users
+
+- **Operators / maintainers:** today a contract change landing in factory requires a manual `uv lock --upgrade-package` in each satellite; without this workflow that step is silently skipped. The workflow removes the manual step entirely.
+- **M1 delivery chain:** issues #1619, #1793, #1795, #1798 drive contract churn; this workflow is the automated delivery pipe that carries each change out to `llmCLI`, `voiceCLI`, `imageCLI` without operator action.
+
+## Design Decisions
+
+### DD-1: Reusable workflow hosted in factory (workflow_call)
+
+`roxabi-factory` is the contract producer and the natural authority for the reusable workflow. Each satellite caller invokes `Roxabi/roxabi-factory/.github/workflows/contracts-bump.yml` via `uses:`. The workflow triggers are `workflow_call` (invoked by callers) and `workflow_dispatch` (manual one-off runs). The `repository_dispatch` push-driven alternative (Option 3, frame Out of Scope) is excluded: push-driven adds factory-side complexity for a use case where a day or two of lag is fully acceptable, and it requires an extra outbound webhook step on every `staging` push.
+
+### DD-2: Per-satellite package list as workflow input
+
+The `roxabi-blobs` dependency is asymmetric: llmCLI has no `roxabi-blobs` dependency; voiceCLI has it as an optional `nats` extra; imageCLI has it as a core dependency. A single hardcoded `uv lock --upgrade-package roxabi-contracts roxabi-nats roxabi-blobs` would be a harmless no-op for llmCLI, but it would obscure intent and make the workflow harder to reason about. Each satellite caller passes a `packages` input (space-separated list), e.g. `"roxabi-contracts roxabi-nats"` for llmCLI and `"roxabi-contracts roxabi-nats roxabi-blobs"` for voiceCLI/imageCLI. The reusable workflow iterates: `uv lock --upgrade-package <pkg>` for each package in the list.
+
+### DD-3: PAT secret passed explicitly — no secrets: inherit
+
+`secrets.PAT` (no fallback) is the convention in factory, voiceCLI, and imageCLI. llmCLI is an outlier (`secrets.PAT || github.token`) but the `||` fallback is not relied upon here. The reusable workflow declares `secrets: PAT` under `workflow_call` and satellite callers pass it explicitly (`secrets: PAT: ${{ secrets.PAT }}`). `secrets: inherit` is intentionally avoided: it is implicit, fragile across org-level secrets changes, and inconsistent with the explicit pass-through pattern already established in this repo's dependabot-automerge workflow.
+
+For `workflow_dispatch` triggered directly on factory: the PAT is read from factory's own repo secrets — `${{ secrets.PAT }}` resolves normally at runtime. GitHub Actions does not support a `secrets:` block on `workflow_dispatch` trigger definitions (only on `workflow_call`), so the `secrets: PAT: required: true` declaration in the YAML applies only under `workflow_call`; manual runs read it from the host-repo secret store directly.
+
+The PAT must have `repo` scope covering all three satellite repos (llmCLI, voiceCLI, imageCLI) to permit cross-repo branch creation, `gh pr create`, and `gh pr edit --add-label`. The org-level PAT already used for factory's dependabot-automerge workflow should satisfy this; verify before the first satellite deployment.
+
+### DD-4: CONTRACT_VERSION comparison — raw string, not semver; fetch via GitHub Contents API
+
+`CONTRACT_VERSION = "1"` is a string integer validated by `assert CONTRACT_VERSION.isdigit() and int(CONTRACT_VERSION) > 0`. Semver parsing must not be applied.
+
+The wire-guard step runs inside the satellite repo checkout — the runner has no access to factory's git object store. `git show <sha>:path` against a factory commit SHA will fail with `fatal: bad object`. The extraction mechanism is therefore the **GitHub Contents API** (no extra checkout needed):
+
+```bash
+# OLD_CONTRACTS_SHA captured from uv.lock BEFORE the upgrade (see D1 step ordering below)
+OLD_VERSION=$(gh api \
+  "repos/Roxabi/roxabi-factory/contents/packages/roxabi-contracts/src/roxabi_contracts/envelope.py?ref=${OLD_CONTRACTS_SHA}" \
+  --jq '.content' | base64 -d | grep '^CONTRACT_VERSION' | cut -d'"' -f2)
+
+NEW_VERSION=$(gh api \
+  "repos/Roxabi/roxabi-factory/contents/packages/roxabi-contracts/src/roxabi_contracts/envelope.py?ref=${NEW_CONTRACTS_SHA}" \
+  --jq '.content' | base64 -d | grep '^CONTRACT_VERSION' | cut -d'"' -f2)
+```
+
+If the extracted strings differ, the PR receives the `wire-breaking` label (human review required). If identical or if `roxabi-contracts` was not part of the bump, the PR receives the `reviewed` label (auto-merge cascade).
+
+### DD-5: Renovate is out of scope; this is an explicit stop-gap
+
+`packages/roxabi-contracts/CLAUDE.md` notes "pin by git tag; group roxabi-contracts and roxabi-nats in a single Renovate rule" as a future direction. This workflow is the stop-gap until/unless Renovate adopts git-branch source bumping. When Renovate is adopted, the caller workflows in satellites are removed and this reusable workflow is archived. No Renovate configuration is created here.
+
+## Expected Behavior
+
+### Weekly cron cycle — no-op path (most common)
+
+1. Cron fires in the satellite repo (e.g. every Monday 06:00 UTC).
+2. Caller workflow invokes `Roxabi/roxabi-factory/.github/workflows/contracts-bump.yml` with inputs `packages: "roxabi-contracts roxabi-nats"` (llmCLI) and secret `PAT`.
+3. Factory-hosted workflow checks out the satellite repo at `staging`.
+4. Runs `uv lock --upgrade-package roxabi-contracts roxabi-nats` (iterating the package list).
+5. `git diff -- uv.lock` is empty — no packages advanced on `staging`.
+6. Workflow outputs `changed=false`, exits 0 with a green summary: "No lock changes — skipping PR."
+7. No branch, no PR, no label action. Total runtime: ~90 s.
+
+### Weekly cron cycle — wire-compatible bump path
+
+1–4. Same as no-op path.
+5. `git diff -- uv.lock` is non-empty; `CONTRACT_VERSION` in old vs new commit is identical (`"1" == "1"`).
+6. Workflow creates branch `chore/bump-contracts-<satellite>-<yyyymmdd>`, commits `uv.lock` with message `chore(deps): bump roxabi-contracts/nats lock <old_short>..<new_short>`.
+7. Opens PR against `staging` with body:
+   - Summary line: "Automated weekly lock bump for `roxabi-contracts`, `roxabi-nats`."
+   - `git log <old_sha>..<new_sha> -- packages/roxabi-contracts packages/roxabi-nats` output (factory-side, fetched via sparse checkout or API).
+   - "Closes #1791" omitted (this is a recurring workflow, not a one-time fix).
+8. Applies label `reviewed` to the PR.
+9. Satellite's `auto-merge.yml` fires on `labeled` event, arms GitHub auto-merge. Per-satellite merge strategy (verified): llmCLI = `--merge`; voiceCLI = `--squash` for standard PRs (merge-to-main promote PRs use `--merge`; bump PRs target `staging` → squash applies); imageCLI = `--squash`. The reusable workflow does NOT call `gh pr merge` — each satellite's own `auto-merge.yml` handles it.
+10. Satellite CI runs `uv sync --frozen --all-extras` (llmCLI, imageCLI) or `uv sync --dev --extra all` (voiceCLI, non-frozen) against the new lock; passes → merges.
+
+### Weekly cron cycle — wire-breaking path
+
+1–5. Same as wire-compatible path but `CONTRACT_VERSION` extracted from old commit (`"1"`) differs from new commit (`"2"`).
+6. Workflow creates branch and PR as above but with message suffix `[WIRE BREAKING]`.
+7. Applies label `wire-breaking` instead of `reviewed`.
+8. `auto-merge.yml` condition (`contains labels 'reviewed'`) is false — PR is NOT armed for auto-merge.
+9. PR sits in the satellite repo awaiting human review. PR body includes: "⚠ CONTRACT_VERSION bumped: `1` → `2`. Wire-breaking change — human review required before merge."
+10. Maintainer reviews, adds `reviewed` label after validating compatibility, auto-merge fires normally.
+
+### Manual one-off run (workflow_dispatch)
+
+Any maintainer can trigger `workflow_dispatch` on the factory-hosted workflow with two required inputs: `satellite_repo` (choose from the dropdown: `Roxabi/llmCLI`, `Roxabi/voiceCLI`, `Roxabi/imageCLI`) and `packages` (space-separated list matching the satellite's dependency set, e.g. `"roxabi-contracts roxabi-nats"`). Omitting either input causes an immediate input-validation failure. Useful after a hotfix lands in `roxabi-contracts` outside the weekly window.
+
+## Deliverables
+
+### D1 — Factory-hosted reusable workflow
+
+**File:** `.github/workflows/contracts-bump.yml`
+
+```yaml
+on:
+  workflow_call:
+    inputs:
+      satellite_repo:
+        description: "Satellite repo (e.g. Roxabi/llmCLI)"
+        required: true
+        type: string
+      packages:
+        description: "Space-separated packages to upgrade (e.g. 'roxabi-contracts roxabi-nats')"
+        required: true
+        type: string
+    secrets:
+      PAT:
+        required: true
+  workflow_dispatch:
+    inputs:
+      satellite_repo:
+        description: "Satellite repo (e.g. Roxabi/llmCLI)"
+        required: true
+        type: choice
+        options:
+          - Roxabi/llmCLI
+          - Roxabi/voiceCLI
+          - Roxabi/imageCLI
+      packages:
+        description: "Space-separated packages to upgrade (e.g. 'roxabi-contracts roxabi-nats')"
+        required: true
+        type: string
+```
+
+Key steps (pseudocode):
+1. Checkout satellite repo at `staging` via PAT using `repository: ${{ inputs.satellite_repo }}` explicitly — this ensures both `workflow_call` (satellite context) and `workflow_dispatch` (factory context, where `github.repository` = `Roxabi/roxabi-factory`) check out the correct satellite.
+2. Capture `OLD_CONTRACTS_SHA` (contracts git source SHA extracted from `uv.lock` **before** any upgrade runs).
+3. Install uv (`astral-sh/setup-uv`), run `uv lock --upgrade-package <pkg>` for each package in `inputs.packages`.
+4. Diff `uv.lock`; if empty → output `changed=false`, exit 0.
+5. Capture `NEW_CONTRACTS_SHA` from the updated `uv.lock`. Extract `CONTRACT_VERSION` for old and new SHAs via the GitHub Contents API (`gh api repos/Roxabi/roxabi-factory/contents/...?ref=<sha>` — `git show` cannot be used here; the satellite runner has no factory git objects). See DD-4 for exact commands.
+6. Derive `satellite_name` = `${{ inputs.satellite_repo }}` with org prefix stripped (`${satellite_repo##*/}`). Branch name: `chore/bump-contracts-<satellite_name>-<yyyymmdd>`. Check for an existing open PR (`gh pr list --search "chore/bump-contracts-<satellite_name> in:title" --state open --repo ${{ inputs.satellite_repo }}`) — if one exists, skip PR creation and exit 0.
+7. Create branch, commit, push, open PR via `gh pr create` against `${{ inputs.satellite_repo }}` with `GH_TOKEN: ${{ secrets.PAT }}`. PR body includes `git log <old_sha>..<new_sha> -- packages/roxabi-contracts packages/roxabi-nats` output fetched via `gh api` (factory context; no extra checkout needed).
+8. Apply label: `wire-breaking` if version bumped, else `reviewed`.
+
+### D2 — Satellite caller workflow stubs (one per satellite)
+
+**File:** `.github/workflows/contracts-bump-caller.yml` in each satellite repo.
+
+Branch names produced: `chore/bump-contracts-llmCLI-<yyyymmdd>`, `chore/bump-contracts-voiceCLI-<yyyymmdd>`, `chore/bump-contracts-imageCLI-<yyyymmdd>` (org prefix stripped via `${satellite_repo##*/}` inside D1 — no slash in branch name).
+
+**llmCLI** (no `roxabi-blobs` dependency):
+```yaml
+name: Bump contracts lock
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # Monday 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  bump:
+    uses: Roxabi/roxabi-factory/.github/workflows/contracts-bump.yml@staging
+    with:
+      satellite_repo: ${{ github.repository }}
+      packages: "roxabi-contracts roxabi-nats"
+    secrets:
+      PAT: ${{ secrets.PAT }}
+```
+
+**voiceCLI** (`roxabi-blobs` as optional `nats` extra):
+```yaml
+name: Bump contracts lock
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # Monday 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  bump:
+    uses: Roxabi/roxabi-factory/.github/workflows/contracts-bump.yml@staging
+    with:
+      satellite_repo: ${{ github.repository }}
+      packages: "roxabi-contracts roxabi-nats roxabi-blobs"
+    secrets:
+      PAT: ${{ secrets.PAT }}
+```
+
+**imageCLI** (`roxabi-blobs` as core dependency):
+```yaml
+name: Bump contracts lock
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # Monday 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  bump:
+    uses: Roxabi/roxabi-factory/.github/workflows/contracts-bump.yml@staging
+    with:
+      satellite_repo: ${{ github.repository }}
+      packages: "roxabi-contracts roxabi-nats roxabi-blobs"
+    secrets:
+      PAT: ${{ secrets.PAT }}
+```
+
+Rolling out caller workflows to the three satellite repos = **separate PRs** after D1 merges. This issue (#1791) covers D1 only; satellite PRs are follow-up. SC-5, SC-6, SC-7 gate on those follow-up PRs — see Success Criteria scope note below.
+
+### D3 — wire-breaking label creation (hard prerequisite, blocks first workflow run)
+
+Labels must be created in `llmCLI`, `voiceCLI`, `imageCLI` before the first workflow run. The label `wire-breaking` (color `#b60205`, description "CONTRACT_VERSION bumped — human review required") must exist in all three satellite repos. **This D3 step is a hard prerequisite for any D2 satellite PR to be mergeable**: `gh pr edit --add-label wire-breaking` will fail with a 422 if the label does not exist. D3 must be tracked as a blocked-by dependency on each satellite caller PR.
+
+This is a one-time manual bootstrap step (not CI-verifiable by the workflow itself — SC-4 is a manual pre-flight check, not an automated gate):
+
+```bash
+for repo in Roxabi/llmCLI Roxabi/voiceCLI Roxabi/imageCLI; do
+  gh label create wire-breaking --color b60205 \
+    --description "CONTRACT_VERSION bumped — human review required" \
+    --repo "$repo"
+done
+```
+
+## Success Criteria
+
+**Scope note:** SC-1 through SC-4 are verifiable from D1 alone (factory PR). SC-5, SC-6, SC-7 require D2 satellite caller PRs and gate on those follow-up issues — they are listed here for completeness but cannot close this issue.
+
+### D1-verifiable (factory PR)
+- [ ] **SC-1** A no-op run (no packages advanced on `staging`) exits green in ≤ 3 minutes without opening a PR or applying any label.
+- [ ] **SC-2** A wire-compatible bump run opens exactly one PR in the satellite repo, commits only `uv.lock`, applies label `reviewed`, and the PR auto-merges once satellite CI passes (merge strategy is per-satellite — llmCLI: merge commit; voiceCLI standard PR: squash; imageCLI: squash).
+- [ ] **SC-3** A wire-breaking run (CONTRACT_VERSION old != new) opens a PR with label `wire-breaking` and does NOT apply label `reviewed`; the PR is not armed for auto-merge.
+- [ ] **SC-4** (manual pre-flight, not CI-gated) The `wire-breaking` label is created in all three satellite repos (`llmCLI`, `voiceCLI`, `imageCLI`) before the first workflow run; D3 must be completed and tracked as a blocked-by dependency on each satellite PR.
+
+### D2-dependent (satellite caller PRs — follow-up)
+- [ ] **SC-5** llmCLI caller passes `packages: "roxabi-contracts roxabi-nats"` (no `roxabi-blobs`); voiceCLI and imageCLI callers pass `packages: "roxabi-contracts roxabi-nats roxabi-blobs"`.
+- [ ] **SC-6** All three satellite repos have a caller workflow that invokes `Roxabi/roxabi-factory/.github/workflows/contracts-bump.yml@staging` on `schedule: cron "0 6 * * 1"`.
+- [ ] **SC-7** A manually triggered `workflow_dispatch` run on the factory-hosted workflow completes without error for each satellite (requires satellite caller workflows to exist and PAT cross-repo scope to be confirmed).
+
+## Open Questions
+
+None — all five design questions from the frame are resolved in the Design Decisions section above. This spec is ready for `/plan`.
+
+## Pre-check
+
+1. **Every Success Criteria binary?** Yes — each criterion is pass/fail with no vague wording. SC-5/6/7 are explicitly gated on follow-up satellite PRs and annotated accordingly.
+2. **Every breadboard ID appears in at least 1 slice?** N/A — Tier S spec; no breadboard/slice sections used.
+3. **Max 5 NEEDS CLARIFICATION?** 0 open questions — all resolved.
+4. **Every affordance in at least 1 slice?** N/A — Tier S; all affordances covered in Expected Behavior and Deliverables.
+5. **Every edge case has a handling strategy?**
+   - No-op path: explicit exit 0 + `changed=false` output.
+   - voiceCLI non-frozen CI: noted in Expected Behavior (non-frozen sync re-resolves; softer gate, still valid).
+   - llmCLI `roxabi-blobs` absent: handled via per-satellite package input (DD-2).
+   - `CONTRACT_VERSION` string integer comparison: DD-4 specifies raw string extraction + comparison, no semver parsing.
+   - PAT cross-repo access: DD-3 specifies explicit `secrets:` pass-through, no `inherit`; PAT must have `repo` scope for all satellites.
+   - `wire-breaking` label absent: D3 documents creation as hard prerequisite; SC-4 is a manual pre-flight check.
+   - Same-week double-run: D1 step 6 specifies a `gh pr list` idempotency check — if an open bump PR already exists for the satellite, the run skips PR creation and exits 0.
+   - `workflow_dispatch` repository context: D1 step 1 uses explicit `repository: ${{ inputs.satellite_repo }}` in `actions/checkout` to avoid silently checking out factory when triggered manually from factory context.
+   - Satellite branch naming slash: branch name uses org-stripped satellite name (`${satellite_repo##*/}`) — no embedded slash.
+   - `workflow_dispatch` secrets: PAT resolves from factory's own secret store on manual runs; `secrets:` block is only declared under `workflow_call` (GitHub limitation).
+
+**Tier/complexity note:** The source issue records `<!-- complexity: 5 -->` (F-lite threshold per triage). This spec classifies the work as Tier S based on deliverable scope: ≤4 new files (one reusable workflow + three caller stubs), single domain (CI/infra), no unknowns beyond cross-repo PAT scope (now documented). The complexity-5 score reflects coordination surface (3 satellite repos) and design unknowns present at triage time; those unknowns are resolved in DD-1 through DD-5. Rationale for Tier S override: all design decisions are made, implementation is purely mechanical YAML authoring. If D2 satellite PRs surface unexpected branch-protection or PAT-scope issues, the implementer should escalate to F-lite and re-plan.
+
+**Satellite `auto-merge.yml` pre-condition:** all three satellites have `auto-merge.yml` with `labeled` trigger and `contains labels 'reviewed'` condition (verified). Per-satellite merge command differs (see SC-2 note). The reusable workflow does not invoke `gh pr merge`; each satellite's own workflow handles it.

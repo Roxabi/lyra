@@ -1,0 +1,70 @@
+---
+title: "feat(adapters): mint root job_id at ingress"
+issue: 1620
+status: approved
+tier: S
+date: 2026-06-11
+---
+
+## Problem
+
+`job_id` in `TurnWriteEvent` (and every other `WorkEnvelope` subclass emitted per turn) is currently minted fresh at publication time via `new_job_id()` — five independent callsites in `turn_publisher.py` (lines 89, 121, 147, 174, 201), plus `cli_nats_codec.py` line 90. No id ties a `TurnWriteEvent` to the `LlmRequest` that produced it, nor to the user message that triggered the whole turn tree.
+
+The consequence is that distributed traces for a single user message cannot be correlated at the job layer: each `TurnWriteEvent` carries a structurally orphaned `job_id`. `trace_id` (derived from `InboundMessage.id`, e.g. `telegram:user_id:ts:msg_id`) provides platform-level correlation today, but `job_id` — intended as the canonical run identifier per ADR-084 — does not propagate.
+
+`#1619` shipped the `WorkEnvelope` schema with a TRANSITIONAL `default_factory=new_job_id` shim precisely to keep the wire safe until this issue replaces the interim values with a propagated root. `#1619` also left the hub-side interim assignments (`job_id=request_id`) as explicitly tagged `INTERIM` pending this issue. Resolving `#1620` closes the gap: one `job_id` minted at adapter receipt, threaded through `InboundMessage → Pool → TurnPublisher → NATS wire`, giving the whole ingress-to-satellite hop a shared root id.
+
+## Who
+
+- **Primary:** adapters (`telegram_normalize.py`, `discord_normalize.py`), core pool layer (`pool_observer.py`, `TurnLogDeps`), NATS transport (`turn_publisher.py`, `cli_nats_codec.py`)
+- **Secondary:** hub builder callsites that currently set `job_id=request_id` as INTERIM (to be replaced with propagated root); CI / doc-drift gates
+
+## Constraints
+
+- `InboundMessage` is a `@dataclass(frozen=True)`, NOT Pydantic and NOT on the wire (in-process only via `LocalBus` asyncio queue). Adding `root_job_id: str | None = None` is wire-safe — no `WIRE-COMPAT` mandate applies here.
+- `WorkEnvelope.job_id` carries the TRANSITIONAL `default_factory=new_job_id` shim until `#1841` flips it hard-required. `#1620` threading must be consistent with the existing shim — passing `root_job_id` as `job_id` on `TurnWriteEvent` is safe and expected.
+- `CONTRACT_VERSION = '1'` — no version bump triggered by this change (no schema addition to `roxabi-contracts`; `job_id` already exists on `WorkEnvelope`).
+- `TurnPublisher` requires `trace_id` as a mandatory caller-supplied parameter (docstring contract). `root_job_id` threads alongside `trace_id` — the two fields remain independent (`trace_id` = platform composite key from `InboundMessage.id`; `root_job_id` = ADR-084 run id).
+- `TurnLogDeps` is a frozen dataclass — adding `root_job_id: str | None = None` is backward-compatible (all existing callers of `log_turn_async` pass it without `root_job_id`; observer falls back to `new_job_id()` when `None`).
+- Cross-lane coordination:
+  - **#1009** (`cli_nats_codec.py` / `LlmClient`): `encode()` mints both `trace_id` and `job_id` independently. `#1620` must extend `encode()` signature to accept an optional `root_job_id`; the change must not break `#1009`'s encode signature.
+  - **#1793** (job subject unification — `factory.job.<id>.*`): same `TurnPublisher` and `TurnWriteEvent` types; no field conflict but ordering must be confirmed before merge.
+  - **#1840 / #1841** (contracts rollout + `job_id` hard-required flip): `#1620` producers must supply explicit `job_id` — this satisfies the #1841 precondition for their callsites.
+  - **#1838** (cli models onto `WorkEnvelope`): out of scope for `#1620`; cli subjects remain on `ContractEnvelope`.
+- Quality gates: `file_length` max 300 SLOC (check `turn_publisher.py` post-edit; currently near threshold given 5 publish methods); `str_exc_bus_bound` (no `str(exc)` near `SanitizedError` — not applicable here); `import_layers` (no new cross-layer imports); `doc_drift` (no new backtick symbols added to docs).
+- Unverified: whether `nats_tts_codec.py`, `nats_stt_codec.py`, `nats_image_codec.py` are in scope. ADR-084 scope says LLM hops are opaque; voice/image workers are peer workers, not child jobs. Confirm before expanding scope.
+- Unverified: `ClaudeCliDriver` in-process path (`CliPool`) — does it log turns via `TurnPublisher`? If so, the same root_job_id threading applies.
+
+## Out of Scope
+
+- Flipping `WorkEnvelope.job_id` to hard-required — tracked in `#1841`.
+- Onboarding cli models (`CliCommandRequest`, etc.) onto `WorkEnvelope` — tracked in `#1838`.
+- Contracts-bump rollout to satellites (`llmCLI`, `voiceCLI`, `imageCLI`) — tracked in `#1840`.
+- Voice/image codec `job_id` threading — TBD post-ADR-084 clarification on peer-worker semantics; not part of `#1620`.
+- `parent_job_id` propagation for composite jobs (sub-job spawning) — tracked in `#1812` (OmpWorker runtime).
+- `TraceContext.get_trace_id()` in `pool_processor_exec.py` — separate mechanism for in-process correlation; not affected by this change.
+
+## Premise Validity
+
+**Success in 6 months:** Every `TurnWriteEvent` on `factory.turns.write` for Telegram/Discord-originated turns carries a `job_id` that matches the root id minted at adapter receipt; a single user message can be traced end-to-end via `job_id` across `TurnWriteEvent` + `LlmRequest` events without relying on `trace_id` reconstruction.
+
+**Failure in 6 months:** `job_id` values on `TurnWriteEvent` remain structurally orphaned (i.e. a `grep` of `TurnWriteEvent` records for a known `InboundMessage.id` yields mismatched or missing `job_id`), OR the `encode()` signature change in `cli_nats_codec.py` breaks an existing `#1009`/`#1793` callsite in CI.
+
+**Simplest alternative:** Keep `job_id=new_job_id()` at TurnPublisher callsites; use `trace_id` (already `InboundMessage.id`-derived) as the sole cross-hop correlation key.
+
+**Why not simplest:** ADR-084 assigns `job_id` the role of canonical run identifier — `trace_id` is a platform-level composite (human-readable, not an opaque run id). The `#1841` hard-required flip depends on all producers supplying explicit `job_id`; `#1620` is the last-mile that makes ingress-born ids real rather than synthetic per-event UUIDs.
+
+_(champs dérivés du contexte — à valider à la review humaine)_
+
+## Complexity
+
+**Tier: S** — All changes are additive field threading within existing call chains; no new abstractions, no wire schema changes, no NATS subject renames; scope bounded to ≤7 files.
+
+Signals observed:
+- Single domain: adapters + core pool + transport (no cross-layer new dependency)
+- `InboundMessage` add: 1 optional field, frozen dataclass, in-process only
+- `TurnLogDeps` add: 1 optional field, frozen dataclass
+- `TurnPublisher`: thread caller-supplied `root_job_id` as `job_id` with `new_job_id()` fallback — no new publish method
+- `CliNatsCodec.encode()`: add optional `root_job_id` kwarg — 1-line change + caller update
+- No migration, no deploy coordinate, no NATS ACL change, no CONTRACT_VERSION bump
+- Overlap with `#1009` (encode signature) is low-risk: additive kwarg with default

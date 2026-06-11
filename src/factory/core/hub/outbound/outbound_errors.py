@@ -23,6 +23,7 @@ _CIRCUIT_OPEN_MSG = "⚠️ I'm temporarily unavailable. Please try again in a m
 _CIRCUIT_NOTIFY_DEBOUNCE = 60.0  # seconds between circuit-open notifications per chat
 _SCOPE_REAP_THRESHOLD = 256  # const-ok: reap idle scope locks above this size
 _NOTIFY_TS_REAP_THRESHOLD = 512  # const-ok: reap stale notify timestamps above this
+OUTBOUND_QUEUE_MAXSIZE = 50  # const-ok: bounded queue — drop-oldest on overflow
 
 # Queue item shapes (heterogeneous tuple — see OutboundDispatcher._dispatch_item):
 #   ("send",         InboundMessage, OutboundMessage)

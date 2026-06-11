@@ -15,11 +15,11 @@ from typing import Annotated, Literal, Self
 from pydantic import StringConstraints, model_validator
 
 from roxabi_contracts.blob_ref import BlobRef
-from roxabi_contracts.envelope import ContractEnvelope
+from roxabi_contracts.envelope import ContractEnvelope, WorkEnvelope
 from roxabi_contracts.errors import WorkerError
 
 
-class ImageRequest(ContractEnvelope):
+class ImageRequest(WorkEnvelope):
     """Image generation request.
 
     Canonical subject: ``factory.image.generate.request``.
@@ -42,7 +42,7 @@ class ImageRequest(ContractEnvelope):
     embedding_path: str | None = None
 
 
-class ImageResponse(ContractEnvelope):
+class ImageResponse(WorkEnvelope):
     """Image generation response.
 
     Success-path invariant (enforced by ``_enforce_success_invariant``):

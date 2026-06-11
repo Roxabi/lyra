@@ -15,11 +15,11 @@ from typing import Annotated, Self
 from pydantic import StringConstraints, model_validator
 
 from roxabi_contracts.blob_ref import BlobRef
-from roxabi_contracts.envelope import ContractEnvelope
+from roxabi_contracts.envelope import ContractEnvelope, WorkEnvelope
 from roxabi_contracts.errors import WorkerError
 
 
-class TtsRequest(ContractEnvelope):
+class TtsRequest(WorkEnvelope):
     """TTS synthesis request. Canonical subject: ``factory.voice.tts.request``."""
 
     request_id: Annotated[str, StringConstraints(min_length=1)]
@@ -42,7 +42,7 @@ class TtsRequest(ContractEnvelope):
     chunk_size: int | None = None
 
 
-class TtsResponse(ContractEnvelope):
+class TtsResponse(WorkEnvelope):
     """TTS synthesis response.
 
     Success-path invariant (enforced by ``_enforce_success_invariant``):
@@ -72,7 +72,7 @@ class TtsResponse(ContractEnvelope):
         return self
 
 
-class SttRequest(ContractEnvelope):
+class SttRequest(WorkEnvelope):
     """STT transcription request. Canonical subject: ``factory.voice.stt.request``."""
 
     request_id: Annotated[str, StringConstraints(min_length=1)]
@@ -90,7 +90,7 @@ class SttRequest(ContractEnvelope):
     task: str | None = None
 
 
-class SttResponse(ContractEnvelope):
+class SttResponse(WorkEnvelope):
     """STT transcription response.
 
     Success-path invariant (enforced by ``_enforce_success_invariant``):

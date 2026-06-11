@@ -1,19 +1,21 @@
 """Shared NATS-protocol utilities for domain subject modules.
 
-Domain-agnostic helpers (``validate_worker_id`` + the regex it uses) that
-enforce the NATS-subject-safe character class. Each per-domain
-``subjects.py`` re-exports ``validate_worker_id`` so callers keep
-importing from their domain module; the single implementation here
-prevents the two definitions from drifting.
+Domain-agnostic helpers that enforce the NATS-subject-safe character class.
+Each per-domain ``subjects.py`` re-exports the relevant validators so
+callers keep importing from their domain module; the single implementation
+here prevents charset definitions from drifting across modules.
 """
 
 import re
 
+# SSoT for the NATS-subject-safe character class.
+# ``_SAFE_SEGMENT_CHARS`` is the chars-only form (no brackets/quantifier)
+# so it can be composed into negated character classes (e.g. re.sub).
+# ``_SAFE_SEGMENT_RE`` is the compiled full-match regex.
 # NATS subject tokens are `.`-separated. ``*`` matches any single token and
-# ``>`` matches a subtree. A worker id that contains any of those characters
-# would inject wildcards into the published subject and let a subscriber
-# claim more traffic than intended. Restrict to alphanumeric + ``-`` + ``_``.
-_SAFE_WORKER_ID_RE = re.compile(r"[A-Za-z0-9_-]+")
+# ``>`` matches a subtree. Restrict to alphanumeric + ``-`` + ``_``.
+_SAFE_SEGMENT_CHARS = r"A-Za-z0-9_-"
+_SAFE_SEGMENT_RE = re.compile(f"[{_SAFE_SEGMENT_CHARS}]+")
 
 
 def validate_worker_id(worker_id: str) -> None:
@@ -25,7 +27,7 @@ def validate_worker_id(worker_id: str) -> None:
     on the PUBLISH path and by consumers on the heartbeat-receive path
     to keep the registry free of wildcard-injectable ids.
     """
-    if not _SAFE_WORKER_ID_RE.fullmatch(worker_id):
+    if not _SAFE_SEGMENT_RE.fullmatch(worker_id):
         raise ValueError(
             f"worker_id must match [A-Za-z0-9_-]+ (got {worker_id!r}); "
             "NATS wildcard / subtree characters (. * >) are rejected to "
@@ -47,13 +49,15 @@ def validate_job_token(token: str) -> None:
         )
 
 
-# Subject *segments* (post-split) must not contain dots; use _SAFE_WORKER_ID_RE
-# rather than _SAFE_JOB_TOKEN_RE to keep the two validation paths independent.
-_SAFE_SUBJECT_SEGMENT_RE = re.compile(r"[A-Za-z0-9_-]+")
+def validate_subject_segment(segment: str) -> None:
+    """Validate a single NATS subject segment (no dots allowed).
 
-
-def _validate_subject_segment(segment: str) -> None:
-    if not _SAFE_SUBJECT_SEGMENT_RE.fullmatch(segment):
+    Raises ``ValueError`` if ``segment`` contains anything outside
+    ``[A-Za-z0-9_-]``. Dots, wildcards (``* >``) and empty segments are
+    all rejected. Promoted to the public API so external consumers and
+    sanitizers can reuse the canonical charset check directly.
+    """
+    if not _SAFE_SEGMENT_RE.fullmatch(segment):
         raise ValueError(
             f"NATS subject segment must match [A-Za-z0-9_-]+ (got {segment!r}); "
             "dots, wildcards (* >) and empty segments are rejected"
@@ -62,9 +66,9 @@ def _validate_subject_segment(segment: str) -> None:
 
 def validate_nats_subject(subject: str) -> None:
     """Validate a full multi-segment NATS subject (e.g. _INBOX.abc123).
-    Splits on '.' and validates each segment via _validate_subject_segment
+    Splits on '.' and validates each segment via validate_subject_segment
     (no dots allowed per segment); rejects empty segments and wildcards."""
     if not subject:
         raise ValueError("NATS subject must not be empty")
     for segment in subject.split("."):
-        _validate_subject_segment(segment)
+        validate_subject_segment(segment)

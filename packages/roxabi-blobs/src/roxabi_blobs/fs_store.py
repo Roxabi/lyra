@@ -342,3 +342,64 @@ class FsBlobStore:
                             f"unlink failed for content_hash={content_hash[:12]}…: "
                             f"{e.strerror or 'OSError'}"
                         ) from e
+
+    async def sweep_older_than(self, cutoff_ts: float) -> tuple[int, int]:
+        """Delete all blob refs whose `ingested_at` is older than `cutoff_ts`.
+
+        Calls :meth:`delete` for each stale ref so ref-counting is respected:
+        a file is only unlinked when its last ref is removed.
+
+        Args:
+            cutoff_ts: POSIX timestamp (UTC). Refs with ``ingested_at < cutoff_ts``
+                are swept. Must be at least 7 days in the past (guard against
+                accidental in-flight consumer data loss — FACTORY_OUTBOUND_AUDIO
+                JetStream MaxAge is 24 h; 7 d gives ample margin).
+
+        Returns:
+            ``(refs_deleted, files_unlinked)`` — files_unlinked counts content-
+            addressed files whose last ref was removed during this sweep.
+
+        Raises:
+            BlobWriteError: if the database query or a delete operation fails.
+        """
+        conn, _lock = self._require_open()
+        refs_deleted = 0
+        files_unlinked = 0
+        # Snapshot all stale IDs up-front (avoids cursor invalidation while we
+        # mutate blob_refs inside delete()).
+        cursor = await conn.execute(
+            "SELECT id FROM blob_refs WHERE ingested_at < ?",
+            (cutoff_ts,),
+        )
+        stale_ids: list[int] = [int(row[0]) for row in await cursor.fetchall()]
+        await cursor.close()
+
+        for blob_ref_id in stale_ids:
+            # Probe remaining refs BEFORE delete to detect last-ref removal.
+            # delete() is the authoritative ref-counted path (commit-before-unlink).
+            cursor = await conn.execute(
+                "SELECT content_hash FROM blob_refs WHERE id = ?",
+                (blob_ref_id,),
+            )
+            ref_row = await cursor.fetchone()
+            await cursor.close()
+            if ref_row is None:
+                # Already removed by a concurrent sweep — skip.
+                continue
+            content_hash = str(ref_row[0])
+
+            cursor = await conn.execute(
+                "SELECT COUNT(*) FROM blob_refs WHERE content_hash = ?",
+                (content_hash,),
+            )
+            count_row = await cursor.fetchone()
+            await cursor.close()
+            remaining_before = int(count_row[0]) if count_row is not None else 0
+
+            await self.delete(blob_ref_id)
+            refs_deleted += 1
+            if remaining_before == 1:
+                # This was the last ref → file was unlinked by delete().
+                files_unlinked += 1
+
+        return refs_deleted, files_unlinked

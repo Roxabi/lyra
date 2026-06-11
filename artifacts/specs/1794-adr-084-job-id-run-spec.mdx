@@ -180,11 +180,11 @@ Living SSoT: `docs/architecture/job-model.md`.
 
 ## Success Criteria
 
-- [ ] `grep '(turn)' docs/architecture/adr/084-workenvelope-job-id-invariant.mdx` returns 0 hits.
+- [ ] `grep -c '`job_id` (run)' docs/architecture/adr/084-workenvelope-job-id-invariant.mdx` returns ≥ 1 (the `(run)` label is present); AND `grep -v '^- Line 75' docs/architecture/adr/084-workenvelope-job-id-invariant.mdx | grep -c '(turn)'` returns 0 (no normative `(turn)` label outside the Amendment's historical-reference bullet).
 - [ ] ADR-084 frontmatter contains `status: amended`.
 - [ ] ADR-084 `## Status` prose contains "amended by #1794".
 - [ ] ADR-084 contains a `## Amendment` section with the ratified `job_id=run` definition table and pointer to `job-model.md`.
-- [ ] `grep -n 'child jobs' docs/architecture/adr/084-workenvelope-job-id-invariant.mdx` returns 0 hits; AND the block replacing lines 87–88 contains both `parent_job_id` and `composite_depth` (verify with `grep -n 'parent_job_id\|composite_depth' docs/architecture/adr/084-workenvelope-job-id-invariant.mdx | grep -v '^[0-9]*:\(57\|75\|82\|111\)')` showing hits in the Change 4 expansion).
+- [ ] The block replacing lines 87–88 contains both `parent_job_id` and `composite_depth`: `grep -n 'parent_job_id\|composite_depth' docs/architecture/adr/084-workenvelope-job-id-invariant.mdx` shows hits in the expanded supporting rule; AND `grep -v '"satellite (child jobs)' docs/architecture/adr/084-workenvelope-job-id-invariant.mdx | grep -c 'child jobs'` returns 0 (no normative `child jobs` framing outside the Amendment's historical-reference bullet).
 - [ ] `uv run python tools/check_doc_drift.py` passes (ADR files are exempt; no scanned file gains a new unbuilt backtick symbol).
 - [ ] `grep -c 'min_length=1' docs/architecture/adr/084-workenvelope-job-id-invariant.mdx` returns ≥ 1 (Option C presence check); `git diff docs/architecture/adr/084-workenvelope-job-id-invariant.mdx | grep '^[-+]' | grep -E 'WorkEnvelope|ContractEnvelope|min_length|nullable|parent_job_id.*None' | grep -v '^[-+][-+][-+]'` shows no deletions from the Decision section (lines 54–99) other than Changes 3 and 4.
 

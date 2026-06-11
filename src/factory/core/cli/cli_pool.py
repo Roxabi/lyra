@@ -180,8 +180,7 @@ class CliPool(  # noqa: E501 — DEBT:lint-residual
             return False
         if not SESSION_ID_RE.match(cli_sid):
             log.warning(
-                "[pool:%s] queue_resume: invalid persisted CLI session %r"
-                " — skipping",
+                "[pool:%s] queue_resume: invalid persisted CLI session %r — skipping",
                 pool_id,
                 cli_sid,
             )

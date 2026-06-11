@@ -154,8 +154,7 @@ def test_work_model_is_subclass_of_work_envelope(model_cls) -> None:
 def test_non_work_model_not_subclass_of_work_envelope(model_cls) -> None:
     """INFRA models MUST NOT inherit from WorkEnvelope."""
     assert not issubclass(model_cls, WorkEnvelope), (
-        f"{model_cls.__name__} is classified as INFRA"
-        " but subclasses WorkEnvelope"
+        f"{model_cls.__name__} is classified as INFRA but subclasses WorkEnvelope"
     )
 
 

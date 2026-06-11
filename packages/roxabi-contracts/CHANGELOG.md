@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.0](https://github.com/Roxabi/roxabi-factory/compare/roxabi-contracts/v0.7.0...roxabi-contracts/v0.8.0) (2026-06-11)
+
+
+### Features
+
+* **contracts:** consolidate NATS subject-segment charset SSoT in `_nats_utils` ([#1782](https://github.com/Roxabi/roxabi-factory/issues/1782)). Introduces `_SAFE_SEGMENT_CHARS` (chars-only, for sanitizer composition) and `_SAFE_SEGMENT_RE` (compiled full-match regex) as the single source of truth, removing two duplicate inline regexes across domain subjects modules. Promotes `_validate_subject_segment` → `validate_subject_segment` (public API) and re-exports it from the package root. Additive, non-security-bearing — existing callers that imported `_validate_subject_segment` by private name must update to `validate_subject_segment`.
+
+
 ## [0.4.0](https://github.com/Roxabi/lyra/compare/roxabi-contracts/v0.3.0...roxabi-contracts/v0.4.0) (2026-05-19)
 
 

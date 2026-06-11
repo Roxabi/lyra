@@ -42,6 +42,7 @@ from factory.tools.gh_token.dispenser import Dispenser
 from factory.tools.gh_token.helper import JWTSigner, TokenCache
 from factory.tools.gh_token.mint_failure_publisher import MintFailurePublisher
 from factory.tools.gh_token.rate_limit import RateLimiter
+from roxabi_contracts._nats_utils import _SAFE_SEGMENT_CHARS, _SAFE_SEGMENT_RE
 from roxabi_nats import nats_connect
 
 if TYPE_CHECKING:
@@ -131,17 +132,17 @@ def _safe_machine_name(raw: str) -> str:
 
     A valid token contains only ``[A-Za-z0-9_-]`` characters (no dots, spaces,
     wildcards, or ``>``) — the same charset the contract enforces on
-    ``MintFailureEvent.machine`` via ``_validate_subject_segment`` (#1708). We
-    inline a *sanitizer* here rather than reusing the contract *validator*
-    because the daemon must never crash on a misconfigured ``FACTORY_MACHINE``:
+    ``MintFailureEvent.machine`` via ``validate_subject_segment`` (#1708). We
+    use a *sanitizer* here rather than the contract *validator* because the
+    daemon must never crash on a misconfigured ``FACTORY_MACHINE``:
     bad characters are replaced, not rejected.
 
     Invalid characters are replaced with ``_`` to preserve per-machine
     observability rather than collapsing all bad names to ``"unknown"`` (#26).
     """
-    if re.fullmatch(r"[A-Za-z0-9_-]+", raw):
+    if _SAFE_SEGMENT_RE.fullmatch(raw):
         return raw
-    return re.sub(r"[^A-Za-z0-9_-]", "_", raw) or "unknown"
+    return re.sub(f"[^{_SAFE_SEGMENT_CHARS}]", "_", raw) or "unknown"
 
 
 async def _connect_nats_publisher(

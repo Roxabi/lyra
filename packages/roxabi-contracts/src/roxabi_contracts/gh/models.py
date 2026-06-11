@@ -13,7 +13,7 @@ from typing import Annotated
 
 from pydantic import Field, StringConstraints, field_validator
 
-from roxabi_contracts._nats_utils import _validate_subject_segment
+from roxabi_contracts._nats_utils import validate_subject_segment
 from roxabi_contracts.envelope import ContractEnvelope
 
 __all__ = ["MintFailureEvent"]
@@ -55,5 +55,5 @@ class MintFailureEvent(ContractEnvelope):
     def _validate_machine(cls, v: str) -> str:
         # machine is a single subject segment, not a dotted job token — reject
         # internal dots so it can never widen the 4-segment subject (#1708).
-        _validate_subject_segment(v)
+        validate_subject_segment(v)
         return v

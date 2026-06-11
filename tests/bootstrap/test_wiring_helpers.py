@@ -804,3 +804,142 @@ class TestWireAdapters:
         assert len(result.tg_typing_listeners) == 1
         assert len(result.dc_typing_listeners) == 1
         fake_nc.subscribe.assert_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.audio_consumer_live
+    async def test_wire_adapters_starts_audio_consumers_when_js_provided(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When deps.js is not None, one consumer is started per TG and DC adapter."""
+        mock_tg_adapter = MagicMock()
+        mock_tg_adapter._bot_id = "tg-bot-1"
+        mock_tg_dispatcher = MagicMock()
+        mock_dc_inner_adapter = MagicMock()
+        mock_dc_inner_adapter._bot_id = "dc-bot-1"
+        mock_dc_adapter_tuple = (mock_dc_inner_adapter, MagicMock(), "dc-token")
+        mock_dc_dispatcher = MagicMock()
+        mock_dc_thread_store = MagicMock()
+
+        mock_wire_tg = AsyncMock(return_value=([mock_tg_adapter], [mock_tg_dispatcher]))
+        monkeypatch.setattr(wiring_helpers_mod, "wire_telegram_adapters", mock_wire_tg)
+        mock_wire_dc = AsyncMock(
+            return_value=(
+                [mock_dc_adapter_tuple],
+                [mock_dc_dispatcher],
+                mock_dc_thread_store,
+            )
+        )
+        monkeypatch.setattr(wiring_helpers_mod, "wire_discord_adapters", mock_wire_dc)
+
+        hub = MagicMock()
+        bundle = BotAuthBundle(
+            tg_bot_auths=[(MagicMock(), MagicMock())],
+            dc_bot_auths=[(MagicMock(), MagicMock())],
+            bot_agent_map={("telegram", "main"): "lyra_default"},
+            agent_configs={},
+            first_agent_config=MagicMock(),
+            msg_manager=MagicMock(),
+            circuit_registry=MagicMock(),
+            admin_user_ids=frozenset(),
+        )
+        stores = MagicMock()
+        fake_nc = MagicMock()
+        fake_nc.subscribe = AsyncMock()
+        fake_js = MagicMock()
+        vault_dir = Path("/tmp/fake_vault")
+
+        mock_tg_consumer = AsyncMock()
+        mock_dc_consumer = AsyncMock()
+        # Return consumers in order: TG first, DC second
+        mock_start = AsyncMock(side_effect=[mock_tg_consumer, mock_dc_consumer])
+
+        with patch(
+            "factory.bootstrap.factory.wiring_helpers.start_audio_consumer",
+            mock_start,
+        ):
+            result = await _wire_adapters(
+                WireAdaptersDeps(
+                    hub=hub,
+                    bundle=bundle,
+                    nc=fake_nc,
+                    stores=stores,
+                    vault_dir=vault_dir,
+                    raw_config={},
+                    js=fake_js,
+                )
+            )
+
+        # One consumer per platform adapter
+        assert result.tg_consumers == [mock_tg_consumer]
+        assert result.dc_consumers == [mock_dc_consumer]
+
+        # start_audio_consumer called with correct platform + bot_id
+        calls = mock_start.await_args_list
+        assert len(calls) == 2
+        tg_call = calls[0]
+        assert tg_call.args[0] is fake_js
+        assert tg_call.args[1] == "telegram"
+        assert tg_call.args[2] == "tg-bot-1"
+        assert tg_call.args[3] is mock_tg_adapter
+
+        dc_call = calls[1]
+        assert dc_call.args[0] is fake_js
+        assert dc_call.args[1] == "discord"
+        assert dc_call.args[2] == "dc-bot-1"
+        assert dc_call.args[3] is mock_dc_inner_adapter
+
+    @pytest.mark.asyncio
+    async def test_wire_adapters_no_consumers_when_js_is_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """When deps.js is None (default), consumer lists are empty.
+
+        No start_audio_consumer call.
+        """
+        mock_tg_adapter = MagicMock()
+        mock_tg_dispatcher = MagicMock()
+        mock_dc_adapter_tuple = (MagicMock(), MagicMock(), "token")
+        mock_dc_dispatcher = MagicMock()
+        mock_dc_thread_store = MagicMock()
+
+        mock_wire_tg = AsyncMock(return_value=([mock_tg_adapter], [mock_tg_dispatcher]))
+        monkeypatch.setattr(wiring_helpers_mod, "wire_telegram_adapters", mock_wire_tg)
+        mock_wire_dc = AsyncMock(
+            return_value=(
+                [mock_dc_adapter_tuple],
+                [mock_dc_dispatcher],
+                mock_dc_thread_store,
+            )
+        )
+        monkeypatch.setattr(wiring_helpers_mod, "wire_discord_adapters", mock_wire_dc)
+
+        hub = MagicMock()
+        bundle = BotAuthBundle(
+            tg_bot_auths=[(MagicMock(), MagicMock())],
+            dc_bot_auths=[(MagicMock(), MagicMock())],
+            bot_agent_map={("telegram", "main"): "lyra_default"},
+            agent_configs={},
+            first_agent_config=MagicMock(),
+            msg_manager=MagicMock(),
+            circuit_registry=MagicMock(),
+            admin_user_ids=frozenset(),
+        )
+        stores = MagicMock()
+        fake_nc = MagicMock()
+        fake_nc.subscribe = AsyncMock()
+        vault_dir = Path("/tmp/fake_vault")
+
+        # js=None is the default — no audio consumers
+        result = await _wire_adapters(
+            WireAdaptersDeps(
+                hub=hub,
+                bundle=bundle,
+                nc=fake_nc,
+                stores=stores,
+                vault_dir=vault_dir,
+                raw_config={},
+            )
+        )
+
+        assert result.tg_consumers == []
+        assert result.dc_consumers == []

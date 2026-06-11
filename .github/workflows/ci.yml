@@ -76,6 +76,9 @@ jobs:
       - name: "Check hardcoded constants (new numeric literals in src/factory/core/)"
         run: bash tools/check_hardcoded_constants.sh
 
+      - name: "Check bus-bound str(exc) (SanitizedError discipline #1212, ADR-073)"
+        run: bash tools/check_str_exc_bus_bound.sh
+
       - name: Test hardcoded-constants gate
         run: bash tests/tools/test_check_hardcoded_constants.sh
 

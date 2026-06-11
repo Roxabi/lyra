@@ -87,7 +87,9 @@ class WorkEnvelope(ContractEnvelope):
     @field_validator("job_id", mode="before")
     @classmethod
     def _validate_job_id(cls, v: str) -> str:
-        from roxabi_contracts._nats_utils import validate_job_token  # local import avoids circularity
+        from roxabi_contracts._nats_utils import (
+            validate_job_token,
+        )  # local import avoids circularity
 
         validate_job_token(v)
         return v  # validate_job_token returns None — must return v, not its result
@@ -96,7 +98,9 @@ class WorkEnvelope(ContractEnvelope):
     @classmethod
     def _validate_parent_job_id(cls, v: str | None) -> str | None:
         if v is not None:
-            from roxabi_contracts._nats_utils import validate_job_token  # local import avoids circularity
+            from roxabi_contracts._nats_utils import (
+                validate_job_token,
+            )  # local import avoids circularity
 
             validate_job_token(v)
         return v

@@ -17,6 +17,7 @@ from pydantic import ValidationError
 
 from factory.core.ports.tts import SynthesisResult
 from factory.transport._result import Err, Result, SanitizedError
+from roxabi_contracts import new_job_id
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.voice import TtsRequest, TtsResponse
 from roxabi_contracts.voice.constants import TTS_CONFIG_FIELDS
@@ -52,6 +53,7 @@ class TtsCodec:
             "contract_version": CONTRACT_VERSION,
             "trace_id": str(uuid4()),
             "issued_at": datetime.now(timezone.utc),
+            "job_id": new_job_id(),
             "request_id": str(uuid4()),
             "text": text,
             "language": language,

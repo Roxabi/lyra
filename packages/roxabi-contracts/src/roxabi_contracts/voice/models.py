@@ -15,7 +15,7 @@ from typing import Annotated, Self
 from pydantic import StringConstraints, model_validator
 
 from roxabi_contracts.blob_ref import BlobRef
-from roxabi_contracts.envelope import ContractEnvelope, WorkEnvelope
+from roxabi_contracts.envelope import WorkEnvelope
 from roxabi_contracts.errors import WorkerError
 
 

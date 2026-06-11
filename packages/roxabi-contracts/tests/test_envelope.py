@@ -4,7 +4,12 @@ from datetime import datetime, timezone
 
 import pytest
 
-from roxabi_contracts import CONTRACT_VERSION, ContractEnvelope, WorkEnvelope, new_job_id
+from roxabi_contracts import (
+    CONTRACT_VERSION,
+    ContractEnvelope,
+    WorkEnvelope,
+    new_job_id,
+)
 
 
 def test_contract_version_is_positive_digit() -> None:

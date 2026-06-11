@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.9.0] (2026-06-11)
+
+### Features
+
+* **contracts:** add `WorkEnvelope` base class with `job_id` + `parent_job_id` — work-plane/infra-plane split ([#1619](https://github.com/Roxabi/roxabi-factory/issues/1619)). TRANSITIONAL: `job_id` carries a `default_factory` so pre-#1619 wire messages without the field still parse; flip to hard-required tracked in [#1841](https://github.com/Roxabi/roxabi-factory/issues/1841).
+* **contracts:** export `new_job_id()` from top-level `roxabi_contracts` — 32-char hex UUID, NATS-subject-safe.
+* **contracts:** reparent 13 domain models to `WorkEnvelope`: `JobEnvelope`, `JobResult`, `JobProgress`, `LlmRequest`, `LlmChunkEvent`, `LlmResponse`, `TtsRequest`, `TtsResponse`, `SttRequest`, `SttResponse`, `ImageRequest`, `ImageResponse`, `TurnWriteEvent`. Infra-plane models (`LifecycleRequest/Response`, `ImageHeartbeat`, `CliHeartbeat`, `BlobAuditEvent`, `SecurityEvent`, `LyraEvent/Metric`, `MintFailureEvent`) remain on `ContractEnvelope` by design. CLI models (`CliCmdPayload`, `CliChunkEvent`, `CliControlCmd`, `CliControlAck`) deferred to [#1838](https://github.com/Roxabi/roxabi-factory/issues/1838).
+* **contracts:** add enforcement tests locking the WORK/INFRA/PENDING classification invariants (`tests/test_work_envelope_subjects.py`).
+
+
 ## [0.4.0](https://github.com/Roxabi/lyra/compare/roxabi-contracts/v0.3.0...roxabi-contracts/v0.4.0) (2026-05-19)
 
 

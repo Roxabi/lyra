@@ -20,6 +20,7 @@ from pydantic import ValidationError
 from factory.core.messaging.events import LlmEvent, ResultLlmEvent, TextLlmEvent
 from factory.core.ports.llm import LlmResult
 from factory.transport._result import Err, Result, SanitizedError
+from roxabi_contracts import new_job_id
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.errors import KNOWN_CODES, WorkerError
 from roxabi_contracts.llm import LlmChunkEvent, LlmRequest, LlmResponse
@@ -86,6 +87,7 @@ class CliNatsCodec:
             contract_version=CONTRACT_VERSION,
             trace_id=trace_id,
             issued_at=datetime.now(timezone.utc),
+            job_id=new_job_id(),
             request_id=str(uuid4()).replace("-", "")[:32],
             messages=wire_messages,
             model=model_cfg.model,

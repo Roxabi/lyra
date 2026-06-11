@@ -14,11 +14,11 @@ from typing import Annotated, Literal, Optional, Self
 
 from pydantic import Field, StringConstraints, model_validator
 
-from roxabi_contracts.envelope import ContractEnvelope
+from roxabi_contracts.envelope import ContractEnvelope, WorkEnvelope
 from roxabi_contracts.errors import WorkerError
 
 
-class LlmRequest(ContractEnvelope):
+class LlmRequest(WorkEnvelope):
     """LLM generation request. Canonical subject: ``factory.llm.generate.request``."""
 
     request_id: Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{1,128}$")]
@@ -30,7 +30,7 @@ class LlmRequest(ContractEnvelope):
     temperature: float | None = None
 
 
-class LlmChunkEvent(ContractEnvelope):
+class LlmChunkEvent(WorkEnvelope):
     """Streaming chunk event. Published per SSE token to the reply inbox.
 
     Terminal chunk: ``done=True``, ``delta=None``, ``duration_ms`` set.
@@ -46,7 +46,7 @@ class LlmChunkEvent(ContractEnvelope):
     worker_error: WorkerError | None = None
 
 
-class LlmResponse(ContractEnvelope):
+class LlmResponse(WorkEnvelope):
     """Non-streaming generation response.
 
     Success-path invariant (enforced by ``_enforce_success_invariant``):

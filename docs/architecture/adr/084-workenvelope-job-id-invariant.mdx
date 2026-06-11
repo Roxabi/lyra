@@ -174,5 +174,7 @@ let: job  := one entry → full processing (internal multi-turn + steer + stream
 **What did NOT change:** Option C (WorkEnvelope/ContractEnvelope split, mandatory `job_id`
 min_length=1, nullable `parent_job_id` None at root) is ratified and unchanged.
 
+**Implementation note (#1619):** within CONTRACT_VERSION "1", `job_id` deserializes with a transitional default-mint shim — pre-#1619 wire messages (lock-pinned satellite responses, JetStream-persisted backlogs) keep validating, per ADR-049 forward-compat. In-repo producers set `job_id` explicitly. Satellites echo it after their lock bump (#1840). Flip to hard-required rides the next CONTRACT_VERSION bump (#1841).
+
 Living SSoT: `docs/architecture/job-model.md`.
 

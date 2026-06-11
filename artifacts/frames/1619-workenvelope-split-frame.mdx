@@ -1,0 +1,172 @@
+---
+title: "feat(contracts): WorkEnvelope + job_id invariant — split work vs infra envelope"
+issue: 1619
+status: approved
+tier: F-lite
+date: 2026-06-11
+---
+
+## Problem
+
+Every NATS message in the factory today subclasses `ContractEnvelope`, which
+carries `trace_id` (mandatory, universal) but no `job_id`. Work-bearing messages
+(`llm`, `voice`, `image`, `turns`, `jobs`, `cli` work ops) and infra messages
+(heartbeats, lifecycle, metrics) live under the same base type. The result is that
+"this message belongs to a unit of work and carries a stable run identity" is a
+runtime convention — not a type-level guarantee. Operators and the obs pipeline
+must guess or probe per model.
+
+ADR-084 (accepted, implemented-by: this issue) resolves this by splitting the
+envelope: a `WorkEnvelope(ContractEnvelope)` subclass carries mandatory `job_id`
+(`min_length=1`) + nullable `parent_job_id`; infra messages stay on bare
+`ContractEnvelope` (`trace_id` only). Work models are reparented to
+`WorkEnvelope`; infra models are left untouched. The boundary is enforced by a
+new subject→envelope test in the spirit of the existing importlinter contracts.
+
+The timing is driven by the M1 milestone: the downstream issues that build on
+the job identity tree (#1620 ingress mint, #1621 `request_id` fold, #1796
+active-jobs registry, #1797–#1799) all treat `job_id` presence on work messages
+as an upstream invariant. Without this change every downstream issue must
+defensively handle the "no `job_id`" case, or silently assume it; landing this
+now closes that gap for the entire M1 fleet before ingress wiring begins.
+
+## Who
+
+- **Primary:** contributors and tooling that consume work-plane NATS messages
+  and need a stable `job_id` to thread a run end-to-end (hub → harness →
+  satellite → outbound).
+- **Secondary:** #1620 (ingress mint), #1621 (`request_id` fold), #1796
+  (active-jobs registry) — all blocked on `WorkEnvelope` existing as an
+  importable type in `roxabi-contracts`.
+
+## Constraints
+
+- **`WorkEnvelope` is additive at the base-class level** (`extra="ignore"`,
+  `ContractEnvelope` compat preserved) — minor version bump per ADR-049
+  rules. However, reparenting existing domain models (llm, voice, image, turns,
+  cli) **introduces a new required field** (`job_id`) — this is a breaking
+  change for those domains; each domain coordinates its own minor bump.
+  `jobs/*` is the clean exception: `JobEnvelope`/`JobResult`/`JobProgress`
+  already carry `job_id` locally; reparenting is non-breaking there.
+- **`JobEnvelope` field collision:** `JobEnvelope` already declares `job_id`
+  and `parent_job_id` as local fields. After reparent to `WorkEnvelope` these
+  become inherited — the local declarations must be removed or Pydantic v2
+  raises a field-redefinition error. `JobResult` and `JobProgress` only declare
+  `job_id` locally (no `parent_job_id`); both local `job_id` fields must be
+  removed post-reparent, and `parent_job_id` is then additive-inherited.
+- **`CONTRACT_VERSION` stays `"1"`:** `job_id`/`parent_job_id` are not
+  security-bearing; an additive minor bump does not change the envelope
+  constant. `test_contract_version_current_value` explicitly locks it to `"1"`
+  — do not change this constant.
+- **CliChunkEvent / CliControlAck classification gap:** ADR-084 classification
+  table covers `CliCmdPayload`, `CliControlCmd`, `CliHeartbeat` — but
+  `CliChunkEvent` (streaming response, carries `pool_id` + `event_type`) and
+  `CliControlAck` (op response, carries `ok`/`resumed`) are absent. Both are
+  likely WORK (response side of work ops), but the spec MUST add explicit rows
+  before `cli/models.py` is edited. Misclassification breaks the invariant
+  silently.
+- **Coordinate with #1009 (cli minor bump):** ADR-084 mandates combining the
+  `cli` reparent with the `session_id` → `cli_session_id` rename from #1009
+  into a single `cli` minor bump to avoid two satellite-coordination events.
+  Do not merge `cli/models.py` changes independently of #1009 unless explicitly
+  approved by the architect.
+- **Cross-issue coordination with #1782:** `#1782` touches `_nats_utils.py`
+  (promotes `_validate_subject_segment` to public, collapses
+  `_SAFE_WORKER_ID_RE`). `#1619` imports `validate_job_token` from
+  `_nats_utils` for the `WorkEnvelope.job_id` field validator. If #1782 merges
+  first, check that `validate_job_token` export is unaffected. If #1782 merges
+  after, prefer the new public name.
+- **`__init__.py` coordination with #1791:** `#1791` audits domain `__init__`
+  re-export surfaces; `WorkEnvelope` must be exported from
+  `roxabi_contracts.__init__` in this PR. Coordinate `__all__` additions if
+  both PRs land in the same release cycle.
+- **doc_drift gate:** new backtick-quoted symbols in docs/ must exist in `src/`
+  at push time. `WorkEnvelope` is UNBUILT until this PR lands; do not add a
+  backtick reference to `WorkEnvelope` in domain pages outside
+  `docs/architecture/adr/**` (ADR files are exempt).
+- **file_length gate:** `packages/roxabi-contracts` files are outside
+  `src/factory/**` and exempt from the 300 SLOC gate. No exemption entry
+  needed.
+- **`inbound`/`outbound` scope item:** the issue scope lists "inbound/outbound
+  messages". `InboundMessage` (message.py:97) and `OutboundMessage`
+  (message.py:257) are Python `@dataclass` types — not Pydantic models, not
+  `ContractEnvelope` subclasses — and are internal hub abstractions. They are
+  out of scope. The `outbound/` contracts submodule has no Pydantic models yet
+  (schemas arrive in a later minor bump per the submodule comment). Either
+  clarify the scope item or treat as a forward-compat note: any new
+  outbound Pydantic model must land as a `WorkEnvelope` subclass from creation.
+- **Harness wire (#1490):** harness models are absent from `roxabi-contracts` as
+  expected. The scope item is a forward-compat note: new harness wire models
+  added before #1619 closes must land as `WorkEnvelope` subclasses. Not a
+  current blocker.
+
+## Out of Scope
+
+- Root `job_id` mint at ingress in inbound adapters — that is #1620.
+- `request_id` → `job_id` fold in voice/llm builders — that is #1621.
+- Subject taxonomy migration (`factory.results.*` → `factory.job.<id>.result`) — that is
+  #1793 (not yet landed).
+- Wiring `job_id` as an OTel span id into the observability pipeline — that is
+  part of epic #1622 / #667.
+- `cli_session_id` rename in `CliCmdPayload` / `CliControlCmd` — that is #1009
+  (to be co-landed in the same `cli` minor bump, but owned by #1009).
+- Subject charset SSoT consolidation in `_nats_utils.py` — that is #1782.
+- `__init__` re-export audit across all domain submodules — that is #1791.
+- Changes to `InboundMessage` / `OutboundMessage` dataclasses in
+  `src/factory/core/messaging/message.py` — internal hub abstractions, not
+  contract models.
+
+## Premise Validity
+
+**Success in 6 months:** `WorkEnvelope` is importable from `roxabi_contracts`
+and all 14 work-plane models (`JobEnvelope`, `JobResult`, `JobProgress`,
+`LlmRequest`, `LlmChunkEvent`, `LlmResponse`, `TtsRequest`, `TtsResponse`,
+`SttRequest`, `SttResponse`, `ImageRequest`, `ImageResponse`, `TurnWriteEvent`,
+`CliCmdPayload`, `CliControlCmd`) subclass it; the subject→envelope enforcement
+test is green in CI; `#1620` (ingress mint) can set `job_id` on outbound work
+messages without a contract change; no WORK-class model remains on bare
+`ContractEnvelope`.
+
+**Failure in 6 months:** A new work-plane model lands directly on
+`ContractEnvelope` (missing `job_id`) because the PR author looked at the old
+base class and copied it; OR `job_id` is optional in at least one reparented
+model because the field-validator was not wired — observable: `grep -r
+"ContractEnvelope" packages/roxabi-contracts/src | grep -v "WorkEnvelope\|Heartbeat\|Lifecycle\|LyraEvent\|LyraMetric\|MintFailure"` returns hits on work models; OR the subject→envelope test does not exist in `packages/roxabi-contracts/tests/`.
+
+**Simplest alternative:** Add `job_id: str | None = None` as an optional field
+directly on `ContractEnvelope` (ADR-084 Option B — nullable everywhere).
+
+**Why not simplest:** Optional `job_id` on the base provides no type-level
+guarantee — "is this a work message with a valid job_id?" stays a runtime guess.
+Infra heartbeats/lifecycle would carry a semantically meaningless optional field.
+The obs pipeline and active-jobs registry (M1 #1796) need presence guaranteed
+by type, not by convention. ADR-084 explicitly ruled out Option B.
+
+_(champs dérivés du contexte — à valider à la review humaine)_
+
+## Complexity
+
+**Tier: F-lite** — clear scope across one package (`roxabi-contracts`), all
+files known, no unknowns in the reparent logic itself; blocked by two
+classification gaps (CliChunkEvent/CliControlAck, outbound scope) that require
+explicit resolution before impl but are resolvable within the issue.
+
+Signals observed:
+- 11 files in scope (all within `packages/roxabi-contracts/`): `envelope.py`,
+  `__init__.py`, `jobs/models.py`, `llm/models.py`, `voice/models.py`,
+  `image/models.py`, `turns/models.py`, `cli/models.py`,
+  `tests/test_envelope.py`, `tests/test_work_envelope_subjects.py` (new),
+  `CHANGELOG.md`.
+- Single domain (`roxabi-contracts` package) — no `src/factory/**` code changes,
+  no bootstrap wiring, no cross-layer concern.
+- Classification pass is required (14 WORK models + 7 INFRA stay-list confirmed)
+  but fully enumerated; zero unknown models in scope.
+- Two pre-impl spec gaps must be resolved before touching `cli/models.py`:
+  (1) explicit ADR-084 rows for `CliChunkEvent` and `CliControlAck`;
+  (2) clarification of the `inbound/outbound` scope item.
+- Three cross-issue coordination points (#1009, #1782, #1791) require merge-order
+  awareness but none blocks the non-cli portions of this PR.
+- Pydantic v2 field-redefinition trap on `JobEnvelope` is understood and
+  explicitly handled (remove local `job_id` + `parent_job_id` declarations).
+- New test file (`test_work_envelope_subjects.py`) follows an established pattern
+  already used by `test_voice_subjects.py` / `test_image_subjects.py`.

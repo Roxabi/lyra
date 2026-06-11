@@ -9,14 +9,14 @@ Slice S2 reality:
 - link_lyra_session / unlink_lyra_session are pure local dict mutations (no
   transport call) — mirrors the legacy CliNatsDriver behaviour. Tests assert
   the LOCAL state effect, not a network call.
-- reset / resume_and_reset / switch_cwd dispatch via transport.call (need ack);
-  set_turn_store delegates to codec.set_session_store.
+- reset / switch_cwd dispatch via transport.call (need ack);
+  queue_resume stashes cli_session_id into _pending_resume (no transport call);
+  set_turn_store wires the TurnStore for cli_session_id lookups.
 """
 
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -25,9 +25,8 @@ import pytest
 
 from factory.llm.cli_nats_codec import CliNatsCodec
 from factory.llm.llm_client import LlmClient
-from factory.transport._result import Ok, SanitizedError
+from factory.transport._result import Ok
 from factory.transport.worker_pool_client import WorkerPoolClient
-from roxabi_contracts.cli.models import CliControlAck
 from roxabi_contracts.envelope import CONTRACT_VERSION
 
 _SUBJECT_CONTROL = "factory.clipool.control"
@@ -245,111 +244,117 @@ class TestSwitchCwd:
 
 
 # ---------------------------------------------------------------------------
-# resume_and_reset — True branch (cli_session_id found, ack.resumed=True)
+# queue_resume — stash cli_session_id for next complete()/stream() call
 # ---------------------------------------------------------------------------
 
 
-class TestResumeAndReset:
-    def _make_ack_bytes(self, *, resumed: bool, pool_id: str = "pool-5") -> bytes:
-        ack = CliControlAck(
-            contract_version=CONTRACT_VERSION,
-            trace_id="trace-ack",
-            issued_at=datetime.now(timezone.utc),
-            pool_id=pool_id,
-            ok=True,
-            resumed=resumed,
-        )
-        return ack.model_dump_json(exclude_none=True).encode()
-
+class TestQueueResume:
     @pytest.mark.asyncio
-    async def test_resume_and_reset_returns_true_when_ack_resumed_true(self) -> None:
+    async def test_queue_resume_stashes_and_returns_true(self) -> None:
+        """TurnStore returns cli_sid → stashed in _pending_resume, True returned."""
         # Arrange
-        ack_bytes = self._make_ack_bytes(resumed=True, pool_id="pool-5")
-        fake_transport = _FakeTransport(call_return=Ok(ack_bytes))
+        fake_transport = _FakeTransport()
         client, _, _ = _make_client(fake_transport)
 
-        # Wire a turn store that returns a known cli_session_id
         store = MagicMock()
         store.get_cli_session = AsyncMock(return_value="cli-sess-123")
         client.set_turn_store(store)
 
         # Act
-        result = await client.resume_and_reset("pool-5", "lyra-session-xyz")
+        result = await client.queue_resume("pool-5", "lyra-session-xyz")
 
-        # Assert
+        # Assert — stashed, no transport call
         assert result is True
-        fake_transport.call.assert_awaited_once()
-
-        subject_used, payload_used = (
-            fake_transport.call.call_args.args[0],
-            fake_transport.call.call_args.args[1],
-        )
-        assert subject_used == _SUBJECT_CONTROL
-        received = json.loads(payload_used)
-        assert received["op"] == "resume_and_reset"
-        assert received["pool_id"] == "pool-5"
-        assert received["session_id"] == "cli-sess-123"
+        assert client._pending_resume["pool-5"] == "cli-sess-123"
+        fake_transport.call.assert_not_awaited()
+        fake_transport.publish.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_resume_and_reset_returns_false_when_ack_resumed_false(self) -> None:
-        # Arrange
-        ack_bytes = self._make_ack_bytes(resumed=False, pool_id="pool-5")
-        fake_transport = _FakeTransport(call_return=Ok(ack_bytes))
-        client, _, _ = _make_client(fake_transport)
-
-        store = MagicMock()
-        store.get_cli_session = AsyncMock(return_value="cli-sess-456")
-        client.set_turn_store(store)
-
-        # Act
-        result = await client.resume_and_reset("pool-5", "lyra-session-xyz")
-
-        # Assert
-        assert result is False
-
-    @pytest.mark.asyncio
-    async def test_resume_and_reset_returns_false_when_no_cli_session(self) -> None:
-        """When TurnStore returns None, no transport call is made."""
-        fake_transport = _FakeTransport(call_return=Ok(b"{}"))
+    async def test_queue_resume_returns_false_no_cli_session(self) -> None:
+        """TurnStore returns None → False, nothing stashed, no transport call."""
+        fake_transport = _FakeTransport()
         client, _, _ = _make_client(fake_transport)
 
         store = MagicMock()
         store.get_cli_session = AsyncMock(return_value=None)
         client.set_turn_store(store)
 
-        result = await client.resume_and_reset("pool-5", "lyra-session-xyz")
+        result = await client.queue_resume("pool-5", "lyra-session-xyz")
 
         assert result is False
-        # No network call because cli_session_id was not found
+        assert "pool-5" not in client._pending_resume
         fake_transport.call.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_resume_and_reset_returns_false_when_no_turn_store(self) -> None:
-        """When no TurnStore is wired, resume returns False without transport call."""
-        fake_transport = _FakeTransport(call_return=Ok(b"{}"))
+    async def test_queue_resume_returns_false_no_turn_store(self) -> None:
+        """No TurnStore wired → False, no transport call."""
+        fake_transport = _FakeTransport()
         client, _, _ = _make_client(fake_transport)
         # No set_turn_store call — _turn_store is None
 
-        result = await client.resume_and_reset("pool-5", "lyra-session-xyz")
+        result = await client.queue_resume("pool-5", "lyra-session-xyz")
 
         assert result is False
+        assert "pool-5" not in client._pending_resume
         fake_transport.call.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_resume_and_reset_returns_false_on_transport_err(self) -> None:
-        """When transport returns Err, resume_and_reset returns False."""
-        from factory.transport._result import Err
+    async def test_complete_pops_pending_resume(self) -> None:
+        """After queue_resume stashes, complete() consumes the stash."""
+        from factory.transport._result import Err, SanitizedError
 
-        err = SanitizedError(
-            code="transport.timeout", message="TimeoutError", retryable=True
+        fake_transport = _FakeTransport(call_return=Ok(b"{}"))
+        client, _, pool = _make_client(fake_transport)
+
+        # Make request_with_routing return an Err (use a known code so decode succeeds)
+        err = Err(
+            SanitizedError(
+                code="transport.no_responders", message="forced", retryable=False
+            )
         )
-        fake_transport = _FakeTransport(call_return=Err(err))
-        client, _, _ = _make_client(fake_transport)
+        pool.request_with_routing = AsyncMock(return_value=err)
 
         store = MagicMock()
-        store.get_cli_session = AsyncMock(return_value="cli-sess-789")
+        store.get_cli_session = AsyncMock(return_value="cli-sess-abc")
         client.set_turn_store(store)
 
-        result = await client.resume_and_reset("pool-5", "lyra-session-xyz")
+        await client.queue_resume("pool-7", "lyra-session-xyz")
+        assert client._pending_resume.get("pool-7") == "cli-sess-abc"
 
-        assert result is False
+        from factory.core.agent.agent_config import ModelConfig
+
+        model_cfg = ModelConfig(backend="claude-cli")
+        # Pop happens before request_with_routing; stash is consumed even on Err
+        await client.complete("pool-7", "hello", model_cfg, "sys")
+
+        assert "pool-7" not in client._pending_resume
+
+    @pytest.mark.asyncio
+    async def test_stream_pops_pending_resume(self) -> None:
+        """After queue_resume stashes, stream() consumes it via resume_session_id."""
+        fake_transport = _FakeTransport(call_return=Ok(b"{}"))
+        client, _, pool = _make_client(fake_transport)
+
+        # stream_request must be an async generator; return empty one
+        async def _empty_stream(*_args: object, **_kwargs: object):  # type: ignore[return]
+            return
+            yield  # make it an async generator
+
+        pool.stream_request = _empty_stream
+
+        store = MagicMock()
+        store.get_cli_session = AsyncMock(return_value="cli-sess-def")
+        client.set_turn_store(store)
+
+        await client.queue_resume("pool-8", "lyra-session-abc")
+        assert client._pending_resume.get("pool-8") == "cli-sess-def"
+
+        from factory.core.agent.agent_config import ModelConfig
+
+        model_cfg = ModelConfig(backend="claude-cli")
+        # Exhaust the (empty) stream — stash is popped when body executes
+        # (first iteration)
+        async for _ in client.stream("pool-8", "hello", model_cfg, "sys"):
+            pass
+
+        assert "pool-8" not in client._pending_resume

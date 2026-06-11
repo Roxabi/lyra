@@ -141,6 +141,11 @@ class InboundMessage:
     # non-audio, index-aligned with `attachments` (#1552).
     pending_attachment: Any = field(default=None, repr=False)
     pending_attachments: list[Any] = field(default_factory=list, repr=False)
+    # Opaque run identifier minted once at adapter ingress (#1620, ADR-084).
+    # Threads through the full processing chain for correlating all log_turn
+    # events belonging to the same inbound event.  None = pre-#1620 message
+    # (e.g. from tests that have not been updated yet).
+    root_job_id: str | None = None
 
 
 @dataclass

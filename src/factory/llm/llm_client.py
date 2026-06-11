@@ -13,12 +13,9 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING, AsyncIterator, Protocol
 from uuid import uuid4
 
-from pydantic import ValidationError
-
 from factory.core.messaging.events import LlmEvent, ResultLlmEvent
 from factory.core.ports.llm import LlmResult
-from factory.transport._result import Ok
-from roxabi_contracts.cli.models import CliControlAck, CliControlCmd
+from roxabi_contracts.cli.models import CliControlCmd
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.llm import SUBJECTS
 
@@ -61,6 +58,7 @@ class LlmClient:
         self._request_subject = request_subject or SUBJECTS.generate_request
         self._lyra_sessions: dict[str, str] = {}
         self._turn_store: _CliSessionStore | None = None
+        self._pending_resume: dict[str, str] = {}
 
     def is_alive(self, pool_id: str) -> bool:
         del pool_id
@@ -79,6 +77,9 @@ class LlmClient:
         *,
         messages: list[dict] | None = None,
     ) -> LlmResult:
+        # Pop before the call; re-stash on transport failure so the resume is
+        # not silently dropped when the worker is temporarily unreachable.
+        pending_resume = self._pending_resume.pop(pool_id, None)
         payload, trace_id = self._codec.encode(
             text,
             model_cfg,
@@ -87,13 +88,19 @@ class LlmClient:
             stream=False,
             pool_id=pool_id,
             lyra_session_id=self._lyra_sessions.get(pool_id),
+            resume_session_id=pending_resume,
         )
-        result = await self._pool.request_with_routing(
-            lambda _: self._request_subject,
-            payload,
-            max_attempts=1,
-            timeout=self._timeout,
-        )
+        try:
+            result = await self._pool.request_with_routing(
+                lambda _: self._request_subject,
+                payload,
+                max_attempts=1,
+                timeout=self._timeout,
+            )
+        except Exception:
+            if pending_resume is not None:
+                self._pending_resume.setdefault(pool_id, pending_resume)
+            raise
         return self._codec.decode(result, trace_id)
 
     async def stream(  # noqa: PLR0913 — LlmProvider protocol signature
@@ -105,6 +112,10 @@ class LlmClient:
         *,
         messages: list[dict] | None = None,
     ) -> AsyncIterator[LlmEvent]:
+        # Pop before the generator starts; re-stash on connection failure so
+        # the resume is not lost if the worker is unreachable on the first
+        # attempt (stream path: exception fires before any yield).
+        pending_resume = self._pending_resume.pop(pool_id, None)
         payload, _ = self._codec.encode(
             text,
             model_cfg,
@@ -113,21 +124,27 @@ class LlmClient:
             stream=True,
             pool_id=pool_id,
             lyra_session_id=self._lyra_sessions.get(pool_id),
+            resume_session_id=pending_resume,
         )
-        async for result in self._pool.stream_request(
-            self._request_subject, payload, timeout=self._timeout
-        ):
-            event = self._codec.decode_chunk(result)
-            if event is None:
-                continue
-            yield event
-            if isinstance(event, ResultLlmEvent):
-                return
+        try:
+            async for result in self._pool.stream_request(
+                self._request_subject, payload, timeout=self._timeout
+            ):
+                event = self._codec.decode_chunk(result)
+                if event is None:
+                    continue
+                yield event
+                if isinstance(event, ResultLlmEvent):
+                    return
+        except Exception:
+            if pending_resume is not None:
+                self._pending_resume.setdefault(pool_id, pending_resume)
+            raise
 
     # ── Control-plane methods (re-homed from CliNatsDriver, Slice S2) ────
 
     def set_turn_store(self, store: _CliSessionStore) -> None:
-        """Wire the session store for cli_session_id lookups in resume_and_reset."""
+        """Wire the session store for cli_session_id lookups in queue_resume."""
         self._turn_store = store
 
     def link_lyra_session(self, pool_id: str, lyra_session_id: str) -> None:
@@ -157,11 +174,17 @@ class LlmClient:
             _SUBJECT_CONTROL, payload, timeout=self._timeout
         )
 
-    async def resume_and_reset(self, pool_id: str, session_id: str) -> bool:
-        """Ask clipool worker to resume a prior session then reset.
+    async def queue_resume(self, pool_id: str, session_id: str) -> bool:
+        """Resolve cli_session_id and stash it for the next CliCmdPayload.
 
-        Looks up cli_session_id from the hub TurnStore and passes it to the
-        worker directly (no TurnStore lookup on the worker side).
+        Looks up cli_session_id from the hub TurnStore and stores it in
+        _pending_resume[pool_id].  The stashed token is injected into the next
+        complete() or stream() call via CliCmdPayload.resume_session_id — no
+        separate NATS control message is sent.
+
+        Returns True iff a cli_session_id was resolved and stashed ("stash
+        accepted").  True does NOT mean the resume has been applied — the
+        worker applies it on the next CliCmdPayload it receives.
         """
         cli_sid: str | None = None
         if self._turn_store is not None:
@@ -174,26 +197,8 @@ class LlmClient:
                 pool_id,
             )
             return False
-        cmd = CliControlCmd(
-            contract_version=CONTRACT_VERSION,
-            trace_id=str(uuid4()),
-            issued_at=datetime.now(timezone.utc),
-            pool_id=pool_id,
-            op="resume_and_reset",
-            session_id=cli_sid,
-        )
-        payload = self._codec.encode_control(cmd)
-        result = await self._pool._transport.call(  # type: ignore[attr-defined]  # noqa: SLF001
-            _SUBJECT_CONTROL, payload, timeout=self._timeout
-        )
-        if not isinstance(result, Ok):
-            return False
-        try:
-            ack = CliControlAck.model_validate_json(result.value)
-            return bool(ack.resumed)
-        except ValidationError as exc:
-            log.warning("llm_client: CliControlAck parse failed: %r", exc)
-            return False
+        self._pending_resume[pool_id] = cli_sid
+        return True
 
     async def switch_cwd(self, pool_id: str, cwd: "Path") -> None:
         """Ask clipool worker to switch the working directory."""

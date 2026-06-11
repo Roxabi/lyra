@@ -22,12 +22,14 @@ from ...messaging.message import (
     OutboundMessage,
     RoutingContext,
 )
+from ...messaging.utils.callbacks import unwrap_callback
 from ._dispatch import dispatch_outbound_item
 from .outbound_errors import (
     _CIRCUIT_NOTIFY_DEBOUNCE,
     _ITEM,
     _NOTIFY_TS_REAP_THRESHOLD,
     _SCOPE_REAP_THRESHOLD,
+    OUTBOUND_QUEUE_MAXSIZE,
     try_notify_user,
 )
 
@@ -44,20 +46,21 @@ class OutboundDispatcher:
     Create with platform_name/adapter/circuit, then call start()/stop().
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         platform_name: str,
         adapter: "ChannelAdapter",
         circuit: CircuitBreaker | None = None,
         circuit_registry: CircuitRegistry | None = None,
         bot_id: str = "main",
+        queue_maxsize: int = OUTBOUND_QUEUE_MAXSIZE,
     ) -> None:
         self._platform_name = platform_name
         self._bot_id = bot_id
         self._adapter = adapter
         self._circuit = circuit
         self._circuit_registry = circuit_registry
-        self._queue: asyncio.Queue[_ITEM] = asyncio.Queue()
+        self._queue: asyncio.Queue[_ITEM] = asyncio.Queue(maxsize=queue_maxsize)
         self._worker: asyncio.Task[None] | None = None
         # Per-chat last circuit-open notification timestamp for debouncing (Fix 3)
         self._circuit_notify_ts: dict[str, float] = {}
@@ -84,8 +87,75 @@ class OutboundDispatcher:
             return False
         return True
 
+    def _maybe_drop_oldest(self) -> None:
+        """Drop the oldest item when the queue is at capacity (drop-oldest policy).
+
+        Called by every enqueue_* method before put_nowait(). When full, dequeues
+        the head item, schedules async cleanup (iterator drain + callback), and
+        emits a structured warning log.
+        """
+        if self._queue.qsize() < self._queue.maxsize:
+            return
+        try:
+            item = self._queue.get_nowait()
+        except asyncio.QueueEmpty:
+            return  # race: worker drained it first
+        self._queue.task_done()
+        kind: str = item[0]
+        log.warning(
+            '{"event": "outbound_queue_overflow", "platform": "%s", "bot_id": "%s",'
+            ' "dropped_kind": "%s", "qsize": %d}',
+            self._platform_name,
+            self._bot_id,
+            kind,
+            self._queue.qsize(),
+        )
+        # Schedule async cleanup (iterator drain + callback) as a fire-and-forget task.
+        # Guard: no-op when called outside a running event loop (unit-test context).
+        try:
+            task = asyncio.get_running_loop().create_task(
+                self._drop_item_async(item, kind),
+                name=f"outbound-drop-{self._platform_name}",
+            )
+        except RuntimeError:
+            # No running event loop — item dropped synchronously; iterator not drained.
+            # Acceptable in test/non-async contexts; never happens in production.
+            return
+
+        def _on_drop_done(t: asyncio.Task[None]) -> None:
+            self._scope_tasks.discard(t)
+            if not t.cancelled() and (exc := t.exception()) is not None:
+                log.error(
+                    "OutboundDispatcher[%s] drop task exception: %s",
+                    self._platform_name,
+                    exc,
+                    exc_info=exc,
+                )
+
+        task.add_done_callback(_on_drop_done)
+        self._scope_tasks.add(task)
+
+    async def _drop_item_async(self, item: _ITEM, kind: str) -> None:
+        """Drain iterator and fire callback for a dropped overflow item."""
+        # Drain async iterators to prevent generator leaks
+        if kind in ("streaming", "audio_stream", "voice_stream"):
+            async for _ in item[2]:
+                pass
+        # Fire _on_dispatched callback with reply_message_id=None (mirrors circuit-open)
+        cb_target = None
+        if kind == "send":
+            cb_target = item[2]
+        elif kind == "streaming":
+            cb_target = item[3]  # outbound (may be None)
+        if cb_target is not None:
+            cb_target.metadata["reply_message_id"] = None
+            _cb = unwrap_callback(cb_target.metadata, "_on_dispatched", pop=True)
+            if _cb is not None:
+                await _cb(cb_target)
+
     def enqueue(self, msg: InboundMessage, response: OutboundMessage) -> None:
-        """Enqueue a non-streaming response for delivery (fire-and-forget)."""
+        """Enqueue a non-streaming response for delivery (drop-oldest on overflow)."""
+        self._maybe_drop_oldest()
         self._queue.put_nowait(("send", msg, response))
 
     def enqueue_streaming(
@@ -94,11 +164,13 @@ class OutboundDispatcher:
         chunks: AsyncIterator[RenderEvent],
         outbound: OutboundMessage | None = None,
     ) -> None:
-        """Enqueue a streaming response for delivery (fire-and-forget)."""
+        """Enqueue a streaming response for delivery (drop-oldest on overflow)."""
+        self._maybe_drop_oldest()
         self._queue.put_nowait(("streaming", msg, chunks, outbound))
 
     def enqueue_audio(self, inbound: InboundMessage, audio: OutboundAudio) -> None:
-        """Enqueue an audio response for delivery (fire-and-forget)."""
+        """Enqueue an audio response for delivery (drop-oldest on overflow)."""
+        self._maybe_drop_oldest()
         self._queue.put_nowait(("audio", inbound, audio))
 
     def enqueue_audio_stream(
@@ -106,7 +178,8 @@ class OutboundDispatcher:
         inbound: InboundMessage,
         chunks: AsyncIterator[OutboundAudioChunk],
     ) -> None:
-        """Enqueue a streaming audio response for delivery (fire-and-forget)."""
+        """Enqueue a streaming audio response for delivery (drop-oldest on overflow)."""
+        self._maybe_drop_oldest()
         self._queue.put_nowait(("audio_stream", inbound, chunks))
 
     def enqueue_voice_stream(
@@ -114,13 +187,15 @@ class OutboundDispatcher:
         inbound: InboundMessage,
         chunks: AsyncIterator[OutboundAudioChunk],
     ) -> None:
-        """Enqueue a voice stream for delivery (fire-and-forget)."""
+        """Enqueue a voice stream for delivery (drop-oldest on overflow)."""
+        self._maybe_drop_oldest()
         self._queue.put_nowait(("voice_stream", inbound, chunks))
 
     def enqueue_attachment(
         self, inbound: InboundMessage, attachment: OutboundAttachment
     ) -> None:
-        """Enqueue an attachment for delivery (fire-and-forget)."""
+        """Enqueue an attachment for delivery (drop-oldest on overflow)."""
+        self._maybe_drop_oldest()
         self._queue.put_nowait(("attachment", inbound, attachment))
 
     async def start(self) -> None:

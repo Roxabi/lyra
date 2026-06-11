@@ -10,7 +10,7 @@ Runbook for installing, operating, and rotating secrets in the Lyra Quadlet depl
 
 ## Architecture
 
-Eight containers on `roxabi.network` (systemd `--user`, linger enabled):
+Nine containers on `roxabi.network` (systemd `--user`, linger enabled):
 
 | Service | Container | Role |
 |---|---|---|
@@ -22,6 +22,7 @@ Eight containers on `roxabi.network` (systemd `--user`, linger enabled):
 | `factory-gh-helper` | lyra | GitHub App token-mint helper (`factory-gh.pod`) |
 | `factory-turn-writer` | lyra | JetStream subscriber-writer for turns.db (#1331) |
 | `factory-blobstore` | lyra | HTTP-fronted BlobStore service (port 8449, #1330) |
+| `factory-omp` | factory-omp-base | omp_rpc NATS runtime backend (#1812) |
 
 ## Install
 
@@ -202,11 +203,13 @@ systemctl --user list-timers factory-quadlet-sync.timer
 | `factory-nats-telegram` | `~/.roxabi/factory/nkeys/telegram-adapter.seed` | `/run/secrets/factory-nats-telegram.seed` |
 | `factory-nats-discord` | `~/.roxabi/factory/nkeys/discord-adapter.seed` | `/run/secrets/factory-nats-discord.seed` |
 | `factory-nats-clipool` | `~/.roxabi/factory/nkeys/clipool-worker.seed` | `/run/secrets/factory-nats-clipool.seed` |
+| `factory-nats-omp` | `~/.roxabi/factory/nkeys/omp-worker.seed` | `/run/secrets/factory-nats-omp.seed` |
 | `factory-gh-pem` | `~/.roxabi/factory/gh-app.pem` | `/run/secrets/gh-app.pem` (helper only) |
 | `factory-claude-oauth` | `~/.roxabi/factory/claude-oauth.tok` | `CLAUDE_CODE_OAUTH_TOKEN` env (clipool) |
+| `factory-litellm-key` | `~/.roxabi/factory/litellm-key.tok` | `LITELLM_API_KEY` env (omp) — `type=env` (ADR exemption: omp binary reads env var) |
 | `factory_blobstore_token` | `~/.roxabi/factory/blobstore.tok` | `/run/secrets/factory_blobstore_token` (uid=1500, gid=1500, mode=0400) |
 
-All seed secrets use `type=mount` (tmpfs-backed). `factory-claude-oauth` uses `type=env`. (S7, S18)
+All seed secrets use `type=mount` (tmpfs-backed). `factory-claude-oauth` and `factory-litellm-key` use `type=env`. (S7, S18)
 `factory_blobstore_token` uses `type=mount`; the bearer token is read once at container startup by
 the auth middleware and never re-read until the container restarts (ADR-054).
 

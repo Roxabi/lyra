@@ -1,0 +1,498 @@
+---
+title: "feat(harness): OmpWorker — omp_rpc NATS runtime backend (omp --mode rpc)"
+issue: 1812
+status: approved
+tier: F-full
+date: 2026-06-11
+depends-on:
+  - "#1793"
+promoted-from: artifacts/frames/1812-omp-worker-frame.mdx
+---
+
+## Problem Restatement
+
+`ModelConfig._VALID_BACKENDS` = `{'claude-cli', 'nats'}`. The `omp-rpc` backend
+ratified on 2026-06-10 (spike #1807 GREEN 4/4) cannot be assigned to an agent without
+a `ValidationError`. Three independent gaps must close atomically:
+
+1. Backend registration (`core/ports/llm_types.py`)
+2. NATS adapter (`adapters/omp/`)
+3. Quadlet unit + ACL identity (`deploy/`)
+
+## Wire Contracts Decision
+
+**Resolved: post-#1793 canonical subjects.**
+
+`#1793` (jobs taxonomy unification) merges before this lane. This worktree branches from
+`staging` after `#1793` has merged. OmpWorker uses the post-#1793 canonical subjects from
+`roxabi_contracts.jobs.subjects` (`jobs_progress`, `jobs_result`, `jobs_steer`).
+
+| Direction | Subject | Constant | Usage |
+|---|---|---|---|
+| subscribe | `factory.jobs.omp` | `jobs_submit("omp")` | receive job dispatch |
+| publish | `factory.job.<job_id>.progress` | `jobs_progress(job_id)` | tool-call events, partial output |
+| publish | `factory.job.<job_id>.result` | `jobs_result(job_id)` | terminal result |
+| publish | `factory.omp.heartbeat` | `_HEARTBEAT_SUBJECT` | worker liveness |
+| subscribe (steer bridge) | `factory.job.<job_id>.steer` | `jobs_steer(job_id)` | runtime steering signal |
+
+`factory.job.<job_id>.opened` and `factory.job.<job_id>.closed` remain DEFERRED —
+no consumer exists until #1796/#1798 land.
+
+**Rationale:** #1793 eliminates the roxabi-contracts PR dependency; subjects are already
+defined in `roxabi_contracts.jobs.subjects`; OmpWorker adopts them before any other caller
+so there is no migration blast radius.
+
+## Design
+
+### Module split (mandatory — SLOC gate)
+
+`src/factory/adapters/omp/` — two source files, each ≤ 300 SLOC:
+
+```
+src/factory/adapters/omp/
+  __init__.py          — public re-exports only
+  omp_worker.py        — NatsAdapterBase subclass, NATS lifecycle, subject routing
+  _rpc_bridge.py       — RpcClient construction, digest gate, callback wiring,
+                         event translation → NATS publish calls
+```
+
+### Class diagram
+
+```
+NatsAdapterBase (roxabi_nats)
+  └─ OmpWorker (omp_worker.py)
+       │  super().__init__(..., heartbeat_subject=_HEARTBEAT_SUBJECT, wait_ready=False)
+       │  handle(msg, payload: dict) → dispatch to _rpc_bridge
+       └─ RpcBridge (_rpc_bridge.py)
+            │  __init__(nats_client, omp_bin: Path, job_id: str)
+            │  _verify_digest()     ← CPU-blocking: hash read on __init__, raises DigestMismatchError
+            │  _register_callbacks() ← before new_session()
+            │  run(prompt: str) → AsyncIterator[BridgeEvent]
+            └─ RpcClient (omp_rpc)
+```
+
+### Subject constants (`omp_worker.py`)
+
+```python
+from roxabi_contracts.jobs.subjects import jobs_progress, jobs_result, jobs_steer, jobs_submit
+
+_CMD_SUBJECT       = jobs_submit("omp")          # subscribe (queue group)
+_HEARTBEAT_SUBJECT = "factory.omp.heartbeat"     # publish
+_QUEUE_GROUP       = "omp-workers"
+```
+
+`jobs_submit("omp")`, `jobs_progress(job_id)`, `jobs_result(job_id)`, `jobs_steer(job_id)`
+from `roxabi_contracts.jobs.subjects` must be used for all dynamic subjects — no
+hand-crafted f-string subject names.
+
+### Digest gate (`_rpc_bridge.py`)
+
+```python
+_PINNED_SHA256 = "b877091c91ebdc8c8d907c4b62681895cd3ae049815858aea7b69ac1d53b7c7b"
+_OMP_BIN = Path("/opt/omp/omp")  # image-build constant — NEVER from env
+```
+
+On `RpcBridge.__init__`:
+
+1. Read `_OMP_BIN` bytes via `hashlib.sha256`.
+2. Compare hex digest against `_PINNED_SHA256`.
+3. If mismatch → raise `DigestMismatchError(actual=..., expected=_PINNED_SHA256)`.
+4. Worker refuses to start; NATS adapter logs and exits.
+
+`DigestMismatchError` is a local exception in `_rpc_bridge.py`. It must NOT be
+swallowed — propagate to `OmpWorker.__init__` which logs and re-raises.
+
+### Callback registration order (`_rpc_bridge.py`)
+
+Per omp_rpc API surface (confirmed in spike #1807):
+
+```python
+client.on_message_update(self._on_message_update)
+client.on_tool_execution_start(self._on_tool_execution_start)
+client.on_agent_end(self._on_agent_end)
+await client.new_session()    # ← MUST be last
+```
+
+`steer()` is fire-and-forget, between-tool-calls only. It is **never** called from
+inside the `prompt_and_wait` await chain. Implementation guard: if `steer()` is
+called while `_in_prompt_await` flag is set, raise `SteerViolationError` (local).
+
+### Exception classification (`_rpc_bridge.py`)
+
+Follow the `_classify_exception()` pattern from `clipool_worker.py`. Map exception
+types to error codes using `type(exc).__name__` only — never `str(exc)`, `f"{exc}"`,
+or `repr(exc)` in bus-bound fields (SanitizedError discipline ADR-073).
+
+```python
+def _classify_exception(exc: BaseException) -> WorkerError:
+    # Python ≥3.12: asyncio.TimeoutError is alias of TimeoutError;
+    # type(exc).__name__ always returns "TimeoutError" — never "asyncio.TimeoutError"
+    name = type(exc).__name__
+    if name == "DigestMismatchError":
+        return WorkerError(code="digest_mismatch", message=name, retryable=False)
+    if isinstance(exc, asyncio.TimeoutError):
+        return WorkerError(code="timeout", message=name, retryable=True)
+    if name in ("ConnectionRefusedError", "BrokenPipeError"):
+        return WorkerError(code="connection_error", message=name, retryable=True)
+    return WorkerError(code="internal_error", message=name, retryable=False)
+```
+
+`WorkerError` is imported from `roxabi_contracts.errors`. The `message` field
+must be `type(exc).__name__` — never `str(exc)`, `f"{exc}"`, or `repr(exc)`
+(SanitizedError discipline ADR-073).
+
+### Event translation
+
+| omp_rpc callback | NATS subject | Envelope class | Key fields |
+|---|---|---|---|
+| `on_message_update` | `factory.job.<job_id>.progress` | `JobProgress` | `step="message_update"`, `detail={"partial_text": ...}` |
+| `on_tool_execution_start` | `factory.job.<job_id>.progress` | `JobProgress` | `step="tool_start"`, `detail={"tool_name": ..., "tool_id": ..., "tool_input": ...}` |
+| `on_agent_end` | `factory.job.<job_id>.result` | `JobResult` | `status="success"`, `data={...}` |
+| exception in `prompt_and_wait` | `factory.job.<job_id>.result` | `JobResult` | `status="error"`, `error=_classify_exception(exc)` |
+
+`JobProgress` and `JobResult` are **existing** `WorkEnvelope` subclasses from
+`roxabi_contracts.jobs.models` (ADR-084). Do NOT hand-build raw dicts for NATS
+publish calls. The per-job subject must be obtained via `jobs_progress(job_id)`
+and `jobs_result(job_id)` — no hand-crafted f-strings.
+
+## Data Model
+
+Types used or introduced by this lane:
+
+| Type | Package | Status | Notes |
+|---|---|---|---|
+| `WorkerError` | `roxabi_contracts.errors` | Existing | `code`, `message` (`type(exc).__name__` only), `retryable` |
+| `JobProgress` | `roxabi_contracts.jobs.models` | Existing + additive extension | `WorkEnvelope` subclass; additive optional fields added: `event_type: str \| None = None`, `partial_text: str \| None = None`, `tool_name: str \| None = None`, `tool_id: str \| None = None`, `tool_input: dict[str, Any] \| None = None` |
+| `JobResult` | `roxabi_contracts.jobs.models` | Existing (no changes) | `WorkEnvelope` subclass; `status: Literal["success", "error"]`, `data`, `error: WorkerError \| None`; covers omp success/failure without additive fields |
+
+All additive fields on `JobProgress` use `default=None` within `CONTRACT_VERSION`
+`"1"` (ADR-084 shim discipline). No new top-level envelope types are introduced —
+per-runtime event models are the N×M parallel-path drift trap.
+
+**LlmEvent bypass:** OmpWorker does NOT emit `LlmEvent`. It publishes directly to
+`factory.job.<job_id>.progress` and `factory.job.<job_id>.result` via the
+omp_rpc callback wiring. `LlmEvent` is the hub's internal turn representation
+and is not on the NATS wire from workers.
+
+## ACL Identity
+
+Add to `deploy/nats/acl-matrix.json` `identities` block:
+
+```json
+"omp-worker": {
+  "status": "active",
+  "created_at": "2026-06-11",
+  "owner": "factory",
+  "description": "OmpWorker — omp_rpc NATS runtime backend (#1812)",
+  "notes": "Additive lane alongside clipool (ratified #1807). Uses post-#1793 canonical factory.job.* subjects (least-privilege single-token wildcard, NOT factory.job.>). Heartbeat mirrors clipool-worker pattern. Steer bridge subscribed worker-side. _inbox prefix derived from ADR-051 Fix 1.",
+  "allow_responses": true,
+  "publish": [
+    "factory.job.*.progress",
+    "factory.job.*.result",
+    "factory.omp.heartbeat",
+    "factory.system.ready",
+    "$JS.API.DIRECT.GET.KV_factory-state.hub.ready",
+    "$JS.API.INFO",
+    "$JS.API.STREAM.INFO.KV_factory-state",
+    "$JS.API.STREAM.MSG.GET.KV_factory-state"
+  ],
+  "subscribe": [
+    "factory.jobs.omp",
+    "factory.job.*.steer",
+    "_inbox.omp-worker.>",
+    "$KV.factory-state.>"
+  ],
+  "deploy": { "type": "container", "secret": "factory-nats-omp" }
+}
+```
+
+Hub already publishes to `factory.jobs.>` (via job dispatch). No hub ACL change
+required for the subscribe side.
+
+**ACL fan-out (BLOCKING — all 4 artifacts + hand-mirror):**
+
+After editing `acl-matrix.json`:
+
+1. Regenerate `deploy/nats/auth.conf`
+2. Regenerate 706-spec (`docs/architecture/706-per-role-nkeys-acls.md`)
+3. Regenerate `docs/architecture/CURRENT.generated.md`
+4. Regenerate v3-current render
+5. Hand-mirror the exact publish/subscribe diff into
+   `tests/scripts/fixtures/v3-pre-grant-group.json`
+   (NOT script-generated; gated by CI-only `test_v4_render_set_equals_v3_render`)
+
+Skipping any of steps 1–5 = red CI unreproducible locally.
+
+## Gate Extension: `check_str_exc_bus_bound.sh`
+
+`SCAN_ROOTS` currently excludes `src/factory/adapters/`. This lane MUST extend it
+before `_rpc_bridge.py` is merged:
+
+```bash
+# In tools/check_str_exc_bus_bound.sh, change:
+SCAN_ROOTS="${STR_EXC_SCAN_ROOTS:-src/factory/transport/ src/factory/outbound/ src/factory/core/processors/ src/factory/core/cli/ src/factory/streaming/}"
+# To:
+SCAN_ROOTS="${STR_EXC_SCAN_ROOTS:-src/factory/transport/ src/factory/outbound/ src/factory/core/processors/ src/factory/core/cli/ src/factory/streaming/ src/factory/adapters/}"
+```
+
+This change ships in the same PR as `_rpc_bridge.py`. The gate script is
+canonical at `roxabi-plugins/plugins/dev-core/tools/` — update both.
+
+## Backend Registration
+
+In `src/factory/core/ports/llm_types.py` line 43, extend `_VALID_BACKENDS`:
+
+```python
+_VALID_BACKENDS: frozenset[str] = frozenset({"claude-cli", "nats", "omp-rpc"})
+```
+
+Wire-compat safe: additive extension, existing agents unaffected, no
+`contract_version` bump required.
+
+## Quadlet Unit (`deploy/quadlet/factory-omp.container`)
+
+Pattern: mirror `factory-clipool.container`. Key invariants:
+
+```ini
+[Unit]
+Description=factory omp worker — omp_rpc NATS runtime backend (#1812)
+
+[Container]
+Image=ghcr.io/roxabi/factory-omp-base:15.10.8
+Exec=factory adapter omp
+
+UserNS=keep-id:uid=1500,gid=1500
+NoNewPrivileges=true
+ReadOnly=true
+DropCapability=all
+
+# NATS seed (type=mount, uid=1500)
+Secret=factory-nats-omp,type=mount,target=factory-nats-omp.seed,uid=1500,gid=1500,mode=0400
+
+# LiteLLM API key (type=env — ADR exemption required: omp_rpc reads LITELLM_API_KEY
+# from env; type=mount is impractical here because the key is consumed by the
+# omp binary, not by factory code. Justify inline in the PR per axial-review checklist.)
+Secret=factory-litellm-key,type=env,target=LITELLM_API_KEY
+
+# omp config dir — PI_CODING_AGENT_DIR points here
+# %h expands to the service user's home dir at unit activation time (Quadlet convention)
+Volume=%h/projects/roxabi-factory/deploy/omp:/home/factory/.config/omp-pi:ro,Z
+Environment=PI_CODING_AGENT_DIR=/home/factory/.config/omp-pi
+
+Label=io.containers.autoupdate=registry
+
+[Service]
+RestartSec=10
+
+[Install]
+WantedBy=default.target
+```
+
+The `Volume=` host path uses the `%h` specifier (user home directory, expanded
+by systemd at activation time) pointing to the repository `deploy/omp/`
+directory where `models.yml` lives. The container-side path must match
+`PI_CODING_AGENT_DIR`.
+
+`UserNS=keep-id:uid=1500,gid=1500` is set directly on the container unit
+(standalone, no pod). Never set it on both pod and container units.
+
+## `deploy/quadlet.toml` entry
+
+Add `[component.omp]` with both secrets listed so `secrets_drift` gate passes:
+
+```toml
+[component.omp]
+unit = "factory-omp.container"
+role = "factory-hub"
+required_secrets = ["factory-nats-omp", "factory-litellm-key"]
+```
+
+## `NatsAdapterBase` wiring invariant
+
+`OmpWorker` must pass `wait_ready=False` to `NatsAdapterBase.__init__`
+(confirmed at `packages/roxabi-nats/src/roxabi_nats/adapter_base.py:98`).
+Workers that set `wait_ready=True` deadlock on startup until hub announces
+readiness — OmpWorker is a peer worker, not a hub dependent.
+
+## Implementation Slices
+
+### S1 — Backend registration + gate extension (no-dep, ship first)
+
+**Files:**
+- `src/factory/core/ports/llm_types.py` — add `'omp-rpc'` to `_VALID_BACKENDS`
+- `tools/check_str_exc_bus_bound.sh` — extend `SCAN_ROOTS` to include
+  `src/factory/adapters/`
+- `roxabi-plugins/plugins/dev-core/tools/check_str_exc_bus_bound.sh` — mirror
+
+**Success criteria:**
+- `ModelConfig(backend="omp-rpc", ...)` constructs without `ValidationError`
+- `ModelConfig(backend="unknown-backend", ...)` still raises `ValidationError`
+- Unit tests cover both valid and invalid `backend` values for `ModelConfig`
+  (not just runtime smoke — must be in `tests/unit/core/ports/test_llm_types.py`)
+- `STR_EXC_SCAN_ROOTS` override is respected when set
+- Gate scan picks up a synthetic violation planted in `src/factory/adapters/`
+- `roxabi-plugins` co-land: `plugins/dev-core/tools/check_str_exc_bus_bound.sh`
+  updated in the same PR (canonical copy); project copy must match exactly
+
+**Tests:** `tests/unit/core/ports/test_llm_types.py` (extend existing backend
+validation tests)
+
+---
+
+### S2 — ACL fan-out (blocking — all 4 artifacts + hand-mirror)
+
+**Files:**
+- `deploy/nats/acl-matrix.json` — add `omp-worker` identity
+- `deploy/nats/auth.conf` — regenerated
+- `docs/architecture/706-per-role-nkeys-acls.md` — regenerated
+- `docs/architecture/CURRENT.generated.md` — regenerated
+- `tests/scripts/fixtures/v3-pre-grant-group.json` — hand-mirrored diff
+
+**Success criteria:**
+- `test_v4_render_set_equals_v3_render` passes (CI-only gate)
+- `secrets_drift` gate passes: `factory-nats-omp` listed in `quadlet.toml`
+  `required_secrets` and referenced in `factory-omp.container` `Secret=`
+- `omp-worker` identity present in `auth.conf` with correct publish/subscribe
+- `CURRENT.generated.md` reflects `omp-worker` grants
+- Hub identity holds a subscribe grant on `factory.omp.heartbeat` (verify in
+  `auth.conf` after regen — hub must be able to consume OmpWorker heartbeats)
+
+**Tests:** `tests/scripts/test_acl_matrix.py` or equivalent ACL equivalence suite
+
+---
+
+### S3 — `_rpc_bridge.py` — RpcClient + digest gate + event translation
+
+**Files:**
+- `src/factory/adapters/omp/_rpc_bridge.py` — new (≤ 300 SLOC)
+- `src/factory/adapters/omp/__init__.py` — new
+
+**Success criteria:**
+- `DigestMismatchError` raised when binary sha256 ≠ `_PINNED_SHA256`
+- Worker does NOT start when digest fails (propagated through `OmpWorker.__init__`)
+- Callback registration order: `on_message_update` → `on_tool_execution_start` →
+  `on_agent_end` → `new_session()` — verified via call order spy in test
+- `on_message_update` event → `factory.job.<job_id>.progress` publish with
+  `JobProgress(step="message_update", ...)`
+- `on_agent_end` event → `factory.job.<job_id>.result` publish with
+  `JobResult(status="success", ...)`
+- Exception in `prompt_and_wait` → `factory.job.<job_id>.result` with
+  `JobResult(status="error", error=_classify_exception(exc))`
+- No `str(exc)`, `f"{exc}"`, or `repr(exc)` in any NATS publish path
+  (gate scan must pass)
+- `str_exc_bus_bound` gate passes on `src/factory/adapters/omp/`
+
+**Tests:** `tests/unit/adapters/omp/test_rpc_bridge.py`
+- Stub `RpcClient` (no live LLM required)
+- Mock binary file for digest test
+- Assert NATS publish call arguments match expected subjects and payload shapes
+
+---
+
+### S4 — `omp_worker.py` — NatsAdapterBase subclass + NATS lifecycle
+
+**Files:**
+- `src/factory/adapters/omp/omp_worker.py` — new (≤ 300 SLOC)
+- `src/factory/adapters/omp/__init__.py` — re-export `OmpWorker`
+- `src/factory/cli.py` — register `@adapter_app.command("omp")` (currently
+  missing; telegram/discord/clipool present but not omp)
+
+**Success criteria:**
+- `OmpWorker` is a `NatsAdapterBase` subclass with `wait_ready=False`
+- `_extra_subjects()` returns `[]` (no extra subjects — heartbeat is NOT driven
+  via `_extra_subjects()`)
+- `heartbeat_subject=_HEARTBEAT_SUBJECT` kwarg passed to `super().__init__()`
+  (mirrors clipool_worker.py pattern; heartbeat loop is managed by base class)
+- Heartbeat published on `factory.omp.heartbeat` at configured interval
+- Job message on `factory.jobs.omp` dispatched to `RpcBridge.run()`
+- `factory-cli` entrypoint `factory adapter omp` resolves to `OmpWorker`
+- `DigestMismatchError` propagated as clean exit with error log (no stack trace
+  to NATS bus)
+
+**Tests:** `tests/unit/adapters/omp/test_omp_worker.py`
+- Mock `RpcBridge`; assert subject subscription
+- Assert `wait_ready=False` at construction time
+- Assert `heartbeat_subject=_HEARTBEAT_SUBJECT` kwarg passed to
+  `super().__init__()` (NOT via `_extra_subjects()`)
+
+---
+
+### S5 — Quadlet + deploy wiring
+
+**Files:**
+- `deploy/quadlet/factory-omp.container` — new unit
+- `deploy/quadlet.toml` — add `[component.omp]`
+- `deploy/omp/models.yml` — omp models config (copy/adapt from #1811)
+- `docs/QUADLET-DEPLOYMENT.md` — add `factory-omp` to units table
+
+**Success criteria:**
+- `secrets_drift` gate passes: `required_secrets` in `quadlet.toml` ⊆ `Secret=`
+  in `factory-omp.container`
+- `volumes_table` gate passes: `Volume=` directives in container unit reflected
+  in `docs/QUADLET-DEPLOYMENT.md` volumes table
+- `factory-omp.container` contains `NoNewPrivileges=true`, `ReadOnly=true`,
+  `DropCapability=all`, `RestartSec=10`
+- `PI_CODING_AGENT_DIR` env var and volume mount are consistent (same container
+  path)
+- `models.yml` path on host = `deploy/omp/models.yml`; no hardcoded `/etc` paths
+- `Label=io.containers.autoupdate=registry` present
+
+**Tests:** CI `secrets_drift` + `volumes_table` gates (no unit tests for Quadlet
+content — gate-enforced)
+
+---
+
+## Security Constraints
+
+| Constraint | Rule |
+|---|---|
+| OMP_BIN origin | Must be image-build constant `/opt/omp/omp`; never from env |
+| Digest gate | Worker refuses start if `sha256(omp_bin) ≠ _PINNED_SHA256` |
+| `_verify_digest()` blocking | Hash read in `RpcBridge.__init__` is CPU-blocking (reads full binary synchronously); consider `asyncio.to_thread` in implementation to avoid event-loop stall |
+| Exception strings | Never `str(exc)` / `f"{exc}"` / `repr(exc)` in NATS-bound fields; use `type(exc).__name__` |
+| omp_rpc exceptions | If `omp_rpc` raises custom exception types, extend `_classify_exception` with additional `isinstance` / `type(exc).__name__` branches; never swallow unknown exceptions silently |
+| Bare except | `except Exception:` requires inline justification comment; follow `clipool_worker.py` `_classify_exception` pattern |
+| Secret delivery | NATS seed: `type=mount,uid=1500,mode=0400`; LITELLM_API_KEY: `type=env` (ADR exemption required — omp binary reads from env, type=mount impractical; justify inline in PR per axial-review checklist) |
+| Container hardening | `NoNewPrivileges=true`, `ReadOnly=true`, `DropCapability=all` |
+| UserNS | `keep-id:uid=1500,gid=1500` on standalone container unit (never on both pod and container units) |
+
+## Success Criteria (global)
+
+- [ ] SC-01: `ModelConfig(backend="omp-rpc")` constructs; `backend="unknown"` raises `ValidationError`
+- [ ] SC-02: `DigestMismatchError` raised synchronously in `RpcBridge.__init__` when binary sha256 ≠ pinned value
+- [ ] SC-03: Worker process does not start and emits clean error log on digest mismatch (no stack trace on NATS bus)
+- [ ] SC-04: omp_rpc callbacks registered in order `on_message_update` → `on_tool_execution_start` → `on_agent_end` → `new_session()`
+- [ ] SC-05: `on_message_update` event publishes to `factory.job.<job_id>.progress` via `JobProgress(step="message_update", ...)` and no `str(exc)` in any field
+- [ ] SC-06: `on_agent_end` event publishes to `factory.job.<job_id>.result` via `JobResult(status="success", ...)`
+- [ ] SC-07: Exception in `prompt_and_wait` publishes to `factory.job.<job_id>.result` via `JobResult(status="error", error=_classify_exception(exc))` (type name only)
+- [ ] SC-08: `str_exc_bus_bound` gate passes with `src/factory/adapters/` in scan roots
+- [ ] SC-09: `test_v4_render_set_equals_v3_render` green after acl-matrix.json + v3-pre-grant-group.json update
+- [ ] SC-10: `secrets_drift` gate passes: `factory-nats-omp` + `factory-litellm-key` in `quadlet.toml` `required_secrets` AND referenced in `factory-omp.container`
+- [ ] SC-11: All unit tests pass without a live LLM endpoint (stubbed `RpcClient`)
+- [ ] SC-12: `OmpWorker` passes `wait_ready=False` to `NatsAdapterBase.__init__`
+- [ ] SC-13: `factory adapter omp` CLI entrypoint resolves to `OmpWorker`
+- [ ] SC-14: `volumes_table` and `file_length` (SLOC ≤ 300) gates pass
+- [ ] SC-15: clipool continues operating without modification; no shared state with OmpWorker
+
+## Out of Scope
+
+- Runtime selection (#1813) — which agents use `omp-rpc` vs `claude-cli`/`nats`
+- Retiring clipool — additive lane only
+- `factory.job.<id>.opened` and `factory.job.<id>.closed` — deferred pending #1796/#1798 (no consumer until those land); `factory.job.<id>.progress`, `factory.job.<id>.result`, and `factory.job.<id>.steer` ARE in scope (provided by #1793)
+- `#493` ToolHandler, `#1778` JobContext — forward-compat seams, not a dependency
+- `#1799` steer E2E test — steer wiring is in scope; dedicated E2E test is #1799
+- omp binary pin bump — pinned at v15.10.8 from #1810; upgrade = separate PR
+
+## Dependencies
+
+| Dep | Type | Status |
+|---|---|---|
+| #1793 (jobs subject rename) | Hard predecessor | Must merge first; OmpWorker subjects reference post-rename names |
+| #1810 (factory-omp-base image) | Hard predecessor | `ghcr.io/roxabi/factory-omp-base:15.10.8` must be published |
+
+## Open Questions
+
+None — all three NCs resolved:
+- NC-02 (wire subjects): post-#1793 canonical subjects (`factory.job.<id>.progress/result/steer`) via Directive 1
+- NC-04 (heartbeat subject): `factory.omp.heartbeat` confirmed via Directive 3; hub identity subscribe grant mirrors clipool-heartbeat pattern
+- NC-05 (event models): `OmpProgressEvent`/`OmpResultEvent` dropped; existing `JobProgress`/`JobResult` (`WorkEnvelope` subclasses) used directly via Directive 2

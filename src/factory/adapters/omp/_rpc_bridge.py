@@ -26,7 +26,7 @@ from roxabi_contracts.jobs.models import JobProgress, JobResult
 from roxabi_contracts.jobs.subjects import jobs_progress, jobs_result, jobs_steer
 
 if TYPE_CHECKING:
-    import nats
+    from nats.aio.client import Client as NatsClient
 
 log = logging.getLogger(__name__)
 
@@ -117,11 +117,11 @@ class RpcBridge:
         import omp_rpc  # type: ignore[import-not-found]
 
         self._client: omp_rpc.RpcClient = omp_rpc.RpcClient()
-        self._nc: nats.aio.client.Client | None = None
+        self._nc: NatsClient | None = None
         self._in_prompt_await: bool = False
         self._result_sent: bool = False
 
-    async def register(self, nc: nats.aio.client.Client) -> None:
+    async def register(self, nc: NatsClient) -> None:
         """Wire callbacks and open the omp_rpc session.
 
         Must be called after NATS connection is established and
@@ -204,7 +204,7 @@ class RpcBridge:
             return
         tool_name = getattr(event, "tool_name", None)
         tool_id = getattr(event, "tool_id", None)
-        # tool_input intentionally NOT published — may contain credentials/file fragments
+        # tool_input NOT published — may contain credentials/file fragments (ADR-073)
         payload = _make_progress(
             job_id,
             step="tool_start",
@@ -224,11 +224,15 @@ class RpcBridge:
         if nc is None or job_id is None:
             return
         if self._result_sent:
-            log.debug("rpc_bridge: _on_agent_end skipped — result already sent for %s", job_id)
+            log.debug(
+                "rpc_bridge: _on_agent_end skipped — result already sent for %s", job_id
+            )
             return
         self._result_sent = True
         result_data = getattr(event, "result", None)
-        data: dict[str, Any] = {"result": result_data} if result_data is not None else {}
+        data: dict[str, Any] = (
+            {"result": result_data} if result_data is not None else {}
+        )
         payload = _make_result(job_id, status="success", data=data)
         asyncio.get_running_loop().call_soon(
             lambda: asyncio.ensure_future(nc.publish(jobs_result(job_id), payload))
@@ -241,7 +245,9 @@ class RpcBridge:
         _on_agent_end fires and prompt_and_wait also raises.
         """
         if self._result_sent:
-            log.debug("rpc_bridge: publish_error skipped — result already sent for %s", job_id)
+            log.debug(
+                "rpc_bridge: publish_error skipped — result already sent for %s", job_id
+            )
             return
         self._result_sent = True
         nc = self._nc

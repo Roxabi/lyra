@@ -21,12 +21,11 @@ import signal
 import time
 from typing import Any
 
+from factory.adapters.omp._rpc_bridge import RpcBridge
 from roxabi_contracts.jobs.models import JobEnvelope
 from roxabi_contracts.jobs.subjects import jobs_submit
 from roxabi_nats import nats_connect
 from roxabi_nats.adapter_base import NatsAdapterBase
-
-from factory.adapters.omp._rpc_bridge import RpcBridge
 
 log = logging.getLogger(__name__)
 
@@ -112,7 +111,9 @@ class OmpWorker(NatsAdapterBase):
         """Dispatch a received job envelope to the RpcBridge."""
         try:
             envelope = JobEnvelope.model_validate(payload)
-        except Exception as exc:  # pydantic.ValidationError — schema parse failure  # noqa: BLE001
+        except (
+            Exception
+        ) as exc:  # pydantic.ValidationError — schema parse failure  # noqa: BLE001
             log.exception("omp_worker: failed to parse JobEnvelope")
             # ValidationError.__str__ may embed incoming values — use only
             # type name on the bus (ADR-073). Log the full exception locally above.
@@ -126,7 +127,9 @@ class OmpWorker(NatsAdapterBase):
         start = time.monotonic()
         try:
             await self._bridge.run(prompt=str(prompt), job_id=str(job_id))
-        except Exception as exc:  # propagated from prompt_and_wait; publish error  # noqa: BLE001
+        except (
+            Exception
+        ) as exc:  # propagated from prompt_and_wait; publish error  # noqa: BLE001
             log.exception("omp_worker: job_id=%s failed", job_id)
             await self._bridge.publish_error(str(job_id), exc)
         else:

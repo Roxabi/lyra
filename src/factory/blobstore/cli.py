@@ -16,7 +16,7 @@ from roxabi_blobs import FsBlobStore
 
 blobstore_app = typer.Typer(name="blobstore", help="BlobStore HTTP service.")
 
-_DEFAULT_TOKEN_PATH = Path("/run/secrets/lyra_blobstore_token")
+_DEFAULT_TOKEN_PATH = Path("/run/secrets/factory_blobstore_token")
 
 # Minimum sweep window — FACTORY_OUTBOUND_AUDIO JetStream MaxAge is 24 h;
 # in-flight consumers may still hold references.  7 d gives margin.

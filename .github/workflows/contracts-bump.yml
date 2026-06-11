@@ -1,0 +1,327 @@
+# Reusable workflow — bump uv.lock for roxabi-contracts/nats/blobs in a satellite repo.
+#
+# Triggered by satellite callers (workflow_call) or manually (workflow_dispatch).
+# Wire-compatible bumps → `reviewed` label → satellite auto-merge.yml cascade.
+# CONTRACT_VERSION bump → `wire-breaking` label → human review required.
+#
+# Design decisions: DD-1 through DD-5 in artifacts/specs/1791-contracts-lock-bump-workflow-spec.mdx
+name: Contracts lock bump (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      satellite_repo:
+        description: "Satellite repo (e.g. Roxabi/llmCLI)"
+        required: true
+        type: string
+      packages:
+        description: "Space-separated packages to upgrade (e.g. 'roxabi-contracts roxabi-nats')"
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      satellite_repo:
+        description: "Satellite repo (e.g. Roxabi/llmCLI)"
+        required: true
+        type: choice
+        options:
+          - Roxabi/llmCLI
+          - Roxabi/voiceCLI
+          - Roxabi/imageCLI
+      packages:
+        description: "Space-separated packages to upgrade (e.g. 'roxabi-contracts roxabi-nats')"
+        required: true
+        type: string
+
+jobs:
+  bump:
+    name: Bump ${{ inputs.satellite_repo }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # roxabi-ci App token (ephemeral, 1 h) — replaces the shared org PAT: its pushes
+      # re-trigger CI and it can merge workflow-file PRs, which GITHUB_TOKEN cannot.
+      - name: Mint app token (roxabi-ci)
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: ${{ vars.ROXABI_CI_APP_ID }}
+          private-key: ${{ secrets.ROXABI_CI_APP_PRIVATE_KEY }}
+
+      # Step 1: Checkout the satellite repo at staging.
+      # Uses explicit repository: input to handle both workflow_call (satellite context)
+      # and workflow_dispatch (factory context where github.repository = roxabi-factory).
+      - name: Checkout satellite at staging
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          repository: ${{ inputs.satellite_repo }}
+          ref: staging
+          token: ${{ steps.app.outputs.token }}
+          fetch-depth: 0
+
+      # Step 2: Capture OLD_CONTRACTS_SHA from uv.lock BEFORE any upgrade runs.
+      # This is necessary for the wire-guard step (DD-4).
+      - name: Capture old contracts SHA
+        id: old-sha
+        run: |
+          # Extract the git source SHA for roxabi-contracts from the current uv.lock.
+          # uv.lock lists git sources as:   source = { git = "...", rev = "<sha>" }
+          # We grep for the stanza after "name = \"roxabi-contracts\"".
+          OLD_SHA=$(python3 - <<'EOF'
+          import re, pathlib
+          lock = pathlib.Path("uv.lock").read_text()
+          # Find the [[package]] block that contains roxabi-contracts
+          blocks = re.split(r'\n\[\[package\]\]\n', lock)
+          for block in blocks:
+              if 'name = "roxabi-contracts"' in block:
+                  m = re.search(r'rev\s*=\s*"([0-9a-f]{40})"', block)
+                  if m:
+                      print(m.group(1))
+                  break
+          EOF
+          )
+          echo "old_sha=${OLD_SHA}" >> "$GITHUB_OUTPUT"
+          echo "Old roxabi-contracts SHA: ${OLD_SHA:-<not found — contracts not yet in lock>}"
+
+      # Step 3: Install uv and run the lock upgrade.
+      - name: Set up uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+
+      - name: Upgrade packages in uv.lock
+        run: |
+          PACKAGES="${PACKAGES_INPUT}"
+          for pkg in $PACKAGES; do
+            echo "Upgrading: $pkg"
+            uv lock --upgrade-package "$pkg"
+          done
+        env:
+          # env: indirection for script-injection hardening (all inputs via env vars only)
+          PACKAGES_INPUT: ${{ inputs.packages }}
+
+      # Step 4: Check if uv.lock actually changed.
+      - name: Check for lock changes
+        id: diff
+        run: |
+          if git diff --quiet -- uv.lock; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No lock changes — skipping PR."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "uv.lock has changes — proceeding."
+          fi
+
+      - name: No-op exit
+        if: steps.diff.outputs.changed == 'false'
+        run: |
+          echo "::notice::No lock changes for ${SATELLITE_REPO_INPUT} — skipping PR."
+        env:
+          SATELLITE_REPO_INPUT: ${{ inputs.satellite_repo }}
+
+      # Step 5: Capture NEW_CONTRACTS_SHA and detect wire-breaking change.
+      - name: Capture new contracts SHA and detect wire break
+        id: wire-guard
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          NEW_SHA=$(python3 - <<'EOF'
+          import re, pathlib
+          lock = pathlib.Path("uv.lock").read_text()
+          blocks = re.split(r'\n\[\[package\]\]\n', lock)
+          for block in blocks:
+              if 'name = "roxabi-contracts"' in block:
+                  m = re.search(r'rev\s*=\s*"([0-9a-f]{40})"', block)
+                  if m:
+                      print(m.group(1))
+                  break
+          EOF
+          )
+          echo "new_sha=${NEW_SHA}" >> "$GITHUB_OUTPUT"
+          echo "New roxabi-contracts SHA: ${NEW_SHA:-<not in lock>}"
+
+          OLD_SHA="${OLD_CONTRACTS_SHA}"
+          # If either SHA is absent (contracts not in this lock), skip version check.
+          if [ -z "${OLD_SHA}" ] || [ -z "${NEW_SHA}" ]; then
+            echo "wire_breaking=false" >> "$GITHUB_OUTPUT"
+            echo "old_version=N/A" >> "$GITHUB_OUTPUT"
+            echo "new_version=N/A" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # If the SHA didn't change, no version bump possible.
+          if [ "${OLD_SHA}" = "${NEW_SHA}" ]; then
+            echo "wire_breaking=false" >> "$GITHUB_OUTPUT"
+            echo "old_version=unchanged" >> "$GITHUB_OUTPUT"
+            echo "new_version=unchanged" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Extract CONTRACT_VERSION from factory's envelope.py via the GitHub Contents API.
+          # DD-4: git show cannot be used — the satellite runner has no factory git objects.
+          ENVELOPE_PATH="packages/roxabi-contracts/src/roxabi_contracts/envelope.py"
+
+          OLD_VERSION=$(gh api \
+            "repos/Roxabi/roxabi-factory/contents/${ENVELOPE_PATH}?ref=${OLD_SHA}" \
+            --jq '.content' | base64 -d | grep '^CONTRACT_VERSION' | cut -d'"' -f2)
+
+          NEW_VERSION=$(gh api \
+            "repos/Roxabi/roxabi-factory/contents/${ENVELOPE_PATH}?ref=${NEW_SHA}" \
+            --jq '.content' | base64 -d | grep '^CONTRACT_VERSION' | cut -d'"' -f2)
+
+          echo "old_version=${OLD_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "new_version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "CONTRACT_VERSION: ${OLD_VERSION} → ${NEW_VERSION}"
+
+          # Raw string comparison (DD-4: no semver parsing).
+          if [ "${OLD_VERSION}" != "${NEW_VERSION}" ]; then
+            echo "wire_breaking=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Wire-breaking CONTRACT_VERSION change detected: ${OLD_VERSION} → ${NEW_VERSION}"
+          else
+            echo "wire_breaking=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          OLD_CONTRACTS_SHA: ${{ steps.old-sha.outputs.old_sha }}
+
+      # Step 6: Idempotency — skip if a bump PR is already open for this satellite this week.
+      - name: Check for existing bump PR
+        id: existing-pr
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          SATELLITE_NAME="${SATELLITE_REPO##*/}"
+          SEARCH_TITLE="chore/bump-contracts-${SATELLITE_NAME}"
+          EXISTING=$(gh pr list \
+            --search "${SEARCH_TITLE} in:title" \
+            --state open \
+            --repo "${SATELLITE_REPO}" \
+            --json number,title \
+            --jq '.[0].number // empty')
+          if [ -n "${EXISTING}" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Open bump PR #${EXISTING} already exists for ${SATELLITE_REPO} — skipping."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          SATELLITE_REPO: ${{ inputs.satellite_repo }}
+
+      # Step 7: Compute branch name, gather factory changelog, create branch + commit + PR.
+      - name: Create bump branch and PR
+        id: create-pr
+        if: steps.diff.outputs.changed == 'true' && steps.existing-pr.outputs.skip == 'false'
+        run: |
+          SATELLITE_REPO="${SATELLITE_REPO_INPUT}"
+          SATELLITE_NAME="${SATELLITE_REPO##*/}"
+          DATE=$(date -u +%Y%m%d)
+          BRANCH="chore/bump-contracts-${SATELLITE_NAME}-${DATE}"
+
+          OLD_SHA="${OLD_CONTRACTS_SHA}"
+          NEW_SHA="${NEW_CONTRACTS_SHA}"
+
+          # Short SHAs for commit message.
+          OLD_SHORT="${OLD_SHA:0:7}"
+          NEW_SHORT="${NEW_SHA:0:7}"
+
+          WIRE_BREAKING="${WIRE_BREAKING_FLAG}"
+          OLD_VER="${OLD_VERSION}"
+          NEW_VER="${NEW_VERSION}"
+
+          # Commit message suffix.
+          if [ "${WIRE_BREAKING}" = "true" ]; then
+            MSG_SUFFIX=" [WIRE BREAKING]"
+          else
+            MSG_SUFFIX=""
+          fi
+
+          # Configure git identity for the commit.
+          git config user.email "bot@roxabi.dev"
+          git config user.name "Roxabi Bot"
+
+          # Guard against a stale remote branch from a previously closed/merged same-day PR.
+          # (The idempotency check above only catches *open* PRs.)
+          if git ls-remote --exit-code --heads origin "${BRANCH}" > /dev/null 2>&1; then
+            BRANCH="${BRANCH}-run${{ github.run_attempt }}"
+            echo "::notice::Remote branch already exists (closed/merged PR?); using ${BRANCH} instead."
+          fi
+
+          git checkout -b "${BRANCH}"
+          git add uv.lock
+          git commit -m "chore(deps): bump roxabi-contracts/nats lock ${OLD_SHORT}..${NEW_SHORT}${MSG_SUFFIX}"
+          git push origin "${BRANCH}"
+
+          # Fetch factory changelog via GitHub API (no extra checkout needed).
+          CHANGELOG=""
+          if [ -n "${OLD_SHA}" ] && [ -n "${NEW_SHA}" ] && [ "${OLD_SHA}" != "${NEW_SHA}" ]; then
+            CHANGELOG=$(gh api \
+              "repos/Roxabi/roxabi-factory/compare/${OLD_SHA}...${NEW_SHA}" \
+              --jq '[.commits[] | "- \(.sha[:7]) \(.commit.message | split("\n")[0])"] | join("\n")' \
+              2>/dev/null || echo "(could not fetch factory changelog)")
+          fi
+
+          # Build PR body — write to a temp file to avoid shell quoting issues.
+          PACKAGES_DISP="${PACKAGES_INPUT}"
+          PACKAGES_FMT=$(echo "$PACKAGES_DISP" | tr ' ' ', ')
+
+          PR_BODY_FILE=$(mktemp)
+
+          printf 'Automated weekly lock bump for `%s`.\n\n' "${PACKAGES_FMT}" >> "${PR_BODY_FILE}"
+
+          if [ "${WIRE_BREAKING}" = "true" ]; then
+            printf '## Wire-Breaking Change\n\n' >> "${PR_BODY_FILE}"
+            printf '⚠ CONTRACT_VERSION bumped: `%s` → `%s`. Wire-breaking change — human review required before merge.\n\n' \
+              "${OLD_VER}" "${NEW_VER}" >> "${PR_BODY_FILE}"
+          fi
+
+          if [ -n "${CHANGELOG}" ]; then
+            printf '## Factory commits (%s..%s)\n\n```\n%s\n```\n\n' \
+              "${OLD_SHORT}" "${NEW_SHORT}" "${CHANGELOG}" >> "${PR_BODY_FILE}"
+          fi
+
+          printf -- '---\n*Generated by [contracts-bump.yml](https://github.com/Roxabi/roxabi-factory/blob/staging/.github/workflows/contracts-bump.yml) — refs #1791.*\n' \
+            >> "${PR_BODY_FILE}"
+
+          # Create the PR.
+          PR_URL=$(gh pr create \
+            --repo "${SATELLITE_REPO}" \
+            --base staging \
+            --head "${BRANCH}" \
+            --title "chore(deps): bump roxabi-contracts/nats lock ${OLD_SHORT}..${NEW_SHORT}${MSG_SUFFIX}" \
+            --body-file "${PR_BODY_FILE}")
+
+          rm -f "${PR_BODY_FILE}"
+
+          echo "pr_url=${PR_URL}" >> "$GITHUB_OUTPUT"
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "Created PR: ${PR_URL}"
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          SATELLITE_REPO_INPUT: ${{ inputs.satellite_repo }}
+          OLD_CONTRACTS_SHA: ${{ steps.old-sha.outputs.old_sha }}
+          NEW_CONTRACTS_SHA: ${{ steps.wire-guard.outputs.new_sha }}
+          WIRE_BREAKING_FLAG: ${{ steps.wire-guard.outputs.wire_breaking }}
+          OLD_VERSION: ${{ steps.wire-guard.outputs.old_version }}
+          NEW_VERSION: ${{ steps.wire-guard.outputs.new_version }}
+          PACKAGES_INPUT: ${{ inputs.packages }}
+
+      # Step 8: Apply label — wire-breaking (hold for review) or reviewed (auto-merge cascade).
+      # continue-on-error: true so a missing label (D3 prerequisite skipped) emits a warning
+      # rather than failing the job and leaving the PR unlabelled silently.
+      - name: Apply label
+        if: steps.diff.outputs.changed == 'true' && steps.existing-pr.outputs.skip == 'false' && steps.create-pr.outputs.pr_url != ''
+        continue-on-error: true
+        run: |
+          PR_URL="${PR_URL_INPUT}"
+          if [ "${WIRE_BREAKING}" = "true" ]; then
+            LABEL="wire-breaking"
+          else
+            LABEL="reviewed"
+          fi
+          # --repo omitted: gh parses the repo from the PR URL, passing --repo is redundant
+          # and could diverge if the URL and SATELLITE_REPO ever differ.
+          gh pr edit "${PR_URL}" --add-label "${LABEL}" \
+            || echo "::warning::Failed to apply label '${LABEL}' to ${PR_URL} — ensure D3 labels exist in the satellite repo."
+          echo "Applied label '${LABEL}' to ${PR_URL}"
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          PR_URL_INPUT: ${{ steps.create-pr.outputs.pr_url }}
+          WIRE_BREAKING: ${{ steps.wire-guard.outputs.wire_breaking }}

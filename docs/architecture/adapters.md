@@ -185,6 +185,10 @@ runs post-NATS inside the hub process. See `ARCHITECTURE.md §Inbound Message Pi
   PlatformContext migration is required before any third platform is added.
 - Hub starts and serves text traffic independently of voice adapter availability.
 - `prefs_store.close()` must be in the graceful shutdown sequence.
+- `OutboundDispatcher._queue` is bounded at `OUTBOUND_QUEUE_MAXSIZE` (50 items). When
+  full, the oldest item is dropped before enqueueing the new one (drop-oldest policy).
+  Dropped items have their async iterators drained and emit a structured warning log with
+  `event=outbound_queue_overflow`. No user-facing notification is sent on overflow.
 
 ---
 
@@ -196,8 +200,6 @@ runs post-NATS inside the hub process. See `ARCHITECTURE.md §Inbound Message Pi
   Option D); render_audio() is present but lifecycle is not.
 - `platform_meta: dict` → PlatformContext typed migration is partial; hard prerequisite
   before a third platform adapter is added.
-- `OutboundDispatcher._queue` is unbounded; `queue_maxsize` constructor parameter and a
-  sensible default are recommended but not yet added.
 - Startup-time stale temp-file sweep of `FACTORY_AUDIO_TMP` on hub restart is deferred.
 - Multi-agent `AgentTTSConfig` — until Option B is verified at `AudioPipeline` /
   TTSService call sites, multi-agent deployments should log a warning when two agents

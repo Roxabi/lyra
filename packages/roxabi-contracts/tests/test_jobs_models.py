@@ -17,8 +17,11 @@ from roxabi_contracts.jobs import (
     JobEnvelope,
     JobProgress,
     JobResult,
+    jobs_closed,
+    jobs_opened,
     jobs_progress,
     jobs_result,
+    jobs_steer,
     jobs_submit,
 )
 from roxabi_contracts.jobs.fixtures import (
@@ -249,13 +252,28 @@ def test_subjects_jobs_submit() -> None:
 
 
 def test_subjects_jobs_result() -> None:
-    """jobs_result produces factory.results.<job_id>."""
-    assert jobs_result("job-uuid-1234") == "factory.results.job-uuid-1234"
+    """jobs_result produces factory.job.<job_id>.result."""
+    assert jobs_result("job-uuid-1234") == "factory.job.job-uuid-1234.result"
 
 
 def test_subjects_jobs_progress() -> None:
-    """jobs_progress produces factory.progress.<job_id>."""
-    assert jobs_progress("job-uuid-1234") == "factory.progress.job-uuid-1234"
+    """jobs_progress produces factory.job.<job_id>.progress."""
+    assert jobs_progress("job-uuid-1234") == "factory.job.job-uuid-1234.progress"
+
+
+def test_subjects_jobs_steer() -> None:
+    """jobs_steer produces factory.job.<job_id>.steer."""
+    assert jobs_steer("job-uuid-1234") == "factory.job.job-uuid-1234.steer"
+
+
+def test_subjects_jobs_opened() -> None:
+    """jobs_opened produces factory.job.<job_id>.opened."""
+    assert jobs_opened("job-uuid-1234") == "factory.job.job-uuid-1234.opened"
+
+
+def test_subjects_jobs_closed() -> None:
+    """jobs_closed produces factory.job.<job_id>.closed."""
+    assert jobs_closed("job-uuid-1234") == "factory.job.job-uuid-1234.closed"
 
 
 def test_job_envelope_accepts_inbox_reply_to() -> None:
@@ -278,6 +296,15 @@ def test_job_envelope_accepts_inbox_reply_to() -> None:
         pytest.param(jobs_progress, "bad*token", id="progress-asterisk"),
         pytest.param(jobs_progress, "bad>token", id="progress-greater-than"),
         pytest.param(jobs_progress, "", id="progress-empty-string"),
+        pytest.param(jobs_steer, "bad*token", id="steer-asterisk"),
+        pytest.param(jobs_steer, "bad>token", id="steer-greater-than"),
+        pytest.param(jobs_steer, "", id="steer-empty-string"),
+        pytest.param(jobs_opened, "bad*token", id="opened-asterisk"),
+        pytest.param(jobs_opened, "bad>token", id="opened-greater-than"),
+        pytest.param(jobs_opened, "", id="opened-empty-string"),
+        pytest.param(jobs_closed, "bad*token", id="closed-asterisk"),
+        pytest.param(jobs_closed, "bad>token", id="closed-greater-than"),
+        pytest.param(jobs_closed, "", id="closed-empty-string"),
         pytest.param(jobs_submit, ".leading-dot", id="submit-leading-dot"),
         pytest.param(jobs_submit, "a..b", id="submit-consecutive-dots"),
         pytest.param(jobs_submit, "trailing.", id="submit-trailing-dot"),
@@ -287,3 +314,51 @@ def test_subjects_rejects_bad_tokens(helper: Any, bad_token: str) -> None:
     """Subject helpers raise ValueError for wildcards, empty strings, dot boundaries."""
     with pytest.raises(ValueError):
         helper(bad_token)
+
+
+# ---------------------------------------------------------------------------
+# test_job_progress_omp_fields — additive omp-worker streaming fields (#1812)
+# ---------------------------------------------------------------------------
+
+
+def test_job_progress_omp_fields_default_none() -> None:
+    """New omp streaming fields all default to None (wire-compatible, ADR-084)."""
+    inst = JobProgress.model_validate(sample_job_progress)
+    assert inst.event_type is None
+    assert inst.partial_text is None
+    assert inst.tool_name is None
+    assert inst.tool_id is None
+    assert inst.tool_input is None
+
+
+def test_job_progress_omp_fields_roundtrip() -> None:
+    """omp streaming fields survive model_dump_json → model_validate_json."""
+    payload: dict[str, Any] = {
+        **sample_job_progress,
+        "event_type": "tool_use",
+        "partial_text": "hello",
+        "tool_name": "bash",
+        "tool_id": "toolu_abc123",
+        "tool_input": {"cmd": "ls"},
+    }
+    inst = JobProgress.model_validate(payload)
+    restored = JobProgress.model_validate_json(inst.model_dump_json())
+
+    assert restored.event_type == "tool_use"
+    assert restored.partial_text == "hello"
+    assert restored.tool_name == "bash"
+    assert restored.tool_id == "toolu_abc123"
+    assert restored.tool_input == {"cmd": "ls"}
+
+
+def test_job_progress_omp_fields_extra_ignored() -> None:
+    """Unknown future omp fields are dropped (forward-compat, extra='ignore')."""
+    payload: dict[str, Any] = {
+        **sample_job_progress,
+        "event_type": "thinking",
+        "future_omp_field": "ignored",
+    }
+    inst = JobProgress.model_validate(payload)
+    dumped = inst.model_dump()
+    assert "future_omp_field" not in dumped
+    assert inst.event_type == "thinking"

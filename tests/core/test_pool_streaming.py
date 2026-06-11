@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import collections.abc
+import logging
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -425,3 +426,96 @@ class TestPoolStreaming:
         assert pool.session_id == "session-from-iterator", (
             f"expected session_id from original iterator, got {pool.session_id!r}"
         )
+
+
+class TestRunStreamingTurnPost:
+    """run_streaming_turn_post — processor post-hook on the streaming path (#372)."""
+
+    async def test_invokes_post_with_joined_content_after_stream_done(self) -> None:
+        from factory.core.pool.pool_processor_streaming import run_streaming_turn_post
+
+        processor = MagicMock()
+        processor.post = AsyncMock()
+        done = asyncio.Event()
+        done.set()
+        msg = make_msg("hi")
+
+        await run_streaming_turn_post(processor, done, msg, ["foo", "bar"])
+
+        processor.post.assert_awaited_once()
+        sent_msg, sent_resp = processor.post.await_args.args
+        assert sent_msg is msg
+        assert sent_resp.content == "foobar"
+
+    async def test_noop_when_processor_none(self) -> None:
+        from factory.core.pool.pool_processor_streaming import run_streaming_turn_post
+
+        # processor None → returns before awaiting the (un-set) event. wait_for makes a
+        # regressed guard fail fast (TimeoutError) rather than hang the suite.
+        await asyncio.wait_for(
+            run_streaming_turn_post(None, asyncio.Event(), make_msg("hi"), ["x"]),
+            timeout=TIMEOUT_IO,
+        )
+
+    async def test_noop_when_stream_done_event_none(self) -> None:
+        from factory.core.pool.pool_processor_streaming import run_streaming_turn_post
+
+        processor = MagicMock()
+        processor.post = AsyncMock()
+        # stream_done_event None → guard returns before touching the event or post().
+        await asyncio.wait_for(
+            run_streaming_turn_post(processor, None, make_msg("hi"), ["x"]),
+            timeout=TIMEOUT_IO,
+        )
+        processor.post.assert_not_awaited()
+
+    async def test_post_exception_is_swallowed(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from factory.core.pool.pool_processor_streaming import run_streaming_turn_post
+
+        processor = MagicMock()
+        processor.post = AsyncMock(side_effect=RuntimeError("boom"))
+        done = asyncio.Event()
+        done.set()
+
+        # Broad boundary catch: a failing post() is logged, never propagated.
+        with caplog.at_level(logging.WARNING):
+            await run_streaming_turn_post(processor, done, make_msg("hi"), ["x"])
+
+        processor.post.assert_awaited_once()
+        assert "Processor post() failed" in caplog.text
+
+    async def test_cancellation_propagates_into_post_hook(self) -> None:
+        """#1820: awaiting post() directly (not via `await create_task`) means a
+        cancelled turn cancels the post-hook instead of orphaning it as a detached
+        task. Under the old `await asyncio.create_task(...)` pattern this assertion
+        failed — the inner task kept running after the awaiter was cancelled.
+        """
+        from factory.core.pool.pool_processor_streaming import run_streaming_turn_post
+
+        started = asyncio.Event()
+        cancelled = asyncio.Event()
+
+        async def slow_post(_msg: InboundMessage, _resp: Response) -> None:
+            started.set()
+            try:
+                await asyncio.Event().wait()  # block until cancelled (no timing sleep)
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+
+        processor = MagicMock()
+        processor.post = slow_post
+        done = asyncio.Event()
+        done.set()
+
+        task = asyncio.create_task(
+            run_streaming_turn_post(processor, done, make_msg("hi"), ["x"])
+        )
+        await asyncio.wait_for(started.wait(), timeout=TIMEOUT_IO)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+        assert cancelled.is_set(), "post-hook must observe cancellation"

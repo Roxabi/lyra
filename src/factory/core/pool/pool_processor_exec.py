@@ -221,7 +221,11 @@ async def _update_session_id(result: Response, pool: Pool) -> None:
 
 
 def _capture_turn_log(
-    result: Response, platform: str, user_id: str, pool: Pool
+    result: Response,
+    platform: str,
+    user_id: str,
+    pool: Pool,
+    root_job_id: str | None = None,
 ) -> None:
     """Attach deferred turn-logging callback to response metadata (#316)."""
     _content = result.content
@@ -235,6 +239,7 @@ def _capture_turn_log(
                 user_id=user_id,
                 content=_content,
                 reply_message_id=(str(_reply_id) if _reply_id is not None else None),
+                root_job_id=root_job_id,
             )
         )
         await pool._observer.index_turn_async(
@@ -257,7 +262,9 @@ async def _process_non_streaming(
     pool._ctx.record_circuit_success()
     if isinstance(result, Response):  # pyright: ignore[reportUnnecessaryIsInstance] — DEBT:defensive-narrow-payloads
         await _update_session_id(result, pool)
-        _capture_turn_log(result, platform, user_id, pool)
+        _capture_turn_log(
+            result, platform, user_id, pool, root_job_id=original_msg.root_job_id
+        )
     await pool._ctx.dispatch_response(original_msg, result)  # type: ignore[arg-type] — DEBT:defensive-narrow-payloads
     await pool._observer.session_update_async(original_msg)
 

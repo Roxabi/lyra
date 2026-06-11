@@ -22,6 +22,7 @@ from factory.bootstrap.factory.config import (
     _load_pairing_config,
     build_adapter_config_bundle,
 )
+from factory.bootstrap.standalone.audio_consumer_bootstrap import start_audio_consumer
 from factory.bootstrap.types import (
     DiscordAdapterEntry,
     RegisterAgentsDeps,
@@ -220,6 +221,22 @@ async def _wire_adapters(deps: WireAdaptersDeps) -> WiredAdapters:
         await dc_typing_listener.start()
         dc_typing_listeners.append(dc_typing_listener)
 
+    tg_consumers = []
+    if deps.js is not None:
+        for adapter in tg_adapters:
+            consumer = await start_audio_consumer(
+                deps.js, "telegram", adapter._bot_id, adapter
+            )
+            tg_consumers.append(consumer)
+
+    dc_consumers = []
+    if deps.js is not None:
+        for adapter, _bot_cfg, _token in dc_adapters:
+            consumer = await start_audio_consumer(
+                deps.js, "discord", adapter._bot_id, adapter
+            )
+            dc_consumers.append(consumer)
+
     return WiredAdapters(
         tg_adapters=tg_adapters,
         tg_dispatchers=tg_dispatchers,
@@ -228,6 +245,8 @@ async def _wire_adapters(deps: WireAdaptersDeps) -> WiredAdapters:
         dc_thread_store=dc_thread_store,
         tg_typing_listeners=tg_typing_listeners,
         dc_typing_listeners=dc_typing_listeners,
+        tg_consumers=tg_consumers,
+        dc_consumers=dc_consumers,
     )
 
 

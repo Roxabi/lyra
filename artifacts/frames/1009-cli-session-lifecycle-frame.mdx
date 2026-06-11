@@ -1,0 +1,168 @@
+---
+title: "Frame: feat(cli) session lifecycle cleanup + WorkEnvelope reparent"
+issues: ["#1009", "#1838"]
+tier: F-lite
+version_target: "roxabi-contracts 0.10.0"
+created: 2026-06-11
+status: approved
+---
+
+# Frame — cli session lifecycle cleanup + WorkEnvelope reparent
+
+**Closes:** #1009 + #1838 · **Tier:** F-lite · **Branch/PR:** single cli minor bump
+
+---
+
+## Problem
+
+Four cli contract models (`CliCmdPayload`, `CliControlCmd`, `CliChunkEvent`,
+`CliControlAck`) are classified PENDING in `test_work_envelope_subjects.py` (#1619
+coordination): they still inherit `ContractEnvelope` instead of `WorkEnvelope`.
+This blocks the `job_id` invariant enforcement on the cli plane.
+
+Simultaneously, the cli control surface carries two hygiene issues from #1009:
+
+1. `CliControlCmd.session_id` is ambiguously named — it holds the Claude CLI resume
+   token (`cli_session_id`), colliding visually with `CliCmdPayload.lyra_session_id`
+   (conversation identity ≈ pool_id). ADR-084 §id-taxonomy names both explicitly;
+   the wire name has not yet been aligned.
+2. `resume_and_reset` is a dead control op: the op literal exists in `CliControlCmd`,
+   a handler branch exists in `clipool_worker.py`, and methods exist in `llm_client.py`
+   and `cli_pool.py` / `cli_pool_session.py` — but no caller invokes the path.
+   Removing it simplifies the op surface to `reset | switch_cwd`.
+3. Resume outcome is not logged after `resume_direct()` completes — there is no
+   confirmation trace when the worker successfully restores a session.
+4. `_lyra_sessions` dict is duplicated: `LlmClient` (NATS path, `llm_client.py:62`)
+   and `CliPoolSessionMixin` (local path, `cli_pool_session.py`) both own independent
+   maps. For the NATS path, `LlmClient` should be the single owner; the mixin copy is
+   redundant on that path.
+5. ADR-084 table (§Decision) lists 3 cli models (CliControlCmd, CliCmdPayload,
+   CliHeartbeat); it is missing `CliChunkEvent` and `CliControlAck`. The doc gap
+   means the doc_drift gate will fire on `CliChunkEvent`/`CliControlAck` subjects
+   unless the table is extended before reparenting.
+
+Because both #1009 (rename + op removal) and #1838 (reparent) are breaking `cli`
+minor bumps, ADR-084 mandates co-landing them in a single bump to avoid two
+satellite-coordination events.
+
+---
+
+## Who
+
+- **Primary domain:** `roxabi-contracts` (cli models), `factory.llm` (llm_client),
+  `factory.core.cli` (cli_pool, cli_pool_session), `factory.adapters.clipool` (clipool_worker)
+- **Test surfaces:** `packages/roxabi-contracts/tests/test_work_envelope_subjects.py`
+- **Doc surfaces:** `docs/architecture/adr/084-workenvelope-job-id-invariant.mdx`
+- **Version surfaces:** `packages/roxabi-contracts/CHANGELOG.md`,
+  `packages/roxabi-contracts/pyproject.toml`
+- **No satellites involved:** `factory.clipool.{cmd,control,heartbeat}` are pure
+  NATS request-reply — no JetStream stream, no lock-pinned satellite consumer on cli
+  models. Only the hub (LlmClient) and the clipool worker communicate on these subjects.
+
+---
+
+## Constraints
+
+### Wire-compat (non-negotiable)
+
+- `WorkEnvelope.job_id` carries a `default_factory` shim (transitional, CONTRACT_VERSION
+  stays `"1"`). Do NOT remove the shim — hard-require is tracked in #1841.
+- The 4 cli models move to `WorkEnvelope` via reparent. No alias-field shim needed
+  (request-reply: hub sends → worker responds in the same request; no JetStream replay
+  risk; brief container skew window on M1 staging merge is acceptable for short-lived ops).
+
+### Id taxonomy — critical naming invariant
+
+`CliCmdPayload.lyra_session_id` is the **conversation identity** (≈ pool_id, Langfuse
+session). It MUST NOT be renamed. Only `CliControlCmd.session_id` is renamed to
+`cli_session_id`. ADR-084 lines 75–76 document both fields explicitly.
+
+`CliChunkEvent` also has a `session_id: str | None = None` field — this is the Claude
+CLI session token returned in stream events. It is on a different model from
+`CliControlCmd` and its name is unambiguous in context; it does NOT require renaming.
+
+### Test count assertions (atomic update)
+
+`test_work_envelope_subjects.py` lines 124/126/129 assert:
+- `WORK == 13`, `PENDING == 4`, `ALL == 26`
+
+After #1838 these become:
+- `WORK == 17`, `PENDING == 0`, `ALL == 26`
+
+The PENDING_MODELS set and the parametrize in
+`test_non_work_model_not_subclass_of_work_envelope` (currently `INFRA_MODELS | PENDING_MODELS`)
+must all be updated atomically with the model reparent — partial update breaks CI.
+
+### ADR-084 doc_drift gate
+
+`tools/check_doc_drift.py` enforces that all NATS subject constants referenced in
+`docs/architecture/` have actual src/ matches. `CliChunkEvent` and `CliControlAck` are
+not yet in the ADR-084 table. The table must be extended to 5 rows before the models
+are promoted to WORK (otherwise doc_drift fires on the new WORK subjects).
+
+### #1793 landing-order
+
+Issue #1793 is a jobs minor bump that also writes `packages/roxabi-contracts/CHANGELOG.md`
+and `pyproject.toml`. This PR (cli bump → 0.10.0) must land on top of #1793 or rebase
+on staging after #1793 merges. The version in this PR's pyproject.toml must be 0.10.0
+regardless of where #1793 lands relative to main version.
+
+### Quality gates
+
+- `file_length`: 300 SLOC max on `src/**/*.py` (check `llm_client.py` and
+  `cli_pool_session.py` after edits; exemptions in `tools/file_exemptions.txt`).
+- `str_exc_bus_bound`: `str(exc)` / `f"{exc}"` / `repr(exc)` may NOT flow into
+  `SanitizedError` construction or NATS-bus-bound message fields (ADR-073).
+- `architecture_snapshot`: stage:pre-push; run `tools/check_architecture_snapshot.sh`
+  manually before push (not enforced by `/validate`).
+
+---
+
+## Out of Scope
+
+| Deferred | Tracked |
+|---|---|
+| Hard-require `job_id` (remove `default_factory` shim) | #1841 |
+| Satellite contracts-bump rollout (voiceCLI, imageCLI, roxabi-vault lock bump) | #1840 |
+| Root `job_id` mint at inbound adapters | #1620 |
+| `lyra-data` named volume for clipool private store | separate |
+| `parent_job_id` / `composite_depth` usage on cli path | #1622 epic |
+| Typing-plane reclassification (#1624) | #1624 |
+
+---
+
+## Premise Validity
+
+| Premise | Evidence | Source | Confidence | Failure condition |
+|---|---|---|---|---|
+| All 4 PENDING models currently inherit `ContractEnvelope` | `class CliCmdPayload(ContractEnvelope)` etc. confirmed | `packages/roxabi-contracts/src/roxabi_contracts/cli/models.py` lines 1–71 | High | If any already inherits WorkEnvelope, reparent that model is a no-op — adjust PENDING_MODELS set only |
+| `CliControlCmd.session_id` is the only field requiring rename | `CliCmdPayload.lyra_session_id` is conversation identity (≠ cli session); `CliChunkEvent.session_id` is unambiguous stream-event field | ADR-084 lines 75–76; models.py confirmed | High | If CliChunkEvent.session_id causes confusion in worker dispatch, re-evaluate — but currently no rename needed |
+| `resume_and_reset` has no active callers | No production call sites in hub, agent, or inbound | `src/factory/llm/llm_client.py:160`, `src/factory/core/cli/cli_pool.py:155`, `src/factory/llm/drivers/cli.py:37` — method exists, no callers found | High | `grep -r "resume_and_reset" src/` — if callers appear, removal must be preceded by a deprecation cycle |
+| cli subjects are pure request-reply (no JetStream replay) | `factory.clipool.cmd/control/heartbeat` = NATS req-reply; confirmed in adapters/CLAUDE.md | adapters/CLAUDE.md clipool section | High | If a future PR adds a JetStream stream on cli subjects before this lands, re-evaluate alias-field shim |
+| `_lyra_sessions` local-path dict is redundant for NATS path | LlmClient owns `_lyra_sessions: dict[str, str]` at llm_client.py:62; CliPoolSessionMixin owns separate copy at cli_pool_session.py | llm_client.py:62, cli_pool_session.py:26 | Medium | If `ClaudeCliDriver` (single-process path) relies on mixin dict independently of LlmClient, unification scope narrows to NATS path only — mixin dict retained for local path |
+| #1793 is the only in-flight PR writing roxabi-contracts version files | Current `artifacts/analyses/backlog-review-2026-06-10.md` notes #1793 as open | Repo backlog | Medium | Check `gh pr list --state open` targeting `packages/roxabi-contracts/` before writing version — rebase if needed |
+
+---
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (cli contracts + clipool worker), no new
+architecture, no unknowns after code review.
+
+Estimated file surface (~11 files):
+
+| File | Change |
+|---|---|
+| `packages/roxabi-contracts/src/roxabi_contracts/cli/models.py` | Reparent 4 models: `ContractEnvelope` → `WorkEnvelope`; rename `CliControlCmd.session_id` → `cli_session_id`; remove `resume_and_reset` from op Literal |
+| `packages/roxabi-contracts/tests/test_work_envelope_subjects.py` | Move 4 models from PENDING_MODELS → WORK_MODELS; update count assertions (13→17, 4→0); narrow parametrize to `INFRA_MODELS` only |
+| `docs/architecture/adr/084-workenvelope-job-id-invariant.mdx` | Extend Decision table from 3 rows to 5 rows (add CliChunkEvent, CliControlAck) |
+| `src/factory/llm/llm_client.py` | Remove `resume_and_reset` method; rename `session_id=` kwarg to `cli_session_id=` in CliControlCmd construction sites; update `set_turn_store` docstring |
+| `src/factory/core/cli/cli_pool.py` | Remove `resume_and_reset` method |
+| `src/factory/core/cli/cli_pool_session.py` | Evaluate/remove `_lyra_sessions` dict if NATS-path unification confirmed; add resume outcome log in `_persist_cli_session` or `resume_direct` callsite |
+| `src/factory/llm/drivers/cli.py` | Remove `resume_and_reset` delegation |
+| `src/factory/adapters/clipool/clipool_worker.py` | Remove `resume_and_reset` handler branch; rename `cmd.session_id` → `cmd.cli_session_id` in control dispatch |
+| `packages/roxabi-contracts/CHANGELOG.md` | Document 0.10.0 breaking changes: rename + op removal + reparent |
+| `packages/roxabi-contracts/pyproject.toml` | Bump version 0.9.0 → 0.10.0 |
+| `packages/roxabi-contracts/src/roxabi_contracts/cli/__init__.py` | Re-export if needed after reparent (verify existing re-exports unchanged) |
+
+No new architecture. No new ADR. ADR-084 requires only a table amendment (2 rows).

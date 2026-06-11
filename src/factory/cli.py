@@ -140,6 +140,16 @@ def _adapter_clipool() -> None:
     _boot(_bootstrap_clipool_standalone)
 
 
+@adapter_app.command("omp")
+def _adapter_omp() -> None:
+    """Start the standalone OmpWorker NATS backend (#1812)."""
+    from factory.bootstrap.standalone.worker_standalone import (
+        _bootstrap_omp_standalone,
+    )
+
+    _boot(_bootstrap_omp_standalone)
+
+
 def _run_adapter(platform: str) -> None:
     from factory.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,

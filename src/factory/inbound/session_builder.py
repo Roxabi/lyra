@@ -52,10 +52,7 @@ class SessionBuilder:
             return msg
 
         # Discriminate path: Discord with thread_store present uses meta inspection.
-        _discord_thread = (
-            isinstance(meta, DiscordMeta)
-            and meta.thread_id is not None
-        )
+        _discord_thread = isinstance(meta, DiscordMeta) and meta.thread_id is not None
         if _discord_thread:
             # (d) Discord owned thread — claim-routing only; resume is hub-side path-3.
             return await self._build_thread_path(msg, ctx)
@@ -95,5 +92,3 @@ class SessionBuilder:
             _ = (_th, _bid, session_id, pool_id)  # suppress unused-capture lint
 
         return dataclasses.replace(msg, session_update_fn=_thread_update_fn)
-
-

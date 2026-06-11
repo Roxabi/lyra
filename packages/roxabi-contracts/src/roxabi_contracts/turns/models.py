@@ -8,7 +8,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from roxabi_contracts.envelope import ContractEnvelope
+from roxabi_contracts.envelope import WorkEnvelope
 
 # Forward-compat config for nested payload classes. Top-level envelope
 # (TurnWriteEvent) inherits extra="ignore" from ContractEnvelope; we mirror
@@ -73,7 +73,7 @@ TurnWritePayload = Annotated[
 # --- Envelope ---
 
 
-class TurnWriteEvent(ContractEnvelope):
+class TurnWriteEvent(WorkEnvelope):
     """Event published to factory.turns.write.
 
     Idempotence strategy (per kind):

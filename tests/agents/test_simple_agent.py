@@ -402,15 +402,15 @@ class TestSimpleAgentCliLifecycle:
         cli_pool.switch_cwd.assert_called_once_with(pool.pool_id, Path("/new/cwd"))
 
     # ------------------------------------------------------------------
-    # T9b — CB-wrapped resume_and_reset: resume fn → cli_pool.resume_and_reset
+    # T9b — resume fn → cli_pool.queue_resume (S2: embedded resume path)
     # ------------------------------------------------------------------
 
     async def test_t9b_resume_and_reset_routes_through_cli_pool(self) -> None:
-        """T9b: _session_resume_fn routes to cli_pool.resume_and_reset."""
-        # Arrange — provider has NO resume_and_reset method
+        """T9b: _session_resume_fn routes to cli_pool.queue_resume (S2 embedded)."""
+        # Arrange — provider has NO queue_resume method
         provider = MagicMock(spec=["complete", "stream", "is_alive"])
         cli_pool = MagicMock()
-        cli_pool.resume_and_reset = AsyncMock(return_value=True)
+        cli_pool.queue_resume = AsyncMock(return_value=True)
 
         agent = make_agent_with_cli_pool(provider, cli_pool)
         pool = make_pool()
@@ -422,8 +422,8 @@ class TestSimpleAgentCliLifecycle:
         # Act
         await pool._session_resume_fn("sess-1")
 
-        # Assert — cli_pool.resume_and_reset called with pool_id and session id
-        cli_pool.resume_and_reset.assert_called_once_with(pool.pool_id, "sess-1")
+        # Assert — cli_pool.queue_resume called with pool_id and session id
+        cli_pool.queue_resume.assert_called_once_with(pool.pool_id, "sess-1")
 
     # ------------------------------------------------------------------
     # T10 — CB-wrapped link_lyra_session: process() → cli_pool.link_lyra_session
@@ -463,7 +463,7 @@ class TestSimpleAgentCliLifecycle:
         provider = MagicMock()
         provider.reset = AsyncMock()
         provider.switch_cwd = AsyncMock()
-        provider.resume_and_reset = AsyncMock(return_value=True)
+        provider.queue_resume = AsyncMock(return_value=True)
         provider.link_lyra_session = MagicMock()
         provider.complete = AsyncMock(
             return_value=LlmResult(result="ok", session_id="s1")
@@ -473,7 +473,7 @@ class TestSimpleAgentCliLifecycle:
         cli_pool = MagicMock()
         cli_pool.reset = AsyncMock()
         cli_pool.switch_cwd = AsyncMock()
-        cli_pool.resume_and_reset = AsyncMock(return_value=True)
+        cli_pool.queue_resume = AsyncMock(return_value=True)
         cli_pool.link_lyra_session = MagicMock()
 
         agent = make_agent_with_cli_pool(provider, cli_pool)
@@ -491,7 +491,7 @@ class TestSimpleAgentCliLifecycle:
         # Assert — all four went through cli_pool
         cli_pool.reset.assert_called_once_with(pool.pool_id)
         cli_pool.switch_cwd.assert_called_once_with(pool.pool_id, Path("/some/cwd"))
-        cli_pool.resume_and_reset.assert_called_once_with(pool.pool_id, "sess-42")
+        cli_pool.queue_resume.assert_called_once_with(pool.pool_id, "sess-42")
         cli_pool.link_lyra_session.assert_called_once_with(
             pool.pool_id, pool.session_id
         )
@@ -639,10 +639,10 @@ class TestSimpleAgentNatsLifecycle:
     # ------------------------------------------------------------------
 
     async def test_t9bn_resume_routes_through_nats_driver(self) -> None:
-        """T9bn: pool.resume_session() → nats_driver.resume_and_reset(pool_id, sid)."""
+        """T9bn: pool.resume_session() → nats_driver.queue_resume(pool_id, sid)."""
         provider = MagicMock(spec=["complete", "stream", "is_alive"])
         nats_driver = MagicMock()
-        nats_driver.resume_and_reset = AsyncMock(return_value=True)
+        nats_driver.queue_resume = AsyncMock(return_value=True)
 
         agent = make_agent_with_nats_driver(provider, nats_driver)
         pool = make_pool()
@@ -653,9 +653,7 @@ class TestSimpleAgentNatsLifecycle:
         result = await pool.resume_session("sess-nats-1")
 
         assert result is True
-        nats_driver.resume_and_reset.assert_called_once_with(
-            pool.pool_id, "sess-nats-1"
-        )
+        nats_driver.queue_resume.assert_called_once_with(pool.pool_id, "sess-nats-1")
 
 
 # ---------------------------------------------------------------------------

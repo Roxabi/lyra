@@ -2,11 +2,12 @@
 title: "ADR-084: WorkEnvelope — the job_id invariant"
 description: Split the NATS contract envelope into WorkEnvelope (mandatory job_id) vs infra ContractEnvelope (trace_id only).
 related: [049, 076, 075, 078]
+status: amended
 ---
 
 ## Status
 
-Accepted
+Accepted — amended by #1794 (job_id = run, hops ≠ jobs, sub-jobs via parent_job_id; see Amendment below).
 
 Extends ADR-049 (roxabi-contracts shared schema) additively. Supersedes nothing.
 Relates to ADR-076 (three NATS planes) — the Work/Infra split cuts across the
@@ -63,16 +64,24 @@ The **`cli` domain is split**:
 
 | `cli` model | Envelope | Why |
 |---|---|---|
-| `CliControlCmd` | WorkEnvelope | per-turn control of the clipool worker; part of a job |
 | `CliCmdPayload` | WorkEnvelope | per-turn dispatch to the clipool worker; carries `lyra_session_id` → belongs to a job |
+| `CliChunkEvent` | WorkEnvelope | response side of a work op — streaming chunk or terminal event; correlates to the dispatching job |
+| `CliControlCmd` | WorkEnvelope | per-turn control of the clipool worker; part of a job |
+| `CliControlAck` | WorkEnvelope | ack of a work control op; correlated to the same job as `CliControlCmd` |
 | `CliHeartbeat` | ContractEnvelope | worker liveness — no job |
+
+**One-minor deprecations (S1 — #1009/#1838):** `CliControlCmd.session_id` is renamed to
+`cli_session_id`; the old wire name is accepted via `validation_alias=AliasChoices("cli_session_id",
+"session_id")` for one minor release. `CliControlCmd.op` retains the `resume_and_reset` literal
+for one minor; producers must migrate to `CliCmdPayload.resume_session_id`. Mechanical removal of
+both is tracked in the follow-up issue (sibling under epic #1044, blocked-by #1009).
 
 The `cli` reparent is a **breaking** `cli` minor bump (new required `job_id`). It overlaps
 with the session-id cleanup in **#1009** (rename `CliControlCmd.session_id` → `cli_session_id`,
 remove `resume_and_reset`), which is *also* a breaking `cli` bump. **Coordinate both into a
 single `cli` minor bump** to avoid two satellite-coordination events (ADR-049). The id taxonomy
 the two settle together: `cli_session_id` (claude-cli resume) · `lyra_session_id` (conversation,
-= `pool_id` ≈ Langfuse session) · `job_id` (turn) · `parent_job_id` (nesting) · `trace_id` (tree).
+= `pool_id` ≈ Langfuse session) · `job_id` (run) · `parent_job_id` (nesting) · `trace_id` (tree).
 
 Id model (= OpenTelemetry):
 
@@ -85,7 +94,12 @@ parent_job_id  the nesting edge
 
 Supporting rules:
 - **Root `job_id` minted at ingress** by inbound adapters (the moment a user message
-  enters); it then flows hub → harness → satellite (child jobs), the tree sharing `trace_id`.
+  enters); one `job_id` per run (entry → full processing → terminal closing message).
+  Internal worker hops (e.g. cli_pool multi-turn LLM calls) are **opaque** — they are
+  NOT sub-jobs and carry no new `job_id`. Cross-process decomposition into sub-jobs is
+  **explicit** via `parent_job_id` + `composite_depth` (both SHIPPED in
+  `packages/roxabi-contracts`; `composite_depth ≤ 3`). All nodes in a job tree share
+  `trace_id`.
 - **Fold `request_id` into `job_id`** — keep the system to two ids (trace_id, job_id).
 - **Enforcement:** a subject→envelope mapping test asserts work subjects deserialize to
   `WorkEnvelope` subclasses and infra subjects to bare `ContractEnvelope` (same spirit as
@@ -139,3 +153,36 @@ parallel counter. Until #1624, typing stays on its current envelope; it is not r
 - #1622: observability pipeline (epic) — `job_id` maps to OTel span id
 - #1490: Roxabi Factory plan A (distributed-first harness) — the context that motivated this ADR
 - Reviews (2026-06-01): architect review on PR #1625 — 2 suggestions applied (pattern drift + versioning claim)
+
+## Amendment: job_id = run, hops ≠ jobs, sub-jobs via parent_job_id (#1794)
+
+_Amended by #1794 (2026-06-11). Author: Mickael._
+
+### id-model correction (replaces under-ratified prose from closed obs epic #1622)
+
+Ratified definition (source: `artifacts/analyses/job-model-concept-analysis.md` §15.1):
+
+~~~
+let: job  := one entry → full processing (internal multi-turn + steer + streaming) → final closing message
+     run  := the atomic unit of observable work (≡ job)
+     ¬turn := job is NOT per-turn
+~~~
+
+| Concept | Status |
+|---|---|
+| `job_id` minted at ingress, per user message | one run = one `job_id` (durable for the whole run) |
+| Internal LLM hops inside a worker (e.g. cli_pool multi-turn) | NOT `job_id`s — opaque, irreducible internal layer |
+| Cross-process decomposition | EXPLICIT sub-jobs via `parent_job_id` + `composite_depth ≤ 3` only |
+
+**What changed:**
+- Line 75: `(turn)` label → `(run)`.
+- Lines 87–88: "satellite (child jobs), the tree sharing `trace_id`" → run-scoped minting +
+  opaque-hops rule + explicit sub-jobs rule.
+
+**What did NOT change:** Option C (WorkEnvelope/ContractEnvelope split, mandatory `job_id`
+min_length=1, nullable `parent_job_id` None at root) is ratified and unchanged.
+
+**Implementation note (#1619):** within CONTRACT_VERSION "1", `job_id` deserializes with a transitional default-mint shim — pre-#1619 wire messages (lock-pinned satellite responses, JetStream-persisted backlogs) keep validating, per ADR-049 forward-compat. In-repo producers set `job_id` explicitly. Satellites echo it after their lock bump (#1840). Flip to hard-required rides the next CONTRACT_VERSION bump (#1841).
+
+Living SSoT: `docs/architecture/job-model.md`.
+

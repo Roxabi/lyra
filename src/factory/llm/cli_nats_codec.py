@@ -20,6 +20,7 @@ from pydantic import ValidationError
 from factory.core.messaging.events import LlmEvent, ResultLlmEvent, TextLlmEvent
 from factory.core.ports.llm import LlmResult
 from factory.transport._result import Err, Result, SanitizedError
+from roxabi_contracts import new_job_id
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.errors import KNOWN_CODES, WorkerError
 from roxabi_contracts.llm import LlmChunkEvent, LlmRequest, LlmResponse
@@ -57,7 +58,7 @@ class CliNatsCodec:
     encode_control: builds CliControlCmd bytes for control-plane operations.
     """
 
-    def encode(
+    def encode(  # noqa: PLR0913 — codec signature mirrors LlmRequest fields (#1620 root_job_id)
         self,
         text: str,
         model_cfg: "ModelConfig",
@@ -65,6 +66,7 @@ class CliNatsCodec:
         messages: list[dict] | None,
         *,
         stream: bool,
+        root_job_id: str | None = None,
         **kwargs: Any,
     ) -> tuple[bytes, str]:
         """Build canonical LlmRequest payload and return (bytes, trace_id).
@@ -73,6 +75,9 @@ class CliNatsCodec:
           messages None/empty → [{"role": "user", "content": text}]
           last msg content == text → pass through unchanged
           else → append {"role": "user", "content": text}
+
+        ``root_job_id`` threads the minted ingress id through to LlmRequest.job_id
+        (#1620, ADR-084).  None falls back to a fresh new_job_id().
         """
         if not messages:
             wire_messages: list[dict] = [{"role": "user", "content": text}]
@@ -86,6 +91,7 @@ class CliNatsCodec:
             contract_version=CONTRACT_VERSION,
             trace_id=trace_id,
             issued_at=datetime.now(timezone.utc),
+            job_id=root_job_id if root_job_id is not None else new_job_id(),
             request_id=str(uuid4()).replace("-", "")[:32],
             messages=wire_messages,
             model=model_cfg.model,

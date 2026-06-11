@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.11.0] (2026-06-11)
+
+### Features
+
+* **contracts/cli:** reparent `CliCmdPayload`, `CliChunkEvent`, `CliControlCmd`, `CliControlAck` from `ContractEnvelope` to `WorkEnvelope` ([#1009](https://github.com/Roxabi/roxabi-factory/issues/1009) / [#1838](https://github.com/Roxabi/roxabi-factory/issues/1838)). Adds `job_id` field with transitional `default_factory` shim — old wire messages without `job_id` still deserialize.
+* **contracts/cli:** rename `CliControlCmd.session_id` → `cli_session_id`; old wire name still accepted via `AliasChoices("cli_session_id", "session_id")` for one minor ([#1838](https://github.com/Roxabi/roxabi-factory/issues/1838)).
+
+### Deprecated
+
+* **contracts/cli:** `CliControlCmd.op = "resume_and_reset"` — producers migrated to embedded `CliCmdPayload.resume_session_id` field; worker tolerance retained for one minor; removal tracked in follow-up issue at ship.
+
+### Changed
+
+* **contracts/cli:** resume acceptance semantics changed — "token resolved & queued" (applied at next spawn), not an immediate inline reset via control op.
+
+### BREAKING CHANGES
+
+* `CliCmdPayload`, `CliChunkEvent`, `CliControlCmd`, `CliControlAck` now inherit `WorkEnvelope` (adds mandatory `job_id`; transitional `default_factory` provides backward compat). Consumers that previously assumed `ContractEnvelope` base must update their type annotations.
+* `CliControlCmd.session_id` serialized name changed to `cli_session_id`. Old field name still accepted on ingress for one minor; serialization always emits the new name.
+
+
+## [0.10.0] (2026-06-11)
+
+### Features
+
+* **contracts/jobs:** unify jobs subject taxonomy — rename `factory.results.<job_id>` → `factory.job.<job_id>.result` and `factory.progress.<job_id>` → `factory.job.<job_id>.progress` ([#1793](https://github.com/Roxabi/roxabi-factory/issues/1793)). Updates `jobs_result()` and `jobs_progress()` return values and docstrings.
+* **contracts/jobs:** add `jobs_steer()`, `jobs_opened()`, `jobs_closed()` subject helpers for the full `factory.job.<id>.*` subtree ([#1793](https://github.com/Roxabi/roxabi-factory/issues/1793)). Exposes `jobs_steer`, `jobs_opened`, `jobs_closed` from `roxabi_contracts.jobs`.
+* **contracts/jobs:** remove retired `_Subjects.result_prefix` and `_Subjects.progress_prefix` fields; add `_Subjects.job_prefix` (`"factory.job"`).
+
+### BREAKING CHANGES
+
+* `jobs_result(job_id)` and `jobs_progress(job_id)` return different subject strings. Any caller pinned to `factory.results.*` or `factory.progress.*` wire subjects must update to the new `factory.job.<id>.*` pattern. Confirmed 0 in-repo callers at time of release.
+
+
+## [0.9.0] (2026-06-11)
+
+### Features
+
+* **contracts:** add `WorkEnvelope` base class with `job_id` + `parent_job_id` — work-plane/infra-plane split ([#1619](https://github.com/Roxabi/roxabi-factory/issues/1619)). TRANSITIONAL: `job_id` carries a `default_factory` so pre-#1619 wire messages without the field still parse; flip to hard-required tracked in [#1841](https://github.com/Roxabi/roxabi-factory/issues/1841).
+* **contracts:** export `new_job_id()` from top-level `roxabi_contracts` — 32-char hex UUID, NATS-subject-safe.
+* **contracts:** reparent 13 domain models to `WorkEnvelope`: `JobEnvelope`, `JobResult`, `JobProgress`, `LlmRequest`, `LlmChunkEvent`, `LlmResponse`, `TtsRequest`, `TtsResponse`, `SttRequest`, `SttResponse`, `ImageRequest`, `ImageResponse`, `TurnWriteEvent`. Infra-plane models (`LifecycleRequest/Response`, `ImageHeartbeat`, `CliHeartbeat`, `BlobAuditEvent`, `SecurityEvent`, `LyraEvent/Metric`, `MintFailureEvent`) remain on `ContractEnvelope` by design. CLI models (`CliCmdPayload`, `CliChunkEvent`, `CliControlCmd`, `CliControlAck`) deferred to [#1838](https://github.com/Roxabi/roxabi-factory/issues/1838).
+* **contracts:** add enforcement tests locking the WORK/INFRA/PENDING classification invariants (`tests/test_work_envelope_subjects.py`).
+
+
+## [0.8.0](https://github.com/Roxabi/roxabi-factory/compare/roxabi-contracts/v0.7.0...roxabi-contracts/v0.8.0) (2026-06-11)
+
+
+### Features
+
+* **contracts:** consolidate NATS subject-segment charset SSoT in `_nats_utils` ([#1782](https://github.com/Roxabi/roxabi-factory/issues/1782)). Introduces `_SAFE_SEGMENT_CHARS` (chars-only, for sanitizer composition) and `_SAFE_SEGMENT_RE` (compiled full-match regex) as the single source of truth, removing two duplicate inline regexes across domain subjects modules. Promotes `_validate_subject_segment` → `validate_subject_segment` (public API) and re-exports it from the package root. Additive, non-security-bearing — existing callers that imported `_validate_subject_segment` by private name must update to `validate_subject_segment`.
+
+
 ## [0.4.0](https://github.com/Roxabi/lyra/compare/roxabi-contracts/v0.3.0...roxabi-contracts/v0.4.0) (2026-05-19)
 
 

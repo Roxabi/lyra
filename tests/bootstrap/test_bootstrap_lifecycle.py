@@ -1,4 +1,7 @@
-"""Tests for run_lifecycle in bootstrap_lifecycle.py — F6 thread store teardown."""
+"""Tests for run_lifecycle in bootstrap_lifecycle.py.
+
+F6 thread store + audio consumer teardown.
+"""
 
 from __future__ import annotations
 
@@ -112,3 +115,37 @@ async def test_run_lifecycle_none_dc_thread_store_is_noop() -> None:
     # Assert — lifecycle completed and the None guard prevented any close attempt
     hub.shutdown.assert_awaited_once()
     mock_store.close.assert_not_called()  # None guard: close() must NOT be called
+
+
+# ---------------------------------------------------------------------------
+# Audio consumer teardown (#1833)
+# ---------------------------------------------------------------------------
+
+
+async def test_run_lifecycle_stops_audio_consumers() -> None:
+    """Audio consumers in tg_consumers/dc_consumers have stop() awaited at teardown."""
+    from factory.bootstrap.lifecycle.bootstrap_lifecycle import run_lifecycle
+
+    hub = _make_hub()
+    wired = _make_wired(dc_thread_store=None)
+    tg_consumer = MagicMock()
+    tg_consumer.stop = AsyncMock()
+    dc_consumer = MagicMock()
+    dc_consumer.stop = AsyncMock()
+    wired.tg_consumers = [tg_consumer]
+    wired.dc_consumers = [dc_consumer]
+    resources = _make_resources()
+    stop = asyncio.Event()
+    stop.set()
+
+    with (
+        patch(
+            "factory.bootstrap.factory.utils.watchdog",
+            side_effect=_watchdog_immediate,
+        ),
+        patch("uvicorn.Server.serve", new_callable=AsyncMock),
+    ):
+        await run_lifecycle(hub=hub, wired=wired, resources=resources, _stop=stop)
+
+    tg_consumer.stop.assert_awaited_once()
+    dc_consumer.stop.assert_awaited_once()

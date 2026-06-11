@@ -59,5 +59,3 @@ async def restore_hot_threads(
         bot_id,
     )
     return owned
-
-

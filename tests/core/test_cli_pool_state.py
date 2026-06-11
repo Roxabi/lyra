@@ -75,15 +75,15 @@ class TestCliPoolSpawnCwd:
 
 
 # ---------------------------------------------------------------------------
-# T3.4 — CliPool.resume_and_reset() — reply-to-resume (#244)
+# T3.4 — CliPool.queue_resume() — reply-to-resume (#244)
 # ---------------------------------------------------------------------------
 
 
 class TestCliPoolResumeAndReset:
-    """CliPool.resume_and_reset() stores session_id for next spawn (T3.4, SC-5)."""
+    """CliPool.queue_resume() stores session_id for next spawn (T3.4, SC-5)."""
 
     async def test_resume_and_reset_sets_session_id(self) -> None:
-        """After resume_and_reset(), CLI session stored and process killed."""
+        """After queue_resume(), CLI session stored and process killed."""
         pool = CliPool()
         proc = make_fake_proc([])
         # Pre-populate a live entry so _kill has something to terminate
@@ -105,9 +105,9 @@ class TestCliPoolResumeAndReset:
         mock_store.get_cli_session = AsyncMock(return_value=_CLI_SESS)
         pool.set_turn_store(mock_store)
 
-        # Act — pipeline passes the Lyra session; resume_and_reset looks up
+        # Act — pipeline passes the Lyra session; queue_resume looks up
         # the CLI session from TurnStore.
-        await pool.resume_and_reset("pool:tg:chat:1", _LYRA_SESS)
+        await pool.queue_resume("pool:tg:chat:1", _LYRA_SESS)
 
         # Assert — CLI session stored for next spawn AND process killed
         assert pool._resume_session_ids.get("pool:tg:chat:1") == _CLI_SESS

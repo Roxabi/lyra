@@ -26,7 +26,7 @@ Related: issue #1791, spec `artifacts/specs/1791-contracts-lock-bump-workflow-sp
 `roxabi-blobs` is absent from `llmCLI`; only `roxabi-contracts` and `roxabi-nats` are bumped.
 
 ```yaml
-# .github/workflows/bump-contracts.yml  (in Roxabi/llmCLI)
+# .github/workflows/contracts-bump-caller.yml  (in Roxabi/llmCLI)
 name: Bump contracts lock
 
 on:
@@ -38,7 +38,7 @@ jobs:
   bump:
     uses: Roxabi/roxabi-factory/.github/workflows/contracts-bump.yml@staging
     with:
-      satellite_repo: Roxabi/llmCLI
+      satellite_repo: ${{ github.repository }}
       packages: "roxabi-contracts roxabi-nats"
     secrets:
       PAT: ${{ secrets.PAT }}
@@ -49,7 +49,7 @@ jobs:
 `roxabi-blobs` is in `optional-dependencies.nats`; include it so the lock stays consistent.
 
 ```yaml
-# .github/workflows/bump-contracts.yml  (in Roxabi/voiceCLI)
+# .github/workflows/contracts-bump-caller.yml  (in Roxabi/voiceCLI)
 name: Bump contracts lock
 
 on:
@@ -61,7 +61,7 @@ jobs:
   bump:
     uses: Roxabi/roxabi-factory/.github/workflows/contracts-bump.yml@staging
     with:
-      satellite_repo: Roxabi/voiceCLI
+      satellite_repo: ${{ github.repository }}
       packages: "roxabi-contracts roxabi-nats roxabi-blobs"
     secrets:
       PAT: ${{ secrets.PAT }}
@@ -76,7 +76,7 @@ jobs:
 `roxabi-blobs` is a core dependency for `imageCLI`.
 
 ```yaml
-# .github/workflows/bump-contracts.yml  (in Roxabi/imageCLI)
+# .github/workflows/contracts-bump-caller.yml  (in Roxabi/imageCLI)
 name: Bump contracts lock
 
 on:
@@ -88,7 +88,7 @@ jobs:
   bump:
     uses: Roxabi/roxabi-factory/.github/workflows/contracts-bump.yml@staging
     with:
-      satellite_repo: Roxabi/imageCLI
+      satellite_repo: ${{ github.repository }}
       packages: "roxabi-contracts roxabi-nats roxabi-blobs"
     secrets:
       PAT: ${{ secrets.PAT }}
@@ -112,9 +112,9 @@ For each satellite repo, verify the following before merging the caller workflow
 
 Three follow-up PRs are needed, one per satellite (tracked in #1840):
 
-1. `Roxabi/llmCLI` — add `.github/workflows/bump-contracts.yml` (packages: `roxabi-contracts roxabi-nats`)
-2. `Roxabi/voiceCLI` — add `.github/workflows/bump-contracts.yml` (packages: `roxabi-contracts roxabi-nats roxabi-blobs`)
-3. `Roxabi/imageCLI` — add `.github/workflows/bump-contracts.yml` (packages: `roxabi-contracts roxabi-nats roxabi-blobs`)
+1. `Roxabi/llmCLI` — add `.github/workflows/contracts-bump-caller.yml` (packages: `roxabi-contracts roxabi-nats`)
+2. `Roxabi/voiceCLI` — add `.github/workflows/contracts-bump-caller.yml` (packages: `roxabi-contracts roxabi-nats roxabi-blobs`)
+3. `Roxabi/imageCLI` — add `.github/workflows/contracts-bump-caller.yml` (packages: `roxabi-contracts roxabi-nats roxabi-blobs`)
 
 For each: verify prerequisites above → open PR against satellite `staging` → apply `reviewed` label → auto-merge.
 

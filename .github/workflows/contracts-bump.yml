@@ -47,7 +47,7 @@ jobs:
       # Uses explicit repository: input to handle both workflow_call (satellite context)
       # and workflow_dispatch (factory context where github.repository = roxabi-factory).
       - name: Checkout satellite at staging
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           repository: ${{ inputs.satellite_repo }}
           ref: staging
@@ -80,7 +80,7 @@ jobs:
 
       # Step 3: Install uv and run the lock upgrade.
       - name: Set up uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
 
       - name: Upgrade packages in uv.lock
         run: |
@@ -108,7 +108,9 @@ jobs:
       - name: No-op exit
         if: steps.diff.outputs.changed == 'false'
         run: |
-          echo "::notice::No lock changes for ${{ inputs.satellite_repo }} — skipping PR."
+          echo "::notice::No lock changes for ${SATELLITE_REPO_INPUT} — skipping PR."
+        env:
+          SATELLITE_REPO_INPUT: ${{ inputs.satellite_repo }}
 
       # Step 5: Capture NEW_CONTRACTS_SHA and detect wire-breaking change.
       - name: Capture new contracts SHA and detect wire break
@@ -229,6 +231,13 @@ jobs:
           git config user.email "bot@roxabi.dev"
           git config user.name "Roxabi Bot"
 
+          # Guard against a stale remote branch from a previously closed/merged same-day PR.
+          # (The idempotency check above only catches *open* PRs.)
+          if git ls-remote --exit-code --heads origin "${BRANCH}" > /dev/null 2>&1; then
+            BRANCH="${BRANCH}-run${{ github.run_attempt }}"
+            echo "::notice::Remote branch already exists (closed/merged PR?); using ${BRANCH} instead."
+          fi
+
           git checkout -b "${BRANCH}"
           git add uv.lock
           git commit -m "chore(deps): bump roxabi-contracts/nats lock ${OLD_SHORT}..${NEW_SHORT}${MSG_SUFFIX}"
@@ -253,7 +262,7 @@ jobs:
 
           if [ "${WIRE_BREAKING}" = "true" ]; then
             printf '## Wire-Breaking Change\n\n' >> "${PR_BODY_FILE}"
-            printf 'CONTRACT_VERSION bumped: `%s` -> `%s`. Wire-breaking change — human review required before merge.\n\n' \
+            printf '⚠ CONTRACT_VERSION bumped: `%s` → `%s`. Wire-breaking change — human review required before merge.\n\n' \
               "${OLD_VER}" "${NEW_VER}" >> "${PR_BODY_FILE}"
           fi
 
@@ -289,8 +298,11 @@ jobs:
           PACKAGES_INPUT: ${{ inputs.packages }}
 
       # Step 8: Apply label — wire-breaking (hold for review) or reviewed (auto-merge cascade).
+      # continue-on-error: true so a missing label (D3 prerequisite skipped) emits a warning
+      # rather than failing the job and leaving the PR unlabelled silently.
       - name: Apply label
         if: steps.diff.outputs.changed == 'true' && steps.existing-pr.outputs.skip == 'false' && steps.create-pr.outputs.pr_url != ''
+        continue-on-error: true
         run: |
           PR_URL="${PR_URL_INPUT}"
           if [ "${WIRE_BREAKING}" = "true" ]; then
@@ -298,10 +310,12 @@ jobs:
           else
             LABEL="reviewed"
           fi
-          gh pr edit "${PR_URL}" --add-label "${LABEL}" --repo "${SATELLITE_REPO}"
+          # --repo omitted: gh parses the repo from the PR URL, passing --repo is redundant
+          # and could diverge if the URL and SATELLITE_REPO ever differ.
+          gh pr edit "${PR_URL}" --add-label "${LABEL}" \
+            || echo "::warning::Failed to apply label '${LABEL}' to ${PR_URL} — ensure D3 labels exist in the satellite repo."
           echo "Applied label '${LABEL}' to ${PR_URL}"
         env:
           GH_TOKEN: ${{ secrets.PAT }}
           PR_URL_INPUT: ${{ steps.create-pr.outputs.pr_url }}
-          SATELLITE_REPO: ${{ inputs.satellite_repo }}
           WIRE_BREAKING: ${{ steps.wire-guard.outputs.wire_breaking }}

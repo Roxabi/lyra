@@ -89,12 +89,22 @@ async def _bootstrap_unified(
                 )
             )
 
-            # ADR-079 unified-mode note: _wire_adapters uses bootstrap_wiring.py
-            # (wire_telegram_adapters / wire_discord_adapters), which does NOT
-            # start JetStreamAudioConsumer. Audio consumers are only started by
-            # the standalone adapter path (standalone_telegram.py / _discord.py).
-            # Therefore no audio provisioning barrier is required here.
-            # Follow-up: wire audio consumers in unified mode if needed (#1521).
+            # ADR-079 unified-mode: ensure_stream + ensure_kv are called here
+            # (sole-provisioner, hub side). _wire_adapters now starts
+            # JetStreamAudioConsumer per bot via start_audio_consumer.
+            # No NATS-level barrier (wait_for_hub) is needed — sequential
+            # in-process ordering guarantees stream+KV exist before
+            # _wire_adapters runs. #1521 is closed (axial migration
+            # deliverable); this wires the remaining unified-mode gap.
+            from factory.infrastructure.outbound_audio.stream_setup import (
+                ensure_kv,
+                ensure_stream,
+            )
+
+            _audio_js = nc.jetstream()
+            await ensure_stream(_audio_js)
+            await ensure_kv(_audio_js)
+
             wired = await _wire_adapters(
                 WireAdaptersDeps(
                     hub=hub,
@@ -104,6 +114,7 @@ async def _bootstrap_unified(
                     vault_dir=vault_dir,
                     raw_config=raw_config,
                     blob_store=blob_store,
+                    js=_audio_js,
                 )
             )
 

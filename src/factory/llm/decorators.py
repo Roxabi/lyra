@@ -8,7 +8,7 @@ from collections.abc import AsyncIterator
 
 from factory.core.agent.agent_config import ModelConfig
 from factory.core.lifecycle.circuit_breaker import CircuitBreaker
-from factory.core.messaging.events import LlmEvent
+from factory.core.messaging.events import LlmEvent, ResultLlmEvent
 from factory.llm.base import LlmProvider, LlmResult
 
 log = logging.getLogger(__name__)
@@ -80,7 +80,7 @@ class RetryDecorator:
         assert result is not None  # total_attempts ≥ 1
         return result
 
-    async def stream(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
+    async def stream(  # noqa: PLR0913, C901 — DEBT:wiring-bootstrap-deps
         self,
         pool_id: str,
         text: str,
@@ -89,11 +89,55 @@ class RetryDecorator:
         *,
         messages: list[dict] | None = None,
     ) -> AsyncIterator[LlmEvent]:
-        """Delegate streaming to inner provider (no retry — stream is live data)."""
-        async for event in self._inner.stream(
-            pool_id, text, model_cfg, system_prompt, messages=messages
-        ):
-            yield event
+        """Retry connect-time and pre-first-event failures with exponential backoff.
+
+        Retries when the inner generator raises before yielding its first
+        non-terminal event, OR when it yields a terminal ResultLlmEvent(is_error=True)
+        before any non-terminal event (connect-time failure). Once any non-terminal
+        event (TextLlmEvent, ThinkingLlmEvent, ToolUse*, ToolResult) has been
+        forwarded, never retry — the stream is live data and cannot be replayed.
+        Cancellation (GeneratorExit / CancelledError) is never retried.
+        On retry exhaustion with a terminal error event → forward the event so
+        the consumer sees the failure. On exhaustion with an exception → re-raise.
+        """
+        total_attempts = self._max_retries + 1
+        for attempt in range(total_attempts):
+            first_non_terminal_seen = False
+            retry_after_error_event = False
+            try:
+                async for event in self._inner.stream(
+                    pool_id, text, model_cfg, system_prompt, messages=messages
+                ):
+                    if (
+                        isinstance(event, ResultLlmEvent)
+                        and event.is_error
+                        and not first_non_terminal_seen
+                    ):
+                        # terminal error before any non-terminal event → retryable
+                        if attempt < self._max_retries:
+                            retry_after_error_event = True
+                            break  # discard this terminal error; retry a fresh stream
+                        yield event  # retries exhausted → surface the failure
+                        return
+                    if not isinstance(event, ResultLlmEvent):
+                        first_non_terminal_seen = True
+                    yield event
+            except (GeneratorExit, asyncio.CancelledError):
+                raise  # never retry cancellation
+            except Exception:
+                if first_non_terminal_seen or attempt >= self._max_retries:
+                    raise  # mid-stream (can't replay) or retries exhausted
+            else:
+                if not retry_after_error_event:
+                    return  # stream finished normally (success terminal or clean end)
+            delay = self._backoff_base * (2**attempt)
+            log.warning(
+                "stream connect error (attempt %d/%d) — retrying in %.1fs",
+                attempt + 1,
+                total_attempts,
+                delay,
+            )
+            await asyncio.sleep(delay)
 
     def is_alive(self, pool_id: str) -> bool:
         return self._inner.is_alive(pool_id)
@@ -153,11 +197,45 @@ class CircuitBreakerDecorator:
         *,
         messages: list[dict] | None = None,
     ) -> AsyncIterator[LlmEvent]:
-        """Delegate to inner provider (circuit check applies to complete() only)."""
-        async for event in self._inner.stream(
-            pool_id, text, model_cfg, system_prompt, messages=messages
-        ):
-            yield event
+        """Guard streaming behind the circuit breaker.
+
+        Open circuit → yields exactly one ResultLlmEvent(is_error=True) without
+        calling inner. Closed/half-open → forwards inner events; records
+        success/failure on the terminal ResultLlmEvent. Cancellation
+        (GeneratorExit / CancelledError) releases the probe slot instead of
+        recording a failure so the half-open probe flag is not left stuck.
+        """
+        if self._cb.is_open():
+            status = self._cb.get_status()
+            retry_after = status.retry_after or 0.0
+            msg = f"Circuit '{self._cb.name}' is open. Retry in {retry_after:.0f}s."
+            yield ResultLlmEvent(
+                is_error=True, duration_ms=0, error_text=msg, worker_error=None
+            )
+            return
+
+        outcome_recorded = False
+        try:
+            async for event in self._inner.stream(
+                pool_id, text, model_cfg, system_prompt, messages=messages
+            ):
+                if isinstance(event, ResultLlmEvent) and not outcome_recorded:
+                    if event.is_error:
+                        self._cb.record_failure()
+                    else:
+                        self._cb.record_success()  # no-op when CLOSED; intentional
+                    outcome_recorded = True
+                yield event
+            if not outcome_recorded:
+                self._cb.record_failure()  # stream ended with no terminal event
+        except (GeneratorExit, asyncio.CancelledError):
+            if not outcome_recorded:
+                self._cb.release_probe()  # cancelled mid-probe: free slot, no failure
+            raise
+        except Exception:
+            if not outcome_recorded:
+                self._cb.record_failure()
+            raise
 
     def is_alive(self, pool_id: str) -> bool:
         return self._inner.is_alive(pool_id)

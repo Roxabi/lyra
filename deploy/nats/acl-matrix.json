@@ -34,7 +34,7 @@
       "created_at": "2026-04-21",
       "owner": "factory",
       "description": "Hub core — routes inbound messages, dispatches to voice/LLM/image/clipool workers. Inbox normalized to lowercase _inbox.hub.> (ADR-051 + postmortem Fix 1).",
-      "notes": "Hub provisions the factory-state KV bucket at runtime on first boot (announce_hub_ready, #1012). $JS.API.> required for KV bucket creation and JetStream API calls. $KV.factory-state.> required for kv.put() which publishes directly to $KV.<bucket>.<key> subjects (not covered by $JS.API.>). Tighter per-operation scoping is tracked as a follow-up. factory.turns.write added by T27 (#1331): hub publishes TurnWriteEvents. factory.outbound.audio.> added by T7 (#1482): hub publishes to outbound-audio JetStream path. Sole-provisioner (ADR-079 S3, #1525): hub provisions stream FACTORY_OUTBOUND_AUDIO and KV bucket KV_factory_outbound_audio_sent before announce_hub_ready; adapters are bind-only (js.key_value + ensure_consumer). Provisioning subjects covered by existing $JS.API.> wildcard (see ADR-079 §Forward-compat for explicit enumeration if wildcard is ever tightened). factory.gh.mint_failure.> added (#1545): hub runs MintFailureSubscriber (start_mint_failure_subscriber) which subscribes to gh-helper mint-failure alerts and forwards them to the ops Telegram chat. NB: this is the subscribe half only — publisher declared by #1082 (gh-helper). This field is metadata only — not rendered into auth.conf or the 706 spec table.",
+      "notes": "Hub provisions the factory-state KV bucket at runtime on first boot (announce_hub_ready, #1012). $JS.API.> required for KV bucket creation and JetStream API calls. $KV.factory-state.> required for kv.put() which publishes directly to $KV.<bucket>.<key> subjects (not covered by $JS.API.>). Tighter per-operation scoping is tracked as a follow-up. factory.turns.write added by T27 (#1331): hub publishes TurnWriteEvents. factory.outbound.audio.> added by T7 (#1482): hub publishes to outbound-audio JetStream path. Sole-provisioner (ADR-079 S3, #1525): hub provisions stream FACTORY_OUTBOUND_AUDIO and KV bucket KV_factory_outbound_audio_sent before announce_hub_ready; adapters are bind-only (js.key_value + ensure_consumer). Provisioning subjects covered by existing $JS.API.> wildcard (see ADR-079 §Forward-compat for explicit enumeration if wildcard is ever tightened). factory.gh.mint_failure.> added (#1545): hub runs MintFailureSubscriber (start_mint_failure_subscriber) which subscribes to gh-helper mint-failure alerts and forwards them to the ops Telegram chat. NB: this is the subscribe half only — publisher declared by #1082 (gh-helper). This field is metadata only — not rendered into auth.conf or the 706 spec table. factory.job.*.steer added (#1812): hub initiates steer commands for active omp jobs (send mid-flight steering prompts to omp_rpc worker).",
       "allow_responses": true,
       "publish": [
         "factory.outbound.telegram.>",
@@ -53,6 +53,7 @@
         "factory.typing.>",
         "factory.event.>",
         "factory.metric.>",
+        "factory.job.*.steer",
         "$JS.API.>",
         "$KV.factory-state.>",
         "$KV.factory-msg-index.>"
@@ -66,6 +67,7 @@
         "factory.system.ready",
         "factory.image.heartbeat",
         "factory.clipool.heartbeat",
+        "factory.omp.heartbeat",
         "factory.gh.mint_failure.>",
         "_inbox.hub.>"
       ],
@@ -342,6 +344,31 @@
       ],
       "subscribe": [],
       "deploy": { "type": "container", "secret": "factory-nats-gh-helper" }
+    },
+    "omp-worker": {
+      "status": "active",
+      "created_at": "2026-06-11",
+      "owner": "factory",
+      "description": "OmpWorker — omp_rpc NATS runtime backend (#1812)",
+      "notes": "Additive lane alongside clipool (ratified #1807). Uses post-#1793 canonical factory.job.* subjects (least-privilege single-token wildcard, NOT factory.job.>). Heartbeat mirrors clipool-worker pattern. Steer bridge subscribed worker-side. _inbox prefix derived from ADR-051 Fix 1.",
+      "allow_responses": true,
+      "publish": [
+        "factory.job.*.progress",
+        "factory.job.*.result",
+        "factory.omp.heartbeat",
+        "factory.system.ready",
+        "$JS.API.DIRECT.GET.KV_factory-state.hub.ready",
+        "$JS.API.INFO",
+        "$JS.API.STREAM.INFO.KV_factory-state",
+        "$JS.API.STREAM.MSG.GET.KV_factory-state"
+      ],
+      "subscribe": [
+        "factory.jobs.omp",
+        "factory.job.*.steer",
+        "_inbox.omp-worker.>",
+        "$KV.factory-state.>"
+      ],
+      "deploy": { "type": "container", "secret": "factory-nats-omp" }
     }
   }
 }

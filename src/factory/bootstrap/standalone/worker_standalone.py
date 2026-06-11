@@ -130,3 +130,24 @@ async def _bootstrap_turn_writer_standalone(raw_config: dict) -> None:
         await store.close()
         await nc.close()
         log.info("turn-writer: stopped cleanly")
+
+
+async def _bootstrap_omp_standalone(raw_config: dict) -> None:  # noqa: ARG001
+    """Wire a standalone OmpWorker connected to NATS.
+
+    omp_rpc is a container image dep (absent from pyproject.toml).
+    The digest gate inside RpcBridge.__init__ will raise DigestMismatchError
+    if the binary does not match the pinned SHA-256.
+    """
+    run_git_ownership_probe()
+    nats_url = os.environ.get("NATS_URL")
+    if not nats_url:
+        sys.exit("NATS_URL is required for standalone omp mode.")
+
+    log_contracts_version()
+
+    from factory.adapters.omp.omp_worker import OmpWorker
+
+    worker = OmpWorker(identity_name="omp-worker")
+    log.info("omp: starting OmpWorker on factory.jobs.omp")
+    await worker.run(nats_url)

@@ -11,6 +11,7 @@ Invariants:
 from __future__ import annotations
 
 import time
+from datetime import UTC, datetime
 
 import pytest
 
@@ -20,16 +21,20 @@ from roxabi_blobs import FsBlobStore
 async def _put_with_ts(
     store: FsBlobStore, data: bytes, ingested_at: float, source: str = "src"
 ) -> int:
-    """Put `data` then back-date its `ingested_at` to `ingested_at` (POSIX float).
+    """Put `data` then back-date its `ingested_at` to an ISO-8601 string.
+
+    Matches the format produced by production put() (datetime.isoformat()).
+    Storing a raw float would mask the TEXT-vs-REAL affinity bug in sweep_older_than.
 
     Returns the blob_ref_id.
     """
     ref = await store.put(data, mime="text/plain", source=source)
     conn = store._conn  # type: ignore[attr-defined]
     assert conn is not None
+    ingested_at_iso = datetime.fromtimestamp(ingested_at, tz=UTC).isoformat()
     await conn.execute(
         "UPDATE blob_refs SET ingested_at = ? WHERE content_hash = ? AND source = ?",
-        (ingested_at, ref.content_hash, source),
+        (ingested_at_iso, ref.content_hash, source),
     )
     await conn.commit()
     # Retrieve the assigned id.

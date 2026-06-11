@@ -365,11 +365,16 @@ class FsBlobStore:
         conn, _lock = self._require_open()
         refs_deleted = 0
         files_unlinked = 0
+        # Convert cutoff to ISO-8601 string: ingested_at is stored as TEXT via
+        # datetime.isoformat() (e.g. '2026-06-11T08:30:48.822502+00:00').
+        # Binding a POSIX float would compare TEXT vs REAL — TEXT affinity makes
+        # '2...' always > '1...' so the WHERE never matches (production no-op).
+        cutoff_iso = datetime.fromtimestamp(cutoff_ts, tz=UTC).isoformat()
         # Snapshot all stale IDs up-front (avoids cursor invalidation while we
         # mutate blob_refs inside delete()).
         cursor = await conn.execute(
             "SELECT id FROM blob_refs WHERE ingested_at < ?",
-            (cutoff_ts,),
+            (cutoff_iso,),
         )
         stale_ids: list[int] = [int(row[0]) for row in await cursor.fetchall()]
         await cursor.close()

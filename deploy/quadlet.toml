@@ -43,6 +43,6 @@ required_secrets = ["factory-nats-blobstore", "factory_blobstore_token"]
 host_roles = ["factory-hub"]
 
 [component.omp]
-unit = "factory-omp.container"
-role = "factory-hub"
+container = "factory-omp.container"
+host_roles = ["factory-hub"]
 required_secrets = ["factory-nats-omp", "factory-litellm-key"]

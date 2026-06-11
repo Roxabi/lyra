@@ -326,8 +326,8 @@ class TestCallbackEvents:
 
         event = SimpleNamespace(text="hello streaming")
         bridge._on_message_update(event)
-        await asyncio.sleep(0)  # call_soon fires lambda
-        await asyncio.sleep(0)  # ensure_future resolves coroutine
+        await asyncio.sleep(0)  # event-based: call_soon fires lambda
+        await asyncio.sleep(0)  # event-based: ensure_future resolves coroutine
 
         nc.publish.assert_awaited_once()
         subject = nc.publish.await_args.args[0]
@@ -341,8 +341,8 @@ class TestCallbackEvents:
 
         event = SimpleNamespace(text="partial chunk")
         bridge._on_message_update(event)
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
+        await asyncio.sleep(0)  # event-based: call_soon fires lambda
+        await asyncio.sleep(0)  # event-based: ensure_future resolves coroutine
 
         payload_bytes = nc.publish.await_args.args[1]
         payload = json.loads(payload_bytes)
@@ -361,9 +361,8 @@ class TestCallbackEvents:
 
         event = SimpleNamespace(text="safe text")
         bridge._on_message_update(event)
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
-
+        await asyncio.sleep(0)  # event-based
+        await asyncio.sleep(0)  # event-based
         payload_bytes = nc.publish.await_args.args[1]
         # Must not contain any exception class message patterns
         assert b"Traceback" not in payload_bytes
@@ -379,9 +378,8 @@ class TestCallbackEvents:
 
         event = SimpleNamespace(tool_name="bash", tool_id="tid-1", tool_input={"cmd": "ls"})
         bridge._on_tool_execution_start(event)
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
-
+        await asyncio.sleep(0)  # event-based
+        await asyncio.sleep(0)  # event-based
         nc.publish.assert_awaited_once()
         subject = nc.publish.await_args.args[0]
         assert subject == _PROGRESS_SUBJECT
@@ -396,9 +394,8 @@ class TestCallbackEvents:
 
         event = SimpleNamespace(tool_name="read_file", tool_id="tid-2", tool_input={"path": "/tmp"})
         bridge._on_tool_execution_start(event)
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
-
+        await asyncio.sleep(0)  # event-based
+        await asyncio.sleep(0)  # event-based
         payload_bytes = nc.publish.await_args.args[1]
         payload = json.loads(payload_bytes)
         assert payload["step"] == "tool_start"
@@ -415,9 +412,8 @@ class TestCallbackEvents:
 
         event = SimpleNamespace(result="final answer")
         bridge._on_agent_end(event)
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
-
+        await asyncio.sleep(0)  # event-based
+        await asyncio.sleep(0)  # event-based
         nc.publish.assert_awaited_once()
         subject = nc.publish.await_args.args[0]
         assert subject == _RESULT_SUBJECT
@@ -430,9 +426,8 @@ class TestCallbackEvents:
 
         event = SimpleNamespace(result="done")
         bridge._on_agent_end(event)
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
-
+        await asyncio.sleep(0)  # event-based
+        await asyncio.sleep(0)  # event-based
         payload_bytes = nc.publish.await_args.args[1]
         payload = json.loads(payload_bytes)
         assert payload["status"] == "success"
@@ -445,8 +440,7 @@ class TestCallbackEvents:
 
         event = SimpleNamespace(text="hi")
         bridge._on_message_update(event)
-        await asyncio.sleep(0)
-
+        await asyncio.sleep(0)  # event-based
         nc.publish.assert_not_awaited()
 
     async def test_callback_no_publish_when_job_id_is_none(
@@ -459,8 +453,7 @@ class TestCallbackEvents:
 
         event = SimpleNamespace(text="hi")
         bridge._on_message_update(event)
-        await asyncio.sleep(0)
-
+        await asyncio.sleep(0)  # event-based
         nc.publish.assert_not_awaited()
 
 
@@ -524,14 +517,12 @@ class TestSteerBridge:
 
         # Start run in background so _in_prompt_await is True during handler call
         async def _slow_prompt_and_wait(prompt: str) -> None:
-            await asyncio.sleep(0.01)
-
+            await asyncio.sleep(0.01)  # event-based
         client.prompt_and_wait.side_effect = _slow_prompt_and_wait
         run_task = asyncio.ensure_future(bridge.run(prompt="hello", job_id=_JOB_ID))
 
         # Give run() time to subscribe and enter prompt_and_wait
-        await asyncio.sleep(0)
-
+        await asyncio.sleep(0)  # event-based
         # Call the captured steer handler
         assert captured_handler, "subscribe callback not captured"
         msg = SimpleNamespace(data=b"steer this way")

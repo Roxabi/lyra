@@ -14,7 +14,9 @@ Network=roxabi.network
 Environment=NATS_URL=nats://factory-nats:4222
 Secret=factory-nats-omp,type=mount,target=factory-nats-omp.seed,uid=1500,gid=1500,mode=0400
 Environment=NATS_NKEY_SEED_PATH=/run/secrets/factory-nats-omp.seed
-Secret=factory-litellm-key,type=env,target=LITELLM_API_KEY
+Secret=factory-litellm-key,type=mount,target=factory-litellm-key.tok,uid=1500,gid=1500,mode=0400
+Environment=LITELLM_API_KEY_FILE=/run/secrets/factory-litellm-key.tok
+Tmpfs=/tmp
 Volume=%h/projects/roxabi-factory/deploy/omp:/home/factory/.config/omp-pi:ro,Z
 Environment=PI_CODING_AGENT_DIR=/home/factory/.config/omp-pi
 Label=io.containers.autoupdate=registry

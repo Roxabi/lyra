@@ -119,6 +119,7 @@ class RpcBridge:
         self._client: omp_rpc.RpcClient = omp_rpc.RpcClient()
         self._nc: nats.aio.client.Client | None = None
         self._in_prompt_await: bool = False
+        self._result_sent: bool = False
 
     async def register(self, nc: nats.aio.client.Client) -> None:
         """Wire callbacks and open the omp_rpc session.
@@ -145,6 +146,7 @@ class RpcBridge:
         """
         self._current_job_id = job_id
         self._in_prompt_await = True
+        self._result_sent = False
         nc = self._nc
 
         async def _handle_steer_msg(msg: Any) -> None:
@@ -190,7 +192,7 @@ class RpcBridge:
             partial_text=partial_text,
             detail={"partial_text": partial_text},
         )
-        asyncio.get_event_loop().call_soon(
+        asyncio.get_running_loop().call_soon(
             lambda: asyncio.ensure_future(nc.publish(jobs_progress(job_id), payload))
         )
 
@@ -202,17 +204,16 @@ class RpcBridge:
             return
         tool_name = getattr(event, "tool_name", None)
         tool_id = getattr(event, "tool_id", None)
-        tool_input = getattr(event, "tool_input", None)
+        # tool_input intentionally NOT published — may contain credentials/file fragments
         payload = _make_progress(
             job_id,
             step="tool_start",
             event_type="tool_start",
             tool_name=tool_name,
             tool_id=tool_id,
-            tool_input=tool_input,
-            detail={"tool_name": tool_name, "tool_id": tool_id, "tool_input": tool_input},
+            detail={"tool_name": tool_name, "tool_id": tool_id},
         )
-        asyncio.get_event_loop().call_soon(
+        asyncio.get_running_loop().call_soon(
             lambda: asyncio.ensure_future(nc.publish(jobs_progress(job_id), payload))
         )
 
@@ -222,15 +223,27 @@ class RpcBridge:
         job_id = getattr(self, "_current_job_id", None)
         if nc is None or job_id is None:
             return
+        if self._result_sent:
+            log.debug("rpc_bridge: _on_agent_end skipped — result already sent for %s", job_id)
+            return
+        self._result_sent = True
         result_data = getattr(event, "result", None)
         data: dict[str, Any] = {"result": result_data} if result_data is not None else {}
         payload = _make_result(job_id, status="success", data=data)
-        asyncio.get_event_loop().call_soon(
+        asyncio.get_running_loop().call_soon(
             lambda: asyncio.ensure_future(nc.publish(jobs_result(job_id), payload))
         )
 
     async def publish_error(self, job_id: str, exc: BaseException) -> None:
-        """Publish a JobResult(status=error) for a failed job."""
+        """Publish a JobResult(status=error) for a failed job.
+
+        No-op if _result_sent is True — guards against double-publish when
+        _on_agent_end fires and prompt_and_wait also raises.
+        """
+        if self._result_sent:
+            log.debug("rpc_bridge: publish_error skipped — result already sent for %s", job_id)
+            return
+        self._result_sent = True
         nc = self._nc
         if nc is None:
             log.warning("rpc_bridge: cannot publish error — nc not set")

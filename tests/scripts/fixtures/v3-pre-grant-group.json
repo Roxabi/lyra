@@ -34,6 +34,7 @@
         "factory.typing.>",
         "factory.event.>",
         "factory.metric.>",
+        "factory.job.*.steer",
         "$JS.API.>",
         "$KV.factory-state.>",
         "$KV.factory-msg-index.>"

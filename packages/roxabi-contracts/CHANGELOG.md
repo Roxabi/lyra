@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.10.0] (2026-06-11)
+
+### Features
+
+* **contracts/jobs:** unify jobs subject taxonomy — rename `factory.results.<job_id>` → `factory.job.<job_id>.result` and `factory.progress.<job_id>` → `factory.job.<job_id>.progress` ([#1793](https://github.com/Roxabi/roxabi-factory/issues/1793)). Updates `jobs_result()` and `jobs_progress()` return values and docstrings.
+* **contracts/jobs:** add `jobs_steer()`, `jobs_opened()`, `jobs_closed()` subject helpers for the full `factory.job.<id>.*` subtree ([#1793](https://github.com/Roxabi/roxabi-factory/issues/1793)). Exposes `jobs_steer`, `jobs_opened`, `jobs_closed` from `roxabi_contracts.jobs`.
+* **contracts/jobs:** remove retired `_Subjects.result_prefix` and `_Subjects.progress_prefix` fields; add `_Subjects.job_prefix` (`"factory.job"`).
+
+### BREAKING CHANGES
+
+* `jobs_result(job_id)` and `jobs_progress(job_id)` return different subject strings. Any caller pinned to `factory.results.*` or `factory.progress.*` wire subjects must update to the new `factory.job.<id>.*` pattern. Confirmed 0 in-repo callers at time of release.
+
+
 ## [0.9.0] (2026-06-11)
 
 ### Features

@@ -1,0 +1,28 @@
+[Unit]
+Description=Factory OmpWorker — omp_rpc NATS runtime backend (#1812)
+After=factory-nats.service
+
+[Container]
+Image=ghcr.io/roxabi/factory-omp-base:15.10.8
+ContainerName=factory-omp
+Exec=factory adapter omp
+UserNS=keep-id:uid=1500,gid=1500
+NoNewPrivileges=true
+ReadOnly=true
+DropCapability=all
+Network=roxabi.network
+Environment=NATS_URL=nats://factory-nats:4222
+Secret=factory-nats-omp,type=mount,target=factory-nats-omp.seed,uid=1500,gid=1500,mode=0400
+Environment=NATS_NKEY_SEED_PATH=/run/secrets/factory-nats-omp.seed
+Secret=factory-litellm-key,type=env,target=LITELLM_API_KEY
+Volume=%h/projects/roxabi-factory/deploy/omp:/home/factory/.config/omp-pi:ro,Z
+Environment=PI_CODING_AGENT_DIR=/home/factory/.config/omp-pi
+Label=io.containers.autoupdate=registry
+
+[Service]
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=120
+
+[Install]
+WantedBy=default.target

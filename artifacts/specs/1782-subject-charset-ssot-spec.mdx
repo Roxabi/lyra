@@ -1,0 +1,147 @@
+---
+title: "refactor(contracts): consolidate NATS subject-segment charset SSoT in _nats_utils"
+description: "Eliminate all inline copies of [A-Za-z0-9_-]+ outside _nats_utils, promote the validator to public, and add a drift-guard test."
+---
+
+## Context
+**Promoted from:** [frame](../frames/1782-subject-charset-ssot-frame.mdx)
+**GitHub issue:** #1782
+**Upstream:** PR #1781 deferred this scope from #1708 (MintFailureEvent charset alignment).
+**Related:** #1619 (WorkEnvelope shim — touches `__init__.py __all__`); #1791 (domain `__init__` re-export surfaces); #1793 (jobs subjects, new potential callsite).
+
+## Goal
+
+Establish a single compiled regex constant and a public validator in `_nats_utils.py` that every consumer — intra-package modules, `event/subjects.py`, and `daemon.py` — references, so the `[A-Za-z0-9_-]+` charset cannot silently drift across definition sites.
+
+## Users
+
+- **Contributors adding domain subject modules** — currently encounter four divergent spelling sites; after this refactor they find one obvious public symbol to import.
+- **Operators** — a regex divergence between `_SAFE_WORKER_ID_RE` and `_SAFE_SUBJECT_SEGMENT_RE` would silently produce mismatched subject validation at runtime; a single constant eliminates that failure mode.
+
+## Expected Behavior
+
+After this refactor:
+
+1. `_nats_utils.py` introduces a chars-only constant `_SAFE_SEGMENT_CHARS = r"A-Za-z0-9_-"` and replaces the two separate compiled regexes with a single `_SAFE_SEGMENT_RE = re.compile(f"[{_SAFE_SEGMENT_CHARS}]+")`. Both `validate_worker_id` and `validate_subject_segment` (public rename) reference `_SAFE_SEGMENT_RE`. `_SAFE_WORKER_ID_RE` and `_SAFE_SUBJECT_SEGMENT_RE` are removed. The `_SAFE_SEGMENT_CHARS` constant is also exported so `daemon.py` can compose `re.sub` safely (see EB §4).
+
+2. `validate_subject_segment` (public, no leading underscore) is importable from `roxabi_contracts` via `__all__` and from `roxabi_contracts._nats_utils` directly. All four existing intra-package importers (`outbound/subjects.py`, `gh/subjects.py`, `verify/subjects.py`, `gh/models.py`) are updated from `_validate_subject_segment` to `validate_subject_segment`. Additionally, the **internal call at line 70 of `validate_nats_subject`** in `_nats_utils.py` itself must be updated from `_validate_subject_segment(segment)` to `validate_subject_segment(segment)` — failing to do so would leave a `NameError` at runtime on any full-subject validation path. The docstring of `validate_nats_subject` (line 65) must also be updated from `validates each segment via _validate_subject_segment` to `validates each segment via validate_subject_segment`.
+
+3. `event/subjects.py` drops its local `_validate_segment` wrapper and calls `validate_subject_segment` from `_nats_utils` directly. The import changes from `_SAFE_SUBJECT_SEGMENT_RE` to `validate_subject_segment` (note: `import re` must **stay** — it is still needed for the local `_SAFE_NAMESPACED_RE = re.compile(...)` at line 24); the local `re.fullmatch` branch inside `_validate_segment` is deleted. The existing `match="segment"` tests continue to pass because the error message string is identical.
+
+4. `daemon.py:_safe_machine_name` replaces the two inline regex literals — `r"[A-Za-z0-9_-]+"` (line 142, fullmatch) and `r"[^A-Za-z0-9_-]"` (line 144, negated-class `re.sub`) — with references to imported constants:
+   - `re.fullmatch(_SAFE_SEGMENT_RE, raw)` for the passthrough check (replaces line 142)
+   - `re.sub(f"[^{_SAFE_SEGMENT_CHARS}]", "_", raw)` for the replace branch (replaces line 144) — using `_SAFE_SEGMENT_CHARS` directly (the chars-only string without brackets or quantifier) avoids the double-bracket expansion bug that would occur with `.pattern`
+   - The fullmatch + sub logic remains local — `validate_subject_segment` (which raises) is **never** called from `daemon.py`. Import is `from roxabi_contracts._nats_utils import _SAFE_SEGMENT_RE, _SAFE_SEGMENT_CHARS`.
+
+5. `roxabi-contracts` is tagged `v0.8.0` (minor bump — additive public API addition). `__init__.py __all__` gains `"validate_subject_segment"`.
+
+6. A new parametrized test `test_segment_charset_rejection` in `test_event_subjects.py` asserts that `per_service_event` and `per_service_metric` reject a standard `_UNSAFE_SEGMENT_IDS` list (matching the voice/image pattern: dots, wildcards `*`, `>`, spaces, empty string). All use `match="NATS subject segment must match"` (the longer, distinctive leading phrase) rather than just `match="segment"` — this ensures a partial error-message truncation during the rename would surface as a test failure rather than a silent pass.
+
+7. New tests in `test_gh_daemon.py` cover `_safe_machine_name`: passthrough on clean input, replace-not-raise on dirty input, empty-string-after-replace yields `"unknown"`.
+
+8. `CHANGELOG.md` in `packages/roxabi-contracts/` records the public promotion of `validate_subject_segment` and the introduction of `_SAFE_SEGMENT_CHARS`.
+
+## Design Decisions
+
+### Site 2 status (event/subjects.py)
+
+`event/subjects.py` already imports `_SAFE_SUBJECT_SEGMENT_RE` (the constant) but
+still defines a local `_validate_segment` wrapper at lines 42–47 with a
+verbatim-duplicate error message. The import of the constant is present; the
+function deduplication is **not done**. This issue completes that deduplication
+by switching `event/subjects.py` to call `validate_subject_segment` directly and
+deleting `_validate_segment`.
+
+### Site 3: single constant strategy
+
+`_SAFE_WORKER_ID_RE` (line 16) and `_SAFE_SUBJECT_SEGMENT_RE` (line 52) are
+identical patterns. They are collapsed to two related constants:
+- `_SAFE_SEGMENT_CHARS = r"A-Za-z0-9_-"` — the raw character class body (no brackets, no quantifier)
+- `_SAFE_SEGMENT_RE = re.compile(f"[{_SAFE_SEGMENT_CHARS}]+")` — the compiled fullmatch regex
+
+`daemon.py`'s `re.sub` **cannot** compose from `_SAFE_SEGMENT_RE.pattern` because `.pattern`
+is `"[A-Za-z0-9_-]+"` (brackets + quantifier included), so
+`f"[^{_SAFE_SEGMENT_RE.pattern}]"` would expand to `"[^[A-Za-z0-9_-]+]"` —
+double bracket with a stray `+` inside the negated class. Python silently treats
+`[` and `+` as literal characters there, making the sub inert and passing dirty
+input through unchanged. `_SAFE_SEGMENT_CHARS` is the composable primitive.
+
+Both `validate_worker_id` and `validate_subject_segment` reference `_SAFE_SEGMENT_RE`;
+their error messages remain distinct (different wording at current lines 30 and
+58). The comment at line 50–51 ("keep paths independent") was written before the
+segment constant existed as a separate object; removing it resolves the stated
+concern without runtime risk.
+
+### daemon.py import feasibility
+
+Confirmed: `daemon.py` already imports `from roxabi_nats import nats_connect`
+(line 45) — non-stdlib deps are available. `roxabi-contracts` is a workspace dep
+in root `pyproject.toml` (line 81) and is present in the container image (same
+image as clipool). `tools/CLAUDE.md` prohibits hub/core imports at module level;
+`roxabi_contracts._nats_utils` is neither. Import is safe.
+
+### SLOC budget for daemon.py
+
+Total line count is 310; SLOC is ~251 (blank lines + docstrings account for the
+remainder). No active exemption entry in `tools/file_exemptions.txt` is needed.
+Adding one import line replaces two inline literal strings — net SLOC delta is
+approximately 0. No budget concern.
+
+### Public promotion and __all__
+
+`validate_subject_segment` is added to `roxabi_contracts.__all__` as an additive
+change → minor version bump 0.7.0 → 0.8.0. Coordinate with #1619 (WorkEnvelope
+additions) if both land in the same release: the `__all__` list grows, no
+conflict. #1791 (domain `__init__` re-export surfaces) should note the rename
+from `_validate_subject_segment` to `validate_subject_segment`.
+
+### Error message preservation
+
+`validate_worker_id` error message (line 30) and `validate_subject_segment`
+error message (line 58/59) are different strings and MUST remain different.
+Consolidating the constant does not touch error messages.
+
+## Final-state wiring table
+
+| Consumer | Imports from | What changes |
+|---|---|---|
+| `_nats_utils.py` | (defines) | `_SAFE_WORKER_ID_RE` + `_SAFE_SUBJECT_SEGMENT_RE` → `_SAFE_SEGMENT_CHARS` + `_SAFE_SEGMENT_RE`; `_validate_subject_segment` → `validate_subject_segment` (public rename); **update internal call at line 70 of `validate_nats_subject`** from `_validate_subject_segment(segment)` → `validate_subject_segment(segment)`; update docstring at line 65 |
+| `event/subjects.py` | `_nats_utils` | Drop `_validate_segment` wrapper; import `validate_subject_segment`; call it directly; keep `import re` (still needed for `_SAFE_NAMESPACED_RE`) |
+| `outbound/subjects.py` | `_nats_utils` | `_validate_subject_segment` → `validate_subject_segment` |
+| `gh/subjects.py` | `_nats_utils` | `_validate_subject_segment` → `validate_subject_segment` |
+| `verify/subjects.py` | `_nats_utils` | `_validate_subject_segment` → `validate_subject_segment` |
+| `gh/models.py` | `_nats_utils` | `_validate_subject_segment` → `validate_subject_segment` |
+| `daemon.py` | `roxabi_contracts._nats_utils` | Import `_SAFE_SEGMENT_RE, _SAFE_SEGMENT_CHARS`; replace `r"[A-Za-z0-9_-]+"` (line 142) with `_SAFE_SEGMENT_RE` and `r"[^A-Za-z0-9_-]"` (line 144, negated class) with `f"[^{_SAFE_SEGMENT_CHARS}]"`; fullmatch + sub logic stays local |
+| `__init__.py` | (exports) | Add `validate_subject_segment` to `__all__` |
+
+## What gets deleted
+
+- `_SAFE_WORKER_ID_RE` — removed from `_nats_utils.py`
+- `_SAFE_SUBJECT_SEGMENT_RE` — removed from `_nats_utils.py`
+- `_validate_segment` function in `event/subjects.py` (local wrapper, lines 42–47)
+- In `daemon.py:_safe_machine_name`: two distinct inline literals are replaced:
+  - Line 142: `r"[A-Za-z0-9_-]+"` (positive character class with quantifier, used in `re.fullmatch`)
+  - Line 144: `r"[^A-Za-z0-9_-]"` (negated character class without quantifier, used in `re.sub`) — note this is the semantic complement of line 142, not the same literal
+
+## Success Criteria
+
+- [ ] `grep -rn 'r"\[A-Za-z0-9_-\]+"' packages/` returns zero hits outside `_nats_utils.py`, AND `grep -rn 'r"\[A-Za-z0-9_-\]+"' src/factory/tools/` returns zero hits — scope is `packages/` and `src/factory/tools/` only; the four out-of-scope files (`cli_bot.py`, `adapters/nats/nats_outbound_listener.py`, `agent_cmd/platforms/_shared.py`, `nats/nats_channel_proxy.py`) contain `_BOT_ID_RE` and `bot_id` validation which is explicitly out of scope for this refactor and will survive unchanged. Additionally, `grep -rn 'r"\[\^A-Za-z0-9_-\]"' src/factory/tools/ packages/` returns zero hits (verifies line 144's negated-class literal is also replaced)
+- [ ] `_nats_utils.py` contains exactly one compiled base-segment regex (`_SAFE_SEGMENT_RE`) — `grep '_SAFE_WORKER_ID_RE\|_SAFE_SUBJECT_SEGMENT_RE' packages/roxabi-contracts/src/roxabi_contracts/_nats_utils.py` returns zero hits
+- [ ] `validate_subject_segment` (no leading underscore) is importable: `python -c "from roxabi_contracts import validate_subject_segment"` exits 0
+- [ ] `event/subjects.py` contains no `_validate_segment` definition — `grep '_validate_segment' packages/roxabi-contracts/src/roxabi_contracts/event/subjects.py` returns zero hits
+- [ ] `test_gh_daemon.py` gains parametrized `_safe_machine_name` tests: passthrough (clean input), replace-not-raise (dirty input), `"unknown"` fallback (input sanitizes to empty)
+- [ ] `test_event_subjects.py` gains `test_segment_charset_rejection` covering `_UNSAFE_SEGMENT_IDS` (dots, `*`, `>`, space, empty string) against `per_service_event`/`per_service_metric`; all use `match="NATS subject segment must match"` (distinctive leading phrase, not just `"segment"`)
+- [ ] `packages/roxabi-contracts/pyproject.toml` version is `0.8.0` and `packages/roxabi-contracts/CHANGELOG.md` records the public promotion of `validate_subject_segment` and introduction of `_SAFE_SEGMENT_CHARS`
+- [ ] `uv run pytest packages/roxabi-contracts/tests/ tests/tools/test_gh_daemon.py -x` exits 0
+
+## Open Questions
+
+None — all design decisions resolved above. The scope is fully specified.
+
+## Pre-check
+
+1. **All criteria binary?** Yes — each criterion is a grep-returns-zero, import-exits-0, pytest-exits-0, or version-string check. No vague wording.
+2. **Breadboard IDs in slices?** Tier S — breadboard/slices sections omitted per template guidance. N/A.
+3. **Max 5 NEEDS CLARIFICATION?** Zero open questions.
+4. **Every affordance in a slice?** N/A (Tier S).
+5. **Every edge case has a handling strategy?** Yes — daemon sanitizer semantics (replace-not-raise), SLOC budget, error message non-regression, `_SAFE_SEGMENT_CHARS` composition safety (`.pattern` bug explained and fixed), `match="NATS subject segment must match"` assertion robustness, `import re` retention in `event/subjects.py`, `validate_nats_subject` internal-call update at line 70, and `__all__` coordination with #1619 are all addressed in Design Decisions.

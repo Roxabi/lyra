@@ -123,8 +123,7 @@ async def test_run_lifecycle_none_dc_thread_store_is_noop() -> None:
 
 
 async def test_run_lifecycle_stops_audio_consumers() -> None:
-    """Audio consumers in tg_consumers + dc_consumers have stop() awaited at teardown.
-    """
+    """Audio consumers in tg_consumers/dc_consumers have stop() awaited at teardown."""
     from factory.bootstrap.lifecycle.bootstrap_lifecycle import run_lifecycle
 
     hub = _make_hub()

@@ -406,7 +406,7 @@ class TestSimpleAgentCliLifecycle:
     # ------------------------------------------------------------------
 
     async def test_t9b_resume_and_reset_routes_through_cli_pool(self) -> None:
-        """T9b: _session_resume_fn routes to cli_pool.queue_resume (S2 embedded path)."""
+        """T9b: _session_resume_fn routes to cli_pool.queue_resume (S2 embedded)."""
         # Arrange — provider has NO queue_resume method
         provider = MagicMock(spec=["complete", "stream", "is_alive"])
         cli_pool = MagicMock()
@@ -653,9 +653,7 @@ class TestSimpleAgentNatsLifecycle:
         result = await pool.resume_session("sess-nats-1")
 
         assert result is True
-        nats_driver.queue_resume.assert_called_once_with(
-            pool.pool_id, "sess-nats-1"
-        )
+        nats_driver.queue_resume.assert_called_once_with(pool.pool_id, "sess-nats-1")
 
 
 # ---------------------------------------------------------------------------

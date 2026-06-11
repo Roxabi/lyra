@@ -295,7 +295,8 @@ class TestHandleCmdEmbeddedResume:
 
         worker = CliPoolNatsWorker(pool)
 
-        # Minimal NATS msg double (reply needed for reply() call in _handle_cmd_streaming)
+        # Minimal NATS msg double (reply needed for reply() call
+        # in _handle_cmd_streaming)
         msg = MagicMock()
         msg.reply = "_INBOX.test"
 

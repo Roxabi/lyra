@@ -259,7 +259,7 @@ def test_cli_control_cmd_invalid_op() -> None:
 
 
 def test_cli_control_cmd_optional_fields() -> None:
-    """cli_session_id and cwd are None by default; old wire name 'session_id' accepted."""
+    """cli_session_id and cwd default to None; old wire name 'session_id' accepted."""
     # Arrange
     payload_minimal = {**_ENVELOPE, "pool_id": "pool-ctrl", "op": "reset"}
     payload_full = {

@@ -17,7 +17,6 @@ Slice S2 reality:
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -305,10 +304,14 @@ class TestQueueResume:
         from factory.transport._result import Err, SanitizedError
 
         fake_transport = _FakeTransport(call_return=Ok(b"{}"))
-        client, codec, pool = _make_client(fake_transport)
+        client, _, pool = _make_client(fake_transport)
 
         # Make request_with_routing return an Err (use a known code so decode succeeds)
-        err = Err(SanitizedError(code="transport.no_responders", message="forced", retryable=False))
+        err = Err(
+            SanitizedError(
+                code="transport.no_responders", message="forced", retryable=False
+            )
+        )
         pool.request_with_routing = AsyncMock(return_value=err)
 
         store = MagicMock()
@@ -330,7 +333,7 @@ class TestQueueResume:
     async def test_stream_pops_pending_resume(self) -> None:
         """After queue_resume stashes, stream() consumes it via resume_session_id."""
         fake_transport = _FakeTransport(call_return=Ok(b"{}"))
-        client, codec, pool = _make_client(fake_transport)
+        client, _, pool = _make_client(fake_transport)
 
         # stream_request must be an async generator; return empty one
         async def _empty_stream(*_args: object, **_kwargs: object):  # type: ignore[return]
@@ -349,7 +352,8 @@ class TestQueueResume:
         from factory.core.agent.agent_config import ModelConfig
 
         model_cfg = ModelConfig(backend="claude-cli")
-        # Exhaust the (empty) stream — stash is popped when body executes (first iteration)
+        # Exhaust the (empty) stream — stash is popped when body executes
+        # (first iteration)
         async for _ in client.stream("pool-8", "hello", model_cfg, "sys"):
             pass
 

@@ -125,7 +125,7 @@ NATS type (Core vs JetStream), the durability contract, and the keying shape:
 **Distinguish from sibling subjects** — these are NOT typing-plane members despite the
 surface resemblance:
 
-- `factory.progress.<job_id>` (#1044, future) — job-internal progress, keyed on `job_id`, not on
+- `factory.job.<job_id>.progress` (#1044, #1793) — job-internal progress, keyed on `job_id`, not on
   `WorkScope`.
 - `factory.clipool.heartbeat` and the `*.heartbeat` family — internal liveness, control-plane.
 - `$KV.factory-state.hub.ready` — persistent flag in JetStream KV, watched by adapters.

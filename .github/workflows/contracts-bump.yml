@@ -43,6 +43,15 @@ jobs:
     timeout-minutes: 15
 
     steps:
+      # roxabi-ci App token (ephemeral, 1 h) — replaces the shared org PAT: its pushes
+      # re-trigger CI and it can merge workflow-file PRs, which GITHUB_TOKEN cannot.
+      - name: Mint app token (roxabi-ci)
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: ${{ vars.ROXABI_CI_APP_ID }}
+          private-key: ${{ secrets.ROXABI_CI_APP_PRIVATE_KEY }}
+
       # Step 1: Checkout the satellite repo at staging.
       # Uses explicit repository: input to handle both workflow_call (satellite context)
       # and workflow_dispatch (factory context where github.repository = roxabi-factory).
@@ -51,7 +60,7 @@ jobs:
         with:
           repository: ${{ inputs.satellite_repo }}
           ref: staging
-          token: ${{ secrets.PAT }}
+          token: ${{ steps.app.outputs.token }}
           fetch-depth: 0
 
       # Step 2: Capture OLD_CONTRACTS_SHA from uv.lock BEFORE any upgrade runs.
@@ -173,7 +182,7 @@ jobs:
             echo "wire_breaking=false" >> "$GITHUB_OUTPUT"
           fi
         env:
-          GH_TOKEN: ${{ secrets.PAT }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
           OLD_CONTRACTS_SHA: ${{ steps.old-sha.outputs.old_sha }}
 
       # Step 6: Idempotency — skip if a bump PR is already open for this satellite this week.
@@ -196,7 +205,7 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
         env:
-          GH_TOKEN: ${{ secrets.PAT }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
           SATELLITE_REPO: ${{ inputs.satellite_repo }}
 
       # Step 7: Compute branch name, gather factory changelog, create branch + commit + PR.
@@ -288,7 +297,7 @@ jobs:
           echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
           echo "Created PR: ${PR_URL}"
         env:
-          GH_TOKEN: ${{ secrets.PAT }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
           SATELLITE_REPO_INPUT: ${{ inputs.satellite_repo }}
           OLD_CONTRACTS_SHA: ${{ steps.old-sha.outputs.old_sha }}
           NEW_CONTRACTS_SHA: ${{ steps.wire-guard.outputs.new_sha }}
@@ -316,6 +325,6 @@ jobs:
             || echo "::warning::Failed to apply label '${LABEL}' to ${PR_URL} — ensure D3 labels exist in the satellite repo."
           echo "Applied label '${LABEL}' to ${PR_URL}"
         env:
-          GH_TOKEN: ${{ secrets.PAT }}
+          GH_TOKEN: ${{ steps.app.outputs.token }}
           PR_URL_INPUT: ${{ steps.create-pr.outputs.pr_url }}
           WIRE_BREAKING: ${{ steps.wire-guard.outputs.wire_breaking }}

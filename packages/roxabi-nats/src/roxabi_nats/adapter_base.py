@@ -41,6 +41,7 @@ from nats.aio.client import Client as NATS
 # NatsAdapterBase uses _CONTRACT_VERSION directly from its canonical home.
 # The public name CONTRACT_VERSION is served via __getattr__ below so that
 # accessing it emits a DeprecationWarning per ADR-059 (V4).
+from roxabi_contracts._nats_utils import _SAFE_SEGMENT_CHARS
 from roxabi_contracts.envelope import CONTRACT_VERSION as _CONTRACT_VERSION
 from roxabi_nats._resolver import _EMPTY_RESOLVER, _TypeHintResolver
 from roxabi_nats._validate import validate_nats_token
@@ -123,7 +124,7 @@ class NatsAdapterBase(ABC):
         # NATS-safe alphabet so publish and subscribe sides agree on the same
         # subject token regardless of host.
         raw_id = f"{queue_group}-{socket.gethostname()}-{os.getpid()}"
-        self._worker_id = re.sub(r"[^A-Za-z0-9_-]", "_", raw_id)
+        self._worker_id = re.sub(f"[^{_SAFE_SEGMENT_CHARS}]", "_", raw_id)
         self._wait_ready_flag = wait_ready
         self._heartbeat_task: asyncio.Task | None = None
         self._resolver: _TypeHintResolver = (

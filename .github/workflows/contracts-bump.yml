@@ -18,11 +18,6 @@ on:
         description: "Space-separated packages to upgrade (e.g. 'roxabi-contracts roxabi-nats')"
         required: true
         type: string
-    secrets:
-      PAT:
-        # DEPRECATED — unused since the roxabi-ci App migration (#1850). Kept optional
-        # until callers stop passing it (llmCLI#119), then removed entirely (#1852).
-        required: false
   workflow_dispatch:
     inputs:
       satellite_repo:

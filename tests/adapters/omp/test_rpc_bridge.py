@@ -57,7 +57,7 @@ def _make_fake_binary(tmp_path: Path, *, matching_digest: bool = True) -> Path:
 
 
 def _stub_omp_rpc_module() -> tuple[ModuleType, MagicMock]:
-    """Install a stub omp_rpc in sys.modules; return (module, RpcClient mock instance)."""
+    """Install a stub omp_rpc in sys.modules; return (module, RpcClient mock)."""
     client_instance = MagicMock()
     client_instance.new_session = AsyncMock()
     client_instance.prompt_and_wait = AsyncMock()
@@ -144,9 +144,7 @@ class TestDigestGate:
         actual_sha = hashlib.sha256(content).hexdigest()
         _stub_omp_rpc_module()
         try:
-            with patch(
-                "factory.adapters.omp._rpc_bridge._PINNED_SHA256", actual_sha
-            ):
+            with patch("factory.adapters.omp._rpc_bridge._PINNED_SHA256", actual_sha):
                 bridge = RpcBridge(omp_bin=omp_bin)
             assert bridge is not None
         finally:
@@ -241,9 +239,7 @@ class TestRun:
         await bridge.run(prompt="hello", job_id=_JOB_ID)
         assert bridge._in_prompt_await is False
 
-    async def test_in_prompt_await_cleared_on_exception(
-        self, bridge_and_nc
-    ) -> None:
+    async def test_in_prompt_await_cleared_on_exception(self, bridge_and_nc) -> None:
         bridge, nc, client = bridge_and_nc
         await bridge.register(nc)
         client.prompt_and_wait.side_effect = RuntimeError("boom")
@@ -305,7 +301,8 @@ class TestPublishError:
         # Don't call register — _nc stays None
         import logging
 
-        with caplog.at_level(logging.WARNING, logger="factory.adapters.omp._rpc_bridge"):
+        logger_name = "factory.adapters.omp._rpc_bridge"
+        with caplog.at_level(logging.WARNING, logger=logger_name):
             await bridge.publish_error(_JOB_ID, RuntimeError("x"))
         assert nc.publish.await_count == 0
 
@@ -350,9 +347,7 @@ class TestCallbackEvents:
         assert payload["partial_text"] == "partial chunk"
         assert payload["detail"]["partial_text"] == "partial chunk"
 
-    async def test_on_message_update_no_str_exc_in_fields(
-        self, bridge_and_nc
-    ) -> None:
+    async def test_on_message_update_no_str_exc_in_fields(self, bridge_and_nc) -> None:
         """ADR-073: no exception string in published field."""
         bridge, nc, client = bridge_and_nc
         nc.subscribe = AsyncMock(return_value=AsyncMock(unsubscribe=AsyncMock()))
@@ -376,7 +371,9 @@ class TestCallbackEvents:
         await bridge.register(nc)
         bridge._current_job_id = _JOB_ID
 
-        event = SimpleNamespace(tool_name="bash", tool_id="tid-1", tool_input={"cmd": "ls"})
+        event = SimpleNamespace(
+            tool_name="bash", tool_id="tid-1", tool_input={"cmd": "ls"}
+        )
         bridge._on_tool_execution_start(event)
         await asyncio.sleep(0)  # event-based
         await asyncio.sleep(0)  # event-based
@@ -384,15 +381,15 @@ class TestCallbackEvents:
         subject = nc.publish.await_args.args[0]
         assert subject == _PROGRESS_SUBJECT
 
-    async def test_on_tool_execution_start_payload_fields(
-        self, bridge_and_nc
-    ) -> None:
+    async def test_on_tool_execution_start_payload_fields(self, bridge_and_nc) -> None:
         bridge, nc, client = bridge_and_nc
         nc.subscribe = AsyncMock(return_value=AsyncMock(unsubscribe=AsyncMock()))
         await bridge.register(nc)
         bridge._current_job_id = _JOB_ID
 
-        event = SimpleNamespace(tool_name="read_file", tool_id="tid-2", tool_input={"path": "/tmp"})
+        event = SimpleNamespace(
+            tool_name="read_file", tool_id="tid-2", tool_input={"path": "/tmp"}
+        )
         bridge._on_tool_execution_start(event)
         await asyncio.sleep(0)  # event-based
         await asyncio.sleep(0)  # event-based
@@ -443,9 +440,7 @@ class TestCallbackEvents:
         await asyncio.sleep(0)  # event-based
         nc.publish.assert_not_awaited()
 
-    async def test_callback_no_publish_when_job_id_is_none(
-        self, bridge_and_nc
-    ) -> None:
+    async def test_callback_no_publish_when_job_id_is_none(self, bridge_and_nc) -> None:
         bridge, nc, client = bridge_and_nc
         nc.subscribe = AsyncMock(return_value=AsyncMock(unsubscribe=AsyncMock()))
         await bridge.register(nc)
@@ -487,9 +482,7 @@ class TestSteerBridge:
 
         sub_mock.unsubscribe.assert_awaited_once()
 
-    async def test_steer_bridge_unsubscribes_on_exception(
-        self, bridge_and_nc
-    ) -> None:
+    async def test_steer_bridge_unsubscribes_on_exception(self, bridge_and_nc) -> None:
         bridge, nc, client = bridge_and_nc
         sub_mock = AsyncMock(unsubscribe=AsyncMock())
         nc.subscribe = AsyncMock(return_value=sub_mock)
@@ -518,6 +511,7 @@ class TestSteerBridge:
         # Start run in background so _in_prompt_await is True during handler call
         async def _slow_prompt_and_wait(prompt: str) -> None:
             await asyncio.sleep(0.01)  # event-based
+
         client.prompt_and_wait.side_effect = _slow_prompt_and_wait
         run_task = asyncio.ensure_future(bridge.run(prompt="hello", job_id=_JOB_ID))
 

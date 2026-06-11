@@ -646,7 +646,7 @@ class TestOptionalSecretSkip:
             "factory-gh-pem",
             "factory-claude-oauth",
             "factory-litellm-key",
-        }, (f"Unexpected optional secrets: {optionals}")
+        }, f"Unexpected optional secrets: {optionals}"
 
 
 # ---------------------------------------------------------------------------

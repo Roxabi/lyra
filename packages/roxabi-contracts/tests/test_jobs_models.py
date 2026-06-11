@@ -352,7 +352,7 @@ def test_job_progress_omp_fields_roundtrip() -> None:
 
 
 def test_job_progress_omp_fields_extra_ignored() -> None:
-    """Unknown future omp fields are silently dropped (forward-compat, extra='ignore')."""
+    """Unknown future omp fields are dropped (forward-compat, extra='ignore')."""
     payload: dict[str, Any] = {
         **sample_job_progress,
         "event_type": "thinking",

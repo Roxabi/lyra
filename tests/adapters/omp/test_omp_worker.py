@@ -10,8 +10,6 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
-
 from factory.adapters.omp.omp_worker import OmpWorker
 
 # ---------------------------------------------------------------------------
@@ -76,7 +74,7 @@ class TestHeartbeatPayload:
     def test_inherits_base_fields(self) -> None:
         worker = _make_worker()
         payload = worker.heartbeat_payload()
-        # base always includes at minimum a timestamp or similar; verify worker key added
+        # base includes at minimum a timestamp or similar; verify worker key added
         assert "worker" in payload
 
 
@@ -135,7 +133,7 @@ class TestHandleInvalidEnvelope:
             "job_name": _JOB_NAME,
             "payload": {"prompt": "hello"},
             "contract_version": "1",
-            "reply_to": "invalid reply subject with spaces",  # fails validate_nats_subject
+            "reply_to": "invalid reply subject with spaces",  # not a valid subject
             "trace_id": "trace-003",
             "issued_at": "2026-06-11T00:00:00Z",
         }

@@ -66,6 +66,7 @@ class CliNatsCodec:
         messages: list[dict] | None,
         *,
         stream: bool,
+        root_job_id: str | None = None,
         **kwargs: Any,
     ) -> tuple[bytes, str]:
         """Build canonical LlmRequest payload and return (bytes, trace_id).
@@ -74,6 +75,9 @@ class CliNatsCodec:
           messages None/empty → [{"role": "user", "content": text}]
           last msg content == text → pass through unchanged
           else → append {"role": "user", "content": text}
+
+        ``root_job_id`` threads the minted ingress id through to LlmRequest.job_id
+        (#1620, ADR-084).  None falls back to a fresh new_job_id().
         """
         if not messages:
             wire_messages: list[dict] = [{"role": "user", "content": text}]
@@ -87,7 +91,7 @@ class CliNatsCodec:
             contract_version=CONTRACT_VERSION,
             trace_id=trace_id,
             issued_at=datetime.now(timezone.utc),
-            job_id=new_job_id(),
+            job_id=root_job_id if root_job_id is not None else new_job_id(),
             request_id=str(uuid4()).replace("-", "")[:32],
             messages=wire_messages,
             model=model_cfg.model,

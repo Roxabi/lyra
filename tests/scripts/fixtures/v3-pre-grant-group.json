@@ -37,7 +37,8 @@
         "factory.job.*.steer",
         "$JS.API.>",
         "$KV.factory-state.>",
-        "$KV.factory-msg-index.>"
+        "$KV.factory-msg-index.>",
+        "$KV.factory-active-jobs.>"
       ],
       "subscribe": [
         "factory.inbound.telegram.>",

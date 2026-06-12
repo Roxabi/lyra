@@ -255,12 +255,33 @@ class TestHubAudioProvisioningBehavioral:
             call_order.append("ensure_kv")
             return MagicMock()
 
+        async def _record_ensure_active_jobs_kv(*_a, **_kw):
+            call_order.append("ensure_active_jobs_kv")
+            return MagicMock()
+
         async def _record_announce_hub_ready(*_a, **_kw):
             call_order.append("announce_hub_ready")
             raise SystemExit("test-sentinel: stop after announce_hub_ready")
 
         from factory.bootstrap.standalone.hub_standalone import (
             _bootstrap_hub_standalone,
+        )
+
+        # active-jobs registry provisioning runs before announce (ADR-079 S3).
+        # Stub via monkeypatch rather than the with-block to stay under CPython's
+        # 20-statically-nested-block limit. Lazily imported inside the function
+        # body → patch at source module paths so the local imports resolve them.
+        monkeypatch.setattr(
+            "factory.infrastructure.stores.active_jobs_kv.ensure_active_jobs_kv",
+            _record_ensure_active_jobs_kv,
+        )
+        monkeypatch.setattr(
+            "factory.infrastructure.stores.active_jobs_kv.KvActiveJobsStore",
+            MagicMock(return_value=MagicMock(connect=AsyncMock())),
+        )
+        monkeypatch.setattr(
+            "factory.infrastructure.stores.active_jobs_refresher.RegistryCoordinator",
+            MagicMock(return_value=MagicMock(start=MagicMock(), stop=AsyncMock())),
         )
 
         with (
@@ -370,6 +391,15 @@ class TestHubAudioProvisioningBehavioral:
         )
         assert ev_idx < ar_idx, (
             f"ensure_kv (pos {ev_idx}) must precede announce_hub_ready "
+            f"(pos {ar_idx}) — ADR-079 S3 ordering violated."
+        )
+        assert "ensure_active_jobs_kv" in call_order, (
+            "ensure_active_jobs_kv was never awaited — hub must provision the "
+            "active-jobs registry KV before announce_hub_ready (ADR-079 S3)."
+        )
+        ej_idx = call_order.index("ensure_active_jobs_kv")
+        assert ej_idx < ar_idx, (
+            f"ensure_active_jobs_kv (pos {ej_idx}) must precede announce_hub_ready "
             f"(pos {ar_idx}) — ADR-079 S3 ordering violated."
         )
 

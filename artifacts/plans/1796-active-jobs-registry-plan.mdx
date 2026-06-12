@@ -1,0 +1,645 @@
+---
+title: "#1796 — factory-active-jobs NATS-KV Registry: Implementation Plan"
+issue: 1796
+status: approved
+tier: F-lite
+date: 2026-06-12
+spec: artifacts/specs/1796-active-jobs-registry-spec.mdx
+---
+
+# #1796 — Implementation Plan: factory-active-jobs NATS-KV Registry
+
+## Build Order
+
+```
+Slice 0 (foundation) → Slice 1 (port + store) → Slice 2 (pool wiring) → Slice 3 (refresher) → Slice A1 (ACL) → Slice D1 (docs)
+```
+
+Each slice is independently committable. Slices 0–3 can proceed without ACL; A1 must land before prod deploy.
+
+---
+
+## Slice 0 — Bucket Provisioning at Hub Boot
+
+**Scope:** Wire `factory-active-jobs` KV bucket creation into `hub_standalone.py` before `announce_hub_ready()`.
+
+### Files
+
+| File | Action |
+|---|---|
+| `src/factory/bootstrap/standalone/hub_standalone.py` | Edit — add `_ensure_active_jobs_kv()` call in provisioning block |
+| `src/factory/bootstrap/wiring/kv_active_jobs.py` | New — `_open_or_create_active_jobs_kv(js)` helper |
+
+### New file: `src/factory/bootstrap/wiring/kv_active_jobs.py`
+
+```python
+"""Race-safe create-or-open for the factory-active-jobs KV bucket.
+
+Mirrors kv_watch_channels._open_or_create_kv() pattern exactly.
+"""
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from nats.js.api import KeyValueConfig, StorageType
+from nats.js.errors import BadRequestError, BucketNotFoundError
+
+from factory.infrastructure.stores.active_jobs_kv import (
+    ACTIVE_JOBS_BUCKET,
+    ACTIVE_JOBS_TTL,
+)
+
+if TYPE_CHECKING:
+    from nats.js import JetStreamContext
+    from nats.js.kv import KeyValue
+
+_ERR_CODE_ALREADY_EXISTS = 10058
+
+
+async def open_or_create_active_jobs_kv(js: "JetStreamContext") -> "KeyValue":
+    """Race-safe KV open. Fail-fast on unexpected errors."""
+    try:
+        return await js.key_value(ACTIVE_JOBS_BUCKET)
+    except BucketNotFoundError:
+        pass
+    try:
+        return await js.create_key_value(
+            KeyValueConfig(
+                bucket=ACTIVE_JOBS_BUCKET,
+                ttl=ACTIVE_JOBS_TTL,
+                storage=StorageType.FILE,
+                allow_direct=False,
+            )
+        )
+    except BadRequestError as exc:
+        if exc.err_code != _ERR_CODE_ALREADY_EXISTS:
+            raise
+    return await js.key_value(ACTIVE_JOBS_BUCKET)
+```
+
+### Edit: `hub_standalone.py` provisioning block
+
+Insert after existing `ensure_kv` / `JetStreamAuditSink.provision` calls, **before** `announce_hub_ready(nc)` (line ~204):
+
+```python
+from factory.bootstrap.wiring.kv_active_jobs import open_or_create_active_jobs_kv
+
+_active_jobs_kv = await open_or_create_active_jobs_kv(_audio_js)
+# _active_jobs_kv is threaded to KvActiveJobsStore below
+```
+
+### Tests
+
+**File:** `tests/bootstrap/test_hub_active_jobs_provision.py`
+
+- `test_bucket_created_on_fresh_boot`: mock JS; assert `create_key_value` called with `bucket="factory-active-jobs"`, `ttl=120`, `storage=FILE`, `allow_direct=False`.
+- `test_bucket_open_on_existing`: mock JS so `key_value()` succeeds immediately; assert `create_key_value` NOT called.
+- `test_race_safe_lost_creation`: mock so first `key_value` raises `BucketNotFoundError`, `create_key_value` raises `BadRequestError(err_code=10058)`, second `key_value` succeeds.
+- `test_unexpected_bad_request_propagates`: `BadRequestError(err_code=9999)` must propagate (fail-fast).
+
+---
+
+## Slice 1 — Port + KV Store
+
+**Scope:** `ActiveJobsPort` Protocol in `core/ports/`; `KvActiveJobsStore` in `infrastructure/stores/`; `RegistryConflictError` in the port module.
+
+### Files
+
+| File | Action |
+|---|---|
+| `src/factory/core/ports/active_jobs.py` | New |
+| `src/factory/core/ports/__init__.py` | Edit — re-export `ActiveJobsPort`, `ActiveJobEntry`, `RegistryConflictError` |
+| `src/factory/infrastructure/stores/active_jobs_kv.py` | New |
+
+**Folder size check:**
+- `core/ports/`: 9 → 10 files (within 15 limit)
+- `infrastructure/stores/`: 13 → 14 files (within 15 limit, `base/` and `migrations/` are dirs not counted)
+
+### New file: `src/factory/core/ports/active_jobs.py`
+
+```python
+"""ActiveJobsPort — driven port for the factory-active-jobs KV registry.
+
+Pure Protocol + value objects. Zero infrastructure imports.
+Concrete impl: factory.infrastructure.stores.active_jobs_kv.KvActiveJobsStore.
+"""
+from __future__ import annotations
+
+import datetime
+from dataclasses import dataclass
+from typing import Protocol
+
+
+class RegistryConflictError(Exception):
+    """CAS conflict on singleton idx key (steer/queue concurrency_mode).
+
+    Raised by open() when another job already holds the pool_id slot.
+    Router (#1797) converts this into a steer or queue decision.
+    """
+    def __init__(self, pool_id: str, existing_job_id: str) -> None:
+        super().__init__(f"pool {pool_id!r} already has active job {existing_job_id!r}")
+        self.pool_id = pool_id
+        self.existing_job_id = existing_job_id
+
+
+@dataclass(frozen=True)
+class ActiveJobEntry:
+    job_id: str
+    pool_id: str
+    status: str                  # "open" | "closing"
+    started_at: datetime.datetime
+    steer_subject: str
+    concurrency_mode: str        # "steer" | "queue" | "parallel"
+    worker_loc: str | None = None
+
+
+class ActiveJobsPort(Protocol):
+    """Hub-side registry of active runs.
+
+    All methods are async and coroutine-safe.
+    Writers: hub only. Readers: hub + future dashboard (#1800).
+    """
+
+    async def open(self, entry: ActiveJobEntry) -> None:
+        """Write job entry + singleton idx (steer/queue only).
+
+        Raises RegistryConflictError if idx key already occupied.
+        """
+        ...
+
+    async def refresh(self, job_id: str) -> None:
+        """Re-put job entry (and its idx key) to reset TTL clock."""
+        ...
+
+    async def close(self, job_id: str) -> None:
+        """Delete job entry and idx key (if this job owns it)."""
+        ...
+
+    async def get_by_pool(self, pool_id: str) -> ActiveJobEntry | None:
+        """Return the open entry for pool_id via idx key, or None."""
+        ...
+```
+
+### New file: `src/factory/infrastructure/stores/active_jobs_kv.py`
+
+```python
+"""KvActiveJobsStore — KV-backed implementation of ActiveJobsPort.
+
+Bucket: factory-active-jobs (FILE storage, TTL=120s, allow_direct=False).
+Writer: hub only. Key scheme: job.<kv_safe(job_id)>, idx.<kv_safe(pool_id)>.
+"""
+from __future__ import annotations
+
+import datetime
+import json
+import logging
+from typing import TYPE_CHECKING
+
+from nats.js.errors import KeyWrongLastSequenceError, NotFoundError
+
+from factory.core.ports.active_jobs import (
+    ActiveJobEntry,
+    ActiveJobsPort,
+    RegistryConflictError,
+)
+from factory.infrastructure.stores._kv_keys import kv_safe_part
+
+if TYPE_CHECKING:
+    from nats.js.kv import KeyValue
+
+log = logging.getLogger(__name__)
+
+ACTIVE_JOBS_BUCKET = "factory-active-jobs"
+ACTIVE_JOBS_TTL = 120          # seconds — named constant, passed as ttl= (not max_age=)
+ACTIVE_JOBS_REFRESH = 30       # seconds — refresher cadence
+
+
+def _job_key(job_id: str) -> str:
+    return f"job.{kv_safe_part(job_id)}"
+
+
+def _idx_key(pool_id: str) -> str:
+    return f"idx.{kv_safe_part(pool_id)}"
+
+
+def _encode(entry: ActiveJobEntry) -> bytes:
+    return json.dumps({
+        "job_id": entry.job_id,
+        "pool_id": entry.pool_id,
+        "status": entry.status,
+        "started_at": entry.started_at.isoformat(),
+        "steer_subject": entry.steer_subject,
+        "concurrency_mode": entry.concurrency_mode,
+        "worker_loc": entry.worker_loc,
+    }).encode()
+
+
+def _decode(raw: bytes) -> ActiveJobEntry:
+    d = json.loads(raw)
+    return ActiveJobEntry(
+        job_id=d["job_id"],
+        pool_id=d["pool_id"],
+        status=d["status"],
+        started_at=datetime.datetime.fromisoformat(d["started_at"]),
+        steer_subject=d["steer_subject"],
+        concurrency_mode=d["concurrency_mode"],
+        worker_loc=d.get("worker_loc"),
+    )
+
+
+class KvActiveJobsStore:
+    """Implements ActiveJobsPort over a NATS JetStream KV handle."""
+
+    def __init__(self, kv: "KeyValue") -> None:
+        self._kv = kv
+        # In-memory index: job_id → entry (for refresh without re-read)
+        self._entries: dict[str, ActiveJobEntry] = {}
+
+    async def open(self, entry: ActiveJobEntry) -> None:
+        await self._kv.put(_job_key(entry.job_id), _encode(entry))
+        self._entries[entry.job_id] = entry
+        if entry.concurrency_mode in ("steer", "queue"):
+            idx = _idx_key(entry.pool_id)
+            val = entry.job_id.encode()
+            try:
+                existing = await self._kv.get(idx)
+                try:
+                    await self._kv.update(idx, val, last_revision=existing.revision)
+                except KeyWrongLastSequenceError:
+                    existing2 = await self._kv.get(idx)
+                    raise RegistryConflictError(
+                        entry.pool_id, existing2.value.decode()
+                    )
+            except NotFoundError:
+                try:
+                    await self._kv.create(idx, val)
+                except KeyWrongLastSequenceError:
+                    existing2 = await self._kv.get(idx)
+                    raise RegistryConflictError(
+                        entry.pool_id, existing2.value.decode()
+                    )
+
+    async def refresh(self, job_id: str) -> None:
+        entry = self._entries.get(job_id)
+        if entry is None:
+            return
+        await self._kv.put(_job_key(job_id), _encode(entry))
+        if entry.concurrency_mode in ("steer", "queue"):
+            await self._kv.put(_idx_key(entry.pool_id), job_id.encode())
+
+    async def close(self, job_id: str) -> None:
+        entry = self._entries.pop(job_id, None)
+        try:
+            await self._kv.delete(_job_key(job_id))
+        except NotFoundError:
+            pass
+        if entry and entry.concurrency_mode in ("steer", "queue"):
+            idx = _idx_key(entry.pool_id)
+            try:
+                current = await self._kv.get(idx)
+                if current.value and current.value.decode() == job_id:
+                    await self._kv.delete(idx)
+            except NotFoundError:
+                pass
+
+    async def get_by_pool(self, pool_id: str) -> ActiveJobEntry | None:
+        try:
+            entry_ref = await self._kv.get(_idx_key(pool_id))
+        except NotFoundError:
+            return None
+        job_id = entry_ref.value.decode()
+        entry = self._entries.get(job_id)
+        if entry:
+            return entry
+        try:
+            raw_entry = await self._kv.get(_job_key(job_id))
+            return _decode(raw_entry.value)
+        except NotFoundError:
+            return None
+```
+
+### Tests
+
+**File:** `tests/infrastructure/stores/test_active_jobs_kv.py`
+
+Anchor: `tests/infrastructure/stores/test_message_index_kv.py` (AsyncMock pattern).
+
+- `test_open_writes_job_and_idx_steer`: open with `concurrency_mode="steer"`; assert `kv.put` called for `job.<id>` and `kv.create` for `idx.<safe_pool_id>`.
+- `test_open_writes_job_no_idx_parallel`: `concurrency_mode="parallel"`; assert `kv.create` NOT called.
+- `test_open_colon_pool_id_sanitization`: `pool_id="telegram:lyra:123"`; assert idx key is `idx.telegram_lyra_123` (no colons).
+- `test_open_conflict_raises_RegistryConflictError`: second `open()` with same pool_id; `kv.create` raises `KeyWrongLastSequenceError` → `RegistryConflictError`.
+- `test_refresh_reputs_job_and_idx`: open then refresh; assert `kv.put` called twice for both keys.
+- `test_refresh_noop_unknown_job`: refresh with unknown job_id; no exception.
+- `test_close_deletes_job_and_idx_owner`: open then close; assert `kv.delete` called for both, only when current idx value matches job_id.
+- `test_close_skips_idx_if_not_owner`: close when idx holds a different job_id; only `job.*` deleted.
+- `test_get_by_pool_returns_entry`: open then get_by_pool; returns correct entry.
+- `test_get_by_pool_returns_none_no_idx`: get_by_pool for unknown pool_id; returns None.
+- `test_faked_ttl_reap`: after `close()` removes the in-memory entry, a crash-orphan `kv.get` raises `NotFoundError`; proves TTL reap path (the live entry simply doesn't exist).
+
+---
+
+## Slice 2 — Pool Run-Completion Wiring
+
+**Scope:** Call `active_jobs.open()` at run start (`pool.submit()` first-task path) and `active_jobs.close()` at the exact run-completion seam.
+
+### Run-Completion Seam (Risk-Identified)
+
+**File:** `src/factory/core/pool/pool_processor.py`, `process_loop()`, lines 94–95:
+
+```python
+        finally:
+            pool._current_task = None  # ← INJECTION POINT for close()
+```
+
+This `finally` block executes unconditionally after every run, regardless of:
+- Normal completion
+- `CancelledError` from `/stop` (re-raised after sending "cancelled" reply)
+- Any unhandled exception in `_process_with_cancel`
+
+**Strategy:** `pool._on_run_complete_fn` — a nullable async callback stored on the `Pool` instance. Wired by bootstrap (composition root) after construction. Called in `process_loop()` finally block:
+
+```python
+        finally:
+            pool._current_task = None
+            if pool._on_run_complete_fn is not None:
+                await asyncio.shield(pool._on_run_complete_fn())
+```
+
+`asyncio.shield` ensures close() survives a pending cancel.
+
+### Files
+
+| File | Action |
+|---|---|
+| `src/factory/core/pool/pool.py` | Edit — add `_on_run_complete_fn: Callable[[], Coroutine] | None = None` attribute |
+| `src/factory/core/pool/pool_processor.py` | Edit — call `_on_run_complete_fn` in finally block |
+| `src/factory/bootstrap/factory/hub/hub_builder.py` or equivalent pool construction site | Edit — inject `_on_run_complete_fn = lambda: active_jobs.close(job_id)` |
+
+**Note on job_id source:** `job_id` is generated as `uuid4().hex` at the `pool.submit()` call site (first new task path). The hub holds it for the duration of the run and passes it into the close lambda. The `open()` call happens at the same submit site (guarded by `is_idle` check, same as task creation). `steer_subject` = `f"factory.job.{job_id}.steer"` (static derivation per spec); `concurrency_mode` comes from pool/agent config; `worker_loc` = None for in-process Shapes A/B/C.
+
+### Key invariant
+
+Only call `open()` when `_current_task` was None/done before submit (i.e., the new task is being created). Re-submits to a running pool do NOT call `open()` again.
+
+### Tests
+
+**File:** `tests/core/pool/test_pool_active_jobs_wiring.py`
+
+- `test_open_called_on_first_submit`: mock `ActiveJobsPort`; assert `open()` called exactly once when `_current_task` was None.
+- `test_open_not_called_on_resubmit`: pool already running (`_current_task` alive); second `submit()` does NOT call `open()`.
+- `test_close_called_in_finally_normal`: process_loop completes normally; assert `close(job_id)` called with correct id.
+- `test_close_called_in_finally_on_cancel`: process_loop cancelled; assert `close()` still called (shield path).
+- `test_close_called_in_finally_on_exception`: process_loop raises; assert `close()` still called.
+
+---
+
+## Slice 3 — RegistryRefresher
+
+**Scope:** Hub-side async task that re-puts open entries every `ACTIVE_JOBS_REFRESH` (30s) from two sources: (a) pool-source (in-process Shapes A/B/C), (b) heartbeat-source (Shape D via injected callback).
+
+### Heartbeat Injection Point (Risk-Identified)
+
+**File:** `src/factory/bootstrap/factory/llm_overlay.py` (and `voice_overlay.py` equivalent for each role).
+
+Current `WorkerPoolClient` construction:
+
+```python
+pool = WorkerPoolClient(
+    transport,
+    registry=WorkerRegistry(),
+    hb_subject=SUBJECTS.heartbeat,
+    validate_worker_id=validate_worker_id,
+    name="llm",
+)
+```
+
+**Strategy:** Add optional `on_heartbeat: Callable[[dict], None] | None = None` parameter to `WorkerPoolClient.__init__`. In `_on_heartbeat()`, after `self._registry.record_heartbeat(payload)`, call `self._on_heartbeat_cb(payload)` if set. Injected at construction site from bootstrap with: `on_heartbeat=refresher.on_heartbeat`.
+
+**Tap-in rule enforced:** Only one subscription to `factory.<role>.heartbeat`; callback is additive, no second `nc.subscribe`.
+
+### Files
+
+| File | Action |
+|---|---|
+| `src/factory/bootstrap/hub/registry_refresher.py` | New — `RegistryRefresher` class |
+| `src/factory/transport/worker_pool_client.py` | Edit — add `on_heartbeat` callback param |
+| `src/factory/bootstrap/factory/llm_overlay.py` | Edit — thread `on_heartbeat=refresher.on_heartbeat` |
+| `src/factory/bootstrap/factory/voice_overlay.py` | Edit — same for TTS/STT/image pool clients |
+
+### New file: `src/factory/bootstrap/hub/registry_refresher.py`
+
+```python
+"""RegistryRefresher — hub task that heartbeats open KV entries.
+
+Two sources:
+  (a) Pool-source: pools with _current_task alive (Shapes A/B/C).
+  (b) Heartbeat-source: Shape D worker heartbeat, matched by worker_loc.
+
+Re-puts both job.* and idx.* keys every ACTIVE_JOBS_REFRESH seconds.
+"""
+from __future__ import annotations
+
+import asyncio
+import logging
+from typing import TYPE_CHECKING
+
+from factory.infrastructure.stores.active_jobs_kv import ACTIVE_JOBS_REFRESH
+
+if TYPE_CHECKING:
+    from factory.core.hub.pipeline import PoolManager
+    from factory.core.ports.active_jobs import ActiveJobsPort
+
+log = logging.getLogger(__name__)
+
+
+class RegistryRefresher:
+    def __init__(
+        self,
+        registry: "ActiveJobsPort",
+        pool_manager: "PoolManager",
+    ) -> None:
+        self._registry = registry
+        self._pool_manager = pool_manager
+        self._task: asyncio.Task | None = None
+        # worker_loc → job_id, maintained by on_heartbeat()
+        self._worker_loc_map: dict[str, str] = {}
+
+    def on_heartbeat(self, payload: dict) -> None:
+        """Callback injected into WorkerPoolClient — runs on heartbeat arrival."""
+        worker_loc = payload.get("worker_loc")
+        job_id = payload.get("job_id")
+        if worker_loc and job_id:
+            self._worker_loc_map[worker_loc] = job_id
+
+    async def start(self) -> None:
+        self._task = asyncio.create_task(self._loop(), name="registry_refresher")
+
+    async def stop(self) -> None:
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+
+    async def _loop(self) -> None:
+        try:
+            while True:
+                await asyncio.sleep(ACTIVE_JOBS_REFRESH)
+                await self._refresh_all()
+        except asyncio.CancelledError:
+            pass
+
+    async def _refresh_all(self) -> None:
+        # Pool-source: Shapes A/B/C
+        for pool in self._pool_manager.pools.values():
+            if not pool.is_idle:
+                job_id = getattr(pool, "_active_job_id", None)
+                if job_id:
+                    await self._registry.refresh(job_id)
+        # Heartbeat-source: Shape D (worker_loc matched)
+        for _worker_loc, job_id in list(self._worker_loc_map.items()):
+            await self._registry.refresh(job_id)
+```
+
+### Tests
+
+**File:** `tests/bootstrap/test_registry_refresher.py`
+
+- `test_pool_source_refresh`: mock pool with `is_idle=False` and `_active_job_id="jid1"`; run one _refresh_all cycle; assert `registry.refresh("jid1")` called.
+- `test_idle_pool_not_refreshed`: pool `is_idle=True`; assert refresh NOT called.
+- `test_heartbeat_source_refresh`: call `on_heartbeat({"worker_loc": "w1", "job_id": "jid2"})`; run _refresh_all; assert `registry.refresh("jid2")` called.
+- `test_heartbeat_wrong_entry_not_matched`: heartbeat for `worker_loc="w2"` not in map; only `w1` entry refreshed.
+- `test_stop_cancels_task`: start then stop; assert task cancelled cleanly.
+- `test_heartbeat_both_job_and_idx_reputs`: integration: real `KvActiveJobsStore` (AsyncMock KV), steer-mode entry; after on_heartbeat + _refresh_all, assert both `job.*` and `idx.*` kv.put called.
+
+---
+
+## Slice A1 — ACL Grant
+
+**Scope:** Add `$KV.factory-active-jobs.>` publish grant for hub identity in `acl-matrix.json`; regen all 4 derived artifacts.
+
+### Files
+
+| File | Action |
+|---|---|
+| `deploy/nats/acl-matrix.json` | Edit — add publish grant under hub identity |
+| `deploy/nats/auth.conf` | Regenerated via `factory-acl genkeys` |
+| `deploy/nats/706-spec.json` | Regenerated |
+| `docs/architecture/messaging/v3-current.json` | Regenerated |
+| `docs/architecture/CURRENT.generated.md` | Regenerated via `tools/check_architecture_snapshot.sh` |
+| `tests/scripts/fixtures/v3-pre-grant-group.json` | Hand-mirrored (CI-only equivalence gate — no script) |
+
+### Grant to add
+
+```json
+// In acl-matrix.json, hub identity publish grants:
+"$KV.factory-active-jobs.>"
+```
+
+**Note:** Bucket creation rides the existing `$JS.API.>` grant (hub already has it). No subscribe grant needed for the bucket (out-of-hub readers use `$JS.API.STREAM.MSG.GET` zero-ACL path per allow_direct=False decision). Dashboard kv.watch ACL deferred to #1800.
+
+### Regen sequence
+
+```bash
+cd <WT>
+factory-acl genkeys  # produces auth.conf + 706-spec + v3-current
+bash tools/check_architecture_snapshot.sh  # produces CURRENT.generated.md
+# then manually diff v3-pre-grant-group.json and hand-mirror the new publish line
+```
+
+### Tests
+
+CI gate: `test_v4_render_set_equals_v3_render` — verifies `v3-pre-grant-group.json` equivalence. This is CI-only; local pre-push does not run it.
+
+---
+
+## Slice D1 — Documentation
+
+**Scope:** Update architecture docs with new job model entries.
+
+### Files
+
+| File | Action |
+|---|---|
+| `docs/architecture/messaging.md` (or equivalent domain page) | Edit — add `factory-active-jobs` KV bucket row |
+| `docs/architecture/storage.md` (or equivalent) | Edit — add job model data description |
+
+**Note:** `docs/architecture/CURRENT.generated.md` is regenerated by A1 regen pass — do not edit manually.
+
+---
+
+## Risks
+
+### R1 — Run-Completion Seam (CRITICAL)
+
+**Exact location:** `src/factory/core/pool/pool_processor.py`, `process_loop()`, the `finally:` block at lines 94–95.
+
+The finally block runs unconditionally:
+- Normal run completion
+- `asyncio.CancelledError` from `/stop` (re-raised AFTER the cancel-reply dispatch at line 90–93)
+- Any unhandled exception from `_process_with_cancel`
+
+**Risk:** If `close()` itself raises, it could suppress the `CancelledError` re-raise. Mitigation: wrap `close()` call in a bare `except Exception: log.exception(...)` (with DEBT comment per axial review rule) inside the finally block; the `CancelledError` path still re-raises because it is not `Exception`.
+
+**Alternative seam considered:** Hub observing `pool._current_task.done()` via polling — rejected (polling adds latency; finally block is synchronous-by-construction).
+
+### R2 — Heartbeat Tap-In (AXIAL)
+
+**Exact location:** `WorkerPoolClient.__init__` in `src/factory/transport/worker_pool_client.py` + each construction site in `llm_overlay.py` and `voice_overlay.py`.
+
+**Risk:** A new `on_heartbeat` parameter must be optional (`= None`) to preserve backward compatibility for tests that construct `WorkerPoolClient` without it. No existing test should break.
+
+**Axial boundary:** `transport/` is an infra-adjacent module; `RegistryRefresher` lives in `bootstrap/hub/`. The callback is a `Callable[[dict], None]` — no infra import in `transport/`; type is structurally compatible.
+
+### R3 — In-Memory Entry Map vs KV Drift
+
+**Location:** `KvActiveJobsStore._entries` dict.
+
+**Risk:** If the hub restarts, `_entries` is empty. `refresh()` will silently no-op for orphan entries (already expired by TTL = 120s max). `close()` will silently skip idx deletion for entries not in `_entries` — it falls back to the live `kv.get(idx)` check before delete.
+
+**Mitigation in plan:** `close()` always does a live KV lookup to check idx ownership before deleting, regardless of `_entries` state. Tests cover the "not in _entries" path.
+
+### R4 — Folder Size at 14/15
+
+`infrastructure/stores/` will have 14 Python files after adding `active_jobs_kv.py`. One slot remains before the 15-file quality gate triggers. Note: `base/` and `migrations/` are directories, not counted by `maxdepth-1` flat-file check. Next addition to `stores/` must either consume the last slot or get an exemption.
+
+### R5 — ACL Regen: v3-pre-grant-group.json Hand-Mirror
+
+The `tests/scripts/fixtures/v3-pre-grant-group.json` file must be hand-updated after running `factory-acl genkeys` — it is explicitly NOT script-generated. The CI gate `test_v4_render_set_equals_v3_render` will fail if this file is stale. This is CI-only, not caught by local pre-push.
+
+### R6 — CancelledError vs BaseException in finally
+
+`asyncio.CancelledError` is a `BaseException` (not `Exception`) in Python 3.8+. The `asyncio.shield(pool._on_run_complete_fn())` pattern in `finally` must not catch `CancelledError`. Use `asyncio.shield` + let the outer `raise` at line 93 propagate normally. The shield ensures close() completes even if a cancel arrives during the shield.
+
+### R7 — open() at submit() vs process_loop() start
+
+`pool.submit()` creates the task synchronously; `process_loop()` runs asynchronously. Opening the KV entry at `submit()` (synchronous code) requires calling an async operation — this must be done via `asyncio.create_task(active_jobs.open(...))` at the submit site, or by moving open() into the start of `process_loop()`. **Preferred:** open at the start of `process_loop()` (inside the async task) to keep `submit()` synchronous and avoid fire-and-forget antipatterns. This changes the edit target: `pool_processor.py` `process_loop()` start, not `pool.py` `submit()`.
+
+---
+
+## File Summary
+
+### New Files (6)
+
+1. `src/factory/core/ports/active_jobs.py` — `ActiveJobsPort` Protocol, `ActiveJobEntry`, `RegistryConflictError`
+2. `src/factory/infrastructure/stores/active_jobs_kv.py` — `KvActiveJobsStore`, `ACTIVE_JOBS_BUCKET`, `ACTIVE_JOBS_TTL`, `ACTIVE_JOBS_REFRESH`
+3. `src/factory/bootstrap/wiring/kv_active_jobs.py` — `open_or_create_active_jobs_kv()`
+4. `src/factory/bootstrap/hub/registry_refresher.py` — `RegistryRefresher`
+5. `tests/infrastructure/stores/test_active_jobs_kv.py` — store unit tests
+6. `tests/bootstrap/test_registry_refresher.py` — refresher unit tests
+
+### Edited Files (8+)
+
+7. `src/factory/core/ports/__init__.py` — re-export new types
+8. `src/factory/core/pool/pool.py` — add `_on_run_complete_fn`, `_active_job_id` attributes
+9. `src/factory/core/pool/pool_processor.py` — call close hook in finally
+10. `src/factory/bootstrap/standalone/hub_standalone.py` — add bucket provisioning
+11. `src/factory/transport/worker_pool_client.py` — add `on_heartbeat` callback param
+12. `src/factory/bootstrap/factory/llm_overlay.py` — thread refresher callback
+13. `src/factory/bootstrap/factory/voice_overlay.py` — thread refresher callback
+14. `deploy/nats/acl-matrix.json` — hub publish grant for `$KV.factory-active-jobs.>`
+15. `tests/scripts/fixtures/v3-pre-grant-group.json` — hand-mirror ACL change
+16. `tests/bootstrap/test_hub_active_jobs_provision.py` — provisioning tests
+17. `tests/core/pool/test_pool_active_jobs_wiring.py` — pool wiring tests
+18. Plus 4 regenerated artifacts: `auth.conf`, `706-spec.json`, `v3-current.json`, `CURRENT.generated.md`

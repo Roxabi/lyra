@@ -176,6 +176,7 @@ quadlet-install: quadlet-preflight  ## install Quadlet units → reload + verify
 	@cp deploy/quadlet/factory-clipool.container          "$(QUADLET_DIR)/factory-clipool.container"
 	@cp deploy/quadlet/factory-blobstore.container        "$(QUADLET_DIR)/factory-blobstore.container"
 	@cp deploy/quadlet/factory-turn-writer.container      "$(QUADLET_DIR)/factory-turn-writer.container"
+	@cp deploy/quadlet/factory-omp.container              "$(QUADLET_DIR)/factory-omp.container"
 	@echo "Quadlet units copied."
 	@if [ "$(NO_RESTART)" = "1" ]; then \
 		echo "NO_RESTART=1 — skipping daemon-reload, restart, and verification."; \

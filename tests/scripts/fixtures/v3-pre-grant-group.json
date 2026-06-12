@@ -35,6 +35,7 @@
         "factory.event.>",
         "factory.metric.>",
         "factory.job.*.steer",
+        "factory.jobs.>",
         "$JS.API.>",
         "$KV.factory-state.>",
         "$KV.factory-msg-index.>"
@@ -50,6 +51,7 @@
         "factory.clipool.heartbeat",
         "factory.omp.heartbeat",
         "factory.gh.mint_failure.>",
+        "$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.FACTORY_JOBS.>",
         "_inbox.hub.>"
       ],
       "deploy": { "type": "container", "secret": "lyra-nats-hub" }

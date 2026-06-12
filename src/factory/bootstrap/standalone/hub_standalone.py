@@ -202,6 +202,11 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
             )
             raise
 
+        from factory.infrastructure.jobs.dlq_router import DlqRouter
+
+        _dlq_router = DlqRouter(nc, _audio_js)
+        await _dlq_router.start()
+
         # Publish each bot's watch_channels into factory-state KV before
         # announcing readiness so adapters see the value on first seed (SC6).
         _bots: list[tuple[str, str]] = [
@@ -245,6 +250,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
             cli_nats_driver=cli_nats_driver,
             nats_llm_client=nats_llm_client,
         )
+        await _dlq_router.stop()
 
     # Close NATS connection after stores context exits
     try:

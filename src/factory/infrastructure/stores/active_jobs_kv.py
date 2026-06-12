@@ -251,17 +251,19 @@ class KvActiveJobsStore:
 
         entry = _bytes_to_entry(existing_entry_raw.value)
         job_bytes = _entry_to_bytes(entry)
-        await kv.put(_job_key(job_id), job_bytes)
 
-        if entry.concurrency_mode not in _SINGLETON_MODES:
-            return
-
-        # Also re-put the index key to reset its TTL.
+        # Re-put the job key (and, for singleton modes, the index key) to reset
+        # their TTLs. A transient NATS error must NOT propagate out of the
+        # liveness sweep — log and skip; the entry is retried next cycle, or
+        # TTL-reaps if NATS stays unreachable (correct — NATS is down anyway).
         try:
-            await kv.put(_idx_key(entry.pool_id), job_id.encode())
+            await kv.put(_job_key(job_id), job_bytes)
+            if entry.concurrency_mode in _SINGLETON_MODES:
+                await kv.put(_idx_key(entry.pool_id), job_id.encode())
         except nats.errors.Error:
             log.warning(
-                "active-jobs: refresh: failed to re-put idx key for pool %r",
+                "active-jobs: refresh: failed to re-put keys for job %r pool %r",
+                job_id,
                 entry.pool_id,
             )
 

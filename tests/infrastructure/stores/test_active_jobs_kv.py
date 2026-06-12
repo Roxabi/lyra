@@ -18,6 +18,7 @@ from factory.infrastructure.stores.active_jobs_kv import (
     ACTIVE_JOBS_BUCKET,
     ACTIVE_JOBS_TTL,
     KvActiveJobsStore,
+    _entry_to_bytes,
     _idx_key,
     _job_key,
     ensure_active_jobs_kv,
@@ -70,7 +71,9 @@ class TestOpen:
         entry = _entry(concurrency_mode="steer")
         await store.open(entry)
 
-        kv.put.assert_awaited_once_with(_job_key("job-1"), kv.put.await_args.args[1])
+        # Assert the EXACT serialized payload (independent re-serialization),
+        # not kv.put.await_args.args[1] against itself (that would be tautological).
+        kv.put.assert_awaited_once_with(_job_key("job-1"), _entry_to_bytes(entry))
         kv.create.assert_awaited_once_with(_idx_key("pool.tg.main"), b"job-1")
         kv.update.assert_not_awaited()  # singleton acquired via create, never update
 
@@ -164,6 +167,34 @@ class TestOpen:
             await store.open(entry)
 
         assert exc_info.value.existing_job_id == "<unknown>"
+
+    async def test_open_reclaims_pool_after_ttl_reap(self):
+        """SC-5 reap semantics: a pool held by a crashed job is reclaimable once
+        its singleton index TTL-expires.
+
+        Models the lifecycle create(win) → create(conflict, pool busy) →
+        TTL reap → create(win again) via the kv.create side-effect sequence.
+        Proves the freed slot is re-acquirable and that the conflict branch and
+        the post-reap success branch are distinct code paths (not a tautology).
+        """
+        kv = AsyncMock()
+        # job-1 wins; job-2 conflicts (pool busy); after reap, job-3 wins.
+        kv.create.side_effect = [None, KeyWrongLastSequenceError, None]
+        kv.get.return_value = _kv_entry(b"job-1")  # winner lookup for the conflict
+        js = AsyncMock()
+        js.key_value.return_value = kv
+        store = KvActiveJobsStore(js)
+        await store.connect()
+
+        await store.open(_entry(job_id="job-1", concurrency_mode="steer"))  # wins
+
+        with pytest.raises(RegistryConflictError):
+            await store.open(_entry(job_id="job-2", concurrency_mode="steer"))
+
+        # TTL reaps job-1's index key → job-3 reclaims the freed slot, no raise.
+        await store.open(_entry(job_id="job-3", concurrency_mode="steer"))
+
+        assert kv.create.await_count == 3
 
 
 # ---------------------------------------------------------------------------

@@ -82,10 +82,14 @@ class RegistryCoordinator:
 
         POOL-SOURCE liveness: driven by the hub's background loop.  Iterates a
         snapshot of current job IDs so concurrent open/close during iteration
-        does not mutate the set mid-loop.
+        does not mutate the set mid-loop.  One job's refresh failure is logged
+        and skipped — it must not abort the sweep for the remaining jobs.
         """
         for jid in list(self._jobs):
-            await self._port.refresh(jid)
+            try:
+                await self._port.refresh(jid)
+            except Exception:  # noqa: BLE001 — one job's failure must not abort the liveness sweep
+                log.exception("active-jobs: refresh failed for job %r", jid)
 
     async def on_heartbeat(self, worker_loc: str) -> None:
         """Refresh the job mapped to *worker_loc*, if any.
@@ -106,9 +110,7 @@ class RegistryCoordinator:
     def start(self) -> None:
         """Spawn the background refresh task."""
         self._running = True
-        self._task = asyncio.create_task(
-            self._loop(), name="active-jobs-refresher"
-        )
+        self._task = asyncio.create_task(self._loop(), name="active-jobs-refresher")
 
     async def stop(self) -> None:
         """Cancel and await the background task; suppress CancelledError."""
@@ -123,7 +125,10 @@ class RegistryCoordinator:
 
     async def _loop(self) -> None:
         while self._running:
-            await self.refresh_all()
+            try:
+                await self.refresh_all()
+            except Exception:  # noqa: BLE001 — the liveness loop must survive any sweep error, else all tracked jobs silently go stale and pools are wrongly freed
+                log.exception("active-jobs: refresh sweep failed — retrying next cycle")
             await asyncio.sleep(self._refresh_interval)
 
 

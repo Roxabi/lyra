@@ -120,6 +120,29 @@ async def test_refresh_all_empty_no_calls(
     port.refresh.assert_not_called()
 
 
+@pytest.mark.asyncio()
+async def test_refresh_all_one_failure_does_not_abort_sweep(
+    port: AsyncMock, coord: RegistryCoordinator
+) -> None:
+    """One job's refresh error must not abort the sweep for the rest.
+
+    Regression guard: if a single transient NATS error propagated, the liveness
+    loop would die and ALL tracked jobs would silently go stale → pools wrongly
+    freed while their jobs still run (defeats the singleton guarantee).
+    """
+    await coord.open(_make_entry("job-x"))
+    await coord.open(_make_entry("job-y", pool_id="pool-b"))
+    port.refresh.reset_mock()
+    # First job in the (insertion-ordered) snapshot raises; second must still run.
+    port.refresh.side_effect = [RuntimeError("transient NATS error"), None]
+
+    await coord.refresh_all()  # must not raise
+
+    assert port.refresh.call_count == 2
+    port.refresh.assert_any_call("job-x")
+    port.refresh.assert_any_call("job-y")
+
+
 # ---------------------------------------------------------------------------
 # on_heartbeat()
 # ---------------------------------------------------------------------------

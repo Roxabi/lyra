@@ -119,6 +119,12 @@ quality_gates:
     script: tools/check_volumes_table.sh
     description: verify deployment.md Volumes table prose matches Volume= directives in adapter quadlet templates
 
+  quadlet_manifest_install:
+    enabled: true
+    stage: pre-push
+    script: tools/check_quadlet_manifest_install.sh
+    description: every container declared in deploy/quadlet.toml must be wired into Makefile quadlet-install, quadlet-install-verify.sh UNITS, and converge.sh restart fan-out (#1867 — factory-omp shipped but never installed)
+
   str_exc_bus_bound:
     enabled: true
     script: tools/check_str_exc_bus_bound.sh

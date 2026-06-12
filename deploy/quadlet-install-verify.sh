@@ -23,6 +23,7 @@ UNITS=(
     factory-gh-helper
     factory-blobstore
     factory-turn-writer
+    factory-omp
 )
 
 # ── 1. Reload daemon so Quadlet generates fresh .service files ────────────────

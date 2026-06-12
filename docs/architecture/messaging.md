@@ -110,6 +110,7 @@ NATS type (Core vs JetStream), the durability contract, and the keying shape:
 | Persistence | `factory.turns.>` | JetStream durable (stream `FACTORY_TURNS`, `MaxAge=24h`, WorkQueue) | durable | hub, telegram-adapter, discord-adapter | turn-writer | append-only state changes requiring at-least-once delivery |
 | Typing / Lifecycle | `factory.typing.<platform>.<bot_id>` | Core | ephemeral | hub (future: workers) | adapters | ephemeral display-feedback events (typing indicators; future progress UX) — lossy-OK because consumer state auto-expires |
 | Audio delivery | `factory.outbound.audio.<platform>.<bot_id>` | JetStream durable (stream `FACTORY_OUTBOUND_AUDIO`, `MaxAge=24h`, Limits retention) | durable | hub | audio-consumer per bot (`outbound-audio-{platform}-{bot_id}`) | durable outbound audio chunks — exactly-once delivery to bot audio sender; dedup via KV `factory_outbound_audio_sent` (TTL=900s) |
+| Job dispatch | `factory.jobs.<domain>.<verb>` | JetStream WorkQueue (stream `FACTORY_JOBS`, WorkQueue retention) | durable | hub (provisioner), workers (publishers) | job workers per domain | durable job dispatch with at-most-once delivery; DLQ routing on `MAX_DELIVERIES` advisory |
 
 > Note: clipool-worker is intentionally excluded from publishing `factory.turns.write`. It is a downstream command worker, not a user-message source — the upstream adapter records the turn before the dispatch reaches clipool. See ADR-075 and acl-matrix.json (`clipool-worker.notes`) for the full rationale.
 
@@ -153,6 +154,8 @@ All subjects follow `factory.{domain}.{qualifier...}` (domain-first, NATS conven
 | `factory.llm.heartbeat` | llm-worker → hub | LLM worker liveness signal for hub availability checks |
 | `factory.image.heartbeat` | image-worker → hub | Image worker liveness signal for hub availability checks |
 | `factory.system.ready` | adapters + workers → hub | Startup ready announcement; hub tracks liveness on subscribe |
+| `factory.jobs.<domain>.<verb>` | hub → worker | JetStream WorkQueue job dispatch (stream `FACTORY_JOBS`); at-most-once per consumer; DLQ lane: `factory.jobs.dlq.<domain>` |
+| `factory.jobs.dlq.<domain>` | DlqRouter → job workers | Exhausted jobs re-published by hub `DlqRouter` on `MAX_DELIVERIES` advisory (advisory → `MSG.GET` → republish with `Roxabi-Dlq-*` headers → `MSG.DELETE`) |
 
 System-plane subjects (JetStream API + KV bucket) are governed by per-identity grants in
 `deploy/nats/acl-matrix.json` rather than restated here; see ADR-045 / ADR-046 + #1293.
@@ -170,6 +173,25 @@ absent from subjects; the hub resolves it from the envelope body. Control-plane 
 (`factory.hub.command.*`, `factory.monitor.*`) are reserved but not yet implemented.
 
 → ADR-035
+
+### FACTORY_JOBS DLQ flow
+
+When a `FACTORY_JOBS` consumer exhausts its `MaxDeliver` attempts, the NATS server <!-- drift-ignore -->
+emits a `$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.FACTORY_JOBS.>` advisory. <!-- drift-ignore -->
+
+The hub's `DlqRouter` (`infrastructure/jobs/dlq_router.py`) handles each advisory:
+
+1. Parse advisory JSON → extract `stream_seq` and `deliveries`.
+2. `jsm.get_msg("FACTORY_JOBS", seq=stream_seq)` — fetch the original message body + subject.
+3. Derive `factory.jobs.dlq.<domain>` from the original subject (`_extract_domain`).
+4. Publish to `factory.jobs.dlq.<domain>` with `Roxabi-Dlq-Orig-Subject`, `Roxabi-Dlq-Deliveries`, and `Roxabi-Dlq-Stream-Seq` headers.
+5. `jsm.delete_msg("FACTORY_JOBS", stream_seq)` — remove from stream to prevent replay.
+
+`factory.jobs.dlq.>` is an in-stream subject enumerated in `FACTORY_JOBS` SUBJECTS (not a <!-- drift-ignore -->
+separate stream). `DlqRouter.start()` is wired in `_bootstrap_hub_standalone` before
+`announce_hub_ready` (ordering guard enforced by `test_dlq_router_started_before_announce_hub_ready`).
+
+→ ADR-088
 
 ### Streaming chunk protocol
 

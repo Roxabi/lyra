@@ -190,6 +190,18 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
             )
             raise RuntimeError("FACTORY_AUDIT provision failed")
 
+        from factory.infrastructure.jobs.stream_setup import ensure_jobs_stream
+
+        try:
+            await ensure_jobs_stream(_audio_js)
+        except nats.errors.Error as exc:
+            log.critical(
+                "hub_standalone: FACTORY_JOBS provisioning failed — "
+                "hub cannot announce ready. Cause: %s. RestartSec will recover.",
+                exc,
+            )
+            raise
+
         # Provision active-jobs KV bucket before announcing readiness.
         # Workers / adapters consulting the registry rely on the bucket
         # existing before they receive the hub-ready signal. ADR-079 S3.
@@ -205,6 +217,11 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
                 exc,
             )
             raise
+
+        from factory.infrastructure.jobs.dlq_router import DlqRouter
+
+        _dlq_router = DlqRouter(nc, _audio_js)
+        await _dlq_router.start()
 
         from factory.infrastructure.stores.active_jobs_kv import KvActiveJobsStore
         from factory.infrastructure.stores.active_jobs_refresher import (
@@ -262,6 +279,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
         # #1797 drives open()/close(); #1795 JobResult close trigger deferred
         # (no hub-side factory.job.*.result sub yet)
         await _active_jobs_coord.stop()
+        await _dlq_router.stop()
 
     # Close NATS connection after stores context exits
     try:

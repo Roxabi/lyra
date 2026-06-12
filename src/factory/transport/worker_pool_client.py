@@ -13,7 +13,7 @@ import asyncio
 import json
 import logging
 from contextlib import AbstractAsyncContextManager
-from typing import TYPE_CHECKING, Any, AsyncIterator, Callable, Protocol
+from typing import TYPE_CHECKING, Any, AsyncIterator, Awaitable, Callable, Protocol
 
 from factory.transport._result import Err, InboxStream, Ok, Result, SanitizedError
 from roxabi_nats.circuit_breaker import NatsCircuitBreaker
@@ -70,6 +70,7 @@ class WorkerPoolClient:
         validate_worker_id: Callable[[str], None],
         hb_ttl: float = 15.0,
         name: str = "pool",
+        on_heartbeat: Callable[[str], Awaitable[None]] | None = None,
     ) -> None:
         self._transport = transport
         self._registry = registry
@@ -78,6 +79,7 @@ class WorkerPoolClient:
         self._validate_worker_id = validate_worker_id
         self._hb_ttl = hb_ttl
         self._name = name
+        self._on_heartbeat_cb = on_heartbeat
         self._sub: "Subscription | None" = None
         self._task: asyncio.Task[None] | None = None
 
@@ -121,6 +123,16 @@ class WorkerPoolClient:
             )
             return
         self._registry.record_heartbeat(payload)
+        if self._on_heartbeat_cb is not None:
+            try:
+                await self._on_heartbeat_cb(worker_id)
+            except Exception:  # noqa: BLE001 — callback errors must never crash heartbeat handling
+                log.warning(
+                    "%s.on_heartbeat_cb_error worker_id=%s",
+                    self._name,
+                    worker_id,
+                    exc_info=True,
+                )
 
     async def _heartbeat_loop(self) -> None:
         """Periodic TTL sweep — alive_workers() prunes stale entries on each call."""

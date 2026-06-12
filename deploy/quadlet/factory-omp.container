@@ -3,7 +3,10 @@ Description=Factory OmpWorker — omp_rpc NATS runtime backend (#1812)
 After=factory-nats.service
 
 [Container]
-Image=ghcr.io/roxabi/factory-omp-base:15.10.8
+# Agent-runtime image — carries the factory CLI plus /opt/omp/omp baked from the
+# factory-omp-base carrier (Dockerfile COPY --from). The carrier itself is FROM
+# scratch and can never exec `factory adapter omp` (#1867).
+Image=ghcr.io/roxabi/factory:staging
 ContainerName=factory-omp
 Exec=factory adapter omp
 UserNS=keep-id:uid=1500,gid=1500

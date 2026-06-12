@@ -20,7 +20,8 @@ then publishes per-job lifecycle events back to the bus.
 
 - **`_result_sent` double-publish guard** — boolean flag on `RpcBridge`; checked in both
   `_on_agent_end` and `publish_error`. Only the first caller publishes a `JobResult`; the
-  second is a no-op. Guard is per-RpcClient-lifetime (one bridge per process).
+  second is a no-op. Guard is per-job-invocation — reset at the start of each `run()` call,
+  which is what makes sequential jobs on one bridge safe. Do not remove the reset.
 
 - **ADR-073 SanitizedError discipline** — `_classify_exception` uses `type(exc).__name__`
   only; never `str(exc)`, `f"{exc}"`, or `repr(exc)` in bus-bound fields.
@@ -39,7 +40,7 @@ then publishes per-job lifecycle events back to the bus.
 | Subject | Direction |
 |---------|-----------|
 | `factory.jobs.omp` | inbound — job dispatch (queue group `omp-workers`) |
-| `factory.job.<job_id>.steer` | outbound — steer events |
+| `factory.job.<job_id>.steer` | inbound — hub steering prompt (subscribe) |
 | `factory.job.<job_id>.progress` | outbound — progress events |
 | `factory.job.<job_id>.result` | outbound — final result |
 

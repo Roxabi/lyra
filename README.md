@@ -27,22 +27,24 @@ It's for developers who want a persistent personal AI without giving up ownershi
 ## Architecture
 
 ```
-factory-telegram          factory-hub                factory-discord
-    │                     │                        │
-    │  inbound.telegram   │      clipool.cmd       │  inbound.discord
-    ├────────────────────►├───────────────────────►│
-    │                     │                        │
-    │                     │   ┌────────────┐       │
-    │                     │   │  CliPool   │       │
-    │                     │   │ (Claude)   │       │
-    │                     │   └────────────┘       │
-    │                     │                        │
-    │  outbound.telegram  │  outbound.discord      │
-    ◄─────────────────────┴────────────────────────┘
-              NATS message bus
+chat adapters                factory-hub              workers
+(telegram·discord)               │                 (clipool·omp)
+        │                        │                        │
+        │  inbound.<platform>    │   worker.cmd           │
+        ├───────────────────────►├───────────────────────►│
+        │                        │                        │
+        │                        │   ┌────────────┐       │
+        │                        │   │  CliPool / │       │
+        │                        │   │  OmpWorker │       │
+        │                        │   └────────────┘       │
+        │                        │                        │
+        │  outbound.<platform>   │                        │
+        ◄────────────────────────┘        NATS bus
+                                          │
+                    infra (gh-helper·turn-writer·blobstore)
 ```
 
-**Production**: Four independent processes (`factory-hub`, `factory-telegram`, `factory-discord`, `factory-clipool`) communicate via NATS. Each runs in its own container.
+**Production**: Nine containers on M₁ communicate via a single NATS server (`factory-nats`). Hub: `factory-hub`. Chat adapters: `factory-telegram`, `factory-discord`. Workers: `factory-clipool`, `factory-omp`. Infra: `factory-gh-helper`, `factory-turn-writer`, `factory-blobstore`. Each runs in its own container.
 
 **Development**: `factory start` runs everything in one process with an embedded NATS server.
 
@@ -109,6 +111,7 @@ factory hub                    # standalone hub (requires external NATS)
 factory adapter telegram       # standalone Telegram adapter
 factory adapter discord        # standalone Discord adapter
 factory adapter clipool        # standalone CliPool worker
+factory adapter omp            # standalone OmpWorker (omp_rpc backend, #1812)
 ```
 
 ### Agent management

@@ -663,7 +663,8 @@ it runs `deploy/quadlet-install-verify.sh`, which:
 1. Runs `systemctl --user daemon-reload` — triggers the Quadlet generator to
    produce fresh `.service` units from the copied files.
 2. Restarts (or starts) each container unit: `factory-nats`, `factory-hub`,
-   `factory-telegram`, `factory-discord`, `factory-clipool`.
+   `factory-telegram`, `factory-discord`, `factory-clipool`, `factory-gh-helper`,
+   `factory-blobstore`, `factory-turn-writer`, `factory-omp`.
 3. Waits up to 10 s per unit and checks `systemctl --user is-active`.
 4. If any unit is not `active`, dumps the last 20 lines of
    `journalctl --user -u <unit>` and exits non-zero — the deploy fails loudly.

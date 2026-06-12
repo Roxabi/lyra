@@ -456,7 +456,7 @@ class TestEnsureActiveJobsKv:
         assert cfg.bucket == ACTIVE_JOBS_BUCKET
 
     async def test_boot_allow_direct_false(self):
-        """KeyValueConfig pins direct=False → stream allow_direct=False (no $JS.DIRECT.>)."""
+        """direct=False is pinned so the KV stream gets allow_direct=False."""
         js = AsyncMock()
         js.key_value.side_effect = BucketNotFoundError
         js.create_key_value.return_value = AsyncMock()

@@ -6,7 +6,7 @@ description: Living current-truth document for all messaging and NATS transport 
 # Messaging & NATS — Lyra
 
 > Status: LIVING — current truth for messaging/NATS decisions.
-> Last updated: 2026-05-26.
+> Last updated: 2026-06-13.
 > Source ADRs: 001, 002, 035, 036, 065, 076. Absorbed via 045: 037, 040, 047, 062.
 
 ## Scope
@@ -34,53 +34,7 @@ limits by switching chats.
 
 ### RoutingContext
 
-`RoutingContext` is the outbound companion to `RoutingKey` — it carries the per-response routing struct needed for the adapter to deliver a response to exactly the right bot, chat, and thread. Defined in `src/factory/core/messaging/message.py`.
-
-```python
-class RoutingContext:
-    channel: str            # "telegram" | "discord" | "cli"
-    bot_id: str             # identifier of the bot that must reply
-    chat_id: str            # Telegram chat_id / Discord guild+channel
-    thread_id: str | None   # forum thread, Discord thread
-    reply_to_message_id: str | None  # native Telegram/Discord threading
-    user_id: str
-    session_id: str
-```
-
-**Populated at intake (in `normalize()`):**
-
-```python
-def normalize(self, update: TelegramUpdate) -> Message:
-    return Message(
-        ...
-        routing=RoutingContext(
-            channel="telegram",
-            bot_id=self.bot_id,
-            chat_id=str(update.message.chat.id),
-            thread_id=str(update.message.message_thread_id) if update.message.is_topic_message else None,
-            reply_to_message_id=str(update.message.message_id),
-            user_id=str(update.message.from_user.id),
-            session_id=self.make_session_id(update),
-        )
-    )
-```
-
-**Verified at outbound (in the Adapter):**
-
-```python
-async def send(self, response: Response) -> None:
-    ctx = response.routing
-    assert ctx.channel == self.channel, f"Wrong channel: {ctx.channel}"
-    assert ctx.bot_id == self.bot_id,   f"Wrong bot: {ctx.bot_id}"
-    await self.bot.send_message(
-        chat_id=ctx.chat_id,
-        text=response.content,
-        message_thread_id=ctx.thread_id,
-        reply_to_message_id=ctx.reply_to_message_id,
-    )
-```
-
-Security invariant (outbound verification) → `security-routing.md` (#routing).
+`RoutingContext` is the outbound companion to `RoutingKey` — carries `channel`, `bot_id`, `chat_id`, `thread_id`, `reply_to_message_id`, `user_id`, `session_id`. Defined in `src/factory/core/messaging/message.py`. Populated in `normalize()` at intake; adapter asserts `channel` + `bot_id` match before delivery (security invariant → `security-routing.md` #routing).
 
 → ADR-002 (#152)
 
@@ -156,6 +110,11 @@ All subjects follow `factory.{domain}.{qualifier...}` (domain-first, NATS conven
 | `factory.system.ready` | adapters + workers → hub | Startup ready announcement; hub tracks liveness on subscribe |
 | `factory.jobs.<domain>.<verb>` | hub → worker | JetStream WorkQueue job dispatch (stream `FACTORY_JOBS`); at-most-once per consumer; DLQ lane: `factory.jobs.dlq.<domain>` |
 | `factory.jobs.dlq.<domain>` | DlqRouter → job workers | Exhausted jobs re-published by hub `DlqRouter` on `MAX_DELIVERIES` advisory (advisory → `MSG.GET` → republish with `Roxabi-Dlq-*` headers → `MSG.DELETE`) |
+| `factory.job.<job_id>.steer` | hub → omp-worker | Hub-initiated mid-flight steering prompt for active omp job (`_rpc_bridge.py` subscribe side; ACL: `hub pub`, `omp-worker sub`; #1812) |
+| `factory.job.<job_id>.progress` | omp-worker → consumers | Per-job progress events published by `_rpc_bridge.py` on message/tool updates (ACL: `omp-worker pub`) |
+| `factory.job.<job_id>.result` | omp-worker → consumers | Terminal job result published by `_rpc_bridge.py` on agent completion (ACL: `omp-worker pub`) |
+
+> Pre-#1793, `results` and `progress` were top-level sibling subjects; unified into `factory.job.<id>.*` by #1793/#1849.
 
 System-plane subjects (JetStream API + KV bucket) are governed by per-identity grants in
 `deploy/nats/acl-matrix.json` rather than restated here; see ADR-045 / ADR-046 + #1293.

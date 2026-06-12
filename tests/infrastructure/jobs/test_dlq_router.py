@@ -185,6 +185,76 @@ async def test_get_msg_failure_skips() -> None:
 
 
 # ---------------------------------------------------------------------------
+# test_publish_failure_does_not_delete
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_publish_failure_does_not_delete() -> None:
+    """Message-loss guard: a failed DLQ publish must NOT delete the original.
+
+    delete_msg may only run AFTER a successful publish — otherwise the job is
+    lost (publish failed, yet the source seq was removed from the stream).
+    """
+    nc, jsm = _make_nc(publish_raises=RuntimeError("publish timeout"))
+    js = MagicMock()
+    router = DlqRouter(nc, js)
+
+    await router._handle(_advisory_msg(stream_seq=11))
+
+    nc.publish.assert_awaited_once()
+    jsm.delete_msg.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# test_malformed_advisory_json_skips
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_malformed_advisory_json_skips() -> None:
+    """A non-JSON advisory payload must be skipped, not crash the handler."""
+    nc, jsm = _make_nc()
+    js = MagicMock()
+    router = DlqRouter(nc, js)
+
+    msg = MagicMock()
+    msg.data = b"not-json{"
+
+    await router._handle(msg)  # must not raise
+
+    jsm.get_msg.assert_not_awaited()
+    nc.publish.assert_not_awaited()
+    jsm.delete_msg.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# test_dlq_lane_subject_not_rerouted
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_dlq_lane_subject_not_rerouted() -> None:
+    """A message already on the DLQ lane must not recurse into dlq.dlq.
+
+    If the fetched original is itself a factory.jobs.dlq.* subject, the router
+    must skip re-publishing (no factory.jobs.dlq.dlq) and leave it in the stream.
+    """
+    raw = MagicMock()
+    raw.subject = "factory.jobs.dlq.vault"
+    raw.data = b"{}"
+    nc, jsm = _make_nc(get_msg_return=raw)
+    js = MagicMock()
+    router = DlqRouter(nc, js)
+
+    await router._handle(_advisory_msg(stream_seq=13))
+
+    jsm.get_msg.assert_awaited_once()
+    nc.publish.assert_not_awaited()
+    jsm.delete_msg.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
 # test_extract_domain_known_lanes
 # ---------------------------------------------------------------------------
 
@@ -207,6 +277,8 @@ def test_extract_domain_unknown_fallback() -> None:
     assert _extract_domain("other.subject") == "unknown"
     assert _extract_domain("factory.other.vault") == "unknown"
     assert _extract_domain("factory.jobs") == "unknown"  # only 2 parts after split
+    # DLQ lane must never re-target itself (would yield factory.jobs.dlq.dlq).
+    assert _extract_domain("factory.jobs.dlq.vault") == "unknown"
 
 
 # ---------------------------------------------------------------------------
@@ -231,22 +303,28 @@ def test_dlq_router_started_before_announce_hub_ready() -> None:
         "start": -1,
         "announce_hub_ready": -1,
     }
-    # Find the first occurrence of DlqRouter(...).start() — identified by the
-    # surrounding context. We scan for both names and pick the first "start"
-    # call that appears before announce_hub_ready. Since only _dlq_router.start()
-    # is an async start-call in the provisioning block, this is unambiguous.
+    # Match _dlq_router.start() SPECIFICALLY. A bare ".start()" match would bind
+    # to the earlier hub.inbound_bus.start() call, making the assertion pass for
+    # the wrong receiver (it would hold even if _dlq_router.start() were removed).
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
             continue
         func = node.func
+        if (
+            isinstance(func, ast.Attribute)
+            and func.attr == "start"
+            and isinstance(func.value, ast.Name)
+            and func.value.id == "_dlq_router"
+            and positions["start"] == -1
+        ):
+            positions["start"] = node.lineno
+            continue
         name = (
             func.id
             if isinstance(func, ast.Name)
             else (func.attr if isinstance(func, ast.Attribute) else None)
         )
-        if name == "start" and positions["start"] == -1:
-            positions["start"] = node.lineno
-        elif name == "announce_hub_ready" and positions["announce_hub_ready"] == -1:
+        if name == "announce_hub_ready" and positions["announce_hub_ready"] == -1:
             positions["announce_hub_ready"] = node.lineno
 
     start_line = positions["start"]

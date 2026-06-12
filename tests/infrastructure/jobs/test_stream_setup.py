@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, call
 
+import nats.errors
 import pytest
 from nats.js.errors import BadRequestError
 
@@ -62,6 +63,33 @@ async def test_ensure_jobs_stream_idempotent_double_call() -> None:
 
     assert js.add_stream.await_count == 2
     js.update_stream.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_ensure_jobs_stream_add_error_propagates() -> None:
+    """A non-BadRequest nats error on add_stream must propagate (fail-fast).
+
+    ADR-079: a provisioning failure must abort hub boot, never be swallowed.
+    """
+    js = MagicMock()
+    js.add_stream = AsyncMock(side_effect=nats.errors.Error())
+    js.update_stream = AsyncMock()
+
+    with pytest.raises(nats.errors.Error):
+        await ensure_jobs_stream(js)
+
+    js.update_stream.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_ensure_jobs_stream_update_error_propagates() -> None:
+    """A nats error on update_stream (after BadRequest on add) must propagate."""
+    js = MagicMock()
+    js.add_stream = AsyncMock(side_effect=BadRequestError())
+    js.update_stream = AsyncMock(side_effect=nats.errors.Error())
+
+    with pytest.raises(nats.errors.Error):
+        await ensure_jobs_stream(js)
 
 
 # ---------------------------------------------------------------------------

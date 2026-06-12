@@ -82,6 +82,20 @@ class DlqRouter:
             return
 
         orig_subject: str = raw.subject or ""
+
+        # Do not re-dead-letter a message already on the DLQ lane. A
+        # factory.jobs.dlq.* subject that itself exhausts MAX_DELIVERIES must not
+        # recurse into factory.jobs.dlq.dlq (captured by FACTORY_JOBS but with no
+        # onward route → silent accumulation). Leave it in the stream to age out
+        # via max_age; ops tooling owns DLQ-lane inspection.
+        if orig_subject.startswith(f"{_DLQ_PREFIX}."):
+            log.warning(
+                "DlqRouter: seq=%s already on DLQ lane (%r) — not re-routing",
+                stream_seq,
+                orig_subject,
+            )
+            return
+
         domain = _extract_domain(orig_subject)
         dlq_subject = f"{_DLQ_PREFIX}.{domain}"
 
@@ -128,5 +142,11 @@ def _extract_domain(subject: str) -> str:
     """
     parts = subject.split(".")
     if len(parts) >= 3 and parts[0] == "factory" and parts[1] == "jobs":
-        return parts[2]
+        domain = parts[2]
+        # Never re-target the DLQ lane onto itself (factory.jobs.dlq.dlq is
+        # captured by FACTORY_JOBS but unroutable). _handle skips DLQ-lane
+        # subjects upstream; this is defense-in-depth for direct callers.
+        if domain == "dlq":
+            return "unknown"
+        return domain
     return "unknown"

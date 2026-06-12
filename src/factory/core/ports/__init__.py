@@ -23,6 +23,11 @@ Constraints
   sub-domain they serve.
 """
 
+from factory.core.ports.active_jobs import (
+    ActiveJobEntry,
+    ActiveJobsPort,
+    RegistryConflictError,
+)
 from factory.core.ports.audit_sink import AuditSink
 from factory.core.ports.blobstore import BlobStorePort
 from factory.core.ports.llm import LlmProvider, LlmResult
@@ -32,11 +37,14 @@ from factory.core.ports.stt import STTProtocol
 from factory.core.ports.tts import TtsProtocol
 
 __all__ = [
+    "ActiveJobEntry",
+    "ActiveJobsPort",
     "AuditSink",
     "BlobStorePort",
     "LlmProvider",
     "LlmResult",
     "OutboundListener",
+    "RegistryConflictError",
     "ResumePublisherPort",
     "STTProtocol",
     "TtsProtocol",

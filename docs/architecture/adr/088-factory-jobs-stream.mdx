@@ -1,0 +1,72 @@
+---
+title: "ADR-088: FACTORY_JOBS JetStream stream + DLQ router"
+description: "Introduce infrastructure/jobs/ subpackage: WorkQueue stream provisioning and advisory-driven DLQ republisher for the factory job-dispatch bus"
+status: accepted
+---
+
+> **Current truth** → [`docs/architecture/messaging.md`](../messaging.md){#current-truth}
+> This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+
+## Status
+
+Accepted — 2026-06-12
+
+## Context
+
+The factory job-dispatch bus (epic #1044) requires a durable substrate for
+`factory.jobs.*` subjects. Three design choices drive this ADR:
+
+1. **New `infrastructure/` subdirectory** — `src/factory/infrastructure/CLAUDE.md`
+   mandates an ADR for every new subdirectory under `infrastructure/`.
+   `infrastructure/jobs/` is that new subdirectory.
+
+2. **WorkQueue retention** — each job message must be delivered to exactly one
+   worker. `RetentionPolicy.WORK_QUEUE` enforces this: a message is deleted from
+   the stream on ack, preventing duplicate delivery to multiple competing consumers.
+
+3. **Explicit subject enumeration** — `factory.jobs.omp` is intentionally
+   excluded from `SUBJECTS`. The omp lane uses a core-NATS queue group
+   (`factory.jobs.omp`); binding a WorkQueue consumer on this stream with no live
+   consumer accumulates messages to `max_msgs` for no benefit. A bare
+   `factory.jobs.>` wildcard is also forbidden: it captures every future subject,
+   tying retention to unintended publishers.
+
+The `monitor` identity was retired 2026-05-26. DLQ observability is ops-only
+(hub seed + nats CLI) until a real monitoring consumer exists.
+
+## Decision
+
+Introduce `src/factory/infrastructure/jobs/` containing:
+
+1. `stream_setup.py` — idempotent `FACTORY_JOBS` WorkQueue JetStream stream
+   provisioning (`ensure_jobs_stream`). Called by `hub_standalone.py` before
+   `announce_hub_ready()` (ADR-079 sole-provisioner pattern). Fail-fast on error.
+2. `dlq_router.py` — advisory-driven DLQ republisher (Slice 3, deferred).
+
+Stream configuration:
+
+| Parameter | Value | Rationale |
+|---|---|---|
+| `retention` | `WORK_QUEUE` | Single-delivery guarantee per job |
+| `storage` | `FILE` | Durability across hub restarts |
+| `max_age` | 7 days | Ops DLQ inspection window |
+| `max_msgs` | 100 000 | Discard=OLD at limit |
+| `duplicate_window` | 120 s | Dedup via `Nats-Msg-Id` header |
+| `num_replicas` | 1 | Single-node deployment (M₁) |
+
+Subjects (explicit enumeration):
+- `factory.jobs.vault.>`
+- `factory.jobs.web-intel.>`
+- `factory.jobs.test.>`
+- `factory.jobs.dlq.>` (in-stream DLQ lane)
+
+## Consequences
+
+- Workers (#1047) bind durable pull consumers against `FACTORY_JOBS` on their
+  own subjects (lazy, worker-side provisioning).
+- The DLQ lane (`factory.jobs.dlq.>`) is an in-stream retention window; no
+  separate stream is needed.
+- Adding a new domain lane = one-line `SUBJECTS` change + hub update path
+  converges the live stream config idempotently.
+- `factory.jobs.omp` (#1812) uses a core-NATS queue group and is NOT captured
+  by this stream.

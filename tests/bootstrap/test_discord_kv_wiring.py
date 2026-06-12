@@ -356,6 +356,23 @@ class TestHubPublishesWatchChannelsBeforeReady:
             _bootstrap_hub_standalone,
         )
 
+        # active-jobs registry provisioning runs before announce (ADR-079 S3).
+        # Stub via monkeypatch rather than the with-block to stay under CPython's
+        # 20-statically-nested-block limit. Lazily imported inside the function
+        # body → patch at source module paths so the local imports resolve them.
+        monkeypatch.setattr(
+            "factory.infrastructure.stores.active_jobs_kv.ensure_active_jobs_kv",
+            AsyncMock(return_value=MagicMock()),
+        )
+        monkeypatch.setattr(
+            "factory.infrastructure.stores.active_jobs_kv.KvActiveJobsStore",
+            MagicMock(return_value=MagicMock(connect=AsyncMock())),
+        )
+        monkeypatch.setattr(
+            "factory.infrastructure.stores.active_jobs_refresher.RegistryCoordinator",
+            MagicMock(return_value=MagicMock(start=MagicMock(), stop=AsyncMock())),
+        )
+
         with (
             patch(
                 "factory.bootstrap.standalone.hub_standalone.nats_connect",

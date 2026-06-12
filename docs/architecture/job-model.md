@@ -247,7 +247,7 @@ The job subtree (`factory.job.<id>.*`) IS the trace — no separate observabilit
 | #1793 | A | Unify subject taxonomy (`factory.job.<id>.*`) | Leaf — unblocked |
 | #1794 | B | Amend ADR-084 → `job_id=run` | Leaf |
 | #1795 | E | **JobResult** → pub/sub + 3-tier transport | Leaf |
-| #1796 | C | Active-jobs registry (NATS-KV **factory-active-jobs**) | Leaf |
+| #1796 | C | Active-jobs registry (NATS-KV **factory-active-jobs**) | Done (substrate) — this PR; live open/close call-sites → #1797 |
 | #1797 | D | Concurrency router (shared inbound stage) | Leaf |
 | #1798 | F | STT/LLM/TTS/image → sub-jobs | Leaf |
 | #1799 | G | Steer e2e | Leaf |

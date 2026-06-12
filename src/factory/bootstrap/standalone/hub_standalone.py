@@ -202,10 +202,36 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
             )
             raise
 
+        # Provision active-jobs KV bucket before announcing readiness.
+        # Workers / adapters consulting the registry rely on the bucket
+        # existing before they receive the hub-ready signal. ADR-079 S3.
+        from factory.infrastructure.stores.active_jobs_kv import ensure_active_jobs_kv
+
+        try:
+            await ensure_active_jobs_kv(_audio_js)
+        except nats.errors.Error as exc:
+            log.critical(
+                "hub_standalone: active-jobs KV provisioning failed — "
+                "registry unavailable; hub cannot announce ready. "
+                "Cause: %s. RestartSec will recover.",
+                exc,
+            )
+            raise
+
         from factory.infrastructure.jobs.dlq_router import DlqRouter
 
         _dlq_router = DlqRouter(nc, _audio_js)
         await _dlq_router.start()
+
+        from factory.infrastructure.stores.active_jobs_kv import KvActiveJobsStore
+        from factory.infrastructure.stores.active_jobs_refresher import (
+            RegistryCoordinator,
+        )
+
+        _active_jobs_store = KvActiveJobsStore(_audio_js)
+        await _active_jobs_store.connect()
+        _active_jobs_coord = RegistryCoordinator(_active_jobs_store)
+        _active_jobs_coord.start()
 
         # Publish each bot's watch_channels into factory-state KV before
         # announcing readiness so adapters see the value on first seed (SC6).
@@ -250,6 +276,9 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
             cli_nats_driver=cli_nats_driver,
             nats_llm_client=nats_llm_client,
         )
+        # #1797 drives open()/close(); #1795 JobResult close trigger deferred
+        # (no hub-side factory.job.*.result sub yet)
+        await _active_jobs_coord.stop()
         await _dlq_router.stop()
 
     # Close NATS connection after stores context exits

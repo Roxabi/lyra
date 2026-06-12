@@ -90,7 +90,11 @@ class TestSecretInstall:
         assert "secret" in cmd
         assert "create" in cmd
         assert "--replace" in cmd
-        assert "factory-bot-telegram-demo" in cmd
+        # Command shape is `podman secret create --replace <name> -`:
+        # name second-to-last, `-` last (stdin source). Without the trailing
+        # `-`, podman rejects the call — this guards that regression.
+        assert cmd[-2] == "factory-bot-telegram-demo"
+        assert cmd[-1] == "-"
 
         # Token bytes must have been piped via stdin
         kwargs = call_args[1]
@@ -312,8 +316,8 @@ class TestSecretInstall:
         all_calls = mock_run.call_args_list
         cmds = [c[0][0] for c in all_calls]
 
-        # last positional arg is the secret name
-        secret_names = [cmd[-1] for cmd in cmds]
+        # secret name is the second-to-last arg (`-` stdin source is last)
+        secret_names = [cmd[-2] for cmd in cmds]
         assert "factory-bot-telegram-demo" in secret_names
         assert "factory-bot-telegram-demo-webhook" in secret_names
 
@@ -533,7 +537,7 @@ class TestE2EV1RedGate:
         assert mock_run.call_count == 2, (
             f"Expected 2 podman create calls, got {mock_run.call_count}"
         )
-        created_names = [c[0][0][-1] for c in mock_run.call_args_list]
+        created_names = [c[0][0][-2] for c in mock_run.call_args_list]
         assert "factory-bot-telegram-mybot" in created_names
         assert "factory-bot-telegram-mybot-webhook" in created_names
 

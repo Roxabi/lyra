@@ -7,6 +7,7 @@ All sub-CLAUDE.md files in this repo — update here on add/rename/delete.
 | `CLAUDE.md` | project root |
 | `src/factory/core/CLAUDE.md` | hub, stores, pool |
 | `src/factory/adapters/CLAUDE.md` | Telegram, Discord, CLI, NATS |
+| `src/factory/adapters/omp/CLAUDE.md` | OmpWorker NATS adapter — digest gate, `tool_input` suppression, `_result_sent` guard, ADR-073 discipline |
 | `src/factory/inbound/CLAUDE.md` | stage-axis inbound pipeline (parser, router, session, dispatcher) |
 | `src/factory/agents/CLAUDE.md` | agent impls |
 | `src/factory/blobstore/CLAUDE.md` | HTTP-fronted BlobStore service (peer-of-adapters, #1330 V8) |

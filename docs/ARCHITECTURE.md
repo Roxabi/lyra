@@ -55,7 +55,15 @@ aiogram long-poll                NatsBus                       discord.py gatewa
       ◄──────────────────────────────┴──────────────────────────────▶
 ```
 
-All four processes run on Machine 1 (hub). NATS topics: `factory.inbound.<platform>.<bot_id>` (adapter→hub), `factory.outbound.<platform>.<bot_id>` (hub→adapter). `factory start` runs hub + adapters in one process with embedded NATS.
+Nine containers run on Machine 1 (`factory-hub` role): `factory-nats` (single NATS server), `factory-hub`, `factory-telegram`, `factory-discord`, `factory-clipool`, `factory-omp`, `factory-gh-helper`, `factory-turn-writer`, `factory-blobstore`. NATS topics: `factory.inbound.<platform>.<bot_id>` (adapter→hub), `factory.outbound.<platform>.<bot_id>` (hub→adapter). `factory start` runs hub + adapters in one process with embedded NATS.
+
+### Jobs & workers
+
+- **`OmpWorker`** — `omp_rpc` backend worker container (`factory-omp`); CLI entry `factory adapter omp` (#1812). → [workers-tooling.md](architecture/workers-tooling.md)
+- **FACTORY_JOBS WorkQueue + DLQ router** — JetStream work-queue stream for job dispatch; dead-letter routing on failure (#1203). → [messaging.md](architecture/messaging.md)
+- **factory-active-jobs KV registry** — NATS KV bucket tracking in-flight jobs, written by hub on dispatch (#1796). → [job-model.md](architecture/job-model.md)
+- **Work envelope + job_id invariant** — every dispatched unit carries a stable `job_id`; lifecycle contract defined in ADR-084 (#1619). → [job-model.md](architecture/job-model.md)
+- **`factory.job.<id>.*` taxonomy** — unified NATS subject namespace for per-job control and status (#1793). → [messaging.md](architecture/messaging.md)
 
 ---
 

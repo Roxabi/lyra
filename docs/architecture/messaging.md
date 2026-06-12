@@ -161,6 +161,7 @@ System-plane subjects (JetStream API + KV bucket) are governed by per-identity g
 |---|---|---|
 | `$JS.API.>` | hub + adapters + workers → server | JetStream API surface for KV reads and consumer create (currently wildcard; tighter scoping in #1293) |
 | `$KV.factory-state.>` | hub → server (write); adapters + workers ← server (read) | Direct KV bucket access — hub publishes `hub.ready`, others watch via `wait_for_hub` |
+| `$KV.factory-active-jobs.>` | hub → server (write); router + dashboard ← server (read) | Active-jobs registry (#1796) — hub is sole writer (open/refresh/close); bucket-level TTL liveness (120s), `allow_direct=False` so readers ride `STREAM.MSG.GET` (#1572) |
 
 `{platform}` is lowercase ASCII (`telegram`, `discord`). `{bot_id}` is a numeric string
 matching `^[1-9][0-9]*$` — a leading-zero or non-numeric value produces a shadow subject

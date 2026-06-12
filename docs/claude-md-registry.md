@@ -23,6 +23,7 @@ All sub-CLAUDE.md files in this repo — update here on add/rename/delete.
 | `src/factory/transport/CLAUDE.md` | NATS transport + WorkerPoolClient (3-layer primitives, #1278) |
 | `src/factory/infrastructure/turn_writer/CLAUDE.md` | JetStream subscriber-writer for turns.db (#1331) — sole writer per ADR-075 |
 | `src/factory/infrastructure/outbound_audio/CLAUDE.md` | JetStream stream + consumer + KV provisioning for durable outbound-audio path (#1482) |
+| `src/factory/infrastructure/jobs/CLAUDE.md` | FACTORY_JOBS WorkQueue stream + DLQ router provisioning (ADR-088, #1203) |
 | `src/factory/nats/CLAUDE.md` | in-tree NATS integration (subjects, codec, domain clients) |
 | `src/factory/tools/CLAUDE.md` | GitHub token dispenser (gh_token helper) |
 | `packages/roxabi-nats/CLAUDE.md` | NATS transport SDK (ADR-045) |

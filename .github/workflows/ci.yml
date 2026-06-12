@@ -121,6 +121,9 @@ jobs:
       - name: Check secrets drift (unit Secret= / quadlet.toml / manifest / acl-matrix)
         run: bash tools/check_secrets_drift.sh
 
+      - name: Check quadlet manifest install wiring (quadlet.toml → Makefile/verify/converge)
+        run: bash tools/check_quadlet_manifest_install.sh
+
       - name: Check architecture snapshot freshness
         run: bash tools/check_architecture_snapshot.sh
 

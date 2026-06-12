@@ -206,6 +206,16 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
             )
             raise
 
+        from factory.infrastructure.stores.active_jobs_kv import KvActiveJobsStore
+        from factory.infrastructure.stores.active_jobs_refresher import (
+            RegistryCoordinator,
+        )
+
+        _active_jobs_store = KvActiveJobsStore(_audio_js)
+        await _active_jobs_store.connect()
+        _active_jobs_coord = RegistryCoordinator(_active_jobs_store)
+        _active_jobs_coord.start()
+
         # Publish each bot's watch_channels into factory-state KV before
         # announcing readiness so adapters see the value on first seed (SC6).
         _bots: list[tuple[str, str]] = [
@@ -249,6 +259,9 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
             cli_nats_driver=cli_nats_driver,
             nats_llm_client=nats_llm_client,
         )
+        # #1797 drives open()/close(); #1795 JobResult close trigger deferred
+        # (no hub-side factory.job.*.result sub yet)
+        await _active_jobs_coord.stop()
 
     # Close NATS connection after stores context exits
     try:

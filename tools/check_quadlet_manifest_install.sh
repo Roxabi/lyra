@@ -16,9 +16,22 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 fail=0
+count=0
 while IFS= read -r container; do
+    count=$((count + 1))
     unit="${container%.container}"
 
+    # Unit names are interpolated into the grep -E patterns below — reject
+    # anything outside the safe charset rather than risk a mis-matching regex.
+    if ! [[ "${unit}" =~ ^[a-z0-9-]+$ ]]; then
+        echo "FAIL: ${container} — unit name must match ^[a-z0-9-]+\$"
+        fail=1
+        continue
+    fi
+
+    # Template-rendered units (telegram/discord) hit the first arm via the
+    # .container.tmpl source-path substring; the QUADLET_DIR arm matches the
+    # rendered --dest line. Either is acceptable evidence of install wiring.
     if ! grep -qF "deploy/quadlet/${container}" Makefile \
        && ! grep -qF "QUADLET_DIR)/${container}" Makefile; then
         echo "FAIL: ${container} is declared in deploy/quadlet.toml but never installed by 'make quadlet-install'"
@@ -37,6 +50,11 @@ while IFS= read -r container; do
         fail=1
     fi
 done < <(grep -oE '^container = "[^"]+"' deploy/quadlet.toml | cut -d'"' -f2)
+
+if [ "${count}" -eq 0 ]; then
+    echo "FAIL: no containers parsed from deploy/quadlet.toml — gate validated nothing"
+    exit 1
+fi
 
 if [ "${fail}" -ne 0 ]; then
     echo ""

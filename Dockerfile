@@ -58,14 +58,15 @@ RUN useradd -u 1500 -m factory \
               /home/factory/.claude/shared \
               /home/factory/.claude/.git
 
-COPY --from=builder --chown=factory:factory /app /app
-
 # ── omp binary (#1812 / #1867) ─────────────────────────────────────────────────
 # Pulled from the pinned scratch carrier (deploy/omp-base/ — tag = omp version,
 # immutable; the carrier never runs directly). _rpc_bridge.py re-verifies the
 # sha256 of /opt/omp/omp at startup, so a carrier bump must land together with
-# the _PINNED_SHA256 update.
+# the _PINNED_SHA256 update. Placed before the builder COPY so code-only builds
+# keep this pinned layer cached.
 COPY --from=ghcr.io/roxabi/factory-omp-base:15.10.8 /opt/omp/omp /opt/omp/omp
+
+COPY --from=builder --chown=factory:factory /app /app
 
 # ── factory-gh helper user (#1078) ─────────────────────────────────────────────
 # uid 1501 ≠ 1500 (factory's uid) so the token cache file

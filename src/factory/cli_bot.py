@@ -62,8 +62,10 @@ def _read_env(var: str) -> bytes:
 
 
 def _podman_secret_create(name: str, content: bytes) -> None:
+    # `-` is the source argument telling podman to read the secret from stdin;
+    # without it `podman secret create` rejects the call (needs NAME FILE|-).
     subprocess.run(
-        ["podman", "secret", "create", "--replace", name],
+        ["podman", "secret", "create", "--replace", name, "-"],
         input=content,
         check=True,
     )

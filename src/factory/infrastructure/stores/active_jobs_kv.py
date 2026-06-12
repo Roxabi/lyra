@@ -131,6 +131,8 @@ async def ensure_active_jobs_kv(js: "JetStreamContext") -> "KeyValue":
         bucket=ACTIVE_JOBS_BUCKET,
         ttl=ACTIVE_JOBS_TTL,
         storage=StorageType.FILE,
+        direct=False,  # pinned day-1: readers ride $JS.API.STREAM.MSG.GET (#1572,
+        # zero-ACL); allow_direct=True would open an unmodeled $JS.DIRECT.> surface.
     )
     # Try to open an existing bucket first (hot path on restart).
     try:
@@ -212,29 +214,25 @@ class KvActiveJobsStore:
         idx_key = _idx_key(entry.pool_id)
         idx_val = entry.job_id.encode()
 
-        # CAS-based singleton index: try get → update or create.
+        # Singleton index via create-only CAS. ``kv.create`` succeeds iff the
+        # index key is absent — i.e. no non-expired job holds this pool (a
+        # TTL-reaped or explicitly-deleted key is treated as free; nats-py
+        # transparently recreates over a tombstone). A live key surfaces as
+        # KeyWrongLastSequenceError, which maps to RegistryConflictError.
+        # Re-open by the same job_id is idempotent (no steal of a foreign pool).
         try:
-            existing = await kv.get(idx_key)
-            # Key exists — try to update (CAS guards against races).
+            await kv.create(idx_key, idx_val)
+        except KeyWrongLastSequenceError:
+            winner_id = "<unknown>"
             try:
-                await kv.update(idx_key, idx_val, last_revision=existing.revision)
-            except KeyWrongLastSequenceError:
-                # Another writer slipped in — read the winner.
                 winner = await kv.get(idx_key)
-                winner_id = winner.value.decode() if winner.value else "<unknown>"
-                raise RegistryConflictError(entry.pool_id, winner_id)
-        except (KeyNotFoundError, NotFoundError):
-            # Key absent — create it (CAS-safe).
-            try:
-                await kv.create(idx_key, idx_val)
-            except KeyWrongLastSequenceError:
-                # Another writer created it first — read the winner.
-                try:
-                    winner = await kv.get(idx_key)
-                    winner_id = winner.value.decode() if winner.value else "<unknown>"
-                except (KeyNotFoundError, NotFoundError):
-                    winner_id = "<unknown>"
-                raise RegistryConflictError(entry.pool_id, winner_id)
+                if winner.value:
+                    winner_id = winner.value.decode()
+            except (KeyNotFoundError, NotFoundError):
+                pass
+            if winner_id == entry.job_id:
+                return  # idempotent re-open by the owning job
+            raise RegistryConflictError(entry.pool_id, winner_id)
 
     async def refresh(self, job_id: str) -> None:
         """Extend the TTL of *job_id* (and its index entry, if any).

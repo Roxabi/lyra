@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import datetime
-from unittest.mock import AsyncMock, MagicMock, call
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from nats.js.errors import (
@@ -60,9 +60,8 @@ def _kv_entry(value: bytes, revision: int = 1) -> MagicMock:
 
 class TestOpen:
     async def test_open_writes_job_and_idx_steer(self):
-        """steer mode: puts job key + acquires singleton index."""
+        """steer mode: puts job key + acquires singleton index via create-only CAS."""
         kv = AsyncMock()
-        kv.get.side_effect = KeyNotFoundError  # idx absent on first open
         js = AsyncMock()
         js.key_value.return_value = kv
         store = KvActiveJobsStore(js)
@@ -73,11 +72,11 @@ class TestOpen:
 
         kv.put.assert_awaited_once_with(_job_key("job-1"), kv.put.await_args.args[1])
         kv.create.assert_awaited_once_with(_idx_key("pool.tg.main"), b"job-1")
+        kv.update.assert_not_awaited()  # singleton acquired via create, never update
 
     async def test_open_writes_job_and_idx_queue(self):
-        """queue mode also acquires singleton index."""
+        """queue mode also acquires singleton index via create."""
         kv = AsyncMock()
-        kv.get.side_effect = KeyNotFoundError
         js = AsyncMock()
         js.key_value.return_value = kv
         store = KvActiveJobsStore(js)
@@ -100,13 +99,11 @@ class TestOpen:
         await store.open(entry)
 
         kv.put.assert_awaited_once()
-        kv.get.assert_not_awaited()
         kv.create.assert_not_awaited()
 
     async def test_open_colon_pool_id_sanitization(self):
-        """Colons in pool_id are replaced with underscores in KV keys."""
+        """Colons in pool_id are replaced with underscores in the index KV key."""
         kv = AsyncMock()
-        kv.get.side_effect = KeyNotFoundError
         js = AsyncMock()
         js.key_value.return_value = kv
         store = KvActiveJobsStore(js)
@@ -119,63 +116,54 @@ class TestOpen:
         assert ":" not in idx_key_used
         assert idx_key_used == _idx_key("pool:tg:main")
 
-    async def test_open_update_existing_idx(self):
-        """When idx exists, open() updates it via CAS."""
+    async def test_open_existing_pool_different_job_conflicts(self):
+        """A live index held by a different job → RegistryConflictError (singleton)."""
         kv = AsyncMock()
-        existing = _kv_entry(b"old-job", revision=5)
-        kv.get.return_value = existing  # idx found
+        kv.create.side_effect = KeyWrongLastSequenceError
+        kv.get.return_value = _kv_entry(b"other-job")  # winner is someone else
         js = AsyncMock()
         js.key_value.return_value = kv
         store = KvActiveJobsStore(js)
         await store.connect()
 
-        entry = _entry(concurrency_mode="steer")
-        await store.open(entry)
-
-        kv.update.assert_awaited_once_with(
-            _idx_key("pool.tg.main"), b"job-1", last_revision=5
-        )
-        kv.create.assert_not_awaited()
-
-    async def test_open_conflict_on_update_raises(self):
-        """CAS collision on update → RegistryConflictError."""
-        kv = AsyncMock()
-        existing = _kv_entry(b"other-job", revision=3)
-        kv.get.side_effect = [
-            existing,  # first get (idx exists)
-            _kv_entry(b"other-job", revision=4),  # winner read after CAS fail
-        ]
-        kv.update.side_effect = KeyWrongLastSequenceError
-        js = AsyncMock()
-        js.key_value.return_value = kv
-        store = KvActiveJobsStore(js)
-        await store.connect()
-
-        entry = _entry(concurrency_mode="steer")
+        entry = _entry(job_id="job-1", concurrency_mode="steer")
         with pytest.raises(RegistryConflictError) as exc_info:
             await store.open(entry)
 
         assert exc_info.value.pool_id == "pool.tg.main"
         assert exc_info.value.existing_job_id == "other-job"
+        kv.update.assert_not_awaited()  # never steals a foreign pool via update
 
-    async def test_open_conflict_on_create_raises(self):
-        """CAS collision on create (idx absent → race) → RegistryConflictError."""
+    async def test_open_same_job_reopen_is_idempotent(self):
+        """Re-open by the owning job_id → no conflict, no steal."""
         kv = AsyncMock()
-        kv.get.side_effect = [
-            KeyNotFoundError,  # idx absent (triggers create path)
-            _kv_entry(b"winner-job"),  # winner read after create CAS fail
-        ]
         kv.create.side_effect = KeyWrongLastSequenceError
+        kv.get.return_value = _kv_entry(b"job-1")  # winner is us
         js = AsyncMock()
         js.key_value.return_value = kv
         store = KvActiveJobsStore(js)
         await store.connect()
 
-        entry = _entry(concurrency_mode="steer")
+        entry = _entry(job_id="job-1", concurrency_mode="steer")
+        await store.open(entry)  # must not raise
+
+        kv.update.assert_not_awaited()
+
+    async def test_open_conflict_winner_vanished_still_conflicts(self):
+        """create CAS fails but the winner vanished (TTL race) → conflict, <unknown>."""
+        kv = AsyncMock()
+        kv.create.side_effect = KeyWrongLastSequenceError
+        kv.get.side_effect = KeyNotFoundError
+        js = AsyncMock()
+        js.key_value.return_value = kv
+        store = KvActiveJobsStore(js)
+        await store.connect()
+
+        entry = _entry(job_id="job-1", concurrency_mode="steer")
         with pytest.raises(RegistryConflictError) as exc_info:
             await store.open(entry)
 
-        assert exc_info.value.existing_job_id == "winner-job"
+        assert exc_info.value.existing_job_id == "<unknown>"
 
 
 # ---------------------------------------------------------------------------
@@ -468,7 +456,7 @@ class TestEnsureActiveJobsKv:
         assert cfg.bucket == ACTIVE_JOBS_BUCKET
 
     async def test_boot_allow_direct_false(self):
-        """KeyValueConfig does not set allow_direct (defaults to False for STREAM.MSG.GET path)."""
+        """KeyValueConfig pins direct=False → stream allow_direct=False (no $JS.DIRECT.>)."""
         js = AsyncMock()
         js.key_value.side_effect = BucketNotFoundError
         js.create_key_value.return_value = AsyncMock()
@@ -476,8 +464,8 @@ class TestEnsureActiveJobsKv:
         await ensure_active_jobs_kv(js)
 
         cfg = js.create_key_value.await_args.args[0]
-        # allow_direct defaults to False — check it was not set to True
-        assert not getattr(cfg, "allow_direct", False)
+        # nats-py maps KeyValueConfig.direct → StreamConfig.allow_direct (client.py).
+        assert cfg.direct is False
 
 
 # ---------------------------------------------------------------------------

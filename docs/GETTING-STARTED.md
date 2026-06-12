@@ -332,7 +332,9 @@ make quadlet-secrets-install
 # Start all Lyra containers now
 systemctl --user start factory-nats.service
 sleep 3  # wait for NATS to be ready
-systemctl --user start factory-hub.service factory-telegram.service factory-discord.service factory-clipool.service
+systemctl --user start factory-hub.service factory-telegram.service factory-discord.service \
+  factory-clipool.service factory-gh-helper.service factory-blobstore.service \
+  factory-turn-writer.service factory-omp.service
 ```
 
 Or use the Makefile dispatcher:
@@ -368,7 +370,7 @@ cd ~/projects/roxabi-factory
 systemctl --user status 'factory-*.service'
 ```
 
-You should see all eight units active:
+You should see all nine units active:
 ```
 factory-nats.service         active (running)
 factory-hub.service          active (running)
@@ -376,8 +378,9 @@ factory-telegram.service     active (running)
 factory-discord.service      active (running)
 factory-clipool.service      active (running)
 factory-gh-helper.service    active (running)
-factory-turn-writer.service  active (running)
 factory-blobstore.service    active (running)
+factory-turn-writer.service  active (running)
+factory-omp.service          active (running)
 ```
 
 Or check the full container list:
@@ -443,7 +446,7 @@ ssh -i ~/.ssh/lyra_agent lyra@<MACHINE_1_IP> "id && git --version"
 | Config | `~/projects/roxabi-factory/config.toml` |
 | Credentials | `~/.roxabi/factory/config.db` (bot config) + Podman secrets (bot tokens) |
 | Nkey seeds | `~/.roxabi/factory/nkeys/*.seed` |
-| Podman secrets | `podman secret ls` (factory-nats-auth, factory-nats-hub, factory-nats-telegram, factory-nats-discord, factory-nats-clipool) |
+| Podman secrets | `podman secret ls` (factory-nats-hub, factory_blobstore_token, factory-nats-telegram, factory-nats-discord, factory-nats-clipool, factory-claude-oauth, factory-gh-pem, factory-nats-gh-helper, factory-nats-turn-writer, factory-nats-blobstore, factory-nats-omp, factory-litellm-key) |
 | Logs | `journalctl --user -u factory-hub` |
 | Diagrams | `~/.roxabi/forge/` (if installed) |
 | Firewall | UFW, SSH only |

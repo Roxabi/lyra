@@ -64,11 +64,11 @@ Search: `~/.roxabi/factory/agents/` (override) → `src/factory/agents/` (defaul
 
 File/rename → update P immediately
 
-→ `docs/claude-md-registry.md` — full P→scope table (29 : root + 28 sub). Update there on add/rename/delete.
+→ `docs/claude-md-registry.md` — full P→scope table (31 : root + 30 sub). Update there on add/rename/delete.
 
 Rules: add/delete/move → update P | new subdir with non-obvious invariants → add CLAUDE.md + register here | "invariants, not inventory" (¬file counts, ¬method dumps — let `ls`/`grep` answer that)
 
-## Production entry points (NATS 5-process)
+## Production entry points (NATS 6-process)
 
 | Subcommand | CLI | Bootstrap |
 |---|---|---|
@@ -76,6 +76,7 @@ Rules: add/delete/move → update P | new subdir with non-obvious invariants →
 | `adapter telegram` | `factory adapter telegram` | `_bootstrap_adapter_standalone()` |
 | `adapter discord` | `factory adapter discord` | `_bootstrap_adapter_standalone()` |
 | `adapter clipool` | `factory adapter clipool` | `_bootstrap_clipool_standalone()` |
+| `adapter omp` | `factory adapter omp` | `_bootstrap_omp_standalone()` |
 | `turn-writer` | `factory turn-writer` | `_bootstrap_turn_writer_standalone()` |
 
 Topics: `factory.inbound.<platform>.<bot_id>` | `factory.outbound.<platform>.<bot_id>`
@@ -84,7 +85,7 @@ Unified: `factory start` → hub + adapters in 1 process + embedded NATS
 
 ## Container deployment
 
-Prod: Podman Quadlet (systemd `--user`) on M₁ (`factory-hub` role). Eight containers: `factory-nats`, `factory-hub`, `factory-telegram`, `factory-discord`, `factory-clipool`, `factory-gh-helper`, `factory-turn-writer`, `factory-blobstore`. Install: `deploy/install.sh` (idempotent). Manifest: `deploy/quadlet.toml`.
+Prod: Podman Quadlet (systemd `--user`) on M₁ (`factory-hub` role). Nine containers: `factory-nats`, `factory-hub`, `factory-telegram`, `factory-discord`, `factory-clipool`, `factory-gh-helper`, `factory-turn-writer`, `factory-blobstore`, `factory-omp`. Install: `deploy/install.sh` (idempotent). Manifest: `deploy/quadlet.toml`.
 
 → `docs/QUADLET-DEPLOYMENT.md` — install runbook, secret rotation, diagnostic
 → `~/projects/docs/container-deployment-standard.md` — 18 standards (S7 secret target, S8 naming, S12 RestartSec=10)

@@ -1,0 +1,71 @@
+---
+title: "docs: sweep stale container/process counts + document 48h features"
+issue: 1868
+status: approved
+tier: F-lite
+date: 2026-06-13
+---
+
+## Problem
+
+The 2026-06-12 M₁ audit found that the entry-point docs lag roughly 48 hours of
+merged work (#1858 OmpWorker, #1862 FACTORY_JOBS + DLQ, #1863 active-jobs KV,
+#1847 WorkEnvelope, #1849 unified job taxonomy, #1869 omp deploy wiring).
+README.md still says "Four independent processes", root CLAUDE.md says "Eight
+containers" and "NATS 5-process", GETTING-STARTED.md instructs starting eight
+units and omits two required secrets, ARCHITECTURE.md says "All four processes".
+Production runs nine containers and six entry points. Anyone — human or Claude
+session — onboarding through these docs builds a wrong model of the system; the
+audit itself had to fall back to `deploy/quadlet.toml` and M₁ inspection to
+establish ground truth.
+
+## Who
+
+- **Primary:** Claude sessions seeded by root CLAUDE.md (wrong container/entry-point
+  inventory propagates into every dev cycle) and operators following
+  GETTING-STARTED/QUADLET runbooks during deploy diagnostics.
+- **Secondary:** new contributors onboarding via README/ARCHITECTURE.
+
+## Constraints
+
+- `doc_drift` CI gate: un-backticked symbols with 0 hits in `src/` fail; verify
+  with `python3 tools/check_doc_drift.py` before push (feedback memory).
+- Root CLAUDE.md hygiene: "invariants, not inventory" — counts stay, method
+  dumps don't; registry table in `docs/claude-md-registry.md` must be updated
+  in the same change as any CLAUDE.md add (new `src/factory/adapters/omp/CLAUDE.md`).
+- `docs/architecture/messaging.md` is a domain page (≤350 lines, self-contained).
+- ARCHITECTURE.md should point to the messaging domain page, not duplicate it.
+- Baseline = staging post-#1869 (deploy/CLAUDE.md step 7 already fixed there).
+
+## Out of Scope
+
+- `docs/QUADLET-DEPLOYMENT.md` (verified current — "Nine containers", omp rows present).
+- `docs/architecture/adr/` archive, `artifacts/`, `docs/architecture/CURRENT.generated.md` (generated).
+- Any code or deploy change; any new gate.
+
+## Premise Validity
+
+**Success in 6 months:** re-running the 2026-06-12 style doc audit on the seven
+entry-point docs returns zero stale container/process/entry-point claims; a
+fresh Claude session quoting root CLAUDE.md states 9 containers / 6 entry points.
+
+**Failure in 6 months:** by 2026-12, a repeat audit of the same seven docs finds
+≥3 stale count claims again (counts re-drifted after the next component lands) —
+that would mean hand-written counts can't be kept honest and the fix should move
+toward generated inventory instead of another sweep.
+
+**Simplest alternative:** patch only root CLAUDE.md (the agent-facing context)
+and leave README/GETTING-STARTED/ARCHITECTURE for later.
+**Why not simplest:** the operator-facing runbooks (GETTING-STARTED secrets
+table, unit list) are exactly what gets followed during deploy incidents, and
+README/ARCHITECTURE are the human onboarding surface; the audit showed all of
+them actively misleading, and the CLAUDE.md hygiene rule makes the omp
+CLAUDE.md + registry update non-optional anyway.
+
+## Complexity
+
+**Tier: F-lite** — docs-only, single domain (doc-writer), ~9 files, clear scope,
+no unknowns; exceeds S only on file count.
+
+Signals observed: clear scope from completed audit; 1 domain; no new
+architecture; size:F-lite label.

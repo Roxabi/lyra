@@ -15,6 +15,7 @@ import asyncio
 import hashlib
 import json
 import sys
+import threading
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any
@@ -61,9 +62,14 @@ def _make_fake_binary(
 def _stub_omp_rpc_module() -> tuple[ModuleType, MagicMock]:
     """Install a stub omp_rpc in sys.modules; return (module, RpcClient mock)."""
     client_instance = MagicMock()
-    client_instance.new_session = AsyncMock()
-    client_instance.prompt_and_wait = AsyncMock()
-    client_instance.steer = AsyncMock()
+    # omp_rpc is synchronous + thread-based — the bridge invokes these via
+    # asyncio.to_thread, so the stubs are plain (sync) MagicMocks, never
+    # AsyncMock (#1875).
+    client_instance.start = MagicMock()
+    client_instance.stop = MagicMock()
+    client_instance.new_session = MagicMock()
+    client_instance.prompt_and_wait = MagicMock()
+    client_instance.steer = MagicMock()
     client_instance.on_message_update = MagicMock()
     client_instance.on_tool_execution_start = MagicMock()
     client_instance.on_agent_end = MagicMock()
@@ -227,7 +233,7 @@ class TestRun:
         bridge, nc, client = bridge_and_nc
         await bridge.register(nc)
         await bridge.run(prompt="hello", job_id=_JOB_ID)
-        client.prompt_and_wait.assert_awaited_once_with("hello")
+        client.prompt_and_wait.assert_called_once_with("hello")
 
     async def test_run_sets_current_job_id(self, bridge_and_nc) -> None:
         bridge, nc, _client = bridge_and_nc
@@ -268,7 +274,7 @@ class TestSteer:
         await bridge.register(nc)
         bridge._in_prompt_await = False
         await bridge.steer(_JOB_ID, "nudge")
-        client.steer.assert_awaited_once_with("nudge")
+        client.steer.assert_called_once_with("nudge")
 
 
 # ---------------------------------------------------------------------------
@@ -511,22 +517,23 @@ class TestSteerBridge:
         nc.subscribe = _mock_subscribe
         await bridge.register(nc)
 
-        # Start run in background so _in_prompt_await is True during handler call
-        async def _slow_prompt_and_wait(prompt: str) -> None:
-            await asyncio.sleep(0.01)  # event-based
-
-        client.prompt_and_wait.side_effect = _slow_prompt_and_wait
+        # prompt_and_wait is sync, run via asyncio.to_thread — gate it on a
+        # threading.Event so _in_prompt_await is still True when the steer handler
+        # fires in this loop thread, then release it.
+        release = threading.Event()
+        client.prompt_and_wait.side_effect = lambda prompt: release.wait(1.0)
         run_task = asyncio.ensure_future(bridge.run(prompt="hello", job_id=_JOB_ID))
 
-        # Give run() time to subscribe and enter prompt_and_wait
+        # Give run() time to subscribe and enter the prompt_and_wait thread.
         await asyncio.sleep(0)  # event-based
-        # Call the captured steer handler
+        # Call the captured steer handler while the job is in flight.
         assert captured_handler, "subscribe callback not captured"
         msg = SimpleNamespace(data=b"steer this way")
         await captured_handler[0](msg)
+        release.set()
 
         await run_task
-        client.steer.assert_awaited_once_with("steer this way")
+        client.steer.assert_called_once_with("steer this way")
 
     async def test_steer_bridge_drops_message_when_inactive(
         self, bridge_and_nc
@@ -552,7 +559,7 @@ class TestSteerBridge:
         msg = SimpleNamespace(data=b"late steer")
         await captured_handler[0](msg)
 
-        client.steer.assert_not_awaited()
+        client.steer.assert_not_called()
 
     async def test_steer_bridge_no_subscribe_when_nc_is_none(
         self, bridge_and_nc
@@ -565,3 +572,152 @@ class TestSteerBridge:
         await bridge.run(prompt="hello", job_id=_JOB_ID)
         # publish-less: nc.subscribe never called since nc was None at subscribe time
         assert nc.subscribe.await_count == 0  # nc mock still clean
+
+
+# ---------------------------------------------------------------------------
+# TestStartLifecycle — falsification tests for #1875 fix
+# ---------------------------------------------------------------------------
+
+
+class _StatefulFakeRpcClient:
+    """Mirrors omp_rpc.RpcClient's start→new_session contract: new_session()
+    and prompt_and_wait() raise (like the real _require_process) until start()
+    has run. Reproduces the #1875 crash deterministically."""
+
+    def __init__(self, **kwargs: Any) -> None:
+        self.kwargs = kwargs
+        self.started = False
+        self.calls: list[Any] = []
+
+    def start(self) -> "_StatefulFakeRpcClient":
+        self.calls.append("start")
+        self.started = True
+        return self
+
+    def stop(self) -> None:
+        self.calls.append("stop")
+        self.started = False
+
+    def new_session(self, parent_session: Any = None) -> None:
+        self.calls.append("new_session")
+        if not self.started:
+            raise RuntimeError("RPC client is not started")
+
+    def prompt_and_wait(self, message: str, **kw: Any) -> None:
+        self.calls.append("prompt_and_wait")
+        if not self.started:
+            raise RuntimeError("RPC client is not started")
+
+    def steer(self, text: str) -> None:
+        self.calls.append(("steer", text))
+
+    def on_message_update(self, cb: Any) -> None: ...
+
+    def on_tool_execution_start(self, cb: Any) -> None: ...
+
+    def on_agent_end(self, cb: Any) -> None: ...
+
+
+@pytest.mark.asyncio
+class TestStartLifecycle:
+    """Verify that RpcBridge.register() calls start() before new_session() (#1875)."""
+
+    def setup_method(self) -> None:
+        _remove_omp_rpc_stub()
+
+    def teardown_method(self) -> None:
+        _remove_omp_rpc_stub()
+
+    def _make_bridge_with_fake(
+        self, tmp_path: Path
+    ) -> tuple["RpcBridge", "_StatefulFakeRpcClient"]:
+        """Return a bridge wired to a _StatefulFakeRpcClient via sys.modules stub."""
+        omp_bin, actual_sha = _make_fake_binary(tmp_path, matching_digest=True)
+        fake = _StatefulFakeRpcClient()
+        module = ModuleType("omp_rpc")
+        module.RpcClient = lambda **kw: fake.__init__(**kw) or fake  # type: ignore[attr-defined]
+        sys.modules["omp_rpc"] = module
+
+        with patch(
+            "factory.adapters.omp._rpc_bridge._PINNED_SHA256",
+            actual_sha,
+        ):
+            bridge = RpcBridge(omp_bin=omp_bin)
+        return bridge, fake
+
+    async def test_register_starts_client_before_new_session(
+        self, tmp_path: Path
+    ) -> None:
+        """start() MUST precede new_session() — the core #1875 regression."""
+        bridge, fake = self._make_bridge_with_fake(tmp_path)
+        nc = AsyncMock()
+        nc.subscribe = AsyncMock()
+
+        # register() must not raise — if start() is absent or reordered, fake raises
+        await bridge.register(nc)
+
+        assert "start" in fake.calls, "start() was never called"
+        start_idx = fake.calls.index("start")
+        new_session_idx = fake.calls.index("new_session")
+        assert start_idx < new_session_idx, (
+            f"start() (idx={start_idx}) must precede "
+            f"new_session() (idx={new_session_idx})"
+        )
+
+    async def test_aclose_stops_started_client(self, tmp_path: Path) -> None:
+        """aclose() after register() calls stop() and sets _started=False."""
+        bridge, fake = self._make_bridge_with_fake(tmp_path)
+        nc = AsyncMock()
+        nc.subscribe = AsyncMock()
+
+        await bridge.register(nc)
+        await bridge.aclose()
+
+        assert fake.calls[-1] == "stop"
+        assert bridge._started is False
+
+    async def test_aclose_noop_when_not_started(self, tmp_path: Path) -> None:
+        """aclose() before register() is a no-op — must not raise or call stop()."""
+        bridge, fake = self._make_bridge_with_fake(tmp_path)
+
+        await bridge.aclose()  # must not raise
+
+        assert "stop" not in fake.calls
+
+    async def test_constructs_client_with_executable_and_no_session(
+        self, tmp_path: Path
+    ) -> None:
+        """RpcClient must be constructed with executable, no_session=True, provider."""
+        omp_bin, actual_sha = _make_fake_binary(tmp_path, matching_digest=True)
+        received_kwargs: dict[str, Any] = {}
+
+        class _CapturingFake(_StatefulFakeRpcClient):
+            def __init__(self, **kw: Any) -> None:
+                received_kwargs.update(kw)
+                super().__init__(**kw)
+
+        module = ModuleType("omp_rpc")
+
+        def _factory(**kw: Any) -> _CapturingFake:
+            f = _CapturingFake(**kw)
+            return f
+
+        module.RpcClient = _factory  # type: ignore[attr-defined]
+        sys.modules["omp_rpc"] = module
+
+        with patch(
+            "factory.adapters.omp._rpc_bridge._PINNED_SHA256",
+            actual_sha,
+        ):
+            RpcBridge(omp_bin=omp_bin)
+
+        assert "executable" in received_kwargs, "executable kwarg missing"
+        assert received_kwargs["executable"].endswith("/omp"), (
+            f"executable should end with /omp, got: {received_kwargs['executable']}"
+        )
+        assert received_kwargs.get("no_session") is True, (
+            "no_session=True must be passed to RpcClient"
+        )
+        assert received_kwargs.get("provider") == "litellm", (
+            f"expected provider='litellm', got: {received_kwargs.get('provider')}"
+        )

@@ -45,6 +45,9 @@ USER root
 # socat — required by the gh_token shim scripts (git-credential-factory-gh + factory-gh)
 # to dial the dispenser Unix socket. Smallest dep that handles UNIX-CONNECT cleanly;
 # BSD nc -U fallback in the shims is for hosts where socat is unavailable.
+# git — two consumers: (1) runtime — the omp ownership probe shells out to
+# `git rev-parse HEAD` (git_ownership_probe.py); (2) build — the omp_rpc `git+URL`
+# install below. Do NOT drop git while either consumer exists.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends socat git \
  && rm -rf /var/lib/apt/lists/*

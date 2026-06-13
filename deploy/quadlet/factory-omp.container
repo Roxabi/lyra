@@ -22,6 +22,10 @@ Environment=LITELLM_API_KEY_FILE=/run/secrets/factory-litellm-key.tok
 Tmpfs=/tmp
 Volume=%h/projects/roxabi-factory/deploy/omp:/home/factory/.config/omp-pi:ro,Z
 Environment=PI_CODING_AGENT_DIR=/home/factory/.config/omp-pi
+# Workspace — mirrors host ~/projects so the git ownership probe finds its target
+# (run_git_ownership_probe defaults to /home/factory/projects/roxabi-factory).
+# Same mount as factory-clipool; UserNS=keep-id:uid=1500,gid=1500 ensures correct ownership.
+Volume=%h/projects:/home/factory/projects:z
 Label=io.containers.autoupdate=registry
 
 [Service]

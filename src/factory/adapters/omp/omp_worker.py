@@ -4,9 +4,10 @@ Subscribes to factory.jobs.omp (queue group omp-workers), translates
 job envelopes into omp_rpc.RpcClient.prompt_and_wait() calls, and
 publishes JobProgress / JobResult events back onto the bus.
 
-Thread model: single asyncio event loop; omp_rpc callbacks fire
-synchronously inside prompt_and_wait and schedule NATS publishes via
-asyncio.get_event_loop().call_soon (safe from non-async callbacks).
+Thread model: omp_rpc invokes listener callbacks on its own
+omp-rpc-stdout daemon thread (no running event loop there); the bridge
+marshals each NATS publish back onto the worker's event loop via
+loop.call_soon_threadsafe (see RpcBridge._schedule_publish).
 
 SanitizedError discipline (ADR-073): all bus-bound error message
 fields carry type(exc).__name__ only — see _classify_exception in
@@ -98,7 +99,11 @@ class OmpWorker(NatsAdapterBase):
             for sig in (signal.SIGTERM, signal.SIGINT):
                 loop.add_signal_handler(sig, stop.set)
 
-        await self.run_embedded(nc, stop)
+        try:
+            await self.run_embedded(nc, stop)
+        finally:
+            # Stop the omp_rpc subprocess on shutdown (idempotent).
+            await self._bridge.aclose()
 
     # ------------------------------------------------------------------
     # NatsAdapterBase overrides

@@ -25,6 +25,7 @@ def _make_bridge() -> MagicMock:
     bridge.register = AsyncMock()
     bridge.run = AsyncMock()
     bridge.publish_error = AsyncMock()
+    bridge.aclose = AsyncMock()
     return bridge
 
 

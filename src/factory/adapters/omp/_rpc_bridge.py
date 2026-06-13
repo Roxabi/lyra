@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -32,6 +33,9 @@ log = logging.getLogger(__name__)
 
 _PINNED_SHA256 = "b877091c91ebdc8c8d907c4b62681895cd3ae049815858aea7b69ac1d53b7c7b"
 _OMP_BIN = Path("/opt/omp/omp")  # image-build constant — NEVER from env
+_DEFAULT_PROVIDER = (
+    "litellm"  # routes through factory LiteLLM proxy (deploy/omp/models.yml)
+)
 
 
 class DigestMismatchError(Exception):
@@ -110,14 +114,24 @@ class RpcBridge:
     def __init__(
         self,
         omp_bin: Path = _OMP_BIN,
+        *,
+        provider: str | None = None,
+        model: str | None = None,
     ) -> None:
         _verify_digest(omp_bin)
 
         # Import deferred: omp_rpc is a container image dep, absent from pyproject.toml.
         import omp_rpc  # type: ignore[import-not-found]
 
-        self._client: omp_rpc.RpcClient = omp_rpc.RpcClient()
+        self._client: omp_rpc.RpcClient = omp_rpc.RpcClient(
+            executable=str(omp_bin),
+            provider=provider or os.environ.get("OMP_PROVIDER", _DEFAULT_PROVIDER),
+            model=model or os.environ.get("OMP_MODEL"),
+            no_session=True,
+        )
         self._nc: NatsClient | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._started: bool = False
         self._in_prompt_await: bool = False
         self._result_sent: bool = False
 
@@ -127,14 +141,19 @@ class RpcBridge:
         Must be called after NATS connection is established and
         before any run() call. Callback registration order is
         mandated by the omp_rpc API (confirmed in spike #1807):
-          on_message_update → on_tool_execution_start → on_agent_end
-          → new_session() (MUST be last)
+          start() → on_message_update → on_tool_execution_start → on_agent_end
+          → new_session() (MUST be last; requires process running — #1875)
         """
         self._nc = nc
+        self._loop = asyncio.get_running_loop()
+        await asyncio.to_thread(
+            self._client.start
+        )  # spawns omp subprocess + ready handshake — MUST precede new_session (#1875)
+        self._started = True
         self._client.on_message_update(self._on_message_update)
         self._client.on_tool_execution_start(self._on_tool_execution_start)
         self._client.on_agent_end(self._on_agent_end)
-        await self._client.new_session()
+        await asyncio.to_thread(self._client.new_session)
 
     async def run(self, prompt: str, job_id: str) -> None:
         """Run a prompt through omp_rpc; publishes progress and result to NATS.
@@ -154,13 +173,13 @@ class RpcBridge:
                 log.debug("rpc_bridge: steer message dropped — no active job")
                 return
             text = msg.data.decode("utf-8", errors="replace")
-            await self._client.steer(text)
+            await asyncio.to_thread(self._client.steer, text)
 
         steer_sub = None
         if nc is not None:
             steer_sub = await nc.subscribe(jobs_steer(job_id), cb=_handle_steer_msg)
         try:
-            await self._client.prompt_and_wait(prompt)
+            await asyncio.to_thread(self._client.prompt_and_wait, prompt)
         finally:
             self._in_prompt_await = False
             if steer_sub is not None:
@@ -172,7 +191,29 @@ class RpcBridge:
             raise SteerViolationError(
                 "steer() called while prompt_and_wait is in flight"
             )
-        await self._client.steer(text)
+        await asyncio.to_thread(self._client.steer, text)
+
+    async def aclose(self) -> None:
+        """Stop the omp_rpc subprocess. Idempotent; no-op if never started."""
+        if not self._started:
+            return
+        self._started = False
+        await asyncio.to_thread(self._client.stop)
+
+    def _schedule_publish(self, subject: str, payload: bytes) -> None:
+        """Schedule a NATS publish from an omp_rpc listener thread.
+
+        omp_rpc invokes listeners on its stdout-reader daemon thread, which has no
+        running event loop — marshal back onto the captured loop via
+        call_soon_threadsafe (#1875).
+        """
+        nc = self._nc
+        loop = self._loop
+        if nc is None or loop is None:
+            return
+        loop.call_soon_threadsafe(
+            lambda: asyncio.ensure_future(nc.publish(subject, payload))
+        )
 
     # ------------------------------------------------------------------
     # omp_rpc callbacks
@@ -180,9 +221,8 @@ class RpcBridge:
 
     def _on_message_update(self, event: Any) -> None:
         """Translate on_message_update → factory.job.<job_id>.progress."""
-        nc = self._nc
         job_id = getattr(self, "_current_job_id", None)
-        if nc is None or job_id is None:
+        if job_id is None:
             return
         partial_text = getattr(event, "text", None)
         payload = _make_progress(
@@ -192,15 +232,12 @@ class RpcBridge:
             partial_text=partial_text,
             detail={"partial_text": partial_text},
         )
-        asyncio.get_running_loop().call_soon(
-            lambda: asyncio.ensure_future(nc.publish(jobs_progress(job_id), payload))
-        )
+        self._schedule_publish(jobs_progress(job_id), payload)
 
     def _on_tool_execution_start(self, event: Any) -> None:
         """Translate on_tool_execution_start → factory.job.<job_id>.progress."""
-        nc = self._nc
         job_id = getattr(self, "_current_job_id", None)
-        if nc is None or job_id is None:
+        if job_id is None:
             return
         tool_name = getattr(event, "tool_name", None)
         tool_id = getattr(event, "tool_id", None)
@@ -213,15 +250,12 @@ class RpcBridge:
             tool_id=tool_id,
             detail={"tool_name": tool_name, "tool_id": tool_id},
         )
-        asyncio.get_running_loop().call_soon(
-            lambda: asyncio.ensure_future(nc.publish(jobs_progress(job_id), payload))
-        )
+        self._schedule_publish(jobs_progress(job_id), payload)
 
     def _on_agent_end(self, event: Any) -> None:
         """Translate on_agent_end → factory.job.<job_id>.result (success)."""
-        nc = self._nc
         job_id = getattr(self, "_current_job_id", None)
-        if nc is None or job_id is None:
+        if job_id is None:
             return
         if self._result_sent:
             log.debug(
@@ -234,9 +268,7 @@ class RpcBridge:
             {"result": result_data} if result_data is not None else {}
         )
         payload = _make_result(job_id, status="success", data=data)
-        asyncio.get_running_loop().call_soon(
-            lambda: asyncio.ensure_future(nc.publish(jobs_result(job_id), payload))
-        )
+        self._schedule_publish(jobs_result(job_id), payload)
 
     async def publish_error(self, job_id: str, exc: BaseException) -> None:
         """Publish a JobResult(status=error) for a failed job.

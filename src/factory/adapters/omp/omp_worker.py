@@ -98,7 +98,11 @@ class OmpWorker(NatsAdapterBase):
             for sig in (signal.SIGTERM, signal.SIGINT):
                 loop.add_signal_handler(sig, stop.set)
 
-        await self.run_embedded(nc, stop)
+        try:
+            await self.run_embedded(nc, stop)
+        finally:
+            # Stop the omp_rpc subprocess on shutdown (idempotent).
+            await self._bridge.aclose()
 
     # ------------------------------------------------------------------
     # NatsAdapterBase overrides

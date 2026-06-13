@@ -27,11 +27,12 @@ then publishes per-job lifecycle events back to the bus.
   only; never `str(exc)`, `f"{exc}"`, or `repr(exc)` in bus-bound fields.
 
 - **Config path** — `PI_CODING_AGENT_DIR` points to omp's agent dir
-  (`/home/factory/.config/omp-pi`). It is **writable**: omp writes `agent.db` + `models.db`
-  (SQLite) there at boot, so the unit backs it with a host data dir (`~/.roxabi/factory/omp`)
-  and layers the repo's `models.yml` **read-only on top** (SSoT). A whole-dir `:ro` mount
-  EACCESes the DB open (#1879). The LiteLLM base URL override lives in `models.yml` under
-  `providers.litellm.baseUrl` — it is NOT an env var.
+  (`/home/factory/.config/omp-pi`). It is a **writable tmpfs (`mode=1777`)**: omp writes
+  `agent.db` + `models.db` (SQLite) there at boot, so a whole-dir `:ro` mount EACCESes the
+  DB open (#1879). Ephemeral by design — `agent.db` is per-run (`no_session=True`), `models.db`
+  recompiles from `models.yml` each boot (no secret-at-rest, no stale cache, no growth). The
+  repo's `models.yml` is layered **read-only on top** (SSoT). The LiteLLM base URL override
+  lives in `models.yml` under `providers.litellm.baseUrl` — it is NOT an env var.
 
 - **Writable runtime FS under `ReadOnly=true`** — omp also writes `$HOME/.omp` at boot
   (file-log transport + native modules unpacked & dlopen'd under `natives/`). It is a

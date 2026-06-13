@@ -285,10 +285,6 @@ run mkdir -p "${HOME}/.roxabi/factory/blobstore"
 echo "  [ok]   ${HOME}/.roxabi/factory/blobstore"
 run mkdir -p "${HOME}/.roxabi/factory/turn-writer"
 echo "  [ok]   ${HOME}/.roxabi/factory/turn-writer/"
-# omp agent dir — rw state (agent.db/models.db SQLite); models.yml layered :ro on top
-# from the repo by factory-omp.container. omp can't open its DB on a :ro mount (#1879).
-run mkdir -p "${HOME}/.roxabi/factory/omp"
-echo "  [ok]   ${HOME}/.roxabi/factory/omp/"
 # Pre-create turns.db as a regular file so Podman never materialises it as a
 # directory on first boot (both factory-turn-writer and factory-hub bind-mount it;
 # findings #1 + #2 — IsADirectoryError risk at SQLite open time).

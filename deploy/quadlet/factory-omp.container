@@ -20,6 +20,10 @@ Environment=NATS_NKEY_SEED_PATH=/run/secrets/factory-nats-omp.seed
 Secret=factory-litellm-key,type=mount,target=factory-litellm-key.tok,uid=1500,gid=1500,mode=0400
 Environment=LITELLM_API_KEY_FILE=/run/secrets/factory-litellm-key.tok
 Tmpfs=/tmp
+# omp mkdir's $HOME/.omp at boot for its file-log transport (makeFileTransport);
+# ReadOnly=true makes that EROFS without a writable mount (#1877). Ephemeral is
+# correct — no_session=True means no session state to persist; logs go to journald.
+Tmpfs=/home/factory/.omp:mode=0755
 Volume=%h/projects/roxabi-factory/deploy/omp:/home/factory/.config/omp-pi:ro,Z
 Environment=PI_CODING_AGENT_DIR=/home/factory/.config/omp-pi
 # Workspace — mirrors host ~/projects so the git ownership probe finds its target

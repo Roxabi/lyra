@@ -20,11 +20,20 @@ Environment=NATS_NKEY_SEED_PATH=/run/secrets/factory-nats-omp.seed
 Secret=factory-litellm-key,type=mount,target=factory-litellm-key.tok,uid=1500,gid=1500,mode=0400
 Environment=LITELLM_API_KEY_FILE=/run/secrets/factory-litellm-key.tok
 Tmpfs=/tmp
-# omp mkdir's $HOME/.omp at boot for its file-log transport (makeFileTransport);
-# ReadOnly=true makes that EROFS without a writable mount (#1877). Ephemeral is
-# correct — no_session=True means no session state to persist; logs go to journald.
-Tmpfs=/home/factory/.omp:mode=0755
-Volume=%h/projects/roxabi-factory/deploy/omp:/home/factory/.config/omp-pi:ro,Z
+# omp writes $HOME/.omp at boot: file-log transport (makeFileTransport) + native
+# modules unpacked and dlopen'd under natives/. ReadOnly=true makes that EROFS; a
+# root-owned 0755 tmpfs still EACCESes for uid 1500 — mode=1777 (like /tmp) is the
+# minimum that lets uid 1500 write. noexec is NOT viable here (natives/ are dlopen'd).
+# Ephemeral is correct: no_session=True, logs also go to journald (#1877/#1879).
+Tmpfs=/home/factory/.omp:mode=1777
+# omp's agent dir holds models.yml (config) AND agent.db/models.db (SQLite state), so it
+# MUST be writable — a :ro mount EACCESes the DB open, a root-owned tmpfs EACCESes uid
+# 1500, hence mode=1777. Ephemeral (tmpfs): agent.db is per-run state (no_session=True),
+# models.db recompiles from models.yml each boot — avoids secret-at-rest, stale model
+# cache, and unbounded growth (#1879). The repo's models.yml is layered :ro on top (SSoT);
+# podman orders mounts by destination depth, so the dir tmpfs lands before the file.
+Tmpfs=/home/factory/.config/omp-pi:mode=1777
+Volume=%h/projects/roxabi-factory/deploy/omp/models.yml:/home/factory/.config/omp-pi/models.yml:ro,Z
 Environment=PI_CODING_AGENT_DIR=/home/factory/.config/omp-pi
 # Workspace — mirrors host ~/projects so the git ownership probe finds its target
 # (run_git_ownership_probe defaults to /home/factory/projects/roxabi-factory).

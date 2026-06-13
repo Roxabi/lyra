@@ -28,6 +28,25 @@ from roxabi_nats.connect import scrub_nats_url
 log = logging.getLogger(__name__)
 
 
+def _export_secret_file(file_var: str, value_var: str) -> None:
+    """Bridge a Podman type=mount secret file into a plain env var.
+
+    omp_rpc resolves models.yml `apiKey: LITELLM_API_KEY` from the process
+    environment, but the key is delivered as a tmpfs secret file referenced by
+    *file_var* (LITELLM_API_KEY_FILE) per the deploy/ secret-at-rest discipline.
+    Read the file once at boot and export *value_var* in-process only — never
+    persisted to disk or the unit file. No-op when *file_var* is unset (local/dev
+    omp uses the default localhost provider with no key).
+    """
+    path = os.environ.get(file_var)
+    if not path:
+        return
+    value = Path(path).read_text().strip()
+    if not value:
+        sys.exit(f"{file_var} points at an empty secret file: {path}")
+    os.environ[value_var] = value
+
+
 async def _bootstrap_clipool_standalone(raw_config: dict) -> None:
     """Wire a standalone CliPoolNatsWorker connected to NATS."""
     run_git_ownership_probe()
@@ -139,6 +158,7 @@ async def _bootstrap_omp_standalone(raw_config: dict) -> None:  # noqa: ARG001
     The digest gate inside RpcBridge.__init__ will raise DigestMismatchError
     if the binary does not match the pinned SHA-256.
     """
+    _export_secret_file("LITELLM_API_KEY_FILE", "LITELLM_API_KEY")
     run_git_ownership_probe()
     nats_url = os.environ.get("NATS_URL")
     if not nats_url:

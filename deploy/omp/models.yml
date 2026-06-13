@@ -18,6 +18,7 @@
 #   omp until it is added here.
 # - Quadlet wiring (secret mount, env injection, volume mount into the worker
 #   unit) is #1812's scope — this file only proves the config pattern.
+# - dead upstreams pruned (kimi-k2.6 = Fireworks sub terminated llmCLI#116; deepseek-v4-pro = NVIDIA NIM PoC dropped 2026-06-13, #1881)
 
 providers:
   litellm:
@@ -25,7 +26,5 @@ providers:
     api: openai-completions
     apiKey: LITELLM_API_KEY
     models:
-      - id: deepseek-v4-pro
-      - id: kimi-k2.6
       - id: grok-4
       - id: grok-4-fast

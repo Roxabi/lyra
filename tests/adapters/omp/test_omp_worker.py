@@ -8,7 +8,10 @@ asyncio_mode = "auto" is configured project-wide in pyproject.toml.
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 from factory.adapters.omp.omp_worker import OmpWorker
 
@@ -247,3 +250,64 @@ class TestRun:
 
         # register must precede run_embedded
         assert call_order.index("register") < call_order.index("run_embedded")
+
+    async def test_run_closes_bridge_after_loop(self) -> None:
+        """aclose() must run after the loop, in order register < loop < aclose."""
+        bridge = _make_bridge()
+        worker = _make_worker(bridge)
+
+        call_order: list[str] = []
+
+        async def mock_nats_connect(*a, **kw):  # noqa: ARG001
+            return AsyncMock()
+
+        async def mock_register(nc):  # noqa: ARG001
+            call_order.append("register")
+
+        async def mock_run_embedded(nc, stop):  # noqa: ARG001
+            call_order.append("run_embedded")
+
+        async def mock_aclose():
+            call_order.append("aclose")
+
+        bridge.register.side_effect = mock_register
+        bridge.aclose.side_effect = mock_aclose
+
+        with (
+            patch(
+                "factory.adapters.omp.omp_worker.nats_connect",
+                side_effect=mock_nats_connect,
+            ),
+            patch.object(worker, "run_embedded", side_effect=mock_run_embedded),
+        ):
+            stop = asyncio.Event()
+            stop.set()
+            await worker.run("nats://localhost:4222", stop=stop)
+
+        assert call_order == ["register", "run_embedded", "aclose"]
+        bridge.aclose.assert_awaited_once()
+
+    async def test_run_closes_bridge_when_loop_raises(self) -> None:
+        """aclose() runs via the finally block even when the loop raises."""
+        bridge = _make_bridge()
+        worker = _make_worker(bridge)
+
+        async def mock_nats_connect(*a, **kw):  # noqa: ARG001
+            return AsyncMock()
+
+        async def boom(nc, stop):  # noqa: ARG001
+            raise RuntimeError("loop crashed")
+
+        with (
+            patch(
+                "factory.adapters.omp.omp_worker.nats_connect",
+                side_effect=mock_nats_connect,
+            ),
+            patch.object(worker, "run_embedded", side_effect=boom),
+        ):
+            stop = asyncio.Event()
+            stop.set()
+            with pytest.raises(RuntimeError, match="loop crashed"):
+                await worker.run("nats://localhost:4222", stop=stop)
+
+        bridge.aclose.assert_awaited_once()

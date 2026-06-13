@@ -15,7 +15,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
-import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -101,6 +100,21 @@ def _verify_digest(omp_bin: Path) -> None:
         raise DigestMismatchError(actual=actual, expected=_PINNED_SHA256)
 
 
+def _log_publish_result(task: asyncio.Task[Any]) -> None:
+    """Done-callback for a NATS publish scheduled from an omp_rpc listener thread.
+
+    asyncio task results are otherwise dropped on the floor — without this a failed
+    publish (NATS down, ACL denial) would vanish silently. Logs the exception type
+    locally only; no bus exposure, so ADR-073 does not apply here (#1876).
+    """
+    try:
+        exc = task.exception()
+    except asyncio.CancelledError:
+        return
+    if exc is not None:
+        log.warning("rpc_bridge: scheduled NATS publish failed", exc_info=exc)
+
+
 class RpcBridge:
     """Bridge between omp_rpc.RpcClient and NATS publish calls.
 
@@ -115,7 +129,7 @@ class RpcBridge:
         self,
         omp_bin: Path = _OMP_BIN,
         *,
-        provider: str | None = None,
+        provider: str | None = _DEFAULT_PROVIDER,
         model: str | None = None,
     ) -> None:
         _verify_digest(omp_bin)
@@ -123,10 +137,13 @@ class RpcBridge:
         # Import deferred: omp_rpc is a container image dep, absent from pyproject.toml.
         import omp_rpc  # type: ignore[import-not-found]
 
+        # provider/model are constructor kwargs only — no env axis. The runtime
+        # model list comes from deploy/omp/models.yml (via PI_CODING_AGENT_DIR),
+        # not from OMP_PROVIDER/OMP_MODEL env vars (#1876).
         self._client: omp_rpc.RpcClient = omp_rpc.RpcClient(
             executable=str(omp_bin),
-            provider=provider or os.environ.get("OMP_PROVIDER", _DEFAULT_PROVIDER),
-            model=model or os.environ.get("OMP_MODEL"),
+            provider=provider,
+            model=model,
             no_session=True,
         )
         self._nc: NatsClient | None = None
@@ -165,6 +182,8 @@ class RpcBridge:
         """
         self._current_job_id = job_id
         self._in_prompt_await = True
+        # _on_agent_end (sets _result_sent=True) fires on the stdout thread before
+        # prompt_and_wait returns — arm the guard before subscribing to steer.
         self._result_sent = False
         nc = self._nc
 
@@ -211,9 +230,13 @@ class RpcBridge:
         loop = self._loop
         if nc is None or loop is None:
             return
-        loop.call_soon_threadsafe(
-            lambda: asyncio.ensure_future(nc.publish(subject, payload))
-        )
+
+        def _spawn() -> None:
+            # Runs on the loop thread (via call_soon_threadsafe) — create_task is safe.
+            task = asyncio.create_task(nc.publish(subject, payload))
+            task.add_done_callback(_log_publish_result)
+
+        loop.call_soon_threadsafe(_spawn)
 
     # ------------------------------------------------------------------
     # omp_rpc callbacks

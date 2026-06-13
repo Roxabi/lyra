@@ -46,7 +46,7 @@ USER root
 # to dial the dispenser Unix socket. Smallest dep that handles UNIX-CONNECT cleanly;
 # BSD nc -U fallback in the shims is for hosts where socat is unavailable.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends socat \
+ && apt-get install -y --no-install-recommends socat git \
  && rm -rf /var/lib/apt/lists/*
 
 # UID 1500 pinned per ADR-053 (Quadlet container UID stability)
@@ -102,6 +102,22 @@ RUN test -x /usr/bin/gh \
  && chmod 0755 /opt/factory-gh/gh \
  || true
 ENV FACTORY_GH_BIN=/opt/factory-gh/gh
+
+# ── omp_rpc Python package (#1871) ─────────────────────────────────────────────
+# omp_rpc is deliberately kept OUT of uv.lock (alpha lib, pin-by-SHA pattern —
+# #1807/#1810). Install at image build time from the pinned commit that matches
+# OMP_VERSION=v15.10.8 / factory-omp-base:15.10.8. The commit SHA is locked here;
+# a version bump must update deploy/omp-base/Containerfile OMP_VERSION+OMP_SHA256,
+# src/factory/adapters/omp/_rpc_bridge.py _PINNED_SHA256, AND this pin — in lockstep.
+# uv is not present in agent-runtime (only in builder); bring the static binary from
+# the official astral-sh image so we can pip-install into /app/.venv without touching
+# the project lockfile.
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+RUN uv pip install --python /app/.venv/bin/python \
+      "git+https://github.com/can1357/oh-my-pi@4b5200a163060c057f1d886df15d7ef083a54a62#subdirectory=python/omp-rpc"
+# Build-time import smoke — fails the image build if omp_rpc is mis-installed or
+# the subdirectory path changes upstream. Closes the "declared but never importable" gap.
+RUN /app/.venv/bin/python -c "import omp_rpc"
 
 WORKDIR /app
 

@@ -26,10 +26,17 @@ then publishes per-job lifecycle events back to the bus.
 - **ADR-073 SanitizedError discipline** — `_classify_exception` uses `type(exc).__name__`
   only; never `str(exc)`, `f"{exc}"`, or `repr(exc)` in bus-bound fields.
 
-- **Config path** — `PI_CODING_AGENT_DIR` env var points to `deploy/omp/` (mounted as
-  `/home/factory/.config/omp-pi:ro` in the container). omp reads `models.yml` from there.
-  The LiteLLM base URL override lives in `models.yml` under `providers.litellm.baseUrl` —
-  it is NOT an env var.
+- **Config path** — `PI_CODING_AGENT_DIR` points to omp's agent dir
+  (`/home/factory/.config/omp-pi`). It is **writable**: omp writes `agent.db` + `models.db`
+  (SQLite) there at boot, so the unit backs it with a host data dir (`~/.roxabi/factory/omp`)
+  and layers the repo's `models.yml` **read-only on top** (SSoT). A whole-dir `:ro` mount
+  EACCESes the DB open (#1879). The LiteLLM base URL override lives in `models.yml` under
+  `providers.litellm.baseUrl` — it is NOT an env var.
+
+- **Writable runtime FS under `ReadOnly=true`** — omp also writes `$HOME/.omp` at boot
+  (file-log transport + native modules unpacked & dlopen'd under `natives/`). It is a
+  tmpfs at **`mode=1777`**: a root-owned `0755` tmpfs EACCESes for uid 1500, and `noexec`
+  is NOT viable (the `natives/` are dlopen'd). Ephemeral is correct (`no_session=True`).
 
 - **Image** — `factory-omp.container` runs `ghcr.io/roxabi/factory:staging` with
   `/opt/omp/omp` baked in via `COPY --from factory-omp-base`. The carrier (`factory-omp-base`)

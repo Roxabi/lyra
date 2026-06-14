@@ -71,6 +71,7 @@
         "factory.clipool.heartbeat",
         "factory.omp.heartbeat",
         "factory.gh.mint_failure.>",
+        "factory.job.*.result",
         "$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.FACTORY_JOBS.>",
         "_inbox.hub.>"
       ],

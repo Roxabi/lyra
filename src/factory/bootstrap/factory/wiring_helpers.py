@@ -148,6 +148,7 @@ def _register_agents(deps: RegisterAgentsDeps) -> None:
             llm_cfg=llm_cfg,
             nats_llm_client=deps.voice.nats_llm_client,
             cli_nats_driver=deps.clipool.cli_nats_driver,
+            omp_rpc_driver=deps.omp_rpc_driver,
         )
     )
     for ag in all_agents.values():

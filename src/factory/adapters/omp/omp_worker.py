@@ -128,6 +128,25 @@ class OmpWorker(NatsAdapterBase):
 
         job_id = envelope.job_id
         prompt = envelope.payload.get("prompt", "")
+        if not prompt:
+            log.warning("omp_worker: job_id=%s has empty prompt — rejecting", job_id)
+            await self._bridge.publish_error(str(job_id), ValueError("empty prompt"))
+            return
+        model_cfg = envelope.payload.get("model_cfg", {})
+        system_prompt = envelope.payload.get("system_prompt", "")
+        _cfg_keys = (
+            sorted(model_cfg)
+            if isinstance(model_cfg, dict)
+            else type(model_cfg).__name__
+        )
+        _sp_len = len(system_prompt) if isinstance(system_prompt, str) else 0
+        log.debug(
+            "omp job %s: received model_cfg keys=%s"
+            " system_prompt_len=%d (V1: not applied)",
+            job_id,
+            _cfg_keys,
+            _sp_len,
+        )
         log.info("omp_worker: job_id=%s start", job_id)
         start = time.monotonic()
         try:

@@ -23,6 +23,7 @@ from factory.core.lifecycle.circuit_breaker import CircuitRegistry
 from factory.core.messaging.message import InboundMessage, Platform
 from factory.core.messaging.messages import MessageManager
 from factory.infrastructure.stores.pairing import PairingManager
+from factory.llm.drivers.omp_rpc import OmpRpcDriver
 from factory.nats.nats_bus import NatsBus
 
 if TYPE_CHECKING:
@@ -102,6 +103,8 @@ async def _build_hub_and_wire(  # noqa: PLR0913 — unavoidable wiring surface
         d for d in [cli_nats_driver, nats_llm_client] if d is not None
     )
 
+    omp_rpc_driver = OmpRpcDriver(nc)
+
     register_agents(
         hub,
         agent_configs,
@@ -114,6 +117,7 @@ async def _build_hub_and_wire(  # noqa: PLR0913 — unavoidable wiring surface
         raw_config,
         nats_llm_client,
         cli_nats_driver=cli_nats_driver,
+        omp_rpc_driver=omp_rpc_driver,
     )
 
     tg_proxies, tg_dispatchers = wire_nats_proxies(

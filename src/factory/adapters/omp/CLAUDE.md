@@ -19,9 +19,12 @@ then publishes per-job lifecycle events back to the bus.
   `tool_input` may contain credentials or file fragments (ADR-073).
 
 - **`_result_sent` double-publish guard** — boolean flag on `RpcBridge`; checked in both
-  `_on_agent_end` and `publish_error`. Only the first caller publishes a `JobResult`; the
-  second is a no-op. Guard is per-job-invocation — reset at the start of each `run()` call,
-  which is what makes sequential jobs on one bridge safe. Do not remove the reset.
+  `run()` (success path) and `publish_error` (error path). Only the first caller publishes a
+  `JobResult`; the second is a no-op. Guard is per-job-invocation — reset at the start of each
+  `run()` call, which is what makes sequential jobs on one bridge safe. Do not remove the reset.
+  `run()` is the sole success publisher (race-free, after `await asyncio.to_thread(prompt_and_wait)`
+  returns on the event loop). `_on_agent_end` is store-only: it stores the event in
+  `_last_agent_end_event` so `run()` can derive fallback text from `event.messages` if needed.
 
 - **ADR-073 SanitizedError discipline** — `_classify_exception` uses `type(exc).__name__`
   only; never `str(exc)`, `f"{exc}"`, or `repr(exc)` in bus-bound fields.

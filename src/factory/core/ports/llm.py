@@ -58,12 +58,17 @@ class LlmProvider(Protocol):
 
     def is_alive(self, pool_id: str) -> bool: ...
 
-    # stream() is an optional duck-typed method — providers that support
-    # streaming implement it as an async-generator function (`async def` with
-    # `yield`) returning AsyncIterator[LlmEvent]. Callers iterate directly:
-    # `async for event in provider.stream(...)` — no `await` needed.
-    # SimpleAgent checks via hasattr() rather than isinstance() so that
-    # existing providers are not broken by missing this method.
+
+@runtime_checkable
+class StreamingLlmProvider(LlmProvider, Protocol):
+    """LlmProvider that also supports incremental streaming.
+
+    Streaming backends implement ``stream()`` as an async-generator function
+    (``async def`` with ``yield``). Non-streaming backends (e.g. OmpRpcDriver in
+    its non-streaming slice) satisfy the base ``LlmProvider`` only; SimpleAgent
+    gates on ``getattr(provider, "stream", None)`` so they are never streamed.
+    """
+
     def stream(
         self,
         pool_id: str,
@@ -79,4 +84,4 @@ class LlmUnavailableError(Exception):
     """Raised when no LLM worker is reachable (timeout, no heartbeat, circuit open)."""
 
 
-__all__ = ["LlmProvider", "LlmResult", "LlmUnavailableError"]
+__all__ = ["LlmProvider", "LlmResult", "LlmUnavailableError", "StreamingLlmProvider"]

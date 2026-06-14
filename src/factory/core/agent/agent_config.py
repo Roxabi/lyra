@@ -16,7 +16,7 @@ from ..config.limits import (
 # backward compatibility with all callers that import from agent_config.
 from ..ports.llm_types import ModelConfig as ModelConfig  # noqa: F401
 
-_VALID_BACKENDS: frozenset[str] = frozenset({"claude-cli", "nats"})
+_VALID_BACKENDS: frozenset[str] = frozenset({"claude-cli", "nats", "omp-rpc"})
 
 _WORKSPACE_BUILTIN_CONFLICTS = frozenset(
     {

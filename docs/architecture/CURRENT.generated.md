@@ -105,7 +105,7 @@
 
 ### hub
 - **Publish:** $JS.API.>, $KV.factory-active-jobs.>, $KV.factory-msg-index.>, $KV.factory-state.>, factory.audit.>, factory.clipool.cmd, factory.clipool.control, factory.event.>, factory.image.generate.request, factory.job.*.steer, factory.jobs.>, factory.llm.generate.request, factory.metric.>, factory.outbound.audio.>, factory.outbound.discord.>, factory.outbound.telegram.>, factory.turns.write, factory.typing.>, factory.voice.stt.request, factory.voice.stt.request.>, factory.voice.tts.request, factory.voice.tts.request.>
-- **Subscribe:** $JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.FACTORY_JOBS.>, _inbox.hub.>, factory.clipool.heartbeat, factory.gh.mint_failure.>, factory.image.heartbeat, factory.inbound.discord.>, factory.inbound.telegram.>, factory.llm.heartbeat, factory.omp.heartbeat, factory.system.ready, factory.voice.stt.heartbeat, factory.voice.tts.heartbeat
+- **Subscribe:** $JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.FACTORY_JOBS.>, _inbox.hub.>, factory.clipool.heartbeat, factory.gh.mint_failure.>, factory.image.heartbeat, factory.inbound.discord.>, factory.inbound.telegram.>, factory.job.*.result, factory.llm.heartbeat, factory.omp.heartbeat, factory.system.ready, factory.voice.stt.heartbeat, factory.voice.tts.heartbeat
 
 ### image-worker
 - **Publish:** $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.image.heartbeat

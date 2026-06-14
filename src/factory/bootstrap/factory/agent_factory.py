@@ -42,6 +42,7 @@ from factory.llm.registry import ProviderRegistry
 
 if TYPE_CHECKING:
     from factory.bootstrap.bootstrap_stores import StoreBundle
+    from factory.llm.base import LlmProvider
     from factory.llm.llm_client import LlmClient
 
 log = logging.getLogger(__name__)
@@ -80,6 +81,7 @@ class ResolveAgentsDeps:
     llm_cfg: LlmConfig | None = None
     nats_llm_client: "LlmClient | None" = None
     cli_nats_driver: "LlmClient | None" = None
+    omp_rpc_driver: "LlmProvider | None" = None
 
 
 async def _init_bot_auths_and_agents(
@@ -151,10 +153,10 @@ async def _init_bot_auths_and_agents(
     )
 
 
-def _create_agent(deps: CreateAgentDeps) -> AgentBase:
+def _create_agent(deps: CreateAgentDeps) -> AgentBase:  # noqa: C901 — 3-branch backend dispatch
     """Select agent implementation based on backend config."""
     backend = deps.config.llm_config.backend
-    if backend in ("claude-cli", "nats"):
+    if backend in ("claude-cli", "nats", "omp-rpc"):
         if backend == "nats":
             if deps.provider_registry is None:
                 raise ValueError(
@@ -166,6 +168,19 @@ def _create_agent(deps: CreateAgentDeps) -> AgentBase:
             except KeyError as exc:
                 raise RuntimeError(
                     "backend='nats' registered but LlmClient missing from"
+                    " registry -- is NATS_URL set and driver started?"
+                ) from exc
+        elif backend == "omp-rpc":
+            if deps.provider_registry is None:
+                raise ValueError(
+                    "backend='omp-rpc' requires a ProviderRegistry with"
+                    " 'omp-rpc' registered. Is NATS_URL set?"
+                )
+            try:
+                provider = deps.provider_registry.get("omp-rpc")
+            except KeyError as exc:
+                raise RuntimeError(
+                    "backend='omp-rpc' registered but OmpRpcDriver missing from"
                     " registry -- is NATS_URL set and driver started?"
                 ) from exc
         elif deps.provider_registry is not None:
@@ -227,6 +242,7 @@ def _resolve_agents(deps: ResolveAgentsDeps) -> dict[str, AgentBase]:
         deps.llm_cfg or LlmConfig(),
         nats_llm_client=deps.nats_llm_client,
         cli_nats_driver=deps.cli_nats_driver,
+        omp_rpc_driver=deps.omp_rpc_driver,
     )
 
     agents: dict[str, AgentBase] = {}

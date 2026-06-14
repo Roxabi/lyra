@@ -311,3 +311,63 @@ class TestRun:
                 await worker.run("nats://localhost:4222", stop=stop)
 
         bridge.aclose.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# handle() — backward compatibility: old-style payload (prompt only)
+# ---------------------------------------------------------------------------
+
+
+class TestHandleBackwardCompat:
+    async def test_handle_prompt_only_payload_backward_compat(self) -> None:
+        """Old-style envelope with only {prompt} in payload (no model_cfg, no
+        system_prompt) must not raise and must call bridge.run with the prompt."""
+        bridge = _make_bridge()
+        worker = _make_worker(bridge)
+        payload = {
+            "job_id": _JOB_ID,
+            "job_name": _JOB_NAME,
+            "payload": {"prompt": "x"},  # old-style: no model_cfg, no system_prompt
+            "contract_version": "1",
+            "reply_to": "_INBOX.test.reply",
+            "trace_id": "trace-bc-001",
+            "issued_at": "2026-06-11T00:00:00Z",
+        }
+        # Arrange: bridge.run succeeds (default AsyncMock)
+        # Act
+        await worker.handle(msg=MagicMock(), payload=payload)
+        # Assert: must not raise, must call bridge.run with prompt="x"
+        bridge.run.assert_awaited_once_with(
+            prompt="x",
+            job_id=_JOB_ID,
+        )
+        bridge.publish_error.assert_not_awaited()
+
+    async def test_handle_reads_model_cfg_and_system_prompt(self) -> None:
+        """Enriched payload (model_cfg + system_prompt) must not raise.
+
+        bridge.run must still receive only prompt+job_id (V1: extra fields
+        read but not applied).
+        """
+        bridge = _make_bridge()
+        worker = _make_worker(bridge)
+        payload = {
+            "job_id": _JOB_ID,
+            "job_name": _JOB_NAME,
+            "payload": {
+                "prompt": "x",
+                "model_cfg": {"backend": "omp-rpc", "model": "grok-4-fast"},
+                "system_prompt": "be terse",
+            },
+            "contract_version": "1",
+            "reply_to": "_INBOX.test.reply",
+            "trace_id": "trace-bc-002",
+            "issued_at": "2026-06-11T00:00:00Z",
+        }
+        await worker.handle(msg=MagicMock(), payload=payload)
+        # Extra fields accepted/read — bridge.run signature unchanged
+        bridge.run.assert_awaited_once_with(
+            prompt="x",
+            job_id=_JOB_ID,
+        )
+        bridge.publish_error.assert_not_awaited()

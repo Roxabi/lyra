@@ -21,8 +21,11 @@ SSoT: `factory.core.ports.llm`. `base.py` is a backward-compatibility shim — i
 |--------|-------------|-----------|-------------|
 | `ClaudeCliDriver` | `"claude-cli"` | in-process (`CliPool` subprocess) | single-process |
 | `LlmClient` | `"claude-cli"` / `"nats"` | NATS request-reply via `WorkerPoolClient` + `CliNatsCodec` | multi-process (hub side) |
+| `OmpRpcDriver` | `"omp-rpc"` | NATS `JobEnvelope` round-trip — publishes to `factory.jobs.omp`, subscribes `factory.job.<id>.result` (hub mints `job_id`); `model_dump_json` wire; `streaming=False` | multi-process (hub side); registered in `bootstrap/factory/providers.py` as the `"omp-rpc"` backend (bare driver — owns its own timeout, no CB/retry decorator) |
 
 `ClaudeCliDriver` and `LlmClient` may share the `"claude-cli"` registry key — selection between them is determined by wiring mode at bootstrap (single-process picks `ClaudeCliDriver`, multi-process picks `LlmClient(WorkerPoolClient, CliNatsCodec)`).
+
+V1 note: `OmpRpcDriver` does NOT apply per-turn `model_cfg` or `system_prompt` — omp uses its `models.yml` default; per-session application is deferred to V2.
 
 `LlmClient` lives in `factory.llm.llm_client` (this package). `LlmClient(pool, codec)` is the
 3-layer composition for the NATS LLM path.

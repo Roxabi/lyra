@@ -407,36 +407,40 @@ class TestCallbackEvents:
         assert payload["tool_name"] == "read_file"
         assert payload["detail"]["tool_name"] == "read_file"
 
-    async def test_on_agent_end_publishes_to_result_subject(
-        self, bridge_and_nc
-    ) -> None:
+    async def test_on_agent_end_stores_event(self, bridge_and_nc) -> None:
+        """_on_agent_end is store-only: stores event in _last_agent_end_event.
+
+        Storing the event must not trigger a publish. run() is the sole success
+        publisher (True Path B — race-free after prompt_and_wait returns).
+        """
         bridge, nc, _client = bridge_and_nc
         nc.subscribe = AsyncMock(return_value=AsyncMock(unsubscribe=AsyncMock()))
         await bridge.register(nc)
         bridge._current_job_id = _JOB_ID
 
-        event = SimpleNamespace(result="final answer")
+        event = SimpleNamespace(messages=())
         bridge._on_agent_end(event)
-        await asyncio.sleep(0)  # event-based
-        await asyncio.sleep(0)  # event-based
-        nc.publish.assert_awaited_once()
-        subject = nc.publish.await_args.args[0]
-        assert subject == _RESULT_SUBJECT
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
 
-    async def test_on_agent_end_payload_status_success(self, bridge_and_nc) -> None:
+        assert bridge._last_agent_end_event is event, (
+            "_on_agent_end must store event in _last_agent_end_event"
+        )
+        nc.publish.assert_not_awaited()
+
+    async def test_on_agent_end_does_not_publish(self, bridge_and_nc) -> None:
+        """_on_agent_end must never publish to the result subject (store-only)."""
         bridge, nc, _client = bridge_and_nc
         nc.subscribe = AsyncMock(return_value=AsyncMock(unsubscribe=AsyncMock()))
         await bridge.register(nc)
         bridge._current_job_id = _JOB_ID
 
-        event = SimpleNamespace(result="done")
+        event = SimpleNamespace(messages=())
         bridge._on_agent_end(event)
-        await asyncio.sleep(0)  # event-based
-        await asyncio.sleep(0)  # event-based
-        payload_bytes = nc.publish.await_args.args[1]
-        payload = json.loads(payload_bytes)
-        assert payload["status"] == "success"
-        assert "error" not in payload or payload.get("error") is None
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+
+        nc.publish.assert_not_awaited()
 
     async def test_callback_no_publish_when_nc_is_none(self, bridge_and_nc) -> None:
         bridge, nc, _client = bridge_and_nc
@@ -720,4 +724,68 @@ class TestStartLifecycle:
         )
         assert received_kwargs.get("provider") == "litellm", (
             f"expected provider='litellm', got: {received_kwargs.get('provider')}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# T2 — _on_agent_end must publish data={"result": <assistant_text>}
+# T3 — run() must store the PromptTurn return value as _last_turn
+# ---------------------------------------------------------------------------
+
+
+class TestAgentEndResultData:
+    async def test_on_agent_end_data_contains_assistant_text(
+        self, bridge_and_nc
+    ) -> None:
+        """T2: run() must publish data={"result": <assistant_text>} (True Path B).
+
+        run() is the sole success publisher (race-free, on the event loop after
+        await asyncio.to_thread(prompt_and_wait) returns). _on_agent_end is store-only.
+        Drive through run() end-to-end: mock prompt_and_wait to return a PromptTurn
+        with assistant_text, assert the published payload carries the correct data.
+        """
+        bridge, nc, client = bridge_and_nc
+        nc.subscribe = AsyncMock(return_value=AsyncMock(unsubscribe=AsyncMock()))
+        await bridge.register(nc)
+
+        client.prompt_and_wait.return_value = SimpleNamespace(
+            assistant_text="hello from omp"
+        )
+
+        await bridge.run(prompt="code a thing", job_id=_JOB_ID)
+
+        nc.publish.assert_awaited_once()
+        subject = nc.publish.await_args.args[0]
+        assert subject == _RESULT_SUBJECT, (
+            f"Expected result published to {_RESULT_SUBJECT!r}, got {subject!r}"
+        )
+        payload_bytes = nc.publish.await_args.args[1]
+        payload = json.loads(payload_bytes)
+        assert payload["status"] == "success"
+        assert payload.get("data") == {"result": "hello from omp"}, (
+            f"Expected data={{'result': 'hello from omp'}}, got {payload.get('data')!r}"
+        )
+
+
+class TestRunCapturesLastTurn:
+    async def test_run_captures_last_turn(self, bridge_and_nc) -> None:
+        """T3 (RED): run() must store the PromptTurn from prompt_and_wait as _last_turn.
+
+        Today the return value of prompt_and_wait is discarded and _last_turn does
+        not exist.  After T8 fix, run() assigns self._last_turn = <turn>.
+        """
+        bridge, nc, client = bridge_and_nc
+        nc.subscribe = AsyncMock(return_value=AsyncMock(unsubscribe=AsyncMock()))
+        await bridge.register(nc)
+
+        sentinel_turn = SimpleNamespace(assistant_text="x")
+        client.prompt_and_wait.return_value = sentinel_turn
+
+        await bridge.run(prompt="hello", job_id=_JOB_ID)
+
+        assert hasattr(bridge, "_last_turn"), (
+            "_last_turn not set — run() must store the PromptTurn return value"
+        )
+        assert bridge._last_turn is sentinel_turn, (
+            f"_last_turn should be the sentinel turn, got {bridge._last_turn!r}"
         )

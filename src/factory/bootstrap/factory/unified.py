@@ -32,12 +32,13 @@ from factory.bootstrap.types import (
     RegisterAgentsDeps,
     WireAdaptersDeps,
 )
+from factory.llm.drivers.omp_rpc import OmpRpcDriver
 from factory.paths import factory_data_dir
 
 log = logging.getLogger(__name__)
 
 
-async def _bootstrap_unified(
+async def _bootstrap_unified(  # noqa: PLR0915 — unified bootstrap is a wiring surface
     raw_config: dict,
     *,
     _stop: asyncio.Event | None = None,
@@ -78,6 +79,8 @@ async def _bootstrap_unified(
             clipool = await _init_clipool(nc, raw_config, stores)
             hub.cli_pool = None  # hub no longer holds CliPool directly
 
+            omp_rpc_driver = OmpRpcDriver(nc)
+
             _register_agents(
                 RegisterAgentsDeps(
                     hub=hub,
@@ -86,6 +89,7 @@ async def _bootstrap_unified(
                     clipool=clipool,
                     raw_config=raw_config,
                     stores=stores,
+                    omp_rpc_driver=omp_rpc_driver,
                 )
             )
 

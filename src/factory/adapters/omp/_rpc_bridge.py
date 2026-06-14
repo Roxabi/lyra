@@ -151,6 +151,8 @@ class RpcBridge:
         self._started: bool = False
         self._in_prompt_await: bool = False
         self._result_sent: bool = False
+        self._last_turn: Any | None = None
+        self._last_agent_end_event: Any | None = None
 
     async def register(self, nc: NatsClient) -> None:
         """Wire callbacks and open the omp_rpc session.
@@ -182,9 +184,11 @@ class RpcBridge:
         """
         self._current_job_id = job_id
         self._in_prompt_await = True
-        # _on_agent_end (sets _result_sent=True) fires on the stdout thread before
-        # prompt_and_wait returns — arm the guard before subscribing to steer.
+        # run() is the sole success publisher — it publishes after prompt_and_wait
+        # returns (race-free, on the event loop). _on_agent_end only stores the event.
         self._result_sent = False
+        self._last_turn = None
+        self._last_agent_end_event = None  # reset: avoid stale prior-job leak
         nc = self._nc
 
         async def _handle_steer_msg(msg: Any) -> None:
@@ -198,7 +202,29 @@ class RpcBridge:
         if nc is not None:
             steer_sub = await nc.subscribe(jobs_steer(job_id), cb=_handle_steer_msg)
         try:
-            await asyncio.to_thread(self._client.prompt_and_wait, prompt)
+            turn = await asyncio.to_thread(self._client.prompt_and_wait, prompt)
+            self._last_turn = turn
+            # Publish success here — guaranteed to see the completed turn value.
+            # _on_agent_end fires on the stdout thread BEFORE prompt_and_wait returns
+            # so it cannot safely read _last_turn; this is the only safe publish site.
+            if nc is not None and not self._result_sent:
+                self._result_sent = True
+                assistant_text = getattr(turn, "assistant_text", None)
+                if assistant_text is None:
+                    # Fallback: derive from stored agent-end event messages if available
+                    end_event = self._last_agent_end_event
+                    if end_event is not None:
+                        messages = getattr(end_event, "messages", None)
+                        if messages:
+                            last_msg = messages[-1]
+                            assistant_text = getattr(last_msg, "assistant_text", None)
+                text: str = assistant_text if assistant_text is not None else ""
+                if not text:
+                    log.warning(
+                        "rpc_bridge: job %s produced an empty result text", job_id
+                    )
+                payload = _make_result(job_id, status="success", data={"result": text})
+                await nc.publish(jobs_result(job_id), payload)
         finally:
             self._in_prompt_await = False
             if steer_sub is not None:
@@ -276,22 +302,15 @@ class RpcBridge:
         self._schedule_publish(jobs_progress(job_id), payload)
 
     def _on_agent_end(self, event: Any) -> None:
-        """Translate on_agent_end → factory.job.<job_id>.result (success)."""
-        job_id = getattr(self, "_current_job_id", None)
-        if job_id is None:
-            return
-        if self._result_sent:
-            log.debug(
-                "rpc_bridge: _on_agent_end skipped — result already sent for %s", job_id
-            )
-            return
-        self._result_sent = True
-        result_data = getattr(event, "result", None)
-        data: dict[str, Any] = (
-            {"result": result_data} if result_data is not None else {}
-        )
-        payload = _make_result(job_id, status="success", data=data)
-        self._schedule_publish(jobs_result(job_id), payload)
+        """Store the agent-end event for use by run() (store-only, no publish).
+
+        run() is the sole success publisher — it reads the completed turn after
+        prompt_and_wait returns (race-free, on the event loop). This callback fires
+        on the omp_rpc stdout daemon thread BEFORE prompt_and_wait returns, so
+        _last_turn is still None here; publishing from this site always shipped empty
+        results. We store the event so run() can fall back to event.messages if needed.
+        """
+        self._last_agent_end_event = event
 
     async def publish_error(self, job_id: str, exc: BaseException) -> None:
         """Publish a JobResult(status=error) for a failed job.

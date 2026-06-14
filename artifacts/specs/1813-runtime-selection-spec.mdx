@@ -159,7 +159,7 @@ flowchart LR
 | N6 | per-job override resolution (**turn-dispatch**) | hub resolves provider **per turn** (move from bootstrap `agent_factory.py:156`): job-override > `backend` > default; worker never reads `config.db`/`backend` | turn metadata |
 | N7 | heartbeat-liveness (no turn cap) | `NatsDriverBase` freshness; `LlmUnavailableError` on dead worker | `factory.omp.heartbeat` |
 | N8 | parity runbook + flip gate | golden-prompt omp vs clipool; default stays claude-cli | `docs/` |
-| N9 | hub NATS grants | hub identity gains subscribe `factory.job.*.progress` + `factory.job.*.result` (+ regen 4 ACL artifacts + hand-mirror fixture) | `deploy/nats/acl-matrix.json` |
+| N9 | hub NATS grants (result) | hub identity gains subscribe `factory.job.*.result` (+ regen 4 ACL artifacts + hand-mirror fixture) — **Slice 1**; the `factory.job.*.progress` grant is **deferred to Slice 4** with N2 (no progress consumer exists until `stream()` lands — granting earlier = ACL without a callsite) | `deploy/nats/acl-matrix.json` |
 | N10 | `OmpPool` (worker, adapters/omp) — **CliPool mirror** | warm `RpcClient` per `pool_id` (one omp subprocess each); `acquire(pool_id, session_file)` → warm hit or cold-start (`switch_session`/`new_session`); LRU evict beyond cap; distinct conversations run `prompt_and_wait` in **parallel** (spike P3); replaces the current single shared `no_session=True` client in `_rpc_bridge.py` | `OmpPool`, `RpcClient` |
 
 ## Slices
@@ -169,7 +169,7 @@ flowchart LR
 | 1 | omp round-trip (non-streaming) + hub grants | N1, N3, N4, N7, N9 | `backend=omp-rpc` agent completes a turn via omp on M₁ (auth on); result rendered |
 | 2 | `OmpPool` + native-session memory | N5, N10 | omp agent recalls a prior-turn fact via its warm pool client; a 2nd conversation (distinct `session_id`) does NOT see the 1st's history (per-`pool_id` isolation) |
 | 3 | `OmpPool` concurrency (CliPool parity) | N10 | two conversations execute **in parallel** on one replica — both complete, no cross-session bleed, wall-clock < serialized sum |
-| 4 | streaming bridge | N2 | omp turn streams tokens live (parity with clipool) |
+| 4 | streaming bridge + hub `…progress` grant | N2 | omp turn streams tokens live (parity with clipool); hub gains `factory.job.*.progress` subscribe + ACL-artifact regen |
 | 5 | per-job override | N6 | same agent: turn A→omp, turn B→clipool via per-job hint |
 | 6 | parity runbook + flip gate | N8 | runbook runs golden prompts on both; documents flip procedure |
 
@@ -177,7 +177,7 @@ flowchart LR
 
 - [ ] An agent with `backend="omp-rpc"` has its turn executed by omp: a `JobEnvelope` lands on `factory.jobs.omp`, the `JobResult` is consumed, and the reply is rendered to the originating adapter.
 - [ ] `ProviderRegistry` resolves `"omp-rpc"` → `OmpRpcDriver` (no `KeyError`); `claude-cli`/`nats` unchanged.
-- [ ] `OmpRpcDriver` extends `roxabi_nats.NatsDriverBase` and satisfies `LlmProvider` (`complete`, `is_alive`, `stream`).
+- [ ] `OmpRpcDriver` extends `roxabi_nats.NatsDriverBase` and satisfies the base `LlmProvider` (`complete`, `is_alive`); `stream` (`StreamingLlmProvider`) lands in Slice 4.
 - [ ] `JobEnvelope.payload` carries `prompt` + session-ref + `model_cfg` + `system_prompt` as **optional** fields; an old `{"prompt": str}`-only envelope still validates (wire-compat).
 - [ ] The `job_id` is **hub-minted**; the omp worker never publishes to `factory.jobs.omp` (only to `factory.job.<id>.{progress,result}`) — verified by test.
 - [ ] An omp-backed agent **remembers context across turns** via a **hub-resolved** omp session token (`provider_session_id` = the `.jsonl` `session_file` path, the omp analogue of clipool `cli_session_id`), persisted in `pool_sessions` keyed by the conversation `session_id` — not hub-threaded `messages[]`. Cold-start resume is `switch_session(session_file)` (spike-confirmed to preserve `session_id`).
@@ -189,7 +189,7 @@ flowchart LR
 - [ ] **No fixed per-turn timeout**: a long omp turn emitting heartbeats/progress is not cut; a silent worker (heartbeat past TTL) yields `LlmUnavailableError`/error-`LlmResult`.
 - [ ] **Per-job override** works: runtime is selectable per turn (resolved at **turn dispatch**, not agent bootstrap), overriding the agent default; precedence = job-override > agent `backend` > system default (`claude-cli`).
 - [ ] **Observability**: each turn records which runtime executed it (`claude-cli` vs `omp-rpc`) in the turn log / structured turn metadata, visible to an operator without inspecting NATS internals.
-- [ ] **Hub NATS grants**: hub identity has subscribe grants for `factory.job.*.progress` + `factory.job.*.result`; the 4 generated ACL artifacts are regenerated and the hand-maintained fixture mirrors the diff (`test_v4_render_set_equals_v3_render` green).
+- [ ] **Hub NATS grant — result (Slice 1)**: hub identity has a subscribe grant for `factory.job.*.result`; the 4 generated ACL artifacts are regenerated and the hand-maintained fixture mirrors the diff (`test_v4_render_set_equals_v3_render` green). The `factory.job.*.progress` grant is **deferred to Slice 4** (streaming, N2): V1's `complete()`-only path has no progress consumer, so granting it now would be an ACL without a callsite.
 - [ ] Driver subscriptions are torn down on completion/error/timeout (no orphan subscriptions).
 - [ ] clipool (`backend="claude-cli"`) streams unchanged — no regression (existing clipool tests green).
 - [ ] **Parity runbook** (`docs/`) exists and passes: for each golden prompt, omp returns a **non-error `LlmResult` with non-empty `result`** (semantic equivalence NOT required); it is a **manual ops check** (not CI-gated — needs live proxy + binary); default stays `claude-cli`, flip is per-agent until the runbook passes.

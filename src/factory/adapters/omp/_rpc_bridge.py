@@ -188,6 +188,9 @@ class RpcBridge:
         # returns (race-free, on the event loop). _on_agent_end only stores the event.
         self._result_sent = False
         self._last_turn = None
+        self._last_agent_end_event = (
+            None  # reset to avoid stale prior-job contamination
+        )
         nc = self._nc
 
         async def _handle_steer_msg(msg: Any) -> None:
@@ -218,6 +221,10 @@ class RpcBridge:
                             last_msg = messages[-1]
                             assistant_text = getattr(last_msg, "assistant_text", None)
                 text: str = assistant_text if assistant_text is not None else ""
+                if not text:
+                    log.warning(
+                        "rpc_bridge: job %s produced an empty result text", job_id
+                    )
                 payload = _make_result(job_id, status="success", data={"result": text})
                 await nc.publish(jobs_result(job_id), payload)
         finally:

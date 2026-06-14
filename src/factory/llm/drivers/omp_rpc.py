@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
 
+from pydantic import ValidationError
+
 from factory.core.agent.agent_config import ModelConfig
 from factory.core.ports.llm import LlmResult
 from roxabi_contracts.envelope import CONTRACT_VERSION
@@ -83,6 +85,8 @@ class OmpRpcDriver:
                     "model_cfg": model_cfg.model_dump(),
                     "system_prompt": system_prompt,
                 },
+                # _INBOX.<job_id> is an ephemeral per-job subject; hub subscribes
+                # before publishing so omp can reply directly without a request-reply.
                 reply_to=f"_INBOX.{job_id}",
             )
             await self._nc.publish(
@@ -91,7 +95,13 @@ class OmpRpcDriver:
             )
 
             msg = await sub.next_msg(timeout=self._timeout_s)
-            result = JobResult.model_validate_json(msg.data)
+            try:
+                result = JobResult.model_validate_json(msg.data)
+            except ValidationError:
+                log.warning("omp job %s returned a malformed result", job_id)
+                return LlmResult(
+                    error="omp returned a malformed result", retryable=False
+                )
 
             if result.status == "success":
                 return LlmResult(result=(result.data or {}).get("result", ""))

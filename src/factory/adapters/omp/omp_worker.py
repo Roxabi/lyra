@@ -128,6 +128,10 @@ class OmpWorker(NatsAdapterBase):
 
         job_id = envelope.job_id
         prompt = envelope.payload.get("prompt", "")
+        if not prompt:
+            log.warning("omp_worker: job_id=%s has empty prompt — rejecting", job_id)
+            await self._bridge.publish_error(str(job_id), ValueError("empty prompt"))
+            return
         model_cfg = envelope.payload.get("model_cfg", {})
         system_prompt = envelope.payload.get("system_prompt", "")
         _cfg_keys = (

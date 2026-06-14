@@ -17,6 +17,7 @@ from factory.core.ports.tts import TtsProtocol
 from factory.infrastructure.stores.agent_store import AgentStore
 
 if TYPE_CHECKING:
+    from factory.core.ports.llm import LlmProvider
     from factory.llm.llm_client import LlmClient
 
 log = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ def register_agents(  # noqa: PLR0913 — registration requires all deps
     nats_llm_client: "LlmClient | None",
     *,
     cli_nats_driver: "LlmClient | None" = None,
+    omp_rpc_driver: "LlmProvider | None" = None,
 ) -> None:
     """Resolve agents from configs and register them on the hub."""
     llm_cfg = _load_llm_config(raw_config)
@@ -50,6 +52,7 @@ def register_agents(  # noqa: PLR0913 — registration requires all deps
             llm_cfg=llm_cfg,
             nats_llm_client=nats_llm_client,
             cli_nats_driver=cli_nats_driver,
+            omp_rpc_driver=omp_rpc_driver,
         )
     )
     for ag in all_agents.values():

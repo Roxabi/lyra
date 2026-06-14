@@ -4,6 +4,6 @@ All new code should import from factory.core.ports.llm directly.
 This module re-exports both names so existing imports continue to work.
 """
 
-from factory.core.ports.llm import LlmProvider, LlmResult
+from factory.core.ports.llm import LlmProvider, LlmResult, StreamingLlmProvider
 
-__all__ = ["LlmProvider", "LlmResult"]
+__all__ = ["LlmProvider", "LlmResult", "StreamingLlmProvider"]

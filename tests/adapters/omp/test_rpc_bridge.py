@@ -314,6 +314,16 @@ class TestPublishError:
             await bridge.publish_error(_JOB_ID, RuntimeError("x"))
         assert nc.publish.await_count == 0
 
+    async def test_publish_error_is_no_op_when_result_already_sent(
+        self, bridge_and_nc
+    ) -> None:
+        """Guard (a): double-publish is silently dropped when _result_sent is True."""
+        bridge, nc, _ = bridge_and_nc
+        await bridge.register(nc)
+        bridge._result_sent = True
+        await bridge.publish_error(_JOB_ID, RuntimeError("x"))
+        nc.publish.assert_not_awaited()
+
 
 # ---------------------------------------------------------------------------
 # Event callbacks → NATS publish (1:1 mapping, ADR-073 guards)

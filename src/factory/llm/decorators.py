@@ -9,7 +9,7 @@ from collections.abc import AsyncIterator
 from factory.core.agent.agent_config import ModelConfig
 from factory.core.lifecycle.circuit_breaker import CircuitBreaker
 from factory.core.messaging.events import LlmEvent, ResultLlmEvent
-from factory.llm.base import LlmProvider, LlmResult
+from factory.llm.base import LlmResult, StreamingLlmProvider
 
 log = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ class RetryDecorator:
 
     def __init__(
         self,
-        inner: LlmProvider,
+        inner: StreamingLlmProvider,
         max_retries: int = 3,
         backoff_base: float = 1.0,
     ) -> None:
@@ -152,7 +152,7 @@ class CircuitBreakerDecorator:
     - record_success() is a no-op in CLOSED state — intentional, not an error.
     """
 
-    def __init__(self, inner: LlmProvider, cb: CircuitBreaker) -> None:
+    def __init__(self, inner: StreamingLlmProvider, cb: CircuitBreaker) -> None:
         self._inner = inner
         self._cb = cb
         self.capabilities: dict = inner.capabilities

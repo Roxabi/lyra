@@ -72,3 +72,29 @@ class TestProviderRegistry:
         # Registered backends are no longer leaked in the error message
         assert "claude-cli" not in error_msg
         assert "nats" not in error_msg
+
+    def test_register_and_get_omp_rpc(self) -> None:
+        """omp-rpc can be registered and retrieved; unregistered key raises KeyError.
+
+        T6: Confirms ProviderRegistry is backend-agnostic — the generic
+        register/get mechanism works for the omp-rpc key before any
+        specialised wiring is added.  get() must raise KeyError (not
+        ValueError) for an unregistered backend.
+        """
+        # Arrange
+        registry = ProviderRegistry()
+        omp_driver = make_mock_driver()
+
+        # Act — register omp-rpc and retrieve it
+        registry.register("omp-rpc", omp_driver)
+        result = registry.get("omp-rpc")
+
+        # Assert — round-trip
+        assert result is omp_driver
+
+        # Assert — unregistered key raises KeyError (not ValueError)
+        with pytest.raises(KeyError) as exc_info:
+            registry.get("unregistered-backend")
+
+        assert type(exc_info.value) is KeyError
+        assert "unregistered-backend" in str(exc_info.value)

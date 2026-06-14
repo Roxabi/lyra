@@ -26,14 +26,15 @@ def _build_shared_base_providers(  # noqa: PLR0913
     *,
     nats_llm_client: LlmClient | None = None,
     cli_nats_driver: LlmClient | None = None,
+    omp_rpc_driver: LlmProvider | None = None,
     cb_decorator_cls: type = CircuitBreakerDecorator,
     retry_decorator_cls: type = RetryDecorator,
 ) -> dict[str, LlmProvider]:
     """Build ``{backend: base LlmProvider}`` reusable across all agents.
 
     ``claude-cli`` (ClaudeCliDriver or LlmClient via clipool), ``nats`` (Retry ->
-    LlmClient, only when ``nats_llm_client`` is provided). Callers layer
-    decorators per agent via ``_build_per_agent_registry``.
+    LlmClient, only when ``nats_llm_client`` is provided), ``omp-rpc`` (bare
+    OmpRpcDriver, no decorator — the driver owns its own timeout).
 
     ``cli_nats_driver`` takes precedence over ``cli_pool`` for the
     ``claude-cli`` backend when both are provided.
@@ -64,6 +65,10 @@ def _build_shared_base_providers(  # noqa: PLR0913
             backoff_base=llm_cfg.backoff_base,
         )
         log.info("Shared base: registered nats driver (decorated)")
+
+    if omp_rpc_driver is not None:
+        providers["omp-rpc"] = omp_rpc_driver
+        log.info("Shared base: registered omp-rpc driver (bare, no decorator)")
 
     return providers
 

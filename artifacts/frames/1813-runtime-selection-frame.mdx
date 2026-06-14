@@ -1,0 +1,87 @@
+---
+title: "runtime selection — clipool/claude-p ⟷ omp_rpc per agent/job"
+issue: 1813
+status: approved
+tier: F-full
+date: 2026-06-13
+---
+
+## Problem
+
+The #1807 spike (GREEN, ratified 2026-06-10) established the runtime backend as a
+**per-agent / per-job choice** — clipool (`claude -p`) and omp (`omp_rpc`) coexist,
+neither retired. #1812 landed `OmpWorker` (the omp executor). But today:
+
+- The **live agent-turn flow is clipool-only.** omp has only ever been exercised via
+  synthetic dispatch — it is not wired into the hub turn-execution path.
+- There is **no config-driven way to pick a runtime.** `config.db` carries no `runtime`
+  selector; the hub has no dispatch branch that honors one.
+
+Worse, the two runtimes do not share a transport contract, so "route to the other
+runtime" is not a subject swap:
+
+| Runtime | Transport today | Response model |
+|---------|-----------------|----------------|
+| clipool | `factory.clipool.cmd` via `WorkerPoolClient` | streaming session, `pool_id`, `LlmEvent` stream back |
+| omp     | `factory.jobs.omp` via `jobs_submit`         | fire-and-forget job, single result back |
+
+Observable impact: the ratified coexistence model is unrealized — operators cannot pin
+one agent to omp while others stay on clipool, and cannot A/B a runtime in prod.
+
+## Who
+
+- **Primary:** factory operators (mickael) — want to pin/flip an agent's runtime in
+  `config.db` and have the hub route accordingly.
+- **Secondary:** the hub turn-execution path + both worker adapters (clipool, omp) —
+  must agree on a shared job/result contract for routing to be switchable.
+
+## Constraints
+
+- **Scope B (chosen):** selection **+ transport unification** — normalize both runtimes
+  behind one job/result contract so routing is a clean, config-driven backend selection.
+- Both runtimes must **coexist** — clipool is NOT retired (#1807 decision).
+- **Parity check before flipping any default** — never silently change the prod default.
+- clipool's streaming/`LlmEvent` model and omp's single-result job model must reconcile
+  without regressing clipool's existing streaming UX.
+- Contracts live in `packages/roxabi-contracts` (ADR-049); transport in
+  `src/factory/transport/` (ADR-045). Changes cross `core/hub` ↔ `adapters/*` ↔
+  `infrastructure/` layer boundaries → **axial review applies**.
+- Builds on #1812 (OmpWorker, CLOSED). Parent epic #1490. Ref: `1807-spike-result.md`.
+
+## Out of Scope
+
+- Retiring clipool (explicitly excluded by #1807).
+- GPU-aware / load-aware routing (future #603).
+- New runtime backends beyond clipool + omp.
+- Canonical-store backend choice (#640).
+- Multi-turn pre-emption / cancellation mid-turn.
+
+## Premise Validity
+
+**Success in 6 months:** an agent pinned to `runtime=omp` (or `clipool`) in `config.db`
+has its turns routed to that backend by the hub, both backends sit behind one unified
+job/result contract, and flipping the default is gated by a parity check. Both coexist
+in prod.
+
+**Failure in 6 months:** runtime stays effectively hardcoded to clipool — the `runtime`
+field exists but dispatch never honors it, or the two runtimes never converge on a shared
+contract so switching is impossible without regressing streaming. (Falsifiable: a
+`runtime=omp` agent's turn lands on `factory.clipool.cmd`, or omp turns silently fall
+back to clipool.)
+
+**Simplest alternative:** an env-var / global flag flipping all agents to one runtime at
+once. **Why not:** #1807 ratified runtime as a *per-agent/per-job* choice (coexistence),
+not a global switch — a global flag cannot A/B or pin one agent to omp while others stay
+on clipool, and it dodges the real work (the divergent response contracts).
+
+## Complexity
+
+**Tier: F-full** — multi-layer change (config schema, hub dispatch/turn-execution, both
+adapters, shared contracts) with a genuine unknown: how to reconcile clipool's streaming
+`LlmEvent` model with omp's single-result job model behind one contract.
+
+Signals observed:
+- Crosses `core/hub` ↔ `adapters/{clipool,omp}` ↔ `roxabi-contracts` boundaries (axial).
+- New pattern: unified runtime job/result contract (does not exist today).
+- Unknown: streaming-vs-job response reconciliation without regressing clipool UX.
+- Scope B explicitly chosen over the contained selection-only F-lite path.

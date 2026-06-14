@@ -188,9 +188,7 @@ class RpcBridge:
         # returns (race-free, on the event loop). _on_agent_end only stores the event.
         self._result_sent = False
         self._last_turn = None
-        self._last_agent_end_event = (
-            None  # reset to avoid stale prior-job contamination
-        )
+        self._last_agent_end_event = None  # reset: avoid stale prior-job leak
         nc = self._nc
 
         async def _handle_steer_msg(msg: Any) -> None:

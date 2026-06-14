@@ -85,8 +85,10 @@ class OmpRpcDriver:
                     "model_cfg": model_cfg.model_dump(),
                     "system_prompt": system_prompt,
                 },
-                # _INBOX.<job_id> is an ephemeral per-job subject; hub subscribes
-                # before publishing so omp can reply directly without a request-reply.
+                # reply_to satisfies the JobEnvelope contract validator (requires
+                # _INBOX.*/_R_.*) but is unused for routing: the omp worker publishes
+                # the JobResult to the deterministic jobs_result(job_id) subject we
+                # subscribed to above, not to reply_to. Kept for envelope validity.
                 reply_to=f"_INBOX.{job_id}",
             )
             await self._nc.publish(

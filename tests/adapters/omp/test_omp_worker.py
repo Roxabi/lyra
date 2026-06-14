@@ -166,6 +166,40 @@ class TestHandleInvalidEnvelope:
         await worker.handle(msg=MagicMock(), payload={"bad": "data"})
         bridge.run.assert_not_awaited()
 
+    async def test_handle_empty_prompt_string_rejected(self) -> None:
+        """Empty string prompt must publish_error and must NOT call bridge.run."""
+        bridge = _make_bridge()
+        worker = _make_worker(bridge)
+        payload = {
+            "job_id": _JOB_ID,
+            "job_name": _JOB_NAME,
+            "payload": {"prompt": ""},
+            "contract_version": "1",
+            "reply_to": "_INBOX.test.reply",
+            "trace_id": "trace-empty-prompt",
+            "issued_at": "2026-06-11T00:00:00Z",
+        }
+        await worker.handle(msg=MagicMock(), payload=payload)
+        bridge.publish_error.assert_awaited_once()
+        bridge.run.assert_not_awaited()
+
+    async def test_handle_missing_prompt_rejected(self) -> None:
+        """Missing prompt key must publish_error and must NOT call bridge.run."""
+        bridge = _make_bridge()
+        worker = _make_worker(bridge)
+        payload = {
+            "job_id": _JOB_ID,
+            "job_name": _JOB_NAME,
+            "payload": {},
+            "contract_version": "1",
+            "reply_to": "_INBOX.test.reply",
+            "trace_id": "trace-missing-prompt",
+            "issued_at": "2026-06-11T00:00:00Z",
+        }
+        await worker.handle(msg=MagicMock(), payload=payload)
+        bridge.publish_error.assert_awaited_once()
+        bridge.run.assert_not_awaited()
+
 
 # ---------------------------------------------------------------------------
 # handle() — bridge.run raises → publish_error, not raise

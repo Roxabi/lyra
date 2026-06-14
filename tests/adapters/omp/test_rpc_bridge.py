@@ -255,6 +255,38 @@ class TestRun:
             await bridge.run(prompt="hello", job_id=_JOB_ID)
         assert bridge._in_prompt_await is False
 
+    async def test_run_resets_last_agent_end_event_between_jobs(
+        self, bridge_and_nc
+    ) -> None:
+        """Falsification: deleting `self._last_agent_end_event = None` in run() makes
+        this fail.
+
+        Without the reset, a stale _last_agent_end_event from a prior job provides
+        assistant_text for the fallback path → result becomes "STALE-FROM-PRIOR-JOB"
+        instead of "".  With the reset, the stale event is cleared, the fallback finds
+        nothing, and text="".
+        """
+        bridge, nc, client = bridge_and_nc
+        nc.subscribe = AsyncMock(return_value=AsyncMock(unsubscribe=AsyncMock()))
+        await bridge.register(nc)
+
+        # prompt_and_wait returns a turn with no assistant_text → triggers fallback
+        client.prompt_and_wait.return_value = SimpleNamespace(assistant_text=None)
+
+        # Simulate leftover _last_agent_end_event from a prior job
+        bridge._last_agent_end_event = SimpleNamespace(
+            messages=[SimpleNamespace(assistant_text="STALE-FROM-PRIOR-JOB")]
+        )
+
+        await bridge.run(prompt="p", job_id=_JOB_ID)
+
+        nc.publish.assert_awaited_once()
+        payload_bytes = nc.publish.await_args.args[1]
+        payload = json.loads(payload_bytes)
+        assert payload.get("data") == {"result": ""}, (
+            f"reset should clear stale event; got {payload.get('data')!r}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # steer() — guard against in-flight steer

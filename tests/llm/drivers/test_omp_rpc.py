@@ -275,3 +275,33 @@ class TestOmpRpcDriver:
 
         # Assert
         sub.unsubscribe.assert_awaited_once()
+
+    # -- (d) malformed result (B2 ValidationError branch) --
+
+    @pytest.mark.asyncio
+    async def test_complete_malformed_result_returns_non_retryable_error(
+        self,
+        driver: OmpRpcDriver,
+        sub: AsyncMock,
+        model_cfg: MagicMock,
+    ) -> None:
+        """Malformed reply → error LlmResult (retryable=False); unsubscribe still runs.
+
+        Falsification: deleting the `except ValidationError` block lets an unhandled
+        exception propagate instead of returning a clean LlmResult.
+        Retryable: malformed=False vs status="error"=True (malformed is not transient).
+        """
+        # Arrange — raw bytes that are not valid JSON / JobResult schema
+        sub.next_msg.return_value = SimpleNamespace(data=b"not-json-garbage")
+
+        # Act
+        res = await driver.complete(
+            pool_id="p", text="hi", model_cfg=model_cfg, system_prompt="sys"
+        )
+
+        # Assert — error result, NOT retryable (malformed ≠ transient)
+        assert res.ok is False
+        assert res.retryable is False
+
+        # Assert — cleanup runs even on malformed path (finally block)
+        sub.unsubscribe.assert_awaited_once()

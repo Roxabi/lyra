@@ -420,8 +420,8 @@ class TestCallbackEvents:
 
         event = SimpleNamespace(messages=())
         bridge._on_agent_end(event)
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
+        await asyncio.sleep(0)  # event-based: drain scheduled-publish window
+        await asyncio.sleep(0)  # event-based
 
         assert bridge._last_agent_end_event is event, (
             "_on_agent_end must store event in _last_agent_end_event"
@@ -437,8 +437,8 @@ class TestCallbackEvents:
 
         event = SimpleNamespace(messages=())
         bridge._on_agent_end(event)
-        await asyncio.sleep(0)
-        await asyncio.sleep(0)
+        await asyncio.sleep(0)  # event-based: drain scheduled-publish window
+        await asyncio.sleep(0)  # event-based
 
         nc.publish.assert_not_awaited()
 

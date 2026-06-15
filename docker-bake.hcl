@@ -7,7 +7,7 @@ target "agent-runtime" {
   context    = "."
   target     = "agent-runtime"
   cache-from = ["type=gha,scope=factory-agent"]
-  cache-to   = ["type=gha,mode=max,scope=factory-agent"]
+  cache-to   = ["type=gha,mode=min,scope=factory-agent"]
 }
 
 target "svc-runtime" {
@@ -15,5 +15,5 @@ target "svc-runtime" {
   context    = "."
   target     = "svc-runtime"
   cache-from = ["type=gha,scope=factory-svc"]
-  cache-to   = ["type=gha,mode=max,scope=factory-svc"]
+  cache-to   = ["type=gha,mode=min,scope=factory-svc"]
 }

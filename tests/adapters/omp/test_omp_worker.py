@@ -9,7 +9,7 @@ asyncio_mode = "auto" is configured project-wide in pyproject.toml.
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -21,6 +21,7 @@ from factory.adapters.omp.omp_worker import OmpWorker
 
 _JOB_ID = "job-abc123"
 _JOB_NAME = "summarise"
+_POOL_ID = "test-pool"
 
 
 def _make_bridge() -> MagicMock:
@@ -32,8 +33,21 @@ def _make_bridge() -> MagicMock:
     return bridge
 
 
-def _make_worker(bridge: MagicMock | None = None) -> OmpWorker:
-    return OmpWorker(bridge=bridge or _make_bridge())
+def _make_pool() -> MagicMock:
+    mock_client = MagicMock()
+    pool = MagicMock()
+    pool.acquire = AsyncMock(return_value=mock_client)
+    pool.aclose = AsyncMock()
+    mock_entry = MagicMock()
+    mock_entry.session_file = None
+    pool._entries = {_POOL_ID: mock_entry}
+    return pool
+
+
+def _make_worker(
+    bridge: MagicMock | None = None, pool: MagicMock | None = None
+) -> OmpWorker:
+    return OmpWorker(bridge=bridge or _make_bridge(), pool=pool or _make_pool())
 
 
 # ---------------------------------------------------------------------------
@@ -94,7 +108,7 @@ class TestHandleHappyPath:
         payload = {
             "job_id": _JOB_ID,
             "job_name": _JOB_NAME,
-            "payload": {"prompt": "summarise this text"},
+            "payload": {"prompt": "summarise this text", "pool_id": _POOL_ID},
             "contract_version": "1",
             "reply_to": "_INBOX.test.reply",
             "trace_id": "trace-001",
@@ -104,6 +118,8 @@ class TestHandleHappyPath:
         bridge.run.assert_awaited_once_with(
             prompt="summarise this text",
             job_id=_JOB_ID,
+            client=ANY,
+            session_file=ANY,
         )
 
     async def test_handle_no_error_published_on_success(self) -> None:
@@ -112,7 +128,7 @@ class TestHandleHappyPath:
         payload = {
             "job_id": _JOB_ID,
             "job_name": _JOB_NAME,
-            "payload": {"prompt": "do something"},
+            "payload": {"prompt": "do something", "pool_id": _POOL_ID},
             "contract_version": "1",
             "reply_to": "_INBOX.test.reply",
             "trace_id": "trace-002",
@@ -214,7 +230,7 @@ class TestHandleBridgeRunError:
         payload = {
             "job_id": _JOB_ID,
             "job_name": _JOB_NAME,
-            "payload": {"prompt": "hi"},
+            "payload": {"prompt": "hi", "pool_id": _POOL_ID},
             "contract_version": "1",
             "reply_to": "_INBOX.test.reply",
             "trace_id": "trace-005",
@@ -361,7 +377,10 @@ class TestHandleBackwardCompat:
         payload = {
             "job_id": _JOB_ID,
             "job_name": _JOB_NAME,
-            "payload": {"prompt": "x"},  # old-style: no model_cfg, no system_prompt
+            "payload": {
+                "prompt": "x",
+                "pool_id": _POOL_ID,
+            },  # old-style: no model_cfg, no system_prompt
             "contract_version": "1",
             "reply_to": "_INBOX.test.reply",
             "trace_id": "trace-bc-001",
@@ -374,6 +393,8 @@ class TestHandleBackwardCompat:
         bridge.run.assert_awaited_once_with(
             prompt="x",
             job_id=_JOB_ID,
+            client=ANY,
+            session_file=ANY,
         )
         bridge.publish_error.assert_not_awaited()
 
@@ -390,6 +411,7 @@ class TestHandleBackwardCompat:
             "job_name": _JOB_NAME,
             "payload": {
                 "prompt": "x",
+                "pool_id": _POOL_ID,
                 "model_cfg": {"backend": "omp-rpc", "model": "grok-4-fast"},
                 "system_prompt": "be terse",
             },
@@ -403,5 +425,7 @@ class TestHandleBackwardCompat:
         bridge.run.assert_awaited_once_with(
             prompt="x",
             job_id=_JOB_ID,
+            client=ANY,
+            session_file=ANY,
         )
         bridge.publish_error.assert_not_awaited()

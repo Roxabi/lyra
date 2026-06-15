@@ -23,6 +23,7 @@ import time
 from typing import Any
 
 from factory.adapters.omp._rpc_bridge import RpcBridge
+from factory.adapters.omp.omp_pool import OmpPool
 from roxabi_contracts.jobs.models import JobEnvelope
 from roxabi_contracts.jobs.subjects import jobs_submit
 from roxabi_nats import nats_connect
@@ -56,6 +57,7 @@ class OmpWorker(NatsAdapterBase):
         self,
         bridge: RpcBridge | None = None,
         *,
+        pool: OmpPool | None = None,
         timeout: float = 300.0,
         identity_name: str | None = None,
     ) -> None:
@@ -70,8 +72,9 @@ class OmpWorker(NatsAdapterBase):
             identity_name=identity_name,
             wait_ready=False,  # worker semantics — hub readiness not required
         )
-        # Allow injection for testing; production always constructs real bridge.
+        # Allow injection for testing; production always constructs real bridge/pool.
         self._bridge: RpcBridge = bridge if bridge is not None else RpcBridge()
+        self._pool: OmpPool = pool if pool is not None else OmpPool()
 
     # ------------------------------------------------------------------
     # Lifecycle override — connect then register bridge before entering
@@ -102,8 +105,9 @@ class OmpWorker(NatsAdapterBase):
         try:
             await self.run_embedded(nc, stop)
         finally:
-            # Stop the omp_rpc subprocess on shutdown (idempotent).
+            # Stop the omp_rpc subprocess and pool clients on shutdown (idempotent).
             await self._bridge.aclose()
+            await self._pool.aclose()
 
     # ------------------------------------------------------------------
     # NatsAdapterBase overrides
@@ -132,6 +136,17 @@ class OmpWorker(NatsAdapterBase):
             log.warning("omp_worker: job_id=%s has empty prompt — rejecting", job_id)
             await self._bridge.publish_error(str(job_id), ValueError("empty prompt"))
             return
+
+        # pool_id routes the job to its warm pool client. Pre-V2 envelopes omit
+        # it (wire-compat, incl. JetStream backlog replay) → fall back to job_id,
+        # a stable per-job key. Never hard-reject on absence (spec + contracts).
+        pool_id: str = envelope.payload.get("pool_id") or str(job_id)
+
+        # provider_session_id: empty string → None (never pass empty string to pool).
+        provider_session_id: str | None = (
+            envelope.payload.get("provider_session_id") or None
+        )
+
         model_cfg = envelope.payload.get("model_cfg", {})
         system_prompt = envelope.payload.get("system_prompt", "")
         _cfg_keys = (
@@ -142,18 +157,30 @@ class OmpWorker(NatsAdapterBase):
         _sp_len = len(system_prompt) if isinstance(system_prompt, str) else 0
         log.debug(
             "omp job %s: received model_cfg keys=%s"
-            " system_prompt_len=%d (V1: not applied)",
+            " system_prompt_len=%d (V1: not applied)"
+            " pool_id=%s provider_session_id=%s",
             job_id,
             _cfg_keys,
             _sp_len,
+            pool_id,
+            provider_session_id,
         )
         log.info("omp_worker: job_id=%s start", job_id)
         start = time.monotonic()
         try:
-            await self._bridge.run(prompt=str(prompt), job_id=str(job_id))
-        except (
-            Exception
-        ) as exc:  # propagated from prompt_and_wait; publish error  # noqa: BLE001
+            # Acquire a warm client from the pool — cold-start or reuse.
+            pool_client = await self._pool.acquire(
+                pool_id, session_file=provider_session_id
+            )
+            # Read the minted/provided session path back from the pool entry.
+            pool_session_file: str | None = self._pool._entries[pool_id].session_file
+            await self._bridge.run(
+                prompt=str(prompt),
+                job_id=str(job_id),
+                client=pool_client,
+                session_file=pool_session_file,
+            )
+        except Exception as exc:  # pool.acquire / prompt_and_wait  # noqa: BLE001
             log.exception("omp_worker: job_id=%s failed", job_id)
             await self._bridge.publish_error(str(job_id), exc)
         else:

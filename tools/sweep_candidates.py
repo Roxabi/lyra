@@ -2,7 +2,7 @@
 
 /goal `sweep_candidates.py --json --top 1` → empty when no candidate
 ================================================================
-Run a sequential sweep of small, unblocked, ready issues in roxabi/lyra.
+Run a sequential sweep of small, unblocked, ready issues in roxabi/roxabi-factory.
 
 Rules:
 - Max 1 issue in flight at all times (1 worktree, 1 PR, no parallel batches)
@@ -35,7 +35,7 @@ import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-REPO = "roxabi/lyra"
+REPO = "roxabi/roxabi-factory"
 MIN_NUMBER = 1000
 
 # Priority sort order: lower = higher priority
@@ -91,7 +91,7 @@ def _gh_graphql(query: str) -> dict:
 def fetch_issues() -> list[dict]:
     query = """
     query {
-      repository(owner: "roxabi", name: "lyra") {
+      repository(owner: "roxabi", name: "roxabi-factory") {
         issues(
           first: 100, states: OPEN,
           orderBy: {field: CREATED_AT, direction: DESC}
@@ -247,7 +247,7 @@ def has_open_pr_for_issue(issue_number: int, prs: list[dict]) -> bool:
 
 
 def worktree_exists() -> bool:
-    """Check if any .claude/worktrees/ directory exists for lyra."""
+    """Check if any .claude/worktrees/ directory exists for this repo."""
     wt_root = Path(__file__).resolve().parents[1] / ".claude" / "worktrees"
     if not wt_root.exists():
         return False

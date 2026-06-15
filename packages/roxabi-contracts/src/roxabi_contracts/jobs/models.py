@@ -22,6 +22,13 @@ class JobEnvelope(WorkEnvelope):
     """Job submission envelope. Canonical subject: factory.jobs.<job_name>.
 
     ``job_id`` and ``parent_job_id`` are inherited from ``WorkEnvelope`` (ADR-084).
+
+    ``payload`` is an untyped dict forwarded verbatim to the worker.  For omp
+    jobs the V2 convention adds two *optional* routing hints (both absent on
+    old senders — tolerated, treated as None):
+
+        pool_id            – str | absent  – clipool pool to resume a session
+        provider_session_id – str | absent  – opaque provider session handle
     """
 
     job_name: str
@@ -51,6 +58,11 @@ class JobResult(WorkEnvelope):
     """Job reply envelope. Sent to reply_to subject on completion.
 
     ``job_id`` inherited from ``WorkEnvelope`` (ADR-084).
+
+    ``data`` is an untyped dict returned by the worker.  For omp jobs the V2
+    convention adds one *optional* field (absent on old workers — tolerated):
+
+        session_file – str | absent  – path to the persisted omp session file
     """
 
     status: Literal["success", "error"]

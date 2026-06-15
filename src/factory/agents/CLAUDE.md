@@ -9,16 +9,24 @@ Store/lifecycle machinery (`AgentStore` lives in `infrastructure/stores/`, `Agen
 
 ## Backend wiring
 
-Two backend paths exist; exactly one is active per agent instance:
+Three backend paths are supported; the active one is resolved at construction time via
+`isinstance` checks against `SessionAware` / `WorkspaceAware` (both declared in
+`factory.core.ports.llm`):
 
-| Path | When | Key object |
-|------|------|------------|
-| Direct CLI | `backend = "claude-cli"`, single-process | `CliPool` |
-| NATS-relayed CLI | distributed / hub-spoke | `LlmClient` (composed via `CliNatsCodec` over `WorkerPoolClient`) |
+| Path | When | Key object | Protocols |
+|------|------|------------|-----------|
+| Direct CLI | `backend = "claude-cli"`, single-process | `CliPool` | `SessionAware` + `WorkspaceAware` |
+| NATS-relayed CLI | distributed / hub-spoke | `LlmClient` (composed via `CliNatsCodec` over `WorkerPoolClient`) | `SessionAware` + `WorkspaceAware` |
+| OmpRpc NATS job | `backend = "omp-rpc"`, hub-side job dispatch | `OmpRpcDriver` | `SessionAware` only (no `switch_cwd`) |
+
+`SimpleAgent.__init__` resolves `_session_backend` and `_workspace_backend` once from the
+`(cli_pool, cli_nats_driver)` candidate pair. All four dispatch sites (`reset_backend`,
+`_maybe_register_reset`, `_maybe_register_resume`, `link_lyra_session` in `process()`) route
+through these two attributes — no per-site if/elif fan-out.
 
 `configure_pool(pool)` wires `reset_fn / resume_fn / workspace_fn` callbacks before the first
-`process()` call. Both `cli_pool` and `cli_nats_driver` register the same callbacks; whichever is
-non-`None` at construction time is active.
+`process()` call. When `_workspace_backend` is `None` (e.g. `OmpRpcDriver`), `workspace_fn`
+is passed as `None` (existing no-op path in `Pool.register_session_callbacks`).
 
 ## Hot-reload
 

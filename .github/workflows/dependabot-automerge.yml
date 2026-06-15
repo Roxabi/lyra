@@ -23,7 +23,7 @@ permissions:
 jobs:
   reviewed-label:
     name: Label dependabot patch/minor reviewed
-    if: github.actor == 'dependabot[bot]'
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -45,7 +45,8 @@ jobs:
       - name: Add reviewed label (patch/minor only)
         if: >-
           steps.meta.outputs.update-type == 'version-update:semver-patch' ||
-          steps.meta.outputs.update-type == 'version-update:semver-minor'
+          steps.meta.outputs.update-type == 'version-update:semver-minor' ||
+          startsWith(github.event.pull_request.head.ref, 'dependabot/pip/minor-and-patch')
         run: gh pr edit "$PR_URL" --add-label reviewed
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}

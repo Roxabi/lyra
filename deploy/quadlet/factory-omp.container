@@ -1,6 +1,8 @@
 [Unit]
 Description=Factory OmpWorker — omp_rpc NATS runtime backend (#1812)
 After=factory-nats.service
+After=factory-omp-sessions-volume.service
+Requires=factory-omp-sessions-volume.service
 
 [Container]
 # Agent-runtime image — carries the factory CLI plus /opt/omp/omp baked from the
@@ -27,12 +29,11 @@ Tmpfs=/tmp
 # Ephemeral is correct: no_session=True, logs also go to journald (#1877/#1879).
 Tmpfs=/home/factory/.omp:mode=1777
 # omp's agent dir holds models.yml (config) AND agent.db/models.db (SQLite state), so it
-# MUST be writable — a :ro mount EACCESes the DB open, a root-owned tmpfs EACCESes uid
-# 1500, hence mode=1777. Ephemeral (tmpfs): agent.db is per-run state (no_session=True),
-# models.db recompiles from models.yml each boot — avoids secret-at-rest, stale model
-# cache, and unbounded growth (#1879). The repo's models.yml is layered :ro on top (SSoT);
-# podman orders mounts by destination depth, so the dir tmpfs lands before the file.
-Tmpfs=/home/factory/.config/omp-pi:mode=1777
+# MUST be writable. Persistent named volume (factory-omp-sessions) replaces the ephemeral
+# tmpfs used before #1813 — session state (agent.db, models.db) now survives container
+# restarts (clipool-parity). The repo's models.yml is layered :ro on top (SSoT); podman
+# orders mounts by destination depth, so the volume dir lands before the file bind.
+Volume=factory-omp-sessions.volume:/home/factory/.config/omp-pi:rw
 Volume=%h/projects/roxabi-factory/deploy/omp/models.yml:/home/factory/.config/omp-pi/models.yml:ro,Z
 Environment=PI_CODING_AGENT_DIR=/home/factory/.config/omp-pi
 # Workspace — mirrors host ~/projects so the git ownership probe finds its target

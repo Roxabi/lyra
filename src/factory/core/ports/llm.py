@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from factory.core.ports.llm_types import LlmEvent, ModelConfig
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from roxabi_contracts.errors import WorkerError
 
 
@@ -84,4 +86,39 @@ class LlmUnavailableError(Exception):
     """Raised when no LLM worker is reachable (timeout, no heartbeat, circuit open)."""
 
 
-__all__ = ["LlmProvider", "LlmResult", "LlmUnavailableError", "StreamingLlmProvider"]
+@runtime_checkable
+class SessionAware(Protocol):
+    """Capability protocol for providers that manage per-pool Lyra sessions.
+
+    Decoupled from ``LlmProvider`` so that drivers that do not support session
+    management are not forced to carry these methods.  Consumers should check
+    ``isinstance(provider, SessionAware)`` before calling.
+    """
+
+    def link_lyra_session(self, pool_id: str, lyra_session_id: str) -> None: ...
+
+    async def reset(self, pool_id: str) -> None: ...
+
+    async def queue_resume(self, pool_id: str, session_id: str) -> bool: ...
+
+
+@runtime_checkable
+class WorkspaceAware(Protocol):
+    """Capability protocol for providers that support changing the working directory.
+
+    Decoupled from ``LlmProvider`` so that drivers without workspace control are
+    not polluted with this surface.  Consumers should check
+    ``isinstance(provider, WorkspaceAware)`` before calling.
+    """
+
+    async def switch_cwd(self, pool_id: str, cwd: "Path") -> None: ...
+
+
+__all__ = [
+    "LlmProvider",
+    "LlmResult",
+    "LlmUnavailableError",
+    "SessionAware",
+    "StreamingLlmProvider",
+    "WorkspaceAware",
+]

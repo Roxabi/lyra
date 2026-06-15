@@ -14,6 +14,7 @@ from factory.llm.drivers.cli import ClaudeCliDriver
 from factory.llm.registry import ProviderRegistry
 
 if TYPE_CHECKING:
+    from factory.llm.drivers.omp_rpc import _OmpSessionStore
     from factory.llm.llm_client import LlmClient
 
 log = logging.getLogger(__name__)
@@ -27,6 +28,7 @@ def _build_shared_base_providers(  # noqa: PLR0913
     nats_llm_client: LlmClient | None = None,
     cli_nats_driver: LlmClient | None = None,
     omp_rpc_driver: LlmProvider | None = None,
+    omp_turn_store: _OmpSessionStore | None = None,
     cb_decorator_cls: type = CircuitBreakerDecorator,
     retry_decorator_cls: type = RetryDecorator,
 ) -> dict[str, LlmProvider]:
@@ -68,6 +70,8 @@ def _build_shared_base_providers(  # noqa: PLR0913
 
     if omp_rpc_driver is not None:
         providers["omp-rpc"] = omp_rpc_driver
+        if omp_turn_store is not None:
+            omp_rpc_driver.set_turn_store(omp_turn_store)  # type: ignore[attr-defined]
         log.info("Shared base: registered omp-rpc driver (bare, no decorator)")
 
     return providers

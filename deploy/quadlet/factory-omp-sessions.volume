@@ -1,0 +1,13 @@
+[Unit]
+Description=Factory OmpWorker session state — named volume for agent.db / models.db (#1813).
+# Named podman volume (podman-managed, no host bind) — persists omp SQLite session state
+# (agent.db, models.db) across container restarts. The repo's models.yml is layered :ro
+# on top at boot via a separate bind mount; this volume holds the compiled state only.
+# Replaces the ephemeral Tmpfs= used before #1813.
+
+[Volume]
+Label=app=factory
+VolumeName=factory-omp-sessions
+
+[Install]
+WantedBy=default.target

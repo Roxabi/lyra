@@ -166,8 +166,12 @@ async def _bootstrap_omp_standalone(raw_config: dict) -> None:  # noqa: ARG001
 
     log_contracts_version()
 
+    # omp_rpc is a container image dep — deferred imports prevent ImportError
+    # in dev environments where the binary is absent from pyproject.toml.
+    from factory.adapters.omp.omp_pool import OmpPool
     from factory.adapters.omp.omp_worker import OmpWorker
 
-    worker = OmpWorker(identity_name="omp-worker")
+    pool = OmpPool()
+    worker = OmpWorker(pool=pool, identity_name="omp-worker")
     log.info("omp: starting OmpWorker on factory.jobs.omp")
     await worker.run(nats_url)

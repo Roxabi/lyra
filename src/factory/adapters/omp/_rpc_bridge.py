@@ -174,8 +174,31 @@ class RpcBridge:
         self._client.on_agent_end(self._on_agent_end)
         await asyncio.to_thread(self._client.new_session)
 
-    async def run(self, prompt: str, job_id: str) -> None:
+    def _derive_assistant_text(self, turn: Any) -> str:
+        """Assistant text for the result: ``turn.assistant_text``, falling back to
+        the last message of the stored agent-end event (stdout-thread sentinel)."""
+        assistant_text = getattr(turn, "assistant_text", None)
+        if assistant_text is None:
+            end_event = self._last_agent_end_event
+            if end_event is not None:
+                messages = getattr(end_event, "messages", None)
+                if messages:
+                    assistant_text = getattr(messages[-1], "assistant_text", None)
+        return assistant_text if assistant_text is not None else ""
+
+    async def run(
+        self,
+        prompt: str,
+        job_id: str,
+        *,
+        client: Any | None = None,
+        session_file: str | None = None,
+    ) -> None:
         """Run a prompt through omp_rpc; publishes progress and result to NATS.
+
+        ``client``       – override self._client for this invocation (pool path).
+        ``session_file`` – omp session path to include in the JobResult data dict
+                           (backhaul — obtained from OmpPool after acquire).
 
         Stores job_id on self for callback access during prompt_and_wait.
         Subscribes factory.job.<job_id>.steer while prompt_and_wait is in flight;
@@ -196,34 +219,33 @@ class RpcBridge:
                 log.debug("rpc_bridge: steer message dropped — no active job")
                 return
             text = msg.data.decode("utf-8", errors="replace")
-            await asyncio.to_thread(self._client.steer, text)
+            await asyncio.to_thread(active_client.steer, text)
+
+        # Pool path: use the caller-supplied client; fall back to self._client
+        # for the legacy single-client path (e.g. tests without a pool).
+        active_client = client if client is not None else self._client
 
         steer_sub = None
         if nc is not None:
             steer_sub = await nc.subscribe(jobs_steer(job_id), cb=_handle_steer_msg)
         try:
-            turn = await asyncio.to_thread(self._client.prompt_and_wait, prompt)
+            turn = await asyncio.to_thread(active_client.prompt_and_wait, prompt)
             self._last_turn = turn
             # Publish success here — guaranteed to see the completed turn value.
             # _on_agent_end fires on the stdout thread BEFORE prompt_and_wait returns
             # so it cannot safely read _last_turn; this is the only safe publish site.
             if nc is not None and not self._result_sent:
                 self._result_sent = True
-                assistant_text = getattr(turn, "assistant_text", None)
-                if assistant_text is None:
-                    # Fallback: derive from stored agent-end event messages if available
-                    end_event = self._last_agent_end_event
-                    if end_event is not None:
-                        messages = getattr(end_event, "messages", None)
-                        if messages:
-                            last_msg = messages[-1]
-                            assistant_text = getattr(last_msg, "assistant_text", None)
-                text: str = assistant_text if assistant_text is not None else ""
+                text: str = self._derive_assistant_text(turn)
                 if not text:
                     log.warning(
                         "rpc_bridge: job %s produced an empty result text", job_id
                     )
-                payload = _make_result(job_id, status="success", data={"result": text})
+                data: dict[str, Any] = {"result": text}
+                # session_file backhaul (V2 pool path — None for legacy single-client).
+                if session_file is not None:
+                    data["session_file"] = session_file
+                payload = _make_result(job_id, status="success", data=data)
                 await nc.publish(jobs_result(job_id), payload)
         finally:
             self._in_prompt_await = False

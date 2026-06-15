@@ -46,3 +46,7 @@ host_roles = ["factory-hub"]
 container = "factory-omp.container"
 host_roles = ["factory-hub"]
 required_secrets = ["factory-nats-omp", "factory-litellm-key"]
+
+[volume.omp-sessions]
+volume = "factory-omp-sessions.volume"
+host_roles = ["factory-hub"]

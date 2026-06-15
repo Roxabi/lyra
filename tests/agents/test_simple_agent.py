@@ -703,6 +703,24 @@ class TestSimpleAgentResetBackend:
 
         provider.reset.assert_not_called()
 
+    async def test_reset_backend_routes_through_nats_driver(self) -> None:
+        """reset_backend() delegates to nats_driver.reset(pool_id) when cli_pool=None.
+
+        Regression: before V2, reset_backend only checked _cli_pool and silently
+        dropped the call when cli_pool=None, even if a nats_driver was present.
+        This test locks the fixed behaviour where _session_backend is resolved from
+        the nats_driver candidate.
+        """
+        provider = MagicMock(spec=["complete", "stream", "is_alive"])
+        nats_driver = MagicMock()
+        nats_driver.reset = AsyncMock()
+
+        agent = make_agent_with_nats_driver(provider, nats_driver)
+
+        await agent.reset_backend("pool-nats-1")
+
+        nats_driver.reset.assert_awaited_once_with("pool-nats-1")
+
 
 # ---------------------------------------------------------------------------
 # TestSimpleAgentSessionToolsFailure

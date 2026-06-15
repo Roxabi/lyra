@@ -21,7 +21,7 @@ SSoT: `factory.core.ports.llm`. `base.py` is a backward-compatibility shim — i
 |--------|-------------|-----------|-------------|
 | `ClaudeCliDriver` | `"claude-cli"` | in-process (`CliPool` subprocess) | single-process |
 | `LlmClient` | `"claude-cli"` / `"nats"` | NATS request-reply via `WorkerPoolClient` + `CliNatsCodec` | multi-process (hub side) |
-| `OmpRpcDriver` | `"omp-rpc"` | NATS `JobEnvelope` round-trip — publishes to `factory.jobs.omp`, subscribes `factory.job.<id>.result` (hub mints `job_id`); `model_dump_json` wire; `streaming=False` | multi-process (hub side); registered in `bootstrap/factory/providers.py` as the `"omp-rpc"` backend (bare driver — owns its own timeout, no CB/retry decorator) |
+| `OmpRpcDriver` | `"omp-rpc"` | NATS `JobEnvelope` round-trip — publishes to `factory.jobs.omp`, subscribes `factory.job.<id>.result` (hub mints `job_id`); `model_dump_json` wire; `streaming=False` | multi-process (hub side); registered in `bootstrap/factory/providers.py` as the `"omp-rpc"` backend (bare driver — owns its own timeout, no CB/retry decorator). Implements `SessionAware` (`link_lyra_session`, `reset`, `queue_resume`) — NOT `WorkspaceAware` (no `switch_cwd`). |
 
 `ClaudeCliDriver` and `LlmClient` may share the `"claude-cli"` registry key — selection between them is determined by wiring mode at bootstrap (single-process picks `ClaudeCliDriver`, multi-process picks `LlmClient(WorkerPoolClient, CliNatsCodec)`).
 

@@ -22,6 +22,7 @@ from factory.core.messaging.message import (
 )
 from factory.core.messaging.messages import MessageManager
 from factory.core.pool import Pool
+from factory.core.ports.llm import SessionAware, WorkspaceAware
 from factory.core.ports.stt import STTNoiseError as STTNoiseError  # re-export (#1225)
 from factory.core.processors.stream_processor import StreamProcessor
 from factory.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
@@ -88,6 +89,33 @@ class SimpleAgent(AgentBase):
         self._provider = provider
         self._cli_pool = cli_pool
         self._cli_nats_driver = cli_nats_driver
+        # Resolve capability-aware backends ONCE at construction — avoids
+        # repeated if/elif fan-out at every dispatch site (reset, register,
+        # link_lyra_session).  Candidates are the explicit CLI transports only;
+        # _provider is intentionally excluded so that MagicMock-based tests
+        # (which auto-create any attribute) do not accidentally match.
+        _candidates = (cli_pool, cli_nats_driver)
+
+        def _has_session_iface(x: object) -> bool:
+            # @runtime_checkable Protocol isinstance does NOT trigger MagicMock's
+            # __getattr__ in Python 3.12+; use getattr() which does.
+            return (
+                callable(getattr(x, "link_lyra_session", None))
+                and callable(getattr(x, "reset", None))
+                and callable(getattr(x, "queue_resume", None))
+            )
+
+        def _has_workspace_iface(x: object) -> bool:
+            return callable(getattr(x, "switch_cwd", None))
+
+        self._session_backend: SessionAware | None = next(
+            (x for x in _candidates if x is not None and _has_session_iface(x)),  # type: ignore[assignment]
+            None,
+        )
+        self._workspace_backend: WorkspaceAware | None = next(
+            (x for x in _candidates if x is not None and _has_workspace_iface(x)),  # type: ignore[assignment]
+            None,
+        )
         self._session_tools = session_tools
         super().__init__(
             config,
@@ -105,8 +133,8 @@ class SimpleAgent(AgentBase):
 
     async def reset_backend(self, pool_id: str) -> None:
         """Kill the backend process so the next turn gets a fresh one."""
-        if self._cli_pool is not None:
-            await self._cli_pool.reset(pool_id)
+        if self._session_backend is not None:
+            await self._session_backend.reset(pool_id)
 
     def _build_router_kwargs(self) -> dict[str, object]:
         return {
@@ -157,40 +185,34 @@ class SimpleAgent(AgentBase):
 
     def _maybe_register_reset(self, pool: Pool) -> None:
         """Register session reset/switch callbacks on the pool."""
-        _cli_pool = self._cli_pool  # narrow once; stable capture for lambdas
-        if _cli_pool is not None:
-            _pool_id = pool.pool_id
-            pool.register_session_callbacks(
-                reset_fn=lambda: _cli_pool.reset(_pool_id),
-                workspace_fn=lambda cwd: _cli_pool.switch_cwd(_pool_id, cwd),
-            )
-        elif self._cli_nats_driver is not None:
-            _driver = self._cli_nats_driver
-            _pool_id = pool.pool_id
-            pool.register_session_callbacks(
-                reset_fn=lambda: _driver.reset(_pool_id),
-                workspace_fn=lambda cwd: _driver.switch_cwd(_pool_id, cwd),
-            )
+        _session = self._session_backend
+        if _session is None:
+            return
+        _workspace = self._workspace_backend  # None when backend lacks switch_cwd
+        _pool_id = pool.pool_id
+        pool.register_session_callbacks(
+            reset_fn=lambda: _session.reset(_pool_id),
+            workspace_fn=(
+                (lambda cwd: _workspace.switch_cwd(_pool_id, cwd))
+                if _workspace is not None
+                else None
+            ),
+        )
 
     def _maybe_register_resume(self, pool: Pool) -> None:
         """Register session resume callback on the pool.
 
         Hub calls pool.resume_session(session_id) → delegates here →
-        CliPool.queue_resume(). Follows the same lazy-wiring pattern as
+        backend.queue_resume(). Follows the same lazy-wiring pattern as
         _maybe_register_reset.
         """
-        _cli_pool = self._cli_pool  # narrow once; stable capture for lambda
-        if _cli_pool is not None:
-            _pool_id = pool.pool_id
-            pool.register_session_callbacks(
-                resume_fn=lambda sid: _cli_pool.queue_resume(_pool_id, sid),
-            )
-        elif self._cli_nats_driver is not None:
-            _driver = self._cli_nats_driver
-            _pool_id = pool.pool_id
-            pool.register_session_callbacks(
-                resume_fn=lambda sid: _driver.queue_resume(_pool_id, sid),
-            )
+        _session = self._session_backend
+        if _session is None:
+            return
+        _pool_id = pool.pool_id
+        pool.register_session_callbacks(
+            resume_fn=lambda sid: _session.queue_resume(_pool_id, sid),
+        )
 
     def configure_pool(self, pool: Pool) -> None:
         """Wire provider callbacks onto *pool* before first message is processed.
@@ -221,11 +243,9 @@ class SimpleAgent(AgentBase):
 
         model_cfg = self.config.llm_config
 
-        # Link Lyra session → CLI session so reply-to-resume works.
-        if self._cli_pool is not None:
-            self._cli_pool.link_lyra_session(pool.pool_id, pool.session_id)
-        elif self._cli_nats_driver is not None:
-            self._cli_nats_driver.link_lyra_session(pool.pool_id, pool.session_id)
+        # Link Lyra session → backend session so reply-to-resume works.
+        if self._session_backend is not None:
+            self._session_backend.link_lyra_session(pool.pool_id, pool.session_id)
 
         log.debug(
             "[agent:%s][pool:%s] processing message (%d chars)",

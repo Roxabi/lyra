@@ -129,8 +129,11 @@ class TestColdStartPersistsSessionFile:
     """Cold-start job: JobResult.data carries session_file and store is written."""
 
     @pytest.mark.asyncio
-    async def test_session_file_in_result_data(self) -> None:
-        """complete() returns a result whose data dict contains session_file."""
+    async def test_cold_start_complete_returns_text(self) -> None:
+        """Cold-start: complete() returns an ok LlmResult carrying the assistant text.
+
+        The session_file rides JobResult.data and is persisted to the store — it is
+        NOT surfaced on LlmResult (see test_session_file_persisted_in_store)."""
         _pool, _issued = _make_pool_with_fake_start()
 
         session_path = "/tmp/omp/.omp/sessions/sess-abc.jsonl"
@@ -155,7 +158,7 @@ class TestColdStartPersistsSessionFile:
         )
 
         assert res.ok is True
-        assert res.data.get("session_file") == session_path
+        assert res.result == "done"
 
     @pytest.mark.asyncio
     async def test_session_file_persisted_in_store(self) -> None:

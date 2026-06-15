@@ -101,6 +101,7 @@ class OmpRpcDriver:
         the JobEnvelope payload.
         """
         self._pending_resume.pop(pool_id, None)
+        self._lyra_sessions.pop(pool_id, None)
 
     async def queue_resume(self, pool_id: str, session_id: str) -> bool:
         """Resolve cli_session_id and stash it for the next complete() call.
@@ -168,6 +169,7 @@ class OmpRpcDriver:
                 "prompt": text,
                 "model_cfg": model_cfg.model_dump(),
                 "system_prompt": system_prompt,
+                "pool_id": pool_id,
             }
             if pending_resume is not None:
                 payload["provider_session_id"] = pending_resume

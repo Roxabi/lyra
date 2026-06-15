@@ -2,6 +2,7 @@
 Description=Factory OmpWorker — omp_rpc NATS runtime backend (#1812)
 After=factory-nats.service
 After=factory-omp-sessions-volume.service
+Requires=factory-omp-sessions-volume.service
 
 [Container]
 # Agent-runtime image — carries the factory CLI plus /opt/omp/omp baked from the

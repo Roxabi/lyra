@@ -150,19 +150,21 @@ class TestOmpWorkerPool:
         pool.acquire.assert_called_once_with(_POOL_ID, session_file=None)
 
     @pytest.mark.asyncio
-    async def test_handle_rejects_missing_pool_id(self) -> None:
-        """handle() publishes an error and returns when pool_id is absent."""
+    async def test_handle_falls_back_to_job_id_when_pool_id_absent(self) -> None:
+        """B3 wire-compat: a pre-V2 envelope without pool_id is NOT rejected —
+        handle() falls back to job_id as the routing key and proceeds."""
         pool = _mock_pool()
         bridge = _mock_bridge()
         worker = OmpWorker(bridge=bridge, pool=pool)
 
         payload = _base_payload(pool_id="", provider_session_id=None)
-        # Remove pool_id key entirely
+        # Remove pool_id key entirely → simulate an old (pre-V2) sender.
         del payload["payload"]["pool_id"]
         await worker.handle(msg=None, payload=payload)
 
-        pool.acquire.assert_not_called()
-        bridge.publish_error.assert_called_once()
+        # Falls back to job_id, routes to the pool, does NOT publish an error.
+        pool.acquire.assert_called_once_with(_JOB_ID, session_file=None)
+        bridge.publish_error.assert_not_called()
 
     # -- 2. bridge.run receives session_file from pool entry -------------------
 

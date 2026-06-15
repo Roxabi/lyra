@@ -150,6 +150,8 @@ class TestOmpRpcDriverSession:
         envelope = json.loads(published_bytes)
         payload = envelope["payload"]
         assert payload.get("provider_session_id") == "cli-tok-xyz"
+        # B1 regression-lock: pool_id MUST ride the wire — the worker routes on it.
+        assert payload.get("pool_id") == "pool-1"
 
         # Token consumed — second call must NOT re-inject
         sub.next_msg.return_value = SimpleNamespace(data=_encode_result(success_result))

@@ -137,12 +137,10 @@ class OmpWorker(NatsAdapterBase):
             await self._bridge.publish_error(str(job_id), ValueError("empty prompt"))
             return
 
-        # pool_id is required (V2); reject jobs missing it.
-        pool_id: str = envelope.payload.get("pool_id", "")
-        if not pool_id:
-            log.warning("omp_worker: job_id=%s has no pool_id — rejecting", job_id)
-            await self._bridge.publish_error(str(job_id), ValueError("missing pool_id"))
-            return
+        # pool_id routes the job to its warm pool client. Pre-V2 envelopes omit
+        # it (wire-compat, incl. JetStream backlog replay) → fall back to job_id,
+        # a stable per-job key. Never hard-reject on absence (spec + contracts).
+        pool_id: str = envelope.payload.get("pool_id") or str(job_id)
 
         # provider_session_id: empty string → None (never pass empty string to pool).
         provider_session_id: str | None = (

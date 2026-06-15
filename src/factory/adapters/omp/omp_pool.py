@@ -25,8 +25,8 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-# Image-build constants — NEVER from env (mirrored from _rpc_bridge.py).
-_PINNED_SHA256 = "b877091c91ebdc8c8d907c4b62681895cd3ae049815858aea7b69ac1d53b7c7b"
+# omp binary path — image-build constant (NEVER from env). The sha256 pin + its
+# verification live in _rpc_bridge (_verify_digest) — reused, not duplicated.
 _OMP_BIN = Path("/opt/omp/omp")
 _DEFAULT_PROVIDER = "litellm"
 
@@ -80,6 +80,9 @@ class OmpPool:
         self._model = model
         self._entries: dict[str, _PoolEntry] = {}
         self._lru_counter: int = 0
+        # Serializes cold-starts so concurrent acquire() calls for the same
+        # pool_id never launch duplicate omp processes (check-then-act race).
+        self._lock = asyncio.Lock()
 
     # ------------------------------------------------------------------
     # Public API
@@ -103,33 +106,47 @@ class OmpPool:
             log.debug("[omp_pool:%s] warm hit", pool_id)
             return entry.client
 
-        # Cold start — evict the LRU entry if at cap.
-        await self._maybe_evict()
+        # Cold start — serialize under the lock so two coroutines racing on the
+        # same pool_id don't both launch a client (acquire has await points).
+        async with self._lock:
+            # Double-check: another coroutine may have cold-started while we waited.
+            entry = self._entries.get(pool_id)
+            if entry is not None:
+                self._lru_counter += 1
+                entry._lru_seq = self._lru_counter
+                log.debug("[omp_pool:%s] warm hit (post-lock)", pool_id)
+                return entry.client
 
-        client = await self._start_client()
-        minted_session: str | None = None
+            await self._maybe_evict()
 
-        if session_file is not None:
-            await asyncio.to_thread(client.switch_session, session_file)
-            minted_session = session_file
-            log.debug("[omp_pool:%s] cold start with session %s", pool_id, session_file)
-        else:
-            # new_session() returns a CancellationResult — NOT the path.
-            # Call get_state() to obtain the minted .jsonl session_file path.
-            await asyncio.to_thread(client.new_session)
-            state = await asyncio.to_thread(client.get_state)
-            minted_session = getattr(state, "session_file", None)
-            log.debug(
-                "[omp_pool:%s] cold start, minted session %s", pool_id, minted_session
+            client = await self._start_client()
+            minted_session: str | None = None
+
+            if session_file is not None:
+                await asyncio.to_thread(client.switch_session, session_file)
+                minted_session = session_file
+                log.debug(
+                    "[omp_pool:%s] cold start with session %s", pool_id, session_file
+                )
+            else:
+                # new_session() returns a CancellationResult — NOT the path.
+                # Call get_state() to obtain the minted .jsonl session_file path.
+                await asyncio.to_thread(client.new_session)
+                state = await asyncio.to_thread(client.get_state)
+                minted_session = getattr(state, "session_file", None)
+                log.debug(
+                    "[omp_pool:%s] cold start, minted session %s",
+                    pool_id,
+                    minted_session,
+                )
+
+            self._lru_counter += 1
+            self._entries[pool_id] = _PoolEntry(
+                client=client,
+                session_file=minted_session,
+                _lru_seq=self._lru_counter,
             )
-
-        self._lru_counter += 1
-        self._entries[pool_id] = _PoolEntry(
-            client=client,
-            session_file=minted_session,
-            _lru_seq=self._lru_counter,
-        )
-        return client
+            return client
 
     def release(self, pool_id: str) -> None:  # noqa: ARG002
         """Mark pool_id as released.
@@ -149,10 +166,15 @@ class OmpPool:
     # ------------------------------------------------------------------
 
     async def _start_client(self) -> Any:
-        """Construct and start a fresh omp_rpc.RpcClient."""
+        """Construct and start a fresh, digest-pinned omp_rpc.RpcClient."""
         # Import deferred: omp_rpc is a container image dep, absent from pyproject.toml.
         import omp_rpc  # type: ignore[import-not-found]
 
+        from factory.adapters.omp._rpc_bridge import _verify_digest
+
+        # Enforce the omp binary pin on every cold-start — same gate RpcBridge
+        # applies at construction; the sha256 lives only in _rpc_bridge.
+        _verify_digest(self._omp_bin)
         client: Any = omp_rpc.RpcClient(
             executable=str(self._omp_bin),
             provider=self._provider,
@@ -166,7 +188,7 @@ class OmpPool:
         """Stop a client, logging but swallowing errors (best-effort cleanup)."""
         try:
             await asyncio.to_thread(client.stop)
-        except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# pool cleanup
+        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch (pool cleanup)
             log.warning("[omp_pool:%s] client.stop raised", pool_id, exc_info=True)
 
     async def _maybe_evict(self) -> None:

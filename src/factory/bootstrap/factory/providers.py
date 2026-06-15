@@ -71,7 +71,10 @@ def _build_shared_base_providers(  # noqa: PLR0913
     if omp_rpc_driver is not None:
         providers["omp-rpc"] = omp_rpc_driver
         if omp_turn_store is not None:
-            omp_rpc_driver.set_turn_store(omp_turn_store)  # type: ignore[attr-defined]
+            from factory.llm.drivers.omp_rpc import OmpRpcDriver
+
+            if isinstance(omp_rpc_driver, OmpRpcDriver):
+                omp_rpc_driver.set_turn_store(omp_turn_store)
         log.info("Shared base: registered omp-rpc driver (bare, no decorator)")
 
     return providers

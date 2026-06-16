@@ -151,16 +151,12 @@ quadlet-install: quadlet-preflight  ## install Quadlet units → reload + verify
 	@uv run factory bot init
 	@rm -f "$(QUADLET_DIR)"/factory*.{network,volume,container,pod} "$(QUADLET_DIR)"/factory*.{network,volume,container,pod} "$(QUADLET_DIR)/nats.container" \
 	       "$(QUADLET_DIR)/roxabi.network" "$(QUADLET_DIR)/factory-nats.container"
-	@cp deploy/quadlet/roxabi.network                  "$(QUADLET_DIR)/roxabi.network"
-	@cp deploy/quadlet/factory-data.volume                "$(QUADLET_DIR)/factory-data.volume"
-	@cp deploy/quadlet/factory-jetstream.volume           "$(QUADLET_DIR)/factory-jetstream.volume"
-	@cp deploy/quadlet/factory-gh-token.volume            "$(QUADLET_DIR)/factory-gh-token.volume"
-	@cp deploy/quadlet/factory-discord-data.volume        "$(QUADLET_DIR)/factory-discord-data.volume"
+	@for f in deploy/quadlet/*.network deploy/quadlet/*.volume deploy/quadlet/*.pod deploy/quadlet/*.container; do \
+		cp "$$f" "$(QUADLET_DIR)/"; \
+	done
 	@install -d -m 0700 "$(HOME)/.roxabi/factory/nats/jetstream"
 	@chmod 0700 "$(HOME)/.roxabi/factory/nats"
 	@chmod 0700 "$(HOME)/.roxabi/factory/nats/jetstream"
-	@cp deploy/quadlet/factory-nats.container             "$(QUADLET_DIR)/factory-nats.container"
-	@cp deploy/quadlet/factory-hub.container              "$(QUADLET_DIR)/factory-hub.container"
 	@uv run python tools/render_quadlet.py \
 		--platform telegram \
 		--db "$(HOME)/.roxabi/factory/config.db" \
@@ -171,13 +167,6 @@ quadlet-install: quadlet-preflight  ## install Quadlet units → reload + verify
 		--db "$(HOME)/.roxabi/factory/config.db" \
 		--tmpl deploy/quadlet/factory-discord.container.tmpl \
 		--dest "$(QUADLET_DIR)/factory-discord.container"
-	@cp deploy/quadlet/factory-gh.pod                     "$(QUADLET_DIR)/factory-gh.pod"
-	@cp deploy/quadlet/factory-gh-helper.container        "$(QUADLET_DIR)/factory-gh-helper.container"
-	@cp deploy/quadlet/factory-clipool.container          "$(QUADLET_DIR)/factory-clipool.container"
-	@cp deploy/quadlet/factory-blobstore.container        "$(QUADLET_DIR)/factory-blobstore.container"
-	@cp deploy/quadlet/factory-turn-writer.container      "$(QUADLET_DIR)/factory-turn-writer.container"
-	@cp deploy/quadlet/factory-omp.container              "$(QUADLET_DIR)/factory-omp.container"
-	@cp deploy/quadlet/factory-omp-sessions.volume        "$(QUADLET_DIR)/factory-omp-sessions.volume"
 	@echo "Quadlet units copied."
 	@if [ "$(NO_RESTART)" = "1" ]; then \
 		echo "NO_RESTART=1 — skipping daemon-reload, restart, and verification."; \
@@ -325,7 +314,7 @@ remote:
 # Shared list of services that hold NATS subject auth and must restart
 # whenever `auth.conf` is regenerated or a new identity is added. The bare
 # `factory-nats` is restarted separately by the target itself before this list.
-FACTORY_NATS_CLIENTS := factory-hub factory-telegram factory-discord factory-clipool factory-turn-writer factory-gh-helper factory-blobstore
+FACTORY_NATS_CLIENTS := factory-hub factory-telegram factory-discord factory-clipool factory-turn-writer factory-gh-helper factory-blobstore factory-omp
 
 nats-setup:
 	@bash deploy/nats/setup.sh

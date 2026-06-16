@@ -31,9 +31,12 @@ while IFS= read -r container; do
 
     # Template-rendered units (telegram/discord) hit the first arm via the
     # .container.tmpl source-path substring; the QUADLET_DIR arm matches the
-    # rendered --dest line. Either is acceptable evidence of install wiring.
+    # rendered --dest line. A glob loop in the Makefile covering the file's
+    # extension + the file existing on disk is also acceptable evidence.
+    ext="${container##*.}"
     if ! grep -qF "deploy/quadlet/${container}" Makefile \
-       && ! grep -qF "QUADLET_DIR)/${container}" Makefile; then
+       && ! grep -qF "QUADLET_DIR)/${container}" Makefile \
+       && ! { grep -qF "deploy/quadlet/*.${ext}" Makefile && [[ -f "deploy/quadlet/${container}" ]]; }; then
         echo "FAIL: ${container} is declared in deploy/quadlet.toml but never installed by 'make quadlet-install'"
         fail=1
     fi
@@ -59,7 +62,9 @@ done < <(grep -oE '^container = "[^"]+"' deploy/quadlet.toml | cut -d'"' -f2)
 # factory-omp.service → 5-min NATS+clients bounce loop).
 while IFS= read -r volume; do
     count=$((count + 1))
-    if ! grep -qF "deploy/quadlet/${volume}" Makefile; then
+    ext="${volume##*.}"
+    if ! grep -qF "deploy/quadlet/${volume}" Makefile \
+       && ! { grep -qF "deploy/quadlet/*.${ext}" Makefile && [[ -f "deploy/quadlet/${volume}" ]]; }; then
         echo "FAIL: ${volume} is declared in deploy/quadlet.toml but never installed by 'make quadlet-install'"
         fail=1
     fi

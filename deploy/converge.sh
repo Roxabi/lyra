@@ -27,6 +27,7 @@ _do_converge() {
 
     # 2) Pull factory staging
     echo "==> factory: pulling staging..."
+    require_clean_tree "${FACTORY_DIR}"
     (cd "${FACTORY_DIR}" && git pull --ff-only origin staging)
 
     # 3) Install factory quadlet units (no restart)
@@ -37,6 +38,7 @@ _do_converge() {
     VOICE_DIR="${VOICE_DIR:-${HOME}/projects/voiceCLI}"
     if [ -d "${VOICE_DIR}/.git" ]; then
         echo "==> voiceCLI: pulling staging..."
+        require_clean_tree "${VOICE_DIR}"
         (cd "${VOICE_DIR}" && git pull --ff-only origin staging)
         echo "==> voiceCLI: installing quadlet units..."
         make -C "${VOICE_DIR}" quadlet-install NO_RESTART=1

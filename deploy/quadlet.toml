@@ -47,6 +47,30 @@ container = "factory-omp.container"
 host_roles = ["factory-hub"]
 required_secrets = ["factory-nats-omp", "factory-litellm-key"]
 
+[volume.data]
+volume = "factory-data.volume"
+host_roles = ["factory-hub"]
+
+[volume.jetstream]
+volume = "factory-jetstream.volume"
+host_roles = ["factory-hub"]
+
+[volume.gh-token]
+volume = "factory-gh-token.volume"
+host_roles = ["factory-hub"]
+
+[volume.discord-data]
+volume = "factory-discord-data.volume"
+host_roles = ["factory-hub"]
+
 [volume.omp-sessions]
 volume = "factory-omp-sessions.volume"
+host_roles = ["factory-hub"]
+
+[network.roxabi]
+network = "roxabi.network"
+host_roles = ["factory-hub"]
+
+[pod.gh]
+pod = "factory-gh.pod"
 host_roles = ["factory-hub"]

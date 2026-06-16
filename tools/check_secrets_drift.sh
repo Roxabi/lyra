@@ -40,6 +40,12 @@
 #   The auth bundle secret (factory-nats-auth) is excluded from both directions:
 #   it is the NATS server auth.conf, not an NKey identity seed.
 #
+# CHECK (d) — quadlet.toml required_secrets ↔ secrets-policy.toml [secret.*]
+#   Bidirectional: every required_secret must have a [secret.<name>] policy
+#   entry (catches a required secret with no declared source), and every
+#   policy entry must be referenced by some component (catches an orphan
+#   policy entry with no consumer).
+#
 # OPTIONAL SECRETS
 #   Secrets with policy=optional (factory-gh-pem, factory-claude-oauth) are
 #   logged as SKIP and never cause a failure.  The optional set is derived by
@@ -156,6 +162,20 @@ for name, attrs in data.get("secret", {}).items():
 PYEOF
 }
 
+# load_policy_secret_names
+# Emit every secret name with a [secret.<name>] entry in secrets-policy.toml,
+# one per line, sorted.
+load_policy_secret_names() {
+    python3 - "$POLICY_TOML" <<'PYEOF'
+import sys, tomllib, pathlib
+path = pathlib.Path(sys.argv[1])
+with path.open("rb") as f:
+    data = tomllib.load(f)
+for name in sorted(data.get("secret", {}).keys()):
+    print(name)
+PYEOF
+}
+
 # load_manifest_secret_names
 # Emit secret names declared in secrets-manifest.sh (lines of the form
 #     [name]="..."
@@ -199,6 +219,12 @@ declare -A OPTIONAL_SET=()
 while IFS= read -r name; do
     OPTIONAL_SET["$name"]=1
 done < <(load_optional_secrets)
+
+# Policy-declared secret names (associative set for fast lookup)
+declare -A POLICY_SET=()
+while IFS= read -r name; do
+    POLICY_SET["$name"]=1
+done < <(load_policy_secret_names)
 
 # Manifest secret names (sorted array)
 mapfile -t MANIFEST_SECRETS < <(load_manifest_secret_names)
@@ -361,6 +387,44 @@ if [[ ${#nats_seed_violations[@]} -gt 0 || ${#nats_reverse_violations[@]} -gt 0 
     fail=1
 else
     echo "check_secrets_drift (c): factory-nats-* seeds ↔ acl-matrix factory+container identities — OK (bidirectional)"
+fi
+
+# ── CHECK (d) — quadlet.toml required_secrets ↔ secrets-policy.toml [secret.*] ─
+# Bidirectional set-membership:
+#   Forward:  every required_secret in quadlet.toml MUST have a [secret.<name>]
+#             entry in secrets-policy.toml (catches a required secret with no
+#             declared policy/source — the litellm-key-lost class).
+#   Reverse:  every [secret.<name>] in secrets-policy.toml MUST appear in some
+#             component required_secrets (catches an orphan policy entry with
+#             no consumer — the factory-nats-auth class).
+in_quadlet_not_policy=()
+for s in "${QUADLET_SECRETS[@]}"; do
+    if [[ -z "${POLICY_SET[$s]+_}" ]]; then
+        in_quadlet_not_policy+=("$s")
+    fi
+done
+
+in_policy_not_quadlet=()
+for s in "${!POLICY_SET[@]}"; do
+    if [[ -z "${QUADLET_SET[$s]+_}" ]]; then
+        in_policy_not_quadlet+=("$s")
+    fi
+done
+
+if [[ ${#in_quadlet_not_policy[@]} -gt 0 || ${#in_policy_not_quadlet[@]} -gt 0 ]]; then
+    echo "" >&2
+    echo "FAIL (d): quadlet.toml required_secrets / secrets-policy.toml [secret.*] out of sync:" >&2
+    for s in "${in_quadlet_not_policy[@]}"; do
+        echo "  required_secret with no secrets-policy.toml entry: $s" >&2
+        echo "::error file=deploy/secrets-policy.toml::required secret $s has no [secret.$s] policy entry — add it (policy + source)"
+    done
+    for s in "${in_policy_not_quadlet[@]}"; do
+        echo "  orphan policy entry not referenced by any required_secrets: $s" >&2
+        echo "::error file=deploy/secrets-policy.toml::policy entry $s is referenced by no component required_secrets — remove it or wire the secret"
+    done
+    fail=1
+else
+    echo "check_secrets_drift (d): required_secrets ↔ secrets-policy.toml [secret.*] — OK (bidirectional)"
 fi
 
 # ── SUMMARY ───────────────────────────────────────────────────────────────────

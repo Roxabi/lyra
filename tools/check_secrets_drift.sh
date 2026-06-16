@@ -165,6 +165,12 @@ PYEOF
 # load_policy_secret_names
 # Emit every secret name with a [secret.<name>] entry in secrets-policy.toml,
 # one per line, sorted.
+#
+# NOTE: [secret-class.*] sections (e.g. [secret-class.bot-token]) are parsed
+# by tomllib under data["secret-class"], a separate top-level key from
+# data["secret"].  data.get("secret", {}) therefore naturally excludes all
+# class declarations — they never enter POLICY_SET and are exempt from the
+# check (d) bidirectional assertion by TOML structure, not by explicit filter.
 load_policy_secret_names() {
     python3 - "$POLICY_TOML" <<'PYEOF'
 import sys, tomllib, pathlib
@@ -397,6 +403,16 @@ fi
 #   Reverse:  every [secret.<name>] in secrets-policy.toml MUST appear in some
 #             component required_secrets (catches an orphan policy entry with
 #             no consumer — the factory-nats-auth class).
+#
+# Bot-token class exemption is STRUCTURAL, not runtime: secrets matching a
+# [secret-class.*] pattern in secrets-policy.toml are rendered dynamically at
+# install by tools/render_quadlet.py and never appear in required_secrets, so
+# they are absent from QUADLET_SECRETS (forward direction unaffected).  The
+# class entry is parsed by tomllib under data["secret-class"] — a separate
+# top-level key from data["secret"] — so it never enters POLICY_SET (reverse
+# direction unaffected).  TOML namespacing therefore isolates [secret-class.*]
+# from check (d) entirely; no per-secret exemption guard is required here.
+
 in_quadlet_not_policy=()
 for s in "${QUADLET_SECRETS[@]}"; do
     if [[ -z "${POLICY_SET[$s]+_}" ]]; then

@@ -165,6 +165,12 @@ PYEOF
 # load_policy_secret_names
 # Emit every secret name with a [secret.<name>] entry in secrets-policy.toml,
 # one per line, sorted.
+#
+# NOTE: [secret-class.*] sections (e.g. [secret-class.bot-token]) are parsed
+# by tomllib under data["secret-class"], a separate top-level key from
+# data["secret"].  data.get("secret", {}) therefore naturally excludes all
+# class declarations — they never enter POLICY_SET and are exempt from the
+# check (d) bidirectional assertion by TOML structure, not by explicit filter.
 load_policy_secret_names() {
     python3 - "$POLICY_TOML" <<'PYEOF'
 import sys, tomllib, pathlib
@@ -397,6 +403,39 @@ fi
 #   Reverse:  every [secret.<name>] in secrets-policy.toml MUST appear in some
 #             component required_secrets (catches an orphan policy entry with
 #             no consumer — the factory-nats-auth class).
+#
+# Bot-token class exemption: secrets matching a [secret-class.*] pattern in
+# secrets-policy.toml are rendered dynamically at install time by
+# tools/render_quadlet.py and never appear in required_secrets — they are
+# intentionally absent from QUADLET_SET.  The class entry itself never enters
+# POLICY_SET (tomllib parses it under data["secret-class"], a separate key),
+# so the forward direction is unaffected.  The load below is used only to
+# build the bot_class_patterns array for the reverse exemption guard.
+mapfile -t BOT_CLASS_PATTERNS < <(
+    python3 - "$POLICY_TOML" <<'PYEOF'
+import sys, tomllib, re, pathlib
+with pathlib.Path(sys.argv[1]).open("rb") as f:
+    data = tomllib.load(f)
+# Convert each secret-class pattern to a shell-compatible ERE: {foo} -> [^-]+
+for cls in data.get("secret-class", {}).values():
+    pattern = cls.get("pattern", "")
+    if pattern:
+        ere = re.sub(r'\{[^}]+\}', '[^-]+', re.escape(pattern))
+        print(ere)
+PYEOF
+)
+
+# is_bot_class_member: return 0 if $1 matches any bot-class pattern, 1 otherwise.
+is_bot_class_member() {
+    local name="$1" pat
+    for pat in "${BOT_CLASS_PATTERNS[@]}"; do
+        if [[ "$name" =~ ^${pat}(-webhook)?$ ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 in_quadlet_not_policy=()
 for s in "${QUADLET_SECRETS[@]}"; do
     if [[ -z "${POLICY_SET[$s]+_}" ]]; then

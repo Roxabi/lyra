@@ -24,6 +24,7 @@ if [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/staging)" ]; then
     exit 0
 fi
 
+require_clean_tree "${FACTORY_DIR}"
 git pull --ff-only origin staging || {
     echo "ERROR: git pull --ff-only failed" >&2
     exit 1

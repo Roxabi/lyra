@@ -148,7 +148,7 @@ quadlet-lint:  ## lint Quadlet unit files: dryrun parse check + inline-comment g
 
 quadlet-install: quadlet-preflight  ## install Quadlet units → reload + verify (NO_RESTART=1 skips restart/verify)
 	@mkdir -p "$(QUADLET_DIR)"
-	@uv run factory bot init
+	@uv run --frozen factory bot init
 	@rm -f "$(QUADLET_DIR)"/factory*.{network,volume,container,pod} "$(QUADLET_DIR)"/factory*.{network,volume,container,pod} "$(QUADLET_DIR)/nats.container" \
 	       "$(QUADLET_DIR)/roxabi.network" "$(QUADLET_DIR)/factory-nats.container"
 	@for f in deploy/quadlet/*.network deploy/quadlet/*.volume deploy/quadlet/*.pod deploy/quadlet/*.container; do \
@@ -157,12 +157,12 @@ quadlet-install: quadlet-preflight  ## install Quadlet units → reload + verify
 	@install -d -m 0700 "$(HOME)/.roxabi/factory/nats/jetstream"
 	@chmod 0700 "$(HOME)/.roxabi/factory/nats"
 	@chmod 0700 "$(HOME)/.roxabi/factory/nats/jetstream"
-	@uv run python tools/render_quadlet.py \
+	@uv run --frozen python tools/render_quadlet.py \
 		--platform telegram \
 		--db "$(HOME)/.roxabi/factory/config.db" \
 		--tmpl deploy/quadlet/factory-telegram.container.tmpl \
 		--dest "$(QUADLET_DIR)/factory-telegram.container"
-	@uv run python tools/render_quadlet.py \
+	@uv run --frozen python tools/render_quadlet.py \
 		--platform discord \
 		--db "$(HOME)/.roxabi/factory/config.db" \
 		--tmpl deploy/quadlet/factory-discord.container.tmpl \
@@ -320,8 +320,8 @@ nats-setup:
 	@bash deploy/nats/setup.sh
 
 nats-regen-specs:             ## re-render ACL spec table + parity fixture from acl-matrix.json
-	@uv run python scripts/render_acl_spec.py
-	@uv run python scripts/render_acl_parity.py
+	@uv run --frozen python scripts/render_acl_spec.py
+	@uv run --frozen python scripts/render_acl_parity.py
 	@echo "[ok] ACL spec + parity fixture regenerated"
 
 nats-regen-authconf:          ## re-render auth.conf from acl-matrix.json, restart factory-nats + all NATS clients (#1390)
@@ -346,7 +346,7 @@ nats-add-identity:  ## add a single NATS identity rootless; idempotent after ful
 	@test -n "$(NAME)" || { echo "usage: make nats-add-identity NAME=<x>"; exit 2; }
 	@echo "$(NAME)" | grep -qE '^[a-zA-Z0-9][a-zA-Z0-9_-]*$$' \
 	  || { echo "error: NAME must match [a-zA-Z0-9][a-zA-Z0-9_-]* — got '$(NAME)'"; exit 1; }
-	@out=$$(uv run --project . factory-acl genkeys --add-identity "$(NAME)"); \
+	@out=$$(uv run --frozen --project . factory-acl genkeys --add-identity "$(NAME)"); \
 	rc=$$?; \
 	if [ $$rc -ne 0 ]; then echo "$$out" >&2; echo "factory-acl failed (exit $$rc) — aborting"; exit $$rc; fi; \
 	state=$$(echo "$$out" | grep -oE 'STATE=(noop|repaired|added)'); \

@@ -576,9 +576,12 @@ class TestE2EV1RedGate:
         )
         # Makefile uses backslash line continuation; match across newlines.
         # Both invocations must use the actual Makefile shape (uv run python …).
+        # Host-side render targets carry an optional `--frozen` (#1905) so a stale
+        # uv.lock fails loudly; normalize it out before the shape assertion.
+        normalized = makefile_contents.replace("--frozen ", "")
         assert re.search(
             r"uv run python tools/render_quadlet\.py.*?--platform telegram",
-            makefile_contents,
+            normalized,
             re.DOTALL,
         ), (
             "Makefile quadlet-install missing "
@@ -586,7 +589,7 @@ class TestE2EV1RedGate:
         )
         assert re.search(
             r"uv run python tools/render_quadlet\.py.*?--platform discord",
-            makefile_contents,
+            normalized,
             re.DOTALL,
         ), (
             "Makefile quadlet-install missing "

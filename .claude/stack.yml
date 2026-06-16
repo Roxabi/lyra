@@ -111,7 +111,7 @@ quality_gates:
     enabled: true
     stage: pre-push
     script: tools/check_secrets_drift.sh
-    description: assert unit Secret= names ⊆ quadlet.toml required_secrets, quadlet.toml == manifest, factory-nats-* seeds have acl-matrix factory+container identities (changes under deploy/)
+    description: assert unit Secret= names ⊆ quadlet.toml required_secrets, quadlet.toml == manifest, factory-nats-* seeds have acl-matrix factory+container identities, and required_secrets ↔ secrets-policy.toml [secret.*] (check d, #1901) (changes under deploy/)
 
   volumes_table:
     enabled: true
@@ -123,7 +123,13 @@ quality_gates:
     enabled: true
     stage: pre-push
     script: tools/check_quadlet_manifest_install.sh
-    description: every container declared in deploy/quadlet.toml must be wired into Makefile quadlet-install, quadlet-install-verify.sh UNITS, and converge.sh restart fan-out (#1867 — factory-omp shipped but never installed)
+    description: bidirectional manifest↔install — every container/volume/network/pod declared in deploy/quadlet.toml is wired into Makefile quadlet-install + verify UNITS + converge fan-out (forward, #1867), AND every on-disk unit file in deploy/quadlet/ is declared in quadlet.toml (reverse — orphan-install guard, #1901)
+
+  secrets_source:
+    enabled: true
+    stage: pre-push
+    script: tools/check_secrets_source.sh
+    description: assert every nats-seed/required secret in secrets-policy.toml has its source file under the factory data dir; skip gracefully when the data dir is absent (CI/dev). optional secrets WARN, not fail (#1901)
 
   str_exc_bus_bound:
     enabled: true

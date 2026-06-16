@@ -295,6 +295,22 @@ Current host-role mapping (from `~/projects/hosts.toml`):
 | M₁ `roxabituwer` | `factory-hub` | `factory-telegram`, `factory-discord` (all 4 bots) |
 | M₂ `roxabitower` | `image-worker` | none today |
 
+### (e) Bot-token secret class
+
+Bot API tokens belong to the `bot-token` secret class declared in `deploy/secrets-policy.toml` under `[secret-class.bot-token]`. Class members follow the naming pattern:
+
+```
+factory-bot-{platform}-{bot_id}           # always present
+factory-bot-{platform}-{bot_id}-webhook   # when webhook_enabled=True
+```
+
+Key properties of this class:
+
+- **Rendered at install** — `tools/render_quadlet.py` reads `BotStore` (`~/.roxabi/factory/config.db`) and emits the correct `Secret=` directives for each bot. Members are never listed in `required_secrets` in `deploy/quadlet.toml` (the template uses a `{{bot_secrets}}` placeholder instead).
+- **No canonical seed file** — bot tokens originate from the platform's BotFather/developer portal. There is no factory-generated source file under `~/.roxabi/factory/`. The `check_secrets_source.sh` gate skips class members entirely (`source = "n/a"`).
+- **Not checked by the drift gate** — `check_secrets_drift.sh` check (d) operates on `data["secret"]` entries only. Class declarations live under `data["secret-class"]` (separate TOML key) and are never entered into the bidirectional assertion.
+- **Provisioned per host, per bot** — see (b) Bot onboarding above.
+
 ## Secret rotation
 
 ### Rotate an nkey seed

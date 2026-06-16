@@ -51,6 +51,20 @@ while IFS= read -r container; do
     fi
 done < <(grep -oE '^container = "[^"]+"' deploy/quadlet.toml | cut -d'"' -f2)
 
+# Volume units: a [volume.*] declared in the manifest must also be cp'd by the
+# Makefile quadlet-install recipe. If it is not, the Quadlet generator drops
+# every .container that references it via Volume=/Requires= — the unit silently
+# fails to generate and converge's restart fan-out errors every cycle (#1813:
+# factory-omp-sessions.volume shipped + referenced but never installed → no
+# factory-omp.service → 5-min NATS+clients bounce loop).
+while IFS= read -r volume; do
+    count=$((count + 1))
+    if ! grep -qF "deploy/quadlet/${volume}" Makefile; then
+        echo "FAIL: ${volume} is declared in deploy/quadlet.toml but never installed by 'make quadlet-install'"
+        fail=1
+    fi
+done < <(grep -oE '^volume = "[^"]+"' deploy/quadlet.toml | cut -d'"' -f2)
+
 if [ "${count}" -eq 0 ]; then
     echo "FAIL: no containers parsed from deploy/quadlet.toml — gate validated nothing"
     exit 1
@@ -61,6 +75,7 @@ if [ "${fail}" -ne 0 ]; then
     echo "Every [component.*] container in deploy/quadlet.toml must be wired into the"
     echo "Makefile quadlet-install recipe, the quadlet-install-verify.sh UNITS array,"
     echo "and the converge.sh restart fan-out — see #1867."
+    echo "Every [volume.*] volume must be cp'd by the quadlet-install recipe — see #1813."
     exit 1
 fi
 

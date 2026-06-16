@@ -31,6 +31,21 @@ with_deploy_lock() {
     "$@"
 }
 
+# ── Dirty-tree guard ─────────────────────────────────────────────────────────
+# Abort before a `git pull --ff-only` if the checkout has uncommitted *tracked*
+# changes. Without this, a dev-on-prod edit (e.g. the 2026-06-14 WIP incident)
+# makes every 5-min auto-deploy pull fail mid-pipeline — a silent jam. Untracked
+# files are ignored (they do not block ff-only); only tracked mods are fatal.
+require_clean_tree() {
+    local dir="$1"
+    if ! git -C "${dir}" diff --quiet HEAD 2>/dev/null; then
+        echo "ERROR: ${dir} has uncommitted tracked changes — refusing to pull" >&2
+        echo "       (a dirty prod checkout jams ff-only auto-deploy). Resolve manually:" >&2
+        echo "       git -C ${dir} status --short" >&2
+        exit 1
+    fi
+}
+
 # ── Change detection helpers ─────────────────────────────────────────────────
 
 # Compute current convergence fingerprint: git HEAD + unit checksums + auth.conf SHA

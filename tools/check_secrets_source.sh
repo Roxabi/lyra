@@ -66,13 +66,6 @@ while IFS=$'\t' read -r name policy source; do
         optional)
             echo "WARN: optional secret $name source missing: $src_path — unrecoverable after next rotation" >&2
             ;;
-        bot-provisioned)
-            # Bot tokens have no canonical seed file — provisioned by the operator
-            # via `factory bot secret install <platform> <bot_id>`.  source = "n/a"
-            # is set in [secret-class.bot-token] so this branch should not be
-            # reached in practice, but is explicit here for documentation + safety.
-            echo "WARN: bot-provisioned secret $name has no source file — provision via 'factory bot secret install'" >&2
-            ;;
         *)
             echo "WARN: $name has unrecognized policy '$policy' — source-missing treated as non-fatal" >&2
             ;;

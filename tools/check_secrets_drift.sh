@@ -404,37 +404,14 @@ fi
 #             component required_secrets (catches an orphan policy entry with
 #             no consumer — the factory-nats-auth class).
 #
-# Bot-token class exemption: secrets matching a [secret-class.*] pattern in
-# secrets-policy.toml are rendered dynamically at install time by
-# tools/render_quadlet.py and never appear in required_secrets — they are
-# intentionally absent from QUADLET_SET.  The class entry itself never enters
-# POLICY_SET (tomllib parses it under data["secret-class"], a separate key),
-# so the forward direction is unaffected.  The load below is used only to
-# build the bot_class_patterns array for the reverse exemption guard.
-mapfile -t BOT_CLASS_PATTERNS < <(
-    python3 - "$POLICY_TOML" <<'PYEOF'
-import sys, tomllib, re, pathlib
-with pathlib.Path(sys.argv[1]).open("rb") as f:
-    data = tomllib.load(f)
-# Convert each secret-class pattern to a shell-compatible ERE: {foo} -> [^-]+
-for cls in data.get("secret-class", {}).values():
-    pattern = cls.get("pattern", "")
-    if pattern:
-        ere = re.sub(r'\{[^}]+\}', '[^-]+', re.escape(pattern))
-        print(ere)
-PYEOF
-)
-
-# is_bot_class_member: return 0 if $1 matches any bot-class pattern, 1 otherwise.
-is_bot_class_member() {
-    local name="$1" pat
-    for pat in "${BOT_CLASS_PATTERNS[@]}"; do
-        if [[ "$name" =~ ^${pat}(-webhook)?$ ]]; then
-            return 0
-        fi
-    done
-    return 1
-}
+# Bot-token class exemption is STRUCTURAL, not runtime: secrets matching a
+# [secret-class.*] pattern in secrets-policy.toml are rendered dynamically at
+# install by tools/render_quadlet.py and never appear in required_secrets, so
+# they are absent from QUADLET_SECRETS (forward direction unaffected).  The
+# class entry is parsed by tomllib under data["secret-class"] — a separate
+# top-level key from data["secret"] — so it never enters POLICY_SET (reverse
+# direction unaffected).  TOML namespacing therefore isolates [secret-class.*]
+# from check (d) entirely; no per-secret exemption guard is required here.
 
 in_quadlet_not_policy=()
 for s in "${QUADLET_SECRETS[@]}"; do

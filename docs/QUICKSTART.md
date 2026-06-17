@@ -18,10 +18,10 @@ Get Lyra running and send your first message in about 5 minutes.
 
 ```bash
 git clone https://github.com/Roxabi/roxabi-factory
-cd lyra
+cd roxabi-factory
 uv sync
 
-# Activate the virtual environment to get the `lyra` CLI on your PATH
+# Activate the virtual environment to get the `factory` CLI on your PATH
 source .venv/bin/activate
 # Alternative: add .venv/bin to your PATH permanently in ~/.bashrc
 ```

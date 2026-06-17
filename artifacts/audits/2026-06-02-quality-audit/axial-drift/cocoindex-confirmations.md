@@ -1512,7 +1512,7 @@ File: docs/architecture/adr/081-architecture-inventory-semantic-code-oracle.mdx:
 - **Pros:** smallest diff; no new file.
 - **Cons:** stays heuristic by design — each fix addresses one symptom while leaving the approximate foundation intact. Issues #1532 and #1533 would each re-hand-roll a resolver, producing parallel-path drift with no shared authority.
 
-### Option B: Reuse an external tool (ccc / GitNexus / code-graph-ai)
+### Option B: Reuse an external tool (e.g. ccc and similar graph explorers)
 - **Pros:** no new in-tree code.
 - **Cons:** wrong tool class — ranked retrieval ≠ exact existence check. All three are out-of-process and require cold-start index builds; none has NATS-subject awareness. Integration overhead exceeds building, and coverage would be lower. The retrieval ladder reserves these tools for the semantic rung, not the exact rung.
 

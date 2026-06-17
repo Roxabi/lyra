@@ -1,30 +1,25 @@
-# deploy/omp/models.yml — omp (oh-my-pi) provider override → factory LiteLLM proxy (#1811, Option D)
+# deploy/omp/models.yml — omp (oh-my-pi) provider override → factory LiteLLM proxy
 #
 # Mounted into the omp config dir (relocated via PI_CODING_AGENT_DIR) so the
 # built-in `litellm` provider targets the factory proxy on :18091 instead of
 # its default http://localhost:4000/v1. Pure config — no TCP forward, no
 # upstream patch (options A/B/C superseded; see issue #1811).
 #
+# #1923: dynamic discovery against the LiteLLM xAI pass-through catalogue
+# (interim baseUrl until llmCLI#130 unifies on :18091/v1).
+#
 # Invariants:
 # - `apiKey` holds an ENV VAR NAME, not a secret value. omp resolves
 #   `LITELLM_API_KEY` from the environment at runtime — safe to commit.
-# - The explicit `models:` list is REQUIRED, not cosmetic: omp's built-in
-#   discovery resolves the catalog URL from already-known models, not from
-#   this override, so an override-only entry would still discover against
-#   localhost:4000 (chicken-and-egg). Listed models inherit the provider
-#   baseUrl/api; missing capability metadata (context window, cost) backfills
-#   from omp's bundled references on id match.
-# - This list REPLACES discovery: a model added to the proxy is invisible to
-#   omp until it is added here.
+# - `discovery.type: openai-models-list` fetches GET {baseUrl}/models at boot.
+#   Proxy-new Grok ids appear after container restart — no manual edit here.
 # - Quadlet wiring (secret mount, env injection, volume mount into the worker
 #   unit) is #1812's scope — this file only proves the config pattern.
-# - dead upstreams pruned (kimi-k2.6 = Fireworks sub terminated llmCLI#116; deepseek-v4-pro = NVIDIA NIM PoC dropped 2026-06-13, #1881)
 
 providers:
   litellm:
-    baseUrl: http://roxabituwer.goose-logarithm.ts.net:18091/v1
+    baseUrl: http://roxabituwer.goose-logarithm.ts.net:18091/xai/v1
     api: openai-completions
     apiKey: LITELLM_API_KEY
-    models:
-      - id: grok-4
-      - id: grok-4-fast
+    discovery:
+      type: openai-models-list

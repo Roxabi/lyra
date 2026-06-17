@@ -7,7 +7,7 @@ Canonical source: `roxabi-plugins/plugins/dev-core/tools/` — ¬edit project-si
 
 ## Wiring
 
-Scripts are driven by `.claude/stack.yml` `quality_gates` block — that block is the SSoT for which gates exist and their stage (pre-commit, pre-push, CI). Most gates run pre-commit; `import_layers` and `architecture_snapshot` run pre-push; `doc_drift` runs CI.
+Scripts are driven by `.claude/stack.yml` `quality_gates` block — that block is the SSoT for which gates exist and their stage (pre-commit, pre-push, CI). Wiring index: `docs/ops/quality-gates.md`. Drift guard: `tools/audit_gate_wiring.py` (CI). Git hooks: `hooks.tool: pre-commit` + `make hooks-install`. Claude session hooks (format/security on agent edits) are a separate layer — see quality-gates.md § Claude session hooks.
 
 ### `check_doc_drift.py` — scanned scope (allowlist, #1538)
 

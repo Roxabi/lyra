@@ -85,6 +85,9 @@ jobs:
       - name: Check qg.conf drift (stack.yml is source of truth)
         run: bash scripts/check-qg-conf-drift.sh
 
+      - name: Audit quality_gates wiring (stack.yml vs pre-commit vs CI)
+        run: uv run python tools/audit_gate_wiring.py
+
       - name: Check duplicate test basenames
         run: bash tools/check_duplicate_test_basenames.sh
 
@@ -126,6 +129,9 @@ jobs:
 
       - name: Check secrets drift (unit Secret= / quadlet.toml / manifest / acl-matrix)
         run: bash tools/check_secrets_drift.sh
+
+      - name: Check secrets source files (skips when factory data dir absent)
+        run: bash tools/check_secrets_source.sh
 
       - name: Check quadlet manifest install wiring (quadlet.toml → Makefile/verify/converge)
         run: bash tools/check_quadlet_manifest_install.sh

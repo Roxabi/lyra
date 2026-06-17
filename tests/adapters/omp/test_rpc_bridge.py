@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 import sys
 import threading
 from pathlib import Path
@@ -24,11 +25,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from factory.adapters.omp._rpc_bridge import (
+    _DEFAULT_MODEL,
+    _DEFAULT_REQUEST_TIMEOUT,
+    _ENV_REQUEST_TIMEOUT_KEY,
     _PINNED_SHA256,
     DigestMismatchError,
     RpcBridge,
     SteerViolationError,
     _classify_exception,
+    _read_request_timeout,
 )
 
 # ---------------------------------------------------------------------------
@@ -767,6 +772,12 @@ class TestStartLifecycle:
         assert received_kwargs.get("provider") == "litellm", (
             f"expected provider='litellm', got: {received_kwargs.get('provider')}"
         )
+        assert received_kwargs.get("model") == _DEFAULT_MODEL, (
+            f"expected model={_DEFAULT_MODEL!r}, got: {received_kwargs.get('model')}"
+        )
+        assert received_kwargs.get("request_timeout") == _DEFAULT_REQUEST_TIMEOUT, (
+            "expected default request_timeout when unset"
+        )
 
     async def test_injected_client_is_adopted_without_constructing(
         self, tmp_path: Path
@@ -876,3 +887,20 @@ class TestRunCapturesLastTurn:
         assert bridge._last_turn is sentinel_turn, (
             f"_last_turn should be the sentinel turn, got {bridge._last_turn!r}"
         )
+
+
+class TestRequestTimeoutConfig:
+    def test_read_request_timeout_defaults(self) -> None:
+        env_without = {
+            k: v for k, v in os.environ.items() if k != _ENV_REQUEST_TIMEOUT_KEY
+        }
+        with patch.dict(os.environ, env_without, clear=True):
+            assert _read_request_timeout() == _DEFAULT_REQUEST_TIMEOUT
+
+    def test_read_request_timeout_honours_env(self) -> None:
+        with patch.dict(os.environ, {_ENV_REQUEST_TIMEOUT_KEY: "120"}):
+            assert _read_request_timeout() == 120.0
+
+    def test_read_request_timeout_rejects_invalid(self) -> None:
+        with patch.dict(os.environ, {_ENV_REQUEST_TIMEOUT_KEY: "not-a-float"}):
+            assert _read_request_timeout() == _DEFAULT_REQUEST_TIMEOUT

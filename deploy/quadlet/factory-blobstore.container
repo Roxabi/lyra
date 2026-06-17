@@ -30,7 +30,7 @@ Environment=NATS_URL=nats://factory-nats:4222
 # ADR-054: nkey seed delivered as Podman secret for NATS nkey auth.
 Secret=factory-nats-blobstore,type=mount,target=factory-nats-blobstore.seed,uid=1500,gid=1500,mode=0400
 Environment=NATS_NKEY_SEED_PATH=/run/secrets/factory-nats-blobstore.seed
-# D4: bearer token secret (type=mount, tmpfs-backed). Bootstrap: see docs/QUADLET-DEPLOYMENT.md.
+# D4: bearer token secret (type=mount, tmpfs-backed). Bootstrap: see docs/runbooks/secrets-rotation.md.
 # Rotation: write new token → podman secret create --replace → systemctl --user restart
 # (type=mount files are bound at container init; restart is mandatory — ADR-054).
 Secret=factory_blobstore_token,type=mount,uid=1500,gid=1500,mode=0400,target=/run/secrets/factory_blobstore_token

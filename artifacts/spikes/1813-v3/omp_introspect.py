@@ -4,6 +4,7 @@ Learns WHERE the session id/path lives and WHEN it is populated, so the
 switch_session probe can capture the right token at the right time.
 THROWAWAY. Run inside factory-omp with OMP_MODEL=grok-4-fast.
 """
+
 # pyright: reportMissingImports=false
 from __future__ import annotations
 

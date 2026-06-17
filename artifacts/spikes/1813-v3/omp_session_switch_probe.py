@@ -16,6 +16,7 @@ KEY API FACTS (learned via omp_api_dump.py / omp_introspect.py on M1):
 
 THROWAWAY. Run INSIDE factory-omp on M1 with OMP_MODEL=grok-4-fast.
 """
+
 # pyright: reportMissingImports=false
 from __future__ import annotations
 
@@ -88,7 +89,9 @@ def probe_a() -> tuple[bool, str]:
                 _say(c, "What codeword did I give you earlier? Reply just the word."),
                 "BANANA42",
             )
-            out.append(f"isolated={iso} recalled_after_live_switch={mem} switch={t_sw:.0f}ms")
+            out.append(
+                f"isolated={iso} recalled_after_live_switch={mem} switch={t_sw:.0f}ms"
+            )
             return (iso and mem), " | ".join(out)
         finally:
             c.stop()  # type: ignore[attr-defined]
@@ -122,7 +125,7 @@ def probe_b() -> tuple[bool, str]:
                 "CHERRY7",
             )
             out.append(
-                f"reader_recalled={recalled} cold_start={t_start:.0f}ms switch={t_sw:.0f}ms"
+                f"recalled={recalled} cold_start={t_start:.0f}ms switch={t_sw:.0f}ms"
             )
             return recalled, " | ".join(out)
         finally:

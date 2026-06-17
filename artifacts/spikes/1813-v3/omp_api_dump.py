@@ -5,6 +5,7 @@ process)? That is the precondition for Model B (and for Model A surviving
 eviction). No LLM call needed for the signature dump.
 THROWAWAY.
 """
+
 # pyright: reportMissingImports=false
 from __future__ import annotations
 
@@ -55,8 +56,12 @@ def main() -> None:
     # Persistence-mode probe: construct WITHOUT no_session, look for a session dir.
     print("\n=== persistence-mode probe (no_session=False) ===")
     try:
-        c = RpcClient(executable=os.environ.get("OMP_BIN", "/opt/omp/omp"),
-                      provider="litellm", model="grok-4-fast", no_session=False)
+        c = RpcClient(
+            executable=os.environ.get("OMP_BIN", "/opt/omp/omp"),
+            provider="litellm",
+            model="grok-4-fast",
+            no_session=False,
+        )
         c.start()
         try:
             st = c.get_state()
@@ -69,8 +74,11 @@ def main() -> None:
 
     # Where does omp keep sessions on disk, if anywhere?
     print("\n=== on-disk session dirs ===")
-    for base in ("/home/factory/.omp", os.environ.get("HOME", "") + "/.omp",
-                 "/home/factory/.config/omp-pi"):
+    for base in (
+        "/home/factory/.omp",
+        os.environ.get("HOME", "") + "/.omp",
+        "/home/factory/.config/omp-pi",
+    ):
         p = Path(base)
         if p.exists():
             hits = sorted(str(x) for x in p.glob("**/*session*"))[:10]

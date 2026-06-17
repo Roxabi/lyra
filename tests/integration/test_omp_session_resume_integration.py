@@ -45,7 +45,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from factory.adapters.omp.omp_pool import OmpPool
+from factory.adapters.omp.omp_pool import OmpPool, _PoolWorker
 from factory.llm.drivers.omp_rpc import OmpRpcDriver
 from roxabi_contracts.jobs import JobResult
 from roxabi_contracts.jobs.fixtures import sample_job_result_ok
@@ -84,16 +84,21 @@ def _mock_rpc_client(
 def _make_pool_with_fake_start(
     session_file: str = "/tmp/omp/.omp/sessions/sess-abc.jsonl",
 ) -> tuple[OmpPool, list[MagicMock]]:
-    """OmpPool whose _start_client returns a fake client without exec'ing omp."""
+    """OmpPool whose _start_worker returns fake _PoolWorker (client+bridge).
+    Model B: patch internal starter; acquire(session_file) only (no pool_id).
+    """
     pool = OmpPool(omp_bin=Path("/fake/omp"), provider="litellm", model="grok-4-fast")
     issued: list[MagicMock] = []
 
-    async def _fake_start(self: OmpPool) -> MagicMock:  # type: ignore[override]
+    async def _fake_start(self: OmpPool) -> _PoolWorker:  # type: ignore[override]
         client = _mock_rpc_client(session_file=session_file)
         issued.append(client)
-        return client
+        # dummy bridge (per-worker bridges not exercised in these direct-pool tests)
+        bridge = MagicMock()
+        return _PoolWorker(client=client, bridge=bridge)
 
-    pool._start_client = lambda: _fake_start(pool)  # type: ignore[method-assign]
+    # Model B: _start_worker (not _start_client); returns _PoolWorker
+    pool._start_worker = lambda: _fake_start(pool)  # type: ignore[method-assign]
     return pool, issued
 
 
@@ -229,11 +234,11 @@ class TestResumeCallsSwitchSession:
         # The pending token is stashed
         assert driver._pending_resume.get("pool-resume") == persisted_path  # noqa: SLF001
 
-        # Now acquire the OmpPool slot with the stashed session_file
+        # Now acquire slot with stashed session_file (Model B: no pool_id)
         pending_token = driver._pending_resume.pop("pool-resume")  # noqa: SLF001
-        _client = await pool.acquire("pool-resume", session_file=pending_token)
+        await pool.acquire(pending_token)
 
-        # switch_session must have been called with the persisted path
+        # switch_session called with persisted path (inside acquire for resume)
         assert len(issued) == 1
         issued[0].switch_session.assert_called_once_with(persisted_path)
         issued[0].new_session.assert_not_called()
@@ -265,63 +270,73 @@ class TestResumeCallsSwitchSession:
 
 
 class TestOmpPoolLruEviction:
-    """OmpPool at cap=1: acquiring a second pool_id evicts the first without error."""
+    """OmpPool cap=1 (Model B): acquire beyond cap blocks until release.
+    Flat free-set (no per-pool_id routing or auto-evict of checked-out).
+    """
 
     @pytest.mark.asyncio
     async def test_cap1_two_pool_ids_evicts_without_raising(self) -> None:
-        """With OMP_POOL_CAP=1, acquiring a second pool_id must:
-        - stop the first client (LRU evicted)
-        - not raise any exception
-        - leave only the new entry in the pool
+        """OMP_POOL_CAP=1: second acquire blocks (no auto-evict).
+        Release allows progress. (Old LRU-per-id removed in Model B.)
         """
+        import asyncio
         import os
         from unittest.mock import patch
 
         pool, issued = _make_pool_with_fake_start()
 
         with patch.dict(os.environ, {"OMP_POOL_CAP": "1"}):
-            client_a = await pool.acquire("pool-id-1", session_file=None)
+            w_a = await pool.acquire(None)  # Model B: acquire(sf); None=cold
+            client_a = w_a.client
             assert len(issued) == 1
 
-            # Acquiring a second pool_id at cap=1 must evict pool-id-1 silently
-            client_b = await pool.acquire("pool-id-2", session_file=None)
+            # Second at cap=1 must block (no auto-evict on 'new pool_id')
+            with pytest.raises(asyncio.TimeoutError):
+                await asyncio.wait_for(pool.acquire(None), timeout=0.05)
+
+            # Release first worker to free slot, then second acquire succeeds
+            pool.release(w_a)
+            w_b = await pool.acquire(None)
+            client_b = w_b.client
 
         assert len(issued) == 2
 
-        # pool-id-1 evicted; pool-id-2 present
-        assert "pool-id-1" not in pool._entries  # noqa: SLF001
-        assert "pool-id-2" in pool._entries  # noqa: SLF001
-        assert len(pool._entries) == 1  # noqa: SLF001
+        # Model B: flat free-set, no _entries. Concurrency via Sem+release.
+        # (No _entries accesses per new API.)
 
-        # LRU stop was called on the evicted client
-        client_a.stop.assert_called_once()
+        # No stop on 'second' acquire; stops on aclose/explicit.
+        client_a.stop.assert_not_called()
         client_b.stop.assert_not_called()
 
         await pool.aclose()
 
     @pytest.mark.asyncio
     async def test_cap1_stop_error_does_not_propagate(self) -> None:
-        """If client.stop() raises during LRU eviction, the error is swallowed
-        and the new acquire still succeeds (forward-progress guarantee)."""
+        """Stop errs (now only aclose) swallowed; acquire/release guarantee
+        forward progress under cap (semaphore)."""
         import os
         from unittest.mock import patch
 
         pool, issued = _make_pool_with_fake_start()
 
         with patch.dict(os.environ, {"OMP_POOL_CAP": "1"}):
-            await pool.acquire("pool-err-1", session_file=None)
+            w1 = await pool.acquire(None)
             assert len(issued) == 1
+            c1 = w1.client
 
-            # Make stop() raise on the first client
-            issued[0].stop.side_effect = RuntimeError("omp died")
+            # Make stop() raise on first (will be hit on aclose, not acquire)
+            c1.stop.side_effect = RuntimeError("omp died")
 
-            # Must NOT propagate — forward progress guaranteed by pool invariant
-            client_b = await pool.acquire("pool-err-2", session_file=None)
+            # Release so second acquire can proceed under cap=1 (no auto-evict)
+            pool.release(w1)
+
+            # Must succeed — forward progress
+            w2 = await pool.acquire(None)
+            c2 = w2.client
 
         assert len(issued) == 2
-        assert "pool-err-2" in pool._entries  # noqa: SLF001
-        assert client_b is issued[1]
+        assert c2 is issued[1]
 
-        # Prevent stop() raising again during aclose
-        issued[1].stop.side_effect = None
+        # aclose swallows stop errs (see impl)
+        c2.stop.side_effect = None
         await pool.aclose()

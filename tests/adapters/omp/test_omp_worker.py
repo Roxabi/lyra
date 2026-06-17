@@ -1,7 +1,9 @@
-"""Unit tests for factory.adapters.omp.omp_worker.OmpWorker.
+"""Unit tests for factory.adapters.omp.omp_worker.OmpWorker (Model B).
 
-Tests are fully offline: RpcBridge is injected as a mock, no NATS
-connection is opened.
+Model B: OmpWorker(pool=...) — no bridge= parameter.
+handle() spawns asyncio.Task per job (returns immediately).
+_run_job() acquires from pool, calls worker.bridge.run, releases.
+publish_job_error is a module-level function (patched at omp_worker namespace).
 
 asyncio_mode = "auto" is configured project-wide in pyproject.toml.
 """
@@ -23,31 +25,45 @@ _JOB_ID = "job-abc123"
 _JOB_NAME = "summarise"
 _POOL_ID = "test-pool"
 
+_VALID_PAYLOAD = {
+    "job_id": _JOB_ID,
+    "job_name": _JOB_NAME,
+    "payload": {"prompt": "summarise this text", "pool_id": _POOL_ID},
+    "contract_version": "1",
+    "reply_to": "_INBOX.test.reply",
+    "trace_id": "trace-001",
+    "issued_at": "2026-06-11T00:00:00Z",
+}
 
-def _make_bridge() -> MagicMock:
-    bridge = MagicMock()
-    bridge.register = AsyncMock()
-    bridge.run = AsyncMock()
-    bridge.publish_error = AsyncMock()
-    bridge.aclose = AsyncMock()
-    return bridge
+
+def _make_fake_pool_worker() -> MagicMock:
+    """Fake _PoolWorker: has .bridge (with async run) and .session_file."""
+    pw = MagicMock()
+    pw.session_file = None
+    pw.bridge = MagicMock()
+    pw.bridge.run = AsyncMock()
+    return pw
 
 
 def _make_pool() -> MagicMock:
-    mock_client = MagicMock()
+    """Pool fake with register/acquire/release/aclose."""
+    fake_pool_worker = _make_fake_pool_worker()
     pool = MagicMock()
-    pool.acquire = AsyncMock(return_value=mock_client)
+    pool.register = AsyncMock()
+    pool.acquire = AsyncMock(return_value=fake_pool_worker)
+    pool.release = MagicMock()
     pool.aclose = AsyncMock()
-    mock_entry = MagicMock()
-    mock_entry.session_file = None
-    pool._entries = {_POOL_ID: mock_entry}
     return pool
 
 
-def _make_worker(
-    bridge: MagicMock | None = None, pool: MagicMock | None = None
-) -> OmpWorker:
-    return OmpWorker(bridge=bridge or _make_bridge(), pool=pool or _make_pool())
+def _make_worker(pool: MagicMock | None = None) -> OmpWorker:
+    return OmpWorker(pool=pool or _make_pool())
+
+
+async def _drain(worker: OmpWorker) -> None:
+    """Wait for all spawned jobs to complete."""
+    if worker._jobs:
+        await asyncio.gather(*list(worker._jobs), return_exceptions=True)
 
 
 # ---------------------------------------------------------------------------
@@ -92,78 +108,153 @@ class TestHeartbeatPayload:
     def test_inherits_base_fields(self) -> None:
         worker = _make_worker()
         payload = worker.heartbeat_payload()
-        # base includes at minimum a timestamp or similar; verify worker key added
         assert "worker" in payload
 
 
 # ---------------------------------------------------------------------------
-# handle() — happy path
+# handle() — happy path (spawn semantics)
 # ---------------------------------------------------------------------------
 
 
 class TestHandleHappyPath:
     async def test_handle_dispatches_to_bridge_run(self) -> None:
-        bridge = _make_bridge()
-        worker = _make_worker(bridge)
-        payload = {
-            "job_id": _JOB_ID,
-            "job_name": _JOB_NAME,
-            "payload": {"prompt": "summarise this text", "pool_id": _POOL_ID},
-            "contract_version": "1",
-            "reply_to": "_INBOX.test.reply",
-            "trace_id": "trace-001",
-            "issued_at": "2026-06-11T00:00:00Z",
-        }
-        await worker.handle(msg=MagicMock(), payload=payload)
-        bridge.run.assert_awaited_once_with(
-            prompt="summarise this text",
-            job_id=_JOB_ID,
-            client=ANY,
-            session_file=ANY,
+        pool = _make_pool()
+        worker = _make_worker(pool)
+        fake_pw = pool.acquire.return_value
+
+        await worker.handle(msg=MagicMock(), payload=_VALID_PAYLOAD)
+        await _drain(worker)
+
+        pool.acquire.assert_awaited_once()
+        fake_pw.bridge.run.assert_awaited_once_with(
+            "summarise this text",
+            _JOB_ID,
+            session_file=fake_pw.session_file,
         )
 
+    async def test_handle_releases_pool_worker_on_success(self) -> None:
+        pool = _make_pool()
+        worker = _make_worker(pool)
+        fake_pw = pool.acquire.return_value
+
+        await worker.handle(msg=MagicMock(), payload=_VALID_PAYLOAD)
+        await _drain(worker)
+
+        pool.release.assert_called_once_with(fake_pw)
+
     async def test_handle_no_error_published_on_success(self) -> None:
-        bridge = _make_bridge()
-        worker = _make_worker(bridge)
-        payload = {
-            "job_id": _JOB_ID,
-            "job_name": _JOB_NAME,
-            "payload": {"prompt": "do something", "pool_id": _POOL_ID},
-            "contract_version": "1",
-            "reply_to": "_INBOX.test.reply",
-            "trace_id": "trace-002",
-            "issued_at": "2026-06-11T00:00:00Z",
-        }
-        await worker.handle(msg=MagicMock(), payload=payload)
-        bridge.publish_error.assert_not_awaited()
+        pool = _make_pool()
+        worker = _make_worker(pool)
+
+        with patch(
+            "factory.adapters.omp.omp_worker.publish_job_error", AsyncMock()
+        ) as mock_pje:
+            await worker.handle(msg=MagicMock(), payload=_VALID_PAYLOAD)
+            await _drain(worker)
+            mock_pje.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
-# handle() — invalid envelope → publish_error, not raise
+# handle() — spawn returns immediately (non-blocking)
+# ---------------------------------------------------------------------------
+
+
+class TestHandleSpawnSemantics:
+    async def test_handle_returns_before_job_completes(self) -> None:
+        """handle() spawns and returns; it does NOT block on bridge.run."""
+        pool = _make_pool()
+        fake_pw = pool.acquire.return_value
+        release_job = asyncio.Event()
+
+        async def blocked_run(prompt, job_id, *, session_file=None):  # noqa: ARG001
+            await release_job.wait()  # event-based: job hangs until the test frees it
+
+        fake_pw.bridge.run.side_effect = blocked_run
+
+        worker = _make_worker(pool)
+        await worker.handle(msg=MagicMock(), payload=_VALID_PAYLOAD)
+
+        # handle() returned while the job is still in flight — the spawned task is
+        # pending (not done) precisely because release_job is unset. Deterministic
+        # proof that handle() did not block on bridge.run; no wall-clock heuristic.
+        assert len(worker._jobs) == 1
+        (job_task,) = worker._jobs
+        assert not job_task.done(), "handle() blocked until the job finished"
+
+        release_job.set()
+        await _drain(worker)
+
+    async def test_two_jobs_dispatch_in_parallel(self) -> None:
+        """Two handle() calls run their jobs concurrently, not serially."""
+        # Each job signals on `started` when it enters bridge.run, then blocks on
+        # `release`. If dispatch were serial, job 2 could not enter bridge.run until
+        # job 1 returned — so both `started` signals arriving before any release is a
+        # deterministic proof of concurrency (no wall-clock timing).
+        started = asyncio.Semaphore(0)
+        release = asyncio.Event()
+        call_count = 0
+
+        def _fresh_pool_worker() -> MagicMock:
+            pw = _make_fake_pool_worker()
+
+            async def run_until_released(prompt, job_id, *, session_file=None):  # noqa: ARG001
+                nonlocal call_count
+                call_count += 1
+                started.release()  # this job has entered bridge.run
+                await release.wait()  # event-based: hold until both are in flight
+
+            pw.bridge.run.side_effect = run_until_released
+            return pw
+
+        pool = MagicMock()
+        pool.register = AsyncMock()
+        pool.release = MagicMock()
+        pool.aclose = AsyncMock()
+        # Each acquire call returns a fresh worker
+        pool.acquire = AsyncMock(side_effect=lambda *_: _fresh_pool_worker())
+
+        worker = _make_worker(pool)
+        payload2 = {**_VALID_PAYLOAD, "job_id": "job-xyz789", "trace_id": "trace-002"}
+
+        await worker.handle(msg=MagicMock(), payload=_VALID_PAYLOAD)
+        await worker.handle(msg=MagicMock(), payload=payload2)
+
+        # Both jobs must be in bridge.run simultaneously (would hang if serial).
+        await asyncio.wait_for(started.acquire(), timeout=1.0)
+        await asyncio.wait_for(started.acquire(), timeout=1.0)
+        assert call_count == 2
+
+        release.set()
+        await _drain(worker)
+        assert pool.release.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# handle() — invalid envelope → publish_job_error, not raise
 # ---------------------------------------------------------------------------
 
 
 class TestHandleInvalidEnvelope:
     async def test_invalid_reply_to_publishes_error(self) -> None:
-        """reply_to must be a valid NATS subject; invalid value → publish_error."""
-        bridge = _make_bridge()
-        worker = _make_worker(bridge)
+        """reply_to with invalid NATS subject → publish_job_error (¬raise)."""
+        worker = _make_worker()
         payload = {
             "job_id": _JOB_ID,
             "job_name": _JOB_NAME,
             "payload": {"prompt": "hello"},
             "contract_version": "1",
-            "reply_to": "invalid reply subject with spaces",  # not a valid subject
+            "reply_to": "invalid reply subject with spaces",
             "trace_id": "trace-003",
             "issued_at": "2026-06-11T00:00:00Z",
         }
-        # Must NOT raise — must call publish_error instead
-        await worker.handle(msg=MagicMock(), payload=payload)
-        bridge.publish_error.assert_awaited_once()
+        with patch(
+            "factory.adapters.omp.omp_worker.publish_job_error", AsyncMock()
+        ) as mock_pje:
+            await worker.handle(msg=MagicMock(), payload=payload)
+            mock_pje.assert_awaited_once()
 
     async def test_missing_job_name_publishes_error(self) -> None:
-        bridge = _make_bridge()
-        worker = _make_worker(bridge)
+        worker = _make_worker()
         payload = {
             "job_id": _JOB_ID,
             # job_name intentionally omitted
@@ -173,19 +264,23 @@ class TestHandleInvalidEnvelope:
             "trace_id": "trace-004",
             "issued_at": "2026-06-11T00:00:00Z",
         }
-        await worker.handle(msg=MagicMock(), payload=payload)
-        bridge.publish_error.assert_awaited_once()
+        with patch(
+            "factory.adapters.omp.omp_worker.publish_job_error", AsyncMock()
+        ) as mock_pje:
+            await worker.handle(msg=MagicMock(), payload=payload)
+            mock_pje.assert_awaited_once()
 
     async def test_bridge_run_not_called_on_parse_failure(self) -> None:
-        bridge = _make_bridge()
-        worker = _make_worker(bridge)
-        await worker.handle(msg=MagicMock(), payload={"bad": "data"})
-        bridge.run.assert_not_awaited()
+        pool = _make_pool()
+        worker = _make_worker(pool)
+        with patch("factory.adapters.omp.omp_worker.publish_job_error", AsyncMock()):
+            await worker.handle(msg=MagicMock(), payload={"bad": "data"})
+        pool.acquire.assert_not_awaited()
 
     async def test_handle_empty_prompt_string_rejected(self) -> None:
-        """Empty string prompt must publish_error and must NOT call bridge.run."""
-        bridge = _make_bridge()
-        worker = _make_worker(bridge)
+        """Empty string prompt → publish_job_error; bridge.run NOT called."""
+        pool = _make_pool()
+        worker = _make_worker(pool)
         payload = {
             "job_id": _JOB_ID,
             "job_name": _JOB_NAME,
@@ -195,14 +290,17 @@ class TestHandleInvalidEnvelope:
             "trace_id": "trace-empty-prompt",
             "issued_at": "2026-06-11T00:00:00Z",
         }
-        await worker.handle(msg=MagicMock(), payload=payload)
-        bridge.publish_error.assert_awaited_once()
-        bridge.run.assert_not_awaited()
+        with patch(
+            "factory.adapters.omp.omp_worker.publish_job_error", AsyncMock()
+        ) as mock_pje:
+            await worker.handle(msg=MagicMock(), payload=payload)
+            mock_pje.assert_awaited_once()
+        pool.acquire.assert_not_awaited()
 
     async def test_handle_missing_prompt_rejected(self) -> None:
-        """Missing prompt key must publish_error and must NOT call bridge.run."""
-        bridge = _make_bridge()
-        worker = _make_worker(bridge)
+        """Missing prompt key → publish_job_error; bridge.run NOT called."""
+        pool = _make_pool()
+        worker = _make_worker(pool)
         payload = {
             "job_id": _JOB_ID,
             "job_name": _JOB_NAME,
@@ -212,63 +310,74 @@ class TestHandleInvalidEnvelope:
             "trace_id": "trace-missing-prompt",
             "issued_at": "2026-06-11T00:00:00Z",
         }
-        await worker.handle(msg=MagicMock(), payload=payload)
-        bridge.publish_error.assert_awaited_once()
-        bridge.run.assert_not_awaited()
+        with patch(
+            "factory.adapters.omp.omp_worker.publish_job_error", AsyncMock()
+        ) as mock_pje:
+            await worker.handle(msg=MagicMock(), payload=payload)
+            mock_pje.assert_awaited_once()
+        pool.acquire.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
-# handle() — bridge.run raises → publish_error, not raise
+# _run_job() — bridge.run raises → publish_job_error, pool.release called
 # ---------------------------------------------------------------------------
 
 
 class TestHandleBridgeRunError:
     async def test_runtime_error_publishes_error(self) -> None:
-        bridge = _make_bridge()
-        bridge.run.side_effect = RuntimeError("boom")
-        worker = _make_worker(bridge)
-        payload = {
-            "job_id": _JOB_ID,
-            "job_name": _JOB_NAME,
-            "payload": {"prompt": "hi", "pool_id": _POOL_ID},
-            "contract_version": "1",
-            "reply_to": "_INBOX.test.reply",
-            "trace_id": "trace-005",
-            "issued_at": "2026-06-11T00:00:00Z",
-        }
-        # Must NOT propagate exception
-        await worker.handle(msg=MagicMock(), payload=payload)
-        bridge.publish_error.assert_awaited_once()
-        exc_arg = bridge.publish_error.await_args.args[1]
-        assert isinstance(exc_arg, RuntimeError)
+        pool = _make_pool()
+        fake_pw = pool.acquire.return_value
+        fake_pw.bridge.run.side_effect = RuntimeError("boom")
+        worker = _make_worker(pool)
+
+        with patch(
+            "factory.adapters.omp.omp_worker.publish_job_error", AsyncMock()
+        ) as mock_pje:
+            await worker.handle(msg=MagicMock(), payload=_VALID_PAYLOAD)
+            await _drain(worker)
+            mock_pje.assert_awaited_once()
+            # publish_job_error(nc, job_id, exc) → exc is the 3rd positional arg.
+            exc_arg = mock_pje.call_args.args[2]
+            assert isinstance(exc_arg, RuntimeError)
 
     async def test_error_publishes_correct_job_id(self) -> None:
-        bridge = _make_bridge()
-        bridge.run.side_effect = ValueError("oops")
-        worker = _make_worker(bridge)
-        payload = {
-            "job_id": _JOB_ID,
-            "job_name": _JOB_NAME,
-            "payload": {"prompt": "hi"},
-            "contract_version": "1",
-            "reply_to": "_INBOX.test.reply",
-            "trace_id": "trace-006",
-            "issued_at": "2026-06-11T00:00:00Z",
-        }
-        await worker.handle(msg=MagicMock(), payload=payload)
-        job_id_arg = bridge.publish_error.await_args.args[0]
-        assert job_id_arg == _JOB_ID
+        pool = _make_pool()
+        fake_pw = pool.acquire.return_value
+        fake_pw.bridge.run.side_effect = ValueError("oops")
+        worker = _make_worker(pool)
+
+        with patch(
+            "factory.adapters.omp.omp_worker.publish_job_error", AsyncMock()
+        ) as mock_pje:
+            await worker.handle(msg=MagicMock(), payload=_VALID_PAYLOAD)
+            await _drain(worker)
+            # publish_job_error(nc, job_id, exc) → job_id is the 2nd positional arg.
+            job_id_arg = mock_pje.call_args.args[1]
+            assert job_id_arg == _JOB_ID
+
+    async def test_pool_released_even_when_bridge_run_raises(self) -> None:
+        pool = _make_pool()
+        fake_pw = pool.acquire.return_value
+        fake_pw.bridge.run.side_effect = RuntimeError("crash")
+        worker = _make_worker(pool)
+
+        with patch("factory.adapters.omp.omp_worker.publish_job_error", AsyncMock()):
+            await worker.handle(msg=MagicMock(), payload=_VALID_PAYLOAD)
+            await _drain(worker)
+
+        pool.release.assert_called_once_with(fake_pw)
 
 
 # ---------------------------------------------------------------------------
-# run() — bridge.register called with nc
+# run() — pool lifecycle (register before loop, aclose in finally)
 # ---------------------------------------------------------------------------
 
 
 class TestRun:
-    async def test_run_registers_bridge_before_loop(self) -> None:
-        bridge = _make_bridge()
-        worker = _make_worker(bridge)
+    async def test_run_registers_pool_before_loop(self) -> None:
+        """pool.register(nc) must be awaited before run_embedded is called."""
+        pool = _make_pool()
+        worker = _make_worker(pool)
 
         call_order: list[str] = []
 
@@ -281,9 +390,9 @@ class TestRun:
 
         async def mock_run_embedded(nc, stop):
             call_order.append("run_embedded")
-            stop.set()  # prevent blocking
+            stop.set()
 
-        bridge.register.side_effect = mock_register
+        pool.register.side_effect = mock_register
 
         with (
             patch(
@@ -292,19 +401,17 @@ class TestRun:
             ),
             patch.object(worker, "run_embedded", side_effect=mock_run_embedded),
         ):
-            import asyncio
-
             stop = asyncio.Event()
             stop.set()
             await worker.run("nats://localhost:4222", stop=stop)
 
-        # register must precede run_embedded
         assert call_order.index("register") < call_order.index("run_embedded")
+        pool.register.assert_awaited_once()
 
-    async def test_run_closes_bridge_after_loop(self) -> None:
-        """aclose() must run after the loop, in order register < loop < aclose."""
-        bridge = _make_bridge()
-        worker = _make_worker(bridge)
+    async def test_run_closes_pool_after_loop(self) -> None:
+        """pool.aclose() must run in finally: register < run_embedded < aclose."""
+        pool = _make_pool()
+        worker = _make_worker(pool)
 
         call_order: list[str] = []
 
@@ -320,8 +427,8 @@ class TestRun:
         async def mock_aclose():
             call_order.append("aclose")
 
-        bridge.register.side_effect = mock_register
-        bridge.aclose.side_effect = mock_aclose
+        pool.register.side_effect = mock_register
+        pool.aclose.side_effect = mock_aclose
 
         with (
             patch(
@@ -335,12 +442,12 @@ class TestRun:
             await worker.run("nats://localhost:4222", stop=stop)
 
         assert call_order == ["register", "run_embedded", "aclose"]
-        bridge.aclose.assert_awaited_once()
+        pool.aclose.assert_awaited_once()
 
-    async def test_run_closes_bridge_when_loop_raises(self) -> None:
-        """aclose() runs via the finally block even when the loop raises."""
-        bridge = _make_bridge()
-        worker = _make_worker(bridge)
+    async def test_run_closes_pool_when_loop_raises(self) -> None:
+        """pool.aclose() runs via finally even when the loop raises."""
+        pool = _make_pool()
+        worker = _make_worker(pool)
 
         async def mock_nats_connect(*a, **kw):  # noqa: ARG001
             return AsyncMock()
@@ -360,7 +467,7 @@ class TestRun:
             with pytest.raises(RuntimeError, match="loop crashed"):
                 await worker.run("nats://localhost:4222", stop=stop)
 
-        bridge.aclose.assert_awaited_once()
+        pool.aclose.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -370,42 +477,37 @@ class TestRun:
 
 class TestHandleBackwardCompat:
     async def test_handle_prompt_only_payload_backward_compat(self) -> None:
-        """Old-style envelope with only {prompt} in payload (no model_cfg, no
-        system_prompt) must not raise and must call bridge.run with the prompt."""
-        bridge = _make_bridge()
-        worker = _make_worker(bridge)
+        """Old-style envelope with only {prompt} in payload must call bridge.run."""
+        pool = _make_pool()
+        fake_pw = pool.acquire.return_value
+        worker = _make_worker(pool)
         payload = {
             "job_id": _JOB_ID,
             "job_name": _JOB_NAME,
             "payload": {
                 "prompt": "x",
                 "pool_id": _POOL_ID,
-            },  # old-style: no model_cfg, no system_prompt
+            },
             "contract_version": "1",
             "reply_to": "_INBOX.test.reply",
             "trace_id": "trace-bc-001",
             "issued_at": "2026-06-11T00:00:00Z",
         }
-        # Arrange: bridge.run succeeds (default AsyncMock)
-        # Act
-        await worker.handle(msg=MagicMock(), payload=payload)
-        # Assert: must not raise, must call bridge.run with prompt="x"
-        bridge.run.assert_awaited_once_with(
-            prompt="x",
-            job_id=_JOB_ID,
-            client=ANY,
+        with patch("factory.adapters.omp.omp_worker.publish_job_error", AsyncMock()):
+            await worker.handle(msg=MagicMock(), payload=payload)
+            await _drain(worker)
+
+        fake_pw.bridge.run.assert_awaited_once_with(
+            "x",
+            _JOB_ID,
             session_file=ANY,
         )
-        bridge.publish_error.assert_not_awaited()
 
     async def test_handle_reads_model_cfg_and_system_prompt(self) -> None:
-        """Enriched payload (model_cfg + system_prompt) must not raise.
-
-        bridge.run must still receive only prompt+job_id (V1: extra fields
-        read but not applied).
-        """
-        bridge = _make_bridge()
-        worker = _make_worker(bridge)
+        """Enriched payload (model_cfg + system_prompt) must not raise."""
+        pool = _make_pool()
+        fake_pw = pool.acquire.return_value
+        worker = _make_worker(pool)
         payload = {
             "job_id": _JOB_ID,
             "job_name": _JOB_NAME,
@@ -420,12 +522,12 @@ class TestHandleBackwardCompat:
             "trace_id": "trace-bc-002",
             "issued_at": "2026-06-11T00:00:00Z",
         }
-        await worker.handle(msg=MagicMock(), payload=payload)
-        # Extra fields accepted/read — bridge.run signature unchanged
-        bridge.run.assert_awaited_once_with(
-            prompt="x",
-            job_id=_JOB_ID,
-            client=ANY,
+        with patch("factory.adapters.omp.omp_worker.publish_job_error", AsyncMock()):
+            await worker.handle(msg=MagicMock(), payload=payload)
+            await _drain(worker)
+
+        fake_pw.bridge.run.assert_awaited_once_with(
+            "x",
+            _JOB_ID,
             session_file=ANY,
         )
-        bridge.publish_error.assert_not_awaited()

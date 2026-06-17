@@ -730,10 +730,10 @@ class TestStartLifecycle:
 
         assert "stop" not in fake.calls
 
-    async def test_constructs_client_with_executable_and_no_session(
+    async def test_constructs_client_with_executable_and_session_enabled(
         self, tmp_path: Path
     ) -> None:
-        """RpcClient must be constructed with executable, no_session=True, provider."""
+        """RpcClient must be constructed with executable, no_session=False, provider."""
         omp_bin, actual_sha = _make_fake_binary(tmp_path, matching_digest=True)
         received_kwargs: dict[str, Any] = {}
 
@@ -761,12 +761,57 @@ class TestStartLifecycle:
         assert received_kwargs["executable"].endswith("/omp"), (
             f"executable should end with /omp, got: {received_kwargs['executable']}"
         )
-        assert received_kwargs.get("no_session") is True, (
-            "no_session=True must be passed to RpcClient"
+        assert received_kwargs.get("no_session") is False, (
+            "no_session=False must be passed to RpcClient"
         )
         assert received_kwargs.get("provider") == "litellm", (
             f"expected provider='litellm', got: {received_kwargs.get('provider')}"
         )
+
+    async def test_injected_client_is_adopted_without_constructing(
+        self, tmp_path: Path
+    ) -> None:
+        """When _client is injected (pool path), bridge adopts it as-is.
+
+        No new RpcClient is constructed and _verify_digest is not called.
+        """
+        fake_client = MagicMock()
+        rpc_class_mock = MagicMock()
+
+        module = ModuleType("omp_rpc")
+        module.RpcClient = rpc_class_mock  # type: ignore[attr-defined]
+        sys.modules["omp_rpc"] = module
+
+        with patch("factory.adapters.omp._rpc_bridge._verify_digest") as verify_mock:
+            bridge = RpcBridge(_client=fake_client)
+
+        rpc_class_mock.assert_not_called()
+        verify_mock.assert_not_called()
+        assert bridge._client is fake_client
+
+    async def test_attach_wires_callbacks_without_start(self, tmp_path: Path) -> None:
+        """attach() registers the 3 callbacks; no start()/new_session()."""
+        fake_client = MagicMock()
+        fake_client.on_message_update = MagicMock()
+        fake_client.on_tool_execution_start = MagicMock()
+        fake_client.on_agent_end = MagicMock()
+        fake_client.start = MagicMock()
+        fake_client.new_session = MagicMock()
+
+        module = ModuleType("omp_rpc")
+        module.RpcClient = MagicMock()  # type: ignore[attr-defined]
+        sys.modules["omp_rpc"] = module
+
+        bridge = RpcBridge(_client=fake_client)
+        nc = AsyncMock()
+
+        await bridge.attach(nc)
+
+        fake_client.on_message_update.assert_called_once()
+        fake_client.on_tool_execution_start.assert_called_once()
+        fake_client.on_agent_end.assert_called_once()
+        fake_client.start.assert_not_called()
+        fake_client.new_session.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

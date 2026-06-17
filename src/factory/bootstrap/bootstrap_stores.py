@@ -291,7 +291,9 @@ async def open_stores(
         agent_store = AgentStore(db_path=vault_dir / "config.db")
         await agent_store.connect()
 
-        turn_store = TurnStore(db_path=factory_turns_db_path())
+        turns_db_path = factory_turns_db_path()
+        turns_db_path.parent.mkdir(parents=True, exist_ok=True)
+        turn_store = TurnStore(db_path=turns_db_path)
         await turn_store.connect()
 
         bot_store = BotStore(db_path=vault_dir / "config.db")

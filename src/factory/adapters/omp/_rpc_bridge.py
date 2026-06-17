@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,6 +36,23 @@ _OMP_BIN = Path("/opt/omp/omp")  # image-build constant — NEVER from env
 _DEFAULT_PROVIDER = (
     "litellm"  # routes through factory LiteLLM proxy (deploy/omp/models.yml)
 )
+# Pin a fast default — model=None falls through to models.yml[0] (grok-4) and
+# risks RpcClient(request_timeout=30s) timeouts (#1910).
+_DEFAULT_MODEL = "grok-4-fast"
+_ENV_REQUEST_TIMEOUT_KEY = "OMP_REQUEST_TIMEOUT"
+_DEFAULT_REQUEST_TIMEOUT = 30.0
+
+
+def _read_request_timeout() -> float:
+    """Read OMP_REQUEST_TIMEOUT from env; fall back to _DEFAULT_REQUEST_TIMEOUT."""
+    raw = os.environ.get(_ENV_REQUEST_TIMEOUT_KEY)
+    if raw is None:
+        return _DEFAULT_REQUEST_TIMEOUT
+    try:
+        val = float(raw)
+        return val if val > 0 else _DEFAULT_REQUEST_TIMEOUT
+    except ValueError:
+        return _DEFAULT_REQUEST_TIMEOUT
 
 
 class DigestMismatchError(Exception):
@@ -152,6 +170,7 @@ class RpcBridge:
         *,
         provider: str | None = _DEFAULT_PROVIDER,
         model: str | None = None,
+        request_timeout: float | None = None,
         _client: Any | None = None,
     ) -> None:
         # Import deferred: omp_rpc is a container image dep, absent from pyproject.toml.
@@ -166,11 +185,18 @@ class RpcBridge:
             # provider/model are constructor kwargs only — no env axis. The runtime
             # model list comes from deploy/omp/models.yml (via PI_CODING_AGENT_DIR),
             # not from OMP_PROVIDER/OMP_MODEL env vars (#1876).
+            resolved_model = model if model is not None else _DEFAULT_MODEL
+            resolved_timeout = (
+                request_timeout
+                if request_timeout is not None
+                else _read_request_timeout()
+            )
             self._client = omp_rpc.RpcClient(
                 executable=str(omp_bin),
                 provider=provider,
-                model=model,
+                model=resolved_model,
                 no_session=False,
+                request_timeout=resolved_timeout,
             )
         self._nc: NatsClient | None = None
         self._loop: asyncio.AbstractEventLoop | None = None

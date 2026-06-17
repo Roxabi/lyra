@@ -227,14 +227,14 @@ Bootstrap constructs one `HttpBlobStoreAdapter` via `init_blobstore()` in
 `bootstrap/factory/voice_overlay.py` and injects it into adapters and stages as
 `BlobStorePort`. No adapter or stage imports `HttpBlobStore` or `roxabi_blobs` directly.
 
-**Backup and restore:** see `docs/QUADLET-DEPLOYMENT.md` (§ Rotating the BlobStore bearer
+**Backup and restore:** see `docs/runbooks/blobstore-backup-restore.md` (backup) and `docs/runbooks/secrets-rotation.md` (bearer
 token and §§ Backing up the BlobStore / Restore invariant) for the operator runbook.
 
 #### Restore invariant
 
 After a restore, the SQLite manifest is authoritative. Any FS shard file that is NOT
 referenced by a `blobs.store_path` row is a content-addressed orphan and is safely
-discardable. Reconciliation (full runbook in `docs/QUADLET-DEPLOYMENT.md § Restore invariant`):
+discardable. Reconciliation (full runbook in `docs/runbooks/blobstore-backup-restore.md`):
 
 1. `sqlite3 index.sqlite "SELECT store_path FROM blobs"` → expected file list
 2. `find sha256 -type f` → actual file list

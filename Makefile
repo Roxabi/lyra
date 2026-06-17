@@ -68,13 +68,13 @@ FACTORY_CLIPOOL_UNIT  := factory-clipool
 FACTORY_UNITS         := $(FACTORY_HUB_UNIT) $(FACTORY_TELEGRAM_UNIT) $(FACTORY_DISCORD_UNIT) $(FACTORY_CLIPOOL_UNIT)
 
 # $(call factory_sctl,<unit1> [unit2 ...]) — dispatches SVC_CMD to systemctl --user.
-# Defaults (empty SVC_CMD) to `start`. `logs`/`errors` tail the first unit.
+# Defaults (empty SVC_CMD) to `status`. `logs`/`errors` tail the first unit.
 define factory_sctl
 	@case "$(SVC_CMD)" in \
 		reload)         systemctl --user restart $(1) ;; \
-		start|"")       systemctl --user start   $(1) ;; \
+		start)          systemctl --user start   $(1) ;; \
 		stop)           systemctl --user stop    $(1) ;; \
-		status)         systemctl --user status  $(1) || true ;; \
+		status|"")      systemctl --user status  $(1) || true ;; \
 		logs)           journalctl --user -u $(firstword $(1)) -f ;; \
 		errlogs|errors) journalctl --user -u $(firstword $(1)) -f -p err ;; \
 		*) echo "Unknown action: $(SVC_CMD). Use: start|stop|status|reload|logs|errors"; exit 1 ;; \

@@ -21,7 +21,7 @@ from factory.infrastructure.turn_writer.stream_setup import (
     ensure_stream,
 )
 from factory.infrastructure.turn_writer.writer import TurnWriter
-from factory.paths import factory_data_dir
+from factory.paths import factory_turns_db_path
 from roxabi_nats import nats_connect
 from roxabi_nats.connect import scrub_nats_url
 
@@ -102,9 +102,7 @@ async def _bootstrap_turn_writer_standalone(raw_config: dict) -> None:
     if not nats_url:
         sys.exit("NATS_URL is required for standalone turn-writer mode.")
 
-    db_path = Path(
-        os.environ.get("FACTORY_TURNS_DB") or (factory_data_dir() / "turns.db")
-    )
+    db_path = factory_turns_db_path()
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
     log.info(

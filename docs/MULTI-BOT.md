@@ -295,10 +295,10 @@ The `CliPool` is the Claude CLI subprocess pool. It is shared across all agents 
 
 8. **Restart Lyra**
    ```bash
-   make lyra reload
+   make factory reload
    ```
 
-9. **Test** — send a message to the new bot on each platform. Check `make lyra logs` for the routing key (`platform=telegram bot_id=aryl scope_id=chat:...`).
+9. **Test** — send a message to the new bot on each platform. Check `make factory logs` for the routing key (`platform=telegram bot_id=aryl scope_id=chat:...`).
 
 ---
 
@@ -319,7 +319,7 @@ The `CliPool` is the Claude CLI subprocess pool. It is shared across all agents 
 **Bot does not respond**
 Check the logs for registration and ready messages:
 ```bash
-make lyra logs
+make factory logs
 # Telegram: INFO factory.__main__: Registered Telegram bot bot_id='<name>' agent='<agent>'
 # Discord:  INFO factory.adapters.discord: Discord bot ready: <BotUsername> (id=<id>)
 ```

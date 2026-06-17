@@ -13,11 +13,7 @@ Entry point: `lyra blobstore serve`.
 
 ## Host topology
 
-Runs on M₁ (`factory-hub` role) only. M₂ workers connect via:
-
-```
-http://roxabituwer.goose-logarithm.ts.net:8449
-```
+Runs on the production hub host (`factory-hub` role). Cross-host workers use `HttpBlobStore` over Tailnet — URL from `FACTORY_BLOBSTORE_URL` (typically `http://<hub-host>:8449` on the container bridge, or MagicDNS from remote workers).
 
 ## Image
 
@@ -41,9 +37,7 @@ intentionally loud; re-provision deferred to next container restart.
 - Stored in memory for the process lifetime. Re-read requires container restart — NOT a
   `HUP`. Sending `SIGHUP` does NOT rotate the in-memory token.
 - `BearerAuthMiddleware` uses `hmac.compare_digest` (¬ `==` comparison — SC-Code-4).
-- Rotation runbook: `docs/QUADLET-DEPLOYMENT.md` (5-step: write source → secret create →
-  restart → verify → rollback). Same-host client adapters pick up the new token on their
-  own next restart; operator coordinates the window.
+- Rotation runbook: `docs/runbooks/secrets-rotation.md`. Same-host client adapters pick up the new token on their own next restart; operator coordinates the window.
 
 ## Auth boundary
 
@@ -113,7 +107,7 @@ The bare per-call `get_blobstore_client()` factory has been removed (ADR-082). `
 
 ## Reference pointers
 
-- `docs/QUADLET-DEPLOYMENT.md` — install runbook, secret rotation, backup procedures
+- `docs/runbooks/README.md` — install, secret rotation, backup procedures
 - `docs/architecture/adr/067-blobstore-abstraction-flat-fs-content-addressed.mdx` — Protocol
   contract, HTTP API mapping, auth plane decisions
 - `docs/architecture/adr/082-blobstore-driven-port.mdx` — driven-port pattern + injection wiring

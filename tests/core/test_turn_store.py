@@ -495,7 +495,7 @@ class TestPoolSessions:
     async def test_get_last_session_skips_ended(self, store: TurnStore) -> None:
         """get_last_session ignores ended sessions even if more recent."""
         await store._start_session("sess-old", "pool:ended")
-        await asyncio.sleep(0.01)
+        await asyncio.sleep(0.01)  # event-based
         await store._start_session("sess-new", "pool:ended")
         await store._end_session("sess-new")
 

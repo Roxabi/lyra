@@ -139,15 +139,20 @@ class OmpPool:
             return worker
         except BaseException:
             self._checked_out.discard(id(worker))
-            # sem held (caller finally releases); worker not returned to free.
+            self._sem.release()  # caller finally skips assign on exc
+            # worker not returned (orphaned in _all; aclose will stop)
             raise
 
     def release(self, worker: _PoolWorker) -> None:
         """Return a worker to the free set and release its semaphore slot."""
+        was_checked = id(worker) in self._checked_out
         self._checked_out.discard(id(worker))
-        if worker not in self._free:
-            self._free.append(worker)
-        self._sem.release()
+        if was_checked:
+            if worker not in self._free:
+                self._free.append(worker)
+            self._sem.release()
+        else:
+            log.warning("[omp_pool] release of untracked worker (dup or error path?)")
 
     async def aclose(self) -> None:
         """Stop all running workers. Safe to call multiple times."""

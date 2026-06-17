@@ -88,6 +88,12 @@ jobs:
       - name: Check duplicate test basenames
         run: bash tools/check_duplicate_test_basenames.sh
 
+      - name: Check folder size
+        run: bash tools/check_folder_size.sh
+
+      - name: Check no runtime TOML bots
+        run: bash tools/check_no_runtime_toml_bots.sh
+
       - name: Check ACL matrix lifecycle fields
         run: uv run factory-check-acl-retired
 
@@ -124,6 +130,9 @@ jobs:
       - name: Check quadlet manifest install wiring (quadlet.toml → Makefile/verify/converge)
         run: bash tools/check_quadlet_manifest_install.sh
 
+      - name: Check deployment.md Volumes table matches quadlet Volume= directives
+        run: bash tools/check_volumes_table.sh
+
       - name: Check architecture snapshot freshness
         run: bash tools/check_architecture_snapshot.sh
 
@@ -141,6 +150,9 @@ jobs:
 
       - name: Typecheck
         run: uv run pyright
+
+      - name: License check
+        run: uv run tools/license_check.py
 
       - name: Verify error codes registry sync
         run: |
@@ -185,12 +197,3 @@ jobs:
       - name: Tear down Docker environment
         if: always()
         run: docker compose -f docker/docker-compose.test.yml down -v
-
-  integration-report:
-    name: integration
-    needs: [integration]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Report success
-        run: echo "Integration tests passed"

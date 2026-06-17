@@ -115,14 +115,17 @@ qg.conf drift          → OK (stack.yml SSoT)
 
 ## Cross-doc contradictions (same concept, different answer)
 
-| Concept | Doc A | Doc B |
-|---------|-------|-------|
-| Container count | DEPLOYMENT: **6** | ARCHITECTURE + QUADLET: **9** |
-| M₁ naming | QUADLET caveat: **lyra-*** | GETTING-STARTED service list: **factory-*** |
-| Make targets | DEPLOYMENT: **`make lyra`** | Makefile: **`make factory`**, **`make remote`** |
-| Health env | hub.env.example: **`FACTORY_HEALTH_*`** | M₁ prod: était **`LYRA_HEALTH_*`** → **aligné F18** |
-| CLI binary | COMMANDS: **`lyra`** | pyproject scripts: **`factory`** |
-| Licence | README: **MIT** | pyproject: **AGPL-3.0-or-later** |
+> **Phase-0 snapshot.** Rows below were true at audit time (2026-06-17). Doc fixes landed in
+> PR #1912 (F01–F13, F06); F18 (hub.env) applied host-side same day.
+
+| Concept | Doc A | Doc B | Resolved |
+|---------|-------|-------|----------|
+| Container count | DEPLOYMENT: **6** | ARCHITECTURE + QUADLET: **9** | ✅ #1912 |
+| M₁ naming | QUADLET caveat: **lyra-*** | GETTING-STARTED: **factory-*** | ✅ #1912 |
+| Make targets | DEPLOYMENT: **`make lyra`** | Makefile: **`make factory`** | ✅ #1912 |
+| Health env | hub.env.example: **`FACTORY_HEALTH_*`** | M₁: **`LYRA_HEALTH_*`** | ✅ F18 host |
+| CLI binary | COMMANDS: **`lyra`** | pyproject: **`factory`** | ✅ #1912 |
+| Licence | README: **MIT** | pyproject: **AGPL** | ✅ #1912 |
 
 ---
 

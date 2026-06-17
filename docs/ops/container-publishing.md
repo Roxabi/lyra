@@ -2,14 +2,13 @@
 
 ## Overview
 
-Lyra containers are built and published to GHCR via a reusable GitHub Actions workflow shared
-across all Roxabi projects. The registry convention is `ghcr.io/roxabi/<project>`. Two triggers
-drive publishing: a push to the `staging` branch produces a `:staging` floating tag for
-pre-release validation on M₁; a release-please tag of the form `<component>/vX.Y.Z` on the
-`main` branch produces `:X.Y.Z`, `:X` (major alias), and `:latest`, all managed via
-`docker/metadata-action@v5`. The reusable workflow lives at
-`Roxabi/.github/.github/workflows/publish-container.yml@v1`; each project supplies a thin
-caller workflow that feeds project-specific inputs.
+Lyra containers are built and published to GHCR from this repo via a **bake pipeline**
+(`docker/bake-action` + `docker-bake.hcl` — see `.github/workflows/publish.yml`). Other Roxabi
+projects typically use a shared reusable workflow at
+`Roxabi/.github/.github/workflows/publish-container.yml@v1`. Registry convention:
+`ghcr.io/roxabi/<project>`. Two triggers drive publishing: a push to `staging` produces floating
+tags for pre-release validation on M₁ (`:staging` + `:staging-svc` for Lyra); a release-please tag
+`<component>/vX.Y.Z` on `main` produces semver pins (`:X.Y.Z`, `:X`, `:latest` where applicable).
 
 ---
 
@@ -42,18 +41,12 @@ caller workflow that feeds project-specific inputs.
 
 ---
 
-## Caller workflow template
+## Caller workflows
 
-The reusable workflow accepts four inputs:
+### Lyra (`roxabi-factory`) — bake pipeline
 
-| Input | Required | Default | Description |
-|---|---|---|---|
-| `image_name` | yes | — | Full registry path, e.g. `ghcr.io/roxabi/factory` |
-| `release_please_component` | yes | — | Component name as used in the release-please tag, e.g. `factory` |
-| `dockerfile_path` | no | `./Dockerfile` | Path to the Dockerfile relative to the build context |
-| `build_context` | no | `.` | Docker build context path |
-
-Lyra caller (`.github/workflows/publish.yml`):
+SSoT: `.github/workflows/publish.yml`. Builds two Dockerfile targets (`agent-runtime`,
+`svc-runtime`) and pushes `:staging` / `:staging-svc` on branch push, semver tags on release.
 
 ```yaml
 name: publish
@@ -66,13 +59,48 @@ permissions:
   packages: write
 jobs:
   publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Compute image tags
+        id: tags
+        run: |
+          REG=ghcr.io/roxabi/factory
+          # staging → :staging + :staging-svc; tags factory/v* → semver (see full workflow)
+      - uses: docker/bake-action@v7
+        with:
+          files: docker-bake.hcl
+          push: true
+          set: |
+            ${{ steps.tags.outputs.bake_set }}
+```
+
+See the full workflow for tag computation and the post-build `svc-runtime` binary gate.
+
+### Other Roxabi projects — reusable workflow template
+
+The reusable workflow accepts four inputs:
+
+| Input | Required | Default | Description |
+|---|---|---|---|
+| `image_name` | yes | — | Full registry path, e.g. `ghcr.io/roxabi/voicecli` |
+| `release_please_component` | yes | — | Component name as used in the release-please tag, e.g. `voicecli` |
+| `dockerfile_path` | no | `./Dockerfile` | Path to the Dockerfile relative to the build context |
+| `build_context` | no | `.` | Docker build context path |
+
+```yaml
+jobs:
+  publish:
     uses: Roxabi/.github/.github/workflows/publish-container.yml@v1
-    secrets: inherit
     with:
-      image_name: ghcr.io/roxabi/factory
-      release_please_component: factory
-      # Manifest format (oci-mediatypes=false) is handled by the reusable workflow.
-      # No extra inputs are needed to preserve HEALTHCHECK.
+      image_name: ghcr.io/roxabi/<project>
+      release_please_component: <project>
 ```
 
 Callers MUST pin `@v1`, never `@main`. The `main` branch of `Roxabi/.github` may receive
@@ -311,9 +339,10 @@ Steps for a new Roxabi project (voiceCLI, 2ndBrain, imageCLI, llmCLI) to adopt t
    stage, pinned base image, non-root UID, and a working `HEALTHCHECK`. The reusable workflow
    automatically forces Docker v2 schema 2 manifest format (`oci-mediatypes=false`), so
    `HEALTHCHECK` is preserved without any extra configuration in the caller workflow.
-2. Create `.github/workflows/publish.yml` by copying the caller template above. Replace
+2. Create `.github/workflows/publish.yml` by copying the **reusable workflow template** above
+   (not Lyra's bake pipeline unless you also maintain a `docker-bake.hcl`). Replace
    `image_name` with `ghcr.io/roxabi/<project>` and `release_please_component` with the
-   project's component name. Update the `tags` trigger from `factory/v*` to `<project>/v*`.
+   project's component name. Set the `tags` trigger to `<project>/v*`.
 3. Ensure `release-please` is configured in the repo with `tag-separator: '/'` and the correct
    component name matching the value passed to `release_please_component`. Without this, the
    semver tag trigger will not fire.

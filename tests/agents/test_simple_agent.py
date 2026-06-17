@@ -17,6 +17,7 @@ from factory.core.agent import Agent
 from factory.core.agent.agent_config import ModelConfig
 from factory.core.auth.trust import TrustLevel
 from factory.core.messaging.message import (
+    GENERIC_ERROR_REPLY,
     InboundMessage,
     Response,
     TelegramMeta,
@@ -781,7 +782,7 @@ class TestSimpleAgentVoiceRewrite:
 
 
 class TestSimpleAgentEmptyReply:
-    async def test_empty_reply_returns_response_with_empty_content(self) -> None:
+    async def test_empty_reply_returns_generic_error(self) -> None:
         provider = MagicMock()
         provider.complete = AsyncMock(
             return_value=LlmResult(result="", session_id="s1")
@@ -793,11 +794,12 @@ class TestSimpleAgentEmptyReply:
         response = await agent.process(msg, pool)
 
         assert isinstance(response, Response)
-        assert response.content == ""
+        assert response.content == GENERIC_ERROR_REPLY
         assert response.metadata["session_id"] == "s1"
+        assert response.metadata.get("error") is True
 
     async def test_empty_reply_with_voice_modality_still_speaks(self) -> None:
-        """Empty reply + voice modality → speak=True (intersection of both paths)."""
+        """Empty reply + voice modality → speak=True with user-facing error text."""
         provider = MagicMock()
         provider.complete = AsyncMock(
             return_value=LlmResult(result="", session_id="s1")
@@ -816,5 +818,6 @@ class TestSimpleAgentEmptyReply:
         response = await agent.process(msg, pool)
 
         assert isinstance(response, Response)
-        assert response.content == ""
+        assert response.content == GENERIC_ERROR_REPLY
         assert response.speak is True
+        assert response.metadata.get("error") is True

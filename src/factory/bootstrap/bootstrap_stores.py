@@ -31,6 +31,7 @@ from factory.infrastructure.stores.message_index_kv import (
 )
 from factory.infrastructure.stores.prefs_store import PrefsStore
 from factory.infrastructure.stores.turn_store import TurnStore
+from factory.paths import factory_turns_db_path
 
 log = logging.getLogger(__name__)
 
@@ -290,7 +291,7 @@ async def open_stores(
         agent_store = AgentStore(db_path=vault_dir / "config.db")
         await agent_store.connect()
 
-        turn_store = TurnStore(db_path=vault_dir / "turns.db")
+        turn_store = TurnStore(db_path=factory_turns_db_path())
         await turn_store.connect()
 
         bot_store = BotStore(db_path=vault_dir / "config.db")

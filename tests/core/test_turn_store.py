@@ -492,6 +492,17 @@ class TestPoolSessions:
         # Assert — second session has a later last_active_at, so it wins
         assert result == "sess-second"
 
+    async def test_get_last_session_skips_ended(self, store: TurnStore) -> None:
+        """get_last_session ignores ended sessions even if more recent."""
+        await store._start_session("sess-old", "pool:ended")
+        await asyncio.sleep(0.01)  # event-based
+        await store._start_session("sess-new", "pool:ended")
+        await store._end_session("sess-new")
+
+        result = await store.get_last_session("pool:ended")
+
+        assert result == "sess-old"
+
 
 class TestBackfillOnFirstConnect:
     async def test_backfill_on_first_connect(self, tmp_path) -> None:

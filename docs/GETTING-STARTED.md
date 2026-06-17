@@ -390,8 +390,8 @@ podman ps --format "table {{.Names}}\t{{.Status}}"
 
 Check the logs:
 ```bash
-make lyra logs        # journalctl for factory-hub
-make lyra errors      # journalctl for factory-hub (errors only)
+make factory logs        # journalctl for factory-hub
+make factory errors      # journalctl for factory-hub (errors only)
 ```
 
 ---
@@ -453,9 +453,9 @@ ssh -i ~/.ssh/lyra_agent lyra@<MACHINE_1_IP> "id && git --version"
 
 **Daily commands** (from `~/projects/roxabi-factory`):
 ```bash
-make lyra status     # status of all lyra containers
-make lyra reload     # restart hub + adapters + clipool
-make lyra logs       # journalctl for factory-hub
+make factory status  # status of all factory containers (default when no target)
+make factory reload  # restart hub + adapters + clipool
+make factory logs    # journalctl for factory-hub
 make deploy          # pull latest staging, install quadlet units (from Machine 2)
 ```
 

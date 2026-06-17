@@ -44,7 +44,7 @@ factory-agent = "factory.cli:agent_main"
 `__main__.py` is single-purpose (daemon bootstrap) and untouched by CLI dispatch.
 `cli.py` is the sole home of CLI logic and is independently testable without `sys.argv`
 patching. Invocation is `uv run factory-agent <sub-command>`, consistent with the
-`voicecli` / `imagecli` conventions. supervisord, `make lyra`, and the production deploy
+`voicecli` / `imagecli` conventions. supervisord, `make factory`, and the production deploy
 path are unaffected. → ADR-020
 
 ### Media temp-file lifecycle
@@ -101,15 +101,15 @@ routing or trust. → ADR-023
 
 ### STT/TTS NATS decoupling
 
-`lyra_stt` and `lyra_tts` run as independent NATS adapter services alongside
-`factory_hub`, `factory_telegram`, and `factory_discord`. The hub never imports `voicecli`.
-`AudioPipeline` calls `NatsSttClient.transcribe()` and `NatsTtsClient.synthesize()`
-over NATS request-reply (`factory.voice.stt.request` / `factory.voice.tts.request`). Both
-clients satisfy `STTProtocol` / `TtsProtocol` structural interfaces. On NATS timeout, `STTUnavailableError` is raised;
-`AudioPipeline` treats it identically to `stt is None` (sends `stt_unavailable` reply).
-Hub starts and processes text immediately regardless of whether voice adapters are up.
-Deployment via Quadlet units (`deploy/quadlet/lyra-stt.container`,
-`deploy/quadlet/lyra-tts.container`). → ADR-039
+voiceCLI STT/TTS workers (`voicecli-stt`, `voicecli-tts`) run as independent NATS services
+alongside the factory stack (`factory-hub`, `factory-telegram`, `factory-discord`). The hub
+never imports `voicecli`. `AudioPipeline` calls `NatsSttClient.transcribe()` and
+`NatsTtsClient.synthesize()` over NATS request-reply (`factory.voice.stt.request` /
+`factory.voice.tts.request`). Both clients satisfy `STTProtocol` / `TtsProtocol` structural
+interfaces. On NATS timeout, `STTUnavailableError` is raised; `AudioPipeline` treats it
+identically to `stt is None` (sends `stt_unavailable` reply). Hub starts and processes text
+immediately regardless of whether voice workers are up. Deployment via voiceCLI Quadlet units
+in the voiceCLI repo (`voicecli-stt`, `voicecli-tts` on M₁). → ADR-039
 
 ---
 

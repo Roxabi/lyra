@@ -1,20 +1,36 @@
 # Lyra — Deployment & Operations
 
-> Last updated: 2026-05-09
+> Last updated: 2026-06-17
 
 ## Overview
 
-4 containers communicating over NATS.
+Production on M₁ runs **nine Quadlet containers** on `roxabi.network`, communicating over NATS.
+The core message path is four NATS-connected processes (hub, telegram adapter, discord adapter,
+clipool worker); the remaining five units provide infrastructure (NATS, gh-helper, turn-writer,
+blobstore, omp).
 
 ```
 ┌──────────────┐  NATS inbound   ┌─────────────┐  NATS cmd    ┌──────────────┐
 │   Adapters   │────────────────→│     Hub      │────────────→│   CliPool    │
 │  TG / DC     │←────────────────│             │←────────────│  (Claude)    │
 └──────────────┘  NATS outbound  └──────┬──────┘  NATS reply  └──────┬───────┘
-                                        │                             │
-                                   ~/.roxabi/factory/                     ~/.claude/
-                                   (volume)                     (volume)
+                                        │
+                    + NATS bus + gh-helper + turn-writer + blobstore + omp
 ```
+
+| Container | Role |
+|---|---|
+| `factory-nats` | NATS server (TLS, nkey auth, JetStream) |
+| `factory-hub` | Routing, pools, memory, command dispatch |
+| `factory-telegram` | Telegram adapter |
+| `factory-discord` | Discord adapter |
+| `factory-clipool` | CliPool NATS worker (Claude subprocesses) |
+| `factory-gh-helper` | GitHub App token-mint helper |
+| `factory-turn-writer` | JetStream subscriber-writer for `turns.db` |
+| `factory-blobstore` | HTTP BlobStore |
+| `factory-omp` | OmpWorker NATS runtime backend |
+
+Manifest: `deploy/quadlet.toml`. Operator guide: `docs/DEPLOYMENT.md`.
 
 ---
 
@@ -188,13 +204,13 @@ Seven design questions deferred from ADR-053 are closed here. Each applies to al
 - **D2 — NATS topology:** Per-project NATS during migration; shared NATS at Phase 4. Each project runs its own `<project>-nats.container` on an incrementing port (Lyra: 4223, voiceCLI: 4224, …) until Phase 4 consolidates onto a single `nats.container` at port 4222 on `roxabi.network`.
 - **D3 — Podman network:** NATS-bus participants share `roxabi.network` at Phase 4; HTTP-only projects (forge, intel, idna, live) use isolated per-project networks. Topology follows communication intent.
 - **D4 — Env file path:** `~/.<project>/env/<service>.env` per project. Lyra uses `~/.roxabi/factory/env/hub.env`; voiceCLI uses `~/.voicecli/env/tts.env`. Centralizing under `~/.roxabi/env/` is deferred — the per-project runtime root is already established.
-- **D5 — Deploy script:** Shared shell library at `lyra/scripts/deploy-lib.sh`, installed to `~/.local/lib/roxabi/deploy-lib.sh` at bootstrap. Superseded in practice by `podman auto-update.timer` (GHCR registry auto-pull) + `make full-deploy` as manual fallback (#1035).
+- **D5 — Deploy script:** Shared shell library at `deploy/lib/deploy-common.sh`, installed to `~/.local/lib/roxabi/deploy-lib.sh` at bootstrap. Superseded in practice by `podman auto-update.timer` (GHCR registry auto-pull) + `make converge` as manual fallback (#1035).
 - **D6 — Upgrade coordination:** Independent releases by default; batch coordination only for shared-infra breaking changes (NATS auth.conf change, Phase 4 NATS consolidation, `roxabi.network` rename, breaking NATS contract version bump per ADR-049).
-- **D7 — Shared infra home:** Lyra repo. NATS config, auth.conf, nkey issuance, Quadlet patterns, and deploy scripts live in `lyra/` because Lyra created the patterns. No `roxabi-infra` repo will be created.
+- **D7 — Shared infra home:** `roxabi-factory` repo. NATS config, auth.conf, nkey issuance, Quadlet patterns, and deploy scripts live here because Lyra created the patterns. No `roxabi-infra` repo will be created.
 
 ### Container publishing workflow
 
-CI builds container images and pushes them to GHCR via a reusable GHA workflow (`Roxabi/.github/.github/workflows/publish-container.yml@v1`). Live reference: `.github/workflows/publish.yml`. Key invariants resolved in ADR-056: actions are SHA-pinned (no floating action tags), semver parsing strips the `lyra/` tag prefix, `FACTORY_IMAGE` (local build) is separated from `GHCR_IMAGE` (registry name), and `secrets: inherit` was dropped in favor of the built-in `GITHUB_TOKEN`. Production hosts pull from GHCR via `podman auto-update` — images are never built on the production host. → ADR-056
+CI builds container images and pushes them to GHCR via `.github/workflows/publish.yml` (bake pipeline). Key invariants resolved in ADR-056: actions are SHA-pinned (no floating action tags), semver parsing strips the `factory/` tag prefix, `FACTORY_IMAGE` (local build) is separated from `GHCR_IMAGE` (registry name). Production hosts pull from GHCR via `podman auto-update` — images are never built on the production host. → ADR-056
 
 ### Credential store
 

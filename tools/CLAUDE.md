@@ -17,7 +17,7 @@ Scripts are driven by `.claude/stack.yml` `quality_gates` block — that block i
 |---|---|
 | `docs/architecture/**` (non-`adr/`), `docs/ARCHITECTURE.md` | `docs/architecture/adr/**` (immutable records, ADR-080) |
 | `docs/standards/**` | `docs/QUICKSTART.md`, `GETTING-STARTED.md`, `HAPPY-PATHS.md`, `COMMANDS.md` |
-| `docs/CONFIGURATION.md`, `DEPLOYMENT.md`, `QUADLET-DEPLOYMENT.md` | `docs/MULTI-BOT.md`, `OBSERVABILITY.md`, `ROADMAP.md`, `vision.md` |
+| `docs/CONFIGURATION.md`, `DEPLOYMENT.md`, `docs/runbooks/` | `docs/MULTI-BOT.md`, `OBSERVABILITY.md`, `ROADMAP.md`, `vision.md` |
 | `docs/agent-management.md`, `bot-management.md`, `data-dirs.md` | `docs/code-quality-exceptions.md`, `debt-tracking.md` |
 | `docs/ops/**`, `docs/runbooks/**`, `docs/playbooks/**` | `docs/history/**`, `artifacts/**` |
 | CLAUDE.md network (root, `src/`, `packages/`, `plugins/`) | — |

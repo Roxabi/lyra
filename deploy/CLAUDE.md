@@ -2,7 +2,7 @@
 
 ## Scope
 
-Container deployment artifacts for Lyra on prod (`roxabituwer`, M₁).
+Container deployment artifacts for Lyra production (Podman Quadlet reference implementation).
 Subdirs: `quadlet/` | `nats/` | `scripts/` | `lib/` | `factory-gh/` | `systemd/` | `omp/` (omp runtime config → factory LiteLLM, #1811 — see `omp/README.md`) | `omp-base/` (omp binary carrier image → `ghcr.io/roxabi/factory-omp-base`, #1810 — see `omp-base/README.md`)
 
 ¬docker, ¬docker-compose for prod. Runtime stack: **Podman 5.x (native on Ubuntu 26.04 LTS)
@@ -24,7 +24,7 @@ Network: all units attach to `roxabi.network` (defined in `quadlet/roxabi.networ
 
 ## NATS server
 
-`factory-nats.container` is part of the deploy bundle — it is the sole NATS server on M₁.
+`factory-nats.container` is part of the deploy bundle — the sole NATS server on the production hub host.
 The host `nats.service` is retired (big-bang consolidation). Hub and adapters declare
 `After=factory-nats.service` / `Requires=factory-nats.service` so systemd boots NATS first.
 
@@ -54,13 +54,13 @@ Rollback: edit `Image=` to previous semver tag → `systemctl --user daemon-relo
 
 ## Provisioning
 
-`provision.sh` — M₁ post-install script. Run once per machine, or after a full wipe.
+`provision.sh` — production host post-install script. Run once per machine, or after a full wipe.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Roxabi/roxabi-factory/staging/deploy/provision.sh | bash
 ```
 
-Who runs it: operator (Mickael) — ¬automated, ¬CI. Idempotent for most steps.
+Who runs it: operator — ¬automated, ¬CI. Idempotent for most steps.
 `quadlet-install-verify.sh` — smoke-check that all Quadlet units loaded cleanly after
 `systemctl --user daemon-reload`.
 
@@ -75,8 +75,8 @@ on rotation events.
 ## Atomic deploy — `make converge`
 
 `make converge` (→ `deploy/converge.sh`) is the **atomic, idempotent, change-gated** local
-deploy verb for M₁. It reconciles the running system with the desired state declared in
-`staging` (lyra + optionally voiceCLI) without operator intervention.
+deploy verb on the production host. It reconciles the running system with the desired state declared in
+`staging` (factory + optionally voiceCLI) without operator intervention.
 
 ### Properties
 
@@ -97,7 +97,7 @@ deploy verb for M₁. It reconciles the running system with the desired state de
    - **Pure identity add** (`make nats-add-identity`): atomic write to `auth.conf` on host → `systemctl --user reload factory-nats` (fires `ExecReload=` → `podman kill --signal=HUP factory-nats`). Zero client restarts, zero dropped connections.
    - **ACL permission change** (`make nats-regen-authconf`): atomic write to `auth.conf` on host → `systemctl --user restart factory-nats` (required per #1390 — stale-subject-auth risk on ACL changes). Waits for `is-active`.
    Converge always **restarts** factory-nats on any drift (auth → factory-nats only; structural → factory-nats + clients) — it never reloads, because it cannot prove a change is a pure identity-add (#1390). Clients reconnect automatically via `allow_reconnect`.
-7. **Restart lyra clients** — `factory-hub`, `factory-telegram`, `factory-discord`, `factory-clipool`, `factory-turn-writer`, `factory-gh-helper`, `factory-blobstore`, `factory-omp` (unconditional `systemctl restart` — also starts units that were inactive; any failure aborts the converge). Restarted only on **structural** drift. On **auth-only** drift, converge restarts factory-nats alone; clients reconnect via `allow_reconnect` without explicit restart.
+7. **Restart factory clients** — `factory-hub`, `factory-telegram`, `factory-discord`, `factory-clipool`, `factory-turn-writer`, `factory-gh-helper`, `factory-blobstore`, `factory-omp` (unconditional `systemctl restart` — also starts units that were inactive; any failure aborts the converge). Restarted only on **structural** drift. On **auth-only** drift, converge restarts factory-nats alone; clients reconnect via `allow_reconnect` without explicit restart.
 8. **Restart voiceCLI** — `voicecli-tts`, `voicecli-stt` (if voiceCLI directory exists).
 9. **Record stamp** — writes the new convergence fingerprint to `~/.roxabi/factory/.converge-stamp`.
 
@@ -108,7 +108,7 @@ Three systemd user timers drive convergence **automatically**:
 | Timer | Period | Service | Role |
 |---|---|---|---|
 | `podman-auto-update.timer` | `*:0/5` (5 min) | `podman-auto-update.service` | Host-static apt unit (installed by `provision.sh`/`install.sh`); drop-in sets `OnCalendar=*:0/5`. Polls GHCR digests for containers labelled `io.containers.autoupdate=registry`; pulls and restarts on new digest. |
-| `factory-quadlet-sync.timer` | `*:0/5` (5 min) | `factory-quadlet-sync.service` | Pulls `origin/staging` for lyra. If `deploy/quadlet/**`, Makefile, or `tools/render_quadlet.py` changed, runs `make quadlet-install` (conditional, no full converge). |
+| `factory-quadlet-sync.timer` | `*:0/5` (5 min) | `factory-quadlet-sync.service` | Pulls `origin/staging` for roxabi-factory. If `deploy/quadlet/**`, Makefile, or `tools/render_quadlet.py` changed, runs `make quadlet-install` (conditional, no full converge). |
 | `factory-post-autoupdate.timer` | `*:2/5` (5 min, offset +2 min — #1751) | `factory-post-autoupdate.service` | Checks whether `podman-auto-update` has pulled a new image digest. On digest change, triggers the full `make converge` sequence (including auth.conf regen + secret refresh + restarts). Fires 2 min after `factory-quadlet-sync` so the `.converge-stamp` short-circuit in `converge.sh` deduplicates the two converge runs when both are triggered on the same staging merge. |
 
 `podman-auto-update` handles **image pulls** (CI-driven, registry-labelled containers).
@@ -143,7 +143,7 @@ bash -c 'source deploy/lib/deploy-common.sh; _classify_drift "$(read_convergence
 ## Hardening invariants (∀ `.container` file)
 
 `NoNewPrivileges=true` | `ReadOnly=true` | `DropCapability=all`
-`UserNS=keep-id:uid=1500,gid=1500` for lyra units (UID 1500 = `lyra`)
+`UserNS=keep-id:uid=1500,gid=1500` for factory units (container UID 1500)
 Secrets via `type=mount` (tmpfs) — ¬env vars, ¬volume wrappers for credentials.
 Operational consequence: `type=mount` secrets are bound at container init — `--replace` updates the store but the in-container tmpfs file is stale. ACL permission changes require container restart (not HUP) to refresh (#1390). See [`docs/ops/nats-authconf-update.md`](../docs/ops/nats-authconf-update.md).
 **Carve-out (ADR-085):** `auth.conf` (the public ACL bundle — `U…` nkeys + permission blocks, no private seeds) is delivered as an **inline bind mount**, not a `type=mount` secret. This allows live SIGHUP reload for pure identity-add operations without client restarts. Private NKey seed files (e.g. `factory-nats-hub.seed`) remain `type=mount` per ADR-054 D5.

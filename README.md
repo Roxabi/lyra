@@ -6,7 +6,7 @@
 ![Python](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)
 ![uv](https://img.shields.io/badge/uv-package%20manager-DE5FE9)
 ![asyncio](https://img.shields.io/badge/concurrency-asyncio-0ea5e9)
-[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+[![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 
 Lyra runs 24/7 on your own hardware, connects Telegram and Discord to specialized AI agents, and routes every conversation through isolated per-scope pools. No cloud lock-in. No subscription. Your data stays on your machines.
 
@@ -213,6 +213,7 @@ docs/         — ARCHITECTURE, ADRs, guides
 | [ROADMAP.md](docs/ROADMAP.md) | Phase 1/2/3 scope |
 | [COMMANDS.md](docs/COMMANDS.md) | Command router, plugins |
 | [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Quadlet containers, auto-update, logs |
+| [Runbooks](docs/runbooks/README.md) | Ops procedures — install, secrets, backup, diagnostic |
 | [CONFIGURATION.md](docs/CONFIGURATION.md) | All config files + env vars |
 | [ADRs](docs/architecture/adr/) | Architecture decision records |
 
@@ -232,4 +233,4 @@ The hook runs on macOS (BSD grep) and Linux (GNU grep) without additional depend
 
 ## License
 
-MIT
+AGPL-3.0-or-later — see [LICENSE](LICENSE).

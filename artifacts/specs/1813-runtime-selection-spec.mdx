@@ -23,14 +23,20 @@ and runs **two `RpcClient`s in parallel** with no cross-session bleed — i.e. o
 CliPool's per-conversation pool. The omp session "token" is the `.jsonl` `session_file` path (the
 omp analogue of clipool's `cli_session_id`).
 
+**Amendment (V3 spike #1813, 2026-06-15):** fork settled → **Model B** (flat RAM-bounded pool of
+M interchangeable warm workers; durable `no_session=False` sessions resumed per turn via
+`switch_session` ≈4ms; supersedes the Model-A framing below). Cross-process resume proven on
+the real `factory-omp` binary on M₁; cold-start ≈720ms (one-time), LLM call ≈2300ms (dominant).
+Ref: `artifacts/spikes/1813-v3/RESULT.md`.
+
 ## Goal
 
 Make the agent runtime a **per-agent and per-job** choice between clipool (`claude -p`,
 streaming) and omp (`omp_rpc`, NATS job) — coexisting, omp streaming + remembering across
 turns, default gated by a parity check — by adding `OmpRpcDriver(NatsDriverBase)` behind the
-`LlmProvider` Protocol. The omp worker hosts an **`OmpPool` of warm `RpcClient`s keyed by
-conversation** (CliPool parity): distinct conversations execute in **parallel** (spike #1813 P3
-confirmed); clipool unchanged.
+`LlmProvider` Protocol. The omp worker hosts a **flat pool of M interchangeable warm
+`RpcClient`s** (RAM-bounded, not conversation-count-bounded): any free worker accepts any turn,
+resumes via `switch_session(session_file)` (~4ms), and releases back to the pool; clipool unchanged.
 
 ## Users
 
@@ -52,17 +58,15 @@ confirmed); clipool unchanged.
 3. For omp: the `OmpRpcDriver` **mints a `job_id`**, publishes a `JobEnvelope` (prompt +
    session-resume ref + `model_cfg` + `system_prompt`) to `factory.jobs.omp`, and subscribes to
    the deterministic per-job subjects `factory.job.<job_id>.{progress,result}`.
-4. The omp worker (purely reactive — never mints jobs) hosts an **`OmpPool`**: a set of warm
-   `RpcClient`s **keyed by conversation** (`pool_id`), one omp subprocess each — the CliPool mirror.
-   It routes the job to that conversation's warm client; on a **cold start** (new conversation or
-   evicted client) it `switch_session(session_file)` when the hub sent a resume token, else
-   `new_session()`. The session the worker resumes is the one the **hub told it to**: the hub
-   resolved the conversation's `provider_session_id` from `pool_sessions` keyed by the stable Lyra
-   `session_id` — exactly as clipool resolves `cli_session_id`. The worker is **stateless w.r.t.
-   which session** (routing is a hub decision, mirroring clipool's `resume_session_id`); a warm
-   client keeps its session in-process, so steady-state turns skip resume entirely. Distinct
-   conversations run their `prompt_and_wait` **in parallel** (spike P3). The client emits
-   `JobProgress` … terminal `JobResult`.
+4. The omp worker (purely reactive — never mints jobs) hosts an **`OmpPool`**: a **flat free-set
+   of M interchangeable warm `RpcClient`s** (RAM-bounded, not conversation-count-bounded). Any
+   free worker is checked out per turn, calls `switch_session(session_file)` (~4ms) to load the
+   conversation's durable session, runs `prompt_and_wait`, then releases back to the free set.
+   No per-conversation pinning. The session file the worker loads is the one the **hub told it
+   to**: the hub resolved `provider_session_id` (the `.jsonl` path) from `pool_sessions` keyed
+   by the stable Lyra `session_id` — exactly as clipool resolves `cli_session_id`. Sessions are
+   durable on disk (`no_session=False`); the named volume at `PI_CODING_AGENT_DIR` (PR #1897)
+   survives worker restarts. The client emits `JobProgress` … terminal `JobResult`.
 5. The driver maps `JobProgress`→`LlmEvent` (streaming) and `JobResult`→`LlmResult`/terminal
    `ResultLlmEvent`, tears down the subscription, and returns through the same `simple_agent`
    path clipool uses — tokens render live.
@@ -86,10 +90,10 @@ classDiagram
     +reply_to: str|None  // unused by omp worker
   }
   class OmpPool {
-    // worker-side, adapters/omp — CliPool mirror
-    +clients: dict  // pool_id → warm RpcClient (one omp subprocess each)
-    +acquire(pool_id, session_file) RpcClient  // warm hit, else cold-start + switch_session/new_session
-    +evict(pool_id)  // LRU beyond cap
+    // worker-side, adapters/omp — flat free-set of M warm workers
+    +workers: list[RpcClient]  // M interchangeable warm subprocesses (RAM-bounded)
+    +acquire(session_file) RpcClient  // check out any free worker + switch_session
+    +release(worker)  // return to free set
   }
   class JobProgress {
     +job_id: str
@@ -130,7 +134,7 @@ flowchart LR
   P -->|omp-rpc| O[OmpRpcDriver]
   O -->|JobEnvelope| Q[factory.jobs.omp]
   D -. resolve session token .-> SS[(pool_sessions\nprovider_session_id by session_id)]
-  Q --> W[OmpWorker · OmpPool: warm RpcClient per pool_id\ncold-start → switch_session per hub instruction\nparallel turns across conversations]
+  Q --> W[OmpWorker · OmpPool: M interchangeable warm RpcClients\ncheck out free worker → switch_session(session_file) per turn\nno_session=False · durable sessions]
   W -. JobProgress .-> O
   W -. JobResult .-> O
   O -->|LlmEvent / LlmResult| AG[simple_agent → StreamProcessor → adapter]
@@ -142,7 +146,7 @@ flowchart LR
 | dispatch (core/hub) | `ModelConfig.backend` (config.db, hub-read) + per-job override | at turn dispatch | this issue |
 | session resolve (core/hub) | `pool_sessions.provider_session_id` keyed by `session_id` (mirrors clipool `cli_session_id`) | per omp turn | this issue |
 | `OmpRpcDriver` | `JobProgress.{partial_text,tool_name,tool_id}`, `JobResult.{status,data,error}` | per omp turn | this issue |
-| `OmpPool` (worker, adapters/omp) | `JobEnvelope.payload.{pool_id, provider_session_id}` — route to warm client / cold-start resume | per omp turn | this issue |
+| `OmpPool` (worker, adapters/omp) | `JobEnvelope.payload.{pool_id, provider_session_id}` — check out free worker + switch_session(session_file) per turn | per omp turn | this issue |
 | `OmpWorker`/`_rpc_bridge` | `JobEnvelope.payload.{prompt, pool_id, provider_session_id, model, system_prompt, streaming}` — **not** `backend` | per omp turn | this issue |
 | liveness | `factory.omp.heartbeat` freshness | continuous | this issue |
 | `JobProgress.thinking`/tool-delta/tool-result | — | — | future (no omp source) |
@@ -160,7 +164,7 @@ flowchart LR
 | N7 | heartbeat-liveness (no turn cap) | `NatsDriverBase` freshness; `LlmUnavailableError` on dead worker | `factory.omp.heartbeat` |
 | N8 | parity runbook + flip gate | golden-prompt omp vs clipool; default stays claude-cli | `docs/` |
 | N9 | hub NATS grants (result) | hub identity gains subscribe `factory.job.*.result` (+ regen 4 ACL artifacts + hand-mirror fixture) — **Slice 1**; the `factory.job.*.progress` grant is **deferred to Slice 4** with N2 (no progress consumer exists until `stream()` lands — granting earlier = ACL without a callsite) | `deploy/nats/acl-matrix.json` |
-| N10 | `OmpPool` (worker, adapters/omp) — **CliPool mirror** | warm `RpcClient` per `pool_id` (one omp subprocess each); `acquire(pool_id, session_file)` → warm hit or cold-start (`switch_session`/`new_session`); LRU evict beyond cap; distinct conversations run `prompt_and_wait` in **parallel** (spike P3); replaces the current single shared `no_session=True` client in `_rpc_bridge.py` | `OmpPool`, `RpcClient` |
+| N10 | `OmpPool` (worker, adapters/omp) — **flat free-set of M warm workers** | M interchangeable warm `RpcClient`s (RAM-bounded); `acquire(session_file)` → check out any free worker + `switch_session(session_file)`; `release(worker)` → return to free set; no LRU; `no_session=False` flip (fixes V2 no-op, makes sessions durable on disk); named volume at `PI_CODING_AGENT_DIR` (PR #1897) survives restarts; replaces the current single shared `no_session=True` client in `_rpc_bridge.py` | `OmpPool`, `RpcClient` |
 
 ## Slices
 
@@ -168,7 +172,7 @@ flowchart LR
 |---|-------|-------------|------|
 | 1 | omp round-trip (non-streaming) + hub grants | N1, N3, N4, N7, N9 | `backend=omp-rpc` agent completes a turn via omp on M₁ (auth on); result rendered |
 | 2 | `OmpPool` + native-session memory | N5, N10 | omp agent recalls a prior-turn fact via its warm pool client; a 2nd conversation (distinct `session_id`) does NOT see the 1st's history (per-`pool_id` isolation) |
-| 3 | `OmpPool` concurrency (CliPool parity) | N10 | two conversations execute **in parallel** on one replica — both complete, no cross-session bleed, wall-clock < serialized sum |
+| 3 | `OmpPool` concurrency (flat free-set) | N10 | two conversations dispatched to one replica — any two free workers check out, each calls `switch_session`, both complete, no cross-session bleed, wall-clock < serialized sum; `no_session=False` flip verified |
 | 4 | streaming bridge + hub `…progress` grant | N2 | omp turn streams tokens live (parity with clipool); hub gains `factory.job.*.progress` subscribe + ACL-artifact regen |
 | 5 | per-job override | N6 | same agent: turn A→omp, turn B→clipool via per-job hint |
 | 6 | parity runbook + flip gate | N8 | runbook runs golden prompts on both; documents flip procedure |
@@ -181,8 +185,9 @@ flowchart LR
 - [ ] `JobEnvelope.payload` carries `prompt` + session-ref + `model_cfg` + `system_prompt` as **optional** fields; an old `{"prompt": str}`-only envelope still validates (wire-compat).
 - [ ] The `job_id` is **hub-minted**; the omp worker never publishes to `factory.jobs.omp` (only to `factory.job.<id>.{progress,result}`) — verified by test.
 - [ ] An omp-backed agent **remembers context across turns** via a **hub-resolved** omp session token (`provider_session_id` = the `.jsonl` `session_file` path, the omp analogue of clipool `cli_session_id`), persisted in `pool_sessions` keyed by the conversation `session_id` — not hub-threaded `messages[]`. Cold-start resume is `switch_session(session_file)` (spike-confirmed to preserve `session_id`).
-- [ ] **No cross-conversation bleed**: two conversations (distinct `session_id`) handled by the same omp worker replica do not see each other's history — verified by test. Mechanism: `OmpPool` keys a warm client per `pool_id`, and the **hub** sends each turn the correct conversation's session token; the worker resumes/routes exactly that (stateless), mirroring clipool's hub-driven `resume_session_id`.
-- [ ] **`OmpPool` concurrency (CliPool parity)**: two conversations dispatched to one omp replica execute their `prompt_and_wait` **in parallel** (distinct warm `RpcClient`s / omp subprocesses) — both return correct results, no bleed, observed wall-clock < the serialized sum — verified by test (spike P3 proved the mechanism).
+- [ ] **No cross-conversation bleed**: two conversations (distinct `session_id`) handled by the same omp worker replica do not see each other's history — verified by test. Mechanism: `OmpPool` is a **flat free-set of M interchangeable warm workers**; per turn, the hub resolves `provider_session_id` (the `.jsonl` path) from `pool_sessions` and passes it on the wire; any free worker calls `switch_session(session_file)` to load exactly that conversation's durable session — no per-conversation pinning, no bleed.
+- [ ] **`OmpPool` concurrency (flat free-set, CliPool parity)**: two conversations dispatched to one omp replica each check out a **distinct free worker**, call `switch_session`, and execute `prompt_and_wait` **in parallel** — both return correct results, no bleed, observed wall-clock < the serialized sum — verified by test.
+- [ ] **Durable sessions (`no_session=False`)**: omp sessions persist to disk (`PI_CODING_AGENT_DIR/sessions/`); memory survives LRU eviction and worker restarts (via named volume PR #1897); `no_session=False` flip verified (V2 `no_session=True` was a silent no-op).
 - [ ] **Worker stays a dumb executor**: the omp worker neither reads `config.db` nor branches on `ModelConfig.backend`; runtime + session are resolved **hub-side** and passed on the wire (parity with the clipool worker; no `config.db` volume mounted into `factory-omp`) — verified by test/inspection.
 - [ ] omp turns **stream**: `JobProgress.partial_text`→`TextLlmEvent`, `tool_name`/`tool_id`→`ToolUseLlmEvent`, terminal `JobResult`→`ResultLlmEvent`; honors `model_cfg.streaming`.
 - [ ] The `JobProgress`→`LlmEvent` mapping is documented; unmapped variants (`thinking`, tool-delta, tool-result) are dropped **with an explicit `log.warning` at the driver boundary** (not silently).
@@ -196,13 +201,18 @@ flowchart LR
 
 ## Known constraints (accepted)
 
-- **Concurrency via `OmpPool` (CliPool parity).** One replica hosts N warm `RpcClient`
-  subprocesses keyed by `pool_id`; distinct conversations execute in parallel (spike P3). Bounded
-  by pool size × per-subprocess footprint (each omp process carries its own RAM/CPU) — LRU evict
-  beyond the cap, cold-start resumes via `switch_session(session_file)`. **Within a single
-  conversation** turns are still serial (one `prompt_and_wait` per warm client). Scale active
-  conversations beyond the cap by adding replicas; the parity runbook (N8) sets SLA vs clipool.
-  Pool cap is a config knob (mirror CliPool's sizing), not hardcoded.
+- **Concurrency via `OmpPool` (flat free-set, CliPool parity).** One replica hosts M warm
+  `RpcClient` subprocesses (RAM-bounded, not conversation-count-bounded); any free worker handles
+  any conversation — check out, `switch_session(session_file)` (~4ms), run `prompt_and_wait`,
+  release. No per-conversation pinning; no LRU. Concurrency = M (semaphore on free set). Turns
+  for the **same** conversation are still serial only within a single turn (one `prompt_and_wait`
+  per checked-out worker). Scale throughput by growing M or adding replicas; the parity runbook
+  (N8) sets SLA vs clipool. Pool cap is a config knob, not hardcoded.
+- **Durable sessions = content at rest + growth.** `PI_CODING_AGENT_DIR` was ephemeral tmpfs
+  (no-secret-at-rest, no-growth). Flipping `no_session=False` produces durable `.jsonl` session
+  files that grow with conversation history. The named volume `factory-omp-sessions` mounted at
+  `PI_CODING_AGENT_DIR` (PR #1897) provides persistence across restarts. Session retention TTL
+  (pruning old `.jsonl` files) is a devops scope concern — not built here; accepted constraint.
 - **Session model is per-backend (not yet a shared primitive).** Both backends now follow the same
   *shape* — a hub-resolved opaque token (`cli_session_id` / `provider_session_id`) persisted in
   `pool_sessions` keyed by `session_id` — but each resolves/applies it through its own driver. Below
@@ -219,14 +229,7 @@ flowchart LR
    hint ride on **inbound message metadata** (resolved in a hub middleware) or the **turn
    envelope**? Proposed: message metadata → resolved in dispatch before provider selection.
    Determines whether the change touches the inbound stage or only hub dispatch (axial scope).
-2. **(plan-entry blocker, slice 2) Session-file durability:** the `provider_session_id` token (the
-   `.jsonl` `session_file` path) persists in `pool_sessions` (durable, TurnWriter), but omp can only
-   *resume* it if omp's own session files (`PI_CODING_AGENT_DIR`/`session_dir`, currently ephemeral
-   tmpfs) survive a worker restart — **spike-confirmed**: resume works within a run but the files
-   vanish on restart, exactly as clipool's `--resume` relies on Claude CLI's session store persisting
-   in the clipool container. Decide: (a) accept ephemeral (token present but un-resumable
-   post-restart → document the regression), or (b) persist the omp `session_dir` on a named volume
-   for clipool-parity. Proposed: (b). Confirm in /plan.
+2. ~~**(plan-entry blocker, slice 2) Session-file durability** — resolved.~~
 3. **`result_data` shape:** `_rpc_bridge.py:289` `getattr(event,"result",None)` may be
    `str | dict | None` (omp_rpc external API) — driver must handle all three to build
    `LlmResult.result: str`. Confirm shape against the pinned omp binary in /plan.
@@ -235,3 +238,8 @@ flowchart LR
 > `.jsonl` `session_file` path; cold-start resume is `switch_session(session_file)`, which preserves
 > `session_id` (verified, fresh process). Stored as `provider_session_id` in `pool_sessions` keyed by
 > `session_id`. No longer a blocker.
+
+> **Resolved by V3 spike #1813 (was #2):** Session-file durability — PR #1897 mounts named volume
+> `factory-omp-sessions` at `PI_CODING_AGENT_DIR`; V3 spike (2026-06-15) proved cross-process resume
+> PASS on the real `factory-omp` binary on M₁. `no_session=False` flip makes sessions durable on disk;
+> retention TTL = devops scope, accepted constraint. No longer a plan-entry blocker.

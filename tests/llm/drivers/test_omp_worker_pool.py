@@ -145,11 +145,9 @@ class TestOmpWorkerPool:
         pool.acquire.assert_called_once_with(None)
 
     @pytest.mark.asyncio
-    async def test_handle_passes_none_when_provider_session_id_empty_string(
-        self,
-    ) -> None:
-        """Empty-string provider_session_id is normalised to None before
-        being passed to pool.acquire (never pass empty string)."""
+    async def test_handle_rejects_empty_string_provider_session_id(self) -> None:
+        """Empty-string provider_session_id is rejected as bad token (per guard)
+        and does NOT call acquire (never pass empty string to pool)."""
         pool = _mock_pool()
         worker = OmpWorker(pool=pool)
 
@@ -157,11 +155,11 @@ class TestOmpWorkerPool:
         payload = _base_payload(pool_id=_POOL_ID, provider_session_id=None)
         payload["payload"]["provider_session_id"] = ""  # explicit empty string
         await worker.handle(msg=None, payload=payload)
-        # drain spawned _run_job (handle fire-and-forget in Model B)
+        # drain (no job spawned on early reject)
         if getattr(worker, "_jobs", None):
             await asyncio.gather(*list(worker._jobs), return_exceptions=True)
 
-        pool.acquire.assert_called_once_with(None)
+        pool.acquire.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_handle_falls_back_to_job_id_when_pool_id_absent(self) -> None:

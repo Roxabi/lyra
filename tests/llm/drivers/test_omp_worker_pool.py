@@ -5,13 +5,15 @@ Scenarios:
      pool.acquire(session_file=...) with the correct (new flat) arguments.
   2. The bridge from pool.acquire() bundle receives .run(..., session_file=...)
      (JobResult.data carries session_file backhauled from worker.session_file).
-     Note: OmpWorker ctor takes only pool= (no bridge=); per-job bridge lives in acquired _PoolWorker.
+     Note: OmpWorker ctor takes only pool= (no bridge=); bridge lives
+     in the acquired _PoolWorker.
   3. OmpWorker does not import sqlite3 or access config.db (dumb executor
      invariant — ADR-073).
 """
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
@@ -58,19 +60,19 @@ def _base_payload(
     return payload
 
 
-def _mock_pool(session_file: str = _SESSION_FILE, *, bridge: MagicMock | None = None) -> MagicMock:
-    """Return a MagicMock OmpPool whose acquire() succeeds and returns a _PoolWorker-like
-    (with .client, .bridge, .session_file) per new flat Model B API.
+def _mock_pool(
+    session_file: str = _SESSION_FILE, *, bridge: MagicMock | None = None
+) -> MagicMock:
+    """Return MagicMock OmpPool; acquire returns _PoolWorker-like bundle
+    (.client, .bridge, .session_file) for Model B flat API.
 
-    acquire now takes ONLY session_file (positional or kw, no leading pool_id).
-    No _entries (flat free-set of workers; concurrency via semaphore).
-    The optional ``bridge`` is injected into the returned entry so .bridge.run can be spied
-    (the per-acquire bridge now carries the run; top-level bridge no longer passed to OmpWorker).
+    acquire(session_file) only (no pool_id). No _entries.
+    Optional bridge injected for spying .run on per-acquire entry.
     """
     fake_client = MagicMock()
     pool = MagicMock(spec=OmpPool)
     pool.aclose = AsyncMock()
-    # no _entries; use _last_acquired for test inspection of the bundle returned by acquire
+    # no _entries; _last_acquired for test spy of returned bundle
 
     if bridge is None:
         bridge = MagicMock()
@@ -83,8 +85,7 @@ def _mock_pool(session_file: str = _SESSION_FILE, *, bridge: MagicMock | None = 
     _default_sf = session_file
 
     async def _side_effect_acquire(session_file: str | None) -> Any:
-        # Mimic OmpPool Model B: session_file only (None for cold mint); return bundle
-        # not bare client. The bridge here is the one that will receive .run(...)
+        # Model B: sf only (None=cold); return bundle (bridge for .run)
         stored = session_file if session_file is not None else _default_sf
         entry = SimpleNamespace(
             client=fake_client,
@@ -112,8 +113,8 @@ class TestOmpWorkerPool:
 
     @pytest.mark.asyncio
     async def test_handle_routes_to_pool_acquire(self) -> None:
-        """handle() extracts pool_id (for log only) + provider_session_id from envelope
-        and calls pool.acquire(session_file=provider_session_id) — Model B (no pool_id routing)."""
+        """handle extracts pool_id (log) + provider_session_id; calls
+        acquire(session_file=...) — Model B (no pool_id routing)."""
         pool = _mock_pool()
         worker = OmpWorker(pool=pool)
 
@@ -122,8 +123,11 @@ class TestOmpWorkerPool:
             provider_session_id=_SESSION_FILE,
         )
         await worker.handle(msg=None, payload=payload)
+        # drain spawned _run_job (handle fire-and-forget in Model B)
+        if getattr(worker, "_jobs", None):
+            await asyncio.gather(*list(worker._jobs), return_exceptions=True)
 
-        pool.acquire.assert_called_once_with(session_file=_SESSION_FILE)
+        pool.acquire.assert_called_once_with(_SESSION_FILE)
 
     @pytest.mark.asyncio
     async def test_handle_passes_none_when_provider_session_id_absent(self) -> None:
@@ -134,8 +138,11 @@ class TestOmpWorkerPool:
 
         payload = _base_payload(pool_id=_POOL_ID, provider_session_id=None)
         await worker.handle(msg=None, payload=payload)
+        # drain spawned _run_job (handle fire-and-forget in Model B)
+        if getattr(worker, "_jobs", None):
+            await asyncio.gather(*list(worker._jobs), return_exceptions=True)
 
-        pool.acquire.assert_called_once_with(session_file=None)
+        pool.acquire.assert_called_once_with(None)
 
     @pytest.mark.asyncio
     async def test_handle_passes_none_when_provider_session_id_empty_string(
@@ -150,8 +157,11 @@ class TestOmpWorkerPool:
         payload = _base_payload(pool_id=_POOL_ID, provider_session_id=None)
         payload["payload"]["provider_session_id"] = ""  # explicit empty string
         await worker.handle(msg=None, payload=payload)
+        # drain spawned _run_job (handle fire-and-forget in Model B)
+        if getattr(worker, "_jobs", None):
+            await asyncio.gather(*list(worker._jobs), return_exceptions=True)
 
-        pool.acquire.assert_called_once_with(session_file=None)
+        pool.acquire.assert_called_once_with(None)
 
     @pytest.mark.asyncio
     async def test_handle_falls_back_to_job_id_when_pool_id_absent(self) -> None:
@@ -165,20 +175,20 @@ class TestOmpWorkerPool:
         # Remove pool_id key entirely → simulate an old (pre-V2) sender.
         del payload["payload"]["pool_id"]
         await worker.handle(msg=None, payload=payload)
+        # drain spawned _run_job (handle fire-and-forget in Model B)
+        if getattr(worker, "_jobs", None):
+            await asyncio.gather(*list(worker._jobs), return_exceptions=True)
 
-        # Falls back to job_id (log only), routes to the pool, does NOT publish an error.
-        pool.acquire.assert_called_once_with(session_file=None)
-        # bridge is now inside acquired worker; the pool mock's bridge (via _last) has publish_error but worker doesn't call it here
-        # (the test's intent for publish_error not called is still valid as no error path)
-        # since no top bridge, we skip direct assert; error path uses publish_job_error directly.
+        # Falls back to job_id (log), routes to pool, no error.
+        pool.acquire.assert_called_once_with(None)
+        # (bridge inside acquired worker now; skip old top-bridge assert)
 
     # -- 2. bridge.run receives session_file from pool entry -------------------
 
     @pytest.mark.asyncio
     async def test_bridge_run_receives_session_file_from_pool(self) -> None:
-        """The per-worker bridge (obtained via pool.acquire() return bundle) .run() is called with
-        session_file= matching (which backs the session_file key in JobResult.data).
-        (Model B: bridge lives on the acquired worker, not injected at OmpWorker ctor.)
+        """Per-worker bridge (from acquire bundle) .run called with
+        session_file (backs JobResult.data). Model B: bridge in bundle.
         """
         minted = "/home/factory/.omp/sessions/minted-xyz.jsonl"
         pool = _mock_pool(session_file=minted)
@@ -186,8 +196,11 @@ class TestOmpWorkerPool:
 
         payload = _base_payload(pool_id=_POOL_ID, provider_session_id=None)
         await worker.handle(msg=None, payload=payload)
+        # drain spawned _run_job (handle fire-and-forget in Model B)
+        if getattr(worker, "_jobs", None):
+            await asyncio.gather(*list(worker._jobs), return_exceptions=True)
 
-        # the bridge.run (spy from _mock_pool's entry) must have been called with the minted session file
+        # bridge.run (from _mock entry) called with minted sf
         acquired = pool._last_acquired
         acquired.bridge.run.assert_called_once()
         _call_kwargs = acquired.bridge.run.call_args.kwargs
@@ -198,22 +211,28 @@ class TestOmpWorkerPool:
 
     @pytest.mark.asyncio
     async def test_bridge_run_receives_client_from_pool(self) -> None:
-        """The bridge from the object returned by pool.acquire() is used to .run();
-        note that in current Model B, bridge.run(prompt, job_id, *, session_file=...) does NOT
-        take a client= kwarg (the RpcBridge holds its client internally; acquire returns the {client, bridge} bundle)."""
+        """Bridge from acquire() return used for .run().
+        Note: Model B run(..., session_file=) does NOT take client=
+        (client held internally by bridge; acquire returns bundle)."""
         pool = _mock_pool()
         worker = OmpWorker(pool=pool)
 
         payload = _base_payload(pool_id=_POOL_ID, provider_session_id=_SESSION_FILE)
         await worker.handle(msg=None, payload=payload)
+        # drain spawned _run_job (handle fire-and-forget in Model B)
+        if getattr(worker, "_jobs", None):
+            await asyncio.gather(*list(worker._jobs), return_exceptions=True)
 
         acquired = pool._last_acquired
         acquired.bridge.run.assert_called_once()
         _call_kwargs = acquired.bridge.run.call_args.kwargs
-        # session_file is passed; no 'client' kwarg to run() in this impl (client held by bridge)
-        # (kept test name+intent for 'receives client from pool' via the bundle; client verified by structure)
+        # sf passed; no client= to run (held by bridge)
+        # (bundle from pool; client verified by structure)
         assert acquired.client is not None
-        assert _call_kwargs.get("session_file") is not None or acquired.session_file is not None
+        assert (
+            _call_kwargs.get("session_file") is not None
+            or acquired.session_file is not None
+        )
 
     # -- 3. dumb-executor invariant: no config.db / sqlite3 access -----------
 

@@ -67,11 +67,6 @@ an `uptime-kuma` container on port 3001 via Docker Compose (`louislam/uptime-kum
 This is already container-based. Migration status: unknown — it uses Docker Compose, not
 Podman Quadlet. It is not registered in the supervisord hub.
 
-**Note — `gitnexus`:** Listed in `CLAUDE.md` as auto-discovered infra. No conf.d entry
-found, no standalone project directory found — may be a Claude Code plugin
-(`roxabi-plugins/plugins/gitnexus`), not a persistent daemon. **Investigate on M₁:
-does `gitnexus` run a background process?**
-
 **Note — `llmCLI`:** Has `supervisor/conf.d/llmcli_serve.conf` in its own project
 directory but is **not registered in `~/projects/conf.d/`** — not currently active in the
 hub supervisord. Verify whether it is deployed.
@@ -406,9 +401,8 @@ sudo systemctl start nats.service
 | 5 | ~~Rootless GPU passthrough failure for imageCLI/voiceCLI~~ **MITIGATED 2026-04-24** — CDI validated on M₁: driver 580.142, toolkit 1.19.0, Podman 5.7.0, `podman run --device nvidia.com/gpu=all` and Quadlet `AddDevice=nvidia.com/gpu=all` both pass with RTX 3080 visible. Spec persisted at `/etc/cdi/nvidia.yaml` (not tmpfs). Apt hook `/etc/apt/apt.conf.d/99-nvidia-cdi-regenerate` regenerates only when nvidia packages actually change (stamp-file gated) and aborts apt on failure in that case — no-silent-drift preserved without wedging unrelated apt transactions. Runbook: `docs/runbooks/cdi-gpu-validation.md`. | — | — | — |
 | 6 | **Port collision between idna and roxabi-intel on 8082** — both projects appear to use port 8082; if both are started simultaneously, one will fail | Medium | Low | Investigate on M₁ now (§1 audit note). Assign distinct ports before migration. |
 | 7 | **Disk space: image layer overhead** — each project image adds 200–800 MB of layer storage; 10 projects × 500 MB average = ~5 GB. M₁'s disk capacity is unknown from these files | Low | Medium | Check `df -h` on M₁. Set `podman system prune` in a weekly systemd timer to remove dangling layers. Keep `localhost/<project>:rollback` tag for one generation only. |
-| 8 | **gitnexus daemon status unknown** — if gitnexus runs a background process and is not captured in this audit, it will be orphaned when supervisord is retired | Low | Low | Investigate on M₁: `ps aux | grep gitnexus`. Determine whether it is a Claude Code plugin (ephemeral) or a persistent server. |
-| 9 | **2ndBrain's standalone supervisord is invisible to hub** — the 2ndBrain supervisord instance is not in the hub and has no `lyra.service` equivalent; it may already be running detached from any boot management | Medium | Low | Before Phase 3: map the full process tree on M₁ (`ps aux | grep supervisord`). Add a boot path (systemd user unit) for the 2ndBrain supervisord if it is not already managed, so Phase 3 migration has a clean starting point. |
-| 10 | **NATS auth.conf dual-path during Phase 4 coexistence** — during the transition from host NATS (4222) to Quadlet NATS (4223, then back to 4222), nkey seeds and auth.conf must be consistent across both. A partial migration leaves one NATS instance with stale ACLs | Medium | High | Never regen nkeys mid-phase. Plan Phase 4 as: (a) deploy shared Quadlet NATS with same auth.conf, (b) verify all clients connect, (c) stop host NATS, (d) only then regen if needed. Keep auth.conf backup per the existing rollback procedure (`DEPLOYMENT.md §10`). |
+| 8 | **2ndBrain's standalone supervisord is invisible to hub** — the 2ndBrain supervisord instance is not in the hub and has no `lyra.service` equivalent; it may already be running detached from any boot management | Medium | Low | Before Phase 3: map the full process tree on M₁ (`ps aux | grep supervisord`). Add a boot path (systemd user unit) for the 2ndBrain supervisord if it is not already managed, so Phase 3 migration has a clean starting point. |
+| 9 | **NATS auth.conf dual-path during Phase 4 coexistence** — during the transition from host NATS (4222) to Quadlet NATS (4223, then back to 4222), nkey seeds and auth.conf must be consistent across both. A partial migration leaves one NATS instance with stale ACLs | Medium | High | Never regen nkeys mid-phase. Plan Phase 4 as: (a) deploy shared Quadlet NATS with same auth.conf, (b) verify all clients connect, (c) stop host NATS, (d) only then regen if needed. Keep auth.conf backup per the existing rollback procedure (`DEPLOYMENT.md §10`). |
 
 ---
 

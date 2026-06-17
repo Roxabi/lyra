@@ -35,6 +35,5 @@ tests/data/traces/*.json
 # Machine-local build state (image digest capture, ADR-053 §3)
 .image-digest
 
-.gitnexus
 # CocoIndex Code (ccc)
 /.cocoindex_code/

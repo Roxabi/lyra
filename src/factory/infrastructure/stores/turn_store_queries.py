@@ -48,15 +48,16 @@ _COLS = (
 
 
 async def get_last_session(db: aiosqlite.Connection, pool_id: str) -> str | None:
-    """Return the most recent session_id for *pool_id*, or None.
+    """Return the most recent active session_id for *pool_id*, or None.
 
     Queries the pool_sessions table (O(1) via index) instead of scanning
-    conversation_turns. Returns a session from creation, not first reply.
+    conversation_turns. Prefers non-ended sessions (aligned with
+    ``get_cli_session_by_pool``); returns a session from creation, not first reply.
     """
     try:
         async with db.execute(
             "SELECT session_id FROM pool_sessions"
-            " WHERE pool_id = ?"
+            " WHERE pool_id = ? AND ended_at IS NULL"
             " ORDER BY last_active_at DESC LIMIT 1",
             (pool_id,),
         ) as cur:

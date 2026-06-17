@@ -312,5 +312,16 @@ class SimpleAgent(AgentBase):
                 self.name,
                 pool.pool_id,
             )
+            pool._last_turn_had_backend_error = True
+            user_msg = (
+                self._msg_manager.get("generic")
+                if self._msg_manager
+                else GENERIC_ERROR_REPLY
+            )
+            return Response(
+                content=user_msg,
+                metadata={**meta, "error": True},
+                speak=(msg.modality == "voice"),
+            )
 
         return Response(content=reply, metadata=meta, speak=(msg.modality == "voice"))

@@ -2,14 +2,13 @@
 
 ## Overview
 
-Lyra containers are built and published to GHCR via a reusable GitHub Actions workflow shared
-across all Roxabi projects. The registry convention is `ghcr.io/roxabi/<project>`. Two triggers
-drive publishing: a push to the `staging` branch produces a `:staging` floating tag for
-pre-release validation on M₁; a release-please tag of the form `<component>/vX.Y.Z` on the
-`main` branch produces `:X.Y.Z`, `:X` (major alias), and `:latest`, all managed via
-`docker/metadata-action@v5`. The reusable workflow lives at
-`Roxabi/.github/.github/workflows/publish-container.yml@v1`; each project supplies a thin
-caller workflow that feeds project-specific inputs.
+Lyra containers are built and published to GHCR from this repo via a **bake pipeline**
+(`docker/bake-action` + `docker-bake.hcl` — see `.github/workflows/publish.yml`). Other Roxabi
+projects typically use a shared reusable workflow at
+`Roxabi/.github/.github/workflows/publish-container.yml@v1`. Registry convention:
+`ghcr.io/roxabi/<project>`. Two triggers drive publishing: a push to `staging` produces floating
+tags for pre-release validation on M₁ (`:staging` + `:staging-svc` for Lyra); a release-please tag
+`<component>/vX.Y.Z` on `main` produces semver pins (`:X.Y.Z`, `:X`, `:latest` where applicable).
 
 ---
 
@@ -22,16 +21,16 @@ caller workflow that feeds project-specific inputs.
 - **Pinned package layers** — pin `uv` by version in the build stage; `apt-get` layers must use
   `--no-install-recommends` and clean lists in the same `RUN` step.
 - **Explicit non-root UID** — create a dedicated system user with a fixed numeric UID. Lyra uses
-  UID/GID 1500 (`lyra`). Never run as root or rely on the default `nobody` UID.
+  UID/GID 1500 (`factory`). Never run as root or rely on the default `nobody` UID.
 - **HEALTHCHECK** — must exit 0 on healthy, non-zero on unhealthy. Lyra uses
-  `HEALTHCHECK CMD lyra config validate`. The command must be available in the final stage.
+  `HEALTHCHECK CMD factory config validate`. The command must be available in the final stage.
 
   > **Note:** `HEALTHCHECK` requires Docker manifest format (v2 schema 2). OCI image manifests
   > silently drop this instruction. The reusable workflow sets `oci-mediatypes=false` on the
   > `docker/build-push-action` step to force Docker v2 schema 2, so `HEALTHCHECK` is preserved
   > in the published image. No action needed in the Dockerfile or caller workflow.
 
-  > **svc-runtime (`staging-svc`) requires `config.toml` bind-mount:** `lyra config validate`
+  > **svc-runtime (`staging-svc`) requires `config.toml` bind-mount:** `factory config validate`
   > opens `config.toml` from `WORKDIR /app` and exits 1 on `FileNotFoundError`. In production
   > Quadlets the file is bind-mounted, so this is fine. Running `docker run` without the mount
   > (local dev, CI smoke tests) will immediately mark the container unhealthy — this is expected
@@ -42,37 +41,66 @@ caller workflow that feeds project-specific inputs.
 
 ---
 
-## Caller workflow template
+## Caller workflows
 
-The reusable workflow accepts four inputs:
+### Lyra (`roxabi-factory`) — bake pipeline
 
-| Input | Required | Default | Description |
-|---|---|---|---|
-| `image_name` | yes | — | Full registry path, e.g. `ghcr.io/roxabi/factory` |
-| `release_please_component` | yes | — | Component name as used in the release-please tag, e.g. `lyra` |
-| `dockerfile_path` | no | `./Dockerfile` | Path to the Dockerfile relative to the build context |
-| `build_context` | no | `.` | Docker build context path |
-
-Lyra caller (`.github/workflows/publish.yml`):
+SSoT: `.github/workflows/publish.yml`. Builds two Dockerfile targets (`agent-runtime`,
+`svc-runtime`) and pushes `:staging` / `:staging-svc` on branch push, semver tags on release.
 
 ```yaml
 name: publish
 on:
   push:
     branches: [staging]
-    tags: ['lyra/v*']
+    tags: ['factory/v*']
 permissions:
   contents: read
   packages: write
 jobs:
   publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Compute image tags
+        id: tags
+        run: |
+          REG=ghcr.io/roxabi/factory
+          # staging → :staging + :staging-svc; tags factory/v* → semver (see full workflow)
+      - uses: docker/bake-action@v7
+        with:
+          files: docker-bake.hcl
+          push: true
+          set: |
+            ${{ steps.tags.outputs.bake_set }}
+```
+
+See the full workflow for tag computation and the post-build `svc-runtime` binary gate.
+
+### Other Roxabi projects — reusable workflow template
+
+The reusable workflow accepts four inputs:
+
+| Input | Required | Default | Description |
+|---|---|---|---|
+| `image_name` | yes | — | Full registry path, e.g. `ghcr.io/roxabi/voicecli` |
+| `release_please_component` | yes | — | Component name as used in the release-please tag, e.g. `voicecli` |
+| `dockerfile_path` | no | `./Dockerfile` | Path to the Dockerfile relative to the build context |
+| `build_context` | no | `.` | Docker build context path |
+
+```yaml
+jobs:
+  publish:
     uses: Roxabi/.github/.github/workflows/publish-container.yml@v1
-    secrets: inherit
     with:
-      image_name: ghcr.io/roxabi/factory
-      release_please_component: lyra
-      # Manifest format (oci-mediatypes=false) is handled by the reusable workflow.
-      # No extra inputs are needed to preserve HEALTHCHECK.
+      image_name: ghcr.io/roxabi/<project>
+      release_please_component: <project>
 ```
 
 Callers MUST pin `@v1`, never `@main`. The `main` branch of `Roxabi/.github` may receive
@@ -108,7 +136,7 @@ Switching between the two is a one-line edit to the `.container` file followed b
 
 Since #929, prod (M₁) uses `podman auto-update` to automatically pull new images and restart
 containers. Auto-deploy holds *provided the three timers described below are enabled and active
-on M₁*. See `docs/QUADLET-DEPLOYMENT.md` (M₁ auto-update remediation runbook) if any timer
+on the production host. See `docs/runbooks/quadlet-diagnostic.md` (auto-update remediation) if any timer
 is inactive.
 
 ### Three-timer model
@@ -152,6 +180,7 @@ All three must be enabled and active for fully automatic deploys. Check with
 | `factory-gh-helper` | `ghcr.io/roxabi/factory:staging` | registry |
 | `factory-turn-writer` | `ghcr.io/roxabi/factory:staging-svc` | registry |
 | `factory-blobstore` | `ghcr.io/roxabi/factory:staging-svc` | registry |
+| `factory-omp` | `ghcr.io/roxabi/factory:staging` | registry |
 
 > `factory-nats` is pinned by digest and carries no `io.containers.autoupdate=registry` label — it is intentionally excluded from the auto-update cycle; bump manually.
 > voiceCLI units are managed by the voiceCLI repo and its own Quadlet manifests — see that repo for its auto-update configuration.
@@ -212,7 +241,7 @@ curl -fsS localhost:8443/health
 `factory-hub` on `127.0.0.1:8443` (published via PublishPort in the Quadlet unit).
 
 > `factory-nats` is excluded from this restart sequence — it is pinned by digest and managed
-> separately. See `docs/QUADLET-DEPLOYMENT.md` for NATS rotation procedures.
+> separately. See `docs/runbooks/secrets-rotation.md` for NATS rotation procedures.
 
 ---
 
@@ -271,7 +300,7 @@ in the schema handshake. This omission is deliberate; do not add it back when re
 "M₁ manual pull + restart" pattern above.
 
 All three units share the same image; a single CI push to `staging` produces one `:staging` digest
-that all units pull. For semver releases, cut the `lyra/<component>/vX.Y.Z` tag once and coordinate
+that all units pull. For semver releases, cut the `factory/<component>/vX.Y.Z` tag once and coordinate
 the Quadlet `Image=` pin update across all three `.container` files before `daemon-reload`.
 
 **Release procedure for a schema-floor bump:**
@@ -310,9 +339,10 @@ Steps for a new Roxabi project (voiceCLI, 2ndBrain, imageCLI, llmCLI) to adopt t
    stage, pinned base image, non-root UID, and a working `HEALTHCHECK`. The reusable workflow
    automatically forces Docker v2 schema 2 manifest format (`oci-mediatypes=false`), so
    `HEALTHCHECK` is preserved without any extra configuration in the caller workflow.
-2. Create `.github/workflows/publish.yml` by copying the caller template above. Replace
+2. Create `.github/workflows/publish.yml` by copying the **reusable workflow template** above
+   (not Lyra's bake pipeline unless you also maintain a `docker-bake.hcl`). Replace
    `image_name` with `ghcr.io/roxabi/<project>` and `release_please_component` with the
-   project's component name. Update the `tags` trigger from `lyra/v*` to `<project>/v*`.
+   project's component name. Set the `tags` trigger to `<project>/v*`.
 3. Ensure `release-please` is configured in the repo with `tag-separator: '/'` and the correct
    component name matching the value passed to `release_please_component`. Without this, the
    semver tag trigger will not fire.
@@ -326,7 +356,7 @@ Steps for a new Roxabi project (voiceCLI, 2ndBrain, imageCLI, llmCLI) to adopt t
 
 ## Cross-references
 
-- `.github/workflows/publish.yml` — lyra caller workflow
+- `.github/workflows/publish.yml` — factory caller workflow
 - `.github/workflows/omp-base.yml` — path-triggered build+publish for the omp binary carrier image (`ghcr.io/roxabi/factory-omp-base`, immutable version tags); separate from the main bake pipeline — see `deploy/omp-base/README.md`
 - `Roxabi/.github/.github/workflows/publish-container.yml@v1` — reusable workflow (upstream)
 - `deploy/quadlet/factory-hub.container` — `Image=` reference example

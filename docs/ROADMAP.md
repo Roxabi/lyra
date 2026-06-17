@@ -1,13 +1,13 @@
 # Lyra — Prioritized Roadmap
 
 > Living document. Updated as decisions are made.
-> Last updated: 2026-04-27
+> Last updated: 2026-06-17
 
 ---
 
 ## Current focus
 
-**Phase 1b complete. Architecture refactoring complete. NATS 4-process mode shipped (#458, 0.2.0).** Hub, Telegram, Discord, and CliPool now run as four separate processes on Machine 1, communicating over NATS. Next: Phase 2 Machine 2 LLM worker (#51), or #136 (multi-bot registry, blocked by #79).
+**#1670 factory.* cutover complete (2026-06-03). Nine-container Quadlet stack on M₁** — `factory-nats`, `factory-hub`, `factory-telegram`, `factory-discord`, `factory-clipool`, `factory-gh-helper`, `factory-turn-writer`, `factory-blobstore`, `factory-omp` — all on `roxabi.network`. Core message path remains four NATS processes (hub + adapters + clipool). Next: Phase 2 Machine 2 LLM worker (#51), or #136 (multi-bot registry, blocked by #79).
 
 ---
 
@@ -19,7 +19,7 @@
 | **1** | — | ✅ Done | Hub: asyncio bus, adapters (Telegram/Discord), SimpleAgent, command router |
 | **1b** | #73 | ✅ Done | Agent core: persona ✅, parity audit ✅, memory foundation ✅, hub refactor ✅, command sessions ✅, architecture refactoring ✅, dropped SDK driver (#666) ✅ |
 | **Voice** | #74 | 🔓 Unblocked | TTS + STT integration — unblocked since #76 shipped |
-| **2** | #60 | Partial | NATS 4-process mode ✅ done (#458, 0.2.0 — hub + telegram + discord + clipool); Machine 2 LLM worker coordination = planned |
+| **2** | #60 | Partial | NATS 4-process core ✅ (#458); nine-container Quadlet production stack ✅ (#1036, OMP #1812); Machine 2 LLM worker coordination = planned |
 | **3** | #61 | Frozen | Atomic SLMs + cognitive pipeline |
 | **4** | #62 | Frozen | Resilience, observability, security |
 | **5** | #63 | Frozen | Multi-agent orchestration |
@@ -248,7 +248,7 @@ Feature work accumulates silently. `core/` had grown to 60+ files; over a dozen 
 
 > Explicitly frozen. Reconsider when Phase 1b tail + voice are done.
 
-- **NATS Machine 2 LLM worker** — Phase 2 (#51); NATS 4-process (hub + telegram + discord + clipool) already shipped in #458 (0.2.0)
+- **NATS Machine 2 LLM worker** — Phase 2 (#51); NATS 4-process core shipped in #458; nine-container Quadlet stack live on M₁
 - **Atomic SLMs** — Phase 3, no local model benchmark done yet (#14)
 - **Proactive engine** — Phase 2, no infra for it yet
 - **Funding rate arbitrage** — full-time topic, incompatible with solo

@@ -4,13 +4,13 @@
 
 ---
 
-## The `lyra` CLI
+## The `factory` CLI
 
-The `lyra` CLI is the main entry point for managing Lyra from your shell.
+The `factory` CLI is the main entry point for managing Lyra from your shell.
 
 ### Installation
 
-After `uv sync`, activate the virtual environment to put `lyra` on your PATH:
+After `uv sync`, activate the virtual environment to put `factory` on your PATH:
 
 ```bash
 source .venv/bin/activate
@@ -24,9 +24,9 @@ source .venv/bin/activate
 
 | Command | Description |
 |---------|-------------|
-| `lyra` / `factory start` | Start hub + adapters in one process (auto-starts embedded NATS if `NATS_URL` is not set) |
-| `lyra --version` / `lyra -V` | Print the installed version |
-| `lyra --help` | List all available subcommands |
+| `factory` / `factory start` | Start hub + adapters in one process (auto-starts embedded NATS if `NATS_URL` is not set) |
+| `factory --version` / `factory -V` | Print the installed version |
+| `factory --help` | List all available subcommands |
 
 **Agent management**
 
@@ -67,8 +67,8 @@ source .venv/bin/activate
 
 | Command | Description |
 |---------|-------------|
-| `lyra config show` | Print the resolved `config.toml` |
-| `lyra config validate` | Validate `config.toml` against the schema |
+| `factory config show` | Print the resolved `config.toml` |
+| `factory config validate` | Validate `config.toml` against the schema |
 
 > `factory-agent` still works but prints a deprecation warning. Migrate to `factory agent <subcommand>`.
 
@@ -119,11 +119,11 @@ User → !unknown  → Telegram → Hub → CommandRouter → no handler → Age
 
 Lyra registers commands with each platform's native menu for autocomplete and discoverability. All command **routing** remains application-level text parsing — native registration is cosmetic only.
 
-**Telegram** — registered via `lyra setup commands` (one-time CLI, not at every startup):
+**Telegram** — registered via `factory setup commands` (one-time CLI, not at every startup):
 
 ```bash
-lyra setup commands              # register for all configured Telegram bots
-lyra setup commands -c prod.toml # use a specific config file
+factory setup commands              # register for all configured Telegram bots
+factory setup commands -c prod.toml # use a specific config file
 ```
 
 Re-run after adding/removing commands to update the menu. Admin-only commands (`/circuit`, `/routing`, `/config`, `/svc`, `/invite`, `/unpair`) are excluded from the public menu.

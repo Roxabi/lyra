@@ -86,10 +86,12 @@ class OmpPool:
         omp_bin: Path = _OMP_BIN,
         provider: str | None = _DEFAULT_PROVIDER,
         model: str | None = None,
+        request_timeout: float | None = None,
     ) -> None:
         self._omp_bin = omp_bin
         self._provider = provider
         self._model = model
+        self._request_timeout = request_timeout
         self._free: list[_PoolWorker] = []
         self._all: list[_PoolWorker] = []
         self._checked_out: set[int] = set()  # ids (workers not hashable)
@@ -135,7 +137,9 @@ class OmpPool:
                 await asyncio.to_thread(worker.client.new_session)
                 state = await asyncio.to_thread(worker.client.get_state)
                 worker.session_file = getattr(state, "session_file", None)
-                log.debug("[omp_pool] acquire new session, minted %s", worker.session_file)  # noqa: E501
+                log.debug(
+                    "[omp_pool] acquire new session, minted %s", worker.session_file
+                )  # noqa: E501
             return worker
         except BaseException:
             self._checked_out.discard(id(worker))
@@ -174,17 +178,29 @@ class OmpPool:
         # Deferred import — omp_rpc is a container image dep (absent from pyproject).
         import omp_rpc  # type: ignore[import-not-found]
 
-        from factory.adapters.omp._rpc_bridge import RpcBridge, _verify_digest
+        from factory.adapters.omp._rpc_bridge import (
+            _DEFAULT_MODEL,
+            RpcBridge,
+            _read_request_timeout,
+            _verify_digest,
+        )
 
         # gate before client (non-blocking via to_thread)
         await asyncio.to_thread(_verify_digest, self._omp_bin)
+        resolved_model = self._model if self._model is not None else _DEFAULT_MODEL
+        resolved_timeout = (
+            self._request_timeout
+            if self._request_timeout is not None
+            else _read_request_timeout()
+        )
         client: Any = None
         try:
             client = omp_rpc.RpcClient(
                 executable=str(self._omp_bin),
                 provider=self._provider,
-                model=self._model,
+                model=resolved_model,
                 no_session=False,
+                request_timeout=resolved_timeout,
             )
             await asyncio.to_thread(client.start)
             # RpcBridge(_client=): skips digest (done) + no own ctor.

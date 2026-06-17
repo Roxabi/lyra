@@ -69,7 +69,7 @@ repos:
     files: ^packages/roxabi-contracts/(src/roxabi_contracts/errors\.py|docs/error-codes\.md|scripts/check_codes_sync\.py)$
   - id: trufflehog
     name: trufflehog secret scan
-    entry: bash -c "[ -d .git ] && trufflehog git file://. --fail || true"
+    entry: bash -c 'command -v trufflehog >/dev/null || { echo "trufflehog not installed — https://github.com/trufflesecurity/trufflehog/releases" >&2; exit 2; }; trufflehog git file://. --only-verified --fail'
     language: system
     pass_filenames: false
     stages:

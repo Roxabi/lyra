@@ -34,7 +34,7 @@ Lyra stores runtime data in two root locations:
 | `index.sqlite` | SQLite manifest of all stored blobs |
 | `<sha[:2]>/<sha>` | Content-addressed prefix-shard tree (immutable, hardlink-safe) — see SSoT below |
 
-This directory is **excluded from Syncthing** across all hosts. It is large, append-only binary data and should be backed up via the BlobStore snapshot procedure (`docs/QUADLET-DEPLOYMENT.md §Backing up the BlobStore`).
+This directory is **excluded from Syncthing** across all hosts. It is large, append-only binary data and should be backed up via the BlobStore snapshot procedure (`docs/runbooks/blobstore-backup-restore.md`).
 
 > **SSoT for layout:** `packages/roxabi-blobs/src/roxabi_blobs/fs_store.py` defines the exact prefix-shard algorithm (`_shard_for(content_hash) → content_hash[:2]`) and write order (`file → fsync(file) → fsync(shard dir) → INSERT blobs → INSERT blob_refs`).
 

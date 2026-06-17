@@ -17,7 +17,7 @@ What a tool / worker / harness / provider **is**, the two taxonomies that organi
 rules that keep them distinct. **Excludes** implementation internals (CliPool, registries →
 `workers-tooling.md`), NATS wire schemas (`contracts.md`), deployment (`deployment.md`).
 
-Status: design-locked (D1-D16 validated 2026-06-02); implementation **parked** pending #1670.
+Status: design-locked (D1-D16 validated 2026-06-02); **#1670 cutover shipped** (2026-06-03). Full 5-layer dispatcher rollout remains incremental.
 
 ## 1. The layers
 
@@ -108,9 +108,8 @@ backing service ≠ provider ≠ tool.
 
 ## Status & sequencing
 
-- Design **locked** (D1-D16 validated 2026-06-02); implementation **parked** pending #1670 (`lyra.*→factory.*` subject migration).
-- **Rides #1670** (same `roxabi-contracts` package): `tool/` reparent + `factory.tool.*` infix.
-- **Separable from #1670**: `worker→provider` rename (`WorkerRegistry→SatelliteRegistry`, `hosts.toml` roles).
+- Design **locked** (D1-D16 validated 2026-06-02). **#1670 cutover done** (2026-06-03): `factory.*` subjects and `factory.tool.*` infix live in production.
+- **In progress**: `worker→provider` rename (`WorkerRegistry→SatelliteRegistry`, `hosts.toml` roles) — separable from #1670.
 - **Open** — Postiz provider = satellite adapter, not bash CLI (revisits 493 D11): tracked #1713.
 
 ## See also

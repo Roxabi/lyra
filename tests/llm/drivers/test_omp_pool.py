@@ -14,6 +14,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from factory.adapters.omp._rpc_bridge import (
+    _DEFAULT_MODEL,
+    _DEFAULT_REQUEST_TIMEOUT,
+    _ENV_REQUEST_TIMEOUT_KEY,
+    _read_request_timeout,
+)
 from factory.adapters.omp.omp_pool import (
     _DEFAULT_CAP,
     OmpPool,
@@ -259,7 +265,44 @@ class TestOmpPool:
         assert captured_kwargs.get("no_session") is False, (
             f"Expected no_session=False, got kwargs={captured_kwargs}"
         )
+        assert captured_kwargs.get("model") == _DEFAULT_MODEL
+        assert captured_kwargs.get("request_timeout") == _DEFAULT_REQUEST_TIMEOUT
 
+        await pool.aclose()
+
+    @pytest.mark.asyncio
+    async def test_start_worker_defaults_model_when_unset(self) -> None:
+        """OmpPool() with model=None must pin grok-4-fast on RpcClient (#1910)."""
+        import sys
+
+        pool = OmpPool(omp_bin=Path("/fake/omp"))
+        await pool.register(_NC)
+
+        captured_kwargs: dict = {}
+        fake_bridge = _mock_bridge()
+
+        class _CapturingFakeOmpRpc:
+            def RpcClient(self, **kwargs: object) -> MagicMock:  # noqa: N802
+                captured_kwargs.update(kwargs)
+                return _mock_rpc_client()
+
+        sys.modules["omp_rpc"] = _CapturingFakeOmpRpc()  # type: ignore[assignment]
+        try:
+            with (
+                patch(
+                    "factory.adapters.omp._rpc_bridge._verify_digest",
+                    return_value=None,
+                ),
+                patch(
+                    "factory.adapters.omp._rpc_bridge.RpcBridge",
+                    return_value=fake_bridge,
+                ),
+            ):
+                await pool.acquire(None)
+        finally:
+            sys.modules.pop("omp_rpc", None)
+
+        assert captured_kwargs.get("model") == _DEFAULT_MODEL
         await pool.aclose()
 
     # -- Bonus: _read_cap falls back to default -----------------------------
@@ -275,3 +318,7 @@ class TestOmpPool:
         """_read_cap() returns the integer value of OMP_POOL_CAP when set."""
         with patch.dict(os.environ, {"OMP_POOL_CAP": "7"}):
             assert _read_cap() == 7
+
+    def test_read_request_timeout_honours_env_var(self) -> None:
+        with patch.dict(os.environ, {_ENV_REQUEST_TIMEOUT_KEY: "90"}):
+            assert _read_request_timeout() == 90.0

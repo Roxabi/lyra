@@ -11,7 +11,6 @@ asyncio_mode = "auto" is configured project-wide in pyproject.toml.
 from __future__ import annotations
 
 import asyncio
-import time
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
 import pytest
@@ -165,37 +164,46 @@ class TestHandleSpawnSemantics:
         """handle() spawns and returns; it does NOT block on bridge.run."""
         pool = _make_pool()
         fake_pw = pool.acquire.return_value
+        release_job = asyncio.Event()
 
-        async def slow_run(prompt, job_id, *, session_file=None):  # noqa: ARG001
-            await asyncio.sleep(0.1)
+        async def blocked_run(prompt, job_id, *, session_file=None):  # noqa: ARG001
+            await release_job.wait()  # event-based: job hangs until the test frees it
 
-        fake_pw.bridge.run.side_effect = slow_run
+        fake_pw.bridge.run.side_effect = blocked_run
 
         worker = _make_worker(pool)
-
-        t0 = time.monotonic()
         await worker.handle(msg=MagicMock(), payload=_VALID_PAYLOAD)
-        elapsed = time.monotonic() - t0
 
-        # handle() returns in << 0.02s — the 0.1s job runs in background
-        assert elapsed < 0.02, f"handle() blocked: {elapsed:.3f}s"
+        # handle() returned while the job is still in flight — the spawned task is
+        # pending (not done) precisely because release_job is unset. Deterministic
+        # proof that handle() did not block on bridge.run; no wall-clock heuristic.
+        assert len(worker._jobs) == 1
+        (job_task,) = worker._jobs
+        assert not job_task.done(), "handle() blocked until the job finished"
 
-        # drain so the background task doesn't leak
+        release_job.set()
         await _drain(worker)
 
     async def test_two_jobs_dispatch_in_parallel(self) -> None:
         """Two handle() calls run their jobs concurrently, not serially."""
+        # Each job signals on `started` when it enters bridge.run, then blocks on
+        # `release`. If dispatch were serial, job 2 could not enter bridge.run until
+        # job 1 returned — so both `started` signals arriving before any release is a
+        # deterministic proof of concurrency (no wall-clock timing).
+        started = asyncio.Semaphore(0)
+        release = asyncio.Event()
         call_count = 0
 
         def _fresh_pool_worker() -> MagicMock:
             pw = _make_fake_pool_worker()
 
-            async def run_with_delay(prompt, job_id, *, session_file=None):  # noqa: ARG001
+            async def run_until_released(prompt, job_id, *, session_file=None):  # noqa: ARG001
                 nonlocal call_count
                 call_count += 1
-                await asyncio.sleep(0.05)
+                started.release()  # this job has entered bridge.run
+                await release.wait()  # event-based: hold until both are in flight
 
-            pw.bridge.run.side_effect = run_with_delay
+            pw.bridge.run.side_effect = run_until_released
             return pw
 
         pool = MagicMock()
@@ -206,19 +214,18 @@ class TestHandleSpawnSemantics:
         pool.acquire = AsyncMock(side_effect=lambda *_: _fresh_pool_worker())
 
         worker = _make_worker(pool)
-
-        payload2 = dict(_VALID_PAYLOAD)
         payload2 = {**_VALID_PAYLOAD, "job_id": "job-xyz789", "trace_id": "trace-002"}
 
-        t0 = time.monotonic()
         await worker.handle(msg=MagicMock(), payload=_VALID_PAYLOAD)
         await worker.handle(msg=MagicMock(), payload=payload2)
-        await _drain(worker)
-        elapsed = time.monotonic() - t0
 
-        # Serial would take ~0.10s; parallel should finish in ~0.05s
-        assert elapsed < 0.08, f"jobs ran serially: {elapsed:.3f}s"
-        assert call_count == 2, f"expected 2 bridge.run calls, got {call_count}"
+        # Both jobs must be in bridge.run simultaneously (would hang if serial).
+        await asyncio.wait_for(started.acquire(), timeout=1.0)
+        await asyncio.wait_for(started.acquire(), timeout=1.0)
+        assert call_count == 2
+
+        release.set()
+        await _drain(worker)
         assert pool.release.call_count == 2
 
 

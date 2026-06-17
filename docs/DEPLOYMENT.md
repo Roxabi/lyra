@@ -6,33 +6,33 @@ Running Lyra as a managed service on Machine 1 (Ubuntu Server 26.04 LTS) using r
 
 ## Overview
 
-Lyra runs as **six containers** on a shared `roxabi.network` bridge, managed by **Podman Quadlet** (systemd --user). A `linger`-enabled systemd user session ensures all containers auto-start on boot without a login session.
+Lyra runs as **nine containers** on a shared `roxabi.network` bridge, managed by **Podman Quadlet** (systemd --user). A `linger`-enabled systemd user session ensures all containers auto-start on boot without a login session.
 
 ```
-Machine 1 (roxabituwer, 192.168.1.16)
+Machine 1 (production hub)
 ├── systemd --user (linger enabled)
-│   ├── factory-nats.service         ← Quadlet NATS container (port 4222, roxabi.network)
-│   ├── factory-hub.service          ← hub container (NatsBus, pool, routing, memory)
-│   ├── factory-telegram.service     ← Telegram adapter container
-│   ├── factory-discord.service      ← Discord adapter container
+│   ├── factory-nats.service         ← NATS server (port 4222, roxabi.network)
+│   ├── factory-hub.service          ← hub (NatsBus, pool, routing, memory)
+│   ├── factory-telegram.service     ← Telegram adapter
+│   ├── factory-discord.service      ← Discord adapter
 │   ├── factory-clipool.service      ← CliPool NATS worker (Claude subprocesses)
-│   └── factory-gh-helper.service    ← GitHub App token-mint helper (factory-gh.pod)
+│   ├── factory-gh-helper.service    ← GitHub App token-mint helper (factory-gh.pod)
+│   ├── factory-turn-writer.service  ← JetStream subscriber-writer for turns.db
+│   ├── factory-blobstore.service    ← HTTP BlobStore (port 8449)
+│   └── factory-omp.service          ← OmpWorker NATS runtime backend
 ├── Quadlet unit files: ~/.config/containers/systemd/
 │   ├── roxabi.network
-│   ├── factory-hub.container
-│   ├── factory-telegram.container
-│   ├── factory-discord.container
-│   ├── factory-clipool.container
-│   ├── factory-nats.container
-│   ├── factory-gh-helper.container
+│   ├── factory-*.container / factory-*.volume
 │   ├── factory-gh.pod
-│   └── factory-*.volume
-├── config: ~/projects/roxabi-factory/config.toml
+│   └── (telegram/discord rendered from *.container.tmpl at quadlet-install)
+├── config: ~/projects/roxabi-factory/config.toml → ~/.roxabi/factory/config.toml
 ├── credentials: ~/.roxabi/factory/config.db (bot config) + Podman secrets (bot tokens)
 ├── nkey seeds: ~/.roxabi/factory/nkeys/*.seed
-├── Podman secrets: factory-nats-auth, factory-nats-hub, factory-nats-telegram, factory-nats-discord, factory-nats-clipool
+├── Podman secrets: factory-nats-{hub,telegram,discord,clipool,gh-helper,turn-writer,blobstore,omp}, factory-bot-<platform>-<bot_id>
 └── logs: journalctl --user -u factory-hub
 ```
+
+Component manifest: `deploy/quadlet.toml`. Operator runbooks: [runbooks/README.md](runbooks/README.md).
 
 ## Prerequisites
 
@@ -66,7 +66,7 @@ When CI is unavailable and you must rebuild from a local checkout (Machine 2):
 
 ```bash
 make build              # podman build → localhost/factory:dev
-make push               # podman save | ssh M1 podman load
+make push               # podman save | ssh <production-host> podman load
 ```
 
 On Machine 1:
@@ -74,10 +74,10 @@ On Machine 1:
 ```bash
 cd ~/projects/roxabi-factory
 make quadlet-install    # copy unit files to ~/.config/containers/systemd/
-make lyra reload        # restart containers
+make converge           # idempotent full deploy (preferred after unit changes)
+# or restart core path only:
+make factory reload     # hub + telegram + discord + clipool
 ```
-
-**Test gate** — `make deploy` runs `pytest` before the restart. A test failure aborts.
 
 **Graceful drain** — on restart, the running container finishes any in-flight Claude CLI turns (up to 60 s) before stopping. Conversations that complete within the window are transparent to users; only turns that outlast 60 s receive a "please resend" notification.
 
@@ -115,9 +115,8 @@ Volume + secret layout is documented inline in `deploy/quadlet/factory-hub.conta
 
 ## Multi-Bot Deployment
 
-Multiple bots are configured in `config.toml` — no container changes needed. The five-container
-topology (`factory-nats`, `factory-hub`, `factory-telegram`, `factory-discord`, `factory-clipool`) is fixed regardless of how many bots
-are configured.
+Multiple bots are configured in `config.toml` — no container changes needed. The nine-container
+topology (`deploy/quadlet.toml`) is fixed regardless of how many bots are configured.
 
 ### Adding a second bot
 
@@ -137,9 +136,10 @@ owner_users = []
 factory bot secret install telegram aryl
 ```
 
-3. Restart containers:
+3. Re-render adapter units and restart:
 ```bash
-make lyra reload
+make quadlet-install
+make factory reload
 ```
 
 ### Resource considerations
@@ -186,18 +186,37 @@ All commands can be run from Machine 1 or from Machine 2 via SSH (`make remote <
 ```bash
 # From Machine 1
 cd ~/projects/roxabi-factory
-make lyra          # status
-make lyra reload   # restart
-make lyra stop     # stop
-make lyra logs     # tail factory-hub stdout
-make lyra errors   # tail factory-hub stderr
+make factory            # status — hub + telegram + discord + clipool (default)
+make factory reload     # restart those four only
+make factory start      # start those four
+make factory stop       # stop those four
+make factory logs       # journalctl -u factory-hub -f
+make factory errors     # journalctl -u factory-hub -f -p err
 
-# From Machine 2 (via SSH)
-make remote status
+# Per-unit control
+make telegram reload
+make discord reload
+make nats reload
+make clipool reload
+
+# Full stack (9 containers + NATS auth refresh) — on the production host after unit/image/git drift
+make converge
+
+# From your dev machine (requires .env — see §8)
+make remote status      # SSH → all factory-* + voicecli-* units
 make remote reload
 make remote logs
 make remote errors
 ```
+
+**`make factory reload` vs `make converge`** — two scopes:
+
+| Command | Where | Restarts |
+|---------|-------|----------|
+| `make factory reload` | production host | **4** units: hub, telegram, discord, clipool |
+| `make converge` | production host | **NATS** + **8** factory clients (adds turn-writer, blobstore, gh-helper, omp) + voiceCLI if present; also pulls git, reinstalls quadlet units when drift detected |
+
+Use `make factory reload` for a quick hub/adapters bounce. Use `make converge` after changing Quadlet units, images, or ACL — it is idempotent and no-ops when already converged.
 
 ## 5. Enable debug logging
 
@@ -205,7 +224,7 @@ Lyra logs go to journald. The log level defaults to `INFO`. To enable debug outp
 `LOG_LEVEL=DEBUG` in `~/.roxabi/factory/env/hub.env` and restart:
 
 ```bash
-make lyra reload
+make factory reload
 journalctl --user -u factory-hub -f
 ```
 
@@ -244,14 +263,18 @@ Polling mode (the default) requires no inbound ports beyond SSH.
 Machine connection is read from `.env`:
 
 ```bash
-# .env (on your dev machine)
-DEPLOY_HOST=user@your-hub-ip          # SSH user@host for production hub
-DEPLOY_DIR=~/projects/roxabi-factory            # project path on the production host
+# .env (on your dev machine — copy from .env.example)
+DEPLOY_HOST=user@your-hub-host       # SSH target for the production hub
+DEPLOY_DIR=~/projects/roxabi-factory # project path on the production host
 ```
 
-### Deploy (pull + test + restart)
+`make remote` fails fast if either variable is unset.
+
+### Deploy (SSH pull + quadlet install)
 
 ```bash
+make converge          # preferred — run on the production host (idempotent, change-gated)
+# legacy SSH helper from dev machine (deprecated — prints warning):
 make deploy
 ```
 
@@ -337,7 +360,7 @@ tools/check-nats-acls.sh --since "$(date -Iseconds)" --window 90
 The env file is either missing, has wrong permissions, or references an unset variable. Check:
 ```bash
 journalctl --user -u factory-hub --no-pager -n 50
-make lyra errors
+make factory errors
 ```
 
 **Container restarts in a loop**

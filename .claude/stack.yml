@@ -1,6 +1,9 @@
 # .claude/stack.yml — dev-core stack configuration
 schema_version: "1.0"
 
+hooks:
+  tool: pre-commit
+
 runtime: python
 package_manager: uv
 

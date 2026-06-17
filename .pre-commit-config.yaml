@@ -88,6 +88,13 @@ repos:
     pass_filenames: false
     stages:
     - pre-push
+  - id: check-secrets-source
+    name: check-secrets-source (host data dir; skips when absent)
+    entry: tools/check_secrets_source.sh
+    language: system
+    pass_filenames: false
+    stages:
+    - pre-push
   - id: license
     name: license check
     entry: uv run tools/license_check.py

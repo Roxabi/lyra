@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-__all__ = ["factory_data_dir", "factory_discord_data_dir"]
+__all__ = ["factory_data_dir", "factory_discord_data_dir", "factory_turns_db_path"]
 
 
 def factory_data_dir() -> Path:
@@ -30,3 +30,16 @@ def factory_discord_data_dir() -> Path:
     if env:
         return Path(env)
     return factory_data_dir() / "discord"
+
+
+def factory_turns_db_path() -> Path:
+    """Resolve the canonical turns.db path (hub read + turn-writer write).
+
+    Override with ``$FACTORY_TURNS_DB``; defaults to
+    ``<factory_data_dir>/turn-writer/turns.db`` so WAL siblings co-locate
+    with the sole writer (``factory-turn-writer`` Quadlet unit).
+    """
+    env = os.environ.get("FACTORY_TURNS_DB")
+    if env:
+        return Path(env)
+    return factory_data_dir() / "turn-writer" / "turns.db"

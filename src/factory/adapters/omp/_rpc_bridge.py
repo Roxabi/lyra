@@ -255,6 +255,12 @@ class RpcBridge:
         self._result_sent = False
         self._last_turn = None
         self._last_agent_end_event = None  # reset: avoid stale prior-job leak
+        # Ensure callbacks are wired on the (possibly injected/pool) client before use.
+        # Safe to re-assign; covers both register() (legacy) and attach() (pool) paths.
+        if self._client is not None:
+            self._client.on_message_update(self._on_message_update)
+            self._client.on_tool_execution_start(self._on_tool_execution_start)
+            self._client.on_agent_end(self._on_agent_end)
         nc = self._nc
 
         async def _handle_steer_msg(msg: Any) -> None:
@@ -267,6 +273,7 @@ class RpcBridge:
         steer_sub = None
         if nc is not None:
             steer_sub = await nc.subscribe(jobs_steer(job_id), cb=_handle_steer_msg)
+        assert self._client is not None, "no client (register/attach missing)"
         try:
             turn = await asyncio.to_thread(self._client.prompt_and_wait, prompt)
             self._last_turn = turn

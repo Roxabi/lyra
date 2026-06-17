@@ -92,6 +92,7 @@ class OmpPool:
         self._model = model
         self._free: list[_PoolWorker] = []
         self._all: list[_PoolWorker] = []
+        self._checked_out: set[int] = set()  # ids (workers not hashable)
         self._sem = asyncio.Semaphore(
             _read_cap()
         )  # safe in __init__ (Lock did the same)
@@ -122,22 +123,30 @@ class OmpPool:
         except BaseException:
             self._sem.release()  # never leak a slot if cold-start failed
             raise
-        if session_file is not None:
-            await asyncio.to_thread(worker.client.switch_session, session_file)
-            worker.session_file = session_file
-            log.debug("[omp_pool] acquire with session %s", session_file)
-        else:
-            # new_session() returns a CancellationResult — NOT the path.
-            # Call get_state() to obtain the minted .jsonl session_file path.
-            await asyncio.to_thread(worker.client.new_session)
-            state = await asyncio.to_thread(worker.client.get_state)
-            worker.session_file = getattr(state, "session_file", None)
-            log.debug("[omp_pool] acquire new session, minted %s", worker.session_file)
-        return worker
+        self._checked_out.add(id(worker))
+        try:
+            if session_file is not None:
+                await asyncio.to_thread(worker.client.switch_session, session_file)
+                worker.session_file = session_file
+                log.debug("[omp_pool] acquire with session %s", session_file)
+            else:
+                # new_session() returns a CancellationResult — NOT the path.
+                # Call get_state() to obtain the minted .jsonl session_file path.
+                await asyncio.to_thread(worker.client.new_session)
+                state = await asyncio.to_thread(worker.client.get_state)
+                worker.session_file = getattr(state, "session_file", None)
+                log.debug("[omp_pool] acquire new session, minted %s", worker.session_file)  # noqa: E501
+            return worker
+        except BaseException:
+            self._checked_out.discard(id(worker))
+            # sem held (caller finally releases); worker not returned to free.
+            raise
 
     def release(self, worker: _PoolWorker) -> None:
         """Return a worker to the free set and release its semaphore slot."""
-        self._free.append(worker)
+        self._checked_out.discard(id(worker))
+        if worker not in self._free:
+            self._free.append(worker)
         self._sem.release()
 
     async def aclose(self) -> None:
@@ -149,6 +158,7 @@ class OmpPool:
                 log.warning("[omp_pool] client.stop raised", exc_info=True)
         self._free.clear()
         self._all.clear()
+        self._checked_out.clear()
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -161,25 +171,34 @@ class OmpPool:
 
         from factory.adapters.omp._rpc_bridge import RpcBridge, _verify_digest
 
-        _verify_digest(self._omp_bin)  # gate BEFORE constructing/starting the client
-        client: Any = omp_rpc.RpcClient(
-            executable=str(self._omp_bin),
-            provider=self._provider,
-            model=self._model,
-            no_session=False,
-        )
-        await asyncio.to_thread(client.start)
-        # RpcBridge with an injected, already-started client: __init__ skips the digest
-        # gate (we just ran it) and does NOT construct its own client.
-        bridge = RpcBridge(
-            omp_bin=self._omp_bin,
-            provider=self._provider,
-            model=self._model,
-            _client=client,
-        )
-        # attach() wires callbacks + stores nc/loop; no start, no new_session.
-        # (we started it above; acquire() owns session selection).
-        await bridge.attach(self._nc, self._loop)
-        worker = _PoolWorker(client=client, bridge=bridge)
-        self._all.append(worker)
-        return worker
+        # gate before client (non-blocking via to_thread)
+        await asyncio.to_thread(_verify_digest, self._omp_bin)
+        client: Any = None
+        try:
+            client = omp_rpc.RpcClient(
+                executable=str(self._omp_bin),
+                provider=self._provider,
+                model=self._model,
+                no_session=False,
+            )
+            await asyncio.to_thread(client.start)
+            # RpcBridge(_client=): skips digest (done) + no own ctor.
+            bridge = RpcBridge(
+                omp_bin=self._omp_bin,
+                provider=self._provider,
+                model=self._model,
+                _client=client,
+            )
+            # attach() wires callbacks + stores nc/loop; no start, no new_session.
+            # (we started it above; acquire() owns session selection).
+            await bridge.attach(self._nc, self._loop)
+            worker = _PoolWorker(client=client, bridge=bridge)
+            self._all.append(worker)
+            return worker
+        except BaseException:
+            if client is not None:
+                try:
+                    await asyncio.to_thread(client.stop)
+                except Exception:  # noqa: BLE001
+                    log.warning("omp_pool: stop leaked client failed", exc_info=True)  # noqa: E501
+            raise

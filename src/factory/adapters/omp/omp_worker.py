@@ -104,9 +104,26 @@ class OmpWorker(NatsAdapterBase):
             await self.run_embedded(nc, stop)
         finally:
             # Cancel in-flight jobs then close the pool on shutdown.
-            for t in list(self._jobs):
-                t.cancel()
+            tasks = list(self._jobs)
+            for t in tasks:
+                if not t.done():
+                    t.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+            self._jobs.clear()
             await self._pool.aclose()
+            # Drain + close nc (our run override owns it; base _shutdown not called).
+            # Suppress errors on shutdown path (best-effort, per other workers).
+            if self._nc is not None:
+                try:
+                    await self._nc.drain()
+                except Exception:  # noqa: BLE001
+                    log.warning("omp_worker: nc.drain failed on shutdown", exc_info=True)  # noqa: E501
+                try:
+                    await self._nc.close()
+                except Exception:  # noqa: BLE001
+                    log.warning("omp_worker: nc.close failed on shutdown", exc_info=True)  # noqa: E501
+                self._nc = None
 
     # ------------------------------------------------------------------
     # NatsAdapterBase overrides
@@ -136,12 +153,28 @@ class OmpWorker(NatsAdapterBase):
             await publish_job_error(self._nc, str(job_id), ValueError("empty prompt"))
             return
 
+        # provider_session_id (session path) from envelope — basic guard.
+        # Hub-minted + defense-in-depth (security review).
+        provider_session_id: Any = envelope.payload.get("provider_session_id")
+        if provider_session_id is not None:
+            s = str(provider_session_id)
+            if not (
+                s.endswith(".jsonl")
+                or "/sessions/" in s
+                or s.startswith("/home/factory/.config/omp-pi")
+            ):
+                log.warning("omp_worker: job_id=%s bad session token — reject", job_id)
+                await publish_job_error(
+                    self._nc, str(job_id), ValueError("invalid session token")
+                )
+                return
+
         # pool_id is informational only in Model B — no longer a routing key;
         # each acquire() picks any available pool worker. Kept for the debug log.
         pool_id: str = envelope.payload.get("pool_id") or str(job_id)
 
         # provider_session_id: empty string → None (never pass empty string to pool).
-        provider_session_id: str | None = (
+        provider_session_id = (
             envelope.payload.get("provider_session_id") or None
         )
 
@@ -181,6 +214,11 @@ class OmpWorker(NatsAdapterBase):
             worker = await self._pool.acquire(session_file)
             await worker.bridge.run(prompt, job_id, session_file=worker.session_file)
         except Exception as exc:  # pool.acquire / bridge.run  # noqa: BLE001
+            # _run_job is create_task-spawned (non-blocking, frees core-NATS dispatch
+            # for Model B). Runs *outside* _dispatch guard in adapter_base; must
+            # self-handle + publish sanitized error (ADR-073: only type(exc).__name__
+            # via publish_job_error/_classify; full log local only).
+            # See module docstring, CLAUDE.md, axial review.
             log.exception("omp_worker: job_id=%s failed", job_id)
             await publish_job_error(
                 self._nc, job_id, exc

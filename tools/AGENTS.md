@@ -7,7 +7,7 @@ Canonical source: `roxabi-plugins/plugins/dev-core/tools/` — ¬edit project-si
 
 ## Wiring
 
-Scripts are driven by `.claude/stack.yml` `quality_gates` block — that block is the SSoT for which gates exist and their stage (pre-commit, pre-push, CI). Most gates run pre-commit; `import_layers` and `architecture_snapshot` run pre-push; `doc_drift` and `doc_semantic_drift` run CI.
+Scripts are driven by `.claude/stack.yml` `quality_gates` block — that block is the SSoT for which gates exist and their stage (pre-commit, pre-push, CI). Full wiring table (pre-commit / pre-push / CI / path workflows): `docs/ops/quality-gates.md`. Most gates run pre-commit; `import_layers` and `architecture_snapshot` run pre-push; `doc_drift` and `doc_semantic_drift` run CI.
 
 ### `check_doc_semantic_drift.py` — living-doc patterns (Phase C)
 

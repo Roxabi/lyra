@@ -12,8 +12,8 @@ uv sync
 cp .env.example .env
 # Fill in TELEGRAM_TOKEN, DISCORD_TOKEN, ANTHROPIC_API_KEY (see README Configuration)
 
-# 3. Install pre-commit hooks (runs ruff on every commit)
-uv run pre-commit install
+# 3. Install git hooks (commit + pre-push quality gates)
+make hooks-install
 
 # 4. Run the test suite to verify your setup
 uv run pytest
@@ -68,11 +68,25 @@ uv run pyright           # type check — must pass
 uv run pytest            # tests — must pass
 ```
 
-Pre-commit hooks run `ruff check` and `ruff format` automatically on `git commit`. Install them once:
+Git hooks run quality gates locally:
+
+- **commit** — ruff, pyright, file/folder size, import layers, …
+- **pre-push** — trufflehog, ACL drift, debt expiry, architecture snapshot, …
+
+Install both hook types once:
+
+```bash
+make hooks-install
+```
+
+Equivalent:
 
 ```bash
 uv run pre-commit install
+uv run pre-commit install --hook-type pre-push
 ```
+
+Pre-push hooks require [trufflehog](https://github.com/trufflesecurity/trufflehog/releases) on your `PATH`.
 
 ## Adding a channel adapter
 

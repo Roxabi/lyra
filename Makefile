@@ -39,7 +39,7 @@ define require_machine1
 	@case "$(DEPLOY_DIR)" in *[\'\"\$$\\\;\&\|\`]*) echo "Error: DEPLOY_DIR contains shell metacharacters"; exit 1 ;; esac
 endef
 
-.PHONY: build push factory telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-sync-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy converge remote nats-setup nats-regen-authconf nats-add-identity test test-integration voice-smoke lint typecheck format quality-debt-report quality-debt-classify
+.PHONY: build push factory telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-sync-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy converge remote nats-setup nats-regen-authconf nats-add-identity test test-integration voice-smoke lint typecheck format hooks-install quality-debt-report quality-debt-classify
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
@@ -388,6 +388,10 @@ typecheck:
 
 format:
 	uv run ruff format .
+
+hooks-install:  ## install pre-commit + pre-push git hooks (see CONTRIBUTING.md)
+	uv run pre-commit install
+	uv run pre-commit install --hook-type pre-push
 
 # dep-graph and corpus migrated to roxabi-dashboard (2026-04-22).
 # Run via dashboard: `uv run --project ../roxabi-dashboard roxabi-corpus sync`

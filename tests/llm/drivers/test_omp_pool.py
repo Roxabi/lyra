@@ -1,56 +1,99 @@
-"""Tests for OmpPool — worker-side LRU pool of warm omp_rpc.RpcClients.
+"""Tests for OmpPool (Model B) — flat free-set of warm (RpcClient, RpcBridge) workers.
 
-Four scenarios:
-  1. warm-hit reuse — second acquire returns the same client, no re-start/new_session
-  2. cold-start-with-token — switch_session() called with the provided session_file
-  3. cold-start-no-token — new_session() + get_state() called; minted path stored
-  4. LRU evict at cap — oldest entry is stopped when cap is reached
+Covers acquire/release semantics, switch_session vs new_session+get_state, the
+semaphore concurrency cap, aclose stopping all workers, and no_session=False.
 """
 
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from factory.adapters.omp.omp_pool import _DEFAULT_CAP, OmpPool, _read_cap
+from factory.adapters.omp.omp_pool import (
+    _DEFAULT_CAP,
+    OmpPool,
+    _PoolWorker,
+    _read_cap,
+)
 
 # ---------------------------------------------------------------------------
-# Helpers
+# Fake seam helpers
 # ---------------------------------------------------------------------------
 
+_FAKE_SESSION_FILE = "/tmp/fake_session.jsonl"
 
-def _mock_rpc_client(session_file: str = "/tmp/session.jsonl") -> MagicMock:
+
+def _mock_rpc_client(session_file: str = _FAKE_SESSION_FILE) -> MagicMock:
     """Return a MagicMock whose blocking RpcClient methods record calls."""
     client = MagicMock()
     client.start.return_value = None
     client.new_session.return_value = MagicMock()  # CancellationResult, NOT a path
     client.switch_session.return_value = None
-    # get_state returns an object with a session_file attribute
     client.get_state.return_value = SimpleNamespace(session_file=session_file)
     client.stop.return_value = None
     return client
 
 
-def _make_pool_with_fake_start(
-    clients: list[MagicMock] | None = None,
-) -> tuple[OmpPool, list[MagicMock]]:
-    """Return an OmpPool whose _start_client is patched to hand out fake clients."""
+def _mock_bridge() -> MagicMock:
+    """Return a MagicMock for RpcBridge; attach is an AsyncMock."""
+    bridge = MagicMock()
+    bridge.attach = AsyncMock(return_value=None)
+    return bridge
+
+
+def _patch_start_worker(pool: OmpPool, client: MagicMock, bridge: MagicMock) -> None:
+    """Patch _start_worker so pool tests don't need a real binary or omp_rpc import.
+
+    We replace pool._start_worker with an async function that:
+      - Creates a _PoolWorker(client=<fake>, bridge=<fake>)
+      - Appends it to pool._all  (same as the real impl)
+      - Does NOT touch _verify_digest or omp_rpc
+    """
+
+    async def _fake_start_worker() -> _PoolWorker:
+        worker = _PoolWorker(client=client, bridge=bridge)
+        pool._all.append(worker)
+        return worker
+
+    pool._start_worker = _fake_start_worker  # type: ignore[method-assign]
+
+
+def _make_pool(cap: int = 4) -> tuple[OmpPool, list[MagicMock], list[MagicMock]]:
+    """Return a pool with _start_worker patched, plus separate client/bridge lists.
+
+    Each call to _start_worker pops from the fronts of the two lists; if exhausted
+    it creates fresh fakes, giving tests that start multiple workers full control.
+    """
+    clients: list[MagicMock] = []
+    bridges: list[MagicMock] = []
+
     pool = OmpPool(omp_bin=Path("/fake/omp"), provider="litellm", model="grok-4-fast")
-    issued: list[MagicMock] = clients if clients is not None else []
+    # Force cap via a new semaphore (avoids env var interaction at construction time)
+    pool._sem = asyncio.Semaphore(cap)
 
-    async def _fake_start(self: OmpPool) -> MagicMock:  # type: ignore[override]
+    async def _multi_start_worker() -> _PoolWorker:
         client = _mock_rpc_client()
-        client.start()  # mirror real _start_client (constructs + starts the client)
-        issued.append(client)
-        return client
+        bridge = _mock_bridge()
+        clients.append(client)
+        bridges.append(bridge)
+        worker = _PoolWorker(client=client, bridge=bridge)
+        pool._all.append(worker)
+        return worker
 
-    pool._start_client = lambda: _fake_start(pool)  # type: ignore[method-assign]
-    return pool, issued
+    pool._start_worker = _multi_start_worker  # type: ignore[method-assign]
+    return pool, clients, bridges
 
+
+# ---------------------------------------------------------------------------
+# Fake nc for register()
+# ---------------------------------------------------------------------------
+
+_NC = MagicMock()
 
 # ---------------------------------------------------------------------------
 # Tests
@@ -58,133 +101,173 @@ def _make_pool_with_fake_start(
 
 
 class TestOmpPool:
-    # -- 1. warm-hit reuse ---------------------------------------------------
+    # -- 1. acquire returns _PoolWorker -------------------------------------
 
     @pytest.mark.asyncio
-    async def test_warm_hit_reuses_same_client(self) -> None:
-        """Second acquire for the same pool_id returns the exact same client
-        without calling start(), new_session(), or switch_session() again."""
-        pool, issued = _make_pool_with_fake_start()
+    async def test_acquire_returns_poolworker(self) -> None:
+        """acquire(None) returns a _PoolWorker with client+bridge set."""
+        pool, clients, bridges = _make_pool()
+        await pool.register(_NC)
 
-        first = await pool.acquire("user:1", session_file=None)
-        second = await pool.acquire("user:1", session_file=None)
+        worker = await pool.acquire(None)
 
-        assert first is second, "warm hit must return the same client object"
-        assert len(issued) == 1, "only one client should have been constructed"
-        # start() called exactly once (during cold start)
-        issued[0].start.assert_called_once()
-        # new_session called once (cold start), NOT on the warm hit
-        assert issued[0].new_session.call_count == 1
+        assert isinstance(worker, _PoolWorker)
+        assert worker.client is clients[0]
+        assert worker.bridge is bridges[0]
 
         await pool.aclose()
 
-    # -- 2. cold-start with session_file (switch_session) --------------------
+    # -- 2. acquire with session_file → switch_session ----------------------
 
     @pytest.mark.asyncio
-    async def test_cold_start_with_token_calls_switch_session(self) -> None:
-        """Cold start with a non-None session_file calls switch_session with
-        that path and does NOT call new_session or get_state."""
-        pool, issued = _make_pool_with_fake_start()
-        token = "/home/.omp/sessions/abc123.jsonl"
+    async def test_acquire_with_token_calls_switch_session(self) -> None:
+        """acquire(token) calls switch_session(token); new_session not called."""
+        pool, clients, _ = _make_pool()
+        await pool.register(_NC)
+        token = "/path/x.jsonl"
 
-        client = await pool.acquire("user:2", session_file=token)
+        worker = await pool.acquire(token)
 
-        assert len(issued) == 1
-        issued[0].switch_session.assert_called_once_with(token)
-        issued[0].new_session.assert_not_called()
-        issued[0].get_state.assert_not_called()
-
-        # The returned client is the one we handed out
-        assert client is issued[0]
+        clients[0].switch_session.assert_called_once_with(token)
+        assert worker.session_file == token
+        clients[0].new_session.assert_not_called()
 
         await pool.aclose()
 
-    # -- 3. cold-start without token (new_session + get_state) ---------------
+    # -- 3. acquire without token → new_session + get_state -----------------
 
     @pytest.mark.asyncio
-    async def test_cold_start_no_token_calls_new_session_and_get_state(
-        self,
-    ) -> None:
-        """Cold start with session_file=None calls new_session() then get_state()
-        to obtain the minted .jsonl path.  switch_session must NOT be called."""
-        pool, issued = _make_pool_with_fake_start()
+    async def test_acquire_no_token_calls_new_session_and_get_state(self) -> None:
+        """acquire(None) calls new_session()+get_state(); stores session_file."""
+        pool, clients, _ = _make_pool()
+        await pool.register(_NC)
 
-        client = await pool.acquire("user:3", session_file=None)
+        worker = await pool.acquire(None)
 
-        assert len(issued) == 1
-        issued[0].new_session.assert_called_once()
-        issued[0].get_state.assert_called_once()
-        issued[0].switch_session.assert_not_called()
-
-        # The minted session path is stored on the pool entry
-        entry = pool._entries["user:3"]
-        assert entry.session_file == "/tmp/session.jsonl"
-
-        assert client is issued[0]
+        clients[0].new_session.assert_called_once()
+        clients[0].get_state.assert_called_once()
+        clients[0].switch_session.assert_not_called()
+        assert worker.session_file == _FAKE_SESSION_FILE
 
         await pool.aclose()
 
-    # -- 4. LRU evict at cap -------------------------------------------------
+    # -- 4. release returns worker to free list -----------------------------
 
     @pytest.mark.asyncio
-    async def test_lru_evict_at_cap_stops_oldest_entry(self) -> None:
-        """When the pool is at cap (OMP_POOL_CAP=2 for this test), acquiring a
-        new pool_id evicts the least-recently-used entry and calls stop() on it."""
-        pool, issued = _make_pool_with_fake_start()
+    async def test_release_returns_worker_to_free_list(self) -> None:
+        """release(w) → _free; next acquire returns the SAME object."""
+        pool, clients, _ = _make_pool()
+        await pool.register(_NC)
 
-        # Patch cap to 2 so the test is deterministic and fast
-        with patch.dict(os.environ, {"OMP_POOL_CAP": "2"}):
-            # Fill pool to cap
-            client_a = await pool.acquire("user:A", session_file=None)
-            client_b = await pool.acquire("user:B", session_file=None)
+        first = await pool.acquire(None)
+        pool.release(first)
 
-            assert len(issued) == 2
-            assert len(pool._entries) == 2
+        # Second acquire should pop first from _free — no new _start_worker call
+        second = await pool.acquire(None)
 
-            # Touch B again to make A the LRU
-            await pool.acquire("user:B", session_file=None)
-
-            # Acquire C — should evict A (LRU)
-            client_c = await pool.acquire("user:C", session_file=None)
-
-        assert len(issued) == 3
-        # Pool should have B and C; A is evicted
-        assert "user:A" not in pool._entries
-        assert "user:B" in pool._entries
-        assert "user:C" in pool._entries
-        assert len(pool._entries) == 2
-
-        # stop() must have been called on A's client
-        client_a.stop.assert_called_once()
-        # B and C are still alive (stop not called yet)
-        client_b.stop.assert_not_called()
-        client_c.stop.assert_not_called()
+        assert second is first, "warm hit must return the same _PoolWorker"
+        assert len(clients) == 1, "only one worker should have been constructed"
 
         await pool.aclose()
 
-    # -- 5. aclose stops all clients -----------------------------------------
+    # -- 5. semaphore bounds concurrency to cap -----------------------------
 
     @pytest.mark.asyncio
-    async def test_aclose_stops_all_clients(self) -> None:
-        """aclose() calls stop() on every live client and clears _entries."""
-        pool, issued = _make_pool_with_fake_start()
+    async def test_semaphore_bounds_concurrency_to_cap(self) -> None:
+        """Cap=2: two acquires succeed; third blocks until a release opens a slot."""
+        pool, _, _ = _make_pool(cap=2)
+        await pool.register(_NC)
 
-        await pool.acquire("user:X", session_file=None)
-        await pool.acquire("user:Y", session_file="/tmp/y.jsonl")
-        assert len(issued) == 2
+        w1 = await pool.acquire(None)
+        w2 = await pool.acquire(None)
+
+        # Third acquire must not complete while sem is exhausted
+        with pytest.raises(asyncio.TimeoutError):
+            await asyncio.wait_for(pool.acquire(None), timeout=0.05)
+
+        # After releasing one slot the pending acquire can complete
+        pool.release(w1)
+        w3 = await asyncio.wait_for(pool.acquire(None), timeout=1.0)
+
+        # w3 is the worker we just released (warm hit from _free)
+        assert w3 is w1
+
+        pool.release(w2)
+        pool.release(w3)
+        await pool.aclose()
+
+    # -- 6. aclose stops all workers ----------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_aclose_stops_all_workers(self) -> None:
+        """aclose() stops every worker (incl. un-released); _free/_all cleared."""
+        pool, clients, _ = _make_pool()
+        await pool.register(_NC)
+
+        await pool.acquire(None)  # first worker stays checked out
+        w2 = await pool.acquire(None)
+        pool.release(w2)  # w2 returns to _free; the first stays checked out
 
         await pool.aclose()
 
-        for client in issued:
+        for client in clients:
             client.stop.assert_called_once()
-        assert len(pool._entries) == 0
+        assert pool._free == []
+        assert pool._all == []
 
-    # -- 6. _read_cap falls back to default ----------------------------------
+    # -- 7. _start_worker constructs RpcClient with no_session=False --------
+
+    @pytest.mark.asyncio
+    async def test_start_worker_constructs_client_no_session_false(self) -> None:
+        """_start_worker passes no_session=False to omp_rpc.RpcClient.
+
+        Strategy: inject a capturing fake into sys.modules["omp_rpc"] so the
+        deferred ``import omp_rpc`` inside _start_worker picks it up, then patch
+        _verify_digest + RpcBridge so no real binary is needed.
+        """
+        import sys
+
+        pool = OmpPool(
+            omp_bin=Path("/fake/omp"), provider="litellm", model="grok-4-fast"
+        )
+        await pool.register(_NC)
+
+        captured_kwargs: dict = {}
+        fake_bridge = _mock_bridge()
+
+        class _CapturingFakeOmpRpc:
+            def RpcClient(self, **kwargs: object) -> MagicMock:  # noqa: N802
+                captured_kwargs.update(kwargs)
+                return _mock_rpc_client()
+
+        sys.modules["omp_rpc"] = _CapturingFakeOmpRpc()  # type: ignore[assignment]
+        try:
+            with (
+                patch(
+                    "factory.adapters.omp._rpc_bridge._verify_digest",
+                    return_value=None,
+                ),
+                patch(
+                    "factory.adapters.omp._rpc_bridge.RpcBridge",
+                    return_value=fake_bridge,
+                ),
+            ):
+                await pool.acquire(None)
+        finally:
+            sys.modules.pop("omp_rpc", None)
+
+        assert captured_kwargs.get("no_session") is False, (
+            f"Expected no_session=False, got kwargs={captured_kwargs}"
+        )
+
+        await pool.aclose()
+
+    # -- Bonus: _read_cap falls back to default -----------------------------
 
     def test_read_cap_defaults_to_four(self) -> None:
         """_read_cap() returns _DEFAULT_CAP when OMP_POOL_CAP is unset."""
-        with patch.dict(os.environ, {}, clear=True):
-            os.environ.pop("OMP_POOL_CAP", None)
+        env_without_cap = {k: v for k, v in os.environ.items() if k != "OMP_POOL_CAP"}
+        with patch.dict(os.environ, env_without_cap, clear=True):
             assert _read_cap() == _DEFAULT_CAP
             assert _DEFAULT_CAP == 4
 

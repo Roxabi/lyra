@@ -1,0 +1,81 @@
+---
+title: "feat(omp): dynamic model catalog — discovery mode from LiteLLM gateway"
+issue: 1923
+status: approved
+tier: F-lite
+date: 2026-06-17
+---
+
+## Problem
+
+`deploy/omp/models.yml` ships a **static** explicit model list (`grok-4`,
+`grok-4-fast`) — deliberate #1811 Option D to dodge omp's discovery
+chicken-and-egg (override-only entries still discover against
+`localhost:4000`). That trade-off now creates ops toil: new xAI models (e.g.
+`grok-4.3`) appear on the factory LiteLLM proxy but stay invisible to omp
+until someone edits `models.yml` and restarts `factory-omp`.
+
+The omp worker logs `model_cfg` from the hub but does not apply it yet (V1 gap;
+#1924). Even with hub `model=grok-4-fast`, `RpcClient(model=None)` defaults to
+the **first** `models.yml` entry → `grok-4` (#1910). A dynamic catalog from
+the gateway removes the manual sync step and lets the proxy catalogue be the
+source of truth.
+
+## Who
+
+- **Primary:** operators running `factory-omp` on M₁ — no image rebuild or
+  `models.yml` edit when xAI ships a new Grok variant on the proxy.
+- **Secondary:** hub/job dispatch (#1924) — a discovered catalogue is
+  prerequisite for per-job model selection to mean anything beyond the static
+  default.
+
+## Constraints
+
+- Discovery shape verified in #1811 against oh-my-pi `model-registry.ts` —
+  `discovery: {type: openai-models-list}` under the `litellm` provider override.
+- **Interim phase** (unblocked): Roxabi/llmCLI#129 (`pass_through /xai`) must
+  ship first; omp `baseUrl` targets `:18091/xai/v1` for Grok catalogue fetch.
+- **Target phase** (blocked on llmCLI#130): unified `:18091/v1` + merged
+  catalogue; full AC including `grok-4.3` boot discovery without rebuild.
+- Single-domain scope: `deploy/omp/` config + README + smoke/integration test —
+  no Quadlet unit changes (#1812), no hub model-apply logic (#1924).
+- Keep deterministic fallback if discovery fails (document behaviour; optional
+  static list as last resort).
+
+## Out of Scope
+
+- **Hub per-job model apply** → #1924 (`model_cfg` → `RpcClient(model=…)`).
+- **Quadlet secret mount / volume wiring** → #1812 (OmpWorker).
+- **Target-phase `baseUrl` switch to `:18091/v1`** → waits on llmCLI#130; this
+  slice delivers interim discovery only unless #130 lands during implementation.
+- **Non-Grok providers** on the merged catalogue — interim slice is xAI pass-through.
+
+## Premise Validity
+
+**Success in 6 months:** by 2026-12, adding a Grok model to the factory LiteLLM
+proxy makes it available to `factory-omp` after container restart with **zero**
+`models.yml` edits; operators have not filed a manual-catalog-sync incident in
+≥90 days.
+
+**Failure in 6 months:** by 2026-12, ≥3 production incidents where a proxy-new
+Grok model was unreachable by omp because `models.yml` still required a manual
+id entry (same failure mode as today), OR discovery boot adds >30s to omp worker
+cold-start p95 → revert to static list.
+
+**Simplest alternative:** keep the static list and document a runbook step
+("edit `models.yml`, restart `factory-omp`") whenever the proxy catalogue changes.
+**Why not simplest:** ops toil scales with model churn; the chicken-and-egg is
+solved now that llmCLI#129 provides a stable `/xai/v1/models` endpoint — the
+static list was a temporary dodge, not the steady-state.
+
+## Complexity
+
+**Tier: F-lite** — clear scope in one domain (`deploy/omp/`), config + docs +
+smoke test; discovery shape already verified in #1811; no new architectural
+patterns.
+
+Signals observed:
+- Issue label `size:F-lite`
+- Touches ≤3 files (`models.yml`, `README.md`, test/smoke)
+- Single domain (omp deploy config)
+- No cross-layer boundary changes (inbound/core/infrastructure)

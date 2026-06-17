@@ -4,10 +4,10 @@ Subscribes to factory.jobs.omp (queue group omp-workers), translates
 job envelopes into omp_rpc.RpcClient.prompt_and_wait() calls, and
 publishes JobProgress / JobResult events back onto the bus.
 
-Thread model: omp_rpc invokes listener callbacks on its own
-omp-rpc-stdout daemon thread (no running event loop there); the bridge
-marshals each NATS publish back onto the worker's event loop via
-loop.call_soon_threadsafe (see RpcBridge._schedule_publish).
+Model B concurrency: one replica runs up to M jobs in parallel.
+handle() spawns each job as an asyncio.Task and returns immediately,
+freeing the dispatch loop. Concurrency is bounded by the pool's
+internal Semaphore(M). Each pool worker carries its own bridge.
 
 SanitizedError discipline (ADR-073): all bus-bound error message
 fields carry type(exc).__name__ only — see _classify_exception in
@@ -22,7 +22,7 @@ import signal
 import time
 from typing import Any
 
-from factory.adapters.omp._rpc_bridge import RpcBridge
+from factory.adapters.omp._rpc_bridge import publish_job_error
 from factory.adapters.omp.omp_pool import OmpPool
 from roxabi_contracts.jobs.models import JobEnvelope
 from roxabi_contracts.jobs.subjects import jobs_submit
@@ -43,19 +43,15 @@ _HEARTBEAT_INTERVAL = 30.0
 
 
 class OmpWorker(NatsAdapterBase):
-    """NATS worker that dispatches omp jobs via RpcBridge.
+    """NATS worker that dispatches omp jobs via OmpPool (Model B concurrency).
 
-    One RpcBridge per worker process (one omp_rpc session per
-    process lifetime).  Concurrent jobs are serialised by the
-    omp_rpc subprocess model — a second job arriving while
-    prompt_and_wait is in flight will be processed after the
-    current one completes (queue-group distribution ensures only
-    one message is in flight per worker replica at a time).
+    One OmpPool per worker process; the pool bounds concurrency via an
+    internal Semaphore(M). handle() spawns each job as an asyncio.Task
+    and returns immediately, freeing the dispatch loop for the next message.
     """
 
     def __init__(
         self,
-        bridge: RpcBridge | None = None,
         *,
         pool: OmpPool | None = None,
         timeout: float = 300.0,
@@ -72,19 +68,20 @@ class OmpWorker(NatsAdapterBase):
             identity_name=identity_name,
             wait_ready=False,  # worker semantics — hub readiness not required
         )
-        # Allow injection for testing; production always constructs real bridge/pool.
-        self._bridge: RpcBridge = bridge if bridge is not None else RpcBridge()
+        # Allow injection for testing; production always constructs real pool.
         self._pool: OmpPool = pool if pool is not None else OmpPool()
+        self._jobs: set[asyncio.Task] = set()
+        self._nc: Any | None = None
 
     # ------------------------------------------------------------------
-    # Lifecycle override — connect then register bridge before entering
+    # Lifecycle override — connect then register pool before entering
     # the main subscription loop.
     # ------------------------------------------------------------------
 
     async def run(self, nats_url: str, stop: asyncio.Event | None = None) -> None:
-        """Connect to NATS, register bridge, then enter the subscription loop.
+        """Connect to NATS, register pool, then enter the subscription loop.
 
-        Overrides NatsAdapterBase.run() to inject bridge.register() between
+        Overrides NatsAdapterBase.run() to inject pool.register() between
         nats_connect() and the blocking stop.wait(); uses run_embedded() for
         the main loop so all NatsAdapterBase bookkeeping is preserved.
         """
@@ -93,8 +90,9 @@ class OmpWorker(NatsAdapterBase):
             identity_name=self._identity_name,
             inbox_prefix=self._inbox_prefix,
         )
-        # Register omp_rpc callbacks and open session BEFORE subscriptions.
-        await self._bridge.register(nc)
+        self._nc = nc
+        # Register pool (opens bridge sessions) BEFORE subscriptions.
+        await self._pool.register(nc)
 
         if stop is None:
             stop = asyncio.Event()
@@ -105,8 +103,9 @@ class OmpWorker(NatsAdapterBase):
         try:
             await self.run_embedded(nc, stop)
         finally:
-            # Stop the omp_rpc subprocess and pool clients on shutdown (idempotent).
-            await self._bridge.aclose()
+            # Cancel in-flight jobs then close the pool on shutdown.
+            for t in list(self._jobs):
+                t.cancel()
             await self._pool.aclose()
 
     # ------------------------------------------------------------------
@@ -117,7 +116,7 @@ class OmpWorker(NatsAdapterBase):
         return []
 
     async def handle(self, msg: Any, payload: dict) -> None:
-        """Dispatch a received job envelope to the RpcBridge."""
+        """Parse the job envelope and spawn a task for it (Model B)."""
         try:
             envelope = JobEnvelope.model_validate(payload)
         except (
@@ -127,19 +126,18 @@ class OmpWorker(NatsAdapterBase):
             # ValidationError.__str__ may embed incoming values — use only
             # type name on the bus (ADR-073). Log the full exception locally above.
             job_id = payload.get("job_id", "unknown")
-            await self._bridge.publish_error(str(job_id), exc)
+            await publish_job_error(self._nc, str(job_id), exc)
             return
 
         job_id = envelope.job_id
         prompt = envelope.payload.get("prompt", "")
         if not prompt:
             log.warning("omp_worker: job_id=%s has empty prompt — rejecting", job_id)
-            await self._bridge.publish_error(str(job_id), ValueError("empty prompt"))
+            await publish_job_error(self._nc, str(job_id), ValueError("empty prompt"))
             return
 
-        # pool_id routes the job to its warm pool client. Pre-V2 envelopes omit
-        # it (wire-compat, incl. JetStream backlog replay) → fall back to job_id,
-        # a stable per-job key. Never hard-reject on absence (spec + contracts).
+        # pool_id is informational only in Model B — no longer a routing key;
+        # each acquire() picks any available pool worker. Kept for the debug log.
         pool_id: str = envelope.payload.get("pool_id") or str(job_id)
 
         # provider_session_id: empty string → None (never pass empty string to pool).
@@ -165,27 +163,37 @@ class OmpWorker(NatsAdapterBase):
             pool_id,
             provider_session_id,
         )
+
+        task = asyncio.create_task(
+            self._run_job(str(job_id), str(prompt), provider_session_id)
+        )
+        self._jobs.add(task)
+        task.add_done_callback(self._jobs.discard)
+
+    async def _run_job(
+        self, job_id: str, prompt: str, session_file: str | None
+    ) -> None:
+        """Acquire a pool worker, run the job, release on completion."""
         log.info("omp_worker: job_id=%s start", job_id)
         start = time.monotonic()
+        worker = None
         try:
-            # Acquire a warm client from the pool — cold-start or reuse.
-            pool_client = await self._pool.acquire(
-                pool_id, session_file=provider_session_id
-            )
-            # Read the minted/provided session path back from the pool entry.
-            pool_session_file: str | None = self._pool._entries[pool_id].session_file
-            await self._bridge.run(
-                prompt=str(prompt),
-                job_id=str(job_id),
-                client=pool_client,
-                session_file=pool_session_file,
-            )
-        except Exception as exc:  # pool.acquire / prompt_and_wait  # noqa: BLE001
+            worker = await self._pool.acquire(session_file)
+            await worker.bridge.run(prompt, job_id, session_file=worker.session_file)
+        except Exception as exc:  # pool.acquire / bridge.run  # noqa: BLE001
             log.exception("omp_worker: job_id=%s failed", job_id)
-            await self._bridge.publish_error(str(job_id), exc)
+            await publish_job_error(
+                self._nc, job_id, exc
+            )  # type(exc).__name__ only, on the bus
         else:
-            elapsed = time.monotonic() - start
-            log.info("omp_worker: job_id=%s done elapsed=%.1fs", job_id, elapsed)
+            log.info(
+                "omp_worker: job_id=%s done elapsed=%.1fs",
+                job_id,
+                time.monotonic() - start,
+            )
+        finally:
+            if worker is not None:
+                self._pool.release(worker)
 
     def heartbeat_payload(self) -> dict:
         base = super().heartbeat_payload()

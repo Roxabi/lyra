@@ -115,14 +115,35 @@ def _log_publish_result(task: asyncio.Task[Any]) -> None:
         log.warning("rpc_bridge: scheduled NATS publish failed", exc_info=exc)
 
 
+async def publish_job_error(nc: Any, job_id: str, exc: BaseException) -> None:
+    """Publish a JobResult(status=error) for a failed job without requiring a bridge.
+
+    Used by the worker to publish parse/acquire errors before any bridge exists.
+    No-op if nc is None.
+
+    SanitizedError discipline (ADR-073): uses type(exc).__name__ only via
+    _classify_exception — never str(exc), f"{exc}", or repr(exc).
+    """
+    if nc is None:
+        return
+    worker_error = _classify_exception(exc)
+    payload = _make_result(job_id, status="error", error=worker_error)
+    await nc.publish(jobs_result(job_id), payload)
+
+
 class RpcBridge:
     """Bridge between omp_rpc.RpcClient and NATS publish calls.
 
-    Lifecycle:
-      1. Construct (runs digest gate — CPU-blocking hash read).
-      2. Call register(nc) once connected — wires callbacks + opens session.
+    Lifecycle (pool path):
+      1. Construct with an injected, already-started _client (digest gate skipped).
+      2. Call attach(nc) — wires callbacks only, no start/new_session.
       3. Call run(prompt, job_id) per job.
       4. Optionally call steer(job_id, text) between tool calls.
+
+    Lifecycle (standalone/legacy path):
+      1. Construct without _client (digest gate runs, new RpcClient constructed).
+      2. Call register(nc) — start + wire callbacks + new_session.
+      3. Call run(prompt, job_id) per job.
     """
 
     def __init__(
@@ -131,21 +152,26 @@ class RpcBridge:
         *,
         provider: str | None = _DEFAULT_PROVIDER,
         model: str | None = None,
+        _client: Any | None = None,
     ) -> None:
-        _verify_digest(omp_bin)
-
         # Import deferred: omp_rpc is a container image dep, absent from pyproject.toml.
         import omp_rpc  # type: ignore[import-not-found]
 
-        # provider/model are constructor kwargs only — no env axis. The runtime
-        # model list comes from deploy/omp/models.yml (via PI_CODING_AGENT_DIR),
-        # not from OMP_PROVIDER/OMP_MODEL env vars (#1876).
-        self._client: omp_rpc.RpcClient = omp_rpc.RpcClient(
-            executable=str(omp_bin),
-            provider=provider,
-            model=model,
-            no_session=True,
-        )
+        if _client is not None:
+            # Pool path: adopt the already-started client; skip the digest gate.
+            self._client: omp_rpc.RpcClient = _client
+        else:
+            # Standalone/tests path: verify digest, then construct client.
+            _verify_digest(omp_bin)
+            # provider/model are constructor kwargs only — no env axis. The runtime
+            # model list comes from deploy/omp/models.yml (via PI_CODING_AGENT_DIR),
+            # not from OMP_PROVIDER/OMP_MODEL env vars (#1876).
+            self._client = omp_rpc.RpcClient(
+                executable=str(omp_bin),
+                provider=provider,
+                model=model,
+                no_session=False,
+            )
         self._nc: NatsClient | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._started: bool = False
@@ -153,6 +179,25 @@ class RpcBridge:
         self._result_sent: bool = False
         self._last_turn: Any | None = None
         self._last_agent_end_event: Any | None = None
+
+    async def attach(
+        self, nc: Any, loop: asyncio.AbstractEventLoop | None = None
+    ) -> None:
+        """Wire callbacks on an already-started client (pool path).
+
+        Replacement for register() on the pool path. The pool has already called
+        client.start() and owns session selection via acquire(). This method:
+          - sets self._nc and self._loop
+          - wires the three omp_rpc callbacks
+          - sets self._started = True
+        Does NOT call self._client.start() or new_session().
+        """
+        self._nc = nc
+        self._loop = loop if loop is not None else asyncio.get_running_loop()
+        self._client.on_message_update(self._on_message_update)
+        self._client.on_tool_execution_start(self._on_tool_execution_start)
+        self._client.on_agent_end(self._on_agent_end)
+        self._started = True
 
     async def register(self, nc: NatsClient) -> None:
         """Wire callbacks and open the omp_rpc session.
@@ -191,12 +236,10 @@ class RpcBridge:
         prompt: str,
         job_id: str,
         *,
-        client: Any | None = None,
         session_file: str | None = None,
     ) -> None:
         """Run a prompt through omp_rpc; publishes progress and result to NATS.
 
-        ``client``       – override self._client for this invocation (pool path).
         ``session_file`` – omp session path to include in the JobResult data dict
                            (backhaul — obtained from OmpPool after acquire).
 
@@ -219,17 +262,13 @@ class RpcBridge:
                 log.debug("rpc_bridge: steer message dropped — no active job")
                 return
             text = msg.data.decode("utf-8", errors="replace")
-            await asyncio.to_thread(active_client.steer, text)
-
-        # Pool path: use the caller-supplied client; fall back to self._client
-        # for the legacy single-client path (e.g. tests without a pool).
-        active_client = client if client is not None else self._client
+            await asyncio.to_thread(self._client.steer, text)
 
         steer_sub = None
         if nc is not None:
             steer_sub = await nc.subscribe(jobs_steer(job_id), cb=_handle_steer_msg)
         try:
-            turn = await asyncio.to_thread(active_client.prompt_and_wait, prompt)
+            turn = await asyncio.to_thread(self._client.prompt_and_wait, prompt)
             self._last_turn = turn
             # Publish success here — guaranteed to see the completed turn value.
             # _on_agent_end fires on the stdout thread BEFORE prompt_and_wait returns
@@ -339,6 +378,7 @@ class RpcBridge:
 
         No-op if _result_sent is True — guards against double-publish when
         _on_agent_end fires and prompt_and_wait also raises.
+        Thin wrapper around the module-level publish_job_error.
         """
         if self._result_sent:
             log.debug(
@@ -350,6 +390,4 @@ class RpcBridge:
         if nc is None:
             log.warning("rpc_bridge: cannot publish error — nc not set")
             return
-        worker_error = _classify_exception(exc)
-        payload = _make_result(job_id, status="error", error=worker_error)
-        await nc.publish(jobs_result(job_id), payload)
+        await publish_job_error(nc, job_id, exc)

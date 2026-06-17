@@ -30,17 +30,22 @@ then publishes per-job lifecycle events back to the bus.
   only; never `str(exc)`, `f"{exc}"`, or `repr(exc)` in bus-bound fields.
 
 - **Config path** — `PI_CODING_AGENT_DIR` points to omp's agent dir
-  (`/home/factory/.config/omp-pi`). It is a **writable tmpfs (`mode=1777`)**: omp writes
-  `agent.db` + `models.db` (SQLite) there at boot, so a whole-dir `:ro` mount EACCESes the
-  DB open (#1879). Ephemeral by design — `agent.db` is per-run (`no_session=True`), `models.db`
-  recompiles from `models.yml` each boot (no secret-at-rest, no stale cache, no growth). The
+  (`/home/factory/.config/omp-pi`). It is a **persistent named volume** (`factory-omp-sessions`,
+  #1897) mounted `rw`: omp writes `agent.db` + `models.db` (SQLite) there at boot, so a
+  whole-dir `:ro` mount EACCESes the DB open (#1879). Since #1813 (Model B, `no_session=False`)
+  it ALSO holds durable `.jsonl` session files under `sessions/`, resumed per turn via
+  `switch_session` — so the dir MUST persist across restarts (this volume replaces the prior
+  tmpfs; `.jsonl` growth is bounded by a retention policy — devops, tracked). `models.db`
+  recompiles from `models.yml` each boot. The
   repo's `models.yml` is layered **read-only on top** (SSoT). The LiteLLM base URL override
   lives in `models.yml` under `providers.litellm.baseUrl` — it is NOT an env var.
 
 - **Writable runtime FS under `ReadOnly=true`** — omp also writes `$HOME/.omp` at boot
   (file-log transport + native modules unpacked & dlopen'd under `natives/`). It is a
   tmpfs at **`mode=1777`**: a root-owned `0755` tmpfs EACCESes for uid 1500, and `noexec`
-  is NOT viable (the `natives/` are dlopen'd). Ephemeral is correct (`no_session=True`).
+  is NOT viable (the `natives/` are dlopen'd). Ephemeral is correct here — `$HOME/.omp` holds
+  only unpacked native modules + the file-log, never session state (sessions live durably in
+  `PI_CODING_AGENT_DIR`, above).
 
 - **Image** — `factory-omp.container` runs `ghcr.io/roxabi/factory:staging` with
   `/opt/omp/omp` baked in via `COPY --from factory-omp-base`. The carrier (`factory-omp-base`)

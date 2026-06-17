@@ -25,7 +25,7 @@ The PR #1535 implementation used a **textual resolver**: it guessed a token's se
 
 The irony is direct: the gate built to fight inventory-rot itself relied on a non-authoritative, approximate inventory oracle — exactly what ADR-080's retrieval ladder forbids ("code = inventory SSoT; derive, don't approximate").
 
-A reuse investigation evaluated three existing tools: **cocoindex / `ccc`** (semantic vector search, fuzzy/ranked, torch + daemon), **GitNexus** (Node.js graph DB, ranked candidates, minutes-long cold index), **code-graph-ai** (Rust tree-sitter, symbol/path only, subprocess). All three are AI-exploration tools answering "what is similar/related" (ranked, out-of-process); none answers "does X exist" (exact, deterministic, in-process), and none reads `acl-matrix.json` — so none can cover the `subject` kind. `pyright` and stdlib `ast` were available but unused.
+A reuse investigation evaluated existing external tools such as **cocoindex / `ccc`** (semantic vector search, fuzzy/ranked, torch + daemon) and other graph-based explorers (e.g. Node.js and Rust-based options at the time). These are AI-exploration tools answering "what is similar/related" (ranked, out-of-process); none answers "does X exist" (exact, deterministic, in-process), and none reads `acl-matrix.json` — so none can cover the `subject` kind. `pyright` and stdlib `ast` were available but unused.
 
 ## Options Considered
 
@@ -33,9 +33,9 @@ A reuse investigation evaluated three existing tools: **cocoindex / `ccc`** (sem
 - **Pros:** smallest diff; no new file.
 - **Cons:** stays heuristic by design — each fix addresses one symptom while leaving the approximate foundation intact. Issues #1532 and #1533 would each re-hand-roll a resolver, producing parallel-path drift with no shared authority.
 
-### Option B: Reuse an external tool (ccc / GitNexus / code-graph-ai)
+### Option B: Reuse an external tool (e.g. ccc and similar graph explorers)
 - **Pros:** no new in-tree code.
-- **Cons:** wrong tool class — ranked retrieval ≠ exact existence check. All three are out-of-process and require cold-start index builds; none has NATS-subject awareness. Integration overhead exceeds building, and coverage would be lower. The retrieval ladder reserves these tools for the semantic rung, not the exact rung.
+- **Cons:** wrong tool class — ranked retrieval ≠ exact existence check. These are out-of-process and require cold-start index builds; none has NATS-subject awareness. Integration overhead exceeds building, and coverage would be lower. The retrieval ladder reserves these tools for the semantic rung, not the exact rung.
 
 ### Option C: Build a small in-tree semantic oracle (chosen)
 - **Pros:** exact and deterministic; covers all four kinds (module, symbol, subject, path) from authoritative sources; built once, shared across the gate (#1531), the Tier-1 snapshot (#1532), and the subject-literals check (#1533). No external dependencies or cold starts.
@@ -64,7 +64,7 @@ This makes the oracle the operational definition of ADR-080's "Tier-1 generated 
 - The false-positive and false-negative classes are eliminated by construction: `module.ClassName` resolution, substring collisions, subject misclassification, single-word skipping, and `_SKIP_SYMBOLS` all disappear.
 - One shared oracle feeds the doc-drift gate (#1531), the Tier-1 snapshot (#1532), and the subject-literals check (#1533) — no parallel resolvers, no drift between gates.
 - The #1536 burn-down becomes trustworthy: baseline entries are genuine doc-rot, not resolver noise.
-- The retrieval ladder from ADR-080 is honored: the exact rung (code + generated) is served by the oracle; `ccc` remains the semantic/fuzzy rung; GitNexus and code-graph-ai remain optional off-CI exploration tools.
+- The retrieval ladder from ADR-080 is honored: the exact rung (code + generated) is served by the oracle; `ccc` remains the semantic/fuzzy rung; external graph explorers remain optional off-CI exploration tools.
 
 ### Negative
 - Approximately 200 lines to maintain in `tools/code_inventory.py` (partially offset by deleting `_classify_token`, three `_resolve_*` functions, and `_SKIP_SYMBOLS` from the gate).

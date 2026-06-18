@@ -1,6 +1,6 @@
 # Data Directories
 
-Lyra stores runtime data in two root locations:
+factory stores runtime data in two root locations:
 
 | Host path | Purpose | Container path |
 |---|---|---|

@@ -1,9 +1,9 @@
 ---
-title: Job Model — Lyra
+title: Job Model — factory
 description: Living current-truth document for the unified job model — job_id=run, lifecycle, active-jobs registry, factory.job.<id>.* taxonomy, transport tiers, sub-jobs, and runtime control.
 ---
 
-# Job Model — Lyra
+# Job Model — factory
 
 > Status: LIVING — current truth for the unified job model and runtime control design.
 > Last updated: 2026-06-08.

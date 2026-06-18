@@ -1,12 +1,12 @@
-# Deployment — Machine 1 (Production)
+# factory — Deployment
 
-Running Lyra as a managed service on Machine 1 (Ubuntu Server 26.04 LTS) using rootless Podman Quadlet units under `systemd --user`. This is the canonical (and only) production path.
+Running factory as a managed service on Machine 1 (Ubuntu Server 26.04 LTS) using rootless Podman Quadlet units under `systemd --user`. This is the canonical (and only) production path.
 
 > **Historical note:** Before #611, Lyra ran under supervisord; that stack was removed in #886. The Quadlet cutover is documented in `docs/history/PROD-MIGRATION-STRATEGY.md` for reference.
 
 ## Overview
 
-Lyra runs as **nine containers** on a shared `roxabi.network` bridge, managed by **Podman Quadlet** (systemd --user). A `linger`-enabled systemd user session ensures all containers auto-start on boot without a login session.
+factory runs as **nine containers** on a shared `roxabi.network` bridge, managed by **Podman Quadlet** (systemd --user). A `linger`-enabled systemd user session ensures all containers auto-start on boot without a login session.
 
 ```
 Machine 1 (production hub)
@@ -220,7 +220,7 @@ Use `make factory reload` for a quick hub/adapters bounce. Use `make converge` a
 
 ## 5. Enable debug logging
 
-Lyra logs go to journald. The log level defaults to `INFO`. To enable debug output, set
+factory logs go to journald. The log level defaults to `INFO`. To enable debug output, set
 `LOG_LEVEL=DEBUG` in `~/.roxabi/factory/env/hub.env` and restart:
 
 ```bash
@@ -281,9 +281,9 @@ make deploy
 ### Remote service control
 
 ```bash
-make remote stop      # stop Lyra
+make remote stop      # stop factory
 make remote status    # check status
-make remote reload    # restart Lyra
+make remote reload    # restart factory
 make remote logs      # tail stdout logs
 make remote errors    # tail stderr logs
 ```
@@ -302,7 +302,7 @@ loginctl enable-linger $USER
 # Enable auto-update timer (only needed if provision.sh was not run — see §3 for detail)
 systemctl --user enable --now podman-auto-update.timer
 
-# Check all Lyra unit statuses
+# Check all factory unit statuses
 systemctl --user status 'factory-*.service' factory-nats.service
 
 # View journald logs

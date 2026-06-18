@@ -24,6 +24,7 @@ from factory.core.messaging.message import (
 )
 from factory.core.pool import Pool
 from factory.llm.base import LlmResult
+from roxabi_contracts.errors import WorkerError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -96,6 +97,28 @@ class TestSimpleAgentProcess:
         assert isinstance(response, Response)
         assert "boom" not in response.content
         assert response.content == "Something went wrong. Please try again."
+        assert response.metadata.get("error") is True
+
+    async def test_worker_error_passthrough_response(self) -> None:
+        provider = MagicMock()
+        provider.complete = AsyncMock(
+            return_value=LlmResult(
+                error="quota",
+                worker_error=WorkerError(
+                    code="cli.parse",
+                    message="You've hit your weekly limit",
+                    retryable=False,
+                ),
+            )
+        )
+        agent = make_agent(provider)
+        msg = make_inbound_message("hi")
+        pool = make_pool()
+
+        response = await agent.process(msg, pool)
+
+        assert isinstance(response, Response)
+        assert response.content == "You've hit your weekly limit"
         assert response.metadata.get("error") is True
 
     async def test_timeout_error_response(self) -> None:

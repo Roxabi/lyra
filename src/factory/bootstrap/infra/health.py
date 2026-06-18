@@ -97,7 +97,7 @@ def create_health_app(  # noqa: C901 — DEBT:migration-sequence-bootstrap — o
     fields are omitted.
     """
     _secrets = secrets or Secrets()
-    app = FastAPI(title="Lyra Hub")
+    app = FastAPI(title="factory Hub")
 
     @app.get("/health")
     async def health() -> dict:

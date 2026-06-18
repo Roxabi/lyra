@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+from factory.core.messaging.bot_display_name import bot_display_name
 from factory.errors import ProviderError
 
 if TYPE_CHECKING:
@@ -43,10 +44,13 @@ class HubCircuitBreakerMixin:
         status = cb.get_status()
         retry_secs = int(status.retry_after or 0)
         _retry_str = str(retry_secs)
+        _bot = bot_display_name(msg, self)
         _unavail = (
-            self._msg_manager.get("unavailable", retry_secs=_retry_str)
+            self._msg_manager.get(
+                "unavailable", bot_name=_bot, retry_secs=_retry_str
+            )
             if self._msg_manager
-            else f"Lyra is currently unavailable. Please try again in {retry_secs}s."
+            else f"{_bot} is currently unavailable. Please try again in {retry_secs}s."
         )
         from ..messaging.message import Response
 

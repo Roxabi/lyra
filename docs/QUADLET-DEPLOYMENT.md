@@ -1,4 +1,4 @@
-# Quadlet Deployment — Lyra
+# factory — Quadlet Deployment
 
 > **Moved.** This monolithic runbook was split into topic-specific procedures.
 

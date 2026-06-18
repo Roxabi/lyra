@@ -22,6 +22,7 @@ from factory.core.messaging.message import (
     Response,
     TelegramMeta,
 )
+from factory.core.messaging.messages import MessageManager
 from factory.core.pool import Pool
 from factory.llm.base import LlmResult
 from roxabi_contracts.errors import WorkerError
@@ -52,14 +53,27 @@ def make_pool(pool_id: str = "telegram:main:alice") -> Pool:
     return Pool(pool_id=pool_id, agent_name="lyra", ctx=MagicMock())
 
 
-def make_agent(provider: object) -> SimpleAgent:
+_MESSAGES = (
+    Path(__file__).resolve().parents[2] / "src" / "factory" / "data" / "messages.toml"
+)
+
+
+def make_agent(
+    provider: object,
+    *,
+    msg_manager: MessageManager | None = None,
+) -> SimpleAgent:
     config = Agent(
         name="lyra",
         system_prompt="You are Lyra.",
         memory_namespace="lyra",
         llm_config=ModelConfig(),
     )
-    return SimpleAgent(config, cast("LlmProvider", provider))
+    return SimpleAgent(
+        config,
+        cast("LlmProvider", provider),
+        msg_manager=msg_manager,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -119,6 +133,29 @@ class TestSimpleAgentProcess:
 
         assert isinstance(response, Response)
         assert response.content == "You've hit your weekly limit"
+        assert response.metadata.get("error") is True
+
+    async def test_llm_rate_limit_uses_template_response(self) -> None:
+        mm = MessageManager(_MESSAGES, language="en")
+        provider = MagicMock()
+        provider.complete = AsyncMock(
+            return_value=LlmResult(
+                error="You've hit your weekly limit",
+                worker_error=WorkerError(
+                    code="llm.rate_limit",
+                    message="You've hit your weekly limit",
+                    retryable=True,
+                ),
+            )
+        )
+        agent = make_agent(provider, msg_manager=mm)
+        msg = make_inbound_message("hi")
+        pool = make_pool()
+
+        response = await agent.process(msg, pool)
+
+        assert isinstance(response, Response)
+        assert response.content == mm.get("rate_limit")
         assert response.metadata.get("error") is True
 
     async def test_timeout_error_response(self) -> None:

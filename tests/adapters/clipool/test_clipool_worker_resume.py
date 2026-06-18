@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from factory.core.agent.agent_config import ModelConfig
-from factory.core.cli.cli_pool import CliPool, CliPoolDeps
+from factory.core.cli.cli_pool import CliPool, CliPoolDeps, CliResult
 from factory.core.cli.cli_pool_worker import _ProcessEntry
 
 # ---------------------------------------------------------------------------
@@ -417,9 +417,7 @@ class TestHandleCmdEmbeddedResume:
 
         pool = MagicMock(spec=CliPool)
         pool.resume_direct = AsyncMock(return_value=True)
-        fake_result = MagicMock()
-        fake_result.error = None
-        fake_result.session_id = _VALID_CLI_SID
+        fake_result = CliResult(result="", session_id=_VALID_CLI_SID, error="")
         pool.send = AsyncMock(return_value=fake_result)
 
         worker = CliPoolNatsWorker(pool)

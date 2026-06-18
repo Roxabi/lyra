@@ -461,6 +461,46 @@ class TestStreamingIteratorNonJson:
         # surfaces are scrubbed.
         assert parser.error == leaky
 
+    def test_rate_limit_subtype_maps_to_llm_rate_limit(self) -> None:
+        line = json.dumps(
+            {
+                "type": "result",
+                "session_id": "sess-rl",
+                "is_error": True,
+                "subtype": "rate_limit_error",
+                "result": "You've hit your weekly limit · resets 6pm (UTC)",
+                "duration_ms": 10,
+            }
+        )
+        parser = CliStreamingParser(pool_id=DEFAULT_POOL_ID)
+        events = _collect_all(parser, line)
+
+        assert len(events) == 1
+        result = events[0]
+        assert isinstance(result, ResultLlmEvent)
+        assert result.worker_error is not None
+        assert result.worker_error.code == "llm.rate_limit"
+        assert "weekly limit" in (result.worker_error.message or "")
+
+    def test_timeout_text_with_generic_subtype_maps_to_transport_timeout(self) -> None:
+        line = json.dumps(
+            {
+                "type": "result",
+                "session_id": "sess-to",
+                "is_error": True,
+                "subtype": "execute_error",
+                "result": "Timeout: no output for 120s",
+                "duration_ms": 10,
+            }
+        )
+        parser = CliStreamingParser(pool_id=DEFAULT_POOL_ID)
+        events = _collect_all(parser, line)
+
+        result = events[0]
+        assert isinstance(result, ResultLlmEvent)
+        assert result.worker_error is not None
+        assert result.worker_error.code == "transport.timeout"
+
 
 # ---------------------------------------------------------------------------
 # TestStreamingIteratorAssistant

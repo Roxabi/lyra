@@ -24,8 +24,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-pytestmark = pytest.mark.omp_contract
-
 from factory.adapters.omp._rpc_bridge import (
     _DEFAULT_MODEL,
     _DEFAULT_REQUEST_TIMEOUT,
@@ -37,6 +35,8 @@ from factory.adapters.omp._rpc_bridge import (
     _classify_exception,
     _read_request_timeout,
 )
+
+pytestmark = pytest.mark.omp_contract
 
 # ---------------------------------------------------------------------------
 # Helpers

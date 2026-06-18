@@ -21,6 +21,8 @@ from factory.llm.drivers.omp_rpc import OmpRpcDriver
 from roxabi_contracts.jobs import JobResult
 from roxabi_contracts.jobs.fixtures import sample_job_result_ok
 
+pytestmark = pytest.mark.omp_contract
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

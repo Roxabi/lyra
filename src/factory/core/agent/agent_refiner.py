@@ -1,4 +1,4 @@
-"""AgentRefiner: LLM-guided interactive profile refinement for Lyra agents."""
+"""AgentRefiner: LLM-guided interactive profile refinement for factory agents."""
 
 from __future__ import annotations
 

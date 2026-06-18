@@ -229,7 +229,7 @@ def _ensure_config_db(vault_dir: Path) -> None:
     - Complete config.db → no-op
 
     Note: there is a TOCTOU window between the existence check and the rename.
-    Concurrent Lyra startups on the same vault_dir are not a supported scenario
+    Concurrent factory startups on the same vault_dir are not a supported scenario
     (single-instance deployment). The worst case is a duplicate migration that
     is non-destructive because INSERT OR IGNORE is used throughout.
     """

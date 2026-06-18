@@ -1,4 +1,4 @@
-"""Persistent Claude CLI process pool for Lyra agents.
+"""Persistent Claude CLI process pool for factory agents.
 
 One long-running `claude --input-format stream-json` process per pool_id.
 Sends messages via stdin NDJSON, reads responses via stdout NDJSON.

@@ -1,6 +1,6 @@
 # Operations Runbooks
 
-Step-by-step procedures for running Lyra in production (Podman Quadlet). These complement the generic user guide in [DEPLOYMENT.md](../DEPLOYMENT.md).
+Step-by-step procedures for running factory in production (Podman Quadlet). These complement the generic user guide in [DEPLOYMENT.md](../DEPLOYMENT.md).
 
 | Runbook | When to use |
 |---------|-------------|

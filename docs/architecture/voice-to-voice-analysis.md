@@ -3,7 +3,7 @@
 > **Date**: 2026-03-17
 > **Author**: Mickael + Claude
 > **Status**: Research / Decision: Scenario D (hybrid split + fallback)
-> **Context**: Evaluate voice-to-voice models for Lyra's voice capabilities
+> **Context**: Evaluate voice-to-voice models for factory's voice capabilities
 
 ---
 
@@ -411,7 +411,7 @@ VRAM budget: ~3 GB occupied permanently, ~13 GB free.
 
 **roxabituwer (prod, RTX 3080 12 GB, 24/7)**:
 
-No local inference. Lyra adapters (Telegram, Discord) route through provider APIs (Claude, etc.).
+No local inference. factory adapters (Telegram, Discord) route through provider APIs (Claude, etc.).
 
 ### Scenarios Evaluated
 
@@ -570,7 +570,7 @@ Local usage:
 Prod runs a watchdog that monitors local machine availability and triggers mode switches:
 
 ```python
-# Pseudo-code for Lyra's mode manager on prod (roxabituwer)
+# Pseudo-code for factory's mode manager on prod (roxabituwer)
 # NOTE: supervisorctl calls below are illustrative (pre-Quadlet architecture).
 # Current deployments use systemctl --user (supervisord retired in #886/#1036).
 import subprocess

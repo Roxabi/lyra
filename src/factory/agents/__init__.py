@@ -1,4 +1,4 @@
-"""Lyra agent implementations."""
+"""factory agent implementations."""
 
 from .simple_agent import SimpleAgent
 

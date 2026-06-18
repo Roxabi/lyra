@@ -182,3 +182,29 @@ class TestDecodeChunkNeverRaises:
         event = _codec.decode_chunk(payload)
         assert isinstance(event, ResultLlmEvent)
         assert event.is_error is False
+
+
+class TestDecodeWorkerError:
+    def test_decode_err_populates_worker_error_for_known_code(self) -> None:
+        err = SanitizedError(
+            code="pool.circuit_open",
+            message="CircuitOpen",
+            retryable=True,
+        )
+        result = _codec.decode(Err(err), _TRACE_ID)
+        assert result.error == "CircuitOpen"
+        assert result.worker_error is not None
+        assert result.worker_error.code == "pool.circuit_open"
+
+    def test_error_chunk_populates_llm_result_worker_error(self) -> None:
+        payload = _chunk(
+            event_type="result",
+            is_error=True,
+            done=True,
+            worker_error=_worker_error_dict("cli.parse", "weekly limit"),
+        )
+        result = _codec.decode(payload, _TRACE_ID)
+        assert not result.ok
+        assert result.worker_error is not None
+        assert result.worker_error.code == "cli.parse"
+        assert result.error == "weekly limit"

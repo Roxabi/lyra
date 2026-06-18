@@ -17,6 +17,7 @@ from factory.core.agent.agent_config import ModelConfig
 from factory.core.cli.cli_pool import CliResult
 from factory.llm.base import LlmResult
 from factory.llm.drivers.cli import ClaudeCliDriver
+from roxabi_contracts.errors import WorkerError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -82,11 +83,9 @@ class TestClaudeCliDriverComplete:
         assert result.error == ""
 
     async def test_complete_translates_error(self) -> None:
-        """CliResult(error='timeout') → LlmResult(ok=False, error='timeout')."""
-        # Arrange
-        driver, _ = make_driver(CliResult(error="timeout"))
+        """CliResult(error='timeout') → LlmResult with worker_error envelope."""
+        driver, _ = make_driver(CliResult(error="Timeout: no output for 120s"))
 
-        # Act
         result = await driver.complete(
             pool_id="p1",
             text="hi",
@@ -94,10 +93,30 @@ class TestClaudeCliDriverComplete:
             system_prompt="",
         )
 
-        # Assert
         assert result.ok is False
-        assert result.error == "timeout"
+        assert "Timeout" in result.error
         assert result.result == ""
+        assert result.worker_error is not None
+        assert result.worker_error.code == "transport.timeout"
+
+    async def test_complete_translates_cli_error_with_worker_error(self) -> None:
+        driver, _ = make_driver(
+            CliResult(error="You've hit your weekly limit · resets 6pm (UTC)")
+        )
+
+        result = await driver.complete(
+            pool_id="p1",
+            text="hi",
+            model_cfg=make_model_cfg(),
+            system_prompt="",
+        )
+
+        assert result.ok is False
+        assert result.worker_error == WorkerError(
+            code="cli.parse",
+            message="You've hit your weekly limit · resets 6pm (UTC)",
+            retryable=False,
+        )
 
     async def test_complete_translates_warning(self) -> None:
         """CliResult(result='r', warning='truncated') → LlmResult with warning."""

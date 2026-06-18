@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 from pathlib import Path
 
 from factory.core.agent.agent_config import ModelConfig
+from factory.core.cli.cli_error_classify import worker_error_from_cli_error
 from factory.core.cli.cli_pool import CliPool
 from factory.core.messaging.events import LlmEvent
 from factory.llm.base import LlmResult
@@ -62,11 +63,18 @@ class ClaudeCliDriver:
         messages: list[dict] | None = None,  # ignored — CliPool manages history
     ) -> LlmResult:
         cli_result = await self._pool.send(pool_id, text, model_cfg, system_prompt)
+        worker_error = (
+            worker_error_from_cli_error(cli_result.error)
+            if cli_result.error
+            else None
+        )
         return LlmResult(
             result=cli_result.result,
             session_id=cli_result.session_id,
             error=cli_result.error,
             warning=cli_result.warning,
+            worker_error=worker_error,
+            retryable=worker_error.retryable if worker_error else True,
         )
 
     async def stream(

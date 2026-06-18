@@ -201,9 +201,10 @@ class TestOmpRpcDriver:
             system_prompt="sys",
         )
 
-        # Assert
         assert res.ok is False
-        assert res.error  # non-empty string
+        assert res.error
+        assert res.worker_error is not None
+        assert res.worker_error.code == "transport.timeout"
 
     # -- (c) worker error --
 
@@ -229,9 +230,10 @@ class TestOmpRpcDriver:
             system_prompt="sys",
         )
 
-        # Assert
         assert res.ok is False
-        assert res.error  # non-empty static error string (ADR-073: no str(exc) on bus)
+        assert res.error == "scraper failed"
+        assert res.worker_error is not None
+        assert res.worker_error.code == "worker.crash"
 
     # -- unsubscribe cleanup --
 

@@ -190,6 +190,32 @@ async def test_handle_cmd_nonstream_calls_pool_send() -> None:
     assert publish_subject == "_INBOX.reply"
 
 
+async def test_handle_cmd_nonstream_error_forwards_worker_error() -> None:
+    """stream=False error: blocking chunk carries worker_error for hub resolver."""
+    from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
+
+    pool = _make_pool()
+    pool.send.return_value = CliResult(
+        result="",
+        session_id="sid",
+        error="You've hit your weekly limit",
+    )
+
+    worker = CliPoolNatsWorker(pool)
+    nc = AsyncMock()
+    worker._nc = nc
+
+    msg = _make_nats_msg(subject="factory.clipool.cmd", reply="_INBOX.reply")
+    payload = _cmd_payload(stream=False)
+
+    await worker._handle_cmd(msg, payload)
+
+    published = json.loads(nc.publish.call_args.args[1].decode())
+    assert published["is_error"] is True
+    assert published["worker_error"]["code"] == "cli.parse"
+    assert "weekly limit" in published["worker_error"]["message"]
+
+
 async def test_handle_cmd_send_streaming_exception_publishes_error() -> None:
     """When pool.send_streaming raises, worker publishes error chunk via _nc.publish."""
     from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker

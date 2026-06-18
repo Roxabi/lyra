@@ -43,6 +43,10 @@ log = logging.getLogger(__name__)
 _AUTH_SUBTYPES = frozenset({"auth_error", "auth", "login_required"})
 # Subtypes that suggest a lost / unresumable session.
 _SESSION_LOST_SUBTYPES = frozenset({"session_expired", "session_lost", "resume_failed"})
+# Provider quota / rate-limit failures (ADR-089 S6).
+_RATE_LIMIT_SUBTYPES = frozenset(
+    {"rate_limit_error", "rate_limit", "quota_exceeded", "usage_limit"}
+)
 
 # Max length of bus-bound CLI error messages. Upstream wire content is
 # unbounded; trim before publishing to keep the NATS payload predictable.
@@ -73,6 +77,7 @@ def _classify_cli_error(subtype: str, error_text: str) -> WorkerError:
     Mapping rules (path a — upstream CLI reports is_error):
       * auth-related subtype  → cli.auth   (not retryable)
       * session-related       → cli.session_lost (retryable)
+      * rate-limit subtype    → llm.rate_limit (retryable)
       * anything else         → cli.parse  (not retryable)
 
     ``worker.parse`` is NOT present in KNOWN_CODES (registry only has
@@ -86,6 +91,8 @@ def _classify_cli_error(subtype: str, error_text: str) -> WorkerError:
         code = "cli.auth"
     elif subtype in _SESSION_LOST_SUBTYPES:
         code = "cli.session_lost"
+    elif subtype in _RATE_LIMIT_SUBTYPES or "rate_limit" in subtype:
+        code = "llm.rate_limit"
     else:
         code = "cli.parse"
 

@@ -1,4 +1,4 @@
-"""Shared error-handling utilities for Lyra handlers and plugins.
+"""Shared error-handling utilities for factory handlers and plugins.
 
 Provides safe_error_response() — a single place to log exceptions and return
 a generic user-facing message, preventing internal error details from leaking

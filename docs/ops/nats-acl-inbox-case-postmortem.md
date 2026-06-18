@@ -390,7 +390,7 @@ Four independent analyses were run after the initial postmortem: architect, prod
 
 **5A — Hub-spoke coupling (Fix 2):** Fix 2 requires each responder to name _inbox.hub.> in its publish ACL. This encodes a cross-identity dependency that looks structurally identical to a namespace grant — no schema field identifies it as a topology dependency. A hub identity rename or second requester requires manual updates to all responder ACLs with no tooling to find them.
 
-**5B — voicecli coordination (Fix 1):** `voice-tts` and `voice-stt` identities live in `acl-matrix.json` (lyra repo) but their connect-site configuration lives in voicecli (separate repo, separate release cycle). Deploying Fix 1 in lyra while voicecli still uses uppercase produces an identical outage for voice-tts and voice-stt. The lyra `acl-matrix.json` can be updated and `auth.conf` regenerated with no CI gate preventing partial rollout.
+**5B — voicecli coordination (Fix 1):** `voice-tts` and `voice-stt` identities live in `acl-matrix.json` (roxabi-factory repo) but their connect-site configuration lives in voicecli (separate repo, separate release cycle). Deploying Fix 1 in lyra while voicecli still uses uppercase produces an identical outage for voice-tts and voice-stt. The lyra `acl-matrix.json` can be updated and `auth.conf` regenerated with no CI gate preventing partial rollout.
 
 **5C — gen-nkeys.sh identity list desync:** The hardcoded key-generation block (lines 597–620) does not include `clipool-worker`. The script maintains two independent identity lists — the hardcoded shell block and `IDENTITIES[]` from the JSON — with no cross-validation. On a fresh provision without `--regenerate`, `clipool-worker.seed` is never created; `render_auth_conf` then fails hard (missing pubkey). This is a disaster-recovery time-bomb, not a silent bug, but there is no CI check preventing the two lists from diverging further.
 
@@ -424,7 +424,7 @@ Four independent analyses were run after the initial postmortem: architect, prod
 2. No defined owner for user communication during an incident.
 3. No incident response process — no runbook, no on-call trigger criteria, no communication obligation.
 4. No definition of what constitutes a user-visible incident vs. an internal ops issue. Without a definition there is no trigger.
-5. **Root:** Lyra's user base has been treated as a side effect of development rather than a stakeholder population with expectations. No SLO or SLA exists, which means there is no obligation to communicate failures.
+5. **Root:** factory's user base has been treated as a side effect of development rather than a stakeholder population with expectations. No SLO or SLA exists, which means there is no obligation to communicate failures.
 
 #### Why-chain 3: No canary deployment
 

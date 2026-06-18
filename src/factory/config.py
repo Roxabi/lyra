@@ -1,4 +1,4 @@
-"""Lyra configuration: multi-bot dataclasses and top-level config loader.
+"""factory configuration: multi-bot dataclasses and top-level config loader.
 
 Supports both the new multi-bot schema (preferred):
     [[telegram.bots]]

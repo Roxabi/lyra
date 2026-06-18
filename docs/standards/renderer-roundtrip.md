@@ -37,7 +37,7 @@ Apply when:
 Skip when:
 
 - The file is an internal Python data structure (e.g. a pickled object, a JSON blob read only by Lyra itself).
-- The consumer is Lyra code, not an external binary — those cases belong in `tests/` as integration tests.
+- The consumer is factory code, not an external binary — those cases belong in `tests/` as integration tests.
 - The file is documentation or a template that is never loaded by a binary directly.
 
 ---

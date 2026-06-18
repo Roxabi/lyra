@@ -83,7 +83,7 @@ async def run_lifecycle(  # noqa: C901 — DEBT:migration-sequence-bootstrap —
     dc_active = [f"discord:{c.bot_id}" for _, c, _ in wired.dc_adapters]
     active = tg_active + dc_active
     log.info(
-        "Lyra started — adapters: %s, health on :%d.",
+        "factory started — adapters: %s, health on :%d.",
         ", ".join(active) if active else "none",
         health_port,
     )
@@ -121,4 +121,4 @@ async def run_lifecycle(  # noqa: C901 — DEBT:migration-sequence-bootstrap —
             await hub.notify_shutdown_inflight(active_ids)
         await resources.cli_pool.stop()
     await hub.shutdown()
-    log.info("Lyra stopped.")
+    log.info("factory stopped.")

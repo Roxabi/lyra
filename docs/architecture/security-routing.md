@@ -1,4 +1,4 @@
-# Lyra — Security, Routing & Memory Isolation
+# factory — — Security, Routing & Memory Isolation
 
 > Reference document. Last updated: 2026-05-09.
 > **Status**: #auth (#151 ✅), #routing (#152 ✅), #commands ✅ (CommandParser shipped), #memory-isolation — partially implemented (user_id partition active in prefs_store; full MemoryEntry metadata schema not yet applied).

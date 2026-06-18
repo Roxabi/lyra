@@ -1,9 +1,9 @@
 ---
-title: Cross-project Contracts — Lyra
+title: Cross-project Contracts — factory
 description: Living reference for the NATS SDK, shared schema package, voice/image worker contracts, and voice routing registry — the boundary between Lyra and the Roxabi satellite ecosystem.
 ---
 
-# Cross-project Contracts — Lyra
+# Cross-project Contracts — factory
 
 > Status: LIVING — current truth for cross-project NATS contracts and shared schemas.
 > Last updated: 2026-05-09.
@@ -40,7 +40,7 @@ inbox case normalization rollout (ADR-062). `CONTRACT_VERSION` migrated from `ad
 
 `packages/roxabi-contracts/` is a second uv workspace subpackage. It ships Pydantic models,
 subject string constants, synthetic test fixtures, and in-process test doubles for every
-Lyra-owned cross-project NATS domain. Satellites import the same typed models the hub publishes
+factory-owned cross-project NATS domain. Satellites import the same typed models the hub publishes
 against — drift between publisher and subscriber becomes a type error, not a silent wire mismatch.
 
 Live submodules as of v0.1.0+: `voice/` (TTS + STT subjects, models, fixtures, `FakeTtsWorker`/

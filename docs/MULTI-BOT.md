@@ -1,10 +1,10 @@
-# Multi-Bot Support
+# factory — Multi-Bot
 
 Run multiple bots — each with its own persona, model, and auth policy — without duplicating infrastructure. All bots share the hub container (`factory-hub`) and are served by the same adapter containers (`factory-telegram`, `factory-discord`).
 
 ## What multi-bot support enables
 
-A single Lyra instance can host any number of bots across Telegram and Discord simultaneously. Each bot:
+A single factory instance can host any number of bots across Telegram and Discord simultaneously. Each bot:
 
 - Has a dedicated agent (persona, system prompt, model, memory namespace)
 - Has its own auth configuration (who can talk to it)
@@ -174,7 +174,7 @@ Trust levels:
 
 When multiple Discord bots share a server, each bot must only respond in channels and threads it owns — otherwise both bots respond to every message.
 
-Lyra enforces this via per-adapter `_owned_threads`:
+factory enforces this via per-adapter `_owned_threads`:
 
 - When `auto_thread = true`, a bot creates a new thread for each conversation it starts. That thread's ID is added to its `_owned_threads` set.
 - When a bot is directly mentioned inside an existing thread (one it did not create), that thread is also added to `_owned_threads`. This is the second ownership path — claiming via first mention.
@@ -293,7 +293,7 @@ The `CliPool` is the Claude CLI subprocess pool. It is shared across all agents 
 
 7. **Verify the bot_id is consistent** — the `bot_id` string must match exactly across the `bots` entry, the `auth_bots` entry, and will appear in logs and webhook URLs.
 
-8. **Restart Lyra**
+8. **Restart factory**
    ```bash
    make factory reload
    ```

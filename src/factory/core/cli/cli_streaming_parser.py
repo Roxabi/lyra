@@ -11,7 +11,7 @@ import logging
 from collections import deque
 from typing import Iterable
 
-from roxabi_contracts.errors import WorkerError
+from roxabi_contracts.errors import KNOWN_CODES, WorkerError
 
 from ...streaming.event_emitter import EventEmitter
 from ...streaming.state_machine import StateMachine

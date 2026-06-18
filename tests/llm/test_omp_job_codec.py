@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from factory.llm.omp_job_codec import OmpJobCodec
-from roxabi_contracts.errors import WorkerError
 from roxabi_contracts.jobs import JobResult
 from roxabi_contracts.jobs.fixtures import sample_job_result_err, sample_job_result_ok
 

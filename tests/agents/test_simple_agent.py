@@ -53,7 +53,9 @@ def make_pool(pool_id: str = "telegram:main:alice") -> Pool:
     return Pool(pool_id=pool_id, agent_name="lyra", ctx=MagicMock())
 
 
-_MESSAGES = Path(__file__).resolve().parents[2] / "src" / "factory" / "data" / "messages.toml"
+_MESSAGES = (
+    Path(__file__).resolve().parents[2] / "src" / "factory" / "data" / "messages.toml"
+)
 
 
 def make_agent(

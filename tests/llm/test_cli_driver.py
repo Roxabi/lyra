@@ -17,7 +17,6 @@ from factory.core.agent.agent_config import ModelConfig
 from factory.core.cli.cli_pool import CliResult
 from factory.llm.base import LlmResult
 from factory.llm.drivers.cli import ClaudeCliDriver
-from roxabi_contracts.errors import WorkerError
 
 # ---------------------------------------------------------------------------
 # Helpers

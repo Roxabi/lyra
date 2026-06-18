@@ -21,7 +21,10 @@ _FALLBACKS: dict[str, str] = {
     "timeout": "Your request timed out. Please try again.",
     "auth_required": "Your CLI session has expired. Please sign in again.",
     "rate_limit": "You've hit a usage limit. Please try again later.",
-    "context_too_long": "This conversation is too long for the model. Try /clear or start a new topic.",
+    "context_too_long": (
+        "This conversation is too long for the model. "
+        "Try /clear or start a new topic."
+    ),
     "cancelled": "Request cancelled.",
     "stt_noise": "I couldn't make out your voice message, please try again.",
     "stt_unsupported": "Voice messages are not supported — STT is not configured.",

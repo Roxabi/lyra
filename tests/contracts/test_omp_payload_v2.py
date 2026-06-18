@@ -15,8 +15,12 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from roxabi_contracts.jobs import JobEnvelope, JobResult
 from roxabi_contracts.jobs.fixtures import ENV_BASE
+
+pytestmark = pytest.mark.omp_contract
 
 # ---------------------------------------------------------------------------
 # Shared base payloads (minimal valid envelopes)

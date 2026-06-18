@@ -55,6 +55,7 @@ from roxabi_contracts.jobs.fixtures import sample_job_result_ok
 # ---------------------------------------------------------------------------
 
 pytestmark = [
+    pytest.mark.omp_contract,
     pytest.mark.integration,
     pytest.mark.skipif(
         not os.environ.get("INTEGRATION"),

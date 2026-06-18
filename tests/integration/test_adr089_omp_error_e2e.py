@@ -26,6 +26,8 @@ from tests.integration.test_adr089_error_resolution_e2e import (
 )
 from tests.integration.test_e2e_telegram_to_agent import _RecordingAdapter
 
+pytestmark = [pytest.mark.omp_contract, pytest.mark.smoke]
+
 _OMP_MODEL = ModelConfig(backend="omp-rpc", model="grok-4-fast")
 
 
@@ -60,7 +62,6 @@ def _make_omp_agent(nc: AsyncMock) -> SimpleAgent:
     )
 
 
-@pytest.mark.smoke
 class TestAdr089OmpBlockingErrorE2E:
     async def test_worker_crash_job_result_shows_generic(self) -> None:
         """JobResult worker.crash → generic (infra code, no message leak)."""

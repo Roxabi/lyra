@@ -103,6 +103,7 @@ markers = [
     "integration: cross-host integration tests requiring M1 Tailnet",
     "audio_consumer_live: test exercises audio consumer directly; skip the autouse no-op neutralizer",
     "smoke: fast in-process smoke tests for critical user-facing paths",
+    "omp_contract: OMP wire + driver + codec + E2E contract regression gate",
 ]
 
 [tool.coverage.run]

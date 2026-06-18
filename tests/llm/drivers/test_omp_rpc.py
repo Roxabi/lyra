@@ -21,6 +21,8 @@ from roxabi_contracts.jobs import JobResult
 from roxabi_contracts.jobs.fixtures import sample_job_result_ok
 from roxabi_contracts.jobs.subjects import jobs_result, jobs_submit
 
+pytestmark = pytest.mark.omp_contract
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

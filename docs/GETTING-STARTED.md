@@ -1,6 +1,6 @@
-# Getting Started — Lyra by Roxabi
+# factory — Getting Started
 
-Complete guide to set up Machine 1 (Ubuntu Server 26.04 LTS) as the Lyra hub from scratch.
+Complete guide to set up Machine 1 (Ubuntu Server 26.04 LTS) as the factory hub from scratch.
 
 ---
 
@@ -217,7 +217,7 @@ cd ~/projects/roxabi-factory && python3 deploy/setup.py
 7. Seed agents into the DB (`factory agent init`)
 8. Seed bots into BotStore (`factory bot init`)
 9. Install Claude Code plugins:
-   - **Mandatory:** `web-intel`, `agent-browser`, `lyra-send`, `refine-agent`
+   - **Mandatory:** `web-intel`, `agent-browser`, `factory-send`, `refine-agent`
    - **Conditional:** `voice-cli` (auto-installed if voiceCLI was installed)
    - **Optional (prompted):** `dev-core`, `visual-explainer`, `compress`
 10. Enable linger + start Quadlet containers
@@ -285,7 +285,7 @@ These create `factory-bot-telegram-lyra` and `factory-bot-discord-lyra` in the P
 claude
 ```
 
-Follow the prompts to authenticate. Lyra uses Claude Code as its LLM backend — it spawns `claude --input-format stream-json` as a subprocess.
+Follow the prompts to authenticate. factory uses Claude Code as its LLM backend — it spawns `claude --input-format stream-json` as a subprocess.
 
 ---
 
@@ -329,7 +329,7 @@ make quadlet-install
 # Create Podman secrets for nkey auth
 make quadlet-secrets-install
 
-# Start all Lyra containers now
+# Start all factory containers now
 systemctl --user start factory-nats.service
 sleep 3  # wait for NATS to be ready
 systemctl --user start factory-hub.service factory-telegram.service factory-discord.service \
@@ -398,7 +398,7 @@ make factory errors      # journalctl for factory-hub (errors only)
 
 ## Step 14 — Send your first message
 
-**Telegram:** Open a DM with your bot and type anything. Lyra will respond.
+**Telegram:** Open a DM with your bot and type anything. The bot will respond.
 
 **Discord:** @mention your bot in a channel: `@YourBot hello!`
 
@@ -439,7 +439,7 @@ ssh -i ~/.ssh/lyra_agent lyra@<MACHINE_1_IP> "id && git --version"
 |------|-------|
 | Admin access | `ssh yourname@<IP>` |
 | Agent access | `ssh -i ~/.ssh/lyra_agent lyra@<IP>` (optional) |
-| Lyra project | `~/projects/roxabi-factory/` |
+| factory project | `~/projects/roxabi-factory/` |
 | VoiceCLI project | `~/projects/voiceCLI/` (if installed) |
 | Quadlet units | `~/.config/containers/systemd/factory-*.container` |
 | VoiceCLI Quadlet units | `~/.config/containers/systemd/voicecli-*.container` (if voiceCLI installed) |

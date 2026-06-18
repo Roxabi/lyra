@@ -36,6 +36,8 @@ from factory.adapters.omp._rpc_bridge import (
     _read_request_timeout,
 )
 
+pytestmark = pytest.mark.omp_contract
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

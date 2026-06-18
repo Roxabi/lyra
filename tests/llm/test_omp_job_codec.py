@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import pytest
+
 from factory.llm.omp_job_codec import OmpJobCodec
 from roxabi_contracts.jobs import JobResult
 from roxabi_contracts.jobs.fixtures import sample_job_result_err, sample_job_result_ok
+
+pytestmark = pytest.mark.omp_contract
 
 _codec = OmpJobCodec()
 

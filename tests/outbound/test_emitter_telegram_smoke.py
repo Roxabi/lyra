@@ -22,6 +22,7 @@ from factory.adapters.telegram import TelegramAdapter
 from factory.core.auth.trust import TrustLevel
 from factory.core.messaging.message import InboundMessage, OutboundMessage, TelegramMeta
 from factory.core.messaging.render_events import (
+    RunErrorRenderEvent,
     TextDeltaRenderEvent,
     TextEndRenderEvent,
     TextStartRenderEvent,
@@ -77,6 +78,11 @@ async def _three_chunk_events():
     yield TextDeltaRenderEvent(delta="Hello", message_id="m1")
     yield TextDeltaRenderEvent(delta=" world", message_id="m1")
     yield TextEndRenderEvent(message_id="m1")
+
+
+async def _soft_error_only_events():
+    """Soft LLM error with no text deltas (ADR-089 streaming path)."""
+    yield RunErrorRenderEvent(run_id="r1", message="You've hit your weekly limit")
 
 
 # ---------------------------------------------------------------------------
@@ -329,3 +335,21 @@ class TestTelegramSendStreamingSmoke:
         # MarkdownV2 escapes spaces and characters, but "Hello" and "world" must be
         # present after escaping (content check at character level).
         assert text_arg is not None, "edit_message_text must receive a text argument"
+
+    async def test_send_streaming_soft_error_displays_run_error_message(self) -> None:
+        """ADR-089: soft error only shows curated message on Telegram."""
+        adapter, bot = _make_tg_adapter_with_bot()
+        original_msg = _make_tg_inbound(chat_id=42, message_id=10)
+        outbound = OutboundMessage.from_text("")
+
+        await adapter.send_streaming(
+            original_msg, _soft_error_only_events(), outbound=outbound
+        )
+
+        bot.edit_message_text.assert_awaited()
+        last_call = bot.edit_message_text.call_args_list[-1]
+        text_arg = last_call.kwargs.get("text") or (
+            last_call.args[0] if last_call.args else ""
+        )
+        assert text_arg is not None
+        assert "weekly limit" in text_arg

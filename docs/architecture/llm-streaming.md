@@ -1,9 +1,9 @@
 ---
-title: LLM Streaming & Agents Runtime — Lyra
+title: LLM Streaming & Agents Runtime — factory
 description: Current truth for LLM/streaming pipeline decisions covering the LlmEvent→StreamProcessor→RenderEvent path.
 ---
 
-# LLM Streaming & Agents Runtime — Lyra
+# LLM Streaming & Agents Runtime — factory
 
 > Status: LIVING — current truth for LLM/streaming pipeline decisions.
 > Last updated: 2026-05-09.
@@ -22,7 +22,7 @@ and the `ProcessorRegistry` worker plumbing (see `workers-tooling.md`).
 
 → ADR-028 (amended)
 
-Lyra uses **parallel streaming methods** (Option A): dedicated `send_and_read_stream()`,
+factory uses **parallel streaming methods** (Option A): dedicated `send_and_read_stream()`,
 `CliPool.send_streaming()`, `ClaudeCliDriver.stream()`, and `SimpleAgent.process()` alongside
 their non-streaming counterparts. The non-streaming path is untouched. Streaming is opt-in
 per agent via `ModelConfig.streaming: bool = False`.

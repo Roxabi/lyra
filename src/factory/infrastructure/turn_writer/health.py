@@ -154,7 +154,7 @@ class TurnWriterHealthServer:
     # ------------------------------------------------------------------
 
     def _build_app(self) -> FastAPI:
-        app = FastAPI(title="Lyra TurnWriter")
+        app = FastAPI(title="factory TurnWriter")
 
         @app.get("/health")
         async def health() -> Response:

@@ -1,4 +1,4 @@
-# Lyra — End-to-End Happy Paths
+# factory — End-to-End Happy Paths
 
 > Living document. Catalogs every happy-path scenario across the system.
 > Last updated: 2026-04-27
@@ -7,7 +7,7 @@
 
 ## Overview
 
-Lyra has **26 distinct happy paths** organized into 7 categories. Each scenario documents the trigger, processing pipeline, and expected output for one complete end-to-end flow.
+factory has **26 distinct happy paths** organized into 7 categories. Each scenario documents the trigger, processing pipeline, and expected output for one complete end-to-end flow.
 
 | Category | Count | Scope |
 |----------|-------|-------|

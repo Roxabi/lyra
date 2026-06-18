@@ -149,4 +149,4 @@ async def _bootstrap_unified(  # noqa: PLR0915 — unified bootstrap is a wiring
             await embedded.stop()
         release_lockfile()
 
-    log.info("Lyra stopped.")
+    log.info("factory stopped.")

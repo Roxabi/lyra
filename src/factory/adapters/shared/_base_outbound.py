@@ -1,4 +1,4 @@
-"""Abstract base class for Lyra outbound adapters.
+"""Abstract base class for factory outbound adapters.
 
 Defines the shared contract for Telegram and Discord outbound adapters:
 - abstract send() — platform-specific complete reply
@@ -37,7 +37,7 @@ __all__ = ["OutboundAdapterBase"]
 
 
 class OutboundAdapterBase(ABC):
-    """Shared contract for Lyra outbound channel adapters.
+    """Shared contract for factory outbound channel adapters.
 
     Subclasses must implement:
     - send()

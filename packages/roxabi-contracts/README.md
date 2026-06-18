@@ -147,7 +147,7 @@ All three models subclass `ContractEnvelope` and inherit `ConfigDict(extra="igno
 ## Test doubles
 
 `roxabi_contracts.voice.testing` provides in-process replacements for a real
-voiceCLI satellite (`FakeTtsWorker`, `FakeSttWorker`) — intended for lyra hub
+voiceCLI satellite (`FakeTtsWorker`, `FakeSttWorker`) — intended for factory hub
 tests and voiceCLI adapter tests that need to exercise the NATS request/reply
 cycle without a GPU or real model.
 

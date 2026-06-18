@@ -15,6 +15,10 @@ Entries are generated automatically by `/promote` and committed to staging befor
 
 ### Changed
 
+- Claude Code plugins renamed: `lyra-marketplace` → `factory-marketplace`,
+  `lyra-send` → `factory-send`, `lyra-ops` → `factory-ops`, `/lyra-debug` →
+  `/factory-debug`. `deploy/setup.py` uninstalls legacy `@lyra-marketplace`
+  coordinates before registering the new marketplace (idempotent).
 - Migrated 7 consumer paths and 5 dual-emit sites from v1 to v2 RenderEvents: text triplet
   (`TextStartRenderEvent` / `TextDeltaRenderEvent` / `TextEndRenderEvent`), `TextChunkRenderEvent`,
   and ToolCall lifecycle events (`ToolCallStartRenderEvent`, `ToolCallArgsRenderEvent`,

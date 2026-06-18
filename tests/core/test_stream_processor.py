@@ -18,6 +18,7 @@ from factory.core.messaging.events import (
     ToolUseEndLlmEvent,
     ToolUseLlmEvent,
 )
+from factory.core.messaging.message import GENERIC_ERROR_REPLY
 from factory.core.messaging.render_events import (
     ReasoningDeltaRenderEvent,
     ReasoningEndRenderEvent,
@@ -485,22 +486,66 @@ class TestStreamProcessor:
     # B3 — is_error propagation from ResultLlmEvent → TextRenderEvent (#392)
     # ------------------------------------------------------------------
 
-    async def test_is_error_run_error_carries_error_text(self) -> None:
-        """ResultLlmEvent(is_error=True, error_text=...) → RunErrorRenderEvent.message.
+    async def test_soft_error_substitutes_bot_name_in_unavailable_template(
+        self,
+    ) -> None:
+        from factory.core.messaging.messages import MessageManager
+        from roxabi_contracts.errors import WorkerError
 
-        Confirms the v2 contract: soft-error text is carried on the run-level
-        terminal event (RunErrorRenderEvent.message), not buried in a text event.
-        """
+        messages = (
+            Path(__file__).resolve().parents[2]
+            / "src"
+            / "factory"
+            / "data"
+            / "messages.toml"
+        )
+        mm = MessageManager(messages, language="en")
+        processor = StreamProcessor(msg_manager=mm, bot_name="Lyra")
+        events = async_events(
+            ResultLlmEvent(
+                is_error=True,
+                duration_ms=0,
+                worker_error=WorkerError(
+                    code="pool.circuit_open",
+                    message="open",
+                    retryable=True,
+                    detail="30",
+                ),
+            ),
+        )
+        run_errors = [
+            e
+            for e in await collect(processor.process(events))
+            if isinstance(e, RunErrorRenderEvent)
+        ]
+        assert len(run_errors) == 1
+        assert "Lyra" in run_errors[0].message
+        assert "{bot_name}" not in run_errors[0].message
+
+    async def test_is_error_run_error_resolves_worker_error_message(self) -> None:
+        """ResultLlmEvent worker_error → RunErrorRenderEvent.message via resolver."""
+        from roxabi_contracts.errors import WorkerError
+
         processor = StreamProcessor()
         events = async_events(
-            ResultLlmEvent(is_error=True, duration_ms=0, error_text="boom"),
+            ResultLlmEvent(
+                is_error=True,
+                duration_ms=0,
+                error_text="weekly limit",
+                worker_error=WorkerError(
+                    code="cli.parse",
+                    message="You've hit your weekly limit",
+                    retryable=False,
+                ),
+            ),
         )
 
         all_events = await collect(processor.process(events))
 
         run_errors = [e for e in all_events if isinstance(e, RunErrorRenderEvent)]
         assert len(run_errors) == 1
-        assert run_errors[0].message == "boom"
+        assert run_errors[0].message == "You've hit your weekly limit"
+        assert run_errors[0].code == "cli.parse"
 
     @pytest.mark.parametrize(
         "is_error,terminal_type,opposite_type,outcome",
@@ -540,26 +585,25 @@ class TestStreamProcessor:
         assert text_ends[0].message_id == text_starts[0].message_id
 
     async def test_error_text_surfaces_when_no_streamed_text(self) -> None:
-        """L11: error_text surfaces via RunError.message when no streamed text exists.
+        """L11: worker_error surfaces via RunError.message when no streamed text."""
+        from roxabi_contracts.errors import WorkerError
 
-        Extends `test_is_error_run_error_carries_error_text` with the additional
-        guarantee that no text block is opened (no TextStart/Delta) when
-        `error_text` is the only text-bearing field.
-        """
-        # Arrange
         processor = StreamProcessor()
         events = async_events(
             ResultLlmEvent(
                 is_error=True,
                 duration_ms=15,
                 error_text="Not logged in · Please run /login",
+                worker_error=WorkerError(
+                    code="cli.parse",
+                    message="Not logged in · Please run /login",
+                    retryable=False,
+                ),
             ),
         )
 
-        # Act
         all_events = await collect(processor.process(events))
 
-        # Assert — terminal RunError with error_text as message
         run_errors = [e for e in all_events if isinstance(e, RunErrorRenderEvent)]
         assert len(run_errors) == 1
         assert run_errors[0].message == "Not logged in · Please run /login"
@@ -578,12 +622,19 @@ class TestStreamProcessor:
         """
         # Arrange
         processor = StreamProcessor()
+        from roxabi_contracts.errors import WorkerError
+
         events = async_events(
             TextLlmEvent(text="recovered output"),
             ResultLlmEvent(
                 is_error=True,
                 duration_ms=100,
                 error_text="should be in RunError",
+                worker_error=WorkerError(
+                    code="cli.parse",
+                    message="should be in RunError",
+                    retryable=False,
+                ),
             ),
         )
 
@@ -1699,9 +1750,20 @@ class TestTextTriplet:
         """
         # Arrange — text block is open when the soft-error result arrives
         processor = StreamProcessor()
+        from roxabi_contracts.errors import WorkerError
+
         events = async_events(
             TextLlmEvent(text="partial response"),
-            ResultLlmEvent(is_error=True, duration_ms=0, error_text="overload"),
+            ResultLlmEvent(
+                is_error=True,
+                duration_ms=0,
+                error_text="overload",
+                worker_error=WorkerError(
+                    code="cli.parse",
+                    message="overload",
+                    retryable=False,
+                ),
+            ),
         )
 
         # Act
@@ -1864,8 +1926,8 @@ class TestRunErrorCode:
         assert len(run_errors) == 1
         assert run_errors[0].code == "stream.error"
 
-    async def test_soft_error_empty_error_text_falls_back_to_model_error(self) -> None:
-        """Site B: empty error_text → from_message → message='model_error'."""
+    async def test_soft_error_empty_error_text_falls_back_to_generic(self) -> None:
+        """Site B: empty error_text without worker_error → generic user message."""
         processor = StreamProcessor()
         events = async_events(
             ResultLlmEvent(is_error=True, duration_ms=0, error_text=""),
@@ -1874,7 +1936,7 @@ class TestRunErrorCode:
 
         run_errors = [e for e in all_events if isinstance(e, RunErrorRenderEvent)]
         assert len(run_errors) == 1
-        assert run_errors[0].message == "model_error"
+        assert run_errors[0].message == GENERIC_ERROR_REPLY
         assert run_errors[0].code == "stream.error"
 
     async def test_emitted_codes_are_registered(self) -> None:

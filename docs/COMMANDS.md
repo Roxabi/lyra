@@ -1,12 +1,12 @@
-# Lyra — Command Router
+# factory — Command Router
 
-> How slash commands work in Lyra. From message to response.
+> How slash commands work in factory. From message to response.
 
 ---
 
 ## The `factory` CLI
 
-The `factory` CLI is the main entry point for managing Lyra from your shell.
+The `factory` CLI is the main entry point for managing factory from your shell.
 
 ### Installation
 
@@ -74,7 +74,7 @@ source .venv/bin/activate
 
 ### Agent config directories
 
-Lyra searches for agent TOML files in two locations, in order of precedence:
+factory searches for agent TOML files in two locations, in order of precedence:
 
 1. `~/.roxabi/factory/agents/` — user-level configs (take precedence)
 2. `src/factory/agents/` — project-level configs (bundled defaults)
@@ -98,7 +98,7 @@ projects = "~/projects"
 
 ## Overview
 
-Lyra intercepts messages starting with `/` or `!` before they reach the LLM agent. Commands are routed to built-in handlers or plugins — fast, deterministic, zero token cost.
+factory intercepts messages starting with `/` or `!` before they reach the LLM agent. Commands are routed to built-in handlers or plugins — fast, deterministic, zero token cost.
 
 ```
 User → /echo hi  → Telegram → Hub → CommandRouter → builtin   → Response → Telegram → User
@@ -117,7 +117,7 @@ User → !unknown  → Telegram → Hub → CommandRouter → no handler → Age
 
 ### Platform-native command menus
 
-Lyra registers commands with each platform's native menu for autocomplete and discoverability. All command **routing** remains application-level text parsing — native registration is cosmetic only.
+factory registers commands with each platform's native menu for autocomplete and discoverability. All command **routing** remains application-level text parsing — native registration is cosmetic only.
 
 **Telegram** — registered via `factory setup commands` (one-time CLI, not at every startup):
 

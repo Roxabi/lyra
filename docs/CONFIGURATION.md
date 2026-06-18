@@ -1,8 +1,8 @@
 # Configuration Reference
 
-Lyra uses two types of configuration files with distinct responsibilities:
+factory uses two types of configuration files with distinct responsibilities:
 
-- **System data** — versioned, ships with the code, defines what Lyra and its agents *are*
+- **System data** — versioned, ships with the code, defines what factory and its agents *are*
 - **Instance config** — gitignored, per-machine, defines how THIS deployment runs
 
 ---
@@ -577,7 +577,7 @@ Runs `podman quadlet --dryrun` (parse errors) and a comment-guard that rejects i
 | `auth.db` | Auth grants, identity aliases |
 | `message_index.db` | Message index for search/retrieval |
 
-**Migration:** On first startup after upgrading from pre-v15, Lyra automatically migrates existing rows from `auth.db` to `config.db`, `turns.db`, and `discord.db`. Old `auth.db` is kept as tombstone.
+**Migration:** On first startup after upgrading from pre-v15, factory automatically migrates existing rows from `auth.db` to `config.db`, `turns.db`, and `discord.db`. Old `auth.db` is kept as tombstone.
 
 ---
 

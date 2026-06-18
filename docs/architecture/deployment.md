@@ -1,4 +1,4 @@
-# Lyra — Deployment & Operations
+# factory — — Deployment & Operations
 
 > Last updated: 2026-06-17
 
@@ -203,7 +203,7 @@ Seven design questions deferred from ADR-053 are closed here. Each applies to al
 - **D1 — Image registry namespace:** Project-named, no `roxabi-` prefix. CI/prod images go to `ghcr.io/roxabi/<project>`; local dev builds use `localhost/<project>-<service>:dev`. The `roxabi-` prefix is reserved for genuinely shared SDKs (e.g. `roxabi-nats`), not per-project container images.
 - **D2 — NATS topology:** Per-project NATS during migration; shared NATS at Phase 4. Each project runs its own `<project>-nats.container` on an incrementing port (Lyra: 4223, voiceCLI: 4224, …) until Phase 4 consolidates onto a single `nats.container` at port 4222 on `roxabi.network`.
 - **D3 — Podman network:** NATS-bus participants share `roxabi.network` at Phase 4; HTTP-only projects (forge, intel, idna, live) use isolated per-project networks. Topology follows communication intent.
-- **D4 — Env file path:** `~/.<project>/env/<service>.env` per project. Lyra uses `~/.roxabi/factory/env/hub.env`; voiceCLI uses `~/.voicecli/env/tts.env`. Centralizing under `~/.roxabi/env/` is deferred — the per-project runtime root is already established.
+- **D4 — Env file path:** `~/.<project>/env/<service>.env` per project. factory uses `~/.roxabi/factory/env/hub.env`; voiceCLI uses `~/.voicecli/env/tts.env`. Centralizing under `~/.roxabi/env/` is deferred — the per-project runtime root is already established.
 - **D5 — Deploy script:** Shared shell library at `deploy/lib/deploy-common.sh`, installed to `~/.local/lib/roxabi/deploy-lib.sh` at bootstrap. Superseded in practice by `podman auto-update.timer` (GHCR registry auto-pull) + `make converge` as manual fallback (#1035).
 - **D6 — Upgrade coordination:** Independent releases by default; batch coordination only for shared-infra breaking changes (NATS auth.conf change, Phase 4 NATS consolidation, `roxabi.network` rename, breaking NATS contract version bump per ADR-049).
 - **D7 — Shared infra home:** `roxabi-factory` repo. NATS config, auth.conf, nkey issuance, Quadlet patterns, and deploy scripts live here because Lyra created the patterns. No `roxabi-infra` repo will be created.

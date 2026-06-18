@@ -1,4 +1,4 @@
-# Lyra — Architecture & Decisions
+# factory — Architecture & Decisions
 
 > Living hub. Routes to domain pages (SSoT) + ADRs (historical why). Updated as decisions are made.
 
@@ -32,9 +32,9 @@
 
 ---
 
-## What is Lyra
+## What is factory
 
-Hub-and-spoke AI agent engine. One hub routes inbound messages from multiple platforms (Telegram, Discord, CLI) to per-conversation pools backed by a Claude CLI subprocess. Responses stream back through NATS to the originating adapter. All state is per-pool; agents are immutable singletons. Multiple bots per platform are supported via independent bindings.
+Hub-and-spoke AI factory engine. One hub routes inbound messages from multiple platforms (Telegram, Discord, CLI) to per-conversation pools backed by a Claude CLI subprocess. Responses stream back through NATS to the originating adapter. All state is per-pool; agents are immutable singletons. Multiple bots per platform are supported via independent bindings.
 
 ```
 factory_telegram                     factory_hub                      factory_discord
@@ -69,7 +69,7 @@ Nine containers run on Machine 1 (`factory-hub` role): `factory-nats` (single NA
 
 ## Key Invariants
 
-1. **Library first** — `lyra` is a Python library; CLI is a thin shell. `uv add --editable path/to/lyra` works.
+1. **Library first** — `factory` is a Python library; CLI is a thin shell. `uv add --editable path/to/lyra` works.
 2. **No side effects on import** — engines load lazily; `import factory` is instant.
 3. **Agent = stateless singleton** — immutable config (prompt, permissions, namespace). All mutable state lives in the Pool.
 4. **Adapters send `trust=PUBLIC`** — trust resolution is Hub-side only (C3 pattern). Adapters never decide who may speak.

@@ -1,6 +1,6 @@
-"""Lyra-side registry of TYPE_CHECKING-only types needed at NATS deserialization.
+"""factory-side registry of TYPE_CHECKING-only types needed at NATS deserialization.
 
-Single source of truth. Every Lyra NATS consumer that calls any
+Single source of truth. Every factory NATS consumer that calls any
 ``roxabi_nats._serialize.deserialize*`` function imports
 ``TYPE_REGISTRY_RESOLVER`` from this module and passes it in — either as a
 constructor kwarg (for class-based consumers: ``NatsBus``,
@@ -12,7 +12,7 @@ Fail-fast: any drift (module renamed, type deleted) raises ``ValueError`` at
 module import, not at first message. This replaces the old process-global
 ``_TYPE_CHECKING_IMPORTS`` registry removed in #729.
 
-Defaults semantics: every Lyra consumer sets
+Defaults semantics: every factory consumer sets
 ``resolver=TYPE_REGISTRY_RESOLVER`` as the default argument so downstream
 callers (bootstrap, tests) can construct them with no explicit
 resolver argument and still get correct ``CommandContext`` resolution.

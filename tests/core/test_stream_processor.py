@@ -9,7 +9,6 @@ from typing import AsyncIterator
 
 import pytest
 
-from factory.core.messaging.message import GENERIC_ERROR_REPLY
 from factory.core.messaging.events import (
     ResultLlmEvent,
     TextLlmEvent,
@@ -19,6 +18,7 @@ from factory.core.messaging.events import (
     ToolUseEndLlmEvent,
     ToolUseLlmEvent,
 )
+from factory.core.messaging.message import GENERIC_ERROR_REPLY
 from factory.core.messaging.render_events import (
     ReasoningDeltaRenderEvent,
     ReasoningEndRenderEvent,

@@ -17,8 +17,8 @@ from factory.core.agent import Agent, AgentBase
 from factory.core.lifecycle.circuit_breaker import CircuitRegistry
 from factory.core.messaging.bot_display_name import bot_display_name
 from factory.core.messaging.message import InboundMessage, Response
-from factory.core.messaging.utils.user_error_resolver import resolve_user_error
 from factory.core.messaging.messages import MessageManager
+from factory.core.messaging.utils.user_error_resolver import resolve_user_error
 from factory.core.pool import Pool
 from factory.core.ports.llm import SessionAware, WorkspaceAware
 from factory.core.ports.stt import STTNoiseError as STTNoiseError  # re-export (#1225)
@@ -264,6 +264,7 @@ class SimpleAgent(AgentBase):
             processor = StreamProcessor(
                 show_intermediate=self.config.show_intermediate,
                 msg_manager=self._msg_manager,
+                bot_name=bot_display_name(msg, pool._ctx),
             )
             return processor.process(stream_iter)
 

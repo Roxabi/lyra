@@ -42,7 +42,7 @@ def _display_name_from_agent(agent: Any, agent_name: str) -> str | None:
         return None
     try:
         row = store.get(agent_name)
-    except Exception:
+    except Exception:  # noqa: BLE001 — store backends vary; lookup failure → bot_id fallback
         log.debug("bot_display_name: agent store lookup failed", exc_info=True)
         return None
     if row is None or not getattr(row, "persona_json", None):

@@ -65,6 +65,16 @@ def _generic(msg_manager: MessageManager | None) -> str:
     return GENERIC_ERROR_REPLY
 
 
+def _is_generic_code(code: str) -> bool:
+    if code in _GENERIC_ONLY_CODES:
+        return True
+    return (
+        code in KNOWN_CODES
+        and code not in _CODE_TO_TEMPLATE
+        and code not in _PASSTHROUGH_CODES
+    )
+
+
 def _from_template(
     key: str,
     msg_manager: MessageManager | None,
@@ -105,9 +115,7 @@ def resolve_user_error(
     """
     if worker_error is not None:
         code = worker_error.code
-        if code in _GENERIC_ONLY_CODES or (
-            code in KNOWN_CODES and code not in _CODE_TO_TEMPLATE and code not in _PASSTHROUGH_CODES
-        ):
+        if _is_generic_code(code):
             return _generic(msg_manager)
 
         template_key = _CODE_TO_TEMPLATE.get(code)

@@ -17,7 +17,7 @@ Pipeline contract (v2)
 Hexagonal boundary
 ------------------
 No imports from ``aiogram``, ``discord``, or ``anthropic`` are permitted here.
-Only stdlib and lyra-internal modules may be used.
+Only stdlib and factory-internal modules may be used.
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ from collections.abc import AsyncGenerator, AsyncIterator, Iterator
 from typing import TYPE_CHECKING, assert_never
 
 if TYPE_CHECKING:
+    from factory.core.messaging.messages import MessageManager
     from roxabi_contracts.errors import WorkerError
 
 from factory.core.messaging.events import (
@@ -46,6 +47,7 @@ from factory.core.messaging.render_events import (
     RunStartedRenderEvent,
     TextEndRenderEvent,
 )
+from factory.core.messaging.utils.user_error_resolver import resolve_user_error
 from factory.core.processors.stream_close import StreamCloseHandler
 from factory.core.processors.stream_text import StreamTextHandler
 from factory.core.processors.stream_tool import StreamToolHandler
@@ -76,8 +78,16 @@ class StreamProcessor:
         deltas.
     """
 
-    def __init__(self, *, show_intermediate: bool = True) -> None:
+    def __init__(
+        self,
+        *,
+        show_intermediate: bool = True,
+        msg_manager: MessageManager | None = None,
+        bot_name: str | None = None,
+    ) -> None:
         self._show_intermediate = show_intermediate
+        self._msg_manager = msg_manager
+        self._bot_name = bot_name
 
         # --- Slice 3 (#1282) StateMachine instances (one per concern) ---
         # _sm_text: open text block (key = block_id, value = "text" sentinel).
@@ -228,14 +238,24 @@ class StreamProcessor:
             # upstream wire content; scrub via SanitizedError.from_message
             # before publishing on the NATS bus.
             _we = self._result_worker_error
+            user_msg = resolve_user_error(
+                worker_error=_we,
+                error_text=self._result_error_text,
+                msg_manager=self._msg_manager,
+                bot_name=self._bot_name,
+            )
             if _we is not None:
                 _sanitized = SanitizedError(
                     code=_we.code,
-                    message=_we.message,
+                    message=user_msg,
                     retryable=_we.retryable,
                 )
             else:
-                _sanitized = SanitizedError.from_message(self._result_error_text or "")
+                _sanitized = SanitizedError(
+                    code="stream.error",
+                    message=user_msg,
+                    retryable=False,
+                )
             for _ev in _emitter.emit_terminal(_sanitized):
                 yield _ev
         else:

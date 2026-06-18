@@ -1,4 +1,4 @@
-# Lyra — Prioritized Roadmap
+# factory — Prioritized Roadmap
 
 > Living document. Updated as decisions are made.
 > Last updated: 2026-06-17
@@ -146,7 +146,7 @@
 
 | # | Issue | Priority | Status |
 |---|-------|----------|--------|
-| #133 | Split Lyra adapters into independent processes (NATS) | P2 | ✅ Done (#458, 0.2.0) |
+| #133 | Split factory adapters into independent processes (NATS) | P2 | ✅ Done (#458, 0.2.0) |
 | #132 | Document Machine 2 voice daemon setup | P2 | Open |
 | #123 | Claude CLI wrapper library — extract 2ndBrain pool design | P2 | Open |
 

@@ -65,10 +65,10 @@ How the gate works:
 Per-host behavior:
 
 - **Authoring host (e.g. M₁):** factory-acl emits `STATE=added`; Phase 2 runs locally — creates the seed secret and refreshes `factory-nats-auth`, then restarts `factory-nats` and adapters.
-- **Receiving host (e.g. M₂, after Syncthing delivered seed + auth.conf):** factory-acl emits `STATE=noop` (filesystem already consistent), but `podman secret inspect factory-nats-<NAME>` returns non-zero (secret not yet in the local Podman store) → Phase 2 still runs to create the local secret and restart any local Lyra units.
+- **Receiving host (e.g. M₂, after Syncthing delivered seed + auth.conf):** factory-acl emits `STATE=noop` (filesystem already consistent), but `podman secret inspect factory-nats-<NAME>` returns non-zero (secret not yet in the local Podman store) → Phase 2 still runs to create the local secret and restart any local factory units.
 - **Non-consuming host:** factory-acl emits `STATE=noop` AND `podman secret inspect` succeeds → true no-op; Phase 2 is skipped entirely.
 
-The restart loop is `systemctl --user is-active`-gated over `{factory-nats, factory-hub, factory-telegram, factory-discord, factory-clipool}` — nats first, then adapters in declared `After=` order. On a host with no Lyra units running, the loop is a complete no-op. The verb is safe to run on any host without knowledge of its topology.
+The restart loop is `systemctl --user is-active`-gated over `{factory-nats, factory-hub, factory-telegram, factory-discord, factory-clipool}` — nats first, then adapters in declared `After=` order. On a host with no factory units running, the loop is a complete no-op. The verb is safe to run on any host without knowledge of its topology.
 
 ---
 

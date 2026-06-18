@@ -17,7 +17,7 @@ log = logging.getLogger(__name__)
 TELEGRAM_MAX_LEN = 4000  # Telegram limit is 4096, leave margin
 
 _DIAGNOSTIC_SYSTEM_PROMPT = """\
-You are a system health diagnostic assistant for the Lyra AI agent hub.
+You are a system health diagnostic assistant for the factory AI hub.
 You will receive a health check report with failed checks.
 Respond with a JSON object containing exactly these fields:
 - "severity": one of "info", "warning", "critical"
@@ -126,7 +126,7 @@ def _format_diagnosis_message(diagnosis: DiagnosisReport) -> str:
     check_lines = "\n".join(f"  ❌ {c.name}: {c.detail}" for c in failed)
 
     return (
-        f"{severity_emoji} Lyra Health Alert [{diagnosis.severity.upper()}]\n\n"
+        f"{severity_emoji} factory Health Alert [{diagnosis.severity.upper()}]\n\n"
         f"Failed checks:\n{check_lines}\n\n"
         f"Diagnosis: {diagnosis.diagnosis}\n\n"
         f"Remediation: {diagnosis.suggested_remediation}"
@@ -139,7 +139,7 @@ def _format_raw_alert(report: HealthReport) -> str:
     check_lines = "\n".join(f"  ❌ {c.name}: {c.detail}" for c in failed)
 
     return (
-        f"🚨 Lyra Health Alert [RAW — LLM unavailable]\n\n"
+        f"🚨 factory Health Alert [RAW — LLM unavailable]\n\n"
         f"Failed checks ({report.failed_count}):\n{check_lines}\n\n"
         f"LLM diagnosis unavailable. Manual investigation required."
     )

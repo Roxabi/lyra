@@ -1,9 +1,9 @@
 ---
-title: Agents and Plugins — Lyra
+title: Agents and Plugins — factory
 description: Standards for authoring agents, TOML configuration, plugin commands, and the agent lifecycle in Lyra.
 ---
 
-# Agents and Plugins — Lyra
+# Agents and Plugins — factory
 
 > Status: LIVING
 > Scope: `src/factory/agents/`, `src/factory/commands/`, `src/factory/core/agent/`

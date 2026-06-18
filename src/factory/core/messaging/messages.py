@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import tomllib
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -64,7 +65,20 @@ class MessageManager:
             log.debug(
                 "MessageManager.get(%r, platform=%r) fell back: %s", key, platform, exc
             )
-            return _FALLBACKS.get(key, "")
+            return self._format_fallback(key, fmt)
+
+    def _format_fallback(self, key: str, fmt: dict[str, str]) -> str:
+        raw = _FALLBACKS.get(key, "")
+        if not raw:
+            return ""
+        try:
+            return raw.format_map(fmt)
+        except (KeyError, ValueError):
+            safe = defaultdict(str, fmt)
+            try:
+                return raw.format_map(safe)
+            except ValueError:
+                return raw
 
     def _resolve(self, key: str, platform: str | None) -> str:
         lang = self.language

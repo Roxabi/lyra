@@ -290,6 +290,21 @@ def symlink_voicecli(voicecli_dir: Path) -> None:
 # ── Claude Code plugins ─────────────────────────────────────────────────────
 
 
+def _migrate_legacy_lyra_plugins() -> None:
+    """Uninstall pre-rename marketplace coordinates (idempotent)."""
+    for plugin in ("lyra-send", "lyra-ops"):
+        subprocess.run(
+            ["claude", "plugin", "uninstall", f"{plugin}@lyra-marketplace"],
+            capture_output=True,
+            text=True,
+        )
+    subprocess.run(
+        ["claude", "plugin", "marketplace", "remove", "lyra-marketplace"],
+        capture_output=True,
+        text=True,
+    )
+
+
 def setup_plugins(
     factory_dir: Path | None,
     voicecli_dir: Path | None,
@@ -300,6 +315,8 @@ def setup_plugins(
     if result.returncode != 0:
         print("  ✗  claude CLI not found — skipping plugin setup")
         return
+
+    _migrate_legacy_lyra_plugins()
 
     print()
     print("Claude Code plugins")

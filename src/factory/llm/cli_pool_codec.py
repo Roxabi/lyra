@@ -98,7 +98,18 @@ class CliPoolCodec:
     def decode(self, result: Result[bytes, SanitizedError], trace_id: str) -> LlmResult:
         if isinstance(result, Err):
             err = result.error
-            return LlmResult(error=err.message, retryable=err.retryable)
+            we = _validate_worker_error(
+                WorkerError(
+                    code=err.code,
+                    message=err.message,
+                    retryable=err.retryable,
+                )
+            )
+            return LlmResult(
+                error=we.message if we is not None else err.message,
+                retryable=err.retryable,
+                worker_error=we,
+            )
         try:
             chunk = CliChunkEvent.model_validate_json(result.value)
         except (ValidationError, ValueError) as exc:

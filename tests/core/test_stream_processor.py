@@ -486,6 +486,42 @@ class TestStreamProcessor:
     # B3 — is_error propagation from ResultLlmEvent → TextRenderEvent (#392)
     # ------------------------------------------------------------------
 
+    async def test_soft_error_substitutes_bot_name_in_unavailable_template(
+        self,
+    ) -> None:
+        from factory.core.messaging.messages import MessageManager
+        from roxabi_contracts.errors import WorkerError
+
+        messages = (
+            Path(__file__).resolve().parents[2]
+            / "src"
+            / "factory"
+            / "data"
+            / "messages.toml"
+        )
+        mm = MessageManager(messages, language="en")
+        processor = StreamProcessor(msg_manager=mm, bot_name="Lyra")
+        events = async_events(
+            ResultLlmEvent(
+                is_error=True,
+                duration_ms=0,
+                worker_error=WorkerError(
+                    code="pool.circuit_open",
+                    message="open",
+                    retryable=True,
+                    detail="30",
+                ),
+            ),
+        )
+        run_errors = [
+            e
+            for e in await collect(processor.process(events))
+            if isinstance(e, RunErrorRenderEvent)
+        ]
+        assert len(run_errors) == 1
+        assert "Lyra" in run_errors[0].message
+        assert "{bot_name}" not in run_errors[0].message
+
     async def test_is_error_run_error_resolves_worker_error_message(self) -> None:
         """ResultLlmEvent worker_error → RunErrorRenderEvent.message via resolver."""
         from roxabi_contracts.errors import WorkerError

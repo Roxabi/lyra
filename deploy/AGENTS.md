@@ -153,7 +153,7 @@ Operational consequence: `type=mount` secrets are bound at container init — `-
 
 NATS-related secrets use hyphens (`factory-nats-<role>`) — this predates the underscore
 convention and is preserved for NATS NKey compatibility. Non-NATS secrets (bearer tokens,
-API keys) use underscores (`lyra_<service>_<purpose>`, e.g. `factory_blobstore_token`).
+API keys) use underscores (`factory_<service>_<purpose>`, e.g. `factory_blobstore_token`).
 Mixing styles is intentional and tracked; do not "normalize" without coordinating
 with the operator (Mickael).
 

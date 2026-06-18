@@ -64,6 +64,40 @@ class TestResolveUserErrorWorkerError:
         )
         assert resolve_user_error(worker_error=we) == GENERIC_ERROR_REPLY
 
+    def test_pool_circuit_open_substitutes_bot_name_and_retry_secs(self) -> None:
+        mm = MessageManager(_MESSAGES, language="en")
+        we = WorkerError(
+            code="pool.circuit_open",
+            message="CircuitOpen",
+            retryable=True,
+            detail="45",
+        )
+        result = resolve_user_error(
+            worker_error=we, msg_manager=mm, bot_name="Lyra"
+        )
+        assert result == mm.get("unavailable", bot_name="Lyra", retry_secs="45")
+
+    def test_llm_model_unavailable_substitutes_bot_name(self) -> None:
+        mm = MessageManager(_MESSAGES, language="en")
+        we = WorkerError(
+            code="llm.model_unavailable",
+            message="model down",
+            retryable=True,
+        )
+        result = resolve_user_error(
+            worker_error=we, msg_manager=mm, bot_name="Lyra"
+        )
+        assert "Lyra" in result
+        assert "{bot_name}" not in result
+
+    def test_worker_error_preferred_over_error_text(self) -> None:
+        we = WorkerError(code="worker.crash", message="internal", retryable=False)
+        result = resolve_user_error(
+            worker_error=we,
+            error_text="should not surface",
+        )
+        assert result == GENERIC_ERROR_REPLY
+
 
 class TestResolveUserErrorLegacyFlat:
     def test_timeout_string_uses_template(self) -> None:

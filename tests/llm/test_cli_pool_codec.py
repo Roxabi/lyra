@@ -185,6 +185,17 @@ class TestDecodeChunkNeverRaises:
 
 
 class TestDecodeWorkerError:
+    def test_decode_err_populates_worker_error_for_known_code(self) -> None:
+        err = SanitizedError(
+            code="pool.circuit_open",
+            message="CircuitOpen",
+            retryable=True,
+        )
+        result = _codec.decode(Err(err), _TRACE_ID)
+        assert result.error == "CircuitOpen"
+        assert result.worker_error is not None
+        assert result.worker_error.code == "pool.circuit_open"
+
     def test_error_chunk_populates_llm_result_worker_error(self) -> None:
         payload = _chunk(
             event_type="result",

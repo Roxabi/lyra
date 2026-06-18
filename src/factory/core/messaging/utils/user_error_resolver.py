@@ -31,12 +31,12 @@ _CODE_TO_TEMPLATE: dict[str, str] = {
 }
 
 # Codes whose WorkerError.message was scrubbed upstream and may be shown verbatim.
+# Template-mapped codes must not appear here — _CODE_TO_TEMPLATE wins first.
 # Review when adding new KNOWN_CODES entries (ADR-089 § Security invariants).
 _PASSTHROUGH_CODES: frozenset[str] = frozenset(
     {
         "cli.parse",
         "cli.session_lost",
-        "llm.rate_limit",
     }
 )
 
@@ -63,6 +63,13 @@ def _generic(msg_manager: MessageManager | None) -> str:
     if msg_manager is not None:
         return msg_manager.get("generic") or GENERIC_ERROR_REPLY
     return GENERIC_ERROR_REPLY
+
+
+def _retry_secs(worker_error: WorkerError) -> str:
+    detail = worker_error.detail
+    if detail is not None and detail.strip().isdigit():
+        return detail.strip()
+    return "0"
 
 
 def _is_generic_code(code: str) -> bool:
@@ -123,15 +130,19 @@ def resolve_user_error(
             kwargs: dict[str, str] = {}
             if bot_name is not None:
                 kwargs["bot_name"] = bot_name
+            if template_key == "unavailable":
+                kwargs["retry_secs"] = _retry_secs(worker_error)
             return _from_template(
                 template_key,
                 msg_manager,
-                fallback=worker_error.message or _generic(msg_manager),
+                fallback=_generic(msg_manager),
                 **kwargs,
             )
 
         if code in _PASSTHROUGH_CODES and worker_error.message:
-            return worker_error.message
+            from factory.core.cli.cli_streaming_parser import _scrub_cli_error_text
+
+            return _scrub_cli_error_text(worker_error.message)
 
         return _generic(msg_manager)
 

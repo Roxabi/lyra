@@ -50,10 +50,10 @@ No TOML file is written by this plugin.
 
 ```
 /refine-agent <name>
-  → lyra agent show <name>        # read current DB state
-  → conversation loop             # propose before/after per field
-  → lyra agent patch <name> ...   # write confirmed changes to DB
-  → lyra adapter restart          # operator step; ¬done by plugin
+  → factory agent show <name>        # read current DB state
+  → conversation loop                # propose before/after per field
+  → factory agent patch <name> ...   # write confirmed changes to DB
+  → factory adapter restart          # operator step; ¬done by plugin
 ```
 
 Override TOML (`~/.roxabi/factory/agents/<name>.toml`) takes precedence on next

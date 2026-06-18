@@ -107,6 +107,9 @@ class StreamState:
     # → RunErrorRenderEvent (post-finally, for soft errors). Reading at
     # delivery time means the order of TextEnd vs RunError does not matter.
     is_error_pending: bool = False
+    # Curated user message from RunErrorRenderEvent (ADR-089). Used when the
+    # stream ends with no text_delta (soft error only in the terminal event).
+    run_error_message: str | None = None
     stream_error: Exception | None = None
 
     def set_final_text(self, text: str, *, is_error: bool = False) -> None:
@@ -123,6 +126,9 @@ class StreamState:
         turns so the user always sees a meaningful message.
         """
         if self.final_text is None:
+            if self.run_error_message:
+                prefix = "❌ " if self.is_error_pending else ""
+                return prefix + self.run_error_message
             # Deferred import — avoids circular load: emitter.py imports this
             # module at the bottom, and error_handler is part of factory.outbound.
             from factory.outbound.error_handler import (

@@ -191,8 +191,8 @@ class TestRunEventLoop:
             placeholder_obj=object(),
         )
 
-        # RunError sets the flag
         assert session._st.is_error_pending is True
+        assert session._st.run_error_message == "boom"
 
     async def test_routes_reasoning_events_to_edit_reasoning(self) -> None:
         """Reasoning* events are routed through fmt.edit_reasoning."""

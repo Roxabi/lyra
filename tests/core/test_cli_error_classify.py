@@ -11,9 +11,20 @@ class TestWorkerErrorFromCliError:
         assert we.code == "transport.timeout"
         assert we.retryable is True
 
-    def test_quota_message_maps_to_cli_parse(self) -> None:
+    def test_quota_message_maps_to_llm_rate_limit(self) -> None:
         we = worker_error_from_cli_error(
             "You've hit your weekly limit · resets 6pm (UTC)"
         )
-        assert we.code == "cli.parse"
+        assert we.code == "llm.rate_limit"
+        assert we.retryable is True
         assert "weekly limit" in we.message
+
+    def test_auth_message_maps_to_cli_auth(self) -> None:
+        we = worker_error_from_cli_error("Not logged in — run /login")
+        assert we.code == "cli.auth"
+        assert we.retryable is False
+
+    def test_unclassified_message_maps_to_cli_parse(self) -> None:
+        we = worker_error_from_cli_error("unexpected CLI failure")
+        assert we.code == "cli.parse"
+        assert we.retryable is False

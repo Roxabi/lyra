@@ -71,6 +71,41 @@ def _scrub_cli_error_text(text: str) -> str:
     return scrubbed
 
 
+# Flat blocking CliResult.error strings carry no subtype; infer from message text.
+_AUTH_FLAT_HINTS = (
+    "not logged in",
+    "login required",
+    "auth error",
+    "authentication required",
+    "authenticate",
+    "oauth",
+)
+_RATE_LIMIT_FLAT_HINTS = (
+    "weekly limit",
+    "rate limit",
+    "quota exceeded",
+    "usage limit",
+    "hit your limit",
+)
+_SESSION_LOST_FLAT_HINTS = (
+    "session expired",
+    "session lost",
+    "resume failed",
+)
+
+
+def _infer_subtype_from_flat_error(error: str) -> str:
+    """Infer a CLI result subtype from a flat blocking error string (ADR-089 S5)."""
+    lower = error.lower()
+    if any(hint in lower for hint in _AUTH_FLAT_HINTS):
+        return "auth_error"
+    if any(hint in lower for hint in _RATE_LIMIT_FLAT_HINTS):
+        return "rate_limit_error"
+    if any(hint in lower for hint in _SESSION_LOST_FLAT_HINTS):
+        return "session_expired"
+    return ""
+
+
 def _classify_cli_error(subtype: str, error_text: str) -> WorkerError:
     """Map a CLI result subtype + message to a structured WorkerError.
 

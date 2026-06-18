@@ -112,11 +112,11 @@ class TestClaudeCliDriverComplete:
         )
 
         assert result.ok is False
-        assert result.worker_error == WorkerError(
-            code="cli.parse",
-            message="You've hit your weekly limit · resets 6pm (UTC)",
-            retryable=False,
-        )
+        assert result.worker_error is not None
+        assert result.worker_error.code == "llm.rate_limit"
+        assert result.worker_error.retryable is True
+        assert "weekly limit" in result.worker_error.message
+        assert result.error == result.worker_error.message
 
     async def test_complete_translates_warning(self) -> None:
         """CliResult(result='r', warning='truncated') → LlmResult with warning."""

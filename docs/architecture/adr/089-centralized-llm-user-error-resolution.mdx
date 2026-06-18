@@ -146,7 +146,8 @@ Resolution order:
    `messages.toml` key; if no template, check `_PASSTHROUGH_CODES` and return
    `worker_error.message` (already scrubbed by worker validator / CLI parser).
 2. **`worker_error` absent, `error_text` present** → legacy shim: timeout pattern →
-   `timeout` template; else passthrough if printable and bounded.
+   `timeout` template; else → `generic` (no flat-string passthrough without a
+   structured `WorkerError` code).
 3. **Fallback** → `generic` template / `GENERIC_ERROR_REPLY`.
 
 Security invariants (non-negotiable):

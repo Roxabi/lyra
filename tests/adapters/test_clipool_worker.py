@@ -212,7 +212,7 @@ async def test_handle_cmd_nonstream_error_forwards_worker_error() -> None:
 
     published = json.loads(nc.publish.call_args.args[1].decode())
     assert published["is_error"] is True
-    assert published["worker_error"]["code"] == "cli.parse"
+    assert published["worker_error"]["code"] == "llm.rate_limit"
     assert "weekly limit" in published["worker_error"]["message"]
 
 

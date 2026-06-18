@@ -71,7 +71,7 @@ class ClaudeCliDriver:
         return LlmResult(
             result=cli_result.result,
             session_id=cli_result.session_id,
-            error=cli_result.error,
+            error=worker_error.message if worker_error else cli_result.error,
             warning=cli_result.warning,
             worker_error=worker_error,
             retryable=worker_error.retryable if worker_error else True,

@@ -21,6 +21,7 @@ from factory.adapters.clipool._worker_helpers import (
     _classify_exception,
     _make_ack,
     _make_chunk,
+    _worker_error_from_cli_result,
 )
 from factory.core.agent.agent_config import ModelConfig
 from factory.core.cli.cli_pool import CliPool
@@ -271,13 +272,20 @@ class CliPoolNatsWorker(NatsAdapterBase):
             )
             return
 
+        worker_error = (
+            _worker_error_from_cli_result(result.error) if result.error else None
+        )
+        if worker_error is not None:
+            emit_populated_total(domain="cli")
         chunk = _make_chunk(
             cmd.pool_id,
             event_type="result",
             is_error=bool(result.error),
+            text=result.result or None,
             session_id=result.session_id or None,
             done=True,
             resumed=resumed,
+            worker_error=worker_error,
         )
         await self.reply(msg, chunk)
 

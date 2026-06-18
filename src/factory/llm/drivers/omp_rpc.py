@@ -21,6 +21,7 @@ from pydantic import ValidationError
 
 from factory.core.agent.agent_config import ModelConfig
 from factory.core.ports.llm import LlmResult
+from factory.llm.omp_job_codec import OmpJobCodec
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.jobs import JobEnvelope, JobResult
 from roxabi_contracts.jobs.subjects import jobs_result, jobs_submit
@@ -65,10 +66,17 @@ class OmpRpcDriver:
 
     capabilities: dict = {"streaming": False}
 
-    def __init__(self, nc: Any, *, timeout_s: float = _DEFAULT_TIMEOUT_S) -> None:
+    def __init__(
+        self,
+        nc: Any,
+        *,
+        timeout_s: float = _DEFAULT_TIMEOUT_S,
+        codec: OmpJobCodec | None = None,
+    ) -> None:
         # raw async NATS connection (nats-py), injected at bootstrap (T11)
         self._nc = nc
         self._timeout_s = timeout_s
+        self._codec = codec or OmpJobCodec()
         # SessionAware state (mirrors LlmClient.__init__)
         self._turn_store: _OmpSessionStore | None = None
         self._pending_resume: dict[str, str] = {}
@@ -197,13 +205,10 @@ class OmpRpcDriver:
                 result = JobResult.model_validate_json(msg.data)
             except ValidationError:
                 log.warning("omp job %s returned a malformed result", job_id)
-                return LlmResult(
-                    error="omp returned a malformed result", retryable=False
-                )
+                return self._codec.decode_malformed()
 
+            decoded = self._codec.decode(result)
             if result.status == "success":
-                # Persist the omp session file if the worker returned one and
-                # a lyra session_id is linked for this pool.
                 session_file = (result.data or {}).get("session_file")
                 if session_file and self._turn_store is not None:
                     linked_session = self._lyra_sessions.get(pool_id)
@@ -211,14 +216,14 @@ class OmpRpcDriver:
                         await self._turn_store._set_cli_session(  # noqa: SLF001
                             linked_session, session_file
                         )
-                return LlmResult(result=(result.data or {}).get("result", ""))
+                return decoded
 
             log.warning("omp worker returned error status for job %s", job_id)
-            return LlmResult(error="omp worker returned an error", retryable=True)
+            return decoded
 
         except (TimeoutError, asyncio.TimeoutError):
             log.warning("omp job %s timed out after %.1fs", job_id, self._timeout_s)
-            return LlmResult(error="omp request timed out", retryable=True)
+            return self._codec.decode_timeout()
 
         finally:
             await sub.unsubscribe()

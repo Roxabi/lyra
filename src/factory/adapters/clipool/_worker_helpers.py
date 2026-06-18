@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from factory.core.cli.cli_error_classify import worker_error_from_cli_error
 from roxabi_contracts.cli.models import CliChunkEvent, CliControlAck
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.errors import WorkerError
@@ -42,6 +43,11 @@ def _classify_exception(exc: BaseException) -> WorkerError:
         message=f"Unhandled worker exception: {type(exc).__name__}",
         retryable=True,
     )
+
+
+def _worker_error_from_cli_result(error: str) -> WorkerError:
+    """Synthesise a WorkerError for blocking CliPool.send() failures."""
+    return worker_error_from_cli_error(error)
 
 
 def _make_chunk(pool_id: str, **kwargs: Any) -> bytes:

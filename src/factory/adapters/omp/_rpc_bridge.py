@@ -75,12 +75,14 @@ def _classify_exception(exc: BaseException) -> WorkerError:
     """
     name = type(exc).__name__
     if name == "DigestMismatchError":
-        return WorkerError(code="digest_mismatch", message=name, retryable=False)
+        return WorkerError(
+            code="transport.contract_mismatch", message=name, retryable=False
+        )
     if isinstance(exc, asyncio.TimeoutError):
-        return WorkerError(code="timeout", message=name, retryable=True)
+        return WorkerError(code="transport.timeout", message=name, retryable=True)
     if name in ("ConnectionRefusedError", "BrokenPipeError"):
-        return WorkerError(code="connection_error", message=name, retryable=True)
-    return WorkerError(code="internal_error", message=name, retryable=False)
+        return WorkerError(code="transport.error", message=name, retryable=True)
+    return WorkerError(code="worker.internal", message=name, retryable=False)
 
 
 def _make_progress(job_id: str, **kwargs: Any) -> bytes:

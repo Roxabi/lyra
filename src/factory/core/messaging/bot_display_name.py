@@ -28,11 +28,13 @@ def bot_display_name(msg: InboundMessage | None, hub: Any | None = None) -> str:
         if callable(resolve_binding) and callable(get_agent):
             binding = resolve_binding(msg)
             if binding is not None:
-                agent = get_agent(binding.agent_name)
-                if agent is not None:
-                    name = _display_name_from_agent(agent, binding.agent_name)
-                    if name:
-                        return name
+                agent_name = getattr(binding, "agent_name", None)
+                if isinstance(agent_name, str):
+                    agent = get_agent(agent_name)
+                    if agent is not None:
+                        name = _display_name_from_agent(agent, agent_name)
+                        if name:
+                            return name
     return msg.bot_id or _DEFAULT
 
 

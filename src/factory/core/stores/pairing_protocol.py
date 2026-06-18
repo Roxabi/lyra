@@ -1,4 +1,4 @@
-"""Protocol interface for the Lyra pairing system.
+"""Protocol interface for the factory pairing system.
 
 Application-layer code (e.g. command handlers) must depend on this module
 rather than on ``factory.infrastructure.stores.pairing`` directly, following

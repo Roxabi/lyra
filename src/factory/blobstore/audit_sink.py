@@ -48,7 +48,7 @@ class BlobAuditSink:
             await self._js.account_info()
         except nats.errors.Error as exc:
             log.warning(
-                "BLOB-AUDIT: JetStream unavailable — falling back to lyra.security: %s",
+                "BLOB-AUDIT: JetStream unavailable — falling back to factory.security: %s",
                 exc,
             )
             self._degraded = True

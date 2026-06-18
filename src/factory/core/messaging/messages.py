@@ -11,7 +11,7 @@ log = logging.getLogger(__name__)
 
 _FALLBACKS: dict[str, str] = {
     "generic": "Something went wrong. Please try again.",
-    "unavailable": "Lyra is currently unavailable. Please try again later.",
+    "unavailable": "{bot_name} is currently unavailable. Please try again later.",
     "unknown_command": "Unknown command. Type /help for available commands.",
     "help_header": "Available commands:",
     "backpressure_ack": "Processing your request\u2026",
@@ -19,6 +19,9 @@ _FALLBACKS: dict[str, str] = {
     "stream_placeholder": "\u2026",
     "stream_interrupted": " [response interrupted]",
     "timeout": "Your request timed out. Please try again.",
+    "auth_required": "Your CLI session has expired. Please sign in again.",
+    "rate_limit": "You've hit a usage limit. Please try again later.",
+    "context_too_long": "This conversation is too long for the model. Try /clear or start a new topic.",
     "cancelled": "Request cancelled.",
     "stt_noise": "I couldn't make out your voice message, please try again.",
     "stt_unsupported": "Voice messages are not supported — STT is not configured.",
@@ -51,7 +54,9 @@ class MessageManager:
         """Return resolved template string. Never raises."""
         try:
             raw = self._resolve(key, platform)
-            return raw.format_map(kwargs)
+            fmt = dict(kwargs)
+            fmt.setdefault("bot_name", "factory")
+            return raw.format_map(fmt)
         except (KeyError, ValueError) as exc:
             log.debug(
                 "MessageManager.get(%r, platform=%r) fell back: %s", key, platform, exc

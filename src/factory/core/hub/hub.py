@@ -181,8 +181,8 @@ class Hub(
     def get_agent(self, name: str) -> AgentBase | None:
         return self.agent_registry.get(name)
 
-    def get_message(self, key: str) -> str | None:
-        return self._msg_manager.get(key) if self._msg_manager else None
+    def get_message(self, key: str, **kwargs: str) -> str | None:
+        return self._msg_manager.get(key, **kwargs) if self._msg_manager else None
 
     @property
     def _rate_timestamps(self) -> dict[tuple[str, str, str], deque[float]]:

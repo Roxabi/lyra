@@ -55,7 +55,7 @@ class ModelConfig(BaseModel):
              throttle long-running agents.
     tools:   allowed tools (empty = backend defaults).
     cwd:     working directory for the Claude subprocess (claude-cli only).
-             None → defaults to the Lyra project root.
+             None → defaults to the factory project root.
              Useful to point a dedicated agent at another project so it reads
              that project's CLAUDE.md and has access to its files.
     This will evolve into an intelligent model selection system.

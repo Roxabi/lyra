@@ -313,7 +313,7 @@ def setup_plugins(
     ).stdout
 
     for label, path in [
-        ("lyra-marketplace", factory_dir),
+        ("factory-marketplace", factory_dir),
         ("voicecli-marketplace", voicecli_dir),
     ]:
         if not path or not path.exists():
@@ -363,8 +363,8 @@ def setup_plugins(
             "agent-browser",
             "headless browser (auth, interactive pages)",
         ),
-        ("lyra-send", "lyra-marketplace", "proactive messaging (Telegram & Discord)"),
-        ("refine-agent", "lyra-marketplace", "agent profile management"),
+        ("factory-send", "factory-marketplace", "proactive messaging (Telegram & Discord)"),
+        ("refine-agent", "factory-marketplace", "agent profile management"),
     ]
     for name, marketplace, desc in mandatory:
         r = subprocess.run(

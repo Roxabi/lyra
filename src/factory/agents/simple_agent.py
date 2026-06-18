@@ -15,11 +15,9 @@ from typing import TYPE_CHECKING, Any
 
 from factory.core.agent import Agent, AgentBase
 from factory.core.lifecycle.circuit_breaker import CircuitRegistry
-from factory.core.messaging.message import (
-    GENERIC_ERROR_REPLY,
-    InboundMessage,
-    Response,
-)
+from factory.core.messaging.bot_display_name import bot_display_name
+from factory.core.messaging.message import InboundMessage, Response
+from factory.core.messaging.utils.user_error_resolver import resolve_user_error
 from factory.core.messaging.messages import MessageManager
 from factory.core.pool import Pool
 from factory.core.ports.llm import SessionAware, WorkspaceAware
@@ -265,6 +263,7 @@ class SimpleAgent(AgentBase):
             )
             processor = StreamProcessor(
                 show_intermediate=self.config.show_intermediate,
+                msg_manager=self._msg_manager,
             )
             return processor.process(stream_iter)
 
@@ -283,19 +282,12 @@ class SimpleAgent(AgentBase):
                 result.error,
             )
             pool._last_turn_had_backend_error = True
-            # Timeout gets a specific message; all other errors get a generic one
-            if "Timeout" in result.error:
-                user_msg = (
-                    self._msg_manager.get("timeout")
-                    if self._msg_manager
-                    else "Your request timed out. Please try again."
-                )
-            else:
-                user_msg = (
-                    self._msg_manager.get("generic")
-                    if self._msg_manager
-                    else GENERIC_ERROR_REPLY
-                )
+            user_msg = resolve_user_error(
+                worker_error=result.worker_error,
+                error_text=result.error or None,
+                msg_manager=self._msg_manager,
+                bot_name=bot_display_name(msg, pool._ctx),
+            )
             return Response(
                 content=user_msg,
                 metadata={"error": True},
@@ -313,10 +305,9 @@ class SimpleAgent(AgentBase):
                 pool.pool_id,
             )
             pool._last_turn_had_backend_error = True
-            user_msg = (
-                self._msg_manager.get("generic")
-                if self._msg_manager
-                else GENERIC_ERROR_REPLY
+            user_msg = resolve_user_error(
+                msg_manager=self._msg_manager,
+                bot_name=bot_display_name(msg, pool._ctx),
             )
             return Response(
                 content=user_msg,

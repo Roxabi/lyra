@@ -106,14 +106,14 @@ class CliPoolCodec:
             return LlmResult(error="decode.validation_error", retryable=False)
 
         if chunk.is_error or chunk.event_type == "error":
+            validated_we = _validate_worker_error(chunk.worker_error)
             error_msg = (
-                chunk.worker_error.message
-                if chunk.worker_error
-                else "LLM generation failed"
+                validated_we.message if validated_we else "LLM generation failed"
             )
             return LlmResult(
                 error=error_msg,
-                retryable=chunk.worker_error.retryable if chunk.worker_error else True,
+                retryable=validated_we.retryable if validated_we else True,
+                worker_error=validated_we,
             )
         return LlmResult(
             result=chunk.text or "",

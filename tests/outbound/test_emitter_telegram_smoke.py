@@ -337,7 +337,7 @@ class TestTelegramSendStreamingSmoke:
         assert text_arg is not None, "edit_message_text must receive a text argument"
 
     async def test_send_streaming_soft_error_displays_run_error_message(self) -> None:
-        """ADR-089: soft error only (no text_delta) shows curated message on Telegram."""
+        """ADR-089: soft error only shows curated message on Telegram."""
         adapter, bot = _make_tg_adapter_with_bot()
         original_msg = _make_tg_inbound(chat_id=42, message_id=10)
         outbound = OutboundMessage.from_text("")

@@ -27,7 +27,7 @@ def llm_result_shape(result: LlmResult) -> dict[str, Any]:
 
 
 def assert_llm_result_invariant(result: LlmResult) -> None:
-    """ADR-089 P2 shim: ok/error paths must keep worker_error, error, retryable coherent."""
+    """ADR-089 P2 shim: keep worker_error, error, and retryable coherent."""
     if result.ok:
         assert result.error == ""
         assert result.worker_error is None

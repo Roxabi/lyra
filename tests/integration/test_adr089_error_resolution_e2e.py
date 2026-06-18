@@ -20,14 +20,17 @@ from factory.core.hub import Hub
 from factory.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
 from factory.core.messaging.events import ResultLlmEvent
 from factory.core.messaging.message import Platform
-from factory.core.messaging.render_events import RunErrorRenderEvent, TextDeltaRenderEvent
 from factory.core.messaging.messages import MessageManager
+from factory.core.messaging.render_events import (
+    RunErrorRenderEvent,
+    TextDeltaRenderEvent,
+)
 from factory.llm.base import LlmResult
 from roxabi_contracts.errors import WorkerError
 from tests.core.conftest import push_to_hub
 from tests.integration.test_e2e_telegram_to_agent import (
-    _RecordingAdapter,
     _make_telegram_message,
+    _RecordingAdapter,
 )
 
 _MESSAGES = (

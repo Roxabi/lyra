@@ -101,12 +101,16 @@ def _encode_result(result: JobResult) -> bytes:
 class TestOmpRpcDriverGoldenEnvelope:
     @pytest.mark.asyncio
     async def test_complete_publishes_golden_job_envelope(self) -> None:
-        """Pinned JobEnvelope JSON from OmpRpcDriver.complete() (frozen uuid + issued_at)."""
+        """Pinned JobEnvelope JSON from OmpRpcDriver.complete() (frozen ids)."""
         nc = AsyncMock()
         sub = AsyncMock()
         nc.subscribe.return_value = sub
         success = JobResult.model_validate(
-            {**sample_job_result_ok, "job_id": _FIXED_JOB_ID, "data": {"result": "pong"}}
+            {
+                **sample_job_result_ok,
+                "job_id": _FIXED_JOB_ID,
+                "data": {"result": "pong"},
+            }
         )
         sub.next_msg.return_value = SimpleNamespace(data=_encode_result(success))
         driver = OmpRpcDriver(nc, timeout_s=5.0)
@@ -150,7 +154,11 @@ class TestOmpCodecGoldenLlmResult:
                 _GOLDEN_LLM_OK,
                 id="success",
             ),
-            pytest.param(sample_job_result_err, _GOLDEN_LLM_WORKER_CRASH, id="worker.crash"),
+            pytest.param(
+                sample_job_result_err,
+                _GOLDEN_LLM_WORKER_CRASH,
+                id="worker.crash",
+            ),
         ],
     )
     def test_decode_matches_golden_shape(

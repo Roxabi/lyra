@@ -19,10 +19,10 @@ from factory.core.messaging.message import Platform
 from factory.llm.drivers.omp_rpc import OmpRpcDriver
 from roxabi_contracts.jobs import JobResult
 from roxabi_contracts.jobs.fixtures import ENV_BASE, sample_job_result_err
-from tests.integration.test_adr089_error_resolution_e2e import (
-    _hub_with_agent,
-    _message_manager,
-    _run_hub_until_processed,
+from tests.integration.adr089_helpers import (
+    hub_with_agent,
+    message_manager,
+    run_hub_until_processed,
 )
 from tests.integration.test_e2e_telegram_to_agent import _RecordingAdapter
 
@@ -58,7 +58,7 @@ def _make_omp_agent(nc: AsyncMock) -> SimpleAgent:
             llm_config=_OMP_MODEL,
         ),
         driver,
-        msg_manager=_message_manager(),
+        msg_manager=message_manager(),
     )
 
 
@@ -67,11 +67,11 @@ class TestAdr089OmpBlockingErrorE2E:
         """JobResult worker.crash → generic (infra code, no message leak)."""
         result = JobResult.model_validate(sample_job_result_err)
         nc = _make_omp_nc(result)
-        hub = _hub_with_agent(_make_omp_agent(nc))
+        hub = hub_with_agent(_make_omp_agent(nc))
         adapter = hub.adapter_registry[(Platform.TELEGRAM, "main")]
         assert isinstance(adapter, _RecordingAdapter)
 
-        await _run_hub_until_processed(hub)
+        await run_hub_until_processed(hub)
 
         assert len(adapter.sent) == 1
         text = adapter.sent[0].to_text()
@@ -80,7 +80,7 @@ class TestAdr089OmpBlockingErrorE2E:
 
     async def test_llm_rate_limit_job_result_shows_template(self) -> None:
         """JobResult llm.rate_limit → messages.toml rate_limit template."""
-        mm = _message_manager()
+        mm = message_manager()
         result = JobResult.model_validate(
             {
                 **ENV_BASE,
@@ -94,24 +94,24 @@ class TestAdr089OmpBlockingErrorE2E:
             }
         )
         nc = _make_omp_nc(result)
-        hub = _hub_with_agent(_make_omp_agent(nc))
+        hub = hub_with_agent(_make_omp_agent(nc))
         adapter = hub.adapter_registry[(Platform.TELEGRAM, "main")]
         assert isinstance(adapter, _RecordingAdapter)
 
-        await _run_hub_until_processed(hub)
+        await run_hub_until_processed(hub)
 
         assert len(adapter.sent) == 1
         assert adapter.sent[0].to_text() == mm.get("rate_limit")
 
     async def test_nats_timeout_shows_timeout_template(self) -> None:
         """NATS reply timeout → transport.timeout template."""
-        mm = _message_manager()
+        mm = message_manager()
         nc = _make_omp_nc(timeout=True)
-        hub = _hub_with_agent(_make_omp_agent(nc))
+        hub = hub_with_agent(_make_omp_agent(nc))
         adapter = hub.adapter_registry[(Platform.TELEGRAM, "main")]
         assert isinstance(adapter, _RecordingAdapter)
 
-        await _run_hub_until_processed(hub)
+        await run_hub_until_processed(hub)
 
         assert len(adapter.sent) == 1
         assert adapter.sent[0].to_text() == mm.get("timeout")

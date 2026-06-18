@@ -1,12 +1,12 @@
 ---
-title: Testing Standards — Lyra
-description: Mandatory testing rules for the Lyra codebase — negative-test rule, coverage strategy, pytest conventions, and async patterns.
+title: Testing Standards — factory
+description: Mandatory testing rules for the factory codebase — negative-test rule, coverage strategy, pytest conventions, and async patterns.
 ---
 
-# Testing Standards — Lyra
+# Testing Standards — factory
 
 > Status: LIVING
-> Scope: `tests/` — all test files in the Lyra project
+> Scope: `tests/` — all test files in the factory project
 > Source: `docs/architecture/testing-conventions.md`, `tests/conftest.py`
 
 This document is the developer-facing companion to `docs/architecture/testing-conventions.md`. Read both — the architecture doc defines the rules; this doc defines the mechanics.

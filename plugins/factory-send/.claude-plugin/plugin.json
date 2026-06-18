@@ -1,0 +1,8 @@
+{
+  "name": "factory-send",
+  "version": "0.1.0",
+  "description": "Send messages, images, and voice notes to users via factory bots (Telegram & Discord).",
+  "author": {
+    "name": "Roxabi"
+  }
+}

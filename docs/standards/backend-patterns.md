@@ -1,9 +1,9 @@
 ---
-title: Backend Patterns — Lyra
+title: Backend Patterns — factory
 description: Mandatory patterns for hub, adapters, LLM drivers, stores, and plugin commands — enforced at code review.
 ---
 
-# Backend Patterns — Lyra
+# Backend Patterns — factory
 
 > Status: LIVING
 > Scope: `src/factory/` — core, adapters, llm, commands, infrastructure
@@ -13,7 +13,7 @@ description: Mandatory patterns for hub, adapters, LLM drivers, stores, and plug
 
 ## Layer Boundaries
 
-Lyra uses hexagonal (ports-and-adapters) architecture with four concentric layers:
+factory uses hexagonal (ports-and-adapters) architecture with four concentric layers:
 
 ```
 Domain  →  Application  →  Infrastructure  →  Adapters

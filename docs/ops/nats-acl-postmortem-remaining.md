@@ -197,7 +197,7 @@ The post-restart verification step is load-bearing — it turns a silent partial
 1. **Trigger criteria** — what constitutes a P0 incident requiring the process (example: any monitoring check failure sustained >5 min on a user-facing path).
 2. **Owner** — who is responsible for user communication during an incident.
 3. **User notification template** — a Telegram/Discord message template to send within 15 minutes of declaring an incident:
-   > "⚠️ Lyra is experiencing issues ([short description]). All channels affected. ETA: investigating. Updates here."
+   > "⚠️ factory is experiencing issues ([short description]). All channels affected. ETA: investigating. Updates here."
 4. **Resolution notification** — message template to send when service is restored.
 5. **Post-incident gate** — incident is not closed until: (a) root cause documented, (b) action items filed as GitHub issues with owners, (c) runbook updated if the process was missing or wrong.
 

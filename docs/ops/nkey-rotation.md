@@ -162,14 +162,14 @@ systemctl --user restart voicecli-stt.service
 systemctl --user restart imagecli-gen.service
 ```
 
-**5.3 Lyra adapters** (if any adapter seed was rotated):
+**5.3 factory adapters** (if any adapter seed was rotated):
 
 ```bash
 systemctl --user restart factory-telegram.service
 systemctl --user restart factory-discord.service
 ```
 
-**5.4 Lyra hub** (if `hub.seed` was rotated):
+**5.4 factory hub** (if `hub.seed` was rotated):
 
 ```bash
 systemctl --user restart factory-hub.service

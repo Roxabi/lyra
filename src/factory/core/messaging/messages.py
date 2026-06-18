@@ -56,10 +56,10 @@ class MessageManager:
 
     def get(self, key: str, platform: str | None = None, **kwargs: str) -> str:
         """Return resolved template string. Never raises."""
+        fmt = dict(kwargs)
+        fmt.setdefault("bot_name", "factory")
         try:
             raw = self._resolve(key, platform)
-            fmt = dict(kwargs)
-            fmt.setdefault("bot_name", "factory")
             return raw.format_map(fmt)
         except (KeyError, ValueError) as exc:
             log.debug(

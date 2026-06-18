@@ -17,6 +17,8 @@ import pytest
 
 from factory.adapters.omp.omp_worker import OmpWorker
 
+pytestmark = pytest.mark.omp_contract
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

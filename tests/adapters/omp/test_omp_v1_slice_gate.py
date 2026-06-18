@@ -15,6 +15,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+pytestmark = pytest.mark.omp_contract
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

@@ -277,11 +277,12 @@ class CliPoolNatsWorker(NatsAdapterBase):
         )
         if worker_error is not None:
             emit_populated_total(domain="cli")
+        result_text = result.result if isinstance(result.result, str) else None
         chunk = _make_chunk(
             cmd.pool_id,
             event_type="result",
             is_error=bool(result.error),
-            text=result.result or None,
+            text=result_text or None,
             session_id=result.session_id or None,
             done=True,
             resumed=resumed,

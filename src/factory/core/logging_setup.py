@@ -1,4 +1,4 @@
-"""Shared logging setup for all Lyra entry-points."""
+"""Shared logging setup for all factory entry-points."""
 
 from __future__ import annotations
 

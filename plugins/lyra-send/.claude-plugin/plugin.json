@@ -1,8 +1,0 @@
-{
-  "name": "lyra-send",
-  "version": "0.1.0",
-  "description": "Send messages, images, and voice notes to users via Lyra bots (Telegram & Discord).",
-  "author": {
-    "name": "Roxabi"
-  }
-}

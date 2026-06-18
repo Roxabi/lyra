@@ -1,13 +1,13 @@
 ---
-name: lyra-debug
-description: 'Debug Lyra on production — check status, pull logs, diagnose root cause, suggest fix. Triggers: "debug lyra" | "lyra debug" | "check lyra" | "lyra status" | "lyra down" | "why is lyra not responding".'
+name: factory-debug
+description: 'Debug factory on production — check status, pull logs, diagnose root cause, suggest fix. Triggers: "debug factory" | "factory debug" | "check factory" | "factory status" | "factory down" | "why is factory not responding".'
 version: 0.2.0
 allowed-tools: Bash, Read, Glob, Grep
 ---
 
-# Lyra Debug
+# factory Debug
 
-Diagnose Lyra issues on production (roxabituwer). Runs from the **local** machine
+Diagnose factory issues on production (roxabituwer). Runs from the **local** machine
 (`~/projects/roxabi-factory`) — all production access is via `make remote` and SSH.
 
 Production runs **Podman Quadlet** (rootless, systemd --user units).
@@ -42,7 +42,7 @@ cd ~/projects/roxabi-factory && make remote status
 Also inspect containers + nats directly:
 
 ```bash
-ssh $H "podman ps -a --format '{{.Names}}\t{{.Status}}\t{{.Image}}' | grep -E 'lyra-|nats'"
+ssh $H "podman ps -a --format '{{.Names}}\t{{.Status}}\t{{.Image}}' | grep -E 'factory-|nats'"
 ssh $H "systemctl --user status factory-hub factory-telegram factory-discord factory-nats --no-pager"
 ```
 
@@ -128,14 +128,14 @@ Present fix options via DP(A) (load `${CLAUDE_PLUGIN_ROOT}/../shared/references/
 | Fix | Command | When |
 |-----|---------|------|
 | Restart hub only | `make remote hub reload` | Dead backend, stale CLI pool |
-| Restart all Lyra | `make remote lyra reload` | DB locked, NATS broken |
+| Restart all factory | `make remote reload` | DB locked, NATS broken |
 | Restart specific adapter | `make remote discord reload` / `make remote telegram reload` | Single adapter failed |
 | Restart NATS | `ssh $H "systemctl --user restart factory-nats"` | NATS connection errors |
 | Clear failed state | `ssh $H "systemctl --user reset-failed factory-hub"` | Unit stuck in `failed` after start-limit-hit |
 | Check DB locks | `ssh $H "podman exec factory-hub fuser /home/factory/.roxabi/factory/*.db"` | Persistent DB locked errors |
 | Reinstall Quadlet units | `make quadlet-install` then `ssh $H "systemctl --user daemon-reload"` | Unit file drift |
 | Full deploy | `make deploy` | Code fix needed on production |
-| Rebuild + push image | `make build && make push && make remote lyra reload` | Image-level fix needed |
+| Rebuild + push image | `make build && make push && make remote reload` | Image-level fix needed |
 
 After user picks a fix, execute it and re-run Phase 1 + Phase 2 to confirm recovery.
 Verify `dead_backend_hits` is 0 after restart.

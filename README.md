@@ -1,6 +1,6 @@
-# Lyra
+# factory
 
-**Personal AI agent engine** — hub-and-spoke, asyncio, multi-channel.
+**AI factory engine** — hub-and-spoke, asyncio, multi-channel.
 
 [![CI](https://github.com/Roxabi/roxabi-factory/actions/workflows/ci.yml/badge.svg)](https://github.com/Roxabi/roxabi-factory/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)
@@ -8,13 +8,13 @@
 ![asyncio](https://img.shields.io/badge/concurrency-asyncio-0ea5e9)
 [![License: AGPL-3.0-or-later](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
 
-Lyra runs 24/7 on your own hardware, connects Telegram and Discord to specialized AI agents, and routes every conversation through isolated per-scope pools. No cloud lock-in. No subscription. Your data stays on your machines.
+factory runs 24/7 on your own hardware, connects Telegram and Discord to specialized AI agents, and routes every conversation through isolated per-scope pools. No cloud lock-in. No subscription. Your data stays on your machines.
 
 ## Why
 
 Most personal AI assistants are cloud-hosted: your data leaves your machine, your conversations are stored on someone else's servers, and the service disappears the moment a company pivots.
 
-Lyra exists to run on your own hardware — a Raspberry Pi, a home server, anything always-on — and connect your preferred chat platforms (Telegram, Discord) to AI agents you control. No API keys sold to third parties. No subscription. No lock-in. When you want a different model, you swap it in TOML.
+factory exists to run on your own hardware — a Raspberry Pi, a home server, anything always-on — and connect your preferred chat platforms (Telegram, Discord) to AI agents you control. No API keys sold to third parties. No subscription. No lock-in. When you want a different model, you swap it in TOML.
 
 It's for developers who want a persistent personal AI without giving up ownership of their data or infrastructure.
 

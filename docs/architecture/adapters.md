@@ -3,7 +3,7 @@ title: Adapters (Inbound Channels)
 description: Current truth for Telegram, Discord, CLI, and audio adapter decisions in Lyra.
 ---
 
-# Adapters (Inbound Channels) — Lyra
+# Adapters (Inbound Channels) — factory
 
 > Status: LIVING — current truth for Telegram/Discord/CLI/audio adapter decisions.
 > Last updated: 2026-05-09.

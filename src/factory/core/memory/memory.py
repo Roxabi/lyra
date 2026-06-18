@@ -1,4 +1,4 @@
-"""Memory layer for Lyra — MemoryManager wrapping AsyncMemoryDB (roxabi-vault).
+"""Memory layer for factory — MemoryManager wrapping AsyncMemoryDB (roxabi-vault).
 
 Provides:
 - SessionSnapshot: frozen dataclass capturing pool state at flush time

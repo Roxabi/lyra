@@ -1,4 +1,4 @@
-"""factory — unified CLI for Lyra by Roxabi.
+"""factory — unified CLI for factory by Roxabi.
 
 Entry points:
     factory                     → start the server
@@ -59,7 +59,7 @@ _VERSION = _get_version()
 
 factory_app = typer.Typer(
     name="factory",
-    help="Lyra by Roxabi — personal AI agent engine.",
+    help="factory by Roxabi — AI factory engine.",
     no_args_is_help=False,
 )
 config_app = typer.Typer(name="config", help="Manage instance config (config.toml).")
@@ -191,7 +191,7 @@ def _root_callback(
         is_eager=True,
     ),
 ) -> None:
-    """Lyra by Roxabi — personal AI agent engine.
+    """factory by Roxabi — AI factory engine.
 
     Run without a subcommand to start the server.
     """
@@ -206,7 +206,7 @@ def _root_callback(
 
 @factory_app.command()
 def start() -> None:
-    """Start the Lyra server (Telegram + Discord adapters)."""
+    """Start the factory server (Telegram + Discord adapters)."""
     _run_server()
 
 

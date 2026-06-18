@@ -82,7 +82,7 @@ class MintFailureSubscriber:
             return
 
         alert_text = (
-            f"\U0001f6a8 Lyra GH mint failure on {event.machine}\n"
+            f"\U0001f6a8 factory GH mint failure on {event.machine}\n"
             f"Reason: {event.reason}\n"
             f"Status: {event.http_status}\n"
             f"Retries: {event.retries}\n"

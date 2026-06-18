@@ -1,9 +1,9 @@
 ---
-title: Messaging & NATS — Lyra
+title: Messaging & NATS — factory
 description: Living current-truth document for all messaging and NATS transport decisions in Lyra.
 ---
 
-# Messaging & NATS — Lyra
+# Messaging & NATS — factory
 
 > Status: LIVING — current truth for messaging/NATS decisions.
 > Last updated: 2026-06-13.

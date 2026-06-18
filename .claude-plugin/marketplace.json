@@ -1,25 +1,25 @@
 {
-  "name": "lyra-marketplace",
+  "name": "factory-marketplace",
   "version": "1.0.0",
-  "description": "Lyra-specific Claude Code plugins — agent management, persona refinement.",
+  "description": "factory Claude Code plugins — agent management, ops, proactive messaging.",
   "owner": { "name": "Roxabi", "url": "https://github.com/Roxabi" },
   "plugins": [
     {
       "name": "refine-agent",
-      "description": "Conversationally refine Lyra agent profiles — persona, voice, passthroughs.",
+      "description": "Conversationally refine agent profiles — persona, voice, passthroughs.",
       "source": "./plugins/refine-agent",
       "category": "agent-management"
     },
     {
-      "name": "lyra-send",
-      "description": "Send messages, images, and voice notes to users via Lyra bots (Telegram & Discord).",
-      "source": "./plugins/lyra-send",
+      "name": "factory-send",
+      "description": "Send messages, images, and voice notes to users via factory bots (Telegram & Discord).",
+      "source": "./plugins/factory-send",
       "category": "utilities"
     },
     {
-      "name": "lyra-ops",
-      "description": "Debug Lyra on production — check status, pull logs, diagnose root cause, suggest fix.",
-      "source": "./plugins/lyra-ops",
+      "name": "factory-ops",
+      "description": "Debug factory on production — check status, pull logs, diagnose root cause, suggest fix.",
+      "source": "./plugins/factory-ops",
       "category": "operations"
     }
   ]

@@ -1,0 +1,9 @@
+{
+  "name": "factory-ops",
+  "version": "0.1.0",
+  "description": "Debug factory on production — check status, pull logs, diagnose root cause, suggest fix.",
+  "author": {
+    "name": "Roxabi"
+  },
+  "skills": ["./skills/factory-debug"]
+}

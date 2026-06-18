@@ -1,14 +1,14 @@
-# CLAUDE.md — lyra-send plugin
+# AGENTS.md — factory-send plugin
 
 ## What this plugin is
 
-`lyra-send` is a **Claude Code plugin** (external to lyra core) that lets Claude push
-messages, images, and voice notes to users via running Lyra bots — without waiting for
+`factory-send` is a **Claude Code plugin** (external to factory core) that lets Claude push
+messages, images, and voice notes to users via running factory bots — without waiting for
 a user to speak first.
 
 ## Transport: direct API, not NATS
 
-This plugin does **not** route through the lyra hub or NATS. It calls platform APIs
+This plugin does **not** route through the factory hub or NATS. It calls platform APIs
 directly:
 
 - Telegram → `https://api.telegram.org/bot{token}/send{Message,Photo,Voice}`
@@ -46,10 +46,10 @@ queries recent turns to surface known `chat_id` (Telegram) or `channel_id`/`thre
 `skills/send/SKILL.md` — single skill, 4-step flow:
 resolve args → find target ID → send → confirm.
 
-## Lyra cross-references
+## factory cross-references
 
 - `~/.roxabi/factory/turns.db` — turn history (target ID discovery)
 - `~/.roxabi/factory/config.db` — bot secrets
 - `~/.roxabi/factory/keyring.key` — encryption key
-- Lyra adapters (`src/factory/adapters/`) own the inbound side; this plugin owns
+- factory adapters (`src/factory/adapters/`) own the inbound side; this plugin owns
   the proactive outbound side independently.

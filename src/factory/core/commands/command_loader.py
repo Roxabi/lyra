@@ -1,4 +1,4 @@
-"""Command loader for Lyra hub (issue #106).
+"""Command loader for factory hub (issue #106).
 
 Discovers TOML manifests in the commands directory, loads async Python handler
 modules, and provides command dispatch to CommandRouter.

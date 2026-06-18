@@ -1,8 +1,8 @@
-# Vision — Lyra by Roxabi
+# factory — Vision
 
-## What is Lyra?
+## What is factory?
 
-Lyra is a personal AI agent engine. It runs 24/7 on your own hardware, connects to any messaging channel (Telegram, Discord, Signal…), and routes conversations to specialized agents that use your own LLMs, memory, and tools.
+factory is an AI factory engine. It runs 24/7 on your own hardware, connects to any messaging channel (Telegram, Discord, Signal…), and routes conversations to specialized agents that use your own LLMs, memory, and tools.
 
 No subscription. No cloud lock-in. Your data stays on your machines.
 
@@ -17,7 +17,7 @@ Every existing solution forces a trade-off:
 | Open-source bots | Single-channel, single-agent, no real memory |
 | Self-hosted SaaS (n8n, Flowise) | Visual tools, hard to extend, no real agent reasoning |
 
-Lyra takes a different approach: a minimal, auditable core (hub + bus + pools) that you own entirely, with a clean extension model for adapters, agents, and skills.
+factory takes a different approach: a minimal, auditable core (hub + bus + pools) that you own entirely, with a clean extension model for adapters, agents, and skills.
 
 ## Design principles
 
@@ -48,7 +48,7 @@ Hub + channels + database            Exposed as OpenAI-compatible API
 
 Cloud LLM (Anthropic) is the default in Phase 1. Local LLM on Machine 2 is added in Phase 2 as a cost control and privacy layer.
 
-## What Lyra is not
+## What factory is not
 
 - Not a general-purpose framework to sell as a product
 - Not a replacement for task managers or calendars

@@ -1,9 +1,9 @@
 ---
-title: Workers, Pipelines & Tooling — Lyra
+title: Workers, Pipelines & Tooling — factory
 description: Living reference for runtime workers (CliPool, satellites), tool integration patterns, dev tooling enforcement, and worker observability.
 ---
 
-# Workers, Pipelines & Tooling — Lyra
+# Workers, Pipelines & Tooling — factory
 
 > Status: LIVING — current truth for workers, pools, tool registries, dev tooling.
 > Last updated: 2026-05-09.

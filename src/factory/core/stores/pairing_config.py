@@ -1,4 +1,4 @@
-"""Configuration models and constants for the Lyra pairing system.
+"""Configuration models and constants for the factory pairing system.
 
 Extracted from pairing.py (epic #293) — contains PairingError, PairingConfig,
 SQL DDL, shared constants, and pure utility helpers.

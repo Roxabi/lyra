@@ -27,6 +27,7 @@ from ..messaging.events import (
     ToolUseLlmEvent,
 )
 from ..messaging.utils.metrics import emit_populated_total
+from .cli_error_classify import _resolve_cli_worker_error
 
 # Anthropic CLI NDJSON wire constants — kept here so the parser is the single
 # source of truth on what shapes upstream emits.
@@ -38,63 +39,6 @@ _DELTA_THINKING = "thinking_delta"
 _DELTA_SIGNATURE = "signature_delta"
 
 log = logging.getLogger(__name__)
-
-# Subtypes that indicate an auth failure from the upstream CLI.
-_AUTH_SUBTYPES = frozenset({"auth_error", "auth", "login_required"})
-# Subtypes that suggest a lost / unresumable session.
-_SESSION_LOST_SUBTYPES = frozenset({"session_expired", "session_lost", "resume_failed"})
-
-# Max length of bus-bound CLI error messages. Upstream wire content is
-# unbounded; trim before publishing to keep the NATS payload predictable.
-_BUS_BOUND_MESSAGE_MAX_LEN = 200  # const-ok: bus-bound error message length cap
-
-
-def _scrub_cli_error_text(text: str) -> str:
-    """Bound length + strip control chars from bus-bound CLI error text.
-
-    #1252 (sibling of #1212/#1215/#1219): path (a) — when the CLI reports
-    ``is_error=True`` — sources error text verbatim from upstream wire
-    fields (``result.errors[0]`` / ``result.result``). Without scrubbing,
-    arbitrary bytes propagate to ``WorkerError.message`` and
-    ``ResultLlmEvent.error_text`` (both bus-bound). Full diagnostic stays
-    in ``log.warning`` at the call site.
-    """
-    if not text:
-        return text
-    scrubbed = "".join(c if c.isprintable() else " " for c in text)
-    if len(scrubbed) > _BUS_BOUND_MESSAGE_MAX_LEN:
-        scrubbed = scrubbed[: _BUS_BOUND_MESSAGE_MAX_LEN - 1] + "…"
-    return scrubbed
-
-
-def _classify_cli_error(subtype: str, error_text: str) -> WorkerError:
-    """Map a CLI result subtype + message to a structured WorkerError.
-
-    Mapping rules (path a — upstream CLI reports is_error):
-      * auth-related subtype  → cli.auth   (not retryable)
-      * session-related       → cli.session_lost (retryable)
-      * anything else         → cli.parse  (not retryable)
-
-    ``worker.parse`` is NOT present in KNOWN_CODES (registry only has
-    ``cli.parse`` and ``transport.parse``), so parser failures use
-    ``cli.parse`` per ADR-066 (absorbed into ADR-049) fallback policy.
-
-    ``error_text`` is scrubbed via :func:`_scrub_cli_error_text` before
-    landing in ``WorkerError.message`` — see #1252.
-    """
-    if subtype in _AUTH_SUBTYPES:
-        code = "cli.auth"
-    elif subtype in _SESSION_LOST_SUBTYPES:
-        code = "cli.session_lost"
-    else:
-        code = "cli.parse"
-
-    meta = KNOWN_CODES[code]
-    return WorkerError(
-        code=code,
-        message=_scrub_cli_error_text(error_text) or meta.description,
-        retryable=meta.default_retryable,
-    )
 
 
 class CliStreamingParser:
@@ -453,7 +397,7 @@ class CliStreamingParser:
         # Path (a): upstream CLI emits is_error=True — classify to cli.* code.
         worker_error: WorkerError | None = None
         if is_error:
-            worker_error = _classify_cli_error(subtype, self.error or "")
+            worker_error = _resolve_cli_worker_error(subtype, self.error or "")
             emit_populated_total(domain="cli")
         return [
             ResultLlmEvent(

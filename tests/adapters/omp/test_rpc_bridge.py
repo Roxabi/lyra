@@ -99,26 +99,26 @@ def _remove_omp_rpc_stub() -> None:
 class TestClassifyException:
     def test_timeout_retryable(self) -> None:
         err = _classify_exception(asyncio.TimeoutError())
-        assert err.code == "timeout"
+        assert err.code == "transport.timeout"
         assert err.retryable is True
         assert err.message == "TimeoutError"
 
     def test_connection_refused_retryable(self) -> None:
         err = _classify_exception(ConnectionRefusedError())
-        assert err.code == "connection_error"
+        assert err.code == "transport.error"
         assert err.retryable is True
         assert err.message == "ConnectionRefusedError"
 
     def test_digest_mismatch_not_retryable(self) -> None:
         exc = DigestMismatchError(actual="aaa", expected="bbb")
         err = _classify_exception(exc)
-        assert err.code == "digest_mismatch"
+        assert err.code == "transport.contract_mismatch"
         assert err.retryable is False
         assert err.message == "DigestMismatchError"
 
     def test_generic_exception_maps_internal_error(self) -> None:
         err = _classify_exception(RuntimeError("oops"))
-        assert err.code == "internal_error"
+        assert err.code == "worker.internal"
         assert err.retryable is False
         # ADR-073: message must be the type name, not the exception string
         assert err.message == "RuntimeError"

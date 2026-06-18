@@ -69,6 +69,7 @@ async def _run_event_loop(  # noqa: C901
                 # producing the ``❌`` prefix on the final rendered text.
                 if isinstance(event, RunErrorRenderEvent):
                     emitter._st.is_error_pending = True
+                    emitter._st.run_error_message = event.message
                 continue
             if isinstance(
                 event,

@@ -61,6 +61,7 @@
     "009-generic-error-reply-placement-and-simple-agent-hub-coupling",
     "058-typed-error-boundary-and-user-visible-error-contract",
     "059-hexagonal-clean-architecture-canonical-model",
+    "089-centralized-llm-user-error-resolution",
     "---Workers & Tooling---",
     "004-cli-pool-cwd-resolution-and-agent-type-annotation",
     "005-wildcard-binding-concurrency-and-per-user-pools",

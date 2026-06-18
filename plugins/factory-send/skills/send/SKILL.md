@@ -2,15 +2,15 @@
 name: send
 argument-hint: '[telegram|discord] [message|image|voice] [content or path]'
 description: >
-  Send a message, image, or voice note to a user via Lyra bots (Telegram or Discord).
-  Trigger phrases: "send on telegram", "send image via lyra", "send voice note",
+  Send a message, image, or voice note to a user via factory bots (Telegram or Discord).
+  Trigger phrases: "send on telegram", "send image via factory", "send voice note",
   "send to discord", "notify user on telegram", "push message to telegram".
 allowed-tools: Bash
 ---
 
-# Lyra Send
+# factory Send
 
-Send content proactively to a user via the running Lyra bot — without waiting for them
+Send content proactively to a user via a running factory bot — without waiting for them
 to speak first.
 
 Supports: **text message**, **image** (file or URL), **voice/audio** (file).
@@ -45,7 +45,7 @@ Missing pieces → use DP protocol (load `${CLAUDE_PLUGIN_ROOT}/../shared/refere
 ### Finding the ID
 
 **Telegram — chat_id:**
-The chat_id is the numeric ID of the conversation. Find it in Lyra's turn history:
+The chat_id is the numeric ID of the conversation. Find it in the factory turn history:
 
 ```bash
 python3 - <<'EOF'
@@ -295,7 +295,7 @@ print(r.status_code, r.json().get('id', r.text[:100]))
 EOF
 ```
 
-If output starts with `ERROR` → stop and tell the user: "No Lyra bot token found for
+If output starts with `ERROR` → stop and tell the user: "No factory bot token found for
 `{platform}`. Make sure `factory agent init` has been run."
 
 ## Step 4 — Confirm

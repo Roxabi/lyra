@@ -1,18 +1,18 @@
-# CLAUDE.md — lyra-ops plugin
+# AGENTS.md — factory-ops plugin
 
 ## What this is
 
-A Claude Code plugin that provides operational skills for Lyra in production.
-It is **not** lyra runtime code — it is external tooling that runs from a dev/ops
+A Claude Code plugin that provides operational skills for factory in production.
+It is **not** factory runtime code — it is external tooling that runs from a dev/ops
 machine and reaches production exclusively via SSH + `make remote`.
 
-Install path: `plugins/lyra-ops/` inside the lyra repo. Published as a
+Install path: `plugins/factory-ops/` inside the roxabi-factory repo. Published as a
 Claude Code plugin via `roxabi-plugins` (or loaded locally from this path).
 
 ## Contract with production
 
 - All production access goes through `make remote <unit> <action>` or explicit
-  `ssh $H "..."` calls — never direct Python imports or lyra source references.
+  `ssh $H "..."` calls — never direct Python imports or factory source references.
 - `$H` := `DEPLOY_HOST` read from `~/projects/roxabi-factory/.env` on the local machine.
 - Production runtime: Podman Quadlet (rootless systemd --user units).
 - Health endpoint: `http://localhost:8443/health/detail` (loopback on `$H`,
@@ -22,7 +22,7 @@ Claude Code plugin via `roxabi-plugins` (or loaded locally from this path).
 
 ## Isolation rules
 
-- ¬import lyra Python source from any skill here.
+- ¬import factory Python source from any skill here.
 - ¬write to production files — read-only access except when executing an
   explicitly user-confirmed remediation command.
 - ¬store credentials in this plugin — secrets stay on `$H` or in `.env`.
@@ -31,9 +31,9 @@ Claude Code plugin via `roxabi-plugins` (or loaded locally from this path).
 
 ## Skill responsibilities
 
-`/lyra-debug` — full diagnostic cycle: status → health endpoint → logs →
+`/factory-debug` — full diagnostic cycle: status → health endpoint → logs →
 root-cause diagnosis → remediation options (DP) → recovery verification.
-Covers both degraded and fully-down scenarios across all Lyra Quadlet units
+Covers both degraded and fully-down scenarios across all factory Quadlet units
 (authoritative list: `deploy/quadlet.toml`).
 
 ## Adding skills

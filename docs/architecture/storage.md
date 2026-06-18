@@ -3,7 +3,7 @@ title: Storage & Persistence
 description: Current truth for all store, persistence, and event-bus decisions in Lyra — agent store, thread store, blobstore, memory scope, and event bus wiring.
 ---
 
-# Storage & Persistence — Lyra
+# Storage & Persistence — factory
 
 > Status: LIVING — current truth for store/persistence/event-bus decisions.
 > Last updated: 2026-05-24.
@@ -22,7 +22,7 @@ pattern. The hexagonal placement of all stores within `factory.infrastructure` i
 ### Memory scope levels
 
 Phase 1 implements two of the five memory levels. **Level 0 (working)** is the LLM context
-window — `Pool.history` passed directly to the model, no Lyra code required. **Level 3
+window — `Pool.history` passed directly to the model, no factory code required. **Level 3
 (semantic)** is SQLite + `aiosqlite` with BM25 (`rank-bm25`) and vector similarity
 (`sqlite-vec`), hybrid search at query time, mandatory `normalized_url` / `resolved_url`
 indexed columns for O(1) URL dedup. Levels 1 (session), 2 (episodic), and 4 (procedural)

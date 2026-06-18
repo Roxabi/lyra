@@ -17,7 +17,7 @@ async def notify_startup(active_proxies: list[str], health_port: int) -> None:
         return
 
     proxies = ", ".join(active_proxies) if active_proxies else "none"
-    text = f"Lyra Hub started\n\nProxies: {proxies}\nHealth: :{health_port}"
+    text = f"factory Hub started\n\nProxies: {proxies}\nHealth: :{health_port}"
 
     import httpx
 

@@ -2,12 +2,12 @@
 
 ## Overview
 
-Lyra containers are built and published to GHCR from this repo via a **bake pipeline**
+factory containers are built and published to GHCR from this repo via a **bake pipeline**
 (`docker/bake-action` + `docker-bake.hcl` — see `.github/workflows/publish.yml`). Other Roxabi
 projects typically use a shared reusable workflow at
 `Roxabi/.github/.github/workflows/publish-container.yml@v1`. Registry convention:
 `ghcr.io/roxabi/<project>`. Two triggers drive publishing: a push to `staging` produces floating
-tags for pre-release validation on M₁ (`:staging` + `:staging-svc` for Lyra); a release-please tag
+tags for pre-release validation on M₁ (`:staging` + `:staging-svc` for factory); a release-please tag
 `<component>/vX.Y.Z` on `main` produces semver pins (`:X.Y.Z`, `:X`, `:latest` where applicable).
 
 ---
@@ -20,9 +20,9 @@ tags for pre-release validation on M₁ (`:staging` + `:staging-svc` for Lyra); 
   pinning is preferred for the runtime stage in high-security contexts.
 - **Pinned package layers** — pin `uv` by version in the build stage; `apt-get` layers must use
   `--no-install-recommends` and clean lists in the same `RUN` step.
-- **Explicit non-root UID** — create a dedicated system user with a fixed numeric UID. Lyra uses
+- **Explicit non-root UID** — create a dedicated system user with a fixed numeric UID. factory uses
   UID/GID 1500 (`factory`). Never run as root or rely on the default `nobody` UID.
-- **HEALTHCHECK** — must exit 0 on healthy, non-zero on unhealthy. Lyra uses
+- **HEALTHCHECK** — must exit 0 on healthy, non-zero on unhealthy. factory uses
   `HEALTHCHECK CMD factory config validate`. The command must be available in the final stage.
 
   > **Note:** `HEALTHCHECK` requires Docker manifest format (v2 schema 2). OCI image manifests
@@ -43,7 +43,7 @@ tags for pre-release validation on M₁ (`:staging` + `:staging-svc` for Lyra); 
 
 ## Caller workflows
 
-### Lyra (`roxabi-factory`) — bake pipeline
+### factory — (`roxabi-factory`) — bake pipeline
 
 SSoT: `.github/workflows/publish.yml`. Builds two Dockerfile targets (`agent-runtime`,
 `svc-runtime`) and pushes `:staging` / `:staging-svc` on branch push, semver tags on release.
@@ -340,7 +340,7 @@ Steps for a new Roxabi project (voiceCLI, 2ndBrain, imageCLI, llmCLI) to adopt t
    automatically forces Docker v2 schema 2 manifest format (`oci-mediatypes=false`), so
    `HEALTHCHECK` is preserved without any extra configuration in the caller workflow.
 2. Create `.github/workflows/publish.yml` by copying the **reusable workflow template** above
-   (not Lyra's bake pipeline unless you also maintain a `docker-bake.hcl`). Replace
+   (not factory's bake pipeline unless you also maintain a `docker-bake.hcl`). Replace
    `image_name` with `ghcr.io/roxabi/<project>` and `release_please_component` with the
    project's component name. Set the `tags` trigger to `<project>/v*`.
 3. Ensure `release-please` is configured in the repo with `tag-separator: '/'` and the correct

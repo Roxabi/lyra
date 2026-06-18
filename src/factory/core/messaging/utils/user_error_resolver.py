@@ -140,7 +140,7 @@ def resolve_user_error(
             )
 
         if code in _PASSTHROUGH_CODES and worker_error.message:
-            from factory.core.cli.cli_streaming_parser import _scrub_cli_error_text
+            from factory.core.cli.cli_error_classify import _scrub_cli_error_text
 
             scrubbed = _scrub_cli_error_text(worker_error.message)
             return scrub_credentials(scrubbed) if scrubbed else _generic(msg_manager)

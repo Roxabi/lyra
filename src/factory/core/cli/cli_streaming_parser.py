@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections import deque
 from typing import Iterable
 
@@ -77,7 +78,6 @@ _AUTH_FLAT_HINTS = (
     "login required",
     "auth error",
     "authentication required",
-    "authenticate",
     "oauth",
 )
 _RATE_LIMIT_FLAT_HINTS = (
@@ -94,16 +94,51 @@ _SESSION_LOST_FLAT_HINTS = (
 )
 
 
+def _hint_matches(lower: str, hint: str) -> bool:
+    """Match a flat-error hint; single-token hints use word boundaries."""
+    if " " in hint:
+        return hint in lower
+    return bool(re.search(rf"\b{re.escape(hint)}\b", lower))
+
+
 def _infer_subtype_from_flat_error(error: str) -> str:
     """Infer a CLI result subtype from a flat blocking error string (ADR-089 S5)."""
     lower = error.lower()
-    if any(hint in lower for hint in _AUTH_FLAT_HINTS):
+    if any(_hint_matches(lower, hint) for hint in _AUTH_FLAT_HINTS):
         return "auth_error"
     if any(hint in lower for hint in _RATE_LIMIT_FLAT_HINTS):
         return "rate_limit_error"
     if any(hint in lower for hint in _SESSION_LOST_FLAT_HINTS):
         return "session_expired"
     return ""
+
+
+def _subtype_is_specific(subtype: str) -> bool:
+    return (
+        subtype in _AUTH_SUBTYPES
+        or subtype in _SESSION_LOST_SUBTYPES
+        or subtype in _RATE_LIMIT_SUBTYPES
+        or bool(subtype and "rate_limit" in subtype)
+    )
+
+
+def _resolve_cli_worker_error(subtype: str, error_text: str) -> WorkerError:
+    """Classify CLI errors for blocking and streaming paths (ADR-089)."""
+    lower = error_text.lower()
+    if "timeout" in lower or "timed out" in lower:
+        scrubbed = _scrub_cli_error_text(error_text)
+        fallback = KNOWN_CODES["transport.timeout"].description
+        return WorkerError(
+            code="transport.timeout",
+            message=scrubbed or fallback,
+            retryable=True,
+        )
+    effective = subtype
+    if not _subtype_is_specific(subtype):
+        inferred = _infer_subtype_from_flat_error(error_text)
+        if inferred:
+            effective = inferred
+    return _classify_cli_error(effective, error_text)
 
 
 def _classify_cli_error(subtype: str, error_text: str) -> WorkerError:
@@ -495,7 +530,7 @@ class CliStreamingParser:
         # Path (a): upstream CLI emits is_error=True — classify to cli.* code.
         worker_error: WorkerError | None = None
         if is_error:
-            worker_error = _classify_cli_error(subtype, self.error or "")
+            worker_error = _resolve_cli_worker_error(subtype, self.error or "")
             emit_populated_total(domain="cli")
         return [
             ResultLlmEvent(

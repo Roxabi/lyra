@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from factory.core.messaging.message import GENERIC_ERROR_REPLY
-from roxabi_contracts.errors import KNOWN_CODES, WorkerError
+from roxabi_contracts.errors import KNOWN_CODES, WorkerError, scrub_credentials
 
 if TYPE_CHECKING:
     from factory.core.messaging.messages import MessageManager
@@ -142,12 +142,14 @@ def resolve_user_error(
         if code in _PASSTHROUGH_CODES and worker_error.message:
             from factory.core.cli.cli_streaming_parser import _scrub_cli_error_text
 
-            return _scrub_cli_error_text(worker_error.message)
+            scrubbed = _scrub_cli_error_text(worker_error.message)
+            return scrub_credentials(scrubbed) if scrubbed else _generic(msg_manager)
 
         return _generic(msg_manager)
 
     if error_text:
-        if "Timeout" in error_text or "timed out" in error_text.lower():
+        lower = error_text.lower()
+        if "timeout" in lower or "timed out" in lower:
             return _from_template(
                 "timeout",
                 msg_manager,

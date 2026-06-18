@@ -24,6 +24,10 @@ class TestWorkerErrorFromCliError:
         assert we.code == "cli.auth"
         assert we.retryable is False
 
+    def test_authenticated_does_not_map_to_cli_auth(self) -> None:
+        we = worker_error_from_cli_error("User authenticated but request failed")
+        assert we.code == "cli.parse"
+
     def test_unclassified_message_maps_to_cli_parse(self) -> None:
         we = worker_error_from_cli_error("unexpected CLI failure")
         assert we.code == "cli.parse"

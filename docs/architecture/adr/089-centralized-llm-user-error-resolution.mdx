@@ -225,6 +225,11 @@ user_msg = resolve_user_error(
 
 ### Negative
 
+- Clipool timeout classification differs by failure shape: `asyncio.TimeoutError`
+  at the worker exception boundary maps to `cli.session_lost`; flat
+  `CliResult.error` strings containing ``timeout`` / ``timed out`` map to
+  `transport.timeout` via `_resolve_cli_worker_error()`. Resolver behavior
+  differs (passthrough vs timeout template) until a future unification pass.
 - `StreamProcessor` gains an optional `msg_manager` dependency (or receives a
   `resolve_fn` callable) — small wiring change in hub bootstrap.
 - Passthrough allowlist requires review when `KNOWN_CODES` grows; mitigated by CI test

@@ -301,9 +301,10 @@ class TestOmpRpcDriver:
             pool_id="p", text="hi", model_cfg=model_cfg, system_prompt="sys"
         )
 
-        # Assert — error result, NOT retryable (malformed ≠ transient)
         assert res.ok is False
         assert res.retryable is False
+        assert res.worker_error is not None
+        assert res.worker_error.code == "transport.parse"
 
         # Assert — cleanup runs even on malformed path (finally block)
         sub.unsubscribe.assert_awaited_once()

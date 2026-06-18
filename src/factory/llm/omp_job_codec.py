@@ -47,7 +47,16 @@ class OmpJobCodec:
         )
 
     def decode_malformed(self) -> LlmResult:
-        return LlmResult(error=_MALFORMED_ERROR, retryable=False)
+        worker_error = WorkerError(
+            code="transport.parse",
+            message=_MALFORMED_ERROR,
+            retryable=False,
+        )
+        return LlmResult(
+            error=_MALFORMED_ERROR,
+            retryable=False,
+            worker_error=worker_error,
+        )
 
     def decode_timeout(self) -> LlmResult:
         worker_error = WorkerError(

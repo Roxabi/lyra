@@ -30,7 +30,8 @@ def _run(root: Path, args: list[str] | None = None) -> tuple[int, str]:
 def test_clean_operational_doc_passes(tmp_path: Path) -> None:
     _pyproject(tmp_path)
     (tmp_path / "README.md").write_text(
-        "# Lyra\n\n[![License: AGPL](badge)](LICENSE)\n\n## License\n\nAGPL-3.0-or-later\n",
+        "# Lyra\n\n[![License: AGPL](badge)](LICENSE)\n\n"
+        "## License\n\nAGPL-3.0-or-later\n",
         encoding="utf-8",
     )
     doc = tmp_path / "docs" / "DEPLOYMENT.md"

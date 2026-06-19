@@ -46,10 +46,17 @@ class Rule:
 
 
 RULES: tuple[Rule, ...] = (
-    Rule("make_lyra", re.compile(r"\bmake lyra\b"), "use `make factory` / `make remote`"),
+    Rule(
+        "make_lyra",
+        re.compile(r"\bmake lyra\b"),
+        "use `make factory` / `make remote`",
+    ),
     Rule(
         "lyra_cli",
-        re.compile(r"\blyra (config|setup|start|stop|reload|logs|errors|status|validate|show)\b"),
+        re.compile(
+            r"\blyra (config|setup|start|stop|reload|logs|errors|status|"
+            r"validate|show)\b"
+        ),
         "CLI entrypoint is `factory` (pyproject.scripts)",
     ),
     Rule(
@@ -57,7 +64,11 @@ RULES: tuple[Rule, ...] = (
         re.compile(r"(the `lyra` CLI|`lyra` CLI|put `lyra` on|lyra` on your PATH)"),
         "document the `factory` CLI, not `lyra`",
     ),
-    Rule("cd_lyra_repo", re.compile(r"\bcd lyra\b"), "repo directory is `roxabi-factory`"),
+    Rule(
+        "cd_lyra_repo",
+        re.compile(r"\bcd lyra\b"),
+        "repo directory is `roxabi-factory`",
+    ),
     Rule(
         "projects_lyra_path",
         re.compile(r"~/projects/lyra\b"),
@@ -249,13 +260,20 @@ def main(argv: list[str] | None = None) -> int:
 
     root = (args.root or _default_root()).resolve()
     if not (root / "pyproject.toml").is_file():
-        print(f"check_doc_semantic_drift: invalid root (no pyproject.toml): {root}", file=sys.stderr)
+        print(
+            f"check_doc_semantic_drift: invalid root (no pyproject.toml): {root}",
+            file=sys.stderr,
+        )
         return 2
 
     try:
         violations = run(root)
-    except Exception as exc:
-        print(f"check_doc_semantic_drift: unexpected error: {type(exc).__name__}: {exc}", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001
+        print(
+            f"check_doc_semantic_drift: unexpected error: "
+            f"{type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
         return 2
 
     if not violations:

@@ -45,6 +45,9 @@ Volume=%h/.roxabi/factory/config.toml:/app/config.toml:ro,z
 # Bot roster SSoT (read-only) — adapters load bots from BotStore, not config.toml.
 # Mount at /app/config.db (not ~/.roxabi/factory/) — parent dir exists in the image.
 Volume=%h/.roxabi/factory/config.db:/app/config.db:ro,z
+# WAL siblings required for read-only open of a WAL-mode SQLite DB.
+Volume=%h/.roxabi/factory/config.db-wal:/app/config.db-wal:ro,z
+Volume=%h/.roxabi/factory/config.db-shm:/app/config.db-shm:ro,z
 Environment=ROXABI_FACTORY_DIR=/app
 Exec=factory adapter telegram
 HealthCmd=grep -q telegram /proc/1/cmdline

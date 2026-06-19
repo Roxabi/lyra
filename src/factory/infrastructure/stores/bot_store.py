@@ -63,10 +63,10 @@ class BotStore(SqliteStore, BotStoreProtocol):
         if self._db is not None:
             return
 
-        uri = f"file:{Path(self._db_path).resolve()}?mode=ro"
-        self._db = await aiosqlite.connect(uri, uri=True)
+        self._db = await aiosqlite.connect(self._db_path)
         _open_stores.add(self)
         self._readonly = True
+        await self._db.execute("PRAGMA query_only=ON")
         await self._db.execute("PRAGMA busy_timeout=30000")
         try:
             await self._warm_cache()

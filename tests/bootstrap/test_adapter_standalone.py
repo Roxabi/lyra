@@ -9,7 +9,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from tests.conftest import _LOAD_BOT_TOKEN_PATH
-from tests.helpers.standalone_bot_store import patch_discord_roster, patch_telegram_roster
+from tests.helpers.standalone_bot_store import (
+    patch_discord_roster,
+    patch_telegram_roster,
+)
 
 # Patch target for helpers that moved into the shared common module.
 _COMMON = "factory.bootstrap.wiring._standalone_wiring_common"

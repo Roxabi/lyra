@@ -92,7 +92,10 @@ def test_build_rich_message_wraps_markdown() -> None:
 
 def test_build_thinking_message_escapes_html() -> None:
     rich = build_thinking_message('</tg-thinking><b>x</b>')
-    assert rich.html == "<tg-thinking>&lt;/tg-thinking&gt;&lt;b&gt;x&lt;/b&gt;</tg-thinking>"
+    expected = (
+        "<tg-thinking>&lt;/tg-thinking&gt;&lt;b&gt;x&lt;/b&gt;</tg-thinking>"
+    )
+    assert rich.html == expected
 
 
 @pytest.mark.asyncio

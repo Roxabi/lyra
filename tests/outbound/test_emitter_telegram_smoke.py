@@ -21,7 +21,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from factory.adapters.telegram import TelegramAdapter
-from tests.adapters.conftest import wire_telegram_rich_bot
 from factory.core.auth.trust import TrustLevel
 from factory.core.messaging.message import InboundMessage, OutboundMessage, TelegramMeta
 from factory.core.messaging.render_events import (
@@ -30,6 +29,7 @@ from factory.core.messaging.render_events import (
     TextEndRenderEvent,
     TextStartRenderEvent,
 )
+from tests.adapters.conftest import wire_telegram_rich_bot
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -162,7 +162,7 @@ class TestTelegramMakeEmitter:
 
 class TestTelegramSendStreamingSmoke:
     async def test_send_streaming_calls_bot_send_message(self) -> None:
-        """send_streaming() must call bot.send_rich_message at least once (placeholder)."""
+        """send_streaming() calls bot.send_rich_message at least once (placeholder)."""
         # Arrange
         adapter, bot = _make_tg_adapter_with_bot()
         original_msg = _make_tg_inbound(chat_id=42, message_id=10)
@@ -257,7 +257,7 @@ class TestTelegramSendStreamingSmoke:
         assert outbound.metadata["reply_message_id"] == 100
 
     async def test_send_streaming_placeholder_before_edit(self) -> None:
-        """Placeholder send_rich_message must happen before any edit_message_text call."""
+        """Placeholder send_rich_message happens before edit_message_text."""
         # Arrange
         call_order: list[str] = []
 

@@ -15,6 +15,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.helpers.standalone_bot_store import patch_telegram_roster
+
 
 async def test_adapter_raises_bootstrap_error_on_missing_token(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -26,8 +28,9 @@ async def test_adapter_raises_bootstrap_error_on_missing_token(
 
     monkeypatch.setenv("FACTORY_RUN_SECRETS_DIR", str(run_secrets_dir))
     monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
+    patch_telegram_roster(monkeypatch, ["mybot"])
 
-    raw_config = {"telegram": {"bots": [{"bot_id": "mybot"}]}}
+    raw_config = {}
 
     stop = asyncio.Event()
     stop.set()

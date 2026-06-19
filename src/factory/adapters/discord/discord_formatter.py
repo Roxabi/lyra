@@ -107,7 +107,10 @@ class DiscordFormatter(BaseFormatter):
             placeholder = await messageable.send(self._placeholder_text)
         return placeholder, placeholder.id
 
-    async def edit_placeholder_text(self, ph: Any, text: str) -> None:
+    async def edit_placeholder_text(
+        self, ph: Any, text: str, *, finalize: bool = False
+    ) -> None:
+        del finalize
         display = text[-DISCORD_MAX_LENGTH:]
         await send_with_retry(
             lambda d=display: ph.edit(content=d, embed=None),

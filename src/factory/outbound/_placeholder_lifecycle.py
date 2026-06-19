@@ -33,7 +33,7 @@ async def _send_placeholder(
         await emitter._cancel_typing()
         return None
     placeholder_obj, reply_message_id = result.value
-    if emitter._outbound is not None:
+    if reply_message_id is not None and emitter._outbound is not None:
         emitter._outbound.metadata["reply_message_id"] = reply_message_id
     return placeholder_obj, reply_message_id
 
@@ -64,12 +64,16 @@ async def _deliver_text_chunks(
     """Edit placeholder with first chunk, send overflow."""
     result = await emitter._handler.guard(
         lambda p=placeholder_obj, c=final_chunks[0]: emitter._fmt.edit_placeholder_text(
-            p, c
+            p, c, finalize=True
         ),
         context="deliver_final_edit",
     )
     if isinstance(result, Err):
         pass  # guard already logged; non-fatal
+    if len(final_chunks) == 1:
+        mid = getattr(placeholder_obj, "message_id", None)
+        if mid is not None and emitter._outbound is not None:
+            emitter._outbound.metadata["reply_message_id"] = mid
     for extra_chunk in final_chunks[1:]:
         result = await emitter._handler.guard(
             lambda c=extra_chunk: emitter._fmt.send_message(c),
@@ -125,7 +129,7 @@ async def _deliver_final(emitter: "OutboundEmitter", placeholder_obj: Any) -> No
     )
     result = await emitter._handler.guard(
         lambda p=placeholder_obj, t=error_text: emitter._fmt.edit_placeholder_text(
-            p, t
+            p, t, finalize=True
         ),
         context="error_edit",
     )

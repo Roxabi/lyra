@@ -16,6 +16,12 @@ from factory.adapters.telegram.telegram_formatting import (
     _render_text,
     _validate_inbound,
 )
+from factory.adapters.telegram.telegram_rich import (
+    chunk_markdown,
+    rich_messages_enabled,
+    send_markdownv2_text,
+    send_text_with_fallback,
+)
 from factory.core.messaging.message import (
     InboundMessage,
     OutboundMessage,
@@ -140,10 +146,10 @@ async def send(
     meta = _validate_inbound(original_msg, "send")
     if meta is None:
         return
-    chat_id, _, _ = meta
+    chat_id, topic_id, _ = meta
 
     text = outbound.to_text()
-    chunks = _render_text(text)
+    chunks = chunk_markdown(text) if rich_messages_enabled() else _render_text(text)
     keyboard = _render_buttons(outbound.buttons)
 
     _pm = original_msg.platform_meta
@@ -152,16 +158,26 @@ async def send(
     async def send_chunk(
         chunk: str, is_first: bool, is_last: bool, buttons: Any
     ) -> int:
-        kwargs: dict = {
-            "chat_id": chat_id,
-            "text": chunk,
-            "parse_mode": "MarkdownV2",
-        }
-        if is_first and reply_to is not None:
-            kwargs["reply_to_message_id"] = reply_to
-        if buttons is not None:
-            kwargs["reply_markup"] = buttons
-        sent = await adapter.bot.send_message(**kwargs)
+        reply = reply_to if is_first else None
+        chunk_buttons = buttons if is_last else None
+        if rich_messages_enabled():
+            sent = await send_text_with_fallback(
+                adapter.bot,
+                chat_id,
+                chunk,
+                reply_to=reply,
+                topic_id=topic_id,
+                reply_markup=chunk_buttons,
+            )
+        else:
+            sent = await send_markdownv2_text(
+                adapter.bot,
+                chat_id,
+                chunk,
+                reply_to=reply,
+                topic_id=topic_id,
+                reply_markup=chunk_buttons,
+            )
         return sent.message_id
 
     ctx = SendContext(

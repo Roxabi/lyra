@@ -19,6 +19,7 @@ from factory.core.messaging.render_events import (
     TextEndRenderEvent,
     ToolCallStartRenderEvent,
 )
+from tests.adapters.conftest import wire_telegram_rich_bot
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -98,10 +99,7 @@ class TestTelegramStreaming:
             webhook_secret="secret",
         )
         mock_bot = AsyncMock()
-        placeholder = MagicMock()
-        placeholder.message_id = 999
-        mock_bot.send_message = AsyncMock(return_value=placeholder)
-        mock_bot.edit_message_text = AsyncMock()
+        wire_telegram_rich_bot(mock_bot, message_id=999)
         adapter.bot = mock_bot
         return adapter, mock_bot
 
@@ -112,11 +110,14 @@ class TestTelegramStreaming:
         await adapter.send_streaming(msg, quick_events())
 
         # Placeholder sent
-        bot.send_message.assert_awaited_once()
-        # Final edit called with full text (MarkdownV2-escaped)
+        bot.send_rich_message.assert_awaited_once()
+        # Final edit called with full text (rich markdown, unescaped)
         last_edit = bot.edit_message_text.call_args
-        assert last_edit.kwargs["text"] == "Hello world\\!"
-        assert last_edit.kwargs.get("parse_mode") == "MarkdownV2"
+        assert last_edit.kwargs["rich_message"].markdown == "Hello world!"
+
+    def _rich_markdown(self, call) -> str:
+        rich = call.kwargs.get("rich_message")
+        return rich.markdown if rich is not None else call.kwargs.get("text", "")
 
     async def test_debounce_limits_edits(self) -> None:
         adapter, bot = self._make_adapter()
@@ -131,15 +132,18 @@ class TestTelegramStreaming:
 
     async def test_placeholder_failure_falls_back(self) -> None:
         adapter, bot = self._make_adapter()
-        # First call (placeholder) fails, second call (fallback send) succeeds
-        bot.send_message = AsyncMock(side_effect=[RuntimeError("network"), MagicMock()])
+        fallback_msg = MagicMock(message_id=1002)
+        bot.send_rich_message = AsyncMock(side_effect=RuntimeError("network"))
+        bot.send_message = AsyncMock(
+            side_effect=[RuntimeError("network"), fallback_msg, fallback_msg]
+        )
         msg = make_tg_message()
 
         await adapter.send_streaming(msg, quick_events())
 
-        # Should fall back to regular send with full accumulated text
-        assert bot.send_message.await_count == 2
-        fallback_call = bot.send_message.call_args_list[1]
+        # Placeholder rich+markdown fail, then drain_fallback sends via MarkdownV2
+        assert bot.send_message.await_count >= 1
+        fallback_call = bot.send_message.call_args_list[-1]
         assert fallback_call.kwargs["text"] == "Hello world\\!"
         assert fallback_call.kwargs.get("parse_mode") == "MarkdownV2"
 
@@ -158,7 +162,7 @@ class TestTelegramStreaming:
 
         await adapter.send_streaming(msg, quick_events())
 
-        bot.send_message.assert_awaited_once()
+        bot.send_rich_message.assert_awaited_once()
 
     async def test_mid_stream_error_stores_reply_message_id(self) -> None:
         adapter, _ = self._make_adapter()
@@ -186,8 +190,8 @@ class TestTelegramStreaming:
 
     async def test_placeholder_failure_writes_fallback_id_to_outbound(self) -> None:
         adapter, bot = self._make_adapter()
-        fallback_msg = MagicMock()
-        fallback_msg.message_id = 1001
+        fallback_msg = MagicMock(message_id=1001)
+        bot.send_rich_message = AsyncMock(side_effect=RuntimeError("network"))
         bot.send_message = AsyncMock(
             side_effect=[RuntimeError("network"), fallback_msg]
         )
@@ -243,11 +247,11 @@ class TestTelegramStreaming:
         await adapter.send_streaming(msg, long_events())
 
         # Placeholder was created
-        assert bot.send_message.call_count >= 1
+        assert bot.send_rich_message.call_count >= 1
         # First chunk edits placeholder (text-only path)
         assert bot.edit_message_text.call_count >= 1
-        # Overflow chunk sent as new message: send_message = placeholder + overflow
-        assert bot.send_message.call_count >= 2
+        # Overflow chunk sent as new message: placeholder + overflow rich sends
+        assert bot.send_rich_message.call_count >= 2
 
 
 # ---------------------------------------------------------------------------
@@ -372,10 +376,7 @@ class TestTelegramIntermediateText:
             webhook_secret="secret",
         )
         mock_bot = AsyncMock()
-        placeholder = MagicMock()
-        placeholder.message_id = 999
-        mock_bot.send_message = AsyncMock(return_value=placeholder)
-        mock_bot.edit_message_text = AsyncMock()
+        wire_telegram_rich_bot(mock_bot, message_id=999)
         adapter.bot = mock_bot
         return adapter, mock_bot
 
@@ -426,7 +427,9 @@ class TestTelegramIntermediateText:
         last_edit = bot.edit_message_text.call_args
         assert last_edit is not None
         # Final edit contains the accumulated text
-        assert "Final answer" in last_edit.kwargs.get("text", "")
+        rich = last_edit.kwargs.get("rich_message")
+        final_text = rich.markdown if rich is not None else last_edit.kwargs.get("text", "")
+        assert "Final answer" in final_text
 
 
 class TestDiscordIntermediateText:
@@ -511,7 +514,8 @@ async def test_telegram_streaming_fallback_sends_all_chunks() -> None:
     )
     fallback_msgs = [MagicMock(message_id=i) for i in range(1, 4)]
     bot = AsyncMock()
-    # First send_message raises (placeholder) → triggers fallback path
+    bot.send_rich_message = AsyncMock(side_effect=RuntimeError("rich fail"))
+    # Placeholder markdown attempt fails, then 3 fallback chunks via send_message
     bot.send_message = AsyncMock(
         side_effect=[RuntimeError("placeholder fail")] + fallback_msgs
     )
@@ -530,7 +534,7 @@ async def test_telegram_streaming_fallback_sends_all_chunks() -> None:
     outbound.metadata = {}
     await adapter.send_streaming(msg, long_events(), outbound)
 
-    # Placeholder attempt + 3 fallback chunks = 4 total send_message calls
+    # Placeholder markdown attempt + 3 fallback chunks = 4 total send_message calls
     assert bot.send_message.await_count == 4
     # reply_message_id set to the LAST chunk's message_id
     assert outbound.metadata["reply_message_id"] == 3

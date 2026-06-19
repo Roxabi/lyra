@@ -21,7 +21,10 @@ import json
 import logging
 from typing import Any
 
-from factory.infrastructure.kv.factory_state import FACTORY_STATE_BUCKET, open_or_create_kv
+from factory.infrastructure.kv.factory_state import (
+    FACTORY_STATE_BUCKET,
+    open_or_create_kv,
+)
 
 log = logging.getLogger(__name__)
 

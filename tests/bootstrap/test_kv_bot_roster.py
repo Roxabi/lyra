@@ -10,13 +10,13 @@ import pytest
 from nats.js.errors import BucketNotFoundError, KeyNotFoundError
 
 from factory.bootstrap.wiring.kv_bot_roster import seed_bot_roster
-from factory.infrastructure.kv.bot_roster import publish_bot_roster
 from factory.config import (
     DISCORD_DEFAULT_AUTO_THREAD,
     DISCORD_DEFAULT_THREAD_HOT_HOURS,
     DiscordMultiConfig,
     TelegramMultiConfig,
 )
+from factory.infrastructure.kv.bot_roster import publish_bot_roster
 from roxabi_contracts.state.bot_roster import (
     PlatformRosterDocument,
     RosterBotEntry,

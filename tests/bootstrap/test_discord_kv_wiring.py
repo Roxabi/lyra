@@ -6,7 +6,7 @@ import asyncio
 import inspect
 from contextlib import asynccontextmanager
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -308,9 +308,13 @@ class TestHubPublishesKvStateBeforeReady:
 
 
 class TestAdapterQuadletNoConfigDbMounts:
-    def test_telegram_and_discord_quadlet_templates_have_no_config_db_mounts(self) -> None:
+    def test_adapter_quadlet_templates_have_no_config_db_mounts(self) -> None:
         root = Path(__file__).resolve().parents[2]
-        for name in ("factory-telegram.container.tmpl", "factory-discord.container.tmpl"):
+        templates = (
+            "factory-telegram.container.tmpl",
+            "factory-discord.container.tmpl",
+        )
+        for name in templates:
             text = (root / "deploy" / "quadlet" / name).read_text()
             assert "config.db" not in text
             assert "ROXABI_FACTORY_DIR" not in text

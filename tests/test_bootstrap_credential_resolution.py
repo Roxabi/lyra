@@ -14,7 +14,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from tests.helpers.standalone_bot_store import patch_discord_roster, patch_telegram_roster
+from tests.helpers.standalone_bot_store import (
+    patch_discord_roster,
+    patch_telegram_roster,
+)
 
 
 async def test_adapter_reads_token_from_run_secrets(

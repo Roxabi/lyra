@@ -17,32 +17,11 @@ from factory.bootstrap.wiring._standalone_wiring_common import (
     TypingDeps,
     wire_bot_common,
 )
+from factory.bootstrap.wiring.kv_bot_roster import seed_bot_roster
 from factory.core.messaging.message import Platform
 from roxabi_nats.readiness import wait_for_hub
 
 log = logging.getLogger(__name__)
-
-
-async def _bootstrap_telegram_setup() -> tuple:
-    """Load Telegram roster from BotStore and resolve credentials."""
-    from factory.bootstrap.wiring._standalone_bot_store import (
-        load_telegram_roster_from_store,
-    )
-
-    tg_multi_cfg = await load_telegram_roster_from_store()
-    if not tg_multi_cfg.bots:
-        sys.exit(
-            "No telegram bots configured — runtime roster is sourced from BotStore."
-            " Run 'factory bot init' to seed it."
-        )
-
-    tg_creds: dict[str, tuple[str, str | None]] = {}
-    for bot_cfg in tg_multi_cfg.bots:
-        bot_id = bot_cfg.bot_id
-        tg_creds[bot_id] = credentials.load_bot_token("telegram", bot_id)
-        log.info("read token from /run/secrets/bot_token-%s", bot_id)
-
-    return tg_multi_cfg, tg_creds
 
 
 async def _close_tg_wired(label: str, wired: list[tuple]) -> None:
@@ -85,7 +64,6 @@ async def bootstrap_telegram_standalone(
     _stop: asyncio.Event | None = None,
 ) -> None:
     """Bootstrap a standalone Telegram adapter process connected to NATS."""
-    tg_multi_cfg, tg_creds = await _bootstrap_telegram_setup()
     js = nc.jetstream()
     blob_store = init_blobstore()
 
@@ -126,11 +104,16 @@ async def bootstrap_telegram_standalone(
         )
 
     # ADR-079 S3: wait_for_hub is a load-bearing barrier — it MUST precede
-    # start_audio_consumer (called inside wire_bot_common). The hub sets hub.ready only
-    # after ensure_stream + ensure_kv complete, so this call guarantees stream + KV
-    # exist before any adapter bind/consume attempt. Moving it after the loop would
-    # reintroduce the cold-boot race (BucketNotFoundError / missing-stream).
+    # seed_bot_roster and start_audio_consumer (called inside wire_bot_common).
     await wait_for_hub(nc)
+
+    tg_multi_cfg = await seed_bot_roster(js, "telegram")
+
+    tg_creds: dict[str, tuple[str, str | None]] = {}
+    for bot_cfg in tg_multi_cfg.bots:
+        bot_id = bot_cfg.bot_id
+        tg_creds[bot_id] = credentials.load_bot_token("telegram", bot_id)
+        log.info("read token from /run/secrets/bot_token-%s", bot_id)
 
     for bot_cfg in tg_multi_cfg.bots:
         bot_id = bot_cfg.bot_id

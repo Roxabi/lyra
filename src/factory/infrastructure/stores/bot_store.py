@@ -6,8 +6,6 @@ import json
 import logging
 from pathlib import Path
 
-import aiosqlite
-
 from factory.core.agent.agent_models import _utc_now_iso
 from factory.core.agent.bot_models import BotRow
 from factory.core.agent.schema.bot_schema import (
@@ -20,7 +18,7 @@ from factory.infrastructure.stores.migrations.bot_store_migrations import (
     run_bot_migrations,
 )
 
-from .base.sqlite_base import SqliteStore, _open_stores
+from .base.sqlite_base import SqliteStore
 
 log = logging.getLogger(__name__)
 
@@ -37,7 +35,6 @@ class BotStore(SqliteStore, BotStoreProtocol):
     def __init__(self, db_path: str | Path) -> None:
         super().__init__(db_path)
         self._bots: dict[tuple[str, str], BotRow] = {}
-        self._readonly: bool = False
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -58,24 +55,6 @@ class BotStore(SqliteStore, BotStoreProtocol):
             raise
         log.info("BotStore connected (db=%s)", self._db_path)
 
-    async def connect_readonly(self) -> None:
-        """Open read-only — for adapter containers with ro-mounted config.db."""
-        if self._db is not None:
-            return
-
-        self._db = await aiosqlite.connect(self._db_path)
-        _open_stores.add(self)
-        self._readonly = True
-        await self._db.execute("PRAGMA query_only=ON")
-        await self._db.execute("PRAGMA busy_timeout=30000")
-        try:
-            await self._warm_cache()
-        except Exception:
-            log.exception("BotStore.connect_readonly() failed; closing connection")
-            await self.close()
-            raise
-        log.info("BotStore connected read-only (db=%s)", self._db_path)
-
     async def _warm_cache(self) -> None:
         """Load bots into in-memory cache."""
         db = self._require_db()
@@ -88,12 +67,7 @@ class BotStore(SqliteStore, BotStoreProtocol):
     async def close(self) -> None:
         """Close the database connection and clear caches."""
         if self._db is not None:
-            if self._readonly:
-                await self._db.close()
-                self._db = None
-                self._readonly = False
-            else:
-                await super().close()
+            await super().close()
             self._bots.clear()
             log.info("BotStore closed")
 

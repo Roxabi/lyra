@@ -44,7 +44,10 @@ Volume=factory-discord-data.volume:/home/factory/.roxabi/factory/discord:z
 # Inline single-file bind mounts — see rationale in factory-hub.container.
 Volume=%h/.roxabi/factory/config.toml:/app/config.toml:ro,z
 # Bot roster SSoT (read-only) — adapters load bots from BotStore, not config.toml.
-Volume=%h/.roxabi/factory/config.db:/home/factory/.roxabi/factory/config.db:ro,z
+# Mount at /app/config.db (not ~/.roxabi/factory/) — parent dir exists in the image.
+Volume=%h/.roxabi/factory/config.db:/app/config.db:ro,z
+Environment=ROXABI_FACTORY_DIR=/app
+Environment=ROXABI_FACTORY_DISCORD_DIR=/home/factory/.roxabi/factory/discord
 Exec=factory adapter discord
 HealthCmd=grep -q discord /proc/1/cmdline
 HealthInterval=30s

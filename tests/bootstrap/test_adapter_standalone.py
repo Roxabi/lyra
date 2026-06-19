@@ -9,6 +9,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from tests.conftest import _LOAD_BOT_TOKEN_PATH
+from tests.helpers.standalone_bot_store import (
+    patch_discord_roster,
+    patch_telegram_roster,
+)
 
 # Patch target for helpers that moved into the shared common module.
 _COMMON = "factory.bootstrap.wiring._standalone_wiring_common"
@@ -190,13 +194,16 @@ async def test_nc_close_called_even_on_exception() -> None:
 
 
 @pytest.mark.asyncio
-async def test_telegram_astart_failure_cleans_up_wired_resources() -> None:
+async def test_telegram_astart_failure_cleans_up_wired_resources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """astart() raises mid-loop -> wired + current bot resources cleaned up."""
     from factory.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
 
-    raw_config = {"telegram": {"bots": [{"bot_id": "first"}, {"bot_id": "second"}]}}
+    patch_telegram_roster(monkeypatch, ["first", "second"])
+    raw_config = {}
 
     mock_nc = AsyncMock()
 
@@ -257,20 +264,21 @@ async def test_telegram_astart_failure_cleans_up_wired_resources() -> None:
 
 
 @pytest.mark.asyncio
-async def test_discord_astart_failure_cleans_up_wired_resources() -> None:
+async def test_discord_astart_failure_cleans_up_wired_resources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """astart() raises mid-loop -> wired + current bot resources cleaned up."""
     from factory.bootstrap.standalone.adapter_standalone import (
         _bootstrap_adapter_standalone,
     )
 
-    raw_config = {
-        "discord": {
-            "bots": [
-                {"bot_id": "first", "auto_thread": False, "thread_hot_hours": 4},
-                {"bot_id": "second", "auto_thread": False, "thread_hot_hours": 4},
-            ]
-        }
-    }
+    patch_discord_roster(
+        monkeypatch,
+        ["first", "second"],
+        auto_thread=False,
+        thread_hot_hours=4,
+    )
+    raw_config = {}
 
     mock_nc = AsyncMock()
 

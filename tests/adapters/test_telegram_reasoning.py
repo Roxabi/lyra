@@ -76,10 +76,11 @@ class TestTelegramReasoningRendering:
         # Arrange
         adapter = _make_telegram_adapter()
         trace_mock = _make_trace_send_mock(message_id=501)
-        send_message_mock = AsyncMock(return_value=trace_mock)
+        send_rich_mock = AsyncMock(return_value=trace_mock)
         edit_message_mock = AsyncMock()
         adapter.bot = MagicMock()
-        adapter.bot.send_message = send_message_mock
+        adapter.bot.send_rich_message = send_rich_mock
+        adapter.bot.send_message = AsyncMock(return_value=trace_mock)
         adapter.bot.edit_message_text = edit_message_mock
 
         formatter = _make_formatter(adapter)
@@ -97,10 +98,10 @@ class TestTelegramReasoningRendering:
                 trace_mock, ReasoningEndRenderEvent(message_id=block_id)
             )
 
-        # Assert — formatter never calls send_message (session owns placeholder)
-        assert send_message_mock.await_count == 0, (
+        # Assert — formatter never calls send APIs (session owns placeholder)
+        assert send_rich_mock.await_count == 0, (
             f"Formatter must not create its own placeholder; "
-            f"got {send_message_mock.await_count} send_message calls"
+            f"got {send_rich_mock.await_count} send_rich_message calls"
         )
         # At least 2 edit calls (one End flush per block)
         assert edit_message_mock.await_count >= 2, (
@@ -122,6 +123,7 @@ class TestTelegramReasoningRendering:
         adapter = _make_telegram_adapter()
         trace_mock = _make_trace_send_mock(message_id=502)
         adapter.bot = MagicMock()
+        adapter.bot.send_rich_message = AsyncMock(return_value=trace_mock)
         adapter.bot.send_message = AsyncMock(return_value=trace_mock)
         adapter.bot.edit_message_text = AsyncMock()
 
@@ -180,13 +182,19 @@ class TestTelegramReasoningRendering:
         adapter = _make_telegram_adapter()
         trace_mock = _make_trace_send_mock(message_id=503)
         adapter.bot = MagicMock()
+        adapter.bot.send_rich_message = AsyncMock(return_value=trace_mock)
         adapter.bot.send_message = AsyncMock(return_value=trace_mock)
         edit_calls: list[str] = []
 
         async def capture_edit(**kwargs: object) -> None:
-            text = kwargs.get("text", "")
-            assert isinstance(text, str)
-            edit_calls.append(text)
+            rich = kwargs.get("rich_message")
+            html = getattr(rich, "html", None) if rich is not None else None
+            if html is not None:
+                edit_calls.append(html)
+            else:
+                text = kwargs.get("text", "")
+                assert isinstance(text, str)
+                edit_calls.append(text)
 
         adapter.bot.edit_message_text = capture_edit
 

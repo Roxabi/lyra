@@ -9,6 +9,7 @@ functionality, we skip extraction when the request URL is relative.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -84,6 +85,21 @@ def _make_telegram_adapter() -> TelegramAdapter:
         inbound_bus=MagicMock(),
     )
     return adapter
+
+
+def wire_telegram_rich_bot(bot: AsyncMock, *, message_id: int = 42) -> SimpleNamespace:
+    """Attach Bot API 10.1 rich-message mocks (happy path for outbound tests)."""
+    sent = SimpleNamespace(message_id=message_id)
+    bot.send_rich_message = AsyncMock(return_value=sent)
+    bot.send_rich_message_draft = AsyncMock(return_value=True)
+    bot.edit_message_text = AsyncMock(return_value=sent)
+    return sent
+
+
+@pytest.fixture(autouse=True)
+def _disable_telegram_rich_drafts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Existing tests target persisted-message path; draft tests opt in explicitly."""
+    monkeypatch.setenv("FACTORY_TELEGRAM_RICH_DRAFTS", "0")
 
 
 def _make_telegram_message() -> InboundMessage:

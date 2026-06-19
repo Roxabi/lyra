@@ -148,7 +148,9 @@ class TestDeliverTextChunks:
 
         await _deliver_text_chunks(session, placeholder_obj, ["hello"])
 
-        fmt.edit_placeholder_text.assert_awaited_once_with(placeholder_obj, "hello")
+        fmt.edit_placeholder_text.assert_awaited_once_with(
+            placeholder_obj, "hello", finalize=True
+        )
         fmt.send_message.assert_not_awaited()
 
     async def test_multiple_chunks_edit_then_send_overflow(self) -> None:
@@ -162,7 +164,9 @@ class TestDeliverTextChunks:
             session, placeholder_obj, ["chunk1", "chunk2", "chunk3"]
         )
 
-        fmt.edit_placeholder_text.assert_awaited_once_with(placeholder_obj, "chunk1")
+        fmt.edit_placeholder_text.assert_awaited_once_with(
+            placeholder_obj, "chunk1", finalize=True
+        )
         assert fmt.send_message.await_count == 2
         fmt.send_message.assert_any_await("chunk2")
         fmt.send_message.assert_any_await("chunk3")
@@ -205,7 +209,7 @@ class TestDeliverFinal:
         await _deliver_final(session, placeholder_obj)
 
         fmt.edit_placeholder_text.assert_awaited_once_with(
-            placeholder_obj, "final hello"
+            placeholder_obj, "final hello", finalize=True
         )
         fmt.send_message.assert_not_awaited()
 

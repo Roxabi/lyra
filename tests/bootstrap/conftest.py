@@ -18,12 +18,45 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from tests.helpers.standalone_bot_store import (
+    _PATCH_DC,
+    _PATCH_TG,
+    discord_roster,
+    telegram_roster,
+)
+
 # Patch target: must match where start_audio_consumer is imported.
 # After #1663 refactor, the call site moved into _standalone_wiring_common —
 # a single patch covers both Telegram and Discord paths.
 _PATCH_TARGETS = (
     "factory.bootstrap.wiring._standalone_wiring_common.start_audio_consumer",
 )
+
+
+@pytest.fixture(autouse=True)
+def _default_standalone_bot_roster(request: pytest.FixtureRequest) -> object:
+    """Default BotStore roster (bot_id='main') for bootstrap adapter tests."""
+    if request.node.get_closest_marker("bot_store_live") is not None:
+        yield
+        return
+
+    with (
+        patch(
+            _PATCH_TG,
+            AsyncMock(return_value=telegram_roster(["main"])),
+        ),
+        patch(
+            _PATCH_DC,
+            AsyncMock(
+                return_value=discord_roster(
+                    ["main"],
+                    auto_thread=False,
+                    thread_hot_hours=4,
+                )
+            ),
+        ),
+    ):
+        yield
 
 
 @pytest.fixture(autouse=True)

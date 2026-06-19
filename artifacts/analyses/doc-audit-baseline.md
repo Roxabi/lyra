@@ -82,10 +82,11 @@ Captured 2026-06-17 via `ssh roxabituwer`.
 ## Automated gates (detail)
 
 ```
-check_doc_drift.py     → OK (0 new, baseline empty)
-arch snapshot          → OK (CURRENT.generated.md current)
-secrets_drift          → OK (quadlet.toml ↔ manifest ↔ acl-matrix)
-qg.conf drift          → OK (stack.yml SSoT)
+check_doc_drift.py            → OK (0 new, baseline empty)
+check_doc_semantic_drift.py   → OK (Phase C gate)
+arch snapshot                 → OK (CURRENT.generated.md current)
+secrets_drift                 → OK (quadlet.toml ↔ manifest ↔ acl-matrix)
+qg.conf drift                 → OK (stack.yml SSoT)
 ```
 
 **Gap** : aucun gate ne détecte :
@@ -94,7 +95,7 @@ qg.conf drift          → OK (stack.yml SSoT)
 - compteur conteneurs
 - licence README vs pyproject
 
-**Recommandation Phase C** : `tools/check_doc_semantic_drift.sh` avec allowlist `docs/history/`.
+**Phase C (shipped)** : `tools/check_doc_semantic_drift.py` — regex gate CI ; allowlist `docs/history/**`, `docs/architecture/adr/**`.
 
 ---
 
@@ -202,4 +203,4 @@ Additional `lyra` word counts (not all stale — product name OK):
 
 ## Next step
 
-**Phase 1 doc audit — closed** (F01–F18 living-doc + host-env items). Phase 2 optionnel : domain pages, ADR archive spot-checks (`LYRA_HEALTH_*` mentions historiques OK).
+**Phase C — shipped** (`tools/check_doc_semantic_drift.py`, CI + `stack.yml`). Phase 2 optionnel : domain pages hors gate (ex. `~/.lyra` dans pages architecture non-ADR), `plugins/lyra-ops/`.

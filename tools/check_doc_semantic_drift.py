@@ -1,0 +1,294 @@
+#!/usr/bin/env python3
+"""Scan living docs for known semantic drift patterns (Phase C doc audit gate).
+
+Catches operator-facing stale text that check_doc_drift.py does not cover:
+renamed CLI/Makefile targets, old data paths, wrong container counts, licence drift.
+
+Exit 0 = clean. Exit 1 = violations found. Exit 2 = script error.
+
+Usage:
+    python tools/check_doc_semantic_drift.py [--root ROOT]
+"""
+
+from __future__ import annotations
+
+import argparse
+import re
+import sys
+import tomllib
+from dataclasses import dataclass
+from pathlib import Path
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+_HISTORICAL_RE = re.compile(
+    r"deleted|removed|superseded|renamed|formerly|no longer"
+    r"|legacy|historical|#\d+ deleted",
+    re.IGNORECASE,
+)
+
+_SKIP_DIR_PARTS = frozenset({"history"})
+_SKIP_UNDER = (
+    Path("docs/architecture/adr"),
+    Path("artifacts"),
+)
+
+_IGNORE_MARKERS = ("<!-- semantic-ignore -->", "<!-- drift-ignore -->")
+
+
+@dataclass(frozen=True)
+class Rule:
+    rule_id: str
+    pattern: re.Pattern[str]
+    message: str
+
+
+RULES: tuple[Rule, ...] = (
+    Rule(
+        "make_lyra",
+        re.compile(r"\bmake lyra\b"),
+        "use `make factory` / `make remote`",
+    ),
+    Rule(
+        "lyra_cli",
+        re.compile(
+            r"\blyra (config|setup|start|stop|reload|logs|errors|status|"
+            r"validate|show)\b"
+        ),
+        "CLI entrypoint is `factory` (pyproject.scripts)",
+    ),
+    Rule(
+        "lyra_cli_name",
+        re.compile(r"(the `lyra` CLI|`lyra` CLI|put `lyra` on|lyra` on your PATH)"),
+        "document the `factory` CLI, not `lyra`",
+    ),
+    Rule(
+        "cd_lyra_repo",
+        re.compile(r"\bcd lyra\b"),
+        "repo directory is `roxabi-factory`",
+    ),
+    Rule(
+        "projects_lyra_path",
+        re.compile(r"~/projects/lyra\b"),
+        "repo path is `~/projects/roxabi-factory`",
+    ),
+    Rule(
+        "dot_lyra_path",
+        re.compile(r"~/.lyra\b"),
+        "runtime data root is `~/.roxabi/factory`",
+    ),
+    Rule(
+        "lyra_health_env",
+        re.compile(r"LYRA_HEALTH_"),
+        "hub health env vars are `FACTORY_HEALTH_*`",
+    ),
+    Rule(
+        "lyra_systemd_unit",
+        re.compile(r"\blyra-(hub|telegram|discord|nats|clipool|blobstore)\b"),
+        "systemd/Quadlet units are `factory-*`",
+    ),
+    Rule(
+        "lyra_ghcr_image",
+        re.compile(r"ghcr\.io/roxabi/lyra"),
+        "container images are `ghcr.io/roxabi/factory`",
+    ),
+    Rule(
+        "stale_container_count",
+        re.compile(r"\b(?:four|five|six)\s+containers?\b", re.IGNORECASE),
+        "production stack is nine Quadlet containers (`deploy/quadlet.toml`)",
+    ),
+    Rule(
+        "readme_mit_badge",
+        re.compile(r"License:\s*MIT", re.IGNORECASE),
+        "README licence must match pyproject.toml (AGPL-3.0-or-later)",
+    ),
+    Rule(
+        "readme_mit_section",
+        re.compile(r"^MIT\s*$", re.MULTILINE),
+        "README licence section must match pyproject.toml",
+    ),
+)
+
+
+# ---------------------------------------------------------------------------
+# File collection
+# ---------------------------------------------------------------------------
+
+
+def _default_root() -> Path:
+    return Path(__file__).resolve().parent.parent
+
+
+def _is_excluded(rel: Path) -> bool:
+    if any(part in _SKIP_DIR_PARTS for part in rel.parts):
+        return True
+    for prefix in _SKIP_UNDER:
+        if prefix in rel.parents or rel == prefix:
+            return True
+    return False
+
+
+def _collect_files(root: Path) -> list[Path]:
+    out: list[Path] = []
+
+    def add(p: Path) -> None:
+        if p.is_file() and not _is_excluded(p.relative_to(root)):
+            out.append(p)
+
+    add(root / "README.md")
+    add(root / "deploy" / "CLAUDE.md")
+
+    docs = root / "docs"
+    if docs.is_dir():
+        for ext in ("*.md", "*.mdx"):
+            for f in sorted(docs.rglob(ext)):
+                add(f)
+
+    return out
+
+
+def _line_exempt(line: str) -> bool:
+    if any(m in line for m in _IGNORE_MARKERS):
+        return True
+    return bool(_HISTORICAL_RE.search(line))
+
+
+# ---------------------------------------------------------------------------
+# Licence oracle
+# ---------------------------------------------------------------------------
+
+
+def _expected_license_snippet(root: Path) -> str:
+    pyproject = root / "pyproject.toml"
+    with pyproject.open("rb") as f:
+        data = tomllib.load(f)
+    lic = data.get("project", {}).get("license")
+    if isinstance(lic, dict):
+        text = lic.get("text", "")
+    else:
+        text = str(lic or "")
+    if not text:
+        raise ValueError("pyproject.toml missing project.license")
+    # README uses short form in badge prose (AGPL-3.0-or-later → AGPL)
+    return text.split("-")[0].upper()  # AGPL
+
+
+def _check_readme_license(root: Path) -> list[str]:
+    readme = root / "README.md"
+    if not readme.is_file():
+        return []
+    text = readme.read_text(encoding="utf-8")
+    expected = _expected_license_snippet(root)
+    violations: list[str] = []
+    if "MIT" in text and "AGPL" not in text:
+        violations.append(
+            f"{readme.relative_to(root)}: README licence text missing AGPL "
+            f"(expected {expected} from pyproject.toml)"
+        )
+    elif expected not in text.upper():
+        violations.append(
+            f"{readme.relative_to(root)}: README should mention {expected} "
+            "(pyproject.toml project.license)"
+        )
+    return violations
+
+
+# ---------------------------------------------------------------------------
+# Scan
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Violation:
+    path: Path
+    line_no: int
+    rule_id: str
+    message: str
+    line: str
+
+
+def _scan_file(path: Path, root: Path) -> list[Violation]:
+    rel = path.relative_to(root)
+    violations: list[Violation] = []
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except UnicodeDecodeError:
+        return violations
+
+    for idx, line in enumerate(lines, start=1):
+        if _line_exempt(line):
+            continue
+        for rule in RULES:
+            if rule.rule_id.startswith("readme_mit"):
+                continue  # handled by _check_readme_license
+            if rule.pattern.search(line):
+                violations.append(
+                    Violation(
+                        path=rel,
+                        line_no=idx,
+                        rule_id=rule.rule_id,
+                        message=rule.message,
+                        line=line.strip(),
+                    )
+                )
+    return violations
+
+
+def run(root: Path) -> list[Violation]:
+    all_v: list[Violation] = []
+    for f in _collect_files(root):
+        all_v.extend(_scan_file(f, root))
+    for msg in _check_readme_license(root):
+        all_v.append(
+            Violation(
+                path=Path("README.md"),
+                line_no=0,
+                rule_id="readme_license",
+                message=msg,
+                line="",
+            )
+        )
+    return all_v
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", type=Path, default=None, help="Repo root")
+    args = parser.parse_args(argv)
+
+    root = (args.root or _default_root()).resolve()
+    if not (root / "pyproject.toml").is_file():
+        print(
+            f"check_doc_semantic_drift: invalid root (no pyproject.toml): {root}",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        violations = run(root)
+    except Exception as exc:  # noqa: BLE001
+        print(
+            f"check_doc_semantic_drift: unexpected error: "
+            f"{type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
+        return 2
+
+    if not violations:
+        print("doc-semantic-drift: OK — 0 violations.")
+        return 0
+
+    print(f"doc-semantic-drift: FAIL — {len(violations)} violation(s):\n")
+    for v in violations:
+        loc = f"{v.path}:{v.line_no}" if v.line_no else str(v.path)
+        print(f"  [{v.rule_id}] {loc}")
+        print(f"    → {v.message}")
+        if v.line:
+            print(f"    | {v.line}")
+    return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -18,35 +18,13 @@ from factory.bootstrap.wiring._standalone_wiring_common import (
     TypingDeps,
     wire_bot_common,
 )
+from factory.bootstrap.wiring.kv_bot_roster import seed_bot_roster
 from factory.bootstrap.wiring.kv_watch_channels import seed_watch_channels
 from factory.core.messaging.message import Platform
 from factory.paths import factory_discord_data_dir
 from roxabi_nats.readiness import wait_for_hub
 
 log = logging.getLogger(__name__)
-
-
-async def _bootstrap_discord_setup() -> tuple:
-    """Load Discord roster from BotStore and resolve credentials."""
-    from factory.bootstrap.wiring._standalone_bot_store import (
-        load_discord_roster_from_store,
-    )
-
-    dc_multi_cfg = await load_discord_roster_from_store()
-    if not dc_multi_cfg.bots:
-        sys.exit(
-            "No discord bots configured — runtime roster is sourced from BotStore."
-            " Run 'factory bot init' to seed it."
-        )
-
-    dc_creds: dict[str, str] = {}
-    for bot_cfg in dc_multi_cfg.bots:
-        bot_id = bot_cfg.bot_id
-        token, _ = credentials.load_bot_token("discord", bot_id)
-        dc_creds[bot_id] = token
-        log.info("read token from /run/secrets/bot_token-%s", bot_id)
-
-    return dc_multi_cfg, dc_creds
 
 
 async def _create_dc_stores(discord_dir: Path) -> tuple:
@@ -103,7 +81,6 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
     _stop: asyncio.Event | None = None,
 ) -> None:
     """Bootstrap a standalone Discord adapter process connected to NATS."""
-    dc_multi_cfg, dc_creds = await _bootstrap_discord_setup()
     discord_dir = factory_discord_data_dir()
     discord_dir.mkdir(parents=True, exist_ok=True)
     (dc_thread_store,) = await _create_dc_stores(discord_dir)
@@ -141,9 +118,6 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
             )
             return adapter_dc, typing_deps
 
-        # wire_bot_common returns (adapter, inbound_bus, typing_listener, consumer).
-        # Discord teardown needs the token for adapter.start(tok), so we extend the
-        # tuple to (adapter, token, inbound_bus, typing_listener, consumer).
         (
             adapter_dc,
             inbound_bus_dc,
@@ -162,11 +136,22 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
         return (adapter_dc, token, inbound_bus_dc, dc_typing_listener, consumer)
 
     # ADR-079 S3: wait_for_hub is a load-bearing barrier — it MUST precede
-    # start_audio_consumer (called inside wire_bot_common). The hub sets hub.ready only
-    # after ensure_stream + ensure_kv complete, so this call guarantees stream + KV
-    # exist before any adapter bind/consume attempt. Moving it after the loop would
-    # reintroduce the cold-boot race (BucketNotFoundError / missing-stream).
+    # seed_bot_roster and start_audio_consumer (called inside wire_bot_common).
     await wait_for_hub(nc)
+
+    dc_multi_cfg = await seed_bot_roster(js, "discord")
+    if not dc_multi_cfg.bots:
+        sys.exit(
+            "No discord bots configured — roster comes from factory-state KV."
+            " Run 'factory bot init' and ensure the hub published roster.discord."
+        )
+
+    dc_creds: dict[str, str] = {}
+    for bot_cfg in dc_multi_cfg.bots:
+        bot_id = bot_cfg.bot_id
+        token, _ = credentials.load_bot_token("discord", bot_id)
+        dc_creds[bot_id] = token
+        log.info("read token from /run/secrets/bot_token-%s", bot_id)
 
     for bot_cfg in dc_multi_cfg.bots:
         bot_id = bot_cfg.bot_id

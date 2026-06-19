@@ -1,4 +1,4 @@
-"""Patch helpers for standalone adapter BotStore roster loading in tests."""
+"""Patch helpers for standalone adapter KV roster loading in tests."""
 
 from __future__ import annotations
 
@@ -15,12 +15,8 @@ from factory.config import (
     TelegramMultiConfig,
 )
 
-_PATCH_TG = (
-    "factory.bootstrap.wiring._standalone_bot_store.load_telegram_roster_from_store"
-)
-_PATCH_DC = (
-    "factory.bootstrap.wiring._standalone_bot_store.load_discord_roster_from_store"
-)
+_PATCH_TG = "factory.bootstrap.wiring.standalone_telegram.seed_bot_roster"
+_PATCH_DC = "factory.bootstrap.wiring.standalone_discord.seed_bot_roster"
 
 
 def telegram_roster(bot_ids: list[str], **bot_kwargs: object) -> TelegramMultiConfig:
@@ -76,5 +72,3 @@ def patch_discord_roster(
             )
         ),
     )
-
-

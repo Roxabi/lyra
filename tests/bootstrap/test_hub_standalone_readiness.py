@@ -259,6 +259,9 @@ class TestHubAudioProvisioningBehavioral:
             call_order.append("ensure_active_jobs_kv")
             return MagicMock()
 
+        async def _record_publish_bot_roster(*_a, **_kw):
+            call_order.append("publish_bot_roster")
+
         async def _record_announce_hub_ready(*_a, **_kw):
             call_order.append("announce_hub_ready")
             raise SystemExit("test-sentinel: stop after announce_hub_ready")
@@ -357,6 +360,10 @@ class TestHubAudioProvisioningBehavioral:
                 AsyncMock(),
             ),
             patch(
+                "factory.bootstrap.standalone.hub_standalone.publish_bot_roster",
+                side_effect=_record_publish_bot_roster,
+            ),
+            patch(
                 "factory.bootstrap.standalone.hub_standalone.announce_hub_ready",
                 side_effect=_record_announce_hub_ready,
             ),
@@ -401,6 +408,15 @@ class TestHubAudioProvisioningBehavioral:
         assert ej_idx < ar_idx, (
             f"ensure_active_jobs_kv (pos {ej_idx}) must precede announce_hub_ready "
             f"(pos {ar_idx}) — ADR-079 S3 ordering violated."
+        )
+        assert "publish_bot_roster" in call_order, (
+            "publish_bot_roster was never awaited — hub must publish roster "
+            "before announce_hub_ready (#1946)."
+        )
+        pbr_idx = call_order.index("publish_bot_roster")
+        assert pbr_idx < ar_idx, (
+            f"publish_bot_roster (pos {pbr_idx}) must precede announce_hub_ready "
+            f"(pos {ar_idx}) — #1946 ordering violated."
         )
 
     @pytest.mark.asyncio

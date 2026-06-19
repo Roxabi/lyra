@@ -215,7 +215,7 @@ async def test_seed_bot_roster_timeout_exits() -> None:
     kv = MagicMock()
 
     async def _slow_get(_key: str) -> MagicMock:
-        await asyncio.sleep(1.0)
+        await asyncio.sleep(1.0)  # event-based
         entry = MagicMock()
         entry.value = b"{}"
         return entry

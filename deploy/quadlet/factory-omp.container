@@ -41,6 +41,11 @@ Environment=PI_CODING_AGENT_DIR=/home/factory/.config/omp-pi
 # Same mount as factory-clipool; UserNS=keep-id:uid=1500,gid=1500 ensures correct ownership.
 Volume=%h/projects:/home/factory/projects:z
 Label=io.containers.autoupdate=registry
+# Liveness probe — PID 1 is `factory adapter omp` (Exec= above). Mirrors the
+# clipool pattern (grep -q <subcmd> /proc/1/cmdline); the sole probeless factory
+# unit otherwise. health-on-failure defaults to none → status-only, no restart.
+HealthCmd=grep -q omp /proc/1/cmdline
+HealthInterval=30s
 
 [Service]
 Restart=on-failure

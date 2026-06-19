@@ -1,5 +1,7 @@
 # Runbook — Secret layout & rotation
 
+> **Lost all nkey seeds?** Use [secrets-disaster-recovery.md](secrets-disaster-recovery.md) (`factory secrets reset`) — this runbook is for routine rotation of individual secrets.
+
 ## Secret layout
 
 | Podman secret | Source file | Mounted at |

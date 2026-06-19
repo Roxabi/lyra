@@ -21,9 +21,14 @@ import json
 import logging
 from typing import Any
 
+from factory.infrastructure.kv.factory_state import (
+    FACTORY_STATE_BUCKET,
+    open_or_create_kv,
+)
+
 log = logging.getLogger(__name__)
 
-_BUCKET = "factory-state"
+_BUCKET = FACTORY_STATE_BUCKET
 
 
 # ---------------------------------------------------------------------------
@@ -48,35 +53,7 @@ def _parse_ids(raw: Any) -> frozenset[int]:
     return frozenset(result)
 
 
-async def _open_or_create_kv(js: Any) -> Any:
-    """Open or create the factory-state KV bucket (hub-only provisioner path).
-
-    Handles the cold-boot race: bucket may not exist on the first hub start
-    because announce_hub_ready (which calls this indirectly) runs *after*
-    publish_watch_channels.  Only publish_watch_channels uses this helper;
-    adapter-side readers use plain js.key_value() (bind-only, relying on
-    wait_for_hub to guarantee the bucket exists first).
-    """
-    from nats.js.api import KeyValueConfig, StorageType
-    from nats.js.errors import BadRequestError, BucketNotFoundError
-
-    try:
-        return await js.key_value(_BUCKET)
-    except BucketNotFoundError:
-        pass
-
-    try:
-        return await js.create_key_value(
-            KeyValueConfig(bucket=_BUCKET, storage=StorageType.FILE)
-        )
-    except BadRequestError as exc:
-        # Verify this is the "stream name already in use" error (err_code 10058)
-        # before falling back — a BadRequestError for a different reason must
-        # propagate so the real cause is not silently swallowed (#20).
-        if exc.err_code != 10058:
-            raise
-        # Lost the creation race — another process created it; open it.
-        return await js.key_value(_BUCKET)
+_open_or_create_kv = open_or_create_kv
 
 
 # ---------------------------------------------------------------------------

@@ -102,6 +102,7 @@ markers = [
     "nats_integration: NATS integration tests requiring Docker Compose",
     "integration: cross-host integration tests requiring M1 Tailnet",
     "audio_consumer_live: test exercises audio consumer directly; skip the autouse no-op neutralizer",
+    "bot_store_live: test exercises real BotStore roster loading; skip autouse roster mocks",
     "smoke: fast in-process smoke tests for critical user-facing paths",
     "omp_contract: OMP wire + driver + codec + E2E contract regression gate",
 ]

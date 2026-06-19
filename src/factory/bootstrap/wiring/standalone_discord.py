@@ -26,13 +26,18 @@ from roxabi_nats.readiness import wait_for_hub
 log = logging.getLogger(__name__)
 
 
-async def _bootstrap_discord_setup(raw_config: dict) -> tuple:
-    """Load Discord config and credentials."""
-    from factory.config import DiscordMultiConfig
+async def _bootstrap_discord_setup() -> tuple:
+    """Load Discord roster from BotStore and resolve credentials."""
+    from factory.bootstrap.wiring._standalone_bot_store import (
+        load_discord_roster_from_store,
+    )
 
-    dc_multi_cfg = DiscordMultiConfig.model_validate(raw_config.get("discord", {}))
+    dc_multi_cfg = await load_discord_roster_from_store()
     if not dc_multi_cfg.bots:
-        sys.exit("No discord bots configured")
+        sys.exit(
+            "No discord bots configured — runtime roster is sourced from BotStore."
+            " Run 'factory bot init' to seed it."
+        )
 
     dc_creds: dict[str, str] = {}
     for bot_cfg in dc_multi_cfg.bots:
@@ -98,7 +103,7 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
     _stop: asyncio.Event | None = None,
 ) -> None:
     """Bootstrap a standalone Discord adapter process connected to NATS."""
-    dc_multi_cfg, dc_creds = await _bootstrap_discord_setup(raw_config)
+    dc_multi_cfg, dc_creds = await _bootstrap_discord_setup()
     discord_dir = factory_discord_data_dir()
     discord_dir.mkdir(parents=True, exist_ok=True)
     (dc_thread_store,) = await _create_dc_stores(discord_dir)

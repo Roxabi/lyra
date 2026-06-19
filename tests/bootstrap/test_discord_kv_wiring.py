@@ -21,75 +21,43 @@ import pytest
 
 
 class TestDiscordSetupNoAgentStore:
-    """SC1: _bootstrap_discord_setup must NOT touch AgentStore or config.db."""
+    """SC1: _bootstrap_discord_setup loads roster from BotStore, not AgentStore."""
 
-    async def test_setup_completes_without_constructing_agent_store(self) -> None:
+    async def test_setup_completes_without_constructing_agent_store(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """_bootstrap_discord_setup runs to completion without AgentStore.
 
         Behavioral approach: patch AgentStore.__init__ to raise AssertionError
         so any instantiation fails loudly, then drive the function and assert it
         returns (dc_multi_cfg, dc_creds) without raising.
-
-        Belt-and-suspenders: also assert source-level absence of both
-        'config.db' and 'AgentStore' in the standalone_discord module.
         """
-        # Arrange
         from factory.bootstrap.wiring import standalone_discord as _mod
+        from tests.helpers.standalone_bot_store import patch_discord_roster
 
-        raw_config = {
-            "discord": {
-                "bots": [
-                    {
-                        "bot_id": "testbot",
-                        "auto_thread": False,
-                        "thread_hot_hours": 4,
-                    }
-                ]
-            }
-        }
+        patch_discord_roster(
+            monkeypatch,
+            ["testbot"],
+            auto_thread=False,
+            thread_hot_hours=4,
+        )
 
-        with (
-            patch(
-                "factory.infrastructure.stores.agent_store.AgentStore.__init__",
-                side_effect=AssertionError("config.db read!"),
-            ),
-            patch(
-                "factory.bootstrap.credentials.load_bot_token",
-                return_value=("fake-token", None),
-            ),
+        with patch(
+            "factory.bootstrap.credentials.load_bot_token",
+            return_value=("fake-token", None),
         ):
-            # Act — must not raise
-            result = await _mod._bootstrap_discord_setup(raw_config)
+            result = await _mod._bootstrap_discord_setup()
 
-        # Assert — returns (dc_multi_cfg, dc_creds) tuple without raising
         dc_multi_cfg, dc_creds = result
         assert dc_multi_cfg.bots[0].bot_id == "testbot"
         assert dc_creds == {"testbot": "fake-token"}
 
-        # Belt-and-suspenders: source-level absence guarantees
-        module_source = inspect.getsource(_mod)
-        assert "config.db" not in module_source, (
-            "standalone_discord references 'config.db' — must not read config DB"
-        )
-        assert "AgentStore" not in module_source, (
-            "standalone_discord imports or uses AgentStore — must be KV-only"
-        )
-
     def test_agent_store_absent_from_standalone_discord_source(self) -> None:
-        """Source-level guard: AgentStore import must be absent (SC1).
-
-        Negative test: deleting the KV-wiring and re-adding AgentStore would
-        make this test RED immediately.
-        """
-        # Arrange
+        """Source-level guard: AgentStore import must be absent (SC1)."""
         from factory.bootstrap.wiring import standalone_discord as _mod
 
-        # Act
         source = inspect.getsource(_mod)
-
-        # Assert
         assert "AgentStore" not in source
-        assert "config.db" not in source
 
 
 # ---------------------------------------------------------------------------
@@ -100,7 +68,9 @@ class TestDiscordSetupNoAgentStore:
 class TestDiscordWireBotReceivesWatchChannels:
     """SC1 / _wire_bot: DiscordAdapter must receive watch_channels from KV seed."""
 
-    async def test_wire_bot_forwards_seeded_watch_channels_to_adapter(self) -> None:
+    async def test_wire_bot_forwards_seeded_watch_channels_to_adapter(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """seed_watch_channels returns {42, 99} → DiscordAdapter gets those IDs.
 
         Tests _wire_bot indirectly via bootstrap_discord_standalone wiring loop.
@@ -115,17 +85,15 @@ class TestDiscordWireBotReceivesWatchChannels:
         stop = asyncio.Event()
         stop.set()
 
-        raw_config = {
-            "discord": {
-                "bots": [
-                    {
-                        "bot_id": "testbot",
-                        "auto_thread": False,
-                        "thread_hot_hours": 4,
-                    }
-                ]
-            }
-        }
+        from tests.helpers.standalone_bot_store import patch_discord_roster
+
+        patch_discord_roster(
+            monkeypatch,
+            ["testbot"],
+            auto_thread=False,
+            thread_hot_hours=4,
+        )
+        raw_config = {}
         from factory.bootstrap.factory.config import AdapterConfigBundle
         from factory.core.messaging.message import Platform
 

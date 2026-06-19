@@ -16,11 +16,16 @@ from factory.adapters.telegram.telegram_formatting import (
 from factory.adapters.telegram.telegram_formatting import (
     _render_text as render_text,
 )
+from factory.adapters.telegram.telegram_rich import build_rich_message
 from factory.core.messaging.message import (  # noqa: F401
     Button,
     OutboundMessage,
 )
-from tests.adapters.conftest import _make_telegram_adapter, _make_telegram_message
+from tests.adapters.conftest import (
+    _make_telegram_adapter,
+    _make_telegram_message,
+    wire_telegram_rich_bot,
+)
 
 # ---------------------------------------------------------------------------
 # Slice 3 RED tests — TelegramAdapter rendering of OutboundMessage
@@ -36,10 +41,8 @@ class TestTelegramOutboundMessage:
         bot.send_message once with chat_id and text="hello"."""
         # Arrange
         adapter = _make_telegram_adapter()
-        sent_mock = MagicMock()
-        sent_mock.message_id = 42
         adapter.bot = AsyncMock()
-        adapter.bot.send_message = AsyncMock(return_value=sent_mock)
+        wire_telegram_rich_bot(adapter.bot, message_id=42)
 
         outbound = OutboundMessage.from_text("hello")
         original_msg = _make_telegram_message()
@@ -48,14 +51,12 @@ class TestTelegramOutboundMessage:
         await adapter.send(original_msg, outbound)
 
         # Assert
-        adapter.bot.send_message.assert_awaited_once()
-        call_kwargs = adapter.bot.send_message.call_args
+        adapter.bot.send_rich_message.assert_awaited_once()
+        call_kwargs = adapter.bot.send_rich_message.call_args
         assert call_kwargs.kwargs.get("chat_id") == 123 or (
             len(call_kwargs.args) > 0 and call_kwargs.args[0] == 123
         )
-        assert call_kwargs.kwargs.get("text") == "hello" or (
-            len(call_kwargs.args) > 1 and call_kwargs.args[1] == "hello"
-        )
+        assert call_kwargs.kwargs["rich_message"] == build_rich_message("hello")
 
     def test_render_text_empty_returns_no_chunks(self) -> None:
         """_render_text("") returns [] — no empty-string chunk to send to the API."""
@@ -124,7 +125,7 @@ class TestTelegramOutboundMessage:
             return m
 
         adapter.bot = AsyncMock()
-        adapter.bot.send_message = capture_send
+        adapter.bot.send_rich_message = capture_send
 
         outbound = OutboundMessage(
             content=["x" * 5000],
@@ -136,7 +137,7 @@ class TestTelegramOutboundMessage:
         await adapter.send(original_msg, outbound)
 
         # Assert — two send calls were made (5000 chars -> 2 chunks of <= 4096)
-        assert len(calls) == 2, f"Expected 2 send_message calls, got {len(calls)}"
+        assert len(calls) == 2, f"Expected 2 send_rich_message calls, got {len(calls)}"
         # First chunk: no reply_markup key, or reply_markup is None/falsy
         assert calls[0].get("reply_markup") is None or "reply_markup" not in calls[0]
         # Last chunk: reply_markup is set (truthy)
@@ -147,10 +148,8 @@ class TestTelegramOutboundMessage:
         """send() stores the reply message_id in outbound.metadata."""
         # Arrange
         adapter = _make_telegram_adapter()
-        sent_mock = MagicMock()
-        sent_mock.message_id = 999
         adapter.bot = AsyncMock()
-        adapter.bot.send_message = AsyncMock(return_value=sent_mock)
+        wire_telegram_rich_bot(adapter.bot, message_id=999)
 
         outbound = OutboundMessage.from_text("hi")
         original_msg = _make_telegram_message()
@@ -169,13 +168,13 @@ async def test_telegram_fallback_sets_reply_message_id() -> None:
     from tests.adapters.conftest import _make_telegram_adapter, _make_telegram_message
 
     adapter = _make_telegram_adapter()
-    sent_mock = MagicMock()
-    sent_mock.message_id = 77
     adapter.bot = AsyncMock()
-    # Make send_message raise to trigger fallback
-    adapter.bot.send_message = AsyncMock(
-        side_effect=[Exception("placeholder failed"), sent_mock]
-    )  # noqa: E501
+    fallback_sent = wire_telegram_rich_bot(adapter.bot, message_id=77)
+    # Rich + MarkdownV2 placeholder attempts fail → drain_fallback path
+    adapter.bot.send_rich_message = AsyncMock(
+        side_effect=[Exception("placeholder failed"), fallback_sent, fallback_sent]
+    )
+    adapter.bot.send_message = AsyncMock(side_effect=Exception("placeholder failed"))
 
     original_msg = _make_telegram_message()
     outbound = OutboundMessage.from_text("")

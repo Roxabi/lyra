@@ -42,6 +42,8 @@ Volume=%h/.roxabi/factory/turn-writer/:/home/factory/.roxabi/factory/turn-writer
 # either fail with loop-device errors or are silently downgraded to empty named
 # volumes (IsADirectoryError at read time). Inline Volume= does a direct bind.
 Volume=%h/.roxabi/factory/config.toml:/app/config.toml:ro,z
+# acl-matrix for `factory ops verify` (default path deploy/nats/acl-matrix.json, cwd=/app).
+Volume=%h/projects/roxabi-factory/deploy/nats/acl-matrix.json:/app/deploy/nats/acl-matrix.json:ro,z
 # Vault DB — hub runs `vault put` as subprocess; vault CLI defaults to ~/.roxabi-vault/vault.db
 # which must be bind-mounted so writes reach the host DB. VAULT_DB tells the CLI the container path.
 Volume=%h/.roxabi-vault:/home/factory/.roxabi-vault:z

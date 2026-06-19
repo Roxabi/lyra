@@ -61,7 +61,7 @@ For script behaviour, exemption files, and exit-code contract, see [`tools/CLAUD
 
 **`doc_semantic_drift`** — regex scan for rename drift `check_doc_drift.py` misses: `make lyra`, `lyra config`, `~/.lyra`, `LYRA_HEALTH_*`, wrong container counts, README licence vs `pyproject.toml`. Scans `README.md`, `docs/**` (excl. `docs/history/**`, `docs/architecture/adr/**`), `deploy/CLAUDE.md`. Per-line exempt: `<!-- semantic-ignore -->`.
 
-CI also greps operator docs for removed logging symbols (`FACTORY_LOG_DIR`, `json_file=`, `RotatingFileHandler`) before running the Python gates.
+CI also greps operator docs for removed legacy logging configuration symbols (see the doc-drift step in `.github/workflows/ci.yml`) before running the Python gates.
 
 ---
 

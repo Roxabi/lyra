@@ -33,6 +33,31 @@ async def _connect_bot_store() -> BotStore:
     return store
 
 
+async def _maybe_publish_roster(store: object) -> None:
+    """Best-effort dual-write: mirror BotStore roster into factory-state KV."""
+    nats_url = os.environ.get("NATS_URL", "").strip()
+    if not nats_url:
+        return
+
+    from factory.infrastructure.kv.bot_roster import publish_bot_roster
+    from roxabi_nats import nats_connect
+
+    try:
+        nc = await nats_connect(nats_url)
+    except Exception as exc:  # noqa: BLE001
+        typer.echo(f"  warning: could not connect to NATS for roster publish: {exc}")
+        return
+
+    try:
+        js = nc.jetstream()
+        await publish_bot_roster(js, store)
+        typer.echo("  published roster to factory-state KV")
+    except Exception as exc:  # noqa: BLE001
+        typer.echo(f"  warning: could not publish roster to KV: {exc}")
+    finally:
+        await nc.close()
+
+
 def _validate_platform(platform: str) -> None:
     if platform not in _VALID_PLATFORMS:
         typer.echo(

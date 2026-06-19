@@ -323,7 +323,7 @@ class TestBotInitKvDualWrite:
             AsyncMock(return_value=mock_nc),
         )
         monkeypatch.setattr(
-            "factory.bootstrap.wiring.kv_bot_roster.publish_bot_roster",
+            "factory.infrastructure.kv.bot_roster.publish_bot_roster",
             publish_mock,
         )
 

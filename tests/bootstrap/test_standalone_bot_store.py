@@ -7,7 +7,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from factory.bootstrap.wiring.kv_bot_roster import publish_bot_roster, seed_bot_roster
+from factory.bootstrap.wiring.kv_bot_roster import seed_bot_roster
+from factory.infrastructure.kv.bot_roster import publish_bot_roster
 from factory.config import DiscordMultiConfig, TelegramMultiConfig
 from factory.infrastructure.stores.bot_store import BotStore
 from roxabi_contracts.state.bot_roster import roster_key
@@ -33,7 +34,7 @@ async def test_publish_then_seed_telegram_roster(
     js = MagicMock()
 
     monkeypatch.setattr(
-        "factory.bootstrap.wiring.kv_bot_roster._open_or_create_kv",
+        "factory.infrastructure.kv.bot_roster.open_or_create_kv",
         AsyncMock(return_value=kv),
     )
     await publish_bot_roster(js, store)
@@ -75,7 +76,7 @@ async def test_publish_then_seed_discord_roster(
     js = MagicMock()
 
     monkeypatch.setattr(
-        "factory.bootstrap.wiring.kv_bot_roster._open_or_create_kv",
+        "factory.infrastructure.kv.bot_roster.open_or_create_kv",
         AsyncMock(return_value=kv),
     )
     await publish_bot_roster(js, store)

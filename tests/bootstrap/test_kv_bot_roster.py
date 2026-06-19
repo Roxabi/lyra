@@ -9,10 +9,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from nats.js.errors import BucketNotFoundError, KeyNotFoundError
 
-from factory.bootstrap.wiring.kv_bot_roster import (
-    publish_bot_roster,
-    seed_bot_roster,
-)
+from factory.bootstrap.wiring.kv_bot_roster import seed_bot_roster
+from factory.infrastructure.kv.bot_roster import publish_bot_roster
 from factory.config import (
     DISCORD_DEFAULT_AUTO_THREAD,
     DISCORD_DEFAULT_THREAD_HOT_HOURS,
@@ -70,7 +68,7 @@ async def test_publish_bot_roster_writes_platform_keys() -> None:
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(
-            "factory.bootstrap.wiring.kv_bot_roster._open_or_create_kv",
+            "factory.infrastructure.kv.bot_roster.open_or_create_kv",
             AsyncMock(return_value=kv),
         )
         await publish_bot_roster(js, bot_store)
@@ -104,7 +102,7 @@ async def test_publish_bot_roster_never_includes_auth_fields() -> None:
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(
-            "factory.bootstrap.wiring.kv_bot_roster._open_or_create_kv",
+            "factory.infrastructure.kv.bot_roster.open_or_create_kv",
             AsyncMock(return_value=kv),
         )
         await publish_bot_roster(js, bot_store)
@@ -277,7 +275,7 @@ async def test_publish_bot_roster_skips_invalid_bot_id() -> None:
 
     with pytest.MonkeyPatch.context() as mp:
         mp.setattr(
-            "factory.bootstrap.wiring.kv_bot_roster._open_or_create_kv",
+            "factory.infrastructure.kv.bot_roster.open_or_create_kv",
             AsyncMock(return_value=kv),
         )
         await publish_bot_roster(js, bot_store)

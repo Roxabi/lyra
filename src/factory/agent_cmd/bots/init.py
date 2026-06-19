@@ -12,7 +12,7 @@ from typing import Any, Literal, cast
 import typer
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
-from factory.cli_bot import _connect_bot_store, bot_app
+from factory.cli_bot import _connect_bot_store, _maybe_publish_roster, bot_app
 from factory.core.agent.bot_models import (
     DEFAULT_AUTO_THREAD,
     DEFAULT_THREAD_HOT_HOURS,
@@ -53,31 +53,6 @@ class _BotSeedEntry(BaseModel):
     token: str | None = None
     webhook_secret: str | None = None
     default: str | None = None
-
-
-async def _maybe_publish_roster(store: object) -> None:
-    """Best-effort dual-write: mirror BotStore roster into factory-state KV."""
-    nats_url = os.environ.get("NATS_URL", "").strip()
-    if not nats_url:
-        return
-
-    from factory.bootstrap.wiring.kv_bot_roster import publish_bot_roster
-    from roxabi_nats import nats_connect
-
-    try:
-        nc = await nats_connect(nats_url)
-    except Exception as exc:  # noqa: BLE001
-        typer.echo(f"  warning: could not connect to NATS for roster publish: {exc}")
-        return
-
-    try:
-        js = nc.jetstream()
-        await publish_bot_roster(js, store)
-        typer.echo("  published roster to factory-state KV")
-    except Exception as exc:  # noqa: BLE001
-        typer.echo(f"  warning: could not publish roster to KV: {exc}")
-    finally:
-        await nc.close()
 
 
 def _find_config_toml() -> Path | None:

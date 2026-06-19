@@ -338,3 +338,40 @@ class TestBotInitKvDualWrite:
         from factory.infrastructure.stores.bot_store import BotStore
 
         assert isinstance(await_args.args[1], BotStore)
+
+    def test_publishes_roster_on_idempotent_rerun(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from unittest.mock import AsyncMock, MagicMock
+
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
+        monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
+        write_bot_toml(
+            tmp_path,
+            '[[telegram.bots]]\nbot_id="main"\nagent="a"\n',
+        )
+
+        mock_nc = AsyncMock()
+        mock_nc.close = AsyncMock()
+        mock_nc.jetstream = MagicMock(return_value=MagicMock())
+        publish_mock = AsyncMock()
+
+        monkeypatch.setattr(
+            "roxabi_nats.nats_connect",
+            AsyncMock(return_value=mock_nc),
+        )
+        monkeypatch.setattr(
+            "factory.infrastructure.kv.bot_roster.publish_bot_roster",
+            publish_mock,
+        )
+
+        result1 = runner.invoke(app, ["bot", "init"])
+        assert result1.exit_code == 0, result1.output
+
+        publish_mock.reset_mock()
+        result2 = runner.invoke(app, ["bot", "init"])
+
+        assert result2.exit_code == 0, result2.output
+        assert "skipped" in result2.output
+        assert "published roster to factory-state KV" in result2.output
+        publish_mock.assert_awaited_once()

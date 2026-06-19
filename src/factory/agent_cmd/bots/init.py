@@ -107,7 +107,7 @@ def init_bots(
                     typer.echo(f"  error: {row.platform}/{row.bot_id}: {e}", err=True)
                     errors += 1
 
-            if seeded:
+            if store.get_all():
                 await _maybe_publish_roster(store)
 
             typer.echo(f"\nDone: {seeded} seeded, {skipped} skipped, {errors} errors")

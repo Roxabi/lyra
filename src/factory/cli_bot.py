@@ -44,7 +44,7 @@ async def _maybe_publish_roster(store: object) -> None:
 
     try:
         nc = await nats_connect(nats_url)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001  # best-effort CLI dual-write; init must not fail on NATS blip
         typer.echo(f"  warning: could not connect to NATS for roster publish: {exc}")
         return
 
@@ -52,7 +52,7 @@ async def _maybe_publish_roster(store: object) -> None:
         js = nc.jetstream()
         await publish_bot_roster(js, store)
         typer.echo("  published roster to factory-state KV")
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001  # best-effort CLI dual-write; init must not fail on NATS blip
         typer.echo(f"  warning: could not publish roster to KV: {exc}")
     finally:
         await nc.close()

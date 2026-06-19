@@ -140,11 +140,6 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
     await wait_for_hub(nc)
 
     dc_multi_cfg = await seed_bot_roster(js, "discord")
-    if not dc_multi_cfg.bots:
-        sys.exit(
-            "No discord bots configured — roster comes from factory-state KV."
-            " Run 'factory bot init' and ensure the hub published roster.discord."
-        )
 
     dc_creds: dict[str, str] = {}
     for bot_cfg in dc_multi_cfg.bots:

@@ -26,6 +26,7 @@ from factory.config import (
     TelegramMultiConfig,
 )
 from factory.infrastructure.kv.bot_roster import publish_bot_roster
+from factory.infrastructure.kv.factory_state import FACTORY_STATE_BUCKET
 from roxabi_contracts.state.bot_roster import (
     PlatformName,
     PlatformRosterDocument,
@@ -35,7 +36,6 @@ from roxabi_contracts.state.bot_roster import (
 
 log = logging.getLogger(__name__)
 
-_BUCKET = "factory-state"
 _BOT_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 __all__ = ["publish_bot_roster", "seed_bot_roster"]
@@ -108,7 +108,7 @@ async def seed_bot_roster(
     key = roster_key(platform)
     try:
         async with asyncio.timeout(timeout):
-            kv = await js.key_value(_BUCKET)  # type: ignore[attr-defined]
+            kv = await js.key_value(FACTORY_STATE_BUCKET)  # type: ignore[attr-defined]
             entry = await kv.get(key)
     except BucketNotFoundError:
         _fatal_roster_error(platform, "bucket not found")

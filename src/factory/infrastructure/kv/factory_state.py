@@ -22,6 +22,7 @@ async def open_or_create_kv(js: Any) -> Any:
             KeyValueConfig(bucket=FACTORY_STATE_BUCKET, storage=StorageType.FILE)
         )
     except BadRequestError as exc:
+        # err_code 10058 = stream name already in use — lost creation race; open it.
         if exc.err_code != 10058:
             raise
         return await js.key_value(FACTORY_STATE_BUCKET)

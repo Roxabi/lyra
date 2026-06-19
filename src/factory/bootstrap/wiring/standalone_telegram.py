@@ -108,11 +108,6 @@ async def bootstrap_telegram_standalone(
     await wait_for_hub(nc)
 
     tg_multi_cfg = await seed_bot_roster(js, "telegram")
-    if not tg_multi_cfg.bots:
-        sys.exit(
-            "No telegram bots configured — roster comes from factory-state KV."
-            " Run 'factory bot init' and ensure the hub published roster.telegram."
-        )
 
     tg_creds: dict[str, tuple[str, str | None]] = {}
     for bot_cfg in tg_multi_cfg.bots:

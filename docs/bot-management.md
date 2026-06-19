@@ -11,7 +11,7 @@ Bots are stored in **`~/.roxabi/factory/config.db`** (SQLite, table `bots`). TOM
 
 ## Bot Configuration
 
-Bots are configured in `~/.roxabi/factory/config.toml` (`[[telegram.bots]]`, `[[discord.bots]]`, `[[auth.telegram_bots]]`, `[[auth.discord_bots]]`). The hub reads bot metadata from `BotStore` (table `bots`), not from `config.toml` directly.
+Bots are configured in `~/.roxabi/factory/config.toml` (`[[telegram.bots]]`, `[[discord.bots]]`, `[[auth.telegram_bots]]`, `[[auth.discord_bots]]`). The hub reads bot metadata from `BotStore` (table `bots`), not from `config.toml` directly. Standalone adapters read a **read-only mirror** from JetStream KV (`factory-state`, keys `roster.telegram` / `roster.discord`) — they never open `config.db`.
 
 ```bash
 # Seeding (required before first hub boot since #1416)
@@ -25,9 +25,16 @@ factory bot secret install <platform> <bot_id>-webhook
 
 **Rule:** `factory bot init` is idempotent. Run it after every `config.toml` edit that changes bot definitions.
 
+When `NATS_URL` is set (typical on the hub host), `factory bot init` also **dual-writes** the adapter-facing roster projection into `factory-state` KV (`roster.telegram`, `roster.discord`). NATS failures are logged as warnings and do not fail init — the hub republishes the full roster on its next boot anyway.
+
 ## Deprecation Timeline
 
-As of this release, the four TOML bot sections are **deprecated and seed-only**. The runtime bot roster is read from BotStore (`~/.roxabi/factory/config.db`), not from `config.toml`.
+As of this release, the four TOML bot sections are **deprecated and seed-only**. Runtime roster sources:
+
+| Consumer | Source | Notes |
+|---|---|---|
+| Hub, Quadlet render, CLI | `BotStore` (`~/.roxabi/factory/config.db`) | Write SSoT on the hub host |
+| Standalone adapters | `factory-state` KV (`roster.<platform>`) | Read mirror; hub publishes on boot |
 
 | Deprecated section | Replacement |
 |---|---|
@@ -102,11 +109,17 @@ factory agent telegram validate <bot_id>        # check agent exists, owners non
 
 ```bash
 # 1. Seed BotStore from config.toml (idempotent — skips existing rows)
+#    Dual-writes roster.* to KV when NATS_URL is set
 factory bot init
 
-# 2. Render adapter templates + daemon-reload
+# 2. Render adapter templates + daemon-reload (no config.db mounts on adapters)
 make quadlet-install
+
+# 3. Start hub before adapters — hub publishes roster.* before hub.ready
+make factory reload   # or: systemctl --user start factory-hub, then adapters
 ```
+
+Deploy **hub first** (or at least concurrently with adapters on a fresh KV). Adapter-only rollout without a hub publish leaves `roster.*` absent and adapters exit fatally at boot.
 
 ### Add a new bot
 
@@ -148,4 +161,5 @@ This is a **no-op** if rows already exist (idempotent skip). No data loss. Run o
 | `factory agent <platform> validate <bot_id>` fails on secret | Podman secret missing | `factory bot secret install <platform> <bot_id>` |
 | `factory agent <platform> patch` fails with "no fields provided" | All flag values are `None` | Provide at least one `--field value` |
 | Adapter fails to start after adding bot | Quadlet not re-rendered | `make quadlet-install` (re-renders templates + restarts adapter) |
+| Adapter exits: `roster missing or invalid in factory-state KV` | Hub not running, or hub booted before BotStore was seeded | `factory bot init` on hub host, restart hub, then adapters |
 | `factory bot init` reports 0 seeded, N skipped | Rows already exist | Use `--force` to overwrite, or this is expected |

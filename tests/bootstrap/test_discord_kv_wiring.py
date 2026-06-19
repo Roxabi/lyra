@@ -4,11 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import inspect
-from contextlib import asynccontextmanager
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
+from tests.helpers.hub_standalone_bootstrap import (
+    hub_test_config,
+    make_hub_stubs,
+    stub_hub_bootstrap,
+)
 
 
 class TestDiscordSetupUsesKvRoster:
@@ -123,27 +128,6 @@ class TestDiscordWireBotReceivesWatchChannels:
         assert captured_kwargs.get("watch_channels") == seeded_channels
 
 
-def _make_hub_stubs() -> tuple:
-    mock_nc = AsyncMock()
-    mock_nc.is_connected = True
-    mock_nc.close = AsyncMock()
-    mock_nc.drain = AsyncMock()
-    mock_js = MagicMock()
-    mock_nc.jetstream = MagicMock(return_value=mock_js)
-
-    @asynccontextmanager
-    async def _fake_open_stores(*_args, **_kwargs):
-        stores = MagicMock()
-        stores.message_index.cleanup_older_than = AsyncMock(return_value=0)
-        stores.auth = MagicMock()
-        stores.bot = MagicMock()
-        stores.identity_alias = MagicMock()
-        stores.agent = MagicMock()
-        yield stores
-
-    return mock_nc, _fake_open_stores
-
-
 class TestHubPublishesKvStateBeforeReady:
     def test_publish_helpers_before_announce_hub_ready_source_order(self) -> None:
         import ast
@@ -181,123 +165,27 @@ class TestHubPublishesKvStateBeforeReady:
         )
 
         call_order: list[str] = []
-        mock_nc, fake_open_stores = _make_hub_stubs()
+        mock_nc, fake_open_stores = make_hub_stubs()
         mock_nc.jetstream.return_value = MagicMock(
             add_stream=AsyncMock(), update_stream=AsyncMock()
         )
 
         monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
-        monkeypatch.setattr(
-            "factory.infrastructure.stores.active_jobs_kv.ensure_active_jobs_kv",
-            AsyncMock(return_value=MagicMock()),
-        )
-        monkeypatch.setattr(
-            "factory.infrastructure.stores.active_jobs_kv.KvActiveJobsStore",
-            MagicMock(return_value=MagicMock(connect=AsyncMock())),
-        )
-        monkeypatch.setattr(
-            "factory.infrastructure.stores.active_jobs_refresher.RegistryCoordinator",
-            MagicMock(return_value=MagicMock(start=MagicMock(), stop=AsyncMock())),
-        )
-        monkeypatch.setattr(
-            "factory.bootstrap.standalone.hub_standalone.acquire_lockfile",
-            lambda: None,
-        )
-        monkeypatch.setattr(
-            "factory.bootstrap.standalone.hub_standalone.nats_connect",
-            AsyncMock(return_value=mock_nc),
-        )
-        monkeypatch.setattr(
-            "factory.bootstrap.standalone.hub_standalone.open_stores",
-            fake_open_stores,
-        )
-        monkeypatch.setattr(
-            "factory.bootstrap.standalone.hub_standalone.seed_grants_from_bots",
-            AsyncMock(),
-        )
-        monkeypatch.setattr(
-            "factory.bootstrap.standalone.hub_standalone.build_bot_auths",
-            lambda *_a, **_kw: (MagicMock(), [], [], []),
-        )
-        monkeypatch.setattr(
-            "factory.bootstrap.standalone.hub_standalone._resolve_bot_agent_map",
-            AsyncMock(return_value={}),
-        )
-        monkeypatch.setattr(
-            "factory.bootstrap.standalone.hub_standalone.load_agent_configs",
-            lambda *_a, **_kw: {"default": MagicMock()},
-        )
-        monkeypatch.setattr(
-            "factory.bootstrap.factory.config._load_messages",
-            lambda *_a, **_kw: MagicMock(),
-        )
-        monkeypatch.setattr(
-            "factory.bootstrap.standalone.hub_standalone.build_pairing_manager",
-            AsyncMock(return_value=MagicMock()),
-        )
-        monkeypatch.setattr(
-            "factory.bootstrap.standalone.hub_standalone._build_hub_and_wire",
-            AsyncMock(
-                return_value=(
-                    MagicMock(inbound_bus=AsyncMock(start=AsyncMock())),
-                    [],
-                    [],
-                    MagicMock(),
-                    MagicMock(),
-                )
-            ),
-        )
-        monkeypatch.setattr(
-            "factory.bootstrap.standalone.hub_standalone.start_mint_failure_subscriber",
-            AsyncMock(return_value=MagicMock()),
-        )
-        monkeypatch.setattr(
-            "factory.infrastructure.outbound_audio.stream_setup.ensure_stream",
-            AsyncMock(),
-        )
-        monkeypatch.setattr(
-            "factory.infrastructure.outbound_audio.stream_setup.ensure_kv",
-            AsyncMock(return_value=MagicMock()),
-        )
-        async def _record_publish_watch(*_a, **_kw):
-            call_order.append("publish_watch_channels")
-
-        async def _record_publish_roster(*_a, **_kw):
-            call_order.append("publish_bot_roster")
-
-        monkeypatch.setattr(
-            "factory.bootstrap.standalone.hub_standalone.publish_watch_channels",
-            _record_publish_watch,
-        )
-        monkeypatch.setattr(
-            "factory.bootstrap.standalone.hub_standalone.publish_bot_roster",
-            _record_publish_roster,
-        )
 
         async def _record_announce(*_a, **_kw):
             call_order.append("announce_hub_ready")
             raise SystemExit("test-sentinel")
 
-        monkeypatch.setattr(
-            "factory.bootstrap.standalone.hub_standalone.announce_hub_ready",
-            _record_announce,
-        )
-        monkeypatch.setattr(
-            "factory.bootstrap.standalone.hub_standalone.build_inbound_bus",
-            lambda *_a, **_kw: (AsyncMock(), MagicMock()),
+        stub_hub_bootstrap(
+            monkeypatch,
+            mock_nc,
+            fake_open_stores,
+            call_order=call_order,
+            announce_hub_ready=_record_announce,
         )
 
         with pytest.raises(SystemExit, match="test-sentinel"):
-            await _bootstrap_hub_standalone(
-                {
-                    "defaults": {"cwd": "/tmp"},
-                    "admin": {"user_ids": ["test_admin"]},
-                    "telegram": {"bots": []},
-                    "discord": {"bots": []},
-                    "auth": {"telegram_bots": [], "discord_bots": []},
-                    "message_index": {},
-                }
-            )
+            await _bootstrap_hub_standalone(hub_test_config())
 
         assert call_order.index("publish_watch_channels") < call_order.index(
             "publish_bot_roster"

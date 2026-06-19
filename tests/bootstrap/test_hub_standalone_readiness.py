@@ -19,9 +19,14 @@ from __future__ import annotations
 
 import ast
 import inspect
-from contextlib import asynccontextmanager
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
+
+from tests.helpers.hub_standalone_bootstrap import (
+    hub_test_config,
+    make_hub_stubs,
+    stub_hub_bootstrap,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -185,40 +190,6 @@ class TestHubAudioProvisioningBeforeReady:
 import pytest  # noqa: E402 — kept below class definitions to match module style
 
 
-def _make_hub_stubs() -> tuple:
-    """Return (mock_nc, fake_open_stores) for hub bootstrap short-circuit tests."""
-    mock_nc = AsyncMock()
-    mock_nc.is_connected = True
-    mock_nc.close = AsyncMock()
-    mock_nc.drain = AsyncMock()
-    mock_js = MagicMock()
-    mock_nc.jetstream = MagicMock(return_value=mock_js)
-
-    @asynccontextmanager
-    async def _fake_open_stores(*_args, **_kwargs):
-        # Minimal stores stub; hub_standalone destructures the result
-        stores = MagicMock()
-        stores.message_index.cleanup_older_than = AsyncMock(return_value=0)
-        stores.auth = MagicMock()
-        stores.bot = MagicMock()
-        stores.identity_alias = MagicMock()
-        stores.agent = MagicMock()
-        yield stores
-
-    return mock_nc, _fake_open_stores
-
-
-def _test_config() -> dict:
-    return {
-        "defaults": {"cwd": "/tmp"},
-        "admin": {"user_ids": ["test_admin"]},
-        "telegram": {"bots": []},
-        "discord": {"bots": []},
-        "auth": {"telegram_bots": [], "discord_bots": []},
-        "message_index": {},
-    }
-
-
 class TestHubAudioProvisioningBehavioral:
     """Behavioral ordering: ensure_stream + ensure_kv awaited before announce_hub_ready.
 
@@ -240,27 +211,13 @@ class TestHubAudioProvisioningBehavioral:
         full hub lifecycle.
         """
         monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
-        raw_config = _test_config()
-        mock_nc, fake_open_stores = _make_hub_stubs()
+        raw_config = hub_test_config()
+        mock_nc, fake_open_stores = make_hub_stubs()
         mock_nc.jetstream.return_value = MagicMock(
             add_stream=AsyncMock(), update_stream=AsyncMock()
         )
 
         call_order: list[str] = []
-
-        async def _record_ensure_stream(*_a, **_kw):
-            call_order.append("ensure_stream")
-
-        async def _record_ensure_kv(*_a, **_kw):
-            call_order.append("ensure_kv")
-            return MagicMock()
-
-        async def _record_ensure_active_jobs_kv(*_a, **_kw):
-            call_order.append("ensure_active_jobs_kv")
-            return MagicMock()
-
-        async def _record_publish_bot_roster(*_a, **_kw):
-            call_order.append("publish_bot_roster")
 
         async def _record_announce_hub_ready(*_a, **_kw):
             call_order.append("announce_hub_ready")
@@ -270,113 +227,16 @@ class TestHubAudioProvisioningBehavioral:
             _bootstrap_hub_standalone,
         )
 
-        # active-jobs registry provisioning runs before announce (ADR-079 S3).
-        # Stub via monkeypatch rather than the with-block to stay under CPython's
-        # 20-statically-nested-block limit. Lazily imported inside the function
-        # body → patch at source module paths so the local imports resolve them.
-        monkeypatch.setattr(
-            "factory.infrastructure.stores.active_jobs_kv.ensure_active_jobs_kv",
-            _record_ensure_active_jobs_kv,
-        )
-        monkeypatch.setattr(
-            "factory.infrastructure.stores.active_jobs_kv.KvActiveJobsStore",
-            MagicMock(return_value=MagicMock(connect=AsyncMock())),
-        )
-        monkeypatch.setattr(
-            "factory.infrastructure.stores.active_jobs_refresher.RegistryCoordinator",
-            MagicMock(return_value=MagicMock(start=MagicMock(), stop=AsyncMock())),
+        stub_hub_bootstrap(
+            monkeypatch,
+            mock_nc,
+            fake_open_stores,
+            call_order=call_order,
+            announce_hub_ready=_record_announce_hub_ready,
         )
 
-        with (
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.nats_connect",
-                AsyncMock(return_value=mock_nc),
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.acquire_lockfile",
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.release_lockfile",
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.open_stores",
-                fake_open_stores,
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.seed_grants_from_bots",
-                AsyncMock(),
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.build_bot_auths",
-                return_value=(MagicMock(), [], [], []),
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone._resolve_bot_agent_map",
-                AsyncMock(return_value={}),
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.load_agent_configs",
-                return_value={"default": MagicMock()},
-            ),
-            # _load_messages is lazily imported; patch at the source module.
-            patch(
-                "factory.bootstrap.factory.config._load_messages",
-                return_value=MagicMock(),
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.build_pairing_manager",
-                AsyncMock(return_value=MagicMock()),
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone._build_hub_and_wire",
-                AsyncMock(
-                    return_value=(
-                        MagicMock(
-                            inbound_bus=AsyncMock(start=AsyncMock()),
-                        ),
-                        [],
-                        [],
-                        MagicMock(),
-                        MagicMock(),
-                    )
-                ),
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.start_mint_failure_subscriber",
-                AsyncMock(return_value=MagicMock()),
-            ),
-            # ensure_stream/ensure_kv are lazily imported inside the function body;
-            # patch at source module path so the local import picks up the stub.
-            patch(
-                "factory.infrastructure.outbound_audio.stream_setup.ensure_stream",
-                side_effect=_record_ensure_stream,
-            ),
-            patch(
-                "factory.infrastructure.outbound_audio.stream_setup.ensure_kv",
-                side_effect=_record_ensure_kv,
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.publish_watch_channels",
-                AsyncMock(),
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.publish_bot_roster",
-                side_effect=_record_publish_bot_roster,
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.announce_hub_ready",
-                side_effect=_record_announce_hub_ready,
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.log_contracts_version",
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.build_inbound_bus",
-                return_value=(AsyncMock(), MagicMock()),
-            ),
-        ):
-            with pytest.raises(SystemExit, match="test-sentinel"):
-                await _bootstrap_hub_standalone(raw_config)
+        with pytest.raises(SystemExit, match="test-sentinel"):
+            await _bootstrap_hub_standalone(raw_config)
 
         assert "ensure_stream" in call_order, (
             "ensure_stream was never awaited — hub must provision audio stream "
@@ -432,8 +292,8 @@ class TestHubAudioProvisioningBehavioral:
         import nats.errors
 
         monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
-        raw_config = _test_config()
-        mock_nc, fake_open_stores = _make_hub_stubs()
+        raw_config = hub_test_config()
+        mock_nc, fake_open_stores = make_hub_stubs()
 
         mock_announce = AsyncMock()
 
@@ -441,87 +301,16 @@ class TestHubAudioProvisioningBehavioral:
             _bootstrap_hub_standalone,
         )
 
-        with (
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.nats_connect",
-                AsyncMock(return_value=mock_nc),
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.acquire_lockfile",
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.release_lockfile",
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.open_stores",
-                fake_open_stores,
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.seed_grants_from_bots",
-                AsyncMock(),
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.build_bot_auths",
-                return_value=(MagicMock(), [], [], []),
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone._resolve_bot_agent_map",
-                AsyncMock(return_value={}),
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.load_agent_configs",
-                return_value={"default": MagicMock()},
-            ),
-            # _load_messages is lazily imported; patch at the source module.
-            patch(
-                "factory.bootstrap.factory.config._load_messages",
-                return_value=MagicMock(),
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.build_pairing_manager",
-                AsyncMock(return_value=MagicMock()),
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone._build_hub_and_wire",
-                AsyncMock(
-                    return_value=(
-                        MagicMock(
-                            inbound_bus=AsyncMock(start=AsyncMock()),
-                        ),
-                        [],
-                        [],
-                        MagicMock(),
-                        MagicMock(),
-                    )
-                ),
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.start_mint_failure_subscriber",
-                AsyncMock(return_value=MagicMock()),
-            ),
-            # ensure_stream/ensure_kv are lazily imported; patch at source module.
-            patch(
-                "factory.infrastructure.outbound_audio.stream_setup.ensure_stream",
-                side_effect=nats.errors.Error("stream create denied"),
-            ),
-            patch(
-                "factory.infrastructure.outbound_audio.stream_setup.ensure_kv",
-                AsyncMock(),
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.announce_hub_ready",
-                mock_announce,
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.log_contracts_version",
-            ),
-            patch(
-                "factory.bootstrap.standalone.hub_standalone.build_inbound_bus",
-                return_value=(AsyncMock(), MagicMock()),
-            ),
-        ):
-            with pytest.raises(nats.errors.Error):
-                await _bootstrap_hub_standalone(raw_config)
+        stub_hub_bootstrap(
+            monkeypatch,
+            mock_nc,
+            fake_open_stores,
+            ensure_stream=nats.errors.Error("stream create denied"),
+            announce_hub_ready=mock_announce,
+        )
+
+        with pytest.raises(nats.errors.Error):
+            await _bootstrap_hub_standalone(raw_config)
 
         # announce_hub_ready must NOT be called when provisioning fails (ADR-079 S3 S1).
         mock_announce.assert_not_awaited()

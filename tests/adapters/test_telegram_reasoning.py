@@ -188,8 +188,9 @@ class TestTelegramReasoningRendering:
 
         async def capture_edit(**kwargs: object) -> None:
             rich = kwargs.get("rich_message")
-            if rich is not None and rich.html is not None:
-                edit_calls.append(rich.html)
+            html = getattr(rich, "html", None) if rich is not None else None
+            if html is not None:
+                edit_calls.append(html)
             else:
                 text = kwargs.get("text", "")
                 assert isinstance(text, str)

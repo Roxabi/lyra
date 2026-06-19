@@ -215,7 +215,7 @@ class BaseFormatter(ABC):
     # ------------------------------------------------------------------
 
     @abstractmethod
-    async def send_placeholder(self) -> tuple[Any, int]:
+    async def send_placeholder(self) -> tuple[Any, int | None]:
         """Send the initial placeholder; returns (message_object, message_id)."""
 
     @abstractmethod

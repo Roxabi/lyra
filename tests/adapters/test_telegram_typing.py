@@ -17,6 +17,7 @@ from factory.core.messaging.render_events import (
     TextDeltaRenderEvent,
     TextEndRenderEvent,
 )
+from tests.adapters.conftest import wire_telegram_rich_bot
 
 # ---------------------------------------------------------------------------
 # T1.4 — Unit tests for _typing_loop
@@ -141,9 +142,7 @@ async def test_send_cancels_typing_task(monkeypatch: pytest.MonkeyPatch) -> None
 
     # Arrange
     bot = AsyncMock()
-    sent_mock = MagicMock()
-    sent_mock.message_id = 1
-    bot.send_message = AsyncMock(return_value=sent_mock)
+    wire_telegram_rich_bot(bot, message_id=1)
 
     adapter = TelegramAdapter(
         bot_id="main",
@@ -186,7 +185,7 @@ async def test_send_cancels_typing_task(monkeypatch: pytest.MonkeyPatch) -> None
     assert 123 not in adapter._typing_tasks
 
     # Assert — reply was sent
-    bot.send_message.assert_awaited_once()
+    bot.send_rich_message.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -210,9 +209,7 @@ async def test_send_streaming_cancels_typing_task_after_placeholder(
 
     # Arrange
     bot = AsyncMock()
-    placeholder_mock = MagicMock()
-    placeholder_mock.message_id = 10
-    bot.send_message = AsyncMock(return_value=placeholder_mock)
+    wire_telegram_rich_bot(bot, message_id=10)
 
     adapter = TelegramAdapter(
         bot_id="main",

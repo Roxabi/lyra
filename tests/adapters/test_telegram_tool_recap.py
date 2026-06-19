@@ -27,13 +27,23 @@ from factory.core.messaging.render_events import (
     ToolCallEndRenderEvent,
     ToolCallStartRenderEvent,
 )
-from tests.adapters.conftest import _make_telegram_adapter, _make_telegram_message
+from tests.adapters.conftest import (
+    _make_telegram_adapter,
+    _make_telegram_message,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 _TRACE_MSG_ID = 999
+
+
+def _rich_markdown(call) -> str:
+    rich = call.kwargs.get("rich_message")
+    if rich is None:
+        return ""
+    return rich.markdown or ""
 
 
 def _make_bot_mocks() -> tuple[MagicMock, MagicMock, MagicMock]:
@@ -52,8 +62,8 @@ def _make_bot_mocks() -> tuple[MagicMock, MagicMock, MagicMock]:
     trace_msg.message_id = _TRACE_MSG_ID
 
     bot = MagicMock()
-    # Response placeholder first, trace placeholder second
-    bot.send_message = AsyncMock(side_effect=[placeholder_msg, trace_msg])
+    bot.send_rich_message = AsyncMock(side_effect=[placeholder_msg, trace_msg])
+    bot.send_rich_message_draft = AsyncMock(return_value=True)
     bot.edit_message_text = AsyncMock(return_value=None)
     return bot, trace_msg, placeholder_msg
 
@@ -75,9 +85,8 @@ async def test_multi_tool_turn_renders_recap_card_via_edit_message_text() -> Non
     Asserts:
     - bot.edit_message_text was called at least once.
     - At least one call targets the trace placeholder message_id.
-    - At least one such call's ``text`` contains the recap header '🔧 Done ✅'.
+    - At least one call's ``rich_message.markdown`` contains recap header '🔧 Done ✅'.
     - At least one call contains '✏️' (edit tool icon) AND '💻' (bash icon).
-    - parse_mode is 'MarkdownV2' on those calls.
 
     This test FAILS on the unmodified codebase because ``edit_tool_recap`` is the
     default no-op, so bot.edit_message_text is never called with recap content.
@@ -142,20 +151,14 @@ async def test_multi_tool_turn_renders_recap_card_via_edit_message_text() -> Non
     matching = [
         c
         for c in recap_calls
-        if done_header in (c.kwargs.get("text") or "")
-        and edit_icon in (c.kwargs.get("text") or "")
-        and bash_icon in (c.kwargs.get("text") or "")
+        if done_header in _rich_markdown(c)
+        and edit_icon in _rich_markdown(c)
+        and bash_icon in _rich_markdown(c)
     ]
     assert len(matching) >= 1, (
         f"No edit_message_text call contained recap header + icons. "
-        f"Recap calls texts: {[c.kwargs.get('text') for c in recap_calls]}"
+        f"Recap calls texts: {[_rich_markdown(c) for c in recap_calls]}"
     )
-
-    # parse_mode must be MarkdownV2 on those calls
-    for c in matching:
-        assert c.kwargs.get("parse_mode") == "MarkdownV2", (
-            f"Expected parse_mode='MarkdownV2', got {c.kwargs.get('parse_mode')!r}"
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +170,7 @@ async def test_text_only_turn_does_not_send_telegram_trace_placeholder() -> None
     """SC9: a pure text turn must never trigger a trace placeholder or recap edit.
 
     Asserts:
-    - No bot.send_message call has text='🔧 …' (the trace placeholder text).
+    - No bot.send_rich_message call has trace placeholder text.
     - bot.edit_message_text is never called with text containing recap header.
 
     This test is expected to PASS even at RED state — it is a regression guard.
@@ -178,7 +181,8 @@ async def test_text_only_turn_does_not_send_telegram_trace_placeholder() -> None
     placeholder_msg.message_id = 42
 
     bot = MagicMock()
-    bot.send_message = AsyncMock(return_value=placeholder_msg)
+    bot.send_rich_message = AsyncMock(return_value=placeholder_msg)
+    bot.send_rich_message_draft = AsyncMock(return_value=True)
     bot.edit_message_text = AsyncMock(return_value=None)
     adapter.bot = bot
     original_msg = _make_telegram_message()
@@ -197,12 +201,11 @@ async def test_text_only_turn_does_not_send_telegram_trace_placeholder() -> None
 
     # Assert — no trace placeholder send (text="\U0001f527 …")
     _TRACE_PLACEHOLDER_TEXT = "\U0001f527 …"  # "🔧 …"
-    send_calls = bot.send_message.call_args_list
+    send_calls = bot.send_rich_message.call_args_list
     trace_sends = [
         c
         for c in send_calls
-        if c.kwargs.get("text") == _TRACE_PLACEHOLDER_TEXT
-        or (c.args and c.args[0] == _TRACE_PLACEHOLDER_TEXT)
+        if _rich_markdown(c) == _TRACE_PLACEHOLDER_TEXT
     ]
     assert len(trace_sends) == 0, (
         f"Expected no trace placeholder send, but found: {trace_sends}"
@@ -215,8 +218,8 @@ async def test_text_only_turn_does_not_send_telegram_trace_placeholder() -> None
     recap_edits = [
         c
         for c in edit_calls
-        if recap_header in (c.kwargs.get("text") or "")
-        or recap_working in (c.kwargs.get("text") or "")
+        if recap_header in _rich_markdown(c)
+        or recap_working in _rich_markdown(c)
     ]
     assert len(recap_edits) == 0, (
         f"Expected no recap card edit_message_text calls, found: {recap_edits}"
@@ -224,22 +227,20 @@ async def test_text_only_turn_does_not_send_telegram_trace_placeholder() -> None
 
 
 # ---------------------------------------------------------------------------
-# Test smoke — recap text is MarkdownV2 escaped via _render_text
+# Test smoke — recap text uses rich_message (no MarkdownV2 escaping)
 # ---------------------------------------------------------------------------
 
 
 async def test_recap_text_is_markdownv2_escaped() -> None:
-    """Smoke: when a bash command is in the recap, the edit_message_text call
-    uses parse_mode='MarkdownV2' and the text has been run through _render_text.
+    """Smoke: bash recap content is sent via rich_message.markdown (unescaped).
 
     Drive a single bash tool call with command 'echo *hi*' (contains MarkdownV2-
-    special '*'). The rendered recap line wraps the command in a code span, so
-    backtick escaping applies. The key assertion is parse_mode='MarkdownV2'.
+    special '*'). Rich messages preserve the raw command in markdown.
 
     This test FAILS on the unmodified codebase because edit_tool_recap is a no-op
     and bot.edit_message_text is never called.
     """
-    # Arrange — response placeholder is the FIRST send_message call; trace is second
+    # Arrange — response placeholder is first send_rich_message; trace is second
     adapter = _make_telegram_adapter()
 
     placeholder_msg = MagicMock()
@@ -248,7 +249,8 @@ async def test_recap_text_is_markdownv2_escaped() -> None:
     trace_msg.message_id = _TRACE_MSG_ID
 
     bot = MagicMock()
-    bot.send_message = AsyncMock(side_effect=[placeholder_msg, trace_msg])
+    bot.send_rich_message = AsyncMock(side_effect=[placeholder_msg, trace_msg])
+    bot.send_rich_message_draft = AsyncMock(return_value=True)
     bot.edit_message_text = AsyncMock(return_value=None)
     adapter.bot = bot
     original_msg = _make_telegram_message()
@@ -285,19 +287,21 @@ async def test_recap_text_is_markdownv2_escaped() -> None:
         f"No edit_message_text call targeted trace message_id={_TRACE_MSG_ID}"
     )
 
-    # parse_mode must be 'MarkdownV2' — this confirms _render_text was used
+    # Rich path: no parse_mode; markdown carries unescaped special chars
     for c in recap_calls:
-        assert c.kwargs.get("parse_mode") == "MarkdownV2", (
-            f"Expected parse_mode='MarkdownV2', got {c.kwargs.get('parse_mode')!r}"
-        )
+        assert c.kwargs.get("parse_mode") is None
+        assert c.kwargs.get("rich_message") is not None
 
     # The text must contain the bash icon (proof it is recap content, not some
     # other edit — e.g. the response placeholder edit)
     bash_icon = "\U0001f4bb"  # 💻
     recap_with_bash = [
-        c for c in recap_calls if bash_icon in (c.kwargs.get("text") or "")
+        c for c in recap_calls if bash_icon in _rich_markdown(c)
     ]
-    texts = [c.kwargs.get("text") for c in recap_calls]
+    texts = [_rich_markdown(c) for c in recap_calls]
     assert len(recap_with_bash) >= 1, (
         f"No recap call contained bash icon. Texts: {texts}"
+    )
+    assert any("*hi*" in t for t in texts), (
+        f"Expected unescaped '*hi*' in recap markdown, got: {texts}"
     )

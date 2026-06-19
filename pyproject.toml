@@ -9,7 +9,7 @@ dependencies = [
     "cryptography>=48.0.0",
     "pydantic>=2.13.4",
     # Adapters
-    "aiogram>=3.28.2",       # Telegram — asyncio-native, tracks Bot API same-day
+    "aiogram>=3.29.0",       # Telegram — Bot API 10.1 Rich Messages (sendRichMessage)
     "discord.py[voice]>=2.7.1",  # Discord — gateway WebSocket + voice support (voice extra pulls pynacl + davey for crypto; keep updated)
     # TODO(#271): CVE-2025-69277 — pynacl 1.5.0 needs upgrade to >=1.6.2 once discord.py
     # relaxes its pynacl<1.6 Windows constraint.
@@ -102,6 +102,7 @@ markers = [
     "nats_integration: NATS integration tests requiring Docker Compose",
     "integration: cross-host integration tests requiring M1 Tailnet",
     "audio_consumer_live: test exercises audio consumer directly; skip the autouse no-op neutralizer",
+    "bot_store_live: test exercises real BotStore roster loading; skip autouse roster mocks",
     "smoke: fast in-process smoke tests for critical user-facing paths",
     "omp_contract: OMP wire + driver + codec + E2E contract regression gate",
 ]

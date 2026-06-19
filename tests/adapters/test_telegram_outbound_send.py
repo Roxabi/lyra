@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aiogram.exceptions import TelegramAPIError
 
+from factory.adapters.telegram.telegram_rich import (
+    TelegramPlaceholder,
+    build_rich_message,
+)
 from factory.core.auth.trust import TrustLevel
 from factory.core.messaging.message import (  # noqa: F401
     DiscordMeta,
@@ -21,7 +24,11 @@ from factory.core.messaging.message import (  # noqa: F401
     OutboundMessage,
     TelegramMeta,
 )
-from tests.adapters.conftest import _make_telegram_adapter, _make_telegram_message
+from tests.adapters.conftest import (
+    _make_telegram_adapter,
+    _make_telegram_message,
+    wire_telegram_rich_bot,
+)
 
 # ---------------------------------------------------------------------------
 # T7 — send() calls bot.send_message(chat_id, text)
@@ -37,6 +44,7 @@ async def test_send_calls_bot_send_message() -> None:
     from factory.adapters.telegram import TelegramAdapter  # ImportError expected in RED
 
     bot = AsyncMock()
+    wire_telegram_rich_bot(bot)
 
     adapter = TelegramAdapter(
         bot_id="main",
@@ -68,10 +76,9 @@ async def test_send_calls_bot_send_message() -> None:
 
     await adapter.send(original_msg, outbound)
 
-    bot.send_message.assert_awaited_once_with(
+    bot.send_rich_message.assert_awaited_once_with(
         chat_id=123,
-        text="reply",
-        parse_mode="MarkdownV2",
+        rich_message=build_rich_message("reply"),
         reply_to_message_id=99,
     )
 
@@ -122,6 +129,7 @@ async def test_send_skips_when_platform_context_is_not_telegram(
     with caplog.at_level(logging.WARNING, logger="factory.adapters.telegram"):
         await adapter.send(original_msg, OutboundMessage.from_text("hi"))
 
+    bot.send_rich_message.assert_not_awaited()
     bot.send_message.assert_not_awaited()
     assert any("non-telegram" in r.message for r in caplog.records)
 
@@ -138,8 +146,7 @@ async def test_send_stores_reply_message_id_in_metadata() -> None:
 
     # Arrange
     bot = AsyncMock()
-    sent_msg = SimpleNamespace(message_id=888)
-    bot.send_message.return_value = sent_msg
+    sent_msg = wire_telegram_rich_bot(bot, message_id=888)
 
     adapter = TelegramAdapter(
         bot_id="main",
@@ -173,13 +180,12 @@ async def test_send_stores_reply_message_id_in_metadata() -> None:
     await adapter.send(original_msg, outbound)
 
     # Assert
-    bot.send_message.assert_awaited_once_with(
+    bot.send_rich_message.assert_awaited_once_with(
         chat_id=123,
-        text="reply",
-        parse_mode="MarkdownV2",
+        rich_message=build_rich_message("reply"),
         reply_to_message_id=777,
     )
-    assert outbound.metadata["reply_message_id"] == 888
+    assert outbound.metadata["reply_message_id"] == sent_msg.message_id
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +210,7 @@ async def test_send_always_delivers_regardless_of_circuit_state() -> None:
         registry.register(cb)
 
     bot = AsyncMock()
-    bot.send_message = AsyncMock(return_value=SimpleNamespace(message_id=99))
+    wire_telegram_rich_bot(bot, message_id=99)
 
     adapter = TelegramAdapter(
         bot_id="main",
@@ -238,7 +244,7 @@ async def test_send_always_delivers_regardless_of_circuit_state() -> None:
     await adapter.send(original_msg, OutboundMessage.from_text("reply"))
 
     # Assert — CB is open but adapter still sends (CB check owned by dispatcher)
-    bot.send_message.assert_awaited_once()
+    bot.send_rich_message.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -303,9 +309,8 @@ async def test_streaming_send_placeholder_with_reply() -> None:
     from factory.adapters.telegram.telegram_formatter import TelegramFormatter
 
     adapter = _make_telegram_adapter()
-    sent_mock = SimpleNamespace(message_id=42)
     adapter.bot = AsyncMock()
-    adapter.bot.send_message = AsyncMock(return_value=sent_mock)
+    wire_telegram_rich_bot(adapter.bot, message_id=42)
 
     formatter = TelegramFormatter(
         adapter,
@@ -319,8 +324,8 @@ async def test_streaming_send_placeholder_with_reply() -> None:
     await formatter.send_placeholder()
 
     # Assert
-    adapter.bot.send_message.assert_awaited_once()
-    call_kwargs = adapter.bot.send_message.call_args.kwargs
+    adapter.bot.send_rich_message.assert_awaited_once()
+    call_kwargs = adapter.bot.send_rich_message.call_args.kwargs
     assert call_kwargs.get("reply_to_message_id") == 77
 
 
@@ -332,9 +337,8 @@ async def test_streaming_send_placeholder_no_reply() -> None:
     from factory.adapters.telegram.telegram_formatter import TelegramFormatter
 
     adapter = _make_telegram_adapter()
-    sent_mock = SimpleNamespace(message_id=10)
     adapter.bot = AsyncMock()
-    adapter.bot.send_message = AsyncMock(return_value=sent_mock)
+    wire_telegram_rich_bot(adapter.bot, message_id=10)
 
     formatter = TelegramFormatter(
         adapter,
@@ -348,7 +352,7 @@ async def test_streaming_send_placeholder_no_reply() -> None:
     await formatter.send_placeholder()
 
     # Assert — no reply_to_message_id kwarg
-    call_kwargs = adapter.bot.send_message.call_args.kwargs
+    call_kwargs = adapter.bot.send_rich_message.call_args.kwargs
     assert "reply_to_message_id" not in call_kwargs
 
 
@@ -367,7 +371,7 @@ async def test_streaming_edit_placeholder_text() -> None:
         get_msg=lambda k, fb: fb,
         placeholder_text="…",
     )
-    ph = SimpleNamespace(message_id=5)
+    ph = TelegramPlaceholder(chat_id=123, topic_id=None, message_id=5)
 
     # Act
     await formatter.edit_placeholder_text(ph, "hello")
@@ -376,6 +380,7 @@ async def test_streaming_edit_placeholder_text() -> None:
     adapter.bot.edit_message_text.assert_awaited_once()
     call_kwargs = adapter.bot.edit_message_text.call_args.kwargs
     assert call_kwargs.get("message_id") == 5
+    assert call_kwargs["rich_message"].markdown == "hello"
 
 
 @pytest.mark.asyncio
@@ -395,13 +400,13 @@ async def test_streaming_edit_placeholder_text_failure() -> None:
         get_msg=lambda k, fb: fb,
         placeholder_text="…",
     )
-    ph = SimpleNamespace(message_id=5)
+    ph = TelegramPlaceholder(chat_id=123, topic_id=None, message_id=5)
 
     # Act — should not raise
     await formatter.edit_placeholder_text(ph, "hello")
 
-    # Assert — exception swallowed
-    adapter.bot.edit_message_text.assert_awaited_once()
+    # Assert — rich edit fails, MarkdownV2 fallback also fails; both swallowed
+    assert adapter.bot.edit_message_text.await_count == 2
 
 
 @pytest.mark.asyncio
@@ -410,9 +415,8 @@ async def test_streaming_send_message() -> None:
     from factory.adapters.telegram.telegram_formatter import TelegramFormatter
 
     adapter = _make_telegram_adapter()
-    sent_mock = SimpleNamespace(message_id=99)
     adapter.bot = AsyncMock()
-    adapter.bot.send_message = AsyncMock(return_value=sent_mock)
+    wire_telegram_rich_bot(adapter.bot, message_id=99)
 
     formatter = TelegramFormatter(
         adapter,
@@ -425,7 +429,7 @@ async def test_streaming_send_message() -> None:
     result = await formatter.send_message("hello world")
 
     # Assert
-    adapter.bot.send_message.assert_awaited()
+    adapter.bot.send_rich_message.assert_awaited()
     assert result == 99
 
 
@@ -435,9 +439,8 @@ async def test_streaming_send_fallback_with_text() -> None:
     from factory.adapters.telegram.telegram_formatter import TelegramFormatter
 
     adapter = _make_telegram_adapter()
-    sent_mock = SimpleNamespace(message_id=88)
     adapter.bot = AsyncMock()
-    adapter.bot.send_message = AsyncMock(return_value=sent_mock)
+    wire_telegram_rich_bot(adapter.bot, message_id=88)
 
     formatter = TelegramFormatter(
         adapter,
@@ -450,7 +453,7 @@ async def test_streaming_send_fallback_with_text() -> None:
     result = await formatter.send_fallback("fallback text")
 
     # Assert
-    adapter.bot.send_message.assert_awaited()
+    adapter.bot.send_rich_message.assert_awaited()
     assert result == 88
 
 
@@ -460,9 +463,8 @@ async def test_streaming_send_fallback_empty_text() -> None:
     from factory.adapters.telegram.telegram_formatter import TelegramFormatter
 
     adapter = _make_telegram_adapter()
-    sent_mock = SimpleNamespace(message_id=77)
     adapter.bot = AsyncMock()
-    adapter.bot.send_message = AsyncMock(return_value=sent_mock)
+    wire_telegram_rich_bot(adapter.bot, message_id=77)
 
     formatter = TelegramFormatter(
         adapter,
@@ -474,8 +476,8 @@ async def test_streaming_send_fallback_empty_text() -> None:
     # Act — empty string triggers fallback to placeholder_text
     result = await formatter.send_fallback("")
 
-    # Assert — send_message was called (with placeholder text as fallback)
-    adapter.bot.send_message.assert_awaited()
+    # Assert — send_rich_message was called (with placeholder text as fallback)
+    adapter.bot.send_rich_message.assert_awaited()
     assert result == 77
 
 
@@ -493,9 +495,8 @@ async def test_send_intermediate_starts_typing() -> None:
     from factory.adapters.telegram.telegram_outbound import send
 
     adapter = _make_telegram_adapter()
-    sent_mock = SimpleNamespace(message_id=1)
     adapter.bot = AsyncMock()
-    adapter.bot.send_message = AsyncMock(return_value=sent_mock)
+    wire_telegram_rich_bot(adapter.bot, message_id=1)
     adapter._start_typing = MagicMock()
     adapter._cancel_typing = MagicMock()
 
@@ -519,9 +520,8 @@ async def test_send_no_reply_to() -> None:
     from factory.adapters.telegram.telegram_outbound import send
 
     adapter = _make_telegram_adapter()
-    sent_mock = SimpleNamespace(message_id=1)
     adapter.bot = AsyncMock()
-    adapter.bot.send_message = AsyncMock(return_value=sent_mock)
+    wire_telegram_rich_bot(adapter.bot, message_id=1)
 
     original_msg = InboundMessage(
         id="msg-no-reply",
@@ -548,7 +548,7 @@ async def test_send_no_reply_to() -> None:
     await send(adapter, original_msg, outbound)
 
     # Assert — no reply_to_message_id kwarg
-    call_kwargs = adapter.bot.send_message.call_args.kwargs
+    call_kwargs = adapter.bot.send_rich_message.call_args.kwargs
     assert "reply_to_message_id" not in call_kwargs
 
 

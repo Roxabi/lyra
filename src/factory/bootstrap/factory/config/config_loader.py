@@ -180,7 +180,8 @@ def _load_messages(language: str = "en") -> MessageManager:
 
     Resolution: $FACTORY_MESSAGES_CONFIG → cwd/messages.toml → bundled config.
     """
-    bundled = Path(__file__).resolve().parent.parent.parent / "data" / "messages.toml"
+    # config_loader: bootstrap/factory/config/ → parents[3] == src/factory/
+    bundled = Path(__file__).resolve().parents[3] / "data" / "messages.toml"
     env_messages = os.environ.get("FACTORY_MESSAGES_CONFIG")
     path_str = env_messages or (
         "messages.toml" if Path("messages.toml").exists() else str(bundled)

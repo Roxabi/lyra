@@ -290,3 +290,49 @@ class TestBotInitValidation:
             return rows
 
         assert asyncio.run(_get_all()) == []
+
+
+# ---------------------------------------------------------------------------
+# TestBotInitKvDualWrite
+# ---------------------------------------------------------------------------
+
+
+class TestBotInitKvDualWrite:
+    """When NATS_URL is set, bot init mirrors roster into factory-state KV."""
+
+    def test_publishes_roster_when_nats_url_set(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from unittest.mock import AsyncMock, MagicMock
+
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
+        monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
+        write_bot_toml(
+            tmp_path,
+            '[[telegram.bots]]\nbot_id="main"\nagent="a"\n',
+        )
+
+        mock_nc = AsyncMock()
+        mock_nc.close = AsyncMock()
+        mock_js = MagicMock()
+        mock_nc.jetstream = MagicMock(return_value=mock_js)
+        publish_mock = AsyncMock()
+
+        monkeypatch.setattr(
+            "roxabi_nats.nats_connect",
+            AsyncMock(return_value=mock_nc),
+        )
+        monkeypatch.setattr(
+            "factory.bootstrap.wiring.kv_bot_roster.publish_bot_roster",
+            publish_mock,
+        )
+
+        result = runner.invoke(app, ["bot", "init"])
+
+        assert result.exit_code == 0, result.output
+        assert "published roster to factory-state KV" in result.output
+        publish_mock.assert_awaited_once()
+        assert publish_mock.await_args.args[0] is mock_js
+        from factory.infrastructure.stores.bot_store import BotStore
+
+        assert isinstance(publish_mock.await_args.args[1], BotStore)

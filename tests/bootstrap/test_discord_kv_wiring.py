@@ -21,6 +21,15 @@ class TestDiscordSetupUsesKvRoster:
         assert "seed_bot_roster" in source
         assert "AgentStore" not in source
 
+    def test_no_bot_store_or_config_db_in_standalone_telegram_source(self) -> None:
+        from factory.bootstrap.wiring import standalone_telegram as _mod
+
+        source = inspect.getsource(_mod)
+        assert "BotStore" not in source
+        assert "config.db" not in source
+        assert "seed_bot_roster" in source
+        assert "AgentStore" not in source
+
 
 class TestDiscordWireBotReceivesWatchChannels:
     @pytest.mark.asyncio

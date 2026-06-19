@@ -9,8 +9,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import sys
 from typing import Literal, overload
+
+from pydantic import ValidationError
 
 from factory.config import (
     DISCORD_DEFAULT_AUTO_THREAD,
@@ -36,33 +39,51 @@ from .kv_watch_channels import _open_or_create_kv
 log = logging.getLogger(__name__)
 
 _BUCKET = "factory-state"
+_BOT_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
-def _telegram_entry(row: BotRow) -> RosterBotEntry:
-    TelegramRosterBot(
+def _validate_bot_id(bot_id: str, platform: str) -> None:
+    if not _BOT_ID_RE.fullmatch(bot_id):
+        _fatal_roster_error(platform, f"invalid bot_id {bot_id!r}")
+
+
+def _telegram_entry(row: BotRow) -> RosterBotEntry | None:
+    if not _BOT_ID_RE.fullmatch(row.bot_id):
+        log.warning(
+            "publish_bot_roster: skipping telegram bot with invalid bot_id %r",
+            row.bot_id,
+        )
+        return None
+    validated = TelegramRosterBot(
         bot_id=row.bot_id,
         agent=row.agent,
         webhook_enabled=row.webhook_enabled,
     )
     return RosterBotEntry(
-        bot_id=row.bot_id,
-        agent=row.agent,
-        webhook_enabled=row.webhook_enabled,
+        bot_id=validated.bot_id,
+        agent=validated.agent,
+        webhook_enabled=validated.webhook_enabled,
     )
 
 
-def _discord_entry(row: BotRow) -> RosterBotEntry:
-    DiscordRosterBot(
+def _discord_entry(row: BotRow) -> RosterBotEntry | None:
+    if not _BOT_ID_RE.fullmatch(row.bot_id):
+        log.warning(
+            "publish_bot_roster: skipping discord bot with invalid bot_id %r",
+            row.bot_id,
+        )
+        return None
+    validated = DiscordRosterBot(
         bot_id=row.bot_id,
         agent=row.agent,
         auto_thread=row.auto_thread,
         thread_hot_hours=row.thread_hot_hours,
     )
     return RosterBotEntry(
-        bot_id=row.bot_id,
-        agent=row.agent,
-        auto_thread=row.auto_thread,
-        thread_hot_hours=row.thread_hot_hours,
+        bot_id=validated.bot_id,
+        agent=validated.agent,
+        auto_thread=validated.auto_thread,
+        thread_hot_hours=validated.thread_hot_hours,
     )
 
 
@@ -70,8 +91,20 @@ def _build_documents(
     rows: list[BotRow],
 ) -> tuple[PlatformRosterDocument, PlatformRosterDocument]:
     updated_at = _utc_now_iso()
-    tg_bots = [_telegram_entry(row) for row in rows if row.platform == "telegram"]
-    dc_bots = [_discord_entry(row) for row in rows if row.platform == "discord"]
+    tg_bots = [
+        entry
+        for row in rows
+        if row.platform == "telegram"
+        for entry in (_telegram_entry(row),)
+        if entry is not None
+    ]
+    dc_bots = [
+        entry
+        for row in rows
+        if row.platform == "discord"
+        for entry in (_discord_entry(row),)
+        if entry is not None
+    ]
     return (
         PlatformRosterDocument(updated_at=updated_at, bots=tg_bots),
         PlatformRosterDocument(updated_at=updated_at, bots=dc_bots),
@@ -165,11 +198,14 @@ async def seed_bot_roster(
 
     try:
         doc = PlatformRosterDocument.model_validate_json(entry.value)
-    except (json.JSONDecodeError, TypeError, ValueError):
+    except (json.JSONDecodeError, TypeError, ValueError, ValidationError):
         _fatal_roster_error(platform, f"malformed JSON at {key!r}")
 
     if not doc.bots:
         _fatal_roster_error(platform, f"empty bots[] at {key!r}")
+
+    for roster_entry in doc.bots:
+        _validate_bot_id(roster_entry.bot_id, platform)
 
     if platform == "telegram":
         bots = [_entry_to_telegram_bot(entry) for entry in doc.bots]

@@ -7,6 +7,7 @@ Step-by-step procedures for running factory in production (Podman Quadlet). Thes
 | [quadlet-install.md](quadlet-install.md) | First install, re-deploy, quadlet auto-sync |
 | [bot-onboarding.md](bot-onboarding.md) | Add a bot, render adapter secrets, multi-host caveat |
 | [secrets-rotation.md](secrets-rotation.md) | Rotate nkeys, GH PEM, OAuth, blobstore token |
+| [secrets-disaster-recovery.md](secrets-disaster-recovery.md) | Lost NATS nkeys — wipe, regen, M₂ fan-out |
 | [blobstore-backup-restore.md](blobstore-backup-restore.md) | Snapshot and restore the blob index + shards |
 | [quadlet-diagnostic.md](quadlet-diagnostic.md) | Status checks, common failures, auto-update fix |
 | [discord-db-migration.md](discord-db-migration.md) | One-time #1721 — move discord.db to named volume |

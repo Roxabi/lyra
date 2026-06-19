@@ -12,7 +12,7 @@ from typing import Any, Literal, cast
 import typer
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
-from factory.cli_bot import _connect_bot_store, bot_app
+from factory.cli_bot import _connect_bot_store, _maybe_publish_roster, bot_app
 from factory.core.agent.bot_models import (
     DEFAULT_AUTO_THREAD,
     DEFAULT_THREAD_HOT_HOURS,
@@ -106,6 +106,9 @@ def init_bots(
                 except Exception as e:  # noqa: BLE001
                     typer.echo(f"  error: {row.platform}/{row.bot_id}: {e}", err=True)
                     errors += 1
+
+            if store.get_all():
+                await _maybe_publish_roster(store)
 
             typer.echo(f"\nDone: {seeded} seeded, {skipped} skipped, {errors} errors")
             if errors:

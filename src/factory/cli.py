@@ -29,6 +29,7 @@ from factory.cli_agent import (
 )
 from factory.cli_bot import bot_app
 from factory.cli_ops import ops_app
+from factory.cli_secrets import secrets_app
 from factory.cli_setup import setup_app
 from factory.cli_voice_smoke import voice_smoke_app
 
@@ -70,6 +71,7 @@ factory_app.add_typer(bot_app, name="bot")
 factory_app.add_typer(setup_app, name="setup")
 factory_app.add_typer(voice_smoke_app, name="voice-smoke")
 factory_app.add_typer(ops_app, name="ops")
+factory_app.add_typer(secrets_app, name="secrets")
 factory_app.add_typer(blobstore_app, name="blobstore")
 
 hub_app = typer.Typer(name="hub", help="Run standalone Hub process (requires NATS).")

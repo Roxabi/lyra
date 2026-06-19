@@ -15,7 +15,7 @@ receives as its final call.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -28,7 +28,11 @@ from factory.core.messaging.render_events import (
     ToolCallEndRenderEvent,
     ToolCallStartRenderEvent,
 )
-from tests.adapters.conftest import _make_telegram_adapter, _make_telegram_message
+from tests.adapters.conftest import (
+    _make_telegram_adapter,
+    _make_telegram_message,
+    wire_telegram_rich_bot,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -36,21 +40,21 @@ from tests.adapters.conftest import _make_telegram_adapter, _make_telegram_messa
 
 
 def _make_adapter_with_bot():
-    """Return (adapter, bot_mock) with send_message + edit_message_text mocked."""
+    """Return (adapter, bot_mock) with rich-message mocks."""
     adapter = _make_telegram_adapter()
-    placeholder = MagicMock()
-    placeholder.message_id = 999
     bot = AsyncMock()
-    bot.send_message = AsyncMock(return_value=placeholder)
-    bot.edit_message_text = AsyncMock()
+    wire_telegram_rich_bot(bot, message_id=999)
     adapter.bot = bot
     return adapter, bot
 
 
 def _last_edit_text(bot: AsyncMock) -> str:
-    """Return the `text` kwarg from the last edit_message_text call."""
+    """Return rich_message.markdown from the last edit_message_text call."""
     call = bot.edit_message_text.call_args
     assert call is not None, "edit_message_text was never called"
+    rich = call.kwargs.get("rich_message")
+    if rich is not None:
+        return rich.markdown or ""
     return call.kwargs.get("text", "") or (call.args[0] if call.args else "")
 
 
@@ -72,7 +76,7 @@ class TestTelegramSnapshots:
 
         Input stream (v2): RunStarted, TextStart, TextDelta("Hello world!"),
                            TextEnd, RunFinished
-        Expected rendered text: MarkdownV2-escaped "Hello world\\!"
+        Expected rendered text: unescaped "Hello world!"
         """
         adapter, bot = _make_adapter_with_bot()
         msg = _make_telegram_message()
@@ -86,10 +90,9 @@ class TestTelegramSnapshots:
 
         await adapter.send_streaming(msg, _events())
 
-        # Exact-match (B5 fix #1205): pinned to catch MarkdownV2 escape
-        # regressions. `!` must be escaped → `\!` in Telegram MarkdownV2.
+        # Exact-match (B5 fix #1205): rich messages keep punctuation unescaped.
         final_text = _last_edit_text(bot)
-        assert final_text == "Hello world\\!", f"Snapshot mismatch: {final_text!r}"
+        assert final_text == "Hello world!", f"Snapshot mismatch: {final_text!r}"
 
     @pytest.mark.asyncio
     async def test_multi_block_snapshot(self) -> None:
@@ -158,8 +161,7 @@ class TestTelegramSnapshots:
         await adapter.send_streaming(msg, _events())
 
         final_text = _last_edit_text(bot)
-        # Exact-match: ❌ prefix prepended, then MarkdownV2-escaped content.
-        # Telegram escapes `.` as `\.`.
-        assert final_text == "❌ Something went wrong\\.", (
+        # Exact-match: ❌ prefix prepended; rich markdown keeps `.` unescaped.
+        assert final_text == "❌ Something went wrong.", (
             f"Expected ❌-prefixed error text, got: {final_text!r}"
         )

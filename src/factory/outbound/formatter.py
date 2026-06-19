@@ -86,7 +86,9 @@ class OutboundFormatter(Protocol):
     def get_msg(self, key: str, fallback: str) -> str: ...
 
     async def send_placeholder(self) -> tuple[Any, int | None]: ...
-    async def edit_placeholder_text(self, ph: Any, text: str) -> None: ...
+    async def edit_placeholder_text(
+        self, ph: Any, text: str, *, finalize: bool = False
+    ) -> None: ...
     async def send_trace_placeholder(self) -> tuple[Any, int | None]: ...
     async def send_message(self, text: str) -> int | None: ...
     async def send_fallback(self, text: str) -> int | None: ...
@@ -140,8 +142,10 @@ class BadFormatter:
     async def send_placeholder(self) -> tuple[Any, int | None]:
         raise ValueError(self._error_msg)
 
-    async def edit_placeholder_text(self, ph: Any, text: str) -> None:
-        pass
+    async def edit_placeholder_text(
+        self, ph: Any, text: str, *, finalize: bool = False
+    ) -> None:
+        del ph, text, finalize
 
     async def send_trace_placeholder(self) -> tuple[Any, int | None]:
         raise ValueError(self._error_msg)
@@ -211,12 +215,15 @@ class BaseFormatter(ABC):
     # ------------------------------------------------------------------
 
     @abstractmethod
-    async def send_placeholder(self) -> tuple[Any, int]:
+    async def send_placeholder(self) -> tuple[Any, int | None]:
         """Send the initial placeholder; returns (message_object, message_id)."""
 
     @abstractmethod
-    async def edit_placeholder_text(self, ph: Any, text: str) -> None:
+    async def edit_placeholder_text(
+        self, ph: Any, text: str, *, finalize: bool = False
+    ) -> None:
         """Edit the placeholder message *ph* to display *text*."""
+        del finalize
 
     @abstractmethod
     async def send_trace_placeholder(self) -> tuple[Any, int | None]:

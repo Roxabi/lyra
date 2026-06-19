@@ -303,6 +303,7 @@ class TelegramAdapter(OutboundAdapterBase):
             formatter_cls=TelegramFormatter,
             formatter_kwargs_fn=lambda m: {
                 "chat_id": m[0],
+                "topic_id": m[1],
                 "reply_to": _pm.message_id if isinstance(_pm, TelegramMeta) else None,
             },
             typing_cls=TelegramTypingIndicator,

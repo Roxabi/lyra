@@ -207,7 +207,10 @@ class TestTelegramAdapterStandaloneNoMkdir:
         stop = asyncio.Event()
         stop.set()
 
-        raw_config = {"telegram": {"bots": [{"bot_id": "testbot"}]}}
+        from tests.helpers.standalone_bot_store import patch_telegram_roster
+
+        patch_telegram_roster(monkeypatch, ["testbot"])
+        raw_config = {}
         from factory.bootstrap.factory.config import AdapterConfigBundle
         from factory.core.messaging.message import Platform
 
@@ -299,13 +302,15 @@ class TestTelegramAdapterStandaloneNoMkdir:
         stop = asyncio.Event()
         stop.set()
 
-        raw_config = {
-            "discord": {
-                "bots": [
-                    {"bot_id": "testbot", "auto_thread": False, "thread_hot_hours": 4}
-                ]
-            }
-        }
+        from tests.helpers.standalone_bot_store import patch_discord_roster
+
+        patch_discord_roster(
+            monkeypatch,
+            ["testbot"],
+            auto_thread=False,
+            thread_hot_hours=4,
+        )
+        raw_config = {}
         from factory.bootstrap.factory.config import AdapterConfigBundle
         from factory.core.messaging.message import Platform
 

@@ -14,6 +14,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.helpers.standalone_bot_store import (
+    patch_discord_roster,
+    patch_telegram_roster,
+)
+
 
 async def test_adapter_reads_token_from_run_secrets(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -26,8 +31,9 @@ async def test_adapter_reads_token_from_run_secrets(
 
     monkeypatch.setenv("FACTORY_RUN_SECRETS_DIR", str(run_secrets_dir))
     monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
+    patch_telegram_roster(monkeypatch, ["mybot"])
 
-    raw_config = {"telegram": {"bots": [{"bot_id": "mybot"}]}}
+    raw_config = {}
 
     stop = asyncio.Event()
     stop.set()
@@ -90,8 +96,9 @@ async def test_adapter_reads_webhook_when_present(
 
     monkeypatch.setenv("FACTORY_RUN_SECRETS_DIR", str(run_secrets_dir))
     monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
+    patch_telegram_roster(monkeypatch, ["mybot"])
 
-    raw_config = {"telegram": {"bots": [{"bot_id": "mybot"}]}}
+    raw_config = {}
 
     stop = asyncio.Event()
     stop.set()
@@ -154,8 +161,9 @@ async def test_adapter_omits_webhook_when_absent(
 
     monkeypatch.setenv("FACTORY_RUN_SECRETS_DIR", str(run_secrets_dir))
     monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
+    patch_telegram_roster(monkeypatch, ["mybot"])
 
-    raw_config = {"telegram": {"bots": [{"bot_id": "mybot"}]}}
+    raw_config = {}
 
     stop = asyncio.Event()
     stop.set()
@@ -220,8 +228,9 @@ async def test_adapter_handles_multi_bot(
 
     monkeypatch.setenv("FACTORY_RUN_SECRETS_DIR", str(run_secrets_dir))
     monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
+    patch_telegram_roster(monkeypatch, ["bot1", "bot2"])
 
-    raw_config = {"telegram": {"bots": [{"bot_id": "bot1"}, {"bot_id": "bot2"}]}}
+    raw_config = {}
 
     stop = asyncio.Event()
     stop.set()
@@ -293,16 +302,14 @@ async def test_discord_adapter_handles_multi_bot(
 
     monkeypatch.setenv("FACTORY_RUN_SECRETS_DIR", str(run_secrets_dir))
     monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
-    monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path / "vault"))
+    patch_discord_roster(
+        monkeypatch,
+        ["bot1", "bot2"],
+        auto_thread=True,
+        thread_hot_hours=24,
+    )
 
-    raw_config = {
-        "discord": {
-            "bots": [
-                {"bot_id": "bot1", "auto_thread": True, "thread_hot_hours": 24},
-                {"bot_id": "bot2", "auto_thread": True, "thread_hot_hours": 24},
-            ]
-        }
-    }
+    raw_config = {}
 
     stop = asyncio.Event()
     stop.set()

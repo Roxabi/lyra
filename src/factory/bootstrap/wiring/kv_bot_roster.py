@@ -13,7 +13,7 @@ import json
 import logging
 import re
 import sys
-from typing import Literal, overload
+from typing import Literal, NoReturn, overload
 
 from pydantic import ValidationError
 
@@ -70,7 +70,7 @@ def _entry_to_discord_bot(entry: RosterBotEntry) -> DiscordBotConfig:
     )
 
 
-def _fatal_roster_error(platform: str, detail: str) -> None:
+def _fatal_roster_error(platform: str, detail: str) -> NoReturn:
     sys.exit(
         f"No {platform} bots configured — roster missing or invalid in factory-state KV"
         f" ({detail}). Ensure the hub has started and published roster.{platform},"

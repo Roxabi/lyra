@@ -332,7 +332,9 @@ class TestBotInitKvDualWrite:
         assert result.exit_code == 0, result.output
         assert "published roster to factory-state KV" in result.output
         publish_mock.assert_awaited_once()
-        assert publish_mock.await_args.args[0] is mock_js
+        await_args = publish_mock.await_args
+        assert await_args is not None
+        assert await_args.args[0] is mock_js
         from factory.infrastructure.stores.bot_store import BotStore
 
-        assert isinstance(publish_mock.await_args.args[1], BotStore)
+        assert isinstance(await_args.args[1], BotStore)

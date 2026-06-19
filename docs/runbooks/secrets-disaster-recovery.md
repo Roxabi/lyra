@@ -100,7 +100,7 @@ Smoke: send a test message through Telegram/Discord; confirm clipool/OMP health 
 
 When the secret broker lands, master-password loss is a **separate** recovery path: wipe the factory Vaultwarden data, re-create the org/collection, re-import API keys from upstream consoles. Agents (`--network=none`) hold no long-lived creds.
 
-Design and checklist → [agent-secret-broker.md §10](../../artifacts/analyses/agent-secret-broker.md#10-recovery--clé-perdue--wipe--regen) (analysis not yet promoted).
+Design and checklist → [agent-secret-broker.md §10](../../artifacts/analyses/agent-secret-broker.md#10-recovery--clé-perdue--wipe--regen).
 
 `factory secrets reset` today covers **NATS nkeys only**; broker wipe will get its own runbook step when implemented.
 

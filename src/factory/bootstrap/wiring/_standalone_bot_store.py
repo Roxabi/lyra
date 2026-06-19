@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import logging
+import sys
 
-from factory.bootstrap.bootstrap_stores import _ensure_config_db
 from factory.config import (
     DiscordMultiConfig,
     TelegramMultiConfig,
@@ -17,10 +17,14 @@ log = logging.getLogger(__name__)
 
 
 async def _open_bot_store() -> BotStore:
-    vault_dir = factory_data_dir()
-    _ensure_config_db(vault_dir)
-    store = BotStore(db_path=vault_dir / "config.db")
-    await store.connect()
+    config_path = factory_data_dir() / "config.db"
+    if not config_path.exists():
+        sys.exit(
+            "config.db not found — runtime roster is sourced from BotStore."
+            " Run 'factory bot init' on the hub host to seed it."
+        )
+    store = BotStore(db_path=config_path)
+    await store.connect_readonly()
     return store
 
 

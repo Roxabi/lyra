@@ -34,6 +34,35 @@ _DEFAULT_SEEDS_DIR = str(factory_data_dir() / "nkeys")
 _FLUSH_TIMEOUT = 2
 
 
+def _resolve_matrix_path(path: Path) -> Path:
+    """Find acl-matrix.json — explicit path, repo checkout, or hub bind mount."""
+    p = path.expanduser()
+    if p.is_file():
+        return p.resolve()
+
+    candidates: list[Path] = []
+    env_repo = os.environ.get("ROXABI_FACTORY_REPO")
+    if env_repo:
+        candidates.append(
+            Path(env_repo).expanduser() / "deploy" / "nats" / "acl-matrix.json"
+        )
+    here = Path(__file__).resolve()
+    candidates.extend(
+        (
+            here.parents[2] / "deploy" / "nats" / "acl-matrix.json",
+            Path.cwd() / "deploy" / "nats" / "acl-matrix.json",
+            Path("/app/deploy/nats/acl-matrix.json"),
+        )
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate.resolve()
+
+    raise typer.BadParameter(
+        f"matrix file not found: {p} — pass --matrix or set ROXABI_FACTORY_REPO"
+    )
+
+
 @dataclass
 class CheckRow:
     identity: str
@@ -235,7 +264,7 @@ def verify(
 ) -> None:
     """Verify each identity's NATS publish ACL via the live server."""
     resolved_url = nats_url or os.environ.get("NATS_URL", _DEFAULT_NATS_URL)
-    matrix_path = matrix.expanduser()
+    matrix_path = _resolve_matrix_path(matrix)
     seeds_path = seeds_dir.expanduser()
     identities = _load_matrix(matrix_path)
     if only:

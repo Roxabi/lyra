@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import logging
 import os
 from dataclasses import dataclass
@@ -56,7 +57,8 @@ def build_rich_message(text: str) -> InputRichMessage:
 
 def build_thinking_message(text: str) -> InputRichMessage:
     """RichMessage thinking block — HTML <tg-thinking> (draft-only block type)."""
-    return InputRichMessage(html=f"<{_THINKING_TAG}>{text}</{_THINKING_TAG}>")
+    safe = html.escape(text, quote=True)
+    return InputRichMessage(html=f"<{_THINKING_TAG}>{safe}</{_THINKING_TAG}>")
 
 
 def chunk_markdown(text: str) -> list[str]:

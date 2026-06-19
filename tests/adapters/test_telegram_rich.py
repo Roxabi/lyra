@@ -10,6 +10,7 @@ from factory.adapters.telegram.telegram_formatter import TelegramFormatter
 from factory.adapters.telegram.telegram_rich import (
     TelegramPlaceholder,
     build_rich_message,
+    build_thinking_message,
     chunk_markdown,
     edit_text_with_fallback,
     send_text_with_fallback,
@@ -87,6 +88,37 @@ def test_build_rich_message_wraps_markdown() -> None:
     rich = build_rich_message("**bold**")
     assert rich.markdown == "**bold**"
     assert rich.html is None
+
+
+def test_build_thinking_message_escapes_html() -> None:
+    rich = build_thinking_message('</tg-thinking><b>x</b>')
+    assert rich.html == "<tg-thinking>&lt;/tg-thinking&gt;&lt;b&gt;x&lt;/b&gt;</tg-thinking>"
+
+
+@pytest.mark.asyncio
+async def test_send_placeholder_draft_failure_falls_back_to_persisted(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FACTORY_TELEGRAM_RICH_DRAFTS", "1")
+
+    adapter = _make_telegram_adapter()
+    bot = AsyncMock()
+    sent = wire_telegram_rich_bot(bot, message_id=55)
+    bot.send_rich_message_draft = AsyncMock(side_effect=RuntimeError("draft down"))
+    adapter.bot = bot
+
+    formatter = TelegramFormatter(
+        adapter,
+        chat_id=123,
+        get_msg=lambda k, fb: fb,
+        placeholder_text="…",
+    )
+
+    ph, reply_id = await formatter.send_placeholder()
+
+    assert reply_id == sent.message_id
+    assert ph.use_draft is False
+    bot.send_rich_message.assert_awaited_once()
 
 
 @pytest.mark.asyncio

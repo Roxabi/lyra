@@ -115,10 +115,6 @@ class TestTelegramStreaming:
         last_edit = bot.edit_message_text.call_args
         assert last_edit.kwargs["rich_message"].markdown == "Hello world!"
 
-    def _rich_markdown(self, call) -> str:
-        rich = call.kwargs.get("rich_message")
-        return rich.markdown if rich is not None else call.kwargs.get("text", "")
-
     async def test_debounce_limits_edits(self) -> None:
         adapter, bot = self._make_adapter()
         msg = make_tg_message()
@@ -428,7 +424,10 @@ class TestTelegramIntermediateText:
         assert last_edit is not None
         # Final edit contains the accumulated text
         rich = last_edit.kwargs.get("rich_message")
-        final_text = rich.markdown if rich is not None else last_edit.kwargs.get("text", "")
+        if rich is not None:
+            final_text = rich.markdown
+        else:
+            final_text = last_edit.kwargs.get("text", "")
         assert "Final answer" in final_text
 
 

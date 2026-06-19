@@ -8,22 +8,21 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from aiogram.exceptions import TelegramAPIError
 
+from factory.adapters.telegram.telegram_rich import (
+    TelegramPlaceholder,
+    build_rich_message,
+)
 from factory.core.auth.trust import TrustLevel
 from factory.core.messaging.message import (  # noqa: F401
     DiscordMeta,
     InboundMessage,
     OutboundMessage,
     TelegramMeta,
-)
-from factory.adapters.telegram.telegram_rich import (
-    TelegramPlaceholder,
-    build_rich_message,
 )
 from tests.adapters.conftest import (
     _make_telegram_adapter,

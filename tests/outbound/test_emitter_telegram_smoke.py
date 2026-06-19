@@ -2,13 +2,13 @@
 
 Verifies that TelegramAdapter._make_emitter() constructs a real OutboundEmitter
 composed with TelegramFormatter and that send_streaming() runs it end-to-end with
-platform-correct bot.send_message kwargs at each call site.
+platform-correct rich-message kwargs at each call site.
 
 SC-10 smoke acceptance criteria:
   - send_streaming() completes without raising
-  - bot.send_message called at least once (placeholder send)
-  - First placeholder call includes parse_mode="MarkdownV2" and reply_to_message_id
-  - Final edit call (edit_message_text) includes parse_mode="MarkdownV2"
+  - bot.send_rich_message called at least once (placeholder send)
+  - First placeholder call includes reply_to_message_id
+  - Final edit call (edit_message_text) includes rich_message
   - OutboundMessage.metadata["reply_message_id"] is populated
 """
 
@@ -18,7 +18,10 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from factory.adapters.telegram import TelegramAdapter
+from tests.adapters.conftest import wire_telegram_rich_bot
 from factory.core.auth.trust import TrustLevel
 from factory.core.messaging.message import InboundMessage, OutboundMessage, TelegramMeta
 from factory.core.messaging.render_events import (
@@ -33,6 +36,12 @@ from factory.core.messaging.render_events import (
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _disable_telegram_rich_drafts(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Smoke tests target persisted rich messages, not private-chat drafts."""
+    monkeypatch.setenv("FACTORY_TELEGRAM_RICH_DRAFTS", "0")
+
+
 def _make_tg_adapter_with_bot() -> tuple[TelegramAdapter, AsyncMock]:
     """Build a TelegramAdapter with a fully mocked aiogram bot."""
     adapter = TelegramAdapter(
@@ -41,11 +50,7 @@ def _make_tg_adapter_with_bot() -> tuple[TelegramAdapter, AsyncMock]:
         inbound_bus=MagicMock(),
     )
     bot = AsyncMock()
-    # send_message returns a Telegram Message-like object with .message_id
-    placeholder_msg = SimpleNamespace(message_id=100)
-    bot.send_message = AsyncMock(return_value=placeholder_msg)
-    # edit_message_text is called during streaming and final delivery
-    bot.edit_message_text = AsyncMock()
+    wire_telegram_rich_bot(bot, message_id=100)
     adapter.bot = bot
     return adapter, bot
 
@@ -157,7 +162,7 @@ class TestTelegramMakeEmitter:
 
 class TestTelegramSendStreamingSmoke:
     async def test_send_streaming_calls_bot_send_message(self) -> None:
-        """send_streaming() must call bot.send_message at least once (placeholder)."""
+        """send_streaming() must call bot.send_rich_message at least once (placeholder)."""
         # Arrange
         adapter, bot = _make_tg_adapter_with_bot()
         original_msg = _make_tg_inbound(chat_id=42, message_id=10)
@@ -169,15 +174,11 @@ class TestTelegramSendStreamingSmoke:
         )
 
         # Assert — placeholder was sent
-        bot.send_message.assert_awaited()
-        assert bot.send_message.await_count >= 1
+        bot.send_rich_message.assert_awaited()
+        assert bot.send_rich_message.await_count >= 1
 
     async def test_send_streaming_edit_has_parse_mode_markdownv2(self) -> None:
-        """Streaming edit_message_text calls must include parse_mode='MarkdownV2'.
-
-        The placeholder send_message itself has no parse_mode (plain '…' text);
-        parse_mode is applied on edit_message_text and final delivery calls only.
-        """
+        """Streaming edit_message_text calls must include rich_message payload."""
         # Arrange
         adapter, bot = _make_tg_adapter_with_bot()
         original_msg = _make_tg_inbound(chat_id=42, message_id=10)
@@ -188,18 +189,16 @@ class TestTelegramSendStreamingSmoke:
             original_msg, _three_chunk_events(), outbound=outbound
         )
 
-        # Assert — at least one edit_message_text call has parse_mode=MarkdownV2
+        # Assert — at least one edit uses rich_message
         bot.edit_message_text.assert_awaited()
-        found_markdownv2 = any(
-            call.kwargs.get("parse_mode") == "MarkdownV2"
+        found_rich = any(
+            call.kwargs.get("rich_message") is not None
             for call in bot.edit_message_text.call_args_list
         )
-        assert found_markdownv2, (
-            "Expected at least one edit_message_text call with parse_mode='MarkdownV2'"
-        )
+        assert found_rich, "Expected at least one edit_message_text with rich_message"
 
     async def test_send_streaming_placeholder_has_reply_to_message_id(self) -> None:
-        """Placeholder send_message call must include reply_to_message_id=message_id."""
+        """Placeholder send_rich_message must include reply_to_message_id=message_id."""
         # Arrange
         adapter, bot = _make_tg_adapter_with_bot()
         original_msg = _make_tg_inbound(chat_id=42, message_id=10)
@@ -211,18 +210,14 @@ class TestTelegramSendStreamingSmoke:
         )
 
         # Assert — reply_to_message_id in first call
-        first_call = bot.send_message.call_args_list[0]
+        first_call = bot.send_rich_message.call_args_list[0]
         kwargs = first_call.kwargs
         assert kwargs.get("reply_to_message_id") == 10, (
             f"Expected reply_to_message_id=10, got: {kwargs}"
         )
 
     async def test_send_streaming_final_edit_uses_markdownv2(self) -> None:
-        """Final delivery edit_message_text (last call) must use parse_mode=MarkdownV2.
-
-        Distinct from the intermediate-edit assertion: this pins the *last*
-        edit_message_text call (the final delivery) to MarkdownV2 specifically.
-        """  # noqa: E501
+        """Final delivery edit_message_text (last call) must use rich_message."""
         # Arrange
         adapter, bot = _make_tg_adapter_with_bot()
         original_msg = _make_tg_inbound(chat_id=42, message_id=10)
@@ -233,11 +228,11 @@ class TestTelegramSendStreamingSmoke:
             original_msg, _three_chunk_events(), outbound=outbound
         )
 
-        # Assert — the final (last) edit_message_text call carries MarkdownV2
+        # Assert — the final (last) edit_message_text call carries rich_message
         bot.edit_message_text.assert_awaited()
         last_call = bot.edit_message_text.call_args_list[-1]
-        assert last_call.kwargs.get("parse_mode") == "MarkdownV2", (
-            "Expected final edit_message_text to use parse_mode='MarkdownV2', "
+        assert last_call.kwargs.get("rich_message") is not None, (
+            "Expected final edit_message_text to use rich_message, "
             f"got kwargs: {last_call.kwargs}"
         )
 
@@ -262,7 +257,7 @@ class TestTelegramSendStreamingSmoke:
         assert outbound.metadata["reply_message_id"] == 100
 
     async def test_send_streaming_placeholder_before_edit(self) -> None:
-        """Placeholder send_message must happen before any edit_message_text call."""
+        """Placeholder send_rich_message must happen before any edit_message_text call."""
         # Arrange
         call_order: list[str] = []
 
@@ -275,7 +270,7 @@ class TestTelegramSendStreamingSmoke:
         async def record_edit(*args, **kwargs):
             call_order.append("edit")
 
-        bot.send_message = AsyncMock(side_effect=record_send)
+        bot.send_rich_message = AsyncMock(side_effect=record_send)
         bot.edit_message_text = AsyncMock(side_effect=record_edit)
 
         original_msg = _make_tg_inbound(chat_id=42, message_id=10)
@@ -287,7 +282,7 @@ class TestTelegramSendStreamingSmoke:
         )
 
         # Assert — send happened before any edit
-        assert "send" in call_order, "bot.send_message must be called"
+        assert "send" in call_order, "bot.send_rich_message must be called"
         if "edit" in call_order:
             first_send = call_order.index("send")
             first_edit = call_order.index("edit")
@@ -329,12 +324,10 @@ class TestTelegramSendStreamingSmoke:
         # Assert — last edit_message_text call has the accumulated content
         bot.edit_message_text.assert_awaited()
         last_call = bot.edit_message_text.call_args_list[-1]
-        text_arg = last_call.kwargs.get("text") or (
-            last_call.args[0] if last_call.args else ""
-        )
-        # MarkdownV2 escapes spaces and characters, but "Hello" and "world" must be
-        # present after escaping (content check at character level).
-        assert text_arg is not None, "edit_message_text must receive a text argument"
+        rich = last_call.kwargs.get("rich_message")
+        text_arg = rich.markdown if rich is not None else last_call.kwargs.get("text")
+        assert text_arg is not None, "edit_message_text must receive content"
+        assert "Hello" in text_arg and "world" in text_arg
 
     async def test_send_streaming_soft_error_displays_run_error_message(self) -> None:
         """ADR-089: soft error only shows curated message on Telegram."""
@@ -348,8 +341,7 @@ class TestTelegramSendStreamingSmoke:
 
         bot.edit_message_text.assert_awaited()
         last_call = bot.edit_message_text.call_args_list[-1]
-        text_arg = last_call.kwargs.get("text") or (
-            last_call.args[0] if last_call.args else ""
-        )
+        rich = last_call.kwargs.get("rich_message")
+        text_arg = rich.markdown if rich is not None else last_call.kwargs.get("text")
         assert text_arg is not None
         assert "weekly limit" in text_arg

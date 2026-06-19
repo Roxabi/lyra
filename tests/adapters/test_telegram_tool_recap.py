@@ -30,7 +30,6 @@ from factory.core.messaging.render_events import (
 from tests.adapters.conftest import (
     _make_telegram_adapter,
     _make_telegram_message,
-    wire_telegram_rich_bot,
 )
 
 # ---------------------------------------------------------------------------
@@ -86,7 +85,7 @@ async def test_multi_tool_turn_renders_recap_card_via_edit_message_text() -> Non
     Asserts:
     - bot.edit_message_text was called at least once.
     - At least one call targets the trace placeholder message_id.
-    - At least one such call's ``rich_message.markdown`` contains the recap header '🔧 Done ✅'.
+    - At least one call's ``rich_message.markdown`` contains recap header '🔧 Done ✅'.
     - At least one call contains '✏️' (edit tool icon) AND '💻' (bash icon).
 
     This test FAILS on the unmodified codebase because ``edit_tool_recap`` is the
@@ -241,7 +240,7 @@ async def test_recap_text_is_markdownv2_escaped() -> None:
     This test FAILS on the unmodified codebase because edit_tool_recap is a no-op
     and bot.edit_message_text is never called.
     """
-    # Arrange — response placeholder is the FIRST send_rich_message call; trace is second
+    # Arrange — response placeholder is first send_rich_message; trace is second
     adapter = _make_telegram_adapter()
 
     placeholder_msg = MagicMock()

@@ -72,7 +72,9 @@ async def _deliver_text_chunks(
         pass  # guard already logged; non-fatal
     if len(final_chunks) == 1:
         mid = getattr(placeholder_obj, "message_id", None)
-        if mid is not None and emitter._outbound is not None:
+        # Draft finalize sets a real int on TelegramPlaceholder; AsyncMock.message_id
+        # and Discord .id must not overwrite reply_message_id from send_placeholder.
+        if isinstance(mid, int) and emitter._outbound is not None:
             emitter._outbound.metadata["reply_message_id"] = mid
     for extra_chunk in final_chunks[1:]:
         result = await emitter._handler.guard(

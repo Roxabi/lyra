@@ -92,13 +92,27 @@ class TelegramFormatter(BaseFormatter):
     async def send_placeholder(self) -> tuple[Any, int | None]:
         if use_rich_draft(self._chat_id):
             draft_id = resolve_draft_id(self._reply_to, self._chat_id)
-            await send_rich_draft(
+            ok = await send_rich_draft(
                 self._adapter.bot,
                 self._chat_id,
                 draft_id,
                 build_thinking_message(self._placeholder_text),
                 topic_id=self._topic_id,
             )
+            if not ok:
+                sent = await send_text_with_fallback(
+                    self._adapter.bot,
+                    self._chat_id,
+                    self._placeholder_text,
+                    reply_to=self._reply_to,
+                    topic_id=self._topic_id,
+                )
+                ph = TelegramPlaceholder(
+                    chat_id=self._chat_id,
+                    topic_id=self._topic_id,
+                    message_id=sent.message_id,
+                )
+                return ph, sent.message_id
             ph = TelegramPlaceholder(
                 chat_id=self._chat_id,
                 topic_id=self._topic_id,
@@ -156,11 +170,11 @@ class TelegramFormatter(BaseFormatter):
                 build_rich_message(text),
                 topic_id=ph.topic_id,
             )
-            if not ok:
+            if not ok and ph.message_id is not None:
                 await edit_text_with_fallback(
                     self._adapter.bot,
                     ph.chat_id,
-                    _message_id(ph),
+                    ph.message_id,
                     text,
                 )
             return

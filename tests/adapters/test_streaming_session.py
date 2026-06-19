@@ -92,7 +92,9 @@ async def test_text_only_turn():
         )
     )
 
-    assert fmt.edit_placeholder_text.call_args == ((placeholder_obj, "hello"),)
+    fmt.edit_placeholder_text.assert_called_with(
+        placeholder_obj, "hello", finalize=True
+    )
     fmt.send_message.assert_not_called()
 
 
@@ -149,6 +151,7 @@ async def test_empty_stream_surfaces_generic_error():
     fmt.edit_placeholder_text.assert_called_once_with(
         placeholder_obj,
         GENERIC_ERROR_REPLY,
+        finalize=True,
     )
 
 
@@ -392,7 +395,9 @@ async def test_overflow_chunks():
         )
     )
 
-    fmt.edit_placeholder_text.assert_called_with(placeholder_obj, "chunk1")
+    fmt.edit_placeholder_text.assert_called_with(
+        placeholder_obj, "chunk1", finalize=True
+    )
     fmt.send_message.assert_called_once_with("chunk2")
 
 
@@ -428,6 +433,7 @@ async def test_get_msg_used_for_display_text():
     fmt.edit_placeholder_text.assert_called_with(
         placeholder_obj,
         "partial answer [interrompu]",
+        finalize=True,
     )
 
 
@@ -449,7 +455,9 @@ async def test_get_msg_default_fallback():
     # but the callback is still wired correctly). v2 streaming may emit an
     # intermediate edit before the final one; check that the final call delivered
     # the clean text without the "⏳ " live-feedback prefix.
-    assert fmt.edit_placeholder_text.call_args == ((placeholder_obj, "hello"),)
+    fmt.edit_placeholder_text.assert_called_with(
+        placeholder_obj, "hello", finalize=True
+    )
 
 
 # ---------------------------------------------------------------------------

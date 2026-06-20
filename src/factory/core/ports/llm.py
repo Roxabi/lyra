@@ -37,6 +37,7 @@ class LlmResult:
     retryable: bool = True
     warning: str = ""
     user_message: str = ""
+    model_fallback: dict[str, str] | None = None
     worker_error: "WorkerError | None" = field(default=None)
 
     @property

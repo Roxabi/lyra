@@ -55,6 +55,8 @@ stream_interrupted  = " [réponse interrompue]"
 
 [notifications.en]
 idle_eviction       = "Session timed out after inactivity."
+model_fallback      = "⚠️ {requested_model} is unavailable — replying with {fallback_model}."
 
 [notifications.fr]
 idle_eviction       = "Session expirée après inactivité."
+model_fallback      = "⚠️ {requested_model} est indisponible — réponse avec {fallback_model}."

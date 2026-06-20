@@ -1,7 +1,7 @@
 """Protocol interface for the factory pairing system.
 
 Application-layer code (e.g. command handlers) must depend on this module
-rather than on ``factory.infrastructure.stores.pairing`` directly, following
+rather than on ``factory.infrastructure.stores.identity.pairing`` directly, following
 the dependency-inversion principle (ADR-059).
 
 ``PairingError`` is re-exported from ``pairing_config`` (pure core module).

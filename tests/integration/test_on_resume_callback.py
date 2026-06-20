@@ -23,7 +23,7 @@ from factory.core.hub import Hub
 from factory.core.lifecycle.circuit_breaker import CircuitRegistry
 from factory.core.pool import Pool
 from factory.core.pool.pool_context import PoolContext
-from factory.infrastructure.stores.turn_store import TurnStore
+from factory.infrastructure.stores.session.turn_store import TurnStore
 from factory.transport.turn_publisher import TurnPublisher
 
 # ---------------------------------------------------------------------------

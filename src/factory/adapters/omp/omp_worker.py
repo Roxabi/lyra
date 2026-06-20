@@ -118,11 +118,15 @@ class OmpWorker(NatsAdapterBase):
                 try:
                     await self._nc.drain()
                 except Exception:  # noqa: BLE001
-                    log.warning("omp_worker: nc.drain failed on shutdown", exc_info=True)  # noqa: E501
+                    log.warning(
+                        "omp_worker: nc.drain failed on shutdown", exc_info=True
+                    )  # noqa: E501
                 try:
                     await self._nc.close()
                 except Exception:  # noqa: BLE001
-                    log.warning("omp_worker: nc.close failed on shutdown", exc_info=True)  # noqa: E501
+                    log.warning(
+                        "omp_worker: nc.close failed on shutdown", exc_info=True
+                    )  # noqa: E501
                 self._nc = None
 
     # ------------------------------------------------------------------
@@ -174,9 +178,7 @@ class OmpWorker(NatsAdapterBase):
         pool_id: str = envelope.payload.get("pool_id") or str(job_id)
 
         # provider_session_id: empty string → None (never pass empty string to pool).
-        provider_session_id = (
-            envelope.payload.get("provider_session_id") or None
-        )
+        provider_session_id = envelope.payload.get("provider_session_id") or None
 
         model_cfg = envelope.payload.get("model_cfg", {})
         system_prompt = envelope.payload.get("system_prompt", "")

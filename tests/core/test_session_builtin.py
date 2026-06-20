@@ -11,7 +11,7 @@ from factory.core.commands import session_commands
 from factory.core.messaging.message import Response
 from factory.core.pool import Pool
 from factory.core.stores.turn_store_protocol import SessionRow
-from factory.infrastructure.stores.turn_store import TurnStore
+from factory.infrastructure.stores.session.turn_store import TurnStore
 
 from .conftest import make_message
 

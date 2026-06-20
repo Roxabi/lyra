@@ -36,7 +36,29 @@ class OmpJobCodec:
 
     def decode(self, result: JobResult) -> LlmResult:
         if result.status == "success":
-            return LlmResult(result=(result.data or {}).get("result", ""))
+            data = result.data or {}
+            model_fallback = data.get("model_fallback")
+            if not isinstance(model_fallback, dict):
+                model_fallback = None
+            else:
+                requested = model_fallback.get("requested")
+                fallback = model_fallback.get("fallback")
+                if not (
+                    isinstance(requested, str)
+                    and isinstance(fallback, str)
+                    and requested
+                    and fallback
+                ):
+                    model_fallback = None
+                else:
+                    model_fallback = {
+                        "requested": requested,
+                        "fallback": fallback,
+                    }
+            return LlmResult(
+                result=data.get("result", ""),
+                model_fallback=model_fallback,
+            )
 
         validated = _validate_worker_error(result.error)
         error_msg = validated.message if validated else _MALFORMED_ERROR

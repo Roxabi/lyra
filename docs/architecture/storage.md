@@ -118,7 +118,7 @@ async def write(self, user_id: str, content: str, level: MemoryLevel, session_id
 
 ### Agent store (SQLite)
 
-`AgentStore` lives at `factory.infrastructure.stores.agent_store` (moved from `factory.core` during
+`AgentStore` lives at `factory.infrastructure.stores.registry.agent_store` (moved from `factory.core` during
 ADR-059 remediation) and inherits from `SqliteStore`. Three tables: `agents`, `bot_agent_map`,
 `agent_runtime_state`. Write ordering is DB-first: `execute` → `commit` → update in-memory
 cache, consistent with `AuthStore`. Cache covers `agents` and `bot_map` (sync `get()` path);

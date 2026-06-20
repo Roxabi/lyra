@@ -30,8 +30,8 @@ if TYPE_CHECKING:
     from factory.core.ports.stt import STTProtocol
     from factory.core.ports.tts import TtsProtocol
     from factory.infrastructure.audit import JetStreamAuditSink
-    from factory.infrastructure.stores.pairing import PairingManager
-    from factory.infrastructure.stores.thread_store import ThreadStore
+    from factory.infrastructure.stores.identity.pairing import PairingManager
+    from factory.infrastructure.stores.session.thread_store import ThreadStore
     from factory.llm.llm_client import LlmClient
     from factory.nats.nats_bus import NatsBus
     from factory.nats.nats_channel_proxy import NatsChannelProxy

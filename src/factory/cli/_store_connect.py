@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from factory.infrastructure.stores.agent_store import AgentStore
-from factory.infrastructure.stores.bot_store import BotStore
+from factory.infrastructure.stores.registry.agent_store import AgentStore
+from factory.infrastructure.stores.registry.bot_store import BotStore
 from factory.paths import factory_data_dir
 
 

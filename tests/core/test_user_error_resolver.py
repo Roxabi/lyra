@@ -72,9 +72,7 @@ class TestResolveUserErrorWorkerError:
             retryable=True,
             detail="45",
         )
-        result = resolve_user_error(
-            worker_error=we, msg_manager=mm, bot_name="Lyra"
-        )
+        result = resolve_user_error(worker_error=we, msg_manager=mm, bot_name="Lyra")
         assert result == mm.get("unavailable", bot_name="Lyra", retry_secs="45")
 
     def test_llm_model_unavailable_substitutes_bot_name(self) -> None:
@@ -84,9 +82,7 @@ class TestResolveUserErrorWorkerError:
             message="model down",
             retryable=True,
         )
-        result = resolve_user_error(
-            worker_error=we, msg_manager=mm, bot_name="Lyra"
-        )
+        result = resolve_user_error(worker_error=we, msg_manager=mm, bot_name="Lyra")
         assert "Lyra" in result
         assert "{bot_name}" not in result
 

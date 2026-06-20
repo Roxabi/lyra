@@ -1,7 +1,7 @@
 """Driven port — ActiveJobsPort: per-pool active-job registry (#1796).
 
 Pure Protocol + value objects only.  Zero infrastructure imports.
-Implementations live in ``factory.infrastructure.stores.active_jobs_kv``.
+Implementations live in ``factory.infrastructure.stores.jobs.active_jobs_kv``.
 """
 
 from __future__ import annotations

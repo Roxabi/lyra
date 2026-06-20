@@ -13,7 +13,7 @@ from factory.core.stores.thread_store_protocol import ThreadStoreProtocol
 
 def test_thread_store_isinstance_check(tmp_path: pytest.TempPathFactory) -> None:
     """ThreadStore satisfies ThreadStoreProtocol (runtime_checkable check)."""
-    from factory.infrastructure.stores.thread_store import ThreadStore
+    from factory.infrastructure.stores.session.thread_store import ThreadStore
 
     store = ThreadStore(db_path=tmp_path / "discord.db")  # type: ignore[arg-type]
     assert isinstance(store, ThreadStoreProtocol)

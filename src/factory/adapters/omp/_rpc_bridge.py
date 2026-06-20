@@ -223,9 +223,7 @@ class RpcBridge:
         await self._switch_model(fallback)
         retry_turn = await self._execute_prompt(prompt)
         self._last_turn = retry_turn
-        retry_error = worker_error_from_omp_turn(
-            retry_turn, self._last_agent_end_event
-        )
+        retry_error = worker_error_from_omp_turn(retry_turn, self._last_agent_end_event)
         if retry_error is not None:
             return retry_turn, retry_error, None
         return retry_turn, None, {"requested": attempted, "fallback": fallback}
@@ -317,12 +315,14 @@ class RpcBridge:
 
             turn = await self._execute_prompt(prompt)
             self._last_turn = turn
-            turn, turn_error, model_fallback = (
-                await self._maybe_retry_with_registry_fallback(
-                    prompt,
-                    requested_model=requested_model,
-                    turn=turn,
-                )
+            (
+                turn,
+                turn_error,
+                model_fallback,
+            ) = await self._maybe_retry_with_registry_fallback(
+                prompt,
+                requested_model=requested_model,
+                turn=turn,
             )
             # Publish here — guaranteed to see the completed turn value.
             # _on_agent_end fires on the stdout thread BEFORE prompt_and_wait returns

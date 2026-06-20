@@ -1,0 +1,79 @@
+---
+title: "feat(hub): per-turn LLM backend resolution — flip clipool/omp-rpc without hub restart"
+issue: 1914
+status: approved
+tier: F-lite
+date: 2026-06-21
+---
+
+## Problem
+
+`SimpleAgent` captures a single `LlmProvider` at bootstrap (`self._provider`) and
+uses it for every turn. `_maybe_reload_config()` (#343) hot-reloads model, persona,
+plugins, and other fields from `config.db` on each message — but **never swaps the
+provider** when `agents.backend` changes.
+
+Operators who flip an agent from `claude-cli` → `omp-rpc` (e.g. Aryl cutover,
+2026-06-17) must restart `factory-hub` — the only path that re-runs
+`_create_agent()` and re-injects the matching driver. Model/catalogue hot-swap is
+already solved (#1923, #1924, #1954); this issue closes the remaining **backend
+hot-swap** gap for the parent #1813 runtime-selection epic.
+
+## Who
+
+- **Primary:** operators patching `agents.backend` in `config.db` or via
+  `factory agent patch` — expect the next message to use the new driver without
+  hub downtime.
+- **Secondary:** hub maintainers implementing #1813 slices (#1915–#1917) — per-turn
+  provider resolution is prerequisite infrastructure for per-job runtime override.
+
+## Constraints
+
+- Resolve at **turn dispatch** in hub (`SimpleAgent.process()`), not in workers.
+- Precedence (future #1813): per-job override > agent `ModelConfig.backend` >
+  system default (`claude-cli`). #1914 implements agent-config level only.
+- `ProviderRegistry` already built in `_build_shared_base_providers` — reuse shared
+  registry, do not reconstruct drivers per turn.
+- Session callbacks (`configure_pool`, `link_lyra_session`, `queue_resume`,
+  `reset_backend`) must target the **active** provider after a backend flip.
+- Catalogue/model path is done — do not re-open #1923/#1924 scope.
+
+## Out of Scope
+
+- **New agent / delete agent / bot assign** — `agent_registry` still bootstrap-only.
+- **Trust, circuit breaker, admin IDs** — bootstrap-only config paths.
+- **Per-job runtime override** → #1916.
+- **OMP streaming bridge** → #1915.
+- **Parity runbook + default flip gate** → #1917.
+- **Worker-side `config.db` reads** — workers stay dumb.
+- **Quadlet / NATS ACL / bot token restarts** — separate operational surfaces.
+
+## Premise Validity
+
+**Success in 6 months:** by 2026-12, zero `factory-hub` restarts attributed to
+`agents.backend` flips on M₁; operators change backend via `factory agent patch`
+or SQL and the next inbound message uses the new driver (verified by ops runbook
+spot-checks monthly).
+
+**Failure in 6 months:** by 2026-12, ≥2 production incidents where a backend flip
+required hub restart despite DB patch (same failure mode as 2026-06-17 Aryl
+cutover), OR per-turn resolution adds >50ms p95 latency to `process()` dispatch →
+revert to bootstrap-only wiring.
+
+**Simplest alternative:** document "restart `factory-hub` after backend flip" in
+the runbook and reject `backend` in `REFINABLE_FIELDS`.
+**Why not simplest:** hub restart drops in-flight sessions, blocks concurrent
+agents during the window, and contradicts #1813's turn-dispatch resolution goal —
+model/persona already hot-reload; backend is the last bootstrap-only LLM knob.
+
+## Complexity
+
+**Tier: F-lite** — single domain (hub agent dispatch), clear acceptance criteria,
+touches `SimpleAgent` + `agent_factory` + `agent_refiner` + tests; no new
+architectural patterns (`ProviderRegistry` already exists).
+
+Signals observed:
+- Issue label `size:F-lite`
+- Single domain (`src/factory/agents/`, bootstrap factory, agent refiner)
+- Clear scope boundary documented in issue body (IN/OUT tables)
+- Implementation sketch provided; symbols verified present in tree

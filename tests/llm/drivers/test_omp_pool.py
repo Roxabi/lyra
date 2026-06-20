@@ -233,9 +233,7 @@ class TestOmpPool:
         """
         import sys
 
-        pool = OmpPool(
-            omp_bin=Path("/fake/omp"), provider="litellm", model=None
-        )
+        pool = OmpPool(omp_bin=Path("/fake/omp"), provider="litellm", model=None)
         await pool.register(_NC)
 
         captured_kwargs: dict = {}

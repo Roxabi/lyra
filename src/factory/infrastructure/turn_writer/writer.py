@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 
 import nats.errors
 
-from factory.infrastructure.stores.turn_store import TurnStore
+from factory.infrastructure.stores.session.turn_store import TurnStore
 from roxabi_contracts.turns import (
     EndSessionPayload,
     IncrementResumeCountPayload,

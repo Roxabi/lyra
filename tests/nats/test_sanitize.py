@@ -11,7 +11,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
-    from factory.infrastructure.stores.turn_store import TurnStore
+    from factory.infrastructure.stores.session.turn_store import TurnStore
 
 from factory.core.hub.middleware import PipelineContext
 from factory.core.hub.middleware.path_validation import resolve_context

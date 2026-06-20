@@ -7,8 +7,8 @@ from typing import TYPE_CHECKING, Any
 
 from aiogram.exceptions import TelegramAPIError
 
-from factory.adapters.shared.inbound_context import build_telegram_inbound_ctx
-from factory.adapters.shared.inbound_pipeline import (
+from factory.adapters.shared.inbound import (
+    build_telegram_inbound_ctx,
     get_inbound_pipeline_kit,
     get_or_create_parser,
     run_inbound_guarded,

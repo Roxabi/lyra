@@ -171,14 +171,18 @@ class TestTelegramReasoningRendering:
         )
 
     @pytest.mark.asyncio
-    async def test_reasoning_truncation(self) -> None:
-        """Delta text > 120 chars is truncated to 117 chars + ellipsis (118 total).
+    async def test_reasoning_rich_mode_full_text_no_italic(self) -> None:
+        """Rich mode: full reasoning text streamed into <tg-thinking> — no truncation, no asterisks.
 
-        Arrange: adapter with show_intermediate=True; session pre-supplies trace_obj.
+        Fixes #1949 (dim_italic asterisks literal in HTML) and #1951 (120-char cap
+        unnecessary when tg-thinking is collapsible).
+
         Act: Start → Delta(200 'x' chars) → End.
-        Assert: the edit call receives text of length 118 ending with '…'.
+        Assert:
+        - HTML contains the full 200 chars (no '…').
+        - HTML does NOT contain asterisks (no dim_italic wrapping).
+        - HTML is wrapped in <tg-thinking>…</tg-thinking>.
         """
-        # Arrange
         adapter = _make_telegram_adapter()
         trace_mock = _make_trace_send_mock(message_id=503)
         adapter.bot = MagicMock()
@@ -191,16 +195,10 @@ class TestTelegramReasoningRendering:
             html = getattr(rich, "html", None) if rich is not None else None
             if html is not None:
                 edit_calls.append(html)
-            else:
-                text = kwargs.get("text", "")
-                assert isinstance(text, str)
-                edit_calls.append(text)
 
         adapter.bot.edit_message_text = capture_edit
-
         formatter = _make_formatter(adapter)
 
-        # Act — session pre-supplies trace_obj (non-None) as per new contract
         await formatter.edit_reasoning(
             trace_mock, ReasoningStartRenderEvent(message_id=_MSG_ID)
         )
@@ -212,15 +210,51 @@ class TestTelegramReasoningRendering:
             trace_mock, ReasoningEndRenderEvent(message_id=_MSG_ID)
         )
 
-        # Assert — at least one edit call was made
         assert len(edit_calls) >= 1, "Expected at least one edit_message_text call"
-        # The final (or only) edit carries the truncated text (inside italic wrapper)
-        last_text = edit_calls[-1]
-        # The raw text passed to _render_text is "*" + truncated + "*" (italic).
-        # _render_text escapes for MarkdownV2, but truncation leaves an ellipsis.
-        # Check the rendered call contains an ellipsis (evidence of truncation).
-        assert "…" in last_text, (
-            f"Expected truncation ellipsis in edit text, got: {last_text!r}"
+        last = edit_calls[-1]
+        assert "…" not in last, f"Rich mode must not truncate reasoning; got: {last!r}"
+        assert "*" not in last, f"Rich mode must not wrap in asterisks (#1949); got: {last!r}"
+        assert last.startswith("<tg-thinking>"), f"Expected tg-thinking block; got: {last!r}"
+        assert "x" * 200 in last, "Full 200-char text must appear in rich thinking block"
+
+    @pytest.mark.asyncio
+    async def test_reasoning_markdownv2_truncation(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """MarkdownV2 fallback path: text > 120 chars still truncated with '…'.
+
+        Truncation stays in the MarkdownV2 path — only the rich path skips it.
+        """
+        monkeypatch.setenv("FACTORY_TELEGRAM_RICH_MESSAGES", "0")
+
+        adapter = _make_telegram_adapter()
+        trace_mock = _make_trace_send_mock(message_id=504)
+        adapter.bot = MagicMock()
+        adapter.bot.send_message = AsyncMock(return_value=trace_mock)
+        edit_calls: list[str] = []
+
+        async def capture_edit(**kwargs: object) -> None:
+            text = kwargs.get("text", "")
+            if isinstance(text, str):
+                edit_calls.append(text)
+
+        adapter.bot.edit_message_text = capture_edit
+        formatter = _make_formatter(adapter)
+
+        await formatter.edit_reasoning(
+            trace_mock, ReasoningStartRenderEvent(message_id=_MSG_ID)
+        )
+        await formatter.edit_reasoning(
+            trace_mock,
+            ReasoningDeltaRenderEvent(message_id=_MSG_ID, delta="x" * 200),
+        )
+        await formatter.edit_reasoning(
+            trace_mock, ReasoningEndRenderEvent(message_id=_MSG_ID)
+        )
+
+        assert len(edit_calls) >= 1, "Expected at least one edit call"
+        assert "…" in edit_calls[-1], (
+            f"MarkdownV2 path must still truncate at 120 chars; got: {edit_calls[-1]!r}"
         )
 
     # NOTE: show_intermediate=False adapter no-op test removed. The gate now

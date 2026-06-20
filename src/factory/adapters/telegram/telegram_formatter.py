@@ -290,7 +290,13 @@ class TelegramFormatter(BaseFormatter):
             return
         text, should_edit = self._reasoning.process(event)
         if should_edit and text is not None:
-            await self._edit_trace_with_text(trace_obj, self.dim_italic(text))
+            if rich_messages_enabled():
+                # Rich mode: stream full text into the <tg-thinking> block.
+                # No dim_italic(): *text* renders literally in HTML (#1949).
+                # No truncation: <tg-thinking> is collapsible (#1951).
+                await self._edit_trace_with_text(trace_obj, self._reasoning.full_text)
+            else:
+                await self._edit_trace_with_text(trace_obj, self.dim_italic(text))
 
     async def edit_tool_recap(
         self,

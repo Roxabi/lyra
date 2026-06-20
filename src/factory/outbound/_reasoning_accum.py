@@ -87,5 +87,15 @@ class ReasoningAccumulator:
             return truncated, True
         return None, False
 
+    @property
+    def full_text(self) -> str:
+        """Full accumulated text without truncation.
+
+        Used by rich-mode consumers (e.g. TelegramFormatter in Bot API 10.1
+        rich mode) where the <tg-thinking> block is collapsible and the 120-char
+        limit serves no UX purpose. (#1951)
+        """
+        return self._accum
+
 
 __all__ = ["ReasoningAccumulator", "REASONING_MAX_LEN", "REASONING_TRUNC_LEN"]

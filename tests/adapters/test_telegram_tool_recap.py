@@ -305,3 +305,71 @@ async def test_recap_text_is_markdownv2_escaped() -> None:
     assert any("*hi*" in t for t in texts), (
         f"Expected unescaped '*hi*' in recap markdown, got: {texts}"
     )
+
+
+# ---------------------------------------------------------------------------
+# #1950 — backtick-protection in rich mode (unit, no streaming session)
+# ---------------------------------------------------------------------------
+
+
+import pytest  # noqa: E402 — placed after streaming helpers
+
+
+@pytest.mark.asyncio
+async def test_edit_tool_recap_rich_mode_backtick_wraps_markdown_chars() -> None:
+    """edit_tool_recap() backtick-wraps dynamic content in rich markdown (#1950).
+
+    Verifies that lines produced by format_recap_lines() and sent through
+    edit_tool_recap() → edit_text_with_fallback() → InputRichMessage(markdown=…)
+    keep the backtick-wrapping protection so that Markdown metacharacters in
+    tool names / paths / commands cannot trigger link or italic parsing.
+    """
+    from factory.adapters.telegram.telegram_formatter import TelegramFormatter
+    from factory.outbound._tool_recap import ToolRecapAccumulator, format_recap_lines
+
+    adapter = _make_telegram_adapter()
+    adapter.bot = MagicMock()
+    adapter.bot.edit_message_text = AsyncMock(return_value=None)
+
+    formatter = TelegramFormatter(
+        adapter,
+        chat_id=123,
+        get_msg=lambda k, fb: fb,
+        placeholder_text="…",
+    )
+
+    trace = MagicMock()
+    trace.message_id = 77
+
+    # Inject content with markdown metacharacters into various recap slots.
+    # _sanitize() strips backticks; the rest is wrapped in `…` code spans.
+    accum = ToolRecapAccumulator()
+    accum.bash_commands.append("pytest --cov=src_module_a")   # underscores
+    accum.bash_commands.append("echo *wildcard*")             # asterisks
+    # Simulate a file with _ in its path
+    from factory.outbound._tool_recap import FileEditSummary
+    accum.files["src/foo_bar.py"] = FileEditSummary(
+        path="src/foo_bar.py", edits=["Edit"], count=1
+    )
+
+    lines = format_recap_lines(accum, done=True)
+    await formatter.edit_tool_recap(trace, lines, done=True)
+
+    adapter.bot.edit_message_text.assert_awaited_once()
+    call_kw = adapter.bot.edit_message_text.call_args.kwargs
+    rich = call_kw.get("rich_message")
+    assert rich is not None, "edit_tool_recap must use rich_message in rich mode"
+    text = rich.markdown
+    assert text is not None
+
+    # All dynamic fields are backtick-wrapped — underscores and asterisks
+    # inside code spans are literal, not parsed as markdown (#1950).
+    assert "`pytest --cov=src_module_a`" in text, (
+        f"bash command not backtick-wrapped: {text!r}"
+    )
+    assert "`echo *wildcard*`" in text, (
+        f"bash command with asterisks not backtick-wrapped: {text!r}"
+    )
+    assert "`src/foo_bar.py`" in text, (
+        f"file path with underscores not backtick-wrapped: {text!r}"
+    )

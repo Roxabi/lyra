@@ -8,7 +8,7 @@ from factory.infrastructure.stores.base.message_index import MessageIndex
 from factory.infrastructure.stores.base.sqlite_base import SqliteStore
 from factory.infrastructure.stores.registry.bot_store import BotStore
 from factory.infrastructure.stores.identity.identity_alias_store import IdentityAliasStore
-from factory.infrastructure.stores.message_index_kv import MessageIndexKvStore
+from factory.infrastructure.stores.kv.message_index_kv import MessageIndexKvStore
 from factory.infrastructure.stores.identity.pairing import (
     PairingManager,
     get_pairing_manager,

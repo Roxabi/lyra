@@ -25,7 +25,7 @@ from factory.infrastructure.stores.registry.agent_store import AgentStore
 from factory.infrastructure.stores.identity.auth_store import AuthStore
 from factory.infrastructure.stores.registry.bot_store import BotStore
 from factory.infrastructure.stores.identity.identity_alias_store import IdentityAliasStore
-from factory.infrastructure.stores.message_index_kv import (
+from factory.infrastructure.stores.kv.message_index_kv import (
     MessageIndexKvStore,
     ensure_kv,
 )

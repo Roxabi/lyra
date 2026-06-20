@@ -277,9 +277,10 @@ class SimpleAgent(AgentBase):
 
         if not result.ok:
             log.warning(
-                "[agent:%s][pool:%s] CLI error: %s",
+                "[agent:%s][pool:%s] backend error (%s): %s",
                 self.name,
                 pool.pool_id,
+                model_cfg.backend,
                 result.error,
             )
             pool._last_turn_had_backend_error = True
@@ -301,9 +302,10 @@ class SimpleAgent(AgentBase):
 
         if not reply:
             log.warning(
-                "[agent:%s][pool:%s] empty reply from CLI",
+                "[agent:%s][pool:%s] empty reply from backend (%s)",
                 self.name,
                 pool.pool_id,
+                model_cfg.backend,
             )
             pool._last_turn_had_backend_error = True
             user_msg = resolve_user_error(

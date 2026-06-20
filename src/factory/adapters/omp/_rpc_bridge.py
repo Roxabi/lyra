@@ -36,9 +36,10 @@ _OMP_BIN = Path("/opt/omp/omp")  # image-build constant — NEVER from env
 _DEFAULT_PROVIDER = (
     "litellm"  # routes through factory LiteLLM proxy (deploy/omp/models.yml)
 )
-# Pin a fast default — model=None falls through to models.yml[0] (grok-4) and
-# risks RpcClient(request_timeout=30s) timeouts (#1910).
-_DEFAULT_MODEL = "grok-4-fast"
+# Pin a fast non-reasoning default — model=None falls through to models.yml[0]
+# (grok-4 full) and risks RpcClient(request_timeout=30s) timeouts (#1910).
+# Alias must exist in the LiteLLM xAI pass-through catalogue (#1923).
+_DEFAULT_MODEL = "grok-4.20-non-reasoning"
 _ENV_REQUEST_TIMEOUT_KEY = "OMP_REQUEST_TIMEOUT"
 _DEFAULT_REQUEST_TIMEOUT = 30.0
 
@@ -107,6 +108,82 @@ def _make_result(job_id: str, **kwargs: Any) -> bytes:
         **kwargs,
     )
     return event.model_dump_json().encode()
+
+
+def _field(obj: Any, *names: str) -> Any:
+    """Read the first present attribute/key from a TypedDict or dataclass."""
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        for name in names:
+            if name in obj:
+                return obj[name]
+        return None
+    for name in names:
+        value = getattr(obj, name, None)
+        if value is not None:
+            return value
+    return None
+
+
+def _assistant_message_from_turn(turn: Any, end_event: Any | None) -> Any | None:
+    """Best-effort assistant message from PromptTurn or stored AgentEndEvent."""
+    assistant = getattr(turn, "assistant_message", None)
+    if assistant is not None:
+        return assistant
+    if end_event is None:
+        return None
+    messages = getattr(end_event, "messages", None)
+    if not messages:
+        return None
+    for candidate in reversed(messages):
+        role = _field(candidate, "role")
+        if role == "assistant":
+            return candidate
+    return None
+
+
+def _worker_error_from_omp_turn(turn: Any, end_event: Any | None) -> WorkerError | None:
+    """Map an OMP PromptTurn provider failure to a structured WorkerError.
+
+    ADR-073: returned ``WorkerError.message`` is a stable type label only —
+    never the provider's ``errorMessage`` string.
+    """
+    assistant = _assistant_message_from_turn(turn, end_event)
+    stop_reason = _field(assistant, "stopReason", "stop_reason")
+    if stop_reason == "aborted":
+        return WorkerError(code="worker.internal", message="Aborted", retryable=True)
+    if stop_reason != "error":
+        return None
+
+    error_message = _field(assistant, "errorMessage", "error_message")
+    if error_message:
+        lower = str(error_message).lower()
+        if "invalid model" in lower:
+            return WorkerError(
+                code="llm.model_unavailable",
+                message="ModelUnavailable",
+                retryable=False,
+            )
+        if "rate limit" in lower or "429" in lower:
+            return WorkerError(
+                code="llm.rate_limit",
+                message="RateLimitError",
+                retryable=True,
+            )
+        if "context" in lower and (
+            "too long" in lower or "length" in lower or "window" in lower
+        ):
+            return WorkerError(
+                code="llm.context_too_long",
+                message="ContextTooLong",
+                retryable=False,
+            )
+    return WorkerError(
+        code="worker.internal",
+        message="OmpProviderError",
+        retryable=False,
+    )
 
 
 def _verify_digest(omp_bin: Path) -> None:
@@ -310,11 +387,37 @@ class RpcBridge:
             # so it cannot safely read _last_turn; this is the only safe publish site.
             if nc is not None and not self._result_sent:
                 self._result_sent = True
+                turn_error = _worker_error_from_omp_turn(
+                    turn, self._last_agent_end_event
+                )
+                if turn_error is not None:
+                    log.warning(
+                        "rpc_bridge: job %s OMP turn failed (code=%s)",
+                        job_id,
+                        turn_error.code,
+                    )
+                    payload = _make_result(
+                        job_id, status="error", error=turn_error
+                    )
+                    await nc.publish(jobs_result(job_id), payload)
+                    return
+
                 text: str = self._derive_assistant_text(turn)
                 if not text:
                     log.warning(
                         "rpc_bridge: job %s produced an empty result text", job_id
                     )
+                    empty_error = WorkerError(
+                        code="worker.validation",
+                        message="EmptyResponse",
+                        retryable=False,
+                    )
+                    payload = _make_result(
+                        job_id, status="error", error=empty_error
+                    )
+                    await nc.publish(jobs_result(job_id), payload)
+                    return
+
                 data: dict[str, Any] = {"result": text}
                 # session_file backhaul (V2 pool path — None for legacy single-client).
                 if session_file is not None:

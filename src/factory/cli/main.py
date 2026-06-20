@@ -24,19 +24,19 @@ import tomllib
 import typer
 
 from factory.blobstore.cli import blobstore_app
-from factory.cli_agent import (
+from factory.cli.agent import (
     agent_app,  # noqa: F401 — DEBT:re-export-init — re-exported for tests
 )
-from factory.cli_bot import bot_app
-from factory.cli_ops import ops_app
-from factory.cli_secrets import secrets_app
-from factory.cli_setup import setup_app
-from factory.cli_voice_smoke import voice_smoke_app
+from factory.cli.bot import bot_app
+from factory.cli.ops import ops_app
+from factory.cli.secrets import secrets_app
+from factory.cli.setup import setup_app
+from factory.cli.voice_smoke import voice_smoke_app
 
 # Register subcommands from sub-modules (import triggers @app.command())
 # after app objects are imported. Previously at module exit in cli_bot/cli_agent.
 importlib.import_module("factory.agent_cmd.bots")
-importlib.import_module("factory.cli_agent_create")
+importlib.import_module("factory.cli.agent_create")
 importlib.import_module("factory.agent_cmd.agents")
 importlib.import_module("factory.agent_cmd.platforms")
 

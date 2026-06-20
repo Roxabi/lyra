@@ -14,6 +14,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from factory.adapters.nats._constants import SUBSCRIBE_SUBJECT_MINT_FAILURE
 from factory.core.auth.trust import TrustLevel
 from factory.core.messaging.message import (
     InboundMessage,
@@ -27,8 +28,6 @@ from roxabi_contracts.gh.models import MintFailureEvent
 from roxabi_nats._serialize import serialize
 
 log = logging.getLogger(__name__)
-
-_SUBSCRIBE_SUBJECT = "factory.gh.mint_failure.>"
 
 
 class MintFailureSubscriber:
@@ -54,10 +53,12 @@ class MintFailureSubscriber:
 
     async def start(self) -> None:
         """Subscribe to factory.gh.mint_failure.> on the hub NATS connection."""
-        self._sub = await self._nc.subscribe(_SUBSCRIBE_SUBJECT, cb=self._handle)
+        self._sub = await self._nc.subscribe(
+            SUBSCRIBE_SUBJECT_MINT_FAILURE, cb=self._handle
+        )
         log.info(
             "MintFailureSubscriber started — subject=%r ops_chat=%d bot=%r",
-            _SUBSCRIBE_SUBJECT,
+            SUBSCRIBE_SUBJECT_MINT_FAILURE,
             self._ops_telegram_chat_id,
             self._ops_telegram_bot_id,
         )

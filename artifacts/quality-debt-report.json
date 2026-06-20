@@ -100,7 +100,6 @@
     "PLR0913": {
       "DEBT": {
         "complexity-residual": 2,
-        "typing-publisher-shim-args": 1,
         "wiring-bootstrap-deps": 24
       },
       "UNTAGGED": {
@@ -254,11 +253,6 @@
         "__none__": 5
       }
     },
-    "src/factory/adapters/shared": {
-      "DEBT": {
-        "folder-exemptions": 1
-      }
-    },
     "type-arg": {
       "UNTAGGED": {
         "__none__": 3
@@ -273,7 +267,7 @@
       }
     }
   },
-  "generated_at": "2026-06-20T17:18:12.778961+00:00",
+  "generated_at": "2026-06-20T20:44:59.889055+00:00",
   "rows": [
     {
       "bucket": "UNTAGGED",
@@ -620,7 +614,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 169,
+      "line": 168,
       "path": "src/factory/adapters/clipool/clipool_worker.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
@@ -628,7 +622,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 259,
+      "line": 258,
       "path": "src/factory/adapters/clipool/clipool_worker.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
@@ -636,7 +630,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 306,
+      "line": 305,
       "path": "src/factory/adapters/clipool/clipool_worker.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
@@ -652,14 +646,14 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 63,
+      "line": 66,
       "path": "src/factory/adapters/discord/adapter.py",
       "rule": "E402",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 86,
+      "line": 89,
       "path": "src/factory/adapters/discord/adapter.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
@@ -847,7 +841,7 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 106,
+      "line": 102,
       "path": "src/factory/adapters/omp/_rpc_bridge.py",
       "rule": "import-not-found",
       "source": "type-ignore"
@@ -962,14 +956,14 @@
     {
       "bucket": "UNTAGGED",
       "line": 80,
-      "path": "src/factory/adapters/shared/inbound_pipeline.py",
+      "path": "src/factory/adapters/shared/inbound/pipeline.py",
       "rule": "PLR0913",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 14,
-      "path": "src/factory/adapters/shared/typing_shim.py",
+      "line": 24,
+      "path": "src/factory/adapters/shared/inbound/typing_shim.py",
       "rule": "PLR0913",
       "source": "noqa"
     },
@@ -3169,16 +3163,8 @@
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 48,
-      "path": "src/factory/typing/listener.py",
-      "rule": "PLR0913",
-      "slug": "typing-publisher-shim-args",
-      "source": "noqa"
-    },
-    {
       "bucket": "UNTAGGED",
-      "line": 85,
+      "line": 75,
       "path": "src/factory/typing/listener.py",
       "rule": "PLR0913",
       "source": "noqa"
@@ -3301,13 +3287,6 @@
       "path": "factory.core.processors.processor_registry -> factory.integrations.base",
       "slug": "importlinter-shared-modules-transitive",
       "source": "importlinter"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 11,
-      "path": "src/factory/adapters/shared",
-      "slug": "folder-exemptions",
-      "source": "folder-exemptions"
     }
   ],
   "sources": [
@@ -3318,12 +3297,5 @@
     "file-exemptions",
     "folder-exemptions"
   ],
-  "stale_references": [
-    {
-      "line": 48,
-      "path": "src/factory/typing/listener.py",
-      "reason": "missing",
-      "slug": "typing-publisher-shim-args"
-    }
-  ]
+  "stale_references": []
 }

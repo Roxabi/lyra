@@ -19,7 +19,7 @@ from pydantic import ValidationError
 
 from factory.adapters.clipool._worker_helpers import _make_ack, _make_chunk
 from factory.adapters.clipool.error_classifier import (
-    _classify_exception,
+    classify_exception,
     worker_error_from_cli_result,
 )
 from factory.core.agent.agent_config import ModelConfig
@@ -170,7 +170,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
                 "clipool_worker: send_streaming failed for pool_id=%r", cmd.pool_id
             )
             if msg.reply and self._nc:
-                worker_error = _classify_exception(exc)
+                worker_error = classify_exception(exc)
                 emit_populated_total(domain="cli")
                 await self._nc.publish(
                     msg.reply,
@@ -257,7 +257,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
             )
         except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
             log.exception("clipool_worker: send failed for pool_id=%r", cmd.pool_id)
-            worker_error = _classify_exception(exc)
+            worker_error = classify_exception(exc)
             emit_populated_total(domain="cli")
             await self.reply(
                 msg,

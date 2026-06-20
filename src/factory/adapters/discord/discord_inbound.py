@@ -15,8 +15,8 @@ from factory.adapters.discord.discord_audio import handle_audio as _handle_audio
 from factory.adapters.discord.discord_formatting import make_thread_name
 from factory.adapters.discord.discord_threads import persist_thread_claim
 from factory.adapters.shared._shared import AUDIO_MIME_TYPES
-from factory.adapters.shared.inbound.context import build_discord_inbound_ctx
-from factory.adapters.shared.inbound.pipeline import (
+from factory.adapters.shared.inbound import (
+    build_discord_inbound_ctx,
     get_inbound_pipeline_kit,
     get_or_create_parser,
     run_inbound_guarded,

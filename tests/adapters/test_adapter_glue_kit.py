@@ -8,14 +8,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from factory.adapters.shared.inbound.pipeline import (
+from factory.adapters.shared.inbound import (
+    cancel_typing_for_inbound,
+    cancel_typing_shim,
     get_inbound_pipeline_kit,
     reset_inbound_pipeline_kit,
     run_inbound_guarded,
-)
-from factory.adapters.shared.inbound.platform_meta import cancel_typing_for_inbound
-from factory.adapters.shared.inbound.typing_shim import (
-    cancel_typing_shim,
     start_typing_shim,
 )
 from factory.core.auth.trust import TrustLevel

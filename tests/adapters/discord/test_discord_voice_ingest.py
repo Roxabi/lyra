@@ -77,7 +77,7 @@ async def test_dc_voice_routes_via_pipeline_not_direct_push() -> None:
 
     mock_guarded = AsyncMock(return_value=None)
     with patch(
-        "factory.adapters.shared.inbound.pipeline.run_inbound_guarded",
+        "factory.adapters.shared.inbound.run_inbound_guarded",
         mock_guarded,
     ):
         await handle_audio(adapter, message, audio_attachment, TrustLevel.PUBLIC)
@@ -110,7 +110,7 @@ async def test_dc_eager_read_and_pending_attachment_routed() -> None:
         captured_msg.append(raw_message)
 
     with patch(
-        "factory.adapters.shared.inbound.pipeline.run_inbound_guarded",
+        "factory.adapters.shared.inbound.run_inbound_guarded",
         side_effect=_capture_guarded,
     ):
         await handle_audio(adapter, message, audio_attachment, TrustLevel.PUBLIC)
@@ -145,7 +145,7 @@ async def test_dc_too_large_reply_no_pipeline() -> None:
 
     mock_guarded = AsyncMock(return_value=None)
     with patch(
-        "factory.adapters.shared.inbound.pipeline.run_inbound_guarded",
+        "factory.adapters.shared.inbound.run_inbound_guarded",
         mock_guarded,
     ):
         await handle_audio(adapter, message, oversized, TrustLevel.PUBLIC)
@@ -184,7 +184,7 @@ async def test_dc_download_failed_reply_no_pipeline() -> None:
 
     mock_guarded = AsyncMock(return_value=None)
     with patch(
-        "factory.adapters.shared.inbound.pipeline.run_inbound_guarded",
+        "factory.adapters.shared.inbound.run_inbound_guarded",
         mock_guarded,
     ):
         await handle_audio(adapter, message, attachment, TrustLevel.PUBLIC)
@@ -224,7 +224,7 @@ async def test_dc_invalid_magic_reply_no_pipeline() -> None:
 
     mock_guarded = AsyncMock(return_value=None)
     with patch(
-        "factory.adapters.shared.inbound.pipeline.run_inbound_guarded",
+        "factory.adapters.shared.inbound.run_inbound_guarded",
         mock_guarded,
     ):
         await handle_audio(adapter, message, attachment, TrustLevel.PUBLIC)

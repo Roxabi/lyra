@@ -44,7 +44,3 @@ def classify_exception(exc: BaseException) -> WorkerError:
 def worker_error_from_cli_result(error: str) -> WorkerError:
     """Synthesise a WorkerError for blocking CliPool.send() failures."""
     return worker_error_from_cli_error(error)
-
-
-# Back-compat alias for tests and internal call sites migrating off _worker_helpers.
-_classify_exception = classify_exception

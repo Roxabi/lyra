@@ -21,8 +21,8 @@ if TYPE_CHECKING:
 from factory.adapters.discord import discord_audio  # noqa: I001 — DEBT:module-level-patch-fixtures
 from factory.adapters.discord import discord_audio_outbound
 from factory.adapters.shared._shared import TypingTaskManager, resolve_msg
-from factory.adapters.shared.inbound.platform_meta import cancel_typing_for_inbound
-from factory.adapters.shared.inbound.typing_shim import (
+from factory.adapters.shared.inbound import (
+    cancel_typing_for_inbound,
     cancel_typing_shim,
     start_typing_shim,
 )

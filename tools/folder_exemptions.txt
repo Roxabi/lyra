@@ -6,6 +6,6 @@
 # into cohesive subdirs. core/hub/ deferred to V5 (follow-up issue).
 # V5 completed under #848 — core/hub/ decomposed into middleware/, outbound/, pipeline/.
 #
-# #1959 drained the src/factory root bloat (cli_* → factory/cli/).
-# #1931 glue-kit extraction pushed adapters/shared to 16 files.
-src/factory/adapters/shared  # 16 files — DEBT:folder-exemptions — #1931 glue kit extraction; split inbound/typing next
+# #1959 drained src/factory root (cli_* → factory/cli/).
+# #1962 drained adapters/shared (inbound glue → shared/inbound/).
+# Currently EMPTY — all src/** folders ≤15 files.

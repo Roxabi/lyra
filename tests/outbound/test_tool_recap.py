@@ -79,6 +79,21 @@ def test_default_config_bash_max_len_is_80() -> None:
     assert ToolDisplayConfig().bash_max_len == 80
 
 
+def test_file_edit_label_wrapped_in_inline_code_for_rich_markdown() -> None:
+    """Tool names with markdown metacharacters stay inside code spans (#1950)."""
+    accum = ToolRecapAccumulator()
+    _feed_tool(
+        accum,
+        "e1",
+        "Edit",
+        json.dumps({"path": "src/foo_bar.py", "old_string": "a", "new_string": "b"}),
+    )
+    lines = format_recap_lines(accum, done=True)
+    file_lines = [ln for ln in lines if ln.startswith("✏️")]
+    assert len(file_lines) == 1
+    assert file_lines[0] == "✏️ `src/foo_bar.py` (`Edit`)"
+
+
 def test_default_config_names_threshold_is_5() -> None:
     """ToolDisplayConfig() default names_threshold must match live constant (5)."""
     assert ToolDisplayConfig().names_threshold == 5

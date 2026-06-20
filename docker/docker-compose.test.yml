@@ -23,8 +23,8 @@ services:
   stt-stub:
     <<: [*logging]
     build:
-      context: ./stubs
-      dockerfile: Dockerfile.stub
+      context: ..
+      dockerfile: docker/stubs/Dockerfile.stub
     command: ["python", "stt_stub.py"]
     environment:
       NATS_URL: nats://nats:4222
@@ -40,8 +40,8 @@ services:
   tts-stub:
     <<: [*logging]
     build:
-      context: ./stubs
-      dockerfile: Dockerfile.stub
+      context: ..
+      dockerfile: docker/stubs/Dockerfile.stub
     command: ["python", "tts_stub.py"]
     environment:
       NATS_URL: nats://nats:4222

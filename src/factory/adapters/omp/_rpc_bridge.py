@@ -17,6 +17,7 @@ import hashlib
 import logging
 import os
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -67,6 +68,14 @@ class DigestMismatchError(Exception):
 
 class SteerViolationError(Exception):
     """Raised when steer() is attempted while prompt_and_wait is in flight."""
+
+
+@dataclass(frozen=True)
+class _TurnPublishContext:
+    turn: Any
+    turn_error: WorkerError | None
+    model_fallback: dict[str, str] | None
+    session_file: str | None
 
 
 def _classify_exception(exc: BaseException) -> WorkerError:
@@ -352,7 +361,7 @@ class RpcBridge:
         requested_model: str | None,
         turn: Any,
     ) -> tuple[Any, WorkerError | None, dict[str, str] | None]:
-        """Retry once with the first discovered catalogue model on invalid-model errors."""
+        """Retry with the first catalogue model when the requested model is invalid."""
         from factory.adapters.omp._model_catalogue import first_registry_model
 
         turn_error = _worker_error_from_omp_turn(turn, self._last_agent_end_event)
@@ -379,6 +388,42 @@ class RpcBridge:
         if retry_error is not None:
             return retry_turn, retry_error, None
         return retry_turn, None, {"requested": attempted, "fallback": fallback}
+
+    async def _publish_turn_outcome(
+        self,
+        nc: NatsClient,
+        job_id: str,
+        ctx: _TurnPublishContext,
+    ) -> None:
+        if ctx.turn_error is not None:
+            log.warning(
+                "rpc_bridge: job %s OMP turn failed (code=%s)",
+                job_id,
+                ctx.turn_error.code,
+            )
+            payload = _make_result(job_id, status="error", error=ctx.turn_error)
+            await nc.publish(jobs_result(job_id), payload)
+            return
+
+        text: str = self._derive_assistant_text(ctx.turn)
+        if not text:
+            log.warning("rpc_bridge: job %s produced an empty result text", job_id)
+            empty_error = WorkerError(
+                code="worker.validation",
+                message="EmptyResponse",
+                retryable=False,
+            )
+            payload = _make_result(job_id, status="error", error=empty_error)
+            await nc.publish(jobs_result(job_id), payload)
+            return
+
+        data: dict[str, Any] = {"result": text}
+        if ctx.model_fallback is not None:
+            data["model_fallback"] = ctx.model_fallback
+        if ctx.session_file is not None:
+            data["session_file"] = ctx.session_file
+        payload = _make_result(job_id, status="success", data=data)
+        await nc.publish(jobs_result(job_id), payload)
 
     async def run(
         self,
@@ -438,47 +483,21 @@ class RpcBridge:
                     turn=turn,
                 )
             )
-            # Publish success here — guaranteed to see the completed turn value.
+            # Publish here — guaranteed to see the completed turn value.
             # _on_agent_end fires on the stdout thread BEFORE prompt_and_wait returns
             # so it cannot safely read _last_turn; this is the only safe publish site.
             if nc is not None and not self._result_sent:
                 self._result_sent = True
-                if turn_error is not None:
-                    log.warning(
-                        "rpc_bridge: job %s OMP turn failed (code=%s)",
-                        job_id,
-                        turn_error.code,
-                    )
-                    payload = _make_result(
-                        job_id, status="error", error=turn_error
-                    )
-                    await nc.publish(jobs_result(job_id), payload)
-                    return
-
-                text: str = self._derive_assistant_text(turn)
-                if not text:
-                    log.warning(
-                        "rpc_bridge: job %s produced an empty result text", job_id
-                    )
-                    empty_error = WorkerError(
-                        code="worker.validation",
-                        message="EmptyResponse",
-                        retryable=False,
-                    )
-                    payload = _make_result(
-                        job_id, status="error", error=empty_error
-                    )
-                    await nc.publish(jobs_result(job_id), payload)
-                    return
-
-                data: dict[str, Any] = {"result": text}
-                if model_fallback is not None:
-                    data["model_fallback"] = model_fallback
-                # session_file backhaul (V2 pool path — None for legacy single-client).
-                if session_file is not None:
-                    data["session_file"] = session_file
-                payload = _make_result(job_id, status="success", data=data)
-                await nc.publish(jobs_result(job_id), payload)
+                await self._publish_turn_outcome(
+                    nc,
+                    job_id,
+                    _TurnPublishContext(
+                        turn=turn,
+                        turn_error=turn_error,
+                        model_fallback=model_fallback,
+                        session_file=session_file,
+                    ),
+                )
         finally:
             self._in_prompt_await = False
             if steer_sub is not None:

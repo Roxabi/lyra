@@ -22,7 +22,7 @@ from fastapi.responses import PlainTextResponse, Response
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATSClient
 
-    from factory.infrastructure.stores.turn_store import TurnStore
+    from factory.infrastructure.stores.session.turn_store import TurnStore
     from factory.infrastructure.turn_writer.writer import TurnWriter
 
 log = logging.getLogger(__name__)

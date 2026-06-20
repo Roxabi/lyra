@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from factory.infrastructure.stores.auth_store import AuthStore
+    from factory.infrastructure.stores.identity.auth_store import AuthStore
 
 from factory.core.auth.trust import TrustLevel
 from factory.core.stores.pairing_config import (

@@ -270,8 +270,7 @@ def main(argv: list[str] | None = None) -> int:
         violations = run(root)
     except Exception as exc:  # noqa: BLE001
         print(
-            f"check_doc_semantic_drift: unexpected error: "
-            f"{type(exc).__name__}: {exc}",
+            f"check_doc_semantic_drift: unexpected error: {type(exc).__name__}: {exc}",
             file=sys.stderr,
         )
         return 2

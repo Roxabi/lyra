@@ -9,7 +9,7 @@
 
 - **Type:** forbidden
 - **Source modules:** factory.adapters
-- **Forbidden modules:** factory.infrastructure.stores.bot_store
+- **Forbidden modules:** factory.infrastructure.stores.registry.bot_store
 - **Allow indirect imports:** True
 
 ### Agents must not import Composition Root
@@ -17,14 +17,14 @@
 - **Type:** forbidden
 - **Source modules:** factory.agents
 - **Forbidden modules:** factory.bootstrap
-- **Ignore imports:** factory.agents.simple_agent -> factory.infrastructure.stores.agent_store
+- **Ignore imports:** factory.agents.simple_agent -> factory.infrastructure.stores.registry.agent_store
 - **Allow indirect imports:** False
 
 ### Clean architecture layers (transport ← streaming ← core ← llm/nats ← infrastructure ← adapters ← bootstrap)
 
 - **Type:** layers
 - **Layers:** factory.bootstrap, factory.adapters | factory.blobstore, factory.outbound, factory.infrastructure, factory.llm | factory.nats, factory.core, factory.typing, factory.streaming, factory.transport
-- **Ignore imports:** factory.core.agent.agent_refiner -> factory.infrastructure.stores.agent_store, factory.core.agent.agent -> factory.infrastructure.stores.agent_store, factory.core.memory.memory -> factory.infrastructure.stores.identity_alias_store, factory.core.hub.hub -> factory.infrastructure.stores.identity_alias_store, factory.core.hub.hub_registration -> factory.infrastructure.stores.identity_alias_store, factory.core.hub.hub -> factory.infrastructure.stores.pairing, factory.core.hub.hub -> factory.infrastructure.stores.prefs_store
+- **Ignore imports:** factory.core.agent.agent_refiner -> factory.infrastructure.stores.registry.agent_store, factory.core.agent.agent -> factory.infrastructure.stores.registry.agent_store, factory.core.memory.memory -> factory.infrastructure.stores.identity.identity_alias_store, factory.core.hub.hub -> factory.infrastructure.stores.identity.identity_alias_store, factory.core.hub.hub_registration -> factory.infrastructure.stores.identity.identity_alias_store, factory.core.hub.hub -> factory.infrastructure.stores.identity.pairing, factory.core.hub.hub -> factory.infrastructure.stores.registry.prefs_store
 - **Allow indirect imports:** False
 
 ### Commands must not import Infrastructure directly

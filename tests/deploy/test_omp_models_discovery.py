@@ -27,7 +27,7 @@ def test_models_yml_has_discovery_block() -> None:
     litellm = _load_litellm_provider()
     assert litellm["discovery"]["type"] == "openai-models-list"
     assert "models" not in litellm
-    assert litellm["baseUrl"].endswith("/xai/v1")
+    assert litellm["baseUrl"].endswith("/v1")
 
 
 def test_models_yml_preserves_litellm_provider_shape() -> None:
@@ -46,7 +46,7 @@ class _ModelsListHandler(BaseHTTPRequestHandler):
         return
 
     def do_GET(self) -> None:  # noqa: N802
-        if self.path.rstrip("/") != "/xai/v1/models":
+        if self.path.rstrip("/") != "/v1/models":
             self.send_error(404)
             return
         body = json.dumps(self.catalogue).encode()
@@ -64,7 +64,7 @@ def mock_gateway() -> Generator[str, None, None]:
     thread.start()
     try:
         host, port = server.server_address[:2]
-        yield f"http://{host}:{port}/xai/v1"
+        yield f"http://{host}:{port}/v1"
     finally:
         server.shutdown()
         thread.join(timeout=5)

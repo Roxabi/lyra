@@ -10,7 +10,7 @@ import pytest
 from typer.testing import CliRunner
 
 from factory.cli import factory_app
-from factory.secrets_reset import (
+from factory.cli.secrets_reset import (
     build_reset_plan,
     confirm_reset,
     factory_repo_root,
@@ -98,7 +98,7 @@ class TestRunSecretsReset:
         def fake_regen() -> None:
             regen_called.append(True)
 
-        with patch("factory.secrets_reset.confirm_reset"):
+        with patch("factory.cli.secrets_reset.confirm_reset"):
             run_secrets_reset(
                 yes=True,
                 converge=True,
@@ -130,10 +130,10 @@ class TestSecretsResetCli:
             raise subprocess.CalledProcessError(7, cmd)
 
         with (
-            patch("factory.secrets_reset.factory_repo_root", return_value=root),
-            patch("factory.secrets_reset.confirm_reset"),
-            patch("factory.secrets_reset.run_nkeys_regenerate"),
-            patch("factory.secrets_reset.run_install_secrets", side_effect=boom),
+            patch("factory.cli.secrets_reset.factory_repo_root", return_value=root),
+            patch("factory.cli.secrets_reset.confirm_reset"),
+            patch("factory.cli.secrets_reset.run_nkeys_regenerate"),
+            patch("factory.cli.secrets_reset.run_install_secrets", side_effect=boom),
         ):
             result = runner.invoke(factory_app, ["secrets", "reset", "--yes"])
 
@@ -143,7 +143,7 @@ class TestSecretsResetCli:
     def test_missing_repo_exit_two(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("ROXABI_FACTORY_REPO", raising=False)
         with patch(
-            "factory.secrets_reset.factory_repo_root",
+            "factory.cli.secrets_reset.factory_repo_root",
             side_effect=FileNotFoundError("no repo"),
         ):
             result = runner.invoke(factory_app, ["secrets", "reset", "--dry-run"])

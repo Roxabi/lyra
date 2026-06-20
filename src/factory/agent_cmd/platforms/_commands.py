@@ -16,8 +16,8 @@ from factory.agent_cmd.platforms._shared import (
     _prompt_edit_string,
     _validate_bot_id,
 )
-from factory.cli_agent import _connect_store as _connect_agent_store
-from factory.cli_bot import _connect_bot_store
+from factory.cli.agent import _connect_store as _connect_agent_store
+from factory.cli.bot import _connect_bot_store
 from factory.core.agent.bot_models import BotRow
 
 

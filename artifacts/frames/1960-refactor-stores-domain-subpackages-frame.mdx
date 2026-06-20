@@ -1,0 +1,48 @@
+---
+title: "refactor(stores): split infrastructure/stores into domain subpackages"
+issue: 1960
+status: approved
+tier: F-lite
+date: 2026-06-20
+---
+
+## Problem
+
+`src/factory/infrastructure/stores/` has **15/15** `.py` files at the folder cap (`QG_FOLDER_MAX=15`, no exemption). One more store file breaks CI. The root folder mixes five distinct concerns — session persistence, agent/bot registry, identity/auth, active jobs KV, and message-index KV — making navigation harder and blocking incremental store additions.
+
+This is the factory-side follow-up to the lyra reorg in #1595. `base/` and `migrations/` subpackages already exist; the remaining 14 root-level modules need domain-aligned subpackages.
+
+## Who
+
+- **Primary:** Developers adding or maintaining store implementations (bootstrap wiring, hub, CLI, tests)
+- **Secondary:** CI quality gates (`check_folder_size`, `.importlinter`, pytest)
+
+## Constraints
+
+- `QG_FOLDER_MAX=15` — every `stores/**` folder must stay ≤15 `.py` files (target ≤12 where practical)
+- Import stability: `stores/__init__.py` re-exports preserve `from factory.infrastructure.stores import X` for ~80+ call sites
+- `.importlinter` contracts must remain green (core ↔ infrastructure boundary)
+- No functional changes — mechanical move + import path updates only
+- Parent epic #1956 tracks the broader factory folder-cap burn-down
+
+## Out of Scope
+
+- DRYing `migration_runner.py` across `agent_store_migrations.py` / `bot_store_migrations.py` (optional follow-up in issue body)
+- New store capabilities, schema changes, or protocol changes
+- Renaming classes or functions
+- NATS or non-stores folder reorgs
+
+## Premise Validity
+
+**Success in 6 months:** `stores/` root holds only `__init__.py` plus re-export wiring; domain subpackages (`session/`, `registry/`, `identity/`, `jobs/`, `kv/`) each ≤12 files; all quality gates green; developers can add a new store file without touching exemptions.
+
+**Failure in 6 months:** `stores/` root still has ≥13 `.py` files after 3 sprint cycles, or folder-size CI fails on any `stores/**` path (measurable boolean).
+
+**Simplest alternative:** Add a `folder_exemptions.txt` entry for `src/factory/infrastructure/stores` with cap 15.
+**Why not simplest:** Freezes structural debt at the ceiling — the next store addition still requires a split; subpackages improve discoverability and mirror domain boundaries already implied by file names.
+
+## Complexity
+
+**Tier: F-lite** — single domain (infrastructure/stores), clear subpackage mapping in issue body, established precedent (#1595), no new patterns or unknowns.
+
+- Signals: `size:F-lite` label, mechanical refactor, explicit file→subpackage table in issue, existing `base/` + `migrations/` subpackages as template

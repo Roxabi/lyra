@@ -5,7 +5,7 @@ from __future__ import annotations
 import typer
 
 from factory.agent_cmd.platforms import _commands
-from factory.cli_agent import agent_app
+from factory.cli.agent import agent_app
 
 
 def make_platform_app(platform: str) -> typer.Typer:

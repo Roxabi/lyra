@@ -96,6 +96,11 @@ class TestHappyPath:
         result = _run()
         assert result.returncode == 0, result.stdout + result.stderr
 
+    def test_docker_stubs_pass_with_default_scan(self) -> None:
+        """docker/stubs/ is scanned by default and has no raw subject literals (#1892)."""
+        result = _run([REPO_ROOT / "docker" / "stubs"])
+        assert result.returncode == 0, result.stdout + result.stderr
+
 
 # ---------------------------------------------------------------------------
 # Orphan detection + falsification pair

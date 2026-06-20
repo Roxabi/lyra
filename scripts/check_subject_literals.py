@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""check_subject_literals.py — every raw lyra.* subject literal in src/ resolves.
+"""check_subject_literals.py — every raw subject literal in src/ + docker/stubs/ resolves.
 
-Scans src/ for raw ``lyra.*`` NATS subject string literals and verifies each one
+Scans src/ and docker/stubs/ for raw ``lyra.*`` / ``factory.*`` NATS subject string literals and verifies each one
 against the semantic CodeInventory oracle (tools/code_inventory.py), whose
 ``subjects`` set is sourced from deploy/nats/acl-matrix.json + roxabi-contracts
 SUBJECTS. A literal that the oracle classifies as a subject but cannot resolve
@@ -226,18 +226,25 @@ def _scan(
     return orphans
 
 
+_DEFAULT_SCAN_DIRS = (
+    _REPO_ROOT / "src",
+    _REPO_ROOT / "docker" / "stubs",
+)
+
+
 def _resolve_src_dirs(src_dirs: list[Path] | None) -> list[Path]:
     """Return the effective source directories to scan."""
     if src_dirs:
         return src_dirs
-    return [d for d in [_REPO_ROOT / "src"] if d.is_dir()]
+    return [d for d in _DEFAULT_SCAN_DIRS if d.is_dir()]
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
-            "Check that every raw lyra.* subject literal in src/ resolves to the "
-            "CodeInventory oracle (acl-matrix.json + roxabi-contracts SUBJECTS)."
+            "Check that every raw lyra.*/factory.* subject literal in src/ and "
+            "docker/stubs/ resolves to the CodeInventory oracle "
+            "(acl-matrix.json + roxabi-contracts SUBJECTS)."
         )
     )
     parser.add_argument(
@@ -246,7 +253,7 @@ def main() -> None:
         action="append",
         dest="src_dirs",
         metavar="DIR",
-        help="Source directory to scan (repeatable). Defaults to src/.",
+        help="Source directory to scan (repeatable). Defaults to src/ and docker/stubs/.",
     )
     parser.add_argument(
         "--root",
@@ -295,7 +302,7 @@ def main() -> None:
 
     if orphans:
         print(
-            f"FAIL: {len(orphans)} orphan subject literal(s) in src/ "
+            f"FAIL: {len(orphans)} orphan subject literal(s) in scanned dirs "
             "not declared in acl-matrix.json or roxabi-contracts SUBJECTS:"
         )
         for subject in sorted(orphans):
@@ -308,7 +315,9 @@ def main() -> None:
         )
         sys.exit(1)
 
-    print("check-subject-literals: OK (all lyra.* literals in src/ resolve)")
+    print(
+        "check-subject-literals: OK (all lyra.*/factory.* literals in src/ + docker/stubs/ resolve)"
+    )
 
 
 if __name__ == "__main__":

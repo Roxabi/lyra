@@ -26,7 +26,7 @@ from factory.core.messaging.render_events import (
     ReasoningEndRenderEvent,
     ReasoningStartRenderEvent,
 )
-from factory.outbound._reasoning_accum import ReasoningAccumulator
+from factory.outbound._reasoning_accum import REASONING_MAX_LEN, ReasoningAccumulator
 from factory.outbound.formatter import BaseFormatter
 
 if TYPE_CHECKING:
@@ -67,7 +67,9 @@ class TelegramFormatter(BaseFormatter):
         self._placeholder_text = placeholder_text
         self._reply_to = reply_to
         self._topic_id = topic_id
-        self._reasoning = ReasoningAccumulator()
+        self._reasoning = ReasoningAccumulator(
+            max_len=None if rich_messages_enabled() else REASONING_MAX_LEN,
+        )
 
     def placeholder_text(self) -> str:
         return self._placeholder_text
@@ -290,7 +292,9 @@ class TelegramFormatter(BaseFormatter):
             return
         text, should_edit = self._reasoning.process(event)
         if should_edit and text is not None:
-            await self._edit_trace_with_text(trace_obj, self.dim_italic(text))
+            # Rich <tg-thinking> is HTML — no markdown italic wrapper (#1949).
+            display = text if rich_messages_enabled() else self.dim_italic(text)
+            await self._edit_trace_with_text(trace_obj, display)
 
     async def edit_tool_recap(
         self,

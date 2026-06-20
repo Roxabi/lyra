@@ -103,6 +103,65 @@ class TestAdr089OmpBlockingErrorE2E:
         assert len(adapter.sent) == 1
         assert adapter.sent[0].to_text() == mm.get("rate_limit")
 
+    async def test_model_unavailable_job_result_shows_template(self) -> None:
+        """JobResult llm.model_unavailable → messages.toml unavailable template."""
+        mm = message_manager()
+        result = JobResult.model_validate(
+            {
+                **ENV_BASE,
+                "job_id": "job-omp-model",
+                "status": "error",
+                "error": {
+                    "code": "llm.model_unavailable",
+                    "message": "ModelUnavailable",
+                    "retryable": False,
+                },
+            }
+        )
+        nc = _make_omp_nc(result)
+        hub = hub_with_agent(_make_omp_agent(nc))
+        adapter = hub.adapter_registry[(Platform.TELEGRAM, "main")]
+        assert isinstance(adapter, _RecordingAdapter)
+
+        await run_hub_until_processed(hub)
+
+        assert len(adapter.sent) == 1
+        assert adapter.sent[0].to_text() == mm.get(
+            "unavailable", bot_name="main", retry_secs="0"
+        )
+
+    async def test_model_fallback_notice_prepended_to_reply(self) -> None:
+        """Successful JobResult with model_fallback metadata → user notice prefix."""
+        mm = message_manager()
+        result = JobResult.model_validate(
+            {
+                **ENV_BASE,
+                "job_id": "job-omp-fallback",
+                "status": "success",
+                "data": {
+                    "result": "Hello there.",
+                    "model_fallback": {
+                        "requested": "grok-4-fast",
+                        "fallback": "grok-4.20-non-reasoning",
+                    },
+                },
+            }
+        )
+        nc = _make_omp_nc(result)
+        hub = hub_with_agent(_make_omp_agent(nc))
+        adapter = hub.adapter_registry[(Platform.TELEGRAM, "main")]
+        assert isinstance(adapter, _RecordingAdapter)
+
+        await run_hub_until_processed(hub)
+
+        notice = mm.get(
+            "model_fallback",
+            requested_model="grok-4-fast",
+            fallback_model="grok-4.20-non-reasoning",
+        )
+        assert len(adapter.sent) == 1
+        assert adapter.sent[0].to_text() == f"{notice}\n\nHello there."
+
     async def test_nats_timeout_shows_timeout_template(self) -> None:
         """NATS reply timeout → transport.timeout template."""
         mm = message_manager()

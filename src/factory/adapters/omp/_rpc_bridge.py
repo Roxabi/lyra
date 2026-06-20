@@ -17,15 +17,8 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from factory.adapters.omp._rpc_digest import (
-    DigestMismatchError,
-    _DEFAULT_REQUEST_TIMEOUT,
-    _ENV_REQUEST_TIMEOUT_KEY,
-    _OMP_BIN,
-    _PINNED_SHA256,
-    read_request_timeout,
-    verify_digest,
-)
+from factory.adapters.omp import _rpc_digest
+from factory.adapters.omp._rpc_digest import read_request_timeout, verify_digest
 from factory.adapters.omp._rpc_envelope import (
     classify_exception,
     make_progress,
@@ -51,6 +44,11 @@ _DEFAULT_PROVIDER = (
 # (grok-4 full) and risks RpcClient(request_timeout=30s) timeouts (#1910).
 # Alias must exist in the LiteLLM xAI pass-through catalogue (#1923).
 _DEFAULT_MODEL = "grok-4.20-non-reasoning"
+_OMP_BIN = _rpc_digest._OMP_BIN
+_PINNED_SHA256 = _rpc_digest._PINNED_SHA256
+_DEFAULT_REQUEST_TIMEOUT = _rpc_digest._DEFAULT_REQUEST_TIMEOUT
+_ENV_REQUEST_TIMEOUT_KEY = _rpc_digest._ENV_REQUEST_TIMEOUT_KEY
+DigestMismatchError = _rpc_digest.DigestMismatchError
 _read_request_timeout = read_request_timeout
 _verify_digest = verify_digest
 

@@ -272,7 +272,7 @@ class TestOmpPool:
 
     @pytest.mark.asyncio
     async def test_start_worker_defaults_model_when_unset(self) -> None:
-        """OmpPool() with model=None must pin the RpcBridge default on RpcClient (#1910)."""
+        """OmpPool(model=None) pins the RpcBridge default on RpcClient (#1910)."""
         import sys
 
         pool = OmpPool(omp_bin=Path("/fake/omp"))

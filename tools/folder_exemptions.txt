@@ -6,6 +6,6 @@
 # into cohesive subdirs. core/hub/ deferred to V5 (follow-up issue).
 # V5 completed under #848 — core/hub/ decomposed into middleware/, outbound/, pipeline/.
 #
-# roxabi-factory rename: paths.py (dependency-free data-dir SSoT) stays at top-level.
-# cli_* cluster (14 modules) is the bloat driver — split into factory/cli/ is the drain.
-src/factory  # 15 files — DEBT:folder-exemptions — #1945 cli_secrets + secrets_reset; cli_* split = follow-up
+# #1959 moved the cli_* cluster into src/factory/cli/ (12 files). src/factory/
+# root is now 5 modules (config, errors, paths, __init__, __main__) — under cap.
+# Currently EMPTY: no folder exceeds max_files: 15.

@@ -2,7 +2,7 @@
 id: folder-exemptions
 slug: folder-exemptions
 title: Folders exceeding the 15-file gate
-status: open
+status: drained
 created: 2026-05-11
 drain_slice: "#1958"
 parent_slice: '#1162'
@@ -23,50 +23,45 @@ Python files. The cap is configured in `.claude/stack.yml`
 `tools/check_folder_size.sh`.
 
 Exemptions are listed in `tools/folder_exemptions.txt`. Each entry declares a
-local file cap (`# <N> files`) plus a tracking issue. The gate counts `.py` files
-in the directory (non-recursive) and compares against the declared cap.
+local file cap (`# <N> files`) plus a tracking issue.
 
-After the package rename, four legacy folder exemptions dissolved through
-decomposition (#848 hub split, #1960 stores subpackages) and cap realignment
-(12→15). One directory remains over the gate.
+After the package rename and subsequent decomposition (#848 hub split, #1959 CLI
+subpackage, #1960 stores subpackages), no directory currently exceeds the gate.
+`tools/folder_exemptions.txt` is empty.
 
 ## Sites
 
-From `tools/folder_exemptions.txt`:
+`tools/folder_exemptions.txt` is currently empty — no active folder-size exemptions.
 
-- `src/factory` — 15 files (#1945 `cli_secrets.py` + `secrets_reset.py` added for
-  disaster recovery; `cli_*` cluster is the proximate bloat driver)
+Live counts (post-#1959):
 
-`artifacts/quality-debt-report.json` `stale_references` is `[]`.
+- `src/factory/` — 5 files (`config`, `errors`, `paths`, `__init__`, `__main__`)
+- `src/factory/cli/` — 12 files (command modules moved from package root in #1959)
+- `src/factory/infrastructure/stores/` — 15 files at root plus `base/`, `identity/`,
+  `jobs/`, `kv/`, `migrations/`, `registry/`, `session/` subpackages (#1960)
 
-Top-level `src/factory/` modules (15): `cli.py`, `cli_agent.py`,
-`cli_agent_create.py`, `cli_bot.py`, `cli_ops.py`, `cli_secrets.py`,
-`cli_setup.py`, `cli_voice_smoke.py`, `config.py`, `errors.py`, `__init__.py`,
-`__main__.py`, `ops_audit.py`, `paths.py`, `secrets_reset.py`.
+`artifacts/quality-debt-report.json` `stale_references` is `[]` for this slug.
 
 ## Drain plan
 
-- **`src/factory` (15 files, at cap):** extract the `cli_*` command modules into
-  `src/factory/cli/` (or `src/factory/commands/`). Keep `paths.py` at the
-  top-level — it is a zero-dep data-dir resolver imported broadly across the
-  package. Target: ≤14 files at `src/factory/` root so the exemption can be
-  removed.
-- **`src/factory/infrastructure/stores`:** #1960 landed `base/` and
-  `migrations/` subpackages (22 total `.py` files, 15 at the root). No exemption
-  entry — root count is exactly at the cap. Further store splits are optional
-  hardening, not gate-blocking.
-- After `src/factory` drops to ≤15 files without an exemption line, remove its
-  entry from `tools/folder_exemptions.txt`. When the file is empty, flip this
-  registry to `status: drained`.
+No active exemptions. When a folder exceeds 15 files during development:
+
+1. Add `<path>  # <N> files — DEBT:folder-exemptions — #<issue> <rationale>` to
+   `tools/folder_exemptions.txt`.
+2. Flip this registry to `status: open` and document the site + drain steps here.
+3. Schedule a subpackage split in the cited issue; remove the line when the folder
+   drops to ≤15 files.
+4. When `tools/folder_exemptions.txt` is empty again, flip back to `status: drained`.
+
+Recent drains (no longer listed in the exemption file):
+
+- `src/factory` root bloat — resolved by #1959 (`factory/cli/` subpackage).
+- Legacy four-folder set from pre-rename layout — resolved by #848 + cap realignment.
 
 ## Notes
 
 - Cap history: gate was 12 files pre-`stack.yml` alignment; `max_files: 15` is
-  the live SSoT. `CONTRIBUTING.md` still says 12 — update when that doc is next
-  touched (#1958 scoped to debt registry only).
-- V4 (#760/#773): `core/`, `adapters/`, `bootstrap/` decomposed into cohesive
-  subdirs.
+  the live SSoT.
+- V4 (#760/#773): `core/`, `adapters/`, `bootstrap/` decomposed.
 - V5 (#848): `core/hub/` → `middleware/`, `outbound/`, `pipeline/`.
-- Rename (#1956): `paths.py` added at `src/factory/` top-level;
-  `factory_data_dir` → `$ROXABI_FACTORY_DIR`.
 - Parent epic #1956 tracks post-rename debt-registry hygiene.

@@ -33,7 +33,7 @@ from factory.core.hub.pipeline.message_pipeline import (
     ResumeStatus,
 )
 from factory.core.messaging.message import Platform, Response
-from factory.infrastructure.stores.turn_store import TurnStore
+from factory.infrastructure.stores.session.turn_store import TurnStore
 from roxabi_contracts import BlobRef
 from tests.core.conftest import _make_hub, make_inbound_message
 

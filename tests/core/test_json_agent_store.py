@@ -337,7 +337,7 @@ class TestMakeAgentStore:
         monkeypatch.delenv("FACTORY_DB", raising=False)
 
         from factory.bootstrap.factory.agent_store_factory import make_agent_store
-        from factory.infrastructure.stores.agent_store import AgentStore
+        from factory.infrastructure.stores.registry.agent_store import AgentStore
 
         store = make_agent_store()
         assert isinstance(store, AgentStore)
@@ -372,7 +372,7 @@ class TestMakeAgentStore:
         monkeypatch.setenv("FACTORY_DB", "sqlite")
 
         from factory.bootstrap.factory.agent_store_factory import make_agent_store
-        from factory.infrastructure.stores.agent_store import AgentStore
+        from factory.infrastructure.stores.registry.agent_store import AgentStore
 
         store = make_agent_store()
         assert isinstance(store, AgentStore)

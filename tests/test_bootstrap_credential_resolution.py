@@ -356,11 +356,11 @@ async def test_discord_adapter_handles_multi_bot(
         patch("factory.nats.nats_bus.NatsBus", return_value=mock_inbound_bus),
         patch("factory.adapters.discord.DiscordAdapter", side_effect=_capture_dc),
         patch(
-            "factory.infrastructure.stores.thread_store.ThreadStore",
+            "factory.infrastructure.stores.session.thread_store.ThreadStore",
             return_value=mock_thread_store,
         ),
         patch(
-            "factory.infrastructure.stores.turn_store.TurnStore",
+            "factory.infrastructure.stores.session.turn_store.TurnStore",
             return_value=mock_turn_store,
         ),
         patch(

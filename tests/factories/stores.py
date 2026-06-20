@@ -7,9 +7,9 @@ from pathlib import Path
 import pytest
 
 from factory.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
-from factory.infrastructure.stores.agent_store import AgentRow, AgentStore
-from factory.infrastructure.stores.auth_store import AuthStore
-from factory.infrastructure.stores.pairing import PairingConfig, PairingManager
+from factory.infrastructure.stores.identity.auth_store import AuthStore
+from factory.infrastructure.stores.identity.pairing import PairingConfig, PairingManager
+from factory.infrastructure.stores.registry.agent_store import AgentRow, AgentStore
 from tests.helpers.bot_store import make_bot_store
 
 __all__ = [

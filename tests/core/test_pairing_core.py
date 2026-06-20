@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from factory.core.auth.trust import TrustLevel
-from factory.infrastructure.stores.pairing import (
+from factory.infrastructure.stores.identity.pairing import (
     PairingConfig,
     PairingError,
     PairingManager,

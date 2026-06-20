@@ -60,7 +60,7 @@ class TestPatchCommand:
     def cli(self):
         from typer.testing import CliRunner
 
-        from factory.cli_agent import agent_app
+        from factory.cli.agent import agent_app
 
         return CliRunner(), agent_app
 
@@ -70,7 +70,7 @@ class TestPatchCommand:
 
         from typer.testing import CliRunner
 
-        from factory.cli_agent import agent_app
+        from factory.cli.agent import agent_app
 
         row = make_row()
         mock_store = make_store(row)
@@ -99,7 +99,7 @@ class TestPatchCommand:
 
         from typer.testing import CliRunner
 
-        from factory.cli_agent import agent_app
+        from factory.cli.agent import agent_app
 
         row = make_row()
         mock_store = make_store(row)
@@ -127,7 +127,7 @@ class TestPatchCommand:
 
         from typer.testing import CliRunner
 
-        from factory.cli_agent import agent_app
+        from factory.cli.agent import agent_app
 
         row = make_row()
         mock_store = make_store(row)
@@ -164,7 +164,7 @@ class TestPatchInvalidJson:
         # Arrange
         from typer.testing import CliRunner
 
-        from factory.cli_agent import agent_app
+        from factory.cli.agent import agent_app
 
         # Typer's CliRunner merges stderr into output by default — no mix_stderr needed
         runner = CliRunner()
@@ -184,7 +184,7 @@ class TestPatchInvalidJson:
         # Arrange
         from typer.testing import CliRunner
 
-        from factory.cli_agent import agent_app
+        from factory.cli.agent import agent_app
 
         runner = CliRunner()
 
@@ -323,7 +323,7 @@ class TestRefineCommand:
 
         from typer.testing import CliRunner
 
-        from factory.cli_agent import agent_app
+        from factory.cli.agent import agent_app
 
         row = make_row()
         store = make_store(row)
@@ -357,7 +357,7 @@ class TestRefineCommand:
 
         from typer.testing import CliRunner
 
-        from factory.cli_agent import agent_app
+        from factory.cli.agent import agent_app
 
         row = make_row()
         store = make_store(row)
@@ -391,7 +391,7 @@ class TestRefineCommand:
 
         from typer.testing import CliRunner
 
-        from factory.cli_agent import agent_app
+        from factory.cli.agent import agent_app
 
         store = make_store(row=None)  # agent not found
 

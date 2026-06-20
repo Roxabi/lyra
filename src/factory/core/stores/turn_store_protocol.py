@@ -1,7 +1,7 @@
 """TurnStoreProtocol — structural interface for raw turn stores.
 
 Decouples factory.core from the concrete SQLite TurnStore implementation
-(factory.infrastructure.stores.turn_store). Fixes the layering inversion where
+(factory.infrastructure.stores.session.turn_store). Fixes the layering inversion where
 core modules imported an infrastructure type directly (issue #1079).
 
 Factory: obtain a store via the bootstrap layer; type-annotate against this

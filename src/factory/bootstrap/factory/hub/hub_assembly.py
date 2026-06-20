@@ -22,7 +22,7 @@ from factory.core.hub import Hub
 from factory.core.lifecycle.circuit_breaker import CircuitRegistry
 from factory.core.messaging.message import InboundMessage, Platform
 from factory.core.messaging.messages import MessageManager
-from factory.infrastructure.stores.pairing import PairingManager
+from factory.infrastructure.stores.identity.pairing import PairingManager
 from factory.llm.drivers.omp_rpc import OmpRpcDriver
 from factory.nats.nats_bus import NatsBus
 

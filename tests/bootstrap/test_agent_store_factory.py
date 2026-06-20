@@ -22,7 +22,7 @@ def _patch_classes(monkeypatch: pytest.MonkeyPatch) -> tuple[MagicMock, MagicMoc
         "factory.core.stores.json_agent_store.JsonAgentStore", mock_json_cls
     )
     monkeypatch.setattr(
-        "factory.infrastructure.stores.agent_store.AgentStore", mock_sqlite_cls
+        "factory.infrastructure.stores.registry.agent_store.AgentStore", mock_sqlite_cls
     )
     return mock_json_cls, mock_sqlite_cls
 

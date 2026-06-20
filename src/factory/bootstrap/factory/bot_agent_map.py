@@ -6,7 +6,7 @@ import logging
 import sqlite3
 
 from factory.config import DiscordBotConfig, TelegramBotConfig
-from factory.infrastructure.stores.agent_store import AgentStore
+from factory.infrastructure.stores.registry.agent_store import AgentStore
 
 log = logging.getLogger(__name__)
 

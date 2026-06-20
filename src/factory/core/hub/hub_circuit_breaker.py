@@ -46,9 +46,7 @@ class HubCircuitBreakerMixin:
         _retry_str = str(retry_secs)
         _bot = bot_display_name(msg, self)
         _unavail = (
-            self._msg_manager.get(
-                "unavailable", bot_name=_bot, retry_secs=_retry_str
-            )
+            self._msg_manager.get("unavailable", bot_name=_bot, retry_secs=_retry_str)
             if self._msg_manager
             else f"{_bot} is currently unavailable. Please try again in {retry_secs}s."
         )

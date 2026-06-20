@@ -302,7 +302,7 @@ _RC_DC = RoutingContext(platform="discord", bot_id="main", scope_id="channel:456
 @pytest.fixture(autouse=True)
 async def _cleanup_pairing_state(tmp_path: Path):
     """Reset pairing global and close all PairingManagers/AuthStores after each test."""
-    from factory.infrastructure.stores.pairing import set_pairing_manager
+    from factory.infrastructure.stores.identity.pairing import set_pairing_manager
 
     setattr(_cleanup_pairing_state, "tmp_path", tmp_path)
     yield

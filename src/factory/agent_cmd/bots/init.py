@@ -12,7 +12,7 @@ from typing import Any, Literal, cast
 import typer
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
 
-from factory.cli_bot import _connect_bot_store, _maybe_publish_roster, bot_app
+from factory.cli.bot import _connect_bot_store, _maybe_publish_roster, bot_app
 from factory.core.agent.bot_models import (
     DEFAULT_AUTO_THREAD,
     DEFAULT_THREAD_HOT_HOURS,

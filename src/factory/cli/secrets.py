@@ -6,7 +6,7 @@ import subprocess
 
 import typer
 
-from factory.secrets_reset import run_secrets_reset
+from factory.cli.secrets_reset import run_secrets_reset
 
 secrets_app = typer.Typer(
     name="secrets",

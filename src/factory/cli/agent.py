@@ -11,8 +11,9 @@ from typing import Optional
 
 import typer
 
-from factory.infrastructure.stores.agent_store import AgentStore
-from factory.paths import factory_data_dir
+from factory.cli import _store_connect
+
+_connect_store = _store_connect._connect_store
 
 agent_app = typer.Typer(name="agent", help="Manage agent configurations.")
 _DEFAULT_TOOLS = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]
@@ -22,18 +23,8 @@ _AGENTS_DIR_OPT: Optional[Path] = typer.Option(
 
 
 # ---------------------------------------------------------------------------
-# Shared helpers (used by cli_agent_create / agent_cmd.agents)
+# Shared helpers (used by agent_create / agent_cmd.agents)
 # ---------------------------------------------------------------------------
-
-
-def _get_db_path() -> Path:
-    return factory_data_dir() / "config.db"
-
-
-async def _connect_store() -> AgentStore:
-    store = AgentStore(db_path=_get_db_path())
-    await store.connect()
-    return store
 
 
 def _parse_tools(raw: str) -> list[str]:

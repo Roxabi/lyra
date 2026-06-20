@@ -1138,7 +1138,7 @@ def test_remember_terminated_evicts_oldest_first(monkeypatch) -> None:
     from factory.adapters.nats.nats_stream_decoder import remember_terminated
 
     # Shrink the cap so the FIFO property is verified against a tiny sequence.
-    monkeypatch.setattr(nsd, "_MAX_TERMINATED_STREAMS", 3)
+    monkeypatch.setattr(nsd, "MAX_TERMINATED_STREAMS", 3)
 
     nc = AsyncMock()
     adapter = AsyncMock()

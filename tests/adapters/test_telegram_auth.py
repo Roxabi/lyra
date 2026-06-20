@@ -223,8 +223,7 @@ class TestTelegramAdapterInbound:
         audio_file.write_bytes(b"audio")
 
         _fake_dl = AsyncMock(return_value=(audio_file, 5.0))
-        mock_pipeline = MagicMock()
-        mock_pipeline.run = AsyncMock(return_value=None)
+        mock_guarded = AsyncMock(return_value=None)
         with (
             patch(
                 "factory.adapters.telegram.telegram_inbound._download_audio",
@@ -234,8 +233,8 @@ class TestTelegramAdapterInbound:
                 "factory.adapters.telegram.telegram_inbound.normalize_audio"
             ) as mock_norm_audio,
             patch(
-                "factory.adapters.telegram.telegram_inbound._pipeline",
-                mock_pipeline,
+                "factory.adapters.telegram.telegram_inbound.run_inbound_guarded",
+                mock_guarded,
             ),
         ):
             _stub_msg = MagicMock()
@@ -248,4 +247,4 @@ class TestTelegramAdapterInbound:
         call_kwargs = mock_norm_audio.call_args
         assert call_kwargs.kwargs.get("trust_level") == TrustLevel.PUBLIC
         # Voice now routes via the pipeline, not push_to_hub_guarded
-        mock_pipeline.run.assert_awaited_once()
+        mock_guarded.assert_awaited_once()

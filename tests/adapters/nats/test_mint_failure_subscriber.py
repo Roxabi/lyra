@@ -48,10 +48,8 @@ def _make_nats_msg(
 
 async def test_subscribes_to_correct_subject_on_start() -> None:
     """start() subscribes to factory.gh.mint_failure.> wildcard."""
-    from factory.adapters.nats.mint_failure_subscriber import (
-        _SUBSCRIBE_SUBJECT,
-        MintFailureSubscriber,
-    )
+    from factory.adapters.nats._constants import SUBSCRIBE_SUBJECT_MINT_FAILURE
+    from factory.adapters.nats.mint_failure_subscriber import MintFailureSubscriber
 
     nc = AsyncMock()
     subscriber = MintFailureSubscriber(
@@ -63,7 +61,7 @@ async def test_subscribes_to_correct_subject_on_start() -> None:
 
     nc.subscribe.assert_called_once()
     call_args = nc.subscribe.call_args
-    assert call_args[0][0] == _SUBSCRIBE_SUBJECT
+    assert call_args[0][0] == SUBSCRIBE_SUBJECT_MINT_FAILURE
     assert call_args[0][0] == "factory.gh.mint_failure.>"
 
 

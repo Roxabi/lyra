@@ -76,6 +76,7 @@ def _stub_omp_rpc_module() -> tuple[ModuleType, MagicMock]:
     client_instance.stop = MagicMock()
     client_instance.new_session = MagicMock()
     client_instance.prompt_and_wait = MagicMock()
+    client_instance.set_model = MagicMock()
     client_instance.steer = MagicMock()
     client_instance.on_message_update = MagicMock()
     client_instance.on_tool_execution_start = MagicMock()
@@ -159,7 +160,7 @@ class TestDigestGate:
         actual_sha = hashlib.sha256(content).hexdigest()
         _stub_omp_rpc_module()
         try:
-            with patch("factory.adapters.omp._rpc_bridge._PINNED_SHA256", actual_sha):
+            with patch("factory.adapters.omp._rpc_digest._PINNED_SHA256", actual_sha):
                 bridge = RpcBridge(omp_bin=omp_bin)
             assert bridge is not None
         finally:
@@ -189,7 +190,7 @@ def bridge_and_nc(tmp_path: Path):
     actual_sha = hashlib.sha256(content).hexdigest()
     _, client_instance = _stub_omp_rpc_module()
     try:
-        with patch("factory.adapters.omp._rpc_bridge._PINNED_SHA256", actual_sha):
+        with patch("factory.adapters.omp._rpc_digest._PINNED_SHA256", actual_sha):
             bridge = RpcBridge(omp_bin=omp_bin)
         nc = AsyncMock()
         nc.publish = AsyncMock()
@@ -290,8 +291,9 @@ class TestRun:
         nc.publish.assert_awaited_once()
         payload_bytes = nc.publish.await_args.args[1]
         payload = json.loads(payload_bytes)
-        assert payload.get("data") == {"result": ""}, (
-            f"reset should clear stale event; got {payload.get('data')!r}"
+        assert payload["status"] == "error"
+        assert payload["error"]["code"] == "worker.validation", (
+            "empty text without OMP stopReason=error is a validation failure"
         )
 
 
@@ -692,7 +694,7 @@ class TestStartLifecycle:
         sys.modules["omp_rpc"] = module
 
         with patch(
-            "factory.adapters.omp._rpc_bridge._PINNED_SHA256",
+            "factory.adapters.omp._rpc_digest._PINNED_SHA256",
             actual_sha,
         ):
             bridge = RpcBridge(omp_bin=omp_bin)
@@ -759,7 +761,7 @@ class TestStartLifecycle:
         sys.modules["omp_rpc"] = module
 
         with patch(
-            "factory.adapters.omp._rpc_bridge._PINNED_SHA256",
+            "factory.adapters.omp._rpc_digest._PINNED_SHA256",
             actual_sha,
         ):
             RpcBridge(omp_bin=omp_bin)
@@ -831,6 +833,100 @@ class TestStartLifecycle:
 # T2 — _on_agent_end must publish data={"result": <assistant_text>}
 # T3 — run() must store the PromptTurn return value as _last_turn
 # ---------------------------------------------------------------------------
+
+
+class TestTurnFailurePublishing:
+    async def test_stop_reason_error_publishes_model_unavailable(
+        self, bridge_and_nc
+    ) -> None:
+        bridge, nc, client = bridge_and_nc
+        nc.subscribe = AsyncMock(return_value=AsyncMock(unsubscribe=AsyncMock()))
+        await bridge.register(nc)
+
+        client.prompt_and_wait.return_value = SimpleNamespace(
+            assistant_text=None,
+            assistant_message={
+                "role": "assistant",
+                "stopReason": "error",
+                "errorMessage": (
+                    "400 /chat/completions: Invalid model name passed in "
+                    "model=grok-4-fast"
+                ),
+            },
+        )
+
+        await bridge.run(prompt="hello", job_id=_JOB_ID)
+
+        payload = json.loads(nc.publish.await_args.args[1])
+        assert payload["status"] == "error"
+        assert payload["error"]["code"] == "llm.model_unavailable"
+        assert payload["error"]["message"] == "ModelUnavailable"
+        assert "grok-4-fast" not in json.dumps(payload)
+
+    async def test_invalid_model_falls_back_to_registry_first(
+        self, bridge_and_nc
+    ) -> None:
+        bridge, nc, client = bridge_and_nc
+        nc.subscribe = AsyncMock(return_value=AsyncMock(unsubscribe=AsyncMock()))
+        await bridge.register(nc)
+
+        failed_turn = SimpleNamespace(
+            assistant_text=None,
+            assistant_message={
+                "role": "assistant",
+                "stopReason": "error",
+                "errorMessage": "400 Invalid model name passed in model=grok-4-fast",
+            },
+        )
+        success_turn = SimpleNamespace(
+            assistant_text="fallback reply",
+            assistant_message={"role": "assistant", "stopReason": "end_turn"},
+        )
+        client.prompt_and_wait.side_effect = [failed_turn, success_turn]
+
+        with patch(
+            "factory.adapters.omp._model_catalogue.first_registry_model",
+            return_value="grok-4.20-non-reasoning",
+        ):
+            await bridge.run(
+                prompt="hello",
+                job_id=_JOB_ID,
+                model="grok-4-fast",
+            )
+
+        client.set_model.assert_called()
+        payload = json.loads(nc.publish.await_args.args[1])
+        assert payload["status"] == "success"
+        assert payload["data"]["result"] == "fallback reply"
+        assert payload["data"]["model_fallback"] == {
+            "requested": "grok-4-fast",
+            "fallback": "grok-4.20-non-reasoning",
+        }
+
+    async def test_stop_reason_error_does_not_leak_provider_message(
+        self, bridge_and_nc
+    ) -> None:
+        bridge, nc, client = bridge_and_nc
+        nc.subscribe = AsyncMock(return_value=AsyncMock(unsubscribe=AsyncMock()))
+        await bridge.register(nc)
+
+        secret = "super-secret-provider-detail"
+        client.prompt_and_wait.return_value = SimpleNamespace(
+            assistant_text="",
+            assistant_message={
+                "role": "assistant",
+                "stopReason": "error",
+                "errorMessage": secret,
+            },
+        )
+
+        await bridge.run(prompt="hello", job_id=_JOB_ID)
+
+        payload_bytes = nc.publish.await_args.args[1]
+        assert secret not in payload_bytes.decode()
+        payload = json.loads(payload_bytes)
+        assert payload["status"] == "error"
+        assert payload["error"]["code"] == "worker.internal"
 
 
 class TestAgentEndResultData:

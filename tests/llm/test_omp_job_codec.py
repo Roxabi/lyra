@@ -23,6 +23,25 @@ class TestOmpJobCodecDecode:
         assert llm.result == "pong"
         assert llm.worker_error is None
 
+    def test_success_extracts_model_fallback(self) -> None:
+        result = JobResult.model_validate(
+            {
+                **sample_job_result_ok,
+                "data": {
+                    "result": "pong",
+                    "model_fallback": {
+                        "requested": "grok-4-fast",
+                        "fallback": "grok-4.20-non-reasoning",
+                    },
+                },
+            }
+        )
+        llm = _codec.decode(result)
+        assert llm.model_fallback == {
+            "requested": "grok-4-fast",
+            "fallback": "grok-4.20-non-reasoning",
+        }
+
     def test_error_populates_worker_error(self) -> None:
         result = JobResult.model_validate(sample_job_result_err)
         llm = _codec.decode(result)

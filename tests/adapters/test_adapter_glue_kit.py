@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -18,26 +20,26 @@ from factory.core.messaging.message import DiscordMeta, InboundMessage, Telegram
 from factory.inbound.attachment_ingest import AttachmentIngestError
 
 
-def _minimal_inbound(**kwargs: object) -> InboundMessage:
-    defaults = {
-        "id": "m1",
-        "platform": "telegram",
-        "bot_id": "main",
-        "scope_id": "chat:1",
-        "user_id": "u1",
-        "user_name": "user",
-        "is_mention": False,
-        "text": "hi",
-        "text_raw": "hi",
-        "trust_level": TrustLevel.PUBLIC,
-        "platform_meta": TelegramMeta(chat_id=1, message_id=1),
-    }
-    defaults.update(kwargs)
-    return InboundMessage(**defaults)  # type: ignore[arg-type]
+def _minimal_inbound(**kwargs: Any) -> InboundMessage:
+    return InboundMessage(
+        id=kwargs.get("id", "m1"),
+        platform=kwargs.get("platform", "telegram"),
+        bot_id=kwargs.get("bot_id", "main"),
+        scope_id=kwargs.get("scope_id", "chat:1"),
+        user_id=kwargs.get("user_id", "u1"),
+        user_name=kwargs.get("user_name", "user"),
+        is_mention=kwargs.get("is_mention", False),
+        text=kwargs.get("text", "hi"),
+        text_raw=kwargs.get("text_raw", "hi"),
+        trust_level=kwargs.get("trust_level", TrustLevel.PUBLIC),
+        platform_meta=kwargs.get(
+            "platform_meta", TelegramMeta(chat_id=1, message_id=1)
+        ),
+    )
 
 
 @pytest.fixture(autouse=True)
-def _reset_pipeline_kit() -> None:
+def _reset_pipeline_kit() -> Iterator[None]:
     reset_inbound_pipeline_kit()
     yield
     reset_inbound_pipeline_kit()
@@ -123,7 +125,9 @@ async def test_run_inbound_guarded_handles_attachment_ingest_error() -> None:
     )
 
     on_error.assert_awaited_once()
-    assert on_error.await_args.args[0].user_message == "nope"
+    exc = on_error.call_args.args[0]
+    assert isinstance(exc, AttachmentIngestError)
+    assert exc.user_message == "nope"
 
 
 def test_cancel_typing_shim_pubsub_noop_when_enabled_without_publisher(

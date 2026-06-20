@@ -21,7 +21,7 @@ import typer
 from nats.aio.client import Client as NATS
 
 import nats
-from factory.ops_audit import emit_drift_report
+from factory.cli.ops_audit import emit_drift_report
 from factory.paths import factory_data_dir
 from roxabi_contracts.verify import verify_deny
 from roxabi_nats.connect import _build_tls_context

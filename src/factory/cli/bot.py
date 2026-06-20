@@ -5,12 +5,10 @@ from __future__ import annotations
 import os
 import re
 import subprocess
-from pathlib import Path
 
 import typer
 
-from factory.infrastructure.stores.bot_store import BotStore
-from factory.paths import factory_data_dir
+from factory.cli._store_connect import _connect_bot_store
 
 bot_app = typer.Typer(
     name="bot", help="Manage bot credentials stored as Podman secrets."
@@ -21,16 +19,6 @@ bot_app.add_typer(secret_app, name="secret")
 
 _BOT_ID_RE = re.compile(r"[A-Za-z0-9_-]+")
 _VALID_PLATFORMS = ("telegram", "discord")
-
-
-def _get_db_path() -> Path:
-    return factory_data_dir() / "config.db"
-
-
-async def _connect_bot_store() -> BotStore:
-    store = BotStore(db_path=_get_db_path())
-    await store.connect()
-    return store
 
 
 async def _maybe_publish_roster(store: object) -> None:

@@ -11,7 +11,7 @@ import click
 import tomli_w
 import typer
 
-from factory.cli_agent import _AGENTS_DIR_OPT, _connect_store, _parse_tools, agent_app
+from factory.cli.agent import _AGENTS_DIR_OPT, _connect_store, _parse_tools, agent_app
 from factory.paths import factory_data_dir
 
 

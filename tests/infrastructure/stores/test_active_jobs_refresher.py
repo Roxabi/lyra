@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from factory.core.ports.active_jobs import ActiveJobEntry, RegistryConflictError
-from factory.infrastructure.stores.active_jobs_refresher import RegistryCoordinator
+from factory.infrastructure.stores.jobs.active_jobs_refresher import RegistryCoordinator
 
 # ---------------------------------------------------------------------------
 # Fixtures

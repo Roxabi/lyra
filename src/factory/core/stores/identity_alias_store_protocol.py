@@ -2,7 +2,7 @@
 
 Application-layer code (e.g. command handlers) must depend on this protocol
 rather than on the concrete ``IdentityAliasStore`` class from
-``factory.infrastructure.stores.identity_alias_store``, following the
+``factory.infrastructure.stores.identity.identity_alias_store``, following the
 dependency-inversion principle (ADR-059).
 """
 

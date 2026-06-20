@@ -10,7 +10,7 @@ from factory.paths import factory_data_dir
 
 if TYPE_CHECKING:
     from factory.core.stores.json_agent_store import JsonAgentStore
-    from factory.infrastructure.stores.agent_store import AgentStore
+    from factory.infrastructure.stores.registry.agent_store import AgentStore
 
 __all__ = ["make_agent_store"]
 
@@ -25,7 +25,7 @@ def make_agent_store(
                           ``~/.roxabi/factory/agents_test.json``
 
     Any other value (or unset)  →
-        :class:`~factory.infrastructure.stores.agent_store.AgentStore`
+        :class:`~factory.infrastructure.stores.registry.agent_store.AgentStore`
                                     Path: *db_path* or ``~/.roxabi/factory/config.db``
 
     Note: the returned store is not yet connected — callers must ``await
@@ -39,7 +39,7 @@ def make_agent_store(
         path = Path(store_path_env) if store_path_env else _vault / "agents_test.json"
         return JsonAgentStore(path=path)
 
-    from factory.infrastructure.stores.agent_store import AgentStore
+    from factory.infrastructure.stores.registry.agent_store import AgentStore
 
     _vault = factory_data_dir().resolve()
     resolved = db_path or (_vault / "config.db")

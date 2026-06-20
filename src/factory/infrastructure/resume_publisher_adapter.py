@@ -6,7 +6,7 @@ domain port defined in factory.core.ports.resume_publisher.
 
 from __future__ import annotations
 
-from factory.infrastructure.stores.turn_store import TurnStore
+from factory.infrastructure.stores.session.turn_store import TurnStore
 from factory.transport.turn_publisher import TurnPublisher
 
 

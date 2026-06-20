@@ -14,7 +14,7 @@ from factory.bootstrap.factory.config import _load_cli_pool_config
 from factory.bootstrap.infra.git_ownership_probe import run_git_ownership_probe
 from factory.core.cli.cli_pool import CliPool, CliPoolDeps
 from factory.core.messaging.utils.metrics import log_contracts_version
-from factory.infrastructure.stores.turn_store import TurnStore
+from factory.infrastructure.stores.session.turn_store import TurnStore
 from factory.infrastructure.turn_writer.health import TurnWriterHealthServer
 from factory.infrastructure.turn_writer.stream_setup import (
     ensure_consumer,

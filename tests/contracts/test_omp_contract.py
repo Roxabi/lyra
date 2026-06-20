@@ -224,24 +224,16 @@ class TestLlmResultShapeInvariant:
                 )
             )
         )
-        assert_llm_result_invariant(
-            await driver.complete("p", "t", model_cfg, "s")
-        )
+        assert_llm_result_invariant(await driver.complete("p", "t", model_cfg, "s"))
 
         sub.next_msg.return_value = SimpleNamespace(
             data=_encode_result(JobResult.model_validate(sample_job_result_err))
         )
-        assert_llm_result_invariant(
-            await driver.complete("p", "t", model_cfg, "s")
-        )
+        assert_llm_result_invariant(await driver.complete("p", "t", model_cfg, "s"))
 
         sub.next_msg.side_effect = asyncio.TimeoutError
-        assert_llm_result_invariant(
-            await driver.complete("p", "t", model_cfg, "s")
-        )
+        assert_llm_result_invariant(await driver.complete("p", "t", model_cfg, "s"))
 
         sub.next_msg.side_effect = None
         sub.next_msg.return_value = SimpleNamespace(data=b"not-json")
-        assert_llm_result_invariant(
-            await driver.complete("p", "t", model_cfg, "s")
-        )
+        assert_llm_result_invariant(await driver.complete("p", "t", model_cfg, "s"))

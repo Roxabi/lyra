@@ -16,7 +16,9 @@ from typing import TYPE_CHECKING
 from roxabi_vault import AsyncMemoryDB
 
 if TYPE_CHECKING:
-    from factory.infrastructure.stores.identity_alias_store import IdentityAliasStore
+    from factory.infrastructure.stores.identity.identity_alias_store import (
+        IdentityAliasStore,
+    )
 
 from factory.core.config.memory_config import MemoryConfig
 from factory.core.memory.memory_freshness import age_str, is_stale

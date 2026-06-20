@@ -14,7 +14,7 @@ from nats.js.errors import (
 )
 
 from factory.core.ports.active_jobs import ActiveJobEntry, RegistryConflictError
-from factory.infrastructure.stores.active_jobs_kv import (
+from factory.infrastructure.stores.jobs.active_jobs_kv import (
     ACTIVE_JOBS_BUCKET,
     ACTIVE_JOBS_TTL,
     KvActiveJobsStore,

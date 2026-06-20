@@ -7,7 +7,7 @@ from pathlib import Path
 import aiosqlite
 import pytest
 
-from factory.infrastructure.stores.agent_store import AgentRow, AgentStore
+from factory.infrastructure.stores.registry.agent_store import AgentRow, AgentStore
 
 from .conftest import make_agent_row, make_store
 

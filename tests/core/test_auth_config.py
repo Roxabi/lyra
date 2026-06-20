@@ -17,8 +17,8 @@ from factory.core.auth.authenticator import (
     FromBotStoreDeps,
 )
 from factory.core.auth.trust import TrustLevel
-from factory.infrastructure.stores.auth_store import AuthStore
-from factory.infrastructure.stores.bot_store import BotStore
+from factory.infrastructure.stores.identity.auth_store import AuthStore
+from factory.infrastructure.stores.registry.bot_store import BotStore
 
 # ---------------------------------------------------------------------------
 # TestFromConfig

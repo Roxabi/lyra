@@ -18,7 +18,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from factory.infrastructure.stores.turn_store import TurnStore
+from factory.infrastructure.stores.session.turn_store import TurnStore
 from factory.infrastructure.turn_writer.writer import TurnWriter
 from factory.transport.turn_publisher import TurnPublisher
 from roxabi_contracts.turns import TurnWriteEvent

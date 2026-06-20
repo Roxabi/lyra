@@ -23,14 +23,14 @@ layers =
     factory.transport
 ignore_imports =
     # Downward TYPE_CHECKING imports (ADR-048 transition) — DEBT:importlinter-adr048-transition
-    factory.core.agent.agent_refiner -> factory.infrastructure.stores.agent_store
-    factory.core.agent.agent -> factory.infrastructure.stores.agent_store
-    factory.core.memory.memory -> factory.infrastructure.stores.identity_alias_store
-    factory.core.hub.hub -> factory.infrastructure.stores.identity_alias_store
-    factory.core.hub.hub_registration -> factory.infrastructure.stores.identity_alias_store
+    factory.core.agent.agent_refiner -> factory.infrastructure.stores.registry.agent_store
+    factory.core.agent.agent -> factory.infrastructure.stores.registry.agent_store
+    factory.core.memory.memory -> factory.infrastructure.stores.identity.identity_alias_store
+    factory.core.hub.hub -> factory.infrastructure.stores.identity.identity_alias_store
+    factory.core.hub.hub_registration -> factory.infrastructure.stores.identity.identity_alias_store
     # TYPE_CHECKING imports for migrated stores (#935) — DEBT:importlinter-adr048-transition
-    factory.core.hub.hub -> factory.infrastructure.stores.pairing
-    factory.core.hub.hub -> factory.infrastructure.stores.prefs_store
+    factory.core.hub.hub -> factory.infrastructure.stores.identity.pairing
+    factory.core.hub.hub -> factory.infrastructure.stores.registry.prefs_store
 
 [importlinter:contract:core-stores-no-sqlite]
 name = core/stores protocols must not import SQLite drivers
@@ -60,7 +60,7 @@ forbidden_modules =
     factory.bootstrap
 ignore_imports =
     # Transitional: TYPE_CHECKING import pending protocol extraction (ADR-059 V9) — DEBT:importlinter-adr048-transition
-    factory.agents.simple_agent -> factory.infrastructure.stores.agent_store
+    factory.agents.simple_agent -> factory.infrastructure.stores.registry.agent_store
 
 [importlinter:contract:shared-modules-independence]
 name = Shared floating modules must not import each other (peer isolation)
@@ -126,7 +126,7 @@ type = forbidden
 source_modules =
     factory.adapters
 forbidden_modules =
-    factory.infrastructure.stores.bot_store
+    factory.infrastructure.stores.registry.bot_store
 allow_indirect_imports = true
 
 [importlinter:contract:inbound-no-adapters]

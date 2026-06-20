@@ -16,7 +16,7 @@ from factory.core.stores.turn_store_protocol import SessionRow
 if TYPE_CHECKING:
     import aiosqlite
 
-from factory.infrastructure.stores.turn_store_queries import (
+from factory.infrastructure.stores.session.turn_store_queries import (
     get_cli_session,
     get_cli_session_by_pool,
     get_last_session,

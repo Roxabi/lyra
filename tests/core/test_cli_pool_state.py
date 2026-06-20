@@ -99,7 +99,7 @@ class TestCliPoolResumeAndReset:
         # the real CLI session ID in pool_sessions.
         from unittest.mock import AsyncMock
 
-        from factory.infrastructure.stores.turn_store import TurnStore
+        from factory.infrastructure.stores.session.turn_store import TurnStore
 
         mock_store = AsyncMock(spec=TurnStore)
         mock_store.get_cli_session = AsyncMock(return_value=_CLI_SESS)

@@ -16,6 +16,7 @@ from factory.adapters.shared.inbound import (
     run_inbound_guarded,
     start_typing_shim,
 )
+from factory.adapters.shared.inbound.typing_shim import _typing_work_scope
 from factory.core.auth.trust import TrustLevel
 from factory.core.messaging.message import DiscordMeta, InboundMessage, TelegramMeta
 from factory.inbound.attachment_ingest import AttachmentIngestError
@@ -69,6 +70,36 @@ def test_start_typing_shim_legacy_path(monkeypatch: pytest.MonkeyPatch) -> None:
             typing_publisher=None,
         )
     typing_manager.start.assert_called_once_with(42, factory_builder.return_value)
+
+
+@pytest.mark.parametrize("trace_id", [None, ""])
+def test_typing_work_scope_trace_id_falls_back_to_uuid4(
+    trace_id: str | None,
+) -> None:
+    with patch(
+        "factory.adapters.shared.inbound.typing_shim.TraceContext.get_trace_id",
+        return_value=trace_id,
+    ):
+        with patch(
+            "factory.adapters.shared.inbound.typing_shim.uuid4"
+        ) as mock_uuid:
+            mock_uuid.return_value.hex = "deadbeef1234567890abcdef12345678"
+            scope = _typing_work_scope("telegram", "main", 42)
+
+    assert scope.platform == "telegram"
+    assert scope.bot_id == "main"
+    assert scope.scope_id == 42
+    assert scope.trace_id == "deadbeef1234567890abcdef12345678"
+
+
+def test_typing_work_scope_trace_id_from_context() -> None:
+    with patch(
+        "factory.adapters.shared.inbound.typing_shim.TraceContext.get_trace_id",
+        return_value="trace-from-context",
+    ):
+        scope = _typing_work_scope("discord", "main", 7)
+
+    assert scope.trace_id == "trace-from-context"
 
 
 def test_cancel_typing_for_discord_meta() -> None:

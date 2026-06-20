@@ -11,6 +11,13 @@ from factory.transport.typing_publisher import TypingPublisher
 from factory.transport.work_scope import WorkScope
 from factory.typing.listener import typing_publisher_shim
 
+_SCOPE = WorkScope(
+    platform="telegram",
+    bot_id="main",
+    scope_id=1,
+    trace_id="trace-abc",
+)
+
 
 class TestOnDoneCallback:
     @pytest.mark.asyncio
@@ -24,12 +31,9 @@ class TestOnDoneCallback:
         with patch("factory.typing.listener.is_typing_enabled", return_value=True):
             with patch("factory.typing.listener.log.warning") as mock_warning:
                 result = typing_publisher_shim(
-                    platform="telegram",
-                    bot_id="main",
-                    scope_id=1,
-                    publisher=publisher,
-                    method=_failing_method,
-                    trace_id="trace-abc",
+                    _SCOPE,
+                    publisher,
+                    _failing_method,
                 )
                 assert result is True
                 # Wait for the task to complete and the done callback to fire
@@ -51,12 +55,9 @@ class TestOnDoneCallback:
         with patch("factory.typing.listener.is_typing_enabled", return_value=True):
             with patch("factory.typing.listener.log.warning") as mock_warning:
                 result = typing_publisher_shim(
-                    platform="telegram",
-                    bot_id="main",
-                    scope_id=1,
-                    publisher=publisher,
-                    method=_slow_method,
-                    trace_id="trace-abc",
+                    _SCOPE,
+                    publisher,
+                    _slow_method,
                 )
                 assert result is True
                 # Cancel the pending task(s) excluding the current test task.
@@ -69,30 +70,42 @@ class TestOnDoneCallback:
         mock_warning.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_trace_id_none_falls_back_to_uuid4(self):
-        """trace_id=None → WorkScope constructed with a uuid4().hex fallback."""
+    async def test_passes_work_scope_to_method(self):
+        """WorkScope is forwarded unchanged to the publish method."""
         publisher = MagicMock(spec=TypingPublisher)
         seen_scope: WorkScope | None = None
 
-        async def _capture_method(scope):
+        async def _capture_method(scope: WorkScope) -> None:
             nonlocal seen_scope
             seen_scope = scope
             await asyncio.sleep(0)  # event-based
 
         with patch("factory.typing.listener.is_typing_enabled", return_value=True):
-            with patch("factory.typing.listener.uuid4") as mock_uuid:
-                mock_uuid.return_value.hex = "deadbeef1234"
-                result = typing_publisher_shim(
-                    platform="telegram",
-                    bot_id="main",
-                    scope_id=1,
-                    publisher=publisher,
-                    method=_capture_method,
-                    trace_id=None,
-                )
+            result = typing_publisher_shim(_SCOPE, publisher, _capture_method)
 
         assert result is True
-        # Wait for the task to complete so _capture_method runs
         await asyncio.sleep(0)  # event-based
-        assert seen_scope is not None
-        assert seen_scope.trace_id == "deadbeef1234"  # pyright: ignore[reportUnreachable]
+        assert seen_scope is _SCOPE
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("typing_enabled", "publisher"),
+        [(False, MagicMock(spec=TypingPublisher)), (True, None)],
+    )
+    async def test_returns_false_without_scheduling_task(
+        self,
+        typing_enabled: bool,
+        publisher: TypingPublisher | None,
+    ) -> None:
+        async def _method(_scope: WorkScope) -> None:
+            await asyncio.sleep(0)  # event-based
+
+        with patch(
+            "factory.typing.listener.is_typing_enabled",
+            return_value=typing_enabled,
+        ):
+            with patch("factory.typing.listener.asyncio.create_task") as mock_create:
+                result = typing_publisher_shim(_SCOPE, publisher, _method)
+
+        assert result is False
+        mock_create.assert_not_called()

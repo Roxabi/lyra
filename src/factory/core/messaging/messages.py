@@ -31,6 +31,9 @@ _FALLBACKS: dict[str, str] = {
     "stt_unsupported": "Voice messages are not supported — STT is not configured.",
     "stt_failed": "Sorry, I couldn't transcribe your voice message.",
     "audio_download_failed": "Couldn't retrieve your audio file. Please try again.",
+    "model_fallback": (
+        "⚠️ {requested_model} is unavailable — replying with {fallback_model}."
+    ),
 }
 
 
@@ -60,6 +63,8 @@ class MessageManager:
         fmt.setdefault("bot_name", "factory")
         try:
             raw = self._resolve(key, platform)
+            if not raw:
+                raw = self._resolve_notification(key)
             return raw.format_map(fmt)
         except (KeyError, ValueError) as exc:
             log.debug(
@@ -79,6 +84,15 @@ class MessageManager:
                 return raw.format_map(safe)
             except ValueError:
                 return raw
+
+    def _resolve_notification(self, key: str) -> str:
+        lang = self.language
+        notifications = self._templates.get("notifications", {})
+        if key in notifications.get(lang, {}):
+            return notifications[lang][key]
+        if key in notifications.get("en", {}):
+            return notifications["en"][key]
+        return _FALLBACKS.get(key, "")
 
     def _resolve(self, key: str, platform: str | None) -> str:
         lang = self.language

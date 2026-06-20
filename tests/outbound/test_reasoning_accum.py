@@ -178,6 +178,16 @@ class TestReasoningAccumulatorEnd:
         assert text.endswith("…")
         assert len(text) == REASONING_TRUNC_LEN + 1
 
+    def test_max_len_none_disables_truncation(self) -> None:
+        clock_val = 0.0
+        accum = ReasoningAccumulator(max_len=None, clock=lambda: clock_val)
+        accum.process(_start())
+        long_text = "z" * 500
+        text, should_edit = accum.process(_delta(long_text))
+        assert should_edit is True
+        assert text == long_text
+        assert "…" not in (text or "")
+
     def test_end_not_throttle_gated(self) -> None:
         """End fires even if the last edit was very recent (no throttle gate on End)."""
         clock_val = 0.0

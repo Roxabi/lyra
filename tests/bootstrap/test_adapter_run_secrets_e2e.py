@@ -26,7 +26,7 @@ CREDENTIALS = PROJECT_ROOT / "src/factory/bootstrap/credentials.py"
 STANDALONE_TG = PROJECT_ROOT / "src/factory/bootstrap/wiring/standalone_telegram.py"
 STANDALONE_DC = PROJECT_ROOT / "src/factory/bootstrap/wiring/standalone_discord.py"
 WIRING = PROJECT_ROOT / "src/factory/bootstrap/wiring/bootstrap_wiring.py"
-CLI_SETUP = PROJECT_ROOT / "src/factory/cli_setup.py"
+CLI_SETUP = PROJECT_ROOT / "src/factory/cli/setup.py"
 
 
 def test_credentials_module_reads_from_run_secrets() -> None:

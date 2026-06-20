@@ -8,7 +8,7 @@ from pathlib import Path
 
 import typer
 
-from factory.cli_agent import _AGENTS_DIR_OPT, _connect_store, _list_from_dir, agent_app
+from factory.cli.agent import _AGENTS_DIR_OPT, _connect_store, _list_from_dir, agent_app
 
 
 @agent_app.command(name="list")

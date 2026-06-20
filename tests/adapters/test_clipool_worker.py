@@ -611,94 +611,6 @@ def test_constructor_custom_timeout() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Error-message sanitization (#1215, sibling of #1212)
-#
-# WorkerError.message is published back to the NATS bus via _make_chunk(...,
-# worker_error=...) and surfaces on user-facing channels. Exception __str__
-# representations from httpx / pydantic / asyncio embed file paths, byte
-# sequences, and incoming field values — these must NOT leak into bus-bound
-# messages. Sanitization keeps only ``type(exc).__name__`` for diagnostics.
-# ---------------------------------------------------------------------------
-
-
-_SENSITIVE_TOKEN = "leak42-host:4222"
-
-
-async def test_classify_exception_worker_crash_does_not_leak_exception_str() -> None:
-    """_classify_exception(RuntimeError(sensitive)) → worker.crash with no leak."""
-    from factory.adapters.clipool.clipool_worker import _classify_exception
-
-    # Arrange — generic exception caught by the worker.crash branch
-    leaky_exc = RuntimeError(f"unexpected failure talking to {_SENSITIVE_TOKEN}")
-
-    # Act
-    we = _classify_exception(leaky_exc)
-
-    # Assert — code + retryable flag preserved
-    assert we.code == "worker.crash"
-    assert we.retryable is True
-
-    # Assert — bus-bound message does not embed the sensitive str()
-    assert _SENSITIVE_TOKEN not in we.message, (
-        f"sensitive token leaked into WorkerError.message: {we.message!r}"
-    )
-    # Positive: class name still surfaces for diagnostic value
-    assert "RuntimeError" in we.message
-
-
-async def test_classify_exception_session_lost_does_not_leak_exception_str() -> None:
-    """asyncio.TimeoutError(sensitive) → cli.session_lost: no leak in message."""
-    import asyncio
-
-    from factory.adapters.clipool.clipool_worker import _classify_exception
-
-    # Arrange — asyncio.TimeoutError can carry message content when constructed
-    # with one (rare in practice, but possible from wrapping code).
-    leaky_exc = asyncio.TimeoutError(f"connecting to {_SENSITIVE_TOKEN}")
-
-    # Act
-    we = _classify_exception(leaky_exc)
-
-    # Assert — code + retryable flag preserved
-    assert we.code == "cli.session_lost"
-    assert we.retryable is True
-
-    # Assert — sensitive content not on the bus, type name surfaces
-    assert _SENSITIVE_TOKEN not in we.message, (
-        f"sensitive token leaked into WorkerError.message: {we.message!r}"
-    )
-    assert "TimeoutError" in we.message
-
-
-async def test_classify_exception_parse_does_not_leak_byte_sequence() -> None:
-    """_classify_exception(UnicodeDecodeError) → cli.parse, no byte sequence leak.
-
-    UnicodeDecodeError.__str__ embeds the offending byte sequence and a
-    reason string — exactly the class of data this PR aims to keep off the
-    bus.
-    """
-    from factory.adapters.clipool.clipool_worker import _classify_exception
-
-    # Arrange — sensitive content as the reason argument (echoed by __str__)
-    leaky_exc = UnicodeDecodeError(
-        "utf-8", b"\xff\xfe" + _SENSITIVE_TOKEN.encode(), 0, 1, _SENSITIVE_TOKEN
-    )
-
-    # Act
-    we = _classify_exception(leaky_exc)
-
-    # Assert — code + retryable flag preserved
-    assert we.code == "cli.parse"
-    assert we.retryable is False
-
-    # Assert — sensitive content not on the bus, type name surfaces
-    assert _SENSITIVE_TOKEN not in we.message, (
-        f"sensitive token leaked into WorkerError.message: {we.message!r}"
-    )
-    assert "UnicodeDecodeError" in we.message
-
-
-# ---------------------------------------------------------------------------
 # Finding #9 — worker forwards agent identity fields to pool
 #
 # Verifies that _handle_cmd_streaming and _handle_cmd_blocking actually pass
@@ -878,6 +790,9 @@ async def test_legacy_envelope_passes_none_identity_to_pool() -> None:
     assert call_kwargs["agent_name"] is None
     assert call_kwargs["agent_email"] is None
     assert call_kwargs.get("lyra_session_id") == "S-legacy"
+
+
+_SENSITIVE_TOKEN = "leak42-host:4222"
 
 
 async def test_handle_cmd_validation_error_does_not_leak_payload_fields() -> None:

@@ -255,8 +255,8 @@ async def handle_audio(  # noqa: C901, PLR0915 — DEBT:wiring-bootstrap-deps
     from factory.adapters.discord import (
         discord_inbound,  # noqa: PLC0415 — local import avoids module-level circular dep
     )
-    from factory.adapters.shared.inbound_context import build_discord_inbound_ctx
-    from factory.adapters.shared.inbound_pipeline import (
+    from factory.adapters.shared.inbound.context import build_discord_inbound_ctx
+    from factory.adapters.shared.inbound.pipeline import (
         get_inbound_pipeline_kit,
         run_inbound_guarded,
     )

@@ -8,13 +8,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from factory.adapters.shared.inbound_pipeline import (
+from factory.adapters.shared.inbound.pipeline import (
     get_inbound_pipeline_kit,
     reset_inbound_pipeline_kit,
     run_inbound_guarded,
 )
-from factory.adapters.shared.platform_meta import cancel_typing_for_inbound
-from factory.adapters.shared.typing_shim import cancel_typing_shim, start_typing_shim
+from factory.adapters.shared.inbound.platform_meta import cancel_typing_for_inbound
+from factory.adapters.shared.inbound.typing_shim import (
+    cancel_typing_shim,
+    start_typing_shim,
+)
 from factory.core.auth.trust import TrustLevel
 from factory.core.messaging.message import DiscordMeta, InboundMessage, TelegramMeta
 from factory.inbound.attachment_ingest import AttachmentIngestError
@@ -56,7 +59,8 @@ def test_start_typing_shim_legacy_path(monkeypatch: pytest.MonkeyPatch) -> None:
     typing_manager = MagicMock()
     factory_builder = MagicMock(return_value=lambda: None)
     with patch(
-        "factory.adapters.shared.typing_shim.is_typing_enabled", return_value=False
+        "factory.adapters.shared.inbound.typing_shim.is_typing_enabled",
+        return_value=False,
     ):
         start_typing_shim(
             platform="telegram",
@@ -135,7 +139,8 @@ def test_cancel_typing_shim_pubsub_noop_when_enabled_without_publisher(
 ) -> None:
     typing_manager = MagicMock()
     with patch(
-        "factory.adapters.shared.typing_shim.is_typing_enabled", return_value=True
+        "factory.adapters.shared.inbound.typing_shim.is_typing_enabled",
+        return_value=True,
     ):
         cancel_typing_shim(
             platform="discord",

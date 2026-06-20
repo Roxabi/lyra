@@ -17,11 +17,10 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from factory.adapters.clipool._worker_helpers import (
+from factory.adapters.clipool._worker_helpers import _make_ack, _make_chunk
+from factory.adapters.clipool.error_classifier import (
     _classify_exception,
-    _make_ack,
-    _make_chunk,
-    _worker_error_from_cli_result,
+    worker_error_from_cli_result,
 )
 from factory.core.agent.agent_config import ModelConfig
 from factory.core.cli.cli_pool import CliPool
@@ -273,7 +272,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
             return
 
         worker_error = (
-            _worker_error_from_cli_result(result.error) if result.error else None
+            worker_error_from_cli_result(result.error) if result.error else None
         )
         if worker_error is not None:
             emit_populated_total(domain="cli")

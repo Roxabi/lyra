@@ -11,3 +11,4 @@
 # broadly-imported zero-dep resolver; cli_* decomposition (the real bloat)
 # is the follow-up. Plan: artifacts/plans/lyra-to-roxabi-factory-rename.md
 src/factory  # 15 files — +cli_secrets.py, secrets_reset.py (#1945 disaster recovery); cli_* split = follow-up
+src/factory/adapters/shared  # 16 files — glue kit extraction (#1931)

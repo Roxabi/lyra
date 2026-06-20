@@ -2,9 +2,8 @@
 
 Responsibilities:
 - Digest gate: verify the omp binary sha256 before RpcClient construction.
-- Callback registration: on_message_update, on_tool_execution_start, on_agent_end.
-- Event translation: omp_rpc callbacks → JobProgress / JobResult publishes.
-- Steer bridge: subscribe factory.job.<job_id>.steer; guard against steer-inside-await.
+- Public lifecycle API: attach, register, run, steer, aclose.
+- Callback + steer wiring delegated to _rpc_bridge_callbacks / _rpc_bridge_steer.
 
 ADR: ADR-073 (SanitizedError discipline) — all bus-bound error message fields use
      type(exc).__name__ only; never str(exc), f"{exc}", or repr(exc).
@@ -18,6 +17,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from factory.adapters.omp import _rpc_digest
+from factory.adapters.omp._rpc_bridge_callbacks import RpcBridgeCallbacksMixin
+from factory.adapters.omp._rpc_bridge_steer import (
+    RpcBridgeSteerMixin,
+    SteerViolationError,
+)
 from factory.adapters.omp._rpc_digest import read_request_timeout, verify_digest
 from factory.adapters.omp._rpc_envelope import (
     classify_exception,
@@ -30,7 +34,6 @@ from factory.adapters.omp._rpc_turn import (
     worker_error_from_omp_turn,
 )
 from roxabi_contracts.errors import WorkerError
-from roxabi_contracts.jobs.subjects import jobs_progress, jobs_result, jobs_steer
 
 if TYPE_CHECKING:
     from nats.aio.client import Client as NatsClient
@@ -52,33 +55,26 @@ DigestMismatchError = _rpc_digest.DigestMismatchError
 _read_request_timeout = read_request_timeout
 _verify_digest = verify_digest
 
-
-class SteerViolationError(Exception):
-    """Raised when steer() is attempted while prompt_and_wait is in flight."""
-
-
 _classify_exception = classify_exception
 _make_progress = make_progress
 _make_result = make_result
 _worker_error_from_omp_turn = worker_error_from_omp_turn
 
-
-def _log_publish_result(task: asyncio.Task[Any]) -> None:
-    """Done-callback for a NATS publish scheduled from an omp_rpc listener thread.
-
-    asyncio task results are otherwise dropped on the floor — without this a failed
-    publish (NATS down, ACL denial) would vanish silently. Logs the exception type
-    locally only; no bus exposure, so ADR-073 does not apply here (#1876).
-    """
-    try:
-        exc = task.exception()
-    except asyncio.CancelledError:
-        return
-    if exc is not None:
-        log.warning("rpc_bridge: scheduled NATS publish failed", exc_info=exc)
+__all__ = [
+    "DigestMismatchError",
+    "RpcBridge",
+    "SteerViolationError",
+    "_DEFAULT_MODEL",
+    "_DEFAULT_REQUEST_TIMEOUT",
+    "_ENV_REQUEST_TIMEOUT_KEY",
+    "_PINNED_SHA256",
+    "_classify_exception",
+    "_read_request_timeout",
+    "publish_job_error",
+]
 
 
-class RpcBridge:
+class RpcBridge(RpcBridgeCallbacksMixin, RpcBridgeSteerMixin):
     """Bridge between omp_rpc.RpcClient and NATS publish calls.
 
     Lifecycle (pool path):
@@ -152,9 +148,7 @@ class RpcBridge:
         """
         self._nc = nc
         self._loop = loop if loop is not None else asyncio.get_running_loop()
-        self._client.on_message_update(self._on_message_update)
-        self._client.on_tool_execution_start(self._on_tool_execution_start)
-        self._client.on_agent_end(self._on_agent_end)
+        self._wire_callbacks()
         self._started = True
 
     async def register(self, nc: NatsClient) -> None:
@@ -172,22 +166,8 @@ class RpcBridge:
             self._client.start
         )  # spawns omp subprocess + ready handshake — MUST precede new_session (#1875)
         self._started = True
-        self._client.on_message_update(self._on_message_update)
-        self._client.on_tool_execution_start(self._on_tool_execution_start)
-        self._client.on_agent_end(self._on_agent_end)
+        self._wire_callbacks()
         await asyncio.to_thread(self._client.new_session)
-
-    def _derive_assistant_text(self, turn: Any) -> str:
-        """Assistant text for the result: ``turn.assistant_text``, falling back to
-        the last message of the stored agent-end event (stdout-thread sentinel)."""
-        assistant_text = getattr(turn, "assistant_text", None)
-        if assistant_text is None:
-            end_event = self._last_agent_end_event
-            if end_event is not None:
-                messages = getattr(end_event, "messages", None)
-                if messages:
-                    assistant_text = getattr(messages[-1], "assistant_text", None)
-        return assistant_text if assistant_text is not None else ""
 
     async def _switch_model(self, model_id: str) -> None:
         await asyncio.to_thread(self._client.set_model, self._provider, model_id)
@@ -228,42 +208,6 @@ class RpcBridge:
             return retry_turn, retry_error, None
         return retry_turn, None, {"requested": attempted, "fallback": fallback}
 
-    async def _publish_turn_outcome(
-        self,
-        nc: NatsClient,
-        job_id: str,
-        ctx: TurnPublishContext,
-    ) -> None:
-        if ctx.turn_error is not None:
-            log.warning(
-                "rpc_bridge: job %s OMP turn failed (code=%s)",
-                job_id,
-                ctx.turn_error.code,
-            )
-            payload = make_result(job_id, status="error", error=ctx.turn_error)
-            await nc.publish(jobs_result(job_id), payload)
-            return
-
-        text: str = self._derive_assistant_text(ctx.turn)
-        if not text:
-            log.warning("rpc_bridge: job %s produced an empty result text", job_id)
-            empty_error = WorkerError(
-                code="worker.validation",
-                message="EmptyResponse",
-                retryable=False,
-            )
-            payload = make_result(job_id, status="error", error=empty_error)
-            await nc.publish(jobs_result(job_id), payload)
-            return
-
-        data: dict[str, Any] = {"result": text}
-        if ctx.model_fallback is not None:
-            data["model_fallback"] = ctx.model_fallback
-        if ctx.session_file is not None:
-            data["session_file"] = ctx.session_file
-        payload = make_result(job_id, status="success", data=data)
-        await nc.publish(jobs_result(job_id), payload)
-
     async def run(
         self,
         prompt: str,
@@ -291,22 +235,12 @@ class RpcBridge:
         self._last_agent_end_event = None  # reset: avoid stale prior-job leak
         # Ensure callbacks are wired on the (possibly injected/pool) client before use.
         # Safe to re-assign; covers both register() (legacy) and attach() (pool) paths.
-        if self._client is not None:
-            self._client.on_message_update(self._on_message_update)
-            self._client.on_tool_execution_start(self._on_tool_execution_start)
-            self._client.on_agent_end(self._on_agent_end)
+        self._wire_callbacks()
         nc = self._nc
-
-        async def _handle_steer_msg(msg: Any) -> None:
-            if not self._in_prompt_await:
-                log.debug("rpc_bridge: steer message dropped — no active job")
-                return
-            text = msg.data.decode("utf-8", errors="replace")
-            await asyncio.to_thread(self._client.steer, text)
 
         steer_sub = None
         if nc is not None:
-            steer_sub = await nc.subscribe(jobs_steer(job_id), cb=_handle_steer_msg)
+            steer_sub = await self._subscribe_steer(nc, job_id)
         assert self._client is not None, "no client (register/attach missing)"
         try:
             requested_model = (model or "").strip() or None
@@ -344,87 +278,12 @@ class RpcBridge:
             if steer_sub is not None:
                 await steer_sub.unsubscribe()
 
-    async def steer(self, job_id: str, text: str) -> None:
-        """Fire-and-forget steer; must NOT be called inside prompt_and_wait."""
-        if self._in_prompt_await:
-            raise SteerViolationError(
-                "steer() called while prompt_and_wait is in flight"
-            )
-        await asyncio.to_thread(self._client.steer, text)
-
     async def aclose(self) -> None:
         """Stop the omp_rpc subprocess. Idempotent; no-op if never started."""
         if not self._started:
             return
         self._started = False
         await asyncio.to_thread(self._client.stop)
-
-    def _schedule_publish(self, subject: str, payload: bytes) -> None:
-        """Schedule a NATS publish from an omp_rpc listener thread.
-
-        omp_rpc invokes listeners on its stdout-reader daemon thread, which has no
-        running event loop — marshal back onto the captured loop via
-        call_soon_threadsafe (#1875).
-        """
-        nc = self._nc
-        loop = self._loop
-        if nc is None or loop is None:
-            return
-
-        def _spawn() -> None:
-            # Runs on the loop thread (via call_soon_threadsafe) — create_task is safe.
-            task = asyncio.create_task(nc.publish(subject, payload))
-            task.add_done_callback(_log_publish_result)
-
-        loop.call_soon_threadsafe(_spawn)
-
-    # ------------------------------------------------------------------
-    # omp_rpc callbacks
-    # ------------------------------------------------------------------
-
-    def _on_message_update(self, event: Any) -> None:
-        """Translate on_message_update → factory.job.<job_id>.progress."""
-        job_id = getattr(self, "_current_job_id", None)
-        if job_id is None:
-            return
-        partial_text = getattr(event, "text", None)
-        payload = make_progress(
-            job_id,
-            step="message_update",
-            event_type="message_update",
-            partial_text=partial_text,
-            detail={"partial_text": partial_text},
-        )
-        self._schedule_publish(jobs_progress(job_id), payload)
-
-    def _on_tool_execution_start(self, event: Any) -> None:
-        """Translate on_tool_execution_start → factory.job.<job_id>.progress."""
-        job_id = getattr(self, "_current_job_id", None)
-        if job_id is None:
-            return
-        tool_name = getattr(event, "tool_name", None)
-        tool_id = getattr(event, "tool_id", None)
-        # tool_input NOT published — may contain credentials/file fragments (ADR-073)
-        payload = make_progress(
-            job_id,
-            step="tool_start",
-            event_type="tool_start",
-            tool_name=tool_name,
-            tool_id=tool_id,
-            detail={"tool_name": tool_name, "tool_id": tool_id},
-        )
-        self._schedule_publish(jobs_progress(job_id), payload)
-
-    def _on_agent_end(self, event: Any) -> None:
-        """Store the agent-end event for use by run() (store-only, no publish).
-
-        run() is the sole success publisher — it reads the completed turn after
-        prompt_and_wait returns (race-free, on the event loop). This callback fires
-        on the omp_rpc stdout daemon thread BEFORE prompt_and_wait returns, so
-        _last_turn is still None here; publishing from this site always shipped empty
-        results. We store the event so run() can fall back to event.messages if needed.
-        """
-        self._last_agent_end_event = event
 
     async def publish_error(self, job_id: str, exc: BaseException) -> None:
         """Publish a JobResult(status=error) for a failed job.

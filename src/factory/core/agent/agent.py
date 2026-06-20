@@ -136,10 +136,13 @@ class AgentBase(ABC, SessionManager):
             new_config = agent_row_to_config(row, self._instance_overrides)
             if new_config != self.config:
                 log.info(
-                    "Hot-reloaded config for agent %r from DB (model: %s -> %s)",
+                    "Hot-reloaded config for agent %r from DB"
+                    " (model: %s -> %s, backend: %s -> %s)",
                     self.config.name,
                     self.config.llm_config.model,
                     new_config.llm_config.model,
+                    self.config.llm_config.backend,
+                    new_config.llm_config.backend,
                 )
                 self.config = new_config
                 self._rebuild_command_router()

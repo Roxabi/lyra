@@ -12,7 +12,9 @@ from factory.commands.identity.handlers import cmd_link, cmd_unlink
 from factory.core.auth.trust import TrustLevel
 from factory.core.messaging.message import InboundMessage, TelegramMeta
 from factory.core.pool import Pool
-from factory.infrastructure.stores.identity_alias_store import IdentityAliasStore
+from factory.infrastructure.stores.identity.identity_alias_store import (
+    IdentityAliasStore,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -168,7 +170,7 @@ class TestLinkComplete:
 async def test_link_complete_blocked_initiator_rejected(tmp_path: Path) -> None:
     """SC #13: /link rejected if either identity is BLOCKED."""
     from factory.core.auth.authenticator import Authenticator, AuthenticatorDeps
-    from factory.infrastructure.stores.auth_store import AuthStore
+    from factory.infrastructure.stores.identity.auth_store import AuthStore
 
     store = IdentityAliasStore(db_path=tmp_path / "alias.db")
     await store.connect()

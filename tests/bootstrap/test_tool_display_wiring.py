@@ -188,7 +188,7 @@ async def test_wired_path_threads_tool_display_config_to_discord() -> None:
             return_value=("dc-token", None),
         ),
         patch(
-            "factory.infrastructure.stores.thread_store.ThreadStore",
+            "factory.infrastructure.stores.session.thread_store.ThreadStore",
             return_value=mock_thread_store,
         ),
     ):
@@ -376,7 +376,7 @@ async def test_standalone_path_threads_tool_display_config_to_telegram() -> None
             return_value=("test-token", None),
         ),
         patch(
-            "factory.infrastructure.stores.turn_store.TurnStore",
+            "factory.infrastructure.stores.session.turn_store.TurnStore",
             return_value=mock_turn_store,
         ),
         patch(
@@ -487,11 +487,11 @@ async def test_standalone_path_threads_tool_display_config_to_discord() -> None:
             return_value=("test-token", None),
         ),
         patch(
-            "factory.infrastructure.stores.thread_store.ThreadStore",
+            "factory.infrastructure.stores.session.thread_store.ThreadStore",
             return_value=mock_thread_store,
         ),
         patch(
-            "factory.infrastructure.stores.turn_store.TurnStore",
+            "factory.infrastructure.stores.session.turn_store.TurnStore",
             return_value=mock_turn_store,
         ),
         patch(

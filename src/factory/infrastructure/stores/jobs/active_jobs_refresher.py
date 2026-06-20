@@ -17,7 +17,7 @@ import asyncio
 import logging
 
 from factory.core.ports.active_jobs import ActiveJobEntry, ActiveJobsPort
-from factory.infrastructure.stores.active_jobs_kv import ACTIVE_JOBS_REFRESH
+from factory.infrastructure.stores.jobs.active_jobs_kv import ACTIVE_JOBS_REFRESH
 
 log = logging.getLogger(__name__)
 

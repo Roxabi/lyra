@@ -43,9 +43,7 @@ class TestBotDisplayName:
         binding = MagicMock(agent_name="lyra")
         hub.resolve_binding.return_value = binding
         agent = MagicMock()
-        row = MagicMock(
-            persona_json='{"identity": {"display_name": "Lyra Bot"}}'
-        )
+        row = MagicMock(persona_json='{"identity": {"display_name": "Lyra Bot"}}')
         agent._agent_store.get.return_value = row
         hub.get_agent.return_value = agent
 

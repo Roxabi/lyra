@@ -10,7 +10,7 @@ import pytest
 from typer.testing import CliRunner
 
 from factory.cli import factory_app
-from factory.cli_ops import _expand_subject, _is_permission_error, _load_matrix
+from factory.cli.ops import _expand_subject, _is_permission_error, _load_matrix
 
 runner = CliRunner()
 
@@ -152,7 +152,7 @@ def test_verify_all_pass(tmp_path: Path, matrix_two: Path) -> None:
     seeds = _seed_dir(tmp_path, ["hub", "monitor"])
     # Each identity: deny only its `factory.verify.deny.<name>` probe.
     deny = [{"factory.verify.deny.hub"}, {"factory.verify.deny.monitor"}]
-    with patch("factory.cli_ops.nats.connect", _patched_connect(deny)):
+    with patch("factory.cli.ops.nats.connect", _patched_connect(deny)):
         result = runner.invoke(
             factory_app,
             [
@@ -181,7 +181,7 @@ def test_verify_pub_failure_reports_first_offender(
         {"factory.outbound.telegram.verify", "factory.verify.deny.hub"},
         {"factory.verify.deny.monitor"},
     ]
-    with patch("factory.cli_ops.nats.connect", _patched_connect(deny)):
+    with patch("factory.cli.ops.nats.connect", _patched_connect(deny)):
         result = runner.invoke(
             factory_app,
             [
@@ -204,7 +204,7 @@ def test_verify_deny_failure(tmp_path: Path, matrix_two: Path) -> None:
     seeds = _seed_dir(tmp_path, ["hub", "monitor"])
     # Server *accepts* the verify-deny probe → deny check fails.
     deny = [set(), set()]
-    with patch("factory.cli_ops.nats.connect", _patched_connect(deny)):
+    with patch("factory.cli.ops.nats.connect", _patched_connect(deny)):
         result = runner.invoke(
             factory_app,
             [
@@ -223,7 +223,7 @@ def test_verify_deny_failure(tmp_path: Path, matrix_two: Path) -> None:
 def test_verify_skips_when_seed_missing(tmp_path: Path, matrix_two: Path) -> None:
     seeds = _seed_dir(tmp_path, ["hub"])  # monitor.seed missing
     deny = [{"factory.verify.deny.hub"}]
-    with patch("factory.cli_ops.nats.connect", _patched_connect(deny)):
+    with patch("factory.cli.ops.nats.connect", _patched_connect(deny)):
         result = runner.invoke(
             factory_app,
             [
@@ -243,7 +243,7 @@ def test_verify_skips_when_seed_missing(tmp_path: Path, matrix_two: Path) -> Non
 def test_verify_only_filter(tmp_path: Path, matrix_two: Path) -> None:
     seeds = _seed_dir(tmp_path, ["hub", "monitor"])
     deny = [{"factory.verify.deny.monitor"}]
-    with patch("factory.cli_ops.nats.connect", _patched_connect(deny)):
+    with patch("factory.cli.ops.nats.connect", _patched_connect(deny)):
         result = runner.invoke(
             factory_app,
             [
@@ -286,7 +286,7 @@ def test_verify_handles_empty_publish_list(tmp_path: Path) -> None:
     _write_matrix(matrix, {"silent": {"publish": [], "subscribe": []}})
     seeds = _seed_dir(tmp_path, ["silent"])
     deny = [{"factory.verify.deny.silent"}]
-    with patch("factory.cli_ops.nats.connect", _patched_connect(deny)):
+    with patch("factory.cli.ops.nats.connect", _patched_connect(deny)):
         result = runner.invoke(
             factory_app,
             [
@@ -338,7 +338,7 @@ def test_verify_handles_post_flush_error_arrival(
         fake.set_error_cb(kwargs.get("error_cb"))
         return fake
 
-    with patch("factory.cli_ops.nats.connect", side_effect=_factory):
+    with patch("factory.cli.ops.nats.connect", side_effect=_factory):
         result = runner.invoke(
             factory_app,
             [

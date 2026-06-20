@@ -299,6 +299,14 @@ class SimpleAgent(AgentBase):
         meta: dict[str, Any] = {"session_id": result.session_id}
         if result.warning:
             meta["warning"] = result.warning
+        if result.model_fallback and self._msg_manager is not None:
+            notice = self._msg_manager.get(
+                "model_fallback",
+                requested_model=result.model_fallback["requested"],
+                fallback_model=result.model_fallback["fallback"],
+            )
+            if notice:
+                reply = f"{notice}\n\n{reply}" if reply else notice
 
         if not reply:
             log.warning(

@@ -255,6 +255,8 @@ class RpcBridge:
         # Import deferred: omp_rpc is a container image dep, absent from pyproject.toml.
         import omp_rpc  # type: ignore[import-not-found]
 
+        resolved_provider = provider or _DEFAULT_PROVIDER
+        resolved_model = model if model is not None else _DEFAULT_MODEL
         if _client is not None:
             # Pool path: adopt the already-started client; skip the digest gate.
             self._client: omp_rpc.RpcClient = _client
@@ -264,7 +266,6 @@ class RpcBridge:
             # provider/model are constructor kwargs only — no env axis. The runtime
             # model list comes from deploy/omp/models.yml (via PI_CODING_AGENT_DIR),
             # not from OMP_PROVIDER/OMP_MODEL env vars (#1876).
-            resolved_model = model if model is not None else _DEFAULT_MODEL
             resolved_timeout = (
                 request_timeout
                 if request_timeout is not None
@@ -272,11 +273,13 @@ class RpcBridge:
             )
             self._client = omp_rpc.RpcClient(
                 executable=str(omp_bin),
-                provider=provider,
+                provider=resolved_provider,
                 model=resolved_model,
                 no_session=False,
                 request_timeout=resolved_timeout,
             )
+        self._provider = resolved_provider
+        self._startup_model = resolved_model
         self._nc: NatsClient | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._started: bool = False
@@ -336,12 +339,54 @@ class RpcBridge:
                     assistant_text = getattr(messages[-1], "assistant_text", None)
         return assistant_text if assistant_text is not None else ""
 
+    async def _switch_model(self, model_id: str) -> None:
+        await asyncio.to_thread(self._client.set_model, self._provider, model_id)
+
+    async def _execute_prompt(self, prompt: str) -> Any:
+        return await asyncio.to_thread(self._client.prompt_and_wait, prompt)
+
+    async def _maybe_retry_with_registry_fallback(
+        self,
+        prompt: str,
+        *,
+        requested_model: str | None,
+        turn: Any,
+    ) -> tuple[Any, WorkerError | None, dict[str, str] | None]:
+        """Retry once with the first discovered catalogue model on invalid-model errors."""
+        from factory.adapters.omp._model_catalogue import first_registry_model
+
+        turn_error = _worker_error_from_omp_turn(turn, self._last_agent_end_event)
+        if turn_error is None or turn_error.code != "llm.model_unavailable":
+            return turn, turn_error, None
+
+        attempted = requested_model or self._startup_model
+        fallback = await asyncio.to_thread(first_registry_model)
+        if not fallback or fallback == attempted:
+            return turn, turn_error, None
+
+        log.warning(
+            "rpc_bridge: model %s unavailable — retrying with registry default %s",
+            attempted,
+            fallback,
+        )
+        self._last_agent_end_event = None
+        await self._switch_model(fallback)
+        retry_turn = await self._execute_prompt(prompt)
+        self._last_turn = retry_turn
+        retry_error = _worker_error_from_omp_turn(
+            retry_turn, self._last_agent_end_event
+        )
+        if retry_error is not None:
+            return retry_turn, retry_error, None
+        return retry_turn, None, {"requested": attempted, "fallback": fallback}
+
     async def run(
         self,
         prompt: str,
         job_id: str,
         *,
         session_file: str | None = None,
+        model: str | None = None,
     ) -> None:
         """Run a prompt through omp_rpc; publishes progress and result to NATS.
 
@@ -380,16 +425,24 @@ class RpcBridge:
             steer_sub = await nc.subscribe(jobs_steer(job_id), cb=_handle_steer_msg)
         assert self._client is not None, "no client (register/attach missing)"
         try:
-            turn = await asyncio.to_thread(self._client.prompt_and_wait, prompt)
+            requested_model = (model or "").strip() or None
+            if requested_model:
+                await self._switch_model(requested_model)
+
+            turn = await self._execute_prompt(prompt)
             self._last_turn = turn
+            turn, turn_error, model_fallback = (
+                await self._maybe_retry_with_registry_fallback(
+                    prompt,
+                    requested_model=requested_model,
+                    turn=turn,
+                )
+            )
             # Publish success here — guaranteed to see the completed turn value.
             # _on_agent_end fires on the stdout thread BEFORE prompt_and_wait returns
             # so it cannot safely read _last_turn; this is the only safe publish site.
             if nc is not None and not self._result_sent:
                 self._result_sent = True
-                turn_error = _worker_error_from_omp_turn(
-                    turn, self._last_agent_end_event
-                )
                 if turn_error is not None:
                     log.warning(
                         "rpc_bridge: job %s OMP turn failed (code=%s)",
@@ -419,6 +472,8 @@ class RpcBridge:
                     return
 
                 data: dict[str, Any] = {"result": text}
+                if model_fallback is not None:
+                    data["model_fallback"] = model_fallback
                 # session_file backhaul (V2 pool path — None for legacy single-client).
                 if session_file is not None:
                     data["session_file"] = session_file

@@ -76,6 +76,7 @@ def _stub_omp_rpc_module() -> tuple[ModuleType, MagicMock]:
     client_instance.stop = MagicMock()
     client_instance.new_session = MagicMock()
     client_instance.prompt_and_wait = MagicMock()
+    client_instance.set_model = MagicMock()
     client_instance.steer = MagicMock()
     client_instance.on_message_update = MagicMock()
     client_instance.on_tool_execution_start = MagicMock()
@@ -861,6 +862,46 @@ class TestTurnFailurePublishing:
         assert payload["error"]["code"] == "llm.model_unavailable"
         assert payload["error"]["message"] == "ModelUnavailable"
         assert "grok-4-fast" not in json.dumps(payload)
+
+    async def test_invalid_model_falls_back_to_registry_first(
+        self, bridge_and_nc
+    ) -> None:
+        bridge, nc, client = bridge_and_nc
+        nc.subscribe = AsyncMock(return_value=AsyncMock(unsubscribe=AsyncMock()))
+        await bridge.register(nc)
+
+        failed_turn = SimpleNamespace(
+            assistant_text=None,
+            assistant_message={
+                "role": "assistant",
+                "stopReason": "error",
+                "errorMessage": "400 Invalid model name passed in model=grok-4-fast",
+            },
+        )
+        success_turn = SimpleNamespace(
+            assistant_text="fallback reply",
+            assistant_message={"role": "assistant", "stopReason": "end_turn"},
+        )
+        client.prompt_and_wait.side_effect = [failed_turn, success_turn]
+
+        with patch(
+            "factory.adapters.omp._model_catalogue.first_registry_model",
+            return_value="grok-4.20-non-reasoning",
+        ):
+            await bridge.run(
+                prompt="hello",
+                job_id=_JOB_ID,
+                model="grok-4-fast",
+            )
+
+        client.set_model.assert_called()
+        payload = json.loads(nc.publish.await_args.args[1])
+        assert payload["status"] == "success"
+        assert payload["data"]["result"] == "fallback reply"
+        assert payload["data"]["model_fallback"] == {
+            "requested": "grok-4-fast",
+            "fallback": "grok-4.20-non-reasoning",
+        }
 
     async def test_stop_reason_error_does_not_leak_provider_message(
         self, bridge_and_nc

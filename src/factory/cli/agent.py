@@ -11,9 +11,9 @@ from typing import Optional
 
 import typer
 
-from factory.cli._store_connect import (
-    _connect_store,  # noqa: F401 — re-exported for agent_cmd
-)
+from factory.cli import _store_connect
+
+_connect_store = _store_connect._connect_store
 
 agent_app = typer.Typer(name="agent", help="Manage agent configurations.")
 _DEFAULT_TOOLS = ["Read", "Grep", "Glob", "WebFetch", "WebSearch"]

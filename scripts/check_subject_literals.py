@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""check_subject_literals.py — every raw subject literal in src/ + docker/stubs/ resolves.
+"""check_subject_literals.py — raw subject literals in src/ + docker/stubs/ resolve.
 
-Scans src/ and docker/stubs/ for raw ``lyra.*`` / ``factory.*`` NATS subject string literals and verifies each one
+Scans src/ and docker/stubs/ for raw ``lyra.*`` / ``factory.*`` NATS subject
+string literals and verifies each one
 against the semantic CodeInventory oracle (tools/code_inventory.py), whose
 ``subjects`` set is sourced from deploy/nats/acl-matrix.json + roxabi-contracts
 SUBJECTS. A literal that the oracle classifies as a subject but cannot resolve
@@ -253,7 +254,10 @@ def main() -> None:
         action="append",
         dest="src_dirs",
         metavar="DIR",
-        help="Source directory to scan (repeatable). Defaults to src/ and docker/stubs/.",
+        help=(
+            "Source directory to scan (repeatable). "
+            "Defaults to src/ and docker/stubs/."
+        ),
     )
     parser.add_argument(
         "--root",
@@ -316,7 +320,8 @@ def main() -> None:
         sys.exit(1)
 
     print(
-        "check-subject-literals: OK (all lyra.*/factory.* literals in src/ + docker/stubs/ resolve)"
+        "check-subject-literals: OK "
+        "(all lyra.*/factory.* literals in src/ + docker/stubs/ resolve)"
     )
 
 

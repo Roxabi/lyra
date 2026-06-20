@@ -160,7 +160,7 @@ class TestDigestGate:
         actual_sha = hashlib.sha256(content).hexdigest()
         _stub_omp_rpc_module()
         try:
-            with patch("factory.adapters.omp._rpc_bridge._PINNED_SHA256", actual_sha):
+            with patch("factory.adapters.omp._rpc_digest._PINNED_SHA256", actual_sha):
                 bridge = RpcBridge(omp_bin=omp_bin)
             assert bridge is not None
         finally:
@@ -190,7 +190,7 @@ def bridge_and_nc(tmp_path: Path):
     actual_sha = hashlib.sha256(content).hexdigest()
     _, client_instance = _stub_omp_rpc_module()
     try:
-        with patch("factory.adapters.omp._rpc_bridge._PINNED_SHA256", actual_sha):
+        with patch("factory.adapters.omp._rpc_digest._PINNED_SHA256", actual_sha):
             bridge = RpcBridge(omp_bin=omp_bin)
         nc = AsyncMock()
         nc.publish = AsyncMock()
@@ -694,7 +694,7 @@ class TestStartLifecycle:
         sys.modules["omp_rpc"] = module
 
         with patch(
-            "factory.adapters.omp._rpc_bridge._PINNED_SHA256",
+            "factory.adapters.omp._rpc_digest._PINNED_SHA256",
             actual_sha,
         ):
             bridge = RpcBridge(omp_bin=omp_bin)
@@ -761,7 +761,7 @@ class TestStartLifecycle:
         sys.modules["omp_rpc"] = module
 
         with patch(
-            "factory.adapters.omp._rpc_bridge._PINNED_SHA256",
+            "factory.adapters.omp._rpc_digest._PINNED_SHA256",
             actual_sha,
         ):
             RpcBridge(omp_bin=omp_bin)

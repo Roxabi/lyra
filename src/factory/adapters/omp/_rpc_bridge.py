@@ -13,18 +13,30 @@ ADR: ADR-073 (SanitizedError discipline) — all bus-bound error message fields 
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
-import os
-import uuid
-from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from roxabi_contracts.envelope import CONTRACT_VERSION
+from factory.adapters.omp._rpc_digest import (
+    DigestMismatchError,
+    _DEFAULT_REQUEST_TIMEOUT,
+    _ENV_REQUEST_TIMEOUT_KEY,
+    _OMP_BIN,
+    _PINNED_SHA256,
+    read_request_timeout,
+    verify_digest,
+)
+from factory.adapters.omp._rpc_envelope import (
+    classify_exception,
+    make_progress,
+    make_result,
+    publish_job_error,
+)
+from factory.adapters.omp._rpc_turn import (
+    TurnPublishContext,
+    worker_error_from_omp_turn,
+)
 from roxabi_contracts.errors import WorkerError
-from roxabi_contracts.jobs.models import JobProgress, JobResult
 from roxabi_contracts.jobs.subjects import jobs_progress, jobs_result, jobs_steer
 
 if TYPE_CHECKING:
@@ -32,8 +44,6 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-_PINNED_SHA256 = "b877091c91ebdc8c8d907c4b62681895cd3ae049815858aea7b69ac1d53b7c7b"
-_OMP_BIN = Path("/opt/omp/omp")  # image-build constant — NEVER from env
 _DEFAULT_PROVIDER = (
     "litellm"  # routes through factory LiteLLM proxy (deploy/omp/models.yml)
 )
@@ -41,169 +51,18 @@ _DEFAULT_PROVIDER = (
 # (grok-4 full) and risks RpcClient(request_timeout=30s) timeouts (#1910).
 # Alias must exist in the LiteLLM xAI pass-through catalogue (#1923).
 _DEFAULT_MODEL = "grok-4.20-non-reasoning"
-_ENV_REQUEST_TIMEOUT_KEY = "OMP_REQUEST_TIMEOUT"
-_DEFAULT_REQUEST_TIMEOUT = 30.0
-
-
-def _read_request_timeout() -> float:
-    """Read OMP_REQUEST_TIMEOUT from env; fall back to _DEFAULT_REQUEST_TIMEOUT."""
-    raw = os.environ.get(_ENV_REQUEST_TIMEOUT_KEY)
-    if raw is None:
-        return _DEFAULT_REQUEST_TIMEOUT
-    try:
-        val = float(raw)
-        return val if val > 0 else _DEFAULT_REQUEST_TIMEOUT
-    except ValueError:
-        return _DEFAULT_REQUEST_TIMEOUT
-
-
-class DigestMismatchError(Exception):
-    """Raised when the omp binary sha256 does not match the pinned value."""
-
-    def __init__(self, actual: str, expected: str) -> None:
-        super().__init__(f"digest mismatch: actual={actual} expected={expected}")
-        self.actual = actual
-        self.expected = expected
+_read_request_timeout = read_request_timeout
+_verify_digest = verify_digest
 
 
 class SteerViolationError(Exception):
     """Raised when steer() is attempted while prompt_and_wait is in flight."""
 
 
-@dataclass(frozen=True)
-class _TurnPublishContext:
-    turn: Any
-    turn_error: WorkerError | None
-    model_fallback: dict[str, str] | None
-    session_file: str | None
-
-
-def _classify_exception(exc: BaseException) -> WorkerError:
-    """Map an exception to a WorkerError.
-
-    SanitizedError discipline (ADR-073): message field = type(exc).__name__ only.
-    """
-    name = type(exc).__name__
-    if name == "DigestMismatchError":
-        return WorkerError(
-            code="transport.contract_mismatch", message=name, retryable=False
-        )
-    if isinstance(exc, asyncio.TimeoutError):
-        return WorkerError(code="transport.timeout", message=name, retryable=True)
-    if name in ("ConnectionRefusedError", "BrokenPipeError"):
-        return WorkerError(code="transport.error", message=name, retryable=True)
-    return WorkerError(code="worker.internal", message=name, retryable=False)
-
-
-def _make_progress(job_id: str, **kwargs: Any) -> bytes:
-    """Serialise a JobProgress to JSON bytes."""
-    event = JobProgress(
-        contract_version=CONTRACT_VERSION,
-        trace_id=str(uuid.uuid4()),
-        issued_at=datetime.now(timezone.utc),
-        job_id=job_id,
-        **kwargs,
-    )
-    return event.model_dump_json().encode()
-
-
-def _make_result(job_id: str, **kwargs: Any) -> bytes:
-    """Serialise a JobResult to JSON bytes."""
-    event = JobResult(
-        contract_version=CONTRACT_VERSION,
-        trace_id=str(uuid.uuid4()),
-        issued_at=datetime.now(timezone.utc),
-        job_id=job_id,
-        **kwargs,
-    )
-    return event.model_dump_json().encode()
-
-
-def _field(obj: Any, *names: str) -> Any:
-    """Read the first present attribute/key from a TypedDict or dataclass."""
-    if obj is None:
-        return None
-    if isinstance(obj, dict):
-        for name in names:
-            if name in obj:
-                return obj[name]
-        return None
-    for name in names:
-        value = getattr(obj, name, None)
-        if value is not None:
-            return value
-    return None
-
-
-def _assistant_message_from_turn(turn: Any, end_event: Any | None) -> Any | None:
-    """Best-effort assistant message from PromptTurn or stored AgentEndEvent."""
-    assistant = getattr(turn, "assistant_message", None)
-    if assistant is not None:
-        return assistant
-    if end_event is None:
-        return None
-    messages = getattr(end_event, "messages", None)
-    if not messages:
-        return None
-    for candidate in reversed(messages):
-        role = _field(candidate, "role")
-        if role == "assistant":
-            return candidate
-    return None
-
-
-def _worker_error_from_omp_turn(turn: Any, end_event: Any | None) -> WorkerError | None:
-    """Map an OMP PromptTurn provider failure to a structured WorkerError.
-
-    ADR-073: returned ``WorkerError.message`` is a stable type label only —
-    never the provider's ``errorMessage`` string.
-    """
-    assistant = _assistant_message_from_turn(turn, end_event)
-    stop_reason = _field(assistant, "stopReason", "stop_reason")
-    if stop_reason == "aborted":
-        return WorkerError(code="worker.internal", message="Aborted", retryable=True)
-    if stop_reason != "error":
-        return None
-
-    error_message = _field(assistant, "errorMessage", "error_message")
-    if error_message:
-        lower = str(error_message).lower()
-        if "invalid model" in lower:
-            return WorkerError(
-                code="llm.model_unavailable",
-                message="ModelUnavailable",
-                retryable=False,
-            )
-        if "rate limit" in lower or "429" in lower:
-            return WorkerError(
-                code="llm.rate_limit",
-                message="RateLimitError",
-                retryable=True,
-            )
-        if "context" in lower and (
-            "too long" in lower or "length" in lower or "window" in lower
-        ):
-            return WorkerError(
-                code="llm.context_too_long",
-                message="ContextTooLong",
-                retryable=False,
-            )
-    return WorkerError(
-        code="worker.internal",
-        message="OmpProviderError",
-        retryable=False,
-    )
-
-
-def _verify_digest(omp_bin: Path) -> None:
-    """Hash the omp binary and raise DigestMismatchError on mismatch."""
-    hasher = hashlib.sha256()
-    with omp_bin.open("rb") as fh:
-        for chunk in iter(lambda: fh.read(65536), b""):
-            hasher.update(chunk)
-    actual = hasher.hexdigest()
-    if actual != _PINNED_SHA256:
-        raise DigestMismatchError(actual=actual, expected=_PINNED_SHA256)
+_classify_exception = classify_exception
+_make_progress = make_progress
+_make_result = make_result
+_worker_error_from_omp_turn = worker_error_from_omp_turn
 
 
 def _log_publish_result(task: asyncio.Task[Any]) -> None:
@@ -219,22 +78,6 @@ def _log_publish_result(task: asyncio.Task[Any]) -> None:
         return
     if exc is not None:
         log.warning("rpc_bridge: scheduled NATS publish failed", exc_info=exc)
-
-
-async def publish_job_error(nc: Any, job_id: str, exc: BaseException) -> None:
-    """Publish a JobResult(status=error) for a failed job without requiring a bridge.
-
-    Used by the worker to publish parse/acquire errors before any bridge exists.
-    No-op if nc is None.
-
-    SanitizedError discipline (ADR-073): uses type(exc).__name__ only via
-    _classify_exception — never str(exc), f"{exc}", or repr(exc).
-    """
-    if nc is None:
-        return
-    worker_error = _classify_exception(exc)
-    payload = _make_result(job_id, status="error", error=worker_error)
-    await nc.publish(jobs_result(job_id), payload)
 
 
 class RpcBridge:
@@ -364,7 +207,7 @@ class RpcBridge:
         """Retry with the first catalogue model when the requested model is invalid."""
         from factory.adapters.omp._model_catalogue import first_registry_model
 
-        turn_error = _worker_error_from_omp_turn(turn, self._last_agent_end_event)
+        turn_error = worker_error_from_omp_turn(turn, self._last_agent_end_event)
         if turn_error is None or turn_error.code != "llm.model_unavailable":
             return turn, turn_error, None
 
@@ -382,7 +225,7 @@ class RpcBridge:
         await self._switch_model(fallback)
         retry_turn = await self._execute_prompt(prompt)
         self._last_turn = retry_turn
-        retry_error = _worker_error_from_omp_turn(
+        retry_error = worker_error_from_omp_turn(
             retry_turn, self._last_agent_end_event
         )
         if retry_error is not None:
@@ -393,7 +236,7 @@ class RpcBridge:
         self,
         nc: NatsClient,
         job_id: str,
-        ctx: _TurnPublishContext,
+        ctx: TurnPublishContext,
     ) -> None:
         if ctx.turn_error is not None:
             log.warning(
@@ -401,7 +244,7 @@ class RpcBridge:
                 job_id,
                 ctx.turn_error.code,
             )
-            payload = _make_result(job_id, status="error", error=ctx.turn_error)
+            payload = make_result(job_id, status="error", error=ctx.turn_error)
             await nc.publish(jobs_result(job_id), payload)
             return
 
@@ -413,7 +256,7 @@ class RpcBridge:
                 message="EmptyResponse",
                 retryable=False,
             )
-            payload = _make_result(job_id, status="error", error=empty_error)
+            payload = make_result(job_id, status="error", error=empty_error)
             await nc.publish(jobs_result(job_id), payload)
             return
 
@@ -422,7 +265,7 @@ class RpcBridge:
             data["model_fallback"] = ctx.model_fallback
         if ctx.session_file is not None:
             data["session_file"] = ctx.session_file
-        payload = _make_result(job_id, status="success", data=data)
+        payload = make_result(job_id, status="success", data=data)
         await nc.publish(jobs_result(job_id), payload)
 
     async def run(
@@ -491,7 +334,7 @@ class RpcBridge:
                 await self._publish_turn_outcome(
                     nc,
                     job_id,
-                    _TurnPublishContext(
+                    TurnPublishContext(
                         turn=turn,
                         turn_error=turn_error,
                         model_fallback=model_fallback,
@@ -547,7 +390,7 @@ class RpcBridge:
         if job_id is None:
             return
         partial_text = getattr(event, "text", None)
-        payload = _make_progress(
+        payload = make_progress(
             job_id,
             step="message_update",
             event_type="message_update",
@@ -564,7 +407,7 @@ class RpcBridge:
         tool_name = getattr(event, "tool_name", None)
         tool_id = getattr(event, "tool_id", None)
         # tool_input NOT published — may contain credentials/file fragments (ADR-073)
-        payload = _make_progress(
+        payload = make_progress(
             job_id,
             step="tool_start",
             event_type="tool_start",

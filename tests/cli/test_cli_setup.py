@@ -50,7 +50,7 @@ def _mock_patches():
 class TestRegisterAll:
     @pytest.mark.asyncio()
     async def test_registers_commands(self, config_file: Path) -> None:
-        from factory.cli_setup import _register_all
+        from factory.cli.setup import _register_all
 
         mock_plugin_loader = _mock_patches()
 
@@ -65,7 +65,7 @@ class TestRegisterAll:
                 "factory.core.commands.command_loader.CommandLoader",
                 return_value=mock_plugin_loader,
             ),
-            patch("factory.cli_setup._register_telegram_bot", mock_register),
+            patch("factory.cli.setup._register_telegram_bot", mock_register),
         ):
             await _register_all(str(config_file))
 
@@ -84,7 +84,7 @@ class TestRegisterAll:
 
     @pytest.mark.asyncio()
     async def test_no_bots_configured(self, empty_config: Path) -> None:
-        from factory.cli_setup import _register_all
+        from factory.cli.setup import _register_all
 
         # Should not raise — prints message and returns
         with (
@@ -109,7 +109,7 @@ class TestRegisterAll:
         """
         import typer
 
-        from factory.cli_setup import _register_all
+        from factory.cli.setup import _register_all
         from factory.errors import MissingCredentialsError
 
         with (
@@ -129,7 +129,7 @@ class TestRegisterAll:
 
     @pytest.mark.asyncio()
     async def test_idempotent_rerun(self, config_file: Path) -> None:
-        from factory.cli_setup import _register_all
+        from factory.cli.setup import _register_all
 
         mock_plugin_loader = _mock_patches()
         mock_register = AsyncMock(return_value="test_bot_user")
@@ -143,7 +143,7 @@ class TestRegisterAll:
                 "factory.core.commands.command_loader.CommandLoader",
                 return_value=mock_plugin_loader,
             ),
-            patch("factory.cli_setup._register_telegram_bot", mock_register),
+            patch("factory.cli.setup._register_telegram_bot", mock_register),
         ):
             await _register_all(str(config_file))
             await _register_all(str(config_file))
@@ -154,7 +154,7 @@ class TestRegisterAll:
     async def test_config_not_found(self, tmp_path: Path) -> None:
         import typer
 
-        from factory.cli_setup import _register_all
+        from factory.cli.setup import _register_all
 
         with pytest.raises((SystemExit, typer.Exit)):
             await _register_all(str(tmp_path / "nonexistent.toml"))

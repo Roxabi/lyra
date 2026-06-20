@@ -8,7 +8,7 @@ from pathlib import Path
 
 import typer
 
-from factory.cli_agent import _AGENTS_DIR_OPT, _connect_store, agent_app
+from factory.cli.agent import _AGENTS_DIR_OPT, _connect_store, agent_app
 from factory.core.agent.agent_config import _VALID_BACKENDS
 from factory.paths import factory_data_dir
 

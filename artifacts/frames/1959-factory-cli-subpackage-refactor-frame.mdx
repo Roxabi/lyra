@@ -1,0 +1,51 @@
+---
+title: "refactor(cli): move src/factory root CLI modules into factory/cli/ subpackage"
+issue: 1959
+status: approved
+tier: F-lite
+date: 2026-06-20
+---
+
+## Problem
+
+`src/factory/` root holds **15/15** Python files — at the folder-size cap and listed in `tools/folder_exemptions.txt`. Recent work (#1945 secrets reset) added `cli_secrets.py` and `secrets_reset.py`; any further CLI additions will breach the gate and force another exemption rather than fixing the layout.
+
+The root mixes zero-dependency infrastructure (`paths.py`, `config.py`, `errors.py`) with a growing cluster of Typer CLI modules (`cli.py`, `cli_agent.py`, `cli_bot.py`, `cli_ops.py`, `cli_setup.py`, `cli_voice_smoke.py`, `cli_secrets.py`, `secrets_reset.py`, `ops_audit.py`, `__main__.py`). This hurts navigation and blocks the quality gate from enforcing folder discipline.
+
+## Who
+
+- **Primary:** Developers adding or maintaining factory CLI commands and entry points (`factory`, `factory-agent`, pyproject scripts)
+- **Secondary:** CI / pre-push quality gates (`check_folder_size.sh`, pytest) that must stay green without exemptions
+
+## Constraints
+
+- `paths.py` stays at root (zero-dep SSoT for data-dir resolution; broadly imported)
+- `config.py`, `errors.py`, `__init__.py` stay at root (core package surface)
+- Entry points in `pyproject.toml` must keep working (`factory.cli:factory_main`, `factory.cli:agent_main`)
+- All imports across `src/`, `tests/`, `scripts/` updated to new module paths
+- `uv run pytest` + folder-size gate must pass without `src/factory` exemption
+- Parent epic #1956 (factory package hygiene) — this issue is one slice; scope is CLI decomposition only
+- Optional `_store_connect.py` mutualization between `cli_agent.py` / `cli_bot.py` — same PR if low-risk, else follow-up
+
+## Out of Scope
+
+- Functional changes to CLI behavior or command surfaces
+- Moving non-CLI modules (`core/`, `bootstrap/`, etc.)
+- New CLI features or commands
+- ADR or architecture doc rewrites (mechanical refactor)
+
+## Premise Validity
+
+**Success in 6 months:** `src/factory/` root has ≤10 `.py` files, `tools/folder_exemptions.txt` no longer lists `src/factory`, new CLI modules land in `factory/cli/` without triggering gate failures, and all entry points + pytest stay green.
+
+**Failure in 6 months:** After 3 months, `src/factory/` root is still at 15 files with the exemption in place, or a new CLI addition required another exemption entry (measurable gate bypass).
+
+**Simplest alternative:** Extend or retain the `src/factory` folder exemption and add new CLI files at root.
+**Why not simplest:** Defers structural debt, masks the real bloat, and guarantees the next CLI feature hits the same wall; subpackage split matches logical grouping and matches prior reorg patterns (#1595).
+
+## Complexity
+
+**Tier: F-lite** — single domain (package layout), clear file mapping in issue body, known patterns (subpackage + import updates), no architectural unknowns.
+
+- Signals: `size:F-lite` label, complexity 5, ~11 files to move, pyproject entry-point updates, optional dedup helper
+- Parent #1956 open (not blocking — hygiene epic, this slice is independently shippable)

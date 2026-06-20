@@ -10,7 +10,7 @@ from typer.testing import CliRunner
 
 from factory.cli import factory_app as app
 from factory.core.agent.bot_models import BotRow
-from factory.infrastructure.stores.bot_store import BotStore
+from factory.infrastructure.stores.registry.bot_store import BotStore
 from tests.helpers.bot_cli import write_bot_toml
 from tests.helpers.bot_store import db_get, db_upsert
 
@@ -335,7 +335,7 @@ class TestBotInitKvDualWrite:
         await_args = publish_mock.await_args
         assert await_args is not None
         assert await_args.args[0] is mock_js
-        from factory.infrastructure.stores.bot_store import BotStore
+        from factory.infrastructure.stores.registry.bot_store import BotStore
 
         assert isinstance(await_args.args[1], BotStore)
 

@@ -15,7 +15,7 @@ import pytest
 from typer.testing import CliRunner
 
 from factory.cli import agent_app
-from factory.infrastructure.stores.agent_store import AgentRow, AgentStore
+from factory.infrastructure.stores.registry.agent_store import AgentRow, AgentStore
 
 # ---------------------------------------------------------------------------
 # Shared runner

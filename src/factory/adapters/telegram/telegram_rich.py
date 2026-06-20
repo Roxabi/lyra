@@ -45,9 +45,7 @@ def is_private_chat(chat_id: int) -> bool:
 
 def use_rich_draft(chat_id: int) -> bool:
     return (
-        rich_messages_enabled()
-        and rich_drafts_enabled()
-        and is_private_chat(chat_id)
+        rich_messages_enabled() and rich_drafts_enabled() and is_private_chat(chat_id)
     )
 
 
@@ -77,9 +75,7 @@ class TelegramPlaceholder:
     use_draft: bool = False
 
 
-def _thread_kwargs(
-    reply_to: int | None, topic_id: int | None
-) -> dict[str, Any]:
+def _thread_kwargs(reply_to: int | None, topic_id: int | None) -> dict[str, Any]:
     kw: dict[str, Any] = {}
     if reply_to is not None:
         kw["reply_to_message_id"] = reply_to

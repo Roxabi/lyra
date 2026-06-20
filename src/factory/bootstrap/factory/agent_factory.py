@@ -33,7 +33,7 @@ from factory.core.lifecycle.circuit_breaker import CircuitRegistry
 from factory.core.messaging.messages import MessageManager
 from factory.core.ports.stt import STTProtocol
 from factory.core.ports.tts import TtsProtocol
-from factory.infrastructure.stores.agent_store import AgentStore
+from factory.infrastructure.stores.registry.agent_store import AgentStore
 from factory.integrations.base import SessionTools
 from factory.integrations.vault_cli import VaultCli
 from factory.integrations.web_intel import WebIntelScraper

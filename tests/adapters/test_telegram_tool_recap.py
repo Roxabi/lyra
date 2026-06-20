@@ -203,9 +203,7 @@ async def test_text_only_turn_does_not_send_telegram_trace_placeholder() -> None
     _TRACE_PLACEHOLDER_TEXT = "\U0001f527 …"  # "🔧 …"
     send_calls = bot.send_rich_message.call_args_list
     trace_sends = [
-        c
-        for c in send_calls
-        if _rich_markdown(c) == _TRACE_PLACEHOLDER_TEXT
+        c for c in send_calls if _rich_markdown(c) == _TRACE_PLACEHOLDER_TEXT
     ]
     assert len(trace_sends) == 0, (
         f"Expected no trace placeholder send, but found: {trace_sends}"
@@ -218,8 +216,7 @@ async def test_text_only_turn_does_not_send_telegram_trace_placeholder() -> None
     recap_edits = [
         c
         for c in edit_calls
-        if recap_header in _rich_markdown(c)
-        or recap_working in _rich_markdown(c)
+        if recap_header in _rich_markdown(c) or recap_working in _rich_markdown(c)
     ]
     assert len(recap_edits) == 0, (
         f"Expected no recap card edit_message_text calls, found: {recap_edits}"
@@ -295,9 +292,7 @@ async def test_recap_text_is_markdownv2_escaped() -> None:
     # The text must contain the bash icon (proof it is recap content, not some
     # other edit — e.g. the response placeholder edit)
     bash_icon = "\U0001f4bb"  # 💻
-    recap_with_bash = [
-        c for c in recap_calls if bash_icon in _rich_markdown(c)
-    ]
+    recap_with_bash = [c for c in recap_calls if bash_icon in _rich_markdown(c)]
     texts = [_rich_markdown(c) for c in recap_calls]
     assert len(recap_with_bash) >= 1, (
         f"No recap call contained bash icon. Texts: {texts}"

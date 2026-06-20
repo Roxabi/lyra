@@ -73,11 +73,13 @@ async def test_tg_voice_routes_via_pipeline_not_direct_push(
     audio_file = tmp_path / "voice.ogg"
     audio_file.write_bytes(b"fake_ogg")
 
-    mock_pipeline = MagicMock()
-    mock_pipeline.run = AsyncMock(return_value=None)
+    mock_guarded = AsyncMock(return_value=None)
 
     with (
-        patch("factory.adapters.telegram.telegram_inbound._pipeline", mock_pipeline),
+        patch(
+            "factory.adapters.telegram.telegram_inbound.run_inbound_guarded",
+            mock_guarded,
+        ),
         patch(
             "factory.adapters.telegram.telegram_inbound._download_audio",
             new_callable=AsyncMock,
@@ -86,8 +88,7 @@ async def test_tg_voice_routes_via_pipeline_not_direct_push(
     ):
         await handle_voice_message(adapter, msg)
 
-    # Assert: pipeline.run was called exactly once (routing contract)
-    mock_pipeline.run.assert_awaited_once()
+    mock_guarded.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -112,17 +113,16 @@ async def test_tg_eager_download_and_pending_attachment_set(
     audio_file = tmp_path / "voice.ogg"
     audio_file.write_bytes(b"audio_bytes")
 
-    mock_pipeline = MagicMock()
-
     captured_msgs: list = []
 
-    async def _capture_run(raw, ctx, parser, **kwargs):  # type: ignore[no-untyped-def]
-        captured_msgs.append(raw)
-
-    mock_pipeline.run = _capture_run
+    async def _capture_guarded(*, raw_message, **kwargs):  # type: ignore[no-untyped-def]
+        captured_msgs.append(raw_message)
 
     with (
-        patch("factory.adapters.telegram.telegram_inbound._pipeline", mock_pipeline),
+        patch(
+            "factory.adapters.telegram.telegram_inbound.run_inbound_guarded",
+            side_effect=_capture_guarded,
+        ),
         patch(
             "factory.adapters.telegram.telegram_inbound._download_audio",
             new_callable=AsyncMock,
@@ -159,11 +159,13 @@ async def test_tg_too_large_reply_no_pipeline(
     adapter = _make_adapter()
     msg = _make_voice_msg()
 
-    mock_pipeline = MagicMock()
-    mock_pipeline.run = AsyncMock(return_value=None)
+    mock_guarded = AsyncMock(return_value=None)
 
     with (
-        patch("factory.adapters.telegram.telegram_inbound._pipeline", mock_pipeline),
+        patch(
+            "factory.adapters.telegram.telegram_inbound.run_inbound_guarded",
+            mock_guarded,
+        ),
         patch(
             "factory.adapters.telegram.telegram_inbound._download_audio",
             new_callable=AsyncMock,
@@ -179,8 +181,7 @@ async def test_tg_too_large_reply_no_pipeline(
     text_sent: str = call_kwargs.kwargs["text"]
     assert "large" in text_sent.lower()
 
-    # (b) Pipeline was NOT reached — load-bearing assertion
-    mock_pipeline.run.assert_not_awaited()
+    mock_guarded.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -202,11 +203,13 @@ async def test_tg_download_failed_reply_no_pipeline(
     adapter = _make_adapter()
     msg = _make_voice_msg()
 
-    mock_pipeline = MagicMock()
-    mock_pipeline.run = AsyncMock(return_value=None)
+    mock_guarded = AsyncMock(return_value=None)
 
     with (
-        patch("factory.adapters.telegram.telegram_inbound._pipeline", mock_pipeline),
+        patch(
+            "factory.adapters.telegram.telegram_inbound.run_inbound_guarded",
+            mock_guarded,
+        ),
         patch(
             "factory.adapters.telegram.telegram_inbound._download_audio",
             new_callable=AsyncMock,
@@ -227,5 +230,4 @@ async def test_tg_download_failed_reply_no_pipeline(
         or "try again" in text_sent.lower()
     )
 
-    # (b) Pipeline was NOT reached — load-bearing assertion
-    mock_pipeline.run.assert_not_awaited()
+    mock_guarded.assert_not_awaited()

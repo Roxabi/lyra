@@ -21,15 +21,15 @@ from typing import AsyncGenerator
 
 from nats.aio.client import Client
 
-from factory.infrastructure.stores.agent_store import AgentStore
-from factory.infrastructure.stores.auth_store import AuthStore
-from factory.infrastructure.stores.bot_store import BotStore
-from factory.infrastructure.stores.identity_alias_store import IdentityAliasStore
+from factory.infrastructure.stores.registry.agent_store import AgentStore
+from factory.infrastructure.stores.identity.auth_store import AuthStore
+from factory.infrastructure.stores.registry.bot_store import BotStore
+from factory.infrastructure.stores.identity.identity_alias_store import IdentityAliasStore
 from factory.infrastructure.stores.message_index_kv import (
     MessageIndexKvStore,
     ensure_kv,
 )
-from factory.infrastructure.stores.prefs_store import PrefsStore
+from factory.infrastructure.stores.registry.prefs_store import PrefsStore
 from factory.infrastructure.stores.session.turn_store import TurnStore
 from factory.paths import factory_turns_db_path
 

@@ -1,20 +1,20 @@
 """SQLite store implementations — moved from factory.core.stores per
 ADR-048 (absorbed into ADR-059)."""
 
-from factory.infrastructure.stores.agent_store import AgentStore
-from factory.infrastructure.stores.auth_store import AuthStore
+from factory.infrastructure.stores.registry.agent_store import AgentStore
+from factory.infrastructure.stores.identity.auth_store import AuthStore
 from factory.infrastructure.stores.base.bot_agent_map import BotAgentMapStore
 from factory.infrastructure.stores.base.message_index import MessageIndex
 from factory.infrastructure.stores.base.sqlite_base import SqliteStore
-from factory.infrastructure.stores.bot_store import BotStore
-from factory.infrastructure.stores.identity_alias_store import IdentityAliasStore
+from factory.infrastructure.stores.registry.bot_store import BotStore
+from factory.infrastructure.stores.identity.identity_alias_store import IdentityAliasStore
 from factory.infrastructure.stores.message_index_kv import MessageIndexKvStore
-from factory.infrastructure.stores.pairing import (
+from factory.infrastructure.stores.identity.pairing import (
     PairingManager,
     get_pairing_manager,
     set_pairing_manager,
 )
-from factory.infrastructure.stores.prefs_store import PrefsStore, UserPrefs
+from factory.infrastructure.stores.registry.prefs_store import PrefsStore, UserPrefs
 from factory.infrastructure.stores.session.thread_store import ThreadStore
 from factory.infrastructure.stores.session.turn_store import TurnStore
 

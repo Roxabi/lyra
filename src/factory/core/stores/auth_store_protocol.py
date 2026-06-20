@@ -1,7 +1,7 @@
 """AuthStoreProtocol — structural interface for authorization stores.
 
 Decouples factory.core from the concrete SQLite AuthStore implementation
-(factory.infrastructure.stores.auth_store). Any conforming implementation
+(factory.infrastructure.stores.identity.auth_store). Any conforming implementation
 (SQLite, in-memory, test double) can be wired in transparently.
 
 Import only from factory.core — no infrastructure dependencies.

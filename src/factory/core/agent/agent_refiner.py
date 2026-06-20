@@ -13,7 +13,7 @@ from factory.core.agent.agent_refiner_stages import build_system_prompt, extract
 
 if TYPE_CHECKING:
     from factory.core.agent.agent_models import AgentRow
-    from factory.infrastructure.stores.agent_store import AgentStore
+    from factory.infrastructure.stores.registry.agent_store import AgentStore
 
 __all__ = [
     "AgentRefiner",

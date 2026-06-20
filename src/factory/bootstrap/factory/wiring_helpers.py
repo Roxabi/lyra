@@ -35,7 +35,7 @@ from factory.bootstrap.wiring.bootstrap_wiring import (
     wire_telegram_adapters,
 )
 from factory.core.messaging.message import InboundMessage
-from factory.infrastructure.stores.pairing import PairingManager, set_pairing_manager
+from factory.infrastructure.stores.identity.pairing import PairingManager, set_pairing_manager
 from factory.nats.nats_bus import NatsBus
 from factory.nats.queue_groups import HUB_INBOUND
 from factory.typing import TypingListener, make_typing_factory

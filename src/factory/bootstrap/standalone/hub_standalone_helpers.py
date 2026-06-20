@@ -20,14 +20,14 @@ from factory.bootstrap.lifecycle.lifecycle_helpers import (
     teardown_dispatchers,
 )
 from factory.core.agent.agent_loader import agent_row_to_config
-from factory.infrastructure.stores.pairing import PairingManager, set_pairing_manager
+from factory.infrastructure.stores.identity.pairing import PairingManager, set_pairing_manager
 
 if TYPE_CHECKING:
     from factory.adapters.nats.mint_failure_subscriber import MintFailureSubscriber
     from factory.core.agent import Agent
     from factory.core.hub.hub import Hub
-    from factory.infrastructure.stores.agent_store import AgentStore
-    from factory.infrastructure.stores.auth_store import AuthStore
+    from factory.infrastructure.stores.registry.agent_store import AgentStore
+    from factory.infrastructure.stores.identity.auth_store import AuthStore
     from factory.llm.llm_client import LlmClient
 
 log = logging.getLogger(__name__)

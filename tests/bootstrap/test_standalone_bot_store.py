@@ -10,7 +10,7 @@ import pytest
 from factory.bootstrap.wiring.kv_bot_roster import seed_bot_roster
 from factory.config import DiscordMultiConfig, TelegramMultiConfig
 from factory.infrastructure.kv.bot_roster import publish_bot_roster
-from factory.infrastructure.stores.bot_store import BotStore
+from factory.infrastructure.stores.registry.bot_store import BotStore
 from roxabi_contracts.state.bot_roster import roster_key
 from tests.helpers.bot_store import make_bot_row
 

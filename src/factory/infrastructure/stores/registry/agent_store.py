@@ -23,8 +23,8 @@ from factory.infrastructure.stores.migrations.agent_store_migrations import (
     run_agent_migrations,
 )
 
-from .base.bot_agent_map import BotAgentMapStore
-from .base.sqlite_base import SqliteStore
+from factory.infrastructure.stores.base.bot_agent_map import BotAgentMapStore
+from factory.infrastructure.stores.base.sqlite_base import SqliteStore
 
 log = logging.getLogger(__name__)
 

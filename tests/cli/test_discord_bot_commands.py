@@ -19,7 +19,7 @@ from typer.testing import CliRunner
 from factory.cli import agent_app
 from factory.core.agent.agent_models import AgentRow
 from factory.core.agent.bot_models import BotRow
-from factory.infrastructure.stores.agent_store import AgentStore
+from factory.infrastructure.stores.registry.agent_store import AgentStore
 from tests.helpers.bot_store import db_get, db_upsert
 
 runner = CliRunner()

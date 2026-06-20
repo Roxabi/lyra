@@ -14,8 +14,8 @@ from factory.config import (
 )
 from factory.core.auth.authenticator import Authenticator, FromBotStoreDeps
 from factory.core.stores.bot_store_protocol import BotStoreProtocol
-from factory.infrastructure.stores.auth_store import AuthStore
-from factory.infrastructure.stores.identity_alias_store import IdentityAliasStore
+from factory.infrastructure.stores.identity.auth_store import AuthStore
+from factory.infrastructure.stores.identity.identity_alias_store import IdentityAliasStore
 
 log = logging.getLogger(__name__)
 

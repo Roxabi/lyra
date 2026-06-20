@@ -32,7 +32,9 @@ from .pipeline import PoolManager
 if TYPE_CHECKING:
     from collections import deque
 
-    from factory.infrastructure.stores.identity.identity_alias_store import IdentityAliasStore
+    from factory.infrastructure.stores.identity.identity_alias_store import (
+        IdentityAliasStore,
+    )
     from factory.infrastructure.stores.identity.pairing import PairingManager
     from factory.infrastructure.stores.registry.prefs_store import PrefsStore
     from factory.transport.turn_publisher import TurnPublisher

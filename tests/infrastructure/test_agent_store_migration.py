@@ -15,10 +15,10 @@ from factory.core.agent.schema.agent_schema import (
     _CREATE_AGENT_RUNTIME_STATE,
     _CREATE_AGENTS,
 )
-from factory.infrastructure.stores.registry.agent_store import AgentStore
 from factory.infrastructure.stores.migrations.agent_store_migrations import (
     run_agent_migrations,
 )
+from factory.infrastructure.stores.registry.agent_store import AgentStore
 
 # ---------------------------------------------------------------------------
 # Helpers

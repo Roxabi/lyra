@@ -10,7 +10,9 @@ import pytest
 import pytest_asyncio
 
 from factory.core.memory.memory import MemoryManager, SessionSnapshot
-from factory.infrastructure.stores.identity.identity_alias_store import IdentityAliasStore
+from factory.infrastructure.stores.identity.identity_alias_store import (
+    IdentityAliasStore,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures

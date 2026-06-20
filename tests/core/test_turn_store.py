@@ -429,7 +429,9 @@ class TestPoolSessions:
         )
         await db.commit()
 
-        from factory.infrastructure.stores.session.turn_store_queries import backfill_sessions
+        from factory.infrastructure.stores.session.turn_store_queries import (
+            backfill_sessions,
+        )
 
         await backfill_sessions(db)
         await backfill_sessions(db)  # second call must be a no-op

@@ -11,7 +11,9 @@ from factory.bootstrap.auth_seeding import build_bot_auths
 from factory.bootstrap.wiring.auth import BotAuthDeps
 from factory.core.agent.bot_models import BotRow
 from factory.infrastructure.stores.identity.auth_store import AuthStore
-from factory.infrastructure.stores.identity.identity_alias_store import IdentityAliasStore
+from factory.infrastructure.stores.identity.identity_alias_store import (
+    IdentityAliasStore,
+)
 from tests.factories.stores import make_auth_store
 from tests.helpers.bot_store import make_bot_store
 

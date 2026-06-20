@@ -9,7 +9,9 @@ import pytest
 from factory.core.auth.authenticator import Authenticator, AuthenticatorDeps
 from factory.core.auth.trust import TrustLevel
 from factory.infrastructure.stores.identity.auth_store import AuthStore
-from factory.infrastructure.stores.identity.identity_alias_store import IdentityAliasStore
+from factory.infrastructure.stores.identity.identity_alias_store import (
+    IdentityAliasStore,
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures

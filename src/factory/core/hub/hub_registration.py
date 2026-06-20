@@ -13,7 +13,9 @@ from .hub_protocol import Binding, ChannelAdapter, RoutingKey
 
 if TYPE_CHECKING:
     from factory.core.stores import MessageIndexProtocol, TurnStoreProtocol
-    from factory.infrastructure.stores.identity.identity_alias_store import IdentityAliasStore
+    from factory.infrastructure.stores.identity.identity_alias_store import (
+        IdentityAliasStore,
+    )
     from factory.transport.turn_publisher import TurnPublisher
     from factory.transport.typing_publisher import TypingPublisher
 

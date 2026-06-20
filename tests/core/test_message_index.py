@@ -147,7 +147,9 @@ class TestMessageIndexProtocolConformance:
         from unittest.mock import AsyncMock
 
         from factory.core.stores.message_index_protocol import MessageIndexProtocol
-        from factory.infrastructure.stores.kv.message_index_kv import MessageIndexKvStore
+        from factory.infrastructure.stores.kv.message_index_kv import (
+            MessageIndexKvStore,
+        )
 
         store = MessageIndexKvStore(AsyncMock())
         assert isinstance(store, MessageIndexProtocol)

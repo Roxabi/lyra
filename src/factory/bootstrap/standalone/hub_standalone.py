@@ -206,7 +206,9 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
         # Provision active-jobs KV bucket before announcing readiness.
         # Workers / adapters consulting the registry rely on the bucket
         # existing before they receive the hub-ready signal. ADR-079 S3.
-        from factory.infrastructure.stores.jobs.active_jobs_kv import ensure_active_jobs_kv
+        from factory.infrastructure.stores.jobs.active_jobs_kv import (
+            ensure_active_jobs_kv,
+        )
 
         try:
             await ensure_active_jobs_kv(_audio_js)

@@ -12,7 +12,9 @@ from factory.commands.identity.handlers import cmd_link, cmd_unlink
 from factory.core.auth.trust import TrustLevel
 from factory.core.messaging.message import InboundMessage, TelegramMeta
 from factory.core.pool import Pool
-from factory.infrastructure.stores.identity.identity_alias_store import IdentityAliasStore
+from factory.infrastructure.stores.identity.identity_alias_store import (
+    IdentityAliasStore,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers

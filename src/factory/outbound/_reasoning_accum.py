@@ -22,11 +22,12 @@ REASONING_MAX_LEN: int = 120
 REASONING_TRUNC_LEN: int = 117
 
 
-def _truncate_reasoning(text: str) -> str:
-    """Truncate reasoning text to REASONING_MAX_LEN chars with '…' suffix."""
-    if len(text) > REASONING_MAX_LEN:
-        return text[:REASONING_TRUNC_LEN] + "…"
-    return text
+def _truncate_reasoning(text: str, *, max_len: int | None) -> str:
+    """Truncate reasoning text when *max_len* is set; ``None`` disables truncation."""
+    if max_len is None or len(text) <= max_len:
+        return text
+    trunc_len = max_len - (REASONING_MAX_LEN - REASONING_TRUNC_LEN)
+    return text[:trunc_len] + "…"
 
 
 @dataclass
@@ -38,6 +39,10 @@ class ReasoningAccumulator:
 
     ``clock`` is injectable for unit-test control (default: ``time.monotonic``).
 
+    ``max_len`` controls truncation (default ``REASONING_MAX_LEN``). Pass
+    ``None`` to stream the full accumulated text (e.g. Telegram rich
+    ``<tg-thinking>`` blocks).
+
     Usage::
 
         self._reasoning = ReasoningAccumulator()
@@ -48,6 +53,7 @@ class ReasoningAccumulator:
     """
 
     clock: Callable[[], float] = field(default_factory=lambda: time.monotonic)
+    max_len: int | None = REASONING_MAX_LEN
 
     _accum: str = field(default="", init=False)
     _last_edit: float | None = field(default=None, init=False)
@@ -73,7 +79,7 @@ class ReasoningAccumulator:
 
         if isinstance(event, ReasoningDeltaRenderEvent):
             self._accum += event.delta
-            truncated = _truncate_reasoning(self._accum)
+            truncated = _truncate_reasoning(self._accum, max_len=self.max_len)
             now = self.clock()
             elapsed = None if self._last_edit is None else (now - self._last_edit)
             if elapsed is None or elapsed >= STREAMING_EDIT_INTERVAL:
@@ -83,7 +89,7 @@ class ReasoningAccumulator:
 
         # ReasoningEndRenderEvent — flush unconditionally if non-empty
         if self._accum:
-            truncated = _truncate_reasoning(self._accum)
+            truncated = _truncate_reasoning(self._accum, max_len=self.max_len)
             return truncated, True
         return None, False
 

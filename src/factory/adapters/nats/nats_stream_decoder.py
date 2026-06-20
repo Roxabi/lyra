@@ -19,6 +19,7 @@ import time
 from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any, AsyncGenerator
 
+from factory.adapters.nats._constants import MAX_TERMINATED_STREAMS
 from factory.core.exceptions import HubUnavailableError, StreamChunkTimeout
 
 if TYPE_CHECKING:
@@ -29,7 +30,6 @@ log = logging.getLogger(__name__)
 
 _CHUNK_TIMEOUT_SECONDS = 120.0
 _LIVENESS_POLL_SECONDS = 5.0
-_MAX_TERMINATED_STREAMS = 500
 
 
 async def _wait_for_chunk(
@@ -164,7 +164,7 @@ def remember_terminated(listener: Any, stream_id: str) -> None:
     timestamp *and* the insertion order so FIFO eviction reflects recency.
     """
     listener._terminated_streams.pop(stream_id, None)
-    if len(listener._terminated_streams) >= _MAX_TERMINATED_STREAMS:
+    if len(listener._terminated_streams) >= MAX_TERMINATED_STREAMS:
         listener._terminated_streams.popitem(last=False)
     listener._terminated_streams[stream_id] = time.monotonic()
 

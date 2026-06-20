@@ -15,8 +15,8 @@ from factory.infrastructure.stores.pairing import (
     set_pairing_manager,
 )
 from factory.infrastructure.stores.prefs_store import PrefsStore, UserPrefs
-from factory.infrastructure.stores.thread_store import ThreadStore
-from factory.infrastructure.stores.turn_store import TurnStore
+from factory.infrastructure.stores.session.thread_store import ThreadStore
+from factory.infrastructure.stores.session.turn_store import TurnStore
 
 __all__ = [
     "AgentStore",

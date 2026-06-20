@@ -30,7 +30,7 @@ from factory.infrastructure.stores.message_index_kv import (
     ensure_kv,
 )
 from factory.infrastructure.stores.prefs_store import PrefsStore
-from factory.infrastructure.stores.turn_store import TurnStore
+from factory.infrastructure.stores.session.turn_store import TurnStore
 from factory.paths import factory_turns_db_path
 
 log = logging.getLogger(__name__)

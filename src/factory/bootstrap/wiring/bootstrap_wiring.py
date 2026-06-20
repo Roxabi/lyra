@@ -24,7 +24,7 @@ from factory.core.messaging.message import Platform
 from factory.core.messaging.messages import MessageManager
 from factory.core.messaging.tool_display_config import ToolDisplayConfig
 from factory.infrastructure.stores.agent_store import AgentStore
-from factory.infrastructure.stores.thread_store import ThreadStore
+from factory.infrastructure.stores.session.thread_store import ThreadStore
 from factory.paths import factory_discord_data_dir
 
 log = logging.getLogger(__name__)

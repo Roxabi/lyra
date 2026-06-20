@@ -22,7 +22,7 @@ from tests.core.conftest import _make_hub, make_inbound_message
 
 if TYPE_CHECKING:
     from factory.infrastructure.stores.base.message_index import MessageIndex
-    from factory.infrastructure.stores.turn_store import TurnStore
+    from factory.infrastructure.stores.session.turn_store import TurnStore
 
 # -------------------------------------------------------------------
 # Stubs

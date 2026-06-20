@@ -18,7 +18,7 @@ from typing import Literal
 
 from factory.core.stores.turn_store_protocol import TurnRow
 from factory.infrastructure.stores.base.sqlite_base import SqliteStore
-from factory.infrastructure.stores.turn_store_session import TurnStoreSessionMixin
+from factory.infrastructure.stores.session.turn_store_session import TurnStoreSessionMixin
 
 from .turn_store_queries import backfill_sessions, get_turns
 

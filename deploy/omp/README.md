@@ -8,7 +8,7 @@ list trade-off).
 
 | File | Role |
 |---|---|
-| `models.yml` | omp provider override — points the built-in `litellm` provider at the factory LiteLLM xAI pass-through (`:18091/xai/v1`, tailnet) with dynamic catalogue discovery |
+| `models.yml` | omp provider override — points the built-in `litellm` provider at the factory LiteLLM canonical route (`:18091/v1`, tailnet) with dynamic merged-catalogue discovery |
 
 ## How omp picks this up
 
@@ -49,18 +49,19 @@ rebuild.
 #1811 used an explicit `models:` list to dodge a chicken-and-egg: omp's
 discovery URL was derived from already-known models, so an override-only entry
 still fetched against `localhost:4000`. That trade-off is reversed now that
-Roxabi/llmCLI#129 ships a stable xAI pass-through catalogue at `/xai/v1/models`.
+Roxabi/llmCLI#130 ships a unified merged catalogue at `/v1/models` (TOML
+remotes + xAI forwarder + supplements).
 
 ### Phases (gateway prerequisites)
 
 | Phase | Gateway prerequisite | omp `baseUrl` | Scope |
 |-------|---------------------|---------------|-------|
-| **Interim** (current) | Roxabi/llmCLI#129 (`pass_through /xai`) | `:18091/xai/v1` | Discovery + Grok catalogue via xAI route |
-| **Target** (deferred) | Roxabi/llmCLI#130 (unified `/v1/models`) | `:18091/v1` | Single canonical base URL; merged catalogue |
+| **Interim** (done) | Roxabi/llmCLI#129 (`pass_through /xai`) | `:18091/xai/v1` | Discovery + Grok catalogue via xAI route (#1923) |
+| **Target** (current) | Roxabi/llmCLI#130 (unified `/v1/models`) | `:18091/v1` | Single canonical base URL; merged catalogue (#1974) |
 
 **Operator procedure when the proxy catalogue changes:** restart `factory-omp`
-(`systemctl --user restart factory-omp`). No repo change required for new Grok
-variants on the interim route.
+(`systemctl --user restart factory-omp`). No repo change required for new models
+in the merged catalogue.
 
 **Related issues:** #1924 (hub `model_cfg` → `RpcClient(model=…)`), #1910
 (default model when hub omits `model`).
@@ -75,7 +76,7 @@ not add custom retry logic — fix gateway availability or credentials on M₁.
 
 - CI: `tests/deploy/test_omp_models_discovery.py` — static YAML invariants +
   mock-gateway catalogue fetch (no M₁ network).
-- Live smoke (manual, post-llmCLI#129 deploy on M₁):
+- Live smoke (manual, post-llmCLI#130 deploy on M₁):
 
   ```bash
   INTEGRATION=1 LITELLM_API_KEY=<key> uv run --frozen pytest \

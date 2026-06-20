@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
     from factory.core.ports.stt import STTProtocol
     from factory.core.ports.tts import TtsProtocol
-    from factory.infrastructure.stores.agent_store import AgentStore
+    from factory.infrastructure.stores.registry.agent_store import AgentStore
 
     from ..memory.memory import MemoryManager
     from ..messaging.render_events import RenderEvent

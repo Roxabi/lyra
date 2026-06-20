@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from factory.core.messaging.render_events import RenderEvent
     from factory.core.ports.stt import STTProtocol
     from factory.core.ports.tts import TtsProtocol
-    from factory.infrastructure.stores.agent_store import AgentStore
+    from factory.infrastructure.stores.registry.agent_store import AgentStore
     from factory.llm.llm_client import LlmClient
 
 log = logging.getLogger(__name__)

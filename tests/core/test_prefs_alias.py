@@ -6,8 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from factory.infrastructure.stores.identity_alias_store import IdentityAliasStore
-from factory.infrastructure.stores.prefs_store import PrefsStore
+from factory.infrastructure.stores.identity.identity_alias_store import (
+    IdentityAliasStore,
+)
+from factory.infrastructure.stores.registry.prefs_store import PrefsStore
 
 # ---------------------------------------------------------------------------
 # Fixtures

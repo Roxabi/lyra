@@ -45,7 +45,7 @@ from nats.js.errors import (
 )
 
 from factory.core.ports.active_jobs import ActiveJobEntry, RegistryConflictError
-from factory.infrastructure.stores._kv_keys import kv_safe_part
+from factory.infrastructure.stores.kv._kv_keys import kv_safe_part
 
 if TYPE_CHECKING:
     from nats.js.client import JetStreamContext

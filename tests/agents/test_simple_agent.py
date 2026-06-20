@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 from factory.agents.simple_agent import SimpleAgent
 from factory.core.agent import Agent
 from factory.core.agent.agent_config import ModelConfig
+from factory.core.agent.agent_models import AgentRow
 from factory.core.auth.trust import TrustLevel
 from factory.core.messaging.message import (
     GENERIC_ERROR_REPLY,
@@ -25,6 +26,7 @@ from factory.core.messaging.message import (
 from factory.core.messaging.messages import MessageManager
 from factory.core.pool import Pool
 from factory.llm.base import LlmResult
+from factory.llm.registry import ProviderRegistry
 from roxabi_contracts.errors import WorkerError
 
 # ---------------------------------------------------------------------------
@@ -881,3 +883,63 @@ class TestSimpleAgentEmptyReply:
         assert response.content == GENERIC_ERROR_REPLY
         assert response.speak is True
         assert response.metadata.get("error") is True
+
+
+# ---------------------------------------------------------------------------
+# Backend hot-swap (#1914)
+# ---------------------------------------------------------------------------
+
+
+class TestSimpleAgentBackendHotSwap:
+    async def test_process_uses_provider_for_reloaded_backend(self) -> None:
+        """DB backend flip takes effect on next process() without hub restart."""
+        cli_provider = MagicMock(spec=["complete", "is_alive"])
+        omp_provider = MagicMock(spec=["complete", "is_alive"])
+        cli_provider.complete = AsyncMock(return_value=LlmResult(result="cli"))
+        omp_provider.complete = AsyncMock(return_value=LlmResult(result="omp"))
+        cli_provider.is_alive = MagicMock(return_value=True)
+        omp_provider.is_alive = MagicMock(return_value=True)
+
+        registry = ProviderRegistry()
+        registry.register("claude-cli", cast("LlmProvider", cli_provider))
+        registry.register("omp-rpc", cast("LlmProvider", omp_provider))
+
+        row_cli = AgentRow(
+            name="lyra",
+            backend="claude-cli",
+            model="claude-sonnet",
+            updated_at="2026-06-21T10:00:00+00:00",
+        )
+        row_omp = AgentRow(
+            name="lyra",
+            backend="omp-rpc",
+            model="claude-sonnet",
+            updated_at="2026-06-21T11:00:00+00:00",
+        )
+        agent_store = MagicMock()
+        agent_store.get = MagicMock(side_effect=[row_cli, row_omp])
+
+        config = Agent(
+            name="lyra",
+            system_prompt="You are Lyra.",
+            memory_namespace="lyra",
+            llm_config=ModelConfig(backend="claude-cli"),
+        )
+        agent = SimpleAgent(
+            config,
+            cast("LlmProvider", cli_provider),
+            provider_registry=registry,
+            agent_store=agent_store,
+        )
+        msg = make_inbound_message("hello")
+        pool = make_pool()
+
+        first = await agent.process(msg, pool)
+        second = await agent.process(msg, pool)
+
+        assert isinstance(first, Response)
+        assert first.content == "cli"
+        assert isinstance(second, Response)
+        assert second.content == "omp"
+        cli_provider.complete.assert_awaited_once()
+        omp_provider.complete.assert_awaited_once()

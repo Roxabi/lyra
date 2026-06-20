@@ -41,6 +41,7 @@ class RefinementCancelled(Exception):
 
 REFINABLE_FIELDS: frozenset[str] = frozenset(
     {
+        "backend",
         "model",
         "persona_json",
         "voice_json",

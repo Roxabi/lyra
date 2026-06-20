@@ -215,6 +215,7 @@ def _create_agent(deps: CreateAgentDeps) -> AgentBase:  # noqa: C901 — 3-branc
             agent_store=deps.agent_store,
             session_tools=session_tools,
             cli_nats_driver=deps.cli_nats_driver,
+            provider_registry=deps.provider_registry,
         )
     raise ValueError(f"Unknown backend: {backend}")
 

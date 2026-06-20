@@ -8,8 +8,8 @@ import pytest
 from nats.js.errors import BadRequestError, KeyNotFoundError
 from nats.js.kv import VALID_KEY_RE
 
-from factory.infrastructure.stores._kv_keys import kv_safe_part
-from factory.infrastructure.stores.message_index_kv import (
+from factory.infrastructure.stores.kv._kv_keys import kv_safe_part
+from factory.infrastructure.stores.kv.message_index_kv import (
     KV_BUCKET,
     MessageIndexKvStore,
     _sanitize_key_part,

@@ -13,7 +13,7 @@ from factory.core.stores.auth_store_protocol import AuthStoreProtocol
 
 def test_auth_store_isinstance_check(tmp_path: pytest.TempPathFactory) -> None:
     """AuthStore satisfies AuthStoreProtocol (runtime_checkable check)."""
-    from factory.infrastructure.stores.auth_store import AuthStore
+    from factory.infrastructure.stores.identity.auth_store import AuthStore
 
     store = AuthStore(db_path=tmp_path / "grants.db")  # type: ignore[arg-type]
     assert isinstance(store, AuthStoreProtocol)

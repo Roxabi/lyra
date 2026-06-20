@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
     from factory.adapters.nats.mint_failure_subscriber import MintFailureSubscriber
     from factory.core.hub import Hub, OutboundDispatcher
-    from factory.infrastructure.stores.pairing import PairingManager
+    from factory.infrastructure.stores.identity.pairing import PairingManager
     from factory.llm.llm_client import LlmClient
     from factory.nats.nats_channel_proxy import NatsChannelProxy
 

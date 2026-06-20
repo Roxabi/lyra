@@ -19,8 +19,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 _HUB = "factory.bootstrap.standalone.hub_standalone"
-_ACTIVE_JOBS_KV = "factory.infrastructure.stores.active_jobs_kv"
-_ACTIVE_JOBS_REFRESH = "factory.infrastructure.stores.active_jobs_refresher"
+_ACTIVE_JOBS_KV = "factory.infrastructure.stores.jobs.active_jobs_kv"
+_ACTIVE_JOBS_REFRESH = "factory.infrastructure.stores.jobs.active_jobs_refresher"
 _STREAM_SETUP = "factory.infrastructure.outbound_audio.stream_setup"
 
 HookFactory = Callable[[], Awaitable[Any] | Any]

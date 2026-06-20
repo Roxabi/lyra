@@ -19,7 +19,7 @@ import textwrap
 from pathlib import Path
 
 from factory.core.agent.bot_models import BotRow
-from factory.infrastructure.stores.bot_store import BotStore
+from factory.infrastructure.stores.registry.bot_store import BotStore
 from tests.helpers.bot_store import db_upsert
 
 REPO_ROOT = Path(__file__).resolve().parents[2]

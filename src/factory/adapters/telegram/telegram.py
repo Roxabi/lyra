@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 from factory.adapters.telegram import telegram_audio  # noqa: I001 — DEBT:lint-residual
 from factory.adapters.shared._base_outbound import OutboundAdapterBase
 from factory.adapters.shared._shared import TypingTaskManager, resolve_msg
+from factory.adapters.shared.typing_shim import cancel_typing_shim, start_typing_shim
 from factory.typing import make_typing_factory
 from factory.adapters.telegram.telegram_guard import _make_verifier
 from factory.adapters.telegram.telegram_inbound import (
@@ -49,16 +50,12 @@ from factory.core.messaging.message import (
     OutboundMessage,
 )
 from factory.core.messaging.messages import MessageManager
-from factory.core.trace import TraceContext
-from uuid import uuid4
 
 log = logging.getLogger(__name__)
 
 
 # ── Typing plane (#1376) — module-level resolver for AC8 ─────────────────
-from factory.transport.typing_publisher import is_typing_enabled  # noqa: E402
 from factory.transport.work_scope import WorkScope  # noqa: E402
-from factory.typing.listener import typing_publisher_shim  # noqa: E402
 
 
 def _telegram_scope_resolver(scope: WorkScope) -> int:
@@ -203,34 +200,23 @@ class TelegramAdapter(OutboundAdapterBase):
         return _typing_worker(self.bot, chat_id)
 
     def _start_typing(self, scope_id: int) -> None:
-        publisher = getattr(self, "_typing_publisher", None)
-        if publisher is not None and typing_publisher_shim(
-            "telegram",
-            self._bot_id,
-            scope_id,
-            publisher,
-            publisher.publish_started,
-            trace_id=TraceContext.get_trace_id() or uuid4().hex,
-        ):
-            return
-        if is_typing_enabled():
-            return  # pub/sub active but publisher absent → intentional no-op
-        self._typing.start(scope_id, self._factory_builder(scope_id))
+        start_typing_shim(
+            platform="telegram",
+            bot_id=self._bot_id,
+            scope_id=scope_id,
+            typing_manager=self._typing,
+            factory_builder=self._factory_builder,
+            typing_publisher=getattr(self, "_typing_publisher", None),
+        )
 
     def _cancel_typing(self, scope_id: int) -> None:
-        publisher = getattr(self, "_typing_publisher", None)
-        if publisher is not None and typing_publisher_shim(
-            "telegram",
-            self._bot_id,
-            scope_id,
-            publisher,
-            publisher.publish_ended,
-            trace_id=TraceContext.get_trace_id() or uuid4().hex,
-        ):
-            return
-        if is_typing_enabled():
-            return  # pub/sub active but publisher absent → intentional no-op
-        self._typing.cancel(scope_id)
+        cancel_typing_shim(
+            platform="telegram",
+            bot_id=self._bot_id,
+            scope_id=scope_id,
+            typing_manager=self._typing,
+            typing_publisher=getattr(self, "_typing_publisher", None),
+        )
 
     async def astart(self) -> None:
         if self._outbound_listener is not None:

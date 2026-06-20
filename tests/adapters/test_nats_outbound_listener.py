@@ -302,8 +302,8 @@ async def test_stream_drops_when_at_max_streams(caplog) -> None:
     import asyncio
     import logging
 
+    from factory.adapters.nats._constants import MAX_STREAMS
     from factory.adapters.nats.nats_outbound_listener import (
-        _MAX_STREAMS,
         ListenerDeps,
         NatsOutboundListener,
     )
@@ -320,7 +320,7 @@ async def test_stream_drops_when_at_max_streams(caplog) -> None:
     )
 
     # Fill stream_tasks to the limit with mock tasks
-    for i in range(_MAX_STREAMS):
+    for i in range(MAX_STREAMS):
         mock_task = MagicMock(spec=asyncio.Task)
         listener._stream_tasks[f"stream-{i}"] = mock_task
 
@@ -347,8 +347,8 @@ async def test_existing_stream_receives_chunks_at_capacity(caplog) -> None:
     import asyncio
     import logging
 
+    from factory.adapters.nats._constants import MAX_STREAMS
     from factory.adapters.nats.nats_outbound_listener import (
-        _MAX_STREAMS,
         ListenerDeps,
         NatsOutboundListener,
     )
@@ -369,11 +369,11 @@ async def test_existing_stream_receives_chunks_at_capacity(caplog) -> None:
     existing_task = MagicMock(spec=asyncio.Task)
     listener._stream_tasks[existing_id] = existing_task
 
-    # Fill _stream_tasks to _MAX_STREAMS (existing_id already occupies one slot)
-    for i in range(_MAX_STREAMS - 1):
+    # Fill _stream_tasks to MAX_STREAMS (existing_id already occupies one slot)
+    for i in range(MAX_STREAMS - 1):
         listener._stream_tasks[f"other-{i}"] = MagicMock(spec=asyncio.Task)
 
-    assert len(listener._stream_tasks) == _MAX_STREAMS
+    assert len(listener._stream_tasks) == MAX_STREAMS
 
     chunk = {
         "stream_id": existing_id,
@@ -1138,7 +1138,7 @@ def test_remember_terminated_evicts_oldest_first(monkeypatch) -> None:
     from factory.adapters.nats.nats_stream_decoder import remember_terminated
 
     # Shrink the cap so the FIFO property is verified against a tiny sequence.
-    monkeypatch.setattr(nsd, "_MAX_TERMINATED_STREAMS", 3)
+    monkeypatch.setattr(nsd, "MAX_TERMINATED_STREAMS", 3)
 
     nc = AsyncMock()
     adapter = AsyncMock()

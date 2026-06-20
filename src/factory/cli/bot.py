@@ -8,7 +8,9 @@ import subprocess
 
 import typer
 
-from factory.cli._store_connect import _connect_bot_store
+from factory.cli._store_connect import (
+    _connect_bot_store,  # noqa: F401 — re-exported for agent_cmd
+)
 
 bot_app = typer.Typer(
     name="bot", help="Manage bot credentials stored as Podman secrets."

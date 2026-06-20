@@ -49,7 +49,7 @@ def _resolve_matrix_path(path: Path) -> Path:
     here = Path(__file__).resolve()
     candidates.extend(
         (
-            here.parents[2] / "deploy" / "nats" / "acl-matrix.json",
+            here.parents[3] / "deploy" / "nats" / "acl-matrix.json",
             Path.cwd() / "deploy" / "nats" / "acl-matrix.json",
             Path("/app/deploy/nats/acl-matrix.json"),
         )

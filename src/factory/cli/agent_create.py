@@ -20,7 +20,7 @@ def _user_agents_dir() -> Path:
     return factory_data_dir().resolve() / "agents"
 
 
-_SYSTEM_AGENTS_DIR = Path(__file__).resolve().parent / "agents"
+_SYSTEM_AGENTS_DIR = Path(__file__).resolve().parent.parent / "agents"
 AGENTS_DIR = _SYSTEM_AGENTS_DIR
 
 # ---------------------------------------------------------------------------

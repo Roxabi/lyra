@@ -5,8 +5,8 @@
 # its default http://localhost:4000/v1. Pure config — no TCP forward, no
 # upstream patch (options A/B/C superseded; see issue #1811).
 #
-# #1923: dynamic discovery against the LiteLLM xAI pass-through catalogue
-# (interim baseUrl until llmCLI#130 unifies on :18091/v1).
+# #1923: dynamic discovery against the factory LiteLLM merged catalogue.
+# #1974: target-phase baseUrl on canonical :18091/v1 (llmCLI#130 unified route).
 #
 # Invariants:
 # - `apiKey` holds an ENV VAR NAME, not a secret value. omp resolves
@@ -18,7 +18,7 @@
 
 providers:
   litellm:
-    baseUrl: http://roxabituwer.goose-logarithm.ts.net:18091/xai/v1
+    baseUrl: http://roxabituwer.goose-logarithm.ts.net:18091/v1
     api: openai-completions
     apiKey: LITELLM_API_KEY
     discovery:

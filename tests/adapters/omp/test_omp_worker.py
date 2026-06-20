@@ -132,6 +132,7 @@ class TestHandleHappyPath:
             "summarise this text",
             _JOB_ID,
             session_file=fake_pw.session_file,
+            model=None,
         )
 
     async def test_handle_releases_pool_worker_on_success(self) -> None:
@@ -199,7 +200,9 @@ class TestHandleSpawnSemantics:
         def _fresh_pool_worker() -> MagicMock:
             pw = _make_fake_pool_worker()
 
-            async def run_until_released(prompt, job_id, *, session_file=None):  # noqa: ARG001
+            async def run_until_released(  # noqa: ARG001
+                prompt, job_id, *, session_file=None, model=None
+            ):
                 nonlocal call_count
                 call_count += 1
                 started.release()  # this job has entered bridge.run
@@ -503,6 +506,7 @@ class TestHandleBackwardCompat:
             "x",
             _JOB_ID,
             session_file=ANY,
+            model=None,
         )
 
     async def test_handle_reads_model_cfg_and_system_prompt(self) -> None:
@@ -532,4 +536,5 @@ class TestHandleBackwardCompat:
             "x",
             _JOB_ID,
             session_file=ANY,
+            model="grok-4-fast",
         )

@@ -208,7 +208,9 @@ async def test_dc_multi_attachment_pipeline_stamps_all_blob_refs() -> None:
     mock_dispatcher = MagicMock()
     mock_dispatcher.dispatch = _capture_dispatch
 
-    with patch("factory.adapters.discord.discord_inbound._pipeline") as mock_pipeline:
+    with patch(
+        "factory.adapters.discord.discord_inbound.get_inbound_pipeline_kit"
+    ) as mock_get_kit:
         from factory.inbound.attachment_ingest import AttachmentIngestStage
         from factory.inbound.pipeline import InboundPipeline
         from factory.inbound.router import Router
@@ -220,7 +222,10 @@ async def test_dc_multi_attachment_pipeline_stamps_all_blob_refs() -> None:
             dispatcher=mock_dispatcher,  # type: ignore[arg-type]
             ingest_stage=AttachmentIngestStage(),
         )
-        mock_pipeline.run = real_pipeline.run
+        mock_kit = MagicMock()
+        mock_kit.parser_cache = {}
+        mock_kit.pipeline = real_pipeline
+        mock_get_kit.return_value = mock_kit
 
         await handle_message(adapter, raw)
 
@@ -279,7 +284,9 @@ async def test_dc_oversize_attachment_reply_no_hub_push() -> None:
     mock_dispatcher = MagicMock()
     mock_dispatcher.dispatch = _capture_dispatch
 
-    with patch("factory.adapters.discord.discord_inbound._pipeline") as mock_pipeline:
+    with patch(
+        "factory.adapters.discord.discord_inbound.get_inbound_pipeline_kit"
+    ) as mock_get_kit:
         from factory.inbound.attachment_ingest import AttachmentIngestStage
         from factory.inbound.pipeline import InboundPipeline
         from factory.inbound.router import Router
@@ -291,7 +298,10 @@ async def test_dc_oversize_attachment_reply_no_hub_push() -> None:
             dispatcher=mock_dispatcher,  # type: ignore[arg-type]
             ingest_stage=AttachmentIngestStage(),
         )
-        mock_pipeline.run = real_pipeline.run
+        mock_kit = MagicMock()
+        mock_kit.parser_cache = {}
+        mock_kit.pipeline = real_pipeline
+        mock_get_kit.return_value = mock_kit
 
         await handle_message(adapter, raw)
 

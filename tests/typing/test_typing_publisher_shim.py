@@ -86,3 +86,26 @@ class TestOnDoneCallback:
         assert result is True
         await asyncio.sleep(0)  # event-based
         assert seen_scope is _SCOPE
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("typing_enabled", "publisher"),
+        [(False, MagicMock(spec=TypingPublisher)), (True, None)],
+    )
+    async def test_returns_false_without_scheduling_task(
+        self,
+        typing_enabled: bool,
+        publisher: TypingPublisher | None,
+    ) -> None:
+        async def _method(_scope: WorkScope) -> None:
+            await asyncio.sleep(0)
+
+        with patch(
+            "factory.typing.listener.is_typing_enabled",
+            return_value=typing_enabled,
+        ):
+            with patch("factory.typing.listener.asyncio.create_task") as mock_create:
+                result = typing_publisher_shim(_SCOPE, publisher, _method)
+
+        assert result is False
+        mock_create.assert_not_called()

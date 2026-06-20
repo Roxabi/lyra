@@ -10,7 +10,9 @@ from typing import TYPE_CHECKING
 from factory.infrastructure.stores.base.sqlite_base import SqliteStore
 
 if TYPE_CHECKING:
-    from factory.infrastructure.stores.identity.identity_alias_store import IdentityAliasStore
+    from factory.infrastructure.stores.identity.identity_alias_store import (
+        IdentityAliasStore,
+    )
 
 log = logging.getLogger(__name__)
 

@@ -14,11 +14,10 @@ from factory.core.agent.schema.bot_schema import (
     _UPSERT_BOT,
 )
 from factory.core.stores.bot_store_protocol import BotStoreProtocol
+from factory.infrastructure.stores.base.sqlite_base import SqliteStore
 from factory.infrastructure.stores.migrations.bot_store_migrations import (
     run_bot_migrations,
 )
-
-from factory.infrastructure.stores.base.sqlite_base import SqliteStore
 
 log = logging.getLogger(__name__)
 

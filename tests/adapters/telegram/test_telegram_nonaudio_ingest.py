@@ -211,8 +211,9 @@ async def test_tg_photo_pipeline_stamps_blob_ref() -> None:
     mock_dispatcher = MagicMock()
     mock_dispatcher.dispatch = _capture_dispatch
 
-    with patch("factory.adapters.telegram.telegram_inbound._pipeline") as mock_pipeline:
-        # Build a real InboundPipeline but intercept dispatcher
+    with patch(
+        "factory.adapters.telegram.telegram_inbound.get_inbound_pipeline_kit"
+    ) as mock_get_kit:
         from factory.inbound.attachment_ingest import AttachmentIngestStage
         from factory.inbound.pipeline import InboundPipeline
         from factory.inbound.router import Router
@@ -224,7 +225,10 @@ async def test_tg_photo_pipeline_stamps_blob_ref() -> None:
             dispatcher=mock_dispatcher,  # type: ignore[arg-type]
             ingest_stage=AttachmentIngestStage(),
         )
-        mock_pipeline.run = real_pipeline.run
+        mock_kit = MagicMock()
+        mock_kit.parser_cache = {}
+        mock_kit.pipeline = real_pipeline
+        mock_get_kit.return_value = mock_kit
 
         await handle_message(adapter, raw)
 
@@ -273,7 +277,9 @@ async def test_tg_oversize_photo_reply_no_hub_push() -> None:
     mock_dispatcher = MagicMock()
     mock_dispatcher.dispatch = _capture_dispatch
 
-    with patch("factory.adapters.telegram.telegram_inbound._pipeline") as mock_pipeline:
+    with patch(
+        "factory.adapters.telegram.telegram_inbound.get_inbound_pipeline_kit"
+    ) as mock_get_kit:
         from factory.inbound.attachment_ingest import AttachmentIngestStage
         from factory.inbound.pipeline import InboundPipeline
         from factory.inbound.router import Router
@@ -285,7 +291,10 @@ async def test_tg_oversize_photo_reply_no_hub_push() -> None:
             dispatcher=mock_dispatcher,  # type: ignore[arg-type]
             ingest_stage=AttachmentIngestStage(),
         )
-        mock_pipeline.run = real_pipeline.run
+        mock_kit = MagicMock()
+        mock_kit.parser_cache = {}
+        mock_kit.pipeline = real_pipeline
+        mock_get_kit.return_value = mock_kit
 
         await handle_message(adapter, raw)
 

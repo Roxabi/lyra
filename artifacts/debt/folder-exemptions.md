@@ -2,7 +2,7 @@
 id: folder-exemptions
 slug: folder-exemptions
 title: Folders exceeding the 15-file gate
-status: drained
+status: open
 created: 2026-05-11
 drain_slice: "#1958"
 parent_slice: '#1162'
@@ -26,37 +26,32 @@ Exemptions are listed in `tools/folder_exemptions.txt`. Each entry declares a
 local file cap (`# <N> files`) plus a tracking issue.
 
 After the package rename and subsequent decomposition (#848 hub split, #1959 CLI
-subpackage, #1960 stores subpackages), no directory currently exceeds the gate.
-`tools/folder_exemptions.txt` is empty.
+subpackage, #1960 stores subpackages), one directory still exceeds the gate.
 
 ## Sites
 
-`tools/folder_exemptions.txt` is currently empty — no active folder-size exemptions.
+From `tools/folder_exemptions.txt`:
 
-Live counts (post-#1959):
-
-- `src/factory/` — 5 files (`config`, `errors`, `paths`, `__init__`, `__main__`)
-- `src/factory/cli/` — 12 files (command modules moved from package root in #1959)
-- `src/factory/infrastructure/stores/` — 15 files at root plus `base/`, `identity/`,
-  `jobs/`, `kv/`, `migrations/`, `registry/`, `session/` subpackages (#1960)
+- `src/factory/adapters/shared` — 16 files (#1931 inbound context + pipeline glue
+  kit extraction: `inbound_context.py`, `inbound_pipeline.py`, `platform_meta.py`,
+  `typing_shim.py`, plus existing shared adapter helpers)
 
 `artifacts/quality-debt-report.json` `stale_references` is `[]` for this slug.
 
+Drained since last registry refresh:
+
+- `src/factory` root — #1959 moved CLI into `factory/cli/` (5 files remain at root).
+
 ## Drain plan
 
-No active exemptions. When a folder exceeds 15 files during development:
-
-1. Add `<path>  # <N> files — DEBT:folder-exemptions — #<issue> <rationale>` to
-   `tools/folder_exemptions.txt`.
-2. Flip this registry to `status: open` and document the site + drain steps here.
-3. Schedule a subpackage split in the cited issue; remove the line when the folder
-   drops to ≤15 files.
-4. When `tools/folder_exemptions.txt` is empty again, flip back to `status: drained`.
-
-Recent drains (no longer listed in the exemption file):
-
-- `src/factory` root bloat — resolved by #1959 (`factory/cli/` subpackage).
-- Legacy four-folder set from pre-rename layout — resolved by #848 + cap realignment.
+- **`src/factory/adapters/shared` (16 files, #1931):** split inbound pipeline
+  glue (`inbound_context.py`, `inbound_pipeline.py`, `platform_meta.py`,
+  `typing_shim.py`) into `src/factory/adapters/shared/inbound/` or a dedicated
+  `src/factory/adapters/_glue/` package. Target: ≤15 files so the exemption line
+  can be removed.
+- After the folder drops to ≤15 files, remove its entry from
+  `tools/folder_exemptions.txt`. When the file is empty, flip this registry to
+  `status: drained`.
 
 ## Notes
 
@@ -64,4 +59,5 @@ Recent drains (no longer listed in the exemption file):
   the live SSoT.
 - V4 (#760/#773): `core/`, `adapters/`, `bootstrap/` decomposed.
 - V5 (#848): `core/hub/` → `middleware/`, `outbound/`, `pipeline/`.
+- #1959: `factory/cli/` subpackage — drained the former `src/factory` root exemption.
 - Parent epic #1956 tracks post-rename debt-registry hygiene.

@@ -6,6 +6,6 @@
 # into cohesive subdirs. core/hub/ deferred to V5 (follow-up issue).
 # V5 completed under #848 — core/hub/ decomposed into middleware/, outbound/, pipeline/.
 #
-# #1959 moved the cli_* cluster into src/factory/cli/ (12 files). src/factory/
-# root is now 5 modules (config, errors, paths, __init__, __main__) — under cap.
-# Currently EMPTY: no folder exceeds max_files: 15.
+# #1959 drained the src/factory root bloat (cli_* → factory/cli/).
+# #1931 glue-kit extraction pushed adapters/shared to 16 files.
+src/factory/adapters/shared  # 16 files — DEBT:folder-exemptions — #1931 glue kit extraction; split inbound/typing next

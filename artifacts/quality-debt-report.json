@@ -254,6 +254,11 @@
         "__none__": 5
       }
     },
+    "src/factory/adapters/shared": {
+      "DEBT": {
+        "folder-exemptions": 1
+      }
+    },
     "type-arg": {
       "UNTAGGED": {
         "__none__": 3
@@ -268,7 +273,7 @@
       }
     }
   },
-  "generated_at": "2026-06-20T17:17:09.834469+00:00",
+  "generated_at": "2026-06-20T17:18:12.778961+00:00",
   "rows": [
     {
       "bucket": "UNTAGGED",
@@ -3296,6 +3301,13 @@
       "path": "factory.core.processors.processor_registry -> factory.integrations.base",
       "slug": "importlinter-shared-modules-transitive",
       "source": "importlinter"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 11,
+      "path": "src/factory/adapters/shared",
+      "slug": "folder-exemptions",
+      "source": "folder-exemptions"
     }
   ],
   "sources": [

@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 from factory.adapters.telegram import telegram_audio  # noqa: I001 — DEBT:lint-residual
 from factory.adapters.shared._base_outbound import OutboundAdapterBase
 from factory.adapters.shared._shared import TypingTaskManager, resolve_msg
-from factory.adapters.shared.typing_shim import cancel_typing_shim, start_typing_shim
+from factory.adapters.shared.inbound import cancel_typing_shim, start_typing_shim
 from factory.typing import make_typing_factory
 from factory.adapters.telegram.telegram_guard import _make_verifier
 from factory.adapters.telegram.telegram_inbound import (

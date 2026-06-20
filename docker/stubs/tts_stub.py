@@ -24,6 +24,7 @@ import time
 from datetime import datetime, timezone
 
 import nats
+from roxabi_contracts.voice import SUBJECTS, per_worker_tts
 
 NATS_URL = os.getenv("NATS_URL", "nats://localhost:4222")
 WORKER_ID = os.getenv("TTS_STUB_WORKER_ID", "tts-stub-01")
@@ -83,7 +84,7 @@ async def heartbeat_loop(nc: nats.aio.client.Client) -> None:
             "uptime_s": int(time.monotonic() - _start),
             "ts": int(time.time()),
         }
-        await nc.publish("factory.voice.tts.heartbeat", json.dumps(payload).encode())
+        await nc.publish(SUBJECTS.tts_heartbeat, json.dumps(payload).encode())
         await asyncio.sleep(HB_INTERVAL)
 
 
@@ -92,9 +93,9 @@ async def main() -> None:
     nc = await nats.connect(NATS_URL)
 
     await nc.subscribe(
-        "factory.voice.tts.request", queue="tts-workers", cb=handle_request
+        SUBJECTS.tts_request, queue="tts-workers", cb=handle_request
     )
-    await nc.subscribe(f"factory.voice.tts.request.{WORKER_ID}", cb=handle_request)
+    await nc.subscribe(per_worker_tts(WORKER_ID), cb=handle_request)
     print(f"[tts-stub] ready — queue=tts-workers worker={WORKER_ID}", flush=True)
 
     loop = asyncio.get_running_loop()

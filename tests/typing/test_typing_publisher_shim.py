@@ -98,7 +98,7 @@ class TestOnDoneCallback:
         publisher: TypingPublisher | None,
     ) -> None:
         async def _method(_scope: WorkScope) -> None:
-            await asyncio.sleep(0)
+            await asyncio.sleep(0)  # event-based
 
         with patch(
             "factory.typing.listener.is_typing_enabled",

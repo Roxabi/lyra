@@ -53,6 +53,11 @@ def _sanitize(text: str) -> str:
     return text.replace("`", "")
 
 
+def _wrap_inline_code(text: str) -> str:
+    """Wrap sanitized text in backticks for MarkdownV2 and rich-markdown code spans."""
+    return f"`{_sanitize(text)}`"
+
+
 def _accumulate_file_edit(
     accum: "ToolRecapAccumulator", call_id: str, tool_name: str, args: dict
 ) -> None:
@@ -206,7 +211,8 @@ def _format_files(accum: ToolRecapAccumulator) -> list[str]:
     for summary in accum.files.values():
         label = ", ".join(summary.edits) if summary.edits else f"×{summary.count}"
         path = _sanitize(summary.path)
-        lines.append(f"✏️ `{path}` ({label})")
+        # Label outside backticks was a rich-markdown injection surface (#1950).
+        lines.append(f"✏️ `{path}` ({_wrap_inline_code(label)})")
     return lines
 
 

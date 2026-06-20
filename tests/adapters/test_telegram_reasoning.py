@@ -171,13 +171,11 @@ class TestTelegramReasoningRendering:
         )
 
     @pytest.mark.asyncio
-    async def test_reasoning_truncation(self) -> None:
-        """Delta text > 120 chars is truncated to 117 chars + ellipsis (118 total).
-
-        Arrange: adapter with show_intermediate=True; session pre-supplies trace_obj.
-        Act: Start → Delta(200 'x' chars) → End.
-        Assert: the edit call receives text of length 118 ending with '…'.
-        """
+    async def test_reasoning_truncation_legacy_markdownv2(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """MarkdownV2 fallback truncates reasoning >120 chars (#1951 legacy)."""
+        monkeypatch.setenv("FACTORY_TELEGRAM_RICH_MESSAGES", "0")
         # Arrange
         adapter = _make_telegram_adapter()
         trace_mock = _make_trace_send_mock(message_id=503)
@@ -222,6 +220,38 @@ class TestTelegramReasoningRendering:
         assert "…" in last_text, (
             f"Expected truncation ellipsis in edit text, got: {last_text!r}"
         )
+
+    @pytest.mark.asyncio
+    async def test_reasoning_rich_mode_no_truncation_no_literal_asterisks(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Rich <tg-thinking>: full text, no * markdown wrapper (#1949, #1951)."""
+        monkeypatch.setenv("FACTORY_TELEGRAM_RICH_MESSAGES", "1")
+        adapter = _make_telegram_adapter()
+        trace_mock = _make_trace_send_mock(message_id=504)
+        adapter.bot = MagicMock()
+        adapter.bot.edit_message_text = AsyncMock()
+
+        formatter = _make_formatter(adapter)
+        long_reasoning = "Thinking deeply about " + ("x" * 200)
+
+        await formatter.edit_reasoning(
+            trace_mock, ReasoningStartRenderEvent(message_id=_MSG_ID)
+        )
+        await formatter.edit_reasoning(
+            trace_mock,
+            ReasoningDeltaRenderEvent(message_id=_MSG_ID, delta=long_reasoning),
+        )
+        await formatter.edit_reasoning(
+            trace_mock, ReasoningEndRenderEvent(message_id=_MSG_ID)
+        )
+
+        assert adapter.bot.edit_message_text.await_count >= 1
+        rich = adapter.bot.edit_message_text.call_args.kwargs["rich_message"]
+        html = rich.html
+        assert "<tg-thinking>" in html
+        assert long_reasoning in html
+        assert "*" not in html
 
     # NOTE: show_intermediate=False adapter no-op test removed. The gate now
     # lives upstream on StreamProcessor (SC-6) — when disabled, no Reasoning*

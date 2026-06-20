@@ -180,6 +180,11 @@ class OmpWorker(NatsAdapterBase):
 
         model_cfg = envelope.payload.get("model_cfg", {})
         system_prompt = envelope.payload.get("system_prompt", "")
+        requested_model: str | None = None
+        if isinstance(model_cfg, dict):
+            raw_model = model_cfg.get("model")
+            if isinstance(raw_model, str) and raw_model.strip():
+                requested_model = raw_model.strip()
         _cfg_keys = (
             sorted(model_cfg)
             if isinstance(model_cfg, dict)
@@ -187,24 +192,35 @@ class OmpWorker(NatsAdapterBase):
         )
         _sp_len = len(system_prompt) if isinstance(system_prompt, str) else 0
         log.debug(
-            "omp job %s: received model_cfg keys=%s"
-            " system_prompt_len=%d (V1: not applied)"
+            "omp job %s: received model_cfg keys=%s model=%s"
+            " system_prompt_len=%d (system_prompt V1: not applied)"
             " pool_id=%s provider_session_id=%s",
             job_id,
             _cfg_keys,
+            requested_model,
             _sp_len,
             pool_id,
             provider_session_id,
         )
 
         task = asyncio.create_task(
-            self._run_job(str(job_id), str(prompt), provider_session_id)
+            self._run_job(
+                str(job_id),
+                str(prompt),
+                provider_session_id,
+                model=requested_model,
+            )
         )
         self._jobs.add(task)
         task.add_done_callback(self._jobs.discard)
 
     async def _run_job(
-        self, job_id: str, prompt: str, session_file: str | None
+        self,
+        job_id: str,
+        prompt: str,
+        session_file: str | None,
+        *,
+        model: str | None = None,
     ) -> None:
         """Acquire a pool worker, run the job, release on completion."""
         log.info("omp_worker: job_id=%s start", job_id)
@@ -212,7 +228,12 @@ class OmpWorker(NatsAdapterBase):
         worker = None
         try:
             worker = await self._pool.acquire(session_file)
-            await worker.bridge.run(prompt, job_id, session_file=worker.session_file)
+            await worker.bridge.run(
+                prompt,
+                job_id,
+                session_file=worker.session_file,
+                model=model,
+            )
         except Exception as exc:  # pool.acquire / bridge.run  # noqa: BLE001
             # _run_job is create_task-spawned (non-blocking, frees core-NATS dispatch
             # for Model B). Runs *outside* _dispatch guard in adapter_base; must

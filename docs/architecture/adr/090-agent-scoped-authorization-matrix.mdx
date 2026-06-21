@@ -1,0 +1,251 @@
+---
+title: "ADR-090: Agent-Scoped Authorization Matrix (Bots Inherit)"
+description: "Invert auth from bot-centric to agent-centric — each agent is a logical tenant with a user/role grant matrix; bots inherit access from their bound agent; enforcement stays hub-side (C3)"
+status: accepted
+---
+
+> **Current truth** → [`docs/architecture/security-routing.md`](../security-routing.md){#current-truth}
+> This ADR is preserved as a decision record. For up-to-date state and invariants, read the domain page.
+
+## Status
+
+Accepted — 2026-06-21
+
+## Context
+
+Factory authorization is **bot-centric** today:
+
+- `BotRow` carries `owner_users`, `trusted_users`, `trusted_roles`, `default_trust`.
+- `seed_grants_from_bots()` writes platform-prefixed grants into `auth.db`.
+- Hub registers one `Authenticator` per `(platform, bot_id)`.
+- `bot_agent_map` routes `(platform, bot_id) → agent_name`, but **no per-agent ACL** exists.
+
+A user authorized on bot `lyra` (Telegram) automatically reaches whatever agent that bot
+binds to. A user blocked on bot `aryl` (Discord) cannot reach the same agent even if bound
+there too. Authorization is coupled to transport, not to the agent workspace.
+
+Product direction requires **multi-tenant agents** within a single deployment: each agent is
+a logical tenant with its own authorization matrix (users and/or roles). **Bots inherit**
+effective access from the agent they bind to — bots remain transport endpoints, not
+authorization SSoT.
+
+Constraints inherited from prior decisions:
+
+- **C3** (security-routing.md): adapters are untrusted normalizers; hub is authoritative
+  for identity and authorization (#456 trust re-resolution).
+- **ADR-049**: wire contracts live in `roxabi-contracts`; authorization data is not adapter
+  wire payload.
+- **ADR-1946 / #1946**: KV roster projections (`roster.telegram`, `roster.discord`,
+  `roster.web`) carry transport fields only — never auth lists on the wire.
+- **ADR-059**: ports in `factory.core`, SQLite in `factory.infrastructure`, wiring in
+  bootstrap composition root.
+- **ADR-073**: authorization is a hub pipeline stage — not adapter logic.
+
+> **Naming:** "Multi-tenant agents" means **logical agent tenancy** inside one operator-owned
+> instance. It does **not** change the deployment model (still single-instance, single
+> operator per `docs/vision.md`). True multi-instance SaaS tenancy is out of scope.
+
+## Options Considered
+
+### Option A: Keep bot-centric auth; duplicate grants per bot
+
+Copy the same `owner_users` onto every bot bound to agent `lyra_default`.
+
+- **Pros:** No hub pipeline change; TG/DC adapters unchanged.
+- **Cons:** Drift when bots diverge; operator burden scales with bot count; violates
+  "bots inherit from agent"; no single matrix view per agent.
+
+### Option B: Agent-scoped grant matrix in `auth.db`; hub enforces post-binding (chosen)
+
+Introduce `agent_grants` (agent × principal × capability). Effective bot access =
+authorize(user/roles, bound agent). Deprecate `BotRow` auth fields over migration slices.
+
+- **Pros:** Single SSoT per agent; bots are thin transport; C3 preserved; aligns with
+  identity aliases across platforms; KV roster stays auth-free.
+- **Cons:** Hub middleware + schema work; migration from bot grants; pairing and web
+  surfaces need agent-scoped evolution.
+
+### Option C: Per-agent auth in `AgentStore` / agent TOML
+
+Store ACL beside agent config (persona, tools).
+
+- **Pros:** Co-located with agent definition.
+- **Cons:** Mixes mutable runtime grants with relatively static agent config; harder to
+  audit/revoke; `auth.db` already owns grants and pairing writes — splits SSoT.
+
+### Option D: Authorization on NATS KV wire (per-agent roster keys)
+
+Publish allowed principals in `factory-state` KV for adapters to enforce locally.
+
+- **Pros:** Adapters could filter before NATS publish.
+- **Cons:** Violates C3; leaks PII onto the bus; duplicates hub logic; contradicts #1946
+  D3 (adapter projection excludes auth fields).
+
+## Decision
+
+**Option B** is adopted.
+
+### 1. Agent = logical tenant
+
+Each named agent (`lyra_default`, `legal_assistant`, …) owns an **authorization matrix**:
+
+| Field | Meaning |
+|-------|---------|
+| `agent_name` | Tenant key (matches `AgentRow.name`) |
+| `principal.kind` | `user` or `role` |
+| `principal.id` | Stable string, e.g. `tg:user:7377831990`, `dc:user:…`, `dc:role:…` |
+| `capability` | `use` (chat) or `admin` (configure / privileged commands) |
+
+**Fail-safe:** no matching grant → **deny** (`use` not implied).
+
+Global operators in `[admin].user_ids` retain bypass via existing admin resolution
+(`Authenticator` / `is_admin`) until explicitly narrowed in a follow-up ADR.
+
+### 2. Bots inherit from bound agent
+
+```text
+effective_agent(platform, bot_id) := bot_agent_map[(platform, bot_id)]
+
+can_access_bot(msg) :=
+  authorize(effective_agent(...), principals(msg)) == ALLOW
+```
+
+`BotRow` retains **transport-only** fields (`webhook_enabled`, `auto_thread`,
+`thread_hot_hours`, token secret refs). Fields `owner_users`, `trusted_users`,
+`trusted_roles`, `default_trust` are **deprecated** — migrated to `agent_grants`, then
+removed from BotStore seed path.
+
+`bot_agent_map` and hub bindings (`RoutingKey` + wildcard `*` for TG/DC) are unchanged.
+
+### 3. SSoT and storage
+
+| Data | SSoT | Notes |
+|------|------|-------|
+| Grant matrix | `auth.db` table `agent_grants` | Same DB as pairing grants |
+| Bot → agent binding | `BotStore` / `bot_agent_map` | Unchanged |
+| Adapter roster KV | `factory-state` | Names + transport only — no auth |
+| Agent config | `AgentStore` | Persona/tools — not authorization |
+
+Authorization **never** appears on NATS subjects or KV roster documents.
+
+### 4. Core port (hexagonal)
+
+New port in `factory.core.auth` (names indicative):
+
+```python
+class AgentAuthorizer(Protocol):
+    def authorize(
+        self,
+        *,
+        agent_name: str,
+        user_id: str,
+        roles: Sequence[str] = (),
+    ) -> AuthDecision: ...
+```
+
+Implementation: `AgentGrantStore` in `factory.infrastructure.stores` (SQLite, `auth.db`).
+Pure models (`Principal`, `AgentGrant`, `AuthDecision`) live in `factory.core.auth` with
+no I/O.
+
+Principal resolution reuses `IdentityAliasStore.resolve_aliases()` so linked TG/DC
+identities inherit grants on the canonical key when seeded that way.
+
+Discord role grants use `dc:role:<snowflake>` principals; `msg.roles` is already present
+on `InboundMessage` (C3).
+
+### 5. Hub pipeline placement (ADR-073)
+
+New stage **`AuthorizeAgentMiddleware`** immediately **after** `ResolveBindingMiddleware`
+(stage 6 today — agent name known from binding).
+
+```text
+… → ResolveBinding → AuthorizeAgent → MessagePrep → Pool submit
+```
+
+During migration, legacy `ResolveTrustMiddleware` + `TrustGuardMiddleware` may run in
+parallel (deny if **either** layer denies). Bot-level trust is removed once
+`migrate-bot-grants` has run and operators confirm parity.
+
+Denied messages: drop with `MessageDropped(reason="agent_unauthorized")` — same silent
+reject posture as `trust_blocked` unless a user-visible error path is added later.
+
+### 6. Adapter impact (C3 preserved)
+
+| Surface | Change |
+|---------|--------|
+| Telegram adapter | **None** — still forwards `trust_level=PUBLIC`, `user_id` |
+| Discord adapter | **None** — still forwards `roles` |
+| Web smoke / dashboard | **Future** — HTTP session auth supplies real `user_id`; agent picker
+  filtered by `AgentAuthorizer`; localhost bind remains phase-1 deploy hardening only |
+| NATS ACL | **None** — no new identities or KV grants |
+
+### 7. Operator interface
+
+CLI verbs (implementation slice, not blocking this ADR):
+
+```bash
+factory agent grant <agent> --user tg:user:<id> [--capability use|admin]
+factory agent grant <agent> --role dc:role:<id> [--capability use|admin]
+factory agent revoke <agent> --user tg:user:<id>
+factory agent auth list <agent>
+factory agent migrate-bot-grants   # one-shot BotRow → agent_grants
+```
+
+Pairing (`/join`) evolves to agent-scoped grants in a follow-up slice (code + grant on
+validated agent, not platform-wide `TRUSTED` only).
+
+### 8. Migration slices (execution order)
+
+1. **Foundation** — schema `agent_grants`, `AgentAuthorizer`, `AuthorizeAgentMiddleware`,
+   unit + middleware tests.
+2. **Dual-read** — bot grants AND agent grants both honored (deny if neither allows).
+3. **Migration CLI** — `migrate-bot-grants`, operator docs.
+4. **Deprecation** — stop `seed_grants_from_bots`; BotRow auth fields read-only legacy.
+5. **Surfaces** — agent-scoped pairing, web roster filter, remove legacy trust stages.
+
+Each slice is an isolated PR; no big-bang cutover.
+
+## Consequences
+
+### Positive
+
+- Authorization axis aligns with product mental model: **agent workspace**, not chat bot.
+- One matrix per agent; N bots binding the same agent share identical access automatically.
+- C3 and #1946 wire hygiene preserved — no auth on KV or adapter containers.
+- Identity aliases enable cross-platform single grant.
+- Clear extension point for web dashboard and future RBAC capabilities.
+
+### Negative
+
+- Short-term **dual SSoT** during migration (bot grants + agent grants) — must time-box.
+- Operator workflow changes: grants move from `factory bot patch owner_users` to
+  `factory agent grant`.
+- Web phase 1 (`user_id="smoke"`, open roster) is intentionally permissive until slice 5.
+- `TrustLevel` enum becomes legacy for inbound gating; capabilities are the long-term
+  vocabulary.
+
+### Neutral
+
+- `docs/architecture/security-routing.md` `#auth` section will need a follow-up edit after
+  slice 1 lands (mark bot-centric flow as superseded by this ADR).
+- No `roxabi-contracts` change required unless a future audit event type records
+  `agent_unauthorized` drops (optional, slice 1+).
+
+## Key invariants
+
+- Adapters **must not** enforce agent authorization — hub only.
+- `agent_grants` **must not** be published to `factory-state` KV or NATS subjects.
+- `AuthorizeAgentMiddleware` **must** run after binding resolution (agent name known).
+- No grant for `(agent, principal, capability)` → **deny** (fail-safe).
+- Bot effective access **must** derive from `bot_agent_map → agent_name`, not from
+  parallel bot-local ACL once deprecation completes.
+
+## See also
+
+- `docs/architecture/security-routing.md` — C3 trust re-resolution (superseded in part)
+- ADR-001 / ADR-005 — `RoutingKey`, bindings, per-user pools
+- ADR-049 — contracts package boundary
+- ADR-059 — hexagonal placement
+- ADR-073 — pipeline stage decomposition
+- Issue #1946 — adapter roster KV (auth-free projection)
+- Issue #1977 — web smoke adapter (`roster.web`, phase-1 localhost hardening)

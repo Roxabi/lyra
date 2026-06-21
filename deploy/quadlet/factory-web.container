@@ -1,0 +1,42 @@
+[Unit]
+Description=Factory Web smoke adapter — browser chat + SSE
+# After= orders startup; no Requires=/BindsTo= so a hub restart does not
+# propagate a stop to the adapter. Adapters reconnect to NATS on their own
+# once the hub is back; tearing them down blocks auto-recovery.
+After=factory-hub.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+Image=ghcr.io/roxabi/factory:staging-svc
+Label=io.containers.autoupdate=registry
+ContainerName=factory-web
+Network=roxabi.network
+NoNewPrivileges=true
+ReadOnly=true
+DropCapability=all
+UserNS=keep-id:uid=1500,gid=1500
+Environment=NATS_URL=nats://factory-nats:4222
+Secret=factory-nats-web,type=mount,target=factory-nats-web.seed,uid=1500,gid=1500,mode=0400
+Environment=NATS_NKEY_SEED_PATH=/run/secrets/factory-nats-web.seed
+Environment=FACTORY_TYPING_ENABLED=false
+Environment=FACTORY_WEB_HOST=0.0.0.0
+Environment=FACTORY_WEB_PORT=8765
+Environment=ROXABI_FACTORY_DIR=/home/factory/.roxabi/factory
+# Agent picker reads AgentStore (auth.db) — ro bind of hub data volume.
+Volume=factory-data.volume:/home/factory/.roxabi/factory:ro,z
+Volume=%h/.roxabi/factory/config.toml:/app/config.toml:ro,z
+# Localhost-only — smoke UI is not a public ingress surface (phase 1).
+PublishPort=127.0.0.1:8765:8765
+Exec=factory adapter web
+HealthCmd=python3 -c 'import urllib.request,sys; r=urllib.request.urlopen("http://127.0.0.1:8765/api/agents",timeout=3); sys.exit(0 if r.status==200 else 1)'
+HealthInterval=30s
+HealthStartPeriod=45s
+
+[Service]
+Restart=on-failure
+RestartSec=10
+CPUQuota=100%
+
+[Install]
+WantedBy=default.target

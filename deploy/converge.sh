@@ -85,7 +85,7 @@ _do_converge() {
         # 8) Restart factory NATS clients (only on structural drift)
         echo "==> Lyra: restarting containers..."
         local failed=""
-        for svc in factory-hub factory-telegram factory-discord factory-clipool factory-turn-writer factory-gh-helper factory-blobstore factory-omp; do
+        for svc in factory-hub factory-telegram factory-discord factory-web factory-clipool factory-turn-writer factory-gh-helper factory-blobstore factory-omp; do
             systemctl --user restart "${svc}" \
                 || { echo "ERROR: restart ${svc} failed"; failed="${failed} ${svc}"; }
         done

@@ -6,7 +6,9 @@
 
 set -euo pipefail
 
-source "$(dirname "$0")/lib/deploy-common.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/deploy-common.sh"
+# shellcheck source=lib/quadlet-units.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/quadlet-units.sh"
 
 # Guard against concurrent runs (exit 0 if locked)
 # NOTE: with_deploy_lock is called at the END of this file, after _do_converge is defined.
@@ -85,7 +87,10 @@ _do_converge() {
         # 8) Restart factory NATS clients (only on structural drift)
         echo "==> Lyra: restarting containers..."
         local failed=""
-        for svc in factory-hub factory-telegram factory-discord factory-clipool factory-turn-writer factory-gh-helper factory-blobstore factory-omp; do
+        mapfile -t _all_svcs < <(quadlet_containers)
+        [[ ${#_all_svcs[@]} -ge 9 ]] || { echo "ERROR: quadlet_containers returned ${#_all_svcs[@]} units (<9)" >&2; exit 1; }
+        mapfile -t _client_svcs < <(printf '%s\n' "${_all_svcs[@]}" | grep -v '^factory-nats$' || true)
+        for svc in "${_client_svcs[@]}"; do
             systemctl --user restart "${svc}" \
                 || { echo "ERROR: restart ${svc} failed"; failed="${failed} ${svc}"; }
         done

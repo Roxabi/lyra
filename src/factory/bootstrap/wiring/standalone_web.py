@@ -17,9 +17,8 @@ from factory.bootstrap.wiring._standalone_wiring_common import (
     TypingDeps,
     wire_bot_common,
 )
+from factory.bootstrap.wiring.kv_agent_roster import seed_web_agent_roster
 from factory.core.messaging.message import Platform
-from factory.infrastructure.stores.agent_store import AgentStore
-from factory.paths import factory_data_dir
 from roxabi_nats.readiness import wait_for_hub
 
 log = logging.getLogger(__name__)
@@ -38,15 +37,6 @@ async def _close_web_wired(wired: list[tuple]) -> None:
     await close_safely("web", *close_coros)
 
 
-async def _load_agent_names() -> list[str]:
-    store = AgentStore(factory_data_dir() / "auth.db")
-    await store.connect()
-    try:
-        return sorted(row.name for row in store.get_all())
-    finally:
-        await store.close()
-
-
 async def bootstrap_web_standalone(
     nc: Any,
     raw_config: dict,
@@ -59,9 +49,9 @@ async def bootstrap_web_standalone(
     del raw_config
     await wait_for_hub(nc)
     js = nc.jetstream()
-    agent_names = await _load_agent_names()
+    agent_names = await seed_web_agent_roster(js)
     if not agent_names:
-        sys.exit("No agents in AgentStore — seed agents before starting web adapter")
+        sys.exit("No agents in roster.web — hub must publish agent roster first")
 
     host = os.environ.get("FACTORY_WEB_HOST", "0.0.0.0")
     port = int(os.environ.get("FACTORY_WEB_PORT", "8765"))

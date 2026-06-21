@@ -22,9 +22,7 @@ Environment=NATS_NKEY_SEED_PATH=/run/secrets/factory-nats-web.seed
 Environment=FACTORY_TYPING_ENABLED=false
 Environment=FACTORY_WEB_HOST=0.0.0.0
 Environment=FACTORY_WEB_PORT=8765
-Environment=ROXABI_FACTORY_DIR=/home/factory/.roxabi/factory
-# Agent picker reads AgentStore (auth.db) — ro bind of hub data volume.
-Volume=factory-data.volume:/home/factory/.roxabi/factory:ro,z
+# Agent picker reads roster.web from factory-state KV (hub publishes at boot).
 Volume=%h/.roxabi/factory/config.toml:/app/config.toml:ro,z
 # Localhost-only — smoke UI is not a public ingress surface (phase 1).
 PublishPort=127.0.0.1:8765:8765

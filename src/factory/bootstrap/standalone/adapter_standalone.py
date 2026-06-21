@@ -29,7 +29,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
 
     Args:
         raw_config: Parsed config dict (lyra config.toml content).
-        platform: "telegram" or "discord".
+        platform: "telegram", "discord", or "web".
         _stop: Optional event for graceful shutdown (tests inject this).
     """
     nats_url = os.environ.get("NATS_URL")
@@ -75,6 +75,18 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
             )
 
             await bootstrap_discord_standalone(
+                nc,
+                raw_config,
+                config_bundle,
+                platform_enum,
+                _stop=_stop,
+            )
+        elif platform == "web":
+            from factory.bootstrap.wiring.standalone_web import (
+                bootstrap_web_standalone,
+            )
+
+            await bootstrap_web_standalone(
                 nc,
                 raw_config,
                 config_bundle,

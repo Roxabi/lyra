@@ -13,6 +13,7 @@ from factory.bootstrap.factory.hub.hub_llm_client import build_llm_client
 from factory.bootstrap.factory.llm_overlay import init_nats_llm
 from factory.bootstrap.factory.voice_overlay import init_nats_stt, init_nats_tts
 from factory.bootstrap.types import BotAuthBundle, BuildHubDeps, VoiceBundle
+from factory.bootstrap.wiring.nats_web_wiring import wire_nats_web_smoke
 from factory.bootstrap.wiring.nats_wiring import (
     NatsProxyWiringDeps,
     wire_nats_proxies,
@@ -140,7 +141,13 @@ async def _build_hub_and_wire(  # noqa: PLR0913 — unavoidable wiring surface
             circuit_registry=circuit_registry,
         )
     )
-    proxies = tg_proxies + dc_proxies
-    dispatchers = tg_dispatchers + dc_dispatchers
+    web_proxy, web_dispatcher = wire_nats_web_smoke(
+        hub=hub,
+        nc=nc,
+        agent_configs=agent_configs,
+        circuit_registry=circuit_registry,
+    )
+    proxies = tg_proxies + dc_proxies + [web_proxy]
+    dispatchers = tg_dispatchers + dc_dispatchers + [web_dispatcher]
 
     return hub, proxies, dispatchers, cli_nats_driver, nats_llm_client

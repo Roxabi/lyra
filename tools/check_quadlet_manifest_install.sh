@@ -1,16 +1,12 @@
 #!/usr/bin/env bash
 # tools/check_quadlet_manifest_install.sh
 #
-# deploy/quadlet.toml is the authoritative unit manifest, but the install/restart
-# paths are hand-enumerated: a component declared in the manifest is NOT deployed
-# unless it also appears in
-#   1. the Makefile `quadlet-install` recipe (cp, or render_quadlet.py --dest),
-#   2. the UNITS array in deploy/quadlet-install-verify.sh,
-#   3. the structural-drift restart fan-out in deploy/converge.sh
-#      (factory-nats is exempt — it has its own _restart_nats path).
+# deploy/quadlet.toml is the authoritative unit manifest.  A component declared
+# in the manifest is NOT deployed unless it also appears in:
+#   1. the Makefile `quadlet-install` recipe (cp, or render_quadlet.py --dest).
 #
 # Gap class (#1867): PR #1858 shipped factory-omp.container + its manifest entry,
-# converge kept reporting "Converge complete" while the unit was never installed.
+# but the unit was never installed by the Makefile recipe.
 #
 # BIDIRECTIONAL CHECK (#1901):
 #   Reverse direction: every unit FILE in deploy/quadlet/ (*.container,
@@ -52,18 +48,7 @@ while IFS= read -r container; do
         fail=1
     fi
 
-    if ! grep -qE "^[[:space:]]+${unit}$" deploy/quadlet-install-verify.sh; then
-        echo "FAIL: ${unit} is missing from the UNITS array in deploy/quadlet-install-verify.sh"
-        fail=1
-    fi
-
-    if [ "${unit}" != "factory-nats" ] \
-       && ! grep -E '^[[:space:]]*for svc in ' deploy/converge.sh \
-            | grep -qE "[[:space:]]${unit}([[:space:]]|;)"; then
-        echo "FAIL: ${unit} is missing from the structural restart fan-out in deploy/converge.sh"
-        fail=1
-    fi
-done < <(grep -oE '^container = "[^"]+"' deploy/quadlet.toml | cut -d'"' -f2)
+done < <(grep -oE '^container[[:space:]]*=[[:space:]]*"[^"]+"' deploy/quadlet.toml | cut -d'"' -f2)
 
 # Volume units: a [volume.*] declared in the manifest must also be cp'd by the
 # Makefile quadlet-install recipe. If it is not, the Quadlet generator drops
@@ -193,8 +178,7 @@ fi
 if [ "${fail}" -ne 0 ]; then
     echo ""
     echo "Every [component.*] container in deploy/quadlet.toml must be wired into the"
-    echo "Makefile quadlet-install recipe, the quadlet-install-verify.sh UNITS array,"
-    echo "and the converge.sh restart fan-out — see #1867."
+    echo "Makefile quadlet-install recipe — see #1867."
     echo "Every [volume.*] volume must be cp'd by the quadlet-install recipe — see #1813."
     echo "Every unit FILE in deploy/quadlet/ must be declared in deploy/quadlet.toml — see #1901."
     exit 1

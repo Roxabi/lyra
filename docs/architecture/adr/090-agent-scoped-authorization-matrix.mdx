@@ -94,7 +94,7 @@ Each named agent (`lyra_default`, `legal_assistant`, …) owns an **authorizatio
 | `agent_name` | Tenant key (matches `AgentRow.name`) |
 | `principal.kind` | `user` or `role` |
 | `principal.id` | Stable string, e.g. `tg:user:7377831990`, `dc:user:…`, `dc:role:…` |
-| `capability` | `use` (chat) or `admin` (configure / privileged commands) |
+| `capability` | `use` (chat) or `admin` (configure / privileged commands) — **MVP grants `use` only; `admin` is a deferred follow-up** |
 
 **Fail-safe:** no matching grant → **deny** (`use` not implied).
 
@@ -147,8 +147,11 @@ Implementation: `AgentGrantStore` in `factory.infrastructure.stores` (SQLite, `a
 Pure models (`Principal`, `AgentGrant`, `AuthDecision`) live in `factory.core.auth` with
 no I/O.
 
-Principal resolution reuses `IdentityAliasStore.resolve_aliases()` so linked TG/DC
-identities inherit grants on the canonical key when seeded that way.
+Principal resolution can reuse `IdentityAliasStore.resolve_aliases()` so linked TG/DC
+identities inherit grants on the canonical key. **Deferred for the MVP: grants are
+platform-scoped (raw `tg:user:…` / `dc:user:…`); cross-platform alias resolution is a
+follow-up** — a ban on one platform does not propagate to a linked identity on another
+until aliasing lands.
 
 Discord role grants use `dc:role:<snowflake>` principals; `msg.roles` is already present
 on `InboundMessage` (C3).
@@ -166,8 +169,14 @@ During migration, legacy `ResolveTrustMiddleware` + `TrustGuardMiddleware` may r
 parallel (deny if **either** layer denies). Bot-level trust is removed once
 `migrate-bot-grants` has run and operators confirm parity.
 
-Denied messages: drop with `MessageDropped(reason="agent_unauthorized")` — same silent
-reject posture as `trust_blocked` unless a user-visible error path is added later.
+Denied messages use a **pull-model inline refusal** (not a push DM): the stage
+short-circuits with a reply *in the originating channel* directing the user to the public
+bot (e.g. "écris à @bot_public"), degrading to a pointer to factory.roxabi.dev when no
+public bot is deployed on that platform. Unsolicited push direct-messages are **not**
+attempted — Telegram prohibits bot-initiated DMs to users who never messaged the bot first
+("Forbidden: bot can't initiate conversation") and Discord returns error 50007 when the
+user has DMs disabled. A `MessageDropped(reason="agent_unauthorized")` audit event is still
+emitted for observability.
 
 ### 6. Adapter impact (C3 preserved)
 
@@ -188,8 +197,11 @@ factory agent grant <agent> --user tg:user:<id> [--capability use|admin]
 factory agent grant <agent> --role dc:role:<id> [--capability use|admin]
 factory agent revoke <agent> --user tg:user:<id>
 factory agent auth list <agent>
-factory agent migrate-bot-grants   # one-shot BotRow → agent_grants
+factory agent migrate-bot-grants   # one-shot BotRow → agent_grants (migration phase)
 ```
+
+**MVP:** only `grant` / `revoke` / `auth list` with `--capability use` (the default);
+`--capability admin` and `migrate-bot-grants` belong to later phases (see §8).
 
 Pairing (`/join`) evolves to agent-scoped grants in a follow-up slice (code + grant on
 validated agent, not platform-wide `TRUSTED` only).
@@ -202,6 +214,11 @@ validated agent, not platform-wide `TRUSTED` only).
 3. **Migration CLI** — `migrate-bot-grants`, operator docs.
 4. **Deprecation** — stop `seed_grants_from_bots`; BotRow auth fields read-only legacy.
 5. **Surfaces** — agent-scoped pairing, web roster filter, remove legacy trust stages.
+
+**MVP scope (epic #1980):** slice 1 (Foundation) + the operator CLI
+(`grant` / `revoke` / `auth list`, `use` capability) + the pull-model refusal (§5) + the
+public-agent default posture. Dual-read, `migrate-bot-grants`, deprecation, cross-platform
+aliasing, and the `admin` capability are explicit later phases.
 
 Each slice is an isolated PR; no big-bang cutover.
 

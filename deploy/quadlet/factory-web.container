@@ -16,6 +16,9 @@ NoNewPrivileges=true
 ReadOnly=true
 DropCapability=all
 UserNS=keep-id:uid=1500,gid=1500
+# web.env holds TAILSCALE_IPV4 (M₁'s tailnet IP) for the PublishPort bind below;
+# generated idempotently by deploy/install.sh §3. No `-` prefix (Podman 5.7 literal).
+EnvironmentFile=%h/.roxabi/factory/env/web.env
 Environment=NATS_URL=nats://factory-nats:4222
 Secret=factory-nats-web,type=mount,target=factory-nats-web.seed,uid=1500,gid=1500,mode=0400
 Environment=NATS_NKEY_SEED_PATH=/run/secrets/factory-nats-web.seed
@@ -24,14 +27,26 @@ Environment=FACTORY_WEB_HOST=0.0.0.0
 Environment=FACTORY_WEB_PORT=8765
 # Agent picker reads roster.web from factory-state KV (hub publishes at boot).
 Volume=%h/.roxabi/factory/config.toml:/app/config.toml:ro,z
-# Localhost-only — smoke UI is not a public ingress surface (phase 1).
-PublishPort=127.0.0.1:8765:8765
+# Bind to M₁'s Tailscale IPv4 so the smoke UI is reachable from the Tailnet but NOT the
+# LAN. This adapter has NO auth (unlike factory-blobstore's bearer token, #1330) — Tailnet
+# membership is the sole access boundary. ${TAILSCALE_IPV4} comes from web.env. Fail-closed:
+# the [Service] ExecStartPre guard blocks startup if unset, so PublishPort never silently
+# falls back to 0.0.0.0:8765 (LAN). See deploy/AGENTS.md §Network exposure tiers (#1992).
+PublishPort=${TAILSCALE_IPV4}:8765:8765
 Exec=factory adapter web
 HealthCmd=python3 -c 'import urllib.request,sys; r=urllib.request.urlopen("http://127.0.0.1:8765/api/agents",timeout=3); sys.exit(0 if r.status==200 else 1)' || exit 1
 HealthInterval=30s
 HealthStartPeriod=45s
 
 [Service]
+# Re-declare web.env in [Service] scope so ${TAILSCALE_IPV4} is visible to ExecStartPre —
+# the [Container] EnvironmentFile is Podman's --env-file (container scope) only; the
+# generated [Service] otherwise carries no env vars (mirrors factory-blobstore #1330).
+EnvironmentFile=%h/.roxabi/factory/env/web.env
+# Fail-closed guard: refuse to start when TAILSCALE_IPV4 is empty/unset/whitespace-only,
+# else Podman resolves PublishPort to 0.0.0.0:8765 (LAN-exposed). tr-strip before -n
+# because POSIX `[ -n "   " ]` is TRUE on whitespace-only values (#1368).
+ExecStartPre=/bin/sh -c 'v=$(printf "%s" "${TAILSCALE_IPV4}" | tr -d "[:space:]"); [ -n "$v" ] || exit 1'
 Restart=on-failure
 RestartSec=10
 CPUQuota=100%

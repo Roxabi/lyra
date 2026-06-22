@@ -127,7 +127,7 @@ quality_gates:
     enabled: true
     stage: pre-push
     script: tools/check_quadlet_manifest_install.sh
-    description: bidirectional manifest↔install — every container/volume/network/pod declared in deploy/quadlet.toml is wired into Makefile quadlet-install + verify UNITS + converge fan-out (forward, #1867), AND every on-disk unit file in deploy/quadlet/ is declared in quadlet.toml (reverse — orphan-install guard, #1901)
+    description: bidirectional manifest↔install — every container/volume/network/pod declared in deploy/quadlet.toml is wired into Makefile quadlet-install (forward, #1867), AND every on-disk unit file in deploy/quadlet/ is declared in quadlet.toml (reverse — orphan-install guard, #1901)
 
   secrets_source:
     enabled: true

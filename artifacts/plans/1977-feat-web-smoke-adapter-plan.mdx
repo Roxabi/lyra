@@ -1,0 +1,31 @@
+---
+issue: 1977
+slug: feat-web-smoke-adapter
+status: approved
+---
+
+# Plan — feat(web): smoke adapter
+
+## Tasks
+
+1. Add `Platform.WEB`, `WebMeta`, update `PlatformMeta` union + allowlist `session_id`.
+2. Implement `src/factory/adapters/web/` — `WebSessionHub`, `WebFormatter`, `WebAdapter`, `web_server.py`.
+3. `bootstrap_web_standalone` + `adapter_standalone` branch + `factory adapter web` CLI.
+4. `wire_nats_web_smoke` in hub assembly — proxy, auth, per-agent bindings.
+5. Tests under `tests/adapters/web/`.
+
+## File groups
+
+| Agent | Files |
+|-------|-------|
+| contracts | `message.py`, `_sanitize.py` |
+| adapter | `adapters/web/*`, `wiring/standalone_web.py` |
+| bootstrap | `adapter_standalone.py`, `hub/hub_assembly.py`, `cli.py` |
+| tests | `tests/adapters/web/*` |
+
+## Task IDs
+
+- T1: platform + meta
+- T2: web adapter core
+- T3: bootstrap + hub wire
+- T4: tests

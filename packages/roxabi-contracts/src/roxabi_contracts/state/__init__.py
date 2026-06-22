@@ -1,5 +1,6 @@
 """factory-state JetStream KV wire contracts."""
 
+from .agent_roster import WEB_ROSTER_KEY, WebAgentRosterDocument
 from .bot_roster import (
     FACTORY_STATE_BUCKET,
     DiscordRosterBot,
@@ -11,6 +12,8 @@ from .bot_roster import (
 
 __all__ = [
     "FACTORY_STATE_BUCKET",
+    "WEB_ROSTER_KEY",
+    "WebAgentRosterDocument",
     "DiscordRosterBot",
     "PlatformRosterDocument",
     "RosterBotEntry",

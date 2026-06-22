@@ -132,6 +132,12 @@ def _adapter_discord() -> None:
     _run_adapter("discord")
 
 
+@adapter_app.command("web")
+def _adapter_web() -> None:
+    """Start the web smoke adapter (FastAPI + SSE) connected to NATS."""
+    _run_adapter("web")
+
+
 @adapter_app.command("clipool")
 def _adapter_clipool() -> None:
     """Start the standalone CliPool NATS worker."""

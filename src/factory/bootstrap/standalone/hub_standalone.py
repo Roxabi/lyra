@@ -30,6 +30,7 @@ from factory.bootstrap.standalone.hub_standalone_helpers import (
     load_agent_configs,
     start_mint_failure_subscriber,
 )
+from factory.bootstrap.wiring.kv_agent_roster import publish_agent_roster
 from factory.bootstrap.wiring.kv_bot_roster import publish_bot_roster
 from factory.bootstrap.wiring.kv_watch_channels import publish_watch_channels
 from factory.core.messaging.utils.metrics import log_contracts_version
@@ -251,6 +252,12 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
             await publish_bot_roster(_audio_js, stores.bot)
         except nats.errors.Error as exc:
             log.critical("hub: failed to publish bot roster: %s", exc)
+            raise
+
+        try:
+            await publish_agent_roster(_audio_js, stores.agent)
+        except nats.errors.Error as exc:
+            log.critical("hub: failed to publish web agent roster: %s", exc)
             raise
 
         await announce_hub_ready(nc)

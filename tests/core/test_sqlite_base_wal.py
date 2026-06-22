@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import sqlite3
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
+
+import aiosqlite
+import pytest
 
 from factory.infrastructure.stores.base.sqlite_base import (
     SqliteStore,
@@ -188,5 +192,50 @@ class TestPeriodicCheckpointTask:
                 f"Expected _checkpoint() to be called at least once, "
                 f"got {spy.call_count}"
             )
+        finally:
+            await store.close()
+
+
+class TestWalFallback:
+    """_open_db survives a WAL pragma failure (read-only / contended mount) (#1989)."""
+
+    async def test_wal_failure_does_not_crash_open(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """A store whose WAL pragma raises OperationalError still opens (fallback)."""
+        store = _SimpleStore(tmp_path / "ro.db")
+        real_connect = aiosqlite.connect
+
+        async def _fake_connect(path: str) -> aiosqlite.Connection:
+            db = await real_connect(path)
+            orig_execute = db.execute
+
+            def _execute(sql: str, *a: object, **k: object):  # type: ignore[no-untyped-def]
+                # aiosqlite execute returns an awaitable cursor-context-manager;
+                # pass it through unchanged for non-WAL calls so both `await` and
+                # `async with` (the checkpoint-on-close path) keep working.
+                if "journal_mode=WAL" in sql:
+                    raise sqlite3.OperationalError("unable to open database file")
+                return orig_execute(sql, *a, **k)
+
+            db.execute = _execute  # type: ignore[method-assign]
+            return db
+
+        with (
+            patch(
+                "factory.infrastructure.stores.base.sqlite_base.aiosqlite.connect",
+                _fake_connect,
+            ),
+            caplog.at_level(logging.WARNING),
+        ):
+            await store.connect()  # must NOT raise despite the WAL failure
+
+        try:
+            assert store._db is not None  # connection opened anyway
+            assert store._checkpoint_task is None  # no checkpoint task without WAL
+            assert any("WAL unavailable" in r.message for r in caplog.records)
+            # the fallback store must stay usable for reads in rollback-journal mode
+            async with store._db.execute("SELECT 1") as cur:
+                assert await cur.fetchone() == (1,)
         finally:
             await store.close()

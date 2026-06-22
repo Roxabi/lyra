@@ -11,20 +11,14 @@
 # Exits non-zero if any unit fails to reach `active`.
 set -euo pipefail
 # shellcheck source=lib/env.sh
-source "$(dirname "$0")/lib/env.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/env.sh"
+# shellcheck source=lib/quadlet-units.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/quadlet-units.sh"
 
-# Units derived from .container files.  Quadlet maps <name>.container → <name>.service.
-UNITS=(
-    factory-nats
-    factory-hub
-    factory-telegram
-    factory-discord
-    factory-clipool
-    factory-gh-helper
-    factory-blobstore
-    factory-turn-writer
-    factory-omp
-)
+# Units derived from deploy/quadlet.toml at runtime.  Quadlet maps <name>.container → <name>.service.
+mapfile -t UNITS < <(quadlet_containers)
+# 9 = current factory container count in deploy/quadlet.toml; fail-fast on empty/partial parse — ¬a strict-equality check (adding a 10th is fine)
+[[ ${#UNITS[@]} -ge 9 ]] || { echo "ERROR: quadlet_containers returned ${#UNITS[@]} units (<9)" >&2; exit 1; }
 
 # ── 1. Reload daemon so Quadlet generates fresh .service files ────────────────
 echo "[quadlet] daemon-reload ..."

@@ -27,7 +27,7 @@ Volume=%h/.roxabi/factory/config.toml:/app/config.toml:ro,z
 # Localhost-only — smoke UI is not a public ingress surface (phase 1).
 PublishPort=127.0.0.1:8765:8765
 Exec=factory adapter web
-HealthCmd=python3 -c 'import urllib.request,sys; r=urllib.request.urlopen("http://127.0.0.1:8765/api/agents",timeout=3); sys.exit(0 if r.status==200 else 1)'
+HealthCmd=python3 -c 'import urllib.request,sys; r=urllib.request.urlopen("http://127.0.0.1:8765/api/agents",timeout=3); sys.exit(0 if r.status==200 else 1)' || exit 1
 HealthInterval=30s
 HealthStartPeriod=45s
 

@@ -476,13 +476,16 @@ degrades to `None`: audio attachments are disabled and a warning is logged; no c
 
 #### BlobStore env file
 
-`~/.roxabi/factory/env/blobstore.env` is a Quadlet env file consumed by `factory-blobstore.container` at
-container start via `EnvironmentFile=%h/.roxabi/factory/env/blobstore.env`. It is NOT loaded by the
-factory application itself.
+`~/.roxabi/factory/env/blobstore.env` and `~/.roxabi/factory/env/web.env` are Quadlet env files
+consumed at container start via `EnvironmentFile=` by `factory-blobstore.container` and
+`factory-web.container` respectively. They are NOT loaded by the factory application itself — each
+carries `TAILSCALE_IPV4` for the unit's Tailnet-bound publish port (see `deploy/AGENTS.md
+§Network exposure tiers`).
 
 | File | Versioned | Purpose |
 |------|-----------|---------|
-| `~/.roxabi/factory/env/blobstore.env` (on M₁) | No (operator copy) | Live env file read by the container at startup |
+| `~/.roxabi/factory/env/blobstore.env` (on M₁) | No (operator copy) | Live env file read by `factory-blobstore` at startup |
+| `~/.roxabi/factory/env/web.env` (on M₁) | No (operator copy) | Live env file read by `factory-web` at startup |
 
 **Bootstrap:** `deploy/install.sh` §1c generates this file idempotently — it skips creation
 if the file already exists, and regenerates it with `--force`.

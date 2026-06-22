@@ -42,4 +42,15 @@ class WebSessionHub:
         try:
             session.queue.put_nowait(event)
         except asyncio.QueueFull:
-            pass
+            # Terminal events (done/error) must never be dropped — the SSE
+            # generator only exits when it dequeues one. Evict the oldest queued
+            # item to make room. Non-terminal events (deltas/pings) may drop.
+            if event.get("type") in {"done", "error"}:
+                try:
+                    session.queue.get_nowait()
+                except asyncio.QueueEmpty:
+                    pass
+                try:
+                    session.queue.put_nowait(event)
+                except asyncio.QueueFull:
+                    pass

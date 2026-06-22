@@ -86,9 +86,7 @@ async def bootstrap_web_standalone(
         )
     )
 
-    stop = _stop if _stop is not None else asyncio.Event()
-    if _stop is None:
-        setup_signal_handlers(stop)
+    stop = setup_shutdown_event(_stop)
 
     try:
         await stop.wait()

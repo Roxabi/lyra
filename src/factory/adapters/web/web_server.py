@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from factory.adapters.web.web_adapter import WebAdapter
@@ -20,7 +20,9 @@ _HTML = """<!DOCTYPE html>
   <title>Factory Web Smoke</title>
   <style>
     body { font-family: system-ui, sans-serif; margin: 2rem; max-width: 48rem; }
-    #log { border: 1px solid #ccc; min-height: 12rem; padding: 1rem; white-space: pre-wrap; }
+    #log {
+      border: 1px solid #ccc; min-height: 12rem; padding: 1rem; white-space: pre-wrap;
+    }
     .row { display: flex; gap: 0.5rem; margin-top: 1rem; }
     select, input, button { font-size: 1rem; padding: 0.4rem; }
     input { flex: 1; }
@@ -97,7 +99,8 @@ class ChatResponse(BaseModel):
     accepted: bool = True
 
 
-def create_app(adapter: "WebAdapter") -> FastAPI:
+# noqa C901: FastAPI route-registration factory — nested handlers inflate mccabe count.
+def create_app(adapter: "WebAdapter") -> FastAPI:  # noqa: C901
     app = FastAPI(title="Factory Web Smoke", docs_url=None, redoc_url=None)
 
     @app.get("/", response_class=HTMLResponse)
@@ -121,6 +124,8 @@ def create_app(adapter: "WebAdapter") -> FastAPI:
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if adapter._outbound_listener is None:  # noqa: SLF001 — smoke wiring
+            raise HTTPException(status_code=503, detail="adapter not ready")
         adapter._outbound_listener.cache_inbound(msg)  # noqa: SLF001 — smoke wiring
         await adapter._inbound_bus.put(Platform.WEB, msg)
         return ChatResponse(session_id=session_id)
@@ -130,15 +135,22 @@ def create_app(adapter: "WebAdapter") -> FastAPI:
         session = adapter.sessions.get_or_create(session_id)
 
         async def event_gen() -> Any:
-            while not session.closed:
-                try:
-                    item = await asyncio.wait_for(session.queue.get(), timeout=120.0)
-                except TimeoutError:
-                    yield "data: " + json.dumps({"type": "ping"}) + "\n\n"
-                    continue
-                yield "data: " + json.dumps(item) + "\n\n"
-                if item.get("type") in {"done", "error"}:
-                    break
+            try:
+                while not session.closed:
+                    try:
+                        item = await asyncio.wait_for(
+                            session.queue.get(), timeout=120.0
+                        )
+                    except TimeoutError:
+                        yield "data: " + json.dumps({"type": "ping"}) + "\n\n"
+                        continue
+                    yield "data: " + json.dumps(item) + "\n\n"
+                    if item.get("type") in {"done", "error"}:
+                        break
+            finally:
+                # Runs on normal completion AND on client disconnect (generator
+                # cancellation) — without this the session leaks in _sessions.
+                adapter.sessions.close(session_id)
 
         return StreamingResponse(event_gen(), media_type="text/event-stream")
 

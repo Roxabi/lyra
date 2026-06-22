@@ -10,6 +10,11 @@ StartLimitIntervalSec=60
 StartLimitBurst=5
 
 [Container]
+# #1989: SIGTERM grace before Podman's 10s-default SIGKILL (the omp
+# double-restart SIGKILL during converge). NB [Container] StopTimeout=
+# is the podman container stop window, NOT [Service] TimeoutStopSec=
+# (which only bounds systemd's wait on the podman process).
+StopTimeout=120
 Image=ghcr.io/roxabi/factory:staging
 Label=io.containers.autoupdate=registry
 ContainerName=factory-clipool
@@ -79,7 +84,9 @@ HealthInterval=30s
 [Service]
 Restart=on-failure
 RestartSec=10
-TimeoutStopSec=120
+# #1989: must exceed [Container] StopTimeout=120 or systemd SIGKILLs the
+# podman wrapper first (user-service default is 90s), capping the grace.
+TimeoutStopSec=130
 CPUQuota=400%
 ExecStartPre=/bin/bash -c 'test -e %h/.claude.json || echo "{}" > %h/.claude.json'
 ExecStartPre=/bin/bash -c 'test -e %h/.claude/.credentials.json || { mkdir -p %h/.claude && echo "{}" > %h/.claude/.credentials.json; }'

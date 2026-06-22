@@ -27,6 +27,7 @@ SessionUpdateFn = Callable[["InboundMessage", str, str], Awaitable[None]]
 class Platform(str, Enum):
     TELEGRAM = "telegram"
     DISCORD = "discord"
+    WEB = "web"
 
 
 @dataclass(frozen=True)
@@ -47,11 +48,16 @@ class DiscordMeta:
 
 
 @dataclass(frozen=True)
+class WebMeta:
+    session_id: str = ""
+
+
+@dataclass(frozen=True)
 class GenericMeta:
     pass
 
 
-PlatformMeta = TelegramMeta | DiscordMeta | GenericMeta
+PlatformMeta = TelegramMeta | DiscordMeta | WebMeta | GenericMeta
 
 
 @dataclass(frozen=True)
@@ -64,7 +70,7 @@ class RoutingContext:
     must match the dispatcher's own identity.
     """
 
-    platform: str  # "telegram" | "discord"
+    platform: str  # "telegram" | "discord" | "web"
     bot_id: str  # bot identifier ("main")
     scope_id: str  # canonical routing scope (chat:123, channel:456, thread:789)
     thread_id: str | None = None

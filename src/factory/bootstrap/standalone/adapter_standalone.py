@@ -7,6 +7,7 @@ import logging
 import os
 import ssl
 import sys
+from typing import TYPE_CHECKING
 
 import nats.errors
 
@@ -16,7 +17,31 @@ from factory.core.messaging.utils.metrics import log_contracts_version
 from roxabi_nats import nats_connect
 from roxabi_nats.connect import scrub_nats_url
 
+if TYPE_CHECKING:
+    from nats.aio.client import Client as NATS
+
 log = logging.getLogger(__name__)
+
+
+async def _close_quietly(nc: NATS) -> None:
+    """Close a NATS connection, tolerating an already-torn-down transport.
+
+    During an abnormal shutdown the server can drop the connection first (e.g.
+    factory-nats restarting mid-converge → ``nats: unexpected EOF``), tearing
+    down the asyncio transport while the client is not yet ``CLOSED``. A bare
+    ``nc.close()`` in that window can raise (e.g. ``TypeError`` from the
+    transport teardown / ``wait_closed()`` on a dead transport), masking the
+    real exit path. Guard on ``is_closed`` and swallow any residual teardown
+    error — close is best-effort on the way out. (#1989)
+    """
+    if nc.is_closed:
+        return
+    try:
+        await nc.close()
+    except Exception:  # noqa: BLE001 — best-effort close during shutdown
+        log.warning(
+            "adapter_standalone: nc.close() failed during shutdown", exc_info=True
+        )
 
 
 async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migration-sequence-bootstrap
@@ -96,4 +121,4 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
         else:
             sys.exit(f"Unknown platform: {platform!r}")
     finally:
-        await nc.close()
+        await _close_quietly(nc)

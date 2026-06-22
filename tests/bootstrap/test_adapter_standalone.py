@@ -58,6 +58,7 @@ async def test_telegram_bootstrap_wires_listener_and_calls_astart() -> None:
     stop.set()  # return immediately
 
     mock_nc = AsyncMock()
+    mock_nc.is_closed = False  # real open NATS conn → _close_quietly closes it
     mock_nc.subscribe = AsyncMock(return_value=AsyncMock())
 
     mock_adapter = AsyncMock()
@@ -109,6 +110,7 @@ async def test_discord_bootstrap_wires_listener_and_calls_astart() -> None:
     stop.set()
 
     mock_nc = AsyncMock()
+    mock_nc.is_closed = False  # real open NATS conn → _close_quietly closes it
     mock_adapter_dc = AsyncMock()
     mock_adapter_dc._bot_id = "main"
     mock_adapter_dc.astart = AsyncMock()
@@ -175,6 +177,7 @@ async def test_nc_close_called_even_on_exception() -> None:
     )
 
     mock_nc = AsyncMock()
+    mock_nc.is_closed = False  # real open NATS conn → _close_quietly closes it
     (load_token_patch_exc,) = _cred_store_patches("t")
     with (
         patch("nats.connect", AsyncMock(return_value=mock_nc)),
@@ -206,6 +209,7 @@ async def test_telegram_astart_failure_cleans_up_wired_resources(
     raw_config = {}
 
     mock_nc = AsyncMock()
+    mock_nc.is_closed = False  # real open NATS conn → _close_quietly closes it
 
     mock_adapter_first = AsyncMock()
     mock_adapter_first._bot_id = "first"
@@ -281,6 +285,7 @@ async def test_discord_astart_failure_cleans_up_wired_resources(
     raw_config = {}
 
     mock_nc = AsyncMock()
+    mock_nc.is_closed = False  # real open NATS conn → _close_quietly closes it
 
     mock_adapter_first = AsyncMock()
     mock_adapter_first._bot_id = "first"
@@ -345,3 +350,43 @@ async def test_discord_astart_failure_cleans_up_wired_resources(
     mock_adapter_second.close.assert_awaited_once()
     mock_bus_second.stop.assert_awaited_once()
     mock_nc.close.assert_awaited_once()
+
+
+class TestCloseQuietly:
+    """_close_quietly tolerates a torn-down transport during shutdown (#1989)."""
+
+    async def test_swallows_torn_down_transport(self) -> None:
+        """nc.close() raising TypeError (nulled transport) must not propagate."""
+        from factory.bootstrap.standalone.adapter_standalone import _close_quietly
+
+        nc = MagicMock()
+        nc.is_closed = False
+        nc.close = AsyncMock(side_effect=TypeError("'NoneType' object is not callable"))
+
+        await _close_quietly(nc)  # must NOT raise
+
+        nc.close.assert_awaited_once()
+
+    async def test_skips_when_already_closed(self) -> None:
+        """An already-closed connection is not closed again."""
+        from factory.bootstrap.standalone.adapter_standalone import _close_quietly
+
+        nc = MagicMock()
+        nc.is_closed = True
+        nc.close = AsyncMock()
+
+        await _close_quietly(nc)
+
+        nc.close.assert_not_awaited()
+
+    async def test_closes_open_connection(self) -> None:
+        """An open connection is closed exactly once."""
+        from factory.bootstrap.standalone.adapter_standalone import _close_quietly
+
+        nc = MagicMock()
+        nc.is_closed = False
+        nc.close = AsyncMock()
+
+        await _close_quietly(nc)
+
+        nc.close.assert_awaited_once()

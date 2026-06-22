@@ -234,5 +234,8 @@ class TestWalFallback:
             assert store._db is not None  # connection opened anyway
             assert store._checkpoint_task is None  # no checkpoint task without WAL
             assert any("WAL unavailable" in r.message for r in caplog.records)
+            # the fallback store must stay usable for reads in rollback-journal mode
+            async with store._db.execute("SELECT 1") as cur:
+                assert await cur.fetchone() == (1,)
         finally:
             await store.close()

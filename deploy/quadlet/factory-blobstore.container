@@ -80,6 +80,9 @@ EnvironmentFile=%h/.roxabi/factory/env/blobstore.env
 # Operationally equivalent to closing the port (nothing accepts traffic).
 ExecStartPre=/bin/sh -c 'v=$(printf "%s" "${TAILSCALE_IPV4}" | tr -d "[:space:]"); [ -n "$v" ] || exit 1'
 Restart=on-failure
+# #1989: must exceed [Container] StopTimeout=120 or systemd SIGKILLs the
+# podman wrapper first (user-service default is 90s), capping the grace.
+TimeoutStopSec=130
 RestartSec=10
 # Cold-path I/O service — 1 full core is sufficient; prevents it from starving
 # hub + NATS under load. Increase to 200% if blob throughput warrants it.

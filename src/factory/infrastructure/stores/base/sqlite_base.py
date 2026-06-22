@@ -91,8 +91,8 @@ class SqliteStore:
             await self._db.execute(stmt)
         await self._db.commit()
         # Only run the periodic checkpoint when WAL is actually active — a
-        # checkpoint pragma is meaningless (and would error) under the rollback
-        # journal we fall back to when WAL is unavailable.
+        # checkpoint pragma is a harmless no-op under the rollback journal we
+        # fall back to when WAL is unavailable, so skip the task entirely.
         if wal_enabled:
             self._checkpoint_task = asyncio.get_running_loop().create_task(
                 self._run_periodic_checkpoint(),
@@ -158,7 +158,7 @@ class SqliteStore:
             pass
 
     async def close(self) -> None:
-        """Checkpoint WAL and close the database connection."""
+        """Checkpoint the WAL if active (a harmless no-op otherwise), then close."""
         if self._checkpoint_task is not None:
             self._checkpoint_task.cancel()
             try:

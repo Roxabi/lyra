@@ -27,11 +27,12 @@ async def _close_quietly(nc: NATS) -> None:
     """Close a NATS connection, tolerating an already-torn-down transport.
 
     During an abnormal shutdown the server can drop the connection first (e.g.
-    factory-nats restarting mid-converge → ``nats: unexpected EOF``). nats-py
-    nulls its asyncio transport on that EOF, so a later ``nc.close()`` calls
-    ``writelines()`` on ``None`` → ``TypeError`` that masks the real exit path.
-    Guard on ``is_closed`` and swallow any residual teardown error — close is
-    best-effort on the way out. (#1989)
+    factory-nats restarting mid-converge → ``nats: unexpected EOF``), tearing
+    down the asyncio transport while the client is not yet ``CLOSED``. A bare
+    ``nc.close()`` in that window can raise (e.g. ``TypeError`` from the
+    transport teardown / ``wait_closed()`` on a dead transport), masking the
+    real exit path. Guard on ``is_closed`` and swallow any residual teardown
+    error — close is best-effort on the way out. (#1989)
     """
     if nc.is_closed:
         return

@@ -54,6 +54,9 @@ HealthStartPeriod=60s
 
 [Service]
 Restart=on-failure
+# #1989: must exceed [Container] StopTimeout=120 or systemd SIGKILLs the
+# podman wrapper first (user-service default is 90s), capping the grace.
+TimeoutStopSec=130
 RestartSec=10
 
 [Install]

@@ -44,6 +44,7 @@
     "082-blobstore-driven-port",
     "087-memory-ssot-cortex",
     "---Security & Routing---",
+    "090-agent-scoped-authorization-matrix",
     "046-nkey-provisioning-declarative-authconf",
     "051-per-identity-nats-inbox-prefix",
     "057-security-event-audit-infrastructure",

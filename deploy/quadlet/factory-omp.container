@@ -5,6 +5,11 @@ After=factory-omp-sessions-volume.service
 Requires=factory-omp-sessions-volume.service
 
 [Container]
+# #1989: SIGTERM grace before Podman's 10s-default SIGKILL (the omp
+# double-restart SIGKILL during converge). NB [Container] StopTimeout=
+# is the podman container stop window, NOT [Service] TimeoutStopSec=
+# (which only bounds systemd's wait on the podman process).
+StopTimeout=120
 # Agent-runtime image — carries the factory CLI plus /opt/omp/omp baked from the
 # factory-omp-base carrier (Dockerfile COPY --from). The carrier itself is FROM
 # scratch and can never exec `factory adapter omp` (#1867).
@@ -50,7 +55,9 @@ HealthInterval=30s
 [Service]
 Restart=on-failure
 RestartSec=10
-TimeoutStopSec=120
+# #1989: must exceed [Container] StopTimeout=120 or systemd SIGKILLs the
+# podman wrapper first (user-service default is 90s), capping the grace.
+TimeoutStopSec=130
 
 [Install]
 WantedBy=default.target

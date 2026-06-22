@@ -1,0 +1,30 @@
+---
+issue: 1977
+slug: feat-web-smoke-adapter
+status: approved
+---
+
+# Spec — feat(web): smoke adapter
+
+## Acceptance criteria
+
+1. **Platform** — `Platform.WEB = "web"`, `WebMeta` with `session_id`.
+2. **Hub wiring** — `NatsChannelProxy` for `(web, smoke)`; binding per agent `scope_id=agent:<name>` → that agent; smoke authenticator (trusted default).
+3. **Adapter process** — `factory adapter web` starts FastAPI on `FACTORY_WEB_PORT` (default 8765); publishes inbound to NATS; consumes outbound via `NatsOutboundListener`.
+4. **UI** — GET `/` HTML chat; GET `/api/agents` lists agents from AgentStore; POST `/api/chat` `{agent, text, session_id?}`; GET `/api/stream/{session_id}` SSE (`delta`, `done`, `error`).
+5. **Tests** — unit: formatter/send; integration: hub binding resolution; HTTP: agents + chat stub.
+
+## Breadboard
+
+```
+Browser → FastAPI → NatsBus.put(web) → Hub → Agent → NatsChannelProxy → NATS outbound → WebAdapter → SSE → Browser
+```
+
+## Slices
+
+| # | Deliverable |
+|---|-------------|
+| 1 | message.py Platform.WEB + WebMeta |
+| 2 | web adapter (formatter, outbound, server) |
+| 3 | standalone bootstrap + CLI + hub wiring |
+| 4 | tests |

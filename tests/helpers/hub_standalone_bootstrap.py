@@ -94,6 +94,7 @@ class HubBootstrapStubOptions:
     ensure_active_jobs_kv: HookFactory | None = None
     publish_watch_channels: HookFactory | None = None
     publish_bot_roster: HookFactory | None = None
+    publish_agent_roster: HookFactory | None = None
     announce_hub_ready: HookFactory | MagicMock | None = None
     _resolved: dict[str, HookFactory | MagicMock] = field(
         default_factory=dict, repr=False
@@ -114,12 +115,13 @@ class HubBootstrapStubOptions:
                 self.ensure_active_jobs_kv = _recording_hook(
                     order, "ensure_active_jobs_kv", return_value=MagicMock()
                 )
-            if self.publish_watch_channels is None:
-                self.publish_watch_channels = _recording_hook(
-                    order, "publish_watch_channels"
-                )
-            if self.publish_bot_roster is None:
-                self.publish_bot_roster = _recording_hook(order, "publish_bot_roster")
+            for _attr in (
+                "publish_watch_channels",
+                "publish_bot_roster",
+                "publish_agent_roster",
+            ):
+                if getattr(self, _attr) is None:
+                    setattr(self, _attr, _recording_hook(order, _attr))
 
         if isinstance(self.ensure_stream, BaseException):
             ensure_stream_impl: HookFactory | MagicMock = AsyncMock(
@@ -150,6 +152,11 @@ class HubBootstrapStubOptions:
             "publish_bot_roster": (
                 self.publish_bot_roster
                 if self.publish_bot_roster is not None
+                else AsyncMock()
+            ),
+            "publish_agent_roster": (
+                self.publish_agent_roster
+                if self.publish_agent_roster is not None
                 else AsyncMock()
             ),
             "announce_hub_ready": (
@@ -183,6 +190,7 @@ def _apply_pre_announce_stubs(
         f"{_HUB}.publish_watch_channels", hooks["publish_watch_channels"]
     )
     monkeypatch.setattr(f"{_HUB}.publish_bot_roster", hooks["publish_bot_roster"])
+    monkeypatch.setattr(f"{_HUB}.publish_agent_roster", hooks["publish_agent_roster"])
     monkeypatch.setattr(f"{_HUB}.announce_hub_ready", hooks["announce_hub_ready"])
 
 

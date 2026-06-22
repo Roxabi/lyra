@@ -172,23 +172,27 @@ fi
 # Wire generated token path into SEEDS so the policy loop can install it.
 SEEDS[factory_blobstore_token]="${BLOBSTORE_TOK}"
 
-# ── 3. Bootstrap blobstore.env (idempotent) ─────────────────────────────────
-
-ENV_FILE="${HOME}/.roxabi/factory/env/blobstore.env"
-if [[ ! -f "${ENV_FILE}" || "$FORCE" -eq 1 ]]; then
-  log "Generating ${ENV_FILE} ..."
-  run mkdir -p "$(dirname "${ENV_FILE}")"
-  if [[ "$DRY_RUN" -eq 0 ]]; then
-    TS_IP=$(tailscale ip -4 2>/dev/null | head -1 || true)
-    # `run` only wraps exec; stream redirection (>) is dry-run-gated via the if block above.
-    (umask 0077; printf 'TAILSCALE_IPV4=%s\n' "${TS_IP}" > "${ENV_FILE}")
-    log "[ok] generated ${ENV_FILE} (TAILSCALE_IPV4=${TS_IP:-<empty>})"
+# ── 3. Bootstrap tailnet env files (idempotent) ─────────────────────────────
+# TAILSCALE_IPV4 is host-global (M₁'s tailnet IP); written per-service so each unit's
+# EnvironmentFile is self-contained. Consumed by tailnet-bound PublishPort + the
+# fail-closed ExecStartPre guard in factory-blobstore (#1330) and factory-web (#1992).
+TS_IP=$(tailscale ip -4 2>/dev/null | head -1 || true)
+for _svc in blobstore web; do
+  ENV_FILE="${HOME}/.roxabi/factory/env/${_svc}.env"
+  if [[ ! -f "${ENV_FILE}" || "$FORCE" -eq 1 ]]; then
+    log "Generating ${ENV_FILE} ..."
+    run mkdir -p "$(dirname "${ENV_FILE}")"
+    if [[ "$DRY_RUN" -eq 0 ]]; then
+      # `run` only wraps exec; stream redirection (>) is dry-run-gated via the if block above.
+      (umask 0077; printf 'TAILSCALE_IPV4=%s\n' "${TS_IP}" > "${ENV_FILE}")
+      log "[ok] generated ${ENV_FILE} (TAILSCALE_IPV4=${TS_IP:-<empty>})"
+    else
+      echo "[dry-run] would generate ${ENV_FILE} (TAILSCALE_IPV4 from tailscale ip -4)"
+    fi
   else
-    echo "[dry-run] would generate ${ENV_FILE} (TAILSCALE_IPV4 from tailscale ip -4)"
+    echo "  [skip] ${ENV_FILE} already exists (use --force to regenerate)"
   fi
-else
-  echo "  [skip] ${ENV_FILE} already exists (use --force to regenerate)"
-fi
+done
 
 # Validate that all required (non-optional) seed files are present before touching podman.
 MISSING=0

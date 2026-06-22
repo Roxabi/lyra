@@ -84,7 +84,7 @@ Unified: `factory start` → hub + adapters in 1 process + embedded NATS
 
 ## Container deployment
 
-Prod: Podman Quadlet (systemd `--user`) on M₁ (`factory-hub` role). Nine containers: `factory-nats`, `factory-hub`, `factory-telegram`, `factory-discord`, `factory-clipool`, `factory-gh-helper`, `factory-turn-writer`, `factory-blobstore`, `factory-omp`. Install: `deploy/install.sh` (idempotent). Manifest: `deploy/quadlet.toml`.
+Prod: Podman Quadlet (systemd `--user`) on M₁ (`factory-hub` role). Ten containers: `factory-nats`, `factory-hub`, `factory-telegram`, `factory-discord`, `factory-web`, `factory-clipool`, `factory-gh-helper`, `factory-turn-writer`, `factory-blobstore`, `factory-omp`. Install: `deploy/install.sh` (idempotent). Manifest: `deploy/quadlet.toml`.
 
 → `docs/runbooks/README.md` — ops runbooks (install, secrets, diagnostic)
 → `~/projects/docs/container-deployment-standard.md` — 18 standards (S7 secret target, S8 naming, S12 RestartSec=10)

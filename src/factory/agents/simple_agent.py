@@ -26,6 +26,7 @@ from factory.core.processors.stream_processor import StreamProcessor
 from factory.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
 from factory.integrations.base import SessionTools
 from factory.llm.base import LlmProvider
+from factory.llm.registry import ProviderRegistry
 
 from .simple_agent_prompts import build_llm_text
 
@@ -38,7 +39,7 @@ if TYPE_CHECKING:
     from factory.core.messaging.render_events import RenderEvent
     from factory.core.ports.stt import STTProtocol
     from factory.core.ports.tts import TtsProtocol
-    from factory.infrastructure.stores.agent_store import AgentStore
+    from factory.infrastructure.stores.registry.agent_store import AgentStore
     from factory.llm.llm_client import LlmClient
 
 log = logging.getLogger(__name__)
@@ -75,6 +76,7 @@ class SimpleAgent(AgentBase):
         agent_store: "AgentStore | None" = None,
         session_tools: SessionTools | None = None,
         cli_nats_driver: "LlmClient | None" = None,
+        provider_registry: ProviderRegistry | None = None,
     ) -> None:
         resolved_agents_dir = agents_dir or _AGENTS_DIR
         rc = (
@@ -85,35 +87,10 @@ class SimpleAgent(AgentBase):
         self._runtime_config_holder = RuntimeConfigHolder(rc)
         self._runtime_config_path = resolved_agents_dir / "lyra_runtime.toml"
         self._provider = provider
+        self._provider_registry = provider_registry
         self._cli_pool = cli_pool
         self._cli_nats_driver = cli_nats_driver
-        # Resolve capability-aware backends ONCE at construction — avoids
-        # repeated if/elif fan-out at every dispatch site (reset, register,
-        # link_lyra_session).  Candidates are the explicit CLI transports only;
-        # _provider is intentionally excluded so that MagicMock-based tests
-        # (which auto-create any attribute) do not accidentally match.
-        _candidates = (cli_pool, cli_nats_driver)
-
-        def _has_session_iface(x: object) -> bool:
-            # @runtime_checkable Protocol isinstance does NOT trigger MagicMock's
-            # __getattr__ in Python 3.12+; use getattr() which does.
-            return (
-                callable(getattr(x, "link_lyra_session", None))
-                and callable(getattr(x, "reset", None))
-                and callable(getattr(x, "queue_resume", None))
-            )
-
-        def _has_workspace_iface(x: object) -> bool:
-            return callable(getattr(x, "switch_cwd", None))
-
-        self._session_backend: SessionAware | None = next(
-            (x for x in _candidates if x is not None and _has_session_iface(x)),  # type: ignore[assignment]
-            None,
-        )
-        self._workspace_backend: WorkspaceAware | None = next(
-            (x for x in _candidates if x is not None and _has_workspace_iface(x)),  # type: ignore[assignment]
-            None,
-        )
+        self._last_resolved_backend = config.llm_config.backend
         self._session_tools = session_tools
         super().__init__(
             config,
@@ -124,10 +101,72 @@ class SimpleAgent(AgentBase):
             tts=tts,
             agent_store=agent_store,
         )
+        self._sync_session_backends(self._resolve_provider())
+
+    @staticmethod
+    def _session_capable(candidate: object) -> bool:
+        # @runtime_checkable Protocol isinstance does NOT trigger MagicMock's
+        # __getattr__ in Python 3.12+; use getattr() which does.
+        return (
+            callable(getattr(candidate, "link_lyra_session", None))
+            and callable(getattr(candidate, "reset", None))
+            and callable(getattr(candidate, "queue_resume", None))
+        )
+
+    def _resolve_provider(self) -> LlmProvider:
+        if self._provider_registry is not None:
+            return self._provider_registry.get(self.config.llm_config.backend)
+        return self._provider
+
+    def _sync_session_backends(self, provider: LlmProvider) -> None:
+        """Point session/workspace callbacks at the active backend (#1914)."""
+        backend = self.config.llm_config.backend
+        # claude-cli session ops route through CliPool/cli_nats — not the driver
+        # (#620). Provider is intentionally excluded for that path so MagicMock
+        # drivers in tests do not steal callbacks.
+        if backend in ("omp-rpc", "nats") and isinstance(provider, SessionAware):
+            self._session_backend = provider
+            self._workspace_backend = (
+                provider if isinstance(provider, WorkspaceAware) else None
+            )
+            return
+
+        candidates = (self._cli_pool, self._cli_nats_driver)
+        self._session_backend = next(
+            (
+                candidate
+                for candidate in candidates
+                if candidate is not None and self._session_capable(candidate)
+            ),
+            None,
+        )  # type: ignore[assignment]
+        self._workspace_backend = next(
+            (
+                candidate
+                for candidate in candidates
+                if candidate is not None
+                and callable(getattr(candidate, "switch_cwd", None))
+            ),
+            None,
+        )  # type: ignore[assignment]
+
+    def _ensure_provider_for_turn(self) -> LlmProvider:
+        provider = self._resolve_provider()
+        backend = self.config.llm_config.backend
+        if backend != self._last_resolved_backend:
+            log.info(
+                "Backend transition for agent %r: %s -> %s",
+                self.config.name,
+                self._last_resolved_backend,
+                backend,
+            )
+            self._sync_session_backends(provider)
+            self._last_resolved_backend = backend
+        return provider
 
     def is_backend_alive(self, pool_id: str) -> bool:
         """Delegate to the LlmProvider's liveness check."""
-        return self._provider.is_alive(pool_id)
+        return self._resolve_provider().is_alive(pool_id)
 
     async def reset_backend(self, pool_id: str) -> None:
         """Kill the backend process so the next turn gets a fresh one."""
@@ -219,6 +258,7 @@ class SimpleAgent(AgentBase):
         _resolve_context() calls pool.resume_session() on the first message
         after a daemon restart.
         """
+        self._sync_session_backends(self._resolve_provider())
         self._maybe_register_reset(pool)
         self._maybe_register_resume(pool)
 
@@ -228,6 +268,7 @@ class SimpleAgent(AgentBase):
         pool: Pool,
     ) -> "Response | AsyncIterator[RenderEvent]":
         self._maybe_reload()
+        provider = self._ensure_provider_for_turn()
 
         # /voice pre-router: rewrite as voice-modality LLM request
         _voice_rewritten = self._handle_voice_command(msg)
@@ -253,7 +294,7 @@ class SimpleAgent(AgentBase):
         )
 
         # Streaming path: wrap with StreamProcessor to emit RenderEvent (#387)
-        _stream_fn = getattr(self._provider, "stream", None)
+        _stream_fn = getattr(provider, "stream", None)
         if model_cfg.streaming and _stream_fn is not None:
             stream_iter = _stream_fn(
                 pool.pool_id,
@@ -268,7 +309,7 @@ class SimpleAgent(AgentBase):
             )
             return processor.process(stream_iter)
 
-        result = await self._provider.complete(
+        result = await provider.complete(
             pool.pool_id,
             text,
             model_cfg,

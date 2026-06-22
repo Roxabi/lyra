@@ -75,15 +75,14 @@ async def test_dc_voice_routes_via_pipeline_not_direct_push() -> None:
     message = _make_discord_message()
     audio_attachment = _make_audio_attachment()
 
-    mock_pipeline = MagicMock()
-    mock_pipeline.run = AsyncMock(return_value=None)
-
-    # handle_audio shares discord_inbound._pipeline (single pipeline per adapter)
-    with patch("factory.adapters.discord.discord_inbound._pipeline", mock_pipeline):
+    mock_guarded = AsyncMock(return_value=None)
+    with patch(
+        "factory.adapters.shared.inbound.run_inbound_guarded",
+        mock_guarded,
+    ):
         await handle_audio(adapter, message, audio_attachment, TrustLevel.PUBLIC)
 
-    # Assert: pipeline.run was called exactly once
-    mock_pipeline.run.assert_awaited_once()
+    mock_guarded.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -105,27 +104,21 @@ async def test_dc_eager_read_and_pending_attachment_routed() -> None:
     message = _make_discord_message()
     audio_attachment = _make_audio_attachment()
 
-    # Capture the InboundMessage that _pipeline.run receives.
     captured_msg: list = []
 
-    async def _capture_run(raw, ctx, parser, **kwargs):  # noqa: ARG001
-        msg = parser.parse(raw, ctx)
-        captured_msg.append(msg)
+    async def _capture_guarded(*, raw_message, **kwargs):  # noqa: ARG001
+        captured_msg.append(raw_message)
 
-    mock_pipeline = MagicMock()
-    mock_pipeline.run = AsyncMock(side_effect=_capture_run)
-
-    # handle_audio shares discord_inbound._pipeline (single pipeline per adapter)
-    with patch("factory.adapters.discord.discord_inbound._pipeline", mock_pipeline):
+    with patch(
+        "factory.adapters.shared.inbound.run_inbound_guarded",
+        side_effect=_capture_guarded,
+    ):
         await handle_audio(adapter, message, audio_attachment, TrustLevel.PUBLIC)
 
     # Attachment was read eagerly (synchronously in the handler).
     audio_attachment.read.assert_awaited_once()
 
-    # pipeline.run was called once.
-    mock_pipeline.run.assert_awaited_once()
-
-    # The routed message carries a non-None pending_attachment (FetchFn closure).
+    # run_inbound_guarded was called once with normalized hub audio.
     assert len(captured_msg) == 1
     routed = captured_msg[0]
     assert routed.pending_attachment is not None
@@ -150,10 +143,11 @@ async def test_dc_too_large_reply_no_pipeline() -> None:
     # Size exactly one byte over the limit
     oversized = _make_audio_attachment(size=adapter._max_audio_bytes + 1)
 
-    mock_pipeline = MagicMock()
-    mock_pipeline.run = AsyncMock(return_value=None)
-
-    with patch("factory.adapters.discord.discord_inbound._pipeline", mock_pipeline):
+    mock_guarded = AsyncMock(return_value=None)
+    with patch(
+        "factory.adapters.shared.inbound.run_inbound_guarded",
+        mock_guarded,
+    ):
         await handle_audio(adapter, message, oversized, TrustLevel.PUBLIC)
 
     # (a) Reply was sent
@@ -162,7 +156,7 @@ async def test_dc_too_large_reply_no_pipeline() -> None:
     assert "large" in reply_text.lower()
 
     # (b) Pipeline was NOT reached — load-bearing assertion
-    mock_pipeline.run.assert_not_awaited()
+    mock_guarded.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -188,10 +182,11 @@ async def test_dc_download_failed_reply_no_pipeline() -> None:
         side_effect=discord.HTTPException(resp_mock, "service unavailable")
     )
 
-    mock_pipeline = MagicMock()
-    mock_pipeline.run = AsyncMock(return_value=None)
-
-    with patch("factory.adapters.discord.discord_inbound._pipeline", mock_pipeline):
+    mock_guarded = AsyncMock(return_value=None)
+    with patch(
+        "factory.adapters.shared.inbound.run_inbound_guarded",
+        mock_guarded,
+    ):
         await handle_audio(adapter, message, attachment, TrustLevel.PUBLIC)
 
     # (a) Reply was sent
@@ -204,7 +199,7 @@ async def test_dc_download_failed_reply_no_pipeline() -> None:
     )
 
     # (b) Pipeline was NOT reached — load-bearing assertion
-    mock_pipeline.run.assert_not_awaited()
+    mock_guarded.assert_not_awaited()
 
 
 # ---------------------------------------------------------------------------
@@ -227,10 +222,11 @@ async def test_dc_invalid_magic_reply_no_pipeline() -> None:
     # Return bytes that look like plain text — fails every magic signature
     attachment.read = AsyncMock(return_value=b"NOTAUDIO" + b"\x00" * 20)
 
-    mock_pipeline = MagicMock()
-    mock_pipeline.run = AsyncMock(return_value=None)
-
-    with patch("factory.adapters.discord.discord_inbound._pipeline", mock_pipeline):
+    mock_guarded = AsyncMock(return_value=None)
+    with patch(
+        "factory.adapters.shared.inbound.run_inbound_guarded",
+        mock_guarded,
+    ):
         await handle_audio(adapter, message, attachment, TrustLevel.PUBLIC)
 
     # (a) Reply was sent
@@ -243,4 +239,4 @@ async def test_dc_invalid_magic_reply_no_pipeline() -> None:
     )
 
     # (b) Pipeline was NOT reached — load-bearing assertion
-    mock_pipeline.run.assert_not_awaited()
+    mock_guarded.assert_not_awaited()

@@ -5,9 +5,22 @@
         "lint-residual": 1
       }
     },
+    "A003": {
+      "UNTAGGED": {
+        "__none__": 1
+      }
+    },
+    "ARG001": {
+      "UNTAGGED": {
+        "__none__": 1
+      }
+    },
     "ARG002": {
       "DEBT": {
         "protocol-private-ducktyping": 2
+      },
+      "UNTAGGED": {
+        "__none__": 2
       }
     },
     "B008": {
@@ -17,18 +30,21 @@
     },
     "BLE001": {
       "DEBT": {
-        "boundary-broad-catch": 73
+        "boundary-broad-catch": 57
+      },
+      "UNTAGGED": {
+        "__none__": 64
       }
     },
     "C901": {
       "DEBT": {
         "adapter-dispatch-complexity": 2,
-        "complexity-residual": 19,
+        "complexity-residual": 15,
         "migration-sequence-bootstrap": 5,
-        "wiring-bootstrap-deps": 10
+        "wiring-bootstrap-deps": 5
       },
       "UNTAGGED": {
-        "__none__": 1
+        "__none__": 8
       }
     },
     "D401": {
@@ -37,21 +53,29 @@
       }
     },
     "E402": {
-      "DEBT": {
-        "module-level-patch-fixtures": 2
-      },
       "UNTAGGED": {
-        "__none__": 11
+        "__none__": 18
       }
     },
     "E501": {
       "DEBT": {
         "lint-residual": 1
+      },
+      "UNTAGGED": {
+        "__none__": 12
+      }
+    },
+    "E731": {
+      "UNTAGGED": {
+        "__none__": 1
       }
     },
     "F401": {
       "DEBT": {
-        "re-export-init": 10
+        "re-export-init": 8
+      },
+      "UNTAGGED": {
+        "__none__": 4
       }
     },
     "I001": {
@@ -67,25 +91,29 @@
     },
     "PLC0415": {
       "DEBT": {
-        "plc0415-deferred-import": 3
-      }
-    },
-    "PLR0912": {
-      "DEBT": {
-        "complexity-residual": 1
+        "plc0415-deferred-import": 2
+      },
+      "UNTAGGED": {
+        "__none__": 2
       }
     },
     "PLR0913": {
       "DEBT": {
         "complexity-residual": 2,
-        "wiring-bootstrap-deps": 56
+        "wiring-bootstrap-deps": 24
+      },
+      "UNTAGGED": {
+        "__none__": 42
       }
     },
     "PLR0915": {
       "DEBT": {
-        "complexity-residual": 10,
+        "complexity-residual": 6,
         "migration-sequence-bootstrap": 2,
-        "wiring-bootstrap-deps": 2
+        "wiring-bootstrap-deps": 1
+      },
+      "UNTAGGED": {
+        "__none__": 4
       }
     },
     "PLR2004": {
@@ -93,9 +121,82 @@
         "adapter-magic-constants": 4
       }
     },
-    "TRY401": {
+    "SIM102": {
+      "UNTAGGED": {
+        "__none__": 1
+      }
+    },
+    "SLF001": {
+      "UNTAGGED": {
+        "__none__": 10
+      }
+    },
+    "arg-type": {
       "DEBT": {
-        "boundary-broad-catch": 1
+        "defensive-narrow-payloads": 1
+      },
+      "UNTAGGED": {
+        "__none__": 10
+      }
+    },
+    "assignment": {
+      "UNTAGGED": {
+        "__none__": 4
+      }
+    },
+    "attr-defined": {
+      "UNTAGGED": {
+        "__none__": 19
+      }
+    },
+    "factory.agents.simple_agent -> factory.infrastructure.stores.registry.agent_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "factory.core.agent.agent -> factory.infrastructure.stores.registry.agent_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "factory.core.agent.agent_refiner -> factory.infrastructure.stores.registry.agent_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "factory.core.hub.hub -> factory.infrastructure.stores.identity.identity_alias_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "factory.core.hub.hub -> factory.infrastructure.stores.identity.pairing": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "factory.core.hub.hub -> factory.infrastructure.stores.registry.prefs_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "factory.core.hub.hub_registration -> factory.infrastructure.stores.identity.identity_alias_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "factory.core.memory.memory -> factory.infrastructure.stores.identity.identity_alias_store": {
+      "DEBT": {
+        "importlinter-adr048-transition": 1
+      }
+    },
+    "factory.core.processors.processor_registry -> factory.integrations.base": {
+      "DEBT": {
+        "importlinter-shared-modules-transitive": 1
+      }
+    },
+    "import-not-found": {
+      "UNTAGGED": {
+        "__none__": 2
       }
     },
     "import-untyped": {
@@ -103,147 +204,33 @@
         "defensive-narrow-payloads": 1
       }
     },
-    "lyra.agents.simple_agent -> lyra.infrastructure.stores.agent_store": {
-      "DEBT": {
-        "importlinter-adr048-transition": 1
-      }
-    },
-    "lyra.core.agent.agent -> lyra.infrastructure.stores.agent_store": {
-      "DEBT": {
-        "importlinter-adr048-transition": 1
-      }
-    },
-    "lyra.core.agent.agent -> lyra.stt": {
-      "DEBT": {
-        "importlinter-shared-modules-transitive": 1
-      }
-    },
-    "lyra.core.agent.agent -> lyra.tts": {
-      "DEBT": {
-        "importlinter-shared-modules-transitive": 1
-      }
-    },
-    "lyra.core.agent.agent_refiner -> lyra.infrastructure.stores.agent_store": {
-      "DEBT": {
-        "importlinter-adr048-transition": 1
-      }
-    },
-    "lyra.core.auth.authenticator -> lyra.infrastructure.stores.auth_store": {
-      "DEBT": {
-        "importlinter-adr048-transition": 1
-      }
-    },
-    "lyra.core.auth.authenticator -> lyra.infrastructure.stores.identity_alias_store": {
-      "DEBT": {
-        "importlinter-adr048-transition": 1
-      }
-    },
-    "lyra.core.cli.cli_pool -> lyra.infrastructure.stores.turn_store": {
-      "DEBT": {
-        "importlinter-adr048-transition": 1
-      }
-    },
-    "lyra.core.cli.cli_pool_session -> lyra.infrastructure.stores.turn_store": {
-      "DEBT": {
-        "importlinter-adr048-transition": 1
-      }
-    },
-    "lyra.core.hub.hub -> lyra.infrastructure.stores.identity_alias_store": {
-      "DEBT": {
-        "importlinter-adr048-transition": 1
-      }
-    },
-    "lyra.core.hub.hub -> lyra.infrastructure.stores.message_index": {
-      "DEBT": {
-        "importlinter-adr048-transition": 1
-      }
-    },
-    "lyra.core.hub.hub -> lyra.infrastructure.stores.pairing": {
-      "DEBT": {
-        "importlinter-adr048-transition": 1
-      }
-    },
-    "lyra.core.hub.hub -> lyra.infrastructure.stores.prefs_store": {
-      "DEBT": {
-        "importlinter-adr048-transition": 1
-      }
-    },
-    "lyra.core.hub.hub -> lyra.infrastructure.stores.turn_store": {
-      "DEBT": {
-        "importlinter-adr048-transition": 1
-      }
-    },
-    "lyra.core.hub.hub_registration -> lyra.infrastructure.stores.identity_alias_store": {
-      "DEBT": {
-        "importlinter-adr048-transition": 1
-      }
-    },
-    "lyra.core.hub.hub_registration -> lyra.infrastructure.stores.message_index": {
-      "DEBT": {
-        "importlinter-adr048-transition": 1
-      }
-    },
-    "lyra.core.hub.hub_registration -> lyra.infrastructure.stores.turn_store": {
-      "DEBT": {
-        "importlinter-adr048-transition": 1
-      }
-    },
-    "lyra.core.hub.hub_shutdown -> lyra.infrastructure.stores.message_index": {
-      "DEBT": {
-        "importlinter-adr048-transition": 1
-      }
-    },
-    "lyra.core.hub.hub_shutdown -> lyra.infrastructure.stores.turn_store": {
-      "DEBT": {
-        "importlinter-adr048-transition": 1
-      }
-    },
-    "lyra.core.memory.memory -> lyra.infrastructure.stores.identity_alias_store": {
-      "DEBT": {
-        "importlinter-adr048-transition": 1
-      }
-    },
-    "lyra.core.pool.pool -> lyra.infrastructure.stores.turn_store": {
-      "DEBT": {
-        "importlinter-adr048-transition": 1
-      }
-    },
-    "lyra.core.pool.pool_observer -> lyra.infrastructure.stores.message_index": {
-      "DEBT": {
-        "importlinter-adr048-transition": 1
-      }
-    },
-    "lyra.core.pool.pool_observer -> lyra.infrastructure.stores.turn_store": {
-      "DEBT": {
-        "importlinter-adr048-transition": 1
-      }
-    },
-    "lyra.core.processors.processor_registry -> lyra.integrations.base": {
-      "DEBT": {
-        "importlinter-shared-modules-transitive": 1
-      }
-    },
-    "lyra.core.stores.pairing_protocol -> lyra.infrastructure.stores.pairing": {
-      "DEBT": {
-        "importlinter-adr048-transition": 1
-      }
-    },
-    "lyra.tts.engine_selector -> lyra.core.agent.agent_config": {
-      "DEBT": {
-        "importlinter-shared-modules-transitive": 1
-      }
-    },
     "misc": {
       "DEBT": {
         "defensive-narrow-payloads": 5
+      },
+      "UNTAGGED": {
+        "__none__": 1
+      }
+    },
+    "no-any-return": {
+      "UNTAGGED": {
+        "__none__": 2
+      }
+    },
+    "no-redef": {
+      "UNTAGGED": {
+        "__none__": 2
       }
     },
     "reportUnnecessaryIsInstance": {
       "DEBT": {
-        "defensive-narrow-payloads": 7
+        "defensive-narrow-payloads": 4
+      },
+      "UNTAGGED": {
+        "__none__": 3
       }
     },
-    "reportUnreachable": {
+    "reportUnreachableCode": {
       "DEBT": {
         "defensive-narrow-payloads": 1
       }
@@ -253,9 +240,9 @@
         "protocol-private-ducktyping": 2
       }
     },
-    "reportUnusedImport": {
-      "DEBT": {
-        "re-export-init": 1
+    "return": {
+      "UNTAGGED": {
+        "__none__": 1
       }
     },
     "return-value": {
@@ -263,102 +250,261 @@
         "lint-residual": 1
       },
       "UNTAGGED": {
-        "__none__": 1
-      }
-    },
-    "src/lyra/adapters/clipool/clipool_worker.py": {
-      "DEBT": {
-        "file-exemptions": 1
-      }
-    },
-    "src/lyra/adapters/shared/_shared_streaming_emitter.py": {
-      "DEBT": {
-        "file-exemptions": 1
-      }
-    },
-    "src/lyra/agents/simple_agent.py": {
-      "DEBT": {
-        "file-exemptions": 1
-      }
-    },
-    "src/lyra/bootstrap/bootstrap_stores.py": {
-      "DEBT": {
-        "file-exemptions": 1
-      }
-    },
-    "src/lyra/bootstrap/factory/wiring_helpers.py": {
-      "DEBT": {
-        "file-exemptions": 1
-      }
-    },
-    "src/lyra/bootstrap/standalone/adapter_standalone.py": {
-      "DEBT": {
-        "file-exemptions": 1
-      }
-    },
-    "src/lyra/core": {
-      "DEBT": {
-        "folder-exemptions": 1
-      }
-    },
-    "src/lyra/core/cli": {
-      "DEBT": {
-        "folder-exemptions": 1
-      }
-    },
-    "src/lyra/core/cli/cli_pool.py": {
-      "DEBT": {
-        "file-exemptions": 1
-      }
-    },
-    "src/lyra/core/cli/cli_streaming_parser.py": {
-      "DEBT": {
-        "file-exemptions": 1
-      }
-    },
-    "src/lyra/core/messaging": {
-      "DEBT": {
-        "folder-exemptions": 1
-      }
-    },
-    "src/lyra/core/messaging/render_events.py": {
-      "DEBT": {
-        "file-exemptions": 1
-      }
-    },
-    "src/lyra/core/processors/stream_processor.py": {
-      "DEBT": {
-        "file-exemptions": 1
-      }
-    },
-    "src/lyra/infrastructure/stores": {
-      "DEBT": {
-        "folder-exemptions": 1
-      }
-    },
-    "src/lyra/llm/drivers/nats_driver.py": {
-      "DEBT": {
-        "file-exemptions": 1
+        "__none__": 5
       }
     },
     "type-arg": {
-      "DEBT": {
-        "wiring-bootstrap-deps": 2
+      "UNTAGGED": {
+        "__none__": 3
       }
     },
     "union-attr": {
       "DEBT": {
         "defensive-narrow-payloads": 3
+      },
+      "UNTAGGED": {
+        "__none__": 6
       }
     }
   },
-  "generated_at": "2026-05-13T15:03:43.263251+00:00",
+  "generated_at": "2026-06-20T20:44:59.889055+00:00",
   "rows": [
     {
       "bucket": "UNTAGGED",
-      "line": 54,
+      "line": 47,
+      "path": "artifacts/spikes/1807/omp_rpc_poc.py",
+      "rule": "A003",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 180,
+      "path": "artifacts/spikes/1807/omp_rpc_poc.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 194,
+      "path": "artifacts/spikes/1807/omp_rpc_poc.py",
+      "rule": "type-arg",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 268,
+      "path": "artifacts/spikes/1807/omp_rpc_poc.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 315,
+      "path": "artifacts/spikes/1807/omp_rpc_poc.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 326,
+      "path": "artifacts/spikes/1807/omp_rpc_poc.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 366,
+      "path": "artifacts/spikes/1807/omp_rpc_poc.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 377,
+      "path": "artifacts/spikes/1807/omp_rpc_poc.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 382,
+      "path": "artifacts/spikes/1807/omp_rpc_poc.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 72,
+      "path": "artifacts/spikes/1813-v3/omp_api_dump.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 32,
+      "path": "artifacts/spikes/1813-v3/omp_introspect.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 41,
+      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "rule": "E402",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 52,
+      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "rule": "attr-defined",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 57,
+      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "rule": "attr-defined",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 69,
+      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "rule": "attr-defined",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 75,
+      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "rule": "attr-defined",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 86,
+      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "rule": "attr-defined",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 97,
+      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "rule": "attr-defined",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 98,
+      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 107,
+      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "rule": "attr-defined",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 113,
+      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "rule": "attr-defined",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 117,
+      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "rule": "attr-defined",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 121,
+      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "rule": "attr-defined",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 132,
+      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "rule": "attr-defined",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 133,
+      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 143,
+      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "rule": "attr-defined",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 151,
+      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "rule": "attr-defined",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 154,
+      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "rule": "attr-defined",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 158,
+      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "rule": "attr-defined",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 159,
+      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 70,
+      "path": "scripts/_loader.py",
+      "rule": "arg-type",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 74,
       "path": "scripts/_loader.py",
       "rule": "return-value",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 90,
+      "path": "scripts/_loader.py",
+      "rule": "assignment",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 98,
+      "path": "scripts/_loader.py",
+      "rule": "union-attr",
       "source": "type-ignore"
     },
     {
@@ -370,10 +516,66 @@
     },
     {
       "bucket": "UNTAGGED",
+      "line": 23,
+      "path": "scripts/check_grants.py",
+      "rule": "E402",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
       "line": 24,
+      "path": "scripts/check_grants.py",
+      "rule": "E402",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 25,
+      "path": "scripts/check_grants.py",
+      "rule": "E402",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 103,
+      "path": "scripts/check_grants.py",
+      "rule": "type-arg",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 127,
+      "path": "scripts/check_grants.py",
+      "rule": "type-arg",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 44,
+      "path": "scripts/check_inbox_prefix.py",
+      "rule": "E402",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 26,
       "path": "scripts/check_request_reply_flows.py",
       "rule": "E402",
       "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 27,
+      "path": "scripts/check_request_reply_flows.py",
+      "rule": "E402",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 45,
+      "path": "scripts/check_subject_literals.py",
+      "rule": "no-redef",
+      "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
@@ -398,38 +600,38 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 33,
+      "line": 36,
       "path": "scripts/gen_nkeys.py",
       "rule": "E402",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 34,
+      "line": 37,
       "path": "scripts/gen_nkeys.py",
       "rule": "E402",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 203,
-      "path": "src/lyra/adapters/clipool/clipool_worker.py",
+      "line": 168,
+      "path": "src/factory/adapters/clipool/clipool_worker.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 278,
-      "path": "src/lyra/adapters/clipool/clipool_worker.py",
+      "line": 258,
+      "path": "src/factory/adapters/clipool/clipool_worker.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 317,
-      "path": "src/lyra/adapters/clipool/clipool_worker.py",
+      "line": 305,
+      "path": "src/factory/adapters/clipool/clipool_worker.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
@@ -437,679 +639,955 @@
     {
       "bucket": "DEBT",
       "line": 21,
-      "path": "src/lyra/adapters/discord/adapter.py",
+      "path": "src/factory/adapters/discord/adapter.py",
       "rule": "I001",
       "slug": "module-level-patch-fixtures",
       "source": "noqa"
     },
     {
+      "bucket": "UNTAGGED",
+      "line": 66,
+      "path": "src/factory/adapters/discord/adapter.py",
+      "rule": "E402",
+      "source": "noqa"
+    },
+    {
       "bucket": "DEBT",
-      "line": 67,
-      "path": "src/lyra/adapters/discord/adapter.py",
+      "line": 89,
+      "path": "src/factory/adapters/discord/adapter.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 34,
-      "path": "src/lyra/adapters/discord/discord_audio.py",
+      "line": 36,
+      "path": "src/factory/adapters/discord/discord_audio.py",
       "rule": "PLR2004",
       "slug": "adapter-magic-constants",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 43,
-      "path": "src/lyra/adapters/discord/discord_audio.py",
+      "line": 45,
+      "path": "src/factory/adapters/discord/discord_audio.py",
       "rule": "PLR2004",
       "slug": "adapter-magic-constants",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 55,
-      "path": "src/lyra/adapters/discord/discord_audio.py",
+      "line": 57,
+      "path": "src/factory/adapters/discord/discord_audio.py",
       "rule": "PLR2004",
       "slug": "adapter-magic-constants",
       "source": "noqa"
     },
     {
+      "bucket": "UNTAGGED",
+      "line": 62,
+      "path": "src/factory/adapters/discord/discord_audio.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
       "bucket": "DEBT",
-      "line": 118,
-      "path": "src/lyra/adapters/discord/discord_audio.py",
+      "line": 123,
+      "path": "src/factory/adapters/discord/discord_audio.py",
       "rule": "C901",
       "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 222,
-      "path": "src/lyra/adapters/discord/discord_audio.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 33,
-      "path": "src/lyra/adapters/discord/discord_formatting.py",
-      "rule": "PLR2004",
-      "slug": "adapter-magic-constants",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 29,
-      "path": "src/lyra/adapters/discord/discord_inbound.py",
-      "rule": "C901",
-      "slug": "wiring-bootstrap-deps",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 29,
-      "path": "src/lyra/adapters/discord/discord_inbound.py",
+      "line": 123,
+      "path": "src/factory/adapters/discord/discord_audio.py",
       "rule": "PLR0915",
       "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 83,
-      "path": "src/lyra/adapters/discord/discord_inbound.py",
+      "line": 232,
+      "path": "src/factory/adapters/discord/discord_audio.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 140,
-      "path": "src/lyra/adapters/discord/discord_inbound.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
+      "bucket": "UNTAGGED",
+      "line": 256,
+      "path": "src/factory/adapters/discord/discord_audio.py",
+      "rule": "PLC0415",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 203,
-      "path": "src/lyra/adapters/discord/discord_inbound.py",
-      "rule": "TRY401",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 26,
-      "path": "src/lyra/adapters/discord/discord_normalize.py",
+      "bucket": "UNTAGGED",
+      "line": 54,
+      "path": "src/factory/adapters/discord/discord_formatter.py",
       "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 135,
+      "path": "src/factory/adapters/discord/discord_formatter.py",
+      "rule": "BLE001",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 43,
-      "path": "src/lyra/adapters/discord/discord_outbound.py",
+      "line": 38,
+      "path": "src/factory/adapters/discord/discord_formatting.py",
+      "rule": "PLR2004",
+      "slug": "adapter-magic-constants",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 67,
+      "path": "src/factory/adapters/discord/discord_outbound.py",
       "rule": "C901",
       "slug": "adapter-dispatch-complexity",
       "source": "noqa"
     },
     {
+      "bucket": "UNTAGGED",
+      "line": 84,
+      "path": "src/factory/adapters/discord/discord_outbound.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
       "bucket": "DEBT",
-      "line": 105,
-      "path": "src/lyra/adapters/discord/discord_outbound.py",
+      "line": 130,
+      "path": "src/factory/adapters/discord/discord_outbound.py",
       "rule": "C901",
       "slug": "adapter-dispatch-complexity",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 168,
-      "path": "src/lyra/adapters/discord/discord_outbound.py",
-      "rule": "C901",
-      "slug": "wiring-bootstrap-deps",
+      "bucket": "UNTAGGED",
+      "line": 87,
+      "path": "src/factory/adapters/nats/jetstream_audio_consumer.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 174,
+      "path": "src/factory/adapters/nats/jetstream_audio_consumer.py",
+      "rule": "union-attr",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 211,
+      "path": "src/factory/adapters/nats/jetstream_audio_consumer.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 279,
+      "path": "src/factory/adapters/nats/jetstream_audio_consumer.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 298,
+      "path": "src/factory/adapters/nats/jetstream_audio_consumer.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 107,
+      "path": "src/factory/adapters/nats/jetstream_audio_envelope.py",
+      "rule": "no-any-return",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 108,
+      "path": "src/factory/adapters/nats/jetstream_audio_envelope.py",
+      "rule": "BLE001",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 258,
-      "path": "src/lyra/adapters/discord/discord_outbound.py",
+      "line": 135,
+      "path": "src/factory/adapters/nats/mint_failure_subscriber.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 45,
-      "path": "src/lyra/adapters/discord/discord_threads.py",
-      "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
+      "line": 134,
+      "path": "src/factory/adapters/nats/nats_outbound_listener.py",
+      "rule": "BLE001",
+      "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
+      "line": 174,
+      "path": "src/factory/adapters/nats/nats_outbound_listener.py",
+      "rule": "BLE001",
+      "slug": "boundary-broad-catch",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 102,
+      "path": "src/factory/adapters/omp/_rpc_bridge.py",
+      "rule": "import-not-found",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 142,
+      "path": "src/factory/adapters/omp/omp_pool.py",
+      "rule": "E501",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 166,
+      "path": "src/factory/adapters/omp/omp_pool.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 179,
+      "path": "src/factory/adapters/omp/omp_pool.py",
+      "rule": "import-not-found",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 223,
+      "path": "src/factory/adapters/omp/omp_pool.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 224,
+      "path": "src/factory/adapters/omp/omp_pool.py",
+      "rule": "E501",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 120,
+      "path": "src/factory/adapters/omp/omp_worker.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 123,
+      "path": "src/factory/adapters/omp/omp_worker.py",
+      "rule": "E501",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 126,
+      "path": "src/factory/adapters/omp/omp_worker.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
       "line": 129,
-      "path": "src/lyra/adapters/nats/mint_failure_subscriber.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
+      "path": "src/factory/adapters/omp/omp_worker.py",
+      "rule": "E501",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 40,
-      "path": "src/lyra/adapters/nats/nats_outbound_listener.py",
+      "bucket": "UNTAGGED",
+      "line": 145,
+      "path": "src/factory/adapters/omp/omp_worker.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 239,
+      "path": "src/factory/adapters/omp/omp_worker.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 17,
+      "path": "src/factory/adapters/shared/_emitter.py",
       "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 124,
-      "path": "src/lyra/adapters/nats/nats_outbound_listener.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
       "line": 95,
-      "path": "src/lyra/adapters/shared/_inbound_cache.py",
+      "path": "src/factory/adapters/shared/_inbound_cache.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
+      "bucket": "UNTAGGED",
+      "line": 139,
+      "path": "src/factory/adapters/shared/_shared.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
       "bucket": "DEBT",
-      "line": 76,
-      "path": "src/lyra/adapters/shared/_shared.py",
+      "line": 79,
+      "path": "src/factory/adapters/shared/_shared_audio.py",
+      "rule": "BLE001",
+      "slug": "boundary-broad-catch",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 80,
+      "path": "src/factory/adapters/shared/inbound/pipeline.py",
       "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 74,
-      "path": "src/lyra/adapters/shared/_shared_audio.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 178,
-      "path": "src/lyra/adapters/shared/_shared_streaming_emitter.py",
-      "rule": "C901",
-      "slug": "wiring-bootstrap-deps",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 214,
-      "path": "src/lyra/adapters/shared/_shared_streaming_emitter.py",
-      "rule": "reportUnnecessaryIsInstance",
-      "slug": "defensive-narrow-payloads",
-      "source": "pyright-ignore"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 245,
-      "path": "src/lyra/adapters/shared/_shared_streaming_emitter.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 249,
-      "path": "src/lyra/adapters/shared/_shared_streaming_emitter.py",
-      "rule": "reportUnnecessaryIsInstance",
-      "slug": "defensive-narrow-payloads",
-      "source": "pyright-ignore"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 264,
-      "path": "src/lyra/adapters/shared/_shared_streaming_emitter.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 328,
-      "path": "src/lyra/adapters/shared/_shared_streaming_emitter.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 352,
-      "path": "src/lyra/adapters/shared/_shared_streaming_emitter.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
+      "bucket": "UNTAGGED",
+      "line": 24,
+      "path": "src/factory/adapters/shared/inbound/typing_shim.py",
+      "rule": "PLR0913",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
       "line": 22,
-      "path": "src/lyra/adapters/telegram/telegram.py",
+      "path": "src/factory/adapters/telegram/telegram.py",
       "rule": "I001",
       "slug": "lint-residual",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 35,
-      "path": "src/lyra/adapters/telegram/telegram.py",
+      "line": 37,
+      "path": "src/factory/adapters/telegram/telegram.py",
       "rule": "F401",
       "slug": "re-export-init",
       "source": "noqa"
     },
     {
+      "bucket": "UNTAGGED",
+      "line": 58,
+      "path": "src/factory/adapters/telegram/telegram.py",
+      "rule": "E402",
+      "source": "noqa"
+    },
+    {
       "bucket": "DEBT",
-      "line": 75,
-      "path": "src/lyra/adapters/telegram/telegram.py",
+      "line": 72,
+      "path": "src/factory/adapters/telegram/telegram.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 55,
+      "path": "src/factory/adapters/telegram/telegram_formatter.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 232,
+      "path": "src/factory/adapters/telegram/telegram_formatter.py",
+      "rule": "BLE001",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
       "line": 33,
-      "path": "src/lyra/adapters/telegram/telegram_formatting.py",
+      "path": "src/factory/adapters/telegram/telegram_formatting.py",
       "rule": "import-untyped",
       "slug": "defensive-narrow-payloads",
       "source": "type-ignore"
     },
     {
+      "bucket": "UNTAGGED",
+      "line": 125,
+      "path": "src/factory/adapters/telegram/telegram_inbound.py",
+      "rule": "C901",
+      "source": "noqa"
+    },
+    {
       "bucket": "DEBT",
-      "line": 93,
-      "path": "src/lyra/adapters/telegram/telegram_normalize.py",
+      "line": 71,
+      "path": "src/factory/adapters/telegram/telegram_normalize.py",
+      "rule": "C901",
+      "slug": "wiring-bootstrap-deps",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 178,
+      "path": "src/factory/adapters/telegram/telegram_normalize.py",
       "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 94,
+      "path": "src/factory/adapters/telegram/telegram_rich.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 115,
+      "path": "src/factory/adapters/telegram/telegram_rich.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 141,
+      "path": "src/factory/adapters/telegram/telegram_rich.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 167,
+      "path": "src/factory/adapters/telegram/telegram_rich.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 172,
+      "path": "src/factory/adapters/telegram/telegram_rich.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 213,
+      "path": "src/factory/adapters/telegram/telegram_rich.py",
+      "rule": "PLR0913",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 119,
-      "path": "src/lyra/adapters/telegram/telegram_normalize.py",
-      "rule": "C901",
-      "slug": "wiring-bootstrap-deps",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 165,
-      "path": "src/lyra/adapters/telegram/telegram_outbound.py",
-      "rule": "C901",
-      "slug": "wiring-bootstrap-deps",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 52,
-      "path": "src/lyra/agent_cmd/agents/init.py",
+      "line": 49,
+      "path": "src/factory/agent_cmd/agents/init.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 70,
-      "path": "src/lyra/agent_cmd/agents/init.py",
+      "line": 67,
+      "path": "src/factory/agent_cmd/agents/init.py",
       "rule": "C901",
       "slug": "complexity-residual",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 76,
-      "path": "src/lyra/agent_cmd/agents/init.py",
+      "line": 73,
+      "path": "src/factory/agent_cmd/agents/init.py",
       "rule": "C901",
       "slug": "complexity-residual",
       "source": "noqa"
     },
     {
+      "bucket": "UNTAGGED",
+      "line": 89,
+      "path": "src/factory/agent_cmd/bots/init.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 106,
+      "path": "src/factory/agent_cmd/bots/init.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
       "bucket": "DEBT",
+      "line": 129,
+      "path": "src/factory/agent_cmd/bots/init.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 145,
+      "path": "src/factory/agent_cmd/bots/init.py",
+      "rule": "C901",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
       "line": 65,
-      "path": "src/lyra/agents/simple_agent.py",
+      "path": "src/factory/agent_cmd/platforms/_commands.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 110,
+      "path": "src/factory/agent_cmd/platforms/_commands.py",
+      "rule": "C901",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 110,
+      "path": "src/factory/agent_cmd/platforms/_commands.py",
+      "rule": "PLR0915",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 116,
+      "path": "src/factory/agent_cmd/platforms/_commands.py",
+      "rule": "C901",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 116,
+      "path": "src/factory/agent_cmd/platforms/_commands.py",
+      "rule": "PLR0915",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 35,
+      "path": "src/factory/agent_cmd/platforms/platform.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 97,
+      "path": "src/factory/agent_cmd/platforms/platform.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 64,
+      "path": "src/factory/agents/simple_agent.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
+      "bucket": "UNTAGGED",
+      "line": 110,
+      "path": "src/factory/agents/simple_agent.py",
+      "rule": "assignment",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 114,
+      "path": "src/factory/agents/simple_agent.py",
+      "rule": "assignment",
+      "source": "type-ignore"
+    },
+    {
       "bucket": "DEBT",
-      "line": 138,
-      "path": "src/lyra/agents/simple_agent.py",
+      "line": 162,
+      "path": "src/factory/agents/simple_agent.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 207,
-      "path": "src/lyra/agents/simple_agent.py",
+      "line": 225,
+      "path": "src/factory/agents/simple_agent.py",
       "rule": "C901",
       "slug": "complexity-residual",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 66,
-      "path": "src/lyra/bootstrap/bootstrap_stores.py",
-      "rule": "C901",
-      "slug": "migration-sequence-bootstrap",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 10,
-      "path": "src/lyra/bootstrap/factory/agent_factory.py",
-      "rule": "F401",
-      "slug": "re-export-init",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 25,
-      "path": "src/lyra/bootstrap/factory/agent_factory.py",
-      "rule": "F401",
-      "slug": "re-export-init",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 131,
-      "path": "src/lyra/bootstrap/factory/agent_factory.py",
+      "bucket": "UNTAGGED",
+      "line": 36,
+      "path": "src/factory/blobstore/_handlers.py",
       "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 175,
-      "path": "src/lyra/bootstrap/factory/agent_factory.py",
+      "bucket": "UNTAGGED",
+      "line": 67,
+      "path": "src/factory/blobstore/_handlers.py",
       "rule": "BLE001",
-      "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 197,
-      "path": "src/lyra/bootstrap/factory/agent_factory.py",
-      "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 78,
-      "path": "src/lyra/bootstrap/factory/bot_agent_map.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
+      "bucket": "UNTAGGED",
       "line": 77,
-      "path": "src/lyra/bootstrap/factory/hub_builder.py",
-      "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
+      "path": "src/factory/blobstore/_handlers.py",
+      "rule": "no-any-return",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 81,
+      "path": "src/factory/blobstore/_handlers.py",
+      "rule": "SLF001",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 151,
-      "path": "src/lyra/bootstrap/factory/hub_builder.py",
-      "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
+      "bucket": "UNTAGGED",
+      "line": 83,
+      "path": "src/factory/blobstore/_handlers.py",
+      "rule": "SLF001",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 87,
-      "path": "src/lyra/bootstrap/factory/voice_overlay.py",
+      "bucket": "UNTAGGED",
+      "line": 120,
+      "path": "src/factory/blobstore/_handlers.py",
       "rule": "BLE001",
-      "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 247,
-      "path": "src/lyra/bootstrap/factory/wiring_helpers.py",
-      "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 336,
-      "path": "src/lyra/bootstrap/factory/wiring_helpers.py",
-      "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 181,
-      "path": "src/lyra/bootstrap/infra/embedded_nats.py",
+      "bucket": "UNTAGGED",
+      "line": 149,
+      "path": "src/factory/blobstore/_handlers.py",
       "rule": "BLE001",
-      "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 61,
-      "path": "src/lyra/bootstrap/infra/health.py",
+      "bucket": "UNTAGGED",
+      "line": 274,
+      "path": "src/factory/blobstore/_handlers.py",
       "rule": "BLE001",
-      "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 66,
-      "path": "src/lyra/bootstrap/infra/health.py",
-      "rule": "C901",
-      "slug": "migration-sequence-bootstrap",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 35,
-      "path": "src/lyra/bootstrap/infra/notify.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
+      "bucket": "UNTAGGED",
       "line": 24,
-      "path": "src/lyra/bootstrap/lifecycle/bootstrap_lifecycle.py",
+      "path": "src/factory/blobstore/_keys.py",
+      "rule": "SLF001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 26,
+      "path": "src/factory/blobstore/_keys.py",
+      "rule": "SLF001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 47,
+      "path": "src/factory/blobstore/auth.py",
+      "rule": "arg-type",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 55,
+      "path": "src/factory/blobstore/auth.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 36,
+      "path": "src/factory/blobstore/serve.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 45,
+      "path": "src/factory/blobstore/serve.py",
+      "rule": "SLF001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 52,
+      "path": "src/factory/blobstore/serve.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 64,
+      "path": "src/factory/blobstore/serve.py",
+      "rule": "SLF001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 79,
+      "path": "src/factory/blobstore/serve.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 95,
+      "path": "src/factory/blobstore/serve.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 109,
+      "path": "src/factory/blobstore/serve.py",
+      "rule": "return",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 104,
+      "path": "src/factory/bootstrap/bootstrap_stores.py",
       "rule": "C901",
       "slug": "migration-sequence-bootstrap",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
+      "line": 14,
+      "path": "src/factory/bootstrap/factory/agent_factory.py",
+      "rule": "F401",
+      "slug": "re-export-init",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 156,
+      "path": "src/factory/bootstrap/factory/agent_factory.py",
+      "rule": "C901",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
       "line": 26,
-      "path": "src/lyra/bootstrap/standalone/adapter_standalone.py",
+      "path": "src/factory/bootstrap/factory/hub/hub_agent_registration.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 40,
+      "path": "src/factory/bootstrap/factory/hub/hub_assembly.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 23,
+      "path": "src/factory/bootstrap/factory/providers.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 41,
+      "path": "src/factory/bootstrap/factory/unified.py",
       "rule": "PLR0915",
-      "slug": "migration-sequence-bootstrap",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 26,
-      "path": "src/lyra/bootstrap/standalone/adapter_standalone.py",
-      "rule": "C901",
-      "slug": "migration-sequence-bootstrap",
-      "source": "noqa"
+      "bucket": "UNTAGGED",
+      "line": 142,
+      "path": "src/factory/bootstrap/factory/unified.py",
+      "rule": "union-attr",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 91,
+      "path": "src/factory/bootstrap/factory/voice_overlay.py",
+      "rule": "return-value",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 117,
+      "path": "src/factory/bootstrap/factory/voice_overlay.py",
+      "rule": "return-value",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 135,
+      "path": "src/factory/bootstrap/factory/voice_overlay.py",
+      "rule": "return-value",
+      "source": "type-ignore"
     },
     {
       "bucket": "DEBT",
-      "line": 53,
-      "path": "src/lyra/bootstrap/standalone/adapter_standalone.py",
+      "line": 223,
+      "path": "src/factory/bootstrap/factory/voice_overlay.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 108,
-      "path": "src/lyra/bootstrap/standalone/adapter_standalone.py",
-      "rule": "type-arg",
-      "slug": "wiring-bootstrap-deps",
-      "source": "type-ignore"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 244,
-      "path": "src/lyra/bootstrap/standalone/adapter_standalone.py",
-      "rule": "type-arg",
-      "slug": "wiring-bootstrap-deps",
-      "source": "type-ignore"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 47,
-      "path": "src/lyra/bootstrap/standalone/hub_standalone.py",
-      "rule": "C901",
-      "slug": "migration-sequence-bootstrap",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 47,
-      "path": "src/lyra/bootstrap/standalone/hub_standalone.py",
-      "rule": "PLR0915",
-      "slug": "migration-sequence-bootstrap",
+      "bucket": "UNTAGGED",
+      "line": 21,
+      "path": "src/factory/bootstrap/infra/health.py",
+      "rule": "PLR0913",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
       "line": 86,
-      "path": "src/lyra/bootstrap/standalone/hub_standalone.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 284,
-      "path": "src/lyra/bootstrap/standalone/hub_standalone.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 55,
-      "path": "src/lyra/bootstrap/standalone/hub_standalone_helpers.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 106,
-      "path": "src/lyra/bootstrap/standalone/hub_standalone_helpers.py",
-      "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 37,
-      "path": "src/lyra/bootstrap/wiring/bootstrap_wiring.py",
-      "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 110,
-      "path": "src/lyra/bootstrap/wiring/bootstrap_wiring.py",
-      "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 110,
-      "path": "src/lyra/bootstrap/wiring/bootstrap_wiring.py",
+      "path": "src/factory/bootstrap/infra/health.py",
       "rule": "C901",
-      "slug": "wiring-bootstrap-deps",
+      "slug": "migration-sequence-bootstrap",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 230,
-      "path": "src/lyra/bootstrap/wiring/bootstrap_wiring.py",
+      "line": 24,
+      "path": "src/factory/bootstrap/lifecycle/bootstrap_lifecycle.py",
+      "rule": "C901",
+      "slug": "migration-sequence-bootstrap",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 89,
+      "path": "src/factory/bootstrap/lifecycle/lifecycle_helpers.py",
       "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 28,
-      "path": "src/lyra/bootstrap/wiring/nats_wiring.py",
+      "line": 22,
+      "path": "src/factory/bootstrap/standalone/adapter_standalone.py",
+      "rule": "PLR0915",
+      "slug": "migration-sequence-bootstrap",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 22,
+      "path": "src/factory/bootstrap/standalone/adapter_standalone.py",
+      "rule": "C901",
+      "slug": "migration-sequence-bootstrap",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 93,
+      "path": "src/factory/bootstrap/standalone/audio_consumer_bootstrap.py",
+      "rule": "arg-type",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 94,
+      "path": "src/factory/bootstrap/standalone/audio_consumer_bootstrap.py",
+      "rule": "arg-type",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 44,
+      "path": "src/factory/bootstrap/standalone/hub_standalone.py",
+      "rule": "C901",
+      "slug": "migration-sequence-bootstrap",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 44,
+      "path": "src/factory/bootstrap/standalone/hub_standalone.py",
+      "rule": "PLR0915",
+      "slug": "migration-sequence-bootstrap",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 186,
+      "path": "src/factory/bootstrap/standalone/hub_standalone.py",
+      "rule": "SLF001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 114,
+      "path": "src/factory/bootstrap/standalone/hub_standalone_helpers.py",
       "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 85,
-      "path": "src/lyra/bootstrap/wiring/nats_wiring.py",
+      "bucket": "UNTAGGED",
+      "line": 152,
+      "path": "src/factory/bootstrap/standalone/worker_standalone.py",
+      "rule": "ARG001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 49,
+      "path": "src/factory/bootstrap/wiring/_standalone_wiring_common.py",
       "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 26,
-      "path": "src/lyra/cli.py",
-      "rule": "F401",
-      "slug": "re-export-init",
+      "bucket": "UNTAGGED",
+      "line": 111,
+      "path": "src/factory/bootstrap/wiring/kv_bot_roster.py",
+      "rule": "attr-defined",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 75,
+      "path": "src/factory/bootstrap/wiring/standalone_discord.py",
+      "rule": "PLR0915",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 155,
-      "path": "src/lyra/cli.py",
-      "rule": "B008",
-      "slug": "typer-default-option",
-      "source": "noqa"
+      "bucket": "UNTAGGED",
+      "line": 181,
+      "path": "src/factory/bootstrap/wiring/standalone_discord.py",
+      "rule": "union-attr",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 144,
+      "path": "src/factory/bootstrap/wiring/standalone_telegram.py",
+      "rule": "union-attr",
+      "source": "type-ignore"
     },
     {
       "bucket": "DEBT",
-      "line": 74,
-      "path": "src/lyra/cli_agent.py",
+      "line": 62,
+      "path": "src/factory/cli/agent.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 87,
-      "path": "src/lyra/cli_agent.py",
-      "rule": "E402",
-      "slug": "module-level-patch-fixtures",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 88,
-      "path": "src/lyra/cli_agent.py",
-      "rule": "E402",
-      "slug": "module-level-patch-fixtures",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 53,
-      "path": "src/lyra/cli_agent_create.py",
+      "line": 51,
+      "path": "src/factory/cli/agent_create.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
       "source": "noqa"
@@ -1117,63 +1595,108 @@
     {
       "bucket": "DEBT",
       "line": 107,
-      "path": "src/lyra/cli_agent_create.py",
+      "path": "src/factory/cli/agent_create.py",
       "rule": "C901",
       "slug": "complexity-residual",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 167,
-      "path": "src/lyra/cli_ops.py",
+      "line": 184,
+      "path": "src/factory/cli/agent_create.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 37,
+      "path": "src/factory/cli/bot.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 45,
+      "path": "src/factory/cli/bot.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 28,
+      "path": "src/factory/cli/main.py",
+      "rule": "F401",
+      "slug": "re-export-init",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 187,
+      "path": "src/factory/cli/main.py",
+      "rule": "B008",
+      "slug": "typer-default-option",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 197,
+      "path": "src/factory/cli/ops.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 207,
-      "path": "src/lyra/cli_ops.py",
+      "line": 237,
+      "path": "src/factory/cli/ops.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 214,
-      "path": "src/lyra/cli_ops.py",
+      "line": 244,
+      "path": "src/factory/cli/ops.py",
       "rule": "B008",
       "slug": "typer-default-option",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 219,
-      "path": "src/lyra/cli_ops.py",
+      "line": 249,
+      "path": "src/factory/cli/ops.py",
       "rule": "B008",
       "slug": "typer-default-option",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 224,
-      "path": "src/lyra/cli_ops.py",
+      "line": 254,
+      "path": "src/factory/cli/ops.py",
       "rule": "B008",
       "slug": "typer-default-option",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 229,
-      "path": "src/lyra/cli_ops.py",
+      "line": 259,
+      "path": "src/factory/cli/ops.py",
       "rule": "B008",
       "slug": "typer-default-option",
       "source": "noqa"
     },
     {
+      "bucket": "UNTAGGED",
+      "line": 119,
+      "path": "src/factory/cli/secrets_reset.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
       "bucket": "DEBT",
-      "line": 22,
-      "path": "src/lyra/cli_setup.py",
+      "line": 21,
+      "path": "src/factory/cli/setup.py",
       "rule": "B008",
       "slug": "typer-default-option",
       "source": "noqa"
@@ -1181,7 +1704,7 @@
     {
       "bucket": "DEBT",
       "line": 87,
-      "path": "src/lyra/cli_setup.py",
+      "path": "src/factory/cli/setup.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
@@ -1189,7 +1712,7 @@
     {
       "bucket": "DEBT",
       "line": 113,
-      "path": "src/lyra/cli_setup.py",
+      "path": "src/factory/cli/setup.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
@@ -1197,79 +1720,71 @@
     {
       "bucket": "DEBT",
       "line": 18,
-      "path": "src/lyra/cli_voice_smoke.py",
+      "path": "src/factory/cli/voice_smoke.py",
       "rule": "F401",
       "slug": "re-export-init",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 43,
-      "path": "src/lyra/cli_voice_smoke.py",
+      "line": 39,
+      "path": "src/factory/cli/voice_smoke.py",
       "rule": "B008",
       "slug": "typer-default-option",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 50,
-      "path": "src/lyra/cli_voice_smoke.py",
+      "line": 46,
+      "path": "src/factory/cli/voice_smoke.py",
       "rule": "B008",
       "slug": "typer-default-option",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 56,
-      "path": "src/lyra/cli_voice_smoke.py",
+      "line": 52,
+      "path": "src/factory/cli/voice_smoke.py",
       "rule": "B008",
       "slug": "typer-default-option",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 65,
-      "path": "src/lyra/cli_voice_smoke.py",
+      "line": 61,
+      "path": "src/factory/cli/voice_smoke.py",
       "rule": "B008",
       "slug": "typer-default-option",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 82,
-      "path": "src/lyra/cli_voice_smoke.py",
+      "line": 78,
+      "path": "src/factory/cli/voice_smoke.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 101,
-      "path": "src/lyra/cli_voice_smoke.py",
+      "line": 97,
+      "path": "src/factory/cli/voice_smoke.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 202,
-      "path": "src/lyra/cli_voice_smoke.py",
+      "line": 197,
+      "path": "src/factory/cli/voice_smoke.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 249,
-      "path": "src/lyra/cli_voice_smoke.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 91,
-      "path": "src/lyra/commands/svc/handlers.py",
+      "line": 241,
+      "path": "src/factory/cli/voice_smoke.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
@@ -1277,7 +1792,7 @@
     {
       "bucket": "DEBT",
       "line": 30,
-      "path": "src/lyra/core/agent/agent.py",
+      "path": "src/factory/core/agent/agent.py",
       "rule": "F401",
       "slug": "re-export-init",
       "source": "noqa"
@@ -1285,71 +1800,63 @@
     {
       "bucket": "DEBT",
       "line": 32,
-      "path": "src/lyra/core/agent/agent.py",
+      "path": "src/factory/core/agent/agent.py",
       "rule": "F401",
       "slug": "re-export-init",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 46,
-      "path": "src/lyra/core/agent/agent.py",
+      "line": 48,
+      "path": "src/factory/core/agent/agent.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 87,
-      "path": "src/lyra/core/agent/agent.py",
+      "line": 89,
+      "path": "src/factory/core/agent/agent.py",
       "rule": "D401",
       "slug": "d401-property-accessor",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 95,
-      "path": "src/lyra/core/agent/agent.py",
+      "line": 97,
+      "path": "src/factory/core/agent/agent.py",
       "rule": "D401",
       "slug": "d401-property-accessor",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 124,
-      "path": "src/lyra/core/agent/agent.py",
+      "line": 126,
+      "path": "src/factory/core/agent/agent.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 131,
-      "path": "src/lyra/core/agent/agent.py",
+      "line": 133,
+      "path": "src/factory/core/agent/agent.py",
       "rule": "PLC0415",
       "slug": "plc0415-deferred-import",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 145,
-      "path": "src/lyra/core/agent/agent.py",
+      "line": 147,
+      "path": "src/factory/core/agent/agent.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 179,
-      "path": "src/lyra/core/agent/agent_builder.py",
-      "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
       "line": 65,
-      "path": "src/lyra/core/agent/agent_commands.py",
+      "path": "src/factory/core/agent/agent_commands.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
@@ -1357,111 +1864,76 @@
     {
       "bucket": "DEBT",
       "line": 115,
-      "path": "src/lyra/core/agent/agent_commands.py",
+      "path": "src/factory/core/agent/agent_commands.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
+      "bucket": "UNTAGGED",
+      "line": 11,
+      "path": "src/factory/core/agent/agent_config.py",
+      "rule": "F401",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 17,
+      "path": "src/factory/core/agent/agent_config.py",
+      "rule": "F401",
+      "source": "noqa"
+    },
+    {
       "bucket": "DEBT",
-      "line": 34,
-      "path": "src/lyra/core/agent/agent_db_loader.py",
+      "line": 35,
+      "path": "src/factory/core/agent/agent_db_loader.py",
       "rule": "C901",
       "slug": "complexity-residual",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 34,
-      "path": "src/lyra/core/agent/agent_db_loader.py",
+      "line": 35,
+      "path": "src/factory/core/agent/agent_db_loader.py",
       "rule": "PLR0915",
       "slug": "complexity-residual",
       "source": "noqa"
     },
     {
+      "bucket": "UNTAGGED",
+      "line": 65,
+      "path": "src/factory/core/agent/agent_db_loader.py",
+      "rule": "arg-type",
+      "source": "type-ignore"
+    },
+    {
       "bucket": "DEBT",
       "line": 11,
-      "path": "src/lyra/core/agent/agent_loader.py",
+      "path": "src/factory/core/agent/agent_loader.py",
       "rule": "PLC0414",
       "slug": "re-export-init",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 49,
-      "path": "src/lyra/core/agent/agent_seeder.py",
+      "line": 57,
+      "path": "src/factory/core/agent/agent_seeder.py",
       "rule": "PLR0915",
       "slug": "complexity-residual",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 40,
-      "path": "src/lyra/core/auth/authenticator.py",
-      "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 244,
-      "path": "src/lyra/core/auth/authenticator.py",
-      "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 19,
-      "path": "src/lyra/core/cli/cli_non_streaming.py",
-      "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 57,
-      "path": "src/lyra/core/cli/cli_non_streaming.py",
-      "rule": "C901",
-      "slug": "complexity-residual",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 57,
-      "path": "src/lyra/core/cli/cli_non_streaming.py",
-      "rule": "PLR0915",
-      "slug": "complexity-residual",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 49,
-      "path": "src/lyra/core/cli/cli_pool.py",
+      "line": 48,
+      "path": "src/factory/core/cli/cli_pool.py",
       "rule": "E501",
       "slug": "lint-residual",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 68,
-      "path": "src/lyra/core/cli/cli_pool.py",
-      "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 110,
-      "path": "src/lyra/core/cli/cli_pool.py",
-      "rule": "C901",
-      "slug": "complexity-residual",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
       "line": 20,
-      "path": "src/lyra/core/cli/cli_pool_entry.py",
+      "path": "src/factory/core/cli/cli_pool_entry.py",
       "rule": "reportUnusedClass",
       "slug": "protocol-private-ducktyping",
       "source": "pyright-ignore"
@@ -1469,7 +1941,45 @@
     {
       "bucket": "DEBT",
       "line": 51,
-      "path": "src/lyra/core/cli/cli_pool_entry.py",
+      "path": "src/factory/core/cli/cli_pool_entry.py",
+      "rule": "BLE001",
+      "slug": "boundary-broad-catch",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 55,
+      "path": "src/factory/core/cli/cli_pool_send.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 55,
+      "path": "src/factory/core/cli/cli_pool_send.py",
+      "rule": "PLR0913",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 111,
+      "path": "src/factory/core/cli/cli_pool_spawn.py",
+      "rule": "E731",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 121,
+      "path": "src/factory/core/cli/cli_pool_spawn.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 159,
+      "path": "src/factory/core/cli/cli_pool_spawn.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
@@ -1477,39 +1987,70 @@
     {
       "bucket": "DEBT",
       "line": 38,
-      "path": "src/lyra/core/cli/cli_pool_streaming.py",
+      "path": "src/factory/core/cli/cli_pool_streaming.py",
       "rule": "C901",
       "slug": "complexity-residual",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
+      "line": 38,
+      "path": "src/factory/core/cli/cli_pool_streaming.py",
+      "rule": "PLR0913",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
       "line": 12,
-      "path": "src/lyra/core/cli/cli_pool_types.py",
+      "path": "src/factory/core/cli/cli_pool_types.py",
       "rule": "reportUnusedClass",
       "slug": "protocol-private-ducktyping",
       "source": "pyright-ignore"
     },
     {
+      "bucket": "UNTAGGED",
+      "line": 19,
+      "path": "src/factory/core/cli/cli_pool_types.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
       "bucket": "DEBT",
-      "line": 129,
-      "path": "src/lyra/core/cli/cli_pool_worker.py",
+      "line": 136,
+      "path": "src/factory/core/cli/cli_pool_worker.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 284,
-      "path": "src/lyra/core/cli/cli_pool_worker.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
+      "line": 23,
+      "path": "src/factory/core/cli/protocol/cli_non_streaming.py",
+      "rule": "PLR0913",
+      "slug": "wiring-bootstrap-deps",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 61,
+      "path": "src/factory/core/cli/protocol/cli_non_streaming.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 61,
+      "path": "src/factory/core/cli/protocol/cli_non_streaming.py",
+      "rule": "PLR0915",
+      "slug": "complexity-residual",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
       "line": 32,
-      "path": "src/lyra/core/cli/cli_streaming.py",
+      "path": "src/factory/core/cli/protocol/cli_streaming.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
       "source": "noqa"
@@ -1517,7 +2058,7 @@
     {
       "bucket": "DEBT",
       "line": 72,
-      "path": "src/lyra/core/cli/cli_streaming.py",
+      "path": "src/factory/core/cli/protocol/cli_streaming.py",
       "rule": "C901",
       "slug": "complexity-residual",
       "source": "noqa"
@@ -1525,7 +2066,7 @@
     {
       "bucket": "DEBT",
       "line": 164,
-      "path": "src/lyra/core/cli/cli_streaming.py",
+      "path": "src/factory/core/cli/protocol/cli_streaming.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
@@ -1533,87 +2074,39 @@
     {
       "bucket": "DEBT",
       "line": 177,
-      "path": "src/lyra/core/cli/cli_streaming.py",
+      "path": "src/factory/core/cli/protocol/cli_streaming.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 94,
-      "path": "src/lyra/core/cli/cli_streaming_parser.py",
-      "rule": "C901",
-      "slug": "complexity-residual",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 94,
-      "path": "src/lyra/core/cli/cli_streaming_parser.py",
-      "rule": "PLR0912",
-      "slug": "complexity-residual",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 94,
-      "path": "src/lyra/core/cli/cli_streaming_parser.py",
-      "rule": "PLR0915",
-      "slug": "complexity-residual",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 42,
-      "path": "src/lyra/core/commands/builtin_commands.py",
-      "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 73,
-      "path": "src/lyra/core/commands/builtin_commands.py",
+      "line": 92,
+      "path": "src/factory/core/commands/builtin_commands.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 107,
-      "path": "src/lyra/core/commands/builtin_commands.py",
-      "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 114,
-      "path": "src/lyra/core/commands/command_loader.py",
+      "line": 116,
+      "path": "src/factory/core/commands/command_loader.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 46,
-      "path": "src/lyra/core/commands/command_router.py",
-      "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 119,
-      "path": "src/lyra/core/commands/command_router.py",
+      "line": 127,
+      "path": "src/factory/core/commands/command_router.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 236,
-      "path": "src/lyra/core/commands/command_router.py",
+      "line": 257,
+      "path": "src/factory/core/commands/command_router.py",
       "rule": "C901",
       "slug": "complexity-residual",
       "source": "noqa"
@@ -1621,39 +2114,46 @@
     {
       "bucket": "DEBT",
       "line": 19,
-      "path": "src/lyra/core/hub/hub.py",
+      "path": "src/factory/core/hub/hub.py",
       "rule": "F401",
       "slug": "re-export-init",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 65,
-      "path": "src/lyra/core/hub/hub.py",
+      "line": 69,
+      "path": "src/factory/core/hub/hub.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 46,
-      "path": "src/lyra/core/hub/hub_registration.py",
+      "line": 51,
+      "path": "src/factory/core/hub/hub_registration.py",
       "rule": "ARG002",
       "slug": "protocol-private-ducktyping",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 47,
-      "path": "src/lyra/core/hub/hub_registration.py",
+      "line": 52,
+      "path": "src/factory/core/hub/hub_registration.py",
       "rule": "ARG002",
       "slug": "protocol-private-ducktyping",
       "source": "noqa"
     },
     {
+      "bucket": "UNTAGGED",
+      "line": 103,
+      "path": "src/factory/core/hub/hub_shutdown.py",
+      "rule": "E501",
+      "source": "noqa"
+    },
+    {
       "bucket": "DEBT",
-      "line": 64,
-      "path": "src/lyra/core/hub/middleware/middleware.py",
+      "line": 67,
+      "path": "src/factory/core/hub/middleware/middleware.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
@@ -1661,111 +2161,91 @@
     {
       "bucket": "DEBT",
       "line": 112,
-      "path": "src/lyra/core/hub/middleware/middleware_guards.py",
+      "path": "src/factory/core/hub/middleware/middleware_guards.py",
       "rule": "PLC0415",
       "slug": "plc0415-deferred-import",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 159,
-      "path": "src/lyra/core/hub/middleware/middleware_pool.py",
-      "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 71,
-      "path": "src/lyra/core/hub/middleware/middleware_stt.py",
+      "line": 74,
+      "path": "src/factory/core/hub/middleware/middleware_stt.py",
       "rule": "C901",
       "slug": "complexity-residual",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 71,
-      "path": "src/lyra/core/hub/middleware/middleware_stt.py",
+      "line": 74,
+      "path": "src/factory/core/hub/middleware/middleware_stt.py",
       "rule": "PLR0915",
       "slug": "complexity-residual",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 173,
-      "path": "src/lyra/core/hub/middleware/middleware_stt.py",
+      "line": 185,
+      "path": "src/factory/core/hub/middleware/middleware_stt.py",
       "rule": "union-attr",
       "slug": "defensive-narrow-payloads",
       "source": "type-ignore"
     },
     {
       "bucket": "DEBT",
-      "line": 174,
-      "path": "src/lyra/core/hub/middleware/middleware_stt.py",
+      "line": 186,
+      "path": "src/factory/core/hub/middleware/middleware_stt.py",
       "rule": "union-attr",
       "slug": "defensive-narrow-payloads",
       "source": "type-ignore"
     },
     {
       "bucket": "DEBT",
-      "line": 37,
-      "path": "src/lyra/core/hub/middleware/middleware_submit.py",
+      "line": 33,
+      "path": "src/factory/core/hub/middleware/middleware_submit.py",
       "rule": "A002",
       "slug": "lint-residual",
       "source": "noqa"
     },
     {
+      "bucket": "UNTAGGED",
+      "line": 119,
+      "path": "src/factory/core/hub/outbound/_dispatch.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 170,
+      "path": "src/factory/core/hub/outbound/_dispatch.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 213,
+      "path": "src/factory/core/hub/outbound/_dispatch.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 49,
+      "path": "src/factory/core/hub/outbound/outbound_dispatcher.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
       "bucket": "DEBT",
-      "line": 92,
-      "path": "src/lyra/core/hub/middleware/middleware_submit.py",
+      "line": 123,
+      "path": "src/factory/core/hub/outbound/outbound_errors.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 27,
-      "path": "src/lyra/core/hub/outbound/_dispatch.py",
-      "rule": "C901",
-      "slug": "complexity-residual",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 27,
-      "path": "src/lyra/core/hub/outbound/_dispatch.py",
-      "rule": "PLR0913",
-      "slug": "complexity-residual",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 27,
-      "path": "src/lyra/core/hub/outbound/_dispatch.py",
-      "rule": "PLR0915",
-      "slug": "complexity-residual",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 122,
-      "path": "src/lyra/core/hub/outbound/outbound_errors.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 55,
-      "path": "src/lyra/core/hub/outbound/outbound_router.py",
-      "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
       "line": 47,
-      "path": "src/lyra/core/hub/outbound/outbound_streaming.py",
+      "path": "src/factory/core/hub/outbound/outbound_streaming.py",
       "rule": "C901",
       "slug": "complexity-residual",
       "source": "noqa"
@@ -1773,7 +2253,7 @@
     {
       "bucket": "DEBT",
       "line": 47,
-      "path": "src/lyra/core/hub/outbound/outbound_streaming.py",
+      "path": "src/factory/core/hub/outbound/outbound_streaming.py",
       "rule": "PLR0915",
       "slug": "complexity-residual",
       "source": "noqa"
@@ -1781,23 +2261,46 @@
     {
       "bucket": "DEBT",
       "line": 9,
-      "path": "src/lyra/core/hub/pipeline/message_pipeline.py",
+      "path": "src/factory/core/hub/pipeline/message_pipeline.py",
       "rule": "F401",
       "slug": "re-export-init",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 90,
-      "path": "src/lyra/core/memory/memory_schema.py",
+      "line": 155,
+      "path": "src/factory/core/lifecycle/session_lifecycle.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
+      "line": 191,
+      "path": "src/factory/core/lifecycle/session_lifecycle.py",
+      "rule": "BLE001",
+      "slug": "boundary-broad-catch",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 90,
+      "path": "src/factory/core/memory/memory_schema.py",
+      "rule": "BLE001",
+      "slug": "boundary-broad-catch",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 47,
+      "path": "src/factory/core/messaging/bot_display_name.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
       "line": 31,
-      "path": "src/lyra/core/messaging/callbacks.py",
+      "path": "src/factory/core/messaging/utils/callbacks.py",
       "rule": "return-value",
       "slug": "lint-residual",
       "source": "type-ignore"
@@ -1805,55 +2308,47 @@
     {
       "bucket": "DEBT",
       "line": 21,
-      "path": "src/lyra/core/persona.py",
+      "path": "src/factory/core/persona.py",
       "rule": "C901",
       "slug": "complexity-residual",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 32,
-      "path": "src/lyra/core/pool/pool.py",
+      "line": 33,
+      "path": "src/factory/core/pool/pool.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 45,
-      "path": "src/lyra/core/pool/pool.py",
+      "line": 46,
+      "path": "src/factory/core/pool/pool.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 218,
-      "path": "src/lyra/core/pool/pool.py",
+      "line": 224,
+      "path": "src/factory/core/pool/pool.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 243,
-      "path": "src/lyra/core/pool/pool.py",
+      "line": 254,
+      "path": "src/factory/core/pool/pool.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 92,
-      "path": "src/lyra/core/pool/pool_observer.py",
-      "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
       "line": 36,
-      "path": "src/lyra/core/pool/pool_processor.py",
+      "path": "src/factory/core/pool/pool_processor.py",
       "rule": "C901",
       "slug": "wiring-bootstrap-deps",
       "source": "noqa"
@@ -1861,111 +2356,94 @@
     {
       "bucket": "DEBT",
       "line": 150,
-      "path": "src/lyra/core/pool/pool_processor.py",
+      "path": "src/factory/core/pool/pool_processor.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 104,
-      "path": "src/lyra/core/pool/pool_processor_exec.py",
-      "rule": "C901",
-      "slug": "complexity-residual",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 104,
-      "path": "src/lyra/core/pool/pool_processor_exec.py",
+      "line": 39,
+      "path": "src/factory/core/pool/pool_processor_exec.py",
       "rule": "PLR0915",
       "slug": "complexity-residual",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 151,
-      "path": "src/lyra/core/pool/pool_processor_exec.py",
+      "line": 149,
+      "path": "src/factory/core/pool/pool_processor_exec.py",
+      "rule": "reportUnnecessaryIsInstance",
+      "slug": "defensive-narrow-payloads",
+      "source": "pyright-ignore"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 187,
+      "path": "src/factory/core/pool/pool_processor_exec.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 165,
-      "path": "src/lyra/core/pool/pool_processor_exec.py",
-      "rule": "reportUnnecessaryIsInstance",
-      "slug": "defensive-narrow-payloads",
-      "source": "pyright-ignore"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 168,
-      "path": "src/lyra/core/pool/pool_processor_exec.py",
+      "line": 202,
+      "path": "src/factory/core/pool/pool_processor_exec.py",
       "rule": "misc",
       "slug": "defensive-narrow-payloads",
       "source": "type-ignore"
     },
     {
       "bucket": "DEBT",
-      "line": 176,
-      "path": "src/lyra/core/pool/pool_processor_exec.py",
+      "line": 208,
+      "path": "src/factory/core/pool/pool_processor_exec.py",
+      "rule": "union-attr",
+      "slug": "defensive-narrow-payloads",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 209,
+      "path": "src/factory/core/pool/pool_processor_exec.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 232,
-      "path": "src/lyra/core/pool/pool_processor_exec.py",
+      "line": 263,
+      "path": "src/factory/core/pool/pool_processor_exec.py",
       "rule": "reportUnnecessaryIsInstance",
       "slug": "defensive-narrow-payloads",
       "source": "pyright-ignore"
     },
     {
       "bucket": "DEBT",
-      "line": 239,
-      "path": "src/lyra/core/pool/pool_processor_exec.py",
-      "rule": "reportUnnecessaryIsInstance",
-      "slug": "defensive-narrow-payloads",
-      "source": "pyright-ignore"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 51,
-      "path": "src/lyra/core/pool/pool_processor_streaming.py",
-      "rule": "misc",
+      "line": 268,
+      "path": "src/factory/core/pool/pool_processor_exec.py",
+      "rule": "arg-type",
       "slug": "defensive-narrow-payloads",
       "source": "type-ignore"
     },
     {
-      "bucket": "DEBT",
-      "line": 53,
-      "path": "src/lyra/core/pool/pool_processor_streaming.py",
-      "rule": "misc",
-      "slug": "defensive-narrow-payloads",
-      "source": "type-ignore"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 58,
-      "path": "src/lyra/core/pool/pool_processor_streaming.py",
+      "bucket": "UNTAGGED",
+      "line": 272,
+      "path": "src/factory/core/pool/pool_processor_exec.py",
       "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 111,
-      "path": "src/lyra/core/pool/pool_processor_streaming.py",
+      "line": 48,
+      "path": "src/factory/core/pool/pool_processor_streaming.py",
       "rule": "misc",
       "slug": "defensive-narrow-payloads",
       "source": "type-ignore"
     },
     {
       "bucket": "DEBT",
-      "line": 117,
-      "path": "src/lyra/core/pool/pool_processor_streaming.py",
+      "line": 50,
+      "path": "src/factory/core/pool/pool_processor_streaming.py",
       "rule": "misc",
       "slug": "defensive-narrow-payloads",
       "source": "type-ignore"
@@ -1973,95 +2451,93 @@
     {
       "bucket": "DEBT",
       "line": 118,
-      "path": "src/lyra/core/pool/pool_processor_streaming.py",
+      "path": "src/factory/core/pool/pool_processor_streaming.py",
+      "rule": "misc",
+      "slug": "defensive-narrow-payloads",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 124,
+      "path": "src/factory/core/pool/pool_processor_streaming.py",
+      "rule": "misc",
+      "slug": "defensive-narrow-payloads",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 125,
+      "path": "src/factory/core/pool/pool_processor_streaming.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
+      "bucket": "UNTAGGED",
+      "line": 33,
+      "path": "src/factory/core/ports/blobstore.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
       "bucket": "DEBT",
-      "line": 49,
-      "path": "src/lyra/core/ports/llm.py",
+      "line": 52,
+      "path": "src/factory/core/ports/llm.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 190,
-      "path": "src/lyra/core/processors/stream_processor.py",
-      "rule": "C901",
+      "line": 17,
+      "path": "src/factory/core/ports/resume_publisher.py",
+      "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 190,
-      "path": "src/lyra/core/processors/stream_processor.py",
-      "rule": "PLR0915",
-      "slug": "wiring-bootstrap-deps",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 269,
-      "path": "src/lyra/core/processors/stream_processor.py",
+      "line": 282,
+      "path": "src/factory/core/processors/stream_processor.py",
       "rule": "reportUnnecessaryIsInstance",
       "slug": "defensive-narrow-payloads",
       "source": "pyright-ignore"
     },
     {
       "bucket": "DEBT",
+      "line": 323,
+      "path": "src/factory/core/processors/stream_processor.py",
+      "rule": "reportUnnecessaryIsInstance",
+      "slug": "defensive-narrow-payloads",
+      "source": "pyright-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 325,
+      "path": "src/factory/core/processors/stream_processor.py",
+      "rule": "reportUnnecessaryIsInstance",
+      "source": "pyright-ignore"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 328,
+      "path": "src/factory/core/processors/stream_processor.py",
+      "rule": "reportUnreachableCode",
+      "slug": "defensive-narrow-payloads",
+      "source": "pyright-ignore"
+    },
+    {
+      "bucket": "DEBT",
       "line": 97,
-      "path": "src/lyra/core/processors/vault_add.py",
+      "path": "src/factory/core/processors/vault_add.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 176,
-      "path": "src/lyra/core/runtime_config.py",
-      "rule": "C901",
-      "slug": "complexity-residual",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 176,
-      "path": "src/lyra/core/runtime_config.py",
-      "rule": "PLR0915",
-      "slug": "complexity-residual",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 146,
-      "path": "src/lyra/core/session_lifecycle.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 182,
-      "path": "src/lyra/core/session_lifecycle.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 51,
-      "path": "src/lyra/core/stores/pairing_protocol.py",
-      "rule": "PLC0415",
-      "slug": "plc0415-deferred-import",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
       "line": 143,
-      "path": "src/lyra/core/trace.py",
+      "path": "src/factory/core/trace.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
@@ -2069,7 +2545,7 @@
     {
       "bucket": "DEBT",
       "line": 172,
-      "path": "src/lyra/core/tts_dispatch.py",
+      "path": "src/factory/core/tts_dispatch.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
       "source": "noqa"
@@ -2077,39 +2553,137 @@
     {
       "bucket": "DEBT",
       "line": 172,
-      "path": "src/lyra/core/tts_dispatch.py",
+      "path": "src/factory/core/tts_dispatch.py",
       "rule": "C901",
       "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 201,
-      "path": "src/lyra/core/tts_dispatch.py",
+      "line": 202,
+      "path": "src/factory/core/tts_dispatch.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 48,
+      "path": "src/factory/inbound/pipeline.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 27,
+      "path": "src/factory/inbound/prebuilt_parser.py",
+      "rule": "ARG002",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 39,
+      "path": "src/factory/infrastructure/blobstore_adapter.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 51,
+      "path": "src/factory/infrastructure/jobs/dlq_router.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 76,
+      "path": "src/factory/infrastructure/jobs/dlq_router.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 110,
+      "path": "src/factory/infrastructure/jobs/dlq_router.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 120,
+      "path": "src/factory/infrastructure/jobs/dlq_router.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 91,
+      "path": "src/factory/infrastructure/kv/bot_roster.py",
+      "rule": "attr-defined",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 94,
+      "path": "src/factory/infrastructure/kv/bot_roster.py",
+      "rule": "arg-type",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 25,
+      "path": "src/factory/infrastructure/resume_publisher_adapter.py",
+      "rule": "PLR0913",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
       "line": 35,
-      "path": "src/lyra/infrastructure/stores/sqlite_base.py",
+      "path": "src/factory/infrastructure/stores/base/sqlite_base.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
+      "bucket": "UNTAGGED",
+      "line": 91,
+      "path": "src/factory/infrastructure/stores/jobs/active_jobs_refresher.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 130,
+      "path": "src/factory/infrastructure/stores/jobs/active_jobs_refresher.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
       "bucket": "DEBT",
-      "line": 125,
-      "path": "src/lyra/infrastructure/stores/turn_store.py",
+      "line": 158,
+      "path": "src/factory/infrastructure/stores/session/turn_store.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
+      "bucket": "UNTAGGED",
+      "line": 107,
+      "path": "src/factory/infrastructure/turn_writer/health.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 114,
+      "path": "src/factory/infrastructure/turn_writer/writer.py",
+      "rule": "union-attr",
+      "source": "type-ignore"
+    },
+    {
       "bucket": "DEBT",
-      "line": 31,
-      "path": "src/lyra/integrations/base.py",
+      "line": 30,
+      "path": "src/factory/integrations/base.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
       "source": "noqa"
@@ -2117,15 +2691,29 @@
     {
       "bucket": "DEBT",
       "line": 29,
-      "path": "src/lyra/integrations/vault_cli.py",
+      "path": "src/factory/integrations/vault_cli.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
+      "bucket": "UNTAGGED",
+      "line": 61,
+      "path": "src/factory/llm/cli_nats_codec.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 80,
+      "path": "src/factory/llm/cli_pool_codec.py",
+      "rule": "assignment",
+      "source": "type-ignore"
+    },
+    {
       "bucket": "DEBT",
       "line": 36,
-      "path": "src/lyra/llm/decorators.py",
+      "path": "src/factory/llm/decorators.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
       "source": "noqa"
@@ -2133,79 +2721,102 @@
     {
       "bucket": "DEBT",
       "line": 83,
-      "path": "src/lyra/llm/decorators.py",
+      "path": "src/factory/llm/decorators.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 115,
-      "path": "src/lyra/llm/decorators.py",
+      "line": 83,
+      "path": "src/factory/llm/decorators.py",
+      "rule": "C901",
+      "slug": "wiring-bootstrap-deps",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 160,
+      "path": "src/factory/llm/decorators.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 146,
-      "path": "src/lyra/llm/decorators.py",
+      "line": 191,
+      "path": "src/factory/llm/decorators.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 234,
-      "path": "src/lyra/llm/drivers/cli_nats.py",
-      "rule": "union-attr",
-      "slug": "defensive-narrow-payloads",
+      "bucket": "UNTAGGED",
+      "line": 85,
+      "path": "src/factory/llm/drivers/omp_rpc.py",
+      "rule": "ARG002",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 216,
+      "path": "src/factory/llm/drivers/omp_rpc.py",
+      "rule": "SLF001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 71,
+      "path": "src/factory/llm/llm_client.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 106,
+      "path": "src/factory/llm/llm_client.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 173,
+      "path": "src/factory/llm/llm_client.py",
+      "rule": "SLF001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 173,
+      "path": "src/factory/llm/llm_client.py",
+      "rule": "attr-defined",
       "source": "type-ignore"
     },
     {
-      "bucket": "DEBT",
-      "line": 137,
-      "path": "src/lyra/llm/drivers/nats_driver.py",
-      "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
+      "bucket": "UNTAGGED",
+      "line": 214,
+      "path": "src/factory/llm/llm_client.py",
+      "rule": "SLF001",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 274,
-      "path": "src/lyra/llm/drivers/nats_driver.py",
-      "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
-      "source": "noqa"
+      "bucket": "UNTAGGED",
+      "line": 214,
+      "path": "src/factory/llm/llm_client.py",
+      "rule": "attr-defined",
+      "source": "type-ignore"
     },
     {
-      "bucket": "DEBT",
-      "line": 297,
-      "path": "src/lyra/llm/drivers/nats_driver.py",
-      "rule": "C901",
-      "slug": "complexity-residual",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 297,
-      "path": "src/lyra/llm/drivers/nats_driver.py",
-      "rule": "PLR0913",
-      "slug": "complexity-residual",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 297,
-      "path": "src/lyra/llm/drivers/nats_driver.py",
-      "rule": "PLR0915",
-      "slug": "complexity-residual",
+      "bucket": "UNTAGGED",
+      "line": 6,
+      "path": "src/factory/llm/llm_codec.py",
+      "rule": "F401",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
       "line": 50,
-      "path": "src/lyra/monitoring/__main__.py",
+      "path": "src/factory/monitoring/__main__.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
@@ -2213,7 +2824,7 @@
     {
       "bucket": "DEBT",
       "line": 56,
-      "path": "src/lyra/monitoring/__main__.py",
+      "path": "src/factory/monitoring/__main__.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
@@ -2221,145 +2832,341 @@
     {
       "bucket": "DEBT",
       "line": 67,
-      "path": "src/lyra/monitoring/__main__.py",
+      "path": "src/factory/monitoring/__main__.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 86,
-      "path": "src/lyra/monitoring/checks.py",
+      "line": 87,
+      "path": "src/factory/monitoring/checks.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 129,
+      "path": "src/factory/monitoring/checks_audio.py",
+      "rule": "BLE001",
+      "slug": "boundary-broad-catch",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 232,
+      "path": "src/factory/monitoring/checks_audio.py",
+      "rule": "BLE001",
+      "slug": "boundary-broad-catch",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 146,
+      "path": "src/factory/monitoring/checks_varz.py",
+      "rule": "BLE001",
+      "slug": "boundary-broad-catch",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 73,
+      "path": "src/factory/nats/audio_publish.py",
+      "rule": "misc",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 22,
+      "path": "src/factory/nats/image/nats_image_client.py",
+      "rule": "F401",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
       "line": 65,
-      "path": "src/lyra/monitoring/checks_varz.py",
+      "path": "src/factory/nats/nats_bus.py",
+      "rule": "PLR0913",
+      "slug": "wiring-bootstrap-deps",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 141,
+      "path": "src/factory/nats/nats_channel_proxy.py",
+      "rule": "E501",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 195,
+      "path": "src/factory/nats/nats_channel_proxy.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 93,
+      "path": "src/factory/nats/render_event_codec_registry.py",
+      "rule": "return-value",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 93,
+      "path": "src/factory/nats/stt/nats_stt_codec.py",
+      "rule": "arg-type",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 94,
+      "path": "src/factory/nats/stt/nats_stt_codec.py",
+      "rule": "arg-type",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 95,
+      "path": "src/factory/nats/stt/nats_stt_codec.py",
+      "rule": "arg-type",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 52,
+      "path": "src/factory/outbound/_emitter_run.py",
+      "rule": "C901",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 86,
+      "path": "src/factory/outbound/_emitter_run.py",
+      "rule": "reportUnnecessaryIsInstance",
+      "source": "pyright-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 95,
+      "path": "src/factory/outbound/_emitter_run.py",
+      "rule": "reportUnnecessaryIsInstance",
+      "source": "pyright-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 111,
+      "path": "src/factory/outbound/_emitter_run.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 135,
+      "path": "src/factory/outbound/_emitter_run.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 135,
+      "path": "src/factory/outbound/_streaming_state.py",
+      "rule": "PLC0415",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 114,
+      "path": "src/factory/outbound/_tool_recap.py",
+      "rule": "C901",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 5,
+      "path": "src/factory/outbound/error_handler.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 72,
+      "path": "src/factory/outbound/error_handler.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 34,
+      "path": "src/factory/outbound/formatter.py",
+      "rule": "E501",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 99,
+      "path": "src/factory/outbound/formatter.py",
+      "rule": "E501",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 230,
+      "path": "src/factory/outbound/formatter.py",
+      "rule": "E501",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 234,
+      "path": "src/factory/outbound/formatter.py",
+      "rule": "E501",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 238,
+      "path": "src/factory/outbound/formatter.py",
+      "rule": "E501",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 244,
+      "path": "src/factory/outbound/formatter.py",
+      "rule": "E501",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 177,
+      "path": "src/factory/tools/gh_token/daemon.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 253,
+      "path": "src/factory/tools/gh_token/daemon.py",
+      "rule": "SIM102",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 264,
+      "path": "src/factory/tools/gh_token/daemon.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 266,
+      "path": "src/factory/tools/gh_token/daemon.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 63,
+      "path": "src/factory/tools/gh_token/dispenser.py",
+      "rule": "PLR0913",
+      "slug": "wiring-bootstrap-deps",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 195,
+      "path": "src/factory/tools/gh_token/dispenser.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 62,
-      "path": "src/lyra/nats/nats_bus.py",
+      "line": 157,
+      "path": "src/factory/tools/gh_token/helper.py",
+      "rule": "BLE001",
+      "slug": "boundary-broad-catch",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 249,
+      "path": "src/factory/tools/gh_token/helper.py",
+      "rule": "BLE001",
+      "slug": "boundary-broad-catch",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 69,
+      "path": "src/factory/tools/gh_token/mint_failure_publisher.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 86,
+      "path": "src/factory/transport/nats_request_response.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 68,
+      "path": "src/factory/transport/turn_publisher.py",
       "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 85,
-      "path": "src/lyra/nats/nats_stt_client.py",
+      "bucket": "UNTAGGED",
+      "line": 97,
+      "path": "src/factory/transport/turn_publisher.py",
+      "rule": "arg-type",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 158,
+      "path": "src/factory/transport/turn_publisher.py",
       "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 93,
-      "path": "src/lyra/nats/render_event_codec.py",
-      "rule": "reportUnnecessaryIsInstance",
-      "slug": "defensive-narrow-payloads",
-      "source": "pyright-ignore"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 95,
-      "path": "src/lyra/nats/render_event_codec.py",
-      "rule": "reportUnreachable",
-      "slug": "defensive-narrow-payloads",
-      "source": "pyright-ignore"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 99,
-      "path": "src/lyra/nats/render_event_codec.py",
-      "rule": "C901",
-      "slug": "complexity-residual",
+      "bucket": "UNTAGGED",
+      "line": 185,
+      "path": "src/factory/transport/turn_publisher.py",
+      "rule": "PLR0913",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 9,
-      "path": "src/lyra/stt/__init__.py",
-      "rule": "F401",
-      "slug": "re-export-init",
+      "bucket": "UNTAGGED",
+      "line": 80,
+      "path": "src/factory/transport/typing_publisher.py",
+      "rule": "BLE001",
       "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 9,
-      "path": "src/lyra/stt/__init__.py",
-      "rule": "reportUnusedImport",
-      "slug": "re-export-init",
-      "source": "pyright-ignore"
     },
     {
       "bucket": "DEBT",
       "line": 64,
-      "path": "src/lyra/tools/gh_token/dispenser.py",
+      "path": "src/factory/transport/worker_pool_client.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 215,
-      "path": "src/lyra/tools/gh_token/dispenser.py",
+      "bucket": "UNTAGGED",
+      "line": 129,
+      "path": "src/factory/transport/worker_pool_client.py",
       "rule": "BLE001",
-      "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 158,
-      "path": "src/lyra/tools/gh_token/helper.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 248,
-      "path": "src/lyra/tools/gh_token/helper.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 33,
-      "path": "src/lyra/tools/gh_token/refresh.py",
+      "bucket": "UNTAGGED",
+      "line": 75,
+      "path": "src/factory/typing/listener.py",
       "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 68,
-      "path": "src/lyra/tools/gh_token/refresh.py",
-      "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 105,
-      "path": "src/lyra/tools/gh_token/refresh.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 55,
-      "path": "src/lyra/tts/engine_selector.py",
-      "rule": "PLR0913",
-      "slug": "wiring-bootstrap-deps",
       "source": "noqa"
     },
     {
@@ -2385,9 +3192,30 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 78,
-      "path": "tools/capture_v1_text_baseline.py",
-      "rule": "E402",
+      "line": 33,
+      "path": "tools/check_doc_drift.py",
+      "rule": "no-redef",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 405,
+      "path": "tools/check_doc_drift.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 271,
+      "path": "tools/check_doc_semantic_drift.py",
+      "rule": "BLE001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 456,
+      "path": "tools/code_inventory.py",
+      "rule": "PLR0913",
       "source": "noqa"
     },
     {
@@ -2399,290 +3227,66 @@
     },
     {
       "bucket": "DEBT",
-      "line": 17,
-      "path": "lyra.core.agent.agent_refiner -> lyra.infrastructure.stores.agent_store",
-      "slug": "importlinter-adr048-transition",
-      "source": "importlinter"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 18,
-      "path": "lyra.core.auth.authenticator -> lyra.infrastructure.stores.auth_store",
-      "slug": "importlinter-adr048-transition",
-      "source": "importlinter"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 19,
-      "path": "lyra.core.auth.authenticator -> lyra.infrastructure.stores.identity_alias_store",
-      "slug": "importlinter-adr048-transition",
-      "source": "importlinter"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 20,
-      "path": "lyra.core.agent.agent -> lyra.infrastructure.stores.agent_store",
-      "slug": "importlinter-adr048-transition",
-      "source": "importlinter"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 21,
-      "path": "lyra.core.memory.memory -> lyra.infrastructure.stores.identity_alias_store",
-      "slug": "importlinter-adr048-transition",
-      "source": "importlinter"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 22,
-      "path": "lyra.core.hub.hub -> lyra.infrastructure.stores.identity_alias_store",
-      "slug": "importlinter-adr048-transition",
-      "source": "importlinter"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 23,
-      "path": "lyra.core.hub.hub_registration -> lyra.infrastructure.stores.identity_alias_store",
-      "slug": "importlinter-adr048-transition",
-      "source": "importlinter"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 25,
-      "path": "lyra.core.hub.hub -> lyra.infrastructure.stores.message_index",
-      "slug": "importlinter-adr048-transition",
-      "source": "importlinter"
-    },
-    {
-      "bucket": "DEBT",
       "line": 26,
-      "path": "lyra.core.hub.hub -> lyra.infrastructure.stores.pairing",
+      "path": "factory.core.agent.agent_refiner -> factory.infrastructure.stores.registry.agent_store",
       "slug": "importlinter-adr048-transition",
       "source": "importlinter"
     },
     {
       "bucket": "DEBT",
       "line": 27,
-      "path": "lyra.core.hub.hub -> lyra.infrastructure.stores.prefs_store",
+      "path": "factory.core.agent.agent -> factory.infrastructure.stores.registry.agent_store",
       "slug": "importlinter-adr048-transition",
       "source": "importlinter"
     },
     {
       "bucket": "DEBT",
       "line": 28,
-      "path": "lyra.core.hub.hub_registration -> lyra.infrastructure.stores.message_index",
+      "path": "factory.core.memory.memory -> factory.infrastructure.stores.identity.identity_alias_store",
       "slug": "importlinter-adr048-transition",
       "source": "importlinter"
     },
     {
       "bucket": "DEBT",
       "line": 29,
-      "path": "lyra.core.hub.hub_shutdown -> lyra.infrastructure.stores.message_index",
+      "path": "factory.core.hub.hub -> factory.infrastructure.stores.identity.identity_alias_store",
       "slug": "importlinter-adr048-transition",
       "source": "importlinter"
     },
     {
       "bucket": "DEBT",
       "line": 30,
-      "path": "lyra.core.pool.pool_observer -> lyra.infrastructure.stores.message_index",
+      "path": "factory.core.hub.hub_registration -> factory.infrastructure.stores.identity.identity_alias_store",
       "slug": "importlinter-adr048-transition",
       "source": "importlinter"
     },
     {
       "bucket": "DEBT",
       "line": 32,
-      "path": "lyra.core.stores.pairing_protocol -> lyra.infrastructure.stores.pairing",
+      "path": "factory.core.hub.hub -> factory.infrastructure.stores.identity.pairing",
       "slug": "importlinter-adr048-transition",
       "source": "importlinter"
     },
     {
       "bucket": "DEBT",
-      "line": 34,
-      "path": "lyra.core.hub.hub -> lyra.infrastructure.stores.turn_store",
+      "line": 33,
+      "path": "factory.core.hub.hub -> factory.infrastructure.stores.registry.prefs_store",
       "slug": "importlinter-adr048-transition",
       "source": "importlinter"
     },
     {
       "bucket": "DEBT",
-      "line": 35,
-      "path": "lyra.core.hub.hub_registration -> lyra.infrastructure.stores.turn_store",
+      "line": 63,
+      "path": "factory.agents.simple_agent -> factory.infrastructure.stores.registry.agent_store",
       "slug": "importlinter-adr048-transition",
       "source": "importlinter"
     },
     {
       "bucket": "DEBT",
-      "line": 36,
-      "path": "lyra.core.hub.hub_shutdown -> lyra.infrastructure.stores.turn_store",
-      "slug": "importlinter-adr048-transition",
-      "source": "importlinter"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 37,
-      "path": "lyra.core.cli.cli_pool -> lyra.infrastructure.stores.turn_store",
-      "slug": "importlinter-adr048-transition",
-      "source": "importlinter"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 38,
-      "path": "lyra.core.cli.cli_pool_session -> lyra.infrastructure.stores.turn_store",
-      "slug": "importlinter-adr048-transition",
-      "source": "importlinter"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 39,
-      "path": "lyra.core.pool.pool -> lyra.infrastructure.stores.turn_store",
-      "slug": "importlinter-adr048-transition",
-      "source": "importlinter"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 40,
-      "path": "lyra.core.pool.pool_observer -> lyra.infrastructure.stores.turn_store",
-      "slug": "importlinter-adr048-transition",
-      "source": "importlinter"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 70,
-      "path": "lyra.agents.simple_agent -> lyra.infrastructure.stores.agent_store",
-      "slug": "importlinter-adr048-transition",
-      "source": "importlinter"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 89,
-      "path": "lyra.tts.engine_selector -> lyra.core.agent.agent_config",
+      "line": 80,
+      "path": "factory.core.processors.processor_registry -> factory.integrations.base",
       "slug": "importlinter-shared-modules-transitive",
       "source": "importlinter"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 90,
-      "path": "lyra.core.processors.processor_registry -> lyra.integrations.base",
-      "slug": "importlinter-shared-modules-transitive",
-      "source": "importlinter"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 91,
-      "path": "lyra.core.agent.agent -> lyra.stt",
-      "slug": "importlinter-shared-modules-transitive",
-      "source": "importlinter"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 92,
-      "path": "lyra.core.agent.agent -> lyra.tts",
-      "slug": "importlinter-shared-modules-transitive",
-      "source": "importlinter"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 4,
-      "path": "src/lyra/bootstrap/factory/wiring_helpers.py",
-      "slug": "file-exemptions",
-      "source": "file-exemptions"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 5,
-      "path": "src/lyra/bootstrap/bootstrap_stores.py",
-      "slug": "file-exemptions",
-      "source": "file-exemptions"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 6,
-      "path": "src/lyra/core/cli/cli_pool.py",
-      "slug": "file-exemptions",
-      "source": "file-exemptions"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 7,
-      "path": "src/lyra/agents/simple_agent.py",
-      "slug": "file-exemptions",
-      "source": "file-exemptions"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 8,
-      "path": "src/lyra/bootstrap/standalone/adapter_standalone.py",
-      "slug": "file-exemptions",
-      "source": "file-exemptions"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 9,
-      "path": "src/lyra/core/processors/stream_processor.py",
-      "slug": "file-exemptions",
-      "source": "file-exemptions"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 10,
-      "path": "src/lyra/adapters/shared/_shared_streaming_emitter.py",
-      "slug": "file-exemptions",
-      "source": "file-exemptions"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 11,
-      "path": "src/lyra/llm/drivers/nats_driver.py",
-      "slug": "file-exemptions",
-      "source": "file-exemptions"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 12,
-      "path": "src/lyra/adapters/clipool/clipool_worker.py",
-      "slug": "file-exemptions",
-      "source": "file-exemptions"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 13,
-      "path": "src/lyra/core/cli/cli_streaming_parser.py",
-      "slug": "file-exemptions",
-      "source": "file-exemptions"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 14,
-      "path": "src/lyra/core/messaging/render_events.py",
-      "slug": "file-exemptions",
-      "source": "file-exemptions"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 9,
-      "path": "src/lyra/core",
-      "slug": "folder-exemptions",
-      "source": "folder-exemptions"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 10,
-      "path": "src/lyra/infrastructure/stores",
-      "slug": "folder-exemptions",
-      "source": "folder-exemptions"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 11,
-      "path": "src/lyra/core/cli",
-      "slug": "folder-exemptions",
-      "source": "folder-exemptions"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 12,
-      "path": "src/lyra/core/messaging",
-      "slug": "folder-exemptions",
-      "source": "folder-exemptions"
     }
   ],
   "sources": [

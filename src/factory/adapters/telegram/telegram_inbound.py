@@ -7,40 +7,24 @@ from typing import TYPE_CHECKING, Any
 
 from aiogram.exceptions import TelegramAPIError
 
+from factory.adapters.shared.inbound import (
+    build_telegram_inbound_ctx,
+    get_inbound_pipeline_kit,
+    get_or_create_parser,
+    run_inbound_guarded,
+)
 from factory.adapters.telegram.telegram_audio import _download_audio
 from factory.adapters.telegram.telegram_formatting import _make_send_kwargs
 from factory.adapters.telegram.telegram_normalize import _make_scope_id, normalize_audio
 from factory.core.auth.trust import TrustLevel
-from factory.inbound.attachment_ingest import (
-    AttachmentIngestError,
-    AttachmentIngestStage,
-    PendingAttachment,
-)
-from factory.inbound.context import DispatchCtx, InboundContext, RouterCtx, SessionCtx
-from factory.inbound.dispatcher import Dispatcher
-from factory.inbound.pipeline import InboundPipeline
+from factory.inbound.attachment_ingest import AttachmentIngestError, PendingAttachment
 from factory.inbound.prebuilt_parser import PrebuiltParser
-from factory.inbound.router import Router
-from factory.inbound.session_builder import SessionBuilder
 from factory.inbound.wire_parser_telegram import TelegramWireParser
 
 if TYPE_CHECKING:
     from factory.adapters.telegram import TelegramAdapter
 
 log = logging.getLogger("factory.adapters.telegram")
-
-_dispatcher = Dispatcher()
-_router = Router()
-_session_builder = SessionBuilder()
-_pipeline = InboundPipeline(
-    router=_router,
-    session_builder=_session_builder,
-    dispatcher=_dispatcher,
-    ingest_stage=AttachmentIngestStage(),
-)
-# Adapters are process-singletons created at bootstrap; id-keying is safe for
-# this lifecycle (no GC + id-reuse window). Revisit when bootstrap DI lands (#1283).
-_parser_cache: dict[int, TelegramWireParser] = {}  # one parser per adapter instance
 
 
 def _expected_media_count(msg: Any) -> int:
@@ -96,31 +80,9 @@ async def handle_message(adapter: "TelegramAdapter", msg: Any) -> None:
     # the update indefinitely.
     adapter._start_typing(msg.chat.id)
 
-    # Per-adapter parser — avoid recreating each message.
-    parser = _parser_cache.get(id(adapter))
-    if parser is None:
-        parser = TelegramWireParser(adapter)
-        _parser_cache[id(adapter)] = parser
-
-    inbound_ctx = InboundContext(
-        router=RouterCtx(
-            bot_id=adapter._bot_id,
-            owned_threads=set(),  # Telegram has no thread model; Router only reads
-            watch_channels=None,
-        ),
-        session=SessionCtx(
-            turn_store=None,
-            thread_store=None,  # Telegram has no thread model
-        ),
-        dispatch=DispatchCtx(
-            inbound_bus=adapter._inbound_bus,
-            circuit_registry=adapter._circuit_registry,
-            outbound_listener=adapter._outbound_listener,
-            typing=adapter._typing,
-            msg_catalog=adapter._msg_manager,
-        ),
-        ingest=adapter._ingest_ctx,
-    )
+    kit = get_inbound_pipeline_kit()
+    parser = get_or_create_parser(kit.parser_cache, adapter, TelegramWireParser)
+    inbound_ctx = build_telegram_inbound_ctx(adapter, ingest=adapter._ingest_ctx)
 
     # Pre-parse to detect oversize-attachment filtering (T6/T7, #1561).
     parsed = parser.parse(msg, inbound_ctx)
@@ -137,31 +99,27 @@ async def handle_message(adapter: "TelegramAdapter", msg: Any) -> None:
     async def _tg_backpressure(text: str) -> None:
         await adapter.bot.send_message(msg.chat.id, text)
 
-    try:
-        await _pipeline.run(
-            msg,
-            inbound_ctx,
-            parser,
-            send_backpressure=_tg_backpressure,
-            on_drop=lambda: adapter._cancel_typing(msg.chat.id),
-        )
-    except AttachmentIngestError as e:
+    async def _on_ingest_error(exc: AttachmentIngestError) -> None:
         try:
             await adapter.bot.send_message(
-                **_make_send_kwargs(msg.chat.id, e.user_message, msg.message_id)
+                **_make_send_kwargs(msg.chat.id, exc.user_message, msg.message_id)
             )
         except TelegramAPIError:
             log.warning(
                 "Failed to send attachment-too-large reply for chat_id=%s",
                 msg.chat.id,
             )
-        return
-    except Exception:  # always-return boundary (#4): unhandled errors must not
-        # reach aiogram — Telegram would retry the update indefinitely.
-        log.exception(
-            "Unhandled exception in handle_message for chat_id=%s",
-            msg.chat.id,
-        )
+
+    await run_inbound_guarded(
+        pipeline=kit.pipeline,
+        raw_message=msg,
+        inbound_ctx=inbound_ctx,
+        parser=parser,
+        log_context=f"telegram chat_id={msg.chat.id}",
+        on_attachment_ingest_error=_on_ingest_error,
+        send_backpressure=_tg_backpressure,
+        on_drop=lambda: adapter._cancel_typing(msg.chat.id),
+    )
 
 
 async def handle_voice_message(adapter: "TelegramAdapter", msg: Any) -> None:  # noqa: C901
@@ -274,41 +232,23 @@ async def handle_voice_message(adapter: "TelegramAdapter", msg: Any) -> None:  #
 
     adapter._start_typing(chat_id)
 
-    inbound_ctx = InboundContext(
-        router=RouterCtx(
-            bot_id=adapter._bot_id,
-            owned_threads=set(),  # Telegram has no thread model
-            watch_channels=None,
-        ),
-        session=SessionCtx(
-            turn_store=None,
-            thread_store=None,  # Telegram has no thread model
-        ),
-        dispatch=DispatchCtx(
-            inbound_bus=adapter._inbound_bus,
-            circuit_registry=adapter._circuit_registry,
-            outbound_listener=adapter._outbound_listener,
-            typing=adapter._typing,
-            msg_catalog=adapter._msg_manager,
-        ),
-        ingest=adapter._ingest_ctx,
-    )
+    inbound_ctx = build_telegram_inbound_ctx(adapter, ingest=adapter._ingest_ctx)
+    kit = get_inbound_pipeline_kit()
 
     async def _send_bp(text: str) -> None:
         await adapter.bot.send_message(**_make_send_kwargs(chat_id, text, message_id))
 
-    try:
-        await _pipeline.run(
-            hub_audio,
-            inbound_ctx,
-            PrebuiltParser(),
-            send_backpressure=_send_bp,
-            on_drop=lambda: adapter._cancel_typing(chat_id),
-        )
-    except Exception:  # always-return boundary (#4): unhandled errors must not
-        # reach aiogram — Telegram would retry the update indefinitely.
-        log.exception(
-            "Unhandled exception in handle_voice_message for chat_id=%s user_id=%s",
-            chat_id,
-            user_id,
-        )
+    await run_inbound_guarded(
+        pipeline=kit.pipeline,
+        raw_message=hub_audio,
+        inbound_ctx=inbound_ctx,
+        parser=PrebuiltParser(),
+        log_context=f"telegram voice chat_id={chat_id} user_id={user_id}",
+        on_attachment_ingest_error=_noop_ingest_error,
+        send_backpressure=_send_bp,
+        on_drop=lambda: adapter._cancel_typing(chat_id),
+    )
+
+
+async def _noop_ingest_error(_exc: AttachmentIngestError) -> None:
+    """Voice path uses pre-built hub_audio — ingest errors are not expected."""

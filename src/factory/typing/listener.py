@@ -4,7 +4,6 @@ import asyncio
 import logging
 from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any
-from uuid import uuid4
 
 from factory.transport.typing_event import TypingEvent
 from factory.transport.typing_publisher import is_typing_enabled
@@ -45,13 +44,10 @@ def make_typing_factory(
     return factory_builder
 
 
-def typing_publisher_shim(  # noqa: PLR0913 — DEBT:typing-publisher-shim-args — 6 params for platform+bot+scope+publisher+method+trace_id; no reasonable grouping exists
-    platform: str,
-    bot_id: str,
-    scope_id: int,
+def typing_publisher_shim(
+    scope: WorkScope,
     publisher: "TypingPublisher | None",
     method: Callable[[WorkScope], Coroutine[Any, Any, None]],
-    trace_id: str | None = None,
 ) -> bool:
     """Stage-axis helper for pub/sub typing path (ADR-073, #1377).
 
@@ -62,13 +58,7 @@ def typing_publisher_shim(  # noqa: PLR0913 — DEBT:typing-publisher-shim-args 
     """
     if not is_typing_enabled() or publisher is None:
         return False
-    work_scope = WorkScope(
-        platform=platform,
-        bot_id=bot_id,
-        scope_id=scope_id,
-        trace_id=trace_id or uuid4().hex,
-    )
-    task = asyncio.create_task(method(work_scope))
+    task = asyncio.create_task(method(scope))
 
     def _on_done(t: asyncio.Task) -> None:
         if t.cancelled():

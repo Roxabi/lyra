@@ -120,7 +120,7 @@ def normalize_audio(  # noqa: PLR0913 — additive signature (audio_bytes, mime_
     )
 
 
-async def handle_audio(  # noqa: C901 — DEBT:wiring-bootstrap-deps
+async def handle_audio(  # noqa: C901, PLR0915 — DEBT:wiring-bootstrap-deps
     adapter: "DiscordAdapter",
     message: Any,
     audio_attachment: Any,
@@ -255,10 +255,13 @@ async def handle_audio(  # noqa: C901 — DEBT:wiring-bootstrap-deps
     from factory.adapters.discord import (
         discord_inbound,  # noqa: PLC0415 — local import avoids module-level circular dep
     )
-
-    inbound_ctx = discord_inbound.build_discord_inbound_ctx(
-        adapter, ingest=adapter._ingest_ctx
+    from factory.adapters.shared.inbound import (
+        build_discord_inbound_ctx,
+        get_inbound_pipeline_kit,
+        run_inbound_guarded,
     )
+
+    inbound_ctx = build_discord_inbound_ctx(adapter, ingest=adapter._ingest_ctx)
 
     pre_route = functools.partial(
         discord_inbound._discord_pre_route_hook, adapter=adapter
@@ -272,13 +275,20 @@ async def handle_audio(  # noqa: C901 — DEBT:wiring-bootstrap-deps
     async def _send_bp(text: str) -> None:
         await message.reply(text)
 
+    async def _noop_ingest_error(_exc: object) -> None:
+        return
+
     adapter._start_typing(message.channel.id)
-    await discord_inbound._pipeline.run(
-        adapter.normalize_audio(
+    kit = get_inbound_pipeline_kit()
+    await run_inbound_guarded(
+        pipeline=kit.pipeline,
+        raw_message=adapter.normalize_audio(
             message, audio_bytes, mime_type, trust_level=trust, pending=pending
         ),
-        inbound_ctx,
-        PrebuiltParser(),
+        inbound_ctx=inbound_ctx,
+        parser=PrebuiltParser(),
+        log_context=f"discord audio message id={message.id}",
+        on_attachment_ingest_error=_noop_ingest_error,
         pre_route_hook=pre_route,
         pre_session_hook=pre_session,
         send_backpressure=_send_bp,

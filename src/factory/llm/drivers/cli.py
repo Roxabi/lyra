@@ -64,9 +64,7 @@ class ClaudeCliDriver:
     ) -> LlmResult:
         cli_result = await self._pool.send(pool_id, text, model_cfg, system_prompt)
         worker_error = (
-            worker_error_from_cli_error(cli_result.error)
-            if cli_result.error
-            else None
+            worker_error_from_cli_error(cli_result.error) if cli_result.error else None
         )
         return LlmResult(
             result=cli_result.result,

@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
     from factory.core.ports.stt import STTProtocol
     from factory.core.ports.tts import TtsProtocol
-    from factory.infrastructure.stores.agent_store import AgentStore
+    from factory.infrastructure.stores.registry.agent_store import AgentStore
 
     from ..memory.memory import MemoryManager
     from ..messaging.render_events import RenderEvent
@@ -136,10 +136,13 @@ class AgentBase(ABC, SessionManager):
             new_config = agent_row_to_config(row, self._instance_overrides)
             if new_config != self.config:
                 log.info(
-                    "Hot-reloaded config for agent %r from DB (model: %s -> %s)",
+                    "Hot-reloaded config for agent %r from DB"
+                    " (model: %s -> %s, backend: %s -> %s)",
                     self.config.name,
                     self.config.llm_config.model,
                     new_config.llm_config.model,
+                    self.config.llm_config.backend,
+                    new_config.llm_config.backend,
                 )
                 self.config = new_config
                 self._rebuild_command_router()

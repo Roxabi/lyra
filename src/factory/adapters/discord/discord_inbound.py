@@ -15,64 +15,25 @@ from factory.adapters.discord.discord_audio import handle_audio as _handle_audio
 from factory.adapters.discord.discord_formatting import make_thread_name
 from factory.adapters.discord.discord_threads import persist_thread_claim
 from factory.adapters.shared._shared import AUDIO_MIME_TYPES
+from factory.adapters.shared.inbound import (
+    build_discord_inbound_ctx,
+    get_inbound_pipeline_kit,
+    get_or_create_parser,
+    run_inbound_guarded,
+)
 from factory.core.auth.trust import TrustLevel
 from factory.core.messaging.message import DiscordMeta, InboundMessage
 from factory.inbound.attachment_ingest import (
     MAX_ATTACHMENT_INGEST_BYTES,
     AttachmentIngestError,
-    AttachmentIngestStage,
 )
-from factory.inbound.context import DispatchCtx, InboundContext, RouterCtx, SessionCtx
-from factory.inbound.dispatcher import Dispatcher
-from factory.inbound.pipeline import InboundPipeline
-from factory.inbound.router import Router
-from factory.inbound.session_builder import SessionBuilder
+from factory.inbound.context import InboundContext
 from factory.inbound.wire_parser_discord import DiscordWireParser
 
 if TYPE_CHECKING:
     from factory.adapters.discord import DiscordAdapter
 
 log = logging.getLogger("factory.adapters.discord")
-
-_dispatcher = Dispatcher()
-_router = Router()
-_session_builder = SessionBuilder()
-_pipeline = InboundPipeline(
-    router=_router,
-    session_builder=_session_builder,
-    dispatcher=_dispatcher,
-    ingest_stage=AttachmentIngestStage(),
-)
-# Adapters are process-singletons created at bootstrap; id-keying is safe for
-# this lifecycle (no GC + id-reuse window). Revisit when bootstrap DI lands (#1283).
-_parser_cache: dict[int, DiscordWireParser] = {}  # one parser per adapter instance
-
-
-def build_discord_inbound_ctx(
-    adapter: "DiscordAdapter",
-    *,
-    ingest: Any = None,
-) -> InboundContext:
-    """Shared InboundContext builder for text path (ingest=None) and audio path."""
-    return InboundContext(
-        router=RouterCtx(
-            bot_id=adapter._bot_id,
-            owned_threads=adapter._owned_threads,
-            watch_channels=adapter._watch_channels if adapter._watch_channels else None,
-        ),
-        session=SessionCtx(
-            turn_store=None,
-            thread_store=adapter._thread_store,
-        ),
-        dispatch=DispatchCtx(
-            inbound_bus=adapter._inbound_bus,
-            circuit_registry=adapter._circuit_registry,
-            outbound_listener=adapter._outbound_listener,
-            typing=adapter._typing,
-            msg_catalog=adapter._msg_manager,
-        ),
-        ingest=ingest,
-    )
 
 
 async def _discord_pre_route_hook(
@@ -256,10 +217,14 @@ async def _discord_pre_session_hook(
     return msg
 
 
-async def _warn_oversize_reply(message: Any) -> None:
-    """Send oversize warning reply, swallowing HTTP errors."""
+async def _warn_oversize_reply(adapter: "DiscordAdapter", message: Any) -> None:
+    """Send oversize warning reply via i18n catalog, swallowing HTTP errors."""
+    text = adapter._msg(
+        "attachment_too_large",
+        "That file is too large to process.",
+    )
     try:
-        await message.reply("That file is too large to process.")
+        await message.reply(text)
     except discord.HTTPException:
         log.warning(
             "Failed to send oversize reply for message id=%s",
@@ -273,17 +238,9 @@ async def _run_pipeline_guarded(
     message: Any,
     send_to_id: int,
 ) -> None:
-    """Run InboundPipeline with the always-return boundary (#5).
-
-    Extracted to keep handle_message below C901 complexity=10.
-    The broad except must NOT be removed — any unhandled error must NOT
-    propagate to discord.py or it crashes the gateway connection,
-    triggering a reconnect loop.  (#5)
-    """
-    parser = _parser_cache.get(id(adapter))
-    if parser is None:
-        parser = DiscordWireParser(adapter)
-        _parser_cache[id(adapter)] = parser
+    """Run InboundPipeline with the always-return boundary (#5)."""
+    kit = get_inbound_pipeline_kit()
+    parser = get_or_create_parser(kit.parser_cache, adapter, DiscordWireParser)
 
     _ingest = getattr(adapter, "_ingest_ctx", None)
     inbound_ctx = build_discord_inbound_ctx(adapter, ingest=_ingest)
@@ -296,24 +253,21 @@ async def _run_pipeline_guarded(
     async def _dc_backpressure(text: str) -> None:
         await message.reply(text)
 
-    try:
-        await _pipeline.run(
-            message,
-            inbound_ctx,
-            parser,
-            pre_route_hook=pre_route,
-            pre_session_hook=pre_session,
-            send_backpressure=_dc_backpressure,
-            on_drop=lambda: adapter._cancel_typing(send_to_id),
-        )
-    except AttachmentIngestError as e:
-        await message.reply(e.user_message)
-    except Exception:  # always-return boundary (#5): unhandled errors must not
-        # reach discord.py — that would crash the gateway → reconnect loop.
-        log.exception(
-            "Unhandled exception in handle_message for message id=%s",
-            message.id,
-        )
+    async def _on_ingest_error(exc: AttachmentIngestError) -> None:
+        await message.reply(exc.user_message)
+
+    await run_inbound_guarded(
+        pipeline=kit.pipeline,
+        raw_message=message,
+        inbound_ctx=inbound_ctx,
+        parser=parser,
+        log_context=f"discord message id={message.id}",
+        on_attachment_ingest_error=_on_ingest_error,
+        pre_route_hook=pre_route,
+        pre_session_hook=pre_session,
+        send_backpressure=_dc_backpressure,
+        on_drop=lambda: adapter._cancel_typing(send_to_id),
+    )
 
 
 async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:
@@ -351,7 +305,7 @@ async def handle_message(adapter: "DiscordAdapter", message: Any) -> None:
         if (getattr(a, "size", None) or 0) > MAX_ATTACHMENT_INGEST_BYTES
     )
     if oversize_count:
-        await _warn_oversize_reply(message)
+        await _warn_oversize_reply(adapter, message)
     if (
         oversize_count
         and oversize_count == len(raw_atts)

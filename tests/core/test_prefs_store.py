@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from factory.infrastructure.stores.prefs_store import PrefsStore, UserPrefs
+from factory.infrastructure.stores.registry.prefs_store import PrefsStore, UserPrefs
 
 # ---------------------------------------------------------------------------
 # Fixtures

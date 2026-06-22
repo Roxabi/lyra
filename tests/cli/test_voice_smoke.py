@@ -114,7 +114,7 @@ def restore_event_loop():
 def _patch_nats(nc_mock: AsyncMock):
     """Patch nats_connect to return the given mock NATS client."""
     return patch(
-        "factory.cli_voice_smoke.nats_connect",
+        "factory.cli.voice_smoke.nats_connect",
         new=AsyncMock(return_value=nc_mock),
     )
 
@@ -172,7 +172,7 @@ class TestVoiceSmokeHappyPath:
         nc = _make_nc_mock(_tts_ok_response(), _stt_ok_response("one"))
 
         with patch(
-            "factory.cli_voice_smoke.nats_connect", new=AsyncMock(return_value=nc)
+            "factory.cli.voice_smoke.nats_connect", new=AsyncMock(return_value=nc)
         ) as mock_connect:
             result = runner.invoke(
                 factory_app, ["voice-smoke", "--nats-url", "nats://myserver:4222"]
@@ -192,7 +192,7 @@ class TestVoiceSmokeHappyPath:
         nc = _make_nc_mock(_tts_ok_response(), _stt_ok_response("one"))
 
         with patch(
-            "factory.cli_voice_smoke.nats_connect", new=AsyncMock(return_value=nc)
+            "factory.cli.voice_smoke.nats_connect", new=AsyncMock(return_value=nc)
         ) as mock_connect:
             runner.invoke(factory_app, ["voice-smoke"])
 
@@ -365,7 +365,7 @@ class TestVoiceSmokeConnectionFailure:
     def test_exits_one_on_nats_connection_error(self) -> None:
         """nats_connect raising an exception → exit 1."""
         with patch(
-            "factory.cli_voice_smoke.nats_connect",
+            "factory.cli.voice_smoke.nats_connect",
             new=AsyncMock(side_effect=Exception("connection refused")),
         ):
             result = runner.invoke(factory_app, ["voice-smoke"])
@@ -556,7 +556,7 @@ class TestNatsUrlEnvFallback:
         monkeypatch.setenv("NATS_URL", "nats://envhost:4222")
         nc = _make_nc_mock(_tts_ok_response(), _stt_ok_response())
         connect_mock = AsyncMock(return_value=nc)
-        with patch("factory.cli_voice_smoke.nats_connect", new=connect_mock):
+        with patch("factory.cli.voice_smoke.nats_connect", new=connect_mock):
             result = runner.invoke(factory_app, ["voice-smoke"])
         assert result.exit_code == 0
         # First positional arg to nats_connect is the URL.

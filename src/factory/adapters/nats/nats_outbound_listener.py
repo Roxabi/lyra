@@ -33,9 +33,6 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-_MAX_STREAMS = 100
-_MAX_QUEUE_SIZE = 256
-
 
 @dataclass(frozen=True)
 class ListenerDeps:

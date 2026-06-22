@@ -8,7 +8,7 @@ import json as _json
 
 import typer
 
-from factory.cli_agent import _connect_store, agent_app
+from factory.cli.agent import _connect_store, agent_app
 
 # ---------------------------------------------------------------------------
 # TTS editing helpers

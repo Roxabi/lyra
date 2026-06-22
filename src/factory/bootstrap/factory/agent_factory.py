@@ -33,7 +33,7 @@ from factory.core.lifecycle.circuit_breaker import CircuitRegistry
 from factory.core.messaging.messages import MessageManager
 from factory.core.ports.stt import STTProtocol
 from factory.core.ports.tts import TtsProtocol
-from factory.infrastructure.stores.agent_store import AgentStore
+from factory.infrastructure.stores.registry.agent_store import AgentStore
 from factory.integrations.base import SessionTools
 from factory.integrations.vault_cli import VaultCli
 from factory.integrations.web_intel import WebIntelScraper
@@ -215,6 +215,7 @@ def _create_agent(deps: CreateAgentDeps) -> AgentBase:  # noqa: C901 — 3-branc
             agent_store=deps.agent_store,
             session_tools=session_tools,
             cli_nats_driver=deps.cli_nats_driver,
+            provider_registry=deps.provider_registry,
         )
     raise ValueError(f"Unknown backend: {backend}")
 

@@ -44,7 +44,7 @@ def test_tg_start_typing_enabled_delegates_to_publisher(monkeypatch: Any) -> Non
 
     with patch.object(adapter._typing, "start") as mock_start:
         with patch(
-            "factory.adapters.telegram.telegram.TraceContext.get_trace_id",
+            "factory.adapters.shared.inbound.typing_shim.TraceContext.get_trace_id",
             return_value="trace_tg_123",
         ):
             with patch("asyncio.create_task") as mock_create_task:
@@ -75,7 +75,7 @@ def test_tg_cancel_typing_enabled_delegates_to_publisher(monkeypatch: Any) -> No
 
     with patch.object(adapter._typing, "cancel") as mock_cancel:
         with patch(
-            "factory.adapters.telegram.telegram.TraceContext.get_trace_id",
+            "factory.adapters.shared.inbound.typing_shim.TraceContext.get_trace_id",
             return_value="trace_tg_456",
         ):
             with patch("asyncio.create_task") as mock_create_task:

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from factory.infrastructure.stores.turn_store import TurnStore
+from factory.infrastructure.stores.session.turn_store import TurnStore
 
 # ---------------------------------------------------------------------------
 # Helpers

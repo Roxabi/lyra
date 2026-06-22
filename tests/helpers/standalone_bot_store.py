@@ -46,9 +46,7 @@ def discord_roster(
     )
 
 
-def patch_telegram_roster(
-    monkeypatch: pytest.MonkeyPatch, bot_ids: list[str]
-) -> None:
+def patch_telegram_roster(monkeypatch: pytest.MonkeyPatch, bot_ids: list[str]) -> None:
     monkeypatch.setattr(
         _PATCH_TG,
         AsyncMock(return_value=telegram_roster(bot_ids)),

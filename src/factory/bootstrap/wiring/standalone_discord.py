@@ -29,7 +29,7 @@ log = logging.getLogger(__name__)
 
 async def _create_dc_stores(discord_dir: Path) -> tuple:
     """Create and connect Discord thread store (private dir) + KV last-session store."""
-    from factory.infrastructure.stores.thread_store import ThreadStore
+    from factory.infrastructure.stores.session.thread_store import ThreadStore
 
     dc_thread_store = ThreadStore(db_path=discord_dir / "discord.db")
     await dc_thread_store.connect()

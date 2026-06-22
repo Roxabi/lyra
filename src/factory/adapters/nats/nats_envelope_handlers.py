@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 from nats.aio.msg import Msg
 
+from factory.adapters.nats._constants import MAX_QUEUE_SIZE, MAX_STREAMS
 from factory.core.messaging.message import (
     SCHEMA_VERSION_OUTBOUND_MESSAGE,
     OutboundAttachment,
@@ -28,9 +29,6 @@ if TYPE_CHECKING:
     from factory.adapters.nats.nats_outbound_listener import NatsOutboundListener
 
 log = logging.getLogger(__name__)
-
-_MAX_STREAMS = 100
-_MAX_QUEUE_SIZE = 256
 
 
 async def handle_send(
@@ -124,11 +122,11 @@ def handle_stream_start(
         return
     if not _check_outbound_version(listener, outbound_data, "OutboundMessage"):
         return
-    if len(listener._stream_outbound) >= _MAX_STREAMS:
+    if len(listener._stream_outbound) >= MAX_STREAMS:
         log.warning(
             "NatsOutboundListener: _stream_outbound full"
             " (%d entries), dropping stream_id=%r",
-            _MAX_STREAMS,
+            MAX_STREAMS,
             stream_id,
         )
         return
@@ -136,7 +134,7 @@ def handle_stream_start(
         listener._stream_outbound[stream_id] = _deserialize_dict(
             outbound_data, OutboundMessage, resolver=resolver
         )
-        raw_orig = data.get("original_msg")  # bounded by _MAX_STREAMS guard above
+        raw_orig = data.get("original_msg")  # bounded by MAX_STREAMS guard above
         if raw_orig is not None:
             listener._stream_original_msgs[stream_id] = raw_orig
     except (ValueError, TypeError):
@@ -155,18 +153,18 @@ async def handle_chunk(listener: "NatsOutboundListener", data: dict) -> None:
             stream_id,
         )
         return
-    at_limit = len(listener._stream_tasks) >= _MAX_STREAMS
+    at_limit = len(listener._stream_tasks) >= MAX_STREAMS
     if stream_id not in listener._stream_tasks and at_limit:
         log.warning(
             "NatsOutboundListener: _stream_tasks full"
             " (%d streams), dropping stream_id=%r",
-            _MAX_STREAMS,
+            MAX_STREAMS,
             stream_id,
         )
         return
     q = listener._stream_queues.setdefault(
         stream_id,
-        asyncio.Queue(maxsize=_MAX_QUEUE_SIZE),
+        asyncio.Queue(maxsize=MAX_QUEUE_SIZE),
     )
     if stream_id in listener._cache:
         listener._cache.touch(stream_id)

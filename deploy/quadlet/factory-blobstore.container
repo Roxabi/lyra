@@ -8,6 +8,11 @@ StartLimitIntervalSec=60
 StartLimitBurst=5
 
 [Container]
+# #1989: SIGTERM grace before Podman's 10s-default SIGKILL (the omp
+# double-restart SIGKILL during converge). NB [Container] StopTimeout=
+# is the podman container stop window, NOT [Service] TimeoutStopSec=
+# (which only bounds systemd's wait on the podman process).
+StopTimeout=120
 # Image digest pinning deferred per three-strikes deferral (ADR-073) — same cadence
 # as factory-hub.container. Dedicated blobstore image blocked until Protocol v2 + ≥3
 # cross-repo consumers; see analysis §Shape A rationale.
@@ -75,6 +80,9 @@ EnvironmentFile=%h/.roxabi/factory/env/blobstore.env
 # Operationally equivalent to closing the port (nothing accepts traffic).
 ExecStartPre=/bin/sh -c 'v=$(printf "%s" "${TAILSCALE_IPV4}" | tr -d "[:space:]"); [ -n "$v" ] || exit 1'
 Restart=on-failure
+# #1989: must exceed [Container] StopTimeout=120 or systemd SIGKILLs the
+# podman wrapper first (user-service default is 90s), capping the grace.
+TimeoutStopSec=130
 RestartSec=10
 # Cold-path I/O service — 1 full core is sufficient; prevents it from starving
 # hub + NATS under load. Increase to 200% if blob throughput warrants it.

@@ -97,7 +97,7 @@ deploy verb on the production host. It reconciles the running system with the de
    - **Pure identity add** (`make nats-add-identity`): atomic write to `auth.conf` on host → `systemctl --user reload factory-nats` (fires `ExecReload=` → `podman kill --signal=HUP factory-nats`). Zero client restarts, zero dropped connections.
    - **ACL permission change** (`make nats-regen-authconf`): atomic write to `auth.conf` on host → `systemctl --user restart factory-nats` (required per #1390 — stale-subject-auth risk on ACL changes). Waits for `is-active`.
    Converge always **restarts** factory-nats on any drift (auth → factory-nats only; structural → factory-nats + clients) — it never reloads, because it cannot prove a change is a pure identity-add (#1390). Clients reconnect automatically via `allow_reconnect`.
-7. **Restart factory clients** — `factory-hub`, `factory-telegram`, `factory-discord`, `factory-clipool`, `factory-turn-writer`, `factory-gh-helper`, `factory-blobstore`, `factory-omp` (unconditional `systemctl restart` — also starts units that were inactive; any failure aborts the converge). Restarted only on **structural** drift. On **auth-only** drift, converge restarts factory-nats alone; clients reconnect via `allow_reconnect` without explicit restart.
+7. **Restart factory clients** — `factory-hub`, `factory-telegram`, `factory-discord`, `factory-web`, `factory-clipool`, `factory-turn-writer`, `factory-gh-helper`, `factory-blobstore`, `factory-omp` (unconditional `systemctl restart` — also starts units that were inactive; any failure aborts the converge). Restarted only on **structural** drift. On **auth-only** drift, converge restarts factory-nats alone; clients reconnect via `allow_reconnect` without explicit restart.
 8. **Restart voiceCLI** — `voicecli-tts`, `voicecli-stt` (if voiceCLI directory exists).
 9. **Record stamp** — writes the new convergence fingerprint to `~/.roxabi/factory/.converge-stamp`.
 
@@ -140,6 +140,25 @@ bash -c 'source deploy/lib/deploy-common.sh; _classify_drift "$(read_convergence
 
 ---
 
+## Network exposure tiers
+
+Host `PublishPort` bind = the access boundary. Every service exposed beyond localhost
+carries its own auth — bind tier and auth mechanism are chosen **together**:
+
+| Service | Bind | Reachable | Auth boundary |
+|---|---|---|---|
+| `factory-nats` 4222 | `0.0.0.0` | LAN + Tailnet | NKey (mandatory, per-identity) |
+| `factory-nats` 8222 (monitoring) | `127.0.0.1` | host only | — |
+| `factory-blobstore` 8449 | `${TAILSCALE_IPV4}` | Tailnet only | bearer token (#1330) |
+| `factory-web` 8765 | `${TAILSCALE_IPV4}` | Tailnet only | **none** — Tailnet membership is the boundary (#1992) |
+| `factory-hub` 8443 | `127.0.0.1` | host only | — |
+
+Rules:
+- **`0.0.0.0` (LAN + Tailnet) requires strong per-request auth** — only `factory-nats` (NKey) qualifies today. UFW additionally scopes 4222 to the LAN subnet (`deploy/nats/setup.sh`).
+- **No / weak app auth → bind `${TAILSCALE_IPV4}`** (Tailnet-only) + the fail-closed `ExecStartPre` guard; never `0.0.0.0`. Tailnet-IP bind needs no UFW rule (only the tailscale0 address accepts).
+- **Internal-only surfaces → `127.0.0.1`.**
+- New exposed unit → pick a row, pair it with an auth boundary, document it here.
+
 ## Hardening invariants (∀ `.container` file)
 
 `NoNewPrivileges=true` | `ReadOnly=true` | `DropCapability=all`
@@ -177,6 +196,16 @@ empty, unset, **and whitespace-only** values are all rejected at the systemd lay
 Prior to #1368, `[ -n "   " ]` was TRUE in POSIX sh — a whitespace-only value passed the
 guard and Podman's downstream parse error provided fail-closed behaviour by accident, not
 by design. The guard is now the authoritative rejection point.
+
+### Known residual risk — factory-web has NO auth on the Tailnet (#1992)
+
+`factory-web.container` binds PublishPort to `${TAILSCALE_IPV4}:8765:8765` (same pattern +
+fail-closed `ExecStartPre` guard as blobstore above). Unlike blobstore, the web smoke adapter
+has **no application auth** — any Tailnet member who reaches `http://roxabituwer:8765` can pick
+an agent and chat (LLM token spend; session_id is client-supplied → cross-session read, see
+#1992). Tailnet membership is the **sole** access boundary; this is why it is bound to the
+Tailscale IP and never `0.0.0.0` (no LAN exposure). Per-session tokens / real auth are tracked
+in #1992 before any wider exposure.
 
 ### Known residual risk — clipool `core.hooksPath` override (tracked #1245)
 

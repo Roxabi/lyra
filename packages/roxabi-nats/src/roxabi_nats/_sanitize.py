@@ -22,6 +22,7 @@ PLATFORM_META_ALLOWLIST: frozenset[str] = frozenset(
         "topic_id",
         "is_group",
         "thread_session_id",
+        "session_id",
     }
 )
 

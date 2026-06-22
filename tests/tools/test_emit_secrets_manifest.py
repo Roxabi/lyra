@@ -143,6 +143,7 @@ class TestManifestCompleteness:
         "factory-nats-hub",
         "factory-nats-telegram",
         "factory-nats-discord",
+        "factory-nats-web",
         "factory-nats-clipool",
         "factory-nats-turn-writer",
         "factory-nats-blobstore",
@@ -203,6 +204,7 @@ class TestPolicyClassification:
             "factory-nats-hub",
             "factory-nats-telegram",
             "factory-nats-discord",
+            "factory-nats-web",
             "factory-nats-clipool",
             "factory-nats-turn-writer",
             "factory-nats-blobstore",
@@ -426,14 +428,15 @@ class TestOwnerFactoryFilter:
                     " a factory container identity"
                 )
 
-    def test_factory_container_secrets_are_exactly_eight(self) -> None:
-        """Exactly 8 factory container identities in the acl-matrix."""
+    def test_factory_container_secrets_are_exactly_nine(self) -> None:
+        """Exactly 9 factory container identities in the acl-matrix."""
         factory_container_secrets = self._factory_container_secrets()
 
         expected = {
             "factory-nats-hub",
             "factory-nats-telegram",
             "factory-nats-discord",
+            "factory-nats-web",
             "factory-nats-clipool",
             "factory-nats-turn-writer",
             "factory-nats-blobstore",

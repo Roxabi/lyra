@@ -17,6 +17,7 @@ declare -A SECRET_SOURCES=(
     [factory-nats-omp]="nkeys/omp-worker.seed"
     [factory-nats-telegram]="nkeys/telegram-adapter.seed"
     [factory-nats-turn-writer]="nkeys/turn-writer.seed"
+    [factory-nats-web]="nkeys/web-adapter.seed"
     [factory_blobstore_token]="n/a"
 )
 
@@ -34,5 +35,6 @@ declare -A SECRET_POLICY=(
     [factory-nats-omp]="nats-seed"
     [factory-nats-telegram]="nats-seed"
     [factory-nats-turn-writer]="nats-seed"
+    [factory-nats-web]="nats-seed"
     [factory_blobstore_token]="generated"
 )

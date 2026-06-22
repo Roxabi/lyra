@@ -63,9 +63,10 @@ push:                  ## save image and load on $(DEPLOY_HOST) via ssh
 FACTORY_HUB_UNIT      := factory-hub
 FACTORY_TELEGRAM_UNIT := factory-telegram
 FACTORY_DISCORD_UNIT  := factory-discord
+FACTORY_WEB_UNIT      := factory-web
 FACTORY_NATS_UNIT     := factory-nats
 FACTORY_CLIPOOL_UNIT  := factory-clipool
-FACTORY_UNITS         := $(FACTORY_HUB_UNIT) $(FACTORY_TELEGRAM_UNIT) $(FACTORY_DISCORD_UNIT) $(FACTORY_CLIPOOL_UNIT)
+FACTORY_UNITS         := $(FACTORY_HUB_UNIT) $(FACTORY_TELEGRAM_UNIT) $(FACTORY_DISCORD_UNIT) $(FACTORY_WEB_UNIT) $(FACTORY_CLIPOOL_UNIT)
 
 # $(call factory_sctl,<unit1> [unit2 ...]) — dispatches SVC_CMD to systemctl --user.
 # Defaults (empty SVC_CMD) to `status`. `logs`/`errors` tail the first unit.
@@ -94,6 +95,11 @@ endif
 discord:
 ifndef _IS_LYRA_SUBCMD
 	$(call factory_sctl,$(FACTORY_DISCORD_UNIT))
+endif
+
+web:
+ifndef _IS_LYRA_SUBCMD
+	$(call factory_sctl,$(FACTORY_WEB_UNIT))
 endif
 
 nats:
@@ -205,6 +211,7 @@ quadlet-secrets-install:  ## (re)create Podman secrets from ~/.roxabi/factory/nk
 	@podman secret create --replace factory-nats-hub               "$(FACTORY_NKEYS_DIR)/hub.seed"
 	@podman secret create --replace factory-nats-telegram          "$(FACTORY_NKEYS_DIR)/telegram-adapter.seed"
 	@podman secret create --replace factory-nats-discord           "$(FACTORY_NKEYS_DIR)/discord-adapter.seed"
+	@podman secret create --replace factory-nats-web               "$(FACTORY_NKEYS_DIR)/web-adapter.seed"
 	@podman secret create --replace factory-nats-clipool           "$(FACTORY_NKEYS_DIR)/clipool-worker.seed"
 	@podman secret create --replace factory-nats-gh-helper         "$(FACTORY_NKEYS_DIR)/gh-helper.seed"
 	@if [ -f "$(HOME)/.roxabi/factory/gh-app.pem" ]; then \
@@ -314,7 +321,7 @@ remote:
 # Shared list of services that hold NATS subject auth and must restart
 # whenever `auth.conf` is regenerated or a new identity is added. The bare
 # `factory-nats` is restarted separately by the target itself before this list.
-FACTORY_NATS_CLIENTS := factory-hub factory-telegram factory-discord factory-clipool factory-turn-writer factory-gh-helper factory-blobstore factory-omp
+FACTORY_NATS_CLIENTS := factory-hub factory-telegram factory-discord factory-web factory-clipool factory-turn-writer factory-gh-helper factory-blobstore factory-omp
 
 nats-setup:
 	@bash deploy/nats/setup.sh

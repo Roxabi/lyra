@@ -39,6 +39,7 @@
       "publish": [
         "factory.outbound.telegram.>",
         "factory.outbound.discord.>",
+        "factory.outbound.web.>",
         "factory.outbound.audio.>",
         "factory.voice.tts.request",
         "factory.voice.tts.request.>",
@@ -63,6 +64,7 @@
       "subscribe": [
         "factory.inbound.telegram.>",
         "factory.inbound.discord.>",
+        "factory.inbound.web.>",
         "factory.voice.tts.heartbeat",
         "factory.voice.stt.heartbeat",
         "factory.llm.heartbeat",
@@ -132,6 +134,32 @@
         "$KV.factory-state.>"
       ],
       "deploy": { "type": "container", "secret": "factory-nats-discord" }
+    },
+    "web-adapter": {
+      "status": "active",
+      "created_at": "2026-06-21",
+      "owner": "factory",
+      "description": "Web smoke adapter — browser chat UI + SSE on factory.{inbound,outbound}.web.smoke (#1977).",
+      "notes": "Lean adapter ACL: no outbound-audio JetStream consumer (NullAudioConsumer fallback). wait_for_hub uses STREAM.INFO + STREAM.MSG.GET on KV_factory-state (#1572).",
+      "allow_responses": false,
+      "publish": [
+        "factory.inbound.web.>",
+        "factory.system.ready",
+        "factory.event.>",
+        "factory.metric.>",
+        "$JS.API.DIRECT.GET.KV_factory-state.hub.ready",
+        "$JS.API.INFO",
+        "$JS.API.CONSUMER.CREATE.*",
+        "$JS.API.STREAM.INFO.KV_factory-state",
+        "$JS.API.STREAM.MSG.GET.KV_factory-state"
+      ],
+      "subscribe": [
+        "factory.outbound.web.>",
+        "factory.typing.web.>",
+        "_inbox.web-adapter.>",
+        "$KV.factory-state.>"
+      ],
+      "deploy": { "type": "container", "secret": "factory-nats-web" }
     },
     "voice-tts": {
       "status": "active",

@@ -22,6 +22,11 @@ container = "factory-discord.container"
 required_secrets = ["factory-nats-discord", "factory_blobstore_token"]
 host_roles = ["factory-hub"]
 
+[component.web]
+container = "factory-web.container"
+required_secrets = ["factory-nats-web"]
+host_roles = ["factory-hub"]
+
 [component.clipool]
 container = "factory-clipool.container"
 required_secrets = ["factory-nats-clipool", "factory-claude-oauth"]

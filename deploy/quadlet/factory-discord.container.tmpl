@@ -8,6 +8,11 @@ StartLimitIntervalSec=60
 StartLimitBurst=5
 
 [Container]
+# #1989: SIGTERM grace before Podman's 10s-default SIGKILL (the omp
+# double-restart SIGKILL during converge). NB [Container] StopTimeout=
+# is the podman container stop window, NOT [Service] TimeoutStopSec=
+# (which only bounds systemd's wait on the podman process).
+StopTimeout=120
 # Image digest pinning for localhost/factory:latest tracks on a follow-up issue
 # (CI tag-by-SHA strategy).
 Image=ghcr.io/roxabi/factory:staging-svc
@@ -51,6 +56,9 @@ HealthInterval=30s
 
 [Service]
 Restart=on-failure
+# #1989: must exceed [Container] StopTimeout=120 or systemd SIGKILLs the
+# podman wrapper first (user-service default is 90s), capping the grace.
+TimeoutStopSec=130
 RestartSec=10
 # Cap at 2 full cores — prevents a runaway worker from starving hub + NATS.
 CPUQuota=200%

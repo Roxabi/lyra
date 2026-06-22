@@ -9,6 +9,11 @@ StartLimitIntervalSec=60
 StartLimitBurst=5
 
 [Container]
+# #1989: SIGTERM grace before Podman's 10s-default SIGKILL (the omp
+# double-restart SIGKILL during converge). NB [Container] StopTimeout=
+# is the podman container stop window, NOT [Service] TimeoutStopSec=
+# (which only bounds systemd's wait on the podman process).
+StopTimeout=120
 # Same image as clipool — factory-gh user (uid 1501) + factory-tokenuser group (gid 1502)
 # are baked into the image at Dockerfile lines 49–51. No separate helper image needed.
 Image=ghcr.io/roxabi/factory:staging
@@ -57,6 +62,9 @@ HealthInterval=30s
 
 [Service]
 Restart=on-failure
+# #1989: must exceed [Container] StopTimeout=120 or systemd SIGKILLs the
+# podman wrapper first (user-service default is 90s), capping the grace.
+TimeoutStopSec=130
 RestartSec=10
 
 [Install]

@@ -36,4 +36,6 @@ async def publish_agent_roster(js: object, agent_store: object) -> None:
     doc = WebAgentRosterDocument(updated_at=_utc_now_iso(), agents=names)
     kv = await open_or_create_kv(js)
     await kv.put(WEB_ROSTER_KEY, doc.model_dump_json(exclude_none=True).encode())
-    log.debug("publish_agent_roster: wrote %d agent(s) to %s", len(names), WEB_ROSTER_KEY)
+    log.debug(
+        "publish_agent_roster: wrote %d agent(s) to %s", len(names), WEB_ROSTER_KEY
+    )

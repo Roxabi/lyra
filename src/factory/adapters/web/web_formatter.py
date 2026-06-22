@@ -53,9 +53,7 @@ class WebFormatter(BaseFormatter):
     ) -> None:
         del ph, finalize
         self._buffer = text
-        await self._sessions.publish(
-            self._session_id, {"type": "delta", "text": text}
-        )
+        await self._sessions.publish(self._session_id, {"type": "delta", "text": text})
 
     async def send_trace_placeholder(self) -> tuple[Any, int | None]:
         return (None, None)
@@ -70,7 +68,7 @@ class WebFormatter(BaseFormatter):
     async def edit_reasoning(
         self,
         trace_obj: Any,
-        event: "ReasoningStartRenderEvent | ReasoningDeltaRenderEvent | ReasoningEndRenderEvent",
+        event: "ReasoningStartRenderEvent | ReasoningDeltaRenderEvent | ReasoningEndRenderEvent",  # noqa: E501
     ) -> None:
         del trace_obj, event
 

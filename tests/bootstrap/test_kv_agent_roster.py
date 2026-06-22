@@ -167,7 +167,7 @@ async def test_seed_web_agent_roster_timeout_exits() -> None:
     kv = MagicMock()
 
     async def _slow_get(_key: str) -> MagicMock:
-        await asyncio.sleep(1.0)
+        await asyncio.sleep(1.0)  # NATS delivery window — simulate slow KV get
         entry = MagicMock()
         entry.value = b"{}"
         return entry

@@ -13,10 +13,11 @@ from factory.core.messaging.message import Platform
 from factory.nats.nats_channel_proxy import NatsChannelProxy
 
 if TYPE_CHECKING:
+    from nats.aio.client import Client as NATS
+
     from factory.core.agent import Agent
     from factory.core.hub import Hub
     from factory.core.lifecycle.circuit_breaker import CircuitRegistry
-    from nats.aio.client import Client as NATS
 
 log = logging.getLogger(__name__)
 
@@ -37,7 +38,9 @@ def wire_nats_web_smoke(
 
     proxy = NatsChannelProxy(nc=nc, platform=platform, bot_id=bot_id)
     smoke_auth = Authenticator(
-        AuthenticatorDeps(default=TrustLevel.TRUSTED, admin_user_ids=frozenset({"smoke"}))
+        AuthenticatorDeps(
+            default=TrustLevel.TRUSTED, admin_user_ids=frozenset({"smoke"})
+        )
     )
     hub.register_authenticator(platform, bot_id, smoke_auth)
     hub.register_adapter(platform, bot_id, proxy)
@@ -66,5 +69,7 @@ def wire_nats_web_smoke(
         bot_id=bot_id,
     )
     hub.register_outbound_dispatcher(platform, bot_id, dispatcher)
-    log.info("Registered NATS proxy: web bot_id=%r agents=%d", bot_id, len(agent_configs))
+    log.info(
+        "Registered NATS proxy: web bot_id=%r agents=%d", bot_id, len(agent_configs)
+    )
     return proxy, dispatcher

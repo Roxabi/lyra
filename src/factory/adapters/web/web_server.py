@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
 from fastapi import FastAPI, HTTPException
@@ -134,7 +135,7 @@ def create_app(adapter: "WebAdapter") -> FastAPI:  # noqa: C901
     async def stream(session_id: str) -> StreamingResponse:
         session = adapter.sessions.get_or_create(session_id)
 
-        async def event_gen() -> Any:
+        async def event_gen() -> AsyncIterator[str]:
             try:
                 while not session.closed:
                     try:

@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from factory.adapters.web.web_formatter import WebFormatter, web_session_id
-from factory.adapters.web.web_sessions import WebSessionHub
 from factory.core.messaging.message import InboundMessage, OutboundMessage
 from factory.outbound.emitter import OutboundEmitter
 from factory.outbound.error_handler import OutboundErrorHandler
@@ -35,5 +34,3 @@ def _make_emitter(
     formatter = WebFormatter(adapter.sessions, session_id)
     handler = OutboundErrorHandler(get_msg=formatter.get_msg)
     return OutboundEmitter(formatter, outbound, error_handler=handler)
-
-

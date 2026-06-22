@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from factory.core.auth.trust import TrustLevel
 from factory.core.hub import Hub
 from factory.core.messaging.message import InboundMessage, Platform, WebMeta
-from factory.core.auth.trust import TrustLevel
 
 
 def _web_msg(agent: str) -> InboundMessage:

@@ -232,7 +232,7 @@ echo "PASS (#754): image-worker ACL + amended hub ACL assertions (5 checks)"
 # Lowercase _inbox.<identity>.> is required for tts-adapter and stt-adapter
 # because both rows carried _inbox.> defensively (nats-py case sensitivity).
 
-FACTORY_IDENTITIES=(hub telegram-adapter discord-adapter tts-adapter stt-adapter)
+FACTORY_IDENTITIES=(hub telegram-adapter discord-adapter web-adapter tts-adapter stt-adapter)
 
 for identity in "${FACTORY_IDENTITIES[@]}"; do
   id_block=$(extract_block "$identity")

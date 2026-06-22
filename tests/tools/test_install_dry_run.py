@@ -40,6 +40,7 @@ FACTORY_NATS_SEEDS_EXPECTED = {
     "factory-nats-hub",
     "factory-nats-telegram",
     "factory-nats-discord",
+    "factory-nats-web",
     "factory-nats-clipool",
     "factory-nats-turn-writer",
     "factory-nats-blobstore",

@@ -21,6 +21,7 @@
         "factory.outbound.telegram.>",
         "factory.outbound.discord.>",
         "factory.outbound.audio.>",
+        "factory.outbound.web.>",
         "factory.voice.tts.request",
         "factory.voice.tts.request.>",
         "factory.voice.stt.request",
@@ -44,6 +45,7 @@
       "subscribe": [
         "factory.inbound.telegram.>",
         "factory.inbound.discord.>",
+        "factory.inbound.web.>",
         "factory.voice.tts.heartbeat",
         "factory.voice.stt.heartbeat",
         "factory.llm.heartbeat",
@@ -129,6 +131,32 @@
         "$KV.factory_outbound_audio_sent.>"
       ],
       "deploy": { "type": "container", "secret": "lyra-nats-discord" }
+    },
+    "web-adapter": {
+      "status": "active",
+      "created_at": "2026-06-21",
+      "owner": "factory",
+      "description": "Web smoke adapter — browser chat UI + SSE on factory.{inbound,outbound}.web.smoke (#1977).",
+      "notes": "Lean adapter ACL: no outbound-audio JetStream consumer (NullAudioConsumer fallback). wait_for_hub uses STREAM.INFO + STREAM.MSG.GET on KV_factory-state (#1572). Mirrored inline into this v3 snapshot (#1978): web-adapter references no group, so it renders identically to deploy/nats/acl-matrix.json.",
+      "allow_responses": false,
+      "publish": [
+        "factory.inbound.web.>",
+        "factory.system.ready",
+        "factory.event.>",
+        "factory.metric.>",
+        "$JS.API.DIRECT.GET.KV_factory-state.hub.ready",
+        "$JS.API.INFO",
+        "$JS.API.CONSUMER.CREATE.*",
+        "$JS.API.STREAM.INFO.KV_factory-state",
+        "$JS.API.STREAM.MSG.GET.KV_factory-state"
+      ],
+      "subscribe": [
+        "factory.outbound.web.>",
+        "factory.typing.web.>",
+        "_inbox.web-adapter.>",
+        "$KV.factory-state.>"
+      ],
+      "deploy": { "type": "container", "secret": "lyra-nats-web" }
     },
     "voice-tts": {
       "status": "active",

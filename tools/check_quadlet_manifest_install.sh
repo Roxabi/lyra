@@ -64,7 +64,7 @@ while IFS= read -r volume; do
         echo "FAIL: ${volume} is declared in deploy/quadlet.toml but never installed by 'make quadlet-install'"
         fail=1
     fi
-done < <(grep -oE '^volume = "[^"]+"' deploy/quadlet.toml | cut -d'"' -f2)
+done < <(grep -oE '^volume[[:space:]]*=[[:space:]]*"[^"]+"' deploy/quadlet.toml | cut -d'"' -f2)
 
 # Network units: a [network.*] declared in the manifest must be install-evidenced
 # by the Makefile quadlet-install recipe (same 2-arm check as volumes).
@@ -76,7 +76,7 @@ while IFS= read -r network; do
         echo "FAIL: ${network} is declared in deploy/quadlet.toml but never installed by 'make quadlet-install'"
         fail=1
     fi
-done < <(grep -oE '^network = "[^"]+"' deploy/quadlet.toml | cut -d'"' -f2)
+done < <(grep -oE '^network[[:space:]]*=[[:space:]]*"[^"]+"' deploy/quadlet.toml | cut -d'"' -f2)
 
 # Pod units: a [pod.*] declared in the manifest must be install-evidenced by
 # the Makefile quadlet-install recipe.
@@ -88,7 +88,7 @@ while IFS= read -r pod; do
         echo "FAIL: ${pod} is declared in deploy/quadlet.toml but never installed by 'make quadlet-install'"
         fail=1
     fi
-done < <(grep -oE '^pod = "[^"]+"' deploy/quadlet.toml | cut -d'"' -f2)
+done < <(grep -oE '^pod[[:space:]]*=[[:space:]]*"[^"]+"' deploy/quadlet.toml | cut -d'"' -f2)
 
 # ── REVERSE DIRECTION: every on-disk unit file must be declared in quadlet.toml ─
 # A single python3 heredoc reads quadlet.toml via tomllib, iterates deploy/quadlet/,

@@ -87,7 +87,9 @@ _do_converge() {
         # 8) Restart factory NATS clients (only on structural drift)
         echo "==> Lyra: restarting containers..."
         local failed=""
+        local -a _all_svcs _client_svcs
         mapfile -t _all_svcs < <(quadlet_containers)
+        # 9 = current factory container count in deploy/quadlet.toml; fail-fast on empty/partial parse — ¬a strict-equality check (adding a 10th is fine)
         [[ ${#_all_svcs[@]} -ge 9 ]] || { echo "ERROR: quadlet_containers returned ${#_all_svcs[@]} units (<9)" >&2; exit 1; }
         mapfile -t _client_svcs < <(printf '%s\n' "${_all_svcs[@]}" | grep -v '^factory-nats$' || true)
         for svc in "${_client_svcs[@]}"; do

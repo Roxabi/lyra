@@ -10,6 +10,7 @@ Covers:
 
 from __future__ import annotations
 
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -33,7 +34,7 @@ EXPECTED_CONTAINERS = [
 def _source_and_run(helper: Path) -> subprocess.CompletedProcess[str]:
     """Source the helper and invoke quadlet_containers(), capturing output."""
     return subprocess.run(
-        ["bash", "-c", f"source {helper}; quadlet_containers"],
+        ["bash", "-c", f"source {shlex.quote(str(helper))}; quadlet_containers"],
         capture_output=True,
         text=True,
     )
@@ -76,7 +77,7 @@ def test_fail_closed_on_zero_components(tmp_path: Path) -> None:
     toml.write_text("[meta]\nx = 1\n")
 
     result = subprocess.run(
-        ["bash", "-c", f"source {helper_copy}; quadlet_containers"],
+        ["bash", "-c", f"source {shlex.quote(str(helper_copy))}; quadlet_containers"],
         capture_output=True,
         text=True,
     )
@@ -97,7 +98,7 @@ def test_fail_closed_on_missing_toml(tmp_path: Path) -> None:
     # deliberately do NOT create tmp_path/deploy/quadlet.toml
 
     result = subprocess.run(
-        ["bash", "-c", f"source {helper_copy}; quadlet_containers"],
+        ["bash", "-c", f"source {shlex.quote(str(helper_copy))}; quadlet_containers"],
         capture_output=True,
         text=True,
     )

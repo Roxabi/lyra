@@ -1,0 +1,54 @@
+---
+title: make quadlet.toml the single source of truth (codegen)
+issue: 1979
+status: approved
+tier: F-lite
+date: 2026-06-21
+---
+
+## Problem
+
+The factory container inventory is duplicated across **5 hand-maintained sources**: `deploy/quadlet.toml` (manifest), the Makefile `quadlet-install` `UNITS` array, `deploy/quadlet-install-verify.sh` `UNITS` list, the `deploy/converge.sh` restart fan-out, and the docs Volumes table. Adding/renaming a container or volume means editing all five by hand. To catch the inevitable drift, two CI gates exist whose only job is to police that the copies agree: `tools/check_quadlet_manifest_install.sh` (203 lines) and `tools/check_volumes_table.sh` (162 lines).
+
+Root cause: Quadlet/systemd has no native reconciliation, so the inventory got copy-pasted and the gates are the duct tape. This is a governance problem (multi-SSoT), not an orchestrator problem — decided against a k8s/k3s/Nomad migration, which would break rootless + 6 behavioral primitives and create mixed-runtime hell on M₁.
+
+Observable impact: container-add is a 5-file edit; drift has already caused real incidents (#1858 — factory-omp declared in the manifest but never installed; the "component ≠ deployed" gap).
+
+## Who
+
+- **Primary:** the maintainer (Mickael) editing `deploy/` to add/rename/remove factory containers and volumes.
+- **Secondary:** the M₁ converge path (`make converge`, `factory-quadlet-sync`) that consumes the derived artifacts; CI that runs the gates.
+
+## Constraints
+
+- Generated output must be **byte-identical** to the current hand-maintained lists — zero deploy-behavior change at merge.
+- `make converge` must still work end-to-end (dry-run / `NO_RESTART=1`) — no regression on the M₁ deploy path.
+- Do not touch `tools/check_secrets_drift.sh`, `deploy/provision.sh`, `deploy/nats/{gen-certs.sh,bootstrap_streams.py}`, or the 15 app-quality gates.
+- `tools/` scripts are canonically sourced from `roxabi-plugins/dev-core/tools/` — the **new** generator is project-local (factory-specific), so it lives in factory `tools/` without the upstream-sync constraint.
+- Generator should be Python stdlib (the repo already parses TOML; matches the `uv`/Python stack).
+
+## Out of Scope
+
+- Any orchestrator migration (k8s / k3s / Nomad / podman kube play) — explicitly rejected.
+- Touching the secrets-drift gate or NATS/cert/provision infra (orthogonal — survives any orchestrator).
+- Refactoring the 15 app-quality gates.
+- Changing the runtime behavior of converge/install beyond consuming generated lists.
+
+## Premise Validity
+
+**Success in 6 months:** Adding or renaming a container/volume is a **1-file edit** (`deploy/quadlet.toml`) + `make generate`. The 4 derived artifacts (Makefile UNITS, verify UNITS, converge fan-out, docs Volumes table) are generated and never hand-edited. The 2 consistency gates are deleted and their `stack.yml` entries removed. No manifest-drift CI failure or "declared-but-not-installed" incident (the #1858 class) recurs.
+
+**Failure in 6 months (falsifiable):** Any of — (a) the `quadlet manifest_install` + `volumes_table` gate count is **> 0** (gates weren't actually removed); (b) ≥1 PR hand-edits a generated artifact (drift returned — measurable via a generated-file drift check or git blame); (c) net deploy-tooling line count did **not** drop by ≥300 lines; (d) a "component in quadlet.toml but never installed/restarted" incident recurs.
+
+**Simplest alternative:** Just delete the 2 gates and stop checking consistency — no generator.
+**Why not simplest:** That removes the safety net while keeping the 5-copy duplication, so silent drift returns immediately — precisely the #1858 failure mode (component declared, never installed, "Converge complete" lies). The gates must be **replaced by generation**, not merely deleted.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (deploy/devops tooling), one mild unknown (wiring strategy).
+
+Signals observed:
+- ~6–9 files touched: new generator, Makefile, `quadlet-install-verify.sh`, `converge.sh`, docs Volumes section, 2 gate deletions, `.claude/stack.yml`.
+- Single domain (deploy tooling) — no cross-layer/app code.
+- One open question for spec: committed-generated artifacts + drift check vs generate-at-build-time (mirrors existing `qg.conf` generated-but-committed pattern).
+- Known pattern (codegen from a manifest), low technical risk; the risk is byte-identical output + converge non-regression, both verifiable.

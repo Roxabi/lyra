@@ -85,15 +85,41 @@ class SqliteStore:
             return
         self._db = await aiosqlite.connect(self._db_path)
         _open_stores.add(self)  # track for pytest cleanup
-        await self._db.execute("PRAGMA journal_mode=WAL")
+        wal_enabled = await self._try_enable_wal()
         await self._db.execute("PRAGMA busy_timeout=30000")
         for stmt in ddl or []:
             await self._db.execute(stmt)
         await self._db.commit()
-        self._checkpoint_task = asyncio.get_running_loop().create_task(
-            self._run_periodic_checkpoint(),
-            name=f"wal-checkpoint:{self._db_path}",
-        )
+        # Only run the periodic checkpoint when WAL is actually active — a
+        # checkpoint pragma is meaningless (and would error) under the rollback
+        # journal we fall back to when WAL is unavailable.
+        if wal_enabled:
+            self._checkpoint_task = asyncio.get_running_loop().create_task(
+                self._run_periodic_checkpoint(),
+                name=f"wal-checkpoint:{self._db_path}",
+            )
+
+    async def _try_enable_wal(self) -> bool:
+        """Enable WAL, returning False (and warning) if the store can't.
+
+        ``PRAGMA journal_mode=WAL`` writes the ``-wal``/``-shm`` sidecars, so it
+        raises ``OperationalError`` when the database lives on a read-only or
+        transiently contended mount (e.g. the hub's ``:ro`` ``turn-writer/``
+        bind during a rapid restart). A single store failing here must NOT abort
+        the whole process boot — fall back to the default rollback journal,
+        which still serves reads. (#1989)
+        """
+        db = self._require_db()
+        try:
+            await db.execute("PRAGMA journal_mode=WAL")
+            return True
+        except sqlite3.OperationalError:
+            log.warning(
+                "WAL unavailable for %s (read-only or contended mount?) — "
+                "falling back to default journal mode",
+                self._db_path,
+            )
+            return False
 
     async def _checkpoint(self) -> None:
         """Run ``PRAGMA wal_checkpoint(TRUNCATE)`` and log the result.

@@ -11,8 +11,23 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse
 from pydantic import BaseModel
 
+from factory.adapters.shared.inbound import (
+    build_web_inbound_ctx,
+    get_inbound_pipeline_kit,
+    get_or_create_parser,
+    run_inbound_guarded,
+)
+from factory.inbound.wire_parser_web import WebWireParser
+
 if TYPE_CHECKING:
     from factory.adapters.web.web_adapter import WebAdapter
+    from factory.inbound.attachment_ingest import AttachmentIngestError
+
+
+async def _no_attachment_ingest(_exc: "AttachmentIngestError") -> None:
+    """Web smoke accepts no attachments — the ingest stage never errors."""
+    return None
+
 
 _HTML = """<!DOCTYPE html>
 <html lang="en">
@@ -116,19 +131,38 @@ def create_app(adapter: "WebAdapter") -> FastAPI:  # noqa: C901
     async def post_chat(req: ChatRequest) -> ChatResponse:
         from uuid import uuid4
 
-        from factory.core.messaging.message import Platform
-
         session_id = req.session_id or uuid4().hex
+        raw = {"agent": req.agent, "text": req.text, "session_id": session_id}
+        # Fail fast with HTTP 400 on invalid input *before* the message enters
+        # the fire-and-forget pipeline (the in-pipeline parse re-runs normalize).
         try:
-            msg = adapter.normalize(
-                {"agent": req.agent, "text": req.text, "session_id": session_id}
-            )
+            adapter.normalize(raw)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        if adapter._outbound_listener is None:  # noqa: SLF001 — smoke wiring
+        if not adapter.ready:
             raise HTTPException(status_code=503, detail="adapter not ready")
-        adapter._outbound_listener.cache_inbound(msg)  # noqa: SLF001 — smoke wiring
-        await adapter._inbound_bus.put(Platform.WEB, msg)
+
+        # Route through the shared stage pipeline (parse → ingest → route →
+        # session → dispatch), same as Telegram/Discord — the Dispatcher owns
+        # the cache_inbound + bus.put via push_to_hub_guarded (ADR-073).
+        kit = get_inbound_pipeline_kit()
+        parser = get_or_create_parser(kit.parser_cache, adapter, WebWireParser)
+
+        async def _web_backpressure(text: str) -> None:
+            await adapter.sessions.publish(
+                session_id, {"type": "error", "message": text}
+            )
+
+        await run_inbound_guarded(
+            pipeline=kit.pipeline,
+            raw_message=raw,
+            inbound_ctx=build_web_inbound_ctx(adapter),
+            parser=parser,
+            log_context=f"web session_id={session_id}",
+            on_attachment_ingest_error=_no_attachment_ingest,
+            send_backpressure=_web_backpressure,
+            on_drop=None,
+        )
         return ChatResponse(session_id=session_id)
 
     @app.get("/api/stream/{session_id}")

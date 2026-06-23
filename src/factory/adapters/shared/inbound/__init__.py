@@ -3,6 +3,7 @@
 from factory.adapters.shared.inbound.context import (
     build_discord_inbound_ctx,
     build_telegram_inbound_ctx,
+    build_web_inbound_ctx,
 )
 from factory.adapters.shared.inbound.pipeline import (
     InboundPipelineKit,
@@ -21,6 +22,7 @@ __all__ = [
     "InboundPipelineKit",
     "build_discord_inbound_ctx",
     "build_telegram_inbound_ctx",
+    "build_web_inbound_ctx",
     "cancel_typing_for_inbound",
     "cancel_typing_shim",
     "get_inbound_pipeline_kit",

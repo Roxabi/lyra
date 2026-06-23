@@ -14,6 +14,9 @@ Discord:
   - In a watch channel (``channel_id in ctx.watch_channels``) → PROCESS
   - Everything else → DROP
 
+Web (smoke):
+  - Every ``WebMeta`` request is a direct 1:1 agent message → PROCESS
+
 Unknown ``PlatformMeta`` subclass → DROP (conservative fallback).
 
 No I/O, no exceptions — ``Router.decide`` is sync and pure.
@@ -48,9 +51,15 @@ class Router:
         """Return ``PROCESS`` or ``DROP`` for *msg* given routing context *ctx*."""
         # Import here (not module level) to keep TYPE_CHECKING guards above clean,
         # and to satisfy the layer invariant: router.py must NOT import discord/aiogram.
-        from factory.core.messaging.message import DiscordMeta, TelegramMeta
+        from factory.core.messaging.message import DiscordMeta, TelegramMeta, WebMeta
 
         meta = msg.platform_meta
+
+        # ── Web smoke ────────────────────────────────────────────────────────
+        # Every web request is a direct 1:1 agent message (the browser picks the
+        # agent explicitly) — always process.
+        if isinstance(meta, WebMeta):
+            return RouteDecision.PROCESS
 
         # ── Telegram ─────────────────────────────────────────────────────────
         if isinstance(meta, TelegramMeta):

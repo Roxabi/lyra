@@ -159,6 +159,9 @@ class AgentGrantStore(SqliteStore):
         """Insert or update a grant in DB and cache; return the persisted row."""
         if not agent_name:
             raise ValueError("agent_name must be non-empty")
+        if not granted_by or not source:
+            # Audit-trail integrity: a grant must record who/where it came from.
+            raise ValueError("granted_by and source must be non-empty")
         db = self._require_db()
         await db.execute(
             "INSERT INTO agent_grants (agent_name, principal_kind, principal_id, "
@@ -176,6 +179,10 @@ class AgentGrantStore(SqliteStore):
             ),
         )
         await db.commit()
+        # Single-process writer (one hub): commit-then-reload is not atomic, but
+        # races only under concurrent same-agent writers, which the MVP has none
+        # of. A per-agent lock is a follow-up if the operator surface grows
+        # concurrency.
         await self._reload_agent(agent_name)
         for grant in self._cache.get(agent_name, ()):
             if grant.principal == principal and grant.capability is capability:
@@ -193,6 +200,8 @@ class AgentGrantStore(SqliteStore):
         capability: Capability = Capability.USE,
     ) -> bool:
         """Delete a grant from DB and cache; return True if one existed."""
+        if not agent_name:
+            raise ValueError("agent_name must be non-empty")
         db = self._require_db()
         async with db.execute(
             "DELETE FROM agent_grants WHERE agent_name = ? AND principal_kind = ? "

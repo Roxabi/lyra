@@ -134,6 +134,12 @@ class TestAgentGrantStoreAuthorize:
         finally:
             await store.close()
 
+    async def test_authorize_before_connect_denies(self, tmp_path: Path) -> None:
+        # authorize() is a pure cache read — before connect() the cache is empty,
+        # so it must deny rather than raise. Locks in the fail-safe contract.
+        store = AgentGrantStore(db_path=str(tmp_path / "auth.db"))
+        assert not store.authorize(agent_name=_AGENT, user_id=_USER.id).allowed
+
 
 class TestAgentGrantStoreWrites:
     """grant() / revoke() — write-through cache, idempotency, persistence."""
@@ -247,6 +253,24 @@ class TestAgentGrantStoreWrites:
         finally:
             await store.close()
 
+    async def test_grant_rejects_empty_audit_fields(self, tmp_path: Path) -> None:
+        store = await make_agent_grant_store(tmp_path)
+        try:
+            with pytest.raises(ValueError, match="granted_by and source"):
+                await store.grant(_AGENT, _USER, granted_by="", source="cli")
+            with pytest.raises(ValueError, match="granted_by and source"):
+                await store.grant(_AGENT, _USER, granted_by="op", source="")
+        finally:
+            await store.close()
+
+    async def test_revoke_rejects_empty_agent_name(self, tmp_path: Path) -> None:
+        store = await make_agent_grant_store(tmp_path)
+        try:
+            with pytest.raises(ValueError, match="agent_name"):
+                await store.revoke("", _USER)
+        finally:
+            await store.close()
+
     async def test_writes_require_connect(self, tmp_path: Path) -> None:
         store = AgentGrantStore(db_path=str(tmp_path / "auth.db"))
         with pytest.raises(RuntimeError, match="connect"):
@@ -255,8 +279,16 @@ class TestAgentGrantStoreWrites:
     async def test_write_after_close_raises(self, tmp_path: Path) -> None:
         store = await make_agent_grant_store(tmp_path)
         await store.close()
+        # Both write verbs share the _require_db() guard — assert each explicitly.
         with pytest.raises(RuntimeError, match="connect"):
             await store.revoke(_AGENT, _USER)
+        with pytest.raises(RuntimeError, match="connect"):
+            await store.grant(_AGENT, _USER, granted_by="op", source="cli")
+
+    async def test_double_close_is_safe(self, tmp_path: Path) -> None:
+        store = await make_agent_grant_store(tmp_path)
+        await store.close()
+        await store.close()  # idempotent — must not raise
 
     async def test_grant_returns_persisted_grant(self, tmp_path: Path) -> None:
         store = await make_agent_grant_store(tmp_path)

@@ -49,3 +49,19 @@ def test_store_protocol_has_required_methods() -> None:
     """AgentGrantStoreProtocol = read port + operator write surface."""
     attrs: set[str] = getattr(AgentGrantStoreProtocol, "__protocol_attrs__", set())
     assert attrs == {"authorize", "list_grants", "grant", "revoke"}
+
+
+def test_store_sync_async_shape_is_stable() -> None:
+    """Reads are sync (cache, never block the loop); writes are async.
+
+    Complements the structural isinstance checks, which ignore async-ness — this
+    catches a sync↔async drift that would still satisfy the Protocol.
+    """
+    import inspect
+
+    from factory.infrastructure.stores.identity.agent_grant_store import AgentGrantStore
+
+    for sync_method in ("authorize", "list_grants"):
+        assert not inspect.iscoroutinefunction(getattr(AgentGrantStore, sync_method))
+    for async_method in ("grant", "revoke"):
+        assert inspect.iscoroutinefunction(getattr(AgentGrantStore, async_method))

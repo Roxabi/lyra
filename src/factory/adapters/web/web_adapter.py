@@ -28,7 +28,6 @@ from factory.outbound.emitter import OutboundEmitter
 if TYPE_CHECKING:
     from factory.adapters.shared.outbound_listener import OutboundListener
     from factory.core.messaging.bus import Bus
-    from factory.core.messaging.render_events import RenderEvent
 
 log = logging.getLogger(__name__)
 
@@ -62,6 +61,11 @@ class WebAdapter(OutboundAdapterBase):
     @property
     def agent_names(self) -> list[str]:
         return list(self._agent_names)
+
+    @property
+    def ready(self) -> bool:
+        """True once the outbound listener is wired (NATS correlation ready)."""
+        return self._outbound_listener is not None
 
     def normalize(
         self,
@@ -112,16 +116,6 @@ class WebAdapter(OutboundAdapterBase):
         outbound: OutboundMessage,
     ) -> None:
         await web_outbound.send(self, original_msg, outbound)
-
-    async def send_streaming(
-        self,
-        original_msg: InboundMessage,
-        events: AsyncIterator[RenderEvent],
-        outbound: OutboundMessage | None = None,
-    ) -> None:
-        await super().send_streaming(original_msg, events, outbound)
-        session_id = web_outbound.web_session_id(original_msg)
-        await self.sessions.publish(session_id, {"type": "done"})
 
     def _make_emitter(
         self,

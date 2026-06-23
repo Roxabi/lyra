@@ -9,6 +9,7 @@ from factory.inbound.context import DispatchCtx, InboundContext, RouterCtx, Sess
 if TYPE_CHECKING:
     from factory.adapters.discord import DiscordAdapter
     from factory.adapters.telegram import TelegramAdapter
+    from factory.adapters.web.web_adapter import WebAdapter
 
 
 def build_telegram_inbound_ctx(
@@ -62,4 +63,32 @@ def build_discord_inbound_ctx(
             msg_catalog=adapter._msg_manager,
         ),
         ingest=ingest,
+    )
+
+
+def build_web_inbound_ctx(adapter: "WebAdapter") -> InboundContext:
+    """InboundContext for the web smoke text path.
+
+    Web has no thread model, no attachment store, and no circuit registry or
+    message catalog — those ``DispatchCtx`` fields are ``None`` (the Dispatcher
+    and ``push_to_hub_guarded`` tolerate ``None`` for each).
+    """
+    return InboundContext(
+        router=RouterCtx(
+            bot_id=adapter._bot_id,
+            owned_threads=set(),  # web has no thread model; Router only reads
+            watch_channels=None,
+        ),
+        session=SessionCtx(
+            turn_store=None,
+            thread_store=None,  # web has no thread model
+        ),
+        dispatch=DispatchCtx(
+            inbound_bus=adapter._inbound_bus,
+            circuit_registry=None,
+            outbound_listener=adapter._outbound_listener,
+            typing=adapter._typing,
+            msg_catalog=None,
+        ),
+        ingest=None,
     )

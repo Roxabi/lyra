@@ -10,7 +10,7 @@
 4 domains that together ensure an authorized user receives the correct response, from the correct agent, on the correct channel, with isolated memory.
 
 ```
-[Channel] → Authenticator + GuardChain  (who may speak?)
+[Channel] → Authenticator + TrustGuardMiddleware  (who may speak?)
           → CommandParser               (what action?)
           → Bus → Router                (which agent / pool?)
                   → ComplexityEstimator → LLMConfig   (which model?)
@@ -21,7 +21,7 @@
 
 ---
 
-## #auth — Authenticator + GuardChain + TrustLevel
+## #auth — Authenticator + TrustGuardMiddleware + TrustLevel
 
 ### Problem
 
@@ -46,17 +46,16 @@ class Authenticator:
             return TrustLevel.BLOCKED
         return self._store.check(user_id)  # checks owner, trusted, blocked lists
 
-class GuardChain:
-    """Runs guards sequentially, returning the first Rejection or None."""
+class TrustGuardMiddleware:
+    """Stage 3: drop BLOCKED users (C3). Trust resolved by ResolveTrustMiddleware."""
 
-    async def check(self, msg) -> Rejection | None:
-        for guard in self._guards:
-            if rejection := await guard.check(msg):
-                return rejection
-        return None
+    async def __call__(self, msg, ctx, nxt):
+        if msg.trust_level == TrustLevel.BLOCKED:
+            return  # dropped at the Hub before the Pool or any agent
+        return await nxt(msg, ctx)
 ```
 
-> **Pre-C3 historical (superseded):** Before containerization, adapters resolved trust themselves and dropped BLOCKED messages before calling `normalize()`. This pattern is no longer used — adapters are untrusted normalizers that always send `PUBLIC`.
+> **Pre-C3 historical (superseded):** Before containerization, adapters resolved trust themselves and dropped BLOCKED messages before calling `normalize()`. This pattern is no longer used — adapters are untrusted normalizers that always send `PUBLIC`. The composable adapter-side guard chain (GuardChain/BlockedGuard) that briefly survived the C3 migration was removed in #1997 as dead and redundant with the hub-side BLOCKED drop.
 
 ### Config
 
@@ -78,14 +77,14 @@ At least one section must be present. A missing section logs a warning and disab
 ### Implementation — ✅ Shipped (#151, refactored #313/#314)
 
 - [x] `Authenticator` (identity resolver) in `src/factory/core/auth/authenticator.py`
-- [x] `GuardChain` (composable guard pipeline) in `src/factory/core/auth/guard.py`
+- [x] `TrustGuardMiddleware` (hub-side BLOCKED drop, C3) in `src/factory/core/hub/middleware/middleware_guards.py`
 - [x] `TrustLevel` enum in `src/factory/core/auth/trust.py`
 - [x] Config-driven trust_map (TOML), parsed in src/factory/core/auth.py
 - [x] Integrated in TelegramAdapter + DiscordAdapter
 - [x] CLIAdapter (trust = OWNER by default)
 - [x] Rejection logging
 
-> **Refactored in #313/#314**: The original monolithic AuthMiddleware was split into `Authenticator` (resolves user identity → TrustLevel) and `GuardChain` (runs composable guards sequentially, returning the first Rejection or None).
+> **Refactored in #313/#314, then #1997**: the monolithic AuthMiddleware was first split into `Authenticator` (resolves identity → TrustLevel) and a composable adapter-side guard chain. That guard chain was later **removed (#1997)** as dead/redundant — the BLOCKED drop is enforced solely hub-side by `TrustGuardMiddleware` (C3). ADR-090's planned agent-scoped authorization middleware (after ResolveBinding) is the next authorization stage.
 
 ### Admin access
 

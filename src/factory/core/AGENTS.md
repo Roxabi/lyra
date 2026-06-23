@@ -57,8 +57,6 @@ Reads are synchronous (cache). Writes are async (SQLite). Cache updated atomical
 
 **`RoutingKey`** (`hub/hub_protocol.py`) — `NamedTuple(platform, bot_id, scope_id)`. Always call `.to_pool_id()` — never build pool ID strings manually (ADR-001 §4).
 
-**`Guard` / `GuardChain`** (`auth/guard.py`) — `Guard.check(identity) -> Rejection | None`. Compose via `GuardChain`. Never raise from `check()`.
-
 ## Non-obvious subdirectory placement
 
 `messaging/events.py` defines `LlmEvent` (placed in `core/`, not `llm/`, so `llm → core` stays unidirectional).

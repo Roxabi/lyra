@@ -5,6 +5,7 @@ ADR-048 (absorbed into ADR-059).
 This package re-exports only protocol-safe symbols for backward compatibility.
 """
 
+from .agent_grant_store_protocol import AgentGrantStoreProtocol
 from .agent_store_protocol import AgentStoreProtocol
 from .auth_store_protocol import AuthStoreProtocol
 from .bot_store_protocol import BotStoreProtocol
@@ -13,6 +14,7 @@ from .thread_store_protocol import ThreadStoreProtocol
 from .turn_store_protocol import SessionRow, TurnRow, TurnStoreProtocol
 
 __all__ = [
+    "AgentGrantStoreProtocol",
     "AgentStoreProtocol",
     "AuthStoreProtocol",
     "BotStoreProtocol",

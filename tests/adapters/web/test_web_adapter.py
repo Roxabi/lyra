@@ -80,3 +80,26 @@ class TestWebFormatter:
         await fmt.edit_placeholder_text("s1", "partial")
         item = hub.get_or_create("s1").queue.get_nowait()
         assert item == {"type": "delta", "text": "partial"}
+
+    async def test_edit_placeholder_finalize_emits_done(self) -> None:
+        # Streaming terminal: the "done" SSE sentinel now comes from the
+        # formatter's finalize edit, not a send_streaming override (ADR-073).
+        hub = WebSessionHub()
+        fmt = WebFormatter(hub, "s2")
+        await fmt.edit_placeholder_text("s2", "final", finalize=True)
+        q = hub.get_or_create("s2").queue
+        items = []
+        while not q.empty():
+            items.append(q.get_nowait())
+        assert items[0] == {"type": "delta", "text": "final"}
+        assert items[-1] == {"type": "done"}
+
+    async def test_send_fallback_emits_done(self) -> None:
+        hub = WebSessionHub()
+        fmt = WebFormatter(hub, "s3")
+        await fmt.send_fallback("oops")
+        q = hub.get_or_create("s3").queue
+        items = []
+        while not q.empty():
+            items.append(q.get_nowait())
+        assert items[-1] == {"type": "done"}

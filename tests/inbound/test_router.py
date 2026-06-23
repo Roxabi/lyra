@@ -264,6 +264,31 @@ class TestRouterDiscord:
         assert decision is RouteDecision.DROP
 
 
+# -- Web --------------------------------------------------------------------
+
+
+class TestRouterWeb:
+    """Router.decide — web smoke routing rule."""
+
+    def test_web_message_is_processed(
+        self, router: Router, router_ctx_telegram: RouterCtx
+    ) -> None:
+        # Arrange — WebMeta: every web request is a direct 1:1 agent message.
+        from factory.core.messaging.message import WebMeta
+
+        msg = _make_msg(
+            platform="web",
+            is_mention=True,
+            platform_meta=WebMeta(session_id="sess-1"),
+        )
+        # Act
+        decision = router.decide(msg, router_ctx_telegram)
+        # Assert — Negative: without the WebMeta branch, WebMeta falls through to
+        # the conservative unknown-meta DROP and the smoke adapter never reaches
+        # the hub.
+        assert decision is RouteDecision.PROCESS
+
+
 # -- Unknown platform --------------------------------------------------------
 
 

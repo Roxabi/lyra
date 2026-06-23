@@ -51,9 +51,15 @@ class WebFormatter(BaseFormatter):
     async def edit_placeholder_text(
         self, ph: Any, text: str, *, finalize: bool = False
     ) -> None:
-        del ph, finalize
+        del ph
         self._buffer = text
         await self._sessions.publish(self._session_id, {"type": "delta", "text": text})
+        if finalize:
+            # Terminal edit (graceful or error end) — close the SSE stream. This is
+            # the streaming counterpart of web_outbound.send()'s "done" on the
+            # non-streaming path; OutboundAdapterBase.send_streaming must NOT be
+            # overridden to inject it (stage-axis invariant, ADR-073).
+            await self._sessions.publish(self._session_id, {"type": "done"})
 
     async def send_trace_placeholder(self) -> tuple[Any, int | None]:
         return (None, None)
@@ -63,7 +69,11 @@ class WebFormatter(BaseFormatter):
         return None
 
     async def send_fallback(self, text: str) -> int | None:
-        return await self.send_message(text)
+        # Empty-stream / fallback terminal path (_drain_fallback) — no finalize
+        # edit fires here, so close the SSE stream explicitly.
+        result = await self.send_message(text)
+        await self._sessions.publish(self._session_id, {"type": "done"})
+        return result
 
     async def edit_reasoning(
         self,

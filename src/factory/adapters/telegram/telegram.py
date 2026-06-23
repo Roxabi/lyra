@@ -39,7 +39,6 @@ from factory.adapters.telegram.telegram_outbound import (
     send as _send_impl,
 )
 from factory.core.lifecycle.circuit_breaker import CircuitRegistry
-from factory.core.auth.guard import BlockedGuard, GuardChain
 from factory.core.auth.trust import TrustLevel
 from factory.core.config import TelegramConfig as TelegramConfig, load_telegram_config
 from factory.core.messaging.message import (
@@ -91,7 +90,6 @@ class TelegramAdapter(OutboundAdapterBase):
         self._inbound_bus = inbound_bus
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
-        self._guard_chain: GuardChain = GuardChain([BlockedGuard()])
         self._blob_store: "BlobStorePort | None" = blob_store
         _raw_tmp = os.environ.get("FACTORY_AUDIO_TMP") or None
         if _raw_tmp is not None:

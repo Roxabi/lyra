@@ -48,7 +48,6 @@ from factory.adapters.discord.voice.discord_voice_commands import (
     register_voice_app_commands as _register_voice_app_commands,
 )
 from factory.core.lifecycle.circuit_breaker import CircuitRegistry
-from factory.core.auth.guard import BlockedGuard, GuardChain
 from factory.core.auth.trust import TrustLevel
 from factory.core.messaging.message import (
     InboundMessage,
@@ -112,7 +111,6 @@ class DiscordAdapter(discord.Client, OutboundAdapterBase):
         self._msg_manager = msg_manager
         self._auto_thread = auto_thread
         self._thread_hot_hours = thread_hot_hours
-        self._guard_chain: GuardChain = GuardChain([BlockedGuard()])
         self._max_audio_bytes: int = int(
             os.environ.get("FACTORY_MAX_AUDIO_BYTES", 5 * 1024 * 1024)
         )

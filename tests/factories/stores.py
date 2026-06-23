@@ -7,16 +7,19 @@ from pathlib import Path
 import pytest
 
 from factory.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
+from factory.infrastructure.stores.identity.agent_grant_store import AgentGrantStore
 from factory.infrastructure.stores.identity.auth_store import AuthStore
 from factory.infrastructure.stores.identity.pairing import PairingConfig, PairingManager
 from factory.infrastructure.stores.registry.agent_store import AgentRow, AgentStore
 from tests.helpers.bot_store import make_bot_store
 
 __all__ = [
+    "agent_grant_store",
     "agent_store",
     "auth_store",
     "bot_store",
     "json_agent_store",
+    "make_agent_grant_store",
     "make_agent_row",
     "make_auth_store",
     "make_circuit_registry",
@@ -62,6 +65,27 @@ async def make_auth_store(tmp_path: Path) -> AuthStore:
 async def auth_store(tmp_path: Path):
     """Fixture-based AuthStore with automatic teardown. Prefer over make_auth_store."""
     store = await make_auth_store(tmp_path)
+    try:
+        yield store
+    finally:
+        await store.close()
+
+
+async def make_agent_grant_store(tmp_path: Path) -> AgentGrantStore:
+    """Create and connect a real AgentGrantStore backed by a tmp file DB.
+
+    Shares the ``auth.db`` filename with AuthStore (ADR-090 §3); a tmp file keeps
+    each test isolated. Prefer the ``agent_grant_store`` fixture for new tests.
+    """
+    store = AgentGrantStore(db_path=str(tmp_path / "auth.db"))
+    await store.connect()
+    return store
+
+
+@pytest.fixture
+async def agent_grant_store(tmp_path: Path):
+    """Fixture-based AgentGrantStore with automatic teardown."""
+    store = await make_agent_grant_store(tmp_path)
     try:
         yield store
     finally:

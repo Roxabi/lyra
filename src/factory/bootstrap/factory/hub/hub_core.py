@@ -64,6 +64,7 @@ def _build_hub(deps: BuildHubDeps) -> Hub:
         inbound_bus=deps.inbound_bus,
         config=hub_config,
         resume_publisher=adapter,
+        authorizer=deps.stores.grant,
     )
     hub.set_turn_store(deps.stores.turn)
     hub.set_message_index(deps.stores.message_index)

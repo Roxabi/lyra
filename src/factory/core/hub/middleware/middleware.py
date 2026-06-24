@@ -9,8 +9,9 @@ ordering and session resume atomicity.
 
 Layout:
   middleware.py         — protocol, context, runner, factory
-  middleware_stages.py  — stages 0–8 (trace, guards, pool/msg prep, command dispatch)
-  middleware_submit.py  — stage 9 (pool submit + session resume)
+  middleware_stages.py  — stages 0–9 (trace, guards, pool/msg prep, command dispatch)
+  middleware_authz.py   — stage 7 (agent authorization, ADR-090 §5)
+  middleware_submit.py  — stage 10 (pool submit + session resume)
 """
 
 from __future__ import annotations
@@ -38,6 +39,7 @@ from ..pipeline.pipeline_types import (
 )
 
 if TYPE_CHECKING:
+    from ...auth.agent_grants import AgentAuthorizer
     from ..event_bus import PipelineEventBus
     from ..hub import Binding, Hub, RoutingKey
 
@@ -172,12 +174,14 @@ class MiddlewarePipeline:
 def build_default_pipeline(
     hub: Hub,
     *,
+    authorizer: AgentAuthorizer | None = None,
     resume_publisher: ResumePublisherPort | None = None,
     trace_hook: TraceHook | None = None,
     event_bus: PipelineEventBus | None = None,
 ) -> MiddlewarePipeline:
-    """Build the standard middleware pipeline with all 10 stages."""
+    """Build the standard middleware pipeline with all 11 stages."""
     from .middleware_stages import (
+        AuthorizeAgentMiddleware,
         CommandMiddleware,
         MessagePrepMiddleware,
         RateLimitMiddleware,
@@ -199,6 +203,7 @@ def build_default_pipeline(
             RateLimitMiddleware(),
             SttMiddleware(),
             ResolveBindingMiddleware(),
+            AuthorizeAgentMiddleware(authorizer=authorizer),
             MessagePrepMiddleware(),
             CommandMiddleware(),
             SubmitToPoolMiddleware(),

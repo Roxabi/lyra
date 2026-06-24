@@ -21,6 +21,7 @@ from typing import AsyncGenerator
 
 from nats.aio.client import Client
 
+from factory.infrastructure.stores.identity.agent_grant_store import AgentGrantStore
 from factory.infrastructure.stores.identity.auth_store import AuthStore
 from factory.infrastructure.stores.identity.identity_alias_store import (
     IdentityAliasStore,
@@ -259,6 +260,7 @@ class StoreBundle:
     prefs: PrefsStore
     message_index: MessageIndexKvStore
     identity_alias: IdentityAliasStore
+    grant: AgentGrantStore
     bot: BotStore
 
 
@@ -282,6 +284,7 @@ async def open_stores(
     prefs_store: PrefsStore | None = None
     message_index_store: MessageIndexKvStore | None = None
     identity_alias_store: IdentityAliasStore | None = None
+    grant_store: AgentGrantStore | None = None
     bot_store: BotStore | None = None
     try:
         auth_store = AuthStore(db_path=vault_dir / "auth.db")
@@ -289,6 +292,9 @@ async def open_stores(
 
         identity_alias_store = IdentityAliasStore(db_path=vault_dir / "auth.db")
         await identity_alias_store.connect()
+
+        grant_store = AgentGrantStore(db_path=vault_dir / "auth.db")
+        await grant_store.connect()
 
         agent_store = AgentStore(db_path=vault_dir / "config.db")
         await agent_store.connect()
@@ -323,6 +329,7 @@ async def open_stores(
             prefs=prefs_store,
             message_index=message_index_store,
             identity_alias=identity_alias_store,
+            grant=grant_store,
             bot=bot_store,
         )
     finally:
@@ -334,6 +341,7 @@ async def open_stores(
             prefs_store,
             message_index_store,
             identity_alias_store,
+            grant_store,
         )
         for store in all_stores:
             if store is not None:

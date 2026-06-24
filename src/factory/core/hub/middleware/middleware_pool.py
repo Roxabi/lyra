@@ -1,4 +1,4 @@
-"""Pool setup and command middleware stages (6–8)."""
+"""Pool setup and command middleware stages (6–9)."""
 
 from __future__ import annotations
 
@@ -78,7 +78,7 @@ class ResolveBindingMiddleware:
 
 
 class MessagePrepMiddleware:
-    """Stage 7: get or create the pool, parse command prefix, rewrite bare URLs.
+    """Stage 8: get or create the pool, parse command prefix, rewrite bare URLs.
 
     Sets ctx.pool, ctx.router, msg.command.
     """
@@ -160,7 +160,7 @@ class MessagePrepMiddleware:
 
 
 class CommandMiddleware:
-    """Stage 8: detect and dispatch commands."""
+    """Stage 9: detect and dispatch commands."""
 
     async def __call__(
         self,

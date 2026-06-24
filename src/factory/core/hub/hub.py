@@ -220,7 +220,7 @@ class Hub(
             try:
                 try:
                     result = await pipeline.process(msg)
-                except Exception:
+                except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# boundary: hub-loop — pipeline failure must not crash consumer
                     log.exception("pipeline.process() failed for msg id=%s", msg.id)
                     continue
                 await self._dispatch_pipeline_result(msg, result)

@@ -9,6 +9,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import nats.errors
+
 if TYPE_CHECKING:
     from ...transport.typing_publisher import TypingPublisher
     from ..memory import SessionSnapshot
@@ -221,7 +223,7 @@ class Pool:
             if self._on_resume_fn is not None:
                 try:
                     await self._on_resume_fn(session_id)
-                except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch — resilient: TurnStore errors must not abort session
+                except nats.errors.Error:
                     log.exception(
                         "[pool:%s] resume count increment failed for %r",
                         self.pool_id,
@@ -251,7 +253,7 @@ class Pool:
                     user_id=self.user_id or "",
                     trace_id=self.session_id,
                 )
-            except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch — resilient: publish errors must not abort session
+            except nats.errors.Error:
                 log.exception("[pool:%s] publish_start_session failed", self.pool_id)
         self._observer.reset_session_persisted()
         if self._session_reset_fn is not None:

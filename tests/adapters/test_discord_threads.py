@@ -213,7 +213,9 @@ class TestDiscordAutoThread:
 
         # create_thread raises — but the message has a .thread attached
         # (Discord created it despite the timeout/error)
-        create_thread_mock = AsyncMock(side_effect=Exception("timeout after create"))
+        create_thread_mock = AsyncMock(
+            side_effect=discord.HTTPException(MagicMock(), "timeout after create")
+        )
         partial_thread = SimpleNamespace(id=8888)
 
         discord_msg = SimpleNamespace(

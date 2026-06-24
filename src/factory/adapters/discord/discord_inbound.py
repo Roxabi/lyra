@@ -106,13 +106,20 @@ async def _try_auto_create_thread(deps: AutoThreadDeps) -> int | None:
         )
         ctx.router.owned_threads.add(thread.id)
         if adapter._thread_store is not None:
-            await persist_thread_claim(
-                adapter._thread_store,
-                thread_id=thread.id,
-                bot_id=adapter._bot_id,
-                channel_id=raw_message.channel.id,
-                guild_id=getattr(raw_message.guild, "id", None),
-            )
+            try:
+                await persist_thread_claim(
+                    adapter._thread_store,
+                    thread_id=thread.id,
+                    bot_id=adapter._bot_id,
+                    channel_id=raw_message.channel.id,
+                    guild_id=getattr(raw_message.guild, "id", None),
+                )
+            except (sqlite3.Error, OSError, RuntimeError):
+                log.exception(
+                    "ThreadStore: failed to persist claim for thread_id=%s"
+                    " after create — inbound proceeds",
+                    thread.id,
+                )
         return thread.id
     except discord.DiscordException:
         log.exception(

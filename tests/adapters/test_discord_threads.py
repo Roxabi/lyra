@@ -272,11 +272,11 @@ class TestPersistThreadClaimFailurePath:
     @pytest.mark.asyncio
     async def test_persist_thread_claim_failure_does_not_prevent_message_processing(
         self,
+        tmp_path,
     ) -> None:
-        """persist_thread_claim raising RuntimeError: message still reaches bus."""
-        from unittest.mock import patch
-
+        """ThreadStore.claim I/O failure: message still reaches bus."""
         from factory.adapters.discord import DiscordAdapter
+        from factory.infrastructure.stores.session.thread_store import ThreadStore
 
         # Arrange
         inbound_bus = MagicMock()
@@ -291,8 +291,10 @@ class TestPersistThreadClaimFailurePath:
         bot_user = SimpleNamespace(id=999, bot=True)
         adapter._bot_user = bot_user
 
-        # Wire a thread store so persist_thread_claim is actually called
-        adapter._thread_store = AsyncMock()
+        thread_store = ThreadStore(db_path=tmp_path / "discord.db")
+        await thread_store.connect()
+        await thread_store.close()  # claim() must degrade, not raise
+        adapter._thread_store = thread_store
 
         thread_mock = MagicMock()
         thread_mock.id = 9999
@@ -316,13 +318,8 @@ class TestPersistThreadClaimFailurePath:
             create_thread=create_thread_mock,
         )
 
-        # Patch persist_thread_claim to raise
-        with patch(
-            "factory.adapters.discord.discord_inbound.persist_thread_claim",
-            AsyncMock(side_effect=RuntimeError("DB error")),
-        ):
-            # Act — must not raise
-            await adapter.on_message(discord_msg)
+        # Act — must not raise
+        await adapter.on_message(discord_msg)
 
         # Assert — message still reaches the inbound bus
         inbound_bus.put.assert_awaited_once()

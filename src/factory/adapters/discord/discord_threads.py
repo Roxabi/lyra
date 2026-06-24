@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import sqlite3
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -21,22 +20,17 @@ async def persist_thread_claim(
     guild_id: int | None,
 ) -> None:
     """Persist thread ownership to ThreadStore. Awaitable — callers must await."""
-    try:
-        await thread_store.claim(
-            thread_id=str(thread_id),
-            bot_id=bot_id,
-            channel_id=str(channel_id),
-            guild_id=str(guild_id) if guild_id is not None else None,
-        )
-        log.debug(
-            "ThreadStore: claimed thread_id=%s for bot_id=%r",
-            thread_id,
-            bot_id,
-        )
-    except (sqlite3.Error, OSError, RuntimeError):
-        log.exception(
-            "ThreadStore: failed to persist claim for thread_id=%s", thread_id
-        )
+    await thread_store.claim(
+        thread_id=str(thread_id),
+        bot_id=bot_id,
+        channel_id=str(channel_id),
+        guild_id=str(guild_id) if guild_id is not None else None,
+    )
+    log.debug(
+        "ThreadStore: claimed thread_id=%s for bot_id=%r",
+        thread_id,
+        bot_id,
+    )
 
 
 async def restore_hot_threads(

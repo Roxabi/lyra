@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import re
-import sqlite3
 from typing import TYPE_CHECKING
 
 import discord
@@ -36,14 +35,11 @@ async def on_ready(adapter: "DiscordAdapter") -> None:
         )
     # Restore hot threads from ThreadStore on startup.
     if adapter._thread_store is not None:
-        try:
-            from factory.adapters.discord.discord_threads import restore_hot_threads
+        from factory.adapters.discord.discord_threads import restore_hot_threads
 
-            adapter._owned_threads = await restore_hot_threads(
-                adapter._thread_store, adapter._bot_id, adapter._thread_hot_hours
-            )
-        except (sqlite3.Error, OSError, RuntimeError):
-            log.exception("ThreadStore: failed to restore owned threads")
+        adapter._owned_threads = await restore_hot_threads(
+            adapter._thread_store, adapter._bot_id, adapter._thread_hot_hours
+        )
     # Sync app_commands tree for each guild (guild-scoped = instant).
     for guild in adapter.guilds:
         try:

@@ -9,10 +9,30 @@ generated: 2026-06-24
 
 ## Summary
 
-Shape 3 hybrid burn-down in 5 PR slices: Slice 1 tags all 50 untagged BLE001 sites (inventory
-honesty); Slices 2–3 narrow `core/pool`, `core/hub`, and remaining core/inbound; Slice 4 narrows
-infrastructure stores and classifies adapter/blobstore survivors; Slice 5 updates ADR-073 and closes
-#1832. Each slice PR includes before/after grep counts and passes `check_str_exc_bus_bound.sh`.
+Shape 3 hybrid burn-down in 5 PR slices under the **Implementation Mandate** (Mickael 2026-06-24):
+every change must fix root axial drift — not bookkeeping. Slice 1 inventories untagged sites but
+**narrows immediately** where the fix is clear (infra jobs/stores, core-adjacent); defers tag-only to
+true external I/O boundaries (adapters/blobstore/transport) pending V4 classification. Slices 2–3
+narrow `core/pool`, `core/hub`, remaining core/inbound. Slice 4 finishes infra + adapter/blobstore
+with narrow-first, acknowledge-only survivors. Slice 5 updates ADR-073 and closes #1832.
+
+## Implementation Mandate
+
+**Prerogative (2026-06-24):** Tous les changements traitent le problème de fond — corriger l'axial
+drift, pas masquer la dette. Architecture et qualité de code ++.
+
+| Rule | Meaning | Forbidden |
+|------|---------|-----------|
+| **R1 Narrow-first** | Default action = eliminate `except Exception` via specific types, re-raise, or move catch to the correct stage boundary | Bulk `DEBT:` append without code change |
+| **R2 Axial justification** | Every surviving catch needs `# boundary: <stage> — <why broad is correct here>` tied to ADR-073 layer (transport/adapters/inbound/outbound/core) | Tag-only to silence audit |
+| **R3 Re-raise over swallow** | In `core/` and `infrastructure/`: if catch hides a stage violation, remove it or propagate after structured logging | log-and-continue on store/pipeline failures without typed fallback |
+| **R4 No laundering** | Acknowledged I/O boundaries only at true wire edges (HTTP handler, NATS decode, adapter send/retry) | Classifying `core/pool` or `hub` catches as "boundary" |
+| **R5 Quality bar** | Each PR: fewer broad catches than before, tests pass, PII gate green, per-site commit message rationale in PR description table | Mechanical 50-file tag PR with zero narrowing |
+| **R6 Defer explicit** | `core/cli/` subprocess → tag + defer #1812 only; must state defer reason inline | Refactor subprocess out of scope sneak |
+
+**Slice 1 revised:** tag-only allowed for adapter/blobstore/outbound/transport **only when** the site
+is a genuine wire boundary AND narrowing needs API research; infra sites in the untagged 50
+(`dlq_router`, `active_jobs_refresher`, `turn_writer/health`) are **narrowed in V1**, not tagged.
 
 ## Architecture
 
@@ -184,11 +204,14 @@ Spec: SC3.
 
 **T5** [P] [nats] Tag `nats_channel_proxy.py:195`. Phase: GREEN · Spec: SC3.
 
-**T6** [P] [infra] Tag 7 infra sites: dlq_router (4), active_jobs_refresher (2), turn_writer/health (1).
-Use `DEBT:boundary-broad-catch` — these are drain targets in V4. Phase: GREEN · Spec: SC3.
+**T6** [P] [infra] **Narrow-first (R1,R3):** `dlq_router` (4), `active_jobs_refresher` (2),
+`turn_writer/health` (1) — replace `Exception` with typed errors (`nats.errors`, `sqlite3.Error`,
+`ConnectionError`, etc.) or re-raise after log. Tag only if a catch survives narrowing. Phase: GREEN ·
+Spec: SC3, SC7, Mandate R1.
 
-**T7** [P] [misc] Tag tools/gh_token (4), cli/bot (2), agent_cmd/bots/init (2), bot_display_name (1).
-Phase: GREEN · Spec: SC3.
+**T7** [P] [misc] Narrow where obvious; `bot_display_name` → `sqlite3.Error`/store errors.
+`tools/gh_token` + `cli/bot` + `agent_cmd`: narrow or `# boundary:` with axial reason. Phase: GREEN ·
+Spec: SC3, Mandate R1.
 
 **T8** [audit] RED-GATE — blockedBy T1–T7: run `make quality-debt-report`; assert 0 UNTAGGED BLE001
 under `src/factory/`; record grep baseline in PR body; run `bash tools/check_str_exc_bus_bound.sh`.

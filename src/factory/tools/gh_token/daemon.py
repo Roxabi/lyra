@@ -45,6 +45,7 @@ from factory.tools.gh_token.mint_failure_publisher import MintFailurePublisher
 from factory.tools.gh_token.rate_limit import RateLimiter
 from roxabi_contracts._nats_utils import _SAFE_SEGMENT_CHARS, _SAFE_SEGMENT_RE
 from roxabi_nats import nats_connect
+from roxabi_nats.connect import scrub_nats_url
 
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
@@ -177,10 +178,18 @@ async def _connect_nats_publisher(
         return nc, publisher
     except (nats.errors.Error, OSError, ValueError) as exc:
         log.warning(
-            "mint-failure publishing DISABLED — NATS connect to %r failed: %s"
+            "mint-failure publishing DISABLED — NATS connect to %s failed: %s"
             " (daemon continues, mint failures will NOT be published)",
-            nats_url,
-            exc,
+            scrub_nats_url(nats_url),
+            type(exc).__name__,
+        )
+        return None, None
+    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: gh-daemon — #27 must not crash on unexpected NATS connect failure
+        log.warning(
+            "mint-failure publishing DISABLED — NATS connect to %s failed: %s"
+            " (daemon continues, mint failures will NOT be published)",
+            scrub_nats_url(nats_url),
+            type(exc).__name__,
         )
         return None, None
 

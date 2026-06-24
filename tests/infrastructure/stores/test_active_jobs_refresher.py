@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime
 from unittest.mock import AsyncMock
 
+import nats.errors
 import pytest
 
 from factory.core.ports.active_jobs import ActiveJobEntry, RegistryConflictError
@@ -134,7 +135,7 @@ async def test_refresh_all_one_failure_does_not_abort_sweep(
     await coord.open(_make_entry("job-y", pool_id="pool-b"))
     port.refresh.reset_mock()
     # First job in the (insertion-ordered) snapshot raises; second must still run.
-    port.refresh.side_effect = [RuntimeError("transient NATS error"), None]
+    port.refresh.side_effect = [nats.errors.Error("transient NATS error"), None]
 
     await coord.refresh_all()  # must not raise
 

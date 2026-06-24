@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from factory.core.stores.turn_store_protocol import SessionRow
+from factory.infrastructure.stores.base.sqlite_base import _SQLITE_STORE_ERRORS
 
 if TYPE_CHECKING:
     import aiosqlite
@@ -68,7 +69,7 @@ class TurnStoreSessionMixin:
                 (cli_session_id, session_id),
             )
             await db.commit()
-        except Exception:
+        except _SQLITE_STORE_ERRORS:
             log.exception("TurnStore._set_cli_session failed (session=%s)", session_id)
             return
 
@@ -102,7 +103,7 @@ class TurnStoreSessionMixin:
             ) as cur:
                 row = await cur.fetchone()
                 return int(row[0]) if row else 0
-        except Exception:
+        except _SQLITE_STORE_ERRORS:
             log.exception("TurnStore.get_resume_count failed (session=%s)", session_id)
             return 0
 
@@ -117,7 +118,7 @@ class TurnStoreSessionMixin:
                 (session_id,),
             )
             await db.commit()
-        except Exception:
+        except _SQLITE_STORE_ERRORS:
             log.exception(
                 "TurnStore._increment_resume_count failed (session=%s)", session_id
             )
@@ -134,6 +135,6 @@ class TurnStoreSessionMixin:
                 (ts, session_id),
             )
             await db.commit()
-        except Exception:
+        except _SQLITE_STORE_ERRORS:
             log.exception("TurnStore._end_session failed (session=%s)", session_id)
             return

@@ -26,7 +26,10 @@ from factory.core.stores.pairing_config import (
     _sha256,
     _utc_now,
 )
-from factory.infrastructure.stores.base.sqlite_base import SqliteStore
+from factory.infrastructure.stores.base.sqlite_base import (
+    SqliteStore,
+    _SQLITE_STORE_ERRORS,
+)
 
 # Re-export so existing `from factory.core.pairing import PairingConfig/PairingError`
 # imports continue to work unchanged.
@@ -204,7 +207,7 @@ class PairingManager(SqliteStore):
                     granted_by="invite",
                     source=code_hash,
                 )
-            except Exception:
+            except _SQLITE_STORE_ERRORS:
                 log.exception(
                     "validate_code: failed to persist grant for %s — code consumed",
                     identity_key,

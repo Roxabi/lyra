@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import secrets
+import sqlite3
 import string
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -273,7 +274,7 @@ class IdentityAliasStore(SqliteStore):
                 "DELETE FROM link_challenges WHERE code_hash = ?", (code_hash,)
             )
             await db.execute("COMMIT")
-        except Exception:
+        except sqlite3.Error:
             await db.execute("ROLLBACK")
             raise
 

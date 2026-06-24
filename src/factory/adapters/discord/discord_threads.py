@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
@@ -32,7 +33,7 @@ async def persist_thread_claim(
             thread_id,
             bot_id,
         )
-    except Exception:
+    except (sqlite3.Error, OSError, RuntimeError):
         log.exception(
             "ThreadStore: failed to persist claim for thread_id=%s", thread_id
         )

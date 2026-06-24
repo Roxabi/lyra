@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import sqlite3
 from typing import TYPE_CHECKING, Any
 
 import aiohttp
@@ -229,7 +230,7 @@ async def handle_audio(  # noqa: C901, PLR0915 — DEBT:wiring-bootstrap-deps
             ):
                 adapter._owned_threads.add(message.channel.id)
                 _audio_in_owned_thread = True
-        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
+        except (sqlite3.Error, OSError, RuntimeError):
             log.warning(
                 "ThreadStore: lazy is_owned (audio) failed for thread_id=%s",
                 message.channel.id,

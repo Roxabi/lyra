@@ -114,7 +114,7 @@ async def _try_auto_create_thread(deps: AutoThreadDeps) -> int | None:
                 guild_id=getattr(raw_message.guild, "id", None),
             )
         return thread.id
-    except Exception:
+    except discord.DiscordException:
         log.exception(
             "Failed to create Discord thread for message id=%s",
             raw_message.id,

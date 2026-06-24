@@ -12,7 +12,14 @@ import aiosqlite
 
 log = logging.getLogger(__name__)
 
-__all__ = ["SqliteStore", "close_all_sqlite_stores"]
+# aiosqlite.Error is a sqlite3.Error subclass — sqlite3.Error covers both.
+_SQLITE_STORE_ERRORS: tuple[type[BaseException], ...] = (
+    sqlite3.Error,
+    OSError,
+    RuntimeError,
+)
+
+__all__ = ["SqliteStore", "close_all_sqlite_stores", "_SQLITE_STORE_ERRORS"]
 
 #: Weak set of open SqliteStore instances for cleanup during test teardown.
 #: Weak references allow stores to be garbage-collected normally; the set only
@@ -32,7 +39,7 @@ async def close_all_sqlite_stores() -> None:
         try:
             if store._db is not None:
                 await store.close()
-        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
+        except _SQLITE_STORE_ERRORS:
             log.debug("Error closing SqliteStore during cleanup", exc_info=True)
 
 

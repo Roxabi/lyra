@@ -165,7 +165,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
                 agent_email=cmd.agent_email,
                 lyra_session_id=cmd.lyra_session_id,
             )
-        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: adapter I/O — pool bridge; classify_exception sanitizes
             log.exception(
                 "clipool_worker: send_streaming failed for pool_id=%r", cmd.pool_id
             )
@@ -255,7 +255,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
                 agent_email=cmd.agent_email,
                 lyra_session_id=cmd.lyra_session_id,
             )
-        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: adapter I/O — pool bridge; classify_exception sanitizes
             log.exception("clipool_worker: send failed for pool_id=%r", cmd.pool_id)
             worker_error = classify_exception(exc)
             emit_populated_total(domain="cli")
@@ -302,7 +302,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
 
         try:
             ack_bytes = await self._dispatch_control(cmd)
-        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
+        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: adapter I/O — control dispatch failure maps to nack
             log.exception(
                 "clipool_worker: control op %r failed for pool_id=%r",
                 cmd.op,

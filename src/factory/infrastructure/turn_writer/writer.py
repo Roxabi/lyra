@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import sqlite3
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import nats.errors
+from pydantic import ValidationError
 
 from factory.infrastructure.stores.session.turn_store import TurnStore
 from roxabi_contracts.turns import (
@@ -33,6 +35,14 @@ log = logging.getLogger(__name__)
 
 _FETCH_BATCH = 10
 _FETCH_TIMEOUT = 5.0  # seconds — short to keep the loop responsive
+
+_TURN_WRITER_HANDLER_ERRORS: tuple[type[BaseException], ...] = (
+    ValidationError,
+    sqlite3.Error,
+    OSError,
+    RuntimeError,
+    ValueError,
+)
 
 
 class TurnWriter:
@@ -136,14 +146,14 @@ class TurnWriter:
                     event = TurnWriteEvent.model_validate_json(msg.data)
                     await self._handle(event)
                     await msg.ack()
-                except Exception:
+                except _TURN_WRITER_HANDLER_ERRORS:
                     log.exception(
                         "turn-writer: handler failed for msg subject=%s — naking",
                         msg.subject,
                     )
                     try:
                         await msg.nak()
-                    except Exception:
+                    except nats.errors.Error:
                         log.exception("turn-writer: nak failed")
 
             # Reset lag gauge only after the entire batch has been processed (W5).
@@ -231,6 +241,6 @@ class TurnWriter:
                     (str(event.event_id), datetime.now(UTC).isoformat()),
                 )
             await db.commit()
-        except Exception:
+        except sqlite3.Error:
             await db.execute("ROLLBACK")
             raise

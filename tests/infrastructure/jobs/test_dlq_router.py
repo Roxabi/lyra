@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from unittest.mock import AsyncMock, MagicMock
 
+import nats.errors
 import pytest
 
 from factory.infrastructure.jobs.dlq_router import (
@@ -172,7 +173,7 @@ async def test_missing_stream_seq_skips() -> None:
 @pytest.mark.anyio
 async def test_get_msg_failure_skips() -> None:
     """If get_msg raises, must not publish or delete."""
-    nc, jsm = _make_nc(get_msg_raises=RuntimeError("stream error"))
+    nc, jsm = _make_nc(get_msg_raises=nats.errors.Error("stream error"))
     js = MagicMock()
     router = DlqRouter(nc, js)
 
@@ -196,7 +197,7 @@ async def test_publish_failure_does_not_delete() -> None:
     delete_msg may only run AFTER a successful publish — otherwise the job is
     lost (publish failed, yet the source seq was removed from the stream).
     """
-    nc, jsm = _make_nc(publish_raises=RuntimeError("publish timeout"))
+    nc, jsm = _make_nc(publish_raises=nats.errors.Error("publish timeout"))
     js = MagicMock()
     router = DlqRouter(nc, js)
 

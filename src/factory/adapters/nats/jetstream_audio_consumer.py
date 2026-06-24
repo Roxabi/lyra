@@ -208,7 +208,7 @@ class JetStreamAudioConsumer:
         # (bounded double-send risk preferable to crashed consumer loop).
         try:
             already = await self._dedup.already_sent(stream_id)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: jetstream-dedup — KV read failure treated as not-sent
             log.warning(
                 "JetStreamAudioConsumer: dedup read error stream_id=%r"
                 " (exc_type=%s), treating as not-sent",
@@ -232,7 +232,7 @@ class JetStreamAudioConsumer:
 
         try:
             await self._send_audio(audio, inbound)
-        except Exception:
+        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: jetstream-send — platform audio delivery
             log.exception(
                 "JetStreamAudioConsumer: send_audio failed for"
                 " stream_id=%r (delivered=%d/%d)",
@@ -249,7 +249,7 @@ class JetStreamAudioConsumer:
         await self._dedup.mark_sent(stream_id)
         try:
             await msg.ack()
-        except Exception:
+        except nats.errors.Error:
             log.exception(
                 "JetStreamAudioConsumer: ack failed for stream_id=%r"
                 " — message may redeliver but dedup will guard",
@@ -276,7 +276,7 @@ class JetStreamAudioConsumer:
                 " — termed, notifying user",
                 stream_id,
             )
-        except Exception as exc:  # noqa: BLE001
+        except nats.errors.Error as exc:
             log.error(
                 "JetStreamAudioConsumer: term() failed for stream_id=%r"
                 " (exc_type=%s) — will retry on next redelivery",
@@ -295,7 +295,7 @@ class JetStreamAudioConsumer:
         outbound = notify_undelivered(context="audio-terminal-undelivered")
         try:
             await self._send_text(inbound, outbound)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: jetstream-notify — best-effort user notification
             log.error(
                 "JetStreamAudioConsumer: user notification failed"
                 " for stream_id=%r (exc_type=%s, best-effort)",

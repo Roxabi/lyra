@@ -52,7 +52,7 @@ async def _emit_unauthorized_audit(request: Request) -> None:
             source=None,
         )
         await sink.emit(event)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: blobstore-audit — unauthorized audit emit best-effort
         pass
 
 

@@ -37,6 +37,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import httpx
+import nats.errors
 
 from factory.tools.gh_token.dispenser import Dispenser
 from factory.tools.gh_token.helper import JWTSigner, TokenCache
@@ -174,7 +175,7 @@ async def _connect_nats_publisher(
             machine,
         )
         return nc, publisher
-    except Exception as exc:  # noqa: BLE001 — must not crash daemon (#27: BindsTo → pod teardown)
+    except (nats.errors.Error, OSError, ValueError) as exc:
         log.warning(
             "mint-failure publishing DISABLED — NATS connect to %r failed: %s"
             " (daemon continues, mint failures will NOT be published)",
@@ -261,9 +262,9 @@ async def run_daemon(config: DaemonConfig) -> None:
                 log.warning("NATS drain timed out after 5 s — forcing close")
                 try:
                     await nc.close()
-                except Exception:  # noqa: BLE001 — best-effort close after drain timeout (#9)
+                except (nats.errors.Error, OSError):
                     pass
-            except Exception:  # noqa: BLE001 — best-effort drain on shutdown (#9)
+            except (nats.errors.Error, OSError):
                 pass
 
 

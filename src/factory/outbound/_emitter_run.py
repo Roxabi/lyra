@@ -108,7 +108,7 @@ async def _run_event_loop(  # noqa: C901
                 continue
             else:
                 assert_never(event)
-    except Exception as exc:  # noqa: BLE001 — terminal stream-error capture; broad-catch is intentional
+    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: outbound-stream — terminal stream-error capture
         emitter._st.stream_error = exc
 
 
@@ -132,7 +132,7 @@ async def _run_emitter(
             first_event = await events.__anext__()
         except StopAsyncIteration:
             pass
-        except Exception as exc:  # noqa: BLE001 — terminal stream-error capture; broad-catch is intentional
+        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: outbound-stream — terminal stream-error capture
             peek_error = exc
         if first_event is None and peek_error is None:
             await _drain_fallback(emitter, events)

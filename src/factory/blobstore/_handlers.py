@@ -64,7 +64,7 @@ async def _emit_audit(  # noqa: PLR0913
             kind="blobs.op",
         )
         await sink.emit(event)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: blobstore-audit — best-effort emit never breaks request
         pass
 
 
@@ -117,7 +117,7 @@ async def handle_put(request: Request) -> JSONResponse:
         _log.exception("PUT /blobs write failed")
         await _emit_audit(request.app, op="put", result="write_failed")
         return JSONResponse({"detail": "blob write failed"}, status_code=500)
-    except Exception:  # noqa: BLE001 — spec: all unhandled → 500, no leak
+    except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: blobstore-put — unhandled errors map to 500
         _log.exception("PUT /blobs unexpected error")
         await _emit_audit(request.app, op="put", result="internal_error")
         return JSONResponse({"detail": "internal error"}, status_code=500)
@@ -146,7 +146,7 @@ async def handle_get(store_key: str, request: Request) -> Response:
             request.app, op="get", result="not_found", store_key=store_key
         )
         return JSONResponse({"detail": "blob not found"}, status_code=404)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: blobstore-get — unhandled errors map to 500
         _log.exception("GET /blobs/%s unexpected error", store_key)
         await _emit_audit(
             request.app, op="get", result="internal_error", store_key=store_key
@@ -271,7 +271,7 @@ async def handle_delete(key: str, request: Request) -> Response:
             request.app, op="delete", result="write_failed", store_key=key
         )
         return JSONResponse({"detail": "blob write failed"}, status_code=500)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: blobstore-delete — unhandled errors map to 500
         _log.exception("DELETE /blobs/%s unexpected error", key)
         await _emit_audit(
             request.app, op="delete", result="internal_error", store_key=key

@@ -16,6 +16,8 @@ from __future__ import annotations
 import asyncio
 import logging
 
+import nats.errors
+
 from factory.core.ports.active_jobs import ActiveJobEntry, ActiveJobsPort
 from factory.infrastructure.stores.jobs.active_jobs_kv import ACTIVE_JOBS_REFRESH
 
@@ -88,7 +90,7 @@ class RegistryCoordinator:
         for jid in list(self._jobs):
             try:
                 await self._port.refresh(jid)
-            except Exception:  # noqa: BLE001 — one job's failure must not abort the liveness sweep
+            except nats.errors.Error:
                 log.exception("active-jobs: refresh failed for job %r", jid)
 
     async def on_heartbeat(self, worker_loc: str) -> None:
@@ -125,10 +127,7 @@ class RegistryCoordinator:
 
     async def _loop(self) -> None:
         while self._running:
-            try:
-                await self.refresh_all()
-            except Exception:  # noqa: BLE001 — the liveness loop must survive any sweep error, else all tracked jobs silently go stale and pools are wrongly freed
-                log.exception("active-jobs: refresh sweep failed — retrying next cycle")
+            await self.refresh_all()
             await asyncio.sleep(self._refresh_interval)
 
 

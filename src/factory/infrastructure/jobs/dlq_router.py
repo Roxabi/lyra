@@ -9,6 +9,8 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
+import nats.errors
+
 if TYPE_CHECKING:
     from nats.aio.msg import Msg
     from nats.js import JetStreamContext
@@ -48,7 +50,7 @@ class DlqRouter:
             self._sub = None
             log.info("DlqRouter: unsubscribed.")
 
-    async def _handle(self, msg: "Msg") -> None:  # noqa: BLE001 — advisory handler must not propagate to NATS server
+    async def _handle(self, msg: "Msg") -> None:
         """Process a single MAX_DELIVERIES advisory.
 
         Advisory payload is JSON; extracts stream_seq, fetches the original message,
@@ -73,7 +75,7 @@ class DlqRouter:
 
         try:
             raw = await jsm.get_msg(_STREAM_NAME, seq=stream_seq)
-        except Exception:  # noqa: BLE001 — get_msg can raise nats.js.errors.* or OSError; must not crash advisory handler
+        except (nats.errors.Error, OSError):
             log.exception(
                 "DlqRouter: failed to fetch seq=%s from %s — skipping DLQ route",
                 stream_seq,
@@ -107,7 +109,7 @@ class DlqRouter:
 
         try:
             await self._nc.publish(dlq_subject, raw.data or b"", headers=headers)
-        except Exception:  # noqa: BLE001 — publish failure must not crash the advisory handler; msg stays in stream for retry
+        except (nats.errors.Error, OSError):
             log.exception(
                 "DlqRouter: failed to publish to %s (seq=%s) — aborting DLQ route",
                 dlq_subject,
@@ -117,7 +119,7 @@ class DlqRouter:
 
         try:
             await jsm.delete_msg(_STREAM_NAME, stream_seq)
-        except Exception:  # noqa: BLE001 — delete_msg non-fatal; DLQ publish idempotent
+        except (nats.errors.Error, OSError):
             log.warning(
                 "DlqRouter: failed to delete seq=%s from %s"
                 " (DLQ msg published, seq not cleaned up)",

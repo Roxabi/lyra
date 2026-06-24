@@ -112,7 +112,7 @@ async def send_rich_text(  # noqa: PLR0913 — mirrors Telegram send kwargs surf
         if reply_markup is not None:
             kwargs["reply_markup"] = reply_markup
         return await bot.send_rich_message(**kwargs)
-    except Exception as exc:  # noqa: BLE001 — rich path is best-effort; MarkdownV2 fallback follows
+    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: telegram-rich — sendRichMessage best-effort; MarkdownV2 fallback
         log.debug("sendRichMessage failed, will fallback: type=%s", type(exc).__name__)
         return None
 
@@ -138,7 +138,7 @@ async def edit_rich_text(
             kwargs["reply_markup"] = reply_markup
         await bot.edit_message_text(**kwargs)
         return True
-    except Exception as exc:  # noqa: BLE001 — rich edit is best-effort; MarkdownV2 fallback follows
+    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: telegram-rich — editMessageText best-effort; MarkdownV2 fallback
         log.debug("editMessageText(rich_message) failed: type=%s", type(exc).__name__)
         return False
 
@@ -164,7 +164,7 @@ async def send_rich_draft(
             kwargs["message_thread_id"] = topic_id
         await bot.send_rich_message_draft(**kwargs)
         return True
-    except Exception as exc:  # noqa: BLE001 — draft API optional; caller may fall back
+    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: telegram-rich — sendRichMessageDraft optional; caller may fall back
         log.debug("sendRichMessageDraft failed: type=%s", type(exc).__name__)
         return False
 
@@ -230,7 +230,7 @@ async def send_thinking_with_fallback(  # noqa: PLR0913 — mirrors Telegram sen
             if reply_markup is not None:
                 kwargs["reply_markup"] = reply_markup
             return await bot.send_rich_message(**kwargs)
-        except Exception as exc:  # noqa: BLE001 — rich path is best-effort; fallback follows
+        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: adapter-send — rich thinking path best-effort; MarkdownV2 fallback follows
             log.debug(
                 "sendRichMessage(thinking) failed, will fallback: type=%s",
                 type(exc).__name__,

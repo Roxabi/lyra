@@ -36,12 +36,17 @@ log = logging.getLogger(__name__)
 _FETCH_BATCH = 10
 _FETCH_TIMEOUT = 5.0  # seconds — short to keep the loop responsive
 
-_TURN_WRITER_HANDLER_ERRORS: tuple[type[BaseException], ...] = (
+# Poison payloads — term (no redelivery); do not NAK (head-of-line under max_deliver).
+_TURN_WRITER_POISON_ERRORS: tuple[type[BaseException], ...] = (
     ValidationError,
+    ValueError,
+)
+
+# Retryable persistence / store I/O — NAK for JetStream redelivery.
+_TURN_WRITER_RETRY_ERRORS: tuple[type[BaseException], ...] = (
     sqlite3.Error,
     OSError,
     RuntimeError,
-    ValueError,
 )
 
 
@@ -56,7 +61,9 @@ class TurnWriter:
       1. Deserialise TurnWriteEvent from msg.data.
       2. Dispatch by payload.kind to handler.
       3. Handler writes via TurnStore private API; on success, ack.
-      4. On exception, log + nak; JetStream redelivers (AckWait=60s).
+      4. Poison payload (ValidationError/ValueError) → term (no redelivery).
+      5. Store I/O failure → log + nak (JetStream redelivers, AckWait=60s).
+      6. Unexpected handler bug → log.critical + nak (loop stays alive).
     """
 
     def __init__(self, turn_store: TurnStore, js: "JetStreamContext") -> None:
@@ -146,19 +153,50 @@ class TurnWriter:
                     event = TurnWriteEvent.model_validate_json(msg.data)
                     await self._handle(event)
                     await msg.ack()
-                except _TURN_WRITER_HANDLER_ERRORS:
+                except _TURN_WRITER_POISON_ERRORS:
+                    log.warning(
+                        "turn-writer: invalid payload subject=%s — terming",
+                        msg.subject,
+                        exc_info=True,
+                    )
+                    await self._term_message(msg)
+                except _TURN_WRITER_RETRY_ERRORS:
                     log.exception(
-                        "turn-writer: handler failed for msg subject=%s — naking",
+                        "turn-writer: persistence failed subject=%s — naking",
                         msg.subject,
                     )
-                    try:
-                        await msg.nak()
-                    except nats.errors.Error:
-                        log.exception("turn-writer: nak failed")
+                    await self._nak_message(msg)
+                except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: jetstream-consumer — unexpected handler bug; nak keeps loop alive
+                    log.critical(
+                        "turn-writer: unexpected handler error subject=%s — naking",
+                        msg.subject,
+                        exc_info=True,
+                    )
+                    await self._nak_message(msg)
 
             # Reset lag gauge only after the entire batch has been processed (W5).
             if msgs:
                 self._oldest_pending = None
+
+    async def _nak_message(self, msg: object) -> None:
+        """NAK a JetStream message; log transport failures without crashing."""
+        try:
+            await msg.nak()  # type: ignore[attr-defined]
+        except nats.errors.Error:
+            log.exception("turn-writer: nak failed")
+
+    async def _term_message(self, msg: object) -> None:
+        """Term a poison JetStream message; fall back to ack if term unsupported."""
+        try:
+            await msg.term()  # type: ignore[attr-defined]
+        except AttributeError:
+            log.warning("turn-writer: msg.term unavailable — acking poison instead")
+            try:
+                await msg.ack()  # type: ignore[attr-defined]
+            except nats.errors.Error:
+                log.exception("turn-writer: ack fallback failed")
+        except nats.errors.Error:
+            log.exception("turn-writer: term failed")
 
     async def _handle(self, event: TurnWriteEvent) -> None:
         payload = event.payload

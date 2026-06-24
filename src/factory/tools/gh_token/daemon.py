@@ -176,15 +176,14 @@ async def _connect_nats_publisher(
             machine,
         )
         return nc, publisher
-    except (nats.errors.Error, OSError, ValueError) as exc:
-        log.warning(
-            "mint-failure publishing DISABLED — NATS connect to %s failed: %s"
-            " (daemon continues, mint failures will NOT be published)",
-            scrub_nats_url(nats_url),
-            type(exc).__name__,
-        )
-        return None, None
-    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: gh-daemon — #27 must not crash on unexpected NATS connect failure
+    except (
+        nats.errors.Error,
+        OSError,
+        ValueError,
+        RuntimeError,
+        asyncio.TimeoutError,
+        TimeoutError,
+    ) as exc:
         log.warning(
             "mint-failure publishing DISABLED — NATS connect to %s failed: %s"
             " (daemon continues, mint failures will NOT be published)",

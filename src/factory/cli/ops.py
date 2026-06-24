@@ -194,7 +194,7 @@ async def _probe(
     await nc.publish(subject, b"verify")
     try:
         await nc.flush(timeout=_FLUSH_TIMEOUT)
-    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — resilient: NATS flush raises varied errors (timeout, conn reset, server close)
+    except (asyncio.TimeoutError, TimeoutError, nats.errors.Error) as exc:
         return False, f"flush error: {exc}"
     await asyncio.sleep(0)
     denied = any(_is_permission_error(e) for e in errors[before:])
@@ -234,7 +234,7 @@ async def _verify_identity(
             )
     except SystemExit:
         raise
-    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — resilient: NATS connection errors span auth, TLS, DNS, and timeout
+    except (OSError, nats.errors.Error, asyncio.TimeoutError, TimeoutError) as exc:
         result.skipped_reason = f"connect failed: {exc}"
     return result
 

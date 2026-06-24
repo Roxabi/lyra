@@ -142,7 +142,7 @@ class DlqRouter:
                 dlq_subject,
                 deliveries,
             )
-        except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# boundary: dlq-callback — NATS cb must not crash loop
+        except (nats.errors.Error, json.JSONDecodeError, KeyError, TypeError, ValueError):
             log.exception(
                 "DlqRouter: unexpected error processing advisory — skipping"
             )

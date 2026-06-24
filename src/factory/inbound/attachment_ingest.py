@@ -48,7 +48,7 @@ except ValueError:
 FetchFn = Callable[[], Awaitable[bytes]]
 log = logging.getLogger(__name__)
 
-# Adapter fetch + BlobStore put — degrade on I/O failures, never abort inbound.
+
 _INGEST_IO_ERRORS: tuple[type[BaseException], ...] = (
     BlobStoreServerError,
     OSError,
@@ -57,6 +57,19 @@ _INGEST_IO_ERRORS: tuple[type[BaseException], ...] = (
     RuntimeError,
     ValueError,
 )
+
+
+async def _fetch_attachment_bytes(
+    fetch: FetchFn,
+    *,
+    source: str | None = None,
+) -> bytes | None:
+    """Best-effort adapter fetch; returns None on any failure."""
+    try:
+        return await fetch()
+    except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: adapter-fetch — degrade ingest
+        log.exception("attachment fetch failed (source=%s)", source or "audio")
+        return None
 
 
 def _degrade_audio_msg(msg: "InboundMessage") -> "InboundMessage":
@@ -180,8 +193,12 @@ class AttachmentIngestStage:
         The STT middleware detects blob_ref=None and drops the message with a
         user-facing error reply.
         """
+        data = await _fetch_attachment_bytes(
+            pending.fetch, source=pending.source
+        )
+        if data is None:
+            return _degrade_audio_msg(msg)
         try:
-            data = await pending.fetch()
             wire_ref = await store.put(
                 data,
                 mime=pending.mime,
@@ -192,11 +209,6 @@ class AttachmentIngestStage:
             )
         except _INGEST_IO_ERRORS:
             log.exception("attachment ingest failed — degraded (blob_ref=None)")
-            return _degrade_audio_msg(msg)
-        except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# boundary: adapter-fetch — degrade ingest
-            log.exception(
-                "attachment ingest failed (adapter fetch) — degraded (blob_ref=None)"
-            )
             return _degrade_audio_msg(msg)
 
         if msg.audio is None:
@@ -237,22 +249,8 @@ class AttachmentIngestStage:
                     )
                 )
                 continue
-            try:
-                data = await p.fetch()
-            except _INGEST_IO_ERRORS:
-                log.exception("attachment fetch failed (source=%s)", p.source)
-                results.append(
-                    AttachmentResult(
-                        success=False,
-                        error="Couldn't download your attachment — please try again.",
-                        reason="storage_error",
-                    )
-                )
-                continue
-            except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# boundary: adapter-fetch — degrade ingest
-                log.exception(
-                    "attachment fetch failed (adapter) (source=%s)", p.source
-                )
+            data = await _fetch_attachment_bytes(p.fetch, source=p.source)
+            if data is None:
                 results.append(
                     AttachmentResult(
                         success=False,

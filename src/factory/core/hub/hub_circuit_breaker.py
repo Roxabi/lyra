@@ -54,7 +54,7 @@ class HubCircuitBreakerMixin:
 
         try:
             await self.dispatch_response(msg, Response(content=_unavail))
-        except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# boundary: hub-fast-fail-dispatch — platform send must not abort pipeline
+        except (OSError, RuntimeError, TypeError, ValueError):
             log.exception("dispatch_response failed for fast-fail reply")
         return True
 

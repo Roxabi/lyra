@@ -6,6 +6,7 @@ BlobStorePort (same infra-factory pattern as ``init_nats_*``).
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import logging
 import os
@@ -203,6 +204,7 @@ async def probe_voice_services(
     tts: object | None,
 ) -> None:
     """Ping STT/TTS adapters at startup; log a warning if unreachable."""
+    import nats.errors
     from nats.errors import NoRespondersError
 
     from roxabi_contracts.voice import SUBJECTS
@@ -220,7 +222,7 @@ async def probe_voice_services(
             log.warning(
                 "%s adapter not reachable at boot — will retry per-request", name
             )
-        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+        except (nats.errors.Error, OSError, TimeoutError, asyncio.TimeoutError) as exc:
             log.warning(
                 "%s probe failed unexpectedly: %s: %s",
                 name,

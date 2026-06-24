@@ -156,7 +156,7 @@ class CliPoolSpawnMixin:
                 limit=self._read_buffer_bytes,  # prevents LimitOverrunError
                 env=env,
             )
-        except Exception as exc:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
+        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: cli-subprocess — deferred #1812
             log.error("[pool:%s] failed to spawn: %s", pool_id, exc)
             if prompt_file:
                 Path(prompt_file).unlink(missing_ok=True)

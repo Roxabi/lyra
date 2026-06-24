@@ -218,16 +218,9 @@ class Hub(
         while True:
             msg = await self.inbound_bus.get()
             try:
-                try:
-                    result = await pipeline.process(msg)
-                except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# boundary: hub-loop — pipeline failure must not crash consumer
-                    log.exception("pipeline.process() failed for msg id=%s", msg.id)
-                    continue
-                try:
-                    await self._dispatch_pipeline_result(msg, result)
-                except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# boundary: hub-dispatch — must not crash consumer
-                    log.exception(
-                        "_dispatch_pipeline_result() failed for msg id=%s", msg.id
-                    )
+                result = await pipeline.process(msg)
+                await self._dispatch_pipeline_result(msg, result)
+            except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: hub-loop — pipeline/dispatch failure must not crash consumer
+                log.exception("hub message handling failed for msg id=%s", msg.id)
             finally:
                 self.inbound_bus.task_done()

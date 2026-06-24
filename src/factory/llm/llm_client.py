@@ -8,6 +8,7 @@ Implements the LlmProvider protocol over Result[T, SanitizedError] transport.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, AsyncIterator, Protocol
@@ -90,17 +91,12 @@ class LlmClient:
             lyra_session_id=self._lyra_sessions.get(pool_id),
             resume_session_id=pending_resume,
         )
-        try:
-            result = await self._pool.request_with_routing(
-                lambda _: self._request_subject,
-                payload,
-                max_attempts=1,
-                timeout=self._timeout,
-            )
-        except Exception:
-            if pending_resume is not None:
-                self._pending_resume.setdefault(pool_id, pending_resume)
-            raise
+        result = await self._pool.request_with_routing(
+            lambda _: self._request_subject,
+            payload,
+            max_attempts=1,
+            timeout=self._timeout,
+        )
         return self._codec.decode(result, trace_id)
 
     async def stream(  # noqa: PLR0913 — LlmProvider protocol signature
@@ -136,7 +132,7 @@ class LlmClient:
                 yield event
                 if isinstance(event, ResultLlmEvent):
                     return
-        except Exception:
+        except (TimeoutError, asyncio.TimeoutError, OSError, RuntimeError):
             if pending_resume is not None:
                 self._pending_resume.setdefault(pool_id, pending_resume)
             raise

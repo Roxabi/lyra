@@ -117,16 +117,17 @@ class HubDispatchMixin:
 
         if result.action == Action.COMMAND_HANDLED:
             if result.response and (result.response.content or result.response.audio):
-                if result.response.audio:
-                    try:
+
+                async def _dispatch_command_response() -> None:
+                    if result.response.audio:
                         await self.dispatch_audio(msg, result.response.audio)
-                    except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# boundary: hub-command-dispatch — platform send must not abort hub loop
-                        log.exception("dispatch_audio() failed")
-                if result.response.content:
-                    try:
+                    if result.response.content:
                         await self.dispatch_response(msg, result.response)
-                    except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# boundary: hub-command-dispatch — platform send must not abort hub loop
-                        log.exception("dispatch_response() failed")
+
+                try:
+                    await _dispatch_command_response()
+                except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: hub-command-dispatch — platform send must not abort hub loop
+                    log.exception("command response dispatch failed")
             else:
                 log.debug(
                     "command returned empty response for msg id=%s — skipping dispatch",

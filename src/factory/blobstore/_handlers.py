@@ -8,13 +8,16 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Literal, TypeVar
 from uuid import uuid4
 
 import aiosqlite
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
+
+_R = TypeVar("_R", bound=Response)
 
 from factory.blobstore._keys import resolve_delete_key, resolve_wire_key
 from roxabi_blobs import FsBlobStore
@@ -64,7 +67,7 @@ async def _emit_audit(  # noqa: PLR0913
             kind="blobs.op",
         )
         await sink.emit(event)
-    except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: blobstore-audit — best-effort emit never breaks request
+    except (OSError, RuntimeError, TypeError, ValueError):
         pass
 
 
@@ -81,6 +84,40 @@ def _conn(store: FsBlobStore) -> aiosqlite.Connection:
     if store._conn is None:  # noqa: SLF001
         raise RuntimeError("FsBlobStore not open")
     return store._conn  # noqa: SLF001
+
+
+async def _http_guard(
+    request: Request,
+    op: Literal["put", "get", "delete"],
+    store_key: str | None,
+    handler: Callable[[], Awaitable[_R]],
+) -> _R:
+    """Run a blob handler; map unexpected failures to HTTP 500 once."""
+    try:
+        return await handler()
+    except BlobNotFoundError:
+        await _emit_audit(
+            request.app, op=op, result="not_found", store_key=store_key
+        )
+        return JSONResponse({"detail": "blob not found"}, status_code=404)  # type: ignore[return-value]
+    except BlobWriteError:
+        _log.exception("%s /blobs write failed", op.upper())
+        await _emit_audit(
+            request.app,
+            op=op,
+            result="write_failed",
+            store_key=store_key,
+        )
+        return JSONResponse({"detail": "blob write failed"}, status_code=500)  # type: ignore[return-value]
+    except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: blobstore-http — unhandled errors map to 500
+        _log.exception("%s /blobs unexpected error", op.upper())
+        await _emit_audit(
+            request.app,
+            op=op,
+            result="internal_error",
+            store_key=store_key,
+        )
+        return JSONResponse({"detail": "internal error"}, status_code=500)  # type: ignore[return-value]
 
 
 # ---------------------------------------------------------------------------
@@ -101,10 +138,9 @@ async def handle_put(request: Request) -> JSONResponse:
     raw_ct = request.headers.get("Content-Type", "application/octet-stream")
     mime = raw_ct.split(";")[0].strip() or "application/octet-stream"  # strip params
 
-    body = await request.body()
-    store = _store(request)
-
-    try:
+    async def _put() -> JSONResponse:
+        body = await request.body()
+        store = _store(request)
         ref = await store.put(
             body,
             mime=mime,
@@ -113,22 +149,15 @@ async def handle_put(request: Request) -> JSONResponse:
             platform_ref=platform_ref,
             platform_message_id=platform_message_id,
         )
-    except BlobWriteError:
-        _log.exception("PUT /blobs write failed")
-        await _emit_audit(request.app, op="put", result="write_failed")
-        return JSONResponse({"detail": "blob write failed"}, status_code=500)
-    except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: blobstore-put — unhandled errors map to 500
-        _log.exception("PUT /blobs unexpected error")
-        await _emit_audit(request.app, op="put", result="internal_error")
-        return JSONResponse({"detail": "internal error"}, status_code=500)
+        wire_key = f"sha256:{ref.content_hash}"
+        payload = ref.model_dump(mode="json")
+        payload["store_key"] = wire_key  # on-disk store_path stays internal
+        await _emit_audit(request.app, op="put", result="ok", store_key=wire_key)
+        return JSONResponse(
+            payload, status_code=201, headers={"Location": f"/blobs/{wire_key}"}
+        )
 
-    wire_key = f"sha256:{ref.content_hash}"
-    payload = ref.model_dump(mode="json")
-    payload["store_key"] = wire_key  # on-disk store_path stays internal
-    await _emit_audit(request.app, op="put", result="ok", store_key=wire_key)
-    return JSONResponse(
-        payload, status_code=201, headers={"Location": f"/blobs/{wire_key}"}
-    )
+    return await _http_guard(request, "put", None, _put)
 
 
 # ---------------------------------------------------------------------------
@@ -137,24 +166,14 @@ async def handle_put(request: Request) -> JSONResponse:
 
 
 async def handle_get(store_key: str, request: Request) -> Response:
-    store = _store(request)
-    try:
+    async def _get() -> Response:
+        store = _store(request)
         resolved = await resolve_wire_key(store, store_key)
         data = await store.get(resolved)
-    except BlobNotFoundError:
-        await _emit_audit(
-            request.app, op="get", result="not_found", store_key=store_key
-        )
-        return JSONResponse({"detail": "blob not found"}, status_code=404)
-    except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: blobstore-get — unhandled errors map to 500
-        _log.exception("GET /blobs/%s unexpected error", store_key)
-        await _emit_audit(
-            request.app, op="get", result="internal_error", store_key=store_key
-        )
-        return JSONResponse({"detail": "internal error"}, status_code=500)
+        await _emit_audit(request.app, op="get", result="ok", store_key=store_key)
+        return Response(content=data, media_type="application/octet-stream")
 
-    await _emit_audit(request.app, op="get", result="ok", store_key=store_key)
-    return Response(content=data, media_type="application/octet-stream")
+    return await _http_guard(request, "get", store_key, _get)
 
 
 # ---------------------------------------------------------------------------
@@ -263,20 +282,9 @@ async def handle_delete(key: str, request: Request) -> Response:
         await _emit_audit(request.app, op="delete", result="not_found", store_key=key)
         return JSONResponse({"detail": "blob not found"}, status_code=404)
 
-    try:
+    async def _delete() -> Response:
         await store.delete(blob_ref_id)
-    except BlobWriteError:
-        _log.exception("DELETE /blobs/%s write failed", key)
-        await _emit_audit(
-            request.app, op="delete", result="write_failed", store_key=key
-        )
-        return JSONResponse({"detail": "blob write failed"}, status_code=500)
-    except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: blobstore-delete — unhandled errors map to 500
-        _log.exception("DELETE /blobs/%s unexpected error", key)
-        await _emit_audit(
-            request.app, op="delete", result="internal_error", store_key=key
-        )
-        return JSONResponse({"detail": "internal error"}, status_code=500)
+        await _emit_audit(request.app, op="delete", result="ok", store_key=key)
+        return Response(status_code=204)
 
-    await _emit_audit(request.app, op="delete", result="ok", store_key=key)
-    return Response(status_code=204)
+    return await _http_guard(request, "delete", key, _delete)

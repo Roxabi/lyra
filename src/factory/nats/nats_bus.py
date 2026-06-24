@@ -134,8 +134,8 @@ class NatsBus(Generic[T]):
         for sub in self._subscriptions.values():
             try:
                 await sub.unsubscribe()
-            except Exception:
-                log.exception("NatsBus: error unsubscribing")
+            except (OSError, RuntimeError) as exc:
+                log.exception("NatsBus: error unsubscribing: %s", type(exc).__name__)
         self._subscriptions.clear()
         self._started = False
 
@@ -244,7 +244,7 @@ class NatsBus(Generic[T]):
         """Process a single NATS message and enqueue it."""
         try:
             payload = json.loads(msg.data.decode("utf-8"))
-        except Exception:
+        except (json.JSONDecodeError, UnicodeDecodeError):
             log.exception(
                 "NatsBus: failed to parse JSON on platform=%s bot_id=%s",
                 platform.value,
@@ -272,7 +272,7 @@ class NatsBus(Generic[T]):
                 platform.value,
                 bot_id,
             )
-        except Exception:
+        except (TypeError, ValueError, KeyError):
             log.exception(
                 "NatsBus: failed to deserialize message on platform=%s bot_id=%s",
                 platform.value,

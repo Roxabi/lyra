@@ -147,6 +147,52 @@ class CliPoolNatsWorker(NatsAdapterBase):
         else:
             await self._handle_cmd_blocking(msg, cmd, model_cfg, resumed=resumed)
 
+    async def _handle_pool_error(
+        self,
+        msg: Any,
+        pool_id: str,
+        exc: BaseException,
+        *,
+        direct_publish: bool = False,
+    ) -> None:
+        log.exception("clipool_worker: pool send failed for pool_id=%r", pool_id)
+        worker_error = classify_exception(exc)
+        emit_populated_total(domain="cli")
+        chunk = _make_chunk(
+            pool_id,
+            event_type="error",
+            is_error=True,
+            done=True,
+            worker_error=worker_error,
+        )
+        if direct_publish and msg.reply and self._nc:
+            await self._nc.publish(msg.reply, chunk)
+        else:
+            await self.reply(msg, chunk)
+
+    async def _run_pool_op(
+        self,
+        msg: Any,
+        pool_id: str,
+        coro,
+        *,
+        direct_publish: bool,
+        control_ack: bool = False,
+    ):
+        try:
+            return await coro
+        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: adapter I/O — pool bridge; classify_exception sanitizes
+            if control_ack:
+                log.exception(
+                    "clipool_worker: control op failed for pool_id=%r",
+                    pool_id,
+                )
+                return _make_ack(pool_id, ok=False)
+            await self._handle_pool_error(
+                msg, pool_id, exc, direct_publish=direct_publish
+            )
+            return None
+
     async def _handle_cmd_streaming(
         self,
         msg: Any,
@@ -155,8 +201,10 @@ class CliPoolNatsWorker(NatsAdapterBase):
         *,
         resumed: bool | None = None,
     ) -> None:
-        try:
-            iterator = await self._pool.send_streaming(
+        iterator = await self._run_pool_op(
+            msg,
+            cmd.pool_id,
+            self._pool.send_streaming(
                 cmd.pool_id,
                 cmd.text,
                 model_cfg,
@@ -164,24 +212,10 @@ class CliPoolNatsWorker(NatsAdapterBase):
                 agent_name=cmd.agent_name,
                 agent_email=cmd.agent_email,
                 lyra_session_id=cmd.lyra_session_id,
-            )
-        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: adapter I/O — pool bridge; classify_exception sanitizes
-            log.exception(
-                "clipool_worker: send_streaming failed for pool_id=%r", cmd.pool_id
-            )
-            if msg.reply and self._nc:
-                worker_error = classify_exception(exc)
-                emit_populated_total(domain="cli")
-                await self._nc.publish(
-                    msg.reply,
-                    _make_chunk(
-                        cmd.pool_id,
-                        event_type="error",
-                        is_error=True,
-                        done=True,
-                        worker_error=worker_error,
-                    ),
-                )
+            ),
+            direct_publish=True,
+        )
+        if iterator is None:
             return
 
         first_chunk = True
@@ -245,8 +279,10 @@ class CliPoolNatsWorker(NatsAdapterBase):
         *,
         resumed: bool | None = None,
     ) -> None:
-        try:
-            result = await self._pool.send(
+        result = await self._run_pool_op(
+            msg,
+            cmd.pool_id,
+            self._pool.send(
                 cmd.pool_id,
                 cmd.text,
                 model_cfg,
@@ -254,21 +290,10 @@ class CliPoolNatsWorker(NatsAdapterBase):
                 agent_name=cmd.agent_name,
                 agent_email=cmd.agent_email,
                 lyra_session_id=cmd.lyra_session_id,
-            )
-        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: adapter I/O — pool bridge; classify_exception sanitizes
-            log.exception("clipool_worker: send failed for pool_id=%r", cmd.pool_id)
-            worker_error = classify_exception(exc)
-            emit_populated_total(domain="cli")
-            await self.reply(
-                msg,
-                _make_chunk(
-                    cmd.pool_id,
-                    event_type="error",
-                    is_error=True,
-                    done=True,
-                    worker_error=worker_error,
-                ),
-            )
+            ),
+            direct_publish=False,
+        )
+        if result is None:
             return
 
         worker_error = (
@@ -300,17 +325,14 @@ class CliPoolNatsWorker(NatsAdapterBase):
             await self.reply(msg, _make_ack("", ok=False))
             return
 
-        try:
-            ack_bytes = await self._dispatch_control(cmd)
-        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: adapter I/O — control dispatch failure maps to nack
-            log.exception(
-                "clipool_worker: control op %r failed for pool_id=%r",
-                cmd.op,
-                cmd.pool_id,
-            )
-            ack_bytes = _make_ack(cmd.pool_id, ok=False)
-
-        await self.reply(msg, ack_bytes)
+        ack_bytes = await self._run_pool_op(
+            msg,
+            cmd.pool_id,
+            self._dispatch_control(cmd),
+            direct_publish=False,
+            control_ack=True,
+        )
+        await self.reply(msg, ack_bytes or _make_ack(cmd.pool_id, ok=False))
 
     async def _dispatch_control(self, cmd: CliControlCmd) -> bytes:
         if cmd.op == "reset":

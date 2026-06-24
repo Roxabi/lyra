@@ -14,6 +14,7 @@ Correction class: Archi (structural — new shared module, not a local patch).
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -21,7 +22,7 @@ from factory.adapters.nats.nats_outbound_listener import (
     ListenerDeps,
     NatsOutboundListener,
 )
-from factory.bootstrap.lifecycle.lifecycle_helpers import close_safely
+from factory.bootstrap.lifecycle.lifecycle_helpers import close_safely, run_with_teardown
 from factory.bootstrap.standalone.audio_consumer_bootstrap import start_audio_consumer
 from factory.bootstrap.wiring.bootstrap_wiring import wire_ingest
 from factory.core.messaging.bus import Bus
@@ -111,15 +112,14 @@ async def wire_bot_common(  # noqa: PLR0913 — wiring root: nc + platform + bot
         )
     )
     adapter._outbound_listener = listener
-    try:
-        await adapter.astart()
-    except Exception:
+    async def _teardown_adapter_start() -> None:
         await close_safely(
             f"{platform_enum.value}-adapter-start",
             adapter.close(),
             inbound_bus.stop(),
         )
-        raise
+
+    await run_with_teardown(adapter.astart(), teardown=_teardown_adapter_start)
 
     typing_listener = TypingListener(
         nc=nc,
@@ -128,16 +128,15 @@ async def wire_bot_common(  # noqa: PLR0913 — wiring root: nc + platform + bot
         factory_builder=make_typing_factory(typing_deps.worker_factory),
         manager=adapter._typing,
     )
-    try:
-        await typing_listener.start()
-    except Exception:
+    async def _teardown_typing_start() -> None:
         await close_safely(
             f"{platform_enum.value}-typing-start",
             typing_listener.stop(),
             adapter.close(),
             inbound_bus.stop(),
         )
-        raise
+
+    await run_with_teardown(typing_listener.start(), teardown=_teardown_typing_start)
 
     # Audio consumer: started strictly after astart() + typing, so no
     # cleanup needed in either astart or typing failure paths above.

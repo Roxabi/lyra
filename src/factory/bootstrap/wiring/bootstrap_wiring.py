@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 from factory.adapters.discord import DiscordAdapter
 from factory.adapters.telegram import TelegramAdapter
 from factory.bootstrap import credentials
+from factory.bootstrap.lifecycle.lifecycle_helpers import run_with_teardown
 from factory.bootstrap.wiring.ingest_wiring import wire_ingest
 from factory.config import (
     DiscordBotConfig,
@@ -288,8 +289,12 @@ async def wire_discord_adapters(
         dc_token, _ = credentials.load_bot_token("discord", bot_cfg.bot_id)
         return (adapter, bot_cfg, dc_token)
 
-    try:
-        entries, dispatchers = await _wire_adapters_core(
+    async def _on_wiring_failure() -> None:
+        if thread_store is not None:
+            await thread_store.close()
+
+    entries, dispatchers = await run_with_teardown(
+        _wire_adapters_core(
             _AdapterCoreParams(
                 platform=Platform.DISCORD,
                 platform_name="discord",
@@ -303,11 +308,8 @@ async def wire_discord_adapters(
                 collect_entry=_collect_entry,
                 resolve_identity=False,  # Discord has no getMe equivalent
             )
-        )
-    except Exception:
-        # Close the shared ThreadStore on wiring failure (#417 fix)
-        if thread_store is not None:
-            await thread_store.close()
-        raise
+        ),
+        teardown=_on_wiring_failure,
+    )
 
     return entries, dispatchers, thread_store

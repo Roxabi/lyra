@@ -12,7 +12,7 @@ from typing import Any
 from factory.bootstrap import credentials
 from factory.bootstrap.factory.config import AdapterConfigBundle
 from factory.bootstrap.factory.voice_overlay import init_blobstore
-from factory.bootstrap.lifecycle.lifecycle_helpers import close_safely
+from factory.bootstrap.lifecycle.lifecycle_helpers import close_safely, run_with_teardown
 from factory.bootstrap.lifecycle.signal_handlers import setup_shutdown_event
 from factory.bootstrap.wiring._standalone_wiring_common import (
     TypingDeps,
@@ -154,16 +154,20 @@ async def bootstrap_discord_standalone(  # noqa: PLR0915 — bootstrap compositi
             continue
         token = dc_creds[bot_id]
 
-        try:
-            # seed_watch_channels is inside the try so that any error
-            # (e.g. NATS disconnect mid-loop) triggers the cleanup path (#21).
+        async def _wire_discord_bot() -> Any:
+            # seed_watch_channels inside coro so NATS disconnect mid-loop
+            # triggers the shared teardown path (#21).
             watch_channels = await seed_watch_channels(js, "discord", bot_id)
-            wired = await _wire_bot(bot_cfg, token, watch_channels)
-        except Exception:
+            return await _wire_bot(bot_cfg, token, watch_channels)
+
+        async def _teardown_discord_bot() -> None:
             await _close_dc_wired("dc-wired", wired_dc)
             await dc_thread_store.close()
-            raise
 
+        wired = await run_with_teardown(
+            _wire_discord_bot(),
+            teardown=_teardown_discord_bot,
+        )
         wired_dc.append(wired)
         log.info(
             "adapter_standalone: Discord bot_id=%s ready (NATS mode)",

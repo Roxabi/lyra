@@ -55,61 +55,58 @@ async def _run_event_loop(  # noqa: C901
     placeholder_obj: Any,
 ) -> None:
     """Iterate over events, updating the placeholder with debounced edits."""
-    try:
-        async for event in events:
-            if isinstance(
-                event,
-                RunStartedRenderEvent | RunFinishedRenderEvent | RunErrorRenderEvent,
-            ):
-                # Slice 1 (#1098): Run lifecycle events are pure additive
-                # surface — adapters initially ignore (no UX). Future slices
-                # may render banners or expose run_id in observability.
-                # RunErrorRenderEvent flags the turn as error so the
-                # subsequent TextEnd (if any) sets is_error_turn=True,
-                # producing the ``❌`` prefix on the final rendered text.
-                if isinstance(event, RunErrorRenderEvent):
-                    emitter._st.is_error_pending = True
-                    emitter._st.run_error_message = event.message
-                continue
-            if isinstance(
-                event,
-                ToolCallStartRenderEvent
-                | ToolCallArgsRenderEvent
-                | ToolCallEndRenderEvent
-                | ToolCallResultRenderEvent,
-            ):
-                # Slice 3 (#1100) / Slice 5 (#1192): ToolCall* lifecycle
-                # events. v1 ToolSummaryRenderEvent removed; platform
-                # subclasses override _on_toolcall_v2 for richer rendering.
-                await emitter._on_toolcall_v2(event)
-                continue
-            if isinstance(  # pyright: ignore[reportUnnecessaryIsInstance]
-                event,
-                TextStartRenderEvent
-                | TextDeltaRenderEvent
-                | TextEndRenderEvent
-                | TextChunkRenderEvent,
-            ):
-                await emitter._on_text_v2(event, placeholder_obj)
-                continue
-            if isinstance(  # pyright: ignore[reportUnnecessaryIsInstance]
-                event,
-                ReasoningStartRenderEvent
-                | ReasoningDeltaRenderEvent
-                | ReasoningEndRenderEvent,
-            ):
-                # Slice 4 (#1101): typed reasoning events. Routed through
-                # OutboundFormatter.edit_reasoning. On Start, ensure the
-                # shared trace placeholder exists so reasoning and recap
-                # share a single placeholder object.
-                if isinstance(event, ReasoningStartRenderEvent):
-                    await emitter._ensure_trace_obj()
-                await emitter._fmt.edit_reasoning(emitter._trace_obj, event)
-                continue
-            else:
-                assert_never(event)
-    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: outbound-stream — terminal stream-error capture
-        emitter._st.stream_error = exc
+    async for event in events:
+        if isinstance(
+            event,
+            RunStartedRenderEvent | RunFinishedRenderEvent | RunErrorRenderEvent,
+        ):
+            # Slice 1 (#1098): Run lifecycle events are pure additive
+            # surface — adapters initially ignore (no UX). Future slices
+            # may render banners or expose run_id in observability.
+            # RunErrorRenderEvent flags the turn as error so the
+            # subsequent TextEnd (if any) sets is_error_turn=True,
+            # producing the ``❌`` prefix on the final rendered text.
+            if isinstance(event, RunErrorRenderEvent):
+                emitter._st.is_error_pending = True
+                emitter._st.run_error_message = event.message
+            continue
+        if isinstance(
+            event,
+            ToolCallStartRenderEvent
+            | ToolCallArgsRenderEvent
+            | ToolCallEndRenderEvent
+            | ToolCallResultRenderEvent,
+        ):
+            # Slice 3 (#1100) / Slice 5 (#1192): ToolCall* lifecycle
+            # events. v1 ToolSummaryRenderEvent removed; platform
+            # subclasses override _on_toolcall_v2 for richer rendering.
+            await emitter._on_toolcall_v2(event)
+            continue
+        if isinstance(  # pyright: ignore[reportUnnecessaryIsInstance]
+            event,
+            TextStartRenderEvent
+            | TextDeltaRenderEvent
+            | TextEndRenderEvent
+            | TextChunkRenderEvent,
+        ):
+            await emitter._on_text_v2(event, placeholder_obj)
+            continue
+        if isinstance(  # pyright: ignore[reportUnnecessaryIsInstance]
+            event,
+            ReasoningStartRenderEvent
+            | ReasoningDeltaRenderEvent
+            | ReasoningEndRenderEvent,
+        ):
+            # Slice 4 (#1101): typed reasoning events. Routed through
+            # OutboundFormatter.edit_reasoning. On Start, ensure the
+            # shared trace placeholder exists so reasoning and recap
+            # share a single placeholder object.
+            if isinstance(event, ReasoningStartRenderEvent):
+                await emitter._ensure_trace_obj()
+            await emitter._fmt.edit_reasoning(emitter._trace_obj, event)
+            continue
+        else:
+            assert_never(event)
 
 
 async def _run_emitter(
@@ -126,26 +123,15 @@ async def _run_emitter(
     emitter._tool_recap = ToolRecapAccumulator(config=config)
     # Peek: empty stream → fallback, no placeholder.
     first_event: RenderEvent | None = None
-    peek_error: Exception | None = None
     try:
         try:
             first_event = await events.__anext__()
         except StopAsyncIteration:
             pass
-        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: outbound-stream — terminal stream-error capture
-            peek_error = exc
-        if first_event is None and peek_error is None:
+        if first_event is None:
             await _drain_fallback(emitter, events)
             await _handle_typing_tail(emitter)
             return
-        if peek_error is not None:
-            emitter._st.stream_error = peek_error
-            result = await _send_placeholder(emitter)
-            if result is not None:
-                await _deliver_final(emitter, result[0])
-            await _handle_typing_tail(emitter)
-            raise peek_error
-        assert first_event is not None  # narrowed above
         result = await _send_placeholder(emitter)
         full = _prepend(first_event, events)
         if result is None:
@@ -156,8 +142,13 @@ async def _run_emitter(
         await _run_event_loop(emitter, full, placeholder_obj)
         await _deliver_final(emitter, placeholder_obj)
         await _handle_typing_tail(emitter)
-        if emitter._st.stream_error is not None:
-            raise emitter._st.stream_error
+    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: outbound-stream — terminal stream-error capture
+        emitter._st.stream_error = exc
+        result = await _send_placeholder(emitter)
+        if result is not None:
+            await _deliver_final(emitter, result[0])
+        await _handle_typing_tail(emitter)
+        raise
     finally:
         if isinstance(events, AsyncGenerator):
             await events.aclose()

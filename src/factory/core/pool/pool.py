@@ -21,7 +21,7 @@ from ..messaging.message import InboundMessage, OutboundMessage
 from ..stores.pairing_protocol import PairingManagerProtocol
 from ..stores.turn_store_protocol import TurnStoreProtocol
 from .pool_context import PoolContext as PoolContext
-from .pool_observer import PoolObserver
+from .pool_observer import PoolObserver, _TURN_PERSIST_ERRORS
 from .pool_processor import PoolProcessor
 
 log = logging.getLogger(__name__)
@@ -223,7 +223,7 @@ class Pool:
             if self._on_resume_fn is not None:
                 try:
                     await self._on_resume_fn(session_id)
-                except nats.errors.Error:
+                except _TURN_PERSIST_ERRORS:
                     log.exception(
                         "[pool:%s] resume count increment failed for %r",
                         self.pool_id,

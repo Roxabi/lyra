@@ -353,3 +353,42 @@ class TestRealStoreIntegration:
         assert result.action == Action.COMMAND_HANDLED
         assert result.response is not None
         assert result.response.content == _FALLBACK_REFUSAL
+
+
+# ---------------------------------------------------------------------------
+# TestPipelineComposition — stage placement + authorizer forwarding (AC8/AC9)
+# ---------------------------------------------------------------------------
+
+
+class TestPipelineComposition:
+    """Lock the stage's position in the default pipeline and the wiring kwarg.
+
+    Guards against a reorder that would run authz before binding resolution
+    (ADR-090 key invariant) or a dropped ``authorizer`` argument that would
+    silently leave the stage fail-open in production.
+    """
+
+    async def test_stage_inserted_after_binding_before_prep(self) -> None:
+        from factory.core.hub.middleware import build_default_pipeline
+        from factory.core.hub.middleware.middleware_pool import (
+            MessagePrepMiddleware,
+            ResolveBindingMiddleware,
+        )
+
+        pipeline = build_default_pipeline(_make_hub())
+        stages = pipeline._middlewares
+
+        assert len(stages) == 11
+        assert isinstance(stages[6], ResolveBindingMiddleware)
+        assert isinstance(stages[7], AuthorizeAgentMiddleware)
+        assert isinstance(stages[8], MessagePrepMiddleware)
+
+    async def test_authorizer_forwarded_to_stage(self) -> None:
+        from factory.core.hub.middleware import build_default_pipeline
+
+        sentinel = _make_authorizer(allowed=True)
+        pipeline = build_default_pipeline(_make_hub(), authorizer=sentinel)
+        stage = pipeline._middlewares[7]
+
+        assert isinstance(stage, AuthorizeAgentMiddleware)
+        assert stage._authorizer is sentinel

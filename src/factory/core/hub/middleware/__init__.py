@@ -7,6 +7,7 @@ from .middleware import (
     build_default_pipeline,
 )
 from .middleware_stages import (
+    AuthorizeAgentMiddleware,
     CommandMiddleware,
     MessagePrepMiddleware,
     RateLimitMiddleware,
@@ -22,6 +23,7 @@ __all__ = [
     "PipelineContext",
     "PipelineMiddleware",
     "build_default_pipeline",
+    "AuthorizeAgentMiddleware",
     "CommandMiddleware",
     "MessagePrepMiddleware",
     "RateLimitMiddleware",

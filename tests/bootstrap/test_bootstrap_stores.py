@@ -10,10 +10,16 @@ import pytest
 
 from factory.bootstrap.bootstrap_stores import (
     _atomic_table_copy,
+    _ensure_auth_db_schema,
     _ensure_config_db,
     _ensure_discord_db,
     _has_sentinel,
     open_stores,
+)
+from factory.infrastructure.stores.identity.agent_grant_store import AgentGrantStore
+from factory.infrastructure.stores.identity.auth_store import AuthStore
+from factory.infrastructure.stores.identity.identity_alias_store import (
+    IdentityAliasStore,
 )
 
 # ---------------------------------------------------------------------------
@@ -53,6 +59,32 @@ def _create_db_with_sentinel(path: Path) -> None:
     )
     conn.commit()
     conn.close()
+
+
+# ---------------------------------------------------------------------------
+# _ensure_auth_db_schema
+# ---------------------------------------------------------------------------
+
+
+class TestEnsureAuthDbSchema:
+    @pytest.mark.asyncio
+    async def test_allows_simultaneous_auth_db_store_connections(
+        self, tmp_path: Path
+    ) -> None:
+        """Regression #2001 — bootstrap must pre-create schema before stores open."""
+        _ensure_auth_db_schema(tmp_path)
+
+        auth = AuthStore(db_path=tmp_path / "auth.db")
+        alias = IdentityAliasStore(db_path=tmp_path / "auth.db")
+        grant = AgentGrantStore(db_path=tmp_path / "auth.db")
+        try:
+            await auth.connect()
+            await alias.connect()
+            await grant.connect()
+        finally:
+            await grant.close()
+            await alias.close()
+            await auth.close()
 
 
 # ---------------------------------------------------------------------------

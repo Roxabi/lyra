@@ -1,0 +1,82 @@
+---
+title: Richer Telegram tool recap card — collapsible tg-thinking block
+issue: 1952
+status: approved
+tier: F-lite
+date: 2026-06-24
+---
+
+## Problem
+
+The per-turn tool recap card in Telegram is a **flat, always-visible text message**
+edited in-place via MarkdownV2. It lists file edits, shell commands, web fetches,
+and agent calls — useful context, but secondary to the agent's actual answer.
+
+With Bot API 10.1 rich messages now live in staging (#1950 backtick audit done,
+#1951 reasoning trace streaming to `<tg-thinking>` done), the recap card is the
+remaining noisy UI element: it competes visually with the answer while users only
+need the breakdown on demand.
+
+`TelegramTraceFormatter.edit_tool_recap()` still calls `edit_text_with_fallback`
+(plain markdown) even in rich mode, unlike `edit_reasoning()` which already routes
+through `build_thinking_message()` → collapsible `<tg-thinking>` HTML. The recap
+should follow the same pattern so tool activity collapses by default and the chat
+stays clean.
+
+## Who
+
+- **Primary:** Telegram users in private chats running multi-tool agent turns —
+  they want to see *what happened* without a permanent wall of tool lines above
+  the answer.
+- **Secondary:** Developers debugging agent behaviour who expand the thinking
+  block to inspect per-tool counts and commands.
+
+## Constraints
+
+- Dependencies #1950 (backtick-protection audit) and #1951 (thinking-block UX)
+  are closed — safe to build on `build_thinking_message()` and rich-message path.
+- Phase 1 (this issue's MVP): move recap into `<tg-thinking>` in rich mode only;
+  MarkdownV2 fallback path unchanged for `FACTORY_TELEGRAM_RICH_MESSAGES=0`.
+- Reuse existing `format_recap_lines()` output from `factory.outbound._tool_recap`
+  — formatting logic stays adapter-agnostic; only the Telegram delivery layer changes.
+- Discord recap (embed-based) is out of scope — different platform contract.
+- HTML inside `<tg-thinking>` must escape user/LLM-derived content (same as
+  reasoning trace); no clickable hyperlinks for web URLs in Phase 1.
+
+## Out of Scope
+
+- Discord or web adapter changes.
+- New NATS / render-event contract changes.
+- Phase 2 polish (section headers, per-file operation counts, hyperlink URLs) —
+  tracked as follow-up within this epic but not required for frame approval gate.
+- Spinner emoji cycle for Working state (investigate in spec; may defer if
+  message-replace flash is unavoidable).
+- CLI adapter rendering (terminal shows tools inline already).
+
+## Premise Validity
+
+**Success in 6 months:** In Telegram rich mode, every multi-tool turn shows the
+tool recap inside a collapsible `<tg-thinking>` block; users report cleaner chat
+layout; zero regressions in recap content accuracy vs current flat card.
+
+**Failure in 6 months:** After 3 months in staging, ≥1 of: recap still renders as
+flat visible text in rich mode, OR `<tg-thinking>` recap causes edit failures
+on >5% of multi-tool turns, OR backtick/HTML injection regressions reopen #1950.
+
+**Simplest alternative:** Leave recap as flat MarkdownV2 text (status quo).
+**Why not simplest:** Recap is secondary UI — always visible it clutters the chat
+and duplicates information the user may never need; collapsible thinking blocks
+are the established Telegram pattern (#1951) and cost one routing change in
+`edit_tool_recap`.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (Telegram adapter delivery layer),
+known pattern (`build_thinking_message` already wired for reasoning), 2–4 files
+expected (formatter, tests, possibly placeholder lifecycle).
+
+Signals observed:
+- Issue label `size:F-lite` matches.
+- Single platform, no new architecture — mirror reasoning trace delivery path.
+- Formatter output (`format_recap_lines`) unchanged; adapter-only delta.
+- Phase 2 formatting is additive follow-up, not a blocker for Phase 1 ship.

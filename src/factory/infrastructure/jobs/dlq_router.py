@@ -57,84 +57,96 @@ class DlqRouter:
         re-publishes it to the DLQ subject, then deletes from the stream.
         """
         try:
-            advisory = json.loads(msg.data)
-        except (json.JSONDecodeError, ValueError):
-            log.warning("DlqRouter: failed to parse advisory JSON — skipping")
-            return
+            try:
+                advisory = json.loads(msg.data)
+            except (json.JSONDecodeError, ValueError):
+                log.warning("DlqRouter: failed to parse advisory JSON — skipping")
+                return
 
-        stream_seq = advisory.get("stream_seq")
-        if stream_seq is None:
-            log.warning(
-                "DlqRouter: advisory missing stream_seq — skipping: %r", advisory
-            )
-            return
+            if not isinstance(advisory, dict):
+                log.warning("DlqRouter: advisory is not a JSON object — skipping")
+                return
 
-        deliveries = advisory.get("deliveries", 0)
+            stream_seq = advisory.get("stream_seq")
+            if stream_seq is None:
+                log.warning(
+                    "DlqRouter: advisory missing stream_seq — skipping"
+                    " (deliveries=%s)",
+                    advisory.get("deliveries"),
+                )
+                return
 
-        jsm = self._nc.jsm()  # synchronous — no await (nats-py nc.jsm() is a plain def)
+            deliveries = advisory.get("deliveries", 0)
 
-        try:
-            raw = await jsm.get_msg(_STREAM_NAME, seq=stream_seq)
-        except (nats.errors.Error, OSError):
-            log.exception(
-                "DlqRouter: failed to fetch seq=%s from %s — skipping DLQ route",
-                stream_seq,
-                _STREAM_NAME,
-            )
-            return
+            jsm = self._nc.jsm()  # synchronous — no await (nats-py nc.jsm() is a plain def)
 
-        orig_subject: str = raw.subject or ""
+            try:
+                raw = await jsm.get_msg(_STREAM_NAME, seq=stream_seq)
+            except (nats.errors.Error, OSError):
+                log.exception(
+                    "DlqRouter: failed to fetch seq=%s from %s — skipping DLQ route",
+                    stream_seq,
+                    _STREAM_NAME,
+                )
+                return
 
-        # Do not re-dead-letter a message already on the DLQ lane. A
-        # factory.jobs.dlq.* subject that itself exhausts MAX_DELIVERIES must not
-        # recurse into factory.jobs.dlq.dlq (captured by FACTORY_JOBS but with no
-        # onward route → silent accumulation). Leave it in the stream to age out
-        # via max_age; ops tooling owns DLQ-lane inspection.
-        if orig_subject.startswith(f"{_DLQ_PREFIX}."):
-            log.warning(
-                "DlqRouter: seq=%s already on DLQ lane (%r) — not re-routing",
+            orig_subject: str = raw.subject or ""
+
+            # Do not re-dead-letter a message already on the DLQ lane. A
+            # factory.jobs.dlq.* subject that itself exhausts MAX_DELIVERIES must not
+            # recurse into factory.jobs.dlq.dlq (captured by FACTORY_JOBS but with no
+            # onward route → silent accumulation). Leave it in the stream to age out
+            # via max_age; ops tooling owns DLQ-lane inspection.
+            if orig_subject.startswith(f"{_DLQ_PREFIX}."):
+                log.warning(
+                    "DlqRouter: seq=%s already on DLQ lane (%r) — not re-routing",
+                    stream_seq,
+                    orig_subject,
+                )
+                return
+
+            domain = _extract_domain(orig_subject)
+            dlq_subject = f"{_DLQ_PREFIX}.{domain}"
+
+            headers = {
+                _HDR_ORIG_SUBJECT: orig_subject,
+                _HDR_DELIVERIES: str(deliveries),  # int→str — safe per str_exc_bus_bound
+                _HDR_STREAM_SEQ: str(stream_seq),  # int→str — safe per str_exc_bus_bound
+            }
+
+            try:
+                await self._nc.publish(dlq_subject, raw.data or b"", headers=headers)
+            except (nats.errors.Error, OSError):
+                log.exception(
+                    "DlqRouter: failed to publish to %s (seq=%s) — aborting DLQ route",
+                    dlq_subject,
+                    stream_seq,
+                )
+                return
+
+            try:
+                await jsm.delete_msg(_STREAM_NAME, stream_seq)
+            except (nats.errors.Error, OSError):
+                log.warning(
+                    "DlqRouter: failed to delete seq=%s from %s"
+                    " (DLQ msg published, seq not cleaned up)",
+                    stream_seq,
+                    _STREAM_NAME,
+                )
+                return
+
+            log.info(
+                "DlqRouter: routed seq=%s orig=%r → %s (deliveries=%s)",
                 stream_seq,
                 orig_subject,
-            )
-            return
-
-        domain = _extract_domain(orig_subject)
-        dlq_subject = f"{_DLQ_PREFIX}.{domain}"
-
-        headers = {
-            _HDR_ORIG_SUBJECT: orig_subject,
-            _HDR_DELIVERIES: str(deliveries),  # int→str — safe per str_exc_bus_bound
-            _HDR_STREAM_SEQ: str(stream_seq),  # int→str — safe per str_exc_bus_bound
-        }
-
-        try:
-            await self._nc.publish(dlq_subject, raw.data or b"", headers=headers)
-        except (nats.errors.Error, OSError):
-            log.exception(
-                "DlqRouter: failed to publish to %s (seq=%s) — aborting DLQ route",
                 dlq_subject,
-                stream_seq,
+                deliveries,
+            )
+        except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# boundary: dlq-callback — NATS cb must not crash loop
+            log.exception(
+                "DlqRouter: unexpected error processing advisory — skipping"
             )
             return
-
-        try:
-            await jsm.delete_msg(_STREAM_NAME, stream_seq)
-        except (nats.errors.Error, OSError):
-            log.warning(
-                "DlqRouter: failed to delete seq=%s from %s"
-                " (DLQ msg published, seq not cleaned up)",
-                stream_seq,
-                _STREAM_NAME,
-            )
-            return
-
-        log.info(
-            "DlqRouter: routed seq=%s orig=%r → %s (deliveries=%s)",
-            stream_seq,
-            orig_subject,
-            dlq_subject,
-            deliveries,
-        )
 
 
 def _extract_domain(subject: str) -> str:

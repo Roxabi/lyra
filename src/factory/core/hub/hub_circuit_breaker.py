@@ -6,7 +6,6 @@ record_circuit_failure() for Hub.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import TYPE_CHECKING
 
@@ -55,8 +54,8 @@ class HubCircuitBreakerMixin:
 
         try:
             await self.dispatch_response(msg, Response(content=_unavail))
-        except (KeyError, OSError, ConnectionError, asyncio.TimeoutError, RuntimeError) as exc:
-            log.exception("dispatch_response failed for fast-fail reply: %s", exc)
+        except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# boundary: hub-fast-fail-dispatch — platform send must not abort pipeline
+            log.exception("dispatch_response failed for fast-fail reply")
         return True
 
     def record_circuit_success(self) -> None:

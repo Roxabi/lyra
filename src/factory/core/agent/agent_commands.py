@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -69,6 +70,8 @@ class CommandReloadManager:
                 AttributeError,
                 TypeError,
                 RuntimeError,
+                KeyError,
+                tomllib.TOMLDecodeError,
             ):
                 log.warning("Failed to load command %r", name, exc_info=True)
         return effective
@@ -126,6 +129,8 @@ class CommandReloadManager:
                 AttributeError,
                 TypeError,
                 RuntimeError,
+                KeyError,
+                tomllib.TOMLDecodeError,
             ):
                 log.warning("Failed to reload command %r", name, exc_info=True)
         return changed

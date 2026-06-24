@@ -59,6 +59,14 @@ _INGEST_IO_ERRORS: tuple[type[BaseException], ...] = (
 )
 
 
+def _degrade_audio_msg(msg: "InboundMessage") -> "InboundMessage":
+    """Return msg with blob_ref cleared and pending_attachment removed."""
+    if msg.audio is not None:
+        new_audio = dataclasses.replace(msg.audio, blob_ref=None)
+        return dataclasses.replace(msg, audio=new_audio, pending_attachment=None)
+    return dataclasses.replace(msg, pending_attachment=None)
+
+
 @dataclass(frozen=True)
 class PendingAttachment:
     """Transient descriptor set by adapters to carry a deferred fetch closure.
@@ -184,12 +192,12 @@ class AttachmentIngestStage:
             )
         except _INGEST_IO_ERRORS:
             log.exception("attachment ingest failed — degraded (blob_ref=None)")
-            if msg.audio is not None:
-                new_audio = dataclasses.replace(msg.audio, blob_ref=None)
-                return dataclasses.replace(
-                    msg, audio=new_audio, pending_attachment=None
-                )
-            return dataclasses.replace(msg, pending_attachment=None)
+            return _degrade_audio_msg(msg)
+        except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# boundary: adapter-fetch — degrade ingest
+            log.exception(
+                "attachment ingest failed (adapter fetch) — degraded (blob_ref=None)"
+            )
+            return _degrade_audio_msg(msg)
 
         if msg.audio is None:
             # Non-audio message that somehow had a singular pending_attachment;
@@ -233,6 +241,18 @@ class AttachmentIngestStage:
                 data = await p.fetch()
             except _INGEST_IO_ERRORS:
                 log.exception("attachment fetch failed (source=%s)", p.source)
+                results.append(
+                    AttachmentResult(
+                        success=False,
+                        error="Couldn't download your attachment — please try again.",
+                        reason="storage_error",
+                    )
+                )
+                continue
+            except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# boundary: adapter-fetch — degrade ingest
+                log.exception(
+                    "attachment fetch failed (adapter) (source=%s)", p.source
+                )
                 results.append(
                     AttachmentResult(
                         success=False,

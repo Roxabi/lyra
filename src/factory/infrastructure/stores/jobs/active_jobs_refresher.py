@@ -90,7 +90,7 @@ class RegistryCoordinator:
         for jid in list(self._jobs):
             try:
                 await self._port.refresh(jid)
-            except nats.errors.Error:
+            except (nats.errors.Error, OSError, RuntimeError):
                 log.exception("active-jobs: refresh failed for job %r", jid)
 
     async def on_heartbeat(self, worker_loc: str) -> None:

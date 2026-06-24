@@ -144,6 +144,21 @@ async def test_refresh_all_one_failure_does_not_abort_sweep(
     port.refresh.assert_any_call("job-y")
 
 
+@pytest.mark.asyncio()
+async def test_refresh_all_runtime_error_does_not_abort_sweep(
+    port: AsyncMock, coord: RegistryCoordinator
+) -> None:
+    """Non-NATS refresh failures must not abort the liveness sweep."""
+    await coord.open(_make_entry("job-a"))
+    await coord.open(_make_entry("job-b", pool_id="pool-b"))
+    port.refresh.reset_mock()
+    port.refresh.side_effect = [RuntimeError("store bug"), None]
+
+    await coord.refresh_all()
+
+    assert port.refresh.call_count == 2
+
+
 # ---------------------------------------------------------------------------
 # on_heartbeat()
 # ---------------------------------------------------------------------------

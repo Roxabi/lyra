@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+
+import nats.errors
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, AsyncIterator, Protocol
 from uuid import uuid4
@@ -30,6 +32,14 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 _SUBJECT_CONTROL = "factory.clipool.control"
+_RESUME_TRANSPORT_ERRORS = (
+    TimeoutError,
+    asyncio.TimeoutError,
+    OSError,
+    RuntimeError,
+    ConnectionError,
+    nats.errors.Error,
+)
 
 
 class _CliSessionStore(Protocol):
@@ -91,12 +101,17 @@ class LlmClient:
             lyra_session_id=self._lyra_sessions.get(pool_id),
             resume_session_id=pending_resume,
         )
-        result = await self._pool.request_with_routing(
-            lambda _: self._request_subject,
-            payload,
-            max_attempts=1,
-            timeout=self._timeout,
-        )
+        try:
+            result = await self._pool.request_with_routing(
+                lambda _: self._request_subject,
+                payload,
+                max_attempts=1,
+                timeout=self._timeout,
+            )
+        except _RESUME_TRANSPORT_ERRORS:
+            if pending_resume is not None:
+                self._pending_resume.setdefault(pool_id, pending_resume)
+            raise
         return self._codec.decode(result, trace_id)
 
     async def stream(  # noqa: PLR0913 — LlmProvider protocol signature
@@ -132,7 +147,7 @@ class LlmClient:
                 yield event
                 if isinstance(event, ResultLlmEvent):
                     return
-        except (TimeoutError, asyncio.TimeoutError, OSError, RuntimeError):
+        except _RESUME_TRANSPORT_ERRORS:
             if pending_resume is not None:
                 self._pending_resume.setdefault(pool_id, pending_resume)
             raise

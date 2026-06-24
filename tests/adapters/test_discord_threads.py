@@ -155,7 +155,7 @@ class TestDiscordAutoThread:
 
     @pytest.mark.asyncio
     async def test_auto_thread_exception_fallback(self) -> None:
-        """create_thread() raising Exception: message still processed in original ch."""
+        """create_thread() raising DiscordException: message still processed."""
         from factory.adapters.discord import DiscordAdapter
 
         # Arrange
@@ -172,11 +172,17 @@ class TestDiscordAutoThread:
         adapter._bot_user = bot_user
 
         # create_thread raises — adapter must fall through and put msg on bus
-        create_thread_mock = AsyncMock(side_effect=Exception("discord unavailable"))
+        create_thread_mock = AsyncMock(
+            side_effect=discord.DiscordException("discord unavailable")
+        )
 
         discord_msg = SimpleNamespace(
             guild=SimpleNamespace(id=111),
-            channel=SimpleNamespace(id=333, send=AsyncMock()),
+            channel=SimpleNamespace(
+                id=333,
+                send=AsyncMock(),
+                create_thread=AsyncMock(),
+            ),
             author=SimpleNamespace(
                 id=42, name="Alice", display_name="Alice", bot=False
             ),
@@ -190,7 +196,8 @@ class TestDiscordAutoThread:
         # Act — must not raise
         await adapter.on_message(discord_msg)
 
-        # Assert — message still processed (bus.put called)
+        # Assert — exception path exercised; message still processed
+        create_thread_mock.assert_awaited_once()
         inbound_bus.put.assert_awaited_once()
 
     @pytest.mark.asyncio

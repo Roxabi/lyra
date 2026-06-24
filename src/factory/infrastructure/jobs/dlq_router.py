@@ -142,7 +142,14 @@ class DlqRouter:
                 dlq_subject,
                 deliveries,
             )
-        except (nats.errors.Error, json.JSONDecodeError, KeyError, TypeError, ValueError):
+        except (
+            nats.errors.Error,
+            json.JSONDecodeError,
+            KeyError,
+            TypeError,
+            ValueError,
+            RuntimeError,
+        ):
             log.exception(
                 "DlqRouter: unexpected error processing advisory — skipping"
             )

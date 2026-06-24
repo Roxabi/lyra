@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Generic, TypeVar
 if TYPE_CHECKING:
     from nats.js.client import JetStreamContext
 
+import nats.errors
 from nats.aio.client import Client as NATS
 from nats.aio.msg import Msg
 from nats.aio.subscription import Subscription
@@ -131,13 +132,17 @@ class NatsBus(Generic[T]):
         (``start()`` returned early before populating it), so the loop below
         is a natural no-op — do not add teardown that bypasses this invariant.
         """
-        for sub in self._subscriptions.values():
-            try:
-                await sub.unsubscribe()
-            except (OSError, RuntimeError) as exc:
-                log.exception("NatsBus: error unsubscribing: %s", type(exc).__name__)
-        self._subscriptions.clear()
-        self._started = False
+        try:
+            for sub in self._subscriptions.values():
+                try:
+                    await sub.unsubscribe()
+                except (OSError, RuntimeError, nats.errors.Error) as exc:
+                    log.exception(
+                        "NatsBus: error unsubscribing: %s", type(exc).__name__
+                    )
+        finally:
+            self._subscriptions.clear()
+            self._started = False
 
     # ------------------------------------------------------------------
     # Message I/O

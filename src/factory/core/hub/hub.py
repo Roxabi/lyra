@@ -41,6 +41,7 @@ if TYPE_CHECKING:
     from factory.transport.typing_publisher import TypingPublisher
 
     from ..agent import AgentBase
+    from ..auth.agent_grants import AgentAuthorizer
     from ..cli.cli_pool import CliPool
     from ..lifecycle.circuit_breaker import CircuitRegistry
     from ..memory import MemoryManager
@@ -78,6 +79,7 @@ class Hub(
         inbound_bus: "Bus[InboundMessage] | None" = None,
         config: HubConfig | None = None,
         resume_publisher: "ResumePublisherPort | None" = None,
+        authorizer: "AgentAuthorizer | None" = None,
     ) -> None:
         cfg = config if config is not None else HubConfig()
         if cfg.max_pools <= 0:
@@ -113,6 +115,7 @@ class Hub(
         self._turn_store: TurnStoreProtocol | None = None
         self._turn_publisher: TurnPublisher | None = None
         self._resume_publisher: ResumePublisherPort | None = resume_publisher
+        self._authorizer: AgentAuthorizer | None = authorizer
         # T1 — typing-plane publisher; wired by bootstrap, consumed by T2.
         self._typing_publisher: TypingPublisher | None = None
         self._turn_timeout = cfg.turn_timeout
@@ -208,6 +211,7 @@ class Hub(
         """Hub bus consumer loop. Runs until cancelled."""
         pipeline = build_default_pipeline(
             self,
+            authorizer=self._authorizer,
             resume_publisher=self._resume_publisher,
             event_bus=self._event_bus,
         )

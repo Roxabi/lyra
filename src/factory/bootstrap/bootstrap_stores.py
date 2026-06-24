@@ -22,17 +22,19 @@ from typing import AsyncGenerator
 from nats.aio.client import Client
 
 from factory.infrastructure.stores.identity.agent_grant_store import (
-    AgentGrantStore,
     _CREATE_AGENT_GRANTS,
+    AgentGrantStore,
+)
+from factory.infrastructure.stores.identity.auth_store import (
+    _CREATE_GRANTS as _CREATE_AUTH_GRANTS,
 )
 from factory.infrastructure.stores.identity.auth_store import (
     AuthStore,
-    _CREATE_GRANTS as _CREATE_AUTH_GRANTS,
 )
 from factory.infrastructure.stores.identity.identity_alias_store import (
-    IdentityAliasStore,
     _CREATE_ALIASES,
     _CREATE_CHALLENGES,
+    IdentityAliasStore,
 )
 from factory.infrastructure.stores.kv.message_index_kv import (
     MessageIndexKvStore,

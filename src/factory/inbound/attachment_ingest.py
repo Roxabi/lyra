@@ -25,6 +25,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, cast
 
+from roxabi_contracts import BlobStoreServerError
+
 if TYPE_CHECKING:
     from factory.core.messaging.message import InboundMessage
     from factory.core.ports.blobstore import BlobStorePort
@@ -45,6 +47,16 @@ except ValueError:
 
 FetchFn = Callable[[], Awaitable[bytes]]
 log = logging.getLogger(__name__)
+
+# Adapter fetch + BlobStore put — degrade on I/O failures, never abort inbound.
+_INGEST_IO_ERRORS: tuple[type[BaseException], ...] = (
+    BlobStoreServerError,
+    OSError,
+    ConnectionError,
+    TimeoutError,
+    RuntimeError,
+    ValueError,
+)
 
 
 @dataclass(frozen=True)
@@ -170,7 +182,7 @@ class AttachmentIngestStage:
                 platform_ref=pending.platform_ref,
                 platform_message_id=pending.platform_message_id,
             )
-        except Exception:
+        except _INGEST_IO_ERRORS:
             log.exception("attachment ingest failed — degraded (blob_ref=None)")
             if msg.audio is not None:
                 new_audio = dataclasses.replace(msg.audio, blob_ref=None)
@@ -219,7 +231,7 @@ class AttachmentIngestStage:
                 continue
             try:
                 data = await p.fetch()
-            except Exception:
+            except _INGEST_IO_ERRORS:
                 log.exception("attachment fetch failed (source=%s)", p.source)
                 results.append(
                     AttachmentResult(
@@ -253,7 +265,7 @@ class AttachmentIngestStage:
                     platform_ref=p.platform_ref,
                     platform_message_id=p.platform_message_id,
                 )
-            except Exception:
+            except _INGEST_IO_ERRORS:
                 log.exception("blobstore rejected attachment (source=%s)", p.source)
                 results.append(
                     AttachmentResult(

@@ -30,6 +30,11 @@ if TYPE_CHECKING:
     from factory.core.messaging.messages import MessageManager
     from roxabi_contracts.errors import WorkerError
 
+from factory.core.exceptions import (
+    HubUnavailableError,
+    StreamChunkTimeout,
+    WorkerUnavailableError,
+)
 from factory.core.messaging.events import (
     LlmEvent,
     ResultLlmEvent,
@@ -54,9 +59,23 @@ from factory.core.processors.stream_tool import StreamToolHandler
 from factory.core.trace import TraceContext
 from factory.streaming.event_emitter import EventEmitter
 from factory.streaming.state_machine import StateMachine
+from factory.errors import ProviderError
 from factory.transport import SanitizedError
 
 log = logging.getLogger(__name__)
+
+_STREAM_INFRA_ERRORS: tuple[type[BaseException], ...] = (
+    ProviderError,
+    WorkerUnavailableError,
+    HubUnavailableError,
+    StreamChunkTimeout,
+    OSError,
+    ConnectionError,
+    RuntimeError,
+    ValueError,
+    TypeError,
+    KeyError,
+)
 
 
 class StreamProcessor:
@@ -193,7 +212,7 @@ class StreamProcessor:
         try:
             async for re in self._process_events(events):
                 yield re
-        except Exception as exc:
+        except _STREAM_INFRA_ERRORS as exc:
             # Slice 1 (#1098): infrastructure-level exception during stream
             # processing. Surface a RunErrorRenderEvent then re-raise so the
             # adapter's existing exception handler (sets stream_error and

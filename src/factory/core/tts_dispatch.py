@@ -11,8 +11,11 @@ Slice 1 and replaced by ``MessagePipeline._run_stt_stage``.
 from __future__ import annotations
 
 import logging
+import sqlite3
 from collections.abc import Callable
 from typing import TYPE_CHECKING
+
+import aiosqlite
 
 from .messaging.message import (
     InboundMessage,
@@ -199,7 +202,7 @@ class AudioPipeline:
             if self._hub._prefs_store is not None:
                 try:
                     prefs = await self._hub._prefs_store.get_prefs(msg.user_id)
-                except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
+                except (sqlite3.Error, aiosqlite.Error, RuntimeError, OSError):
                     log.warning(
                         "PrefsStore.get_prefs() failed for user %s — "
                         "falling back to detected language",
@@ -287,7 +290,7 @@ class AudioPipeline:
                 _tts_exc.detail,
             )
             _notif_text = f"⚠️ Voice synthesis failed: {_tts_exc.message}"
-        except Exception as _tts_exc:
+        except (OSError, ConnectionError, KeyError, RuntimeError, ValueError) as _tts_exc:
             log.exception(
                 "TTS synthesis failed (msg id=%s) — notifying user",
                 msg.id,

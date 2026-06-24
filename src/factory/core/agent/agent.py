@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import sqlite3
+
+import aiosqlite
+
 import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -123,7 +127,7 @@ class AgentBase(ABC, SessionManager):
             return
         try:
             row = self._agent_store.get(self.config.name)
-        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
+        except (sqlite3.Error, aiosqlite.Error, OSError, RuntimeError):
             log.debug("agent store unavailable — keeping cached config", exc_info=True)
             return  # DB unavailable — keep cached config
         if row is None or row.updated_at == self._last_db_updated_at:
@@ -147,7 +151,7 @@ class AgentBase(ABC, SessionManager):
                 self.config = new_config
                 self._rebuild_command_router()
             self._last_db_updated_at = row.updated_at
-        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+        except (ValueError, TypeError, KeyError, RuntimeError) as exc:
             log.warning("Failed to reload config for %r: %s", self.config.name, exc)
 
     def _maybe_reload_plugins(self) -> None:

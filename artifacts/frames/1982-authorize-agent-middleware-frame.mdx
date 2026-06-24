@@ -1,0 +1,119 @@
+---
+title: "feat(access): AuthorizeAgentMiddleware (after ResolveBinding) + pull refusal"
+issue: 1982
+status: approved
+tier: F-lite
+date: 2026-06-23
+---
+
+## Problem
+
+ADR-090 makes each named agent a logical tenant owning an authorization matrix
+(agent × principal × capability). Slice #1981 shipped the **read port**
+(`AgentAuthorizer.authorize`) and the SQLite **`AgentGrantStore`** that backs it —
+but nothing in the inbound pipeline ever *calls* `authorize`. The port is wired
+to no callsite; grants written by an operator have zero runtime effect. Any user
+bound to any agent reaches it unconditionally: the multi-tenant access matrix is
+inert.
+
+This slice (ADR-090 §5) closes that gap: a new hub middleware stage that, once
+the bound agent is known, asks the authorizer whether the inbound principal may
+use that agent, and **refuses by pull** when not — an inline reply on the same
+channel pointing the user to the public bot, never a pushed DM — while emitting an
+`agent_unauthorized` audit event.
+
+## Who
+
+- **Primary:** operators running multi-tenant agents — grants they write via the
+  `AgentGrantStore` surface finally gate real traffic.
+- **Secondary:** end users on Telegram/Discord/CLI — an unauthorized user gets a
+  clear inline refusal instead of silent message loss; authorized users are
+  unaffected (pass-through).
+
+## Constraints
+
+- **Placement (hard):** stage runs **after** `ResolveBindingMiddleware` (index 6,
+  sets `ctx.binding`/`ctx.agent`) and **before** `MessagePrepMiddleware` (index 7)
+  → new stage at index 7, pipeline grows 10→11 stages.
+- **Layer (hard):** stage lives in `core/` and may depend only on the
+  `AgentAuthorizer` **Protocol** (`core/auth/`), never on `AgentGrantStore`
+  (`infrastructure/`). The store is injected at wiring time as a port reference.
+  Enforced by the `import_layers` pre-push gate.
+- **Standalone (hard, ADR-090 §5):** the agent-authz axis is its own stage in its
+  own module (`middleware_authz.py`) — it never fuses with the trust/content guard
+  axis (`TrustGuardMiddleware`). They share only the `MessageDropped` audit event.
+  (GuardChain — the prior "1D" guard — was already removed in PR #1997; nothing to
+  fuse with.)
+- **Sync call:** `authorize(*, agent_name, user_id, roles=())` is synchronous (warm
+  cache read) — call without `await`; it returns `AuthDecision(allowed, reason)`.
+- **Principal key:** `msg.user_id` is *already* the platform-prefixed key
+  (`tg:user:…`, `dc:user:…`, `cli:user:local`) the store matches on — pass it
+  directly; no resolution layer needed.
+- **Deny-safe:** if `ctx.binding`/`ctx.agent` is unresolved, pass through
+  (ResolveBinding already dropped such messages upstream) — defensive guard only.
+- **Refusal mechanics:** deny → return `PipelineResult(COMMAND_HANDLED, response=…)`
+  (the proven inline-reply path; `DROP` sends nothing) **and** emit
+  `MessageDropped(reason="agent_unauthorized")`. No DM channel is opened — the
+  outbound router replies on the originating channel.
+- **Gates:** must keep `import_layers`, `architecture_snapshot`, file-length (≤300
+  sloc), and folder-size (≤15 files in `middleware/`) green.
+
+## Out of Scope
+
+- **`@bot_public` handle lookup** — `BotRow` has no public-bot field today. Adding
+  one is a schema/config change beyond this slice. MVP refusal text points users to
+  `factory.roxabi.dev` (static fallback); the `@handle` is a deferred follow-up.
+- **ROLE-principal grants** — the store matches `roles` against `ROLE` grants, but
+  no inbound roles are populated yet. MVP calls `authorize(roles=())`; wiring
+  platform roles (e.g. Discord `dc:role:…`) is a follow-up.
+- **`ADMIN` capability** — ADR-090 §1 reserves it; MVP enforces `USE` only.
+- **Cross-platform alias resolution** — ADR-090 §4, grants stay platform-scoped.
+- **Operator grant CLI / UX** — separate slice (#1983/#1984).
+
+## Premise Validity
+
+**Success in 6 months:** an inbound message from a principal with no `USE` grant on
+the bound agent is refused at the hub — never reaches the pool/agent — and produces
+(a) one inline refusal reply on the originating channel and (b) one
+`MessageDropped(reason="agent_unauthorized")` audit event; an authorized principal
+passes through unchanged. Verified by unit tests on the stage + the authz matrix
+gating real traffic on M₁.
+
+**Failure in 6 months:** the stage is merged but `authorize` is never actually
+invoked in production (authorizer left `None`/unwired) → grants remain inert and
+any bound user still reaches any agent — i.e. the same silent-bypass bug this slice
+exists to kill, observable as a 0-count of `agent_unauthorized` audit events while
+deny-eligible traffic exists. (Falsifiable: audit-event count vs known-unauthorized
+traffic.)
+
+**Simplest alternative:** drop the message silently on deny (return `DROP`, no
+reply), skipping the refusal/outbound path entirely.
+**Why not simplest:** ADR-090 §5 mandates a *pull refusal* — the user must learn
+they're unauthorized and where to go, not experience silent message loss
+(indistinguishable from an outage). Silent drop also fails the "clear inline
+refusal" success criterion and degrades operator trust.
+
+## Complexity
+
+**Tier: F-lite** — clear scope, single domain (hub inbound pipeline), no new
+architecture; consumes an existing port and an established middleware pattern.
+
+Signals observed:
+- New file + edits across ~4-6 files (stage module + pipeline wiring + StoreBundle
+  injection + tests).
+- Single domain (`core/hub/middleware` + one bootstrap wiring point).
+- No new patterns — mirrors `TrustGuardMiddleware` (emit + short-circuit) and the
+  `CommandMiddleware` error path (`COMMAND_HANDLED` + `Response`).
+- Sole genuine unknown — refusal-text delivery (message manager vs hardcoded) and
+  the exact authorizer-injection wiring site — both resolved at spec, not new arch.
+
+## Spec-level open questions (to resolve in /spec — not scope-changing)
+
+1. **Refusal text source:** route through `ctx.hub._msg_manager` / `messages.toml`
+   (consistent with the generic-error path) vs hardcoded constant. Lean:
+   message-manager key for i18n consistency.
+2. **Authorizer exception policy:** `authorize` is a pure cache read; if it raises,
+   fail-**closed** (deny + audit) is the secure default. Confirm at spec.
+3. **Unwired authorizer (`None`):** fail-open pass-through for tests/back-compat,
+   but this slice **wires it for real** (StoreBundle → `build_default_pipeline`) so
+   prod is never `None` — closing the failure-mode above.

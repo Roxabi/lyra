@@ -207,6 +207,7 @@ class TestUnauthorizedPath:
 
         await mw(msg, ctx, next_fn)
 
+        next_fn.assert_not_awaited()
         event_bus.emit.assert_called_once()
         emitted = event_bus.emit.call_args[0][0]
         assert isinstance(emitted, MessageDropped)
@@ -229,6 +230,7 @@ class TestUnauthorizedPath:
 
         result = await mw(msg, ctx, next_fn)
 
+        next_fn.assert_not_awaited()
         assert result.response is not None
         assert result.response.content == _FALLBACK_REFUSAL
 
@@ -250,6 +252,7 @@ class TestUnauthorizedPath:
 
         result = await mw(msg, ctx, next_fn)
 
+        next_fn.assert_not_awaited()
         assert result.response is not None
         assert result.response.content == "Custom unauthorized text"
 
@@ -272,6 +275,7 @@ class TestUnauthorizedPath:
 
         await mw(msg, ctx, next_fn)
 
+        next_fn.assert_not_awaited()
         assert any(
             e["stage"] == "pool" and e["event"] == "agent_unauthorized"
             for e in trace_events
@@ -354,6 +358,32 @@ class TestRealStoreIntegration:
         assert result.response is not None
         assert result.response.content == _FALLBACK_REFUSAL
 
+    async def test_grant_on_other_agent_refuses(
+        self, agent_grant_store: AgentGrantStore
+    ) -> None:
+        """Grants are agent-scoped (ADR-090 §1): a USE grant on one agent does
+        not leak authorization to another bound agent."""
+        from factory.core.auth.agent_grants import Principal, PrincipalKind
+        from factory.core.hub.hub_protocol import Binding
+
+        msg = make_inbound_message(user_id="tg:user:alice")
+        # alice holds a grant on "other-agent" — but the bound agent is "lyra".
+        await agent_grant_store.grant(
+            "other-agent",
+            Principal(kind=PrincipalKind.USER, id="tg:user:alice"),
+            granted_by="test",
+            source="test",
+        )
+        binding = Binding(agent_name="lyra", pool_id="telegram:main:chat:42")
+        ctx = _make_ctx(binding=binding, agent=MagicMock())
+        mw = AuthorizeAgentMiddleware(authorizer=agent_grant_store)
+        next_fn = _make_next()
+
+        result = await mw(msg, ctx, next_fn)
+
+        next_fn.assert_not_awaited()
+        assert result.action == Action.COMMAND_HANDLED
+
 
 # ---------------------------------------------------------------------------
 # TestPipelineComposition — stage placement + authorizer forwarding (AC8/AC9)
@@ -368,27 +398,52 @@ class TestPipelineComposition:
     silently leave the stage fail-open in production.
     """
 
-    async def test_stage_inserted_after_binding_before_prep(self) -> None:
+    async def test_runs_after_binding_before_prep(self) -> None:
+        """ADR-090 §5 ordering invariant — asserted *relatively*.
+
+        Index-agnostic so an unrelated stage added elsewhere in the pipeline
+        cannot falsely break the contract; the real invariant is the ordering,
+        not the absolute position.
+        """
         from factory.core.hub.middleware import build_default_pipeline
         from factory.core.hub.middleware.middleware_pool import (
             MessagePrepMiddleware,
             ResolveBindingMiddleware,
         )
 
-        pipeline = build_default_pipeline(_make_hub())
-        stages = pipeline._middlewares
+        stages = build_default_pipeline(_make_hub())._middlewares
+        binding_idx = next(
+            i for i, s in enumerate(stages) if isinstance(s, ResolveBindingMiddleware)
+        )
+        authz_idx = next(
+            i for i, s in enumerate(stages) if isinstance(s, AuthorizeAgentMiddleware)
+        )
+        prep_idx = next(
+            i for i, s in enumerate(stages) if isinstance(s, MessagePrepMiddleware)
+        )
+
+        assert binding_idx < authz_idx < prep_idx
+
+    async def test_default_pipeline_shape_snapshot(self) -> None:
+        """Deliberate snapshot of the default pipeline shape (spec AC8).
+
+        Guards against an accidental insertion/removal of a stage. Update this
+        intentionally — together with the spec — when the pipeline shape changes.
+        """
+        from factory.core.hub.middleware import build_default_pipeline
+
+        stages = build_default_pipeline(_make_hub())._middlewares
 
         assert len(stages) == 11
-        assert isinstance(stages[6], ResolveBindingMiddleware)
         assert isinstance(stages[7], AuthorizeAgentMiddleware)
-        assert isinstance(stages[8], MessagePrepMiddleware)
 
     async def test_authorizer_forwarded_to_stage(self) -> None:
         from factory.core.hub.middleware import build_default_pipeline
 
         sentinel = _make_authorizer(allowed=True)
         pipeline = build_default_pipeline(_make_hub(), authorizer=sentinel)
-        stage = pipeline._middlewares[7]
+        stage = next(
+            s for s in pipeline._middlewares if isinstance(s, AuthorizeAgentMiddleware)
+        )
 
-        assert isinstance(stage, AuthorizeAgentMiddleware)
         assert stage._authorizer is sentinel

@@ -210,6 +210,41 @@ async def edit_markdownv2_text(
     )
 
 
+async def send_thinking_with_fallback(  # noqa: PLR0913 — mirrors Telegram send kwargs surface
+    bot: Any,
+    chat_id: int,
+    text: str,
+    *,
+    reply_to: int | None = None,
+    topic_id: int | None = None,
+    reply_markup: Any = None,
+) -> Any:
+    """Prefer sendRichMessage with <tg-thinking>; fall back to MarkdownV2."""
+    if rich_messages_enabled() and text:
+        try:
+            kwargs: dict[str, Any] = {
+                "chat_id": chat_id,
+                "rich_message": build_thinking_message(text),
+                **_thread_kwargs(reply_to, topic_id),
+            }
+            if reply_markup is not None:
+                kwargs["reply_markup"] = reply_markup
+            return await bot.send_rich_message(**kwargs)
+        except Exception as exc:  # noqa: BLE001 — rich path is best-effort; fallback follows
+            log.debug(
+                "sendRichMessage(thinking) failed, will fallback: type=%s",
+                type(exc).__name__,
+            )
+    return await send_markdownv2_text(
+        bot,
+        chat_id,
+        text,
+        reply_to=reply_to,
+        topic_id=topic_id,
+        reply_markup=reply_markup,
+    )
+
+
 async def send_text_with_fallback(  # noqa: PLR0913 — mirrors Telegram send kwargs surface
     bot: Any,
     chat_id: int,

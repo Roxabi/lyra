@@ -19,6 +19,7 @@ from factory.adapters.telegram.telegram_rich import (
     send_markdownv2_text,
     send_rich_draft,
     send_text_with_fallback,
+    send_thinking_with_fallback,
     use_rich_draft,
 )
 from factory.core.messaging.render_events import (
@@ -192,7 +193,7 @@ class TelegramFormatter(BaseFormatter):
 
     async def send_trace_placeholder(self) -> tuple[Any, int | None]:
         if rich_messages_enabled():
-            sent = await send_text_with_fallback(
+            sent = await send_thinking_with_fallback(
                 self._adapter.bot,
                 self._chat_id,
                 "🔧 …",
@@ -305,13 +306,4 @@ class TelegramFormatter(BaseFormatter):
         del done
         if not lines:
             return
-        text = "\n".join(lines)
-        try:
-            await edit_text_with_fallback(
-                self._adapter.bot,
-                self._chat_id,
-                trace_obj.message_id,
-                text,
-            )
-        except TelegramAPIError as exc:
-            log.debug("Tool recap edit skipped: type=%s", type(exc).__name__)
+        await self._edit_trace_with_text(trace_obj, "\n".join(lines))

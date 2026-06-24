@@ -21,10 +21,18 @@ from typing import AsyncGenerator
 
 from nats.aio.client import Client
 
-from factory.infrastructure.stores.identity.agent_grant_store import AgentGrantStore
-from factory.infrastructure.stores.identity.auth_store import AuthStore
+from factory.infrastructure.stores.identity.agent_grant_store import (
+    AgentGrantStore,
+    _CREATE_AGENT_GRANTS,
+)
+from factory.infrastructure.stores.identity.auth_store import (
+    AuthStore,
+    _CREATE_GRANTS as _CREATE_AUTH_GRANTS,
+)
 from factory.infrastructure.stores.identity.identity_alias_store import (
     IdentityAliasStore,
+    _CREATE_ALIASES,
+    _CREATE_CHALLENGES,
 )
 from factory.infrastructure.stores.kv.message_index_kv import (
     MessageIndexKvStore,
@@ -45,6 +53,15 @@ _CONFIG_TABLES = (
     "agent_runtime_state",
     "bot_secrets",
     "user_prefs",
+)
+
+# All auth.db tables — applied once on a short-lived connection before any
+# SqliteStore opens a long-lived handle (ADR-090 §3, #1982 / #2001).
+_AUTH_DB_DDL: tuple[str, ...] = (
+    _CREATE_AUTH_GRANTS,
+    _CREATE_ALIASES,
+    _CREATE_CHALLENGES,
+    _CREATE_AGENT_GRANTS,
 )
 
 _SENTINEL_DDL = (
@@ -246,6 +263,27 @@ def _ensure_config_db(vault_dir: Path) -> None:
         _migrate_to_config_db(vault_dir)
 
 
+def _ensure_auth_db_schema(vault_dir: Path) -> None:
+    """Ensure every auth.db table exists before multi-connection store opens.
+
+    AuthStore, IdentityAliasStore, and AgentGrantStore each keep their own
+    aiosqlite handle on the same file.  ``CREATE TABLE`` DDL needs a brief
+    exclusive schema lock; running it while sibling stores are already
+    connected deadlocks until ``busy_timeout`` (#2001).
+    """
+    auth_path = vault_dir / "auth.db"
+    auth_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(auth_path), timeout=30.0)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA busy_timeout=30000")
+        for stmt in _AUTH_DB_DDL:
+            conn.execute(stmt)
+        conn.commit()
+    finally:
+        conn.close()
+
+
 @dataclass
 class StoreBundle:
     """All persistent stores needed by the multibot bootstrap.
@@ -274,9 +312,10 @@ async def open_stores(
     The finally block closes each store that was successfully opened,
     regardless of which later store (if any) failed to connect.
     """
-    # Migration guards (#417)
+    # Migration guards (#417) + auth.db schema (#2001)
     _ensure_config_db(vault_dir)
     _ensure_discord_db(vault_dir)
+    _ensure_auth_db_schema(vault_dir)
 
     auth_store: AuthStore | None = None
     agent_store: AgentStore | None = None

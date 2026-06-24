@@ -16,6 +16,8 @@ import json
 from collections.abc import AsyncIterator
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from factory.core.messaging.render_events import (
     RenderEvent,
     RunFinishedRenderEvent,
@@ -39,11 +41,26 @@ from tests.adapters.conftest import (
 _TRACE_MSG_ID = 999
 
 
+def _rich_html(call) -> str:
+    rich = call.kwargs.get("rich_message")
+    if rich is None:
+        return ""
+    return rich.html or ""
+
+
 def _rich_markdown(call) -> str:
     rich = call.kwargs.get("rich_message")
     if rich is None:
         return ""
     return rich.markdown or ""
+
+
+def _recap_payload(call) -> str:
+    """Recap content lives in <tg-thinking> html (#1952); fallback uses markdown."""
+    html = _rich_html(call)
+    if html:
+        return html
+    return _rich_markdown(call)
 
 
 def _make_bot_mocks() -> tuple[MagicMock, MagicMock, MagicMock]:
@@ -85,7 +102,7 @@ async def test_multi_tool_turn_renders_recap_card_via_edit_message_text() -> Non
     Asserts:
     - bot.edit_message_text was called at least once.
     - At least one call targets the trace placeholder message_id.
-    - At least one call's ``rich_message.markdown`` contains recap header '🔧 Done ✅'.
+    - At least one recap edit uses <tg-thinking> html with '🔧 Done ✅' header.
     - At least one call contains '✏️' (edit tool icon) AND '💻' (bash icon).
 
     This test FAILS on the unmodified codebase because ``edit_tool_recap`` is the
@@ -151,13 +168,16 @@ async def test_multi_tool_turn_renders_recap_card_via_edit_message_text() -> Non
     matching = [
         c
         for c in recap_calls
-        if done_header in _rich_markdown(c)
-        and edit_icon in _rich_markdown(c)
-        and bash_icon in _rich_markdown(c)
+        if done_header in _recap_payload(c)
+        and edit_icon in _recap_payload(c)
+        and bash_icon in _recap_payload(c)
     ]
     assert len(matching) >= 1, (
         f"No edit_message_text call contained recap header + icons. "
-        f"Recap calls texts: {[_rich_markdown(c) for c in recap_calls]}"
+        f"Recap calls texts: {[_recap_payload(c) for c in recap_calls]}"
+    )
+    assert any("<tg-thinking>" in _rich_html(c) for c in matching), (
+        "Recap edits must use <tg-thinking> html in rich mode"
     )
 
 
@@ -203,7 +223,10 @@ async def test_text_only_turn_does_not_send_telegram_trace_placeholder() -> None
     _TRACE_PLACEHOLDER_TEXT = "\U0001f527 …"  # "🔧 …"
     send_calls = bot.send_rich_message.call_args_list
     trace_sends = [
-        c for c in send_calls if _rich_markdown(c) == _TRACE_PLACEHOLDER_TEXT
+        c
+        for c in send_calls
+        if _TRACE_PLACEHOLDER_TEXT in _recap_payload(c)
+        or _rich_markdown(c) == _TRACE_PLACEHOLDER_TEXT
     ]
     assert len(trace_sends) == 0, (
         f"Expected no trace placeholder send, but found: {trace_sends}"
@@ -216,7 +239,7 @@ async def test_text_only_turn_does_not_send_telegram_trace_placeholder() -> None
     recap_edits = [
         c
         for c in edit_calls
-        if recap_header in _rich_markdown(c) or recap_working in _rich_markdown(c)
+        if recap_header in _recap_payload(c) or recap_working in _recap_payload(c)
     ]
     assert len(recap_edits) == 0, (
         f"Expected no recap card edit_message_text calls, found: {recap_edits}"
@@ -229,10 +252,10 @@ async def test_text_only_turn_does_not_send_telegram_trace_placeholder() -> None
 
 
 async def test_recap_text_is_markdownv2_escaped() -> None:
-    """Smoke: bash recap content is sent via rich_message.markdown (unescaped).
+    """Smoke: bash recap content is sent via <tg-thinking> html (unescaped markdown).
 
     Drive a single bash tool call with command 'echo *hi*' (contains MarkdownV2-
-    special '*'). Rich messages preserve the raw command in markdown.
+    special '*'). Thinking-block html preserves the raw command.
 
     This test FAILS on the unmodified codebase because edit_tool_recap is a no-op
     and bot.edit_message_text is never called.
@@ -284,19 +307,67 @@ async def test_recap_text_is_markdownv2_escaped() -> None:
         f"No edit_message_text call targeted trace message_id={_TRACE_MSG_ID}"
     )
 
-    # Rich path: no parse_mode; markdown carries unescaped special chars
+    # Rich path: no parse_mode; thinking html carries unescaped special chars
     for c in recap_calls:
         assert c.kwargs.get("parse_mode") is None
         assert c.kwargs.get("rich_message") is not None
+        assert "<tg-thinking>" in _rich_html(c)
 
     # The text must contain the bash icon (proof it is recap content, not some
     # other edit — e.g. the response placeholder edit)
     bash_icon = "\U0001f4bb"  # 💻
-    recap_with_bash = [c for c in recap_calls if bash_icon in _rich_markdown(c)]
-    texts = [_rich_markdown(c) for c in recap_calls]
+    recap_with_bash = [c for c in recap_calls if bash_icon in _recap_payload(c)]
+    texts = [_recap_payload(c) for c in recap_calls]
     assert len(recap_with_bash) >= 1, (
         f"No recap call contained bash icon. Texts: {texts}"
     )
     assert any("*hi*" in t for t in texts), (
-        f"Expected unescaped '*hi*' in recap markdown, got: {texts}"
+        f"Expected unescaped '*hi*' in recap payload, got: {texts}"
     )
+
+
+async def test_recap_fallback_mode_uses_markdownv2(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SC4: rich disabled → edit_tool_recap keeps MarkdownV2 fallback path."""
+    monkeypatch.setenv("FACTORY_TELEGRAM_RICH_MESSAGES", "0")
+    adapter = _make_telegram_adapter()
+
+    placeholder_msg = MagicMock()
+    placeholder_msg.message_id = 42
+    trace_msg = MagicMock()
+    trace_msg.message_id = _TRACE_MSG_ID
+
+    bot = MagicMock()
+    bot.send_message = AsyncMock(side_effect=[placeholder_msg, trace_msg])
+    bot.edit_message_text = AsyncMock(return_value=None)
+    adapter.bot = bot
+    original_msg = _make_telegram_message()
+
+    await adapter.send_streaming(
+        original_msg,
+        _gen(
+            RunStartedRenderEvent(run_id="r3"),
+            ToolCallStartRenderEvent(tool_call_id="t3", tool_name="bash"),
+            ToolCallArgsRenderEvent(
+                tool_call_id="t3",
+                delta=json.dumps({"command": "pwd"}),
+            ),
+            ToolCallEndRenderEvent(tool_call_id="t3"),
+            TextStartRenderEvent(message_id="msg-3"),
+            TextDeltaRenderEvent(message_id="msg-3", delta="ok"),
+            TextEndRenderEvent(message_id="msg-3"),
+            RunFinishedRenderEvent(run_id="r3", outcome="success"),
+        ),
+        outbound=None,
+    )
+
+    recap_calls = [
+        c
+        for c in bot.edit_message_text.call_args_list
+        if c.kwargs.get("message_id") == _TRACE_MSG_ID
+    ]
+    assert len(recap_calls) >= 1
+    for c in recap_calls:
+        assert c.kwargs.get("rich_message") is None
+        assert c.kwargs.get("parse_mode") == "MarkdownV2"

@@ -11,25 +11,19 @@ via NATS request-reply inbox.
 from __future__ import annotations
 
 import logging
-import os
-from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
 
+from factory.adapters.clipool._control_dispatch import dispatch_control
+from factory.adapters.clipool._pool_bridge import run_pool_op
+from factory.adapters.clipool._streaming_relay import relay_streaming_events
 from factory.adapters.clipool._worker_helpers import _make_ack, _make_chunk
-from factory.adapters.clipool.error_classifier import (
-    classify_exception,
-    worker_error_from_cli_result,
-)
+from factory.adapters.clipool.error_classifier import worker_error_from_cli_result
 from factory.core.agent.agent_config import ModelConfig
 from factory.core.cli.cli_pool import CliPool
-from factory.core.messaging.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 from factory.core.messaging.utils.metrics import emit_populated_total
-from roxabi_contracts.cli.models import (
-    CliCmdPayload,
-    CliControlCmd,
-)
+from roxabi_contracts.cli.models import CliCmdPayload, CliControlCmd
 from roxabi_contracts.errors import WorkerError
 from roxabi_nats.adapter_base import NatsAdapterBase
 
@@ -147,29 +141,6 @@ class CliPoolNatsWorker(NatsAdapterBase):
         else:
             await self._handle_cmd_blocking(msg, cmd, model_cfg, resumed=resumed)
 
-    async def _handle_pool_error(
-        self,
-        msg: Any,
-        pool_id: str,
-        exc: BaseException,
-        *,
-        direct_publish: bool = False,
-    ) -> None:
-        log.exception("clipool_worker: pool send failed for pool_id=%r", pool_id)
-        worker_error = classify_exception(exc)
-        emit_populated_total(domain="cli")
-        chunk = _make_chunk(
-            pool_id,
-            event_type="error",
-            is_error=True,
-            done=True,
-            worker_error=worker_error,
-        )
-        if direct_publish and msg.reply and self._nc:
-            await self._nc.publish(msg.reply, chunk)
-        else:
-            await self.reply(msg, chunk)
-
     async def _run_pool_op(
         self,
         msg: Any,
@@ -179,19 +150,15 @@ class CliPoolNatsWorker(NatsAdapterBase):
         direct_publish: bool,
         control_ack: bool = False,
     ):
-        try:
-            return await coro
-        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: adapter I/O — pool bridge; classify_exception sanitizes
-            if control_ack:
-                log.exception(
-                    "clipool_worker: control op failed for pool_id=%r",
-                    pool_id,
-                )
-                return _make_ack(pool_id, ok=False)
-            await self._handle_pool_error(
-                msg, pool_id, exc, direct_publish=direct_publish
-            )
-            return None
+        return await run_pool_op(
+            coro=coro,
+            pool_id=pool_id,
+            msg=msg,
+            reply=self.reply,
+            nc=self._nc,
+            direct_publish=direct_publish,
+            control_ack=control_ack,
+        )
 
     async def _handle_cmd_streaming(
         self,
@@ -218,57 +185,12 @@ class CliPoolNatsWorker(NatsAdapterBase):
         if iterator is None:
             return
 
-        first_chunk = True
-        async for event in iterator:
-            # Attach resume signal to the very first emitted chunk so the hub
-            # can detect "resume applied" (True) vs "cold-start" (False/None).
-            resume_extra: dict = {"resumed": resumed} if first_chunk else {}
-            first_chunk = False
-            if isinstance(event, TextLlmEvent):
-                chunk = _make_chunk(
-                    cmd.pool_id,
-                    event_type="text",
-                    text=event.text,
-                    done=False,
-                    **resume_extra,
-                )
-                await self.reply(msg, chunk)
-            elif isinstance(event, ToolUseLlmEvent):
-                # Forward tool metadata so the hub can yield ToolUseLlmEvent to
-                # StreamProcessor. Also serves as keepalive: any chunk resets the
-                # hub-side per-chunk timer, preventing false timeouts during long
-                # tool executions.
-                chunk = _make_chunk(
-                    cmd.pool_id,
-                    event_type="tool_use",
-                    tool_name=event.tool_name,
-                    tool_id=event.tool_id,
-                    tool_input=event.input,
-                    done=False,
-                    **resume_extra,
-                )
-                await self.reply(msg, chunk)
-            elif isinstance(event, ResultLlmEvent):
-                # Forward the structured envelope. CliStreamingParser populates
-                # `worker_error` on cli.auth / cli.session_lost / cli.parse;
-                # without this forward the field is None on the wire and the
-                # hub's nats_driver synthesises `worker.internal` instead of the
-                # precise CLI code, breaking the P2 instrumentation chain on the
-                # streaming path.
-                chunk = _make_chunk(
-                    cmd.pool_id,
-                    event_type="result",
-                    is_error=event.is_error,
-                    session_id=event.session_id or None,
-                    done=True,
-                    worker_error=event.worker_error,
-                )
-                await self.reply(msg, chunk)
-                return
-        # Iterator exhausted without a ResultLlmEvent — send synthetic terminal chunk.
-        await self.reply(
-            msg,
-            _make_chunk(cmd.pool_id, event_type="result", done=True),
+        await relay_streaming_events(
+            iterator=iterator,
+            pool_id=cmd.pool_id,
+            resumed=resumed,
+            msg=msg,
+            reply=self.reply,
         )
 
     async def _handle_cmd_blocking(
@@ -328,61 +250,12 @@ class CliPoolNatsWorker(NatsAdapterBase):
         ack_bytes = await self._run_pool_op(
             msg,
             cmd.pool_id,
-            self._dispatch_control(cmd),
+            dispatch_control(self._pool, cmd),
             direct_publish=False,
             control_ack=True,
         )
         await self.reply(msg, ack_bytes or _make_ack(cmd.pool_id, ok=False))
 
     async def _dispatch_control(self, cmd: CliControlCmd) -> bytes:
-        if cmd.op == "reset":
-            await self._pool.reset(cmd.pool_id)
-            return _make_ack(cmd.pool_id, ok=True)
-
-        if cmd.op == "resume_and_reset":
-            if not cmd.cli_session_id:
-                log.warning(
-                    "clipool_worker: resume_and_reset missing cli_session_id"
-                    " for pool_id=%r",
-                    cmd.pool_id,
-                )
-                return _make_ack(cmd.pool_id, ok=False)
-            # cmd.cli_session_id is the cli_session_id resolved by the hub driver.
-            resumed = await self._pool.resume_direct(cmd.pool_id, cmd.cli_session_id)
-            log.info(
-                "clipool: resume %s pool=%s",
-                "ok" if resumed else "cold-start",
-                cmd.pool_id,
-            )
-            return _make_ack(cmd.pool_id, ok=True, resumed=resumed)
-
-        if cmd.op == "switch_cwd":
-            if not cmd.cwd:
-                log.warning(
-                    "clipool_worker: switch_cwd missing cwd for pool_id=%r",
-                    cmd.pool_id,
-                )
-                return _make_ack(cmd.pool_id, ok=False)
-            base_dir = Path(
-                os.environ.get("FACTORY_CLAUDE_CWD", str(Path.home() / "projects"))
-            ).resolve()
-            try:
-                resolved = Path(cmd.cwd).resolve()
-                resolved.relative_to(base_dir)  # raises ValueError if outside
-            except ValueError:
-                log.warning(
-                    "clipool_worker: switch_cwd path %r escapes base %r for pool_id=%r",
-                    cmd.cwd,
-                    str(base_dir),
-                    cmd.pool_id,
-                )
-                return _make_ack(cmd.pool_id, ok=False)
-            await self._pool.switch_cwd(cmd.pool_id, resolved)
-            return _make_ack(cmd.pool_id, ok=True)
-
-        log.warning(
-            "clipool_worker: unknown control op %r for pool_id=%r",
-            cmd.op,
-            cmd.pool_id,
-        )
-        return _make_ack(cmd.pool_id, ok=False)
+        """Delegate to :func:`dispatch_control` (kept for direct unit tests)."""
+        return await dispatch_control(self._pool, cmd)

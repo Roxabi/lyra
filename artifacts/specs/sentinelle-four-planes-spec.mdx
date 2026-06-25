@@ -1,0 +1,217 @@
+---
+title: "Lyra Sentinelle — four observability planes (spec)"
+description: "Taxonomy, boundary rules, health probe catalog, v1 triggers, and Sentinelle consumer design"
+---
+
+## Context
+
+**ADR:** [`docs/architecture/adr/091-sentinelle-four-observability-planes.mdx`](../../docs/architecture/adr/091-sentinelle-four-observability-planes.mdx)
+**Forge diagram:** `~/.roxabi/forge/roxabi-factory/visuals/sentinelle-architecture.html`
+**Related factory docs:** `job-model.md`, ADR-038, ADR-088, #1035 (Monitoring v2)
+
+Lyra Sentinelle = operational brain (Discord alerts, backlog alignment, optional steer). This spec is the implementation-facing detail for the four-plane model ratified in ADR-091.
+
+## Goal
+
+Give Sentinelle implementers a single checklist:
+
+1. What publishes on which plane.
+2. What Sentinelle subscribes vs polls vs reads once.
+3. How existing factory health code maps in without duplication.
+
+## Users
+
+- **Sentinelle implementer** — collector, consumer, cron job, Discord publisher.
+- **Monitoring v2 (#1035)** — metric publishers; must not collapse plane ③ into plane ①.
+- **roxabi-live operator** — webhook republish decision.
+
+---
+
+## Plane ① — External events (`factory.event.*`)
+
+**Stream:** JetStream `factory-events` — `factory.event.>`, MaxAge 24 h, 512 MiB (`deploy/nats/bootstrap_streams.py`).
+
+**Envelope:** `LyraEvent` (`roxabi_contracts.event.models`).
+
+**Subject helper:** `per_service_event(service, kind)` → `factory.event.{service}.{kind}`.
+
+### Producers (target)
+
+| Producer | Service token | Kind examples | Notes |
+|---|---|---|---|
+| GitHub org webhook | `github` | `check_run.completed`, `pull_request.opened`, `workflow_run.completed` | Ingress TBD: republish from roxabi-live vs dedicated factory ingress |
+| Cloudflare | `cloudflare` | `pages.deployment.success`, `pages.deployment.failure` | Webhook → normalize → publish |
+| Host collector M₂ | `host` | `roxabitower.activity`, `roxabitower.stale` | Timer/systemd on host; NATS publish (not Syncthing) |
+| Host collector Laptop | `host` | `laptop.activity`, `laptop.stale` | Same pattern |
+| Host collector M₁ | `host` | `roxabituwer.services` | Quadlet/systemd snapshot |
+| Postiz ritual guard | `postiz` | `schedule.missed` | Detector job compares expected vs actual; **emits event**, not job failure |
+| Monitoring transition (#1035) | `monitoring` | `anomaly` | Optional: only on state **change**, not every failed poll |
+
+### Non-examples (must NOT be `factory.event.*`)
+
+| Signal | Correct plane |
+|---|---|
+| `clipool` run finished | `factory.job.<id>.closed` |
+| Hub queue depth = 42 | Plane ③ — `/health/detail` or `factory.metric.hub.queue_depth` |
+| turns.db row inserted | Off-bus persistence (`factory.turns.write`); read via plane ④ |
+
+---
+
+## Plane ② — Internal jobs (`factory.job.*`)
+
+**SSoT:** `docs/architecture/job-model.md`, ADR-084, ADR-088.
+
+**Sentinelle job types (v1 names — provisional):**
+
+| Queue / job | Purpose |
+|---|---|
+| `factory.jobs.sentinelle.scan` | Cold pass: health pull + event window + backlog read → Discord summary |
+| `factory.jobs.sentinelle.alert` | Hot path: format + publish alert from trigger context |
+| `factory.jobs.sentinelle.steer` | Optional HITL-gated steer to clipool |
+
+**Registry:** `factory-active-jobs` KV — live runs only. Sentinelle may `kv.watch` for « what is running » but must not treat registry entries as infra health.
+
+**Invariant:** When a Sentinelle scan runs, its lifecycle is entirely on plane ②. Downstream Discord publish uses existing `factory.outbound.discord.*` — not a new event type.
+
+---
+
+## Plane ③ — Internal infra state
+
+Two phases:
+
+| Phase | Mechanism | Status |
+|---|---|---|
+| **V1 (now)** | HTTP pull + batch monitor | Implemented |
+| **V2 (#1035)** | `factory.metric.*` on JetStream `factory-metrics` | Bus ready; no publishers |
+
+### V1 pull surfaces
+
+| Surface | Path / entry | Auth | Fields used by Sentinelle |
+|---|---|---|---|
+| Hub liveness | `GET /health` | None | `ok` |
+| Hub detail | `GET /health/detail` | Bearer `health_secret` | `queue_size`, `queues`, `circuits`, `reaper_*`, `nats`, `last_message_age_s`, `uptime_s` |
+| Turn-writer | `GET /health` @ `:8083` | None | `ok`, `reasons` |
+| Turn-writer metrics | `GET /metrics` @ `:8083` | None | `turn_writer_lag_seconds` |
+| Blobstore | `GET /healthz` | Bearer (when configured) | `status`, disk |
+| NATS monitor | `GET /varz` @ `:8222` | None | `auth_errors`, `slow_consumers` |
+| Batch monitor | `python -m factory.monitoring` | Env secrets | Aggregated `HealthReport` — exit 0/1 |
+
+### Layer 1 checks (`factory.monitoring.checks.run_checks`)
+
+| Check name | Source | Sentinelle V1 reuse |
+|---|---|---|
+| `process:{unit}` | `systemctl --user is-active` | Optional per-service gate |
+| `http_health` | `/health/detail` | **Primary** factory-up probe |
+| `queue_depth` | health JSON | Backpressure signal |
+| `idle` | health JSON | Stale hub (opt-in) |
+| `circuits` | health JSON | Dependency health |
+| `reaper` | health JSON | CLI pool maintenance |
+| `nats_log_errors` | podman logs | ACL / permission drift |
+| `hub_dict_stream_gen_timeout` | podman logs | Streaming pathology |
+| `disk` | host | M₁ disk |
+| `nats_varz` | HTTP monitor | Broker errors |
+| `disk_pct` / `inode_pct` | blobstore path | Storage pressure |
+| `audio_consumer_lag` | JetStream API | Voice pipeline |
+
+**Rule:** Sentinelle imports probe **functions**, not the Telegram escalation path (`escalation.py`).
+
+### ADR-038 mapping
+
+| Concept | Plane ③ check |
+|---|---|
+| Liveness | `http_health`, `process:*`, Quadlet `HealthCmd` |
+| Readiness | `queue_depth`, `reaper` |
+| Dependency health | `circuits`, NATS status in `/health/detail` |
+
+**Gap (tracked):** `/health/ready` with NATS round-trip — post-mortem P1; Sentinelle should adopt when landed.
+
+### V2 metric subjects (reserved, #1035)
+
+Examples only — not implemented:
+
+```
+factory.metric.hub.queue_depth
+factory.metric.hub.circuit_open_count
+factory.metric.turn_writer.lag_seconds
+factory.metric.monitoring.check_failed  # labels: name=disk
+```
+
+Envelope: `LyraMetric` (`metric_type`: gauge | counter | histogram).
+
+---
+
+## Plane ④ — Read models (off-bus)
+
+| Store | Location | Sentinelle use |
+|---|---|---|
+| `turns.db` | M₁ via turn-writer | PR/CI event → conversation source for steer |
+| roxabi-live D1 | `live.roxabi.dev` API | Backlog P0/P1 pivot |
+| `~/.grok/active_sessions.json` | M₂ / Laptop | Host collector input (plane ① producer reads this) |
+| `~/.claude/sessions/` | M₂ / Laptop | Same |
+| Gmail / GCal | External APIs | Personal obligations (may stay off-bus v1) |
+
+**Rule:** Read models are queried **after** a plane ① trigger or during a plane ② scan — never published as `factory.event.*`.
+
+---
+
+## Sentinelle runtime shape
+
+```
+                    ┌─────────────────────────────────────┐
+  factory.event.>   │         factory-sentinel            │
+ ──────────────────►│  hot: trigger handlers              │
+                    │  cold: job sentinelle.scan         │
+                    │                                     │
+  /health/detail    │  plane ③ pull (V1)                │
+ ──────────────────►│                                     │
+                    │  plane ④ enrich (turns, live)     │
+                    │                                     │
+                    │  act: factory.jobs.sentinelle.*   │
+                    └──────────┬──────────────────────────┘
+                               │
+              factory.outbound.discord.* / factory.job.*.steer
+```
+
+### V1 triggers (hot)
+
+| Trigger ID | Event pattern | Enrichment | Action |
+|---|---|---|---|
+| `pr_ci_red` | `factory.event.github.check_run.completed` (conclusion=failure) | `turns.db` lookup | Discord alert; optional `sentinelle.steer` job |
+| `host_stale` | `factory.event.host.*.stale` | live backlog | Discord coaching |
+| `factory_degraded` | (cold) health pull `circuits` open or `http_health` fail | `/health/detail` full | Discord alert |
+| `postiz_missed` | `factory.event.postiz.schedule.missed` | — | Discord alert |
+
+### Cold scan (`factory.jobs.sentinelle.scan`)
+
+1. Pull plane ③ (`/health/detail` + optional `run_checks` subset).
+2. Read plane ④ (live API backlog).
+3. Review plane ① window (last 15 min / 24 h JetStream replay).
+4. Publish Discord summary if delta vs last verdict.
+
+---
+
+## Open questions
+
+| # | Question | Default bias |
+|---|---|---|
+| Q1 | roxabi-live GH webhook → republish to M₁ NATS vs second ingress | Republish (single org webhook URL) |
+| Q2 | Postiz « missed schedule » — event detector vs scan-only | Event for hot alert |
+| Q3 | JetStream events 24 h retention — extend for Sentinelle cold window? | Keep 24 h; cold scan uses live API + local cursor |
+| Q4 | Personal Gmail/GCal on bus? | Off-bus v1 |
+| Q5 | Autonomy: auto-steer vs Discord-first | Discord-first v1 |
+
+---
+
+## Success criteria (design phase)
+
+- [ ] SC1: ADR-091 merged with status `accepted`.
+- [ ] SC2: Forge diagram shows four plane legend + NATS event flow (no Syncthing path).
+- [ ] SC3: Implementer can classify any listed signal into exactly one plane using boundary rules §ADR-091.
+- [ ] SC4: V1 trigger table maps to at least one existing code path (health checks, event subjects, job queues).
+
+## Out of scope
+
+- Sentinelle container/unit implementation.
+- New JetStream streams beyond existing `factory-events` / `factory-metrics`.
+- Job Watcher CM / code anti-drift sentinel.
+- Monitoring v2 dashboard UI.

@@ -110,6 +110,7 @@ def wire_nats_proxies(
             "*",
             resolved_agent,
             key.to_pool_id(),
+            public_bot=getattr(bot_cfg, "public_bot", None),
         )
 
         dispatcher = OutboundDispatcher(

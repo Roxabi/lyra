@@ -12,7 +12,10 @@ from typing import Any
 from factory.bootstrap import credentials
 from factory.bootstrap.factory.config import AdapterConfigBundle
 from factory.bootstrap.factory.voice_overlay import init_blobstore
-from factory.bootstrap.lifecycle.lifecycle_helpers import close_safely, run_with_teardown
+from factory.bootstrap.lifecycle.lifecycle_helpers import (
+    close_safely,
+    run_with_teardown,
+)
 from factory.bootstrap.lifecycle.signal_handlers import setup_shutdown_event
 from factory.bootstrap.wiring._standalone_wiring_common import (
     TypingDeps,

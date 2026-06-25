@@ -124,7 +124,7 @@ class TurnWriter:
         """Oldest in-flight message receipt time for lag gauge (S9)."""
         return self._oldest_pending
 
-    async def _consume_loop(self) -> None:
+    async def _consume_loop(self) -> None:  # noqa: C901 — multi-path nak/term dispatch
         """Pull batches, dispatch per message, ack on success / nak on error."""
         while True:
             try:

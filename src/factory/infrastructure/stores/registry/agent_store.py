@@ -21,8 +21,8 @@ from factory.core.agent.schema.agent_schema import (
 )
 from factory.infrastructure.stores.base.bot_agent_map import BotAgentMapStore
 from factory.infrastructure.stores.base.sqlite_base import (
-    SqliteStore,
     _SQLITE_STORE_ERRORS,
+    SqliteStore,
 )
 from factory.infrastructure.stores.migrations.agent_store_migrations import (
     run_agent_migrations,

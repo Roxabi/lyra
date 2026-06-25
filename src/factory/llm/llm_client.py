@@ -10,11 +10,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-
-import nats.errors
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, AsyncIterator, Protocol
 from uuid import uuid4
+
+import nats.errors
 
 from factory.core.messaging.events import LlmEvent, ResultLlmEvent
 from factory.core.ports.llm import LlmResult

@@ -290,7 +290,13 @@ class AudioPipeline:
                 _tts_exc.detail,
             )
             _notif_text = f"⚠️ Voice synthesis failed: {_tts_exc.message}"
-        except (OSError, ConnectionError, KeyError, RuntimeError, ValueError) as _tts_exc:
+        except (
+            OSError,
+            ConnectionError,
+            KeyError,
+            RuntimeError,
+            ValueError,
+        ) as _tts_exc:
             log.exception(
                 "TTS synthesis failed (msg id=%s) — notifying user",
                 msg.id,

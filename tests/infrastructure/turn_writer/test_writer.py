@@ -646,7 +646,7 @@ async def test_consume_loop_nacks_on_session_mutator_db_failure(
     payload: EndSessionPayload | SetCliSessionPayload,
     session_id: str,
 ) -> None:
-    """Session mutator store failures must NAK — never ack after failed write (#1637)."""
+    """Session mutator store failures NAK — never ack after failed write (#1637)."""
     await store._start_session(session_id, "pool:session-nack")
 
     done_event = asyncio.Event()

@@ -63,7 +63,7 @@ _DISPATCH_ERRORS: tuple[type[BaseException], ...] = (
 )
 
 
-async def guarded_process_one(  # noqa: PLR0915 — DEBT:complexity-residual
+async def guarded_process_one(  # noqa: PLR0915, C901 — DEBT:complexity-residual
     msg: InboundMessage, agent: AgentBase, pool: Pool
 ) -> None:
     """Wrap process_one with timeout and error handling."""

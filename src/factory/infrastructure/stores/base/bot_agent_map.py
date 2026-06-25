@@ -9,7 +9,7 @@ from pathlib import Path
 from factory.core.agent.agent_models import _utc_now_iso
 from factory.core.agent.schema.agent_schema import _CREATE_BOT_AGENT_MAP
 
-from .sqlite_base import SqliteStore, _SQLITE_STORE_ERRORS
+from .sqlite_base import _SQLITE_STORE_ERRORS, SqliteStore
 
 log = logging.getLogger(__name__)
 

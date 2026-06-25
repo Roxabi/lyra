@@ -6,7 +6,7 @@ import asyncio
 import logging
 import signal
 from collections.abc import Awaitable, Callable, Sequence
-from typing import TYPE_CHECKING, Any, TypeVar, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 _T = TypeVar("_T")
 

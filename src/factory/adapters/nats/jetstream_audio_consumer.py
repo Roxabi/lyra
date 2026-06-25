@@ -234,7 +234,8 @@ class JetStreamAudioConsumer:
             self._send_audio(audio, inbound),
             log_msg=(
                 "JetStreamAudioConsumer: send_audio failed for"
-                f" stream_id={stream_id!r} (delivered={n_delivered}/{self._max_deliver})"
+                f" stream_id={stream_id!r}"
+                f" (delivered={n_delivered}/{self._max_deliver})"
             ),
         ):
             if n_delivered >= self._max_deliver:

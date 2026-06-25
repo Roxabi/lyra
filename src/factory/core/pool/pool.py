@@ -21,7 +21,7 @@ from ..messaging.message import InboundMessage, OutboundMessage
 from ..stores.pairing_protocol import PairingManagerProtocol
 from ..stores.turn_store_protocol import TurnStoreProtocol
 from .pool_context import PoolContext as PoolContext
-from .pool_observer import PoolObserver, _TURN_PERSIST_ERRORS
+from .pool_observer import _TURN_PERSIST_ERRORS, PoolObserver
 from .pool_processor import PoolProcessor
 
 log = logging.getLogger(__name__)

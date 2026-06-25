@@ -6,4 +6,7 @@ Keeps agent_cmd → core → … paths free of the factory.errors floating modul
 
 
 def is_provider_error(exc: BaseException) -> bool:
-    return type(exc).__name__ == "ProviderError" and type(exc).__module__ == "factory.errors"
+    return (
+        type(exc).__name__ == "ProviderError"
+        and type(exc).__module__ == "factory.errors"
+    )

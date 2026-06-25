@@ -505,8 +505,10 @@ class TestPoolSessions:
 
         assert result == "sess-old"
 
-    async def test_end_session_propagates_store_io_error(self, store: TurnStore) -> None:
-        """_end_session must re-raise store I/O errors (#1637 — no silent swallow)."""
+    async def test_end_session_propagates_store_io_error(
+        self, store: TurnStore
+    ) -> None:
+        """_end_session re-raises store I/O errors (#1637 — no silent swallow)."""
         await store._start_session("sess-io", "pool:io")
         db = store._db_or_raise()
         with pytest.raises(sqlite3.OperationalError, match="disk I/O error"):

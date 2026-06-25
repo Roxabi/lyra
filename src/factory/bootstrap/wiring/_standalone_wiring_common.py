@@ -14,7 +14,6 @@ Correction class: Archi (structural — new shared module, not a local patch).
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -22,7 +21,10 @@ from factory.adapters.nats.nats_outbound_listener import (
     ListenerDeps,
     NatsOutboundListener,
 )
-from factory.bootstrap.lifecycle.lifecycle_helpers import close_safely, run_with_teardown
+from factory.bootstrap.lifecycle.lifecycle_helpers import (
+    close_safely,
+    run_with_teardown,
+)
 from factory.bootstrap.standalone.audio_consumer_bootstrap import start_audio_consumer
 from factory.bootstrap.wiring.bootstrap_wiring import wire_ingest
 from factory.core.messaging.bus import Bus

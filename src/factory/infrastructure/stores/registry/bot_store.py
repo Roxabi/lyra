@@ -15,8 +15,8 @@ from factory.core.agent.schema.bot_schema import (
 )
 from factory.core.stores.bot_store_protocol import BotStoreProtocol
 from factory.infrastructure.stores.base.sqlite_base import (
-    SqliteStore,
     _SQLITE_STORE_ERRORS,
+    SqliteStore,
 )
 from factory.infrastructure.stores.migrations.bot_store_migrations import (
     run_bot_migrations,

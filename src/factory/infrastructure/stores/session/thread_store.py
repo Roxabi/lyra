@@ -21,8 +21,8 @@ import logging
 from datetime import UTC, datetime
 
 from factory.infrastructure.stores.base.sqlite_base import (
-    SqliteStore,
     _SQLITE_STORE_ERRORS,
+    SqliteStore,
 )
 
 log = logging.getLogger(__name__)
@@ -117,7 +117,8 @@ class ThreadStore(SqliteStore):
         try:
             db = self._require_db()
             async with db.execute(
-                "SELECT 1 FROM discord_threads WHERE thread_id = ? AND bot_id = ? LIMIT 1",
+                "SELECT 1 FROM discord_threads"
+                " WHERE thread_id = ? AND bot_id = ? LIMIT 1",
                 (thread_id, bot_id),
             ) as cur:
                 return await cur.fetchone() is not None

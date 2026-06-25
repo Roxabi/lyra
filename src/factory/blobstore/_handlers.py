@@ -17,13 +17,13 @@ import aiosqlite
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
-_R = TypeVar("_R", bound=Response)
-
 from factory.blobstore._keys import resolve_delete_key, resolve_wire_key
 from roxabi_blobs import FsBlobStore
 from roxabi_blobs.errors import BlobNotFoundError, BlobWriteError
 from roxabi_contracts.audit.blobs import BlobAuditEvent
 from roxabi_contracts.envelope import CONTRACT_VERSION
+
+_R = TypeVar("_R", bound=Response)
 
 _log = logging.getLogger(__name__)
 

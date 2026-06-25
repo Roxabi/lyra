@@ -57,9 +57,9 @@ from factory.core.processors.stream_close import StreamCloseHandler
 from factory.core.processors.stream_text import StreamTextHandler
 from factory.core.processors.stream_tool import StreamToolHandler
 from factory.core.trace import TraceContext
+from factory.errors import ProviderError
 from factory.streaming.event_emitter import EventEmitter
 from factory.streaming.state_machine import StateMachine
-from factory.errors import ProviderError
 from factory.transport import SanitizedError
 
 log = logging.getLogger(__name__)

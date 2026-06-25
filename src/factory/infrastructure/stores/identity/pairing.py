@@ -27,8 +27,8 @@ from factory.core.stores.pairing_config import (
     _utc_now,
 )
 from factory.infrastructure.stores.base.sqlite_base import (
-    SqliteStore,
     _SQLITE_STORE_ERRORS,
+    SqliteStore,
 )
 
 # Re-export so existing `from factory.core.pairing import PairingConfig/PairingError`

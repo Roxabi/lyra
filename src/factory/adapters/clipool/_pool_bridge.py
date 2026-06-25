@@ -15,7 +15,7 @@ log = logging.getLogger(__name__)
 ReplyFn = Callable[[Any, bytes], Awaitable[None]]
 
 
-async def publish_pool_error(
+async def publish_pool_error(  # noqa: PLR0913 — pool bridge reply surface
     *,
     msg: Any,
     pool_id: str,
@@ -41,7 +41,7 @@ async def publish_pool_error(
         await reply(msg, chunk)
 
 
-async def run_pool_op(
+async def run_pool_op(  # noqa: PLR0913 — pool bridge reply surface
     *,
     coro: Awaitable[Any],
     pool_id: str,

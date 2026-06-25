@@ -78,7 +78,8 @@ class DlqRouter:
 
             deliveries = advisory.get("deliveries", 0)
 
-            jsm = self._nc.jsm()  # synchronous — no await (nats-py nc.jsm() is a plain def)
+            # nc.jsm() is synchronous in nats-py — no await.
+            jsm = self._nc.jsm()
 
             try:
                 raw = await jsm.get_msg(_STREAM_NAME, seq=stream_seq)
@@ -108,10 +109,11 @@ class DlqRouter:
             domain = _extract_domain(orig_subject)
             dlq_subject = f"{_DLQ_PREFIX}.{domain}"
 
+            # int→str header values — safe per str_exc_bus_bound.
             headers = {
                 _HDR_ORIG_SUBJECT: orig_subject,
-                _HDR_DELIVERIES: str(deliveries),  # int→str — safe per str_exc_bus_bound
-                _HDR_STREAM_SEQ: str(stream_seq),  # int→str — safe per str_exc_bus_bound
+                _HDR_DELIVERIES: str(deliveries),
+                _HDR_STREAM_SEQ: str(stream_seq),
             }
 
             try:

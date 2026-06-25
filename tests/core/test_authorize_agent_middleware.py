@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 from factory.core.auth.agent_grants import AgentAuthorizer, AuthDecision
 from factory.core.hub.middleware.middleware import PipelineContext
 from factory.core.hub.middleware.middleware_authz import (
+    _DEFAULT_PUBLIC_SURFACE,
     _FALLBACK_REFUSAL,
     AuthorizeAgentMiddleware,
 )
@@ -447,3 +448,88 @@ class TestPipelineComposition:
         )
 
         assert stage._authorizer is sentinel
+
+
+# ---------------------------------------------------------------------------
+# TestPublicBotRefusal — ADR-090 §5 pointer interpolation (#1984)
+# ---------------------------------------------------------------------------
+
+
+def _formatting_hub() -> MagicMock:
+    """A hub whose get_message interpolates the refusal template like the real one."""
+    hub = MagicMock(wraps=_make_hub())
+    hub.get_message.side_effect = lambda key, **kw: (
+        f"visit {kw['public_bot']}" if key == "agent_unauthorized" else None
+    )
+    return hub
+
+
+class TestPublicBotRefusal:
+    async def test_refusal_points_to_bound_public_bot(self) -> None:
+        """A bound public_bot handle is interpolated into the deny refusal."""
+        from factory.core.hub.hub_protocol import Binding
+
+        msg = make_inbound_message(user_id="alice")
+        binding = Binding(
+            agent_name="lyra",
+            pool_id="telegram:main:chat:42",
+            public_bot="@bot_public",
+        )
+        ctx = _make_ctx(binding=binding, agent=MagicMock())
+        ctx.hub = _formatting_hub()
+        mw = AuthorizeAgentMiddleware(authorizer=_make_authorizer(allowed=False))
+        next_fn = _make_next()
+
+        result = await mw(msg, ctx, next_fn)
+
+        next_fn.assert_not_awaited()
+        assert result.response is not None
+        assert result.response.content == "visit @bot_public"
+        ctx.hub.get_message.assert_called_once_with(
+            "agent_unauthorized", public_bot="@bot_public"
+        )
+
+    async def test_refusal_degrades_to_default_surface(self) -> None:
+        """No public_bot on the binding → refusal degrades to the generic surface."""
+        from factory.core.hub.hub_protocol import Binding
+
+        msg = make_inbound_message(user_id="alice")
+        binding = Binding(agent_name="lyra", pool_id="telegram:main:chat:42")
+        ctx = _make_ctx(binding=binding, agent=MagicMock())
+        ctx.hub = _formatting_hub()
+        mw = AuthorizeAgentMiddleware(authorizer=_make_authorizer(allowed=False))
+        next_fn = _make_next()
+
+        result = await mw(msg, ctx, next_fn)
+
+        assert result.response is not None
+        assert result.response.content == f"visit {_DEFAULT_PUBLIC_SURFACE}"
+        ctx.hub.get_message.assert_called_once_with(
+            "agent_unauthorized", public_bot=_DEFAULT_PUBLIC_SURFACE
+        )
+
+    async def test_public_bot_does_not_bypass_deny(
+        self, agent_grant_store: AgentGrantStore
+    ) -> None:
+        """Security invariant: a public_bot handle is a pointer, not a grant.
+
+        A sender with no grant is still refused even when the bound route
+        declares a public_bot — deny-by-default (ADR-090 §1) is preserved.
+        """
+        from factory.core.hub.hub_protocol import Binding
+
+        msg = make_inbound_message(user_id="tg:user:nobody")
+        binding = Binding(
+            agent_name="lyra",
+            pool_id="telegram:main:chat:42",
+            public_bot="@bot_public",
+        )
+        ctx = _make_ctx(binding=binding, agent=MagicMock())
+        mw = AuthorizeAgentMiddleware(authorizer=agent_grant_store)
+        next_fn = _make_next()
+
+        result = await mw(msg, ctx, next_fn)
+
+        next_fn.assert_not_awaited()
+        assert result.action == Action.COMMAND_HANDLED
+        assert result.response is not None

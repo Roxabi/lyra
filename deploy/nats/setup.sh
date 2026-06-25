@@ -18,6 +18,17 @@
 # Safe to re-run after upgrades, re-provisioning, or permission drift.
 # To rotate keys: sudo rm -f /etc/nats/nkeys/auth.conf && rm -rf ~/.roxabi/factory/nkeys && make nats-setup
 
+# ── RETIRED (#1930) ──────────────────────────────────────────────────────────
+# The host nats.service is gone — production NATS is the rootless factory-nats
+# container. This script (server binary, system user, TLS, UFW) no longer maps
+# to the deployed topology and must NOT run on a post-cutover host. It is kept
+# below for rollback-reference only. Fail fast and point at the live paths.
+echo "ERROR: deploy/nats/setup.sh is retired — host NATS was replaced by the" >&2
+echo "       containerised factory-nats unit (big-bang consolidation)." >&2
+echo "       Cold-path key bootstrap:  make nats-setup   (factory-acl genkeys --ack-external-distribution)" >&2
+echo "       Production deploy:         make converge" >&2
+exit 1
+
 set -euo pipefail
 # shellcheck source=../lib/env.sh
 source "$(dirname "$0")/../lib/env.sh"

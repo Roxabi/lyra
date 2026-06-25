@@ -1,0 +1,100 @@
+---
+title: "ADR-092: Observability Architecture — Control-Plane + Headless Engines"
+description: "The control-plane dashboard is the sole human surface; metrics/logs/traces/alerting engines run headless behind it. Split transport (NATS push + Prometheus pull), Grafana dropped, Alertmanager owns alerting, OTel sources ranked Claude Code > LiteLLM."
+status: accepted
+date: 2026-06-25
+deciders: [Mickael]
+related: [038, 076, 084, 088, 091]
+---
+
+> **Current truth** → [`docs/OBSERVABILITY.md`](../../OBSERVABILITY.md){#current-truth}
+> This ADR records the *target* observability/control-plane arbitration. The domain page describes the current (pre-engine) state; this ADR is the decision record for what the engines layer becomes.
+
+## Status
+
+Accepted — 2026-06-25.
+
+Design-only ratification. No engine ships in this ADR — it fixes the arbitration so it isn't re-litigated by every child of #1759 (engines) and #1760 (control-plane dashboard).
+
+## Context
+
+Two closed epics left a split-brain on "how do we see the factory":
+
+- **#1035 (Tauri desktop monitor)** — assumed a thick local GUI owning its own polling and rendering.
+- **#1622 (harness-coupled traces)** — assumed the trace plane could not exist without the distributed harness (#1490).
+
+Neither is the direction. The factory needs an observability layer that (a) presents **one** human surface, (b) keeps engines swappable behind it, (c) does not couple the trace plane to an unbuilt harness, and (d) does not duplicate the plane taxonomy already ratified in **ADR-091** (four observability planes — events / jobs / infra-state / read-models).
+
+ADR-091 answers *what kinds of signal exist*. This ADR answers *which engines hold them, how they are transported, and who the human talks to*.
+
+## Decision
+
+### 1. Control-plane dashboard is the sole human surface
+
+The control-plane dashboard (**#1760**) is the **only** operator-facing surface. Every engine — Prometheus, Loki, Langfuse, OTel-Collector, Alertmanager — runs **headless** behind it. Operators do not open per-engine UIs; the dashboard composes them.
+
+### 2. Split transport — NATS push + Prometheus pull
+
+| Transport | Carries | Why |
+|---|---|---|
+| **NATS push** | live + control plane (`factory.event.*`, `factory.metric.*`, job lifecycle) | low-latency, already the factory's spine (ADR-076) |
+| **Prometheus pull** | history + alerting (scrape `/metrics`) | retention, rate/range queries, Alertmanager rules |
+
+Live state pushes; durable history is pulled. Plane ③ (infra-state, ADR-091) starts pull-only and gains `factory.metric.*` push under #1035 without changing the other planes.
+
+### 3. Grafana dropped — Alertmanager owns alerting
+
+Grafana is **not** a surface (the control-plane dashboard replaces it). **Alertmanager** owns alert routing → Telegram / ntfy / email. No second dashboard, no Grafana-managed alerts.
+
+### 4. OTel source hierarchy — Claude Code OTel > LiteLLM
+
+| Rank | Source | Scope |
+|---|---|---|
+| **Primary** | Claude Code OTel (**#1764**) | agent turns — agents bypass LiteLLM → direct Anthropic OAuth (`src/factory/core/cli/cli_pool_spawn.py:34-44`) |
+| **Secondary** | LiteLLM (**#671**) | nats / image / voice workers only (the paths that *do* traverse the proxy) |
+
+Because agents bypass the LiteLLM proxy, LiteLLM telemetry alone is blind to agent turns; Claude Code OTel is the authoritative agent trace source.
+
+### 5. Trace plane decoupled from the distributed harness
+
+The trace plane (OTel / Langfuse) is **not** gated on the distributed harness (**#1490**). Only **cross-NATS span nesting** (#1623) stays harness-gated; single-process traces ship independently.
+
+### Engine topology (push vs pull)
+
+```
+                            ┌─────────────────────────────┐
+        operator  ─────────▶│  control-plane dashboard     │  ← SOLE human surface (#1760)
+                            │      (composes engines)      │
+                            └──────────────┬──────────────┘
+                  headless engines (no direct human UI)
+       ┌───────────────┬──────────────┬───────┴────────┬──────────────────┐
+       ▼               ▼              ▼                 ▼                  ▼
+  Prometheus        Loki          Langfuse        OTel-Collector     Alertmanager
+  (metrics)        (logs)         (traces)         (trace ingest)   (routing→TG/ntfy/email)
+       ▲                                                ▲
+   PULL │ scrape /metrics                          PUSH │ OTLP
+       │                            ┌───────────────────┴───────────────────┐
+       │                            │  Claude Code OTel (agents, PRIMARY)    │  #1764
+       │                            │  LiteLLM (nats/image/voice, secondary) │  #671
+       │                            └────────────────────────────────────────┘
+  ═══════ NATS push (live/control: factory.event.*, factory.metric.*, job lifecycle) ═══════
+  ─ ─ ─ ─ Prometheus pull (history/alerting) ─ ─ ─ ─
+```
+
+## Consequences
+
+- The dashboard (#1760) is a composition layer, not a data owner — engines remain independently swappable.
+- Adding an engine = wire it behind the dashboard + (if historical) expose a scrape target; no new human surface.
+- Agent observability depends on Claude Code OTel (#1764) being wired; LiteLLM telemetry never covers agent turns.
+- The trace plane (#1623 single-process portion) can proceed before the harness (#1490) lands.
+- #1035 (Monitoring v2) later promotes plane ③ from pull to `factory.metric.*` push — additive, no re-architecture.
+- Supersedes the #1035-Tauri thick-client and #1622 harness-coupled-trace assumptions; future children of #1759/#1760 cite this ADR rather than re-deciding.
+
+## See also
+
+- [`docs/architecture/adr/091-sentinelle-four-observability-planes.mdx`](091-sentinelle-four-observability-planes.mdx) — plane taxonomy (what kinds of signal exist)
+- [`artifacts/specs/sentinelle-four-planes-spec.mdx`](../../../artifacts/specs/sentinelle-four-planes-spec.mdx) — Sentinelle consumer spec, probes, v1 triggers
+- [`docs/OBSERVABILITY.md`](../../OBSERVABILITY.md) — current observability state (logs, trace IDs, turn store)
+- [`docs/architecture/adr/038-health-monitoring-layer-boundaries.mdx`](038-health-monitoring-layer-boundaries.mdx) — plane ③ health-observation layers
+- [`docs/architecture/job-model.md`](../job-model.md) — job plane SSoT
+- Epics: #1759 (engines), #1760 (control-plane dashboard); inputs #1764 (Claude Code OTel), #671 (LiteLLM), #1490 (harness), #1623 (cross-NATS spans)

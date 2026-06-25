@@ -44,6 +44,11 @@ class BotRow:
     auto_thread: bool = DEFAULT_AUTO_THREAD
     thread_hot_hours: int = DEFAULT_THREAD_HOT_HOURS
     updated_at: str = field(default_factory=_utc_now_iso)
+    # Handle of the dedicated public bot a denied PUBLIC sender is pointed to
+    # (ADR-090 §5 pull-model refusal). None → refusal degrades to the generic
+    # factory.roxabi.dev pointer. Carries no authorization — deny-by-default
+    # is preserved; PUBLIC senders are still refused, never auto-routed here.
+    public_bot: str | None = None
 
     def __post_init__(self) -> None:
         if self.default_trust not in _VALID_TRUST_LEVELS:
@@ -69,6 +74,7 @@ class BotRow:
             auto_thread,
             thread_hot_hours,
             updated_at,
+            public_bot,
         ) = row
 
         # Parse owner_users — guard against malformed JSON or wrong shape.
@@ -141,4 +147,5 @@ class BotRow:
             auto_thread=bool(auto_thread),
             thread_hot_hours=coerced_hours,
             updated_at=updated_at,
+            public_bot=public_bot,
         )

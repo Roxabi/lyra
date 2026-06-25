@@ -45,3 +45,14 @@ async def run_bot_migrations(db: aiosqlite.Connection) -> None:
                 " TEXT NOT NULL DEFAULT '[]'"
             )
         await _set_user_version(db, 1)
+
+    if version < 2:
+        # Migration 2: add public_bot column for #1984 (ADR-090 §5 refusal
+        # pointer). Nullable, no default — legacy rows stay NULL and the deny
+        # refusal degrades to the generic factory.roxabi.dev pointer.
+        cur = await db.execute(
+            "SELECT 1 FROM pragma_table_info('bots') WHERE name = 'public_bot'"
+        )
+        if await cur.fetchone() is None:
+            await db.execute("ALTER TABLE bots ADD COLUMN public_bot TEXT DEFAULT NULL")
+        await _set_user_version(db, 2)

@@ -333,6 +333,35 @@ class TestMultibotConfigFromStore:
         assert bot.auto_thread is False
         assert bot.thread_hot_hours == 48
 
+    def test_from_store_carries_public_bot(self) -> None:
+        """public_bot flows BotRow → BotConfig for both platforms (#1984)."""
+        tg_row = BotRow(
+            platform="telegram",
+            bot_id="tg1",
+            agent="a",
+            public_bot="@tg_public",
+        )
+        dc_row = BotRow(
+            platform="discord",
+            bot_id="dc1",
+            agent="a",
+            public_bot="@dc_public",
+        )
+        store = _FakeBotStore([tg_row, dc_row])
+
+        tg, dc = multibot_config_from_store(store)
+
+        assert tg.bots[0].public_bot == "@tg_public"
+        assert dc.bots[0].public_bot == "@dc_public"
+
+    def test_from_store_public_bot_defaults_none(self) -> None:
+        """A row without public_bot yields a config with public_bot=None."""
+        store = _FakeBotStore([self._tg_row("tg1")])
+
+        tg, _ = multibot_config_from_store(store)
+
+        assert tg.bots[0].public_bot is None
+
     def test_from_store_empty_store_returns_empty_lists(self) -> None:
         # Arrange
         store = _FakeBotStore([])

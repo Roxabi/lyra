@@ -28,8 +28,10 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 # Generic public surface used when the bound bot declares no ``public_bot``
-# handle — the refusal degrades to this pointer (ADR-090 §5).
-_DEFAULT_PUBLIC_SURFACE = "factory.roxabi.dev"
+# handle — the refusal degrades to this pointer (ADR-090 §5). Kept as a full
+# URL (not a bare ``factory.<x>`` token) so it is not mistaken for a NATS
+# subject literal by ``scripts/check_subject_literals.py``.
+_DEFAULT_PUBLIC_SURFACE = "https://factory.roxabi.dev"
 
 # Static refusal when no MessageManager is wired (tests) or the key is missing.
 _FALLBACK_REFUSAL = (

@@ -56,6 +56,13 @@ def make_platform_app(platform: str) -> typer.Typer:
         thread_hot_hours: int = typer.Option(
             24, "--thread-hot-hours", help="Thread hot hours."
         ),
+        public_bot: str = typer.Option(
+            "",
+            "--public-bot",
+            help="Handle of the dedicated public bot for ADR-090 §5 deny "
+            "refusals (e.g. @bot_public). Empty → generic factory.roxabi.dev "
+            "pointer. Not an authorization grant.",
+        ),
     ) -> None:
         _owner_users = (
             [x.strip() for x in owner_users.split(",") if x.strip()]
@@ -83,6 +90,7 @@ def make_platform_app(platform: str) -> typer.Typer:
             _trusted_roles,
             auto_thread,
             thread_hot_hours,
+            public_bot or None,
         )
 
     add.__doc__ = f"Add a {platform.capitalize()} bot."

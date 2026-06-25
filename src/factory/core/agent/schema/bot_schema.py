@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS bots (
     auto_thread INTEGER NOT NULL DEFAULT 0,
     thread_hot_hours INTEGER NOT NULL DEFAULT 24,
     updated_at TEXT,
+    public_bot TEXT,
     PRIMARY KEY (platform, bot_id)
 )
 """
@@ -29,16 +30,16 @@ CREATE TABLE IF NOT EXISTS bots (
 _SELECT_BOTS = (
     "SELECT platform, bot_id, agent, webhook_enabled, default_trust, "
     "owner_users_json, trusted_users_json, trusted_roles_json, "
-    "auto_thread, thread_hot_hours, updated_at "
+    "auto_thread, thread_hot_hours, updated_at, public_bot "
     "FROM bots"
 )
 
-_N_BOT_COLS = 11  # const-ok: bot table column count
+_N_BOT_COLS = 12  # const-ok: bot table column count
 
 _UPSERT_BOT = (
     f"INSERT INTO bots (platform, bot_id, agent, webhook_enabled, default_trust, "
     f"owner_users_json, trusted_users_json, trusted_roles_json, "
-    f"auto_thread, thread_hot_hours, updated_at) "
+    f"auto_thread, thread_hot_hours, updated_at, public_bot) "
     f"VALUES ({', '.join(['?'] * _N_BOT_COLS)}) "
     "ON CONFLICT(platform, bot_id) DO UPDATE SET "
     "agent=excluded.agent, "
@@ -49,5 +50,6 @@ _UPSERT_BOT = (
     "trusted_roles_json=excluded.trusted_roles_json, "
     "auto_thread=excluded.auto_thread, "
     "thread_hot_hours=excluded.thread_hot_hours, "
-    "updated_at=excluded.updated_at"
+    "updated_at=excluded.updated_at, "
+    "public_bot=excluded.public_bot"
 )

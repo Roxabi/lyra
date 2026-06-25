@@ -73,6 +73,7 @@ def _add(  # noqa: PLR0913
     trusted_roles: list[str] | None = None,
     auto_thread: bool = False,
     thread_hot_hours: int = 24,
+    public_bot: str | None = None,
 ) -> None:
     """Create or replace a bot row."""
     _validate_bot_id(bot_id)
@@ -98,6 +99,7 @@ def _add(  # noqa: PLR0913
                 trusted_roles=list(trusted_roles or []),
                 auto_thread=auto_thread,
                 thread_hot_hours=thread_hot_hours,
+                public_bot=public_bot,
             )
             await store.upsert(row)
             typer.echo(f"Added {platform}/{bot_id}")

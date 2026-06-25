@@ -92,6 +92,29 @@ class TestBotCRUD:
         assert result.bot_id == "main"
         assert result.agent == "a"
 
+    async def test_public_bot_round_trips_through_db(self, bot_store: BotStore) -> None:
+        """public_bot survives upsert → SELECT → from_db_row (#1984)."""
+        row = make_bot_row("telegram", "pub", "a", public_bot="@bot_public")
+
+        await bot_store.upsert(row)
+        # Re-read from a fresh connection so the value comes through SQLite,
+        # not just the in-memory cache.
+        await bot_store.close()
+        await bot_store.connect()
+        result = bot_store.get("telegram", "pub")
+
+        assert result is not None
+        assert result.public_bot == "@bot_public"
+
+    async def test_public_bot_defaults_none(self, bot_store: BotStore) -> None:
+        """A bot row written without public_bot reads back as None."""
+        await bot_store.upsert(make_bot_row("telegram", "nopub", "a"))
+
+        result = bot_store.get("telegram", "nopub")
+
+        assert result is not None
+        assert result.public_bot is None
+
     async def test_upsert_overwrites_existing(self, bot_store: BotStore) -> None:
         # Arrange
         await bot_store.upsert(make_bot_row("telegram", "main", "a"))
@@ -230,6 +253,7 @@ class TestBotRowConversion:
             None,  # auto_thread
             None,  # thread_hot_hours
             "2024-01-01T00:00:00+00:00",  # updated_at
+            None,  # public_bot
         )
 
         # Act
@@ -258,6 +282,7 @@ class TestBotRowConversion:
             0,  # auto_thread
             24,  # thread_hot_hours
             "2024-01-01T00:00:00+00:00",  # updated_at
+            None,  # public_bot
         )
 
         # Act — must not raise despite invalid trust level
@@ -281,6 +306,7 @@ class TestBotRowConversion:
             0,  # auto_thread
             0,  # thread_hot_hours = 0 (explicit, must be preserved)
             "2024-01-01T00:00:00+00:00",  # updated_at
+            None,  # public_bot
         )
 
         bot = BotRow.from_db_row(row)

@@ -4,7 +4,7 @@ FROM python:3.12.10-slim AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
 
 # Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.1 /uv /uvx /usr/local/bin/
 
 WORKDIR /app
 
@@ -115,7 +115,7 @@ ENV FACTORY_GH_BIN=/opt/factory-gh/gh
 # uv is not present in agent-runtime (only in builder); bring the static binary from
 # the official astral-sh image so we can pip-install into /app/.venv without touching
 # the project lockfile.
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=ghcr.io/astral-sh/uv:0.11.1 /uv /usr/local/bin/uv
 RUN uv pip install --python /app/.venv/bin/python \
       "git+https://github.com/can1357/oh-my-pi@4b5200a163060c057f1d886df15d7ef083a54a62#subdirectory=python/omp-rpc"
 # Build-time import smoke — fails the image build if omp_rpc is mis-installed or

@@ -86,7 +86,9 @@ class IdentityResolver:
         wb = self._bindings.get(RoutingKey(platform, msg.bot_id, "*"))
         if wb is not None:
             pid = RoutingKey(platform, msg.bot_id, scope).to_pool_id()
-            return Binding(agent_name=wb.agent_name, pool_id=pid)
+            return Binding(
+                agent_name=wb.agent_name, pool_id=pid, public_bot=wb.public_bot
+            )
         return None
 
     def resolve_message_trust(self, msg: InboundMessage) -> InboundMessage:

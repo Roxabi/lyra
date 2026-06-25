@@ -106,6 +106,7 @@ class BotStore(SqliteStore, BotStoreProtocol):
                 1 if row.auto_thread else 0,
                 row.thread_hot_hours,
                 now,
+                row.public_bot,
             ),
         )
         await db.commit()
@@ -121,6 +122,7 @@ class BotStore(SqliteStore, BotStoreProtocol):
             auto_thread=row.auto_thread,
             thread_hot_hours=row.thread_hot_hours,
             updated_at=now,
+            public_bot=row.public_bot,
         )
 
     async def delete(self, platform: str, bot_id: str) -> None:

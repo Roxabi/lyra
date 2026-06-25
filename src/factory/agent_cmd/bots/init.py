@@ -211,6 +211,7 @@ def _merge_bots(raw: dict[str, Any]) -> tuple[list[BotRow], int]:  # noqa: C901 
                 trusted_roles=data.get("trusted_roles", []),
                 auto_thread=data.get("auto_thread", DEFAULT_AUTO_THREAD),
                 thread_hot_hours=data.get("thread_hot_hours", DEFAULT_THREAD_HOT_HOURS),
+                public_bot=data.get("public_bot"),
             )
         )
     return rows, validation_errors

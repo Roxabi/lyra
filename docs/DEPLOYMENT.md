@@ -75,8 +75,8 @@ On Machine 1:
 cd ~/projects/roxabi-factory
 make quadlet-install    # copy unit files to ~/.config/containers/systemd/
 make converge           # idempotent full deploy (preferred after unit changes)
-# or restart core path only:
-make factory reload     # hub + telegram + discord + clipool
+# or restart the app containers only (no pull / install / auth regen):
+make factory reload     # all factory app containers
 ```
 
 **Graceful drain** — on restart, the running container finishes any in-flight Claude CLI turns (up to 60 s) before stopping. Conversations that complete within the window are transparent to users; only turns that outlast 60 s receive a "please resend" notification.
@@ -186,10 +186,10 @@ All commands can be run from Machine 1 or from Machine 2 via SSH (`make remote <
 ```bash
 # From Machine 1
 cd ~/projects/roxabi-factory
-make factory            # status — hub + telegram + discord + clipool (default)
-make factory reload     # restart those four only
-make factory start      # start those four
-make factory stop       # stop those four
+make factory            # status — all factory app containers (default)
+make factory reload     # restart all app containers
+make factory start      # start all app containers
+make factory stop       # stop all app containers
 make factory logs       # journalctl -u factory-hub -f
 make factory errors     # journalctl -u factory-hub -f -p err
 
@@ -209,14 +209,15 @@ make remote logs
 make remote errors
 ```
 
-**`make factory reload` vs `make converge`** — two scopes:
+**`make factory reload` vs `make converge`** — two scopes (both derive the
+container list from `deploy/quadlet.toml`, #1988):
 
 | Command | Where | Restarts |
 |---------|-------|----------|
-| `make factory reload` | production host | **4** units: hub, telegram, discord, clipool |
-| `make converge` | production host | **NATS** + **8** factory clients (adds turn-writer, blobstore, gh-helper, omp) + voiceCLI if present; also pulls git, reinstalls quadlet units when drift detected |
+| `make factory reload` | production host | the **9 app containers** (every container except the bare `factory-nats`) — restart only |
+| `make converge` | production host | **NATS** + the **9 app containers** + voiceCLI if present; also pulls git, reinstalls quadlet units, and regenerates auth.conf when drift detected |
 
-Use `make factory reload` for a quick hub/adapters bounce. Use `make converge` after changing Quadlet units, images, or ACL — it is idempotent and no-ops when already converged.
+Use `make factory reload` for a quick app-container bounce (no git pull, unit reinstall, or auth regen). Use `make converge` after changing Quadlet units, images, or ACL — it is idempotent and no-ops when already converged.
 
 ## 5. Enable debug logging
 

@@ -17,10 +17,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import AsyncGenerator
 
+import nats.errors
 import typer
 from nats.aio.client import Client as NATS
 
-import nats.errors
 from factory.cli.ops_audit import emit_drift_report
 from factory.paths import factory_data_dir
 from roxabi_contracts.verify import verify_deny

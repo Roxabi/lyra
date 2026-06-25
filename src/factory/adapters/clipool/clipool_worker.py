@@ -215,7 +215,11 @@ class CliPoolNatsWorker(NatsAdapterBase):
             ),
             direct_publish=False,
         )
-        if result is None or isinstance(result, bytes) or not isinstance(result, CliResult):
+        if (
+            result is None
+            or isinstance(result, bytes)
+            or not isinstance(result, CliResult)
+        ):
             return
 
         worker_error = (

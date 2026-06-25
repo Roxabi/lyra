@@ -95,6 +95,9 @@ class TelegramBotConfig(BaseModel):
 
     bot_id: str
     agent: str = "lyra_default"
+    # Handle of the dedicated public bot for ADR-090 §5 deny refusals; None →
+    # generic factory.roxabi.dev pointer. Not an authorization grant.
+    public_bot: str | None = None
 
 
 class DiscordBotConfig(BaseModel):
@@ -110,6 +113,9 @@ class DiscordBotConfig(BaseModel):
     auto_thread: bool = DISCORD_DEFAULT_AUTO_THREAD
     agent: str = "lyra_default"
     thread_hot_hours: int = DISCORD_DEFAULT_THREAD_HOT_HOURS
+    # Handle of the dedicated public bot for ADR-090 §5 deny refusals; None →
+    # generic factory.roxabi.dev pointer. Not an authorization grant.
+    public_bot: str | None = None
 
 
 class TelegramMultiConfig(BaseModel):
@@ -155,6 +161,7 @@ def _parse_telegram_bots(raw: dict[str, Any]) -> list[TelegramBotConfig]:
             TelegramBotConfig(
                 bot_id=bot_id,
                 agent=agent,
+                public_bot=entry.get("public_bot"),
             )
         )
     return bots
@@ -188,6 +195,7 @@ def _parse_discord_bots(raw: dict[str, Any]) -> list[DiscordBotConfig]:
                 auto_thread=auto_thread,
                 agent=agent,
                 thread_hot_hours=thread_hot_hours,
+                public_bot=entry.get("public_bot"),
             )
         )
     return bots
@@ -266,7 +274,11 @@ def multibot_config_from_store(
     dc_bots: list[DiscordBotConfig] = []
     for row in bot_store.get_all():
         if row.platform == "telegram":
-            tg_bots.append(TelegramBotConfig(bot_id=row.bot_id, agent=row.agent))
+            tg_bots.append(
+                TelegramBotConfig(
+                    bot_id=row.bot_id, agent=row.agent, public_bot=row.public_bot
+                )
+            )
         elif row.platform == "discord":
             dc_bots.append(
                 DiscordBotConfig(
@@ -274,6 +286,7 @@ def multibot_config_from_store(
                     auto_thread=row.auto_thread,
                     agent=row.agent,
                     thread_hot_hours=row.thread_hot_hours,
+                    public_bot=row.public_bot,
                 )
             )
     return TelegramMultiConfig(bots=tg_bots), DiscordMultiConfig(bots=dc_bots)

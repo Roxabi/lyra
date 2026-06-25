@@ -1,5 +1,5 @@
 [Unit]
-Description=Lyra post-autoupdate hook — run after container image updates
+Description=factory post-autoupdate hook — run `make converge` after a container image update
 After=network-online.target
 Wants=network-online.target
 OnFailure=factory-deploy-failure.service

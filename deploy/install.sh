@@ -49,7 +49,7 @@ warn() { echo "WARN: $*" >&2; }
 
 log "Checking ~/.roxabi/factory/nkeys/ ..."
 if [[ ! -d "${NKEYS_DIR}" ]]; then
-  echo "ERROR: ${NKEYS_DIR} not found. Run: make nats-setup" >&2
+  echo "ERROR: ${NKEYS_DIR} not found. Run: make nats-setup (renders nkey seeds + auth.conf)" >&2
   exit 1
 fi
 
@@ -216,7 +216,7 @@ for secret_name in "${!SEEDS[@]}"; do
 done
 unset _policy
 if [[ "$MISSING" -eq 1 ]]; then
-  echo "ERROR: Missing seed files — cannot install secrets. Run: make nats-setup" >&2
+  echo "ERROR: Missing seed files — cannot install secrets. Run: make nats-setup (renders nkey seeds + auth.conf)" >&2
   exit 1
 fi
 

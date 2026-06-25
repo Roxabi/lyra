@@ -66,7 +66,17 @@ FACTORY_DISCORD_UNIT  := factory-discord
 FACTORY_WEB_UNIT      := factory-web
 FACTORY_NATS_UNIT     := factory-nats
 FACTORY_CLIPOOL_UNIT  := factory-clipool
-FACTORY_UNITS         := $(FACTORY_HUB_UNIT) $(FACTORY_TELEGRAM_UNIT) $(FACTORY_DISCORD_UNIT) $(FACTORY_WEB_UNIT) $(FACTORY_CLIPOOL_UNIT)
+
+# Container list — SSoT is deploy/quadlet.toml via quadlet_containers() (#1979,
+# #1988). Derived once at parse time so adding/renaming a container in
+# quadlet.toml flows into `make factory` and the nats-regen-authconf restart set
+# with no Makefile edit. The individual FACTORY_*_UNIT vars above remain for
+# per-unit targets (telegram:, nats:, …).
+FACTORY_ALL_CONTAINERS := $(shell bash -c 'source deploy/lib/quadlet-units.sh && quadlet_containers 2>/dev/null')
+# App units = every container except the bare NATS server, which is infra
+# managed on its own (`make nats`, converge, #1390) and must not be bounced by a
+# routine `make factory reload`. Same set as FACTORY_NATS_CLIENTS below today.
+FACTORY_UNITS          := $(filter-out $(FACTORY_NATS_UNIT),$(FACTORY_ALL_CONTAINERS))
 
 # $(call factory_sctl,<unit1> [unit2 ...]) — dispatches SVC_CMD to systemctl --user.
 # Defaults (empty SVC_CMD) to `status`. `logs`/`errors` tail the first unit.
@@ -255,10 +265,11 @@ remote:
 
 # ── Dev tools ────────────────────────────────────────────────────────────────
 
-# Shared list of services that hold NATS subject auth and must restart
-# whenever `auth.conf` is regenerated or a new identity is added. The bare
-# `factory-nats` is restarted separately by the target itself before this list.
-FACTORY_NATS_CLIENTS := factory-hub factory-telegram factory-discord factory-web factory-clipool factory-turn-writer factory-gh-helper factory-blobstore factory-omp
+# Services that hold NATS subject auth and must restart whenever `auth.conf` is
+# regenerated or a new identity is added. Derived from deploy/quadlet.toml
+# (#1988) = every container minus the bare `factory-nats` server, which the
+# target restarts separately before this list. See FACTORY_ALL_CONTAINERS.
+FACTORY_NATS_CLIENTS := $(filter-out $(FACTORY_NATS_UNIT),$(FACTORY_ALL_CONTAINERS))
 
 # Cold-path key bootstrap for the containerised NATS (#1930). The host NATS was
 # retired (big-bang consolidation) — this no longer installs a server, system
@@ -283,6 +294,10 @@ nats-regen-authconf:          ## re-render auth.conf from acl-matrix.json, resta
 	@systemctl --user restart factory-nats
 	@systemctl --user is-active --wait factory-nats \
 		|| { echo "ERROR: factory-nats failed to reach active state"; exit 1; }
+	@# Derived list must be non-empty — an empty FACTORY_NATS_CLIENTS (quadlet.toml
+	@# unreadable / helper failure) would silently skip the #1390 client restarts.
+	@test -n "$(FACTORY_NATS_CLIENTS)" \
+		|| { echo "ERROR: FACTORY_NATS_CLIENTS empty — quadlet_containers() failed; refusing to skip client restarts (#1390)"; exit 1; }
 	@# All NATS clients hold stale subject auth after an ACL change (#1390).
 	@failed=""; \
 	for svc in $(FACTORY_NATS_CLIENTS); do \

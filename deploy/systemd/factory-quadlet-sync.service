@@ -1,5 +1,5 @@
 [Unit]
-Description=Lyra Quadlet sync — pull staging and conditional install
+Description=factory Quadlet sync — pull staging, conditional quadlet-install (converge runs via factory-post-autoupdate)
 After=network-online.target
 Wants=network-online.target
 OnFailure=factory-deploy-failure.service

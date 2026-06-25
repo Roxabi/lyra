@@ -118,11 +118,13 @@ class HubDispatchMixin:
         if result.action == Action.COMMAND_HANDLED:
             if result.response and (result.response.content or result.response.audio):
 
+                response = result.response
+
                 async def _dispatch_command_response() -> None:
-                    if result.response.audio:
-                        await self.dispatch_audio(msg, result.response.audio)
-                    if result.response.content:
-                        await self.dispatch_response(msg, result.response)
+                    if response.audio:
+                        await self.dispatch_audio(msg, response.audio)
+                    if response.content:
+                        await self.dispatch_response(msg, response)
 
                 try:
                     await _dispatch_command_response()

@@ -21,7 +21,7 @@ from factory.adapters.clipool._streaming_relay import relay_streaming_events
 from factory.adapters.clipool._worker_helpers import _make_ack, _make_chunk
 from factory.adapters.clipool.error_classifier import worker_error_from_cli_result
 from factory.core.agent.agent_config import ModelConfig
-from factory.core.cli.cli_pool import CliPool
+from factory.core.cli.cli_pool import CliPool, CliResult
 from factory.core.messaging.utils.metrics import emit_populated_total
 from roxabi_contracts.cli.models import CliCmdPayload, CliControlCmd
 from roxabi_contracts.errors import WorkerError
@@ -182,7 +182,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
             ),
             direct_publish=True,
         )
-        if iterator is None:
+        if iterator is None or isinstance(iterator, bytes):
             return
 
         await relay_streaming_events(
@@ -215,7 +215,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
             ),
             direct_publish=False,
         )
-        if result is None:
+        if result is None or isinstance(result, bytes) or not isinstance(result, CliResult):
             return
 
         worker_error = (

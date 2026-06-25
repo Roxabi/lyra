@@ -27,10 +27,16 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+# Generic public surface used when the bound bot declares no ``public_bot``
+# handle — the refusal degrades to this pointer (ADR-090 §5). Kept as a full
+# URL (not a bare ``factory.<x>`` token) so it is not mistaken for a NATS
+# subject literal by ``scripts/check_subject_literals.py``.
+_DEFAULT_PUBLIC_SURFACE = "https://factory.roxabi.dev"
+
 # Static refusal when no MessageManager is wired (tests) or the key is missing.
-# The MVP points users at the public surface; the per-platform ``@bot_public``
-# handle is a deferred follow-up (BotRow has no public-bot field yet).
-_FALLBACK_REFUSAL = "Access not authorized for this agent — visit factory.roxabi.dev"
+_FALLBACK_REFUSAL = (
+    f"Access not authorized for this agent — visit {_DEFAULT_PUBLIC_SURFACE}"
+)
 
 
 class AuthorizeAgentMiddleware:
@@ -82,7 +88,14 @@ class AuthorizeAgentMiddleware:
                 msg_id=msg.id, stage=type(self).__name__, reason="agent_unauthorized"
             )
         )
-        text = ctx.hub.get_message("agent_unauthorized") or _FALLBACK_REFUSAL
+        # ADR-090 §5 pull-model refusal: point the denied PUBLIC sender at the
+        # bound bot's dedicated public bot, degrading to the generic surface when
+        # none is configured. This is a pointer only — deny-by-default stands.
+        public_bot = ctx.binding.public_bot or _DEFAULT_PUBLIC_SURFACE
+        text = (
+            ctx.hub.get_message("agent_unauthorized", public_bot=public_bot)
+            or _FALLBACK_REFUSAL
+        )
         return PipelineResult(
             action=Action.COMMAND_HANDLED, response=Response(content=text)
         )

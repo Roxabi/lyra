@@ -54,6 +54,26 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def _fetch_once_then_park(mock_msg: MagicMock) -> AsyncMock:
+    """Mock JetStream pull fetch: deliver *mock_msg* once, then park until cancel.
+
+    Subsequent fetch calls block on an unset Event so the consume loop stays idle
+    until the test cancels the task — no timing-based sleep.
+    """
+    fetch_call_count = 0
+    park = asyncio.Event()
+
+    async def _fetch(batch, timeout):
+        nonlocal fetch_call_count
+        fetch_call_count += 1
+        if fetch_call_count == 1:
+            return [mock_msg]
+        await park.wait()  # event-based — park until consume-loop task.cancel()
+        return []  # unreachable
+
+    return AsyncMock(side_effect=_fetch)
+
+
 def _event(  # noqa: PLR0913
     payload,
     *,
@@ -497,21 +517,8 @@ async def test_consume_loop_nacks_on_log_turn_db_failure(
 
     mock_msg.nak = AsyncMock(side_effect=_nak_and_signal)
 
-    # First fetch: one-message batch.  Subsequent fetches park until cancelled.
-    fetch_call_count = 0
-
-    async def _fetch(batch, timeout):
-        nonlocal fetch_call_count
-        fetch_call_count += 1
-        if fetch_call_count == 1:
-            return [mock_msg]
-        await asyncio.sleep(
-            3600
-        )  # park — will be interrupted by task.cancel()  # event-based
-        return []  # unreachable
-
     mock_sub = MagicMock()
-    mock_sub.fetch = AsyncMock(side_effect=_fetch)
+    mock_sub.fetch = _fetch_once_then_park(mock_msg)
 
     w = TurnWriter(turn_store=store, js=MagicMock())
     w._sub = mock_sub
@@ -552,19 +559,11 @@ async def test_consume_loop_terms_on_validation_error(
 
     mock_msg.term = AsyncMock(side_effect=_term_and_signal)
 
-    fetch_call_count = 0
-
-    async def _fetch(batch, timeout):
-        nonlocal fetch_call_count
-        fetch_call_count += 1
-        if fetch_call_count == 1:
-            return [mock_msg]
-        await asyncio.sleep(3600)
-        return []
+    mock_sub = MagicMock()
+    mock_sub.fetch = _fetch_once_then_park(mock_msg)
 
     w = TurnWriter(turn_store=store, js=MagicMock())
-    w._sub = MagicMock()
-    w._sub.fetch = AsyncMock(side_effect=_fetch)
+    w._sub = mock_sub
 
     task = asyncio.create_task(w._consume_loop())
     await asyncio.wait_for(done_event.wait(), timeout=2.0)
@@ -613,19 +612,11 @@ async def test_consume_loop_nacks_on_unexpected_handler_error(
 
     mock_msg.nak = AsyncMock(side_effect=_nak_and_signal)
 
-    fetch_call_count = 0
-
-    async def _fetch(batch, timeout):
-        nonlocal fetch_call_count
-        fetch_call_count += 1
-        if fetch_call_count == 1:
-            return [mock_msg]
-        await asyncio.sleep(3600)
-        return []
+    mock_sub = MagicMock()
+    mock_sub.fetch = _fetch_once_then_park(mock_msg)
 
     w = TurnWriter(turn_store=store, js=MagicMock())
-    w._sub = MagicMock()
-    w._sub.fetch = AsyncMock(side_effect=_fetch)
+    w._sub = mock_sub
 
     with patch.object(w, "_handle", AsyncMock(side_effect=TypeError("handler bug"))):
         task = asyncio.create_task(w._consume_loop())
@@ -684,19 +675,11 @@ async def test_consume_loop_nacks_on_session_mutator_db_failure(
 
     mock_msg.nak = AsyncMock(side_effect=_nak_and_signal)
 
-    fetch_call_count = 0
-
-    async def _fetch(batch, timeout):
-        nonlocal fetch_call_count
-        fetch_call_count += 1
-        if fetch_call_count == 1:
-            return [mock_msg]
-        await asyncio.sleep(3600)
-        return []
+    mock_sub = MagicMock()
+    mock_sub.fetch = _fetch_once_then_park(mock_msg)
 
     w = TurnWriter(turn_store=store, js=MagicMock())
-    w._sub = MagicMock()
-    w._sub.fetch = AsyncMock(side_effect=_fetch)
+    w._sub = mock_sub
 
     db = store._db_or_raise()
     with patch.object(

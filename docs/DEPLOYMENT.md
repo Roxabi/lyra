@@ -270,12 +270,11 @@ DEPLOY_DIR=~/projects/roxabi-factory # project path on the production host
 
 `make remote` fails fast if either variable is unset.
 
-### Deploy (SSH pull + quadlet install)
+### Deploy
 
 ```bash
-make converge          # preferred — run on the production host (idempotent, change-gated)
-# legacy SSH helper from dev machine (deprecated — prints warning):
-make deploy
+make converge          # run on the production host (M₁) — idempotent, change-gated
+# `make deploy` / `make full-deploy` (remote SSH deploy) are RETIRED (#1930) — they now fail fast.
 ```
 
 ### Remote service control

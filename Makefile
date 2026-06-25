@@ -202,33 +202,16 @@ quadlet-sync-install:  ## install systemd sync timers + services → daemon-relo
 quadlet-authconf-merged:  ## render merged auth.conf (factory + voicecli identities) → ~/.roxabi/factory/nkeys/auth.conf
 	@factory-acl genkeys --emit-merged-authconf
 
-# ADR-054 Decision 5 (revised): file-based credentials (NATS auth.conf + nkey seeds)
-# are delivered to containers as Podman secrets. Source files live in ~/.roxabi/factory/nkeys/;
-# this target imports them into the user's Podman secret store. Idempotent (--replace).
+# ADR-054 Decision 5: file-based credentials (NATS auth.conf + nkey seeds) are
+# delivered to containers as Podman secrets. deploy/install.sh --secrets-only is
+# the single source of truth for the full secret set (driven by the secrets-policy
+# manifest — nats seeds, blobstore/turn-writer/omp seeds, factory_blobstore_token,
+# factory-litellm-key, factory-gh-pem, factory-claude-oauth). This target delegates
+# to it so the Makefile and the installer can never drift (#1929). FACTORY_NKEYS_DIR
+# is still consumed by the cold-path nats-* targets below.
 FACTORY_NKEYS_DIR := $(HOME)/.roxabi/factory/nkeys
-quadlet-secrets-install:  ## (re)create Podman secrets from ~/.roxabi/factory/nkeys/*
-	@test -d "$(FACTORY_NKEYS_DIR)" || { echo "ERROR: $(FACTORY_NKEYS_DIR) not found"; exit 1; }
-	@podman secret create --replace factory-nats-hub               "$(FACTORY_NKEYS_DIR)/hub.seed"
-	@podman secret create --replace factory-nats-telegram          "$(FACTORY_NKEYS_DIR)/telegram-adapter.seed"
-	@podman secret create --replace factory-nats-discord           "$(FACTORY_NKEYS_DIR)/discord-adapter.seed"
-	@podman secret create --replace factory-nats-web               "$(FACTORY_NKEYS_DIR)/web-adapter.seed"
-	@podman secret create --replace factory-nats-clipool           "$(FACTORY_NKEYS_DIR)/clipool-worker.seed"
-	@podman secret create --replace factory-nats-gh-helper         "$(FACTORY_NKEYS_DIR)/gh-helper.seed"
-	@if [ -f "$(HOME)/.roxabi/factory/gh-app.pem" ]; then \
-		podman secret create --replace factory-gh-pem "$(HOME)/.roxabi/factory/gh-app.pem"; \
-		echo "factory-gh-pem secret created from ~/.roxabi/factory/gh-app.pem"; \
-	else \
-		echo "SKIP: ~/.roxabi/factory/gh-app.pem not found — factory-gh-pem secret not created."; \
-		echo "      Copy the GitHub App PEM to ~/.roxabi/factory/gh-app.pem then re-run."; \
-	fi
-	@if [ -f "$(HOME)/.roxabi/factory/claude-oauth.tok" ]; then \
-		tr -d '\n' < "$(HOME)/.roxabi/factory/claude-oauth.tok" | podman secret create --replace factory-claude-oauth -; \
-		echo "factory-claude-oauth secret created from ~/.roxabi/factory/claude-oauth.tok"; \
-	else \
-		echo "SKIP: ~/.roxabi/factory/claude-oauth.tok not found — factory-claude-oauth secret not created."; \
-		echo "      Generate with: claude setup-token > ~/.roxabi/factory/claude-oauth.tok && chmod 600 ~/.roxabi/factory/claude-oauth.tok"; \
-	fi
-	@echo "Podman secrets installed. Verify: podman secret ls"
+quadlet-secrets-install:  ## (re)create Podman secrets — delegates to install.sh --secrets-only (SSoT)
+	@./deploy/install.sh --secrets-only
 
 # ── Deploy + remote ──────────────────────────────────────────────────────────
 

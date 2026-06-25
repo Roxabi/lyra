@@ -215,62 +215,16 @@ quadlet-secrets-install:  ## (re)create Podman secrets — delegates to install.
 
 # ── Deploy + remote ──────────────────────────────────────────────────────────
 
-deploy:
-	@echo "DEPRECATED: use make converge"
-	$(require_machine1)
-	@echo "Deploying quadlet units to $(DEPLOY_HOST)..."
-	@ssh $(DEPLOY_HOST) '\
-	set -eu; \
-	export XDG_RUNTIME_DIR="/run/user/$$(id -u)"; \
-	FACTORY_DIR=$(DEPLOY_DIR); \
-	VOICE_DIR=$$(grep "^VOICE_DEPLOY_DIR=" "$$FACTORY_DIR/.env" 2>/dev/null | cut -d= -f2); \
-	VOICE_DIR=$${VOICE_DIR:-$$HOME/projects/voiceCLI}; \
-	echo "==> factory: pulling staging..."; \
-	cd "$$FACTORY_DIR" && git pull origin staging; \
-	echo "==> factory: installing quadlet units..."; \
-	make -C "$$FACTORY_DIR" quadlet-install; \
-	if [ -d "$$VOICE_DIR/.git" ]; then \
-	    echo "==> voiceCLI: pulling staging..."; \
-	    cd "$$VOICE_DIR" && git pull origin staging; \
-	    echo "==> voiceCLI: installing quadlet units..."; \
-	    make -C "$$VOICE_DIR" quadlet-install; \
-	fi; \
-	echo ""; \
-	echo "Units installed + daemon-reload done."; \
-	echo "To restart: make remote factory reload  (or: systemctl --user restart voicecli-tts voicecli-stt)"'
-
-full-deploy:  ## atomic deploy: git pull → quadlet-install → regen auth.conf → secrets → restart NATS → restart factory
-	@echo "DEPRECATED: use make converge"
-	$(require_machine1)
-	@echo "Full deploy to $(DEPLOY_HOST)..."
-	@ssh $(DEPLOY_HOST) '\
-	set -eu; \
-	export XDG_RUNTIME_DIR="/run/user/$$(id -u)"; \
-	FACTORY_DIR=$(DEPLOY_DIR); \
-	VOICE_DIR=$$(grep "^VOICE_DEPLOY_DIR=" "$$FACTORY_DIR/.env" 2>/dev/null | cut -d= -f2); \
-	VOICE_DIR=$${VOICE_DIR:-$$HOME/projects/voiceCLI}; \
-	echo "==> factory: pulling staging..."; \
-	cd "$$FACTORY_DIR" && git pull origin staging; \
-	if [ -d "$$VOICE_DIR/.git" ]; then \
-	    echo "==> voiceCLI: pulling staging..."; \
-	    cd "$$VOICE_DIR" && git pull origin staging; \
-	    echo "==> voiceCLI: installing quadlet units..."; \
-	    make -C "$$VOICE_DIR" quadlet-install; \
-	fi; \
-	echo "==> factory: installing quadlet units..."; \
-	make -C "$$FACTORY_DIR" quadlet-install; \
-	echo "==> NATS: regenerating auth.conf from updated acl-matrix.json..."; \
-	sudo env "PATH=$$PATH" factory-acl genkeys --regen-authconf; \
-	echo "==> NATS: installing Podman secrets..."; \
-	make -C "$$FACTORY_DIR" quadlet-secrets-install; \
-	echo "==> NATS: restarting (refresh mount-typed Podman secret)..."; \
-	systemctl --user restart factory-nats; \
-	systemctl --user is-active --wait factory-nats \
-		|| { echo "ERROR: factory-nats failed to reach active state"; exit 1; }; \
-	echo "==> Lyra: restarting containers..."; \
-	systemctl --user restart factory-hub factory-telegram factory-discord factory-clipool; \
-	echo ""; \
-	echo "Full deploy complete."'
+# `deploy` and `full-deploy` were SSH-from-dev-machine remote deploy verbs. They
+# are RETIRED (#1930) — the production host converges itself via `make converge`
+# (run locally on M₁) plus the factory-quadlet-sync / factory-post-autoupdate
+# timers. Both targets now fail fast and redirect; the old SSH recipes live in
+# git history. See deploy/AGENTS.md § "Atomic deploy — make converge".
+deploy full-deploy:  ## RETIRED — remote SSH deploy; run `make converge` on the production host
+	@echo "ERROR: 'make $@' (remote SSH deploy) is retired (#1930)." >&2
+	@echo "       Run 'make converge' on the production host (M₁), or let the" >&2
+	@echo "       factory-quadlet-sync / factory-post-autoupdate timers converge automatically." >&2
+	@exit 1
 
 converge:  ## atomic, idempotent, change-gated local deploy
 	@bash deploy/converge.sh
@@ -306,8 +260,14 @@ remote:
 # `factory-nats` is restarted separately by the target itself before this list.
 FACTORY_NATS_CLIENTS := factory-hub factory-telegram factory-discord factory-web factory-clipool factory-turn-writer factory-gh-helper factory-blobstore factory-omp
 
-nats-setup:
-	@bash deploy/nats/setup.sh
+# Cold-path key bootstrap for the containerised NATS (#1930). The host NATS was
+# retired (big-bang consolidation) — this no longer installs a server, system
+# user, TLS, or firewall rule; it only renders the nkey seeds + auth.conf that
+# the factory-nats container bind-mounts. `--ack-external-distribution` pre-acks
+# the external-seed fan-out guard for a fresh box (operator still scp's external
+# seeds, e.g. voice-client → M₂). Routine deploys converge via `make converge`.
+nats-setup:  ## cold-path: render nkey seeds + auth.conf for the container NATS (deploy via `make converge`)
+	@factory-acl genkeys --ack-external-distribution
 
 nats-regen-specs:             ## re-render ACL spec table + parity fixture from acl-matrix.json
 	@uv run --frozen python scripts/render_acl_spec.py

@@ -38,7 +38,7 @@ factory bot secret install telegram lyra   # store token encrypted
 factory start                           # hub + telegram + discord in one process
 ```
 
-No containers. No systemd. No `make deploy`. Stop with `Ctrl+C`.
+No containers. No systemd. No `make converge`. Stop with `Ctrl+C`.
 
 Move to Tier 3 (split processes, auto-deploy timer, health monitoring, embedded NATS replaced by a system service) only when you actually need 24/7 uptime. Tier 3 is what this guide covers from **Step 1** onward.
 
@@ -456,7 +456,7 @@ ssh -i ~/.ssh/lyra_agent lyra@<MACHINE_1_IP> "id && git --version"
 make factory status  # status of all factory containers (default when no target)
 make factory reload  # restart hub + adapters + clipool
 make factory logs    # journalctl for factory-hub
-make deploy          # pull latest staging, install quadlet units (from Machine 2)
+make converge        # pull latest staging + install quadlet units — run on the production host (M₁)
 ```
 
 ---

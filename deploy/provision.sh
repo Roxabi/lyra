@@ -565,8 +565,8 @@ else
   echo ""
   echo "     claude"
   echo ""
-  echo "  5. Recommended — NATS setup for multi-machine production (embedded nats-server covers dev/single-machine use):"
+  echo "  5. Recommended — render NATS nkey seeds + auth.conf for the containerised NATS (embedded nats-server covers dev/single-machine use):"
   echo ""
-  echo "     cd ~/projects/roxabi-factory && make nats-setup"
+  echo "     cd ~/projects/roxabi-factory && make nats-setup   # cold-path; routine deploys converge via 'make converge'"
   echo ""
 fi

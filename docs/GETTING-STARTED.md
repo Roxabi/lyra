@@ -453,8 +453,8 @@ ssh -i ~/.ssh/lyra_agent lyra@<MACHINE_1_IP> "id && git --version"
 
 **Daily commands** (from `~/projects/roxabi-factory`):
 ```bash
-make factory status  # status of all factory containers (default when no target)
-make factory reload  # restart hub + adapters + clipool
+make factory status  # status of all factory app containers (NATS: `make nats status`)
+make factory reload  # restart all factory app containers (NATS managed separately)
 make factory logs    # journalctl for factory-hub
 make converge        # pull latest staging + install quadlet units — run on the production host (M₁)
 ```

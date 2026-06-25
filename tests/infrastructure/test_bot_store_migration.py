@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS bots (
 class TestFreshDbMigration:
     @pytest.mark.asyncio
     async def test_migration_adds_column_and_sets_version(self) -> None:
-        """Fresh DB: migration adds trusted_roles_json and sets user_version=1."""
+        """Fresh DB: migrations add columns and set user_version to latest (2)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "bots.db"
             async with aiosqlite.connect(str(db_path)) as db:
@@ -57,12 +57,13 @@ class TestFreshDbMigration:
                 await run_bot_migrations(db)
 
                 version_after = await _get_user_version(db)
-                assert version_after == 1
+                assert version_after == 2
 
                 async with db.execute("PRAGMA table_info('bots')") as cur:
                     rows = await cur.fetchall()
                 cols = {row[1] for row in rows}
                 assert "trusted_roles_json" in cols
+                assert "public_bot" in cols
 
 
 # ---------------------------------------------------------------------------
@@ -82,33 +83,34 @@ class TestMigrationIdempotency:
 
                 await run_bot_migrations(db)
                 version_first = await _get_user_version(db)
-                assert version_first == 1
+                assert version_first == 2
 
                 # Second run must not raise
                 await run_bot_migrations(db)
                 version_second = await _get_user_version(db)
-                assert version_second == 1
+                assert version_second == 2
 
     @pytest.mark.asyncio
     async def test_migration_skips_when_version_already_set(self) -> None:
-        """Migration skips ALTER TABLE when user_version >= 1."""
+        """Migration skips every ALTER TABLE when user_version is at latest."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "bots.db"
             async with aiosqlite.connect(str(db_path)) as db:
                 await db.execute(_DDL_LEGACY_BOTS)
                 await db.commit()
 
-                # Manually set version to 1 before running migration
-                await _set_user_version(db, 1)
+                # Manually set version to latest before running migration
+                await _set_user_version(db, 2)
 
-                # Migration must skip because version >= 1
+                # Migration must skip because version is already at latest
                 await run_bot_migrations(db)
 
-                # Column should NOT be added because version guard skipped
+                # No column added because every version guard skipped
                 async with db.execute("PRAGMA table_info('bots')") as cur:
                     rows = await cur.fetchall()
                 cols = {row[1] for row in rows}
                 assert "trusted_roles_json" not in cols
+                assert "public_bot" not in cols
 
 
 # ---------------------------------------------------------------------------
@@ -134,9 +136,76 @@ class TestLegacyDbMigration:
                 await run_bot_migrations(db)
 
                 version_after = await _get_user_version(db)
-                assert version_after == 1
+                assert version_after == 2
 
                 async with db.execute("PRAGMA table_info('bots')") as cur:
                     rows = await cur.fetchall()
                 cols = {row[1] for row in rows}
                 assert "trusted_roles_json" in cols
+                assert "public_bot" in cols
+
+
+# Migration-1 schema: has trusted_roles_json but NOT public_bot (pre-#1984).
+_DDL_V1_BOTS = """
+CREATE TABLE IF NOT EXISTS bots (
+    platform TEXT NOT NULL,
+    bot_id TEXT NOT NULL,
+    agent TEXT NOT NULL,
+    webhook_enabled INTEGER NOT NULL DEFAULT 0,
+    default_trust TEXT NOT NULL DEFAULT 'blocked',
+    owner_users_json TEXT NOT NULL DEFAULT '[]',
+    trusted_users_json TEXT NOT NULL DEFAULT '[]',
+    trusted_roles_json TEXT NOT NULL DEFAULT '[]',
+    auto_thread INTEGER NOT NULL DEFAULT 0,
+    thread_hot_hours INTEGER NOT NULL DEFAULT 24,
+    updated_at TEXT,
+    PRIMARY KEY (platform, bot_id)
+)
+"""
+
+
+# ---------------------------------------------------------------------------
+# T4 — Migration 2 (#1984): add public_bot to a v1 DB, leave legacy rows NULL
+# ---------------------------------------------------------------------------
+
+
+class TestPublicBotMigration:
+    @pytest.mark.asyncio
+    async def test_v1_db_gains_public_bot_column(self) -> None:
+        """A version-1 DB migrates up: public_bot added, version becomes 2."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "bots.db"
+            async with aiosqlite.connect(str(db_path)) as db:
+                await db.execute(_DDL_V1_BOTS)
+                await _set_user_version(db, 1)
+                await db.commit()
+
+                await run_bot_migrations(db)
+
+                assert await _get_user_version(db) == 2
+                async with db.execute("PRAGMA table_info('bots')") as cur:
+                    cols = {row[1] for row in await cur.fetchall()}
+                assert "public_bot" in cols
+
+    @pytest.mark.asyncio
+    async def test_legacy_rows_default_public_bot_null(self) -> None:
+        """Rows written before the migration read back with public_bot = NULL."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "bots.db"
+            async with aiosqlite.connect(str(db_path)) as db:
+                await db.execute(_DDL_V1_BOTS)
+                await _set_user_version(db, 1)
+                await db.execute(
+                    "INSERT INTO bots (platform, bot_id, agent) VALUES (?, ?, ?)",
+                    ("telegram", "legacy", "lyra_default"),
+                )
+                await db.commit()
+
+                await run_bot_migrations(db)
+
+                async with db.execute(
+                    "SELECT public_bot FROM bots WHERE bot_id = 'legacy'"
+                ) as cur:
+                    row = await cur.fetchone()
+                assert row is not None
+                assert row[0] is None

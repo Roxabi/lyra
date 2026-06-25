@@ -146,3 +146,6 @@ class RoutingKey(NamedTuple):
 class Binding:
     agent_name: str
     pool_id: str
+    # Public-bot handle for ADR-090 §5 deny refusals on this route. Carries no
+    # authorization — a denied PUBLIC sender is pointed here, never routed here.
+    public_bot: str | None = None

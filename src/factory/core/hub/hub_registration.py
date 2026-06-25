@@ -125,13 +125,14 @@ class HubRegistrationMixin:
     ) -> "Authenticator | None":
         return self._authenticators.get((platform, bot_id))
 
-    def register_binding(
+    def register_binding(  # noqa: PLR0913 — per-route binding fields, not a DTO
         self,
         platform: Platform,
         bot_id: str,
         scope_id: str,
         agent_name: str,
         pool_id: str,
+        public_bot: str | None = None,
     ) -> None:
         for ek, eb in self.bindings.items():
             if (
@@ -148,4 +149,5 @@ class HubRegistrationMixin:
         self.bindings[RoutingKey(platform, bot_id, scope_id)] = Binding(
             agent_name=agent_name,
             pool_id=pool_id,
+            public_bot=public_bot,
         )

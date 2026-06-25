@@ -26,7 +26,7 @@
 | [job-model.md](architecture/job-model.md) | Job model — `job_id`=run, lifecycle, active-jobs registry, `factory.job.<id>.*` taxonomy, transport tiers, sub-jobs, runtime control |
 | [CURRENT.generated.md](architecture/CURRENT.generated.md) | Machine-generated inventory SSoT — layers, subjects, topology, entry points |
 
-**Decision archive** — 59 active ADRs (26 archived) in [`architecture/adr/`](architecture/adr/) preserve historical reasoning. Each ADR has a redirect banner to its domain page. **Read ADRs only when you need the *why* behind a decision**, not the *what*. Index grouped by domain in [`adr/meta.json`](architecture/adr/meta.json).
+**Decision archive** — 67 active ADRs (26 archived) in [`architecture/adr/`](architecture/adr/) preserve historical reasoning. Each ADR has a redirect banner to its domain page. **Read ADRs only when you need the *why* behind a decision**, not the *what*. Index grouped by domain in [`adr/meta.json`](architecture/adr/meta.json).
 
 **Implementation reference** — [target-architecture.md](architecture/target-architecture.md) shows the Hexagonal/Ports & Adapters layout as implemented (file paths, module structure).
 

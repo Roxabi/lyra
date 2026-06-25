@@ -12,3 +12,4 @@ import importlib
 importlib.import_module("factory.agent_cmd.agents.init")
 importlib.import_module("factory.agent_cmd.agents.list_cmd")
 importlib.import_module("factory.agent_cmd.agents.edit_cmd")
+importlib.import_module("factory.agent_cmd.agents.auth_cmd")

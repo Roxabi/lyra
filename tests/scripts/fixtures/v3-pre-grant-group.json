@@ -40,7 +40,9 @@
         "$JS.API.>",
         "$KV.factory-state.>",
         "$KV.factory-msg-index.>",
-        "$KV.factory-active-jobs.>"
+        "$KV.factory-active-jobs.>",
+        "$JS.ACK.FACTORY_OUTBOUND_AUDIO.>",
+        "$KV.factory_outbound_audio_sent.>"
       ],
       "subscribe": [
         "factory.inbound.telegram.>",

@@ -5,9 +5,8 @@ import json
 import logging
 from typing import TYPE_CHECKING
 
-from factory.errors import ProviderError
-
 from factory.core.config import PlatformConfig, TurnStoreConfig
+from factory.core.provider_match import is_provider_error
 
 if TYPE_CHECKING:
     from ..agent.agent_config import Agent
@@ -154,15 +153,22 @@ class SessionManager:
                         continue
                     if concept.get("confidence", 0) >= 0.7:
                         await self._memory.upsert_concept(snap, concept)
-        except (
-            ProviderError,
-            json.JSONDecodeError,
-            ValueError,
-            TypeError,
-            KeyError,
-            OSError,
-            RuntimeError,
-        ):
+        except Exception as exc:
+            if not (
+                isinstance(
+                    exc,
+                    (
+                        json.JSONDecodeError,
+                        ValueError,
+                        TypeError,
+                        KeyError,
+                        OSError,
+                        RuntimeError,
+                    ),
+                )
+                or is_provider_error(exc)
+            ):
+                raise
             log.warning(
                 "concept extraction failed for session %s",
                 snap.session_id,
@@ -198,15 +204,22 @@ class SessionManager:
                         )
                         continue
                     await self._memory.upsert_preference(snap, pref)
-        except (
-            ProviderError,
-            json.JSONDecodeError,
-            ValueError,
-            TypeError,
-            KeyError,
-            OSError,
-            RuntimeError,
-        ):
+        except Exception as exc:
+            if not (
+                isinstance(
+                    exc,
+                    (
+                        json.JSONDecodeError,
+                        ValueError,
+                        TypeError,
+                        KeyError,
+                        OSError,
+                        RuntimeError,
+                    ),
+                )
+                or is_provider_error(exc)
+            ):
+                raise
             log.warning(
                 "preference extraction failed for session %s",
                 snap.session_id,

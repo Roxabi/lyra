@@ -27,6 +27,7 @@ Three signal families were being conflated:
 | External world vs internal action | Publishing `factory.event.job.failed` when `factory.job.<id>.closed` already carries the lifecycle |
 | Infra health vs external event | Treating a hub queue spike as a GitHub webhook |
 | Read models vs bus planes | Polling `turns.db` on the same cadence as NATS consumers |
+| Capability vs container | Treating Sentinelle as a parallel `factory-sentinel` service instead of a hub module |
 
 The factory already has partial substrates:
 
@@ -35,7 +36,7 @@ The factory already has partial substrates:
 - **Health stack** — `/health/detail`, turn-writer `/health`, `python -m factory.monitoring` (ADR-038 three layers); timer retired (#1035); **pull-only, not on the bus**.
 - **Metrics bus** — JetStream `factory-metrics` (`factory.metric.>`, 7 d); **no publishers in `src/` yet**.
 
-Sentinelle needs an explicit plane model before implementation.
+Sentinelle needs an explicit plane model **and** a hub-spoke deployment model before implementation.
 
 ## Decision
 
@@ -43,18 +44,41 @@ Lyra Sentinelle observes and acts across **four planes**. Each plane has one pri
 
 | Plane | Grammar | Role | Producer | Sentinelle consumes via |
 |---|---|---|---|---|
-| **① External events** | `factory.event.<service>.<kind>` | World pushes discrete signals | Webhook ingress, host collectors, third-party adapters | JetStream subscribe (`factory.event.>`) — hot triggers + cold window scan |
-| **② Internal jobs** | `factory.job.<id>.*`, `factory.jobs.<name>` | Factory orchestrates observable work | Hub ingress, Sentinelle, schedulers | Dispatch jobs to act; **do not** re-emit job lifecycle as events |
+| **① External events** | `factory.event.<service>.<kind>` | World pushes discrete signals | Host sensors, ingress connectors, mail service | JetStream subscribe (`factory.event.>`) — hot triggers + cold window scan |
+| **② Internal jobs** | `factory.job.<id>.*`, `factory.jobs.<name>` | Factory orchestrates observable work | Hub ingress, Sentinelle module, schedulers | Dispatch jobs to act; **do not** re-emit job lifecycle as events |
 | **③ Internal infra state** | HTTP health endpoints; future `factory.metric.<service>.<name>` | Runtime snapshot — « is the factory healthy? » | Hub, turn-writer, blobstore, external monitor | **V1: pull** (`/health/detail`, monitoring checks); **V2 (#1035): subscribe** `factory.metric.>` |
-| **④ Read models** | Off-bus stores | Enrichment lookups | turns.db, roxabi-live D1, local session files | Point reads when an event or job needs context |
+| **④ Read models** | Off-bus stores | Enrichment lookups | turns.db, roxabi-live D1, obligations.toml, GCal | Point reads when an event or job needs context |
 
 ### Boundary rules (normative)
 
 1. **Job lifecycle stays on the job plane.** Terminal state = `factory.job.<id>.closed` + `JobResult`. No parallel `factory.event.job.*` for the same fact.
-2. **External pushes land on the event plane.** GitHub/Cloudflare webhooks, host activity collectors, and « expected ritual missed » detectors publish `factory.event.*`.
+2. **External pushes land on the event plane.** GitHub/Cloudflare webhooks, host activity sensors, mail inbound, and « expected ritual missed » detectors publish `factory.event.*`.
 3. **Infra health is state, not world.** Queue depth, circuit state, disk, NATS `/varz`, process liveness are plane ③. A **transition** (ok → fail) may later publish `factory.metric.*` or `factory.event.monitoring.anomaly` (#1035); the steady-state gauge remains metric/state.
 4. **Read models are not events.** `turns.db` lookup after `factory.event.github.check_run.failed` is enrichment, not a bus publish.
 5. **Sentinelle acts by dispatching jobs.** Alerts, scans, and optional steer are `factory.jobs.sentinelle.*` (or sub-jobs under a parent run). Events trigger; jobs execute.
+6. **Sensors publish facts; the hub decides.** No host sensor, ingress connector, or mail service may call Discord, dispatch jobs, or apply Sentinelle policy directly.
+
+### Deployment model (hub-spoke)
+
+Sentinelle is a **capability inside `factory-hub`**, not a standalone `factory-sentinel` container.
+
+| Component | Role | Deployment |
+|---|---|---|
+| **`factory-host-sensor`** (ex `sentinel-collect`) | Reads local agent signals (`~/.grok/`, `~/.claude/`, worktrees) → publishes `factory.event.host.*` | systemd timer per dev machine (M₂, laptop, optionally M₁) — **sensor only, no policy** |
+| **`factory-ingress`** | Receives external webhooks (GitHub, Cloudflare, extensible) → normalizes → `factory.event.*` | M₁ container/service with connector registry (apps, secrets, tokens) |
+| **`factory-mail`** *(future epic)* | Inbound mail → `factory.event.mail.received`; outbound send | Dedicated M₁ container; Sentinelle is a consumer, not the mail stack |
+| **Hub Sentinelle module** | Subscribes events, pulls health, enriches read models, decides, acts | **Inside `factory-hub`** (`sentinelle.enabled` or equivalent config) |
+| **`factory-discord`** | Outbound alerts | Existing adapter — unchanged |
+| **`factory-clipool`** | Steer via jobs | Existing worker — unchanged |
+
+Flow: **sensors publish → hub understands and acts** (Discord + jobs).
+
+| Mode | Trigger | Hub behaviour |
+|---|---|---|
+| **Hot** | Incoming `factory.event.*` | Handler → enrich (plane ④) → Discord and/or job |
+| **Cold** | `factory.jobs.sentinelle.scan` | Pull plane ③ + event window + backlog → Discord summary |
+
+If event-consumer load threatens hub SLO, extract a spoke `factory-ops-worker` later. **Default: hub module.**
 
 ### Relationship to ADR-038
 
@@ -74,8 +98,10 @@ ADR-076 catalogues message/persistence/typing planes for **hub traffic**. The fo
 
 ## Consequences
 
-- Host collectors on M₂/Laptop publish `factory.event.host.<machine>.<kind>` on NATS — **not** Syncthing snapshots to M₁.
-- V1 Sentinelle: event consumer + health pull + read-model enrichment + job dispatch.
+- Host sensors on M₂/laptop publish `factory.event.host.<machine>.<kind>` on NATS — **not** Syncthing snapshots to M₁.
+- External webhooks land on **`factory-ingress`**, not directly on the hub HTTP surface.
+- Personal mail is **`factory.event.mail.received`** via `factory-mail`; Gmail/GCal obligations stay plane ④ read models in V1.
+- V1 Sentinelle: hub module (event consumer + health pull + read-model enrichment + job dispatch).
 - Monitoring v2 (#1035) adds `factory.metric.*` publishers; Sentinelle can switch plane ③ from pull to subscribe without changing planes ①②④.
 - New work is gated on spec success criteria before code: taxonomy doc, trigger list, ingress decision (roxabi-live webhook republish vs factory ingress).
 

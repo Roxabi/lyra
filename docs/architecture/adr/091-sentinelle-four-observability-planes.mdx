@@ -1,0 +1,87 @@
+---
+title: "ADR-091: Lyra Sentinelle — four observability planes"
+description: "Separate external events, internal jobs, internal infra state, and read models for the Sentinelle operational brain"
+status: accepted
+date: 2026-06-25
+deciders: [Mickael]
+related: [038, 076, 084, 088]
+---
+
+> **Current truth** → [`artifacts/specs/sentinelle-four-planes-spec.mdx`](../../../artifacts/specs/sentinelle-four-planes-spec.mdx)
+> This ADR is preserved as a decision record. For taxonomy tables, probe catalog, and v1 triggers, read the spec.
+
+## Status
+
+Accepted — 2026-06-25.
+
+Design-only ratification. No Sentinelle runtime ships in this ADR.
+
+## Context
+
+Lyra Sentinelle is the operational brain: compare what is running (Grok/Claude on M₂, factory services on M₁) against backlog and personal obligations, alert on Discord, and optionally steer workers. It is **not** the Job Watcher CM epic nor the code anti-drift sentinel.
+
+Three signal families were being conflated:
+
+| Confusion | Symptom |
+|---|---|
+| External world vs internal action | Publishing `factory.event.job.failed` when `factory.job.<id>.closed` already carries the lifecycle |
+| Infra health vs external event | Treating a hub queue spike as a GitHub webhook |
+| Read models vs bus planes | Polling `turns.db` on the same cadence as NATS consumers |
+
+The factory already has partial substrates:
+
+- **Events bus** — JetStream `factory-events` (`factory.event.>`, 24 h) + `LyraEvent` in `roxabi-contracts`; **no producers in `src/` yet**.
+- **Jobs bus** — `factory.job.<id>.*`, `factory.jobs.<name>`, KV `factory-active-jobs` (ADR-084, ADR-088).
+- **Health stack** — `/health/detail`, turn-writer `/health`, `python -m factory.monitoring` (ADR-038 three layers); timer retired (#1035); **pull-only, not on the bus**.
+- **Metrics bus** — JetStream `factory-metrics` (`factory.metric.>`, 7 d); **no publishers in `src/` yet**.
+
+Sentinelle needs an explicit plane model before implementation.
+
+## Decision
+
+Lyra Sentinelle observes and acts across **four planes**. Each plane has one primary grammar and one consumption mode.
+
+| Plane | Grammar | Role | Producer | Sentinelle consumes via |
+|---|---|---|---|---|
+| **① External events** | `factory.event.<service>.<kind>` | World pushes discrete signals | Webhook ingress, host collectors, third-party adapters | JetStream subscribe (`factory.event.>`) — hot triggers + cold window scan |
+| **② Internal jobs** | `factory.job.<id>.*`, `factory.jobs.<name>` | Factory orchestrates observable work | Hub ingress, Sentinelle, schedulers | Dispatch jobs to act; **do not** re-emit job lifecycle as events |
+| **③ Internal infra state** | HTTP health endpoints; future `factory.metric.<service>.<name>` | Runtime snapshot — « is the factory healthy? » | Hub, turn-writer, blobstore, external monitor | **V1: pull** (`/health/detail`, monitoring checks); **V2 (#1035): subscribe** `factory.metric.>` |
+| **④ Read models** | Off-bus stores | Enrichment lookups | turns.db, roxabi-live D1, local session files | Point reads when an event or job needs context |
+
+### Boundary rules (normative)
+
+1. **Job lifecycle stays on the job plane.** Terminal state = `factory.job.<id>.closed` + `JobResult`. No parallel `factory.event.job.*` for the same fact.
+2. **External pushes land on the event plane.** GitHub/Cloudflare webhooks, host activity collectors, and « expected ritual missed » detectors publish `factory.event.*`.
+3. **Infra health is state, not world.** Queue depth, circuit state, disk, NATS `/varz`, process liveness are plane ③. A **transition** (ok → fail) may later publish `factory.metric.*` or `factory.event.monitoring.anomaly` (#1035); the steady-state gauge remains metric/state.
+4. **Read models are not events.** `turns.db` lookup after `factory.event.github.check_run.failed` is enrichment, not a bus publish.
+5. **Sentinelle acts by dispatching jobs.** Alerts, scans, and optional steer are `factory.jobs.sentinelle.*` (or sub-jobs under a parent run). Events trigger; jobs execute.
+
+### Relationship to ADR-038
+
+ADR-038 defines three **health observation layers** inside plane ③:
+
+| ADR-038 layer | Maps to plane ③ as |
+|---|---|
+| In-process (circuits, queues) | Fields in `/health/detail` |
+| Health endpoint | Pull surface for Sentinelle + Quadlet |
+| External monitor (`factory.monitoring`) | Safety-net batch probe; optional shared probe library for Sentinelle |
+
+Sentinelle **reuses** ADR-038 probes; it does **not** fork a parallel health taxonomy.
+
+### Relationship to ADR-076
+
+ADR-076 catalogues message/persistence/typing planes for **hub traffic**. The four Sentinelle planes are an **operational overlay** for the observability brain. A subject may appear in both (e.g. `factory.turns.write` is persistence; a webhook-derived `factory.event.github.pull_request` is plane ①).
+
+## Consequences
+
+- Host collectors on M₂/Laptop publish `factory.event.host.<machine>.<kind>` on NATS — **not** Syncthing snapshots to M₁.
+- V1 Sentinelle: event consumer + health pull + read-model enrichment + job dispatch.
+- Monitoring v2 (#1035) adds `factory.metric.*` publishers; Sentinelle can switch plane ③ from pull to subscribe without changing planes ①②④.
+- New work is gated on spec success criteria before code: taxonomy doc, trigger list, ingress decision (roxabi-live webhook republish vs factory ingress).
+
+## See also
+
+- [`artifacts/specs/sentinelle-four-planes-spec.mdx`](../../../artifacts/specs/sentinelle-four-planes-spec.mdx) — taxonomy, probes, triggers v1, open questions
+- [`docs/architecture/job-model.md`](../job-model.md) — job plane SSoT
+- [`docs/architecture/adr/038-health-monitoring-layer-boundaries.mdx`](038-health-monitoring-layer-boundaries.mdx) — health layer boundaries
+- Forge diagram: `~/.roxabi/forge/roxabi-factory/visuals/sentinelle-architecture.html`

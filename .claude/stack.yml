@@ -139,3 +139,8 @@ quality_gates:
     enabled: true
     script: tools/check_str_exc_bus_bound.sh
     description: block str(exc)/f"{exc}"/repr(exc) from flowing into SanitizedError construction or NATS-bus-bound message fields (SanitizedError discipline #1212, ADR-073)
+
+  omp_pin_lockstep:
+    enabled: true
+    script: tools/check_omp_pin_lockstep.sh
+    description: assert the omp release pin stays in lockstep across the three files — OMP_SHA256 (deploy/omp-base/Containerfile) == _PINNED_SHA256 (src/factory/adapters/omp/_rpc_digest.py) and OMP_VERSION == Dockerfile factory-omp-base tag — so a version bump can't ship a partial pin → runtime DigestMismatchError (#1873)

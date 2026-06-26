@@ -40,6 +40,7 @@ Tmpfs=/home/factory/.omp:mode=1777
 # orders mounts by destination depth, so the volume dir lands before the file bind.
 Volume=factory-omp-sessions.volume:/home/factory/.config/omp-pi:rw
 Volume=%h/projects/roxabi-factory/deploy/omp/models.yml:/home/factory/.config/omp-pi/models.yml:ro,Z
+Volume=%h/projects/roxabi-factory/deploy/omp/factory-model-policy.yml:/home/factory/.config/omp-pi/factory-model-policy.yml:ro,Z
 Environment=PI_CODING_AGENT_DIR=/home/factory/.config/omp-pi
 # Workspace — mirrors host ~/projects so the git ownership probe finds its target
 # (run_git_ownership_probe defaults to /home/factory/projects/roxabi-factory).

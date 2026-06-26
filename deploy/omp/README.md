@@ -9,6 +9,7 @@ list trade-off).
 | File | Role |
 |---|---|
 | `models.yml` | omp provider override — points the built-in `litellm` provider at the factory LiteLLM canonical route (`:18091/v1`, tailnet) with dynamic merged-catalogue discovery |
+| `factory-model-policy.yml` | factory-only boot + fallback policy — read by `_model_catalogue.py`, **not** by omp (unknown keys in `models.yml` break provider registration) |
 
 ## How omp picks this up
 
@@ -76,20 +77,19 @@ endpoints). OMP and factory read the same catalogue omp discovers via
 omp's subprocess UI discovers models from the same `models.yml`. The factory
 `OmpPool` also needs **any** valid catalogue id at `RpcClient.start()` before
 per-job `set_model()` runs. That boot pick is **not** a pinned default model —
-it comes from `providers.litellm.model_policy` in `models.yml`:
+it comes from `factory-model-policy.yml` (mounted alongside `models.yml`):
 
 ```yaml
-model_policy:
-  boot:
-    select: first          # first | last | max_lex
-    filter:                 # optional
-      include_prefix: [grok]
-      exclude_contains: [reasoning, multi-agent]
-  unavailable:              # mid-turn when agent model is invalid
-    select: first
-    skip_requested: true
-    filter:
-      exclude_contains: [reasoning]
+boot:
+  select: first          # first | last | max_lex
+  filter:                 # optional
+    include_prefix: [grok]
+    exclude_contains: [reasoning, multi-agent]
+unavailable:              # mid-turn when agent model is invalid
+  select: first
+  skip_requested: true
+  filter:
+    exclude_contains: [reasoning]
 ```
 
 Implementation: `src/factory/adapters/omp/_model_catalogue.py` (`resolve_boot_model`,

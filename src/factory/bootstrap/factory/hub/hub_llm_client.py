@@ -25,12 +25,13 @@ async def build_llm_client(
     from factory.transport.nats_request_response import NatsTransport
     from factory.transport.worker_pool_client import WorkerPoolClient
     from roxabi_contracts._nats_utils import validate_worker_id
+    from roxabi_contracts.cli import SUBJECTS
 
     transport = NatsTransport(nc)
     pool = WorkerPoolClient(
         transport,
         registry=WorkerRegistry(),
-        hb_subject="factory.clipool.heartbeat",
+        hb_subject=SUBJECTS.heartbeat,
         validate_worker_id=validate_worker_id,
         name="clipool",
     )
@@ -39,5 +40,5 @@ async def build_llm_client(
         pool,
         CliPoolCodec(),
         timeout=timeout,
-        request_subject="factory.clipool.cmd",
+        request_subject=SUBJECTS.cmd,
     )

@@ -2,8 +2,8 @@
 
 (ADR-054 (absorbed into ADR-055)).
 
-Subscribes to ``factory.clipool.cmd`` (queue group ``clipool-workers``) and
-``factory.clipool.control``.  Routes inbound messages to _handle_cmd or
+Subscribes to ``SUBJECTS.cmd`` (queue group ``SUBJECTS.clipool_workers``) and
+``SUBJECTS.control``.  Routes inbound messages to _handle_cmd or
 _handle_control based on subject.  Streams CLI output back to the caller
 via NATS request-reply inbox.
 """
@@ -26,6 +26,7 @@ from factory.core.agent.agent_config import ModelConfig
 from factory.core.cli.cli_pool import CliPool
 from factory.core.messaging.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
 from factory.core.messaging.utils.metrics import emit_populated_total
+from roxabi_contracts.cli import SUBJECTS
 from roxabi_contracts.cli.models import (
     CliCmdPayload,
     CliControlCmd,
@@ -35,10 +36,6 @@ from roxabi_nats.adapter_base import NatsAdapterBase
 
 log = logging.getLogger(__name__)
 
-_CMD_SUBJECT = "factory.clipool.cmd"
-_CONTROL_SUBJECT = "factory.clipool.control"
-_HEARTBEAT_SUBJECT = "factory.clipool.heartbeat"
-_QUEUE_GROUP = "clipool-workers"
 _ENVELOPE_NAME = "CliCmdPayload"
 _SCHEMA_VERSION = 1
 _HEARTBEAT_INTERVAL = 30.0
@@ -48,8 +45,8 @@ class CliPoolNatsWorker(NatsAdapterBase):
     """NATS worker adapter that exposes CliPool over request-reply subjects.
 
     Routing:
-      - ``factory.clipool.cmd``     (queue group) → _handle_cmd
-      - ``factory.clipool.control`` (broadcast)   → _handle_control
+      - ``SUBJECTS.cmd``     (queue group) → _handle_cmd
+      - ``SUBJECTS.control`` (broadcast)   → _handle_control
 
     The caller sends a JSON envelope (CliCmdPayload / CliControlCmd) and
     provides a reply-to inbox.  Streaming chunks are published to that inbox
@@ -65,12 +62,12 @@ class CliPoolNatsWorker(NatsAdapterBase):
         identity_name: str | None = None,
     ) -> None:
         super().__init__(
-            subject=_CMD_SUBJECT,
-            queue_group=_QUEUE_GROUP,
+            subject=SUBJECTS.cmd,
+            queue_group=SUBJECTS.clipool_workers,
             envelope_name=_ENVELOPE_NAME,
             schema_version=_SCHEMA_VERSION,
             timeout=timeout,
-            heartbeat_subject=_HEARTBEAT_SUBJECT,
+            heartbeat_subject=SUBJECTS.heartbeat,
             heartbeat_interval=_HEARTBEAT_INTERVAL,
             identity_name=identity_name,
             wait_ready=False,  # worker semantics — see NatsAdapterBase docstring
@@ -82,10 +79,10 @@ class CliPoolNatsWorker(NatsAdapterBase):
     # ------------------------------------------------------------------
 
     def _extra_subjects(self) -> list[str]:
-        return [_CONTROL_SUBJECT]
+        return [SUBJECTS.control]
 
     async def handle(self, msg: Any, payload: dict) -> None:
-        if msg.subject == _CONTROL_SUBJECT:
+        if msg.subject == SUBJECTS.control:
             await self._handle_control(msg, payload)
         else:
             await self._handle_cmd(msg, payload)

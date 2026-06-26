@@ -30,6 +30,7 @@ default `http://localhost:4000/v1` is a `config?.baseUrl ?? …` fallback in
 | `PI_CODING_AGENT_DIR` | omp (`packages/utils/src/dirs.ts`) | Absolute path of the config dir containing `models.yml`. Mount target for this file in the worker unit. |
 | `LITELLM_API_KEY` | omp `litellm` provider | The proxy bearer key. `models.yml` references it **by name** (`apiKey: LITELLM_API_KEY` = env-name-or-literal semantics) — the value enters the container via the #1812 secret mount, never via this repo. ⚠ Fallback: if the env var is **unset**, omp sends the literal string `LITELLM_API_KEY` as the bearer (`resolveApiKeyConfig` — passes omp's non-empty check, rejected by the proxy) → auth failures with a config that looks correct. #1812 must verify injection before relying on proxy auth. |
 
+
 ## Discovery mode (#1923)
 
 `models.yml` uses omp's built-in `openai-models-list` discovery:
@@ -62,6 +63,41 @@ remotes + xAI forwarder + supplements).
 **Operator procedure when the proxy catalogue changes:** restart `factory-omp`
 (`systemctl --user restart factory-omp`). No repo change required for new models
 in the merged catalogue.
+
+### Catalogue shape (`GET /v1/models`)
+
+llmCLI publishes one **flat merged list** at `:18091/v1/models` — Grok, local,
+and remote ids share the same `data[]` array (not separate per-provider
+endpoints). OMP and factory read the same catalogue omp discovers via
+`models.yml` `discovery.type: openai-models-list`.
+
+### OMP boot + fallback policy (factory-side, config not code)
+
+omp's subprocess UI discovers models from the same `models.yml`. The factory
+`OmpPool` also needs **any** valid catalogue id at `RpcClient.start()` before
+per-job `set_model()` runs. That boot pick is **not** a pinned default model —
+it comes from `providers.litellm.model_policy` in `models.yml`:
+
+```yaml
+model_policy:
+  boot:
+    select: first          # first | last | max_lex
+    filter:                 # optional
+      include_prefix: [grok]
+      exclude_contains: [reasoning, multi-agent]
+  unavailable:              # mid-turn when agent model is invalid
+    select: first
+    skip_requested: true
+    filter:
+      exclude_contains: [reasoning]
+```
+
+Implementation: `src/factory/adapters/omp/_model_catalogue.py` (`resolve_boot_model`,
+`resolve_fallback_model`). No hardcoded model ids in Python. If the catalogue is
+empty at boot, the pool fails loud (`ModelCatalogueError`).
+
+Per-agent models (e.g. `aryl_default.model` in the DB) still apply per job via
+`RpcBridge.run(model=…)`.
 
 **Related issues:** #1924 (hub `model_cfg` → `RpcClient(model=…)`), #1910
 (default model when hub omits `model`).

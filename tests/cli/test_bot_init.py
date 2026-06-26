@@ -1,4 +1,4 @@
-"""E2E tests for `lyra bot init` (issue #1414, T9)."""
+"""E2E tests for `factory bot init` (issue #1414, T9)."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ runner = CliRunner()
 
 
 class TestBotInitHelp:
-    """`lyra bot init --help`"""
+    """`factory bot init --help`"""
 
     def test_help_shows_force_flag(self) -> None:
         # NO_COLOR=1 disables Rich's ANSI styling so '--force' is a contiguous

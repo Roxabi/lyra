@@ -1,4 +1,4 @@
-"""Tests for lyra agent patch and refine CLI commands."""
+"""Tests for factory agent patch and refine CLI commands."""
 
 from __future__ import annotations
 
@@ -49,12 +49,12 @@ def make_store(row: AgentRow | None = None) -> MagicMock:
 
 
 # ---------------------------------------------------------------------------
-# T3 — CLI: lyra agent patch (SC-1)
+# T3 — CLI: factory agent patch (SC-1)
 # ---------------------------------------------------------------------------
 
 
 class TestPatchCommand:
-    """lyra agent patch — CLI integration via typer CliRunner."""
+    """factory agent patch — CLI integration via typer CliRunner."""
 
     @pytest.fixture()
     def cli(self):
@@ -158,7 +158,7 @@ class TestPatchCommand:
 
 
 class TestPatchInvalidJson:
-    """lyra agent patch — rejects invalid JSON with exit_code 1."""
+    """factory agent patch — rejects invalid JSON with exit_code 1."""
 
     def test_patch_invalid_json_exits_with_error(self) -> None:
         # Arrange
@@ -315,7 +315,7 @@ class TestRunSession:
 
 
 class TestRefineCommand:
-    """Integration tests for `lyra agent refine` CLI command."""
+    """Integration tests for `factory agent refine` CLI command."""
 
     def test_refine_applies_patch_and_prints_diff(self) -> None:
         # Arrange

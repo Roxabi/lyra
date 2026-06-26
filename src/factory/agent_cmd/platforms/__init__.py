@@ -1,4 +1,4 @@
-"""lyra agent_cmd platforms package — import to trigger registration."""
+"""factory agent_cmd platforms package — import to trigger registration."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Tests for `lyra ops verify` (issue #737)."""
+"""Tests for `factory ops verify` (issue #737)."""
 
 from __future__ import annotations
 

@@ -1,12 +1,12 @@
-"""RED tests for `lyra bot secret` subcommands (issue #1057).
+"""RED tests for `factory bot secret` subcommands (issue #1057).
 
 These tests MUST FAIL until T2 implements the `secret` sub-app in
 `src/factory/cli_bot.py`. They exercise:
-  - lyra bot secret install <platform> <bot_id>
+  - factory bot secret install <platform> <bot_id>
       [--from-env VAR] [--webhook-from-env VAR]
-  - lyra bot secret rm <platform> <bot_id>
-  - lyra bot secret list
-  - lyra bot secret migrate --vault <dir>
+  - factory bot secret rm <platform> <bot_id>
+  - factory bot secret list
+  - factory bot secret migrate --vault <dir>
 
 Mock strategy: `subprocess.run` is patched so that no real podman process is
 spawned. The root `factory_app` from `factory.cli` is invoked through `CliRunner`
@@ -57,7 +57,7 @@ def _assert_exit0(result: object, label: str = "") -> None:
 
 
 class TestSecretInstall:
-    """lyra bot secret install — creates podman secrets from env vars."""
+    """factory bot secret install — creates podman secrets from env vars."""
 
     def test_install_creates_podman_secret(
         self, monkeypatch: pytest.MonkeyPatch
@@ -332,7 +332,7 @@ class TestSecretInstall:
 
 
 class TestSecretRm:
-    """lyra bot secret rm — removes token and webhook secrets."""
+    """factory bot secret rm — removes token and webhook secrets."""
 
     def test_rm_removes_both_token_and_webhook(self) -> None:
         """rm calls podman secret rm for both the token and webhook names."""
@@ -382,7 +382,7 @@ class TestSecretRm:
 
 
 class TestSecretList:
-    """lyra bot secret list — filters by factory-bot- prefix and echoes JSON."""
+    """factory bot secret list — filters by factory-bot- prefix and echoes JSON."""
 
     def test_list_filters_by_lyra_bot_prefix(self) -> None:
         """list calls podman secret ls with filter + json format, echoes output."""

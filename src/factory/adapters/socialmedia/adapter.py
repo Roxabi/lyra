@@ -11,7 +11,6 @@ from pydantic import ValidationError
 from factory.adapters.socialmedia.postiz_client import PostizApiError, PostizPublicApiClient
 
 from roxabi_contracts.envelope import CONTRACT_VERSION
-from roxabi_contracts.errors import WorkerError
 from roxabi_contracts.socialmedia import SUBJECTS
 from roxabi_contracts.socialmedia.models import (
     SocialMediaListGroupsRequest,
@@ -23,10 +22,20 @@ from roxabi_contracts.socialmedia.models import (
     SocialMediaScheduleRequest,
 )
 from roxabi_nats.adapter_base import NatsAdapterBase
+from roxabi_satellite.envelope import coerce_envelope_fields, work_fields_from_request
+from roxabi_satellite.socialmedia import (
+    build_list_groups_error,
+    build_list_integrations_error,
+    build_publish_error,
+    validate_list_groups_request,
+    validate_list_integrations_request,
+    validate_publish_request,
+    validate_schedule_request,
+    worker_error_from_http_provider,
+)
 
 log = logging.getLogger(__name__)
 
-_QUEUE_GROUP = "socialmedia-workers"
 _ENVELOPE_NAME = "SocialMediaRequest"
 _SCHEMA_VERSION = 1
 _HEARTBEAT_INTERVAL = 5.0
@@ -43,7 +52,7 @@ class SocialMediaNatsAdapter(NatsAdapterBase):
     ) -> None:
         super().__init__(
             subject=SUBJECTS.publish,
-            queue_group=_QUEUE_GROUP,
+            queue_group=SUBJECTS.workers,
             envelope_name=_ENVELOPE_NAME,
             schema_version=_SCHEMA_VERSION,
             heartbeat_subject=SUBJECTS.heartbeat,
@@ -89,7 +98,18 @@ class SocialMediaNatsAdapter(NatsAdapterBase):
             self._active_requests = max(0, self._active_requests - 1)
 
     async def _handle_list_groups(self, payload: dict) -> SocialMediaListGroupsResponse:
-        req = SocialMediaListGroupsRequest.model_validate(payload)
+        outcome = validate_list_groups_request(payload)
+        if outcome.error is not None or outcome.request is None:
+            return build_list_groups_error(
+                SocialMediaListGroupsRequest.model_construct(
+                    **coerce_envelope_fields(
+                        {"request_id": str(payload.get("request_id") or "unknown")}
+                    )
+                ),
+                outcome.error or "malformed request",
+            )
+        req = outcome.request
+        assert isinstance(req, SocialMediaListGroupsRequest)
         try:
             groups = [
                 self._envelope_group(self._postiz.map_group(g))
@@ -97,19 +117,30 @@ class SocialMediaNatsAdapter(NatsAdapterBase):
             ]
             return self._ok_list_groups(req, groups)
         except PostizApiError as exc:
-            return self._err_list_groups(req, exc)
+            return build_list_groups_error(req, str(exc))
 
     async def _handle_list_integrations(
         self, payload: dict
     ) -> SocialMediaListIntegrationsResponse:
-        req = SocialMediaListIntegrationsRequest.model_validate(payload)
+        outcome = validate_list_integrations_request(payload)
+        if outcome.error is not None or outcome.request is None:
+            return build_list_integrations_error(
+                SocialMediaListIntegrationsRequest.model_construct(
+                    **coerce_envelope_fields(
+                        {"request_id": str(payload.get("request_id") or "unknown")}
+                    )
+                ),
+                outcome.error or "malformed request",
+            )
+        req = outcome.request
+        assert isinstance(req, SocialMediaListIntegrationsRequest)
         try:
             group_id = None
             if req.brand_slug:
                 group_id = await self._resolve_group_id(req.brand_slug)
                 if group_id is None:
                     return SocialMediaListIntegrationsResponse(
-                        **self._work_fields(req),
+                        **work_fields_from_request(req),
                         ok=True,
                         request_id=req.request_id,
                         integrations=[],
@@ -126,20 +157,53 @@ class SocialMediaNatsAdapter(NatsAdapterBase):
                 for item in raw
             ]
             return SocialMediaListIntegrationsResponse(
-                **self._work_fields(req),
+                **work_fields_from_request(req),
                 ok=True,
                 request_id=req.request_id,
                 integrations=integrations,
             )
         except PostizApiError as exc:
-            return self._err_list_integrations(req, exc)
+            return build_list_integrations_error(req, str(exc))
 
     async def _handle_publish(self, payload: dict) -> SocialMediaPublishResponse:
-        req = SocialMediaPublishRequest.model_validate(payload)
+        outcome = validate_publish_request(payload)
+        if outcome.error is not None or outcome.request is None:
+            return build_publish_error(
+                SocialMediaPublishRequest.model_construct(
+                    **coerce_envelope_fields(
+                        {
+                            "request_id": str(payload.get("request_id") or "unknown"),
+                            "brand_slug": "unknown",
+                            "content": "x",
+                            "platforms": ["x"],
+                        }
+                    )
+                ),
+                error=outcome.error or "malformed request",
+            )
+        req = outcome.request
+        assert isinstance(req, SocialMediaPublishRequest)
         return await self._publish(req, post_type="now", when=datetime.now(tz=UTC))
 
     async def _handle_schedule(self, payload: dict) -> SocialMediaPublishResponse:
-        req = SocialMediaScheduleRequest.model_validate(payload)
+        outcome = validate_schedule_request(payload)
+        if outcome.error is not None or outcome.request is None:
+            return build_publish_error(
+                SocialMediaScheduleRequest.model_construct(
+                    **coerce_envelope_fields(
+                        {
+                            "request_id": str(payload.get("request_id") or "unknown"),
+                            "brand_slug": "unknown",
+                            "content": "x",
+                            "platforms": ["x"],
+                            "publish_at": datetime.now(tz=UTC),
+                        }
+                    )
+                ),
+                error=outcome.error or "malformed request",
+            )
+        req = outcome.request
+        assert isinstance(req, SocialMediaScheduleRequest)
         when = req.publish_at
         if when.tzinfo is None:
             when = when.replace(tzinfo=UTC)
@@ -160,7 +224,7 @@ class SocialMediaNatsAdapter(NatsAdapterBase):
             )
             if not integrations:
                 return SocialMediaPublishResponse(
-                    **self._work_fields(req),
+                    **work_fields_from_request(req),
                     ok=False,
                     request_id=req.request_id,
                     error=f"no integrations for brand={req.brand_slug!r}",
@@ -197,49 +261,21 @@ class SocialMediaNatsAdapter(NatsAdapterBase):
                 if item.get("postId")
             ]
             return SocialMediaPublishResponse(
-                **self._work_fields(req),
+                **work_fields_from_request(req),
                 ok=True,
                 request_id=req.request_id,
                 posts=posts,
                 scheduled_for=when if post_type == "schedule" else None,
             )
         except PostizApiError as exc:
-            validation_errors = []
-            if isinstance(exc.body, dict) and exc.body.get("provider"):
-                validation_errors.append(
-                    {
-                        "provider": str(exc.body.get("provider")),
-                        "error": str(exc.body.get("error") or exc),
-                    }
-                )
-            worker_error = None
-            if exc.status_code == 401:
-                worker_error = WorkerError(
-                    code="provider.auth",
-                    message=str(exc),
-                    retryable=False,
-                )
-            elif exc.status_code == 429:
-                worker_error = WorkerError(
-                    code="provider.rate_limit",
-                    message=str(exc),
-                    retryable=True,
-                )
-            return SocialMediaPublishResponse(
-                **self._work_fields(req),
-                ok=False,
-                request_id=req.request_id,
+            return build_publish_error(
+                req,
                 error=str(exc),
-                worker_error=worker_error,
-                validation_errors=validation_errors,
+                worker_error=worker_error_from_http_provider(exc.status_code, str(exc)),
+                provider_body=exc.body,
             )
         except ValidationError as exc:
-            return SocialMediaPublishResponse(
-                **self._work_fields(req),
-                ok=False,
-                request_id=req.request_id,
-                error=str(exc),
-            )
+            return build_publish_error(req, error=str(exc))
 
     async def _resolve_group_id(self, brand_slug: str) -> str | None:
         from factory.adapters.socialmedia.slug import resolve_group_id
@@ -250,14 +286,15 @@ class SocialMediaNatsAdapter(NatsAdapterBase):
     async def _reply_model(self, msg: Any, model: Any) -> None:
         await self.reply(msg, model.model_dump_json(by_alias=True).encode())
 
-    @staticmethod
-    def _work_fields(req: Any) -> dict:
-        return {
-            "contract_version": req.contract_version,
-            "trace_id": req.trace_id,
-            "issued_at": req.issued_at,
-            "job_id": req.job_id,
-        }
+    def _ok_list_groups(
+        self, req: SocialMediaListGroupsRequest, groups: list[dict]
+    ) -> SocialMediaListGroupsResponse:
+        return SocialMediaListGroupsResponse(
+            **work_fields_from_request(req),
+            ok=True,
+            request_id=req.request_id,
+            groups=groups,
+        )
 
     def _envelope_group(self, mapped: dict) -> dict:
         return {
@@ -269,33 +306,3 @@ class SocialMediaNatsAdapter(NatsAdapterBase):
 
     def _envelope_integration(self, mapped: dict) -> dict:
         return self._envelope_group(mapped)
-
-    def _ok_list_groups(
-        self, req: SocialMediaListGroupsRequest, groups: list[dict]
-    ) -> SocialMediaListGroupsResponse:
-        return SocialMediaListGroupsResponse(
-            **self._work_fields(req),
-            ok=True,
-            request_id=req.request_id,
-            groups=groups,
-        )
-
-    def _err_list_groups(
-        self, req: SocialMediaListGroupsRequest, exc: PostizApiError
-    ) -> SocialMediaListGroupsResponse:
-        return SocialMediaListGroupsResponse(
-            **self._work_fields(req),
-            ok=False,
-            request_id=req.request_id,
-            error=str(exc),
-        )
-
-    def _err_list_integrations(
-        self, req: SocialMediaListIntegrationsRequest, exc: PostizApiError
-    ) -> SocialMediaListIntegrationsResponse:
-        return SocialMediaListIntegrationsResponse(
-            **self._work_fields(req),
-            ok=False,
-            request_id=req.request_id,
-            error=str(exc),
-        )

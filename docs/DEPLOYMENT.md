@@ -6,7 +6,7 @@ Running factory as a managed service on Machine 1 (Ubuntu Server 26.04 LTS) usin
 
 ## Overview
 
-factory runs as **nine containers** on a shared `roxabi.network` bridge, managed by **Podman Quadlet** (systemd --user). A `linger`-enabled systemd user session ensures all containers auto-start on boot without a login session.
+factory runs as **twenty containers** on a shared `roxabi.network` bridge, managed by **Podman Quadlet** (systemd --user). The manifest SSoT is `deploy/quadlet.toml` (11 core factory units + 9 observability units: Loki, Promtail, OTel collector, Langfuse stack). A `linger`-enabled systemd user session ensures all containers auto-start on boot without a login session.
 
 ```
 Machine 1 (production hub)
@@ -115,7 +115,7 @@ Volume + secret layout is documented inline in `deploy/quadlet/factory-hub.conta
 
 ## Multi-Bot Deployment
 
-Multiple bots are configured in `config.toml` — no container changes needed. The nine-container
+Multiple bots are configured in `config.toml` — no container changes needed. The core factory
 topology (`deploy/quadlet.toml`) is fixed regardless of how many bots are configured.
 
 ### Adding a second bot
@@ -199,7 +199,7 @@ make discord reload
 make nats reload
 make clipool reload
 
-# Full stack (9 containers + NATS auth refresh) — on the production host after unit/image/git drift
+# Full stack (20 containers + NATS auth refresh) — on the production host after unit/image/git drift
 make converge
 
 # From your dev machine (requires .env — see §8)
@@ -214,8 +214,8 @@ container list from `deploy/quadlet.toml`, #1988):
 
 | Command | Where | Restarts |
 |---------|-------|----------|
-| `make factory reload` | production host | the **9 app containers** (every container except the bare `factory-nats`) — restart only |
-| `make converge` | production host | **NATS** + the **9 app containers** + voiceCLI if present; also pulls git, reinstalls quadlet units, and regenerates auth.conf when drift detected |
+| `make factory reload` | production host | the **19 app containers** (every container except the bare `factory-nats`) — restart only |
+| `make converge` | production host | **NATS** + the **19 app containers** + voiceCLI if present; also pulls git, reinstalls quadlet units, and regenerates auth.conf when drift detected |
 
 Use `make factory reload` for a quick app-container bounce (no git pull, unit reinstall, or auth regen). Use `make converge` after changing Quadlet units, images, or ACL — it is idempotent and no-ops when already converged.
 

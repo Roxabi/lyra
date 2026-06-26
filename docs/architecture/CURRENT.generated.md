@@ -104,8 +104,8 @@
 - **Publish:** factory.gh.mint_failure.>
 
 ### hub
-- **Publish:** $JS.ACK.FACTORY_OUTBOUND_AUDIO.>, $JS.API.>, $KV.factory-active-jobs.>, $KV.factory-msg-index.>, $KV.factory-state.>, $KV.factory_outbound_audio_sent.>, factory.audit.>, factory.clipool.cmd, factory.clipool.control, factory.event.>, factory.image.generate.request, factory.job.*.steer, factory.jobs.>, factory.llm.generate.request, factory.metric.>, factory.outbound.audio.>, factory.outbound.discord.>, factory.outbound.telegram.>, factory.outbound.web.>, factory.turns.write, factory.typing.>, factory.voice.stt.request, factory.voice.stt.request.>, factory.voice.tts.request, factory.voice.tts.request.>
-- **Subscribe:** $JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.FACTORY_JOBS.>, _inbox.hub.>, factory.clipool.heartbeat, factory.gh.mint_failure.>, factory.image.heartbeat, factory.inbound.discord.>, factory.inbound.telegram.>, factory.inbound.web.>, factory.job.*.result, factory.llm.heartbeat, factory.omp.heartbeat, factory.system.ready, factory.voice.stt.heartbeat, factory.voice.tts.heartbeat
+- **Publish:** $JS.ACK.FACTORY_OUTBOUND_AUDIO.>, $JS.API.>, $KV.factory-active-jobs.>, $KV.factory-msg-index.>, $KV.factory-state.>, $KV.factory_outbound_audio_sent.>, factory.audit.>, factory.clipool.cmd, factory.clipool.control, factory.event.>, factory.image.generate.request, factory.job.*.steer, factory.jobs.>, factory.llm.generate.request, factory.metric.>, factory.outbound.audio.>, factory.outbound.discord.>, factory.outbound.telegram.>, factory.outbound.web.>, factory.tool.socialmedia.>, factory.turns.write, factory.typing.>, factory.voice.stt.request, factory.voice.stt.request.>, factory.voice.tts.request, factory.voice.tts.request.>
+- **Subscribe:** $JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.FACTORY_JOBS.>, _inbox.hub.>, factory.clipool.heartbeat, factory.gh.mint_failure.>, factory.image.heartbeat, factory.inbound.discord.>, factory.inbound.telegram.>, factory.inbound.web.>, factory.job.*.result, factory.llm.heartbeat, factory.omp.heartbeat, factory.system.ready, factory.tool.socialmedia.heartbeat, factory.voice.stt.heartbeat, factory.voice.tts.heartbeat
 
 ### image-worker
 - **Publish:** $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.image.heartbeat
@@ -126,6 +126,10 @@
 ### omp-worker
 - **Publish:** $JS.API.DIRECT.GET.KV_factory-state.hub.ready, $JS.API.INFO, $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.job.*.progress, factory.job.*.result, factory.omp.heartbeat, factory.system.ready
 - **Subscribe:** $KV.factory-state.>, _inbox.omp-worker.>, factory.job.*.steer, factory.jobs.omp
+
+### socialmedia-adapter
+- **Publish:** $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.tool.socialmedia.heartbeat
+- **Subscribe:** $KV.factory-state.>, _inbox.socialmedia-adapter.>, factory.tool.socialmedia.>
 
 ### telegram-adapter
 - **Publish:** $JS.API.CONSUMER.CREATE.*, $JS.API.DIRECT.GET.KV_factory-state.hub.ready, $JS.API.INFO, $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.event.>, factory.inbound.telegram.>, factory.metric.>, factory.system.ready
@@ -179,6 +183,34 @@
 - **Required secrets:** factory-nats-hub
 - **Host roles:** factory-hub
 
+### langfuse-clickhouse
+- **Container:** factory-langfuse-clickhouse.container
+- **Host roles:** factory-hub
+
+### langfuse-minio
+- **Container:** factory-langfuse-minio.container
+- **Host roles:** factory-hub
+
+### langfuse-postgres
+- **Container:** factory-langfuse-postgres.container
+- **Host roles:** factory-hub
+
+### langfuse-redis
+- **Container:** factory-langfuse-redis.container
+- **Host roles:** factory-hub
+
+### langfuse-web
+- **Container:** factory-langfuse-web.container
+- **Host roles:** factory-hub
+
+### langfuse-worker
+- **Container:** factory-langfuse-worker.container
+- **Host roles:** factory-hub
+
+### loki
+- **Container:** factory-loki.container
+- **Host roles:** factory-hub
+
 ### nats
 - **Container:** factory-nats.container
 - **Host roles:** factory-hub
@@ -186,6 +218,19 @@
 ### omp
 - **Container:** factory-omp.container
 - **Required secrets:** factory-litellm-key, factory-nats-omp
+- **Host roles:** factory-hub
+
+### otel-collector
+- **Container:** factory-otel-collector.container
+- **Host roles:** factory-hub
+
+### promtail
+- **Container:** factory-promtail.container
+- **Host roles:** factory-hub
+
+### socialmedia-adapter
+- **Container:** factory-socialmedia-adapter.container
+- **Required secrets:** factory-nats-socialmedia, factory-socialmedia-api-key, factory_blobstore_token
 - **Host roles:** factory-hub
 
 ### telegram

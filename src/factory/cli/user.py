@@ -6,8 +6,8 @@ import asyncio
 
 import typer
 
-from factory.core.auth.platform_keys import is_platform_key, is_user_id
 from factory.cli._store_connect import _connect_user_store
+from factory.core.auth.platform_keys import is_platform_key, is_user_id
 
 user_app = typer.Typer(name="user", help="Canonical user identities (rx:user:…).")
 

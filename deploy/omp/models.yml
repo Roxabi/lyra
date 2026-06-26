@@ -23,3 +23,13 @@ providers:
     apiKey: LITELLM_API_KEY
     discovery:
       type: openai-models-list
+    # Factory OmpPool boot + mid-turn fallback (not a pinned model id).
+    # Source of truth: GET {baseUrl}/models (merged llmCLI catalogue).
+    model_policy:
+      boot:
+        select: first
+      unavailable:
+        select: first
+        skip_requested: true
+        filter:
+          exclude_contains: [reasoning, multi-agent]

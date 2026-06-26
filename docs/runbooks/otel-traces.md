@@ -47,20 +47,20 @@ Langfuse UI: `http://127.0.0.1:3000` — credentials printed once by `bootstrap-
 ## LiteLLM proxy OTel (OMP + cloud relay — secondary)
 
 `llmcli` on M₁ routes OMP and other LiteLLM consumers. Enable OTel in
-`~/.roxabi/llmcli/env/proxy.env` — `LLMCLI_OTEL_ENABLED=1` auto-injects
-`callbacks: ["otel"]` at proxy startup (LiteLLM 1.86.x v1 integration):
+`~/.roxabi/llmcli/env/proxy.env` — LiteLLM **>=1.89** uses native v2 via
+`LITELLM_OTEL_V2` (no `callbacks: ["otel"]` injection):
 
 ```bash
-LLMCLI_OTEL_ENABLED=1
-OTEL_EXPORTER_OTLP_ENDPOINT=http://factory-otel-collector:4317
-OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+LITELLM_OTEL_V2=true
+OTEL_EXPORTER=otlp_grpc
+OTEL_ENDPOINT=http://factory-otel-collector:4317
 OTEL_SERVICE_NAME=llmcli-proxy
-OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=NO_CONTENT
+OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=no_content
 ```
 
 ```bash
 systemctl --user restart llmcli
-podman exec llmcli env | grep -E 'LLMCLI_OTEL|OTEL_EXPORTER'
+podman exec llmcli env | grep -E 'LITELLM_OTEL|OTEL_'
 ```
 
 Template: `llmCLI/deploy/proxy.env.example`. OMP spans appear in Langfuse when

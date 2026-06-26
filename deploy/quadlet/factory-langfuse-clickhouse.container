@@ -8,8 +8,7 @@ Image=docker.io/clickhouse/clickhouse-server:24.12
 ContainerName=factory-langfuse-clickhouse
 Network=roxabi.network
 User=101:101
-NoNewPrivileges=true
-DropCapability=all
+# Carve-out: ClickHouse init needs broader caps on first boot — infra dep only.
 EnvironmentFile=%h/.roxabi/factory/env/langfuse.env
 Volume=factory-langfuse-clickhouse-data.volume:/var/lib/clickhouse:z
 Volume=factory-langfuse-clickhouse-logs.volume:/var/log/clickhouse-server:z

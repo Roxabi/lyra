@@ -25,21 +25,33 @@ def _validation_errors_from_body(body: object, fallback: str) -> list[dict[str, 
     return []
 
 
-def build_list_groups_error(req: Any, error: str) -> SocialMediaListGroupsResponse:
+def build_list_groups_error(
+    req: Any,
+    error: str,
+    *,
+    worker_error: WorkerError | None = None,
+) -> SocialMediaListGroupsResponse:
     return SocialMediaListGroupsResponse(
         **work_fields_from_request(req),
         ok=False,
         request_id=req.request_id,
         error=error,
+        worker_error=worker_error,
     )
 
 
-def build_list_integrations_error(req: Any, error: str) -> SocialMediaListIntegrationsResponse:
+def build_list_integrations_error(
+    req: Any,
+    error: str,
+    *,
+    worker_error: WorkerError | None = None,
+) -> SocialMediaListIntegrationsResponse:
     return SocialMediaListIntegrationsResponse(
         **work_fields_from_request(req),
         ok=False,
         request_id=req.request_id,
         error=error,
+        worker_error=worker_error,
     )
 
 

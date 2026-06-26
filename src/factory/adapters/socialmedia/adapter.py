@@ -117,7 +117,11 @@ class SocialMediaNatsAdapter(NatsAdapterBase):
             ]
             return self._ok_list_groups(req, groups)
         except PostizApiError as exc:
-            return build_list_groups_error(req, str(exc))
+            return build_list_groups_error(
+                req,
+                str(exc),
+                worker_error=worker_error_from_http_provider(exc.status_code, str(exc)),
+            )
 
     async def _handle_list_integrations(
         self, payload: dict
@@ -163,7 +167,11 @@ class SocialMediaNatsAdapter(NatsAdapterBase):
                 integrations=integrations,
             )
         except PostizApiError as exc:
-            return build_list_integrations_error(req, str(exc))
+            return build_list_integrations_error(
+                req,
+                str(exc),
+                worker_error=worker_error_from_http_provider(exc.status_code, str(exc)),
+            )
 
     async def _handle_publish(self, payload: dict) -> SocialMediaPublishResponse:
         outcome = validate_publish_request(payload)

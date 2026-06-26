@@ -52,3 +52,21 @@ def test_stt_happy_path() -> None:
     result = validate_stt_request(payload, default_model="large-v3-turbo")
     assert result.error_code is None
     assert result.storage_blob_ref is not None
+
+
+def test_tts_empty_text_malformed() -> None:
+    result = validate_tts_request(
+        {"request_id": "req-1", "text": "   "},
+        default_engine="qwen",
+        engine_available=lambda _: True,
+    )
+    assert result.error_code == "malformed_request"
+
+
+def test_tts_invalid_engine_token() -> None:
+    result = validate_tts_request(
+        {"request_id": "req-1", "text": "hi", "engine": "bad token"},
+        default_engine="qwen",
+        engine_available=lambda _: True,
+    )
+    assert result.error_code == "malformed_request"

@@ -61,3 +61,12 @@ Postiz HTTP client logic stays in `factory.adapters.socialmedia.postiz_client`.
 | `roxabi_satellite.llm.replies` | `build_llm_error_reply` (stream + blocking) |
 
 Domain validation for image (LoRA paths, bounds) and LLM lifecycle stay in each CLI.
+
+## Blobstore env conventions
+
+| Consumer | Config source | Env vars |
+|---|---|---|
+| voiceCLI, Factory Posties daemon | `roxabi_satellite.blobs` | `BLOBSTORE_*` (ADR-068); Factory quadlet may set `FACTORY_BLOBSTORE_*` (aliased at startup) |
+| imageCLI | `imagecli.nats.blobs` (local singleton) | `IMAGECLI_BLOBSTORE_*` / `imagecli.toml [blobstore]` — **not** ADR-068 names |
+
+imageCLI keeps its own blobstore loader because operators already mount `imagecli-blobstore-token` and configure `IMAGECLI_BLOBSTORE_URL`. Use `roxabi_satellite.image.delivery` for httpx-safe errors; migrate to `roxabi_satellite.blobs` only if imageCLI adopts ADR-068 env names.

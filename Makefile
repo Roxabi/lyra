@@ -20,12 +20,12 @@ endif
 # Sub-command parsing for multi-word targets (remote, monitor, deploy).
 # These are NOT in HUB_SERVICES because their sub-commands can collide
 # with real target names (e.g. `make remote telegram reload`).
-_LYRA_MULTI := monitor deploy remote
-ifneq (,$(filter $(_LYRA_MULTI),$(firstword $(MAKECMDGOALS))))
-  _LYRA_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
-  _IS_LYRA_SUBCMD := true
-  ifneq (,$(_LYRA_CMD))
-    $(eval $(_LYRA_CMD):;@:)
+_FACTORY_MULTI := monitor deploy remote
+ifneq (,$(filter $(_FACTORY_MULTI),$(firstword $(MAKECMDGOALS))))
+  _FACTORY_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))
+  _IS_FACTORY_SUBCMD := true
+  ifneq (,$(_FACTORY_CMD))
+    $(eval $(_FACTORY_CMD):;@:)
   endif
 endif
 
@@ -93,32 +93,32 @@ define factory_sctl
 endef
 
 factory:
-ifndef _IS_LYRA_SUBCMD
+ifndef _IS_FACTORY_SUBCMD
 	$(call factory_sctl,$(FACTORY_UNITS))
 endif
 
 telegram:
-ifndef _IS_LYRA_SUBCMD
+ifndef _IS_FACTORY_SUBCMD
 	$(call factory_sctl,$(FACTORY_TELEGRAM_UNIT))
 endif
 
 discord:
-ifndef _IS_LYRA_SUBCMD
+ifndef _IS_FACTORY_SUBCMD
 	$(call factory_sctl,$(FACTORY_DISCORD_UNIT))
 endif
 
 web:
-ifndef _IS_LYRA_SUBCMD
+ifndef _IS_FACTORY_SUBCMD
 	$(call factory_sctl,$(FACTORY_WEB_UNIT))
 endif
 
 nats:
-ifndef _IS_LYRA_SUBCMD
+ifndef _IS_FACTORY_SUBCMD
 	$(call factory_sctl,$(FACTORY_NATS_UNIT))
 endif
 
 clipool:
-ifndef _IS_LYRA_SUBCMD
+ifndef _IS_FACTORY_SUBCMD
 	$(call factory_sctl,$(FACTORY_CLIPOOL_UNIT))
 endif
 
@@ -249,7 +249,7 @@ remote:
 	$(require_machine1)
 	@ssh $(DEPLOY_HOST) '\
 	set -eu; \
-	SVC="$(word 1,$(_LYRA_CMD))"; ACTION="$(word 2,$(_LYRA_CMD))"; \
+	SVC="$(word 1,$(_FACTORY_CMD))"; ACTION="$(word 2,$(_FACTORY_CMD))"; \
 	QDIR=$$HOME/.config/containers/systemd; \
 	rdisc() { ls "$$QDIR"/factory-*.container "$$QDIR"/voicecli-*.container 2>/dev/null | xargs -n1 basename | sed "s/\.container$$//" | tr "\n" " "; }; \
 	if   [ -z "$$SVC" ] || [ "$$SVC" = factory ]; then PROGS=$$(rdisc); FIRST=factory-hub; \

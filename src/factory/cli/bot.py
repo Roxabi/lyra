@@ -1,4 +1,4 @@
-"""lyra bot — CLI commands for managing bot credentials as Podman secrets."""
+"""factory bot — CLI commands for managing bot credentials as Podman secrets."""
 
 from __future__ import annotations
 

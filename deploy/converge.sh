@@ -87,7 +87,7 @@ _do_converge() {
         _restart_nats
 
         # 8) Restart factory NATS clients (only on structural drift)
-        echo "==> Lyra: restarting containers..."
+        echo "==> Factory: restarting containers..."
         local failed=""
         local -a _all_svcs _client_svcs
         mapfile -t _all_svcs < <(quadlet_containers)

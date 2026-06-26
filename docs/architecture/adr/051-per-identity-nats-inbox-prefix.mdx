@@ -140,7 +140,7 @@ any identity that holds an inbox ACL grant.
 ADR-046 Invariant 2 establishes IDENTITIES in `gen-nkeys.sh` as the SSoT. The per-identity
 inbox prefix is part of each identity's configuration contract alongside its publish/subscribe
 subjects. Operators regenerating `auth.conf` via `--regen-authconf` MUST use the narrowed
-`_INBOX.<identity>.>` subjects, not `_INBOX.>`. The `lyra ops verify` command (ADR-046 Invariant
+`_INBOX.<identity>.>` subjects, not `_INBOX.>`. The `factory ops verify` command (ADR-046 Invariant
 5) SHOULD flag any `_INBOX.>` ACL remaining in a generated `auth.conf` as a drift error.
 
 ### nats-py behavior note
@@ -214,7 +214,7 @@ connect call from the start. The `_INBOX.>` wildcard is not available for new id
   change required. SDK README update needed to document `inbox_prefix` convention.
 - **ADR-046** — nkey provisioning is declarative. Narrowed `_INBOX.<identity>.>` subjects must
   appear in the IDENTITIES manifest and be rendered into `auth.conf` by `--regen-authconf`.
-  `lyra ops verify` (Invariant 5) SHOULD flag retained `_INBOX.>` as a drift error.
+  `factory ops verify` (Invariant 5) SHOULD flag retained `_INBOX.>` as a drift error.
 - **ADR-047** — NATS connector ownership. Satellite workers own their connect call sites.
   Per-satellite PRs required for voiceCLI and imageCLI. Identity-specific prefix is part of each
   adapter module's configuration contract.

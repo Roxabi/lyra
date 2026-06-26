@@ -32,7 +32,7 @@ def load_bot_token(platform: str, bot_id: str) -> tuple[str, str | None]:
     token reads to an arbitrary path.
 
     Raises MissingCredentialsError when the token file is absent — the message
-    points the operator at `lyra bot secret install`.
+    points the operator at `factory bot secret install`.
     """
     override = os.environ.get("FACTORY_RUN_SECRETS_DIR")
     if override and _is_prod_env():
@@ -54,7 +54,7 @@ def load_bot_token(platform: str, bot_id: str) -> tuple[str, str | None]:
             bot_id,
             hint=(
                 f"missing token at {tok_path} — provision via "
-                f"`lyra bot secret install {platform} {bot_id}`"
+                f"`factory bot secret install {platform} {bot_id}`"
             ),
         ) from exc
     token = raw_token.strip()

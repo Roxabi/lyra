@@ -1,0 +1,35 @@
+# OpenTelemetry Collector — OTLP ingress → Langfuse (ADR-092 trace plane).
+# Auth: LANGFUSE_OTEL_AUTH env (base64 pk:sk) set via otel-collector.env.
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 256
+    spike_limit_mib: 64
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+exporters:
+  otlphttp/langfuse:
+    endpoint: http://factory-langfuse-web:3000/api/public/otel
+    headers:
+      Authorization: "Basic ${env:LANGFUSE_OTEL_AUTH}"
+      x-langfuse-ingestion-version: "4"
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlphttp/langfuse]

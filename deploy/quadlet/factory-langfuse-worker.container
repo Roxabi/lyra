@@ -1,0 +1,25 @@
+[Unit]
+Description=Factory Langfuse worker (ingestion)
+After=factory-langfuse-postgres.service factory-langfuse-clickhouse.service factory-langfuse-redis.service factory-langfuse-minio.service
+Wants=factory-langfuse-postgres.service factory-langfuse-clickhouse.service factory-langfuse-redis.service factory-langfuse-minio.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+Image=docker.io/langfuse/langfuse-worker:3
+ContainerName=factory-langfuse-worker
+Network=roxabi.network
+NoNewPrivileges=true
+ReadOnly=true
+DropCapability=all
+EnvironmentFile=%h/.roxabi/factory/env/langfuse.env
+HealthCmd=wget -q -O- http://127.0.0.1:3030/api/health || exit 1
+HealthInterval=30s
+
+[Service]
+Restart=on-failure
+RestartSec=15
+ExecStartPre=/bin/test -r %h/.roxabi/factory/env/langfuse.env
+
+[Install]
+WantedBy=default.target

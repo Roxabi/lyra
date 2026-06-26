@@ -1,0 +1,9 @@
+[Unit]
+Description=Factory Langfuse Postgres data (host-local)
+
+[Volume]
+Type=none
+Device=%h/.local/state/factory/langfuse/postgres
+Options=bind
+Label=app=factory
+Label=component=langfuse

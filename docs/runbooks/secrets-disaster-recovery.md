@@ -27,7 +27,7 @@ Steps executed:
 
 1. Backup then wipe `~/.roxabi/factory/nkeys/`
 2. `factory-acl genkeys --regenerate` — provision all active identities + render `auth.conf`
-3. `./deploy/install.sh --force --secrets-only` — refresh Podman nkey secrets
+3. `./deploy/install.sh --force-secrets --secrets-only` — refresh Podman nkey secrets (does not regenerate `blobstore.tok`)
 4. `make converge` — remount `auth.conf`, restart stack (when `--converge` is set)
 
 Without `--converge`, restart manually after step 3:
@@ -55,7 +55,7 @@ Equivalent manual sequence (same as the CLI):
 
 ```bash
 factory-acl genkeys --regenerate --yes
-./deploy/install.sh --force --secrets-only
+./deploy/install.sh --force-secrets --secrets-only
 make converge
 ```
 
@@ -112,7 +112,7 @@ If regen fails mid-flight, `_mode_regenerate` restores from `nkeys.bak.{epoch}/`
 # Restore backup (replace {epoch} with timestamp from nkeys.bak.*)
 rm -rf ~/.roxabi/factory/nkeys
 cp -a ~/.roxabi/factory/nkeys.bak.{epoch} ~/.roxabi/factory/nkeys
-./deploy/install.sh --force --secrets-only
+./deploy/install.sh --force-secrets --secrets-only
 make converge
 ```
 

@@ -323,6 +323,8 @@ fi
 # ── 6. Ensure data directories ──────────────────────────────────────────────
 
 log "Ensuring data directories ..."
+run mkdir -p "${HOME}/.local/state/factory/loki" "${HOME}/.local/state/factory/promtail"
+echo "  [ok]   ${HOME}/.local/state/factory/loki + promtail/"
 run mkdir -p "${HOME}/.roxabi/factory/blobstore"
 echo "  [ok]   ${HOME}/.roxabi/factory/blobstore"
 run mkdir -p "${HOME}/.roxabi/factory/turn-writer"

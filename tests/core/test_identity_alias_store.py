@@ -39,12 +39,15 @@ class TestLifecycle:
         db = store._require_db()
         async with db.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
-            " AND name IN ('identity_aliases', 'link_challenges')"
+            " AND name IN ('identity_aliases', 'link_challenges', 'users', "
+            "'platform_identities')"
         ) as cur:
             rows = await cur.fetchall()
         table_names = {r[0] for r in rows}
         assert "identity_aliases" in table_names
         assert "link_challenges" in table_names
+        assert "users" in table_names
+        assert "platform_identities" in table_names
         await store.close()
 
 
@@ -103,16 +106,13 @@ class TestUnlink:
         assert result == frozenset({"dc:user:2"})
 
     @pytest.mark.asyncio
-    async def test_unlink_updates_both_caches(self, alias_store) -> None:
-        """After unlink, both _cache and _reverse are clean for the removed ID."""
+    async def test_unlink_splits_identities_in_user_store(self, alias_store) -> None:
+        """After unlink, UserStore keeps each platform key on its own user."""
         await alias_store.link("tg:user:1", "dc:user:2")
         await alias_store.unlink("dc:user:2")
-
-        # _cache must not contain the secondary anymore
-        assert "dc:user:2" not in alias_store._cache
-        # _reverse for the primary must not contain the secondary anymore
-        siblings = alias_store._reverse.get("tg:user:1", set())
-        assert "dc:user:2" not in siblings
+        user_store = alias_store.user_store
+        assert user_store.resolve_aliases("tg:user:1") == frozenset({"tg:user:1"})
+        assert user_store.resolve_aliases("dc:user:2") == frozenset({"dc:user:2"})
 
     @pytest.mark.asyncio
     async def test_unlink_nonexistent_returns_false(self, alias_store) -> None:

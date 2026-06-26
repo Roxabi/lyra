@@ -8,17 +8,14 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from factory.commands.pairing.handlers import cmd_invite, cmd_join, cmd_unpair
-from factory.core.auth.trust import TrustLevel
 from factory.core.pool import Pool
+from tests.factories.stores import PAIRING_TEST_AGENT
 
 from .conftest import (
     _PAIRING_ADMIN_ID as _ADMIN_ID,
 )
 from .conftest import (
     _PAIRING_USER_ID as _USER_ID,
-)
-from .conftest import (
-    make_pairing_auth_store as make_auth_store,
 )
 from .conftest import (
     make_pairing_message as make_message,
@@ -30,7 +27,7 @@ from .conftest import (
 
 def _make_pool(pm=None) -> Pool:
     """Build a minimal Pool with an optional pairing manager for handler tests."""
-    pool = Pool(pool_id="test", agent_name="test", ctx=MagicMock())
+    pool = Pool(pool_id="test", agent_name=PAIRING_TEST_AGENT, ctx=MagicMock())
     pool.pairing_manager = pm
     return pool
 
@@ -97,15 +94,16 @@ class TestCmdJoin:
     """cmd_join handler — AC6, AC9."""
 
     async def test_valid_code_creates_session(self) -> None:
-        store = await make_auth_store()
-        pm = await make_pm(auth_store=store)
+        pm = await make_pm()
         code = await pm.generate_code(_ADMIN_ID)
         msg = make_message(content=f"/join {code}", user_id=_USER_ID)
         pool = _make_pool(pm)
         response = await cmd_join(msg, pool, [code])
         assert "paired" in response.content.lower()
-        # is_paired() removed — check AuthStore grant instead
-        assert store.check(_USER_ID) == TrustLevel.TRUSTED
+        assert pm._grant_store is not None
+        assert pm._grant_store.authorize(
+            agent_name=PAIRING_TEST_AGENT, user_id=_USER_ID
+        ).allowed is True
 
     async def test_invalid_code_returns_error(self) -> None:
         pm = await make_pm()
@@ -161,19 +159,19 @@ class TestCmdUnpair:
         assert "admin-only" in response.content.lower()
 
     async def test_unpair_success(self) -> None:
-        store = await make_auth_store()
-        pm = await make_pm(auth_store=store)
-        # Pair the user first
+        pm = await make_pm()
         code = await pm.generate_code(_ADMIN_ID)
-        await pm.validate_code(code, _USER_ID)
+        await pm.validate_code(code, _USER_ID, agent_name=PAIRING_TEST_AGENT)
         msg = make_message(
             content=f"/unpair {_USER_ID}", user_id=_ADMIN_ID, is_admin=True
         )
         pool = _make_pool(pm)
         response = await cmd_unpair(msg, pool, [_USER_ID])
         assert "revoked" in response.content.lower()
-        # is_paired() removed — check AuthStore grant instead
-        assert store.check(_USER_ID) == TrustLevel.PUBLIC
+        assert pm._grant_store is not None
+        assert pm._grant_store.authorize(
+            agent_name=PAIRING_TEST_AGENT, user_id=_USER_ID
+        ).allowed is False
 
     async def test_unpair_not_found(self) -> None:
         pm = await make_pm()

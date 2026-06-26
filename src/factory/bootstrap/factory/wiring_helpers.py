@@ -69,11 +69,20 @@ async def _init_inbound_bus(
     )
 
 
-async def _seed_auth(stores: object) -> None:
-    """Thin shim: delegate to canonical seed_grants_from_bots."""
-    from factory.bootstrap.auth_seeding import seed_grants_from_bots
+async def _seed_auth(stores: object, raw_config: dict | None = None) -> None:
+    """Register canonical users and seed agent grants from bot roster."""
+    from factory.bootstrap.auth_seeding import seed_identity_and_grants
+    from factory.bootstrap.factory.config import _load_circuit_config
 
-    await seed_grants_from_bots(stores.auth, stores.bot)
+    admin_ids: frozenset[str] = frozenset()
+    if raw_config is not None:
+        _, admin_ids = _load_circuit_config(raw_config)
+    await seed_identity_and_grants(
+        stores.grant,
+        stores.bot,
+        stores.user,
+        admin_user_ids=admin_ids,
+    )
 
 
 async def _prune_message_index(stores: object, raw_config: dict) -> None:
@@ -108,7 +117,8 @@ async def _init_pairing(
         pm = PairingManager(
             config=pairing_config,
             db_path=vault_dir / "pairing.db",
-            auth_store=stores.auth,
+            grant_store=stores.grant,
+            user_store=stores.user,
         )
         await pm.connect()
         set_pairing_manager(pm)

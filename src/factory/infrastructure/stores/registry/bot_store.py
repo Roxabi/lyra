@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from pathlib import Path
 
@@ -99,10 +98,6 @@ class BotStore(SqliteStore, BotStoreProtocol):
                 row.bot_id,
                 row.agent,
                 1 if row.webhook_enabled else 0,
-                row.default_trust,
-                json.dumps(row.owner_users),
-                json.dumps(row.trusted_users),
-                json.dumps(row.trusted_roles),
                 1 if row.auto_thread else 0,
                 row.thread_hot_hours,
                 now,
@@ -115,10 +110,6 @@ class BotStore(SqliteStore, BotStoreProtocol):
             bot_id=row.bot_id,
             agent=row.agent,
             webhook_enabled=row.webhook_enabled,
-            default_trust=row.default_trust,
-            owner_users=list(row.owner_users),
-            trusted_users=list(row.trusted_users),
-            trusted_roles=list(row.trusted_roles),
             auto_thread=row.auto_thread,
             thread_hot_hours=row.thread_hot_hours,
             updated_at=now,

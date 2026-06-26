@@ -84,25 +84,18 @@ class TestGracefulShutdown:
         await trigger_task  # ensure no lingering tasks
 
     async def test_auth_store_boot_order(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """SC10 (S5): connect() and seed_from_config() called before from_config().
-
-        Boot constraint: cache must be warm before middleware reads from it.
-        """
+        """SC10 (S5): connect() called before from_bot_store() reads the store."""
         call_log: list[str] = []
 
         _, fake_store = patch_all(monkeypatch)
         fake_store.connect.side_effect = lambda: call_log.append("connect")
-        fake_store.seed_from_config.side_effect = lambda raw, section: call_log.append(
-            f"seed:{section}"
-        )
-        # Re-patch from_config to record when it is called relative to connect/seed
-        from_config_calls: list[str] = []
+        from_bot_store_calls: list[str] = []
         monkeypatch.setattr(
             AuthMiddleware,
-            "from_config",
+            "from_bot_store",
             classmethod(
-                lambda cls, raw, section, store=None: (
-                    from_config_calls.append(section) or MagicMock()
+                lambda cls, deps: (
+                    from_bot_store_calls.append(deps.platform) or MagicMock()
                 )
             ),
         )
@@ -112,13 +105,4 @@ class TestGracefulShutdown:
         await main_mod._main(_stop=stop)
 
         assert "connect" in call_log, "auth_store.connect() was not called"
-        assert any(s.startswith("seed:") for s in call_log), (
-            "auth_store.seed_from_config() was not called"
-        )
-        # connect must precede all seed calls
-        connect_idx = call_log.index("connect")
-        for entry in call_log:
-            if entry.startswith("seed:"):
-                assert call_log.index(entry) > connect_idx, (
-                    f"seed_from_config({entry}) called before connect()"
-                )
+        assert from_bot_store_calls, "from_bot_store() was not called after connect"

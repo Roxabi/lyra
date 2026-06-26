@@ -114,7 +114,6 @@ class TestRosterFromStore:
                 platform="telegram",
                 bot_id="seeded_tg",
                 agent="lyra_default",
-                default_trust="public",
             )
             await bot_store.upsert(seeded_row)
 

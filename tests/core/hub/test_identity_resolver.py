@@ -246,13 +246,13 @@ class TestResolveMessageTrust:
 
     def test_returns_same_object_when_unchanged(self) -> None:
         """When trust and admin are unchanged, same object is returned."""
-        auth = make_authenticator(default=TrustLevel.PUBLIC)
+        auth = make_authenticator(default=TrustLevel.TRUSTED)
         resolver = IdentityResolver(
             authenticators={(Platform.TELEGRAM, "main"): auth},
             bindings={},
         )
         msg = make_inbound(
-            platform="telegram", bot_id="main", trust_level=TrustLevel.PUBLIC
+            platform="telegram", bot_id="main", trust_level=TrustLevel.TRUSTED
         )
         result = resolver.resolve_message_trust(msg)
         assert result is msg

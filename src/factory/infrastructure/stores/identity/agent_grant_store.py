@@ -14,6 +14,7 @@ import logging
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from factory.core.auth.agent_grants import (
     AgentGrant,
@@ -22,7 +23,11 @@ from factory.core.auth.agent_grants import (
     Principal,
     PrincipalKind,
 )
+from factory.core.auth.platform_keys import is_user_id
 from factory.infrastructure.stores.base.sqlite_base import SqliteStore
+
+if TYPE_CHECKING:
+    from factory.infrastructure.stores.identity.user_store import UserStore
 
 log = logging.getLogger(__name__)
 
@@ -77,9 +82,15 @@ class AgentGrantStore(SqliteStore):
     Fail-safe: an agent with no matching ``use`` grant denies.
     """
 
-    def __init__(self, db_path: str | Path) -> None:
+    def __init__(
+        self,
+        db_path: str | Path,
+        *,
+        user_store: UserStore | None = None,
+    ) -> None:
         super().__init__(db_path)
         self._cache: dict[str, list[AgentGrant]] = {}
+        self._user_store = user_store
 
     async def connect(self) -> None:
         """Open aiosqlite, enable WAL, create agent_grants table, warm cache."""
@@ -132,16 +143,34 @@ class AgentGrantStore(SqliteStore):
         grants = self._cache.get(agent_name)
         if not grants:
             return AuthDecision.deny(f"no grants for agent {agent_name!r}")
+        user_principals = self._expand_user_principals(user_id)
         role_set = set(roles)
         for grant in grants:
             if grant.capability is not Capability.USE:
                 continue
             principal = grant.principal
-            if principal.kind is PrincipalKind.USER and principal.id == user_id:
+            if (
+                principal.kind is PrincipalKind.USER
+                and principal.id in user_principals
+            ):
                 return AuthDecision.allow(f"use granted to user {principal.id}")
             if principal.kind is PrincipalKind.ROLE and principal.id in role_set:
                 return AuthDecision.allow(f"use granted via role {principal.id}")
         return AuthDecision.deny(f"no use grant for principals on agent {agent_name!r}")
+
+    def _expand_user_principals(self, user_id: str) -> frozenset[str]:
+        """Platform key, canonical ``rx:user:``, and linked platform keys."""
+        principals: set[str] = {user_id}
+        if self._user_store is None:
+            return frozenset(principals)
+        if is_user_id(user_id):
+            principals |= set(self._user_store.resolve_platform_keys(user_id))
+        else:
+            canonical = self._user_store.resolve_user_id(user_id)
+            if canonical is not None:
+                principals.add(canonical)
+            principals |= set(self._user_store.resolve_aliases(user_id))
+        return frozenset(principals)
 
     def list_grants(self, agent_name: str) -> tuple[AgentGrant, ...]:
         """Return all grants for *agent_name* from cache (sync, no I/O)."""

@@ -1,6 +1,6 @@
 ---
 title: "ADR-020: CLI Entry Point Dispatch Strategy for Agent Sub-commands"
-description: How to expose lyra agent create|list|validate without coupling daemon startup to CLI dispatch
+description: How to expose factory agent create|list|validate without coupling daemon startup to CLI dispatch
 status: accepted
 ---
 
@@ -14,7 +14,7 @@ Accepted
 
 ## Context
 
-Issue #242 adds `lyra agent create | list | validate` CLI sub-commands via Typer.
+Issue #242 adds `factory agent create | list | validate` CLI sub-commands via Typer.
 The spec proposes modifying `__main__.py`'s `main()` to inspect `sys.argv[1]` and
 delegate to `lyra.cli:agent_app` when the first argument is `"agent"`, falling
 through to server startup otherwise.
@@ -24,7 +24,7 @@ supervisord without touching `pyproject.toml`. However:
 
 - `pyproject.toml` currently has **no** `[project.scripts]` entry. There is nothing
   to break.
-- supervisord and `make lyra` invoke `python -m lyra` via the module path, not a
+- supervisord and `make lyra` invoke `python -m factory` via the module path, not a
   named script entry. A new `lyra-agent` entry would not affect them.
 - `__main__.py` is already ~800 lines of async server bootstrap. Adding argv
   inspection couples two unrelated concerns: daemon lifecycle and developer tooling.
@@ -60,9 +60,9 @@ uv run lyra-agent validate my_agent
   single-purpose (daemon). `cli.py` is independently importable and testable
   without patching `sys.argv`. No coupling between daemon startup and CLI dispatch.
   Consistent with `voicecli` / `imagecli` entrypoint convention in the project.
-- **Cons:** Invocation differs slightly from the spec's `python -m lyra agent`
+- **Cons:** Invocation differs slightly from the spec's `python -m factory agent`
   form. Requires `uv tool install .` or `uv run lyra-agent` rather than
-  `python -m lyra agent`. Minor doc update needed.
+  `python -m factory agent`. Minor doc update needed.
 
 ### Option B: `sys.argv` inspection in `__main__.py`
 
@@ -79,9 +79,9 @@ def main() -> None:
     asyncio.run(_main())
 ```
 
-Users invoke `uv run python -m lyra agent create`.
+Users invoke `uv run python -m factory agent create`.
 
-- **Pros:** Single binary entry, muscle memory consistency with `python -m lyra`.
+- **Pros:** Single binary entry, muscle memory consistency with `python -m factory`.
   No new script name to document.
 - **Cons:** Couples daemon entrypoint to CLI dispatch. Fragile: any future flag
   whose value is `"agent"` will misroute. Testing requires `sys.argv` patching.
@@ -103,7 +103,7 @@ slightly (no asyncio side effects) but the structural concern remains.
 
 This is the only option consistent with the established Python-first paradigm and
 the existing `voicecli` / `imagecli` project conventions. The invocation difference
-(`lyra-agent` vs `python -m lyra agent`) is cosmetic; the developer audience for
+(`lyra-agent` vs `python -m factory agent`) is cosmetic; the developer audience for
 these commands is the maintainer, not end users.
 
 `__main__.py` is untouched. `cli.py` is the sole home of CLI logic. The dispatch
@@ -123,7 +123,7 @@ is handled by Typer's own `app()` call, not by hand-rolled `sys.argv` inspection
 ### Negative
 
 - Invocation is `uv run lyra-agent create` rather than
-  `uv run python -m lyra agent create`. The spec's success criteria and next-steps
+  `uv run python -m factory agent create`. The spec's success criteria and next-steps
   output must be updated to reflect this.
 - Requires `uv sync` / `uv tool install .` after the `pyproject.toml` change, as
   with any new script entry.
@@ -131,7 +131,7 @@ is handled by Typer's own `app()` call, not by hand-rolled `sys.argv` inspection
 ### Neutral
 
 - supervisord, `make lyra`, and the production deploy path are unaffected.
-- The no-regression success criterion (`python -m lyra` with no extra args still
+- The no-regression success criterion (`python -m factory` with no extra args still
   starts the server) remains valid and testable.
 
 ## Update 2026-05-08

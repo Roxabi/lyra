@@ -125,7 +125,7 @@ The test is independent of this ADR's implementation but SHOULD be delivered as 
 
 ## Unaddressed risks noted for follow-up
 
-- **No machine-readable cross-reference between connect-site inbox prefix and ACL subscribe entry.** `gen-nkeys.sh` or `lyra ops verify` (ADR-046 Invariant 5) SHOULD gain a lint step: for each identity with a `_inbox.<identity>.>` subscribe ACL, assert a matching connect-site parameter exists, and flag any `_INBOX.>` wildcard as a drift error.
+- **No machine-readable cross-reference between connect-site inbox prefix and ACL subscribe entry.** `gen-nkeys.sh` or `factory ops verify` (ADR-046 Invariant 5) SHOULD gain a lint step: for each identity with a `_inbox.<identity>.>` subscribe ACL, assert a matching connect-site parameter exists, and flag any `_INBOX.>` wildcard as a drift error.
 - **No alerting on NATS permission violations.** The 2026-04-27 incident ran undetected for ~2 hours because permission violations in clipool logs were not alarmed. A `roxabi-live` alert on NATS `permissions violation` log lines would reduce detection time to minutes for any future ACL gap.
 - **Satellite rollout atomicity is not gated.** Partial rollouts (lyra ACL updated, satellite not yet redeployed) create a live window of broken communication. A deploy gate or ordered rollout checklist is needed for cross-satellite ACL changes.
 

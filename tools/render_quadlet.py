@@ -93,7 +93,7 @@ async def _load_bots(db_path: Path, platform: str) -> list:
     except (OSError, sqlite3.Error) as exc:
         print(
             f"Failed to open BotStore at {db_path}:\n  {exc}\n"
-            "Run `lyra bot init` to seed the bot database.",
+            "Run `factory bot init` to seed the bot database.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -117,7 +117,7 @@ def main(argv: list[str] | None = None) -> int:
     if not args.db.exists():
         print(
             f"bot database not found: {args.db}\n"
-            "Run `lyra bot init` to seed the bot database.",
+            "Run `factory bot init` to seed the bot database.",
             file=sys.stderr,
         )
         sys.exit(1)

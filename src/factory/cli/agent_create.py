@@ -1,4 +1,4 @@
-"""lyra agent create — interactive agent creation command."""
+"""factory agent create — interactive agent creation command."""
 
 from __future__ import annotations
 
@@ -238,6 +238,6 @@ def _create_interactive(  # noqa: C901 — DEBT:complexity-residual
     typer.echo(f"Created {toml_path}")
     typer.echo("")
     typer.echo("Next steps:")
-    typer.echo("  lyra agent init  # import into DB")
-    typer.echo(f"  lyra agent validate {name}")
-    typer.echo("  lyra agent list")
+    typer.echo("  factory agent init  # import into DB")
+    typer.echo(f"  factory agent validate {name}")
+    typer.echo("  factory agent list")

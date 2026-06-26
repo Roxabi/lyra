@@ -13,7 +13,7 @@ _bot_sections_deprecation_warned: bool = False
 def warn_deprecated_bot_sections(raw: dict[str, Any]) -> None:
     """Log a one-time DeprecationWarning if any legacy TOML bot section is present.
 
-    The runtime bot roster now comes from BotStore (`lyra bot init`); these four
+    The runtime bot roster now comes from BotStore (`factory bot init`); these four
     sections are seed-only. Detected sections:
     [[telegram.bots]], [[discord.bots]], [[auth.telegram_bots]], [[auth.discord_bots]].
     """
@@ -35,7 +35,7 @@ def warn_deprecated_bot_sections(raw: dict[str, Any]) -> None:
     _bot_sections_deprecation_warned = True
     log.warning(
         "TOML bot sections are deprecated and seed-only: %s. "
-        "The runtime roster now comes from BotStore — seed it with `lyra bot init` "
+        "The runtime roster now comes from BotStore — seed it with `factory bot init` "
         "and remove these sections from config.toml. "
         "See docs/bot-management.md (Deprecation Timeline).",
         ", ".join(present),

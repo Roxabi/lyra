@@ -1,4 +1,4 @@
-"""Integration tests for `lyra agent telegram` bot CLI commands (issue #1415)."""
+"""Integration tests for `factory agent telegram` bot CLI commands (issue #1415)."""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ def _make_proc(returncode: int = 0, stdout: str = "", stderr: str = "") -> Magic
 
 
 class TestTelegramList:
-    """`lyra agent telegram list`"""
+    """`factory agent telegram list`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -97,7 +97,7 @@ class TestTelegramList:
 
 
 class TestTelegramShow:
-    """`lyra agent telegram show <bot_id>`"""
+    """`factory agent telegram show <bot_id>`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -148,7 +148,7 @@ class TestTelegramShow:
 
 
 class TestTelegramAdd:
-    """`lyra agent telegram add <bot_id>`"""
+    """`factory agent telegram add <bot_id>`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -211,7 +211,7 @@ class TestTelegramAdd:
 
 
 class TestTelegramEdit:
-    """`lyra agent telegram edit <bot_id>`"""
+    """`factory agent telegram edit <bot_id>`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -340,7 +340,7 @@ class TestTelegramEdit:
 
 
 class TestTelegramPatch:
-    """`lyra agent telegram patch <bot_id>`"""
+    """`factory agent telegram patch <bot_id>`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -446,7 +446,7 @@ class TestTelegramPatch:
 
 
 class TestTelegramRemove:
-    """`lyra agent telegram remove <bot_id>`"""
+    """`factory agent telegram remove <bot_id>`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -524,7 +524,7 @@ class TestTelegramRemove:
 
 
 class TestTelegramAssign:
-    """`lyra agent telegram assign <bot_id> --agent <name>`"""
+    """`factory agent telegram assign <bot_id> --agent <name>`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -564,7 +564,7 @@ class TestTelegramAssign:
 
 
 class TestTelegramUnassign:
-    """`lyra agent telegram unassign <bot_id>`"""
+    """`factory agent telegram unassign <bot_id>`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -600,7 +600,7 @@ class TestTelegramUnassign:
 
 
 class TestTelegramValidate:
-    """`lyra agent telegram validate <bot_id>`"""
+    """`factory agent telegram validate <bot_id>`"""
 
     def test_help(self) -> None:
         result = runner.invoke(

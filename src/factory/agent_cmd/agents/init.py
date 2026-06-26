@@ -1,4 +1,4 @@
-"""lyra agent init/validate/delete commands — initialization and maintenance."""
+"""factory agent init/validate/delete commands — initialization and maintenance."""
 
 from __future__ import annotations
 

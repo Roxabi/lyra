@@ -24,15 +24,13 @@ def _validate_bot_id(bot_id: str) -> None:
 def _format_table(rows: list[BotRow]) -> None:
     """Print bot rows as a formatted table."""
     typer.echo(
-        f"{'BOT_ID':<18} {'AGENT':<18} {'TRUST':<10} "
-        f"{'WEBHOOK':<8} {'AUTO_THREAD':<12} {'OWNERS':<30}"
+        f"{'BOT_ID':<18} {'AGENT':<18} {'WEBHOOK':<8} {'AUTO_THREAD':<12}"
     )
     for row in sorted(rows, key=lambda r: r.bot_id):
-        owners = ", ".join(row.owner_users) if row.owner_users else "-"
         typer.echo(
-            f"{row.bot_id:<18} {row.agent:<18} {row.default_trust:<10} "
+            f"{row.bot_id:<18} {row.agent:<18} "
             f"{'yes' if row.webhook_enabled else 'no':<8} "
-            f"{'yes' if row.auto_thread else 'no':<12} {owners:<30}"
+            f"{'yes' if row.auto_thread else 'no':<12}"
         )
 
 

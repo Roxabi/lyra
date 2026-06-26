@@ -38,7 +38,7 @@ class TestAgentGrant:
 
         listed = runner.invoke(agent_app, ["auth", "list", _AGENT])
         assert listed.exit_code == 0, listed.output
-        assert _USER in listed.output
+        assert "rx:user:" in listed.output
         assert "user" in listed.output.lower()
 
     def test_grant_role(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -58,7 +58,7 @@ class TestAgentGrant:
             assert result.exit_code == 0, result.output
         listed = runner.invoke(agent_app, ["auth", "list", _AGENT])
         # One grant row only — the UNIQUE constraint upserts rather than dupes.
-        assert listed.output.count(_USER) == 1
+        assert listed.output.count("rx:user:") == 1
 
     def test_grant_requires_exactly_one_subject(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

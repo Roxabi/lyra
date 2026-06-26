@@ -47,6 +47,9 @@ _CAP_OPT: str = typer.Option(
 
 async def _resolve_user_principal(user: str) -> Principal:
     """Resolve a platform or canonical user id to an ``rx:user:`` principal."""
+    if not user.strip():
+        typer.echo("Error: principal id must be non-empty.", err=True)
+        raise typer.Exit(1)
     if is_user_id(user):
         return Principal(kind=PrincipalKind.USER, id=user)
     if not is_platform_key(user):

@@ -378,7 +378,6 @@ def patch_auth_config_test(monkeypatch: pytest.MonkeyPatch) -> None:
                 platform=platform,
                 bot_id=bot_id,
                 agent="lyra_default",
-                default_trust="public",
             )
             if (platform, bot_id) == ("telegram", "main")
             else None
@@ -390,7 +389,6 @@ def patch_auth_config_test(monkeypatch: pytest.MonkeyPatch) -> None:
                 platform="telegram",
                 bot_id="main",
                 agent="lyra_default",
-                default_trust="public",
             )
         ]
     )

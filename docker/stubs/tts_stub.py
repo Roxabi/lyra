@@ -2,7 +2,7 @@
 """TTS NATS stub — returns silent WAV bytes, publishes heartbeats.
 
 Subscribes to:
-  factory.voice.tts.request           (queue group: tts-workers)
+  factory.voice.tts.request           (queue group: tts_workers)
   factory.voice.tts.request.<worker_id>  (direct routing for load-aware #603)
 
 Publishes:
@@ -93,10 +93,13 @@ async def main() -> None:
     nc = await nats.connect(NATS_URL)
 
     await nc.subscribe(
-        SUBJECTS.tts_request, queue="tts-workers", cb=handle_request
+        SUBJECTS.tts_request, queue=SUBJECTS.tts_workers, cb=handle_request
     )
     await nc.subscribe(per_worker_tts(WORKER_ID), cb=handle_request)
-    print(f"[tts-stub] ready — queue=tts-workers worker={WORKER_ID}", flush=True)
+    print(
+        f"[tts-stub] ready — queue={SUBJECTS.tts_workers} worker={WORKER_ID}",
+        flush=True,
+    )
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):

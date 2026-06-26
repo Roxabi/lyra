@@ -21,10 +21,12 @@ _do_converge() {
     _drift_kind=$(_classify_drift "${_last}" "${_current}")
 
     if [ "${_drift_kind}" = "none" ]; then
+        op_log converge_skip drift=none
         echo "Already converged — nothing to do."
         exit 0
     fi
 
+    op_log converge_start drift="${_drift_kind}"
     echo "==> Convergence drift detected (${_drift_kind}) — beginning deploy..."
 
     # 2) Pull factory staging
@@ -113,6 +115,7 @@ _do_converge() {
     # 10) Record convergence stamp
     write_convergence_state
 
+    op_log converge_complete drift="${_drift_kind}" exit=0
     echo "==> Converge complete."
 }
 

@@ -14,14 +14,13 @@ from typing import TYPE_CHECKING, AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock
 
 from tests.conftest import _drain
+from tests.fakes import FakeClaudeCliDriver, FakeStt, FakeTts
 
 from factory.agents.simple_agent import SimpleAgent
 from factory.core.agent import Agent
 from factory.core.auth.trust import TrustLevel
 from factory.core.messaging.message import InboundMessage, Response, TelegramMeta
 from factory.core.pool import Pool
-
-from .fake_drivers import FakeClaudeCliDriver, FakeStt, FakeTts
 
 if TYPE_CHECKING:
     pass

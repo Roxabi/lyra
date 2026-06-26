@@ -66,4 +66,4 @@ async def test_adapter_raises_bootstrap_error_on_missing_token(
             await _bootstrap_adapter_standalone(raw_config, "telegram", _stop=stop)
 
     # Assert — install command hint is present in the error message
-    assert "lyra bot secret install telegram mybot" in str(exc_info.value)
+    assert "factory bot secret install telegram mybot" in str(exc_info.value)

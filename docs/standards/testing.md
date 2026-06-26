@@ -170,7 +170,6 @@ Key shared fixtures:
 |---|---|---|
 | `circuit_registry` | `CircuitRegistry` | Pre-populated with 4 breakers |
 | `hub` | `Hub` | Hub wired to `circuit_registry` |
-| `patch_agent_store` | `MagicMock` | Patched `AgentStore` in `__main__` |
 
 Fixture `_reset_version_check_log_state` is `autouse=True` — it clears the `roxabi_nats` rate-limit log state before every test to prevent cross-test ordering flakiness.
 

@@ -137,7 +137,7 @@ class JsonAgentStore:
         if assigned:
             raise ValueError(
                 f"Agent {name!r} is still assigned to one or more bots. "
-                "Run 'lyra agent unassign' first."
+                "Run 'factory agent unassign' first."
             )
         self._agents.pop(name, None)
         self._persist()

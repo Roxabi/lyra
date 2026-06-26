@@ -21,14 +21,14 @@ class _FakeHttpBlobStore:
 
 @pytest.fixture(autouse=True)
 def _reset(monkeypatch: pytest.MonkeyPatch) -> Generator[None, None, None]:
-    monkeypatch.setattr(blobs, "_INSTANCE", None)
+    monkeypatch.setattr(blobs, "_blobstore_instance", None)
     monkeypatch.delenv("BLOBSTORE_BEARER_TOKEN_PATH", raising=False)
     monkeypatch.delenv("BLOBSTORE_URL", raising=False)
     monkeypatch.delenv("BLOBSTORE_BACKEND", raising=False)
     monkeypatch.delenv("FACTORY_BLOBSTORE_URL", raising=False)
     monkeypatch.delenv("FACTORY_BLOBSTORE_TOKEN_PATH", raising=False)
     yield
-    monkeypatch.setattr(blobs, "_INSTANCE", None)
+    monkeypatch.setattr(blobs, "_blobstore_instance", None)
 
 
 @pytest.fixture()

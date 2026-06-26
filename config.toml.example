@@ -9,7 +9,7 @@
 #   - [defaults]           machine-specific paths
 #   - [admin]              admin user IDs
 #   - [[*.bots]]           which bots exist and their adapter settings
-#   - [[auth.*_bots]]      default trust level + initial owner/trusted grants
+#   - [[auth.*_bots]]      bot auth metadata (legacy owner/trusted lists — not runtime grants)
 #
 # Everything else is managed in the DB and does NOT belong here:
 #   - Bot tokens / webhook secrets  → `factory bot add`
@@ -17,7 +17,7 @@
 #                                      (TOML agent= is a one-time fallback
 #                                       if the DB has no mapping yet)
 #   - Agent config (prompt, TTS…)   → `factory agent init` (seeds from TOML)
-#   - Per-user trust grants         → `factory auth grant`
+#   - User identities + agent access → `factory user *` + `factory agent grant`
 #
 # ----------------------------------------------------------------------------
 
@@ -71,8 +71,8 @@ bot_id = "lyra"  # must match the bot_id used in `factory bot add`
 [[auth.telegram_bots]]
 bot_id = "lyra"
 default = "blocked"  # "blocked" | "trusted" | "owner"
-owner_users = []  # numeric Telegram IDs — seeded into DB on startup
-# trusted_users = []                    # numeric Telegram IDs with trusted (non-admin) access
+owner_users = []  # legacy metadata only — use `factory agent grant` for access
+# trusted_users = []                    # legacy — use `factory agent grant`
 # webhook_enabled = false               # set true for webhook-mode bots; emits bot_webhook-<bot_id> Secret=
 
 # Add more bots by repeating the pair above:

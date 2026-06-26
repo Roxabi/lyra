@@ -104,6 +104,8 @@ Design and checklist → [agent-secret-broker.md §10](../../artifacts/analyses/
 
 `factory secrets reset` today covers **NATS nkeys only**; broker wipe will get its own runbook step when implemented.
 
+Successful resets append to `rotation-log.md` (`nats-nkeys | disaster-recovery`) and emit `secrets_reset_*` events in `operator.log` — see [operator-log.md](operator-log.md).
+
 ## Rollback
 
 If regen fails mid-flight, `_mode_regenerate` restores from `nkeys.bak.{epoch}/`. If regen succeeded but the stack is unhealthy:

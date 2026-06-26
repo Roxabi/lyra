@@ -1,0 +1,10 @@
+[Unit]
+Description=Factory operator.log rotation — weekly Sunday 04:30
+
+[Timer]
+OnCalendar=Sun *-*-* 04:30:00
+Persistent=true
+Unit=factory-operator-logrotate.service
+
+[Install]
+WantedBy=timers.target

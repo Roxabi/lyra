@@ -154,7 +154,7 @@ Runbook: [runbooks/operator-log.md](runbooks/operator-log.md). Decision record: 
 Promtail ingests:
 
 - `~/.local/state/factory/logs/operator.log` (JSONL → labels `event`, `user`, `host`)
-- User journald for `factory-*`, `voicecli-*`, deploy timers (`deploy/observability/promtail-config.yml`)
+- User journald via host `/var/log/journal` (owner UID filter + `factory-*` / `voicecli-*` units — `deploy/observability/promtail-config.yml`)
 
 Loki API: `http://127.0.0.1:3100` (localhost only). Query via `logcli` until control-plane dashboard (#1760).
 

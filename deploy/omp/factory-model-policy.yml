@@ -1,0 +1,15 @@
+# deploy/omp/factory-model-policy.yml — factory OmpPool boot + fallback policy
+#
+# NOT read by omp — only by factory Python (_model_catalogue.py). Kept separate
+# from models.yml so unknown keys do not break omp's litellm provider registration.
+#
+# Source of truth for model ids: GET {baseUrl}/models (merged llmCLI catalogue).
+
+boot:
+  select: first
+
+unavailable:
+  select: first
+  skip_requested: true
+  filter:
+    exclude_contains: [reasoning, multi-agent]

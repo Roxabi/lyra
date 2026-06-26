@@ -8,6 +8,7 @@ from .models import (
     CliControlCmd,
     CliHeartbeat,
 )
+from .subjects import SUBJECTS
 
 __all__ = [
     "CliCmdPayload",
@@ -15,4 +16,5 @@ __all__ = [
     "CliControlAck",
     "CliControlCmd",
     "CliHeartbeat",
+    "SUBJECTS",
 ]

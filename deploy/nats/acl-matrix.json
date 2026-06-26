@@ -26,7 +26,8 @@
     { "requester": "hub", "responder": "llm-worker",     "subject": "factory.llm.generate.request" },
     { "requester": "hub", "responder": "image-worker",   "subject": "factory.image.generate.request" },
     { "requester": "voice-client", "responder": "voice-stt", "subject": "factory.voice.stt.request" },
-    { "requester": "voice-client", "responder": "voice-tts", "subject": "factory.voice.tts.request" }
+    { "requester": "voice-client", "responder": "voice-tts", "subject": "factory.voice.tts.request" },
+    { "requester": "hub", "responder": "socialmedia-adapter", "subject": "factory.tool.socialmedia.>" }
   ],
   "identities": {
     "hub": {
@@ -47,6 +48,7 @@
         "factory.voice.stt.request.>",
         "factory.llm.generate.request",
         "factory.image.generate.request",
+        "factory.tool.socialmedia.>",
         "factory.clipool.cmd",
         "factory.clipool.control",
         "factory.audit.>",
@@ -72,6 +74,7 @@
         "factory.llm.heartbeat",
         "factory.system.ready",
         "factory.image.heartbeat",
+        "factory.tool.socialmedia.heartbeat",
         "factory.clipool.heartbeat",
         "factory.omp.heartbeat",
         "factory.gh.mint_failure.>",
@@ -378,6 +381,28 @@
       ],
       "subscribe": [],
       "deploy": { "type": "container", "secret": "factory-nats-gh-helper" }
+    },
+    "socialmedia-adapter": {
+      "status": "active",
+      "created_at": "2026-06-26",
+      "owner": "factory",
+      "description": "Social media tool satellite — factory.tool.socialmedia.* → Postiz Public API v1 (#1713).",
+      "notes": "Dual-network Quadlet (roxabi.network + postiz.network). wait_ready=False worker semantics. Inbox grant derived from request_reply_flows.",
+      "allow_responses": true,
+      "publish": [
+        "factory.tool.socialmedia.heartbeat",
+        "$JS.API.STREAM.INFO.KV_factory-state",
+        "$JS.API.STREAM.MSG.GET.KV_factory-state"
+      ],
+      "subscribe": [
+        "factory.tool.socialmedia.list_groups",
+        "factory.tool.socialmedia.list_integrations",
+        "factory.tool.socialmedia.publish",
+        "factory.tool.socialmedia.schedule",
+        "_inbox.socialmedia-adapter.>",
+        "$KV.factory-state.>"
+      ],
+      "deploy": { "type": "container", "secret": "factory-nats-socialmedia" }
     },
     "omp-worker": {
       "status": "active",

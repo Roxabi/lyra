@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from factory.infrastructure.stores.identity.identity_alias_store import (
         IdentityAliasStore,
     )
+    from factory.nats.socialmedia.nats_socialmedia_client import NatsSocialMediaClient
     from factory.transport.turn_publisher import TurnPublisher
     from factory.transport.typing_publisher import TypingPublisher
 
@@ -42,6 +43,7 @@ class HubRegistrationMixin:
         _memory_tasks: set
         _message_index: MessageIndexProtocol | None
         _platform_queue_maxsize: int
+        _socialmedia_client: NatsSocialMediaClient | None
         _turn_store: TurnStoreProtocol | None
         _turn_publisher: TurnPublisher | None
         _typing_publisher: TypingPublisher | None
@@ -84,6 +86,10 @@ class HubRegistrationMixin:
     def set_typing_publisher(self, publisher: TypingPublisher) -> None:
         """Wire the TypingPublisher (called by bootstrap; consumed by T2)."""
         self._typing_publisher = publisher
+
+    def set_socialmedia_client(self, client: "NatsSocialMediaClient") -> None:
+        """Wire the hub-side social media tool client."""
+        self._socialmedia_client = client
 
     def set_message_index(self, store: MessageIndexProtocol) -> None:
         self._message_index = store

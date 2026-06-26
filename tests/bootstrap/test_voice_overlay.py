@@ -11,12 +11,14 @@ import pytest
 from factory.bootstrap.factory.voice_overlay import (
     init_blobstore,
     init_nats_image,
+    init_nats_socialmedia,
     init_nats_stt,
     init_nats_tts,
     probe_voice_services,
 )
 from factory.nats.audio.nats_tts_client import NatsTtsClient
 from factory.nats.image.nats_image_client import NatsImageClient
+from factory.nats.socialmedia.nats_socialmedia_client import NatsSocialMediaClient
 from factory.nats.stt.nats_stt_client import NatsSttClient
 
 
@@ -155,6 +157,12 @@ class TestInitNatsImage:
     def test_returns_client(self, mock_nc: MagicMock) -> None:
         client = init_nats_image(mock_nc)
         assert isinstance(client, NatsImageClient)
+
+
+class TestInitNatsSocialmedia:
+    def test_returns_client(self, mock_nc: MagicMock) -> None:
+        client = init_nats_socialmedia(mock_nc)
+        assert isinstance(client, NatsSocialMediaClient)
 
 
 class TestInitBlobstoreLoopbackWarning:

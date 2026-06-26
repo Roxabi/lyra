@@ -11,7 +11,11 @@ from factory.bootstrap.factory.hub.hub_agent_registration import register_agents
 from factory.bootstrap.factory.hub.hub_core import _build_hub
 from factory.bootstrap.factory.hub.hub_llm_client import build_llm_client
 from factory.bootstrap.factory.llm_overlay import init_nats_llm
-from factory.bootstrap.factory.voice_overlay import init_nats_stt, init_nats_tts
+from factory.bootstrap.factory.voice_overlay import (
+    init_nats_socialmedia,
+    init_nats_stt,
+    init_nats_tts,
+)
 from factory.bootstrap.types import BotAuthBundle, BuildHubDeps, VoiceBundle
 from factory.bootstrap.wiring.nats_web_wiring import wire_nats_web_smoke
 from factory.bootstrap.wiring.nats_wiring import (
@@ -64,6 +68,8 @@ async def _build_hub_and_wire(  # noqa: PLR0913 — unavoidable wiring surface
     await stt_service.start()
     tts_service = init_nats_tts(nc)
     await tts_service.start()
+    socialmedia_client = init_nats_socialmedia(nc)
+    await socialmedia_client.start()
     nats_llm_client = await init_nats_llm(nc)
 
     first_agent_config = agent_configs[next(iter(sorted(agent_configs)))]
@@ -81,6 +87,7 @@ async def _build_hub_and_wire(  # noqa: PLR0913 — unavoidable wiring surface
         stt_service=stt_service,
         tts_service=tts_service,
         nats_llm_client=nats_llm_client,
+        socialmedia_client=socialmedia_client,
     )
 
     hub = _build_hub(

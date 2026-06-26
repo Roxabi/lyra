@@ -10,7 +10,8 @@ uv sync
 
 # 2. Configure environment
 cp .env.example .env
-# Fill in TELEGRAM_TOKEN, DISCORD_TOKEN, ANTHROPIC_API_KEY (see README Configuration)
+# Fill in DEPLOY_HOST / DEPLOY_DIR if using make remote or make push (see docs/DEPLOYMENT.md §8)
+# Bot tokens: factory bot add — not in .env (see docs/GETTING-STARTED.md)
 
 # 3. Install git hooks (commit + pre-push quality gates)
 make hooks-install

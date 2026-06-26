@@ -2,7 +2,7 @@
 
 ## Role
 
-Quality gates and analysis scripts for the Lyra codebase.
+Quality gates and analysis scripts for the Factory codebase.
 Canonical source: `roxabi-plugins/plugins/dev-core/tools/` — ¬edit project-side copies directly.
 
 ## Wiring
@@ -66,7 +66,7 @@ Read tools tolerate false positives; write tools must not mutate test/fixture fi
 
 Persistent gates are enumerated in `.claude/stack.yml` `quality_gates`. One-off analysis scripts (`adr_consolidate.py`, `audit_quality_debt.py`, `classify_quality_debt.py`, `capture_v1_text_baseline.py`, `license_check.py`) always exit 0 — they are reporters, not gates. Run `ls tools/*.py tools/*.sh` for the full listing.
 
-`adr_consolidate.py` — migration tool (flat ADR archive → domain pages); see `artifacts/analyses/adr-consolidation-matrix.md`.
+`adr_consolidate.py` — migration tool (flat ADR archive → domain pages); see `artifacts/analyses/archive/adr-consolidation-matrix.md`.
 
 ## Scope
 

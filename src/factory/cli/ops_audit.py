@@ -1,4 +1,4 @@
-"""ACL matrix audits used by ``lyra ops verify``.
+"""ACL matrix audits used by ``factory ops verify``.
 
 Static checks over ``deploy/nats/acl-matrix.json`` contents. Kept separate
 from ``cli_ops`` so the file-length gate stays under budget and the audit

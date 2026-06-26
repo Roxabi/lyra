@@ -94,7 +94,7 @@ async def _bootstrap_turn_writer_standalone(raw_config: dict) -> None:
     start TurnWriter → wait shutdown → stop writer → close store.
 
     Args:
-        raw_config: Parsed config dict (lyra config.toml content).
+        raw_config: Parsed config dict (factory config.toml content).
     """
     from factory.bootstrap.lifecycle.signal_handlers import setup_shutdown_event
 

@@ -15,7 +15,7 @@ CLI boundary, not a domain module; the same logic that permits `bootstrap/` to
 wire everything applies here.
 
 ```
-lyra CLI entrypoint
+factory CLI entrypoint
       ↓
   factory.agent_cmd     ← you are here
       ↓

@@ -1,0 +1,89 @@
+"""Daemon entrypoint for the social media NATS satellite adapter."""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+import sys
+from pathlib import Path
+
+from factory.adapters.socialmedia.adapter import SocialMediaNatsAdapter
+from factory.adapters.socialmedia.media import open_blob_store, upload_blob_refs
+from factory.adapters.socialmedia.postiz_client import PostizPublicApiClient
+
+log = logging.getLogger(__name__)
+
+
+class DaemonConfigError(Exception):
+    pass
+
+
+def _load_api_key() -> str:
+    path = os.environ.get("SOCIALMEDIA_PROVIDER_API_KEY_PATH", "").strip()
+    if not path:
+        raise DaemonConfigError("SOCIALMEDIA_PROVIDER_API_KEY_PATH is required")
+    key = Path(path).read_text(encoding="utf-8").strip()
+    if not key:
+        raise DaemonConfigError(f"empty API key at {path}")
+    return key
+
+
+def _load_base_url() -> str:
+    url = os.environ.get("SOCIALMEDIA_PROVIDER_BASE_URL", "").strip()
+    if not url:
+        raise DaemonConfigError("SOCIALMEDIA_PROVIDER_BASE_URL is required")
+    return url
+
+
+async def _run() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    nats_url = os.environ.get("NATS_URL", "nats://factory-nats:4222")
+    base_url = _load_base_url()
+    api_key = _load_api_key()
+
+    postiz = PostizPublicApiClient(base_url, api_key)
+    blob_store = None
+    blob_url = os.environ.get("FACTORY_BLOBSTORE_URL", "").strip()
+    blob_token_path = os.environ.get("FACTORY_BLOBSTORE_TOKEN_PATH", "").strip()
+    if blob_url and blob_token_path and Path(blob_token_path).is_file():
+        blob_store = open_blob_store(blob_url, blob_token_path)
+        log.info("blobstore enabled for media uploads")
+    else:
+        log.warning("blobstore not configured — media uploads disabled")
+
+    async def upload_media(blobs):
+        if not blobs:
+            return []
+        if blob_store is None:
+            raise RuntimeError("media requested but blobstore is not configured")
+        return await upload_blob_refs(
+            blob_store=blob_store, postiz=postiz, blobs=blobs
+        )
+
+    adapter = SocialMediaNatsAdapter(
+        postiz,
+        provider_base_url=base_url,
+        upload_media=upload_media,
+    )
+    try:
+        log.info("socialmedia-adapter starting (provider=%s)", base_url)
+        await adapter.run(nats_url)
+    finally:
+        await postiz.aclose()
+        if blob_store is not None:
+            await blob_store.__aexit__(None, None, None)
+
+
+def main() -> None:
+    try:
+        asyncio.run(_run())
+    except DaemonConfigError as exc:
+        log.error("%s", exc)
+        sys.exit(2)
+    except KeyboardInterrupt:
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

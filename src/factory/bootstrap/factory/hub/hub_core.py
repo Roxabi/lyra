@@ -78,4 +78,7 @@ def _build_hub(deps: BuildHubDeps) -> Hub:
     typing_publisher = TypingPublisher(deps.inbound_bus.nc)
     hub.set_typing_publisher(typing_publisher)
 
+    if deps.voice.socialmedia_client is not None:
+        hub.set_socialmedia_client(deps.voice.socialmedia_client)
+
     return hub

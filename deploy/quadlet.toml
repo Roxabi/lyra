@@ -52,6 +52,11 @@ container = "factory-omp.container"
 host_roles = ["factory-hub"]
 required_secrets = ["factory-nats-omp", "factory-litellm-key"]
 
+[component.socialmedia-adapter]
+container = "factory-socialmedia-adapter.container"
+host_roles = ["factory-hub"]
+required_secrets = ["factory-nats-socialmedia", "factory-socialmedia-api-key", "factory_blobstore_token"]
+
 [volume.data]
 volume = "factory-data.volume"
 host_roles = ["factory-hub"]

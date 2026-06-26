@@ -179,6 +179,7 @@ carries its own auth — bind tier and auth mechanism are chosen **together**:
 | `factory-blobstore` 8449 | `${TAILSCALE_IPV4}` | Tailnet only | bearer token (#1330) |
 | `factory-web` 8765 | `${TAILSCALE_IPV4}` | Tailnet only | **none** — Tailnet membership is the boundary (#1992) |
 | `factory-hub` 8443 | `127.0.0.1` | host only | — |
+| `factory-loki` 3100 | `127.0.0.1` | host only (logcli / #1760) | — |
 
 Rules:
 - **`0.0.0.0` (LAN + Tailnet) requires strong per-request auth** — only `factory-nats` (NKey) qualifies today. UFW additionally scopes 4222 to the LAN subnet (`deploy/nats/setup.sh`).

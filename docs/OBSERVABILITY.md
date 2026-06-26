@@ -174,7 +174,10 @@ Runbook: [runbooks/loki-query.md](runbooks/loki-query.md).
 | `factory-langfuse-redis` | `redis:7-alpine` | `.../redis-data/` |
 | `factory-langfuse-minio` | `minio/minio` | `.../minio/` |
 
-Flow: **Claude Code** (clipool subprocess) → OTLP gRPC → collector → Langfuse `/api/public/otel`.
+Flow:
+
+- **Primary:** Claude Code (clipool subprocess) → OTLP gRPC → collector → Langfuse
+- **Secondary:** LiteLLM proxy (`llmcli` OTel v2) → same collector — OMP + cloud relay
 
 Bootstrap: `deploy/scripts/bootstrap-langfuse.sh` → `~/.roxabi/factory/env/langfuse.env` + `otel-collector.env`.
 

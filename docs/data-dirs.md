@@ -29,13 +29,15 @@ factory stores runtime data in two root locations:
 
 ---
 
-## `~/.local/state/factory/logs/` — Operator audit (host-local)
+## `~/.local/state/factory/` — Host-local state (not Syncthing-synced)
 
-| File | Purpose | Syncthing |
-|---|---|---|
-| `operator.log` | JSONL deploy/operator actions (`install.sh`, `make converge`) | **Not synced** (per-host attribution) |
+| Path | Purpose |
+|---|---|
+| `logs/operator.log` | JSONL deploy/operator actions (`install.sh`, `make converge`) |
+| `loki/` | Loki chunks + index (31d retention) |
+| `promtail/positions.yaml` | Promtail read offsets |
 
-Container apps log to stdout → journald, not here. See [runbooks/operator-log.md](runbooks/operator-log.md).
+Container apps log to stdout → journald → Promtail → Loki. See [runbooks/operator-log.md](runbooks/operator-log.md) and [runbooks/loki-query.md](runbooks/loki-query.md).
 
 ---
 

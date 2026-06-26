@@ -243,12 +243,15 @@ def init_bots(factory_dir: Path) -> None:
 
 
 def create_log_dirs() -> None:
-    """Create XDG state dir for operator.log (deploy audit JSONL — not container bind mounts)."""
+    """Create XDG state dirs for operator.log + Loki/Promtail (not container bind mounts)."""
     state = Path.home() / ".local" / "state"
     for app in ("factory", "voicecli"):
         log_dir = state / app / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
-    print("  ✓  Log directories created (~/.local/state/*/logs/)")
+    factory_state = state / "factory"
+    (factory_state / "loki").mkdir(parents=True, exist_ok=True)
+    (factory_state / "promtail").mkdir(parents=True, exist_ok=True)
+    print("  ✓  Log directories created (~/.local/state/*/logs/, loki/, promtail/)")
 
 
 def bootstrap_forge() -> None:

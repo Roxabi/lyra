@@ -7,6 +7,7 @@ Step-by-step procedures for running factory in production (Podman Quadlet). Thes
 | [quadlet-install.md](quadlet-install.md) | First install, re-deploy, quadlet auto-sync |
 | [bot-onboarding.md](bot-onboarding.md) | Add a bot, render adapter secrets, multi-host caveat |
 | [operator-log.md](operator-log.md) | Operator audit — which log for which incident |
+| [loki-query.md](loki-query.md) | Central log search — LogQL recipes (Loki + Promtail) |
 | [secrets-rotation.md](secrets-rotation.md) | Rotate nkeys, GH PEM, OAuth, blobstore token |
 | [secrets-disaster-recovery.md](secrets-disaster-recovery.md) | Lost NATS nkeys — wipe, regen, M₂ fan-out |
 | [blobstore-backup-restore.md](blobstore-backup-restore.md) | Snapshot and restore the blob index + shards |

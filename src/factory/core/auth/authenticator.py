@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from factory.core.auth.identity import Identity
@@ -296,13 +297,27 @@ class Authenticator:
 class _BlockEveryoneStore:
     """Minimal store that marks every identity as BLOCKED (for _DENY_ALL)."""
 
-    def check(self, _user_id: str | None) -> TrustLevel:
+    def check(self, identity_key: str) -> TrustLevel:
         return TrustLevel.BLOCKED
+
+    async def upsert(
+        self,
+        identity_key: str,
+        trust_level: TrustLevel,
+        expires_at: datetime | None,
+        granted_by: str,
+        source: str,
+    ) -> None:
+        del identity_key, trust_level, expires_at, granted_by, source
+
+    async def revoke(self, identity_key: str) -> bool:
+        del identity_key
+        return False
 
 
 # Sentinel: denies all traffic (safe default when no auth is configured).
 _DENY_ALL = Authenticator(
-    AuthenticatorDeps(store=_BlockEveryoneStore(), role_map={}, default=TrustLevel.BLOCKED)
+    AuthenticatorDeps(store=_BlockEveryoneStore(), role_map={}, default=TrustLevel.BLOCKED)  # noqa: E501
 )
 
 # Sentinel: allows all traffic as PUBLIC (for tests and permissive contexts).

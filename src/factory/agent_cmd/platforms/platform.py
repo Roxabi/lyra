@@ -32,7 +32,7 @@ def make_platform_app(platform: str) -> typer.Typer:
     show.__doc__ = f"Show full config for a {platform.capitalize()} bot."
 
     @platform_app.command(name="add")
-    def add(
+    def add(  # noqa: PLR0913 — contract/request shape
         bot_id: str = typer.Argument(..., help="Bot ID to add."),
         agent: str = typer.Option("", "--agent", help="Agent name."),
         webhook_enabled: bool = typer.Option(
@@ -71,7 +71,7 @@ def make_platform_app(platform: str) -> typer.Typer:
     edit.__doc__ = f"Interactively edit a {platform.capitalize()} bot."
 
     @platform_app.command(name="patch")
-    def patch(
+    def patch(  # noqa: PLR0913 — contract/request shape
         bot_id: str = typer.Argument(..., help="Bot ID to patch."),
         agent: str | None = typer.Option(None, "--agent", help="Set agent."),
         webhook_enabled: bool | None = typer.Option(

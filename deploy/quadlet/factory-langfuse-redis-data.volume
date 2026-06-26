@@ -1,0 +1,9 @@
+[Unit]
+Description=Factory Langfuse Redis data (host-local)
+
+[Volume]
+Type=none
+Device=%h/.local/state/factory/langfuse/redis-data
+Options=bind
+Label=app=factory
+Label=component=langfuse

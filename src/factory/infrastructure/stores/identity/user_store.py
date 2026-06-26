@@ -16,7 +16,7 @@ from factory.infrastructure.stores.base.sqlite_base import SqliteStore
 
 log = logging.getLogger(__name__)
 
-__all__ = ["UserStore", "_CREATE_PLATFORM_IDENTITIES", "_CREATE_USERS", "_CREATE_USER_MIGRATION"]
+__all__ = ["UserStore", "_CREATE_PLATFORM_IDENTITIES", "_CREATE_USERS", "_CREATE_USER_MIGRATION"]  # noqa: E501
 
 _CREATE_USERS = """
 CREATE TABLE IF NOT EXISTS users (
@@ -97,7 +97,7 @@ class UserStore(SqliteStore):
         """One-shot import from ``identity_aliases`` (#472 → UserStore)."""
         db = self._require_db()
         async with db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='_user_store_migration'"
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='_user_store_migration'"  # noqa: E501
         ) as cur:
             if not await cur.fetchone():
                 return
@@ -106,11 +106,11 @@ class UserStore(SqliteStore):
                 return
 
         async with db.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='identity_aliases'"
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='identity_aliases'"  # noqa: E501
         ) as cur:
             if not await cur.fetchone():
                 await db.execute(
-                    "INSERT INTO _user_store_migration (migrated_at) VALUES (datetime('now'))"
+                    "INSERT INTO _user_store_migration (migrated_at) VALUES (datetime('now'))"  # noqa: E501
                 )
                 await db.commit()
                 return
@@ -118,7 +118,7 @@ class UserStore(SqliteStore):
         async with db.execute(
             "SELECT platform_user_id, primary_id FROM identity_aliases"
         ) as cur:
-            rows = await cur.fetchall()
+            rows = list(await cur.fetchall())
 
         for secondary_id, primary_id in rows:
             try:
@@ -135,7 +135,7 @@ class UserStore(SqliteStore):
         )
         await db.commit()
         if rows:
-            log.info("Migrated %d legacy identity_aliases row(s) into UserStore", len(rows))
+            log.info("Migrated %d legacy identity_aliases row(s) into UserStore", len(rows))  # noqa: E501
 
     # ------------------------------------------------------------------
     # Sync resolution (cache only)
@@ -152,7 +152,7 @@ class UserStore(SqliteStore):
         user_id = self._key_to_user.get(platform_key)
         if user_id is None:
             return frozenset({platform_key})
-        return frozenset(self._user_to_keys.get(user_id, {platform_key}) | {platform_key})
+        return frozenset(self._user_to_keys.get(user_id, {platform_key}) | {platform_key})  # noqa: E501
 
     # ------------------------------------------------------------------
     # Mutations
@@ -257,7 +257,7 @@ class UserStore(SqliteStore):
             await db.execute("DELETE FROM users WHERE id = ?", (old_user_id,))
             await db.commit()
 
-        log.info("Unlinked %s from user %s → new user %s", canonical_key, old_user_id, new_user_id)
+        log.info("Unlinked %s from user %s → new user %s", canonical_key, old_user_id, new_user_id)  # noqa: E501
         return True
 
     async def ensure_from_platform_keys(self, keys: list[str]) -> None:
@@ -281,7 +281,7 @@ class UserStore(SqliteStore):
         uid, display_name, created_at = row
         return User(id=uid, display_name=display_name, created_at=_parse_ts(created_at))
 
-    async def list_platform_identities(self, user_id: str) -> tuple[PlatformIdentity, ...]:
+    async def list_platform_identities(self, user_id: str) -> tuple[PlatformIdentity, ...]:  # noqa: E501
         db = self._require_db()
         identities: list[PlatformIdentity] = []
         async with db.execute(
@@ -310,7 +310,7 @@ class UserStore(SqliteStore):
             async for row in cur:
                 uid, display_name, created_at = row
                 users.append(
-                    User(id=uid, display_name=display_name, created_at=_parse_ts(created_at))
+                    User(id=uid, display_name=display_name, created_at=_parse_ts(created_at))  # noqa: E501
                 )
         return tuple(users)
 

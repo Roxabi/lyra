@@ -89,7 +89,7 @@ class PostizPublicApiClient:
         ]
         return group_id, picked
 
-    def build_post_payload(
+    def build_post_payload(  # noqa: PLR0913 — contract/request shape
         self,
         *,
         post_type: str,

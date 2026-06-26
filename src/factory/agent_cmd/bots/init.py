@@ -106,7 +106,7 @@ _BOT_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _PLATFORM_RE = re.compile(r"^(telegram|discord)$")
 
 
-def _merge_bots(raw: dict[str, Any]) -> tuple[list[BotRow], int]:
+def _merge_bots(raw: dict[str, Any]) -> tuple[list[BotRow], int]:  # noqa: C901 — merge helper
     """Merge ``[[telegram.bots]]`` and ``[[discord.bots]]`` entries per bot."""
     merged: dict[tuple[str, str], dict[str, Any]] = {}
     validation_errors = 0

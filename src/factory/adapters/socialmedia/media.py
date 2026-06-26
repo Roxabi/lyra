@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import mimetypes
-from pathlib import Path
-
-from roxabi_blobs import HttpBlobStore
-from roxabi_contracts.blob_ref import BlobRef
 
 from factory.adapters.socialmedia.postiz_client import PostizPublicApiClient
+from roxabi_blobs import HttpBlobStore
+from roxabi_contracts.blob_ref import BlobRef
 
 
 def _filename_for_blob(blob: BlobRef) -> str:
@@ -38,10 +36,3 @@ async def upload_blob_refs(
             raise ValueError("Postiz upload response missing id/path")
         media_items.append({"id": str(media_id), "path": str(path)})
     return media_items
-
-
-def open_blob_store(url: str, token_path: str) -> HttpBlobStore:
-    token = Path(token_path).read_text(encoding="utf-8").strip()
-    if not token:
-        raise OSError(f"empty blobstore token at {token_path}")
-    return HttpBlobStore(base_url=url, token=token)

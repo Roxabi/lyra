@@ -34,7 +34,7 @@ class TestAuthMiddleware:
         )
         assert auth.check(None) == TrustLevel.BLOCKED
 
-    async def test_stored_owner_is_trusted_not_owner(self, auth_store: AuthStore) -> None:
+    async def test_stored_owner_is_trusted_not_owner(self, auth_store: AuthStore) -> None:  # noqa: E501
         await auth_store.upsert(
             "alice", TrustLevel.OWNER, None, "config", "config.toml"
         )
@@ -86,7 +86,7 @@ class TestAuthMiddleware:
 
 
 class TestAuthMiddlewareWithStore:
-    async def test_seeded_owner_user_returns_trusted(self, auth_store: AuthStore) -> None:
+    async def test_seeded_owner_user_returns_trusted(self, auth_store: AuthStore) -> None:  # noqa: E501
         await auth_store.upsert(
             "owner-uid", TrustLevel.OWNER, None, "config", "config.toml"
         )

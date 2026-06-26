@@ -22,8 +22,19 @@ factory stores runtime data in two root locations:
 | `config.toml` | Instance wiring (bots, tokens, auth, defaults) | **Synced** |
 | `nkeys/` | NATS nkey seeds and `auth.conf` | **Synced** |
 | `env/` | Quadlet env files (`hub.env`, `blobstore.env`) | **Synced** |
+| `rotation-log.md` | Credential rotation audit (append-only) | **Synced** |
 | `nats/jetstream/` | JetStream persistent storage | **Excluded** (host-local, large WAL files) |
 | `blobstore/` | BlobStore shard tree + SQLite index (real directory) | **Excluded** (large binary data — see Syncthing exclusions below) |
+
+---
+
+## `~/.local/state/factory/logs/` — Operator audit (host-local)
+
+| File | Purpose | Syncthing |
+|---|---|---|
+| `operator.log` | JSONL deploy/operator actions (`install.sh`, `make converge`) | **Not synced** (per-host attribution) |
+
+Container apps log to stdout → journald, not here. See [runbooks/operator-log.md](runbooks/operator-log.md).
 
 ---
 

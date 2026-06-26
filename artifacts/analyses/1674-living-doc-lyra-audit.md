@@ -194,3 +194,19 @@
 - `plugins/lyra-ops/skills/lyra-debug/SKILL.md:88` — `/home/factory/.local/state/lyra/logs/` → `/home/factory/.local/state/factory/logs/`
 - `plugins/lyra-ops/skills/lyra-debug/SKILL.md:89` — `/home/factory/.local/state/lyra/logs/` → `/home/factory/.local/state/factory/logs/`
 - `deploy/CLAUDE.md:87` — `/run/user/<uid>/lyra-deploy.lock` → `/run/user/<uid>/factory-deploy.lock`
+
+---
+
+## Verification (2026-06-26, issue #1674 close-out)
+
+All success criteria from `artifacts/specs/1674-lyra-factory-judgment-tail-spec.mdx` verified on `staging`:
+
+| SC | Result |
+|----|--------|
+| SC-1 `state/lyra` in living docs | 0 hits |
+| SC-2 `STT_MODEL_SIZE` absent from `.env.example` | pass |
+| SC-3 `lyra-gh` / `git-credential-lyra-gh` in living docs | 0 hits |
+| SC-4 phantom error classes in backend/architecture patterns | 0 hits |
+| SC-5 error sections cite real `src/factory/` sites | pass (pre-#1668 rewrite) |
+| SC-6 audit table complete; 0 stale-and-unfixed | pass |
+| SC-7 `ruff`, `pyright`, `pytest`, `check_doc_drift.py` | pass after satellite test fix |

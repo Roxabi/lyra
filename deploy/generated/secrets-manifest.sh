@@ -15,9 +15,11 @@ declare -A SECRET_SOURCES=(
     [factory-nats-gh-helper]="nkeys/gh-helper.seed"
     [factory-nats-hub]="nkeys/hub.seed"
     [factory-nats-omp]="nkeys/omp-worker.seed"
+    [factory-nats-socialmedia]="nkeys/socialmedia-adapter.seed"
     [factory-nats-telegram]="nkeys/telegram-adapter.seed"
     [factory-nats-turn-writer]="nkeys/turn-writer.seed"
     [factory-nats-web]="nkeys/web-adapter.seed"
+    [factory-socialmedia-api-key]="socialmedia-api-key.tok"
     [factory_blobstore_token]="n/a"
 )
 
@@ -33,8 +35,10 @@ declare -A SECRET_POLICY=(
     [factory-nats-gh-helper]="nats-seed"
     [factory-nats-hub]="nats-seed"
     [factory-nats-omp]="nats-seed"
+    [factory-nats-socialmedia]="nats-seed"
     [factory-nats-telegram]="nats-seed"
     [factory-nats-turn-writer]="nats-seed"
     [factory-nats-web]="nats-seed"
+    [factory-socialmedia-api-key]="optional"
     [factory_blobstore_token]="generated"
 )

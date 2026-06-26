@@ -41,7 +41,6 @@ class TestFromConfig:
         self, auth_store: AuthStore
     ) -> None:
         raw = self._make_raw("telegram")
-        await auth_store.seed_from_config(raw, "telegram")
         auth = AuthMiddleware.from_config(raw, "telegram", store=auth_store)
         assert auth is not None
         assert auth.check("tg:user:owner1") == TrustLevel.TRUSTED
@@ -65,28 +64,6 @@ class TestFromConfig:
         raw = self._make_raw("telegram", default="open")
         with pytest.raises(ValueError):
             AuthMiddleware.from_config(raw, "telegram")
-
-    async def test_seeded_owner_is_trusted(self, auth_store: AuthStore) -> None:
-        raw = {
-            "auth": {"telegram": {"owner_users": ["7377831990"], "default": "blocked"}}
-        }
-        await auth_store.seed_from_config(raw, "telegram")
-        auth = AuthMiddleware.from_config(raw, "telegram", store=auth_store)
-        assert auth is not None
-        assert auth.check("tg:user:7377831990") == TrustLevel.TRUSTED
-
-    async def test_seeded_trusted_is_trusted(self, auth_store: AuthStore) -> None:
-        raw = {"auth": {"telegram": {"trusted_users": ["9999"], "default": "blocked"}}}
-        await auth_store.seed_from_config(raw, "telegram")
-        auth = AuthMiddleware.from_config(raw, "telegram", store=auth_store)
-        assert auth is not None
-        assert auth.check("tg:user:9999") == TrustLevel.TRUSTED
-
-    def test_trusted_roles_are_ignored(self) -> None:
-        raw = {"auth": {"discord": {"trusted_roles": ["staff"], "default": "public"}}}
-        auth = AuthMiddleware.from_config(raw, "discord")
-        assert auth is not None
-        assert auth.check("user", roles=["staff"]) == TrustLevel.TRUSTED
 
     async def test_blocked_still_blocks(self, auth_store: AuthStore) -> None:
         raw = {"auth": {"telegram": {"default": "blocked"}}}
@@ -143,8 +120,6 @@ class TestFromBotStore:
             "platform": platform,
             "bot_id": bot_id,
             "agent": "lyra_default",
-            "default_trust": "blocked",
-            "trusted_roles": ["admin"],
         }
         kwargs.update(overrides)
         return BotRow(**kwargs)
@@ -199,8 +174,3 @@ class TestFromBotStore:
         assert auth is not None
         assert auth.check("anyone") == TrustLevel.TRUSTED
         assert auth.check(None) == TrustLevel.BLOCKED
-
-    def test_invalid_default_in_bot_row_rejected(self) -> None:
-        with pytest.raises(ValueError) as exc_info:
-            self._make_row("telegram", "lyra", default_trust="superadmin")
-        assert "superadmin" in str(exc_info.value)

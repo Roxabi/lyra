@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from factory.infrastructure.stores.identity.agent_grant_store import AgentGrantStore
+from factory.infrastructure.stores.identity.user_store import UserStore
 from factory.infrastructure.stores.registry.agent_store import AgentStore
 from factory.infrastructure.stores.registry.bot_store import BotStore
 from factory.paths import factory_data_dir
@@ -31,6 +32,16 @@ async def _connect_bot_store() -> BotStore:
 
 
 async def _connect_grant_store() -> AgentGrantStore:
-    store = AgentGrantStore(db_path=_get_auth_db_path())
+    user_store = UserStore(db_path=_get_auth_db_path())
+    await user_store.connect()
+    store = AgentGrantStore(
+        db_path=_get_auth_db_path(), user_store=user_store
+    )
+    await store.connect()
+    return store
+
+
+async def _connect_user_store() -> UserStore:
+    store = UserStore(db_path=_get_auth_db_path())
     await store.connect()
     return store

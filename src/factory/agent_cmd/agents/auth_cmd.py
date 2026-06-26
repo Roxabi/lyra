@@ -14,9 +14,10 @@ from typing import Optional
 
 import typer
 
-from factory.cli._store_connect import _connect_grant_store
+from factory.cli._store_connect import _connect_grant_store, _connect_user_store
 from factory.cli.agent import agent_app
 from factory.core.auth.agent_grants import Capability, Principal, PrincipalKind
+from factory.core.auth.platform_keys import is_platform_key, is_user_id
 
 # Audit-trail fields the store requires non-empty (ADR-090 §1). The CLI is the
 # operator surface, so "where" is fixed to ``cli``; "who" is a stable label
@@ -44,19 +45,48 @@ _CAP_OPT: str = typer.Option(
 )
 
 
-def _resolve_principal(user: str | None, role: str | None) -> Principal:
-    """Map mutually-exclusive ``--user``/``--role`` to a Principal, or exit(1)."""
-    if (user is None) == (role is None):
-        typer.echo("Error: pass exactly one of --user or --role.", err=True)
+async def _resolve_user_principal(user: str) -> Principal:
+    """Resolve a platform or canonical user id to an ``rx:user:`` principal."""
+    if is_user_id(user):
+        return Principal(kind=PrincipalKind.USER, id=user)
+    if not is_platform_key(user):
+        typer.echo(
+            "Error: --user must be a platform key (tg:user:…) or rx:user:… id.",
+            err=True,
+        )
         raise typer.Exit(1)
-    kind = PrincipalKind.USER if user is not None else PrincipalKind.ROLE
-    ident = user if user is not None else role
-    assert ident is not None  # guaranteed by the exactly-one check above
+
+    store = await _connect_user_store()
     try:
-        return Principal(kind=kind, id=ident)
+        rx_user = store.resolve_user_id(user)
+        if rx_user is None:
+            rx_user = await store.ensure_user(user)
+        return Principal(kind=PrincipalKind.USER, id=rx_user)
+    finally:
+        await store.close()
+
+
+def _resolve_role_principal(role: str) -> Principal:
+    """Map ``--role`` to a Principal, or exit(1)."""
+    try:
+        return Principal(kind=PrincipalKind.ROLE, id=role)
     except ValueError as exc:
         typer.echo("Error: principal id must be non-empty.", err=True)
         raise typer.Exit(1) from exc
+
+
+async def _resolve_grant_principal(
+    user: str | None,
+    role: str | None,
+) -> Principal:
+    """Resolve exactly one of ``--user`` or ``--role`` to a Principal."""
+    if (user is None) == (role is None):
+        typer.echo("Error: pass exactly one of --user or --role.", err=True)
+        raise typer.Exit(1)
+    if user is not None:
+        return await _resolve_user_principal(user)
+    assert role is not None
+    return _resolve_role_principal(role)
 
 
 def _resolve_capability(raw: str) -> Capability:
@@ -77,10 +107,12 @@ def grant(
     capability: str = _CAP_OPT,
 ) -> None:
     """Grant a user or role access to an agent (ADR-090 §7, no restart)."""
-    principal = _resolve_principal(user, role)
     cap = _resolve_capability(capability)
+    principal: Principal | None = None
 
-    async def _run() -> None:
+    async def _run() -> Principal:
+        nonlocal principal
+        principal = await _resolve_grant_principal(user, role)
         store = await _connect_grant_store()
         try:
             await store.grant(
@@ -92,8 +124,9 @@ def grant(
             )
         finally:
             await store.close()
+        return principal
 
-    asyncio.run(_run())
+    principal = asyncio.run(_run())
     subject = f"{principal.kind.value} {principal.id}"
     typer.echo(f"Granted {cap.value} on {agent_name!r} to {subject}")
 
@@ -106,19 +139,21 @@ def revoke(
     capability: str = _CAP_OPT,
 ) -> None:
     """Revoke a user's or role's access to an agent (ADR-090 §7, no restart)."""
-    principal = _resolve_principal(user, role)
     cap = _resolve_capability(capability)
     removed = False
+    principal: Principal | None = None
 
-    async def _run() -> None:
-        nonlocal removed
+    async def _run() -> tuple[Principal, bool]:
+        nonlocal removed, principal
+        principal = await _resolve_grant_principal(user, role)
         store = await _connect_grant_store()
         try:
             removed = await store.revoke(agent_name, principal, capability=cap)
         finally:
             await store.close()
+        return principal, removed
 
-    asyncio.run(_run())
+    principal, removed = asyncio.run(_run())
     subject = f"{principal.kind.value} {principal.id}"
     if removed:
         typer.echo(f"Revoked {cap.value} on {agent_name!r} from {subject}")

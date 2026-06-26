@@ -203,7 +203,7 @@ def _apply_core_hub_stubs(
     monkeypatch.setattr(f"{_HUB}.release_lockfile", lambda: None)
     monkeypatch.setattr(f"{_HUB}.nats_connect", AsyncMock(return_value=mock_nc))
     monkeypatch.setattr(f"{_HUB}.open_stores", fake_open_stores)
-    monkeypatch.setattr(f"{_HUB}.seed_identity_and_grants", AsyncMock())
+
     monkeypatch.setattr(
         f"{_HUB}.build_bot_auths",
         lambda *_a, **_kw: (MagicMock(), [], [], []),

@@ -133,6 +133,7 @@ def _patch_unified_boundaries(  # noqa: PLR0915
     )
 
     fake_voice = MagicMock()
+    fake_voice.socialmedia_client = None
     fake_voice.nats_llm_client = MagicMock()
     fake_voice.nats_llm_client.stop = AsyncMock()
     monkeypatch.setattr(

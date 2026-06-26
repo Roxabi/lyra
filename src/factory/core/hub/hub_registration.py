@@ -12,11 +12,11 @@ from ..messaging.message import InboundMessage, Platform
 from .hub_protocol import Binding, ChannelAdapter, RoutingKey
 
 if TYPE_CHECKING:
+    from factory.core.ports.socialmedia import SocialMediaClientProtocol
     from factory.core.stores import MessageIndexProtocol, TurnStoreProtocol
     from factory.infrastructure.stores.identity.identity_alias_store import (
         IdentityAliasStore,
     )
-    from factory.nats.socialmedia.nats_socialmedia_client import NatsSocialMediaClient
     from factory.transport.turn_publisher import TurnPublisher
     from factory.transport.typing_publisher import TypingPublisher
 
@@ -43,7 +43,7 @@ class HubRegistrationMixin:
         _memory_tasks: set
         _message_index: MessageIndexProtocol | None
         _platform_queue_maxsize: int
-        _socialmedia_client: NatsSocialMediaClient | None
+        _socialmedia_client: SocialMediaClientProtocol | None
         _turn_store: TurnStoreProtocol | None
         _turn_publisher: TurnPublisher | None
         _typing_publisher: TypingPublisher | None
@@ -87,7 +87,7 @@ class HubRegistrationMixin:
         """Wire the TypingPublisher (called by bootstrap; consumed by T2)."""
         self._typing_publisher = publisher
 
-    def set_socialmedia_client(self, client: "NatsSocialMediaClient") -> None:
+    def set_socialmedia_client(self, client: SocialMediaClientProtocol) -> None:
         """Wire the hub-side social media tool client."""
         self._socialmedia_client = client
 

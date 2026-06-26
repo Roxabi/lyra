@@ -325,6 +325,16 @@ fi
 log "Ensuring data directories ..."
 run mkdir -p "${HOME}/.local/state/factory/loki" "${HOME}/.local/state/factory/promtail"
 echo "  [ok]   ${HOME}/.local/state/factory/loki + promtail/"
+run mkdir -p "${HOME}/.local/state/factory/langfuse/postgres" \
+  "${HOME}/.local/state/factory/langfuse/clickhouse" \
+  "${HOME}/.local/state/factory/langfuse/clickhouse-logs" \
+  "${HOME}/.local/state/factory/langfuse/redis-data" \
+  "${HOME}/.local/state/factory/langfuse/minio/langfuse" \
+  "${HOME}/.local/state/factory/langfuse/redis"
+echo "  [ok]   ${HOME}/.local/state/factory/langfuse/*"
+if [[ ! -f "${HOME}/.roxabi/factory/env/langfuse.env" ]]; then
+  log "Langfuse env missing — run: bash deploy/scripts/bootstrap-langfuse.sh"
+fi
 run mkdir -p "${HOME}/.roxabi/factory/blobstore"
 echo "  [ok]   ${HOME}/.roxabi/factory/blobstore"
 run mkdir -p "${HOME}/.roxabi/factory/turn-writer"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lyra by Roxabi — Machine 1 post-install provisioning script
+# Factory by Roxabi — Machine 1 post-install provisioning script
 # Usage: curl -fsSL https://raw.githubusercontent.com/Roxabi/roxabi-factory/staging/deploy/provision.sh | bash
 #        curl -fsSL https://raw.githubusercontent.com/Roxabi/roxabi-factory/staging/deploy/provision.sh | ADMIN_USER=yourname bash
 #        curl -fsSL https://raw.githubusercontent.com/Roxabi/roxabi-factory/staging/deploy/provision.sh | ADMIN_USER=yourname AGENT_USER=myagent bash
@@ -382,20 +382,20 @@ else
   warn "Your public key: $(cat "$HOME/.ssh/id_ed25519.pub" 2>/dev/null || echo 'no key found — run ssh-keygen first')"
 fi
 
-# ── Lyra env-file dir (Quadlet EnvironmentFile= targets) ─────────────────────
+# ── Factory env-file dir (Quadlet EnvironmentFile= targets) ──────────────────
 
-section "Lyra env-file directory"
+section "Factory env-file directory"
 FACTORY_ENV_DIR="/home/$ADMIN_USER/.roxabi/factory/env"
 sudo -u "$ADMIN_USER" install -d -m 0700 "$FACTORY_ENV_DIR"
 # Quadlet EnvironmentFile= cannot use systemd's `-` silent-if-missing prefix;
 # touch an empty file so the unit starts even when no per-host overrides exist.
 sudo -u "$ADMIN_USER" touch "$FACTORY_ENV_DIR/clipool.env"
 sudo -u "$ADMIN_USER" chmod 0600 "$FACTORY_ENV_DIR/clipool.env"
-info "Lyra env-file dir prepared at $FACTORY_ENV_DIR (clipool.env touched)."
+info "Factory env-file dir prepared at $FACTORY_ENV_DIR (clipool.env touched)."
 
-# ── Lyra GitHub App PEM (Podman secret) ─────────────────────────────────────
+# ── Factory GitHub App PEM (Podman secret) ───────────────────────────────────
 
-section "Lyra GitHub App PEM (Podman secret)"
+section "Factory GitHub App PEM (Podman secret)"
 GH_PEM_PATH="${GH_PEM_PATH:-}"
 # Trusted dirs for secret files — same allowlist as rotate-gh-key.sh / rotate-claude-oauth.sh.
 FACTORY_SECRETS_TRUSTED='/home/factory/secrets/*|/etc/factory/*'
@@ -418,7 +418,7 @@ else
   fi
 fi
 
-# ── Lyra Claude Code OAuth token (Podman secret) ────────────────────────────
+# ── Factory Claude Code OAuth token (Podman secret) ─────────────────────────
 #
 # The `claude` subprocess in factory-clipool uses a 1-year OAuth setup-token
 # (auth precedence #5) instead of the interactive-OAuth credentials file
@@ -428,7 +428,7 @@ fi
 # script with CLAUDE_OAUTH_TOKEN_PATH=/abs/path/to/token-file (single line,
 # no newline).
 
-section "Lyra Claude Code OAuth token (Podman secret)"
+section "Factory Claude Code OAuth token (Podman secret)"
 CLAUDE_OAUTH_TOKEN_PATH="${CLAUDE_OAUTH_TOKEN_PATH:-}"
 if sudo -u "$ADMIN_USER" XDG_RUNTIME_DIR="/run/user/$ADMIN_UID" \
      podman secret inspect factory-claude-oauth &>/dev/null; then

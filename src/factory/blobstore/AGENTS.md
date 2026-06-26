@@ -9,7 +9,7 @@ backs them with `FsBlobStore` on `~/.roxabi/factory/blobs/`, and is the only pro
 from `packages/roxabi-blobs`.
 
 Used cross-host over Tailnet by M₂ workers (llm-worker, image-worker, future voice-worker).
-Entry point: `lyra blobstore serve`.
+Entry point: `factory blobstore serve`.
 
 ## Host topology
 

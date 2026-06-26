@@ -41,7 +41,7 @@ directly.
 
 ```
 ~/.roxabi/factory/agents/<name>.toml   ← edit here
-         ↓  lyra agent init [--force]
+         ↓  factory agent init [--force]
 ~/.roxabi/factory/config.db            ← runtime SSoT
 ```
 

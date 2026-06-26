@@ -111,8 +111,8 @@ async def _init_bot_auths_and_agents(
     if not tg_bot_auths and not dc_bot_auths:
         raise ValueError(
             "No bots configured — the runtime roster is sourced from BotStore."
-            " Run 'lyra bot init' to seed it from config.toml,"
-            " then 'lyra bot list' to verify."
+            " Run 'factory bot init' to seed it from config.toml,"
+            " then 'factory agent telegram list' to verify."
         )
 
     bot_agent_map = await _resolve_bot_agent_map(
@@ -134,7 +134,7 @@ async def _init_bot_auths_and_agents(
     if not agent_configs:
         raise ValueError(
             "No agent configs could be loaded — run"
-            " 'lyra agent init' to seed the agents table"
+            " 'factory agent init' to seed the agents table"
         )
 
     first_agent_name = next(iter(sorted(agent_configs)))

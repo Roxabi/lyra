@@ -71,7 +71,8 @@ cat ~/.roxabi/factory/rotation-log.md
 | `make converge` skip (stamp match) | `converge_skip` | — |
 | `make converge` run | `converge_start`, `converge_complete` | — |
 | Concurrent converge (flock) | `converge_lock_held` | — |
-| `factory secrets reset` | via `install.sh --force-secrets` only | — (nkey wipe logged separately when rotation runbook wired) |
+| `factory secrets reset` | `secrets_reset_start`, `secrets_reset_complete` / `secrets_reset_failed` | yes (`nats-nkeys`, `disaster-recovery`) |
+| `factory secrets reset --dry-run` | `secrets_reset_dry_run` | — |
 
 **Never logged:** token bytes, seed contents, env values, full argv with secrets.
 

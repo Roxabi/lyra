@@ -9,7 +9,7 @@ import sys
 
 import nats.errors
 
-from factory.bootstrap.auth_seeding import build_bot_auths, seed_identity_and_grants
+from factory.bootstrap.auth_seeding import build_bot_auths
 from factory.bootstrap.bootstrap_stores import open_stores
 from factory.bootstrap.factory.agent_factory import _resolve_bot_agent_map
 from factory.bootstrap.factory.config import MessageIndexConfig
@@ -96,12 +96,6 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
         from factory.bootstrap.factory.config import _load_circuit_config
 
         _, admin_user_ids = _load_circuit_config(raw_config)
-        await seed_identity_and_grants(
-            stores.grant,
-            stores.bot,
-            stores.user,
-            admin_user_ids=admin_user_ids,
-        )
 
         try:
             circuit_registry, admin_user_ids, tg_bot_auths, dc_bot_auths = (

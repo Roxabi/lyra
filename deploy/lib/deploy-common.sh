@@ -11,6 +11,8 @@ export PATH="${HOME}/projects/roxabi-factory/.venv/bin:${HOME}/.local/bin:${PATH
 
 # ── Environment guards ─────────────────────────────────────────────────────
 source "$(dirname "${BASH_SOURCE[0]}")/env.sh"
+# shellcheck source=operator-log.sh
+source "$(dirname "${BASH_SOURCE[0]}")/operator-log.sh"
 
 # ── Constants ────────────────────────────────────────────────────────────────
 FACTORY_DIR="${HOME}/projects/roxabi-factory"
@@ -26,6 +28,7 @@ with_deploy_lock() {
     exec 200>"${DEPLOY_LOCK}"
     if ! flock -n 200; then
         echo "Deploy lock held at ${DEPLOY_LOCK} — another converge is running."
+        op_log converge_lock_held lock="${DEPLOY_LOCK}"
         exit 0
     fi
     "$@"

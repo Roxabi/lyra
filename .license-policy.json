@@ -1,6 +1,7 @@
 {
   "allowlist": [
     "roxabi-nats",
+    "roxabi-satellite",
     "roxabi-blobs",
     "roxabi-contracts",
     "factory",

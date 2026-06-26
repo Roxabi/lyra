@@ -91,12 +91,7 @@ async def test_publish_bot_roster_writes_platform_keys() -> None:
 async def test_publish_bot_roster_never_includes_auth_fields() -> None:
     kv = _mock_kv()
     js = _mock_js(kv=kv)
-    row = make_bot_row(
-        platform="telegram",
-        bot_id="lyra",
-        owner_users=["tg:user:1"],
-        trusted_users=["tg:user:2"],
-    )
+    row = make_bot_row(platform="telegram", bot_id="lyra")
     bot_store = MagicMock()
     bot_store.get_all.return_value = [row]
 

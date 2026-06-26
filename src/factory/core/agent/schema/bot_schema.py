@@ -15,10 +15,6 @@ CREATE TABLE IF NOT EXISTS bots (
     bot_id TEXT NOT NULL,
     agent TEXT NOT NULL,
     webhook_enabled INTEGER NOT NULL DEFAULT 0,
-    default_trust TEXT NOT NULL DEFAULT 'blocked',
-    owner_users_json TEXT NOT NULL DEFAULT '[]',
-    trusted_users_json TEXT NOT NULL DEFAULT '[]',
-    trusted_roles_json TEXT NOT NULL DEFAULT '[]',
     auto_thread INTEGER NOT NULL DEFAULT 0,
     thread_hot_hours INTEGER NOT NULL DEFAULT 24,
     updated_at TEXT,
@@ -28,26 +24,20 @@ CREATE TABLE IF NOT EXISTS bots (
 """
 
 _SELECT_BOTS = (
-    "SELECT platform, bot_id, agent, webhook_enabled, default_trust, "
-    "owner_users_json, trusted_users_json, trusted_roles_json, "
+    "SELECT platform, bot_id, agent, webhook_enabled, "
     "auto_thread, thread_hot_hours, updated_at, public_bot "
     "FROM bots"
 )
 
-_N_BOT_COLS = 12  # const-ok: bot table column count
+_N_BOT_COLS = 8  # const-ok: bot table column count
 
 _UPSERT_BOT = (
-    f"INSERT INTO bots (platform, bot_id, agent, webhook_enabled, default_trust, "
-    f"owner_users_json, trusted_users_json, trusted_roles_json, "
+    f"INSERT INTO bots (platform, bot_id, agent, webhook_enabled, "
     f"auto_thread, thread_hot_hours, updated_at, public_bot) "
     f"VALUES ({', '.join(['?'] * _N_BOT_COLS)}) "
     "ON CONFLICT(platform, bot_id) DO UPDATE SET "
     "agent=excluded.agent, "
     "webhook_enabled=excluded.webhook_enabled, "
-    "default_trust=excluded.default_trust, "
-    "owner_users_json=excluded.owner_users_json, "
-    "trusted_users_json=excluded.trusted_users_json, "
-    "trusted_roles_json=excluded.trusted_roles_json, "
     "auto_thread=excluded.auto_thread, "
     "thread_hot_hours=excluded.thread_hot_hours, "
     "updated_at=excluded.updated_at, "

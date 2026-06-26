@@ -199,33 +199,29 @@ class TestBotInitSeed:
     def test_merge_multi_section(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Exercises merge semantics: conflicting scalars (last-wins) and
-        # list deduplication across [[telegram.bots]] and [[auth.telegram_bots]].
-        # _add_entries order: telegram.bots first, auth.telegram_bots last →
-        # auth.telegram_bots scalar values win.
+        # Last [[telegram.bots]] entry wins for the same bot_id.
         monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         write_bot_toml(
             tmp_path,
             "[[telegram.bots]]\n"
             'bot_id="main"\n'
-            'agent="a"\n'
-            'owner_users=["alice", "bob"]\n\n'
-            "[[auth.telegram_bots]]\n"
+            'agent="a"\n\n'
+            "[[telegram.bots]]\n"
             'bot_id="main"\n'
             'agent="b"\n'
-            'owner_users=["bob", "charlie"]\n',
+            'webhook_enabled=true\n',
         )
 
         result = runner.invoke(app, ["bot", "init"])
 
         assert result.exit_code == 0, result.output
-        assert "1 seeded" in result.output  # single merged row
+        assert "1 seeded" in result.output
 
         db_path = tmp_path / "config.db"
         row = db_get(db_path, "telegram", "main")
         assert row is not None
-        assert row.agent == "b"  # auth.telegram_bots wins (last section)
-        assert set(row.owner_users) == {"alice", "bob", "charlie"}  # concat + dedup
+        assert row.agent == "b"
+        assert row.webhook_enabled is True
 
     def test_default_values(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -249,7 +245,6 @@ class TestBotInitSeed:
         row = db_get(db_path, "telegram", "main")
         assert row is not None
         assert row.agent == "a"
-        assert row.default_trust == "blocked"
         assert row.auto_thread is False
         assert row.thread_hot_hours == 24
 

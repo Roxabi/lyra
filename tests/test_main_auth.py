@@ -139,41 +139,4 @@ class TestAuthConfig:
         with pytest.raises(SystemExit, match="past_auth"):
             await main_mod._main(_stop=stop)
 
-    async def test_invalid_default_exits(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Invalid default_trust in BotStore causes SystemExit when _main() runs."""
-        from unittest.mock import MagicMock
 
-        import factory.bootstrap.bootstrap_stores as stores_mod_local
-        from factory.core.agent.bot_models import BotRow
-
-        patch_auth_config_test(monkeypatch)
-        _fake_bot_store = MagicMock()
-        _fake_bot_store.connect = AsyncMock()
-        _fake_bot_store.close = AsyncMock()
-        # get_all provides the roster (telegram "main" bot present).
-        _fake_bot_store.get_all = MagicMock(
-            return_value=[
-                BotRow(
-                    platform="telegram",
-                    bot_id="main",
-                    agent="lyra_default",
-                    default_trust="public",
-                )
-            ]
-        )
-        # Per-bot get returns a row with invalid trust — this triggers SystemExit.
-        _fake_bot_store.get = MagicMock(
-            return_value=MagicMock(default_trust="invalid_level", trusted_roles=[])
-        )
-        monkeypatch.setattr(
-            stores_mod_local, "BotStore", lambda **kwargs: _fake_bot_store
-        )
-        monkeypatch.setattr(
-            main_mod,
-            "_load_raw_config",
-            lambda: {},
-        )
-        stop = asyncio.Event()
-        stop.set()
-        with pytest.raises(SystemExit, match="invalid_level"):
-            await main_mod._main(_stop=stop)

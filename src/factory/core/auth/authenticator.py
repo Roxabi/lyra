@@ -282,16 +282,14 @@ class Authenticator:
                 d.bot_id,
             )
             return None
-        section_cfg = {
-            "default": row.default_trust,
-            "trusted_roles": row.trusted_roles,
-        }
-        return cls._build_from_section_cfg(
-            section_cfg,
-            context_label=f"bot store for {d.platform} bot_id={d.bot_id!r}",
-            store=d.store,
-            admin_user_ids=d.admin_user_ids,
-            alias_store=d.alias_store,
+        return cls(
+            AuthenticatorDeps(
+                store=d.store,
+                role_map={},
+                default=TrustLevel.BLOCKED,
+                admin_user_ids=d.admin_user_ids,
+                alias_store=d.alias_store,
+            )
         )
 
 

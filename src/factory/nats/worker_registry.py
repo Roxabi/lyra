@@ -16,7 +16,7 @@ import logging
 import time
 from dataclasses import dataclass
 
-from roxabi_nats._validate import validate_nats_single_token
+from roxabi_satellite.tokens import validate_nats_single_token
 
 log = logging.getLogger(__name__)
 

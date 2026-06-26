@@ -32,7 +32,7 @@ async def user_store(tmp_path: Path):
 
 class TestEnsureUser:
     @pytest.mark.asyncio
-    async def test_ensure_user_creates_canonical_id(self, user_store: UserStore) -> None:
+    async def test_ensure_user_creates_canonical_id(self, user_store: UserStore) -> None:  # noqa: E501
         user_id = await user_store.ensure_user("tg:user:7377831990")
         assert user_id.startswith(USER_ID_PREFIX)
         assert user_store.resolve_user_id("tg:user:7377831990") == user_id
@@ -93,7 +93,7 @@ class TestLegacyMigration:
             "created_at TEXT DEFAULT (datetime('now')))"
         )
         conn.execute(
-            "INSERT INTO identity_aliases VALUES ('dc:user:2', 'tg:user:1', datetime('now'))"
+            "INSERT INTO identity_aliases VALUES ('dc:user:2', 'tg:user:1', datetime('now'))"  # noqa: E501
         )
         conn.commit()
         conn.close()

@@ -23,6 +23,8 @@ dependencies = [
     # roxabi-nats (packages/roxabi-nats/pyproject.toml is the canonical
     # source). See issue #731.
     "roxabi-nats",
+    # Shared NATS satellite plumbing (blobstore, tokens, domain validation/replies).
+    "roxabi-satellite",
     # Workspace presence for V1 (#1063); consumers wire BlobStore in V2+ (#1064-#1068).
     "roxabi-blobs",
     "typer>=0.26.7",
@@ -75,12 +77,18 @@ override-dependencies = [
 pkuseg = ["numpy"]
 
 [tool.uv.workspace]
-members = ["packages/roxabi-nats", "packages/roxabi-contracts", "packages/roxabi-blobs"]
+members = [
+    "packages/roxabi-nats",
+    "packages/roxabi-contracts",
+    "packages/roxabi-blobs",
+    "packages/roxabi-satellite",
+]
 
 [tool.uv.sources]
 roxabi-contracts = { workspace = true }
 roxabi-nats = { workspace = true }
 roxabi-blobs = { workspace = true }
+roxabi-satellite = { workspace = true }
 roxabi-vault = { git = "https://github.com/Roxabi/roxabi-vault.git", branch = "staging" }
 
 [tool.hatch.build.targets.wheel]
@@ -89,7 +97,13 @@ packages = ["src/factory", "scripts"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 pythonpath = ["."]
-testpaths = ["tests", "packages/roxabi-nats/tests", "packages/roxabi-contracts/tests", "packages/roxabi-blobs/tests"]
+testpaths = [
+    "tests",
+    "packages/roxabi-nats/tests",
+    "packages/roxabi-contracts/tests",
+    "packages/roxabi-blobs/tests",
+    "packages/roxabi-satellite/tests",
+]
 addopts = "--import-mode=importlib -n auto --dist=loadgroup"
 filterwarnings = [
     "ignore:'audioop' is deprecated:DeprecationWarning",
@@ -146,7 +160,7 @@ reportUnknownLambdaType = "none"
 reportMissingTypeArgument = "none"
 
 [tool.ruff]
-src = ["src", "tests", "packages/roxabi-nats/src", "packages/roxabi-nats/tests", "packages/roxabi-contracts/src", "packages/roxabi-contracts/tests", "packages/roxabi-blobs/src", "packages/roxabi-blobs/tests"]
+src = ["src", "tests", "packages/roxabi-nats/src", "packages/roxabi-nats/tests", "packages/roxabi-contracts/src", "packages/roxabi-contracts/tests", "packages/roxabi-blobs/src", "packages/roxabi-blobs/tests", "packages/roxabi-satellite/src", "packages/roxabi-satellite/tests"]
 exclude = [".claude/worktrees", "deploy"]
 
 [tool.ruff.lint]

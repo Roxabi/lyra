@@ -334,7 +334,7 @@ class TestInitBotAuthsAndAgents:
     async def test_init_bot_auths_exits_when_no_bots_configured(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """SC#3 — empty BotStore roster raises SystemExit with 'lyra bot init' hint.
+        """SC#3 — empty BotStore roster raises SystemExit with 'factory bot init' hint.
 
         Negative gate: deleting the empty-roster guard in _init_bot_auths_and_agents
         means no SystemExit is raised and the test fails.
@@ -359,8 +359,8 @@ class TestInitBotAuthsAndAgents:
         with pytest.raises(ValueError) as exc_info:
             await _init_bot_auths_and_agents(MagicMock(), {})
 
-        assert "lyra bot init" in str(exc_info.value), (
-            f"Expected 'lyra bot init' in error message, got: {exc_info.value!r}"
+        assert "factory bot init" in str(exc_info.value), (
+            f"Expected 'factory bot init' in error message, got: {exc_info.value!r}"
         )
 
     @pytest.mark.asyncio

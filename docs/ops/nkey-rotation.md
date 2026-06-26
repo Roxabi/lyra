@@ -54,11 +54,11 @@ Resolve any missing cert before proceeding. voicecli connection errors during ve
 
 **1.4 Confirm a baseline before starting.**
 
-Use `lyra ops verify` to confirm the baseline ACL state (ADR-046 invariant 5):
+Use `factory ops verify` to confirm the baseline ACL state (ADR-046 invariant 5):
 
 ```bash
 # On Machine 1:
-lyra ops verify
+factory ops verify
 ```
 
 If you prefer to inspect raw identity counts, the legacy manual equivalent is still available:
@@ -186,7 +186,7 @@ systemctl --user status 'factory-*.service'
 
 ## 6. Verification
 
-Run `lyra ops verify` for a quick ACL matrix check (ADR-046 invariant 5) before and after rotation.
+Run `factory ops verify` for a quick ACL matrix check (ADR-046 invariant 5) before and after rotation.
 
 **6.1 Check for NATS auth errors** using the reload timestamp captured in Step 4:
 
@@ -328,7 +328,7 @@ ls ~/.roxabi/factory/nkeys/*.bak-* 2>/dev/null && echo "WARNING: backup files st
 
 ## 9. Cross-References
 
-- [ADR-046](../architecture/adr/046-nkey-provisioning-declarative-authconf.mdx) — declarative provisioning invariants, `--regen-authconf` semantics, `lyra ops verify` (Invariant 5)
+- [ADR-046](../architecture/adr/046-nkey-provisioning-declarative-authconf.mdx) — declarative provisioning invariants, `--regen-authconf` semantics, `factory ops verify` (Invariant 5)
 - [#561](https://github.com/Roxabi/roxabi-factory/issues/561) — parent epic (NATS nkey provisioning)
 - [#714](https://github.com/Roxabi/roxabi-factory/issues/714) — per-role ACL rework
 - [`deploy/nats/gen-nkeys.sh`](../../deploy/nats/gen-nkeys.sh) — seed generation and auth.conf rendering

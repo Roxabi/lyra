@@ -63,8 +63,8 @@ def build_bot_auths(
     if not tg_bot_auths and not dc_bot_auths:
         raise ValueError(
             "No bots configured — the runtime roster is sourced from BotStore."
-            " Run 'lyra bot init' to seed it from config.toml,"
-            " then 'lyra bot list' to verify."
+            " Run 'factory bot init' to seed it from config.toml,"
+            " then 'factory agent telegram list' to verify."
         )
 
     return circuit_registry, admin_user_ids, tg_bot_auths, dc_bot_auths

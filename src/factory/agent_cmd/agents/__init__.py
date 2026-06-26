@@ -1,4 +1,4 @@
-"""lyra agent CRUD commands — split into per-command modules.
+"""factory agent CRUD commands — split into per-command modules.
 
 This package registers commands on ``agent_app`` via decorator side-effects.
 Import this module to trigger registration.

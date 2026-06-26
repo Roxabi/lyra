@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lyra Claude Code OAuth token rotation — replaces the factory-claude-oauth Podman
+# Factory Claude Code OAuth token rotation — replaces the factory-claude-oauth Podman
 # secret and restarts factory-clipool so the new env var is picked up.
 #
 # Why a clipool restart: Podman Secret=type=env binds the secret value to the

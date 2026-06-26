@@ -1,4 +1,4 @@
-"""lyra agent list/show commands — read operations."""
+"""factory agent list/show commands — read operations."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def list_agents(agents_dir: Path | None = _AGENTS_DIR_OPT) -> None:
                     f"{status:<8} {row.source:<7} {bots}"
                 )
             if not rows:
-                typer.echo("  (no agents in DB - run 'lyra agent init' to import)")
+                typer.echo("  (no agents in DB - run 'factory agent init' to import)")
         finally:
             await store.close()
 

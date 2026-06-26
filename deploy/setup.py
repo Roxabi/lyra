@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Lyra setup — clone optional modules, scaffold config, seed agents, install Quadlet units.
+"""Factory setup — clone optional modules, scaffold config, seed agents, install Quadlet units.
 
 Run from a fresh checkout:
 
@@ -42,7 +42,7 @@ def get_host_roles(hostname: str | None = None) -> set[str]:
 
 
 # Hardcoded optional module registry — replaces the legacy deploy/stack.toml.
-# Lyra (this repo) is always installed by the caller before setup.py runs.
+# Factory (this repo) is always installed by the caller before setup.py runs.
 OPTIONAL_MODULES: list[dict[str, object]] = [
     {
         "name": "voiceCLI",
@@ -514,7 +514,7 @@ def _print_host_roles(hostname: str, host_roles: set[str]) -> None:
 def main() -> None:
     include_optional = "--all" in sys.argv
 
-    print("\nLyra setup")
+    print("\nFactory setup")
     print("─" * 40)
     print()
 
@@ -545,7 +545,7 @@ def main() -> None:
 
     # Re-sync lyra with voice extra if voiceCLI was installed
     if voicecli_dir:
-        print("Re-syncing lyra with voice support...")
+        print("Re-syncing factory with voice support...")
         run(["uv", "sync", "--extra", "voice"], cwd=factory_dir)
         print()
 

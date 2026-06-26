@@ -1,8 +1,0 @@
-{
-  "name": "lyra",
-  "description": "Lyra by Roxabi — Personal AI agent engine",
-  "private": true,
-  "scripts": {
-    "dashboard": "bun .claude/run-dashboard.ts"
-  }
-}

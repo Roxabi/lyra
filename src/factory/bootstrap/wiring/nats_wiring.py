@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Union
+from typing import Union
 
 from nats.aio.client import Client as NATS
 
@@ -21,9 +21,6 @@ from factory.core.hub.outbound.outbound_dispatcher import OutboundDispatcher
 from factory.core.lifecycle.circuit_breaker import CircuitRegistry
 from factory.core.messaging.message import Platform
 from factory.nats.nats_channel_proxy import NatsChannelProxy
-
-if TYPE_CHECKING:
-    pass
 
 log = logging.getLogger(__name__)
 
@@ -44,28 +41,6 @@ class NatsProxyWiringDeps:
     nc: NATS
     platform: Platform
     bot_auths: Sequence[tuple[_BotCfg, Authenticator]]
-    bot_agent_map: dict[tuple[str, str], str]
-    circuit_registry: CircuitRegistry
-
-
-@dataclass
-class NatsTgWiringDeps:
-    """Deprecated — use NatsProxyWiringDeps with platform=Platform.TELEGRAM."""
-
-    hub: Hub
-    nc: NATS
-    tg_bot_auths: list[tuple[TelegramBotConfig, Authenticator]]
-    bot_agent_map: dict[tuple[str, str], str]
-    circuit_registry: CircuitRegistry
-
-
-@dataclass
-class NatsDcWiringDeps:
-    """Deprecated — use NatsProxyWiringDeps with platform=Platform.DISCORD."""
-
-    hub: Hub
-    nc: NATS
-    dc_bot_auths: list[tuple[DiscordBotConfig, Authenticator]]
     bot_agent_map: dict[tuple[str, str], str]
     circuit_registry: CircuitRegistry
 
@@ -130,35 +105,3 @@ def wire_nats_proxies(
         )
 
     return proxies, dispatchers
-
-
-def wire_nats_telegram_proxies(
-    deps: NatsTgWiringDeps,
-) -> tuple[list[NatsChannelProxy], list[OutboundDispatcher]]:
-    """Deprecated thin alias — use wire_nats_proxies instead."""
-    return wire_nats_proxies(
-        NatsProxyWiringDeps(
-            hub=deps.hub,
-            nc=deps.nc,
-            platform=Platform.TELEGRAM,
-            bot_auths=deps.tg_bot_auths,
-            bot_agent_map=deps.bot_agent_map,
-            circuit_registry=deps.circuit_registry,
-        )
-    )
-
-
-def wire_nats_discord_proxies(
-    deps: NatsDcWiringDeps,
-) -> tuple[list[NatsChannelProxy], list[OutboundDispatcher]]:
-    """Deprecated thin alias — use wire_nats_proxies instead."""
-    return wire_nats_proxies(
-        NatsProxyWiringDeps(
-            hub=deps.hub,
-            nc=deps.nc,
-            platform=Platform.DISCORD,
-            bot_auths=deps.dc_bot_auths,
-            bot_agent_map=deps.bot_agent_map,
-            circuit_registry=deps.circuit_registry,
-        )
-    )

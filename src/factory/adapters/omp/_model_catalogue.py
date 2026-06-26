@@ -30,7 +30,7 @@ _REPO_MODELS_YML = _REPO_ROOT / "deploy" / "omp" / "models.yml"
 _REPO_MODEL_POLICY_YML = _REPO_ROOT / "deploy" / "omp" / "factory-model-policy.yml"
 _MODEL_POLICY_FILENAME = "factory-model-policy.yml"
 
-# Applied when factory-model-policy.yml is missing (explicit, config-shaped — not a model id).
+# Applied when factory-model-policy.yml is missing (config-shaped default).
 _DEFAULT_MODEL_POLICY: dict[str, Any] = {
     "boot": {"select": "first"},
     "unavailable": {"select": "first", "skip_requested": True},

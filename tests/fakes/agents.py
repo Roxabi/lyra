@@ -1,4 +1,4 @@
-"""Agent and adapter test doubles for the Lyra test suite."""
+"""Agent and adapter test doubles for the factory test suite."""
 
 from __future__ import annotations
 

@@ -44,7 +44,7 @@ chat adapters                factory-hub              workers
                     infra (gh-helper·turn-writer·blobstore)
 ```
 
-**Production**: Nine containers on M₁ communicate via a single NATS server (`factory-nats`). Hub: `factory-hub`. Chat adapters: `factory-telegram`, `factory-discord`. Workers: `factory-clipool`, `factory-omp`. Infra: `factory-gh-helper`, `factory-turn-writer`, `factory-blobstore`. Each runs in its own container.
+**Production**: Twenty Quadlet containers on M₁ (`deploy/quadlet.toml` SSoT) share a single NATS server (`factory-nats`). Core factory: `factory-hub`, chat adapters (`factory-telegram`, `factory-discord`, `factory-web`), workers (`factory-clipool`, `factory-omp`, `factory-socialmedia-adapter`), and infra (`factory-gh-helper`, `factory-turn-writer`, `factory-blobstore`). Observability stack: `factory-loki`, `factory-promtail`, `factory-otel-collector`, and the Langfuse bundle (`factory-langfuse-*`).
 
 **Development**: `factory start` runs everything in one process with an embedded NATS server.
 

@@ -10,6 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from factory.operator_audit import op_log, rotation_log_append
 from factory.paths import factory_data_dir
 
 RunStep = Callable[[], None]
@@ -130,7 +131,13 @@ def run_secrets_reset(  # noqa: PLR0913 — injectable orchestration for tests
     root = repo_root or factory_repo_root()
     plan = build_reset_plan(converge=converge)
 
+    audit_fields = {
+        "converge": "1" if converge else "0",
+        "ack_external": "1" if ack_external_distribution else "0",
+    }
+
     if dry_run:
+        op_log(root, "secrets_reset_dry_run", **audit_fields)
         print(f"Repo: {root}")
         print(f"Nkeys dir: {factory_data_dir() / 'nkeys'}")
         for i, step in enumerate(plan.steps, start=1):
@@ -140,25 +147,43 @@ def run_secrets_reset(  # noqa: PLR0913 — injectable orchestration for tests
         return plan
 
     confirm_reset(assume_yes=yes)
+    op_log(root, "secrets_reset_start", **audit_fields)
 
-    print("==> Regenerating NATS nkeys (backup + wipe + provision)...")
-    run_nkeys_regenerate(
-        root,
-        yes=True,
-        ack_external_distribution=ack_external_distribution,
-        run_regenerate=run_regenerate,
-    )
-
-    print("==> Refreshing Podman secrets from new seeds...")
-    run_install_secrets(root, runner=runner)
-
-    if converge:
-        print("==> Running make converge...")
-        run_converge(root, runner=runner)
-    else:
-        print(
-            "==> Next: restart NATS + clients "
-            "(see docs/runbooks/secrets-disaster-recovery.md)"
+    try:
+        print("==> Regenerating NATS nkeys (backup + wipe + provision)...")
+        run_nkeys_regenerate(
+            root,
+            yes=True,
+            ack_external_distribution=ack_external_distribution,
+            run_regenerate=run_regenerate,
         )
 
+        rotation_log_append(
+            root,
+            "nats-nkeys",
+            "disaster-recovery",
+            trigger="factory-secrets-reset",
+        )
+
+        print("==> Refreshing Podman secrets from new seeds...")
+        run_install_secrets(root, runner=runner)
+
+        if converge:
+            print("==> Running make converge...")
+            run_converge(root, runner=runner)
+        else:
+            print(
+                "==> Next: restart NATS + clients "
+                "(see docs/runbooks/secrets-disaster-recovery.md)"
+            )
+    except Exception as exc:
+        op_log(
+            root,
+            "secrets_reset_failed",
+            error=type(exc).__name__,
+            **audit_fields,
+        )
+        raise
+
+    op_log(root, "secrets_reset_complete", **audit_fields)
     return plan

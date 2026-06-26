@@ -140,7 +140,7 @@ Application logs (above) go to **stdout → journald**. **Shell deploy actions**
 
 `~/.local/state/factory/logs/` is **not** written by `setup_logging()` — containers do not use file handlers. The directory exists for `operator.log` only (provisioned by `deploy/setup.py`).
 
-Runbook: [runbooks/operator-log.md](runbooks/operator-log.md).
+Runbook: [runbooks/operator-log.md](runbooks/operator-log.md). Decision record: [ADR-093](architecture/adr/093-operator-audit-three-channel.mdx) (three-channel audit: operator.log + journald + rotation-log.md).
 
 ---
 

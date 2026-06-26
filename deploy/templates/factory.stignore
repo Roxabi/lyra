@@ -1,0 +1,5 @@
+# Syncthing exclusions for factory vault (~/.roxabi/factory/)
+# Managed by deploy/install.sh — see ADR-093 before removing entries.
+nats/jetstream
+blobstore
+blobstore.tok

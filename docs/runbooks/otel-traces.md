@@ -44,6 +44,27 @@ curl -sf http://127.0.0.1:13133/ && echo collector-ok   # via host publish if en
 
 Langfuse UI: `http://127.0.0.1:3000` — credentials printed once by `bootstrap-langfuse.sh`.
 
+## LiteLLM proxy OTel (OMP + cloud relay — secondary)
+
+`llmcli` on M₁ routes OMP and other LiteLLM consumers. Enable **OTel v2** in
+`~/.roxabi/llmcli/env/proxy.env` (no `proxy-base.yaml` change needed):
+
+```bash
+LITELLM_OTEL_V2=true
+OTEL_EXPORTER=otlp_grpc
+OTEL_ENDPOINT=http://factory-otel-collector:4317
+OTEL_SERVICE_NAME=llmcli-proxy
+OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=no_content
+```
+
+```bash
+systemctl --user restart llmcli
+podman exec llmcli env | grep -E 'LITELLM_OTEL|OTEL_'
+```
+
+Template: `llmCLI/deploy/proxy.env.example`. OMP spans appear in Langfuse when
+`factory-omp` calls `http://llmcli:18091`.
+
 ## Clipool / Claude Code OTel
 
 `factory-clipool.container` sets:

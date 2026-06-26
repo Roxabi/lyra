@@ -1,0 +1,25 @@
+[Unit]
+Description=Factory Langfuse MinIO (S3-compatible blob store)
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+Image=docker.io/minio/minio:RELEASE.2025-01-20T14-49-07Z
+ContainerName=factory-langfuse-minio
+Network=roxabi.network
+NoNewPrivileges=true
+DropCapability=all
+EnvironmentFile=%h/.roxabi/factory/env/langfuse.env
+Exec=server /data --address :9000 --console-address :9001
+Volume=factory-langfuse-minio-data.volume:/data:z
+HealthCmd=wget -q -O- http://127.0.0.1:9000/minio/health/live || exit 1
+HealthInterval=10s
+
+[Service]
+Restart=on-failure
+RestartSec=10
+ExecStartPre=/bin/test -r %h/.roxabi/factory/env/langfuse.env
+ExecStartPre=/bin/mkdir -p %h/.local/state/factory/langfuse/minio/langfuse
+
+[Install]
+WantedBy=default.target

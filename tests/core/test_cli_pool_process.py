@@ -467,6 +467,18 @@ class TestCliPoolSpawnEnv:
             "LC_CTYPE",
             "TMPDIR",
             "CLAUDE_CODE_OAUTH_TOKEN",
+            "CLAUDE_CODE_ENABLE_TELEMETRY",
+            "CLAUDE_CODE_ENHANCED_TELEMETRY_BETA",
+            "OTEL_TRACES_EXPORTER",
+            "OTEL_LOGS_EXPORTER",
+            "OTEL_METRICS_EXPORTER",
+            "OTEL_EXPORTER_OTLP_PROTOCOL",
+            "OTEL_EXPORTER_OTLP_ENDPOINT",
+            "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+            "OTEL_EXPORTER_OTLP_HEADERS",
+            "OTEL_LOG_USER_PROMPTS",
+            "OTEL_LOG_TOOL_DETAILS",
+            "OTEL_RESOURCE_ATTRIBUTES",
             "HOME",  # injected unconditionally at spawn (¬from os.environ)
         }
         leaked = set(env_kwarg.keys()) - allowed

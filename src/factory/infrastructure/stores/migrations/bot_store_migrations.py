@@ -117,3 +117,5 @@ async def run_bot_migrations(db: aiosqlite.Connection) -> None:
                 await db.execute("DROP TABLE bots")
                 await db.execute("ALTER TABLE bots__v3 RENAME TO bots")
         await _set_user_version(db, 3)
+
+    await db.commit()

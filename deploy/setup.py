@@ -251,7 +251,19 @@ def create_log_dirs() -> None:
     factory_state = state / "factory"
     (factory_state / "loki").mkdir(parents=True, exist_ok=True)
     (factory_state / "promtail").mkdir(parents=True, exist_ok=True)
-    print("  ✓  Log directories created (~/.local/state/*/logs/, loki/, promtail/)")
+    langfuse = factory_state / "langfuse"
+    for sub in (
+        "postgres",
+        "clickhouse",
+        "clickhouse-logs",
+        "redis-data",
+        "minio/langfuse",
+        "redis",
+    ):
+        (langfuse / sub).mkdir(parents=True, exist_ok=True)
+    print(
+        "  ✓  Log directories created (~/.local/state/*/logs/, loki/, promtail/, langfuse/)"
+    )
 
 
 def bootstrap_forge() -> None:

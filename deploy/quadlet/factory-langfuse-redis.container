@@ -1,0 +1,26 @@
+[Unit]
+Description=Factory Langfuse Redis (queue)
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+Image=docker.io/redis:7-alpine
+ContainerName=factory-langfuse-redis
+Network=roxabi.network
+NoNewPrivileges=true
+DropCapability=all
+EnvironmentFile=%h/.roxabi/factory/env/langfuse.env
+Exec=redis-server /etc/redis/redis.conf
+Volume=%h/.local/state/factory/langfuse/redis/redis.conf:/etc/redis/redis.conf:ro,z
+Volume=factory-langfuse-redis-data.volume:/data:z
+HealthCmd=sh -c 'redis-cli -a "$REDIS_AUTH" ping | grep -q PONG'
+HealthInterval=10s
+
+[Service]
+Restart=on-failure
+RestartSec=10
+ExecStartPre=/bin/test -r %h/.roxabi/factory/env/langfuse.env
+ExecStartPre=/bin/test -r %h/.local/state/factory/langfuse/redis/redis.conf
+
+[Install]
+WantedBy=default.target

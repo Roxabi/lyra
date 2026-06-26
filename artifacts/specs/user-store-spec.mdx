@@ -27,12 +27,12 @@ delegate to UserStore. Legacy `identity_aliases` rows migrate once on connect.
 - `resolve_user_id(platform_key) -> rx:user:… | None`
 - `resolve_aliases(platform_key) -> frozenset[str]` (backward compatible)
 - `link_platform_keys(primary, secondary) -> rx:user:…`
-- `ensure_user(platform_key)` — lazy registration at bootstrap seed
+- `ensure_user(platform_key)` — lazy registration (CLI, pairing)
 
 ## Wiring
 
 - `StoreBundle.user: UserStore`
-- Bootstrap: `seed_auth_and_users()` registers owners/admins after trust seed
+- **No boot seed** — users and agent grants are store-sourced only (CLI, pairing)
 - `AgentGrantStore.authorize()` expands principals via UserStore (grant on `rx:user:` matches linked platforms)
 
 ## CLI
@@ -43,8 +43,13 @@ factory user show tg:user:7377831990
 factory user show rx:user:<uuid>
 ```
 
-## Follow-ups
+## Operator surface (SSOT)
 
-- Grants keyed only by `rx:user:` (drop per-platform duplicates)
-- `migrate-bot-grants` seeds agent grants from `rx:user:` principals
-- Pairing `/join` writes agent-scoped grants on canonical user
+```bash
+factory user register tg:user:7377831990
+factory user link tg:user:… dc:user:…
+factory agent grant lyra_default --user tg:user:7377831990
+```
+
+Pairing `/join` also writes agent grants. `owner_users` in BotStore/config.toml are
+legacy metadata — they do not grant access at runtime.

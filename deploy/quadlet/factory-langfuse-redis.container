@@ -7,8 +7,7 @@ StartLimitBurst=5
 Image=docker.io/redis:7-alpine
 ContainerName=factory-langfuse-redis
 Network=roxabi.network
-NoNewPrivileges=true
-DropCapability=all
+# Carve-out: redis entrypoint drops privileges — see postgres unit comment.
 EnvironmentFile=%h/.roxabi/factory/env/langfuse.env
 Exec=redis-server /etc/redis/redis.conf
 Volume=%h/.local/state/factory/langfuse/redis/redis.conf:/etc/redis/redis.conf:ro,z

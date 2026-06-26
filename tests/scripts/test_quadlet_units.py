@@ -1,7 +1,7 @@
 """Tests for deploy/lib/quadlet-units.sh — quadlet_containers() function.
 
 Covers:
-  - emits exactly 10 container names from the real quadlet.toml
+  - emits exactly 20 container names from the real quadlet.toml
   - declaration order matches the expected manifest list
   - no output line ends with .container or contains whitespace
   - fail-closed when quadlet.toml contains no container declarations
@@ -29,6 +29,16 @@ EXPECTED_CONTAINERS = [
     "factory-turn-writer",
     "factory-blobstore",
     "factory-omp",
+    "factory-socialmedia-adapter",
+    "factory-loki",
+    "factory-promtail",
+    "factory-langfuse-postgres",
+    "factory-langfuse-clickhouse",
+    "factory-langfuse-redis",
+    "factory-langfuse-minio",
+    "factory-langfuse-worker",
+    "factory-langfuse-web",
+    "factory-otel-collector",
 ]
 
 
@@ -42,15 +52,15 @@ def _source_and_run(helper: Path) -> subprocess.CompletedProcess[str]:
 
 
 def test_emits_exactly_10_containers() -> None:
-    """Real helper against the real quadlet.toml → returncode 0, exactly 10 names."""
+    """Real helper against the real quadlet.toml → returncode 0, exactly 20 names."""
     result = _source_and_run(HELPER)
     assert result.returncode == 0, result.stderr
     lines = [line for line in result.stdout.splitlines() if line]
-    assert len(lines) == 10, f"expected 10 containers, got {len(lines)}: {lines}"
+    assert len(lines) == 20, f"expected 20 containers, got {len(lines)}: {lines}"
 
 
 def test_declaration_order() -> None:
-    """The 10 lines equal EXPECTED_CONTAINERS in declaration order."""
+    """The 20 lines equal EXPECTED_CONTAINERS in declaration order."""
     result = _source_and_run(HELPER)
     assert result.returncode == 0, result.stderr
     lines = [line for line in result.stdout.splitlines() if line]

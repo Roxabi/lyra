@@ -12,13 +12,14 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from factory.core.auth.agent_grants import Capability, Principal, PrincipalKind
+from factory.core.auth.agent_grants import Capability, PrincipalKind
 from factory.infrastructure.stores.identity.pairing import (
     PairingConfig,
     PairingError,
     PairingManager,
     _sha256,
 )
+from tests.factories.stores import PAIRING_TEST_AGENT
 
 from .conftest import (
     _PAIRING_ADMIN_ID as _ADMIN_ID,
@@ -26,8 +27,6 @@ from .conftest import (
 from .conftest import (
     _PAIRING_USER_ID as _USER_ID,
 )
-from tests.factories.stores import PAIRING_TEST_AGENT
-
 from .conftest import (
     make_pairing_pm as make_pm,
 )

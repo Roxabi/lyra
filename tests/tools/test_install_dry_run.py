@@ -360,6 +360,10 @@ def _make_deploy_tree(base: Path) -> tuple[Path, Path]:
     SCRIPT_DIR resolves to base/deploy/ so the parser reads our crafted manifest.
     """
     deploy_dir = base / "deploy"
+    lib_dir = deploy_dir / "lib"
+    lib_dir.mkdir(parents=True)
+    for lib_file in (REPO_ROOT / "deploy" / "lib").glob("*.sh"):
+        lib_dir.joinpath(lib_file.name).write_bytes(lib_file.read_bytes())
     generated_dir = deploy_dir / "generated"
     generated_dir.mkdir(parents=True)
     install_dst = deploy_dir / "install.sh"

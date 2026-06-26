@@ -95,6 +95,6 @@ After a manual blobstore rotation, append to `rotation-log.md` if the script pat
 
 Decision record: [ADR-093](../architecture/adr/093-operator-audit-three-channel.mdx).
 
-## Future (ADR-092)
+## Loki (shipped)
 
-Promtail will ship `operator.log` + journald to **Loki**; the control-plane dashboard (#1760) becomes the single query UI. This runbook remains the field reference until that ships.
+Promtail ships `operator.log` + filtered journald to **Loki** (`factory-loki` on `127.0.0.1:3100`). Query recipes: [loki-query.md](loki-query.md). Control-plane dashboard (#1760) will compose Loki — this runbook stays the grep-first field reference.

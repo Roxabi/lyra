@@ -1,0 +1,9 @@
+[Unit]
+Description=Factory Loki data — filesystem chunks + index (host-local, not Syncthing-synced)
+
+[Volume]
+Type=none
+Device=%h/.local/state/factory/loki
+Options=bind
+Label=app=factory
+Label=component=loki

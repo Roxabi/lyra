@@ -1,0 +1,25 @@
+[Unit]
+Description=Factory Loki log store (headless — ADR-092)
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+Image=docker.io/grafana/loki:3.4.2
+ContainerName=factory-loki
+Network=roxabi.network
+NoNewPrivileges=true
+ReadOnly=true
+DropCapability=all
+Exec=-config.file=/etc/loki/config.yml -config.expand-env=false
+Volume=%h/projects/roxabi-factory/deploy/observability/loki-config.yml:/etc/loki/config.yml:ro,z
+Volume=factory-loki-data.volume:/loki:z
+PublishPort=127.0.0.1:3100:3100
+HealthCmd=wget -q -O- http://127.0.0.1:3100/ready || exit 1
+HealthInterval=30s
+
+[Service]
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

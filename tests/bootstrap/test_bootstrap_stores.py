@@ -8,15 +8,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from factory.bootstrap.bootstrap_stores import (
+from factory.bootstrap.bootstrap_store_migrations import (
     _atomic_table_copy,
     _ensure_auth_db_schema,
     _ensure_config_db,
     _ensure_config_db_bot_migrations,
     _ensure_discord_db,
     _has_sentinel,
-    open_stores,
 )
+from factory.bootstrap.bootstrap_stores import open_stores
 from factory.infrastructure.stores.identity.agent_grant_store import AgentGrantStore
 from factory.infrastructure.stores.identity.auth_store import AuthStore
 from factory.infrastructure.stores.identity.identity_alias_store import (

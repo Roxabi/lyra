@@ -128,6 +128,22 @@ The `PipelineEventBus` is injected via constructor (DI, not singleton) per ADR-0
 
 ---
 
+## Operator & deploy audit
+
+Application logs (above) go to **stdout → journald**. **Shell deploy actions** are audited separately:
+
+| Store | Path | Role |
+|-------|------|------|
+| Operator log | `~/.local/state/factory/logs/operator.log` | JSONL: `install.sh`, `make converge` |
+| Rotation log | `~/.roxabi/factory/rotation-log.md` | Human record of credential rotations |
+| Deploy timers | journald `--user` | `factory-quadlet-sync`, `factory-post-autoupdate` |
+
+`~/.local/state/factory/logs/` is **not** written by `setup_logging()` — containers do not use file handlers. The directory exists for `operator.log` only (provisioned by `deploy/setup.py`).
+
+Runbook: [runbooks/operator-log.md](runbooks/operator-log.md).
+
+---
+
 ## Gaps & Future Work
 
 | Gap | Tracking |
@@ -136,3 +152,5 @@ The `PipelineEventBus` is injected via constructor (DI, not singleton) per ADR-0
 | No structured/JSON logs | ✅ Resolved in #270 |
 | No message content capture in logs | Captured in Turn Store (L1, #67 ✅) |
 | No OpenTelemetry integration | — |
+| No central log search UI | ADR-092 → Loki + control-plane dashboard (#1760) |
+| Manual ops outside instrumented scripts | Partial — use `install.sh` / `make converge`; see operator-log runbook |

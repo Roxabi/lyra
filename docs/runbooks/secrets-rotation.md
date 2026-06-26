@@ -30,7 +30,7 @@ systemctl --user restart factory-hub
 ## Rotate all nkey secrets
 
 ```bash
-./deploy/install.sh --force --secrets-only
+./deploy/install.sh --force-secrets --secrets-only
 systemctl --user restart factory-nats factory-hub factory-telegram factory-discord factory-clipool
 ```
 
@@ -43,12 +43,24 @@ systemctl --user restart factory-gh-helper
 
 ## Rotate BlobStore bearer token
 
-`type=mount` — restart mandatory after `podman secret create --replace`.
+`type=mount` — restart mandatory after `podman secret create --replace`. Record the rotation in `~/.roxabi/factory/rotation-log.md` (or use the instrumented path below).
+
+**Preferred (logged):**
+
+```bash
+./deploy/install.sh --force-regen-blobstore --secrets-only
+systemctl --user restart factory-blobstore factory-hub factory-telegram factory-discord
+systemctl --user restart voicecli-stt voicecli-tts
+# voiceCLI bind-mounts ~/.roxabi/factory/blobstore.tok — no separate env copy on M₁
+```
+
+**Manual:**
 
 ```bash
 printf '%s' "$NEW_TOK" > ~/.roxabi/factory/blobstore.tok && chmod 0600 ~/.roxabi/factory/blobstore.tok
 podman secret create --replace factory_blobstore_token ~/.roxabi/factory/blobstore.tok
 systemctl --user restart factory-blobstore.service
+# append one line to ~/.roxabi/factory/rotation-log.md (see operator-log.md)
 podman exec factory-blobstore sh -c 'head -c 8 /run/secrets/factory_blobstore_token'
 ```
 

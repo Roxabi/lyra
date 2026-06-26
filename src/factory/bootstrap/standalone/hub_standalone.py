@@ -119,8 +119,8 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
         )
         if not agent_configs:
             sys.exit(
-                "No agent configs could be loaded — run 'factory agent init' to seed the"
-                " agents table"
+                "No agent configs could be loaded — run 'factory agent init' "
+                "to seed the agents table"
             )
         first_agent_config = agent_configs[next(iter(sorted(agent_configs)))]
 

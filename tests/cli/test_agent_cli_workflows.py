@@ -1,5 +1,4 @@
-"""Tests for factory agent CLI workflows: edit, delete (happy path), assign (happy path),
-validate (DB path), and TTS editing.
+"""Tests for factory agent CLI workflows: edit, delete, assign, validate, TTS.
 
 After #346, AgentRow no longer has tts_json/stt_json/persona/i18n_language.
 Voice data lives in voice_json = '{"tts": {...}, "stt": {...}}'.

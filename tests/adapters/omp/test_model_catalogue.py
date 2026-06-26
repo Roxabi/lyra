@@ -121,7 +121,9 @@ def test_resolve_boot_model_raises_when_catalogue_empty(
         catalogue._load_litellm_provider.cache_clear()
 
 
-def test_select_max_lex_from_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_select_max_lex_from_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     models_yml = tmp_path / "models.yml"
     models_yml.write_text(
         yaml.safe_dump(

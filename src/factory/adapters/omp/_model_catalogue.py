@@ -109,7 +109,11 @@ def _filter_ids(ids: list[str], policy_section: dict[str, Any]) -> list[str]:
     if isinstance(include_prefix, list):
         prefixes = [str(p) for p in include_prefix if str(p)]
         if prefixes:
-            ids = [model_id for model_id in ids if any(model_id.startswith(p) for p in prefixes)]
+            ids = [
+                model_id
+                for model_id in ids
+                if any(model_id.startswith(p) for p in prefixes)
+            ]
 
     include_pattern = filt.get("include_pattern")
     if isinstance(include_pattern, str) and include_pattern.strip():
@@ -188,7 +192,11 @@ def resolve_boot_model() -> str:
     ids = fetch_catalogue_model_ids()
     picked = _select_from_catalogue(ids, policy["boot"])
     if picked:
-        log.info("omp model catalogue: boot model %s (policy boot.select=%s)", picked, policy["boot"].get("select"))
+        log.info(
+            "omp model catalogue: boot model %s (policy boot.select=%s)",
+            picked,
+            policy["boot"].get("select"),
+        )
         return picked
     raise ModelCatalogueError(
         "LiteLLM catalogue empty or no model matches model_policy.boot "

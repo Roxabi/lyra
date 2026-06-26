@@ -12,7 +12,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from factory.core.auth.trust import TrustLevel
+from factory.core.auth.agent_grants import Capability, Principal, PrincipalKind
 from factory.infrastructure.stores.identity.pairing import (
     PairingConfig,
     PairingError,
@@ -26,9 +26,8 @@ from .conftest import (
 from .conftest import (
     _PAIRING_USER_ID as _USER_ID,
 )
-from .conftest import (
-    make_pairing_auth_store as make_auth_store,
-)
+from tests.factories.stores import PAIRING_TEST_AGENT
+
 from .conftest import (
     make_pairing_pm as make_pm,
 )
@@ -182,18 +181,27 @@ class TestValidateCode:
     """validate_code() — AC2."""
 
     async def test_valid_code_returns_true_and_creates_session(self) -> None:
-        store = await make_auth_store()
-        pm = await make_pm(auth_store=store)
+        pm = await make_pm()
         code = await pm.generate_code(_ADMIN_ID)
-        success, msg = await pm.validate_code(code, _USER_ID)
+        success, msg = await pm.validate_code(
+            code, _USER_ID, agent_name=PAIRING_TEST_AGENT
+        )
         assert success is True
         assert "paired" in msg.lower()
-        # Grant must exist in AuthStore (replaces is_paired check)
-        assert store.check(_USER_ID) == TrustLevel.TRUSTED
+        assert pm._grant_store is not None
+        rx_user = pm._user_store.resolve_user_id(_USER_ID)  # type: ignore[union-attr]
+        assert rx_user is not None
+        decision = pm._grant_store.authorize(  # type: ignore[union-attr]
+            agent_name=PAIRING_TEST_AGENT,
+            user_id=_USER_ID,
+        )
+        assert decision.allowed is True
 
     async def test_invalid_code_returns_false(self) -> None:
         pm = await make_pm()
-        success, msg = await pm.validate_code("BADCODE1", _USER_ID)
+        success, msg = await pm.validate_code(
+            "BADCODE1", _USER_ID, agent_name=PAIRING_TEST_AGENT
+        )
         assert success is False
         assert "invalid" in msg.lower()
 
@@ -208,7 +216,9 @@ class TestValidateCode:
             (past, _sha256(code)),
         )
         await pm._db.commit()
-        success, msg = await pm.validate_code(code, _USER_ID)
+        success, msg = await pm.validate_code(
+            code, _USER_ID, agent_name=PAIRING_TEST_AGENT
+        )
         assert success is False
         assert "expired" in msg.lower()
 
@@ -216,7 +226,7 @@ class TestValidateCode:
         pm = await make_pm()
         code = await pm.generate_code(_ADMIN_ID)
         code_hash = _sha256(code)
-        await pm.validate_code(code, _USER_ID)
+        await pm.validate_code(code, _USER_ID, agent_name=PAIRING_TEST_AGENT)
         assert pm._db is not None
         async with pm._db.execute(
             "SELECT id FROM pairing_codes WHERE code_hash = ?", (code_hash,)
@@ -225,30 +235,25 @@ class TestValidateCode:
         assert row is None, "Used code should be deleted"
 
     async def test_already_paired_user_gets_session_replaced(self) -> None:
-        store = await make_auth_store()
-        pm = await make_pm(auth_store=store)
+        pm = await make_pm()
         code1 = await pm.generate_code(_ADMIN_ID)
-        await pm.validate_code(code1, _USER_ID)
+        await pm.validate_code(code1, _USER_ID, agent_name=PAIRING_TEST_AGENT)
 
-        # Grant must exist after first pairing
-        assert store.check(_USER_ID) == TrustLevel.TRUSTED
+        assert pm._grant_store is not None
+        grants_after_first = pm._grant_store.list_grants(PAIRING_TEST_AGENT)
+        assert len(grants_after_first) == 1
 
-        # Pair again with a second code — should succeed (upsert)
         code2 = await pm.generate_code(_ADMIN_ID)
-        success, _ = await pm.validate_code(code2, _USER_ID)
+        success, _ = await pm.validate_code(
+            code2, _USER_ID, agent_name=PAIRING_TEST_AGENT
+        )
         assert success is True
 
-        # Only one grant row should exist (UNIQUE constraint on identity_key)
-        assert store._db is not None
-        async with store._db.execute(
-            "SELECT COUNT(*) FROM grants WHERE identity_key = ?",
-            (_USER_ID,),
-        ) as cur:
-            count_row = await cur.fetchone()
-        assert count_row is not None and count_row[0] == 1
-
-        # User should still be TRUSTED
-        assert store.check(_USER_ID) == TrustLevel.TRUSTED
+        grants_after_second = pm._grant_store.list_grants(PAIRING_TEST_AGENT)
+        assert len(grants_after_second) == 1
+        assert pm._grant_store.authorize(
+            agent_name=PAIRING_TEST_AGENT, user_id=_USER_ID
+        ).allowed is True
 
 
 # ---------------------------------------------------------------------------
@@ -257,75 +262,67 @@ class TestValidateCode:
 
 
 class TestGrantAfterPairing:
-    """After validate_code() succeeds, AuthStore grants TRUSTED.
-    After revoke_session(), AuthStore.check() returns default.
-
-    is_paired() is removed in S3 — trust is now read from AuthStore.
+    """After validate_code() succeeds, AgentGrantStore grants ``use``.
+    After revoke_session(), authorize() denies.
     """
 
-    async def test_validate_code_grant_has_correct_expiry(self) -> None:
-        """Grant written to AuthStore must expire ~session_max_age_days from now."""
-        from datetime import timezone as _tz
-
-        store = await make_auth_store()
-        pm = await make_pm(auth_store=store)
+    async def test_validate_code_writes_rx_user_grant(self) -> None:
+        pm = await make_pm()
         code = await pm.generate_code(_ADMIN_ID)
-        before = datetime.now(_tz.utc)
-        await pm.validate_code(code, _USER_ID)
-        after = datetime.now(_tz.utc)
+        await pm.validate_code(code, _USER_ID, agent_name=PAIRING_TEST_AGENT)
 
-        # Read the grant's expires_at from the DB
-        assert store._db is not None
-        async with store._db.execute(
-            "SELECT expires_at FROM grants WHERE identity_key = ?", (_USER_ID,)
-        ) as cur:
-            row = await cur.fetchone()
-        assert row is not None
-        expires_at = datetime.fromisoformat(row[0])
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=_tz.utc)
+        assert pm._grant_store is not None
+        grants = pm._grant_store.list_grants(PAIRING_TEST_AGENT)
+        assert len(grants) == 1
+        assert grants[0].principal.kind is PrincipalKind.USER
+        assert grants[0].principal.id.startswith("rx:user:")
+        assert grants[0].capability is Capability.USE
 
-        expected_days = pm.config.session_max_age_days
-        assert (expires_at - before).days >= expected_days - 1
-        assert (expires_at - after).days <= expected_days + 1
-
-    async def test_unpaired_user_returns_default_from_store(self) -> None:
-        store = await make_auth_store()
-        # "unknown-user" was never paired — should return PUBLIC (store default)
-        assert store.check("unknown-user") == TrustLevel.PUBLIC
+    async def test_unpaired_user_has_no_grant(self) -> None:
+        pm = await make_pm()
+        assert pm._grant_store is not None
+        decision = pm._grant_store.authorize(
+            agent_name=PAIRING_TEST_AGENT, user_id=_USER_ID
+        )
+        assert decision.allowed is False
 
     async def test_revoke_session_returns_true_when_found(self) -> None:
-        store = await make_auth_store()
-        pm = await make_pm(auth_store=store)
+        pm = await make_pm()
         code = await pm.generate_code(_ADMIN_ID)
-        await pm.validate_code(code, _USER_ID)
-        found = await pm.revoke_session(_USER_ID)
+        await pm.validate_code(code, _USER_ID, agent_name=PAIRING_TEST_AGENT)
+        found = await pm.revoke_session(
+            _USER_ID, agent_name=PAIRING_TEST_AGENT
+        )
         assert found is True
 
-    async def test_revoke_session_after_pairing_store_returns_default(self) -> None:
-        """revoke_session() → auth_store.check() returns PUBLIC (default)."""
-        store = await make_auth_store()
-        pm = await make_pm(auth_store=store)
+    async def test_revoke_session_removes_agent_grant(self) -> None:
+        pm = await make_pm()
         code = await pm.generate_code(_ADMIN_ID)
-        await pm.validate_code(code, _USER_ID)
-        # Confirm TRUSTED first
-        assert store.check(_USER_ID) == TrustLevel.TRUSTED
-        # Revoke
-        await pm.revoke_session(_USER_ID)
-        # Must be back to default
-        assert store.check(_USER_ID) == TrustLevel.PUBLIC
+        await pm.validate_code(code, _USER_ID, agent_name=PAIRING_TEST_AGENT)
+        await pm.revoke_session(_USER_ID, agent_name=PAIRING_TEST_AGENT)
+        assert pm._grant_store is not None
+        assert pm._grant_store.authorize(
+            agent_name=PAIRING_TEST_AGENT, user_id=_USER_ID
+        ).allowed is False
 
     async def test_revoke_session_returns_false_when_not_found(self) -> None:
-        store = await make_auth_store()
-        pm = await make_pm(auth_store=store)
-        found = await pm.revoke_session("nobody")
+        pm = await make_pm()
+        found = await pm.revoke_session("nobody", agent_name=PAIRING_TEST_AGENT)
         assert found is False
 
-    async def test_revoke_session_returns_false_when_no_auth_store(self) -> None:
-        """revoke_session() returns False when no auth_store is configured."""
-        pm = await make_pm(auth_store=None)
-        found = await pm.revoke_session(_USER_ID)
+    async def test_revoke_session_returns_false_when_no_grant_store(self) -> None:
+        pm = PairingManager(
+            config=PairingConfig(enabled=True),
+            db_path=":memory:",
+            grant_store=None,
+            user_store=None,
+        )
+        await pm.connect()
+        found = await pm.revoke_session(
+            _USER_ID, agent_name=PAIRING_TEST_AGENT
+        )
         assert found is False
+        await pm.close()
 
 
 # ---------------------------------------------------------------------------
@@ -340,7 +337,6 @@ class TestRateLimiting:
         pm = PairingManager(
             config=PairingConfig(rate_limit_attempts=5, rate_limit_window=300),
             db_path=":memory:",
-            auth_store=None,
         )
         for _ in range(4):
             assert pm.check_rate_limit(_USER_ID) is True
@@ -350,7 +346,6 @@ class TestRateLimiting:
         pm = PairingManager(
             config=PairingConfig(rate_limit_attempts=3, rate_limit_window=300),
             db_path=":memory:",
-            auth_store=None,
         )
         for _ in range(3):
             pm.record_failed_attempt(_USER_ID)
@@ -360,7 +355,6 @@ class TestRateLimiting:
         pm = PairingManager(
             config=PairingConfig(rate_limit_attempts=3, rate_limit_window=1),
             db_path=":memory:",
-            auth_store=None,
         )
         # Fill the window
         for _ in range(3):

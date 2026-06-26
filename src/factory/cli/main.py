@@ -31,6 +31,7 @@ from factory.cli.bot import bot_app
 from factory.cli.ops import ops_app
 from factory.cli.secrets import secrets_app
 from factory.cli.setup import setup_app
+from factory.cli.user import user_app
 from factory.cli.voice_smoke import voice_smoke_app
 
 # Register subcommands from sub-modules (import triggers @app.command())
@@ -73,6 +74,7 @@ factory_app.add_typer(voice_smoke_app, name="voice-smoke")
 factory_app.add_typer(ops_app, name="ops")
 factory_app.add_typer(secrets_app, name="secrets")
 factory_app.add_typer(blobstore_app, name="blobstore")
+factory_app.add_typer(user_app, name="user")
 
 hub_app = typer.Typer(name="hub", help="Run standalone Hub process (requires NATS).")
 factory_app.add_typer(hub_app, name="hub")

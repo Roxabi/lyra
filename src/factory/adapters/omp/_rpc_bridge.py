@@ -17,12 +17,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from factory.adapters.omp import _rpc_digest
+from factory.adapters.omp._model_catalogue import resolve_startup_model
 from factory.adapters.omp._rpc_bridge_callbacks import RpcBridgeCallbacksMixin
 from factory.adapters.omp._rpc_bridge_steer import (
     RpcBridgeSteerMixin,
     SteerViolationError,
 )
-from factory.adapters.omp._model_catalogue import resolve_startup_model
 from factory.adapters.omp._rpc_digest import read_request_timeout, verify_digest
 from factory.adapters.omp._rpc_envelope import (
     classify_exception,

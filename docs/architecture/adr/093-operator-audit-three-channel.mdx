@@ -1,0 +1,112 @@
+---
+title: "ADR-093: Operator Audit — Three-Channel Deploy Logging"
+description: "Shell deploy actions are audited via operator.log (JSONL) + journald (containers/timers) + rotation-log.md (credential narrative). blobstore.tok is host-local SSoT excluded from Syncthing. Retires deploy.log. Feeds ADR-092 Loki path without secret material in any channel."
+status: accepted
+date: 2026-06-26
+deciders: [Mickael]
+related: [055, 057, 074, 091, 092]
+---
+
+> **Current truth** → [`docs/runbooks/operator-log.md`](../../runbooks/operator-log.md){#current-truth}
+> This ADR records the operator-audit arbitration. The runbook is the field reference; this ADR is the decision record.
+
+## Status
+
+Accepted — 2026-06-26.
+
+Phase 0 ships in `deploy/lib/operator-log.sh`, `deploy/install.sh`, and `deploy/converge.sh`. Logrotate timer and Syncthing `.stignore` ship in the same change set.
+
+## Context
+
+Factory observability splits into **application runtime** (containers → stdout → journald) and **operator imperative actions** (shell deploy: `install.sh`, `make converge`, credential rotations). Before this ADR:
+
+1. **No structured deploy audit** — operators could not answer "did converge run?", "who regenerated blobstore?", or "was this skip or a real deploy?" without parsing unstructured journal noise or guessing from git stamps.
+2. **`deploy.log` retired** — the Roxabi autodeploy cycle log (`~/.local/state/roxabi/autodeploy/deploy.log`, ADR-043) was a single-repo aggregate. Factory converges atomically via `make converge`; a per-host JSONL operator log replaces that pattern.
+3. **Blobstore token drift (26 Jun 2026)** — voiceCLI held a stale copy in `~/.roxabi/voicecli/env/blobstore.env` while factory rotated `~/.roxabi/factory/blobstore.tok`. Syncthing synced the factory vault but did not prevent per-app env copies from going stale. voiceCLI now bind-mounts the factory path (option B); `blobstore.tok` must not be Syncthing-synced to secondary hosts with independent Podman secret materialisation.
+4. **ADR-092 defers central search** — Loki + Promtail + control-plane dashboard (#1760) are the target query UI. Until then, operators need a **documented, grep-friendly** audit surface that does not duplicate secret bytes.
+
+ADR-091 classifies observability planes; ADR-057 covers domain security audit (JetStream `FACTORY_AUDIT`). This ADR covers **deploy/operator imperative audit** only.
+
+## Decision
+
+### 1. Three-channel operator audit
+
+| Channel | Path / sink | Format | Scope |
+|---|---|---|---|
+| **Operator JSONL** | `~/.local/state/factory/logs/operator.log` | JSONL (one object/line) | `install.sh`, `make converge`, flock/lock events, blobstore regen/skip |
+| **Container + timer runtime** | journald `--user` | plaintext | Quadlet stdout/stderr; `factory-quadlet-sync`, `factory-post-autoupdate`, `factory-deploy-failure` |
+| **Credential rotation narrative** | `~/.roxabi/factory/rotation-log.md` | Markdown append | Voluntary secret changes (human-readable, Syncthing-synced) |
+
+**Triage rule:** runtime failures → journald first; deploy history → `operator.log`; "who rotated what?" → `rotation-log.md` + `operator.log` `blobstore_*` / `rotation_log` events.
+
+Domain audit (blob PUT/GET, CLI spawn security) remains on JetStream `FACTORY_AUDIT` (ADR-057) — not merged into operator.log.
+
+### 2. Implementation contract (`deploy/lib/operator-log.sh`)
+
+- `op_log <event> [key=value ...]` — append-only JSONL; fail-soft (logging must not break deploy).
+- `rotation_log_append <secret> <reason> [trigger]` — writes `rotation-log.md` and emits `rotation_log` to operator.log.
+- **Never log:** token bytes, seed contents, env values, full argv with secrets.
+- Attribution: `user` (respects `SUDO_USER`), `host`, `pid`, UTC `ts`.
+
+Split force flags (incident-driven):
+
+| Flag | Effect |
+|---|---|
+| `--force-secrets` | Podman `secret create --replace` only; does **not** regenerate `blobstore.tok` |
+| `--force-regen-blobstore` | Regenerates `blobstore.tok` + `rotation_log_append` + `blobstore_regen` event |
+| `--force` | Deprecated alias for `--force-secrets` |
+
+`factory secrets reset` uses `--force-secrets` so NATS nkey wipe does not rotate blobstore.
+
+### 3. Retention
+
+| Store | Policy | Rationale |
+|---|---|---|
+| `operator.log` | Weekly logrotate user timer; `rotate 12`, `maxsize 10M` (~90 days) | Low volume; per-host (not Syncthing-synced) |
+| `rotation-log.md` | Indefinite | Small, synced, human audit trail |
+| journald | Host journald retention | Runtime only |
+| JetStream `FACTORY_AUDIT` | 90 days / 1 GiB (stream config) | Domain audit |
+
+Units: `deploy/systemd/factory-operator-logrotate.{service,timer}` installed by `make quadlet-sync-install`.
+
+### 4. Blobstore bearer token SSoT + Syncthing exclusion
+
+| Rule | Detail |
+|---|---|
+| **SSoT path** | `~/.roxabi/factory/blobstore.tok` |
+| **Factory consumption** | Podman secret `factory_blobstore_token` from source file |
+| **voiceCLI consumption** | Bind-mount `~/.roxabi/factory/blobstore.tok` (`BLOBSTORE_BEARER_TOKEN_PATH`) — no per-app env copy on M₁ |
+| **Syncthing** | `blobstore.tok` **excluded** via `~/.roxabi/factory/.stignore` (alongside `nats/jetstream`, `blobstore/`) |
+
+Rationale: bearer token materialisation is per-host (Podman secret store). Syncing the token file across M₁/M₂/laptop recreated the 26 Jun stale-copy class of bugs when secondary hosts also held derived copies.
+
+`.stignore` is managed idempotently by `deploy/install.sh` from `deploy/templates/factory.stignore`.
+
+### 5. Relation to ADR-092 (Loki)
+
+Promtail will ship `operator.log` and journald to **Loki**; the control-plane dashboard (#1760) becomes the single query UI. This ADR does not block on Loki — the three channels are the **source of truth** Loki will ingest. Field operators use the runbook until #1760 ships.
+
+### 6. Retired patterns
+
+| Retired | Replacement |
+|---|---|
+| `~/.local/state/roxabi/autodeploy/deploy.log` (ADR-043) | `operator.log` per factory host |
+| Undifferentiated `install.sh --force` | `--force-secrets` / `--force-regen-blobstore` |
+| voiceCLI `blobstore.env` copy | Factory path bind-mount |
+
+## Consequences
+
+- Operators have grep-friendly deploy history without opening per-engine UIs.
+- Credential rotations leave both machine-parseable (JSONL) and human-readable (markdown) trails.
+- Blobstore token rotation requires restart of `factory-blobstore`, hub, adapters, and voiceCLI STT/TTS — all read the same SSoT path.
+- Manual ops outside instrumented scripts (raw `printf > blobstore.tok`, SSH one-liners) remain invisible unless the operator appends `rotation-log.md` manually.
+- Future Loki wiring cites this ADR for label mapping (`event`, `user`, `host`) — no schema change expected.
+
+## See also
+
+- [`docs/runbooks/operator-log.md`](../../runbooks/operator-log.md) — query recipes and incident triage
+- [`docs/data-dirs.md`](../../data-dirs.md) — Syncthing exclusions including `blobstore.tok`
+- [`docs/architecture/adr/092-observability-architecture.mdx`](092-observability-architecture.mdx) — Loki + dashboard target
+- [`docs/architecture/adr/057-security-event-audit-infrastructure.mdx`](057-security-event-audit-infrastructure.mdx) — JetStream domain audit
+- [`docs/architecture/adr/074-bot-credential-delivery-podman-secrets.mdx`](074-bot-credential-delivery-podman-secrets.mdx) — Podman secret delivery
+- [`deploy/lib/operator-log.sh`](../../../deploy/lib/operator-log.sh) — implementation

@@ -2,7 +2,7 @@
 """STT NATS stub — returns canned transcription, publishes heartbeats.
 
 Subscribes to:
-  factory.voice.stt.request           (queue group: stt-workers)
+  factory.voice.stt.request           (queue group: stt_workers)
   factory.voice.stt.request.<worker_id>  (direct routing for load-aware #603)
 
 Publishes:
@@ -85,10 +85,13 @@ async def main() -> None:
     nc = await nats.connect(NATS_URL)
 
     await nc.subscribe(
-        SUBJECTS.stt_request, queue="stt-workers", cb=handle_request
+        SUBJECTS.stt_request, queue=SUBJECTS.stt_workers, cb=handle_request
     )
     await nc.subscribe(per_worker_stt(WORKER_ID), cb=handle_request)
-    print(f"[stt-stub] ready — queue=stt-workers worker={WORKER_ID}", flush=True)
+    print(
+        f"[stt-stub] ready — queue={SUBJECTS.stt_workers} worker={WORKER_ID}",
+        flush=True,
+    )
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):

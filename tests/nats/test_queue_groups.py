@@ -31,6 +31,8 @@ class TestConstants:
     def test_hub_inbound_name_is_stable(self) -> None:
         assert HUB_INBOUND == "hub-inbound"
 
-    def test_worker_queue_names_are_stable(self) -> None:
-        assert TTS_WORKERS == "tts-workers"
-        assert STT_WORKERS == "stt-workers"
+    def test_worker_queue_names_match_contracts(self) -> None:
+        from roxabi_contracts.voice import SUBJECTS
+
+        assert TTS_WORKERS == SUBJECTS.tts_workers == "tts_workers"
+        assert STT_WORKERS == SUBJECTS.stt_workers == "stt_workers"

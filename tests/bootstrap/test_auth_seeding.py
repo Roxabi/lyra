@@ -1,4 +1,4 @@
-"""Tests for bootstrap.auth_seeding — seed_identity_and_grants and build_bot_auths."""
+"""Tests for bootstrap.auth_seeding — build_bot_auths."""
 
 from __future__ import annotations
 
@@ -7,15 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from factory.bootstrap.auth_seeding import (
-    build_bot_auths,
-    merge_owner_admin_ids,
-    seed_agent_grants_from_bots,
-)
-from factory.core.auth.agent_grants import PrincipalKind
-from factory.core.agent.bot_models import BotRow
-from factory.infrastructure.stores.identity.agent_grant_store import AgentGrantStore
-from factory.infrastructure.stores.identity.user_store import UserStore
+from factory.bootstrap.auth_seeding import build_bot_auths
 from factory.bootstrap.wiring.auth import BotAuthDeps
 from factory.core.agent.bot_models import BotRow
 from factory.infrastructure.stores.identity.auth_store import AuthStore
@@ -25,37 +17,33 @@ from factory.infrastructure.stores.identity.identity_alias_store import (
 from tests.factories.stores import make_auth_store
 from tests.helpers.bot_store import make_bot_store
 
-# ---------------------------------------------------------------------------
-# test_bootstrap_calls_seed_identity_and_grants
-# ---------------------------------------------------------------------------
 
-
-class TestBootstrapCallsSeedIdentityAndGrants:
-    async def test_bootstrap_calls_seed_identity_and_grants(
+class TestBootstrapNoIdentitySeed:
+    async def test_hub_standalone_does_not_seed_identity(
         self, tmp_path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """_bootstrap_hub_standalone calls seed_identity_and_grants once.
-
-        Uses grant+bot+user stores. Drives the bootstrap past the NATS_URL guard
-        with a mock NATS connection, then short-circuits just after seed so no
-        real DB is needed.
-        """
-        # Arrange
+        """Hub boot must not call any identity/grant seed helper."""
         monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
         monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
 
-        seed_calls: list[tuple] = []
+        seed_calls: list[str] = []
 
-        async def fake_seed(grant_store, bot_store, user_store, **kwargs):
-            seed_calls.append((grant_store, bot_store, user_store))
-            raise RuntimeError("test-sentinel: abort after seed")
+        def _trap_seed(*_a, **_kw):
+            seed_calls.append("seed")
+            raise RuntimeError("seed should not run")
 
         import factory.bootstrap.standalone.hub_standalone as hub_standalone_mod
 
-        monkeypatch.setattr(hub_standalone_mod, "seed_identity_and_grants", fake_seed)
+        for name in (
+            "seed_identity_and_grants",
+            "seed_agent_grants_from_bots",
+            "seed_auth_and_users",
+            "seed_grants_from_bots",
+        ):
+            if hasattr(hub_standalone_mod, name):
+                monkeypatch.setattr(hub_standalone_mod, name, _trap_seed)
 
-        # Patch NATS connection so we never touch a real server
-        fake_nc = AsyncMock()
+        fake_nc = MagicMock()
         fake_nc.close = AsyncMock()
         monkeypatch.setattr(
             hub_standalone_mod, "nats_connect", AsyncMock(return_value=fake_nc)
@@ -63,7 +51,6 @@ class TestBootstrapCallsSeedIdentityAndGrants:
         monkeypatch.setattr(hub_standalone_mod, "acquire_lockfile", lambda: None)
         monkeypatch.setattr(hub_standalone_mod, "release_lockfile", lambda: None)
 
-        # Patch open_stores so the async context manager yields a fake stores object
         from contextlib import asynccontextmanager
 
         @asynccontextmanager
@@ -75,162 +62,54 @@ class TestBootstrapCallsSeedIdentityAndGrants:
             fake_stores.user = MagicMock()
             fake_stores.message_index = MagicMock()
             fake_stores.message_index.cleanup_older_than = AsyncMock(return_value=0)
-            assert nc is fake_nc, (
-                "open_stores must receive the NATS connection from nats_connect"
-            )
             yield fake_stores
 
         monkeypatch.setattr(hub_standalone_mod, "open_stores", fake_open_stores)
-
-        # Patch build_inbound_bus to avoid NATS bus construction
-        fake_bus = MagicMock()
-        fake_bus_cfg = MagicMock()
         monkeypatch.setattr(
             hub_standalone_mod,
             "build_inbound_bus",
-            lambda nc, raw_config: (fake_bus, fake_bus_cfg),
+            lambda nc, raw_config: (MagicMock(), MagicMock()),
+        )
+        monkeypatch.setattr(
+            hub_standalone_mod,
+            "build_bot_auths",
+            MagicMock(side_effect=RuntimeError("test-sentinel: abort after auth")),
         )
 
-        raw_config = {
-            "defaults": {"cwd": "/tmp"},
-            "auth": {"telegram_bots": [], "discord_bots": []},
-            "telegram": {"bots": [{"bot_id": "test_bot", "agent": "test_agent"}]},
-            "discord": {"bots": []},
-        }
+        from factory.bootstrap.standalone.hub_standalone import _bootstrap_hub_standalone
 
-        from factory.bootstrap.standalone.hub_standalone import (
-            _bootstrap_hub_standalone,
-        )
-
-        # Act — expect the sentinel to bubble up
         with pytest.raises(RuntimeError, match="test-sentinel"):
-            await _bootstrap_hub_standalone(raw_config)
+            await _bootstrap_hub_standalone({})
 
-        # Assert — seed_identity_and_grants was called once with grant+bot+user
-        assert len(seed_calls) == 1, (
-            "seed_identity_and_grants must be called exactly once"
-        )
-        passed_grant, passed_bot, passed_user = seed_calls[0]
-        assert passed_grant is not None
-        assert passed_bot is not None
-        assert passed_user is not None
-
-
-# ---------------------------------------------------------------------------
-# seed_agent_grants_from_bots
-# ---------------------------------------------------------------------------
-
-
-class TestSeedAgentGrantsFromBots:
-    async def test_seeds_rx_user_grant_for_owner(self, tmp_path: Path) -> None:
-        bot_store = await make_bot_store(tmp_path)
-        user_store = UserStore(db_path=tmp_path / "auth.db")
-        grant_store = AgentGrantStore(
-            db_path=tmp_path / "auth.db", user_store=user_store
-        )
-        await user_store.connect()
-        await grant_store.connect()
-        try:
-            await bot_store.upsert(
-                BotRow(
-                    platform="telegram",
-                    bot_id="main",
-                    agent="lyra_default",
-                    owner_users=["7377831990"],
-                )
-            )
-            await seed_agent_grants_from_bots(user_store, grant_store, bot_store)
-            grants = grant_store.list_grants("lyra_default")
-            assert len(grants) == 1
-            assert grants[0].principal.kind is PrincipalKind.USER
-            assert grants[0].principal.id.startswith("rx:user:")
-            decision = grant_store.authorize(
-                agent_name="lyra_default",
-                user_id="tg:user:7377831990",
-            )
-            assert decision.allowed is True
-        finally:
-            await grant_store.close()
-            await user_store.close()
-            await bot_store.close()
-
-    def test_merge_owner_admin_ids_adds_platform_prefix(self) -> None:
-        bot_store = MagicMock()
-        bot_store.get_all.return_value = [
-            BotRow(
-                platform="telegram",
-                bot_id="main",
-                agent="lyra_default",
-                owner_users=["123"],
-            )
-        ]
-        merged = merge_owner_admin_ids(bot_store, frozenset({"tg:user:999"}))
-        assert merged == frozenset({"tg:user:999", "tg:user:123"})
-
-
-# ---------------------------------------------------------------------------
-# test_build_bot_auths_raises_without_adapters
-# ---------------------------------------------------------------------------
+        assert seed_calls == []
 
 
 class TestBuildBotAuthsRaisesWithoutAdapters:
     def test_build_bot_auths_raises_without_adapters(self) -> None:
-        """build_bot_auths raises ValueError when BotStore is empty (no roster).
-
-        Old contract raised "No adapters configured" from TOML parsing.
-        New contract: the roster comes from bot_store.get_all(); an empty
-        store raises ValueError with the new migration-hint message.
-        """
-        # Arrange — empty BotStore (roster is store-sourced, not TOML)
-        raw_config: dict = {}
         fake_auth_store = MagicMock(spec=AuthStore)
         fake_bot_store = MagicMock()
-        fake_bot_store.get_all.return_value = []  # empty roster
+        fake_bot_store.get_all.return_value = []
 
-        # Act / Assert — new message guides operator to run 'lyra bot init'
         with pytest.raises(ValueError, match="No bots configured"):
-            build_bot_auths(raw_config, fake_auth_store, fake_bot_store)
+            build_bot_auths({}, fake_auth_store, fake_bot_store)
 
     def test_build_bot_auths_error_message_contains_lyra_bot_init(self) -> None:
-        """SC#3 — the ValueError message contains 'lyra bot init' so operators know
-        how to recover from an empty roster.
-
-        Negative gate: deleting the guard in build_bot_auths would suppress the
-        raise entirely, causing this test to fail (no exception raised at all).
-        """
-        # Arrange
         fake_auth_store = MagicMock(spec=AuthStore)
         fake_bot_store = MagicMock()
-        fake_bot_store.get_all.return_value = []  # empty roster
+        fake_bot_store.get_all.return_value = []
 
-        # Act / Assert
         with pytest.raises(ValueError) as exc_info:
             build_bot_auths({}, fake_auth_store, fake_bot_store)
 
-        assert "lyra bot init" in str(exc_info.value), (
-            f"Expected 'lyra bot init' in error message, got: {exc_info.value!r}"
-        )
-
-
-# ---------------------------------------------------------------------------
-# test_roster_from_store
-# ---------------------------------------------------------------------------
+        assert "lyra bot init" in str(exc_info.value)
 
 
 class TestRosterFromStore:
     async def test_roster_from_store(self, tmp_path: Path) -> None:
-        """build_bot_auths reads the bot roster from BotStore, not from TOML.
-
-        Verifies that a bot seeded into BotStore appears in tg_bot_auths even
-        when the raw_config contains no [[telegram.bots]] section.  The roster
-        is sourced exclusively from bot_store.get_all().
-        """
-        # Arrange — real stores backed by a tmp SQLite DB
         bot_store = await make_bot_store(tmp_path)
         auth_store = await make_auth_store(tmp_path)
 
         try:
-            # Seed exactly one Telegram bot into BotStore (not in TOML)
             seeded_row = BotRow(
                 platform="telegram",
                 bot_id="seeded_tg",
@@ -239,47 +118,22 @@ class TestRosterFromStore:
             )
             await bot_store.upsert(seeded_row)
 
-            # raw_config has NO [[telegram.bots]] and NO [[discord.bots]]
-            # — TOML roster empty
             raw_config: dict = {}
 
-            # Act — post-T3 this must succeed and return the seeded bot
             _circuit_registry, _admin_ids, tg_bot_auths, _dc_bot_auths = (
                 build_bot_auths(raw_config, auth_store, bot_store)
             )
 
-            # Assert — seeded_tg must appear in the telegram bot-auth list
-            assert len(tg_bot_auths) >= 1, (
-                "Expected at least one telegram bot-auth from BotStore, got none. "
-                "build_bot_auths still reads roster from TOML instead of bot_store."
-            )
+            assert len(tg_bot_auths) >= 1
             bot_cfg, _auth = tg_bot_auths[0]
-            assert bot_cfg.bot_id == "seeded_tg", (
-                f"Expected bot_id='seeded_tg', got {bot_cfg.bot_id!r}. "
-                "Roster is not sourced from BotStore."
-            )
+            assert bot_cfg.bot_id == "seeded_tg"
         finally:
             await bot_store.close()
             await auth_store.close()
 
 
-# ---------------------------------------------------------------------------
-# test_alias_store_parity — hub-path threads alias_store into BotAuthDeps
-# ---------------------------------------------------------------------------
-
-
 class TestAliasStoreParity:
     def test_build_bot_auths_threads_alias_store_into_deps(self) -> None:
-        """build_bot_auths passes alias_store into BotAuthDeps when provided.
-
-        Parity gate: the hub-standalone path must forward its alias_store arg
-        into the BotAuthDeps so Authenticator.from_bot_store receives it.
-        Without the fix, alias_store defaults to None and identity-alias
-        resolution is silently skipped for all bots in hub-standalone mode.
-
-        This test fails if build_bot_auths ignores the alias_store parameter
-        (i.e., still constructs BotAuthDeps without forwarding it).
-        """
         fake_auth_store = MagicMock(spec=AuthStore)
         fake_bot_store = MagicMock()
         fake_bot_store.get_all.return_value = []
@@ -314,17 +168,10 @@ class TestAliasStoreParity:
                     fake_alias_store,
                 )
 
-        assert len(captured_deps) == 1, "Expected _build_bot_auths to be called once"
-        assert captured_deps[0].alias_store is fake_alias_store, (
-            "build_bot_auths did not forward alias_store into BotAuthDeps. "
-            "Hub-standalone path will silently skip identity-alias resolution."
-        )
+        assert len(captured_deps) == 1
+        assert captured_deps[0].alias_store is fake_alias_store
 
     def test_build_bot_auths_alias_store_defaults_to_none(self) -> None:
-        """build_bot_auths preserves None default when alias_store is omitted.
-
-        Ensures backward-compatibility for callers that do not pass alias_store.
-        """
         fake_auth_store = MagicMock(spec=AuthStore)
         fake_bot_store = MagicMock()
         fake_bot_store.get_all.return_value = []

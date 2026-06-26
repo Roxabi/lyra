@@ -1,4 +1,4 @@
-"""lyra bot init command — seed bot configurations from config.toml."""
+"""factory bot init command — seed bot configurations from config.toml."""
 
 from __future__ import annotations
 

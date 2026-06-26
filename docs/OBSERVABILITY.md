@@ -144,6 +144,24 @@ Runbook: [runbooks/operator-log.md](runbooks/operator-log.md). Decision record: 
 
 ---
 
+## Loki + Promtail (log engine — ADR-092 Phase 1)
+
+| Unit | Image | Storage |
+|------|-------|---------|
+| `factory-loki` | `grafana/loki:3.4.2` | `~/.local/state/factory/loki/` |
+| `factory-promtail` | `grafana/promtail:3.4.2` | positions in `~/.local/state/factory/promtail/` |
+
+Promtail ingests:
+
+- `~/.local/state/factory/logs/operator.log` (JSONL → labels `event`, `user`, `host`)
+- User journald for `factory-*`, `voicecli-*`, deploy timers (`deploy/observability/promtail-config.yml`)
+
+Loki API: `http://127.0.0.1:3100` (localhost only). Query via `logcli` until control-plane dashboard (#1760).
+
+Runbook: [runbooks/loki-query.md](runbooks/loki-query.md).
+
+---
+
 ## Gaps & Future Work
 
 | Gap | Tracking |
@@ -152,5 +170,5 @@ Runbook: [runbooks/operator-log.md](runbooks/operator-log.md). Decision record: 
 | No structured/JSON logs | ✅ Resolved in #270 |
 | No message content capture in logs | Captured in Turn Store (L1, #67 ✅) |
 | No OpenTelemetry integration | — |
-| No central log search UI | ADR-092 → Loki + control-plane dashboard (#1760) |
+| No central log search UI | Loki ✅ — dashboard composition (#1760) still open |
 | Manual ops outside instrumented scripts | Partial — use `install.sh` / `make converge`; see operator-log runbook |

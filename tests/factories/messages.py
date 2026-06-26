@@ -154,8 +154,8 @@ def make_debouncer_msg(
     )
 
 
-_PAIRING_ADMIN_ID = "admin-user-1"
-_PAIRING_USER_ID = "regular-user-1"
+_PAIRING_ADMIN_ID = "tg:user:admin-user-1"
+_PAIRING_USER_ID = "tg:user:regular-user-1"
 
 
 def make_pairing_message(  # noqa: PLR0913

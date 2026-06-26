@@ -14,12 +14,6 @@ log = logging.getLogger(__name__)
 
 __all__ = ["AuthStore"]
 
-_PLATFORM_PREFIX: dict[str, str] = {
-    "telegram": "tg:user:",
-    "discord": "dc:user:",
-}
-
-
 _CREATE_GRANTS = """
 CREATE TABLE IF NOT EXISTS grants (
     id           INTEGER PRIMARY KEY,
@@ -154,46 +148,6 @@ class AuthStore(SqliteStore):
         await db.commit()
         self._cache.pop(identity_key, None)
         return deleted
-
-    async def seed_from_config(self, raw: dict, section: str) -> None:
-        """Seed owner_users and trusted_users from config as permanent grants.
-
-        Permanent grants (expires_at=NULL) are never downgraded — the SQL
-        conflict rule only updates rows whose existing expires_at IS NOT NULL.
-        The cache is updated only if no permanent grant already exists for the key.
-        """
-        db = self._require_db()
-        auth_block = raw.get("auth", {})
-        section_cfg = auth_block.get(section)
-        if section_cfg is None:
-            return
-
-        prefix = _PLATFORM_PREFIX.get(section, "")
-        entries: list[tuple[str, TrustLevel]] = []
-        for uid in section_cfg.get("owner_users", []):
-            entries.append((f"{prefix}{uid}", TrustLevel.OWNER))
-        for uid in section_cfg.get("trusted_users", []):
-            entries.append((f"{prefix}{uid}", TrustLevel.TRUSTED))
-
-        for identity_key, trust in entries:
-            _SEED_SQL = (
-                "INSERT INTO grants "
-                "(identity_key, trust_level, expires_at, granted_by, source) "
-                "VALUES (?, ?, NULL, 'config', 'config.toml') "
-                "ON CONFLICT(identity_key) DO UPDATE SET "
-                "trust_level=excluded.trust_level, "
-                "granted_by='config', "
-                "source='config.toml' "
-                "WHERE grants.expires_at IS NOT NULL"
-            )
-            await db.execute(_SEED_SQL, (identity_key, trust.value))
-            # Only update cache if there's no existing permanent grant
-            existing = self._cache.get(identity_key)
-            if existing is None or existing[1] is not None:
-                # No cache entry or cache entry is temporary — update cache
-                self._cache[identity_key] = (trust, None)
-
-        await db.commit()
 
     async def close(self) -> None:
         """Close the database connection."""

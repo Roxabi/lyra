@@ -25,7 +25,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from factory.adapters.omp._rpc_bridge import (
-    _DEFAULT_MODEL,
     _DEFAULT_REQUEST_TIMEOUT,
     _ENV_REQUEST_TIMEOUT_KEY,
     _PINNED_SHA256,
@@ -160,7 +159,13 @@ class TestDigestGate:
         actual_sha = hashlib.sha256(content).hexdigest()
         _stub_omp_rpc_module()
         try:
-            with patch("factory.adapters.omp._rpc_digest._PINNED_SHA256", actual_sha):
+            with (
+                patch("factory.adapters.omp._rpc_digest._PINNED_SHA256", actual_sha),
+                patch(
+                    "factory.adapters.omp._rpc_bridge.resolve_startup_model",
+                    return_value="grok-test-non-reasoning",
+                ),
+            ):
                 bridge = RpcBridge(omp_bin=omp_bin)
             assert bridge is not None
         finally:
@@ -190,7 +195,13 @@ def bridge_and_nc(tmp_path: Path):
     actual_sha = hashlib.sha256(content).hexdigest()
     _, client_instance = _stub_omp_rpc_module()
     try:
-        with patch("factory.adapters.omp._rpc_digest._PINNED_SHA256", actual_sha):
+        with (
+            patch("factory.adapters.omp._rpc_digest._PINNED_SHA256", actual_sha),
+            patch(
+                "factory.adapters.omp._rpc_bridge.resolve_startup_model",
+                return_value="grok-4.20-0309-non-reasoning",
+            ),
+        ):
             bridge = RpcBridge(omp_bin=omp_bin)
         nc = AsyncMock()
         nc.publish = AsyncMock()
@@ -693,9 +704,15 @@ class TestStartLifecycle:
         module.RpcClient = lambda **kw: fake.__init__(**kw) or fake  # type: ignore[attr-defined]
         sys.modules["omp_rpc"] = module
 
-        with patch(
-            "factory.adapters.omp._rpc_digest._PINNED_SHA256",
-            actual_sha,
+        with (
+            patch(
+                "factory.adapters.omp._rpc_digest._PINNED_SHA256",
+                actual_sha,
+            ),
+            patch(
+                "factory.adapters.omp._rpc_bridge.resolve_startup_model",
+                return_value="grok-4.20-0309-non-reasoning",
+            ),
         ):
             bridge = RpcBridge(omp_bin=omp_bin)
         return bridge, fake
@@ -760,9 +777,15 @@ class TestStartLifecycle:
         module.RpcClient = _factory  # type: ignore[attr-defined]
         sys.modules["omp_rpc"] = module
 
-        with patch(
-            "factory.adapters.omp._rpc_digest._PINNED_SHA256",
-            actual_sha,
+        with (
+            patch(
+                "factory.adapters.omp._rpc_digest._PINNED_SHA256",
+                actual_sha,
+            ),
+            patch(
+                "factory.adapters.omp._rpc_bridge.resolve_startup_model",
+                return_value="grok-test-non-reasoning",
+            ),
         ):
             RpcBridge(omp_bin=omp_bin)
 
@@ -776,8 +799,8 @@ class TestStartLifecycle:
         assert received_kwargs.get("provider") == "litellm", (
             f"expected provider='litellm', got: {received_kwargs.get('provider')}"
         )
-        assert received_kwargs.get("model") == _DEFAULT_MODEL, (
-            f"expected model={_DEFAULT_MODEL!r}, got: {received_kwargs.get('model')}"
+        assert received_kwargs.get("model") == "grok-test-non-reasoning", (
+            f"expected resolved startup model, got: {received_kwargs.get('model')}"
         )
         assert received_kwargs.get("request_timeout") == _DEFAULT_REQUEST_TIMEOUT, (
             "expected default request_timeout when unset"
@@ -885,7 +908,7 @@ class TestTurnFailurePublishing:
         client.prompt_and_wait.side_effect = [failed_turn, success_turn]
 
         with patch(
-            "factory.adapters.omp._model_catalogue.first_registry_model",
+            "factory.adapters.omp._model_catalogue.resolve_fallback_model",
             return_value="grok-4.20-non-reasoning",
         ):
             await bridge.run(

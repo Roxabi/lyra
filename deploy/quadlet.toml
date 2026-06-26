@@ -57,6 +57,16 @@ container = "factory-socialmedia-adapter.container"
 host_roles = ["factory-hub"]
 required_secrets = ["factory-nats-socialmedia", "factory-socialmedia-api-key", "factory_blobstore_token"]
 
+[component.loki]
+container = "factory-loki.container"
+required_secrets = []
+host_roles = ["factory-hub"]
+
+[component.promtail]
+container = "factory-promtail.container"
+required_secrets = []
+host_roles = ["factory-hub"]
+
 [volume.data]
 volume = "factory-data.volume"
 host_roles = ["factory-hub"]
@@ -75,6 +85,10 @@ host_roles = ["factory-hub"]
 
 [volume.omp-sessions]
 volume = "factory-omp-sessions.volume"
+host_roles = ["factory-hub"]
+
+[volume.loki-data]
+volume = "factory-loki-data.volume"
 host_roles = ["factory-hub"]
 
 [network.roxabi]

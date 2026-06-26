@@ -1,0 +1,1 @@
+"""Social media tool satellite — Postiz v1 backing provider."""

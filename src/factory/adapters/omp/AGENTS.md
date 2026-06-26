@@ -10,7 +10,7 @@ then publishes per-job lifecycle events back to the bus.
 
 - **Digest gate** — `RpcBridge.__init__` calls `_verify_digest()` before constructing any
   omp_rpc RpcClient; raises `DigestMismatchError` if the sha256 of `/opt/omp/omp` does not match
-  `_PINNED_SHA256 = "b877091c91ebdc8c8d907c4b62681895cd3ae049815858aea7b69ac1d53b7c7b"`.
+  `_PINNED_SHA256 = "783e92701c19fc09117c6eee09b8f9db685f40c81319372b230af509c001458f"`.
   Both `_OMP_BIN` and `_PINNED_SHA256` are image-build constants in `_rpc_bridge.py` —
   never read from env. Carrier bump must land with the pin update.
 

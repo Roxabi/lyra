@@ -30,9 +30,20 @@ class PairingManagerProtocol(Protocol):
 
     async def generate_code(self, admin_identity: str) -> str: ...
 
-    async def validate_code(self, code: str, identity_key: str) -> tuple[bool, str]: ...
+    async def validate_code(
+        self,
+        code: str,
+        identity_key: str,
+        *,
+        agent_name: str,
+    ) -> tuple[bool, str]: ...
 
-    async def revoke_session(self, identity_key: str) -> bool: ...
+    async def revoke_session(
+        self,
+        identity_key: str,
+        *,
+        agent_name: str,
+    ) -> bool: ...
 
     def check_rate_limit(self, identity_key: str) -> bool: ...
 

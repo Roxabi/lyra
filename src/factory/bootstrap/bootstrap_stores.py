@@ -36,6 +36,12 @@ from factory.infrastructure.stores.identity.identity_alias_store import (
     _CREATE_CHALLENGES,
     IdentityAliasStore,
 )
+from factory.infrastructure.stores.identity.user_store import (
+    UserStore,
+    _CREATE_PLATFORM_IDENTITIES,
+    _CREATE_USER_MIGRATION,
+    _CREATE_USERS,
+)
 from factory.infrastructure.stores.kv.message_index_kv import (
     MessageIndexKvStore,
     ensure_kv,
@@ -64,6 +70,9 @@ _AUTH_DB_DDL: tuple[str, ...] = (
     _CREATE_ALIASES,
     _CREATE_CHALLENGES,
     _CREATE_AGENT_GRANTS,
+    _CREATE_USERS,
+    _CREATE_PLATFORM_IDENTITIES,
+    _CREATE_USER_MIGRATION,
 )
 
 _SENTINEL_DDL = (
@@ -299,6 +308,7 @@ class StoreBundle:
     turn: TurnStore
     prefs: PrefsStore
     message_index: MessageIndexKvStore
+    user: UserStore
     identity_alias: IdentityAliasStore
     grant: AgentGrantStore
     bot: BotStore
@@ -324,6 +334,7 @@ async def open_stores(
     turn_store: TurnStore | None = None
     prefs_store: PrefsStore | None = None
     message_index_store: MessageIndexKvStore | None = None
+    user_store: UserStore | None = None
     identity_alias_store: IdentityAliasStore | None = None
     grant_store: AgentGrantStore | None = None
     bot_store: BotStore | None = None
@@ -331,10 +342,19 @@ async def open_stores(
         auth_store = AuthStore(db_path=vault_dir / "auth.db")
         await auth_store.connect()
 
-        identity_alias_store = IdentityAliasStore(db_path=vault_dir / "auth.db")
+        user_store = UserStore(db_path=vault_dir / "auth.db")
+        await user_store.connect()
+
+        identity_alias_store = IdentityAliasStore(
+            db_path=vault_dir / "auth.db",
+            user_store=user_store,
+        )
         await identity_alias_store.connect()
 
-        grant_store = AgentGrantStore(db_path=vault_dir / "auth.db")
+        grant_store = AgentGrantStore(
+            db_path=vault_dir / "auth.db",
+            user_store=user_store,
+        )
         await grant_store.connect()
 
         agent_store = AgentStore(db_path=vault_dir / "config.db")
@@ -369,6 +389,7 @@ async def open_stores(
             turn=turn_store,
             prefs=prefs_store,
             message_index=message_index_store,
+            user=user_store,
             identity_alias=identity_alias_store,
             grant=grant_store,
             bot=bot_store,
@@ -381,6 +402,7 @@ async def open_stores(
             bot_store,
             prefs_store,
             message_index_store,
+            user_store,
             identity_alias_store,
             grant_store,
         )

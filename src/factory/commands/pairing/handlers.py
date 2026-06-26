@@ -56,7 +56,9 @@ async def cmd_join(msg: InboundMessage, pool: Pool, args: list[str]) -> Response
             content="Too many failed attempts. Please wait before trying again."
         )
 
-    success, message = await pm.validate_code(code, identity_key)
+    success, message = await pm.validate_code(
+        code, identity_key, agent_name=pool.agent_name
+    )
     if not success:
         pm.record_failed_attempt(identity_key)
     return Response(content=message)
@@ -75,7 +77,9 @@ async def cmd_unpair(msg: InboundMessage, pool: Pool, args: list[str]) -> Respon
         return Response(content="Usage: /unpair <USER_ID>")
 
     target_identity = args[0].strip()
-    found = await pm.revoke_session(target_identity)
+    found = await pm.revoke_session(
+        target_identity, agent_name=pool.agent_name
+    )
 
     if found:
         return Response(content=f"Session for {target_identity!r} has been revoked.")

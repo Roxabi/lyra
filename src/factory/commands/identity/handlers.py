@@ -96,9 +96,20 @@ async def cmd_link(msg: InboundMessage, pool: Pool, args: list[str]) -> Response
     # Create the alias (initiator is primary)
     await alias_store.link(primary_id=initiator_id, secondary_id=msg.user_id)
 
-    log.info("Identity linked: %s (primary) <- %s", initiator_id, msg.user_id)
+    user_store = getattr(alias_store, "user_store", None)
+    canonical_id = (
+        user_store.resolve_user_id(initiator_id) if user_store is not None else None
+    )
+    log.info(
+        "Identity linked: %s (primary) <- %s (user=%s)",
+        initiator_id,
+        msg.user_id,
+        canonical_id,
+    )
+    user_line = f"User id: `{canonical_id}`\n" if canonical_id else ""
     return Response(
         content=f"Identity linked successfully.\n"
+        f"{user_line}"
         f"Primary: `{_redact(initiator_id)}`\n"
         f"Linked: `{_redact(msg.user_id)}`\n\n"
         f"Your trust level, preferences, and memory are now shared across platforms."

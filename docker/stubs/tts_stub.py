@@ -96,7 +96,10 @@ async def main() -> None:
         SUBJECTS.tts_request, queue=SUBJECTS.tts_workers, cb=handle_request
     )
     await nc.subscribe(per_worker_tts(WORKER_ID), cb=handle_request)
-    print(f"[tts-stub] ready — queue={SUBJECTS.tts_workers} worker={WORKER_ID}", flush=True)
+    print(
+        f"[tts-stub] ready — queue={SUBJECTS.tts_workers} worker={WORKER_ID}",
+        flush=True,
+    )
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):

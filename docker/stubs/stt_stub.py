@@ -88,7 +88,10 @@ async def main() -> None:
         SUBJECTS.stt_request, queue=SUBJECTS.stt_workers, cb=handle_request
     )
     await nc.subscribe(per_worker_stt(WORKER_ID), cb=handle_request)
-    print(f"[stt-stub] ready — queue={SUBJECTS.stt_workers} worker={WORKER_ID}", flush=True)
+    print(
+        f"[stt-stub] ready — queue={SUBJECTS.stt_workers} worker={WORKER_ID}",
+        flush=True,
+    )
 
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):

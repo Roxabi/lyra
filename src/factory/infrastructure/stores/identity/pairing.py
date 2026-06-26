@@ -15,9 +15,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from factory.infrastructure.stores.identity.auth_store import AuthStore
+    from factory.infrastructure.stores.identity.agent_grant_store import (
+        AgentGrantStore,
+    )
+    from factory.infrastructure.stores.identity.user_store import UserStore
 
-from factory.core.auth.trust import TrustLevel
+from factory.core.auth.agent_grants import Capability, Principal, PrincipalKind
 from factory.core.stores.pairing_config import (
     _CREATE_PAIRING_CODES,
     _MAX_CODE_ATTEMPTS,
@@ -49,8 +52,8 @@ log = logging.getLogger(__name__)
 class PairingManager(SqliteStore):
     """Manages pairing codes using aiosqlite.
 
-    On successful code validation, grants are written to AuthStore instead of
-    the former paired_sessions table (removed in #245).
+    On successful code validation, grants agent access via AgentGrantStore
+    (canonical ``rx:user:`` principal) instead of AuthStore trust levels.
     Admin check (is_admin/_admin_user_ids) removed in #315.
     """
 
@@ -58,11 +61,14 @@ class PairingManager(SqliteStore):
         self,
         config: PairingConfig,
         db_path: str | Path,
-        auth_store: AuthStore | None = None,
+        *,
+        grant_store: AgentGrantStore | None = None,
+        user_store: UserStore | None = None,
     ) -> None:
         super().__init__(db_path)
         self.config = config
-        self._auth_store = auth_store
+        self._grant_store = grant_store
+        self._user_store = user_store
         # In-memory sliding window: identity_key -> deque of failure timestamps
         self._rate_timestamps: dict[str, deque[float]] = {}
 
@@ -127,11 +133,17 @@ class PairingManager(SqliteStore):
     # Code validation
     # ------------------------------------------------------------------
 
-    async def validate_code(self, code: str, identity_key: str) -> tuple[bool, str]:
-        """Validate a pairing code and grant TRUSTED access if valid.
+    async def validate_code(
+        self,
+        code: str,
+        identity_key: str,
+        *,
+        agent_name: str,
+    ) -> tuple[bool, str]:
+        """Validate a pairing code and grant agent access if valid.
 
-        Returns (success, message). On success, upserts a TRUSTED grant into
-        AuthStore and deletes the used code.
+        Returns (success, message). On success, upserts a ``use`` grant on the
+        canonical user for *agent_name* and deletes the used code.
         """
         db = self._require_db()
         code_hash = _sha256(code)
@@ -141,17 +153,12 @@ class PairingManager(SqliteStore):
         # consuming the same code (TOCTOU race between SELECT and DELETE).
         await db.execute("BEGIN IMMEDIATE")
         try:
-            # Increment attempt counter before checking existence so every
-            # probe -- hit or miss -- is counted toward the per-code limit.
             await db.execute(
                 "UPDATE pairing_codes SET attempt_count = attempt_count + 1 "
                 "WHERE code_hash = ?",
                 (code_hash,),
             )
 
-            # Note: SQL WHERE code_hash = ? is not constant-time, but with SHA-256
-            # input hashing and 40-bit code entropy (~1.1T combinations), timing
-            # attacks are impractical at personal-use scale. See PR #124 review W5.
             async with db.execute(
                 "SELECT code_hash, expires_at, attempt_count "
                 "FROM pairing_codes WHERE code_hash = ?",
@@ -176,16 +183,12 @@ class PairingManager(SqliteStore):
                 expires_at = expires_at.replace(tzinfo=timezone.utc)
 
             if now > expires_at:
-                # Clean up expired code
                 await db.execute(
                     "DELETE FROM pairing_codes WHERE code_hash = ?", (code_hash,)
                 )
                 await db.execute("COMMIT")
                 return False, "Code has expired."
 
-            session_expires_at = now + timedelta(days=self.config.session_max_age_days)
-
-            # Delete the used code
             await db.execute(
                 "DELETE FROM pairing_codes WHERE code_hash = ?", (code_hash,)
             )
@@ -194,43 +197,62 @@ class PairingManager(SqliteStore):
             await db.execute("ROLLBACK")
             raise
 
-        # Upsert TRUSTED grant into AuthStore (outside the IMMEDIATE transaction)
-        if self._auth_store is not None:
-            try:
-                await self._auth_store.upsert(
-                    identity_key,
-                    TrustLevel.TRUSTED,
-                    session_expires_at,
-                    granted_by="invite",
-                    source=code_hash,
-                )
-            except Exception:
-                log.exception(
-                    "validate_code: failed to persist grant for %s — code consumed",
-                    identity_key,
-                )
-                return False, "Internal error persisting grant."
-            log.info(
-                "Paired %s via AuthStore (session expires %s)",
-                identity_key,
-                session_expires_at,
-            )
-        else:
+        if self._grant_store is None or self._user_store is None:
             log.warning(
-                "validate_code: no auth_store configured, grant not persisted for %s",
+                "validate_code: grant/user store not configured — grant not persisted "
+                "for %s",
                 identity_key,
             )
+            return True, "Successfully paired."
+
+        try:
+            rx_user = await self._user_store.ensure_user(identity_key)
+            await self._grant_store.grant(
+                agent_name,
+                Principal(kind=PrincipalKind.USER, id=rx_user),
+                capability=Capability.USE,
+                granted_by="invite",
+                source=code_hash,
+            )
+        except Exception:
+            log.exception(
+                "validate_code: failed to persist agent grant for %s — code consumed",
+                identity_key,
+            )
+            return False, "Internal error persisting grant."
+        log.info(
+            "Paired %s on agent %r via AgentGrantStore (rx:user %s)",
+            identity_key,
+            agent_name,
+            rx_user,
+        )
         return True, "Successfully paired."
 
     # ------------------------------------------------------------------
     # Session checks
     # ------------------------------------------------------------------
 
-    async def revoke_session(self, identity_key: str) -> bool:
-        """Revoke a user's grant. Returns True if it existed."""
-        if self._auth_store is not None:
-            return await self._auth_store.revoke(identity_key)
-        return False
+    async def revoke_session(
+        self,
+        identity_key: str,
+        *,
+        agent_name: str,
+    ) -> bool:
+        """Revoke a user's agent grant. Returns True if one existed."""
+        if self._grant_store is None or self._user_store is None:
+            return False
+
+        rx_user = self._user_store.resolve_user_id(identity_key)
+        if rx_user is None:
+            rx_user = identity_key if identity_key.startswith("rx:user:") else None
+        if rx_user is None:
+            return False
+
+        return await self._grant_store.revoke(
+            agent_name,
+            Principal(kind=PrincipalKind.USER, id=rx_user),
+            capability=Capability.USE,
+        )
 
     # ------------------------------------------------------------------
     # Rate limiting (in-memory sliding window)

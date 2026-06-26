@@ -10,6 +10,7 @@ from factory.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegist
 from factory.infrastructure.stores.identity.agent_grant_store import AgentGrantStore
 from factory.infrastructure.stores.identity.auth_store import AuthStore
 from factory.infrastructure.stores.identity.pairing import PairingConfig, PairingManager
+from factory.infrastructure.stores.identity.user_store import UserStore
 from factory.infrastructure.stores.registry.agent_store import AgentRow, AgentStore
 from tests.helpers.bot_store import make_bot_store
 
@@ -154,14 +155,31 @@ async def bot_store(tmp_path: Path):
 
 
 _open_pairing_stores: list[AuthStore] = []
+_open_pairing_user_stores: list[UserStore] = []
+_open_pairing_grant_stores: list[AgentGrantStore] = []
+
+PAIRING_TEST_AGENT = "test_agent"
 
 
 async def make_pairing_auth_store(db_path: str = ":memory:") -> AuthStore:
-    """Build and connect a real AuthStore for pairing tests."""
+    """Build and connect a real AuthStore for legacy pairing-adjacent tests."""
     store = AuthStore(db_path=db_path)
     await store.connect()
     _open_pairing_stores.append(store)
     return store
+
+
+async def make_pairing_identity_stores(
+    db_path: str = ":memory:",
+) -> tuple[UserStore, AgentGrantStore]:
+    """Build UserStore + AgentGrantStore sharing one auth.db for pairing tests."""
+    user_store = UserStore(db_path=db_path)
+    await user_store.connect()
+    grant_store = AgentGrantStore(db_path=db_path, user_store=user_store)
+    await grant_store.connect()
+    _open_pairing_user_stores.append(user_store)
+    _open_pairing_grant_stores.append(grant_store)
+    return user_store, grant_store
 
 
 _open_pairing_managers: list[PairingManager] = []
@@ -174,11 +192,12 @@ async def make_pairing_pm(  # noqa: PLR0913
     rate_limit_window: int = 300,
     session_max_age_days: int = 30,
     ttl_seconds: int = 3600,
-    auth_store: AuthStore | None = None,
+    grant_store: AgentGrantStore | None = None,
+    user_store: UserStore | None = None,
 ) -> PairingManager:
     """Build and connect a PairingManager backed by an in-memory SQLite DB."""
-    if auth_store is None:
-        auth_store = await make_pairing_auth_store()
+    if grant_store is None or user_store is None:
+        user_store, grant_store = await make_pairing_identity_stores()
 
     config = PairingConfig(
         enabled=enabled,
@@ -191,7 +210,8 @@ async def make_pairing_pm(  # noqa: PLR0913
     pm = PairingManager(
         config=config,
         db_path=":memory:",
-        auth_store=auth_store,
+        grant_store=grant_store,
+        user_store=user_store,
     )
     await pm.connect()
     _open_pairing_managers.append(pm)

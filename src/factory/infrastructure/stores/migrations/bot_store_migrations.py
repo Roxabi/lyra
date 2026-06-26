@@ -84,7 +84,7 @@ async def run_bot_migrations(db: aiosqlite.Connection) -> None:
         )
         if await cur.fetchone() is not None:
             async with db.execute("PRAGMA table_info('bots')") as info_cur:
-                cols = {row[1] for row in await info_cur.fetchall()}
+                cols = frozenset(str(row[1]) for row in await info_cur.fetchall())
             if cols != _TARGET_COLS or (cols & _LEGACY_COLS):
                 await db.execute("DROP TABLE IF EXISTS bots__v3")
                 await db.execute(

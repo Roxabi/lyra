@@ -12,9 +12,7 @@ from factory.bootstrap.factory.config import _load_circuit_config
 from factory.bootstrap.wiring.auth import BotAuthDeps, _build_bot_auths
 from factory.config import (
     DiscordBotConfig,
-    DiscordMultiConfig,
     TelegramBotConfig,
-    TelegramMultiConfig,
     multibot_config_from_store,
 )
 from factory.core.auth.authenticator import Authenticator

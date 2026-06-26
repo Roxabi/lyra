@@ -332,9 +332,7 @@ make quadlet-secrets-install
 # Start all factory containers now
 systemctl --user start factory-nats.service
 sleep 3  # wait for NATS to be ready
-systemctl --user start factory-hub.service factory-telegram.service factory-discord.service \
-  factory-clipool.service factory-gh-helper.service factory-blobstore.service \
-  factory-turn-writer.service factory-omp.service
+make factory start
 ```
 
 Or use the Makefile dispatcher:
@@ -370,18 +368,7 @@ cd ~/projects/roxabi-factory
 systemctl --user status 'factory-*.service'
 ```
 
-You should see all nine units active:
-```
-factory-nats.service         active (running)
-factory-hub.service          active (running)
-factory-telegram.service     active (running)
-factory-discord.service      active (running)
-factory-clipool.service      active (running)
-factory-gh-helper.service    active (running)
-factory-blobstore.service    active (running)
-factory-turn-writer.service  active (running)
-factory-omp.service          active (running)
-```
+You should see all twenty `factory-*.service` units active (SSoT: `deploy/quadlet.toml` via `quadlet_containers`). Core factory units include `factory-nats`, `factory-hub`, adapters, workers, and infra; observability units include `factory-loki`, `factory-promtail`, `factory-otel-collector`, and `factory-langfuse-*`.
 
 Or check the full container list:
 ```bash

@@ -15,7 +15,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from factory.adapters.omp._rpc_bridge import (
-    _DEFAULT_MODEL,
     _DEFAULT_REQUEST_TIMEOUT,
     _ENV_REQUEST_TIMEOUT_KEY,
     _read_request_timeout,
@@ -255,6 +254,10 @@ class TestOmpPool:
                     "factory.adapters.omp._rpc_bridge.RpcBridge",
                     return_value=fake_bridge,
                 ),
+                patch(
+                    "factory.adapters.omp._model_catalogue.resolve_startup_model",
+                    return_value="grok-test-non-reasoning",
+                ),
             ):
                 await pool.acquire(None)
         finally:
@@ -263,7 +266,7 @@ class TestOmpPool:
         assert captured_kwargs.get("no_session") is False, (
             f"Expected no_session=False, got kwargs={captured_kwargs}"
         )
-        assert captured_kwargs.get("model") == _DEFAULT_MODEL
+        assert captured_kwargs.get("model") == "grok-test-non-reasoning"
         assert captured_kwargs.get("request_timeout") == _DEFAULT_REQUEST_TIMEOUT
 
         await pool.aclose()
@@ -295,12 +298,16 @@ class TestOmpPool:
                     "factory.adapters.omp._rpc_bridge.RpcBridge",
                     return_value=fake_bridge,
                 ),
+                patch(
+                    "factory.adapters.omp._model_catalogue.resolve_startup_model",
+                    return_value="grok-test-non-reasoning",
+                ),
             ):
                 await pool.acquire(None)
         finally:
             sys.modules.pop("omp_rpc", None)
 
-        assert captured_kwargs.get("model") == _DEFAULT_MODEL
+        assert captured_kwargs.get("model") == "grok-test-non-reasoning"
         await pool.aclose()
 
     # -- Bonus: _read_cap falls back to default -----------------------------

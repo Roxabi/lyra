@@ -100,7 +100,7 @@ async def build_pairing_manager(
         log.warning(
             "Pairing enabled but [admin].user_ids is empty — "
             "/invite and /unpair require is_admin=True "
-            "(granted to [admin].user_ids or bot owner_users)"
+            "(granted to [admin].user_ids in config.toml)"
         )
     if not pairing_config.enabled:
         return None

@@ -102,7 +102,7 @@ class NatsSocialMediaClient:
             timeout=timeout,
         )
 
-    async def publish(
+    async def publish(  # noqa: PLR0913 — contract/request shape
         self,
         *,
         brand_slug: str,
@@ -135,7 +135,7 @@ class NatsSocialMediaClient:
             timeout=timeout,
         )
 
-    async def schedule(
+    async def schedule(  # noqa: PLR0913 — contract/request shape
         self,
         *,
         brand_slug: str,

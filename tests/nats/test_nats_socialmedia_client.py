@@ -97,7 +97,7 @@ class TestNatsSocialMediaClientListGroups:
             response=None, error="socialmedia.worker_error"
         )
         client = NatsSocialMediaClient(pool, codec)
-        with pytest.raises(SocialMediaUnavailableError, match="socialmedia.worker_error"):
+        with pytest.raises(SocialMediaUnavailableError, match="socialmedia.worker_error"):  # noqa: E501
             await client.list_groups()
 
     @pytest.mark.asyncio

@@ -69,22 +69,6 @@ async def _init_inbound_bus(
     )
 
 
-async def _seed_auth(stores: object, raw_config: dict | None = None) -> None:
-    """Register canonical users and seed agent grants from bot roster."""
-    from factory.bootstrap.auth_seeding import seed_identity_and_grants
-    from factory.bootstrap.factory.config import _load_circuit_config
-
-    admin_ids: frozenset[str] = frozenset()
-    if raw_config is not None:
-        _, admin_ids = _load_circuit_config(raw_config)
-    await seed_identity_and_grants(
-        stores.grant,
-        stores.bot,
-        stores.user,
-        admin_user_ids=admin_ids,
-    )
-
-
 async def _prune_message_index(stores: object, raw_config: dict) -> None:
     """Prune message index according to retention config."""
     mi_cfg = MessageIndexConfig(**raw_config.get("message_index", {}))
@@ -109,8 +93,7 @@ async def _init_pairing(
         log.warning(
             "Pairing enabled but [admin].user_ids is empty — "
             "/invite and /unpair require is_admin=True "
-            "(granted to [admin].user_ids entries "
-            "or users configured as OWNER in [[auth.*_bots]])"
+            "(granted to [admin].user_ids in config.toml)"
         )
     pm: PairingManager | None = None
     if pairing_config.enabled:

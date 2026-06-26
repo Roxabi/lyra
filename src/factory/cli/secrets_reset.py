@@ -44,7 +44,7 @@ def factory_repo_root() -> Path:
 def build_reset_plan(*, converge: bool) -> ResetPlan:
     steps = (
         "factory-acl genkeys --regenerate (backup + wipe nkeys + regen auth.conf)",
-        "./deploy/install.sh --force --secrets-only (refresh Podman secrets)",
+        "./deploy/install.sh --force-secrets --secrets-only (refresh Podman secrets)",
     )
     if converge:
         steps = (*steps, "make converge (regen auth.conf mount + restart stack)")
@@ -101,7 +101,7 @@ def run_install_secrets(
 ) -> None:
     install = repo_root / "deploy" / "install.sh"
     runner(
-        [str(install), "--force", "--secrets-only"],
+        [str(install), "--force-secrets", "--secrets-only"],
         cwd=repo_root,
         check=True,
         text=True,

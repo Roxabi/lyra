@@ -290,6 +290,17 @@ def _ensure_auth_db_schema(vault_dir: Path) -> None:
         conn.execute("PRAGMA busy_timeout=30000")
         for stmt in _AUTH_DB_DDL:
             conn.execute(stmt)
+        # Skip UserStore alias migration on first multi-store connect when there
+        # is nothing to import — avoids a write lock while AuthStore is open.
+        alias_count = conn.execute(
+            "SELECT COUNT(*) FROM identity_aliases"
+        ).fetchone()[0]
+        if alias_count == 0:
+            conn.execute(
+                "INSERT INTO _user_store_migration (migrated_at) "
+                "SELECT datetime('now') "
+                "WHERE NOT EXISTS (SELECT 1 FROM _user_store_migration)"
+            )
         conn.commit()
     finally:
         conn.close()

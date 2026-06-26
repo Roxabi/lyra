@@ -53,8 +53,9 @@ class TestLoadCircuitConfigDefaults:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """SC-16: FACTORY_CONFIG unset and no config.toml in cwd → defaults returned."""
-        # Arrange — unset env var and ensure cwd has no config.toml
+        # Arrange — unset env var and ensure no config.toml in vault or cwd
         monkeypatch.delenv("FACTORY_CONFIG", raising=False)
+        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         monkeypatch.chdir(tmp_path)
 
         # Act

@@ -36,6 +36,12 @@ def test_models_yml_preserves_litellm_provider_shape() -> None:
     assert litellm["apiKey"] == "LITELLM_API_KEY"
 
 
+def test_models_yml_has_no_factory_only_keys() -> None:
+    """omp rejects unknown provider keys — factory policy lives elsewhere."""
+    litellm = _load_litellm_provider()
+    assert "model_policy" not in litellm
+
+
 class _ModelsListHandler(BaseHTTPRequestHandler):
     catalogue: dict[str, Any] = {
         "object": "list",

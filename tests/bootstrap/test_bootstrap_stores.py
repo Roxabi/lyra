@@ -12,6 +12,7 @@ from factory.bootstrap.bootstrap_stores import (
     _atomic_table_copy,
     _ensure_auth_db_schema,
     _ensure_config_db,
+    _ensure_config_db_bot_migrations,
     _ensure_discord_db,
     _has_sentinel,
     open_stores,
@@ -22,10 +23,66 @@ from factory.infrastructure.stores.identity.identity_alias_store import (
     IdentityAliasStore,
 )
 from factory.infrastructure.stores.identity.user_store import UserStore
+from factory.infrastructure.stores.registry.bot_store import BotStore
+from factory.infrastructure.stores.registry.prefs_store import PrefsStore
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+_LEGACY_V2_BOTS_DDL = """
+CREATE TABLE bots (
+    platform TEXT NOT NULL,
+    bot_id TEXT NOT NULL,
+    agent TEXT NOT NULL,
+    webhook_enabled INTEGER NOT NULL DEFAULT 0,
+    default_trust TEXT NOT NULL DEFAULT 'blocked',
+    owner_users_json TEXT NOT NULL DEFAULT '[]',
+    trusted_users_json TEXT NOT NULL DEFAULT '[]',
+    trusted_roles_json TEXT NOT NULL DEFAULT '[]',
+    auto_thread INTEGER NOT NULL DEFAULT 0,
+    thread_hot_hours INTEGER NOT NULL DEFAULT 24,
+    updated_at TEXT,
+    public_bot TEXT,
+    PRIMARY KEY (platform, bot_id)
+)
+"""
+
+_TARGET_BOT_COLS = {
+    "platform",
+    "bot_id",
+    "agent",
+    "webhook_enabled",
+    "auto_thread",
+    "thread_hot_hours",
+    "updated_at",
+    "public_bot",
+}
+
+
+def _create_legacy_config_db(path: Path) -> None:
+    conn = sqlite3.connect(str(path))
+    conn.execute("PRAGMA user_version = 2")
+    conn.execute(_LEGACY_V2_BOTS_DDL)
+    conn.execute(
+        "INSERT INTO bots (platform, bot_id, agent) "
+        "VALUES ('telegram', 'lyra', 'lyra_default')"
+    )
+    conn.execute(
+        "CREATE TABLE agents (name TEXT PRIMARY KEY, display_name TEXT)"
+    )
+    conn.execute(
+        "CREATE TABLE bot_agent_map ("
+        "platform TEXT NOT NULL, bot_id TEXT NOT NULL, agent_name TEXT NOT NULL, "
+        "settings_json TEXT, updated_at TEXT, "
+        "PRIMARY KEY (platform, bot_id))"
+    )
+    conn.execute(
+        "CREATE TABLE agent_runtime_state (agent_name TEXT PRIMARY KEY)"
+    )
+    conn.execute("CREATE TABLE user_prefs (user_id TEXT, key TEXT, value TEXT)")
+    conn.commit()
+    conn.close()
 
 
 def _create_auth_db(path: Path) -> None:
@@ -93,6 +150,66 @@ class TestEnsureAuthDbSchema:
             await alias.close()
             await user.close()
             await auth.close()
+
+
+# ---------------------------------------------------------------------------
+# _ensure_config_db_bot_migrations
+# ---------------------------------------------------------------------------
+
+
+class TestEnsureConfigDbBotMigrations:
+    @pytest.mark.asyncio
+    async def test_preflight_migrates_legacy_bots_before_stores_open(
+        self, tmp_path: Path
+    ) -> None:
+        """Regression — v3 rebuild must run before AgentStore/BotStore connect."""
+        config_path = tmp_path / "config.db"
+        _create_legacy_config_db(config_path)
+
+        await _ensure_config_db_bot_migrations(tmp_path)
+
+        conn = sqlite3.connect(str(config_path))
+        try:
+            version = conn.execute("PRAGMA user_version").fetchone()[0]
+            assert version == 3
+            cols = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info('bots')").fetchall()
+            }
+            assert cols == _TARGET_BOT_COLS
+            row = conn.execute(
+                "SELECT agent FROM bots WHERE platform='telegram' AND bot_id='lyra'"
+            ).fetchone()
+            assert row == ("lyra_default",)
+        finally:
+            conn.close()
+
+    @pytest.mark.asyncio
+    async def test_bot_store_connect_is_noop_after_preflight(
+        self, tmp_path: Path
+    ) -> None:
+        """BotStore migrations must be idempotent once bootstrap preflight ran."""
+        config_path = tmp_path / "config.db"
+        _create_legacy_config_db(config_path)
+        await _ensure_config_db_bot_migrations(tmp_path)
+
+        bot = BotStore(db_path=config_path)
+        prefs = PrefsStore(db_path=config_path)
+        try:
+            await bot.connect()
+            await prefs.connect()
+            row = bot.get("telegram", "lyra")
+            assert row is not None
+            assert row.agent == "lyra_default"
+        finally:
+            await prefs.close()
+            await bot.close()
+
+        conn = sqlite3.connect(str(config_path))
+        try:
+            assert conn.execute("PRAGMA user_version").fetchone()[0] == 3
+        finally:
+            conn.close()
 
 
 # ---------------------------------------------------------------------------

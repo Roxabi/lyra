@@ -19,8 +19,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncGenerator
 
+import aiosqlite
 from nats.aio.client import Client
 
+from factory.core.agent.schema.bot_schema import _CREATE_BOTS
 from factory.infrastructure.stores.identity.agent_grant_store import (
     _CREATE_AGENT_GRANTS,
     AgentGrantStore,
@@ -45,6 +47,9 @@ from factory.infrastructure.stores.identity.user_store import (
 from factory.infrastructure.stores.kv.message_index_kv import (
     MessageIndexKvStore,
     ensure_kv,
+)
+from factory.infrastructure.stores.migrations.bot_store_migrations import (
+    run_bot_migrations,
 )
 from factory.infrastructure.stores.registry.agent_store import AgentStore
 from factory.infrastructure.stores.registry.bot_store import BotStore
@@ -306,6 +311,24 @@ def _ensure_auth_db_schema(vault_dir: Path) -> None:
         conn.close()
 
 
+async def _ensure_config_db_bot_migrations(vault_dir: Path) -> None:
+    """Run BotStore migrations on a short-lived connection before stores open.
+
+    Migration v3 rebuilds ``bots`` and needs an exclusive schema lock.  AgentStore
+    (via BotAgentMapStore), BotStore, and PrefsStore each keep their own aiosqlite
+    handle on ``config.db`` — running v3 while any sibling is connected deadlocks
+    until ``busy_timeout`` (same pattern as ``_ensure_auth_db_schema``, #2001).
+    """
+    config_path = vault_dir / "config.db"
+    if not config_path.exists():
+        return
+    async with aiosqlite.connect(str(config_path)) as db:
+        await db.execute("PRAGMA busy_timeout=30000")
+        await db.execute(_CREATE_BOTS)
+        await db.commit()
+        await run_bot_migrations(db)
+
+
 @dataclass
 class StoreBundle:
     """All persistent stores needed by the multibot bootstrap.
@@ -339,6 +362,7 @@ async def open_stores(
     _ensure_config_db(vault_dir)
     _ensure_discord_db(vault_dir)
     _ensure_auth_db_schema(vault_dir)
+    await _ensure_config_db_bot_migrations(vault_dir)
 
     auth_store: AuthStore | None = None
     agent_store: AgentStore | None = None

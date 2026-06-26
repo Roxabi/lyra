@@ -32,23 +32,11 @@ def make_platform_app(platform: str) -> typer.Typer:
     show.__doc__ = f"Show full config for a {platform.capitalize()} bot."
 
     @platform_app.command(name="add")
-    def add(  # noqa: PLR0913
+    def add(
         bot_id: str = typer.Argument(..., help="Bot ID to add."),
         agent: str = typer.Option("", "--agent", help="Agent name."),
         webhook_enabled: bool = typer.Option(
             False, "--webhook-enabled", help="Enable webhook."
-        ),
-        default_trust: str = typer.Option(
-            "blocked", "--default-trust", help="Default trust level."
-        ),
-        owner_users: str = typer.Option(
-            "", "--owner-users", help="Comma-separated owner user IDs."
-        ),
-        trusted_users: str = typer.Option(
-            "", "--trusted-users", help="Comma-separated trusted user IDs."
-        ),
-        trusted_roles: str = typer.Option(
-            "", "--trusted-roles", help="Comma-separated trusted role IDs."
         ),
         auto_thread: bool = typer.Option(
             False, "--auto-thread", help="Enable auto thread."
@@ -64,30 +52,11 @@ def make_platform_app(platform: str) -> typer.Typer:
             "pointer. Not an authorization grant.",
         ),
     ) -> None:
-        _owner_users = (
-            [x.strip() for x in owner_users.split(",") if x.strip()]
-            if owner_users
-            else []
-        )
-        _trusted_users = (
-            [x.strip() for x in trusted_users.split(",") if x.strip()]
-            if trusted_users
-            else []
-        )
-        _trusted_roles = (
-            [x.strip() for x in trusted_roles.split(",") if x.strip()]
-            if trusted_roles
-            else []
-        )
         _commands._add(
             platform,
             bot_id,
             agent,
             webhook_enabled,
-            default_trust,
-            _owner_users,
-            _trusted_users,
-            _trusted_roles,
             auto_thread,
             thread_hot_hours,
             public_bot or None,
@@ -102,23 +71,11 @@ def make_platform_app(platform: str) -> typer.Typer:
     edit.__doc__ = f"Interactively edit a {platform.capitalize()} bot."
 
     @platform_app.command(name="patch")
-    def patch(  # noqa: PLR0913
+    def patch(
         bot_id: str = typer.Argument(..., help="Bot ID to patch."),
         agent: str | None = typer.Option(None, "--agent", help="Set agent."),
         webhook_enabled: bool | None = typer.Option(
             None, "--webhook-enabled/--no-webhook-enabled", help="Set webhook enabled."
-        ),
-        default_trust: str | None = typer.Option(
-            None, "--default-trust", help="Set default trust level."
-        ),
-        owner_users: str | None = typer.Option(
-            None, "--owner-users", help="Comma-separated owner user IDs."
-        ),
-        trusted_users: str | None = typer.Option(
-            None, "--trusted-users", help="Comma-separated trusted user IDs."
-        ),
-        trusted_roles: str | None = typer.Option(
-            None, "--trusted-roles", help="Comma-separated trusted role IDs."
         ),
         auto_thread: bool | None = typer.Option(
             None, "--auto-thread/--no-auto-thread", help="Set auto thread."
@@ -126,28 +83,16 @@ def make_platform_app(platform: str) -> typer.Typer:
         thread_hot_hours: int | None = typer.Option(
             None, "--thread-hot-hours", help="Set thread hot hours."
         ),
+        public_bot: str | None = typer.Option(
+            None, "--public-bot", help="Set public bot handle (ADR-090 deny pointer)."
+        ),
     ) -> None:
         kwargs = {
             "agent": agent,
             "webhook_enabled": webhook_enabled,
-            "default_trust": default_trust,
-            "owner_users": (
-                [x.strip() for x in owner_users.split(",") if x.strip()]
-                if owner_users is not None
-                else None
-            ),
-            "trusted_users": (
-                [x.strip() for x in trusted_users.split(",") if x.strip()]
-                if trusted_users is not None
-                else None
-            ),
-            "trusted_roles": (
-                [x.strip() for x in trusted_roles.split(",") if x.strip()]
-                if trusted_roles is not None
-                else None
-            ),
             "auto_thread": auto_thread,
             "thread_hot_hours": thread_hot_hours,
+            "public_bot": public_bot,
         }
         _commands._patch(platform, bot_id, **kwargs)
 

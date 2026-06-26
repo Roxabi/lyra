@@ -7,16 +7,15 @@ import os
 import re
 import tomllib
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any
 
 import typer
-from pydantic import BaseModel, ConfigDict, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from factory.cli.bot import _connect_bot_store, _maybe_publish_roster, bot_app
 from factory.core.agent.bot_models import (
     DEFAULT_AUTO_THREAD,
     DEFAULT_THREAD_HOT_HOURS,
-    DEFAULT_TRUST,
     BotRow,
 )
 from factory.paths import factory_data_dir
@@ -30,29 +29,13 @@ class _BotSeedEntry(BaseModel):
     bot_id: str = "main"
     agent: str = "lyra_default"
     webhook_enabled: bool = False
-    default_trust: Literal["owner", "trusted", "public", "blocked"] = cast(
-        Literal["owner", "trusted", "public", "blocked"], DEFAULT_TRUST
-    )
-    owner_users: list[int | str] = []
-    trusted_users: list[int | str] = []
-    trusted_roles: list[str] = []
-
-    @field_validator("owner_users", "trusted_users", mode="after")
-    @classmethod
-    def _coerce_user_ids_to_str(cls, v: list[int | str]) -> list[str]:
-        """Coerce int Telegram user IDs to str; canonical storage shape is list[str]."""
-        return [str(el) for el in v]
-
     auto_thread: bool = DEFAULT_AUTO_THREAD
     thread_hot_hours: int = DEFAULT_THREAD_HOT_HOURS
-    # Real config.toml keys that appear in [[telegram.bots]] / [[discord.bots]]
-    # and [[auth.telegram_bots]] / [[auth.discord_bots]]; listed here so
-    # extra="forbid" doesn't reject them. They are NOT stored in BotRow —
-    # credentials are resolved from secrets at runtime, and `default` is the
-    # legacy trust alias handled by the auth section.
+    public_bot: str | None = None
+    # Credentials resolved from secrets at runtime — not stored in BotRow.
     token: str | None = None
     webhook_secret: str | None = None
-    default: str | None = None
+    bot_username: str | None = None
 
 
 def _find_config_toml() -> Path | None:
@@ -119,30 +102,16 @@ def init_bots(
     asyncio.run(_run())
 
 
-# bot_id and platform must match this pattern to prevent path-traversal / injection.
-# platform is derived from the section name (always "telegram" or "discord") so the
-# check is a defensive belt-and-suspenders guard; bot_id is operator-supplied.
 _BOT_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 _PLATFORM_RE = re.compile(r"^(telegram|discord)$")
 
 
-def _merge_bots(raw: dict[str, Any]) -> tuple[list[BotRow], int]:  # noqa: C901 — DEBT:complexity-residual — merge logic walks four config sections
-    """Merge bot entries from config.toml per (platform, bot_id).
-
-    Reads ``[[telegram.bots]]``, ``[[discord.bots]]``,
-    ``[[auth.telegram_bots]]``, and ``[[auth.discord_bots]]``.
-    Scalar fields are overwritten (last section wins);
-    list fields (owner_users, trusted_users) are concatenated
-    and deduplicated.
-
-    Returns:
-        Tuple of (rows, validation_error_count). Entries with invalid
-        bot_id or platform are skipped and counted in validation_error_count.
-    """
+def _merge_bots(raw: dict[str, Any]) -> tuple[list[BotRow], int]:
+    """Merge ``[[telegram.bots]]`` and ``[[discord.bots]]`` entries per bot."""
     merged: dict[tuple[str, str], dict[str, Any]] = {}
     validation_errors = 0
 
-    def _add_entries(section_path: tuple[str, ...], platform: str) -> None:  # noqa: C901
+    def _add_entries(section_path: tuple[str, ...], platform: str) -> None:
         nonlocal validation_errors
         section: Any = raw
         for key in section_path[:-1]:
@@ -177,21 +146,10 @@ def _merge_bots(raw: dict[str, Any]) -> tuple[list[BotRow], int]:  # noqa: C901 
             for k, v in entry.items():
                 if k == "bot_id":
                     continue
-                list_keys = ("owner_users", "trusted_users", "trusted_roles")
-                if k in list_keys and isinstance(v, list):
-                    v = [str(el) for el in v]  # coerce int IDs → str
-                    existing = merged[key].get(k, [])
-                    if isinstance(existing, list):
-                        merged[key][k] = list(dict.fromkeys(existing + v))
-                    else:
-                        merged[key][k] = v
-                else:
-                    merged[key][k] = v  # last wins for scalars
+                merged[key][k] = v
 
     _add_entries(("telegram", "bots"), "telegram")
     _add_entries(("discord", "bots"), "discord")
-    _add_entries(("auth", "telegram_bots"), "telegram")
-    _add_entries(("auth", "discord_bots"), "discord")
 
     rows: list[BotRow] = []
     for (platform, bot_id), data in sorted(merged.items()):
@@ -201,14 +159,6 @@ def _merge_bots(raw: dict[str, Any]) -> tuple[list[BotRow], int]:  # noqa: C901 
                 bot_id=bot_id,
                 agent=data.get("agent", "lyra_default"),
                 webhook_enabled=data.get("webhook_enabled", False),
-                # [[auth.*_bots]] sections use `default` (per config.toml.example);
-                # `default_trust` is the canonical CLI key. Both must reach BotRow.
-                default_trust=data.get(
-                    "default_trust", data.get("default", DEFAULT_TRUST)
-                ),
-                owner_users=data.get("owner_users", []),
-                trusted_users=data.get("trusted_users", []),
-                trusted_roles=data.get("trusted_roles", []),
                 auto_thread=data.get("auto_thread", DEFAULT_AUTO_THREAD),
                 thread_hot_hours=data.get("thread_hot_hours", DEFAULT_THREAD_HOT_HOURS),
                 public_bot=data.get("public_bot"),

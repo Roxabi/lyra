@@ -87,10 +87,12 @@ After a manual blobstore rotation, append to `rotation-log.md` if the script pat
 
 ## Retention
 
-- `operator.log`: rotate locally (logrotate user unit recommended — weekly, ~90 days). Low volume.
+- `operator.log`: `factory-operator-logrotate.timer` (weekly Sunday 04:30) runs `deploy/factory-operator-logrotate.sh` — `rotate 12`, `maxsize 10M` (~90 days). Installed by `make quadlet-sync-install`. Manual check: `systemctl --user list-timers factory-operator-logrotate.timer`.
 - `rotation-log.md`: keep indefinitely (small, Syncthing-synced).
 - journald: host journald retention policy.
 - JetStream `FACTORY_AUDIT`: 90 days / 1 GiB (stream config).
+
+Decision record: [ADR-093](../architecture/adr/093-operator-audit-three-channel.mdx).
 
 ## Future (ADR-092)
 

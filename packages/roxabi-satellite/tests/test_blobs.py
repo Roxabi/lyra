@@ -51,7 +51,7 @@ def test_flat_fs_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
         blobs.get_blobstore()
 
 
-def test_missing_blobstore_url(monkeypatch: pytest.MonkeyPatch, _fake_store: None) -> None:
+def test_missing_blobstore_url(monkeypatch: pytest.MonkeyPatch, _fake_store: None) -> None:  # noqa: E501
     monkeypatch.setenv("BLOBSTORE_BACKEND", "http")
     monkeypatch.delenv("BLOBSTORE_URL", raising=False)
     monkeypatch.setenv("BLOBSTORE_BEARER_TOKEN", "tok")

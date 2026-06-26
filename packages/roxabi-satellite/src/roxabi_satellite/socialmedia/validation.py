@@ -6,13 +6,13 @@ from dataclasses import dataclass
 from typing import TypeVar
 
 from pydantic import BaseModel, ValidationError
+
 from roxabi_contracts.socialmedia.models import (
     SocialMediaListGroupsRequest,
     SocialMediaListIntegrationsRequest,
     SocialMediaPublishRequest,
     SocialMediaScheduleRequest,
 )
-
 from roxabi_satellite.envelope import coerce_envelope_fields
 
 T = TypeVar("T", bound=BaseModel)
@@ -26,7 +26,7 @@ class ValidationOutcome:
 
 def _validate_model(model_cls: type[T], payload: dict) -> ValidationOutcome:
     try:
-        return ValidationOutcome(request=model_cls.model_validate(coerce_envelope_fields(payload)))
+        return ValidationOutcome(request=model_cls.model_validate(coerce_envelope_fields(payload)))  # noqa: E501
     except (ValidationError, TypeError) as exc:
         return ValidationOutcome(error=str(exc))
 

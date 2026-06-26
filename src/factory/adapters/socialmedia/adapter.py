@@ -8,15 +8,20 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from factory.adapters.socialmedia.postiz_client import PostizApiError, PostizPublicApiClient
-
+from factory.adapters.socialmedia.postiz_client import (
+    PostizApiError,
+    PostizPublicApiClient,
+)
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.socialmedia import SUBJECTS
 from roxabi_contracts.socialmedia.models import (
+    SocialMediaGroup,
+    SocialMediaIntegration,
     SocialMediaListGroupsRequest,
     SocialMediaListGroupsResponse,
     SocialMediaListIntegrationsRequest,
     SocialMediaListIntegrationsResponse,
+    SocialMediaPostRef,
     SocialMediaPublishRequest,
     SocialMediaPublishResponse,
     SocialMediaScheduleRequest,
@@ -89,7 +94,7 @@ class SocialMediaNatsAdapter(NatsAdapterBase):
             if msg.subject == SUBJECTS.list_groups:
                 await self._reply_model(msg, await self._handle_list_groups(payload))
             elif msg.subject == SUBJECTS.list_integrations:
-                await self._reply_model(msg, await self._handle_list_integrations(payload))
+                await self._reply_model(msg, await self._handle_list_integrations(payload))  # noqa: E501
             elif msg.subject == SUBJECTS.schedule:
                 await self._reply_model(msg, await self._handle_schedule(payload))
             else:
@@ -252,19 +257,21 @@ class SocialMediaNatsAdapter(NatsAdapterBase):
             )
             created = await self._postiz.create_post(body)
             posts = [
-                {
-                    "post_id": str(item.get("postId", "")),
-                    "integration_id": str(item.get("integration", "")),
-                    "platform": next(
-                        (
-                            i.get("identifier")
-                            for i in integrations
-                            if i.get("id") == item.get("integration")
+                self._envelope_post(
+                    {
+                        "post_id": str(item.get("postId", "")),
+                        "integration_id": str(item.get("integration", "")),
+                        "platform": next(
+                            (
+                                i.get("identifier")
+                                for i in integrations
+                                if i.get("id") == item.get("integration")
+                            ),
+                            "",
                         ),
-                        "",
-                    ),
-                    "group_id": group_id,
-                }
+                        "group_id": group_id,
+                    }
+                )
                 for item in created
                 if item.get("postId")
             ]
@@ -295,7 +302,7 @@ class SocialMediaNatsAdapter(NatsAdapterBase):
         await self.reply(msg, model.model_dump_json(by_alias=True).encode())
 
     def _ok_list_groups(
-        self, req: SocialMediaListGroupsRequest, groups: list[dict]
+        self, req: SocialMediaListGroupsRequest, groups: list[SocialMediaGroup]
     ) -> SocialMediaListGroupsResponse:
         return SocialMediaListGroupsResponse(
             **work_fields_from_request(req),
@@ -304,7 +311,7 @@ class SocialMediaNatsAdapter(NatsAdapterBase):
             groups=groups,
         )
 
-    def _envelope_group(self, mapped: dict) -> dict:
+    def _envelope_fields(self, mapped: dict) -> dict:
         return {
             "contract_version": CONTRACT_VERSION,
             "trace_id": "socialmedia-adapter",
@@ -312,5 +319,11 @@ class SocialMediaNatsAdapter(NatsAdapterBase):
             **mapped,
         }
 
-    def _envelope_integration(self, mapped: dict) -> dict:
-        return self._envelope_group(mapped)
+    def _envelope_group(self, mapped: dict) -> SocialMediaGroup:
+        return SocialMediaGroup.model_validate(self._envelope_fields(mapped))
+
+    def _envelope_integration(self, mapped: dict) -> SocialMediaIntegration:
+        return SocialMediaIntegration.model_validate(self._envelope_fields(mapped))
+
+    def _envelope_post(self, mapped: dict) -> SocialMediaPostRef:
+        return SocialMediaPostRef.model_validate(self._envelope_fields(mapped))

@@ -10,7 +10,6 @@ from roxabi_contracts.socialmedia.models import (
     SocialMediaListIntegrationsResponse,
     SocialMediaPublishResponse,
 )
-
 from roxabi_satellite.envelope import work_fields_from_request
 
 

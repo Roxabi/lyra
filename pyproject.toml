@@ -160,7 +160,7 @@ reportUnknownLambdaType = "none"
 reportMissingTypeArgument = "none"
 
 [tool.ruff]
-src = ["src", "tests", "packages/roxabi-nats/src", "packages/roxabi-nats/tests", "packages/roxabi-contracts/src", "packages/roxabi-contracts/tests", "packages/roxabi-blobs/src", "packages/roxabi-blobs/tests"]
+src = ["src", "tests", "packages/roxabi-nats/src", "packages/roxabi-nats/tests", "packages/roxabi-contracts/src", "packages/roxabi-contracts/tests", "packages/roxabi-blobs/src", "packages/roxabi-blobs/tests", "packages/roxabi-satellite/src", "packages/roxabi-satellite/tests"]
 exclude = [".claude/worktrees", "deploy"]
 
 [tool.ruff.lint]

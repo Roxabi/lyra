@@ -23,7 +23,9 @@ from factory.bootstrap.bootstrap_store_migrations import (
 )
 from factory.infrastructure.stores.identity.agent_grant_store import AgentGrantStore
 from factory.infrastructure.stores.identity.auth_store import AuthStore
-from factory.infrastructure.stores.identity.identity_alias_store import IdentityAliasStore
+from factory.infrastructure.stores.identity.identity_alias_store import (
+    IdentityAliasStore,
+)
 from factory.infrastructure.stores.identity.user_store import UserStore
 from factory.infrastructure.stores.kv.message_index_kv import (
     MessageIndexKvStore,

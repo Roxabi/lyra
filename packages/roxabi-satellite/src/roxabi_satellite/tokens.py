@@ -23,7 +23,7 @@ def validate_nats_token(value: str, *, kind: str, allow_empty: bool = False) -> 
         )
 
 
-def validate_nats_single_token(value: str, *, kind: str, allow_empty: bool = False) -> None:
+def validate_nats_single_token(value: str, *, kind: str, allow_empty: bool = False) -> None:  # noqa: E501
     """Raise ``ValueError`` if *value* is not a valid single NATS token (no dots)."""
     if allow_empty and not value:
         return

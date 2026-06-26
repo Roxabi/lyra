@@ -8,9 +8,9 @@ from dataclasses import dataclass
 from typing import Callable
 
 from pydantic import ValidationError
+
 from roxabi_blobs import BlobRef as StorageBlobRef
 from roxabi_contracts.voice.models import SttRequest, TtsRequest
-
 from roxabi_satellite.envelope import coerce_envelope_fields
 from roxabi_satellite.tokens import validate_nats_token
 
@@ -47,7 +47,7 @@ def _stt_raw_payload_types_valid(payload: dict) -> bool:
         return False
 
     segments = payload.get("language_detection_segments")
-    if segments is not None and (isinstance(segments, bool) or not isinstance(segments, int)):
+    if segments is not None and (isinstance(segments, bool) or not isinstance(segments, int)):  # noqa: E501
         return False
 
     fallback = payload.get("language_fallback")
@@ -59,7 +59,7 @@ def _stt_raw_payload_types_valid(payload: dict) -> bool:
         return False
 
     task = payload.get("task")
-    if task is not None and (not isinstance(task, str) or task not in ("transcribe", "translate")):
+    if task is not None and (not isinstance(task, str) or task not in ("transcribe", "translate")):  # noqa: E501
         return False
 
     raw_ref = payload.get("blob_ref")
@@ -91,12 +91,12 @@ def _tts_raw_payload_types_valid(payload: dict) -> bool:
         return False
 
     chunk_size = payload.get("chunk_size")
-    if chunk_size is not None and (isinstance(chunk_size, bool) or not isinstance(chunk_size, int)):
+    if chunk_size is not None and (isinstance(chunk_size, bool) or not isinstance(chunk_size, int)):  # noqa: E501
         return False
 
     for field in ("exaggeration", "cfg_weight", "segment_gap", "crossfade"):
         val = payload.get(field)
-        if val is not None and (isinstance(val, bool) or not isinstance(val, (int, float))):
+        if val is not None and (isinstance(val, bool) or not isinstance(val, (int, float))):  # noqa: E501
             return False
 
     for field in (

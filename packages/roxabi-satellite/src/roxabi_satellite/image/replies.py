@@ -8,11 +8,10 @@ from typing import Any
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.errors import WorkerError
 from roxabi_contracts.image.models import ImageResponse
-
 from roxabi_satellite.image.errors import image_worker_error_from_legacy
 
 
-def build_image_error_reply(
+def build_image_error_reply(  # noqa: PLR0913 — contract/request shape
     *,
     trace_id: str,
     request_id: str,

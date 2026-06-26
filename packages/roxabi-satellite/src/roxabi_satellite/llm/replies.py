@@ -13,7 +13,7 @@ from roxabi_contracts.llm.models import LlmChunkEvent, LlmResponse
 _REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 
 
-def build_llm_error_reply(payload: dict, worker_error: WorkerError, *, stream: bool) -> bytes:
+def build_llm_error_reply(payload: dict, worker_error: WorkerError, *, stream: bool) -> bytes:  # noqa: E501
     """Build and serialize an error envelope (``LlmChunkEvent`` or ``LlmResponse``)."""
     rid = str(payload.get("request_id", "unknown"))[:128]
     safe_id = rid if _REQUEST_ID_RE.match(rid) else "unknown"

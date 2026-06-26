@@ -5,7 +5,7 @@ from __future__ import annotations
 from roxabi_contracts.errors import WorkerError
 
 
-def worker_error_from_http_provider(status_code: int | None, message: str) -> WorkerError | None:
+def worker_error_from_http_provider(status_code: int | None, message: str) -> WorkerError | None:  # noqa: E501
     """Map a backing provider HTTP status to a structured ``WorkerError``."""
     if status_code is None:
         return None

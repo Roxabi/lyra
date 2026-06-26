@@ -36,8 +36,8 @@ from factory.core.messaging.message import (
 from factory.nats.type_registry import TYPE_REGISTRY_RESOLVER
 from roxabi_nats import TypeHintResolver
 from roxabi_nats._serialize import deserialize_dict, serialize
-from roxabi_satellite.tokens import validate_nats_single_token, validate_nats_token
 from roxabi_nats._version_check import check_schema_version
+from roxabi_satellite.tokens import validate_nats_single_token, validate_nats_token
 
 log = logging.getLogger(__name__)
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 
 from roxabi_contracts.errors import WorkerError
-
 from roxabi_satellite.voice.replies import build_stt_error_reply, build_tts_error_reply
 
 

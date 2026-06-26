@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import mimetypes
 
+from factory.adapters.socialmedia.postiz_client import PostizPublicApiClient
 from roxabi_blobs import HttpBlobStore
 from roxabi_contracts.blob_ref import BlobRef
-
-from factory.adapters.socialmedia.postiz_client import PostizPublicApiClient
 
 
 def _filename_for_blob(blob: BlobRef) -> str:

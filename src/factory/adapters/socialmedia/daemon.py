@@ -42,7 +42,7 @@ def _load_base_url() -> str:
 
 
 async def _run() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")  # noqa: E501
     nats_url = os.environ.get("NATS_URL", "nats://factory-nats:4222")
     base_url = _load_base_url()
     api_key = _load_api_key()

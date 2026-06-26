@@ -76,7 +76,9 @@ class TestBootstrapNoIdentitySeed:
             MagicMock(side_effect=RuntimeError("test-sentinel: abort after auth")),
         )
 
-        from factory.bootstrap.standalone.hub_standalone import _bootstrap_hub_standalone
+        from factory.bootstrap.standalone.hub_standalone import (
+            _bootstrap_hub_standalone,
+        )
 
         with pytest.raises(RuntimeError, match="test-sentinel"):
             await _bootstrap_hub_standalone({})

@@ -23,7 +23,7 @@ def _blob_ref(**overrides: object) -> dict:
 
 
 def test_stt_missing_request_id() -> None:
-    result = validate_stt_request({"blob_ref": _blob_ref()}, default_model="large-v3-turbo")
+    result = validate_stt_request({"blob_ref": _blob_ref()}, default_model="large-v3-turbo")  # noqa: E501
     assert result.error_code == "malformed_request"
 
 

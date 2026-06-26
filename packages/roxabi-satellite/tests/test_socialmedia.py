@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 from roxabi_contracts.errors import WorkerError
-from roxabi_contracts.socialmedia.models import SocialMediaPublishRequest
+from roxabi_contracts.socialmedia.models import (
+    SocialMediaListGroupsRequest,
+    SocialMediaPublishRequest,
+)
 from roxabi_satellite.socialmedia.errors import worker_error_from_http_provider
-from roxabi_contracts.socialmedia.models import SocialMediaListGroupsRequest
-from roxabi_satellite.socialmedia.replies import build_list_groups_error, build_publish_error
+from roxabi_satellite.socialmedia.replies import (
+    build_list_groups_error,
+    build_publish_error,
+)
 from roxabi_satellite.socialmedia.validation import validate_publish_request
 
 

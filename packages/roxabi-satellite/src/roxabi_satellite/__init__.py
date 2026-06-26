@@ -10,7 +10,7 @@ from roxabi_satellite.blobs import (
 )
 from roxabi_satellite.envelope import coerce_envelope_fields, work_fields_from_request
 from roxabi_satellite.errors import resolve_worker_error
-from roxabi_satellite.tokens import validate_nats_token, validate_nats_single_token
+from roxabi_satellite.tokens import validate_nats_single_token, validate_nats_token
 
 __all__ = [
     "BlobRefValidationError",

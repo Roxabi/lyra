@@ -21,6 +21,7 @@ from factory.infrastructure.stores.identity.auth_store import AuthStore
 from factory.infrastructure.stores.identity.identity_alias_store import (
     IdentityAliasStore,
 )
+from factory.infrastructure.stores.identity.user_store import UserStore
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -75,15 +76,22 @@ class TestEnsureAuthDbSchema:
         _ensure_auth_db_schema(tmp_path)
 
         auth = AuthStore(db_path=tmp_path / "auth.db")
-        alias = IdentityAliasStore(db_path=tmp_path / "auth.db")
-        grant = AgentGrantStore(db_path=tmp_path / "auth.db")
+        user = UserStore(db_path=tmp_path / "auth.db")
+        alias = IdentityAliasStore(
+            db_path=tmp_path / "auth.db", user_store=user
+        )
+        grant = AgentGrantStore(
+            db_path=tmp_path / "auth.db", user_store=user
+        )
         try:
             await auth.connect()
+            await user.connect()
             await alias.connect()
             await grant.connect()
         finally:
             await grant.close()
             await alias.close()
+            await user.close()
             await auth.close()
 
 

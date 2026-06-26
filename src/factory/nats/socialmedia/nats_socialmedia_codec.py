@@ -44,7 +44,7 @@ class SocialMediaCodec:
     def encode(self, request: BaseModel) -> bytes:
         return request.model_dump_json(exclude_none=True).encode("utf-8")
 
-    def decode(self, result: Result[bytes, SanitizedError], model: type[TResponse]) -> SocialMediaResult:
+    def decode(self, result: Result[bytes, SanitizedError], model: type[TResponse]) -> SocialMediaResult:  # noqa: E501
         if isinstance(result, Err):
             return SocialMediaResult(response=None, error=result.error.code)
         try:

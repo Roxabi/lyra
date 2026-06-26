@@ -395,10 +395,7 @@
         "$JS.API.STREAM.MSG.GET.KV_factory-state"
       ],
       "subscribe": [
-        "factory.tool.socialmedia.list_groups",
-        "factory.tool.socialmedia.list_integrations",
-        "factory.tool.socialmedia.publish",
-        "factory.tool.socialmedia.schedule",
+        "factory.tool.socialmedia.>",
         "_inbox.socialmedia-adapter.>",
         "$KV.factory-state.>"
       ],

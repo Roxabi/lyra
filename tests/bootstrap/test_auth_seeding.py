@@ -1,4 +1,4 @@
-"""Tests for bootstrap.auth_seeding — seed_grants_from_bots and build_bot_auths."""
+"""Tests for bootstrap.auth_seeding — seed_identity_and_grants and build_bot_auths."""
 
 from __future__ import annotations
 
@@ -7,7 +7,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from factory.bootstrap.auth_seeding import build_bot_auths
+from factory.bootstrap.auth_seeding import (
+    build_bot_auths,
+    merge_owner_admin_ids,
+    seed_agent_grants_from_bots,
+)
+from factory.core.auth.agent_grants import PrincipalKind
+from factory.core.agent.bot_models import BotRow
+from factory.infrastructure.stores.identity.agent_grant_store import AgentGrantStore
+from factory.infrastructure.stores.identity.user_store import UserStore
 from factory.bootstrap.wiring.auth import BotAuthDeps
 from factory.core.agent.bot_models import BotRow
 from factory.infrastructure.stores.identity.auth_store import AuthStore
@@ -18,35 +26,33 @@ from tests.factories.stores import make_auth_store
 from tests.helpers.bot_store import make_bot_store
 
 # ---------------------------------------------------------------------------
-# test_bootstrap_calls_seed_grants_from_bots
+# test_bootstrap_calls_seed_identity_and_grants
 # ---------------------------------------------------------------------------
 
 
-class TestBootstrapCallsSeedGrantsFromBots:
-    async def test_bootstrap_calls_seed_grants_from_bots(
+class TestBootstrapCallsSeedIdentityAndGrants:
+    async def test_bootstrap_calls_seed_identity_and_grants(
         self, tmp_path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """_bootstrap_hub_standalone calls seed_grants_from_bots once.
+        """_bootstrap_hub_standalone calls seed_identity_and_grants once.
 
-        Uses auth+bot stores. Drives the bootstrap past the NATS_URL guard
-        with a mock NATS connection, then short-circuits just after
-        seed_grants_from_bots so no real DB is needed.
+        Uses grant+bot+user stores. Drives the bootstrap past the NATS_URL guard
+        with a mock NATS connection, then short-circuits just after seed so no
+        real DB is needed.
         """
         # Arrange
         monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
         monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
 
-        # Track the seed_grants_from_bots call
         seed_calls: list[tuple] = []
 
-        async def fake_seed(auth_store, bot_store):
-            seed_calls.append((auth_store, bot_store))
-            # Raise to abort further bootstrap — we only need to verify the call
+        async def fake_seed(grant_store, bot_store, user_store, **kwargs):
+            seed_calls.append((grant_store, bot_store, user_store))
             raise RuntimeError("test-sentinel: abort after seed")
 
         import factory.bootstrap.standalone.hub_standalone as hub_standalone_mod
 
-        monkeypatch.setattr(hub_standalone_mod, "seed_grants_from_bots", fake_seed)
+        monkeypatch.setattr(hub_standalone_mod, "seed_identity_and_grants", fake_seed)
 
         # Patch NATS connection so we never touch a real server
         fake_nc = AsyncMock()
@@ -64,7 +70,9 @@ class TestBootstrapCallsSeedGrantsFromBots:
         async def fake_open_stores(vault_dir, nc):
             fake_stores = MagicMock()
             fake_stores.auth = MagicMock(spec=AuthStore)
+            fake_stores.grant = MagicMock()
             fake_stores.bot = MagicMock()
+            fake_stores.user = MagicMock()
             fake_stores.message_index = MagicMock()
             fake_stores.message_index.cleanup_older_than = AsyncMock(return_value=0)
             assert nc is fake_nc, (
@@ -98,11 +106,66 @@ class TestBootstrapCallsSeedGrantsFromBots:
         with pytest.raises(RuntimeError, match="test-sentinel"):
             await _bootstrap_hub_standalone(raw_config)
 
-        # Assert — seed_grants_from_bots was called once with auth+bot stores
-        assert len(seed_calls) == 1, "seed_grants_from_bots must be called exactly once"
-        passed_store, passed_bot = seed_calls[0]
-        assert passed_store is not None
+        # Assert — seed_identity_and_grants was called once with grant+bot+user
+        assert len(seed_calls) == 1, (
+            "seed_identity_and_grants must be called exactly once"
+        )
+        passed_grant, passed_bot, passed_user = seed_calls[0]
+        assert passed_grant is not None
         assert passed_bot is not None
+        assert passed_user is not None
+
+
+# ---------------------------------------------------------------------------
+# seed_agent_grants_from_bots
+# ---------------------------------------------------------------------------
+
+
+class TestSeedAgentGrantsFromBots:
+    async def test_seeds_rx_user_grant_for_owner(self, tmp_path: Path) -> None:
+        bot_store = await make_bot_store(tmp_path)
+        user_store = UserStore(db_path=tmp_path / "auth.db")
+        grant_store = AgentGrantStore(
+            db_path=tmp_path / "auth.db", user_store=user_store
+        )
+        await user_store.connect()
+        await grant_store.connect()
+        try:
+            await bot_store.upsert(
+                BotRow(
+                    platform="telegram",
+                    bot_id="main",
+                    agent="lyra_default",
+                    owner_users=["7377831990"],
+                )
+            )
+            await seed_agent_grants_from_bots(user_store, grant_store, bot_store)
+            grants = grant_store.list_grants("lyra_default")
+            assert len(grants) == 1
+            assert grants[0].principal.kind is PrincipalKind.USER
+            assert grants[0].principal.id.startswith("rx:user:")
+            decision = grant_store.authorize(
+                agent_name="lyra_default",
+                user_id="tg:user:7377831990",
+            )
+            assert decision.allowed is True
+        finally:
+            await grant_store.close()
+            await user_store.close()
+            await bot_store.close()
+
+    def test_merge_owner_admin_ids_adds_platform_prefix(self) -> None:
+        bot_store = MagicMock()
+        bot_store.get_all.return_value = [
+            BotRow(
+                platform="telegram",
+                bot_id="main",
+                agent="lyra_default",
+                owner_users=["123"],
+            )
+        ]
+        merged = merge_owner_admin_ids(bot_store, frozenset({"tg:user:999"}))
+        assert merged == frozenset({"tg:user:999", "tg:user:123"})
 
 
 # ---------------------------------------------------------------------------

@@ -62,11 +62,10 @@ def make_auth(
 
 class TestMaxTrustAcrossAliases:
     @pytest.mark.asyncio
-    async def test_max_trust_across_aliases(
+    async def test_stored_owner_does_not_elevate_trust(
         self, auth_store: AuthStore, alias_store: IdentityAliasStore
     ) -> None:
-        """Max trust level across all linked IDs."""
-        # tg:user:1=OWNER, dc:user:2=TRUSTED; linked → dc:user:2 resolves OWNER
+        """Stored OWNER/TRUSTED is ignored — only BLOCKED matters."""
         await auth_store.upsert(
             identity_key="tg:user:1",
             trust_level=TrustLevel.OWNER,
@@ -85,7 +84,7 @@ class TestMaxTrustAcrossAliases:
 
         auth = make_auth(auth_store, alias_store)
         identity = auth.resolve("dc:user:2")
-        assert identity.trust_level == TrustLevel.OWNER
+        assert identity.trust_level == TrustLevel.TRUSTED
 
     @pytest.mark.asyncio
     async def test_any_blocked_returns_blocked(
@@ -109,7 +108,6 @@ class TestMaxTrustAcrossAliases:
         await alias_store.link("tg:user:1", "dc:user:2")
 
         auth = make_auth(auth_store, alias_store)
-        # Resolving the OWNER ID also returns BLOCKED because dc:user:2 is BLOCKED
         identity = auth.resolve("tg:user:1")
         assert identity.trust_level == TrustLevel.BLOCKED
 
@@ -135,7 +133,6 @@ class TestMaxTrustAcrossAliases:
         await alias_store.link("tg:user:1", "dc:user:2")
 
         auth = make_auth(auth_store, alias_store)
-        # Completer (dc:user:2) is blocked → must not be escalated to OWNER
         identity = auth.resolve("dc:user:2")
         assert identity.trust_level == TrustLevel.BLOCKED
 
@@ -160,10 +157,10 @@ class TestAdminCascades:
         assert identity.is_admin is True
 
     @pytest.mark.asyncio
-    async def test_owner_on_alias_sets_is_admin(
+    async def test_stored_owner_does_not_set_is_admin(
         self, auth_store: AuthStore, alias_store: IdentityAliasStore
     ) -> None:
-        """If any linked ID has stored OWNER trust, is_admin becomes True."""
+        """Stored OWNER trust no longer implies is_admin."""
         await auth_store.upsert(
             identity_key="tg:user:1",
             trust_level=TrustLevel.OWNER,
@@ -175,7 +172,7 @@ class TestAdminCascades:
 
         auth = make_auth(auth_store, alias_store)
         identity = auth.resolve("dc:user:2")
-        assert identity.is_admin is True
+        assert identity.is_admin is False
 
 
 # ---------------------------------------------------------------------------
@@ -196,13 +193,13 @@ class TestNoAliasStoreBackwardCompat:
         )
         auth = make_auth(auth_store, alias_store=None)
         identity = auth.resolve("tg:user:1")
-        assert identity.trust_level == TrustLevel.OWNER
-        assert identity.is_admin is True
+        assert identity.trust_level == TrustLevel.TRUSTED
+        assert identity.is_admin is False
 
     @pytest.mark.asyncio
     async def test_no_alias_store_unknown_user(self, auth_store: AuthStore) -> None:
-        """Without alias_store, unknown users fall back to default trust."""
+        """Without alias_store, unknown users are TRUSTED (ban-only model)."""
         auth = make_auth(auth_store, alias_store=None)
         identity = auth.resolve("dc:user:99")
-        assert identity.trust_level == TrustLevel.PUBLIC
+        assert identity.trust_level == TrustLevel.TRUSTED
         assert identity.is_admin is False

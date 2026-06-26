@@ -78,32 +78,39 @@ class TestInitInboundBus:
 
 class TestSeedAuth:
     @pytest.mark.asyncio
-    async def test_seed_auth_delegates_to_seed_grants_from_bots(
+    async def test_seed_auth_delegates_to_seed_identity_and_grants(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # Arrange
         seed_calls: list[tuple] = []
 
-        async def fake_seed(auth_store, bot_store):
-            seed_calls.append((auth_store, bot_store))
+        async def fake_seed(grant_store, bot_store, user_store, **kwargs):
+            seed_calls.append((grant_store, bot_store, user_store, kwargs))
 
         monkeypatch.setattr(
-            "factory.bootstrap.auth_seeding.seed_grants_from_bots",
+            "factory.bootstrap.auth_seeding.seed_identity_and_grants",
             fake_seed,
+        )
+        monkeypatch.setattr(
+            "factory.bootstrap.factory.config._load_circuit_config",
+            lambda _raw: (MagicMock(), frozenset({"tg:user:1"})),
         )
 
         stores = MagicMock()
-        stores.auth = MagicMock()
+        stores.grant = MagicMock()
         stores.bot = MagicMock()
+        stores.user = MagicMock()
 
         # Act
-        await _seed_auth(stores)
+        await _seed_auth(stores, {"admin": {"user_ids": ["tg:user:1"]}})
 
-        # Assert — delegates to canonical seed_grants_from_bots with auth+bot stores
+        # Assert
         assert len(seed_calls) == 1
-        passed_auth, passed_bot = seed_calls[0]
-        assert passed_auth is stores.auth
+        passed_grant, passed_bot, passed_user, kwargs = seed_calls[0]
+        assert passed_grant is stores.grant
         assert passed_bot is stores.bot
+        assert passed_user is stores.user
+        assert kwargs["admin_user_ids"] == frozenset({"tg:user:1"})
 
 
 class TestPruneMessageIndex:

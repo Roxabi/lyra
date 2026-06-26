@@ -55,7 +55,7 @@ aiogram long-poll                NatsBus                       discord.py gatewa
       ◄──────────────────────────────┴──────────────────────────────▶
 ```
 
-Nine containers run on Machine 1 (`factory-hub` role): `factory-nats` (single NATS server), `factory-hub`, `factory-telegram`, `factory-discord`, `factory-clipool`, `factory-omp`, `factory-gh-helper`, `factory-turn-writer`, `factory-blobstore`. NATS topics: `factory.inbound.<platform>.<bot_id>` (adapter→hub), `factory.outbound.<platform>.<bot_id>` (hub→adapter). `factory start` runs hub + adapters in one process with embedded NATS.
+Twenty Quadlet containers run on Machine 1 (`factory-hub` role, manifest `deploy/quadlet.toml`): core factory (`factory-nats`, `factory-hub`, `factory-telegram`, `factory-discord`, `factory-web`, `factory-clipool`, `factory-omp`, `factory-socialmedia-adapter`, `factory-gh-helper`, `factory-turn-writer`, `factory-blobstore`) plus observability (`factory-loki`, `factory-promtail`, `factory-otel-collector`, `factory-langfuse-*`). NATS topics: `factory.inbound.<platform>.<bot_id>` (adapter→hub), `factory.outbound.<platform>.<bot_id>` (hub→adapter). `factory start` runs hub + adapters in one process with embedded NATS.
 
 ### Jobs & workers
 

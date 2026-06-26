@@ -56,16 +56,23 @@ def mock_gateway(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
                         "api": "openai-completions",
                         "apiKey": "LITELLM_API_KEY",
                         "discovery": {"type": "openai-models-list"},
-                        "model_policy": {
-                            "boot": {"select": "first"},
-                            "unavailable": {
-                                "select": "first",
-                                "skip_requested": True,
-                                "filter": {"exclude_contains": ["reasoning"]},
-                            },
-                        },
                     }
                 }
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    policy_yml = tmp_path / "factory-model-policy.yml"
+    policy_yml.write_text(
+        yaml.safe_dump(
+            {
+                "boot": {"select": "first"},
+                "unavailable": {
+                    "select": "first",
+                    "skip_requested": True,
+                    "filter": {"exclude_contains": ["reasoning"]},
+                },
             },
             sort_keys=False,
         ),
@@ -104,12 +111,15 @@ def test_resolve_boot_model_raises_when_catalogue_empty(
                 "providers": {
                     "litellm": {
                         "baseUrl": "http://127.0.0.1:9/v1",
-                        "model_policy": {"boot": {"select": "first"}},
                     }
                 }
             },
             sort_keys=False,
         ),
+        encoding="utf-8",
+    )
+    (tmp_path / "factory-model-policy.yml").write_text(
+        yaml.safe_dump({"boot": {"select": "first"}}, sort_keys=False),
         encoding="utf-8",
     )
     monkeypatch.setenv("PI_CODING_AGENT_DIR", str(tmp_path))
@@ -131,13 +141,19 @@ def test_select_max_lex_from_policy(
                 "providers": {
                     "litellm": {
                         "baseUrl": "http://127.0.0.1:9/v1",
-                        "model_policy": {
-                            "boot": {
-                                "select": "max_lex",
-                                "filter": {"include_prefix": ["grok"]},
-                            }
-                        },
                     }
+                }
+            },
+            sort_keys=False,
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / "factory-model-policy.yml").write_text(
+        yaml.safe_dump(
+            {
+                "boot": {
+                    "select": "max_lex",
+                    "filter": {"include_prefix": ["grok"]},
                 }
             },
             sort_keys=False,

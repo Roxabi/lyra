@@ -1,9 +1,10 @@
 """LiteLLM catalogue helpers for omp model boot + fallback (#1923).
 
-Boot and fallback policies live in ``deploy/omp/models.yml`` under
-``providers.litellm.model_policy`` — no hardcoded model ids or provider
-heuristics in Python. The catalogue source of truth is always
-``GET {baseUrl}/models`` (same merged list Lyra/llmCLI publishes).
+Boot and fallback policies live in ``deploy/omp/factory-model-policy.yml`` —
+kept separate from ``models.yml`` so unknown keys do not break omp's litellm
+provider registration. No hardcoded model ids or provider heuristics in Python.
+The catalogue source of truth is always ``GET {baseUrl}/models`` (same merged
+list Lyra/llmCLI publishes).
 """
 
 from __future__ import annotations
@@ -26,8 +27,10 @@ _ENV_AGENT_DIR = "PI_CODING_AGENT_DIR"
 _DEFAULT_AGENT_DIR = Path("/home/factory/.config/omp-pi")
 _REPO_ROOT = Path(__file__).resolve().parents[4]
 _REPO_MODELS_YML = _REPO_ROOT / "deploy" / "omp" / "models.yml"
+_REPO_MODEL_POLICY_YML = _REPO_ROOT / "deploy" / "omp" / "factory-model-policy.yml"
+_MODEL_POLICY_FILENAME = "factory-model-policy.yml"
 
-# Applied when models.yml omits model_policy (explicit, config-shaped — not a model id).
+# Applied when factory-model-policy.yml is missing (explicit, config-shaped — not a model id).
 _DEFAULT_MODEL_POLICY: dict[str, Any] = {
     "boot": {"select": "first"},
     "unavailable": {"select": "first", "skip_requested": True},
@@ -75,12 +78,28 @@ def _load_litellm_provider() -> dict[str, Any] | None:
     return provider if isinstance(provider, dict) else None
 
 
+def _model_policy_path() -> Path:
+    agent_dir = os.environ.get(_ENV_AGENT_DIR, "").strip()
+    if agent_dir:
+        candidate = Path(agent_dir) / _MODEL_POLICY_FILENAME
+        if candidate.is_file():
+            return candidate
+    default_candidate = _DEFAULT_AGENT_DIR / _MODEL_POLICY_FILENAME
+    if default_candidate.is_file():
+        return default_candidate
+    return _REPO_MODEL_POLICY_YML
+
+
 def load_model_policy() -> dict[str, Any]:
-    """Return merged model_policy from models.yml (boot + unavailable sections)."""
-    provider = _load_litellm_provider()
-    if not isinstance(provider, dict):
+    """Return merged model_policy from factory-model-policy.yml."""
+    path = _model_policy_path()
+    if not path.is_file():
         return dict(_DEFAULT_MODEL_POLICY)
-    raw = provider.get("model_policy")
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        log.warning("omp model catalogue: failed to read %s: %s", path, exc)
+        return dict(_DEFAULT_MODEL_POLICY)
     if not isinstance(raw, dict):
         return dict(_DEFAULT_MODEL_POLICY)
     boot = raw.get("boot")

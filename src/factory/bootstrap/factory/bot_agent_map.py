@@ -70,7 +70,7 @@ async def resolve_bot_agent_map(
             if agent_store.get(toml_agent) is None:
                 log.error(
                     "bot_agent_map: TOML agent %r for (%r, %r) not found in agents DB "
-                    "— skipping adapter (run 'lyra agent init' to import TOMLs)",
+                    "— skipping adapter (run 'factory agent init' to import TOMLs)",
                     toml_agent,
                     platform,
                     bot_id,

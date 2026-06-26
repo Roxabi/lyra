@@ -1,4 +1,4 @@
-"""lyra bot commands — split into per-command modules.
+"""factory bot commands — split into per-command modules.
 
 This package registers commands on ``bot_app`` via decorator side-effects.
 Import this module to trigger registration.

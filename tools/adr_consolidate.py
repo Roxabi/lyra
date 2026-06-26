@@ -17,7 +17,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent
 ADR_DIR = REPO_ROOT / "docs" / "architecture" / "adr"
-MATRIX_FILE = REPO_ROOT / "artifacts" / "analyses" / "adr-consolidation-matrix.md"
+MATRIX_FILE = (
+    REPO_ROOT / "artifacts" / "analyses" / "archive" / "adr-consolidation-matrix.md"
+)
 
 DOMAIN_TO_DOC = {
     "MSG": "messaging.md",

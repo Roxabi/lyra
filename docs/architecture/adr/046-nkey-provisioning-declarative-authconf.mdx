@@ -83,7 +83,7 @@ Each supervisor program's environment MUST reference its own seed file (`<identi
 
 ### Invariant 5 — Drift is detectable before harm
 
-A `lyra ops verify` CLI command (or equivalent script) MUST be able to: (a) parse IDENTITIES from gen-nkeys.sh, (b) check which seeds exist on disk, (c) parse the live auth.conf, and (d) report any gap between the three — missing seeds, extra auth.conf entries, entries without permissions blocks. This check runs in CI and as a pre-deploy gate.
+A `factory ops verify` CLI command (or equivalent script) MUST be able to: (a) parse IDENTITIES from gen-nkeys.sh, (b) check which seeds exist on disk, (c) parse the live auth.conf, and (d) report any gap between the three — missing seeds, extra auth.conf entries, entries without permissions blocks. This check runs in CI and as a pre-deploy gate.
 
 ### Rollout for the current drift
 
@@ -108,13 +108,13 @@ Lane B (containerize, #727/#728) remains independent — it does not need to lan
 - The rendering is deterministic and auditable — given IDENTITIES + seed dir, the expected auth.conf is computable offline.
 - New identities added to IDENTITIES are automatically included in the next `--regen-authconf` run, including auto-created seeds.
 - The "authenticate as hub via .env fallback" silent security hole is structurally eliminated by Invariant 4 — it is a misconfiguration that the supervisor conf must not allow.
-- `lyra ops verify` (Invariant 5) closes the detection gap — the current drift would have been caught before any process was started.
+- `factory ops verify` (Invariant 5) closes the detection gap — the current drift would have been caught before any process was started.
 
 ### Negative
 
 - gen-nkeys.sh grows a second mode. The script's cognitive surface area increases.
 - Invariant 4 (fail-fast on missing seed) will surface misconfigurations that currently pass silently. Any deployment that relied on the hub.seed fallback will break on restart — intentionally.
-- `lyra ops verify` is a new deliverable that does not exist yet; until it is implemented, drift remains manually detectable only.
+- `factory ops verify` is a new deliverable that does not exist yet; until it is implemented, drift remains manually detectable only.
 
 ### Neutral
 
@@ -135,4 +135,4 @@ Lane B (containerize, #727/#728) remains independent — it does not need to lan
 - Spec: [`artifacts/specs/706-per-role-nkeys-acls-spec.mdx`](../../../artifacts/specs/706-per-role-nkeys-acls-spec.mdx)
 - Issue: [#714](https://github.com/Roxabi/lyra/issues/714) (per-role ACLs), [#689](https://github.com/Roxabi/lyra/issues/689) (Lane G voicecli cutover)
 - Script: `deploy/nats/gen-nkeys.sh`
-- Planned: `tools/check-nats-acls.sh`, `lyra ops verify` CLI command
+- Planned: `tools/check-nats-acls.sh`, `factory ops verify` CLI command

@@ -43,6 +43,9 @@ scrape_configs:
         job: factory-journal
         channel: journald
     relabel_configs:
+      - source_labels: [__journal__systemd_owner_uid]
+        regex: "1000"
+        action: keep
       - source_labels: [__journal__systemd_user_unit]
         target_label: systemd_unit
       - source_labels: [__journal_syslog_identifier]

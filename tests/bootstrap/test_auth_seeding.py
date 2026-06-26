@@ -103,7 +103,7 @@ class TestBuildBotAuthsRaisesWithoutAdapters:
         with pytest.raises(ValueError) as exc_info:
             build_bot_auths({}, fake_auth_store, fake_bot_store)
 
-        assert "lyra bot init" in str(exc_info.value)
+        assert "factory bot init" in str(exc_info.value)
 
 
 class TestRosterFromStore:

@@ -19,6 +19,7 @@ coverage.xml
 *.db-shm
 *.db-wal
 .ruff_cache/
+.pytest_cache/
 .claude/worktrees/
 .claude/*.lock
 src/factory/agents/lyra_runtime.toml
@@ -34,6 +35,9 @@ tests/data/traces/*.json
 
 # Machine-local build state (image digest capture, ADR-053 §3)
 .image-digest
+
+# Scratch output from tools/classify_quality_debt.py — regenerate locally, do not commit
+artifacts/quality-debt-drain-queue.json
 
 # CocoIndex Code (ccc)
 /.cocoindex_code/

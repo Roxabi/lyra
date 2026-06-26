@@ -86,9 +86,6 @@ that composes `WorkerPoolClient` (from `factory.transport`) with a codec:
   `pool.stream_request(payload)` — they never call `nc.new_inbox()` or `nc.subscribe()`
   directly.
 
-`audio/tts_engine_selector.py` and `audio/tts_text_normalization.py` are helpers co-located with their
-consumer (`audio/nats_tts_client.py`).
-
 ## Key invariants
 
 - `NatsBus`: caller owns the NATS connection; bus only manages subscriptions.

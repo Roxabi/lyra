@@ -21,7 +21,7 @@ from factory.core.auth.trust import TrustLevel
 from factory.core.messaging.message import InboundMessage, Response, TelegramMeta
 from factory.core.pool import Pool
 
-from .fake_drivers import FakeClaudeCliDriver, FakeStt, FakeTts
+from tests.fakes import FakeClaudeCliDriver, FakeStt, FakeTts
 
 if TYPE_CHECKING:
     pass

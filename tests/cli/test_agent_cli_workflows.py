@@ -1,4 +1,4 @@
-"""Tests for lyra agent CLI workflows: edit, delete (happy path), assign (happy path),
+"""Tests for factory agent CLI workflows: edit, delete (happy path), assign (happy path),
 validate (DB path), and TTS editing.
 
 After #346, AgentRow no longer has tts_json/stt_json/persona/i18n_language.
@@ -62,7 +62,7 @@ def _seed_agent(  # noqa: PLR0913
 
 
 class TestAgentEditCommand:
-    """Tests for `lyra agent edit <name>`."""
+    """Tests for `factory agent edit <name>`."""
 
     def test_edit_missing_agent_exits_1(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -132,7 +132,7 @@ class TestAgentEditCommand:
 
 
 class TestAgentDeleteHappyPath:
-    """Happy-path test for `lyra agent delete <name> --yes`."""
+    """Happy-path test for `factory agent delete <name> --yes`."""
 
     def test_delete_happy_path(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -166,7 +166,7 @@ class TestAgentDeleteHappyPath:
 
 
 class TestAgentAssignHappyPath:
-    """Happy-path test for `lyra agent assign <name> --bot <id> --platform <p>`."""
+    """Happy-path test for `factory agent assign <name> --bot <id> --platform <p>`."""
 
     def test_assign_happy_path(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -193,7 +193,7 @@ class TestAgentAssignHappyPath:
 
 
 class TestAgentValidateDBPath:
-    """Tests for `lyra agent validate <name>` against DB (no --agents-dir)."""
+    """Tests for `factory agent validate <name>` against DB (no --agents-dir)."""
 
     def test_validate_valid_agent_exits_0(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -242,7 +242,7 @@ class TestAgentValidateDBPath:
 
 
 class TestAgentEditTTS:
-    """Tests for TTS sub-section in `lyra agent edit <name>` (issue #280)."""
+    """Tests for TTS sub-section in `factory agent edit <name>` (issue #280)."""
 
     def test_edit_existing_tts_updates_voice(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

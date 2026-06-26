@@ -243,7 +243,7 @@ def init_bots(factory_dir: Path) -> None:
 
 
 def create_log_dirs() -> None:
-    """Create XDG-compliant log directories used by Quadlet bind mounts."""
+    """Create XDG state dir for operator.log (deploy audit JSONL — not container bind mounts)."""
     state = Path.home() / ".local" / "state"
     for app in ("factory", "voicecli"):
         log_dir = state / app / "logs"

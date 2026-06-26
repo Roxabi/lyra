@@ -109,7 +109,7 @@ class TestRunSecretsReset:
 
         assert regen_called == [True]
         assert calls[0][0].endswith("install.sh")
-        assert calls[0][1:] == ["--force", "--secrets-only"]
+        assert calls[0][1:] == ["--force-secrets", "--secrets-only"]
         assert calls[1] == ["make", "converge"]
 
 

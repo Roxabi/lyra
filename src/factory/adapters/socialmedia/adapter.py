@@ -8,20 +8,22 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from factory.adapters.socialmedia.envelopes import (
+    envelope_group,
+    envelope_integration,
+    envelope_post,
+)
 from factory.adapters.socialmedia.postiz_client import (
     PostizApiError,
     PostizPublicApiClient,
 )
-from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.socialmedia import SUBJECTS
 from roxabi_contracts.socialmedia.models import (
     SocialMediaGroup,
-    SocialMediaIntegration,
     SocialMediaListGroupsRequest,
     SocialMediaListGroupsResponse,
     SocialMediaListIntegrationsRequest,
     SocialMediaListIntegrationsResponse,
-    SocialMediaPostRef,
     SocialMediaPublishRequest,
     SocialMediaPublishResponse,
     SocialMediaScheduleRequest,
@@ -117,7 +119,7 @@ class SocialMediaNatsAdapter(NatsAdapterBase):
         assert isinstance(req, SocialMediaListGroupsRequest)
         try:
             groups = [
-                self._envelope_group(self._postiz.map_group(g))
+                envelope_group(self._postiz.map_group(g))
                 for g in await self._postiz.list_groups()
             ]
             return self._ok_list_groups(req, groups)
@@ -156,7 +158,7 @@ class SocialMediaNatsAdapter(NatsAdapterBase):
                     )
             raw = await self._postiz.list_integrations(group_id=group_id)
             integrations = [
-                self._envelope_integration(
+                envelope_integration(
                     self._postiz.map_integration(
                         item,
                         brand_slug=req.brand_slug,
@@ -257,7 +259,7 @@ class SocialMediaNatsAdapter(NatsAdapterBase):
             )
             created = await self._postiz.create_post(body)
             posts = [
-                self._envelope_post(
+                envelope_post(
                     {
                         "post_id": str(item.get("postId", "")),
                         "integration_id": str(item.get("integration", "")),
@@ -311,19 +313,3 @@ class SocialMediaNatsAdapter(NatsAdapterBase):
             groups=groups,
         )
 
-    def _envelope_fields(self, mapped: dict) -> dict:
-        return {
-            "contract_version": CONTRACT_VERSION,
-            "trace_id": "socialmedia-adapter",
-            "issued_at": datetime.now(tz=UTC),
-            **mapped,
-        }
-
-    def _envelope_group(self, mapped: dict) -> SocialMediaGroup:
-        return SocialMediaGroup.model_validate(self._envelope_fields(mapped))
-
-    def _envelope_integration(self, mapped: dict) -> SocialMediaIntegration:
-        return SocialMediaIntegration.model_validate(self._envelope_fields(mapped))
-
-    def _envelope_post(self, mapped: dict) -> SocialMediaPostRef:
-        return SocialMediaPostRef.model_validate(self._envelope_fields(mapped))

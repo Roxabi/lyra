@@ -148,6 +148,31 @@ class WorkerPoolClient:
     def is_pool_alive(self) -> bool:
         return self._registry.any_alive()
 
+    async def request(
+        self,
+        subject: str,
+        payload: bytes,
+        *,
+        timeout: float | None = None,
+    ) -> Result[bytes, SanitizedError]:
+        """Request-reply on a fixed subject (queue-group workers).
+
+        Used when the responder subscribes to a shared subject with a queue
+        group rather than per-worker suffixed subjects.
+        """
+        if self._cb.is_open():
+            return Err(
+                SanitizedError(
+                    code="pool.circuit_open", message="CircuitOpen", retryable=True
+                )
+            )
+        result = await self._transport.call(subject, payload, timeout=timeout)
+        if isinstance(result, Ok):
+            self._cb.record_success()
+            return result
+        self._cb.record_failure()
+        return result
+
     async def request_with_routing(
         self,
         subject_fn: Callable[[str], str],

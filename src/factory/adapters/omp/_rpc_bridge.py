@@ -46,7 +46,7 @@ _DEFAULT_PROVIDER = (
 # Pin a fast non-reasoning default — model=None falls through to models.yml[0]
 # (grok-4 full) and risks RpcClient(request_timeout=30s) timeouts (#1910).
 # Alias must exist in the LiteLLM xAI pass-through catalogue (#1923).
-_DEFAULT_MODEL = "grok-4.20-non-reasoning"
+_DEFAULT_MODEL = "grok-4.20-0309-non-reasoning"
 _OMP_BIN = _rpc_digest._OMP_BIN
 _PINNED_SHA256 = _rpc_digest._PINNED_SHA256
 _DEFAULT_REQUEST_TIMEOUT = _rpc_digest._DEFAULT_REQUEST_TIMEOUT

@@ -1,4 +1,4 @@
-"""lyra agent edit/assign/unassign/patch/refine commands."""
+"""factory agent edit/assign/unassign/patch/refine commands."""
 
 from __future__ import annotations
 
@@ -281,7 +281,7 @@ def refine(name: str = typer.Argument(..., help="Agent name to refine.")) -> Non
             for field_name, new_val in patch.fields.items():
                 old_val = getattr(before_row, field_name, "?")
                 typer.echo(f"  {field_name}: {old_val!r} -> {new_val!r}")
-            typer.echo("\nAgent profile updated. Restart lyra to apply.")
+            typer.echo("\nAgent profile updated. Restart factory to apply.")
         finally:
             await store.close()
 

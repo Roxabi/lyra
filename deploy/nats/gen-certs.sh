@@ -66,7 +66,7 @@ openssl req -new -x509 \
   -key "${CERT_DIR}/ca.key" \
   -out "${CERT_DIR}/ca.crt" \
   -days "${VALID_DAYS}" \
-  -subj "/CN=Lyra NATS CA/O=Roxabi"
+  -subj "/CN=Factory NATS CA/O=Roxabi"
 chmod 644 "${CERT_DIR}/ca.crt"
 
 info "Generating server private key (ECDSA P-384)..."

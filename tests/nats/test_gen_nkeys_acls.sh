@@ -4,7 +4,7 @@
 # Usage: bash tests/nats/test_gen_nkeys_acls.sh
 #
 # Asserts 7 conditions against the --template-only rendered auth.conf:
-#   (a) 7 identity blocks exist (one per user in IDENTITIES)
+#   (a) N identity blocks exist (one per active user in IDENTITIES)
 #   (b) each identity's publish allow-list equals its matrix row (set equality)
 #   (c) each identity's subscribe allow-list equals its matrix row (set equality)
 #   (d) allow_responses: true present on every user (9 occurrences)
@@ -35,11 +35,23 @@ MATRIX_JSON="deploy/nats/acl-matrix.json"
 [ -f "$MATRIX_JSON" ] || { echo "FAIL: $MATRIX_JSON not found"; exit 1; }
 declare -A EXPECTED_PUB EXPECTED_SUB
 IDENTITIES=()
-while IFS= read -r name; do
+# Effective grants (group expansion + flow-inbox injection) — mirrors scripts/_effective.py
+while IFS= read -r row; do
+  name=$(echo "$row" | jq -r '.name')
   IDENTITIES+=("$name")
-  EXPECTED_PUB[$name]=$(jq -r --arg n "$name" '.identities[$n].publish | join(" ")' "$MATRIX_JSON")
-  EXPECTED_SUB[$name]=$(jq -r --arg n "$name" '.identities[$n].subscribe | join(" ")' "$MATRIX_JSON")
-done < <(jq -r '.identities | keys_unsorted[]' "$MATRIX_JSON")
+  EXPECTED_PUB[$name]=$(echo "$row" | jq -r '.pub | join(" ")')
+  EXPECTED_SUB[$name]=$(echo "$row" | jq -r '.sub | join(" ")')
+done < <(uv run python -c "
+import json
+from pathlib import Path
+from scripts._loader import load_matrix
+from scripts._effective import effective_grants
+matrix = load_matrix(Path('deploy/nats/acl-matrix.json'))
+for name, (pub, sub) in sorted(effective_grants(matrix).items()):
+    print(json.dumps({'name': name, 'pub': pub, 'sub': sub}))
+")
+IDENTITY_COUNT=${#IDENTITIES[@]}
+[ "$IDENTITY_COUNT" -gt 0 ] || { echo "FAIL: no active identities in $MATRIX_JSON"; exit 1; }
 
 # ── extract_block: print the user{} block for a given identity name ────────────
 # B9: the closing-brace condition records `entry_depth` when the identity's
@@ -73,8 +85,9 @@ assert_allow_list_equals() {
     exit 1
   fi
   # Pull quoted subjects; normalize to whitespace-separated tokens.
+  # grep exits 1 on empty allow: [] — must not trip set -e.
   local actual
-  actual=$(echo "$line" | grep -oE '"[^"]+"' | tr -d '"' | sort -u)
+  actual=$(echo "$line" | { grep -oE '"[^"]+"' || true; } | tr -d '"' | sort -u)
   local expected_sorted
   expected_sorted=$(echo "$expected" | tr ' ' '\n' | sort -u)
 
@@ -97,28 +110,33 @@ assert_allow_list_equals() {
   fi
 }
 
-# ── (a) 10 identity comment labels ─────────────────────────────────────────────
-count=$(grep -cE '^[[:space:]]+#[[:space:]]+(hub|telegram-adapter|discord-adapter|tts-adapter|stt-adapter|voice-tts|voice-stt|llm-worker|image-worker|monitor)$' "$OUT" || true)
-[ "$count" -eq 10 ] \
-  || { echo "FAIL (a): expected 10 identity blocks, got ${count}"; exit 1; }
-echo "PASS (a): 10 identity blocks found"
+# ── (a) identity comment labels (active identities from acl-matrix.json) ───────
+count=0
+for name in "${IDENTITIES[@]}"; do
+  grep -qE "^[[:space:]]+#[[:space:]]+${name}$" "$OUT" && count=$((count + 1)) \
+    || { echo "FAIL (a): identity block missing for ${name}"; exit 1; }
+done
+[ "$count" -eq "$IDENTITY_COUNT" ] \
+  || { echo "FAIL (a): expected ${IDENTITY_COUNT} identity blocks, got ${count}"; exit 1; }
+echo "PASS (a): ${IDENTITY_COUNT} identity blocks found"
 
-# ── (b) + (c) + (f) set-equality publish and subscribe for all 10 identities ──
+# ── (b) + (c) + (f) set-equality publish and subscribe for all identities ─────
 for name in "${IDENTITIES[@]}"; do
   block=$(extract_block "$name")
   [ -n "$block" ] || { echo "FAIL: block not found for ${name}"; exit 1; }
   assert_allow_list_equals "$block" "publish"   "${EXPECTED_PUB[$name]}" "$name"
   assert_allow_list_equals "$block" "subscribe" "${EXPECTED_SUB[$name]}" "$name"
 done
-echo "PASS (b): publish allow-lists match matrix (set equality, 10 identities)"
-echo "PASS (c): subscribe allow-lists match matrix (set equality, 10 identities)"
+echo "PASS (b): publish allow-lists match matrix (set equality, ${IDENTITY_COUNT} identities)"
+echo "PASS (c): subscribe allow-lists match matrix (set equality, ${IDENTITY_COUNT} identities)"
 echo "PASS (f): no over-privilege detected"
 
-# ── (d) allow_responses: true present on every user (10 occurrences) ──────────
+# ── (d) allow_responses: true only on identities flagged in acl-matrix.json ───
+AR_EXPECTED=$(jq '[.identities | to_entries[] | select(.value.status != "retired" and (.value.allow_responses // false))] | length' "$MATRIX_JSON")
 ar_count=$(grep -c 'allow_responses: true' "$OUT" || true)
-[ "$ar_count" -eq 10 ] \
-  || { echo "FAIL (d): expected 10 allow_responses: true lines, got ${ar_count}"; exit 1; }
-echo "PASS (d): allow_responses: true appears 10 times"
+[ "$ar_count" -eq "$AR_EXPECTED" ] \
+  || { echo "FAIL (d): expected ${AR_EXPECTED} allow_responses: true lines, got ${ar_count}"; exit 1; }
+echo "PASS (d): allow_responses: true appears ${AR_EXPECTED} times"
 
 # ── (e) the word 'plugin' must not appear anywhere in the generated conf ──────
 if grep -qi 'plugin' "$OUT"; then
@@ -143,7 +161,7 @@ dp_sub=$(awk '/default_permissions:[[:space:]]*\{/,/users:[[:space:]]*\[/' "$OUT
 echo "PASS (g): default_permissions denies publish + subscribe on \">\" fallback"
 
 echo ""
-echo "PASS: all 7 assertions (a–g) — 10 identities × {pub,sub} × set equality"
+echo "PASS: all 7 assertions (a–g) — ${IDENTITY_COUNT} identities × {pub,sub} × set equality"
 
 # ── #754 image domain integration — assert image-worker + amended hub ACL ──
 # Contract: ADR-050 (absorbed into ADR-049) (lyra ↔ imagecli). See artifacts/specs/754-lyra-image-domain-integration-spec.mdx §Slice 3.
@@ -166,17 +184,15 @@ iw_pub_line=$(echo "$iw_block" | grep -E 'publish:[[:space:]]*\{[[:space:]]*allo
 echo "$iw_pub_line" | grep -q '"factory.image.heartbeat"' \
   || { echo "FAIL: image-worker publish must allow factory.image.heartbeat"; exit 1; }
 
-# Must contain both inbox forms
-echo "$iw_pub_line" | grep -q '"_INBOX.>"' \
-  || { echo "FAIL: image-worker publish must allow _INBOX.>"; exit 1; }
-echo "$iw_pub_line" | grep -q '"_inbox.>"' \
-  || { echo "FAIL: image-worker publish must allow _inbox.>"; exit 1; }
+# Must contain hub flow-inbox (request_reply_flows inject _inbox.{requester}.>)
+echo "$iw_pub_line" | grep -q '"_inbox.hub.>"' \
+  || { echo "FAIL: image-worker publish must allow _inbox.hub.>"; exit 1; }
 
 # Must NOT contain any other factory.* subject in the publish line
 extra_pub=$(echo "$iw_pub_line" | grep -oE '"factory\.[^"]+"' | grep -v '"factory\.image\.heartbeat"' || true)
 [ -z "$extra_pub" ] \
   || { echo "FAIL: image-worker publish has unexpected factory.* subject(s): ${extra_pub}"; exit 1; }
-echo "PASS (#754-2): image-worker publish allow-list == [\"factory.image.heartbeat\", \"_INBOX.>\", \"_inbox.>\"]"
+echo "PASS (#754-2): image-worker publish includes factory.image.heartbeat + _inbox.hub.>"
 
 # ── (#754-3) image-worker subscribe allow-list == ["factory.image.generate.request"] ──
 # Must contain factory.image.generate.request in the subscribe line
@@ -207,7 +223,11 @@ echo "$hub_block" | grep -E 'subscribe:[[:space:]]*\{[[:space:]]*allow:' \
 echo "PASS (#754-5): hub subscribe allow-list includes factory.image.heartbeat"
 
 # ── (#754-6) no other identity may access factory.image.* ───────────────────────
-OTHER_IDENTITIES=(telegram-adapter discord-adapter tts-adapter stt-adapter voice-tts voice-stt llm-worker monitor)
+OTHER_IDENTITIES=()
+for other_id in "${IDENTITIES[@]}"; do
+  [[ "$other_id" == "hub" || "$other_id" == "image-worker" ]] && continue
+  OTHER_IDENTITIES+=("$other_id")
+done
 for other_id in "${OTHER_IDENTITIES[@]}"; do
   other_block=$(extract_block "$other_id")
   [ -n "$other_block" ] || { echo "FAIL: could not extract block for ${other_id}"; exit 1; }
@@ -225,67 +245,44 @@ echo "PASS (#754): image-worker ACL + amended hub ACL assertions (5 checks)"
 # scoped prefix form and MUST NOT contain the bare wildcard in any allow-list.
 #
 # Scope:
-#   Lyra-owned (narrowed this PR): hub, telegram-adapter, discord-adapter,
+#   Factory-owned (narrowed this PR): hub, telegram-adapter, discord-adapter,
 #                                   tts-adapter, stt-adapter
 #   Satellite (out of scope this PR, unchanged): voice-tts, voice-stt, image-worker
 #
 # Lowercase _inbox.<identity>.> is required for tts-adapter and stt-adapter
 # because both rows carried _inbox.> defensively (nats-py case sensitivity).
 
-FACTORY_IDENTITIES=(hub telegram-adapter discord-adapter web-adapter tts-adapter stt-adapter)
+INBOX_SCOPED_IDENTITIES=(hub telegram-adapter discord-adapter web-adapter)
 
-for identity in "${FACTORY_IDENTITIES[@]}"; do
+for identity in "${INBOX_SCOPED_IDENTITIES[@]}"; do
   id_block=$(extract_block "$identity")
   [ -n "$id_block" ] || { echo "FAIL (#715): could not extract block for ${identity}"; exit 1; }
 
-  # Assert scoped inbox subject present in subscribe allow-list
-  scoped_inbox="_INBOX.${identity}.>"
+  # Assert scoped inbox subject present in subscribe allow-list (lowercase per ADR-051)
+  scoped_inbox="_inbox.${identity}.>"
   echo "$id_block" | grep -E 'subscribe:[[:space:]]*\{[[:space:]]*allow:' \
     | grep -qF "\"${scoped_inbox}\"" \
     || { echo "FAIL (#715): ${identity} subscribe must contain \"${scoped_inbox}\""; exit 1; }
 
-  # Assert bare wildcard _INBOX.> NOT present in subscribe allow-list
-  echo "$id_block" | grep -E 'subscribe:[[:space:]]*\{[[:space:]]*allow:' \
-    | grep -qF '"_INBOX.>"' \
-    && { echo "FAIL (#715): ${identity} subscribe must NOT contain bare \"_INBOX.>\""; exit 1; } || true
+  # Assert bare wildcards NOT present in subscribe allow-list
+  for bare in '_INBOX.>' '_inbox.>'; do
+    echo "$id_block" | grep -E 'subscribe:[[:space:]]*\{[[:space:]]*allow:' \
+      | grep -qF "\"${bare}\"" \
+      && { echo "FAIL (#715): ${identity} subscribe must NOT contain bare \"${bare}\""; exit 1; } || true
+  done
 
-  echo "PASS (#715): ${identity} subscribe has \"${scoped_inbox}\" (no bare _INBOX.>)"
+  echo "PASS (#715): ${identity} subscribe has \"${scoped_inbox}\" (no bare inbox wildcards)"
 done
 
-# tts-adapter and stt-adapter: lowercase _inbox.<identity>.> must also be present
-for identity in tts-adapter stt-adapter; do
-  id_block=$(extract_block "$identity")
-
-  scoped_inbox_lc="_inbox.${identity}.>"
-  echo "$id_block" | grep -E 'subscribe:[[:space:]]*\{[[:space:]]*allow:' \
-    | grep -qF "\"${scoped_inbox_lc}\"" \
-    || { echo "FAIL (#715): ${identity} subscribe must contain lowercase \"${scoped_inbox_lc}\""; exit 1; }
-
-  # Assert bare lowercase wildcard _inbox.> NOT present in subscribe allow-list
-  echo "$id_block" | grep -E 'subscribe:[[:space:]]*\{[[:space:]]*allow:' \
-    | grep -qF '"_inbox.>"' \
-    && { echo "FAIL (#715): ${identity} subscribe must NOT contain bare \"_inbox.>\""; exit 1; } || true
-
-  echo "PASS (#715): ${identity} subscribe has lowercase \"${scoped_inbox_lc}\" (no bare _inbox.>)"
-done
-
-# Satellite rows must still work (unchanged allow-lists — their _INBOX.> is in publish)
-# voice-tts and voice-stt: _INBOX.> in publish is still present (out of scope this PR)
-for identity in voice-tts voice-stt; do
+# Satellite workers: flow-inbox grants on publish (_inbox.{requester}.> from request_reply_flows)
+for identity in voice-tts voice-stt image-worker; do
   id_block=$(extract_block "$identity")
   [ -n "$id_block" ] || { echo "FAIL (#715): could not extract block for ${identity}"; exit 1; }
   echo "$id_block" | grep -E 'publish:[[:space:]]*\{[[:space:]]*allow:' \
-    | grep -qF '"_INBOX.>"' \
-    || { echo "FAIL (#715-satellite): ${identity} publish must still contain \"_INBOX.>\" (out of scope this PR)"; exit 1; }
-  echo "PASS (#715-satellite): ${identity} publish still has \"_INBOX.>\" (satellite, out of scope)"
+    | grep -qF '"_inbox.hub.>"' \
+    || { echo "FAIL (#715-satellite): ${identity} publish must contain \"_inbox.hub.>\" (hub flow-inbox)"; exit 1; }
+  echo "PASS (#715-satellite): ${identity} publish has \"_inbox.hub.>\" (flow-inbox)"
 done
 
-# image-worker: _INBOX.> and _inbox.> in publish are still present (out of scope this PR)
-iw_b=$(extract_block image-worker)
-echo "$iw_b" | grep -E 'publish:[[:space:]]*\{[[:space:]]*allow:' \
-  | grep -qF '"_INBOX.>"' \
-  || { echo "FAIL (#715-satellite): image-worker publish must still contain \"_INBOX.>\" (out of scope this PR)"; exit 1; }
-echo "PASS (#715-satellite): image-worker publish still has \"_INBOX.>\" (satellite, out of scope)"
-
 echo ""
-echo "PASS (#715/ADR-051): per-identity inbox prefix assertions (5 lyra + 3 satellite)"
+echo "PASS (#715/ADR-051): per-identity inbox prefix assertions (${#INBOX_SCOPED_IDENTITIES[@]} factory + 3 satellite)"

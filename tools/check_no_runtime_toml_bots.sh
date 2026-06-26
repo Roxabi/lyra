@@ -13,7 +13,7 @@
 #           (auth_seeding.py, factory/agent_factory.py) — replaced by BotStore.get_all()
 #
 # Exclusions:
-#   src/factory/agent_cmd/bots/init.py    — sanctioned seed consumer (lyra bot init)
+#   src/factory/agent_cmd/bots/init.py    — sanctioned seed consumer (factory bot init)
 #   src/factory/config.py                 — parser internals (sections are still parsed for compat)
 #
 # Sanctioned load_multibot_config() caller NOT in SC#9 target list:

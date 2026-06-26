@@ -128,6 +128,29 @@ OnFailure=factory-deploy-failure.service
 to the systemd journal via `systemd-cat` (tag `factory-deploy-failure`, priority `err`).
 Monitor: `journalctl --user -t factory-deploy-failure -f`
 
+### Operator audit (shell actions)
+
+Deploy scripts record imperative operator actions separately from container stdout:
+
+| Channel | Path | Contents |
+|---|---|---|
+| Operator JSONL | `~/.local/state/factory/logs/operator.log` | `install.sh`, `make converge` (via `deploy/lib/operator-log.sh`) |
+| Rotation narrative | `~/.roxabi/factory/rotation-log.md` | Voluntary credential changes (`--force-regen-blobstore`, future nkey rotations) |
+| Container runtime | journald `--user` | Quadlet stdout/stderr — unchanged |
+
+**Incident triage:**
+
+| Question | Where |
+|---|---|
+| Container crash / 401 / NATS wire errors | `journalctl --user -u factory-<unit>` |
+| Timer deploy ran? | `journalctl --user -u factory-quadlet-sync` |
+| Converge skip vs run? | `grep converge_ ~/.local/state/factory/logs/operator.log` |
+| Who rotated blobstore? | `rotation-log.md` + `grep blobstore ~/.local/state/factory/logs/operator.log` |
+
+Full query recipes → `docs/runbooks/operator-log.md`.
+
+`install.sh` flags: `--force-secrets` (Podman `--replace` only) · `--force-regen-blobstore` (regenerates `blobstore.tok`, logged) · `--force` deprecated alias for `--force-secrets`. `factory secrets reset` uses `--force-secrets` so NATS wipe does not rotate blobstore.
+
 ### Manual usage
 
 ```bash

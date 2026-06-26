@@ -258,7 +258,7 @@ class AgentRefiner:
 
         raise RuntimeError(
             f"Max turns ({max_turns}) reached without a confirmed patch. "
-            "Try again or use 'lyra agent patch' directly."
+            "Try again or use 'factory agent patch' directly."
         )
 
     # ------------------------------------------------------------------
@@ -283,6 +283,6 @@ class AgentRefiner:
         if shutil.which("claude"):
             return CliLlmProvider()
         raise RuntimeError(
-            "lyra agent refine requires the 'claude' CLI to be installed and "
+            "factory agent refine requires the 'claude' CLI to be installed and "
             "authenticated. Run 'claude' once to log in, then retry."
         )

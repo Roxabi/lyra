@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Lyra GitHub App PEM rotation — replaces the factory-gh-pem Podman secret and
+# Factory GitHub App PEM rotation — replaces the factory-gh-pem Podman secret and
 # restarts the helper container that mounts it.
 #
 # Sidecar Pod design (post #1078): the PEM is consumed only by factory-gh-helper

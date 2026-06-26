@@ -1,4 +1,4 @@
-"""Integration tests for `lyra agent discord` bot CLI commands (issue #1415).
+"""Integration tests for `factory agent discord` bot CLI commands (issue #1415).
 
 Mirror of `test_telegram_bot_commands.py` with `discord` platform.
 Commands: list, show, add, edit, patch, remove, assign, unassign, validate.
@@ -56,7 +56,7 @@ def _make_proc(returncode: int = 0, stdout: str = "", stderr: str = "") -> Magic
 
 
 class TestDiscordList:
-    """`lyra agent discord list`"""
+    """`factory agent discord list`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -100,7 +100,7 @@ class TestDiscordList:
 
 
 class TestDiscordShow:
-    """`lyra agent discord show <bot_id>`"""
+    """`factory agent discord show <bot_id>`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -150,7 +150,7 @@ class TestDiscordShow:
 
 
 class TestDiscordAdd:
-    """`lyra agent discord add <bot_id>`"""
+    """`factory agent discord add <bot_id>`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -212,7 +212,7 @@ class TestDiscordAdd:
 
 
 class TestDiscordEdit:
-    """`lyra agent discord edit <bot_id>`"""
+    """`factory agent discord edit <bot_id>`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -340,7 +340,7 @@ class TestDiscordEdit:
 
 
 class TestDiscordPatch:
-    """`lyra agent discord patch <bot_id>`"""
+    """`factory agent discord patch <bot_id>`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -441,7 +441,7 @@ class TestDiscordPatch:
 
 
 class TestDiscordRemove:
-    """`lyra agent discord remove <bot_id>`"""
+    """`factory agent discord remove <bot_id>`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -518,7 +518,7 @@ class TestDiscordRemove:
 
 
 class TestDiscordAssign:
-    """`lyra agent discord assign <bot_id> --agent <name>`"""
+    """`factory agent discord assign <bot_id> --agent <name>`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -557,7 +557,7 @@ class TestDiscordAssign:
 
 
 class TestDiscordUnassign:
-    """`lyra agent discord unassign <bot_id>`"""
+    """`factory agent discord unassign <bot_id>`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -592,7 +592,7 @@ class TestDiscordUnassign:
 
 
 class TestDiscordValidate:
-    """`lyra agent discord validate <bot_id>`"""
+    """`factory agent discord validate <bot_id>`"""
 
     def test_help(self) -> None:
         result = runner.invoke(

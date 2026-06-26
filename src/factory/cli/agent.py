@@ -1,4 +1,4 @@
-"""lyra agent — agent management CLI commands (mounted by cli.py).
+"""factory agent — agent management CLI commands (mounted by cli.py).
 
 Thin facade: defines ``agent_app`` and shared helpers.
 Subcommands are registered in cli.py after agent_app is imported.

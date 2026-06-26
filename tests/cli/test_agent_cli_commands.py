@@ -1,4 +1,4 @@
-"""Tests for lyra agent CLI commands: init, list, show, validate, delete, assign,
+"""Tests for factory agent CLI commands: init, list, show, validate, delete, assign,
 unassign.
 
 `init`, `show`, `delete`, `assign`, `unassign` do not yet exist in cli.py —
@@ -28,7 +28,7 @@ runner = CliRunner()
 
 
 class TestAgentInitCommand:
-    """Tests for `lyra agent init`."""
+    """Tests for `factory agent init`."""
 
     def test_init_help(self) -> None:
         """--help exits 0 and mentions --force flag."""
@@ -60,7 +60,7 @@ class TestAgentInitCommand:
 
 
 class TestAgentListCommand:
-    """Tests for `lyra agent list`."""
+    """Tests for `factory agent list`."""
 
     def test_list_help(self) -> None:
         """--help exits 0."""
@@ -90,7 +90,7 @@ class TestAgentListCommand:
 
 
 class TestAgentShowCommand:
-    """Tests for `lyra agent show <name>`."""
+    """Tests for `factory agent show <name>`."""
 
     def test_show_missing_agent(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -113,7 +113,7 @@ class TestAgentShowCommand:
 
 
 class TestAgentValidateCommand:
-    """Tests for `lyra agent validate <name>`."""
+    """Tests for `factory agent validate <name>`."""
 
     def test_validate_missing_agent(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -135,7 +135,7 @@ class TestAgentValidateCommand:
 
 
 class TestAgentDeleteCommand:
-    """Tests for `lyra agent delete <name>`."""
+    """Tests for `factory agent delete <name>`."""
 
     def test_delete_missing_agent(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -157,7 +157,7 @@ class TestAgentDeleteCommand:
 
 
 class TestAgentAssignCommand:
-    """Tests for `lyra agent assign <name> --bot <id> --platform <p>`."""
+    """Tests for `factory agent assign <name> --bot <id> --platform <p>`."""
 
     def test_assign_unknown_agent(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -199,7 +199,7 @@ class TestAgentAssignCommand:
 
 
 class TestAgentUnassignCommand:
-    """Tests for `lyra agent unassign --bot <id> --platform <p>`."""
+    """Tests for `factory agent unassign --bot <id> --platform <p>`."""
 
     def test_unassign_noop(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

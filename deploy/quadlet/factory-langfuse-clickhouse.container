@@ -1,0 +1,25 @@
+[Unit]
+Description=Factory Langfuse ClickHouse (trace analytics store)
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+Image=docker.io/clickhouse/clickhouse-server:24.12
+ContainerName=factory-langfuse-clickhouse
+Network=roxabi.network
+User=101:101
+NoNewPrivileges=true
+DropCapability=all
+EnvironmentFile=%h/.roxabi/factory/env/langfuse.env
+Volume=factory-langfuse-clickhouse-data.volume:/var/lib/clickhouse:z
+Volume=factory-langfuse-clickhouse-logs.volume:/var/log/clickhouse-server:z
+HealthCmd=wget -q -O- http://127.0.0.1:8123/ping || exit 1
+HealthInterval=10s
+
+[Service]
+Restart=on-failure
+RestartSec=10
+ExecStartPre=/bin/test -r %h/.roxabi/factory/env/langfuse.env
+
+[Install]
+WantedBy=default.target

@@ -147,7 +147,11 @@ Deploy scripts record imperative operator actions separately from container stdo
 | Converge skip vs run? | `grep converge_ ~/.local/state/factory/logs/operator.log` |
 | Who rotated blobstore? | `rotation-log.md` + `grep blobstore ~/.local/state/factory/logs/operator.log` |
 
-Full query recipes → `docs/runbooks/operator-log.md`.
+Full query recipes → `docs/runbooks/operator-log.md`. ADR → `docs/architecture/adr/093-operator-audit-three-channel.mdx`.
+
+`operator.log` retention: `factory-operator-logrotate.timer` (weekly, 12 rotations, 10M maxsize) via `make quadlet-sync-install`.
+
+Syncthing: `deploy/install.sh` maintains `~/.roxabi/factory/.stignore` (excludes `blobstore.tok`, `blobstore/`, `nats/jetstream/`).
 
 `install.sh` flags: `--force-secrets` (Podman `--replace` only) · `--force-regen-blobstore` (regenerates `blobstore.tok`, logged) · `--force` deprecated alias for `--force-secrets`. `factory secrets reset` uses `--force-secrets` so NATS wipe does not rotate blobstore.
 

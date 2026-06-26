@@ -23,6 +23,7 @@ factory stores runtime data in two root locations:
 | `nkeys/` | NATS nkey seeds and `auth.conf` | **Synced** |
 | `env/` | Quadlet env files (`hub.env`, `blobstore.env`) | **Synced** |
 | `rotation-log.md` | Credential rotation audit (append-only) | **Synced** |
+| `blobstore.tok` | BlobStore bearer token (SSoT for factory + voiceCLI bind-mount) | **Excluded** (per-host Podman secret materialisation — ADR-093) |
 | `nats/jetstream/` | JetStream persistent storage | **Excluded** (host-local, large WAL files) |
 | `blobstore/` | BlobStore shard tree + SQLite index (real directory) | **Excluded** (large binary data — see Syncthing exclusions below) |
 
@@ -64,12 +65,16 @@ Syncthing syncs `~/.roxabi/factory/` across M₁, M₂, and laptop. The followin
 | Path | Reason |
 |---|---|
 | `~/.roxabi/factory/nats/jetstream/` | Host-local JetStream WAL; large, not portable |
-| `~/.roxabi/factory/blobstore/` | Large append-only binary data; high churn — excluded from Syncthing |
+| `~/.roxabi/factory/blobstore/` | Large append-only binary data; high churn |
+| `~/.roxabi/factory/blobstore.tok` | Per-host bearer token; voiceCLI bind-mounts factory path — syncing caused stale-copy incidents (ADR-093) |
 
-Exclusion rule (add to `.stignore` in `~/.roxabi/factory/`):
+`~/.roxabi/factory/.stignore` is maintained idempotently by `deploy/install.sh` from `deploy/templates/factory.stignore`:
 
 ```
-# Syncthing exclusions for Lyra
+# Syncthing exclusions for factory vault
 nats/jetstream
 blobstore
+blobstore.tok
 ```
+
+Decision record: [ADR-093](architecture/adr/093-operator-audit-three-channel.mdx).

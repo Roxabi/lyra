@@ -21,6 +21,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/operator-log.sh
 source "${SCRIPT_DIR}/lib/operator-log.sh"
+# shellcheck source=lib/syncthing-ignore.sh
+source "${SCRIPT_DIR}/lib/syncthing-ignore.sh"
 QUADLET_SRC="${SCRIPT_DIR}/quadlet"
 QUADLET_DST="${HOME}/.config/containers/systemd"
 NKEYS_DIR="${HOME}/.roxabi/factory/nkeys"
@@ -57,7 +59,17 @@ run() {
 log() { echo "==> $*"; }
 warn() { echo "WARN: $*" >&2; }
 
-# ── 1. Verify nkeys dir ──────────────────────────────────────────────────────
+# ── 1. Syncthing exclusions (.stignore) ───────────────────────────────────────
+
+log "Ensuring Syncthing exclusions (~/.roxabi/factory/.stignore) ..."
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  echo "[dry-run] ensure_factory_stignore ${SCRIPT_DIR}/templates/factory.stignore"
+else
+  ensure_factory_stignore "${SCRIPT_DIR}/templates/factory.stignore"
+  echo "  [ok]   ~/.roxabi/factory/.stignore"
+fi
+
+# ── 2. Verify nkeys dir ──────────────────────────────────────────────────────
 
 log "Checking ~/.roxabi/factory/nkeys/ ..."
 if [[ ! -d "${NKEYS_DIR}" ]]; then
@@ -167,7 +179,7 @@ for _secret_name in "${!SECRET_SOURCES[@]}"; do
 done
 unset _secret_name _rel
 
-# ── 2. Generate blobstore bearer token (idempotent) ────────────────────────
+# ── 3. Generate blobstore bearer token (idempotent) ────────────────────────
 
 BLOBSTORE_TOK="${HOME}/.roxabi/factory/blobstore.tok"
 if [[ ! -f "${BLOBSTORE_TOK}" ]]; then
@@ -197,7 +209,7 @@ fi
 # Wire generated token path into SEEDS so the policy loop can install it.
 SEEDS[factory_blobstore_token]="${BLOBSTORE_TOK}"
 
-# ── 3. Bootstrap tailnet env files (idempotent) ─────────────────────────────
+# ── 4. Bootstrap tailnet env files (idempotent) ─────────────────────────────
 # TAILSCALE_IPV4 is host-global (M₁'s tailnet IP); written per-service so each unit's
 # EnvironmentFile is self-contained. Consumed by tailnet-bound PublishPort + the
 # fail-closed ExecStartPre guard in factory-blobstore (#1330) and factory-web (#1992).
@@ -245,7 +257,7 @@ if [[ "$MISSING" -eq 1 ]]; then
   exit 1
 fi
 
-# ── 4. Install Podman secrets ────────────────────────────────────────────────
+# ── 5. Install Podman secrets ────────────────────────────────────────────────
 # Policy dispatch:
 #   nats-seed  → podman secret create from seed file
 #   nats-auth  → podman secret create from auth.conf file
@@ -308,7 +320,7 @@ if [[ "$SECRETS_ONLY" -eq 1 ]]; then
   exit 0
 fi
 
-# ── 5. Ensure data directories ──────────────────────────────────────────────
+# ── 6. Ensure data directories ──────────────────────────────────────────────
 
 log "Ensuring data directories ..."
 run mkdir -p "${HOME}/.roxabi/factory/blobstore"
@@ -336,7 +348,7 @@ else
   echo "  [skip] ${NKEYS_DIR}/auth.conf already exists"
 fi
 
-# ── 6. Copy Quadlet units ────────────────────────────────────────────────────
+# ── 7. Copy Quadlet units ────────────────────────────────────────────────────
 
 log "Copying Quadlet units to ${QUADLET_DST} ..."
 run mkdir -p "${QUADLET_DST}"
@@ -346,13 +358,13 @@ for f in "${QUADLET_SRC}"/*.container "${QUADLET_SRC}"/*.network "${QUADLET_SRC}
   echo "  [cp]   $(basename "$f")"
 done
 
-# ── 7. daemon-reload ─────────────────────────────────────────────────────────
+# ── 8. daemon-reload ─────────────────────────────────────────────────────────
 
 log "Reloading systemd user daemon ..."
 run systemctl --user daemon-reload
 echo "  [ok]   daemon-reload"
 
-# ── 8. Seed BotStore from config.toml (idempotent) ─────────────────────────
+# ── 9. Seed BotStore from config.toml (idempotent) ─────────────────────────
 # Required since #1416: Authenticator reads from BotStore, not config.toml.
 # Skipping this causes a hub crash-loop on first boot.
 log "Seeding BotStore from config.toml ..."
@@ -364,12 +376,12 @@ run podman run --rm \
 
 echo "  [ok]   BotStore seeded"
 
-# ── 9. Install sync timer + service (idempotent) ───────────────────────────
+# ── 10. Install sync timer + service (idempotent) ───────────────────────────
 
 log "Installing factory-quadlet-sync timer + service ..."
 run make quadlet-sync-install
 
-# ── 10. Enable host podman-auto-update timer ────────────────────────────────
+# ── 11. Enable host podman-auto-update timer ────────────────────────────────
 
 log "Enabling podman-auto-update.timer (5-min cadence) ..."
 run systemctl --user enable --now podman-auto-update.timer

@@ -9,7 +9,7 @@ import sys
 
 import nats.errors
 
-from factory.bootstrap.auth_seeding import build_bot_auths, seed_grants_from_bots
+from factory.bootstrap.auth_seeding import build_bot_auths, seed_identity_and_grants
 from factory.bootstrap.bootstrap_stores import open_stores
 from factory.bootstrap.factory.agent_factory import _resolve_bot_agent_map
 from factory.bootstrap.factory.config import MessageIndexConfig
@@ -93,7 +93,15 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
                 mi_cfg.retention_days,
             )
 
-        await seed_grants_from_bots(stores.auth, stores.bot)
+        from factory.bootstrap.factory.config import _load_circuit_config
+
+        _, admin_user_ids = _load_circuit_config(raw_config)
+        await seed_identity_and_grants(
+            stores.grant,
+            stores.bot,
+            stores.user,
+            admin_user_ids=admin_user_ids,
+        )
 
         try:
             circuit_registry, admin_user_ids, tg_bot_auths, dc_bot_auths = (
@@ -129,7 +137,8 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
         pm = await build_pairing_manager(
             raw_config,
             vault_dir=vault_dir,
-            auth_store=stores.auth,
+            grant_store=stores.grant,
+            user_store=stores.user,
             admin_user_ids=admin_user_ids,
         )
 

@@ -15,6 +15,7 @@ from uuid import uuid4
 
 from factory.core.messaging.events import LlmEvent, ResultLlmEvent
 from factory.core.ports.llm import LlmResult
+from roxabi_contracts.cli import SUBJECTS as CLI_SUBJECTS
 from roxabi_contracts.cli.models import CliControlCmd
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.llm import SUBJECTS
@@ -27,8 +28,6 @@ if TYPE_CHECKING:
     from factory.transport.worker_pool_client import WorkerPoolClient
 
 log = logging.getLogger(__name__)
-
-_SUBJECT_CONTROL = "factory.clipool.control"
 
 
 class _CliSessionStore(Protocol):
@@ -171,7 +170,7 @@ class LlmClient:
         )
         payload = self._codec.encode_control(cmd)
         await self._pool._transport.call(  # type: ignore[attr-defined]  # noqa: SLF001
-            _SUBJECT_CONTROL, payload, timeout=self._timeout
+            CLI_SUBJECTS.control, payload, timeout=self._timeout
         )
 
     async def queue_resume(self, pool_id: str, session_id: str) -> bool:
@@ -212,5 +211,5 @@ class LlmClient:
         )
         payload = self._codec.encode_control(cmd)
         await self._pool._transport.call(  # type: ignore[attr-defined]  # noqa: SLF001
-            _SUBJECT_CONTROL, payload, timeout=self._timeout
+            CLI_SUBJECTS.control, payload, timeout=self._timeout
         )

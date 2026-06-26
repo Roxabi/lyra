@@ -67,7 +67,7 @@ RUN useradd -u 1500 -m factory \
 # sha256 of /opt/omp/omp at startup, so a carrier bump must land together with
 # the _PINNED_SHA256 update. Placed before the builder COPY so code-only builds
 # keep this pinned layer cached.
-COPY --from=ghcr.io/roxabi/factory-omp-base:15.10.8 /opt/omp/omp /opt/omp/omp
+COPY --from=ghcr.io/roxabi/factory-omp-base:16.1.23 /opt/omp/omp /opt/omp/omp
 
 COPY --from=builder --chown=factory:factory /app /app
 
@@ -109,7 +109,7 @@ ENV FACTORY_GH_BIN=/opt/factory-gh/gh
 # ── omp_rpc Python package (#1871) ─────────────────────────────────────────────
 # omp_rpc is deliberately kept OUT of uv.lock (alpha lib, pin-by-SHA pattern —
 # #1807/#1810). Install at image build time from the pinned commit that matches
-# OMP_VERSION=v15.10.8 / factory-omp-base:15.10.8. The commit SHA is locked here;
+# OMP_VERSION=v16.1.23 / factory-omp-base:16.1.23. The commit SHA is locked here;
 # a version bump must update deploy/omp-base/Containerfile OMP_VERSION+OMP_SHA256,
 # src/factory/adapters/omp/_rpc_bridge.py _PINNED_SHA256, AND this pin — in lockstep.
 # uv is not present in agent-runtime (only in builder); bring the static binary from

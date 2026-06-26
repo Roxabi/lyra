@@ -193,6 +193,7 @@ Rules:
 ## Hardening invariants (∀ `.container` file)
 
 `NoNewPrivileges=true` | `ReadOnly=true` | `DropCapability=all`
+**Carve-out (ADR-092 Langfuse deps):** `factory-langfuse-{postgres,redis,clickhouse,minio}` omit the trio — upstream entrypoints `setpriv`/chmod data dirs before dropping to service users.
 `UserNS=keep-id:uid=1500,gid=1500` for factory units (container UID 1500)
 Secrets via `type=mount` (tmpfs) — ¬env vars, ¬volume wrappers for credentials.
 Operational consequence: `type=mount` secrets are bound at container init — `--replace` updates the store but the in-container tmpfs file is stale. ACL permission changes require container restart (not HUP) to refresh (#1390). See [`docs/ops/nats-authconf-update.md`](../docs/ops/nats-authconf-update.md).

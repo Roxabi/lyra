@@ -60,32 +60,22 @@ user_ids = [
 # glob       = false   # silent by default
 
 # ----------------------------------------------------------------------------
-# Telegram bots — one [[telegram.bots]] + [[auth.telegram_bots]] per bot
+# Telegram bots — one [[telegram.bots]] per bot (adapter config only)
+# Access control: `factory user register` + `factory agent grant` (auth.db)
 # ----------------------------------------------------------------------------
 
 [[telegram.bots]]
 bot_id = "lyra"  # must match the bot_id used in `factory bot add`
 # bot_username = "MyLyraBot"            # optional — used in help text (default: "lyra_bot")
 # agent = "lyra_default"               # fallback if DB has no bot→agent mapping yet
-
-[[auth.telegram_bots]]
-bot_id = "lyra"
-default = "blocked"  # "blocked" | "trusted" | "owner"
-owner_users = []  # legacy metadata only — use `factory agent grant` for access
-# trusted_users = []                    # legacy — use `factory agent grant`
 # webhook_enabled = false               # set true for webhook-mode bots; emits bot_webhook-<bot_id> Secret=
 
-# Add more bots by repeating the pair above:
+# Add more bots by repeating the block above:
 # [[telegram.bots]]
 # bot_id = "aryl"
-#
-# [[auth.telegram_bots]]
-# bot_id = "aryl"
-# default = "blocked"
-# owner_users = []
 
 # ----------------------------------------------------------------------------
-# Discord bots — one [[discord.bots]] + [[auth.discord_bots]] per bot
+# Discord bots — one [[discord.bots]] per bot (adapter config only)
 # ----------------------------------------------------------------------------
 
 [[discord.bots]]
@@ -93,17 +83,6 @@ bot_id = "lyra"  # must match the bot_id used in `factory bot add`
 # auto_thread = true                    # optional — thread per conversation (default: true)
 # agent = "lyra_default"               # fallback if DB has no bot→agent mapping yet
 
-[[auth.discord_bots]]
-bot_id = "lyra"
-default = "blocked"  # "blocked" | "trusted" | "owner"
-owner_users = []  # numeric Discord snowflake IDs — seeded into DB on startup
-# trusted_roles = []                    # numeric Discord role snowflake IDs with trusted access
-
-# Add more bots by repeating the pair above:
+# Add more bots by repeating the block above:
 # [[discord.bots]]
 # bot_id = "aryl"
-#
-# [[auth.discord_bots]]
-# bot_id = "aryl"
-# default = "blocked"
-# owner_users = []

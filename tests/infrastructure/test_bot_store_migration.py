@@ -18,6 +18,17 @@ from factory.infrastructure.stores.migrations.bot_store_migrations import (
     run_bot_migrations,
 )
 
+_TARGET_COLS = {
+    "platform",
+    "bot_id",
+    "agent",
+    "webhook_enabled",
+    "auto_thread",
+    "thread_hot_hours",
+    "updated_at",
+    "public_bot",
+}
+
 # Legacy DDL without trusted_roles_json (pre-#1416 schema)
 _DDL_LEGACY_BOTS = """
 CREATE TABLE IF NOT EXISTS bots (
@@ -34,116 +45,6 @@ CREATE TABLE IF NOT EXISTS bots (
     PRIMARY KEY (platform, bot_id)
 )
 """
-
-
-# ---------------------------------------------------------------------------
-# T1 — Fresh DB: migration runs and sets user_version
-# ---------------------------------------------------------------------------
-
-
-class TestFreshDbMigration:
-    @pytest.mark.asyncio
-    async def test_migration_adds_column_and_sets_version(self) -> None:
-        """Fresh DB: migrations add columns and set user_version to latest (2)."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = Path(tmpdir) / "bots.db"
-            async with aiosqlite.connect(str(db_path)) as db:
-                await db.execute(_CREATE_BOTS)
-                await db.commit()
-
-                version_before = await _get_user_version(db)
-                assert version_before == 0
-
-                await run_bot_migrations(db)
-
-                version_after = await _get_user_version(db)
-                assert version_after == 2
-
-                async with db.execute("PRAGMA table_info('bots')") as cur:
-                    rows = await cur.fetchall()
-                cols = {row[1] for row in rows}
-                assert "trusted_roles_json" in cols
-                assert "public_bot" in cols
-
-
-# ---------------------------------------------------------------------------
-# T2 — Idempotency: second run is a no-op
-# ---------------------------------------------------------------------------
-
-
-class TestMigrationIdempotency:
-    @pytest.mark.asyncio
-    async def test_second_run_is_noop(self) -> None:
-        """Running migration twice on a fresh DB is a no-op (no exception)."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = Path(tmpdir) / "bots.db"
-            async with aiosqlite.connect(str(db_path)) as db:
-                await db.execute(_CREATE_BOTS)
-                await db.commit()
-
-                await run_bot_migrations(db)
-                version_first = await _get_user_version(db)
-                assert version_first == 2
-
-                # Second run must not raise
-                await run_bot_migrations(db)
-                version_second = await _get_user_version(db)
-                assert version_second == 2
-
-    @pytest.mark.asyncio
-    async def test_migration_skips_when_version_already_set(self) -> None:
-        """Migration skips every ALTER TABLE when user_version is at latest."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = Path(tmpdir) / "bots.db"
-            async with aiosqlite.connect(str(db_path)) as db:
-                await db.execute(_DDL_LEGACY_BOTS)
-                await db.commit()
-
-                # Manually set version to latest before running migration
-                await _set_user_version(db, 2)
-
-                # Migration must skip because version is already at latest
-                await run_bot_migrations(db)
-
-                # No column added because every version guard skipped
-                async with db.execute("PRAGMA table_info('bots')") as cur:
-                    rows = await cur.fetchall()
-                cols = {row[1] for row in rows}
-                assert "trusted_roles_json" not in cols
-                assert "public_bot" not in cols
-
-
-# ---------------------------------------------------------------------------
-# T3 — Legacy DB without user_version: migration applies
-# ---------------------------------------------------------------------------
-
-
-class TestLegacyDbMigration:
-    @pytest.mark.asyncio
-    async def test_legacy_db_gets_migration_and_version(self) -> None:
-        """Pre-existing DB without user_version gets migrated and version set."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            db_path = Path(tmpdir) / "bots.db"
-            async with aiosqlite.connect(str(db_path)) as db:
-                # Create legacy schema without trusted_roles_json
-                await db.execute(_DDL_LEGACY_BOTS)
-                await db.commit()
-
-                # Verify user_version starts at 0
-                version = await _get_user_version(db)
-                assert version == 0
-
-                await run_bot_migrations(db)
-
-                version_after = await _get_user_version(db)
-                assert version_after == 2
-
-                async with db.execute("PRAGMA table_info('bots')") as cur:
-                    rows = await cur.fetchall()
-                cols = {row[1] for row in rows}
-                assert "trusted_roles_json" in cols
-                assert "public_bot" in cols
-
 
 # Migration-1 schema: has trusted_roles_json but NOT public_bot (pre-#1984).
 _DDL_V1_BOTS = """
@@ -164,15 +65,84 @@ CREATE TABLE IF NOT EXISTS bots (
 """
 
 
-# ---------------------------------------------------------------------------
-# T4 — Migration 2 (#1984): add public_bot to a v1 DB, leave legacy rows NULL
-# ---------------------------------------------------------------------------
+async def _bot_columns(db: aiosqlite.Connection) -> set[str]:
+    async with db.execute("PRAGMA table_info('bots')") as cur:
+        rows = await cur.fetchall()
+    return {row[1] for row in rows}
+
+
+class TestFreshDbMigration:
+    @pytest.mark.asyncio
+    async def test_migration_normalizes_schema_and_sets_version(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "bots.db"
+            async with aiosqlite.connect(str(db_path)) as db:
+                await db.execute(_CREATE_BOTS)
+                await db.commit()
+
+                assert await _get_user_version(db) == 0
+
+                await run_bot_migrations(db)
+
+                assert await _get_user_version(db) == 3
+                assert await _bot_columns(db) == _TARGET_COLS
+
+
+class TestMigrationIdempotency:
+    @pytest.mark.asyncio
+    async def test_second_run_is_noop(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "bots.db"
+            async with aiosqlite.connect(str(db_path)) as db:
+                await db.execute(_CREATE_BOTS)
+                await db.commit()
+
+                await run_bot_migrations(db)
+                version_first = await _get_user_version(db)
+                assert version_first == 3
+
+                await run_bot_migrations(db)
+                version_second = await _get_user_version(db)
+                assert version_second == 3
+
+    @pytest.mark.asyncio
+    async def test_migration_skips_when_version_already_set(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "bots.db"
+            async with aiosqlite.connect(str(db_path)) as db:
+                await db.execute(_DDL_LEGACY_BOTS)
+                await db.commit()
+                await _set_user_version(db, 3)
+
+                await run_bot_migrations(db)
+
+                cols = await _bot_columns(db)
+                assert "default_trust" in cols
+                assert "public_bot" not in cols
+
+
+class TestLegacyDbMigration:
+    @pytest.mark.asyncio
+    async def test_legacy_db_drops_auth_columns(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "bots.db"
+            async with aiosqlite.connect(str(db_path)) as db:
+                await db.execute(_DDL_LEGACY_BOTS)
+                await db.commit()
+
+                assert await _get_user_version(db) == 0
+
+                await run_bot_migrations(db)
+
+                assert await _get_user_version(db) == 3
+                cols = await _bot_columns(db)
+                assert cols == _TARGET_COLS
+                assert "default_trust" not in cols
 
 
 class TestPublicBotMigration:
     @pytest.mark.asyncio
-    async def test_v1_db_gains_public_bot_column(self) -> None:
-        """A version-1 DB migrates up: public_bot added, version becomes 2."""
+    async def test_v1_db_migrates_to_v3_with_public_bot(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "bots.db"
             async with aiosqlite.connect(str(db_path)) as db:
@@ -182,14 +152,11 @@ class TestPublicBotMigration:
 
                 await run_bot_migrations(db)
 
-                assert await _get_user_version(db) == 2
-                async with db.execute("PRAGMA table_info('bots')") as cur:
-                    cols = {row[1] for row in await cur.fetchall()}
-                assert "public_bot" in cols
+                assert await _get_user_version(db) == 3
+                assert await _bot_columns(db) == _TARGET_COLS
 
     @pytest.mark.asyncio
-    async def test_legacy_rows_default_public_bot_null(self) -> None:
-        """Rows written before the migration read back with public_bot = NULL."""
+    async def test_legacy_rows_preserve_adapter_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "bots.db"
             async with aiosqlite.connect(str(db_path)) as db:
@@ -204,8 +171,9 @@ class TestPublicBotMigration:
                 await run_bot_migrations(db)
 
                 async with db.execute(
-                    "SELECT public_bot FROM bots WHERE bot_id = 'legacy'"
+                    "SELECT agent, public_bot FROM bots WHERE bot_id = 'legacy'"
                 ) as cur:
                     row = await cur.fetchone()
                 assert row is not None
-                assert row[0] is None
+                assert row[0] == "lyra_default"
+                assert row[1] is None

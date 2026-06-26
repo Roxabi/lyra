@@ -1,6 +1,7 @@
 """Unit tests for AuthMiddleware.from_config() and from_bot_store() factories.
 
 Issue #151, S1.  #1416 migrated from_bot_config -> from_bot_store.
+ADR-090: default/role_map/seeded OWNER no longer affect trust (ban-only).
 """
 
 from __future__ import annotations
@@ -36,14 +37,16 @@ class TestFromConfig:
         base.update(overrides)
         return {"auth": {section: base}}
 
-    async def test_valid_config_parses_correctly(self, auth_store: AuthStore) -> None:
+    async def test_valid_config_returns_ban_only_trust(
+        self, auth_store: AuthStore
+    ) -> None:
         raw = self._make_raw("telegram")
         await auth_store.seed_from_config(raw, "telegram")
         auth = AuthMiddleware.from_config(raw, "telegram", store=auth_store)
         assert auth is not None
-        assert auth.check("tg:user:owner1") == TrustLevel.OWNER
+        assert auth.check("tg:user:owner1") == TrustLevel.TRUSTED
         assert auth.check("tg:user:trusted1") == TrustLevel.TRUSTED
-        assert auth.check("unknown") == TrustLevel.BLOCKED
+        assert auth.check("unknown") == TrustLevel.TRUSTED
         assert auth.check("unknown", roles=["admin"]) == TrustLevel.TRUSTED
 
     def test_missing_section_for_telegram_returns_none(self) -> None:
@@ -52,57 +55,47 @@ class TestFromConfig:
     def test_missing_section_for_discord_returns_none(self) -> None:
         assert AuthMiddleware.from_config({}, "discord") is None
 
-    def test_missing_section_for_cli_returns_owner_middleware(self) -> None:
+    def test_missing_section_for_cli_returns_sentinel(self) -> None:
         auth = AuthMiddleware.from_config({}, "cli")
         assert auth is not None
-        # CLI is always OWNER
-        assert auth.check("anyone") == TrustLevel.OWNER
-        assert auth.check(None) == TrustLevel.BLOCKED  # anonymous always BLOCKED
+        assert auth.check("anyone") == TrustLevel.TRUSTED
+        assert auth.check(None) == TrustLevel.BLOCKED
 
     def test_invalid_default_raises_value_error(self) -> None:
         raw = self._make_raw("telegram", default="open")
         with pytest.raises(ValueError):
             AuthMiddleware.from_config(raw, "telegram")
 
-    async def test_owner_users_get_owner_level(self, auth_store: AuthStore) -> None:
+    async def test_seeded_owner_is_trusted(self, auth_store: AuthStore) -> None:
         raw = {
             "auth": {"telegram": {"owner_users": ["7377831990"], "default": "blocked"}}
         }
         await auth_store.seed_from_config(raw, "telegram")
         auth = AuthMiddleware.from_config(raw, "telegram", store=auth_store)
         assert auth is not None
-        assert auth.check("tg:user:7377831990") == TrustLevel.OWNER
+        assert auth.check("tg:user:7377831990") == TrustLevel.TRUSTED
 
-    async def test_trusted_users_get_trusted_level(self, auth_store: AuthStore) -> None:
+    async def test_seeded_trusted_is_trusted(self, auth_store: AuthStore) -> None:
         raw = {"auth": {"telegram": {"trusted_users": ["9999"], "default": "blocked"}}}
         await auth_store.seed_from_config(raw, "telegram")
         auth = AuthMiddleware.from_config(raw, "telegram", store=auth_store)
         assert auth is not None
         assert auth.check("tg:user:9999") == TrustLevel.TRUSTED
 
-    def test_trusted_roles_get_trusted_level(self) -> None:
+    def test_trusted_roles_are_ignored(self) -> None:
         raw = {"auth": {"discord": {"trusted_roles": ["staff"], "default": "public"}}}
         auth = AuthMiddleware.from_config(raw, "discord")
         assert auth is not None
         assert auth.check("user", roles=["staff"]) == TrustLevel.TRUSTED
 
-    async def test_owner_users_not_downgraded_by_trusted_users(
-        self, auth_store: AuthStore
-    ) -> None:
-        """A user in both owner_users and trusted_users stays OWNER."""
-        raw = {
-            "auth": {
-                "telegram": {
-                    "owner_users": ["42"],
-                    "trusted_users": ["42"],
-                    "default": "blocked",
-                }
-            }
-        }
-        await auth_store.seed_from_config(raw, "telegram")
+    async def test_blocked_still_blocks(self, auth_store: AuthStore) -> None:
+        raw = {"auth": {"telegram": {"default": "blocked"}}}
+        await auth_store.upsert(
+            "tg:user:42", TrustLevel.BLOCKED, None, "test", "test"
+        )
         auth = AuthMiddleware.from_config(raw, "telegram", store=auth_store)
         assert auth is not None
-        assert auth.check("tg:user:42") == TrustLevel.OWNER
+        assert auth.check("tg:user:42") == TrustLevel.BLOCKED
 
     def test_empty_lists_allowed(self) -> None:
         raw = {
@@ -117,7 +110,7 @@ class TestFromConfig:
         }
         auth = AuthMiddleware.from_config(raw, "telegram")
         assert auth is not None
-        assert auth.check("anyone") == TrustLevel.PUBLIC
+        assert auth.check("anyone") == TrustLevel.TRUSTED
 
     def test_missing_section_warning_logged(
         self, caplog: pytest.LogCaptureFixture
@@ -135,7 +128,7 @@ class TestFromConfig:
 
 
 # ---------------------------------------------------------------------------
-# TestFromBotConfig
+# TestFromBotStore
 # ---------------------------------------------------------------------------
 
 
@@ -159,16 +152,14 @@ class TestFromBotStore:
     async def test_per_bot_match(
         self, bot_store: BotStore, auth_store: AuthStore
     ) -> None:
-        # Arrange
         row = self._make_row("telegram", "lyra")
         await bot_store.upsert(row)
         await auth_store.upsert(
             "owner1", TrustLevel.OWNER, None, "config", "config.toml"
         )
         await auth_store.upsert(
-            "trusted1", TrustLevel.TRUSTED, None, "config", "config.toml"
+            "blocked1", TrustLevel.BLOCKED, None, "config", "config.toml"
         )
-        # Act
         auth = AuthMiddleware.from_bot_store(
             FromBotStoreDeps(
                 platform="telegram",
@@ -177,48 +168,39 @@ class TestFromBotStore:
                 store=auth_store,
             )
         )
-        # Assert
         assert auth is not None
-        assert auth.check("owner1") == TrustLevel.OWNER
-        assert auth.check("trusted1") == TrustLevel.TRUSTED
-        assert auth.check("unknown") == TrustLevel.BLOCKED
+        assert auth.check("owner1") == TrustLevel.TRUSTED
+        assert auth.check("blocked1") == TrustLevel.BLOCKED
+        assert auth.check("unknown") == TrustLevel.TRUSTED
         assert auth.check("unknown", roles=["admin"]) == TrustLevel.TRUSTED
 
     def test_missing_bot_returns_none(self, bot_store: BotStore) -> None:
-        # Act — looking for "lyra", which is not in the store
         auth = AuthMiddleware.from_bot_store(
             FromBotStoreDeps(platform="telegram", bot_id="lyra", bot_store=bot_store)
         )
-        # Assert — returns None (security fix: no fallback)
         assert auth is None
 
     def test_neither_present_returns_none(
         self, bot_store: BotStore, caplog: pytest.LogCaptureFixture
     ) -> None:
-        # Act
         with caplog.at_level(logging.WARNING, logger="factory.core.auth"):
             auth = AuthMiddleware.from_bot_store(
                 FromBotStoreDeps(
                     platform="telegram", bot_id="lyra", bot_store=bot_store
                 )
             )
-        # Assert
         assert auth is None
         assert "lyra" in caplog.text
 
-    def test_cli_section_returns_owner(self, bot_store: BotStore) -> None:
-        # Arrange — platform="cli", no store lookup needed
-        # Act
+    def test_cli_section_returns_trusted(self, bot_store: BotStore) -> None:
         auth = AuthMiddleware.from_bot_store(
             FromBotStoreDeps(platform="cli", bot_id="main", bot_store=bot_store)
         )
-        # Assert
         assert auth is not None
-        assert auth.check("anyone") == TrustLevel.OWNER
-        assert auth.check(None) == TrustLevel.BLOCKED  # anonymous always BLOCKED
+        assert auth.check("anyone") == TrustLevel.TRUSTED
+        assert auth.check(None) == TrustLevel.BLOCKED
 
     def test_invalid_default_in_bot_row_rejected(self) -> None:
-        # BotRow validates default_trust at construction time.
         with pytest.raises(ValueError) as exc_info:
             self._make_row("telegram", "lyra", default_trust="superadmin")
         assert "superadmin" in str(exc_info.value)

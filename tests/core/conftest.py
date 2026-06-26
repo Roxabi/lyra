@@ -317,3 +317,14 @@ async def _cleanup_pairing_state(tmp_path: Path):
     for store in _open_pairing_stores:
         await store.close()
     _open_pairing_stores.clear()
+    from tests.factories.stores import (
+        _open_pairing_grant_stores,
+        _open_pairing_user_stores,
+    )
+
+    for store in _open_pairing_grant_stores:
+        await store.close()
+    _open_pairing_grant_stores.clear()
+    for store in _open_pairing_user_stores:
+        await store.close()
+    _open_pairing_user_stores.clear()

@@ -129,7 +129,7 @@
 
 ### socialmedia-adapter
 - **Publish:** $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.tool.socialmedia.heartbeat
-- **Subscribe:** $KV.factory-state.>, _inbox.socialmedia-adapter.>, factory.tool.socialmedia.list_groups, factory.tool.socialmedia.list_integrations, factory.tool.socialmedia.publish, factory.tool.socialmedia.schedule
+- **Subscribe:** $KV.factory-state.>, _inbox.socialmedia-adapter.>, factory.tool.socialmedia.>
 
 ### telegram-adapter
 - **Publish:** $JS.API.CONSUMER.CREATE.*, $JS.API.DIRECT.GET.KV_factory-state.hub.ready, $JS.API.INFO, $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.event.>, factory.inbound.telegram.>, factory.metric.>, factory.system.ready

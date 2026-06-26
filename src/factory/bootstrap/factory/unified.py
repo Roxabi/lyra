@@ -20,7 +20,6 @@ from factory.bootstrap.factory.wiring_helpers import (
     _prune_message_index,
     _register_agents,
     _run_clipool_worker_task,
-    _seed_auth,
     _wire_adapters,
 )
 from factory.bootstrap.infra.embedded_nats import ensure_nats
@@ -56,7 +55,6 @@ async def _bootstrap_unified(  # noqa: PLR0915 — unified bootstrap is a wiring
 
         async with open_stores(vault_dir, nc=nc) as stores:
             await _prune_message_index(stores, raw_config)
-            await _seed_auth(stores, raw_config)
 
             bundle = await _init_bot_auths_and_agents(stores, raw_config)
             pm = await _init_pairing(

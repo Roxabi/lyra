@@ -22,7 +22,6 @@ from factory.bootstrap.factory.wiring_helpers import (
     _prune_message_index,
     _register_agents,
     _run_clipool_worker_task,
-    _seed_auth,
     _wire_adapters,
 )
 from factory.bootstrap.types import (
@@ -74,43 +73,6 @@ class TestInitInboundBus:
         assert result is fake_bus
         assert captured_kwargs["queue_group"] == HUB_INBOUND
         assert captured_kwargs["bot_id"] == "hub"
-
-
-class TestSeedAuth:
-    @pytest.mark.asyncio
-    async def test_seed_auth_delegates_to_seed_identity_and_grants(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # Arrange
-        seed_calls: list[tuple] = []
-
-        async def fake_seed(grant_store, bot_store, user_store, **kwargs):
-            seed_calls.append((grant_store, bot_store, user_store, kwargs))
-
-        monkeypatch.setattr(
-            "factory.bootstrap.auth_seeding.seed_identity_and_grants",
-            fake_seed,
-        )
-        monkeypatch.setattr(
-            "factory.bootstrap.factory.config._load_circuit_config",
-            lambda _raw: (MagicMock(), frozenset({"tg:user:1"})),
-        )
-
-        stores = MagicMock()
-        stores.grant = MagicMock()
-        stores.bot = MagicMock()
-        stores.user = MagicMock()
-
-        # Act
-        await _seed_auth(stores, {"admin": {"user_ids": ["tg:user:1"]}})
-
-        # Assert
-        assert len(seed_calls) == 1
-        passed_grant, passed_bot, passed_user, kwargs = seed_calls[0]
-        assert passed_grant is stores.grant
-        assert passed_bot is stores.bot
-        assert passed_user is stores.user
-        assert kwargs["admin_user_ids"] == frozenset({"tg:user:1"})
 
 
 class TestPruneMessageIndex:

@@ -1,0 +1,9 @@
+[Unit]
+Description=Factory Langfuse ClickHouse data (host-local)
+
+[Volume]
+Type=none
+Device=%h/.local/state/factory/langfuse/clickhouse
+Options=bind
+Label=app=factory
+Label=component=langfuse

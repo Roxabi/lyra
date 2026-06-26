@@ -1,0 +1,9 @@
+[Unit]
+Description=Factory Langfuse MinIO data (host-local)
+
+[Volume]
+Type=none
+Device=%h/.local/state/factory/langfuse/minio
+Options=bind
+Label=app=factory
+Label=component=langfuse

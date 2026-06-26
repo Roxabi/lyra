@@ -162,6 +162,29 @@ Runbook: [runbooks/loki-query.md](runbooks/loki-query.md).
 
 ---
 
+## OTel Collector + Langfuse (trace engine — ADR-092 Phase 1)
+
+| Unit | Image | Storage / notes |
+|------|-------|-----------------|
+| `factory-otel-collector` | `otel/opentelemetry-collector-contrib:0.120.0` | config bind-mount only |
+| `factory-langfuse-web` | `langfuse/langfuse:3` | UI `127.0.0.1:3000` |
+| `factory-langfuse-worker` | `langfuse/langfuse-worker:3` | ingestion |
+| `factory-langfuse-postgres` | `postgres:17` | `~/.local/state/factory/langfuse/postgres/` |
+| `factory-langfuse-clickhouse` | `clickhouse/clickhouse-server:24.12` | `.../clickhouse/` |
+| `factory-langfuse-redis` | `redis:7-alpine` | `.../redis-data/` |
+| `factory-langfuse-minio` | `minio/minio` | `.../minio/` |
+
+Flow:
+
+- **Primary:** Claude Code (clipool subprocess) → OTLP gRPC → collector → Langfuse
+- **Secondary:** LiteLLM proxy (`llmcli` OTel v2) → same collector — OMP + cloud relay
+
+Bootstrap: `deploy/scripts/bootstrap-langfuse.sh` → `~/.roxabi/factory/env/langfuse.env` + `otel-collector.env`.
+
+Runbook: [runbooks/otel-traces.md](runbooks/otel-traces.md).
+
+---
+
 ## Gaps & Future Work
 
 | Gap | Tracking |
@@ -169,6 +192,6 @@ Runbook: [runbooks/loki-query.md](runbooks/loki-query.md).
 | No end-to-end trace IDs | ✅ Resolved in #270 |
 | No structured/JSON logs | ✅ Resolved in #270 |
 | No message content capture in logs | Captured in Turn Store (L1, #67 ✅) |
-| No OpenTelemetry integration | — |
+| No OpenTelemetry integration | Phase 1 ✅ clipool → Langfuse; LiteLLM (#671) + hub wiring open |
 | No central log search UI | Loki ✅ — dashboard composition (#1760) still open |
 | Manual ops outside instrumented scripts | Partial — use `install.sh` / `make converge`; see operator-log runbook |

@@ -9,7 +9,7 @@
 | **Epic parent** | [#1760](https://github.com/Roxabi/roxabi-factory/issues/1760) — control-plane operator console |
 | **ADR** | [ADR-094](../../docs/architecture/adr/094-control-plane-dashboard-consolidation.mdx) |
 | **Branche** | `staging` |
-| **Statut global** | `not_started` |
+| **Statut global** | `in_progress` |
 | **Dernière MAJ** | 2026-06-28 |
 | **Panel review** | 2026-06-28 — tri-expert (MVP / epic-complet / risk-first) → SAFE WITH GUARDS |
 
@@ -17,7 +17,7 @@
 
 | Bloc | Statut | Notes |
 |------|--------|-------|
-| Pre-flight | `not_started` | —
+| Pre-flight | `in_progress` | import-linter + contracts
 | Block 1 — Cockpit + Chat + Harness/Model | `not_started` | —
 | Block 2 — SessionCatalog + Reprendre | `not_started` | —
 | Block 3 — E2E + Hardening + Ship | `not_started` | —
@@ -60,7 +60,7 @@
 
 ## BLOCK 1 — Cockpit + Chat + Harness/Model
 
-**Statut :** `not_started`  
+**Statut :** `in_progress`  
 **GO :** oui — implémenter en premier
 
 ### Layout & shell
@@ -209,9 +209,10 @@
 ### 2026-06-28 — Création du plan
 
 - Plan consolidé après review tri-expert (MVP-minimal, epic-complet, risk-first).
-- Verdict panel : SAFE WITH GUARDS.
-- Décision : Docker/bun en sortie Block 1 (pas Block 3 seul).
-- Block 2 isolé (SessionCatalog) pour éviter drift session.
+
+### 2026-06-28 — Pre-flight slice (in_progress)
+
+- Statut Pre-flight → `in_progress`
 
 
 ---

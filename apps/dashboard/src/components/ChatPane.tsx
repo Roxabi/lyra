@@ -4,7 +4,7 @@ import { HarnessPicker } from "@/components/HarnessPicker";
 import { ModelPicker } from "@/components/ModelPicker";
 import { Button } from "@/components/ui/button";
 import type { AgentHealth } from "@/lib/api";
-import { openChatStream, postChat } from "@/lib/api";
+import { defaultModelForHarness, openChatStream, postChat } from "@/lib/api";
 import type { ChatTab } from "@/lib/chats-storage";
 
 interface ChatPaneProps {
@@ -65,7 +65,7 @@ export function ChatPane({ tab, health, onUpdate }: ChatPaneProps) {
         <AgentStatusBadge health={health} />
         <HarnessPicker
           value={tab.harness}
-          onChange={(h) => onUpdate({ harness: h, model: "sonnet" })}
+          onChange={(h) => onUpdate({ harness: h, model: defaultModelForHarness(h) })}
           disabled={offline}
         />
         <ModelPicker

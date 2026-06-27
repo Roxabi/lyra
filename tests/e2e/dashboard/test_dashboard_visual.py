@@ -10,6 +10,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -47,7 +48,7 @@ def _assert_similar(actual: Path, expected: Path) -> None:
 
 
 @pytest.fixture(scope="module")
-def dashboard_url() -> str:
+def dashboard_url() -> Iterator[str]:
     pytest.importorskip("playwright")
     dist = Path(__file__).resolve().parents[3] / "apps" / "dashboard" / "dist"
     if not (dist / "index.html").is_file():

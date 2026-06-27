@@ -16,8 +16,9 @@ from roxabi_contracts.dashboard import (
 )
 
 if TYPE_CHECKING:
-    from factory.adapters.web.web_adapter import WebAdapter
     from nats.aio.client import Client as NATS
+
+    from factory.adapters.web.web_adapter import WebAdapter
 
 log = logging.getLogger(__name__)
 

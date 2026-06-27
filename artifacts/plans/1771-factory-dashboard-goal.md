@@ -245,6 +245,14 @@
 - Écart vs plan : `sessions.turns` RPC et historique post-resume reportés ; `make converge` M₁ manuel post-merge
 - Evidence : `/tmp/grok-goal-a378c4fde0cd/implementer/execution-summary.txt`
 
+### 2026-06-28 — Gate harness + hook extraction (verifier pass 3)
+
+- [x] `scripts/goal-1771-gates.sh` — fail-fast QG (lint → ruff → import-linter → typecheck → build → vitest → pytest → ACL/secrets)
+- [x] `useAgentStatus` extrait de `CockpitLayout` ; test harness-aware avec `waitFor` sur résolution React Query
+- [x] Ruff/biome fixes mécaniques (`hub_client`, `simple_agent`, `turn_store_queries`, `hub_standalone`)
+- Gates : `goal-1771-gates.sh` exit 0 — vitest 8/8, pytest 25/25, lint-imports 13/13, `web_server.py` 30 SLOC
+- Evidence : `b3-qg.log`, `execution-summary.txt`, `plan-final.txt`
+
 ---
 
 ## Référence `/goal`

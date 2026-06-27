@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChatPane } from "@/components/ChatPane";
 import { MultiChatTabs } from "@/components/MultiChatTabs";
 import { PanelMount } from "@/components/PanelMount";
 import { ReprendrePanel } from "@/components/ReprendrePanel";
-import { fetchAgentStatus, fetchAgents } from "@/lib/api";
+import { useAgentStatus } from "@/hooks/useAgentStatus";
+import { fetchAgents } from "@/lib/api";
 import { type ChatTab, loadTabs, newTab, saveTabs } from "@/lib/chats-storage";
 
 export function CockpitLayout() {
@@ -12,11 +13,8 @@ export function CockpitLayout() {
   const [activeId, setActiveId] = useState<string | null>(() => loadTabs()[0]?.id ?? null);
 
   const { data: agents = [] } = useQuery({ queryKey: ["agents"], queryFn: fetchAgents });
-  const { data: status = [] } = useQuery({
-    queryKey: ["agent-status"],
-    queryFn: fetchAgentStatus,
-    refetchInterval: 30_000,
-  });
+  const activeTab = useMemo(() => tabs.find((t) => t.id === activeId) ?? tabs[0], [tabs, activeId]);
+  const { healthFor } = useAgentStatus(activeTab);
 
   useEffect(() => {
     saveTabs(tabs);
@@ -29,10 +27,6 @@ export function CockpitLayout() {
       setActiveId(t.id);
     }
   }, [agents, tabs.length]);
-
-  const activeTab = useMemo(() => tabs.find((t) => t.id === activeId) ?? tabs[0], [tabs, activeId]);
-
-  const healthFor = useCallback((agent: string) => status.find((h) => h.agent === agent), [status]);
 
   const updateTab = (id: string, patch: Partial<ChatTab>) => {
     setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
@@ -68,7 +62,7 @@ export function CockpitLayout() {
         {activeTab ? (
           <ChatPane
             tab={activeTab}
-            health={healthFor(activeTab.agent)}
+            health={healthFor(activeTab.agent, activeTab.harness)}
             onUpdate={(patch) => updateTab(activeTab.id, patch)}
           />
         ) : (

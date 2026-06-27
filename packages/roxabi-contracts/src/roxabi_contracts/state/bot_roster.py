@@ -29,6 +29,7 @@ class RosterBotEntry(BaseModel):
 
     bot_id: str
     agent: str = "lyra_default"
+    public_bot: str | None = None
     auto_thread: bool | None = None
     thread_hot_hours: int | None = None
     webhook_enabled: bool | None = None
@@ -41,6 +42,7 @@ class TelegramRosterBot(BaseModel):
 
     bot_id: str
     agent: str = "lyra_default"
+    public_bot: str | None = None
     webhook_enabled: bool = False
 
 
@@ -51,6 +53,7 @@ class DiscordRosterBot(BaseModel):
 
     bot_id: str
     agent: str = "lyra_default"
+    public_bot: str | None = None
     auto_thread: bool | None = None
     thread_hot_hours: int | None = None
 

@@ -57,6 +57,42 @@ def _mock_js(*, kv: MagicMock | None = None) -> MagicMock:
 
 
 @pytest.mark.asyncio
+async def test_publish_bot_roster_carries_public_bot() -> None:
+    kv = _mock_kv()
+    js = _mock_js(kv=kv)
+    bot_store = MagicMock()
+    bot_store.get_all.return_value = [
+        make_bot_row(
+            platform="telegram",
+            bot_id="lyra",
+            public_bot="@lyra_public",
+        ),
+        make_bot_row(
+            platform="discord",
+            bot_id="aryl",
+            public_bot="@aryl_public",
+            auto_thread=True,
+        ),
+    ]
+
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "factory.infrastructure.kv.bot_roster.open_or_create_kv",
+            AsyncMock(return_value=kv),
+        )
+        await publish_bot_roster(js, bot_store)
+
+    tg_doc = PlatformRosterDocument.model_validate_json(
+        kv._store[roster_key("telegram")]
+    )
+    dc_doc = PlatformRosterDocument.model_validate_json(
+        kv._store[roster_key("discord")]
+    )
+    assert tg_doc.bots[0].public_bot == "@lyra_public"
+    assert dc_doc.bots[0].public_bot == "@aryl_public"
+
+
+@pytest.mark.asyncio
 async def test_publish_bot_roster_writes_platform_keys() -> None:
     kv = _mock_kv()
     js = _mock_js(kv=kv)
@@ -114,6 +150,7 @@ async def test_seed_bot_roster_telegram_returns_config() -> None:
             RosterBotEntry(
                 bot_id="lyra",
                 agent="lyra_default",
+                public_bot="@lyra_public",
                 webhook_enabled=False,
             )
         ],
@@ -125,6 +162,7 @@ async def test_seed_bot_roster_telegram_returns_config() -> None:
 
     assert isinstance(result, TelegramMultiConfig)
     assert result.bots[0].bot_id == "lyra"
+    assert result.bots[0].public_bot == "@lyra_public"
 
 
 @pytest.mark.asyncio

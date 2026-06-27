@@ -14,7 +14,7 @@ Exec=-config.file=/etc/loki/config.yml -config.expand-env=false
 Volume=%h/projects/roxabi-factory/deploy/observability/loki-config.yml:/etc/loki/config.yml:ro,z
 Volume=factory-loki-data.volume:/loki:z
 PublishPort=127.0.0.1:3100:3100
-HealthCmd=wget -q -O- http://127.0.0.1:3100/ready || exit 1
+HealthCmd=/busybox/wget -q -O- http://127.0.0.1:3100/ready || exit 1
 HealthInterval=30s
 
 [Service]

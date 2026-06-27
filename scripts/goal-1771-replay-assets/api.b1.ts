@@ -8,16 +8,6 @@ export interface AgentHealth {
   online: boolean;
 }
 
-export interface DashboardSession {
-  session_id: string;
-  pool_id: string;
-  platform: "telegram" | "discord" | "web";
-  cli_session_id: string | null;
-  first_user_msg: string | null;
-  turn_count: number;
-  last_active_at: string;
-}
-
 export async function fetchAgents(): Promise<string[]> {
   const res = await fetch("/api/agents");
   if (!res.ok) throw new Error("agents fetch failed");
@@ -73,37 +63,7 @@ export function openChatStream(
   return source;
 }
 
-export async function fetchSessions(agent: string): Promise<DashboardSession[]> {
-  const res = await fetch(`/api/bff/sessions?agent=${encodeURIComponent(agent)}`);
-  if (!res.ok) throw new Error("sessions fetch failed");
-  const data = (await res.json()) as { sessions: DashboardSession[] };
-  return data.sessions;
-}
-
-export async function resumeSession(
-  agent: string,
-  cliSessionId: string,
-): Promise<{ accepted: boolean; message: string }> {
-  const res = await fetch("/api/bff/sessions/resume", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ agent, cli_session_id: cliSessionId }),
-  });
-  if (!res.ok) throw new Error("resume failed");
-  return res.json() as Promise<{ accepted: boolean; message: string }>;
-}
-
 export const MODEL_CATALOG: Record<HarnessKind, string[]> = {
   "claude-cli": ["sonnet", "opus", "haiku"],
   "omp-rpc": ["omp-default", "omp-fast"],
 };
-
-/** First curated model for a harness — used when switching harness on a tab. */
-export function defaultModelForHarness(harness: HarnessKind): string {
-  const models = MODEL_CATALOG[harness];
-  const first = models[0];
-  if (!first) {
-    throw new Error(`no models configured for harness ${harness}`);
-  }
-  return first;
-}

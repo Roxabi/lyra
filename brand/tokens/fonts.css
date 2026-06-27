@@ -1,0 +1,7 @@
+/**
+ * Font family names only — faces loaded by apps/dashboard via @fontsource.
+ * Self-hosted woff2 lives in factory-site for the marketing SSG.
+ */
+:root {
+  --font-sans: var(--font-body);
+}

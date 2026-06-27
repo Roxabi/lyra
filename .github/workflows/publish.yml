@@ -58,3 +58,8 @@ jobs:
         run: |
           docker run --rm ${{ steps.tags.outputs.svc_tag }} \
             sh -c 'which bun claude corepack node factory-gh 2>/dev/null && exit 1 || exit 0'
+
+      - name: Verify dashboard SPA embedded in svc-runtime (#1771)
+        run: |
+          docker run --rm ${{ steps.tags.outputs.svc_tag }} \
+            sh -c 'test -f /app/apps/dashboard/dist/index.html'

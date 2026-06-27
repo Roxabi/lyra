@@ -18,7 +18,7 @@
 | Bloc | Statut | Notes |
 |------|--------|-------|
 | Pre-flight | `done` | import-linter + contracts + Makefile
-| Block 1 — Cockpit + Chat + Harness/Model | `in_progress` | SPA cockpit
+| Block 1 — Cockpit + Chat + Harness/Model | `done` | SPA + vitest + Docker/CI
 | Block 2 — SessionCatalog + Reprendre | `not_started` | —
 | Block 3 — E2E + Hardening + Ship | `not_started` | —
 
@@ -60,50 +60,50 @@
 
 ## BLOCK 1 — Cockpit + Chat + Harness/Model
 
-**Statut :** `in_progress`  
+**Statut :** `done`  
 **GO :** oui — implémenter en premier
 
 ### Layout & shell
 
-- [ ] `CockpitLayoutA` : chat-list | chat-pane | sidebar 360px (Jobs/Obs `PanelMount` désactivés)
-- [ ] Refactor `AppShell` → grille full-viewport dense (pas layout marketing `max-w`)
-- [ ] Routes TanStack : `/` (cockpit), `/panels/jobs` stub, `/panels/obs` stub
-- [ ] `factory/dashboard/app.py` — composition root :
+- [x] `CockpitLayoutA` : chat-list | chat-pane | sidebar 360px (Jobs/Obs `PanelMount` désactivés)
+- [x] Refactor `AppShell` → grille full-viewport dense (pas layout marketing `max-w`)
+- [x] Routes TanStack : `/` (cockpit), `/panels/jobs` stub, `/panels/obs` stub
+- [x] `factory/dashboard/app.py` — composition root :
   - mount adapter router (chat/SSE)
   - `StaticFiles(apps/dashboard/dist/)`
   - stub BFF router `/api/bff/*`
-- [ ] Retirer `_HTML` quand `dist/index.html` présent ; `/api/*` avant catch-all SPA
+- [x] Retirer `_HTML` quand `dist/index.html` présent ; `/api/*` avant catch-all SPA
 
 ### Chat
 
-- [ ] `MultiChatTabs` : créer / switcher / fermer ; `localStorage` clé `factory.dashboard.chats.v1`
+- [x] `MultiChatTabs` : créer / switcher / fermer ; `localStorage` clé `factory.dashboard.chats.v1`
   - par tab : `{id, agent, harness, model, session_id, lastActive}`
-- [ ] `ChatPane` : `POST /api/chat` + `EventSource /api/stream` (delta / done / error / ping)
-- [ ] Isolation session par agent : nouveau `session_id` au switch agent OU clé composite hub
-- [ ] `stream_token` minté côté serveur sur `POST /api/chat` ; requis sur `GET /api/stream` (mitigation #1992)
-- [ ] États d'erreur : 503 adapter not ready, 400 unknown agent, reconnect SSE
+- [x] `ChatPane` : `POST /api/chat` + `EventSource /api/stream` (delta / done / error / ping)
+- [x] Isolation session par agent : nouveau `session_id` au switch agent OU clé composite hub
+- [x] `stream_token` minté côté serveur sur `POST /api/chat` ; requis sur `GET /api/stream` (mitigation #1992)
+- [x] États d'erreur : 503 adapter not ready, 400 unknown agent, reconnect SSE
 
 ### Harness & model (par tab)
 
-- [ ] `HarnessPicker` : `claude-cli` (Clipool) | `omp-rpc` (OMP) — `nats` caché dans l'UI
-- [ ] `ModelPicker` : catalogue curaté depuis API disponibilité
-- [ ] `AgentStatusBadge` « Hors ligne » si roster absent OU worker mort OU harness injoignable
-- [ ] `GET /api/bff/agents/status` — agrège `roster.web` + `WorkerRegistry` + `is_alive()`
+- [x] `HarnessPicker` : `claude-cli` (Clipool) | `omp-rpc` (OMP) — `nats` caché dans l'UI
+- [x] `ModelPicker` : catalogue curaté depuis API disponibilité
+- [x] `AgentStatusBadge` « Hors ligne » si roster absent OU worker mort OU harness injoignable
+- [x] `GET /api/bff/agents/status` — agrège `roster.web` + `WorkerRegistry` + `is_alive()`
 
 ### Build & gates (critères de sortie Block 1 — pas reportés)
 
-- [ ] Dockerfile `svc-runtime` : stage `oven/bun` → `bun run build:dashboard` → `COPY dist/`
-- [ ] `ci.yml` : `bun run build:dashboard` + `bun run lint` (biome)
-- [ ] `publish.yml` : assert `dist/index.html` dans l'image `staging-svc`
-- [ ] pytest : `test_web_server.py` reste green + static mount + tests `stream_token`
-- [ ] vitest : `CockpitShell`, `MultiChatTabs`, `HarnessPicker`, `ModelPicker`
-- [ ] `bun run typecheck` + `build:dashboard` + `lint` green
+- [x] Dockerfile `svc-runtime` : stage `oven/bun` → `bun run build:dashboard` → `COPY dist/`
+- [x] `ci.yml` : `bun run build:dashboard` + `bun run lint` (biome)
+- [x] `publish.yml` : assert `dist/index.html` dans l'image `staging-svc`
+- [x] pytest : `test_web_server.py` reste green + static mount + tests `stream_token`
+- [x] vitest : `CockpitShell`, `MultiChatTabs`, `HarnessPicker`, `ModelPicker`
+- [x] `bun run typecheck` + `build:dashboard` + `lint` green
 
 ### Block 1 — done when
 
-- [ ] Opérateur Tailnet/dev : 2+ onglets chat, harness/model par agent, réponse streamée
-- [ ] SPA servie depuis l'image container (pas smoke HTML)
-- [ ] `make qg` green sur les chemins touchés
+- [x] Opérateur Tailnet/dev : 2+ onglets chat, harness/model par agent, réponse streamée
+- [x] SPA servie depuis l'image container (pas smoke HTML)
+- [x] `make qg` green sur les chemins touchés
 
 ---
 
@@ -210,9 +210,10 @@
 
 - [x] import-linter + contracts + Makefile + quadlet timeouts
 
-### 2026-06-28 — Block 1 slice (in_progress)
+### 2026-06-28 — Block 1 slice
 
-- Statut Block 1 → `in_progress`
+- [x] Cockpit SPA, multi-chat, harness/model pickers, `stream_token`, Docker bun stage, CI vitest+biome
+- Gates : `bun build/lint/typecheck`, vitest, pytest web_server + static mount
 
 
 ---

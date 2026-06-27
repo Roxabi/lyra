@@ -131,7 +131,7 @@ class NatsOutboundListener:
                     original_msg = _deserialize_dict(
                         raw, InboundMessage, resolver=self._resolver
                     )
-                except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# deserialization: exception type varies by payload
+                except (TypeError, ValueError, KeyError):
                     log.warning(
                         "NatsOutboundListener: bad embedded original_msg"
                         " for stream_id=%r",
@@ -171,7 +171,7 @@ class NatsOutboundListener:
                 ),
                 outbound,
             )
-        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch — send_streaming: exception type varies by adapter
+        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: adapter-send — send_streaming type varies by platform
             log.exception(
                 "NatsOutboundListener: send_streaming failed for stream_id=%r",
                 stream_id,

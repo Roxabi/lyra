@@ -148,9 +148,58 @@ Secondary signal: parallel parse/emit logic blocks in `src/lyra/adapters/telegra
 ### Revisit triggers
 
 - `boundary-broad-catch` still > 30 after Phase 7 (#1284) — diagnose residual axis drift.
+  **Steady state (issue #1832):** **30** acknowledged `except Exception`
+  sites in `src/factory/` (down from 168 at filing). Every survivor carries inline
+  `# boundary: <reason>` on the suppression line; **0** untagged BLE001 under
+  `src/factory/`. Re-baseline above 30 is not permitted — burn-down only.
 - Sibling-fix rate > 3/week on any stage concern post-epic — stage boundary has leaked.
 - New integration cost > 200 lines/domain after Phase 7 — composition pattern has not propagated.
 - 6-monthly axial review (calendar: 2026-11-01).
+
+#### Measurement (canonical)
+
+```sh
+grep -r 'except Exception' src/factory/ --include='*.py' | wc -l
+grep -rl 'except Exception' src/factory/ --include='*.py' | wc -l
+make quality-debt-report
+python3 -c "import json; r=json.load(open('artifacts/quality-debt-report.json'))['rows']; print(sum(1 for x in r if x.get('rule')=='BLE001' and x.get('bucket')=='UNTAGGED' and x['path'].startswith('src/factory/')))"
+bash tools/check_str_exc_bus_bound.sh
+```
+
+#### Acknowledged boundary sites (30)
+
+| Layer | File | Reason |
+|-------|------|--------|
+| cli | `cli/agent.py:62` | cli-entry |
+| cli | `cli/setup.py:113` | cli-entry |
+| cli | `cli/voice_smoke.py:78` | cli-entry smoke catch-all |
+| inbound | `inbound/attachment_ingest.py:70` | adapter-fetch degrade ingest |
+| adapters | `adapters/telegram/telegram_formatter.py:235` | telegram-send terminal chunk |
+| adapters | `adapters/shared/_shared.py:139` | adapter-retry cosmetic |
+| adapters | `adapters/shared/inbound/pipeline.py:110` | adapter I/O SDK event loop |
+| adapters | `adapters/clipool/_pool_bridge.py:57` | pool bridge classify_exception |
+| adapters | `adapters/discord/discord_formatter.py:135` | discord-send terminal chunk |
+| adapters | `adapters/discord/discord_outbound.py:84` | discord-resolve channel lookup |
+| adapters | `adapters/omp/omp_worker.py:240` | omp-job pool bridge |
+| adapters | `adapters/nats/jetstream_audio_consumer.py:268` | jetstream-send platform delivery |
+| adapters | `adapters/nats/nats_outbound_listener.py:174` | adapter-send streaming |
+| core/hub | `core/hub/hub.py:224` | hub-loop pipeline/dispatch |
+| core/pool | `core/pool/pool_processor_exec.py:136` | pool-turn ProviderError duck-type |
+| core/cli | `core/cli/cli_pool_entry.py:51` | cli-subprocess deferred #1812 |
+| core/cli | `core/cli/cli_pool_send.py:158` | cli-subprocess deferred #1812 |
+| core/cli | `core/cli/cli_pool_spawn.py:172` | cli-subprocess deferred #1812 |
+| core/cli | `core/cli/cli_pool_worker.py:136` | cli-subprocess deferred #1812 |
+| core/cli | `core/cli/protocol/cli_non_streaming.py:206` | cli-subprocess deferred #1812 |
+| core/cli | `core/cli/protocol/cli_streaming.py:164` | cli-subprocess deferred #1812 |
+| infrastructure | `infrastructure/turn_writer/writer.py:169` | jetstream-consumer unexpected bug |
+| blobstore | `blobstore/_handlers.py:112` | blobstore-http map to 500 |
+| outbound | `outbound/_emitter_run.py:111` | outbound-stream terminal capture |
+| outbound | `outbound/error_handler.py:72` | outbound-guard sanitization |
+| bootstrap | `bootstrap/lifecycle/lifecycle_helpers.py:43` | bootstrap-wiring teardown |
+| transport | `transport/nats_request_response.py:86` | transport-inbox sanitization |
+| transport | `transport/worker_pool_client.py:129` | transport-heartbeat callback |
+| typing | `typing/listener.py:119` | typing-nats-cb dispatch |
+| nats | `nats/nats_channel_proxy.py:195` | nats-publish streaming |
 
 ## Trail
 

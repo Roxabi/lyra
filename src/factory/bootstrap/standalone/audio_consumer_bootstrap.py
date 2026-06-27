@@ -32,6 +32,8 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
+import nats.errors
+
 from factory.adapters.nats.jetstream_audio_consumer import JetStreamAudioConsumer
 from factory.adapters.nats.jetstream_audio_dedup import KvSentSet
 from factory.adapters.nats.null_audio_consumer import NullAudioConsumer
@@ -105,7 +107,7 @@ async def start_audio_consumer(
             filter_subject,
         )
         return consumer
-    except Exception:
+    except (OSError, RuntimeError, nats.errors.Error, TypeError, AttributeError):
         log.exception(
             "audio_consumer_bootstrap: audio consumer failed to start"
             " (platform=%s bot_id=%s) — audio degraded, text unaffected",

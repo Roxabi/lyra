@@ -236,7 +236,7 @@ class TurnStore(SqliteStore, TurnStoreSessionMixin):
                 (ts, session_id),
             )
             await db.commit()
-        except Exception:
+        except sqlite3.Error:
             await db.execute("ROLLBACK")
             raise
 

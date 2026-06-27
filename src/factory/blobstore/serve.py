@@ -9,6 +9,8 @@ import shutil
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, AsyncGenerator
 
+import aiosqlite
+import nats.errors
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse, Response
 
@@ -33,15 +35,17 @@ async def _disk_used_pct(blob_root: pathlib.Path) -> float | None:
     try:
         usage = shutil.disk_usage(blob_root)
         return round(usage.used / usage.total * 100, 1)
-    except Exception:  # noqa: BLE001
+    except OSError:
         _log.warning("BLOBSTORE: disk_usage failed for %s", blob_root)
         return None
 
 
 async def _blob_count(app: FastAPI) -> int | None:
     """Return total row count from the blobs table, or None on failure."""
+    store = getattr(app.state, "store", None)
+    if store is None:
+        return None
     try:
-        store: FsBlobStore = app.state.store
         conn = store._conn  # noqa: SLF001
         if conn is None:
             return None
@@ -49,7 +53,7 @@ async def _blob_count(app: FastAPI) -> int | None:
         row = await cursor.fetchone()
         await cursor.close()
         return int(row[0]) if row is not None else None
-    except Exception:  # noqa: BLE001
+    except aiosqlite.Error:
         _log.warning("BLOBSTORE: blob_count query failed")
         return None
 
@@ -76,7 +80,7 @@ async def _provision_nats(app: FastAPI, nc: NATS) -> None:
             )
         await kv.put("blobstore.ready", b"true")
         _log.info("Blobstore KV ready announced")
-    except Exception:  # noqa: BLE001
+    except nats.errors.Error:
         _log.warning("BLOBSTORE: KV readiness announce failed", exc_info=True)
 
     app.state.nats_provisioned = True
@@ -92,7 +96,7 @@ async def _connect_nats() -> NATS | None:
         from roxabi_nats import nats_connect
 
         return await nats_connect(nats_url, identity_name="blobstore")
-    except Exception:  # noqa: BLE001
+    except nats.errors.Error:
         _log.warning("BLOBSTORE: NATS connect failed — running in degraded mode")
         return None
 

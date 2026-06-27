@@ -124,7 +124,7 @@ class CommandRouter:
             for cmd, desc in _proc_registry.descriptions().items():
                 if cmd in self._passthroughs:
                     result.append((cmd, desc, False))
-        except Exception as exc:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
+        except (ImportError, AttributeError, RuntimeError, OSError) as exc:
             log.debug("Could not load processor commands: %s", exc)
         return sorted(result)
 

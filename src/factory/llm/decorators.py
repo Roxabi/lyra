@@ -124,7 +124,7 @@ class RetryDecorator:
                     yield event
             except (GeneratorExit, asyncio.CancelledError):
                 raise  # never retry cancellation
-            except Exception:
+            except (TimeoutError, asyncio.TimeoutError, OSError, RuntimeError):
                 if first_non_terminal_seen or attempt >= self._max_retries:
                     raise  # mid-stream (can't replay) or retries exhausted
             else:
@@ -232,7 +232,7 @@ class CircuitBreakerDecorator:
             if not outcome_recorded:
                 self._cb.release_probe()  # cancelled mid-probe: free slot, no failure
             raise
-        except Exception:
+        except (TimeoutError, asyncio.TimeoutError, OSError, RuntimeError):
             if not outcome_recorded:
                 self._cb.record_failure()
             raise

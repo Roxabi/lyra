@@ -200,7 +200,7 @@ async def run_reaper_loop(listener: Any) -> None:
             reap_tombstones(listener, TTL_SECONDS)
         except asyncio.CancelledError:
             raise
-        except Exception:
+        except (AttributeError, RuntimeError, TypeError, ValueError):
             log.exception("run_reaper_loop: transient failure, continuing")
 
 

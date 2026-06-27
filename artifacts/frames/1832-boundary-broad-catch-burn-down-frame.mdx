@@ -1,0 +1,98 @@
+---
+title: "Burn down boundary-broad-catch debt — ADR-073 revisit trigger"
+issue: 1832
+status: approved
+tier: F-full
+date: 2026-06-24
+---
+
+## Problem
+
+ADR-073 revisit trigger `boundary-broad-catch ≤ 30` is officially tripped. Phase 7 (#1284)
+closed 2026-05-31, activating the post-epic target. Mickael validated on 2026-06-11: **burn
+down, not re-baseline**.
+
+Measured at issue filing (2026-06-10): **150** `except Exception` sites across **91** files in
+`src/factory/`. Re-measured 2026-06-24 on staging: **168 sites / 102 files** — the debt has
+**grown** (+12%) as new features landed (#1812 OmpWorker, #1946 KV roster, Telegram Rich
+Messages, #1931 adapter glue kit) with no burn-down slice started.
+
+Of 168 sites: **57** carry `DEBT:boundary-broad-catch`; **50** additional BLE001 suppressions
+in `src/factory/` are **untagged** (invisible to the debt ratchet). Many adapter/blobstore
+sites are expected HTTP/NATS boundaries (ADR-067/082) but lack inline POLICY justification.
+
+The N×M risk is concentrated in `core/` (47 sites, especially `pool/` ×15 and `hub/` ×9)
+and `infrastructure/stores/` (21 sites): broad catches there can hide stage-boundary
+violations — the anti-pattern ADR-073 was written to eliminate.
+
+Observable impact: axial health metric is ×5–×6 the committed target; contributors adding
+features continue to introduce untagged broad catches; the revisit trigger is acknowledged but
+unaddressed.
+
+## Who
+
+- **Primary:** Mickael / maintainers shipping features on `src/factory/` — must narrow or
+  justify every `except Exception` before the ADR-073 6-monthly review (2026-11-01).
+- **Secondary:** Review agents (`dev-core:axial-adr-review`, `dev-core:security-auditor`) —
+  auto-triggered on PRs touching `except Exception`; expect per-site judgment, not
+  mechanical bulk edits.
+
+## Constraints
+
+- **Decision locked:** burn-down, not ADR re-baseline (Mickael 2026-06-11).
+- Acceptance: count ≤ 30 **or** every remaining site is an acknowledged boundary catch with
+  inline justification; ADR-073 revisit-trigger baseline note updated; re-measure command +
+  count documented in closing PR.
+- Burn-down order: (1) `core/` + `inbound/` first, (2) `infrastructure/` store-layer, (3)
+  `adapters/` + `blobstore/` — re-tag as acknowledged boundary (POLICY/inline justification),
+  not debt; may stay within the ≤30 budget.
+- PRs touching `except Exception` auto-carry `dev-core:axial-adr-review` +
+  `dev-core:security-auditor` labels.
+- 102 files spread → mechanical-fix exception for trivial narrowing only; most sites need
+  per-site judgment (what to catch, what to surface, whether to re-raise).
+- PII invariant unchanged: `SanitizedError.message` never carries `str(exc)` — narrowing must
+  not regress `tools/check_str_exc_bus_bound.sh` enforcement.
+- Multi-PR delivery expected — single PR cannot safely touch 102 files.
+
+## Out of Scope
+
+- Re-baselining ADR-073 target above 30 (explicitly rejected).
+- Refactoring `core/cli/` subprocess infra-in-core (finding F-3) — tracked separately
+  (#1812/#1813 runtime pluggable verdict).
+- Changes to quality-debt invariant infrastructure (#1162 grammar, audit, ratchet).
+- Package-level `except Exception` outside `src/factory/` (tests, tools scripts, spikes).
+- SanitizedError site consolidation (finding F-5) — separate ADR amendement track.
+
+## Premise Validity
+
+**Success in 6 months:** `grep -r 'except Exception' src/factory/ --include='*.py' | wc -l`
+returns ≤ 30; every remaining site has inline justification (DEBT drained or POLICY/boundary
+acknowledged); ADR-073 revisit-trigger section documents the new steady-state; zero untagged
+BLE001 in `src/factory/`; no increase in sibling-fix rate on stage concerns.
+
+**Failure in 6 months:** Site count remains ≥ 150 (or rises) after three burn-down sprint
+cycles; untagged BLE001 count stays ≥ 40; `core/pool/` and `core/hub/` broad catches
+unchanged; ADR-073 6-monthly review (2026-11-01) surfaces the same trigger with no
+documented steady-state — observable via grep count + git log of `except Exception` diffs.
+
+**Simplest alternative:** Tag-first pass only — classify all 50 untagged sites as
+`DEBT:boundary-broad-catch` or `POLICY:boundary-broad-catch`, reclassify adapters/blobstore
+HTTP catches as acknowledged boundaries, update ADR baseline note, close issue when tagged
+count ≤ 30.
+
+**Why not simplest:** Tagging reduces report noise but does not fix the N×M axial risk in
+`core/pool/` (15 sites) and `core/hub/` (9 sites) where broad catches mask stage-boundary
+violations. The revisit trigger measures residual axis drift, not annotation compliance —
+bookkeeping without narrowing leaves the underlying failure mode intact.
+
+## Complexity
+
+**Tier: F-full** — 102 files across 6+ domains (core, inbound, infrastructure, adapters,
+blobstore, transport), per-site judgment required, multi-PR burn-down with ADR/doc update.
+
+Signals observed:
+- Issue labeled `size:F-full`.
+- Multiple domains with different fix strategies (narrow vs POLICY re-tag vs re-raise).
+- Unknowns per site: correct exception type, whether catch should move to boundary layer.
+- Cross-cutting ADR-073 + quality-debt tagging + security review gates.
+- Recheck git-drift: 401 commits since issue creation; metric worsened 150 → 168.

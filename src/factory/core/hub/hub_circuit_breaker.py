@@ -54,8 +54,8 @@ class HubCircuitBreakerMixin:
 
         try:
             await self.dispatch_response(msg, Response(content=_unavail))
-        except Exception as exc:
-            log.exception("dispatch_response failed for fast-fail reply: %s", exc)
+        except (OSError, RuntimeError, TypeError, ValueError):
+            log.exception("dispatch_response failed for fast-fail reply")
         return True
 
     def record_circuit_success(self) -> None:

@@ -140,6 +140,6 @@ class TelegramTokenFilter(logging.Filter):
             if redacted != msg:
                 record.msg = redacted
                 record.args = None
-        except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# logging filter: must never raise
+        except (RuntimeError, TypeError, ValueError):
             pass  # never block logging on a filter error
         return True

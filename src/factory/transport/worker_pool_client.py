@@ -126,7 +126,7 @@ class WorkerPoolClient:
         if self._on_heartbeat_cb is not None:
             try:
                 await self._on_heartbeat_cb(worker_id)
-            except Exception:  # noqa: BLE001 — callback errors must never crash heartbeat handling
+            except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: transport-heartbeat — callback errors must not crash handler
                 log.warning(
                     "%s.on_heartbeat_cb_error worker_id=%s",
                     self._name,

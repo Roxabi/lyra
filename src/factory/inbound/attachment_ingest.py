@@ -25,6 +25,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, cast
 
+from roxabi_contracts import BlobStoreServerError
+
 if TYPE_CHECKING:
     from factory.core.messaging.message import InboundMessage
     from factory.core.ports.blobstore import BlobStorePort
@@ -45,6 +47,37 @@ except ValueError:
 
 FetchFn = Callable[[], Awaitable[bytes]]
 log = logging.getLogger(__name__)
+
+
+_INGEST_IO_ERRORS: tuple[type[BaseException], ...] = (
+    BlobStoreServerError,
+    OSError,
+    ConnectionError,
+    TimeoutError,
+    RuntimeError,
+    ValueError,
+)
+
+
+async def _fetch_attachment_bytes(
+    fetch: FetchFn,
+    *,
+    source: str | None = None,
+) -> bytes | None:
+    """Best-effort adapter fetch; returns None on any failure."""
+    try:
+        return await fetch()
+    except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: adapter-fetch — degrade ingest
+        log.exception("attachment fetch failed (source=%s)", source or "audio")
+        return None
+
+
+def _degrade_audio_msg(msg: "InboundMessage") -> "InboundMessage":
+    """Return msg with blob_ref cleared and pending_attachment removed."""
+    if msg.audio is not None:
+        new_audio = dataclasses.replace(msg.audio, blob_ref=None)
+        return dataclasses.replace(msg, audio=new_audio, pending_attachment=None)
+    return dataclasses.replace(msg, pending_attachment=None)
 
 
 @dataclass(frozen=True)
@@ -160,8 +193,12 @@ class AttachmentIngestStage:
         The STT middleware detects blob_ref=None and drops the message with a
         user-facing error reply.
         """
+        data = await _fetch_attachment_bytes(
+            pending.fetch, source=pending.source
+        )
+        if data is None:
+            return _degrade_audio_msg(msg)
         try:
-            data = await pending.fetch()
             wire_ref = await store.put(
                 data,
                 mime=pending.mime,
@@ -170,14 +207,9 @@ class AttachmentIngestStage:
                 platform_ref=pending.platform_ref,
                 platform_message_id=pending.platform_message_id,
             )
-        except Exception:
+        except _INGEST_IO_ERRORS:
             log.exception("attachment ingest failed — degraded (blob_ref=None)")
-            if msg.audio is not None:
-                new_audio = dataclasses.replace(msg.audio, blob_ref=None)
-                return dataclasses.replace(
-                    msg, audio=new_audio, pending_attachment=None
-                )
-            return dataclasses.replace(msg, pending_attachment=None)
+            return _degrade_audio_msg(msg)
 
         if msg.audio is None:
             # Non-audio message that somehow had a singular pending_attachment;
@@ -217,10 +249,8 @@ class AttachmentIngestStage:
                     )
                 )
                 continue
-            try:
-                data = await p.fetch()
-            except Exception:
-                log.exception("attachment fetch failed (source=%s)", p.source)
+            data = await _fetch_attachment_bytes(p.fetch, source=p.source)
+            if data is None:
                 results.append(
                     AttachmentResult(
                         success=False,
@@ -253,7 +283,7 @@ class AttachmentIngestStage:
                     platform_ref=p.platform_ref,
                     platform_message_id=p.platform_message_id,
                 )
-            except Exception:
+            except _INGEST_IO_ERRORS:
                 log.exception("blobstore rejected attachment (source=%s)", p.source)
                 results.append(
                     AttachmentResult(

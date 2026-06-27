@@ -253,6 +253,13 @@
 - Gates : `goal-1771-gates.sh` exit 0 — vitest 8/8, pytest 25/25, lint-imports 13/13, `web_server.py` 30 SLOC
 - Evidence : `b3-qg.log`, `execution-summary.txt`, `plan-final.txt`
 
+### 2026-06-28 — Verifier pass 4 (make qg + evidence refresh)
+
+- [x] Makefile : cible `qg` (bundle CI-equivalent local) — `make qg` remplace le script custom comme gate canonique
+- [x] `goal/plan.md` session : AC3 corrigé (`session_catalog` pas `turn_store_queries`), checklist `[x]`, journal
+- [x] Scratch régénéré : `block-order-check-1.txt`, `block-order-check-2.txt`, `plan-final.txt`, `b3-qg.log` via `make qg`
+- Gates : `make qg` exit 0 (lint, ruff, pyright, build, vitest, lint-imports, ACL/secrets, pytest dashboard, SLOC)
+
 ---
 
 ## Référence `/goal`

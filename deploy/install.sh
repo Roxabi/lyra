@@ -212,7 +212,7 @@ SEEDS[factory_blobstore_token]="${BLOBSTORE_TOK}"
 # ── 4. Bootstrap tailnet env files (idempotent) ─────────────────────────────
 # TAILSCALE_IPV4 is host-global (M₁'s tailnet IP); written per-service so each unit's
 # EnvironmentFile is self-contained. Consumed by tailnet-bound PublishPort + the
-# fail-closed ExecStartPre guard in factory-blobstore (#1330) and factory-web (#1992).
+# fail-closed ExecStartPre guard in factory-blobstore (#1330) and factory-dashboard (#1992).
 TS_IP=$(tailscale ip -4 2>/dev/null | head -1 || true)
 for _svc in blobstore web; do
   ENV_FILE="${HOME}/.roxabi/factory/env/${_svc}.env"

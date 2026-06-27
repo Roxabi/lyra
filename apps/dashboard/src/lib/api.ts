@@ -25,8 +25,17 @@ export async function fetchAgents(): Promise<string[]> {
   return data.agents;
 }
 
-export async function fetchAgentStatus(): Promise<AgentHealth[]> {
-  const res = await fetch("/api/bff/agents/status");
+export async function fetchAgentStatus(
+  agent?: string,
+  harness?: HarnessKind,
+): Promise<AgentHealth[]> {
+  const params = new URLSearchParams();
+  if (agent && harness) {
+    params.set("agent", agent);
+    params.set("harness", harness);
+  }
+  const qs = params.toString();
+  const res = await fetch(`/api/bff/agents/status${qs ? `?${qs}` : ""}`);
   if (!res.ok) throw new Error("status fetch failed");
   const data = (await res.json()) as { agents: AgentHealth[] };
   return data.agents;

@@ -7,6 +7,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from nats.aio.msg import Msg
+from pydantic import ValidationError
 
 from factory.core.hub.hub_protocol import RoutingKey
 from factory.core.hub.session_catalog import list_sessions_for_agent
@@ -71,7 +72,11 @@ def _wrap(hub: Hub, handler: Any):
             payload = json.loads(msg.data.decode()) if msg.data else {}
             result = await handler(hub, payload)
             await msg.respond(json.dumps(result).encode())
-        except Exception:
+        except (ValidationError, json.JSONDecodeError, UnicodeDecodeError, KeyError):
+            log.exception("dashboard_rpc handler failed subject=%s", msg.subject)
+            err = {"error": "bad_request"}
+            await msg.respond(json.dumps(err).encode())
+        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# hub RPC must always respond
             log.exception("dashboard_rpc handler failed subject=%s", msg.subject)
             err = {"error": "internal_error"}
             await msg.respond(json.dumps(err).encode())
@@ -126,6 +131,7 @@ async def _handle_sessions_resume(hub: Hub, payload: dict[str, Any]) -> dict[str
 
 async def _handle_agents_status(hub: Hub, payload: dict[str, Any]) -> dict[str, Any]:
     agents: list[str] = list(payload.get("agents") or [])
+    harness_by_agent: dict[str, str] = dict(payload.get("harness_by_agent") or {})
     freshness = getattr(hub, "_dashboard_worker_freshness", None)
     clipool_alive = _worker_alive(freshness, _CLIPOOL_WORKER)
     omp_alive = _worker_alive(freshness, _OMP_WORKER)
@@ -133,12 +139,13 @@ async def _handle_agents_status(hub: Hub, payload: dict[str, Any]) -> dict[str, 
     result = []
     for name in agents:
         in_roster = name in roster
-        harness_alive = clipool_alive or omp_alive
+        harness = harness_by_agent.get(name, "claude-cli")
+        harness_alive = omp_alive if harness == "omp-rpc" else clipool_alive
         result.append(
             AgentHealth(
                 agent=name,
                 in_roster=in_roster,
-                harness="claude-cli",
+                harness=harness,  # type: ignore[arg-type]
                 harness_reachable=harness_alive,
                 online=in_roster and harness_alive,
             )

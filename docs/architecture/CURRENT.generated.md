@@ -244,7 +244,7 @@
 - **Host roles:** factory-hub
 
 ### web
-- **Container:** factory-web.container
+- **Container:** factory-dashboard.container
 - **Required secrets:** factory-nats-web
 - **Host roles:** factory-hub
 

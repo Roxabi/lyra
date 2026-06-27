@@ -82,9 +82,45 @@ deploy verb on the production host. It reconciles the running system with the de
 
 | Property | Mechanism |
 |---|---|
-| **Change-gated** | Computes a convergence fingerprint (`git HEAD` + rendered Quadlet unit checksums + `auth.conf` SHA). If the current state matches the last recorded stamp (`~/.roxabi/factory/.converge-stamp`), the script exits immediately with `Already converged — nothing to do.` |
+| **Change-gated** | Computes a 6-field convergence fingerprint (see below). If current state matches the last recorded stamp (`~/.roxabi/factory/.converge-stamp`), `make converge` exits immediately with `Already converged — nothing to do.` |
 | **Idempotent** | Running `make converge` twice on an unchanged tree is a no-op. Individual steps (git pull, `make quadlet-install`, `factory-acl genkeys`, secret install, restarts) are each idempotent or guarded. |
 | **Atomic** | A `flock` file lock (`/run/user/<uid>/factory-deploy.lock`) prevents concurrent converges. If the lock is held, the second invocation exits 0 silently. The full sequence (pull → install → regen auth → secrets → restart NATS → restart clients) is executed as a single critical section. |
+
+### Convergence fingerprint
+
+Implemented in `deploy/lib/deploy-common.sh` (`compute_convergence_state`, `_classify_drift`). Written to `~/.roxabi/factory/.converge-stamp` at the end of every successful converge.
+
+**Format** — six colon-separated fields (image digest fields store **bare hex**, no `sha256:` prefix — the prefix would break colon parsing):
+
+```
+<git-head>:<units-sha256>:<authconf-sha256>:<voicecli-head>:<staging-svc-hex>:<staging-hex>
+```
+
+| Field | Source | Drift kind |
+|---|---|---|
+| 0 `git-head` | `git rev-parse HEAD` in `~/projects/roxabi-factory` | structural |
+| 1 `units-sha256` | `sha256sum` of sorted `~/.config/containers/systemd/factory*` unit files | structural |
+| 2 `authconf-sha256` | `sha256sum` of `~/.roxabi/factory/nkeys/auth.conf` | auth |
+| 3 `voicecli-head` | `git rev-parse HEAD` in `~/projects/voiceCLI` (or `none`) | structural |
+| 4 `staging-svc-hex` | First `RepoDigests` entry for `ghcr.io/roxabi/factory:staging-svc` (`factory_image_index_digest`) | structural |
+| 5 `staging-hex` | First `RepoDigests` entry for `ghcr.io/roxabi/factory:staging` | structural |
+
+**Tracked images** — single source of truth: `FACTORY_TRACKED_IMAGES` in `deploy-common.sh`. `factory-post-autoupdate.sh` iterates the same array (fields 4–5 of the stamp).
+
+**Drift classification** (`_classify_drift`):
+
+| Output | Meaning | Converge behavior |
+|---|---|---|
+| `none` | Stamp matches current state | Exit 0 immediately |
+| `auth` | Only field 2 differs | Restart `factory-nats` only; clients reconnect via `allow_reconnect` |
+| `structural` | Any of fields 0, 1, 3, 4, 5 differ (or no prior stamp) | Full converge: NATS + all factory clients + voiceCLI |
+
+Legacy 4-field stamps (pre-image-digest schema) are normalized to `:none:none` on fields 4–5 before comparison — one structural converge migrates them.
+
+**Image digest detection** — two paths, same tracked tags:
+
+- **`factory-post-autoupdate.sh`** — compares skopeo remote **index** digest against the full local `RepoDigests` set (`grep -Fxq`; fixes #1749 false drift on multi-arch). On drift: `podman pull`, then `make converge` (does **not** delete the stamp).
+- **Converge stamp fields 4–5** — store `RepoDigests[0]` as bare hex after pull. Podman does not guarantee `[0]` is always the OCI index digest; if spurious structural drift appears after a no-op pull, align both paths on the same canonical digest selection.
 
 ### Convergence sequence
 
@@ -109,11 +145,11 @@ Three systemd user timers drive convergence **automatically**:
 |---|---|---|---|
 | `podman-auto-update.timer` | `*:4/5` (5 min, offset +4 min — #1989) | `podman-auto-update.service` | Host-static apt unit (installed by `provision.sh`/`install.sh`); drop-in sets `OnCalendar=*:4/5`. Polls GHCR digests for containers labelled `io.containers.autoupdate=registry`; pulls and restarts on new digest. **Staggered off `*:0/5` (#1989):** podman-auto-update restarts containers directly, OUTSIDE `converge.sh`'s flock; at `*:0/5` it collided in-phase with `factory-quadlet-sync` and double-bounced each container ~1s apart (omp SIGKILL, hub WAL crash, telegram teardown). At `*:4/5` it trails `factory-post-autoupdate` (`*:2/5`), which has already converged the new image, so it usually no-ops and serves as a catch-up net for timer-miss runs (post-autoupdate skipped / flock held) rather than a primary restarter. |
 | `factory-quadlet-sync.timer` | `*:0/5` (5 min) | `factory-quadlet-sync.service` | Pulls `origin/staging` for roxabi-factory; **if HEAD advanced at all, runs the full `make converge`** (`deploy/factory-quadlet-sync.sh`: fetch → if `HEAD == origin/staging` exit → `git pull --ff-only` → `make converge`). It does **not** branch on which paths changed — **any** staging merge converges M₁, including `deploy/nats/acl-matrix.json`-only or docs-only changes (regen auth.conf + restart nats; verified #1848). Cheap when there's no real drift: converge is change-gated by the `.converge-stamp` fingerprint, so a no-op converge short-circuits. |
-| `factory-post-autoupdate.timer` | `*:2/5` (5 min, offset +2 min — #1751) | `factory-post-autoupdate.service` | Checks whether `podman-auto-update` has pulled a new image digest. On digest change, triggers the full `make converge` sequence (including auth.conf regen + secret refresh + restarts). Fires 2 min after `factory-quadlet-sync` so the `.converge-stamp` short-circuit in `converge.sh` deduplicates the two converge runs when both are triggered on the same staging merge. |
+| `factory-post-autoupdate.timer` | `*:2/5` (5 min, offset +2 min — #1751) | `factory-post-autoupdate.service` | Polls GHCR index digests for `FACTORY_TRACKED_IMAGES` (`staging-svc`, `staging`). On drift: `podman pull`, then `make converge` (stamp fields 4–5 detect image drift — no stamp deletion). Fires 2 min after `factory-quadlet-sync` so converge short-circuits when quadlet-sync already converged the same HEAD. |
 
 `podman-auto-update` handles **image pulls** (CI-driven, registry-labelled containers); fires at `*:4/5` — staggered off the `*:0/5` converge slot (#1989) so its direct restart never collides with `factory-quadlet-sync`.
 `factory-quadlet-sync` handles **any staging HEAD change** (code, units, ACL, docs — anything merged), running the full `make converge`; fires at `*:0/5`.
-`factory-post-autoupdate` handles **post-image-pull convergence** (after `podman-auto-update` pulls a new GHCR digest); fires at `*:2/5` (2 min later) so the `.converge-stamp` short-circuit makes its converge a no-op when `factory-quadlet-sync` already converged the same HEAD. The two differ by **trigger source** — quadlet-sync on a git-HEAD change, post-autoupdate on an image-digest change — but both run `make converge`.
+`factory-post-autoupdate` handles **GHCR image-digest drift** for the two factory runtime tags; fires at `*:2/5` (2 min later) so converge short-circuits when `factory-quadlet-sync` already converged the same git HEAD. Trigger sources differ — quadlet-sync on git-HEAD change, post-autoupdate on image-digest change — but both invoke `make converge` and share the same 6-field stamp.
 All three fire on a staggered `*:0/5 → *:2/5 → *:4/5` cadence (converge → post-pull converge → image-pull/rollback net) and are required for fully hands-off deploys.
 
 ### Failure notification path

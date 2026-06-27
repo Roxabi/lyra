@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import os
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import ValidationError
 
 from factory.dashboard.e2e import (
     e2e_enabled,
@@ -32,20 +34,34 @@ def _sessions_auth_required() -> bool:
     }
 
 
+def _hub_unavailable(exc: Exception) -> HTTPException:
+    return HTTPException(status_code=503, detail=str(exc))
+
+
 def build_bff_router(  # noqa: C901
     adapter: WebAdapter, hub: DashboardHubClient
 ) -> APIRouter:
     router = APIRouter(prefix="/api/bff")
 
     @router.get("/agents/status")
-    async def agents_status() -> dict:
+    async def agents_status(
+        harness: str | None = Query(default=None),
+        agent: str | None = Query(default=None),
+    ) -> dict:
         agents = adapter.agent_names
         if e2e_enabled():
             return stub_agents_status(agents).model_dump()
+        harness_by_agent: dict[str, str] | None = None
+        if harness and agent and agent in agents:
+            harness_by_agent = {agent: harness}
         try:
-            return (await hub.agents_status(agents)).model_dump()
-        except Exception as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            return (
+                await hub.agents_status(agents, harness_by_agent=harness_by_agent)
+            ).model_dump()
+        except RuntimeError as exc:
+            raise _hub_unavailable(exc) from exc
+        except (ValidationError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     @router.get("/sessions")
     async def list_sessions(
@@ -61,8 +77,10 @@ def build_bff_router(  # noqa: C901
             return stub_sessions_list(agent)
         try:
             return await hub.list_sessions(agent, limit=limit)
-        except Exception as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise _hub_unavailable(exc) from exc
+        except (ValidationError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     @router.post("/sessions/resume")
     async def resume_session(
@@ -81,7 +99,9 @@ def build_bff_router(  # noqa: C901
             return stub_resume()
         try:
             return await hub.resume_session(body.agent, body.cli_session_id)
-        except Exception as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise _hub_unavailable(exc) from exc
+        except (ValidationError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     return router

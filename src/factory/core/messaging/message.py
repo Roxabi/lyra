@@ -50,6 +50,8 @@ class DiscordMeta:
 @dataclass(frozen=True)
 class WebMeta:
     session_id: str = ""
+    harness: str | None = None
+    model: str | None = None
 
 
 @dataclass(frozen=True)

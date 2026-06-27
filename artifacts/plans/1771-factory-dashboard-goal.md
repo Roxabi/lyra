@@ -18,7 +18,7 @@
 | Bloc | Statut | Notes |
 |------|--------|-------|
 | Pre-flight | `done` | import-linter + contracts + Makefile
-| Block 1 — Cockpit + Chat + Harness/Model | `not_started` | —
+| Block 1 — Cockpit + Chat + Harness/Model | `in_progress` | SPA cockpit
 | Block 2 — SessionCatalog + Reprendre | `not_started` | —
 | Block 3 — E2E + Hardening + Ship | `not_started` | —
 
@@ -60,7 +60,7 @@
 
 ## BLOCK 1 — Cockpit + Chat + Harness/Model
 
-**Statut :** `done`  
+**Statut :** `in_progress`  
 **GO :** oui — implémenter en premier
 
 ### Layout & shell
@@ -206,14 +206,13 @@
 
 > Ajouter une entrée à chaque session `/goal`. Format : `YYYY-MM-DD — résumé — bloc — statut`.
 
-### 2026-06-28 — Création du plan
-
-- Plan consolidé après review tri-expert (MVP-minimal, epic-complet, risk-first).
-
 ### 2026-06-28 — Pre-flight slice
 
-- [x] import-linter contracts + route extraction + AGENTS.md + contracts + Makefile + quadlet
-- Gates : `lint-imports` 13/13, `wc -l web_server.py` = 30
+- [x] import-linter + contracts + Makefile + quadlet timeouts
+
+### 2026-06-28 — Block 1 slice (in_progress)
+
+- Statut Block 1 → `in_progress`
 
 
 ---

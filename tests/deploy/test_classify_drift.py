@@ -25,7 +25,9 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEPLOY_COMMON = REPO_ROOT / "deploy" / "lib" / "deploy-common.sh"
 
-_FP = "a:b:c:d:img-svc:img-stg"
+_SVC = "4f9b3264aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001"
+_STG = "6a7d28bcaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001"
+_FP = f"a:b:c:d:{_SVC}:{_STG}"
 
 
 def _classify(last: str, current: str) -> str:
@@ -55,19 +57,19 @@ def _classify(last: str, current: str) -> str:
         # 2. No prior stamp (sentinel "none") → structural (full converge)
         ("none", _FP, "structural"),
         # 3. Only auth field (index 2) differs → auth-only reload
-        (_FP, "a:b:X:d:img-svc:img-stg", "auth"),
+        (_FP, f"a:b:X:d:{_SVC}:{_STG}", "auth"),
         # 4. Field 0 (git_head) differs → structural
-        (_FP, "A:b:c:d:img-svc:img-stg", "structural"),
+        (_FP, f"A:b:c:d:{_SVC}:{_STG}", "structural"),
         # 5. Field 1 (unit_sha) differs → structural
-        (_FP, "a:B:c:d:img-svc:img-stg", "structural"),
+        (_FP, f"a:B:c:d:{_SVC}:{_STG}", "structural"),
         # 6. Field 3 (voicecli_head) differs → structural
-        (_FP, "a:b:c:D:img-svc:img-stg", "structural"),
+        (_FP, f"a:b:c:D:{_SVC}:{_STG}", "structural"),
         # 7. Field 4 (staging-svc digest) differs → structural
-        (_FP, "a:b:c:d:NEW-svc:img-stg", "structural"),
+        (_FP, f"a:b:c:d:deadbeefaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001:{_STG}", "structural"),
         # 8. Field 5 (staging digest) differs → structural
-        (_FP, "a:b:c:d:img-svc:NEW-stg", "structural"),
+        (_FP, f"a:b:c:d:{_SVC}:deadbeefaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0002", "structural"),
         # 9. Auth + structural both differ → structural dominates
-        (_FP, "A:b:X:d:img-svc:img-stg", "structural"),
+        (_FP, f"A:b:X:d:{_SVC}:{_STG}", "structural"),
         # 10. None-sentinel guard — non-tautological legacy-normalized case
         (
             "none",
@@ -80,6 +82,7 @@ def _classify(last: str, current: str) -> str:
         ("a:b:c:d", _FP, "structural"),
         # 13. Legacy equal after normalization (images still none) → none
         ("a:b:c:d", "a:b:c:d:none:none", "none"),
+
     ],
     ids=[
         "equal_fingerprints→none",

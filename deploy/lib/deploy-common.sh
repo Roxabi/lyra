@@ -61,7 +61,7 @@ require_clean_tree() {
 factory_image_index_digest() {
     local image="$1" digest
     digest=$(podman image inspect --format '{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' "${image}" 2>/dev/null \
-        | sed 's/.*@//') || true
+        | sed 's/.*@//' | sed 's/^sha256://') || true
     if [ -n "${digest}" ]; then
         echo "${digest}"
     else

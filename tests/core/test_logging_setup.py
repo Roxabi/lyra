@@ -13,7 +13,7 @@ import pytest
 import factory.core.logging_setup as _ls_mod
 from factory.bootstrap.factory.config import LoggingConfig, _load_logging_config
 from factory.core.logging_setup import setup_logging
-from factory.core.trace import TelegramTokenFilter, TraceIdFilter
+from factory.core.trace import TelegramTokenFilter, TraceContext, TraceIdFilter
 
 # ──────────────────────────────────────────────────────────────────────
 # Fixture: reset module sentinel + root logger state before each test
@@ -170,3 +170,22 @@ class TestSetupLogging:
         setup_logging()
         h = _our_handler(root)
         assert h.stream is sys.stdout
+
+    def test_trace_context_fields_render_in_log_format(self) -> None:
+        """TraceIdFilter-injected fields appear in formatted output (#1766)."""
+        trace = TraceContext.generate()
+        with patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+            setup_logging()
+            t_trace = TraceContext.set_trace_id(trace)
+            t_pool = TraceContext.set_pool_id("pool-1")
+            t_agent = TraceContext.set_agent_name("lyra_default")
+            try:
+                logging.getLogger("test_trace_fmt").info("hello")
+                output = mock_stdout.getvalue()
+            finally:
+                TraceContext.reset_agent_name(t_agent)
+                TraceContext.reset_pool_id(t_pool)
+                TraceContext.reset_trace_id(t_trace)
+        assert f"trace={trace}" in output
+        assert "pool=pool-1" in output
+        assert "agent=lyra_default" in output

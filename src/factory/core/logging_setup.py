@@ -7,7 +7,11 @@ import sys
 
 from factory.core.trace import TelegramTokenFilter, TraceIdFilter
 
-_FMT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+_FMT = (
+    "%(asctime)s %(levelname)s %(name)s"
+    " trace=%(trace_id)s pool=%(pool_id)s agent=%(agent_name)s:"
+    " %(message)s"
+)
 
 # Module-level sentinel — guards handler/filter attachment, not level updates.
 # Using a sentinel (rather than root.handlers check) ensures the filter contract

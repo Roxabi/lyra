@@ -63,7 +63,7 @@ push:                  ## save image and load on $(DEPLOY_HOST) via ssh
 FACTORY_HUB_UNIT      := factory-hub
 FACTORY_TELEGRAM_UNIT := factory-telegram
 FACTORY_DISCORD_UNIT  := factory-discord
-FACTORY_WEB_UNIT      := factory-web
+FACTORY_DASHBOARD_UNIT := factory-dashboard
 FACTORY_NATS_UNIT     := factory-nats
 FACTORY_CLIPOOL_UNIT  := factory-clipool
 
@@ -107,10 +107,12 @@ ifndef _IS_FACTORY_SUBCMD
 	$(call factory_sctl,$(FACTORY_DISCORD_UNIT))
 endif
 
-web:
+dashboard:
 ifndef _IS_FACTORY_SUBCMD
-	$(call factory_sctl,$(FACTORY_WEB_UNIT))
+	$(call factory_sctl,$(FACTORY_DASHBOARD_UNIT))
 endif
+
+web: dashboard
 
 nats:
 ifndef _IS_FACTORY_SUBCMD

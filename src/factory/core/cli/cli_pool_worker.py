@@ -125,7 +125,7 @@ class CliPoolWorkerMixin(CliPoolSpawnMixin):
                     if self._on_reap and reason == "idle":
                         try:
                             await self._on_reap(pool_id, reason)
-                        except Exception:
+                        except (RuntimeError, OSError, asyncio.CancelledError):
                             log.error(
                                 "[pool:%s] on_reap failed",
                                 pool_id,
@@ -133,5 +133,5 @@ class CliPoolWorkerMixin(CliPoolSpawnMixin):
                             )
             except asyncio.CancelledError:
                 break
-            except Exception as exc:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
+            except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: cli-subprocess — deferred #1812
                 log.warning("idle reaper error: %s", exc)

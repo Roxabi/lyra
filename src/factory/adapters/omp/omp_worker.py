@@ -22,6 +22,9 @@ import signal
 import time
 from typing import Any
 
+import nats.errors
+from pydantic import ValidationError
+
 from factory.adapters.omp._rpc_bridge import publish_job_error
 from factory.adapters.omp.omp_pool import OmpPool
 from roxabi_contracts.jobs.models import JobEnvelope
@@ -117,13 +120,13 @@ class OmpWorker(NatsAdapterBase):
             if self._nc is not None:
                 try:
                     await self._nc.drain()
-                except Exception:  # noqa: BLE001
+                except nats.errors.Error:
                     log.warning(
                         "omp_worker: nc.drain failed on shutdown", exc_info=True
                     )  # noqa: E501
                 try:
                     await self._nc.close()
-                except Exception:  # noqa: BLE001
+                except nats.errors.Error:
                     log.warning(
                         "omp_worker: nc.close failed on shutdown", exc_info=True
                     )  # noqa: E501
@@ -140,9 +143,7 @@ class OmpWorker(NatsAdapterBase):
         """Parse the job envelope and spawn a task for it (Model B)."""
         try:
             envelope = JobEnvelope.model_validate(payload)
-        except (
-            Exception
-        ) as exc:  # pydantic.ValidationError — schema parse failure  # noqa: BLE001
+        except ValidationError as exc:
             log.exception("omp_worker: failed to parse JobEnvelope")
             # ValidationError.__str__ may embed incoming values — use only
             # type name on the bus (ADR-073). Log the full exception locally above.
@@ -236,7 +237,7 @@ class OmpWorker(NatsAdapterBase):
                 session_file=worker.session_file,
                 model=model,
             )
-        except Exception as exc:  # pool.acquire / bridge.run  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: omp-job — pool.acquire/bridge.run sanitized on bus
             # _run_job is create_task-spawned (non-blocking, frees core-NATS dispatch
             # for Model B). Runs *outside* _dispatch guard in adapter_base; must
             # self-handle + publish sanitized error (ADR-073: only type(exc).__name__

@@ -8,6 +8,7 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+from aiogram.exceptions import TelegramAPIError
 from aiogram.types import InputRichMessage
 
 from factory.adapters.shared._shared import chunk_text
@@ -19,6 +20,17 @@ from factory.adapters.telegram.telegram_formatting import (
 log = logging.getLogger("factory.adapters.telegram")
 
 _THINKING_TAG = "tg-thinking"
+_RICH_API_ERRORS = (TelegramAPIError, OSError, RuntimeError, ConnectionError)
+
+
+async def _best_effort_rich(op_name: str, coro, *, ok: bool = False) -> Any:
+    """Run a rich-message API call; return result, True, or None/False on failure."""
+    try:
+        result = await coro
+        return True if ok else result
+    except _RICH_API_ERRORS as exc:
+        log.debug("%s failed: type=%s", op_name, type(exc).__name__)
+        return False if ok else None
 
 
 def rich_messages_enabled() -> bool:
@@ -103,18 +115,14 @@ async def send_rich_text(  # noqa: PLR0913 — mirrors Telegram send kwargs surf
     """Send via sendRichMessage; return Message on success, None to signal fallback."""
     if not rich_messages_enabled() or not text:
         return None
-    try:
-        kwargs: dict[str, Any] = {
-            "chat_id": chat_id,
-            "rich_message": build_rich_message(text),
-            **_thread_kwargs(reply_to, topic_id),
-        }
-        if reply_markup is not None:
-            kwargs["reply_markup"] = reply_markup
-        return await bot.send_rich_message(**kwargs)
-    except Exception as exc:  # noqa: BLE001 — rich path is best-effort; MarkdownV2 fallback follows
-        log.debug("sendRichMessage failed, will fallback: type=%s", type(exc).__name__)
-        return None
+    kwargs: dict[str, Any] = {
+        "chat_id": chat_id,
+        "rich_message": build_rich_message(text),
+        **_thread_kwargs(reply_to, topic_id),
+    }
+    if reply_markup is not None:
+        kwargs["reply_markup"] = reply_markup
+    return await _best_effort_rich("sendRichMessage", bot.send_rich_message(**kwargs))
 
 
 async def edit_rich_text(
@@ -128,19 +136,16 @@ async def edit_rich_text(
     """Edit via editMessageText(rich_message=...); return True on success."""
     if not rich_messages_enabled() or not text:
         return False
-    try:
-        kwargs: dict[str, Any] = {
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "rich_message": build_rich_message(text),
-        }
-        if reply_markup is not None:
-            kwargs["reply_markup"] = reply_markup
-        await bot.edit_message_text(**kwargs)
-        return True
-    except Exception as exc:  # noqa: BLE001 — rich edit is best-effort; MarkdownV2 fallback follows
-        log.debug("editMessageText(rich_message) failed: type=%s", type(exc).__name__)
-        return False
+    kwargs: dict[str, Any] = {
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "rich_message": build_rich_message(text),
+    }
+    if reply_markup is not None:
+        kwargs["reply_markup"] = reply_markup
+    return await _best_effort_rich(
+        "editMessageText(rich_message)", bot.edit_message_text(**kwargs), ok=True
+    )
 
 
 async def send_rich_draft(
@@ -154,19 +159,16 @@ async def send_rich_draft(
     """Stream a partial rich message in private chats (sendRichMessageDraft)."""
     if not use_rich_draft(chat_id):
         return False
-    try:
-        kwargs: dict[str, Any] = {
-            "chat_id": chat_id,
-            "draft_id": draft_id,
-            "rich_message": rich_message,
-        }
-        if topic_id is not None:
-            kwargs["message_thread_id"] = topic_id
-        await bot.send_rich_message_draft(**kwargs)
-        return True
-    except Exception as exc:  # noqa: BLE001 — draft API optional; caller may fall back
-        log.debug("sendRichMessageDraft failed: type=%s", type(exc).__name__)
-        return False
+    kwargs: dict[str, Any] = {
+        "chat_id": chat_id,
+        "draft_id": draft_id,
+        "rich_message": rich_message,
+    }
+    if topic_id is not None:
+        kwargs["message_thread_id"] = topic_id
+    return await _best_effort_rich(
+        "sendRichMessageDraft", bot.send_rich_message_draft(**kwargs), ok=True
+    )
 
 
 async def send_markdownv2_text(  # noqa: PLR0913 — mirrors Telegram send kwargs surface
@@ -221,20 +223,18 @@ async def send_thinking_with_fallback(  # noqa: PLR0913 — mirrors Telegram sen
 ) -> Any:
     """Prefer sendRichMessage with <tg-thinking>; fall back to MarkdownV2."""
     if rich_messages_enabled() and text:
-        try:
-            kwargs: dict[str, Any] = {
-                "chat_id": chat_id,
-                "rich_message": build_thinking_message(text),
-                **_thread_kwargs(reply_to, topic_id),
-            }
-            if reply_markup is not None:
-                kwargs["reply_markup"] = reply_markup
-            return await bot.send_rich_message(**kwargs)
-        except Exception as exc:  # noqa: BLE001 — rich path is best-effort; fallback follows
-            log.debug(
-                "sendRichMessage(thinking) failed, will fallback: type=%s",
-                type(exc).__name__,
-            )
+        kwargs: dict[str, Any] = {
+            "chat_id": chat_id,
+            "rich_message": build_thinking_message(text),
+            **_thread_kwargs(reply_to, topic_id),
+        }
+        if reply_markup is not None:
+            kwargs["reply_markup"] = reply_markup
+        sent = await _best_effort_rich(
+            "sendRichMessage(thinking)", bot.send_rich_message(**kwargs)
+        )
+        if sent is not None:
+            return sent
     return await send_markdownv2_text(
         bot,
         chat_id,

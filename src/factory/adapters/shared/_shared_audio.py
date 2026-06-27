@@ -6,6 +6,7 @@ and the partial-audio error carrier used by audio outbound renderers.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -76,7 +77,15 @@ async def buffer_audio_chunks(
                 break
             if chunk.is_final:
                 break
-    except Exception as exc:  # noqa: BLE001  — DEBT:boundary-broad-catch# audio op: non-fatal
+    except (
+        OSError,
+        RuntimeError,
+        ConnectionError,
+        TimeoutError,
+        asyncio.TimeoutError,
+        ValueError,
+        TypeError,
+    ) as exc:
         stream_error = exc
         log.warning("Audio stream interrupted: %s", exc)
 

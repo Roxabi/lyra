@@ -204,5 +204,5 @@ async def backfill_sessions(db: aiosqlite.Connection) -> None:
         await db.commit()
         if cursor.rowcount and cursor.rowcount > 0:
             log.info("backfill_sessions: backfilled %d session(s)", cursor.rowcount)
-    except Exception:
+    except sqlite3.Error:
         log.exception("backfill_sessions failed")

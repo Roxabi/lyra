@@ -223,17 +223,11 @@ async def handle_audio(  # noqa: C901, PLR0915 — DEBT:wiring-bootstrap-deps
         and _audio_is_thread
         and adapter._thread_store is not None
     ):
-        try:
-            if await adapter._thread_store.is_owned(
-                str(message.channel.id), adapter._bot_id
-            ):
-                adapter._owned_threads.add(message.channel.id)
-                _audio_in_owned_thread = True
-        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
-            log.warning(
-                "ThreadStore: lazy is_owned (audio) failed for thread_id=%s",
-                message.channel.id,
-            )
+        if await adapter._thread_store.is_owned(
+            str(message.channel.id), adapter._bot_id
+        ):
+            adapter._owned_threads.add(message.channel.id)
+            _audio_in_owned_thread = True
     if not _audio_is_dm and not _audio_is_mention and not _audio_in_owned_thread:
         return
 

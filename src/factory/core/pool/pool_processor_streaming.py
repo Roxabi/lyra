@@ -122,5 +122,5 @@ async def run_streaming_turn_post(
         # this turn propagates into the post-hook (await-on-create_task orphaned
         # the task under cancellation, #1820).
         await processor.post(original_msg, streamed)  # type: ignore[misc] — DEBT:defensive-narrow-payloads
-    except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
+    except (RuntimeError, ValueError, TypeError, AttributeError):
         log.warning("Processor post() failed (streaming)", exc_info=True)

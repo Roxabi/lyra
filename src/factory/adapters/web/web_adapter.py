@@ -83,6 +83,8 @@ class WebAdapter(OutboundAdapterBase):
         agent = str(raw.get("agent", "")).strip()
         text = str(raw.get("text", "")).strip()
         session_id = str(raw.get("session_id") or uuid4().hex)
+        harness = str(raw.get("harness") or "").strip() or None
+        model = str(raw.get("model") or "").strip() or None
         if not agent or not text:
             raise ValueError("agent and text are required")
         if agent not in self._agent_names:
@@ -99,7 +101,11 @@ class WebAdapter(OutboundAdapterBase):
             text=text,
             text_raw=text,
             timestamp=datetime.now(timezone.utc),
-            platform_meta=WebMeta(session_id=session_id),
+            platform_meta=WebMeta(
+                session_id=session_id,
+                harness=harness,
+                model=model,
+            ),
             trust_level=trust_level,
         )
 

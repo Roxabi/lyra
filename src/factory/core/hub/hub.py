@@ -137,6 +137,8 @@ class Hub(
         self._audio_pipeline = AudioPipeline(self)
         self._authenticators: dict[tuple[Platform, str], Authenticator] = {}
         self._alias_store: IdentityAliasStore | None = None
+        # Populated by dashboard RPC heartbeat subscribers (#1771).
+        self._dashboard_worker_freshness: dict[str, float] = {}
         self._identity_resolver = IdentityResolver(
             authenticators=self._authenticators,
             bindings=self.bindings,

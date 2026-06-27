@@ -63,6 +63,22 @@ async def test_agents_status_marks_offline_without_heartbeat() -> None:
 
 
 @pytest.mark.asyncio
+async def test_agents_status_respects_harness_selection() -> None:
+    hub = MagicMock()
+    hub.agent_registry = ["lyra"]
+    hub._dashboard_worker_freshness = {"clipool-worker": 0.0}
+    import time
+
+    hub._dashboard_worker_freshness["clipool-worker"] = time.monotonic()
+    out = await _handle_agents_status(
+        hub,
+        {"agents": ["lyra"], "harness_by_agent": {"lyra": "omp-rpc"}},
+    )
+    assert out["agents"][0]["harness"] == "omp-rpc"
+    assert out["agents"][0]["online"] is False
+
+
+@pytest.mark.asyncio
 async def test_resume_rejects_busy_pool() -> None:
     hub = MagicMock()
     pool = MagicMock()

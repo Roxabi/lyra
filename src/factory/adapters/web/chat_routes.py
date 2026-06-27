@@ -46,6 +46,8 @@ def build_chat_router(  # noqa: C901
             "agent": req.agent,
             "text": req.text,
             "session_id": session_id,
+            "harness": req.harness,
+            "model": req.model,
         }
         try:
             adapter.normalize(raw)

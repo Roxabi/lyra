@@ -67,6 +67,7 @@ async def bootstrap_web_standalone(
             port=port,
             agent_names=agent_names,
         )
+        adapter.set_nats_client(nc)
         typing_deps = TypingDeps(
             subject=f"factory.typing.web.{bot_id}",
             scope_resolver=lambda _scope: 0,
@@ -85,8 +86,6 @@ async def bootstrap_web_standalone(
             blob_store=None,
         )
     )
-    adapter = wired[0][0]
-    adapter.set_nats_client(nc)
 
     stop = setup_shutdown_event(_stop)
 

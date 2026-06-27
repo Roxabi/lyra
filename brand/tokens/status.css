@@ -1,0 +1,14 @@
+/* ──────────────────────────────────────────────────────────────────────────
+   STATUS — reserved for jobs panel (#1772). Placeholder util ramp until
+   factory job/worker vocabulary is wired. Distinct from Forge Orange accent.
+────────────────────────────────────────────────────────────────────────── */
+:root {
+  --status-open: var(--util-teal);
+  --status-open-dim: rgba(6, 182, 212, 0.14);
+  --status-closing: var(--util-amber);
+  --status-closing-dim: rgba(245, 158, 11, 0.14);
+  --status-error: var(--util-red);
+  --status-error-dim: rgba(248, 113, 113, 0.13);
+  --status-idle: var(--text-dim);
+  --status-idle-dim: rgba(125, 136, 149, 0.18);
+}

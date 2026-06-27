@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from factory.core.stores.turn_store_protocol import SessionRow
+from factory.core.stores.turn_store_protocol import CatalogSessionRow, SessionRow
 
 if TYPE_CHECKING:
     import aiosqlite
@@ -19,6 +19,7 @@ from factory.infrastructure.stores.session.turn_store_queries import (
     get_cli_session,
     get_cli_session_by_pool,
     get_last_session,
+    list_recent_sessions,
     list_sessions_for_pool,
 )
 
@@ -79,6 +80,10 @@ class TurnStoreSessionMixin:
         Used by resume_and_reset() when an exact Lyra session lookup misses.
         """
         return await get_cli_session_by_pool(self._db_or_raise(), pool_id)
+
+    async def list_recent_sessions(self, limit: int = 200) -> list[CatalogSessionRow]:
+        """Return recent sessions across pools for dashboard catalog."""
+        return await list_recent_sessions(self._db_or_raise(), limit)
 
     async def list_sessions(self, pool_id: str, limit: int = 5) -> list[SessionRow]:
         """Return up to *limit* recent sessions for *pool_id*, newest first.

@@ -129,6 +129,24 @@ forbidden_modules =
     factory.infrastructure.stores.registry.bot_store
 allow_indirect_imports = true
 
+[importlinter:contract:dashboard-no-infrastructure]
+name = factory.dashboard must not import infrastructure stores
+type = forbidden
+source_modules =
+    factory.dashboard
+forbidden_modules =
+    factory.infrastructure.stores
+allow_indirect_imports = true
+
+[importlinter:contract:dashboard-bounded-adapters]
+name = factory.dashboard may import adapters.web only (not inbound pipeline internals)
+type = forbidden
+source_modules =
+    factory.dashboard
+forbidden_modules =
+    factory.inbound
+allow_indirect_imports = true
+
 [importlinter:contract:inbound-no-adapters]
 name = inbound stages must not import adapters (stage-axis invariant, ADR-073 / #1287)
 type = forbidden

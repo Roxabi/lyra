@@ -1,0 +1,32 @@
+/* ──────────────────────────────────────────────────────────────────────────
+   SPACING, RADIUS & LAYOUT — Factory cockpit (dense instrument panel)
+────────────────────────────────────────────────────────────────────────── */
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+
+  --s-xs: var(--space-1);
+  --s-sm: var(--space-2);
+  --s-md: var(--space-4);
+  --s-lg: var(--space-6);
+  --s-xl: var(--space-10);
+  --s-2xl: var(--space-16);
+
+  --r-sm: 4px;
+  --r-md: 8px;
+  --r-lg: 12px;
+  --r-xl: 20px;
+  --r-full: 9999px;
+
+  --maxw: 1440px;
+  --header-h: 56px;
+  --sidebar-w: 360px;
+}

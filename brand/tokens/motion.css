@@ -1,0 +1,10 @@
+:root {
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
+  --dur-micro: 120ms;
+  --dur-short: 200ms;
+  --dur-long: 420ms;
+  --dur-fast: var(--dur-micro);
+  --dur: var(--dur-short);
+  --ease: var(--ease-out);
+}

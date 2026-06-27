@@ -163,7 +163,7 @@ class OmpPool:
         for w in self._all:
             try:
                 await asyncio.to_thread(w.client.stop)
-            except Exception:  # noqa: BLE001 — best-effort cleanup
+            except (OSError, RuntimeError):
                 log.warning("[omp_pool] client.stop raised", exc_info=True)
         self._free.clear()
         self._all.clear()
@@ -224,6 +224,6 @@ class OmpPool:
             if client is not None:
                 try:
                     await asyncio.to_thread(client.stop)
-                except Exception:  # noqa: BLE001
+                except (OSError, RuntimeError):
                     log.warning("omp_pool: stop leaked client failed", exc_info=True)  # noqa: E501
             raise

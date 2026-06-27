@@ -7,7 +7,10 @@ inserts (e.g. in tests) don't crash on NOT-NULL constraints.
 from __future__ import annotations
 
 import logging
+import sqlite3
 from typing import TYPE_CHECKING
+
+import aiosqlite
 
 if TYPE_CHECKING:
     import aiosqlite
@@ -87,7 +90,7 @@ async def apply_schema_compat(db: "aiosqlite.Connection") -> None:
             " END"
         )
         await db.commit()
-    except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
+    except (sqlite3.Error, aiosqlite.Error, OSError, RuntimeError):
         log.warning(
             "schema compat migration failed; database may be in inconsistent state",
             exc_info=True,

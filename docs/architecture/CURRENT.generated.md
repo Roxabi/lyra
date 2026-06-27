@@ -168,6 +168,11 @@
 - **Required secrets:** factory-claude-oauth, factory-nats-clipool
 - **Host roles:** factory-hub
 
+### dashboard
+- **Container:** factory-dashboard.container
+- **Required secrets:** factory-nats-web
+- **Host roles:** factory-hub
+
 ### discord
 - **Container:** factory-discord.container
 - **Required secrets:** factory-nats-discord, factory_blobstore_token
@@ -241,11 +246,6 @@
 ### turn-writer
 - **Container:** factory-turn-writer.container
 - **Required secrets:** factory-nats-turn-writer
-- **Host roles:** factory-hub
-
-### web
-- **Container:** factory-dashboard.container
-- **Required secrets:** factory-nats-web
 - **Host roles:** factory-hub
 
 ---

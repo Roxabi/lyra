@@ -89,7 +89,7 @@ def help_command(deps: HelpCommandDeps) -> Response:
             for cmd_name, desc in sorted(proc_descs.items()):
                 if deps.passthroughs is None or cmd_name in deps.passthroughs:
                     lines.append(f"  {cmd_name} — {desc or '(no description)'}")
-    except Exception as exc:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
+    except (ImportError, AttributeError, RuntimeError, OSError) as exc:
         log.debug("Could not load processor descriptions: %s", exc)
     plugin_handlers = deps.command_loader.get_commands(deps.enabled_plugins)
     plugin_cmds = [cmd for cmd in sorted(plugin_handlers) if cmd not in deps.builtins]

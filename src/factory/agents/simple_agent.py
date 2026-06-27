@@ -198,7 +198,7 @@ class SimpleAgent(AgentBase):
                 self._session_tools = SessionTools(
                     scraper=WebIntelScraper(), vault=VaultCli()
                 )
-            except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch
+            except (ImportError, OSError, RuntimeError, ValueError):
                 log.warning(
                     "SimpleAgent: could not build session tools"
                     " — processor pipeline disabled",

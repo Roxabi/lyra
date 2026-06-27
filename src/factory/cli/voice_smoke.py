@@ -75,7 +75,7 @@ def voice_smoke(
         )
     except SystemExit:
         raise
-    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — resilient: CLI entry-point catch-all for unexpected async errors
+    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: cli-entry — smoke test catch-all
         typer.echo(f"FAIL: unexpected error — {exc}", err=True)
         raise typer.Exit(1)
 
@@ -94,7 +94,7 @@ async def _run_smoke(
     """Execute the round-trip and exit with 0 (pass) or 1 (fail)."""
     try:
         nc = await nats_connect(nats_url, identity_name="hub")
-    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — resilient: NATS connect errors span auth, TLS, DNS, and OS-level failures
+    except (OSError, nats.errors.Error, asyncio.TimeoutError, TimeoutError) as exc:
         typer.echo(f"FAIL: cannot connect to NATS at {nats_url!r} — {exc}", err=True)
         raise typer.Exit(1)
 
@@ -194,7 +194,7 @@ async def _step_tts(nc: NATS, timeout: float) -> tuple[dict, str]:
             err=True,
         )
         raise typer.Exit(1)
-    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — resilient: NATS request can raise varied errors beyond timeout
+    except (nats.errors.Error, OSError, RuntimeError) as exc:
         typer.echo("")
         typer.echo(f"FAIL: TTS request error — {exc}", err=True)
         raise typer.Exit(1)
@@ -238,7 +238,7 @@ async def _step_stt(nc: NATS, blob_ref: dict, mime_type: str, timeout: float) ->
             err=True,
         )
         raise typer.Exit(1)
-    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch — resilient: NATS request can raise varied errors beyond timeout
+    except (nats.errors.Error, OSError, RuntimeError) as exc:
         typer.echo("")
         typer.echo(f"FAIL: STT request error — {exc}", err=True)
         raise typer.Exit(1)

@@ -88,3 +88,13 @@ export const MODEL_CATALOG: Record<HarnessKind, string[]> = {
   "claude-cli": ["sonnet", "opus", "haiku"],
   "omp-rpc": ["omp-default", "omp-fast"],
 };
+
+/** First curated model for a harness — used when switching harness on a tab. */
+export function defaultModelForHarness(harness: HarnessKind): string {
+  const models = MODEL_CATALOG[harness];
+  const first = models[0];
+  if (!first) {
+    throw new Error(`no models configured for harness ${harness}`);
+  }
+  return first;
+}

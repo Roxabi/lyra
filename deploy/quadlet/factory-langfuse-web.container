@@ -14,7 +14,7 @@ ReadOnly=true
 DropCapability=all
 EnvironmentFile=%h/.roxabi/factory/env/langfuse.env
 PublishPort=127.0.0.1:3000:3000
-HealthCmd=wget -q -O- http://127.0.0.1:3000/api/public/health || exit 1
+HealthCmd=wget -q -O- http://factory-langfuse-web:3000/api/public/health || exit 1
 HealthInterval=30s
 
 [Service]

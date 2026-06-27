@@ -50,6 +50,7 @@ def _entry_to_telegram_bot(entry: RosterBotEntry) -> TelegramBotConfig:
     return TelegramBotConfig(
         bot_id=entry.bot_id,
         agent=entry.agent,
+        public_bot=entry.public_bot,
     )
 
 
@@ -57,6 +58,7 @@ def _entry_to_discord_bot(entry: RosterBotEntry) -> DiscordBotConfig:
     return DiscordBotConfig(
         bot_id=entry.bot_id,
         agent=entry.agent,
+        public_bot=entry.public_bot,
         auto_thread=(
             entry.auto_thread
             if entry.auto_thread is not None

@@ -133,7 +133,7 @@ Legacy 4-field stamps (pre-image-digest schema) are normalized to `:none:none` o
    - **Pure identity add** (`make nats-add-identity`): atomic write to `auth.conf` on host → `systemctl --user reload factory-nats` (fires `ExecReload=` → `podman kill --signal=HUP factory-nats`). Zero client restarts, zero dropped connections.
    - **ACL permission change** (`make nats-regen-authconf`): atomic write to `auth.conf` on host → `systemctl --user restart factory-nats` (required per #1390 — stale-subject-auth risk on ACL changes). Waits for `is-active`.
    Converge always **restarts** factory-nats on any drift (auth → factory-nats only; structural → factory-nats + clients) — it never reloads, because it cannot prove a change is a pure identity-add (#1390). Clients reconnect automatically via `allow_reconnect`.
-7. **Restart factory clients** — `factory-hub`, `factory-telegram`, `factory-discord`, `factory-web`, `factory-clipool`, `factory-turn-writer`, `factory-gh-helper`, `factory-blobstore`, `factory-omp` (unconditional `systemctl restart` — also starts units that were inactive; any failure aborts the converge). Restarted only on **structural** drift. On **auth-only** drift, converge restarts factory-nats alone; clients reconnect via `allow_reconnect` without explicit restart.
+7. **Restart factory clients** — `factory-hub`, `factory-telegram`, `factory-discord`, `factory-dashboard`, `factory-clipool`, `factory-turn-writer`, `factory-gh-helper`, `factory-blobstore`, `factory-omp` (unconditional `systemctl restart` — also starts units that were inactive; any failure aborts the converge). Restarted only on **structural** drift. On **auth-only** drift, converge restarts factory-nats alone; clients reconnect via `allow_reconnect` without explicit restart.
 8. **Restart voiceCLI** — `voicecli-tts`, `voicecli-stt` (if voiceCLI directory exists).
 9. **Record stamp** — writes the new convergence fingerprint to `~/.roxabi/factory/.converge-stamp`.
 
@@ -213,7 +213,7 @@ carries its own auth — bind tier and auth mechanism are chosen **together**:
 | `factory-nats` 4222 | `0.0.0.0` | LAN + Tailnet | NKey (mandatory, per-identity) |
 | `factory-nats` 8222 (monitoring) | `127.0.0.1` | host only | — |
 | `factory-blobstore` 8449 | `${TAILSCALE_IPV4}` | Tailnet only | bearer token (#1330) |
-| `factory-web` 8765 | `${TAILSCALE_IPV4}` | Tailnet only | **none** — Tailnet membership is the boundary (#1992) |
+| `factory-dashboard` 8765 | `${TAILSCALE_IPV4}` | Tailnet only | **none** — Tailnet membership is the boundary (#1992) |
 | `factory-hub` 8443 | `127.0.0.1` | host only | — |
 | `factory-loki` 3100 | `127.0.0.1` | host only (logcli / #1760) | — |
 | `factory-langfuse-web` 3000 | `127.0.0.1` | host only (trace UI / #1760) | Langfuse login |
@@ -265,9 +265,9 @@ Prior to #1368, `[ -n "   " ]` was TRUE in POSIX sh — a whitespace-only value 
 guard and Podman's downstream parse error provided fail-closed behaviour by accident, not
 by design. The guard is now the authoritative rejection point.
 
-### Known residual risk — factory-web has NO auth on the Tailnet (#1992)
+### Known residual risk — factory-dashboard has NO auth on the Tailnet (#1992)
 
-`factory-web.container` binds PublishPort to `${TAILSCALE_IPV4}:8765:8765` (same pattern +
+`factory-dashboard.container` binds PublishPort to `${TAILSCALE_IPV4}:8765:8765` (same pattern +
 fail-closed `ExecStartPre` guard as blobstore above). Unlike blobstore, the web smoke adapter
 has **no application auth** — any Tailnet member who reaches `http://roxabituwer:8765` can pick
 an agent and chat (LLM token spend; session_id is client-supplied → cross-session read, see

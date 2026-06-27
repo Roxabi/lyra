@@ -82,10 +82,8 @@ main() {
         podman pull "${image}"
     done
 
-    # Converge stamp does not include image digest, so invalidate it
-    # to force a full converge (restarts, auth.conf refresh, etc.).
-    rm -f "${CONVERGE_STAMP}"
-
+    # Image digests are fields 5–6 of the convergence fingerprint — converge's
+    # change-gate detects structural drift after pull (no stamp deletion needed).
     echo "==> Running make converge..."
     make -C "${FACTORY_DIR}" converge
 }

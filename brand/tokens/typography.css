@@ -1,0 +1,35 @@
+/* ──────────────────────────────────────────────────────────────────────────
+   TYPOGRAPHY — Factory v2 dense (cockpit)
+   Inter body · Outfit headings · JetBrains Mono machine labels.
+   Chakra Petch is marketing/hero only — not loaded in the dashboard app.
+────────────────────────────────────────────────────────────────────────── */
+:root {
+  --font-display: "Outfit", system-ui, -apple-system, sans-serif;
+  --font-head: "Outfit", system-ui, -apple-system, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --fs-display: 2.25rem;
+  --fs-h1: 1.5rem;
+  --fs-h2: 1.25rem;
+  --fs-h3: 1.0625rem;
+  --fs-lead: 1rem;
+  --fs-body: 0.9375rem;
+  --fs-sm: 0.8125rem;
+  --fs-mono: 0.75rem;
+  --fs-micro: 0.625rem;
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+  --fw-heavy: 800;
+
+  --tracking-display: -0.03em;
+  --tracking-tight: -0.02em;
+  --tracking-mono: 0.1em;
+
+  --leading-tight: 1.1;
+  --leading-snug: 1.35;
+  --leading-body: 1.6;
+}

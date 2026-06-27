@@ -128,6 +128,63 @@ The `PipelineEventBus` is injected via constructor (DI, not singleton) per ADR-0
 
 ---
 
+## Operator & deploy audit
+
+Application logs (above) go to **stdout → journald**. **Shell deploy actions** are audited separately:
+
+| Store | Path | Role |
+|-------|------|------|
+| Operator log | `~/.local/state/factory/logs/operator.log` | JSONL: `install.sh`, `make converge` |
+| Rotation log | `~/.roxabi/factory/rotation-log.md` | Human record of credential rotations |
+| Deploy timers | journald `--user` | `factory-quadlet-sync`, `factory-post-autoupdate` |
+
+`~/.local/state/factory/logs/` is **not** written by `setup_logging()` — containers do not use file handlers. The directory exists for `operator.log` only (provisioned by `deploy/setup.py`).
+
+Runbook: [runbooks/operator-log.md](runbooks/operator-log.md). Decision record: [ADR-093](architecture/adr/093-operator-audit-three-channel.mdx) (three-channel audit: operator.log + journald + rotation-log.md).
+
+---
+
+## Loki + Promtail (log engine — ADR-092 Phase 1)
+
+| Unit | Image | Storage |
+|------|-------|---------|
+| `factory-loki` | `grafana/loki:3.4.2` | `~/.local/state/factory/loki/` |
+| `factory-promtail` | `grafana/promtail:3.4.2` | positions in `~/.local/state/factory/promtail/` |
+
+Promtail ingests:
+
+- `~/.local/state/factory/logs/operator.log` (JSONL → labels `event`, `user`, `host`)
+- User journald via host `/var/log/journal` (owner UID filter + `factory-*` / `voicecli-*` units — `deploy/observability/promtail-config.yml`)
+
+Loki API: `http://127.0.0.1:3100` (localhost only). Query via `logcli` until control-plane dashboard (#1760).
+
+Runbook: [runbooks/loki-query.md](runbooks/loki-query.md).
+
+---
+
+## OTel Collector + Langfuse (trace engine — ADR-092 Phase 1)
+
+| Unit | Image | Storage / notes |
+|------|-------|-----------------|
+| `factory-otel-collector` | `otel/opentelemetry-collector-contrib:0.120.0` | config bind-mount only |
+| `factory-langfuse-web` | `langfuse/langfuse:3` | UI `127.0.0.1:3000` |
+| `factory-langfuse-worker` | `langfuse/langfuse-worker:3` | ingestion |
+| `factory-langfuse-postgres` | `postgres:17` | `~/.local/state/factory/langfuse/postgres/` |
+| `factory-langfuse-clickhouse` | `clickhouse/clickhouse-server:24.12` | `.../clickhouse/` |
+| `factory-langfuse-redis` | `redis:7-alpine` | `.../redis-data/` |
+| `factory-langfuse-minio` | `minio/minio` | `.../minio/` |
+
+Flow:
+
+- **Primary:** Claude Code (clipool subprocess) → OTLP gRPC → collector → Langfuse
+- **Secondary:** LiteLLM proxy (`llmcli` OTel v2) → same collector — OMP + cloud relay
+
+Bootstrap: `deploy/scripts/bootstrap-langfuse.sh` → `~/.roxabi/factory/env/langfuse.env` + `otel-collector.env`.
+
+Runbook: [runbooks/otel-traces.md](runbooks/otel-traces.md).
+
+---
+
 ## Gaps & Future Work
 
 | Gap | Tracking |
@@ -135,4 +192,6 @@ The `PipelineEventBus` is injected via constructor (DI, not singleton) per ADR-0
 | No end-to-end trace IDs | ✅ Resolved in #270 |
 | No structured/JSON logs | ✅ Resolved in #270 |
 | No message content capture in logs | Captured in Turn Store (L1, #67 ✅) |
-| No OpenTelemetry integration | — |
+| No OpenTelemetry integration | Phase 1 ✅ clipool → Langfuse; LiteLLM (#671) + hub wiring open |
+| No central log search UI | Loki ✅ — dashboard composition (#1760) still open |
+| Manual ops outside instrumented scripts | Partial — use `install.sh` / `make converge`; see operator-log runbook |

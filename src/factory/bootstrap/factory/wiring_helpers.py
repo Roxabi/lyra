@@ -69,13 +69,6 @@ async def _init_inbound_bus(
     )
 
 
-async def _seed_auth(stores: object) -> None:
-    """Thin shim: delegate to canonical seed_grants_from_bots."""
-    from factory.bootstrap.auth_seeding import seed_grants_from_bots
-
-    await seed_grants_from_bots(stores.auth, stores.bot)
-
-
 async def _prune_message_index(stores: object, raw_config: dict) -> None:
     """Prune message index according to retention config."""
     mi_cfg = MessageIndexConfig(**raw_config.get("message_index", {}))
@@ -100,15 +93,15 @@ async def _init_pairing(
         log.warning(
             "Pairing enabled but [admin].user_ids is empty — "
             "/invite and /unpair require is_admin=True "
-            "(granted to [admin].user_ids entries "
-            "or users configured as OWNER in [[auth.*_bots]])"
+            "(granted to [admin].user_ids in config.toml)"
         )
     pm: PairingManager | None = None
     if pairing_config.enabled:
         pm = PairingManager(
             config=pairing_config,
             db_path=vault_dir / "pairing.db",
-            auth_store=stores.auth,
+            grant_store=stores.grant,
+            user_store=stores.user,
         )
         await pm.connect()
         set_pairing_manager(pm)
@@ -118,19 +111,26 @@ async def _init_pairing(
 async def _init_voice_services(
     nc: nats.aio.client.Client,
 ) -> VoiceBundle:
-    """Start STT, TTS, and NATS LLM driver."""
+    """Start STT, TTS, socialmedia tool client, and NATS LLM driver."""
     from factory.bootstrap.factory.llm_overlay import init_nats_llm
-    from factory.bootstrap.factory.voice_overlay import init_nats_stt, init_nats_tts
+    from factory.bootstrap.factory.voice_overlay import (
+        init_nats_socialmedia,
+        init_nats_stt,
+        init_nats_tts,
+    )
 
     stt_service = init_nats_stt(nc)
     await stt_service.start()
     tts_service = init_nats_tts(nc)
     await tts_service.start()
+    socialmedia_client = init_nats_socialmedia(nc)
+    await socialmedia_client.start()
     nats_llm_client = await init_nats_llm(nc)
     return VoiceBundle(
         stt_service=stt_service,
         tts_service=tts_service,
         nats_llm_client=nats_llm_client,
+        socialmedia_client=socialmedia_client,
     )
 
 

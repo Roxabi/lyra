@@ -20,7 +20,6 @@ from factory.bootstrap.factory.wiring_helpers import (
     _prune_message_index,
     _register_agents,
     _run_clipool_worker_task,
-    _seed_auth,
     _wire_adapters,
 )
 from factory.bootstrap.infra.embedded_nats import ensure_nats
@@ -56,7 +55,6 @@ async def _bootstrap_unified(  # noqa: PLR0915 — unified bootstrap is a wiring
 
         async with open_stores(vault_dir, nc=nc) as stores:
             await _prune_message_index(stores, raw_config)
-            await _seed_auth(stores)
 
             bundle = await _init_bot_auths_and_agents(stores, raw_config)
             pm = await _init_pairing(
@@ -131,8 +129,11 @@ async def _bootstrap_unified(  # noqa: PLR0915 — unified bootstrap is a wiring
             await asyncio.gather(clipool_worker_task, return_exceptions=True)
 
     finally:
-        if voice is not None and voice.nats_llm_client is not None:
-            await voice.nats_llm_client.stop()
+        if voice is not None:
+            if voice.socialmedia_client is not None:
+                await voice.socialmedia_client.stop()
+            if voice.nats_llm_client is not None:
+                await voice.nats_llm_client.stop()
         if clipool is not None and clipool.cli_nats_driver is not None:
             await clipool.cli_nats_driver.stop()
         # Flush in-flight audit emit tasks before closing NATS (audit uses JetStream).

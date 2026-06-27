@@ -1,4 +1,4 @@
-"""Domain-specific test factories for the Lyra test suite."""
+"""Domain-specific test factories for the factory test suite."""
 
 # Re-exports for backward compatibility
 from tests.factories.adapters import *  # noqa: F403

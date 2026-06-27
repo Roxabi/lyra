@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from factory.core.auth.identity import Identity
@@ -71,10 +72,10 @@ class FromBotStoreDeps:
 
 
 class Authenticator:
-    """Identity resolver: trust resolution considers all linked aliases.
+    """Identity resolver: trust is ban-only; agent grants gate access.
 
-    Order: blocked (any alias) → public_commands bypass → max stored trust
-    → role_map → default.
+    Order: blocked (any alias) → public_commands bypass → TRUSTED.
+    ``default`` and ``role_map`` are ignored for chat gating (ADR-090).
     """
 
     def __init__(
@@ -113,50 +114,24 @@ class Authenticator:
         roles: Sequence[str] = (),
         command: str | None = None,
     ) -> TrustLevel:
+        del roles  # agent grants gate access; roles no longer affect trust
         if user_id is None:
             return TrustLevel.BLOCKED
 
-        # Resolve all linked identities (alias-aware)
         aliases = (
             self._alias_store.resolve_aliases(user_id)
             if self._alias_store
             else frozenset({user_id})
         )
 
-        # Any linked ID BLOCKED → entire group is BLOCKED
         for a in aliases:
-            stored = self._store_level(a)
-            if stored == TrustLevel.BLOCKED:
+            if self._store_level(a) == TrustLevel.BLOCKED:
                 return TrustLevel.BLOCKED
 
-        # Command bypass check
         if command is not None and command in self._public_commands:
             return TrustLevel.PUBLIC
 
-        # Max trust across all linked identities
-        best_stored: TrustLevel | None = None
-        for a in aliases:
-            stored = self._store_level(a)
-            if stored is not None and (
-                best_stored is None
-                or _TRUST_ORDER[stored] > _TRUST_ORDER.get(best_stored, 0)
-            ):
-                best_stored = stored
-
-        if best_stored is not None:
-            return best_stored
-
-        # admin_user_ids (from [admin].user_ids) use platform-prefixed keys
-        # (e.g. "tg:user:123") while seed_from_config stores bare IDs — grant
-        # OWNER directly so admins are never blocked by a cache-key mismatch.
-        if user_id in self._admin_user_ids:
-            return TrustLevel.OWNER
-
-        best = self._best_role_level(roles)
-        if best is not None:
-            return best
-
-        return self._default
+        return TrustLevel.TRUSTED
 
     def check(
         self,
@@ -187,11 +162,7 @@ class Authenticator:
             else frozenset({resolved_uid})
         )
         is_admin = bool(
-            user_id
-            and any(
-                a in self._admin_user_ids or self._store_level(a) == TrustLevel.OWNER
-                for a in aliases
-            )
+            user_id and any(a in self._admin_user_ids for a in aliases)
         )
         return Identity(user_id=resolved_uid, trust_level=trust, is_admin=is_admin)
 
@@ -312,22 +283,41 @@ class Authenticator:
                 d.bot_id,
             )
             return None
-        section_cfg = {
-            "default": row.default_trust,
-            "trusted_roles": row.trusted_roles,
-        }
-        return cls._build_from_section_cfg(
-            section_cfg,
-            context_label=f"bot store for {d.platform} bot_id={d.bot_id!r}",
-            store=d.store,
-            admin_user_ids=d.admin_user_ids,
-            alias_store=d.alias_store,
+        return cls(
+            AuthenticatorDeps(
+                store=d.store,
+                role_map={},
+                default=TrustLevel.BLOCKED,
+                admin_user_ids=d.admin_user_ids,
+                alias_store=d.alias_store,
+            )
         )
 
 
-# Sentinel: denies all traffic by default (safe default when no auth is configured).
+class _BlockEveryoneStore:
+    """Minimal store that marks every identity as BLOCKED (for _DENY_ALL)."""
+
+    def check(self, identity_key: str) -> TrustLevel:
+        return TrustLevel.BLOCKED
+
+    async def upsert(
+        self,
+        identity_key: str,
+        trust_level: TrustLevel,
+        expires_at: datetime | None,
+        granted_by: str,
+        source: str,
+    ) -> None:
+        del identity_key, trust_level, expires_at, granted_by, source
+
+    async def revoke(self, identity_key: str) -> bool:
+        del identity_key
+        return False
+
+
+# Sentinel: denies all traffic (safe default when no auth is configured).
 _DENY_ALL = Authenticator(
-    AuthenticatorDeps(store=None, role_map={}, default=TrustLevel.BLOCKED)
+    AuthenticatorDeps(store=_BlockEveryoneStore(), role_map={}, default=TrustLevel.BLOCKED)  # noqa: E501
 )
 
 # Sentinel: allows all traffic as PUBLIC (for tests and permissive contexts).

@@ -56,3 +56,66 @@ async def run_bot_migrations(db: aiosqlite.Connection) -> None:
         if await cur.fetchone() is None:
             await db.execute("ALTER TABLE bots ADD COLUMN public_bot TEXT DEFAULT NULL")
         await _set_user_version(db, 2)
+
+    if version < 3:
+        # Migration 3: drop legacy auth columns (identity/grants are store SSOT).
+        _TARGET_COLS = frozenset(
+            {
+                "platform",
+                "bot_id",
+                "agent",
+                "webhook_enabled",
+                "auto_thread",
+                "thread_hot_hours",
+                "updated_at",
+                "public_bot",
+            }
+        )
+        _LEGACY_COLS = frozenset(
+            {
+                "default_trust",
+                "owner_users_json",
+                "trusted_users_json",
+                "trusted_roles_json",
+            }
+        )
+        cur = await db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='bots'"
+        )
+        if await cur.fetchone() is not None:
+            async with db.execute("PRAGMA table_info('bots')") as info_cur:
+                cols = frozenset(str(row[1]) for row in await info_cur.fetchall())
+            if cols != _TARGET_COLS or (cols & _LEGACY_COLS):
+                await db.execute("DROP TABLE IF EXISTS bots__v3")
+                await db.execute(
+                    """
+                    CREATE TABLE bots__v3 (
+                        platform TEXT NOT NULL,
+                        bot_id TEXT NOT NULL,
+                        agent TEXT NOT NULL,
+                        webhook_enabled INTEGER NOT NULL DEFAULT 0,
+                        auto_thread INTEGER NOT NULL DEFAULT 0,
+                        thread_hot_hours INTEGER NOT NULL DEFAULT 24,
+                        updated_at TEXT,
+                        public_bot TEXT,
+                        PRIMARY KEY (platform, bot_id)
+                    )
+                    """
+                )
+                await db.execute(
+                    """
+                    INSERT INTO bots__v3 (
+                        platform, bot_id, agent, webhook_enabled,
+                        auto_thread, thread_hot_hours, updated_at, public_bot
+                    )
+                    SELECT
+                        platform, bot_id, agent, webhook_enabled,
+                        auto_thread, thread_hot_hours, updated_at, public_bot
+                    FROM bots
+                    """
+                )
+                await db.execute("DROP TABLE bots")
+                await db.execute("ALTER TABLE bots__v3 RENAME TO bots")
+        await _set_user_version(db, 3)
+
+    await db.commit()

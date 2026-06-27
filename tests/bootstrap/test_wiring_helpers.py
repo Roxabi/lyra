@@ -22,7 +22,6 @@ from factory.bootstrap.factory.wiring_helpers import (
     _prune_message_index,
     _register_agents,
     _run_clipool_worker_task,
-    _seed_auth,
     _wire_adapters,
 )
 from factory.bootstrap.types import (
@@ -74,36 +73,6 @@ class TestInitInboundBus:
         assert result is fake_bus
         assert captured_kwargs["queue_group"] == HUB_INBOUND
         assert captured_kwargs["bot_id"] == "hub"
-
-
-class TestSeedAuth:
-    @pytest.mark.asyncio
-    async def test_seed_auth_delegates_to_seed_grants_from_bots(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # Arrange
-        seed_calls: list[tuple] = []
-
-        async def fake_seed(auth_store, bot_store):
-            seed_calls.append((auth_store, bot_store))
-
-        monkeypatch.setattr(
-            "factory.bootstrap.auth_seeding.seed_grants_from_bots",
-            fake_seed,
-        )
-
-        stores = MagicMock()
-        stores.auth = MagicMock()
-        stores.bot = MagicMock()
-
-        # Act
-        await _seed_auth(stores)
-
-        # Assert — delegates to canonical seed_grants_from_bots with auth+bot stores
-        assert len(seed_calls) == 1
-        passed_auth, passed_bot = seed_calls[0]
-        assert passed_auth is stores.auth
-        assert passed_bot is stores.bot
 
 
 class TestPruneMessageIndex:
@@ -218,6 +187,8 @@ class TestInitVoiceServices:
         fake_tts = MagicMock()
         fake_tts.start = AsyncMock()
         fake_llm = MagicMock()
+        fake_socialmedia = MagicMock()
+        fake_socialmedia.start = AsyncMock()
 
         monkeypatch.setattr(
             "factory.bootstrap.factory.voice_overlay.init_nats_stt",
@@ -226,6 +197,10 @@ class TestInitVoiceServices:
         monkeypatch.setattr(
             "factory.bootstrap.factory.voice_overlay.init_nats_tts",
             lambda nc: fake_tts,
+        )
+        monkeypatch.setattr(
+            "factory.bootstrap.factory.voice_overlay.init_nats_socialmedia",
+            lambda nc: fake_socialmedia,
         )
         monkeypatch.setattr(
             "factory.bootstrap.factory.llm_overlay.init_nats_llm",
@@ -241,8 +216,10 @@ class TestInitVoiceServices:
         assert result.stt_service is fake_stt
         assert result.tts_service is fake_tts
         assert result.nats_llm_client is fake_llm
+        assert result.socialmedia_client is fake_socialmedia
         fake_stt.start.assert_awaited_once()
         fake_tts.start.assert_awaited_once()
+        fake_socialmedia.start.assert_awaited_once()
 
 
 class TestRunClipoolWorkerTask:
@@ -357,7 +334,7 @@ class TestInitBotAuthsAndAgents:
     async def test_init_bot_auths_exits_when_no_bots_configured(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """SC#3 — empty BotStore roster raises SystemExit with 'lyra bot init' hint.
+        """SC#3 — empty BotStore roster raises SystemExit with 'factory bot init' hint.
 
         Negative gate: deleting the empty-roster guard in _init_bot_auths_and_agents
         means no SystemExit is raised and the test fails.
@@ -382,8 +359,8 @@ class TestInitBotAuthsAndAgents:
         with pytest.raises(ValueError) as exc_info:
             await _init_bot_auths_and_agents(MagicMock(), {})
 
-        assert "lyra bot init" in str(exc_info.value), (
-            f"Expected 'lyra bot init' in error message, got: {exc_info.value!r}"
+        assert "factory bot init" in str(exc_info.value), (
+            f"Expected 'factory bot init' in error message, got: {exc_info.value!r}"
         )
 
     @pytest.mark.asyncio

@@ -218,7 +218,7 @@ class AgentStore(SqliteStore):
             if agent_name == name:
                 raise ValueError(
                     f"Agent {name!r} is still assigned to one or more bots. "
-                    "Run 'lyra agent unassign' first."
+                    "Run 'factory agent unassign' first."
                 )
         db = self._require_db()
         await db.execute("DELETE FROM agents WHERE name = ?", (name,))

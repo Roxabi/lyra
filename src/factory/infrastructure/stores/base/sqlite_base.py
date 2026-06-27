@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import sqlite3
 import weakref
 from pathlib import Path
@@ -83,6 +84,30 @@ class SqliteStore:
             raise RuntimeError("call connect() first")
         return self._db
 
+    @staticmethod
+    def _tables_from_ddl(ddl: list[str]) -> list[str]:
+        names: list[str] = []
+        for stmt in ddl:
+            match = re.search(
+                r"CREATE TABLE IF NOT EXISTS\s+(\w+)", stmt, re.IGNORECASE
+            )
+            if match:
+                names.append(match.group(1))
+        return names
+
+    async def _all_tables_exist(self, table_names: list[str]) -> bool:
+        if not table_names:
+            return True
+        db = self._require_db()
+        placeholders = ",".join("?" * len(table_names))
+        async with db.execute(
+            "SELECT COUNT(*) FROM sqlite_master "
+            f"WHERE type='table' AND name IN ({placeholders})",
+            table_names,
+        ) as cur:
+            row = await cur.fetchone()
+        return row is not None and row[0] == len(table_names)
+
     async def _open_db(self, ddl: list[str] | None = None) -> None:
         """Open aiosqlite connection, enable WAL, run DDL statements, commit.
 
@@ -94,9 +119,12 @@ class SqliteStore:
         _open_stores.add(self)  # track for pytest cleanup
         wal_enabled = await self._try_enable_wal()
         await self._db.execute("PRAGMA busy_timeout=30000")
-        for stmt in ddl or []:
-            await self._db.execute(stmt)
-        await self._db.commit()
+        ddl_stmts = ddl or []
+        ddl_tables = self._tables_from_ddl(ddl_stmts)
+        if ddl_stmts and not await self._all_tables_exist(ddl_tables):
+            for stmt in ddl_stmts:
+                await self._db.execute(stmt)
+            await self._db.commit()
         # Only run the periodic checkpoint when WAL is actually active — a
         # checkpoint pragma is a harmless no-op under the rollback journal we
         # fall back to when WAL is unavailable, so skip the task entirely.

@@ -13,6 +13,7 @@ members = [
     "roxabi-blobs",
     "roxabi-contracts",
     "roxabi-nats",
+    "roxabi-satellite",
 ]
 overrides = [
     { name = "aiohttp", specifier = ">=3.13.4" },
@@ -436,6 +437,7 @@ dependencies = [
     { name = "pyyaml" },
     { name = "roxabi-blobs" },
     { name = "roxabi-nats" },
+    { name = "roxabi-satellite" },
     { name = "roxabi-vault" },
     { name = "tabulate" },
     { name = "telegramify-markdown" },
@@ -477,6 +479,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "roxabi-blobs", editable = "packages/roxabi-blobs" },
     { name = "roxabi-nats", editable = "packages/roxabi-nats" },
+    { name = "roxabi-satellite", editable = "packages/roxabi-satellite" },
     { name = "roxabi-vault", git = "https://github.com/Roxabi/roxabi-vault.git?branch=staging" },
     { name = "tabulate", specifier = ">=0.9" },
     { name = "telegramify-markdown", specifier = ">=1.1.5" },
@@ -1413,6 +1416,32 @@ requires-dist = [
     { name = "nkeys", specifier = ">=0.2.0" },
     { name = "roxabi-contracts", editable = "packages/roxabi-contracts" },
     { name = "roxabi-contracts", extras = ["testing"], marker = "extra == 'testing'", editable = "packages/roxabi-contracts" },
+]
+provides-extras = ["testing"]
+
+[[package]]
+name = "roxabi-satellite"
+version = "0.1.0"
+source = { editable = "packages/roxabi-satellite" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "roxabi-blobs" },
+    { name = "roxabi-contracts" },
+    { name = "roxabi-nats" },
+]
+
+[package.optional-dependencies]
+testing = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pydantic", specifier = ">=2.13" },
+    { name = "pytest", marker = "extra == 'testing'", specifier = ">=8.4" },
+    { name = "roxabi-blobs", editable = "packages/roxabi-blobs" },
+    { name = "roxabi-contracts", editable = "packages/roxabi-contracts" },
+    { name = "roxabi-nats", editable = "packages/roxabi-nats" },
 ]
 provides-extras = ["testing"]
 

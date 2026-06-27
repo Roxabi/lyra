@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from factory.adapters.omp import _rpc_digest
+from factory.adapters.omp._model_catalogue import resolve_startup_model
 from factory.adapters.omp._rpc_bridge_callbacks import RpcBridgeCallbacksMixin
 from factory.adapters.omp._rpc_bridge_steer import (
     RpcBridgeSteerMixin,
@@ -43,10 +44,6 @@ log = logging.getLogger(__name__)
 _DEFAULT_PROVIDER = (
     "litellm"  # routes through factory LiteLLM proxy (deploy/omp/models.yml)
 )
-# Pin a fast non-reasoning default — model=None falls through to models.yml[0]
-# (grok-4 full) and risks RpcClient(request_timeout=30s) timeouts (#1910).
-# Alias must exist in the LiteLLM xAI pass-through catalogue (#1923).
-_DEFAULT_MODEL = "grok-4.20-non-reasoning"
 _OMP_BIN = _rpc_digest._OMP_BIN
 _PINNED_SHA256 = _rpc_digest._PINNED_SHA256
 _DEFAULT_REQUEST_TIMEOUT = _rpc_digest._DEFAULT_REQUEST_TIMEOUT
@@ -64,7 +61,6 @@ __all__ = [
     "DigestMismatchError",
     "RpcBridge",
     "SteerViolationError",
-    "_DEFAULT_MODEL",
     "_DEFAULT_REQUEST_TIMEOUT",
     "_ENV_REQUEST_TIMEOUT_KEY",
     "_PINNED_SHA256",
@@ -102,13 +98,14 @@ class RpcBridge(RpcBridgeCallbacksMixin, RpcBridgeSteerMixin):
         import omp_rpc  # type: ignore[import-not-found]
 
         resolved_provider = provider or _DEFAULT_PROVIDER
-        resolved_model = model if model is not None else _DEFAULT_MODEL
         if _client is not None:
             # Pool path: adopt the already-started client; skip the digest gate.
             self._client: omp_rpc.RpcClient = _client
+            resolved_model = model if model is not None else ""
         else:
-            # Standalone/tests path: verify digest, then construct client.
+            # Standalone/tests path: verify digest before catalogue fetch.
             _verify_digest(omp_bin)
+            resolved_model = model if model is not None else resolve_startup_model()
             # provider/model are constructor kwargs only — no env axis. The runtime
             # model list comes from deploy/omp/models.yml (via PI_CODING_AGENT_DIR),
             # not from OMP_PROVIDER/OMP_MODEL env vars (#1876).
@@ -183,14 +180,16 @@ class RpcBridge(RpcBridgeCallbacksMixin, RpcBridgeSteerMixin):
         turn: Any,
     ) -> tuple[Any, WorkerError | None, dict[str, str] | None]:
         """Retry with the first catalogue model when the requested model is invalid."""
-        from factory.adapters.omp._model_catalogue import first_registry_model
+        from factory.adapters.omp._model_catalogue import resolve_fallback_model
 
         turn_error = worker_error_from_omp_turn(turn, self._last_agent_end_event)
         if turn_error is None or turn_error.code != "llm.model_unavailable":
             return turn, turn_error, None
 
         attempted = requested_model or self._startup_model
-        fallback = await asyncio.to_thread(first_registry_model)
+        fallback = await asyncio.to_thread(
+            resolve_fallback_model, requested=attempted
+        )
         if not fallback or fallback == attempted:
             return turn, turn_error, None
 

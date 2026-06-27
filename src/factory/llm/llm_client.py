@@ -18,6 +18,7 @@ import nats.errors
 
 from factory.core.messaging.events import LlmEvent, ResultLlmEvent
 from factory.core.ports.llm import LlmResult
+from roxabi_contracts.cli import SUBJECTS as CLI_SUBJECTS
 from roxabi_contracts.cli.models import CliControlCmd
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.llm import SUBJECTS
@@ -31,7 +32,6 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-_SUBJECT_CONTROL = "factory.clipool.control"
 _RESUME_TRANSPORT_ERRORS = (
     TimeoutError,
     asyncio.TimeoutError,
@@ -40,7 +40,6 @@ _RESUME_TRANSPORT_ERRORS = (
     ConnectionError,
     nats.errors.Error,
 )
-
 
 class _CliSessionStore(Protocol):
     """Read-side protocol for TurnStore lookups needed by LlmClient.
@@ -182,7 +181,7 @@ class LlmClient:
         )
         payload = self._codec.encode_control(cmd)
         await self._pool._transport.call(  # type: ignore[attr-defined]  # noqa: SLF001
-            _SUBJECT_CONTROL, payload, timeout=self._timeout
+            CLI_SUBJECTS.control, payload, timeout=self._timeout
         )
 
     async def queue_resume(self, pool_id: str, session_id: str) -> bool:
@@ -223,5 +222,5 @@ class LlmClient:
         )
         payload = self._codec.encode_control(cmd)
         await self._pool._transport.call(  # type: ignore[attr-defined]  # noqa: SLF001
-            _SUBJECT_CONTROL, payload, timeout=self._timeout
+            CLI_SUBJECTS.control, payload, timeout=self._timeout
         )

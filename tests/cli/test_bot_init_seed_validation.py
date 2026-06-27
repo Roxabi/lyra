@@ -1,14 +1,4 @@
-"""Tests for G18 trap: unknown/typo keys in bot seed entries (issue #1420).
-
-Contract:
-  - _merge_bots(raw) -> tuple[list[BotRow], int] = (rows, validation_errors)
-  - Entry with unknown key: skipped, validation_errors += 1, stderr names key
-  - Known real-config keys (token, webhook_secret, default) are accepted but
-    not stored in BotRow — they must NOT be rejected.
-  - Legal seed keys: bot_id, agent, webhook_enabled, default_trust,
-    owner_users, trusted_users, trusted_roles, auto_thread, thread_hot_hours,
-    token, webhook_secret, default
-"""
+"""Tests for G18 trap: unknown/typo keys in bot seed entries (issue #1420)."""
 
 from __future__ import annotations
 
@@ -21,164 +11,68 @@ class TestMergeBotsUnknownKey:
     """_merge_bots seed validation: unknown keys must be rejected (G18)."""
 
     def test_unknown_key_rejected(self, capsys: pytest.CaptureFixture[str]) -> None:
-        # Arrange — typo key webhook_enabel (misspelling of webhook_enabled)
         raw = {"telegram": {"bots": [{"bot_id": "lyra", "webhook_enabel": True}]}}
 
-        # Act
         rows, errors = _merge_bots(raw)
 
-        # Assert — entry is skipped, error counted, offending key named on stderr
-        assert errors == 1, (
-            f"Expected 1 validation error for typo key 'webhook_enabel', got {errors}. "
-            "T10 must add Pydantic seed model with extra='forbid' to catch this."
-        )
-        assert rows == [], (
-            f"Expected entry with typo key to be skipped (rows=[]), got {rows}."
-        )
+        assert errors == 1
+        assert rows == []
         captured = capsys.readouterr()
-        assert "webhook_enabel" in captured.err, (
-            f"Expected offending key 'webhook_enabel' named in stderr,"
-            f" got: {captured.err!r}"
-        )
+        assert "webhook_enabel" in captured.err
 
     def test_valid_entry_still_seeds(self) -> None:
-        # Arrange — all legal keys, no unknown keys
         raw = {
             "telegram": {
                 "bots": [{"bot_id": "lyra", "agent": "x", "webhook_enabled": True}]
             }
         }
 
-        # Act
         rows, errors = _merge_bots(raw)
 
-        # Assert — valid entry seeds normally, no errors
-        assert errors == 0, f"Expected 0 errors for valid entry, got {errors}."
-        assert len(rows) == 1, f"Expected 1 row, got {len(rows)}."
+        assert errors == 0
+        assert len(rows) == 1
         assert rows[0].bot_id == "lyra"
         assert rows[0].webhook_enabled is True
 
     def test_mixed_batch_skips_only_bad_entry(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        # Arrange — two entries: one valid, one with typo key thread_hot_hours
-        # (thread_hot_hours is the correct spelling; here we use a misspelling to
-        # simulate a typo)
         raw = {
             "telegram": {
                 "bots": [
                     {"bot_id": "good", "agent": "a"},
-                    {"bot_id": "bad", "thread_hot_hourss": 5},  # typo: extra 's'
+                    {"bot_id": "bad", "thread_hot_hourss": 5},
                 ]
             }
         }
 
-        # Act
         rows, errors = _merge_bots(raw)
 
-        # Assert — only the bad entry is skipped; good entry seeds normally
-        assert errors == 1, (
-            f"Expected 1 validation error for typo key, got {errors}. "
-            "Validator must be per-entry, not abort the whole batch."
-        )
-        assert len(rows) == 1, (
-            f"Expected 1 row (only 'good' entry), got {len(rows)}. "
-            "The valid entry must still seed when a sibling entry is invalid."
-        )
-        assert rows[0].bot_id == "good", (
-            f"Expected rows[0].bot_id == 'good', got {rows[0].bot_id!r}."
-        )
+        assert errors == 1
+        assert len(rows) == 1
+        assert rows[0].bot_id == "good"
         captured = capsys.readouterr()
-        assert "thread_hot_hourss" in captured.err, (
-            f"Expected offending key 'thread_hot_hourss' named in stderr,"
-            f" got: {captured.err!r}"
-        )
+        assert "thread_hot_hourss" in captured.err
 
-    def test_auth_section_entry_also_validated(
+    def test_auth_keys_in_bot_section_rejected(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        # Arrange — unknown key in [[auth.telegram_bots]] section
         raw = {
-            "auth": {
-                "telegram_bots": [
-                    {"bot_id": "lyra", "unknwon_key": "oops"}  # typo key
+            "telegram": {
+                "bots": [
+                    {"bot_id": "lyra", "owner_users": ["tg:user:1"]},
                 ]
             }
         }
 
-        # Act
         rows, errors = _merge_bots(raw)
 
-        # Assert — auth section entries go through the same validator
-        # (G18 covers all 4 sections)
-        assert errors == 1, (
-            f"Expected 1 validation error for typo key in auth.telegram_bots,"
-            f" got {errors}. "
-            "All four config sections must pass through _BotSeedEntry validation."
-        )
-        assert rows == [], (
-            f"Expected entry with typo key to be skipped (rows=[]), got {rows}."
-        )
+        assert errors == 1
+        assert rows == []
         captured = capsys.readouterr()
-        assert "unknwon_key" in captured.err, (
-            f"Expected offending key 'unknwon_key' named in stderr,"
-            f" got: {captured.err!r}"
-        )
-
-    def test_default_alias_sets_trust(self) -> None:
-        """[[auth.*_bots]] `default` key must reach BotRow.default_trust (#1498).
-
-        Old code: data.get("default_trust", DEFAULT_TRUST) — ignored `default` key.
-        New code: data.get("default_trust", data.get("default", DEFAULT_TRUST)).
-        Without the fix this asserts "trusted" but receives "blocked".
-        """
-        raw = {
-            "auth": {
-                "telegram_bots": [
-                    {"bot_id": "main", "default": "trusted"},
-                ]
-            }
-        }
-
-        rows, errors = _merge_bots(raw)
-
-        assert errors == 0, f"Expected 0 errors, got {errors}."
-        assert len(rows) == 1
-        assert rows[0].default_trust == "trusted", (
-            f"Expected default_trust='trusted' via 'default' alias, "
-            f"got {rows[0].default_trust!r}. Fix: read 'default' as fallback."
-        )
-
-    def test_default_trust_wins_over_default_alias(self) -> None:
-        """Explicit `default_trust` must take precedence over `default` alias (#1498).
-
-        Both keys present in the merged dict — canonical key wins (last-wins
-        semantics are irrelevant here; `default_trust` is authoritative).
-        """
-        raw = {
-            "auth": {
-                "telegram_bots": [
-                    {"bot_id": "main", "default_trust": "owner", "default": "trusted"},
-                ]
-            }
-        }
-
-        rows, errors = _merge_bots(raw)
-
-        assert errors == 0, f"Expected 0 errors, got {errors}."
-        assert len(rows) == 1
-        assert rows[0].default_trust == "owner", (
-            f"Expected default_trust='owner' (canonical key wins), "
-            f"got {rows[0].default_trust!r}."
-        )
+        assert "owner_users" in captured.err
 
     def test_real_config_keys_accepted(self) -> None:
-        """Keys present in config.toml.example must not be rejected by extra='forbid'.
-
-        token, webhook_secret, default are real TOML keys in shipped configs;
-        they are accepted by _BotSeedEntry but not stored in BotRow.
-        """
-        # Mirrors config.toml.example [[telegram.bots]] + [[auth.telegram_bots]]
         raw = {
             "telegram": {
                 "bots": [
@@ -186,26 +80,16 @@ class TestMergeBotsUnknownKey:
                         "bot_id": "lyra",
                         "token": "env:TELEGRAM_TOKEN",
                         "webhook_secret": "env:WH",
+                        "agent": "lyra_default",
                     }
                 ]
-            },
-            "auth": {
-                "telegram_bots": [
-                    {
-                        "bot_id": "lyra",
-                        "default": "blocked",
-                        "owner_users": [],
-                    }
-                ]
-            },
+            }
         }
 
         rows, errors = _merge_bots(raw)
 
-        assert errors == 0, (
-            f"Expected 0 errors for real config.toml.example keys, got {errors}. "
-            "token/webhook_secret/default must be accepted (not stored in BotRow)."
-        )
-        assert len(rows) == 1, f"Expected 1 row, got {len(rows)}."
+        assert errors == 0
+        assert len(rows) == 1
         assert rows[0].bot_id == "lyra"
         assert rows[0].platform == "telegram"
+        assert rows[0].agent == "lyra_default"

@@ -1,0 +1,9 @@
+[Unit]
+Description=Factory operator.log rotation (weekly, 12 generations, 10M maxsize)
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/projects/roxabi-factory/deploy/factory-operator-logrotate.sh
+StandardOutput=journal
+StandardError=journal

@@ -52,6 +52,56 @@ container = "factory-omp.container"
 host_roles = ["factory-hub"]
 required_secrets = ["factory-nats-omp", "factory-litellm-key"]
 
+[component.socialmedia-adapter]
+container = "factory-socialmedia-adapter.container"
+host_roles = ["factory-hub"]
+required_secrets = ["factory-nats-socialmedia", "factory-socialmedia-api-key", "factory_blobstore_token"]
+
+[component.loki]
+container = "factory-loki.container"
+required_secrets = []
+host_roles = ["factory-hub"]
+
+[component.promtail]
+container = "factory-promtail.container"
+required_secrets = []
+host_roles = ["factory-hub"]
+
+[component.langfuse-postgres]
+container = "factory-langfuse-postgres.container"
+required_secrets = []
+host_roles = ["factory-hub"]
+
+[component.langfuse-clickhouse]
+container = "factory-langfuse-clickhouse.container"
+required_secrets = []
+host_roles = ["factory-hub"]
+
+[component.langfuse-redis]
+container = "factory-langfuse-redis.container"
+required_secrets = []
+host_roles = ["factory-hub"]
+
+[component.langfuse-minio]
+container = "factory-langfuse-minio.container"
+required_secrets = []
+host_roles = ["factory-hub"]
+
+[component.langfuse-worker]
+container = "factory-langfuse-worker.container"
+required_secrets = []
+host_roles = ["factory-hub"]
+
+[component.langfuse-web]
+container = "factory-langfuse-web.container"
+required_secrets = []
+host_roles = ["factory-hub"]
+
+[component.otel-collector]
+container = "factory-otel-collector.container"
+required_secrets = []
+host_roles = ["factory-hub"]
+
 [volume.data]
 volume = "factory-data.volume"
 host_roles = ["factory-hub"]
@@ -70,6 +120,30 @@ host_roles = ["factory-hub"]
 
 [volume.omp-sessions]
 volume = "factory-omp-sessions.volume"
+host_roles = ["factory-hub"]
+
+[volume.loki-data]
+volume = "factory-loki-data.volume"
+host_roles = ["factory-hub"]
+
+[volume.langfuse-postgres-data]
+volume = "factory-langfuse-postgres-data.volume"
+host_roles = ["factory-hub"]
+
+[volume.langfuse-clickhouse-data]
+volume = "factory-langfuse-clickhouse-data.volume"
+host_roles = ["factory-hub"]
+
+[volume.langfuse-clickhouse-logs]
+volume = "factory-langfuse-clickhouse-logs.volume"
+host_roles = ["factory-hub"]
+
+[volume.langfuse-redis-data]
+volume = "factory-langfuse-redis-data.volume"
+host_roles = ["factory-hub"]
+
+[volume.langfuse-minio-data]
+volume = "factory-langfuse-minio-data.volume"
 host_roles = ["factory-hub"]
 
 [network.roxabi]

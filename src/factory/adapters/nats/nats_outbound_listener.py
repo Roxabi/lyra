@@ -26,7 +26,7 @@ from factory.nats.render_event_codec import NatsRenderEventCodec
 from factory.nats.type_registry import TYPE_REGISTRY_RESOLVER
 from roxabi_nats import TypeHintResolver
 from roxabi_nats._serialize import deserialize_dict as _deserialize_dict
-from roxabi_nats._validate import validate_nats_token
+from roxabi_satellite.tokens import validate_nats_token
 
 if TYPE_CHECKING:
     from factory.core.hub.hub_protocol import ChannelAdapter

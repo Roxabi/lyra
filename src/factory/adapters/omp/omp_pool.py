@@ -178,8 +178,8 @@ class OmpPool:
         # Deferred import — omp_rpc is a container image dep (absent from pyproject).
         import omp_rpc  # type: ignore[import-not-found]
 
+        from factory.adapters.omp._model_catalogue import resolve_startup_model
         from factory.adapters.omp._rpc_bridge import (
-            _DEFAULT_MODEL,
             RpcBridge,
             _read_request_timeout,
             _verify_digest,
@@ -187,7 +187,11 @@ class OmpPool:
 
         # gate before client (non-blocking via to_thread)
         await asyncio.to_thread(_verify_digest, self._omp_bin)
-        resolved_model = self._model if self._model is not None else _DEFAULT_MODEL
+        resolved_model = (
+            self._model
+            if self._model is not None
+            else await asyncio.to_thread(resolve_startup_model)
+        )
         resolved_timeout = (
             self._request_timeout
             if self._request_timeout is not None
@@ -207,7 +211,7 @@ class OmpPool:
             bridge = RpcBridge(
                 omp_bin=self._omp_bin,
                 provider=self._provider,
-                model=self._model,
+                model=resolved_model,
                 _client=client,
             )
             # attach() wires callbacks + stores nc/loop; no start, no new_session.

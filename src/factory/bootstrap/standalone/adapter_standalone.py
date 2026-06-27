@@ -56,7 +56,7 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
     """Bootstrap a standalone adapter process connected to NATS.
 
     Args:
-        raw_config: Parsed config dict (lyra config.toml content).
+        raw_config: Parsed config dict (factory config.toml content).
         platform: "telegram", "discord", or "web".
         _stop: Optional event for graceful shutdown (tests inject this).
     """

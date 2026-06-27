@@ -76,7 +76,11 @@ class TestRunSecretsReset:
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         root = _fake_repo(tmp_path)
-        plan = run_secrets_reset(dry_run=True, repo_root=root, converge=True)
+        with patch("factory.cli.secrets_reset.op_log") as mock_op_log:
+            plan = run_secrets_reset(dry_run=True, repo_root=root, converge=True)
+        mock_op_log.assert_called_once_with(
+            root, "secrets_reset_dry_run", converge="1", ack_external="0"
+        )
         out = capsys.readouterr().out
         assert str(root) in out
         assert len(plan.steps) == 3
@@ -98,7 +102,11 @@ class TestRunSecretsReset:
         def fake_regen() -> None:
             regen_called.append(True)
 
-        with patch("factory.cli.secrets_reset.confirm_reset"):
+        with (
+            patch("factory.cli.secrets_reset.confirm_reset"),
+            patch("factory.cli.secrets_reset.op_log") as mock_op_log,
+            patch("factory.cli.secrets_reset.rotation_log_append") as mock_rot,
+        ):
             run_secrets_reset(
                 yes=True,
                 converge=True,
@@ -108,8 +116,20 @@ class TestRunSecretsReset:
             )
 
         assert regen_called == [True]
+        mock_op_log.assert_any_call(
+            root, "secrets_reset_start", converge="1", ack_external="0"
+        )
+        mock_op_log.assert_any_call(
+            root, "secrets_reset_complete", converge="1", ack_external="0"
+        )
+        mock_rot.assert_called_once_with(
+            root,
+            "nats-nkeys",
+            "disaster-recovery",
+            trigger="factory-secrets-reset",
+        )
         assert calls[0][0].endswith("install.sh")
-        assert calls[0][1:] == ["--force", "--secrets-only"]
+        assert calls[0][1:] == ["--force-secrets", "--secrets-only"]
         assert calls[1] == ["make", "converge"]
 
 

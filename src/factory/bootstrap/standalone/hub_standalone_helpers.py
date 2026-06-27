@@ -29,7 +29,10 @@ if TYPE_CHECKING:
     from factory.adapters.nats.mint_failure_subscriber import MintFailureSubscriber
     from factory.core.agent import Agent
     from factory.core.hub.hub import Hub
-    from factory.infrastructure.stores.identity.auth_store import AuthStore
+    from factory.infrastructure.stores.identity.agent_grant_store import (
+        AgentGrantStore,
+    )
+    from factory.infrastructure.stores.identity.user_store import UserStore
     from factory.infrastructure.stores.registry.agent_store import AgentStore
     from factory.llm.llm_client import LlmClient
 
@@ -87,7 +90,8 @@ async def build_pairing_manager(
     raw_config: dict,
     *,
     vault_dir: Path,
-    auth_store: AuthStore,
+    grant_store: AgentGrantStore,
+    user_store: UserStore,
     admin_user_ids: Iterable[str],
 ) -> PairingManager | None:
     """Construct + connect PairingManager if enabled; None otherwise."""
@@ -96,15 +100,15 @@ async def build_pairing_manager(
         log.warning(
             "Pairing enabled but [admin].user_ids is empty — "
             "/invite and /unpair require is_admin=True "
-            "(granted to [admin].user_ids entries "
-            "or users configured as OWNER in [[auth.*_bots]])"
+            "(granted to [admin].user_ids in config.toml)"
         )
     if not pairing_config.enabled:
         return None
     pm = PairingManager(
         config=pairing_config,
         db_path=vault_dir / "pairing.db",
-        auth_store=auth_store,
+        grant_store=grant_store,
+        user_store=user_store,
     )
     await pm.connect()
     set_pairing_manager(pm)

@@ -117,12 +117,6 @@ def _patch_unified_boundaries(  # noqa: PLR0915
         "_prune_message_index",
         _track("_prune_message_index", AsyncMock()),
     )
-    monkeypatch.setattr(
-        unified_mod,
-        "_seed_auth",
-        _track("_seed_auth", AsyncMock()),
-    )
-
     fake_bundle = MagicMock()
     fake_bundle.admin_user_ids = ["admin-1"]
     monkeypatch.setattr(
@@ -139,6 +133,7 @@ def _patch_unified_boundaries(  # noqa: PLR0915
     )
 
     fake_voice = MagicMock()
+    fake_voice.socialmedia_client = None
     fake_voice.nats_llm_client = MagicMock()
     fake_voice.nats_llm_client.stop = AsyncMock()
     monkeypatch.setattr(
@@ -270,7 +265,6 @@ async def test_sequence_order(
         "_init_inbound_bus",
         "open_stores.enter",
         "_prune_message_index",
-        "_seed_auth",
         "_init_bot_auths_and_agents",
         "_init_pairing",
         "_init_voice_services",
@@ -292,8 +286,7 @@ async def test_sequence_order(
         assert order.index(a) < order.index(b), f"expected {a} before {b}"
 
     _before("_init_inbound_bus", "_prune_message_index")
-    _before("_prune_message_index", "_seed_auth")
-    _before("_seed_auth", "_init_bot_auths_and_agents")
+    _before("_prune_message_index", "_init_bot_auths_and_agents")
     _before("_init_bot_auths_and_agents", "_init_pairing")
     _before("_init_pairing", "_init_voice_services")
     _before("_init_voice_services", "_build_hub")

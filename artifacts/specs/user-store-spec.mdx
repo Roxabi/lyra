@@ -1,0 +1,55 @@
+---
+title: "feat(identity): UserStore — canonical rx:user: id + platform_identities"
+status: implemented
+parent: "#472 unified identity layer (extended)"
+---
+
+## Problem
+
+`IdentityAliasStore` linked platform keys to a **platform primary** (`tg:user:X`), not to an
+internal person id. Grants, prefs, and memory could not key off a stable cross-platform
+identifier.
+
+## Decision
+
+Introduce **UserStore** in `auth.db`:
+
+| Table | Role |
+|-------|------|
+| `users` | Canonical person (`rx:user:<uuid>`) |
+| `platform_identities` | `tg:user:…` / `dc:user:…` → `users.id` |
+
+`IdentityAliasStore` becomes a thin facade: `/link` challenges stay; link/unlink/resolve
+delegate to UserStore. Legacy `identity_aliases` rows migrate once on connect.
+
+## API
+
+- `resolve_user_id(platform_key) -> rx:user:… | None`
+- `resolve_aliases(platform_key) -> frozenset[str]` (backward compatible)
+- `link_platform_keys(primary, secondary) -> rx:user:…`
+- `ensure_user(platform_key)` — lazy registration (CLI, pairing)
+
+## Wiring
+
+- `StoreBundle.user: UserStore`
+- **No boot seed** — users and agent grants are store-sourced only (CLI, pairing)
+- `AgentGrantStore.authorize()` expands principals via UserStore (grant on `rx:user:` matches linked platforms)
+
+## CLI
+
+```bash
+factory user list
+factory user show tg:user:7377831990
+factory user show rx:user:<uuid>
+```
+
+## Operator surface (SSOT)
+
+```bash
+factory user register tg:user:7377831990
+factory user link tg:user:… dc:user:…
+factory agent grant lyra_default --user tg:user:7377831990
+```
+
+Pairing `/join` also writes agent grants. `owner_users` in BotStore/config.toml are
+legacy metadata — they do not grant access at runtime.

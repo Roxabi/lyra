@@ -1,5 +1,5 @@
 [Unit]
-Description=Lyra post-autoupdate timer — check every 5 minutes
+Description=Factory post-autoupdate timer — check every 5 minutes
 
 [Timer]
 # Staggered +2 min after factory-quadlet-sync (fires at *:0/5) so the stamp

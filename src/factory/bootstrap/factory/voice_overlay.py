@@ -25,6 +25,7 @@ if TYPE_CHECKING:
     from factory.core.ports.blobstore import BlobStorePort
     from factory.nats.audio.nats_tts_client import NatsTtsClient
     from factory.nats.image.nats_image_client import NatsImageClient
+    from factory.nats.socialmedia.nats_socialmedia_client import NatsSocialMediaClient
     from factory.nats.stt.nats_stt_client import NatsSttClient
 
 log = logging.getLogger(__name__)
@@ -133,6 +134,24 @@ def init_nats_image(nc: "NATS") -> "NatsImageClient":
     )
     client = _init_nats_worker(nc, spec)
     log.info("Image client created (3-layer) — availability via heartbeat")
+    return client  # type: ignore[return-value]
+
+
+def init_nats_socialmedia(nc: "NATS") -> "NatsSocialMediaClient":
+    """Create NatsSocialMediaClient (3-layer). Call ``client.start()`` to start hb."""
+    from factory.nats.socialmedia.nats_socialmedia_client import NatsSocialMediaClient
+    from factory.nats.socialmedia.nats_socialmedia_codec import SocialMediaCodec
+    from roxabi_contracts.socialmedia import SUBJECTS, validate_worker_id
+
+    spec = _NatsWorkerSpec(
+        hb_subject=SUBJECTS.heartbeat,
+        validate_worker_id=validate_worker_id,
+        name="socialmedia",
+        domain_client_cls=NatsSocialMediaClient,
+        codec=SocialMediaCodec(),
+    )
+    client = _init_nats_worker(nc, spec)
+    log.info("SocialMedia client created (3-layer) — availability via heartbeat")
     return client  # type: ignore[return-value]
 
 

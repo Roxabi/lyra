@@ -8,7 +8,9 @@
 #   ./deploy/install.sh              # install units + secrets (skip if already present)
 #   ./deploy/install.sh --dry-run    # print actions without executing
 #   ./deploy/install.sh --secrets-only  # only (re)create Podman secrets
-#   ./deploy/install.sh --force      # force --replace on secrets even if present
+#   ./deploy/install.sh --force-secrets           # force --replace on Podman secrets
+#   ./deploy/install.sh --force-regen-blobstore     # regenerate blobstore.tok (logged)
+#   ./deploy/install.sh --force                   # deprecated alias for --force-secrets
 #
 # Hard constraints (S5, grandfathered):
 #   nkey seeds: ~/.roxabi/factory/nkeys/
@@ -17,22 +19,34 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/operator-log.sh
+source "${SCRIPT_DIR}/lib/operator-log.sh"
+# shellcheck source=lib/syncthing-ignore.sh
+source "${SCRIPT_DIR}/lib/syncthing-ignore.sh"
 QUADLET_SRC="${SCRIPT_DIR}/quadlet"
 QUADLET_DST="${HOME}/.config/containers/systemd"
 NKEYS_DIR="${HOME}/.roxabi/factory/nkeys"
 
 DRY_RUN=0
 SECRETS_ONLY=0
-FORCE=0
+FORCE_SECRETS=0
+FORCE_REGEN_BLOBSTORE=0
 
 for arg in "$@"; do
   case "$arg" in
-    --dry-run)       DRY_RUN=1 ;;
-    --secrets-only)  SECRETS_ONLY=1 ;;
-    --force)         FORCE=1 ;;
+    --dry-run)                 DRY_RUN=1 ;;
+    --secrets-only)            SECRETS_ONLY=1 ;;
+    --force-secrets)           FORCE_SECRETS=1 ;;
+    --force-regen-blobstore)   FORCE_REGEN_BLOBSTORE=1 ;;
+    --force)
+      FORCE_SECRETS=1
+      echo "WARN: --force is deprecated — use --force-secrets (Podman replace) or --force-regen-blobstore (blobstore.tok only)" >&2
+      ;;
     *)               echo "Unknown argument: $arg" >&2; exit 1 ;;
   esac
 done
+
+op_log install_start argv="$*" secrets_only="${SECRETS_ONLY}" force_secrets="${FORCE_SECRETS}" force_regen_blobstore="${FORCE_REGEN_BLOBSTORE}" dry_run="${DRY_RUN}"
 
 run() {
   if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -45,7 +59,17 @@ run() {
 log() { echo "==> $*"; }
 warn() { echo "WARN: $*" >&2; }
 
-# ── 1. Verify nkeys dir ──────────────────────────────────────────────────────
+# ── 1. Syncthing exclusions (.stignore) ───────────────────────────────────────
+
+log "Ensuring Syncthing exclusions (~/.roxabi/factory/.stignore) ..."
+if [[ "$DRY_RUN" -eq 1 ]]; then
+  echo "[dry-run] ensure_factory_stignore ${SCRIPT_DIR}/templates/factory.stignore"
+else
+  ensure_factory_stignore "${SCRIPT_DIR}/templates/factory.stignore"
+  echo "  [ok]   ~/.roxabi/factory/.stignore"
+fi
+
+# ── 2. Verify nkeys dir ──────────────────────────────────────────────────────
 
 log "Checking ~/.roxabi/factory/nkeys/ ..."
 if [[ ! -d "${NKEYS_DIR}" ]]; then
@@ -155,31 +179,44 @@ for _secret_name in "${!SECRET_SOURCES[@]}"; do
 done
 unset _secret_name _rel
 
-# ── 2. Generate blobstore bearer token (idempotent) ────────────────────────
+# ── 3. Generate blobstore bearer token (idempotent) ────────────────────────
 
 BLOBSTORE_TOK="${HOME}/.roxabi/factory/blobstore.tok"
-if [[ ! -f "${BLOBSTORE_TOK}" || "$FORCE" -eq 1 ]]; then
+if [[ ! -f "${BLOBSTORE_TOK}" ]]; then
   log "Generating blobstore bearer token → ${BLOBSTORE_TOK} ..."
   run mkdir -p "${HOME}/.roxabi/factory"
   if [[ "$DRY_RUN" -eq 0 ]]; then
     (umask 0077; openssl rand -base64 48 > "${BLOBSTORE_TOK}")
+    rotation_log_append blobstore missing-file trigger=install.sh
   else
     echo "[dry-run] would generate ${BLOBSTORE_TOK} (64 base64 chars, mode 0600)"
   fi
+  op_log blobstore_regen action=create reason=missing-file
+elif [[ "$FORCE_REGEN_BLOBSTORE" -eq 1 ]]; then
+  log "Regenerating blobstore bearer token → ${BLOBSTORE_TOK} ..."
+  run mkdir -p "${HOME}/.roxabi/factory"
+  if [[ "$DRY_RUN" -eq 0 ]]; then
+    (umask 0077; openssl rand -base64 48 > "${BLOBSTORE_TOK}")
+    rotation_log_append blobstore operator-request trigger=install.sh
+  else
+    echo "[dry-run] would regenerate ${BLOBSTORE_TOK}"
+  fi
+  op_log blobstore_regen action=replace reason=force-regen-blobstore
 else
-  echo "  [skip] ${BLOBSTORE_TOK} already exists (use --force to regenerate)"
+  echo "  [skip] ${BLOBSTORE_TOK} already exists (use --force-regen-blobstore to regenerate)"
+  op_log blobstore_skip action=skip
 fi
 # Wire generated token path into SEEDS so the policy loop can install it.
 SEEDS[factory_blobstore_token]="${BLOBSTORE_TOK}"
 
-# ── 3. Bootstrap tailnet env files (idempotent) ─────────────────────────────
+# ── 4. Bootstrap tailnet env files (idempotent) ─────────────────────────────
 # TAILSCALE_IPV4 is host-global (M₁'s tailnet IP); written per-service so each unit's
 # EnvironmentFile is self-contained. Consumed by tailnet-bound PublishPort + the
 # fail-closed ExecStartPre guard in factory-blobstore (#1330) and factory-web (#1992).
 TS_IP=$(tailscale ip -4 2>/dev/null | head -1 || true)
 for _svc in blobstore web; do
   ENV_FILE="${HOME}/.roxabi/factory/env/${_svc}.env"
-  if [[ ! -f "${ENV_FILE}" || "$FORCE" -eq 1 ]]; then
+  if [[ ! -f "${ENV_FILE}" || "$FORCE_SECRETS" -eq 1 ]]; then
     log "Generating ${ENV_FILE} ..."
     run mkdir -p "$(dirname "${ENV_FILE}")"
     if [[ "$DRY_RUN" -eq 0 ]]; then
@@ -190,7 +227,7 @@ for _svc in blobstore web; do
       echo "[dry-run] would generate ${ENV_FILE} (TAILSCALE_IPV4 from tailscale ip -4)"
     fi
   else
-    echo "  [skip] ${ENV_FILE} already exists (use --force to regenerate)"
+    echo "  [skip] ${ENV_FILE} already exists (use --force-secrets to regenerate)"
   fi
 done
 
@@ -220,7 +257,7 @@ if [[ "$MISSING" -eq 1 ]]; then
   exit 1
 fi
 
-# ── 4. Install Podman secrets ────────────────────────────────────────────────
+# ── 5. Install Podman secrets ────────────────────────────────────────────────
 # Policy dispatch:
 #   nats-seed  → podman secret create from seed file
 #   nats-auth  → podman secret create from auth.conf file
@@ -238,8 +275,8 @@ for secret_name in "${!SECRET_POLICY[@]}"; do
         continue
       fi
       already_exists=$(podman secret ls --format '{{.Name}}' 2>/dev/null | grep -Fx "${secret_name}" || true)
-      if [[ -n "${already_exists}" && "$FORCE" -eq 0 ]]; then
-        echo "  [skip] ${secret_name} already exists (use --force to replace)"
+      if [[ -n "${already_exists}" && "$FORCE_SECRETS" -eq 0 ]]; then
+        echo "  [skip] ${secret_name} already exists (use --force-secrets to replace)"
       else
         run podman secret create --replace "${secret_name}" "${seed_path}"
         echo "  [ok]   ${secret_name}"
@@ -258,8 +295,8 @@ for secret_name in "${!SECRET_POLICY[@]}"; do
         continue
       fi
       already_exists=$(podman secret ls --format '{{.Name}}' 2>/dev/null | grep -Fx "${secret_name}" || true)
-      if [[ -n "${already_exists}" && "$FORCE" -eq 0 ]]; then
-        echo "  [skip] ${secret_name} already exists (use --force to replace)"
+      if [[ -n "${already_exists}" && "$FORCE_SECRETS" -eq 0 ]]; then
+        echo "  [skip] ${secret_name} already exists (use --force-secrets to replace)"
       else
         # factory-claude-oauth requires stripping trailing newline.
         if [[ "${secret_name}" == "factory-claude-oauth" ]]; then
@@ -278,13 +315,26 @@ done
 unset _policy _rel _src
 
 if [[ "$SECRETS_ONLY" -eq 1 ]]; then
+  op_log install_done mode=secrets-only exit=0
   log "Done (--secrets-only)."
   exit 0
 fi
 
-# ── 5. Ensure data directories ──────────────────────────────────────────────
+# ── 6. Ensure data directories ──────────────────────────────────────────────
 
 log "Ensuring data directories ..."
+run mkdir -p "${HOME}/.local/state/factory/loki" "${HOME}/.local/state/factory/promtail"
+echo "  [ok]   ${HOME}/.local/state/factory/loki + promtail/"
+run mkdir -p "${HOME}/.local/state/factory/langfuse/postgres" \
+  "${HOME}/.local/state/factory/langfuse/clickhouse" \
+  "${HOME}/.local/state/factory/langfuse/clickhouse-logs" \
+  "${HOME}/.local/state/factory/langfuse/redis-data" \
+  "${HOME}/.local/state/factory/langfuse/minio/langfuse" \
+  "${HOME}/.local/state/factory/langfuse/redis"
+echo "  [ok]   ${HOME}/.local/state/factory/langfuse/*"
+if [[ ! -f "${HOME}/.roxabi/factory/env/langfuse.env" ]]; then
+  log "Langfuse env missing — run: bash deploy/scripts/bootstrap-langfuse.sh"
+fi
 run mkdir -p "${HOME}/.roxabi/factory/blobstore"
 echo "  [ok]   ${HOME}/.roxabi/factory/blobstore"
 run mkdir -p "${HOME}/.roxabi/factory/turn-writer"
@@ -310,7 +360,7 @@ else
   echo "  [skip] ${NKEYS_DIR}/auth.conf already exists"
 fi
 
-# ── 6. Copy Quadlet units ────────────────────────────────────────────────────
+# ── 7. Copy Quadlet units ────────────────────────────────────────────────────
 
 log "Copying Quadlet units to ${QUADLET_DST} ..."
 run mkdir -p "${QUADLET_DST}"
@@ -320,13 +370,13 @@ for f in "${QUADLET_SRC}"/*.container "${QUADLET_SRC}"/*.network "${QUADLET_SRC}
   echo "  [cp]   $(basename "$f")"
 done
 
-# ── 7. daemon-reload ─────────────────────────────────────────────────────────
+# ── 8. daemon-reload ─────────────────────────────────────────────────────────
 
 log "Reloading systemd user daemon ..."
 run systemctl --user daemon-reload
 echo "  [ok]   daemon-reload"
 
-# ── 8. Seed BotStore from config.toml (idempotent) ─────────────────────────
+# ── 9. Seed BotStore from config.toml (idempotent) ─────────────────────────
 # Required since #1416: Authenticator reads from BotStore, not config.toml.
 # Skipping this causes a hub crash-loop on first boot.
 log "Seeding BotStore from config.toml ..."
@@ -338,15 +388,16 @@ run podman run --rm \
 
 echo "  [ok]   BotStore seeded"
 
-# ── 9. Install sync timer + service (idempotent) ───────────────────────────
+# ── 10. Install sync timer + service (idempotent) ───────────────────────────
 
 log "Installing factory-quadlet-sync timer + service ..."
 run make quadlet-sync-install
 
-# ── 10. Enable host podman-auto-update timer ────────────────────────────────
+# ── 11. Enable host podman-auto-update timer ────────────────────────────────
 
 log "Enabling podman-auto-update.timer (5-min cadence) ..."
 run systemctl --user enable --now podman-auto-update.timer
 echo "  [ok]   podman-auto-update.timer enabled"
 
+op_log install_done mode=full exit=0
 log "Done. Services NOT restarted — run: systemctl --user start factory-nats factory-hub factory-telegram factory-discord factory-clipool factory-gh-helper factory-turn-writer factory-blobstore"

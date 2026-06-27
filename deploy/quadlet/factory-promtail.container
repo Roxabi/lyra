@@ -1,0 +1,29 @@
+[Unit]
+Description=Factory Promtail — operator.log + journald → Loki (ADR-093)
+After=factory-loki.service
+Wants=factory-loki.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+Image=docker.io/grafana/promtail:3.4.2
+ContainerName=factory-promtail
+Network=roxabi.network
+NoNewPrivileges=true
+ReadOnly=true
+DropCapability=all
+UserNS=keep-id
+Exec=-config.file=/etc/promtail/config.yml -config.expand-env=false
+Volume=%h/projects/roxabi-factory/deploy/observability/promtail-config.yml:/etc/promtail/config.yml:ro,z
+Volume=%h/.local/state/factory/logs:/var/log/factory:ro,z
+Volume=/var/log/journal:/var/log/journal:ro,z
+Volume=%h/.local/state/factory/promtail:/promtail-positions:z
+HealthCmd=bash -c 'exec 3<>/dev/tcp/127.0.0.1/9080'
+HealthInterval=30s
+
+[Service]
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

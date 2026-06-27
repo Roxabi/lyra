@@ -24,7 +24,7 @@ Several forces have driven the system away from this model:
 - The DB has already drifted from the TOMLs in production (e.g., `lyra_default` has
   `Bash` and `Skill` tools in the DB but not in the TOML). The hot-reload path therefore
   re-applies a stale TOML state and silently overwrites DB-only edits on the next message.
-- `lyra agent edit` modifies the DB directly, with no mechanism to propagate the change
+- `factory agent edit` modifies the DB directly, with no mechanism to propagate the change
   into the running daemon. The user must restart the daemon to pick up edits.
 - `AgentStore` already provides a write-through in-memory cache with a sync `get()` path
   (ADR-024). The DB row has an `updated_at` ISO-8601 timestamp that is bumped on every
@@ -54,10 +54,10 @@ the cached `AgentRow`.
 Polling happens per-message (lazy), not on a background timer. Each inbound message
 triggers one sync `AgentStore.get()` call, which is an O(1) dict lookup.
 
-- **Pros:** Eliminates the DB/TOML drift bug permanently. `lyra agent edit` changes are
+- **Pros:** Eliminates the DB/TOML drift bug permanently. `factory agent edit` changes are
   picked up on the next message with no daemon restart. The store cache is already a sync
   O(1) read; no async overhead or background task is introduced. `updated_at` string
-  comparison is simpler and cheaper than `stat()`. Agent creation via `lyra agent create`
+  comparison is simpler and cheaper than `stat()`. Agent creation via `factory agent create`
   writes directly to the DB; no two-step TOML-then-init workflow. The persona name is
   read from the DB row rather than re-parsing the TOML at runtime.
 - **Cons:** `AgentBase` gains a dependency on `AgentStore`. Currently `AgentBase` is a
@@ -69,7 +69,7 @@ triggers one sync `AgentStore.get()` call, which is an O(1) dict lookup.
 
 ### Option B: Retain TOML mtime hot-reload, fix drift by adding a write-back step
 
-When `lyra agent edit` writes to the DB it also regenerates the TOML file on disk. The
+When `factory agent edit` writes to the DB it also regenerates the TOML file on disk. The
 existing `_maybe_reload()` logic is unchanged.
 
 - **Pros:** No changes to `AgentBase` wiring. The TOML remains the hot-reload source.
@@ -77,7 +77,7 @@ existing `_maybe_reload()` logic is unchanged.
   TOML-only fields (e.g., `[prompt].system` for inline system prompts, which the DB
   path does not support) would be lost. This deepens the coupling between the two
   representations rather than resolving it. The drift problem re-emerges whenever a DB
-  field has no TOML equivalent. `lyra agent edit` changing both DB and file is a
+  field has no TOML equivalent. `factory agent edit` changing both DB and file is a
   write-amplification footgun for operators.
 
 ### Option C: Remove hot-reload entirely; require daemon restart on config change
@@ -85,7 +85,7 @@ existing `_maybe_reload()` logic is unchanged.
 `_maybe_reload()` becomes a no-op. All config changes require a daemon restart (was `supervisorctl restart`; now `systemctl --user restart <unit>` in Quadlet deployments — supervisord retired in #886/#1036).
 
 - **Pros:** Maximum simplicity. No polling, no state tracking.
-- **Cons:** Eliminates a genuine operational convenience. `lyra agent edit` changes require
+- **Cons:** Eliminates a genuine operational convenience. `factory agent edit` changes require
   a full restart, increasing operator friction for routine tuning (model, max_turns,
   persona). This is a regression from the current user experience.
 
@@ -120,17 +120,17 @@ is eliminated. Persona files (`.persona.toml`) remain file-based and are not mig
 the DB; hot-reload of persona content alone (without a DB `upsert()`) requires a separate
 mechanism and is out of scope for this ADR.
 
-**TOML demotion.** TOMLs become seed-only files used exclusively by `lyra agent init`.
+**TOML demotion.** TOMLs become seed-only files used exclusively by `factory agent init`.
 They are not read at runtime after startup. They may remain under `src/lyra/agents/` for
 discoverability or be moved to `src/lyra/agents/seeds/` at the maintainer's discretion;
 this ADR does not mandate the move. The TOML fallback in `multibot.py` (the `else` branch
 that calls `load_agent_config()` when no DB row exists) is retained as a degraded-mode
-safety net for users who have not yet run `lyra agent init`, but a startup log warning is
+safety net for users who have not yet run `factory agent init`, but a startup log warning is
 emitted to prompt migration.
 
-**`lyra agent create`.** The TODO(#268) comment is resolved: `create` writes to the DB
+**`factory agent create`.** The TODO(#268) comment is resolved: `create` writes to the DB
 via `AgentStore.upsert()` and does not create a TOML file. The "Next steps" prompt
-directing users to run `lyra agent init` is removed. The user agent directory
+directing users to run `factory agent init` is removed. The user agent directory
 (`~/.lyra/agents/`) becomes vestigial for new agents; the system agent directory
 (`src/lyra/agents/`) retains existing TOMLs for backward compatibility.
 
@@ -154,15 +154,15 @@ timers would introduce asyncio task management complexity with no benefit at thi
 
 ### Positive
 
-- DB/TOML drift is eliminated as a class of bug. `lyra agent edit` changes take effect on
+- DB/TOML drift is eliminated as a class of bug. `factory agent edit` changes take effect on
   the next message without a daemon restart.
 - `agent_row_to_config()` is the single runtime deserialization path; `load_agent_config()`
-  (TOML path) is exercised only by `lyra agent init` and `lyra agent validate`.
+  (TOML path) is exercised only by `factory agent init` and `factory agent validate`.
 - Per-message reload check is O(1) (dict lookup + string comparison); cheaper than the
   current `stat()` syscall.
 - `_update_persona_tracking()` and its redundant TOML open are removed, reducing the
   number of file handles opened during normal operation.
-- `lyra agent create` no longer requires a two-step (create TOML, run init) workflow.
+- `factory agent create` no longer requires a two-step (create TOML, run init) workflow.
 
 ### Negative
 
@@ -171,12 +171,12 @@ timers would introduce asyncio task management complexity with no benefit at thi
   `AgentBase` is already infrastructure-aware in other respects (it holds
   `CircuitRegistry`, `MessageManager`, `PluginLoader`). The dependency must be injected,
   not imported at module scope, to preserve unit testability.
-- Users who have never run `lyra agent init` will experience a degraded startup: the
+- Users who have never run `factory agent init` will experience a degraded startup: the
   daemon falls back to TOMLs and emits a warning but does not fail hard. This is a known
   transitional risk; the warning message and documentation should direct users to the
   migration command.
 - Persona hot-reload (changing a `.persona.toml` file without touching the DB) no longer
-  works automatically. Operators must run `lyra agent edit` or `lyra agent init --force`
+  works automatically. Operators must run `factory agent edit` or `factory agent init --force`
   to pick up persona file changes. This is a minor regression for persona-heavy workflows.
 
 ### Neutral

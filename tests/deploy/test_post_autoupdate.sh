@@ -84,13 +84,13 @@ NEW_INDEX_DIGEST_SVC="sha256:deadbeefaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 FAKE_DEPLOY_DIR="$TMPDIR_WORK/deploy"
 mkdir -p "$FAKE_DEPLOY_DIR/lib"
 
-# Stub deploy-common.sh — only the surface the hook uses
+# Stub deploy-common.sh — real digest helpers, test-local paths via HOME
 cat > "$FAKE_DEPLOY_DIR/lib/deploy-common.sh" <<EOF
 set -euo pipefail
-FACTORY_DIR="$TMPDIR_WORK/factory"
-CONVERGE_STAMP="$TMPDIR_WORK/converge-stamp"
-mkdir -p "\$FACTORY_DIR"
-# No-op lock wrapper for tests — converge.sh owns the real lock in production
+export HOME="$TMPDIR_WORK/home"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+mkdir -p "\$HOME/projects/roxabi-factory" "\$HOME/.roxabi/factory/nkeys"
+source "$REPO_ROOT/deploy/lib/deploy-common.sh"
 with_deploy_lock() { "\$@"; }
 EOF
 

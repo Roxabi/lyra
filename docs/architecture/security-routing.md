@@ -178,7 +178,7 @@ Every memory query at every level (L0–L4) must include `user_id` as an explici
 
 ### Nkey identity provisioning
 
-`auth.conf` is a pure function of two inputs: the `IDENTITIES` manifest (constants in `gen-nkeys.sh`) and the seed directory on disk. A `--regen-authconf` mode re-renders the full file without rotating existing seeds — non-destructively closing drift caused by new identities added since the last generation. Missing seeds are auto-created; no identity in the manifest may be silently skipped. Each supervisor program must reference its own named seed file and fail fast if absent — the old `.env` fallback to `hub.seed` (which caused adapters to silently authenticate as hub) is classified as a misconfiguration, not a feature. A `lyra ops verify` command detects gaps between the manifest, disk seeds, and live `auth.conf` before harm occurs. → ADR-046
+`auth.conf` is a pure function of two inputs: the `IDENTITIES` manifest (constants in `gen-nkeys.sh`) and the seed directory on disk. A `--regen-authconf` mode re-renders the full file without rotating existing seeds — non-destructively closing drift caused by new identities added since the last generation. Missing seeds are auto-created; no identity in the manifest may be silently skipped. Each supervisor program must reference its own named seed file and fail fast if absent — the old `.env` fallback to `hub.seed` (which caused adapters to silently authenticate as hub) is classified as a misconfiguration, not a feature. A `factory ops verify` command detects gaps between the manifest, disk seeds, and live `auth.conf` before harm occurs. → ADR-046
 
 ### Per-identity NATS inbox prefix
 

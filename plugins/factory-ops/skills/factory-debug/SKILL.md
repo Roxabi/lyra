@@ -82,12 +82,14 @@ ssh $H "journalctl --user -u factory-nats -n 100 --no-pager"
 
 Equivalent via Makefile (foreground tail): `make remote hub logs` / `telegram logs` / `discord logs` / `hub errors`.
 
-In-container structured logs (if the hub writes files to the logs volume):
+Operator deploy audit (host — not inside containers):
 
 ```bash
-ssh $H "podman exec factory-hub ls -t /home/factory/.local/state/factory/logs/ | head -10"
-ssh $H "podman exec factory-hub tail -200 /home/factory/.local/state/factory/logs/<file>"
+ssh $H "tail -50 ~/.local/state/factory/logs/operator.log"
+ssh $H "cat ~/.roxabi/factory/rotation-log.md 2>/dev/null || true"
 ```
+
+See `docs/runbooks/operator-log.md` for the full triage matrix.
 
 ## Phase 4 — Diagnosis
 

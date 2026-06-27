@@ -105,6 +105,7 @@ class Hub(
         self._message_index: MessageIndexProtocol | None = None
         self._stt: STTProtocol | None = stt
         self._tts_value: TtsProtocol | None = tts
+        self._socialmedia_client = None
         self._pool_ttl = cfg.pool_ttl
         self._debounce_ms = cfg.debounce_ms
         self._cancel_on_new_message = cfg.cancel_on_new_message

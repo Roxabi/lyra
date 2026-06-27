@@ -9,11 +9,13 @@ from factory.infrastructure.stores.identity.pairing import (
     get_pairing_manager,
     set_pairing_manager,
 )
+from factory.infrastructure.stores.identity.user_store import UserStore
 
 __all__ = [
     "AuthStore",
     "IdentityAliasStore",
     "PairingManager",
+    "UserStore",
     "get_pairing_manager",
     "set_pairing_manager",
 ]

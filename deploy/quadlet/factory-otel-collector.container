@@ -1,0 +1,27 @@
+[Unit]
+Description=Factory OTel Collector — OTLP → Langfuse (ADR-092)
+After=factory-langfuse-web.service
+Wants=factory-langfuse-web.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+Image=docker.io/otel/opentelemetry-collector-contrib:0.120.0
+ContainerName=factory-otel-collector
+Network=roxabi.network
+NoNewPrivileges=true
+ReadOnly=true
+DropCapability=all
+Exec=--config=/etc/otelcol/config.yml
+Volume=%h/projects/roxabi-factory/deploy/observability/otel-collector-config.yml:/etc/otelcol/config.yml:ro,z
+EnvironmentFile=%h/.roxabi/factory/env/otel-collector.env
+PublishPort=127.0.0.1:4317:4317
+PublishPort=127.0.0.1:4318:4318
+
+[Service]
+Restart=on-failure
+RestartSec=10
+ExecStartPre=/bin/test -r %h/.roxabi/factory/env/otel-collector.env
+
+[Install]
+WantedBy=default.target

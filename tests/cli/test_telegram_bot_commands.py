@@ -1,4 +1,4 @@
-"""Integration tests for `lyra agent telegram` bot CLI commands (issue #1415)."""
+"""Integration tests for `factory agent telegram` bot CLI commands (issue #1415)."""
 
 from __future__ import annotations
 
@@ -52,7 +52,7 @@ def _make_proc(returncode: int = 0, stdout: str = "", stderr: str = "") -> Magic
 
 
 class TestTelegramList:
-    """`lyra agent telegram list`"""
+    """`factory agent telegram list`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -97,7 +97,7 @@ class TestTelegramList:
 
 
 class TestTelegramShow:
-    """`lyra agent telegram show <bot_id>`"""
+    """`factory agent telegram show <bot_id>`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -124,8 +124,7 @@ class TestTelegramShow:
                 platform="telegram",
                 bot_id="main",
                 agent="lyra",
-                default_trust="trusted",
-                owner_users=["alice"],
+                webhook_enabled=True,
             ),
         )
 
@@ -133,7 +132,6 @@ class TestTelegramShow:
         assert result.exit_code == 0, result.output
         assert "main" in result.output
         assert "lyra" in result.output
-        assert "alice" in result.output
 
     def test_invalid_bot_id(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -150,7 +148,7 @@ class TestTelegramShow:
 
 
 class TestTelegramAdd:
-    """`lyra agent telegram add <bot_id>`"""
+    """`factory agent telegram add <bot_id>`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -170,7 +168,6 @@ class TestTelegramAdd:
         row = db_get(db_path, "telegram", "main")
         assert row is not None
         assert row.agent == ""
-        assert row.default_trust == "blocked"
 
     def test_add_with_options(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -184,10 +181,7 @@ class TestTelegramAdd:
                 "main",
                 "--agent",
                 "lyra",
-                "--default-trust",
-                "trusted",
-                "--owner-users",
-                "alice,bob",
+                "--webhook-enabled",
                 "--auto-thread",
                 "--thread-hot-hours",
                 "12",
@@ -199,8 +193,7 @@ class TestTelegramAdd:
         row = db_get(db_path, "telegram", "main")
         assert row is not None
         assert row.agent == "lyra"
-        assert row.default_trust == "trusted"
-        assert row.owner_users == ["alice", "bob"]
+        assert row.webhook_enabled is True
         assert row.auto_thread is True
         assert row.thread_hot_hours == 12
 
@@ -212,25 +205,13 @@ class TestTelegramAdd:
         assert result.exit_code == 2, result.output
         assert "invalid" in result.output.lower()
 
-    def test_add_invalid_default_trust(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
-        result = runner.invoke(
-            agent_app,
-            ["telegram", "add", "main", "--default-trust", "evil"],
-        )
-        assert result.exit_code == 2, result.output
-        assert "invalid" in result.output.lower()
-
-
 # ---------------------------------------------------------------------------
 # TestTelegramEdit
 # ---------------------------------------------------------------------------
 
 
 class TestTelegramEdit:
-    """`lyra agent telegram edit <bot_id>`"""
+    """`factory agent telegram edit <bot_id>`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -282,26 +263,19 @@ class TestTelegramEdit:
                 bot_id="main",
                 agent="lyra",
                 webhook_enabled=False,
-                default_trust="blocked",
-                owner_users=["alice"],
-                trusted_users=["bob"],
-                trusted_roles=["admin"],
                 auto_thread=False,
                 thread_hot_hours=24,
             ),
         )
 
-        # Side-effect sequence: agent, webhook, default_trust, owner_users,
-        # trusted_users, trusted_roles, auto_thread, thread_hot_hours
+        # Side-effect sequence: agent, webhook_enabled, auto_thread,
+        # thread_hot_hours, public_bot
         responses = [
             "beta",  # agent
             "y",  # webhook_enabled
-            "trusted",  # default_trust
-            "alice,charlie",  # owner_users
-            "dave",  # trusted_users
-            "mod",  # trusted_roles
             "n",  # auto_thread
             "48",  # thread_hot_hours
+            "@public",  # public_bot
         ]
         idx = 0
 
@@ -322,12 +296,9 @@ class TestTelegramEdit:
         assert row is not None
         assert row.agent == "beta"
         assert row.webhook_enabled is True
-        assert row.default_trust == "trusted"
-        assert row.owner_users == ["alice", "charlie"]
-        assert row.trusted_users == ["dave"]
-        assert row.trusted_roles == ["mod"]
         assert row.auto_thread is False
         assert row.thread_hot_hours == 48
+        assert row.public_bot == "@public"
 
     def test_edit_invalid_thread_hot_hours(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -344,7 +315,7 @@ class TestTelegramEdit:
                 thread_hot_hours=24,
             ),
         )
-        responses = ["", "", "", "", "", "", "", "abc"]
+        responses = ["", "", "", "abc", ""]
         idx = 0
 
         def _seq_prompt(*_args: Any, **_kwargs: Any) -> str:
@@ -363,54 +334,13 @@ class TestTelegramEdit:
         assert row is not None
         assert row.thread_hot_hours == 24
 
-    def test_edit_clear_list(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """'-' input clears list fields."""
-        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
-        db_path = tmp_path / "config.db"
-        db_upsert(
-            db_path,
-            BotRow(
-                platform="telegram",
-                bot_id="main",
-                agent="lyra",
-                owner_users=["alice"],
-                trusted_users=["bob"],
-                trusted_roles=["admin"],
-            ),
-        )
-        # agent, webhook, default_trust, owner_users, trusted_users,
-        # trusted_roles, auto_thread, thread_hot_hours
-        responses = ["", "", "", "-", "-", "-", "", ""]
-        idx = 0
-
-        def _seq_prompt(*_args: Any, **_kwargs: Any) -> str:
-            nonlocal idx
-            val = responses[idx]
-            idx += 1
-            return val
-
-        monkeypatch.setattr(
-            "factory.agent_cmd.platforms._shared.typer.prompt", _seq_prompt
-        )
-        result = runner.invoke(agent_app, ["telegram", "edit", "main"])
-        assert result.exit_code == 0, result.output
-        assert "updated" in result.output.lower()
-        row = db_get(db_path, "telegram", "main")
-        assert row is not None
-        assert row.owner_users == []
-        assert row.trusted_users == []
-        assert row.trusted_roles == []
-
-
 # ---------------------------------------------------------------------------
 # TestTelegramPatch
 # ---------------------------------------------------------------------------
 
 
 class TestTelegramPatch:
-    """`lyra agent telegram patch <bot_id>`"""
+    """`factory agent telegram patch <bot_id>`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -454,23 +384,6 @@ class TestTelegramPatch:
         assert result.exit_code == 1, result.output
         assert "no fields" in result.output.lower()
 
-    def test_patch_owner_users(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
-        db_path = tmp_path / "config.db"
-        db_upsert(db_path, BotRow(platform="telegram", bot_id="main", agent="lyra"))
-
-        result = runner.invoke(
-            agent_app,
-            ["telegram", "patch", "main", "--owner-users", "alice,bob"],
-        )
-        assert result.exit_code == 0, result.output
-
-        row = db_get(db_path, "telegram", "main")
-        assert row is not None
-        assert row.owner_users == ["alice", "bob"]
-
     def test_patch_webhook_enabled(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -489,29 +402,6 @@ class TestTelegramPatch:
         row = db_get(db_path, "telegram", "main")
         assert row is not None
         assert row.webhook_enabled is True
-
-    def test_patch_default_trust(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
-        db_path = tmp_path / "config.db"
-        db_upsert(
-            db_path,
-            BotRow(
-                platform="telegram",
-                bot_id="main",
-                agent="lyra",
-                default_trust="blocked",
-            ),
-        )
-        result = runner.invoke(
-            agent_app,
-            ["telegram", "patch", "main", "--default-trust", "public"],
-        )
-        assert result.exit_code == 0, result.output
-        row = db_get(db_path, "telegram", "main")
-        assert row is not None
-        assert row.default_trust == "public"
 
     def test_patch_auto_thread(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -550,27 +440,13 @@ class TestTelegramPatch:
         assert row is not None
         assert row.thread_hot_hours == 6
 
-    def test_patch_default_trust_invalid(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
-        db_path = tmp_path / "config.db"
-        db_upsert(db_path, BotRow(platform="telegram", bot_id="main", agent="lyra"))
-        result = runner.invoke(
-            agent_app,
-            ["telegram", "patch", "main", "--default-trust", "evil"],
-        )
-        assert result.exit_code == 2, result.output
-        assert "invalid" in result.output.lower()
-
-
 # ---------------------------------------------------------------------------
 # TestTelegramRemove
 # ---------------------------------------------------------------------------
 
 
 class TestTelegramRemove:
-    """`lyra agent telegram remove <bot_id>`"""
+    """`factory agent telegram remove <bot_id>`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -648,7 +524,7 @@ class TestTelegramRemove:
 
 
 class TestTelegramAssign:
-    """`lyra agent telegram assign <bot_id> --agent <name>`"""
+    """`factory agent telegram assign <bot_id> --agent <name>`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -688,7 +564,7 @@ class TestTelegramAssign:
 
 
 class TestTelegramUnassign:
-    """`lyra agent telegram unassign <bot_id>`"""
+    """`factory agent telegram unassign <bot_id>`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -724,7 +600,7 @@ class TestTelegramUnassign:
 
 
 class TestTelegramValidate:
-    """`lyra agent telegram validate <bot_id>`"""
+    """`factory agent telegram validate <bot_id>`"""
 
     def test_help(self) -> None:
         result = runner.invoke(
@@ -746,12 +622,7 @@ class TestTelegramValidate:
         _seed_agent(db_path, "lyra")
         db_upsert(
             db_path,
-            BotRow(
-                platform="telegram",
-                bot_id="main",
-                agent="lyra",
-                owner_users=["alice"],
-            ),
+            BotRow(platform="telegram", bot_id="main", agent="lyra"),
         )
 
         secret_name = "factory-bot-telegram-main"
@@ -771,15 +642,7 @@ class TestTelegramValidate:
         """Bot with no agent assigned skips agent check and still passes."""
         monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
-        db_upsert(
-            db_path,
-            BotRow(
-                platform="telegram",
-                bot_id="main",
-                agent="",
-                owner_users=["alice"],
-            ),
-        )
+        db_upsert(db_path, BotRow(platform="telegram", bot_id="main", agent=""))
 
         secret_name = "factory-bot-telegram-main"
         mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
@@ -791,47 +654,13 @@ class TestTelegramValidate:
         assert result.exit_code == 0, result.output
         assert "ok" in result.output.lower()
 
-    def test_validate_no_owners(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
-        db_path = tmp_path / "config.db"
-        _seed_agent(db_path, "lyra")
-        db_upsert(
-            db_path,
-            BotRow(
-                platform="telegram",
-                bot_id="main",
-                agent="lyra",
-                owner_users=[],
-            ),
-        )
-
-        secret_name = "factory-bot-telegram-main"
-        mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
-        monkeypatch.setattr(
-            "factory.agent_cmd.platforms._commands.subprocess.run", mock_run
-        )
-
-        result = runner.invoke(agent_app, ["telegram", "validate", "main"])
-        assert result.exit_code == 1, result.output
-        assert "owner_users" in result.output.lower()
-
     def test_validate_no_secret(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         _seed_agent(db_path, "lyra")
-        db_upsert(
-            db_path,
-            BotRow(
-                platform="telegram",
-                bot_id="main",
-                agent="lyra",
-                owner_users=["alice"],
-            ),
-        )
+        db_upsert(db_path, BotRow(platform="telegram", bot_id="main", agent="lyra"))
 
         mock_run = MagicMock(
             return_value=_make_proc(returncode=0, stdout="other-secret")
@@ -851,15 +680,7 @@ class TestTelegramValidate:
         monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         _seed_agent(db_path, "lyra")
-        db_upsert(
-            db_path,
-            BotRow(
-                platform="telegram",
-                bot_id="main",
-                agent="other",
-                owner_users=["alice"],
-            ),
-        )
+        db_upsert(db_path, BotRow(platform="telegram", bot_id="main", agent="other"))
         secret_name = "factory-bot-telegram-main"
         mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(
@@ -877,15 +698,7 @@ class TestTelegramValidate:
         monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         _seed_agent(db_path, "lyra")
-        db_upsert(
-            db_path,
-            BotRow(
-                platform="telegram",
-                bot_id="main",
-                agent="lyra",
-                owner_users=["alice"],
-            ),
-        )
+        db_upsert(db_path, BotRow(platform="telegram", bot_id="main", agent="lyra"))
         mock_run = MagicMock(return_value=_make_proc(returncode=1, stdout=""))
         monkeypatch.setattr(
             "factory.agent_cmd.platforms._commands.subprocess.run", mock_run
@@ -901,15 +714,7 @@ class TestTelegramValidate:
         monkeypatch.setenv("ROXABI_FACTORY_DIR", str(tmp_path))
         db_path = tmp_path / "config.db"
         _seed_agent(db_path, "lyra")
-        db_upsert(
-            db_path,
-            BotRow(
-                platform="telegram",
-                bot_id="main",
-                agent="lyra",
-                owner_users=["alice"],
-            ),
-        )
+        db_upsert(db_path, BotRow(platform="telegram", bot_id="main", agent="lyra"))
         secret_name = "factory-bot-telegram-main"
         mock_run = MagicMock(return_value=_make_proc(returncode=0, stdout=secret_name))
         monkeypatch.setattr(

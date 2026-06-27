@@ -9,20 +9,18 @@ from __future__ import annotations
 
 import html
 import logging
-from typing import TYPE_CHECKING
 
+from factory.core.messaging.message import InboundMessage, WebMeta
+from factory.core.ports.llm_types import ModelConfig
 from factory.core.ports.stt import (
     STTNoiseError as STTNoiseError,
 )  # re-export (guard #1225)
-
-if TYPE_CHECKING:
-    from factory.core.messaging.message import InboundMessage
 
 log = logging.getLogger(__name__)
 
 
 async def build_llm_text(
-    msg: "InboundMessage",
+    msg: InboundMessage,
 ) -> tuple[str, str | None]:
     """Build the LLM prompt text from an inbound message.
 
@@ -53,3 +51,18 @@ async def build_llm_text(
         return f"<user_message>{html.escape(msg.text)}</user_message>", None
 
     return msg.text, None
+
+
+def effective_model_config(base: ModelConfig, msg: InboundMessage) -> ModelConfig:
+    """Apply per-tab web harness/model overrides from WebMeta (#1771)."""
+    if msg.platform != "web" or not isinstance(msg.platform_meta, WebMeta):
+        return base
+    meta = msg.platform_meta
+    updates: dict[str, str] = {}
+    if meta.harness:
+        updates["backend"] = meta.harness
+    if meta.model:
+        updates["model"] = meta.model
+    if not updates:
+        return base
+    return base.model_copy(update=updates)

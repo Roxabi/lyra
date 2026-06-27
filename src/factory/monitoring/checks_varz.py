@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 import httpx
 
+from ._errors import _MONITORING_HTTP_ERRORS
 from .models import CheckResult
 
 log = logging.getLogger(__name__)
@@ -143,7 +144,7 @@ async def check_nats_varz(url: str, state_file: str, timeout: int = 5) -> CheckR
         data = resp.json()
         current_auth = int(data.get("auth_errors", 0))
         current_slow = int(data.get("slow_consumers", 0))
-    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+    except _MONITORING_HTTP_ERRORS as exc:
         return CheckResult(
             name="nats:varz",
             passed=False,

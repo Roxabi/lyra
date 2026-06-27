@@ -102,10 +102,7 @@ class TurnWriterHealthServer:
 
     def _check_nats_connected(self) -> bool:
         """True iff the NATS client reports connected."""
-        try:
-            return bool(self._nc.is_connected)
-        except Exception:  # noqa: BLE001
-            return False
+        return bool(self._nc.is_connected)
 
     def _check_store_open(self) -> bool:
         """True iff the TurnStore has an open SQLite connection."""

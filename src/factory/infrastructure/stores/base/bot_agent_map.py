@@ -9,7 +9,7 @@ from pathlib import Path
 from factory.core.agent.agent_models import _utc_now_iso
 from factory.core.agent.schema.agent_schema import _CREATE_BOT_AGENT_MAP
 
-from .sqlite_base import SqliteStore
+from .sqlite_base import _SQLITE_STORE_ERRORS, SqliteStore
 
 log = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ class BotAgentMapStore(SqliteStore):
         await self._open_db(ddl=[_CREATE_BOT_AGENT_MAP])
         try:
             await self._warm_cache()
-        except Exception:
+        except _SQLITE_STORE_ERRORS:
             log.exception("BotAgentMapStore.connect() setup failed; closing connection")
             await self.close()
             raise

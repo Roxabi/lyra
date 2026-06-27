@@ -107,5 +107,5 @@ async def run_inbound_guarded(  # noqa: PLR0913 — pipeline.run kwargs surface 
         )
     except AttachmentIngestError as exc:
         await on_attachment_ingest_error(exc)
-    except Exception:
+    except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: adapter I/O — SDK event loop must not see unhandled errors
         log.exception("Unhandled exception in inbound pipeline (%s)", log_context)

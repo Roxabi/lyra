@@ -7,7 +7,6 @@ aiosqlite connection.
 
 from __future__ import annotations
 
-import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
@@ -22,8 +21,6 @@ from factory.infrastructure.stores.session.turn_store_queries import (
     get_last_session,
     list_sessions_for_pool,
 )
-
-log = logging.getLogger(__name__)
 
 __all__ = ["TurnStoreSessionMixin"]
 
@@ -60,17 +57,16 @@ class TurnStoreSessionMixin:
         return await get_last_session(self._db_or_raise(), pool_id)
 
     async def _set_cli_session(self, session_id: str, cli_session_id: str) -> None:
-        """Store the CLI session ID for a Lyra session (for --resume after restart)."""
+        """Store the CLI session ID for a Lyra session (for --resume after restart).
+
+        Raises on store I/O failure so JetStream callers can NAK/redeliver (#1637).
+        """
         db = self._db_or_raise()
-        try:
-            await db.execute(
-                "UPDATE pool_sessions SET cli_session_id = ? WHERE session_id = ?",
-                (cli_session_id, session_id),
-            )
-            await db.commit()
-        except Exception:
-            log.exception("TurnStore._set_cli_session failed (session=%s)", session_id)
-            return
+        await db.execute(
+            "UPDATE pool_sessions SET cli_session_id = ? WHERE session_id = ?",
+            (cli_session_id, session_id),
+        )
+        await db.commit()
 
     async def get_cli_session(self, session_id: str) -> str | None:
         """Return the CLI session ID for a Lyra session, or None."""
@@ -93,47 +89,42 @@ class TurnStoreSessionMixin:
         return await list_sessions_for_pool(self._db_or_raise(), pool_id, limit)
 
     async def get_resume_count(self, session_id: str) -> int:
-        """Return current resume_count for *session_id*, or 0 if not found."""
+        """Return current resume_count for *session_id*, or 0 if row missing.
+
+        Raises on store I/O failure — callers must not treat a failed read as 0.
+        """
         db = self._db_or_raise()
-        try:
-            async with db.execute(
-                "SELECT resume_count FROM pool_sessions WHERE session_id = ?",
-                (session_id,),
-            ) as cur:
-                row = await cur.fetchone()
-                return int(row[0]) if row else 0
-        except Exception:
-            log.exception("TurnStore.get_resume_count failed (session=%s)", session_id)
-            return 0
+        async with db.execute(
+            "SELECT resume_count FROM pool_sessions WHERE session_id = ?",
+            (session_id,),
+        ) as cur:
+            row = await cur.fetchone()
+            return int(row[0]) if row else 0
 
     async def _increment_resume_count(self, session_id: str) -> None:
-        """Increment resume_count for *session_id*. Tolerant: 0-row OK."""
+        """Increment resume_count for *session_id*. Tolerant: 0-row UPDATE OK.
+
+        Raises on store I/O failure.
+        """
         db = self._db_or_raise()
-        try:
-            await db.execute(
-                "UPDATE pool_sessions"
-                " SET resume_count = resume_count + 1"
-                " WHERE session_id = ?",
-                (session_id,),
-            )
-            await db.commit()
-        except Exception:
-            log.exception(
-                "TurnStore._increment_resume_count failed (session=%s)", session_id
-            )
-            return
+        await db.execute(
+            "UPDATE pool_sessions"
+            " SET resume_count = resume_count + 1"
+            " WHERE session_id = ?",
+            (session_id,),
+        )
+        await db.commit()
 
     async def _end_session(self, session_id: str) -> None:
-        """Stamp ended_at on *session_id*. No-op if already stamped."""
+        """Stamp ended_at on *session_id*. No-op if already stamped.
+
+        Raises on store I/O failure so JetStream callers can NAK/redeliver (#1637).
+        """
         db = self._db_or_raise()
         ts = datetime.now(UTC).isoformat()
-        try:
-            await db.execute(
-                "UPDATE pool_sessions SET ended_at = ?"
-                " WHERE session_id = ? AND ended_at IS NULL",
-                (ts, session_id),
-            )
-            await db.commit()
-        except Exception:
-            log.exception("TurnStore._end_session failed (session=%s)", session_id)
-            return
+        await db.execute(
+            "UPDATE pool_sessions SET ended_at = ?"
+            " WHERE session_id = ? AND ended_at IS NULL",
+            (ts, session_id),
+        )
+        await db.commit()

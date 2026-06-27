@@ -208,7 +208,7 @@ class JetStreamAudioConsumer:
         # (bounded double-send risk preferable to crashed consumer loop).
         try:
             already = await self._dedup.already_sent(stream_id)
-        except Exception as exc:  # noqa: BLE001
+        except (OSError, RuntimeError, nats.errors.Error) as exc:
             log.warning(
                 "JetStreamAudioConsumer: dedup read error stream_id=%r"
                 " (exc_type=%s), treating as not-sent",
@@ -230,16 +230,14 @@ class JetStreamAudioConsumer:
             global audio_redelivery_total
             audio_redelivery_total += 1
 
-        try:
-            await self._send_audio(audio, inbound)
-        except Exception:
-            log.exception(
+        if not await self._guard_platform_send(
+            self._send_audio(audio, inbound),
+            log_msg=(
                 "JetStreamAudioConsumer: send_audio failed for"
-                " stream_id=%r (delivered=%d/%d)",
-                stream_id,
-                n_delivered,
-                self._max_deliver,
-            )
+                f" stream_id={stream_id!r}"
+                f" (delivered={n_delivered}/{self._max_deliver})"
+            ),
+        ):
             if n_delivered >= self._max_deliver:
                 await self._handle_terminal(msg, stream_id, inbound)
             # Transient: do NOT ack — JetStream will redeliver after AckWait.
@@ -249,12 +247,30 @@ class JetStreamAudioConsumer:
         await self._dedup.mark_sent(stream_id)
         try:
             await msg.ack()
-        except Exception:
+        except (nats.errors.Error, OSError):
             log.exception(
                 "JetStreamAudioConsumer: ack failed for stream_id=%r"
                 " — message may redeliver but dedup will guard",
                 stream_id,
             )
+
+    async def _guard_platform_send(
+        self,
+        coro: Awaitable[None],
+        *,
+        log_msg: str,
+        level: str = "exception",
+    ) -> bool:
+        """Run platform send; return False on failure without crashing the loop."""
+        try:
+            await coro
+            return True
+        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: jetstream-send — platform delivery type varies
+            if level == "error":
+                log.error("%s", log_msg)
+            else:
+                log.exception("%s", log_msg)
+            return False
 
     async def _handle_terminal(
         self, msg: Any, stream_id: str, inbound: InboundMessage
@@ -276,7 +292,7 @@ class JetStreamAudioConsumer:
                 " — termed, notifying user",
                 stream_id,
             )
-        except Exception as exc:  # noqa: BLE001
+        except (nats.errors.Error, OSError, RuntimeError) as exc:
             log.error(
                 "JetStreamAudioConsumer: term() failed for stream_id=%r"
                 " (exc_type=%s) — will retry on next redelivery",
@@ -293,12 +309,11 @@ class JetStreamAudioConsumer:
         self._notified.add(stream_id)
 
         outbound = notify_undelivered(context="audio-terminal-undelivered")
-        try:
-            await self._send_text(inbound, outbound)
-        except Exception as exc:  # noqa: BLE001
-            log.error(
-                "JetStreamAudioConsumer: user notification failed"
-                " for stream_id=%r (exc_type=%s, best-effort)",
-                stream_id,
-                type(exc).__name__,
-            )
+        await self._guard_platform_send(
+            self._send_text(inbound, outbound),
+            log_msg=(
+                f"JetStreamAudioConsumer: user notification failed"
+                f" for stream_id={stream_id!r} (best-effort)"
+            ),
+            level="error",
+        )

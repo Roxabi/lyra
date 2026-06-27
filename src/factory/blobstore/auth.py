@@ -52,7 +52,7 @@ async def _emit_unauthorized_audit(request: Request) -> None:
             source=None,
         )
         await sink.emit(event)
-    except Exception:  # noqa: BLE001
+    except (OSError, RuntimeError, TypeError, ValueError):
         pass
 
 

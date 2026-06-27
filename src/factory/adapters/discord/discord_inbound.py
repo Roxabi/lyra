@@ -5,7 +5,6 @@ from __future__ import annotations
 import dataclasses
 import functools
 import logging
-import sqlite3
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -49,17 +48,8 @@ async def _discord_pre_route_hook(
         return  # hot set already knows
     if adapter._thread_store is None:
         return
-    try:
-        if await adapter._thread_store.is_owned(str(meta.thread_id), adapter._bot_id):
-            ctx.router.owned_threads.add(meta.thread_id)
-    except (sqlite3.Error, RuntimeError):
-        # sqlite3.Error: I/O failure; RuntimeError: DB not yet connected (_require_db).
-        # Both cases: fall through; Router will DROP the unrecognized thread.
-        log.warning(
-            "pre_route_hook: ThreadStore.is_owned failed for thread %s",
-            meta.thread_id,
-            exc_info=True,
-        )
+    if await adapter._thread_store.is_owned(str(meta.thread_id), adapter._bot_id):
+        ctx.router.owned_threads.add(meta.thread_id)
 
 
 @dataclass(frozen=True)
@@ -114,7 +104,7 @@ async def _try_auto_create_thread(deps: AutoThreadDeps) -> int | None:
                 guild_id=getattr(raw_message.guild, "id", None),
             )
         return thread.id
-    except Exception:
+    except discord.DiscordException:
         log.exception(
             "Failed to create Discord thread for message id=%s",
             raw_message.id,
@@ -124,9 +114,9 @@ async def _try_auto_create_thread(deps: AutoThreadDeps) -> int | None:
         recovered = getattr(raw_message, "thread", None)
         if recovered is None:
             return None
-        # NOTE: persist_thread_claim swallows its own exceptions silently
-        # (see discord_threads.py), so a DB failure here is not observable.
-        # The hot-set add may diverge from the DB transiently; the next
+        # NOTE: ThreadStore.claim logs store failures without raising, so a DB
+        # failure here is not observable at the adapter layer. The hot-set add
+        # may diverge from the DB transiently; the next
         # inbound message in this thread triggers _discord_pre_route_hook
         # which performs a cold-path is_owned lookup that reconciles state.
         # Eventual consistency is the documented contract.

@@ -5,8 +5,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
-from collections.abc import Awaitable, Sequence
-from typing import TYPE_CHECKING, Any, Protocol
+from collections.abc import Awaitable, Callable, Sequence
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar
+
+_T = TypeVar("_T")
 
 if TYPE_CHECKING:
     from nats.aio.subscription import Subscription
@@ -29,6 +31,19 @@ def setup_signal_handlers(stop: asyncio.Event) -> None:
     loop = asyncio.get_running_loop()
     loop.add_signal_handler(signal.SIGINT, stop.set)
     loop.add_signal_handler(signal.SIGTERM, stop.set)
+
+
+async def run_with_teardown(
+    coro: Awaitable[_T],
+    teardown: Callable[[], Awaitable[Any]] | None = None,
+) -> _T:
+    """Await *coro*; on failure run optional *teardown* then re-raise."""
+    try:
+        return await coro
+    except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: bootstrap-wiring — teardown on failure
+        if teardown is not None:
+            await teardown()
+        raise
 
 
 async def close_safely(label: str, *awaitables: Awaitable[Any]) -> None:

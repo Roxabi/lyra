@@ -3,11 +3,20 @@
 from __future__ import annotations
 
 import pathlib
+from unittest.mock import AsyncMock, MagicMock
 
+import aiosqlite
+import nats.errors
 import pytest
 from fastapi.testclient import TestClient
 
-from factory.blobstore.serve import build_app
+from factory.blobstore.serve import (
+    _blob_count,
+    _connect_nats,
+    _disk_used_pct,
+    _provision_nats,
+    build_app,
+)
 
 # ---------------------------------------------------------------------------
 # Shared fixture
@@ -91,3 +100,80 @@ class TestBearerAuth:
         response = client.get("/blobs/anything-store-key")
         # Assert
         assert response.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Narrowed boundary catches — failure paths return None / degraded mode
+# ---------------------------------------------------------------------------
+
+
+class TestServeFailurePaths:
+    @pytest.mark.anyio
+    async def test_disk_used_pct_oserror_returns_none(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+    ) -> None:
+        def _boom(_path: pathlib.Path) -> None:
+            raise OSError("disk unavailable")
+
+        monkeypatch.setattr("factory.blobstore.serve.shutil.disk_usage", _boom)
+
+        assert await _disk_used_pct(tmp_path) is None
+
+    @pytest.mark.anyio
+    async def test_blob_count_aiosqlite_error_returns_none(self) -> None:
+        app = MagicMock()
+        store = MagicMock()
+        conn = MagicMock()
+        conn.execute = AsyncMock(side_effect=aiosqlite.Error("query failed"))
+        store._conn = conn
+        app.state.store = store
+
+        assert await _blob_count(app) is None
+
+    @pytest.mark.anyio
+    async def test_connect_nats_missing_url_returns_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("NATS_URL", raising=False)
+
+        assert await _connect_nats() is None
+
+    @pytest.mark.anyio
+    async def test_connect_nats_error_returns_none(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("NATS_URL", "nats://localhost:4222")
+        monkeypatch.setattr(
+            "roxabi_nats.nats_connect",
+            AsyncMock(side_effect=nats.errors.Error("connect refused")),
+        )
+
+        assert await _connect_nats() is None
+
+    @pytest.mark.anyio
+    async def test_provision_nats_kv_error_swallowed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        nc = MagicMock()
+        js = MagicMock()
+        kv = MagicMock()
+        kv.put = AsyncMock(side_effect=nats.errors.Error("kv put failed"))
+        nc.jetstream.return_value = js
+        js.key_value = AsyncMock(return_value=kv)
+
+        sink = MagicMock()
+        sink._degraded = False
+        sink.provision = AsyncMock()
+        monkeypatch.setattr(
+            "factory.blobstore.serve.BlobAuditSink",
+            lambda: sink,
+        )
+
+        app = MagicMock()
+        app.state = MagicMock()
+
+        await _provision_nats(app, nc)  # must not raise
+
+        sink.provision.assert_awaited_once_with(nc)
+        kv.put.assert_awaited_once_with("blobstore.ready", b"true")
+        assert app.state.nats_provisioned is True

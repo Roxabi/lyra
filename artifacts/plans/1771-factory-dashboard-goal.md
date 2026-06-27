@@ -236,6 +236,12 @@
 - [x] `FACTORY_DASHBOARD_E2E=1`, Playwright dark/light snapshots, docs, secrets drift
 - Gates : smoke curls `/` + `/api/*` (scratch `b3-smoke.log`), visual 2/2, converge dry-run
 
+### 2026-06-28 — Harness-aware status (verifier pass 2)
+
+- [x] `fetchAgentStatus(agent, harness)` + CockpitLayout `queryKey`/`healthFor` align badge with tab harness
+- [x] BFF real-path tests: `sessions.list`, `sessions.resume`, harness query → hub payload
+- [x] Scratch: `b3-qg.log`, `b1-docker-dist.log`, `block-order-check-*.txt`, full `plan-final.txt`
+
 ### 2026-06-28 — Remediation (verifier gaps)
 
 - [x] Bugfix : `set_nats_client(nc)` **avant** `wire_bot_common`/`astart` ; `DashboardHubClient(adapter)` lazy nc

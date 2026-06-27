@@ -38,4 +38,13 @@ describe("CockpitLayout", () => {
     expect(screen.getByText("Jobs (#1772)")).toBeTruthy();
     expect(screen.getByText("Obs (#1774)")).toBeTruthy();
   });
+
+  it("fetches agent status with active tab harness", async () => {
+    const statusSpy = vi.spyOn(api, "fetchAgentStatus");
+    renderCockpit();
+    await waitFor(() => {
+      expect(statusSpy).toHaveBeenCalled();
+    });
+    expect(statusSpy.mock.calls[0]).toEqual(["lyra", "claude-cli"]);
+  });
 });

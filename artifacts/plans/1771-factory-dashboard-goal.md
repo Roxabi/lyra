@@ -19,7 +19,7 @@
 |------|--------|-------|
 | Pre-flight | `done` | import-linter + contracts + Makefile
 | Block 1 — Cockpit + Chat + Harness/Model | `done` | SPA + vitest + Docker/CI
-| Block 2 — SessionCatalog + Reprendre | `not_started` | —
+| Block 2 — SessionCatalog + Reprendre | `in_progress` | hub RPC
 | Block 3 — E2E + Hardening + Ship | `not_started` | —
 
 ---
@@ -109,7 +109,7 @@
 
 ## BLOCK 2 — SessionCatalog + Reprendre
 
-**Statut :** `not_started`  
+**Statut :** `in_progress`  
 **GO :** seulement après Block 1 green
 
 ### Hub (avant les routes BFF session)
@@ -206,14 +206,13 @@
 
 > Ajouter une entrée à chaque session `/goal`. Format : `YYYY-MM-DD — résumé — bloc — statut`.
 
-### 2026-06-28 — Pre-flight slice
-
-- [x] import-linter + contracts + Makefile + quadlet timeouts
-
 ### 2026-06-28 — Block 1 slice
 
-- [x] Cockpit SPA, multi-chat, harness/model pickers, `stream_token`, Docker bun stage, CI vitest+biome
-- Gates : `bun build/lint/typecheck`, vitest, pytest web_server + static mount
+- [x] Cockpit SPA, multi-chat, harness/model pickers, `stream_token`
+
+### 2026-06-28 — Block 2 slice (in_progress)
+
+- Statut Block 2 → `in_progress`
 
 
 ---

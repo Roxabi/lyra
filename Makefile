@@ -39,7 +39,7 @@ define require_machine1
 	@case "$(DEPLOY_DIR)" in *[\'\"\$$\\\;\&\|\`]*) echo "Error: DEPLOY_DIR contains shell metacharacters"; exit 1 ;; esac
 endef
 
-.PHONY: build push factory telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-sync-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy converge remote nats-setup nats-regen-authconf nats-add-identity test test-integration voice-smoke lint typecheck format hooks-install quality-debt-report quality-debt-classify
+.PHONY: build push factory telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-sync-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy converge remote nats-setup nats-regen-authconf nats-add-identity test test-integration voice-smoke lint typecheck format hooks-install quality-debt-report quality-debt-classify qg
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
@@ -355,6 +355,26 @@ build-dashboard:       ## build apps/dashboard SPA (bun)
 
 lint-js:               ## lint JS/TS workspaces (biome)
 	bun run lint
+
+# Local quality-gate bundle — CI-equivalent subset for dashboard + core factory paths (#1771).
+# Capture with: make qg 2>&1 | tee "${GOAL_1771_SCRATCH:-/tmp}/b3-qg.log"
+qg: lint-js lint typecheck build-dashboard  ## full local QG (lint, import-linter, tests, ACL drift)
+	bun run --filter @roxabi-factory/dashboard test
+	uv run lint-imports
+	bash scripts/check-acl-specs-drift.sh
+	bash scripts/check-acl-authconf-drift.sh
+	uv run factory-check-flows
+	bash tools/check_secrets_drift.sh
+	bash tools/check_file_length.sh
+	bash tools/check_folder_size.sh
+	uv run pytest \
+		tests/adapters/web/test_dashboard_bff.py \
+		tests/adapters/web/test_web_server.py \
+		tests/bootstrap/test_dashboard_rpc.py \
+		tests/agents/test_simple_agent_web_harness.py \
+		tests/e2e/dashboard/ \
+		-n0 -q
+	@wc -l src/factory/adapters/web/web_server.py
 
 lint:
 	uv run ruff check .

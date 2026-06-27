@@ -102,8 +102,8 @@ Implemented in `deploy/lib/deploy-common.sh` (`compute_convergence_state`, `_cla
 | 1 `units-sha256` | `sha256sum` of sorted `~/.config/containers/systemd/factory*` unit files | structural |
 | 2 `authconf-sha256` | `sha256sum` of `~/.roxabi/factory/nkeys/auth.conf` | auth |
 | 3 `voicecli-head` | `git rev-parse HEAD` in `~/projects/voiceCLI` (or `none`) | structural |
-| 4 `staging-svc-hex` | First `RepoDigests` entry for `ghcr.io/roxabi/factory:staging-svc` (`factory_image_index_digest`) | structural |
-| 5 `staging-hex` | First `RepoDigests` entry for `ghcr.io/roxabi/factory:staging` | structural |
+| 4 `staging-svc-hex` | `factory_canonical_image_digest` for `ghcr.io/roxabi/factory:staging-svc` | structural |
+| 5 `staging-hex` | `factory_canonical_image_digest` for `ghcr.io/roxabi/factory:staging` | structural |
 
 **Tracked images** — single source of truth: `FACTORY_TRACKED_IMAGES` in `deploy-common.sh`. `factory-post-autoupdate.sh` iterates the same array (fields 4–5 of the stamp).
 
@@ -117,10 +117,10 @@ Implemented in `deploy/lib/deploy-common.sh` (`compute_convergence_state`, `_cla
 
 Legacy 4-field stamps (pre-image-digest schema) are normalized to `:none:none` on fields 4–5 before comparison — one structural converge migrates them.
 
-**Image digest detection** — two paths, same tracked tags:
+**Image digest detection** — single helper, two call sites:
 
-- **`factory-post-autoupdate.sh`** — compares skopeo remote **index** digest against the full local `RepoDigests` set (`grep -Fxq`; fixes #1749 false drift on multi-arch). On drift: `podman pull`, then `make converge` (does **not** delete the stamp).
-- **Converge stamp fields 4–5** — store `RepoDigests[0]` as bare hex after pull. Podman does not guarantee `[0]` is always the OCI index digest; if spurious structural drift appears after a no-op pull, align both paths on the same canonical digest selection.
+- **`factory_canonical_image_digest`** (`deploy-common.sh`) — SSOT for fields 4–5 and post-autoupdate drift. Prefers the skopeo **index** digest when it appears in local `RepoDigests` (#1749); falls back to the first `RepoDigests` entry when skopeo is unavailable.
+- **`factory-post-autoupdate.sh`** — compares `factory_remote_index_digest` (3 retries) to `factory_canonical_image_digest`. On drift: `podman pull`, then `make converge` (does **not** delete the stamp).
 
 ### Convergence sequence
 

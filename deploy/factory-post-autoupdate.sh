@@ -16,55 +16,28 @@ set -euo pipefail
 
 source "$(dirname "$0")/lib/deploy-common.sh"
 
-# FACTORY_TRACKED_IMAGES sourced from deploy-common.sh (fields 5–6 of converge stamp).
-
-# ── Digest comparison ────────────────────────────────────────────────────────
-
-remote_digest() {
-    local image="$1" attempt delay out
-    for attempt in 1 2 3; do
-        if out=$(skopeo inspect "docker://${image}" 2>/dev/null); then
-            printf '%s' "$out" | jq -r '.Digest'
-            return 0
-        fi
-        delay=$(( attempt * 2 ))
-        echo "skopeo inspect failed (attempt ${attempt}/3), retrying in ${delay}s..." >&2
-        sleep "${delay}"
-    done
-    echo "skopeo inspect failed after 3 attempts for ${image}" >&2
-    return 1
-}
-
-local_repo_digests() {
-    # All registry digests the local image is known by (index + per-arch).
-    # Empty output when the image is absent (cold pull) → treated as drift.
-    podman image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$1" 2>/dev/null \
-        | sed 's/.*@//' || true
-}
+# FACTORY_TRACKED_IMAGES sourced from deploy-common.sh (fields 4–5 of converge stamp).
 
 main() {
     local drifted=()
 
     for image in "${FACTORY_TRACKED_IMAGES[@]}"; do
-        local remote_digest_val local_digests_val
-        remote_digest_val=$(remote_digest "${image}")
-        local_digests_val=$(local_repo_digests "${image}")
+        local remote_digest_val local_canonical_val
+        remote_digest_val=$(factory_remote_index_digest "${image}" 3)
+        local_canonical_val=$(factory_canonical_image_digest "${image}")
 
-        # An image is unchanged iff the remote index digest appears (exact line
-        # match) in the local RepoDigests set. Using RepoDigests rather than
-        # .Digest fixes the false-drift bug (#1749): podman image inspect
-        # .Digest returns the per-platform (amd64) digest while skopeo returns
-        # the OCI index digest — they are always different on multi-arch images.
-        # RepoDigests contains BOTH the index and per-arch digests so the index
-        # digest from the remote will match here when the local image is current.
-        if [ -n "${remote_digest_val}" ] && echo "${local_digests_val}" | grep -Fxq "${remote_digest_val}"; then
+        # Unchanged when the canonical local digest matches the remote index digest.
+        # factory_canonical_image_digest prefers the index digest when present in
+        # RepoDigests — same rule as converge stamp fields 4–5 (#1749).
+        if [ -n "${remote_digest_val}" ] && [ "${local_canonical_val}" != "none" ] \
+            && [ "${local_canonical_val}" = "${remote_digest_val}" ]; then
             echo "Image digest unchanged (${image})."
-            echo "  remote: ${remote_digest_val}"
-            echo "  local:  ${local_digests_val:-<not present>}"
+            echo "  remote:   sha256:${remote_digest_val}"
+            echo "  canonical: sha256:${local_canonical_val}"
         else
             echo "Image digest drift detected (${image}):"
-            echo "  remote: ${remote_digest_val}"
-            echo "  local:  ${local_digests_val:-<not present>}"
+            echo "  remote:    sha256:${remote_digest_val:-<unavailable>}"
+            echo "  canonical: ${local_canonical_val}"
             drifted+=("${image}")
         fi
     done
@@ -79,7 +52,7 @@ main() {
         podman pull "${image}"
     done
 
-    # Image digests are fields 5–6 of the convergence fingerprint — converge's
+    # Image digests are fields 4–5 of the convergence fingerprint — converge's
     # change-gate detects structural drift after pull (no stamp deletion needed).
     echo "==> Running make converge..."
     make -C "${FACTORY_DIR}" converge

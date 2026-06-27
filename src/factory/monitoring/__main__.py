@@ -14,6 +14,7 @@ import logging
 
 from factory.core.logging_setup import setup_logging
 
+from ._errors import _MONITORING_ESCALATION_ERRORS
 from .checks import run_checks
 from .config import load_monitoring_config
 from .escalation import escalate_to_llm, send_telegram_alert, send_telegram_raw_alert
@@ -47,13 +48,13 @@ async def _run() -> int:
             diagnosis.severity,
             diagnosis.diagnosis,
         )
-    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+    except _MONITORING_ESCALATION_ERRORS as exc:
         log.error("LLM escalation failed: %s", exc)
         # Fallback: raw Telegram alert
         try:
             await send_telegram_raw_alert(report, config)
             log.info("Raw Telegram alert sent (LLM unavailable)")
-        except Exception as tg_exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+        except _MONITORING_ESCALATION_ERRORS as tg_exc:
             log.error(
                 "Telegram delivery also failed: %s. Full report logged above. Exit 1.",
                 tg_exc,
@@ -64,7 +65,7 @@ async def _run() -> int:
     try:
         await send_telegram_alert(diagnosis, config)
         log.info("Telegram alert sent with diagnosis")
-    except Exception as tg_exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+    except _MONITORING_ESCALATION_ERRORS as tg_exc:
         log.error("Telegram delivery failed: %s", tg_exc)
         # Log-only fallback — full report for investigation
         for check in report.checks:

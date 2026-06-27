@@ -7,6 +7,8 @@ import time
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
+import nats.errors
+
 from factory.transport.typing_event import TypingEvent
 from factory.transport.work_scope import WorkScope
 
@@ -77,6 +79,8 @@ class TypingPublisher:
         try:
             await self._nc.publish(subject, event.model_dump_json().encode("utf-8"))
             return True
-        except Exception as exc:  # noqa: BLE001
-            log.warning("typing_publisher: publish failed: %s", exc)  # AC5 swallow
+        except (nats.errors.Error, OSError, RuntimeError) as exc:
+            log.warning(
+                "typing_publisher: publish failed: type=%s", type(exc).__name__
+            )  # AC5 swallow
             return False

@@ -4,20 +4,14 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING
 from unittest.mock import AsyncMock, MagicMock
 
 from factory.core.agent import Agent
 from factory.core.auth.trust import TrustLevel
-from factory.core.messaging.message import InboundMessage
+from factory.core.messaging.message import InboundMessage, Response
 from factory.core.pool import Pool
 from factory.core.ports.stt import STTProtocol, TranscriptionResult
 from factory.llm.base import LlmResult
-
-if TYPE_CHECKING:
-    from factory.core.messaging.message import (
-        Response,
-    )
 
 __all__ = [
     "FastAgent",

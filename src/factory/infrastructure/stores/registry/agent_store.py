@@ -20,7 +20,10 @@ from factory.core.agent.schema.agent_schema import (
     _UPSERT_AGENT,
 )
 from factory.infrastructure.stores.base.bot_agent_map import BotAgentMapStore
-from factory.infrastructure.stores.base.sqlite_base import SqliteStore
+from factory.infrastructure.stores.base.sqlite_base import (
+    _SQLITE_STORE_ERRORS,
+    SqliteStore,
+)
 from factory.infrastructure.stores.migrations.agent_store_migrations import (
     run_agent_migrations,
 )
@@ -59,7 +62,7 @@ class AgentStore(SqliteStore):
             db = self._require_db()
             await run_agent_migrations(db)
             await self._warm_cache()
-        except Exception:
+        except _SQLITE_STORE_ERRORS:
             log.exception("AgentStore.connect() setup failed; closing connection")
             await self.close()
             raise

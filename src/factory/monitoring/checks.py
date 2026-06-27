@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 
 import httpx
 
+from ._errors import _MONITORING_HTTP_ERRORS
 from .checks_audio import check_audio_consumer_lag, check_audio_stream_usage
 from .checks_log import check_hub_dict_stream_gen_timeout, check_nats_log_errors
 from .checks_varz import check_disk, check_disk_pct, check_inode_pct, check_nats_varz
@@ -84,7 +85,7 @@ async def check_http_health(
             ),
             None,
         )
-    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+    except _MONITORING_HTTP_ERRORS as exc:
         return (
             CheckResult(
                 name="http_health", passed=False, detail=str(exc), timestamp=now

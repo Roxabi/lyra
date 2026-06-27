@@ -136,7 +136,7 @@ async def send_with_retry(
         try:
             await coro_fn()
             return
-        except Exception as exc:  # noqa: BLE001 — retry boundary, type sanitized
+        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: adapter-retry — cosmetic retry; type sanitized
             if attempt == max_attempts - 1:
                 log.warning(
                     "%s failed after %d attempts: type=%s",

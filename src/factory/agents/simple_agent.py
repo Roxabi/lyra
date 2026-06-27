@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 from factory.core.agent import Agent, AgentBase
 from factory.core.lifecycle.circuit_breaker import CircuitRegistry
 from factory.core.messaging.bot_display_name import bot_display_name
-from factory.core.messaging.message import InboundMessage, Response, WebMeta
+from factory.core.messaging.message import InboundMessage, Response
 from factory.core.messaging.messages import MessageManager
 from factory.core.messaging.utils.user_error_resolver import resolve_user_error
 from factory.core.pool import Pool
@@ -29,7 +29,7 @@ from factory.integrations.base import SessionTools
 from factory.llm.base import LlmProvider
 from factory.llm.registry import ProviderRegistry
 
-from .simple_agent_prompts import build_llm_text
+from .simple_agent_prompts import build_llm_text, effective_model_config
 
 _AGENTS_DIR = Path(__file__).resolve().parent
 
@@ -154,18 +154,7 @@ class SimpleAgent(AgentBase):
         )  # type: ignore[assignment]
 
     def _effective_model_config(self, msg: InboundMessage) -> ModelConfig:
-        cfg = self.config.llm_config
-        if msg.platform != "web" or not isinstance(msg.platform_meta, WebMeta):
-            return cfg
-        meta = msg.platform_meta
-        updates: dict[str, str] = {}
-        if meta.harness:
-            updates["backend"] = meta.harness
-        if meta.model:
-            updates["model"] = meta.model
-        if not updates:
-            return cfg
-        return cfg.model_copy(update=updates)
+        return effective_model_config(self.config.llm_config, msg)
 
     def _provider_for_backend(self, backend: str) -> LlmProvider:
         if self._provider_registry is not None:

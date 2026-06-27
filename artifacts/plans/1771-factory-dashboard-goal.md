@@ -17,7 +17,7 @@
 
 | Bloc | Statut | Notes |
 |------|--------|-------|
-| Pre-flight | `in_progress` | import-linter + contracts
+| Pre-flight | `done` | import-linter + contracts + Makefile
 | Block 1 — Cockpit + Chat + Harness/Model | `not_started` | —
 | Block 2 — SessionCatalog + Reprendre | `not_started` | —
 | Block 3 — E2E + Hardening + Ship | `not_started` | —
@@ -35,13 +35,13 @@
 
 ## Invariants globaux (tous blocs)
 
-- [ ] Pas d'adapter `platform=dashboard` (#1770 reste mort)
-- [ ] Chat POST → `run_inbound_guarded` uniquement (pas de raccourci BFF vers hub bus)
-- [ ] `factory.dashboard` **ne doit pas** importer `factory.infrastructure.stores.*`
-- [ ] `WebMeta.session_id` = transport SSE ≠ `cli_session_id` (resume TurnStore)
-- [ ] Namespaces routes : `/api/chat/*` + `/api/stream/*` (adapter) vs `/api/bff/*` (dashboard)
-- [ ] **Pas** de mount `turns.db` sur le container `factory-dashboard`
-- [ ] Gates SLOC 300 / dossier 15 sur tous les nouveaux chemins
+- [x] Pas d'adapter `platform=dashboard` (#1770 reste mort)
+- [x] Chat POST → `run_inbound_guarded` uniquement (pas de raccourci BFF vers hub bus)
+- [x] `factory.dashboard` **ne doit pas** importer `factory.infrastructure.stores.*`
+- [x] `WebMeta.session_id` = transport SSE ≠ `cli_session_id` (resume TurnStore)
+- [x] Namespaces routes : `/api/chat/*` + `/api/stream/*` (adapter) vs `/api/bff/*` (dashboard)
+- [x] **Pas** de mount `turns.db` sur le container `factory-dashboard`
+- [x] Gates SLOC 300 / dossier 15 sur tous les nouveaux chemins
 
 ---
 
@@ -49,18 +49,18 @@
 
 > Prérequis mécaniques et contractuels. Ne pas commencer Block 1 sans ces items (sauf dérogation notée au journal).
 
-- [ ] Contrat import-linter pour `factory.dashboard` (pas `infrastructure` ; imports bornés depuis `adapters.web`)
-- [ ] Extraire les routes de `web_server.py` → `src/factory/dashboard/` (`web_server.py` < 300 SLOC)
-- [ ] `factory/dashboard/AGENTS.md` — taxonomie session IDs + split des 2 axes
-- [ ] `roxabi-contracts` : DTOs `ChatRequest`, `SseEvent`, `AgentHealth`, `DashboardSession`
-- [ ] Makefile : cibles `build-dashboard`, `lint-js`
-- [ ] `factory-dashboard.container` : `StopTimeout=120` + `TimeoutStopSec=130` (parité #1989)
+- [x] Contrat import-linter pour `factory.dashboard` (pas `infrastructure` ; imports bornés depuis `adapters.web`)
+- [x] Extraire les routes de `web_server.py` → `src/factory/dashboard/` (`web_server.py` < 300 SLOC)
+- [x] `factory/dashboard/AGENTS.md` — taxonomie session IDs + split des 2 axes
+- [x] `roxabi-contracts` : DTOs `ChatRequest`, `SseEvent`, `AgentHealth`, `DashboardSession`
+- [x] Makefile : cibles `build-dashboard`, `lint-js`
+- [x] `factory-dashboard.container` : `StopTimeout=120` + `TimeoutStopSec=130` (parité #1989)
 
 ---
 
 ## BLOCK 1 — Cockpit + Chat + Harness/Model
 
-**Statut :** `in_progress`  
+**Statut :** `done`  
 **GO :** oui — implémenter en premier
 
 ### Layout & shell
@@ -210,9 +210,10 @@
 
 - Plan consolidé après review tri-expert (MVP-minimal, epic-complet, risk-first).
 
-### 2026-06-28 — Pre-flight slice (in_progress)
+### 2026-06-28 — Pre-flight slice
 
-- Statut Pre-flight → `in_progress`
+- [x] import-linter contracts + route extraction + AGENTS.md + contracts + Makefile + quadlet
+- Gates : `lint-imports` 13/13, `wc -l web_server.py` = 30
 
 
 ---

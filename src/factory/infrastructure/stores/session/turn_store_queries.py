@@ -11,7 +11,11 @@ import logging
 import sqlite3
 from typing import TYPE_CHECKING, cast
 
-from factory.core.stores.turn_store_protocol import CatalogSessionRow, SessionRow, TurnRow
+from factory.core.stores.turn_store_protocol import (
+    CatalogSessionRow,
+    SessionRow,
+    TurnRow,
+)
 
 if TYPE_CHECKING:
     import aiosqlite

@@ -1,10 +1,11 @@
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChatPane } from "@/components/ChatPane";
 import { MultiChatTabs } from "@/components/MultiChatTabs";
 import { PanelMount } from "@/components/PanelMount";
 import { ReprendrePanel } from "@/components/ReprendrePanel";
-import { fetchAgentStatus, fetchAgents } from "@/lib/api";
+import { useAgentStatus } from "@/hooks/useAgentStatus";
+import { fetchAgents } from "@/lib/api";
 import { type ChatTab, loadTabs, newTab, saveTabs } from "@/lib/chats-storage";
 
 export function CockpitLayout() {
@@ -13,14 +14,7 @@ export function CockpitLayout() {
 
   const { data: agents = [] } = useQuery({ queryKey: ["agents"], queryFn: fetchAgents });
   const activeTab = useMemo(() => tabs.find((t) => t.id === activeId) ?? tabs[0], [tabs, activeId]);
-
-  const { data: status = [] } = useQuery({
-    queryKey: ["agent-status", activeTab?.agent, activeTab?.harness],
-    queryFn: () =>
-      fetchAgentStatus(activeTab?.agent, activeTab?.harness),
-    enabled: Boolean(activeTab?.agent),
-    refetchInterval: 30_000,
-  });
+  const { healthFor } = useAgentStatus(activeTab);
 
   useEffect(() => {
     saveTabs(tabs);
@@ -33,12 +27,6 @@ export function CockpitLayout() {
       setActiveId(t.id);
     }
   }, [agents, tabs.length]);
-
-  const healthFor = useCallback(
-    (agent: string, harness?: ChatTab["harness"]) =>
-      status.find((h) => h.agent === agent && (!harness || h.harness === harness)),
-    [status],
-  );
 
   const updateTab = (id: string, patch: Partial<ChatTab>) => {
     setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));

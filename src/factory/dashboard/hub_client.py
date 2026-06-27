@@ -16,6 +16,7 @@ from roxabi_contracts.dashboard import (
 )
 
 if TYPE_CHECKING:
+    from factory.adapters.web.web_adapter import WebAdapter
     from nats.aio.client import Client as NATS
 
 log = logging.getLogger(__name__)
@@ -24,15 +25,19 @@ _RPC_TIMEOUT = 5.0  # const-ok: dashboard hub RPC timeout
 
 
 class DashboardHubClient:
-    """Thin NATS RPC facade — no TurnStore access from dashboard process."""
+    """Thin NATS RPC facade — reads live NATS handle from the adapter."""
 
-    def __init__(self, nc: NATS | None) -> None:
-        self._nc = nc
+    def __init__(self, adapter: WebAdapter) -> None:
+        self._adapter = adapter
+
+    def _nc(self) -> NATS | None:
+        return getattr(self._adapter, "_nats_client", None)
 
     async def _request(self, subject: str, payload: dict[str, Any]) -> dict[str, Any]:
-        if self._nc is None:
+        nc = self._nc()
+        if nc is None:
             raise RuntimeError("NATS client not wired")
-        msg = await self._nc.request(
+        msg = await nc.request(
             subject,
             json.dumps(payload).encode(),
             timeout=_RPC_TIMEOUT,
@@ -53,6 +58,14 @@ class DashboardHubClient:
         raw = await self._request(SUBJECTS.sessions_resume, req.model_dump())
         return DashboardSessionsResumeResponse.model_validate(raw)
 
-    async def agents_status(self, agents: list[str]) -> AgentHealthResponse:
-        raw = await self._request(SUBJECTS.agents_status, {"agents": agents})
+    async def agents_status(
+        self,
+        agents: list[str],
+        *,
+        harness_by_agent: dict[str, str] | None = None,
+    ) -> AgentHealthResponse:
+        payload: dict[str, Any] = {"agents": agents}
+        if harness_by_agent:
+            payload["harness_by_agent"] = harness_by_agent
+        raw = await self._request(SUBJECTS.agents_status, payload)
         return AgentHealthResponse.model_validate(raw)

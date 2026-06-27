@@ -114,7 +114,7 @@
 
 ### Hub (avant les routes BFF session)
 
-- [x] `turn_store_queries.list_sessions_for_agent(agent_name, limit)`
+- [x] `session_catalog.list_sessions_for_agent(store, bindings, agent, limit)` (+ `TurnStore.list_recent_sessions`)
   - tous les `pool_id` → agent via bindings wildcard ; tri `last_active_at DESC`
 - [x] Hub NATS RPC `factory.dashboard.sessions.list` `{agent, limit}`
   - réponse : `session_id`, `pool_id`, `platform`, `cli_session_id`, `first_user_msg`, `turn_count`, `last_active_at`
@@ -213,14 +213,37 @@
 - Décision : Docker/bun en sortie Block 1 (pas Block 3 seul).
 - Block 2 isolé (SessionCatalog) pour éviter drift session.
 
-### 2026-06-28 — Exécution `/goal` complète
+### 2026-06-28 — Pre-flight slice
 
-- [x] Pre-flight : import-linter, `chat_routes.py`, contracts, Makefile, quadlet stop timeouts
-- [x] Block 1 : cockpit SPA (`apps/dashboard`), `app.py` composition, stream_token, Docker/CI bun
-- [x] Block 2 : `session_catalog.py`, hub `dashboard_rpc.py`, BFF sessions/resume, ACL `factory.dashboard.>`
-- [x] Block 3 : Playwright dark/light snapshots, `FACTORY_DASHBOARD_E2E`, docs, vitest 7 tests, pytest 17 tests
-- Écart vs plan : `sessions.turns` RPC et chargement historique post-resume reportés (optionnels) ; `make converge` M₁ laissé à l'opérateur
-- Prochaine étape : merge staging → `make converge` sur M₁ + smoke Tailnet
+- [x] import-linter contracts `dashboard-no-infrastructure` + `dashboard-bounded-adapters`
+- [x] `web_server.py` → 30 SLOC wrapper ; routes dans `chat_routes.py` + `factory/dashboard/app.py`
+- [x] `factory/dashboard/AGENTS.md`, contracts DTOs, Makefile `build-dashboard`/`lint-js`, quadlet timeouts
+- Gates : `lint-imports` 13/13, `wc -l web_server.py` = 30
+
+### 2026-06-28 — Block 1 slice
+
+- [x] Cockpit SPA, multi-chat, harness/model pickers, `stream_token`, Docker bun stage, CI vitest+biome
+- Gates : `bun build/lint/typecheck`, vitest 7/7, pytest web_server + static mount
+
+### 2026-06-28 — Block 2 slice
+
+- [x] `session_catalog.list_sessions_for_agent`, hub `dashboard_rpc.py`, BFF `/api/bff/sessions*`
+- [x] ACL `factory.dashboard.>` + `nats-regen-specs` + auth.conf drift green
+- Gates : pytest hub RPC + BFF (incl. real NATS mock path)
+
+### 2026-06-28 — Block 3 slice
+
+- [x] `FACTORY_DASHBOARD_E2E=1`, Playwright dark/light snapshots, docs, secrets drift
+- Gates : smoke curls `/` + `/api/*` (scratch `b3-smoke.log`), visual 2/2, converge dry-run
+
+### 2026-06-28 — Remediation (verifier gaps)
+
+- [x] Bugfix : `set_nats_client(nc)` **avant** `wire_bot_common`/`astart` ; `DashboardHubClient(adapter)` lazy nc
+- [x] Bugfix : `POST /api/chat` propage `harness`/`model` → `WebMeta` → `SimpleAgent._effective_model_config`
+- [x] Bugfix : `agents_status` RPC respecte `harness_by_agent` ; exceptions BFF/RPC resserrées
+- [x] Tests : `test_dashboard_bff.py` (chemin prod sans E2E), `test_simple_agent_web_harness.py`
+- Écart vs plan : `sessions.turns` RPC et historique post-resume reportés ; `make converge` M₁ manuel post-merge
+- Evidence : `/tmp/grok-goal-a378c4fde0cd/implementer/execution-summary.txt`
 
 ---
 

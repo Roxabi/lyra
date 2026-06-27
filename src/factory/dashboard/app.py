@@ -20,8 +20,7 @@ def create_dashboard_app(adapter: WebAdapter) -> FastAPI:
     """Build the factory-dashboard FastAPI app (ADR-094 two axes, one process)."""
     app = FastAPI(title="Factory Dashboard", docs_url=None, redoc_url=None)
     tokens = StreamTokenRegistry()
-    nc = getattr(adapter, "_nats_client", None)
-    hub = DashboardHubClient(nc)
+    hub = DashboardHubClient(adapter)
 
     app.include_router(build_chat_router(adapter, tokens))
     app.include_router(build_bff_router(adapter, hub))

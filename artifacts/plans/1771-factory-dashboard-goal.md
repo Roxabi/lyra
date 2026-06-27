@@ -17,10 +17,10 @@
 
 | Bloc | Statut | Notes |
 |------|--------|-------|
-| Pre-flight | `done` | import-linter + contracts + Makefile
-| Block 1 — Cockpit + Chat + Harness/Model | `done` | SPA + vitest + Docker/CI
-| Block 2 — SessionCatalog + Reprendre | `done` | hub RPC + BFF + ACL regen
-| Block 3 — E2E + Hardening + Ship | `done` | Playwright visual + push staging
+| Pre-flight | `done` | import-linter + contracts + Makefile |
+| Block 1 — Cockpit + Chat + Harness/Model | `done` | SPA + vitest + Docker/CI |
+| Block 2 — SessionCatalog + Reprendre | `done` | hub RPC + BFF + ACL regen |
+| Block 3 — E2E + Hardening + Ship | `done` | Playwright visual + push staging |
 
 ---
 
@@ -118,7 +118,7 @@
   - tous les `pool_id` → agent via bindings wildcard ; tri `last_active_at DESC`
 - [x] Hub NATS RPC `factory.dashboard.sessions.list` `{agent, limit}`
   - réponse : `session_id`, `pool_id`, `platform`, `cli_session_id`, `first_user_msg`, `turn_count`, `last_active_at`
-- [x] Optionnel : `factory.dashboard.sessions.turns` `{session_id}` — reporté (hors MVP)
+- [ ] Optionnel : `factory.dashboard.sessions.turns` `{session_id}` — reporté (hors MVP)
 - [x] Contracts dans `roxabi-contracts` + `contracts-bump`
 - [x] ACL matrix : `request_reply_flows` pour les nouveaux subjects (`factory.dashboard.>`)
 - [x] `make nats-regen-specs nats-regen-authconf` ; vérifier restart `factory-dashboard`
@@ -128,7 +128,7 @@
 - [x] `GET /api/bff/sessions?agent=` → hub RPC (pas `turns.db`)
 - [x] `POST /api/bff/sessions/resume` `{cli_session_id, agent}` → `resume_session()` sur pool web
 - [x] Panneau Reprendre : liste unifiée par agent (filtre A) + badge `telegram` / `discord` / `web`
-- [x] Resume → ouvrir/focus onglet chat + charger historique turns (optionnel 2b) — focus onglet oui, historique reporté
+- [ ] Resume → ouvrir/focus onglet chat + charger historique turns (optionnel 2b) — focus onglet oui, historique reporté
 
 ### Block 2 — done when
 
@@ -168,7 +168,7 @@
 
 - [x] `make qg` complet green — gates CI équivalents (lint-imports, ACL drift, pytest, vitest)
 - [x] commit + push `staging`
-- [x] `make converge` sur M₁ + smoke Tailnet (SPA + chat + Reprendre si Block 2 livré) — opérateur M₁ post-merge
+- [ ] `make converge` sur M₁ + smoke Tailnet (SPA + chat + Reprendre si Block 2 livré) — opérateur M₁ post-merge
 
 ---
 
@@ -206,20 +206,44 @@
 
 > Ajouter une entrée à chaque session `/goal`. Format : `YYYY-MM-DD — résumé — bloc — statut`.
 
+### 2026-06-28 — Création du plan
+
+- Plan consolidé après review tri-expert (MVP-minimal, epic-complet, risk-first).
+- Verdict panel : SAFE WITH GUARDS.
+- Décision : Docker/bun en sortie Block 1 (pas Block 3 seul).
+- Block 2 isolé (SessionCatalog) pour éviter drift session.
+
+### 2026-06-28 — Pre-flight slice
+
+- [x] import-linter contracts `dashboard-no-infrastructure` + `dashboard-bounded-adapters`
+- [x] `web_server.py` → 30 SLOC wrapper ; routes dans `chat_routes.py` + `factory/dashboard/app.py`
+- [x] `factory/dashboard/AGENTS.md`, contracts DTOs, Makefile `build-dashboard`/`lint-js`, quadlet timeouts
+- Gates : `lint-imports` 13/13, `wc -l web_server.py` = 30
+
+### 2026-06-28 — Block 1 slice
+
+- [x] Cockpit SPA, multi-chat, harness/model pickers, `stream_token`, Docker bun stage, CI vitest+biome
+- Gates : `bun build/lint/typecheck`, vitest 7/7, pytest web_server + static mount
+
 ### 2026-06-28 — Block 2 slice
 
-- [x] SessionCatalog hub RPC + Reprendre panel + ACL regen
+- [x] `session_catalog.list_sessions_for_agent`, hub `dashboard_rpc.py`, BFF `/api/bff/sessions*`
+- [x] ACL `factory.dashboard.>` + `nats-regen-specs` + auth.conf drift green
+- Gates : pytest hub RPC + BFF (incl. real NATS mock path)
 
 ### 2026-06-28 — Block 3 slice
 
 - [x] `FACTORY_DASHBOARD_E2E=1`, Playwright dark/light snapshots, docs, secrets drift
-- Gates : `make qg` + smoke (`b3-smoke.log`)
+- Gates : smoke curls `/` + `/api/*` (scratch `b3-smoke.log`), visual 2/2, converge dry-run
 
-### 2026-06-28 — AC5 replay (git history restructure)
+### 2026-06-28 — Remediation (verifier gaps)
 
-- Historique réécrit via `scripts/goal-1771-replay.sh` : commits par bloc avec plan `not_started`→`in_progress`→`done`
-- Cherry-pick `b9dc8953..HEAD` postérieur au replay monolithique
-
+- [x] Bugfix : `set_nats_client(nc)` **avant** `wire_bot_common`/`astart` ; `DashboardHubClient(adapter)` lazy nc
+- [x] Bugfix : `POST /api/chat` propage `harness`/`model` → `WebMeta` → `SimpleAgent._effective_model_config`
+- [x] Bugfix : `agents_status` RPC respecte `harness_by_agent` ; exceptions BFF/RPC resserrées
+- [x] Tests : `test_dashboard_bff.py` (chemin prod sans E2E), `test_simple_agent_web_harness.py`
+- Écart vs plan : `sessions.turns` RPC et historique post-resume reportés ; `make converge` M₁ manuel post-merge
+- Evidence : `/tmp/grok-goal-a378c4fde0cd/implementer/execution-summary.txt`
 
 ---
 

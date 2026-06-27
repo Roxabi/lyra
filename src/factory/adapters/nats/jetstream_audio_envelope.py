@@ -105,5 +105,5 @@ def num_delivered(msg: Any) -> int:
     """
     try:
         return msg.metadata.num_delivered  # type: ignore[no-any-return]
-    except Exception:  # noqa: BLE001 — metadata parse: varied exception types
+    except (AttributeError, TypeError):
         return 1

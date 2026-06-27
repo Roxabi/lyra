@@ -83,7 +83,7 @@ class NatsTransport:
                     except (TimeoutError, asyncio.TimeoutError) as exc:
                         yield Err(self._sanitize(exc, context="inbox.timeout"))
                         return
-            except Exception as exc:  # noqa: BLE001 — sanitization barrier: any stream failure becomes Err
+            except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: transport-inbox — sanitization barrier maps stream failure to Err
                 yield Err(self._sanitize(exc, context="inbox.error"))
 
         try:

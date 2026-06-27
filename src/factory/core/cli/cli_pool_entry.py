@@ -48,5 +48,5 @@ class _ProcessEntry:  # pyright: ignore[reportUnusedClass] — DEBT:protocol-pri
             if self._on_session_update is not None:
                 try:
                     self._on_session_update(self.pool_id, sid)
-                except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
+                except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: cli-subprocess — deferred #1812
                     log.debug("[pool:%s] session update callback failed", self.pool_id)

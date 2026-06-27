@@ -17,6 +17,8 @@ import dataclasses
 import logging
 from typing import TYPE_CHECKING
 
+import nats.errors
+
 from factory.core.ports.stt import STTNoiseError, STTUnavailableError
 
 from ...config.dispatch_config import DispatchConfig
@@ -133,17 +135,17 @@ class SttMiddleware:
             await self._dispatch_error(hub, msg, "stt_failed")
             _STT_STAGE_OUTCOMES["failed"] += 1
             return _DROP
-        except Exception as exc:
-            if isinstance(exc, STTNoiseError):
-                log.info("STT noise for msg id=%s: %s", msg.id, exc)
-                await self._dispatch_error(hub, msg, "stt_noise")
-                _STT_STAGE_OUTCOMES["noise"] += 1
-                return _DROP
-            if isinstance(exc, STTUnavailableError):
-                log.warning("STT unavailable for msg id=%s: %s", msg.id, exc)
-                await self._dispatch_error(hub, msg, "stt_unavailable")
-                _STT_STAGE_OUTCOMES["unavailable"] += 1
-                return _DROP
+        except STTNoiseError as exc:
+            log.info("STT noise for msg id=%s: %s", msg.id, exc)
+            await self._dispatch_error(hub, msg, "stt_noise")
+            _STT_STAGE_OUTCOMES["noise"] += 1
+            return _DROP
+        except STTUnavailableError as exc:
+            log.warning("STT unavailable for msg id=%s: %s", msg.id, exc)
+            await self._dispatch_error(hub, msg, "stt_unavailable")
+            _STT_STAGE_OUTCOMES["unavailable"] += 1
+            return _DROP
+        except (nats.errors.Error, OSError, ConnectionError, RuntimeError, ValueError):
             log.exception("STT failed for msg id=%s", msg.id)
             await self._dispatch_error(hub, msg, "stt_failed")
             _STT_STAGE_OUTCOMES["failed"] += 1

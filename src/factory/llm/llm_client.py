@@ -8,10 +8,13 @@ Implements the LlmProvider protocol over Result[T, SanitizedError] transport.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, AsyncIterator, Protocol
 from uuid import uuid4
+
+import nats.errors
 
 from factory.core.messaging.events import LlmEvent, ResultLlmEvent
 from factory.core.ports.llm import LlmResult
@@ -29,6 +32,14 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
+_RESUME_TRANSPORT_ERRORS = (
+    TimeoutError,
+    asyncio.TimeoutError,
+    OSError,
+    RuntimeError,
+    ConnectionError,
+    nats.errors.Error,
+)
 
 class _CliSessionStore(Protocol):
     """Read-side protocol for TurnStore lookups needed by LlmClient.
@@ -96,7 +107,7 @@ class LlmClient:
                 max_attempts=1,
                 timeout=self._timeout,
             )
-        except Exception:
+        except _RESUME_TRANSPORT_ERRORS:
             if pending_resume is not None:
                 self._pending_resume.setdefault(pool_id, pending_resume)
             raise
@@ -135,7 +146,7 @@ class LlmClient:
                 yield event
                 if isinstance(event, ResultLlmEvent):
                     return
-        except Exception:
+        except _RESUME_TRANSPORT_ERRORS:
             if pending_resume is not None:
                 self._pending_resume.setdefault(pool_id, pending_resume)
             raise

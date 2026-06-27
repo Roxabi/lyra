@@ -18,7 +18,7 @@ Volume=%h/projects/roxabi-factory/deploy/observability/promtail-config.yml:/etc/
 Volume=%h/.local/state/factory/logs:/var/log/factory:ro,z
 Volume=/var/log/journal:/var/log/journal:ro,z
 Volume=%h/.local/state/factory/promtail:/promtail-positions:z
-HealthCmd=wget -q -O- http://127.0.0.1:9080/ready || exit 1
+HealthCmd=bash -c 'exec 3<>/dev/tcp/127.0.0.1/9080'
 HealthInterval=30s
 
 [Service]

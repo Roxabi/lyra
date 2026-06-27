@@ -1,0 +1,7 @@
+:root {
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.6);
+  --shadow-panel: 0 18px 50px -12px rgba(0, 0, 0, 0.7);
+  --glow-accent: 0 0 40px rgba(232, 93, 4, 0.28);
+  --glow-ember: 0 0 60px -20px rgba(232, 93, 4, 0.08);
+}

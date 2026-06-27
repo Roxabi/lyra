@@ -263,6 +263,10 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
             log.critical("hub: failed to publish web agent roster: %s", exc)
             raise
 
+        from factory.bootstrap.factory.dashboard_rpc import start_dashboard_rpc
+
+        dashboard_rpc_subs = await start_dashboard_rpc(hub, nc)
+
         await announce_hub_ready(nc)
         readiness_sub = await start_readiness_responder(nc, [hub.inbound_bus])
 

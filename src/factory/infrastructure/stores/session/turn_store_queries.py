@@ -11,7 +11,7 @@ import logging
 import sqlite3
 from typing import TYPE_CHECKING, cast
 
-from factory.core.stores.turn_store_protocol import SessionRow, TurnRow
+from factory.core.stores.turn_store_protocol import CatalogSessionRow, SessionRow, TurnRow
 
 if TYPE_CHECKING:
     import aiosqlite
@@ -135,6 +135,55 @@ _LIST_SESSIONS_COLS = (
     "first_user_msg",
     "turn_count",
 )
+
+
+_LIST_RECENT_SESSIONS = """
+SELECT  ps.pool_id,
+        ps.session_id,
+        ps.cli_session_id,
+        ps.last_active_at,
+        (SELECT content FROM conversation_turns
+           WHERE session_id = ps.session_id AND role = 'user'
+           ORDER BY timestamp ASC LIMIT 1) AS first_user_msg,
+        (SELECT COUNT(*) FROM conversation_turns
+           WHERE session_id = ps.session_id) AS turn_count,
+        COALESCE(
+          (SELECT platform FROM conversation_turns
+             WHERE session_id = ps.session_id
+             ORDER BY timestamp ASC LIMIT 1),
+          SUBSTR(ps.pool_id, 1, INSTR(ps.pool_id || ':', ':') - 1)
+        ) AS platform
+FROM    pool_sessions ps
+ORDER BY ps.last_active_at DESC
+LIMIT   ?
+"""
+
+_CATALOG_COLS = (
+    "pool_id",
+    "session_id",
+    "cli_session_id",
+    "last_active_at",
+    "first_user_msg",
+    "turn_count",
+    "platform",
+)
+
+
+async def list_recent_sessions(
+    db: aiosqlite.Connection, limit: int = 200
+) -> list[CatalogSessionRow]:
+    """Return recent sessions across all pools for agent-centric filtering."""
+    limit = max(1, min(limit, 500))
+    try:
+        async with db.execute(_LIST_RECENT_SESSIONS, (limit,)) as cur:
+            rows = await cur.fetchall()
+    except sqlite3.Error:
+        log.exception("list_recent_sessions failed")
+        return []
+    return cast(
+        list[CatalogSessionRow],
+        [dict(zip(_CATALOG_COLS, row)) for row in rows],
+    )
 
 
 async def list_sessions_for_pool(

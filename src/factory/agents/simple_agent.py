@@ -16,7 +16,8 @@ from typing import TYPE_CHECKING, Any
 from factory.core.agent import Agent, AgentBase
 from factory.core.lifecycle.circuit_breaker import CircuitRegistry
 from factory.core.messaging.bot_display_name import bot_display_name
-from factory.core.messaging.message import InboundMessage, Response
+from factory.core.messaging.message import InboundMessage, Response, WebMeta
+from factory.core.ports.llm_types import ModelConfig
 from factory.core.messaging.messages import MessageManager
 from factory.core.messaging.utils.user_error_resolver import resolve_user_error
 from factory.core.pool import Pool
@@ -118,9 +119,11 @@ class SimpleAgent(AgentBase):
             return self._provider_registry.get(self.config.llm_config.backend)
         return self._provider
 
-    def _sync_session_backends(self, provider: LlmProvider) -> None:
+    def _sync_session_backends(
+        self, provider: LlmProvider, *, backend: str | None = None
+    ) -> None:
         """Point session/workspace callbacks at the active backend (#1914)."""
-        backend = self.config.llm_config.backend
+        backend = backend or self.config.llm_config.backend
         # claude-cli session ops route through CliPool/cli_nats — not the driver
         # (#620). Provider is intentionally excluded for that path so MagicMock
         # drivers in tests do not steal callbacks.
@@ -149,6 +152,25 @@ class SimpleAgent(AgentBase):
             ),
             None,
         )  # type: ignore[assignment]
+
+    def _effective_model_config(self, msg: InboundMessage) -> ModelConfig:
+        cfg = self.config.llm_config
+        if msg.platform != "web" or not isinstance(msg.platform_meta, WebMeta):
+            return cfg
+        meta = msg.platform_meta
+        updates: dict[str, str] = {}
+        if meta.harness:
+            updates["backend"] = meta.harness
+        if meta.model:
+            updates["model"] = meta.model
+        if not updates:
+            return cfg
+        return cfg.model_copy(update=updates)
+
+    def _provider_for_backend(self, backend: str) -> LlmProvider:
+        if self._provider_registry is not None:
+            return self._provider_registry.get(backend)
+        return self._provider
 
     def _ensure_provider_for_turn(self) -> LlmProvider:
         provider = self._resolve_provider()
@@ -268,7 +290,6 @@ class SimpleAgent(AgentBase):
         pool: Pool,
     ) -> "Response | AsyncIterator[RenderEvent]":
         self._maybe_reload()
-        provider = self._ensure_provider_for_turn()
 
         # /voice pre-router: rewrite as voice-modality LLM request
         _voice_rewritten = self._handle_voice_command(msg)
@@ -280,7 +301,17 @@ class SimpleAgent(AgentBase):
         # so the former STTNoiseError/STTError handlers were dead and removed (#1553).
         text, _ = await build_llm_text(msg)
 
-        model_cfg = self.config.llm_config
+        model_cfg = self._effective_model_config(msg)
+        provider = self._provider_for_backend(model_cfg.backend)
+        if model_cfg.backend != self._last_resolved_backend:
+            log.info(
+                "Backend transition for agent %r: %s -> %s",
+                self.config.name,
+                self._last_resolved_backend,
+                model_cfg.backend,
+            )
+            self._sync_session_backends(provider, backend=model_cfg.backend)
+            self._last_resolved_backend = model_cfg.backend
 
         # Link Lyra session → backend session so reply-to-resume works.
         if self._session_backend is not None:

@@ -275,6 +275,11 @@ an agent and chat (LLM token spend; session_id is client-supplied → cross-sess
 Tailscale IP and never `0.0.0.0` (no LAN exposure). Per-session tokens / real auth are tracked
 in #1992 before any wider exposure.
 
+**Session list API (`/api/bff/sessions*`)** — same Tailnet boundary applies: cross-platform
+`cli_session_id` resume/list is hub-backed (no `turns.db` mount on the dashboard container).
+Set `FACTORY_DASHBOARD_AUTH_REQUIRED=1` to return 403 on list/resume until #1992 operator auth
+lands; `stream_token` on SSE is separate (#1992 phase 1).
+
 ### Known residual risk — clipool `core.hooksPath` override (tracked #1245)
 
 The clipool unit sets `core.hooksPath = /opt/factory-gh/hooks` via `GIT_CONFIG_GLOBAL`

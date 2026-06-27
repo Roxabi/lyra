@@ -20,7 +20,7 @@
 | Pre-flight | `done` | import-linter + contracts + Makefile
 | Block 1 — Cockpit + Chat + Harness/Model | `done` | SPA + vitest + Docker/CI
 | Block 2 — SessionCatalog + Reprendre | `done` | hub RPC + BFF + ACL regen
-| Block 3 — E2E + Hardening + Ship | `not_started` | —
+| Block 3 — E2E + Hardening + Ship | `in_progress` | E2E + docs
 
 ---
 
@@ -141,7 +141,7 @@
 
 ## BLOCK 3 — E2E + Hardening + Ship
 
-**Statut :** `not_started`  
+**Statut :** `in_progress`  
 **GO :** seulement après Block 1+2 green
 
 ### E2E & visual
@@ -206,15 +206,13 @@
 
 > Ajouter une entrée à chaque session `/goal`. Format : `YYYY-MM-DD — résumé — bloc — statut`.
 
-### 2026-06-28 — Block 1 slice
-
-- [x] Cockpit SPA, multi-chat, harness/model pickers, `stream_token`
-
 ### 2026-06-28 — Block 2 slice
 
-- [x] `session_catalog.list_sessions_for_agent`, hub `dashboard_rpc.py`, BFF `/api/bff/sessions*`
-- [x] ACL `factory.dashboard.>` + `nats-regen-specs` + auth.conf drift green
-- Gates : pytest hub RPC + BFF
+- [x] SessionCatalog hub RPC + Reprendre panel + ACL regen
+
+### 2026-06-28 — Block 3 slice (in_progress)
+
+- Statut Block 3 → `in_progress`
 
 
 ---

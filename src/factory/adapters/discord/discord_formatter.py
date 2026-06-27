@@ -132,7 +132,7 @@ class DiscordFormatter(BaseFormatter):
                 try:
                     sent = await messageable.send(chunk)
                     last_id = sent.id
-                except Exception as exc:  # noqa: BLE001 — terminal final-chunk send; type sanitized
+                except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: discord-send — terminal final-chunk; type sanitized
                     log.warning(
                         "Failed to send final chunk to Discord: type=%s",
                         type(exc).__name__,

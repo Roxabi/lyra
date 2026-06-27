@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -62,7 +63,16 @@ class CommandReloadManager:
                 effective.append(name)
             except ValueError as exc:
                 log.warning("Skipping command %r: %s", name, exc)
-            except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch — resilient: don't let one bad plugin block startup
+            except (
+                ImportError,
+                OSError,
+                SyntaxError,
+                AttributeError,
+                TypeError,
+                RuntimeError,
+                KeyError,
+                tomllib.TOMLDecodeError,
+            ):
                 log.warning("Failed to load command %r", name, exc_info=True)
         return effective
 
@@ -112,6 +122,15 @@ class CommandReloadManager:
                 self.command_hashes[name] = new_hash
                 changed = True
                 log.info("Hot-reloaded command %r (hash changed)", name)
-            except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch — resilient: don't let hot-reload crash the agent
+            except (
+                ImportError,
+                OSError,
+                SyntaxError,
+                AttributeError,
+                TypeError,
+                RuntimeError,
+                KeyError,
+                tomllib.TOMLDecodeError,
+            ):
                 log.warning("Failed to reload command %r", name, exc_info=True)
         return changed

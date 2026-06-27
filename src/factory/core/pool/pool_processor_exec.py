@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
 from uuid import uuid4
 
+from factory.core.provider_match import is_provider_error
 from factory.transport.typing_publisher import is_typing_enabled
 from factory.transport.work_scope import WorkScope
 
@@ -35,8 +36,34 @@ from .pool_processor_streaming import (
 
 log = logging.getLogger(__name__)
 
+_POOL_TURN_ERRORS: tuple[type[BaseException], ...] = (
+    RuntimeError,
+    ValueError,
+    TypeError,
+    KeyError,
+    OSError,
+    ConnectionError,
+)
 
-async def guarded_process_one(  # noqa: PLR0915 — DEBT:complexity-residual
+
+def _is_pool_turn_error(exc: BaseException) -> bool:
+    return isinstance(exc, _POOL_TURN_ERRORS) or is_provider_error(exc)
+_PROCESSOR_HOOK_ERRORS: tuple[type[BaseException], ...] = (
+    RuntimeError,
+    ValueError,
+    TypeError,
+    AttributeError,
+)
+_DISPATCH_ERRORS: tuple[type[BaseException], ...] = (
+    asyncio.TimeoutError,
+    KeyError,
+    OSError,
+    ConnectionError,
+    RuntimeError,
+)
+
+
+async def guarded_process_one(  # noqa: PLR0915, C901 — DEBT:complexity-residual
     msg: InboundMessage, agent: AgentBase, pool: Pool
 ) -> None:
     """Wrap process_one with timeout and error handling."""
@@ -106,7 +133,9 @@ async def guarded_process_one(  # noqa: PLR0915 — DEBT:complexity-residual
         except asyncio.CancelledError:
             _cancelled = True
             raise
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: pool-turn — ProviderError duck-type via is_provider_error
+            if not _is_pool_turn_error(exc):
+                raise
             log.exception("unhandled error in pool %s: %s", pool.pool_id, exc)
             _reply = pool._msg("generic", GENERIC_ERROR_REPLY)
             await _safe_dispatch(msg, Response(content=_reply), pool)
@@ -184,7 +213,7 @@ async def _run_processor_pre(
         return msg, None
     try:
         msg = await _processor.pre(msg)
-    except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
+    except _PROCESSOR_HOOK_ERRORS:
         log.warning("Processor pre() failed for %s", _cmd_name, exc_info=True)
         _error_reply = pool._msg(
             "generic", f"Command {_cmd_name} failed to prepare. Please try again."
@@ -200,13 +229,13 @@ async def _resolve_non_streaming(
     """Await coroutine result and run processor post-hook if applicable."""
     try:
         result = await result  # type: ignore[misc] — DEBT:defensive-narrow-payloads
-    except Exception as exc:
+    except _POOL_TURN_ERRORS as exc:
         pool._ctx.record_circuit_failure(exc)
         raise
     if _processor is not None and isinstance(result, Response):
         try:
             result = await _processor.post(_original_msg, result)  # type: ignore[union-attr] — DEBT:defensive-narrow-payloads
-        except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
+        except _PROCESSOR_HOOK_ERRORS:
             log.warning("Processor post() failed", exc_info=True)
     return result
 
@@ -314,5 +343,5 @@ async def _safe_dispatch(msg: InboundMessage, response: Response, pool: Pool) ->
             pool._ctx.dispatch_response(msg, response),
             timeout=pool._safe_dispatch_timeout,
         )
-    except Exception as exc:
+    except _DISPATCH_ERRORS as exc:
         log.exception("_safe_dispatch failed for pool %s: %s", pool.pool_id, exc)

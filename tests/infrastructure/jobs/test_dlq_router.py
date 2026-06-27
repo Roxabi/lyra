@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 from unittest.mock import AsyncMock, MagicMock
 
+import nats.errors
 import pytest
 
 from factory.infrastructure.jobs.dlq_router import (
@@ -172,12 +173,31 @@ async def test_missing_stream_seq_skips() -> None:
 @pytest.mark.anyio
 async def test_get_msg_failure_skips() -> None:
     """If get_msg raises, must not publish or delete."""
-    nc, jsm = _make_nc(get_msg_raises=RuntimeError("stream error"))
+    nc, jsm = _make_nc(get_msg_raises=nats.errors.Error("stream error"))
     js = MagicMock()
     router = DlqRouter(nc, js)
 
     msg = _advisory_msg(stream_seq=99)
     await router._handle(msg)
+
+    jsm.get_msg.assert_awaited_once()
+    nc.publish.assert_not_awaited()
+    jsm.delete_msg.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# test_get_msg_oserror_skips
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_get_msg_oserror_skips() -> None:
+    """OSError from get_msg must skip publish and delete."""
+    nc, jsm = _make_nc(get_msg_raises=OSError("disk full"))
+    js = MagicMock()
+    router = DlqRouter(nc, js)
+
+    await router._handle(_advisory_msg(stream_seq=55))
 
     jsm.get_msg.assert_awaited_once()
     nc.publish.assert_not_awaited()
@@ -196,13 +216,97 @@ async def test_publish_failure_does_not_delete() -> None:
     delete_msg may only run AFTER a successful publish — otherwise the job is
     lost (publish failed, yet the source seq was removed from the stream).
     """
-    nc, jsm = _make_nc(publish_raises=RuntimeError("publish timeout"))
+    nc, jsm = _make_nc(publish_raises=nats.errors.Error("publish timeout"))
     js = MagicMock()
     router = DlqRouter(nc, js)
 
     await router._handle(_advisory_msg(stream_seq=11))
 
     nc.publish.assert_awaited_once()
+    jsm.delete_msg.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# test_publish_oserror_does_not_delete
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_publish_oserror_does_not_delete() -> None:
+    """OSError on publish must not delete the original stream message."""
+    nc, jsm = _make_nc(publish_raises=OSError("broken pipe"))
+    js = MagicMock()
+    router = DlqRouter(nc, js)
+
+    await router._handle(_advisory_msg(stream_seq=12))
+
+    nc.publish.assert_awaited_once()
+    jsm.delete_msg.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# test_delete_msg_failure_after_publish
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_delete_msg_failure_after_publish() -> None:
+    """delete_msg failure after publish leaves the source seq in the stream."""
+    nc, jsm = _make_nc(delete_msg_raises=nats.errors.Error("delete denied"))
+    js = MagicMock()
+    router = DlqRouter(nc, js)
+
+    await router._handle(_advisory_msg(stream_seq=21))
+
+    nc.publish.assert_awaited_once()
+    jsm.delete_msg.assert_awaited_once_with("FACTORY_JOBS", 21)
+
+
+# ---------------------------------------------------------------------------
+# test_unexpected_error_contained
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_unexpected_error_contained(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Top-level guard: unexpected errors must not propagate from the callback."""
+    nc, jsm = _make_nc()
+    js = MagicMock()
+    router = DlqRouter(nc, js)
+
+    def _boom(_subject: str) -> str:
+        raise RuntimeError("unexpected")
+
+    monkeypatch.setattr(
+        "factory.infrastructure.jobs.dlq_router._extract_domain",
+        _boom,
+    )
+
+    await router._handle(_advisory_msg(stream_seq=8))  # must not raise
+
+    jsm.get_msg.assert_awaited_once()
+    nc.publish.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# test_non_dict_advisory_skips
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_non_dict_advisory_skips() -> None:
+    """A JSON array (not object) advisory must skip without touching the stream."""
+    nc, jsm = _make_nc()
+    js = MagicMock()
+    router = DlqRouter(nc, js)
+
+    msg = MagicMock()
+    msg.data = json.dumps([1, 2, 3]).encode()
+
+    await router._handle(msg)
+
+    jsm.get_msg.assert_not_awaited()
+    nc.publish.assert_not_awaited()
     jsm.delete_msg.assert_not_awaited()
 
 

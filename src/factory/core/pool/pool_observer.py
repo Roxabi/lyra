@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
+
+import aiosqlite
+import nats.errors
 
 from ..stores.message_index_protocol import MessageIndexProtocol
 from ..stores.turn_store_protocol import TurnStoreProtocol
@@ -14,6 +18,16 @@ if TYPE_CHECKING:
     from ..messaging.message import InboundMessage
 
 log = logging.getLogger(__name__)
+
+# Turn persistence must never abort the inbound turn — narrow to store/NATS failures.
+_TURN_PERSIST_ERRORS: tuple[type[BaseException], ...] = (
+    nats.errors.Error,
+    sqlite3.Error,
+    aiosqlite.Error,
+    OSError,
+    RuntimeError,
+    ValueError,
+)
 
 
 @dataclass(frozen=True)
@@ -109,7 +123,7 @@ class PoolObserver:
                 user_id="",
                 trace_id=session_id,
             )
-        except Exception:
+        except _TURN_PERSIST_ERRORS:
             log.error(
                 "turn_publisher end_session failed (pool=%s session=%s)",
                 self._pool_id,
@@ -139,7 +153,7 @@ class PoolObserver:
                 trace_id=trace_id,
                 root_job_id=deps.root_job_id,
             )
-        except Exception:
+        except _TURN_PERSIST_ERRORS:
             log.error(
                 "turn_publisher write failed (pool=%s role=%s)",
                 self._pool_id,
@@ -154,7 +168,7 @@ class PoolObserver:
         self._session_persisted = True
         try:
             await self._session_update_fn(msg, self._session_id_fn(), self._pool_id)
-        except Exception:
+        except _TURN_PERSIST_ERRORS:
             log.error(
                 "session_update failed (pool=%s)",
                 self._pool_id,
@@ -176,7 +190,7 @@ class PoolObserver:
         if self._turn_logger is not None:
             try:
                 await self._turn_logger(session_id, msg)
-            except Exception:
+            except _TURN_PERSIST_ERRORS:
                 log.error(
                     "turn_logger failed (pool=%s)",
                     self._pool_id,
@@ -213,7 +227,7 @@ class PoolObserver:
             await self._message_index.upsert(
                 self._pool_id, platform_msg_id, session_id, role
             )
-        except Exception:
+        except _TURN_PERSIST_ERRORS:
             log.error(
                 "message_index upsert failed (pool=%s)",
                 self._pool_id,

@@ -30,21 +30,21 @@
     },
     "BLE001": {
       "DEBT": {
-        "boundary-broad-catch": 57
+        "boundary-broad-catch": 30
       },
       "UNTAGGED": {
-        "__none__": 64
+        "__none__": 14
       }
     },
     "C901": {
       "DEBT": {
         "adapter-dispatch-complexity": 2,
         "complexity-residual": 15,
-        "migration-sequence-bootstrap": 5,
+        "migration-sequence-bootstrap": 4,
         "wiring-bootstrap-deps": 5
       },
       "UNTAGGED": {
-        "__none__": 8
+        "__none__": 9
       }
     },
     "D401": {
@@ -62,7 +62,7 @@
         "lint-residual": 1
       },
       "UNTAGGED": {
-        "__none__": 12
+        "__none__": 27
       }
     },
     "E731": {
@@ -103,7 +103,7 @@
         "wiring-bootstrap-deps": 24
       },
       "UNTAGGED": {
-        "__none__": 42
+        "__none__": 51
       }
     },
     "PLR0915": {
@@ -113,7 +113,7 @@
         "wiring-bootstrap-deps": 1
       },
       "UNTAGGED": {
-        "__none__": 4
+        "__none__": 2
       }
     },
     "PLR2004": {
@@ -136,7 +136,7 @@
         "defensive-narrow-payloads": 1
       },
       "UNTAGGED": {
-        "__none__": 10
+        "__none__": 11
       }
     },
     "assignment": {
@@ -146,7 +146,7 @@
     },
     "attr-defined": {
       "UNTAGGED": {
-        "__none__": 19
+        "__none__": 24
       }
     },
     "factory.agents.simple_agent -> factory.infrastructure.stores.registry.agent_store": {
@@ -250,7 +250,7 @@
         "lint-residual": 1
       },
       "UNTAGGED": {
-        "__none__": 5
+        "__none__": 9
       }
     },
     "type-arg": {
@@ -267,215 +267,215 @@
       }
     }
   },
-  "generated_at": "2026-06-20T20:44:59.889055+00:00",
+  "generated_at": "2026-06-27T21:03:49.573367+00:00",
   "rows": [
     {
       "bucket": "UNTAGGED",
       "line": 47,
-      "path": "artifacts/spikes/1807/omp_rpc_poc.py",
+      "path": "artifacts/archive/2026-06/spikes/1807/omp_rpc_poc.py",
       "rule": "A003",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
       "line": 180,
-      "path": "artifacts/spikes/1807/omp_rpc_poc.py",
+      "path": "artifacts/archive/2026-06/spikes/1807/omp_rpc_poc.py",
       "rule": "BLE001",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
       "line": 194,
-      "path": "artifacts/spikes/1807/omp_rpc_poc.py",
+      "path": "artifacts/archive/2026-06/spikes/1807/omp_rpc_poc.py",
       "rule": "type-arg",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
       "line": 268,
-      "path": "artifacts/spikes/1807/omp_rpc_poc.py",
+      "path": "artifacts/archive/2026-06/spikes/1807/omp_rpc_poc.py",
       "rule": "BLE001",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
       "line": 315,
-      "path": "artifacts/spikes/1807/omp_rpc_poc.py",
+      "path": "artifacts/archive/2026-06/spikes/1807/omp_rpc_poc.py",
       "rule": "BLE001",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
       "line": 326,
-      "path": "artifacts/spikes/1807/omp_rpc_poc.py",
+      "path": "artifacts/archive/2026-06/spikes/1807/omp_rpc_poc.py",
       "rule": "BLE001",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
       "line": 366,
-      "path": "artifacts/spikes/1807/omp_rpc_poc.py",
+      "path": "artifacts/archive/2026-06/spikes/1807/omp_rpc_poc.py",
       "rule": "BLE001",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
       "line": 377,
-      "path": "artifacts/spikes/1807/omp_rpc_poc.py",
+      "path": "artifacts/archive/2026-06/spikes/1807/omp_rpc_poc.py",
       "rule": "BLE001",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
       "line": 382,
-      "path": "artifacts/spikes/1807/omp_rpc_poc.py",
+      "path": "artifacts/archive/2026-06/spikes/1807/omp_rpc_poc.py",
       "rule": "BLE001",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
       "line": 72,
-      "path": "artifacts/spikes/1813-v3/omp_api_dump.py",
+      "path": "artifacts/archive/2026-06/spikes/1813-v3/omp_api_dump.py",
       "rule": "BLE001",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
       "line": 32,
-      "path": "artifacts/spikes/1813-v3/omp_introspect.py",
+      "path": "artifacts/archive/2026-06/spikes/1813-v3/omp_introspect.py",
       "rule": "BLE001",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
       "line": 41,
-      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "path": "artifacts/archive/2026-06/spikes/1813-v3/omp_session_switch_probe.py",
       "rule": "E402",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
       "line": 52,
-      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "path": "artifacts/archive/2026-06/spikes/1813-v3/omp_session_switch_probe.py",
       "rule": "attr-defined",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
       "line": 57,
-      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "path": "artifacts/archive/2026-06/spikes/1813-v3/omp_session_switch_probe.py",
       "rule": "attr-defined",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
       "line": 69,
-      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "path": "artifacts/archive/2026-06/spikes/1813-v3/omp_session_switch_probe.py",
       "rule": "attr-defined",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
       "line": 75,
-      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "path": "artifacts/archive/2026-06/spikes/1813-v3/omp_session_switch_probe.py",
       "rule": "attr-defined",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
       "line": 86,
-      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "path": "artifacts/archive/2026-06/spikes/1813-v3/omp_session_switch_probe.py",
       "rule": "attr-defined",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
       "line": 97,
-      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "path": "artifacts/archive/2026-06/spikes/1813-v3/omp_session_switch_probe.py",
       "rule": "attr-defined",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
       "line": 98,
-      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "path": "artifacts/archive/2026-06/spikes/1813-v3/omp_session_switch_probe.py",
       "rule": "BLE001",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
       "line": 107,
-      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "path": "artifacts/archive/2026-06/spikes/1813-v3/omp_session_switch_probe.py",
       "rule": "attr-defined",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
       "line": 113,
-      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "path": "artifacts/archive/2026-06/spikes/1813-v3/omp_session_switch_probe.py",
       "rule": "attr-defined",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
       "line": 117,
-      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "path": "artifacts/archive/2026-06/spikes/1813-v3/omp_session_switch_probe.py",
       "rule": "attr-defined",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
       "line": 121,
-      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "path": "artifacts/archive/2026-06/spikes/1813-v3/omp_session_switch_probe.py",
       "rule": "attr-defined",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
       "line": 132,
-      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "path": "artifacts/archive/2026-06/spikes/1813-v3/omp_session_switch_probe.py",
       "rule": "attr-defined",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
       "line": 133,
-      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "path": "artifacts/archive/2026-06/spikes/1813-v3/omp_session_switch_probe.py",
       "rule": "BLE001",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
       "line": 143,
-      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "path": "artifacts/archive/2026-06/spikes/1813-v3/omp_session_switch_probe.py",
       "rule": "attr-defined",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
       "line": 151,
-      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "path": "artifacts/archive/2026-06/spikes/1813-v3/omp_session_switch_probe.py",
       "rule": "attr-defined",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
       "line": 154,
-      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "path": "artifacts/archive/2026-06/spikes/1813-v3/omp_session_switch_probe.py",
       "rule": "attr-defined",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
       "line": 158,
-      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "path": "artifacts/archive/2026-06/spikes/1813-v3/omp_session_switch_probe.py",
       "rule": "attr-defined",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
       "line": 159,
-      "path": "artifacts/spikes/1813-v3/omp_session_switch_probe.py",
+      "path": "artifacts/archive/2026-06/spikes/1813-v3/omp_session_switch_probe.py",
       "rule": "BLE001",
       "source": "noqa"
     },
@@ -572,7 +572,7 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 45,
+      "line": 46,
       "path": "scripts/check_subject_literals.py",
       "rule": "no-redef",
       "source": "type-ignore"
@@ -613,25 +613,23 @@
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 168,
-      "path": "src/factory/adapters/clipool/clipool_worker.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
+      "bucket": "UNTAGGED",
+      "line": 18,
+      "path": "src/factory/adapters/clipool/_pool_bridge.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 44,
+      "path": "src/factory/adapters/clipool/_pool_bridge.py",
+      "rule": "PLR0913",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 258,
-      "path": "src/factory/adapters/clipool/clipool_worker.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 305,
-      "path": "src/factory/adapters/clipool/clipool_worker.py",
+      "line": 57,
+      "path": "src/factory/adapters/clipool/_pool_bridge.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
@@ -646,14 +644,14 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 66,
+      "line": 65,
       "path": "src/factory/adapters/discord/adapter.py",
       "rule": "E402",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 89,
+      "line": 88,
       "path": "src/factory/adapters/discord/adapter.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
@@ -707,16 +705,8 @@
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 232,
-      "path": "src/factory/adapters/discord/discord_audio.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
       "bucket": "UNTAGGED",
-      "line": 256,
+      "line": 250,
       "path": "src/factory/adapters/discord/discord_audio.py",
       "rule": "PLC0415",
       "source": "noqa"
@@ -729,10 +719,11 @@
       "source": "noqa"
     },
     {
-      "bucket": "UNTAGGED",
+      "bucket": "DEBT",
       "line": 135,
       "path": "src/factory/adapters/discord/discord_formatter.py",
       "rule": "BLE001",
+      "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
@@ -752,10 +743,11 @@
       "source": "noqa"
     },
     {
-      "bucket": "UNTAGGED",
+      "bucket": "DEBT",
       "line": 84,
       "path": "src/factory/adapters/discord/discord_outbound.py",
       "rule": "BLE001",
+      "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
@@ -781,24 +773,11 @@
       "source": "type-ignore"
     },
     {
-      "bucket": "UNTAGGED",
-      "line": 211,
+      "bucket": "DEBT",
+      "line": 268,
       "path": "src/factory/adapters/nats/jetstream_audio_consumer.py",
       "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 279,
-      "path": "src/factory/adapters/nats/jetstream_audio_consumer.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 298,
-      "path": "src/factory/adapters/nats/jetstream_audio_consumer.py",
-      "rule": "BLE001",
+      "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
@@ -809,24 +788,9 @@
       "source": "type-ignore"
     },
     {
-      "bucket": "UNTAGGED",
-      "line": 108,
-      "path": "src/factory/adapters/nats/jetstream_audio_envelope.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
       "bucket": "DEBT",
-      "line": 135,
+      "line": 136,
       "path": "src/factory/adapters/nats/mint_failure_subscriber.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 134,
-      "path": "src/factory/adapters/nats/nats_outbound_listener.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
@@ -841,7 +805,7 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 102,
+      "line": 98,
       "path": "src/factory/adapters/omp/_rpc_bridge.py",
       "rule": "import-not-found",
       "source": "type-ignore"
@@ -855,13 +819,6 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 166,
-      "path": "src/factory/adapters/omp/omp_pool.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
       "line": 179,
       "path": "src/factory/adapters/omp/omp_pool.py",
       "rule": "import-not-found",
@@ -869,29 +826,8 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 223,
+      "line": 228,
       "path": "src/factory/adapters/omp/omp_pool.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 224,
-      "path": "src/factory/adapters/omp/omp_pool.py",
-      "rule": "E501",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 120,
-      "path": "src/factory/adapters/omp/omp_worker.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 123,
-      "path": "src/factory/adapters/omp/omp_worker.py",
       "rule": "E501",
       "source": "noqa"
     },
@@ -899,28 +835,22 @@
       "bucket": "UNTAGGED",
       "line": 126,
       "path": "src/factory/adapters/omp/omp_worker.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 129,
-      "path": "src/factory/adapters/omp/omp_worker.py",
       "rule": "E501",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 145,
+      "line": 132,
       "path": "src/factory/adapters/omp/omp_worker.py",
-      "rule": "BLE001",
+      "rule": "E501",
       "source": "noqa"
     },
     {
-      "bucket": "UNTAGGED",
-      "line": 239,
+      "bucket": "DEBT",
+      "line": 240,
       "path": "src/factory/adapters/omp/omp_worker.py",
       "rule": "BLE001",
+      "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
@@ -932,23 +862,8 @@
     },
     {
       "bucket": "DEBT",
-      "line": 95,
-      "path": "src/factory/adapters/shared/_inbound_cache.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
       "line": 139,
       "path": "src/factory/adapters/shared/_shared.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 79,
-      "path": "src/factory/adapters/shared/_shared_audio.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
@@ -961,9 +876,38 @@
       "source": "noqa"
     },
     {
+      "bucket": "DEBT",
+      "line": 110,
+      "path": "src/factory/adapters/shared/inbound/pipeline.py",
+      "rule": "BLE001",
+      "slug": "boundary-broad-catch",
+      "source": "noqa"
+    },
+    {
       "bucket": "UNTAGGED",
       "line": 24,
       "path": "src/factory/adapters/shared/inbound/typing_shim.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 99,
+      "path": "src/factory/adapters/socialmedia/adapter.py",
+      "rule": "E501",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 45,
+      "path": "src/factory/adapters/socialmedia/daemon.py",
+      "rule": "E501",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 92,
+      "path": "src/factory/adapters/socialmedia/postiz_client.py",
       "rule": "PLR0913",
       "source": "noqa"
     },
@@ -985,14 +929,14 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 58,
+      "line": 57,
       "path": "src/factory/adapters/telegram/telegram.py",
       "rule": "E402",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 72,
+      "line": 71,
       "path": "src/factory/adapters/telegram/telegram.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
@@ -1000,16 +944,17 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 55,
+      "line": 56,
       "path": "src/factory/adapters/telegram/telegram_formatter.py",
       "rule": "PLR0913",
       "source": "noqa"
     },
     {
-      "bucket": "UNTAGGED",
-      "line": 232,
+      "bucket": "DEBT",
+      "line": 235,
       "path": "src/factory/adapters/telegram/telegram_formatter.py",
       "rule": "BLE001",
+      "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
@@ -1044,52 +989,44 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 94,
+      "line": 106,
       "path": "src/factory/adapters/telegram/telegram_rich.py",
       "rule": "PLR0913",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 115,
-      "path": "src/factory/adapters/telegram/telegram_rich.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 141,
-      "path": "src/factory/adapters/telegram/telegram_rich.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 167,
-      "path": "src/factory/adapters/telegram/telegram_rich.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 172,
+      "line": 174,
       "path": "src/factory/adapters/telegram/telegram_rich.py",
       "rule": "PLR0913",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 213,
+      "line": 215,
       "path": "src/factory/adapters/telegram/telegram_rich.py",
       "rule": "PLR0913",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 49,
-      "path": "src/factory/agent_cmd/agents/init.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
+      "bucket": "UNTAGGED",
+      "line": 248,
+      "path": "src/factory/adapters/telegram/telegram_rich.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 81,
+      "path": "src/factory/adapters/web/web_formatter.py",
+      "rule": "E501",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 119,
+      "path": "src/factory/adapters/web/web_server.py",
+      "rule": "C901",
       "source": "noqa"
     },
     {
@@ -1110,66 +1047,16 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 89,
-      "path": "src/factory/agent_cmd/bots/init.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 106,
-      "path": "src/factory/agent_cmd/bots/init.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 129,
-      "path": "src/factory/agent_cmd/bots/init.py",
-      "rule": "C901",
-      "slug": "complexity-residual",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 145,
+      "line": 110,
       "path": "src/factory/agent_cmd/bots/init.py",
       "rule": "C901",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 65,
+      "line": 61,
       "path": "src/factory/agent_cmd/platforms/_commands.py",
       "rule": "PLR0913",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 110,
-      "path": "src/factory/agent_cmd/platforms/_commands.py",
-      "rule": "C901",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 110,
-      "path": "src/factory/agent_cmd/platforms/_commands.py",
-      "rule": "PLR0915",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 116,
-      "path": "src/factory/agent_cmd/platforms/_commands.py",
-      "rule": "C901",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 116,
-      "path": "src/factory/agent_cmd/platforms/_commands.py",
-      "rule": "PLR0915",
       "source": "noqa"
     },
     {
@@ -1181,14 +1068,14 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 97,
+      "line": 74,
       "path": "src/factory/agent_cmd/platforms/platform.py",
       "rule": "PLR0913",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 64,
+      "line": 65,
       "path": "src/factory/agents/simple_agent.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
@@ -1196,29 +1083,21 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 110,
+      "line": 142,
       "path": "src/factory/agents/simple_agent.py",
       "rule": "assignment",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 114,
+      "line": 151,
       "path": "src/factory/agents/simple_agent.py",
       "rule": "assignment",
       "source": "type-ignore"
     },
     {
       "bucket": "DEBT",
-      "line": 162,
-      "path": "src/factory/agents/simple_agent.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 225,
+      "line": 265,
       "path": "src/factory/agents/simple_agent.py",
       "rule": "C901",
       "slug": "complexity-residual",
@@ -1226,59 +1105,60 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 36,
+      "line": 39,
       "path": "src/factory/blobstore/_handlers.py",
       "rule": "PLR0913",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 67,
-      "path": "src/factory/blobstore/_handlers.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 77,
+      "line": 80,
       "path": "src/factory/blobstore/_handlers.py",
       "rule": "no-any-return",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 81,
+      "line": 84,
       "path": "src/factory/blobstore/_handlers.py",
       "rule": "SLF001",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 83,
+      "line": 86,
       "path": "src/factory/blobstore/_handlers.py",
       "rule": "SLF001",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 102,
+      "path": "src/factory/blobstore/_handlers.py",
+      "rule": "return-value",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 111,
+      "path": "src/factory/blobstore/_handlers.py",
+      "rule": "return-value",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 112,
+      "path": "src/factory/blobstore/_handlers.py",
+      "rule": "BLE001",
+      "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
       "line": 120,
       "path": "src/factory/blobstore/_handlers.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 149,
-      "path": "src/factory/blobstore/_handlers.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 274,
-      "path": "src/factory/blobstore/_handlers.py",
-      "rule": "BLE001",
-      "source": "noqa"
+      "rule": "return-value",
+      "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
@@ -1303,64 +1183,36 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 55,
-      "path": "src/factory/blobstore/auth.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 36,
-      "path": "src/factory/blobstore/serve.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 45,
+      "line": 49,
       "path": "src/factory/blobstore/serve.py",
       "rule": "SLF001",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 52,
-      "path": "src/factory/blobstore/serve.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 64,
+      "line": 68,
       "path": "src/factory/blobstore/serve.py",
       "rule": "SLF001",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 79,
-      "path": "src/factory/blobstore/serve.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 95,
-      "path": "src/factory/blobstore/serve.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 109,
+      "line": 113,
       "path": "src/factory/blobstore/serve.py",
       "rule": "return",
       "source": "type-ignore"
     },
     {
+      "bucket": "UNTAGGED",
+      "line": 56,
+      "path": "src/factory/bootstrap/auth_seeding.py",
+      "rule": "arg-type",
+      "source": "type-ignore"
+    },
+    {
       "bucket": "DEBT",
-      "line": 104,
-      "path": "src/factory/bootstrap/bootstrap_stores.py",
+      "line": 109,
+      "path": "src/factory/bootstrap/bootstrap_store_migrations.py",
       "rule": "C901",
       "slug": "migration-sequence-bootstrap",
       "source": "noqa"
@@ -1389,7 +1241,7 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 40,
+      "line": 45,
       "path": "src/factory/bootstrap/factory/hub/hub_assembly.py",
       "rule": "PLR0913",
       "source": "noqa"
@@ -1403,60 +1255,58 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 41,
+      "line": 40,
       "path": "src/factory/bootstrap/factory/unified.py",
       "rule": "PLR0915",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 142,
+      "line": 143,
       "path": "src/factory/bootstrap/factory/unified.py",
       "rule": "union-attr",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 91,
+      "line": 93,
       "path": "src/factory/bootstrap/factory/voice_overlay.py",
       "rule": "return-value",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 117,
+      "line": 119,
       "path": "src/factory/bootstrap/factory/voice_overlay.py",
       "rule": "return-value",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 135,
+      "line": 137,
       "path": "src/factory/bootstrap/factory/voice_overlay.py",
       "rule": "return-value",
       "source": "type-ignore"
     },
     {
-      "bucket": "DEBT",
-      "line": 223,
+      "bucket": "UNTAGGED",
+      "line": 155,
       "path": "src/factory/bootstrap/factory/voice_overlay.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
+      "rule": "return-value",
+      "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 21,
+      "line": 22,
       "path": "src/factory/bootstrap/infra/health.py",
       "rule": "PLR0913",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 86,
+      "bucket": "UNTAGGED",
+      "line": 87,
       "path": "src/factory/bootstrap/infra/health.py",
       "rule": "C901",
-      "slug": "migration-sequence-bootstrap",
       "source": "noqa"
     },
     {
@@ -1468,15 +1318,23 @@
       "source": "noqa"
     },
     {
+      "bucket": "DEBT",
+      "line": 43,
+      "path": "src/factory/bootstrap/lifecycle/lifecycle_helpers.py",
+      "rule": "BLE001",
+      "slug": "boundary-broad-catch",
+      "source": "noqa"
+    },
+    {
       "bucket": "UNTAGGED",
-      "line": 89,
+      "line": 104,
       "path": "src/factory/bootstrap/lifecycle/lifecycle_helpers.py",
       "rule": "PLR0913",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 22,
+      "line": 47,
       "path": "src/factory/bootstrap/standalone/adapter_standalone.py",
       "rule": "PLR0915",
       "slug": "migration-sequence-bootstrap",
@@ -1484,7 +1342,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 22,
+      "line": 47,
       "path": "src/factory/bootstrap/standalone/adapter_standalone.py",
       "rule": "C901",
       "slug": "migration-sequence-bootstrap",
@@ -1492,21 +1350,21 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 93,
+      "line": 95,
       "path": "src/factory/bootstrap/standalone/audio_consumer_bootstrap.py",
       "rule": "arg-type",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 94,
+      "line": 96,
       "path": "src/factory/bootstrap/standalone/audio_consumer_bootstrap.py",
       "rule": "arg-type",
       "source": "type-ignore"
     },
     {
       "bucket": "DEBT",
-      "line": 44,
+      "line": 45,
       "path": "src/factory/bootstrap/standalone/hub_standalone.py",
       "rule": "C901",
       "slug": "migration-sequence-bootstrap",
@@ -1514,7 +1372,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 44,
+      "line": 45,
       "path": "src/factory/bootstrap/standalone/hub_standalone.py",
       "rule": "PLR0915",
       "slug": "migration-sequence-bootstrap",
@@ -1522,14 +1380,14 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 186,
+      "line": 190,
       "path": "src/factory/bootstrap/standalone/hub_standalone.py",
       "rule": "SLF001",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 114,
+      "line": 118,
       "path": "src/factory/bootstrap/standalone/hub_standalone_helpers.py",
       "rule": "PLR0913",
       "source": "noqa"
@@ -1543,35 +1401,42 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 49,
+      "line": 52,
       "path": "src/factory/bootstrap/wiring/_standalone_wiring_common.py",
       "rule": "PLR0913",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 111,
+      "line": 47,
+      "path": "src/factory/bootstrap/wiring/kv_agent_roster.py",
+      "rule": "attr-defined",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 113,
       "path": "src/factory/bootstrap/wiring/kv_bot_roster.py",
       "rule": "attr-defined",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 75,
+      "line": 78,
       "path": "src/factory/bootstrap/wiring/standalone_discord.py",
       "rule": "PLR0915",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 181,
+      "line": 188,
       "path": "src/factory/bootstrap/wiring/standalone_discord.py",
       "rule": "union-attr",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 144,
+      "line": 145,
       "path": "src/factory/bootstrap/wiring/standalone_telegram.py",
       "rule": "union-attr",
       "source": "type-ignore"
@@ -1609,20 +1474,6 @@
       "source": "noqa"
     },
     {
-      "bucket": "UNTAGGED",
-      "line": 37,
-      "path": "src/factory/cli/bot.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 45,
-      "path": "src/factory/cli/bot.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
       "bucket": "DEBT",
       "line": 28,
       "path": "src/factory/cli/main.py",
@@ -1632,26 +1483,10 @@
     },
     {
       "bucket": "DEBT",
-      "line": 187,
+      "line": 203,
       "path": "src/factory/cli/main.py",
       "rule": "B008",
       "slug": "typer-default-option",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 197,
-      "path": "src/factory/cli/ops.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 237,
-      "path": "src/factory/cli/ops.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
@@ -1688,7 +1523,7 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 119,
+      "line": 120,
       "path": "src/factory/cli/secrets_reset.py",
       "rule": "PLR0913",
       "source": "noqa"
@@ -1699,14 +1534,6 @@
       "path": "src/factory/cli/setup.py",
       "rule": "B008",
       "slug": "typer-default-option",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 87,
-      "path": "src/factory/cli/setup.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
@@ -1767,31 +1594,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 97,
-      "path": "src/factory/cli/voice_smoke.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 197,
-      "path": "src/factory/cli/voice_smoke.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 241,
-      "path": "src/factory/cli/voice_smoke.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 30,
+      "line": 33,
       "path": "src/factory/core/agent/agent.py",
       "rule": "F401",
       "slug": "re-export-init",
@@ -1799,7 +1602,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 32,
+      "line": 35,
       "path": "src/factory/core/agent/agent.py",
       "rule": "F401",
       "slug": "re-export-init",
@@ -1807,7 +1610,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 48,
+      "line": 51,
       "path": "src/factory/core/agent/agent.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
@@ -1815,7 +1618,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 89,
+      "line": 92,
       "path": "src/factory/core/agent/agent.py",
       "rule": "D401",
       "slug": "d401-property-accessor",
@@ -1823,7 +1626,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 97,
+      "line": 100,
       "path": "src/factory/core/agent/agent.py",
       "rule": "D401",
       "slug": "d401-property-accessor",
@@ -1831,42 +1634,10 @@
     },
     {
       "bucket": "DEBT",
-      "line": 126,
-      "path": "src/factory/core/agent/agent.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 133,
+      "line": 136,
       "path": "src/factory/core/agent/agent.py",
       "rule": "PLC0415",
       "slug": "plc0415-deferred-import",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 147,
-      "path": "src/factory/core/agent/agent.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 65,
-      "path": "src/factory/core/agent/agent_commands.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 115,
-      "path": "src/factory/core/agent/agent_commands.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
@@ -1923,6 +1694,13 @@
       "source": "noqa"
     },
     {
+      "bucket": "UNTAGGED",
+      "line": 320,
+      "path": "src/factory/core/auth/authenticator.py",
+      "rule": "E501",
+      "source": "noqa"
+    },
+    {
       "bucket": "DEBT",
       "line": 48,
       "path": "src/factory/core/cli/cli_pool.py",
@@ -1963,22 +1741,30 @@
       "source": "noqa"
     },
     {
+      "bucket": "DEBT",
+      "line": 158,
+      "path": "src/factory/core/cli/cli_pool_send.py",
+      "rule": "BLE001",
+      "slug": "boundary-broad-catch",
+      "source": "noqa"
+    },
+    {
       "bucket": "UNTAGGED",
-      "line": 111,
+      "line": 124,
       "path": "src/factory/core/cli/cli_pool_spawn.py",
       "rule": "E731",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 121,
+      "line": 134,
       "path": "src/factory/core/cli/cli_pool_spawn.py",
       "rule": "PLR0913",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 159,
+      "line": 172,
       "path": "src/factory/core/cli/cli_pool_spawn.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
@@ -2049,6 +1835,14 @@
     },
     {
       "bucket": "DEBT",
+      "line": 206,
+      "path": "src/factory/core/cli/protocol/cli_non_streaming.py",
+      "rule": "BLE001",
+      "slug": "boundary-broad-catch",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
       "line": 32,
       "path": "src/factory/core/cli/protocol/cli_streaming.py",
       "rule": "PLR0913",
@@ -2081,30 +1875,6 @@
     },
     {
       "bucket": "DEBT",
-      "line": 92,
-      "path": "src/factory/core/commands/builtin_commands.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 116,
-      "path": "src/factory/core/commands/command_loader.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 127,
-      "path": "src/factory/core/commands/command_router.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
       "line": 257,
       "path": "src/factory/core/commands/command_router.py",
       "rule": "C901",
@@ -2121,7 +1891,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 69,
+      "line": 70,
       "path": "src/factory/core/hub/hub.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
@@ -2129,7 +1899,15 @@
     },
     {
       "bucket": "DEBT",
-      "line": 51,
+      "line": 224,
+      "path": "src/factory/core/hub/hub.py",
+      "rule": "BLE001",
+      "slug": "boundary-broad-catch",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 53,
       "path": "src/factory/core/hub/hub_registration.py",
       "rule": "ARG002",
       "slug": "protocol-private-ducktyping",
@@ -2137,7 +1915,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 52,
+      "line": 54,
       "path": "src/factory/core/hub/hub_registration.py",
       "rule": "ARG002",
       "slug": "protocol-private-ducktyping",
@@ -2145,17 +1923,16 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 103,
-      "path": "src/factory/core/hub/hub_shutdown.py",
-      "rule": "E501",
+      "line": 134,
+      "path": "src/factory/core/hub/hub_registration.py",
+      "rule": "PLR0913",
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 67,
-      "path": "src/factory/core/hub/middleware/middleware.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
+      "bucket": "UNTAGGED",
+      "line": 103,
+      "path": "src/factory/core/hub/hub_shutdown.py",
+      "rule": "E501",
       "source": "noqa"
     },
     {
@@ -2168,7 +1945,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 74,
+      "line": 76,
       "path": "src/factory/core/hub/middleware/middleware_stt.py",
       "rule": "C901",
       "slug": "complexity-residual",
@@ -2176,7 +1953,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 74,
+      "line": 76,
       "path": "src/factory/core/hub/middleware/middleware_stt.py",
       "rule": "PLR0915",
       "slug": "complexity-residual",
@@ -2184,7 +1961,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 185,
+      "line": 187,
       "path": "src/factory/core/hub/middleware/middleware_stt.py",
       "rule": "union-attr",
       "slug": "defensive-narrow-payloads",
@@ -2192,7 +1969,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 186,
+      "line": 188,
       "path": "src/factory/core/hub/middleware/middleware_stt.py",
       "rule": "union-attr",
       "slug": "defensive-narrow-payloads",
@@ -2236,14 +2013,6 @@
     },
     {
       "bucket": "DEBT",
-      "line": 123,
-      "path": "src/factory/core/hub/outbound/outbound_errors.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
       "line": 47,
       "path": "src/factory/core/hub/outbound/outbound_streaming.py",
       "rule": "C901",
@@ -2268,37 +2037,6 @@
     },
     {
       "bucket": "DEBT",
-      "line": 155,
-      "path": "src/factory/core/lifecycle/session_lifecycle.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 191,
-      "path": "src/factory/core/lifecycle/session_lifecycle.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 90,
-      "path": "src/factory/core/memory/memory_schema.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 47,
-      "path": "src/factory/core/messaging/bot_display_name.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
       "line": 31,
       "path": "src/factory/core/messaging/utils/callbacks.py",
       "rule": "return-value",
@@ -2315,7 +2053,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 33,
+      "line": 35,
       "path": "src/factory/core/pool/pool.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
@@ -2323,7 +2061,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 46,
+      "line": 48,
       "path": "src/factory/core/pool/pool.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
@@ -2331,23 +2069,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 224,
-      "path": "src/factory/core/pool/pool.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 254,
-      "path": "src/factory/core/pool/pool.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 36,
+      "line": 37,
       "path": "src/factory/core/pool/pool_processor.py",
       "rule": "C901",
       "slug": "wiring-bootstrap-deps",
@@ -2355,15 +2077,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 150,
-      "path": "src/factory/core/pool/pool_processor.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 39,
+      "line": 63,
       "path": "src/factory/core/pool/pool_processor_exec.py",
       "rule": "PLR0915",
       "slug": "complexity-residual",
@@ -2371,7 +2085,15 @@
     },
     {
       "bucket": "DEBT",
-      "line": 149,
+      "line": 63,
+      "path": "src/factory/core/pool/pool_processor_exec.py",
+      "rule": "C901",
+      "slug": "complexity-residual",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 173,
       "path": "src/factory/core/pool/pool_processor_exec.py",
       "rule": "reportUnnecessaryIsInstance",
       "slug": "defensive-narrow-payloads",
@@ -2379,15 +2101,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 187,
-      "path": "src/factory/core/pool/pool_processor_exec.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 202,
+      "line": 226,
       "path": "src/factory/core/pool/pool_processor_exec.py",
       "rule": "misc",
       "slug": "defensive-narrow-payloads",
@@ -2395,7 +2109,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 208,
+      "line": 232,
       "path": "src/factory/core/pool/pool_processor_exec.py",
       "rule": "union-attr",
       "slug": "defensive-narrow-payloads",
@@ -2403,15 +2117,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 209,
-      "path": "src/factory/core/pool/pool_processor_exec.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 263,
+      "line": 287,
       "path": "src/factory/core/pool/pool_processor_exec.py",
       "rule": "reportUnnecessaryIsInstance",
       "slug": "defensive-narrow-payloads",
@@ -2419,7 +2125,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 268,
+      "line": 292,
       "path": "src/factory/core/pool/pool_processor_exec.py",
       "rule": "arg-type",
       "slug": "defensive-narrow-payloads",
@@ -2427,7 +2133,7 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 272,
+      "line": 296,
       "path": "src/factory/core/pool/pool_processor_exec.py",
       "rule": "PLR0913",
       "source": "noqa"
@@ -2465,14 +2171,6 @@
       "source": "type-ignore"
     },
     {
-      "bucket": "DEBT",
-      "line": 125,
-      "path": "src/factory/core/pool/pool_processor_streaming.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
       "bucket": "UNTAGGED",
       "line": 33,
       "path": "src/factory/core/ports/blobstore.py",
@@ -2496,8 +2194,22 @@
       "source": "noqa"
     },
     {
+      "bucket": "UNTAGGED",
+      "line": 39,
+      "path": "src/factory/core/ports/socialmedia.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 54,
+      "path": "src/factory/core/ports/socialmedia.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
       "bucket": "DEBT",
-      "line": 282,
+      "line": 301,
       "path": "src/factory/core/processors/stream_processor.py",
       "rule": "reportUnnecessaryIsInstance",
       "slug": "defensive-narrow-payloads",
@@ -2505,7 +2217,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 323,
+      "line": 342,
       "path": "src/factory/core/processors/stream_processor.py",
       "rule": "reportUnnecessaryIsInstance",
       "slug": "defensive-narrow-payloads",
@@ -2513,38 +2225,29 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 325,
+      "line": 344,
       "path": "src/factory/core/processors/stream_processor.py",
       "rule": "reportUnnecessaryIsInstance",
       "source": "pyright-ignore"
     },
     {
       "bucket": "DEBT",
-      "line": 328,
+      "line": 347,
       "path": "src/factory/core/processors/stream_processor.py",
       "rule": "reportUnreachableCode",
       "slug": "defensive-narrow-payloads",
       "source": "pyright-ignore"
     },
     {
-      "bucket": "DEBT",
-      "line": 97,
-      "path": "src/factory/core/processors/vault_add.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
+      "bucket": "UNTAGGED",
+      "line": 36,
+      "path": "src/factory/core/stores/user_store_protocol.py",
+      "rule": "E501",
       "source": "noqa"
     },
     {
       "bucket": "DEBT",
-      "line": 143,
-      "path": "src/factory/core/trace.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 172,
+      "line": 175,
       "path": "src/factory/core/tts_dispatch.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
@@ -2552,7 +2255,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 172,
+      "line": 175,
       "path": "src/factory/core/tts_dispatch.py",
       "rule": "C901",
       "slug": "wiring-bootstrap-deps",
@@ -2560,8 +2263,8 @@
     },
     {
       "bucket": "DEBT",
-      "line": 202,
-      "path": "src/factory/core/tts_dispatch.py",
+      "line": 70,
+      "path": "src/factory/inbound/attachment_ingest.py",
       "rule": "BLE001",
       "slug": "boundary-broad-catch",
       "source": "noqa"
@@ -2589,42 +2292,21 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 51,
-      "path": "src/factory/infrastructure/jobs/dlq_router.py",
-      "rule": "BLE001",
-      "source": "noqa"
+      "line": 32,
+      "path": "src/factory/infrastructure/kv/agent_roster.py",
+      "rule": "attr-defined",
+      "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 76,
-      "path": "src/factory/infrastructure/jobs/dlq_router.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 110,
-      "path": "src/factory/infrastructure/jobs/dlq_router.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 120,
-      "path": "src/factory/infrastructure/jobs/dlq_router.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 91,
+      "line": 95,
       "path": "src/factory/infrastructure/kv/bot_roster.py",
       "rule": "attr-defined",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 94,
+      "line": 98,
       "path": "src/factory/infrastructure/kv/bot_roster.py",
       "rule": "arg-type",
       "source": "type-ignore"
@@ -2637,25 +2319,66 @@
       "source": "noqa"
     },
     {
-      "bucket": "DEBT",
-      "line": 35,
-      "path": "src/factory/infrastructure/stores/base/sqlite_base.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
+      "bucket": "UNTAGGED",
+      "line": 19,
+      "path": "src/factory/infrastructure/stores/identity/user_store.py",
+      "rule": "E501",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 91,
-      "path": "src/factory/infrastructure/stores/jobs/active_jobs_refresher.py",
-      "rule": "BLE001",
+      "line": 100,
+      "path": "src/factory/infrastructure/stores/identity/user_store.py",
+      "rule": "E501",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 130,
-      "path": "src/factory/infrastructure/stores/jobs/active_jobs_refresher.py",
-      "rule": "BLE001",
+      "line": 109,
+      "path": "src/factory/infrastructure/stores/identity/user_store.py",
+      "rule": "E501",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 113,
+      "path": "src/factory/infrastructure/stores/identity/user_store.py",
+      "rule": "E501",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 138,
+      "path": "src/factory/infrastructure/stores/identity/user_store.py",
+      "rule": "E501",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 155,
+      "path": "src/factory/infrastructure/stores/identity/user_store.py",
+      "rule": "E501",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 260,
+      "path": "src/factory/infrastructure/stores/identity/user_store.py",
+      "rule": "E501",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 284,
+      "path": "src/factory/infrastructure/stores/identity/user_store.py",
+      "rule": "E501",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 313,
+      "path": "src/factory/infrastructure/stores/identity/user_store.py",
+      "rule": "E501",
       "source": "noqa"
     },
     {
@@ -2668,16 +2391,45 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 107,
-      "path": "src/factory/infrastructure/turn_writer/health.py",
-      "rule": "BLE001",
+      "line": 127,
+      "path": "src/factory/infrastructure/turn_writer/writer.py",
+      "rule": "C901",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 114,
+      "line": 131,
       "path": "src/factory/infrastructure/turn_writer/writer.py",
       "rule": "union-attr",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 169,
+      "path": "src/factory/infrastructure/turn_writer/writer.py",
+      "rule": "BLE001",
+      "slug": "boundary-broad-catch",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 184,
+      "path": "src/factory/infrastructure/turn_writer/writer.py",
+      "rule": "attr-defined",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 191,
+      "path": "src/factory/infrastructure/turn_writer/writer.py",
+      "rule": "attr-defined",
+      "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 195,
+      "path": "src/factory/infrastructure/turn_writer/writer.py",
+      "rule": "attr-defined",
       "source": "type-ignore"
     },
     {
@@ -2766,42 +2518,42 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 71,
+      "line": 81,
       "path": "src/factory/llm/llm_client.py",
       "rule": "PLR0913",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 106,
+      "line": 116,
       "path": "src/factory/llm/llm_client.py",
       "rule": "PLR0913",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 173,
+      "line": 183,
       "path": "src/factory/llm/llm_client.py",
       "rule": "SLF001",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 173,
+      "line": 183,
       "path": "src/factory/llm/llm_client.py",
       "rule": "attr-defined",
       "source": "type-ignore"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 214,
+      "line": 224,
       "path": "src/factory/llm/llm_client.py",
       "rule": "SLF001",
       "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
-      "line": 214,
+      "line": 224,
       "path": "src/factory/llm/llm_client.py",
       "rule": "attr-defined",
       "source": "type-ignore"
@@ -2811,62 +2563,6 @@
       "line": 6,
       "path": "src/factory/llm/llm_codec.py",
       "rule": "F401",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 50,
-      "path": "src/factory/monitoring/__main__.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 56,
-      "path": "src/factory/monitoring/__main__.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 67,
-      "path": "src/factory/monitoring/__main__.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 87,
-      "path": "src/factory/monitoring/checks.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 129,
-      "path": "src/factory/monitoring/checks_audio.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 232,
-      "path": "src/factory/monitoring/checks_audio.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 146,
-      "path": "src/factory/monitoring/checks_varz.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
@@ -2885,7 +2581,7 @@
     },
     {
       "bucket": "DEBT",
-      "line": 65,
+      "line": 66,
       "path": "src/factory/nats/nats_bus.py",
       "rule": "PLR0913",
       "slug": "wiring-bootstrap-deps",
@@ -2899,10 +2595,11 @@
       "source": "noqa"
     },
     {
-      "bucket": "UNTAGGED",
+      "bucket": "DEBT",
       "line": 195,
       "path": "src/factory/nats/nats_channel_proxy.py",
       "rule": "BLE001",
+      "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
@@ -2911,6 +2608,27 @@
       "path": "src/factory/nats/render_event_codec_registry.py",
       "rule": "return-value",
       "source": "type-ignore"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 105,
+      "path": "src/factory/nats/socialmedia/nats_socialmedia_client.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 138,
+      "path": "src/factory/nats/socialmedia/nats_socialmedia_client.py",
+      "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "UNTAGGED",
+      "line": 47,
+      "path": "src/factory/nats/socialmedia/nats_socialmedia_codec.py",
+      "rule": "E501",
+      "source": "noqa"
     },
     {
       "bucket": "UNTAGGED",
@@ -2955,17 +2673,11 @@
       "source": "pyright-ignore"
     },
     {
-      "bucket": "UNTAGGED",
+      "bucket": "DEBT",
       "line": 111,
       "path": "src/factory/outbound/_emitter_run.py",
       "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 135,
-      "path": "src/factory/outbound/_emitter_run.py",
-      "rule": "BLE001",
+      "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
@@ -2977,23 +2689,17 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 114,
+      "line": 119,
       "path": "src/factory/outbound/_tool_recap.py",
       "rule": "C901",
       "source": "noqa"
     },
     {
-      "bucket": "UNTAGGED",
-      "line": 5,
-      "path": "src/factory/outbound/error_handler.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
+      "bucket": "DEBT",
       "line": 72,
       "path": "src/factory/outbound/error_handler.py",
       "rule": "BLE001",
+      "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
@@ -3040,30 +2746,9 @@
     },
     {
       "bucket": "UNTAGGED",
-      "line": 177,
-      "path": "src/factory/tools/gh_token/daemon.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 253,
+      "line": 262,
       "path": "src/factory/tools/gh_token/daemon.py",
       "rule": "SIM102",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 264,
-      "path": "src/factory/tools/gh_token/daemon.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 266,
-      "path": "src/factory/tools/gh_token/daemon.py",
-      "rule": "BLE001",
       "source": "noqa"
     },
     {
@@ -3076,40 +2761,10 @@
     },
     {
       "bucket": "DEBT",
-      "line": 195,
-      "path": "src/factory/tools/gh_token/dispenser.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 157,
-      "path": "src/factory/tools/gh_token/helper.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "DEBT",
-      "line": 249,
-      "path": "src/factory/tools/gh_token/helper.py",
-      "rule": "BLE001",
-      "slug": "boundary-broad-catch",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
-      "line": 69,
-      "path": "src/factory/tools/gh_token/mint_failure_publisher.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
-      "bucket": "UNTAGGED",
       "line": 86,
       "path": "src/factory/transport/nats_request_response.py",
       "rule": "BLE001",
+      "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
@@ -3141,13 +2796,6 @@
       "source": "noqa"
     },
     {
-      "bucket": "UNTAGGED",
-      "line": 80,
-      "path": "src/factory/transport/typing_publisher.py",
-      "rule": "BLE001",
-      "source": "noqa"
-    },
-    {
       "bucket": "DEBT",
       "line": 64,
       "path": "src/factory/transport/worker_pool_client.py",
@@ -3156,10 +2804,11 @@
       "source": "noqa"
     },
     {
-      "bucket": "UNTAGGED",
+      "bucket": "DEBT",
       "line": 129,
       "path": "src/factory/transport/worker_pool_client.py",
       "rule": "BLE001",
+      "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
@@ -3167,6 +2816,14 @@
       "line": 75,
       "path": "src/factory/typing/listener.py",
       "rule": "PLR0913",
+      "source": "noqa"
+    },
+    {
+      "bucket": "DEBT",
+      "line": 119,
+      "path": "src/factory/typing/listener.py",
+      "rule": "BLE001",
+      "slug": "boundary-broad-catch",
       "source": "noqa"
     },
     {
@@ -3297,5 +2954,186 @@
     "file-exemptions",
     "folder-exemptions"
   ],
-  "stale_references": []
+  "stale_references": [
+    {
+      "line": 57,
+      "path": "src/factory/adapters/clipool/_pool_bridge.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 135,
+      "path": "src/factory/adapters/discord/discord_formatter.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 84,
+      "path": "src/factory/adapters/discord/discord_outbound.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 268,
+      "path": "src/factory/adapters/nats/jetstream_audio_consumer.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 136,
+      "path": "src/factory/adapters/nats/mint_failure_subscriber.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 174,
+      "path": "src/factory/adapters/nats/nats_outbound_listener.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 240,
+      "path": "src/factory/adapters/omp/omp_worker.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 139,
+      "path": "src/factory/adapters/shared/_shared.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 110,
+      "path": "src/factory/adapters/shared/inbound/pipeline.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 235,
+      "path": "src/factory/adapters/telegram/telegram_formatter.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 112,
+      "path": "src/factory/blobstore/_handlers.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 43,
+      "path": "src/factory/bootstrap/lifecycle/lifecycle_helpers.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 62,
+      "path": "src/factory/cli/agent.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 113,
+      "path": "src/factory/cli/setup.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 78,
+      "path": "src/factory/cli/voice_smoke.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 51,
+      "path": "src/factory/core/cli/cli_pool_entry.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 158,
+      "path": "src/factory/core/cli/cli_pool_send.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 172,
+      "path": "src/factory/core/cli/cli_pool_spawn.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 136,
+      "path": "src/factory/core/cli/cli_pool_worker.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 206,
+      "path": "src/factory/core/cli/protocol/cli_non_streaming.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 164,
+      "path": "src/factory/core/cli/protocol/cli_streaming.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 224,
+      "path": "src/factory/core/hub/hub.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 70,
+      "path": "src/factory/inbound/attachment_ingest.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 169,
+      "path": "src/factory/infrastructure/turn_writer/writer.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 195,
+      "path": "src/factory/nats/nats_channel_proxy.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 111,
+      "path": "src/factory/outbound/_emitter_run.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 72,
+      "path": "src/factory/outbound/error_handler.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 86,
+      "path": "src/factory/transport/nats_request_response.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 129,
+      "path": "src/factory/transport/worker_pool_client.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    },
+    {
+      "line": 119,
+      "path": "src/factory/typing/listener.py",
+      "reason": "drained",
+      "slug": "boundary-broad-catch"
+    }
+  ]
 }

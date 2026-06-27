@@ -12,9 +12,13 @@ export function CockpitLayout() {
   const [activeId, setActiveId] = useState<string | null>(() => loadTabs()[0]?.id ?? null);
 
   const { data: agents = [] } = useQuery({ queryKey: ["agents"], queryFn: fetchAgents });
+  const activeTab = useMemo(() => tabs.find((t) => t.id === activeId) ?? tabs[0], [tabs, activeId]);
+
   const { data: status = [] } = useQuery({
-    queryKey: ["agent-status"],
-    queryFn: fetchAgentStatus,
+    queryKey: ["agent-status", activeTab?.agent, activeTab?.harness],
+    queryFn: () =>
+      fetchAgentStatus(activeTab?.agent, activeTab?.harness),
+    enabled: Boolean(activeTab?.agent),
     refetchInterval: 30_000,
   });
 
@@ -30,9 +34,11 @@ export function CockpitLayout() {
     }
   }, [agents, tabs.length]);
 
-  const activeTab = useMemo(() => tabs.find((t) => t.id === activeId) ?? tabs[0], [tabs, activeId]);
-
-  const healthFor = useCallback((agent: string) => status.find((h) => h.agent === agent), [status]);
+  const healthFor = useCallback(
+    (agent: string, harness?: ChatTab["harness"]) =>
+      status.find((h) => h.agent === agent && (!harness || h.harness === harness)),
+    [status],
+  );
 
   const updateTab = (id: string, patch: Partial<ChatTab>) => {
     setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
@@ -68,7 +74,7 @@ export function CockpitLayout() {
         {activeTab ? (
           <ChatPane
             tab={activeTab}
-            health={healthFor(activeTab.agent)}
+            health={healthFor(activeTab.agent, activeTab.harness)}
             onUpdate={(patch) => updateTab(activeTab.id, patch)}
           />
         ) : (

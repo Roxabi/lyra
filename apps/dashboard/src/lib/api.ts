@@ -8,6 +8,16 @@ export interface AgentHealth {
   online: boolean;
 }
 
+export interface DashboardSession {
+  session_id: string;
+  pool_id: string;
+  platform: "telegram" | "discord" | "web";
+  cli_session_id: string | null;
+  first_user_msg: string | null;
+  turn_count: number;
+  last_active_at: string;
+}
+
 export async function fetchAgents(): Promise<string[]> {
   const res = await fetch("/api/agents");
   if (!res.ok) throw new Error("agents fetch failed");
@@ -15,17 +25,8 @@ export async function fetchAgents(): Promise<string[]> {
   return data.agents;
 }
 
-export async function fetchAgentStatus(
-  agent?: string,
-  harness?: HarnessKind,
-): Promise<AgentHealth[]> {
-  const params = new URLSearchParams();
-  if (agent && harness) {
-    params.set("agent", agent);
-    params.set("harness", harness);
-  }
-  const qs = params.toString();
-  const res = await fetch(`/api/bff/agents/status${qs ? `?${qs}` : ""}`);
+export async function fetchAgentStatus(): Promise<AgentHealth[]> {
+  const res = await fetch("/api/bff/agents/status");
   if (!res.ok) throw new Error("status fetch failed");
   const data = (await res.json()) as { agents: AgentHealth[] };
   return data.agents;
@@ -61,6 +62,26 @@ export function openChatStream(
     onEvent(JSON.parse(msg.data) as { type: string; text?: string; message?: string });
   };
   return source;
+}
+
+export async function fetchSessions(agent: string): Promise<DashboardSession[]> {
+  const res = await fetch(`/api/bff/sessions?agent=${encodeURIComponent(agent)}`);
+  if (!res.ok) throw new Error("sessions fetch failed");
+  const data = (await res.json()) as { sessions: DashboardSession[] };
+  return data.sessions;
+}
+
+export async function resumeSession(
+  agent: string,
+  cliSessionId: string,
+): Promise<{ accepted: boolean; message: string }> {
+  const res = await fetch("/api/bff/sessions/resume", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ agent, cli_session_id: cliSessionId }),
+  });
+  if (!res.ok) throw new Error("resume failed");
+  return res.json() as Promise<{ accepted: boolean; message: string }>;
 }
 
 export const MODEL_CATALOG: Record<HarnessKind, string[]> = {

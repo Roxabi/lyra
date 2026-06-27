@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChatPane } from "@/components/ChatPane";
 import { MultiChatTabs } from "@/components/MultiChatTabs";
 import { PanelMount } from "@/components/PanelMount";
-import { fetchAgents } from "@/lib/api";
+import { ReprendrePanel } from "@/components/ReprendrePanel";
+import { fetchAgentStatus, fetchAgents } from "@/lib/api";
 import { type ChatTab, loadTabs, newTab, saveTabs } from "@/lib/chats-storage";
 
 export function CockpitLayout() {
@@ -11,7 +12,11 @@ export function CockpitLayout() {
   const [activeId, setActiveId] = useState<string | null>(() => loadTabs()[0]?.id ?? null);
 
   const { data: agents = [] } = useQuery({ queryKey: ["agents"], queryFn: fetchAgents });
-  const activeTab = useMemo(() => tabs.find((t) => t.id === activeId) ?? tabs[0], [tabs, activeId]);
+  const { data: status = [] } = useQuery({
+    queryKey: ["agent-status"],
+    queryFn: fetchAgentStatus,
+    refetchInterval: 30_000,
+  });
 
   useEffect(() => {
     saveTabs(tabs);
@@ -24,6 +29,10 @@ export function CockpitLayout() {
       setActiveId(t.id);
     }
   }, [agents, tabs.length]);
+
+  const activeTab = useMemo(() => tabs.find((t) => t.id === activeId) ?? tabs[0], [tabs, activeId]);
+
+  const healthFor = useCallback((agent: string) => status.find((h) => h.agent === agent), [status]);
 
   const updateTab = (id: string, patch: Partial<ChatTab>) => {
     setTabs((prev) => prev.map((t) => (t.id === id ? { ...t, ...patch } : t)));
@@ -59,7 +68,7 @@ export function CockpitLayout() {
         {activeTab ? (
           <ChatPane
             tab={activeTab}
-            health={undefined}
+            health={healthFor(activeTab.agent)}
             onUpdate={(patch) => updateTab(activeTab.id, patch)}
           />
         ) : (
@@ -67,6 +76,18 @@ export function CockpitLayout() {
         )}
       </main>
       <aside className="flex min-h-0 flex-col gap-3 overflow-auto rounded-lg border border-border bg-card/50 p-3">
+        <ReprendrePanel
+          agent={activeTab?.agent ?? null}
+          onResumed={(agent) => {
+            const existing = tabs.find((t) => t.agent === agent);
+            if (existing) setActiveId(existing.id);
+            else {
+              const t = newTab(agent);
+              setTabs((prev) => [...prev, t]);
+              setActiveId(t.id);
+            }
+          }}
+        />
         <PanelMount id="jobs" title="Jobs (#1772)" disabled />
         <PanelMount id="obs" title="Obs (#1774)" disabled />
       </aside>

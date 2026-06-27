@@ -19,7 +19,7 @@
 |------|--------|-------|
 | Pre-flight | `done` | import-linter + contracts + Makefile
 | Block 1 — Cockpit + Chat + Harness/Model | `done` | SPA + vitest + Docker/CI
-| Block 2 — SessionCatalog + Reprendre | `in_progress` | hub RPC
+| Block 2 — SessionCatalog + Reprendre | `done` | hub RPC + BFF + ACL regen
 | Block 3 — E2E + Hardening + Ship | `not_started` | —
 
 ---
@@ -109,33 +109,33 @@
 
 ## BLOCK 2 — SessionCatalog + Reprendre
 
-**Statut :** `in_progress`  
+**Statut :** `done`  
 **GO :** seulement après Block 1 green
 
 ### Hub (avant les routes BFF session)
 
-- [ ] `session_catalog.list_sessions_for_agent(store, bindings, agent, limit)` (+ `TurnStore.list_recent_sessions`)
+- [x] `session_catalog.list_sessions_for_agent(store, bindings, agent, limit)` (+ `TurnStore.list_recent_sessions`)
   - tous les `pool_id` → agent via bindings wildcard ; tri `last_active_at DESC`
-- [ ] Hub NATS RPC `factory.dashboard.sessions.list` `{agent, limit}`
+- [x] Hub NATS RPC `factory.dashboard.sessions.list` `{agent, limit}`
   - réponse : `session_id`, `pool_id`, `platform`, `cli_session_id`, `first_user_msg`, `turn_count`, `last_active_at`
-- [ ] Optionnel : `factory.dashboard.sessions.turns` `{session_id}` — reporté (hors MVP)
-- [ ] Contracts dans `roxabi-contracts` + `contracts-bump`
-- [ ] ACL matrix : `request_reply_flows` pour les nouveaux subjects (`factory.dashboard.>`)
-- [ ] `make nats-regen-specs nats-regen-authconf` ; vérifier restart `factory-dashboard`
+- [x] Optionnel : `factory.dashboard.sessions.turns` `{session_id}` — reporté (hors MVP)
+- [x] Contracts dans `roxabi-contracts` + `contracts-bump`
+- [x] ACL matrix : `request_reply_flows` pour les nouveaux subjects (`factory.dashboard.>`)
+- [x] `make nats-regen-specs nats-regen-authconf` ; vérifier restart `factory-dashboard`
 
 ### BFF + UI
 
-- [ ] `GET /api/bff/sessions?agent=` → hub RPC (pas `turns.db`)
-- [ ] `POST /api/bff/sessions/resume` `{cli_session_id, agent}` → `resume_session()` sur pool web
-- [ ] Panneau Reprendre : liste unifiée par agent (filtre A) + badge `telegram` / `discord` / `web`
-- [ ] Resume → ouvrir/focus onglet chat + charger historique turns (optionnel 2b) — focus onglet oui, historique reporté
+- [x] `GET /api/bff/sessions?agent=` → hub RPC (pas `turns.db`)
+- [x] `POST /api/bff/sessions/resume` `{cli_session_id, agent}` → `resume_session()` sur pool web
+- [x] Panneau Reprendre : liste unifiée par agent (filtre A) + badge `telegram` / `discord` / `web`
+- [x] Resume → ouvrir/focus onglet chat + charger historique turns (optionnel 2b) — focus onglet oui, historique reporté
 
 ### Block 2 — done when
 
-- [ ] Sessions cross-platform visibles par agent avec tag origine
-- [ ] Resume depuis pool web pour `cli_session_id` TG/DC/web
-- [ ] Pas de duplication SQL `session_commands` dans dashboard
-- [ ] pytest hub RPC + intégration BFF green
+- [x] Sessions cross-platform visibles par agent avec tag origine
+- [x] Resume depuis pool web pour `cli_session_id` TG/DC/web
+- [x] Pas de duplication SQL `session_commands` dans dashboard
+- [x] pytest hub RPC + intégration BFF green
 
 ---
 
@@ -210,9 +210,11 @@
 
 - [x] Cockpit SPA, multi-chat, harness/model pickers, `stream_token`
 
-### 2026-06-28 — Block 2 slice (in_progress)
+### 2026-06-28 — Block 2 slice
 
-- Statut Block 2 → `in_progress`
+- [x] `session_catalog.list_sessions_for_agent`, hub `dashboard_rpc.py`, BFF `/api/bff/sessions*`
+- [x] ACL `factory.dashboard.>` + `nats-regen-specs` + auth.conf drift green
+- Gates : pytest hub RPC + BFF
 
 
 ---

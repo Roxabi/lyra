@@ -36,7 +36,7 @@ STRUCTURAL_CLIENTS = [
     "factory-hub",
     "factory-telegram",
     "factory-discord",
-    "factory-web",
+    "factory-dashboard",
     "factory-clipool",
     "factory-turn-writer",
     "factory-gh-helper",

@@ -98,4 +98,5 @@ The trace plane (OTel / Langfuse) is **not** gated on the distributed harness (*
 - [`docs/architecture/adr/038-health-monitoring-layer-boundaries.mdx`](038-health-monitoring-layer-boundaries.mdx) — plane ③ health-observation layers
 - [`docs/architecture/job-model.md`](../job-model.md) — job plane SSoT
 - [`docs/architecture/adr/093-operator-audit-three-channel.mdx`](093-operator-audit-three-channel.mdx) — deploy/operator audit channels ingested by Loki (operator.log + journald)
+- [ADR-094](094-control-plane-dashboard-consolidation.mdx) — `factory-web` → `factory-dashboard`; rejects parallel `platform=dashboard` adapter
 - Epics: #1759 (engines), #1760 (control-plane dashboard); inputs #1764 (Claude Code OTel), #671 (LiteLLM), #1490 (harness), #1623 (cross-NATS spans)

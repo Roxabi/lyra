@@ -1,0 +1,28 @@
+---
+title: "Consensus — factory-web → factory-dashboard (ADR-094)"
+status: consensus-reached
+date: 2026-06-27
+issues: [1760, 1769, 1770, 1771, 1992]
+adr: docs/architecture/adr/094-control-plane-dashboard-consolidation.mdx
+---
+
+## Problem
+
+Should epic #1760 build a parallel `platform=dashboard` adapter stack (#1769/#1770), or evolve `factory-web` into the sole control-plane surface?
+
+## Panel
+
+| Expert | Verdict |
+|---|---|
+| Architect | Evolve + rename unit; rescope #1769–#1771 |
+| Axial drift | Reject Option B (N×M); split chat adapter vs obs BFF in one process |
+
+## Recommendation
+
+**Evolve `factory-web` → `factory-dashboard`** (ADR-094). Close #1770 as superseded. Rescope #1769 to phase-2 wire deltas only.
+
+## Phases
+
+1. **Done 2026-06-27** — Quadlet rename, ADR-094, issue rescope
+2. Operator auth (#1992) + NATS `dashboard.<bot>` + ACL merge
+3. Retire prod `smoke`; CI via pytest / `FACTORY_SMOKE_MODE`

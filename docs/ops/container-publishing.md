@@ -176,6 +176,7 @@ All three must be enabled and active for fully automatic deploys. Check with
 | `factory-hub` | `ghcr.io/roxabi/factory:staging-svc` | registry |
 | `factory-telegram` | `ghcr.io/roxabi/factory:staging-svc` | registry |
 | `factory-discord` | `ghcr.io/roxabi/factory:staging-svc` | registry |
+| `factory-dashboard` | `ghcr.io/roxabi/factory:staging-svc` | registry |
 | `factory-clipool` | `ghcr.io/roxabi/factory:staging` | registry |
 | `factory-gh-helper` | `ghcr.io/roxabi/factory:staging` | registry |
 | `factory-turn-writer` | `ghcr.io/roxabi/factory:staging-svc` | registry |
@@ -218,7 +219,7 @@ podman auto-update
 
 If auto-update is disabled or you need an immediate deploy without waiting for the timer:
 
-CI publishes both tags in parallel: `:staging` is used by `factory-clipool` and `factory-gh-helper`; `:staging-svc` is used by `factory-hub`, `factory-telegram`, `factory-discord`, `factory-turn-writer`, and `factory-blobstore`. Both must be pulled for a complete manual refresh.
+CI publishes both tags in parallel: `:staging` is used by `factory-clipool` and `factory-gh-helper`; `:staging-svc` is used by `factory-hub`, `factory-telegram`, `factory-discord`, `factory-dashboard`, `factory-turn-writer`, and `factory-blobstore`. Both must be pulled for a complete manual refresh.
 
 ```bash
 podman pull ghcr.io/roxabi/factory:staging

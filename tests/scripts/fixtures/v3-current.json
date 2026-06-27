@@ -40,6 +40,11 @@
       "requester": "hub",
       "responder": "socialmedia-adapter",
       "subject": "factory.tool.socialmedia.>"
+    },
+    {
+      "requester": "web-adapter",
+      "responder": "hub",
+      "subject": "factory.dashboard.>"
     }
   ],
   "identities": {
@@ -76,7 +81,8 @@
         "$KV.factory-msg-index.>",
         "$KV.factory-active-jobs.>",
         "$JS.ACK.FACTORY_OUTBOUND_AUDIO.>",
-        "$KV.factory_outbound_audio_sent.>"
+        "$KV.factory_outbound_audio_sent.>",
+        "_inbox.web-adapter.>"
       ],
       "subscribe": [
         "factory.inbound.telegram.>",
@@ -90,6 +96,7 @@
         "factory.tool.socialmedia.heartbeat",
         "factory.clipool.heartbeat",
         "factory.omp.heartbeat",
+        "factory.dashboard.>",
         "factory.gh.mint_failure.>",
         "factory.job.*.result",
         "$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.FACTORY_JOBS.>",
@@ -184,9 +191,10 @@
       "owner": "factory",
       "description": "Web smoke adapter \u2014 browser chat UI + SSE on factory.{inbound,outbound}.web.smoke (#1977).",
       "notes": "Lean adapter ACL: no outbound-audio JetStream consumer (NullAudioConsumer fallback). wait_for_hub uses STREAM.INFO + STREAM.MSG.GET on KV_factory-state (#1572).",
-      "allow_responses": false,
+      "allow_responses": true,
       "publish": [
         "factory.inbound.web.>",
+        "factory.dashboard.>",
         "factory.system.ready",
         "factory.event.>",
         "factory.metric.>",

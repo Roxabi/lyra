@@ -17,6 +17,18 @@ COPY packages/ packages/
 COPY src/ src/
 RUN uv sync --frozen --no-dev
 
+# ── Dashboard SPA builder (#1771) ───────────────────────────────────────────
+FROM oven/bun:1.3.14 AS dashboard-builder
+WORKDIR /app
+COPY package.json bun.lock biome.json ./
+COPY apps/dashboard/package.json apps/dashboard/
+COPY packages/shared/package.json packages/shared/
+COPY brand/ brand/
+COPY packages/shared/ packages/shared/
+COPY apps/dashboard/ apps/dashboard/
+RUN bun install --frozen-lockfile
+RUN bun run build:dashboard
+
 # ── Slim service runtime (hub, telegram, discord) ───────────────────────────
 # TODO: pin base-svc by digest — track alongside base:latest pinning issue
 FROM ghcr.io/roxabi/base-svc:latest AS svc-runtime
@@ -27,6 +39,7 @@ USER root
 RUN useradd -u 1500 -m factory
 
 COPY --from=builder --chown=factory:factory /app /app
+COPY --from=dashboard-builder --chown=factory:factory /app/apps/dashboard/dist /app/apps/dashboard/dist
 
 WORKDIR /app
 

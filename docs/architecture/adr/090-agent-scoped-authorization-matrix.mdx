@@ -178,12 +178,13 @@ attempted — Telegram prohibits bot-initiated DMs to users who never messaged t
 user has DMs disabled. A `MessageDropped(reason="agent_unauthorized")` audit event is still
 emitted for observability.
 
-> **Status (2026-06-24):** Implemented by #1982 (epic #1980). `AuthorizeAgentMiddleware`
-> runs at pipeline index 7 (immediately after `ResolveBindingMiddleware`), calls
-> `AgentAuthorizer`, and on deny emits `MessageDropped(reason="agent_unauthorized")` plus an
-> inline pull refusal pointing to factory.roxabi.dev. The per-platform `@bot_public` handle
-> stays deferred (`BotRow` has no public-bot field yet); role-grant population and the
-> operator CLI are separate epic-#1980 slices.
+> **Status (2026-06-27):** MVP shipped (epic #1980). `AuthorizeAgentMiddleware` runs at
+> pipeline index 7 (immediately after `ResolveBindingMiddleware`), calls `AgentAuthorizer`,
+> and on deny emits `MessageDropped(reason="agent_unauthorized")` plus an inline pull refusal
+> using `BotRow.public_bot` / KV roster `RosterBotEntry.public_bot` when set, else
+> factory.roxabi.dev. Operator CLI (`grant` / `revoke` / `auth list`) and UserStore SSOT
+> landed in PR #2024. Post-MVP slices (dual-read, `migrate-bot-grants`, `admin`, alias) remain
+> open under #1980.
 
 ### 6. Adapter impact (C3 preserved)
 

@@ -173,7 +173,7 @@ class TestTryNotifyUser:
 
     async def test_exception_swallowed(self) -> None:
         adapter = MagicMock()
-        adapter.send = AsyncMock(side_effect=Exception("network error"))
+        adapter.send = AsyncMock(side_effect=RuntimeError("network error"))
         msg = make_dispatcher_msg()
         # Must not propagate the exception
         await try_notify_user("telegram", adapter, msg, "⚠️ error")

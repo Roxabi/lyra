@@ -2,7 +2,7 @@
 
 Wraps platform-side exceptions into SanitizedError (type(exc).__name__ only,
 never str(exc)) and routes them via Result[T, SanitizedError]. Replaces the
-13 ad-hoc `except Exception:  # noqa: BLE001` sites that used to live in
+13 ad-hoc broad-catch sites that used to live in
 OutboundEmitter (Phase 2 of stage-axis refactor, #1279).
 """
 
@@ -69,7 +69,7 @@ class OutboundErrorHandler:
         try:
             value = await call()
             return Ok(value)
-        except Exception as exc:  # noqa: BLE001 — single catch site for outbound boundaries
+        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: outbound-guard — single sanitization catch site
             log.debug("outbound boundary %s: %s", context, type(exc).__name__)
             return Err(self.handle(exc, context=context))
 

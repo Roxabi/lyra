@@ -54,6 +54,26 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def _fetch_once_then_park(mock_msg: MagicMock) -> AsyncMock:
+    """Mock JetStream pull fetch: deliver *mock_msg* once, then park until cancel.
+
+    Subsequent fetch calls block on an unset Event so the consume loop stays idle
+    until the test cancels the task — no timing-based sleep.
+    """
+    fetch_call_count = 0
+    park = asyncio.Event()
+
+    async def _fetch(batch, timeout):
+        nonlocal fetch_call_count
+        fetch_call_count += 1
+        if fetch_call_count == 1:
+            return [mock_msg]
+        await park.wait()  # event-based — park until consume-loop task.cancel()
+        return []  # unreachable
+
+    return AsyncMock(side_effect=_fetch)
+
+
 def _event(  # noqa: PLR0913
     payload,
     *,
@@ -431,10 +451,9 @@ async def test_consume_loop_propagates_connection_closed_error(
 ) -> None:
     """ConnectionClosedError in fetch must re-raise (not fall through to nak path).
 
-    Negative test: if the except nats.errors.ConnectionClosedError clause at
-    writer.py:122-127 is deleted, the error is swallowed by the inner
-    except Exception block which naks and continues — exactly the wrong
-    behaviour. This test fails in that scenario.
+    Negative test: if the except nats.errors.ConnectionClosedError clause is
+    deleted, fetch errors must not be mistaken for per-message handler failures.
+    ConnectionClosedError must propagate so Quadlet can restart the process.
     """
     # Arrange: writer whose _sub.fetch raises ConnectionClosedError immediately.
     mock_sub = MagicMock()
@@ -498,21 +517,166 @@ async def test_consume_loop_nacks_on_log_turn_db_failure(
 
     mock_msg.nak = AsyncMock(side_effect=_nak_and_signal)
 
-    # First fetch: one-message batch.  Subsequent fetches park until cancelled.
-    fetch_call_count = 0
+    mock_sub = MagicMock()
+    mock_sub.fetch = _fetch_once_then_park(mock_msg)
 
-    async def _fetch(batch, timeout):
-        nonlocal fetch_call_count
-        fetch_call_count += 1
-        if fetch_call_count == 1:
-            return [mock_msg]
-        await asyncio.sleep(
-            3600
-        )  # park — will be interrupted by task.cancel()  # event-based
-        return []  # unreachable
+    w = TurnWriter(turn_store=store, js=MagicMock())
+    w._sub = mock_sub
+
+    db = store._db_or_raise()
+    with patch.object(
+        db,
+        "execute",
+        new=AsyncMock(side_effect=sqlite3.OperationalError("disk I/O error")),
+    ):
+        task = asyncio.create_task(w._consume_loop())
+        await asyncio.wait_for(done_event.wait(), timeout=2.0)
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    mock_msg.nak.assert_called_once()
+    mock_msg.ack.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_consume_loop_terms_on_validation_error(
+    store: TurnStore,
+) -> None:
+    """Invalid JSON payload must term (poison) — no nak, no ack."""
+    done_event = asyncio.Event()
+
+    mock_msg = MagicMock()
+    mock_msg.subject = "factory.turns.write"
+    mock_msg.data = b"{not valid json"
+    mock_msg.ack = AsyncMock()
+    mock_msg.nak = AsyncMock()
+
+    async def _term_and_signal(*_args, **_kwargs):
+        done_event.set()
+
+    mock_msg.term = AsyncMock(side_effect=_term_and_signal)
 
     mock_sub = MagicMock()
-    mock_sub.fetch = AsyncMock(side_effect=_fetch)
+    mock_sub.fetch = _fetch_once_then_park(mock_msg)
+
+    w = TurnWriter(turn_store=store, js=MagicMock())
+    w._sub = mock_sub
+
+    task = asyncio.create_task(w._consume_loop())
+    await asyncio.wait_for(done_event.wait(), timeout=2.0)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    mock_msg.term.assert_called_once()
+    mock_msg.nak.assert_not_called()
+    mock_msg.ack.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_consume_loop_nacks_on_unexpected_handler_error(
+    store: TurnStore,
+) -> None:
+    """TypeError in handler must NAK and keep the consume loop alive."""
+    done_event = asyncio.Event()
+
+    mock_msg = MagicMock()
+    mock_msg.subject = "factory.turns.write"
+    mock_msg.data = (
+        TurnWriteEvent(
+            contract_version=CONTRACT_VERSION,
+            trace_id="trace-unexpected",
+            issued_at=datetime.now(UTC),
+            event_id=uuid4(),
+            pool_id="pool:unexpected:1",
+            session_id="sess-unexpected-001",
+            platform="telegram",
+            user_id="u:unexpected:1",
+            timestamp=datetime.now(UTC),
+            payload=LogTurnPayload(
+                role="user", content="trigger bug", message_id="msg-unexpected"
+            ),
+        )
+        .model_dump_json()
+        .encode()
+    )
+    mock_msg.ack = AsyncMock()
+
+    async def _nak_and_signal(*_args, **_kwargs):
+        done_event.set()
+
+    mock_msg.nak = AsyncMock(side_effect=_nak_and_signal)
+
+    mock_sub = MagicMock()
+    mock_sub.fetch = _fetch_once_then_park(mock_msg)
+
+    w = TurnWriter(turn_store=store, js=MagicMock())
+    w._sub = mock_sub
+
+    with patch.object(w, "_handle", AsyncMock(side_effect=TypeError("handler bug"))):
+        task = asyncio.create_task(w._consume_loop())
+        await asyncio.wait_for(done_event.wait(), timeout=2.0)
+        assert not task.done()
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    mock_msg.nak.assert_called_once()
+    mock_msg.ack.assert_not_called()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("payload", "session_id"),
+    [
+        (EndSessionPayload(), "sess-end-nack"),
+        (SetCliSessionPayload(cli_session_id="cli-nack"), "sess-cli-nack"),
+    ],
+    ids=["end_session", "set_cli_session"],
+)
+async def test_consume_loop_nacks_on_session_mutator_db_failure(
+    store: TurnStore,
+    payload: EndSessionPayload | SetCliSessionPayload,
+    session_id: str,
+) -> None:
+    """Session mutator store failures NAK — never ack after failed write (#1637)."""
+    await store._start_session(session_id, "pool:session-nack")
+
+    done_event = asyncio.Event()
+    mock_msg = MagicMock()
+    mock_msg.subject = "factory.turns.write"
+    mock_msg.data = (
+        TurnWriteEvent(
+            contract_version=CONTRACT_VERSION,
+            trace_id="trace-session-nack",
+            issued_at=datetime.now(UTC),
+            event_id=uuid4(),
+            pool_id="pool:session-nack",
+            session_id=session_id,
+            platform="telegram",
+            user_id="u:session:1",
+            timestamp=datetime.now(UTC),
+            payload=payload,
+        )
+        .model_dump_json()
+        .encode()
+    )
+    mock_msg.ack = AsyncMock()
+
+    async def _nak_and_signal(*_args, **_kwargs):
+        done_event.set()
+
+    mock_msg.nak = AsyncMock(side_effect=_nak_and_signal)
+
+    mock_sub = MagicMock()
+    mock_sub.fetch = _fetch_once_then_park(mock_msg)
 
     w = TurnWriter(turn_store=store, js=MagicMock())
     w._sub = mock_sub

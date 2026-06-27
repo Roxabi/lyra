@@ -232,7 +232,7 @@ class TelegramFormatter(BaseFormatter):
                         chunk,
                         topic_id=self._topic_id,
                     )
-            except Exception as exc:  # noqa: BLE001 — terminal final-chunk send; type sanitized
+            except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: telegram-send — terminal final-chunk; type sanitized
                 log.warning(
                     "Failed to send final text chunk: type=%s", type(exc).__name__
                 )

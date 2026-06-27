@@ -7,6 +7,7 @@ dispatch_voice_stream(), and _dispatch_pipeline_result() for Hub.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Callable, Coroutine
 from typing import TYPE_CHECKING, Any
@@ -28,7 +29,6 @@ if TYPE_CHECKING:
     from .pipeline.message_pipeline import PipelineResult
 
 log = logging.getLogger(__name__)
-
 
 class HubDispatchMixin:
     """Mixin providing outbound dispatch for Hub."""
@@ -120,13 +120,13 @@ class HubDispatchMixin:
                 if result.response.audio:
                     try:
                         await self.dispatch_audio(msg, result.response.audio)
-                    except Exception as exc:
-                        log.exception("dispatch_audio() failed: %s", exc)
+                    except (OSError, RuntimeError, TypeError, ValueError):
+                        log.exception("dispatch_audio() failed")
                 if result.response.content:
                     try:
                         await self.dispatch_response(msg, result.response)
-                    except Exception as exc:
-                        log.exception("dispatch_response() failed: %s", exc)
+                    except (OSError, RuntimeError, TypeError, ValueError):
+                        log.exception("dispatch_response() failed")
             else:
                 log.debug(
                     "command returned empty response for msg id=%s — skipping dispatch",
@@ -135,5 +135,8 @@ class HubDispatchMixin:
         elif result.action == Action.SUBMIT_TO_POOL and result.pool:
             try:
                 result.pool.submit(result.msg if result.msg is not None else msg)
-            except Exception:
-                log.exception("pool.submit() failed for msg id=%s — skipping", msg.id)
+            except asyncio.QueueFull:
+                log.warning(
+                    "pool.submit() queue full for msg id=%s — dropping",
+                    msg.id,
+                )

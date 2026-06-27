@@ -179,7 +179,7 @@ async def handle_voice_message(adapter: "TelegramAdapter", msg: Any) -> None:  #
                 user_id,
             )
         return
-    except Exception:
+    except (OSError, ConnectionError, RuntimeError, TelegramAPIError):
         log.exception(
             "Failed to download audio file_id=%r for user_id=%s",
             file_id,

@@ -155,7 +155,7 @@ class CliPoolSendMixin:
                     entry.turn_count += 1
                     entry.last_activity = time.time()
                     return result
-                except Exception as exc:
+                except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: cli-subprocess — deferred #1812
                     log.exception("[pool:%s] send failed: %s", pool_id, exc)
                     await cast(_CliPoolCore, self)._kill(pool_id)
                     return CliResult(error=f"Send failed: {type(exc).__name__}")

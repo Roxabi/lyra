@@ -2,15 +2,17 @@
 id: boundary-broad-catch
 slug: boundary-broad-catch
 title: Boundary Broad Catch
-status: open
+status: drained
 created: 2026-05-13
 drain_slice: async-pipeline
 parent_slice: '#1175'
 rule: BLE001
 rules:
   - BLE001
-sites: see artifacts/quality-debt-report.json
+sites: 30 acknowledged boundaries in src/factory/ (ADR-073 appendix)
 fix_class: medium
+closed_by: '#1832'
+closed: 2026-06-24
 ---
 
 # Boundary Broad Catch
@@ -24,15 +26,24 @@ exception classes per call surface — one per distinct failure mode — rather 
 a single catch-all that conflates network timeouts, parse errors, and auth
 failures into a uniform opaque error.
 
-## Sites
+## Steady state (#1832)
 
-See `artifacts/quality-debt-report.json` for the live site list (~74 markers).
+Burn-down complete. **30** acknowledged `except Exception` sites
+remain in `src/factory/` — each with inline `# boundary: <reason>`. All other
+sites were narrowed, re-raised, or consolidated. See ADR-073 revisit-trigger
+appendix for the canonical site list and measurement commands.
+
+| Metric | Filing (2026-06-24) | Steady state |
+|--------|---------------------|--------------|
+| `except Exception` in `src/factory/` | 168 | **30** |
+| Untagged BLE001 (`src/factory/`) | 50 | **0** |
 
 ## Drain plan
 
-Future async debt-drain pipeline (separate epic) will schedule refactors per slug.
-Once all callsites are gone, flip `status: drained` in this file.
+Future async debt-drain pipeline may schedule per-slug refactors for the 30
+acknowledged wire boundaries (adapters, transport, hub-loop, cli-subprocess
+#1812 deferrals). No re-baseline above 30.
 
 ## Notes
 
-Originally tracked as POLICY:boundary in #1162; reclassified as honest DEBT in #1175 per the project-wide dismantling of the POLICY/ratchet layer.
+Originally tracked as POLICY:boundary in #1162; reclassified as honest DEBT in #1175 per the project-wide dismantling of the POLICY/ratchet layer. Issue #1832 closed the ADR-073 revisit trigger via Shape 3 burn-down (V1–V5).

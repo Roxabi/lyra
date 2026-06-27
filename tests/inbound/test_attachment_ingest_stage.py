@@ -92,6 +92,32 @@ class TestAttachmentIngestStage:
         # Negative: fetch must NOT have been awaited (store is None → early return)
         fetch_mock.assert_not_awaited()
 
+    async def test_adapter_fetch_error_degrades(self) -> None:
+        """Platform SDK errors outside _INGEST_IO_ERRORS must still degrade."""
+
+        class _AdapterFetchError(Exception):
+            """Stand-in for TelegramAPIError / discord.HTTPException."""
+
+        fetch_mock = AsyncMock(side_effect=_AdapterFetchError("platform down"))
+        pending = PendingAttachment(
+            fetch=fetch_mock,
+            mime="audio/ogg",
+            source="telegram",
+            platform_ref="tg:file_id:ABC123",
+            platform_message_id="42",
+        )
+        msg = _voice_msg(pending_attachment=pending)
+        store_mock = AsyncMock()
+        ctx = IngestCtx(store=store_mock)
+        stage = AttachmentIngestStage()
+
+        result = await stage.run(msg, ctx)
+
+        assert result.audio is not None
+        assert result.audio.blob_ref is None
+        assert result.pending_attachment is None
+        store_mock.put.assert_not_awaited()
+
     async def test_fetch_fail_keeps_pending(self) -> None:
         """fetch() raises → degraded mode: msg returned unchanged; store.put NOT called.
 

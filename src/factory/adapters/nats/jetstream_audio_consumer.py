@@ -247,7 +247,7 @@ class JetStreamAudioConsumer:
         await self._dedup.mark_sent(stream_id)
         try:
             await msg.ack()
-        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: jetstream-ack — ack transport errors must not abort loop
+        except (nats.errors.Error, OSError):
             log.exception(
                 "JetStreamAudioConsumer: ack failed for stream_id=%r"
                 " — message may redeliver but dedup will guard",
@@ -292,7 +292,7 @@ class JetStreamAudioConsumer:
                 " — termed, notifying user",
                 stream_id,
             )
-        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: jetstream-term — term transport errors must not notify early
+        except (nats.errors.Error, OSError, RuntimeError) as exc:
             log.error(
                 "JetStreamAudioConsumer: term() failed for stream_id=%r"
                 " (exc_type=%s) — will retry on next redelivery",

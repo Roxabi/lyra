@@ -9,7 +9,7 @@ parent_slice: '#1175'
 rule: BLE001
 rules:
   - BLE001
-sites: 30 acknowledged boundaries in src/factory/ (ADR-073 appendix)
+sites: 29 acknowledged boundaries in src/factory/ (ADR-073 appendix)
 fix_class: medium
 closed_by: '#1832'
 closed: 2026-06-24
@@ -28,14 +28,14 @@ failures into a uniform opaque error.
 
 ## Steady state (#1832)
 
-Burn-down complete 2026-06-24. **30** acknowledged `except Exception` sites
+Burn-down complete. **29** acknowledged `except Exception` sites
 remain in `src/factory/` — each with inline `# boundary: <reason>`. All other
 sites were narrowed, re-raised, or consolidated. See ADR-073 revisit-trigger
 appendix for the canonical site list and measurement commands.
 
 | Metric | Filing (2026-06-24) | Steady state |
 |--------|---------------------|--------------|
-| `except Exception` in `src/factory/` | 168 | **30** |
+| `except Exception` in `src/factory/` | 168 | **29** |
 | Untagged BLE001 (`src/factory/`) | 50 | **0** |
 
 ## Drain plan

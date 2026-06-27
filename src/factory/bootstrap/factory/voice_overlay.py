@@ -241,7 +241,7 @@ async def probe_voice_services(
             log.warning(
                 "%s adapter not reachable at boot — will retry per-request", name
             )
-        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: voice-probe — boot probe must not abort startup
+        except (nats.errors.Error, OSError, TimeoutError, asyncio.TimeoutError, RuntimeError) as exc:
             log.warning(
                 "%s probe failed unexpectedly: %s: %s",
                 name,

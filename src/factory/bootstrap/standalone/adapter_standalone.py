@@ -38,7 +38,7 @@ async def _close_quietly(nc: NATS) -> None:
         return
     try:
         await nc.close()
-    except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: nats-shutdown — best-effort close during teardown
+    except (nats.errors.Error, OSError, TypeError):
         log.warning(
             "adapter_standalone: nc.close() failed during shutdown", exc_info=True
         )

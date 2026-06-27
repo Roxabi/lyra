@@ -68,5 +68,5 @@ class MintFailurePublisher:
             await self._nc.publish(
                 self._subject, event.model_dump_json().encode("utf-8")
             )
-        except Exception as pub_exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: mint-failure-publish — best-effort, must not break minting
+        except (nats.errors.Error, OSError, RuntimeError) as pub_exc:
             log.warning("mint_failure_publisher: publish failed: %s", pub_exc)

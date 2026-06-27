@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
 from uuid import uuid4
 
-from factory.core.provider_match import is_provider_error
+from factory.errors import ProviderError
 from factory.transport.typing_publisher import is_typing_enabled
 from factory.transport.work_scope import WorkScope
 
@@ -37,6 +37,7 @@ from .pool_processor_streaming import (
 log = logging.getLogger(__name__)
 
 _POOL_TURN_ERRORS: tuple[type[BaseException], ...] = (
+    ProviderError,
     RuntimeError,
     ValueError,
     TypeError,
@@ -44,10 +45,6 @@ _POOL_TURN_ERRORS: tuple[type[BaseException], ...] = (
     OSError,
     ConnectionError,
 )
-
-
-def _is_pool_turn_error(exc: BaseException) -> bool:
-    return isinstance(exc, _POOL_TURN_ERRORS) or is_provider_error(exc)
 _PROCESSOR_HOOK_ERRORS: tuple[type[BaseException], ...] = (
     RuntimeError,
     ValueError,
@@ -133,9 +130,7 @@ async def guarded_process_one(  # noqa: PLR0915, C901 — DEBT:complexity-residu
         except asyncio.CancelledError:
             _cancelled = True
             raise
-        except Exception as exc:
-            if not _is_pool_turn_error(exc):
-                raise
+        except _POOL_TURN_ERRORS as exc:
             log.exception("unhandled error in pool %s: %s", pool.pool_id, exc)
             _reply = pool._msg("generic", GENERIC_ERROR_REPLY)
             await _safe_dispatch(msg, Response(content=_reply), pool)
@@ -229,9 +224,7 @@ async def _resolve_non_streaming(
     """Await coroutine result and run processor post-hook if applicable."""
     try:
         result = await result  # type: ignore[misc] — DEBT:defensive-narrow-payloads
-    except Exception as exc:
-        if not _is_pool_turn_error(exc):
-            raise
+    except _POOL_TURN_ERRORS as exc:
         pool._ctx.record_circuit_failure(exc)
         raise
     if _processor is not None and isinstance(result, Response):

@@ -79,7 +79,7 @@ class TypingPublisher:
         try:
             await self._nc.publish(subject, event.model_dump_json().encode("utf-8"))
             return True
-        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: typing-publish — AC5 best-effort swallow
+        except (nats.errors.Error, OSError, RuntimeError) as exc:
             log.warning(
                 "typing_publisher: publish failed: type=%s", type(exc).__name__
             )  # AC5 swallow

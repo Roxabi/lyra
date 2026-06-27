@@ -233,13 +233,13 @@ def test_num_delivered_reads_metadata() -> None:
 
 def test_num_delivered_fallback_when_metadata_raises() -> None:
     """num_delivered returns 1 when metadata property raises."""
-    msg = MagicMock()
 
-    def _raise(self: object) -> None:
-        raise Exception("no reply")  # noqa: TRY002
+    class _BrokenMetadataMsg:
+        @property
+        def metadata(self) -> object:
+            raise AttributeError("no reply")
 
-    type(msg).metadata = property(_raise)
-    assert num_delivered(msg) == 1
+    assert num_delivered(_BrokenMetadataMsg()) == 1
 
 
 # ===========================================================================

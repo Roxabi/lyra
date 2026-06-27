@@ -23,7 +23,7 @@ EXPECTED_CONTAINERS = [
     "factory-hub",
     "factory-telegram",
     "factory-discord",
-    "factory-web",
+    "factory-dashboard",
     "factory-clipool",
     "factory-gh-helper",
     "factory-turn-writer",

@@ -203,6 +203,6 @@ async def read_until_result(  # noqa: C901, PLR0915 — DEBT:complexity-residual
 
                 return CliResult(result=result_text, session_id=session_id or "")
 
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: cli-subprocess — deferred #1812
         log.exception("[pool:%s] read error: %s", pool_id, exc)
         return CliResult(error=f"Read error: {type(exc).__name__}")

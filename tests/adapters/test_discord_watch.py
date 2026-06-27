@@ -243,7 +243,9 @@ class TestWatchChannels:
         bot_user = SimpleNamespace(id=999, bot=True)
         adapter._bot_user = bot_user
 
-        create_thread_mock = AsyncMock(side_effect=Exception("discord unavailable"))
+        create_thread_mock = AsyncMock(
+            side_effect=discord.DiscordException("discord unavailable")
+        )
 
         discord_msg = SimpleNamespace(
             guild=SimpleNamespace(id=111),

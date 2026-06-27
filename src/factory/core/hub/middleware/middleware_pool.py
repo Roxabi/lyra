@@ -7,6 +7,8 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from factory.errors import ProviderError
+
 from ...commands.command_parser import CommandParser
 from ...messaging.message import GENERIC_ERROR_REPLY, InboundMessage, Response
 from ...trace import TraceContext
@@ -192,7 +194,7 @@ class CommandMiddleware:
         key = deps.ctx.key
         try:
             response = await deps.router.dispatch(deps.msg, pool)
-        except Exception as exc:
+        except (ValueError, TypeError, ProviderError, RuntimeError, KeyError) as exc:
             log.exception("command dispatch failed for %s: %s", key, exc)
             mgr = deps.ctx.hub._msg_manager
             _content = mgr.get("generic") if mgr else GENERIC_ERROR_REPLY

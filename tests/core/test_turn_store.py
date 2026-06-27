@@ -6,7 +6,7 @@ import asyncio
 import inspect
 import sqlite3
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -504,6 +504,20 @@ class TestPoolSessions:
         result = await store.get_last_session("pool:ended")
 
         assert result == "sess-old"
+
+    async def test_end_session_propagates_store_io_error(
+        self, store: TurnStore
+    ) -> None:
+        """_end_session re-raises store I/O errors (#1637 — no silent swallow)."""
+        await store._start_session("sess-io", "pool:io")
+        db = store._db_or_raise()
+        with pytest.raises(sqlite3.OperationalError, match="disk I/O error"):
+            with patch.object(
+                db,
+                "execute",
+                new=AsyncMock(side_effect=sqlite3.OperationalError("disk I/O error")),
+            ):
+                await store._end_session("sess-io")
 
 
 class TestBackfillOnFirstConnect:

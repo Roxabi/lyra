@@ -89,6 +89,10 @@ cat > "$FAKE_DEPLOY_DIR/lib/deploy-common.sh" <<EOF
 set -euo pipefail
 FACTORY_DIR="$TMPDIR_WORK/factory"
 CONVERGE_STAMP="$TMPDIR_WORK/converge-stamp"
+FACTORY_TRACKED_IMAGES=(
+    "ghcr.io/roxabi/factory:staging-svc"
+    "ghcr.io/roxabi/factory:staging"
+)
 mkdir -p "\$FACTORY_DIR"
 # No-op lock wrapper for tests — converge.sh owns the real lock in production
 with_deploy_lock() { "\$@"; }

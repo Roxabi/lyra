@@ -12,7 +12,7 @@ EnvironmentFile=%h/.roxabi/factory/env/langfuse.env
 Exec=redis-server /etc/redis/redis.conf
 Volume=%h/.local/state/factory/langfuse/redis/redis.conf:/etc/redis/redis.conf:ro,z
 Volume=factory-langfuse-redis-data.volume:/data:z
-HealthCmd=sh -c 'redis-cli -a "$REDIS_AUTH" ping | grep -q PONG'
+HealthCmd=redis-cli ping
 HealthInterval=10s
 
 [Service]

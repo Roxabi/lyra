@@ -13,7 +13,7 @@ NoNewPrivileges=true
 ReadOnly=true
 DropCapability=all
 EnvironmentFile=%h/.roxabi/factory/env/langfuse.env
-HealthCmd=wget -q -O- http://127.0.0.1:3030/api/health || exit 1
+HealthCmd=wget -q -O- http://factory-langfuse-worker:3030/api/health || exit 1
 HealthInterval=30s
 
 [Service]

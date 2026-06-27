@@ -17,8 +17,6 @@ Volume=%h/projects/roxabi-factory/deploy/observability/otel-collector-config.yml
 EnvironmentFile=%h/.roxabi/factory/env/otel-collector.env
 PublishPort=127.0.0.1:4317:4317
 PublishPort=127.0.0.1:4318:4318
-HealthCmd=wget -q -O- http://127.0.0.1:13133/ || exit 1
-HealthInterval=30s
 
 [Service]
 Restart=on-failure

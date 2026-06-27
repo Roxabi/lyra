@@ -148,7 +148,7 @@ Secondary signal: parallel parse/emit logic blocks in `src/lyra/adapters/telegra
 ### Revisit triggers
 
 - `boundary-broad-catch` still > 30 after Phase 7 (#1284) — diagnose residual axis drift.
-  **Steady state (issue #1832):** **29** acknowledged `except Exception`
+  **Steady state (issue #1832):** **30** acknowledged `except Exception`
   sites in `src/factory/` (down from 168 at filing). Every survivor carries inline
   `# boundary: <reason>` on the suppression line; **0** untagged BLE001 under
   `src/factory/`. Re-baseline above 30 is not permitted — burn-down only.
@@ -166,7 +166,7 @@ python3 -c "import json; r=json.load(open('artifacts/quality-debt-report.json'))
 bash tools/check_str_exc_bus_bound.sh
 ```
 
-#### Acknowledged boundary sites (29)
+#### Acknowledged boundary sites (30)
 
 | Layer | File | Reason |
 |-------|------|--------|
@@ -184,6 +184,7 @@ bash tools/check_str_exc_bus_bound.sh
 | adapters | `adapters/nats/jetstream_audio_consumer.py:268` | jetstream-send platform delivery |
 | adapters | `adapters/nats/nats_outbound_listener.py:174` | adapter-send streaming |
 | core/hub | `core/hub/hub.py:224` | hub-loop pipeline/dispatch |
+| core/pool | `core/pool/pool_processor_exec.py:136` | pool-turn ProviderError duck-type |
 | core/cli | `core/cli/cli_pool_entry.py:51` | cli-subprocess deferred #1812 |
 | core/cli | `core/cli/cli_pool_send.py:158` | cli-subprocess deferred #1812 |
 | core/cli | `core/cli/cli_pool_spawn.py:172` | cli-subprocess deferred #1812 |

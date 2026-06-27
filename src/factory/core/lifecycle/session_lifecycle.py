@@ -6,7 +6,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from factory.core.config import PlatformConfig, TurnStoreConfig
-from factory.errors import ProviderError
+
 
 if TYPE_CHECKING:
     from ..agent.agent_config import Agent
@@ -154,7 +154,6 @@ class SessionManager:
                     if concept.get("confidence", 0) >= 0.7:
                         await self._memory.upsert_concept(snap, concept)
         except (
-            ProviderError,
             json.JSONDecodeError,
             ValueError,
             TypeError,

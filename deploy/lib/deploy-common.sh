@@ -56,17 +56,55 @@ require_clean_tree() {
 
 # ── Change detection helpers ─────────────────────────────────────────────────
 
-# First RepoDigest for a locally-present image (index digest on multi-arch pulls).
-# Matches the membership check in factory-post-autoupdate.sh (#1749).
-factory_image_index_digest() {
-    local image="$1" digest
-    digest=$(podman image inspect --format '{{if .RepoDigests}}{{index .RepoDigests 0}}{{end}}' "${image}" 2>/dev/null \
-        | sed 's/.*@//' | sed 's/^sha256://') || true
-    if [ -n "${digest}" ]; then
-        echo "${digest}"
-    else
+# Strip registry ref prefix and sha256: — converge stamp stores bare hex only.
+factory_normalize_digest() {
+    sed 's/.*@//' | sed 's/^sha256://'
+}
+
+# All local registry digests for an image (bare hex, one per line).
+factory_local_repo_digests() {
+    podman image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$1" 2>/dev/null \
+        | factory_normalize_digest || true
+}
+
+# Remote OCI index digest (bare hex). Retries optional (default 1).
+factory_remote_index_digest() {
+    local image="$1" max_attempts="${2:-1}" attempt delay out digest
+    for attempt in $(seq 1 "${max_attempts}"); do
+        if out=$(skopeo inspect "docker://${image}" 2>/dev/null); then
+            digest=$(printf '%s' "${out}" | jq -r '.Digest' | factory_normalize_digest)
+            if [ -n "${digest}" ] && [ "${digest}" != "null" ]; then
+                echo "${digest}"
+                return 0
+            fi
+        fi
+        if [ "${attempt}" -lt "${max_attempts}" ]; then
+            delay=$(( attempt * 2 ))
+            echo "skopeo inspect failed (attempt ${attempt}/${max_attempts}), retrying in ${delay}s..." >&2
+            sleep "${delay}"
+        fi
+    done
+    echo "skopeo inspect failed after ${max_attempts} attempt(s) for ${image}" >&2
+    return 1
+}
+
+# SSOT for stamp fields 4–5 and post-autoupdate drift checks (#1749).
+# Prefers the skopeo index digest when it appears in local RepoDigests; otherwise
+# falls back to the first RepoDigest entry (skopeo unavailable or image stale).
+factory_canonical_image_digest() {
+    local image="$1" digests remote
+    digests=$(factory_local_repo_digests "${image}")
+    if [ -z "${digests}" ]; then
         echo "none"
+        return 0
     fi
+    if remote=$(factory_remote_index_digest "${image}" 1 2>/dev/null) && [ -n "${remote}" ]; then
+        if echo "${digests}" | grep -Fxq "${remote}"; then
+            echo "${remote}"
+            return 0
+        fi
+    fi
+    echo "${digests}" | head -n1
 }
 
 # Upgrade legacy 4-field stamps to the current 6-field schema.
@@ -110,8 +148,8 @@ compute_convergence_state() {
         voicecli_head="none"
     fi
 
-    image_svc_sha=$(factory_image_index_digest "${FACTORY_TRACKED_IMAGES[0]}")
-    image_stg_sha=$(factory_image_index_digest "${FACTORY_TRACKED_IMAGES[1]}")
+    image_svc_sha=$(factory_canonical_image_digest "${FACTORY_TRACKED_IMAGES[0]}")
+    image_stg_sha=$(factory_canonical_image_digest "${FACTORY_TRACKED_IMAGES[1]}")
 
     echo "${git_head}:${unit_sha}:${auth_sha}:${voicecli_head}:${image_svc_sha}:${image_stg_sha}"
 }

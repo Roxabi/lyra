@@ -150,6 +150,10 @@ host_roles = ["factory-hub"]
 network = "roxabi.network"
 host_roles = ["factory-hub"]
 
+[network.postiz]
+network = "postiz.network"
+host_roles = ["factory-hub"]
+
 [pod.gh]
 pod = "factory-gh.pod"
 host_roles = ["factory-hub"]

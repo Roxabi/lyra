@@ -32,11 +32,13 @@ def _telegram_entry(row: BotRow) -> RosterBotEntry | None:
     validated = TelegramRosterBot(
         bot_id=row.bot_id,
         agent=row.agent,
+        public_bot=row.public_bot,
         webhook_enabled=row.webhook_enabled,
     )
     return RosterBotEntry(
         bot_id=validated.bot_id,
         agent=validated.agent,
+        public_bot=validated.public_bot,
         webhook_enabled=validated.webhook_enabled,
     )
 
@@ -51,12 +53,14 @@ def _discord_entry(row: BotRow) -> RosterBotEntry | None:
     validated = DiscordRosterBot(
         bot_id=row.bot_id,
         agent=row.agent,
+        public_bot=row.public_bot,
         auto_thread=row.auto_thread,
         thread_hot_hours=row.thread_hot_hours,
     )
     return RosterBotEntry(
         bot_id=validated.bot_id,
         agent=validated.agent,
+        public_bot=validated.public_bot,
         auto_thread=validated.auto_thread,
         thread_hot_hours=validated.thread_hot_hours,
     )

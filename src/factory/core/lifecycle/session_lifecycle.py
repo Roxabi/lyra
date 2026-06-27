@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 
 from factory.core.config import PlatformConfig, TurnStoreConfig
 
-
 if TYPE_CHECKING:
     from ..agent.agent_config import Agent
     from ..memory import MemoryManager, SessionSnapshot
@@ -197,7 +196,6 @@ class SessionManager:
                         continue
                     await self._memory.upsert_preference(snap, pref)
         except (
-            ProviderError,
             json.JSONDecodeError,
             ValueError,
             TypeError,

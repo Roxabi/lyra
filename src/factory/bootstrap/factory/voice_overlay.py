@@ -241,7 +241,13 @@ async def probe_voice_services(
             log.warning(
                 "%s adapter not reachable at boot — will retry per-request", name
             )
-        except (nats.errors.Error, OSError, TimeoutError, asyncio.TimeoutError, RuntimeError) as exc:
+        except (
+            nats.errors.Error,
+            OSError,
+            TimeoutError,
+            asyncio.TimeoutError,
+            RuntimeError,
+        ) as exc:
             log.warning(
                 "%s probe failed unexpectedly: %s: %s",
                 name,

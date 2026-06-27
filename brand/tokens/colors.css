@@ -1,0 +1,76 @@
+/* ──────────────────────────────────────────────────────────────────────────
+   COLORS — Roxabi Factory (Forge v2 dense cockpit)
+   SSOT values from factory-site/assets/css/tokens.css + forge DESIGN.md v2.
+   One brand signal per view: Forge Orange. Surfaces = Obsidian ladder.
+────────────────────────────────────────────────────────────────────────── */
+:root {
+  color-scheme: dark;
+
+  /* ── Surfaces (deep → elevated) ─────────────────────────────────────── */
+  --bg: #0a0a0f;
+  --bg-elevated: #101018;
+  --bg-card: #18181f;
+  --bg-card-hover: #1f1f28;
+
+  /* Legacy aliases (factory-site / marketing compat) */
+  --panel: var(--bg-elevated);
+  --surface: var(--bg-card);
+
+  /* ── Borders ────────────────────────────────────────────────────────── */
+  --border: rgba(255, 255, 255, 0.07);
+  --border-hi: #2a2a35;
+
+  /* ── Ink ────────────────────────────────────────────────────────────── */
+  --text: #fafafa;
+  --text-muted: #9ca3af;
+  --text-dim: #7d8895;
+
+  /* ── Brand accent — Forge Orange ────────────────────────────────────── */
+  --accent: #e85d04;
+  --accent-hover: #f97316;
+  --accent-press: #c2410c;
+  --accent-dim: rgba(232, 93, 4, 0.14);
+  --accent-glow: rgba(232, 93, 4, 0.28);
+  --accent-on: #fafafa;
+
+  /* ── Code surface — always dark (BRAND-BOOK §6) ─────────────────────── */
+  --code-bg: #0a0a0f;
+  --code-text: #fafafa;
+  --code-keyword: #e85d04;
+  --code-muted: #7d8895;
+  --code-string: #9ecbff;
+
+  /* ── Utility semantics (docs/diagrams — not brand accent) ───────────── */
+  --util-teal: #06b6d4;
+  --util-green: #10b981;
+  --util-amber: #f59e0b;
+  --util-red: #f87171;
+  --util-plum: #a855f7;
+  --util-telegram: #26a5e4;
+  --util-discord: #5865f2;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #fafaf9;
+  --bg-elevated: #f4f4f0;
+  --bg-card: #ffffff;
+  --bg-card-hover: #f1f0ec;
+  --panel: var(--bg-elevated);
+  --surface: var(--bg-card);
+
+  --border: rgba(0, 0, 0, 0.08);
+  --border-hi: #e9e8e2;
+
+  --text: #1c1917;
+  --text-muted: #57534e;
+  --text-dim: #6b6560;
+
+  --accent: #c2410c;
+  --accent-hover: #e85d04;
+  --accent-press: #9a3412;
+  --accent-dim: rgba(194, 65, 12, 0.12);
+  --accent-glow: rgba(194, 65, 12, 0.18);
+  --accent-on: #ffffff;
+}

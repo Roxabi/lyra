@@ -16,10 +16,7 @@ set -euo pipefail
 
 source "$(dirname "$0")/lib/deploy-common.sh"
 
-IMAGES=(
-    "ghcr.io/roxabi/factory:staging-svc"
-    "ghcr.io/roxabi/factory:staging"
-)
+# FACTORY_TRACKED_IMAGES sourced from deploy-common.sh (fields 5–6 of converge stamp).
 
 # ── Digest comparison ────────────────────────────────────────────────────────
 
@@ -48,7 +45,7 @@ local_repo_digests() {
 main() {
     local drifted=()
 
-    for image in "${IMAGES[@]}"; do
+    for image in "${FACTORY_TRACKED_IMAGES[@]}"; do
         local remote_digest_val local_digests_val
         remote_digest_val=$(remote_digest "${image}")
         local_digests_val=$(local_repo_digests "${image}")
@@ -82,10 +79,8 @@ main() {
         podman pull "${image}"
     done
 
-    # Converge stamp does not include image digest, so invalidate it
-    # to force a full converge (restarts, auth.conf refresh, etc.).
-    rm -f "${CONVERGE_STAMP}"
-
+    # Image digests are fields 5–6 of the convergence fingerprint — converge's
+    # change-gate detects structural drift after pull (no stamp deletion needed).
     echo "==> Running make converge..."
     make -C "${FACTORY_DIR}" converge
 }
@@ -94,7 +89,7 @@ main() {
 # `with_deploy_lock _do_converge`, so wrapping here too would cause the outer
 # flock to hold the lock while calling make converge → converge.sh's inner
 # flock -n fails → _do_converge silently exits 0 and no converge runs. (#1749)
-# The pull + stamp-invalidate above are idempotent and safe to run unlocked;
+# The pull + converge change-gate above are idempotent and safe to run unlocked;
 # converge.sh's lock provides the necessary mutual exclusion.
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     main "$@"

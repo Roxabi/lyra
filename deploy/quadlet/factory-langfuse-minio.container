@@ -11,7 +11,7 @@ Network=roxabi.network
 EnvironmentFile=%h/.roxabi/factory/env/langfuse.env
 Exec=server /data --address :9000 --console-address :9001
 Volume=factory-langfuse-minio-data.volume:/data:z
-HealthCmd=wget -q -O- http://127.0.0.1:9000/minio/health/live || exit 1
+HealthCmd=curl -sf http://127.0.0.1:9000/minio/health/live || exit 1
 HealthInterval=10s
 
 [Service]

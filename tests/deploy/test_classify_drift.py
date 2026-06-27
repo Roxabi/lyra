@@ -1,10 +1,15 @@
 """Tests for the _classify_drift shell function in deploy/lib/deploy-common.sh.
 
-Fingerprint format: <git_head>:<unit_sha>:<auth_sha>:<voicecli_head>
-  - field 0 (git_head)    → structural
-  - field 1 (unit_sha)    → structural
-  - field 2 (auth_sha)    → auth
-  - field 3 (voicecli_head) → structural
+Fingerprint format:
+  <git_head>:<unit_sha>:<auth_sha>:<voicecli_head>:<staging-svc-digest>:<staging-digest>
+  - field 0 (git_head)         → structural
+  - field 1 (unit_sha)         → structural
+  - field 2 (auth_sha)         → auth
+  - field 3 (voicecli_head)    → structural
+  - field 4 (staging-svc-digest) → structural
+  - field 5 (staging-digest)   → structural
+
+Legacy 4-field stamps are normalized to :none:none before comparison.
 
 The function exits 0 in all cases; callers branch on stdout.
 """
@@ -19,6 +24,10 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEPLOY_COMMON = REPO_ROOT / "deploy" / "lib" / "deploy-common.sh"
+
+_SVC = "4f9b3264aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001"
+_STG = "6a7d28bcaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001"
+_FP = f"a:b:c:d:{_SVC}:{_STG}"
 
 
 def _classify(last: str, current: str) -> str:
@@ -40,75 +49,40 @@ def _classify(last: str, current: str) -> str:
     return result.stdout.strip()
 
 
-# ---------------------------------------------------------------------------
-# Parametrized contract cases
-# ---------------------------------------------------------------------------
-
 @pytest.mark.parametrize(
     "last, current, expected",
     [
         # 1. Identical fingerprints → no drift
-        (
-            "a:b:c:d",
-            "a:b:c:d",
-            "none",
-        ),
+        (_FP, _FP, "none"),
         # 2. No prior stamp (sentinel "none") → structural (full converge)
-        (
-            "none",
-            "a:b:c:d",
-            "structural",
-        ),
+        ("none", _FP, "structural"),
         # 3. Only auth field (index 2) differs → auth-only reload
-        (
-            "a:b:c:d",
-            "a:b:X:d",
-            "auth",
-        ),
+        (_FP, f"a:b:X:d:{_SVC}:{_STG}", "auth"),
         # 4. Field 0 (git_head) differs → structural
-        (
-            "a:b:c:d",
-            "A:b:c:d",
-            "structural",
-        ),
+        (_FP, f"A:b:c:d:{_SVC}:{_STG}", "structural"),
         # 5. Field 1 (unit_sha) differs → structural
-        (
-            "a:b:c:d",
-            "a:B:c:d",
-            "structural",
-        ),
+        (_FP, f"a:B:c:d:{_SVC}:{_STG}", "structural"),
         # 6. Field 3 (voicecli_head) differs → structural
-        (
-            "a:b:c:d",
-            "a:b:c:D",
-            "structural",
-        ),
-        # 7. Auth + structural both differ → structural dominates
-        (
-            "a:b:c:d",
-            "A:b:X:d",
-            "structural",
-        ),
-        # 8. None-sentinel guard — non-tautological case: current fields 0,1,3 all
-        #    equal "none" (matching last_git/unit/voice when split from "none"), so
-        #    WITHOUT the `last == "none"` early-exit guard the function would fall
-        #    through to field comparison, find only auth_sha differs ("X" vs "none"),
-        #    and emit "auth" — not "structural". Deleting the guard turns this RED.
+        (_FP, f"a:b:c:D:{_SVC}:{_STG}", "structural"),
+        # 7. Field 4 (staging-svc digest) differs → structural
+        (_FP, f"a:b:c:d:deadbeefaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0001:{_STG}", "structural"),
+        # 8. Field 5 (staging digest) differs → structural
+        (_FP, f"a:b:c:d:{_SVC}:deadbeefaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0002", "structural"),
+        # 9. Auth + structural both differ → structural dominates
+        (_FP, f"A:b:X:d:{_SVC}:{_STG}", "structural"),
+        # 10. None-sentinel guard — non-tautological legacy-normalized case
         (
             "none",
-            "none:none:X:none",
+            "none:none:X:none:none:none",
             "structural",
         ),
-        # 9. Field-count guard: 5-field current fingerprint → structural (fail-safe).
-        #    Deleting the NF!=4 guard lets the function IFS-split and reach the
-        #    field comparison; "a"=="a", "b"=="b", "c" (field 4 overflows into field
-        #    3) ≠ "d" so it still emits structural — but the guard is the explicit
-        #    contract for schema-extension safety. Test exercises the guard path.
-        (
-            "a:b:c:d",
-            "a:b:c:d:e",
-            "structural",
-        ),
+        # 11. Field-count guard: 7-field fingerprint → structural (fail-safe)
+        (_FP, f"{_FP}:extra", "structural"),
+        # 12. Legacy 4-field stamp vs 6-field current (image fields added) → structural
+        ("a:b:c:d", _FP, "structural"),
+        # 13. Legacy equal after normalization (images still none) → none
+        ("a:b:c:d", "a:b:c:d:none:none", "none"),
+
     ],
     ids=[
         "equal_fingerprints→none",
@@ -117,39 +91,15 @@ def _classify(last: str, current: str) -> str:
         "field0_git_differs→structural",
         "field1_unit_differs→structural",
         "field3_voice_differs→structural",
+        "field4_image_svc_differs→structural",
+        "field5_image_stg_differs→structural",
         "auth_and_structural_both_differ→structural_dominates",
         "none_sentinel_nontautological→structural",
-        "field_count_5_fields→structural",
+        "field_count_7_fields→structural",
+        "legacy_4field_stamp→structural",
+        "legacy_4field_equal_normalized→none",
     ],
 )
 def test_classify_drift(last: str, current: str, expected: str) -> None:
-    """_classify_drift returns the correct drift category for each case.
-
-    Non-tautology rationale (per-case guard deletion analysis):
-    - equal_fingerprints→none: delete the `last == current` guard → falls through
-      to field-split path; all fields equal so emits "auth" (not "none") → RED
-    - no_prior_stamp→structural: delete the `last == "none"` guard → tries to
-      IFS-split "none" into 4 fields; last_git="none", cur_git="a", they differ →
-      still emits "structural" in this case. However the meaningful negative test
-      is the guard ordering: if the "none" check is removed and "none" is treated
-      as a 1-field fingerprint, the behaviour is implementation-undefined and
-      unpredictable. The test still exercises the dedicated early-exit path.
-    - only_auth_differs→auth: delete structural check → skips to `echo "auth"` →
-      still passes. Delete the `last == current` guard only → reaches field split,
-      structural fields all match, emits "auth" → still passes. The meaningful
-      negative: if auth field check is inverted to be structural, emits "structural"
-      not "auth" → RED.
-    - field0/1/3_differs→structural: delete the structural-fields guard (the `if`
-      block) → falls through to `echo "auth"` → emits "auth" not "structural" → RED
-    - auth_and_structural_both_differ→structural_dominates: same as above — if the
-      structural guard is deleted, emits "auth" → RED.
-    - none_sentinel_nontautological→structural: current="none:none:X:none" means
-      fields 0,1,3 all equal "none" which matches IFS-split of last="none" (all 4
-      vars get "none"). Only auth_sha differs ("X" vs "none"). Without the
-      `last == "none"` early-exit guard the function emits "auth", not "structural"
-      → deletion of that guard makes this test RED.
-    - field_count_5_fields→structural: current has 5 colon-fields; deleting the
-      NF!=4 guard lets IFS-split proceed with overflow behaviour, but the contract
-      is that any non-4-field fingerprint must always fail-safe to structural.
-    """
+    """_classify_drift returns the correct drift category for each case."""
     assert _classify(last, current) == expected

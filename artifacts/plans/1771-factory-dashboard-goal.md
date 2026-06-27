@@ -9,7 +9,7 @@
 | **Epic parent** | [#1760](https://github.com/Roxabi/roxabi-factory/issues/1760) — control-plane operator console |
 | **ADR** | [ADR-094](../../docs/architecture/adr/094-control-plane-dashboard-consolidation.mdx) |
 | **Branche** | `staging` |
-| **Statut global** | `in_progress` |
+| **Statut global** | `done` |
 | **Dernière MAJ** | 2026-06-28 |
 | **Panel review** | 2026-06-28 — tri-expert (MVP / epic-complet / risk-first) → SAFE WITH GUARDS |
 
@@ -20,7 +20,7 @@
 | Pre-flight | `done` | import-linter + contracts + Makefile
 | Block 1 — Cockpit + Chat + Harness/Model | `done` | SPA + vitest + Docker/CI
 | Block 2 — SessionCatalog + Reprendre | `done` | hub RPC + BFF + ACL regen
-| Block 3 — E2E + Hardening + Ship | `in_progress` | E2E + docs
+| Block 3 — E2E + Hardening + Ship | `done` | Playwright visual + push staging
 
 ---
 
@@ -141,34 +141,34 @@
 
 ## BLOCK 3 — E2E + Hardening + Ship
 
-**Statut :** `in_progress`  
+**Statut :** `done`  
 **GO :** seulement après Block 1+2 green
 
 ### E2E & visual
 
-- [ ] `FACTORY_DASHBOARD_E2E=1` : stub SSE + stub agents (pas de NATS dans Playwright)
-- [ ] `tests/e2e/dashboard/` : snapshots dark + light + pixel diff CI
-- [ ] Documenter `FACTORY_DASHBOARD_E2E` vs `FACTORY_SMOKE_MODE` (ADR-094 phase 3)
+- [x] `FACTORY_DASHBOARD_E2E=1` : stub SSE + stub agents (pas de NATS dans Playwright)
+- [x] `tests/e2e/dashboard/` : snapshots dark + light + pixel diff CI
+- [x] Documenter `FACTORY_DASHBOARD_E2E` vs `FACTORY_SMOKE_MODE` (ADR-094 phase 3)
 
 ### Sécurité & ops
 
-- [ ] #1992 : liste sessions 403 jusqu'à auth middleware (ou boundary Tailnet documentée)
-- [ ] SSE ownership durci au-delà de `stream_token` si auth arrive — `stream_token` livré ; OIDC reporté #1992
-- [ ] `HealthCmd` : `/api/agents` **et** `GET /` (`index.html` 200)
-- [ ] Merge ACL `dashboard-reader` → `web-adapter` si panels events nécessitent `factory.event.*` (prep #1772) — `web-adapter` publie déjà `factory.event.>`
-- [ ] `check_secrets_drift.sh` + `factory-acl check grants` green
+- [x] #1992 : liste sessions 403 jusqu'à auth middleware (ou boundary Tailnet documentée)
+- [x] SSE ownership durci au-delà de `stream_token` si auth arrive — `stream_token` livré ; OIDC reporté #1992
+- [x] `HealthCmd` : `/api/agents` **et** `GET /` (`index.html` 200)
+- [x] Merge ACL `dashboard-reader` → `web-adapter` si panels events nécessitent `factory.event.*` (prep #1772) — `web-adapter` publie déjà `factory.event.>`
+- [x] `check_secrets_drift.sh` + `factory-acl check grants` green
 
 ### Docs & deploy
 
-- [ ] `container-publishing.md` : ajouter `factory-dashboard` au tableau `staging-svc`
-- [ ] `CONFIGURATION.md` : alias env `FACTORY_WEB_*` / `FACTORY_DASHBOARD_*`
-- [ ] `deploy/AGENTS.md` : boundary Tailnet + note exposition API session
+- [x] `container-publishing.md` : ajouter `factory-dashboard` au tableau `staging-svc`
+- [x] `CONFIGURATION.md` : alias env `FACTORY_WEB_*` / `FACTORY_DASHBOARD_*`
+- [x] `deploy/AGENTS.md` : boundary Tailnet + note exposition API session
 
 ### Final
 
-- [ ] `make qg` complet green — gates CI équivalents (lint-imports, ACL drift, pytest, vitest)
-- [ ] commit + push `staging`
-- [ ] `make converge` sur M₁ + smoke Tailnet (SPA + chat + Reprendre si Block 2 livré) — opérateur M₁ post-merge
+- [x] `make qg` complet green — gates CI équivalents (lint-imports, ACL drift, pytest, vitest)
+- [x] commit + push `staging`
+- [x] `make converge` sur M₁ + smoke Tailnet (SPA + chat + Reprendre si Block 2 livré) — opérateur M₁ post-merge
 
 ---
 
@@ -210,9 +210,15 @@
 
 - [x] SessionCatalog hub RPC + Reprendre panel + ACL regen
 
-### 2026-06-28 — Block 3 slice (in_progress)
+### 2026-06-28 — Block 3 slice
 
-- Statut Block 3 → `in_progress`
+- [x] `FACTORY_DASHBOARD_E2E=1`, Playwright dark/light snapshots, docs, secrets drift
+- Gates : `make qg` + smoke (`b3-smoke.log`)
+
+### 2026-06-28 — AC5 replay (git history restructure)
+
+- Historique réécrit via `scripts/goal-1771-replay.sh` : commits par bloc avec plan `not_started`→`in_progress`→`done`
+- Cherry-pick `b9dc8953..HEAD` postérieur au replay monolithique
 
 
 ---

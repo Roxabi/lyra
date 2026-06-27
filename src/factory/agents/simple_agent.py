@@ -17,11 +17,11 @@ from factory.core.agent import Agent, AgentBase
 from factory.core.lifecycle.circuit_breaker import CircuitRegistry
 from factory.core.messaging.bot_display_name import bot_display_name
 from factory.core.messaging.message import InboundMessage, Response, WebMeta
-from factory.core.ports.llm_types import ModelConfig
 from factory.core.messaging.messages import MessageManager
 from factory.core.messaging.utils.user_error_resolver import resolve_user_error
 from factory.core.pool import Pool
 from factory.core.ports.llm import SessionAware, WorkspaceAware
+from factory.core.ports.llm_types import ModelConfig
 from factory.core.ports.stt import STTNoiseError as STTNoiseError  # re-export (#1225)
 from factory.core.processors.stream_processor import StreamProcessor
 from factory.core.runtime_config import RuntimeConfig, RuntimeConfigHolder

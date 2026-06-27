@@ -83,6 +83,15 @@ def test_platform_document_rejects_unknown_top_level_keys() -> None:
         )
 
 
+def test_roster_entry_accepts_optional_public_bot() -> None:
+    entry = RosterBotEntry(
+        bot_id="lyra",
+        agent="lyra_default",
+        public_bot="@lyra_public",
+    )
+    assert entry.public_bot == "@lyra_public"
+
+
 def test_golden_telegram_shape() -> None:
     payload = {
         "schema_version": 1,

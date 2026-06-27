@@ -669,3 +669,30 @@ class TestListSessions:
         rows = await store.list_sessions("pool:z", 5)
         assert len(rows) == 1
         assert rows[0]["first_user_msg"] is None
+
+    async def test_list_recent_sessions_includes_pool_and_platform(
+        self, store: TurnStore
+    ) -> None:
+        await store._start_session("sess-web", "web:smoke:agent:lyra")
+        await store._log_turn(
+            pool_id="web:smoke:agent:lyra",
+            session_id="sess-web",
+            role="user",
+            platform="web",
+            user_id="u",
+            content="web hello",
+        )
+        await store._start_session("sess-tg", "telegram:main:chat:1")
+        await store._log_turn(
+            pool_id="telegram:main:chat:1",
+            session_id="sess-tg",
+            role="user",
+            platform="telegram",
+            user_id="u",
+            content="tg hello",
+        )
+        rows = await store.list_recent_sessions(10)
+        assert len(rows) >= 2
+        platforms = {r["platform"] for r in rows}
+        assert "web" in platforms
+        assert "telegram" in platforms

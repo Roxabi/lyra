@@ -52,6 +52,7 @@ class WebAdapter(OutboundAdapterBase):
         self._host = host
         self._port = port
         self._agent_names = sorted(agent_names or [])
+        self._nats_client: Any = None
         self.sessions = WebSessionHub()
         self._typing = TypingTaskManager()
         self._outbound_listener: OutboundListener | None = None
@@ -61,6 +62,10 @@ class WebAdapter(OutboundAdapterBase):
     @property
     def agent_names(self) -> list[str]:
         return list(self._agent_names)
+
+    def set_nats_client(self, nc: Any) -> None:
+        """Wire NATS client for dashboard BFF hub RPC."""
+        self._nats_client = nc
 
     @property
     def ready(self) -> bool:

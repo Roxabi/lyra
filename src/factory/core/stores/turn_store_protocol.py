@@ -15,7 +15,7 @@ from typing import Protocol, TypedDict, runtime_checkable
 
 from factory.core.config.turn_store_config import TurnStoreConfig
 
-__all__ = ["SessionRow", "TurnRow", "TurnStoreProtocol"]
+__all__ = ["CatalogSessionRow", "SessionRow", "TurnRow", "TurnStoreProtocol"]
 
 
 class TurnRow(TypedDict):
@@ -42,6 +42,13 @@ class SessionRow(TypedDict):
     last_active_at: str
     first_user_msg: str | None
     turn_count: int
+
+
+class CatalogSessionRow(SessionRow):
+    """Session row with pool and origin platform (#1771 catalog)."""
+
+    pool_id: str
+    platform: str
 
 
 @runtime_checkable
@@ -72,3 +79,7 @@ class TurnStoreProtocol(Protocol):
     async def get_cli_session_by_pool(self, pool_id: str) -> str | None: ...
 
     async def get_last_session(self, pool_id: str) -> str | None: ...
+
+    async def list_recent_sessions(
+        self, limit: int = 200
+    ) -> list[CatalogSessionRow]: ...

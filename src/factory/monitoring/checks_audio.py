@@ -35,6 +35,7 @@ import httpx
 
 from roxabi_contracts.outbound.subjects import STREAM_AUDIO
 
+from ._errors import _MONITORING_HTTP_ERRORS
 from .models import CheckResult
 
 log = logging.getLogger(__name__)
@@ -126,7 +127,7 @@ async def check_audio_consumer_lag(
                 timestamp=now,
             )
         data = resp.json()
-    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+    except _MONITORING_HTTP_ERRORS as exc:
         return CheckResult(
             name="audio:consumer_lag",
             passed=False,
@@ -229,7 +230,7 @@ async def check_audio_stream_usage(
                 timestamp=now,
             )
         data = resp.json()
-    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch
+    except _MONITORING_HTTP_ERRORS as exc:
         return CheckResult(
             name="audio:stream_usage",
             passed=False,

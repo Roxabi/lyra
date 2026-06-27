@@ -176,7 +176,7 @@ def run_secrets_reset(  # noqa: PLR0913 — injectable orchestration for tests
                 "==> Next: restart NATS + clients "
                 "(see docs/runbooks/secrets-disaster-recovery.md)"
             )
-    except Exception as exc:
+    except (OSError, RuntimeError) as exc:
         op_log(
             root,
             "secrets_reset_failed",

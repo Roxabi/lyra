@@ -192,5 +192,5 @@ class Dispenser:
             writer.close()
             try:
                 await writer.wait_closed()
-            except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch — cleanup: writer.wait_closed() raises varied transport errors on peer disconnect; close must not propagate
+            except (OSError, RuntimeError, ConnectionError):
                 pass

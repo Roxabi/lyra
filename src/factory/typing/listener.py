@@ -116,10 +116,10 @@ class TypingListener:
                 self._manager.start(target, self._factory_builder(target))
             else:
                 self._manager.cancel(target)
-        except Exception:
+        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: typing-nats-cb — dispatch must not crash subscription
             log.exception("typing_listener: dispatch failed subject=%s", self._subject)
             if target is not None:
                 try:
                     self._manager.cancel(target)
-                except Exception:
+                except (AttributeError, RuntimeError, TypeError, ValueError):
                     log.exception("typing_listener: defensive cancel failed")

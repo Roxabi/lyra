@@ -192,7 +192,7 @@ class NatsChannelProxy:
                     subject,
                     json.dumps(terminal, ensure_ascii=False).encode("utf-8"),
                 )
-            except Exception as exc:  # noqa: BLE001 — bus boundary, type sanitized
+            except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: nats-publish — streaming publish failure drains iterator; type sanitized
                 log.warning(
                     "NatsChannelProxy: NATS publish failed during streaming,"
                     " stream_id=%r type=%s — draining iterator",

@@ -1,0 +1,8 @@
+[Unit]
+Description=Postiz backing-service network (factory-socialmedia-adapter dual-homed)
+
+[Network]
+Driver=bridge
+# External Postiz stack (postiz-app) attaches here; adapter reaches it via
+# factory-socialmedia-adapter.container Network=postiz.network.
+Label=app=postiz

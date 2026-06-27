@@ -1,0 +1,82 @@
+---
+title: "ADR-094: Control-Plane Dashboard — Consolidate factory-web"
+description: "The operator control-plane (#1760) evolves the existing factory-web container into factory-dashboard — one HTTP surface, two internal axes (chat adapter + observability BFF). Rejects a parallel platform=dashboard adapter stack (#1769/#1770)."
+status: accepted
+date: 2026-06-27
+deciders: [Mickael]
+related: [073, 092, 090, 1977]
+---
+
+## Status
+
+Accepted — 2026-06-27. Panel consensus (architect + axial-adr-review, 2026-06-27).
+
+## Context
+
+Epic #1760 planned a greenfield stack: new NATS platform `dashboard` (#1769 contracts, #1770 adapter, #1771 BFF) alongside the existing `factory-web` smoke adapter (#1977).
+
+In production, `factory-web` already implements the hub-spoke chat path: FastAPI → inbound pipeline → `factory.inbound.web.smoke` → hub → `factory.outbound.web.smoke` → SSE. ADR-092 requires a **single** operator human surface. A parallel `platform=dashboard` adapter duplicates NATS wiring, Quadlet units, and FastAPI bootstrap (axial N×M trap).
+
+## Decision
+
+### 1. Evolve, do not fork
+
+| Layer | Decision |
+|---|---|
+| **Container** | Rename `factory-web` → **`factory-dashboard`** (Quadlet unit, same port/Tailnet bind) |
+| **Chat axis** | Extend `WebAdapter` / `src/factory/adapters/web/` — operator chat over existing messaging plane |
+| **Control-plane BFF** | Add `src/factory/dashboard/` (or BFF routes in same process) for obs/jobs panels — **not** a second NATS inbound adapter |
+| **Rejected** | Separate `factory-dashboard` container + `platform=dashboard` adapter (#1770 greenfield) |
+
+### 2. Two axes, one process
+
+```text
+factory-dashboard (HTTP, Tailnet)
+├── Chat adapter axis     → factory.inbound/outbound.web.* (phase 1)
+│                           → factory.*.dashboard.* (phase 2, with auth)
+└── Control-plane BFF axis → proxy Loki/Prom/Langfuse APIs; subscribe factory.event.*;
+                            kv.watch jobs — does NOT route through hub Pool
+```
+
+Observability composition (ADR-092) stays **headless engine query** — not hub chat routing.
+
+### 3. Phased migration
+
+| Phase | Scope | NATS / identity |
+|---|---|---|
+| **1 (this ADR)** | Unit rename `factory-dashboard`; epic #1760 rescoped; #1770 superseded | Unchanged: `web-adapter`, `factory-nats-web`, `platform=web`, `bot_id=smoke` |
+| **2** | Operator session auth (#1992); roster + subjects `dashboard.<bot_id>`; merge `dashboard-reader` ACL into container identity | Platform rename optional |
+| **3** | Retire prod `smoke`; CI/dev via pytest + `FACTORY_SMOKE_MODE` flag | Smoke = mode, not prod platform |
+
+### 4. Issue rescoping
+
+| Issue | Action |
+|---|---|
+| #1760 | Epic — surface = evolved `factory-dashboard` |
+| #1770 | **Superseded** by #1977 + this ADR |
+| #1769 | **Rescoped** — wire deltas at phase 2 only; not greenfield adapter |
+| #1771 | Extend dashboard shell in same container |
+| #1772–#1774 | Unchanged — panels in #1771 shell |
+| #1992 | Reframed as **dashboard auth gate** before non-Tailnet exposure |
+
+## Consequences
+
+### Positive
+
+- Stays at **20 containers** — rename in place, no +1.
+- Reuses proven inbound pipeline, `wire_bot_common`, C3 hub authority.
+- Clear axial split: adapter (chat) vs BFF (obs/jobs) in one HTTP entrypoint.
+- Aligns naming with ADR-092 “sole human surface”.
+
+### Negative
+
+- Transitional naming drift: container `factory-dashboard` still uses `platform=web` until phase 2.
+- `bot_id=smoke` remains until phase 2 (messaging hygiene deferred).
+- Epic children #1769/#1770 need explicit closure/rescope to prevent reintroduction.
+
+## See also
+
+- [ADR-092](092-observability-architecture.mdx) — headless engines + sole dashboard surface
+- [ADR-073](073-axial-stage-of-pipeline-decomposition.mdx) — adapter vs pipeline boundaries
+- [#1977](https://github.com/Roxabi/roxabi-factory/issues/1977) — smoke adapter spine (closed)
+- [#1760](https://github.com/Roxabi/roxabi-factory/issues/1760) — control-plane epic

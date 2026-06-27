@@ -22,8 +22,8 @@ container = "factory-discord.container"
 required_secrets = ["factory-nats-discord", "factory_blobstore_token"]
 host_roles = ["factory-hub"]
 
-[component.web]
-container = "factory-web.container"
+[component.dashboard]
+container = "factory-dashboard.container"
 required_secrets = ["factory-nats-web"]
 host_roles = ["factory-hub"]
 
@@ -148,6 +148,10 @@ host_roles = ["factory-hub"]
 
 [network.roxabi]
 network = "roxabi.network"
+host_roles = ["factory-hub"]
+
+[network.postiz]
+network = "postiz.network"
 host_roles = ["factory-hub"]
 
 [pod.gh]

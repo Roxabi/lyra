@@ -42,8 +42,10 @@ async def _disk_used_pct(blob_root: pathlib.Path) -> float | None:
 
 async def _blob_count(app: FastAPI) -> int | None:
     """Return total row count from the blobs table, or None on failure."""
+    store = getattr(app.state, "store", None)
+    if store is None:
+        return None
     try:
-        store: FsBlobStore = app.state.store
         conn = store._conn  # noqa: SLF001
         if conn is None:
             return None

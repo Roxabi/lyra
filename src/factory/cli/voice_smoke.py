@@ -194,7 +194,7 @@ async def _step_tts(nc: NATS, timeout: float) -> tuple[dict, str]:
             err=True,
         )
         raise typer.Exit(1)
-    except nats.errors.Error as exc:
+    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: cli-voice-smoke — NATS request can raise varied errors
         typer.echo("")
         typer.echo(f"FAIL: TTS request error — {exc}", err=True)
         raise typer.Exit(1)
@@ -238,7 +238,7 @@ async def _step_stt(nc: NATS, blob_ref: dict, mime_type: str, timeout: float) ->
             err=True,
         )
         raise typer.Exit(1)
-    except nats.errors.Error as exc:
+    except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: cli-voice-smoke — NATS request can raise varied errors
         typer.echo("")
         typer.echo(f"FAIL: STT request error — {exc}", err=True)
         raise typer.Exit(1)

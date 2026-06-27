@@ -120,7 +120,7 @@ async def try_notify_user(
 
         outbound = _OM(content=[text])
         await adapter.send(msg, outbound)
-    except (OSError, RuntimeError, TypeError, ValueError) as notify_exc:
+    except Exception as notify_exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: outbound-notify — must not disrupt caller error path
         log.warning(
             "OutboundDispatcher[%s]: failed to send user notification: %s",
             platform_name,

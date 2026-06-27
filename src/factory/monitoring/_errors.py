@@ -13,6 +13,7 @@ _MONITORING_HTTP_ERRORS: tuple[type[BaseException], ...] = (
     json.JSONDecodeError,
     ValueError,
     TypeError,
+    OSError,
 )
 
 _MONITORING_ESCALATION_ERRORS: tuple[type[BaseException], ...] = (

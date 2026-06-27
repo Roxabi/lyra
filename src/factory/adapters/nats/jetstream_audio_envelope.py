@@ -105,5 +105,5 @@ def num_delivered(msg: Any) -> int:
     """
     try:
         return msg.metadata.num_delivered  # type: ignore[no-any-return]
-    except (AttributeError, TypeError):
+    except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: jetstream-metadata — varied metadata parse failures
         return 1

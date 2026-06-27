@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from .pool import Pool
 
 from ..messaging.message import Response
+from .pool_observer import _TURN_PERSIST_ERRORS
 from .pool_processor_exec import _safe_dispatch, guarded_process_one
 
 log = logging.getLogger(__name__)
@@ -49,7 +50,7 @@ class PoolProcessor:
                     pool._pending_session_id = None
                     try:
                         _resume_accepted = await pool.resume_session(_pending)
-                    except Exception:
+                    except _TURN_PERSIST_ERRORS:
                         log.exception(
                             "[pool:%s] pending session resume failed for %r"
                             " — continuing",
@@ -147,11 +148,10 @@ class PoolProcessor:
                 if inbox_waiter in done and not inbox_waiter.cancelled():
                     try:
                         pool._inbox.put_nowait(inbox_waiter.result())
-                    except Exception:  # noqa: BLE001  — DEBT:boundary-broad-catch# top-level boundary
+                    except asyncio.QueueFull:
                         log.warning(
-                            "pool %s: message lost in inbox race",
+                            "pool %s: message lost in inbox race (queue full)",
                             pool.pool_id,
-                            exc_info=True,
                         )
                 # Propagate CancelledError from /stop.
                 if agent_task.cancelled():

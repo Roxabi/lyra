@@ -9,6 +9,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from aiogram.exceptions import TelegramAPIError
 from aiogram.types import BufferedInputFile
 
 from factory.adapters.shared._shared import (
@@ -72,7 +73,7 @@ async def _download_audio(
                 f"Audio file too large after download: "
                 f"{actual_size} > {adapter._max_audio_bytes} bytes"
             )
-    except Exception:
+    except (OSError, ConnectionError, RuntimeError, TelegramAPIError):
         tmp_path.unlink(missing_ok=True)
         raise
     log.debug("Downloaded audio file_id=%s to %s", file_id, tmp_path)

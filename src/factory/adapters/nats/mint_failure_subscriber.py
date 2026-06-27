@@ -12,6 +12,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+import nats.errors
 from pydantic import ValidationError
 
 from factory.adapters.nats._constants import SUBSCRIBE_SUBJECT_MINT_FAILURE
@@ -132,7 +133,7 @@ class MintFailureSubscriber:
 
         try:
             await self._nc.publish(self._subject, payload)
-        except Exception as exc:  # noqa: BLE001  — DEBT:boundary-broad-catch# NATS publish: exception type varies
+        except nats.errors.Error as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: nats-publish — alert publish must not crash subscriber
             log.warning(
                 "MintFailureSubscriber: failed to publish alert for machine=%r: %s",
                 event.machine,

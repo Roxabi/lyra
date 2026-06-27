@@ -11,7 +11,10 @@ from typing import Any
 from factory.bootstrap import credentials
 from factory.bootstrap.factory.config import AdapterConfigBundle
 from factory.bootstrap.factory.voice_overlay import init_blobstore
-from factory.bootstrap.lifecycle.lifecycle_helpers import close_safely
+from factory.bootstrap.lifecycle.lifecycle_helpers import (
+    close_safely,
+    run_with_teardown,
+)
 from factory.bootstrap.lifecycle.signal_handlers import setup_shutdown_event
 from factory.bootstrap.wiring._standalone_wiring_common import (
     TypingDeps,
@@ -121,12 +124,10 @@ async def bootstrap_telegram_standalone(
             continue
         token, webhook_secret = tg_creds[bot_id]
 
-        try:
-            wired_bot = await _wire_bot(bot_cfg, token, webhook_secret)
-        except Exception:
-            await _close_tg_wired("tg-wired", wired)
-            raise
-
+        wired_bot = await run_with_teardown(
+            _wire_bot(bot_cfg, token, webhook_secret),
+            teardown=lambda: _close_tg_wired("tg-wired", wired),
+        )
         wired.append(wired_bot)
         log.info(
             "adapter_standalone: Telegram bot_id=%s ready (NATS mode)",

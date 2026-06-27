@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import sqlite3
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -69,7 +70,7 @@ def init_bots(
             try:
                 with config_path.open("rb") as f:
                     raw = tomllib.load(f)
-            except Exception as e:  # noqa: BLE001
+            except (tomllib.TOMLDecodeError, OSError) as e:
                 typer.echo(f"Error parsing {config_path}: {e}", err=True)
                 raise typer.Exit(1)
 
@@ -86,7 +87,7 @@ def init_bots(
                     await store.upsert(row)
                     seeded += 1
                     typer.echo(f"  seeded: {row.platform}/{row.bot_id}")
-                except Exception as e:  # noqa: BLE001
+                except (sqlite3.Error, RuntimeError) as e:
                     typer.echo(f"  error: {row.platform}/{row.bot_id}: {e}", err=True)
                     errors += 1
 

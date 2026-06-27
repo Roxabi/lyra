@@ -155,7 +155,7 @@ class TestDiscordAutoThread:
 
     @pytest.mark.asyncio
     async def test_auto_thread_exception_fallback(self) -> None:
-        """create_thread() raising Exception: message still processed in original ch."""
+        """create_thread() raising DiscordException: message still processed."""
         from factory.adapters.discord import DiscordAdapter
 
         # Arrange
@@ -172,11 +172,17 @@ class TestDiscordAutoThread:
         adapter._bot_user = bot_user
 
         # create_thread raises — adapter must fall through and put msg on bus
-        create_thread_mock = AsyncMock(side_effect=Exception("discord unavailable"))
+        create_thread_mock = AsyncMock(
+            side_effect=discord.DiscordException("discord unavailable")
+        )
 
         discord_msg = SimpleNamespace(
             guild=SimpleNamespace(id=111),
-            channel=SimpleNamespace(id=333, send=AsyncMock()),
+            channel=SimpleNamespace(
+                id=333,
+                send=AsyncMock(),
+                create_thread=AsyncMock(),
+            ),
             author=SimpleNamespace(
                 id=42, name="Alice", display_name="Alice", bot=False
             ),
@@ -190,7 +196,8 @@ class TestDiscordAutoThread:
         # Act — must not raise
         await adapter.on_message(discord_msg)
 
-        # Assert — message still processed (bus.put called)
+        # Assert — exception path exercised; message still processed
+        create_thread_mock.assert_awaited_once()
         inbound_bus.put.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -213,7 +220,9 @@ class TestDiscordAutoThread:
 
         # create_thread raises — but the message has a .thread attached
         # (Discord created it despite the timeout/error)
-        create_thread_mock = AsyncMock(side_effect=Exception("timeout after create"))
+        create_thread_mock = AsyncMock(
+            side_effect=discord.HTTPException(MagicMock(), "timeout after create")
+        )
         partial_thread = SimpleNamespace(id=8888)
 
         discord_msg = SimpleNamespace(
@@ -270,11 +279,11 @@ class TestPersistThreadClaimFailurePath:
     @pytest.mark.asyncio
     async def test_persist_thread_claim_failure_does_not_prevent_message_processing(
         self,
+        tmp_path,
     ) -> None:
-        """persist_thread_claim raising RuntimeError: message still reaches bus."""
-        from unittest.mock import patch
-
+        """ThreadStore.claim I/O failure: message still reaches bus."""
         from factory.adapters.discord import DiscordAdapter
+        from factory.infrastructure.stores.session.thread_store import ThreadStore
 
         # Arrange
         inbound_bus = MagicMock()
@@ -289,8 +298,10 @@ class TestPersistThreadClaimFailurePath:
         bot_user = SimpleNamespace(id=999, bot=True)
         adapter._bot_user = bot_user
 
-        # Wire a thread store so persist_thread_claim is actually called
-        adapter._thread_store = AsyncMock()
+        thread_store = ThreadStore(db_path=tmp_path / "discord.db")
+        await thread_store.connect()
+        await thread_store.close()  # claim() must degrade, not raise
+        adapter._thread_store = thread_store
 
         thread_mock = MagicMock()
         thread_mock.id = 9999
@@ -314,13 +325,8 @@ class TestPersistThreadClaimFailurePath:
             create_thread=create_thread_mock,
         )
 
-        # Patch persist_thread_claim to raise
-        with patch(
-            "factory.adapters.discord.discord_inbound.persist_thread_claim",
-            AsyncMock(side_effect=RuntimeError("DB error")),
-        ):
-            # Act — must not raise
-            await adapter.on_message(discord_msg)
+        # Act — must not raise
+        await adapter.on_message(discord_msg)
 
         # Assert — message still reaches the inbound bus
         inbound_bus.put.assert_awaited_once()

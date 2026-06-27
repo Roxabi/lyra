@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import ANY, AsyncMock, MagicMock, patch
 
+import nats.errors
 import pytest
 
 from factory.adapters.omp.omp_worker import OmpWorker
@@ -473,6 +474,36 @@ class TestRun:
                 await worker.run("nats://localhost:4222", stop=stop)
 
         pool.aclose.assert_awaited_once()
+
+    async def test_run_shutdown_swallows_nc_drain_and_close_errors(self) -> None:
+        """nc.drain()/close() nats.errors.Error on shutdown must not propagate."""
+        pool = _make_pool()
+        worker = _make_worker(pool)
+
+        nc = AsyncMock()
+        nc.drain = AsyncMock(side_effect=nats.errors.Error("drain failed"))
+        nc.close = AsyncMock(side_effect=nats.errors.Error("close failed"))
+
+        async def mock_nats_connect(*_a, **_kw):
+            return nc
+
+        async def mock_run_embedded(_nc, stop):  # noqa: ARG001
+            stop.set()
+
+        with (
+            patch(
+                "factory.adapters.omp.omp_worker.nats_connect",
+                side_effect=mock_nats_connect,
+            ),
+            patch.object(worker, "run_embedded", side_effect=mock_run_embedded),
+        ):
+            stop = asyncio.Event()
+            await worker.run("nats://localhost:4222", stop=stop)
+
+        nc.drain.assert_awaited_once()
+        nc.close.assert_awaited_once()
+        pool.aclose.assert_awaited_once()
+        assert worker._nc is None
 
 
 # ---------------------------------------------------------------------------

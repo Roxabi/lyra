@@ -46,23 +46,24 @@ async def _make_event_iter(events):
 def _job_envelope(**overrides) -> dict:
     """Build a minimal JobEnvelope dict for clipool dispatch (phase 2)."""
     payload_overrides = overrides.pop("payload", {})
-    base = {
+    payload: dict[str, object] = {
+        "pool_id": "pool-1",
+        "lyra_session_id": "sess-1",
+        "prompt": "hello",
+        "model_cfg": {},
+        "system_prompt": "",
+        "stream": True,
+    }
+    payload.update(payload_overrides)
+    base: dict[str, object] = {
         "contract_version": "1",
         "trace_id": "trace-001",
         "issued_at": datetime.now(timezone.utc).isoformat(),
         "job_id": _JOB_ID,
         "job_name": "claude",
         "reply_to": "_INBOX.hub.test",
-        "payload": {
-            "pool_id": "pool-1",
-            "lyra_session_id": "sess-1",
-            "prompt": "hello",
-            "model_cfg": {},
-            "system_prompt": "",
-            "stream": True,
-        },
+        "payload": payload,
     }
-    base["payload"].update(payload_overrides)
     base.update(overrides)
     return base
 

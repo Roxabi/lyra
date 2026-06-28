@@ -29,6 +29,7 @@ if TYPE_CHECKING:
     from factory.adapters.nats.mint_failure_subscriber import MintFailureSubscriber
     from factory.core.agent import Agent
     from factory.core.hub.hub import Hub
+    from factory.core.ports.llm import LlmProvider
     from factory.infrastructure.stores.identity.agent_grant_store import (
         AgentGrantStore,
     )
@@ -122,7 +123,7 @@ async def shutdown_hub_runtime(  # noqa: PLR0913 — unavoidable wiring surface
     dispatchers,
     proxies,
     pm: PairingManager | None,
-    cli_nats_driver: "LlmClient | None",
+    cli_nats_driver: "LlmProvider | None",
     nats_llm_client: "LlmClient | None",
 ) -> None:
     """Run the post-cancellation teardown sequence for hub_standalone."""
@@ -134,7 +135,9 @@ async def shutdown_hub_runtime(  # noqa: PLR0913 — unavoidable wiring surface
     if pm is not None:
         await pm.close()
     if cli_nats_driver is not None:
-        await cli_nats_driver.stop()
+        stop_fn = getattr(cli_nats_driver, "stop", None)
+        if stop_fn is not None:
+            await stop_fn()
     if nats_llm_client is not None:
         await nats_llm_client.stop()
     await hub.shutdown()

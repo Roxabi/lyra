@@ -12,13 +12,29 @@ from pydantic import ValidationError
 from factory.dashboard.e2e import (
     e2e_enabled,
     stub_agents_status,
+    stub_jobs_launch,
+    stub_jobs_list,
+    stub_jobs_steer,
+    stub_ops_health,
+    stub_ops_logs,
     stub_resume,
     stub_sessions_list,
+    stub_sessions_turns,
 )
+from factory.dashboard.ops_proxy import fetch_ops_health, fetch_ops_logs
 from roxabi_contracts.dashboard import (
+    DashboardJobsLaunchRequest,
+    DashboardJobsLaunchResponse,
+    DashboardJobsListResponse,
+    DashboardJobsSteerRequest,
+    DashboardJobsSteerResponse,
+    DashboardOpsHealthResponse,
+    DashboardOpsLogsResponse,
     DashboardSessionsListResponse,
     DashboardSessionsResumeRequest,
     DashboardSessionsResumeResponse,
+    DashboardSessionsTurnsResponse,
+    OpsLogPreset,
 )
 
 if TYPE_CHECKING:
@@ -81,6 +97,86 @@ def build_bff_router(  # noqa: C901
             raise _hub_unavailable(exc) from exc
         except (ValidationError, json.JSONDecodeError) as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @router.get("/jobs")
+    async def list_jobs() -> DashboardJobsListResponse:
+        if e2e_enabled():
+            return stub_jobs_list()
+        try:
+            return await hub.list_jobs()
+        except RuntimeError as exc:
+            raise _hub_unavailable(exc) from exc
+        except (ValidationError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @router.post("/jobs/launch")
+    async def launch_job(
+        body: DashboardJobsLaunchRequest,
+    ) -> DashboardJobsLaunchResponse:
+        if body.agent not in adapter.agent_names:
+            raise HTTPException(
+                status_code=400, detail=f"unknown agent: {body.agent!r}"
+            )
+        if e2e_enabled():
+            return stub_jobs_launch(body.agent)
+        try:
+            return await hub.launch_job(
+                agent=body.agent,
+                prompt=body.prompt,
+                job_name=body.job_name,
+                model=body.model,
+            )
+        except RuntimeError as exc:
+            raise _hub_unavailable(exc) from exc
+        except (ValidationError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @router.post("/jobs/steer")
+    async def steer_job(
+        body: DashboardJobsSteerRequest,
+    ) -> DashboardJobsSteerResponse:
+        if e2e_enabled():
+            return stub_jobs_steer(body.job_id)
+        try:
+            return await hub.steer_job(body.job_id, body.text)
+        except RuntimeError as exc:
+            raise _hub_unavailable(exc) from exc
+        except (ValidationError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @router.get("/sessions/turns")
+    async def list_session_turns(
+        session_id: str = Query(...),
+        limit: int = Query(default=200, ge=1, le=500),
+    ) -> DashboardSessionsTurnsResponse:
+        if _sessions_auth_required():
+            raise HTTPException(
+                status_code=403,
+                detail="session turns requires operator auth (#1992)",
+            )
+        if e2e_enabled():
+            return stub_sessions_turns(session_id)
+        try:
+            return await hub.list_turns(session_id, limit=limit)
+        except RuntimeError as exc:
+            raise _hub_unavailable(exc) from exc
+        except (ValidationError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @router.get("/ops/health")
+    async def ops_health() -> DashboardOpsHealthResponse:
+        if e2e_enabled():
+            return stub_ops_health()
+        return await fetch_ops_health()
+
+    @router.get("/ops/logs")
+    async def ops_logs(
+        preset: OpsLogPreset = Query(default="hub-errors"),
+        limit: int = Query(default=50, ge=1, le=200),
+    ) -> DashboardOpsLogsResponse:
+        if e2e_enabled():
+            return stub_ops_logs(preset)
+        return await fetch_ops_logs(preset, limit=limit)
 
     @router.post("/sessions/resume")
     async def resume_session(

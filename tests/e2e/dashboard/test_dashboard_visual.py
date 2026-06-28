@@ -99,7 +99,7 @@ def test_cockpit_visual(dashboard_url: str, theme: str, tmp_path: Path) -> None:
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport={"width": 1280, "height": 800})
-        page.goto(dashboard_url, wait_until="networkidle")
+        page.goto(f"{dashboard_url}chat", wait_until="networkidle")
         page.evaluate(
             """(t) => {
               document.documentElement.setAttribute('data-theme', t);

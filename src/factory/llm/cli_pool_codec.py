@@ -1,7 +1,7 @@
 """CliPoolCodec — encode/decode boundary for the NATS CliPool path.
 
 Implements LlmCodec Protocol for ``roxabi_contracts.cli.SUBJECTS``.
-Encodes CliCmdPayload; decodes CliChunkEvent into LlmResult / LlmEvent.
+Encodes ClaudeJobPayload; decodes CliChunkEvent into LlmResult / LlmEvent.
 """
 
 from __future__ import annotations
@@ -22,7 +22,11 @@ from factory.core.messaging.events import (
 from factory.core.ports.llm import LlmResult
 from factory.core.trace import TraceContext
 from factory.transport._result import Err, Result, SanitizedError
-from roxabi_contracts.cli.models import CliChunkEvent, CliCmdPayload, CliControlCmd
+from roxabi_contracts.cli.models import (
+    ClaudeJobPayload,
+    CliChunkEvent,
+    CliControlCmd,
+)
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.errors import KNOWN_CODES, WorkerError
 
@@ -58,7 +62,7 @@ def _validate_worker_error(we: WorkerError | None) -> WorkerError | None:
 
 
 class CliPoolCodec:
-    """Codec for CliPool-over-NATS (``roxabi_contracts.cli.SUBJECTS.cmd``)."""
+    """Codec for claude runtime lane (``factory.jobs.claude``)."""
 
     def encode(
         self,
@@ -70,7 +74,7 @@ class CliPoolCodec:
         stream: bool,
         **kwargs: Any,
     ) -> tuple[bytes, str]:
-        del messages  # CliCmdPayload carries text directly
+        del messages  # ClaudeJobPayload carries text directly
         trace_id = str(uuid4())
         pool_id = kwargs.get("pool_id", "")
         lyra_session_id = kwargs.get("lyra_session_id") or pool_id
@@ -80,7 +84,7 @@ class CliPoolCodec:
             model_cfg.model_dump() if hasattr(model_cfg, "model_dump") else model_cfg  # type: ignore[assignment]
         )
 
-        payload = CliCmdPayload(
+        payload = ClaudeJobPayload(
             contract_version=CONTRACT_VERSION,
             trace_id=trace_id,
             issued_at=datetime.now(timezone.utc),

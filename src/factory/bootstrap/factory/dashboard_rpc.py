@@ -4,24 +4,39 @@ from __future__ import annotations
 
 import json
 import logging
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
 from nats.aio.msg import Msg
 from pydantic import ValidationError
 
 from factory.core.hub.hub_protocol import RoutingKey
+from factory.core.hub.job_catalog import list_active_jobs
 from factory.core.hub.session_catalog import list_sessions_for_agent
 from factory.core.messaging.message import Platform
 from roxabi_contracts.dashboard import (
     SUBJECTS,
     AgentHealth,
     AgentHealthResponse,
+    DashboardJob,
+    DashboardJobsLaunchRequest,
+    DashboardJobsLaunchResponse,
+    DashboardJobsListResponse,
+    DashboardJobsSteerRequest,
+    DashboardJobsSteerResponse,
     DashboardSession,
     DashboardSessionsListRequest,
     DashboardSessionsListResponse,
     DashboardSessionsResumeRequest,
     DashboardSessionsResumeResponse,
+    DashboardSessionsTurnsRequest,
+    DashboardSessionsTurnsResponse,
+    DashboardTurn,
 )
+from roxabi_contracts.envelope import CONTRACT_VERSION
+from roxabi_contracts.jobs import JobEnvelope
+from roxabi_contracts.jobs.subjects import jobs_steer, jobs_submit
 
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
@@ -33,6 +48,8 @@ log = logging.getLogger(__name__)
 _CLIPOOL_WORKER = "clipool-worker"
 _OMP_WORKER = "omp-worker"
 _WEB_BOT = "smoke"
+_ALLOWED_JOB_NAMES = frozenset({"omp", "test"})
+_DEFAULT_OMP_MODEL = "grok-4-fast"
 
 
 async def start_dashboard_rpc(hub: Hub, nc: NATS) -> list[Any]:
@@ -58,19 +75,23 @@ async def start_dashboard_rpc(hub: Hub, nc: NATS) -> list[Any]:
     for subject, handler in (
         (SUBJECTS.sessions_list, _handle_sessions_list),
         (SUBJECTS.sessions_resume, _handle_sessions_resume),
+        (SUBJECTS.sessions_turns, _handle_sessions_turns),
+        (SUBJECTS.jobs_list, _handle_jobs_list),
+        (SUBJECTS.jobs_launch, _handle_jobs_launch),
+        (SUBJECTS.jobs_steer, _handle_jobs_steer),
         (SUBJECTS.agents_status, _handle_agents_status),
     ):
-        sub = await nc.subscribe(subject, cb=_wrap(hub, handler))
+        sub = await nc.subscribe(subject, cb=_wrap(hub, nc, handler))
         subs.append(sub)
         log.info("dashboard_rpc: subscribed %s", subject)
     return subs
 
 
-def _wrap(hub: Hub, handler: Any):
+def _wrap(hub: Hub, nc: NATS, handler: Any):
     async def _cb(msg: Msg) -> None:
         try:
             payload = json.loads(msg.data.decode()) if msg.data else {}
-            result = await handler(hub, payload)
+            result = await handler(hub, nc, payload)
             await msg.respond(json.dumps(result).encode())
         except (ValidationError, json.JSONDecodeError, UnicodeDecodeError, KeyError):
             log.exception("dashboard_rpc handler failed subject=%s", msg.subject)
@@ -84,7 +105,10 @@ def _wrap(hub: Hub, handler: Any):
     return _cb
 
 
-async def _handle_sessions_list(hub: Hub, payload: dict[str, Any]) -> dict[str, Any]:
+async def _handle_sessions_list(
+    hub: Hub, nc: NATS, payload: dict[str, Any]
+) -> dict[str, Any]:
+    _ = nc
     req = DashboardSessionsListRequest.model_validate(payload)
     store = hub._turn_store  # noqa: SLF001
     if store is None:
@@ -107,7 +131,31 @@ async def _handle_sessions_list(hub: Hub, payload: dict[str, Any]) -> dict[str, 
     return DashboardSessionsListResponse(sessions=sessions).model_dump()
 
 
-async def _handle_sessions_resume(hub: Hub, payload: dict[str, Any]) -> dict[str, Any]:
+async def _handle_sessions_turns(
+    hub: Hub, nc: NATS, payload: dict[str, Any]
+) -> dict[str, Any]:
+    _ = nc
+    req = DashboardSessionsTurnsRequest.model_validate(payload)
+    store = hub._turn_store  # noqa: SLF001
+    if store is None:
+        return DashboardSessionsTurnsResponse(turns=[]).model_dump()
+    rows = await store.get_turns_by_session(req.session_id, limit=req.limit)
+    turns = [
+        DashboardTurn(
+            role=row["role"],  # type: ignore[arg-type]
+            content=row["content"],
+            timestamp=row["timestamp"],
+        )
+        for row in rows
+        if row["role"] in {"user", "assistant"}
+    ]
+    return DashboardSessionsTurnsResponse(turns=turns).model_dump()
+
+
+async def _handle_sessions_resume(
+    hub: Hub, nc: NATS, payload: dict[str, Any]
+) -> dict[str, Any]:
+    _ = nc
     req = DashboardSessionsResumeRequest.model_validate(payload)
     pool_id = RoutingKey(Platform.WEB, _WEB_BOT, f"agent:{req.agent}").to_pool_id()
     pool = hub.pools.get(pool_id)
@@ -129,7 +177,79 @@ async def _handle_sessions_resume(hub: Hub, payload: dict[str, Any]) -> dict[str
     ).model_dump()
 
 
-async def _handle_agents_status(hub: Hub, payload: dict[str, Any]) -> dict[str, Any]:
+async def _handle_jobs_list(
+    hub: Hub, nc: NATS, payload: dict[str, Any]
+) -> dict[str, Any]:
+    _ = nc
+    _ = payload
+    rows = await list_active_jobs(hub)
+    jobs = [DashboardJob.model_validate(row) for row in rows]
+    return DashboardJobsListResponse(jobs=jobs).model_dump()
+
+
+async def _handle_jobs_launch(
+    hub: Hub, nc: NATS, payload: dict[str, Any]
+) -> dict[str, Any]:
+    req = DashboardJobsLaunchRequest.model_validate(payload)
+    if req.agent not in hub.agent_registry:
+        return DashboardJobsLaunchResponse(
+            accepted=False,
+            message=f"unknown agent: {req.agent!r}",
+        ).model_dump()
+    if req.job_name not in _ALLOWED_JOB_NAMES:
+        return DashboardJobsLaunchResponse(
+            accepted=False,
+            message=f"job_name not allowed: {req.job_name!r}",
+        ).model_dump()
+
+    job_id = uuid4().hex
+    pool_id = req.pool_id or RoutingKey(
+        Platform.WEB, _WEB_BOT, f"agent:{req.agent}"
+    ).to_pool_id()
+    dispatch_subject = jobs_submit(req.job_name)
+    envelope = JobEnvelope(
+        contract_version=CONTRACT_VERSION,
+        trace_id=job_id,
+        issued_at=datetime.now(tz=UTC),
+        job_id=job_id,
+        job_name=req.job_name,
+        payload={
+            "prompt": req.prompt,
+            "pool_id": pool_id,
+            "model_cfg": {
+                "backend": "omp-rpc",
+                "model": req.model or _DEFAULT_OMP_MODEL,
+            },
+            "system_prompt": req.system_prompt,
+        },
+        reply_to=f"_INBOX.{job_id}",
+    )
+    await nc.publish(dispatch_subject, envelope.model_dump_json().encode())
+    return DashboardJobsLaunchResponse(
+        accepted=True,
+        job_id=job_id,
+        message=f"dispatched {req.job_name}",
+        dispatch_subject=dispatch_subject,
+    ).model_dump()
+
+
+async def _handle_jobs_steer(
+    hub: Hub, nc: NATS, payload: dict[str, Any]
+) -> dict[str, Any]:
+    _ = hub
+    req = DashboardJobsSteerRequest.model_validate(payload)
+    subject = jobs_steer(req.job_id)
+    await nc.publish(subject, req.text.encode())
+    return DashboardJobsSteerResponse(
+        accepted=True,
+        message=f"steer published to {req.job_id}",
+    ).model_dump()
+
+
+async def _handle_agents_status(
+    hub: Hub, nc: NATS, payload: dict[str, Any]
+) -> dict[str, Any]:
+    _ = nc
     agents: list[str] = list(payload.get("agents") or [])
     harness_by_agent: dict[str, str] = dict(payload.get("harness_by_agent") or {})
     freshness = getattr(hub, "_dashboard_worker_freshness", None)

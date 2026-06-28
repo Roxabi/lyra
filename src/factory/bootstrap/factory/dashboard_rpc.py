@@ -303,8 +303,12 @@ async def _handle_voice_capabilities(
     stt = None
     if isinstance(tts_raw, dict):
         tts = VoiceTtsCapabilities(
-            engines=[VoiceEngineInfo.model_validate(e) for e in tts_raw.get("engines", [])],
-            samples=[VoiceSampleInfo.model_validate(s) for s in tts_raw.get("samples", [])],
+            engines=[
+                VoiceEngineInfo.model_validate(e) for e in tts_raw.get("engines", [])
+            ],
+            samples=[
+                VoiceSampleInfo.model_validate(s) for s in tts_raw.get("samples", [])
+            ],
             max_cached_engines=int(tts_raw.get("max_cached_engines") or 1),
             default_engine=tts_raw.get("default_engine"),
             catalog_revision=tts_raw.get("catalog_revision"),
@@ -315,7 +319,9 @@ async def _handle_voice_capabilities(
             default_model=stt_raw.get("default_model"),
         )
     if tts is None and stt is None:
-        return DashboardVoiceCapabilitiesResponse(error="voice_workers_unreachable").model_dump()
+        return DashboardVoiceCapabilitiesResponse(
+            error="voice_workers_unreachable",
+        ).model_dump()
     return DashboardVoiceCapabilitiesResponse(tts=tts, stt=stt).model_dump()
 
 

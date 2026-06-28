@@ -187,10 +187,11 @@ read_convergence_state() {
 }
 
 # Write the current convergence state to the stamp file.
-# Accepts an optional pre-computed fingerprint to stamp the state that was verified
-# at the START of the converge (TOCTOU guard — avoids a second compute_convergence_state
-# call whose result may reflect post-converge drift rather than the baseline).
-# When called with no argument, recomputes the state (back-compat).
+# Accepts an optional pre-computed fingerprint: converge.sh computes the post-converge state
+# once (after the last deploy step) and passes it here, so the stamp records exactly what was
+# just deployed instead of a second, independently-recomputed value that could differ if state
+# drifted between the two calls (TOCTOU).
+# When called with no argument, recomputes the state (back-compat for other callers).
 write_convergence_state() {
     local state="${1:-}"
     mkdir -p "$(dirname "${CONVERGE_STAMP}")"

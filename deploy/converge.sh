@@ -101,7 +101,11 @@ _do_converge() {
         local -a _all_svcs _client_svcs
         mapfile -t _all_svcs < <(quadlet_containers)
         # Lower bound derived from deploy/quadlet.toml at runtime; fail-fast on empty/partial parse — auto-updates when components are added.
-        _min_units=$(grep -cE '^\[component\.' "$(dirname "${BASH_SOURCE[0]}")/quadlet.toml")
+        # NB: grep -c exits 1 on zero matches (and 2 on a missing file); under set -e that would abort
+        # the script BEFORE the friendly guard below, so catch it explicitly (this is the empty/corrupt
+        # manifest case the guard exists to report).
+        _min_units=$(grep -cE '^\[component\.' "$(dirname "${BASH_SOURCE[0]}")/quadlet.toml") \
+            || { echo "ERROR: quadlet.toml missing or has no [component.*] sections (parse failure)" >&2; exit 1; }
         [[ ${#_all_svcs[@]} -ge ${_min_units} ]] || { echo "ERROR: quadlet_containers returned ${#_all_svcs[@]} units (<${_min_units})" >&2; exit 1; }
         mapfile -t _client_svcs < <(printf '%s\n' "${_all_svcs[@]}" | grep -v '^factory-nats$' || true)
         for svc in "${_client_svcs[@]}"; do

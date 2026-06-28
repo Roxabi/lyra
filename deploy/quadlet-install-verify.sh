@@ -18,7 +18,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/quadlet-units.sh"
 # Units derived from deploy/quadlet.toml at runtime.  Quadlet maps <name>.container → <name>.service.
 mapfile -t UNITS < <(quadlet_containers)
 # Lower bound derived from deploy/quadlet.toml at runtime; fail-fast on empty/partial parse — auto-updates when components are added.
-_min_units=$(grep -cE '^\[component\.' "$(dirname "${BASH_SOURCE[0]}")/quadlet.toml")
+# grep -c exits 1 on zero matches / 2 on missing file → catch it so set -e does not abort before the guard.
+_min_units=$(grep -cE '^\[component\.' "$(dirname "${BASH_SOURCE[0]}")/quadlet.toml") \
+    || { echo "ERROR: quadlet.toml missing or has no [component.*] sections (parse failure)" >&2; exit 1; }
 [[ ${#UNITS[@]} -ge ${_min_units} ]] || { echo "ERROR: quadlet_containers returned ${#UNITS[@]} units (<${_min_units})" >&2; exit 1; }
 
 # ── 1. Reload daemon so Quadlet generates fresh .service files ────────────────

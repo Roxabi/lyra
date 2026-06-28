@@ -2,16 +2,14 @@
 
 from __future__ import annotations
 
-import json
+import asyncio
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from uuid import uuid4
 
-import asyncio
-
+from factory.nats.voice.voice_lifecycle_client import VoiceLifecycleClient
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.voice import SUBJECTS, VoiceLifecycleResponse
-from factory.nats.voice.voice_lifecycle_client import VoiceLifecycleClient
 
 
 class _Nats:

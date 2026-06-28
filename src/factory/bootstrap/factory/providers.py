@@ -26,7 +26,7 @@ def _build_shared_base_providers(  # noqa: PLR0913
     llm_cfg: LlmConfig,
     *,
     nats_llm_client: LlmClient | None = None,
-    cli_nats_driver: LlmClient | None = None,
+    cli_nats_driver: LlmProvider | None = None,
     omp_rpc_driver: LlmProvider | None = None,
     omp_turn_store: _OmpSessionStore | None = None,
     cb_decorator_cls: type = CircuitBreakerDecorator,

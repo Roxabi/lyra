@@ -81,5 +81,6 @@ class TurnStoreProtocol(Protocol):
     async def get_last_session(self, pool_id: str) -> str | None: ...
 
     async def list_recent_sessions(
-        self, limit: int = 200
+        self,
+        limit: int = TurnStoreConfig.DEFAULT_LIST_RECENT_SESSIONS_LIMIT,
     ) -> list[CatalogSessionRow]: ...

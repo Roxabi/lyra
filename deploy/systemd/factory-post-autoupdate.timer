@@ -5,7 +5,9 @@ Description=Factory post-autoupdate timer — check every 5 minutes
 # Staggered +2 min after factory-quadlet-sync (fires at *:0/5) so the stamp
 # short-circuit in converge.sh deduplicates the two converge runs — #1751.
 OnCalendar=*:2/5
-Persistent=false  # offset timer: Persistent=true would collapse the *:0/5→*:2/5→*:4/5 boot stagger
+# offset timer: Persistent=true would collapse the *:0/5→*:2/5→*:4/5 boot stagger.
+# Keep on its own line — an inline '#' would void the directive (parsed into the value).
+Persistent=false
 Unit=factory-post-autoupdate.service
 
 [Install]

@@ -1,0 +1,8 @@
+{
+  "empty": "Create a chat to get started.",
+  "context": {
+    "title": "Context",
+    "agentStatus": "Agent status",
+    "activeJobs": "Active jobs"
+  }
+}

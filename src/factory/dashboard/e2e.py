@@ -151,7 +151,10 @@ def stub_ops_logs(preset: OpsLogPreset) -> DashboardOpsLogsResponse:
             OpsLogEntry(
                 timestamp="2026-06-28T12:00:00+00:00",
                 line=f"E2E stub log line for {preset}",
-                labels={"job": "factory-journal", "systemd_unit": "factory-hub.service"},
+                labels={
+                    "job": "factory-journal",
+                    "systemd_unit": "factory-hub.service",
+                },
             ),
             OpsLogEntry(
                 timestamp="2026-06-28T11:59:00+00:00",

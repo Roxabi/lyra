@@ -17,11 +17,25 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
+# Clear diagnostic if the manifest is gone — otherwise the grep below yields no rows and the
+# count==0 guard fires with a vaguer message.
+[[ -f deploy/quadlet.toml ]] || { echo "FAIL: deploy/quadlet.toml not found (run from the repo root)"; exit 1; }
+
 fail=0
 count=0
 
 while IFS= read -r container; do
     count=$((count + 1))
+
+    # Require the .container suffix. Without this, a malformed entry like
+    # container = "factory-nats" (no suffix) makes the strip below a no-op and we then
+    # probe deploy/quadlet/factory-nats{,.tmpl} — the wrong paths — and report a
+    # misleading "no source file" instead of the real format violation.
+    if [[ "${container}" != *.container ]]; then
+        echo "FAIL: ${container} — container value must end in .container"
+        fail=1
+        continue
+    fi
 
     # Reject names outside the safe charset to prevent subtle path tricks.
     unit="${container%.container}"
@@ -41,6 +55,9 @@ while IFS= read -r container; do
         fail=1
     fi
 
+# NB: section-agnostic by design — only [component.*] entries use a `container =` key in
+# deploy/quadlet.toml ([volume.*]/[network.*]/[pod.*] use their own typed keys), matching the
+# sibling check_quadlet_manifest_install.sh convention.
 done < <(grep -oE '^container[[:space:]]*=[[:space:]]*"[^"]+"' deploy/quadlet.toml | cut -d'"' -f2)
 
 if [ "${count}" -eq 0 ]; then

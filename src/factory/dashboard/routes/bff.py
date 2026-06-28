@@ -54,7 +54,7 @@ def _hub_unavailable(exc: Exception) -> HTTPException:
     return HTTPException(status_code=503, detail=str(exc))
 
 
-def build_bff_router(  # noqa: C901
+def build_bff_router(  # noqa: C901, PLR0915
     adapter: WebAdapter, hub: DashboardHubClient
 ) -> APIRouter:
     router = APIRouter(prefix="/api/bff")

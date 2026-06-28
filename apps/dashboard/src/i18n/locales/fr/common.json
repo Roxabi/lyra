@@ -1,0 +1,32 @@
+{
+  "appName": "Roxabi Factory",
+  "appTagline": "Console opérateur",
+  "nav": {
+    "sectionHome": "Accueil",
+    "sectionOperate": "Opérer",
+    "sectionObserve": "Observer",
+    "overview": "Vue d'ensemble",
+    "chat": "Chat",
+    "jobs": "Jobs",
+    "ops": "Supervision",
+    "expandSidebar": "Déplier la barre latérale",
+    "collapseSidebar": "Replier la barre latérale"
+  },
+  "theme": {
+    "toggle": "Changer le thème",
+    "light": "Clair",
+    "dark": "Sombre"
+  },
+  "status": {
+    "online": "En ligne",
+    "offline": "Hors ligne",
+    "active": "Actif",
+    "inactive": "Inactif"
+  },
+  "actions": {
+    "open": "Ouvrir",
+    "viewAll": "Voir tout",
+    "loading": "Chargement…",
+    "retry": "Réessayer"
+  }
+}

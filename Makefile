@@ -358,11 +358,12 @@ lint-js:               ## lint JS/TS workspaces (biome)
 
 # Local quality-gate bundle — CI-equivalent subset for dashboard + core factory paths (#1771).
 # Capture with: make qg 2>&1 | tee "${GOAL_1771_SCRATCH:-/tmp}/b3-qg.log"
-qg: lint-js lint typecheck build-dashboard  ## full local QG (lint, import-linter, tests, ACL drift)
+qg: lint-js lint typecheck build-dashboard  ## full local QG (lint, import-linter, tests, ACL + architecture snapshot drift)
 	bun run --filter @roxabi-factory/dashboard test
 	uv run lint-imports
 	bash scripts/check-acl-specs-drift.sh
 	bash scripts/check-acl-authconf-drift.sh
+	bash tools/check_architecture_snapshot.sh
 	uv run factory-check-flows
 	bash tools/check_secrets_drift.sh
 	bash tools/check_file_length.sh

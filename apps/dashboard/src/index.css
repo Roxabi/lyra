@@ -89,3 +89,8 @@
   scrollbar-width: thin;
   scrollbar-color: var(--border-hi) transparent;
 }
+
+/* Dashboard product surfaces — single border level, elevation via tone */
+.dashboard-surface {
+  background: var(--bg-card);
+}

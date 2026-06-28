@@ -1,3 +1,4 @@
+import { SelectField } from "@/components/ui/select-field";
 import type { HarnessKind } from "@/lib/chats-storage";
 
 interface HarnessPickerProps {
@@ -13,18 +14,17 @@ const OPTIONS: { id: HarnessKind; label: string }[] = [
 
 export function HarnessPicker({ value, onChange, disabled }: HarnessPickerProps) {
   return (
-    <select
-      className="rounded border border-border bg-card px-2 py-1 text-xs"
+    <SelectField
+      label="Harness"
       value={value}
       disabled={disabled}
       onChange={(e) => onChange(e.target.value as HarnessKind)}
-      aria-label="Harness"
     >
       {OPTIONS.map((o) => (
         <option key={o.id} value={o.id}>
           {o.label}
         </option>
       ))}
-    </select>
+    </SelectField>
   );
 }

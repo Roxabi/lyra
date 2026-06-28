@@ -8,16 +8,23 @@ export function PanelMount({ id, title, disabled = false }: PanelMountProps) {
   return (
     <div
       data-panel={id}
-      className={`rounded-md border border-dashed border-border p-3 text-sm ${
-        disabled ? "opacity-50" : ""
+      className={`rounded-lg border border-border/70 bg-background/50 px-3 py-2.5 ${
+        disabled ? "opacity-70" : ""
       }`}
     >
-      <p className="font-[family-name:var(--font-head)] text-xs font-bold uppercase tracking-wide text-muted-foreground">
-        {title}
-      </p>
-      <p className="mt-1 text-muted-foreground">
-        {disabled ? "Coming in a future panel issue." : "Panel slot"}
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs font-medium text-foreground">{title}</p>
+        {disabled ? (
+          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+            Bientôt
+          </span>
+        ) : null}
+      </div>
+      {disabled ? (
+        <p className="mt-1 text-[11px] text-muted-foreground">Coming in a future panel issue.</p>
+      ) : (
+        <p className="mt-1 text-[11px] text-muted-foreground">Panel slot</p>
+      )}
     </div>
   );
 }

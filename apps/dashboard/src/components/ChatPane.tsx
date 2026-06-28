@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AgentStatusBadge } from "@/components/AgentStatusBadge";
+import { ChatComposer } from "@/components/chat/ChatComposer";
+import { MessageList } from "@/components/chat/MessageList";
 import { HarnessPicker } from "@/components/HarnessPicker";
 import { ModelPicker } from "@/components/ModelPicker";
-import { Button } from "@/components/ui/button";
 import type { AgentHealth } from "@/lib/api";
 import { defaultModelForHarness, openChatStream, postChat } from "@/lib/api";
 import type { ChatTab } from "@/lib/chats-storage";
@@ -59,39 +60,44 @@ export function ChatPane({ tab, health, onUpdate }: ChatPaneProps) {
   const offline = health ? !health.online : false;
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3">
-      <div className="flex flex-wrap items-center gap-2 border-b border-border pb-2">
-        <span className="font-[family-name:var(--font-head)] text-sm font-bold">{tab.agent}</span>
-        <AgentStatusBadge health={health} />
-        <HarnessPicker
-          value={tab.harness}
-          onChange={(h) => onUpdate({ harness: h, model: defaultModelForHarness(h) })}
-          disabled={offline}
-        />
-        <ModelPicker
-          harness={tab.harness}
-          value={tab.model}
-          onChange={(m) => onUpdate({ model: m })}
-          offline={offline}
-        />
-      </div>
-      <pre className="min-h-0 flex-1 overflow-auto rounded-md border border-border bg-card p-3 text-sm whitespace-pre-wrap">
-        {log || "Start a conversation…"}
-      </pre>
-      {error ? <p className="text-xs text-destructive">{error}</p> : null}
-      <div className="flex gap-2">
-        <input
-          className="flex-1 rounded border border-border bg-background px-3 py-2 text-sm"
-          value={text}
-          placeholder="Message"
-          disabled={offline}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && send()}
-        />
-        <Button onClick={send} disabled={offline}>
-          Send
-        </Button>
-      </div>
+    <div className="flex h-full min-h-0 flex-col">
+      <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <div className="flex size-8 items-center justify-center rounded-lg border border-border bg-card text-xs font-semibold uppercase text-muted-foreground">
+            {tab.agent.slice(0, 1)}
+          </div>
+          <div className="min-w-0">
+            <p className="truncate font-[family-name:var(--font-head)] text-sm font-semibold">
+              {tab.agent}
+            </p>
+            <p className="text-xs text-muted-foreground">Session opérateur</p>
+          </div>
+          <AgentStatusBadge health={health} />
+        </div>
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <HarnessPicker
+            value={tab.harness}
+            onChange={(h) => onUpdate({ harness: h, model: defaultModelForHarness(h) })}
+            disabled={offline}
+          />
+          <ModelPicker
+            harness={tab.harness}
+            value={tab.model}
+            onChange={(m) => onUpdate({ model: m })}
+            offline={offline}
+          />
+        </div>
+      </header>
+
+      <MessageList log={log} agent={tab.agent} offline={offline} />
+
+      {error ? (
+        <p className="shrink-0 px-4 pb-1 text-xs text-destructive" role="alert">
+          {error}
+        </p>
+      ) : null}
+
+      <ChatComposer value={text} disabled={offline} onChange={setText} onSend={send} />
     </div>
   );
 }

@@ -48,8 +48,8 @@ export function CockpitLayout() {
   };
 
   return (
-    <div className="grid h-[calc(100vh-3.5rem)] grid-cols-[12rem_1fr_var(--sidebar-w)] gap-3 p-3">
-      <aside className="min-h-0 rounded-lg border border-border bg-card/50 p-2">
+    <div className="flex h-[calc(100vh-var(--header-h))] min-h-0">
+      <aside className="flex w-60 shrink-0 flex-col border-r border-border bg-card">
         <MultiChatTabs
           tabs={tabs}
           activeId={activeId}
@@ -58,7 +58,8 @@ export function CockpitLayout() {
           onNew={addTab}
         />
       </aside>
-      <main className="min-h-0 rounded-lg border border-border bg-card/30 p-3">
+
+      <main className="flex min-w-0 flex-1 flex-col bg-background">
         {activeTab ? (
           <ChatPane
             tab={activeTab}
@@ -66,10 +67,13 @@ export function CockpitLayout() {
             onUpdate={(patch) => updateTab(activeTab.id, patch)}
           />
         ) : (
-          <p className="text-sm text-muted-foreground">No active chat.</p>
+          <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
+            Aucun chat actif.
+          </div>
         )}
       </main>
-      <aside className="flex min-h-0 flex-col gap-3 overflow-auto rounded-lg border border-border bg-card/50 p-3">
+
+      <aside className="fd-scroll flex w-[var(--sidebar-w)] shrink-0 flex-col gap-4 overflow-y-auto border-l border-border bg-card px-4 py-4">
         <ReprendrePanel
           agent={activeTab?.agent ?? null}
           onResumed={(agent) => {
@@ -82,8 +86,11 @@ export function CockpitLayout() {
             }
           }}
         />
-        <PanelMount id="jobs" title="Jobs (#1772)" disabled />
-        <PanelMount id="obs" title="Obs (#1774)" disabled />
+        <div className="space-y-2 border-t border-border/60 pt-4">
+          <p className="text-xs font-medium text-muted-foreground">À venir</p>
+          <PanelMount id="jobs" title="Jobs (#1772)" disabled />
+          <PanelMount id="obs" title="Obs (#1774)" disabled />
+        </div>
       </aside>
     </div>
   );

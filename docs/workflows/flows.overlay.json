@@ -1,0 +1,167 @@
+{
+  "groups": [],
+  "components": [
+    {
+      "id": "inproc-pool",
+      "label": "Pool",
+      "group": "inprocess",
+      "path": "src/factory/core/pool",
+      "description": "Per-conversation state; pairing_manager injected at bootstrap"
+    },
+    {
+      "id": "inproc-command-router",
+      "label": "CommandRouter",
+      "group": "inprocess",
+      "path": "src/factory/commands",
+      "description": "Builtin + plugin command dispatch"
+    },
+    {
+      "id": "inproc-pairing-handlers",
+      "label": "Pairing Handlers",
+      "group": "inprocess",
+      "path": "src/factory/commands/pairing/handlers.py",
+      "description": "/invite, /join, /unpair"
+    },
+    {
+      "id": "inproc-pairing-manager",
+      "label": "PairingManager",
+      "group": "inprocess",
+      "path": "src/factory/infrastructure/stores/identity/pairing.py",
+      "description": "Invite codes + AgentGrantStore on validate"
+    },
+    {
+      "id": "store-auth-db",
+      "label": "auth.db",
+      "group": "stores",
+      "path": "~/.roxabi/factory/auth.db",
+      "description": "Pairing codes, grants, identity"
+    },
+    {
+      "id": "inproc-agent",
+      "label": "Agent",
+      "group": "inprocess",
+      "path": "src/factory/core/agent",
+      "description": "Stateless singleton; LlmProvider dispatch"
+    },
+    {
+      "id": "inproc-inbound-pipeline",
+      "label": "InboundPipeline",
+      "group": "inprocess",
+      "path": "src/factory/inbound/pipeline.py",
+      "description": "parse → route → session → dispatch"
+    }
+  ],
+  "flows": [
+    {
+      "id": "overlay-invite-user",
+      "label": "Invite new user (/invite)",
+      "category": "Auth & Pairing",
+      "summary": "In-process path after NATS delivers /invite to hub (see nats-inbound-*)",
+      "source": "overlay",
+      "steps": [
+        {
+          "from": "proc-hub",
+          "to": "inproc-inbound-pipeline",
+          "label": "Hub intake",
+          "payload": "InboundMessage from NATS staging queue"
+        },
+        {
+          "from": "inproc-inbound-pipeline",
+          "to": "inproc-pool",
+          "label": "Route to pool",
+          "payload": "RoutingKey → pool_id; PoolManager.get_or_create_pool()"
+        },
+        {
+          "from": "inproc-pool",
+          "to": "inproc-command-router",
+          "label": "Command detected",
+          "payload": "CommandParser name=invite → plugin handler"
+        },
+        {
+          "from": "inproc-command-router",
+          "to": "inproc-pairing-handlers",
+          "label": "cmd_invite()",
+          "payload": "Requires msg.is_admin=True; pool.pairing_manager"
+        },
+        {
+          "from": "inproc-pairing-handlers",
+          "to": "inproc-pairing-manager",
+          "label": "generate_code()",
+          "payload": "admin_identity=msg.user_id; SHA-256 hash stored, plaintext returned once"
+        },
+        {
+          "from": "inproc-pairing-manager",
+          "to": "store-auth-db",
+          "label": "Persist code",
+          "payload": "INSERT pairing_codes (hash, admin_identity, expires_at)"
+        }
+      ]
+    },
+    {
+      "id": "overlay-join-pairing",
+      "label": "Join with pairing code (/join)",
+      "category": "Auth & Pairing",
+      "summary": "User redeems code → agent grant in auth.db",
+      "source": "overlay",
+      "steps": [
+        {
+          "from": "proc-hub",
+          "to": "inproc-pool",
+          "label": "Route to pool",
+          "payload": "pool.agent_name scopes the grant"
+        },
+        {
+          "from": "inproc-pool",
+          "to": "inproc-pairing-handlers",
+          "label": "cmd_join()",
+          "payload": "args=[CODE]; rate limit on identity_key"
+        },
+        {
+          "from": "inproc-pairing-handlers",
+          "to": "inproc-pairing-manager",
+          "label": "validate_code()",
+          "payload": "code + identity_key + agent_name"
+        },
+        {
+          "from": "inproc-pairing-manager",
+          "to": "store-auth-db",
+          "label": "Grant + consume",
+          "payload": "DELETE pairing_codes; AgentGrantStore.upsert Principal rx:user:<id>"
+        }
+      ]
+    },
+    {
+      "id": "overlay-basic-text",
+      "label": "Basic text message (in-process)",
+      "category": "Core Messaging",
+      "summary": "After NATS inbound delivery — hub core through agent to outbound NATS",
+      "source": "overlay",
+      "steps": [
+        {
+          "from": "proc-hub",
+          "to": "inproc-inbound-pipeline",
+          "label": "Parse + route",
+          "payload": "WireParser → InboundMessage; not a command → PROCESS"
+        },
+        {
+          "from": "inproc-inbound-pipeline",
+          "to": "inproc-pool",
+          "label": "Pool dispatch",
+          "payload": "resolve_binding() → pool._inbox.put(msg)"
+        },
+        {
+          "from": "inproc-pool",
+          "to": "inproc-agent",
+          "label": "Agent.process()",
+          "payload": "system_prompt + LlmProvider.complete() → Response"
+        },
+        {
+          "from": "inproc-agent",
+          "to": "proc-hub",
+          "label": "dispatch_response",
+          "payload": "Hub enqueues outbound → see nats-outbound-* flow"
+        }
+      ]
+    }
+  ]
+}

@@ -25,15 +25,16 @@ from factory.core.cli.cli_pool import CliPool, CliResult
 from factory.core.messaging.utils.metrics import emit_populated_total
 from roxabi_contracts.cli import SUBJECTS
 from roxabi_contracts.cli.models import (
-    CliCmdPayload,
+    ClaudeJobPayload,
     CliControlCmd,
 )
+from roxabi_contracts.jobs.subjects import jobs_runtime_claude
 from roxabi_contracts.errors import WorkerError
 from roxabi_nats.adapter_base import NatsAdapterBase
 
 log = logging.getLogger(__name__)
 
-_ENVELOPE_NAME = "CliCmdPayload"
+_ENVELOPE_NAME = "ClaudeJobPayload"
 _SCHEMA_VERSION = 1
 _HEARTBEAT_INTERVAL = 30.0
 
@@ -45,7 +46,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
       - ``SUBJECTS.cmd``     (queue group) → _handle_cmd
       - ``SUBJECTS.control`` (broadcast)   → _handle_control
 
-    The caller sends a JSON envelope (CliCmdPayload / CliControlCmd) and
+    The caller sends a JSON envelope (ClaudeJobPayload / CliControlCmd) and
     provides a reply-to inbox.  Streaming chunks are published to that inbox
     as CliChunkEvent messages.  A terminal chunk with ``done=True`` signals
     end-of-turn.
@@ -59,7 +60,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
         identity_name: str | None = None,
     ) -> None:
         super().__init__(
-            subject=SUBJECTS.cmd,
+            subject=jobs_runtime_claude(),
             queue_group=SUBJECTS.clipool_workers,
             envelope_name=_ENVELOPE_NAME,
             schema_version=_SCHEMA_VERSION,
@@ -95,9 +96,9 @@ class CliPoolNatsWorker(NatsAdapterBase):
 
     async def _handle_cmd(self, msg: Any, payload: dict) -> None:
         try:
-            cmd = CliCmdPayload.model_validate(payload)
+            cmd = ClaudeJobPayload.model_validate(payload)
         except ValidationError:
-            log.exception("clipool_worker: failed to parse CliCmdPayload")
+            log.exception("clipool_worker: failed to parse ClaudeJobPayload")
             # The JSON decoded successfully (NatsAdapterBase did that before
             # dispatching to handle()) but the payload failed schema validation
             # — this is the textbook `worker.validation` case (decoded OK but
@@ -105,11 +106,11 @@ class CliPoolNatsWorker(NatsAdapterBase):
             # `transport.parse` would mean "couldn't decode bytes/JSON", which
             # is a different failure mode handled one layer up.
             # Sanitize bus-bound message (#1215). ValidationError __str__
-            # embeds incoming field values from CliCmdPayload — full %r in
+            # embeds incoming field values from ClaudeJobPayload — full %r in
             # log.exception above only.
             worker_error = WorkerError(
                 code="worker.validation",
-                message="CliCmdPayload validation failed",
+                message="ClaudeJobPayload validation failed",
                 retryable=False,
             )
             emit_populated_total(domain="cli")
@@ -163,7 +164,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
     async def _handle_cmd_streaming(
         self,
         msg: Any,
-        cmd: CliCmdPayload,
+        cmd: ClaudeJobPayload,
         model_cfg: ModelConfig,
         *,
         resumed: bool | None = None,
@@ -196,7 +197,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
     async def _handle_cmd_blocking(
         self,
         msg: Any,
-        cmd: CliCmdPayload,
+        cmd: ClaudeJobPayload,
         model_cfg: ModelConfig,
         *,
         resumed: bool | None = None,

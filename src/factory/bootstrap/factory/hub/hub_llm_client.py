@@ -26,6 +26,7 @@ async def build_llm_client(
     from factory.transport.worker_pool_client import WorkerPoolClient
     from roxabi_contracts._nats_utils import validate_worker_id
     from roxabi_contracts.cli import SUBJECTS
+    from roxabi_contracts.jobs.subjects import jobs_runtime_claude
 
     transport = NatsTransport(nc)
     pool = WorkerPoolClient(
@@ -40,5 +41,5 @@ async def build_llm_client(
         pool,
         CliPoolCodec(),
         timeout=timeout,
-        request_subject=SUBJECTS.cmd,
+        request_subject=jobs_runtime_claude(),
     )

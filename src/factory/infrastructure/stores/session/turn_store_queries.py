@@ -36,6 +36,15 @@ ORDER BY timestamp DESC
 LIMIT  ?
 """
 
+_SELECT_BY_SESSION = """
+SELECT id, pool_id, session_id, role, platform, user_id,
+       content, message_id, reply_message_id, timestamp, metadata
+FROM   conversation_turns
+WHERE  session_id = ?
+ORDER BY timestamp ASC
+LIMIT  ?
+"""
+
 _COLS = (
     "id",
     "pool_id",
@@ -207,6 +216,21 @@ async def list_sessions_for_pool(
         log.exception("list_sessions_for_pool failed (pool=%s)", pool_id)
         return []
     return cast(list[SessionRow], [dict(zip(_LIST_SESSIONS_COLS, row)) for row in rows])
+
+
+async def get_turns_by_session(
+    db: aiosqlite.Connection, session_id: str, limit: int = 200
+) -> list[TurnRow]:
+    """Return turns for *session_id*, oldest first (chat replay)."""
+    limit = min(max(1, limit), 500)
+    async with db.execute(_SELECT_BY_SESSION, (session_id, limit)) as cur:
+        rows = await cur.fetchall()
+    result = []
+    for row in rows:
+        d = dict(zip(_COLS, row))
+        d["metadata"] = json.loads(d["metadata"] or "{}")
+        result.append(d)
+    return cast(list[TurnRow], result)
 
 
 async def get_turns(

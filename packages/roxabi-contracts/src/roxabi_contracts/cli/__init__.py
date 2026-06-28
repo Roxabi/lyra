@@ -2,6 +2,7 @@
 (ADR-054 (absorbed into ADR-055))."""
 
 from .models import (
+    ClaudeJobPayload,
     CliChunkEvent,
     CliCmdPayload,
     CliControlAck,
@@ -11,6 +12,7 @@ from .models import (
 from .subjects import SUBJECTS
 
 __all__ = [
+    "ClaudeJobPayload",
     "CliCmdPayload",
     "CliChunkEvent",
     "CliControlAck",

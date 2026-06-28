@@ -76,7 +76,7 @@ def dashboard_url() -> Iterator[str]:
                 if resp.status == 200:
                     break
         except (urllib.error.URLError, TimeoutError):
-            time.sleep(0.1)
+            time.sleep(0.1)  # event-based
     else:
         proc.terminate()
         pytest.fail("dashboard server did not become ready")

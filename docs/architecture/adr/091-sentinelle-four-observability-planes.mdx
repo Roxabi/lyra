@@ -65,7 +65,7 @@ Sentinelle is a **capability inside `factory-hub`**, not a standalone `factory-s
 | Component | Role | Deployment |
 |---|---|---|
 | **`factory-host-sensor`** (ex `sentinel-collect`) | Reads local agent signals (`~/.grok/`, `~/.claude/`, worktrees) → publishes `factory.event.host.*` | systemd timer per dev machine (M₂, laptop, optionally M₁) — **sensor only, no policy** |
-| **`factory-ingress`** | Receives external webhooks (GitHub, Cloudflare, extensible) → normalizes → `factory.event.*` | M₁ container/service with connector registry (apps, secrets, tokens) |
+| **`factory-ingress`** | Receives external webhooks (GitHub, Cloudflare, extensible) → normalizes → `factory.event.*` | **Dedicated M₁ Quadlet** (`factory-ingress.container`) with connector registry — **not** a republish bridge from roxabi-live |
 | **`factory-mail`** *(future epic)* | Inbound mail → `factory.event.mail.received`; outbound send | Dedicated M₁ container; Sentinelle is a consumer, not the mail stack |
 | **Hub Sentinelle module** | Subscribes events, pulls health, enriches read models, decides, acts | **Inside `factory-hub`** (`sentinelle.enabled` or equivalent config) |
 | **`factory-discord`** | Outbound alerts | Existing adapter — unchanged |
@@ -99,11 +99,12 @@ ADR-076 catalogues message/persistence/typing planes for **hub traffic**. The fo
 ## Consequences
 
 - Host sensors on M₂/laptop publish `factory.event.host.<machine>.<kind>` on NATS — **not** Syncthing snapshots to M₁.
-- External webhooks land on **`factory-ingress`**, not directly on the hub HTTP surface.
+- External webhooks land on **`factory-ingress`** (dedicated M₁ container, public via CF tunnel or tailnet), not on the hub HTTP surface and **not** via roxabi-live republish.
+- **roxabi-live** keeps its own `POST /webhook/github` for D1/backlog sync — orthogonal to Sentinelle plane ①; GitHub App may register a **second** webhook URL for `factory-ingress`.
 - Personal mail is **`factory.event.mail.received`** via `factory-mail`; Gmail/GCal obligations stay plane ④ read models in V1.
 - V1 Sentinelle: hub module (event consumer + health pull + read-model enrichment + job dispatch).
 - Monitoring v2 (#1035) adds `factory.metric.*` publishers; Sentinelle can switch plane ③ from pull to subscribe without changing planes ①②④.
-- New work is gated on spec success criteria before code: taxonomy doc, trigger list, ingress decision (roxabi-live webhook republish vs factory ingress).
+- Ingress decision **closed (2026-06-28):** `factory-ingress` = local M₁ container (#2008). roxabi-live republish rejected.
 
 ## See also
 

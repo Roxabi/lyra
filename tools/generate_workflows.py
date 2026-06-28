@@ -21,7 +21,6 @@ import json
 import sys
 from datetime import date
 from pathlib import Path
-from typing import Any
 
 _PLATFORM_ADAPTERS = (
     ("telegram", "telegram-adapter"),
@@ -94,10 +93,20 @@ def _layer_id(layer: str) -> str:
 def build_groups() -> list[dict]:
     return [
         {"id": "process", "label": "NATS Processes", "order": 1, "color": "#3b82f6"},
-        {"id": "packages", "label": "Workspace Packages", "order": 2, "color": "#6366f1"},
+        {
+            "id": "packages",
+            "label": "Workspace Packages",
+            "order": 2,
+            "color": "#6366f1",
+        },
         {"id": "layers", "label": "Code Layers", "order": 3, "color": "#8b5cf6"},
         {"id": "ci", "label": "CI / Deploy", "order": 4, "color": "#ef4444"},
-        {"id": "inprocess", "label": "In-Process (overlay)", "order": 5, "color": "#ec4899"},
+        {
+            "id": "inprocess",
+            "label": "In-Process (overlay)",
+            "order": 5,
+            "color": "#ec4899",
+        },
         {"id": "stores", "label": "Stores / Data", "order": 6, "color": "#64748b"},
     ]
 
@@ -228,12 +237,13 @@ def build_nats_flows(acl: dict) -> list[dict]:
         req = entry["requester"]
         resp = entry["responder"]
         subject = entry["subject"]
+        subject_slug = subject.replace(".", "-").replace(">", "w")
         flows.append(
             {
-                "id": f"nats-rr-{req}-to-{resp}-{subject.replace('.', '-').replace('>', 'w')}",
+                "id": f"nats-rr-{req}-to-{resp}-{subject_slug}",
                 "label": f"{req} → {resp} ({subject})",
                 "category": "NATS request-reply",
-                "summary": f"Declared in acl-matrix.json request_reply_flows",
+                "summary": "Declared in acl-matrix.json request_reply_flows",
                 "source": "generated",
                 "steps": [
                     _step(
@@ -252,7 +262,10 @@ def build_nats_flows(acl: dict) -> list[dict]:
                 "id": f"nats-inbound-{platform}",
                 "label": f"Inbound message ({platform})",
                 "category": "NATS messaging",
-                "summary": f"Adapter publishes user messages; hub consumes factory.inbound.{platform}.>",
+                "summary": (
+                    f"Adapter publishes user messages; "
+                    f"hub consumes factory.inbound.{platform}.>"
+                ),
                 "source": "generated",
                 "steps": [
                     _step(
@@ -269,7 +282,10 @@ def build_nats_flows(acl: dict) -> list[dict]:
                 "id": f"nats-outbound-{platform}",
                 "label": f"Outbound response ({platform})",
                 "category": "NATS messaging",
-                "summary": f"Hub publishes response chunks; adapter delivers to platform API",
+                "summary": (
+                    "Hub publishes response chunks; "
+                    "adapter delivers to platform API"
+                ),
                 "source": "generated",
                 "steps": [
                     _step(
@@ -302,9 +318,10 @@ def build_nats_flows(acl: dict) -> list[dict]:
         )
 
     for subject, publisher, subscriber in _WORKER_RESULT_SUBJECTS:
+        subject_slug = subject.replace(".", "-").replace("*", "x")
         flows.append(
             {
-                "id": f"nats-result-{publisher}-to-{subscriber}-{subject.replace('.', '-').replace('*', 'x')}",
+                "id": f"nats-result-{publisher}-to-{subscriber}-{subject_slug}",
                 "label": f"{publisher} → {subscriber} ({subject})",
                 "category": "NATS worker results",
                 "summary": f"Worker publishes {subject}; hub subscribes",
@@ -329,7 +346,10 @@ def build_ci_flows() -> list[dict]:
             "id": "ci-container-publish",
             "label": "Container publish (GHCR)",
             "category": "CI / Deploy",
-            "summary": "push staging or factory/v* tag → bake → GHCR → Quadlet pull on M₁",
+            "summary": (
+                "push staging or factory/v* tag → bake → GHCR → "
+                "Quadlet pull on M₁"
+            ),
             "source": "generated",
             "steps": [
                 _step(
@@ -369,7 +389,10 @@ def merge_overlay(base: dict, overlay: dict) -> dict:
     return {
         "meta": base["meta"],
         "groups": sorted(groups.values(), key=lambda g: g.get("order", 99)),
-        "components": sorted(components.values(), key=lambda c: (c.get("group", ""), c["id"])),
+        "components": sorted(
+            components.values(),
+            key=lambda c: (c.get("group", ""), c["id"]),
+        ),
         "flows": flows,
     }
 
@@ -405,7 +428,10 @@ def generate(root: Path) -> dict:
             "title": "factory — Package & Component Workflows",
             "version": "1.0.0",
             "updated": date.today().isoformat(),
-            "description": "Generated from acl-matrix.json + quadlet.toml + importlinter + overlay.",
+            "description": (
+                "Generated from acl-matrix.json + quadlet.toml + "
+                "importlinter + overlay."
+            ),
             "generated": {
                 "flows": generated_count,
                 "components": len(components),
@@ -435,7 +461,8 @@ def main() -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
 
     data = generate(root)
-    output.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    payload = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+    output.write_text(payload, encoding="utf-8")
 
     gen = data["meta"]["generated"]["flows"]
     ovl = data["meta"]["overlay"]["flows"]

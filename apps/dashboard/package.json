@@ -22,8 +22,10 @@
     "@tanstack/react-router": "^1.121.21",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "i18next": "^26.3.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-i18next": "^17.0.8",
     "tailwind-merge": "^3.3.0"
   },
   "devDependencies": {

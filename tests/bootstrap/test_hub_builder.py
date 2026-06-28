@@ -13,7 +13,7 @@ from factory.core.agent import Agent
 from factory.core.agent.agent_config import ModelConfig
 from factory.core.hub import Hub
 from factory.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
-from factory.llm.llm_client import LlmClient
+from factory.llm.drivers.claude_rpc import ClaudeRpcDriver
 
 # ---------------------------------------------------------------------------
 # test_build_cli_pool_returns_none_without_claude_cli
@@ -64,8 +64,8 @@ class TestBuildLlmClient:
 
         client = await build_llm_client(nc)
 
-        assert isinstance(client, LlmClient)
-        assert client._request_subject == "factory.jobs.claude"
+        assert isinstance(client, ClaudeRpcDriver)
+        assert client.capabilities["streaming"] is True
 
 
 # ---------------------------------------------------------------------------

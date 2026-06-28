@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from factory.bootstrap.wiring.bootstrap_wiring import Authenticator
     from factory.config import DiscordBotConfig, TelegramBotConfig
     from factory.core.hub import OutboundDispatcher
+    from factory.llm.drivers.claude_rpc import ClaudeRpcDriver
     from factory.llm.llm_client import LlmClient
     from factory.nats.nats_channel_proxy import NatsChannelProxy
 
@@ -58,7 +59,11 @@ async def _build_hub_and_wire(  # noqa: PLR0913 — unavoidable wiring surface
     dc_bot_auths: list[tuple[DiscordBotConfig, Authenticator]],
     admin_user_ids: frozenset[str],
 ) -> tuple[
-    Hub, list[NatsChannelProxy], list[OutboundDispatcher], LlmClient, LlmClient | None
+    Hub,
+    list[NatsChannelProxy],
+    list[OutboundDispatcher],
+    ClaudeRpcDriver,
+    LlmClient | None,
 ]:
     """Build the Hub, wire NATS proxies, and register agents.
 

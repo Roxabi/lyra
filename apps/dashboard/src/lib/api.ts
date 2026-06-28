@@ -105,6 +105,48 @@ export async function fetchJobs(): Promise<DashboardJob[]> {
   return data.jobs;
 }
 
+export type OpsLogPreset = "hub-errors" | "operator-events" | "deploy-failures";
+
+export interface OpsEngineHealth {
+  engine: "loki" | "langfuse" | "otel-collector";
+  label: string;
+  reachable: boolean;
+  detail: string;
+}
+
+export interface OpsLogEntry {
+  timestamp: string;
+  line: string;
+  labels: Record<string, string>;
+}
+
+export async function fetchOpsHealth(): Promise<OpsEngineHealth[]> {
+  const res = await fetch("/api/bff/ops/health");
+  if (!res.ok) throw new Error("ops health fetch failed");
+  const data = (await res.json()) as { engines: OpsEngineHealth[] };
+  return data.engines;
+}
+
+export async function fetchOpsLogs(
+  preset: OpsLogPreset,
+  limit = 50,
+): Promise<{
+  preset: OpsLogPreset;
+  query: string;
+  engine_reachable: boolean;
+  entries: OpsLogEntry[];
+}> {
+  const params = new URLSearchParams({ preset, limit: String(limit) });
+  const res = await fetch(`/api/bff/ops/logs?${params}`);
+  if (!res.ok) throw new Error("ops logs fetch failed");
+  return res.json() as Promise<{
+    preset: OpsLogPreset;
+    query: string;
+    engine_reachable: boolean;
+    entries: OpsLogEntry[];
+  }>;
+}
+
 export async function fetchSessionTurns(sessionId: string): Promise<DashboardTurn[]> {
   const res = await fetch(`/api/bff/sessions/turns?session_id=${encodeURIComponent(sessionId)}`);
   if (!res.ok) throw new Error("turns fetch failed");

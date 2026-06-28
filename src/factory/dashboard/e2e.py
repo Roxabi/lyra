@@ -7,13 +7,18 @@ import os
 from roxabi_contracts.dashboard import (
     AgentHealth,
     AgentHealthResponse,
+    DashboardJob,
+    DashboardJobsListResponse,
+    DashboardOpsHealthResponse,
+    DashboardOpsLogsResponse,
     DashboardSession,
     DashboardSessionsListResponse,
     DashboardSessionsResumeResponse,
-    DashboardJob,
-    DashboardJobsListResponse,
     DashboardSessionsTurnsResponse,
     DashboardTurn,
+    OpsEngineHealth,
+    OpsLogEntry,
+    OpsLogPreset,
 )
 
 
@@ -91,6 +96,51 @@ def stub_jobs_list() -> DashboardJobsListResponse:
                 steer_subject="factory.job.e2e-job-2.steer",
             ),
         ]
+    )
+
+
+def stub_ops_health() -> DashboardOpsHealthResponse:
+    return DashboardOpsHealthResponse(
+        engines=[
+            OpsEngineHealth(
+                engine="loki",
+                label="Loki",
+                reachable=True,
+                detail="E2E stub",
+            ),
+            OpsEngineHealth(
+                engine="langfuse",
+                label="Langfuse",
+                reachable=True,
+                detail="E2E stub",
+            ),
+            OpsEngineHealth(
+                engine="otel-collector",
+                label="OTel Collector",
+                reachable=False,
+                detail="E2E stub offline",
+            ),
+        ]
+    )
+
+
+def stub_ops_logs(preset: OpsLogPreset) -> DashboardOpsLogsResponse:
+    return DashboardOpsLogsResponse(
+        preset=preset,
+        query=f"e2e-stub-{preset}",
+        engine_reachable=True,
+        entries=[
+            OpsLogEntry(
+                timestamp="2026-06-28T12:00:00+00:00",
+                line=f"E2E stub log line for {preset}",
+                labels={"job": "factory-journal", "systemd_unit": "factory-hub.service"},
+            ),
+            OpsLogEntry(
+                timestamp="2026-06-28T11:59:00+00:00",
+                line="Second stub entry — hub heartbeat ok",
+                labels={"job": "factory-journal"},
+            ),
+        ],
     )
 
 

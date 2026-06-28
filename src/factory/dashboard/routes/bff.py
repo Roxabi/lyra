@@ -12,17 +12,23 @@ from pydantic import ValidationError
 from factory.dashboard.e2e import (
     e2e_enabled,
     stub_agents_status,
-    stub_resume,
     stub_jobs_list,
+    stub_ops_health,
+    stub_ops_logs,
+    stub_resume,
     stub_sessions_list,
     stub_sessions_turns,
 )
+from factory.dashboard.ops_proxy import fetch_ops_health, fetch_ops_logs
 from roxabi_contracts.dashboard import (
     DashboardJobsListResponse,
+    DashboardOpsHealthResponse,
+    DashboardOpsLogsResponse,
     DashboardSessionsListResponse,
     DashboardSessionsResumeRequest,
     DashboardSessionsResumeResponse,
     DashboardSessionsTurnsResponse,
+    OpsLogPreset,
 )
 
 if TYPE_CHECKING:
@@ -115,6 +121,21 @@ def build_bff_router(  # noqa: C901
             raise _hub_unavailable(exc) from exc
         except (ValidationError, json.JSONDecodeError) as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @router.get("/ops/health")
+    async def ops_health() -> DashboardOpsHealthResponse:
+        if e2e_enabled():
+            return stub_ops_health()
+        return await fetch_ops_health()
+
+    @router.get("/ops/logs")
+    async def ops_logs(
+        preset: OpsLogPreset = Query(default="hub-errors"),
+        limit: int = Query(default=50, ge=1, le=200),
+    ) -> DashboardOpsLogsResponse:
+        if e2e_enabled():
+            return stub_ops_logs(preset)
+        return await fetch_ops_logs(preset, limit=limit)
 
     @router.post("/sessions/resume")
     async def resume_session(

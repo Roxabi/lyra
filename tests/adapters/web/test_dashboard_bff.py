@@ -190,3 +190,29 @@ class TestDashboardBffRealPath:
         assert res.status_code == 200
         assert res.json()["accepted"] is True
         assert nc.request.await_args.args[0] == SUBJECTS.sessions_resume
+
+    def test_ops_health_e2e_stub(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("FACTORY_DASHBOARD_E2E", "1")
+        tc, _adapter, _nc = wired_client
+        res = tc.get("/api/bff/ops/health")
+        assert res.status_code == 200
+        body = res.json()
+        assert len(body["engines"]) == 3
+        assert body["engines"][0]["engine"] == "loki"
+
+    def test_ops_logs_e2e_stub(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("FACTORY_DASHBOARD_E2E", "1")
+        tc, _adapter, _nc = wired_client
+        res = tc.get("/api/bff/ops/logs", params={"preset": "hub-errors"})
+        assert res.status_code == 200
+        body = res.json()
+        assert body["preset"] == "hub-errors"
+        assert len(body["entries"]) >= 1

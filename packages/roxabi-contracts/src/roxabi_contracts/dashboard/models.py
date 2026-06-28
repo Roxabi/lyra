@@ -101,3 +101,31 @@ class DashboardJob(BaseModel):
 
 class DashboardJobsListResponse(BaseModel):
     jobs: list[DashboardJob]
+
+
+OpsEngineId = Literal["loki", "langfuse", "otel-collector"]
+OpsLogPreset = Literal["hub-errors", "operator-events", "deploy-failures"]
+
+
+class OpsEngineHealth(BaseModel):
+    engine: OpsEngineId
+    label: str
+    reachable: bool
+    detail: str = ""
+
+
+class DashboardOpsHealthResponse(BaseModel):
+    engines: list[OpsEngineHealth]
+
+
+class OpsLogEntry(BaseModel):
+    timestamp: str
+    line: str
+    labels: dict[str, str] = Field(default_factory=dict)
+
+
+class DashboardOpsLogsResponse(BaseModel):
+    preset: OpsLogPreset
+    query: str
+    engine_reachable: bool
+    entries: list[OpsLogEntry]

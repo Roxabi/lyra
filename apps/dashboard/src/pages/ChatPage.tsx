@@ -94,7 +94,7 @@ export function ChatPage() {
         onNew={addTab}
         onResumed={onResumed}
       />
-      <main className="flex min-w-0 flex-1 flex-col border-x border-border/40 bg-background">
+      <main className="flex min-w-0 flex-1 flex-col bg-background">
         {activeTab ? (
           <ChatPane
             key={`${activeTab.id}-${hydratedLog ? "h" : "f"}`}

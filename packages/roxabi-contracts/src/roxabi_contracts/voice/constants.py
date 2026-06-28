@@ -3,6 +3,7 @@
 # Hub side — serialised by NatsTtsClient.synthesize()
 TTS_CONFIG_FIELDS: tuple[str, ...] = (
     "engine",
+    "sample_id",
     "accent",
     "personality",
     "speed",
@@ -17,6 +18,7 @@ TTS_CONFIG_FIELDS: tuple[str, ...] = (
 # Adapter side — deserialised by TtsAdapterStandalone.handle()
 AGENT_TTS_FIELDS: tuple[str, ...] = (
     "engine",
+    "sample_id",
     "voice",
     "language",
     "accent",

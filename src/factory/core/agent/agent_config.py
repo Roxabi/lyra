@@ -87,6 +87,7 @@ class AgentTTSConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     engine: str | None = None
+    sample_id: str | None = None
     voice: str | None = None
     language: str | None = None
     accent: str | None = None

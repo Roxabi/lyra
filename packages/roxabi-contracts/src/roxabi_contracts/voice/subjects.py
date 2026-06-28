@@ -34,6 +34,18 @@ class _Subjects:
     stt_heartbeat: Literal["factory.voice.stt.heartbeat"] = (
         "factory.voice.stt.heartbeat"
     )
+    tts_lifecycle_list: Literal["factory.voice.tts.lifecycle.list"] = (
+        "factory.voice.tts.lifecycle.list"
+    )
+    tts_lifecycle_status: Literal["factory.voice.tts.lifecycle.status"] = (
+        "factory.voice.tts.lifecycle.status"
+    )
+    stt_lifecycle_list: Literal["factory.voice.stt.lifecycle.list"] = (
+        "factory.voice.stt.lifecycle.list"
+    )
+    stt_lifecycle_status: Literal["factory.voice.stt.lifecycle.status"] = (
+        "factory.voice.stt.lifecycle.status"
+    )
     tts_workers: Literal["tts_workers"] = "tts_workers"
     stt_workers: Literal["stt_workers"] = "stt_workers"
 

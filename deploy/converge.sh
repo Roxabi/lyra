@@ -50,8 +50,11 @@ _do_converge() {
     local _deploy_rc=0
     bash "${PROJECTS_DIR}/deploy.sh" --prune || _deploy_rc=$?
     if [ "${_deploy_rc}" -ge 2 ]; then
-        echo "ERROR: deploy.sh hard-failed (rc=${_deploy_rc}) — a unit source file is missing. Aborting converge." >&2
-        exit 1
+        # rc 2 = a unit source file is missing (deploy.sh logs the specifics above); rc >2 = a
+        # deploy.sh CLI/runtime error. Either way the cluster install is unsafe — abort, and
+        # propagate the code rather than asserting a single cause.
+        echo "ERROR: deploy.sh failed (rc=${_deploy_rc}) — see its output above. Aborting converge." >&2
+        exit "${_deploy_rc}"
     elif [ "${_deploy_rc}" -eq 1 ]; then
         echo "WARN: deploy.sh reported missing secret(s) (rc=1) — continuing; secrets install (step 7) + restart (step 9) enforce them." >&2
     fi

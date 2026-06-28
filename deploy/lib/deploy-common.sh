@@ -187,9 +187,19 @@ read_convergence_state() {
 }
 
 # Write the current convergence state to the stamp file.
+# Accepts an optional pre-computed fingerprint: converge.sh computes the post-converge state
+# once (after the last deploy step) and passes it here, so the stamp records exactly what was
+# just deployed instead of a second, independently-recomputed value that could differ if state
+# drifted between the two calls (TOCTOU).
+# When called with no argument, recomputes the state (back-compat for other callers).
 write_convergence_state() {
+    local state="${1:-}"
     mkdir -p "$(dirname "${CONVERGE_STAMP}")"
-    compute_convergence_state > "${CONVERGE_STAMP}"
+    if [[ -n "${state}" ]]; then
+        printf '%s\n' "${state}" > "${CONVERGE_STAMP}"
+    else
+        compute_convergence_state > "${CONVERGE_STAMP}"
+    fi
 }
 
 # Classify the kind of drift between a recorded stamp and the current state.

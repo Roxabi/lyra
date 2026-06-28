@@ -24,16 +24,11 @@ export function AppSidebar() {
     <aside
       aria-label={t("appName")}
       className={cn(
-        "hidden h-full shrink-0 flex-col border-r bg-card transition-[width] duration-200 md:flex",
+        "hidden h-full shrink-0 flex-col bg-card transition-[width] duration-200 md:flex",
         collapsed ? "w-16" : "w-56 lg:w-60",
       )}
     >
-      <div
-        className={cn(
-          "flex items-center border-b px-3 py-4",
-          collapsed ? "justify-center" : "gap-2",
-        )}
-      >
+      <div className={cn("flex items-center px-3 py-4", collapsed ? "justify-center" : "gap-2")}>
         {!collapsed ? (
           <div className="flex min-w-0 flex-1 items-center gap-2.5">
             <img src="/factory-mark.svg" alt="" className="size-8 shrink-0" aria-hidden />

@@ -106,6 +106,9 @@ All subjects follow `factory.{domain}.{qualifier...}` (domain-first, NATS conven
 | `factory.clipool.control` | hub → CliPool | Control commands (reset, drain) |
 | `factory.voice.tts.heartbeat` | voice-tts → hub | TTS worker liveness signal for hub availability checks |
 | `factory.voice.stt.heartbeat` | voice-stt → hub | STT worker liveness signal for hub availability checks |
+| `factory.voice.tts.lifecycle.{list,status}` | hub → voice-tts | TTS catalogue + runtime status (ADR-095) |
+| `factory.voice.stt.lifecycle.{list,status}` | hub → voice-stt | STT catalogue + runtime status (ADR-095) |
+| `factory.dashboard.voice.capabilities` | web-adapter → hub | Dashboard BFF: aggregated voice catalogue |
 | `factory.llm.heartbeat` | llm-worker → hub | LLM worker liveness signal for hub availability checks |
 | `factory.image.heartbeat` | image-worker → hub | Image worker liveness signal for hub availability checks |
 | `factory.system.ready` | adapters + workers → hub | Startup ready announcement; hub tracks liveness on subscribe |

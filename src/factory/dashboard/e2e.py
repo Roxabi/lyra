@@ -10,6 +10,8 @@ from roxabi_contracts.dashboard import (
     DashboardSession,
     DashboardSessionsListResponse,
     DashboardSessionsResumeResponse,
+    DashboardJob,
+    DashboardJobsListResponse,
     DashboardSessionsTurnsResponse,
     DashboardTurn,
 )
@@ -61,6 +63,35 @@ def stub_sessions_list(agent: str) -> DashboardSessionsListResponse:
 
 def stub_resume() -> DashboardSessionsResumeResponse:
     return DashboardSessionsResumeResponse(accepted=True, message="E2E resume stub")
+
+
+def stub_jobs_list() -> DashboardJobsListResponse:
+    return DashboardJobsListResponse(
+        jobs=[
+            DashboardJob(
+                job_id="e2e-job-1",
+                pool_id="web:smoke:agent:lyra",
+                agent="lyra",
+                platform="web",
+                status="open",
+                started_at="2026-06-28T12:00:00+00:00",
+                concurrency_mode="steer",
+                worker_loc="clipool-worker",
+                steer_subject="factory.job.e2e-job-1.steer",
+            ),
+            DashboardJob(
+                job_id="e2e-job-2",
+                pool_id="telegram:main:chat:42",
+                agent="aryl",
+                platform="telegram",
+                status="closing",
+                started_at="2026-06-28T11:30:00+00:00",
+                concurrency_mode="queue",
+                worker_loc=None,
+                steer_subject="factory.job.e2e-job-2.steer",
+            ),
+        ]
+    )
 
 
 def stub_sessions_turns(session_id: str) -> DashboardSessionsTurnsResponse:

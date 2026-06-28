@@ -13,6 +13,7 @@ from roxabi_contracts.dashboard import (
     DashboardSessionsListResponse,
     DashboardSessionsResumeRequest,
     DashboardSessionsResumeResponse,
+    DashboardJobsListResponse,
     DashboardSessionsTurnsRequest,
     DashboardSessionsTurnsResponse,
 )
@@ -53,6 +54,10 @@ class DashboardHubClient:
         req = DashboardSessionsListRequest(agent=agent, limit=limit)
         raw = await self._request(SUBJECTS.sessions_list, req.model_dump())
         return DashboardSessionsListResponse.model_validate(raw)
+
+    async def list_jobs(self) -> DashboardJobsListResponse:
+        raw = await self._request(SUBJECTS.jobs_list, {})
+        return DashboardJobsListResponse.model_validate(raw)
 
     async def list_turns(
         self, session_id: str, *, limit: int = 200

@@ -10,6 +10,7 @@ from nats.aio.msg import Msg
 from pydantic import ValidationError
 
 from factory.core.hub.hub_protocol import RoutingKey
+from factory.core.hub.job_catalog import list_active_jobs
 from factory.core.hub.session_catalog import list_sessions_for_agent
 from factory.core.messaging.message import Platform
 from roxabi_contracts.dashboard import (
@@ -21,6 +22,8 @@ from roxabi_contracts.dashboard import (
     DashboardSessionsListResponse,
     DashboardSessionsResumeRequest,
     DashboardSessionsResumeResponse,
+    DashboardJob,
+    DashboardJobsListResponse,
     DashboardSessionsTurnsRequest,
     DashboardSessionsTurnsResponse,
     DashboardTurn,
@@ -62,6 +65,7 @@ async def start_dashboard_rpc(hub: Hub, nc: NATS) -> list[Any]:
         (SUBJECTS.sessions_list, _handle_sessions_list),
         (SUBJECTS.sessions_resume, _handle_sessions_resume),
         (SUBJECTS.sessions_turns, _handle_sessions_turns),
+        (SUBJECTS.jobs_list, _handle_jobs_list),
         (SUBJECTS.agents_status, _handle_agents_status),
     ):
         sub = await nc.subscribe(subject, cb=_wrap(hub, handler))
@@ -149,6 +153,13 @@ async def _handle_sessions_resume(hub: Hub, payload: dict[str, Any]) -> dict[str
     return DashboardSessionsResumeResponse(
         accepted=True, message=f"resumed {req.cli_session_id}"
     ).model_dump()
+
+
+async def _handle_jobs_list(hub: Hub, payload: dict[str, Any]) -> dict[str, Any]:
+    _ = payload
+    rows = await list_active_jobs(hub)
+    jobs = [DashboardJob.model_validate(row) for row in rows]
+    return DashboardJobsListResponse(jobs=jobs).model_dump()
 
 
 async def _handle_agents_status(hub: Hub, payload: dict[str, Any]) -> dict[str, Any]:

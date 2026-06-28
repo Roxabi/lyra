@@ -8,6 +8,7 @@ import pytest
 
 from factory.bootstrap.factory.dashboard_rpc import (
     _handle_agents_status,
+    _handle_jobs_list,
     _handle_sessions_list,
     _handle_sessions_resume,
     _handle_sessions_turns,
@@ -77,6 +78,16 @@ async def test_agents_status_respects_harness_selection() -> None:
     )
     assert out["agents"][0]["harness"] == "omp-rpc"
     assert out["agents"][0]["online"] is False
+
+
+@pytest.mark.asyncio
+async def test_jobs_list_empty_without_registry() -> None:
+    hub = MagicMock()
+    hub.bindings = {}
+    hub._active_jobs_coord = None
+    hub._active_jobs_store = None
+    out = await _handle_jobs_list(hub, {})
+    assert out["jobs"] == []
 
 
 @pytest.mark.asyncio

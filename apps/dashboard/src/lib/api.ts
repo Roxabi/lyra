@@ -86,6 +86,25 @@ export interface DashboardTurn {
   timestamp: string;
 }
 
+export interface DashboardJob {
+  job_id: string;
+  pool_id: string;
+  agent: string | null;
+  platform: string | null;
+  status: string;
+  started_at: string;
+  concurrency_mode: string;
+  worker_loc: string | null;
+  steer_subject: string;
+}
+
+export async function fetchJobs(): Promise<DashboardJob[]> {
+  const res = await fetch("/api/bff/jobs");
+  if (!res.ok) throw new Error("jobs fetch failed");
+  const data = (await res.json()) as { jobs: DashboardJob[] };
+  return data.jobs;
+}
+
 export async function fetchSessionTurns(sessionId: string): Promise<DashboardTurn[]> {
   const res = await fetch(`/api/bff/sessions/turns?session_id=${encodeURIComponent(sessionId)}`);
   if (!res.ok) throw new Error("turns fetch failed");

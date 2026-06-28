@@ -85,3 +85,19 @@ class DashboardSessionsTurnsRequest(BaseModel):
 
 class DashboardSessionsTurnsResponse(BaseModel):
     turns: list[DashboardTurn]
+
+
+class DashboardJob(BaseModel):
+    job_id: str
+    pool_id: str
+    agent: str | None = None
+    platform: PlatformTag | str | None = None
+    status: Literal["open", "closing"] | str
+    started_at: str
+    concurrency_mode: str
+    worker_loc: str | None = None
+    steer_subject: str
+
+
+class DashboardJobsListResponse(BaseModel):
+    jobs: list[DashboardJob]

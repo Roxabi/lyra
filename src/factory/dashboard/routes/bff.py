@@ -13,10 +13,12 @@ from factory.dashboard.e2e import (
     e2e_enabled,
     stub_agents_status,
     stub_resume,
+    stub_jobs_list,
     stub_sessions_list,
     stub_sessions_turns,
 )
 from roxabi_contracts.dashboard import (
+    DashboardJobsListResponse,
     DashboardSessionsListResponse,
     DashboardSessionsResumeRequest,
     DashboardSessionsResumeResponse,
@@ -79,6 +81,17 @@ def build_bff_router(  # noqa: C901
             return stub_sessions_list(agent)
         try:
             return await hub.list_sessions(agent, limit=limit)
+        except RuntimeError as exc:
+            raise _hub_unavailable(exc) from exc
+        except (ValidationError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @router.get("/jobs")
+    async def list_jobs() -> DashboardJobsListResponse:
+        if e2e_enabled():
+            return stub_jobs_list()
+        try:
+            return await hub.list_jobs()
         except RuntimeError as exc:
             raise _hub_unavailable(exc) from exc
         except (ValidationError, json.JSONDecodeError) as exc:

@@ -1,4 +1,10 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+  RouterProvider,
+} from "@tanstack/react-router";
 import { render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "@/lib/api";
@@ -8,9 +14,18 @@ function renderChat() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  const rootRoute = createRootRoute({
+    component: ChatPage,
+  });
+  const router = createRouter({
+    routeTree: rootRoute,
+    history: createMemoryHistory({ initialEntries: ["/"] }),
+    context: { queryClient: undefined as unknown as QueryClient },
+  });
+  void router.load();
   return render(
     <QueryClientProvider client={queryClient}>
-      <ChatPage />
+      <RouterProvider router={router} />
     </QueryClientProvider>,
   );
 }
@@ -35,6 +50,7 @@ describe("ChatPage", () => {
       },
     ]);
     vi.spyOn(api, "fetchSessions").mockResolvedValue([]);
+    vi.spyOn(api, "fetchJobs").mockResolvedValue([]);
   });
 
   it("renders chat sidebar with reprendre section", async () => {

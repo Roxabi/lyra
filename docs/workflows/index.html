@@ -1,0 +1,736 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>factory — Workflow Map</title>
+  <style>
+    :root {
+      --bg: #0c0f14;
+      --surface: #141a22;
+      --surface-2: #1a222d;
+      --border: #2a3544;
+      --text: #e8edf4;
+      --muted: #8b9bb4;
+      --accent: #38bdf8;
+      --accent-dim: #0e7490;
+      --highlight: #fbbf24;
+      --edge: #475569;
+      --edge-active: #38bdf8;
+      --font: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+      --mono: "IBM Plex Mono", "SF Mono", Consolas, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    header {
+      grid-column: 1 / -1;
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      display: flex;
+      align-items: baseline;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    header h1 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+
+    header .meta {
+      font-size: 0.75rem;
+      color: var(--muted);
+      font-family: var(--mono);
+    }
+
+    aside {
+      grid-row: 2;
+      border-right: 1px solid var(--border);
+      background: var(--surface);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .search {
+      padding: 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .search input {
+      width: 100%;
+      padding: 0.5rem 0.65rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text);
+      font-family: var(--mono);
+      font-size: 0.8rem;
+    }
+
+    .search input:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+
+    .flow-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.5rem;
+    }
+
+    .flow-category {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      padding: 0.75rem 0.5rem 0.35rem;
+      font-weight: 600;
+    }
+
+    .flow-btn {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 0.55rem 0.65rem;
+      margin-bottom: 2px;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      color: var(--text);
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .flow-btn:hover {
+      background: var(--surface-2);
+      border-color: var(--border);
+    }
+
+    .flow-btn.active {
+      background: rgba(56, 189, 248, 0.12);
+      border-color: var(--accent-dim);
+      color: var(--accent);
+    }
+
+    .flow-btn .src {
+      display: block;
+      font-size: 0.62rem;
+      color: var(--muted);
+      font-family: var(--mono);
+      margin-top: 0.15rem;
+    }
+
+    .flow-btn.active .src { color: var(--accent-dim); }
+
+    .detail-source {
+      font-family: var(--mono);
+      font-size: 0.68rem;
+      color: var(--muted);
+      padding: 0.15rem 0.5rem;
+      border: 1px solid var(--border);
+      border-radius: 3px;
+    }
+
+    .detail-source.generated { color: #38bdf8; border-color: #0e7490; }
+    .detail-source.overlay { color: #f472b6; border-color: #9d174d; }
+
+    main {
+      grid-row: 2;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .canvas-wrap {
+      flex: 1;
+      position: relative;
+      overflow: auto;
+      padding: 1rem;
+    }
+
+    #canvas {
+      position: relative;
+      min-height: 100%;
+      min-width: min(100%, 1200px);
+    }
+
+    #edges {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      overflow: visible;
+    }
+
+    .groups {
+      display: flex;
+      gap: 0.75rem;
+      align-items: stretch;
+      position: relative;
+      z-index: 1;
+    }
+
+    .group-col {
+      flex: 1;
+      min-width: 130px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .group-header {
+      padding: 0.45rem 0.6rem;
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .group-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .group-nodes {
+      padding: 0.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      flex: 1;
+    }
+
+    .node {
+      padding: 0.5rem 0.55rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      cursor: default;
+      transition: border-color 0.2s, box-shadow 0.2s, opacity 0.2s;
+      position: relative;
+    }
+
+    .node.dimmed { opacity: 0.25; }
+
+    .node.active {
+      border-color: var(--highlight);
+      box-shadow: 0 0 0 1px var(--highlight), 0 0 12px rgba(251, 191, 36, 0.2);
+    }
+
+    .node .label {
+      font-size: 0.78rem;
+      font-weight: 500;
+      line-height: 1.3;
+    }
+
+    .node .path {
+      font-size: 0.62rem;
+      color: var(--muted);
+      font-family: var(--mono);
+      margin-top: 0.2rem;
+      word-break: break-all;
+    }
+
+    .edge-label {
+      font-family: var(--mono);
+      font-size: 10px;
+      fill: var(--muted);
+      pointer-events: none;
+    }
+
+    .edge-label.active { fill: var(--accent); }
+
+    footer {
+      grid-column: 1 / -1;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      max-height: 220px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .detail-header {
+      padding: 0.6rem 1rem;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+    }
+
+    .detail-header h2 {
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+
+    .detail-header .summary {
+      font-size: 0.78rem;
+      color: var(--muted);
+      flex: 1;
+    }
+
+    .detail-header .step-count {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--accent);
+    }
+
+    .steps {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.5rem 1rem 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .step {
+      display: grid;
+      grid-template-columns: 28px 1fr;
+      gap: 0.65rem;
+      padding: 0.45rem 0.5rem;
+      border-radius: 4px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .step:hover, .step.focused {
+      background: var(--surface-2);
+      border-color: var(--border);
+    }
+
+    .step-num {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      color: var(--accent);
+      text-align: right;
+      padding-top: 0.1rem;
+    }
+
+    .step-route {
+      font-size: 0.78rem;
+      font-weight: 500;
+      margin-bottom: 0.15rem;
+    }
+
+    .step-route span { color: var(--muted); font-weight: 400; }
+
+    .step-action {
+      font-size: 0.72rem;
+      color: var(--highlight);
+      font-family: var(--mono);
+      margin-bottom: 0.2rem;
+    }
+
+    .step-payload {
+      font-size: 0.72rem;
+      color: var(--muted);
+      line-height: 1.45;
+      font-family: var(--mono);
+    }
+
+    .empty-state {
+      padding: 3rem;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .legend {
+      position: absolute;
+      top: 0.75rem;
+      right: 0.75rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.5rem 0.65rem;
+      font-size: 0.68rem;
+      color: var(--muted);
+      z-index: 2;
+      line-height: 1.5;
+    }
+
+    .legend strong { color: var(--text); }
+
+    .load-error {
+      padding: 2rem;
+      color: #f87171;
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 900px) {
+      body { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr auto; }
+      aside { grid-row: 2; max-height: 180px; border-right: none; border-bottom: 1px solid var(--border); }
+      .groups { flex-wrap: wrap; }
+      .group-col { min-width: 140px; }
+    }
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+</head>
+<body>
+  <header>
+    <h1 id="page-title">factory — Workflow Map</h1>
+    <span class="meta" id="page-meta"></span>
+  </header>
+
+  <aside>
+    <div class="search">
+      <input type="search" id="flow-search" placeholder="Filter flows…" autocomplete="off" />
+    </div>
+    <div class="flow-list" id="flow-list"></div>
+  </aside>
+
+  <main>
+    <div class="canvas-wrap" id="canvas-wrap">
+      <div class="legend">
+        <strong>Click a flow</strong> to highlight its path.<br />
+        Hover steps below for edge focus.
+      </div>
+      <div id="canvas">
+        <svg id="edges" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div class="groups" id="groups"></div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="detail-header">
+      <h2 id="detail-title">Select a workflow</h2>
+      <span class="summary" id="detail-summary">Choose an action from the sidebar to trace packages and data passed between them.</span>
+      <span class="step-count" id="step-count"></span>
+    </div>
+    <div class="steps" id="steps"></div>
+  </footer>
+
+  <script>
+    const state = {
+      data: null,
+      activeFlowId: null,
+      focusedStep: null,
+      nodeEls: new Map(),
+    };
+
+    async function loadData() {
+      try {
+        const res = await fetch("./flows.json");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return await res.json();
+      } catch (err) {
+        document.getElementById("canvas").innerHTML = `
+          <div class="load-error">
+            Could not load flows.json (${err.message}).<br /><br />
+            Serve this folder locally:<br />
+            <code>python -m http.server 8080 -d docs/workflows</code><br />
+            then open <code>http://localhost:8080</code>
+          </div>`;
+        return null;
+      }
+    }
+
+    function groupByCategory(flows) {
+      const map = new Map();
+      for (const flow of flows) {
+        const cat = flow.category || "Other";
+        if (!map.has(cat)) map.set(cat, []);
+        map.get(cat).push(flow);
+      }
+      return map;
+    }
+
+    function renderFlowList() {
+      const list = document.getElementById("flow-list");
+      const query = document.getElementById("flow-search").value.toLowerCase();
+      const grouped = groupByCategory(state.data.flows);
+      list.innerHTML = "";
+
+      for (const [category, flows] of grouped) {
+        const filtered = flows.filter(
+          (f) =>
+            f.label.toLowerCase().includes(query) ||
+            f.category.toLowerCase().includes(query) ||
+            f.summary.toLowerCase().includes(query)
+        );
+        if (!filtered.length) continue;
+
+        const catEl = document.createElement("div");
+        catEl.className = "flow-category";
+        catEl.textContent = category;
+        list.appendChild(catEl);
+
+        for (const flow of filtered) {
+          const btn = document.createElement("button");
+          btn.className = "flow-btn" + (state.activeFlowId === flow.id ? " active" : "");
+          const src = flow.source ? `<span class="src">${flow.source}</span>` : "";
+          btn.innerHTML = `${flow.label}${src}`;
+          btn.dataset.flowId = flow.id;
+          btn.addEventListener("click", () => selectFlow(flow.id));
+          list.appendChild(btn);
+        }
+      }
+    }
+
+    function renderCanvas() {
+      const groupsEl = document.getElementById("groups");
+      groupsEl.innerHTML = "";
+      state.nodeEls.clear();
+
+      const sortedGroups = [...state.data.groups].sort((a, b) => a.order - b.order);
+      const componentsByGroup = new Map();
+      for (const c of state.data.components) {
+        if (!componentsByGroup.has(c.group)) componentsByGroup.set(c.group, []);
+        componentsByGroup.get(c.group).push(c);
+      }
+
+      for (const group of sortedGroups) {
+        const comps = componentsByGroup.get(group.id) || [];
+        if (!comps.length) continue;
+
+        const col = document.createElement("div");
+        col.className = "group-col";
+        col.dataset.groupId = group.id;
+
+        const header = document.createElement("div");
+        header.className = "group-header";
+        header.innerHTML = `<span class="group-dot" style="background:${group.color}"></span>${group.label}`;
+        col.appendChild(header);
+
+        const nodesWrap = document.createElement("div");
+        nodesWrap.className = "group-nodes";
+
+        for (const comp of comps) {
+          const node = document.createElement("div");
+          node.className = "node";
+          node.id = `node-${comp.id}`;
+          node.dataset.componentId = comp.id;
+          node.title = comp.description || "";
+          node.innerHTML = `
+            <div class="label">${comp.label}</div>
+            <div class="path">${comp.path || ""}</div>`;
+          nodesWrap.appendChild(node);
+          state.nodeEls.set(comp.id, node);
+        }
+
+        col.appendChild(nodesWrap);
+        groupsEl.appendChild(col);
+      }
+
+      requestAnimationFrame(drawEdges);
+    }
+
+    function getActiveFlow() {
+      return state.data.flows.find((f) => f.id === state.activeFlowId);
+    }
+
+    function getActiveNodeIds() {
+      const flow = getActiveFlow();
+      if (!flow) return new Set();
+      const ids = new Set();
+      for (const step of flow.steps) {
+        ids.add(step.from);
+        ids.add(step.to);
+      }
+      return ids;
+    }
+
+    function updateNodeHighlights() {
+      const activeIds = getActiveNodeIds();
+      const hasFlow = !!state.activeFlowId;
+
+      for (const [id, el] of state.nodeEls) {
+        el.classList.toggle("active", activeIds.has(id));
+        el.classList.toggle("dimmed", hasFlow && !activeIds.has(id));
+      }
+    }
+
+    function nodeCenter(id) {
+      const el = state.nodeEls.get(id);
+      const canvas = document.getElementById("canvas");
+      if (!el || !canvas) return null;
+      const cr = canvas.getBoundingClientRect();
+      const nr = el.getBoundingClientRect();
+      return {
+        x: nr.left - cr.left + nr.width / 2,
+        y: nr.top - cr.top + nr.height / 2,
+        right: nr.right - cr.left,
+        left: nr.left - cr.left,
+      };
+    }
+
+    function bezierPath(from, to) {
+      const dx = to.x - from.x;
+      const cx1 = from.x + dx * 0.4;
+      const cx2 = to.x - dx * 0.4;
+      return `M ${from.x} ${from.y} C ${cx1} ${from.y}, ${cx2} ${to.y}, ${to.x} ${to.y}`;
+    }
+
+    function drawEdges() {
+      const svg = document.getElementById("edges");
+      const canvas = document.getElementById("canvas");
+      const flow = getActiveFlow();
+
+      svg.setAttribute("width", canvas.scrollWidth);
+      svg.setAttribute("height", canvas.scrollHeight);
+      svg.innerHTML = "";
+
+      if (!flow) return;
+
+      const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+      const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+      marker.setAttribute("id", "arrow");
+      marker.setAttribute("viewBox", "0 0 10 10");
+      marker.setAttribute("refX", "9");
+      marker.setAttribute("refY", "5");
+      marker.setAttribute("markerWidth", "6");
+      marker.setAttribute("markerHeight", "6");
+      marker.setAttribute("orient", "auto-start-reverse");
+      const arrowPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      arrowPath.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
+      arrowPath.setAttribute("fill", "var(--edge-active)");
+      marker.appendChild(arrowPath);
+      defs.appendChild(marker);
+      svg.appendChild(defs);
+
+      flow.steps.forEach((step, i) => {
+        const from = nodeCenter(step.from);
+        const to = nodeCenter(step.to);
+        if (!from || !to) return;
+
+        const start = { x: from.right + 4, y: from.y };
+        const end = { x: to.left - 4, y: to.y };
+
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        const d = bezierPath(start, end);
+        path.setAttribute("d", d);
+        path.setAttribute("fill", "none");
+        const focused = state.focusedStep === i;
+        path.setAttribute("stroke", focused ? "var(--edge-active)" : "var(--edge)");
+        path.setAttribute("stroke-width", focused ? "2.5" : "1.5");
+        path.setAttribute("marker-end", "url(#arrow)");
+        path.setAttribute("opacity", state.focusedStep === null || focused ? "1" : "0.35");
+        svg.appendChild(path);
+
+        const mid = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 - 8 };
+        const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        label.setAttribute("x", mid.x);
+        label.setAttribute("y", mid.y);
+        label.setAttribute("text-anchor", "middle");
+        label.setAttribute("class", "edge-label" + (focused ? " active" : ""));
+        label.textContent = step.label;
+        svg.appendChild(label);
+      });
+    }
+
+    function componentLabel(id) {
+      const c = state.data.components.find((x) => x.id === id);
+      return c ? c.label : id;
+    }
+
+    function renderSteps() {
+      const flow = getActiveFlow();
+      const stepsEl = document.getElementById("steps");
+      const title = document.getElementById("detail-title");
+      const summary = document.getElementById("detail-summary");
+      const count = document.getElementById("step-count");
+
+      if (!flow) {
+        title.textContent = "Select a workflow";
+        summary.textContent = "Choose an action from the sidebar to trace packages and data passed between them.";
+        count.textContent = "";
+        stepsEl.innerHTML = "";
+        return;
+      }
+
+      title.textContent = flow.label;
+      summary.textContent = flow.summary;
+      const srcLabel = flow.source || "unknown";
+      count.innerHTML = `<span class="detail-source ${srcLabel}">${srcLabel}</span> ${flow.steps.length} steps`;
+
+      stepsEl.innerHTML = "";
+      flow.steps.forEach((step, i) => {
+        const el = document.createElement("div");
+        el.className = "step" + (state.focusedStep === i ? " focused" : "");
+        el.innerHTML = `
+          <div class="step-num">${i + 1}</div>
+          <div>
+            <div class="step-route">${componentLabel(step.from)} <span>→</span> ${componentLabel(step.to)}</div>
+            <div class="step-action">${step.label}</div>
+            <div class="step-payload">${step.payload}</div>
+          </div>`;
+        el.addEventListener("mouseenter", () => {
+          state.focusedStep = i;
+          renderSteps();
+          drawEdges();
+        });
+        el.addEventListener("mouseleave", () => {
+          state.focusedStep = null;
+          renderSteps();
+          drawEdges();
+        });
+        stepsEl.appendChild(el);
+      });
+    }
+
+    function selectFlow(flowId) {
+      state.activeFlowId = flowId;
+      state.focusedStep = null;
+      renderFlowList();
+      updateNodeHighlights();
+      renderSteps();
+      requestAnimationFrame(drawEdges);
+    }
+
+    async function init() {
+      state.data = await loadData();
+      if (!state.data) return;
+
+      document.getElementById("page-title").textContent = state.data.meta.title;
+      const gen = state.data.meta.generated;
+      const ovl = state.data.meta.overlay;
+      const genFlows = gen ? gen.flows : "?";
+      const ovlFlows = ovl ? ovl.flows : "?";
+      document.getElementById("page-meta").textContent =
+        `v${state.data.meta.version} · ${state.data.meta.updated} · ${state.data.components.length} components · ${state.data.flows.length} flows (${genFlows} auto + ${ovlFlows} overlay)`;
+
+      renderCanvas();
+      renderFlowList();
+
+      document.getElementById("flow-search").addEventListener("input", renderFlowList);
+
+      window.addEventListener("resize", () => requestAnimationFrame(drawEdges));
+      document.getElementById("canvas-wrap").addEventListener("scroll", () => requestAnimationFrame(drawEdges));
+
+      if (state.data.flows.length) selectFlow(state.data.flows[0].id);
+    }
+
+    init();
+  </script>
+</body>
+</html>

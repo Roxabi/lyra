@@ -104,8 +104,8 @@
 - **Subscribe:** _inbox.blobstore.>
 
 ### clipool-worker
-- **Publish:** $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.clipool.heartbeat, factory.event.>, factory.metric.>, factory.system.ready
-- **Subscribe:** $KV.factory-state.>, _inbox.clipool-worker.>, factory.jobs.claude, factory.clipool.control
+- **Publish:** $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.clipool.heartbeat, factory.event.>, factory.job.*.progress, factory.job.*.result, factory.metric.>, factory.system.ready
+- **Subscribe:** $KV.factory-state.>, _inbox.clipool-worker.>, factory.clipool.control, factory.jobs.claude
 
 ### dashboard-reader
 - **Subscribe:** factory.event.>, factory.metric.>
@@ -118,8 +118,8 @@
 - **Publish:** factory.gh.mint_failure.>
 
 ### hub
-- **Publish:** $JS.ACK.FACTORY_OUTBOUND_AUDIO.>, $JS.API.>, $KV.factory-active-jobs.>, $KV.factory-msg-index.>, $KV.factory-state.>, $KV.factory_outbound_audio_sent.>, factory.audit.>, factory.jobs.claude, factory.clipool.control, factory.event.>, factory.image.generate.request, factory.job.*.steer, factory.jobs.>, factory.llm.generate.request, factory.metric.>, factory.outbound.audio.>, factory.outbound.discord.>, factory.outbound.telegram.>, factory.outbound.web.>, factory.tool.socialmedia.>, factory.turns.write, factory.typing.>, factory.voice.stt.request, factory.voice.stt.request.>, factory.voice.tts.request, factory.voice.tts.request.>
-- **Subscribe:** $JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.FACTORY_JOBS.>, _inbox.hub.>, factory.clipool.heartbeat, factory.dashboard.>, factory.gh.mint_failure.>, factory.image.heartbeat, factory.inbound.discord.>, factory.inbound.telegram.>, factory.inbound.web.>, factory.job.*.result, factory.llm.heartbeat, factory.omp.heartbeat, factory.system.ready, factory.tool.socialmedia.heartbeat, factory.voice.stt.heartbeat, factory.voice.tts.heartbeat
+- **Publish:** $JS.ACK.FACTORY_OUTBOUND_AUDIO.>, $JS.API.>, $KV.factory-active-jobs.>, $KV.factory-msg-index.>, $KV.factory-state.>, $KV.factory_outbound_audio_sent.>, factory.audit.>, factory.clipool.control, factory.event.>, factory.image.generate.request, factory.job.*.steer, factory.jobs.>, factory.jobs.claude, factory.llm.generate.request, factory.metric.>, factory.outbound.audio.>, factory.outbound.discord.>, factory.outbound.telegram.>, factory.outbound.web.>, factory.tool.socialmedia.>, factory.turns.write, factory.typing.>, factory.voice.stt.request, factory.voice.stt.request.>, factory.voice.tts.request, factory.voice.tts.request.>
+- **Subscribe:** $JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.FACTORY_JOBS.>, _inbox.hub.>, factory.clipool.heartbeat, factory.dashboard.>, factory.gh.mint_failure.>, factory.image.heartbeat, factory.inbound.discord.>, factory.inbound.telegram.>, factory.inbound.web.>, factory.job.*.progress, factory.job.*.result, factory.llm.heartbeat, factory.omp.heartbeat, factory.system.ready, factory.tool.socialmedia.heartbeat, factory.voice.stt.heartbeat, factory.voice.tts.heartbeat
 
 ### image-worker
 - **Publish:** $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.image.heartbeat

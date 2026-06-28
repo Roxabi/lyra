@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from collections.abc import Iterator
 from unittest.mock import AsyncMock
 
 import pytest
@@ -31,7 +32,7 @@ def ingress_config() -> IngressConfig:
 
 
 @pytest.fixture
-def client(ingress_config: IngressConfig) -> TestClient:
+def client(ingress_config: IngressConfig) -> Iterator[TestClient]:
     publisher = AsyncMock(spec=EventPublisher)
     publisher.publish = AsyncMock(return_value=True)
     app = create_app(ingress_config, publisher=publisher)

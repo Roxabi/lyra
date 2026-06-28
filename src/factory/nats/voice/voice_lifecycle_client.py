@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
@@ -70,14 +69,14 @@ class VoiceLifecycleClient:
                 req.model_dump_json(exclude_none=True).encode(),
                 timeout=self._timeout,
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: voice-lifecycle — NATS timeout/errors return None
             log.warning("voice lifecycle request failed subject=%s: %s", subject, exc)
             return None
         if not msg.data:
             return None
         try:
             resp = VoiceLifecycleResponse.model_validate_json(msg.data)
-        except Exception:
+        except Exception:  # noqa: BLE001 — DEBT:boundary-broad-catch# boundary: voice-lifecycle — malformed reply returns None
             log.warning("voice lifecycle invalid response subject=%s", subject)
             return None
         if not resp.ok:

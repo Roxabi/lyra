@@ -135,7 +135,9 @@ async def _bootstrap_unified(  # noqa: PLR0915 — unified bootstrap is a wiring
             if voice.nats_llm_client is not None:
                 await voice.nats_llm_client.stop()
         if clipool is not None and clipool.cli_nats_driver is not None:
-            await clipool.cli_nats_driver.stop()
+            stop_fn = getattr(clipool.cli_nats_driver, "stop", None)
+            if stop_fn is not None:
+                await stop_fn()
         # Flush in-flight audit emit tasks before closing NATS (audit uses JetStream).
         if clipool is not None:
             await clipool.cli_pool.drain_audit_tasks()

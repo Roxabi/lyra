@@ -1,0 +1,12 @@
+# Factory ingress connector registry — copy to ~/.roxabi/factory/ingress.toml
+#
+# Webhook secrets are NOT stored here. Mount Podman secrets and set env paths
+# in ingress.env (see deploy/env/ingress.env.example).
+
+[connector.github]
+enabled = true
+# secret_path = "/run/secrets/ingress-github-webhook"  # optional if not using env
+
+[connector.cloudflare]
+enabled = true
+# secret_path = "/run/secrets/ingress-cloudflare-webhook"

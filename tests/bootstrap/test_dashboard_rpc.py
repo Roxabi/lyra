@@ -16,13 +16,15 @@ from factory.bootstrap.factory.dashboard_rpc import (
 from factory.core.hub.hub_protocol import Binding, RoutingKey
 from factory.core.messaging.message import Platform
 
+_NC = MagicMock()
+
 
 @pytest.mark.asyncio
 async def test_sessions_list_empty_without_turn_store() -> None:
     hub = MagicMock()
     hub._turn_store = None
     hub.bindings = {}
-    out = await _handle_sessions_list(hub, {"agent": "lyra", "limit": 10})
+    out = await _handle_sessions_list(hub, _NC, {"agent": "lyra", "limit": 10})
     assert out["sessions"] == []
 
 
@@ -49,7 +51,7 @@ async def test_sessions_list_delegates_to_catalog() -> None:
             }
         ]
     )
-    out = await _handle_sessions_list(hub, {"agent": "lyra", "limit": 5})
+    out = await _handle_sessions_list(hub, _NC, {"agent": "lyra", "limit": 5})
     assert len(out["sessions"]) == 1
     assert out["sessions"][0]["platform"] == "web"
     store.list_recent_sessions.assert_awaited_once()
@@ -60,7 +62,7 @@ async def test_agents_status_marks_offline_without_heartbeat() -> None:
     hub = MagicMock()
     hub.agent_registry = ["lyra"]
     hub._dashboard_worker_freshness = {}
-    out = await _handle_agents_status(hub, {"agents": ["lyra"]})
+    out = await _handle_agents_status(hub, _NC, {"agents": ["lyra"]})
     assert out["agents"][0]["online"] is False
 
 
@@ -74,6 +76,7 @@ async def test_agents_status_respects_harness_selection() -> None:
     hub._dashboard_worker_freshness["clipool-worker"] = time.monotonic()
     out = await _handle_agents_status(
         hub,
+        _NC,
         {"agents": ["lyra"], "harness_by_agent": {"lyra": "omp-rpc"}},
     )
     assert out["agents"][0]["harness"] == "omp-rpc"
@@ -86,7 +89,7 @@ async def test_jobs_list_empty_without_registry() -> None:
     hub.bindings = {}
     hub._active_jobs_coord = None
     hub._active_jobs_store = None
-    out = await _handle_jobs_list(hub, {})
+    out = await _handle_jobs_list(hub, _NC, {})
     assert out["jobs"] == []
 
 
@@ -94,7 +97,7 @@ async def test_jobs_list_empty_without_registry() -> None:
 async def test_sessions_turns_empty_without_turn_store() -> None:
     hub = MagicMock()
     hub._turn_store = None
-    out = await _handle_sessions_turns(hub, {"session_id": "s1", "limit": 50})
+    out = await _handle_sessions_turns(hub, _NC, {"session_id": "s1", "limit": 50})
     assert out["turns"] == []
 
 
@@ -133,7 +136,7 @@ async def test_sessions_turns_returns_user_assistant_rows() -> None:
             },
         ]
     )
-    out = await _handle_sessions_turns(hub, {"session_id": "s1", "limit": 50})
+    out = await _handle_sessions_turns(hub, _NC, {"session_id": "s1", "limit": 50})
     assert len(out["turns"]) == 2
     assert out["turns"][0]["content"] == "hi"
 
@@ -145,7 +148,7 @@ async def test_resume_rejects_busy_pool() -> None:
     pool.is_idle = False
     hub.pools = {"web:smoke:agent:lyra": pool}
     out = await _handle_sessions_resume(
-        hub, {"agent": "lyra", "cli_session_id": "cli-9"}
+        hub, _NC, {"agent": "lyra", "cli_session_id": "cli-9"}
     )
     assert out["accepted"] is False
     assert "flight" in out["message"]

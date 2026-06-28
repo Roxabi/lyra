@@ -1,32 +1,45 @@
-import type { ReactNode } from "react";
-import { AppNav } from "@/components/layout/AppNav";
-import { ThemeToggle } from "@/components/ThemeToggle";
+import { Outlet, useRouterState } from "@tanstack/react-router";
+import { AppHeader } from "@/components/layout/AppHeader";
+import { AppSidebar } from "@/components/layout/AppSidebar";
+import { appNavItems, resolveNavFlags } from "@/lib/nav";
+import { ShellTitleProvider } from "@/lib/shell-title";
+import { cn } from "@/lib/utils";
 
-interface AppShellProps {
-  children: ReactNode;
-}
+export function AppShell() {
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { fullBleed, wideLayout } = resolveNavFlags(pathname, appNavItems);
 
-export function AppShell({ children }: AppShellProps) {
   return (
-    <div className="ember-canvas relative flex min-h-screen flex-col bg-background text-foreground">
-      <header className="sticky top-0 z-50 bg-background/90 backdrop-blur-md">
-        <div className="flex h-[var(--header-h)] items-center justify-between px-5">
-          <div className="flex items-center gap-3">
-            <img src="/factory-mark.svg" alt="" className="size-8" aria-hidden />
-            <div className="flex flex-col">
-              <span className="font-[family-name:var(--font-head)] text-sm font-bold tracking-tight">
-                Roxabi Factory
-              </span>
-              <span className="text-xs text-muted-foreground">Console opérateur</span>
+    <ShellTitleProvider key={pathname}>
+      <div className="ember-canvas flex h-dvh overflow-hidden bg-background text-foreground">
+        <AppSidebar />
+
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <AppHeader />
+
+          <main
+            className={cn(
+              "min-h-0 flex-1",
+              fullBleed
+                ? "overflow-hidden p-0"
+                : "fd-scroll overflow-y-auto px-4 py-4 md:px-6 md:py-6",
+            )}
+          >
+            <div
+              className={cn(
+                "mx-auto w-full",
+                fullBleed
+                  ? "h-full min-h-0 max-w-none"
+                  : wideLayout
+                    ? "max-w-6xl xl:max-w-7xl"
+                    : "max-w-5xl",
+              )}
+            >
+              <Outlet />
             </div>
-          </div>
-          <ThemeToggle />
+          </main>
         </div>
-      </header>
-      <div className="flex min-h-0 flex-1">
-        <AppNav />
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{children}</div>
       </div>
-    </div>
+    </ShellTitleProvider>
   );
 }

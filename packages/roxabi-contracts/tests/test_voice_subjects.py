@@ -29,6 +29,16 @@ def test_stt_heartbeat_subject() -> None:
     assert SUBJECTS.stt_heartbeat == "factory.voice.stt.heartbeat"
 
 
+def test_tts_lifecycle_subjects() -> None:
+    assert SUBJECTS.tts_lifecycle_list == "factory.voice.tts.lifecycle.list"
+    assert SUBJECTS.tts_lifecycle_status == "factory.voice.tts.lifecycle.status"
+
+
+def test_stt_lifecycle_subjects() -> None:
+    assert SUBJECTS.stt_lifecycle_list == "factory.voice.stt.lifecycle.list"
+    assert SUBJECTS.stt_lifecycle_status == "factory.voice.stt.lifecycle.status"
+
+
 def test_queue_group_constants() -> None:
     assert SUBJECTS.tts_workers == "tts_workers"
     assert SUBJECTS.stt_workers == "stt_workers"

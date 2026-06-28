@@ -8,7 +8,8 @@
     { "requester": "hub", "responder": "image-worker",   "subject": "factory.image.generate.request" },
     { "requester": "hub", "responder": "socialmedia-adapter", "subject": "factory.tool.socialmedia.>" },
     { "requester": "voice-client", "responder": "voice-stt", "subject": "factory.voice.stt.request" },
-    { "requester": "voice-client", "responder": "voice-tts", "subject": "factory.voice.tts.request" }
+    { "requester": "voice-client", "responder": "voice-tts", "subject": "factory.voice.tts.request" },
+    { "requester": "web-adapter", "responder": "hub", "subject": "factory.dashboard.>" }
   ],
   "identities": {
     "hub": {
@@ -58,6 +59,7 @@
         "factory.tool.socialmedia.heartbeat",
         "factory.clipool.heartbeat",
         "factory.omp.heartbeat",
+        "factory.dashboard.>",
         "factory.gh.mint_failure.>",
         "factory.job.*.result",
         "$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.FACTORY_JOBS.>",
@@ -143,9 +145,10 @@
       "owner": "factory",
       "description": "Web smoke adapter — browser chat UI + SSE on factory.{inbound,outbound}.web.smoke (#1977).",
       "notes": "Lean adapter ACL: no outbound-audio JetStream consumer (NullAudioConsumer fallback). wait_for_hub uses STREAM.INFO + STREAM.MSG.GET on KV_factory-state (#1572). Mirrored inline into this v3 snapshot (#1978): web-adapter references no group, so it renders identically to deploy/nats/acl-matrix.json.",
-      "allow_responses": false,
+      "allow_responses": true,
       "publish": [
         "factory.inbound.web.>",
+        "factory.dashboard.>",
         "factory.system.ready",
         "factory.event.>",
         "factory.metric.>",

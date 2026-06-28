@@ -24,6 +24,7 @@ import tomllib
 import typer
 
 from factory.blobstore.cli import blobstore_app
+from factory.ingress.cli import ingress_app
 from factory.cli.agent import (
     agent_app,  # noqa: F401 — DEBT:re-export-init — re-exported for tests
 )
@@ -74,6 +75,7 @@ factory_app.add_typer(voice_smoke_app, name="voice-smoke")
 factory_app.add_typer(ops_app, name="ops")
 factory_app.add_typer(secrets_app, name="secrets")
 factory_app.add_typer(blobstore_app, name="blobstore")
+factory_app.add_typer(ingress_app, name="ingress")
 factory_app.add_typer(user_app, name="user")
 
 hub_app = typer.Typer(name="hub", help="Run standalone Hub process (requires NATS).")

@@ -20,7 +20,7 @@
     }
   },
   "request_reply_flows": [
-    { "requester": "hub", "responder": "clipool-worker", "subject": "factory.clipool.cmd" },
+    { "requester": "hub", "responder": "clipool-worker", "subject": "factory.jobs.claude" },
     { "requester": "hub", "responder": "voice-tts",      "subject": "factory.voice.tts.request.>" },
     { "requester": "hub", "responder": "voice-stt",      "subject": "factory.voice.stt.request.>" },
     { "requester": "hub", "responder": "llm-worker",     "subject": "factory.llm.generate.request" },
@@ -50,7 +50,7 @@
         "factory.llm.generate.request",
         "factory.image.generate.request",
         "factory.tool.socialmedia.>",
-        "factory.clipool.cmd",
+        "factory.jobs.claude",
         "factory.clipool.control",
         "factory.audit.>",
         "factory.turns.write",
@@ -285,7 +285,7 @@
       "created_at": "2026-04-27",
       "owner": "factory",
       "description": "CliPool NATS worker — receives claude subprocess dispatch commands from hub, publishes heartbeat and reply-path responses. Inbox normalized to _inbox.clipool-worker.> (ADR-051 + postmortem Fix 1). Inbox grant derived from request_reply_flows (Fix 3 / #992).",
-      "notes": "clipool-worker is intentionally excluded from publishing factory.turns.write. Rationale: clipool is a downstream command worker (executes factory.clipool.cmd dispatches), not a user-message source — the hub records the turn via factory.turns.write before the dispatch reaches clipool. Sole publisher of factory.turns.write: hub (T27 #1331 adapter dual-write was never implemented; orphaned telegram/discord grants trimmed #1821). See ADR-075 and #1349. $JS.API.STREAM.INFO.KV_factory-state + $JS.API.STREAM.MSG.GET.KV_factory-state: wait_for_hub readiness probe (roxabi-nats v0.4.x). Narrowed from $JS.API.> (#1293 hardening complete).",
+      "notes": "clipool-worker is intentionally excluded from publishing factory.turns.write. Rationale: clipool is a downstream command worker (executes factory.jobs.claude dispatches), not a user-message source — the hub records the turn via factory.turns.write before the dispatch reaches clipool. Sole publisher of factory.turns.write: hub (T27 #1331 adapter dual-write was never implemented; orphaned telegram/discord grants trimmed #1821). See ADR-075 and #1349. $JS.API.STREAM.INFO.KV_factory-state + $JS.API.STREAM.MSG.GET.KV_factory-state: wait_for_hub readiness probe (roxabi-nats v0.4.x). Narrowed from $JS.API.> (#1293 hardening complete).",
       "allow_responses": true,
       "publish": [
         "factory.clipool.heartbeat",
@@ -296,7 +296,7 @@
         "$JS.API.STREAM.MSG.GET.KV_factory-state"
       ],
       "subscribe": [
-        "factory.clipool.cmd",
+        "factory.jobs.claude",
         "factory.clipool.control",
         "_inbox.clipool-worker.>",
         "$KV.factory-state.>"

@@ -93,6 +93,10 @@ class RegistryCoordinator:
             except (nats.errors.Error, OSError, RuntimeError):
                 log.exception("active-jobs: refresh failed for job %r", jid)
 
+    def snapshot(self) -> list[ActiveJobEntry]:
+        """Return a point-in-time copy of in-memory tracked jobs."""
+        return list(self._jobs.values())
+
     async def on_heartbeat(self, worker_loc: str) -> None:
         """Refresh the job mapped to *worker_loc*, if any.
 

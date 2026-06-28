@@ -80,6 +80,118 @@ export async function fetchSessions(agent: string): Promise<DashboardSession[]> 
   return data.sessions;
 }
 
+export interface DashboardTurn {
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+}
+
+export interface DashboardJob {
+  job_id: string;
+  pool_id: string;
+  agent: string | null;
+  platform: string | null;
+  status: string;
+  started_at: string;
+  concurrency_mode: string;
+  worker_loc: string | null;
+  steer_subject: string;
+}
+
+export async function fetchJobs(): Promise<DashboardJob[]> {
+  const res = await fetch("/api/bff/jobs");
+  if (!res.ok) throw new Error("jobs fetch failed");
+  const data = (await res.json()) as { jobs: DashboardJob[] };
+  return data.jobs;
+}
+
+export async function launchJob(body: {
+  agent: string;
+  prompt: string;
+  job_name?: string;
+  model?: string | null;
+}): Promise<{
+  accepted: boolean;
+  job_id: string;
+  message: string;
+  dispatch_subject: string;
+}> {
+  const res = await fetch("/api/bff/jobs/launch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error("job launch failed");
+  return res.json() as Promise<{
+    accepted: boolean;
+    job_id: string;
+    message: string;
+    dispatch_subject: string;
+  }>;
+}
+
+export async function steerJob(
+  jobId: string,
+  text: string,
+): Promise<{ accepted: boolean; message: string }> {
+  const res = await fetch("/api/bff/jobs/steer", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ job_id: jobId, text }),
+  });
+  if (!res.ok) throw new Error("job steer failed");
+  return res.json() as Promise<{ accepted: boolean; message: string }>;
+}
+
+export type OpsLogPreset = "hub-errors" | "operator-events" | "deploy-failures";
+
+export interface OpsEngineHealth {
+  engine: "loki" | "langfuse" | "otel-collector";
+  label: string;
+  reachable: boolean;
+  detail: string;
+}
+
+export interface OpsLogEntry {
+  timestamp: string;
+  line: string;
+  labels: Record<string, string>;
+}
+
+export async function fetchOpsHealth(): Promise<OpsEngineHealth[]> {
+  const res = await fetch("/api/bff/ops/health");
+  if (!res.ok) throw new Error("ops health fetch failed");
+  const data = (await res.json()) as { engines: OpsEngineHealth[] };
+  return data.engines;
+}
+
+export async function fetchOpsLogs(
+  preset: OpsLogPreset,
+  limit = 50,
+): Promise<{
+  preset: OpsLogPreset;
+  query: string;
+  engine_reachable: boolean;
+  entries: OpsLogEntry[];
+}> {
+  const params = new URLSearchParams({ preset, limit: String(limit) });
+  const res = await fetch(`/api/bff/ops/logs?${params}`);
+  if (!res.ok) throw new Error("ops logs fetch failed");
+  return res.json() as Promise<{
+    preset: OpsLogPreset;
+    query: string;
+    engine_reachable: boolean;
+    entries: OpsLogEntry[];
+  }>;
+}
+
+export async function fetchSessionTurns(sessionId: string): Promise<DashboardTurn[]> {
+  const res = await fetch(`/api/bff/sessions/turns?session_id=${encodeURIComponent(sessionId)}`);
+  if (!res.ok) throw new Error("turns fetch failed");
+  const data = (await res.json()) as { turns: DashboardTurn[] };
+  return data.turns;
+}
+
 export async function resumeSession(
   agent: string,
   cliSessionId: string,

@@ -26,7 +26,7 @@ from factory.core.messaging.events import ResultLlmEvent, TextLlmEvent, ToolUseL
 # ---------------------------------------------------------------------------
 
 
-def _make_nats_msg(subject: str = "factory.clipool.cmd", reply: str = "_INBOX.test"):
+def _make_nats_msg(subject: str = "factory.jobs.claude", reply: str = "_INBOX.test"):
     msg = MagicMock()
     msg.subject = subject
     msg.reply = reply
@@ -113,7 +113,7 @@ async def test_handle_routes_control_by_subject() -> None:
     worker = CliPoolNatsWorker(pool)
 
     control_msg = _make_nats_msg(subject="factory.clipool.control")
-    cmd_msg = _make_nats_msg(subject="factory.clipool.cmd")
+    cmd_msg = _make_nats_msg(subject="factory.jobs.claude")
 
     with (
         patch.object(worker, "_handle_control", new_callable=AsyncMock) as mock_ctrl,
@@ -148,7 +148,7 @@ async def test_handle_cmd_stream_calls_pool_send_streaming() -> None:
     nc = AsyncMock()
     worker._nc = nc
 
-    msg = _make_nats_msg(subject="factory.clipool.cmd", reply="_INBOX.reply")
+    msg = _make_nats_msg(subject="factory.jobs.claude", reply="_INBOX.reply")
     payload = _cmd_payload(stream=True)
 
     # Act
@@ -174,7 +174,7 @@ async def test_handle_cmd_nonstream_calls_pool_send() -> None:
     nc = AsyncMock()
     worker._nc = nc
 
-    msg = _make_nats_msg(subject="factory.clipool.cmd", reply="_INBOX.reply")
+    msg = _make_nats_msg(subject="factory.jobs.claude", reply="_INBOX.reply")
     payload = _cmd_payload(stream=False)
 
     # Act
@@ -205,7 +205,7 @@ async def test_handle_cmd_nonstream_error_forwards_worker_error() -> None:
     nc = AsyncMock()
     worker._nc = nc
 
-    msg = _make_nats_msg(subject="factory.clipool.cmd", reply="_INBOX.reply")
+    msg = _make_nats_msg(subject="factory.jobs.claude", reply="_INBOX.reply")
     payload = _cmd_payload(stream=False)
 
     await worker._handle_cmd(msg, payload)
@@ -226,7 +226,7 @@ async def test_handle_cmd_send_streaming_exception_publishes_error() -> None:
     worker = CliPoolNatsWorker(pool)
     nc = AsyncMock()
     worker._nc = nc
-    msg = _make_nats_msg(subject="factory.clipool.cmd", reply="_INBOX.test.1")
+    msg = _make_nats_msg(subject="factory.jobs.claude", reply="_INBOX.test.1")
     payload = _cmd_payload(stream=True)
 
     # Act
@@ -255,7 +255,7 @@ async def test_handle_cmd_publishes_done_chunk_after_stream() -> None:
     nc = AsyncMock()
     worker._nc = nc
 
-    msg = _make_nats_msg(subject="factory.clipool.cmd", reply="_INBOX.reply")
+    msg = _make_nats_msg(subject="factory.jobs.claude", reply="_INBOX.reply")
 
     # Act
     await worker._handle_cmd(msg, _cmd_payload(stream=True))
@@ -586,7 +586,7 @@ def test_heartbeat_payload_empty_pool() -> None:
 
 
 def test_constructor_passes_correct_subject_and_queue_group() -> None:
-    """Constructor sets subject='factory.clipool.cmd', queue_group='clipool-workers'."""
+    """Constructor sets subject='factory.jobs.claude', queue_group='clipool-workers'."""
     from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange / Act
@@ -594,7 +594,7 @@ def test_constructor_passes_correct_subject_and_queue_group() -> None:
     worker = CliPoolNatsWorker(pool)
 
     # Assert
-    assert worker.subject == "factory.clipool.cmd"
+    assert worker.subject == "factory.jobs.claude"
     assert worker.queue_group == "clipool-workers"
 
 
@@ -841,4 +841,4 @@ async def test_handle_cmd_validation_error_does_not_leak_payload_fields() -> Non
     )
     # Positive: literal fallback preserved (guards against regressions to
     # empty/None messages that would still pass the negative assertion).
-    assert message == "CliCmdPayload validation failed"
+    assert message == "ClaudeJobPayload validation failed"

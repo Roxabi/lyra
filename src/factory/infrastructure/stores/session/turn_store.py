@@ -22,7 +22,7 @@ from factory.infrastructure.stores.session.turn_store_session import (
     TurnStoreSessionMixin,
 )
 
-from .turn_store_queries import backfill_sessions, get_turns
+from .turn_store_queries import backfill_sessions, get_turns, get_turns_by_session
 
 log = logging.getLogger(__name__)
 
@@ -239,6 +239,12 @@ class TurnStore(SqliteStore, TurnStoreSessionMixin):
         except sqlite3.Error:
             await db.execute("ROLLBACK")
             raise
+
+    async def get_turns_by_session(
+        self, session_id: str, limit: int = 200
+    ) -> list[TurnRow]:
+        """Return turns for a Lyra session_id, oldest first."""
+        return await get_turns_by_session(self._db_or_raise(), session_id, limit)
 
     async def get_turns(
         self, pool_id: str, user_id: str, limit: int = 50

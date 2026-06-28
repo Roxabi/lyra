@@ -326,7 +326,7 @@ def test_hub_publish_acl_enforced(
             nkeys_seed_str=seed_str,
             error_cb=error_cb,
         )
-        await nc.publish("factory.clipool.cmd", b"ping")
+        await nc.publish("factory.jobs.claude", b"ping")
         await nc.publish("factory.inbound.telegram.acl_test", b"denied")
         await asyncio.sleep(0.2)  # NATS delivery window
         await nc.drain()
@@ -365,7 +365,7 @@ def test_voice_tts_publish_acl_enforced(
             error_cb=error_cb,
         )
         await nc.publish("factory.voice.tts.heartbeat", b"ping")
-        await nc.publish("factory.clipool.cmd", b"denied")
+        await nc.publish("factory.jobs.claude", b"denied")
         await asyncio.sleep(0.2)  # NATS delivery window
         await nc.drain()
 
@@ -402,7 +402,7 @@ def test_clipool_worker_subscribe_acl_enforced(
             nkeys_seed_str=seed_str,
             error_cb=error_cb,
         )
-        await nc.subscribe("factory.clipool.cmd")
+        await nc.subscribe("factory.jobs.claude")
         await nc.subscribe("factory.inbound.discord.>")
         await asyncio.sleep(0.2)  # NATS delivery window
         await nc.drain()

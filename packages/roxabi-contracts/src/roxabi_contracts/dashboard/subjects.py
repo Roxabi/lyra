@@ -17,6 +17,14 @@ class DashboardSubjects(BaseModel):
     agents_status: Literal["factory.dashboard.agents.status"] = (
         "factory.dashboard.agents.status"
     )
+    sessions_turns: Literal["factory.dashboard.sessions.turns"] = (
+        "factory.dashboard.sessions.turns"
+    )
+    jobs_list: Literal["factory.dashboard.jobs.list"] = "factory.dashboard.jobs.list"
+    jobs_launch: Literal["factory.dashboard.jobs.launch"] = (
+        "factory.dashboard.jobs.launch"
+    )
+    jobs_steer: Literal["factory.dashboard.jobs.steer"] = "factory.dashboard.jobs.steer"
 
 
 SUBJECTS = DashboardSubjects()

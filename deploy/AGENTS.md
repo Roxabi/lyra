@@ -126,16 +126,17 @@ Legacy 4-field stamps (pre-image-digest schema) are normalized to `:none:none` o
 
 1. **Change-gate** — skip if already converged.
 2. **Pull** — `git pull origin staging` in `~/projects/roxabi-factory` (and `~/projects/voiceCLI` if present).
-3. **Install Quadlet units** — `make quadlet-install NO_RESTART=1` (renders units, copies to `~/.config/containers/systemd`, `daemon-reload`, seeds BotStore).
-4. **Regenerate auth.conf** — `factory-acl genkeys --regen-authconf` (renders `nkeys/` → `auth.conf`).
-5. **Install secrets** — `make quadlet-secrets-install` (recreates Podman secrets from host key files; `factory-nats-auth` is no longer a secret — `auth.conf` is now an inline bind mount per ADR-085).
-6. **Restart NATS** — operator-path choices for targeted operations:
+3. **Install cluster Quadlets** — `bash ~/projects/deploy.sh --prune` (role-aware SSOT: installs every host-matched unit across all managed repos from `hosts.toml` × `*/deploy/quadlet.toml`, generates host-override drop-ins, prunes orphan `.container` files). Runs under `converge.sh`'s `set -e` — **must succeed before step 4**. Template-only components (telegram/discord) are emitted as RENDER actions and rendered in step 4, not copied here.
+4. **Render factory units** — `make quadlet-install NO_RESTART=1` (renders the telegram/discord `.container.tmpl` templates, copies to `~/.config/containers/systemd`, `daemon-reload`, seeds BotStore).
+5. **Regenerate auth.conf** — `factory-acl genkeys --regen-authconf` (renders `nkeys/` → `auth.conf`).
+6. **Install secrets** — `make quadlet-secrets-install` (recreates Podman secrets from host key files; `factory-nats-auth` is no longer a secret — `auth.conf` is now an inline bind mount per ADR-085).
+7. **Restart NATS** — operator-path choices for targeted operations:
    - **Pure identity add** (`make nats-add-identity`): atomic write to `auth.conf` on host → `systemctl --user reload factory-nats` (fires `ExecReload=` → `podman kill --signal=HUP factory-nats`). Zero client restarts, zero dropped connections.
    - **ACL permission change** (`make nats-regen-authconf`): atomic write to `auth.conf` on host → `systemctl --user restart factory-nats` (required per #1390 — stale-subject-auth risk on ACL changes). Waits for `is-active`.
    Converge always **restarts** factory-nats on any drift (auth → factory-nats only; structural → factory-nats + clients) — it never reloads, because it cannot prove a change is a pure identity-add (#1390). Clients reconnect automatically via `allow_reconnect`.
-7. **Restart factory clients** — `factory-hub`, `factory-telegram`, `factory-discord`, `factory-dashboard`, `factory-clipool`, `factory-turn-writer`, `factory-gh-helper`, `factory-blobstore`, `factory-omp` (unconditional `systemctl restart` — also starts units that were inactive; any failure aborts the converge). Restarted only on **structural** drift. On **auth-only** drift, converge restarts factory-nats alone; clients reconnect via `allow_reconnect` without explicit restart.
-8. **Restart voiceCLI** — `voicecli-tts`, `voicecli-stt` (if voiceCLI directory exists).
-9. **Record stamp** — writes the new convergence fingerprint to `~/.roxabi/factory/.converge-stamp`.
+8. **Restart factory clients** — `factory-hub`, `factory-telegram`, `factory-discord`, `factory-dashboard`, `factory-clipool`, `factory-turn-writer`, `factory-gh-helper`, `factory-blobstore`, `factory-omp` (unconditional `systemctl restart` — also starts units that were inactive; any failure aborts the converge). Restarted only on **structural** drift. On **auth-only** drift, converge restarts factory-nats alone; clients reconnect via `allow_reconnect` without explicit restart.
+9. **Restart voiceCLI** — `voicecli-tts`, `voicecli-stt` (if voiceCLI directory exists).
+10. **Record stamp** — writes the new convergence fingerprint to `~/.roxabi/factory/.converge-stamp`.
 
 ### Trigger wiring
 
@@ -221,7 +222,7 @@ carries its own auth — bind tier and auth mechanism are chosen **together**:
 | `factory-langfuse-*` deps | — | `roxabi.network` only | — |
 
 Rules:
-- **`0.0.0.0` (LAN + Tailnet) requires strong per-request auth** — only `factory-nats` (NKey) qualifies today. UFW additionally scopes 4222 to the LAN subnet (`deploy/nats/setup.sh`).
+- **`0.0.0.0` (LAN + Tailnet) requires strong per-request auth** — only `factory-nats` (NKey) qualifies today. UFW base policy (`deploy/provision.sh`) denies inbound by default; the 4222 LAN-subnet rule is a manual host step (the old `deploy/nats/setup.sh` automation was removed as dead — #2041).
 - **No / weak app auth → bind `${TAILSCALE_IPV4}`** (Tailnet-only) + the fail-closed `ExecStartPre` guard; never `0.0.0.0`. Tailnet-IP bind needs no UFW rule (only the tailscale0 address accepts).
 - **Internal-only surfaces → `127.0.0.1`.**
 - New exposed unit → pick a row, pair it with an auth boundary, document it here.

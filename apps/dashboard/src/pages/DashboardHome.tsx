@@ -1,6 +1,6 @@
+import { Warning } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Warning } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
 import { PageIntro } from "@/components/layout/PageIntro";
 import { Badge } from "@/components/ui/badge";

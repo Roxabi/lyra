@@ -7,13 +7,7 @@ import { homeNavItems, observeNavItems, operateNavItems } from "@/lib/nav";
 import { useSidebarCollapsed } from "@/lib/use-sidebar-collapsed";
 import { cn } from "@/lib/utils";
 
-function NavSection({
-  label,
-  collapsed,
-}: {
-  label: string;
-  collapsed: boolean;
-}) {
+function NavSection({ label, collapsed }: { label: string; collapsed: boolean }) {
   if (collapsed) return null;
   return (
     <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">

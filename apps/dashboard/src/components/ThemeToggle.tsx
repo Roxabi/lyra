@@ -21,10 +21,9 @@ export function ThemeToggle({ variant = "icon", className }: ThemeToggleProps) {
 
   if (variant === "segment") {
     return (
-      <div
-        role="group"
+      <fieldset
         aria-label={t("theme.toggle")}
-        className={cn("grid grid-cols-2 gap-1 rounded-lg bg-muted p-1", className)}
+        className={cn("m-0 grid grid-cols-2 gap-1 rounded-lg border-0 bg-muted p-1", className)}
       >
         {(["light", "dark"] as const).map((value) => {
           const active = theme === value;
@@ -49,7 +48,7 @@ export function ThemeToggle({ variant = "icon", className }: ThemeToggleProps) {
             </button>
           );
         })}
-      </div>
+      </fieldset>
     );
   }
 

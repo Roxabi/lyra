@@ -72,10 +72,7 @@ export function CockpitContextPanel({ agent, health }: CockpitContextPanelProps)
           ) : (
             <ul className="space-y-2">
               {agentJobs.map((job) => (
-                <li
-                  key={job.job_id}
-                  className="rounded-md bg-muted/30 px-3 py-2"
-                >
+                <li key={job.job_id} className="rounded-md bg-muted/30 px-3 py-2">
                   <p className="truncate font-mono text-xs">{job.job_id}</p>
                   <Badge className="mt-1" variant={jobStatusVariant(job.status)}>
                     {job.status}

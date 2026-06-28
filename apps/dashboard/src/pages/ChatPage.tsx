@@ -2,8 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChatPane } from "@/components/ChatPane";
-import { CockpitContextPanel } from "@/components/layout/CockpitContextPanel";
 import { ChatSidebar } from "@/components/layout/ChatSidebar";
+import { CockpitContextPanel } from "@/components/layout/CockpitContextPanel";
 import { useAgentStatus } from "@/hooks/useAgentStatus";
 import { fetchAgents, fetchSessionTurns } from "@/lib/api";
 import { turnsToLog } from "@/lib/chat-messages";
@@ -77,9 +77,7 @@ export function ChatPage() {
     }
   };
 
-  const activeHealth = activeTab
-    ? healthFor(activeTab.agent, activeTab.harness)
-    : undefined;
+  const activeHealth = activeTab ? healthFor(activeTab.agent, activeTab.harness) : undefined;
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden">

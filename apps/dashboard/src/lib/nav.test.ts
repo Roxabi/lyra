@@ -13,12 +13,17 @@ describe("nav", () => {
     expect(isNavItemActive("/chat", { to: "/chat", labelKey: "nav.chat", Icon: {} as never })).toBe(
       true,
     );
-    expect(isNavItemActive("/", { to: "/", labelKey: "nav.overview", Icon: {} as never, exact: true })).toBe(
-      true,
-    );
-    expect(isNavItemActive("/jobs", { to: "/", labelKey: "nav.overview", Icon: {} as never, exact: true })).toBe(
-      false,
-    );
+    expect(
+      isNavItemActive("/", { to: "/", labelKey: "nav.overview", Icon: {} as never, exact: true }),
+    ).toBe(true);
+    expect(
+      isNavItemActive("/jobs", {
+        to: "/",
+        labelKey: "nav.overview",
+        Icon: {} as never,
+        exact: true,
+      }),
+    ).toBe(false);
   });
 
   it("resolves layout flags for chat full bleed", () => {

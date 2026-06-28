@@ -1,9 +1,9 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
+import enChat from "@/i18n/locales/en/chat.json";
 import enCommon from "@/i18n/locales/en/common.json";
 import enDashboard from "@/i18n/locales/en/dashboard.json";
 import enJobs from "@/i18n/locales/en/jobs.json";
-import enChat from "@/i18n/locales/en/chat.json";
 import enOps from "@/i18n/locales/en/ops.json";
 import frChat from "@/i18n/locales/fr/chat.json";
 import frCommon from "@/i18n/locales/fr/common.json";

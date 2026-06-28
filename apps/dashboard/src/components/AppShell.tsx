@@ -20,7 +20,9 @@ export function AppShell() {
           <main
             className={cn(
               "min-h-0 flex-1",
-              fullBleed ? "overflow-hidden p-0" : "fd-scroll overflow-y-auto px-4 py-4 md:px-6 md:py-6",
+              fullBleed
+                ? "overflow-hidden p-0"
+                : "fd-scroll overflow-y-auto px-4 py-4 md:px-6 md:py-6",
             )}
           >
             <div

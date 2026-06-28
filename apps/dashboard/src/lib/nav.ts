@@ -28,11 +28,7 @@ export const observeNavItems: AppNavItem[] = [
   { to: "/ops", labelKey: "nav.ops", Icon: ChartLineUp, wideLayout: true },
 ];
 
-export const appNavItems: AppNavItem[] = [
-  ...homeNavItems,
-  ...operateNavItems,
-  ...observeNavItems,
-];
+export const appNavItems: AppNavItem[] = [...homeNavItems, ...operateNavItems, ...observeNavItems];
 
 export interface PageTitleDescriptor {
   key: string;

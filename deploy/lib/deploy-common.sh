@@ -16,6 +16,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/operator-log.sh"
 
 # ── Constants ────────────────────────────────────────────────────────────────
 FACTORY_DIR="${HOME}/projects/roxabi-factory"
+PROJECTS_DIR="${PROJECTS_DIR:-${HOME}/projects}"
+HOSTS_TOML="${HOSTS_TOML:-${PROJECTS_DIR}/hosts.toml}"
+CLUSTER_PLAN="${CLUSTER_PLAN:-${PROJECTS_DIR}/lib/cluster_plan.py}"
 CONVERGE_STAMP="${HOME}/.roxabi/factory/.converge-stamp"
 QUADLET_DIR="${HOME}/.config/containers/systemd"
 FACTORY_NKEYS_DIR="${HOME}/.roxabi/factory/nkeys"
@@ -37,6 +40,26 @@ with_deploy_lock() {
         exit 0
     fi
     "$@"
+}
+
+# ── Host role guard (SSOT: ~/projects/hosts.toml via lib/cluster_plan.py) ───
+require_host_role() {
+    local required_role="${1:?require_host_role: role required}"
+    local hostname="${2:-$(hostname)}"
+    if [ ! -f "${HOSTS_TOML}" ]; then
+        echo "ERROR: missing ${HOSTS_TOML} — cannot verify host role" >&2
+        exit 1
+    fi
+    if [ ! -f "${CLUSTER_PLAN}" ]; then
+        echo "ERROR: missing ${CLUSTER_PLAN} — cannot verify host role" >&2
+        exit 1
+    fi
+    if ! python3 "${CLUSTER_PLAN}" --hosts-toml "${HOSTS_TOML}" has-role "${hostname}" "${required_role}"; then
+        echo "ERROR: host '${hostname}' lacks required role '${required_role}' (${HOSTS_TOML})" >&2
+        echo "       make converge is for factory-hub hosts (M₁ prod) only." >&2
+        echo "       On other hosts use: ~/projects/deploy.sh" >&2
+        exit 1
+    fi
 }
 
 # ── Dirty-tree guard ─────────────────────────────────────────────────────────

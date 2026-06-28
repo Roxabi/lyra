@@ -27,6 +27,29 @@ from factory.core.cli.cli_pool_worker import _ProcessEntry
 # A valid UUID-format session ID accepted by SESSION_ID_RE.
 _VALID_CLI_SID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
 _ANOTHER_CLI_SID = "11111111-2222-3333-4444-555555555555"
+_JOB_ID = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e"
+
+
+def _job_envelope(**payload_overrides: object) -> dict:
+    """Minimal JobEnvelope dict for clipool resume tests (phase 2)."""
+    payload: dict = {
+        "pool_id": "pool-1",
+        "prompt": "hello",
+        "model_cfg": {"backend": "claude-cli"},
+        "lyra_session_id": "lyra-session-test",
+        "system_prompt": "",
+        "stream": True,
+    }
+    payload.update(payload_overrides)
+    return {
+        "contract_version": "1",
+        "trace_id": "trace-sc18",
+        "issued_at": datetime.now(timezone.utc).isoformat(),
+        "job_id": _JOB_ID,
+        "job_name": "claude",
+        "reply_to": "_INBOX.hub.test",
+        "payload": payload,
+    }
 
 
 def _make_pool() -> CliPool:
@@ -266,12 +289,12 @@ class TestNoTurnStoreInWorker:
 
 
 # ---------------------------------------------------------------------------
-# SC-18: _handle_cmd embedded-resume path (CliCmdPayload.resume_session_id)
+# SC-18: _run_job embedded-resume path (JobEnvelope.payload.provider_session_id)
 # ---------------------------------------------------------------------------
 
 
 class TestHandleCmdEmbeddedResume:
-    """SC-18 — _handle_cmd calls pool.resume_direct when resume_session_id is set."""
+    """SC-18 — _run_job calls pool.resume_direct when provider_session_id is set."""
 
     @pytest.mark.asyncio
     async def test_handle_cmd_with_resume_session_id_calls_resume_direct(
@@ -294,11 +317,7 @@ class TestHandleCmdEmbeddedResume:
         pool.send_streaming = _fake_streaming
 
         worker = CliPoolNatsWorker(pool)
-
-        # Minimal NATS msg double (reply needed for reply() call
-        # in _handle_cmd_streaming)
-        msg = MagicMock()
-        msg.reply = "_INBOX.test"
+        worker._nc = AsyncMock()
 
         # Use asyncio.Event to synchronize instead of sleep
         resume_called = asyncio.Event()
@@ -311,21 +330,14 @@ class TestHandleCmdEmbeddedResume:
 
         pool.resume_direct = _spy_resume
 
-        payload = {
-            "contract_version": "1",
-            "trace_id": "trace-sc18",
-            "issued_at": datetime.now(timezone.utc).isoformat(),
-            "pool_id": "pool-1",
-            "text": "hello",
-            "model_cfg": {"backend": "claude-cli"},
-            "lyra_session_id": "lyra-session-test",
-            "system_prompt": "",
-            "resume_session_id": _VALID_CLI_SID,
-            "stream": True,
-        }
+        from roxabi_contracts.jobs.models import JobEnvelope
+
+        envelope = JobEnvelope.model_validate(
+            _job_envelope(provider_session_id=_VALID_CLI_SID)
+        )
 
         # Act
-        await worker._handle_cmd(msg, payload)
+        await worker._run_job(envelope)
 
         # Assert — resume_direct was called with correct args
         assert resume_called.is_set(), "resume_direct was not called"
@@ -346,24 +358,12 @@ class TestHandleCmdEmbeddedResume:
 
         pool.send_streaming = _fake_streaming
 
+        from roxabi_contracts.jobs.models import JobEnvelope
+
         worker = CliPoolNatsWorker(pool)
-        msg = MagicMock()
-        msg.reply = "_INBOX.test"
+        worker._nc = AsyncMock()
 
-        payload = {
-            "contract_version": "1",
-            "trace_id": "trace-sc18b",
-            "issued_at": datetime.now(timezone.utc).isoformat(),
-            "pool_id": "pool-1",
-            "text": "hello",
-            "model_cfg": {"backend": "claude-cli"},
-            "lyra_session_id": "lyra-session-test",
-            "system_prompt": "",
-            # resume_session_id deliberately omitted
-            "stream": True,
-        }
-
-        await worker._handle_cmd(msg, payload)
+        await worker._run_job(JobEnvelope.model_validate(_job_envelope()))
 
         pool.resume_direct.assert_not_awaited()
 
@@ -383,24 +383,20 @@ class TestHandleCmdEmbeddedResume:
 
         pool.send_streaming = _fake_streaming
 
+        from roxabi_contracts.jobs.models import JobEnvelope
+
         worker = CliPoolNatsWorker(pool)
-        msg = MagicMock()
-        msg.reply = "_INBOX.test"
+        worker._nc = AsyncMock()
 
-        payload = {
-            "contract_version": "1",
-            "trace_id": "trace-sc18c",
-            "issued_at": datetime.now(timezone.utc).isoformat(),
-            "pool_id": "pool-resume-42",
-            "text": "world",
-            "model_cfg": {"backend": "claude-cli"},
-            "lyra_session_id": "lyra-session-test",
-            "system_prompt": "",
-            "resume_session_id": _ANOTHER_CLI_SID,
-            "stream": True,
-        }
-
-        await worker._handle_cmd(msg, payload)
+        await worker._run_job(
+            JobEnvelope.model_validate(
+                _job_envelope(
+                    pool_id="pool-resume-42",
+                    prompt="world",
+                    provider_session_id=_ANOTHER_CLI_SID,
+                )
+            )
+        )
 
         pool.resume_direct.assert_awaited_once_with("pool-resume-42", _ANOTHER_CLI_SID)
 
@@ -420,24 +416,18 @@ class TestHandleCmdEmbeddedResume:
         fake_result = CliResult(result="", session_id=_VALID_CLI_SID, error="")
         pool.send = AsyncMock(return_value=fake_result)
 
+        from roxabi_contracts.jobs.models import JobEnvelope
+
         worker = CliPoolNatsWorker(pool)
-        msg = MagicMock()
-        msg.reply = "_INBOX.test"
+        worker._nc = AsyncMock()
 
-        payload = {
-            "contract_version": "1",
-            "trace_id": "trace-sc18d",
-            "issued_at": datetime.now(timezone.utc).isoformat(),
-            "pool_id": "pool-1",
-            "text": "hello",
-            "model_cfg": {"backend": "claude-cli"},
-            "lyra_session_id": "lyra-session-test",
-            "system_prompt": "",
-            "resume_session_id": _VALID_CLI_SID,
-            "stream": False,
-        }
-
-        with patch.object(worker, "reply", new_callable=AsyncMock):
-            await worker._handle_cmd(msg, payload)
+        await worker._run_job(
+            JobEnvelope.model_validate(
+                _job_envelope(
+                    provider_session_id=_VALID_CLI_SID,
+                    stream=False,
+                )
+            )
+        )
 
         pool.resume_direct.assert_awaited_once_with("pool-1", _VALID_CLI_SID)

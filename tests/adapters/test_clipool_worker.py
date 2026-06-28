@@ -12,6 +12,7 @@ Coverage targets:
 
 from __future__ import annotations
 
+import asyncio
 import json
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -20,10 +21,14 @@ import pytest
 
 from factory.core.cli.cli_pool import CliPool, CliResult
 from factory.core.messaging.events import ResultLlmEvent, TextLlmEvent, ToolUseLlmEvent
+from roxabi_contracts.jobs.models import JobEnvelope
+from roxabi_contracts.jobs.subjects import jobs_progress, jobs_result
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+_JOB_ID = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e"
 
 
 def _make_nats_msg(subject: str = "factory.jobs.claude", reply: str = "_INBOX.test"):
@@ -38,21 +43,60 @@ async def _make_event_iter(events):
         yield e
 
 
-def _cmd_payload(**overrides) -> dict:
-    """Build a minimal CliCmdPayload dict with required envelope fields."""
-    base = {
-        "contract_version": "1",
-        "trace_id": "trace-001",
-        "issued_at": datetime.now(timezone.utc).isoformat(),
+def _job_envelope(**overrides) -> dict:
+    """Build a minimal JobEnvelope dict for clipool dispatch (phase 2)."""
+    payload_overrides = overrides.pop("payload", {})
+    payload: dict[str, object] = {
         "pool_id": "pool-1",
         "lyra_session_id": "sess-1",
-        "text": "hello",
+        "prompt": "hello",
         "model_cfg": {},
         "system_prompt": "",
         "stream": True,
     }
+    payload.update(payload_overrides)
+    base: dict[str, object] = {
+        "contract_version": "1",
+        "trace_id": "trace-001",
+        "issued_at": datetime.now(timezone.utc).isoformat(),
+        "job_id": _JOB_ID,
+        "job_name": "claude",
+        "reply_to": "_INBOX.hub.test",
+        "payload": payload,
+    }
     base.update(overrides)
     return base
+
+
+def _cmd_payload(**overrides) -> dict:
+    """Backward-compat alias — maps legacy test kwargs into JobEnvelope payload."""
+    payload: dict = {}
+    for key in (
+        "pool_id",
+        "lyra_session_id",
+        "text",
+        "model_cfg",
+        "system_prompt",
+        "stream",
+        "resume_session_id",
+        "agent_name",
+        "agent_email",
+    ):
+        if key in overrides:
+            mapped = "prompt" if key == "text" else key
+            if mapped == "resume_session_id":
+                mapped = "provider_session_id"
+            payload[mapped] = overrides.pop(key)
+    return _job_envelope(payload=payload, **overrides)
+
+
+def _published(nc: AsyncMock, *, facet: str) -> list[dict]:
+    suffix = f".{facet}"
+    return [
+        json.loads(call.args[1].decode())
+        for call in nc.publish.call_args_list
+        if len(call.args) > 1 and str(call.args[0]).endswith(suffix)
+    ]
 
 
 def _control_payload(**overrides) -> dict:
@@ -117,16 +161,18 @@ async def test_handle_routes_control_by_subject() -> None:
 
     with (
         patch.object(worker, "_handle_control", new_callable=AsyncMock) as mock_ctrl,
-        patch.object(worker, "_handle_cmd", new_callable=AsyncMock) as mock_cmd,
+        patch.object(worker, "_run_job", new_callable=AsyncMock) as mock_job,
     ):
         # Act — control subject
         await worker.handle(control_msg, _control_payload())
         # Act — default subject
         await worker.handle(cmd_msg, _cmd_payload())
+        if worker._jobs:
+            await asyncio.gather(*list(worker._jobs), return_exceptions=True)
 
     # Assert
     mock_ctrl.assert_awaited_once()
-    mock_cmd.assert_awaited_once()
+    mock_job.assert_awaited_once()
 
 
 # ---------------------------------------------------------------------------
@@ -148,18 +194,16 @@ async def test_handle_cmd_stream_calls_pool_send_streaming() -> None:
     nc = AsyncMock()
     worker._nc = nc
 
-    msg = _make_nats_msg(subject="factory.jobs.claude", reply="_INBOX.reply")
     payload = _cmd_payload(stream=True)
 
     # Act
-    await worker._handle_cmd(msg, payload)
+    await worker._run_job(JobEnvelope.model_validate(payload))
 
-    # Assert — pool.send_streaming was called
     pool.send_streaming.assert_called_once()
-    # Assert — at least one publish to msg.reply
-    assert nc.publish.call_count >= 1
-    call_subjects = [call.args[0] for call in nc.publish.call_args_list]
-    assert all(s == "_INBOX.reply" for s in call_subjects)
+    assert nc.publish.call_count >= 2
+    subjects = [call.args[0] for call in nc.publish.call_args_list]
+    assert jobs_progress(_JOB_ID) in subjects
+    assert jobs_result(_JOB_ID) in subjects
 
 
 async def test_handle_cmd_nonstream_calls_pool_send() -> None:
@@ -174,20 +218,19 @@ async def test_handle_cmd_nonstream_calls_pool_send() -> None:
     nc = AsyncMock()
     worker._nc = nc
 
-    msg = _make_nats_msg(subject="factory.jobs.claude", reply="_INBOX.reply")
     payload = _cmd_payload(stream=False)
 
     # Act
-    await worker._handle_cmd(msg, payload)
+    await worker._run_job(JobEnvelope.model_validate(payload))
 
     # Assert — pool.send used, not send_streaming
     pool.send.assert_called_once()
     pool.send_streaming.assert_not_called()
 
-    # Assert — single reply published
     nc.publish.assert_called_once()
-    publish_subject = nc.publish.call_args.args[0]
-    assert publish_subject == "_INBOX.reply"
+    assert nc.publish.call_args.args[0] == jobs_result(_JOB_ID)
+    result = json.loads(nc.publish.call_args.args[1].decode())
+    assert result["status"] == "success"
 
 
 async def test_handle_cmd_nonstream_error_forwards_worker_error() -> None:
@@ -205,15 +248,14 @@ async def test_handle_cmd_nonstream_error_forwards_worker_error() -> None:
     nc = AsyncMock()
     worker._nc = nc
 
-    msg = _make_nats_msg(subject="factory.jobs.claude", reply="_INBOX.reply")
     payload = _cmd_payload(stream=False)
 
-    await worker._handle_cmd(msg, payload)
+    await worker._run_job(JobEnvelope.model_validate(payload))
 
     published = json.loads(nc.publish.call_args.args[1].decode())
-    assert published["is_error"] is True
-    assert published["worker_error"]["code"] == "llm.rate_limit"
-    assert "weekly limit" in published["worker_error"]["message"]
+    assert published["status"] == "error"
+    assert published["error"]["code"] == "llm.rate_limit"
+    assert "weekly limit" in published["error"]["message"]
 
 
 async def test_handle_cmd_send_streaming_exception_publishes_error() -> None:
@@ -226,20 +268,16 @@ async def test_handle_cmd_send_streaming_exception_publishes_error() -> None:
     worker = CliPoolNatsWorker(pool)
     nc = AsyncMock()
     worker._nc = nc
-    msg = _make_nats_msg(subject="factory.jobs.claude", reply="_INBOX.test.1")
     payload = _cmd_payload(stream=True)
 
     # Act
-    await worker._handle_cmd(msg, payload)
+    await worker._run_job(JobEnvelope.model_validate(payload))
 
-    # Assert — error published directly via _nc.publish (not self.reply)
     nc.publish.assert_awaited_once()
-    call_args = nc.publish.call_args
-    subject = call_args.args[0]
-    data = json.loads(call_args.args[1])
-    assert subject == "_INBOX.test.1"
-    assert data["is_error"] is True
-    assert data["done"] is True
+    subject = nc.publish.call_args.args[0]
+    data = json.loads(nc.publish.call_args.args[1].decode())
+    assert subject == jobs_result(_JOB_ID)
+    assert data["status"] == "error"
 
 
 async def test_handle_cmd_publishes_done_chunk_after_stream() -> None:
@@ -255,18 +293,12 @@ async def test_handle_cmd_publishes_done_chunk_after_stream() -> None:
     nc = AsyncMock()
     worker._nc = nc
 
-    msg = _make_nats_msg(subject="factory.jobs.claude", reply="_INBOX.reply")
-
     # Act
-    await worker._handle_cmd(msg, _cmd_payload(stream=True))
+    await worker._run_job(JobEnvelope.model_validate(_cmd_payload(stream=True)))
 
-    # Assert — final publish carries done=True
-    published_payloads = [
-        json.loads(call.args[1].decode())
-        for call in nc.publish.call_args_list
-        if len(call.args) > 1
-    ]
-    assert any(p.get("done") is True for p in published_payloads)
+    results = _published(nc, facet="result")
+    assert len(results) == 1
+    assert results[0]["status"] == "success"
 
 
 async def test_handle_cmd_streaming_forwards_tool_use_as_keepalive() -> None:
@@ -289,20 +321,12 @@ async def test_handle_cmd_streaming_forwards_tool_use_as_keepalive() -> None:
     nc = AsyncMock()
     worker._nc = nc
 
-    msg = _make_nats_msg(reply="_INBOX.reply")
-
     # Act
-    await worker._handle_cmd(msg, _cmd_payload(stream=True))
+    await worker._run_job(JobEnvelope.model_validate(_cmd_payload(stream=True)))
 
-    # Assert — a tool_use chunk was published with done=False
-    payloads = [
-        json.loads(call.args[1].decode())
-        for call in nc.publish.call_args_list
-        if len(call.args) > 1
-    ]
-    tool_chunks = [p for p in payloads if p.get("event_type") == "tool_use"]
-    assert tool_chunks, f"no tool_use chunk published; got {payloads}"
-    assert tool_chunks[0]["done"] is False
+    progress = _published(nc, facet="progress")
+    tool_chunks = [p for p in progress if p.get("event_type") == "tool_use"]
+    assert tool_chunks, f"no tool_use progress published; got {progress}"
 
 
 async def test_handle_cmd_streaming_forwards_worker_error_from_result_event() -> None:
@@ -335,21 +359,14 @@ async def test_handle_cmd_streaming_forwards_worker_error_from_result_event() ->
     nc = AsyncMock()
     worker._nc = nc
 
-    msg = _make_nats_msg(reply="_INBOX.reply")
-
     # Act
-    await worker._handle_cmd(msg, _cmd_payload(stream=True))
+    await worker._run_job(JobEnvelope.model_validate(_cmd_payload(stream=True)))
 
-    # Assert — published chunk preserves the structured envelope
-    payloads = [
-        json.loads(call.args[1].decode())
-        for call in nc.publish.call_args_list
-        if len(call.args) > 1
-    ]
-    result_chunks = [p for p in payloads if p.get("event_type") == "result"]
-    assert result_chunks, f"no result chunk published; got {payloads}"
-    assert result_chunks[0]["worker_error"]["code"] == "cli.session_lost"
-    assert result_chunks[0]["worker_error"]["retryable"] is True
+    results = _published(nc, facet="result")
+    assert results, "no JobResult published"
+    assert results[0]["status"] == "error"
+    assert results[0]["error"]["code"] == "cli.session_lost"
+    assert results[0]["error"]["retryable"] is True
 
 
 async def test_handle_cmd_validation_error_replies_worker_validation() -> None:
@@ -361,36 +378,30 @@ async def test_handle_cmd_validation_error_replies_worker_validation() -> None:
     """
     from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
-    # Arrange — payload missing required `text` and `model_cfg` fields
     bad_payload = {
         "contract_version": "1",
         "trace_id": "trace-bad",
         "issued_at": datetime.now(timezone.utc).isoformat(),
-        "pool_id": "pool-1",
-        # text/model_cfg/system_prompt deliberately omitted
+        "job_id": _JOB_ID,
+        "job_name": "claude",
+        # reply_to/payload deliberately omitted
     }
 
     pool = _make_pool()
     worker = CliPoolNatsWorker(pool)
     nc = AsyncMock()
     worker._nc = nc
-
     msg = _make_nats_msg(reply="_INBOX.reply")
 
-    # Act
-    await worker._handle_cmd(msg, bad_payload)
+    await worker.handle(msg, bad_payload)  # msg required by handle()
+    if worker._jobs:
+        await asyncio.gather(*list(worker._jobs), return_exceptions=True)
 
-    # Assert — single error chunk with worker.validation
-    payloads = [
-        json.loads(call.args[1].decode())
-        for call in nc.publish.call_args_list
-        if len(call.args) > 1
-    ]
-    assert len(payloads) == 1
-    assert payloads[0]["is_error"] is True
-    assert payloads[0]["done"] is True
-    assert payloads[0]["worker_error"]["code"] == "worker.validation"
-    assert payloads[0]["worker_error"]["retryable"] is False
+    results = _published(nc, facet="result")
+    assert len(results) == 1
+    assert results[0]["status"] == "error"
+    assert results[0]["error"]["code"] == "worker.validation"
+    assert results[0]["error"]["retryable"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -636,7 +647,6 @@ async def test_identity_streaming_full_fields_forwarded_to_pool() -> None:
     worker = CliPoolNatsWorker(pool)
     worker._nc = AsyncMock()
 
-    msg = _make_nats_msg(reply="_INBOX.id1")
     payload = _cmd_payload(
         stream=True,
         agent_name="agent-X",
@@ -645,7 +655,7 @@ async def test_identity_streaming_full_fields_forwarded_to_pool() -> None:
     )
 
     # Act
-    await worker._handle_cmd(msg, payload)
+    await worker._run_job(JobEnvelope.model_validate(payload))
 
     # Assert — all three identity kwargs forwarded to pool.send_streaming
     pool.send_streaming.assert_called_once()
@@ -672,7 +682,6 @@ async def test_identity_streaming_partial_identity_forwarded_to_pool() -> None:
     worker = CliPoolNatsWorker(pool)
     worker._nc = AsyncMock()
 
-    msg = _make_nats_msg(reply="_INBOX.id2")
     payload = _cmd_payload(
         stream=True,
         agent_name="agent-X",
@@ -681,7 +690,7 @@ async def test_identity_streaming_partial_identity_forwarded_to_pool() -> None:
     )
 
     # Act
-    await worker._handle_cmd(msg, payload)
+    await worker._run_job(JobEnvelope.model_validate(payload))
 
     # Assert — agent_email=None propagated (not silently dropped)
     pool.send_streaming.assert_called_once()
@@ -709,7 +718,6 @@ async def test_identity_blocking_full_fields_forwarded_to_pool() -> None:
     worker = CliPoolNatsWorker(pool)
     worker._nc = AsyncMock()
 
-    msg = _make_nats_msg(reply="_INBOX.id3")
     payload = _cmd_payload(
         stream=False,
         agent_name="agent-X",
@@ -718,7 +726,7 @@ async def test_identity_blocking_full_fields_forwarded_to_pool() -> None:
     )
 
     # Act
-    await worker._handle_cmd(msg, payload)
+    await worker._run_job(JobEnvelope.model_validate(payload))
 
     # Assert — all three identity kwargs forwarded to pool.send
     pool.send.assert_called_once()
@@ -753,18 +761,16 @@ async def test_legacy_envelope_passes_none_identity_to_pool() -> None:
     from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
     # Arrange — legacy-shape payload constructed from scratch (no new fields present)
-    legacy_payload: dict = {
-        "contract_version": "1",
-        "trace_id": "trace-legacy",
-        "issued_at": datetime.now(timezone.utc).isoformat(),
-        "pool_id": "pool-legacy",
-        "lyra_session_id": "S-legacy",
-        "text": "what time is it",
-        "model_cfg": {},
-        "system_prompt": "",
-        "stream": True,
-        # agent_name and agent_email intentionally absent — old hub schema
-    }
+    legacy_payload = _job_envelope(
+        payload={
+            "pool_id": "pool-legacy",
+            "lyra_session_id": "S-legacy",
+            "prompt": "what time is it",
+            "model_cfg": {},
+            "system_prompt": "",
+            "stream": True,
+        }
+    )
 
     pool = _make_pool()
     result_event = ResultLlmEvent(is_error=False, duration_ms=0)
@@ -773,10 +779,8 @@ async def test_legacy_envelope_passes_none_identity_to_pool() -> None:
     worker = CliPoolNatsWorker(pool)
     worker._nc = AsyncMock()
 
-    msg = _make_nats_msg(reply="_INBOX.legacy")
-
     # Act
-    await worker._handle_cmd(msg, legacy_payload)
+    await worker._run_job(JobEnvelope.model_validate(legacy_payload))
 
     # Assert — pool.send_streaming called with both identity fields as None
     pool.send_streaming.assert_called_once()
@@ -806,39 +810,31 @@ async def test_handle_cmd_validation_error_does_not_leak_payload_fields() -> Non
     """
     from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 
-    # Arrange — sensitive value in a typed field that Pydantic echoes
     bad_payload = {
         "contract_version": "1",
         "trace_id": "trace-leak",
         "issued_at": datetime.now(timezone.utc).isoformat(),
-        "pool_id": "pool-1",
-        "lyra_session_id": "sess-1",
-        "text": "hello",
-        "model_cfg": {},
-        "system_prompt": "",
-        "stream": f"not-a-bool-{_SENSITIVE_TOKEN}",  # bool_parsing → echoes value
+        "job_id": _JOB_ID,
+        "job_name": f"not-a-token-{_SENSITIVE_TOKEN}",
+        "reply_to": "_INBOX.leak",
+        "payload": {"prompt": "hello"},
     }
 
     pool = _make_pool()
     worker = CliPoolNatsWorker(pool)
     nc = AsyncMock()
     worker._nc = nc
-
     msg = _make_nats_msg(reply="_INBOX.reply.leak")
 
-    # Act
-    await worker._handle_cmd(msg, bad_payload)
+    await worker.handle(msg, bad_payload)
+    if worker._jobs:
+        await asyncio.gather(*list(worker._jobs), return_exceptions=True)
 
-    # Assert — single error chunk published
-    nc.publish.assert_called_once()
-    data = json.loads(nc.publish.call_args.args[1].decode())
-    assert data["worker_error"]["code"] == "worker.validation"
-
-    # Assert — sensitive payload value did not leak into bus-bound message
-    message = data["worker_error"]["message"]
+    results = _published(nc, facet="result")
+    assert len(results) == 1
+    assert results[0]["error"]["code"] == "worker.validation"
+    message = results[0]["error"]["message"]
     assert _SENSITIVE_TOKEN not in message, (
         f"sensitive payload field leaked into worker_error.message: {message!r}"
     )
-    # Positive: literal fallback preserved (guards against regressions to
-    # empty/None messages that would still pass the negative assertion).
-    assert message == "ClaudeJobPayload validation failed"
+    assert message == "ValidationError"

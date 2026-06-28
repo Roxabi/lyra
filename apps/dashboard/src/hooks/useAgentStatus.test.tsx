@@ -22,18 +22,32 @@ function wrapper({ children }: { children: ReactNode }) {
 }
 
 describe("useAgentStatus", () => {
-  it("fetches status with active tab agent and harness", async () => {
-    const spy = vi.spyOn(api, "fetchAgentStatus").mockResolvedValue([
-      {
-        agent: "lyra",
-        in_roster: true,
-        harness: "omp-rpc",
-        harness_reachable: true,
-        online: true,
-      },
-    ]);
+  it("fetches roster and harness-specific status", async () => {
+    const spy = vi.spyOn(api, "fetchAgentStatus").mockImplementation(async (agent, harness) => {
+      if (agent && harness) {
+        return [
+          {
+            agent: "lyra",
+            in_roster: true,
+            harness: "omp-rpc",
+            harness_reachable: true,
+            online: true,
+          },
+        ];
+      }
+      return [
+        {
+          agent: "lyra",
+          in_roster: true,
+          harness: "claude-cli",
+          harness_reachable: true,
+          online: true,
+        },
+      ];
+    });
     const { result } = renderHook(() => useAgentStatus(tab), { wrapper });
     await waitFor(() => {
+      expect(spy).toHaveBeenCalledWith();
       expect(spy).toHaveBeenCalledWith("lyra", "omp-rpc");
       expect(result.current.healthFor("lyra", "omp-rpc")?.online).toBe(true);
     });

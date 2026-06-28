@@ -47,7 +47,7 @@ aiogram long-poll                NatsBus                       discord.py gatewa
       │                              │                              │
       │                              │ get_or_create_pool()         │
       │                              │                              │
-      │                    factory.clipool.cmd ──▶ lyra_clipool process│
+      │                    factory.jobs.claude ──▶ lyra_clipool process│
       │                              │         │                    │
       │                    factory.clipool.heartbeat ◄─┘              │
       │                              │                              │

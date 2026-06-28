@@ -6,8 +6,10 @@ import {
   Outlet,
 } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
-import { CockpitLayout } from "@/components/CockpitLayout";
-import { PanelMount } from "@/components/PanelMount";
+import { ChatPage } from "@/pages/ChatPage";
+import { DashboardHome } from "@/pages/DashboardHome";
+import { JobsPage } from "@/pages/JobsPage";
+import { OpsPage } from "@/pages/OpsPage";
 
 interface RouterContext {
   queryClient: QueryClient;
@@ -21,26 +23,6 @@ function RootLayout() {
   );
 }
 
-function HomePage() {
-  return <CockpitLayout />;
-}
-
-function JobsStub() {
-  return (
-    <div className="p-6">
-      <PanelMount id="jobs" title="Jobs panel" />
-    </div>
-  );
-}
-
-function ObsStub() {
-  return (
-    <div className="p-6">
-      <PanelMount id="obs" title="Obs panel" />
-    </div>
-  );
-}
-
 const rootRoute = createRootRouteWithContext<RouterContext>()({
   component: RootLayout,
 });
@@ -48,22 +30,28 @@ const rootRoute = createRootRouteWithContext<RouterContext>()({
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
-  component: HomePage,
+  component: DashboardHome,
+});
+
+const chatRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/chat",
+  component: ChatPage,
 });
 
 const jobsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/panels/jobs",
-  component: JobsStub,
+  path: "/jobs",
+  component: JobsPage,
 });
 
 const obsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: "/panels/obs",
-  component: ObsStub,
+  path: "/ops",
+  component: OpsPage,
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, jobsRoute, obsRoute]);
+const routeTree = rootRoute.addChildren([indexRoute, chatRoute, jobsRoute, obsRoute]);
 
 export const router = createRouter({
   routeTree,

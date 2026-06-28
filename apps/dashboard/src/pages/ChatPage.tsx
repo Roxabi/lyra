@@ -1,13 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ChatPane } from "@/components/ChatPane";
 import { ChatSidebar } from "@/components/layout/ChatSidebar";
+import { CockpitContextPanel } from "@/components/layout/CockpitContextPanel";
 import { useAgentStatus } from "@/hooks/useAgentStatus";
 import { fetchAgents, fetchSessionTurns } from "@/lib/api";
 import { turnsToLog } from "@/lib/chat-messages";
 import { type ChatTab, loadTabs, newTab, saveTabs } from "@/lib/chats-storage";
 
 export function ChatPage() {
+  const { t } = useTranslation("chat");
   const [tabs, setTabs] = useState<ChatTab[]>(() => loadTabs());
   const [activeId, setActiveId] = useState<string | null>(() => loadTabs()[0]?.id ?? null);
   const [hydratedLog, setHydratedLog] = useState<string | null>(null);
@@ -74,8 +77,10 @@ export function ChatPage() {
     }
   };
 
+  const activeHealth = activeTab ? healthFor(activeTab.agent, activeTab.harness) : undefined;
+
   return (
-    <div className="flex min-h-0 flex-1 overflow-hidden">
+    <div className="flex h-full min-h-0 overflow-hidden">
       <ChatSidebar
         tabs={tabs}
         activeId={activeId}
@@ -89,21 +94,22 @@ export function ChatPage() {
         onNew={addTab}
         onResumed={onResumed}
       />
-      <main className="flex min-w-0 flex-1 flex-col bg-background">
+      <main className="flex min-w-0 flex-1 flex-col border-x border-border/40 bg-background">
         {activeTab ? (
           <ChatPane
             key={`${activeTab.id}-${hydratedLog ? "h" : "f"}`}
             tab={activeTab}
-            health={healthFor(activeTab.agent, activeTab.harness)}
+            health={activeHealth}
             initialLog={hydratedLog ?? undefined}
             onUpdate={(patch) => updateTab(activeTab.id, patch)}
           />
         ) : (
           <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-            Créez un chat pour commencer.
+            {t("empty")}
           </div>
         )}
       </main>
+      <CockpitContextPanel agent={activeTab?.agent ?? null} health={activeHealth} />
     </div>
   );
 }

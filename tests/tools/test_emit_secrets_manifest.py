@@ -209,6 +209,7 @@ class TestPolicyClassification:
             "factory-nats-turn-writer",
             "factory-nats-blobstore",
             "factory-nats-gh-helper",
+            "factory-nats-ingress",
         ]
         for name in seed_names:
             assert name in policy.get("secret", {}), f"{name} missing from policy"
@@ -429,7 +430,7 @@ class TestOwnerFactoryFilter:
                 )
 
     def test_factory_container_secrets_are_exactly_nine(self) -> None:
-        """Exactly 10 factory container identities in the acl-matrix."""
+        """Exactly 11 factory container identities in the acl-matrix."""
         factory_container_secrets = self._factory_container_secrets()
 
         expected = {
@@ -443,6 +444,7 @@ class TestOwnerFactoryFilter:
             "factory-nats-gh-helper",
             "factory-nats-omp",
             "factory-nats-socialmedia",
+            "factory-nats-ingress",
         }
         assert factory_container_secrets == expected, (
             "factory container secrets mismatch.\n"
@@ -638,7 +640,7 @@ class TestOptionalSecretSkip:
             assert "SKIP" in result.stdout
 
     def test_policy_toml_optional_count(self) -> None:
-        """Policy file must declare exactly 4 optional secrets."""
+        """Policy file must declare exactly 6 optional secrets."""
         with POLICY_TOML.open("rb") as f:
             policy = tomllib.load(f)
         optionals = [
@@ -651,6 +653,8 @@ class TestOptionalSecretSkip:
             "factory-claude-oauth",
             "factory-litellm-key",
             "factory-socialmedia-api-key",
+            "factory-ingress-github-webhook",
+            "factory-ingress-cloudflare-webhook",
         }, f"Unexpected optional secrets: {optionals}"
 
 

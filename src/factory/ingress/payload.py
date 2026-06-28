@@ -8,7 +8,8 @@ from typing import Any
 def summarize_github_payload(payload: dict[str, Any]) -> dict[str, Any]:
     repo_node = payload.get("repository")
     repo = repo_node if isinstance(repo_node, dict) else {}
-    sender = payload.get("sender") if isinstance(payload.get("sender"), dict) else {}
+    sender_node = payload.get("sender")
+    sender = sender_node if isinstance(sender_node, dict) else {}
     return {
         "action": payload.get("action"),
         "repository": repo.get("full_name"),

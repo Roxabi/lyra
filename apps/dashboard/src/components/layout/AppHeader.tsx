@@ -11,7 +11,7 @@ export function AppHeader() {
   const label = override.literal ?? t(title.key);
 
   return (
-    <header className="sticky top-0 z-10 shrink-0 border-b bg-card/80 px-4 py-3 backdrop-blur md:px-6">
+    <header className="sticky top-0 z-10 shrink-0 bg-background/80 px-4 py-3 backdrop-blur md:px-6">
       <h1 className="truncate font-[family-name:var(--font-head)] text-lg font-semibold tracking-tight">
         {label}
       </h1>

@@ -645,7 +645,7 @@ def _make_matrix(
             "description": "clipool worker",
             "allow_responses": True,
             "publish": ["factory.clipool.heartbeat"],
-            "subscribe": ["factory.clipool.cmd"],
+            "subscribe": ["factory.jobs.claude"],
             "deploy": {"type": "container", "secret": "lyra-nats-clipool"},
         },
     }

@@ -1,7 +1,7 @@
 {
   "version": "2",
   "request_reply_flows": [
-    { "requester": "hub", "responder": "clipool-worker", "subject": "factory.clipool.cmd" }
+    { "requester": "hub", "responder": "clipool-worker", "subject": "factory.jobs.claude" }
   ],
   "identities": {
     "hub": {
@@ -17,7 +17,7 @@
         "factory.voice.stt.request.>",
         "factory.llm.generate.request",
         "factory.image.generate.request",
-        "factory.clipool.cmd",
+        "factory.jobs.claude",
         "factory.clipool.control",
         "factory.audit.>",
         "$JS.API.>",
@@ -63,7 +63,7 @@
         "$JS.API.>"
       ],
       "subscribe": [
-        "factory.clipool.cmd",
+        "factory.jobs.claude",
         "factory.clipool.control",
         "_inbox.clipool-worker.>",
         "$KV.factory-state.>"

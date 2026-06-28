@@ -101,7 +101,7 @@ All subjects follow `factory.{domain}.{qualifier...}` (domain-first, NATS conven
 | `factory.typing.{platform}.{bot_id}` | hub → adapter | Ephemeral typing indicator lifecycle (Typing plane — Epic #1375, lands with T1 #1376) |
 | `factory.llm.generate.request` | hub → worker | LLM compute offload |
 | `factory.llm.health.{worker_id}` | worker → hub | Satellite LLM worker heartbeats |
-| `factory.clipool.cmd` | hub → CliPool | Submit turn + resume UUID |
+| `factory.jobs.claude` | hub → CliPool | Submit turn + resume UUID |
 | `factory.clipool.heartbeat` | CliPool → hub | CliPool subprocess runner health announcements |
 | `factory.clipool.control` | hub → CliPool | Control commands (reset, drain) |
 | `factory.voice.tts.heartbeat` | voice-tts → hub | TTS worker liveness signal for hub availability checks |

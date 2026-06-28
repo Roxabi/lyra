@@ -4,12 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PopoverSelect } from "@/components/ui/popover-select";
 import { displayAgentName } from "@/lib/agents";
-import {
-  fetchAgentStatus,
-  fetchOpsHealth,
-  fetchOpsLogs,
-  type OpsLogPreset,
-} from "@/lib/api";
+import { fetchAgentStatus, fetchOpsHealth, fetchOpsLogs, type OpsLogPreset } from "@/lib/api";
 
 const LOG_PRESET_OPTIONS: { value: OpsLogPreset; label: string }[] = [
   { value: "hub-errors", label: "Erreurs hub (1h)" },
@@ -132,15 +127,18 @@ export function OpsPage() {
                 Loki injoignable — vérifiez <code className="text-xs">factory-loki</code> sur M₁.
               </p>
             ) : null}
-            {logs && logs.engine_reachable && logs.entries.length === 0 ? (
+            {logs?.engine_reachable && logs.entries.length === 0 ? (
               <p className="rounded-lg bg-background/40 px-4 py-6 text-center text-sm text-muted-foreground">
                 Aucune entrée pour ce preset sur la fenêtre récente.
               </p>
             ) : null}
             {logs && logs.entries.length > 0 ? (
               <div className="max-h-80 space-y-1 overflow-y-auto rounded-lg bg-background/40 p-3 font-mono text-xs">
-                {logs.entries.map((entry, idx) => (
-                  <div key={`${entry.timestamp}-${idx}`} className="border-b border-border/20 py-1.5">
+                {logs.entries.map((entry) => (
+                  <div
+                    key={`${entry.timestamp}:${entry.line}`}
+                    className="border-b border-border/20 py-1.5"
+                  >
                     <span className="text-muted-foreground">
                       {new Date(entry.timestamp).toLocaleString()}
                     </span>

@@ -26,7 +26,7 @@ Give Sentinelle implementers a single checklist:
 
 - **Sentinelle implementer** — host sensor, ingress connector, hub module, cron job.
 - **Monitoring v2 (#1035)** — metric publishers; must not collapse plane ③ into plane ①.
-- **roxabi-live operator** — webhook republish decision.
+- **roxabi-live operator** — live webhook stays D1-only; no NATS republish to factory.
 - **factory-mail epic owner** — inbound/outbound mail; Sentinelle is one consumer among many.
 
 ---
@@ -55,7 +55,7 @@ Give Sentinelle implementers a single checklist:
 
 | Producer | Service token | Kind examples | Notes |
 |---|---|---|---|
-| `factory-ingress` · GitHub | `github` | `check_run.completed`, `pull_request.opened`, `workflow_run.completed` | Connector registry; GitHub App org-wide or republish from roxabi-live |
+| `factory-ingress` · GitHub | `github` | `check_run.completed`, `pull_request.opened`, `workflow_run.completed` | Dedicated M₁ container (#2008); GitHub App **second** webhook URL; ¬ roxabi-live republish |
 | `factory-ingress` · Cloudflare | `cloudflare` | `pages.deployment.success`, `pages.deployment.failure` | Webhook token per zone/service |
 | `factory-host-sensor` M₂ | `host` | `roxabitower.activity`, `roxabitower.stale` | systemd timer; reads `~/.grok/`, `~/.claude/`, worktrees |
 | `factory-host-sensor` Laptop | `host` | `laptop.activity`, `laptop.stale` | Same pattern |
@@ -215,11 +215,17 @@ Envelope: `LyraMetric` (`metric_type`: gauge | counter | histogram).
 
 ---
 
+## Resolved decisions
+
+| # | Decision | Date |
+|---|---|---|
+| Q1 | **`factory-ingress` = dedicated M₁ Quadlet** (`/webhook/github`, `/webhook/cloudflare` → `factory.event.*`). roxabi-live webhook stays D1/backlog-only — no NATS republish. | 2026-06-28 |
+
 ## Open questions
 
 | # | Question | Default bias |
 |---|---|---|
-| Q1 | roxabi-live GH webhook → republish to M₁ NATS vs `factory-ingress` dedicated URL | Republish (single org webhook URL) |
+| ~~Q1~~ | ~~roxabi-live republish vs dedicated ingress~~ | **Resolved → dedicated ingress** |
 | Q2 | Postiz « missed schedule » — event detector vs scan-only | Event for hot alert |
 | Q3 | JetStream events 24 h retention — extend for Sentinelle cold window? | Keep 24 h; cold scan uses live API + local cursor |
 | Q4 | Personal Gmail/GCal on bus? | GCal/obligations off-bus V1; mail via `factory-mail` events V2 |

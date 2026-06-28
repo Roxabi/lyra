@@ -63,7 +63,6 @@ async def start_dashboard_rpc(hub: Hub, nc: NATS) -> list[Any]:
 
     freshness: dict[str, float] = {}
     hub._dashboard_worker_freshness = freshness  # noqa: SLF001
-    hub._dashboard_nc = nc  # noqa: SLF001
 
     async def _on_heartbeat(msg: Msg) -> None:
         try:
@@ -292,8 +291,6 @@ async def _handle_voice_capabilities(
     hub: Hub, nc: NATS, _payload: dict[str, Any]
 ) -> dict[str, Any]:
     _ = hub
-    if nc is None:
-        return DashboardVoiceCapabilitiesResponse(error="nats_unavailable").model_dump()
     from factory.nats.voice.voice_lifecycle_client import VoiceLifecycleClient
 
     caps = await VoiceLifecycleClient(nc).capabilities()

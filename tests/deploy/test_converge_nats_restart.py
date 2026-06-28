@@ -95,7 +95,15 @@ def _run_converge(
         # FACTORY_DIR is set by deploy-common.sh to "${HOME}/projects/roxabi-factory".
         # converge.sh line 30 does `(cd "${FACTORY_DIR}" && git pull ...)` — the dir
         # must exist even though git is stubbed to exit 0.
-        (fake_home / "projects" / "roxabi-factory").mkdir(parents=True)
+        projects_dir = fake_home / "projects"
+        projects_dir.mkdir(parents=True)
+        (projects_dir / "roxabi-factory").mkdir(parents=True)
+        # converge.sh calls PROJECTS_DIR/deploy.sh --prune (role-aware quadlet install).
+        deploy_sh = projects_dir / "deploy.sh"
+        deploy_sh.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        deploy_sh.chmod(
+            stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH
+        )
 
         # VOICE_DIR: point to a non-existent dir by default (voicecli branch skipped)
         voice_dir = fake_home / "projects" / "voiceCLI"
@@ -169,6 +177,7 @@ def _run_converge(
             f'    compute_convergence_state() {{ echo "{current_fingerprint}"; }}\n'
             "    write_convergence_state() { :; }\n"
             '    with_deploy_lock() { "$@"; }\n'
+            "    require_host_role() { :; }\n"
             "}\n"
             "\n"
             "# Wrap the source builtin: re-apply overrides after every source call so\n"

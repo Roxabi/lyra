@@ -75,6 +75,20 @@
 - **Forbidden modules:** aiosqlite, sqlite3
 - **Allow indirect imports:** True
 
+### factory.dashboard may import adapters.web only (not inbound pipeline internals)
+
+- **Type:** forbidden
+- **Source modules:** factory.dashboard
+- **Forbidden modules:** factory.inbound
+- **Allow indirect imports:** True
+
+### factory.dashboard must not import infrastructure stores
+
+- **Type:** forbidden
+- **Source modules:** factory.dashboard
+- **Forbidden modules:** factory.infrastructure.stores
+- **Allow indirect imports:** True
+
 ### inbound stages must not import adapters (stage-axis invariant, ADR-073 / #1287)
 
 - **Type:** forbidden
@@ -105,7 +119,7 @@
 
 ### hub
 - **Publish:** $JS.ACK.FACTORY_OUTBOUND_AUDIO.>, $JS.API.>, $KV.factory-active-jobs.>, $KV.factory-msg-index.>, $KV.factory-state.>, $KV.factory_outbound_audio_sent.>, factory.audit.>, factory.clipool.cmd, factory.clipool.control, factory.event.>, factory.image.generate.request, factory.job.*.steer, factory.jobs.>, factory.llm.generate.request, factory.metric.>, factory.outbound.audio.>, factory.outbound.discord.>, factory.outbound.telegram.>, factory.outbound.web.>, factory.tool.socialmedia.>, factory.turns.write, factory.typing.>, factory.voice.stt.request, factory.voice.stt.request.>, factory.voice.tts.request, factory.voice.tts.request.>
-- **Subscribe:** $JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.FACTORY_JOBS.>, _inbox.hub.>, factory.clipool.heartbeat, factory.gh.mint_failure.>, factory.image.heartbeat, factory.inbound.discord.>, factory.inbound.telegram.>, factory.inbound.web.>, factory.job.*.result, factory.llm.heartbeat, factory.omp.heartbeat, factory.system.ready, factory.tool.socialmedia.heartbeat, factory.voice.stt.heartbeat, factory.voice.tts.heartbeat
+- **Subscribe:** $JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.FACTORY_JOBS.>, _inbox.hub.>, factory.clipool.heartbeat, factory.dashboard.>, factory.gh.mint_failure.>, factory.image.heartbeat, factory.inbound.discord.>, factory.inbound.telegram.>, factory.inbound.web.>, factory.job.*.result, factory.llm.heartbeat, factory.omp.heartbeat, factory.system.ready, factory.tool.socialmedia.heartbeat, factory.voice.stt.heartbeat, factory.voice.tts.heartbeat
 
 ### image-worker
 - **Publish:** $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.image.heartbeat
@@ -152,7 +166,7 @@
 - **Subscribe:** $KV.factory-state.>, _inbox.voice-tts.>, factory.voice.tts.request, factory.voice.tts.request.>
 
 ### web-adapter
-- **Publish:** $JS.API.CONSUMER.CREATE.*, $JS.API.DIRECT.GET.KV_factory-state.hub.ready, $JS.API.INFO, $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.event.>, factory.inbound.web.>, factory.metric.>, factory.system.ready
+- **Publish:** $JS.API.CONSUMER.CREATE.*, $JS.API.DIRECT.GET.KV_factory-state.hub.ready, $JS.API.INFO, $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.dashboard.>, factory.event.>, factory.inbound.web.>, factory.metric.>, factory.system.ready
 - **Subscribe:** $KV.factory-state.>, _inbox.web-adapter.>, factory.outbound.web.>, factory.typing.web.>
 
 ## Process Topology

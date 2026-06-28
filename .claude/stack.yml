@@ -129,6 +129,11 @@ quality_gates:
     script: tools/check_quadlet_manifest_install.sh
     description: bidirectional manifest↔install — every container/volume/network/pod declared in deploy/quadlet.toml is wired into Makefile quadlet-install (forward, #1867), AND every on-disk unit file in deploy/quadlet/ is declared in quadlet.toml (reverse — orphan-install guard, #1901)
 
+  quadlet_component_source:
+    enabled: true
+    script: tools/check_quadlet_component_source.sh
+    description: every container declared in deploy/quadlet.toml must have a source file at deploy/quadlet/<name>.container or deploy/quadlet/<name>.container.tmpl — prevents S2-class gap where a manifest entry exists but no unit file is present (#2038)
+
   secrets_source:
     enabled: true
     stage: pre-push

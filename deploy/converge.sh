@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# deploy/converge.sh — atomic, idempotent, change-gated deploy
+# deploy/converge.sh — atomic, idempotent, change-gated deploy (factory-hub hosts only)
+#
+# Quadlet install/prune: ~/projects/deploy.sh (role-aware SSOT).
+# Factory-specific: template render, bot init, NATS auth, secrets, restarts.
 #
 # Usage: make converge
 # Or directly: bash deploy/converge.sh
@@ -9,6 +12,9 @@ set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/deploy-common.sh"
 # shellcheck source=lib/quadlet-units.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/quadlet-units.sh"
+
+# M₁ only — see ~/projects/hosts.toml + lib/cluster_plan.py
+require_host_role factory-hub
 
 # Guard against concurrent runs (exit 0 if locked)
 # NOTE: with_deploy_lock is called at the END of this file, after _do_converge is defined.
@@ -34,29 +40,31 @@ _do_converge() {
     require_clean_tree "${FACTORY_DIR}"
     (cd "${FACTORY_DIR}" && git pull --ff-only origin staging)
 
-    # 3) Install factory quadlet units (no restart)
-    echo "==> factory: installing quadlet units..."
+    # 3) Role-aware Quadlet install + orphan prune (SSOT: deploy.sh × hosts.toml)
+    echo "==> cluster: installing role-matched Quadlets (deploy.sh --prune)..."
+    bash "${PROJECTS_DIR}/deploy.sh" --prune
+
+    # 4) Factory-specific render (telegram/discord templates, bot init, aux perms)
+    echo "==> factory: rendering templates + aux units..."
     make -C "${FACTORY_DIR}" quadlet-install NO_RESTART=1
 
-    # 4) Pull voiceCLI if present
+    # 5) Pull voiceCLI if present (HEAD tracked in convergence stamp)
     VOICE_DIR="${VOICE_DIR:-${HOME}/projects/voiceCLI}"
     if [ -d "${VOICE_DIR}/.git" ]; then
         echo "==> voiceCLI: pulling staging..."
         require_clean_tree "${VOICE_DIR}"
         (cd "${VOICE_DIR}" && git pull --ff-only origin staging)
-        echo "==> voiceCLI: installing quadlet units..."
-        make -C "${VOICE_DIR}" quadlet-install NO_RESTART=1
     fi
 
-    # 5) Regenerate auth.conf (bind mount — host file is source of truth, no secret to rotate)
+    # 6) Regenerate auth.conf (bind mount — host file is source of truth, no secret to rotate)
     echo "==> NATS: regenerating auth.conf..."
     factory-acl genkeys --regen-authconf
 
-    # 6) Install Podman secrets (factory-nats-auth is no longer a secret — bind mount per ADR-085)
+    # 7) Install Podman secrets (factory-nats-auth is no longer a secret — bind mount per ADR-085)
     echo "==> NATS: installing Podman secrets..."
     bash "${FACTORY_DIR}/deploy/install.sh" --secrets-only
 
-    # 7) Restart NATS (always — converge cannot prove a pure identity-add; #1390)
+    # 8) Restart NATS (always — converge cannot prove a pure identity-add; #1390)
     # NB: plain restart, NOT `restart --wait` — `--wait` blocks until the unit
     # *deactivates*, which never happens for a long-running daemon, so it hung the
     # entire converge (#1738). The is-active poll below is the readiness gate.
@@ -86,7 +94,7 @@ _do_converge() {
         echo "==> NATS: structural drift → restarting factory-nats + clients..."
         _restart_nats
 
-        # 8) Restart factory NATS clients (only on structural drift)
+        # 9) Restart factory NATS clients (only on structural drift)
         echo "==> Factory: restarting containers..."
         local failed=""
         local -a _all_svcs _client_svcs
@@ -100,7 +108,7 @@ _do_converge() {
         done
         [ -z "${failed}" ] || { echo "ERROR: restart failed for:${failed}"; exit 1; }
 
-        # 9) Restart voiceCLI if present (only on structural drift)
+        # 10) Restart voiceCLI if present (only on structural drift)
         if [ -d "${VOICE_DIR}/.git" ]; then
             echo "==> voiceCLI: restarting containers..."
             failed=""
@@ -112,7 +120,7 @@ _do_converge() {
         fi
     fi
 
-    # 10) Record convergence stamp
+    # 11) Record convergence stamp
     write_convergence_state
 
     op_log converge_complete drift="${_drift_kind}" exit=0

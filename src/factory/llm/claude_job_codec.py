@@ -45,7 +45,7 @@ class ClaudeJobCodec:
             data = result.data or {}
             return LlmResult(
                 result=data.get("result", ""),
-                session_id=data.get("session_id"),
+                session_id=str(data.get("session_id") or ""),
             )
 
         validated = _validate_worker_error(result.error)

@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 
     from factory.adapters.nats.mint_failure_subscriber import MintFailureSubscriber
     from factory.core.hub import Hub, OutboundDispatcher
+    from factory.core.ports.llm import LlmProvider
     from factory.infrastructure.stores.identity.pairing import PairingManager
     from factory.llm.llm_client import LlmClient
     from factory.nats.nats_channel_proxy import NatsChannelProxy
@@ -110,7 +111,7 @@ async def _run_shutdown(  # noqa: PLR0913 — shutdown surface
     dispatchers: list[OutboundDispatcher],
     proxies: list[NatsChannelProxy],
     pm: PairingManager | None,
-    cli_nats_driver: LlmClient | None,
+    cli_nats_driver: LlmProvider | None,
     nats_llm_client: LlmClient | None,
 ) -> None:
     """Cancel tasks, wait for shutdown, and run teardown."""

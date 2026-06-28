@@ -84,3 +84,9 @@ class TurnStoreProtocol(Protocol):
         self,
         limit: int = TurnStoreConfig.DEFAULT_LIST_RECENT_SESSIONS_LIMIT,
     ) -> list[CatalogSessionRow]: ...
+
+    async def get_turns_by_session(
+        self,
+        session_id: str,
+        limit: int = TurnStoreConfig.DEFAULT_GET_TURNS_LIMIT,
+    ) -> list[TurnRow]: ...

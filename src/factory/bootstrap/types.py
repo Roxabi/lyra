@@ -97,7 +97,7 @@ class BotAuthBundle:
 @dataclass
 class CliPoolBundle:
     cli_pool: CliPool
-    cli_nats_driver: "LlmClient | None"
+    cli_nats_driver: "LlmProvider | None"
     worker: object
     audit_sink: JetStreamAuditSink
 

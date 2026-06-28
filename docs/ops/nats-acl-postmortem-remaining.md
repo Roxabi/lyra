@@ -72,7 +72,7 @@ Declare all hub→responder flows explicitly at the top of the schema:
 ```json
 {
   "request_reply_flows": [
-    { "requester": "hub", "responder": "clipool-worker", "subject": "factory.clipool.cmd" },
+    { "requester": "hub", "responder": "clipool-worker", "subject": "factory.jobs.claude" },
     { "requester": "hub", "responder": "voice-tts",      "subject": "factory.voice.tts.request" },
     { "requester": "hub", "responder": "voice-stt",      "subject": "factory.voice.stt.request" },
     { "requester": "hub", "responder": "image-worker",   "subject": "factory.image.generate.request" },

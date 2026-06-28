@@ -10,7 +10,7 @@ or other features were tested for availability.
 
 Root cause: hub's subscribe ACL was missing the lowercase _inbox.hub.> variant,
 so clipool replies never reached the hub after a new image was deployed. Symptom
-was `_stream_gen timeout on factory.clipool.cmd` in hub logs and repeated
+was `_stream_gen timeout on factory.jobs.claude` in hub logs and repeated
 permissions violation for publish to "_inbox.hub.*" in clipool logs.
 Detection lag: **2h44m** from first failure to mitigation start. No alert fired;
 discovered via manual log inspection.
@@ -88,7 +88,7 @@ to _INBOX.hub.<NUID> did not match the hub's subscription to _INBOX.hub.>.
 > reply-path ACLs) is the only durable defence.
 
 Exact failure chain:
-1. Hub publishes to `factory.clipool.cmd` with `reply="_INBOX.hub.TOKEN"`
+1. Hub publishes to `factory.jobs.claude` with `reply="_INBOX.hub.TOKEN"`
 2. Clipool receives message, attempts to publish streaming chunks to _INBOX.hub.TOKEN
 3. NATS reports permission violation (displayed as lowercase in error)
 4. Hub subscription _INBOX.hub.> receives nothing → `_stream_gen` times out
@@ -600,13 +600,13 @@ Add a section to `acl-matrix.json` that names flows explicitly:
 ```json
 {
   "request_reply_flows": [
-    { "requester": "hub", "responder": "clipool-worker", "subject": "factory.clipool.cmd" },
+    { "requester": "hub", "responder": "clipool-worker", "subject": "factory.jobs.claude" },
     { "requester": "hub", "responder": "voice-tts",      "subject": "factory.voice.tts.cmd" }
   ],
 
   "identities": {
-    "hub":            { "subscribe": ["factory.system.>"], "publish": ["factory.clipool.cmd"] },
-    "clipool-worker": { "subscribe": ["factory.clipool.cmd"], "publish": ["factory.clipool.heartbeat"] }
+    "hub":            { "subscribe": ["factory.system.>"], "publish": ["factory.jobs.claude"] },
+    "clipool-worker": { "subscribe": ["factory.jobs.claude"], "publish": ["factory.clipool.heartbeat"] }
   }
 }
 ```

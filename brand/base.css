@@ -50,7 +50,8 @@ a {
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  background: radial-gradient(ellipse 70% 45% at 50% -8%, var(--accent-glow), transparent 60%);
+  background: radial-gradient(ellipse 80% 40% at 50% -12%, var(--accent-glow), transparent 55%);
+  opacity: 0.45;
 }
 
 .mono {

@@ -97,13 +97,14 @@ async def test_ensure_jobs_stream_update_error_propagates() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_stream_subjects_exclude_omp() -> None:
-    """factory.jobs.omp must NOT appear in SUBJECTS (omp lane stays core-NATS)."""
-    omp_subjects = [s for s in SUBJECTS if "omp" in s]
-    assert omp_subjects == [], (
-        f"factory.jobs.omp captured in WorkQueue SUBJECTS: {omp_subjects}. "
-        "See spec §Stream Definition — omp lane intentionally excluded."
-    )
+def test_stream_subjects_exclude_runtime_lanes() -> None:
+    """Runtime harness lanes stay core-NATS — must NOT appear in WorkQueue SUBJECTS."""
+    for token in ("omp", "claude"):
+        matches = [s for s in SUBJECTS if token in s]
+        assert matches == [], (
+            f"factory.jobs.{token} captured in WorkQueue SUBJECTS: {matches}. "
+            "Runtime lanes intentionally excluded (see ADR-088)."
+        )
 
 
 def test_stream_subjects_exclude_wildcard() -> None:

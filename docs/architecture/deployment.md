@@ -175,7 +175,7 @@ resumes it rather than starting fresh.
 | `factory.inbound.discord.<bot_id>` | Adapter → Hub | Discord messages |
 | `factory.outbound.telegram.<bot_id>` | Hub → Adapter | Responses to Telegram |
 | `factory.outbound.discord.<bot_id>` | Hub → Adapter | Responses to Discord |
-| `factory.clipool.cmd` | Hub → CliPool | Submit turn + resume UUID |
+| `factory.jobs.claude` | Hub → CliPool | Submit turn + resume UUID |
 | `factory.clipool.heartbeat` | CliPool → Hub | Periodic worker health announcements |
 | `factory.clipool.control` | Hub → CliPool | Control commands (reset, drain) |
 
@@ -186,7 +186,7 @@ resumes it rather than starting fresh.
 | | Before | Status |
 |---|---|---|
 | Hub ↔ Adapter | Already NATS (3-process mode) | Same, containerized |
-| Hub ↔ CliPool | In-process (stdio, method calls) | ✅ Done (#941) — NATS protocol (`factory.clipool.cmd` / `factory.clipool.heartbeat`) |
+| Hub ↔ CliPool | In-process (stdio, method calls) | ✅ Done (#941) — NATS protocol (`factory.jobs.claude` / `factory.clipool.heartbeat`) |
 | DBs | All in `~/.roxabi/factory/` on one host | Split across volumes per container |
 | Session resume | In-process `_resume_session_ids` dict | Hub sends UUID over NATS |
 

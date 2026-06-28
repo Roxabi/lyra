@@ -294,6 +294,28 @@ class KvActiveJobsStore:
 
         await kv.delete(_job_key(job_id))
 
+    async def list_all(self) -> list[ActiveJobEntry]:
+        """Return all non-expired job entries (keys prefixed ``job.``)."""
+        kv = self._require_kv()
+        try:
+            keys = await kv.keys(filters=["job."])
+        except nats.errors.Error:
+            log.exception("active-jobs: list_all keys() failed")
+            return []
+        entries: list[ActiveJobEntry] = []
+        for key in keys:
+            if not key.startswith("job."):
+                continue
+            try:
+                raw = await kv.get(key)
+            except (KeyNotFoundError, NotFoundError):
+                continue
+            if not raw.value:
+                continue
+            entries.append(_bytes_to_entry(raw.value))
+        entries.sort(key=lambda e: e.started_at, reverse=True)
+        return entries
+
     async def get_by_pool(self, pool_id: str) -> ActiveJobEntry | None:
         """Return the active job for *pool_id*, or ``None`` if absent."""
         kv = self._require_kv()

@@ -1,5 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
+import { PageIntro } from "@/components/layout/PageIntro";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +18,8 @@ function statusVariant(status: string): "success" | "secondary" | "destructive" 
 }
 
 export function JobsPage() {
+  const { t } = useTranslation("jobs");
+  const { t: tc } = useTranslation("common");
   const queryClient = useQueryClient();
   const [launchAgent, setLaunchAgent] = useState("");
   const [launchPrompt, setLaunchPrompt] = useState("");
@@ -48,11 +52,13 @@ export function JobsPage() {
         job_name: "omp",
       }),
     onSuccess: (res) => {
-      setLaunchFeedback(res.accepted ? `Job ${res.job_id} lancé` : res.message);
+      setLaunchFeedback(
+        res.accepted ? t("launch.launched", { jobId: res.job_id }) : res.message,
+      );
       setLaunchPrompt("");
       void queryClient.invalidateQueries({ queryKey: ["jobs-live"] });
     },
-    onError: () => setLaunchFeedback("Échec du lancement"),
+    onError: () => setLaunchFeedback(t("launch.launchFailed")),
   });
 
   const steerMutation = useMutation({
@@ -63,23 +69,17 @@ export function JobsPage() {
   });
 
   return (
-    <div className="fd-scroll flex-1 overflow-y-auto p-6">
-      <div className="mx-auto max-w-5xl space-y-6">
-        <div>
-          <h1 className="font-[family-name:var(--font-head)] text-2xl font-bold">Jobs</h1>
-          <p className="text-sm text-muted-foreground">
-            Jobs actifs, lancement manuel et steer via le BFF dashboard (#1773).
-          </p>
-        </div>
+    <div className="space-y-6">
+      <PageIntro>{t("subtitle")}</PageIntro>
 
-        <Card className="border-0 bg-muted/20 shadow-none">
+        <Card className="dashboard-surface border-border/60 shadow-none">
           <CardHeader>
-            <CardTitle className="text-base">Lancer un job OMP</CardTitle>
+            <CardTitle className="text-base">{t("launch.title")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex flex-wrap items-center gap-3">
               <PopoverSelect
-                label="Agent"
+                label={t("launch.agentLabel")}
                 value={selectedAgent}
                 options={agents.map((a) => ({
                   value: a,
@@ -92,7 +92,7 @@ export function JobsPage() {
             <Textarea
               value={launchPrompt}
               onChange={(e) => setLaunchPrompt(e.target.value)}
-              placeholder="Prompt opérateur — publié comme WorkEnvelope sur NATS"
+              placeholder={t("launch.promptPlaceholder")}
               rows={3}
             />
             <div className="flex items-center gap-3">
@@ -101,7 +101,7 @@ export function JobsPage() {
                 disabled={!launchPrompt.trim() || !selectedAgent || launchMutation.isPending}
                 onClick={() => launchMutation.mutate()}
               >
-                {launchMutation.isPending ? "Envoi…" : "Lancer"}
+                {launchMutation.isPending ? t("launch.submitting") : t("launch.submit")}
               </Button>
               {launchFeedback ? (
                 <p className="text-xs text-muted-foreground">{launchFeedback}</p>
@@ -110,21 +110,21 @@ export function JobsPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-0 bg-muted/20 shadow-none">
+        <Card className="dashboard-surface border-border/60 shadow-none">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Jobs en cours</CardTitle>
-            <Badge variant="secondary">
-              {jobs.length} actif{jobs.length !== 1 ? "s" : ""}
+            <CardTitle className="text-base">{t("live.title")}</CardTitle>
+            <Badge variant="secondary" className="tabular-nums">
+              {t("live.active", { count: jobs.length })}
             </Badge>
           </CardHeader>
           <CardContent>
-            {isLoading ? <p className="text-sm text-muted-foreground">Chargement…</p> : null}
+            {isLoading ? <p className="text-sm text-muted-foreground">{tc("actions.loading")}</p> : null}
             {isError ? (
-              <p className="text-sm text-destructive">Impossible de charger les jobs.</p>
+              <p className="text-sm text-destructive">{t("live.loadError")}</p>
             ) : null}
             {!isLoading && !isError && jobs.length === 0 ? (
               <p className="rounded-lg bg-background/40 px-4 py-6 text-center text-sm text-muted-foreground">
-                Aucun job actif dans le registry.
+                {t("live.empty")}
               </p>
             ) : null}
             {jobs.length > 0 ? (
@@ -132,13 +132,13 @@ export function JobsPage() {
                 <table className="w-full text-left text-sm">
                   <thead>
                     <tr className="text-xs text-muted-foreground">
-                      <th className="pb-2 pr-3 font-medium">Job</th>
-                      <th className="pb-2 pr-3 font-medium">Agent</th>
-                      <th className="pb-2 pr-3 font-medium">Plateforme</th>
-                      <th className="pb-2 pr-3 font-medium">Statut</th>
-                      <th className="pb-2 pr-3 font-medium">Mode</th>
-                      <th className="pb-2 pr-3 font-medium">Démarré</th>
-                      <th className="pb-2 font-medium">Steer</th>
+                      <th className="pb-2 pr-3 font-medium">{t("table.job")}</th>
+                      <th className="pb-2 pr-3 font-medium">{t("table.agent")}</th>
+                      <th className="pb-2 pr-3 font-medium">{t("table.platform")}</th>
+                      <th className="pb-2 pr-3 font-medium">{t("table.status")}</th>
+                      <th className="pb-2 pr-3 font-medium">{t("table.mode")}</th>
+                      <th className="pb-2 pr-3 font-medium">{t("table.started")}</th>
+                      <th className="pb-2 font-medium">{t("table.steer")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -173,7 +173,7 @@ export function JobsPage() {
                                   [job.job_id]: e.target.value,
                                 }))
                               }
-                              placeholder="Steer…"
+                              placeholder={t("table.steerPlaceholder")}
                               className="h-8 text-xs"
                             />
                             <Button
@@ -204,9 +204,9 @@ export function JobsPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-0 bg-muted/20 shadow-none">
+        <Card className="dashboard-surface border-border/60 shadow-none">
           <CardHeader>
-            <CardTitle className="text-base">Workers</CardTitle>
+            <CardTitle className="text-base">{t("workers.title")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
             {agents.map((agent) => {
@@ -223,14 +223,13 @@ export function JobsPage() {
                     </p>
                   </div>
                   <Badge variant={health?.online ? "success" : "secondary"}>
-                    {health?.online ? "Actif" : "Inactif"}
+                    {health?.online ? tc("status.active") : tc("status.inactive")}
                   </Badge>
                 </div>
               );
             })}
           </CardContent>
         </Card>
-      </div>
     </div>
   );
 }

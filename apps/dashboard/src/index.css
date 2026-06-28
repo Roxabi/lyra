@@ -94,3 +94,13 @@
 .dashboard-surface {
   background: var(--bg-card);
 }
+
+:root {
+  --cockpit-context-w: 17.5rem;
+}
+
+@media (min-width: 1280px) {
+  :root {
+    --cockpit-context-w: 20rem;
+  }
+}

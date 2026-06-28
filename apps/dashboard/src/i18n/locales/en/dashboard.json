@@ -1,0 +1,32 @@
+{
+  "subtitle": "Control plane status — agents, jobs, and active chats.",
+  "alerts": {
+    "title": "Alerts",
+    "agentsOffline_one": "{{count}} agent offline",
+    "agentsOffline_other": "{{count}} agents offline",
+    "jobsActive_one": "{{count}} active job",
+    "jobsActive_other": "{{count}} active jobs",
+    "enginesDown_one": "{{count}} observability engine unreachable",
+    "enginesDown_other": "{{count}} observability engines unreachable",
+    "allClear": "All systems responding."
+  },
+  "agents": {
+    "title": "Agents",
+    "empty": "No agents in the roster.",
+    "colAgent": "Agent",
+    "colHarness": "Harness",
+    "colStatus": "Status"
+  },
+  "jobs": {
+    "title": "Active jobs",
+    "empty": "No jobs running.",
+    "colJob": "Job",
+    "colAgent": "Agent",
+    "colStatus": "Status"
+  },
+  "chats": {
+    "title": "Recent chats",
+    "empty": "No open chats.",
+    "openChat": "Open chat"
+  }
+}

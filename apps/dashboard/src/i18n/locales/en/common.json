@@ -1,0 +1,32 @@
+{
+  "appName": "Roxabi Factory",
+  "appTagline": "Operator console",
+  "nav": {
+    "sectionHome": "Home",
+    "sectionOperate": "Operate",
+    "sectionObserve": "Observe",
+    "overview": "Overview",
+    "chat": "Chat",
+    "jobs": "Jobs",
+    "ops": "Supervision",
+    "expandSidebar": "Expand sidebar",
+    "collapseSidebar": "Collapse sidebar"
+  },
+  "theme": {
+    "toggle": "Toggle theme",
+    "light": "Light",
+    "dark": "Dark"
+  },
+  "status": {
+    "online": "Online",
+    "offline": "Offline",
+    "active": "Active",
+    "inactive": "Inactive"
+  },
+  "actions": {
+    "open": "Open",
+    "viewAll": "View all",
+    "loading": "Loading…",
+    "retry": "Retry"
+  }
+}

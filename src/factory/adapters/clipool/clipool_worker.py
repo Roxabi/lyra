@@ -23,7 +23,7 @@ from factory.adapters.clipool._streaming_publish import (
 from factory.adapters.clipool._worker_helpers import _make_ack
 from factory.adapters.omp._rpc_envelope import publish_job_error
 from factory.core.agent.agent_config import ModelConfig
-from factory.core.cli.cli_pool import CliPool, CliResult
+from factory.core.cli.cli_pool import CliPool
 from factory.core.messaging.utils.metrics import emit_populated_total
 from roxabi_contracts.cli import SUBJECTS
 from roxabi_contracts.cli.models import CliControlCmd
@@ -84,7 +84,10 @@ class CliPoolNatsWorker(NatsAdapterBase):
                 message="ValidationError",
                 retryable=False,
             )
-            await self._nc.publish(
+            nc = self._nc
+            if nc is None:
+                return
+            await nc.publish(
                 jobs_result(job_id),
                 make_result(job_id, status="error", error=worker_error),
             )
@@ -156,11 +159,6 @@ class CliPoolNatsWorker(NatsAdapterBase):
                     agent_email=agent_email,
                     lyra_session_id=lyra_session_id,
                 )
-                if not isinstance(result, CliResult):
-                    await publish_job_error(
-                        self._nc, job_id, RuntimeError("invalid pool result")
-                    )
-                    return
                 if result.error:
                     emit_populated_total(domain="cli")
                 await publish_blocking_result(

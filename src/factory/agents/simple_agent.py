@@ -41,7 +41,10 @@ if TYPE_CHECKING:
     from factory.core.ports.stt import STTProtocol
     from factory.core.ports.tts import TtsProtocol
     from factory.infrastructure.stores.registry.agent_store import AgentStore
+    from factory.llm.drivers.claude_rpc import ClaudeRpcDriver
     from factory.llm.llm_client import LlmClient
+
+    HubClipoolDriver = LlmClient | ClaudeRpcDriver
 
 log = logging.getLogger(__name__)
 
@@ -76,7 +79,7 @@ class SimpleAgent(AgentBase):
         agents_dir: Path | None = None,
         agent_store: "AgentStore | None" = None,
         session_tools: SessionTools | None = None,
-        cli_nats_driver: "LlmClient | None" = None,
+        cli_nats_driver: "HubClipoolDriver | None" = None,
         provider_registry: ProviderRegistry | None = None,
     ) -> None:
         resolved_agents_dir = agents_dir or _AGENTS_DIR
@@ -91,6 +94,8 @@ class SimpleAgent(AgentBase):
         self._provider_registry = provider_registry
         self._cli_pool = cli_pool
         self._cli_nats_driver = cli_nats_driver
+        self._session_backend: SessionAware | None = None
+        self._workspace_backend: WorkspaceAware | None = None
         self._last_resolved_backend = config.llm_config.backend
         self._session_tools = session_tools
         super().__init__(

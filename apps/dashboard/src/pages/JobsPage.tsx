@@ -1,8 +1,19 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { PopoverSelect } from "@/components/ui/popover-select";
+import { Textarea } from "@/components/ui/textarea";
 import { displayAgentName } from "@/lib/agents";
-import { fetchAgentStatus, fetchAgents, fetchJobs } from "@/lib/api";
+import {
+  fetchAgentStatus,
+  fetchAgents,
+  fetchJobs,
+  launchJob,
+  steerJob,
+} from "@/lib/api";
 
 function statusVariant(status: string): "success" | "secondary" | "destructive" {
   if (status === "open") return "success";
@@ -11,6 +22,12 @@ function statusVariant(status: string): "success" | "secondary" | "destructive" 
 }
 
 export function JobsPage() {
+  const queryClient = useQueryClient();
+  const [launchAgent, setLaunchAgent] = useState("");
+  const [launchPrompt, setLaunchPrompt] = useState("");
+  const [steerTexts, setSteerTexts] = useState<Record<string, string>>({});
+  const [launchFeedback, setLaunchFeedback] = useState<string | null>(null);
+
   const { data: agents = [] } = useQuery({ queryKey: ["agents"], queryFn: fetchAgents });
   const { data: status = [] } = useQuery({
     queryKey: ["agent-status-jobs"],
@@ -27,16 +44,77 @@ export function JobsPage() {
     refetchInterval: 5_000,
   });
 
+  const selectedAgent = launchAgent || agents[0] || "";
+
+  const launchMutation = useMutation({
+    mutationFn: () =>
+      launchJob({
+        agent: selectedAgent,
+        prompt: launchPrompt.trim(),
+        job_name: "omp",
+      }),
+    onSuccess: (res) => {
+      setLaunchFeedback(res.accepted ? `Job ${res.job_id} lancé` : res.message);
+      setLaunchPrompt("");
+      void queryClient.invalidateQueries({ queryKey: ["jobs-live"] });
+    },
+    onError: () => setLaunchFeedback("Échec du lancement"),
+  });
+
+  const steerMutation = useMutation({
+    mutationFn: ({ jobId, text }: { jobId: string; text: string }) => steerJob(jobId, text),
+    onSuccess: (_res, vars) => {
+      setSteerTexts((prev) => ({ ...prev, [vars.jobId]: "" }));
+    },
+  });
+
   return (
     <div className="fd-scroll flex-1 overflow-y-auto p-6">
       <div className="mx-auto max-w-5xl space-y-6">
         <div>
           <h1 className="font-[family-name:var(--font-head)] text-2xl font-bold">Jobs</h1>
           <p className="text-sm text-muted-foreground">
-            Jobs actifs depuis le registry <code className="text-xs">factory-active-jobs</code> —
-            rafraîchi toutes les 5 s.
+            Jobs actifs, lancement manuel et steer via le BFF dashboard (#1773).
           </p>
         </div>
+
+        <Card className="border-0 bg-muted/20 shadow-none">
+          <CardHeader>
+            <CardTitle className="text-base">Lancer un job OMP</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <PopoverSelect
+                label="Agent"
+                value={selectedAgent}
+                options={agents.map((a) => ({
+                  value: a,
+                  label: displayAgentName(a),
+                }))}
+                onChange={setLaunchAgent}
+              />
+              <Badge variant="secondary">factory.jobs.omp</Badge>
+            </div>
+            <Textarea
+              value={launchPrompt}
+              onChange={(e) => setLaunchPrompt(e.target.value)}
+              placeholder="Prompt opérateur — publié comme WorkEnvelope sur NATS"
+              rows={3}
+            />
+            <div className="flex items-center gap-3">
+              <Button
+                type="button"
+                disabled={!launchPrompt.trim() || !selectedAgent || launchMutation.isPending}
+                onClick={() => launchMutation.mutate()}
+              >
+                {launchMutation.isPending ? "Envoi…" : "Lancer"}
+              </Button>
+              {launchFeedback ? (
+                <p className="text-xs text-muted-foreground">{launchFeedback}</p>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
 
         <Card className="border-0 bg-muted/20 shadow-none">
           <CardHeader className="flex flex-row items-center justify-between">
@@ -65,7 +143,8 @@ export function JobsPage() {
                       <th className="pb-2 pr-3 font-medium">Plateforme</th>
                       <th className="pb-2 pr-3 font-medium">Statut</th>
                       <th className="pb-2 pr-3 font-medium">Mode</th>
-                      <th className="pb-2 font-medium">Démarré</th>
+                      <th className="pb-2 pr-3 font-medium">Démarré</th>
+                      <th className="pb-2 font-medium">Steer</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -87,8 +166,41 @@ export function JobsPage() {
                         <td className="py-2.5 pr-3 text-xs text-muted-foreground">
                           {job.concurrency_mode}
                         </td>
-                        <td className="py-2.5 text-xs text-muted-foreground">
+                        <td className="py-2.5 pr-3 text-xs text-muted-foreground">
                           {new Date(job.started_at).toLocaleString()}
+                        </td>
+                        <td className="py-2.5">
+                          <div className="flex min-w-[12rem] items-center gap-2">
+                            <Input
+                              value={steerTexts[job.job_id] ?? ""}
+                              onChange={(e) =>
+                                setSteerTexts((prev) => ({
+                                  ...prev,
+                                  [job.job_id]: e.target.value,
+                                }))
+                              }
+                              placeholder="Steer…"
+                              className="h-8 text-xs"
+                            />
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              className="h-8 shrink-0 px-2 text-xs"
+                              disabled={
+                                !(steerTexts[job.job_id] ?? "").trim() ||
+                                steerMutation.isPending
+                              }
+                              onClick={() =>
+                                steerMutation.mutate({
+                                  jobId: job.job_id,
+                                  text: (steerTexts[job.job_id] ?? "").trim(),
+                                })
+                              }
+                            >
+                              →
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     ))}

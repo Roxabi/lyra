@@ -12,7 +12,9 @@ from pydantic import ValidationError
 from factory.dashboard.e2e import (
     e2e_enabled,
     stub_agents_status,
+    stub_jobs_launch,
     stub_jobs_list,
+    stub_jobs_steer,
     stub_ops_health,
     stub_ops_logs,
     stub_resume,
@@ -21,7 +23,11 @@ from factory.dashboard.e2e import (
 )
 from factory.dashboard.ops_proxy import fetch_ops_health, fetch_ops_logs
 from roxabi_contracts.dashboard import (
+    DashboardJobsLaunchRequest,
+    DashboardJobsLaunchResponse,
     DashboardJobsListResponse,
+    DashboardJobsSteerRequest,
+    DashboardJobsSteerResponse,
     DashboardOpsHealthResponse,
     DashboardOpsLogsResponse,
     DashboardSessionsListResponse,
@@ -98,6 +104,41 @@ def build_bff_router(  # noqa: C901
             return stub_jobs_list()
         try:
             return await hub.list_jobs()
+        except RuntimeError as exc:
+            raise _hub_unavailable(exc) from exc
+        except (ValidationError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @router.post("/jobs/launch")
+    async def launch_job(
+        body: DashboardJobsLaunchRequest,
+    ) -> DashboardJobsLaunchResponse:
+        if body.agent not in adapter.agent_names:
+            raise HTTPException(
+                status_code=400, detail=f"unknown agent: {body.agent!r}"
+            )
+        if e2e_enabled():
+            return stub_jobs_launch(body.agent)
+        try:
+            return await hub.launch_job(
+                agent=body.agent,
+                prompt=body.prompt,
+                job_name=body.job_name,
+                model=body.model,
+            )
+        except RuntimeError as exc:
+            raise _hub_unavailable(exc) from exc
+        except (ValidationError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @router.post("/jobs/steer")
+    async def steer_job(
+        body: DashboardJobsSteerRequest,
+    ) -> DashboardJobsSteerResponse:
+        if e2e_enabled():
+            return stub_jobs_steer(body.job_id)
+        try:
+            return await hub.steer_job(body.job_id, body.text)
         except RuntimeError as exc:
             raise _hub_unavailable(exc) from exc
         except (ValidationError, json.JSONDecodeError) as exc:

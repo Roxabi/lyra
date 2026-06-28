@@ -103,6 +103,32 @@ class DashboardJobsListResponse(BaseModel):
     jobs: list[DashboardJob]
 
 
+class DashboardJobsLaunchRequest(BaseModel):
+    agent: str
+    prompt: str = Field(min_length=1, max_length=8000)
+    job_name: str = "omp"
+    pool_id: str | None = None
+    model: str | None = None
+    system_prompt: str = ""
+
+
+class DashboardJobsLaunchResponse(BaseModel):
+    accepted: bool
+    job_id: str = ""
+    message: str = ""
+    dispatch_subject: str = ""
+
+
+class DashboardJobsSteerRequest(BaseModel):
+    job_id: str
+    text: str = Field(min_length=1, max_length=4000)
+
+
+class DashboardJobsSteerResponse(BaseModel):
+    accepted: bool
+    message: str = ""
+
+
 OpsEngineId = Literal["loki", "langfuse", "otel-collector"]
 OpsLogPreset = Literal["hub-errors", "operator-events", "deploy-failures"]
 

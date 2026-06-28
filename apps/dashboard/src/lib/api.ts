@@ -105,6 +105,44 @@ export async function fetchJobs(): Promise<DashboardJob[]> {
   return data.jobs;
 }
 
+export async function launchJob(body: {
+  agent: string;
+  prompt: string;
+  job_name?: string;
+  model?: string | null;
+}): Promise<{
+  accepted: boolean;
+  job_id: string;
+  message: string;
+  dispatch_subject: string;
+}> {
+  const res = await fetch("/api/bff/jobs/launch", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error("job launch failed");
+  return res.json() as Promise<{
+    accepted: boolean;
+    job_id: string;
+    message: string;
+    dispatch_subject: string;
+  }>;
+}
+
+export async function steerJob(
+  jobId: string,
+  text: string,
+): Promise<{ accepted: boolean; message: string }> {
+  const res = await fetch("/api/bff/jobs/steer", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ job_id: jobId, text }),
+  });
+  if (!res.ok) throw new Error("job steer failed");
+  return res.json() as Promise<{ accepted: boolean; message: string }>;
+}
+
 export type OpsLogPreset = "hub-errors" | "operator-events" | "deploy-failures";
 
 export interface OpsEngineHealth {

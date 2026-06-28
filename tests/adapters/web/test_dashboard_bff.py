@@ -216,3 +216,33 @@ class TestDashboardBffRealPath:
         body = res.json()
         assert body["preset"] == "hub-errors"
         assert len(body["entries"]) >= 1
+
+    def test_jobs_launch_e2e_stub(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("FACTORY_DASHBOARD_E2E", "1")
+        tc, _adapter, _nc = wired_client
+        res = tc.post(
+            "/api/bff/jobs/launch",
+            json={"agent": "alpha", "prompt": "operator task", "job_name": "omp"},
+        )
+        assert res.status_code == 200
+        body = res.json()
+        assert body["accepted"] is True
+        assert body["job_id"] == "e2e-launch-1"
+
+    def test_jobs_steer_e2e_stub(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("FACTORY_DASHBOARD_E2E", "1")
+        tc, _adapter, _nc = wired_client
+        res = tc.post(
+            "/api/bff/jobs/steer",
+            json={"job_id": "job-xyz", "text": "nudge left"},
+        )
+        assert res.status_code == 200
+        assert res.json()["accepted"] is True

@@ -9,11 +9,15 @@ from typing import TYPE_CHECKING, Any
 from roxabi_contracts.dashboard import (
     SUBJECTS,
     AgentHealthResponse,
+    DashboardJobsLaunchRequest,
+    DashboardJobsLaunchResponse,
+    DashboardJobsListResponse,
+    DashboardJobsSteerRequest,
+    DashboardJobsSteerResponse,
     DashboardSessionsListRequest,
     DashboardSessionsListResponse,
     DashboardSessionsResumeRequest,
     DashboardSessionsResumeResponse,
-    DashboardJobsListResponse,
     DashboardSessionsTurnsRequest,
     DashboardSessionsTurnsResponse,
 )
@@ -58,6 +62,28 @@ class DashboardHubClient:
     async def list_jobs(self) -> DashboardJobsListResponse:
         raw = await self._request(SUBJECTS.jobs_list, {})
         return DashboardJobsListResponse.model_validate(raw)
+
+    async def launch_job(
+        self,
+        *,
+        agent: str,
+        prompt: str,
+        job_name: str = "omp",
+        model: str | None = None,
+    ) -> DashboardJobsLaunchResponse:
+        req = DashboardJobsLaunchRequest(
+            agent=agent,
+            prompt=prompt,
+            job_name=job_name,
+            model=model,
+        )
+        raw = await self._request(SUBJECTS.jobs_launch, req.model_dump())
+        return DashboardJobsLaunchResponse.model_validate(raw)
+
+    async def steer_job(self, job_id: str, text: str) -> DashboardJobsSteerResponse:
+        req = DashboardJobsSteerRequest(job_id=job_id, text=text)
+        raw = await self._request(SUBJECTS.jobs_steer, req.model_dump())
+        return DashboardJobsSteerResponse.model_validate(raw)
 
     async def list_turns(
         self, session_id: str, *, limit: int = 200

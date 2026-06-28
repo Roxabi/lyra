@@ -8,7 +8,9 @@ from roxabi_contracts.dashboard import (
     AgentHealth,
     AgentHealthResponse,
     DashboardJob,
+    DashboardJobsLaunchResponse,
     DashboardJobsListResponse,
+    DashboardJobsSteerResponse,
     DashboardOpsHealthResponse,
     DashboardOpsLogsResponse,
     DashboardSession,
@@ -68,6 +70,22 @@ def stub_sessions_list(agent: str) -> DashboardSessionsListResponse:
 
 def stub_resume() -> DashboardSessionsResumeResponse:
     return DashboardSessionsResumeResponse(accepted=True, message="E2E resume stub")
+
+
+def stub_jobs_launch(agent: str) -> DashboardJobsLaunchResponse:
+    return DashboardJobsLaunchResponse(
+        accepted=True,
+        job_id="e2e-launch-1",
+        message=f"E2E launch stub for {agent}",
+        dispatch_subject="factory.jobs.omp",
+    )
+
+
+def stub_jobs_steer(job_id: str) -> DashboardJobsSteerResponse:
+    return DashboardJobsSteerResponse(
+        accepted=True,
+        message=f"E2E steer stub for {job_id}",
+    )
 
 
 def stub_jobs_list() -> DashboardJobsListResponse:

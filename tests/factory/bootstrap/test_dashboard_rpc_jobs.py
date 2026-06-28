@@ -54,6 +54,22 @@ class TestJobsLaunch:
         nc.publish.assert_not_awaited()
 
     @pytest.mark.asyncio
+    async def test_publishes_claude_job_envelope(
+        self, hub: MagicMock, nc: AsyncMock
+    ) -> None:
+        result = await _handle_jobs_launch(
+            hub,
+            nc,
+            {"agent": "lyra", "prompt": "claude run", "job_name": "claude"},
+        )
+        assert result["accepted"] is True
+        assert result["dispatch_subject"] == jobs_submit("claude")
+        subject, payload = nc.publish.await_args.args
+        assert subject == "factory.jobs.claude"
+        assert b"claude run" in payload
+        assert b"claude-cli" in payload
+
+    @pytest.mark.asyncio
     async def test_rejects_disallowed_job_name(
         self, hub: MagicMock, nc: AsyncMock
     ) -> None:

@@ -64,7 +64,6 @@ The row will grant `subscribe: factory.typing.>` to `code-worker` (it consumes t
 | `_inbox.voice-tts.>` | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — |
 | `_inbox.web-adapter.>` | PUB | — | — | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `factory.audit.>` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | PUB | — | — | — |
-| `factory.clipool.cmd` | PUB | — | — | — | — | — | — | — | — | SUB | — | — | — | — | — | — | — |
 | `factory.clipool.control` | PUB | — | — | — | — | — | — | — | — | SUB | — | — | — | — | — | — | — |
 | `factory.clipool.heartbeat` | SUB | — | — | — | — | — | — | — | — | PUB | — | — | — | — | — | — | — |
 | `factory.dashboard.>` | SUB | — | — | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — |
@@ -75,10 +74,11 @@ The row will grant `subscribe: factory.typing.>` to `code-worker` (it consumes t
 | `factory.inbound.discord.>` | SUB | — | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `factory.inbound.telegram.>` | SUB | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
 | `factory.inbound.web.>` | SUB | — | — | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — |
-| `factory.job.*.progress` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | PUB |
-| `factory.job.*.result` | SUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | PUB |
+| `factory.job.*.progress` | SUB | — | — | — | — | — | — | — | — | PUB | — | — | — | — | — | — | PUB |
+| `factory.job.*.result` | SUB | — | — | — | — | — | — | — | — | PUB | — | — | — | — | — | — | PUB |
 | `factory.job.*.steer` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | SUB |
 | `factory.jobs.>` | PUB | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — |
+| `factory.jobs.claude` | PUB | — | — | — | — | — | — | — | — | SUB | — | — | — | — | — | — | — |
 | `factory.jobs.omp` | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | — | SUB |
 | `factory.llm.generate.request` | PUB | — | — | — | — | — | SUB | — | — | — | — | — | — | — | — | — | — |
 | `factory.llm.heartbeat` | SUB | — | — | — | — | — | PUB | — | — | — | — | — | — | — | — | — | — |

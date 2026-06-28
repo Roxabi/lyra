@@ -7,13 +7,7 @@ import { Input } from "@/components/ui/input";
 import { PopoverSelect } from "@/components/ui/popover-select";
 import { Textarea } from "@/components/ui/textarea";
 import { displayAgentName } from "@/lib/agents";
-import {
-  fetchAgentStatus,
-  fetchAgents,
-  fetchJobs,
-  launchJob,
-  steerJob,
-} from "@/lib/api";
+import { fetchAgentStatus, fetchAgents, fetchJobs, launchJob, steerJob } from "@/lib/api";
 
 function statusVariant(status: string): "success" | "secondary" | "destructive" {
   if (status === "open") return "success";
@@ -188,8 +182,7 @@ export function JobsPage() {
                               size="sm"
                               className="h-8 shrink-0 px-2 text-xs"
                               disabled={
-                                !(steerTexts[job.job_id] ?? "").trim() ||
-                                steerMutation.isPending
+                                !(steerTexts[job.job_id] ?? "").trim() || steerMutation.isPending
                               }
                               onClick={() =>
                                 steerMutation.mutate({

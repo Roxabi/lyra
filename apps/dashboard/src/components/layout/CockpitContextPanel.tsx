@@ -31,8 +31,8 @@ export function CockpitContextPanel({ agent, health }: CockpitContextPanelProps)
   const agentJobs = agent ? jobs.filter((j) => j.agent === agent).slice(0, 4) : jobs.slice(0, 4);
 
   return (
-    <aside className="flex w-[var(--cockpit-context-w)] shrink-0 flex-col border-l border-border/60 bg-card/40">
-      <div className="border-b border-border/40 px-4 py-3">
+    <aside className="flex w-[var(--cockpit-context-w)] shrink-0 flex-col bg-card/40">
+      <div className="px-4 py-3">
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {t("context.title")}
         </h2>

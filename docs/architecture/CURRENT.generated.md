@@ -125,6 +125,9 @@
 - **Publish:** $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.image.heartbeat
 - **Subscribe:** $KV.factory-state.>, _inbox.image-worker.>, factory.image.generate.request
 
+### ingress
+- **Publish:** factory.event.cloudflare.>, factory.event.github.>
+
 ### llm-operator
 - **Publish:** factory.llm.lifecycle.>
 - **Subscribe:** _inbox.llm-operator.>
@@ -200,6 +203,11 @@
 ### hub
 - **Container:** factory-hub.container
 - **Required secrets:** factory-nats-hub
+- **Host roles:** factory-hub
+
+### ingress
+- **Container:** factory-ingress.container
+- **Required secrets:** factory-ingress-cloudflare-webhook, factory-ingress-github-webhook, factory-nats-ingress
 - **Host roles:** factory-hub
 
 ### langfuse-clickhouse

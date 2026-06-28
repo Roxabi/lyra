@@ -3,6 +3,6 @@ Description=Factory deploy failure notification — logs deploy failure to journ
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh -c 'echo "Factory deploy failure: a deployment-related service (factory-quadlet-sync or factory-post-autoupdate) failed. Check journal for details." | systemd-cat -t factory-deploy-failure -p err'
+ExecStart=/bin/sh -c 'echo "Factory deploy failure: a deployment-related service (factory-quadlet-sync, factory-post-autoupdate, or podman-auto-update) failed. Check journal for details." | systemd-cat -t factory-deploy-failure -p err'
 StandardOutput=journal
 StandardError=journal

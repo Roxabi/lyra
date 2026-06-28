@@ -1,0 +1,40 @@
+[Unit]
+Description=Factory ingress — GitHub/Cloudflare webhooks → factory.event.*
+After=factory-nats.service
+Wants=factory-nats.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+StopTimeout=120
+Image=ghcr.io/roxabi/factory:staging-svc
+Label=io.containers.autoupdate=registry
+ContainerName=factory-ingress
+Network=roxabi.network
+NoNewPrivileges=true
+ReadOnly=true
+DropCapability=all
+UserNS=keep-id:uid=1500,gid=1500
+EnvironmentFile=%h/.roxabi/factory/env/ingress.env
+Environment=NATS_URL=nats://factory-nats:4222
+Secret=factory-nats-ingress,type=mount,target=factory-nats-ingress.seed,uid=1500,gid=1500,mode=0400
+Environment=NATS_NKEY_SEED_PATH=/run/secrets/factory-nats-ingress.seed
+Secret=factory-ingress-github-webhook,type=mount,target=ingress-github-webhook,uid=1500,gid=1500,mode=0400
+Secret=factory-ingress-cloudflare-webhook,type=mount,target=ingress-cloudflare-webhook,uid=1500,gid=1500,mode=0400
+Volume=%h/.roxabi/factory/ingress.toml:/home/factory/.roxabi/factory/ingress.toml:ro,z
+Volume=%h/.roxabi/factory/config.toml:/app/config.toml:ro,z
+PublishPort=${TAILSCALE_IPV4}:8780:8780
+Exec=factory ingress serve --host 0.0.0.0 --port 8780
+HealthCmd=python3 -c 'import urllib.request,sys; r=urllib.request.urlopen("http://127.0.0.1:8780/health",timeout=3); sys.exit(0 if r.status==200 else 1)'
+HealthInterval=30s
+HealthStartPeriod=30s
+
+[Service]
+EnvironmentFile=%h/.roxabi/factory/env/ingress.env
+ExecStartPre=/bin/sh -c 'v=$(printf "%s" "${TAILSCALE_IPV4}" | tr -d "[:space:]"); [ -n "$v" ] || exit 1'
+Restart=on-failure
+TimeoutStopSec=130
+RestartSec=10
+
+[Install]
+WantedBy=default.target

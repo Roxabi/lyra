@@ -59,6 +59,15 @@ container = "factory-socialmedia-adapter.container"
 host_roles = ["factory-hub"]
 required_secrets = ["factory-nats-socialmedia", "factory-socialmedia-api-key", "factory_blobstore_token"]
 
+[component.ingress]
+container = "factory-ingress.container"
+host_roles = ["factory-hub"]
+required_secrets = [
+  "factory-nats-ingress",
+  "factory-ingress-github-webhook",
+  "factory-ingress-cloudflare-webhook",
+]
+
 [component.loki]
 container = "factory-loki.container"
 required_secrets = []

@@ -155,3 +155,36 @@ class DashboardOpsLogsResponse(BaseModel):
     query: str
     engine_reachable: bool
     entries: list[OpsLogEntry]
+
+
+class VoiceEngineInfo(BaseModel):
+    name: str
+    supports_voice: bool = False
+    supports_clone: bool = False
+    vram_gib_est: float | None = None
+
+
+class VoiceSampleInfo(BaseModel):
+    id: str
+    store_key: str | None = None
+    filename: str
+    cached: bool = False
+
+
+class VoiceTtsCapabilities(BaseModel):
+    engines: list[VoiceEngineInfo] = []
+    samples: list[VoiceSampleInfo] = []
+    max_cached_engines: int = 1
+    default_engine: str | None = None
+    catalog_revision: str | None = None
+
+
+class VoiceSttCapabilities(BaseModel):
+    models: list[dict[str, str]] = []
+    default_model: str | None = None
+
+
+class DashboardVoiceCapabilitiesResponse(BaseModel):
+    tts: VoiceTtsCapabilities | None = None
+    stt: VoiceSttCapabilities | None = None
+    error: str | None = None

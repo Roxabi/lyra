@@ -55,7 +55,7 @@ class TestPositiveCase:
     ) -> None:
         """check_request_reply_flows.py exits 0 for v2-prod fixture.
 
-        v2-prod has hub → clipool-worker flow; hub publishes factory.clipool.cmd →
+        v2-prod has hub → clipool-worker flow; hub publishes factory.jobs.claude →
         covered.
         """
         path = _write_matrix(tmp_path, prod_matrix)
@@ -123,7 +123,7 @@ class TestMissingResponderIdentity:
             {
                 "requester": "hub",
                 "responder": "nonexistent-worker",
-                "subject": "factory.clipool.cmd",
+                "subject": "factory.jobs.claude",
             }
         )
         path = _write_matrix(tmp_path, matrix)
@@ -142,7 +142,7 @@ class TestMissingResponderIdentity:
             {
                 "requester": "hub",
                 "responder": "phantom-responder",
-                "subject": "factory.clipool.cmd",
+                "subject": "factory.jobs.claude",
             }
         )
         path = _write_matrix(tmp_path, matrix)
@@ -236,13 +236,11 @@ class TestSubjectNotCoveredByPublish:
 
 class TestSubjectCoveredByWildcard:
     def test_wildcard_suffix_covers_subject(self, tmp_path: Path) -> None:
-        """CLI exits 0: requester publishes factory.clipool.> covering
-        factory.clipool.cmd.
+        """CLI exits 0: requester publishes factory.jobs.> covering factory.jobs.claude.
 
-        NATS wildcard: factory.clipool.> matches factory.clipool.cmd
-        (and any sub-level).
+        NATS wildcard: factory.jobs.> matches factory.jobs.claude (and sub-levels).
 
-        # verified: removing wildcard matching causes factory.clipool.cmd to fail
+        # verified: removing wildcard matching causes factory.jobs.claude to fail
         """
         matrix = {
             "version": "2",
@@ -250,7 +248,7 @@ class TestSubjectCoveredByWildcard:
                 {
                     "requester": "hub",
                     "responder": "clipool-worker",
-                    "subject": "factory.clipool.cmd",
+                    "subject": "factory.jobs.claude",
                 }
             ],
             "identities": {
@@ -260,7 +258,7 @@ class TestSubjectCoveredByWildcard:
                     "owner": "lyra",
                     "description": "hub",
                     "allow_responses": False,
-                    "publish": ["factory.clipool.>"],
+                    "publish": ["factory.jobs.>"],
                     "subscribe": [],
                 },
                 "clipool-worker": {
@@ -270,7 +268,7 @@ class TestSubjectCoveredByWildcard:
                     "description": "clipool worker",
                     "allow_responses": True,
                     "publish": [],
-                    "subscribe": ["factory.clipool.cmd"],
+                    "subscribe": ["factory.jobs.claude"],
                 },
             },
         }

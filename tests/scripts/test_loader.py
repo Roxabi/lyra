@@ -244,7 +244,7 @@ class TestLoadMatrixNegatives:
                 {
                     "requester": "hub",
                     "responder": "clipool-worker",
-                    "subject": "factory.clipool.cmd",
+                    "subject": "factory.jobs.claude",
                 },
                 {
                     "requester": "hub",

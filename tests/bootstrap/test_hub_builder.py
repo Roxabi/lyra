@@ -56,7 +56,7 @@ class TestBuildCliPool:
 
 class TestBuildLlmClient:
     async def test_request_subject_is_clipool_cmd(self) -> None:
-        """Regression: build_llm_client must route to factory.clipool.cmd."""
+        """Regression: build_llm_client must route to factory.jobs.claude."""
         from unittest.mock import AsyncMock
 
         nc = AsyncMock()
@@ -65,7 +65,7 @@ class TestBuildLlmClient:
         client = await build_llm_client(nc)
 
         assert isinstance(client, LlmClient)
-        assert client._request_subject == "factory.clipool.cmd"
+        assert client._request_subject == "factory.jobs.claude"
 
 
 # ---------------------------------------------------------------------------

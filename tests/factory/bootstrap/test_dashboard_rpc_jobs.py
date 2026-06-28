@@ -1,0 +1,81 @@
+"""Unit tests for dashboard jobs launch/steer RPC (#1773)."""
+
+from __future__ import annotations
+
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
+
+from factory.bootstrap.factory.dashboard_rpc import (
+    _handle_jobs_launch,
+    _handle_jobs_steer,
+)
+from roxabi_contracts.jobs.subjects import jobs_steer, jobs_submit
+
+
+@pytest.fixture
+def hub() -> MagicMock:
+    h = MagicMock()
+    h.agent_registry = ["lyra", "aryl"]
+    return h
+
+
+@pytest.fixture
+def nc() -> AsyncMock:
+    client = AsyncMock()
+    client.publish = AsyncMock()
+    return client
+
+
+class TestJobsLaunch:
+    @pytest.mark.asyncio
+    async def test_publishes_job_envelope(self, hub: MagicMock, nc: AsyncMock) -> None:
+        result = await _handle_jobs_launch(
+            hub,
+            nc,
+            {"agent": "lyra", "prompt": "hello operator", "job_name": "omp"},
+        )
+        assert result["accepted"] is True
+        assert result["job_id"]
+        assert result["dispatch_subject"] == jobs_submit("omp")
+        nc.publish.assert_awaited_once()
+        subject, payload = nc.publish.await_args.args
+        assert subject == "factory.jobs.omp"
+        assert b"hello operator" in payload
+
+    @pytest.mark.asyncio
+    async def test_rejects_unknown_agent(self, hub: MagicMock, nc: AsyncMock) -> None:
+        result = await _handle_jobs_launch(
+            hub,
+            nc,
+            {"agent": "ghost", "prompt": "nope", "job_name": "omp"},
+        )
+        assert result["accepted"] is False
+        nc.publish.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_rejects_disallowed_job_name(
+        self, hub: MagicMock, nc: AsyncMock
+    ) -> None:
+        result = await _handle_jobs_launch(
+            hub,
+            nc,
+            {"agent": "lyra", "prompt": "nope", "job_name": "vault.add"},
+        )
+        assert result["accepted"] is False
+        nc.publish.assert_not_awaited()
+
+
+class TestJobsSteer:
+    @pytest.mark.asyncio
+    async def test_publishes_steer_text(self, hub: MagicMock, nc: AsyncMock) -> None:
+        result = await _handle_jobs_steer(
+            hub,
+            nc,
+            {"job_id": "abc123", "text": "change direction"},
+        )
+        assert result["accepted"] is True
+        nc.publish.assert_awaited_once_with(
+            jobs_steer("abc123"),
+            b"change direction",
+        )

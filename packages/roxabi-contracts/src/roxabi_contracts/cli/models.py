@@ -11,6 +11,7 @@ from roxabi_contracts.envelope import ContractEnvelope, WorkEnvelope
 from roxabi_contracts.errors import WorkerError
 
 __all__ = [
+    "ClaudeJobPayload",
     "CliCmdPayload",
     "CliChunkEvent",
     "CliControlAck",
@@ -19,8 +20,8 @@ __all__ = [
 ]
 
 
-class CliCmdPayload(WorkEnvelope):
-    """Hub -> clipool: run a claude-cli command."""
+class ClaudeJobPayload(WorkEnvelope):
+    """Hub → claude worker: dispatch a claude-cli run on ``factory.jobs.claude``."""
 
     pool_id: str
     lyra_session_id: str
@@ -31,6 +32,10 @@ class CliCmdPayload(WorkEnvelope):
     stream: bool = True
     agent_name: str | None = None
     agent_email: str | None = None
+
+
+# Transitional alias — remove after one minor when all callers migrate.
+CliCmdPayload = ClaudeJobPayload
 
 
 class CliChunkEvent(WorkEnvelope):
@@ -55,7 +60,7 @@ class CliControlCmd(WorkEnvelope):
     """Hub -> clipool: control operation (reset, resume, cwd switch).
 
     The ``resume_and_reset`` op literal is DEPRECATED (one-minor tolerance).
-    Producers must migrate to the embedded ``CliCmdPayload.resume_session_id``
+    Producers must migrate to the embedded ``ClaudeJobPayload.resume_session_id``
     field. The worker tolerance branch is retained for one minor; mechanical
     removal is tracked in the follow-up issue (sibling under epic #1044,
     blocked-by #1009).

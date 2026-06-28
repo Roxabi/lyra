@@ -251,6 +251,13 @@ def test_subjects_jobs_submit() -> None:
     assert jobs_submit("vault.add-from-url") == "factory.jobs.vault.add-from-url"
 
 
+def test_subjects_jobs_runtime_lanes() -> None:
+    from roxabi_contracts.jobs.subjects import jobs_runtime_claude, jobs_runtime_omp
+
+    assert jobs_runtime_claude() == "factory.jobs.claude"
+    assert jobs_runtime_omp() == "factory.jobs.omp"
+
+
 def test_subjects_jobs_result() -> None:
     """jobs_result produces factory.job.<job_id>.result."""
     assert jobs_result("job-uuid-1234") == "factory.job.job-uuid-1234.result"

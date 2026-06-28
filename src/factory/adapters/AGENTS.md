@@ -91,7 +91,7 @@ process. Hub sends LLM requests via `LlmClient` (composed from `WorkerPoolClient
 Enables independent lifecycle and horizontal scaling.
 
 NATS subjects:
-- `factory.clipool.cmd` — LLM requests from hub
+- `factory.jobs.claude` — claude-cli harness dispatch (`ClaudeJobPayload`) from hub
 - `factory.clipool.control` — control commands (reset, heartbeat)
 - `factory.clipool.heartbeat` — periodic health announcements
 

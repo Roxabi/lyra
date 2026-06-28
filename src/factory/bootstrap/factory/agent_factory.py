@@ -63,7 +63,7 @@ class CreateAgentDeps:
     tts: TtsProtocol | None = None
     provider_registry: ProviderRegistry | None = None
     agent_store: AgentStore | None = None
-    cli_nats_driver: "LlmClient | None" = None
+    cli_nats_driver: "LlmProvider | None" = None
     agent_cls: Callable[..., AgentBase] = SimpleAgent
     cli_driver_cls: type = ClaudeCliDriver
     session_tools: SessionTools | None = None
@@ -80,7 +80,7 @@ class ResolveAgentsDeps:
     agent_store: AgentStore | None = None
     llm_cfg: LlmConfig | None = None
     nats_llm_client: "LlmClient | None" = None
-    cli_nats_driver: "LlmClient | None" = None
+    cli_nats_driver: "LlmProvider | None" = None
     omp_rpc_driver: "LlmProvider | None" = None
 
 

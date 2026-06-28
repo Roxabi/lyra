@@ -35,7 +35,7 @@ def register_agents(  # noqa: PLR0913 — registration requires all deps
     raw_config: dict,
     nats_llm_client: "LlmClient | None",
     *,
-    cli_nats_driver: "LlmClient | None" = None,
+    cli_nats_driver: "LlmProvider | None" = None,
     omp_rpc_driver: "LlmProvider | None" = None,
 ) -> None:
     """Resolve agents from configs and register them on the hub."""

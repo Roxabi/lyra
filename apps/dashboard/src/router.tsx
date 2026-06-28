@@ -1,10 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
-import {
-  createRootRouteWithContext,
-  createRoute,
-  createRouter,
-  Outlet,
-} from "@tanstack/react-router";
+import { createRootRouteWithContext, createRoute, createRouter } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { ChatPage } from "@/pages/ChatPage";
 import { DashboardHome } from "@/pages/DashboardHome";
@@ -15,16 +10,8 @@ interface RouterContext {
   queryClient: QueryClient;
 }
 
-function RootLayout() {
-  return (
-    <AppShell>
-      <Outlet />
-    </AppShell>
-  );
-}
-
 const rootRoute = createRootRouteWithContext<RouterContext>()({
-  component: RootLayout,
+  component: AppShell,
 });
 
 const indexRoute = createRoute({

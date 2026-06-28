@@ -1,0 +1,32 @@
+{
+  "subtitle": "État du control plane — agents, jobs et chats actifs.",
+  "alerts": {
+    "title": "Alertes",
+    "agentsOffline_one": "{{count}} agent hors ligne",
+    "agentsOffline_other": "{{count}} agents hors ligne",
+    "jobsActive_one": "{{count}} job actif",
+    "jobsActive_other": "{{count}} jobs actifs",
+    "enginesDown_one": "{{count}} moteur d'observabilité injoignable",
+    "enginesDown_other": "{{count}} moteurs d'observabilité injoignables",
+    "allClear": "Tous les systèmes répondent."
+  },
+  "agents": {
+    "title": "Agents",
+    "empty": "Aucun agent dans le roster.",
+    "colAgent": "Agent",
+    "colHarness": "Harness",
+    "colStatus": "Statut"
+  },
+  "jobs": {
+    "title": "Jobs actifs",
+    "empty": "Aucun job en cours.",
+    "colJob": "Job",
+    "colAgent": "Agent",
+    "colStatus": "Statut"
+  },
+  "chats": {
+    "title": "Chats récents",
+    "empty": "Aucun chat ouvert.",
+    "openChat": "Ouvrir le chat"
+  }
+}

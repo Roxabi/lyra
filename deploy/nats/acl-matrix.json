@@ -45,8 +45,10 @@
         "factory.outbound.audio.>",
         "factory.voice.tts.request",
         "factory.voice.tts.request.>",
+        "factory.voice.tts.lifecycle.>",
         "factory.voice.stt.request",
         "factory.voice.stt.request.>",
+        "factory.voice.stt.lifecycle.>",
         "factory.llm.generate.request",
         "factory.image.generate.request",
         "factory.tool.socialmedia.>",
@@ -186,6 +188,7 @@
       "subscribe": [
         "factory.voice.tts.request",
         "factory.voice.tts.request.>",
+        "factory.voice.tts.lifecycle.>",
         "_inbox.voice-tts.>",
         "$KV.factory-state.>"
       ],
@@ -207,6 +210,7 @@
       "subscribe": [
         "factory.voice.stt.request",
         "factory.voice.stt.request.>",
+        "factory.voice.stt.lifecycle.>",
         "_inbox.voice-stt.>",
         "$KV.factory-state.>"
       ],

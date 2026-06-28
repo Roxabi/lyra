@@ -10,12 +10,12 @@ rationale on optional-but-invariant fields on response models.
 
 from __future__ import annotations
 
-from typing import Annotated, Self
+from typing import Annotated, Literal, Optional, Self
 
-from pydantic import StringConstraints, model_validator
+from pydantic import Field, StringConstraints, model_validator
 
 from roxabi_contracts.blob_ref import BlobRef
-from roxabi_contracts.envelope import WorkEnvelope
+from roxabi_contracts.envelope import ContractEnvelope, WorkEnvelope
 from roxabi_contracts.errors import WorkerError
 
 
@@ -40,6 +40,26 @@ class TtsRequest(WorkEnvelope):
     segment_gap: float | None = None
     crossfade: float | None = None
     chunk_size: int | None = None
+    sample_id: str | None = None
+
+
+class VoiceLifecycleRequest(ContractEnvelope):
+    """Voice lifecycle control request. Subjects: ``factory.voice.*.lifecycle.*``."""
+
+    request_id: Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{1,128}$")]
+    host: Optional[str] = Field(None, pattern=r"^[A-Za-z0-9._-]{0,253}$")
+    op: Literal["list", "status"]
+
+
+class VoiceLifecycleResponse(ContractEnvelope):
+    """Voice lifecycle control response. Published to the operator reply inbox."""
+
+    request_id: str
+    ok: bool
+    host: Optional[str] = None
+    error: Optional[str] = None
+    worker_error: Optional[WorkerError] = None
+    data: Optional[dict] = None
 
 
 class TtsResponse(WorkEnvelope):

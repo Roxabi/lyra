@@ -19,6 +19,8 @@ from roxabi_contracts.voice.models import (
     SttResponse,
     TtsRequest,
     TtsResponse,
+    VoiceLifecycleRequest,
+    VoiceLifecycleResponse,
 )
 from roxabi_contracts.voice.subjects import (
     SUBJECTS,
@@ -35,6 +37,8 @@ __all__ = [
     "SttResponse",
     "TtsRequest",
     "TtsResponse",
+    "VoiceLifecycleRequest",
+    "VoiceLifecycleResponse",
     "build_stt_response",
     "build_tts_response",
     "per_worker_stt",

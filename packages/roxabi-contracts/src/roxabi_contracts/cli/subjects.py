@@ -19,7 +19,7 @@ class _Subjects:
     rather than silently returning None.
     """
 
-    cmd: Literal["factory.clipool.cmd"] = "factory.clipool.cmd"
+    cmd: Literal["factory.jobs.claude"] = "factory.jobs.claude"
     control: Literal["factory.clipool.control"] = "factory.clipool.control"
     heartbeat: Literal["factory.clipool.heartbeat"] = "factory.clipool.heartbeat"
     clipool_workers: Literal["clipool-workers"] = "clipool-workers"

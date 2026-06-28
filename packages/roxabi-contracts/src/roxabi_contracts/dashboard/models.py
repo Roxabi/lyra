@@ -70,3 +70,88 @@ class DashboardSessionsResumeRequest(BaseModel):
 class DashboardSessionsResumeResponse(BaseModel):
     accepted: bool
     message: str = ""
+
+
+class DashboardTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+    timestamp: str
+
+
+class DashboardSessionsTurnsRequest(BaseModel):
+    session_id: str
+    limit: int = Field(default=200, ge=1, le=500)
+
+
+class DashboardSessionsTurnsResponse(BaseModel):
+    turns: list[DashboardTurn]
+
+
+class DashboardJob(BaseModel):
+    job_id: str
+    pool_id: str
+    agent: str | None = None
+    platform: PlatformTag | str | None = None
+    status: Literal["open", "closing"] | str
+    started_at: str
+    concurrency_mode: str
+    worker_loc: str | None = None
+    steer_subject: str
+
+
+class DashboardJobsListResponse(BaseModel):
+    jobs: list[DashboardJob]
+
+
+class DashboardJobsLaunchRequest(BaseModel):
+    agent: str
+    prompt: str = Field(min_length=1, max_length=8000)
+    job_name: str = "omp"
+    pool_id: str | None = None
+    model: str | None = None
+    system_prompt: str = ""
+
+
+class DashboardJobsLaunchResponse(BaseModel):
+    accepted: bool
+    job_id: str = ""
+    message: str = ""
+    dispatch_subject: str = ""
+
+
+class DashboardJobsSteerRequest(BaseModel):
+    job_id: str
+    text: str = Field(min_length=1, max_length=4000)
+
+
+class DashboardJobsSteerResponse(BaseModel):
+    accepted: bool
+    message: str = ""
+
+
+OpsEngineId = Literal["loki", "langfuse", "otel-collector"]
+OpsLogPreset = Literal["hub-errors", "operator-events", "deploy-failures"]
+
+
+class OpsEngineHealth(BaseModel):
+    engine: OpsEngineId
+    label: str
+    reachable: bool
+    detail: str = ""
+
+
+class DashboardOpsHealthResponse(BaseModel):
+    engines: list[OpsEngineHealth]
+
+
+class OpsLogEntry(BaseModel):
+    timestamp: str
+    line: str
+    labels: dict[str, str] = Field(default_factory=dict)
+
+
+class DashboardOpsLogsResponse(BaseModel):
+    preset: OpsLogPreset
+    query: str
+    engine_reachable: bool
+    entries: list[OpsLogEntry]

@@ -4,7 +4,7 @@ from roxabi_contracts.cli import SUBJECTS
 
 
 def test_cmd_subject() -> None:
-    assert SUBJECTS.cmd == "factory.clipool.cmd"
+    assert SUBJECTS.cmd == "factory.jobs.claude"
 
 
 def test_control_subject() -> None:

@@ -14,7 +14,7 @@
         "factory.voice.stt.request.>",
         "factory.llm.request",
         "factory.image.generate.request",
-        "factory.clipool.cmd",
+        "factory.jobs.claude",
         "factory.clipool.control",
         "factory.audit.>",
         "$JS.API.>",
@@ -60,7 +60,7 @@
         "$JS.API.>"
       ],
       "subscribe": [
-        "factory.clipool.cmd",
+        "factory.jobs.claude",
         "factory.clipool.control",
         "_inbox.clipool-worker.>",
         "$KV.factory-state.>"

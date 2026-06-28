@@ -30,3 +30,12 @@ class TurnStoreConfig:
 
     SUMMARY_TURN_LIMIT: int = 20  # const-ok: named config default
     """Maximum number of recent turns fetched for session summary generation."""
+
+    DEFAULT_LIST_RECENT_SESSIONS_LIMIT: int = 200  # const-ok: catalog scan default
+    """Maximum rows scanned by ``list_recent_sessions`` for cross-pool catalog."""
+
+    SESSION_CATALOG_DEFAULT_LIMIT: int = 20  # const-ok: Reprendre list default
+    """Default session count returned by ``list_sessions_for_agent``."""
+
+    SESSION_CATALOG_MAX_LIMIT: int = 50  # const-ok: Reprendre list cap
+    """Hard cap on sessions returned by ``list_sessions_for_agent``."""

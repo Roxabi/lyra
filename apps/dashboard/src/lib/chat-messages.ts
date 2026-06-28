@@ -26,6 +26,33 @@ function parseAssistantTail(raw: string, messages: ChatMessage[]) {
   pushMessage(messages, "assistant", raw);
 }
 
+export interface TurnRecord {
+  role: string;
+  content: string;
+}
+
+/** Serialize TurnStore rows into the chat log format consumed by parseChatLog. */
+export function turnsToLog(turns: TurnRecord[]): string {
+  let log = "";
+  let assistantBuf = "";
+  const flushAssistant = () => {
+    if (assistantBuf.trim()) {
+      log += `${assistantBuf.trim()}\n---\n`;
+      assistantBuf = "";
+    }
+  };
+  for (const turn of turns) {
+    if (turn.role === "user") {
+      flushAssistant();
+      log += `> ${turn.content}\n`;
+    } else if (turn.role === "assistant") {
+      assistantBuf += turn.content;
+    }
+  }
+  flushAssistant();
+  return log;
+}
+
 export function parseChatLog(log: string): ChatMessage[] {
   if (!log.trim()) return [];
 

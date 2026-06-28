@@ -10,6 +10,8 @@ from roxabi_contracts.dashboard import (
     DashboardSession,
     DashboardSessionsListResponse,
     DashboardSessionsResumeResponse,
+    DashboardSessionsTurnsResponse,
+    DashboardTurn,
 )
 
 
@@ -59,3 +61,20 @@ def stub_sessions_list(agent: str) -> DashboardSessionsListResponse:
 
 def stub_resume() -> DashboardSessionsResumeResponse:
     return DashboardSessionsResumeResponse(accepted=True, message="E2E resume stub")
+
+
+def stub_sessions_turns(session_id: str) -> DashboardSessionsTurnsResponse:
+    return DashboardSessionsTurnsResponse(
+        turns=[
+            DashboardTurn(
+                role="user",
+                content="Hello from E2E stub",
+                timestamp="2026-06-28T12:00:00+00:00",
+            ),
+            DashboardTurn(
+                role="assistant",
+                content="Stub assistant reply for session replay.",
+                timestamp="2026-06-28T12:00:01+00:00",
+            ),
+        ]
+    )

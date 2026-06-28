@@ -40,7 +40,7 @@
   --destructive: var(--util-red);
   --destructive-foreground: var(--text);
 
-  --border: var(--border);
+  --border: color-mix(in srgb, var(--border-hi) 35%, transparent);
   --input: var(--border-hi);
   --ring: var(--accent);
 

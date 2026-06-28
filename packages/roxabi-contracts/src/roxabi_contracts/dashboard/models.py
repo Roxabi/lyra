@@ -70,3 +70,18 @@ class DashboardSessionsResumeRequest(BaseModel):
 class DashboardSessionsResumeResponse(BaseModel):
     accepted: bool
     message: str = ""
+
+
+class DashboardTurn(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+    timestamp: str
+
+
+class DashboardSessionsTurnsRequest(BaseModel):
+    session_id: str
+    limit: int = Field(default=200, ge=1, le=500)
+
+
+class DashboardSessionsTurnsResponse(BaseModel):
+    turns: list[DashboardTurn]

@@ -14,11 +14,13 @@ from factory.dashboard.e2e import (
     stub_agents_status,
     stub_resume,
     stub_sessions_list,
+    stub_sessions_turns,
 )
 from roxabi_contracts.dashboard import (
     DashboardSessionsListResponse,
     DashboardSessionsResumeRequest,
     DashboardSessionsResumeResponse,
+    DashboardSessionsTurnsResponse,
 )
 
 if TYPE_CHECKING:
@@ -77,6 +79,25 @@ def build_bff_router(  # noqa: C901
             return stub_sessions_list(agent)
         try:
             return await hub.list_sessions(agent, limit=limit)
+        except RuntimeError as exc:
+            raise _hub_unavailable(exc) from exc
+        except (ValidationError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @router.get("/sessions/turns")
+    async def list_session_turns(
+        session_id: str = Query(...),
+        limit: int = Query(default=200, ge=1, le=500),
+    ) -> DashboardSessionsTurnsResponse:
+        if _sessions_auth_required():
+            raise HTTPException(
+                status_code=403,
+                detail="session turns requires operator auth (#1992)",
+            )
+        if e2e_enabled():
+            return stub_sessions_turns(session_id)
+        try:
+            return await hub.list_turns(session_id, limit=limit)
         except RuntimeError as exc:
             raise _hub_unavailable(exc) from exc
         except (ValidationError, json.JSONDecodeError) as exc:

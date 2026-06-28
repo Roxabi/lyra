@@ -10,6 +10,7 @@ from factory.bootstrap.factory.dashboard_rpc import (
     _handle_agents_status,
     _handle_sessions_list,
     _handle_sessions_resume,
+    _handle_sessions_turns,
 )
 from factory.core.hub.hub_protocol import Binding, RoutingKey
 from factory.core.messaging.message import Platform
@@ -76,6 +77,54 @@ async def test_agents_status_respects_harness_selection() -> None:
     )
     assert out["agents"][0]["harness"] == "omp-rpc"
     assert out["agents"][0]["online"] is False
+
+
+@pytest.mark.asyncio
+async def test_sessions_turns_empty_without_turn_store() -> None:
+    hub = MagicMock()
+    hub._turn_store = None
+    out = await _handle_sessions_turns(hub, {"session_id": "s1", "limit": 50})
+    assert out["turns"] == []
+
+
+@pytest.mark.asyncio
+async def test_sessions_turns_returns_user_assistant_rows() -> None:
+    hub = MagicMock()
+    store = MagicMock()
+    hub._turn_store = store
+    store.get_turns_by_session = AsyncMock(
+        return_value=[
+            {
+                "role": "user",
+                "content": "hi",
+                "timestamp": "2026-06-28T00:00:00Z",
+                "pool_id": "p",
+                "session_id": "s1",
+                "platform": "web",
+                "user_id": "u",
+                "id": 1,
+                "message_id": None,
+                "reply_message_id": None,
+                "metadata": {},
+            },
+            {
+                "role": "assistant",
+                "content": "hello",
+                "timestamp": "2026-06-28T00:00:01Z",
+                "pool_id": "p",
+                "session_id": "s1",
+                "platform": "web",
+                "user_id": "u",
+                "id": 2,
+                "message_id": None,
+                "reply_message_id": None,
+                "metadata": {},
+            },
+        ]
+    )
+    out = await _handle_sessions_turns(hub, {"session_id": "s1", "limit": 50})
+    assert len(out["turns"]) == 2
+    assert out["turns"][0]["content"] == "hi"
 
 
 @pytest.mark.asyncio

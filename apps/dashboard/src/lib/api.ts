@@ -80,6 +80,19 @@ export async function fetchSessions(agent: string): Promise<DashboardSession[]> 
   return data.sessions;
 }
 
+export interface DashboardTurn {
+  role: "user" | "assistant";
+  content: string;
+  timestamp: string;
+}
+
+export async function fetchSessionTurns(sessionId: string): Promise<DashboardTurn[]> {
+  const res = await fetch(`/api/bff/sessions/turns?session_id=${encodeURIComponent(sessionId)}`);
+  if (!res.ok) throw new Error("turns fetch failed");
+  const data = (await res.json()) as { turns: DashboardTurn[] };
+  return data.turns;
+}
+
 export async function resumeSession(
   agent: string,
   cliSessionId: string,

@@ -4,6 +4,7 @@ import { ChatComposer } from "@/components/chat/ChatComposer";
 import { MessageList } from "@/components/chat/MessageList";
 import { HarnessPicker } from "@/components/HarnessPicker";
 import { ModelPicker } from "@/components/ModelPicker";
+import { displayAgentName } from "@/lib/agents";
 import type { AgentHealth } from "@/lib/api";
 import { defaultModelForHarness, openChatStream, postChat } from "@/lib/api";
 import type { ChatTab } from "@/lib/chats-storage";
@@ -11,12 +12,13 @@ import type { ChatTab } from "@/lib/chats-storage";
 interface ChatPaneProps {
   tab: ChatTab;
   health: AgentHealth | undefined;
+  initialLog?: string;
   onUpdate: (patch: Partial<ChatTab>) => void;
 }
 
-export function ChatPane({ tab, health, onUpdate }: ChatPaneProps) {
+export function ChatPane({ tab, health, initialLog, onUpdate }: ChatPaneProps) {
   const [text, setText] = useState("");
-  const [log, setLog] = useState("");
+  const [log, setLog] = useState(initialLog ?? "");
   const [error, setError] = useState<string | null>(null);
   const sourceRef = useRef<EventSource | null>(null);
 
@@ -57,18 +59,19 @@ export function ChatPane({ tab, health, onUpdate }: ChatPaneProps) {
     }
   };
 
-  const offline = health ? !health.online : false;
+  const offline = health?.online === false;
+  const label = displayAgentName(tab.agent);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-3">
+      <header className="flex shrink-0 flex-wrap items-center gap-3 px-5 py-3">
         <div className="flex min-w-0 items-center gap-2.5">
-          <div className="flex size-8 items-center justify-center rounded-lg border border-border bg-card text-xs font-semibold uppercase text-muted-foreground">
-            {tab.agent.slice(0, 1)}
+          <div className="flex size-8 items-center justify-center rounded-lg bg-brand/15 text-xs font-semibold text-brand">
+            {label.slice(0, 1)}
           </div>
           <div className="min-w-0">
             <p className="truncate font-[family-name:var(--font-head)] text-sm font-semibold">
-              {tab.agent}
+              {label}
             </p>
             <p className="text-xs text-muted-foreground">Session opérateur</p>
           </div>
@@ -89,10 +92,10 @@ export function ChatPane({ tab, health, onUpdate }: ChatPaneProps) {
         </div>
       </header>
 
-      <MessageList log={log} agent={tab.agent} offline={offline} />
+      <MessageList log={log} agent={label} offline={offline} />
 
       {error ? (
-        <p className="shrink-0 px-4 pb-1 text-xs text-destructive" role="alert">
+        <p className="shrink-0 px-5 pb-1 text-xs text-destructive" role="alert">
           {error}
         </p>
       ) : null}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseChatLog } from "@/lib/chat-messages";
+import { parseChatLog, turnsToLog } from "@/lib/chat-messages";
 
 describe("parseChatLog", () => {
   it("returns empty for blank log", () => {
@@ -22,6 +22,17 @@ describe("parseChatLog", () => {
     expect(parseChatLog(log)).toEqual([
       { id: "user-0", role: "user", content: "Ping" },
       { id: "assistant-1", role: "assistant", content: "Partial stream" },
+    ]);
+  });
+
+  it("round-trips turns through turnsToLog", () => {
+    const log = turnsToLog([
+      { role: "user", content: "Hi" },
+      { role: "assistant", content: "Hello" },
+    ]);
+    expect(parseChatLog(log)).toEqual([
+      { id: "user-0", role: "user", content: "Hi" },
+      { id: "assistant-1", role: "assistant", content: "Hello" },
     ]);
   });
 

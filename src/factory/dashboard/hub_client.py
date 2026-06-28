@@ -13,6 +13,8 @@ from roxabi_contracts.dashboard import (
     DashboardSessionsListResponse,
     DashboardSessionsResumeRequest,
     DashboardSessionsResumeResponse,
+    DashboardSessionsTurnsRequest,
+    DashboardSessionsTurnsResponse,
 )
 
 if TYPE_CHECKING:
@@ -51,6 +53,13 @@ class DashboardHubClient:
         req = DashboardSessionsListRequest(agent=agent, limit=limit)
         raw = await self._request(SUBJECTS.sessions_list, req.model_dump())
         return DashboardSessionsListResponse.model_validate(raw)
+
+    async def list_turns(
+        self, session_id: str, *, limit: int = 200
+    ) -> DashboardSessionsTurnsResponse:
+        req = DashboardSessionsTurnsRequest(session_id=session_id, limit=limit)
+        raw = await self._request(SUBJECTS.sessions_turns, req.model_dump())
+        return DashboardSessionsTurnsResponse.model_validate(raw)
 
     async def resume_session(
         self, agent: str, cli_session_id: str

@@ -21,6 +21,9 @@ from roxabi_contracts.dashboard import (
     DashboardSessionsListResponse,
     DashboardSessionsResumeRequest,
     DashboardSessionsResumeResponse,
+    DashboardSessionsTurnsRequest,
+    DashboardSessionsTurnsResponse,
+    DashboardTurn,
 )
 
 if TYPE_CHECKING:
@@ -58,6 +61,7 @@ async def start_dashboard_rpc(hub: Hub, nc: NATS) -> list[Any]:
     for subject, handler in (
         (SUBJECTS.sessions_list, _handle_sessions_list),
         (SUBJECTS.sessions_resume, _handle_sessions_resume),
+        (SUBJECTS.sessions_turns, _handle_sessions_turns),
         (SUBJECTS.agents_status, _handle_agents_status),
     ):
         sub = await nc.subscribe(subject, cb=_wrap(hub, handler))
@@ -105,6 +109,24 @@ async def _handle_sessions_list(hub: Hub, payload: dict[str, Any]) -> dict[str, 
         for row in rows
     ]
     return DashboardSessionsListResponse(sessions=sessions).model_dump()
+
+
+async def _handle_sessions_turns(hub: Hub, payload: dict[str, Any]) -> dict[str, Any]:
+    req = DashboardSessionsTurnsRequest.model_validate(payload)
+    store = hub._turn_store  # noqa: SLF001
+    if store is None:
+        return DashboardSessionsTurnsResponse(turns=[]).model_dump()
+    rows = await store.get_turns_by_session(req.session_id, limit=req.limit)
+    turns = [
+        DashboardTurn(
+            role=row["role"],  # type: ignore[arg-type]
+            content=row["content"],
+            timestamp=row["timestamp"],
+        )
+        for row in rows
+        if row["role"] in {"user", "assistant"}
+    ]
+    return DashboardSessionsTurnsResponse(turns=turns).model_dump()
 
 
 async def _handle_sessions_resume(hub: Hub, payload: dict[str, Any]) -> dict[str, Any]:

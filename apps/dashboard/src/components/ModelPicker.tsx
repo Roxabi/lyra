@@ -1,4 +1,4 @@
-import { SelectField } from "@/components/ui/select-field";
+import { PopoverSelect } from "@/components/ui/popover-select";
 import { MODEL_CATALOG } from "@/lib/api";
 import type { HarnessKind } from "@/lib/chats-storage";
 
@@ -12,17 +12,16 @@ interface ModelPickerProps {
 export function ModelPicker({ harness, value, onChange, offline }: ModelPickerProps) {
   const models = MODEL_CATALOG[harness];
   return (
-    <SelectField
+    <PopoverSelect
       label="Model"
       value={value}
       disabled={offline}
-      onChange={(e) => onChange(e.target.value)}
-    >
-      {models.map((m) => (
-        <option key={m} value={m}>
-          {offline ? `${m} (Hors ligne)` : m}
-        </option>
-      ))}
-    </SelectField>
+      options={models.map((m) => ({
+        value: m,
+        label: m,
+        hint: offline ? "Hors ligne" : undefined,
+      }))}
+      onChange={onChange}
+    />
   );
 }

@@ -1,7 +1,13 @@
 name: publish
 on:
-  push:
+  # Gate staging pushes on CI success: fires after the CI workflow completes
+  # on the staging branch. workflow_run does NOT fire on tag pushes, so the
+  # release-tag path is preserved via the separate push:tags trigger below.
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [staging]
+  push:
     tags: ['factory/v*']
 permissions:
   contents: read
@@ -9,8 +15,20 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    # workflow_run path: proceed ONLY when CI passed, the triggering run was a PUSH (not a PR),
+    # and it came from THIS repo (not a fork) — a fork PR must never get its code published under
+    # this repo's packages:write token. Direct tag push (factory/v*) always proceeds.
+    if: >
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository) ||
+      github.event_name == 'push'
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          # workflow_run runs at default-branch HEAD; check out the triggering commit.
+          # For direct tag push, github.sha is already correct.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
       - uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
@@ -22,7 +40,11 @@ jobs:
         id: tags
         run: |
           REG=ghcr.io/roxabi/factory
-          if [[ "$GITHUB_REF" == refs/heads/staging ]]; then
+          # GITHUB_REF points at the default branch under workflow_run, so it cannot route
+          # tag-vs-staging. Use the triggering run's head_branch (empty on a direct tag push,
+          # where event_name=push and GITHUB_REF_NAME is the tag).
+          EFF="${{ github.event.workflow_run.head_branch || github.ref_name }}"
+          if [[ "$EFF" == "staging" ]]; then
             {
               echo "bake_set<<EOF"
               echo "agent-runtime.tags=${REG}:staging"
@@ -51,7 +73,7 @@ jobs:
           set: |
             ${{ steps.tags.outputs.bake_set }}
             *.labels.org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            *.labels.org.opencontainers.image.revision=${{ github.sha }}
+            *.labels.org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha || github.sha }}
             *.labels.org.opencontainers.image.version=${{ github.ref_name }}
 
       - name: Verify forbidden binaries absent (SC-3)

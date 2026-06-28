@@ -30,8 +30,12 @@ RUN bun install --frozen-lockfile
 RUN bun run build:dashboard
 
 # ── Slim service runtime (hub, telegram, discord) ───────────────────────────
-# TODO: pin base-svc by digest — track alongside base:latest pinning issue
-FROM ghcr.io/roxabi/base-svc:latest AS svc-runtime
+# Pinned to linux/amd64 manifest digest of base-svc:latest (2026-06-28).
+# Bump together with roxabi-container base-svc release and update this comment.
+# NOTE: this is the amd64 child digest (valid — docker-bake.hcl is single-platform/amd64).
+# Before adding a `platforms` entry to docker-bake.hcl, re-pin to the multi-arch INDEX digest:
+#   docker buildx imagetools inspect --format '{{.Manifest.Digest}}' ghcr.io/roxabi/base-svc:latest
+FROM ghcr.io/roxabi/base-svc@sha256:42b1d64e6e4a98d0840539aee73f3c3a43ab46683c9d6fe777b5cc725f5629c7 AS svc-runtime
 
 USER root
 
@@ -51,7 +55,11 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD factory config validate || exit 1
 
 # ── Agent runtime (clipool — full gh_token tooling) ───────────────────────────
-FROM ghcr.io/roxabi/base:latest AS agent-runtime
+# Pinned to linux/amd64 manifest digest of base:latest (2026-06-28).
+# Bump together with roxabi-container base release and update this comment.
+# NOTE: amd64 child digest (valid — single-platform build). Re-pin to the multi-arch INDEX
+# digest before adding `platforms` to docker-bake.hcl (see base-svc note above).
+FROM ghcr.io/roxabi/base@sha256:dab0e1477f5e6cea6d8090e0f15421cfb2cbcd237dace12717afba5d9be14bbc AS agent-runtime
 
 USER root
 

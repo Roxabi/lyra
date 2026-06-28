@@ -24,7 +24,6 @@ import tomllib
 import typer
 
 from factory.blobstore.cli import blobstore_app
-from factory.ingress.cli import ingress_app
 from factory.cli.agent import (
     agent_app,  # noqa: F401 — DEBT:re-export-init — re-exported for tests
 )
@@ -34,6 +33,7 @@ from factory.cli.secrets import secrets_app
 from factory.cli.setup import setup_app
 from factory.cli.user import user_app
 from factory.cli.voice_smoke import voice_smoke_app
+from factory.ingress.cli import ingress_app
 
 # Register subcommands from sub-modules (import triggers @app.command())
 # after app objects are imported. Previously at module exit in cli_bot/cli_agent.

@@ -236,6 +236,11 @@
 - [x] `FACTORY_DASHBOARD_E2E=1`, Playwright dark/light snapshots, docs, secrets drift
 - Gates : smoke curls `/` + `/api/*` (scratch `b3-smoke.log`), visual 2/2, converge dry-run
 
+### 2026-06-28 — Harness-aware status (verifier pass 2)
+
+- [x] `fetchAgentStatus(agent, harness)` + CockpitLayout `queryKey`/`healthFor` align badge with tab harness
+- [x] BFF real-path tests: `sessions.list`, `sessions.resume`, harness query → hub payload
+- [x] Scratch: `b3-qg.log`, `b1-docker-dist.log`, `block-order-check-*.txt`, full `plan-final.txt`
 ### 2026-06-28 — Remediation (verifier gaps)
 
 - [x] Bugfix : `set_nats_client(nc)` **avant** `wire_bot_common`/`astart` ; `DashboardHubClient(adapter)` lazy nc
@@ -273,6 +278,7 @@
 - [x] `block-order-check-1.txt` : `git show 6942627f:plan` — Block 2 `not_started`, B2 checkboxes `[ ]`
 - [x] `block-order-check-2.txt` : `git show 45093654:plan` — Block 3 `not_started`, B1+B2 `done`
 - [x] Cherry-pick `b9dc8953..HEAD` post-replay ; `scripts/goal-1771-evidence.sh` pour `b3-qg.log` + `b3-smoke.log`
+- Écart processus AC5 (ancien chemin) : commit `07c35b36` monolithique remplacé par replay ci-dessus
 
 ---
 

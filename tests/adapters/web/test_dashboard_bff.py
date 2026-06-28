@@ -109,3 +109,84 @@ class TestDashboardBffRealPath:
         assert isinstance(msg.platform_meta, WebMeta)
         assert msg.platform_meta.harness == "omp-rpc"
         assert msg.platform_meta.model == "omp-fast"
+
+    def test_agents_status_passes_harness_query_to_hub(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("FACTORY_DASHBOARD_E2E", raising=False)
+        tc, _adapter, nc = wired_client
+        nc.request = AsyncMock(
+            return_value=_rpc_response(
+                {
+                    "agents": [
+                        {
+                            "agent": "alpha",
+                            "in_roster": True,
+                            "harness": "omp-rpc",
+                            "harness_reachable": True,
+                            "online": True,
+                        }
+                    ]
+                }
+            )
+        )
+        res = tc.get(
+            "/api/bff/agents/status",
+            params={"agent": "alpha", "harness": "omp-rpc"},
+        )
+        assert res.status_code == 200
+        payload = json.loads(nc.request.await_args.args[1].decode())
+        assert payload["harness_by_agent"] == {"alpha": "omp-rpc"}
+
+    def test_list_sessions_calls_hub_rpc_without_e2e(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("FACTORY_DASHBOARD_E2E", raising=False)
+        tc, _adapter, nc = wired_client
+        nc.request = AsyncMock(
+            return_value=_rpc_response(
+                {
+                    "sessions": [
+                        {
+                            "session_id": "hub-sess-1",
+                            "pool_id": "web:smoke:agent:alpha",
+                            "platform": "web",
+                            "cli_session_id": "cli-hub-1",
+                            "first_user_msg": "from hub",
+                            "turn_count": 3,
+                            "last_active_at": "2026-06-28T10:00:00Z",
+                        }
+                    ]
+                }
+            )
+        )
+        res = tc.get("/api/bff/sessions", params={"agent": "alpha"})
+        assert res.status_code == 200
+        body = res.json()
+        assert body["sessions"][0]["session_id"] == "hub-sess-1"
+        assert body["sessions"][0]["first_user_msg"] == "from hub"
+        assert nc.request.await_args.args[0] == SUBJECTS.sessions_list
+
+    def test_resume_session_calls_hub_rpc_without_e2e(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("FACTORY_DASHBOARD_E2E", raising=False)
+        tc, _adapter, nc = wired_client
+        nc.request = AsyncMock(
+            return_value=_rpc_response(
+                {"accepted": True, "message": "resumed cli-hub-9"}
+            )
+        )
+        res = tc.post(
+            "/api/bff/sessions/resume",
+            json={"agent": "alpha", "cli_session_id": "cli-hub-9"},
+        )
+        assert res.status_code == 200
+        assert res.json()["accepted"] is True
+        assert nc.request.await_args.args[0] == SUBJECTS.sessions_resume

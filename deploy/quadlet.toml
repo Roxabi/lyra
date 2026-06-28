@@ -16,11 +16,13 @@ host_roles = ["factory-hub"]
 container = "factory-telegram.container"
 required_secrets = ["factory-nats-telegram", "factory_blobstore_token"]
 host_roles = ["factory-hub"]
+template = true
 
 [component.discord]
 container = "factory-discord.container"
 required_secrets = ["factory-nats-discord", "factory_blobstore_token"]
 host_roles = ["factory-hub"]
+template = true
 
 [component.dashboard]
 container = "factory-dashboard.container"

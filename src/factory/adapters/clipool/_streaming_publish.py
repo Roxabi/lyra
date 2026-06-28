@@ -101,7 +101,7 @@ async def publish_job_failure(
     )
 
 
-async def _publish_terminal(
+async def _publish_terminal(  # noqa: PLR0913
     nc: Any,
     *,
     job_id: str,

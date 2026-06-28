@@ -69,7 +69,7 @@ class ClaudeJobCodec:
         return None
 
     def decode_terminal_progress(self, progress: JobProgress) -> LlmEvent | None:
-        """Some workers may emit a terminal progress before result — ignore by default."""
+        """Terminal progress before result — ignored by default."""
         del progress
         return None
 

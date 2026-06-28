@@ -193,7 +193,6 @@ async def test_handle_cmd_stream_calls_pool_send_streaming() -> None:
     nc = AsyncMock()
     worker._nc = nc
 
-    msg = _make_nats_msg(subject="factory.jobs.claude", reply="_INBOX.reply")
     payload = _cmd_payload(stream=True)
 
     # Act
@@ -218,7 +217,6 @@ async def test_handle_cmd_nonstream_calls_pool_send() -> None:
     nc = AsyncMock()
     worker._nc = nc
 
-    msg = _make_nats_msg(subject="factory.jobs.claude", reply="_INBOX.reply")
     payload = _cmd_payload(stream=False)
 
     # Act
@@ -249,7 +247,6 @@ async def test_handle_cmd_nonstream_error_forwards_worker_error() -> None:
     nc = AsyncMock()
     worker._nc = nc
 
-    msg = _make_nats_msg(subject="factory.jobs.claude", reply="_INBOX.reply")
     payload = _cmd_payload(stream=False)
 
     await worker._run_job(JobEnvelope.model_validate(payload))
@@ -270,7 +267,6 @@ async def test_handle_cmd_send_streaming_exception_publishes_error() -> None:
     worker = CliPoolNatsWorker(pool)
     nc = AsyncMock()
     worker._nc = nc
-    msg = _make_nats_msg(subject="factory.jobs.claude", reply="_INBOX.test.1")
     payload = _cmd_payload(stream=True)
 
     # Act
@@ -295,8 +291,6 @@ async def test_handle_cmd_publishes_done_chunk_after_stream() -> None:
     worker = CliPoolNatsWorker(pool)
     nc = AsyncMock()
     worker._nc = nc
-
-    msg = _make_nats_msg(subject="factory.jobs.claude", reply="_INBOX.reply")
 
     # Act
     await worker._run_job(JobEnvelope.model_validate(_cmd_payload(stream=True)))
@@ -325,8 +319,6 @@ async def test_handle_cmd_streaming_forwards_tool_use_as_keepalive() -> None:
     worker = CliPoolNatsWorker(pool)
     nc = AsyncMock()
     worker._nc = nc
-
-    msg = _make_nats_msg(reply="_INBOX.reply")
 
     # Act
     await worker._run_job(JobEnvelope.model_validate(_cmd_payload(stream=True)))
@@ -366,8 +358,6 @@ async def test_handle_cmd_streaming_forwards_worker_error_from_result_event() ->
     nc = AsyncMock()
     worker._nc = nc
 
-    msg = _make_nats_msg(reply="_INBOX.reply")
-
     # Act
     await worker._run_job(JobEnvelope.model_validate(_cmd_payload(stream=True)))
 
@@ -402,7 +392,7 @@ async def test_handle_cmd_validation_error_replies_worker_validation() -> None:
     worker._nc = nc
     msg = _make_nats_msg(reply="_INBOX.reply")
 
-    await worker.handle(msg, bad_payload)
+    await worker.handle(msg, bad_payload)  # msg required by handle()
     if worker._jobs:
         await asyncio.gather(*list(worker._jobs), return_exceptions=True)
 
@@ -656,7 +646,6 @@ async def test_identity_streaming_full_fields_forwarded_to_pool() -> None:
     worker = CliPoolNatsWorker(pool)
     worker._nc = AsyncMock()
 
-    msg = _make_nats_msg(reply="_INBOX.id1")
     payload = _cmd_payload(
         stream=True,
         agent_name="agent-X",
@@ -692,7 +681,6 @@ async def test_identity_streaming_partial_identity_forwarded_to_pool() -> None:
     worker = CliPoolNatsWorker(pool)
     worker._nc = AsyncMock()
 
-    msg = _make_nats_msg(reply="_INBOX.id2")
     payload = _cmd_payload(
         stream=True,
         agent_name="agent-X",
@@ -729,7 +717,6 @@ async def test_identity_blocking_full_fields_forwarded_to_pool() -> None:
     worker = CliPoolNatsWorker(pool)
     worker._nc = AsyncMock()
 
-    msg = _make_nats_msg(reply="_INBOX.id3")
     payload = _cmd_payload(
         stream=False,
         agent_name="agent-X",
@@ -790,8 +777,6 @@ async def test_legacy_envelope_passes_none_identity_to_pool() -> None:
 
     worker = CliPoolNatsWorker(pool)
     worker._nc = AsyncMock()
-
-    msg = _make_nats_msg(reply="_INBOX.legacy")
 
     # Act
     await worker._run_job(JobEnvelope.model_validate(legacy_payload))

@@ -209,3 +209,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
             control_ack=True,
         )
         await self.reply(msg, ack_bytes or _make_ack(cmd.pool_id, ok=False))
+
+    async def _dispatch_control(self, cmd: CliControlCmd) -> bytes:
+        """Delegate to dispatch_control (kept for direct unit tests)."""
+        return await dispatch_control(self._pool, cmd)

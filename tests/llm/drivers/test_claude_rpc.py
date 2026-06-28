@@ -11,7 +11,7 @@ import pytest
 from factory.llm.drivers.claude_rpc import ClaudeRpcDriver
 from roxabi_contracts.jobs import JobResult
 from roxabi_contracts.jobs.fixtures import sample_job_result_ok
-from roxabi_contracts.jobs.subjects import jobs_result, jobs_submit
+from roxabi_contracts.jobs.subjects import jobs_submit
 
 
 @pytest.fixture()
@@ -81,7 +81,8 @@ class TestClaudeRpcDriver:
         sub: AsyncMock,
         model_cfg: MagicMock,
     ) -> None:
-        success = JobResult.model_validate({**sample_job_result_ok, "data": {"result": "x"}})
+        ok_data = {**sample_job_result_ok, "data": {"result": "x"}}
+        success = JobResult.model_validate(ok_data)
         sub.next_msg.return_value = SimpleNamespace(
             data=success.model_dump_json().encode()
         )

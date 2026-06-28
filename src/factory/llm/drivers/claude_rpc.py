@@ -73,7 +73,7 @@ class ClaudeRpcDriver:
         self._lyra_sessions.pop(pool_id, None)
 
     async def reset(self, pool_id: str) -> None:
-        """Drop pending resume; pool reset stays on factory.clipool.control (phase 2)."""
+        """Drop pending resume; reset via factory.clipool.control."""
         self._pending_resume.pop(pool_id, None)
         self._lyra_sessions.pop(pool_id, None)
         from roxabi_contracts.cli import SUBJECTS as CLI_SUBJECTS
@@ -146,7 +146,7 @@ class ClaudeRpcDriver:
         finally:
             await result_sub.unsubscribe()
 
-    async def stream(
+    async def stream(  # noqa: C901
         self,
         pool_id: str,
         text: str,
@@ -243,7 +243,7 @@ class ClaudeRpcDriver:
             await progress_sub.unsubscribe()
             await result_sub.unsubscribe()
 
-    async def _publish_envelope(
+    async def _publish_envelope(  # noqa: PLR0913
         self,
         job_id: str,
         *,

@@ -4,7 +4,7 @@
     {
       "requester": "hub",
       "responder": "clipool-worker",
-      "subject": "factory.jobs.claude"
+      "subject": "factory.clipool.control"
     },
     {
       "requester": "hub",
@@ -98,6 +98,7 @@
         "factory.omp.heartbeat",
         "factory.dashboard.>",
         "factory.gh.mint_failure.>",
+        "factory.job.*.progress",
         "factory.job.*.result",
         "$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.FACTORY_JOBS.>",
         "_inbox.hub.>"
@@ -344,6 +345,8 @@
       "allow_responses": true,
       "publish": [
         "factory.clipool.heartbeat",
+        "factory.job.*.progress",
+        "factory.job.*.result",
         "factory.system.ready",
         "factory.event.>",
         "factory.metric.>",

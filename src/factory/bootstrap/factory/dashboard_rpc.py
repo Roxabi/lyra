@@ -48,7 +48,7 @@ log = logging.getLogger(__name__)
 _CLIPOOL_WORKER = "clipool-worker"
 _OMP_WORKER = "omp-worker"
 _WEB_BOT = "smoke"
-_ALLOWED_JOB_NAMES = frozenset({"omp", "test"})
+_ALLOWED_JOB_NAMES = frozenset({"claude", "omp", "test"})
 _DEFAULT_OMP_MODEL = "grok-4-fast"
 
 
@@ -207,6 +207,16 @@ async def _handle_jobs_launch(
         Platform.WEB, _WEB_BOT, f"agent:{req.agent}"
     ).to_pool_id()
     dispatch_subject = jobs_submit(req.job_name)
+    if req.job_name == "claude":
+        model_cfg = {
+            "backend": "claude-cli",
+            "model": req.model or "sonnet",
+        }
+    else:
+        model_cfg = {
+            "backend": "omp-rpc",
+            "model": req.model or _DEFAULT_OMP_MODEL,
+        }
     envelope = JobEnvelope(
         contract_version=CONTRACT_VERSION,
         trace_id=job_id,
@@ -216,11 +226,9 @@ async def _handle_jobs_launch(
         payload={
             "prompt": req.prompt,
             "pool_id": pool_id,
-            "model_cfg": {
-                "backend": "omp-rpc",
-                "model": req.model or _DEFAULT_OMP_MODEL,
-            },
+            "model_cfg": model_cfg,
             "system_prompt": req.system_prompt,
+            "stream": True,
         },
         reply_to=f"_INBOX.{job_id}",
     )

@@ -187,9 +187,18 @@ read_convergence_state() {
 }
 
 # Write the current convergence state to the stamp file.
+# Accepts an optional pre-computed fingerprint to stamp the state that was verified
+# at the START of the converge (TOCTOU guard — avoids a second compute_convergence_state
+# call whose result may reflect post-converge drift rather than the baseline).
+# When called with no argument, recomputes the state (back-compat).
 write_convergence_state() {
+    local state="${1:-}"
     mkdir -p "$(dirname "${CONVERGE_STAMP}")"
-    compute_convergence_state > "${CONVERGE_STAMP}"
+    if [[ -n "${state}" ]]; then
+        printf '%s\n' "${state}" > "${CONVERGE_STAMP}"
+    else
+        compute_convergence_state > "${CONVERGE_STAMP}"
+    fi
 }
 
 # Classify the kind of drift between a recorded stamp and the current state.

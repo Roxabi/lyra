@@ -17,8 +17,9 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/quadlet-units.sh"
 
 # Units derived from deploy/quadlet.toml at runtime.  Quadlet maps <name>.container → <name>.service.
 mapfile -t UNITS < <(quadlet_containers)
-# 9 = current factory container count in deploy/quadlet.toml; fail-fast on empty/partial parse — ¬a strict-equality check (adding a 10th is fine)
-[[ ${#UNITS[@]} -ge 9 ]] || { echo "ERROR: quadlet_containers returned ${#UNITS[@]} units (<9)" >&2; exit 1; }
+# Lower bound derived from deploy/quadlet.toml at runtime; fail-fast on empty/partial parse — auto-updates when components are added.
+_min_units=$(grep -cE '^\[component\.' "$(dirname "${BASH_SOURCE[0]}")/quadlet.toml")
+[[ ${#UNITS[@]} -ge ${_min_units} ]] || { echo "ERROR: quadlet_containers returned ${#UNITS[@]} units (<${_min_units})" >&2; exit 1; }
 
 # ── 1. Reload daemon so Quadlet generates fresh .service files ────────────────
 echo "[quadlet] daemon-reload ..."

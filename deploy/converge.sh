@@ -97,10 +97,12 @@ _do_converge() {
         # 9) Restart factory NATS clients (only on structural drift)
         echo "==> Factory: restarting containers..."
         local failed=""
+        local _min_units
         local -a _all_svcs _client_svcs
         mapfile -t _all_svcs < <(quadlet_containers)
-        # 9 = current factory container count in deploy/quadlet.toml; fail-fast on empty/partial parse — ¬a strict-equality check (adding a 10th is fine)
-        [[ ${#_all_svcs[@]} -ge 9 ]] || { echo "ERROR: quadlet_containers returned ${#_all_svcs[@]} units (<9)" >&2; exit 1; }
+        # Lower bound derived from deploy/quadlet.toml at runtime; fail-fast on empty/partial parse — auto-updates when components are added.
+        _min_units=$(grep -cE '^\[component\.' "$(dirname "${BASH_SOURCE[0]}")/quadlet.toml")
+        [[ ${#_all_svcs[@]} -ge ${_min_units} ]] || { echo "ERROR: quadlet_containers returned ${#_all_svcs[@]} units (<${_min_units})" >&2; exit 1; }
         mapfile -t _client_svcs < <(printf '%s\n' "${_all_svcs[@]}" | grep -v '^factory-nats$' || true)
         for svc in "${_client_svcs[@]}"; do
             systemctl --user restart "${svc}" \
@@ -120,8 +122,12 @@ _do_converge() {
         fi
     fi
 
-    # 11) Record convergence stamp
-    write_convergence_state
+    # 11) Record convergence stamp — compute the post-converge state once and stamp
+    # exactly that, instead of letting write_convergence_state recompute independently
+    # (TOCTOU: a second compute could observe drift that occurred after the last step).
+    local _final
+    _final=$(compute_convergence_state)
+    write_convergence_state "${_final}"
 
     op_log converge_complete drift="${_drift_kind}" exit=0
     echo "==> Converge complete."

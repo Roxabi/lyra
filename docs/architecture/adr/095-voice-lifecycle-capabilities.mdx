@@ -1,0 +1,57 @@
+---
+title: "ADR-095: Voice lifecycle plane — heartbeat vs capabilities listing"
+description: Split voice worker health (heartbeat) from catalogue discovery (lifecycle.list/status), mirroring llmCLI. voiceCLI owns engines + samples SSoT; hub maps agents to sample_id.
+status: accepted
+date: 2026-06-28
+deciders: [Mickael, architect, product-lead, devops, axial-adr-review]
+supersedes: []
+superseded_by: []
+related: [052, 076, 079, 049]
+---
+
+> **Current truth** → [`docs/architecture/messaging.md`](../messaging.md){#current-truth}
+> This ADR is preserved as a decision record.
+
+## Status
+
+Accepted — 2026-06-28.
+
+## Context
+
+Voice satellites publish heartbeats for hub liveness (ADR-052). Dashboard agent
+configuration needs a catalogue of TTS engines, clone samples, and STT models.
+
+llmCLI separates liveness (`factory.llm.heartbeat`) from catalogue
+(`factory.llm.lifecycle.list`). voice had only heartbeats. Full catalogues in
+5s heartbeats would bloat the control plane (ADR-076).
+
+## Decision
+
+### Two NATS surfaces per modality
+
+| Surface | Subjects | Purpose |
+|---|---|---|
+| Health | `factory.voice.{tts,stt}.heartbeat` | Liveness, VRAM, `model_loaded` |
+| Lifecycle | `factory.voice.{tts,stt}.lifecycle.{list,status}` | Catalogue + runtime status |
+
+Models: `VoiceLifecycleRequest` / `VoiceLifecycleResponse` on `ContractEnvelope`.
+
+### Ownership
+
+- Blobstore: sample bytes (`source=voicecli-sample`)
+- voiceCLI: `catalog.json`, `ENGINE_CAPS`, local cache
+- Hub: `voice_json.tts.{engine, sample_id}`
+
+Dashboard: `factory.dashboard.voice.capabilities` → hub fans out lifecycle `list`.
+
+### Heartbeat
+
+MAY include `catalog_revision` (hash). MUST NOT include full catalogue.
+
+### TtsRequest.sample_id
+
+Clone engines resolve sample via cache → blobstore GET → `api.clone()`.
+
+### VRAM
+
+`max_cached_engines=1` (TTS LRU). STT: one warm model. No TTS boot pre-warm.

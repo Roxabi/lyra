@@ -42,7 +42,19 @@ _do_converge() {
 
     # 3) Role-aware Quadlet install + orphan prune (SSOT: deploy.sh × hosts.toml)
     echo "==> cluster: installing role-matched Quadlets (deploy.sh --prune)..."
-    bash "${PROJECTS_DIR}/deploy.sh" --prune
+    # deploy.sh tiered exit (#2037): 2 = hard (a unit's source file is missing → it cannot be
+    # installed → abort). 1 = soft (a required secret is absent → the unit IS installed but won't
+    # start until provisioned; secrets are installed at step 7 below and a genuinely-missing one
+    # surfaces as a failed restart at step 9, so warn + continue rather than aborting the deploy on
+    # one repo's not-yet-present secret). 0 = clean. Capture without tripping set -e.
+    local _deploy_rc=0
+    bash "${PROJECTS_DIR}/deploy.sh" --prune || _deploy_rc=$?
+    if [ "${_deploy_rc}" -ge 2 ]; then
+        echo "ERROR: deploy.sh hard-failed (rc=${_deploy_rc}) — a unit source file is missing. Aborting converge." >&2
+        exit 1
+    elif [ "${_deploy_rc}" -eq 1 ]; then
+        echo "WARN: deploy.sh reported missing secret(s) (rc=1) — continuing; secrets install (step 7) + restart (step 9) enforce them." >&2
+    fi
 
     # 4) Factory-specific render (telegram/discord templates, bot init, aux perms)
     echo "==> factory: rendering templates + aux units..."

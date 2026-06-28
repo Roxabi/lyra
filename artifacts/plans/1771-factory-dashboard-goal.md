@@ -241,7 +241,6 @@
 - [x] `fetchAgentStatus(agent, harness)` + CockpitLayout `queryKey`/`healthFor` align badge with tab harness
 - [x] BFF real-path tests: `sessions.list`, `sessions.resume`, harness query → hub payload
 - [x] Scratch: `b3-qg.log`, `b1-docker-dist.log`, `block-order-check-*.txt`, full `plan-final.txt`
-
 ### 2026-06-28 — Remediation (verifier gaps)
 
 - [x] Bugfix : `set_nats_client(nc)` **avant** `wire_bot_common`/`astart` ; `DashboardHubClient(adapter)` lazy nc
@@ -268,12 +267,18 @@
 
 ### 2026-06-28 — Verifier pass 5 (bugs + catalog tests + gate remediation)
 
-- Écart processus AC5 : commit initial `07c35b36` monolithique (pas de `not_started`→`in_progress` inter-slice dans git) — journal + gates séquentiels pass 5 documentent la remédiation
 - [x] Bugfix `ChatPane` : switch harness → `defaultModelForHarness(h)` (omp-rpc → `omp-default`, pas `sonnet`)
 - [x] Tests directs `list_sessions_for_agent` (bindings réels + store stub, tri/limit/filtre) dans `test_session_catalog.py`
 - [x] `b2-regen-drift.log` : `make nats-regen-specs` + `factory-acl check grants` + drift scripts
-- [x] Gates séquentiels : `b1-gates-only.log` → `b2-gates-only.log` → `b3-qg.log` (direct `make qg`, exit 0)
-- Evidence : `block-order-check-*.txt` (remediation honeste), `execution-summary.txt`
+- Gates : `make qg` exit 0
+
+### 2026-06-28 — AC5 replay (git history restructure)
+
+- [x] `scripts/goal-1771-replay.sh` : commits par bloc depuis `63760bde` (`not_started`→`in_progress`→`done` + checkboxes par slice)
+- [x] `block-order-check-1.txt` : `git show 6942627f:plan` — Block 2 `not_started`, B2 checkboxes `[ ]`
+- [x] `block-order-check-2.txt` : `git show 45093654:plan` — Block 3 `not_started`, B1+B2 `done`
+- [x] Cherry-pick `b9dc8953..HEAD` post-replay ; `scripts/goal-1771-evidence.sh` pour `b3-qg.log` + `b3-smoke.log`
+- Écart processus AC5 (ancien chemin) : commit `07c35b36` monolithique remplacé par replay ci-dessus
 
 ---
 

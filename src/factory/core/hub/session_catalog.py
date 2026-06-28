@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from factory.core.config.turn_store_config import TurnStoreConfig
 from factory.core.hub.hub_protocol import Binding, RoutingKey
 from factory.core.messaging.message import Platform
 from factory.core.stores.turn_store_protocol import CatalogSessionRow, TurnStoreProtocol
@@ -40,8 +41,8 @@ async def list_sessions_for_agent(
     bindings: dict[RoutingKey, Binding],
     agent_name: str,
     *,
-    limit: int = 20,
-    scan_limit: int = 200,
+    limit: int = TurnStoreConfig.SESSION_CATALOG_DEFAULT_LIMIT,
+    scan_limit: int = TurnStoreConfig.DEFAULT_LIST_RECENT_SESSIONS_LIMIT,
 ) -> list[CatalogSessionRow]:
     """Return recent sessions for *agent_name* across all platforms."""
     rows = await store.list_recent_sessions(scan_limit)
@@ -51,4 +52,6 @@ async def list_sessions_for_agent(
         if agent_for_pool(row["pool_id"], bindings) == agent_name
     ]
     filtered.sort(key=lambda r: r["last_active_at"], reverse=True)
-    return filtered[: max(1, min(limit, 50))]
+    return filtered[
+        : max(1, min(limit, TurnStoreConfig.SESSION_CATALOG_MAX_LIMIT))
+    ]

@@ -1,3 +1,4 @@
+import { PopoverSelect } from "@/components/ui/popover-select";
 import type { HarnessKind } from "@/lib/chats-storage";
 
 interface HarnessPickerProps {
@@ -6,25 +7,19 @@ interface HarnessPickerProps {
   disabled?: boolean;
 }
 
-const OPTIONS: { id: HarnessKind; label: string }[] = [
-  { id: "claude-cli", label: "Clipool" },
-  { id: "omp-rpc", label: "OMP" },
+const OPTIONS = [
+  { value: "claude-cli" as const, label: "Clipool" },
+  { value: "omp-rpc" as const, label: "OMP" },
 ];
 
 export function HarnessPicker({ value, onChange, disabled }: HarnessPickerProps) {
   return (
-    <select
-      className="rounded border border-border bg-card px-2 py-1 text-xs"
+    <PopoverSelect
+      label="Harness"
       value={value}
       disabled={disabled}
-      onChange={(e) => onChange(e.target.value as HarnessKind)}
-      aria-label="Harness"
-    >
-      {OPTIONS.map((o) => (
-        <option key={o.id} value={o.id}>
-          {o.label}
-        </option>
-      ))}
-    </select>
+      options={OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+      onChange={(v) => onChange(v as HarnessKind)}
+    />
   );
 }

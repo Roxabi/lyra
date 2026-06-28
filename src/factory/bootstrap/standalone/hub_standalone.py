@@ -239,6 +239,8 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
         await _active_jobs_store.connect()
         _active_jobs_coord = RegistryCoordinator(_active_jobs_store)
         _active_jobs_coord.start()
+        hub._active_jobs_store = _active_jobs_store  # noqa: SLF001 — dashboard RPC (#1772)
+        hub._active_jobs_coord = _active_jobs_coord  # noqa: SLF001
 
         # Publish each bot's watch_channels into factory-state KV before
         # announcing readiness so adapters see the value on first seed (SC6).

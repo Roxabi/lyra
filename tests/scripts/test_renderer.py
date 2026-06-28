@@ -93,7 +93,7 @@ class TestInboxGrantFromFlow:
         """Responder's publish allow contains _inbox.<requester>.> from flows.
 
         SC-6: derived inbox grants — for flow (hub → clipool-worker,
-        factory.clipool.cmd), clipool-worker's publish allow must include _inbox.hub.>
+        factory.jobs.claude), clipool-worker's publish allow must include _inbox.hub.>
         # verified: removing flow-derivation logic → _inbox.hub.> absent → fails
         """
         matrix: LoadedMatrix = {
@@ -102,7 +102,7 @@ class TestInboxGrantFromFlow:
                 {
                     "requester": "hub",
                     "responder": "clipool-worker",
-                    "subject": "factory.clipool.cmd",
+                    "subject": "factory.jobs.claude",
                 }
             ],
             "identities": {
@@ -112,7 +112,7 @@ class TestInboxGrantFromFlow:
                     "owner": "factory",
                     "description": "hub",
                     "allow_responses": False,
-                    "publish": ["factory.clipool.cmd"],
+                    "publish": ["factory.jobs.claude"],
                     "subscribe": ["_inbox.hub.>"],
                 },
                 "clipool-worker": {
@@ -122,7 +122,7 @@ class TestInboxGrantFromFlow:
                     "description": "clipool worker",
                     "allow_responses": True,
                     "publish": ["factory.clipool.heartbeat"],
-                    "subscribe": ["factory.clipool.cmd"],
+                    "subscribe": ["factory.jobs.claude"],
                 },
             },
         }

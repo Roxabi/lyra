@@ -20,7 +20,7 @@
     }
   },
   "request_reply_flows": [
-    { "requester": "hub", "responder": "clipool-worker", "subject": "factory.jobs.claude" },
+    { "requester": "hub", "responder": "clipool-worker", "subject": "factory.clipool.control" },
     { "requester": "hub", "responder": "voice-tts",      "subject": "factory.voice.tts.request.>" },
     { "requester": "hub", "responder": "voice-stt",      "subject": "factory.voice.stt.request.>" },
     { "requester": "hub", "responder": "llm-worker",     "subject": "factory.llm.generate.request" },
@@ -80,6 +80,7 @@
         "factory.omp.heartbeat",
         "factory.dashboard.>",
         "factory.gh.mint_failure.>",
+        "factory.job.*.progress",
         "factory.job.*.result",
         "$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.FACTORY_JOBS.>",
         "_inbox.hub.>"
@@ -289,6 +290,8 @@
       "allow_responses": true,
       "publish": [
         "factory.clipool.heartbeat",
+        "factory.job.*.progress",
+        "factory.job.*.result",
         "factory.system.ready",
         "factory.event.>",
         "factory.metric.>",

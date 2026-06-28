@@ -139,6 +139,9 @@ class Hub(
         self._alias_store: IdentityAliasStore | None = None
         # Populated by dashboard RPC heartbeat subscribers (#1771).
         self._dashboard_worker_freshness: dict[str, float] = {}
+        # Wired by hub_standalone for dashboard job catalog (#1772).
+        self._active_jobs_store: object | None = None
+        self._active_jobs_coord: object | None = None
         self._identity_resolver = IdentityResolver(
             authenticators=self._authenticators,
             bindings=self.bindings,

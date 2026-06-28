@@ -83,6 +83,9 @@ class _CatalogStore:
         self.last_scan_limit = limit
         return list(self._rows)
 
+    async def get_turns_by_session(self, session_id: str, limit: int = 50) -> list:
+        return []
+
 
 @pytest.mark.asyncio
 async def test_list_sessions_for_agent_filters_sorts_and_limits() -> None:

@@ -1,0 +1,1 @@
+"""factory-ingress — external webhooks → factory.event.* (ADR-091 plane ①)."""

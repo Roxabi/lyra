@@ -54,7 +54,10 @@ class TestFetchOpsHealth:
         fail.status_code = 503
         mock_client.get = AsyncMock(side_effect=[ok, ok, fail])
 
-        with patch("factory.dashboard.ops_proxy.httpx.AsyncClient", return_value=mock_client):
+        with patch(
+            "factory.dashboard.ops_proxy.httpx.AsyncClient",
+            return_value=mock_client,
+        ):
             res = await fetch_ops_health()
 
         assert len(res.engines) == 3
@@ -71,7 +74,10 @@ class TestFetchOpsLogs:
         mock_client.__aexit__ = AsyncMock(return_value=None)
         mock_client.get = AsyncMock(side_effect=httpx.ConnectError("refused"))
 
-        with patch("factory.dashboard.ops_proxy.httpx.AsyncClient", return_value=mock_client):
+        with patch(
+            "factory.dashboard.ops_proxy.httpx.AsyncClient",
+            return_value=mock_client,
+        ):
             res = await fetch_ops_logs("hub-errors")
 
         assert res.engine_reachable is False
@@ -96,7 +102,10 @@ class TestFetchOpsLogs:
         }
         mock_client.get = AsyncMock(return_value=ok)
 
-        with patch("factory.dashboard.ops_proxy.httpx.AsyncClient", return_value=mock_client):
+        with patch(
+            "factory.dashboard.ops_proxy.httpx.AsyncClient",
+            return_value=mock_client,
+        ):
             res = await fetch_ops_logs("operator-events", limit=5)
 
         assert res.engine_reachable is True

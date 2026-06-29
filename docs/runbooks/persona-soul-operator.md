@@ -17,7 +17,8 @@ How soul edits propagate (or do not) across harnesses.
 | Path | Flow |
 |------|------|
 | Dashboard `/agents/:name` | PATCH scalars + PUT `soul.md` via BFF → hub `soul.put` |
-| CLI | `factory agent patch` (scalars); soul document via hub RPC / backfill script |
+| CLI scalars | `factory agent patch <name> --json '{"model":"…"}'` — harness/model/voice scalars only |
+| CLI soul doc | `scripts/backfill_soul_documents.py` (migration) or hub NATS `soul.put` via RPC client — no direct `factory agent patch` on soul markdown V1 |
 | Legacy | `persona_json` inline — fallback until column dropped |
 
 Compose happens **only** in `core/persona.py` on the hub — never in the SPA or harness workers.
@@ -54,6 +55,6 @@ New chat tabs load `backend` + `model` from agent DB row (not hardcoded `claude-
 
 `soul_meta_json.memory.enabled` is provision-only — no `set_memory()` or vault identity anchor in this release. Memory line hidden in dashboard UI.
 
-## Security note (#1992)
+## Security / threat model (#1992)
 
-Soul editor on Tailnet is control-plane access. No per-user auth on dashboard BFF yet — restrict Tailnet membership until OIDC lands.
+Soul editor is **control-plane** access: anyone who can reach the dashboard BFF can mutate agent identity for all bots bound to that agent. V1 assumes **Tailnet-only** reachability (no public ingress). Dashboard BFF has no per-operator OIDC yet (#1992) — restrict Tailnet membership, audit `soul.put` logs, run secret lint before save. Do not embed API keys in soul markdown.

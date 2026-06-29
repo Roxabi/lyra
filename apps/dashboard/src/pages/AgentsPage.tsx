@@ -19,6 +19,16 @@ import {
   type SoulSections,
 } from "@/lib/agents-api";
 import { SOUL_SECTIONS } from "@/lib/agents-constants";
+import { formatSoulSecretWarning, scanSoulMarkdownForSecrets } from "@/lib/soul-secret-lint";
+
+function composeSoulMarkdown(sections: SoulSections): string {
+  return SOUL_SECTIONS.map((s) => {
+    const body = sections[s]?.trim() ?? "";
+    return body ? `## ${s}\n${body}` : "";
+  })
+    .filter(Boolean)
+    .join("\n\n");
+}
 
 export function AgentsListPage() {
   const { t } = useTranslation();
@@ -93,24 +103,18 @@ export function AgentDetailPage() {
     }
   }, [soulQ.data]);
 
-  const docBytes = useMemo(() => {
-    const md = SOUL_SECTIONS.map((s) => {
-      const body = sections[s]?.trim() ?? "";
-      return body ? `## ${s}\n${body}` : "";
-    })
-      .filter(Boolean)
-      .join("\n\n");
-    return new TextEncoder().encode(md).length;
-  }, [sections]);
+  const soulMarkdown = useMemo(() => composeSoulMarkdown(sections), [sections]);
+
+  const docBytes = useMemo(() => new TextEncoder().encode(soulMarkdown).length, [soulMarkdown]);
+
+  const secretWarning = useMemo(
+    () => formatSoulSecretWarning(scanSoulMarkdownForSecrets(soulMarkdown)),
+    [soulMarkdown],
+  );
 
   const saveMut = useMutation({
     mutationFn: async () => {
-      const md = SOUL_SECTIONS.map((s) => {
-        const body = sections[s]?.trim() ?? "";
-        return body ? `## ${s}\n${body}` : "";
-      })
-        .filter(Boolean)
-        .join("\n\n");
+      const md = soulMarkdown;
       await patchAgentConfig(name, {
         backend: harness,
         model,
@@ -230,6 +234,14 @@ export function AgentDetailPage() {
         <p className="mt-2 text-xs text-muted-foreground">
           Document size: {docBytes} / 49152 bytes
         </p>
+        {secretWarning ? (
+          <p
+            className="mt-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+            role="alert"
+          >
+            {secretWarning}
+          </p>
+        ) : null}
         <div className="mt-4 flex flex-wrap gap-2">
           <Button type="button" variant="secondary" onClick={() => previewMut.mutate()}>
             Preview compose

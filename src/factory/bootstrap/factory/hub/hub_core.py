@@ -81,4 +81,7 @@ def _build_hub(deps: BuildHubDeps) -> Hub:
     if deps.voice.socialmedia_client is not None:
         hub.set_socialmedia_client(deps.voice.socialmedia_client)
 
+    hub._agent_store = deps.stores.agent
+    hub._blob_store = deps.blob_store
+
     return hub

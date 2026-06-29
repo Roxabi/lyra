@@ -21,6 +21,14 @@ DEFAULT_PRUNE_HORIZON_S = 180.0
 MAX_ENTRIES = 32
 
 
+def _load_default_catalog() -> list[FleetCatalogEntry]:
+    try:
+        return load_fleet_catalog()
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        log.warning("fleet_store: catalog unavailable (%s); using empty manifest", exc)
+        return []
+
+
 @dataclass(slots=True)
 class FleetLiveEntry:
     report: ContainerReport
@@ -54,7 +62,7 @@ class FleetStore:
         self._live: dict[tuple[str, str], FleetLiveEntry] = {}
         self._report_ttl_s = report_ttl_s
         self._prune_horizon_s = prune_horizon_s
-        self._catalog = catalog if catalog is not None else load_fleet_catalog()
+        self._catalog = catalog if catalog is not None else _load_default_catalog()
         self._rejected_ids: set[str] = set()
 
     def upsert(self, report: ContainerReport) -> None:

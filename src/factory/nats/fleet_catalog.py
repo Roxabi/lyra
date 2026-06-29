@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+import os
 import re
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 _INSTRUMENTED_COMPONENTS = frozenset(
     {
@@ -40,7 +44,34 @@ class FleetCatalogEntry:
 
 
 def _repo_root() -> Path:
-    return Path(__file__).resolve().parents[2]
+    """Resolve checkout root (contains deploy/quadlet.toml)."""
+    env = os.environ.get("ROXABI_FACTORY_REPO")
+    if env:
+        return Path(env).expanduser().resolve()
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "deploy" / "quadlet.toml").is_file():
+            return parent
+    # src/factory/nats/fleet_catalog.py → parents[3] == repo root
+    return here.parents[3]
+
+
+def _resolve_container_path(
+    container_dir: Path, rel: str, *, template: bool
+) -> Path | None:
+    """Return readable quadlet unit file (.container or .container.tmpl)."""
+    direct = container_dir / rel
+    if direct.is_file():
+        return direct
+    if template or not rel.endswith(".container"):
+        tmpl = container_dir / f"{rel}.tmpl"
+        if tmpl.is_file():
+            return tmpl
+    stem = Path(rel).stem
+    tmpl = container_dir / f"{stem}.container.tmpl"
+    if tmpl.is_file():
+        return tmpl
+    return None
 
 
 def _parse_container_file(path: Path) -> tuple[str, str, bool]:
@@ -62,17 +93,31 @@ def load_fleet_catalog(
 ) -> list[FleetCatalogEntry]:
     """Load expected fleet rows from quadlet SSoT."""
     root = _repo_root()
-    toml_path = quadlet_toml or root / "deploy" / "quadlet.toml"
-    container_dir = quadlet_dir or root / "deploy" / "quadlet"
+    toml_path = quadlet_toml or Path(
+        os.environ.get("FLEET_QUADLET_TOML", root / "deploy" / "quadlet.toml")
+    )
+    container_dir = quadlet_dir or Path(
+        os.environ.get("FLEET_QUADLET_DIR", root / "deploy" / "quadlet")
+    )
+    if not toml_path.is_file():
+        raise FileNotFoundError(f"quadlet.toml not found: {toml_path}")
     raw = tomllib.loads(toml_path.read_text(encoding="utf-8"))
-    components: dict[str, dict[str, str]] = raw.get("component", {})
+    components: dict[str, dict[str, object]] = raw.get("component", {})
     entries: list[FleetCatalogEntry] = []
     for key, spec in sorted(components.items()):
         rel = spec.get("container")
-        if not rel:
+        if not rel or not isinstance(rel, str):
             continue
-        container_path = container_dir / rel
-        if not container_path.is_file():
+        template = bool(spec.get("template"))
+        container_path = _resolve_container_path(
+            container_dir, rel, template=template
+        )
+        if container_path is None:
+            log.debug(
+                "fleet_catalog: skipping %s — no unit file for %s",
+                key,
+                rel,
+            )
             continue
         container_name, image_ref, pinned = _parse_container_file(container_path)
         entries.append(

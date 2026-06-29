@@ -517,8 +517,18 @@ Sources : `/tmp/grok-review-{arch,nats,impl}-d408c003.md`
 - Blocks 1–5 + 7 livrés sur `feat/fleet-container-obs` ; Blocks 6/8/9 reportés (non-goals harness).
 - `make qg` green (lint, pyright, vitest, import-linter, ACL drift, architecture snapshot, pytest BFF).
 - Écarts : `dashboard_rpc.py` scindé (`dashboard_fleet_rpc.py`, `dashboard_voice_rpc.py`) pour gate SLOC 300 ; reporters hors bootstrap importent `roxabi_obs` directement (import-linter).
-- Catalogue `emit_fleet_catalog.py` : 19 entrées factory (voiceCLI satellites hors scope repo).
+- Catalogue `emit_fleet_catalog.py` : 21 entrées factory (telegram/discord via `.tmpl`).
 - Prochaine étape : commit + `/pr --base staging` → review → CI.
+
+### 2026-06-29 — Correctifs vérificateur (session Grok)
+
+- `fleet_catalog._repo_root()` : walk `deploy/quadlet.toml` (plus `parents[2]` → `src/`).
+- Templates quadlet : résolution `.container.tmpl` pour telegram/discord.
+- `FleetStore` : catalogue vide + warning si fichier absent (plus crash hub boot).
+- Dockerfile builder : `COPY deploy/quadlet*` pour catalogue runtime en image.
+- ACL : `factory.metric.host.container_report` publish explicite sur les 11 identities factory.
+- Tests : `test_fleet_ingest.py` (NATS publish → subscriber → FleetStore), `test_fleet_catalog.py`.
+- Logs preuve : `/tmp/grok-goal-8314e5b423cf/implementer/{qg,acl,hub-fleet,contracts,dashboard,imports,catalogue}-*.log`.
 
 ---
 

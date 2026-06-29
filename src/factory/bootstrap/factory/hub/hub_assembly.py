@@ -12,6 +12,7 @@ from factory.bootstrap.factory.hub.hub_core import _build_hub
 from factory.bootstrap.factory.hub.hub_llm_client import build_llm_client
 from factory.bootstrap.factory.llm_overlay import init_nats_llm
 from factory.bootstrap.factory.voice_overlay import (
+    init_blobstore,
     init_nats_socialmedia,
     init_nats_stt,
     init_nats_tts,
@@ -103,6 +104,7 @@ async def _build_hub_and_wire(  # noqa: PLR0913 — unavoidable wiring surface
             inbound_bus=inbound_bus,
             pm=pm,
             stores=stores,
+            blob_store=init_blobstore(),
         )
     )
     if hub._turn_publisher is None:

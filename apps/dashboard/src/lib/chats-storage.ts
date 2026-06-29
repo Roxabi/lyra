@@ -40,12 +40,17 @@ export function saveTabs(tabs: ChatTab[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(tabs));
 }
 
-export function newTab(agent: string): ChatTab {
+export interface AgentDefaults {
+  backend: HarnessKind;
+  model: string;
+}
+
+export function newTab(agent: string, defaults?: AgentDefaults): ChatTab {
   return {
     id: randomId(),
     agent,
-    harness: "claude-cli",
-    model: "sonnet",
+    harness: defaults?.backend ?? "claude-cli",
+    model: defaults?.model ?? "sonnet",
     sessionId: null,
     streamToken: null,
     lastActive: Date.now(),

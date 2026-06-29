@@ -313,8 +313,10 @@ class TestInitBotAuthsAndAgents:
 
         monkeypatch.setattr(agent_factory_mod, "_load_messages", _load_messages)
 
+        mock_row = MagicMock()
+        mock_row.name = "lyra_default"
         stores = MagicMock()
-        stores.agent.get = MagicMock(return_value=MagicMock(name="lyra_default"))
+        stores.agent.get = MagicMock(return_value=mock_row)
 
         # Act
         result = await _init_bot_auths_and_agents(stores, {})

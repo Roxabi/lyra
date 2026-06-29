@@ -205,8 +205,10 @@ class TestHotReloadPreservesMsgManager:
         # Verify msg_manager is wired into command_router initially
         assert agent.command_router._msg_manager is mm
 
+        import asyncio
+
         old_cr = agent.command_router
-        agent._maybe_reload()
+        asyncio.run(agent._maybe_reload())
 
         # Assert -- command_router rebuilt (new object); msg_manager preserved
         assert agent.command_router is not old_cr
@@ -296,7 +298,9 @@ class TestHotReloadPreservesMsgManager:
         os.utime(handlers_path, (new_mtime, new_mtime))
         agent._plugin_mtimes["echo"] = new_mtime - 2
 
-        agent._maybe_reload()
+        import asyncio
+
+        asyncio.run(agent._maybe_reload())
 
         # Assert -- command_router rebuilt; msg_manager preserved
         assert agent.command_router is not old_cr

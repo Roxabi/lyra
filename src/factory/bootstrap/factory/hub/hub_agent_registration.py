@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
 from factory.bootstrap.factory.agent_factory import ResolveAgentsDeps, _resolve_agents
@@ -14,9 +15,12 @@ from factory.core.lifecycle.circuit_breaker import CircuitRegistry
 from factory.core.messaging.messages import MessageManager
 from factory.core.ports.stt import STTProtocol
 from factory.core.ports.tts import TtsProtocol
+from factory.infrastructure.soul.soul_ops import preload_soul_caches_for_rows
 from factory.infrastructure.stores.registry.agent_store import AgentStore
 
 if TYPE_CHECKING:
+    from factory.core.agent.agent_models import AgentRow
+    from factory.core.ports.blobstore import BlobStorePort
     from factory.core.ports.llm import LlmProvider
     from factory.llm.llm_client import LlmClient
 
@@ -55,5 +59,17 @@ def register_agents(  # noqa: PLR0913 — registration requires all deps
             omp_rpc_driver=omp_rpc_driver,
         )
     )
+    blob_store = getattr(hub, "_blob_store", None)
+
+    def _make_soul_preload(
+        store: "BlobStorePort | None",
+    ) -> Callable[["AgentRow"], Awaitable[None]]:
+        async def _preload_row(row: "AgentRow") -> None:
+            await preload_soul_caches_for_rows([row], store)
+
+        return _preload_row
+
     for ag in all_agents.values():
         hub.register_agent(ag)
+        if hasattr(ag, "_preload_soul_for_row"):
+            ag._preload_soul_for_row = _make_soul_preload(blob_store)

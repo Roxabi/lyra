@@ -1,0 +1,162 @@
+---
+title: "Persona / soul — harness parity & centralization — Expert Consensus"
+status: consensus-reached
+date: 2026-06-29
+panel: architect, devops, axial-drift
+confidence: high
+related: [ADR-073, ADR-029, ADR-094, #1813, #1490]
+---
+
+## Problem
+
+How should agent persona ("soul") be composed and applied across harnesses (`claude-cli`, `omp-rpc`, future runtimes) without N×M axial drift?
+
+Constraints accepted by the operator:
+
+- Soul is **session-scoped**, not message-scoped.
+- A `persona_json` edit does **not** force-update active provider sessions (lag until new pool/session).
+- OMP V2 must reach **parity** with CliPool session-boundary semantics.
+
+## Panel
+
+| Expert | Focus |
+|--------|-------|
+| **architect** | Layering, long-term maintainability, harness contract |
+| **devops** | Multi-container rollout, session volumes, observability, runbooks |
+| **axial-drift** | ADR-073 stage-axis, N+M vs N×M, import/contract gates |
+
+## Consensus ρ
+
+**Ratify a hub-centric, three-layer prompt stack with a single persona composer and dumb harness executors.**
+
+### Layer A — Authoring (stable)
+
+| Invariant | Owner |
+|-----------|-------|
+| `agents.persona_json` | DB (`config.db`) — structured soul, editable via CLI / future dashboard |
+| `compose_system_prompt_from_json()` | `core/persona.py` — **sole** persona JSON → text composer |
+
+Materialization at agent load: `agent_db_loader.py` → `Agent.config.system_prompt`.
+
+### Layer B — Session context (pool boundary)
+
+| Invariant | Owner |
+|-----------|-------|
+| `_ensure_system_prompt(pool)` | Hub / `AgentBase` — runs once per pool (first turn) |
+| Memory anchor + recall | `build_system_prompt()` — optional enrichment on top of Layer A |
+
+Result cached in `pool._system_prompt`. **Not invalidated on hot-reload** — session lag is explicit.
+
+### Layer C — Turn resolution (hub stage)
+
+| Invariant | Owner |
+|-----------|-------|
+| `resolve_effective_system_prompt(agent, pool) -> str` | **New** core turn-stage primitive (name TBD) — single call site before `LlmProvider.complete/stream` |
+| `RuntimeConfig.overlay()` | Folded here if/when wired — not per-harness |
+
+### Transport & apply
+
+```
+resolve_effective_system_prompt()
+    → JobEnvelope.payload.system_prompt: str   # opaque, never persona_json
+    → harness APPLY at session boundary only
+         claude-cli: CliPool spawn / --system-prompt-file (reference impl ✓)
+         omp-rpc:    session seed at acquire/new_session (V2 — **not shipped**)
+```
+
+Harnesses **never** parse `persona_json` or call `compose_system_prompt_from_json()`.
+
+### Accepted session / soul lag
+
+> **The soul is a property of the provider session, not of the message.**
+
+| Event | Effect |
+|-------|--------|
+| `persona_json` patched in DB | `Agent.config.system_prompt` updates on next message (ADR-029) |
+| Active `pool._system_prompt` / CLI subprocess / OMP `.jsonl` | Keeps prior soul until new pool, `/reset`, or cold session |
+| Prompt change detected at harness boundary | New session (CliPool: respawn `preserve_session=False`) |
+
+This is **expected behaviour**, not a defect. Operators need a runbook: persona edit → new conversation or `/reset` for immediate effect.
+
+### Rationale
+
+Unanimous across panel:
+
+1. **Already mostly true** — `persona.py` is today the only production composer; drift risk is in *future* dashboard/OMP/dashboard-launch paths, not duplicate composers yet.
+2. **ADR-073 aligned** — composition stays on the **stage** axis (hub/core); harnesses are thin executors (N+M growth).
+3. **CliPool is the reference contract** — spawn-time inject, `entry.system_prompt` compare, respawn on change.
+4. **Session lag** simplifies ops and matches provider semantics (Claude `--resume`, OMP durable sessions on `factory-omp-sessions`).
+
+## Trade-offs
+
+1. **Staleness vs instant persona edits** — Hot-reload refreshes agent config but not live sessions; operator must reset for immediate soul change.
+2. **Memory anchor stickiness** — `save_identity_anchor()` seeds once; persona edits can diverge further for memory-enabled agents unless anchor policy is documented (same lag semantics).
+3. **OMP Model B complexity** — Flat worker pool + `switch_session` requires per-session prompt tracking at acquire, not a global worker prompt (harder than CliPool 1:1 `pool_id` → entry).
+4. **Monitoring** — Wire carries opaque string; recommend envelope metadata `prompt_sha256` + `agent_updated_at` for rollout provenance (devops).
+5. **64 KB ceiling** — `MAX_PROMPT_BYTES` can fail compose at hub; needs validation before deploy.
+
+## Alternatives
+
+| ω | Proposed by | Rejected because |
+|---|-------------|------------------|
+| Dashboard/SPA composes soul in TypeScript | — (temptation) | Splits SSoT; couples UI release to prompt semantics |
+| OMP worker parses `persona_json` | — | N×M along harness axis; breaks dumb-worker model (#1813) |
+| `persona_json` in `JobEnvelope` | — | Pushes authoring schema across trust boundary; workers become composers |
+| Per-message soul injection | — | Violates session invariant; token cost; fights session files |
+| Mid-session hot-patch on persona edit | — | Unsafe for OMP `.jsonl` + clipool resume; rejected by operator |
+| Coordinated hub+clipool+omp restart on persona edit | devops (considered) | Unnecessary for compose rollouts; does not fix active sessions anyway |
+| Merge `agent_refiner` prompt into `persona.py` | — | Orthogonal axis (refinement meta-prompt ≠ agent soul); keep separate |
+
+## Dissent
+
+**None on core architecture** — unanimous ratification.
+
+**Recorded nuances (not blocking):**
+
+- **devops** — wants `prompt_sha256` / `agent_updated_at` on envelopes before calling OMP parity "production-ready".
+- **architect** — identity-anchor invalidation policy should be written explicitly (same lag rules as `pool._system_prompt`).
+- **axial-drift** — `DashboardJobsLaunchRequest.system_prompt` from client is an existing bypass vector; hub must resolve soul from agent registry for dashboard paths.
+
+## Implementation Notes
+
+### P0 — OMP parity
+
+1. Spike `omp_rpc` for session-boundary system-prompt API.
+2. Wire `omp_worker` → `RpcBridge.run(..., system_prompt=)` → apply at `acquire` / `new_session`.
+3. Store `system_prompt` on session-scoped state (mirror `_ProcessEntry.system_prompt`).
+4. Contract tests: same string semantics as `tests/adapters/omp/` + clipool respawn cases.
+
+### P1 — Hub centralization
+
+1. Add `resolve_effective_system_prompt(agent, pool) -> str` in `core/`; replace scattered `pool._system_prompt or config.system_prompt`.
+2. Call from `SimpleAgent.process()` once per turn (after `_ensure_system_prompt`).
+3. Dashboard BFF: `GET/PATCH agents` via hub RPC; preview uses hub `compose_system_prompt_from_json` — **no SPA compose**.
+4. Hub-resolved soul for `DashboardJobsLaunchRequest` (stop trusting client `system_prompt` for agent identity).
+
+### P2 — Drift gates
+
+```text
+importlinter:
+  forbidden: factory.adapters → factory.core.persona
+  forbidden: factory.dashboard → factory.core.persona / agent_db_loader
+
+contract tests:
+  persona_json ∉ JobEnvelope.payload keys
+  system_prompt: str only
+```
+
+**Allowed read-only `persona_json` consumers (non-compose):** `bot_display_name`, `agent_refiner_stages` (refiner context only).
+
+### Ops runbook (devops)
+
+After `factory agent patch` on `persona_json`:
+
+- Telegram/Discord/Web: `/reset` or new conversation for immediate soul.
+- OMP: new session scope; durable state lives on `factory-omp-sessions` volume (`PI_CODING_AGENT_DIR`).
+- Hub-only image roll for compose logic changes — workers stay dumb executors.
+
+## Next
+
+1. `/spec` — OMP V2 system-prompt apply + hub `resolve_effective_system_prompt`
+2. `/plan` — slice: OMP apply → hub resolve → dashboard agent config (no compose in SPA)
+3. Optional ADR snippet under persona/harness invariants (or extend ADR-073 appendix)

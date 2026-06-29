@@ -146,4 +146,14 @@ describe("AgentDetailPage", () => {
       expect(screen.getByText(/Active chat sessions keep the previous soul/)).toBeTruthy();
     });
   });
+
+  it("shows secret lint warning when soul text matches token patterns", async () => {
+    const user = userEvent.setup();
+    renderAgentDetail();
+    await waitFor(() => expect(screen.getByText("Identity")).toBeTruthy());
+    const soulTextarea = screen.getAllByRole("textbox")[2];
+    await user.clear(soulTextarea);
+    await user.type(soulTextarea, "key sk-abcdefghijklmnopqrstuvwx");
+    expect(screen.getByRole("alert").textContent).toMatch(/Possible secret detected/);
+  });
 });

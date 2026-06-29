@@ -217,7 +217,7 @@ class TestHandleSpawnSemantics:
         pool.release = MagicMock()
         pool.aclose = AsyncMock()
         # Each acquire call returns a fresh worker
-        pool.acquire = AsyncMock(side_effect=lambda *_: _fresh_pool_worker())
+        pool.acquire = AsyncMock(side_effect=lambda *_, **__: _fresh_pool_worker())
 
         worker = _make_worker(pool)
         payload2 = {**_VALID_PAYLOAD, "job_id": "job-xyz789", "trace_id": "trace-002"}

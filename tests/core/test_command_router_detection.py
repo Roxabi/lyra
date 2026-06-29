@@ -215,7 +215,9 @@ class TestHotReloadUpdatesCommands:
         os.utime(handlers_path, (new_mtime, new_mtime))
         agent._plugin_mtimes["echo"] = new_mtime - 2  # make it appear stale
 
-        agent._maybe_reload()
+        import asyncio
+
+        asyncio.run(agent._maybe_reload())
 
         plugin_cmds_after = agent._command_loader.get_commands(["echo"])
         assert "/echo" in plugin_cmds_after

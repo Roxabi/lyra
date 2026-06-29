@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "@/lib/api";
 import { OpsPage } from "@/pages/OpsPage";
 
@@ -15,9 +15,22 @@ function renderOps() {
   );
 }
 
+function harnessCard(title: string) {
+  const heading = screen.getByText(title);
+  const card = heading.closest(".dashboard-surface");
+  expect(card).not.toBeNull();
+  return within(card as HTMLElement);
+}
+
 describe("OpsPage", () => {
+  let fetchAgentStatusSpy: ReturnType<typeof vi.spyOn<typeof api, "fetchAgentStatus">>;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   beforeEach(() => {
-    vi.spyOn(api, "fetchAgentStatus").mockImplementation(async (_agent, harness) => {
+    fetchAgentStatusSpy = vi.spyOn(api, "fetchAgentStatus").mockImplementation(async (_agent, harness) => {
       if (harness === "omp-rpc") {
         return [
           {
@@ -78,7 +91,9 @@ describe("OpsPage", () => {
     await waitFor(() => {
       expect(screen.getByText("Loki")).toBeTruthy();
     });
-    expect(screen.getAllByText("En ligne").length).toBeGreaterThanOrEqual(2);
+    await waitFor(() => {
+      expect(harnessCard("Clipool (claude-cli)").getByText("En ligne")).toBeTruthy();
+    });
     expect(screen.getByText("ERROR factory.core.hub: crash")).toBeTruthy();
     expect(screen.getByText("Lyra")).toBeTruthy();
   });
@@ -86,8 +101,51 @@ describe("OpsPage", () => {
   it("shows omp harness online when omp-rpc probe succeeds", async () => {
     renderOps();
     await waitFor(() => {
-      const ompCard = screen.getByText("OMP (omp-rpc)").closest(".dashboard-surface");
-      expect(ompCard?.textContent).toContain("En ligne");
+      expect(fetchAgentStatusSpy).toHaveBeenCalledWith("lyra", "omp-rpc");
+      expect(harnessCard("OMP (omp-rpc)").getByText("En ligne")).toBeTruthy();
     });
+  });
+
+  it("shows omp harness offline when omp-rpc probe fails", async () => {
+    fetchAgentStatusSpy.mockImplementation(async (_agent, harness) => {
+      if (harness === "omp-rpc") {
+        return [
+          {
+            agent: "lyra",
+            in_roster: true,
+            harness: "omp-rpc",
+            harness_reachable: false,
+            online: false,
+          },
+        ];
+      }
+      return [
+        {
+          agent: "lyra",
+          in_roster: true,
+          harness: "claude-cli",
+          harness_reachable: true,
+          online: true,
+        },
+      ];
+    });
+
+    renderOps();
+    await waitFor(() => {
+      expect(fetchAgentStatusSpy).toHaveBeenCalledWith("lyra", "omp-rpc");
+      expect(harnessCard("OMP (omp-rpc)").getByText("Hors ligne")).toBeTruthy();
+      expect(harnessCard("Clipool (claude-cli)").getByText("En ligne")).toBeTruthy();
+    });
+  });
+
+  it("shows omp offline and skips omp probe when roster is empty", async () => {
+    fetchAgentStatusSpy.mockResolvedValue([]);
+
+    renderOps();
+    await waitFor(() => {
+      expect(harnessCard("OMP (omp-rpc)").getByText("Hors ligne")).toBeTruthy();
+    });
+    expect(fetchAgentStatusSpy).toHaveBeenCalledTimes(1);
+    expect(fetchAgentStatusSpy).not.toHaveBeenCalledWith(expect.anything(), "omp-rpc");
   });
 });

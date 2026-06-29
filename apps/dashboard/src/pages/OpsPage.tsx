@@ -25,10 +25,10 @@ export function OpsPage() {
     refetchInterval: 15_000,
   });
 
-  const probeAgent = status[0]?.agent;
+  const probeAgent = status.find((s) => s.in_roster)?.agent ?? status[0]?.agent;
   const { data: ompHarnessStatus = [] } = useQuery({
     queryKey: ["agent-status-ops-omp", probeAgent],
-    queryFn: () => fetchAgentStatus(probeAgent!, "omp-rpc"),
+    queryFn: () => fetchAgentStatus(probeAgent ?? "", "omp-rpc"),
     enabled: Boolean(probeAgent),
     refetchInterval: 15_000,
   });

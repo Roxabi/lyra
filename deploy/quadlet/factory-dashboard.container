@@ -11,6 +11,8 @@ StartLimitBurst=5
 Image=ghcr.io/roxabi/factory:staging-svc
 Label=io.containers.autoupdate=registry
 ContainerName=factory-dashboard
+Environment=CONTAINER_NAME=factory-dashboard
+Environment=IMAGE_REF=ghcr.io/roxabi/factory:staging-svc
 Network=roxabi.network
 NoNewPrivileges=true
 ReadOnly=true

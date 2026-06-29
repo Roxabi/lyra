@@ -31,6 +31,9 @@ def create_app(
 
             nats_url = os.environ.get("NATS_URL", "nats://factory-nats:4222")
             nc = await nats_connect(nats_url, identity_name="ingress")
+            from roxabi_obs import start_fleet_reporter
+
+            await start_fleet_reporter(nc)
             state["publisher"] = EventPublisher(nc.jetstream())
             state["nc"] = nc
         log.info(

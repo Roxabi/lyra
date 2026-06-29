@@ -125,6 +125,9 @@ def _make_lifespan(blob_root: pathlib.Path, injected_nats: NATS | None):  # type
             app.state.nats_provisioned = False
             app.state.nats_client = nc
             if nc is not None:
+                from roxabi_obs import start_fleet_reporter
+
+                await start_fleet_reporter(nc)
                 # _provision_nats sets app.state.audit_sink (success OR degraded)
                 await _provision_nats(app, nc)
             else:

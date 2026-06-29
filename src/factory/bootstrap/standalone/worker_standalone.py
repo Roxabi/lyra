@@ -12,6 +12,7 @@ import nats.errors
 from factory.adapters.clipool.clipool_worker import CliPoolNatsWorker
 from factory.bootstrap.factory.config import _load_cli_pool_config
 from factory.bootstrap.infra.git_ownership_probe import run_git_ownership_probe
+from factory.bootstrap.lifecycle.signal_handlers import setup_shutdown_event
 from factory.core.cli.cli_pool import CliPool, CliPoolDeps
 from factory.core.messaging.utils.metrics import log_contracts_version
 from factory.infrastructure.stores.session.turn_store import TurnStore
@@ -80,9 +81,17 @@ async def _bootstrap_clipool_standalone(raw_config: dict) -> None:
         identity_name="clipool-worker",
     )
     log.info("clipool: starting CliPoolNatsWorker on factory.jobs.claude")
+    nc = None
     try:
-        await worker.run(nats_url)
+        nc = await nats_connect(nats_url, identity_name="clipool-worker")
+        from factory.bootstrap.fleet_reporter import start_fleet_reporter
+
+        await start_fleet_reporter(nc)
+        stop = setup_shutdown_event()
+        await worker.run_embedded(nc, stop)
     finally:
+        if nc is not None:
+            await nc.close()
         await cli_pool.drain_audit_tasks()
         await cli_pool.stop()
 
@@ -113,6 +122,9 @@ async def _bootstrap_turn_writer_standalone(raw_config: dict) -> None:
 
     try:
         nc = await nats_connect(nats_url, identity_name="turn-writer")
+        from factory.bootstrap.fleet_reporter import start_fleet_reporter
+
+        await start_fleet_reporter(nc)
         log.info(
             "turn-writer: connected to NATS at %s",
             scrub_nats_url(nats_url),
@@ -172,4 +184,12 @@ async def _bootstrap_omp_standalone(raw_config: dict) -> None:  # noqa: ARG001
     pool = OmpPool()
     worker = OmpWorker(pool=pool, identity_name="omp-worker")
     log.info("omp: starting OmpWorker on factory.jobs.omp")
-    await worker.run(nats_url)
+    nc = await nats_connect(nats_url, identity_name="omp-worker")
+    from factory.bootstrap.fleet_reporter import start_fleet_reporter
+
+    try:
+        await start_fleet_reporter(nc)
+        stop = setup_shutdown_event()
+        await worker.run_embedded(nc, stop)
+    finally:
+        await nc.close()

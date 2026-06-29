@@ -222,6 +222,10 @@ async def run_daemon(config: DaemonConfig) -> None:
 
     nats_url = os.environ.get("NATS_URL", "").strip()
     nc, publisher = await _connect_nats_publisher(nats_url)
+    if nc is not None:
+        from roxabi_obs import start_fleet_reporter
+
+        await start_fleet_reporter(nc)
 
     try:
         async with httpx.AsyncClient(

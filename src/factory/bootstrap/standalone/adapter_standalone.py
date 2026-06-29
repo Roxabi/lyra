@@ -71,6 +71,9 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
 
     try:
         nc = await nats_connect(nats_url, identity_name=f"{platform}-adapter")
+        from factory.bootstrap.fleet_reporter import start_fleet_reporter
+
+        await start_fleet_reporter(nc)
         log.info(
             "adapter_standalone: connected to NATS at %s",
             scrub_nats_url(nats_url),

@@ -65,6 +65,10 @@ async def _run() -> None:
             blob_store=blob_store, postiz=postiz, blobs=blobs
         )
 
+    from roxabi_obs import start_fleet_reporter
+
+    from roxabi_nats import nats_connect
+
     adapter = SocialMediaNatsAdapter(
         postiz,
         provider_base_url=base_url,
@@ -72,7 +76,9 @@ async def _run() -> None:
     )
     try:
         log.info("socialmedia-adapter starting (provider=%s)", base_url)
-        await adapter.run(nats_url)
+        nc = await nats_connect(nats_url, identity_name="socialmedia-adapter")
+        await start_fleet_reporter(nc)
+        await adapter.run_embedded(nc)
     finally:
         await postiz.aclose()
         if blob_store is not None:

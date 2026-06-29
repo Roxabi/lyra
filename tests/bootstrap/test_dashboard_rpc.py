@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from factory.bootstrap.factory.dashboard_jobs_rpc import handle_jobs_list
 from factory.bootstrap.factory.dashboard_rpc import (
     _handle_agents_status,
-    _handle_jobs_list,
     _handle_sessions_list,
     _handle_sessions_resume,
     _handle_sessions_turns,
@@ -124,7 +124,7 @@ async def test_jobs_list_empty_without_registry() -> None:
     hub.bindings = {}
     hub._active_jobs_coord = None
     hub._active_jobs_store = None
-    out = await _handle_jobs_list(hub, _NC, {})
+    out = await handle_jobs_list(hub, _NC, {})
     assert out["jobs"] == []
 
 

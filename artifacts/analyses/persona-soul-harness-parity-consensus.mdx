@@ -29,14 +29,17 @@ Constraints accepted by the operator:
 
 **Ratify a hub-centric, three-layer prompt stack with a single persona composer and dumb harness executors.**
 
-### Layer A — Authoring (stable)
+### Layer A — Authoring (stable) — **updated 2026-06-29 (blobstore)**
 
 | Invariant | Owner |
 |-----------|-------|
-| `agents.persona_json` | DB (`config.db`) — structured soul, editable via CLI / future dashboard |
-| `compose_system_prompt_from_json()` | `core/persona.py` — **sole** persona JSON → text composer |
+| `agents.soul_document_blob_ref` | DB pointer → `soul.md` bytes in blobstore (`sha256:…`) |
+| `agents.soul_meta_json` | DB envelope only — `display_name`, memory provision (not prompt sections) |
+| `agents.persona_json` | **Legacy** inline JSON — fallback until backfill validated + column drop |
+| `parse_soul_markdown()`, `merge_soul_sections()`, `compose_soul_document()` | `core/persona.py` — **sole** soul → text composer |
+| `compose_system_prompt_from_json()` | `core/persona.py` — legacy fallback only |
 
-Materialization at agent load: `agent_db_loader.py` → `Agent.config.system_prompt`.
+Materialization at agent load: write-through soul cache → `agent_db_loader.py` → `Agent.config.system_prompt`. **No blob I/O in `core/`** — fetch via `BlobStorePort` in infrastructure, cache populated on `soul.put` / backfill.
 
 ### Layer B — Session context (pool boundary)
 
@@ -72,7 +75,7 @@ Harnesses **never** parse `persona_json` or call `compose_system_prompt_from_jso
 
 | Event | Effect |
 |-------|--------|
-| `persona_json` patched in DB | `Agent.config.system_prompt` updates on next message (ADR-029) |
+| Soul saved (`soul.put` / legacy `persona_json` patch) | `Agent.config.system_prompt` updates on next message (ADR-029) |
 | Active `pool._system_prompt` / CLI subprocess / OMP `.jsonl` | Keeps prior soul until new pool, `/reset`, or cold session |
 | Prompt change detected at harness boundary | New session (CliPool: respawn `preserve_session=False`) |
 
@@ -130,7 +133,7 @@ Unanimous across panel:
 
 1. Add `resolve_effective_system_prompt(agent, pool) -> str` in `core/`; replace scattered `pool._system_prompt or config.system_prompt`.
 2. Call from `SimpleAgent.process()` once per turn (after `_ensure_system_prompt`).
-3. Dashboard BFF: `GET/PATCH agents` via hub RPC; preview uses hub `compose_system_prompt_from_json` — **no SPA compose**.
+3. Dashboard BFF: `GET/PATCH/PUT agents` + `/soul` via hub RPC; preview uses hub `compose_soul_document` — **no SPA compose**.
 4. Hub-resolved soul for `DashboardJobsLaunchRequest` (stop trusting client `system_prompt` for agent identity).
 
 ### P2 — Drift gates
@@ -149,7 +152,7 @@ contract tests:
 
 ### Ops runbook (devops)
 
-After `factory agent patch` on `persona_json`:
+After soul edit (dashboard `soul.put` or legacy `persona_json` patch):
 
 - Telegram/Discord/Web: `/reset` or new conversation for immediate soul.
 - OMP: new session scope; durable state lives on `factory-omp-sessions` volume (`PI_CODING_AGENT_DIR`).

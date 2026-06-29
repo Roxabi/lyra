@@ -5,9 +5,10 @@ import { ChatPane } from "@/components/ChatPane";
 import { ChatSidebar } from "@/components/layout/ChatSidebar";
 import { CockpitContextPanel } from "@/components/layout/CockpitContextPanel";
 import { useAgentStatus } from "@/hooks/useAgentStatus";
+import { fetchAgentDefaults } from "@/lib/agents-api";
 import { fetchAgents, fetchSessionTurns } from "@/lib/api";
 import { turnsToLog } from "@/lib/chat-messages";
-import { type ChatTab, loadTabs, newTab, saveTabs } from "@/lib/chats-storage";
+import { type AgentDefaults, type ChatTab, loadTabs, newTab, saveTabs } from "@/lib/chats-storage";
 
 export function ChatPage() {
   const { t } = useTranslation("chat");
@@ -31,9 +32,17 @@ export function ChatPage() {
 
   useEffect(() => {
     if (tabs.length === 0 && agents.length > 0) {
-      const t = newTab(agents[0]);
-      setTabs([t]);
-      setActiveId(t.id);
+      void (async () => {
+        let defaults: AgentDefaults | undefined;
+        try {
+          defaults = await fetchAgentDefaults(agents[0]);
+        } catch {
+          defaults = undefined;
+        }
+        const t = newTab(agents[0], defaults);
+        setTabs([t]);
+        setActiveId(t.id);
+      })();
     }
   }, [agents, tabs.length]);
 
@@ -47,10 +56,18 @@ export function ChatPage() {
       setActiveId(existing.id);
       return;
     }
-    const t = newTab(agent);
-    setTabs((prev) => [...prev, t]);
-    setActiveId(t.id);
-    setHydratedLog(null);
+    void (async () => {
+      let defaults: AgentDefaults | undefined;
+      try {
+        defaults = await fetchAgentDefaults(agent);
+      } catch {
+        defaults = undefined;
+      }
+      const t = newTab(agent, defaults);
+      setTabs((prev) => [...prev, t]);
+      setActiveId(t.id);
+      setHydratedLog(null);
+    })();
   };
 
   const closeTab = (id: string) => {
@@ -65,7 +82,13 @@ export function ChatPage() {
     const existing = tabs.find((t) => t.agent === agent);
     if (existing) setActiveId(existing.id);
     else {
-      const t = newTab(agent);
+      let defaults: AgentDefaults | undefined;
+      try {
+        defaults = await fetchAgentDefaults(agent);
+      } catch {
+        defaults = undefined;
+      }
+      const t = newTab(agent, defaults);
       setTabs((prev) => [...prev, t]);
       setActiveId(t.id);
     }

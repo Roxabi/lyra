@@ -178,6 +178,9 @@ class AgentStore(SqliteStore):
                 row.patterns_json,
                 row.passthroughs_json,
                 row.effort,
+                row.soul_meta_json,
+                row.soul_document_blob_ref,
+                row.soul_document_bytes,
                 # ON CONFLICT updated_at value
                 now,
             ),
@@ -208,6 +211,9 @@ class AgentStore(SqliteStore):
             created_at=row.created_at,
             updated_at=now,
             effort=row.effort,
+            soul_meta_json=row.soul_meta_json,
+            soul_document_blob_ref=row.soul_document_blob_ref,
+            soul_document_bytes=row.soul_document_bytes,
         )
 
     async def delete(self, name: str) -> None:

@@ -28,6 +28,22 @@ class DashboardSubjects(BaseModel):
     voice_capabilities: Literal["factory.dashboard.voice.capabilities"] = (
         "factory.dashboard.voice.capabilities"
     )
+    agents_list: Literal["factory.dashboard.agents.list"] = (
+        "factory.dashboard.agents.list"
+    )
+    agents_get: Literal["factory.dashboard.agents.get"] = "factory.dashboard.agents.get"
+    agents_patch: Literal["factory.dashboard.agents.patch"] = (
+        "factory.dashboard.agents.patch"
+    )
+    agents_soul_put: Literal["factory.dashboard.agents.soul.put"] = (
+        "factory.dashboard.agents.soul.put"
+    )
+    agents_soul_get: Literal["factory.dashboard.agents.soul.get"] = (
+        "factory.dashboard.agents.soul.get"
+    )
+    agents_soul_preview: Literal["factory.dashboard.agents.soul.preview"] = (
+        "factory.dashboard.agents.soul.preview"
+    )
 
 
 SUBJECTS = DashboardSubjects()

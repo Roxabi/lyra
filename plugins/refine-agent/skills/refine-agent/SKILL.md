@@ -60,12 +60,7 @@ Also read system TOML if present (for context, not authoritative):
 cat ~/projects/roxabi-factory/src/factory/agents/{α}.toml 2>/dev/null || echo "(no TOML — DB-only agent)"
 ```
 
-∃ persona_name in σ ⇒ attempt to read persona file:
-
-```bash
-ls ~/.roxabi-vault/personas/ 2>/dev/null || echo "(no persona vault)"
-cat ~/.roxabi-vault/personas/{persona_name}.toml 2>/dev/null || echo "(persona file not found)"
-```
+Soul authoring is **DB + blobstore** (AgentSoul v1). Do **not** read `~/.roxabi-vault/personas/` — that path is deprecated. Use `factory agent show` for `soul_document_blob_ref`, `soul_meta_json`, and legacy `persona_json` fallback.
 
 ## Step 3 — Present Profile + Start Conversation
 
@@ -75,7 +70,7 @@ Present current profile in plain language (¬raw JSON dump):
 Agent: {α}
   Model:       {model}
   Backend:     {backend}
-  Persona:     {persona_name} — {key traits if persona file found, else "see DB persona_json"}
+  Soul:        {soul_document_blob_ref or "inline persona_json"} — {display_name from soul_meta_json if set}
   Voice:
     TTS:       {voice_json.tts.engine} / voice: {voice_json.tts.voice}
     STT:       {voice_json.stt.engine}
@@ -96,7 +91,7 @@ N = 0. Repeat while operator has not said done/exit/quit:
    - "voice" / "TTS voice" → `voice_json.tts.voice`
    - "STT engine" → `voice_json.stt.engine`
    - "model" / "LLM" → `model`
-   - "persona" → `persona_name` and/or `persona_json`
+   - "persona" / "soul" → scalars via `persona_json` (legacy) or dashboard `/agents` for full soul.md edit
    - "passthrough" → `passthrough_commands` (list)
    - "system prompt" → `system_prompt`
 3. Propose change with before/after values:
@@ -147,7 +142,7 @@ Output:
 - Invalid JSON returned by patch ⇒ show error, retry with corrected value (ask operator
   for clarification).
 - Σ = ∅ after loop ⇒ "No changes applied." (¬run patch).
-- Persona file not found ⇒ use `persona_json` from DB only (¬block on missing file).
+- Soul blob missing ⇒ hub falls back to `persona_json` from DB (¬block on missing ref).
 - Operator asks about a field not in AgentRow ⇒ clarify which fields are patchable, show
   field list from `factory agent show` output.
 

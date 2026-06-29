@@ -13,7 +13,7 @@
 | **ADR** | [ADR-029](../../docs/architecture/adr/029-db-first-agent-config-and-hot-reload.mdx), [ADR-073](../../docs/architecture/adr/073-axial-stage-of-pipeline-decomposition.mdx), [ADR-094](../../docs/architecture/adr/094-control-plane-dashboard-consolidation.mdx) |
 | **Base PR** | `staging` |
 | **Branche de travail** | feature locale dédiée (ex. `feat/<issue>-persona-soul-blobstore`) — **pas** de commit direct sur `staging` |
-| **Statut global** | `in_review` — impl complete, PR pending |
+| **Statut global** | `done` — PR #2059 merged to staging |
 | **Panel review** | 2026-06-29 — 5 experts (produit, architecte, devops, sécurité, axial-drift) → **CONDITIONAL GO** |
 | **Dernière MAJ** | 2026-06-29 (session 5 — workflow PR validé) |
 | **Workflow PR** | Branche feature → `/goal` → `/pr` → review/fix loop → CI green → `reviewed` + `/ci-watch` |
@@ -645,7 +645,7 @@ Layer C — Turn resolution (hub stage)
 
 - [x] Docs à jour
 - [x] `make qg` complet green
-- [ ] PR mergée vers `staging` (via workflow review + `reviewed` + `/ci-watch`)
+- [x] PR mergée vers `staging` (via workflow review + `reviewed` + `/ci-watch`)
 - [ ] smoke Tailnet : edit soul dashboard → nouveau chat → soul appliquée clipool + omp
 
 ---
@@ -733,6 +733,12 @@ Layer C — Turn resolution (hub stage)
 - Implémentation sur **branche feature dédiée** (pas `staging` direct).
 - Boucle : `/pr` → `/code-review` → `/fix` (loop) → CI verte → `reviewed` → `/ci-watch`.
 - Block 5 done-when : merge via PR, plus « push staging » direct.
+
+### 2026-06-29 — Session 7 : vérification + merge
+
+- Corrigé gaps vérification : tests RPC/handlers, UX Block4, harness parity, evidence logs.
+- `make qg` ×2 green ; CI PR #2059 green (5313+ tests) ; `/ci-watch` → ci=pass.
+- **PR #2059 mergée** vers `staging` (`d030e7a2`).
 
 ### 2026-06-29 — Session 6 : `/goal` exécution
 

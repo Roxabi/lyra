@@ -52,7 +52,7 @@ class TestFreshDb:
 
     @pytest.mark.asyncio
     async def test_fresh_db_has_effort_column(self) -> None:
-        """A brand-new AgentStore has effort in its schema (24 columns)."""
+        """Fresh AgentStore schema includes effort + soul columns (27 total)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "agents.db"
             store = AgentStore(db_path)
@@ -63,7 +63,9 @@ class TestFreshDb:
                 cols = _col_names(rows)
                 assert "effort" in cols
                 assert "show_tool_recap" not in cols
-                assert len(rows) == 24
+                assert len(rows) == 27
+                assert "soul_meta_json" in cols
+                assert "soul_document_blob_ref" in cols
             finally:
                 await store.close()
 
@@ -132,7 +134,7 @@ async def _make_legacy_db(db_path: Path) -> None:
 class TestLegacyDbMigration:
     @pytest.mark.asyncio
     async def test_migration_adds_effort_drops_show_tool_recap(self) -> None:
-        """Migration on legacy DB adds effort, drops show_tool_recap (24 cols)."""
+        """Legacy migration adds effort + soul cols; drops show_tool_recap."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "agents.db"
             await _make_legacy_db(db_path)
@@ -143,7 +145,9 @@ class TestLegacyDbMigration:
                 cols = _col_names(rows)
                 assert "effort" in cols
                 assert "show_tool_recap" not in cols
-                assert len(rows) == 24
+                assert len(rows) == 27
+                assert "soul_meta_json" in cols
+                assert "soul_document_blob_ref" in cols
 
                 # Confirm the pre-existing row survived with its original fields intact.
                 async with db.execute(
@@ -192,7 +196,9 @@ class TestLegacyDbMigration:
                 await run_agent_migrations(db)
                 rows = await _pragma_table_info(db, "agents")
                 cols = _col_names(rows)
-                assert len(rows) == 24
+                assert len(rows) == 27
+                assert "soul_meta_json" in cols
+                assert "soul_document_blob_ref" in cols
                 assert "show_tool_recap" not in cols
 
 
@@ -204,7 +210,7 @@ class TestLegacyDbMigration:
 class TestColumnCount:
     @pytest.mark.asyncio
     async def test_pragma_reports_24_cols_fresh(self) -> None:
-        """Fresh DB: PRAGMA table_info('agents') returns 24 rows."""
+        """Fresh DB: PRAGMA table_info('agents') returns 27 rows."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "agents.db"
             store = AgentStore(db_path)
@@ -212,13 +218,16 @@ class TestColumnCount:
             try:
                 db = store._require_db()
                 rows = await _pragma_table_info(db, "agents")
-                assert len(rows) == 24
+                cols = _col_names(rows)
+                assert len(rows) == 27
+                assert "soul_meta_json" in cols
+                assert "soul_document_blob_ref" in cols
             finally:
                 await store.close()
 
     @pytest.mark.asyncio
     async def test_pragma_reports_24_cols_after_migration(self) -> None:
-        """Legacy DB: PRAGMA table_info('agents') returns 24 rows after migration."""
+        """Legacy DB: PRAGMA table_info('agents') returns 27 rows after migration."""
         with tempfile.TemporaryDirectory() as tmpdir:
             db_path = Path(tmpdir) / "agents.db"
             await _make_legacy_db(db_path)
@@ -226,4 +235,7 @@ class TestColumnCount:
             async with aiosqlite.connect(db_path) as db:
                 await run_agent_migrations(db)
                 rows = await _pragma_table_info(db, "agents")
-                assert len(rows) == 24
+                cols = _col_names(rows)
+                assert len(rows) == 27
+                assert "soul_meta_json" in cols
+                assert "soul_document_blob_ref" in cols

@@ -4,15 +4,25 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
-from uuid import uuid4
 
 from nats.aio.msg import Msg
 from pydantic import ValidationError
 
+from factory.bootstrap.factory.dashboard_agents_rpc import (
+    handle_agents_get,
+    handle_agents_list,
+    handle_agents_patch,
+    handle_agents_soul_get,
+    handle_agents_soul_preview,
+    handle_agents_soul_put,
+)
+from factory.bootstrap.factory.dashboard_jobs_rpc import (
+    handle_jobs_launch,
+    handle_jobs_list,
+    handle_jobs_steer,
+)
 from factory.core.hub.hub_protocol import RoutingKey
-from factory.core.hub.job_catalog import list_active_jobs
 from factory.core.hub.session_catalog import list_sessions_for_agent
 from factory.core.messaging.message import Platform
 from factory.dashboard.heartbeat import CLIPOOL_QUEUE, OMP_QUEUE, queue_group_alive
@@ -20,12 +30,6 @@ from roxabi_contracts.dashboard import (
     SUBJECTS,
     AgentHealth,
     AgentHealthResponse,
-    DashboardJob,
-    DashboardJobsLaunchRequest,
-    DashboardJobsLaunchResponse,
-    DashboardJobsListResponse,
-    DashboardJobsSteerRequest,
-    DashboardJobsSteerResponse,
     DashboardSession,
     DashboardSessionsListRequest,
     DashboardSessionsListResponse,
@@ -40,9 +44,6 @@ from roxabi_contracts.dashboard import (
     VoiceSttCapabilities,
     VoiceTtsCapabilities,
 )
-from roxabi_contracts.envelope import CONTRACT_VERSION
-from roxabi_contracts.jobs import JobEnvelope
-from roxabi_contracts.jobs.subjects import jobs_steer, jobs_submit
 
 if TYPE_CHECKING:
     from nats.aio.client import Client as NATS
@@ -52,10 +53,6 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 _WEB_BOT = "smoke"
-_ALLOWED_JOB_NAMES = frozenset({"claude", "omp", "test"})
-_DEFAULT_OMP_MODEL = "grok-4-fast"
-
-
 async def start_dashboard_rpc(hub: Hub, nc: NATS) -> list[Any]:
     """Subscribe hub responders for dashboard BFF request-reply."""
     import time
@@ -80,16 +77,29 @@ async def start_dashboard_rpc(hub: Hub, nc: NATS) -> list[Any]:
         (SUBJECTS.sessions_list, _handle_sessions_list),
         (SUBJECTS.sessions_resume, _handle_sessions_resume),
         (SUBJECTS.sessions_turns, _handle_sessions_turns),
-        (SUBJECTS.jobs_list, _handle_jobs_list),
-        (SUBJECTS.jobs_launch, _handle_jobs_launch),
-        (SUBJECTS.jobs_steer, _handle_jobs_steer),
+        (SUBJECTS.jobs_list, _wrap_agents(handle_jobs_list)),
+        (SUBJECTS.jobs_launch, _wrap_agents(handle_jobs_launch)),
+        (SUBJECTS.jobs_steer, _wrap_agents(handle_jobs_steer)),
         (SUBJECTS.agents_status, _handle_agents_status),
+        (SUBJECTS.agents_list, _wrap_agents(handle_agents_list)),
+        (SUBJECTS.agents_get, _wrap_agents(handle_agents_get)),
+        (SUBJECTS.agents_patch, _wrap_agents(handle_agents_patch)),
+        (SUBJECTS.agents_soul_put, _wrap_agents(handle_agents_soul_put)),
+        (SUBJECTS.agents_soul_get, _wrap_agents(handle_agents_soul_get)),
+        (SUBJECTS.agents_soul_preview, _wrap_agents(handle_agents_soul_preview)),
         (SUBJECTS.voice_capabilities, _handle_voice_capabilities),
     ):
         sub = await nc.subscribe(subject, cb=_wrap(hub, nc, handler))
         subs.append(sub)
         log.info("dashboard_rpc: subscribed %s", subject)
     return subs
+
+
+def _wrap_agents(handler: Any):
+    async def _inner(hub: Hub, nc: NATS, payload: dict[str, Any]) -> dict[str, Any]:
+        return await handler(hub, nc, payload)
+
+    return _inner
 
 
 def _wrap(hub: Hub, nc: NATS, handler: Any):
@@ -179,83 +189,6 @@ async def _handle_sessions_resume(
         ).model_dump()
     return DashboardSessionsResumeResponse(
         accepted=True, message=f"resumed {req.cli_session_id}"
-    ).model_dump()
-
-
-async def _handle_jobs_list(
-    hub: Hub, nc: NATS, payload: dict[str, Any]
-) -> dict[str, Any]:
-    _ = nc
-    _ = payload
-    rows = await list_active_jobs(hub)
-    jobs = [DashboardJob.model_validate(row) for row in rows]
-    return DashboardJobsListResponse(jobs=jobs).model_dump()
-
-
-async def _handle_jobs_launch(
-    hub: Hub, nc: NATS, payload: dict[str, Any]
-) -> dict[str, Any]:
-    req = DashboardJobsLaunchRequest.model_validate(payload)
-    if req.agent not in hub.agent_registry:
-        return DashboardJobsLaunchResponse(
-            accepted=False,
-            message=f"unknown agent: {req.agent!r}",
-        ).model_dump()
-    if req.job_name not in _ALLOWED_JOB_NAMES:
-        return DashboardJobsLaunchResponse(
-            accepted=False,
-            message=f"job_name not allowed: {req.job_name!r}",
-        ).model_dump()
-
-    job_id = uuid4().hex
-    pool_id = req.pool_id or RoutingKey(
-        Platform.WEB, _WEB_BOT, f"agent:{req.agent}"
-    ).to_pool_id()
-    dispatch_subject = jobs_submit(req.job_name)
-    if req.job_name == "claude":
-        model_cfg = {
-            "backend": "claude-cli",
-            "model": req.model or "sonnet",
-        }
-    else:
-        model_cfg = {
-            "backend": "omp-rpc",
-            "model": req.model or _DEFAULT_OMP_MODEL,
-        }
-    envelope = JobEnvelope(
-        contract_version=CONTRACT_VERSION,
-        trace_id=job_id,
-        issued_at=datetime.now(tz=UTC),
-        job_id=job_id,
-        job_name=req.job_name,
-        payload={
-            "prompt": req.prompt,
-            "pool_id": pool_id,
-            "model_cfg": model_cfg,
-            "system_prompt": req.system_prompt,
-            "stream": True,
-        },
-        reply_to=f"_INBOX.{job_id}",
-    )
-    await nc.publish(dispatch_subject, envelope.model_dump_json().encode())
-    return DashboardJobsLaunchResponse(
-        accepted=True,
-        job_id=job_id,
-        message=f"dispatched {req.job_name}",
-        dispatch_subject=dispatch_subject,
-    ).model_dump()
-
-
-async def _handle_jobs_steer(
-    hub: Hub, nc: NATS, payload: dict[str, Any]
-) -> dict[str, Any]:
-    _ = hub
-    req = DashboardJobsSteerRequest.model_validate(payload)
-    subject = jobs_steer(req.job_id)
-    await nc.publish(subject, req.text.encode())
-    return DashboardJobsSteerResponse(
-        accepted=True,
-        message=f"steer published to {req.job_id}",
     ).model_dump()
 
 

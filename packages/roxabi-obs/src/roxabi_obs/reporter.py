@@ -104,3 +104,14 @@ async def start_fleet_reporter(nc: NATS) -> asyncio.Task[None] | None:
         return None
     reporter = FleetReporter(nc)
     return asyncio.create_task(reporter.run(), name="fleet-reporter")
+
+
+async def cancel_fleet_reporter(task: asyncio.Task[None] | None) -> None:
+    """Stop a background fleet reporter task during process shutdown."""
+    if task is None or task.done():
+        return
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass

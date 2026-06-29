@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from unittest.mock import AsyncMock
 
 import pytest
-from roxabi_obs.reporter import FleetReporter, _read_build_revision
+from roxabi_obs.reporter import (
+    FleetReporter,
+    _read_build_revision,
+    cancel_fleet_reporter,
+)
 
 from roxabi_contracts.fleet import CONTAINER_REPORT
 
@@ -51,3 +56,15 @@ def test_read_build_revision_from_file(
     path.write_text(json.dumps({"revision": "from-file"}), encoding="utf-8")
     monkeypatch.setattr("roxabi_obs.reporter._BUILD_INFO_PATH", path)
     assert _read_build_revision() == "from-file"
+
+
+@pytest.mark.asyncio
+async def test_cancel_fleet_reporter_stops_background_task() -> None:
+    async def _loop() -> None:
+        while True:
+            await asyncio.sleep(3600)
+
+    task = asyncio.create_task(_loop(), name="fleet-reporter")
+    await cancel_fleet_reporter(task)
+    assert task.done()
+    assert task.cancelled()

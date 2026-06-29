@@ -33,7 +33,7 @@ def create_app(
             nc = await nats_connect(nats_url, identity_name="ingress")
             from roxabi_obs import start_fleet_reporter
 
-            await start_fleet_reporter(nc)
+            state["fleet_reporter_task"] = await start_fleet_reporter(nc)
             state["publisher"] = EventPublisher(nc.jetstream())
             state["nc"] = nc
         log.info(
@@ -42,6 +42,9 @@ def create_app(
             cfg.cloudflare.enabled,
         )
         yield
+        from roxabi_obs import cancel_fleet_reporter
+
+        await cancel_fleet_reporter(state.get("fleet_reporter_task"))
         nc = state.get("nc")
         if nc is not None:
             await nc.close()

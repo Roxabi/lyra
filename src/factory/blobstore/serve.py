@@ -127,7 +127,7 @@ def _make_lifespan(blob_root: pathlib.Path, injected_nats: NATS | None):  # type
             if nc is not None:
                 from roxabi_obs import start_fleet_reporter
 
-                await start_fleet_reporter(nc)
+                app.state.fleet_reporter_task = await start_fleet_reporter(nc)
                 # _provision_nats sets app.state.audit_sink (success OR degraded)
                 await _provision_nats(app, nc)
             else:
@@ -136,6 +136,9 @@ def _make_lifespan(blob_root: pathlib.Path, injected_nats: NATS | None):  # type
             yield
 
         if nc is not None and _own_nc:
+            from roxabi_obs import cancel_fleet_reporter
+
+            await cancel_fleet_reporter(getattr(app.state, "fleet_reporter_task", None))
             await nc.close()
 
     return lifespan

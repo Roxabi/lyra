@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 import sys
@@ -81,15 +82,20 @@ async def _bootstrap_clipool_standalone(raw_config: dict) -> None:
         identity_name="clipool-worker",
     )
     log.info("clipool: starting CliPoolNatsWorker on factory.jobs.claude")
+    from factory.bootstrap.fleet_reporter import (
+        cancel_fleet_reporter,
+        start_fleet_reporter,
+    )
+
     nc = None
+    fleet_reporter_task: asyncio.Task[None] | None = None
     try:
         nc = await nats_connect(nats_url, identity_name="clipool-worker")
-        from factory.bootstrap.fleet_reporter import start_fleet_reporter
-
-        await start_fleet_reporter(nc)
+        fleet_reporter_task = await start_fleet_reporter(nc)
         stop = setup_shutdown_event()
         await worker.run_embedded(nc, stop)
     finally:
+        await cancel_fleet_reporter(fleet_reporter_task)
         if nc is not None:
             await nc.close()
         await cli_pool.drain_audit_tasks()
@@ -120,11 +126,15 @@ async def _bootstrap_turn_writer_standalone(raw_config: dict) -> None:
         scrub_nats_url(nats_url),
     )
 
+    from factory.bootstrap.fleet_reporter import (
+        cancel_fleet_reporter,
+        start_fleet_reporter,
+    )
+
+    fleet_reporter_task: asyncio.Task[None] | None = None
     try:
         nc = await nats_connect(nats_url, identity_name="turn-writer")
-        from factory.bootstrap.fleet_reporter import start_fleet_reporter
-
-        await start_fleet_reporter(nc)
+        fleet_reporter_task = await start_fleet_reporter(nc)
         log.info(
             "turn-writer: connected to NATS at %s",
             scrub_nats_url(nats_url),
@@ -157,6 +167,7 @@ async def _bootstrap_turn_writer_standalone(raw_config: dict) -> None:
         await health_server.stop()
         await writer.stop()
         await store.close()
+        await cancel_fleet_reporter(fleet_reporter_task)
         await nc.close()
         log.info("turn-writer: stopped cleanly")
 
@@ -184,12 +195,17 @@ async def _bootstrap_omp_standalone(raw_config: dict) -> None:  # noqa: ARG001
     pool = OmpPool()
     worker = OmpWorker(pool=pool, identity_name="omp-worker")
     log.info("omp: starting OmpWorker on factory.jobs.omp")
-    nc = await nats_connect(nats_url, identity_name="omp-worker")
-    from factory.bootstrap.fleet_reporter import start_fleet_reporter
+    from factory.bootstrap.fleet_reporter import (
+        cancel_fleet_reporter,
+        start_fleet_reporter,
+    )
 
+    nc = await nats_connect(nats_url, identity_name="omp-worker")
+    fleet_reporter_task: asyncio.Task[None] | None = None
     try:
-        await start_fleet_reporter(nc)
+        fleet_reporter_task = await start_fleet_reporter(nc)
         stop = setup_shutdown_event()
         await worker.run_embedded(nc, stop)
     finally:
+        await cancel_fleet_reporter(fleet_reporter_task)
         await nc.close()

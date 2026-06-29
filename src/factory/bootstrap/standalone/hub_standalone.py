@@ -276,7 +276,7 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
         from factory.bootstrap.fleet_reporter import start_fleet_reporter
 
         await start_fleet_ingest(hub, nc)
-        await start_fleet_reporter(nc)
+        fleet_reporter_task = await start_fleet_reporter(nc)
         await start_dashboard_rpc(hub, nc)
 
         await announce_hub_ready(nc)
@@ -289,6 +289,8 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
             setup_signal_handlers(stop)
 
         tasks = _create_hub_tasks(hub, health_server)
+        if fleet_reporter_task is not None:
+            tasks.append(fleet_reporter_task)
 
         active = _build_active_list(tg_bot_auths, dc_bot_auths)
         log.info(

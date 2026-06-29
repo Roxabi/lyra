@@ -69,11 +69,15 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
         sys.exit(f"Unknown platform: {platform!r}")
     config_bundle = build_adapter_config_bundle(raw_config)
 
+    from factory.bootstrap.fleet_reporter import (
+        cancel_fleet_reporter,
+        start_fleet_reporter,
+    )
+
+    fleet_reporter_task: asyncio.Task[None] | None = None
     try:
         nc = await nats_connect(nats_url, identity_name=f"{platform}-adapter")
-        from factory.bootstrap.fleet_reporter import start_fleet_reporter
-
-        await start_fleet_reporter(nc)
+        fleet_reporter_task = await start_fleet_reporter(nc)
         log.info(
             "adapter_standalone: connected to NATS at %s",
             scrub_nats_url(nats_url),
@@ -124,4 +128,5 @@ async def _bootstrap_adapter_standalone(  # noqa: PLR0915, C901 — DEBT:migrati
         else:
             sys.exit(f"Unknown platform: {platform!r}")
     finally:
+        await cancel_fleet_reporter(fleet_reporter_task)
         await _close_quietly(nc)

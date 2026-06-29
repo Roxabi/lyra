@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from datetime import UTC, datetime
 
 import pytest
 from nats.aio.client import Client as NATS
 
+from factory.bootstrap.factory.dashboard_rpc import start_dashboard_rpc
 from factory.bootstrap.factory.fleet_bootstrap import start_fleet_ingest
 from factory.core.hub.hub import Hub
 from factory.nats.fleet_catalog import FleetCatalogEntry
 from factory.nats.fleet_store import FleetStore
+from roxabi_contracts.dashboard import SUBJECTS
 from roxabi_contracts.fleet import CONTAINER_REPORT
 from roxabi_contracts.fleet.models import new_container_report
 from roxabi_nats._serialize import serialize
@@ -71,3 +74,35 @@ async def test_fleet_ingest_subscriber_upserts_report(
 
     for sub in subs:
         await sub.unsubscribe()
+
+
+@requires_nats_server
+@pytest.mark.asyncio
+async def test_fleet_list_rpc_request_reply(
+    nc: NATS, fleet_catalog: list[FleetCatalogEntry]
+) -> None:
+    hub = Hub()
+    store = FleetStore(catalog=fleet_catalog)
+    hub._fleet_store = store  # noqa: SLF001
+    store.upsert(
+        new_container_report(
+            host="rpc-host",
+            container_name="factory-hub",
+            image_ref="ghcr.io/roxabi/factory:staging-svc",
+            reported_at=datetime.now(UTC),
+        )
+    )
+
+    subs = await start_dashboard_rpc(hub, nc)
+    try:
+        msg = await nc.request(SUBJECTS.fleet_list, b"{}", timeout=2)
+        data = json.loads(msg.data.decode())
+        assert "rows" in data
+        hub_row = next(
+            r for r in data["rows"] if r["container_name"] == "factory-hub"
+        )
+        assert hub_row["status"] == "ok"
+        assert hub_row["host"] == "rpc-host"
+    finally:
+        for sub in subs:
+            await sub.unsubscribe()

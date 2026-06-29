@@ -47,7 +47,17 @@ def _display_name_from_agent(agent: Any, agent_name: str) -> str | None:
     except (RuntimeError, OSError):
         log.debug("bot_display_name: agent store lookup failed", exc_info=True)
         return None
-    if row is None or not getattr(row, "persona_json", None):
+    if row is None:
+        return None
+    if getattr(row, "soul_meta_json", None):
+        try:
+            meta = json.loads(row.soul_meta_json)
+            display = meta.get("header", {}).get("display_name")
+            if isinstance(display, str) and display.strip():
+                return display
+        except (json.JSONDecodeError, TypeError):
+            pass
+    if not getattr(row, "persona_json", None):
         return None
     try:
         persona = json.loads(row.persona_json)

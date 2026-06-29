@@ -28,8 +28,27 @@ from .agent_config import (
     ModelConfig,
     SmartRoutingConfig,
 )
+from .soul_cache import get_soul_document_cache
 
 log = logging.getLogger(__name__)
+
+
+def _resolve_system_prompt(row: "AgentRow") -> str:
+    """Resolve composed system prompt: soul cache → persona_json fallback."""
+    cache = get_soul_document_cache()
+    if row.soul_document_blob_ref:
+        entry = cache.get(row.name, row.soul_document_blob_ref)
+        if entry is not None:
+            return entry.composed_prompt
+        log.warning(
+            "agent_row_to_config(%s): soul_cache_miss ref=%s",
+            row.name,
+            row.soul_document_blob_ref,
+        )
+    if row.persona_json:
+        persona_dict = json.loads(row.persona_json)
+        return compose_system_prompt_from_json(persona_dict)
+    return ""
 
 
 def agent_row_to_config(  # noqa: C901, PLR0915 — DEBT:complexity-residual — each branch handles one optional field
@@ -65,11 +84,7 @@ def agent_row_to_config(  # noqa: C901, PLR0915 — DEBT:complexity-residual —
         effort=row.effort,  # type: ignore[arg-type]  # validated at write time
     )
 
-    # Persona: always from persona_json (inline JSON)
-    system_prompt = ""
-    if row.persona_json:
-        persona_dict = json.loads(row.persona_json)
-        system_prompt = compose_system_prompt_from_json(persona_dict)
+    system_prompt = _resolve_system_prompt(row)
 
     # Smart routing
     smart_routing: SmartRoutingConfig | None = None

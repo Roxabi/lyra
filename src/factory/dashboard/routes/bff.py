@@ -23,6 +23,9 @@ from factory.dashboard.e2e import (
 )
 from factory.dashboard.ops_proxy import fetch_ops_health, fetch_ops_logs
 from roxabi_contracts.dashboard import (
+    DashboardAgentPatchRequest,
+    DashboardAgentSoulPreviewRequest,
+    DashboardAgentSoulPutRequest,
     DashboardJobsLaunchRequest,
     DashboardJobsLaunchResponse,
     DashboardJobsListResponse,
@@ -177,6 +180,72 @@ def build_bff_router(  # noqa: C901, PLR0915
         if e2e_enabled():
             return stub_ops_logs(preset)
         return await fetch_ops_logs(preset, limit=limit)
+
+    @router.get("/agents")
+    async def list_agents_config() -> dict:
+        try:
+            return (await hub.list_agent_configs()).model_dump()
+        except RuntimeError as exc:
+            raise _hub_unavailable(exc) from exc
+        except (ValidationError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @router.get("/agents/{name}")
+    async def get_agent_config(name: str) -> dict:
+        if name not in adapter.agent_names:
+            raise HTTPException(status_code=404, detail=f"unknown agent: {name!r}")
+        try:
+            return (await hub.get_agent_config(name)).model_dump()
+        except RuntimeError as exc:
+            raise _hub_unavailable(exc) from exc
+        except (ValidationError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @router.patch("/agents/{name}")
+    async def patch_agent_config(name: str, body: DashboardAgentPatchRequest) -> dict:
+        if name not in adapter.agent_names:
+            raise HTTPException(status_code=404, detail=f"unknown agent: {name!r}")
+        try:
+            return (await hub.patch_agent_config(name, body)).model_dump()
+        except RuntimeError as exc:
+            raise _hub_unavailable(exc) from exc
+        except (ValidationError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @router.put("/agents/{name}/soul")
+    async def put_agent_soul(name: str, body: DashboardAgentSoulPutRequest) -> dict:
+        if name not in adapter.agent_names:
+            raise HTTPException(status_code=404, detail=f"unknown agent: {name!r}")
+        try:
+            return (await hub.put_agent_soul(name, body)).model_dump()
+        except RuntimeError as exc:
+            raise _hub_unavailable(exc) from exc
+        except (ValidationError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @router.get("/agents/{name}/soul")
+    async def get_agent_soul(name: str) -> dict:
+        if name not in adapter.agent_names:
+            raise HTTPException(status_code=404, detail=f"unknown agent: {name!r}")
+        try:
+            return (await hub.get_agent_soul(name)).model_dump()
+        except RuntimeError as exc:
+            raise _hub_unavailable(exc) from exc
+        except (ValidationError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @router.post("/agents/{name}/soul/preview")
+    async def preview_agent_soul(
+        name: str, body: DashboardAgentSoulPreviewRequest
+    ) -> dict:
+        if name not in adapter.agent_names:
+            raise HTTPException(status_code=404, detail=f"unknown agent: {name!r}")
+        try:
+            return (await hub.preview_agent_soul(name, body)).model_dump()
+        except RuntimeError as exc:
+            raise _hub_unavailable(exc) from exc
+        except (ValidationError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     @router.post("/sessions/resume")
     async def resume_session(

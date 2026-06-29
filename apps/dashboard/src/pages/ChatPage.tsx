@@ -5,18 +5,25 @@ import { ChatPane } from "@/components/ChatPane";
 import { ChatSidebar } from "@/components/layout/ChatSidebar";
 import { CockpitContextPanel } from "@/components/layout/CockpitContextPanel";
 import { useAgentStatus } from "@/hooks/useAgentStatus";
+import { fetchAgentDefaults } from "@/lib/agents-api";
 import { fetchAgents, fetchSessionTurns } from "@/lib/api";
 import { turnsToLog } from "@/lib/chat-messages";
-import { type ChatTab, loadTabs, newTab, saveTabs } from "@/lib/chats-storage";
+import { type AgentDefaults, type ChatTab, loadTabs, newTab, saveTabs } from "@/lib/chats-storage";
 
 export function ChatPage() {
   const { t } = useTranslation("chat");
   const [tabs, setTabs] = useState<ChatTab[]>(() => loadTabs());
   const [activeId, setActiveId] = useState<string | null>(() => loadTabs()[0]?.id ?? null);
   const [hydratedLog, setHydratedLog] = useState<string | null>(null);
+  const [defaultsWarning, setDefaultsWarning] = useState<string | null>(null);
 
   const { data: agents = [] } = useQuery({ queryKey: ["agents"], queryFn: fetchAgents });
   const activeTab = useMemo(() => tabs.find((t) => t.id === activeId) ?? tabs[0], [tabs, activeId]);
+  const { data: dbDefaults } = useQuery({
+    queryKey: ["agent-defaults", activeTab?.agent],
+    queryFn: () => fetchAgentDefaults(activeTab?.agent ?? ""),
+    enabled: !!activeTab?.agent,
+  });
   const { healthFor, status } = useAgentStatus(activeTab);
 
   const healthByAgent = useMemo(() => {
@@ -31,9 +38,20 @@ export function ChatPage() {
 
   useEffect(() => {
     if (tabs.length === 0 && agents.length > 0) {
-      const t = newTab(agents[0]);
-      setTabs([t]);
-      setActiveId(t.id);
+      void (async () => {
+        let defaults: AgentDefaults | undefined;
+        try {
+          defaults = await fetchAgentDefaults(agents[0]);
+        } catch {
+          defaults = undefined;
+          setDefaultsWarning(
+            `Could not load DB defaults for ${agents[0]}; using fallback harness/model.`,
+          );
+        }
+        const t = newTab(agents[0], defaults);
+        setTabs([t]);
+        setActiveId(t.id);
+      })();
     }
   }, [agents, tabs.length]);
 
@@ -47,10 +65,21 @@ export function ChatPage() {
       setActiveId(existing.id);
       return;
     }
-    const t = newTab(agent);
-    setTabs((prev) => [...prev, t]);
-    setActiveId(t.id);
-    setHydratedLog(null);
+    void (async () => {
+      let defaults: AgentDefaults | undefined;
+      try {
+        defaults = await fetchAgentDefaults(agent);
+      } catch {
+        defaults = undefined;
+        setDefaultsWarning(
+          `Could not load DB defaults for ${agent}; using fallback harness/model.`,
+        );
+      }
+      const t = newTab(agent, defaults);
+      setTabs((prev) => [...prev, t]);
+      setActiveId(t.id);
+      setHydratedLog(null);
+    })();
   };
 
   const closeTab = (id: string) => {
@@ -65,7 +94,13 @@ export function ChatPage() {
     const existing = tabs.find((t) => t.agent === agent);
     if (existing) setActiveId(existing.id);
     else {
-      const t = newTab(agent);
+      let defaults: AgentDefaults | undefined;
+      try {
+        defaults = await fetchAgentDefaults(agent);
+      } catch {
+        defaults = undefined;
+      }
+      const t = newTab(agent, defaults);
       setTabs((prev) => [...prev, t]);
       setActiveId(t.id);
     }
@@ -95,12 +130,18 @@ export function ChatPage() {
         onResumed={onResumed}
       />
       <main className="flex min-w-0 flex-1 flex-col bg-background">
+        {defaultsWarning ? (
+          <p className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-900 dark:text-amber-100">
+            {defaultsWarning}
+          </p>
+        ) : null}
         {activeTab ? (
           <ChatPane
             key={`${activeTab.id}-${hydratedLog ? "h" : "f"}`}
             tab={activeTab}
             health={activeHealth}
             initialLog={hydratedLog ?? undefined}
+            dbDefaults={dbDefaults}
             onUpdate={(patch) => updateTab(activeTab.id, patch)}
           />
         ) : (

@@ -246,3 +246,57 @@ class TestDashboardBffRealPath:
         )
         assert res.status_code == 200
         assert res.json()["accepted"] is True
+
+    def test_list_agents_config_calls_hub_rpc(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("FACTORY_DASHBOARD_E2E", raising=False)
+        tc, _adapter, nc = wired_client
+        nc.request = AsyncMock(
+            return_value=_rpc_response(
+                {
+                    "agents": [
+                        {
+                            "name": "alpha",
+                            "backend": "claude-cli",
+                            "model": "sonnet",
+                            "updated_at": "2026-06-29T10:00:00Z",
+                            "soul_document_bytes": 512,
+                            "has_soul": True,
+                        }
+                    ]
+                }
+            )
+        )
+        res = tc.get("/api/bff/agents")
+        assert res.status_code == 200
+        assert res.json()["agents"][0]["name"] == "alpha"
+        assert nc.request.await_args.args[0] == SUBJECTS.agents_list
+
+    def test_get_agent_config_calls_hub_rpc(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("FACTORY_DASHBOARD_E2E", raising=False)
+        tc, _adapter, nc = wired_client
+        nc.request = AsyncMock(
+            return_value=_rpc_response(
+                {
+                    "name": "alpha",
+                    "backend": "omp-rpc",
+                    "model": "grok-4-fast",
+                    "voice_json": None,
+                    "soul_meta_json": {"header": {"display_name": "Alpha"}},
+                    "soul_document_blob_ref": "sha256:abc",
+                    "soul_document_bytes": 900,
+                    "updated_at": "2026-06-29T10:00:00Z",
+                }
+            )
+        )
+        res = tc.get("/api/bff/agents/alpha")
+        assert res.status_code == 200
+        assert res.json()["soul_document_blob_ref"] == "sha256:abc"
+        assert nc.request.await_args.args[0] == SUBJECTS.agents_get

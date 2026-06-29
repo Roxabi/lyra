@@ -1,10 +1,4 @@
-"""
-SimpleAgent — first concrete AgentBase implementation.
-
-Wraps an LlmProvider to route messages through the configured backend.
-Model and backend are read from the agent's TOML config (ModelConfig),
-not hardcoded here.
-"""
+"""SimpleAgent — concrete AgentBase wrapping LlmProvider (config-driven backend)."""
 
 from __future__ import annotations
 
@@ -24,6 +18,7 @@ from factory.core.ports.llm import SessionAware, WorkspaceAware
 from factory.core.ports.llm_types import ModelConfig
 from factory.core.ports.stt import STTNoiseError as STTNoiseError  # re-export (#1225)
 from factory.core.processors.stream_processor import StreamProcessor
+from factory.core.prompt_resolution import resolve_effective_system_prompt
 from factory.core.runtime_config import RuntimeConfig, RuntimeConfigHolder
 from factory.integrations.base import SessionTools
 from factory.llm.base import LlmProvider
@@ -325,7 +320,7 @@ class SimpleAgent(AgentBase):
                 pool.pool_id,
                 text,
                 model_cfg,
-                pool._system_prompt or self.config.system_prompt,
+                resolve_effective_system_prompt(self.config, pool),
             )
             processor = StreamProcessor(
                 show_intermediate=self.config.show_intermediate,
@@ -338,7 +333,7 @@ class SimpleAgent(AgentBase):
             pool.pool_id,
             text,
             model_cfg,
-            pool._system_prompt or self.config.system_prompt,
+            resolve_effective_system_prompt(self.config, pool),
         )
 
         if not result.ok:

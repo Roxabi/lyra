@@ -17,6 +17,23 @@ Off-host: `tar -cf - /tmp/blobstore-snapshot | restic backup --stdin --stdin-fil
 
 Recommended cadence: daily, low-traffic window. Store alongside `config.db` backups.
 
+## Soul refs (`source=soul`)
+
+Agent souls (`soul.md`) are stored as immutable blobs referenced from `config.db` (`agents.soul_document_blob_ref`). Backup **must** include both:
+
+1. `config.db` — authoritative pointer (`sha256:…`)
+2. Blobstore index + shards — bytes for each active ref
+
+Soul blobs use `source=soul` and are **exempt** from the 30-day `factory-blobstore-sweep` (pinned refs must not disappear while still referenced). After restore, verify:
+
+```bash
+sqlite3 ~/.roxabi/factory/config.db \
+  "SELECT name, soul_document_blob_ref FROM agents WHERE soul_document_blob_ref IS NOT NULL;"
+# Each ref must resolve via blobstore CLI or hub soul.get
+```
+
+See also: [persona-soul-migration.md](persona-soul-migration.md), [persona-soul-rollback.md](persona-soul-rollback.md).
+
 ## Restore invariant
 
 After restore, the SQLite manifest is authoritative. Shard files on disk **not** referenced by `blobs.store_path` are dedup-orphans — safe to discard.

@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import sqlite3
 from abc import ABC, abstractmethod
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -11,6 +12,7 @@ import aiosqlite
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
+    from factory.core.agent.agent_models import AgentRow
     from factory.core.ports.stt import STTProtocol
     from factory.core.ports.tts import TtsProtocol
     from factory.infrastructure.stores.registry.agent_store import AgentStore
@@ -67,6 +69,9 @@ class AgentBase(ABC, SessionManager):
         # #343 — DB-first hot-reload: track DB updated_at instead of TOML mtime
         self._agent_store = agent_store
         self._last_db_updated_at: str | None = None
+        self._preload_soul_for_row: Callable[[AgentRow], Awaitable[None]] | None = (
+            None
+        )
         self._circuit_registry = circuit_registry
         self._msg_manager = msg_manager
         self._stt = stt  # ADR-013: agent owns temp file cleanup
@@ -111,16 +116,16 @@ class AgentBase(ABC, SessionManager):
     def name(self) -> str:
         return self.config.name
 
-    def _maybe_reload(self) -> None:
+    async def _maybe_reload(self) -> None:
         """Reload config from DB if updated_at has changed (#343).
 
         Falls back silently if the agent_store is not injected (test mode)
         or if the DB is unavailable — the agent continues with cached config.
         """
-        self._maybe_reload_config()
+        await self._maybe_reload_config()
         self._maybe_reload_plugins()
 
-    def _maybe_reload_config(self) -> None:
+    async def _maybe_reload_config(self) -> None:
         """Check DB for config changes and apply if found."""
         if self._agent_store is None:
             return
@@ -135,6 +140,9 @@ class AgentBase(ABC, SessionManager):
             from .agent_db_loader import (
                 agent_row_to_config,  # noqa: PLC0415 — DEBT:plc0415-deferred-import
             )
+
+            if self._preload_soul_for_row is not None:
+                await self._preload_soul_for_row(row)
 
             new_config = agent_row_to_config(row, self._instance_overrides)
             if new_config != self.config:

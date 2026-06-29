@@ -15,6 +15,7 @@ from factory.core.hub.hub_protocol import RoutingKey
 from factory.core.hub.job_catalog import list_active_jobs
 from factory.core.hub.session_catalog import list_sessions_for_agent
 from factory.core.messaging.message import Platform
+from factory.dashboard.heartbeat import CLIPOOL_QUEUE, OMP_QUEUE, queue_group_alive
 from roxabi_contracts.dashboard import (
     SUBJECTS,
     AgentHealth,
@@ -50,10 +51,6 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-# Heartbeat worker_id is ``{queue_group}-{hostname}-{pid}`` (NatsAdapterBase).
-_CLIPOOL_QUEUE = "clipool-workers"
-_OMP_QUEUE = "omp-workers"
-_HARNESS_HB_TTL_S = 30.0
 _WEB_BOT = "smoke"
 _ALLOWED_JOB_NAMES = frozenset({"claude", "omp", "test"})
 _DEFAULT_OMP_MODEL = "grok-4-fast"
@@ -269,8 +266,8 @@ async def _handle_agents_status(
     agents: list[str] = list(payload.get("agents") or [])
     harness_by_agent: dict[str, str] = dict(payload.get("harness_by_agent") or {})
     freshness = getattr(hub, "_dashboard_worker_freshness", None)
-    clipool_alive = _queue_group_alive(freshness, _CLIPOOL_QUEUE)
-    omp_alive = _queue_group_alive(freshness, _OMP_QUEUE)
+    clipool_alive = queue_group_alive(freshness, CLIPOOL_QUEUE)
+    omp_alive = queue_group_alive(freshness, OMP_QUEUE)
     roster = set(hub.agent_registry)
     result = []
     for name in agents:
@@ -322,29 +319,3 @@ async def _handle_voice_capabilities(
             error="voice_workers_unreachable",
         ).model_dump()
     return DashboardVoiceCapabilitiesResponse(tts=tts, stt=stt).model_dump()
-
-
-def _queue_group_alive(freshness: Any, queue_group: str) -> bool:
-    """True when any heartbeat for *queue_group* arrived within the TTL.
-
-    NatsAdapterBase publishes ``worker_id = f"{queue_group}-{host}-{pid}"``.
-    Freshness is keyed by that dynamic id — not the static ACL identity name.
-    """
-    if not isinstance(freshness, dict):
-        return False
-    import time
-
-    now = time.monotonic()
-    prefix = f"{queue_group}-"
-    for worker_id, ts in freshness.items():
-        if not isinstance(worker_id, str):
-            continue
-        if worker_id != queue_group and not worker_id.startswith(prefix):
-            continue
-        try:
-            seen_at = float(ts)
-        except (TypeError, ValueError):
-            continue
-        if (now - seen_at) <= _HARNESS_HB_TTL_S:
-            return True
-    return False

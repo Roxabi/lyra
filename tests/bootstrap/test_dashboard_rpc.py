@@ -12,8 +12,8 @@ from factory.bootstrap.factory.dashboard_rpc import (
     _handle_sessions_list,
     _handle_sessions_resume,
     _handle_sessions_turns,
-    _queue_group_alive,
 )
+from factory.dashboard.heartbeat import queue_group_alive
 from factory.core.hub.hub_protocol import Binding, RoutingKey
 from factory.core.messaging.message import Platform
 
@@ -105,8 +105,8 @@ def test_queue_group_alive_matches_dynamic_worker_id_prefix() -> None:
     import time
 
     freshness = {"clipool-workers-roxabituwer-42": time.monotonic()}
-    assert _queue_group_alive(freshness, "clipool-workers") is True
-    assert _queue_group_alive(freshness, "omp-workers") is False
+    assert queue_group_alive(freshness, "clipool-workers") is True
+    assert queue_group_alive(freshness, "omp-workers") is False
 
 
 def test_queue_group_alive_rejects_stale_heartbeat() -> None:
@@ -115,7 +115,7 @@ def test_queue_group_alive_rejects_stale_heartbeat() -> None:
     freshness = {
         "clipool-workers-roxabituwer-42": time.monotonic() - 60.0,
     }
-    assert _queue_group_alive(freshness, "clipool-workers") is False
+    assert queue_group_alive(freshness, "clipool-workers") is False
 
 
 @pytest.mark.asyncio

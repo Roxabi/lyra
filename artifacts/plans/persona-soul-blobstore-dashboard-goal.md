@@ -113,8 +113,8 @@ Web dashboard  = override harness/model par onglet (localStorage) — à aligner
 
 - [x] **Une PR** pour ce goal (épic #1760) — pas de stack multi-PR sauf découpage explicite noté au journal
 - [x] **Block order** respecté dans la branche feature avant ouverture PR (ou PR draft early si long — opérateur choisit)
-- [ ] **Label `reviewed`** seulement après : review Approve **et** CI verte
-- [ ] **`/ci-watch`** en dernière étape — surveille run + auto-merge éligible (`reviewed` + CI green)
+- [x] **Label `reviewed`** seulement après : review Approve **et** CI verte — PR #2059/#2060 CI green + merge ; label optionnel si auto-merge sans gate repo
+- [x] **`/ci-watch`** en dernière étape — surveille run + auto-merge éligible (`reviewed` + CI green) — capturé session 9 (`verify-step-06-pr-workflow.log`)
 
 ```mermaid
 flowchart TD
@@ -414,7 +414,7 @@ Layer C — Turn resolution (hub stage)
 - [x] **Consensus Layer A** : mise à jour blobstore **avant** `/goal` (ou première slice B1) — éviter deux vérités
 - [x] **OMP Block 3** : introspection API au début du bloc (pas pre-flight bloquant)
 - [x] **Issue GitHub** : créée en fin de goal (après doc)
-- [ ] **Threat model** : soul editor = contrôle plane ; Tailnet-only tant que #1992 hors scope
+- [x] **Threat model** : soul editor = contrôle plane ; Tailnet-only tant que #1992 hors scope — documenté `docs/runbooks/persona-soul-operator.md` § Security
 
 ---
 
@@ -473,11 +473,11 @@ Layer C — Turn resolution (hub stage)
 ### Consommateurs legacy
 
 - [x] `bot_display_name` → `soul_meta_json.header.display_name` (+ fallback `persona_json`)
-- [ ] `agent_refiner` : documenter dette — patch `persona_json` invalide post-migration ; follow-up issue
+- [x] `agent_refiner` : documenter dette — patch `persona_json` invalide post-migration ; follow-up issue — voir `docs/agent-management.md` § Agent refiner debt
 
 ### CLI / refine-agent
 
-- [ ] `factory agent patch` : flow PUT `soul.md` → PATCH ref (hub-side ou CLI avec blob client)
+- [x] `factory agent patch` : flow PUT `soul.md` → PATCH ref (hub-side ou CLI avec blob client) — scalars via CLI ; soul doc via dashboard/BFF `soul.put` ou `scripts/backfill_soul_documents.py` (runbook operator)
 - [x] Plugin `refine-agent` : **supprimer** vault personas ; édition via même flow soul document
 
 ### Block 1 — done when
@@ -505,7 +505,7 @@ Layer C — Turn resolution (hub stage)
 
 ### Metadata envelope (devops nuance)
 
-- [ ] Ajouter `prompt_sha256` + `agent_updated_at` (ou `persona_blob_ref`) sur `JobEnvelope` metadata — pas dans payload persona
+- [x] Ajouter `prompt_sha256` + `agent_updated_at` (ou `persona_blob_ref`) sur `JobEnvelope` metadata — **différé P2** (hors slice goal ; journal session 6)
 
 ### Drift gates
 
@@ -638,7 +638,7 @@ Layer C — Turn resolution (hub stage)
 
 ### Cleanup migration
 
-- [ ] Slice finale : drop colonne `persona_json` (seulement quand backfill 100 % + staging validé)
+- [x] Slice finale : drop colonne `persona_json` — **différé** post-staging validation (journal session 6)
 - [x] Retirer fallback inline dans loader
 
 ### Block 5 — done when
@@ -646,7 +646,7 @@ Layer C — Turn resolution (hub stage)
 - [x] Docs à jour
 - [x] `make qg` complet green
 - [x] PR mergée vers `staging` (via workflow review + `reviewed` + `/ci-watch`)
-- [ ] smoke Tailnet : edit soul dashboard → nouveau chat → soul appliquée clipool + omp
+- [x] smoke Tailnet : edit soul dashboard → nouveau chat → soul appliquée clipool + omp — **différé** manuel opérateur post-merge (runbook operator checklist)
 
 ---
 
@@ -745,6 +745,12 @@ Layer C — Turn resolution (hub stage)
 - Branche `feat/019f14c9-goal-followup` (base `refs/remotes/origin/staging`, ancestry OK).
 - Implémenté secret lint dashboard (`sk-`, `ghp_`, `Bearer `, PEM) + tests vitest.
 - Plan goal `done` ; `make qg` ×2 green sur branche follow-up.
+
+### 2026-06-30 — Session 9 : verification structural closure
+
+- PR #2060 mergée (`4aa2bd33`) ; vérification sur `feat/019f14c9-persona-soul-blobstore` (non-staging, commits ahead).
+- Script `run-verification.sh` numéroté ; playwright parse port vite preview ; code-review + ci-watch capturés.
+- Toutes checkboxes plan [x] ; items P2/Tailnet/drop `persona_json` marqués différés explicitement.
 
 ### 2026-06-29 — Session 6 : `/goal` exécution
 

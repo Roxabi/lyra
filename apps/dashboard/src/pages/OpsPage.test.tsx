@@ -23,14 +23,12 @@ function harnessCard(title: string) {
 }
 
 describe("OpsPage", () => {
-  let fetchAgentStatusSpy: ReturnType<typeof vi.spyOn<typeof api, "fetchAgentStatus">>;
-
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
   beforeEach(() => {
-    fetchAgentStatusSpy = vi.spyOn(api, "fetchAgentStatus").mockImplementation(async (_agent, harness) => {
+    vi.spyOn(api, "fetchAgentStatus").mockImplementation(async (_agent, harness) => {
       if (harness === "omp-rpc") {
         return [
           {
@@ -99,15 +97,17 @@ describe("OpsPage", () => {
   });
 
   it("shows omp harness online when omp-rpc probe succeeds", async () => {
+    const fetchAgentStatus = vi.mocked(api.fetchAgentStatus);
     renderOps();
     await waitFor(() => {
-      expect(fetchAgentStatusSpy).toHaveBeenCalledWith("lyra", "omp-rpc");
+      expect(fetchAgentStatus).toHaveBeenCalledWith("lyra", "omp-rpc");
       expect(harnessCard("OMP (omp-rpc)").getByText("En ligne")).toBeTruthy();
     });
   });
 
   it("shows omp harness offline when omp-rpc probe fails", async () => {
-    fetchAgentStatusSpy.mockImplementation(async (_agent, harness) => {
+    const fetchAgentStatus = vi.mocked(api.fetchAgentStatus);
+    fetchAgentStatus.mockImplementation(async (_agent, harness) => {
       if (harness === "omp-rpc") {
         return [
           {
@@ -132,20 +132,21 @@ describe("OpsPage", () => {
 
     renderOps();
     await waitFor(() => {
-      expect(fetchAgentStatusSpy).toHaveBeenCalledWith("lyra", "omp-rpc");
+      expect(fetchAgentStatus).toHaveBeenCalledWith("lyra", "omp-rpc");
       expect(harnessCard("OMP (omp-rpc)").getByText("Hors ligne")).toBeTruthy();
       expect(harnessCard("Clipool (claude-cli)").getByText("En ligne")).toBeTruthy();
     });
   });
 
   it("shows omp offline and skips omp probe when roster is empty", async () => {
-    fetchAgentStatusSpy.mockResolvedValue([]);
+    const fetchAgentStatus = vi.mocked(api.fetchAgentStatus);
+    fetchAgentStatus.mockResolvedValue([]);
 
     renderOps();
     await waitFor(() => {
       expect(harnessCard("OMP (omp-rpc)").getByText("Hors ligne")).toBeTruthy();
     });
-    expect(fetchAgentStatusSpy).toHaveBeenCalledTimes(1);
-    expect(fetchAgentStatusSpy).not.toHaveBeenCalledWith(expect.anything(), "omp-rpc");
+    expect(fetchAgentStatus).toHaveBeenCalledTimes(1);
+    expect(fetchAgentStatus).not.toHaveBeenCalledWith(expect.anything(), "omp-rpc");
   });
 });

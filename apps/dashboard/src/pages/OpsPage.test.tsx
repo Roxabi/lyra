@@ -17,15 +17,28 @@ function renderOps() {
 
 describe("OpsPage", () => {
   beforeEach(() => {
-    vi.spyOn(api, "fetchAgentStatus").mockResolvedValue([
-      {
-        agent: "lyra",
-        in_roster: true,
-        harness: "claude-cli",
-        harness_reachable: true,
-        online: true,
-      },
-    ]);
+    vi.spyOn(api, "fetchAgentStatus").mockImplementation(async (_agent, harness) => {
+      if (harness === "omp-rpc") {
+        return [
+          {
+            agent: "lyra",
+            in_roster: true,
+            harness: "omp-rpc",
+            harness_reachable: true,
+            online: true,
+          },
+        ];
+      }
+      return [
+        {
+          agent: "lyra",
+          in_roster: true,
+          harness: "claude-cli",
+          harness_reachable: true,
+          online: true,
+        },
+      ];
+    });
     vi.spyOn(api, "fetchOpsHealth").mockResolvedValue([
       {
         engine: "loki",
@@ -68,5 +81,13 @@ describe("OpsPage", () => {
     expect(screen.getAllByText("En ligne").length).toBeGreaterThanOrEqual(2);
     expect(screen.getByText("ERROR factory.core.hub: crash")).toBeTruthy();
     expect(screen.getByText("Lyra")).toBeTruthy();
+  });
+
+  it("shows omp harness online when omp-rpc probe succeeds", async () => {
+    renderOps();
+    await waitFor(() => {
+      const ompCard = screen.getByText("OMP (omp-rpc)").closest(".dashboard-surface");
+      expect(ompCard?.textContent).toContain("En ligne");
+    });
   });
 });

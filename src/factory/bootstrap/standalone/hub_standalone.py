@@ -114,8 +114,14 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
             [cfg for cfg, _ in dc_bot_auths],
         )
 
-        agent_configs = load_agent_configs(
-            stores.agent, raw_config, set(bot_agent_map.values())
+        from factory.bootstrap.factory.voice_overlay import init_blobstore
+
+        blob_store = init_blobstore()
+        agent_configs = await load_agent_configs(
+            stores.agent,
+            raw_config,
+            set(bot_agent_map.values()),
+            blob_store=blob_store,
         )
         if not agent_configs:
             sys.exit(

@@ -7,16 +7,17 @@ import { ModelPicker } from "@/components/ModelPicker";
 import { displayAgentName } from "@/lib/agents";
 import type { AgentHealth } from "@/lib/api";
 import { defaultModelForHarness, openChatStream, postChat } from "@/lib/api";
-import type { ChatTab } from "@/lib/chats-storage";
+import type { AgentDefaults, ChatTab } from "@/lib/chats-storage";
 
 interface ChatPaneProps {
   tab: ChatTab;
   health: AgentHealth | undefined;
   initialLog?: string;
   onUpdate: (patch: Partial<ChatTab>) => void;
+  dbDefaults?: AgentDefaults;
 }
 
-export function ChatPane({ tab, health, initialLog, onUpdate }: ChatPaneProps) {
+export function ChatPane({ tab, health, initialLog, onUpdate, dbDefaults }: ChatPaneProps) {
   const [text, setText] = useState("");
   const [log, setLog] = useState(initialLog ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +81,7 @@ export function ChatPane({ tab, health, initialLog, onUpdate }: ChatPaneProps) {
         <div className="ml-auto flex flex-wrap items-center gap-2">
           <HarnessPicker
             value={tab.harness}
+            dbDefault={dbDefaults?.backend}
             onChange={(h) => onUpdate({ harness: h, model: defaultModelForHarness(h) })}
             disabled={offline}
           />

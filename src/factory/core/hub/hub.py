@@ -32,6 +32,7 @@ from .pipeline import PoolManager
 if TYPE_CHECKING:
     from collections import deque
 
+    from factory.core.ports.blobstore import BlobStorePort
     from factory.infrastructure.stores.identity.identity_alias_store import (
         IdentityAliasStore,
     )
@@ -142,6 +143,9 @@ class Hub(
         # Wired by hub_standalone for dashboard job catalog (#1772).
         self._active_jobs_store: object | None = None
         self._active_jobs_coord: object | None = None
+        # Dashboard agent/soul RPC (#1760).
+        self._agent_store: object | None = None
+        self._blob_store: BlobStorePort | None = None
         self._identity_resolver = IdentityResolver(
             authenticators=self._authenticators,
             bindings=self.bindings,

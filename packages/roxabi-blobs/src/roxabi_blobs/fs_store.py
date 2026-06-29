@@ -343,7 +343,12 @@ class FsBlobStore:
                             f"{e.strerror or 'OSError'}"
                         ) from e
 
-    async def sweep_older_than(self, cutoff_ts: float) -> tuple[int, int]:
+    async def sweep_older_than(
+        self,
+        cutoff_ts: float,
+        *,
+        exclude_sources: frozenset[str] | None = None,
+    ) -> tuple[int, int]:
         """Delete all blob refs whose `ingested_at` is older than `cutoff_ts`.
 
         Calls :meth:`delete` for each stale ref so ref-counting is respected:
@@ -372,10 +377,21 @@ class FsBlobStore:
         cutoff_iso = datetime.fromtimestamp(cutoff_ts, tz=UTC).isoformat()
         # Snapshot all stale IDs up-front (avoids cursor invalidation while we
         # mutate blob_refs inside delete()).
-        cursor = await conn.execute(
-            "SELECT id FROM blob_refs WHERE ingested_at < ?",
-            (cutoff_iso,),
-        )
+        if exclude_sources:
+            placeholders = ",".join("?" for _ in exclude_sources)
+            sql = (
+                "SELECT id FROM blob_refs WHERE ingested_at < ? "
+                f"AND source NOT IN ({placeholders})"
+            )
+            cursor = await conn.execute(
+                sql,
+                (cutoff_iso, *sorted(exclude_sources)),
+            )
+        else:
+            cursor = await conn.execute(
+                "SELECT id FROM blob_refs WHERE ingested_at < ?",
+                (cutoff_iso,),
+            )
         stale_ids: list[int] = [int(row[0]) for row in await cursor.fetchall()]
         await cursor.close()
 

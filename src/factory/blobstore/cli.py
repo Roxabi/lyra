@@ -86,7 +86,9 @@ def sweep(
 
     async def _run() -> tuple[int, int]:
         async with FsBlobStore(blob_root) as store:
-            return await store.sweep_older_than(cutoff_ts)
+            return await store.sweep_older_than(
+                cutoff_ts, exclude_sources=frozenset({"soul"})
+            )
 
     refs_deleted, files_unlinked = asyncio.run(_run())
     typer.echo(

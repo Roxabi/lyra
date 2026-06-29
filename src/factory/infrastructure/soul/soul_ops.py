@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Iterable
 from typing import TYPE_CHECKING
 
 from factory.core.agent.agent_models import AgentRow
@@ -15,6 +16,7 @@ from factory.core.persona import (
     parse_soul_markdown,
     validate_soul_document_bytes,
 )
+from roxabi_contracts import BlobNotFoundError, BlobStoreServerError
 
 if TYPE_CHECKING:
     from factory.core.ports.blobstore import BlobStorePort
@@ -65,6 +67,35 @@ def warm_soul_cache(
         composed_prompt=composed,
     )
     return composed
+
+
+async def preload_soul_caches_for_rows(
+    rows: Iterable[AgentRow],
+    blob_store: "BlobStorePort | None",
+) -> None:
+    """Fetch soul.md from blobstore and warm cache before agent_row_to_config."""
+    if blob_store is None:
+        return
+    cache = get_soul_document_cache()
+    for row in rows:
+        ref = row.soul_document_blob_ref
+        if not ref or cache.get(row.name, ref) is not None:
+            continue
+        try:
+            markdown = await fetch_soul_markdown(blob_store, ref)
+            warm_soul_cache(row.name, blob_ref=ref, markdown=markdown)
+        except (
+            BlobNotFoundError,
+            BlobStoreServerError,
+            UnicodeDecodeError,
+            ValueError,
+        ) as exc:
+            log.warning(
+                "preload_soul_cache(%s): failed ref=%s: %s",
+                row.name,
+                ref,
+                exc,
+            )
 
 
 async def put_soul_document(

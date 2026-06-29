@@ -51,9 +51,7 @@ export function OpsPage() {
 
   const clipoolUp = status.some((s) => s.harness === "claude-cli" && s.harness_reachable);
   // Default status uses harness=claude-cli — probe omp-rpc explicitly for the worker lane.
-  const ompUp = ompHarnessStatus.some(
-    (s) => s.harness === "omp-rpc" && s.harness_reachable,
-  );
+  const ompUp = ompHarnessStatus.some((s) => s.harness === "omp-rpc" && s.harness_reachable);
 
   return (
     <div className="space-y-6">

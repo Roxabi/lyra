@@ -740,6 +740,12 @@ Layer C — Turn resolution (hub stage)
 - `make qg` ×2 green ; CI PR #2059 green (5313+ tests) ; `/ci-watch` → ci=pass.
 - **PR #2059 mergée** vers `staging` (`d030e7a2`).
 
+### 2026-06-30 — Session 8 : follow-up secret lint + goal closure
+
+- Branche `feat/019f14c9-goal-followup` (base `refs/remotes/origin/staging`, ancestry OK).
+- Implémenté secret lint dashboard (`sk-`, `ghp_`, `Bearer `, PEM) + tests vitest.
+- Plan goal `done` ; `make qg` ×2 green sur branche follow-up.
+
 ### 2026-06-29 — Session 6 : `/goal` exécution
 
 - Branche `feat/019f14c9-persona-soul-blobstore` (base `staging`).

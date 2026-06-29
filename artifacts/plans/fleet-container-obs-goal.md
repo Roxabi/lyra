@@ -530,6 +530,11 @@ Sources : `/tmp/grok-review-{arch,nats,impl}-d408c003.md`
 - Tests : `test_fleet_ingest.py` (NATS publish → subscriber → FleetStore), `test_fleet_catalog.py`.
 - Logs preuve : `/tmp/grok-goal-8314e5b423cf/implementer/{qg,acl,hub-fleet,contracts,dashboard,imports,catalogue}-*.log`.
 
+### 2026-06-30 — Evidence script (vérificateur)
+
+- `scripts/goal-fleet-obs-evidence.sh` + `make fleet-obs-evidence` — exécute verbatim les steps 1–8 du plan de vérification avec `tee` + greps built-in.
+- Gate finale locale : `make fleet-obs-evidence` (pas `make qg` seul).
+
 ---
 
 ## Référence `/goal`

@@ -13,9 +13,9 @@ from factory.bootstrap.factory.dashboard_rpc import (
     _handle_sessions_resume,
     _handle_sessions_turns,
 )
-from factory.dashboard.heartbeat import queue_group_alive
 from factory.core.hub.hub_protocol import Binding, RoutingKey
 from factory.core.messaging.message import Platform
+from factory.dashboard.heartbeat import queue_group_alive
 
 _NC = MagicMock()
 

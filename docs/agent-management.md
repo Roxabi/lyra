@@ -115,6 +115,10 @@ Composition is hub-only (`core/persona.py` → `compose_soul_document()`). Harne
 
 **Dashboard:** `/agents` → edit harness, model, voice, soul (BFF → hub NATS RPC). **CLI:** `scripts/backfill_soul_documents.py` for one-shot migration from `persona_json`.
 
+### Agent refiner debt (post-migration)
+
+`factory agent refine` / `agent_refiner` still patches legacy `persona_json` inline. After soul blobstore migration this path is **invalid for soul edits** — composed prompt comes from `soul.md` via hub loader. Use dashboard `/agents` or hub `soul.put` instead. Follow-up: wire refiner to soul document flow or deprecate persona_json patches.
+
 ## Validation Rules
 
 - **Name**: `[a-zA-Z0-9_-]+`

@@ -33,6 +33,7 @@ from factory.core.lifecycle.circuit_breaker import CircuitRegistry
 from factory.core.messaging.messages import MessageManager
 from factory.core.ports.stt import STTProtocol
 from factory.core.ports.tts import TtsProtocol
+from factory.infrastructure.soul.soul_ops import preload_soul_caches_for_rows
 from factory.infrastructure.stores.registry.agent_store import AgentStore
 from factory.integrations.base import SessionTools
 from factory.integrations.vault_cli import VaultCli
@@ -42,6 +43,7 @@ from factory.llm.registry import ProviderRegistry
 
 if TYPE_CHECKING:
     from factory.bootstrap.bootstrap_stores import StoreBundle
+    from factory.core.ports.blobstore import BlobStorePort
     from factory.llm.base import LlmProvider
     from factory.llm.llm_client import LlmClient
 
@@ -87,6 +89,8 @@ class ResolveAgentsDeps:
 async def _init_bot_auths_and_agents(
     stores: StoreBundle,
     raw_config: dict,
+    *,
+    blob_store: "BlobStorePort | None" = None,
 ) -> BotAuthBundle:
     """Resolve multibot config, build authenticators, load agent configs."""
     circuit_registry, admin_user_ids = _load_circuit_config(raw_config)
@@ -120,17 +124,23 @@ async def _init_bot_auths_and_agents(
     )
     agent_names: set[str] = set(bot_agent_map.values())
 
-    agent_configs: dict[str, Agent] = {}
+    rows = []
     for n in sorted(agent_names):
         row = stores.agent.get(n)
         if row is not None:
-            overrides = _build_agent_overrides(raw_config, n)
-            agent_configs[n] = agent_row_to_config(
-                row,
-                instance_overrides=overrides.model_dump(),
-            )
+            rows.append(row)
         else:
             log.error("Agent %r not found in DB — skipping", n)
+
+    await preload_soul_caches_for_rows(rows, blob_store)
+
+    agent_configs: dict[str, Agent] = {}
+    for row in rows:
+        overrides = _build_agent_overrides(raw_config, row.name)
+        agent_configs[row.name] = agent_row_to_config(
+            row,
+            instance_overrides=overrides.model_dump(),
+        )
     if not agent_configs:
         raise ValueError(
             "No agent configs could be loaded — run"

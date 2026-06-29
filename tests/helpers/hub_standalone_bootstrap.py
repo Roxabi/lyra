@@ -214,7 +214,7 @@ def _apply_core_hub_stubs(
     )
     monkeypatch.setattr(
         f"{_HUB}.load_agent_configs",
-        lambda *_a, **_kw: {"default": MagicMock()},
+        AsyncMock(return_value={"default": MagicMock()}),
     )
     monkeypatch.setattr(
         "factory.bootstrap.factory.config._load_messages",

@@ -12,6 +12,7 @@ from factory.bootstrap.factory.dashboard_rpc import (
     _handle_sessions_list,
     _handle_sessions_resume,
     _handle_sessions_turns,
+    _queue_group_alive,
 )
 from factory.core.hub.hub_protocol import Binding, RoutingKey
 from factory.core.messaging.message import Platform
@@ -67,20 +68,54 @@ async def test_agents_status_marks_offline_without_heartbeat() -> None:
 
 
 @pytest.mark.asyncio
-async def test_agents_status_respects_harness_selection() -> None:
-    hub = MagicMock()
-    hub.agent_registry = ["lyra"]
-    hub._dashboard_worker_freshness = {"clipool-worker": 0.0}
+async def test_agents_status_online_with_dynamic_clipool_worker_id() -> None:
     import time
 
-    hub._dashboard_worker_freshness["clipool-worker"] = time.monotonic()
+    hub = MagicMock()
+    hub.agent_registry = ["lyra"]
+    hub._dashboard_worker_freshness = {
+        "clipool-workers-factory-clipool-12345": time.monotonic(),
+    }
+    out = await _handle_agents_status(hub, _NC, {"agents": ["lyra"]})
+    assert out["agents"][0]["harness_reachable"] is True
+    assert out["agents"][0]["online"] is True
+
+
+@pytest.mark.asyncio
+async def test_agents_status_respects_harness_selection() -> None:
+    import time
+
+    hub = MagicMock()
+    hub.agent_registry = ["lyra"]
+    hub._dashboard_worker_freshness = {
+        "clipool-workers-factory-clipool-12345": time.monotonic(),
+        "omp-workers-factory-omp-99": time.monotonic(),
+    }
     out = await _handle_agents_status(
         hub,
         _NC,
         {"agents": ["lyra"], "harness_by_agent": {"lyra": "omp-rpc"}},
     )
     assert out["agents"][0]["harness"] == "omp-rpc"
-    assert out["agents"][0]["online"] is False
+    assert out["agents"][0]["harness_reachable"] is True
+    assert out["agents"][0]["online"] is True
+
+
+def test_queue_group_alive_matches_dynamic_worker_id_prefix() -> None:
+    import time
+
+    freshness = {"clipool-workers-roxabituwer-42": time.monotonic()}
+    assert _queue_group_alive(freshness, "clipool-workers") is True
+    assert _queue_group_alive(freshness, "omp-workers") is False
+
+
+def test_queue_group_alive_rejects_stale_heartbeat() -> None:
+    import time
+
+    freshness = {
+        "clipool-workers-roxabituwer-42": time.monotonic() - 60.0,
+    }
+    assert _queue_group_alive(freshness, "clipool-workers") is False
 
 
 @pytest.mark.asyncio

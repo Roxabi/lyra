@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from factory.bootstrap.factory.dashboard_agents_rpc import handle_agents_list
 from factory.bootstrap.factory.dashboard_jobs_rpc import handle_jobs_list
 from factory.bootstrap.factory.dashboard_rpc import (
     _handle_agents_status,
@@ -13,6 +14,7 @@ from factory.bootstrap.factory.dashboard_rpc import (
     _handle_sessions_resume,
     _handle_sessions_turns,
 )
+from factory.core.agent.agent_models import AgentRow
 from factory.core.hub.hub_protocol import Binding, RoutingKey
 from factory.core.messaging.message import Platform
 from factory.dashboard.heartbeat import queue_group_alive
@@ -116,6 +118,19 @@ def test_queue_group_alive_rejects_stale_heartbeat() -> None:
         "clipool-workers-roxabituwer-42": time.monotonic() - 60.0,
     }
     assert queue_group_alive(freshness, "clipool-workers") is False
+
+
+@pytest.mark.asyncio
+async def test_agents_list_rpc_handler_returns_summaries() -> None:
+    hub = MagicMock()
+    store = MagicMock()
+    store.get_all.return_value = [
+        AgentRow(name="lyra", backend="claude-cli", model="sonnet"),
+    ]
+    hub._agent_store = store
+    out = await handle_agents_list(hub, _NC, {})
+    assert out["agents"][0]["name"] == "lyra"
+    assert out["agents"][0]["backend"] == "claude-cli"
 
 
 @pytest.mark.asyncio

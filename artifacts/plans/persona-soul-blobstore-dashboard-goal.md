@@ -111,7 +111,7 @@ Web dashboard  = override harness/model par onglet (localStorage) — à aligner
 
 ### Invariants workflow
 
-- [ ] **Une PR** pour ce goal (épic #1760) — pas de stack multi-PR sauf découpage explicite noté au journal
+- [x] **Une PR** pour ce goal (épic #1760) — pas de stack multi-PR sauf découpage explicite noté au journal
 - [x] **Block order** respecté dans la branche feature avant ouverture PR (ou PR draft early si long — opérateur choisit)
 - [ ] **Label `reviewed`** seulement après : review Approve **et** CI verte
 - [ ] **`/ci-watch`** en dernière étape — surveille run + auto-merge éligible (`reviewed` + CI green)
@@ -420,7 +420,7 @@ Layer C — Turn resolution (hub stage)
 
 ## BLOCK 1 — Migration stockage soul (DB maigre + blobstore)
 
-**Statut :** `not_started`  
+**Statut :** `done`  
 **GO :** après Pre-flight
 
 ### Schéma DB
@@ -491,7 +491,7 @@ Layer C — Turn resolution (hub stage)
 
 ## BLOCK 2 — Hub centralisation prompt
 
-**Statut :** `not_started`  
+**Statut :** `done`  
 **GO :** après Block 1 green
 
 ### Primitive core
@@ -529,7 +529,7 @@ Layer C — Turn resolution (hub stage)
 
 ## BLOCK 3 — OMP V2 parité harness
 
-**Statut :** `not_started`  
+**Statut :** `done`  
 **GO :** après Block 2 green
 
 > **Note OMP (pas de spike pre-/goal)** : le wire existe déjà (`OmpRpcDriver.complete()` envoie `system_prompt` ; `omp_worker` le lit mais ne l'applique pas — gap V1 **documenté** dans le plan #1813, V2 prévu). La parité est un **travail de câblage** (Clipool = référence), pas une inconnue architecturale. Première tâche Block 3 : introspection `omp_rpc.RpcClient` (~30 min) pour choisir le hook session (`new_session` / autre) — puis implémenter.
@@ -558,7 +558,7 @@ Layer C — Turn resolution (hub stage)
 
 ## BLOCK 4 — Dashboard agents UI + BFF
 
-**Statut :** `not_started`  
+**Statut :** `done`  
 **GO :** après Block 1 green ; **routes mutating** (PUT/PATCH soul) seulement après **Block 2 green** (fermeture bypass + gates)
 
 ### Hub NATS RPC (nouveaux subjects)
@@ -609,7 +609,7 @@ Layer C — Turn resolution (hub stage)
 
 - [x] Opérateur édite soul + harness + model + voice depuis dashboard
 - [x] Preview compose affiche le prompt effectif (tronqué si > N chars UI)
-- [ ] vitest : pages agents + formulaires
+- [x] vitest : pages agents + formulaires
 - [x] pytest BFF + hub RPC green
 - [x] `bun run typecheck` + `build:dashboard` green
 
@@ -617,7 +617,7 @@ Layer C — Turn resolution (hub stage)
 
 ## BLOCK 5 — Hardening + docs
 
-**Statut :** `not_started`  
+**Statut :** `done` (merge PR pending)  
 **GO :** après Blocks 1–4 green
 
 ### Ops

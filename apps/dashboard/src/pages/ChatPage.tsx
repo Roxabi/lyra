@@ -15,9 +15,15 @@ export function ChatPage() {
   const [tabs, setTabs] = useState<ChatTab[]>(() => loadTabs());
   const [activeId, setActiveId] = useState<string | null>(() => loadTabs()[0]?.id ?? null);
   const [hydratedLog, setHydratedLog] = useState<string | null>(null);
+  const [defaultsWarning, setDefaultsWarning] = useState<string | null>(null);
 
   const { data: agents = [] } = useQuery({ queryKey: ["agents"], queryFn: fetchAgents });
   const activeTab = useMemo(() => tabs.find((t) => t.id === activeId) ?? tabs[0], [tabs, activeId]);
+  const { data: dbDefaults } = useQuery({
+    queryKey: ["agent-defaults", activeTab?.agent],
+    queryFn: () => fetchAgentDefaults(activeTab?.agent ?? ""),
+    enabled: !!activeTab?.agent,
+  });
   const { healthFor, status } = useAgentStatus(activeTab);
 
   const healthByAgent = useMemo(() => {
@@ -38,6 +44,9 @@ export function ChatPage() {
           defaults = await fetchAgentDefaults(agents[0]);
         } catch {
           defaults = undefined;
+          setDefaultsWarning(
+            `Could not load DB defaults for ${agents[0]}; using fallback harness/model.`,
+          );
         }
         const t = newTab(agents[0], defaults);
         setTabs([t]);
@@ -62,6 +71,9 @@ export function ChatPage() {
         defaults = await fetchAgentDefaults(agent);
       } catch {
         defaults = undefined;
+        setDefaultsWarning(
+          `Could not load DB defaults for ${agent}; using fallback harness/model.`,
+        );
       }
       const t = newTab(agent, defaults);
       setTabs((prev) => [...prev, t]);
@@ -118,12 +130,18 @@ export function ChatPage() {
         onResumed={onResumed}
       />
       <main className="flex min-w-0 flex-1 flex-col bg-background">
+        {defaultsWarning ? (
+          <p className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 text-xs text-amber-900 dark:text-amber-100">
+            {defaultsWarning}
+          </p>
+        ) : null}
         {activeTab ? (
           <ChatPane
             key={`${activeTab.id}-${hydratedLog ? "h" : "f"}`}
             tab={activeTab}
             health={activeHealth}
             initialLog={hydratedLog ?? undefined}
+            dbDefaults={dbDefaults}
             onUpdate={(patch) => updateTab(activeTab.id, patch)}
           />
         ) : (

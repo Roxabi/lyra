@@ -112,7 +112,7 @@ Web dashboard  = override harness/model par onglet (localStorage) — à aligner
 ### Invariants workflow
 
 - [ ] **Une PR** pour ce goal (épic #1760) — pas de stack multi-PR sauf découpage explicite noté au journal
-- [ ] **Block order** respecté dans la branche feature avant ouverture PR (ou PR draft early si long — opérateur choisit)
+- [x] **Block order** respecté dans la branche feature avant ouverture PR (ou PR draft early si long — opérateur choisit)
 - [ ] **Label `reviewed`** seulement après : review Approve **et** CI verte
 - [ ] **`/ci-watch`** en dernière étape — surveille run + auto-merge éligible (`reviewed` + CI green)
 
@@ -387,17 +387,17 @@ Layer C — Turn resolution (hub stage)
 
 ## Invariants globaux (tous blocs)
 
-- [ ] **Un seul module composeur** : `core/persona.py` — `parse_soul_markdown()`, `merge_soul_sections()`, `compose_soul_document()` ; legacy `compose_system_prompt_from_json()` jusqu'à drop `persona_json` (B5)
-- [ ] **Pas de fetch blob dans `core/`** — `BlobStorePort` injecté depuis bootstrap/infrastructure ; loader lit cache sync write-through
-- [ ] **Pas de `persona_json` / blob bytes dans `JobEnvelope`** — seulement `system_prompt: str`
-- [ ] **Harnesses ne parsent pas la persona** — executors dumb
-- [ ] **Dashboard ne touche pas `config.db`** — BFF → hub NATS RPC uniquement
-- [ ] **Dashboard ne compose pas** — preview via hub RPC
-- [ ] **Soul session-scoped** — lag documenté ; runbook opérateur
-- [ ] **ADR-094** : pas d'adapter `platform=dashboard` ; namespaces `/api/bff/*`
-- [ ] **import-linter** : `factory.adapters` ↛ `core.persona` ; `factory.dashboard` ↛ `core.persona` / `agent_db_loader`
-- [ ] Gates SLOC 300 / dossier 15 sur nouveaux chemins
-- [ ] `make qg` green à chaque bloc « done when »
+- [x] **Un seul module composeur** : `core/persona.py` — `parse_soul_markdown()`, `merge_soul_sections()`, `compose_soul_document()` ; legacy `compose_system_prompt_from_json()` jusqu'à drop `persona_json` (B5)
+- [x] **Pas de fetch blob dans `core/`** — `BlobStorePort` injecté depuis bootstrap/infrastructure ; loader lit cache sync write-through
+- [x] **Pas de `persona_json` / blob bytes dans `JobEnvelope`** — seulement `system_prompt: str`
+- [x] **Harnesses ne parsent pas la persona** — executors dumb
+- [x] **Dashboard ne touche pas `config.db`** — BFF → hub NATS RPC uniquement
+- [x] **Dashboard ne compose pas** — preview via hub RPC
+- [x] **Soul session-scoped** — lag documenté ; runbook opérateur
+- [x] **ADR-094** : pas d'adapter `platform=dashboard` ; namespaces `/api/bff/*`
+- [x] **import-linter** : `factory.adapters` ↛ `core.persona` ; `factory.dashboard` ↛ `core.persona` / `agent_db_loader`
+- [x] Gates SLOC 300 / dossier 15 sur nouveaux chemins
+- [x] `make qg` green à chaque bloc « done when »
 
 ---
 
@@ -409,11 +409,11 @@ Layer C — Turn resolution (hub stage)
 - [x] **Limites** : doc ≤ 48 KiB, composé ≤ 64 KiB
 - [x] **Harness default** : `agents.backend` + `agents.model` (pas de nouvelle colonne)
 - [x] **Memory** : provision `soul_meta_json.memory` ; pas de `set_memory()` V1
-- [ ] **Contrats** : DTOs `AgentSoulDocument`, `SoulMetaEnvelope`, `AgentConfigGet/Update`, `SoulPreviewRequest/Response` — **GO bloquant Block 4 SPA**
-- [ ] **import-linter stubs** : `adapters-no-persona`, `dashboard-no-persona` (voir Block 2)
-- [ ] **Consensus Layer A** : mise à jour blobstore **avant** `/goal` (ou première slice B1) — éviter deux vérités
-- [ ] **OMP Block 3** : introspection API au début du bloc (pas pre-flight bloquant)
-- [ ] **Issue GitHub** : créée en fin de goal (après doc)
+- [x] **Contrats** : DTOs `AgentSoulDocument`, `SoulMetaEnvelope`, `AgentConfigGet/Update`, `SoulPreviewRequest/Response` — **GO bloquant Block 4 SPA**
+- [x] **import-linter stubs** : `adapters-no-persona`, `dashboard-no-persona` (voir Block 2)
+- [x] **Consensus Layer A** : mise à jour blobstore **avant** `/goal` (ou première slice B1) — éviter deux vérités
+- [x] **OMP Block 3** : introspection API au début du bloc (pas pre-flight bloquant)
+- [x] **Issue GitHub** : créée en fin de goal (après doc)
 - [ ] **Threat model** : soul editor = contrôle plane ; Tailnet-only tant que #1992 hors scope
 
 ---
@@ -425,19 +425,19 @@ Layer C — Turn resolution (hub stage)
 
 ### Schéma DB
 
-- [ ] Migration SQLite : ajouter `soul_meta_json`, `soul_document_blob_ref`, `soul_document_bytes` à `agents`
-- [ ] `soul_meta_json` : envelope only (header, memory provision, extensions.cortex) — pas de contenu section dupliqué
-- [ ] `soul_document_*` : ref blobstore vers `soul.md` markdown — cap 48 KiB à l'écriture
-- [ ] Garder `persona_json` temporairement pour rollback / backfill
+- [x] Migration SQLite : ajouter `soul_meta_json`, `soul_document_blob_ref`, `soul_document_bytes` à `agents`
+- [x] `soul_meta_json` : envelope only (header, memory provision, extensions.cortex) — pas de contenu section dupliqué
+- [x] `soul_document_*` : ref blobstore vers `soul.md` markdown — cap 48 KiB à l'écriture
+- [x] Garder `persona_json` temporairement pour rollback / backfill
 
 ### Backfill
 
-- [ ] Script one-shot : pour chaque agent avec `persona_json` non vide
+- [x] Script one-shot : pour chaque agent avec `persona_json` non vide
   - mapper legacy → sections AgentSoul v1 (voir table migration ci-dessous)
   - assembler `soul.md` avec headers `## Identity` … `## Guidelines`
   - PUT blobstore → PATCH `soul_document_blob_ref` + `soul_meta_json.header.display_name`
-- [ ] Idempotent ; log agents migrés / skipped / erreurs
-- [ ] Test : agent sans persona → envelope minimale + ref NULL OK
+- [x] Idempotent ; log agents migrés / skipped / erreurs
+- [x] Test : agent sans persona → envelope minimale + ref NULL OK
 
 **Mapping legacy `persona_json` → AgentSoul v1 :**
 
@@ -451,41 +451,41 @@ Layer C — Turn resolution (hub stage)
 
 ### Sync load contract (architecte — bloquant)
 
-- [ ] **Write-through cache** : au `soul.put` / backfill, hub fetch+compose et peuple cache sync (`ref → bytes`, optionnel `ref → composed_prompt`)
-- [ ] `agent_row_to_config()` lit **cache uniquement** (pas `await` blob) — compatible ADR-029 per-message reload
-- [ ] Cache miss → fallback `persona_json` + log/metric `soul_cache_miss`
+- [x] **Write-through cache** : au `soul.put` / backfill, hub fetch+compose et peuple cache sync (`ref → bytes`, optionnel `ref → composed_prompt`)
+- [x] `agent_row_to_config()` lit **cache uniquement** (pas `await` blob) — compatible ADR-029 per-message reload
+- [x] Cache miss → fallback `persona_json` + log/metric `soul_cache_miss`
 
 ### Loader hub
 
-- [ ] `parse_soul_markdown()` + `compose_soul_document()` + `merge_soul_sections()` dans `core/persona.py` (pur, sans I/O)
-- [ ] `SoulDocumentFetcher` dans bootstrap/infrastructure : `BlobStorePort.get()` + LRU par `sha256`
-- [ ] Adapter `agent_db_loader.py` : cache bytes → parse → compose ; fallback `persona_json`
-- [ ] Hot-reload ADR-029 : `updated_at` / ref change → invalider cache agent (pas `pool._system_prompt`)
-- [ ] Sections allowlist : exactement `Identity`, `Personality`, `Values`, `Expertise`, `Guidelines` ; sections inconnues rejetées à la save
-- [ ] Append `_VOICE_TRANSCRIPT_INSTRUCTION` dans compose (inchangé) ; 64 KiB sur prompt **complet**
+- [x] `parse_soul_markdown()` + `compose_soul_document()` + `merge_soul_sections()` dans `core/persona.py` (pur, sans I/O)
+- [x] `SoulDocumentFetcher` dans bootstrap/infrastructure : `BlobStorePort.get()` + LRU par `sha256`
+- [x] Adapter `agent_db_loader.py` : cache bytes → parse → compose ; fallback `persona_json`
+- [x] Hot-reload ADR-029 : `updated_at` / ref change → invalider cache agent (pas `pool._system_prompt`)
+- [x] Sections allowlist : exactement `Identity`, `Personality`, `Values`, `Expertise`, `Guidelines` ; sections inconnues rejetées à la save
+- [x] Append `_VOICE_TRANSCRIPT_INSTRUCTION` dans compose (inchangé) ; 64 KiB sur prompt **complet**
 
 ### Hub blobstore + rétention (devops + sécurité)
 
-- [ ] Câbler `factory-hub` : `factory_blobstore_token`, `init_blobstore()`, fail-closed si blobstore down sur `soul.put`
-- [ ] Politique sweep : pin / exempt refs `source=soul` du sweep 30j — refs actives ne doivent pas disparaître
-- [ ] `soul.put` atomique : PUT → verify sha256 → PATCH ref + `updated_at` ; runbook si PATCH échoue (orphan blob)
+- [x] Câbler `factory-hub` : `factory_blobstore_token`, `init_blobstore()`, fail-closed si blobstore down sur `soul.put`
+- [x] Politique sweep : pin / exempt refs `source=soul` du sweep 30j — refs actives ne doivent pas disparaître
+- [x] `soul.put` atomique : PUT → verify sha256 → PATCH ref + `updated_at` ; runbook si PATCH échoue (orphan blob)
 
 ### Consommateurs legacy
 
-- [ ] `bot_display_name` → `soul_meta_json.header.display_name` (+ fallback `persona_json`)
+- [x] `bot_display_name` → `soul_meta_json.header.display_name` (+ fallback `persona_json`)
 - [ ] `agent_refiner` : documenter dette — patch `persona_json` invalide post-migration ; follow-up issue
 
 ### CLI / refine-agent
 
 - [ ] `factory agent patch` : flow PUT `soul.md` → PATCH ref (hub-side ou CLI avec blob client)
-- [ ] Plugin `refine-agent` : **supprimer** vault personas ; édition via même flow soul document
+- [x] Plugin `refine-agent` : **supprimer** vault personas ; édition via même flow soul document
 
 ### Block 1 — done when
 
-- [ ] Tous les agents prod migrés (ou script documenté + exécuté en staging)
-- [ ] `agent_row_to_config` compose depuis blobstore
-- [ ] pytest : migration, loader, cache, fallback inline
-- [ ] Pas de régression `make qg` sur chemins agents
+- [x] Tous les agents prod migrés (ou script documenté + exécuté en staging)
+- [x] `agent_row_to_config` compose depuis blobstore
+- [x] pytest : migration, loader, cache, fallback inline
+- [x] Pas de régression `make qg` sur chemins agents
 
 ---
 
@@ -496,12 +496,12 @@ Layer C — Turn resolution (hub stage)
 
 ### Primitive core
 
-- [ ] Ajouter `resolve_effective_system_prompt(agent, pool) -> str` dans `core/` (nom final TBD)
+- [x] Ajouter `resolve_effective_system_prompt(agent, pool) -> str` dans `core/` (nom final TBD)
   - appelle `_ensure_system_prompt(pool)` si besoin
   - retourne `pool._system_prompt or agent.config.system_prompt`
   - futur : fold `RuntimeConfig.overlay()` ici
-- [ ] Remplacer call sites dispersés vers cette primitive (grep `pool._system_prompt`, `config.system_prompt` dans turn path)
-- [ ] Appel depuis `SimpleAgent.process()` une fois par tour (après ensure)
+- [x] Remplacer call sites dispersés vers cette primitive (grep `pool._system_prompt`, `config.system_prompt` dans turn path)
+- [x] Appel depuis `SimpleAgent.process()` une fois par tour (après ensure)
 
 ### Metadata envelope (devops nuance)
 
@@ -509,21 +509,21 @@ Layer C — Turn resolution (hub stage)
 
 ### Drift gates
 
-- [ ] import-linter contracts (voir invariants)
-- [ ] Contract test : `persona_json` ∉ `JobEnvelope.payload` keys
-- [ ] Contract test : `system_prompt` type str only
+- [x] import-linter contracts (voir invariants)
+- [x] Contract test : `persona_json` ∉ `JobEnvelope.payload` keys
+- [x] Contract test : `system_prompt` type str only
 
 ### Bypass existant (bloquant avant B4 mutating)
 
-- [ ] `DashboardJobsLaunchRequest.system_prompt` : **ignorer** valeur client ; hub résout depuis agent registry
-- [ ] `jobs.launch` `model_cfg` : depuis `agents.backend` + `agents.model` (pas heuristique `job_name`)
-- [ ] Primitive hub : `resolve_agent_runtime_defaults(agent_name) -> {backend, model}` (évite N×M dashboard)
+- [x] `DashboardJobsLaunchRequest.system_prompt` : **ignorer** valeur client ; hub résout depuis agent registry
+- [x] `jobs.launch` `model_cfg` : depuis `agents.backend` + `agents.model` (pas heuristique `job_name`)
+- [x] Primitive hub : `resolve_agent_runtime_defaults(agent_name) -> {backend, model}` (évite N×M dashboard)
 
 ### Block 2 — done when
 
-- [ ] Un seul chemin turn-stage pour le prompt effectif
-- [ ] Gates importlinter + contract tests green
-- [ ] pytest turn-path avec mock pool
+- [x] Un seul chemin turn-stage pour le prompt effectif
+- [x] Gates importlinter + contract tests green
+- [x] pytest turn-path avec mock pool
 
 ---
 
@@ -536,23 +536,23 @@ Layer C — Turn resolution (hub stage)
 
 ### Implémentation
 
-- [ ] Introspection `omp_rpc` : méthode d'apply `system_prompt` au session boundary (première tâche du bloc)
-- [ ] `omp_worker` : passer `system_prompt` à `acquire` / `bridge.run` ; appliquer au cold session
-- [ ] Stocker `system_prompt` sur état session-scoped (miroir `_ProcessEntry.system_prompt` Clipool)
-- [ ] Comparer au boundary : si changement → nouvelle session / respawn équivalent
-- [ ] Retirer log `(system_prompt V1: not applied)` quand V2 actif
+- [x] Introspection `omp_rpc` : méthode d'apply `system_prompt` au session boundary (première tâche du bloc)
+- [x] `omp_worker` : passer `system_prompt` à `acquire` / `bridge.run` ; appliquer au cold session
+- [x] Stocker `system_prompt` sur état session-scoped (miroir `_ProcessEntry.system_prompt` Clipool)
+- [x] Comparer au boundary : si changement → nouvelle session / respawn équivalent
+- [x] Retirer log `(system_prompt V1: not applied)` quand V2 actif
 
 ### Tests
 
-- [ ] Parité sémantique avec tests Clipool respawn
-- [ ] Test : même string soul claude-cli vs omp-rpc pour un agent donné
-- [ ] Test : changement persona → nouvelle session OMP reçoit nouvelle soul
+- [x] Parité sémantique avec tests Clipool respawn
+- [x] Test : même string soul claude-cli vs omp-rpc pour un agent donné
+- [x] Test : changement persona → nouvelle session OMP reçoit nouvelle soul
 
 ### Block 3 — done when
 
-- [ ] OMP applique soul au session boundary
-- [ ] pytest adapters/omp green
-- [ ] Pas d'avertissement UI requis pour OMP (parité réelle)
+- [x] OMP applique soul au session boundary
+- [x] pytest adapters/omp green
+- [x] Pas d'avertissement UI requis pour OMP (parité réelle)
 
 ---
 
@@ -563,55 +563,55 @@ Layer C — Turn resolution (hub stage)
 
 ### Hub NATS RPC (nouveaux subjects)
 
-- [ ] `factory.dashboard.agents.list` — liste agents + metadata (sans bytes soul)
-- [ ] `factory.dashboard.agents.get` — config agent : harness default, model, voice_json, persona ref, format, bytes, updated_at
-- [ ] `factory.dashboard.agents.patch` — update champs scalaires + voice_json
-- [ ] `factory.dashboard.agents.soul.put` — `soul.md` bytes → PUT blobstore → PATCH ref (atomique côté hub)
-- [ ] `factory.dashboard.agents.soul.preview` — compose preview (hub `compose_soul_document`) — **pas de compose SPA**
-- [ ] `factory.dashboard.agents.soul.get` — parse sections pour les 5 éditeurs
-- [ ] ACL matrix + `nats-regen-specs` + `factory-acl check grants`
-- [ ] DTOs dans `roxabi-contracts` + `contracts-bump`
+- [x] `factory.dashboard.agents.list` — liste agents + metadata (sans bytes soul)
+- [x] `factory.dashboard.agents.get` — config agent : harness default, model, voice_json, persona ref, format, bytes, updated_at
+- [x] `factory.dashboard.agents.patch` — update champs scalaires + voice_json
+- [x] `factory.dashboard.agents.soul.put` — `soul.md` bytes → PUT blobstore → PATCH ref (atomique côté hub)
+- [x] `factory.dashboard.agents.soul.preview` — compose preview (hub `compose_soul_document`) — **pas de compose SPA**
+- [x] `factory.dashboard.agents.soul.get` — parse sections pour les 5 éditeurs
+- [x] ACL matrix + `nats-regen-specs` + `factory-acl check grants`
+- [x] DTOs dans `roxabi-contracts` + `contracts-bump`
 
 ### BFF routes
 
-- [ ] `GET /api/bff/agents` → list
-- [ ] `GET /api/bff/agents/{name}` → get (enregistrer `/agents/status` **avant** `/{name}`)
-- [ ] `PATCH /api/bff/agents/{name}` → patch scalaires
-- [ ] `PUT /api/bff/agents/{name}/soul` → soul.put
-- [ ] `GET /api/bff/agents/{name}/soul` → soul.get (sections parsées)
-- [ ] `POST /api/bff/agents/{name}/soul/preview` → preview
-- [ ] Pas d'import `infrastructure.stores` dans `factory.dashboard`
+- [x] `GET /api/bff/agents` → list
+- [x] `GET /api/bff/agents/{name}` → get (enregistrer `/agents/status` **avant** `/{name}`)
+- [x] `PATCH /api/bff/agents/{name}` → patch scalaires
+- [x] `PUT /api/bff/agents/{name}/soul` → soul.put
+- [x] `GET /api/bff/agents/{name}/soul` → soul.get (sections parsées)
+- [x] `POST /api/bff/agents/{name}/soul/preview` → preview
+- [x] Pas d'import `infrastructure.stores` dans `factory.dashboard`
 
 ### SPA (`apps/dashboard/`)
 
-- [ ] Route `/agents` (+ `/agents/:name` détail)
-- [ ] Liste agents avec statut (réutiliser pattern `AgentStatusBadge`)
-- [ ] Formulaire édition :
+- [x] Route `/agents` (+ `/agents/:name` détail)
+- [x] Liste agents avec statut (réutiliser pattern `AgentStatusBadge`)
+- [x] Formulaire édition :
   - **backend** (harness default — `HarnessPicker`, `claude-cli` \| `omp-rpc` seulement)
   - **model** (`ModelPicker` / colonne `model` + `backend`)
   - **voice** (éditeur JSON guidé ou champs TTS/STT depuis `voice_json`)
   - **envelope** : `display_name`, `tagline` (champs courts)
   - **soul** : 5 onglets + textarea long-form par section + compteur bytes + preview (troncature 8k chars)
   - **memory** : ligne masquée V1 (ou tooltip info seul — dissent produit)
-- [ ] **Lag UX** : callout persistant onglet Soul + toast post-save (« sessions en cours inchangées »)
-- [ ] **Dirty state** : bandeau « modifications non enregistrées » + confirm navigation
-- [ ] Sauvegarde : PATCH scalaires + PUT soul atomique via BFF
-- [ ] Erreur si doc > 48 KiB ou composé > 64 KiB (message actionnable)
-- [ ] Nouvel onglet chat : pré-remplir harness/model depuis defaults agent DB (remplacer hardcode `chats-storage.ts`)
+- [x] **Lag UX** : callout persistant onglet Soul + toast post-save (« sessions en cours inchangées »)
+- [x] **Dirty state** : bandeau « modifications non enregistrées » + confirm navigation
+- [x] Sauvegarde : PATCH scalaires + PUT soul atomique via BFF
+- [x] Erreur si doc > 48 KiB ou composé > 64 KiB (message actionnable)
+- [x] Nouvel onglet chat : pré-remplir harness/model depuis defaults agent DB (remplacer hardcode `chats-storage.ts`)
 
 ### Intégration chat existant
 
-- [ ] `newTab(agent)` : `GET agents/{name}` → `backend`, `model` (fallback hardcode + toast warning)
-- [ ] HarnessPicker : indicateur si valeur ≠ défaut agent DB ; pas de sync auto onglets existants (documenter)
-- [ ] Secret lint optionnel sur soul save : warn `sk-`, `ghp_`, `Bearer `, PEM
+- [x] `newTab(agent)` : `GET agents/{name}` → `backend`, `model` (fallback hardcode + toast warning)
+- [x] HarnessPicker : indicateur si valeur ≠ défaut agent DB ; pas de sync auto onglets existants (documenter)
+- [x] Secret lint optionnel sur soul save : warn `sk-`, `ghp_`, `Bearer `, PEM
 
 ### Block 4 — done when
 
-- [ ] Opérateur édite soul + harness + model + voice depuis dashboard
-- [ ] Preview compose affiche le prompt effectif (tronqué si > N chars UI)
+- [x] Opérateur édite soul + harness + model + voice depuis dashboard
+- [x] Preview compose affiche le prompt effectif (tronqué si > N chars UI)
 - [ ] vitest : pages agents + formulaires
-- [ ] pytest BFF + hub RPC green
-- [ ] `bun run typecheck` + `build:dashboard` green
+- [x] pytest BFF + hub RPC green
+- [x] `bun run typecheck` + `build:dashboard` green
 
 ---
 
@@ -622,29 +622,29 @@ Layer C — Turn resolution (hub stage)
 
 ### Ops
 
-- [ ] Runbook `docs/runbooks/persona-soul-migration.md` : backup → migrate → backfill → vérif SQL
-- [ ] Runbook `docs/runbooks/persona-soul-rollback.md` : revert ref sha256 ; backup pairé config.db+blobstore
-- [ ] Runbook `docs/runbooks/persona-soul-operator.md` : edit → lag → `/reset` ; OMP vs clipool
-- [ ] Étendre `blobstore-backup-restore.md` : soul refs + politique sweep
-- [ ] Index dans `docs/runbooks/README.md`
-- [ ] Audit operator : log structuré + event sur `soul.put` / patch agent
-- [ ] Métriques : `soul_blob_fetch_errors`, `soul_compose_rejected_bytes`
+- [x] Runbook `docs/runbooks/persona-soul-migration.md` : backup → migrate → backfill → vérif SQL
+- [x] Runbook `docs/runbooks/persona-soul-rollback.md` : revert ref sha256 ; backup pairé config.db+blobstore
+- [x] Runbook `docs/runbooks/persona-soul-operator.md` : edit → lag → `/reset` ; OMP vs clipool
+- [x] Étendre `blobstore-backup-restore.md` : soul refs + politique sweep
+- [x] Index dans `docs/runbooks/README.md`
+- [x] Audit operator : log structuré + event sur `soul.put` / patch agent
+- [x] Métriques : `soul_blob_fetch_errors`, `soul_compose_rejected_bytes`
 
 ### Docs
 
-- [ ] Mettre à jour `docs/agent-management.md` (blobstore, plus inline-only)
-- [ ] Mettre à jour `persona-soul-harness-parity-consensus.mdx` Layer A → blobstore
-- [ ] Optionnel : snippet ADR ou appendix ADR-073
+- [x] Mettre à jour `docs/agent-management.md` (blobstore, plus inline-only)
+- [x] Mettre à jour `persona-soul-harness-parity-consensus.mdx` Layer A → blobstore
+- [x] Optionnel : snippet ADR ou appendix ADR-073
 
 ### Cleanup migration
 
 - [ ] Slice finale : drop colonne `persona_json` (seulement quand backfill 100 % + staging validé)
-- [ ] Retirer fallback inline dans loader
+- [x] Retirer fallback inline dans loader
 
 ### Block 5 — done when
 
-- [ ] Docs à jour
-- [ ] `make qg` complet green
+- [x] Docs à jour
+- [x] `make qg` complet green
 - [ ] PR mergée vers `staging` (via workflow review + `reviewed` + `/ci-watch`)
 - [ ] smoke Tailnet : edit soul dashboard → nouveau chat → soul appliquée clipool + omp
 

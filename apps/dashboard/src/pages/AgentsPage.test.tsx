@@ -2,21 +2,21 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   createMemoryHistory,
   createRootRoute,
+  createRoute,
   createRouter,
   RouterProvider,
 } from "@tanstack/react-router";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as agentsApi from "@/lib/agents-api";
-import { AgentsListPage } from "@/pages/AgentsPage";
+import { AgentDetailPage, AgentsListPage } from "@/pages/AgentsPage";
 
 function renderAgentsList() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  const rootRoute = createRootRoute({
-    component: AgentsListPage,
-  });
+  const rootRoute = createRootRoute({ component: AgentsListPage });
   const router = createRouter({
     routeTree: rootRoute,
     history: createMemoryHistory({ initialEntries: ["/"] }),
@@ -29,6 +29,40 @@ function renderAgentsList() {
     </QueryClientProvider>,
   );
 }
+
+function renderAgentDetail() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const rootRoute = createRootRoute();
+  const detailRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/agents/$name",
+    component: AgentDetailPage,
+  });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([detailRoute]),
+    history: createMemoryHistory({ initialEntries: ["/agents/lyra"] }),
+    context: { queryClient: undefined as unknown as QueryClient },
+  });
+  void router.load();
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>,
+  );
+}
+
+const CONFIG = {
+  name: "lyra",
+  backend: "claude-cli" as const,
+  model: "sonnet",
+  voice_json: null,
+  soul_meta_json: { header: { display_name: "Lyra", tagline: "ops" } },
+  soul_document_blob_ref: "sha256:abc",
+  soul_document_bytes: 100,
+  updated_at: "2026-06-29T12:00:00Z",
+};
 
 describe("AgentsListPage", () => {
   beforeEach(() => {
@@ -53,5 +87,63 @@ describe("AgentsListPage", () => {
     });
     expect(screen.getByText(/claude-cli/)).toBeTruthy();
     expect(screen.getByText(/sonnet/)).toBeTruthy();
+  });
+});
+
+describe("AgentDetailPage", () => {
+  beforeEach(() => {
+    vi.spyOn(agentsApi, "fetchAgentConfig").mockResolvedValue(CONFIG);
+    vi.spyOn(agentsApi, "fetchAgentSoul").mockResolvedValue({
+      sections: { Identity: "I am Lyra", Personality: "Warm" },
+      updated_at: "2026-06-29T12:00:00Z",
+    });
+    vi.spyOn(agentsApi, "previewAgentSoul").mockResolvedValue({
+      composed: "## Identity\nI am Lyra\n\n## Voice messages\nWhen",
+      truncated: false,
+    });
+    vi.spyOn(agentsApi, "patchAgentConfig").mockResolvedValue(CONFIG);
+    vi.spyOn(agentsApi, "putAgentSoul").mockResolvedValue({});
+  });
+
+  it("renders five soul section tabs and dirty banner on edit", async () => {
+    const user = userEvent.setup();
+    renderAgentDetail();
+    await waitFor(() => {
+      expect(screen.getByText("lyra")).toBeTruthy();
+    });
+    expect(screen.getByText("Identity")).toBeTruthy();
+    expect(screen.getByText("Guidelines")).toBeTruthy();
+    expect(screen.getByText(/Session lag/)).toBeTruthy();
+
+    const soulTextarea = screen.getAllByRole("textbox")[2];
+    await user.clear(soulTextarea);
+    await user.type(soulTextarea, "Updated identity");
+    expect(screen.getByText(/Unsaved changes/)).toBeTruthy();
+  });
+
+  it("preview compose calls hub RPC", async () => {
+    const user = userEvent.setup();
+    renderAgentDetail();
+    await waitFor(() => expect(screen.getByText("Preview compose")).toBeTruthy());
+    await user.click(screen.getByText("Preview compose"));
+    await waitFor(() => {
+      expect(agentsApi.previewAgentSoul).toHaveBeenCalledWith("lyra", {
+        sections: expect.objectContaining({ Identity: "I am Lyra" }),
+      });
+    });
+  });
+
+  it("save shows sessions-unchanged notice", async () => {
+    const user = userEvent.setup();
+    renderAgentDetail();
+    await waitFor(() => expect(screen.getByText("Save")).toBeTruthy());
+    const soulTextarea = screen.getAllByRole("textbox")[2];
+    await user.type(soulTextarea, " edit");
+    await user.click(screen.getByText("Save"));
+    await waitFor(() => {
+      expect(agentsApi.patchAgentConfig).toHaveBeenCalled();
+      expect(agentsApi.putAgentSoul).toHaveBeenCalled();
+      expect(screen.getByText(/Active chat sessions keep the previous soul/)).toBeTruthy();
+    });
   });
 });

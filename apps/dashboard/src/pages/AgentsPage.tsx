@@ -59,6 +59,7 @@ export function AgentDetailPage() {
   const qc = useQueryClient();
   const [tab, setTab] = useState<string>("Identity");
   const [dirty, setDirty] = useState(false);
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [sections, setSections] = useState<SoulSections>({});
   const [preview, setPreview] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -120,6 +121,9 @@ export function AgentDetailPage() {
     },
     onSuccess: () => {
       setDirty(false);
+      setSaveNotice(
+        "Saved. Active chat sessions keep the previous soul until you open a new tab or reset.",
+      );
       void qc.invalidateQueries({ queryKey: ["agent-config", name] });
       void qc.invalidateQueries({ queryKey: ["agent-soul", name] });
     },
@@ -146,6 +150,15 @@ export function AgentDetailPage() {
       {dirty ? (
         <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">
           Unsaved changes — save before leaving.
+        </div>
+      ) : null}
+
+      {saveNotice ? (
+        <div
+          className="rounded-md border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-sm"
+          role="status"
+        >
+          {saveNotice}
         </div>
       ) : null}
 
@@ -192,8 +205,9 @@ export function AgentDetailPage() {
       </Card>
 
       <Card className="p-4">
-        <p className="mb-3 text-sm text-muted-foreground">
-          Soul edits apply to new sessions only. Active chats keep the previous soul until reset.
+        <p className="mb-3 rounded-md border-l-4 border-amber-500 bg-amber-500/10 px-3 py-2 text-sm text-amber-900 dark:text-amber-100">
+          Session lag: soul edits apply to <strong>new sessions only</strong>. Active chats keep the
+          previous soul until you reset or start a new conversation tab.
         </p>
         <div className="mb-3 flex flex-wrap gap-1 border-b pb-2">
           {SOUL_SECTIONS.map((s) => (

@@ -125,6 +125,9 @@ async def put_soul_document(
     if row is None:
         raise KeyError(f"unknown agent: {agent_name!r}")
 
+    # Drop stale ref-keyed entry before warm (cache.get matches blob_ref exactly).
+    if row.soul_document_blob_ref and row.soul_document_blob_ref != store_key:
+        get_soul_document_cache().invalidate(agent_name)
     warm_soul_cache(agent_name, blob_ref=store_key, markdown=markdown)
 
     updated = AgentRow(

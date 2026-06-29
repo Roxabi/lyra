@@ -278,7 +278,7 @@ class SimpleAgent(AgentBase):
         msg: InboundMessage,
         pool: Pool,
     ) -> "Response | AsyncIterator[RenderEvent]":
-        self._maybe_reload()
+        await self._maybe_reload()
 
         # /voice pre-router: rewrite as voice-modality LLM request
         _voice_rewritten = self._handle_voice_command(msg)

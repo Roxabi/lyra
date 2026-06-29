@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from factory.bootstrap.factory.dashboard_rpc import (
-    _handle_jobs_launch,
-    _handle_jobs_steer,
+from factory.bootstrap.factory.dashboard_jobs_rpc import (
+    handle_jobs_launch,
+    handle_jobs_steer,
 )
 from roxabi_contracts.jobs.subjects import jobs_steer, jobs_submit
 
@@ -16,7 +16,13 @@ from roxabi_contracts.jobs.subjects import jobs_steer, jobs_submit
 @pytest.fixture
 def hub() -> MagicMock:
     h = MagicMock()
-    h.agent_registry = ["lyra", "aryl"]
+    agent = MagicMock()
+    agent.config.system_prompt = "test soul"
+    h.agent_registry = {"lyra": agent, "aryl": agent}
+    row = MagicMock(backend="claude-cli", model="sonnet")
+    store = MagicMock()
+    store.get.return_value = row
+    h._agent_store = store
     return h
 
 
@@ -30,7 +36,7 @@ def nc() -> AsyncMock:
 class TestJobsLaunch:
     @pytest.mark.asyncio
     async def test_publishes_job_envelope(self, hub: MagicMock, nc: AsyncMock) -> None:
-        result = await _handle_jobs_launch(
+        result = await handle_jobs_launch(
             hub,
             nc,
             {"agent": "lyra", "prompt": "hello operator", "job_name": "omp"},
@@ -45,7 +51,7 @@ class TestJobsLaunch:
 
     @pytest.mark.asyncio
     async def test_rejects_unknown_agent(self, hub: MagicMock, nc: AsyncMock) -> None:
-        result = await _handle_jobs_launch(
+        result = await handle_jobs_launch(
             hub,
             nc,
             {"agent": "ghost", "prompt": "nope", "job_name": "omp"},
@@ -57,7 +63,7 @@ class TestJobsLaunch:
     async def test_publishes_claude_job_envelope(
         self, hub: MagicMock, nc: AsyncMock
     ) -> None:
-        result = await _handle_jobs_launch(
+        result = await handle_jobs_launch(
             hub,
             nc,
             {"agent": "lyra", "prompt": "claude run", "job_name": "claude"},
@@ -73,7 +79,7 @@ class TestJobsLaunch:
     async def test_rejects_disallowed_job_name(
         self, hub: MagicMock, nc: AsyncMock
     ) -> None:
-        result = await _handle_jobs_launch(
+        result = await handle_jobs_launch(
             hub,
             nc,
             {"agent": "lyra", "prompt": "nope", "job_name": "vault.add"},
@@ -85,7 +91,7 @@ class TestJobsLaunch:
 class TestJobsSteer:
     @pytest.mark.asyncio
     async def test_publishes_steer_text(self, hub: MagicMock, nc: AsyncMock) -> None:
-        result = await _handle_jobs_steer(
+        result = await handle_jobs_steer(
             hub,
             nc,
             {"job_id": "abc123", "text": "change direction"},

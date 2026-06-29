@@ -8,3 +8,4 @@ design: stdlib only.
 from __future__ import annotations
 
 MAX_PROMPT_BYTES = 64 * 1024  # const-ok: shared byte-limit, single SSoT
+MAX_SOUL_DOCUMENT_BYTES = 48 * 1024  # const-ok: raw soul.md cap at authoring save

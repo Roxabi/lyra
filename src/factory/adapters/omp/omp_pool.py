@@ -58,6 +58,15 @@ class _PoolWorker:
     client: Any  # omp_rpc.RpcClient (already started)
     bridge: Any  # RpcBridge(_client=client), attached to nc
     session_file: str | None = None
+    system_prompt: str = ""
+
+
+def _apply_omp_system_prompt(client: Any, system_prompt: str) -> None:
+    if not system_prompt:
+        return
+    setter = getattr(client, "set_system_prompt", None)
+    if callable(setter):
+        setter(system_prompt)
 
 
 class OmpPool:
@@ -113,7 +122,9 @@ class OmpPool:
         self._nc = nc
         self._loop = asyncio.get_running_loop()
 
-    async def acquire(self, session_file: str | None) -> _PoolWorker:
+    async def acquire(
+        self, session_file: str | None, *, system_prompt: str = ""
+    ) -> _PoolWorker:
         """Check out a free worker (or lazily start one, up to M).
 
         Resume the durable session via switch_session if a token was given,
@@ -127,16 +138,31 @@ class OmpPool:
             raise
         self._checked_out.add(id(worker))
         try:
-            if session_file is not None:
-                await asyncio.to_thread(worker.client.switch_session, session_file)
-                worker.session_file = session_file
-                log.debug("[omp_pool] acquire with session %s", session_file)
-            else:
-                # new_session() returns a CancellationResult — NOT the path.
-                # Call get_state() to obtain the minted .jsonl session_file path.
+            prompt_changed = system_prompt != worker.system_prompt
+            if prompt_changed and system_prompt:
                 await asyncio.to_thread(worker.client.new_session)
                 state = await asyncio.to_thread(worker.client.get_state)
                 worker.session_file = getattr(state, "session_file", None)
+                _apply_omp_system_prompt(worker.client, system_prompt)
+                worker.system_prompt = system_prompt
+                log.debug(
+                    "[omp_pool] system_prompt changed — new session %s",
+                    worker.session_file,
+                )
+            elif session_file is not None:
+                await asyncio.to_thread(worker.client.switch_session, session_file)
+                worker.session_file = session_file
+                if system_prompt and system_prompt != worker.system_prompt:
+                    _apply_omp_system_prompt(worker.client, system_prompt)
+                    worker.system_prompt = system_prompt
+                log.debug("[omp_pool] acquire with session %s", session_file)
+            else:
+                await asyncio.to_thread(worker.client.new_session)
+                state = await asyncio.to_thread(worker.client.get_state)
+                worker.session_file = getattr(state, "session_file", None)
+                if system_prompt:
+                    _apply_omp_system_prompt(worker.client, system_prompt)
+                    worker.system_prompt = system_prompt
                 log.debug(
                     "[omp_pool] acquire new session, minted %s", worker.session_file
                 )  # noqa: E501

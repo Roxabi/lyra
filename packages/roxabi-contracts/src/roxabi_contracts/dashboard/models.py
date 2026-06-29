@@ -188,3 +188,74 @@ class DashboardVoiceCapabilitiesResponse(BaseModel):
     tts: VoiceTtsCapabilities | None = None
     stt: VoiceSttCapabilities | None = None
     error: str | None = None
+
+
+class SoulMetaHeader(BaseModel):
+    display_name: str = ""
+    tagline: str = ""
+
+
+class SoulMetaMemory(BaseModel):
+    enabled: bool = False
+    namespace: str | None = None
+    source: str = "cortex"
+    sync_mode: str = "none"
+
+
+class SoulMetaEnvelope(BaseModel):
+    schema_version: int = 1
+    header: SoulMetaHeader = Field(default_factory=SoulMetaHeader)
+    memory: SoulMetaMemory = Field(default_factory=SoulMetaMemory)
+    extensions: dict[str, object] = Field(default_factory=dict)
+
+
+class DashboardAgentSummary(BaseModel):
+    name: str
+    backend: HarnessKind
+    model: str
+    updated_at: str
+    soul_document_bytes: int | None = None
+    has_soul: bool = False
+
+
+class DashboardAgentsListResponse(BaseModel):
+    agents: list[DashboardAgentSummary]
+
+
+class DashboardAgentConfigResponse(BaseModel):
+    name: str
+    backend: HarnessKind
+    model: str
+    voice_json: dict[str, object] | None = None
+    soul_meta_json: SoulMetaEnvelope | None = None
+    soul_document_blob_ref: str | None = None
+    soul_document_bytes: int | None = None
+    updated_at: str
+
+
+class DashboardAgentPatchRequest(BaseModel):
+    backend: HarnessKind | None = None
+    model: str | None = None
+    voice_json: dict[str, object] | None = None
+    display_name: str | None = None
+    tagline: str | None = None
+
+
+class DashboardAgentSoulPutRequest(BaseModel):
+    markdown: str = Field(min_length=0)
+
+
+class DashboardAgentSoulSectionsResponse(BaseModel):
+    sections: dict[str, str]
+    soul_document_blob_ref: str | None = None
+    soul_document_bytes: int | None = None
+    updated_at: str
+
+
+class DashboardAgentSoulPreviewRequest(BaseModel):
+    sections: dict[str, str] = Field(default_factory=dict)
+
+
+class DashboardAgentSoulPreviewResponse(BaseModel):
+    composed: str
+    truncated: bool = False

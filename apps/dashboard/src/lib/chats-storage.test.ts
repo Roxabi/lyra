@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { randomId } from "@/lib/chats-storage";
+import { newTab, randomId } from "@/lib/chats-storage";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
@@ -23,5 +23,19 @@ describe("randomId", () => {
     } finally {
       crypto.randomUUID = native;
     }
+  });
+});
+
+describe("newTab", () => {
+  it("uses DB defaults when provided", () => {
+    const tab = newTab("lyra", { backend: "omp-rpc", model: "grok-4-fast" });
+    expect(tab.harness).toBe("omp-rpc");
+    expect(tab.model).toBe("grok-4-fast");
+  });
+
+  it("falls back to claude-cli/sonnet without defaults", () => {
+    const tab = newTab("lyra");
+    expect(tab.harness).toBe("claude-cli");
+    expect(tab.model).toBe("sonnet");
   });
 });

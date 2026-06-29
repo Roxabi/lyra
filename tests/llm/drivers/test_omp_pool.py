@@ -327,3 +327,45 @@ class TestOmpPool:
     def test_read_request_timeout_honours_env_var(self) -> None:
         with patch.dict(os.environ, {_ENV_REQUEST_TIMEOUT_KEY: "90"}):
             assert _read_request_timeout() == 90.0
+
+
+@pytest.mark.asyncio
+async def test_acquire_cold_session_applies_system_prompt() -> None:
+    """OMP V2: same opaque soul string applied at session boundary."""
+    from factory.core.persona import compose_soul_document_from_markdown
+
+    soul_md = "## Identity\nParity soul\n"
+    composed = compose_soul_document_from_markdown(soul_md)
+
+    client = _mock_rpc_client()
+    client.set_system_prompt = MagicMock()
+    bridge = _mock_bridge()
+    pool = OmpPool(omp_bin=Path("/fake/omp"), provider="litellm", model="grok-4-fast")
+    _patch_start_worker(pool, client, bridge)
+    await pool.register(MagicMock())
+
+    worker = await pool.acquire(None, system_prompt=composed)
+    assert worker.system_prompt == composed
+    client.set_system_prompt.assert_called_once_with(composed)
+
+    # Persona edit → new prompt triggers re-apply on next cold acquire.
+    client.set_system_prompt.reset_mock()
+    client.new_session.reset_mock()
+    new_composed = compose_soul_document_from_markdown("## Identity\nEdited soul\n")
+    worker2 = await pool.acquire(None, system_prompt=new_composed)
+    assert worker2.system_prompt == new_composed
+    client.set_system_prompt.assert_called_with(new_composed)
+
+
+def test_apply_omp_system_prompt_matches_clipool_opaque_string() -> None:
+    """Hub compose output is harness-opaque — OMP receives the same str as clipool."""
+    from factory.adapters.omp.omp_pool import _apply_omp_system_prompt
+    from factory.core.persona import compose_soul_document_from_markdown
+
+    composed = compose_soul_document_from_markdown("## Identity\nShared harness soul\n")
+    client = MagicMock()
+    client.set_system_prompt = MagicMock()
+    _apply_omp_system_prompt(client, composed)
+    client.set_system_prompt.assert_called_once_with(composed)
+    assert isinstance(composed, str)
+    assert "Shared harness soul" in composed

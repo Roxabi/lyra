@@ -1,4 +1,4 @@
-"""Tests for AgentRow dataclass — effort field and from_db_row 24-column unpack."""
+"""Tests for AgentRow dataclass — effort + soul fields and from_db_row unpack."""
 
 from __future__ import annotations
 
@@ -19,37 +19,42 @@ class TestAgentRowEffortField:
         row = AgentRow(name="test", backend="claude-cli", model="m", effort=None)
         assert row.effort is None
 
-    def test_from_db_row_24_columns_effort_at_end(self) -> None:
-        """from_db_row must unpack the 24th column (effort) correctly."""
+    def test_from_db_row_27_columns_soul_and_effort(self) -> None:
+        """from_db_row unpacks effort + soul columns (27 total)."""
         row_tuple = (
-            "myagent",  # name
-            "claude-cli",  # backend
-            "claude-opus",  # model
-            10,  # max_turns
-            "[]",  # tools_json
-            0,  # show_intermediate
-            None,  # smart_routing_json
-            "[]",  # plugins_json
-            None,  # memory_namespace
-            None,  # cwd
-            "db",  # source
-            "2024-01-01T00:00:00+00:00",  # created_at
-            "2024-01-01T00:00:00+00:00",  # updated_at
-            0,  # skip_permissions
-            "[]",  # permissions_json
-            None,  # workspaces_json
-            None,  # commands_json
-            0,  # streaming
-            None,  # persona_json
-            None,  # voice_json
-            "en",  # fallback_language
-            None,  # patterns_json
-            None,  # passthroughs_json
-            "high",  # effort (col 24)
+            "myagent",
+            "claude-cli",
+            "claude-opus",
+            10,
+            "[]",
+            0,
+            None,
+            "[]",
+            None,
+            None,
+            "db",
+            "2024-01-01T00:00:00+00:00",
+            "2024-01-01T00:00:00+00:00",
+            0,
+            "[]",
+            None,
+            None,
+            0,
+            None,
+            None,
+            "en",
+            None,
+            None,
+            "high",
+            None,
+            "sha256:abc",
+            512,
         )
         row = AgentRow.from_db_row(row_tuple)
         assert row.name == "myagent"
         assert row.effort == "high"
+        assert row.soul_document_blob_ref == "sha256:abc"
+        assert row.soul_document_bytes == 512
 
     def test_from_db_row_effort_null(self) -> None:
         """from_db_row with NULL effort (None) produces effort=None."""
@@ -77,7 +82,10 @@ class TestAgentRowEffortField:
             "en",
             None,
             None,
-            None,  # effort = NULL in DB
+            None,
+            None,
+            None,
+            None,
         )
         row = AgentRow.from_db_row(row_tuple)
         assert row.effort is None

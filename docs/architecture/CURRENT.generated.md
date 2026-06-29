@@ -12,6 +12,13 @@
 - **Forbidden modules:** factory.infrastructure.stores.registry.bot_store
 - **Allow indirect imports:** True
 
+### Adapters must not import core.persona directly
+
+- **Type:** forbidden
+- **Source modules:** factory.adapters
+- **Forbidden modules:** factory.core.persona
+- **Allow indirect imports:** True
+
 ### Agents must not import Composition Root
 
 - **Type:** forbidden
@@ -32,6 +39,13 @@
 - **Type:** forbidden
 - **Source modules:** factory.commands
 - **Forbidden modules:** factory.infrastructure
+- **Allow indirect imports:** True
+
+### Dashboard must not import core.persona or agent_db_loader
+
+- **Type:** forbidden
+- **Source modules:** factory.dashboard
+- **Forbidden modules:** factory.core.persona, factory.core.agent.agent_db_loader
 - **Allow indirect imports:** True
 
 ### Production code must not import tests.fakes

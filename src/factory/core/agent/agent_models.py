@@ -52,6 +52,10 @@ class AgentRow:
     updated_at: str = field(default_factory=_utc_now_iso)
     # #1101 — per-agent extended-thinking config (effort token budget)
     effort: str | None = None  # None = no extended thinking (flag omitted)
+    # AgentSoul v1 — blobstore soul.md + envelope
+    soul_meta_json: str | None = None
+    soul_document_blob_ref: str | None = None
+    soul_document_bytes: int | None = None
 
     @classmethod
     def from_db_row(cls, row: tuple[Any, ...]) -> "AgentRow":
@@ -81,6 +85,9 @@ class AgentRow:
             patterns_json,
             passthroughs_json,
             effort,
+            soul_meta_json,
+            soul_document_blob_ref,
+            soul_document_bytes,
         ) = row
         return cls(
             name=name,
@@ -107,6 +114,9 @@ class AgentRow:
             created_at=created_at,
             updated_at=updated_at,
             effort=effort or None,
+            soul_meta_json=soul_meta_json,
+            soul_document_blob_ref=soul_document_blob_ref,
+            soul_document_bytes=soul_document_bytes,
         )
 
 

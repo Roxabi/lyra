@@ -1,6 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, createRoute, createRouter } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
+import { AgentDetailPage, AgentsListPage } from "@/pages/AgentsPage";
 import { ChatPage } from "@/pages/ChatPage";
 import { DashboardHome } from "@/pages/DashboardHome";
 import { JobsPage } from "@/pages/JobsPage";
@@ -38,7 +39,26 @@ const obsRoute = createRoute({
   component: OpsPage,
 });
 
-const routeTree = rootRoute.addChildren([indexRoute, chatRoute, jobsRoute, obsRoute]);
+const agentsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/agents",
+  component: AgentsListPage,
+});
+
+const agentDetailRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/agents/$name",
+  component: AgentDetailPage,
+});
+
+const routeTree = rootRoute.addChildren([
+  indexRoute,
+  chatRoute,
+  jobsRoute,
+  obsRoute,
+  agentsRoute,
+  agentDetailRoute,
+]);
 
 export const router = createRouter({
   routeTree,

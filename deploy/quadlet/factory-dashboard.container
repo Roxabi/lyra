@@ -25,6 +25,10 @@ Environment=NATS_NKEY_SEED_PATH=/run/secrets/factory-nats-web.seed
 Environment=FACTORY_TYPING_ENABLED=false
 Environment=FACTORY_WEB_HOST=0.0.0.0
 Environment=FACTORY_WEB_PORT=8765
+# Ops BFF probes headless engines on roxabi.network — not 127.0.0.1 (dashboard container).
+Environment=FACTORY_LOKI_URL=http://factory-loki:3100
+Environment=FACTORY_LANGFUSE_URL=http://factory-langfuse-web:3000
+Environment=FACTORY_OTEL_HEALTH_URL=http://factory-otel-collector:13133
 # Agent picker reads roster.web from factory-state KV (hub publishes at boot).
 # Phase 2 (ADR-094): roster.dashboard + platform rename.
 Volume=%h/.roxabi/factory/config.toml:/app/config.toml:ro,z

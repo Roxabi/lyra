@@ -156,6 +156,25 @@ forbidden_modules =
     factory.adapters
 allow_indirect_imports = true
 
+[importlinter:contract:adapters-no-persona]
+name = Adapters must not import core.persona directly
+type = forbidden
+source_modules =
+    factory.adapters
+forbidden_modules =
+    factory.core.persona
+allow_indirect_imports = true
+
+[importlinter:contract:dashboard-no-persona]
+name = Dashboard must not import core.persona or agent_db_loader
+type = forbidden
+source_modules =
+    factory.dashboard
+forbidden_modules =
+    factory.core.persona
+    factory.core.agent.agent_db_loader
+allow_indirect_imports = true
+
 [importlinter:contract:tests-fakes-isolation]
 name = Production code must not import tests.fakes
 type = forbidden

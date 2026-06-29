@@ -6,7 +6,7 @@ Agents and bots are stored in **`~/.roxabi/factory/config.db`** (SQLite). TOML f
 
 | Table | Purpose |
 |-------|---------|
-| `agents` | Agent configurations (24 columns — see `effort` below) |
+| `agents` | Agent configurations (27 columns — soul blobstore + `effort`) |
 | `bot_agent_map` | Maps `(platform, bot_id)` → `agent_name` |
 | `agent_runtime_state` | Runtime status (idle/active/error, pool_count) |
 
@@ -100,6 +100,21 @@ factory agent validate <name>          # check backend, model, JSON fields
 factory agent refine <name>            # LLM-guided profile refinement
 ```
 
+## Agent soul (AgentSoul v1)
+
+Long-form persona lives in **blobstore** as `soul.md` (markdown, five `##` sections). SQLite holds pointers and envelope metadata only:
+
+| Column | Role |
+|--------|------|
+| `soul_document_blob_ref` | `sha256:…` → blob bytes |
+| `soul_document_bytes` | Size metadata (cap 48 KiB at save) |
+| `soul_meta_json` | Envelope: `display_name`, `tagline`, memory provision — **not** section text |
+| `persona_json` | Legacy inline JSON — fallback until migration validated |
+
+Composition is hub-only (`core/persona.py` → `compose_soul_document()`). Harnesses receive opaque `system_prompt: str`. Soul edits do not update active sessions until `/reset` or a new pool — see [persona-soul-operator.md](runbooks/persona-soul-operator.md).
+
+**Dashboard:** `/agents` → edit harness, model, voice, soul (BFF → hub NATS RPC). **CLI:** `scripts/backfill_soul_documents.py` for one-shot migration from `persona_json`.
+
 ## Validation Rules
 
 - **Name**: `[a-zA-Z0-9_-]+`
@@ -157,7 +172,7 @@ Workspaces: `/workspace <key>` switches pool's cwd for the session.
 
 ## DB Schema Reference
 
-**agents table** (24 columns):
+**agents table** (27 columns):
 
 | Column | Type | Default |
 |--------|------|---------|
@@ -177,7 +192,10 @@ Workspaces: `/workspace <key>` switches pool's cwd for the session.
 | `workspaces_json` | TEXT | NULL |
 | `commands_json` | TEXT | NULL |
 | `streaming` | INTEGER | 0 |
-| `persona_json` | TEXT | NULL |
+| `persona_json` | TEXT | NULL (legacy — fallback) |
+| `soul_meta_json` | TEXT | NULL |
+| `soul_document_blob_ref` | TEXT | NULL |
+| `soul_document_bytes` | INTEGER | NULL |
 | `voice_json` | TEXT | NULL |
 | `fallback_language` | TEXT | `'en'` |
 | `patterns_json` | TEXT | NULL |

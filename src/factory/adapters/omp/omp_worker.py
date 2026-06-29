@@ -196,8 +196,7 @@ class OmpWorker(NatsAdapterBase):
         _sp_len = len(system_prompt) if isinstance(system_prompt, str) else 0
         log.debug(
             "omp job %s: received model_cfg keys=%s model=%s"
-            " system_prompt_len=%d (system_prompt V1: not applied)"
-            " pool_id=%s provider_session_id=%s",
+            " system_prompt_len=%d pool_id=%s provider_session_id=%s",
             job_id,
             _cfg_keys,
             requested_model,
@@ -212,6 +211,9 @@ class OmpWorker(NatsAdapterBase):
                 str(prompt),
                 provider_session_id,
                 model=requested_model,
+                system_prompt=(
+                    str(system_prompt) if isinstance(system_prompt, str) else ""
+                ),
             )
         )
         self._jobs.add(task)
@@ -224,13 +226,16 @@ class OmpWorker(NatsAdapterBase):
         session_file: str | None,
         *,
         model: str | None = None,
+        system_prompt: str = "",
     ) -> None:
         """Acquire a pool worker, run the job, release on completion."""
         log.info("omp_worker: job_id=%s start", job_id)
         start = time.monotonic()
         worker = None
         try:
-            worker = await self._pool.acquire(session_file)
+            worker = await self._pool.acquire(
+                session_file, system_prompt=system_prompt
+            )
             await worker.bridge.run(
                 prompt,
                 job_id,

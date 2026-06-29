@@ -84,13 +84,16 @@ def _mock_pool(
     # Capture the pool-level default so the closure sees the right value.
     _default_sf = session_file
 
-    async def _side_effect_acquire(session_file: str | None) -> Any:
+    async def _side_effect_acquire(
+        session_file: str | None, *, system_prompt: str = ""
+    ) -> Any:
         # Model B: sf only (None=cold); return bundle (bridge for .run)
         stored = session_file if session_file is not None else _default_sf
         entry = SimpleNamespace(
             client=fake_client,
             bridge=bridge,
             session_file=stored,
+            system_prompt=system_prompt,
         )
         pool._last_acquired = entry
         return entry
@@ -127,7 +130,7 @@ class TestOmpWorkerPool:
         if getattr(worker, "_jobs", None):
             await asyncio.gather(*list(worker._jobs), return_exceptions=True)
 
-        pool.acquire.assert_called_once_with(_SESSION_FILE)
+        pool.acquire.assert_called_once_with(_SESSION_FILE, system_prompt="")
 
     @pytest.mark.asyncio
     async def test_handle_passes_none_when_provider_session_id_absent(self) -> None:
@@ -142,7 +145,7 @@ class TestOmpWorkerPool:
         if getattr(worker, "_jobs", None):
             await asyncio.gather(*list(worker._jobs), return_exceptions=True)
 
-        pool.acquire.assert_called_once_with(None)
+        pool.acquire.assert_called_once_with(None, system_prompt="")
 
     @pytest.mark.asyncio
     async def test_handle_rejects_empty_string_provider_session_id(self) -> None:
@@ -178,8 +181,21 @@ class TestOmpWorkerPool:
             await asyncio.gather(*list(worker._jobs), return_exceptions=True)
 
         # Falls back to job_id (log), routes to pool, no error.
-        pool.acquire.assert_called_once_with(None)
+        pool.acquire.assert_called_once_with(None, system_prompt="")
         # (bridge inside acquired worker now; skip old top-bridge assert)
+
+    @pytest.mark.asyncio
+    async def test_handle_forwards_system_prompt_to_acquire(self) -> None:
+        """V2: opaque system_prompt from envelope payload reaches pool.acquire."""
+        pool = _mock_pool()
+        worker = OmpWorker(pool=pool)
+        soul = "## Identity\nLyra soul\n"
+        payload = _base_payload(provider_session_id=None)
+        payload["payload"]["system_prompt"] = soul
+        await worker.handle(msg=None, payload=payload)
+        if getattr(worker, "_jobs", None):
+            await asyncio.gather(*list(worker._jobs), return_exceptions=True)
+        pool.acquire.assert_called_once_with(None, system_prompt=soul)
 
     # -- 2. bridge.run receives session_file from pool entry -------------------
 

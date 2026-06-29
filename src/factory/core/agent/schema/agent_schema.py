@@ -36,7 +36,10 @@ CREATE TABLE IF NOT EXISTS agents (
     fallback_language TEXT NOT NULL DEFAULT 'en',
     patterns_json TEXT,
     passthroughs_json TEXT,
-    effort TEXT
+    effort TEXT,
+    soul_meta_json TEXT,
+    soul_document_blob_ref TEXT,
+    soul_document_bytes INTEGER
 )
 """
 
@@ -58,6 +61,10 @@ _MIGRATE_AGENTS = [
     "ALTER TABLE agents ADD COLUMN passthroughs_json TEXT",
     # #1101 — per-agent extended-thinking config (effort token budget)
     "ALTER TABLE agents ADD COLUMN effort TEXT",
+    # AgentSoul v1 — blobstore soul.md + envelope metadata
+    "ALTER TABLE agents ADD COLUMN soul_meta_json TEXT",
+    "ALTER TABLE agents ADD COLUMN soul_document_blob_ref TEXT",
+    "ALTER TABLE agents ADD COLUMN soul_document_bytes INTEGER",
 ]
 
 _CREATE_BOT_AGENT_MAP = """
@@ -82,14 +89,14 @@ CREATE TABLE IF NOT EXISTS agent_runtime_state (
 """
 
 # Column list shared by SELECT and INSERT to keep them in sync.
-# 24 columns after #1335 dropped the dead tool-recap agent column.
+# 27 columns after AgentSoul v1 soul_* columns.
 _AGENT_COLUMNS = (
     "name, backend, model, max_turns, tools_json, "
     "show_intermediate, smart_routing_json, plugins_json, "
     "memory_namespace, cwd, source, created_at, updated_at, "
     "skip_permissions, permissions_json, workspaces_json, commands_json, streaming, "
     "persona_json, voice_json, fallback_language, patterns_json, passthroughs_json, "
-    "effort"
+    "effort, soul_meta_json, soul_document_blob_ref, soul_document_bytes"
 )
 
 _SELECT_AGENTS = f"SELECT {_AGENT_COLUMNS} FROM agents"
@@ -120,6 +127,11 @@ _UPSERT_AGENT = (
     "patterns_json=COALESCE(excluded.patterns_json, agents.patterns_json), "
     "passthroughs_json=COALESCE(excluded.passthroughs_json, agents.passthroughs_json), "
     "effort=excluded.effort, "
+    "soul_meta_json=COALESCE(excluded.soul_meta_json, agents.soul_meta_json), "
+    "soul_document_blob_ref=COALESCE("
+    "excluded.soul_document_blob_ref, agents.soul_document_blob_ref), "
+    "soul_document_bytes=COALESCE("
+    "excluded.soul_document_bytes, agents.soul_document_bytes), "
     "source=excluded.source, "
     "updated_at=?"
 )

@@ -9,6 +9,13 @@ from typing import TYPE_CHECKING, Any
 from roxabi_contracts.dashboard import (
     SUBJECTS,
     AgentHealthResponse,
+    DashboardAgentConfigResponse,
+    DashboardAgentPatchRequest,
+    DashboardAgentsListResponse,
+    DashboardAgentSoulPreviewRequest,
+    DashboardAgentSoulPreviewResponse,
+    DashboardAgentSoulPutRequest,
+    DashboardAgentSoulSectionsResponse,
     DashboardJobsLaunchRequest,
     DashboardJobsLaunchResponse,
     DashboardJobsListResponse,
@@ -110,3 +117,41 @@ class DashboardHubClient:
             payload["harness_by_agent"] = harness_by_agent
         raw = await self._request(SUBJECTS.agents_status, payload)
         return AgentHealthResponse.model_validate(raw)
+
+    async def list_agent_configs(self) -> DashboardAgentsListResponse:
+        raw = await self._request(SUBJECTS.agents_list, {})
+        return DashboardAgentsListResponse.model_validate(raw)
+
+    async def get_agent_config(self, name: str) -> DashboardAgentConfigResponse:
+        raw = await self._request(SUBJECTS.agents_get, {"name": name})
+        return DashboardAgentConfigResponse.model_validate(raw)
+
+    async def patch_agent_config(
+        self, name: str, patch: DashboardAgentPatchRequest
+    ) -> DashboardAgentConfigResponse:
+        raw = await self._request(
+            SUBJECTS.agents_patch, {"name": name, "patch": patch.model_dump()}
+        )
+        return DashboardAgentConfigResponse.model_validate(raw)
+
+    async def put_agent_soul(
+        self, name: str, body: DashboardAgentSoulPutRequest
+    ) -> DashboardAgentSoulSectionsResponse:
+        raw = await self._request(
+            SUBJECTS.agents_soul_put,
+            {"name": name, "body": body.model_dump()},
+        )
+        return DashboardAgentSoulSectionsResponse.model_validate(raw)
+
+    async def get_agent_soul(self, name: str) -> DashboardAgentSoulSectionsResponse:
+        raw = await self._request(SUBJECTS.agents_soul_get, {"name": name})
+        return DashboardAgentSoulSectionsResponse.model_validate(raw)
+
+    async def preview_agent_soul(
+        self, name: str, body: DashboardAgentSoulPreviewRequest
+    ) -> DashboardAgentSoulPreviewResponse:
+        raw = await self._request(
+            SUBJECTS.agents_soul_preview,
+            {"name": name, **body.model_dump()},
+        )
+        return DashboardAgentSoulPreviewResponse.model_validate(raw)

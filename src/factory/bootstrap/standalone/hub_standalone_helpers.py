@@ -20,6 +20,8 @@ from factory.bootstrap.lifecycle.lifecycle_helpers import (
     teardown_dispatchers,
 )
 from factory.core.agent.agent_loader import agent_row_to_config
+from factory.core.agent.agent_models import AgentRow
+from factory.infrastructure.soul.soul_ops import preload_soul_caches_for_rows
 from factory.infrastructure.stores.identity.pairing import (
     PairingManager,
     set_pairing_manager,
@@ -29,6 +31,7 @@ if TYPE_CHECKING:
     from factory.adapters.nats.mint_failure_subscriber import MintFailureSubscriber
     from factory.core.agent import Agent
     from factory.core.hub.hub import Hub
+    from factory.core.ports.blobstore import BlobStorePort
     from factory.core.ports.llm import LlmProvider
     from factory.infrastructure.stores.identity.agent_grant_store import (
         AgentGrantStore,
@@ -70,20 +73,30 @@ async def start_mint_failure_subscriber(nc: Any) -> "MintFailureSubscriber | Non
     return sub
 
 
-def load_agent_configs(
+async def load_agent_configs(
     agent_store: AgentStore,
     raw_config: dict,
     agent_names: Iterable[str],
+    *,
+    blob_store: "BlobStorePort | None" = None,
 ) -> dict[str, Agent]:
     """Load agent configs from DB with instance overrides applied."""
-    configs: dict[str, Agent] = {}
+    rows: list[AgentRow] = []
     for n in sorted(set(agent_names)):
         row = agent_store.get(n)
         if row is None:
             log.error("Agent %r not found in DB — skipping", n)
             continue
-        overrides = _build_agent_overrides(raw_config, n)
-        configs[n] = agent_row_to_config(row, instance_overrides=overrides.model_dump())
+        rows.append(row)
+
+    await preload_soul_caches_for_rows(rows, blob_store)
+
+    configs: dict[str, Agent] = {}
+    for row in rows:
+        overrides = _build_agent_overrides(raw_config, row.name)
+        configs[row.name] = agent_row_to_config(
+            row, instance_overrides=overrides.model_dump()
+        )
     return configs
 
 

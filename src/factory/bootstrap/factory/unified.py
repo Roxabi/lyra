@@ -56,12 +56,14 @@ async def _bootstrap_unified(  # noqa: PLR0915 — unified bootstrap is a wiring
         async with open_stores(vault_dir, nc=nc) as stores:
             await _prune_message_index(stores, raw_config)
 
-            bundle = await _init_bot_auths_and_agents(stores, raw_config)
+            blob_store = init_blobstore()
+            bundle = await _init_bot_auths_and_agents(
+                stores, raw_config, blob_store=blob_store
+            )
             pm = await _init_pairing(
                 raw_config, bundle.admin_user_ids, vault_dir, stores
             )
             voice = await _init_voice_services(nc)
-            blob_store = init_blobstore()
             hub = _build_hub(
                 BuildHubDeps(
                     raw_config=raw_config,

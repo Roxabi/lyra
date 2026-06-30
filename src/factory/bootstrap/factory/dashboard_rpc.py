@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Any
 from nats.aio.msg import Msg
 from pydantic import ValidationError
 
+from factory.bootstrap.factory.dashboard.fleet_rpc import handle_fleet_list
+from factory.bootstrap.factory.dashboard.voice_rpc import handle_voice_capabilities
 from factory.bootstrap.factory.dashboard_agents_rpc import (
     handle_agents_get,
     handle_agents_list,
@@ -38,11 +40,6 @@ from roxabi_contracts.dashboard import (
     DashboardSessionsTurnsRequest,
     DashboardSessionsTurnsResponse,
     DashboardTurn,
-    DashboardVoiceCapabilitiesResponse,
-    VoiceEngineInfo,
-    VoiceSampleInfo,
-    VoiceSttCapabilities,
-    VoiceTtsCapabilities,
 )
 
 if TYPE_CHECKING:
@@ -87,7 +84,8 @@ async def start_dashboard_rpc(hub: Hub, nc: NATS) -> list[Any]:
         (SUBJECTS.agents_soul_put, _wrap_agents(handle_agents_soul_put)),
         (SUBJECTS.agents_soul_get, _wrap_agents(handle_agents_soul_get)),
         (SUBJECTS.agents_soul_preview, _wrap_agents(handle_agents_soul_preview)),
-        (SUBJECTS.voice_capabilities, _handle_voice_capabilities),
+        (SUBJECTS.voice_capabilities, handle_voice_capabilities),
+        (SUBJECTS.fleet_list, handle_fleet_list),
     ):
         sub = await nc.subscribe(subject, cb=_wrap(hub, nc, handler))
         subs.append(sub)
@@ -217,38 +215,3 @@ async def _handle_agents_status(
             )
         )
     return AgentHealthResponse(agents=result).model_dump()
-
-
-async def _handle_voice_capabilities(
-    hub: Hub, nc: NATS, _payload: dict[str, Any]
-) -> dict[str, Any]:
-    _ = hub
-    from factory.nats.voice.voice_lifecycle_client import VoiceLifecycleClient
-
-    caps = await VoiceLifecycleClient(nc).capabilities()
-    tts_raw = caps.get("tts")
-    stt_raw = caps.get("stt")
-    tts = None
-    stt = None
-    if isinstance(tts_raw, dict):
-        tts = VoiceTtsCapabilities(
-            engines=[
-                VoiceEngineInfo.model_validate(e) for e in tts_raw.get("engines", [])
-            ],
-            samples=[
-                VoiceSampleInfo.model_validate(s) for s in tts_raw.get("samples", [])
-            ],
-            max_cached_engines=int(tts_raw.get("max_cached_engines") or 1),
-            default_engine=tts_raw.get("default_engine"),
-            catalog_revision=tts_raw.get("catalog_revision"),
-        )
-    if isinstance(stt_raw, dict):
-        stt = VoiceSttCapabilities(
-            models=list(stt_raw.get("models") or []),
-            default_model=stt_raw.get("default_model"),
-        )
-    if tts is None and stt is None:
-        return DashboardVoiceCapabilitiesResponse(
-            error="voice_workers_unreachable",
-        ).model_dump()
-    return DashboardVoiceCapabilitiesResponse(tts=tts, stt=stt).model_dump()

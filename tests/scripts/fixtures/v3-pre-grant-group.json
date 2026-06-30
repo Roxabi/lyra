@@ -1,23 +1,59 @@
 {
   "version": "3",
   "request_reply_flows": [
-    { "requester": "hub", "responder": "clipool-worker", "subject": "factory.clipool.control" },
-    { "requester": "hub", "responder": "voice-tts",      "subject": "factory.voice.tts.request.>" },
-    { "requester": "hub", "responder": "voice-stt",      "subject": "factory.voice.stt.request.>" },
-    { "requester": "hub", "responder": "llm-worker",     "subject": "factory.llm.generate.request" },
-    { "requester": "hub", "responder": "image-worker",   "subject": "factory.image.generate.request" },
-    { "requester": "hub", "responder": "socialmedia-adapter", "subject": "factory.tool.socialmedia.>" },
-    { "requester": "voice-client", "responder": "voice-stt", "subject": "factory.voice.stt.request" },
-    { "requester": "voice-client", "responder": "voice-tts", "subject": "factory.voice.tts.request" },
-    { "requester": "web-adapter", "responder": "hub", "subject": "factory.dashboard.>" }
+    {
+      "requester": "hub",
+      "responder": "clipool-worker",
+      "subject": "factory.clipool.control"
+    },
+    {
+      "requester": "hub",
+      "responder": "voice-tts",
+      "subject": "factory.voice.tts.request.>"
+    },
+    {
+      "requester": "hub",
+      "responder": "voice-stt",
+      "subject": "factory.voice.stt.request.>"
+    },
+    {
+      "requester": "hub",
+      "responder": "llm-worker",
+      "subject": "factory.llm.generate.request"
+    },
+    {
+      "requester": "hub",
+      "responder": "image-worker",
+      "subject": "factory.image.generate.request"
+    },
+    {
+      "requester": "hub",
+      "responder": "socialmedia-adapter",
+      "subject": "factory.tool.socialmedia.>"
+    },
+    {
+      "requester": "voice-client",
+      "responder": "voice-stt",
+      "subject": "factory.voice.stt.request"
+    },
+    {
+      "requester": "voice-client",
+      "responder": "voice-tts",
+      "subject": "factory.voice.tts.request"
+    },
+    {
+      "requester": "web-adapter",
+      "responder": "hub",
+      "subject": "factory.dashboard.>"
+    }
   ],
   "identities": {
     "hub": {
       "status": "active",
       "created_at": "2026-04-21",
       "owner": "factory",
-      "description": "Hub core — routes inbound messages, dispatches to voice/LLM/image/clipool workers. Inbox normalized to lowercase _inbox.hub.> (ADR-051 + postmortem Fix 1).",
-      "notes": "Hub provisions the factory-state KV bucket at runtime on first boot (announce_hub_ready, #1012). $JS.API.> required for KV bucket creation and JetStream API calls. $KV.factory-state.> required for kv.put() which publishes directly to $KV.<bucket>.<key> subjects (not covered by $JS.API.>). Tighter per-operation scoping is tracked as a follow-up. factory.turns.write added by T27 (#1331): hub publishes TurnWriteEvents. factory.outbound.audio.> added by T7 (#1482): hub publishes to outbound-audio JetStream path. Sole-provisioner (ADR-079 S3, #1525): hub provisions stream FACTORY_OUTBOUND_AUDIO and KV bucket KV_factory_outbound_audio_sent before announce_hub_ready; adapters are bind-only (js.key_value + ensure_consumer). Provisioning subjects covered by existing $JS.API.> wildcard (see ADR-079 §Forward-compat for explicit enumeration if wildcard is ever tightened). factory.gh.mint_failure.> added (#1545): hub runs MintFailureSubscriber (start_mint_failure_subscriber) which subscribes to gh-helper mint-failure alerts and forwards them to the ops Telegram chat. NB: this is the subscribe half only — publisher declared by #1082 (gh-helper). This field is metadata only — not rendered into auth.conf or the 706 spec table. factory.job.*.steer added (#1812): hub initiates steer commands for active omp jobs (send mid-flight steering prompts to omp_rpc worker). factory.jobs.> + $JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.FACTORY_JOBS.> added (#1203): hub publishes job dispatch to the FACTORY_JOBS WorkQueue stream and subscribes to MAX_DELIVERIES advisories for the DLQ router (no monitor identity — retired 2026-05-26). $KV.factory-active-jobs.> added (#1796): hub is sole writer of the factory-active-jobs KV registry (kv.put/create/update/delete publish header-based ops to $KV.<bucket>.<key>); allow_direct=False so readers ride $JS.API.STREAM.MSG.GET (#1572, zero-ACL).",
+      "description": "Hub core \u2014 routes inbound messages, dispatches to voice/LLM/image/clipool workers. Inbox normalized to lowercase _inbox.hub.> (ADR-051 + postmortem Fix 1).",
+      "notes": "Hub provisions the factory-state KV bucket at runtime on first boot (announce_hub_ready, #1012). $JS.API.> required for KV bucket creation and JetStream API calls. $KV.factory-state.> required for kv.put() which publishes directly to $KV.<bucket>.<key> subjects (not covered by $JS.API.>). Tighter per-operation scoping is tracked as a follow-up. factory.turns.write added by T27 (#1331): hub publishes TurnWriteEvents. factory.outbound.audio.> added by T7 (#1482): hub publishes to outbound-audio JetStream path. Sole-provisioner (ADR-079 S3, #1525): hub provisions stream FACTORY_OUTBOUND_AUDIO and KV bucket KV_factory_outbound_audio_sent before announce_hub_ready; adapters are bind-only (js.key_value + ensure_consumer). Provisioning subjects covered by existing $JS.API.> wildcard (see ADR-079 \u00a7Forward-compat for explicit enumeration if wildcard is ever tightened). factory.gh.mint_failure.> added (#1545): hub runs MintFailureSubscriber (start_mint_failure_subscriber) which subscribes to gh-helper mint-failure alerts and forwards them to the ops Telegram chat. NB: this is the subscribe half only \u2014 publisher declared by #1082 (gh-helper). This field is metadata only \u2014 not rendered into auth.conf or the 706 spec table. factory.job.*.steer added (#1812): hub initiates steer commands for active omp jobs (send mid-flight steering prompts to omp_rpc worker). factory.jobs.> + $JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.FACTORY_JOBS.> added (#1203): hub publishes job dispatch to the FACTORY_JOBS WorkQueue stream and subscribes to MAX_DELIVERIES advisories for the DLQ router (no monitor identity \u2014 retired 2026-05-26). $KV.factory-active-jobs.> added (#1796): hub is sole writer of the factory-active-jobs KV registry (kv.put/create/update/delete publish header-based ops to $KV.<bucket>.<key>); allow_direct=False so readers ride $JS.API.STREAM.MSG.GET (#1572, zero-ACL).",
       "allow_responses": true,
       "publish": [
         "factory.outbound.telegram.>",
@@ -40,6 +76,7 @@
         "factory.typing.>",
         "factory.event.>",
         "factory.metric.>",
+        "factory.metric.host.container_report",
         "factory.job.*.steer",
         "factory.jobs.>",
         "$JS.API.>",
@@ -62,26 +99,31 @@
         "factory.clipool.heartbeat",
         "factory.omp.heartbeat",
         "factory.dashboard.>",
+        "factory.metric.host.container_report",
         "factory.gh.mint_failure.>",
         "factory.job.*.progress",
         "factory.job.*.result",
         "$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.FACTORY_JOBS.>",
         "_inbox.hub.>"
       ],
-      "deploy": { "type": "container", "secret": "factory-nats-hub" }
+      "deploy": {
+        "type": "container",
+        "secret": "factory-nats-hub"
+      }
     },
     "telegram-adapter": {
       "status": "active",
       "created_at": "2026-04-21",
       "owner": "factory",
-      "description": "Telegram bot adapter — inbox normalized to _inbox.telegram-adapter.> (ADR-051 + postmortem Fix 1).",
-      "notes": "$JS.API.> narrowed to minimal KV read-only subjects (#1014): DIRECT.GET for KV key reads, INFO for JetStream availability, CONSUMER.CREATE for kv.watch() ephemeral consumer. factory.turns.write removed (#1821): T27 (#1331) adapter dual-write was never implemented — sole writer is the hub TurnPublisher; this orphaned grant was trimmed (least privilege). Outbound-audio JetStream consumer grants added by T7 (#1482): stream/consumer create+info, pull-next, KV dedup bucket. $KV.factory_outbound_audio_sent.> added to publish (#1482 B1): kv.put() in KvSentSet.mark_sent publishes directly to $KV.<bucket>.<key> subjects and requires an explicit publish grant. Hotfix (2026-05-29, prod crash-loop): added $JS.API.STREAM.CREATE.KV_factory_outbound_audio_sent (create_key_value triggers add_stream on the KV backing stream), $JS.API.STREAM.INFO.KV_factory_outbound_audio_sent (key_value() bind path calls stream_info when bucket already exists), $JS.ACK.FACTORY_OUTBOUND_AUDIO.> (msg.ack()/term() publish to msg.reply which is scoped to $JS.ACK.<stream>.>), $JS.API.STREAM.MSG.GET.KV_factory_outbound_audio_sent (kv.get() non-direct path calls STREAM.MSG.GET). All confirmed by tracing nats-py source (aio/msg.py, js/manager.py, js/client.py). Hotfix superseded by the sole-provisioner axis migration #1521 (S3, #1525): the 3 CREATE/UPDATE grants ($JS.API.STREAM.CREATE.FACTORY_OUTBOUND_AUDIO, $JS.API.STREAM.UPDATE.FACTORY_OUTBOUND_AUDIO, $JS.API.STREAM.CREATE.KV_factory_outbound_audio_sent) moved to hub sole-ownership under ADR-079 — removed from this adapter identity. Bug fix (2026-05-29, pre-existing #1482 scoping bug): $JS.API.CONSUMER.CREATE.FACTORY_OUTBOUND_AUDIO changed from .* to .> — add_consumer wire subject is $JS.API.CONSUMER.CREATE.<stream>.<durable>.<filter_subject> where filter_subject is multi-token (e.g. factory.outbound.audio.telegram.lyra = 5 tokens); .* matches exactly one token and denied at runtime. CONSUMER.INFO.FACTORY_OUTBOUND_AUDIO.* and CONSUMER.MSG.NEXT.FACTORY_OUTBOUND_AUDIO.* retain .* because consumer_info and MSG.NEXT take only <stream>.<durable> (1-token tail). Unscoped CONSUMER.CREATE.* (kv.watch ephemeral) also retains .* — wire subject is $JS.API.CONSUMER.CREATE.<stream> (1-token tail, no durable suffix).",
+      "description": "Telegram bot adapter \u2014 inbox normalized to _inbox.telegram-adapter.> (ADR-051 + postmortem Fix 1).",
+      "notes": "$JS.API.> narrowed to minimal KV read-only subjects (#1014): DIRECT.GET for KV key reads, INFO for JetStream availability, CONSUMER.CREATE for kv.watch() ephemeral consumer. factory.turns.write removed (#1821): T27 (#1331) adapter dual-write was never implemented \u2014 sole writer is the hub TurnPublisher; this orphaned grant was trimmed (least privilege). Outbound-audio JetStream consumer grants added by T7 (#1482): stream/consumer create+info, pull-next, KV dedup bucket. $KV.factory_outbound_audio_sent.> added to publish (#1482 B1): kv.put() in KvSentSet.mark_sent publishes directly to $KV.<bucket>.<key> subjects and requires an explicit publish grant. Hotfix (2026-05-29, prod crash-loop): added $JS.API.STREAM.CREATE.KV_factory_outbound_audio_sent (create_key_value triggers add_stream on the KV backing stream), $JS.API.STREAM.INFO.KV_factory_outbound_audio_sent (key_value() bind path calls stream_info when bucket already exists), $JS.ACK.FACTORY_OUTBOUND_AUDIO.> (msg.ack()/term() publish to msg.reply which is scoped to $JS.ACK.<stream>.>), $JS.API.STREAM.MSG.GET.KV_factory_outbound_audio_sent (kv.get() non-direct path calls STREAM.MSG.GET). All confirmed by tracing nats-py source (aio/msg.py, js/manager.py, js/client.py). Hotfix superseded by the sole-provisioner axis migration #1521 (S3, #1525): the 3 CREATE/UPDATE grants ($JS.API.STREAM.CREATE.FACTORY_OUTBOUND_AUDIO, $JS.API.STREAM.UPDATE.FACTORY_OUTBOUND_AUDIO, $JS.API.STREAM.CREATE.KV_factory_outbound_audio_sent) moved to hub sole-ownership under ADR-079 \u2014 removed from this adapter identity. Bug fix (2026-05-29, pre-existing #1482 scoping bug): $JS.API.CONSUMER.CREATE.FACTORY_OUTBOUND_AUDIO changed from .* to .> \u2014 add_consumer wire subject is $JS.API.CONSUMER.CREATE.<stream>.<durable>.<filter_subject> where filter_subject is multi-token (e.g. factory.outbound.audio.telegram.lyra = 5 tokens); .* matches exactly one token and denied at runtime. CONSUMER.INFO.FACTORY_OUTBOUND_AUDIO.* and CONSUMER.MSG.NEXT.FACTORY_OUTBOUND_AUDIO.* retain .* because consumer_info and MSG.NEXT take only <stream>.<durable> (1-token tail). Unscoped CONSUMER.CREATE.* (kv.watch ephemeral) also retains .* \u2014 wire subject is $JS.API.CONSUMER.CREATE.<stream> (1-token tail, no durable suffix).",
       "allow_responses": false,
       "publish": [
         "factory.inbound.telegram.>",
         "factory.system.ready",
         "factory.event.>",
         "factory.metric.>",
+        "factory.metric.host.container_report",
         "$JS.API.DIRECT.GET.KV_factory-state.hub.ready",
         "$JS.API.INFO",
         "$JS.API.CONSUMER.CREATE.*",
@@ -104,20 +146,24 @@
         "$KV.factory-state.>",
         "$KV.factory_outbound_audio_sent.>"
       ],
-      "deploy": { "type": "container", "secret": "lyra-nats-telegram" }
+      "deploy": {
+        "type": "container",
+        "secret": "lyra-nats-telegram"
+      }
     },
     "discord-adapter": {
       "status": "active",
       "created_at": "2026-04-21",
       "owner": "factory",
-      "description": "Discord bot adapter — inbox normalized to _inbox.discord-adapter.> (ADR-051 + postmortem Fix 1).",
-      "notes": "$JS.API.> narrowed to minimal KV read-only subjects (#1014): DIRECT.GET for KV key reads, INFO for JetStream availability, CONSUMER.CREATE for kv.watch() ephemeral consumer. factory.turns.write removed (#1821): T27 (#1331) adapter dual-write was never implemented — sole writer is the hub TurnPublisher; this orphaned grant was trimmed (least privilege). Outbound-audio JetStream consumer grants added by T7 (#1482): stream/consumer create+info, pull-next, KV dedup bucket. $KV.factory_outbound_audio_sent.> added to publish (#1482 B1): kv.put() in KvSentSet.mark_sent publishes directly to $KV.<bucket>.<key> subjects and requires an explicit publish grant. Hotfix (2026-05-29, prod crash-loop): added $JS.API.STREAM.CREATE.KV_factory_outbound_audio_sent (create_key_value triggers add_stream on the KV backing stream), $JS.API.STREAM.INFO.KV_factory_outbound_audio_sent (key_value() bind path calls stream_info when bucket already exists), $JS.ACK.FACTORY_OUTBOUND_AUDIO.> (msg.ack()/term() publish to msg.reply which is scoped to $JS.ACK.<stream>.>), $JS.API.STREAM.MSG.GET.KV_factory_outbound_audio_sent (kv.get() non-direct path calls STREAM.MSG.GET). All confirmed by tracing nats-py source (aio/msg.py, js/manager.py, js/client.py). Hotfix superseded by the sole-provisioner axis migration #1521 (S3, #1525): the 3 CREATE/UPDATE grants ($JS.API.STREAM.CREATE.FACTORY_OUTBOUND_AUDIO, $JS.API.STREAM.UPDATE.FACTORY_OUTBOUND_AUDIO, $JS.API.STREAM.CREATE.KV_factory_outbound_audio_sent) moved to hub sole-ownership under ADR-079 — removed from this adapter identity. Bug fix (2026-05-29, pre-existing #1482 scoping bug): $JS.API.CONSUMER.CREATE.FACTORY_OUTBOUND_AUDIO changed from .* to .> — add_consumer wire subject is $JS.API.CONSUMER.CREATE.<stream>.<durable>.<filter_subject> where filter_subject is multi-token (e.g. factory.outbound.audio.discord.lyra = 5 tokens); .* matches exactly one token and denied at runtime. CONSUMER.INFO.FACTORY_OUTBOUND_AUDIO.* and CONSUMER.MSG.NEXT.FACTORY_OUTBOUND_AUDIO.* retain .* because consumer_info and MSG.NEXT take only <stream>.<durable> (1-token tail). Unscoped CONSUMER.CREATE.* (kv.watch ephemeral) also retains .* — wire subject is $JS.API.CONSUMER.CREATE.<stream> (1-token tail, no durable suffix). $KV.factory-turns-meta.>, $JS.API.STREAM.INFO.KV_factory-turns-meta, $JS.API.STREAM.MSG.GET.KV_factory-turns-meta added (#1721 T10): KvLastSessionStore.connect() calls key_value(factory-turns-meta) which requires INFO+MSG.GET grants.",
+      "description": "Discord bot adapter \u2014 inbox normalized to _inbox.discord-adapter.> (ADR-051 + postmortem Fix 1).",
+      "notes": "$JS.API.> narrowed to minimal KV read-only subjects (#1014): DIRECT.GET for KV key reads, INFO for JetStream availability, CONSUMER.CREATE for kv.watch() ephemeral consumer. factory.turns.write removed (#1821): T27 (#1331) adapter dual-write was never implemented \u2014 sole writer is the hub TurnPublisher; this orphaned grant was trimmed (least privilege). Outbound-audio JetStream consumer grants added by T7 (#1482): stream/consumer create+info, pull-next, KV dedup bucket. $KV.factory_outbound_audio_sent.> added to publish (#1482 B1): kv.put() in KvSentSet.mark_sent publishes directly to $KV.<bucket>.<key> subjects and requires an explicit publish grant. Hotfix (2026-05-29, prod crash-loop): added $JS.API.STREAM.CREATE.KV_factory_outbound_audio_sent (create_key_value triggers add_stream on the KV backing stream), $JS.API.STREAM.INFO.KV_factory_outbound_audio_sent (key_value() bind path calls stream_info when bucket already exists), $JS.ACK.FACTORY_OUTBOUND_AUDIO.> (msg.ack()/term() publish to msg.reply which is scoped to $JS.ACK.<stream>.>), $JS.API.STREAM.MSG.GET.KV_factory_outbound_audio_sent (kv.get() non-direct path calls STREAM.MSG.GET). All confirmed by tracing nats-py source (aio/msg.py, js/manager.py, js/client.py). Hotfix superseded by the sole-provisioner axis migration #1521 (S3, #1525): the 3 CREATE/UPDATE grants ($JS.API.STREAM.CREATE.FACTORY_OUTBOUND_AUDIO, $JS.API.STREAM.UPDATE.FACTORY_OUTBOUND_AUDIO, $JS.API.STREAM.CREATE.KV_factory_outbound_audio_sent) moved to hub sole-ownership under ADR-079 \u2014 removed from this adapter identity. Bug fix (2026-05-29, pre-existing #1482 scoping bug): $JS.API.CONSUMER.CREATE.FACTORY_OUTBOUND_AUDIO changed from .* to .> \u2014 add_consumer wire subject is $JS.API.CONSUMER.CREATE.<stream>.<durable>.<filter_subject> where filter_subject is multi-token (e.g. factory.outbound.audio.discord.lyra = 5 tokens); .* matches exactly one token and denied at runtime. CONSUMER.INFO.FACTORY_OUTBOUND_AUDIO.* and CONSUMER.MSG.NEXT.FACTORY_OUTBOUND_AUDIO.* retain .* because consumer_info and MSG.NEXT take only <stream>.<durable> (1-token tail). Unscoped CONSUMER.CREATE.* (kv.watch ephemeral) also retains .* \u2014 wire subject is $JS.API.CONSUMER.CREATE.<stream> (1-token tail, no durable suffix). $KV.factory-turns-meta.>, $JS.API.STREAM.INFO.KV_factory-turns-meta, $JS.API.STREAM.MSG.GET.KV_factory-turns-meta added (#1721 T10): KvLastSessionStore.connect() calls key_value(factory-turns-meta) which requires INFO+MSG.GET grants.",
       "allow_responses": false,
       "publish": [
         "factory.inbound.discord.>",
         "factory.system.ready",
         "factory.event.>",
         "factory.metric.>",
+        "factory.metric.host.container_report",
         "$JS.API.DIRECT.GET.KV_factory-state.hub.ready",
         "$JS.API.INFO",
         "$JS.API.CONSUMER.CREATE.*",
@@ -140,13 +186,16 @@
         "$KV.factory-state.>",
         "$KV.factory_outbound_audio_sent.>"
       ],
-      "deploy": { "type": "container", "secret": "lyra-nats-discord" }
+      "deploy": {
+        "type": "container",
+        "secret": "lyra-nats-discord"
+      }
     },
     "web-adapter": {
       "status": "active",
       "created_at": "2026-06-21",
       "owner": "factory",
-      "description": "Web smoke adapter — browser chat UI + SSE on factory.{inbound,outbound}.web.smoke (#1977).",
+      "description": "Web smoke adapter \u2014 browser chat UI + SSE on factory.{inbound,outbound}.web.smoke (#1977).",
       "notes": "Lean adapter ACL: no outbound-audio JetStream consumer (NullAudioConsumer fallback). wait_for_hub uses STREAM.INFO + STREAM.MSG.GET on KV_factory-state (#1572). Mirrored inline into this v3 snapshot (#1978): web-adapter references no group, so it renders identically to deploy/nats/acl-matrix.json.",
       "allow_responses": true,
       "publish": [
@@ -155,6 +204,7 @@
         "factory.system.ready",
         "factory.event.>",
         "factory.metric.>",
+        "factory.metric.host.container_report",
         "$JS.API.DIRECT.GET.KV_factory-state.hub.ready",
         "$JS.API.INFO",
         "$JS.API.CONSUMER.CREATE.*",
@@ -167,7 +217,10 @@
         "_inbox.web-adapter.>",
         "$KV.factory-state.>"
       ],
-      "deploy": { "type": "container", "secret": "lyra-nats-web" }
+      "deploy": {
+        "type": "container",
+        "secret": "lyra-nats-web"
+      }
     },
     "voice-tts": {
       "status": "active",
@@ -189,7 +242,10 @@
         "_inbox.voice-tts.>",
         "$KV.factory-state.>"
       ],
-      "deploy": { "type": "container", "secret": "voicecli-nats-tts" }
+      "deploy": {
+        "type": "container",
+        "secret": "voicecli-nats-tts"
+      }
     },
     "voice-stt": {
       "status": "active",
@@ -211,13 +267,16 @@
         "_inbox.voice-stt.>",
         "$KV.factory-state.>"
       ],
-      "deploy": { "type": "container", "secret": "voicecli-nats-stt" }
+      "deploy": {
+        "type": "container",
+        "secret": "voicecli-nats-stt"
+      }
     },
     "llm-worker": {
       "status": "active",
       "created_at": "2026-04-21",
       "owner": "reserved",
-      "description": "llmCLI nats-serve worker. Worker uses inbox_prefix=_inbox.llmcli-llm (does not match the llm-worker role name), so the renderer's request_reply_flows derivation cannot auto-grant it — the inbox is listed explicitly in subscribe. See #1142.",
+      "description": "llmCLI nats-serve worker. Worker uses inbox_prefix=_inbox.llmcli-llm (does not match the llm-worker role name), so the renderer's request_reply_flows derivation cannot auto-grant it \u2014 the inbox is listed explicitly in subscribe. See #1142.",
       "notes": "$JS.API.> + $KV.factory-state.> required for roxabi-nats v0.4.x readiness probe (wait_for_hub via JetStream KV). Tighter per-operation scoping tracked in #1293 (holistic hardening: workers + adapters + SDK-drift CI gate). Continues the pre-existing adapter pattern.",
       "allow_responses": true,
       "publish": [
@@ -231,14 +290,18 @@
         "_inbox.llmcli-llm.>",
         "$KV.factory-state.>"
       ],
-      "deploy": { "type": "external", "host": "roxabitower", "target_path": "~/.roxabi/llmcli/nkeys/llm-worker.seed" }
+      "deploy": {
+        "type": "external",
+        "host": "roxabitower",
+        "target_path": "~/.roxabi/llmcli/nkeys/llm-worker.seed"
+      }
     },
     "llm-operator": {
       "status": "active",
       "created_at": "2026-05-22",
       "owner": "reserved",
-      "description": "llmCLI operator CLI — publishes lifecycle commands (swap/stop/status/list/reload-catalog) to llm-worker from M₂. Implements llmCLI spec #34 Slice 0 (A1). Creds installed at ~/.roxabi/llmcli/nkeys/operator.creds (S6 standard, llmCLI#38).",
-      "notes": "CLI tool, not a daemon — ¬wait_for_hub, ¬JetStream readiness probe. Inbox uses llm-operator role name (no #1142 mismatch). Coordinate cred path migration (legacy ~/.config/llmcli → ~/.roxabi/llmcli) with llmCLI#38.",
+      "description": "llmCLI operator CLI \u2014 publishes lifecycle commands (swap/stop/status/list/reload-catalog) to llm-worker from M\u2082. Implements llmCLI spec #34 Slice 0 (A1). Creds installed at ~/.roxabi/llmcli/nkeys/operator.creds (S6 standard, llmCLI#38).",
+      "notes": "CLI tool, not a daemon \u2014 \u00acwait_for_hub, \u00acJetStream readiness probe. Inbox uses llm-operator role name (no #1142 mismatch). Coordinate cred path migration (legacy ~/.config/llmcli \u2192 ~/.roxabi/llmcli) with llmCLI#38.",
       "allow_responses": true,
       "publish": [
         "factory.llm.lifecycle.>"
@@ -246,7 +309,11 @@
       "subscribe": [
         "_inbox.llm-operator.>"
       ],
-      "deploy": { "type": "external", "host": "roxabitower", "target_path": "~/.roxabi/llmcli/nkeys/operator.creds" }
+      "deploy": {
+        "type": "external",
+        "host": "roxabitower",
+        "target_path": "~/.roxabi/llmcli/nkeys/operator.creds"
+      }
     },
     "image-worker": {
       "status": "active",
@@ -265,14 +332,18 @@
         "_inbox.image-worker.>",
         "$KV.factory-state.>"
       ],
-      "deploy": { "type": "external", "host": "roxabitower", "target_path": "~/.roxabi/imagecli/nkeys/image-worker.seed" }
+      "deploy": {
+        "type": "external",
+        "host": "roxabitower",
+        "target_path": "~/.roxabi/imagecli/nkeys/image-worker.seed"
+      }
     },
     "monitor": {
       "status": "retired",
       "created_at": "2026-04-21",
       "retired_at": "2026-05-26",
       "owner": "reserved",
-      "description": "Monitoring identity — full pub+sub on factory.monitor.> namespace.",
+      "description": "Monitoring identity \u2014 full pub+sub on factory.monitor.> namespace.",
       "notes": "Retired 2026-05-26: no confirmed NKey consumer found in codebase. src/factory/monitoring/ uses the NATS HTTP endpoint (port 8222), not a NATS NKey credential. lyra-monitor.service/timer removed from deploy/; src/factory/monitoring/ Python module retained for Monitoring v2 (#1035) spec mining. deploy field intentionally absent per T4 convention (retired identities exempt).",
       "allow_responses": false,
       "publish": [
@@ -286,8 +357,8 @@
       "status": "active",
       "created_at": "2026-04-27",
       "owner": "factory",
-      "description": "CliPool NATS worker — receives claude subprocess dispatch commands from hub, publishes heartbeat and reply-path responses. Inbox normalized to _inbox.clipool-worker.> (ADR-051 + postmortem Fix 1). Inbox grant derived from request_reply_flows (Fix 3 / #992).",
-      "notes": "clipool-worker is intentionally excluded from publishing factory.turns.write. Rationale: clipool is a downstream command worker (executes factory.jobs.claude dispatches), not a user-message source — the hub records the turn via factory.turns.write before the dispatch reaches clipool. Sole publisher of factory.turns.write: hub (T27 #1331 adapter dual-write was never implemented; orphaned telegram/discord grants trimmed #1821). See ADR-075 and #1349.",
+      "description": "CliPool NATS worker \u2014 receives claude subprocess dispatch commands from hub, publishes heartbeat and reply-path responses. Inbox normalized to _inbox.clipool-worker.> (ADR-051 + postmortem Fix 1). Inbox grant derived from request_reply_flows (Fix 3 / #992).",
+      "notes": "clipool-worker is intentionally excluded from publishing factory.turns.write. Rationale: clipool is a downstream command worker (executes factory.jobs.claude dispatches), not a user-message source \u2014 the hub records the turn via factory.turns.write before the dispatch reaches clipool. Sole publisher of factory.turns.write: hub (T27 #1331 adapter dual-write was never implemented; orphaned telegram/discord grants trimmed #1821). See ADR-075 and #1349.",
       "allow_responses": true,
       "publish": [
         "factory.clipool.heartbeat",
@@ -296,6 +367,7 @@
         "factory.system.ready",
         "factory.event.>",
         "factory.metric.>",
+        "factory.metric.host.container_report",
         "$JS.API.STREAM.INFO.KV_factory-state",
         "$JS.API.STREAM.MSG.GET.KV_factory-state"
       ],
@@ -305,27 +377,33 @@
         "_inbox.clipool-worker.>",
         "$KV.factory-state.>"
       ],
-      "deploy": { "type": "container", "secret": "lyra-nats-clipool" }
+      "deploy": {
+        "type": "container",
+        "secret": "lyra-nats-clipool"
+      }
     },
     "dashboard-reader": {
       "status": "active",
       "created_at": "2026-05-27",
       "owner": "reserved",
-      "description": "Monitoring dashboard reader — consumes factory.event.> and factory.metric.> for future dashboard/visualization (Monitoring v2, #1035).",
-      "notes": "Future identity for Monitoring v2 dashboard. No confirmed consumer yet — seed provisioned when dashboard lands. Subscribes to both event and metric namespaces. $JS.API.> omitted intentionally until consumer creation needs are known.",
+      "description": "Monitoring dashboard reader \u2014 consumes factory.event.> and factory.metric.> for future dashboard/visualization (Monitoring v2, #1035).",
+      "notes": "Future identity for Monitoring v2 dashboard. No confirmed consumer yet \u2014 seed provisioned when dashboard lands. Subscribes to both event and metric namespaces. $JS.API.> omitted intentionally until consumer creation needs are known.",
       "allow_responses": false,
       "publish": [],
       "subscribe": [
         "factory.event.>",
         "factory.metric.>"
       ],
-      "deploy": { "type": "host", "path": "~/.lyra/nkeys/dashboard-reader.seed" }
+      "deploy": {
+        "type": "host",
+        "path": "~/.lyra/nkeys/dashboard-reader.seed"
+      }
     },
     "voice-client": {
       "status": "active",
       "created_at": "2026-04-29",
       "owner": "voicecli",
-      "description": "VoiceCLI dictate (STT) and generate --via-nats (TTS) client — sends requests from local host to remote voice-stt / voice-tts workers. Inbox normalized to _inbox.voice-client.> (ADR-051). Inbox grant derived from request_reply_flows. TTS publish added 2026-05-27 (#1462) to unblock voiceCLI #178.",
+      "description": "VoiceCLI dictate (STT) and generate --via-nats (TTS) client \u2014 sends requests from local host to remote voice-stt / voice-tts workers. Inbox normalized to _inbox.voice-client.> (ADR-051). Inbox grant derived from request_reply_flows. TTS publish added 2026-05-27 (#1462) to unblock voiceCLI #178.",
       "allow_responses": true,
       "publish": [
         "factory.voice.stt.request",
@@ -334,16 +412,21 @@
       "subscribe": [
         "_inbox.voice-client.>"
       ],
-      "deploy": { "type": "external", "host": "roxabitower", "target_path": "~/.voicecli/nkeys/voice-client.seed" }
+      "deploy": {
+        "type": "external",
+        "host": "roxabitower",
+        "target_path": "~/.voicecli/nkeys/voice-client.seed"
+      }
     },
     "turn-writer": {
       "status": "active",
       "created_at": "2026-05-25",
       "owner": "factory",
-      "description": "TurnWriter JetStream subscriber-writer — sole writer for turns.db (ADR-075, #1331). Consumes factory.turns.> durable consumer turn-writer-v1, queue group turn-writer. nkey seed delivered via lyra-nats-turn-writer Podman secret (provisioned by install.sh T25).",
-      "notes": "JetStream API subjects scoped to FACTORY_TURNS stream + turn-writer-v1 consumer only (principle of least privilege). _inbox.turn-writer.> required for pull-subscribe ACK reply path — nats-py emits lowercase identity-scoped inboxes when identity_name is set (#1359). allow_responses=true for pull-subscribe protocol. $JS.API.* in publish (not subscribe) because nc.request() publishes at protocol level (B1). CONSUMER.CREATE uses wildcard suffix to cover filter-subject variants (B2). STREAM.UPDATE added for retention/limits changes on subsequent boots (B3).",
+      "description": "TurnWriter JetStream subscriber-writer \u2014 sole writer for turns.db (ADR-075, #1331). Consumes factory.turns.> durable consumer turn-writer-v1, queue group turn-writer. nkey seed delivered via lyra-nats-turn-writer Podman secret (provisioned by install.sh T25).",
+      "notes": "JetStream API subjects scoped to FACTORY_TURNS stream + turn-writer-v1 consumer only (principle of least privilege). _inbox.turn-writer.> required for pull-subscribe ACK reply path \u2014 nats-py emits lowercase identity-scoped inboxes when identity_name is set (#1359). allow_responses=true for pull-subscribe protocol. $JS.API.* in publish (not subscribe) because nc.request() publishes at protocol level (B1). CONSUMER.CREATE uses wildcard suffix to cover filter-subject variants (B2). STREAM.UPDATE added for retention/limits changes on subsequent boots (B3).",
       "allow_responses": true,
       "publish": [
+        "factory.metric.host.container_report",
         "_inbox.turn-writer.>",
         "$JS.API.STREAM.CREATE.FACTORY_TURNS",
         "$JS.API.STREAM.INFO.FACTORY_TURNS",
@@ -356,16 +439,20 @@
         "factory.turns.>",
         "_inbox.turn-writer.>"
       ],
-      "deploy": { "type": "container", "secret": "lyra-nats-turn-writer" }
+      "deploy": {
+        "type": "container",
+        "secret": "lyra-nats-turn-writer"
+      }
     },
     "blobstore": {
       "status": "active",
       "created_at": "2026-05-28",
       "owner": "factory",
-      "description": "BlobStore HTTP service — publishes audit events to factory.audit.blobs.> and announces readiness via factory-state KV.",
+      "description": "BlobStore HTTP service \u2014 publishes audit events to factory.audit.blobs.> and announces readiness via factory-state KV.",
       "notes": "Publishes to factory.audit.> for BlobAuditSink and uses $JS.API.> + $KV.factory-state.> for KV readiness announce. allow_responses=true for JetStream API request-reply (js.create_key_value). No explicit subscription subjects.",
       "allow_responses": true,
       "publish": [
+        "factory.metric.host.container_report",
         "factory.audit.>",
         "$JS.API.INFO",
         "$JS.API.STREAM.INFO.KV_factory-state",
@@ -375,7 +462,10 @@
       "subscribe": [
         "_inbox.blobstore.>"
       ],
-      "deploy": { "type": "container", "secret": "lyra-nats-blobstore" }
+      "deploy": {
+        "type": "container",
+        "secret": "lyra-nats-blobstore"
+      }
     },
     "gh-helper": {
       "status": "active",
@@ -384,6 +474,7 @@
       "description": "publish-only mint-failure alerts, #1082",
       "allow_responses": false,
       "publish": [
+        "factory.metric.host.container_report",
         "factory.gh.mint_failure.>"
       ],
       "subscribe": [],
@@ -396,10 +487,11 @@
       "status": "active",
       "created_at": "2026-06-26",
       "owner": "factory",
-      "description": "Social media tool satellite — factory.tool.socialmedia.* → Postiz Public API v1 (#1713).",
+      "description": "Social media tool satellite \u2014 factory.tool.socialmedia.* \u2192 Postiz Public API v1 (#1713).",
       "notes": "Dual-network Quadlet (roxabi.network + postiz.network). wait_ready=False worker semantics. Inbox grant derived from request_reply_flows.",
       "allow_responses": true,
       "publish": [
+        "factory.metric.host.container_report",
         "factory.tool.socialmedia.heartbeat",
         "$JS.API.STREAM.INFO.KV_factory-state",
         "$JS.API.STREAM.MSG.GET.KV_factory-state"
@@ -409,16 +501,20 @@
         "_inbox.socialmedia-adapter.>",
         "$KV.factory-state.>"
       ],
-      "deploy": { "type": "container", "secret": "factory-nats-socialmedia" }
+      "deploy": {
+        "type": "container",
+        "secret": "factory-nats-socialmedia"
+      }
     },
     "omp-worker": {
       "status": "active",
       "created_at": "2026-06-11",
       "owner": "factory",
-      "description": "OmpWorker — omp_rpc NATS runtime backend (#1812)",
+      "description": "OmpWorker \u2014 omp_rpc NATS runtime backend (#1812)",
       "notes": "Additive lane alongside clipool (ratified #1807). Uses post-#1793 canonical factory.job.* subjects (least-privilege single-token wildcard, NOT factory.job.>). Heartbeat mirrors clipool-worker pattern. Steer bridge subscribed worker-side. _inbox prefix derived from ADR-051 Fix 1.",
       "allow_responses": true,
       "publish": [
+        "factory.metric.host.container_report",
         "factory.job.*.progress",
         "factory.job.*.result",
         "factory.omp.heartbeat",
@@ -434,7 +530,10 @@
         "_inbox.omp-worker.>",
         "$KV.factory-state.>"
       ],
-      "deploy": { "type": "container", "secret": "factory-nats-omp" }
+      "deploy": {
+        "type": "container",
+        "secret": "factory-nats-omp"
+      }
     }
   }
 }

@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from factory.dashboard.e2e import (
     e2e_enabled,
     stub_agents_status,
+    stub_fleet,
     stub_jobs_launch,
     stub_jobs_list,
     stub_jobs_steer,
@@ -242,6 +243,17 @@ def build_bff_router(  # noqa: C901, PLR0915
             raise HTTPException(status_code=404, detail=f"unknown agent: {name!r}")
         try:
             return (await hub.preview_agent_soul(name, body)).model_dump()
+        except RuntimeError as exc:
+            raise _hub_unavailable(exc) from exc
+        except (ValidationError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @router.get("/fleet")
+    async def fleet_list() -> dict:
+        if e2e_enabled():
+            return stub_fleet().model_dump()
+        try:
+            return (await hub.fleet_list()).model_dump()
         except RuntimeError as exc:
             raise _hub_unavailable(exc) from exc
         except (ValidationError, json.JSONDecodeError) as exc:

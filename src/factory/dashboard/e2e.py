@@ -7,6 +7,7 @@ import os
 from roxabi_contracts.dashboard import (
     AgentHealth,
     AgentHealthResponse,
+    HarnessKind,
     ConnectorInstallationRow,
     DashboardConnectorInstallationsListResponse,
     DashboardFleetResponse,
@@ -33,7 +34,7 @@ def e2e_enabled() -> bool:
     return os.environ.get("FACTORY_DASHBOARD_E2E", "").strip() in {"1", "true", "yes"}
 
 
-def _e2e_agent_backend(name: str) -> str:
+def _e2e_agent_backend(name: str) -> HarnessKind:
     return "omp-rpc" if name.lower().startswith("aryl") else "claude-cli"
 
 

@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from factory.core.auth.platform_keys import USER_ID_PREFIX, format_platform_key
 from factory.core.auth.user_models import PlatformIdentity, User
+
+if TYPE_CHECKING:
+    import aiosqlite
 
 log = logging.getLogger(__name__)
 
@@ -23,6 +27,14 @@ def _parse_ts(raw: str) -> datetime:
 
 class UserStoreProfileOps:
     """Mixin: profile CRUD and platform identity linking for dashboard admin."""
+
+    if TYPE_CHECKING:
+        _key_to_user: dict[str, str]
+        _user_to_keys: dict[str, set[str]]
+
+        def _require_db(self) -> aiosqlite.Connection: ...
+
+        async def get_user(self, user_id: str) -> User | None: ...
 
     @staticmethod
     def _normalize_email(email: str) -> str:

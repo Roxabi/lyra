@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PageIntro } from "@/components/layout/PageIntro";
 import { Badge } from "@/components/ui/badge";
@@ -7,12 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
+  type ConnectorInstallation,
   deleteConnectorInstallation,
   fetchConnectorInstallations,
   fetchConnectors,
   fetchGithubInstallUrl,
   upsertConnectorInstallation,
-  type ConnectorInstallation,
 } from "@/lib/api";
 import { getOperatorToken, setOperatorToken } from "@/lib/operator-auth";
 
@@ -85,6 +85,7 @@ function ConnectorSection({
   const { t } = useTranslation("integrations");
   const { t: tc } = useTranslation("common");
   const queryClient = useQueryClient();
+  const fieldId = useId();
   const [externalId, setExternalId] = useState("");
   const [disconnectingId, setDisconnectingId] = useState<string | null>(null);
 
@@ -95,8 +96,7 @@ function ConnectorSection({
   });
 
   const registerMutation = useMutation({
-    mutationFn: () =>
-      upsertConnectorInstallation(connector, { external_id: externalId.trim() }),
+    mutationFn: () => upsertConnectorInstallation(connector, { external_id: externalId.trim() }),
     onSuccess: () => {
       setExternalId("");
       void queryClient.invalidateQueries({ queryKey: ["connector-installations", connector] });
@@ -124,8 +124,11 @@ function ConnectorSection({
           <p className="text-sm font-medium">{registerLabel}</p>
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-[12rem] flex-1">
-              <label className="mb-1 block text-xs text-muted-foreground">{fieldLabel}</label>
+              <label htmlFor={fieldId} className="mb-1 block text-xs text-muted-foreground">
+                {fieldLabel}
+              </label>
               <Input
+                id={fieldId}
                 value={externalId}
                 onChange={(e) => setExternalId(e.target.value)}
                 placeholder={fieldLabel}
@@ -140,7 +143,9 @@ function ConnectorSection({
             </Button>
           </div>
         </div>
-        {isLoading ? <p className="text-sm text-muted-foreground">{tc("actions.loading")}</p> : null}
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">{tc("actions.loading")}</p>
+        ) : null}
         {isError ? <p className="text-sm text-destructive">{t("errors.load")}</p> : null}
         {data ? (
           <InstallationTable
@@ -217,7 +222,8 @@ export function IntegrationsPage() {
 
       {catalog ? (
         <p className="text-sm text-muted-foreground">
-          {t("tenantLabel")}: <span className="font-mono text-foreground">{catalog.factory_tenant}</span>
+          {t("tenantLabel")}:{" "}
+          <span className="font-mono text-foreground">{catalog.factory_tenant}</span>
         </p>
       ) : null}
 

@@ -8,7 +8,12 @@ fixture are automatically skipped when nats-server is not found.
 
 from __future__ import annotations
 
-from tests.factories.nats_server import (  # noqa: F401
+import pytest
+
+# Serialize NATS subprocess tests on one xdist worker (see test_parity_e2e.py).
+pytestmark = pytest.mark.xdist_group(name="nats_server")
+
+from tests.factories.nats_server import (  # noqa: F401,E402
     nats_server_url,
     nc,
     requires_nats_server,

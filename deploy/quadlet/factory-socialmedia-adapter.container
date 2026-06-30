@@ -10,6 +10,8 @@ StopTimeout=120
 Image=ghcr.io/roxabi/factory:staging-svc
 Label=io.containers.autoupdate=registry
 ContainerName=factory-socialmedia-adapter
+Environment=CONTAINER_NAME=factory-socialmedia-adapter
+Environment=IMAGE_REF=ghcr.io/roxabi/factory:staging-svc
 Network=roxabi.network
 Network=postiz.network
 NoNewPrivileges=true

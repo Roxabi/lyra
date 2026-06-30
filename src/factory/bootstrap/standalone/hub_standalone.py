@@ -213,6 +213,20 @@ async def _bootstrap_hub_standalone(  # noqa: C901, PLR0915 — DEBT:migration-s
             )
             raise
 
+        from factory.infrastructure.events.stream_setup import (
+            ensure_observability_streams,
+        )
+
+        try:
+            await ensure_observability_streams(_audio_js)
+        except nats.errors.Error as exc:
+            log.critical(
+                "hub_standalone: factory-events/metrics provisioning failed — "
+                "ingress cannot publish webhooks. Cause: %s. RestartSec will recover.",
+                exc,
+            )
+            raise
+
         # Provision active-jobs KV bucket before announcing readiness.
         # Workers / adapters consulting the registry rely on the bucket
         # existing before they receive the hub-ready signal. ADR-079 S3.

@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from factory.bootstrap.factory import dashboard_rpc
 from factory.bootstrap.factory.dashboard_agents_rpc import handle_agents_list
 from factory.bootstrap.factory.dashboard_jobs_rpc import handle_jobs_list
 from factory.bootstrap.factory.dashboard_rpc import (
     _handle_agents_status,
+    _handle_connectors_delete,
+    _handle_connectors_list,
+    _handle_connectors_upsert,
     _handle_sessions_list,
     _handle_sessions_resume,
     _handle_sessions_turns,
@@ -18,6 +23,7 @@ from factory.core.agent.agent_models import AgentRow
 from factory.core.hub.hub_protocol import Binding, RoutingKey
 from factory.core.messaging.message import Platform
 from factory.dashboard.heartbeat import queue_group_alive
+from factory.infrastructure.stores.ingress.installation_store import InstallationStore
 
 _NC = MagicMock()
 
@@ -189,6 +195,93 @@ async def test_sessions_turns_returns_user_assistant_rows() -> None:
     out = await _handle_sessions_turns(hub, _NC, {"session_id": "s1", "limit": 50})
     assert len(out["turns"]) == 2
     assert out["turns"][0]["content"] == "hi"
+
+
+@pytest.fixture
+def installation_store(tmp_path):
+    store = InstallationStore(tmp_path / "ingress.db")
+    asyncio.run(store.connect())
+    yield store
+    asyncio.run(store.close())
+
+
+@pytest.fixture
+def patch_installation_store(installation_store, monkeypatch: pytest.MonkeyPatch):
+    async def _get_store():
+        return installation_store
+
+    monkeypatch.setattr(dashboard_rpc, "get_installation_store", _get_store)
+
+
+@pytest.mark.asyncio
+async def test_connectors_list_filters_by_tenant(
+    patch_installation_store, installation_store
+) -> None:
+    await installation_store.upsert_lifecycle("github", "111", "default", enabled=True)
+    await installation_store.upsert_lifecycle("github", "222", "other", enabled=True)
+    hub = MagicMock()
+    out = await _handle_connectors_list(
+        hub,
+        _NC,
+        {"connector": "github", "factory_tenant": "default"},
+    )
+    assert len(out["installations"]) == 1
+    assert out["installations"][0]["external_id"] == "111"
+
+
+@pytest.mark.asyncio
+async def test_connectors_upsert_rejects_tenant_mismatch(
+    patch_installation_store,
+) -> None:
+    hub = MagicMock()
+    out = await _handle_connectors_upsert(
+        hub,
+        _NC,
+        {
+            "connector": "github",
+            "external_id": "99",
+            "factory_tenant": "other",
+            "operator_tenant": "default",
+        },
+    )
+    assert out["error"] == "tenant_forbidden"
+
+
+@pytest.mark.asyncio
+async def test_connectors_upsert_and_delete_lifecycle(
+    patch_installation_store, installation_store
+) -> None:
+    hub = MagicMock()
+    upsert = await _handle_connectors_upsert(
+        hub,
+        _NC,
+        {
+            "connector": "cloudflare",
+            "external_id": "acct-1",
+            "factory_tenant": "default",
+            "operator_tenant": "default",
+        },
+    )
+    assert upsert["ok"] is True
+    listed = await _handle_connectors_list(
+        hub,
+        _NC,
+        {"connector": "cloudflare", "factory_tenant": "default"},
+    )
+    assert listed["installations"][0]["enabled"] is True
+    deleted = await _handle_connectors_delete(
+        hub,
+        _NC,
+        {
+            "connector": "cloudflare",
+            "external_id": "acct-1",
+            "operator_tenant": "default",
+        },
+    )
+    assert deleted["ok"] is True
+    rows = await installation_store.list_rows()
+    match = next(r for r in rows if r["external_id"] == "acct-1")
+    assert match["enabled"] is False
 
 
 @pytest.mark.asyncio

@@ -10,6 +10,7 @@ from __future__ import annotations
 from roxabi_contracts.event.models import LyraEvent, LyraMetric
 from roxabi_contracts.event.subjects import (
     SUBJECTS,
+    per_connector_tenant_event,
     per_service_event,
     per_service_metric,
 )
@@ -18,6 +19,7 @@ __all__ = [
     "LyraEvent",
     "LyraMetric",
     "SUBJECTS",
+    "per_connector_tenant_event",
     "per_service_event",
     "per_service_metric",
 ]

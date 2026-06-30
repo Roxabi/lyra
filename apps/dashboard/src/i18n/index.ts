@@ -3,11 +3,13 @@ import { initReactI18next } from "react-i18next";
 import enChat from "@/i18n/locales/en/chat.json";
 import enCommon from "@/i18n/locales/en/common.json";
 import enDashboard from "@/i18n/locales/en/dashboard.json";
+import enIntegrations from "@/i18n/locales/en/integrations.json";
 import enJobs from "@/i18n/locales/en/jobs.json";
 import enOps from "@/i18n/locales/en/ops.json";
 import frChat from "@/i18n/locales/fr/chat.json";
 import frCommon from "@/i18n/locales/fr/common.json";
 import frDashboard from "@/i18n/locales/fr/dashboard.json";
+import frIntegrations from "@/i18n/locales/fr/integrations.json";
 import frJobs from "@/i18n/locales/fr/jobs.json";
 import frOps from "@/i18n/locales/fr/ops.json";
 
@@ -31,6 +33,7 @@ void i18n.use(initReactI18next).init({
       jobs: frJobs,
       ops: frOps,
       chat: frChat,
+      integrations: frIntegrations,
     },
     en: {
       common: enCommon,
@@ -38,6 +41,7 @@ void i18n.use(initReactI18next).init({
       jobs: enJobs,
       ops: enOps,
       chat: enChat,
+      integrations: enIntegrations,
     },
   },
   lng: readStoredLocale(),

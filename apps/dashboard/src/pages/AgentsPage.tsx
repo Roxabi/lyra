@@ -52,8 +52,19 @@ export function AgentsListPage() {
                 className="flex items-center justify-between rounded-lg border bg-card px-4 py-3 hover:bg-muted/40"
               >
                 <span className="font-medium">{a.name}</span>
-                <span className="text-xs text-muted-foreground">
-                  {a.backend} · {a.model}
+                <span className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <span
+                    className={
+                      a.has_soul
+                        ? "rounded bg-emerald-500/15 px-1.5 py-0.5 text-emerald-700 dark:text-emerald-300"
+                        : "rounded bg-muted px-1.5 py-0.5"
+                    }
+                  >
+                    {a.has_soul ? "soul.md" : "no soul"}
+                  </span>
+                  <span>
+                    {a.backend} · {a.model}
+                  </span>
                 </span>
               </Link>
             </li>
@@ -143,13 +154,70 @@ export function AgentDetailPage() {
     setDirty(true);
   }, []);
 
-  if (configQ.isLoading) {
-    return <p className="p-6 text-sm text-muted-foreground">Loading…</p>;
+  const cfg = configQ.data;
+  const soulSections = soulQ.data?.sections ?? {};
+  const hasSoulBlob = Boolean(cfg?.soul_document_blob_ref);
+  const hasSectionContent = SOUL_SECTIONS.some((s) => (soulSections[s] ?? "").trim().length > 0);
+  const soulSource = hasSoulBlob
+    ? "blobstore"
+    : hasSectionContent
+      ? "legacy persona_json"
+      : "empty";
+
+  if (configQ.isLoading || soulQ.isLoading) {
+    return <p className="p-6 text-sm text-muted-foreground">Loading agent config…</p>;
+  }
+
+  if (configQ.isError) {
+    return (
+      <p className="p-6 text-sm text-destructive" role="alert">
+        Failed to load agent config — is the hub reachable?
+      </p>
+    );
   }
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 p-6">
       <h1 className="font-[family-name:var(--font-head)] text-2xl font-bold">{name}</h1>
+
+      <Card className="flex flex-wrap items-center gap-3 border-dashed p-3 text-sm">
+        <span className="font-medium text-muted-foreground">Active defaults (DB)</span>
+        <span className="rounded bg-muted px-2 py-0.5 font-mono text-xs">
+          {cfg?.backend ?? harness}
+        </span>
+        <span className="rounded bg-muted px-2 py-0.5 font-mono text-xs">
+          {cfg?.model ?? model}
+        </span>
+        <span
+          className={
+            hasSoulBlob
+              ? "rounded bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-800 dark:text-emerald-200"
+              : "rounded bg-amber-500/15 px-2 py-0.5 text-xs text-amber-900 dark:text-amber-100"
+          }
+        >
+          soul: {soulSource}
+        </span>
+        {cfg?.updated_at ? (
+          <span className="text-xs text-muted-foreground">updated {cfg.updated_at}</span>
+        ) : null}
+      </Card>
+
+      {soulQ.isError ? (
+        <p
+          className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          role="alert"
+        >
+          Soul sections could not be loaded — check hub + blobstore wiring.
+        </p>
+      ) : null}
+
+      {!soulQ.isError && !hasSectionContent ? (
+        <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-50">
+          No soul content yet. Run{" "}
+          <code className="font-mono text-xs">scripts/backfill_soul_documents.py</code> or edit
+          sections below, then Save.
+        </p>
+      ) : null}
 
       {dirty ? (
         <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm">

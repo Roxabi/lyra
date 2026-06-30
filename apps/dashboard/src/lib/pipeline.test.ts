@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { type PipelineRun } from "@/lib/api";
-import {
-  filterPipelineRuns,
-  isPipelineRowStale,
-  matchesPipelineFilter,
-} from "@/lib/pipeline";
+import type { PipelineRun } from "@/lib/api";
+import { filterPipelineRuns, isPipelineRowStale, matchesPipelineFilter } from "@/lib/pipeline";
 
 function row(overrides: Partial<PipelineRun> = {}): PipelineRun {
   return {
@@ -31,12 +27,8 @@ function row(overrides: Partial<PipelineRun> = {}): PipelineRun {
 describe("isPipelineRowStale", () => {
   it("marks rows older than 30 minutes as stale", () => {
     const now = Date.parse("2026-06-30T13:00:00.000Z");
-    expect(
-      isPipelineRowStale("2026-06-30T12:00:00.000Z", now),
-    ).toBe(true);
-    expect(
-      isPipelineRowStale("2026-06-30T12:45:00.000Z", now),
-    ).toBe(false);
+    expect(isPipelineRowStale("2026-06-30T12:00:00.000Z", now)).toBe(true);
+    expect(isPipelineRowStale("2026-06-30T12:45:00.000Z", now)).toBe(false);
   });
 });
 
@@ -47,12 +39,12 @@ describe("matchesPipelineFilter", () => {
   });
 
   it("filters awaiting reviewed", () => {
-    expect(
-      matchesPipelineFilter(row({ open: true, reviewed: false }), "awaiting_reviewed"),
-    ).toBe(true);
-    expect(
-      matchesPipelineFilter(row({ open: true, reviewed: true }), "awaiting_reviewed"),
-    ).toBe(false);
+    expect(matchesPipelineFilter(row({ open: true, reviewed: false }), "awaiting_reviewed")).toBe(
+      true,
+    );
+    expect(matchesPipelineFilter(row({ open: true, reviewed: true }), "awaiting_reviewed")).toBe(
+      false,
+    );
   });
 
   it("filters deploy pending", () => {

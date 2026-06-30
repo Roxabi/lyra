@@ -1,9 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  type PipelineRun,
-  openPipelineStream,
-  postPipelineStreamToken,
-} from "@/lib/api";
+import { openPipelineStream, type PipelineRun, postPipelineStreamToken } from "@/lib/api";
 
 export function usePipelineRuns(): {
   runs: PipelineRun[];

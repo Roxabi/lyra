@@ -5,18 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { usePipelineRuns } from "@/hooks/usePipelineRuns";
-import { type PipelineRun, type PipelineStageStatus } from "@/lib/api";
-import {
-  filterPipelineRuns,
-  isPipelineRowStale,
-  type PipelineFilter,
-} from "@/lib/pipeline";
+import type { PipelineRun, PipelineStageStatus } from "@/lib/api";
+import { filterPipelineRuns, isPipelineRowStale, type PipelineFilter } from "@/lib/pipeline";
 
-const FILTER_OPTIONS: PipelineFilter[] = [
-  "ci_red",
-  "awaiting_reviewed",
-  "deploy_pending",
-];
+const FILTER_OPTIONS: PipelineFilter[] = ["ci_red", "awaiting_reviewed", "deploy_pending"];
 
 function stageVariant(
   status: PipelineStageStatus,
@@ -54,10 +46,7 @@ export function PipelinePage() {
   const { runs, isError, isLoading } = usePipelineRuns();
   const [activeFilters, setActiveFilters] = useState<Set<PipelineFilter>>(new Set());
 
-  const visibleRuns = useMemo(
-    () => filterPipelineRuns(runs, activeFilters),
-    [runs, activeFilters],
-  );
+  const visibleRuns = useMemo(() => filterPipelineRuns(runs, activeFilters), [runs, activeFilters]);
 
   function toggleFilter(filter: PipelineFilter) {
     setActiveFilters((prev) => {
@@ -76,13 +65,13 @@ export function PipelinePage() {
         {t("pipeline.disclaimer")}
       </p>
 
-      {isError ? (
-        <p className="text-sm text-destructive">{t("pipeline.loadError")}</p>
-      ) : null}
+      {isError ? <p className="text-sm text-destructive">{t("pipeline.loadError")}</p> : null}
 
       <Card className="dashboard-surface border-border/60 shadow-none">
         <CardHeader className="space-y-3 pb-2">
-          <CardTitle className="text-sm text-muted-foreground">{t("pipeline.tableTitle")}</CardTitle>
+          <CardTitle className="text-sm text-muted-foreground">
+            {t("pipeline.tableTitle")}
+          </CardTitle>
           <div className="flex flex-wrap gap-2">
             {FILTER_OPTIONS.map((filter) => {
               const active = activeFilters.has(filter);
@@ -156,9 +145,7 @@ export function PipelinePage() {
                 </p>
                 {row.checks.length > 0 ? (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {row.checks
-                      .map((c) => `${c.name}:${c.conclusion ?? c.status}`)
-                      .join(" · ")}
+                    {row.checks.map((c) => `${c.name}:${c.conclusion ?? c.status}`).join(" · ")}
                   </p>
                 ) : null}
               </div>

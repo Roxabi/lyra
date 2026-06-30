@@ -1,4 +1,4 @@
-import { type PipelineRun } from "@/lib/api";
+import type { PipelineRun } from "@/lib/api";
 
 export const PIPELINE_STALE_MS = 30 * 60 * 1000;
 
@@ -38,7 +38,5 @@ export function filterPipelineRuns(
   active: Set<PipelineFilter>,
 ): PipelineRun[] {
   if (active.size === 0) return runs;
-  return runs.filter((row) =>
-    [...active].every((filter) => matchesPipelineFilter(row, filter)),
-  );
+  return runs.filter((row) => [...active].every((filter) => matchesPipelineFilter(row, filter)));
 }

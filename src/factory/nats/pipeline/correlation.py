@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
-from factory.nats.pipeline_models import PipelineRunRow
+from factory.nats.pipeline.models import PipelineRunRow
 
 
 def active_publish_pending_row(

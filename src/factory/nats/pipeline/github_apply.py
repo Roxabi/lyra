@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from factory.nats.pipeline_correlation import active_publish_pending_row
-from factory.nats.pipeline_models import (
+from factory.nats.pipeline.correlation import active_publish_pending_row
+from factory.nats.pipeline.models import (
     DEFAULT_REPO,
     PipelineCheckRow,
     pr_has_reviewed_label,
@@ -14,7 +14,7 @@ from factory.nats.pipeline_models import (
 )
 
 if TYPE_CHECKING:
-    from factory.nats.pipeline_store import PipelineStore
+    from factory.nats.pipeline.store import PipelineStore
 
 
 def apply_pull_request(

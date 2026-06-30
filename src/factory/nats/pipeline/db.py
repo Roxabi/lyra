@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from factory.nats.pipeline_models import PipelineCheckRow, PipelineRunRow
+    from factory.nats.pipeline.models import PipelineCheckRow, PipelineRunRow
 
 log = logging.getLogger(__name__)
 
@@ -101,7 +101,7 @@ class PipelineDb:
         return row is not None
 
     def load_runs(self) -> list[PipelineRunRow]:
-        from factory.nats.pipeline_models import PipelineCheckRow, PipelineRunRow
+        from factory.nats.pipeline.models import PipelineCheckRow, PipelineRunRow
 
         conn = self._require_conn()
         runs: list[PipelineRunRow] = []

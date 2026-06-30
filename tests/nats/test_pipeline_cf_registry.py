@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from factory.nats.pipeline_cf_registry import (
+from factory.nats.pipeline.cf_registry import (
     pages_branch_matches,
     resolve_pages_project,
     resolve_pages_repo,

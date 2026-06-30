@@ -15,7 +15,7 @@ from factory.infrastructure.events.stream_setup import (
     _EVENTS_MAX_AGE_SECONDS,
 )
 from factory.nats.fleet_store import FleetStore
-from factory.nats.pipeline_store import PipelineStore
+from factory.nats.pipeline import PipelineStore
 from roxabi_contracts.event.models import LyraEvent
 from roxabi_nats._serialize import deserialize
 

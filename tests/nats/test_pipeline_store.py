@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from factory.nats.pipeline_store import M1_DEPLOY_QUORUM, PipelineStore
+from factory.nats.pipeline import M1_DEPLOY_QUORUM, PipelineStore
 
 
 @pytest.fixture

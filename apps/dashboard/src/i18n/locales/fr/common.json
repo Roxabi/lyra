@@ -9,6 +9,7 @@
     "chat": "Chat",
     "agents": "Agents",
     "jobs": "Jobs",
+    "fleet": "Flotte",
     "ops": "Supervision",
     "expandSidebar": "Déplier la barre latérale",
     "collapseSidebar": "Replier la barre latérale"

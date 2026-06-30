@@ -27,6 +27,7 @@ dependencies = [
     "roxabi-satellite",
     # Workspace presence for V1 (#1063); consumers wire BlobStore in V2+ (#1064-#1068).
     "roxabi-blobs",
+    "roxabi-obs",
     "typer>=0.26.7",
     "tomli-w>=1.0",
     "telegramify-markdown>=1.2.0",
@@ -82,6 +83,7 @@ members = [
     "packages/roxabi-contracts",
     "packages/roxabi-blobs",
     "packages/roxabi-satellite",
+    "packages/roxabi-obs",
 ]
 
 [tool.uv.sources]
@@ -89,6 +91,7 @@ roxabi-contracts = { workspace = true }
 roxabi-nats = { workspace = true }
 roxabi-blobs = { workspace = true }
 roxabi-satellite = { workspace = true }
+roxabi-obs = { workspace = true }
 roxabi-vault = { git = "https://github.com/Roxabi/roxabi-vault.git", branch = "staging" }
 
 [tool.hatch.build.targets.wheel]
@@ -103,6 +106,7 @@ testpaths = [
     "packages/roxabi-contracts/tests",
     "packages/roxabi-blobs/tests",
     "packages/roxabi-satellite/tests",
+    "packages/roxabi-obs/tests",
 ]
 addopts = "--import-mode=importlib -n auto --dist=loadgroup"
 filterwarnings = [

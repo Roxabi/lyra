@@ -1,8 +1,8 @@
 """ACL matrix regression test for the gh-helper identity (#1082).
 
 Guards the least-privilege NATS contract for gh-helper:
-- publish: ["factory.gh.mint_failure.>"] — publish-only mint-failure alerts
-- subscribe: []                        — no subscribe permissions
+- publish: fleet container_report + factory.gh.mint_failure.>
+- subscribe: [] — no subscribe permissions
 """
 
 from __future__ import annotations
@@ -25,7 +25,10 @@ def test_gh_helper_publish_subjects() -> None:
     assert "gh-helper" in identities, (
         "gh-helper identity must be present in acl-matrix.json"
     )
-    assert identities["gh-helper"]["publish"] == ["factory.gh.mint_failure.>"]
+    assert identities["gh-helper"]["publish"] == [
+        "factory.metric.host.container_report",
+        "factory.gh.mint_failure.>",
+    ]
 
 
 def test_gh_helper_subscribe_is_empty() -> None:

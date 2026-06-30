@@ -19,6 +19,8 @@ StopTimeout=120
 Image=ghcr.io/roxabi/factory:staging
 Label=io.containers.autoupdate=registry
 ContainerName=factory-gh-helper
+Environment=CONTAINER_NAME=factory-gh-helper
+Environment=IMAGE_REF=ghcr.io/roxabi/factory:staging
 Pod=factory-gh.pod
 ReadOnly=true
 NoNewPrivileges=true

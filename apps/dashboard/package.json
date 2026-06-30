@@ -8,6 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "lint": "cd ../.. && biome check apps/dashboard",
     "test": "vitest run"
   },
   "dependencies": {

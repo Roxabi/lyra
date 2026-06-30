@@ -18,6 +18,8 @@ StopTimeout=120
 Image=ghcr.io/roxabi/factory:staging
 Label=io.containers.autoupdate=registry
 ContainerName=factory-clipool
+Environment=CONTAINER_NAME=factory-clipool
+Environment=IMAGE_REF=ghcr.io/roxabi/factory:staging
 # Pod= moves network + user namespace ownership to factory-gh.pod.
 # UserNS=keep-id:uid=1500 is now declared on the pod (factory-gh.pod [Pod] section)
 # and shared by both containers. Removed from this unit to avoid conflict.

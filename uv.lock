@@ -13,6 +13,7 @@ members = [
     "roxabi-blobs",
     "roxabi-contracts",
     "roxabi-nats",
+    "roxabi-obs",
     "roxabi-satellite",
 ]
 overrides = [
@@ -437,6 +438,7 @@ dependencies = [
     { name = "pyyaml" },
     { name = "roxabi-blobs" },
     { name = "roxabi-nats" },
+    { name = "roxabi-obs" },
     { name = "roxabi-satellite" },
     { name = "roxabi-vault" },
     { name = "tabulate" },
@@ -481,6 +483,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "roxabi-blobs", editable = "packages/roxabi-blobs" },
     { name = "roxabi-nats", editable = "packages/roxabi-nats" },
+    { name = "roxabi-obs", editable = "packages/roxabi-obs" },
     { name = "roxabi-satellite", editable = "packages/roxabi-satellite" },
     { name = "roxabi-vault", git = "https://github.com/Roxabi/roxabi-vault.git?branch=staging" },
     { name = "tabulate", specifier = ">=0.9" },
@@ -1437,7 +1440,7 @@ provides-extras = ["testing"]
 
 [[package]]
 name = "roxabi-contracts"
-version = "0.12.0"
+version = "0.13.0"
 source = { editable = "packages/roxabi-contracts" }
 dependencies = [
     { name = "pydantic" },
@@ -1488,6 +1491,30 @@ requires-dist = [
     { name = "nkeys", specifier = ">=0.2.0" },
     { name = "roxabi-contracts", editable = "packages/roxabi-contracts" },
     { name = "roxabi-contracts", extras = ["testing"], marker = "extra == 'testing'", editable = "packages/roxabi-contracts" },
+]
+provides-extras = ["testing"]
+
+[[package]]
+name = "roxabi-obs"
+version = "0.1.0"
+source = { editable = "packages/roxabi-obs" }
+dependencies = [
+    { name = "roxabi-contracts" },
+    { name = "roxabi-nats" },
+]
+
+[package.optional-dependencies]
+testing = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "pytest", marker = "extra == 'testing'", specifier = ">=8.4" },
+    { name = "pytest-asyncio", marker = "extra == 'testing'", specifier = ">=0.24" },
+    { name = "roxabi-contracts", editable = "packages/roxabi-contracts" },
+    { name = "roxabi-nats", editable = "packages/roxabi-nats" },
 ]
 provides-extras = ["testing"]
 

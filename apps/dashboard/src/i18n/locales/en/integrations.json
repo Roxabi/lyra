@@ -1,0 +1,38 @@
+{
+  "title": "Integrations",
+  "subtitle": "Connect external observability sources (GitHub, Cloudflare) to your factory tenant.",
+  "tenantLabel": "Factory tenant",
+  "auth": {
+    "title": "Operator token",
+    "hint": "Required when FACTORY_DASHBOARD_OPERATOR_TOKEN is set on the server.",
+    "placeholder": "Bearer token",
+    "save": "Save token"
+  },
+  "github": {
+    "title": "GitHub App",
+    "description": "Install the factory GitHub App on your org or account. Webhook events route via factory-ingress.",
+    "install": "Install on GitHub",
+    "installUnavailable": "GitHub App slug not configured (INGRESS_GITHUB_APP_SLUG).",
+    "manualTitle": "Manual registration",
+    "installationId": "Installation ID",
+    "register": "Register installation"
+  },
+  "cloudflare": {
+    "title": "Cloudflare",
+    "description": "Register account ID after provisioning the per-tenant webhook URL.",
+    "accountId": "Account ID",
+    "register": "Register account"
+  },
+  "table": {
+    "externalId": "External ID",
+    "status": "Status",
+    "enabled": "Active",
+    "disabled": "Disconnected",
+    "disconnect": "Disconnect",
+    "empty": "No installations for this connector."
+  },
+  "errors": {
+    "load": "Failed to load integrations.",
+    "auth": "Invalid or missing operator token."
+  }
+}

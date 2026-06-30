@@ -30,14 +30,16 @@ class _BearerAuthInterceptor(grpc.ServerInterceptor):
         handler_call_details: grpc.HandlerCallDetails,
     ) -> grpc.RpcMethodHandler | None:
         metadata = {
-            key.lower(): value
+            key.lower(): (
+                value.decode("utf-8") if isinstance(value, bytes) else str(value)
+            )
             for key, value in handler_call_details.invocation_metadata
         }
         auth = metadata.get("authorization", "")
         if not auth.startswith("Bearer "):
             return _unauthenticated_handler(handler_call_details)
-        provided = auth[len("Bearer ") :]
-        if not hmac.compare_digest(provided, self._token):
+        provided = auth.removeprefix("Bearer ")
+        if not hmac.compare_digest(provided.encode(), self._token.encode()):
             return _unauthenticated_handler(handler_call_details)
         return continuation(handler_call_details)
 

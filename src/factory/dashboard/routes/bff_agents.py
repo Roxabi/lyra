@@ -19,7 +19,9 @@ if TYPE_CHECKING:
     from factory.dashboard.hub_client import DashboardHubClient
 
 
-def register_agent_routes(router: APIRouter, hub: DashboardHubClient) -> None:
+def register_agent_routes(  # noqa: C901
+    router: APIRouter, hub: DashboardHubClient
+) -> None:
     @router.get("/agents")
     async def list_agents_config() -> dict:
         try:

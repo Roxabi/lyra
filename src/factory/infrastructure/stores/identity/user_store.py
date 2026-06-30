@@ -9,10 +9,9 @@ from uuid import uuid4
 
 from factory.core.auth.platform_keys import (
     USER_ID_PREFIX,
-    format_platform_key,
     parse_platform_key,
 )
-from factory.core.auth.user_models import PlatformIdentity, User
+from factory.core.auth.user_models import User
 from factory.infrastructure.stores.base.sqlite_base import SqliteStore
 from factory.infrastructure.stores.identity.user_store_profile import (
     UserStoreProfileOps,

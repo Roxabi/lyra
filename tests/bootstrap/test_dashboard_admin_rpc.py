@@ -112,7 +112,7 @@ async def test_handle_admin_user_create_grants_agents(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_handle_admin_user_patch_preserves_telegram_when_omitted(tmp_path) -> None:
+async def test_admin_user_patch_preserves_telegram_when_omitted(tmp_path) -> None:
     user_store = UserStore(db_path=tmp_path / "auth.db")
     await user_store.connect()
     try:

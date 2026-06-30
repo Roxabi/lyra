@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-
 from uuid import uuid4
 
 from factory.core.auth.platform_keys import USER_ID_PREFIX, format_platform_key
@@ -130,10 +129,11 @@ class UserStoreProfileOps:
                 raise ValueError(f"user not found: {user_id}")
 
         uid = (platform_uid or "").strip()
-        async with db.execute(
-            "SELECT platform_key FROM platform_identities WHERE user_id = ? AND platform = ?",
-            (user_id, platform),
-        ) as cur:
+        query = (
+            "SELECT platform_key FROM platform_identities "
+            "WHERE user_id = ? AND platform = ?"
+        )
+        async with db.execute(query, (user_id, platform)) as cur:
             old_keys = [row[0] async for row in cur]
 
         if not uid:
@@ -178,7 +178,9 @@ class UserStoreProfileOps:
         elif keys_to_remove:
             await db.commit()
 
-    async def list_platform_identities(self, user_id: str) -> tuple[PlatformIdentity, ...]:
+    async def list_platform_identities(
+        self, user_id: str
+    ) -> tuple[PlatformIdentity, ...]:
         db = self._require_db()
         identities: list[PlatformIdentity] = []
         async with db.execute(

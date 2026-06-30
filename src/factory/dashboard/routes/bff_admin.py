@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from factory.dashboard.hub_client import (
     HubStoreUnavailableError,

@@ -58,8 +58,13 @@ _DEFAULT_TEST_TRACE_ID = "00000000-0000-4000-8000-000000000001"
 
 
 @pytest.fixture(autouse=True)
-def _default_trace_context() -> Generator[Token[str], None, None]:
+def _default_trace_context(
+    request: pytest.FixtureRequest,
+) -> Generator[Token[str] | None, None, None]:
     """Hub work-path codecs require TraceContext on encode (#2069)."""
+    if request.node.get_closest_marker("no_default_trace"):
+        yield None
+        return
     token = TraceContext.set_trace_id(_DEFAULT_TEST_TRACE_ID)
     yield token
     try:

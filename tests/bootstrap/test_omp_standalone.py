@@ -27,7 +27,7 @@ async def test_missing_nats_url_exits(monkeypatch: pytest.MonkeyPatch) -> None:
 async def test_happy_path_wires_pool_into_worker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """OmpPool() built with no args; injected into OmpWorker(pool=...); embedded NATS loop."""
+    """OmpPool() with no args; OmpWorker(pool=...); embedded NATS via nats_connect."""
     from factory.bootstrap.standalone.worker_standalone import (
         _bootstrap_omp_standalone,
     )

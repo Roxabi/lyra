@@ -18,6 +18,8 @@ StopTimeout=120
 Image=ghcr.io/roxabi/factory:staging-svc
 Label=io.containers.autoupdate=registry
 ContainerName=factory-discord
+Environment=CONTAINER_NAME=factory-discord
+Environment=IMAGE_REF=ghcr.io/roxabi/factory:staging-svc
 Network=roxabi.network
 # Hardening — defense in depth (see issue #652).
 NoNewPrivileges=true

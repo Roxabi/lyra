@@ -4,6 +4,7 @@
     "roxabi-satellite",
     "roxabi-blobs",
     "roxabi-contracts",
+    "roxabi-obs",
     "factory",
     "aiohttp",
     "grandalf",

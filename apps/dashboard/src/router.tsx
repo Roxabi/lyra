@@ -51,6 +51,12 @@ const integrationsRoute = createRoute({
 const obsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/ops",
+  validateSearch: (search: Record<string, unknown>) => ({
+    container:
+      typeof search.container === "string" && search.container.trim()
+        ? search.container.trim()
+        : undefined,
+  }),
   component: OpsPage,
 });
 

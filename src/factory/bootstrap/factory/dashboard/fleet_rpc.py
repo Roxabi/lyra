@@ -33,6 +33,7 @@ async def handle_fleet_list(
             systemd_unit=row.systemd_unit,
             instrumented=row.instrumented,
             source=row.source,
+            image_digest_status=row.image_digest_status,
         )
         for row in store.list_snapshot()
     ]

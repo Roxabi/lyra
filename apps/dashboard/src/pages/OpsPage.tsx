@@ -1,6 +1,7 @@
 import { Robot } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { getRouteApi } from "@tanstack/react-router";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentIdentity } from "@/components/agents/AgentIdentity";
 import { PageIntro } from "@/components/layout/PageIntro";
@@ -19,6 +20,8 @@ const LOG_PRESET_OPTIONS: { value: OpsLogPreset; label: string }[] = [
   { value: "operator-events", label: "Événements converge" },
   { value: "deploy-failures", label: "Échecs deploy (24h)" },
 ];
+
+const opsRouteApi = getRouteApi("/ops");
 
 function EngineCardsSkeleton() {
   const { t } = useTranslation("common");
@@ -55,9 +58,16 @@ function LogsSkeleton() {
 export function OpsPage() {
   const { t } = useTranslation("ops");
   const { t: tc } = useTranslation("common");
+  const { container } = opsRouteApi.useSearch();
   const [logPreset, setLogPreset] = useState<OpsLogPreset>("hub-errors");
   const [agentSearch, setAgentSearch] = useState("");
   const debouncedAgentSearch = useDebouncedValue(agentSearch, 300);
+
+  useEffect(() => {
+    if (container) {
+      setLogPreset("container-journal");
+    }
+  }, [container]);
 
   const { data: status = [], isLoading: statusLoading } = useQuery({
     queryKey: ["agent-status-ops"],
@@ -88,8 +98,8 @@ export function OpsPage() {
     isLoading: logsLoading,
     isError: logsError,
   } = useQuery({
-    queryKey: ["ops-logs", logPreset],
-    queryFn: () => fetchOpsLogs(logPreset),
+    queryKey: ["ops-logs", logPreset, container],
+    queryFn: () => fetchOpsLogs(logPreset, 50, container),
     refetchInterval: 30_000,
   });
 
@@ -168,16 +178,23 @@ export function OpsPage() {
         <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-4">
           <div>
             <CardTitle className="text-base">{t("logs.title")}</CardTitle>
+            {container ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("logs.containerFilter", { container })}
+              </p>
+            ) : null}
             {logs?.query ? (
               <p className="mt-1 font-mono text-[10px] text-muted-foreground">{logs.query}</p>
             ) : null}
           </div>
-          <PopoverSelect
-            label={t("logs.presetLabel")}
-            value={logPreset}
-            options={LOG_PRESET_OPTIONS}
-            onChange={(v) => setLogPreset(v as OpsLogPreset)}
-          />
+          {container ? null : (
+            <PopoverSelect
+              label={t("logs.presetLabel")}
+              value={logPreset}
+              options={LOG_PRESET_OPTIONS}
+              onChange={(v) => setLogPreset(v as OpsLogPreset)}
+            />
+          )}
         </CardHeader>
         <CardContent>
           {logsLoading ? <LogsSkeleton /> : null}

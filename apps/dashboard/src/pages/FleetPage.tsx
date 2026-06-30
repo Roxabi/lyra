@@ -1,5 +1,6 @@
 import { ShippingContainer } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PageIntro } from "@/components/layout/PageIntro";
@@ -14,7 +15,12 @@ import {
 } from "@/components/ui/list-toolbar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SortableTableHeader } from "@/components/ui/sortable-table-header";
-import { type FleetRow, type FleetStatus, fetchFleet } from "@/lib/api";
+import {
+  type FleetRow,
+  type FleetStatus,
+  type ImageDigestStatus,
+  fetchFleet,
+} from "@/lib/api";
 import { FLEET_STATUSES, type FleetSortKey, filterFleet, sortFleet } from "@/lib/fleet-filters";
 import { type SortDirection, toggleSort } from "@/lib/sort";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
@@ -26,6 +32,21 @@ function statusVariant(status: FleetStatus): "success" | "destructive" | "second
     case "stale":
       return "destructive";
     case "pinned":
+      return "secondary";
+    default:
+      return "outline";
+  }
+}
+
+function digestVariant(
+  status: ImageDigestStatus,
+): "success" | "destructive" | "secondary" | "outline" {
+  switch (status) {
+    case "current":
+      return "success";
+    case "stale":
+      return "destructive";
+    case "n/a":
       return "secondary";
     default:
       return "outline";
@@ -46,6 +67,7 @@ function FleetTableSkeleton() {
         <div key={i} className="flex items-center gap-4 border-b border-border/30 py-2">
           <Skeleton className="h-4 w-32" />
           <Skeleton className="h-6 w-12 rounded-full" />
+          <Skeleton className="h-6 w-14 rounded-full" />
           <Skeleton className="h-4 w-16" />
           <Skeleton className="h-4 w-40" />
         </div>
@@ -142,7 +164,7 @@ export function FleetPage() {
 
       {!isLoading && visibleRows.length > 0 ? (
         <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
-          <table className="w-full min-w-[720px] text-left text-sm">
+          <table className="w-full min-w-[820px] text-left text-sm">
             <thead>
               <tr className="border-b border-border/60 text-xs">
                 <SortableTableHeader
@@ -158,6 +180,9 @@ export function FleetPage() {
                   direction={sortDirection}
                   onClick={() => onSort("status")}
                 />
+                <th className="py-2 pr-4 font-medium text-muted-foreground">
+                  {t("fleet.columns.imageDigest")}
+                </th>
                 <SortableTableHeader
                   label={t("fleet.columns.health")}
                   active={sortKey === "health"}
@@ -185,10 +210,23 @@ export function FleetPage() {
                   key={row.container_name}
                   className="border-b border-border/40 transition-colors last:border-0 hover:bg-muted/15"
                 >
-                  <td className="px-4 py-2 pr-4 font-mono text-xs">{row.container_name}</td>
+                  <td className="px-4 py-2 pr-4 font-mono text-xs">
+                    <Link
+                      to="/ops"
+                      search={{ container: row.container_name }}
+                      className="text-primary underline-offset-4 hover:underline"
+                    >
+                      {row.container_name}
+                    </Link>
+                  </td>
                   <td className="py-2 pr-4">
                     <Badge variant={statusVariant(row.status)}>
                       {t(`fleet.status.${row.status}`)}
+                    </Badge>
+                  </td>
+                  <td className="py-2 pr-4">
+                    <Badge variant={digestVariant(row.image_digest_status)}>
+                      {t(`fleet.imageDigest.${row.image_digest_status}`)}
                     </Badge>
                   </td>
                   <td className="py-2 pr-4 capitalize text-muted-foreground">{row.health}</td>

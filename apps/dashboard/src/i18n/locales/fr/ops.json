@@ -24,6 +24,7 @@
     "loadError": "Impossible de charger les logs.",
     "empty": "Aucune entrée pour ce preset.",
     "emptyHint": "Essayez un autre preset ou attendez de nouveaux événements.",
-    "unreachable": "Moteur Loki injoignable — logs indisponibles."
+    "unreachable": "Moteur Loki injoignable — logs indisponibles.",
+    "containerFilter": "Journal pour {{container}}"
   }
 }

@@ -152,10 +152,17 @@ def stub_ops_health() -> DashboardOpsHealthResponse:
     )
 
 
-def stub_ops_logs(preset: OpsLogPreset) -> DashboardOpsLogsResponse:
+def stub_ops_logs(
+    preset: OpsLogPreset,
+    *,
+    container: str | None = None,
+) -> DashboardOpsLogsResponse:
+    query = f"e2e-stub-{preset}"
+    if container:
+        query = f'{{job="factory-journal", systemd_unit="{container}.service"}}'
     return DashboardOpsLogsResponse(
         preset=preset,
-        query=f"e2e-stub-{preset}",
+        query=query,
         engine_reachable=True,
         entries=[
             OpsLogEntry(
@@ -191,6 +198,7 @@ def stub_fleet() -> DashboardFleetResponse:
                 systemd_unit="factory-hub.service",
                 instrumented=True,
                 source="live",
+                image_digest_status="current",
             ),
             DashboardFleetRow(
                 container_name="factory-loki",
@@ -201,6 +209,7 @@ def stub_fleet() -> DashboardFleetResponse:
                 systemd_unit="factory-loki.service",
                 instrumented=False,
                 source="manifest",
+                image_digest_status="n/a",
             ),
             DashboardFleetRow(
                 container_name="factory-clipool",
@@ -212,6 +221,7 @@ def stub_fleet() -> DashboardFleetResponse:
                 systemd_unit="factory-clipool.service",
                 instrumented=True,
                 source="manifest",
+                image_digest_status="stale",
             ),
         ]
     )

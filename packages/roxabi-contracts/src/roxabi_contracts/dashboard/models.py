@@ -130,7 +130,12 @@ class DashboardJobsSteerResponse(BaseModel):
 
 
 OpsEngineId = Literal["loki", "langfuse", "otel-collector"]
-OpsLogPreset = Literal["hub-errors", "operator-events", "deploy-failures"]
+OpsLogPreset = Literal[
+    "hub-errors",
+    "operator-events",
+    "deploy-failures",
+    "container-journal",
+]
 
 
 class OpsEngineHealth(BaseModel):
@@ -273,6 +278,7 @@ class DashboardAgentSoulPreviewResponse(BaseModel):
 
 
 FleetStatus = Literal["ok", "stale", "unknown", "pinned"]
+ImageDigestStatus = Literal["current", "stale", "unknown_compare", "n/a"]
 
 
 class DashboardFleetRow(BaseModel):
@@ -288,6 +294,7 @@ class DashboardFleetRow(BaseModel):
     systemd_unit: str
     instrumented: bool = True
     source: str = "manifest"
+    image_digest_status: ImageDigestStatus = "unknown_compare"
 
 
 class DashboardFleetResponse(BaseModel):

@@ -24,6 +24,7 @@
     "loadError": "Could not load logs.",
     "empty": "No entries for this preset.",
     "emptyHint": "Try another preset or wait for new events.",
-    "unreachable": "Loki engine unreachable — logs unavailable."
+    "unreachable": "Loki engine unreachable — logs unavailable.",
+    "containerFilter": "Journal for {{container}}"
   }
 }

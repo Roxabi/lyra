@@ -44,13 +44,20 @@
       "health": "Health",
       "image": "Image",
       "revision": "Revision",
-      "age": "Age"
+      "age": "Age",
+      "imageDigest": "Image digest"
     },
     "status": {
       "ok": "OK",
       "stale": "Stale",
       "unknown": "Unknown",
       "pinned": "Pinned"
+    },
+    "imageDigest": {
+      "current": "Current",
+      "stale": "Outdated",
+      "unknown_compare": "Unknown",
+      "n/a": "N/A"
     }
   },
   "chats": {

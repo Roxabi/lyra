@@ -5,8 +5,8 @@ import { AgentDetailPage, AgentsListPage } from "@/pages/AgentsPage";
 import { ChatPage } from "@/pages/ChatPage";
 import { DashboardHome } from "@/pages/DashboardHome";
 import { FleetPage } from "@/pages/FleetPage";
-import { JobsPage } from "@/pages/JobsPage";
 import { IntegrationsPage } from "@/pages/IntegrationsPage";
+import { JobsPage } from "@/pages/JobsPage";
 import { OpsPage } from "@/pages/OpsPage";
 
 interface RouterContext {

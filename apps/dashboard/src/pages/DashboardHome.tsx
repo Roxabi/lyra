@@ -1,6 +1,7 @@
 import { Briefcase, ChatCircleDots, Robot, Warning } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentIdentity } from "@/components/agents/AgentIdentity";
 import { PageIntro } from "@/components/layout/PageIntro";
@@ -10,8 +11,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { displayAgentName } from "@/lib/agents";
-import { fetchAgentStatus, fetchAgents, fetchJobs, fetchOpsHealth } from "@/lib/api";
-import { loadTabs } from "@/lib/chats-storage";
+import {
+  type AgentHealth,
+  fetchAgentStatus,
+  fetchAgents,
+  fetchJobs,
+  fetchOpsHealth,
+} from "@/lib/api";
+import { type HarnessKind, loadTabs } from "@/lib/chats-storage";
 import { jobStatusToBadgeVariant } from "@/lib/job-status";
 
 const SKELETON_ROW_IDS = ["alpha", "beta", "gamma", "delta"] as const;
@@ -86,7 +93,21 @@ export function DashboardHome() {
     alertParts.push(t("alerts.enginesDown", { count: enginesDown }));
   }
 
-  const previewJobs = jobs.slice(0, 3);
+  const rosterAgents = useMemo((): AgentHealth[] => {
+    const statusByAgent = new Map(status.map((row) => [row.agent, row]));
+    const names = agents.length > 0 ? agents : status.map((row) => row.agent);
+    return names.map(
+      (name) =>
+        statusByAgent.get(name) ?? {
+          agent: name,
+          in_roster: true,
+          harness: "claude-cli" as HarnessKind,
+          harness_reachable: false,
+          online: false,
+        },
+    );
+  }, [agents, status]);
+
   const previewTabs = tabs.slice(0, 3);
 
   return (
@@ -112,12 +133,12 @@ export function DashboardHome() {
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
             <CardTitle className="text-sm font-semibold">{t("agents.title")}</CardTitle>
             <Badge variant="secondary" className="tabular-nums">
-              {status.length}
+              {rosterAgents.length}
             </Badge>
           </CardHeader>
           <CardContent className="p-0">
             {statusLoading ? <TableRowsSkeleton /> : null}
-            {!statusLoading && status.length === 0 ? (
+            {!statusLoading && rosterAgents.length === 0 ? (
               <div className="px-4 pb-4">
                 <EmptyState
                   icon={Robot}
@@ -127,7 +148,7 @@ export function DashboardHome() {
                 />
               </div>
             ) : null}
-            {!statusLoading && status.length > 0 ? (
+            {!statusLoading && rosterAgents.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
                   <thead>
@@ -138,7 +159,7 @@ export function DashboardHome() {
                     </tr>
                   </thead>
                   <tbody>
-                    {status.map((s) => (
+                    {rosterAgents.map((s) => (
                       <tr
                         key={s.agent}
                         className="border-t border-border/30 transition-colors hover:bg-muted/15"
@@ -164,13 +185,18 @@ export function DashboardHome() {
         <Card className="dashboard-surface border-border/60 shadow-none">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
             <CardTitle className="text-sm font-semibold">{t("jobs.title")}</CardTitle>
-            <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
-              <Link to="/jobs">{tc("actions.viewAll")}</Link>
-            </Button>
+            <div className="flex items-center gap-2">
+              <Badge variant="secondary" className="tabular-nums">
+                {jobs.length}
+              </Badge>
+              <Button variant="ghost" size="sm" className="h-8 text-xs" asChild>
+                <Link to="/jobs">{tc("actions.viewAll")}</Link>
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="space-y-2">
-            {jobsLoading ? <ListRowsSkeleton /> : null}
-            {!jobsLoading && previewJobs.length === 0 ? (
+            {jobsLoading ? <ListRowsSkeleton rows={Math.max(jobs.length, 3)} /> : null}
+            {!jobsLoading && jobs.length === 0 ? (
               <EmptyState
                 icon={Briefcase}
                 title={t("jobs.empty")}
@@ -178,8 +204,8 @@ export function DashboardHome() {
                 className="py-8"
               />
             ) : null}
-            {!jobsLoading && previewJobs.length > 0
-              ? previewJobs.map((job) => (
+            {!jobsLoading && jobs.length > 0
+              ? jobs.map((job) => (
                   <div
                     key={job.job_id}
                     className="flex items-center justify-between gap-3 rounded-md bg-muted/30 px-3 py-2"

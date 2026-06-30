@@ -1,0 +1,23 @@
+[Unit]
+Description=Cloudflare Tunnel connector for factory-ingress (ingress.roxabi.dev)
+After=factory-ingress.service
+Wants=factory-ingress.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+DropCapability=all
+NoNewPrivileges=true
+Image=docker.io/cloudflare/cloudflared:latest
+Label=io.containers.autoupdate=registry
+ContainerName=factory-cloudflared
+Network=roxabi.network
+EnvironmentFile=%h/.roxabi/factory/env/cloudflared.env
+Exec=tunnel --no-autoupdate run
+
+[Service]
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

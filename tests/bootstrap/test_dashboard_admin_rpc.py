@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from factory.bootstrap.factory.dashboard_admin_rpc import (
+from factory.bootstrap.factory.dashboard.admin_rpc import (
     handle_admin_access,
     handle_admin_user_create,
     handle_admin_user_patch,

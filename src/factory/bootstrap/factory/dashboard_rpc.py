@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 from factory.bootstrap.factory.dashboard.fleet_rpc import handle_fleet_list
 from factory.bootstrap.factory.dashboard.voice_rpc import handle_voice_capabilities
-from factory.bootstrap.factory.dashboard_admin_rpc import (
+from factory.bootstrap.factory.dashboard.admin_rpc import (
     handle_admin_access,
     handle_admin_user_create,
     handle_admin_user_patch,

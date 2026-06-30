@@ -28,6 +28,7 @@ dependencies = [
     # Workspace presence for V1 (#1063); consumers wire BlobStore in V2+ (#1064-#1068).
     "roxabi-blobs",
     "roxabi-obs",
+    "roxabi-otel",
     "typer>=0.26.7",
     "tomli-w>=1.0",
     "telegramify-markdown>=1.1.5",
@@ -84,6 +85,7 @@ members = [
     "packages/roxabi-blobs",
     "packages/roxabi-satellite",
     "packages/roxabi-obs",
+    "packages/roxabi-otel",
 ]
 
 [tool.uv.sources]
@@ -92,6 +94,7 @@ roxabi-nats = { workspace = true }
 roxabi-blobs = { workspace = true }
 roxabi-satellite = { workspace = true }
 roxabi-obs = { workspace = true }
+roxabi-otel = { workspace = true }
 roxabi-vault = { git = "https://github.com/Roxabi/roxabi-vault.git", branch = "staging" }
 
 [tool.hatch.build.targets.wheel]
@@ -107,6 +110,7 @@ testpaths = [
     "packages/roxabi-blobs/tests",
     "packages/roxabi-satellite/tests",
     "packages/roxabi-obs/tests",
+    "packages/roxabi-otel/tests",
 ]
 addopts = "--import-mode=importlib -n auto --dist=loadgroup"
 filterwarnings = [
@@ -200,6 +204,7 @@ dev = [
     "roxabi-blobs[testing]",
     "roxabi-contracts[testing]",
     "roxabi-nats[testing]",
+    "roxabi-otel[testing]",
     "radon>=6.0",
     "playwright>=1.49.0",
     "pillow>=11.0.0",

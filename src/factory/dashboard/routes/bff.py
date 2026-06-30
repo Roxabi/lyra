@@ -21,6 +21,7 @@ from factory.dashboard.e2e import (
     stub_sessions_turns,
 )
 from factory.dashboard.ops_proxy import fetch_ops_health, fetch_ops_logs
+from factory.dashboard.otel_raw_reader import OtelRawReader
 from factory.dashboard.routes.bff_admin import register_admin_routes
 from factory.dashboard.routes.bff_agents import register_agent_routes
 from factory.dashboard.routes.bff_common import map_hub_errors
@@ -166,6 +167,29 @@ def build_bff_router(  # noqa: C901, PLR0915
             if mapped is not None:
                 raise mapped from exc
             raise
+
+    @router.get("/spans")
+    async def list_spans(
+        pool_id: str | None = Query(default=None),
+        job_id: str | None = Query(default=None),
+        component: str | None = Query(default=None),
+        page: int = Query(default=1, ge=1),
+        page_size: int = Query(default=50, ge=1, le=200),
+    ) -> dict:
+        reader = OtelRawReader()
+        items, total = reader.query_spans(
+            pool_id=pool_id,
+            job_id=job_id,
+            component=component,
+            page=page,
+            page_size=page_size,
+        )
+        return {
+            "items": [row.as_dict() for row in items],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        }
 
     @router.get("/ops/health")
     async def ops_health() -> DashboardOpsHealthResponse:

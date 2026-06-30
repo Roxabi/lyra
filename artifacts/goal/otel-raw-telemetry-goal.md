@@ -3,7 +3,7 @@
 > **Issue:** [#2069](https://github.com/Roxabi/roxabi-factory/issues/2069) — `feat(obs): OTel raw telemetry — adapter hooks + collector JSONL + dashboard raw` (parent : [#1760](https://github.com/Roxabi/roxabi-factory/issues/1760) control-plane · [#1759](https://github.com/Roxabi/roxabi-factory/issues/1759) engines)  
 > **ADR cibles :** amendement [ADR-092](../../docs/architecture/adr/092-observability-architecture.mdx) · [ADR-094](../../docs/architecture/adr/094-control-plane-dashboard-consolidation.mdx) · nouveau **ADR-097** (otel-raw store)  
 > **Références :** [ADR-068](../../docs/architecture/adr/068-ecosystem-service-plane.mdx) · [ADR-073](../../docs/architecture/adr/073-axial-stage-of-pipeline-decomposition.mdx) · [ADR-084](../../docs/architecture/job-model.md) · [runbook otel-traces](../../docs/runbooks/otel-traces.md)  
-> **Statut global :** `design_validated` — revue multi-rôles 2026-06-30 (DevOps · Axial · Product · Architect) — **NO-GO implémentation** tant que Phase 0 non mergée
+> **Statut global :** `in_progress` — Blocks 0–5 + 8 implémentés sur `feat/2069-otel-raw-telemetry` (2026-06-30)
 
 ---
 
@@ -302,15 +302,15 @@ def telemetry_attributes(self, payload: dict, result: object | None) -> dict[str
 | Bloc | Statut | Notes |
 |------|--------|-------|
 | Pre-flight | `done` | Issue [#2069](https://github.com/Roxabi/roxabi-factory/issues/2069) créée |
-| Block 0 — Design artifacts | `pending` | ADR-097, specs, amendements — **bloquant code** |
-| Block 1 — Hub codec SSoT | `pending` | F1 axial — **bloquant OTel** |
-| Block 2 — contracts + hooks Protocol | `pending` | `MessageLifecycleHooks`, attrs registry, pool_id decision |
-| Block 3 — roxabi-otel + NatsAdapterBase wiring | `pending` | Noop default, feature flag |
-| Block 4 — Collector + quadlet | `pending` | JSONL, volume, Langfuse decoupled |
-| Block 5 — Factory workers (clipool, omp) | `pending` | telemetry_attributes |
+| Block 0 — Design artifacts | `done` | ADR-097, specs, amendements, OBSERVABILITY.md |
+| Block 1 — Hub codec SSoT | `done` | `mint_work_envelope_fields` + codecs STT/TTS/image/socialmedia |
+| Block 2 — contracts + hooks Protocol | `done` | `MessageLifecycleHooks`, attrs registry ; pool_id via TraceContext (Option B) |
+| Block 3 — roxabi-otel + NatsAdapterBase wiring | `done` | Noop default, `ROXABI_OTEL_ENABLED` |
+| Block 4 — Collector + quadlet | `done` | JSONL file exporter, Langfuse decoupled |
+| Block 5 — Factory workers (clipool, omp) | `done` | telemetry_attributes + bootstrap wiring |
 | Block 6 — voiceCLI PR | `pending` | repo externe |
 | Block 7 — imageCLI + llmCLI PRs | `pending` | repos externes |
-| Block 8 — Dashboard raw BFF + UI | `pending` | Phase 2 produit |
+| Block 8 — Dashboard raw BFF + UI | `done` | `GET /api/bff/spans` + `/spans` page |
 | Block 9 — Hub TraceMiddleware + client spans | `pending` | Trou ingress ; peut suivre Block 3 |
 
 ---
@@ -549,6 +549,7 @@ flowchart TD
 |------|----------------|------|------|
 | 2026-06-30 | Grok | — | Goal créé ; design validé panel 4 rôles ; impl NO-GO |
 | 2026-06-30 | Grok | Pre-flight | Issue [#2069](https://github.com/Roxabi/roxabi-factory/issues/2069) ouverte |
+| 2026-06-30 | Grok | Blocks 0–5,8 | Impl factory : ADR-097, roxabi-otel, collector JSONL, BFF spans |
 
 ---
 
@@ -566,7 +567,7 @@ Consolidation conversation + subagents :
 ## Checklist avant `/goal` implémentation
 
 - [x] Issue GitHub [#2069](https://github.com/Roxabi/roxabi-factory/issues/2069) créée
-- [ ] Block 0 mergé (design artifacts)
-- [ ] Décision `pool_id` A ou B tranchée par PO
+- [x] Block 0 mergé (design artifacts)
+- [x] Décision `pool_id` — **Option B** (TraceContext + domain models ; pas de champ `WorkEnvelope` — conflit pyright/cli)
 - [ ] Invariants § relus par l'agent
 - [ ] `Statut global` → `phase_0_done` puis `in_progress`

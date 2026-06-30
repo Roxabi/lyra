@@ -120,16 +120,33 @@ async def _probe(
         )
 
 
+def _langfuse_deferred() -> bool:
+    return os.environ.get("FACTORY_LANGFUSE_DEFERRED", "1").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
 async def fetch_ops_health() -> DashboardOpsHealthResponse:
     async with httpx.AsyncClient(timeout=_PROBE_TIMEOUT_S) as client:
-        engines = [
-            await _probe(client, engine="loki", url=loki_url(), path="/ready"),
-            await _probe(
+        if _langfuse_deferred():
+            langfuse_health = OpsEngineHealth(
+                engine="langfuse",
+                label=_ENGINE_LABELS["langfuse"],
+                reachable=False,
+                detail="deferred (otel-raw v1)",
+            )
+        else:
+            langfuse_health = await _probe(
                 client,
                 engine="langfuse",
                 url=langfuse_url(),
                 path="/api/public/health",
-            ),
+            )
+        engines = [
+            await _probe(client, engine="loki", url=loki_url(), path="/ready"),
+            langfuse_health,
             await _probe(
                 client,
                 engine="otel-collector",

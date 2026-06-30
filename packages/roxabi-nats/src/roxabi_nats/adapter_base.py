@@ -33,7 +33,7 @@ import socket
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from typing import cast
+from typing import Any, cast
 
 import nats.errors
 from nats.aio.client import Client as NATS
@@ -43,6 +43,7 @@ from nats.aio.client import Client as NATS
 # accessing it emits a DeprecationWarning per ADR-059 (V4).
 from roxabi_contracts._nats_utils import _SAFE_SEGMENT_CHARS
 from roxabi_contracts.envelope import CONTRACT_VERSION as _CONTRACT_VERSION
+from roxabi_contracts.telemetry import MessageLifecycleHooks
 from roxabi_nats._resolver import _EMPTY_RESOLVER, _TypeHintResolver
 from roxabi_nats._validate import validate_nats_token
 from roxabi_nats._version_check import (
@@ -96,6 +97,7 @@ class NatsAdapterBase(ABC):
         inbox_prefix: str | None = None,
         identity_name: str | None = None,
         wait_ready: bool = True,
+        lifecycle_hooks: MessageLifecycleHooks | None = None,
     ):
         if inbox_prefix is not None and identity_name is not None:
             raise ValueError(
@@ -126,6 +128,8 @@ class NatsAdapterBase(ABC):
         raw_id = f"{queue_group}-{socket.gethostname()}-{os.getpid()}"
         self._worker_id = re.sub(f"[^{_SAFE_SEGMENT_CHARS}]", "_", raw_id)
         self._wait_ready_flag = wait_ready
+        self._lifecycle_hooks = lifecycle_hooks
+        self._hook_drop_count: dict[str, int] = {}
         self._heartbeat_task: asyncio.Task | None = None
         self._resolver: _TypeHintResolver = (
             _TypeHintResolver(type_registry)
@@ -193,6 +197,12 @@ class NatsAdapterBase(ABC):
     @abstractmethod
     async def handle(self, msg, payload: dict) -> None: ...
 
+    def telemetry_attributes(
+        self, payload: dict, result: object | None
+    ) -> dict[str, Any]:
+        """Optional domain attrs for OTel spans; default empty."""
+        return {}
+
     def _extra_subjects(self) -> list[str]:
         """Return additional subjects to subscribe to (no queue group).
 
@@ -213,8 +223,66 @@ class NatsAdapterBase(ABC):
         except (json.JSONDecodeError, ValueError):
             log.error("adapter_base: malformed JSON on %s", self.subject)
             return
-        if self._validate_envelope(payload):
+        if not self._validate_envelope(payload):
+            return
+        await self._invoke_handle_with_hooks(msg, payload)
+
+    async def _invoke_handle_with_hooks(self, msg, payload: dict) -> None:
+        hooks = self._lifecycle_hooks
+        trace_id = str(payload.get("trace_id") or "")
+        job_id = str(payload.get("job_id") or "")
+        parent_job_id = payload.get("parent_job_id")
+        pool_id = payload.get("pool_id")
+        parent_job_s = str(parent_job_id) if parent_job_id is not None else None
+        pool_s = str(pool_id) if pool_id is not None else None
+
+        start = time.monotonic()
+        work_error: BaseException | None = None
+
+        if hooks is not None and trace_id and job_id:
+            self._safe_hook(
+                "on_work_start",
+                lambda: hooks.on_work_start(
+                    trace_id=trace_id,
+                    job_id=job_id,
+                    parent_job_id=parent_job_s,
+                    pool_id=pool_s,
+                    subject=self.subject,
+                    envelope_name=self.envelope_name,
+                    queue_group=self.queue_group,
+                ),
+            )
+
+        try:
             await self.handle(msg, payload)
+        except BaseException as exc:
+            work_error = exc
+            raise
+        finally:
+            if hooks is not None and trace_id and job_id:
+                domain = self.telemetry_attributes(payload, None)
+                if domain:
+                    self._safe_hook(
+                        "record_domain_attrs",
+                        lambda: hooks.record_domain_attrs(domain),
+                    )
+                duration_ms = (time.monotonic() - start) * 1000.0
+                self._safe_hook(
+                    "on_work_end",
+                    lambda: hooks.on_work_end(
+                        trace_id=trace_id,
+                        job_id=job_id,
+                        duration_ms=duration_ms,
+                        error=work_error,
+                    ),
+                )
+
+    def _safe_hook(self, name: str, fn: Any) -> None:
+        try:
+            fn()
+        except Exception:  # noqa: BLE001 — hooks must never block handle()
+            self._hook_drop_count[name] = self._hook_drop_count.get(name, 0) + 1
+            log.warning("adapter_base: lifecycle hook %s failed", name, exc_info=True)
 
     def _validate_envelope(self, payload: dict) -> bool:
         # Sequential short-circuit: each check logs and counts its own drop, so

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
@@ -29,7 +29,16 @@ from roxabi_contracts.cli import SUBJECTS
 from roxabi_contracts.cli.models import CliControlCmd
 from roxabi_contracts.jobs.models import JobEnvelope
 from roxabi_contracts.jobs.subjects import jobs_runtime_claude
+from roxabi_contracts.telemetry import (
+    ATTR_MODEL,
+    ATTR_POOL_ID,
+    ATTR_RUNTIME,
+    ATTR_SKILL,
+)
 from roxabi_nats.adapter_base import NatsAdapterBase
+
+if TYPE_CHECKING:
+    from roxabi_contracts.telemetry import MessageLifecycleHooks
 
 log = logging.getLogger(__name__)
 
@@ -47,6 +56,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
         *,
         timeout: float = 30.0,
         identity_name: str | None = None,
+        lifecycle_hooks: "MessageLifecycleHooks | None" = None,
     ) -> None:
         super().__init__(
             subject=jobs_runtime_claude(),
@@ -58,6 +68,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
             heartbeat_interval=_HEARTBEAT_INTERVAL,
             identity_name=identity_name,
             wait_ready=False,
+            lifecycle_hooks=lifecycle_hooks,
         )
         self._pool = pool
         self._jobs: set[asyncio.Task] = set()
@@ -101,6 +112,29 @@ class CliPoolNatsWorker(NatsAdapterBase):
         base = super().heartbeat_payload()
         base["pool_count"] = len(self._pool._entries)
         return base
+
+    def telemetry_attributes(
+        self, payload: dict, result: object | None
+    ) -> dict[str, str]:
+        try:
+            envelope = JobEnvelope.model_validate(payload)
+        except ValidationError:
+            return {ATTR_RUNTIME: "clipool", ATTR_SKILL: "unknown"}
+        body = envelope.payload or {}
+        pool_id = str(body.get("pool_id") or envelope.job_id)
+        model_cfg = body.get("model_cfg") or {}
+        model = ""
+        if isinstance(model_cfg, dict):
+            model = str(model_cfg.get("model") or "")
+        skill = str(body.get("skill") or "unknown")
+        attrs: dict[str, str] = {
+            ATTR_POOL_ID: pool_id,
+            ATTR_RUNTIME: "clipool",
+            ATTR_SKILL: skill,
+        }
+        if model:
+            attrs[ATTR_MODEL] = model
+        return attrs
 
     async def _run_job(self, envelope: JobEnvelope) -> None:
         job_id = envelope.job_id

@@ -20,7 +20,7 @@ import asyncio
 import logging
 import signal
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import nats.errors
 from pydantic import ValidationError
@@ -29,8 +29,12 @@ from factory.adapters.omp._rpc_bridge import publish_job_error
 from factory.adapters.omp.omp_pool import OmpPool
 from roxabi_contracts.jobs.models import JobEnvelope
 from roxabi_contracts.jobs.subjects import jobs_submit
+from roxabi_contracts.telemetry import ATTR_MODEL, ATTR_POOL_ID, ATTR_RUNTIME
 from roxabi_nats import nats_connect
 from roxabi_nats.adapter_base import NatsAdapterBase
+
+if TYPE_CHECKING:
+    from roxabi_contracts.telemetry import MessageLifecycleHooks
 
 log = logging.getLogger(__name__)
 
@@ -59,6 +63,7 @@ class OmpWorker(NatsAdapterBase):
         pool: OmpPool | None = None,
         timeout: float = 300.0,
         identity_name: str | None = None,
+        lifecycle_hooks: "MessageLifecycleHooks | None" = None,
     ) -> None:
         super().__init__(
             subject=_CMD_SUBJECT,
@@ -70,6 +75,7 @@ class OmpWorker(NatsAdapterBase):
             heartbeat_interval=_HEARTBEAT_INTERVAL,
             identity_name=identity_name,
             wait_ready=False,  # worker semantics — hub readiness not required
+            lifecycle_hooks=lifecycle_hooks,
         )
         # Allow injection for testing; production always constructs real pool.
         self._pool: OmpPool = pool if pool is not None else OmpPool()
@@ -138,6 +144,24 @@ class OmpWorker(NatsAdapterBase):
 
     def _extra_subjects(self) -> list[str]:
         return []
+
+    def telemetry_attributes(
+        self, payload: dict, result: object | None
+    ) -> dict[str, str]:
+        try:
+            envelope = JobEnvelope.model_validate(payload)
+        except ValidationError:
+            return {ATTR_RUNTIME: "omp"}
+        body = envelope.payload or {}
+        pool_id = str(body.get("pool_id") or envelope.job_id)
+        model_cfg = body.get("model_cfg") or {}
+        model = ""
+        if isinstance(model_cfg, dict):
+            model = str(model_cfg.get("model") or "")
+        attrs: dict[str, str] = {ATTR_POOL_ID: pool_id, ATTR_RUNTIME: "omp"}
+        if model:
+            attrs[ATTR_MODEL] = model
+        return attrs
 
     async def handle(self, msg: Any, payload: dict) -> None:
         """Parse the job envelope and spawn a task for it (Model B)."""

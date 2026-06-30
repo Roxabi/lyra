@@ -83,6 +83,7 @@ container = "factory-promtail.container"
 required_secrets = []
 host_roles = ["factory-hub"]
 
+# Langfuse stack — optional / deferred in otel-raw v1 (ADR-097). Collector no longer depends on it.
 [component.langfuse-postgres]
 container = "factory-langfuse-postgres.container"
 required_secrets = []

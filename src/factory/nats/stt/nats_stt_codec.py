@@ -10,15 +10,14 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from uuid import uuid4
 
 from pydantic import ValidationError
 
 from factory.core.ports.stt import TranscriptionResult
+from factory.nats.envelope_fields import mint_work_envelope_fields
 from factory.transport._result import Err, Result, SanitizedError
-from roxabi_contracts import BlobRef, new_job_id
-from roxabi_contracts.envelope import CONTRACT_VERSION
+from roxabi_contracts import BlobRef
 from roxabi_contracts.voice import SttRequest, SttResponse
 
 log = logging.getLogger(__name__)
@@ -41,17 +40,30 @@ class SttCodec:
     decode: maps Result[bytes, SanitizedError] → TranscriptionResult; never raises.
     """
 
-    def encode(self, blob_ref: BlobRef, mime: str, params: SttEncodeParams) -> bytes:
+    def encode(  # noqa: PLR0913 — correlation kwargs (#2069)
+        self,
+        blob_ref: BlobRef,
+        mime: str,
+        params: SttEncodeParams,
+        *,
+        trace_id: str | None = None,
+        job_id: str | None = None,
+        parent_job_id: str | None = None,
+        pool_id: str | None = None,
+    ) -> bytes:
         """Build canonical SttRequest payload bytes.
 
         Mirrors NatsSttClient.transcribe() payload-builder exactly so the wire
         format is bit-for-bit identical.
         """
+        fields = mint_work_envelope_fields(
+            trace_id=trace_id,
+            job_id=job_id,
+            parent_job_id=parent_job_id,
+            pool_id=pool_id,
+        )
         request = SttRequest(
-            contract_version=CONTRACT_VERSION,
-            trace_id=str(uuid4()),
-            issued_at=datetime.now(timezone.utc),
-            job_id=new_job_id(),
+            **fields.as_dict(),
             request_id=str(uuid4()),
             blob_ref=blob_ref,
             mime_type=mime,

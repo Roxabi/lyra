@@ -37,6 +37,18 @@ def github_event_message(kind: str, payload: dict[str, Any]) -> str | None:
 
 
 def cloudflare_event_kind(payload: dict[str, Any]) -> str:
+    pages = payload.get("pages")
+    if isinstance(pages, dict):
+        status = str(
+            pages.get("deployment_status")
+            or payload.get("text")
+            or payload.get("name")
+            or ""
+        ).lower()
+        if "fail" in status or "error" in status:
+            return "pages.deployment.failure"
+        if "success" in status or "succeeded" in status:
+            return "pages.deployment.success"
     text = str(payload.get("text", "")).lower()
     name = str(payload.get("name", "")).lower()
     blob = f"{text} {name}"

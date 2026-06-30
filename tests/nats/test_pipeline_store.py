@@ -140,6 +140,118 @@ def test_sqlite_survives_reopen(tmp_path: Path) -> None:
     assert row.reviewed is True
 
 
+def test_converge_completed_sets_m1_when_publish_ok(store: PipelineStore) -> None:
+    store.apply_github_event(
+        kind="pull_request.closed",
+        payload={
+            "action": "closed",
+            "pull_request": {
+                "number": 12,
+                "title": "ship",
+                "merged": True,
+                "head_sha": "head12",
+            },
+        },
+        trace_id="t-merge",
+    )
+    store.apply_github_event(
+        kind="workflow_run.completed",
+        payload={
+            "workflow_run": {
+                "name": "publish",
+                "conclusion": "success",
+                "head_sha": "sha" * 10,
+            }
+        },
+        trace_id="t-pub",
+    )
+    row = store.get_run("Roxabi/roxabi-factory", 12)
+    assert row is not None
+    assert row.m1_deploy_status == "pending"
+
+    store.apply_host_event(
+        kind="roxabituwer.converge.completed",
+        payload={"drift_kind": "none"},
+        trace_id="t-converge",
+    )
+    row = store.get_run("Roxabi/roxabi-factory", 12)
+    assert row is not None
+    assert row.m1_deploy_status == "success"
+
+
+def test_cf_pages_success_updates_cf_deploy(store: PipelineStore) -> None:
+    store.apply_github_event(
+        kind="pull_request.closed",
+        payload={
+            "action": "closed",
+            "pull_request": {
+                "number": 33,
+                "title": "pages",
+                "merged": True,
+            },
+        },
+        trace_id="t-merge-pages",
+    )
+    store.apply_cloudflare_event(
+        kind="pages.deployment.success",
+        payload={
+            "pages": {
+                "project_name": "roxabi-factory-dashboard",
+                "branch": "staging",
+                "deployment_status": "success",
+            }
+        },
+        trace_id="t-cf",
+    )
+    row = store.get_run("Roxabi/roxabi-factory", 33)
+    assert row is not None
+    assert row.cf_deploy_status == "success"
+
+
+def test_cf_pages_ignores_unknown_project(store: PipelineStore) -> None:
+    store.apply_github_event(
+        kind="pull_request.closed",
+        payload={
+            "action": "closed",
+            "pull_request": {"number": 34, "title": "x", "merged": True},
+        },
+        trace_id="t-merge-cf",
+    )
+    store.apply_cloudflare_event(
+        kind="pages.deployment.success",
+        payload={"pages": {"project_name": "unknown-project", "branch": "staging"}},
+        trace_id="t-cf-unknown",
+    )
+    row = store.get_run("Roxabi/roxabi-factory", 34)
+    assert row is not None
+    assert row.cf_deploy_status == "pending"
+
+
+def test_cf_pages_ignores_branch_mismatch(store: PipelineStore) -> None:
+    store.apply_github_event(
+        kind="pull_request.closed",
+        payload={
+            "action": "closed",
+            "pull_request": {"number": 35, "title": "x", "merged": True},
+        },
+        trace_id="t-merge-branch",
+    )
+    store.apply_cloudflare_event(
+        kind="pages.deployment.success",
+        payload={
+            "pages": {
+                "project_name": "roxabi-factory",
+                "branch": "main",
+                "deployment_status": "success",
+            }
+        },
+        trace_id="t-cf-branch",
+    )
+    row = store.get_run("Roxabi/roxabi-factory", 35)
+    assert row is not None
+    assert row.cf_deploy_status == "pending"
+
+
 def test_idempotent_trace_id(store: PipelineStore) -> None:
     payload = _open_pr_payload(pr_number=1, labels=["reviewed"])
     store.apply_github_event(

@@ -67,6 +67,14 @@
     "loadError": "Impossible de charger le pipeline.",
     "loading": "Connexion au flux pipeline…",
     "empty": "Aucune PR suivie — en attente d'events GitHub ingress.",
+    "noMatches": "Aucune PR ne correspond aux filtres actifs.",
+    "stale": "stale",
+    "lastEvent": "Dernier event il y a {{age}}",
+    "filters": {
+      "ci_red": "CI rouge",
+      "awaiting_reviewed": "Sans reviewed",
+      "deploy_pending": "Deploy en attente"
+    },
     "reviewed": "reviewed",
     "notReviewed": "sans label reviewed",
     "merged": "mergé",

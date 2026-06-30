@@ -67,6 +67,14 @@
     "loadError": "Could not load pipeline state.",
     "loading": "Connecting to pipeline stream…",
     "empty": "No PRs tracked yet — waiting for GitHub ingress events.",
+    "noMatches": "No PRs match the active filters.",
+    "stale": "stale",
+    "lastEvent": "Last event {{age}} ago",
+    "filters": {
+      "ci_red": "CI red",
+      "awaiting_reviewed": "Awaiting reviewed",
+      "deploy_pending": "Deploy pending"
+    },
     "reviewed": "reviewed",
     "notReviewed": "no reviewed label",
     "merged": "merged",

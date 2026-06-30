@@ -31,7 +31,7 @@ def summarize_github_payload(payload: dict[str, Any]) -> dict[str, Any]:
 def summarize_cloudflare_payload(payload: dict[str, Any]) -> dict[str, Any]:
     data = payload.get("data")
     data_dict = data if isinstance(data, dict) else {}
-    return {
+    out: dict[str, Any] = {
         "name": payload.get("name"),
         "text": payload.get("text"),
         "alert_type": payload.get("alert_type"),
@@ -40,6 +40,34 @@ def summarize_cloudflare_payload(payload: dict[str, Any]) -> dict[str, Any]:
         "account_id": payload.get("account_id"),
         "data": data_dict,
     }
+    pages = _pages_deployment_summary(data_dict, payload)
+    if pages:
+        out["pages"] = pages
+    return out
+
+
+def _pages_deployment_summary(
+    data: dict[str, Any],
+    root: dict[str, Any],
+) -> dict[str, Any] | None:
+    out: dict[str, Any] = {}
+    for key in (
+        "project_name",
+        "project_id",
+        "deployment_id",
+        "environment",
+        "url",
+        "branch",
+        "deployment_status",
+    ):
+        value = data.get(key)
+        if isinstance(value, str) and value.strip():
+            out[key] = value.strip()
+    for key in ("project_name", "project_id"):
+        value = root.get(key)
+        if isinstance(value, str) and value.strip() and key not in out:
+            out[key] = value.strip()
+    return out or None
 
 
 def _pull_request_summary(

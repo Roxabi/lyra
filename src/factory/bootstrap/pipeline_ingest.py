@@ -42,7 +42,9 @@ def apply_lyra_event(store: PipelineStore, event: LyraEvent) -> None:
     if service == "github":
         store.apply_github_event(kind=kind, payload=payload, trace_id=trace)
     elif service == "cloudflare":
-        store.apply_cloudflare_event(kind=kind, trace_id=trace)
+        store.apply_cloudflare_event(kind=kind, payload=payload, trace_id=trace)
+    elif service == "host":
+        store.apply_host_event(kind=kind, payload=payload, trace_id=trace)
 
 
 async def replay_jetstream_if_empty(

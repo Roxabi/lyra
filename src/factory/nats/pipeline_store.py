@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
+from factory.nats.pipeline_cf_registry import pages_branch_matches, resolve_pages_project
 from factory.nats.pipeline_db import PipelineDb, default_db_path
 
 PipelineStageStatus = Literal[
@@ -213,9 +214,7 @@ class PipelineStore:
         if not isinstance(pr, dict) or pr.get("number") is None:
             return
         pr_number = int(pr["number"])
-        labels = pr.get("labels")
-        label_list = labels if isinstance(labels, list) else []
-        reviewed = "reviewed" in label_list
+        reviewed = _pr_has_reviewed_label(pr.get("labels"))
         if kind == "pull_request.labeled" and isinstance(payload.get("label"), dict):
             name = payload["label"].get("name")
             if name == "reviewed":
@@ -314,9 +313,12 @@ class PipelineStore:
         self,
         *,
         kind: str,
+        payload: dict[str, object] | None,
         trace_id: str | None,
     ) -> None:
         if trace_id and not self.mark_processed(trace_id):
+            return
+        if not kind.startswith("pages.deployment."):
             return
         if "failure" in kind:
             status: PipelineStageStatus = "failure"
@@ -324,11 +326,48 @@ class PipelineStore:
             status = "success"
         else:
             status = "unknown"
+        payload = payload or {}
+        pages = payload.get("pages")
+        pages_dict = pages if isinstance(pages, dict) else None
+        target = resolve_pages_project(pages_dict)
+        if target is None and pages_dict is not None:
+            return
+        if target is None:
+            repo = DEFAULT_REPO
+            expected_branch = "staging"
+        else:
+            repo = target["repo"]
+            expected_branch = target["branch"]
+        if not pages_branch_matches(pages_dict, expected_branch):
+            return
         for row in self._runs.values():
-            if row.open or row.merge_status != "success":
+            if row.repo != repo or row.open or row.merge_status != "success":
                 continue
             row.cf_deploy_status = status
             self._touch(row)
+
+    def apply_host_event(
+        self,
+        *,
+        kind: str,
+        payload: dict[str, object] | None,
+        trace_id: str | None,
+    ) -> None:
+        if trace_id and not self.mark_processed(trace_id):
+            return
+        if not kind.endswith("converge.completed"):
+            return
+        now = _now_iso()
+        if self._db is not None:
+            self._db.set_meta("last_converge_at", now)
+        for row in self._runs.values():
+            if row.open or row.merge_status != "success":
+                continue
+            if row.publish_status != "success":
+                continue
+            if row.m1_deploy_status == "pending":
+                row.m1_deploy_status = "success"
+                self._touch(row)
 
     def apply_fleet_report(
         self,
@@ -401,3 +440,14 @@ class PipelineStore:
 
 def _str_or_none(value: object) -> str | None:
     return str(value) if isinstance(value, str) and value else None
+
+
+def _pr_has_reviewed_label(labels: object) -> bool:
+    if not isinstance(labels, list):
+        return False
+    for item in labels:
+        if item == "reviewed":
+            return True
+        if isinstance(item, dict) and item.get("name") == "reviewed":
+            return True
+    return False

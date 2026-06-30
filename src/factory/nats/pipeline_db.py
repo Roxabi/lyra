@@ -228,13 +228,27 @@ class PipelineDb:
         conn.commit()
 
     def set_last_publish_sha(self, sha: str) -> None:
+        self.set_meta("last_publish_sha", sha)
+
+    def set_meta(self, key: str, value: str) -> None:
         conn = self._require_conn()
         conn.execute(
-            "INSERT INTO pipeline_meta (key, value) VALUES ('last_publish_sha', ?) "
+            "INSERT INTO pipeline_meta (key, value) VALUES (?, ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            (sha,),
+            (key, value),
         )
         conn.commit()
+
+    def get_meta(self, key: str) -> str | None:
+        conn = self._require_conn()
+        row = conn.execute(
+            "SELECT value FROM pipeline_meta WHERE key = ?",
+            (key,),
+        ).fetchone()
+        if row is None:
+            return None
+        value = row["value"]
+        return str(value) if value else None
 
     def _require_conn(self) -> sqlite3.Connection:
         if self._conn is None:

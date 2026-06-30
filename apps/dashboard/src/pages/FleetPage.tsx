@@ -15,12 +15,7 @@ import {
 } from "@/components/ui/list-toolbar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SortableTableHeader } from "@/components/ui/sortable-table-header";
-import {
-  type FleetRow,
-  type FleetStatus,
-  type ImageDigestStatus,
-  fetchFleet,
-} from "@/lib/api";
+import { type FleetRow, type FleetStatus, fetchFleet, type ImageDigestStatus } from "@/lib/api";
 import { FLEET_STATUSES, type FleetSortKey, filterFleet, sortFleet } from "@/lib/fleet-filters";
 import { type SortDirection, toggleSort } from "@/lib/sort";
 import { useDebouncedValue } from "@/lib/use-debounced-value";

@@ -24,6 +24,26 @@
     "colAgent": "Agent",
     "colStatus": "Statut"
   },
+  "fleet": {
+    "subtitle": "État des containers M₁ — les unités Roxabi publient via NATS ; les tierces apparaissent comme non instrumentées.",
+    "tableTitle": "Flotte",
+    "loadError": "Impossible de charger la flotte.",
+    "empty": "Aucune ligne dans le catalogue.",
+    "columns": {
+      "name": "Container",
+      "status": "Statut",
+      "health": "Santé",
+      "image": "Image",
+      "revision": "Révision",
+      "age": "Âge"
+    },
+    "status": {
+      "ok": "OK",
+      "stale": "Stale",
+      "unknown": "Inconnu",
+      "pinned": "Épinglé"
+    }
+  },
   "chats": {
     "title": "Chats récents",
     "empty": "Aucun chat ouvert.",

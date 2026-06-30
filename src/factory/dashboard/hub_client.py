@@ -16,6 +16,7 @@ from roxabi_contracts.dashboard import (
     DashboardAgentSoulPreviewResponse,
     DashboardAgentSoulPutRequest,
     DashboardAgentSoulSectionsResponse,
+    DashboardFleetResponse,
     DashboardJobsLaunchRequest,
     DashboardJobsLaunchResponse,
     DashboardJobsListResponse,
@@ -155,3 +156,7 @@ class DashboardHubClient:
             {"name": name, **body.model_dump()},
         )
         return DashboardAgentSoulPreviewResponse.model_validate(raw)
+
+    async def fleet_list(self) -> DashboardFleetResponse:
+        raw = await self._request(SUBJECTS.fleet_list, {})
+        return DashboardFleetResponse.model_validate(raw)

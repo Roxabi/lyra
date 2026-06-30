@@ -1,0 +1,10 @@
+[Unit]
+Description=factory fleet digest poll timer (5 min, offset +3 min)
+
+[Timer]
+OnCalendar=*:3/5
+Persistent=true
+Unit=factory-fleet-digest-poll.service
+
+[Install]
+WantedBy=timers.target

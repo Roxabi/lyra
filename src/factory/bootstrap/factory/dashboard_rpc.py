@@ -58,6 +58,8 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 _WEB_BOT = "smoke"
+
+
 async def start_dashboard_rpc(hub: Hub, nc: NATS) -> list[Any]:
     """Subscribe hub responders for dashboard BFF request-reply."""
     import time
@@ -241,8 +243,9 @@ async def _handle_connectors_list(
     _ = hub, nc
     req = DashboardConnectorInstallationsListRequest.model_validate(payload)
     if req.connector not in _SUPPORTED_CONNECTORS:
-        empty = DashboardConnectorInstallationsListResponse(installations=[])
-        return empty.model_dump()
+        return DashboardConnectorInstallationsListResponse(
+            installations=[]
+        ).model_dump()
     store = await get_installation_store()
     rows = await store.list_rows()
     installations = [

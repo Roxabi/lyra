@@ -65,9 +65,7 @@ export function Dialog({
             <h2 id="dialog-title" className="text-base font-semibold text-foreground">
               {title}
             </h2>
-            {description ? (
-              <p className="text-sm text-muted-foreground">{description}</p>
-            ) : null}
+            {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
           </div>
           <Button
             type="button"

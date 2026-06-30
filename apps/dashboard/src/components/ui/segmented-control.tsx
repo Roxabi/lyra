@@ -25,14 +25,13 @@ export function SegmentedControl<T extends string>({
   className,
 }: SegmentedControlProps<T>) {
   return (
-    <div
-      role="group"
-      aria-label={ariaLabel}
+    <fieldset
       className={cn(
-        "inline-flex h-10 items-center rounded-lg border border-border/70 bg-muted p-1 shadow-sm",
+        "m-0 inline-flex h-10 min-w-0 items-center rounded-lg border border-border/70 bg-muted p-1 shadow-sm",
         className,
       )}
     >
+      {ariaLabel ? <legend className="sr-only">{ariaLabel}</legend> : null}
       {options.map((option) => {
         const isActive = option.value === value;
         const Icon = option.icon;
@@ -65,6 +64,6 @@ export function SegmentedControl<T extends string>({
           </button>
         );
       })}
-    </div>
+    </fieldset>
   );
 }

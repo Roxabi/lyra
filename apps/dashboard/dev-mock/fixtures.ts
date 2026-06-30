@@ -297,7 +297,10 @@ export function patchMockAdminUser(
   return user;
 }
 
-const mockAgentPlatforms: Record<string, { has_telegram: boolean; has_discord: boolean; has_email: boolean }> = {
+const mockAgentPlatforms: Record<
+  string,
+  { has_telegram: boolean; has_discord: boolean; has_email: boolean }
+> = {
   lyra: { has_telegram: true, has_discord: true, has_email: false },
   aryl: { has_telegram: false, has_discord: true, has_email: false },
 };

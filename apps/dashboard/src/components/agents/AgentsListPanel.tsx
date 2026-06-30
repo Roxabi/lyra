@@ -5,7 +5,6 @@ import { useTranslation } from "react-i18next";
 import { AgentIdentity } from "@/components/agents/AgentIdentity";
 import { CreateAgentDialog } from "@/components/agents/CreateAgentDialog";
 import { Badge } from "@/components/ui/badge";
-import { PresenceBadge } from "@/components/ui/presence-badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
@@ -14,6 +13,7 @@ import {
   ListToolbarHeader,
   ListToolbarSearch,
 } from "@/components/ui/list-toolbar";
+import { PresenceBadge } from "@/components/ui/presence-badge";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getAgentPersona } from "@/lib/agent-catalog";
@@ -111,7 +111,7 @@ function AgentsListSkeleton({ view }: { view: "cards" | "table" }) {
 
   if (view === "table") {
     return (
-      <div className="space-y-2" aria-busy="true" aria-label={t("actions.loading")}>
+      <div role="status" className="space-y-2" aria-busy="true" aria-label={t("actions.loading")}>
         {[0, 1, 2].map((i) => (
           <div key={i} className="flex items-center gap-4 rounded-lg border bg-card p-3">
             <Skeleton className="size-8 shrink-0 rounded-full" />
@@ -128,6 +128,7 @@ function AgentsListSkeleton({ view }: { view: "cards" | "table" }) {
 
   return (
     <ul
+      role="status"
       className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
       aria-busy="true"
       aria-label={t("actions.loading")}
@@ -171,10 +172,7 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
   const [view, setView] = useCardsTableViewPreference("agents");
   const debouncedSearch = useDebouncedValue(search, 300);
 
-  const filtered = useMemo(
-    () => filterAgents(agents, debouncedSearch),
-    [agents, debouncedSearch],
-  );
+  const filtered = useMemo(() => filterAgents(agents, debouncedSearch), [agents, debouncedSearch]);
   const hasFilters = search.trim().length > 0;
 
   const viewOptions = [
@@ -235,7 +233,12 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
           hint={hasFilters ? undefined : t("emptyHint")}
           action={
             hasFilters ? undefined : (
-              <Button type="button" size="sm" className="gap-1.5" onClick={() => setCreateOpen(true)}>
+              <Button
+                type="button"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => setCreateOpen(true)}
+              >
                 <Plus className="size-3.5" aria-hidden />
                 {t("createAgent")}
               </Button>
@@ -323,19 +326,8 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
                 return (
                   <tr
                     key={a.name}
-                    tabIndex={0}
-                    role="link"
-                    aria-label={`${persona.displayName} — ${t("edit")}`}
-                    className="group cursor-pointer border-b border-border/30 transition-colors last:border-0 hover:bg-muted/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
-                    onClick={() =>
-                      void navigate({ to: "/agents/$name", params: { name: a.name } })
-                    }
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        void navigate({ to: "/agents/$name", params: { name: a.name } });
-                      }
-                    }}
+                    className="group cursor-pointer border-b border-border/30 transition-colors last:border-0 hover:bg-muted/20"
+                    onClick={() => void navigate({ to: "/agents/$name", params: { name: a.name } })}
                   >
                     <td className="px-4 py-3 pr-4">
                       <AgentIdentity agentId={a.name} avatarSize="sm" />
@@ -348,9 +340,7 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
                         {harnessLabel(a.backend)}
                       </Badge>
                     </td>
-                    <td className="py-3 pr-4 font-mono text-xs text-muted-foreground">
-                      {a.model}
-                    </td>
+                    <td className="py-3 pr-4 font-mono text-xs text-muted-foreground">{a.model}</td>
                     <td className="py-3 pr-4">
                       <PresenceBadge present={a.has_telegram} namespace="agents" />
                     </td>

@@ -1,8 +1,8 @@
 import { Outlet, useRouterState } from "@tanstack/react-router";
-import { Toaster } from "@/components/ui/sonner";
 import { AppBottomNav } from "@/components/layout/AppBottomNav";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { AppSidebar } from "@/components/layout/AppSidebar";
+import { Toaster } from "@/components/ui/sonner";
 import { appNavItems, resolveNavFlags } from "@/lib/nav";
 import { ShellTitleProvider } from "@/lib/shell-title";
 import { cn } from "@/lib/utils";

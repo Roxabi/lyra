@@ -39,9 +39,7 @@ describe("UserMenu", () => {
     const user = userEvent.setup();
     renderUserMenu();
 
-    const trigger = await waitFor(() =>
-      screen.getByRole("button", { name: /opérateur factory/i }),
-    );
+    const trigger = await waitFor(() => screen.getByRole("button", { name: /opérateur factory/i }));
     await user.click(trigger);
     expect(screen.getByText("operator@roxabi.dev")).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: /utilisateurs/i })).toBeTruthy();

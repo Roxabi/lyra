@@ -1,9 +1,8 @@
 import type { Connect, Plugin } from "vite";
 import {
-  mintStreamToken,
   createMockAdminUser,
+  mintStreamToken,
   mockAdminAccess,
-  patchMockAdminUser,
   mockAgentConfig,
   mockAgentSoul,
   mockAgentStatus,
@@ -15,6 +14,7 @@ import {
   mockOpsLogs,
   mockSessions,
   mockSoulPreview,
+  patchMockAdminUser,
   takeChatText,
   upsertMockAgentConfig,
   verifyStreamToken,

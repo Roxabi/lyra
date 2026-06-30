@@ -18,9 +18,7 @@ export function ChatComposer({ value, disabled, onChange, onSend }: ChatComposer
         <Textarea
           value={value}
           disabled={disabled}
-          placeholder={
-            disabled ? t("composer.placeholderOffline") : t("composer.placeholder")
-          }
+          placeholder={disabled ? t("composer.placeholderOffline") : t("composer.placeholder")}
           rows={1}
           className="min-h-[44px] max-h-32 flex-1"
           onChange={(e) => onChange(e.target.value)}

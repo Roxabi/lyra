@@ -41,35 +41,35 @@ function ThemePicker({ className }: { className?: string }) {
 
   return (
     <div className={cn("px-2 py-1.5", className)}>
-      <p className="mb-2 text-xs font-medium text-muted-foreground">{t("userMenu.theme")}</p>
-      <div
-        role="group"
-        aria-label={t("userMenu.theme")}
-        className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1"
-      >
-        {THEME_OPTIONS.map(({ value, Icon, labelKey }) => {
-          const active = theme === value;
-          return (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={active}
-              title={t(labelKey)}
-              onClick={() => applyTheme(value)}
-              className={cn(
-                "inline-flex min-h-10 flex-col items-center justify-center gap-0.5 rounded-md px-1 text-[10px] font-medium transition-colors",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover",
-                active
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              <Icon className="size-4" aria-hidden />
-              <span className="truncate">{t(labelKey)}</span>
-            </button>
-          );
-        })}
-      </div>
+      <fieldset className="m-0 min-w-0 border-0 p-0">
+        <legend className="mb-2 text-xs font-medium text-muted-foreground">
+          {t("userMenu.theme")}
+        </legend>
+        <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+          {THEME_OPTIONS.map(({ value, Icon, labelKey }) => {
+            const active = theme === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={active}
+                title={t(labelKey)}
+                onClick={() => applyTheme(value)}
+                className={cn(
+                  "inline-flex min-h-10 flex-col items-center justify-center gap-0.5 rounded-md px-1 text-[10px] font-medium transition-colors",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover",
+                  active
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                <Icon className="size-4" aria-hidden />
+                <span className="truncate">{t(labelKey)}</span>
+              </button>
+            );
+          })}
+        </div>
+      </fieldset>
     </div>
   );
 }
@@ -80,37 +80,37 @@ function LocalePicker({ className }: { className?: string }) {
 
   return (
     <div className={cn("px-2 py-1.5", className)}>
-      <p className="mb-2 text-xs font-medium text-muted-foreground">{t("userMenu.language")}</p>
-      <div
-        role="group"
-        aria-label={t("userMenu.language")}
-        className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1"
-      >
-        {LOCALE_OPTIONS.map(({ value, labelKey }) => {
-          const active = locale === value;
-          return (
-            <button
-              key={value}
-              type="button"
-              aria-pressed={active}
-              onClick={() => {
-                void i18n.changeLanguage(value);
-                persistLocale(value);
-                setLocale(value);
-              }}
-              className={cn(
-                "inline-flex min-h-10 items-center justify-center rounded-md px-2 text-xs font-medium transition-colors",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover",
-                active
-                  ? "bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {t(labelKey)}
-            </button>
-          );
-        })}
-      </div>
+      <fieldset className="m-0 min-w-0 border-0 p-0">
+        <legend className="mb-2 text-xs font-medium text-muted-foreground">
+          {t("userMenu.language")}
+        </legend>
+        <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted p-1">
+          {LOCALE_OPTIONS.map(({ value, labelKey }) => {
+            const active = locale === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={active}
+                onClick={() => {
+                  void i18n.changeLanguage(value);
+                  persistLocale(value);
+                  setLocale(value);
+                }}
+                className={cn(
+                  "inline-flex min-h-10 items-center justify-center rounded-md px-2 text-xs font-medium transition-colors",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-popover",
+                  active
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {t(labelKey)}
+              </button>
+            );
+          })}
+        </div>
+      </fieldset>
     </div>
   );
 }

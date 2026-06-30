@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
+import { AgentIdentity } from "@/components/agents/AgentIdentity";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { AgentIdentity } from "@/components/agents/AgentIdentity";
 import type { AgentHealth } from "@/lib/api";
 import { fetchJobs } from "@/lib/api";
 import { jobStatusToBadgeVariant } from "@/lib/job-status";

@@ -14,12 +14,19 @@ import { fetchAgentStatus, fetchAgents, fetchJobs, fetchOpsHealth } from "@/lib/
 import { loadTabs } from "@/lib/chats-storage";
 import { jobStatusToBadgeVariant } from "@/lib/job-status";
 
+const SKELETON_ROW_IDS = ["alpha", "beta", "gamma", "delta"] as const;
+
 function TableRowsSkeleton({ rows = 3 }: { rows?: number }) {
   const { t } = useTranslation("common");
   return (
-    <div className="space-y-2 px-6 pb-6" aria-busy="true" aria-label={t("actions.loading")}>
-      {Array.from({ length: rows }, (_, i) => (
-        <div key={i} className="flex items-center gap-3 py-1">
+    <div
+      role="status"
+      className="space-y-2 px-6 pb-6"
+      aria-busy="true"
+      aria-label={t("actions.loading")}
+    >
+      {SKELETON_ROW_IDS.slice(0, rows).map((id) => (
+        <div key={id} className="flex items-center gap-3 py-1">
           <Skeleton className="size-8 rounded-full" />
           <Skeleton className="h-4 w-24" />
           <Skeleton className="ml-auto h-6 w-16 rounded-full" />
@@ -32,9 +39,9 @@ function TableRowsSkeleton({ rows = 3 }: { rows?: number }) {
 function ListRowsSkeleton({ rows = 3 }: { rows?: number }) {
   const { t } = useTranslation("common");
   return (
-    <div className="space-y-2" aria-busy="true" aria-label={t("actions.loading")}>
-      {Array.from({ length: rows }, (_, i) => (
-        <div key={i} className="flex items-center gap-3 rounded-md bg-muted/30 px-3 py-2">
+    <div role="status" className="space-y-2" aria-busy="true" aria-label={t("actions.loading")}>
+      {SKELETON_ROW_IDS.slice(0, rows).map((id) => (
+        <div key={id} className="flex items-center gap-3 rounded-md bg-muted/30 px-3 py-2">
           <Skeleton className="h-4 w-28" />
           <Skeleton className="ml-auto h-6 w-14 rounded-full" />
         </div>

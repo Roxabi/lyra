@@ -17,14 +17,14 @@ import {
 } from "@/components/ui/list-toolbar";
 import { PopoverSelect } from "@/components/ui/popover-select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SortableTableHeader } from "@/components/ui/sortable-table-header";
 import { toast } from "@/components/ui/sonner";
+import { SortableTableHeader } from "@/components/ui/sortable-table-header";
 import { Textarea } from "@/components/ui/textarea";
 import { displayAgentName } from "@/lib/agents";
 import { fetchAgentStatus, fetchAgents, fetchJobs, launchJob, steerJob } from "@/lib/api";
-import { filterJobs, sortJobs, uniqueJobStatuses, type JobsSortKey } from "@/lib/jobs-filters";
 import { jobStatusToBadgeVariant } from "@/lib/job-status";
-import { toggleSort, type SortDirection } from "@/lib/sort";
+import { filterJobs, type JobsSortKey, sortJobs, uniqueJobStatuses } from "@/lib/jobs-filters";
+import { type SortDirection, toggleSort } from "@/lib/sort";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 
 export function JobsPage() {
@@ -146,9 +146,7 @@ export function JobsPage() {
         <ListToolbar>
           <ListToolbarHeader
             meta={
-              isLoading
-                ? tc("actions.loading")
-                : t("live.active", { count: visibleJobs.length })
+              isLoading ? tc("actions.loading") : t("live.active", { count: visibleJobs.length })
             }
           />
           <ListToolbarSearch
@@ -178,7 +176,12 @@ export function JobsPage() {
         </ListToolbar>
 
         {isLoading ? (
-          <div className="space-y-2" aria-busy="true" aria-label={tc("actions.loading")}>
+          <div
+            role="status"
+            className="space-y-2"
+            aria-busy="true"
+            aria-label={tc("actions.loading")}
+          >
             {[0, 1, 2].map((i) => (
               <div key={i} className="flex items-center gap-3 rounded-lg border bg-card p-3">
                 <Skeleton className="h-4 w-24" />
@@ -221,7 +224,9 @@ export function JobsPage() {
                     direction={sortDirection}
                     onClick={() => onSort("agent")}
                   />
-                  <th className="py-2 pr-3 font-medium text-muted-foreground">{t("table.platform")}</th>
+                  <th className="py-2 pr-3 font-medium text-muted-foreground">
+                    {t("table.platform")}
+                  </th>
                   <SortableTableHeader
                     label={t("table.status")}
                     active={sortKey === "status"}
@@ -235,7 +240,9 @@ export function JobsPage() {
                     direction={sortDirection}
                     onClick={() => onSort("started_at")}
                   />
-                  <th className="py-2 pr-4 font-medium text-muted-foreground">{t("table.steer")}</th>
+                  <th className="py-2 pr-4 font-medium text-muted-foreground">
+                    {t("table.steer")}
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -248,9 +255,7 @@ export function JobsPage() {
                       <p className="font-mono text-xs">{job.job_id}</p>
                       <p className="truncate text-[10px] text-muted-foreground">{job.pool_id}</p>
                     </td>
-                    <td className="py-2.5 pr-3">
-                      {job.agent ? displayAgentName(job.agent) : "—"}
-                    </td>
+                    <td className="py-2.5 pr-3">{job.agent ? displayAgentName(job.agent) : "—"}</td>
                     <td className="py-2.5 pr-3 capitalize">{job.platform ?? "—"}</td>
                     <td className="py-2.5 pr-3">
                       <Badge variant={jobStatusToBadgeVariant(job.status)}>{job.status}</Badge>

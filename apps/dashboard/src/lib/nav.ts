@@ -64,7 +64,9 @@ export const appNavItems: AppNavItem[] = [
   ...adminNavItems,
 ];
 
-export const mobileBottomNavItems: AppNavItem[] = appNavItems.filter((item) => item.mobileBottomNav);
+export const mobileBottomNavItems: AppNavItem[] = appNavItems.filter(
+  (item) => item.mobileBottomNav,
+);
 
 export interface PageTitleDescriptor {
   key: string;

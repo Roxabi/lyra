@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { toast } from "@/components/ui/sonner";
 import { Textarea } from "@/components/ui/textarea";
 import {
   fetchAgentConfig,
@@ -23,7 +24,6 @@ import {
   type SoulSections,
 } from "@/lib/agents-api";
 import { SOUL_SECTIONS } from "@/lib/agents-constants";
-import { toast } from "@/components/ui/sonner";
 import { useShellTitleContext } from "@/lib/shell-title";
 import { formatSoulSecretWarning, scanSoulMarkdownForSecrets } from "@/lib/soul-secret-lint";
 
@@ -46,11 +46,7 @@ export function AgentsListPage() {
   return (
     <div className="space-y-6 pb-8">
       <PageIntro>{t("subtitle")}</PageIntro>
-      <AgentsListPanel
-        agents={data?.agents ?? []}
-        isLoading={isLoading}
-        isError={isError}
-      />
+      <AgentsListPanel agents={data?.agents ?? []} isLoading={isLoading} isError={isError} />
     </div>
   );
 }

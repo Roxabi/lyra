@@ -7,11 +7,7 @@ import { FilterChip } from "@/components/ui/filter-chip";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/sonner";
-import {
-  createAdminUser,
-  patchAdminUser,
-  type AdminUserAccess,
-} from "@/lib/admin-api";
+import { type AdminUserAccess, createAdminUser, patchAdminUser } from "@/lib/admin-api";
 import { fetchAgentsConfigList } from "@/lib/agents-api";
 
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
@@ -205,11 +201,7 @@ export function UserFormDialog({ open, onOpenChange, user }: UserFormDialogProps
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             {t("formCancel")}
           </Button>
-          <Button
-            type="submit"
-            disabled={!nameValid || !emailValid}
-            loading={saveMut.isPending}
-          >
+          <Button type="submit" disabled={!nameValid || !emailValid} loading={saveMut.isPending}>
             {isEdit ? t("formSave") : t("formCreate")}
           </Button>
         </div>

@@ -15,13 +15,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { SortableTableHeader } from "@/components/ui/sortable-table-header";
 import { type FleetRow, type FleetStatus, fetchFleet } from "@/lib/api";
-import {
-  FLEET_STATUSES,
-  filterFleet,
-  sortFleet,
-  type FleetSortKey,
-} from "@/lib/fleet-filters";
-import { toggleSort, type SortDirection } from "@/lib/sort";
+import { FLEET_STATUSES, type FleetSortKey, filterFleet, sortFleet } from "@/lib/fleet-filters";
+import { type SortDirection, toggleSort } from "@/lib/sort";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 
 function statusVariant(status: FleetStatus): "success" | "destructive" | "secondary" | "outline" {
@@ -46,7 +41,7 @@ function formatAge(ageS: number | null | undefined): string {
 function FleetTableSkeleton() {
   const { t } = useTranslation("common");
   return (
-    <div className="space-y-2" aria-busy="true" aria-label={t("actions.loading")}>
+    <div role="status" className="space-y-2" aria-busy="true" aria-label={t("actions.loading")}>
       {[0, 1, 2, 3].map((i) => (
         <div key={i} className="flex items-center gap-4 border-b border-border/30 py-2">
           <Skeleton className="h-4 w-32" />
@@ -68,7 +63,11 @@ export function FleetPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const debouncedSearch = useDebouncedValue(search, 300);
 
-  const { data: rows = [], isLoading, isError } = useQuery({
+  const {
+    data: rows = [],
+    isLoading,
+    isError,
+  } = useQuery({
     queryKey: ["fleet"],
     queryFn: fetchFleet,
     refetchInterval: 30_000,
@@ -105,11 +104,7 @@ export function FleetPage() {
 
       <ListToolbar>
         <ListToolbarHeader
-          meta={
-            isLoading
-              ? tc("actions.loading")
-              : t("fleet.count", { count: visibleRows.length })
-          }
+          meta={isLoading ? tc("actions.loading") : t("fleet.count", { count: visibleRows.length })}
         />
         <ListToolbarSearch
           value={search}

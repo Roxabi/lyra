@@ -7,11 +7,7 @@ import { PageIntro } from "@/components/layout/PageIntro";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import {
-  ListToolbar,
-  ListToolbarHeader,
-  ListToolbarSearch,
-} from "@/components/ui/list-toolbar";
+import { ListToolbar, ListToolbarHeader, ListToolbarSearch } from "@/components/ui/list-toolbar";
 import { PopoverSelect } from "@/components/ui/popover-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { displayAgentName } from "@/lib/agents";
@@ -27,7 +23,12 @@ const LOG_PRESET_OPTIONS: { value: OpsLogPreset; label: string }[] = [
 function EngineCardsSkeleton() {
   const { t } = useTranslation("common");
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" aria-busy="true" aria-label={t("actions.loading")}>
+    <div
+      role="status"
+      className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
+      aria-busy="true"
+      aria-label={t("actions.loading")}
+    >
       {[0, 1, 2].map((i) => (
         <Card key={i} className="dashboard-surface border-border/60 shadow-none">
           <CardContent className="space-y-3 pt-6">
@@ -43,7 +44,7 @@ function EngineCardsSkeleton() {
 function LogsSkeleton() {
   const { t } = useTranslation("common");
   return (
-    <div className="space-y-2" aria-busy="true" aria-label={t("actions.loading")}>
+    <div role="status" className="space-y-2" aria-busy="true" aria-label={t("actions.loading")}>
       {[0, 1, 2].map((i) => (
         <Skeleton key={i} className="h-10 w-full" />
       ))}
@@ -229,7 +230,12 @@ export function OpsPage() {
         </ListToolbar>
 
         {statusLoading ? (
-          <div className="space-y-2" aria-busy="true" aria-label={tc("actions.loading")}>
+          <div
+            role="status"
+            className="space-y-2"
+            aria-busy="true"
+            aria-label={tc("actions.loading")}
+          >
             {[0, 1, 2].map((i) => (
               <Skeleton key={i} className="h-14 w-full rounded-xl" />
             ))}

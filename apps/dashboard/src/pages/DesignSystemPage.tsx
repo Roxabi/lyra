@@ -24,13 +24,13 @@ import {
   ListToolbarHeader,
   ListToolbarSearch,
 } from "@/components/ui/list-toolbar";
+import { PopoverSelect } from "@/components/ui/popover-select";
 import { SegmentedControl } from "@/components/ui/segmented-control";
+import { SelectField } from "@/components/ui/select-field";
+import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/sonner";
 import { SortableTableHeader } from "@/components/ui/sortable-table-header";
-import { PopoverSelect } from "@/components/ui/popover-select";
-import { SelectField } from "@/components/ui/select-field";
-import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { type AgentHealth, MODEL_CATALOG } from "@/lib/api";
 import type { HarnessKind } from "@/lib/chats-storage";
@@ -190,7 +190,10 @@ export function DesignSystemPage() {
         </Row>
       </Section>
 
-      <Section title="Agents" description="Avatar, identité — catalog partagé frontend + mock backend.">
+      <Section
+        title="Agents"
+        description="Avatar, identité — catalog partagé frontend + mock backend."
+      >
         <Row label="AgentAvatar">
           <AgentAvatar agentId="lyra" size="sm" />
           <AgentAvatar agentId="lyra" size="md" />

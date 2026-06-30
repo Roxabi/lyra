@@ -44,6 +44,7 @@ class DashboardSubjects(BaseModel):
     agents_soul_preview: Literal["factory.dashboard.agents.soul.preview"] = (
         "factory.dashboard.agents.soul.preview"
     )
+    fleet_list: Literal["factory.dashboard.fleet.list"] = "factory.dashboard.fleet.list"
 
 
 SUBJECTS = DashboardSubjects()

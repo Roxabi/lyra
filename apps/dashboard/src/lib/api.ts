@@ -18,6 +18,30 @@ export interface DashboardSession {
   last_active_at: string;
 }
 
+export type FleetStatus = "ok" | "stale" | "unknown" | "pinned";
+
+export interface FleetRow {
+  container_name: string;
+  host: string;
+  component_key: string;
+  image_ref: string;
+  image_revision: string | null;
+  health: string;
+  status: FleetStatus;
+  last_report_at: string | null;
+  age_s: number | null;
+  systemd_unit: string;
+  instrumented: boolean;
+  source: string;
+}
+
+export async function fetchFleet(): Promise<FleetRow[]> {
+  const res = await fetch("/api/bff/fleet");
+  if (!res.ok) throw new Error("fleet fetch failed");
+  const data = (await res.json()) as { rows: FleetRow[] };
+  return data.rows;
+}
+
 export async function fetchAgents(): Promise<string[]> {
   const res = await fetch("/api/agents");
   if (!res.ok) throw new Error("agents fetch failed");

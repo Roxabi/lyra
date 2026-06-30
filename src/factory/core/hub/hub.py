@@ -146,6 +146,8 @@ class Hub(
         # Dashboard agent/soul RPC (#1760).
         self._agent_store: object | None = None
         self._blob_store: BlobStorePort | None = None
+        # Wired by fleet_ingest for /fleet dashboard RPC.
+        self._fleet_store: object | None = None
         self._identity_resolver = IdentityResolver(
             authenticators=self._authenticators,
             bindings=self.bindings,

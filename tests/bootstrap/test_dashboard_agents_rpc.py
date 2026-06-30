@@ -86,6 +86,29 @@ async def test_handle_agents_list_returns_summaries() -> None:
 
 
 @pytest.mark.asyncio
+async def test_handle_agents_list_sets_platform_flags_from_bot_mappings() -> None:
+    row = AgentRow(name="lyra", backend="claude-cli", model="sonnet")
+    hub = _hub_with_store(row)
+    hub._agent_store.get_all_bot_mappings.return_value = {
+        ("telegram", "bot-1"): "lyra",
+        ("mail", "bot-2"): "lyra",
+    }
+    bot = MagicMock()
+    bot.agent = "lyra"
+    bot.platform = "discord"
+    bot_store = MagicMock()
+    bot_store.get_all.return_value = [bot]
+    hub._bot_store = bot_store
+
+    out = await handle_agents_list(hub, _NC, {})
+
+    summary = out["agents"][0]
+    assert summary["has_telegram"] is True
+    assert summary["has_discord"] is True
+    assert summary["has_email"] is True
+
+
+@pytest.mark.asyncio
 async def test_handle_agents_get_returns_config() -> None:
     row = AgentRow(
         name="lyra",

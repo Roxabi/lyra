@@ -29,8 +29,12 @@ export function UserFormDialog({ open, onOpenChange, user }: UserFormDialogProps
   const [discordUid, setDiscordUid] = useState("");
   const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
 
-  const { data: agentsData, isLoading: agentsLoading } = useQuery({
-    queryKey: ["agents-config-list"],
+  const {
+    data: agentsData,
+    isLoading: agentsLoading,
+    isError: agentsError,
+  } = useQuery({
+    queryKey: ["agents-config"],
     queryFn: fetchAgentsConfigList,
     enabled: open,
   });
@@ -180,6 +184,10 @@ export function UserFormDialog({ open, onOpenChange, user }: UserFormDialogProps
               <Skeleton className="h-9 w-20 rounded-full" />
               <Skeleton className="h-9 w-20 rounded-full" />
             </div>
+          ) : agentsError ? (
+            <p className="text-xs text-destructive" role="alert">
+              {t("fieldAgentsLoadError")}
+            </p>
           ) : availableAgents.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {availableAgents.map((agent) => (

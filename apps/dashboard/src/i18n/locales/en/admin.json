@@ -33,6 +33,7 @@
   "fieldDiscordPlaceholder": "987654321012345678",
   "fieldAgents": "Authorized agents",
   "fieldAgentsEmpty": "No agents configured.",
+  "fieldAgentsLoadError": "Could not load the agents list.",
   "formCancel": "Cancel",
   "formCreate": "Create",
   "formSave": "Save",

@@ -1,5 +1,5 @@
 import { CaretRight, PencilSimple, Plus, Robot, SquaresFour, Table } from "@phosphor-icons/react";
-import { Link, useNavigate } from "@tanstack/react-router";
+import { Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AgentIdentity } from "@/components/agents/AgentIdentity";
@@ -37,10 +37,13 @@ function formatUpdated(iso: string): string {
   }
 }
 
-function formatSoulSize(bytes: number | null): string {
+function formatSoulSize(
+  bytes: number | null,
+  t: (key: string, opts?: Record<string, unknown>) => string,
+): string {
   if (bytes == null || bytes === 0) return "—";
-  if (bytes < 1024) return `${bytes} o`;
-  return `${(bytes / 1024).toFixed(1)} Ko`;
+  if (bytes < 1024) return t("soulSizeBytes", { bytes });
+  return t("soulSizeKb", { size: (bytes / 1024).toFixed(1) });
 }
 
 function filterAgents(agents: AgentSummary[], query: string): AgentSummary[] {
@@ -166,7 +169,6 @@ interface AgentsListPanelProps {
 export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelProps) {
   const { t } = useTranslation("agents");
   const { t: tc } = useTranslation("common");
-  const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [view, setView] = useCardsTableViewPreference("agents");
@@ -211,7 +213,7 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
               options={viewOptions}
               value={view}
               onChange={setView}
-              ariaLabel={t("viewCards")}
+              ariaLabel={t("viewMode")}
               compact="responsive"
             />
           }
@@ -285,7 +287,7 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
                     </span>
                     {a.soul_document_bytes ? (
                       <span className="text-[10px] tabular-nums text-muted-foreground">
-                        {formatSoulSize(a.soul_document_bytes)}
+                        {formatSoulSize(a.soul_document_bytes, t)}
                       </span>
                     ) : null}
                   </div>
@@ -307,17 +309,39 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
           <table className="w-full min-w-[980px] text-left text-sm">
             <thead>
               <tr className="border-b border-border/50 text-xs text-muted-foreground">
-                <th className="px-4 py-2 pr-4 font-medium">{t("colAgent")}</th>
-                <th className="py-2 pr-4 font-medium">{t("colTagline")}</th>
-                <th className="py-2 pr-4 font-medium">{t("colHarness")}</th>
-                <th className="py-2 pr-4 font-medium">{t("colModel")}</th>
-                <th className="py-2 pr-4 font-medium">{t("colTelegram")}</th>
-                <th className="py-2 pr-4 font-medium">{t("colDiscord")}</th>
-                <th className="py-2 pr-4 font-medium">{t("colEmail")}</th>
-                <th className="py-2 pr-4 font-medium">{t("colSoul")}</th>
-                <th className="py-2 pr-4 font-medium">{t("colSoulSize")}</th>
-                <th className="py-2 pr-4 font-medium">{t("colUpdated")}</th>
-                <th className="py-2 pr-4 pl-2 text-right font-medium">{t("colAction")}</th>
+                <th scope="col" className="px-4 py-2 pr-4 font-medium">
+                  {t("colAgent")}
+                </th>
+                <th scope="col" className="py-2 pr-4 font-medium">
+                  {t("colTagline")}
+                </th>
+                <th scope="col" className="py-2 pr-4 font-medium">
+                  {t("colHarness")}
+                </th>
+                <th scope="col" className="py-2 pr-4 font-medium">
+                  {t("colModel")}
+                </th>
+                <th scope="col" className="py-2 pr-4 font-medium">
+                  {t("colTelegram")}
+                </th>
+                <th scope="col" className="py-2 pr-4 font-medium">
+                  {t("colDiscord")}
+                </th>
+                <th scope="col" className="py-2 pr-4 font-medium">
+                  {t("colEmail")}
+                </th>
+                <th scope="col" className="py-2 pr-4 font-medium">
+                  {t("colSoul")}
+                </th>
+                <th scope="col" className="py-2 pr-4 font-medium">
+                  {t("colSoulSize")}
+                </th>
+                <th scope="col" className="py-2 pr-4 font-medium">
+                  {t("colUpdated")}
+                </th>
+                <th scope="col" className="py-2 pr-4 pl-2 text-right font-medium">
+                  {t("colAction")}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -326,11 +350,16 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
                 return (
                   <tr
                     key={a.name}
-                    className="group cursor-pointer border-b border-border/30 transition-colors last:border-0 hover:bg-muted/20"
-                    onClick={() => void navigate({ to: "/agents/$name", params: { name: a.name } })}
+                    className="group border-b border-border/30 transition-colors last:border-0 hover:bg-muted/20"
                   >
                     <td className="px-4 py-3 pr-4">
-                      <AgentIdentity agentId={a.name} avatarSize="sm" />
+                      <Link
+                        to="/agents/$name"
+                        params={{ name: a.name }}
+                        className="block rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <AgentIdentity agentId={a.name} avatarSize="sm" />
+                      </Link>
                     </td>
                     <td className="max-w-[140px] py-3 pr-4 text-xs text-muted-foreground">
                       <span className="line-clamp-2">{persona.tagline}</span>
@@ -356,13 +385,13 @@ export function AgentsListPanel({ agents, isLoading, isError }: AgentsListPanelP
                       </Badge>
                     </td>
                     <td className="py-3 pr-4 text-xs text-muted-foreground tabular-nums">
-                      {formatSoulSize(a.soul_document_bytes)}
+                      {formatSoulSize(a.soul_document_bytes, t)}
                     </td>
                     <td className="py-3 pr-4 text-xs text-muted-foreground tabular-nums">
                       {formatUpdated(a.updated_at)}
                     </td>
                     <td className="py-3 pr-4 pl-2 text-right">
-                      <EditButton agentName={a.name} onClick={(e) => e.stopPropagation()} />
+                      <EditButton agentName={a.name} />
                     </td>
                   </tr>
                 );

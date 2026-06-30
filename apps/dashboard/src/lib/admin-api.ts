@@ -1,3 +1,5 @@
+import { operatorAuthHeaders } from "@/lib/operator-auth";
+
 export interface AdminPlatformIdentity {
   platform: string;
   platform_uid: string;
@@ -21,14 +23,23 @@ export interface AdminUserWriteBody {
   agents?: string[];
 }
 
+async function adminFetch(input: string, init?: RequestInit): Promise<Response> {
+  const headers = new Headers(init?.headers);
+  const auth = operatorAuthHeaders();
+  for (const [key, value] of Object.entries(auth)) {
+    headers.set(key, value as string);
+  }
+  return fetch(input, { ...init, headers });
+}
+
 export async function fetchAdminAccess(): Promise<{ users: AdminUserAccess[] }> {
-  const res = await fetch("/api/bff/admin/access");
+  const res = await adminFetch("/api/bff/admin/access");
   if (!res.ok) throw new Error("admin access failed");
   return res.json() as Promise<{ users: AdminUserAccess[] }>;
 }
 
 export async function createAdminUser(body: AdminUserWriteBody): Promise<AdminUserAccess> {
-  const res = await fetch("/api/bff/admin/users", {
+  const res = await adminFetch("/api/bff/admin/users", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -45,7 +56,7 @@ export async function patchAdminUser(
     agents?: string[];
   },
 ): Promise<AdminUserAccess> {
-  const res = await fetch(`/api/bff/admin/users/${encodeURIComponent(userId)}`, {
+  const res = await adminFetch(`/api/bff/admin/users/${encodeURIComponent(userId)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

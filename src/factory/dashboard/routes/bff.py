@@ -25,6 +25,7 @@ from factory.dashboard.e2e import (
 from factory.dashboard.hub_client import (
     HubAgentConflictError,
     HubAgentNotFoundError,
+    HubStoreUnavailableError,
     HubUserConflictError,
     HubUserNotFoundError,
 )
@@ -226,6 +227,8 @@ def build_bff_router(  # noqa: C901, PLR0915
             return (await hub.create_admin_user(body)).model_dump()
         except HubUserConflictError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except HubStoreUnavailableError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         except RuntimeError as exc:
             raise _hub_unavailable(exc) from exc
         except (ValidationError, json.JSONDecodeError) as exc:
@@ -241,6 +244,8 @@ def build_bff_router(  # noqa: C901, PLR0915
             raise HTTPException(status_code=404, detail=str(exc)) from exc
         except HubUserConflictError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except HubStoreUnavailableError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         except RuntimeError as exc:
             raise _hub_unavailable(exc) from exc
         except (ValidationError, json.JSONDecodeError) as exc:

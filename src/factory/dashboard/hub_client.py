@@ -64,12 +64,18 @@ class HubUserConflictError(ValueError):
     """Hub RPC returned ``{"error": "conflict"}`` for an admin user write call."""
 
 
+class HubStoreUnavailableError(RuntimeError):
+    """Hub RPC returned ``{"error": "store_unavailable"}``."""
+
+
 def _raise_admin_user_rpc_error(raw: dict[str, Any]) -> None:
     err = raw.get("error")
     if err == "not_found":
         raise HubUserNotFoundError(str(raw.get("message") or "not_found"))
     if err == "conflict":
         raise HubUserConflictError(str(raw.get("message") or "conflict"))
+    if err == "store_unavailable":
+        raise HubStoreUnavailableError(str(raw.get("message") or "store_unavailable"))
 
 
 def _raise_agent_rpc_error(raw: dict[str, Any]) -> None:
@@ -190,7 +196,7 @@ class DashboardHubClient:
     ) -> DashboardAdminUserResponse:
         raw = await self._request(
             SUBJECTS.admin_user_patch,
-            {"user_id": user_id, "patch": patch.model_dump()},
+            {"user_id": user_id, "patch": patch.model_dump(exclude_unset=True)},
         )
         _raise_admin_user_rpc_error(raw)
         return DashboardAdminUserResponse.model_validate(raw)
@@ -204,7 +210,8 @@ class DashboardHubClient:
         self, name: str, patch: DashboardAgentPatchRequest
     ) -> DashboardAgentConfigResponse:
         raw = await self._request(
-            SUBJECTS.agents_patch, {"name": name, "patch": patch.model_dump()}
+            SUBJECTS.agents_patch,
+            {"name": name, "patch": patch.model_dump(exclude_unset=True)},
         )
         _raise_agent_rpc_error(raw)
         return DashboardAgentConfigResponse.model_validate(raw)

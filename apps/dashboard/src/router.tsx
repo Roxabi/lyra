@@ -1,5 +1,10 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { createRootRouteWithContext, createRoute, createRouter } from "@tanstack/react-router";
+import {
+  createRootRouteWithContext,
+  createRoute,
+  createRouter,
+  redirect,
+} from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
 import { AdminPage } from "@/pages/AdminPage";
 import { AgentDetailPage, AgentsListPage } from "@/pages/AgentsPage";
@@ -79,6 +84,14 @@ const usersRoute = createRoute({
   component: AdminPage,
 });
 
+const adminRedirectRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin",
+  beforeLoad: () => {
+    throw redirect({ to: "/users" });
+  },
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   chatRoute,
@@ -89,6 +102,7 @@ const routeTree = rootRoute.addChildren([
   fleetRoute,
   obsRoute,
   usersRoute,
+  adminRedirectRoute,
   designSystemRoute,
 ]);
 

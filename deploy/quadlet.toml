@@ -83,36 +83,43 @@ container = "factory-promtail.container"
 required_secrets = []
 host_roles = ["factory-hub"]
 
-# Langfuse stack — optional / deferred in otel-raw v1 (ADR-097). Collector no longer depends on it.
+# Langfuse stack — optional / deferred in otel-raw v1 (ADR-097). disabled = true:
+# units stay in deploy/quadlet/ for manual opt-in; converge/install skip them.
 [component.langfuse-postgres]
 container = "factory-langfuse-postgres.container"
 required_secrets = []
 host_roles = ["factory-hub"]
+disabled = true
 
 [component.langfuse-clickhouse]
 container = "factory-langfuse-clickhouse.container"
 required_secrets = []
 host_roles = ["factory-hub"]
+disabled = true
 
 [component.langfuse-redis]
 container = "factory-langfuse-redis.container"
 required_secrets = []
 host_roles = ["factory-hub"]
+disabled = true
 
 [component.langfuse-minio]
 container = "factory-langfuse-minio.container"
 required_secrets = []
 host_roles = ["factory-hub"]
+disabled = true
 
 [component.langfuse-worker]
 container = "factory-langfuse-worker.container"
 required_secrets = []
 host_roles = ["factory-hub"]
+disabled = true
 
 [component.langfuse-web]
 container = "factory-langfuse-web.container"
 required_secrets = []
 host_roles = ["factory-hub"]
+disabled = true
 
 [component.otel-collector]
 container = "factory-otel-collector.container"
@@ -146,22 +153,27 @@ host_roles = ["factory-hub"]
 [volume.langfuse-postgres-data]
 volume = "factory-langfuse-postgres-data.volume"
 host_roles = ["factory-hub"]
+disabled = true
 
 [volume.langfuse-clickhouse-data]
 volume = "factory-langfuse-clickhouse-data.volume"
 host_roles = ["factory-hub"]
+disabled = true
 
 [volume.langfuse-clickhouse-logs]
 volume = "factory-langfuse-clickhouse-logs.volume"
 host_roles = ["factory-hub"]
+disabled = true
 
 [volume.langfuse-redis-data]
 volume = "factory-langfuse-redis-data.volume"
 host_roles = ["factory-hub"]
+disabled = true
 
 [volume.langfuse-minio-data]
 volume = "factory-langfuse-minio-data.volume"
 host_roles = ["factory-hub"]
+disabled = true
 
 [network.roxabi]
 network = "roxabi.network"

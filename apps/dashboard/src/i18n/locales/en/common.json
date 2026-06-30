@@ -5,20 +5,31 @@
     "sectionHome": "Home",
     "sectionOperate": "Operate",
     "sectionObserve": "Observe",
+    "sectionAdmin": "Administration",
     "overview": "Overview",
+    "designSystem": "Design system",
     "chat": "Chat",
     "agents": "Agents",
     "jobs": "Jobs",
     "integrations": "Integrations",
     "fleet": "Fleet",
     "ops": "Supervision",
+    "users": "Users",
     "expandSidebar": "Expand sidebar",
-    "collapseSidebar": "Collapse sidebar"
+    "collapseSidebar": "Collapse sidebar",
+    "main": "Main navigation"
   },
   "theme": {
     "toggle": "Toggle theme",
     "light": "Light",
     "dark": "Dark"
+  },
+  "userMenu": {
+    "open": "Account menu — {{name}}",
+    "theme": "Theme",
+    "language": "Language",
+    "localeFr": "Français",
+    "localeEn": "English"
   },
   "status": {
     "online": "Online",
@@ -26,6 +37,7 @@
     "active": "Active",
     "inactive": "Inactive"
   },
+  "search": "Search",
   "actions": {
     "open": "Open",
     "viewAll": "View all",

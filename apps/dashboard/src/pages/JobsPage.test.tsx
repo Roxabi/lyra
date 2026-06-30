@@ -60,7 +60,7 @@ describe("JobsPage", () => {
     });
     expect(screen.getByText("Lancer un job OMP")).toBeTruthy();
     expect(screen.getAllByText("Lyra").length).toBeGreaterThan(0);
-    expect(screen.getByText("open")).toBeTruthy();
+    expect(screen.getAllByText("open").length).toBeGreaterThan(0);
   });
 
   it("submits launch mutation", async () => {

@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { AppNavLink } from "@/components/layout/AppNavLink";
 import { ShellFooter } from "@/components/layout/ShellFooter";
 import { Button } from "@/components/ui/button";
-import { homeNavItems, observeNavItems, operateNavItems } from "@/lib/nav";
+import { adminNavItems, homeNavItems, observeNavItems, operateNavItems } from "@/lib/nav";
 import { useSidebarCollapsed } from "@/lib/use-sidebar-collapsed";
 import { cn } from "@/lib/utils";
 
@@ -74,6 +74,11 @@ export function AppSidebar() {
 
         <NavSection label={t("nav.sectionObserve")} collapsed={collapsed} />
         {observeNavItems.map((item) => (
+          <AppNavLink key={item.to} item={item} collapsed={collapsed} />
+        ))}
+
+        <NavSection label={t("nav.sectionAdmin")} collapsed={collapsed} />
+        {adminNavItems.map((item) => (
           <AppNavLink key={item.to} item={item} collapsed={collapsed} />
         ))}
       </nav>

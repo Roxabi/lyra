@@ -1,4 +1,4 @@
-import { ThemeToggle } from "@/components/ThemeToggle";
+import { UserMenu } from "@/components/UserMenu";
 import { cn } from "@/lib/utils";
 
 interface ShellFooterProps {
@@ -7,13 +7,8 @@ interface ShellFooterProps {
 
 export function ShellFooter({ collapsed = false }: ShellFooterProps) {
   return (
-    <div
-      className={cn(
-        "flex items-center p-2",
-        collapsed ? "justify-center" : "justify-end gap-2 px-3",
-      )}
-    >
-      <ThemeToggle />
+    <div className={cn("border-t border-border/50 p-2")}>
+      <UserMenu variant="sidebar" collapsed={collapsed} />
     </div>
   );
 }

@@ -55,7 +55,7 @@ async def test_fleet_ingest_subscriber_upserts_report(
     await nc.publish(CONTAINER_REPORT, serialize(report))
 
     for _ in range(20):
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.05)  # NATS delivery window
         rows = store.list_snapshot()
         hub_row = next(
             (r for r in rows if r.container_name == "factory-hub"), None
@@ -131,7 +131,7 @@ async def test_fleet_ingest_then_rpc_list(
 
     hub_row = None
     for _ in range(20):
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(0.05)  # NATS delivery window
         msg = await nc.request(SUBJECTS.fleet_list, b"{}", timeout=2)
         data = json.loads(msg.data.decode())
         hub_row = next(

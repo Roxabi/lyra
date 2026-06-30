@@ -145,6 +145,30 @@ async def test_handle_agents_soul_get_reads_cache_after_put() -> None:
 
 
 @pytest.mark.asyncio
+async def test_handle_agents_soul_get_falls_back_to_persona_json() -> None:
+    persona = {
+        "identity": {"display_name": "Legacy Lyra", "goal": "Help operators"},
+        "personality": {"traits": ["calm"], "tone": "direct"},
+        "expertise": {"areas": ["Python"], "instructions": ["Be concise"]},
+    }
+    row = AgentRow(
+        name="lyra",
+        backend="claude-cli",
+        model="sonnet",
+        persona_json=json.dumps(persona),
+    )
+    hub = _hub_with_store(row)
+    hub._blob_store = None
+
+    out = await handle_agents_soul_get(hub, _NC, {"name": "lyra"})
+
+    assert "Legacy Lyra" in out["sections"]["Identity"]
+    assert "calm" in out["sections"]["Personality"]
+    assert out["sections"]["Guidelines"] == "- Be concise"
+    assert out["soul_document_blob_ref"] is None
+
+
+@pytest.mark.asyncio
 async def test_handle_agents_soul_preview_composes_via_hub() -> None:
     hub = MagicMock()
     out = await handle_agents_soul_preview(

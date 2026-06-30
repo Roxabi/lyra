@@ -11,8 +11,8 @@ from nats.aio.msg import Msg
 from pydantic import ValidationError
 
 from factory.infrastructure.events.stream_setup import (
-    STREAM_EVENTS,
     _EVENTS_MAX_AGE_SECONDS,
+    STREAM_EVENTS,
 )
 from factory.nats.fleet_store import FleetStore
 from factory.nats.pipeline import PipelineStore

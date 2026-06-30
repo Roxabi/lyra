@@ -361,7 +361,11 @@ class DashboardAdminAccessResponse(BaseModel):
 
 class DashboardAdminUserCreateRequest(BaseModel):
     display_name: str = Field(min_length=1, max_length=128)
-    email: str = Field(min_length=3, max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    email: str = Field(
+        min_length=3,
+        max_length=254,
+        pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$",
+    )
     telegram_uid: str | None = None
     discord_uid: str | None = None
     agents: list[str] = Field(default_factory=list)

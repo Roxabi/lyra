@@ -68,6 +68,11 @@ required_secrets = [
   "factory-ingress-cloudflare-webhook",
 ]
 
+[component.cloudflared]
+container = "factory-cloudflared.container"
+host_roles = ["factory-hub"]
+required_secrets = []
+
 [component.loki]
 container = "factory-loki.container"
 required_secrets = []

@@ -1,4 +1,6 @@
 import { Outlet, useRouterState } from "@tanstack/react-router";
+import { Toaster } from "@/components/ui/sonner";
+import { AppBottomNav } from "@/components/layout/AppBottomNav";
 import { AppHeader } from "@/components/layout/AppHeader";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { appNavItems, resolveNavFlags } from "@/lib/nav";
@@ -7,7 +9,7 @@ import { cn } from "@/lib/utils";
 
 export function AppShell() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
-  const { fullBleed, wideLayout } = resolveNavFlags(pathname, appNavItems);
+  const { fullBleed, wideLayout, hideBottomNav } = resolveNavFlags(pathname, appNavItems);
 
   return (
     <ShellTitleProvider key={pathname}>
@@ -22,7 +24,10 @@ export function AppShell() {
               "min-h-0 flex-1",
               fullBleed
                 ? "overflow-hidden p-0"
-                : "fd-scroll overflow-y-auto px-4 py-4 md:px-6 md:py-6",
+                : cn(
+                    "fd-scroll overflow-y-auto px-4 py-4 md:px-6 md:py-6",
+                    !hideBottomNav && "pb-nav-mobile md:pb-6",
+                  ),
             )}
           >
             <div
@@ -39,6 +44,8 @@ export function AppShell() {
             </div>
           </main>
         </div>
+        <AppBottomNav />
+        <Toaster />
       </div>
     </ShellTitleProvider>
   );

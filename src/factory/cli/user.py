@@ -33,11 +33,12 @@ def list_users() -> None:
             if not users:
                 typer.echo("  (no users registered)")
                 return
-            typer.echo(f"{'USER_ID':<40} {'DISPLAY':<16} CREATED_AT")
+            typer.echo(f"{'USER_ID':<40} {'DISPLAY':<16} {'EMAIL':<24} CREATED_AT")
             for user in users:
                 name = user.display_name or ""
+                email = user.email or ""
                 typer.echo(
-                    f"{user.id:<40} {name:<16} {user.created_at.isoformat()}"
+                    f"{user.id:<40} {name:<16} {email:<24} {user.created_at.isoformat()}"
                 )
         finally:
             await store.close()
@@ -78,6 +79,7 @@ def show_user(
 
             typer.echo(f"user_id:      {user.id}")
             typer.echo(f"display_name: {user.display_name or '(none)'}")
+            typer.echo(f"email:        {user.email or '(none)'}")
             typer.echo(f"created_at:   {user.created_at.isoformat()}")
             typer.echo("platform_identities:")
             identities = await store.list_platform_identities(user_id)

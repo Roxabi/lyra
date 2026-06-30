@@ -11,7 +11,13 @@ from pydantic import ValidationError
 
 from factory.bootstrap.factory.dashboard.fleet_rpc import handle_fleet_list
 from factory.bootstrap.factory.dashboard.voice_rpc import handle_voice_capabilities
+from factory.bootstrap.factory.dashboard_admin_rpc import (
+    handle_admin_access,
+    handle_admin_user_create,
+    handle_admin_user_patch,
+)
 from factory.bootstrap.factory.dashboard_agents_rpc import (
+    handle_agents_create,
     handle_agents_get,
     handle_agents_list,
     handle_agents_patch,
@@ -89,8 +95,12 @@ async def start_dashboard_rpc(hub: Hub, nc: NATS) -> list[Any]:
         (SUBJECTS.jobs_steer, _wrap_agents(handle_jobs_steer)),
         (SUBJECTS.agents_status, _handle_agents_status),
         (SUBJECTS.agents_list, _wrap_agents(handle_agents_list)),
+        (SUBJECTS.agents_create, _wrap_agents(handle_agents_create)),
         (SUBJECTS.agents_get, _wrap_agents(handle_agents_get)),
         (SUBJECTS.agents_patch, _wrap_agents(handle_agents_patch)),
+        (SUBJECTS.admin_access, _wrap_agents(handle_admin_access)),
+        (SUBJECTS.admin_user_create, _wrap_agents(handle_admin_user_create)),
+        (SUBJECTS.admin_user_patch, _wrap_agents(handle_admin_user_patch)),
         (SUBJECTS.agents_soul_put, _wrap_agents(handle_agents_soul_put)),
         (SUBJECTS.agents_soul_get, _wrap_agents(handle_agents_soul_get)),
         (SUBJECTS.agents_soul_preview, _wrap_agents(handle_agents_soul_preview)),

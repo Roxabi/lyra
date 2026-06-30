@@ -1,4 +1,5 @@
 import { ChatCircleDots } from "@phosphor-icons/react";
+import { useTranslation } from "react-i18next";
 
 interface ChatEmptyStateProps {
   agent: string;
@@ -6,6 +7,7 @@ interface ChatEmptyStateProps {
 }
 
 export function ChatEmptyState({ agent, offline }: ChatEmptyStateProps) {
+  const { t } = useTranslation("chat");
   return (
     <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
       <div className="flex size-14 items-center justify-center rounded-2xl border border-border bg-card shadow-sm">
@@ -13,12 +15,10 @@ export function ChatEmptyState({ agent, offline }: ChatEmptyStateProps) {
       </div>
       <div className="max-w-sm space-y-1.5">
         <p className="font-[family-name:var(--font-head)] text-base font-semibold text-foreground">
-          Conversation avec {agent}
+          {t("emptyState.title", { agent })}
         </p>
         <p className="text-sm text-muted-foreground">
-          {offline
-            ? "L'agent est hors ligne. Vérifiez le harness ou réessayez plus tard."
-            : "Envoyez un message pour démarrer. Les réponses s'affichent ici en temps réel."}
+          {offline ? t("emptyState.offline") : t("emptyState.online")}
         </p>
       </div>
     </div>

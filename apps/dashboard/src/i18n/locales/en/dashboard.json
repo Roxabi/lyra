@@ -13,6 +13,7 @@
   "agents": {
     "title": "Agents",
     "empty": "No agents in the roster.",
+    "emptyHint": "Hub agents will appear here with harness status.",
     "colAgent": "Agent",
     "colHarness": "Harness",
     "colStatus": "Status"
@@ -20,6 +21,7 @@
   "jobs": {
     "title": "Active jobs",
     "empty": "No jobs running.",
+    "emptyHint": "Active OMP jobs show up here in real time.",
     "colJob": "Job",
     "colAgent": "Agent",
     "colStatus": "Status"
@@ -27,8 +29,15 @@
   "fleet": {
     "subtitle": "M₁ container liveness — Roxabi units report over NATS; third-party rows show as non-instrumented.",
     "tableTitle": "Fleet",
+    "count": "{{count}} container(s)",
+    "searchPlaceholder": "Search containers…",
+    "emptyFiltered": "No containers match the filters.",
+    "filters": {
+      "status": "Status"
+    },
     "loadError": "Could not load fleet snapshot.",
     "empty": "No fleet rows in catalog.",
+    "emptyHint": "Instrumented containers will appear here via NATS.",
     "columns": {
       "name": "Container",
       "status": "Status",
@@ -47,6 +56,7 @@
   "chats": {
     "title": "Recent chats",
     "empty": "No open chats.",
+    "emptyHint": "Open a chat tab to start an operator session.",
     "openChat": "Open chat"
   }
 }

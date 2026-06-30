@@ -13,7 +13,7 @@ describe("HarnessPicker", () => {
 
   it("shows override hint when value differs from DB default", () => {
     render(<HarnessPicker value="omp-rpc" dbDefault="claude-cli" onChange={vi.fn()} />);
-    expect(screen.getByText(/≠ DB default/)).toBeTruthy();
+    expect(screen.getByText(/≠ défaut DB/)).toBeTruthy();
   });
 
   it("calls onChange when selection changes", async () => {

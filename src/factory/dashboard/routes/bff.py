@@ -22,8 +22,17 @@ from factory.dashboard.e2e import (
     stub_sessions_list,
     stub_sessions_turns,
 )
+from factory.dashboard.hub_client import (
+    HubAgentConflictError,
+    HubAgentNotFoundError,
+    HubUserConflictError,
+    HubUserNotFoundError,
+)
 from factory.dashboard.ops_proxy import fetch_ops_health, fetch_ops_logs
 from roxabi_contracts.dashboard import (
+    DashboardAdminUserCreateRequest,
+    DashboardAdminUserPatchRequest,
+    DashboardAgentCreateRequest,
     DashboardAgentPatchRequest,
     DashboardAgentSoulPreviewRequest,
     DashboardAgentSoulPutRequest,
@@ -191,12 +200,58 @@ def build_bff_router(  # noqa: C901, PLR0915
         except (ValidationError, json.JSONDecodeError) as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
 
+    @router.post("/agents")
+    async def create_agent_config(body: DashboardAgentCreateRequest) -> dict:
+        try:
+            return (await hub.create_agent_config(body)).model_dump()
+        except HubAgentConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise _hub_unavailable(exc) from exc
+        except (ValidationError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @router.get("/admin/access")
+    async def admin_access() -> dict:
+        try:
+            return (await hub.list_admin_access()).model_dump()
+        except RuntimeError as exc:
+            raise _hub_unavailable(exc) from exc
+        except (ValidationError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @router.post("/admin/users")
+    async def create_admin_user(body: DashboardAdminUserCreateRequest) -> dict:
+        try:
+            return (await hub.create_admin_user(body)).model_dump()
+        except HubUserConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise _hub_unavailable(exc) from exc
+        except (ValidationError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @router.patch("/admin/users/{user_id}")
+    async def patch_admin_user(
+        user_id: str, body: DashboardAdminUserPatchRequest
+    ) -> dict:
+        try:
+            return (await hub.patch_admin_user(user_id, body)).model_dump()
+        except HubUserNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except HubUserConflictError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise _hub_unavailable(exc) from exc
+        except (ValidationError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+
     @router.get("/agents/{name}")
     async def get_agent_config(name: str) -> dict:
-        if name not in adapter.agent_names:
-            raise HTTPException(status_code=404, detail=f"unknown agent: {name!r}")
         try:
             return (await hub.get_agent_config(name)).model_dump()
+        except HubAgentNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
         except RuntimeError as exc:
             raise _hub_unavailable(exc) from exc
         except (ValidationError, json.JSONDecodeError) as exc:
@@ -204,10 +259,10 @@ def build_bff_router(  # noqa: C901, PLR0915
 
     @router.patch("/agents/{name}")
     async def patch_agent_config(name: str, body: DashboardAgentPatchRequest) -> dict:
-        if name not in adapter.agent_names:
-            raise HTTPException(status_code=404, detail=f"unknown agent: {name!r}")
         try:
             return (await hub.patch_agent_config(name, body)).model_dump()
+        except HubAgentNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
         except RuntimeError as exc:
             raise _hub_unavailable(exc) from exc
         except (ValidationError, json.JSONDecodeError) as exc:
@@ -215,10 +270,10 @@ def build_bff_router(  # noqa: C901, PLR0915
 
     @router.put("/agents/{name}/soul")
     async def put_agent_soul(name: str, body: DashboardAgentSoulPutRequest) -> dict:
-        if name not in adapter.agent_names:
-            raise HTTPException(status_code=404, detail=f"unknown agent: {name!r}")
         try:
             return (await hub.put_agent_soul(name, body)).model_dump()
+        except HubAgentNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
         except RuntimeError as exc:
             raise _hub_unavailable(exc) from exc
         except (ValidationError, json.JSONDecodeError) as exc:
@@ -226,10 +281,10 @@ def build_bff_router(  # noqa: C901, PLR0915
 
     @router.get("/agents/{name}/soul")
     async def get_agent_soul(name: str) -> dict:
-        if name not in adapter.agent_names:
-            raise HTTPException(status_code=404, detail=f"unknown agent: {name!r}")
         try:
             return (await hub.get_agent_soul(name)).model_dump()
+        except HubAgentNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
         except RuntimeError as exc:
             raise _hub_unavailable(exc) from exc
         except (ValidationError, json.JSONDecodeError) as exc:
@@ -239,10 +294,10 @@ def build_bff_router(  # noqa: C901, PLR0915
     async def preview_agent_soul(
         name: str, body: DashboardAgentSoulPreviewRequest
     ) -> dict:
-        if name not in adapter.agent_names:
-            raise HTTPException(status_code=404, detail=f"unknown agent: {name!r}")
         try:
             return (await hub.preview_agent_soul(name, body)).model_dump()
+        except HubAgentNotFoundError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
         except RuntimeError as exc:
             raise _hub_unavailable(exc) from exc
         except (ValidationError, json.JSONDecodeError) as exc:

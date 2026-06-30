@@ -13,6 +13,7 @@
   "agents": {
     "title": "Agents",
     "empty": "Aucun agent dans le roster.",
+    "emptyHint": "Les agents du hub apparaîtront ici avec leur statut harness.",
     "colAgent": "Agent",
     "colHarness": "Harness",
     "colStatus": "Statut"
@@ -20,6 +21,7 @@
   "jobs": {
     "title": "Jobs actifs",
     "empty": "Aucun job en cours.",
+    "emptyHint": "Les jobs OMP actifs s'affichent ici en temps réel.",
     "colJob": "Job",
     "colAgent": "Agent",
     "colStatus": "Statut"
@@ -27,8 +29,15 @@
   "fleet": {
     "subtitle": "État des containers M₁ — les unités Roxabi publient via NATS ; les tierces apparaissent comme non instrumentées.",
     "tableTitle": "Flotte",
+    "count": "{{count}} container(s)",
+    "searchPlaceholder": "Rechercher un container…",
+    "emptyFiltered": "Aucun container ne correspond aux filtres.",
+    "filters": {
+      "status": "Statut"
+    },
     "loadError": "Impossible de charger la flotte.",
     "empty": "Aucune ligne dans le catalogue.",
+    "emptyHint": "Les containers instrumentés apparaîtront ici via NATS.",
     "columns": {
       "name": "Container",
       "status": "Statut",
@@ -47,6 +56,7 @@
   "chats": {
     "title": "Chats récents",
     "empty": "Aucun chat ouvert.",
+    "emptyHint": "Ouvrez un onglet chat pour démarrer une session opérateur.",
     "openChat": "Ouvrir le chat"
   }
 }

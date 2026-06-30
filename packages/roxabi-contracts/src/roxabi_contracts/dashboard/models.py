@@ -216,6 +216,9 @@ class DashboardAgentSummary(BaseModel):
     updated_at: str
     soul_document_bytes: int | None = None
     has_soul: bool = False
+    has_telegram: bool = False
+    has_discord: bool = False
+    has_email: bool = False
 
 
 class DashboardAgentsListResponse(BaseModel):
@@ -231,6 +234,14 @@ class DashboardAgentConfigResponse(BaseModel):
     soul_document_blob_ref: str | None = None
     soul_document_bytes: int | None = None
     updated_at: str
+
+
+class DashboardAgentCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=64, pattern=r"^[a-z][a-z0-9-]*$")
+    backend: HarnessKind = "claude-cli"
+    model: str = Field(min_length=1, max_length=128)
+    display_name: str = ""
+    tagline: str = ""
 
 
 class DashboardAgentPatchRequest(BaseModel):
@@ -327,3 +338,52 @@ class DashboardConnectorInstallationDeleteResponse(BaseModel):
 class DashboardGithubInstallUrlResponse(BaseModel):
     url: str
     app_slug: str
+
+
+class DashboardAdminPlatformIdentity(BaseModel):
+    platform: PlatformTag | str
+    platform_uid: str
+    platform_key: str
+
+
+class DashboardAdminUserAccess(BaseModel):
+    user_id: str
+    display_name: str | None = None
+    email: str | None = None
+    telegram: DashboardAdminPlatformIdentity | None = None
+    discord: DashboardAdminPlatformIdentity | None = None
+    agents: list[str] = Field(default_factory=list)
+
+
+class DashboardAdminAccessResponse(BaseModel):
+    users: list[DashboardAdminUserAccess]
+
+
+class DashboardAdminUserCreateRequest(BaseModel):
+    display_name: str = Field(min_length=1, max_length=128)
+    email: str = Field(min_length=3, max_length=254, pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+    telegram_uid: str | None = None
+    discord_uid: str | None = None
+    agents: list[str] = Field(default_factory=list)
+
+
+class DashboardAdminUserPatchRequest(BaseModel):
+    display_name: str | None = Field(default=None, min_length=1, max_length=128)
+    email: str | None = Field(
+        default=None,
+        min_length=3,
+        max_length=254,
+        pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$",
+    )
+    telegram_uid: str | None = None
+    discord_uid: str | None = None
+    agents: list[str] | None = None
+
+
+class DashboardAdminUserResponse(BaseModel):
+    user_id: str
+    display_name: str | None = None
+    email: str | None = None
+    telegram: DashboardAdminPlatformIdentity | None = None
+    discord: DashboardAdminPlatformIdentity | None = None
+    agents: list[str] = Field(default_factory=list)

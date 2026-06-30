@@ -60,11 +60,6 @@ export function ChatPage() {
   };
 
   const addTab = (agent: string) => {
-    const existing = tabs.find((t) => t.agent === agent);
-    if (existing) {
-      setActiveId(existing.id);
-      return;
-    }
     void (async () => {
       let defaults: AgentDefaults | undefined;
       try {
@@ -91,16 +86,17 @@ export function ChatPage() {
   };
 
   const onResumed = async (agent: string, sessionId: string) => {
-    const existing = tabs.find((t) => t.agent === agent);
-    if (existing) setActiveId(existing.id);
-    else {
+    const existing = tabs.find((t) => t.sessionId === sessionId);
+    if (existing) {
+      setActiveId(existing.id);
+    } else {
       let defaults: AgentDefaults | undefined;
       try {
         defaults = await fetchAgentDefaults(agent);
       } catch {
         defaults = undefined;
       }
-      const t = newTab(agent, defaults);
+      const t = newTab(agent, defaults, sessionId);
       setTabs((prev) => [...prev, t]);
       setActiveId(t.id);
     }

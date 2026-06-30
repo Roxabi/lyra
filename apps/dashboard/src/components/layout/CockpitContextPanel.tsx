@@ -3,19 +3,14 @@ import { Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { displayAgentName } from "@/lib/agents";
+import { AgentIdentity } from "@/components/agents/AgentIdentity";
 import type { AgentHealth } from "@/lib/api";
 import { fetchJobs } from "@/lib/api";
+import { jobStatusToBadgeVariant } from "@/lib/job-status";
 
 interface CockpitContextPanelProps {
   agent: string | null;
   health: AgentHealth | undefined;
-}
-
-function jobStatusVariant(status: string): "success" | "secondary" | "destructive" {
-  if (status === "open") return "success";
-  if (status === "closing") return "secondary";
-  return "destructive";
 }
 
 export function CockpitContextPanel({ agent, health }: CockpitContextPanelProps) {
@@ -43,8 +38,8 @@ export function CockpitContextPanel({ agent, health }: CockpitContextPanelProps)
           <h3 className="text-sm font-medium">{t("context.agentStatus")}</h3>
           {agent ? (
             <div className="rounded-lg border border-border/50 bg-background/50 px-3 py-2.5">
-              <p className="text-sm font-medium">{displayAgentName(agent)}</p>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
+              <AgentIdentity agentId={agent} avatarSize="sm" />
+              <div className="mt-2 flex flex-wrap items-center gap-2 pl-8">
                 <Badge variant={health?.online ? "success" : "destructive"}>
                   {health?.online ? tc("status.online") : tc("status.offline")}
                 </Badge>
@@ -74,7 +69,7 @@ export function CockpitContextPanel({ agent, health }: CockpitContextPanelProps)
               {agentJobs.map((job) => (
                 <li key={job.job_id} className="rounded-md bg-muted/30 px-3 py-2">
                   <p className="truncate font-mono text-xs">{job.job_id}</p>
-                  <Badge className="mt-1" variant={jobStatusVariant(job.status)}>
+                  <Badge className="mt-1" variant={jobStatusToBadgeVariant(job.status)}>
                     {job.status}
                   </Badge>
                 </li>

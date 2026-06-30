@@ -33,15 +33,19 @@ def e2e_enabled() -> bool:
     return os.environ.get("FACTORY_DASHBOARD_E2E", "").strip() in {"1", "true", "yes"}
 
 
+def _e2e_agent_backend(name: str) -> str:
+    return "omp-rpc" if name.lower().startswith("aryl") else "claude-cli"
+
+
 def stub_agents_status(agents: list[str]) -> AgentHealthResponse:
     return AgentHealthResponse(
         agents=[
             AgentHealth(
                 agent=name,
                 in_roster=True,
-                harness="claude-cli",
-                harness_reachable=True,
-                online=True,
+                harness=_e2e_agent_backend(name),
+                harness_reachable=name.lower().startswith("lyr"),
+                online=name.lower().startswith("lyr"),
             )
             for name in agents
         ]

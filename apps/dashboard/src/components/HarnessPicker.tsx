@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { PopoverSelect } from "@/components/ui/popover-select";
 import type { HarnessKind } from "@/lib/chats-storage";
 
@@ -15,19 +16,20 @@ const OPTIONS = [
 ];
 
 export function HarnessPicker({ value, onChange, disabled, dbDefault }: HarnessPickerProps) {
+  const { t } = useTranslation("chat");
   const override = dbDefault !== undefined && value !== dbDefault;
   return (
     <div className="flex flex-col gap-0.5">
       <PopoverSelect
-        label="Harness"
+        label={t("picker.harness")}
         value={value}
         disabled={disabled}
         options={OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
         onChange={(v) => onChange(v as HarnessKind)}
       />
       {override ? (
-        <span className="text-[10px] text-amber-600 dark:text-amber-400">
-          ≠ DB default ({dbDefault})
+        <span className="text-[10px] text-status-closing">
+          {t("picker.dbOverride", { default: dbDefault })}
         </span>
       ) : null}
     </div>

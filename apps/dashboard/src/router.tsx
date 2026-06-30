@@ -1,9 +1,11 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { createRootRouteWithContext, createRoute, createRouter } from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
+import { AdminPage } from "@/pages/AdminPage";
 import { AgentDetailPage, AgentsListPage } from "@/pages/AgentsPage";
 import { ChatPage } from "@/pages/ChatPage";
 import { DashboardHome } from "@/pages/DashboardHome";
+import { DesignSystemPage } from "@/pages/DesignSystemPage";
 import { FleetPage } from "@/pages/FleetPage";
 import { IntegrationsPage } from "@/pages/IntegrationsPage";
 import { JobsPage } from "@/pages/JobsPage";
@@ -65,6 +67,18 @@ const fleetRoute = createRoute({
   component: FleetPage,
 });
 
+const designSystemRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/design-system",
+  component: DesignSystemPage,
+});
+
+const usersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/users",
+  component: AdminPage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   chatRoute,
@@ -74,6 +88,8 @@ const routeTree = rootRoute.addChildren([
   agentDetailRoute,
   fleetRoute,
   obsRoute,
+  usersRoute,
+  designSystemRoute,
 ]);
 
 export const router = createRouter({

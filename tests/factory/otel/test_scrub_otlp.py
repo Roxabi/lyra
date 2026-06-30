@@ -4,6 +4,13 @@ from __future__ import annotations
 
 from factory.otel.scrub_otlp import scrub_otlp_dict
 
+_JOB_ATTR = {"key": "roxabi.job_id", "value": {"stringValue": "a"}}
+_GEN_AI_ATTR = {
+    "key": "gen_ai.request.model",
+    "value": {"stringValue": "gpt-4"},
+}
+_PROMPT_ATTR = {"key": "prompt", "value": {"stringValue": "secret"}}
+
 
 def test_scrub_otlp_drops_gen_ai_and_forbidden() -> None:
     payload = {
@@ -14,12 +21,9 @@ def test_scrub_otlp_drops_gen_ai_and_forbidden() -> None:
                         "spans": [
                             {
                                 "attributes": [
-                                    {"key": "roxabi.job_id", "value": {"stringValue": "a"}},
-                                    {
-                                        "key": "gen_ai.request.model",
-                                        "value": {"stringValue": "gpt-4"},
-                                    },
-                                    {"key": "prompt", "value": {"stringValue": "secret"}},
+                                    _JOB_ATTR,
+                                    _GEN_AI_ATTR,
+                                    _PROMPT_ATTR,
                                 ]
                             }
                         ]
@@ -31,4 +35,4 @@ def test_scrub_otlp_drops_gen_ai_and_forbidden() -> None:
     dropped = scrub_otlp_dict(payload)
     attrs = payload["resourceSpans"][0]["scopeSpans"][0]["spans"][0]["attributes"]
     assert dropped == 2
-    assert attrs == [{"key": "roxabi.job_id", "value": {"stringValue": "a"}}]
+    assert attrs == [_JOB_ATTR]

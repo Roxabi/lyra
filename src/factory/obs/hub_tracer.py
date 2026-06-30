@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
 import time
 from collections.abc import AsyncGenerator, Generator
 from contextlib import asynccontextmanager, contextmanager
@@ -13,9 +12,9 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace import Span, Status, StatusCode
-from factory.obs.otlp_export import otlp_grpc_endpoint, otlp_grpc_headers
 from roxabi_otel import otel_enabled
 
+from factory.obs.otlp_export import otlp_grpc_endpoint, otlp_grpc_headers
 from roxabi_contracts.telemetry import (
     ATTR_COMPONENT,
     ATTR_JOB_ID,

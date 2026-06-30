@@ -24,11 +24,11 @@ from factory.bootstrap.factory.dashboard_jobs_rpc import (
     handle_jobs_list,
     handle_jobs_steer,
 )
+from factory.bootstrap.factory.ingress_registry_service import get_installation_store
 from factory.core.hub.hub_protocol import RoutingKey
 from factory.core.hub.session_catalog import list_sessions_for_agent
 from factory.core.messaging.message import Platform
 from factory.dashboard.heartbeat import CLIPOOL_QUEUE, OMP_QUEUE, queue_group_alive
-from factory.bootstrap.factory.ingress_registry_service import get_installation_store
 from roxabi_contracts.dashboard import (
     SUBJECTS,
     AgentHealth,
@@ -241,7 +241,8 @@ async def _handle_connectors_list(
     _ = hub, nc
     req = DashboardConnectorInstallationsListRequest.model_validate(payload)
     if req.connector not in _SUPPORTED_CONNECTORS:
-        return DashboardConnectorInstallationsListResponse(installations=[]).model_dump()
+        empty = DashboardConnectorInstallationsListResponse(installations=[])
+        return empty.model_dump()
     store = await get_installation_store()
     rows = await store.list_rows()
     installations = [
@@ -252,7 +253,8 @@ async def _handle_connectors_list(
             enabled=bool(row["enabled"]),
         )
         for row in rows
-        if row["connector"] == req.connector and row["factory_tenant"] == req.factory_tenant
+        if row["connector"] == req.connector
+        and row["factory_tenant"] == req.factory_tenant
     ]
     return DashboardConnectorInstallationsListResponse(
         installations=installations

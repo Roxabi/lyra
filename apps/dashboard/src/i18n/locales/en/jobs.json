@@ -1,5 +1,9 @@
 {
   "subtitle": "Active jobs, manual launch, and steer via the dashboard BFF.",
+  "searchPlaceholder": "Search jobs…",
+  "filters": {
+    "status": "Status"
+  },
   "launch": {
     "title": "Launch an OMP job",
     "agentLabel": "Agent",
@@ -14,7 +18,9 @@
     "active_one": "{{count}} active",
     "active_other": "{{count}} active",
     "loadError": "Could not load jobs.",
-    "empty": "No active jobs in the registry."
+    "empty": "No active jobs in the registry.",
+    "emptyHint": "Launch an OMP job above or wait for a worker to start one.",
+    "emptyFiltered": "No jobs match the filters."
   },
   "workers": {
     "title": "Workers"
@@ -28,5 +34,9 @@
     "started": "Started",
     "steer": "Steer",
     "steerPlaceholder": "Steer…"
+  },
+  "steer": {
+    "sent": "Steer sent for {{jobId}}",
+    "failed": "Failed to send steer"
   }
 }

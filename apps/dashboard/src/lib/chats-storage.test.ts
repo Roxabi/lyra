@@ -38,4 +38,9 @@ describe("newTab", () => {
     expect(tab.harness).toBe("claude-cli");
     expect(tab.model).toBe("sonnet");
   });
+
+  it("accepts an initial session id for resumed sessions", () => {
+    const tab = newTab("lyra", undefined, "sess-abc");
+    expect(tab.sessionId).toBe("sess-abc");
+  });
 });

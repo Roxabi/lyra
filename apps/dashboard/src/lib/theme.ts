@@ -2,6 +2,8 @@
 
 export type Theme = "dark" | "light";
 
+export const THEME_CHANGE_EVENT = "factory-dashboard:theme-change";
+
 const KEY = "factory-dashboard:theme";
 
 export function readTheme(): Theme {
@@ -20,6 +22,7 @@ export function applyTheme(theme: Theme): void {
   } catch {
     // ignore
   }
+  window.dispatchEvent(new CustomEvent(THEME_CHANGE_EVENT, { detail: theme }));
 }
 
 export function initTheme(): void {

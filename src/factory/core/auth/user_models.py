@@ -14,6 +14,7 @@ class User:
 
     id: str
     display_name: str | None
+    email: str | None
     created_at: datetime
 
 

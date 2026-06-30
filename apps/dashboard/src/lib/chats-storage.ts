@@ -45,13 +45,17 @@ export interface AgentDefaults {
   model: string;
 }
 
-export function newTab(agent: string, defaults?: AgentDefaults): ChatTab {
+export function newTab(
+  agent: string,
+  defaults?: AgentDefaults,
+  sessionId: string | null = null,
+): ChatTab {
   return {
     id: randomId(),
     agent,
     harness: defaults?.backend ?? "claude-cli",
     model: defaults?.model ?? "sonnet",
-    sessionId: null,
+    sessionId,
     streamToken: null,
     lastActive: Date.now(),
   };

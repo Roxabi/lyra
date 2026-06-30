@@ -233,6 +233,7 @@
       "allow_responses": true,
       "publish": [
         "factory.voice.tts.heartbeat",
+        "factory.metric.host.container_report",
         "factory.system.ready",
         "$JS.API.STREAM.INFO.KV_factory-state",
         "$JS.API.STREAM.MSG.GET.KV_factory-state"
@@ -258,6 +259,7 @@
       "allow_responses": true,
       "publish": [
         "factory.voice.stt.heartbeat",
+        "factory.metric.host.container_report",
         "factory.system.ready",
         "$JS.API.STREAM.INFO.KV_factory-state",
         "$JS.API.STREAM.MSG.GET.KV_factory-state"

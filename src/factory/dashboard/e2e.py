@@ -23,6 +23,7 @@ from roxabi_contracts.dashboard import (
     DashboardSessionsResumeResponse,
     DashboardSessionsTurnsResponse,
     DashboardTurn,
+    HarnessKind,
     OpsEngineHealth,
     OpsLogEntry,
     OpsLogPreset,
@@ -33,15 +34,19 @@ def e2e_enabled() -> bool:
     return os.environ.get("FACTORY_DASHBOARD_E2E", "").strip() in {"1", "true", "yes"}
 
 
+def _e2e_agent_backend(name: str) -> HarnessKind:
+    return "omp-rpc" if name.lower().startswith("aryl") else "claude-cli"
+
+
 def stub_agents_status(agents: list[str]) -> AgentHealthResponse:
     return AgentHealthResponse(
         agents=[
             AgentHealth(
                 agent=name,
                 in_roster=True,
-                harness="claude-cli",
-                harness_reachable=True,
-                online=True,
+                harness=_e2e_agent_backend(name),
+                harness_reachable=name.lower().startswith("lyr"),
+                online=name.lower().startswith("lyr"),
             )
             for name in agents
         ]
@@ -147,10 +152,17 @@ def stub_ops_health() -> DashboardOpsHealthResponse:
     )
 
 
-def stub_ops_logs(preset: OpsLogPreset) -> DashboardOpsLogsResponse:
+def stub_ops_logs(
+    preset: OpsLogPreset,
+    *,
+    container: str | None = None,
+) -> DashboardOpsLogsResponse:
+    query = f"e2e-stub-{preset}"
+    if container:
+        query = f'{{job="factory-journal", systemd_unit="{container}.service"}}'
     return DashboardOpsLogsResponse(
         preset=preset,
-        query=f"e2e-stub-{preset}",
+        query=query,
         engine_reachable=True,
         entries=[
             OpsLogEntry(
@@ -186,6 +198,7 @@ def stub_fleet() -> DashboardFleetResponse:
                 systemd_unit="factory-hub.service",
                 instrumented=True,
                 source="live",
+                image_digest_status="current",
             ),
             DashboardFleetRow(
                 container_name="factory-loki",
@@ -196,6 +209,7 @@ def stub_fleet() -> DashboardFleetResponse:
                 systemd_unit="factory-loki.service",
                 instrumented=False,
                 source="manifest",
+                image_digest_status="n/a",
             ),
             DashboardFleetRow(
                 container_name="factory-clipool",
@@ -207,6 +221,7 @@ def stub_fleet() -> DashboardFleetResponse:
                 systemd_unit="factory-clipool.service",
                 instrumented=True,
                 source="manifest",
+                image_digest_status="stale",
             ),
         ]
     )

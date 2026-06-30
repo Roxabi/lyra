@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import shutil
 import socket
 import subprocess
@@ -58,6 +59,14 @@ def nats_server_url() -> Generator[str, None, None]:
     else:
         proc.terminate()
         raise RuntimeError(f"nats-server did not start on port {port}")
+
+    async def _probe_nats() -> None:
+        conn = await nats.connect(url)
+        await conn.flush()
+        await conn.close()
+
+    asyncio.run(_probe_nats())
+
     yield url
     proc.terminate()
     proc.wait()

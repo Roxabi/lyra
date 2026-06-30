@@ -15,6 +15,8 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY packages/ packages/
 COPY src/ src/
+COPY deploy/quadlet.toml deploy/quadlet.toml
+COPY deploy/quadlet/ deploy/quadlet/
 RUN uv sync --frozen --no-dev
 
 # ── Dashboard SPA builder (#1771) ───────────────────────────────────────────

@@ -4,8 +4,9 @@ Canonical values — literal strings (no f-strings, no derivation) so grep
 can locate every reference across the monorepo.
 
 Subject hierarchy:
-  factory.event.<service>.<kind>   — operational events
-  factory.metric.<service>.<name>  — typed metrics
+  factory.event.<service>.<kind>                    — non-ingress plane ①
+  factory.event.<connector>.<tenant>.<kind>       — ingress connectors (ADR-096)
+  factory.metric.<service>.<name>                 — typed metrics
 """
 
 from __future__ import annotations
@@ -16,7 +17,12 @@ from typing import Literal
 
 from roxabi_contracts._nats_utils import validate_subject_segment
 
-__all__ = ["SUBJECTS", "per_service_event", "per_service_metric"]
+__all__ = [
+    "SUBJECTS",
+    "per_connector_tenant_event",
+    "per_service_event",
+    "per_service_metric",
+]
 
 # Namespaced tokens (e.g. "lifecycle.swap", "request.count") are valid
 # multi-segment NATS subject suffixes. Dots are allowed for namespacing,
@@ -45,6 +51,14 @@ def _validate_namespaced(token: str) -> None:
             f"NATS namespaced token must match [A-Za-z0-9_-]+(\\.[A-Za-z0-9_-]+)* "
             f"(got {token!r}); wildcards (* >) and dot-boundary violations are rejected"
         )
+
+
+def per_connector_tenant_event(connector: str, tenant: str, kind: str) -> str:
+    """Ingress connector event: ``factory.event.{connector}.{tenant}.{kind}``."""
+    validate_subject_segment(connector)
+    validate_subject_segment(tenant)
+    _validate_namespaced(kind)
+    return f"factory.event.{connector}.{tenant}.{kind}"
 
 
 def per_service_event(service: str, kind: str) -> str:

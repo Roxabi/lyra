@@ -1,21 +1,31 @@
+import { Briefcase } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PageIntro } from "@/components/layout/PageIntro";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { FilterChip } from "@/components/ui/filter-chip";
 import { Input } from "@/components/ui/input";
+import {
+  ListToolbar,
+  ListToolbarControls,
+  ListToolbarHeader,
+  ListToolbarSearch,
+} from "@/components/ui/list-toolbar";
 import { PopoverSelect } from "@/components/ui/popover-select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { toast } from "@/components/ui/sonner";
+import { SortableTableHeader } from "@/components/ui/sortable-table-header";
 import { Textarea } from "@/components/ui/textarea";
 import { displayAgentName } from "@/lib/agents";
 import { fetchAgentStatus, fetchAgents, fetchJobs, launchJob, steerJob } from "@/lib/api";
-
-function statusVariant(status: string): "success" | "secondary" | "destructive" {
-  if (status === "open") return "success";
-  if (status === "closing") return "secondary";
-  return "destructive";
-}
+import { jobStatusToBadgeVariant } from "@/lib/job-status";
+import { filterJobs, type JobsSortKey, sortJobs, uniqueJobStatuses } from "@/lib/jobs-filters";
+import { type SortDirection, toggleSort } from "@/lib/sort";
+import { useDebouncedValue } from "@/lib/use-debounced-value";
 
 export function JobsPage() {
   const { t } = useTranslation("jobs");
@@ -24,7 +34,11 @@ export function JobsPage() {
   const [launchAgent, setLaunchAgent] = useState("");
   const [launchPrompt, setLaunchPrompt] = useState("");
   const [steerTexts, setSteerTexts] = useState<Record<string, string>>({});
-  const [launchFeedback, setLaunchFeedback] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [statusFilters, setStatusFilters] = useState<string[]>([]);
+  const [sortKey, setSortKey] = useState<JobsSortKey>("started_at");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const debouncedSearch = useDebouncedValue(search, 300);
 
   const { data: agents = [] } = useQuery({ queryKey: ["agents"], queryFn: fetchAgents });
   const { data: status = [] } = useQuery({
@@ -43,6 +57,13 @@ export function JobsPage() {
   });
 
   const selectedAgent = launchAgent || agents[0] || "";
+  const statusOptions = useMemo(() => uniqueJobStatuses(jobs), [jobs]);
+  const hasFilters = search.trim().length > 0 || statusFilters.length > 0;
+
+  const visibleJobs = useMemo(() => {
+    const filtered = filterJobs(jobs, { search: debouncedSearch, statuses: statusFilters });
+    return sortJobs(filtered, sortKey, sortDirection);
+  }, [jobs, debouncedSearch, statusFilters, sortKey, sortDirection]);
 
   const launchMutation = useMutation({
     mutationFn: () =>
@@ -52,22 +73,40 @@ export function JobsPage() {
         job_name: "omp",
       }),
     onSuccess: (res) => {
-      setLaunchFeedback(res.accepted ? t("launch.launched", { jobId: res.job_id }) : res.message);
+      if (res.accepted) {
+        toast.success(t("launch.launched", { jobId: res.job_id }));
+      } else {
+        toast.error(res.message);
+      }
       setLaunchPrompt("");
       void queryClient.invalidateQueries({ queryKey: ["jobs-live"] });
     },
-    onError: () => setLaunchFeedback(t("launch.launchFailed")),
+    onError: () => toast.error(t("launch.launchFailed")),
   });
 
   const steerMutation = useMutation({
     mutationFn: ({ jobId, text }: { jobId: string; text: string }) => steerJob(jobId, text),
     onSuccess: (_res, vars) => {
       setSteerTexts((prev) => ({ ...prev, [vars.jobId]: "" }));
+      toast.success(t("steer.sent", { jobId: vars.jobId }));
     },
+    onError: () => toast.error(t("steer.failed")),
   });
 
+  function onSort(nextKey: JobsSortKey) {
+    const next = toggleSort(sortKey, sortDirection, nextKey);
+    setSortKey(next.key);
+    setSortDirection(next.direction);
+  }
+
+  function toggleStatusFilter(status: string) {
+    setStatusFilters((prev) =>
+      prev.includes(status) ? prev.filter((s) => s !== status) : [...prev, status],
+    );
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-8">
       <PageIntro>{t("subtitle")}</PageIntro>
 
       <Card className="dashboard-surface border-border/60 shadow-none">
@@ -93,112 +132,185 @@ export function JobsPage() {
             placeholder={t("launch.promptPlaceholder")}
             rows={3}
           />
-          <div className="flex items-center gap-3">
-            <Button
-              type="button"
-              disabled={!launchPrompt.trim() || !selectedAgent || launchMutation.isPending}
-              onClick={() => launchMutation.mutate()}
-            >
-              {launchMutation.isPending ? t("launch.submitting") : t("launch.submit")}
-            </Button>
-            {launchFeedback ? (
-              <p className="text-xs text-muted-foreground">{launchFeedback}</p>
-            ) : null}
-          </div>
+          <Button
+            type="button"
+            disabled={!launchPrompt.trim() || !selectedAgent || launchMutation.isPending}
+            onClick={() => launchMutation.mutate()}
+          >
+            {launchMutation.isPending ? t("launch.submitting") : t("launch.submit")}
+          </Button>
         </CardContent>
       </Card>
 
-      <Card className="dashboard-surface border-border/60 shadow-none">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">{t("live.title")}</CardTitle>
-          <Badge variant="secondary" className="tabular-nums">
-            {t("live.active", { count: jobs.length })}
-          </Badge>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <p className="text-sm text-muted-foreground">{tc("actions.loading")}</p>
-          ) : null}
-          {isError ? <p className="text-sm text-destructive">{t("live.loadError")}</p> : null}
-          {!isLoading && !isError && jobs.length === 0 ? (
-            <p className="rounded-lg bg-background/40 px-4 py-6 text-center text-sm text-muted-foreground">
-              {t("live.empty")}
-            </p>
-          ) : null}
-          {jobs.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm">
-                <thead>
-                  <tr className="text-xs text-muted-foreground">
-                    <th className="pb-2 pr-3 font-medium">{t("table.job")}</th>
-                    <th className="pb-2 pr-3 font-medium">{t("table.agent")}</th>
-                    <th className="pb-2 pr-3 font-medium">{t("table.platform")}</th>
-                    <th className="pb-2 pr-3 font-medium">{t("table.status")}</th>
-                    <th className="pb-2 pr-3 font-medium">{t("table.mode")}</th>
-                    <th className="pb-2 pr-3 font-medium">{t("table.started")}</th>
-                    <th className="pb-2 font-medium">{t("table.steer")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {jobs.map((job) => (
-                    <tr key={job.job_id} className="border-t border-border/30">
-                      <td className="py-2.5 pr-3">
-                        <p className="font-mono text-xs">{job.job_id}</p>
-                        <p className="truncate text-[10px] text-muted-foreground">{job.pool_id}</p>
-                      </td>
-                      <td className="py-2.5 pr-3">
-                        {job.agent ? displayAgentName(job.agent) : "—"}
-                      </td>
-                      <td className="py-2.5 pr-3 capitalize">{job.platform ?? "—"}</td>
-                      <td className="py-2.5 pr-3">
-                        <Badge variant={statusVariant(job.status)}>{job.status}</Badge>
-                      </td>
-                      <td className="py-2.5 pr-3 text-xs text-muted-foreground">
-                        {job.concurrency_mode}
-                      </td>
-                      <td className="py-2.5 pr-3 text-xs text-muted-foreground">
-                        {new Date(job.started_at).toLocaleString()}
-                      </td>
-                      <td className="py-2.5">
-                        <div className="flex min-w-[12rem] items-center gap-2">
-                          <Input
-                            value={steerTexts[job.job_id] ?? ""}
-                            onChange={(e) =>
-                              setSteerTexts((prev) => ({
-                                ...prev,
-                                [job.job_id]: e.target.value,
-                              }))
-                            }
-                            placeholder={t("table.steerPlaceholder")}
-                            className="h-8 text-xs"
-                          />
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            size="sm"
-                            className="h-8 shrink-0 px-2 text-xs"
-                            disabled={
-                              !(steerTexts[job.job_id] ?? "").trim() || steerMutation.isPending
-                            }
-                            onClick={() =>
-                              steerMutation.mutate({
-                                jobId: job.job_id,
-                                text: (steerTexts[job.job_id] ?? "").trim(),
-                              })
-                            }
-                          >
-                            →
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
+      <div className="space-y-4">
+        <ListToolbar>
+          <ListToolbarHeader
+            meta={
+              isLoading ? tc("actions.loading") : t("live.active", { count: visibleJobs.length })
+            }
+          />
+          <ListToolbarSearch
+            value={search}
+            onChange={setSearch}
+            placeholder={t("searchPlaceholder")}
+            aria-label={tc("search")}
+          />
+          {statusOptions.length > 0 ? (
+            <ListToolbarControls
+              filters={
+                <>
+                  <span className="text-xs text-muted-foreground">{t("filters.status")}</span>
+                  {statusOptions.map((status) => (
+                    <FilterChip
+                      key={status}
+                      active={statusFilters.includes(status)}
+                      onClick={() => toggleStatusFilter(status)}
+                    >
+                      {status}
+                    </FilterChip>
                   ))}
-                </tbody>
-              </table>
-            </div>
+                </>
+              }
+            />
           ) : null}
-        </CardContent>
-      </Card>
+        </ListToolbar>
+
+        {isLoading ? (
+          <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
+            <div
+              role="status"
+              className="divide-y divide-border/30 px-4"
+              aria-busy="true"
+              aria-label={tc("actions.loading")}
+            >
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="flex items-center gap-3 py-3">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-4 w-16" />
+                  <Skeleton className="h-4 w-14" />
+                  <Skeleton className="h-6 w-16 rounded-full" />
+                  <Skeleton className="h-4 w-12" />
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="ml-auto h-7 w-14 rounded-md" />
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {isError ? (
+          <p className="text-sm text-destructive" role="alert">
+            {t("live.loadError")}
+          </p>
+        ) : null}
+
+        {!isLoading && !isError && visibleJobs.length === 0 ? (
+          <EmptyState
+            icon={hasFilters ? undefined : Briefcase}
+            title={hasFilters ? t("live.emptyFiltered") : t("live.empty")}
+            hint={hasFilters ? undefined : t("live.emptyHint")}
+          />
+        ) : null}
+
+        {!isLoading && !isError && visibleJobs.length > 0 ? (
+          <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-border/50 text-xs">
+                  <SortableTableHeader
+                    label={t("table.job")}
+                    active={sortKey === "job_id"}
+                    direction={sortDirection}
+                    onClick={() => onSort("job_id")}
+                    className="px-4 py-2"
+                  />
+                  <SortableTableHeader
+                    label={t("table.agent")}
+                    active={sortKey === "agent"}
+                    direction={sortDirection}
+                    onClick={() => onSort("agent")}
+                  />
+                  <th className="py-2 pr-3 font-medium text-muted-foreground">
+                    {t("table.platform")}
+                  </th>
+                  <SortableTableHeader
+                    label={t("table.status")}
+                    active={sortKey === "status"}
+                    direction={sortDirection}
+                    onClick={() => onSort("status")}
+                  />
+                  <th className="py-2 pr-3 font-medium text-muted-foreground">{t("table.mode")}</th>
+                  <SortableTableHeader
+                    label={t("table.started")}
+                    active={sortKey === "started_at"}
+                    direction={sortDirection}
+                    onClick={() => onSort("started_at")}
+                  />
+                  <th className="py-2 pr-4 font-medium text-muted-foreground">
+                    {t("table.steer")}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleJobs.map((job) => (
+                  <tr
+                    key={job.job_id}
+                    className="border-b border-border/30 transition-colors last:border-0 hover:bg-muted/15"
+                  >
+                    <td className="px-4 py-2.5 pr-3">
+                      <p className="font-mono text-xs">{job.job_id}</p>
+                      <p className="truncate text-[10px] text-muted-foreground">{job.pool_id}</p>
+                    </td>
+                    <td className="py-2.5 pr-3">{job.agent ? displayAgentName(job.agent) : "—"}</td>
+                    <td className="py-2.5 pr-3 capitalize">{job.platform ?? "—"}</td>
+                    <td className="py-2.5 pr-3">
+                      <Badge variant={jobStatusToBadgeVariant(job.status)}>{job.status}</Badge>
+                    </td>
+                    <td className="py-2.5 pr-3 text-xs text-muted-foreground">
+                      {job.concurrency_mode}
+                    </td>
+                    <td className="py-2.5 pr-3 text-xs text-muted-foreground tabular-nums">
+                      {new Date(job.started_at).toLocaleString()}
+                    </td>
+                    <td className="py-2.5 pr-4">
+                      <div className="flex min-w-[12rem] items-center gap-2">
+                        <Input
+                          value={steerTexts[job.job_id] ?? ""}
+                          onChange={(e) =>
+                            setSteerTexts((prev) => ({
+                              ...prev,
+                              [job.job_id]: e.target.value,
+                            }))
+                          }
+                          placeholder={t("table.steerPlaceholder")}
+                          className="h-8 text-xs"
+                        />
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          className="h-8 shrink-0 px-2 text-xs active:scale-[0.98]"
+                          disabled={
+                            !(steerTexts[job.job_id] ?? "").trim() || steerMutation.isPending
+                          }
+                          onClick={() =>
+                            steerMutation.mutate({
+                              jobId: job.job_id,
+                              text: (steerTexts[job.job_id] ?? "").trim(),
+                            })
+                          }
+                        >
+                          →
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+      </div>
 
       <Card className="dashboard-surface border-border/60 shadow-none">
         <CardHeader>

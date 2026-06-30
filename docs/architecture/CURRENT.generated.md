@@ -183,7 +183,7 @@
 - **Subscribe:** $KV.factory-state.>, _inbox.voice-tts.>, factory.voice.tts.lifecycle.>, factory.voice.tts.request, factory.voice.tts.request.>
 
 ### web-adapter
-- **Publish:** $JS.API.CONSUMER.CREATE.*, $JS.API.DIRECT.GET.KV_factory-state.hub.ready, $JS.API.INFO, $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.dashboard.>, factory.event.>, factory.inbound.web.>, factory.metric.>, factory.metric.host.container_report, factory.system.ready
+- **Publish:** $JS.API.CONSUMER.CREATE.*, $JS.API.CONSUMER.INFO.KV_factory-state.*, $JS.API.DIRECT.GET.KV_factory-state.hub.ready, $JS.API.INFO, $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, $JS.API.STREAM.NAMES, factory.dashboard.>, factory.event.>, factory.inbound.web.>, factory.metric.>, factory.metric.host.container_report, factory.system.ready
 - **Subscribe:** $KV.factory-state.>, _inbox.web-adapter.>, factory.outbound.web.>, factory.typing.web.>
 
 ## Process Topology

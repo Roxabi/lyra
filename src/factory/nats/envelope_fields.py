@@ -6,13 +6,36 @@ minting a fresh ``trace_id`` per hop. See otel-correlation-ids-spec.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from factory.core.trace import TraceContext
 from roxabi_contracts import new_job_id
 from roxabi_contracts.envelope import CONTRACT_VERSION
+
+
+def peek_envelope_ids(payload: bytes) -> tuple[str | None, str | None]:
+    """Best-effort read of trace_id/job_id from a JSON work envelope."""
+    try:
+        data = json.loads(payload)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None, None
+    if not isinstance(data, dict):
+        return None, None
+    trace = data.get("trace_id")
+    job = data.get("job_id")
+    return (
+        trace if isinstance(trace, str) and trace else None,
+        job if isinstance(job, str) and job else None,
+    )
+
+
+def control_trace_id() -> str:
+    """Trace id for hub control-plane messages (reset, switch_cwd)."""
+    return TraceContext.get_trace_id() or str(uuid4())
 
 
 @dataclass(frozen=True)

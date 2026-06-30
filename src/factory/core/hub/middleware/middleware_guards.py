@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 
+from factory.obs.hub_tracer import hub_ingress_span
+
 from ...auth.trust import TrustLevel
 from ...messaging.message import InboundMessage, Platform
 from ...trace import TraceContext
@@ -25,7 +27,12 @@ class TraceMiddleware:
     ) -> PipelineResult:
         token = TraceContext.set_trace_id(TraceContext.generate())
         try:
-            return await next(msg, ctx)
+            with hub_ingress_span(
+                platform=msg.platform,
+                bot_id=msg.bot_id,
+                msg_id=msg.id,
+            ):
+                return await next(msg, ctx)
         finally:
             TraceContext.reset_trace_id(token)
 

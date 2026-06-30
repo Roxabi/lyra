@@ -13,16 +13,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
 from typing import Any, Protocol
-from uuid import uuid4
 
 from pydantic import ValidationError
 
 from factory.core.agent.agent_config import ModelConfig
 from factory.core.ports.llm import LlmResult
+from factory.core.trace import TraceContext
 from factory.llm.omp_job_codec import OmpJobCodec
-from roxabi_contracts.envelope import CONTRACT_VERSION
+from factory.nats.envelope_fields import mint_work_envelope_fields
+from factory.obs.hub_tracer import nats_client_span
 from roxabi_contracts.jobs import JobEnvelope, JobResult
 from roxabi_contracts.jobs.subjects import jobs_result, jobs_submit
 
@@ -167,8 +167,13 @@ class OmpRpcDriver:
         # is stateless per-job — a failed job does not consume the session).
         pending_resume = self._pending_resume.pop(pool_id, None)
 
-        job_id = uuid4().hex
+        fields = mint_work_envelope_fields(
+            trace_id=TraceContext.get_trace_id() or TraceContext.generate(),
+            pool_id=pool_id,
+        )
+        job_id = fields.job_id
         result_subject = jobs_result(job_id)
+        submit_subject = jobs_submit("omp")
 
         # Subscribe BEFORE publish to avoid missing the reply.
         sub = await self._nc.subscribe(result_subject)
@@ -183,9 +188,9 @@ class OmpRpcDriver:
                 payload["provider_session_id"] = pending_resume
 
             env = JobEnvelope(
-                contract_version=CONTRACT_VERSION,
-                trace_id=job_id,
-                issued_at=datetime.now(tz=timezone.utc),
+                contract_version=fields.contract_version,
+                trace_id=fields.trace_id,
+                issued_at=fields.issued_at,
                 job_id=job_id,
                 job_name="omp",
                 payload=payload,
@@ -195,10 +200,16 @@ class OmpRpcDriver:
                 # subscribed to above, not to reply_to. Kept for envelope validity.
                 reply_to=f"_INBOX.{job_id}",
             )
-            await self._nc.publish(
-                jobs_submit("omp"),
-                env.model_dump_json().encode(),
-            )
+            wire = env.model_dump_json().encode()
+            with nats_client_span(
+                name="omp",
+                subject=submit_subject,
+                payload=wire,
+                trace_id=fields.trace_id,
+                job_id=job_id,
+                pool_id=pool_id,
+            ):
+                await self._nc.publish(submit_subject, wire)
 
             msg = await sub.next_msg(timeout=self._timeout_s)
             try:

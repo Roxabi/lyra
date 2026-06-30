@@ -311,7 +311,7 @@ def telemetry_attributes(self, payload: dict, result: object | None) -> dict[str
 | Block 6 — voiceCLI PR | `pending` | repo externe |
 | Block 7 — imageCLI + llmCLI PRs | `pending` | repos externes |
 | Block 8 — Dashboard raw BFF + UI | `done` | `GET /api/bff/spans` + `/spans` page |
-| Block 9 — Hub TraceMiddleware + client spans | `pending` | Trou ingress ; peut suivre Block 3 |
+| Block 9 — Hub TraceMiddleware + client spans | `done` | mint_work on LLM codecs, hub_tracer client/ingress spans |
 
 ---
 
@@ -552,6 +552,7 @@ flowchart TD
 | 2026-06-30 | Grok | Blocks 0–5,8 | Impl factory : ADR-097, roxabi-otel, collector JSONL, BFF spans |
 | 2026-06-30 | Grok | Fix round | Hook job_id correlation, deferred clipool/omp hooks, dashboard otel mounts, 7 evidence logs, make qg green |
 | 2026-06-30 | Grok | Block 4b | factory-otel maison (blobstore-style); otel-collector disabled; runbook + satellite rollout spec |
+| 2026-06-30 | Grok | Block 9 | P0 LLM codec propagation, P1 WorkerPoolClient spans, P2 hub ingress span |
 
 ---
 

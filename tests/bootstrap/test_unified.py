@@ -54,7 +54,8 @@ def _patch_unified_boundaries(  # noqa: PLR0915
     # -- ensure_nats & lockfile (replace the no-op stubs with tracking versions)
     fake_nc = AsyncMock()
     fake_nc.close = AsyncMock()
-    fake_nc.jetstream = MagicMock(return_value=MagicMock())
+    fake_js = AsyncMock()
+    fake_nc.jetstream = MagicMock(return_value=fake_js)
     fake_embedded = MagicMock()
     fake_embedded.stop = AsyncMock()
 
@@ -170,13 +171,11 @@ def _patch_unified_boundaries(  # noqa: PLR0915
 
     # ensure_stream / ensure_kv are imported locally inside _bootstrap_unified;
     # patch at the source module so all tests using this fixture get no-ops.
+    import factory.infrastructure.events.stream_setup as _events_stream_setup_mod
     import factory.infrastructure.outbound_audio.stream_setup as _stream_setup_mod
 
     monkeypatch.setattr(_stream_setup_mod, "ensure_stream", AsyncMock())
     monkeypatch.setattr(_stream_setup_mod, "ensure_kv", AsyncMock())
-
-    import factory.infrastructure.events.stream_setup as _events_stream_setup_mod
-
     monkeypatch.setattr(
         _events_stream_setup_mod, "ensure_observability_streams", AsyncMock()
     )
@@ -459,6 +458,7 @@ async def test_audio_provisioning_before_wire_adapters(
 
     mock_ensure_stream = AsyncMock()
     mock_ensure_kv = AsyncMock()
+    mock_ensure_observability = AsyncMock()
 
     with (
         patch(
@@ -469,12 +469,17 @@ async def test_audio_provisioning_before_wire_adapters(
             "factory.infrastructure.outbound_audio.stream_setup.ensure_kv",
             mock_ensure_kv,
         ),
+        patch(
+            "factory.infrastructure.events.stream_setup.ensure_observability_streams",
+            mock_ensure_observability,
+        ),
     ):
         await _bootstrap_unified({})
 
     # Provisioning calls must have fired
     mock_ensure_stream.assert_awaited_once_with(fake_js)
     mock_ensure_kv.assert_awaited_once_with(fake_js)
+    mock_ensure_observability.assert_awaited_once_with(fake_js)
 
     # Provisioning must have happened after agent registration but before wiring
     assert "_register_agents" in order

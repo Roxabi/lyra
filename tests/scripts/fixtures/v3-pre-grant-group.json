@@ -196,7 +196,7 @@
       "created_at": "2026-06-21",
       "owner": "factory",
       "description": "Web smoke adapter \u2014 browser chat UI + SSE on factory.{inbound,outbound}.web.smoke (#1977).",
-      "notes": "Lean adapter ACL: no outbound-audio JetStream consumer (NullAudioConsumer fallback). wait_for_hub uses STREAM.INFO + STREAM.MSG.GET on KV_factory-state (#1572). Mirrored inline into this v3 snapshot (#1978): web-adapter references no group, so it renders identically to deploy/nats/acl-matrix.json.",
+      "notes": "Lean adapter ACL: no outbound-audio JetStream consumer (NullAudioConsumer fallback). wait_for_hub uses STREAM.INFO + STREAM.MSG.GET on KV_factory-state (#1572); kv.watch() fallback still needs STREAM.NAMES + CONSUMER.CREATE (dashboard crash-loop hotfix 2026-06-30). Mirrored inline into this v3 snapshot (#1978): web-adapter references no group, so it renders identically to deploy/nats/acl-matrix.json.",
       "allow_responses": true,
       "publish": [
         "factory.inbound.web.>",
@@ -208,6 +208,8 @@
         "$JS.API.DIRECT.GET.KV_factory-state.hub.ready",
         "$JS.API.INFO",
         "$JS.API.CONSUMER.CREATE.*",
+        "$JS.API.CONSUMER.INFO.KV_factory-state.*",
+        "$JS.API.STREAM.NAMES",
         "$JS.API.STREAM.INFO.KV_factory-state",
         "$JS.API.STREAM.MSG.GET.KV_factory-state"
       ],

@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import subprocess
 import sys
+from collections.abc import Generator
 from contextvars import Token
 from pathlib import Path
 from typing import Any
@@ -57,7 +58,7 @@ _DEFAULT_TEST_TRACE_ID = "00000000-0000-4000-8000-000000000001"
 
 
 @pytest.fixture(autouse=True)
-def _default_trace_context() -> Token[str]:
+def _default_trace_context() -> Generator[Token[str], None, None]:
     """Hub work-path codecs require TraceContext on encode (#2069)."""
     token = TraceContext.set_trace_id(_DEFAULT_TEST_TRACE_ID)
     yield token

@@ -233,6 +233,55 @@ class TestDashboardBffRealPath:
         assert body["accepted"] is True
         assert body["job_id"] == "e2e-launch-1"
 
+    def test_fleet_list_calls_hub_rpc(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("FACTORY_DASHBOARD_E2E", raising=False)
+        tc, _adapter, nc = wired_client
+        nc.request = AsyncMock(
+            return_value=_rpc_response(
+                {
+                    "rows": [
+                        {
+                            "container_name": "factory-hub",
+                            "host": "roxabituwer",
+                            "component_key": "hub",
+                            "image_ref": "ghcr.io/roxabi/factory:staging-svc",
+                            "image_revision": "abc",
+                            "health": "healthy",
+                            "status": "ok",
+                            "last_report_at": "2026-06-29T12:00:00+00:00",
+                            "age_s": 5.0,
+                            "systemd_unit": "factory-hub.service",
+                            "instrumented": True,
+                            "source": "live",
+                        }
+                    ]
+                }
+            )
+        )
+        res = tc.get("/api/bff/fleet")
+        assert res.status_code == 200
+        body = res.json()
+        assert body["rows"][0]["container_name"] == "factory-hub"
+        nc.request.assert_awaited_once()
+        assert nc.request.await_args.args[0] == SUBJECTS.fleet_list
+
+    def test_fleet_list_e2e_stub(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("FACTORY_DASHBOARD_E2E", "1")
+        tc, _adapter, _nc = wired_client
+        res = tc.get("/api/bff/fleet")
+        assert res.status_code == 200
+        rows = res.json()["rows"]
+        assert any(r["container_name"] == "factory-hub" for r in rows)
+        assert any(r["status"] == "unknown" for r in rows)
+
     def test_jobs_steer_e2e_stub(
         self,
         wired_client: tuple[TestClient, WebAdapter, AsyncMock],

@@ -33,7 +33,9 @@ async def test_pipeline_sse_emits_snapshot_then_stops() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pipeline_sse_ping_when_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_pipeline_sse_ping_when_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("FACTORY_DASHBOARD_E2E", "1")
 
     async def noop_sleep(

@@ -32,7 +32,7 @@ def host_event_kind(machine: str, kind: str) -> str:
     return f"{machine}.{kind}"
 
 
-async def publish_host_event(
+async def publish_host_event(  # noqa: PLR0913 — envelope field bundle
     nc: Any,
     *,
     machine: str,

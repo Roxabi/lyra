@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from factory.nats.pipeline.models import PipelineCheckRow, PipelineRunRow
+    from factory.nats.pipeline.models import PipelineRunRow
 
 log = logging.getLogger(__name__)
 

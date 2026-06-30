@@ -5,7 +5,10 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from factory.nats.pipeline.cf_registry import pages_branch_matches, resolve_pages_project
+from factory.nats.pipeline.cf_registry import (
+    pages_branch_matches,
+    resolve_pages_project,
+)
 from factory.nats.pipeline.correlation import active_cf_pending_row
 from factory.nats.pipeline.db import PipelineDb, default_db_path
 from factory.nats.pipeline.github_apply import (
@@ -103,7 +106,7 @@ class PipelineStore:
         if self._db is not None:
             self._db.upsert_run(row)
 
-    def _upsert_pr(
+    def _upsert_pr(  # noqa: PLR0913 — PR field bundle
         self,
         *,
         repo: str,

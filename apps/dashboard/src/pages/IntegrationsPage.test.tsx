@@ -60,9 +60,7 @@ describe("IntegrationsPage", () => {
     vi.mocked(api.fetchConnectors).mockRejectedValue(new Error("auth"));
     renderIntegrations();
     await waitFor(() => {
-      expect(
-        screen.getByText("Jeton opérateur invalide ou manquant."),
-      ).toBeTruthy();
+      expect(screen.getByText("Jeton opérateur invalide ou manquant.")).toBeTruthy();
     });
   });
 });

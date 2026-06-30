@@ -199,6 +199,10 @@
 - **Required secrets:** factory-claude-oauth, factory-nats-clipool
 - **Host roles:** factory-hub
 
+### cloudflared
+- **Container:** factory-cloudflared.container
+- **Host roles:** factory-hub
+
 ### dashboard
 - **Container:** factory-dashboard.container
 - **Required secrets:** factory-nats-web

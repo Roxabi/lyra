@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from factory.core.trace import TraceContext
 from factory.nats.envelope_fields import mint_work_envelope_fields
-from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.voice import (
     SUBJECTS,
     VoiceLifecycleRequest,
@@ -57,26 +55,16 @@ class VoiceLifecycleClient:
         op: str,
         host: str | None,
     ) -> dict[str, Any] | None:
-        trace_id = TraceContext.get_trace_id()
-        if trace_id:
-            fields = mint_work_envelope_fields(trace_id=trace_id)
-            req = VoiceLifecycleRequest(
-                contract_version=fields.contract_version,
-                trace_id=fields.trace_id,
-                issued_at=fields.issued_at,
-                request_id=str(uuid4()),
-                host=host,
-                op=op,  # type: ignore[arg-type]
-            )
-        else:
-            req = VoiceLifecycleRequest(
-                contract_version=CONTRACT_VERSION,
-                trace_id=str(uuid4()),
-                issued_at=datetime.now(tz=UTC),
-                request_id=str(uuid4()),
-                host=host,
-                op=op,  # type: ignore[arg-type]
-            )
+        trace_id = TraceContext.get_trace_id() or TraceContext.generate()
+        fields = mint_work_envelope_fields(trace_id=trace_id)
+        req = VoiceLifecycleRequest(
+            contract_version=fields.contract_version,
+            trace_id=fields.trace_id,
+            issued_at=fields.issued_at,
+            request_id=str(uuid4()),
+            host=host,
+            op=op,  # type: ignore[arg-type]
+        )
         try:
             msg = await self._nc.request(
                 subject,

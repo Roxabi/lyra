@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -506,3 +509,105 @@ class TestDashboardBffRealPath:
         assert len(body["items"]) == 1
         assert body["items"][0]["job_id"] == job_id
         assert body["items"][0]["component"] == "clipool-workers"
+
+    def test_bff_spans_quadlet_volume_layout(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Mirrors factory-dashboard.container: ro JSONL dir + rw SQLite file mount."""
+        monkeypatch.delenv("FACTORY_DASHBOARD_E2E", raising=False)
+        tc, _adapter, _nc = wired_client
+        otel_data = tmp_path / "otel-data"
+        otel_index = tmp_path / "otel-index"
+        otel_data.mkdir()
+        otel_index.mkdir()
+        jsonl = otel_data / "spans.jsonl"
+        db = otel_index / "otel-raw.db"
+        job_id = "e" * 32
+        line = {
+            "trace_id": "trace-quadlet",
+            "span_id": "span-quadlet",
+            "name": "nats.work",
+            "start_time_unix_nano": 1_000_000_000,
+            "end_time_unix_nano": 2_000_000_000,
+            "attributes": {
+                "roxabi.job_id": job_id,
+                "roxabi.pool_id": "pool-quadlet",
+                "roxabi.component": "clipool-workers",
+            },
+        }
+        jsonl.write_text(json.dumps(line) + "\n", encoding="utf-8")
+        monkeypatch.setenv("FACTORY_OTEL_JSONL_PATH", "/otel-data/spans.jsonl")
+        monkeypatch.setenv("FACTORY_OTEL_RAW_DB", "/otel-index/otel-raw.db")
+        monkeypatch.setattr(
+            "factory.dashboard.otel_raw_reader._default_jsonl_path",
+            lambda: jsonl,
+        )
+        monkeypatch.setattr(
+            "factory.dashboard.otel_raw_reader._default_db_path",
+            lambda: db,
+        )
+
+        res = tc.get(
+            f"/api/bff/spans?job_id={job_id}&component=clipool-workers&page_size=10"
+        )
+        assert res.status_code == 200
+        body = res.json()
+        assert body["total"] == 1
+        assert db.exists()
+        assert body["items"][0]["job_id"] == job_id
+
+    def test_bff_spans_degrades_on_readonly_db(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("FACTORY_DASHBOARD_E2E", raising=False)
+        tc, _adapter, _nc = wired_client
+        otel_data = tmp_path / "otel-data"
+        otel_index = tmp_path / "otel-index"
+        otel_data.mkdir()
+        otel_index.mkdir()
+        jsonl = otel_data / "spans.jsonl"
+        db = otel_index / "otel-raw.db"
+        jsonl.write_text(
+            json.dumps(
+                {
+                    "trace_id": "trace-ro",
+                    "span_id": "span-ro",
+                    "name": "nats.work",
+                    "start_time_unix_nano": 1_000_000_000,
+                    "end_time_unix_nano": 2_000_000_000,
+                    "attributes": {
+                        "roxabi.job_id": "f" * 32,
+                        "roxabi.component": "omp-workers",
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        db.touch()
+        os.chmod(db, stat.S_IRUSR | stat.S_IRGRP)
+        os.chmod(otel_index, stat.S_IRUSR | stat.S_IXUSR | stat.S_IRGRP | stat.S_IXGRP)
+        monkeypatch.setenv("FACTORY_OTEL_JSONL_PATH", "/otel-data/spans.jsonl")
+        monkeypatch.setenv("FACTORY_OTEL_RAW_DB", "/otel-index/otel-raw.db")
+        monkeypatch.setattr(
+            "factory.dashboard.otel_raw_reader._default_jsonl_path",
+            lambda: jsonl,
+        )
+        monkeypatch.setattr(
+            "factory.dashboard.otel_raw_reader._default_db_path",
+            lambda: db,
+        )
+        try:
+            res = tc.get("/api/bff/spans?job_id=" + "f" * 32)
+        finally:
+            os.chmod(otel_index, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP)
+            os.chmod(db, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP)
+        assert res.status_code == 200
+        assert res.json()["total"] == 0
+        assert res.json()["items"] == []

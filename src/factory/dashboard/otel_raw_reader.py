@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import sqlite3
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+log = logging.getLogger(__name__)
 
 
 def _default_jsonl_path() -> Path:
@@ -269,6 +272,13 @@ class OtelRawReader:
             for r in rows
         ]
         return items, int(total)
+
+    def safe_query_spans(self, **query: Any) -> tuple[list[SpanRow], int]:
+        try:
+            return self.query_spans(**query)
+        except (OSError, PermissionError, sqlite3.OperationalError) as exc:
+            log.warning("otel-raw query degraded: %s", exc)
+            return [], 0
 
 
 def _str_or_none(value: Any) -> str | None:

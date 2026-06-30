@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import stat
 from pathlib import Path
 
 from factory.dashboard.otel_raw_reader import OtelRawReader
@@ -83,3 +85,31 @@ def test_index_otlp_batch_with_multiple_spans(tmp_path) -> None:
     assert total == 2
     job_ids = {row.job_id for row in items}
     assert job_ids == {job_a, job_b}
+
+
+def test_safe_query_spans_degrades_on_readonly_db(tmp_path: Path) -> None:
+    jsonl = tmp_path / "otel-data" / "spans.jsonl"
+    jsonl.parent.mkdir()
+    line = {
+        "trace_id": "ro-trace",
+        "span_id": "ro-span",
+        "name": "nats.work",
+        "start_time_unix_nano": 1_000_000_000,
+        "end_time_unix_nano": 2_000_000_000,
+        "attributes": {"roxabi.job_id": "d" * 32, "roxabi.component": "omp-workers"},
+    }
+    jsonl.write_text(json.dumps(line) + "\n", encoding="utf-8")
+    index_dir = tmp_path / "otel-index"
+    index_dir.mkdir()
+    db = index_dir / "otel-raw.db"
+    db.touch()
+    os.chmod(db, stat.S_IRUSR | stat.S_IRGRP)
+    os.chmod(index_dir, stat.S_IRUSR | stat.S_IXUSR | stat.S_IRGRP | stat.S_IXGRP)
+    reader = OtelRawReader(jsonl_path=jsonl, db_path=db)
+    try:
+        items, total = reader.safe_query_spans(job_id="d" * 32)
+    finally:
+        os.chmod(index_dir, stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP)
+        os.chmod(db, stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP)
+    assert items == []
+    assert total == 0

@@ -177,7 +177,7 @@ def build_bff_router(  # noqa: C901, PLR0915
         page_size: int = Query(default=50, ge=1, le=200),
     ) -> dict:
         reader = OtelRawReader()
-        items, total = reader.query_spans(
+        items, total = reader.safe_query_spans(
             pool_id=pool_id,
             job_id=job_id,
             component=component,

@@ -7,7 +7,9 @@ ROXABI_DIR="${HOME}/.roxabi/factory"
 
 mkdir -p "${OTEL_DIR}" "${ROXABI_DIR}"
 chmod 750 "${OTEL_DIR}" "${ROXABI_DIR}"
+touch "${ROXABI_DIR}/otel-raw.db"
+chmod 640 "${ROXABI_DIR}/otel-raw.db"
 
 echo "otel-raw bootstrap ok:"
 echo "  JSONL dir: ${OTEL_DIR}"
-echo "  SQLite:    ${ROXABI_DIR}/otel-raw.db (created on first BFF index)"
+echo "  SQLite:    ${ROXABI_DIR}/otel-raw.db (dashboard RW bind mount)"

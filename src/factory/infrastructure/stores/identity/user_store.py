@@ -11,8 +11,11 @@ from factory.core.auth.platform_keys import (
     USER_ID_PREFIX,
     parse_platform_key,
 )
-from factory.core.auth.user_models import PlatformIdentity, User
+from factory.core.auth.user_models import User
 from factory.infrastructure.stores.base.sqlite_base import SqliteStore
+from factory.infrastructure.stores.identity.user_store_profile import (
+    UserStoreProfileOps,
+)
 
 log = logging.getLogger(__name__)
 
@@ -22,8 +25,14 @@ _CREATE_USERS = """
 CREATE TABLE IF NOT EXISTS users (
     id           TEXT PRIMARY KEY,
     display_name TEXT,
+    email        TEXT,
     created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 )
+"""
+
+_CREATE_USERS_EMAIL_INDEX = """
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email
+ON users(email) WHERE email IS NOT NULL
 """
 
 _CREATE_PLATFORM_IDENTITIES = """
@@ -61,7 +70,7 @@ def _parse_ts(raw: str) -> datetime:
     return ts
 
 
-class UserStore(SqliteStore):
+class UserStore(UserStoreProfileOps, SqliteStore):
     """SQLite-backed canonical user registry with write-through cache.
 
     ``resolve_*`` methods are synchronous (cache-only). Writes update SQLite
@@ -77,9 +86,21 @@ class UserStore(SqliteStore):
         await self._open_db(
             ddl=[_CREATE_USERS, _CREATE_PLATFORM_IDENTITIES, _CREATE_USER_MIGRATION]
         )
+        await self._migrate_users_email()
         await self._warm_cache()
         await self._migrate_legacy_aliases()
         log.info("UserStore connected (db=%s)", self._db_path)
+
+    async def _migrate_users_email(self) -> None:
+        """Add ``email`` column + partial unique index on existing auth.db."""
+        db = self._require_db()
+        async with db.execute("PRAGMA table_info(users)") as cur:
+            cols = {row[1] async for row in cur}
+        if "email" not in cols:
+            await db.execute("ALTER TABLE users ADD COLUMN email TEXT")
+            await db.commit()
+        await db.execute(_CREATE_USERS_EMAIL_INDEX)
+        await db.commit()
 
     async def _warm_cache(self) -> None:
         db = self._require_db()
@@ -176,7 +197,7 @@ class UserStore(SqliteStore):
         user_id = _new_user_id()
         db = self._require_db()
         await db.execute(
-            "INSERT INTO users (id, display_name) VALUES (?, ?)",
+            "INSERT INTO users (id, display_name, email) VALUES (?, ?, NULL)",
             (user_id, display_name),
         )
         await db.execute(
@@ -241,7 +262,8 @@ class UserStore(SqliteStore):
         new_user_id = _new_user_id()
         db = self._require_db()
         await db.execute(
-            "INSERT INTO users (id, display_name) VALUES (?, NULL)", (new_user_id,)
+            "INSERT INTO users (id, display_name, email) VALUES (?, NULL, NULL)",
+            (new_user_id,),
         )
         await db.execute(
             "UPDATE platform_identities SET user_id = ? WHERE platform_key = ?",
@@ -273,46 +295,19 @@ class UserStore(SqliteStore):
     async def get_user(self, user_id: str) -> User | None:
         db = self._require_db()
         async with db.execute(
-            "SELECT id, display_name, created_at FROM users WHERE id = ?", (user_id,)
+            "SELECT id, display_name, email, created_at FROM users WHERE id = ?",
+            (user_id,),
         ) as cur:
             row = await cur.fetchone()
         if row is None:
             return None
-        uid, display_name, created_at = row
-        return User(id=uid, display_name=display_name, created_at=_parse_ts(created_at))
-
-    async def list_platform_identities(self, user_id: str) -> tuple[PlatformIdentity, ...]:  # noqa: E501
-        db = self._require_db()
-        identities: list[PlatformIdentity] = []
-        async with db.execute(
-            f"SELECT {_IDENTITY_COLS} FROM platform_identities WHERE user_id = ?",
-            (user_id,),
-        ) as cur:
-            async for row in cur:
-                platform_key, platform, platform_uid, uid, linked_at = row
-                identities.append(
-                    PlatformIdentity(
-                        platform_key=platform_key,
-                        platform=platform,
-                        platform_uid=platform_uid,
-                        user_id=uid,
-                        linked_at=_parse_ts(linked_at),
-                    )
-                )
-        return tuple(identities)
-
-    async def list_users(self) -> tuple[User, ...]:
-        db = self._require_db()
-        users: list[User] = []
-        async with db.execute(
-            "SELECT id, display_name, created_at FROM users ORDER BY created_at"
-        ) as cur:
-            async for row in cur:
-                uid, display_name, created_at = row
-                users.append(
-                    User(id=uid, display_name=display_name, created_at=_parse_ts(created_at))  # noqa: E501
-                )
-        return tuple(users)
+        uid, display_name, email, created_at = row
+        return User(
+            id=uid,
+            display_name=display_name,
+            email=email,
+            created_at=_parse_ts(created_at),
+        )
 
     async def close(self) -> None:
         await super().close()

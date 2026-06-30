@@ -1,9 +1,16 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { createRootRouteWithContext, createRoute, createRouter } from "@tanstack/react-router";
+import {
+  createRootRouteWithContext,
+  createRoute,
+  createRouter,
+  redirect,
+} from "@tanstack/react-router";
 import { AppShell } from "@/components/AppShell";
+import { AdminPage } from "@/pages/AdminPage";
 import { AgentDetailPage, AgentsListPage } from "@/pages/AgentsPage";
 import { ChatPage } from "@/pages/ChatPage";
 import { DashboardHome } from "@/pages/DashboardHome";
+import { DesignSystemPage } from "@/pages/DesignSystemPage";
 import { FleetPage } from "@/pages/FleetPage";
 import { IntegrationsPage } from "@/pages/IntegrationsPage";
 import { JobsPage } from "@/pages/JobsPage";
@@ -44,6 +51,12 @@ const integrationsRoute = createRoute({
 const obsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/ops",
+  validateSearch: (search: Record<string, unknown>) => ({
+    container:
+      typeof search.container === "string" && search.container.trim()
+        ? search.container.trim()
+        : undefined,
+  }),
   component: OpsPage,
 });
 
@@ -65,6 +78,26 @@ const fleetRoute = createRoute({
   component: FleetPage,
 });
 
+const designSystemRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/design-system",
+  component: DesignSystemPage,
+});
+
+const usersRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/users",
+  component: AdminPage,
+});
+
+const adminRedirectRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/admin",
+  beforeLoad: () => {
+    throw redirect({ to: "/users" });
+  },
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   chatRoute,
@@ -74,6 +107,9 @@ const routeTree = rootRoute.addChildren([
   agentDetailRoute,
   fleetRoute,
   obsRoute,
+  usersRoute,
+  adminRedirectRoute,
+  designSystemRoute,
 ]);
 
 export const router = createRouter({

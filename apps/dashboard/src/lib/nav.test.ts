@@ -8,6 +8,8 @@ describe("nav", () => {
     expect(resolvePageTitle("/jobs")).toEqual({ key: "nav.jobs" });
     expect(resolvePageTitle("/integrations")).toEqual({ key: "nav.integrations" });
     expect(resolvePageTitle("/ops")).toEqual({ key: "nav.ops" });
+    expect(resolvePageTitle("/design-system")).toEqual({ key: "nav.designSystem" });
+    expect(resolvePageTitle("/users")).toEqual({ key: "nav.users" });
   });
 
   it("marks chat and child paths active", () => {
@@ -29,8 +31,10 @@ describe("nav", () => {
 
   it("resolves layout flags for chat full bleed", () => {
     expect(resolveNavFlags("/chat").fullBleed).toBe(true);
+    expect(resolveNavFlags("/chat").hideBottomNav).toBe(true);
     expect(resolveNavFlags("/jobs").wideLayout).toBe(true);
     expect(resolveNavFlags("/integrations").wideLayout).toBe(true);
     expect(resolveNavFlags("/").wideLayout).toBe(true);
+    expect(resolveNavFlags("/agents").hideBottomNav).toBe(false);
   });
 });

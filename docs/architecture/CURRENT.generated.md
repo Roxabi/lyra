@@ -175,11 +175,11 @@
 - **Subscribe:** _inbox.voice-client.>
 
 ### voice-stt
-- **Publish:** $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.system.ready, factory.voice.stt.heartbeat
+- **Publish:** $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.metric.host.container_report, factory.system.ready, factory.voice.stt.heartbeat
 - **Subscribe:** $KV.factory-state.>, _inbox.voice-stt.>, factory.voice.stt.lifecycle.>, factory.voice.stt.request, factory.voice.stt.request.>
 
 ### voice-tts
-- **Publish:** $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.system.ready, factory.voice.tts.heartbeat
+- **Publish:** $JS.API.STREAM.INFO.KV_factory-state, $JS.API.STREAM.MSG.GET.KV_factory-state, factory.metric.host.container_report, factory.system.ready, factory.voice.tts.heartbeat
 - **Subscribe:** $KV.factory-state.>, _inbox.voice-tts.>, factory.voice.tts.lifecycle.>, factory.voice.tts.request, factory.voice.tts.request.>
 
 ### web-adapter

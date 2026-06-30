@@ -12,31 +12,30 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import ValidationError
 
-from factory.dashboard.pipeline_stream import (
-    PIPELINE_STREAM_ID,
-    pipeline_sse_events,
-)
-from factory.dashboard.stream_tokens import StreamTokenRegistry
-
 from factory.dashboard.e2e import (
     e2e_enabled,
     stub_agents_status,
     stub_fleet,
-    stub_pipeline,
     stub_jobs_launch,
     stub_jobs_list,
     stub_jobs_steer,
     stub_ops_health,
     stub_ops_logs,
+    stub_pipeline,
     stub_resume,
     stub_sessions_list,
     stub_sessions_turns,
 )
 from factory.dashboard.ops_proxy import fetch_ops_health, fetch_ops_logs
 from factory.dashboard.otel_client import fetch_spans
+from factory.dashboard.pipeline_stream import (
+    PIPELINE_STREAM_ID,
+    pipeline_sse_events,
+)
 from factory.dashboard.routes.bff_admin import register_admin_routes
 from factory.dashboard.routes.bff_agents import register_agent_routes
 from factory.dashboard.routes.bff_common import map_hub_errors
+from factory.dashboard.stream_tokens import StreamTokenRegistry
 from roxabi_contracts.dashboard import (
     DashboardJobsLaunchRequest,
     DashboardJobsLaunchResponse,

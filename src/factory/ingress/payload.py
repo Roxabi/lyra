@@ -70,6 +70,21 @@ def _pages_deployment_summary(
     return out or None
 
 
+def _pr_label_names(labels_raw: object, event_label: Any) -> list[str]:
+    labels: list[str] = []
+    if isinstance(labels_raw, list):
+        for item in labels_raw:
+            if isinstance(item, dict):
+                name = item.get("name")
+                if isinstance(name, str):
+                    labels.append(name)
+    event_label_dict = event_label if isinstance(event_label, dict) else None
+    label_name = payload_label_name(event_label_dict)
+    if label_name and label_name not in labels:
+        labels.append(label_name)
+    return labels
+
+
 def _pull_request_summary(
     node: Any,
     *,
@@ -79,17 +94,7 @@ def _pull_request_summary(
         return None
     head = node.get("head")
     head_dict = head if isinstance(head, dict) else {}
-    labels_raw = node.get("labels")
-    labels: list[str] = []
-    if isinstance(labels_raw, list):
-        for item in labels_raw:
-            if isinstance(item, dict):
-                name = item.get("name")
-                if isinstance(name, str):
-                    labels.append(name)
-    label_name = payload_label_name(event_label if isinstance(event_label, dict) else None)
-    if label_name and label_name not in labels:
-        labels.append(label_name)
+    labels = _pr_label_names(node.get("labels"), event_label)
     out: dict[str, Any] = {}
     for key in ("number", "title", "state", "merged", "html_url"):
         if node.get(key) is not None:

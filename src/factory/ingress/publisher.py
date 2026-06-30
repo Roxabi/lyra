@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 import nats.errors
 
-from roxabi_contracts.event import LyraEvent, per_service_event
+from roxabi_contracts.event import LyraEvent, per_connector_tenant_event
 
 if TYPE_CHECKING:
     from nats.js.client import JetStreamContext
@@ -22,7 +22,9 @@ class EventPublisher:
         self._js = js
 
     async def publish(self, event: LyraEvent, *, msg_id: str | None = None) -> bool:
-        subject = per_service_event(event.service, event.kind)
+        subject = per_connector_tenant_event(
+            event.service, event.tenant, event.kind
+        )
         headers = {"Nats-Msg-Id": msg_id} if msg_id else None
         try:
             await self._js.publish(

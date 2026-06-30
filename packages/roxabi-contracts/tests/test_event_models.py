@@ -41,6 +41,12 @@ def test_event_minimal() -> None:
     evt = LyraEvent(**_ENV, service="hub", kind="heartbeat", level="debug")
     assert evt.message is None
     assert evt.payload is None
+    assert evt.tenant == "default"
+
+
+def test_event_explicit_tenant() -> None:
+    evt = LyraEvent(**_ENV, service="github", kind="push", level="info", tenant="acme")
+    assert evt.tenant == "acme"
 
 
 def test_event_error_level_requires_message() -> None:

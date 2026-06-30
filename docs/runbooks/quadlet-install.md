@@ -14,6 +14,7 @@ All units attach to `roxabi.network` (systemd `--user`, linger enabled).
 | `factory-gh-helper` | `ghcr.io/roxabi/factory:staging` | GitHub App token-mint (`factory-gh.pod`) |
 | `factory-turn-writer` | `ghcr.io/roxabi/factory:staging-svc` | JetStream writer for `turns.db` |
 | `factory-blobstore` | `ghcr.io/roxabi/factory:staging-svc` | HTTP BlobStore (port 8449) |
+| `factory-ingress` | `ghcr.io/roxabi/factory:staging-svc` | External webhooks → `factory.event.*` (ADR-096; port 8780 tailnet) |
 | `factory-omp` | `ghcr.io/roxabi/factory:staging` | OmpWorker NATS backend |
 
 Image tag split (`staging` vs `staging-svc`) → [ops/container-publishing.md](../ops/container-publishing.md).

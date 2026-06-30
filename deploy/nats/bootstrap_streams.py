@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Bootstrap factory-events and factory-metrics JetStream streams.
 
-Idempotent — safe to run multiple times. Uses the add→BadRequestError→update
-pattern mirroring turn_writer/stream_setup.py.
+Idempotent — safe to run multiple times. Delegates to hub SSoT in
+``factory.infrastructure.events.stream_setup``.
 
 Retention policy (ops decision #1183):
   factory-events  — 24 h hot  (MaxAge=86400 s)
@@ -24,10 +24,9 @@ import os
 import sys
 from pathlib import Path
 
-from nats.js.api import RetentionPolicy, StorageType, StreamConfig
-from nats.js.errors import BadRequestError
-
 import nats
+
+from factory.infrastructure.events.stream_setup import ensure_observability_streams
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger(__name__)
@@ -36,50 +35,6 @@ NATS_URL = os.environ.get("NATS_URL", "nats://127.0.0.1:4222")
 NKEY_PATH = os.environ.get(
     "NATS_NKEY_SEED_PATH", str(Path.home() / ".roxabi/factory/nkeys/hub.seed")
 )
-
-STREAMS: dict[str, dict] = {
-    "factory-events": {
-        "subjects": ["factory.event.>"],
-        "retention": RetentionPolicy.LIMITS,
-        "max_age": 24 * 60 * 60,  # 24 hours (hot)
-        "max_bytes": 512 * 1024 * 1024,  # 512 MiB
-        "storage": StorageType.FILE,
-        "duplicate_window": 120,  # 2 min dedup
-    },
-    "factory-metrics": {
-        "subjects": ["factory.metric.>"],
-        "retention": RetentionPolicy.LIMITS,
-        "max_age": 7 * 24 * 60 * 60,  # 7 days (warm)
-        "max_bytes": 256 * 1024 * 1024,  # 256 MiB
-        "storage": StorageType.FILE,
-        "duplicate_window": 60,  # 1 min dedup
-    },
-}
-
-
-async def ensure_stream(js, name: str, cfg: dict) -> None:
-    stream_cfg = StreamConfig(
-        name=name,
-        subjects=cfg["subjects"],
-        retention=cfg["retention"],
-        storage=cfg["storage"],
-        max_age=float(cfg["max_age"]),
-        max_bytes=cfg["max_bytes"],
-        duplicate_window=cfg["duplicate_window"],
-    )
-    try:
-        await js.add_stream(stream_cfg)
-        log.info("Stream %s created", name)
-    except BadRequestError:
-        try:
-            await js.update_stream(stream_cfg)
-            log.info("Stream %s config updated", name)
-        except nats.errors.Error:
-            log.exception("Stream %s update failed", name)
-            raise
-    except nats.errors.Error:
-        log.exception("Stream %s add failed", name)
-        raise
 
 
 async def main() -> int:
@@ -96,9 +51,7 @@ async def main() -> int:
     nc = None
     try:
         nc = await nats.connect(**kwargs)
-        js = nc.jetstream()
-        for name, cfg in STREAMS.items():
-            await ensure_stream(js, name, cfg)
+        await ensure_observability_streams(nc.jetstream())
         log.info("All streams provisioned.")
         return 0
     except Exception:

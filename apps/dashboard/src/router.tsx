@@ -6,6 +6,7 @@ import { ChatPage } from "@/pages/ChatPage";
 import { DashboardHome } from "@/pages/DashboardHome";
 import { FleetPage } from "@/pages/FleetPage";
 import { JobsPage } from "@/pages/JobsPage";
+import { IntegrationsPage } from "@/pages/IntegrationsPage";
 import { OpsPage } from "@/pages/OpsPage";
 
 interface RouterContext {
@@ -32,6 +33,12 @@ const jobsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/jobs",
   component: JobsPage,
+});
+
+const integrationsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/integrations",
+  component: IntegrationsPage,
 });
 
 const obsRoute = createRoute({
@@ -62,10 +69,11 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   chatRoute,
   jobsRoute,
-  obsRoute,
+  integrationsRoute,
   agentsRoute,
   agentDetailRoute,
   fleetRoute,
+  obsRoute,
 ]);
 
 export const router = createRouter({

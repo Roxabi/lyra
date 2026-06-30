@@ -4,5 +4,34 @@
     "title": "Context",
     "agentStatus": "Agent status",
     "activeJobs": "Active jobs"
+  },
+  "sidebar": {
+    "agentLabel": "Agent",
+    "new": "New",
+    "activeChats": "Active chats",
+    "closeTab": "Close",
+    "resume": "Resume",
+    "loading": "Loading…",
+    "noSessions": "No sessions",
+    "emptyMessage": "(empty)",
+    "turnCount": "{{count}} turns",
+    "newSession": "new session",
+    "sessionHint": "session {{id}}"
+  },
+  "composer": {
+    "placeholder": "Write your message…",
+    "placeholderOffline": "Agent offline",
+    "send": "Send"
+  },
+  "emptyState": {
+    "title": "Conversation with {{agent}}",
+    "offline": "Agent is offline. Check the harness or try again later.",
+    "online": "Send a message to start. Responses appear here in real time."
+  },
+  "picker": {
+    "harness": "Harness",
+    "model": "Model",
+    "offline": "Offline",
+    "dbOverride": "≠ DB default ({{default}})"
   }
 }

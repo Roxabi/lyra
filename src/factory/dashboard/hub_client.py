@@ -9,7 +9,12 @@ from typing import TYPE_CHECKING, Any
 from roxabi_contracts.dashboard import (
     SUBJECTS,
     AgentHealthResponse,
+    DashboardAdminAccessResponse,
+    DashboardAdminUserCreateRequest,
+    DashboardAdminUserPatchRequest,
+    DashboardAdminUserResponse,
     DashboardAgentConfigResponse,
+    DashboardAgentCreateRequest,
     DashboardAgentPatchRequest,
     DashboardAgentsListResponse,
     DashboardAgentSoulPreviewRequest,
@@ -41,6 +46,44 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 _RPC_TIMEOUT = 5.0  # const-ok: dashboard hub RPC timeout
+
+
+class HubAgentNotFoundError(LookupError):
+    """Hub RPC returned ``{"error": "not_found"}`` for an agent config call."""
+
+
+class HubAgentConflictError(ValueError):
+    """Hub RPC returned ``{"error": "conflict"}`` for an agent create call."""
+
+
+class HubUserNotFoundError(LookupError):
+    """Hub RPC returned ``{"error": "not_found"}`` for an admin user call."""
+
+
+class HubUserConflictError(ValueError):
+    """Hub RPC returned ``{"error": "conflict"}`` for an admin user write call."""
+
+
+class HubStoreUnavailableError(RuntimeError):
+    """Hub RPC returned ``{"error": "store_unavailable"}``."""
+
+
+def _raise_admin_user_rpc_error(raw: dict[str, Any]) -> None:
+    err = raw.get("error")
+    if err == "not_found":
+        raise HubUserNotFoundError(str(raw.get("message") or "not_found"))
+    if err == "conflict":
+        raise HubUserConflictError(str(raw.get("message") or "conflict"))
+    if err == "store_unavailable":
+        raise HubStoreUnavailableError(str(raw.get("message") or "store_unavailable"))
+
+
+def _raise_agent_rpc_error(raw: dict[str, Any]) -> None:
+    err = raw.get("error")
+    if err == "not_found":
+        raise HubAgentNotFoundError(str(raw.get("message") or "not_found"))
+    if err == "conflict":
+        raise HubAgentConflictError(str(raw.get("message") or "conflict"))
 
 
 class DashboardHubClient:
@@ -126,16 +169,51 @@ class DashboardHubClient:
         raw = await self._request(SUBJECTS.agents_list, {})
         return DashboardAgentsListResponse.model_validate(raw)
 
+    async def create_agent_config(
+        self, body: DashboardAgentCreateRequest
+    ) -> DashboardAgentConfigResponse:
+        raw = await self._request(
+            SUBJECTS.agents_create, {"body": body.model_dump()}
+        )
+        _raise_agent_rpc_error(raw)
+        return DashboardAgentConfigResponse.model_validate(raw)
+
+    async def list_admin_access(self) -> DashboardAdminAccessResponse:
+        raw = await self._request(SUBJECTS.admin_access, {})
+        return DashboardAdminAccessResponse.model_validate(raw)
+
+    async def create_admin_user(
+        self, body: DashboardAdminUserCreateRequest
+    ) -> DashboardAdminUserResponse:
+        raw = await self._request(
+            SUBJECTS.admin_user_create, {"body": body.model_dump()}
+        )
+        _raise_admin_user_rpc_error(raw)
+        return DashboardAdminUserResponse.model_validate(raw)
+
+    async def patch_admin_user(
+        self, user_id: str, patch: DashboardAdminUserPatchRequest
+    ) -> DashboardAdminUserResponse:
+        raw = await self._request(
+            SUBJECTS.admin_user_patch,
+            {"user_id": user_id, "patch": patch.model_dump(exclude_unset=True)},
+        )
+        _raise_admin_user_rpc_error(raw)
+        return DashboardAdminUserResponse.model_validate(raw)
+
     async def get_agent_config(self, name: str) -> DashboardAgentConfigResponse:
         raw = await self._request(SUBJECTS.agents_get, {"name": name})
+        _raise_agent_rpc_error(raw)
         return DashboardAgentConfigResponse.model_validate(raw)
 
     async def patch_agent_config(
         self, name: str, patch: DashboardAgentPatchRequest
     ) -> DashboardAgentConfigResponse:
         raw = await self._request(
-            SUBJECTS.agents_patch, {"name": name, "patch": patch.model_dump()}
+            SUBJECTS.agents_patch,
+            {"name": name, "patch": patch.model_dump(exclude_unset=True)},
         )
+        _raise_agent_rpc_error(raw)
         return DashboardAgentConfigResponse.model_validate(raw)
 
     async def put_agent_soul(
@@ -145,10 +223,12 @@ class DashboardHubClient:
             SUBJECTS.agents_soul_put,
             {"name": name, "body": body.model_dump()},
         )
+        _raise_agent_rpc_error(raw)
         return DashboardAgentSoulSectionsResponse.model_validate(raw)
 
     async def get_agent_soul(self, name: str) -> DashboardAgentSoulSectionsResponse:
         raw = await self._request(SUBJECTS.agents_soul_get, {"name": name})
+        _raise_agent_rpc_error(raw)
         return DashboardAgentSoulSectionsResponse.model_validate(raw)
 
     async def preview_agent_soul(

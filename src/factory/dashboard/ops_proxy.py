@@ -35,7 +35,37 @@ _LOG_PRESETS: dict[OpsLogPreset, str] = {
     "deploy-failures": (
         '{job="factory-journal", syslog_id="factory-deploy-failure"}'
     ),
+    "container-journal": (
+        '{job="factory-journal", systemd_unit="factory-hub.service"}'
+    ),
 }
+
+
+def _systemd_unit_for_container(container: str) -> str:
+    name = container.strip()
+    if not name:
+        raise ValueError("container name required")
+    if name.endswith(".service"):
+        return name
+    return f"{name}.service"
+
+
+def build_ops_log_query(
+    preset: OpsLogPreset,
+    *,
+    container: str | None = None,
+) -> str:
+    if preset == "container-journal":
+        if not container:
+            raise ValueError(
+                "container query param required for container-journal preset",
+            )
+        unit = _systemd_unit_for_container(container)
+        return f'{{job="factory-journal", systemd_unit="{unit}"}}'
+    if container:
+        unit = _systemd_unit_for_container(container)
+        return f'{{job="factory-journal", systemd_unit="{unit}"}}'
+    return _LOG_PRESETS[preset]
 
 _ENGINE_LABELS: dict[str, str] = {
     "loki": "Loki",
@@ -147,10 +177,11 @@ def _parse_loki_streams(payload: dict, *, limit: int) -> list[OpsLogEntry]:
 async def fetch_ops_logs(
     preset: OpsLogPreset,
     *,
+    container: str | None = None,
     limit: int = 50,
     since_hours: int = 24,
 ) -> DashboardOpsLogsResponse:
-    query = _LOG_PRESETS[preset]
+    query = build_ops_log_query(preset, container=container)
     end = datetime.now(tz=UTC)
     start = end - timedelta(hours=since_hours)
     params = {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AgentStatusBadge } from "@/components/AgentStatusBadge";
+import { AgentIdentity } from "@/components/agents/AgentIdentity";
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { MessageList } from "@/components/chat/MessageList";
 import { HarnessPicker } from "@/components/HarnessPicker";
@@ -66,16 +67,12 @@ export function ChatPane({ tab, health, initialLog, onUpdate, dbDefaults }: Chat
   return (
     <div className="flex h-full min-h-0 flex-col">
       <header className="flex shrink-0 flex-wrap items-center gap-3 px-5 py-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-brand/15 text-xs font-semibold text-brand">
-            {label.slice(0, 1)}
-          </div>
-          <div className="min-w-0">
-            <p className="truncate font-[family-name:var(--font-head)] text-sm font-semibold">
-              {label}
-            </p>
-            <p className="text-xs text-muted-foreground">Session opérateur</p>
-          </div>
+        <div className="flex min-w-0 items-center gap-2">
+          <AgentIdentity
+            agentId={tab.agent}
+            subtitle={`${tab.harness} · ${tab.model}`}
+            nameClassName="font-[family-name:var(--font-head)] text-sm font-semibold"
+          />
           <AgentStatusBadge health={health} />
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">

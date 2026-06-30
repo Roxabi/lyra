@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:live": "DASHBOARD_MOCK=0 vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
@@ -16,6 +17,8 @@
     "@fontsource/jetbrains-mono": "^5.2.5",
     "@fontsource/outfit": "^5.2.5",
     "@phosphor-icons/react": "^2.1.10",
+    "@radix-ui/react-avatar": "^1.2.1",
+    "@radix-ui/react-dropdown-menu": "^2.1.19",
     "@radix-ui/react-separator": "^1.1.10",
     "@radix-ui/react-slot": "^1.2.3",
     "@roxabi-factory/shared": "workspace:*",
@@ -27,6 +30,7 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-i18next": "^17.0.8",
+    "sonner": "^2.0.7",
     "tailwind-merge": "^3.3.0"
   },
   "devDependencies": {

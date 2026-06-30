@@ -9,6 +9,7 @@ from datetime import UTC
 from typing import Literal
 
 from factory.nats.fleet_catalog import FleetCatalogEntry, load_fleet_catalog
+from factory.nats.fleet_digest import ImageDigestStatus, load_fleet_digest_state
 from roxabi_contracts.fleet.models import ContainerReport
 from roxabi_satellite.tokens import validate_nats_single_token
 
@@ -49,6 +50,7 @@ class FleetSnapshotRow:
     systemd_unit: str
     instrumented: bool
     source: str
+    image_digest_status: ImageDigestStatus
 
 
 class FleetStore:
@@ -120,11 +122,18 @@ class FleetStore:
             prev = live_by_name.get(name)
             if prev is None or entry.received_at > prev.received_at:
                 live_by_name[name] = entry
+        digest_by_name = load_fleet_digest_state()
         rows: list[FleetSnapshotRow] = []
         for catalog in self._catalog:
             live = live_by_name.get(catalog.container_name)
             age = self._age_s(live)
             status = self._live_status(catalog, live)
+            digest_row = digest_by_name.get(catalog.container_name)
+            digest_status: ImageDigestStatus = (
+                digest_row.status
+                if digest_row is not None
+                else ("n/a" if catalog.pinned else "unknown_compare")
+            )
             report = live.report if live else None
             rows.append(
                 FleetSnapshotRow(
@@ -144,6 +153,7 @@ class FleetStore:
                     systemd_unit=catalog.systemd_unit,
                     instrumented=catalog.instrumented,
                     source="live" if live else catalog.source,
+                    image_digest_status=digest_status,
                 )
             )
         return rows

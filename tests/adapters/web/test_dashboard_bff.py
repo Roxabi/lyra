@@ -349,3 +349,122 @@ class TestDashboardBffRealPath:
         assert res.status_code == 200
         assert res.json()["soul_document_blob_ref"] == "sha256:abc"
         assert nc.request.await_args.args[0] == SUBJECTS.agents_get
+
+    def test_create_agent_config_calls_hub_rpc(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("FACTORY_DASHBOARD_E2E", raising=False)
+        tc, _adapter, nc = wired_client
+        nc.request = AsyncMock(
+            return_value=_rpc_response(
+                {
+                    "name": "nova",
+                    "backend": "claude-cli",
+                    "model": "sonnet",
+                    "voice_json": None,
+                    "soul_meta_json": {"header": {"display_name": "Nova"}},
+                    "soul_document_blob_ref": None,
+                    "soul_document_bytes": None,
+                    "updated_at": "2026-06-30T10:00:00Z",
+                }
+            )
+        )
+        res = tc.post(
+            "/api/bff/agents",
+            json={
+                "name": "nova",
+                "backend": "claude-cli",
+                "model": "sonnet",
+                "display_name": "Nova",
+            },
+        )
+        assert res.status_code == 200
+        assert res.json()["name"] == "nova"
+        assert nc.request.await_args.args[0] == SUBJECTS.agents_create
+
+    def test_admin_access_calls_hub_rpc(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("FACTORY_DASHBOARD_E2E", raising=False)
+        tc, _adapter, nc = wired_client
+        nc.request = AsyncMock(
+            return_value=_rpc_response(
+                {
+                    "users": [
+                        {
+                            "user_id": "rx:user:abc",
+                            "display_name": "Ops",
+                            "telegram": {
+                                "platform": "telegram",
+                                "platform_uid": "123",
+                                "platform_key": "tg:user:123",
+                            },
+                            "discord": None,
+                            "agents": ["alpha"],
+                        }
+                    ]
+                }
+            )
+        )
+        res = tc.get("/api/bff/admin/access")
+        assert res.status_code == 200
+        assert res.json()["users"][0]["user_id"] == "rx:user:abc"
+        assert nc.request.await_args.args[0] == SUBJECTS.admin_access
+
+    def test_create_admin_user_calls_hub_rpc(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("FACTORY_DASHBOARD_E2E", raising=False)
+        tc, _adapter, nc = wired_client
+        nc.request = AsyncMock(
+            return_value=_rpc_response(
+                {
+                    "user_id": "rx:user:new1",
+                    "display_name": "Nova",
+                    "email": "nova@example.com",
+                    "telegram": None,
+                    "discord": None,
+                    "agents": [],
+                }
+            )
+        )
+        res = tc.post(
+            "/api/bff/admin/users",
+            json={"display_name": "Nova", "email": "nova@example.com"},
+        )
+        assert res.status_code == 200
+        assert res.json()["email"] == "nova@example.com"
+        assert nc.request.await_args.args[0] == SUBJECTS.admin_user_create
+
+    def test_patch_admin_user_calls_hub_rpc(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("FACTORY_DASHBOARD_E2E", raising=False)
+        tc, _adapter, nc = wired_client
+        nc.request = AsyncMock(
+            return_value=_rpc_response(
+                {
+                    "user_id": "rx:user:abc",
+                    "display_name": "Ops",
+                    "email": "ops@example.com",
+                    "telegram": None,
+                    "discord": None,
+                    "agents": ["alpha"],
+                }
+            )
+        )
+        res = tc.patch(
+            "/api/bff/admin/users/rx:user:abc",
+            json={"display_name": "Ops", "email": "ops@example.com"},
+        )
+        assert res.status_code == 200
+        assert res.json()["display_name"] == "Ops"
+        assert nc.request.await_args.args[0] == SUBJECTS.admin_user_patch

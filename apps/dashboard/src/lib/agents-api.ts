@@ -7,6 +7,9 @@ export interface AgentSummary {
   updated_at: string;
   soul_document_bytes: number | null;
   has_soul: boolean;
+  has_telegram: boolean;
+  has_discord: boolean;
+  has_email: boolean;
 }
 
 export interface AgentConfig {
@@ -28,6 +31,22 @@ export async function fetchAgentsConfigList(): Promise<{ agents: AgentSummary[] 
   const res = await fetch("/api/bff/agents");
   if (!res.ok) throw new Error("agents list failed");
   return res.json() as Promise<{ agents: AgentSummary[] }>;
+}
+
+export async function createAgentConfig(body: {
+  name: string;
+  backend: HarnessKind;
+  model: string;
+  display_name?: string;
+  tagline?: string;
+}): Promise<AgentConfig> {
+  const res = await fetch("/api/bff/agents", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error("agent create failed");
+  return res.json() as Promise<AgentConfig>;
 }
 
 export async function fetchAgentConfig(name: string): Promise<AgentConfig> {

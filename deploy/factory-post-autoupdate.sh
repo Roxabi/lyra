@@ -18,6 +18,10 @@ source "$(dirname "$0")/lib/deploy-common.sh"
 
 # FACTORY_TRACKED_IMAGES sourced from deploy-common.sh (fields 4–5 of converge stamp).
 
+_refresh_fleet_digests() {
+    bash "${FACTORY_DIR}/deploy/fleet-digest-poll.sh" || true
+}
+
 main() {
     local drifted=()
 
@@ -44,6 +48,7 @@ main() {
 
     if [ "${#drifted[@]}" -eq 0 ]; then
         echo "All tracked image digests unchanged — nothing to do."
+        _refresh_fleet_digests
         exit 0
     fi
 
@@ -56,6 +61,7 @@ main() {
     # change-gate detects structural drift after pull (no stamp deletion needed).
     echo "==> Running make converge..."
     make -C "${FACTORY_DIR}" converge
+    _refresh_fleet_digests
 }
 
 # Do NOT wrap main() in with_deploy_lock here. converge.sh already ends with

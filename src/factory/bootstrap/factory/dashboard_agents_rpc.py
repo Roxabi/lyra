@@ -17,6 +17,7 @@ from factory.infrastructure.soul.soul_ops import (
 )
 from roxabi_contracts.dashboard import (
     DashboardAgentConfigResponse,
+    DashboardAgentCreateRequest,
     DashboardAgentPatchRequest,
     DashboardAgentsListResponse,
     DashboardAgentSoulPreviewRequest,
@@ -43,6 +44,30 @@ def _agent_store(hub: Hub):
         agent = next(iter(hub.agent_registry.values()), None)
         store = getattr(agent, "_agent_store", None) if agent else None
     return store
+
+
+def _bot_store(hub: Hub):
+    return getattr(hub, "_bot_store", None)
+
+
+def _platform_flags_for_agent(hub: Hub, agent_name: str) -> tuple[bool, bool, bool]:
+    platforms: set[str] = set()
+    store = _agent_store(hub)
+    if store is not None:
+        for (platform, _bot_id), mapped_agent in store.get_all_bot_mappings().items():
+            if mapped_agent == agent_name:
+                platforms.add(platform.lower())
+
+    bot_store = _bot_store(hub)
+    if bot_store is not None:
+        for bot in bot_store.get_all():
+            if bot.agent == agent_name:
+                platforms.add(bot.platform.lower())
+
+    has_telegram = "telegram" in platforms
+    has_discord = "discord" in platforms
+    has_email = "email" in platforms or "mail" in platforms
+    return has_telegram, has_discord, has_email
 
 
 def _blob_store(hub: Hub):
@@ -104,18 +129,46 @@ async def handle_agents_list(hub: Hub, _nc: NATS, _payload: dict[str, Any]) -> d
     store = _agent_store(hub)
     if store is None:
         return DashboardAgentsListResponse(agents=[]).model_dump()
-    agents = [
-        DashboardAgentSummary(
-            name=r.name,
-            backend=r.backend,  # type: ignore[arg-type]
-            model=r.model,
-            updated_at=r.updated_at,
-            soul_document_bytes=r.soul_document_bytes,
-            has_soul=bool(r.soul_document_blob_ref),
+    agents = []
+    for r in store.get_all():
+        has_telegram, has_discord, has_email = _platform_flags_for_agent(hub, r.name)
+        agents.append(
+            DashboardAgentSummary(
+                name=r.name,
+                backend=r.backend,  # type: ignore[arg-type]
+                model=r.model,
+                updated_at=r.updated_at,
+                soul_document_bytes=r.soul_document_bytes,
+                has_soul=bool(r.soul_document_blob_ref),
+                has_telegram=has_telegram,
+                has_discord=has_discord,
+                has_email=has_email,
+            )
         )
-        for r in store.get_all()
-    ]
     return DashboardAgentsListResponse(agents=agents).model_dump()
+
+
+async def handle_agents_create(hub: Hub, _nc: NATS, payload: dict[str, Any]) -> dict:
+    req = DashboardAgentCreateRequest.model_validate(payload.get("body") or payload)
+    store = _agent_store(hub)
+    if store is None:
+        return {"error": "store_unavailable"}
+    if store.get(req.name) is not None:
+        return {"error": "conflict", "message": f"agent {req.name!r} already exists"}
+
+    meta = json.loads(default_soul_meta_json(req.display_name))
+    if req.tagline:
+        meta.setdefault("header", {})["tagline"] = req.tagline
+
+    row = AgentRow(
+        name=req.name,
+        backend=req.backend,
+        model=req.model,
+        soul_meta_json=json.dumps(meta),
+        source="dashboard",
+    )
+    await store.upsert(row)
+    return await handle_agents_get(hub, _nc, {"name": req.name})
 
 
 async def handle_agents_get(hub: Hub, _nc: NATS, payload: dict[str, Any]) -> dict:

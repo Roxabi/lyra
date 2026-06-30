@@ -42,7 +42,7 @@ class TestOtelHooks:
             envelope_name="JobEnvelope",
             queue_group="clipool-workers",
         )
-        hooks.record_domain_attrs({"roxabi.skill": "code-review"})
+        hooks.record_domain_attrs("a" * 32, {"roxabi.skill": "code-review"})
         hooks.on_work_end(
             trace_id="550e8400-e29b-41d4-a716-446655440000",
             job_id="a" * 32,
@@ -64,6 +64,36 @@ class TestOtelHooks:
         monkeypatch.setenv("ROXABI_OTEL_ENABLED", "0")
         assert otel_enabled() is False
 
+    def test_record_domain_attrs_targets_job_id(self) -> None:
+        recorder = InMemorySpanRecorder()
+        hooks = recorder.hooks("omp-workers")
+        job_a = "a" * 32
+        job_b = "b" * 32
+        hooks.on_work_start(
+            trace_id="t1",
+            job_id=job_a,
+            parent_job_id=None,
+            pool_id=None,
+            subject="s",
+            envelope_name="JobEnvelope",
+            queue_group="omp-workers",
+        )
+        hooks.on_work_start(
+            trace_id="t2",
+            job_id=job_b,
+            parent_job_id=None,
+            pool_id=None,
+            subject="s",
+            envelope_name="JobEnvelope",
+            queue_group="omp-workers",
+        )
+        hooks.record_domain_attrs(job_b, {ATTR_SKILL: "omp-run"})
+        hooks.on_work_end(trace_id="t1", job_id=job_a, duration_ms=1.0)
+        hooks.on_work_end(trace_id="t2", job_id=job_b, duration_ms=2.0)
+        spans = {s.job_id: s for s in recorder.finished_spans()}
+        assert spans[job_b].attributes[ATTR_SKILL] == "omp-run"
+        assert spans[job_a].attributes[ATTR_SKILL] == "unknown"
+
 
 class TestAdapterHookIntegration:
     @pytest.mark.asyncio
@@ -75,7 +105,7 @@ class TestAdapterHookIntegration:
             def on_work_end(self, **_k: object) -> None:
                 raise RuntimeError("boom")
 
-            def record_domain_attrs(self, _a: object) -> None:
+            def record_domain_attrs(self, _job: str, _a: object) -> None:
                 raise RuntimeError("boom")
 
         adapter = _HookAdapter(_BadHooks())

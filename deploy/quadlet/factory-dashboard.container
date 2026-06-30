@@ -31,9 +31,14 @@ Environment=FACTORY_WEB_PORT=8765
 Environment=FACTORY_LOKI_URL=http://factory-loki:3100
 Environment=FACTORY_LANGFUSE_URL=http://factory-langfuse-web:3000
 Environment=FACTORY_OTEL_HEALTH_URL=http://factory-otel-collector:13133
+Environment=FACTORY_OTEL_JSONL_PATH=/otel-data/spans.jsonl
+Environment=FACTORY_OTEL_RAW_DB=/roxabi-factory/otel-raw.db
+Environment=FACTORY_LANGFUSE_DEFERRED=1
 # Agent picker reads roster.web from factory-state KV (hub publishes at boot).
 # Phase 2 (ADR-094): roster.dashboard + platform rename.
 Volume=%h/.roxabi/factory/config.toml:/app/config.toml:ro,z
+Volume=%h/.local/state/factory/otel:/otel-data:ro,z
+Volume=%h/.roxabi/factory:/roxabi-factory:ro,z
 # Bind to M₁'s Tailscale IPv4 — Tailnet membership is the access boundary until
 # operator auth lands (#1992). ${TAILSCALE_IPV4} from web.env. Fail-closed guard
 # blocks startup if unset. See deploy/AGENTS.md §Network exposure tiers.

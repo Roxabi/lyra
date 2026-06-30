@@ -32,5 +32,7 @@ class MessageLifecycleHooks(Protocol):
     ) -> None: ...
 
     def record_domain_attrs(
-        self, attrs: Mapping[str, str | int | float | bool]
+        self,
+        job_id: str,
+        attrs: Mapping[str, str | int | float | bool],
     ) -> None: ...

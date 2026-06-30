@@ -3,7 +3,7 @@
 > **Issue:** [#2069](https://github.com/Roxabi/roxabi-factory/issues/2069) — `feat(obs): OTel raw telemetry — adapter hooks + collector JSONL + dashboard raw` (parent : [#1760](https://github.com/Roxabi/roxabi-factory/issues/1760) control-plane · [#1759](https://github.com/Roxabi/roxabi-factory/issues/1759) engines)  
 > **ADR cibles :** amendement [ADR-092](../../docs/architecture/adr/092-observability-architecture.mdx) · [ADR-094](../../docs/architecture/adr/094-control-plane-dashboard-consolidation.mdx) · nouveau **ADR-097** (otel-raw store)  
 > **Références :** [ADR-068](../../docs/architecture/adr/068-ecosystem-service-plane.mdx) · [ADR-073](../../docs/architecture/adr/073-axial-stage-of-pipeline-decomposition.mdx) · [ADR-084](../../docs/architecture/job-model.md) · [runbook otel-traces](../../docs/runbooks/otel-traces.md)  
-> **Statut global :** `in_progress` — Blocks 0–5 + 8 implémentés sur `feat/2069-otel-raw-telemetry` (2026-06-30)
+> **Statut global :** `phase_1_done` — Blocks 0–5 + 8 implémentés sur `feat/2069-otel-raw-telemetry` (2026-06-30) ; Blocks 6–7 satellites + Block 9 ingress différés
 
 ---
 
@@ -550,6 +550,7 @@ flowchart TD
 | 2026-06-30 | Grok | — | Goal créé ; design validé panel 4 rôles ; impl NO-GO |
 | 2026-06-30 | Grok | Pre-flight | Issue [#2069](https://github.com/Roxabi/roxabi-factory/issues/2069) ouverte |
 | 2026-06-30 | Grok | Blocks 0–5,8 | Impl factory : ADR-097, roxabi-otel, collector JSONL, BFF spans |
+| 2026-06-30 | Grok | Fix round | Hook job_id correlation, deferred clipool/omp hooks, dashboard otel mounts, 7 evidence logs, make qg green |
 
 ---
 

@@ -76,6 +76,9 @@ class CliPoolNatsWorker(NatsAdapterBase):
     def _extra_subjects(self) -> list[str]:
         return [SUBJECTS.control]
 
+    def _defer_hooks_to_background(self) -> bool:
+        return True
+
     async def handle(self, msg: Any, payload: dict) -> None:
         if msg.subject == SUBJECTS.control:
             await self._handle_control(msg, payload)
@@ -104,7 +107,9 @@ class CliPoolNatsWorker(NatsAdapterBase):
             )
             return
 
-        task = asyncio.create_task(self._run_job(envelope))
+        task = asyncio.create_task(
+            self._run_with_work_hooks(payload, lambda: self._run_job(envelope))
+        )
         self._jobs.add(task)
         task.add_done_callback(self._jobs.discard)
 

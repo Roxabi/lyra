@@ -96,7 +96,9 @@ class NoopHooks:
         return None
 
     def record_domain_attrs(
-        self, attrs: Mapping[str, str | int | float | bool]
+        self,
+        job_id: str,
+        attrs: Mapping[str, str | int | float | bool],
     ) -> None:
         return None
 
@@ -171,14 +173,18 @@ class OtelLifecycleHooks:
         span.end()
 
     def record_domain_attrs(
-        self, attrs: Mapping[str, str | int | float | bool]
+        self,
+        job_id: str,
+        attrs: Mapping[str, str | int | float | bool],
     ) -> None:
         if not attrs:
             return
         cleaned, dropped = scrub_attrs(attrs)
         self._dropped_attrs += dropped
-        if not cleaned or not self._spans:
+        if not cleaned:
             return
-        span = next(iter(self._spans.values()))
+        span = self._spans.get(job_id)
+        if span is None:
+            return
         for key, value in cleaned.items():
             span.set_attribute(key, value)

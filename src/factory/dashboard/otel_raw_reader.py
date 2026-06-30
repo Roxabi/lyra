@@ -116,40 +116,41 @@ class OtelRawReader:
                 if not line:
                     continue
                 try:
-                    row = self._parse_line(line)
+                    rows = self._parse_line(line)
                 except (json.JSONDecodeError, KeyError, TypeError, ValueError):
                     continue
-                if row is None:
+                if not rows:
                     continue
-                cur = conn.execute(
-                    """
-                    INSERT OR IGNORE INTO spans (
-                      trace_id, span_id, job_id, pool_id, component,
-                      envelope_name, subject, name, start_ts, duration_ms,
-                      attributes_json, ingested_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        row.trace_id,
-                        row.span_id,
-                        row.job_id,
-                        row.pool_id,
-                        row.component,
-                        row.envelope_name,
-                        row.subject,
-                        row.name,
-                        row.start_ts,
-                        row.duration_ms,
-                        json.dumps(row.attributes),
-                        now,
-                    ),
-                )
-                inserted += cur.rowcount
+                for row in rows:
+                    cur = conn.execute(
+                        """
+                        INSERT OR IGNORE INTO spans (
+                          trace_id, span_id, job_id, pool_id, component,
+                          envelope_name, subject, name, start_ts, duration_ms,
+                          attributes_json, ingested_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            row.trace_id,
+                            row.span_id,
+                            row.job_id,
+                            row.pool_id,
+                            row.component,
+                            row.envelope_name,
+                            row.subject,
+                            row.name,
+                            row.start_ts,
+                            row.duration_ms,
+                            json.dumps(row.attributes),
+                            now,
+                        ),
+                    )
+                    inserted += cur.rowcount
             conn.commit()
         self._indexed_mtime = mtime
         return inserted
 
-    def _parse_line(self, line: str) -> SpanRow | None:
+    def _parse_line(self, line: str) -> list[SpanRow]:
         data = json.loads(line)
         resource_spans = data.get("resourceSpans") or data.get("resource_spans")
         if resource_spans:
@@ -162,25 +163,28 @@ class OtelRawReader:
         )
         span_id = str(data.get("span_id") or attrs.get("span_id") or trace_id[:16])
         if not trace_id:
-            return None
+            return []
         start = float(data.get("start_time_unix_nano", 0)) / 1_000_000_000
         end = float(data.get("end_time_unix_nano", 0)) / 1_000_000_000
         duration_ms = max((end - start) * 1000.0, 0.0)
-        return SpanRow(
-            trace_id=trace_id,
-            span_id=span_id,
-            job_id=_str_or_none(attrs.get("roxabi.job_id")),
-            pool_id=_str_or_none(attrs.get("roxabi.pool_id")),
-            component=_str_or_none(attrs.get("roxabi.component")),
-            envelope_name=_str_or_none(attrs.get("roxabi.envelope_name")),
-            subject=_str_or_none(attrs.get("roxabi.subject")),
-            name=str(data.get("name") or "span"),
-            start_ts=start or time.time(),
-            duration_ms=duration_ms,
-            attributes=dict(attrs),
-        )
+        return [
+            SpanRow(
+                trace_id=trace_id,
+                span_id=span_id,
+                job_id=_str_or_none(attrs.get("roxabi.job_id")),
+                pool_id=_str_or_none(attrs.get("roxabi.pool_id")),
+                component=_str_or_none(attrs.get("roxabi.component")),
+                envelope_name=_str_or_none(attrs.get("roxabi.envelope_name")),
+                subject=_str_or_none(attrs.get("roxabi.subject")),
+                name=str(data.get("name") or "span"),
+                start_ts=start or time.time(),
+                duration_ms=duration_ms,
+                attributes=dict(attrs),
+            )
+        ]
 
-    def _parse_otlp_batch(self, data: dict[str, Any]) -> SpanRow | None:
+    def _parse_otlp_batch(self, data: dict[str, Any]) -> list[SpanRow]:
+        out: list[SpanRow] = []
         for rs in data.get("resourceSpans") or []:
             for ss in rs.get("scopeSpans") or []:
                 for span in ss.get("spans") or []:
@@ -191,20 +195,24 @@ class OtelRawReader:
                         continue
                     start = int(span.get("startTimeUnixNano") or 0) / 1_000_000_000
                     end = int(span.get("endTimeUnixNano") or 0) / 1_000_000_000
-                    return SpanRow(
-                        trace_id=trace_id,
-                        span_id=span_id,
-                        job_id=_str_or_none(attrs.get("roxabi.job_id")),
-                        pool_id=_str_or_none(attrs.get("roxabi.pool_id")),
-                        component=_str_or_none(attrs.get("roxabi.component")),
-                        envelope_name=_str_or_none(attrs.get("roxabi.envelope_name")),
-                        subject=_str_or_none(attrs.get("roxabi.subject")),
-                        name=str(span.get("name") or "span"),
-                        start_ts=start or time.time(),
-                        duration_ms=max((end - start) * 1000.0, 0.0),
-                        attributes=attrs,
+                    out.append(
+                        SpanRow(
+                            trace_id=trace_id,
+                            span_id=span_id,
+                            job_id=_str_or_none(attrs.get("roxabi.job_id")),
+                            pool_id=_str_or_none(attrs.get("roxabi.pool_id")),
+                            component=_str_or_none(attrs.get("roxabi.component")),
+                            envelope_name=_str_or_none(
+                                attrs.get("roxabi.envelope_name")
+                            ),
+                            subject=_str_or_none(attrs.get("roxabi.subject")),
+                            name=str(span.get("name") or "span"),
+                            start_ts=start or time.time(),
+                            duration_ms=max((end - start) * 1000.0, 0.0),
+                            attributes=attrs,
+                        )
                     )
-        return None
+        return out
 
     def query_spans(
         self,

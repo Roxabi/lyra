@@ -468,3 +468,41 @@ class TestDashboardBffRealPath:
         assert res.status_code == 200
         assert res.json()["display_name"] == "Ops"
         assert nc.request.await_args.args[0] == SUBJECTS.admin_user_patch
+
+    def test_bff_spans_returns_indexed_json(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        tmp_path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("FACTORY_DASHBOARD_E2E", raising=False)
+        tc, _adapter, _nc = wired_client
+        jsonl = tmp_path / "spans.jsonl"
+        db = tmp_path / "otel-raw.db"
+        job_id = "c" * 32
+        line = {
+            "trace_id": "trace-bff",
+            "span_id": "span-bff",
+            "name": "nats.work",
+            "start_time_unix_nano": 1_000_000_000,
+            "end_time_unix_nano": 2_000_000_000,
+            "attributes": {
+                "roxabi.job_id": job_id,
+                "roxabi.pool_id": "pool-bff",
+                "roxabi.component": "clipool-workers",
+            },
+        }
+        jsonl.write_text(json.dumps(line) + "\n", encoding="utf-8")
+        monkeypatch.setenv("FACTORY_OTEL_JSONL_PATH", str(jsonl))
+        monkeypatch.setenv("FACTORY_OTEL_RAW_DB", str(db))
+
+        res = tc.get(
+            f"/api/bff/spans?job_id={job_id}&component=clipool-workers&page_size=10"
+        )
+        assert res.status_code == 200
+        body = res.json()
+        assert body["total"] == 1
+        assert body["page"] == 1
+        assert len(body["items"]) == 1
+        assert body["items"][0]["job_id"] == job_id
+        assert body["items"][0]["component"] == "clipool-workers"

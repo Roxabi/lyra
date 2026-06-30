@@ -145,6 +145,9 @@ class OmpWorker(NatsAdapterBase):
     def _extra_subjects(self) -> list[str]:
         return []
 
+    def _defer_hooks_to_background(self) -> bool:
+        return True
+
     def telemetry_attributes(
         self, payload: dict, result: object | None
     ) -> dict[str, str]:
@@ -230,13 +233,16 @@ class OmpWorker(NatsAdapterBase):
         )
 
         task = asyncio.create_task(
-            self._run_job(
-                str(job_id),
-                str(prompt),
-                provider_session_id,
-                model=requested_model,
-                system_prompt=(
-                    str(system_prompt) if isinstance(system_prompt, str) else ""
+            self._run_with_work_hooks(
+                payload,
+                lambda: self._run_job(
+                    str(job_id),
+                    str(prompt),
+                    provider_session_id,
+                    model=requested_model,
+                    system_prompt=(
+                        str(system_prompt) if isinstance(system_prompt, str) else ""
+                    ),
                 ),
             )
         )

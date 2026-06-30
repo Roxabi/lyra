@@ -30,3 +30,56 @@ def test_index_and_query_spans(tmp_path: Path) -> None:
     items, total = reader.query_spans(job_id="a" * 32, component="clipool-workers")
     assert total == 1
     assert items[0].pool_id == "pool-1"
+
+
+def test_index_otlp_batch_with_multiple_spans(tmp_path) -> None:
+    jsonl = tmp_path / "spans.jsonl"
+    db = tmp_path / "otel-raw.db"
+    job_a = "a" * 32
+    job_b = "b" * 32
+    batch = {
+        "resourceSpans": [
+            {
+                "scopeSpans": [
+                    {
+                        "spans": [
+                            {
+                                "traceId": "aa" * 16,
+                                "spanId": "11" * 8,
+                                "name": "nats.work:a",
+                                "startTimeUnixNano": 1_000_000_000,
+                                "endTimeUnixNano": 2_000_000_000,
+                                "attributes": [
+                                    {
+                                        "key": "roxabi.job_id",
+                                        "value": {"stringValue": job_a},
+                                    }
+                                ],
+                            },
+                            {
+                                "traceId": "bb" * 16,
+                                "spanId": "22" * 8,
+                                "name": "nats.work:b",
+                                "startTimeUnixNano": 3_000_000_000,
+                                "endTimeUnixNano": 4_000_000_000,
+                                "attributes": [
+                                    {
+                                        "key": "roxabi.job_id",
+                                        "value": {"stringValue": job_b},
+                                    }
+                                ],
+                            },
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+    jsonl.write_text(json.dumps(batch) + "\n", encoding="utf-8")
+    reader = OtelRawReader(jsonl_path=jsonl, db_path=db)
+    inserted = reader.index_jsonl(force=True)
+    assert inserted == 2
+    items, total = reader.query_spans()
+    assert total == 2
+    job_ids = {row.job_id for row in items}
+    assert job_ids == {job_a, job_b}

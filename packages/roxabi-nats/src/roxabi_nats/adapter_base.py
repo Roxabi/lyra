@@ -32,7 +32,7 @@ import signal
 import socket
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Any, cast
 
 import nats.errors
@@ -203,6 +203,10 @@ class NatsAdapterBase(ABC):
         """Optional domain attrs for OTel spans; default empty."""
         return {}
 
+    def _defer_hooks_to_background(self) -> bool:
+        """When True, hooks wrap background job coroutines instead of handle()."""
+        return False
+
     def _extra_subjects(self) -> list[str]:
         """Return additional subjects to subscribe to (no queue group).
 
@@ -228,6 +232,17 @@ class NatsAdapterBase(ABC):
         await self._invoke_handle_with_hooks(msg, payload)
 
     async def _invoke_handle_with_hooks(self, msg, payload: dict) -> None:
+        if self._defer_hooks_to_background():
+            await self.handle(msg, payload)
+            return
+        await self._run_with_work_hooks(payload, lambda: self.handle(msg, payload))
+
+    async def _run_with_work_hooks(
+        self,
+        payload: dict,
+        work: Callable[[], Awaitable[None]],
+    ) -> None:
+        """Execute work coroutine with lifecycle hooks (sync or background job)."""
         hooks = self._lifecycle_hooks
         trace_id = str(payload.get("trace_id") or "")
         job_id = str(payload.get("job_id") or "")
@@ -254,7 +269,7 @@ class NatsAdapterBase(ABC):
             )
 
         try:
-            await self.handle(msg, payload)
+            await work()
         except BaseException as exc:
             work_error = exc
             raise
@@ -264,7 +279,7 @@ class NatsAdapterBase(ABC):
                 if domain:
                     self._safe_hook(
                         "record_domain_attrs",
-                        lambda: hooks.record_domain_attrs(domain),
+                        lambda: hooks.record_domain_attrs(job_id, domain),
                     )
                 duration_ms = (time.monotonic() - start) * 1000.0
                 self._safe_hook(

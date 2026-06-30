@@ -63,14 +63,14 @@ m1_fleet_ok :=
 **Converge certificate** (`factory.event.host.<machine>.converge.completed`):
 
 - Emitted by `deploy/converge.sh` after stamp write via `factory ops publish-host-event`.
-- When `publish_status == success` on a merged PR and `m1_deploy` is still `pending`, a post-publish converge event may set `m1_deploy` to **`success`** (restart fan-out complete).
+- Records `last_converge_at` metadata only — **M₁ proof remains fleet quorum** (`recompute_m1_from_fleet`).
 - **Does not** replace fleet proof when fleet reports contradict the publish SHA.
 
 ### 4. CF Pages correlation
 
 | Surface | v1 | Notes |
 |---|---|---|
-| **Pages** | In scope | Registry `cf_project → {repo, branch}` + structured `payload.pages` |
+| **Pages** | In scope | Registry `cf_project → {repo, branch}` + structured `payload.pages` (required — no text-only fallback) |
 | **Workers** | Out of scope | Deploy via GitHub `workflow_run` when Workers ship through CI — CF Worker webhooks are unreliable |
 
 Workers are Cloudflare's **edge compute** product (V8 isolates). Pages is **static/site hosting**. Factory v1 proves **Pages** post-merge; Workers releases are visible through **GitHub CI** if/when a workflow deploys them.

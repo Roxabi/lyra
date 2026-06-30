@@ -297,17 +297,20 @@ class PipelineStore:
         if name != "publish":
             return
         conclusion = str(wr.get("conclusion") or "")
+        if conclusion not in {"success", "failure", "cancelled"}:
+            return
         head_sha = _str_or_none(wr.get("head_sha"))
         if conclusion == "success" and head_sha:
             self._last_publish_sha = head_sha
             if self._db is not None:
                 self._db.set_last_publish_sha(head_sha)
-        for row in self._runs.values():
-            if not row.open and row.merge_status == "success":
-                row.publish_status = "success" if conclusion == "success" else "failure"
-                if head_sha:
-                    row.publish_sha = head_sha
-                self._touch(row)
+        row = _active_publish_pending_row(self._runs.values(), repo)
+        if row is None:
+            return
+        row.publish_status = "success" if conclusion == "success" else "failure"
+        if head_sha:
+            row.publish_sha = head_sha
+        self._touch(row)
 
     def apply_cloudflare_event(
         self,
@@ -329,22 +332,20 @@ class PipelineStore:
         payload = payload or {}
         pages = payload.get("pages")
         pages_dict = pages if isinstance(pages, dict) else None
-        target = resolve_pages_project(pages_dict)
-        if target is None and pages_dict is not None:
+        if pages_dict is None:
             return
+        target = resolve_pages_project(pages_dict)
         if target is None:
-            repo = DEFAULT_REPO
-            expected_branch = "staging"
-        else:
-            repo = target["repo"]
-            expected_branch = target["branch"]
+            return
+        repo = target["repo"]
+        expected_branch = target["branch"]
         if not pages_branch_matches(pages_dict, expected_branch):
             return
-        for row in self._runs.values():
-            if row.repo != repo or row.open or row.merge_status != "success":
-                continue
-            row.cf_deploy_status = status
-            self._touch(row)
+        row = _active_cf_pending_row(self._runs.values(), repo)
+        if row is None:
+            return
+        row.cf_deploy_status = status
+        self._touch(row)
 
     def apply_host_event(
         self,
@@ -360,54 +361,6 @@ class PipelineStore:
         now = _now_iso()
         if self._db is not None:
             self._db.set_meta("last_converge_at", now)
-        for row in self._runs.values():
-            if row.open or row.merge_status != "success":
-                continue
-            if row.publish_status != "success":
-                continue
-            if row.m1_deploy_status == "pending":
-                row.m1_deploy_status = "success"
-                self._touch(row)
-
-    def apply_fleet_report(
-        self,
-        *,
-        container_name: str,
-        image_revision: str | None,
-        report_status: str,
-        age_s: float | None,
-    ) -> None:
-        if container_name not in M1_DEPLOY_QUORUM:
-            return
-        if not image_revision or report_status != "ok":
-            return
-        if age_s is not None and age_s >= 90:
-            return
-        target_sha = self._last_publish_sha
-        if not target_sha:
-            for row in self._runs.values():
-                if row.publish_sha:
-                    target_sha = row.publish_sha
-                    break
-        if not target_sha or image_revision != target_sha:
-            return
-        matched = 0
-        for row in self._runs.values():
-            if row.open or row.merge_status != "success":
-                continue
-            if row.publish_status != "success":
-                continue
-            if row.publish_sha and row.publish_sha != image_revision:
-                continue
-            matched += 1
-            row.m1_deploy_status = "pending"
-            self._touch(row)
-        if matched:
-            self._recompute_m1_deploy()
-
-    def _recompute_m1_deploy(self) -> None:
-        """Quorum check deferred to list time via fleet store — mark pending only here."""
-        pass
 
     def recompute_m1_from_fleet(
         self,
@@ -440,6 +393,37 @@ class PipelineStore:
 
 def _str_or_none(value: object) -> str | None:
     return str(value) if isinstance(value, str) and value else None
+
+
+def _active_publish_pending_row(
+    runs: object,
+    repo: str,
+) -> PipelineRunRow | None:
+    candidates = [
+        row
+        for row in runs
+        if row.repo == repo
+        and not row.open
+        and row.merge_status == "success"
+        and row.publish_status == "pending"
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda row: (row.updated_at or "", row.pr_number))
+
+
+def _active_cf_pending_row(runs: object, repo: str) -> PipelineRunRow | None:
+    candidates = [
+        row
+        for row in runs
+        if row.repo == repo
+        and not row.open
+        and row.merge_status == "success"
+        and row.cf_deploy_status == "pending"
+    ]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda row: (row.updated_at or "", row.pr_number))
 
 
 def _pr_has_reviewed_label(labels: object) -> bool:

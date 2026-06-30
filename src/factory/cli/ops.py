@@ -367,6 +367,9 @@ def publish_host_event_cmd(
     if not seed_path.is_file():
         raise typer.BadParameter(f"hub seed not found: {seed_path}")
 
+    if len(payload_json.encode()) > 1_000_000:
+        raise typer.BadParameter("payload-json exceeds 1MB limit")
+
     try:
         payload = parse_payload_json(payload_json)
     except (json.JSONDecodeError, ValueError) as exc:

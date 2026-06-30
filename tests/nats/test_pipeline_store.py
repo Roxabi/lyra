@@ -140,7 +140,8 @@ def test_sqlite_survives_reopen(tmp_path: Path) -> None:
     assert row.reviewed is True
 
 
-def test_converge_completed_sets_m1_when_publish_ok(store: PipelineStore) -> None:
+def test_converge_completed_does_not_set_m1_without_fleet(store: PipelineStore) -> None:
+    publish_sha = "sha" * 10
     store.apply_github_event(
         kind="pull_request.closed",
         payload={
@@ -160,15 +161,11 @@ def test_converge_completed_sets_m1_when_publish_ok(store: PipelineStore) -> Non
             "workflow_run": {
                 "name": "publish",
                 "conclusion": "success",
-                "head_sha": "sha" * 10,
+                "head_sha": publish_sha,
             }
         },
         trace_id="t-pub",
     )
-    row = store.get_run("Roxabi/roxabi-factory", 12)
-    assert row is not None
-    assert row.m1_deploy_status == "pending"
-
     store.apply_host_event(
         kind="roxabituwer.converge.completed",
         payload={"drift_kind": "none"},
@@ -176,7 +173,79 @@ def test_converge_completed_sets_m1_when_publish_ok(store: PipelineStore) -> Non
     )
     row = store.get_run("Roxabi/roxabi-factory", 12)
     assert row is not None
-    assert row.m1_deploy_status == "success"
+    assert row.m1_deploy_status == "pending"
+
+
+def test_publish_only_updates_active_pending_merge(store: PipelineStore) -> None:
+    first_sha = "a" * 40
+    second_sha = "b" * 40
+    for pr_number, trace in ((80, "t-merge-80"), (81, "t-merge-81")):
+        store.apply_github_event(
+            kind="pull_request.closed",
+            payload={
+                "action": "closed",
+                "pull_request": {
+                    "number": pr_number,
+                    "title": f"PR {pr_number}",
+                    "merged": True,
+                },
+            },
+            trace_id=trace,
+        )
+    store.apply_github_event(
+        kind="workflow_run.completed",
+        payload={
+            "workflow_run": {
+                "name": "publish",
+                "conclusion": "success",
+                "head_sha": first_sha,
+            }
+        },
+        trace_id="t-publish-1",
+    )
+    row80 = store.get_run("Roxabi/roxabi-factory", 80)
+    row81 = store.get_run("Roxabi/roxabi-factory", 81)
+    assert row80 is not None and row81 is not None
+    assert row80.publish_status == "pending"
+    assert row81.publish_status == "success"
+    assert row81.publish_sha == first_sha
+
+    store.apply_github_event(
+        kind="workflow_run.completed",
+        payload={
+            "workflow_run": {
+                "name": "publish",
+                "conclusion": "success",
+                "head_sha": second_sha,
+            }
+        },
+        trace_id="t-publish-2",
+    )
+    row80 = store.get_run("Roxabi/roxabi-factory", 80)
+    row81 = store.get_run("Roxabi/roxabi-factory", 81)
+    assert row80 is not None and row81 is not None
+    assert row80.publish_status == "success"
+    assert row80.publish_sha == second_sha
+    assert row81.publish_sha == first_sha
+
+
+def test_cf_requires_structured_pages_payload(store: PipelineStore) -> None:
+    store.apply_github_event(
+        kind="pull_request.closed",
+        payload={
+            "action": "closed",
+            "pull_request": {"number": 36, "title": "x", "merged": True},
+        },
+        trace_id="t-merge-no-pages",
+    )
+    store.apply_cloudflare_event(
+        kind="pages.deployment.success",
+        payload={"text": "deployment succeeded"},
+        trace_id="t-cf-no-pages",
+    )
+    row = store.get_run("Roxabi/roxabi-factory", 36)
+    assert row is not None
+    assert row.cf_deploy_status == "pending"
 
 
 def test_cf_pages_success_updates_cf_deploy(store: PipelineStore) -> None:

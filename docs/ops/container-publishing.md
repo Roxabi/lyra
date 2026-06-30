@@ -261,6 +261,30 @@ Verify: `podman login --get-login ghcr.io` should print the username.
 
 ---
 
+## Fleet STALE_IMAGE badge (digest poll)
+
+The `/fleet` page shows a separate **Image digest** column (distinct from NATS liveness
+**Stale**). A host-side poll compares each running Roxabi container's image digest to the
+GHCR index digest for its Quadlet `Image=` tag.
+
+| Badge | Meaning |
+|---|---|
+| **Current** | Running digest matches registry tag |
+| **Outdated** | `running_digest != registry_digest` |
+| **Unknown** | GHCR auth failed, container not running, or parallel-publish window (#1325) |
+
+State file: `~/.roxabi/factory/state/fleet-digests.json` (hub reads via `factory-data.volume`).
+
+```bash
+# Manual refresh on M₁
+bash deploy/fleet-digest-poll.sh
+systemctl --user start factory-fleet-digest-poll.service   # timer: *:3/5
+```
+
+`factory-post-autoupdate` also refreshes digest state after each poll (drift or no-op).
+
+---
+
 ## Rollback recipe
 
 Edit the `Image=` line in the affected `.container` file back to the previous semver tag, then

@@ -35,6 +35,18 @@ class DashboardSubjects(BaseModel):
     agents_patch: Literal["factory.dashboard.agents.patch"] = (
         "factory.dashboard.agents.patch"
     )
+    agents_create: Literal["factory.dashboard.agents.create"] = (
+        "factory.dashboard.agents.create"
+    )
+    admin_access: Literal["factory.dashboard.admin.access"] = (
+        "factory.dashboard.admin.access"
+    )
+    admin_user_create: Literal["factory.dashboard.admin.user.create"] = (
+        "factory.dashboard.admin.user.create"
+    )
+    admin_user_patch: Literal["factory.dashboard.admin.user.patch"] = (
+        "factory.dashboard.admin.user.patch"
+    )
     agents_soul_put: Literal["factory.dashboard.agents.soul.put"] = (
         "factory.dashboard.agents.soul.put"
     )

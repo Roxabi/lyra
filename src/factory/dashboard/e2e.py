@@ -7,7 +7,6 @@ import os
 from roxabi_contracts.dashboard import (
     AgentHealth,
     AgentHealthResponse,
-    HarnessKind,
     ConnectorInstallationRow,
     DashboardConnectorInstallationsListResponse,
     DashboardFleetResponse,
@@ -24,6 +23,7 @@ from roxabi_contracts.dashboard import (
     DashboardSessionsResumeResponse,
     DashboardSessionsTurnsResponse,
     DashboardTurn,
+    HarnessKind,
     OpsEngineHealth,
     OpsLogEntry,
     OpsLogPreset,

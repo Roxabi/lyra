@@ -57,7 +57,9 @@ def build_ops_log_query(
 ) -> str:
     if preset == "container-journal":
         if not container:
-            raise ValueError("container query param required for container-journal preset")
+            raise ValueError(
+                "container query param required for container-journal preset",
+            )
         unit = _systemd_unit_for_container(container)
         return f'{{job="factory-journal", systemd_unit="{unit}"}}'
     if container:

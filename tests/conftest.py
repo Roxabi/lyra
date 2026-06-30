@@ -6,11 +6,13 @@ import asyncio
 import subprocess
 import sys
 from pathlib import Path
+from contextvars import Token
 from typing import Any
 
 import pytest
 
 from factory.core.hub import Hub
+from factory.core.trace import TraceContext
 from factory.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
 
 # Backward-compatible re-exports from bootstrap factories
@@ -51,6 +53,19 @@ _LOAD_BOT_TOKEN_PATH = "factory.bootstrap.credentials.load_bot_token"
 # ---------------------------------------------------------------------------
 
 HEALTH_SECRET = "test-health-secret"
+_DEFAULT_TEST_TRACE_ID = "00000000-0000-4000-8000-000000000001"
+
+
+@pytest.fixture(autouse=True)
+def _default_trace_context() -> Token[str]:
+    """Hub work-path codecs require TraceContext on encode (#2069)."""
+    token = TraceContext.set_trace_id(_DEFAULT_TEST_TRACE_ID)
+    yield token
+    try:
+        TraceContext.reset_trace_id(token)
+    except RuntimeError:
+        # A test may reset the autouse token to assert missing-trace behavior.
+        pass
 
 # Timeout constants for event-based coordination
 TIMEOUT_FAST = 0.5  # In-memory operations

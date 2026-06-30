@@ -54,6 +54,7 @@ def _patch_unified_boundaries(  # noqa: PLR0915
     # -- ensure_nats & lockfile (replace the no-op stubs with tracking versions)
     fake_nc = AsyncMock()
     fake_nc.close = AsyncMock()
+    fake_nc.jetstream = MagicMock(return_value=MagicMock())
     fake_embedded = MagicMock()
     fake_embedded.stop = AsyncMock()
 
@@ -173,6 +174,12 @@ def _patch_unified_boundaries(  # noqa: PLR0915
 
     monkeypatch.setattr(_stream_setup_mod, "ensure_stream", AsyncMock())
     monkeypatch.setattr(_stream_setup_mod, "ensure_kv", AsyncMock())
+
+    import factory.infrastructure.events.stream_setup as _events_stream_setup_mod
+
+    monkeypatch.setattr(
+        _events_stream_setup_mod, "ensure_observability_streams", AsyncMock()
+    )
 
     fake_wired = MagicMock()
     monkeypatch.setattr(

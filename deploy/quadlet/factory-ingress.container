@@ -24,6 +24,8 @@ Environment=NATS_NKEY_SEED_PATH=/run/secrets/factory-nats-ingress.seed
 Secret=factory-ingress-github-webhook,type=mount,target=ingress-github-webhook,uid=1500,gid=1500,mode=0400
 Secret=factory-ingress-cloudflare-webhook,type=mount,target=ingress-cloudflare-webhook,uid=1500,gid=1500,mode=0400
 Volume=%h/.roxabi/factory/ingress.toml:/home/factory/.roxabi/factory/ingress.toml:ro,z
+# Directory bind — SQLite WAL needs ingress.db-wal / ingress.db-shm siblings (same mount ns).
+Volume=%h/.roxabi/factory/ingress-store:/home/factory/.roxabi/factory/ingress-store:rw,z
 Volume=%h/.roxabi/factory/config.toml:/app/config.toml:ro,z
 PublishPort=${TAILSCALE_IPV4}:8780:8780
 Exec=factory ingress serve --host 0.0.0.0 --port 8780

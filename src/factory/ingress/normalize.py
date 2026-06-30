@@ -64,6 +64,7 @@ def build_lyra_event(  # noqa: PLR0913 — envelope field bundle
     message: str | None,
     payload: dict[str, Any],
     trace_id: str | None = None,
+    tenant: str = "default",
 ) -> LyraEvent:
     return LyraEvent(
         contract_version=CONTRACT_VERSION,
@@ -74,6 +75,7 @@ def build_lyra_event(  # noqa: PLR0913 — envelope field bundle
         level=level,  # type: ignore[arg-type]
         message=message,
         payload=payload,
+        tenant=tenant,
     )
 
 

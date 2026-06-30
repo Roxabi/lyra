@@ -119,6 +119,56 @@ class TestWebServer:
         res = tc.get("/api/bff/sessions", params={"agent": "alpha"})
         assert res.status_code == 403
 
+    def test_bff_connectors_e2e_stub(
+        self,
+        client: tuple[TestClient, MagicMock, WebAdapter],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("FACTORY_DASHBOARD_E2E", "1")
+        tc, _, _ = client
+        res = tc.get("/api/bff/connectors")
+        assert res.status_code == 200
+        body = res.json()
+        assert len(body["connectors"]) == 2
+        assert body["factory_tenant"]
+
+    def test_bff_github_install_url_e2e_stub(
+        self,
+        client: tuple[TestClient, MagicMock, WebAdapter],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("FACTORY_DASHBOARD_E2E", "1")
+        tc, _, _ = client
+        res = tc.get("/api/bff/connectors/github/install-url")
+        assert res.status_code == 200
+        assert "github.com/apps" in res.json()["url"]
+
+    def test_bff_connector_installations_e2e_stub(
+        self,
+        client: tuple[TestClient, MagicMock, WebAdapter],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("FACTORY_DASHBOARD_E2E", "1")
+        tc, _, _ = client
+        res = tc.get("/api/bff/connectors/github/installations")
+        assert res.status_code == 200
+        assert len(res.json()["installations"]) >= 1
+
+    def test_bff_connectors_requires_operator_token_when_configured(
+        self,
+        client: tuple[TestClient, MagicMock, WebAdapter],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("FACTORY_DASHBOARD_OPERATOR_TOKEN", "secret-token")
+        tc, _, _ = client
+        res = tc.get("/api/bff/connectors")
+        assert res.status_code == 401
+        res_ok = tc.get(
+            "/api/bff/connectors",
+            headers={"Authorization": "Bearer secret-token"},
+        )
+        assert res_ok.status_code == 200
+
     def test_spa_index_when_dist_built(
         self, client: tuple[TestClient, MagicMock, WebAdapter]
     ) -> None:

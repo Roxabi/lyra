@@ -6,6 +6,7 @@ describe("nav", () => {
     expect(resolvePageTitle("/")).toEqual({ key: "nav.overview" });
     expect(resolvePageTitle("/chat")).toEqual({ key: "nav.chat" });
     expect(resolvePageTitle("/jobs")).toEqual({ key: "nav.jobs" });
+    expect(resolvePageTitle("/integrations")).toEqual({ key: "nav.integrations" });
     expect(resolvePageTitle("/ops")).toEqual({ key: "nav.ops" });
   });
 
@@ -29,6 +30,7 @@ describe("nav", () => {
   it("resolves layout flags for chat full bleed", () => {
     expect(resolveNavFlags("/chat").fullBleed).toBe(true);
     expect(resolveNavFlags("/jobs").wideLayout).toBe(true);
+    expect(resolveNavFlags("/integrations").wideLayout).toBe(true);
     expect(resolveNavFlags("/").wideLayout).toBe(true);
   });
 });

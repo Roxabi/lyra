@@ -1,0 +1,340 @@
+---
+title: "ADR-096: Ingress connector registry and tenant-scoped external events"
+description: "Scale factory-ingress across N cloud connectors and M factory tenants without N×M hardcoding — plugin connectors, installation registry, hybrid secret model"
+status: accepted
+date: 2026-06-29
+deciders: [Mickael]
+related: [035, 074, 091, 092, 094]
+amends: [091]
+---
+
+> **Current truth** → this ADR + [`artifacts/goal/ingress-connector-tenant-contract-goal.md`](../../../artifacts/goal/ingress-connector-tenant-contract-goal.md) (implementation `/goal` support)
+> Plane ① taxonomy: [`artifacts/specs/sentinelle-four-planes-spec.mdx`](../../../artifacts/specs/sentinelle-four-planes-spec.mdx)
+
+## Status
+
+Accepted — 2026-06-29.
+
+Design ratification. **V1 ships the contract** (registry + tenant dimension + GH/CF refactor) with a single tenant (`default`). Multi-user onboarding UI is deferred until auth #1992; connector provisioning flows are specified but not required in V1.
+
+**Amends ADR-091 plane ①** for **ingress connector events only**. Host sensors, mail, postiz, and monitoring transitions keep the existing 3-segment grammar `factory.event.{service}.{kind}`. Ingress connectors publish `factory.event.{connector}.{tenant}.{kind}`.
+
+## Product definition — `factory_tenant` vs user identity
+
+These are **different axes** and must not be conflated:
+
+| Concept | What it is | Storage today | Future (#1992) |
+|---|---|---|---|
+| **Platform user** | Person on Telegram/Discord/Web (`tg:user:…`, `dc:user:…`) | `auth.db` — `agent_grants`, pairing (ADR-090) | Dashboard operator session |
+| **Agent** | Logical workspace / authorization tenant inside one deployment | `config.db` — agents, bots | Unchanged |
+| **`factory_tenant`** | Isolation boundary for **plane ① external events** and connector onboarding | `ingress.db` — `connector_installations` (this ADR) | 1:1 with authenticated **operator workspace** (#1992) |
+
+V1: single slug `factory_tenant = "default"` (mono-operator). Post-#1992: each signed-in operator (or org workspace) receives a stable `factory_tenant` slug; dashboard install flows write `(connector, external_id) → factory_tenant` in `ingress.db`. **Registry `external_id` is provider-native** (`installation.id`, `configurationId`, `account_id`) — never exposed as the end-user “tenant id”.
+
+**User storage is centralized** in `~/.roxabi/factory/auth.db` (grants + identity) and `~/.roxabi/factory/config.db` (agents + bots). Connector installations are **not** stored in `auth.db` — they live in a dedicated `ingress.db` owned by `factory-ingress` to avoid mixing authorization with webhook routing data.
+
+## Context
+
+`factory-ingress` (ADR-091 plane ①, closed deploy decision #2008) receives external webhooks
+(GitHub, Cloudflare today; Vercel and others later) and publishes `factory.event.*` on
+JetStream. Today **N = 2** connectors and **M = 1** tenant (us), but the code already exhibits
+the `target-axis-trap` the axial review watches for:
+
+| Symptom today | File / pattern |
+|---|---|
+| Per-service route + verify + normalize | `src/factory/ingress/routes.py` — `if github` / `elif cloudflare` |
+| Per-service config fields | `src/factory/ingress/config.py` — `github`, `cloudflare` dataclass fields |
+| Mono-tenant secrets | `deploy/secrets-policy.toml` — one Podman secret per connector |
+| No tenant dimension on bus | `per_service_event(service, kind)` → `factory.event.github.<kind>` |
+| Manual operator onboarding | SSH + CLI + Podman secret install |
+
+The product intent is broader: observe external world state (CI, deploys, Cloudflare health)
+for Sentinelle, and eventually offer **self-service ops** to third-party factory users (install
+GitHub App / connect Vercel / connect Cloudflare from an authenticated dashboard).
+
+Industry research (GitHub App docs, Vercel Integration docs, Cloudflare Notifications API;
+patterns from Sentry, Stripe Connect, Hookdeck) shows that **connectors do not share one
+secret/URL model**. Treating the problem as literal **N×M URLs × N×M HMAC secrets** would
+fight provider constraints and recreate duplication under a different shape.
+
+The decision needed: freeze a **two-axis contract** — connectors as code plugins, tenants as
+data — before M grows.
+
+## Options Considered
+
+### Option A: Per-(connector, tenant) URL and secret everywhere
+
+`POST /webhook/{connector}/{tenant}` with one HMAC secret per cell; Podman/KV store keyed
+`(connector, tenant)`.
+
+- **Pros:** URL carries identity; no payload parsing for routing; mirrors Telegram bot
+  webhooks (`/webhooks/telegram/{bot_id}`).
+- **Cons:** **GitHub Apps allow one webhook URL per app** — not one per tenant. **Vercel
+  Integrations** use one Integration Webhook URL for all installs. Would require N×M GitHub
+  Apps or N×M Vercel integrations (operationally impossible at scale). Forces static
+  enumeration of secrets in Quadlet as M grows (T4).
+
+### Option B: Connector plugins + installation registry + hybrid secrets (chosen)
+
+**Ingestion axis (code):** `ConnectorRegistry` — each connector implements `verify()`,
+`parse_external_id()`, `normalize()`. Routes are generic; adding Vercel = register one plugin,
+zero route edits.
+
+**Tenant axis (data):** `InstallationRegistry` maps `(connector, external_id) → factory_tenant`.
+External IDs are provider-native: `installation.id` (GitHub), `configurationId` (Vercel),
+`account_id` (Cloudflare). **Published tenant always comes from registry lookup** — never from
+URL path or payload alone.
+
+**Secret axis (hybrid):**
+
+| Connector family | Examples | Webhook URL | Secret cardinality |
+|---|---|---|---|
+| **Centralized app** | GitHub App, Vercel Integration | **One URL** per connector (provider-imposed) | **One secret** per connector (app/integration secret) |
+| **Per-account provision** | Cloudflare Notifications | URL may include `{tenant}` when provisioned via API | **One secret per provisioned webhook** (stored dynamically) |
+
+**Bus:** `factory.event.{connector}.{tenant}.{kind}` + `tenant` field on `LyraEvent`.
+Mono-user back-compat: `tenant = "default"`.
+
+**Onboarding (future):** authenticated dashboard (#1992) runs provider-specific install flows;
+writes registry rows; does not change ingress routes.
+
+- **Pros:** Matches GitHub/Vercel provider models; Cloudflare flexibility preserved; same
+  cost as today's hardcoded ingress for M=1; additive when M or N grows; aligns with
+  `secret-class.bot-token` dynamic pattern (ADR-074); Sentinelle can subscribe
+  `factory.event.github.{tenant}.>`.
+- **Cons:** Two connector families to document; per-connector `parse_external_id` logic;
+  `roxabi-contracts` subject helper must gain a tenant segment; unknown external_id events
+  need explicit drop/log/metric policy.
+
+### Option C: Outsource ingestion to Hookdeck/Svix
+
+Route all provider webhooks through a managed gateway; factory-ingress receives only
+`x-hookdeck-signature` verified traffic.
+
+- **Pros:** 100+ provider verify implementations; replay UI; burst absorption.
+- **Cons:** External dependency and cost; duplicates NATS JetStream queue role; operational
+  complexity on M₁; still need connector registry + tenant routing inside factory for NATS
+  subjects. Deferred — revisit if provider handshake matrix becomes burdensome.
+
+## Decision
+
+Adopt **Option B**. Formalize three orthogonal concerns:
+
+```
+PROVISIONING (future, auth #1992)     INGESTION (factory-ingress)          CONSUMPTION (hub)
+GitHub App install                    POST /webhook/{connector}              Sentinelle module
+Vercel OAuth                          [+ /{tenant} for CF family]          subscribe factory.event.>
+Cloudflare OAuth + API provision  →   ConnectorRegistry (orchestrator)  →  enrich + alert/job
+  └─ InstallationRegistry           verify → parse_external_id → resolve
+INTERIM (pre-#1992): operator CLI     normalize → publish
+  or runbook → ingress.db CRUD
+```
+
+### 1. Connector plugin contract
+
+Each connector **must** implement:
+
+| Method | Responsibility |
+|---|---|
+| `verify(headers, body, secrets)` | Provider-specific auth; failures raise `VerificationError` → HTTP 401 `invalid auth` (uniform message) |
+| `parse_external_id(headers, body, path_tenant)` | Extract provider-native key (`installation.id`, `account_id`, …); may return `None` |
+| `normalize(headers, body, tenant)` | Build `LyraEvent` (summarized payload, level, message, trace_id, `tenant`) |
+
+**Orchestrator** (generic route handler — not per connector):
+
+```
+1. resolve connector from registry; 503 if disabled
+2. [Family B only] resolve path_tenant → load per-tenant secret via SecretResolver
+3. verify(headers, body, secrets)
+4. external_id = connector.parse_external_id(...)
+5. tenant = installation_registry.resolve(connector, external_id)  # see §3
+6. if tenant is None → drop policy (§3)
+7. lyra = connector.normalize(..., tenant=tenant)
+8. publish factory.event.{connector}.{tenant}.{kind}
+```
+
+Registration is data-driven (`ingress.toml` `[connector.<name>]` + code import), not new
+FastAPI routes per service.
+
+#### `SecretResolver` protocol
+
+```python
+class SecretResolver(Protocol):
+    def get_connector_secret(self, connector: str) -> str: ...
+    def get_tenant_secret(self, connector: str, factory_tenant: str) -> str | None: ...
+```
+
+- **Family A:** `get_connector_secret("github")` → Podman mount (V1).
+- **Family B:** `get_tenant_secret("cloudflare", path_tenant)` → dynamic store (V1: static `default`; M>1: KV or `[secret-class.ingress-tenant]` per ADR-074).
+
+#### Orchestration by family
+
+| Step | Family A (GitHub, Vercel) | Family B (Cloudflare) |
+|---|---|---|
+| Secret lookup | `get_connector_secret(connector)` before verify | `path_tenant` → `get_tenant_secret` before verify |
+| External key | From payload (`installation.id`, …) | From payload (`account_id`) |
+| Tenant source | **Registry only** | **Registry only**; cross-check `path_tenant` matches resolved tenant |
+| Route | `POST /webhook/{connector}` | `POST /webhook/{connector}/{tenant}` |
+
+### 2. Connector families
+
+**Family A — centralized app** (GitHub, Vercel):
+
+- Canonical route: `POST /webhook/{connector}`
+- Secret: one per connector (Podman secret at deploy; static for V1)
+- Tenant key: `parse_external_id` → registry lookup
+- Self-service: provider install/OAuth flow → registry row; **URL unchanged**
+- **V1 GitHub fallback:** if `installation` absent in payload **and** registry has no row for
+  that event, use `default` (mono-user compat for events like `check_run` on repos without
+  App installation object). If `installation` present but unknown → drop policy.
+
+**Family B — per-account provision** (Cloudflare):
+
+- Canonical route: `POST /webhook/{connector}/{tenant}` (tenant in path at provision time)
+- Secret: per `(connector, factory_tenant)` in dynamic store; follows
+  `[secret-class.ingress-tenant]` pattern (ADR-074)
+- Tenant key: registry lookup on `account_id`; **reject** if resolved tenant ≠ `path_tenant`
+- Self-service: OAuth + Alerting API `POST .../destinations/webhooks` per customer account
+
+### 3. Installation registry
+
+**V1 store SSoT:** dedicated SQLite `~/.roxabi/factory/ingress.db`, **RW-mounted** on
+`factory-ingress` only. Rationale: ingress needs lifecycle writes; `auth.db` holds user grants
+(not connector mappings); `config.db` is hub/agent SSoT — coupling avoided (ADR-059).
+
+Schema:
+
+```
+connector_installations(
+  connector       TEXT,
+  external_id     TEXT,   -- NEVER wildcard '*' in prod
+  factory_tenant  TEXT,   -- regex: ^[a-z0-9][a-z0-9_-]{0,62}$
+  enabled         BOOL,
+  metadata_json   TEXT,
+  updated_at      TEXT,
+  PRIMARY KEY (connector, external_id)
+)
+```
+
+**Resolve rules:**
+
+1. Lookup `(connector, external_id)` where `enabled=true` → return `factory_tenant`.
+2. **Family A V1 mono-user:** if miss and `external_id is None` and connector=github → `default`.
+3. Otherwise → `None` (drop).
+
+**Writes:**
+
+- **Ingress may write** on lifecycle webhooks only (`installation.created/deleted`, etc.).
+- **All other CRUD:** operator CLI (`factory ingress installation …`) or future dashboard (#1992).
+- **Forbidden:** wildcard rows `(github, *, default)` in any environment where M>1 is possible.
+
+**Unknown installation drop policy:**
+
+1. Verify signature first (no registry branch before verify on Family A).
+2. Resolve returns `None`.
+3. Log warning + increment metric `ingress_unknown_installation_total{connector}`.
+4. Return **HTTP 202** with body `{"accepted": true}` (same as success — no `reason` leak).
+5. Do **not** publish to NATS.
+
+Lifecycle webhooks (`installation`, `integration-configuration.removed`) update registry;
+ingress **must not** crash on unknown `external_id` — drop per above.
+
+### 4. NATS subject grammar (extends ADR-035 / plane ①)
+
+**Ingress connectors only:**
+
+```
+factory.event.{connector}.{tenant}.{kind}
+```
+
+- `connector` — same token as today (`github`, `cloudflare`, `vercel`, …)
+- `tenant` — factory slug (`default`, operator workspace slug post-#1992)
+- `kind` — existing namespaced kind (`check_run.completed`, `pages.deployment.success`, …)
+
+**Non-ingress plane ① producers unchanged:** `factory.event.host.*`, `factory.event.mail.*`,
+etc. remain `factory.event.{service}.{kind}` via `per_service_event()`.
+
+Add `per_connector_tenant_event(connector, tenant, kind)` in `roxabi-contracts`. Hub /
+Sentinelle wildcard examples:
+
+```
+factory.event.github.default.>
+factory.event.github.>          # all tenants; also matches legacy 3-segment during transition
+factory.event.>                   # unchanged super-wildcard
+```
+
+**Migration:** ingress **stops** publishing `factory.event.github.<kind>` (3-segment) after
+cutover. HTTP paths `/webhook/github` aliases preserved. Consumers use `factory.event.github.>`
+or tenant-filtered `LyraEvent.tenant`.
+
+`LyraEvent` gains `tenant: str = "default"`. `service` field remains the **connector** token.
+
+### 5. Reachability (explicitly orthogonal)
+
+One shared Cloudflare Tunnel (or tailnet + Funnel) endpoint for `factory-ingress`. GitHub/Vercel
+require **internet-reachable HTTPS** — tailnet bind alone is insufficient; public URL documented
+in runbook. Isolation is **verify + registry**, not per-tenant network paths.
+
+### 6. Observability
+
+- Counter: `ingress_unknown_installation_total` (labels: `connector`; hash `external_id` in logs only).
+- LogQL: `{container="factory-ingress"} |= "unknown_installation"`.
+- Optional future: `factory.metric.ingress.unknown_installation` on plane ③ (#1035).
+
+### 7. V1 scope boundary
+
+| In V1 | Deferred |
+|---|---|
+| `ConnectorRegistry` + refactor GitHub + Cloudflare | Dashboard onboarding UI |
+| `ingress.db` + `InstallationRegistry` + seed via env | Auth #1992 integration |
+| `tenant` on `LyraEvent` + `per_connector_tenant_event` | Vercel connector implementation |
+| `parse_external_id` + resolve for GitHub | Cloudflare OAuth auto-provision |
+| Back-compat aliases `/webhook/github` | Hookdeck gateway |
+| Lifecycle handler stubs (`installation.deleted`) | Full multi-user secret rotation UI |
+| Sentinelle spec subject patterns updated (goal AC11) | Per-tenant Sentinelle Discord isolation |
+| Ingress runbook + quadlet volume for `ingress.db` | Dynamic CF per-tenant Podman secrets |
+
+### 8. Relationship to existing decisions
+
+- **ADR-091:** `factory-ingress` stays dedicated container; sensors publish facts only; hub
+  Sentinelle decides. This ADR adds tenant granularity to **ingress** plane ① subjects.
+- **ADR-074:** Bot tokens use dynamic `secret-class` + per-bot Podman secrets. Ingress CF
+  per-tenant secrets follow `[secret-class.ingress-tenant]`; GH/Vercel stay **static N secrets**.
+- **ADR-090 / auth.db:** Platform user grants remain in `auth.db`. `factory_tenant` is orthogonal
+  until #1992 links operator workspace → `factory_tenant` slug.
+- **ADR-094:** Dashboard is the future self-service surface for install flows; blocked on
+  auth #1992. Frozen API: `POST /api/bff/connectors/{connector}/installations` (authz: tenant admin only).
+- **roxabi-live:** Keeps its own `POST /webhook/github` for D1/backlog — orthogonal (ADR-091).
+  Operators need runbook clarity on **two GitHub webhook URLs** (factory vs live).
+
+## Consequences
+
+### Positive
+
+- Adding Vercel (or Stripe, Shopify) = one connector plugin + registry entry — not four file
+  edits across routes/config/verify/normalize.
+- M tenants without redeploying ingress routes or GitHub App webhook URL.
+- Sentinelle and dashboard can filter `factory.event.{connector}.{tenant}.>`.
+- Contract matches how GitHub, Vercel, and Cloudflare actually integrate at scale.
+- User auth (`auth.db`) and connector routing (`ingress.db`) stay separated.
+
+### Negative
+
+- Subject grammar fork: ingress 4-segment vs other plane ① producers 3-segment; spec + triggers
+  must migrate (goal AC11).
+- Two mental models (family A vs B) for operators — runbook required.
+- Unknown-install drops need metric alerting to avoid silent onboarding failures.
+
+### Neutral
+
+- V1 HTTP behaviour identical for mono-user (`default` tenant) once aliases preserved.
+- NATS ACL `factory.event.github.>` still matches new 4-segment subjects.
+
+## See also
+
+- [`artifacts/goal/ingress-connector-tenant-contract-goal.md`](../../../artifacts/goal/ingress-connector-tenant-contract-goal.md) — `/goal` implementation slices
+- [`src/factory/ingress/`](../../../src/factory/ingress/) — current implementation
+- [`deploy/secrets-policy.toml`](../../../deploy/secrets-policy.toml) — `secret-class.bot-token` precedent
+- [GitHub App webhooks](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/using-webhooks-with-github-apps)
+- [Vercel Create Integration](https://vercel.com/docs/integrations/create-integration)
+- [Cloudflare configure webhooks](https://developers.cloudflare.com/notifications/get-started/configure-webhooks/)

@@ -3,3 +3,8 @@
 nats/jetstream
 blobstore
 blobstore.tok
+# Host-specific Tailscale bind IPs — generated per machine by deploy/install.sh §4.
+# Must NOT sync M₁↔M₂ or PublishPort binds to the wrong tailnet address.
+env/web.env
+env/blobstore.env
+env/ingress.env

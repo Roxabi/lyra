@@ -4,7 +4,14 @@
     "loadError": "Impossible de charger l'état des moteurs d'observabilité."
   },
   "agents": {
-    "title": "Agents monitorés"
+    "title": "Agents monitorés",
+    "count": "{{count}} agent(s)",
+    "searchPlaceholder": "Rechercher un agent…",
+    "empty": "Aucun agent monitoré.",
+    "emptyFiltered": "Aucun agent ne correspond à la recherche.",
+    "emptyHint": "Les agents du roster apparaîtront ici avec leur état harness.",
+    "roster": "roster",
+    "harness": "harness"
   },
   "harness": {
     "title": "Harness",
@@ -16,6 +23,8 @@
     "presetLabel": "Preset",
     "loadError": "Impossible de charger les logs.",
     "empty": "Aucune entrée pour ce preset.",
-    "unreachable": "Moteur Loki injoignable — logs indisponibles."
+    "emptyHint": "Essayez un autre preset ou attendez de nouveaux événements.",
+    "unreachable": "Moteur Loki injoignable — logs indisponibles.",
+    "containerFilter": "Journal pour {{container}}"
   }
 }

@@ -1,0 +1,12 @@
+[Unit]
+Description=factory fleet digest poll — GHCR vs running container digests for /fleet
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=%h/projects/roxabi-factory/deploy/fleet-digest-poll.sh
+WorkingDirectory=%h/projects/roxabi-factory
+Environment="PATH=%h/projects/roxabi-factory/.venv/bin:%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
+StandardOutput=journal
+StandardError=journal

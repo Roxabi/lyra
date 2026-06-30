@@ -9,9 +9,23 @@ import pytest
 
 from factory.dashboard.ops_proxy import (
     _parse_loki_streams,
+    build_ops_log_query,
     fetch_ops_health,
     fetch_ops_logs,
 )
+
+
+class TestBuildOpsLogQuery:
+    def test_container_journal_preset(self) -> None:
+        query = build_ops_log_query(
+            "container-journal",
+            container="factory-hub",
+        )
+        assert 'systemd_unit="factory-hub.service"' in query
+
+    def test_container_override_on_named_preset(self) -> None:
+        query = build_ops_log_query("hub-errors", container="factory-clipool")
+        assert 'systemd_unit="factory-clipool.service"' in query
 
 
 class TestParseLokiStreams:

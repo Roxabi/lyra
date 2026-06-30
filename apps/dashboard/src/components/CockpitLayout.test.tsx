@@ -6,7 +6,9 @@ import {
   RouterProvider,
 } from "@tanstack/react-router";
 import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as agentsApi from "@/lib/agents-api";
 import * as api from "@/lib/api";
 import { ChatPage } from "@/pages/ChatPage";
 
@@ -51,6 +53,10 @@ describe("ChatPage", () => {
     ]);
     vi.spyOn(api, "fetchSessions").mockResolvedValue([]);
     vi.spyOn(api, "fetchJobs").mockResolvedValue([]);
+    vi.spyOn(agentsApi, "fetchAgentDefaults").mockResolvedValue({
+      backend: "claude-cli",
+      model: "sonnet",
+    });
   });
 
   it("renders chat sidebar with reprendre section", async () => {
@@ -59,5 +65,17 @@ describe("ChatPage", () => {
       expect(screen.getByText("Reprendre")).toBeTruthy();
     });
     expect(screen.getByText("Chats actifs")).toBeTruthy();
+  });
+
+  it("allows multiple tabs for the same agent", async () => {
+    const user = userEvent.setup();
+    renderChat();
+    await waitFor(() => expect(screen.getByText("Nouveau")).toBeTruthy());
+    const newBtn = screen.getByText("Nouveau");
+    await user.click(newBtn);
+    await user.click(newBtn);
+    await waitFor(() => {
+      expect(screen.getAllByText(/nouvelle session/).length).toBeGreaterThanOrEqual(2);
+    });
   });
 });

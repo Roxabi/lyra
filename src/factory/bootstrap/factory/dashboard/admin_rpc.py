@@ -5,7 +5,12 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Any
 
-from factory.core.auth.agent_grants import AuthDecision, Capability, Principal, PrincipalKind
+from factory.core.auth.agent_grants import (
+    AuthDecision,
+    Capability,
+    Principal,
+    PrincipalKind,
+)
 from roxabi_contracts.dashboard import (
     DashboardAdminAccessResponse,
     DashboardAdminPlatformIdentity,
@@ -120,7 +125,7 @@ async def _sync_user_agents(
         await grant_store.revoke(agent_name, principal, capability=Capability.USE)
 
 
-async def _apply_platform_identities(
+async def _apply_platform_identities(  # noqa: PLR0913
     user_store: UserStore,
     user_id: str,
     *,
@@ -172,7 +177,9 @@ async def handle_admin_access(hub: Hub, _nc: NATS, _payload: dict[str, Any]) -> 
     return DashboardAdminAccessResponse(users=users_out).model_dump()
 
 
-async def handle_admin_user_create(hub: Hub, _nc: NATS, payload: dict[str, Any]) -> dict:
+async def handle_admin_user_create(
+    hub: Hub, _nc: NATS, payload: dict[str, Any]
+) -> dict:
     req = DashboardAdminUserCreateRequest.model_validate(payload.get("body") or payload)
     user_store = _user_store(hub)
     grant_store = _grant_store(hub)

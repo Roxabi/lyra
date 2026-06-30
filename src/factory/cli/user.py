@@ -37,9 +37,8 @@ def list_users() -> None:
             for user in users:
                 name = user.display_name or ""
                 email = user.email or ""
-                typer.echo(
-                    f"{user.id:<40} {name:<16} {email:<24} {user.created_at.isoformat()}"
-                )
+                created = user.created_at.isoformat()
+                typer.echo(f"{user.id:<40} {name:<16} {email:<24} {created}")
         finally:
             await store.close()
 

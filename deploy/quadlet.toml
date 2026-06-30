@@ -26,7 +26,7 @@ template = true
 
 [component.dashboard]
 container = "factory-dashboard.container"
-required_secrets = ["factory-nats-web"]
+required_secrets = ["factory-nats-web", "factory_otel_token"]
 host_roles = ["factory-hub"]
 
 [component.clipool]
@@ -124,6 +124,12 @@ disabled = true
 [component.otel-collector]
 container = "factory-otel-collector.container"
 required_secrets = []
+host_roles = ["factory-hub"]
+disabled = true
+
+[component.otel]
+container = "factory-otel.container"
+required_secrets = ["factory_otel_token"]
 host_roles = ["factory-hub"]
 
 [volume.data]

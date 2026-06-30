@@ -1,0 +1,37 @@
+[Unit]
+Description=Factory OTel raw store — OTLP ingest + span query API (ADR-097)
+After=factory-nats.service
+Wants=factory-nats.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Container]
+StopTimeout=120
+Image=ghcr.io/roxabi/factory:staging-svc
+Label=io.containers.autoupdate=registry
+ContainerName=factory-otel
+Environment=CONTAINER_NAME=factory-otel
+Environment=IMAGE_REF=ghcr.io/roxabi/factory:staging-svc
+Network=roxabi.network
+NoNewPrivileges=true
+ReadOnly=true
+DropCapability=all
+UserNS=keep-id:uid=1500,gid=1500
+EnvironmentFile=%h/.roxabi/factory/env/web.env
+Secret=factory_otel_token,type=mount,uid=1500,gid=1500,mode=0400,target=/run/secrets/factory_otel_token
+Volume=%h/.local/state/factory/otel:/home/factory/.local/state/factory/otel:z
+Volume=%h/.roxabi/factory/otel-raw.db:/home/factory/.roxabi/factory/otel-raw.db:z
+Volume=%h/.roxabi/factory/config.toml:/app/config.toml:ro,z
+Exec=factory otel serve --token-path /run/secrets/factory_otel_token --host 0.0.0.0 --http-port 8450 --grpc-port 4317
+HealthCmd=python3 -c 'import urllib.request,sys; urllib.request.urlopen("http://127.0.0.1:8450/healthz",timeout=3); sys.exit(0)' || exit 1
+HealthInterval=30s
+
+[Service]
+EnvironmentFile=%h/.roxabi/factory/env/web.env
+Restart=on-failure
+TimeoutStopSec=130
+RestartSec=10
+CPUQuota=100%
+
+[Install]
+WantedBy=default.target

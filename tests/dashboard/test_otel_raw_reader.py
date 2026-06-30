@@ -7,7 +7,7 @@ import os
 import stat
 from pathlib import Path
 
-from factory.dashboard.otel_raw_reader import OtelRawReader
+from factory.otel.reader import OtelRawReader
 
 
 def test_index_and_query_spans(tmp_path: Path) -> None:

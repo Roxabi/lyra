@@ -54,6 +54,7 @@ def test_quadlet_units_exist() -> None:
         "factory-loki.container",
         "factory-promtail.container",
         "factory-loki-data.volume",
+        "factory-otel.container",
         "factory-otel-collector.container",
         "factory-langfuse-web.container",
         "factory-langfuse-worker.container",
@@ -72,7 +73,8 @@ def test_quadlet_toml_declares_observability_stack() -> None:
     for fragment in (
         'container = "factory-loki.container"',
         'container = "factory-promtail.container"',
-        'container = "factory-otel-collector.container"',
+        'container = "factory-otel.container"',
+        'disabled = true',
         'container = "factory-langfuse-web.container"',
         'volume = "factory-langfuse-postgres-data.volume"',
     ):

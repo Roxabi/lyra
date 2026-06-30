@@ -177,7 +177,7 @@ export type OpsLogPreset =
   | "container-journal";
 
 export interface OpsEngineHealth {
-  engine: "loki" | "langfuse" | "otel-collector";
+  engine: "loki" | "langfuse" | "otel";
   label: string;
   reachable: boolean;
   detail: string;

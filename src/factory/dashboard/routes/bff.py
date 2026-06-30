@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from typing import TYPE_CHECKING
 
+import httpx
 from fastapi import APIRouter, HTTPException, Query
 
 from factory.dashboard.e2e import (
@@ -21,7 +22,7 @@ from factory.dashboard.e2e import (
     stub_sessions_turns,
 )
 from factory.dashboard.ops_proxy import fetch_ops_health, fetch_ops_logs
-from factory.dashboard.otel_raw_reader import OtelRawReader
+from factory.dashboard.otel_client import fetch_spans
 from factory.dashboard.routes.bff_admin import register_admin_routes
 from factory.dashboard.routes.bff_agents import register_agent_routes
 from factory.dashboard.routes.bff_common import map_hub_errors
@@ -176,20 +177,16 @@ def build_bff_router(  # noqa: C901, PLR0915
         page: int = Query(default=1, ge=1),
         page_size: int = Query(default=50, ge=1, le=200),
     ) -> dict:
-        reader = OtelRawReader()
-        items, total = reader.safe_query_spans(
-            pool_id=pool_id,
-            job_id=job_id,
-            component=component,
-            page=page,
-            page_size=page_size,
-        )
-        return {
-            "items": [row.as_dict() for row in items],
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-        }
+        try:
+            return await fetch_spans(
+                pool_id=pool_id,
+                job_id=job_id,
+                component=component,
+                page=page,
+                page_size=page_size,
+            )
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     @router.get("/ops/health")
     async def ops_health() -> DashboardOpsHealthResponse:

@@ -205,7 +205,7 @@
 
 ### dashboard
 - **Container:** factory-dashboard.container
-- **Required secrets:** factory-nats-web
+- **Required secrets:** factory-nats-web, factory_otel_token
 - **Host roles:** factory-hub
 
 ### discord
@@ -263,6 +263,11 @@
 ### omp
 - **Container:** factory-omp.container
 - **Required secrets:** factory-litellm-key, factory-nats-omp
+- **Host roles:** factory-hub
+
+### otel
+- **Container:** factory-otel.container
+- **Required secrets:** factory_otel_token
 - **Host roles:** factory-hub
 
 ### otel-collector

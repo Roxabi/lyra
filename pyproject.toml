@@ -29,6 +29,8 @@ dependencies = [
     "roxabi-blobs",
     "roxabi-obs",
     "roxabi-otel",
+    "grpcio>=1.70.0",
+    "opentelemetry-proto>=1.30.0",
     "typer>=0.26.7",
     "tomli-w>=1.0",
     "telegramify-markdown>=1.1.5",

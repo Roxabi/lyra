@@ -57,7 +57,7 @@ Environment=OTEL_TRACES_EXPORTER=otlp
 Environment=OTEL_LOGS_EXPORTER=none
 Environment=OTEL_METRICS_EXPORTER=none
 Environment=OTEL_EXPORTER_OTLP_PROTOCOL=grpc
-Environment=OTEL_EXPORTER_OTLP_ENDPOINT=http://factory-otel-collector:4317
+Environment=OTEL_EXPORTER_OTLP_ENDPOINT=http://factory-otel:4317
 Environment=OTEL_LOG_USER_PROMPTS=0
 Environment=OTEL_LOG_TOOL_DETAILS=0
 

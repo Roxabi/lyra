@@ -49,14 +49,17 @@ Give Sentinelle implementers a single checklist:
 
 **Envelope:** `LyraEvent` (`roxabi_contracts.event.models`).
 
-**Subject helper:** `per_service_event(service, kind)` → `factory.event.{service}.{kind}`.
+**Subject helpers:**
+
+- **Ingress connectors** (ADR-096): `per_connector_tenant_event(connector, tenant, kind)` → `factory.event.{connector}.{tenant}.{kind}`
+- **Other plane ① producers:** `per_service_event(service, kind)` → `factory.event.{service}.{kind}`
 
 ### Producers (target)
 
 | Producer | Service token | Kind examples | Notes |
 |---|---|---|---|
-| `factory-ingress` · GitHub | `github` | `check_run.completed`, `pull_request.opened`, `workflow_run.completed` | Dedicated M₁ container (#2008); GitHub App **second** webhook URL; ¬ roxabi-live republish |
-| `factory-ingress` · Cloudflare | `cloudflare` | `pages.deployment.success`, `pages.deployment.failure` | Webhook token per zone/service |
+| `factory-ingress` · GitHub | `github` | `check_run.completed`, `pull_request.opened`, `workflow_run.completed` | Dedicated M₁ container (#2008); subject `factory.event.github.{tenant}.{kind}`; GitHub App **second** webhook URL; ¬ roxabi-live republish |
+| `factory-ingress` · Cloudflare | `cloudflare` | `pages.deployment.success`, `pages.deployment.failure` | Subject `factory.event.cloudflare.{tenant}.{kind}`; per-account webhook + `cf-webhook-auth` |
 | `factory-host-sensor` M₂ | `host` | `roxabitower.activity`, `roxabitower.stale` | systemd timer; reads `~/.grok/`, `~/.claude/`, worktrees |
 | `factory-host-sensor` Laptop | `host` | `laptop.activity`, `laptop.stale` | Same pattern |
 | `factory-host-sensor` M₁ | `host` | `roxabituwer.services` | Quadlet/systemd snapshot |
@@ -200,7 +203,7 @@ Envelope: `LyraMetric` (`metric_type`: gauge | counter | histogram).
 
 | Trigger ID | Event pattern | Enrichment | Action |
 |---|---|---|---|
-| `pr_ci_red` | `factory.event.github.check_run.completed` (conclusion=failure) | `turns.db` lookup | Discord alert; optional `sentinelle.steer` job |
+| `pr_ci_red` | `factory.event.github.>.check_run.completed` (conclusion=failure; filter `LyraEvent.tenant` when M>1) | `turns.db` lookup | Discord alert; optional `sentinelle.steer` job |
 | `host_stale` | `factory.event.host.*.stale` | live backlog | Discord coaching |
 | `factory_degraded` | (cold) health pull `circuits` open or `http_health` fail | `/health/detail` full | Discord alert |
 | `postiz_missed` | `factory.event.postiz.schedule.missed` | — | Discord alert |

@@ -16,6 +16,9 @@ from roxabi_contracts.dashboard import (
     DashboardAgentSoulPreviewResponse,
     DashboardAgentSoulPutRequest,
     DashboardAgentSoulSectionsResponse,
+    DashboardConnectorInstallationDeleteRequest,
+    DashboardConnectorInstallationsListResponse,
+    DashboardConnectorInstallationUpsertRequest,
     DashboardFleetResponse,
     DashboardJobsLaunchRequest,
     DashboardJobsLaunchResponse,
@@ -160,3 +163,28 @@ class DashboardHubClient:
     async def fleet_list(self) -> DashboardFleetResponse:
         raw = await self._request(SUBJECTS.fleet_list, {})
         return DashboardFleetResponse.model_validate(raw)
+
+    async def list_connector_installations(
+        self, connector: str, *, factory_tenant: str
+    ) -> DashboardConnectorInstallationsListResponse:
+        raw = await self._request(
+            SUBJECTS.connectors_installations_list,
+            {"connector": connector, "factory_tenant": factory_tenant},
+        )
+        if raw.get("error"):
+            raise RuntimeError(str(raw["error"]))
+        return DashboardConnectorInstallationsListResponse.model_validate(raw)
+
+    async def upsert_connector_installation(
+        self, req: DashboardConnectorInstallationUpsertRequest
+    ) -> dict[str, Any]:
+        return await self._request(
+            SUBJECTS.connectors_installations_upsert, req.model_dump()
+        )
+
+    async def delete_connector_installation(
+        self, req: DashboardConnectorInstallationDeleteRequest
+    ) -> dict[str, Any]:
+        return await self._request(
+            SUBJECTS.connectors_installations_delete, req.model_dump()
+        )

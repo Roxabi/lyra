@@ -5,7 +5,8 @@ Two envelope models:
   LyraMetric — typed metrics (counters, gauges, histograms)
 
 Canonical subject patterns:
-  factory.event.<service>.<kind>
+  factory.event.<service>.<kind>              — host/mail/postiz producers
+  factory.event.<connector>.<tenant>.<kind>  — ingress connectors (ADR-096)
   factory.metric.<service>.<name>
 """
 
@@ -26,6 +27,9 @@ class LyraEvent(ContractEnvelope):
     level: Literal["debug", "info", "warn", "error", "critical"]
     message: str | None = None
     payload: dict[str, Any] | None = None
+    tenant: Annotated[str, StringConstraints(pattern=r"^[a-z0-9][a-z0-9_-]*$")] = (
+        "default"
+    )
 
     @model_validator(mode="after")
     def _error_level_requires_message(self) -> Self:

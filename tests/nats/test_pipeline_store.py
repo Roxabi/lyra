@@ -321,6 +321,51 @@ def test_cf_pages_ignores_branch_mismatch(store: PipelineStore) -> None:
     assert row.cf_deploy_status == "pending"
 
 
+def test_closed_unmerged_pr_deploy_stages_are_na(store: PipelineStore) -> None:
+    store.apply_github_event(
+        kind="pull_request.closed",
+        payload={
+            "action": "closed",
+            "pull_request": {
+                "number": 2,
+                "title": "closed not merged",
+                "merged": False,
+            },
+        },
+        trace_id="t-close-skip",
+    )
+    row = store.get_run("Roxabi/roxabi-factory", 2)
+    assert row is not None
+    assert row.merge_status == "skipped"
+    assert row.publish_status == "n/a"
+    assert row.m1_deploy_status == "n/a"
+    assert row.cf_deploy_status == "n/a"
+
+
+def test_list_runs_filters_stale_closed_rows(store: PipelineStore) -> None:
+    store.apply_github_event(
+        kind="pull_request.closed",
+        payload={
+            "action": "closed",
+            "pull_request": {"number": 3, "title": "old", "merged": True},
+        },
+        trace_id="t-old-merge",
+    )
+    row = store.get_run("Roxabi/roxabi-factory", 3)
+    assert row is not None
+    row.last_event_at = "2020-01-01T00:00:00+00:00"
+    row.updated_at = row.last_event_at
+    store.apply_github_event(
+        kind="pull_request.opened",
+        payload=_open_pr_payload(pr_number=4),
+        trace_id="t-open-new",
+    )
+    listed = store.list_runs(include_closed_hours=24.0)
+    numbers = {r.pr_number for r in listed}
+    assert 4 in numbers
+    assert 3 not in numbers
+
+
 def test_idempotent_trace_id(store: PipelineStore) -> None:
     payload = _open_pr_payload(pr_number=1, labels=["reviewed"])
     store.apply_github_event(

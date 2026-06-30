@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
@@ -118,7 +118,20 @@ class PipelineStore:
         return True
 
     def list_runs(self, *, include_closed_hours: float = 24.0) -> list[PipelineRunRow]:
-        rows = list(self._runs.values())
+        cutoff = None
+        if include_closed_hours > 0:
+            cutoff = datetime.now(tz=UTC) - timedelta(hours=include_closed_hours)
+        rows: list[PipelineRunRow] = []
+        for row in self._runs.values():
+            if row.open:
+                rows.append(row)
+                continue
+            if cutoff is None:
+                rows.append(row)
+                continue
+            ts = _parse_iso(row.last_event_at) or _parse_iso(row.updated_at)
+            if ts is None or ts >= cutoff:
+                rows.append(row)
         rows.sort(
             key=lambda r: (not r.open, r.pr_number),
             reverse=True,
@@ -241,6 +254,10 @@ class PipelineStore:
                 row.publish_status = "pending"
                 row.m1_deploy_status = "pending"
                 row.cf_deploy_status = "pending"
+            else:
+                row.publish_status = "n/a"
+                row.m1_deploy_status = "n/a"
+                row.cf_deploy_status = "n/a"
             self._touch(row)
             return
 
@@ -409,7 +426,7 @@ def _active_publish_pending_row(
     ]
     if not candidates:
         return None
-    return max(candidates, key=lambda row: (row.updated_at or "", row.pr_number))
+    return max(candidates, key=lambda row: row.pr_number)
 
 
 def _active_cf_pending_row(runs: object, repo: str) -> PipelineRunRow | None:
@@ -423,7 +440,16 @@ def _active_cf_pending_row(runs: object, repo: str) -> PipelineRunRow | None:
     ]
     if not candidates:
         return None
-    return max(candidates, key=lambda row: (row.updated_at or "", row.pr_number))
+    return max(candidates, key=lambda row: row.pr_number)
+
+
+def _parse_iso(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 def _pr_has_reviewed_label(labels: object) -> bool:

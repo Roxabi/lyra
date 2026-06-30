@@ -281,3 +281,49 @@ class DashboardFleetRow(BaseModel):
 
 class DashboardFleetResponse(BaseModel):
     rows: list[DashboardFleetRow]
+
+
+ConnectorName = Literal["github", "cloudflare"]
+
+
+class ConnectorInstallationRow(BaseModel):
+    connector: str
+    external_id: str
+    factory_tenant: str
+    enabled: bool
+
+
+class DashboardConnectorInstallationsListRequest(BaseModel):
+    connector: str
+    factory_tenant: str
+
+
+class DashboardConnectorInstallationsListResponse(BaseModel):
+    installations: list[ConnectorInstallationRow]
+
+
+class DashboardConnectorInstallationUpsertRequest(BaseModel):
+    connector: str
+    external_id: str
+    factory_tenant: str
+    operator_tenant: str
+    metadata: dict[str, str] | None = None
+
+
+class DashboardConnectorInstallationUpsertResponse(BaseModel):
+    ok: bool = True
+
+
+class DashboardConnectorInstallationDeleteRequest(BaseModel):
+    connector: str
+    external_id: str
+    operator_tenant: str
+
+
+class DashboardConnectorInstallationDeleteResponse(BaseModel):
+    ok: bool = True
+
+
+class DashboardGithubInstallUrlResponse(BaseModel):
+    url: str
+    app_slug: str

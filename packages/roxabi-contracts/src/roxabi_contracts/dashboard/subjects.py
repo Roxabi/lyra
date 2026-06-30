@@ -45,6 +45,15 @@ class DashboardSubjects(BaseModel):
         "factory.dashboard.agents.soul.preview"
     )
     fleet_list: Literal["factory.dashboard.fleet.list"] = "factory.dashboard.fleet.list"
+    connectors_installations_list: Literal[
+        "factory.dashboard.connectors.installations.list"
+    ] = "factory.dashboard.connectors.installations.list"
+    connectors_installations_upsert: Literal[
+        "factory.dashboard.connectors.installations.upsert"
+    ] = "factory.dashboard.connectors.installations.upsert"
+    connectors_installations_delete: Literal[
+        "factory.dashboard.connectors.installations.delete"
+    ] = "factory.dashboard.connectors.installations.delete"
 
 
 SUBJECTS = DashboardSubjects()

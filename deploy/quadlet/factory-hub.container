@@ -40,6 +40,11 @@ Environment=NATS_URL=nats://factory-nats:4222
 # ADR-054 Decision 5 (revised): nkey seed delivered as Podman secret.
 Secret=factory-nats-hub,type=mount,target=factory-nats-hub.seed,uid=1500,gid=1500,mode=0400
 Environment=NATS_NKEY_SEED_PATH=/run/secrets/factory-nats-hub.seed
+# BlobStore — hub voice overlay + attachment ingest (#1551); localhost:8449 is wrong
+# inside the container (blobstore is factory-blobstore on roxabi.network).
+Environment=FACTORY_BLOBSTORE_URL=http://factory-blobstore:8449
+Environment=FACTORY_BLOBSTORE_TOKEN_PATH=/run/secrets/factory_blobstore_token
+Secret=factory_blobstore_token,type=mount,uid=1500,gid=1500,mode=0400,target=/run/secrets/factory_blobstore_token
 Volume=factory-data.volume:/home/factory/.roxabi/factory:z
 # T26 (#1331): hub is now a READER — turns.db must be ro; factory-turn-writer owns writes.
 # Directory bind (not file-only): SQLite WAL requires turns.db-wal / turns.db-shm siblings

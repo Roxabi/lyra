@@ -65,6 +65,7 @@
     "disclaimer": "Indicatif seulement — pas pour décider d'un merge. Les checks GitHub font foi.",
     "tableTitle": "Chaîne release",
     "loadError": "Impossible de charger le pipeline.",
+    "loading": "Connexion au flux pipeline…",
     "empty": "Aucune PR suivie — en attente d'events GitHub ingress.",
     "reviewed": "reviewed",
     "notReviewed": "sans label reviewed",

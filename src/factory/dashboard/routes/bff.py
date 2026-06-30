@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 from typing import TYPE_CHECKING
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import StreamingResponse
+from pydantic import ValidationError
+
+from factory.dashboard.pipeline_stream import (
+    PIPELINE_STREAM_ID,
+    pipeline_sse_events,
+)
+from factory.dashboard.stream_tokens import StreamTokenRegistry
 
 from factory.dashboard.e2e import (
     e2e_enabled,
@@ -56,7 +66,9 @@ def _sessions_auth_required() -> bool:
 
 
 def build_bff_router(  # noqa: C901, PLR0915
-    adapter: WebAdapter, hub: DashboardHubClient
+    adapter: WebAdapter,
+    hub: DashboardHubClient,
+    tokens: StreamTokenRegistry,
 ) -> APIRouter:
     router = APIRouter(prefix="/api/bff")
 
@@ -237,6 +249,36 @@ def build_bff_router(  # noqa: C901, PLR0915
             raise _hub_unavailable(exc) from exc
         except (ValidationError, json.JSONDecodeError) as exc:
             raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    @router.post("/pipeline/stream-token")
+    async def pipeline_stream_token() -> dict[str, str]:
+        stream_token = tokens.mint(PIPELINE_STREAM_ID)
+        return {"stream_token": stream_token}
+
+    @router.get("/pipeline/stream")
+    async def pipeline_stream(
+        request: Request,
+        token: str | None = Query(default=None),
+    ) -> StreamingResponse:
+        if not tokens.verify(PIPELINE_STREAM_ID, token):
+            raise HTTPException(status_code=403, detail="invalid stream token")
+
+        async def _client_connected() -> bool:
+            return not await request.is_disconnected()
+
+        async def event_gen():
+            try:
+                async for frame in pipeline_sse_events(
+                    hub,
+                    is_connected=_client_connected,
+                ):
+                    yield frame
+            except asyncio.CancelledError:
+                return
+            finally:
+                tokens.revoke(PIPELINE_STREAM_ID)
+
+        return StreamingResponse(event_gen(), media_type="text/event-stream")
 
     @router.post("/sessions/resume")
     async def resume_session(

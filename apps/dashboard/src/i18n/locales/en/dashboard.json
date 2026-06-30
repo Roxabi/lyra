@@ -65,6 +65,7 @@
     "disclaimer": "Indicative only — not for merge decisions. GitHub checks remain canonical.",
     "tableTitle": "Release pipeline",
     "loadError": "Could not load pipeline state.",
+    "loading": "Connecting to pipeline stream…",
     "empty": "No PRs tracked yet — waiting for GitHub ingress events.",
     "reviewed": "reviewed",
     "notReviewed": "no reviewed label",

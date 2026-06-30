@@ -1,9 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { PageIntro } from "@/components/layout/PageIntro";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { type PipelineRun, type PipelineStageStatus, fetchPipeline } from "@/lib/api";
+import { usePipelineRuns } from "@/hooks/usePipelineRuns";
+import { type PipelineRun, type PipelineStageStatus } from "@/lib/api";
 
 function stageVariant(
   status: PipelineStageStatus,
@@ -28,11 +28,7 @@ function StageBadge({ label, status }: { label: string; status: PipelineStageSta
 
 export function PipelinePage() {
   const { t } = useTranslation("dashboard");
-  const { data: runs = [], isError } = useQuery({
-    queryKey: ["pipeline"],
-    queryFn: fetchPipeline,
-    refetchInterval: 30_000,
-  });
+  const { runs, isError, isLoading } = usePipelineRuns();
 
   return (
     <div className="space-y-6">
@@ -51,7 +47,9 @@ export function PipelinePage() {
           <CardTitle className="text-sm text-muted-foreground">{t("pipeline.tableTitle")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {runs.length === 0 ? (
+          {isLoading ? (
+            <p className="py-4 text-sm text-muted-foreground">{t("pipeline.loading")}</p>
+          ) : runs.length === 0 ? (
             <p className="py-4 text-sm text-muted-foreground">{t("pipeline.empty")}</p>
           ) : (
             runs.map((row: PipelineRun) => (

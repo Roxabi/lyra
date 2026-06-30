@@ -10,7 +10,7 @@ import pytest
 from nats.aio.client import Client as NATS
 
 from factory.bootstrap.factory.dashboard_rpc import start_dashboard_rpc
-from factory.bootstrap.factory.fleet_bootstrap import start_fleet_ingest
+from factory.bootstrap.fleet_ingest import start_fleet_ingest
 from factory.core.hub.hub import Hub
 from factory.nats.fleet_catalog import FleetCatalogEntry
 from factory.nats.fleet_store import FleetStore

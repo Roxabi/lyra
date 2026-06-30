@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Any
 from nats.aio.msg import Msg
 from pydantic import ValidationError
 
+from factory.bootstrap.factory.dashboard.fleet_rpc import handle_fleet_list
+from factory.bootstrap.factory.dashboard.voice_rpc import handle_voice_capabilities
 from factory.bootstrap.factory.dashboard_agents_rpc import (
     handle_agents_get,
     handle_agents_list,
@@ -17,13 +19,11 @@ from factory.bootstrap.factory.dashboard_agents_rpc import (
     handle_agents_soul_preview,
     handle_agents_soul_put,
 )
-from factory.bootstrap.factory.dashboard_fleet_rpc import handle_fleet_list
 from factory.bootstrap.factory.dashboard_jobs_rpc import (
     handle_jobs_launch,
     handle_jobs_list,
     handle_jobs_steer,
 )
-from factory.bootstrap.factory.dashboard_voice_rpc import handle_voice_capabilities
 from factory.core.hub.hub_protocol import RoutingKey
 from factory.core.hub.session_catalog import list_sessions_for_agent
 from factory.core.messaging.message import Platform

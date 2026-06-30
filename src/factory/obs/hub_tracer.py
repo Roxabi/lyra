@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import os
 import time
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncGenerator, Generator
 from contextlib import asynccontextmanager, contextmanager
 
 from opentelemetry import trace
@@ -14,7 +15,6 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace import Span, Status, StatusCode
 from roxabi_otel import otel_enabled
 
-from factory.nats.envelope_fields import peek_envelope_ids
 from roxabi_contracts.telemetry import (
     ATTR_COMPONENT,
     ATTR_JOB_ID,
@@ -24,6 +24,22 @@ from roxabi_contracts.telemetry import (
 )
 
 _provider: TracerProvider | None = None
+
+
+def _peek_envelope_ids(payload: bytes) -> tuple[str | None, str | None]:
+    """Best-effort read of trace_id/job_id from a JSON work envelope."""
+    try:
+        data = json.loads(payload)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None, None
+    if not isinstance(data, dict):
+        return None, None
+    trace = data.get("trace_id")
+    job = data.get("job_id")
+    return (
+        trace if isinstance(trace, str) and trace else None,
+        job if isinstance(job, str) and job else None,
+    )
 
 
 def _hub_tracer() -> trace.Tracer:
@@ -82,7 +98,7 @@ def hub_ingress_span(
     platform: str,
     bot_id: str,
     msg_id: str,
-) -> Iterator[Span | None]:
+) -> Generator[Span | None]:
     """Span for one inbound hub turn (TraceMiddleware)."""
     if not otel_enabled():
         yield None
@@ -117,13 +133,13 @@ def nats_client_span(  # noqa: PLR0913
     trace_id: str | None = None,
     job_id: str | None = None,
     pool_id: str | None = None,
-) -> Iterator[Span | None]:
+) -> Generator[Span | None]:
     """Client span for hub → worker NATS request (WorkerPoolClient, job drivers)."""
     if not otel_enabled():
         yield None
         return
     if payload is not None and (trace_id is None or job_id is None):
-        peek_trace, peek_job = peek_envelope_ids(payload)
+        peek_trace, peek_job = _peek_envelope_ids(payload)
         trace_id = trace_id or peek_trace
         job_id = job_id or peek_job
     tracer = _hub_tracer()
@@ -154,14 +170,14 @@ async def nats_client_stream_span(
     name: str,
     subject: str,
     payload: bytes | None = None,
-) -> AsyncIterator[Span | None]:
+) -> AsyncGenerator[Span | None]:
     """Client span wrapping a streaming NATS inbox request."""
     if not otel_enabled():
         yield None
         return
     trace_id, job_id = (None, None)
     if payload is not None:
-        trace_id, job_id = peek_envelope_ids(payload)
+        trace_id, job_id = _peek_envelope_ids(payload)
     tracer = _hub_tracer()
     span = tracer.start_span(
         f"nats.client.stream:{name}",
@@ -173,6 +189,36 @@ async def nats_client_stream_span(
             pool_id=None,
         ),
     )
+    started = time.monotonic()
+    err: BaseException | None = None
+    try:
+        yield span
+    except BaseException as exc:
+        err = exc
+        raise
+    finally:
+        _finish_span(span, error=err, started=started)
+
+
+@contextmanager
+def ingress_webhook_span(
+    *,
+    connector: str,
+    tenant: str | None = None,
+) -> Generator[Span | None]:
+    """Span for factory-ingress webhook handling."""
+    if not otel_enabled():
+        yield None
+        return
+    tracer = _hub_tracer()
+    attrs: dict[str, str] = {
+        ATTR_COMPONENT: "ingress",
+        ATTR_SUBJECT: f"ingress.{connector}",
+        "roxabi.connector": connector,
+    }
+    if tenant:
+        attrs["roxabi.tenant"] = tenant
+    span = tracer.start_span("ingress.webhook", attributes=attrs)
     started = time.monotonic()
     err: BaseException | None = None
     try:

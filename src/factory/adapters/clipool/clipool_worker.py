@@ -143,12 +143,18 @@ class CliPoolNatsWorker(NatsAdapterBase):
 
     async def _run_job(self, envelope: JobEnvelope) -> None:
         job_id = envelope.job_id
+        wire_trace_id = envelope.trace_id
         body = envelope.payload
         pool_id = str(body.get("pool_id") or job_id)
         prompt = str(body.get("prompt") or body.get("text") or "")
         if not prompt:
             log.warning("clipool_worker: job_id=%s empty prompt — rejecting", job_id)
-            await publish_job_error(self._nc, job_id, ValueError("empty prompt"))
+            await publish_job_error(
+                self._nc,
+                job_id,
+                ValueError("empty prompt"),
+                trace_id=wire_trace_id,
+            )
             return
 
         stream = bool(body.get("stream", True))
@@ -185,6 +191,7 @@ class CliPoolNatsWorker(NatsAdapterBase):
                 await publish_streaming_job(
                     self._nc,
                     job_id=job_id,
+                    trace_id=wire_trace_id,
                     iterator=iterator,
                     resumed=resumed,
                 )
@@ -203,13 +210,19 @@ class CliPoolNatsWorker(NatsAdapterBase):
                 await publish_blocking_result(
                     self._nc,
                     job_id=job_id,
+                    trace_id=wire_trace_id,
                     result=result,
                     resumed=resumed,
                 )
         except Exception as exc:  # noqa: BLE001
             log.exception("clipool_worker: job_id=%s failed", job_id)
             emit_populated_total(domain="cli")
-            await publish_job_failure(self._nc, job_id=job_id, exc=exc)
+            await publish_job_failure(
+                self._nc,
+                job_id=job_id,
+                trace_id=wire_trace_id,
+                exc=exc,
+            )
 
     async def _run_pool_op(
         self,

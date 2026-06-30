@@ -14,11 +14,11 @@ from typing import TYPE_CHECKING, Any, AsyncIterator, Protocol
 from pydantic import ValidationError
 
 from factory.core.agent.agent_config import ModelConfig
+from factory.core.envelope_fields import control_trace_id, mint_work_envelope_fields
 from factory.core.messaging.events import LlmEvent, ResultLlmEvent
 from factory.core.ports.llm import LlmResult
 from factory.core.trace import TraceContext
 from factory.llm.claude_job_codec import ClaudeJobCodec
-from factory.nats.envelope_fields import control_trace_id, mint_work_envelope_fields
 from factory.obs.hub_tracer import nats_client_span
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.jobs import JobEnvelope, JobProgress, JobResult

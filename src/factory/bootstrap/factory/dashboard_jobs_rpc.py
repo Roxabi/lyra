@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
-from uuid import uuid4
 
 from factory.core.hub.hub_protocol import RoutingKey
 from factory.core.hub.job_catalog import list_active_jobs
 from factory.core.messaging.message import Platform
 from factory.core.prompt_resolution import resolve_agent_runtime_defaults
+from factory.core.trace import TraceContext
+from factory.nats.envelope_fields import mint_work_envelope_fields
+from factory.obs.hub_tracer import nats_client_span
 from roxabi_contracts.dashboard import (
     DashboardJob,
     DashboardJobsLaunchRequest,
@@ -18,7 +19,6 @@ from roxabi_contracts.dashboard import (
     DashboardJobsSteerRequest,
     DashboardJobsSteerResponse,
 )
-from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.jobs import JobEnvelope
 from roxabi_contracts.jobs.subjects import jobs_steer, jobs_submit
 
@@ -51,10 +51,14 @@ async def handle_jobs_launch(hub: Hub, nc: NATS, payload: dict[str, Any]) -> dic
             message=f"job_name not allowed: {req.job_name!r}",
         ).model_dump()
 
-    job_id = uuid4().hex
     pool_id = req.pool_id or RoutingKey(
         Platform.WEB, _WEB_BOT, f"agent:{req.agent}"
     ).to_pool_id()
+    fields = mint_work_envelope_fields(
+        trace_id=TraceContext.get_trace_id() or TraceContext.generate(),
+        pool_id=pool_id,
+    )
+    job_id = fields.job_id
     dispatch_subject = jobs_submit(req.job_name)
     agent = hub.agent_registry.get(req.agent)
     store = getattr(hub, "_agent_store", None)
@@ -74,9 +78,9 @@ async def handle_jobs_launch(hub: Hub, nc: NATS, payload: dict[str, Any]) -> dic
         }
     system_prompt = agent.config.system_prompt if agent is not None else ""
     envelope = JobEnvelope(
-        contract_version=CONTRACT_VERSION,
-        trace_id=job_id,
-        issued_at=datetime.now(tz=UTC),
+        contract_version=fields.contract_version,
+        trace_id=fields.trace_id,
+        issued_at=fields.issued_at,
         job_id=job_id,
         job_name=req.job_name,
         payload={
@@ -88,7 +92,16 @@ async def handle_jobs_launch(hub: Hub, nc: NATS, payload: dict[str, Any]) -> dic
         },
         reply_to=f"_INBOX.{job_id}",
     )
-    await nc.publish(dispatch_subject, envelope.model_dump_json().encode())
+    wire = envelope.model_dump_json().encode()
+    with nats_client_span(
+        name="dashboard-jobs",
+        subject=dispatch_subject,
+        payload=wire,
+        trace_id=fields.trace_id,
+        job_id=job_id,
+        pool_id=pool_id,
+    ):
+        await nc.publish(dispatch_subject, wire)
     return DashboardJobsLaunchResponse(
         accepted=True,
         job_id=job_id,

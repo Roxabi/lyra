@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import ValidationError
 
+from factory.core.envelope_fields import mint_work_envelope_fields
 from factory.core.messaging.events import (
     LlmEvent,
     ResultLlmEvent,
@@ -19,7 +20,6 @@ from factory.core.messaging.events import (
 )
 from factory.core.ports.llm import LlmResult
 from factory.core.trace import TraceContext
-from factory.nats.envelope_fields import mint_work_envelope_fields
 from factory.transport._result import Err, Result, SanitizedError
 from roxabi_contracts.cli.models import (
     ClaudeJobPayload,
@@ -91,7 +91,7 @@ class CliPoolCodec:
             contract_version=fields.contract_version,
             trace_id=trace_id,
             issued_at=fields.issued_at,
-            pool_id=pool_id,
+            pool_id=pool_id or "",
             lyra_session_id=lyra_session_id,
             text=text,
             model_cfg=_mcfg,

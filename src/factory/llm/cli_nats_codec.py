@@ -16,10 +16,10 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 
+from factory.core.envelope_fields import mint_work_envelope_fields
 from factory.core.messaging.events import LlmEvent, ResultLlmEvent, TextLlmEvent
 from factory.core.ports.llm import LlmResult
 from factory.core.trace import TraceContext
-from factory.nats.envelope_fields import mint_work_envelope_fields
 from factory.transport._result import Err, Result, SanitizedError
 from roxabi_contracts.errors import KNOWN_CODES, WorkerError
 from roxabi_contracts.llm import LlmChunkEvent, LlmRequest, LlmResponse

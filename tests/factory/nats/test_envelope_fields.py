@@ -8,7 +8,7 @@ import pytest
 
 from factory.core.trace import TraceContext
 from factory.nats.audio.nats_tts_codec import TtsCodec
-from factory.nats.envelope_fields import mint_work_envelope_fields
+from factory.nats.envelope_fields import mint_work_envelope_fields, wire_trace_id_hex
 from factory.nats.image.nats_image_codec import ImageCodec, ImageGenParams
 from factory.nats.stt.nats_stt_codec import SttCodec, SttEncodeParams
 from roxabi_contracts import BlobRef
@@ -44,6 +44,13 @@ class TestMintWorkEnvelopeFields:
     def test_missing_trace_raises(self) -> None:
         with pytest.raises(ValueError, match="trace_id required"):
             mint_work_envelope_fields(job_id=_JOB)
+
+    def test_wire_trace_id_hex_from_context(self) -> None:
+        tok = TraceContext.set_trace_id(_TRACE)
+        try:
+            assert wire_trace_id_hex() == _TRACE.replace("-", "")
+        finally:
+            TraceContext.reset_trace_id(tok)
 
 
 class TestHubCodecsUseTraceContext:

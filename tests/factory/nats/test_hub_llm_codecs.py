@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from factory.core.agent.agent_config import ModelConfig
 from factory.core.trace import TraceContext
 from factory.llm.cli_nats_codec import CliNatsCodec
 from factory.llm.cli_pool_codec import CliPoolCodec
@@ -11,19 +12,7 @@ from factory.llm.cli_pool_codec import CliPoolCodec
 _TRACE = "550e8400-e29b-41d4-a716-446655440000"
 _JOB = "a" * 32
 _POOL = "pool:tg:chat:1"
-
-
-class _ModelCfg:
-    model = "claude-sonnet"
-    max_tokens = 1024
-    temperature = 0.0
-
-    def model_dump(self) -> dict:
-        return {
-            "model": self.model,
-            "max_tokens": self.max_tokens,
-            "temperature": self.temperature,
-        }
+_MODEL_CFG = ModelConfig(model="claude-sonnet")
 
 
 class TestLlmCodecsUseTraceContext:
@@ -32,7 +21,7 @@ class TestLlmCodecsUseTraceContext:
         try:
             payload, trace_id = CliPoolCodec().encode(
                 "hi",
-                _ModelCfg(),
+                _MODEL_CFG,
                 "sys",
                 None,
                 stream=False,
@@ -50,7 +39,7 @@ class TestLlmCodecsUseTraceContext:
         try:
             payload, trace_id = CliNatsCodec().encode(
                 "hi",
-                _ModelCfg(),
+                _MODEL_CFG,
                 "sys",
                 None,
                 stream=False,

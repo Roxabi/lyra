@@ -18,10 +18,10 @@ from typing import Any, Protocol
 from pydantic import ValidationError
 
 from factory.core.agent.agent_config import ModelConfig
+from factory.core.envelope_fields import mint_work_envelope_fields
 from factory.core.ports.llm import LlmResult
 from factory.core.trace import TraceContext
 from factory.llm.omp_job_codec import OmpJobCodec
-from factory.nats.envelope_fields import mint_work_envelope_fields
 from factory.obs.hub_tracer import nats_client_span
 from roxabi_contracts.jobs import JobEnvelope, JobResult
 from roxabi_contracts.jobs.subjects import jobs_result, jobs_submit

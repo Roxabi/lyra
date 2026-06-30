@@ -15,9 +15,9 @@ from typing import TYPE_CHECKING, AsyncIterator, Protocol
 
 import nats.errors
 
+from factory.core.envelope_fields import control_trace_id
 from factory.core.messaging.events import LlmEvent, ResultLlmEvent
 from factory.core.ports.llm import LlmResult
-from factory.nats.envelope_fields import control_trace_id
 from roxabi_contracts.cli import SUBJECTS as CLI_SUBJECTS
 from roxabi_contracts.cli.models import CliControlCmd
 from roxabi_contracts.envelope import CONTRACT_VERSION

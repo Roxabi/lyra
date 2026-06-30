@@ -10,10 +10,10 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
-from uuid import uuid4
 
 import nats.errors
 
+from factory.nats.envelope_fields import wire_trace_id_hex
 from factory.tools.gh_token.helper import MintError
 from roxabi_contracts.envelope import CONTRACT_VERSION
 from roxabi_contracts.gh.models import MintFailureEvent
@@ -58,7 +58,7 @@ class MintFailurePublisher:
         try:
             event = MintFailureEvent(
                 contract_version=CONTRACT_VERSION,
-                trace_id=str(uuid4()),
+                trace_id=wire_trace_id_hex(),
                 issued_at=datetime.now(timezone.utc),
                 machine=self._machine,
                 reason=_reason_label(exc),

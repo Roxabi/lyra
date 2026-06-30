@@ -175,14 +175,25 @@ class OmpWorker(NatsAdapterBase):
             # ValidationError.__str__ may embed incoming values — use only
             # type name on the bus (ADR-073). Log the full exception locally above.
             job_id = payload.get("job_id", "unknown")
-            await publish_job_error(self._nc, str(job_id), exc)
+            await publish_job_error(
+                self._nc,
+                str(job_id),
+                exc,
+                trace_id=str(payload.get("trace_id") or ""),
+            )
             return
 
         job_id = envelope.job_id
+        wire_trace_id = envelope.trace_id
         prompt = envelope.payload.get("prompt", "")
         if not prompt:
             log.warning("omp_worker: job_id=%s has empty prompt — rejecting", job_id)
-            await publish_job_error(self._nc, str(job_id), ValueError("empty prompt"))
+            await publish_job_error(
+                self._nc,
+                str(job_id),
+                ValueError("empty prompt"),
+                trace_id=wire_trace_id,
+            )
             return
 
         # provider_session_id (session path) from envelope — basic guard.
@@ -197,7 +208,10 @@ class OmpWorker(NatsAdapterBase):
             ):
                 log.warning("omp_worker: job_id=%s bad session token — reject", job_id)
                 await publish_job_error(
-                    self._nc, str(job_id), ValueError("invalid session token")
+                    self._nc,
+                    str(job_id),
+                    ValueError("invalid session token"),
+                    trace_id=wire_trace_id,
                 )
                 return
 
@@ -239,6 +253,7 @@ class OmpWorker(NatsAdapterBase):
                     str(job_id),
                     str(prompt),
                     provider_session_id,
+                    trace_id=wire_trace_id,
                     model=requested_model,
                     system_prompt=(
                         str(system_prompt) if isinstance(system_prompt, str) else ""
@@ -249,12 +264,13 @@ class OmpWorker(NatsAdapterBase):
         self._jobs.add(task)
         task.add_done_callback(self._jobs.discard)
 
-    async def _run_job(
+    async def _run_job(  # noqa: PLR0913
         self,
         job_id: str,
         prompt: str,
         session_file: str | None,
         *,
+        trace_id: str | None = None,
         model: str | None = None,
         system_prompt: str = "",
     ) -> None:
@@ -269,6 +285,7 @@ class OmpWorker(NatsAdapterBase):
             await worker.bridge.run(
                 prompt,
                 job_id,
+                trace_id=trace_id,
                 session_file=worker.session_file,
                 model=model,
             )
@@ -280,7 +297,7 @@ class OmpWorker(NatsAdapterBase):
             # See module docstring, CLAUDE.md, axial review.
             log.exception("omp_worker: job_id=%s failed", job_id)
             await publish_job_error(
-                self._nc, job_id, exc
+                self._nc, job_id, exc, trace_id=trace_id
             )  # type(exc).__name__ only, on the bus
         else:
             log.info(

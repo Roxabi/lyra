@@ -60,6 +60,32 @@
       "n/a": "N/A"
     }
   },
+  "pipeline": {
+    "subtitle": "Open PRs and recent merges — CI, publish, M₁ and Cloudflare stages from ingress events.",
+    "disclaimer": "Indicative only — not for merge decisions. GitHub checks remain canonical.",
+    "tableTitle": "Release pipeline",
+    "loadError": "Could not load pipeline state.",
+    "empty": "No PRs tracked yet — waiting for GitHub ingress events.",
+    "reviewed": "reviewed",
+    "notReviewed": "no reviewed label",
+    "merged": "merged",
+    "columns": {
+      "ci": "CI",
+      "merge": "Merge",
+      "publish": "Publish",
+      "m1": "M₁",
+      "cf": "CF"
+    },
+    "stage": {
+      "pending": "pending",
+      "running": "running",
+      "success": "ok",
+      "failure": "failed",
+      "skipped": "skipped",
+      "unknown": "unknown",
+      "n/a": "n/a"
+    }
+  },
   "chats": {
     "title": "Recent chats",
     "empty": "No open chats.",

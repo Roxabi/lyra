@@ -12,6 +12,7 @@ from factory.dashboard.e2e import (
     e2e_enabled,
     stub_agents_status,
     stub_fleet,
+    stub_pipeline,
     stub_jobs_launch,
     stub_jobs_list,
     stub_jobs_steer,
@@ -225,6 +226,17 @@ def build_bff_router(  # noqa: C901, PLR0915
             if mapped is not None:
                 raise mapped from exc
             raise
+
+    @router.get("/pipeline")
+    async def pipeline_list() -> dict:
+        if e2e_enabled():
+            return stub_pipeline().model_dump()
+        try:
+            return (await hub.pipeline_list()).model_dump()
+        except RuntimeError as exc:
+            raise _hub_unavailable(exc) from exc
+        except (ValidationError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     @router.post("/sessions/resume")
     async def resume_session(

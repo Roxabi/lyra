@@ -38,11 +38,52 @@ export interface FleetRow {
   image_digest_status: ImageDigestStatus;
 }
 
+export type PipelineStageStatus =
+  | "pending"
+  | "running"
+  | "success"
+  | "failure"
+  | "skipped"
+  | "unknown"
+  | "n/a";
+
+export interface PipelineCheck {
+  name: string;
+  status: string;
+  conclusion: string | null;
+}
+
+export interface PipelineRun {
+  repo: string;
+  pr_number: number;
+  title: string;
+  head_sha: string | null;
+  head_ref: string | null;
+  html_url: string | null;
+  reviewed: boolean;
+  open: boolean;
+  ci_status: PipelineStageStatus;
+  merge_status: PipelineStageStatus;
+  publish_status: PipelineStageStatus;
+  m1_deploy_status: PipelineStageStatus;
+  cf_deploy_status: PipelineStageStatus;
+  checks: PipelineCheck[];
+  last_event_at: string | null;
+  updated_at: string | null;
+}
+
 export async function fetchFleet(): Promise<FleetRow[]> {
   const res = await fetch("/api/bff/fleet");
   if (!res.ok) throw new Error("fleet fetch failed");
   const data = (await res.json()) as { rows: FleetRow[] };
   return data.rows;
+}
+
+export async function fetchPipeline(): Promise<PipelineRun[]> {
+  const res = await fetch("/api/bff/pipeline");
+  if (!res.ok) throw new Error("pipeline fetch failed");
+  const data = (await res.json()) as { runs: PipelineRun[] };
+  return data.runs;
 }
 
 export async function fetchAgents(): Promise<string[]> {

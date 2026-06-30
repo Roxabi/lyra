@@ -60,6 +60,32 @@
       "n/a": "N/A"
     }
   },
+  "pipeline": {
+    "subtitle": "PR ouvertes et merges récents — CI, publish, M₁ et Cloudflare via events ingress.",
+    "disclaimer": "Indicatif seulement — pas pour décider d'un merge. Les checks GitHub font foi.",
+    "tableTitle": "Chaîne release",
+    "loadError": "Impossible de charger le pipeline.",
+    "empty": "Aucune PR suivie — en attente d'events GitHub ingress.",
+    "reviewed": "reviewed",
+    "notReviewed": "sans label reviewed",
+    "merged": "mergé",
+    "columns": {
+      "ci": "CI",
+      "merge": "Merge",
+      "publish": "Publish",
+      "m1": "M₁",
+      "cf": "CF"
+    },
+    "stage": {
+      "pending": "en attente",
+      "running": "en cours",
+      "success": "ok",
+      "failure": "échec",
+      "skipped": "ignoré",
+      "unknown": "inconnu",
+      "n/a": "n/a"
+    }
+  },
   "chats": {
     "title": "Chats récents",
     "empty": "Aucun chat ouvert.",

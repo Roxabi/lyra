@@ -60,7 +60,34 @@ async def _soul_markdown_for_row(hub: Hub, row: AgentRow) -> str:
             md = await fetch_soul_markdown(blob, row.soul_document_blob_ref)
             warm_soul_cache(row.name, blob_ref=row.soul_document_blob_ref, markdown=md)
             return md
+        log.warning(
+            "soul.get(%s): blobstore unavailable ref=%s — persona_json fallback",
+            row.name,
+            row.soul_document_blob_ref,
+        )
     return ""
+
+
+def _legacy_persona_sections(row: AgentRow) -> dict[str, str]:
+    if not row.persona_json:
+        return {}
+    try:
+        from factory.core.persona import legacy_persona_json_to_sections
+
+        persona = json.loads(row.persona_json)
+        return legacy_persona_json_to_sections(persona)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        log.warning("soul.get(%s): invalid persona_json — ignored", row.name)
+        return {}
+
+
+async def _soul_sections_for_row(hub: Hub, row: AgentRow) -> dict[str, str]:
+    from factory.core.persona import parse_soul_markdown
+
+    md = await _soul_markdown_for_row(hub, row)
+    if md:
+        return parse_soul_markdown(md)
+    return _legacy_persona_sections(row)
 
 
 def _meta_envelope(row: AgentRow) -> SoulMetaEnvelope | None:
@@ -189,10 +216,7 @@ async def handle_agents_soul_get(hub: Hub, _nc: NATS, payload: dict[str, Any]) -
     row = store.get(name)
     if row is None:
         return {"error": "not_found"}
-    md = await _soul_markdown_for_row(hub, row)
-    from factory.core.persona import parse_soul_markdown
-
-    sections = parse_soul_markdown(md) if md else {}
+    sections = await _soul_sections_for_row(hub, row)
     return DashboardAgentSoulSectionsResponse(
         sections=sections,
         soul_document_blob_ref=row.soul_document_blob_ref,

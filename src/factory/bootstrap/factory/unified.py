@@ -109,6 +109,12 @@ async def _bootstrap_unified(  # noqa: PLR0915 — unified bootstrap is a wiring
             await ensure_stream(_audio_js)
             await ensure_kv(_audio_js)
 
+            from factory.infrastructure.events.stream_setup import (
+                ensure_observability_streams,
+            )
+
+            await ensure_observability_streams(_audio_js)
+
             wired = await _wire_adapters(
                 WireAdaptersDeps(
                     hub=hub,

@@ -3,6 +3,7 @@ import {
   ChartLineUp,
   ChatCircleDots,
   type Icon,
+  Plugs,
   Robot,
   ShippingContainer,
   SquaresFour,
@@ -25,6 +26,7 @@ export const operateNavItems: AppNavItem[] = [
   { to: "/chat", labelKey: "nav.chat", Icon: ChatCircleDots, fullBleed: true },
   { to: "/agents", labelKey: "nav.agents", Icon: Robot, wideLayout: true },
   { to: "/jobs", labelKey: "nav.jobs", Icon: Briefcase, wideLayout: true },
+  { to: "/integrations", labelKey: "nav.integrations", Icon: Plugs, wideLayout: true },
 ];
 
 export const observeNavItems: AppNavItem[] = [

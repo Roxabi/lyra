@@ -14,8 +14,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from factory.nats.fleet_catalog import FleetCatalogEntry, load_fleet_catalog  # noqa: E402
-from factory.nats.fleet_digest import FleetDigestRow, compare_image_digests  # noqa: E402
+from factory.nats.fleet_catalog import (  # noqa: E402
+    FleetCatalogEntry,
+    load_fleet_catalog,
+)
+from factory.nats.fleet_digest import (  # noqa: E402
+    compare_image_digests,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,7 +152,9 @@ def main() -> int:
     }
     args.output.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     stale = sum(1 for row in rows if row.status == "stale")
-    print(f"fleet_digest_poll: wrote {len(rows)} row(s) to {args.output} ({stale} stale)")
+    print(
+        f"fleet_digest_poll: wrote {len(rows)} row(s) to {args.output} ({stale} stale)",
+    )
     return 0
 
 

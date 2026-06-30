@@ -55,7 +55,7 @@ def _hub_tracer() -> trace.Tracer:
 
             _provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint)))
         trace.set_tracer_provider(_provider)
-    return _provider.get_tracer("factory.hub")
+    return _provider.get_tracer("factory-hub")
 
 
 def _span_attrs(  # noqa: PLR0913

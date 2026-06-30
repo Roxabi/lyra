@@ -4,6 +4,7 @@ import { AppShell } from "@/components/AppShell";
 import { AgentDetailPage, AgentsListPage } from "@/pages/AgentsPage";
 import { ChatPage } from "@/pages/ChatPage";
 import { DashboardHome } from "@/pages/DashboardHome";
+import { FleetPage } from "@/pages/FleetPage";
 import { JobsPage } from "@/pages/JobsPage";
 import { OpsPage } from "@/pages/OpsPage";
 
@@ -51,6 +52,12 @@ const agentDetailRoute = createRoute({
   component: AgentDetailPage,
 });
 
+const fleetRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/fleet",
+  component: FleetPage,
+});
+
 const routeTree = rootRoute.addChildren([
   indexRoute,
   chatRoute,
@@ -58,6 +65,7 @@ const routeTree = rootRoute.addChildren([
   obsRoute,
   agentsRoute,
   agentDetailRoute,
+  fleetRoute,
 ]);
 
 export const router = createRouter({

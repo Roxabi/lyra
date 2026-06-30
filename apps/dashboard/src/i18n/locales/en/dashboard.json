@@ -24,6 +24,26 @@
     "colAgent": "Agent",
     "colStatus": "Status"
   },
+  "fleet": {
+    "subtitle": "M₁ container liveness — Roxabi units report over NATS; third-party rows show as non-instrumented.",
+    "tableTitle": "Fleet",
+    "loadError": "Could not load fleet snapshot.",
+    "empty": "No fleet rows in catalog.",
+    "columns": {
+      "name": "Container",
+      "status": "Status",
+      "health": "Health",
+      "image": "Image",
+      "revision": "Revision",
+      "age": "Age"
+    },
+    "status": {
+      "ok": "OK",
+      "stale": "Stale",
+      "unknown": "Unknown",
+      "pinned": "Pinned"
+    }
+  },
   "chats": {
     "title": "Recent chats",
     "empty": "No open chats.",

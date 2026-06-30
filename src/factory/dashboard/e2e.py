@@ -7,6 +7,8 @@ import os
 from roxabi_contracts.dashboard import (
     AgentHealth,
     AgentHealthResponse,
+    DashboardFleetResponse,
+    DashboardFleetRow,
     DashboardJob,
     DashboardJobsLaunchResponse,
     DashboardJobsListResponse,
@@ -162,6 +164,48 @@ def stub_ops_logs(preset: OpsLogPreset) -> DashboardOpsLogsResponse:
                 labels={"job": "factory-journal"},
             ),
         ],
+    )
+
+
+def stub_fleet() -> DashboardFleetResponse:
+    return DashboardFleetResponse(
+        rows=[
+            DashboardFleetRow(
+                container_name="factory-hub",
+                host="roxabituwer",
+                component_key="hub",
+                image_ref="ghcr.io/roxabi/factory:staging-svc",
+                image_revision="e2e-sha",
+                health="healthy",
+                status="ok",
+                last_report_at="2026-06-29T12:00:00+00:00",
+                age_s=12.0,
+                systemd_unit="factory-hub.service",
+                instrumented=True,
+                source="live",
+            ),
+            DashboardFleetRow(
+                container_name="factory-loki",
+                component_key="loki",
+                image_ref="grafana/loki:3.0.0",
+                health="unknown",
+                status="unknown",
+                systemd_unit="factory-loki.service",
+                instrumented=False,
+                source="manifest",
+            ),
+            DashboardFleetRow(
+                container_name="factory-clipool",
+                component_key="clipool",
+                image_ref="ghcr.io/roxabi/factory:staging",
+                health="healthy",
+                status="stale",
+                age_s=120.0,
+                systemd_unit="factory-clipool.service",
+                instrumented=True,
+                source="manifest",
+            ),
+        ]
     )
 
 

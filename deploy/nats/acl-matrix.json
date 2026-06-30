@@ -59,6 +59,7 @@
         "factory.typing.>",
         "factory.event.>",
         "factory.metric.>",
+        "factory.metric.host.container_report",
         "factory.job.*.steer",
         "factory.jobs.>",
         "$JS.API.>",
@@ -81,6 +82,7 @@
         "factory.clipool.heartbeat",
         "factory.omp.heartbeat",
         "factory.dashboard.>",
+        "factory.metric.host.container_report",
         "factory.gh.mint_failure.>",
         "factory.job.*.progress",
         "factory.job.*.result",
@@ -102,6 +104,7 @@
         "factory.system.ready",
         "factory.event.>",
         "factory.metric.>",
+        "factory.metric.host.container_report",
         "$JS.API.DIRECT.GET.KV_factory-state.hub.ready",
         "$JS.API.INFO",
         "$JS.API.CONSUMER.CREATE.*",
@@ -130,6 +133,7 @@
         "factory.system.ready",
         "factory.event.>",
         "factory.metric.>",
+        "factory.metric.host.container_report",
         "$JS.API.DIRECT.GET.KV_factory-state.hub.ready",
         "$JS.API.INFO",
         "$JS.API.CONSUMER.CREATE.*",
@@ -158,6 +162,7 @@
         "factory.system.ready",
         "factory.event.>",
         "factory.metric.>",
+        "factory.metric.host.container_report",
         "$JS.API.DIRECT.GET.KV_factory-state.hub.ready",
         "$JS.API.INFO",
         "$JS.API.CONSUMER.CREATE.*",
@@ -299,6 +304,7 @@
         "factory.system.ready",
         "factory.event.>",
         "factory.metric.>",
+        "factory.metric.host.container_report",
         "$JS.API.STREAM.INFO.KV_factory-state",
         "$JS.API.STREAM.MSG.GET.KV_factory-state"
       ],
@@ -347,6 +353,7 @@
       "notes": "JetStream API subjects scoped to FACTORY_TURNS stream + turn-writer-v1 consumer only (principle of least privilege). _inbox.turn-writer.> required for pull-subscribe ACK reply path — nats-py emits lowercase identity-scoped inboxes when identity_name is set (#1359). allow_responses=true for pull-subscribe protocol. $JS.API.* in publish (not subscribe) because nc.request() publishes at protocol level (B1). CONSUMER.CREATE uses wildcard suffix to cover filter-subject variants (B2). STREAM.UPDATE added for retention/limits changes on subsequent boots (B3).",
       "allow_responses": true,
       "publish": [
+        "factory.metric.host.container_report",
         "_inbox.turn-writer.>",
         "$JS.API.STREAM.CREATE.FACTORY_TURNS",
         "$JS.API.STREAM.INFO.FACTORY_TURNS",
@@ -369,6 +376,7 @@
       "notes": "Publishes to factory.audit.> for BlobAuditSink. JetStream usage: $JS.API.INFO (BlobAuditSink.provision → js.account_info()), $JS.API.STREAM.INFO.KV_factory-state (js.key_value('factory-state')), $JS.API.STREAM.CREATE.KV_factory-state (js.create_key_value(...)). $KV.factory-state.> for kv.put() readiness announce. allow_responses=true for JetStream API request-reply. Narrowed from $JS.API.> (#1293 hardening complete).",
       "allow_responses": true,
       "publish": [
+        "factory.metric.host.container_report",
         "factory.audit.>",
         "$JS.API.INFO",
         "$JS.API.STREAM.INFO.KV_factory-state",
@@ -387,6 +395,7 @@
       "description": "publish-only mint-failure alerts, #1082",
       "allow_responses": false,
       "publish": [
+        "factory.metric.host.container_report",
         "factory.gh.mint_failure.>"
       ],
       "subscribe": [],
@@ -400,6 +409,7 @@
       "notes": "Dual-network Quadlet (roxabi.network + postiz.network). wait_ready=False worker semantics. Inbox grant derived from request_reply_flows.",
       "allow_responses": true,
       "publish": [
+        "factory.metric.host.container_report",
         "factory.tool.socialmedia.heartbeat",
         "$JS.API.STREAM.INFO.KV_factory-state",
         "$JS.API.STREAM.MSG.GET.KV_factory-state"
@@ -418,6 +428,7 @@
       "description": "factory-ingress — GitHub/Cloudflare webhooks → factory.event.* (#2008). Publish-only; no inbox.",
       "allow_responses": false,
       "publish": [
+        "factory.metric.host.container_report",
         "factory.event.github.>",
         "factory.event.cloudflare.>"
       ],
@@ -432,6 +443,7 @@
       "notes": "Additive lane alongside clipool (ratified #1807). Uses post-#1793 canonical factory.job.* subjects (least-privilege single-token wildcard, NOT factory.job.>). Heartbeat mirrors clipool-worker pattern. Steer bridge subscribed worker-side. _inbox prefix derived from ADR-051 Fix 1.",
       "allow_responses": true,
       "publish": [
+        "factory.metric.host.container_report",
         "factory.job.*.progress",
         "factory.job.*.result",
         "factory.omp.heartbeat",

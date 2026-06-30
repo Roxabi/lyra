@@ -16,6 +16,7 @@ const ROWS: FleetRow[] = [
     systemd_unit: "factory-b.service",
     instrumented: true,
     source: "nats",
+    image_digest_status: "stale",
   },
   {
     container_name: "factory-a",
@@ -30,6 +31,7 @@ const ROWS: FleetRow[] = [
     systemd_unit: "factory-a.service",
     instrumented: true,
     source: "nats",
+    image_digest_status: "current",
   },
 ];
 

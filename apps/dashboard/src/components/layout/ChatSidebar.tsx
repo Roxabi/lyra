@@ -77,8 +77,8 @@ export function ChatSidebar({
   };
 
   return (
-    <aside className="flex w-72 shrink-0 flex-col bg-card/60">
-      <div className="space-y-2 px-3 py-3">
+    <aside className="flex h-full min-h-0 w-72 shrink-0 flex-col bg-card/60">
+      <div className="shrink-0 space-y-2 px-3 py-3">
         <div className="flex items-center gap-2">
           <PopoverSelect
             label={t("sidebar.agentLabel")}
@@ -99,11 +99,11 @@ export function ChatSidebar({
         </div>
       </div>
 
-      <div className="px-3 pb-2">
+      <div className="shrink-0 px-3 pb-2">
         <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {t("sidebar.activeChats")}
         </p>
-        <ul className="fd-scroll max-h-44 space-y-0.5 overflow-y-auto">
+        <ul className="space-y-0.5">
           {tabs.map((tab) => {
             const active = tab.id === activeId;
             return (
@@ -150,14 +150,14 @@ export function ChatSidebar({
         </ul>
       </div>
 
-      <div className="mt-auto flex min-h-0 flex-1 flex-col px-3 pb-3">
-        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <div className="flex min-h-0 flex-1 flex-col px-3 pb-3">
+        <p className="mb-1.5 shrink-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           {t("sidebar.resume")}
         </p>
         {isLoading ? (
-          <p className="text-xs text-muted-foreground">{tc("actions.loading")}</p>
+          <p className="shrink-0 text-xs text-muted-foreground">{tc("actions.loading")}</p>
         ) : null}
-        <ul className="fd-scroll space-y-1 overflow-y-auto">
+        <ul className="fd-scroll min-h-0 flex-1 space-y-1 overflow-y-auto">
           {sessions.length === 0 && !isLoading ? (
             <li className="rounded-lg bg-muted/30 px-3 py-3 text-center text-xs text-muted-foreground">
               {t("sidebar.noSessions")}

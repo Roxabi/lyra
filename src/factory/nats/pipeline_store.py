@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Literal
+
+from factory.nats.pipeline_db import PipelineDb, default_db_path
 
 PipelineStageStatus = Literal[
     "pending",
@@ -81,17 +84,35 @@ def _worst_ci(checks: list[PipelineCheckRow]) -> PipelineStageStatus:
 class PipelineStore:
     """Mutable PR pipeline projection — hub-local, not routing state."""
 
-    def __init__(self) -> None:
+    def __init__(self, db_path: str | Path | None = default_db_path()) -> None:
         self._runs: dict[tuple[str, int], PipelineRunRow] = {}
         self._processed: set[str] = set()
         self._last_publish_sha: str | None = None
+        self._db: PipelineDb | None = None
+        if db_path is not None:
+            self._db = PipelineDb(db_path)
+            self._db.connect()
+            self._hydrate()
+
+    def _hydrate(self) -> None:
+        if self._db is None:
+            return
+        for row in self._db.load_runs():
+            self._runs[(row.repo, row.pr_number)] = row
+        self._processed = self._db.load_processed()
+        self._last_publish_sha = self._db.load_last_publish_sha()
+
+    def has_runs(self) -> bool:
+        return bool(self._runs)
 
     def mark_processed(self, event_id: str) -> bool:
         """Return False if this delivery was already applied."""
         if event_id in self._processed:
             return False
         self._processed.add(event_id)
-        if len(self._processed) > 10_000:
+        if self._db is not None:
+            self._db.record_processed(event_id, _now_iso())
+        elif len(self._processed) > 10_000:
             self._processed.clear()
         return True
 
@@ -110,6 +131,11 @@ class PipelineStore:
         now = _now_iso()
         row.last_event_at = now
         row.updated_at = now
+        self._save_row(row)
+
+    def _save_row(self, row: PipelineRunRow) -> None:
+        if self._db is not None:
+            self._db.upsert_run(row)
 
     def _upsert_pr(
         self,
@@ -275,6 +301,8 @@ class PipelineStore:
         head_sha = _str_or_none(wr.get("head_sha"))
         if conclusion == "success" and head_sha:
             self._last_publish_sha = head_sha
+            if self._db is not None:
+                self._db.set_last_publish_sha(head_sha)
         for row in self._runs.values():
             if not row.open and row.merge_status == "success":
                 row.publish_status = "success" if conclusion == "success" else "failure"
@@ -368,8 +396,7 @@ class PipelineStore:
                     ok = False
                     break
             row.m1_deploy_status = "success" if ok else "pending"
-            if ok:
-                self._touch(row)
+            self._touch(row)
 
 
 def _str_or_none(value: object) -> str | None:

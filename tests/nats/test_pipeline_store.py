@@ -2,7 +2,16 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+import pytest
+
 from factory.nats.pipeline_store import M1_DEPLOY_QUORUM, PipelineStore
+
+
+@pytest.fixture
+def store(tmp_path: Path) -> PipelineStore:
+    return PipelineStore(db_path=tmp_path / "pipeline.db")
 
 
 def _open_pr_payload(
@@ -23,8 +32,7 @@ def _open_pr_payload(
     return {"pull_request": pr}
 
 
-def test_pull_request_open_and_reviewed_label() -> None:
-    store = PipelineStore()
+def test_pull_request_open_and_reviewed_label(store: PipelineStore) -> None:
     store.apply_github_event(
         kind="pull_request.opened",
         payload=_open_pr_payload(labels=["reviewed"]),
@@ -37,8 +45,7 @@ def test_pull_request_open_and_reviewed_label() -> None:
     assert row.merge_status == "pending"
 
 
-def test_labeled_event_sets_reviewed() -> None:
-    store = PipelineStore()
+def test_labeled_event_sets_reviewed(store: PipelineStore) -> None:
     store.apply_github_event(
         kind="pull_request.opened",
         payload=_open_pr_payload(pr_number=7),
@@ -57,8 +64,7 @@ def test_labeled_event_sets_reviewed() -> None:
     assert row.reviewed is True
 
 
-def test_check_run_updates_ci_status() -> None:
-    store = PipelineStore()
+def test_check_run_updates_ci_status(store: PipelineStore) -> None:
     store.apply_github_event(
         kind="pull_request.opened",
         payload=_open_pr_payload(pr_number=9),
@@ -82,8 +88,7 @@ def test_check_run_updates_ci_status() -> None:
     assert len(row.checks) == 1
 
 
-def test_merged_pr_publish_and_m1_quorum() -> None:
-    store = PipelineStore()
+def test_merged_pr_publish_and_m1_quorum(store: PipelineStore) -> None:
     publish_sha = "deadbeef" * 5
     store.apply_github_event(
         kind="pull_request.closed",
@@ -121,8 +126,21 @@ def test_merged_pr_publish_and_m1_quorum() -> None:
     assert row.m1_deploy_status == "success"
 
 
-def test_idempotent_trace_id() -> None:
-    store = PipelineStore()
+def test_sqlite_survives_reopen(tmp_path: Path) -> None:
+    db = tmp_path / "pipeline.db"
+    first = PipelineStore(db_path=db)
+    first.apply_github_event(
+        kind="pull_request.opened",
+        payload=_open_pr_payload(pr_number=55, labels=["reviewed"]),
+        trace_id="persist-1",
+    )
+    second = PipelineStore(db_path=db)
+    row = second.get_run("Roxabi/roxabi-factory", 55)
+    assert row is not None
+    assert row.reviewed is True
+
+
+def test_idempotent_trace_id(store: PipelineStore) -> None:
     payload = _open_pr_payload(pr_number=1, labels=["reviewed"])
     store.apply_github_event(
         kind="pull_request.opened",

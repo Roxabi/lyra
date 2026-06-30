@@ -5,15 +5,15 @@ from __future__ import annotations
 import asyncio
 import subprocess
 import sys
-from pathlib import Path
 from contextvars import Token
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 from factory.core.hub import Hub
-from factory.core.trace import TraceContext
 from factory.core.lifecycle.circuit_breaker import CircuitBreaker, CircuitRegistry
+from factory.core.trace import TraceContext
 
 # Backward-compatible re-exports from bootstrap factories
 from tests.factories.bootstrap import (  # noqa: F401

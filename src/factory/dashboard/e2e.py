@@ -7,8 +7,11 @@ import os
 from roxabi_contracts.dashboard import (
     AgentHealth,
     AgentHealthResponse,
+    ConnectorInstallationRow,
+    DashboardConnectorInstallationsListResponse,
     DashboardFleetResponse,
     DashboardFleetRow,
+    DashboardGithubInstallUrlResponse,
     DashboardJob,
     DashboardJobsLaunchResponse,
     DashboardJobsListResponse,
@@ -217,6 +220,28 @@ def stub_fleet() -> DashboardFleetResponse:
             ),
         ]
     )
+
+
+def stub_github_install_url() -> DashboardGithubInstallUrlResponse:
+    return DashboardGithubInstallUrlResponse(
+        url="https://github.com/apps/factory-e2e/installations/new",
+        app_slug="factory-e2e",
+    )
+
+
+def stub_connector_installations(
+    connector: str, factory_tenant: str
+) -> dict[str, object]:
+    return DashboardConnectorInstallationsListResponse(
+        installations=[
+            ConnectorInstallationRow(
+                connector=connector,
+                external_id="4242",
+                factory_tenant=factory_tenant,
+                enabled=True,
+            )
+        ]
+    ).model_dump()
 
 
 def stub_sessions_turns(session_id: str) -> DashboardSessionsTurnsResponse:

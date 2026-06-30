@@ -3,7 +3,11 @@
 import pytest
 
 from roxabi_contracts.event import SUBJECTS
-from roxabi_contracts.event.subjects import per_service_event, per_service_metric
+from roxabi_contracts.event.subjects import (
+    per_connector_tenant_event,
+    per_service_event,
+    per_service_metric,
+)
 
 
 def test_event_all_subject() -> None:
@@ -12,6 +16,13 @@ def test_event_all_subject() -> None:
 
 def test_metric_all_subject() -> None:
     assert SUBJECTS.metric_all == "factory.metric.>"
+
+
+def test_per_connector_tenant_event() -> None:
+    assert (
+        per_connector_tenant_event("github", "default", "check_run.completed")
+        == "factory.event.github.default.check_run.completed"
+    )
 
 
 def test_per_service_event() -> None:

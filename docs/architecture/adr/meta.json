@@ -67,6 +67,7 @@
     "091-sentinelle-four-observability-planes",
     "092-observability-architecture",
     "093-operator-audit-three-channel",
+    "096-ingress-connector-tenant-registry",
     "---Workers & Tooling---",
     "004-cli-pool-cwd-resolution-and-agent-type-annotation",
     "005-wildcard-binding-concurrency-and-per-user-pools",

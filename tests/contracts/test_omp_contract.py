@@ -16,6 +16,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from factory.core.envelope_fields import WorkEnvelopeFields
+from factory.core.trace import TraceContext
 from factory.llm.drivers.omp_rpc import OmpRpcDriver
 from factory.llm.omp_job_codec import OmpJobCodec
 from roxabi_contracts.jobs import JobResult
@@ -214,6 +215,7 @@ class TestLlmResultShapeInvariant:
 
     @pytest.mark.asyncio
     async def test_driver_paths_satisfy_invariant(self) -> None:
+        TraceContext.set_trace_id(_FIXED_JOB_ID)
         nc = AsyncMock()
         sub = AsyncMock()
         nc.subscribe.return_value = sub

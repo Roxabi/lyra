@@ -37,4 +37,5 @@ FORBIDDEN_ATTRS: frozenset[str] = frozenset(
 FORBIDDEN_ATTR_PREFIXES: tuple[str, ...] = (
     "user.",
     "home.",
+    "gen_ai.",
 )

@@ -11,7 +11,8 @@ def test_forbidden_attrs_stripped() -> None:
         "audio_b64": "AAAA",
         "messages": "[]",
         "user.email": "a@b.c",
+        "gen_ai.request.model": "gpt-4",
     }
     cleaned, dropped = scrub_attrs(raw)
     assert cleaned == {"roxabi.job_id": "a" * 32}
-    assert dropped == 3
+    assert dropped == 4

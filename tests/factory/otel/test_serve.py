@@ -58,10 +58,20 @@ def test_otel_serve_ingest_and_query(tmp_path: Path) -> None:
     client = TestClient(app)
     export = _sample_export_request()
 
-    ingest = client.post(
+    unauth = client.post(
         "/v1/traces",
         content=export.SerializeToString(),
         headers={"content-type": "application/x-protobuf"},
+    )
+    assert unauth.status_code == 401
+
+    ingest = client.post(
+        "/v1/traces",
+        content=export.SerializeToString(),
+        headers={
+            "content-type": "application/x-protobuf",
+            "Authorization": "Bearer test-token",
+        },
     )
     assert ingest.status_code == 200
 

@@ -119,7 +119,7 @@ class ClaudeRpcDriver:
         del messages
         pending_resume = self._pending_resume.pop(pool_id, None)
         fields = mint_work_envelope_fields(
-            trace_id=TraceContext.get_trace_id() or TraceContext.generate(),
+
             pool_id=pool_id,
         )
         job_id = fields.job_id
@@ -163,7 +163,7 @@ class ClaudeRpcDriver:
         del messages
         pending_resume = self._pending_resume.pop(pool_id, None)
         fields = mint_work_envelope_fields(
-            trace_id=TraceContext.get_trace_id() or TraceContext.generate(),
+
             pool_id=pool_id,
         )
         job_id = fields.job_id
@@ -276,7 +276,7 @@ class ClaudeRpcDriver:
             payload["provider_session_id"] = provider_session_id
 
         fields = mint_work_envelope_fields(
-            trace_id=TraceContext.get_trace_id() or TraceContext.generate(),
+
             job_id=job_id,
             pool_id=pool_id,
         )

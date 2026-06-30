@@ -86,7 +86,7 @@ class CliNatsCodec:
             wire_messages = list(messages) + [{"role": "user", "content": text}]
 
         fields = mint_work_envelope_fields(
-            trace_id=TraceContext.get_trace_id() or TraceContext.generate(),
+
             job_id=root_job_id,
             pool_id=kwargs.get("pool_id"),
         )

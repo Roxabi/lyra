@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
+from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -32,6 +33,30 @@ from .scrub import scrub_attrs
 def otel_enabled() -> bool:
     flag = os.environ.get("ROXABI_OTEL_ENABLED", "1").strip().lower()
     return flag not in {"0", "false", "no", "off"}
+
+
+def _otlp_grpc_headers() -> dict[str, str] | None:
+    raw = os.environ.get("OTEL_EXPORTER_OTLP_HEADERS", "").strip()
+    if raw:
+        headers: dict[str, str] = {}
+        for part in raw.split(","):
+            if "=" not in part:
+                continue
+            key, value = part.split("=", 1)
+            key = key.strip()
+            if key:
+                headers[key] = value.strip()
+        if headers:
+            return headers
+    token_path = os.environ.get(
+        "FACTORY_OTEL_TOKEN_PATH",
+        "/run/secrets/factory_otel_token",
+    ).strip()
+    if token_path and Path(token_path).is_file():
+        token = Path(token_path).read_text().strip()
+        if token:
+            return {"authorization": f"Bearer {token}"}
+    return None
 
 
 @dataclass
@@ -122,8 +147,11 @@ class OtelLifecycleHooks:
                     OTLPSpanExporter,
                 )
 
+                headers = _otlp_grpc_headers()
                 self.tracer_provider.add_span_processor(
-                    BatchSpanProcessor(OTLPSpanExporter(endpoint=endpoint))
+                    BatchSpanProcessor(
+                        OTLPSpanExporter(endpoint=endpoint, headers=headers)
+                    )
                 )
             trace.set_tracer_provider(self.tracer_provider)
         self._tracer = self.tracer_provider.get_tracer("roxabi.nats.worker")

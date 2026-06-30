@@ -75,7 +75,7 @@ class CliPoolCodec:
         del messages  # ClaudeJobPayload carries text directly
         pool_id = kwargs.get("pool_id", "") or None
         fields = mint_work_envelope_fields(
-            trace_id=TraceContext.get_trace_id() or TraceContext.generate(),
+
             job_id=kwargs.get("root_job_id"),
             pool_id=pool_id,
         )

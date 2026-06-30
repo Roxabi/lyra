@@ -13,6 +13,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace import Span, Status, StatusCode
+from factory.obs.otlp_export import otlp_grpc_endpoint, otlp_grpc_headers
 from roxabi_otel import otel_enabled
 
 from roxabi_contracts.telemetry import (
@@ -47,13 +48,18 @@ def _hub_tracer() -> trace.Tracer:
     if _provider is None:
         resource = Resource.create({"service.name": "factory-hub"})
         _provider = TracerProvider(resource=resource)
-        endpoint = os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip()
+        endpoint = otlp_grpc_endpoint()
         if endpoint and otel_enabled():
             from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
                 OTLPSpanExporter,
             )
 
-            _provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint)))
+            headers = otlp_grpc_headers()
+            exporter = OTLPSpanExporter(
+                endpoint=endpoint,
+                headers=headers,
+            )
+            _provider.add_span_processor(BatchSpanProcessor(exporter))
         trace.set_tracer_provider(_provider)
     return _provider.get_tracer("factory-hub")
 

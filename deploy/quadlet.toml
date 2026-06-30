@@ -9,7 +9,7 @@ host_roles = ["factory-hub"]
 
 [component.hub]
 container = "factory-hub.container"
-required_secrets = ["factory-nats-hub"]
+required_secrets = ["factory-nats-hub", "factory_otel_token"]
 host_roles = ["factory-hub"]
 
 [component.telegram]
@@ -31,7 +31,7 @@ host_roles = ["factory-hub"]
 
 [component.clipool]
 container = "factory-clipool.container"
-required_secrets = ["factory-nats-clipool", "factory-claude-oauth"]
+required_secrets = ["factory-nats-clipool", "factory-claude-oauth", "factory_otel_token"]
 host_roles = ["factory-hub"]
 
 [component.gh-helper]
@@ -52,7 +52,7 @@ host_roles = ["factory-hub"]
 [component.omp]
 container = "factory-omp.container"
 host_roles = ["factory-hub"]
-required_secrets = ["factory-nats-omp", "factory-litellm-key"]
+required_secrets = ["factory-nats-omp", "factory-litellm-key", "factory_otel_token"]
 
 [component.socialmedia-adapter]
 container = "factory-socialmedia-adapter.container"
@@ -66,6 +66,7 @@ required_secrets = [
   "factory-nats-ingress",
   "factory-ingress-github-webhook",
   "factory-ingress-cloudflare-webhook",
+  "factory_otel_token",
 ]
 
 [component.cloudflared]

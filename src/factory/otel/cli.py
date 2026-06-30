@@ -32,9 +32,10 @@ def serve(
     """Start factory-otel (OTLP ingest + JSONL/SQLite + GET /api/spans)."""
     store = OtelRawStore()
     store.ensure_dirs()
-    start_grpc_server(store, port=grpc_port)
+    token = token_path.read_text().strip()
+    start_grpc_server(store, port=grpc_port, token=token)
     uvicorn.run(
-        build_app(token_path=token_path, store=store),
+        build_app(token=token, store=store),
         host=host,
         port=http_port,
     )

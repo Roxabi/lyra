@@ -55,7 +55,7 @@ async def handle_jobs_launch(hub: Hub, nc: NATS, payload: dict[str, Any]) -> dic
         Platform.WEB, _WEB_BOT, f"agent:{req.agent}"
     ).to_pool_id()
     fields = mint_work_envelope_fields(
-        trace_id=TraceContext.get_trace_id() or TraceContext.generate(),
+
         pool_id=pool_id,
     )
     job_id = fields.job_id

@@ -55,8 +55,7 @@ class VoiceLifecycleClient:
         op: str,
         host: str | None,
     ) -> dict[str, Any] | None:
-        trace_id = TraceContext.get_trace_id() or TraceContext.generate()
-        fields = mint_work_envelope_fields(trace_id=trace_id)
+        fields = mint_work_envelope_fields()
         req = VoiceLifecycleRequest(
             contract_version=fields.contract_version,
             trace_id=fields.trace_id,

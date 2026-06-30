@@ -16,6 +16,7 @@ from factory.otel.paths import (
     factory_otel_state_dir,
 )
 from factory.otel.reader import OtelRawReader
+from factory.otel.scrub_otlp import scrub_otlp_dict
 
 
 class OtelRawStore:
@@ -44,6 +45,7 @@ class OtelRawStore:
             message,
             preserving_proto_field_name=False,
         )
+        scrub_otlp_dict(payload)
         line = json.dumps(payload, separators=(",", ":")) + "\n"
         with self._lock:
             self.ensure_dirs()

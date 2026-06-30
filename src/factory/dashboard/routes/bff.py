@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import os
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import ValidationError
 
 from factory.dashboard.e2e import (
     e2e_enabled,
@@ -22,21 +20,11 @@ from factory.dashboard.e2e import (
     stub_sessions_list,
     stub_sessions_turns,
 )
-from factory.dashboard.hub_client import (
-    HubAgentConflictError,
-    HubAgentNotFoundError,
-    HubStoreUnavailableError,
-    HubUserConflictError,
-    HubUserNotFoundError,
-)
 from factory.dashboard.ops_proxy import fetch_ops_health, fetch_ops_logs
+from factory.dashboard.routes.bff_admin import register_admin_routes
+from factory.dashboard.routes.bff_agents import register_agent_routes
+from factory.dashboard.routes.bff_common import map_hub_errors
 from roxabi_contracts.dashboard import (
-    DashboardAdminUserCreateRequest,
-    DashboardAdminUserPatchRequest,
-    DashboardAgentCreateRequest,
-    DashboardAgentPatchRequest,
-    DashboardAgentSoulPreviewRequest,
-    DashboardAgentSoulPutRequest,
     DashboardJobsLaunchRequest,
     DashboardJobsLaunchResponse,
     DashboardJobsListResponse,
@@ -64,10 +52,6 @@ def _sessions_auth_required() -> bool:
     }
 
 
-def _hub_unavailable(exc: Exception) -> HTTPException:
-    return HTTPException(status_code=503, detail=str(exc))
-
-
 def build_bff_router(  # noqa: C901, PLR0915
     adapter: WebAdapter, hub: DashboardHubClient
 ) -> APIRouter:
@@ -88,10 +72,11 @@ def build_bff_router(  # noqa: C901, PLR0915
             return (
                 await hub.agents_status(agents, harness_by_agent=harness_by_agent)
             ).model_dump()
-        except RuntimeError as exc:
-            raise _hub_unavailable(exc) from exc
-        except (ValidationError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except Exception as exc:
+            mapped = map_hub_errors(exc)
+            if mapped is not None:
+                raise mapped from exc
+            raise
 
     @router.get("/sessions")
     async def list_sessions(
@@ -107,10 +92,11 @@ def build_bff_router(  # noqa: C901, PLR0915
             return stub_sessions_list(agent)
         try:
             return await hub.list_sessions(agent, limit=limit)
-        except RuntimeError as exc:
-            raise _hub_unavailable(exc) from exc
-        except (ValidationError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except Exception as exc:
+            mapped = map_hub_errors(exc)
+            if mapped is not None:
+                raise mapped from exc
+            raise
 
     @router.get("/jobs")
     async def list_jobs() -> DashboardJobsListResponse:
@@ -118,10 +104,11 @@ def build_bff_router(  # noqa: C901, PLR0915
             return stub_jobs_list()
         try:
             return await hub.list_jobs()
-        except RuntimeError as exc:
-            raise _hub_unavailable(exc) from exc
-        except (ValidationError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except Exception as exc:
+            mapped = map_hub_errors(exc)
+            if mapped is not None:
+                raise mapped from exc
+            raise
 
     @router.post("/jobs/launch")
     async def launch_job(
@@ -140,10 +127,11 @@ def build_bff_router(  # noqa: C901, PLR0915
                 job_name=body.job_name,
                 model=body.model,
             )
-        except RuntimeError as exc:
-            raise _hub_unavailable(exc) from exc
-        except (ValidationError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except Exception as exc:
+            mapped = map_hub_errors(exc)
+            if mapped is not None:
+                raise mapped from exc
+            raise
 
     @router.post("/jobs/steer")
     async def steer_job(
@@ -153,10 +141,11 @@ def build_bff_router(  # noqa: C901, PLR0915
             return stub_jobs_steer(body.job_id)
         try:
             return await hub.steer_job(body.job_id, body.text)
-        except RuntimeError as exc:
-            raise _hub_unavailable(exc) from exc
-        except (ValidationError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except Exception as exc:
+            mapped = map_hub_errors(exc)
+            if mapped is not None:
+                raise mapped from exc
+            raise
 
     @router.get("/sessions/turns")
     async def list_session_turns(
@@ -172,10 +161,11 @@ def build_bff_router(  # noqa: C901, PLR0915
             return stub_sessions_turns(session_id)
         try:
             return await hub.list_turns(session_id, limit=limit)
-        except RuntimeError as exc:
-            raise _hub_unavailable(exc) from exc
-        except (ValidationError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except Exception as exc:
+            mapped = map_hub_errors(exc)
+            if mapped is not None:
+                raise mapped from exc
+            raise
 
     @router.get("/ops/health")
     async def ops_health() -> DashboardOpsHealthResponse:
@@ -192,121 +182,8 @@ def build_bff_router(  # noqa: C901, PLR0915
             return stub_ops_logs(preset)
         return await fetch_ops_logs(preset, limit=limit)
 
-    @router.get("/agents")
-    async def list_agents_config() -> dict:
-        try:
-            return (await hub.list_agent_configs()).model_dump()
-        except RuntimeError as exc:
-            raise _hub_unavailable(exc) from exc
-        except (ValidationError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-    @router.post("/agents")
-    async def create_agent_config(body: DashboardAgentCreateRequest) -> dict:
-        try:
-            return (await hub.create_agent_config(body)).model_dump()
-        except HubAgentConflictError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        except RuntimeError as exc:
-            raise _hub_unavailable(exc) from exc
-        except (ValidationError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-    @router.get("/admin/access")
-    async def admin_access() -> dict:
-        try:
-            return (await hub.list_admin_access()).model_dump()
-        except RuntimeError as exc:
-            raise _hub_unavailable(exc) from exc
-        except (ValidationError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-    @router.post("/admin/users")
-    async def create_admin_user(body: DashboardAdminUserCreateRequest) -> dict:
-        try:
-            return (await hub.create_admin_user(body)).model_dump()
-        except HubUserConflictError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        except HubStoreUnavailableError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        except RuntimeError as exc:
-            raise _hub_unavailable(exc) from exc
-        except (ValidationError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-    @router.patch("/admin/users/{user_id}")
-    async def patch_admin_user(
-        user_id: str, body: DashboardAdminUserPatchRequest
-    ) -> dict:
-        try:
-            return (await hub.patch_admin_user(user_id, body)).model_dump()
-        except HubUserNotFoundError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        except HubUserConflictError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        except HubStoreUnavailableError as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
-        except RuntimeError as exc:
-            raise _hub_unavailable(exc) from exc
-        except (ValidationError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-    @router.get("/agents/{name}")
-    async def get_agent_config(name: str) -> dict:
-        try:
-            return (await hub.get_agent_config(name)).model_dump()
-        except HubAgentNotFoundError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        except RuntimeError as exc:
-            raise _hub_unavailable(exc) from exc
-        except (ValidationError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-    @router.patch("/agents/{name}")
-    async def patch_agent_config(name: str, body: DashboardAgentPatchRequest) -> dict:
-        try:
-            return (await hub.patch_agent_config(name, body)).model_dump()
-        except HubAgentNotFoundError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        except RuntimeError as exc:
-            raise _hub_unavailable(exc) from exc
-        except (ValidationError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-    @router.put("/agents/{name}/soul")
-    async def put_agent_soul(name: str, body: DashboardAgentSoulPutRequest) -> dict:
-        try:
-            return (await hub.put_agent_soul(name, body)).model_dump()
-        except HubAgentNotFoundError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        except RuntimeError as exc:
-            raise _hub_unavailable(exc) from exc
-        except (ValidationError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-    @router.get("/agents/{name}/soul")
-    async def get_agent_soul(name: str) -> dict:
-        try:
-            return (await hub.get_agent_soul(name)).model_dump()
-        except HubAgentNotFoundError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        except RuntimeError as exc:
-            raise _hub_unavailable(exc) from exc
-        except (ValidationError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-    @router.post("/agents/{name}/soul/preview")
-    async def preview_agent_soul(
-        name: str, body: DashboardAgentSoulPreviewRequest
-    ) -> dict:
-        try:
-            return (await hub.preview_agent_soul(name, body)).model_dump()
-        except HubAgentNotFoundError as exc:
-            raise HTTPException(status_code=404, detail=str(exc)) from exc
-        except RuntimeError as exc:
-            raise _hub_unavailable(exc) from exc
-        except (ValidationError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+    register_agent_routes(router, hub)
+    register_admin_routes(router, hub)
 
     @router.get("/fleet")
     async def fleet_list() -> dict:
@@ -314,10 +191,11 @@ def build_bff_router(  # noqa: C901, PLR0915
             return stub_fleet().model_dump()
         try:
             return (await hub.fleet_list()).model_dump()
-        except RuntimeError as exc:
-            raise _hub_unavailable(exc) from exc
-        except (ValidationError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except Exception as exc:
+            mapped = map_hub_errors(exc)
+            if mapped is not None:
+                raise mapped from exc
+            raise
 
     @router.post("/sessions/resume")
     async def resume_session(
@@ -336,9 +214,10 @@ def build_bff_router(  # noqa: C901, PLR0915
             return stub_resume()
         try:
             return await hub.resume_session(body.agent, body.cli_session_id)
-        except RuntimeError as exc:
-            raise _hub_unavailable(exc) from exc
-        except (ValidationError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except Exception as exc:
+            mapped = map_hub_errors(exc)
+            if mapped is not None:
+                raise mapped from exc
+            raise
 
     return router

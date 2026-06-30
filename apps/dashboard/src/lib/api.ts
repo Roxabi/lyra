@@ -19,6 +19,7 @@ export interface DashboardSession {
 }
 
 export type FleetStatus = "ok" | "stale" | "unknown" | "pinned";
+export type ImageDigestStatus = "current" | "stale" | "unknown_compare" | "n/a";
 
 export interface FleetRow {
   container_name: string;
@@ -33,6 +34,7 @@ export interface FleetRow {
   systemd_unit: string;
   instrumented: boolean;
   source: string;
+  image_digest_status: ImageDigestStatus;
 }
 
 export async function fetchFleet(): Promise<FleetRow[]> {
@@ -167,7 +169,11 @@ export async function steerJob(
   return res.json() as Promise<{ accepted: boolean; message: string }>;
 }
 
-export type OpsLogPreset = "hub-errors" | "operator-events" | "deploy-failures";
+export type OpsLogPreset =
+  | "hub-errors"
+  | "operator-events"
+  | "deploy-failures"
+  | "container-journal";
 
 export interface OpsEngineHealth {
   engine: "loki" | "langfuse" | "otel-collector";
@@ -192,6 +198,7 @@ export async function fetchOpsHealth(): Promise<OpsEngineHealth[]> {
 export async function fetchOpsLogs(
   preset: OpsLogPreset,
   limit = 50,
+  container?: string,
 ): Promise<{
   preset: OpsLogPreset;
   query: string;
@@ -199,6 +206,7 @@ export async function fetchOpsLogs(
   entries: OpsLogEntry[];
 }> {
   const params = new URLSearchParams({ preset, limit: String(limit) });
+  if (container) params.set("container", container);
   const res = await fetch(`/api/bff/ops/logs?${params}`);
   if (!res.ok) throw new Error("ops logs fetch failed");
   return res.json() as Promise<{

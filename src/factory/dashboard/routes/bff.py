@@ -176,11 +176,19 @@ def build_bff_router(  # noqa: C901, PLR0915
     @router.get("/ops/logs")
     async def ops_logs(
         preset: OpsLogPreset = Query(default="hub-errors"),
+        container: str | None = Query(default=None),
         limit: int = Query(default=50, ge=1, le=200),
     ) -> DashboardOpsLogsResponse:
         if e2e_enabled():
-            return stub_ops_logs(preset)
-        return await fetch_ops_logs(preset, limit=limit)
+            return stub_ops_logs(preset, container=container)
+        try:
+            return await fetch_ops_logs(
+                preset,
+                container=container,
+                limit=limit,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @router.get("/agents")
     async def list_agents_config() -> dict:

@@ -35,13 +35,20 @@
       "health": "Santé",
       "image": "Image",
       "revision": "Révision",
-      "age": "Âge"
+      "age": "Âge",
+      "imageDigest": "Digest image"
     },
     "status": {
       "ok": "OK",
       "stale": "Stale",
       "unknown": "Inconnu",
       "pinned": "Épinglé"
+    },
+    "imageDigest": {
+      "current": "À jour",
+      "stale": "Obsolète",
+      "unknown_compare": "Inconnu",
+      "n/a": "N/A"
     }
   },
   "chats": {

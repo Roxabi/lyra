@@ -1,4 +1,11 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  createMemoryHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+  RouterProvider,
+} from "@tanstack/react-router";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as api from "@/lib/api";
@@ -8,9 +15,27 @@ function renderOps() {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  const rootRoute = createRootRoute();
+  const opsRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: "/ops",
+    validateSearch: (search: Record<string, unknown>) => ({
+      container:
+        typeof search.container === "string" && search.container.trim()
+          ? search.container.trim()
+          : undefined,
+    }),
+    component: OpsPage,
+  });
+  const router = createRouter({
+    routeTree: rootRoute.addChildren([opsRoute]),
+    history: createMemoryHistory({ initialEntries: ["/ops"] }),
+    context: { queryClient: undefined as unknown as QueryClient },
+  });
+  void router.load();
   return render(
     <QueryClientProvider client={queryClient}>
-      <OpsPage />
+      <RouterProvider router={router} />
     </QueryClientProvider>,
   );
 }

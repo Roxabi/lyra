@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { getRouteApi } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PageIntro } from "@/components/layout/PageIntro";
 import { Badge } from "@/components/ui/badge";
@@ -14,10 +15,19 @@ const LOG_PRESET_OPTIONS: { value: OpsLogPreset; label: string }[] = [
   { value: "deploy-failures", label: "Échecs deploy (24h)" },
 ];
 
+const opsRouteApi = getRouteApi("/ops");
+
 export function OpsPage() {
   const { t } = useTranslation("ops");
   const { t: tc } = useTranslation("common");
+  const { container } = opsRouteApi.useSearch();
   const [logPreset, setLogPreset] = useState<OpsLogPreset>("hub-errors");
+
+  useEffect(() => {
+    if (container) {
+      setLogPreset("container-journal");
+    }
+  }, [container]);
 
   const { data: status = [] } = useQuery({
     queryKey: ["agent-status-ops"],
@@ -44,8 +54,8 @@ export function OpsPage() {
     isLoading: logsLoading,
     isError: logsError,
   } = useQuery({
-    queryKey: ["ops-logs", logPreset],
-    queryFn: () => fetchOpsLogs(logPreset),
+    queryKey: ["ops-logs", logPreset, container],
+    queryFn: () => fetchOpsLogs(logPreset, 50, container),
     refetchInterval: 30_000,
   });
 
@@ -109,16 +119,23 @@ export function OpsPage() {
         <CardHeader className="flex flex-row items-center justify-between gap-4">
           <div>
             <CardTitle className="text-base">{t("logs.title")}</CardTitle>
+            {container ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {t("logs.containerFilter", { container })}
+              </p>
+            ) : null}
             {logs?.query ? (
               <p className="mt-1 font-mono text-[10px] text-muted-foreground">{logs.query}</p>
             ) : null}
           </div>
-          <PopoverSelect
-            label={t("logs.presetLabel")}
-            value={logPreset}
-            options={LOG_PRESET_OPTIONS}
-            onChange={(v) => setLogPreset(v as OpsLogPreset)}
-          />
+          {container ? null : (
+            <PopoverSelect
+              label={t("logs.presetLabel")}
+              value={logPreset}
+              options={LOG_PRESET_OPTIONS}
+              onChange={(v) => setLogPreset(v as OpsLogPreset)}
+            />
+          )}
         </CardHeader>
         <CardContent>
           {logsLoading ? (

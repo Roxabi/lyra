@@ -130,4 +130,39 @@ def load_fleet_catalog(
                 pinned=pinned,
             )
         )
+    entries.extend(_load_voicecli_catalog_entries())
+    return entries
+
+
+def _voicecli_quadlet_dir() -> Path | None:
+    voice_dir = os.environ.get("VOICE_DIR", "").strip()
+    if voice_dir:
+        candidate = Path(voice_dir).expanduser() / "deploy" / "quadlet"
+        return candidate if candidate.is_dir() else None
+    default = Path.home() / "projects" / "voiceCLI" / "deploy" / "quadlet"
+    return default if default.is_dir() else None
+
+
+def _load_voicecli_catalog_entries() -> list[FleetCatalogEntry]:
+    quadlet_dir = _voicecli_quadlet_dir()
+    if quadlet_dir is None:
+        return []
+    entries: list[FleetCatalogEntry] = []
+    for path in sorted(quadlet_dir.glob("voicecli-*.container")):
+        try:
+            container_name, image_ref, pinned = _parse_container_file(path)
+        except ValueError:
+            log.debug("fleet_catalog: skipping unreadable voiceCLI unit %s", path)
+            continue
+        entries.append(
+            FleetCatalogEntry(
+                container_name=container_name,
+                component_key=container_name,
+                image_ref=image_ref,
+                systemd_unit=f"{container_name}.service",
+                instrumented=True,
+                pinned=pinned,
+                source="manifest",
+            )
+        )
     return entries

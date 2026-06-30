@@ -206,6 +206,8 @@ quadlet-sync-install:  ## install systemd sync timers + services → daemon-relo
 	@cp "$(QUADLET_SYNC_SRC)/factory-blobstore-sweep.timer"     "$(QUADLET_SYNC_DST)/"
 	@cp "$(QUADLET_SYNC_SRC)/factory-operator-logrotate.service" "$(QUADLET_SYNC_DST)/"
 	@cp "$(QUADLET_SYNC_SRC)/factory-operator-logrotate.timer"   "$(QUADLET_SYNC_DST)/"
+	@cp "$(QUADLET_SYNC_SRC)/factory-fleet-digest-poll.service" "$(QUADLET_SYNC_DST)/"
+	@cp "$(QUADLET_SYNC_SRC)/factory-fleet-digest-poll.timer"   "$(QUADLET_SYNC_DST)/"
 	@mkdir -p "$(QUADLET_SYNC_DST)/podman-auto-update.timer.d"
 	@cp "$(QUADLET_SYNC_SRC)/podman-auto-update.timer.d/override.conf" "$(QUADLET_SYNC_DST)/podman-auto-update.timer.d/"
 	@mkdir -p "$(QUADLET_SYNC_DST)/podman-auto-update.service.d"
@@ -217,7 +219,8 @@ quadlet-sync-install:  ## install systemd sync timers + services → daemon-relo
 	@systemctl --user enable --now factory-post-autoupdate.timer
 	@systemctl --user enable --now factory-blobstore-sweep.timer
 	@systemctl --user enable --now factory-operator-logrotate.timer
-	@echo "[ok] factory-quadlet-sync.timer + factory-post-autoupdate.timer + factory-blobstore-sweep.timer + factory-operator-logrotate.timer enabled."
+	@systemctl --user enable --now factory-fleet-digest-poll.timer
+	@echo "[ok] factory-quadlet-sync.timer + factory-post-autoupdate.timer + factory-blobstore-sweep.timer + factory-operator-logrotate.timer + factory-fleet-digest-poll.timer enabled."
 
 quadlet-authconf-merged:  ## render merged auth.conf (factory + voicecli identities) → ~/.roxabi/factory/nkeys/auth.conf
 	@factory-acl genkeys --emit-merged-authconf

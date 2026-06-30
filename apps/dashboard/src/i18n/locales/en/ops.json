@@ -16,6 +16,7 @@
     "presetLabel": "Preset",
     "loadError": "Could not load logs.",
     "empty": "No entries for this preset.",
-    "unreachable": "Loki engine unreachable — logs unavailable."
+    "unreachable": "Loki engine unreachable — logs unavailable.",
+    "containerFilter": "Journal for {{container}}"
   }
 }

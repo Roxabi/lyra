@@ -68,7 +68,7 @@ class Hub(
 
     BUS_SIZE = 100  # const-ok: named constant definition — canonical bus queue depth
 
-    def __init__(  # noqa: PLR0913 — DEBT:wiring-bootstrap-deps
+    def __init__(  # noqa: PLR0913, PLR0915 — DEBT:wiring-bootstrap-deps
         self,
         circuit_registry: CircuitRegistry | None = None,
         msg_manager: MessageManager | None = None,
@@ -145,6 +145,7 @@ class Hub(
         self._active_jobs_coord: object | None = None
         # Dashboard agent/soul RPC (#1760).
         self._agent_store: object | None = None
+        self._user_store: object | None = None
         self._blob_store: BlobStorePort | None = None
         # Wired by fleet_ingest for /fleet dashboard RPC.
         self._fleet_store: object | None = None

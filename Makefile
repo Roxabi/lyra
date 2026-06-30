@@ -3,11 +3,9 @@
 # which silently skips unmatched brace expansions.
 SHELL := /bin/bash -o pipefail
 
-SUPERVISOR_HUB ?= $(HOME)/projects
-HUB_SERVICES   := factory telegram discord nats clipool
--include $(SUPERVISOR_HUB)/hub.mk
+HUB_SERVICES := factory telegram discord nats clipool
 
-# Fallback SVC_CMD parsing — used when hub.mk is not present (e.g. prod).
+# Sub-command capture: `make factory reload` → SVC_CMD=reload
 ifndef SVC_CMD
 ifneq (,$(filter $(HUB_SERVICES),$(firstword $(MAKECMDGOALS))))
   SVC_CMD := $(wordlist 2,$(words $(MAKECMDGOALS)),$(MAKECMDGOALS))

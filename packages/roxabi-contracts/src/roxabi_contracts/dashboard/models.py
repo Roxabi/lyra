@@ -259,3 +259,25 @@ class DashboardAgentSoulPreviewRequest(BaseModel):
 class DashboardAgentSoulPreviewResponse(BaseModel):
     composed: str
     truncated: bool = False
+
+
+FleetStatus = Literal["ok", "stale", "unknown", "pinned"]
+
+
+class DashboardFleetRow(BaseModel):
+    container_name: str
+    host: str = ""
+    component_key: str
+    image_ref: str
+    image_revision: str | None = None
+    health: str = "unknown"
+    status: FleetStatus
+    last_report_at: str | None = None
+    age_s: float | None = None
+    systemd_unit: str
+    instrumented: bool = True
+    source: str = "manifest"
+
+
+class DashboardFleetResponse(BaseModel):
+    rows: list[DashboardFleetRow]

@@ -39,7 +39,7 @@ define require_machine1
 	@case "$(DEPLOY_DIR)" in *[\'\"\$$\\\;\&\|\`]*) echo "Error: DEPLOY_DIR contains shell metacharacters"; exit 1 ;; esac
 endef
 
-.PHONY: build push factory telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-sync-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy converge remote nats-setup nats-regen-authconf nats-add-identity test test-integration voice-smoke lint typecheck format hooks-install quality-debt-report quality-debt-classify qg
+.PHONY: build push factory telegram discord nats clipool monitor quadlet-preflight quadlet-install quadlet-sync-install quadlet-secrets-install quadlet-authconf-merged quadlet-lint deploy full-deploy converge remote nats-setup nats-regen-authconf nats-add-identity test test-integration voice-smoke lint typecheck format hooks-install quality-debt-report quality-debt-classify qg fleet-obs-evidence
 
 # ── Container image build + transfer ─────────────────────────────────────────
 
@@ -363,6 +363,9 @@ lint-js:               ## lint JS/TS workspaces (biome)
 
 # Local quality-gate bundle — CI-equivalent subset for dashboard + core factory paths (#1771).
 # Capture with: make qg 2>&1 | tee "${GOAL_1771_SCRATCH:-/tmp}/b3-qg.log"
+fleet-obs-evidence:  ## run scripts/goal-fleet-obs-evidence.sh (fleet goal verification plan steps 1–8)
+	bash scripts/goal-fleet-obs-evidence.sh
+
 qg: lint-js lint typecheck build-dashboard  ## full local QG (lint, import-linter, tests, ACL + architecture snapshot drift)
 	bun run --filter @roxabi-factory/dashboard test
 	uv run lint-imports

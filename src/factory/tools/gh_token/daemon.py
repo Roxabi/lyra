@@ -222,6 +222,11 @@ async def run_daemon(config: DaemonConfig) -> None:
 
     nats_url = os.environ.get("NATS_URL", "").strip()
     nc, publisher = await _connect_nats_publisher(nats_url)
+    fleet_reporter_task = None
+    if nc is not None:
+        from roxabi_obs import start_fleet_reporter
+
+        fleet_reporter_task = await start_fleet_reporter(nc)
 
     try:
         async with httpx.AsyncClient(
@@ -264,6 +269,9 @@ async def run_daemon(config: DaemonConfig) -> None:
                 await asyncio.gather(task, return_exceptions=True)
     finally:
         if nc is not None:
+            from roxabi_obs import cancel_fleet_reporter
+
+            await cancel_fleet_reporter(fleet_reporter_task)
             try:
                 await asyncio.wait_for(nc.drain(), timeout=5.0)  # #9: bounded drain
             except asyncio.TimeoutError:

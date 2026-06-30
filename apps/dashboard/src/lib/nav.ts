@@ -4,6 +4,7 @@ import {
   ChatCircleDots,
   type Icon,
   Robot,
+  ShippingContainer,
   SquaresFour,
 } from "@phosphor-icons/react";
 
@@ -27,6 +28,7 @@ export const operateNavItems: AppNavItem[] = [
 ];
 
 export const observeNavItems: AppNavItem[] = [
+  { to: "/fleet", labelKey: "nav.fleet", Icon: ShippingContainer, wideLayout: true },
   { to: "/ops", labelKey: "nav.ops", Icon: ChartLineUp, wideLayout: true },
 ];
 

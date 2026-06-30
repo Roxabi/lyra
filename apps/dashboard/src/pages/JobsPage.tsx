@@ -176,19 +176,25 @@ export function JobsPage() {
         </ListToolbar>
 
         {isLoading ? (
-          <div
-            role="status"
-            className="space-y-2"
-            aria-busy="true"
-            aria-label={tc("actions.loading")}
-          >
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="flex items-center gap-3 rounded-lg border bg-card p-3">
-                <Skeleton className="h-4 w-24" />
-                <Skeleton className="h-4 w-16" />
-                <Skeleton className="h-6 w-14 rounded-full" />
-              </div>
-            ))}
+          <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
+            <div
+              role="status"
+              className="divide-y divide-border/30 px-4"
+              aria-busy="true"
+              aria-label={tc("actions.loading")}
+            >
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="flex items-center gap-3 py-3">
+                  <Skeleton className="h-4 w-28" />
+                  <Skeleton className="h-4 w-16" />
+                  <Skeleton className="h-4 w-14" />
+                  <Skeleton className="h-6 w-16 rounded-full" />
+                  <Skeleton className="h-4 w-12" />
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="ml-auto h-7 w-14 rounded-md" />
+                </div>
+              ))}
+            </div>
           </div>
         ) : null}
 

@@ -25,16 +25,24 @@ function filterUsers(users: AdminUserAccess[], query: string): AdminUserAccess[]
 function AdminSkeleton() {
   const { t } = useTranslation("common");
   return (
-    <div role="status" className="space-y-2" aria-busy="true" aria-label={t("actions.loading")}>
-      {[0, 1, 2].map((i) => (
-        <div key={i} className="flex items-center gap-4 rounded-lg border bg-card p-3">
-          <div className="min-w-0 flex-1 space-y-2">
-            <Skeleton className="h-4 w-1/3" />
-            <Skeleton className="h-3 w-2/5" />
+    <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
+      <div
+        role="status"
+        className="divide-y divide-border/30 px-4"
+        aria-busy="true"
+        aria-label={t("actions.loading")}
+      >
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="flex items-center gap-4 py-3">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-4 w-40" />
+            <Skeleton className="h-6 w-12 rounded-full" />
+            <Skeleton className="h-6 w-12 rounded-full" />
+            <Skeleton className="h-6 w-20 rounded-full" />
+            <Skeleton className="ml-auto h-7 w-16 rounded-md" />
           </div>
-          <Skeleton className="h-6 w-24 rounded-full" />
-        </div>
-      ))}
+        ))}
+      </div>
     </div>
   );
 }

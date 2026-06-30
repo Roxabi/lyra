@@ -114,17 +114,26 @@ function AgentsListSkeleton({ view }: { view: "cards" | "table" }) {
 
   if (view === "table") {
     return (
-      <div role="status" className="space-y-2" aria-busy="true" aria-label={t("actions.loading")}>
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="flex items-center gap-4 rounded-lg border bg-card p-3">
-            <Skeleton className="size-8 shrink-0 rounded-full" />
-            <div className="min-w-0 flex-1 space-y-2">
-              <Skeleton className="h-4 w-1/4" />
-              <Skeleton className="h-3 w-1/3" />
+      <div className="overflow-x-auto rounded-xl border border-border bg-card shadow-sm">
+        <div
+          role="status"
+          className="divide-y divide-border/30 px-4"
+          aria-busy="true"
+          aria-label={t("actions.loading")}
+        >
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="flex items-center gap-4 py-3">
+              <Skeleton className="size-8 shrink-0 rounded-full" />
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-6 w-14 rounded-full" />
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="h-6 w-12 rounded-full" />
+              <Skeleton className="h-6 w-12 rounded-full" />
+              <Skeleton className="h-6 w-12 rounded-full" />
+              <Skeleton className="ml-auto h-7 w-16 rounded-md" />
             </div>
-            <Skeleton className="h-6 w-16 rounded-full" />
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     );
   }
@@ -138,7 +147,7 @@ function AgentsListSkeleton({ view }: { view: "cards" | "table" }) {
     >
       {[0, 1, 2].map((i) => (
         <li key={i}>
-          <div className="rounded-xl border bg-card p-4">
+          <div className="rounded-xl border border-border/50 bg-card p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
               <div className="flex min-w-0 flex-1 items-center gap-2.5">
                 <Skeleton className="size-9 shrink-0 rounded-full" />

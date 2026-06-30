@@ -29,12 +29,13 @@ def apply_pull_request(
         return
     pr_number = int(pr["number"])
     reviewed = pr_has_reviewed_label(pr.get("labels"))
-    if kind == "pull_request.labeled" and isinstance(payload.get("label"), dict):
-        name = payload["label"].get("name")
+    label = payload.get("label")
+    if kind == "pull_request.labeled" and isinstance(label, dict):
+        name = label.get("name")
         if name == "reviewed":
             reviewed = True
-    if kind == "pull_request.unlabeled" and isinstance(payload.get("label"), dict):
-        name = payload["label"].get("name")
+    if kind == "pull_request.unlabeled" and isinstance(label, dict):
+        name = label.get("name")
         if name == "reviewed":
             reviewed = False
 

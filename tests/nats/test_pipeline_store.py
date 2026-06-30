@@ -115,7 +115,7 @@ def test_merged_pr_publish_and_m1_quorum(store: PipelineStore) -> None:
         },
         trace_id="t-publish",
     )
-    fleet_rows = [
+    fleet_rows: list[tuple[str, str | None, str, float | None]] = [
         (name, publish_sha, "ok", 12.0) for name in M1_DEPLOY_QUORUM
     ]
     store.recompute_m1_from_fleet(fleet_rows)

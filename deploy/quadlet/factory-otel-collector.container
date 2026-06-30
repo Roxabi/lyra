@@ -1,5 +1,7 @@
+# DEPRECATED — disabled in deploy/quadlet.toml (2026-06-30).
+# Replaced by factory-otel.container (in-process store). Kept for rollback reference.
 [Unit]
-Description=Factory OTel Collector — OTLP → otel-raw JSONL (ADR-097)
+Description=[DEPRECATED] Factory OTel Collector — OTLP → otel-raw JSONL (ADR-097)
 StartLimitIntervalSec=60
 StartLimitBurst=5
 

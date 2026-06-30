@@ -11,7 +11,7 @@ source:
 
 ## Context
 
-ADR-097 replaces Langfuse as the v1 trace sink. Spans arrive via OTLP at `factory-otel-collector`, are archived as JSONL, and indexed in SQLite for the dashboard BFF.
+ADR-097 replaces Langfuse as the v1 trace sink. Spans arrive via OTLP at **`factory-otel`** (`factory otel serve`), are archived as JSONL, and indexed in SQLite for the dashboard BFF.
 
 ## Goal
 
@@ -21,8 +21,8 @@ Define durable paths, schemas, retention, and read patterns so operators and the
 
 | Path | Mode | Owner |
 |------|------|-------|
-| `~/.local/state/factory/otel/spans.jsonl` | append-only archive | collector `file` exporter |
-| `~/.roxabi/factory/otel-raw.db` | SQLite WAL | dashboard BFF indexer / reader |
+| `~/.local/state/factory/otel/spans.jsonl` | append-only archive | factory-otel `OtelRawStore` |
+| `~/.roxabi/factory/otel-raw.db` | SQLite WAL | factory-otel indexer + BFF proxy |
 | `~/.local/state/factory/otel/` | directory `0750` | `bootstrap-otel-raw.sh` |
 
 Syncthing: **exclude** `otel/` and `otel-raw.db` (high churn).

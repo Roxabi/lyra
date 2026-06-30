@@ -306,7 +306,7 @@ def telemetry_attributes(self, payload: dict, result: object | None) -> dict[str
 | Block 1 — Hub codec SSoT | `done` | `mint_work_envelope_fields` + codecs STT/TTS/image/socialmedia |
 | Block 2 — contracts + hooks Protocol | `done` | `MessageLifecycleHooks`, attrs registry ; pool_id via TraceContext (Option B) |
 | Block 3 — roxabi-otel + NatsAdapterBase wiring | `done` | Noop default, `ROXABI_OTEL_ENABLED` |
-| Block 4 — Collector + quadlet | `done` | JSONL file exporter, Langfuse decoupled |
+| Block 4 — factory-otel + quadlet | `done` | Replaced otel-collector; Langfuse decoupled |
 | Block 5 — Factory workers (clipool, omp) | `done` | telemetry_attributes + bootstrap wiring |
 | Block 6 — voiceCLI PR | `pending` | repo externe |
 | Block 7 — imageCLI + llmCLI PRs | `pending` | repos externes |
@@ -551,6 +551,7 @@ flowchart TD
 | 2026-06-30 | Grok | Pre-flight | Issue [#2069](https://github.com/Roxabi/roxabi-factory/issues/2069) ouverte |
 | 2026-06-30 | Grok | Blocks 0–5,8 | Impl factory : ADR-097, roxabi-otel, collector JSONL, BFF spans |
 | 2026-06-30 | Grok | Fix round | Hook job_id correlation, deferred clipool/omp hooks, dashboard otel mounts, 7 evidence logs, make qg green |
+| 2026-06-30 | Grok | Block 4b | factory-otel maison (blobstore-style); otel-collector disabled; runbook + satellite rollout spec |
 
 ---
 

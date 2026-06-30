@@ -32,10 +32,10 @@ ADR-092 ratified a headless trace engine behind the control-plane dashboard. The
 
 | Layer | v1 choice |
 |-------|-----------|
-| Protocol | OTLP → `factory-otel-collector` on M₁ |
+| Protocol | OTLP → `factory-otel` on M₁ (`factory otel serve`, gRPC `:4317`) |
 | Archive | JSONL `~/.local/state/factory/otel/spans.jsonl` (rotated via logrotate, 7d or 5 GiB) |
 | Query index | SQLite `~/.roxabi/factory/otel-raw.db` — keyed by `trace_id`, `job_id`, `pool_id`, `ts` |
-| Langfuse | **Deferred** — quadlets optional; collector v1 has **no** Langfuse exporter |
+| Langfuse | **Deferred** — quadlets optional; factory-otel v1 has **no** Langfuse exporter |
 
 ### 3. Instrumentation boundary (ADR-073 axial)
 
@@ -49,12 +49,13 @@ ADR-092 ratified a headless trace engine behind the control-plane dashboard. The
 
 Workers instrument **once** in the adapter base; satellites pass `OtelLifecycleHooks` at construction after factory packages merge.
 
-### 4. Collector + quadlet (M₁)
+### 4. factory-otel service + quadlet (M₁)
 
-- Remove `After` / `Wants` Langfuse from `factory-otel-collector.container`
-- Bind-mount RW volume for `~/.local/state/factory/otel/`
-- Publish health `127.0.0.1:13133`
-- OTLP gRPC/HTTP on tailnet for M₂ (`llmcli` proxy) with auth at bind layer
+- **`factory-otel`** — single factory image container: OTLP gRPC ingest, JSONL append, SQLite index, HTTP query API (`:8450`)
+- Bind-mount RW volume for `~/.local/state/factory/otel/` and `otel-raw.db`
+- Health `GET /healthz` on `:8450`; bearer token for query API (dashboard BFF)
+- OTLP gRPC on pod network for workers + M₂ (`llmcli` proxy)
+- **`factory-otel-collector`** (upstream otelcol) **disabled** — kept on disk for rollback reference
 - Rollback: `ROXABI_OTEL_ENABLED=0` on workers disables export without image redeploy
 
 ### 5. Dashboard v1

@@ -1,4 +1,5 @@
-# OpenTelemetry Collector — OTLP ingress → otel-raw JSONL (ADR-097).
+# DEPRECATED — factory-otel-collector disabled in quadlet.toml (2026-06-30).
+# OTLP ingest now handled by factory-otel (src/factory/otel/). Kept for rollback.
 # Langfuse exporter removed in v1 — optional stack may be re-enabled later.
 receivers:
   otlp:

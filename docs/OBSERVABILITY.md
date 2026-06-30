@@ -162,23 +162,26 @@ Runbook: [runbooks/loki-query.md](runbooks/loki-query.md).
 
 ---
 
-## OTel Collector + otel-raw store (trace engine v1 — ADR-097)
+## factory-otel + otel-raw store (trace engine v1 — ADR-097)
 
 | Unit | Image | Storage / notes |
 |------|-------|-----------------|
-| `factory-otel-collector` | `otel/opentelemetry-collector-contrib:0.120.0` | JSONL → `~/.local/state/factory/otel/` |
-| SQLite index | — | `~/.roxabi/factory/otel-raw.db` (dashboard BFF queries) |
+| `factory-otel` | `ghcr.io/roxabi/factory:staging-svc` | OTLP ingest + JSONL + SQLite index (blobstore-style) |
+| JSONL archive | — | `~/.local/state/factory/otel/spans.jsonl` |
+| SQLite index | — | `~/.roxabi/factory/otel-raw.db` |
 
 Flow:
 
-- **Workers:** NATS adapters (`NatsAdapterBase` hooks) → OTLP gRPC → collector → JSONL archive
-- **Primary agent:** Claude Code (clipool subprocess) → OTLP gRPC → same collector
-- **Secondary:** LiteLLM proxy (`llmcli` OTel v2) → same collector — OMP + cloud relay
-- **Dashboard:** `GET /api/bff/spans` reads SQLite index — no per-engine UI required
+- **Workers:** NATS adapters (`NatsAdapterBase` hooks) → OTLP gRPC `:4317` → factory-otel → JSONL + SQLite
+- **Primary agent:** Claude Code (clipool subprocess) → OTLP gRPC → same service
+- **Secondary:** LiteLLM proxy (`llmcli` OTel v2) → same endpoint — OMP + cloud relay (Block 7)
+- **Dashboard:** BFF `GET /api/bff/spans` proxies factory-otel HTTP API (bearer auth)
 
-Bootstrap: `deploy/scripts/bootstrap-otel-raw.sh` → dirs + permissions. Collector env optional (`otel-collector.env`).
+Bootstrap: `deploy/scripts/bootstrap-otel-raw.sh` → dirs + permissions. Token: `factory_otel_token` via `install.sh`.
 
-**Langfuse (optional / deferred):** six-container stack remains in quadlet manifest for future drill-down but is **not** on the v1 critical path. Collector v1 does not export to Langfuse.
+**Deprecated:** `factory-otel-collector` (upstream otelcol image) disabled in `quadlet.toml`.
+
+**Langfuse (optional / deferred):** six-container stack remains in quadlet manifest for future drill-down but is **not** on the v1 critical path.
 
 Runbook: [runbooks/otel-traces.md](runbooks/otel-traces.md).
 

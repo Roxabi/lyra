@@ -33,6 +33,13 @@ def test_otel_collector_config_exports_jsonl() -> None:
     assert "health_check" in data["extensions"]
 
 
+def test_quadlet_toml_otel_collector_disabled() -> None:
+    text = QUADLET_TOML.read_text()
+    start = text.index("[component.otel-collector]")
+    block = text[start : text.find("\n[", start + 1)]
+    assert "disabled = true" in block
+
+
 def test_quadlet_toml_langfuse_components_disabled() -> None:
     text = QUADLET_TOML.read_text()
     for name in (

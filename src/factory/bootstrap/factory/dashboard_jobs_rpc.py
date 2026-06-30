@@ -8,7 +8,6 @@ from factory.core.hub.hub_protocol import RoutingKey
 from factory.core.hub.job_catalog import list_active_jobs
 from factory.core.messaging.message import Platform
 from factory.core.prompt_resolution import resolve_agent_runtime_defaults
-from factory.core.trace import TraceContext
 from factory.nats.envelope_fields import mint_work_envelope_fields
 from factory.obs.hub_tracer import nats_client_span
 from roxabi_contracts.dashboard import (

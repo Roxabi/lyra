@@ -6,7 +6,6 @@ import logging
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from factory.core.trace import TraceContext
 from factory.nats.envelope_fields import mint_work_envelope_fields
 from roxabi_contracts.voice import (
     SUBJECTS,

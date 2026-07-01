@@ -163,6 +163,10 @@ quadlet-lint:  ## lint Quadlet unit files: dryrun parse check + inline-comment g
 	@echo "quadlet-lint passed"
 
 quadlet-install: quadlet-preflight  ## install Quadlet units → reload + verify (NO_RESTART=1 skips restart/verify)
+	@python3 "$(HOME)/projects/lib/cluster_plan.py" has-role "$$(hostname)" factory-hub >/dev/null 2>&1 \
+	  || { echo "REFUSED: host '$$(hostname)' lacks the 'factory-hub' role — 'make quadlet-install' installs the whole factory-hub stack." >&2; \
+	       echo "         Use ~/projects/deploy.sh (role-aware SSoT), or 'make converge' on M1. Guard mirrors converge.sh's require_host_role (prevents the M2 orphan-install incident)." >&2; \
+	       exit 1; }
 	@mkdir -p "$(QUADLET_DIR)"
 	@uv run --frozen factory bot init
 	@rm -f "$(QUADLET_DIR)"/factory*.{network,volume,container,pod} "$(QUADLET_DIR)"/factory*.{network,volume,container,pod} "$(QUADLET_DIR)/nats.container" \

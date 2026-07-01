@@ -83,6 +83,32 @@ class UserStoreProfileOps:
             created_at=_parse_ts(created_at),
         )
 
+    async def delete_profile_user(self, user_id: str) -> bool:
+        """Delete a profile user and linked platform identities (admin rollback)."""
+        db = self._require_db()
+        async with db.execute("SELECT 1 FROM users WHERE id = ?", (user_id,)) as cur:
+            if await cur.fetchone() is None:
+                return False
+
+        async with db.execute(
+            "SELECT platform_key FROM platform_identities WHERE user_id = ?",
+            (user_id,),
+        ) as cur:
+            platform_keys = [row[0] async for row in cur]
+
+        await db.execute(
+            "DELETE FROM platform_identities WHERE user_id = ?",
+            (user_id,),
+        )
+        await db.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        await db.commit()
+
+        for key in platform_keys:
+            self._key_to_user.pop(key, None)
+        self._user_to_keys.pop(user_id, None)
+        log.info("Deleted profile user %s", user_id)
+        return True
+
     async def update_profile_user(
         self,
         user_id: str,

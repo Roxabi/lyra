@@ -1,4 +1,4 @@
-import { Badge } from "@astryxdesign/core/Badge";
+import { Badge, type BadgeVariant } from "@astryxdesign/core/Badge";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PageIntro } from "@/components/layout/PageIntro";
@@ -10,11 +10,12 @@ import { filterPipelineRuns, isPipelineRowStale, type PipelineFilter } from "@/l
 
 const FILTER_OPTIONS: PipelineFilter[] = ["ci_red", "awaiting_reviewed", "deploy_pending"];
 
-function stageVariant(status: PipelineStageStatus): "success" | "error" | "neutral" {
+function stageVariant(
+  status: PipelineStageStatus,
+): Extract<BadgeVariant, "success" | "error" | "neutral"> {
   if (status === "success") return "success";
   if (status === "failure") return "error";
-  if (status === "running" || status === "pending") return "neutral";
-  return "neutral";
+  return "neutral"; // running / pending / skipped / unknown / n-a
 }
 
 function StageBadge({ label, status }: { label: string; status: PipelineStageStatus }) {

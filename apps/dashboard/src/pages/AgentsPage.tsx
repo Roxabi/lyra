@@ -188,7 +188,12 @@ export function AgentDetailPage() {
       {soulQ.isError ? <Banner status="error" title={t("soulLoadError")} /> : null}
 
       {!soulQ.isError && !hasSectionContent ? (
-        <Banner status="warning" title={t("noSoulContent")} />
+        <Banner
+          status="warning"
+          role="status"
+          title={t("noSoulContentTitle")}
+          description={t("noSoulContent")}
+        />
       ) : null}
 
       {dirty ? <Banner status="warning" title={t("unsavedChanges")} /> : null}
@@ -253,7 +258,9 @@ export function AgentDetailPage() {
         <CardContent className="space-y-4">
           <Banner
             status="warning"
-            title={
+            role="status"
+            title={t("sessionLagTitle")}
+            description={
               <>
                 {t("sessionLagPrefix")} <strong>{t("sessionLagStrong")}</strong>
                 {t("sessionLagSuffix")}

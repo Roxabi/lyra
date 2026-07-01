@@ -207,7 +207,7 @@ export function DesignSystemPage() {
         </Row>
       </Section>
 
-      <Section title="Alert" description="Bandeaux d'état — destructive, warning, info, success.">
+      <Section title="Banner" description="Bandeaux d'état — info, warning, error, success.">
         <Banner status="error" title="Message d'erreur critique." />
         <Banner status="warning" title="Avertissement — modifications non enregistrées." />
         <Banner status="info" title="Information contextuelle." />

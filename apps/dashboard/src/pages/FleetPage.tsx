@@ -1,4 +1,4 @@
-import { Badge } from "@astryxdesign/core/Badge";
+import { Badge, type BadgeVariant } from "@astryxdesign/core/Badge";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { ShippingContainer } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
@@ -20,30 +20,18 @@ import { FLEET_STATUSES, type FleetSortKey, filterFleet, sortFleet } from "@/lib
 import { type SortDirection, toggleSort } from "@/lib/sort";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 
-function statusVariant(status: FleetStatus): "success" | "error" | "neutral" {
-  switch (status) {
-    case "ok":
-      return "success";
-    case "stale":
-      return "error";
-    case "pinned":
-      return "neutral";
-    default:
-      return "neutral";
-  }
+type StatusBadgeVariant = Extract<BadgeVariant, "success" | "error" | "neutral">;
+
+function statusVariant(status: FleetStatus): StatusBadgeVariant {
+  if (status === "ok") return "success";
+  if (status === "stale") return "error";
+  return "neutral"; // pinned + anything else
 }
 
-function digestVariant(status: ImageDigestStatus): "success" | "error" | "neutral" {
-  switch (status) {
-    case "current":
-      return "success";
-    case "stale":
-      return "error";
-    case "n/a":
-      return "neutral";
-    default:
-      return "neutral";
-  }
+function digestVariant(status: ImageDigestStatus): StatusBadgeVariant {
+  if (status === "current") return "success";
+  if (status === "stale") return "error";
+  return "neutral"; // n/a + anything else
 }
 
 function formatAge(ageS: number | null | undefined): string {

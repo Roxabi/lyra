@@ -7,7 +7,7 @@ import { TextArea } from "@astryxdesign/core/TextArea";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { useToast } from "@astryxdesign/core/Toast";
 import { Briefcase } from "@phosphor-icons/react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PageIntro } from "@/components/layout/PageIntro";
@@ -22,15 +22,9 @@ import {
 } from "@/components/ui/list-toolbar";
 import { PopoverSelect } from "@/components/ui/popover-select";
 import { SortableTableHeader } from "@/components/ui/sortable-table-header";
+import { useJobsLive } from "@/hooks/useJobsLive";
 import { displayAgentName } from "@/lib/agents";
-import {
-  cancelJob,
-  fetchAgentStatus,
-  fetchAgents,
-  fetchJobs,
-  launchJob,
-  steerJob,
-} from "@/lib/api";
+import { cancelJob, fetchAgentStatus, fetchAgents, launchJob, steerJob } from "@/lib/api";
 import { jobStatusToBadgeVariant } from "@/lib/job-status";
 import { filterJobs, type JobsSortKey, sortJobs, uniqueJobStatuses } from "@/lib/jobs-filters";
 import { type SortDirection, toggleSort } from "@/lib/sort";
@@ -39,7 +33,6 @@ import { useDebouncedValue } from "@/lib/use-debounced-value";
 export function JobsPage() {
   const { t } = useTranslation("jobs");
   const { t: tc } = useTranslation("common");
-  const queryClient = useQueryClient();
   const showToast = useToast();
   const [launchAgent, setLaunchAgent] = useState("");
   const [launchPrompt, setLaunchPrompt] = useState("");
@@ -56,15 +49,7 @@ export function JobsPage() {
     queryFn: () => fetchAgentStatus(),
     refetchInterval: 15_000,
   });
-  const {
-    data: jobs = [],
-    isLoading,
-    isError,
-  } = useQuery({
-    queryKey: ["jobs-live"],
-    queryFn: fetchJobs,
-    refetchInterval: 5_000,
-  });
+  const { jobs, isLoading, isError } = useJobsLive();
 
   const selectedAgent = launchAgent || agents[0] || "";
   const statusOptions = useMemo(() => uniqueJobStatuses(jobs), [jobs]);
@@ -89,7 +74,6 @@ export function JobsPage() {
         showToast({ body: res.message, type: "error" });
       }
       setLaunchPrompt("");
-      void queryClient.invalidateQueries({ queryKey: ["jobs-live"] });
     },
     onError: () => showToast({ body: t("launch.launchFailed"), type: "error" }),
   });
@@ -107,7 +91,6 @@ export function JobsPage() {
     mutationFn: (jobId: string) => cancelJob(jobId),
     onSuccess: (_res, jobId) => {
       showToast({ body: t("cancel.sent", { jobId }), type: "info" });
-      void queryClient.invalidateQueries({ queryKey: ["jobs-live"] });
     },
     onError: () => showToast({ body: t("cancel.failed"), type: "error" }),
   });

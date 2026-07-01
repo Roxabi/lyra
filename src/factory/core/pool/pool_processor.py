@@ -9,18 +9,97 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import uuid
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..agent import AgentBase
     from ..messaging.message import InboundMessage
+    from ..ports.active_jobs import ActiveJobsRecorder
     from .pool import Pool
 
+from roxabi_contracts.jobs.subjects import jobs_steer
+
 from ..messaging.message import Response
+from ..ports.active_jobs import ActiveJobEntry, RegistryConflictError
 from .pool_observer import _TURN_PERSIST_ERRORS
 from .pool_processor_exec import _safe_dispatch, guarded_process_one
 
 log = logging.getLogger(__name__)
+
+
+def _active_jobs_recorder(pool: Pool) -> ActiveJobsRecorder | None:
+    """The hub's active-jobs recorder (``None`` until wired), via ``PoolContext``.
+
+    Resolved in one place so open/close agree; callers wrap this in the
+    best-effort try/except that guards the whole registry side-channel, so a
+    context that raises here cannot break the turn either.
+    """
+    return pool._ctx.active_jobs_recorder()
+
+
+async def _open_active_job(pool: Pool) -> str | None:
+    """Register this run in the active-jobs registry; return its job_id.
+
+    Best-effort side-channel: the registry is observability + routing support,
+    never on the turn's critical path.  The ENTIRE body — recorder resolution,
+    entry construction and ``open()`` — is guarded so no registry or context
+    failure can ever propagate into message processing.
+    """
+    try:
+        recorder = _active_jobs_recorder(pool)
+        if recorder is None:
+            return None
+        job_id = uuid.uuid4().hex
+        entry = ActiveJobEntry(
+            job_id=job_id,
+            pool_id=pool.pool_id,
+            status="open",
+            started_at=datetime.now(UTC),
+            steer_subject=jobs_steer(job_id),
+            concurrency_mode="steer",
+        )
+        await recorder.open(entry)
+    except RegistryConflictError:
+        # Benign + self-healing: a prior run's entry for this pool lingers
+        # until its TTL expires; this run is simply not registered meanwhile.
+        log.info(
+            "[pool:%s] active-jobs: pool already has an open job — "
+            "run not registered (TTL will heal)",
+            pool.pool_id,
+        )
+        return None
+    except Exception:  # noqa: BLE001 — side-channel: never break the turn
+        log.warning(
+            "[pool:%s] active-jobs: open failed — run not registered",
+            pool.pool_id,
+            exc_info=True,
+        )
+        return None
+    return job_id
+
+
+async def _close_active_job(pool: Pool, job_id: str | None) -> None:
+    """Remove this run from the registry; best-effort (TTL heals a miss).
+
+    Whole body guarded — a registry/context failure on the teardown path
+    (incl. during ``asyncio.CancelledError`` unwind) must never propagate.
+    """
+    if job_id is None:
+        return
+    try:
+        recorder = _active_jobs_recorder(pool)
+        if recorder is None:
+            return
+        await recorder.close(job_id)
+    except Exception:  # noqa: BLE001 — side-channel: never break the turn
+        log.warning(
+            "[pool:%s] active-jobs: close failed for %r",
+            pool.pool_id,
+            job_id,
+            exc_info=True,
+        )
 
 
 class PoolProcessor:
@@ -38,7 +117,9 @@ class PoolProcessor:
         """Consume inbox with debounce aggregation and cancel-in-flight."""
         pool = self._pool
         _last_msg: InboundMessage | None = None
+        _job_id: str | None = None
         try:
+            _job_id = await _open_active_job(pool)
             while True:
                 if pool._inbox.empty():
                     break
@@ -94,6 +175,7 @@ class PoolProcessor:
             raise
         finally:
             pool._current_task = None
+            await _close_active_job(pool, _job_id)
 
     async def _process_with_cancel(
         self,

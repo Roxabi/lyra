@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BffApiError, classifyBffDetail, parseBffResponse } from "@/lib/bff-api";
+import { type BffApiError, classifyBffDetail, parseBffResponse } from "@/lib/bff-api";
 
 describe("classifyBffDetail", () => {
   it("detects email conflicts", () => {

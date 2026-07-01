@@ -138,15 +138,24 @@ _do_converge() {
         done
         [ -z "${failed}" ] || { echo "ERROR: restart failed for:${failed}"; exit 1; }
 
-        # 10) Restart voiceCLI if present (only on structural drift)
-        if [ -d "${VOICE_DIR}/.git" ]; then
-            echo "==> voiceCLI: restarting containers..."
+        # 10) Restart voiceCLI ONLY when its own HEAD actually changed — not on every
+        # structural drift. voiceCLI is a separate product; a factory-only change (git HEAD,
+        # image digest, or unit file) must not bounce it. field 4 of the fingerprint is
+        # voicecli-head: git-head:units:auth:VOICECLI-HEAD:img-svc:img-stg. On first run
+        # (_last="none") field 4 is empty ≠ current hash → restart, which is correct.
+        local _last_voice _cur_voice
+        _last_voice=$(printf '%s' "${_last}" | cut -d: -f4)
+        _cur_voice=$(printf '%s' "${_current}" | cut -d: -f4)
+        if [ -d "${VOICE_DIR}/.git" ] && [ "${_last_voice}" != "${_cur_voice}" ]; then
+            echo "==> voiceCLI: HEAD changed (fingerprint field 4) → restarting containers..."
             failed=""
             for svc in voicecli-tts voicecli-stt; do
                 systemctl --user restart "${svc}" \
                     || { echo "ERROR: restart ${svc} failed"; failed="${failed} ${svc}"; }
             done
             [ -z "${failed}" ] || { echo "ERROR: restart failed for:${failed}"; exit 1; }
+        elif [ -d "${VOICE_DIR}/.git" ]; then
+            echo "==> voiceCLI: HEAD unchanged → skip restart (factory-only structural drift)."
         fi
     fi
 

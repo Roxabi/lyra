@@ -62,7 +62,7 @@ class FleetReporter:
         env_name = os.environ.get("CONTAINER_NAME", "")
         self._container_name = (container_name or env_name).strip()
         self._image_ref = (image_ref or os.environ.get("IMAGE_REF", "")).strip()
-        self._health = health
+        self._health: ContainerHealth = health
         self._task: asyncio.Task[None] | None = None
 
     async def run(self) -> None:

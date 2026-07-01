@@ -28,6 +28,7 @@
   },
   "userMenu": {
     "open": "Account menu — {{name}}",
+    "closePopover": "Close menu",
     "theme": "Theme",
     "language": "Language",
     "localeFr": "Français",

@@ -130,7 +130,7 @@ function AgentsListSkeleton({ view }: { view: "cards" | "table" }) {
               <Skeleton width={48} height={24} radius="rounded" />
               <Skeleton width={48} height={24} radius="rounded" />
               <Skeleton width={48} height={24} radius="rounded" />
-              <Skeleton width={64} height={28} className="ml-auto" />
+              <Skeleton width={64} height={28} radius={2} className="ml-auto" />
             </div>
           ))}
         </div>

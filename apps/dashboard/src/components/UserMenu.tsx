@@ -4,11 +4,11 @@ import { Popover } from "@astryxdesign/core/Popover";
 import { SegmentedControl, SegmentedControlItem } from "@astryxdesign/core/SegmentedControl";
 import { CaretUpDown, Moon, Palette, Sun, Users } from "@phosphor-icons/react";
 import { useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import i18n, { persistLocale } from "@/i18n";
 import { type OperatorProfile, readOperatorProfile } from "@/lib/operator-profile";
-import { applyTheme, type Theme } from "@/lib/theme";
+import { applyTheme } from "@/lib/theme";
 import { useTheme } from "@/lib/use-theme";
 import { userDisplayName } from "@/lib/user";
 import { cn } from "@/lib/utils";
@@ -82,35 +82,49 @@ function MenuContent({
       </div>
 
       <div className="grid gap-2 px-1 py-1">
-        <SegmentedControl
-          label={t("userMenu.theme")}
-          value={theme}
-          onChange={(value) => applyTheme(value as Theme)}
-          layout="fill"
-          size="sm"
-        >
-          <SegmentedControlItem
-            value="light"
-            label={t("theme.light")}
-            icon={<Sun className="size-4" aria-hidden />}
-          />
-          <SegmentedControlItem
-            value="dark"
-            label={t("theme.dark")}
-            icon={<Moon className="size-4" aria-hidden />}
-          />
-        </SegmentedControl>
+        <div className="grid gap-1">
+          <span aria-hidden className="text-xs font-medium text-muted-foreground">
+            {t("userMenu.theme")}
+          </span>
+          <SegmentedControl
+            label={t("userMenu.theme")}
+            value={theme}
+            onChange={(value) => {
+              // SegmentedControl's onChange is typed `(value: string)`; narrow
+              // back to Theme so a stray item value can't persist a bad theme.
+              if (value === "light" || value === "dark") applyTheme(value);
+            }}
+            layout="fill"
+            size="sm"
+          >
+            <SegmentedControlItem
+              value="light"
+              label={t("theme.light")}
+              icon={<Sun className="size-4" aria-hidden />}
+            />
+            <SegmentedControlItem
+              value="dark"
+              label={t("theme.dark")}
+              icon={<Moon className="size-4" aria-hidden />}
+            />
+          </SegmentedControl>
+        </div>
 
-        <SegmentedControl
-          label={t("userMenu.language")}
-          value={locale}
-          onChange={changeLocale}
-          layout="fill"
-          size="sm"
-        >
-          <SegmentedControlItem value="fr" label={t("userMenu.localeFr")} />
-          <SegmentedControlItem value="en" label={t("userMenu.localeEn")} />
-        </SegmentedControl>
+        <div className="grid gap-1">
+          <span aria-hidden className="text-xs font-medium text-muted-foreground">
+            {t("userMenu.language")}
+          </span>
+          <SegmentedControl
+            label={t("userMenu.language")}
+            value={locale}
+            onChange={changeLocale}
+            layout="fill"
+            size="sm"
+          >
+            <SegmentedControlItem value="fr" label={t("userMenu.localeFr")} />
+            <SegmentedControlItem value="en" label={t("userMenu.localeEn")} />
+          </SegmentedControl>
+        </div>
       </div>
     </div>
   );
@@ -120,6 +134,7 @@ export function UserMenu({ variant = "compact", collapsed = false, className }: 
   const { t } = useTranslation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const user = readOperatorProfile();
   const displayName = userDisplayName(user);
 
@@ -131,13 +146,22 @@ export function UserMenu({ variant = "compact", collapsed = false, className }: 
   return (
     <Popover
       isOpen={open}
-      onOpenChange={setOpen}
+      onOpenChange={(next) => {
+        setOpen(next);
+        // Restore focus to the trigger on dismiss (Escape / light-dismiss) so
+        // keyboard users don't drop to <body>; the old Radix menu did this for
+        // free. Navigation closes via handleNavigate (focus moves to the page),
+        // so this only fires for real dismissals.
+        if (!next) triggerRef.current?.focus();
+      }}
       placement={variant === "sidebar" ? "end" : "below"}
       alignment="end"
       label={t("userMenu.open", { name: displayName })}
+      closeButtonLabel={t("userMenu.closePopover")}
       content={<MenuContent user={user} displayName={displayName} onNavigate={handleNavigate} />}
     >
       <button
+        ref={triggerRef}
         type="button"
         aria-label={t("userMenu.open", { name: displayName })}
         className={cn(

@@ -39,7 +39,7 @@ function AdminSkeleton() {
             <Skeleton width={48} height={24} radius="rounded" />
             <Skeleton width={48} height={24} radius="rounded" />
             <Skeleton width={80} height={24} radius="rounded" />
-            <Skeleton width={64} height={28} className="ml-auto" />
+            <Skeleton width={64} height={28} radius={2} className="ml-auto" />
           </div>
         ))}
       </div>

@@ -16,13 +16,13 @@ export function ChatComposer({ value, disabled, onChange, onSend }: ChatComposer
     <div className="border-t border-border bg-card/40 px-4 py-3">
       <div className="mx-auto flex max-w-3xl items-end gap-2">
         <TextArea
-          label={t("composer.placeholder")}
+          label={disabled ? t("composer.placeholderOffline") : t("composer.placeholder")}
           isLabelHidden
           value={value}
           isDisabled={disabled}
           placeholder={disabled ? t("composer.placeholderOffline") : t("composer.placeholder")}
           rows={1}
-          className="max-h-32 flex-1"
+          className="max-h-32 min-h-[44px] flex-1"
           onChange={(next) => onChange(next)}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {

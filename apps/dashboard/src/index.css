@@ -126,45 +126,18 @@
   padding-bottom: calc(3.5rem + env(safe-area-inset-bottom));
 }
 
-@keyframes popover-show {
-  from {
-    opacity: 0;
-    transform: scale(0.96);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-@keyframes popover-hide {
-  from {
-    opacity: 1;
-    transform: scale(1);
-  }
-  to {
-    opacity: 0;
-    transform: scale(0.96);
-  }
-}
-
-.popover-content[data-state="open"] {
-  animation: popover-show 220ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
-  transform-origin: var(--radix-dropdown-menu-content-transform-origin);
-}
-
-.popover-content[data-state="closed"] {
-  animation: popover-hide 160ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
-  transform-origin: var(--radix-dropdown-menu-content-transform-origin);
-}
-
 /*
  * Astryx's TextArea hardcodes `--font-family-body` on the <textarea> element via
  * StyleX. Editors that need a monospace face (e.g. the agent soul editor) mark
- * the field with `data-mono`; this element+attribute selector has specificity
- * (0,1,1), which outranks StyleX's atomic single-class (0,1,0), so it overrides
- * the font cleanly without `!important`. The attribute is forwarded onto the
- * <textarea> through TextArea's prop spread.
+ * the field with `data-mono`. This override wins by CASCADE-LAYER POSITION, not
+ * specificity: Astryx's generated CSS lives inside `@layer astryx-base`, and this
+ * rule (like every hand-written rule in this file) is unlayered — unlayered
+ * normal rules always beat layered ones, regardless of selector specificity
+ * (StyleX actually inflates its own specificity to (3,1,0) via `:not(#\#)`
+ * chains, so a bare `!important`-free specificity fight would lose). Same
+ * mechanism this file already relies on for Tailwind ↔ Astryx coexistence.
+ * The `data-mono` attribute is forwarded onto the <textarea> via TextArea's
+ * prop spread.
  */
 textarea[data-mono] {
   font-family: var(--font-mono);

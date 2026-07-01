@@ -35,9 +35,11 @@ describe("SegmentedControl", () => {
     expect(onChange).toHaveBeenCalledWith("table");
   });
 
-  it("keeps the label as accessible name when responsive collapses to icons", () => {
-    // jsdom matchMedia resolves to false → narrow viewport → icon-only, label
-    // surfaces as aria-label so the option stays queryable by name.
+  it("collapses to icon-only in responsive mode (label becomes aria-label, not visible text)", () => {
+    // jsdom matchMedia resolves to false → narrow viewport → the responsive
+    // collapse fires: the item's visible <span> label is dropped and the label
+    // surfaces only as aria-label. Asserting both proves the collapse actually
+    // happened (not just that the option is still name-queryable).
     render(
       <SegmentedControl
         options={OPTIONS}
@@ -47,6 +49,17 @@ describe("SegmentedControl", () => {
         compact="responsive"
       />,
     );
-    expect(screen.getByRole("radio", { name: /Table/i })).toBeTruthy();
+    const radio = screen.getByRole("radio", { name: /Table/i });
+    expect(radio.getAttribute("aria-label")).toBe("Table");
+    expect(radio.textContent).not.toContain("Table");
+  });
+
+  it("shows visible text labels (no aria-label) when not compact", () => {
+    render(
+      <SegmentedControl options={OPTIONS} value="cards" onChange={vi.fn()} ariaLabel="View mode" />,
+    );
+    const radio = screen.getByRole("radio", { name: /Table/i });
+    expect(radio.getAttribute("aria-label")).toBeNull();
+    expect(radio.textContent).toContain("Table");
   });
 });

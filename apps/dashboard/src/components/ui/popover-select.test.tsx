@@ -15,6 +15,18 @@ describe("PopoverSelect", () => {
     expect(screen.getByRole("combobox", { name: "Choose" })).toBeTruthy();
   });
 
+  it("opens the listbox on trigger click (aria-expanded flips)", async () => {
+    // Astryx mounts the listbox unconditionally in jsdom, so assert the
+    // click-dependent signal (aria-expanded) rather than DOM presence — see
+    // test-setup.ts. Guards against a broken trigger passing silently.
+    const user = userEvent.setup();
+    render(<PopoverSelect label="Choose" value="a" options={OPTIONS} onChange={vi.fn()} />);
+    const combobox = screen.getByRole("combobox", { name: "Choose" });
+    expect(combobox.getAttribute("aria-expanded")).toBe("false");
+    await user.click(combobox);
+    expect(combobox.getAttribute("aria-expanded")).toBe("true");
+  });
+
   it("renders each option and the per-option hint", () => {
     render(<PopoverSelect label="Choose" value="a" options={OPTIONS} onChange={vi.fn()} />);
     expect(screen.getByRole("option", { name: /Option B/i })).toBeTruthy();

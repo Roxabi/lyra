@@ -1,8 +1,8 @@
+import { useMediaQuery } from "@astryxdesign/core/hooks";
 import {
   SegmentedControl as AstryxSegmentedControl,
   SegmentedControlItem,
 } from "@astryxdesign/core/SegmentedControl";
-import { useMediaQuery } from "@/lib/use-media-query";
 
 export interface SegmentOption<T extends string> {
   value: T;
@@ -14,7 +14,8 @@ export interface SegmentedControlProps<T extends string> {
   options: SegmentOption<T>[];
   value: T;
   onChange: (value: T) => void;
-  ariaLabel?: string;
+  /** Accessible label for the radio group — required (Astryx renders it as aria-label). */
+  ariaLabel: string;
   /** Icons only, or responsive (icons on narrow viewports, labels from `md`). */
   compact?: boolean | "responsive";
   className?: string;
@@ -22,8 +23,10 @@ export interface SegmentedControlProps<T extends string> {
 
 /**
  * Astryx-native segmented control. Composes `@astryxdesign/core/SegmentedControl`
- * and adds the app's responsive icon-only behavior (absent from Astryx) by
- * toggling per-item `isLabelHidden` from a `useMediaQuery` breakpoint.
+ * and adds the app's responsive icon-only behavior by toggling per-item
+ * `isLabelHidden` from Astryx's `useMediaQuery` breakpoint. Collapse only
+ * applies when every option has an icon, so items never render empty and the
+ * group never mixes icon-only with text segments.
  */
 export function SegmentedControl<T extends string>({
   options,
@@ -34,13 +37,14 @@ export function SegmentedControl<T extends string>({
   className,
 }: SegmentedControlProps<T>) {
   const isWide = useMediaQuery("(min-width: 768px)");
-  const iconOnly = compact === true || (compact === "responsive" && !isWide);
+  const allHaveIcons = options.every((o) => o.icon);
+  const iconOnly = allHaveIcons && (compact === true || (compact === "responsive" && !isWide));
 
   return (
     <AstryxSegmentedControl
       value={value}
       onChange={(v) => onChange(v as T)}
-      label={ariaLabel ?? ""}
+      label={ariaLabel}
       className={className}
     >
       {options.map((option) => {
@@ -50,7 +54,7 @@ export function SegmentedControl<T extends string>({
             key={option.value}
             value={option.value}
             label={option.label}
-            isLabelHidden={iconOnly && Boolean(Icon)}
+            isLabelHidden={iconOnly}
             icon={Icon ? <Icon className="size-4" aria-hidden /> : undefined}
           />
         );

@@ -127,22 +127,20 @@ export function UserFormDialog({ open, onOpenChange, user }: UserFormDialogProps
           width="100%"
         />
 
-        <div className="space-y-2">
-          <TextInput
-            label={t("fieldEmail")}
-            type="email"
-            value={email}
-            onChange={(v) => setEmail(v)}
-            placeholder={t("fieldEmailPlaceholder")}
-            htmlName="email"
-            width="100%"
-            status={
-              !emailValid && email.trim().length > 0
-                ? { type: "error", message: t("fieldEmailInvalid") }
-                : undefined
-            }
-          />
-        </div>
+        <TextInput
+          label={t("fieldEmail")}
+          type="email"
+          value={email}
+          onChange={(v) => setEmail(v)}
+          placeholder={t("fieldEmailPlaceholder")}
+          htmlName="email"
+          width="100%"
+          status={
+            !emailValid && email.trim().length > 0
+              ? { type: "error", message: t("fieldEmailInvalid") }
+              : undefined
+          }
+        />
 
         <div className="grid gap-4 sm:grid-cols-2">
           <TextInput

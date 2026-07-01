@@ -9,7 +9,9 @@ describe("ModelPicker", () => {
     render(<ModelPicker harness="claude-cli" value="sonnet" onChange={vi.fn()} />);
     const combobox = screen.getByRole("combobox");
     expect(combobox.textContent).toContain("sonnet");
+    expect(combobox.getAttribute("aria-expanded")).toBe("false");
     await user.click(combobox);
+    expect(combobox.getAttribute("aria-expanded")).toBe("true");
     expect(screen.getByRole("option", { name: /opus/i })).toBeTruthy();
   });
 

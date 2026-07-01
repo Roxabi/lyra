@@ -1,10 +1,10 @@
 import { Card } from "@astryxdesign/core/Card";
 import { Stack } from "@astryxdesign/core/Stack";
 import { Text } from "@astryxdesign/core/Text";
+import { TextInput } from "@astryxdesign/core/TextInput";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { PageIntro } from "@/components/layout/PageIntro";
-import { Input } from "@/components/ui/input";
 import { fetchSpans, type SpanRow } from "@/lib/api";
 
 export function SpansPage() {
@@ -29,12 +29,29 @@ export function SpansPage() {
       <PageIntro>Raw OTel spans from otel-raw store (JSONL + SQLite).</PageIntro>
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <Input placeholder="pool_id" value={poolId} onChange={(e) => setPoolId(e.target.value)} />
-        <Input placeholder="job_id" value={jobId} onChange={(e) => setJobId(e.target.value)} />
-        <Input
+        <TextInput
+          label="pool_id"
+          isLabelHidden
+          placeholder="pool_id"
+          value={poolId}
+          onChange={(v) => setPoolId(v)}
+          width="100%"
+        />
+        <TextInput
+          label="job_id"
+          isLabelHidden
+          placeholder="job_id"
+          value={jobId}
+          onChange={(v) => setJobId(v)}
+          width="100%"
+        />
+        <TextInput
+          label="component"
+          isLabelHidden
           placeholder="component"
           value={component}
-          onChange={(e) => setComponent(e.target.value)}
+          onChange={(v) => setComponent(v)}
+          width="100%"
         />
       </div>
 

@@ -234,9 +234,7 @@ export async function steerJob(
   return res.json() as Promise<{ accepted: boolean; message: string }>;
 }
 
-export async function cancelJob(
-  jobId: string,
-): Promise<{ accepted: boolean; message: string }> {
+export async function cancelJob(jobId: string): Promise<{ accepted: boolean; message: string }> {
   const res = await fetch("/api/bff/jobs/cancel", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

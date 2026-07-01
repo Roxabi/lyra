@@ -1,3 +1,4 @@
+import { Badge, type BadgeVariant } from "@astryxdesign/core/Badge";
 import { Skeleton } from "@astryxdesign/core/Skeleton";
 import { ShippingContainer } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
@@ -5,7 +6,6 @@ import { Link } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PageIntro } from "@/components/layout/PageIntro";
-import { Badge } from "@/components/ui/badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { FilterChip } from "@/components/ui/filter-chip";
 import {
@@ -20,32 +20,18 @@ import { FLEET_STATUSES, type FleetSortKey, filterFleet, sortFleet } from "@/lib
 import { type SortDirection, toggleSort } from "@/lib/sort";
 import { useDebouncedValue } from "@/lib/use-debounced-value";
 
-function statusVariant(status: FleetStatus): "success" | "destructive" | "secondary" | "outline" {
-  switch (status) {
-    case "ok":
-      return "success";
-    case "stale":
-      return "destructive";
-    case "pinned":
-      return "secondary";
-    default:
-      return "outline";
-  }
+type StatusBadgeVariant = Extract<BadgeVariant, "success" | "error" | "neutral">;
+
+function statusVariant(status: FleetStatus): StatusBadgeVariant {
+  if (status === "ok") return "success";
+  if (status === "stale") return "error";
+  return "neutral"; // pinned + anything else
 }
 
-function digestVariant(
-  status: ImageDigestStatus,
-): "success" | "destructive" | "secondary" | "outline" {
-  switch (status) {
-    case "current":
-      return "success";
-    case "stale":
-      return "destructive";
-    case "n/a":
-      return "secondary";
-    default:
-      return "outline";
-  }
+function digestVariant(status: ImageDigestStatus): StatusBadgeVariant {
+  if (status === "current") return "success";
+  if (status === "stale") return "error";
+  return "neutral"; // n/a + anything else
 }
 
 function formatAge(ageS: number | null | undefined): string {
@@ -215,14 +201,16 @@ export function FleetPage() {
                     </Link>
                   </td>
                   <td className="py-2 pr-4">
-                    <Badge variant={statusVariant(row.status)}>
-                      {t(`fleet.status.${row.status}`)}
-                    </Badge>
+                    <Badge
+                      variant={statusVariant(row.status)}
+                      label={t(`fleet.status.${row.status}`)}
+                    />
                   </td>
                   <td className="py-2 pr-4">
-                    <Badge variant={digestVariant(row.image_digest_status)}>
-                      {t(`fleet.imageDigest.${row.image_digest_status}`)}
-                    </Badge>
+                    <Badge
+                      variant={digestVariant(row.image_digest_status)}
+                      label={t(`fleet.imageDigest.${row.image_digest_status}`)}
+                    />
                   </td>
                   <td className="py-2 pr-4 capitalize text-muted-foreground">{row.health}</td>
                   <td className="max-w-[220px] truncate py-2 pr-4 text-xs text-muted-foreground">

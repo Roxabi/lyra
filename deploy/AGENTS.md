@@ -125,7 +125,7 @@ Implemented in `deploy/lib/deploy-common.sh` (`compute_convergence_state`, `_cla
 
 | Field | Source | Drift kind |
 |---|---|---|
-| 0 `git-head` | `git rev-parse HEAD` in `~/projects/roxabi-factory` | structural |
+| 0 `git-head` | `git rev-parse HEAD` in `~/projects/roxabi-factory` | code-only (structural if another field also differs) — see Drift classification below |
 | 1 `units-sha256` | `sha256sum` of sorted `~/.config/containers/systemd/factory*` unit files | structural |
 | 2 `authconf-sha256` | `sha256sum` of `~/.roxabi/factory/nkeys/auth.conf` | auth |
 | 3 `voicecli-head` | `git rev-parse HEAD` in `~/projects/voiceCLI` (or `none`) | structural |
@@ -140,7 +140,8 @@ Implemented in `deploy/lib/deploy-common.sh` (`compute_convergence_state`, `_cla
 |---|---|---|
 | `none` | Stamp matches current state | Exit 0 immediately |
 | `auth` | Only field 2 differs | Restart `factory-nats` only; clients reconnect via `allow_reconnect` |
-| `structural` | Any of fields 0, 1, 3, 4, 5 differ (or no prior stamp) | Full converge: NATS + all factory clients + voiceCLI |
+| `code-only` | **Only** field 0 (`git-head`) differs — every artifact (units / auth / voice / image digests) is unchanged | `converge.sh` calls `_code_change_is_inert` (a `git diff --name-only` over the commit range): if every changed path is non-runtime (`docs/`, `tests/`, `artifacts/`, `.github/`, `*.md`, …) → record the new stamp and **skip** (no restart); any runtime-relevant path, or an undecidable diff (missing commit) → fall through to **structural**. Fail-safe by construction: a mis-classification can only over-restart (the old behaviour), never silently under-restart. Requires content-addressed images (provenance/revision removed, lot 4a) so a docs-only commit does not move fields 4–5. |
+| `structural` | Any of fields 1, 3, 4, 5 differ, **or** field 0 differs alongside another field, **or** no prior stamp | Full converge: NATS + all factory clients + voiceCLI |
 
 Legacy 4-field stamps (pre-image-digest schema) are normalized to `:none:none` on fields 4–5 before comparison — one structural converge migrates them.
 
@@ -173,7 +174,7 @@ Three systemd user timers drive convergence **automatically**:
 | Timer | Period | Service | Role |
 |---|---|---|---|
 | `podman-auto-update.timer` | `*:4/5` (5 min, offset +4 min — #1989) | `podman-auto-update.service` | Host-static apt unit (installed by `provision.sh`/`install.sh`); drop-in sets `OnCalendar=*:4/5`. Polls GHCR digests for containers labelled `io.containers.autoupdate=registry`; pulls and restarts on new digest. **Staggered off `*:0/5` (#1989):** podman-auto-update restarts containers directly, OUTSIDE `converge.sh`'s flock; at `*:0/5` it collided in-phase with `factory-quadlet-sync` and double-bounced each container ~1s apart (omp SIGKILL, hub WAL crash, telegram teardown). At `*:4/5` it trails `factory-post-autoupdate` (`*:2/5`), which has already converged the new image, so it usually no-ops and serves as a catch-up net for timer-miss runs (post-autoupdate skipped / flock held) rather than a primary restarter. |
-| `factory-quadlet-sync.timer` | `*:0/5` (5 min) | `factory-quadlet-sync.service` | Pulls `origin/staging` for roxabi-factory; **if HEAD advanced at all, runs the full `make converge`** (`deploy/factory-quadlet-sync.sh`: fetch → if `HEAD == origin/staging` exit → `git pull --ff-only` → `make converge`). It does **not** branch on which paths changed — **any** staging merge converges M₁, including `deploy/nats/acl-matrix.json`-only or docs-only changes (regen auth.conf + restart nats; verified #1848). Cheap when there's no real drift: converge is change-gated by the `.converge-stamp` fingerprint, so a no-op converge short-circuits. |
+| `factory-quadlet-sync.timer` | `*:0/5` (5 min) | `factory-quadlet-sync.service` | Pulls `origin/staging` for roxabi-factory; **if HEAD advanced, runs `make converge`** (`deploy/factory-quadlet-sync.sh`: fetch → if `HEAD == origin/staging` exit → `git pull --ff-only` → `make converge`). Converge's change-gate then classifies the drift: a `deploy/nats/acl-matrix.json`-only change is still structural (regen auth.conf + restart, #1848), but a **pure docs/tests/CI/`*.md` commit is `code-only`** and is **skipped** (stamp recorded, no restart) via `_code_change_is_inert`'s paths git-diff — see Drift classification above (lot 4b). Any runtime path, or an undecidable diff, falls through to structural (fail-safe). Cheap when there's no real drift: a no-op converge short-circuits on the `.converge-stamp` fingerprint. |
 | `factory-post-autoupdate.timer` | `*:2/5` (5 min, offset +2 min — #1751) | `factory-post-autoupdate.service` | Polls GHCR index digests for `FACTORY_TRACKED_IMAGES` (`staging-svc`, `staging`). On drift: `podman pull`, then `make converge` (stamp fields 4–5 detect image drift — no stamp deletion). Fires 2 min after `factory-quadlet-sync` so converge short-circuits when quadlet-sync already converged the same HEAD. |
 
 `podman-auto-update` handles **image pulls** (CI-driven, registry-labelled containers); fires at `*:4/5` — staggered off the `*:0/5` converge slot (#1989) so its direct restart never collides with `factory-quadlet-sync`.
@@ -226,7 +227,7 @@ Syncthing: `deploy/install.sh` maintains `~/.roxabi/factory/.stignore` (excludes
 # Full atomic converge (operator-initiated)
 make converge
 
-# Check convergence state without changing anything (prints none|auth|structural)
+# Check convergence state without changing anything (prints none|auth|code-only|structural)
 bash -c 'source deploy/lib/deploy-common.sh; _classify_drift "$(read_convergence_state)" "$(compute_convergence_state)"'
 ```
 

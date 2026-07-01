@@ -7,10 +7,11 @@
 # (e.g. litellm-key.tok during the 2026-06-11/12 overhaul) — leaving the secret
 # unrecoverable on the next rotation (#1901).
 #
-# HOST-DEPENDENT — SKIP-IN-CI:
+# HOST-DEPENDENT — SKIP when data dir absent:
 #   The factory data dir (~/.roxabi/factory/) is not present on CI runners or
-#   dev machines without a deploy. When it is absent this gate SKIPS (exit 0):
-#   it is an operator-host pre-push integrity check, not a CI gate.
+#   dev machines without a deploy. When it is absent this gate SKIPS (exit 0).
+#   Listed in stack.yml ci/pre-push for wiring parity; enforcement is on
+#   operator hosts with a real factory data dir.
 #
 # Policy semantics (deploy/secrets-policy.toml `policy =`):
 #   nats-seed / required  → source file MUST exist (HARD FAIL if missing)

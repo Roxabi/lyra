@@ -106,10 +106,10 @@ export function JobsPage() {
   const cancelMutation = useMutation({
     mutationFn: (jobId: string) => cancelJob(jobId),
     onSuccess: (_res, jobId) => {
-      toast.success(t("cancel.sent", { jobId }));
+      showToast({ body: t("cancel.sent", { jobId }), type: "info" });
       void queryClient.invalidateQueries({ queryKey: ["jobs-live"] });
     },
-    onError: () => toast.error(t("cancel.failed")),
+    onError: () => showToast({ body: t("cancel.failed"), type: "error" }),
   });
 
   function onSort(nextKey: JobsSortKey) {

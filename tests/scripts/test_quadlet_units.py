@@ -35,6 +35,11 @@ EXPECTED_CONTAINERS = [
     "factory-loki",
     "factory-promtail",
     "factory-otel",
+    # llmCLI cloud gateway — deployment owned by factory (vendored from Roxabi/llmCLI).
+    # Enabled + declared after factory-otel, so they join the converge restart set.
+    "llmcli",
+    "llmcli-xai-forwarder",
+    "llmcli-fw-forwarder",
 ]
 
 
@@ -47,12 +52,12 @@ def _source_and_run(helper: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
-def test_emits_exactly_10_containers() -> None:
+def test_emits_exactly_19_containers() -> None:
     """Real helper against the real quadlet.toml → returncode 0, enabled names only."""
     result = _source_and_run(HELPER)
     assert result.returncode == 0, result.stderr
     lines = [line for line in result.stdout.splitlines() if line]
-    assert len(lines) == 16, f"expected 16 containers, got {len(lines)}: {lines}"
+    assert len(lines) == 19, f"expected 19 containers, got {len(lines)}: {lines}"
 
 
 def test_declaration_order() -> None:

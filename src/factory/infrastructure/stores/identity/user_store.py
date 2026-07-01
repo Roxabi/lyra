@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -19,7 +20,13 @@ from factory.infrastructure.stores.identity.user_store_profile import (
 
 log = logging.getLogger(__name__)
 
-__all__ = ["UserStore", "_CREATE_PLATFORM_IDENTITIES", "_CREATE_USERS", "_CREATE_USER_MIGRATION"]  # noqa: E501
+__all__ = [
+    "UserStore",
+    "ensure_users_email_schema",
+    "_CREATE_PLATFORM_IDENTITIES",
+    "_CREATE_USERS",
+    "_CREATE_USER_MIGRATION",
+]  # noqa: E501
 
 _CREATE_USERS = """
 CREATE TABLE IF NOT EXISTS users (
@@ -51,6 +58,15 @@ CREATE TABLE IF NOT EXISTS _user_store_migration (
     migrated_at TEXT NOT NULL
 )
 """
+
+
+def ensure_users_email_schema(conn: sqlite3.Connection) -> None:
+    """Add ``email`` column + partial unique index on an existing auth.db."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
+    if "email" not in cols:
+        conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
+    conn.execute(_CREATE_USERS_EMAIL_INDEX)
+
 
 _IDENTITY_COLS = "platform_key, platform, platform_uid, user_id, linked_at"
 
@@ -93,14 +109,13 @@ class UserStore(UserStoreProfileOps, SqliteStore):
 
     async def _migrate_users_email(self) -> None:
         """Add ``email`` column + partial unique index on existing auth.db."""
-        db = self._require_db()
-        async with db.execute("PRAGMA table_info(users)") as cur:
-            cols = {row[1] async for row in cur}
-        if "email" not in cols:
-            await db.execute("ALTER TABLE users ADD COLUMN email TEXT")
-            await db.commit()
-        await db.execute(_CREATE_USERS_EMAIL_INDEX)
-        await db.commit()
+        conn = sqlite3.connect(self._db_path, timeout=30.0)
+        try:
+            conn.execute("PRAGMA busy_timeout=30000")
+            ensure_users_email_schema(conn)
+            conn.commit()
+        finally:
+            conn.close()
 
     async def _warm_cache(self) -> None:
         db = self._require_db()

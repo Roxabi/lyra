@@ -28,7 +28,7 @@ from factory.infrastructure.stores.identity.user_store import (
     _CREATE_PLATFORM_IDENTITIES,
     _CREATE_USER_MIGRATION,
     _CREATE_USERS,
-    _CREATE_USERS_EMAIL_INDEX,
+    ensure_users_email_schema,
 )
 from factory.infrastructure.stores.migrations.bot_store_migrations import (
     run_bot_migrations,
@@ -50,7 +50,6 @@ _AUTH_DB_DDL: tuple[str, ...] = (
     _CREATE_CHALLENGES,
     _CREATE_AGENT_GRANTS,
     _CREATE_USERS,
-    _CREATE_USERS_EMAIL_INDEX,
     _CREATE_PLATFORM_IDENTITIES,
     _CREATE_USER_MIGRATION,
 )
@@ -243,6 +242,7 @@ def _ensure_auth_db_schema(vault_dir: Path) -> None:
         conn.execute("PRAGMA busy_timeout=30000")
         for stmt in _AUTH_DB_DDL:
             conn.execute(stmt)
+        ensure_users_email_schema(conn)
         alias_count = conn.execute(
             "SELECT COUNT(*) FROM identity_aliases"
         ).fetchone()[0]

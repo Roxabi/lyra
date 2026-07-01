@@ -38,7 +38,12 @@
   "formCreate": "Create",
   "formSave": "Save",
   "createSuccess": "User created.",
-  "createError": "Create failed — email already in use?",
+  "createError": "Create failed.",
   "editSuccess": "User updated.",
-  "editError": "Update failed — email already in use?"
+  "editError": "Update failed.",
+  "errorEmailConflict": "This email is already registered.",
+  "errorPlatformConflict": "This platform identity is already linked to another user.",
+  "errorUnknownAgent": "One or more selected agents do not exist.",
+  "errorAgentConflict": "Agent access conflict.",
+  "errorNotFound": "User not found."
 }

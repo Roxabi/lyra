@@ -1,3 +1,4 @@
+import { parseBffResponse } from "@/lib/bff-api";
 import { operatorAuthHeaders } from "@/lib/operator-auth";
 
 export interface AdminPlatformIdentity {
@@ -34,8 +35,7 @@ async function adminFetch(input: string, init?: RequestInit): Promise<Response> 
 
 export async function fetchAdminAccess(): Promise<{ users: AdminUserAccess[] }> {
   const res = await adminFetch("/api/bff/admin/access");
-  if (!res.ok) throw new Error("admin access failed");
-  return res.json() as Promise<{ users: AdminUserAccess[] }>;
+  return parseBffResponse<{ users: AdminUserAccess[] }>(res);
 }
 
 export async function createAdminUser(body: AdminUserWriteBody): Promise<AdminUserAccess> {
@@ -44,8 +44,7 @@ export async function createAdminUser(body: AdminUserWriteBody): Promise<AdminUs
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error("admin user create failed");
-  return res.json() as Promise<AdminUserAccess>;
+  return parseBffResponse<AdminUserAccess>(res);
 }
 
 export async function patchAdminUser(
@@ -61,6 +60,5 @@ export async function patchAdminUser(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error("admin user patch failed");
-  return res.json() as Promise<AdminUserAccess>;
+  return parseBffResponse<AdminUserAccess>(res);
 }

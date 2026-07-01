@@ -60,5 +60,7 @@
   "createCancel": "Cancel",
   "createSubmit": "Create",
   "createSuccess": "Agent {{name}} created.",
-  "createError": "Create failed — identifier already taken?"
+  "createError": "Create failed.",
+  "errorAgentConflict": "An agent with this identifier already exists.",
+  "errorNotFound": "Agent not found."
 }

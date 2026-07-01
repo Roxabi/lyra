@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import ANY, AsyncMock, MagicMock
 
 import pytest
 
@@ -179,7 +179,9 @@ async def test_handle_admin_user_patch_clears_telegram_with_null(tmp_path) -> No
 
 
 @pytest.mark.asyncio
-async def test_handle_admin_user_create_rejects_unknown_agent(tmp_path) -> None:
+async def test_handle_admin_user_create_rejects_unknown_agent_without_persisting_user(
+    tmp_path,
+) -> None:
     user_store = UserStore(db_path=tmp_path / "auth.db")
     await user_store.connect()
     try:
@@ -204,5 +206,90 @@ async def test_handle_admin_user_create_rejects_unknown_agent(tmp_path) -> None:
 
         assert out["error"] == "conflict"
         assert "unknown agent" in out.get("message", "")
+        assert len(await user_store.list_users()) == 0
+    finally:
+        await user_store.close()
+
+
+@pytest.mark.asyncio
+async def test_handle_admin_user_create_rolls_back_on_platform_conflict(tmp_path) -> None:
+    user_store = UserStore(db_path=tmp_path / "auth.db")
+    await user_store.connect()
+    try:
+        existing = await user_store.create_profile_user(
+            display_name="Existing",
+            email="existing@example.com",
+        )
+        await user_store.set_platform_identity(existing.id, "telegram", "99999")
+        grant_store = _grant_store()
+        hub = _hub_with_stores(
+            user_store=user_store,
+            grant_store=grant_store,
+            agent_rows=[],
+        )
+
+        out = await handle_admin_user_create(
+            hub,
+            _NC,
+            {
+                "body": {
+                    "display_name": "New",
+                    "email": "new@example.com",
+                    "telegram_uid": "99999",
+                }
+            },
+        )
+
+        assert out["error"] == "conflict"
+        assert "platform identity already linked" in out.get("message", "")
+        users = await user_store.list_users()
+        assert len(users) == 1
+        assert users[0].id == existing.id
+    finally:
+        await user_store.close()
+
+
+@pytest.mark.asyncio
+async def test_handle_admin_user_create_rolls_back_partial_grants(tmp_path) -> None:
+    user_store = UserStore(db_path=tmp_path / "auth.db")
+    await user_store.connect()
+    try:
+        grant_calls: list[str] = []
+
+        async def _grant(agent_name: str, _principal, **_kwargs) -> None:
+            grant_calls.append(agent_name)
+            if len(grant_calls) >= 2:
+                raise RuntimeError("grant failed mid-sync")
+
+        grant_store = _grant_store()
+        grant_store.grant = AsyncMock(side_effect=_grant)
+        hub = _hub_with_stores(
+            user_store=user_store,
+            grant_store=grant_store,
+            agent_rows=[
+                AgentRow(name="lyra", backend="claude-cli", model="sonnet"),
+                AgentRow(name="scout", backend="claude-cli", model="sonnet"),
+            ],
+        )
+
+        with pytest.raises(RuntimeError, match="grant failed mid-sync"):
+            await handle_admin_user_create(
+                hub,
+                _NC,
+                {
+                    "body": {
+                        "display_name": "Ops",
+                        "email": "ops@example.com",
+                        "agents": ["lyra", "scout"],
+                    }
+                },
+            )
+
+        assert len(await user_store.list_users()) == 0
+        grant_store.revoke.assert_awaited_once_with(
+            "lyra",
+            ANY,
+            capability=ANY,
+        )
     finally:
         await user_store.close()

@@ -107,7 +107,7 @@ class InboundMessage:
 
     platform_meta carries platform-specific routing data. See spec platform_meta table.
     Security (C3): adapters set trust_level=PUBLIC; Hub overwrites via
-    _resolve_message_trust() (ResolveTrustMiddleware) before the pipeline runs.
+    _resolve_message_trust() (ResolveIdentityMiddleware) before binding/authz.
     Bot-authored messages are filtered by adapters before normalize() is called.
     """
 

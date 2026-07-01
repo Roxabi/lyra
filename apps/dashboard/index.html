@@ -7,18 +7,19 @@
     <title>Factory Dashboard</title>
     <script>
       // Pre-paint theme bootstrap — sets data-theme before the bundle loads so
-      // the correct light/dark tokens paint without a flash (FOUC). Runtime
-      // ownership of data-theme belongs to the Astryx <Theme mode> provider
-      // (src/main.tsx); this only handles the initial paint. The storage key
-      // must match THEME_STORAGE_KEY in src/lib/theme.ts.
+      // the correct light/dark tokens paint without a flash (FOUC). This is a
+      // one-shot pre-mount stand-in; after mount the Astryx <Theme mode>
+      // provider (src/main.tsx) owns data-theme. color-scheme is intentionally
+      // NOT set here: it is driven reactively by the [data-theme] rules in
+      // brand/tokens/colors.css, so it follows every toggle (an inline
+      // style.colorScheme would outrank those rules and freeze on first paint).
+      // The storage key must match THEME_STORAGE_KEY in src/lib/theme.ts.
       (() => {
-        const el = document.documentElement;
         let t = "dark";
         try {
           t = localStorage.getItem("factory-dashboard:theme") === "light" ? "light" : "dark";
         } catch {}
-        el.setAttribute("data-theme", t);
-        el.style.colorScheme = t;
+        document.documentElement.setAttribute("data-theme", t);
       })();
     </script>
   </head>

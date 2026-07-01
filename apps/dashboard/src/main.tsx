@@ -20,12 +20,13 @@ const queryClient = new QueryClient({
 });
 
 /**
- * Astryx theme provider — applies the brand `roxabi` theme (#2089) and is the
- * SOLE runtime owner of `<html>`'s `data-theme` + `color-scheme`. The dashboard
+ * Astryx theme provider — applies the brand `roxabi` theme (#2089) and owns
+ * `<html>`'s `data-theme` after mount (a one-shot bootstrap in `index.html`
+ * sets it pre-mount to avoid FOUC). `color-scheme` is not written by JS; the
+ * `[data-theme]` rules in `brand/tokens/colors.css` drive it. The dashboard
  * preference lives in `src/lib/theme.ts` (state only: persisted pref + change
  * event); `useTheme()` mirrors it into `<Theme mode>`, which writes `data-theme`
- * on the document root. A pre-paint bootstrap in `index.html` sets the initial
- * value to avoid FOUC before React hydrates.
+ * on the document root.
  */
 function AstryxThemeProvider({ children }: { children: ReactNode }) {
   const mode = useTheme();

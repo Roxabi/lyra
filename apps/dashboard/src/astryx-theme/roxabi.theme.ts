@@ -18,10 +18,10 @@ import { neutralIconRegistry, neutralTheme } from "@astryxdesign/theme-neutral";
  * component refinements (badge/banner/switch/progressbar/card), typography
  * scale, and motion ratios; only brand-identity tokens are overridden here.
  *
- * Build: `bun run astryx theme build src/astryx-theme/roxabi.theme.ts \
- *   --out src/astryx-theme/roxabi.theme.css`
- * (wired as `bun run theme:build`). The built CSS + `.built.ts` module are the
- * production artifacts consumed by `src/index.css` and `src/main.tsx`.
+ * Build: `bun run theme:build` → `src/astryx-theme/built/` (self-contained CSS +
+ * `roxabi.js` module + `.d.ts`). Those built artifacts are the production inputs
+ * consumed by `src/index.css` and `src/main.tsx`; a `theme_build_drift` CI gate
+ * asserts they stay in sync with this source.
  */
 export const roxabiTheme = defineTheme({
   name: "roxabi",
@@ -51,9 +51,11 @@ export const roxabiTheme = defineTheme({
     "--ease-standard": "var(--ease-out)",
   },
 
-  // Astryx default glyph registry (check, chevron, close, …). Inherited icon
-  // registries are not serialized through `extends`, so re-declare explicitly
-  // to keep built-in component glyphs. Phosphor product icons land in a later
-  // slice via the global registry.
+  // Astryx default glyph registry (check, chevron, close, …). `extends` does
+  // propagate icons, but `astryx theme build` derives the built module's `icons`
+  // field via a regex scan of THIS source (`icons:\s*<identifier>`), not the
+  // resolved theme object — so it must stay a literal named-import identifier.
+  // Any non-literal (spread/computed) would silently drop built-in glyphs with a
+  // green build. Phosphor product icons land in a later slice via the global registry.
   icons: neutralIconRegistry,
 });

@@ -1,11 +1,11 @@
 /**
  * Dark/light preference — the STATE source of truth (persisted preference +
- * change event). It deliberately does NOT touch the DOM: applying the mode to
- * `<html>` (`data-theme` + `color-scheme`) is owned solely by the Astryx
- * `<Theme mode>` provider in `src/main.tsx`, which mirrors this preference via
- * `useTheme()`. A pre-paint bootstrap in `index.html` sets the initial
- * `data-theme` to avoid a flash before React hydrates. One runtime writer
- * (Astryx) removes the `data-theme` dual-ownership this module had before (#2089).
+ * change event). It deliberately does NOT touch the DOM: `<html>`'s `data-theme`
+ * is written by the Astryx `<Theme mode>` provider in `src/main.tsx` after mount
+ * (and by a one-shot bootstrap in `index.html` pre-mount), which mirrors this
+ * preference via `useTheme()`. `color-scheme` follows from the `[data-theme]`
+ * rules in `brand/tokens/colors.css`. Keeping the DOM writes out of this module
+ * removes the `data-theme` dual-ownership it had before (#2089).
  */
 
 export type Theme = "dark" | "light";

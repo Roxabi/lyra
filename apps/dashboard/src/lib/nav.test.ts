@@ -33,10 +33,10 @@ describe("nav", () => {
 
   it("resolves layout flags for chat full bleed", () => {
     expect(resolveNavFlags("/chat").fullBleed).toBe(true);
-    expect(resolveNavFlags("/chat").hideBottomNav).toBe(true);
+    expect(resolveNavFlags("/chat").wideLayout).toBe(false);
     expect(resolveNavFlags("/jobs").wideLayout).toBe(true);
     expect(resolveNavFlags("/integrations").wideLayout).toBe(true);
     expect(resolveNavFlags("/").wideLayout).toBe(true);
-    expect(resolveNavFlags("/agents").hideBottomNav).toBe(false);
+    expect(resolveNavFlags("/agents").fullBleed).toBe(false);
   });
 });

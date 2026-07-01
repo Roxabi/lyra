@@ -23,7 +23,7 @@ def create_dashboard_app(adapter: WebAdapter) -> FastAPI:
     hub = DashboardHubClient(adapter)
 
     app.include_router(build_chat_router(adapter, tokens))
-    app.include_router(build_bff_router(adapter, hub))
+    app.include_router(build_bff_router(adapter, hub, tokens))
     app.include_router(build_connectors_router(hub))
 
     if not dist_available():

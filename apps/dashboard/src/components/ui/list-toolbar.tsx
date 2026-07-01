@@ -3,6 +3,13 @@ import { MagnifyingGlass } from "@phosphor-icons/react";
 import type * as React from "react";
 import { cn } from "@/lib/utils";
 
+// NB: the header/controls rows are plain flex containers, not Astryx `Toolbar`.
+// Astryx `Toolbar` wires arrow-key roving focus (`useListFocus`) over descendant
+// buttons/inputs and requires an aria `label` — both wrong here: these rows wrap
+// a `SegmentedControl` (its own roving tabindex) + filter chips + search, so a
+// toolbar's roving model would double-navigate. The Astryx primitives live
+// inside (`TextInput`, `ToggleButton`-backed `FilterChip`, `SegmentedControl`).
+
 export function ListToolbar({
   children,
   className,

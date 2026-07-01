@@ -212,7 +212,9 @@ async def test_handle_admin_user_create_rejects_unknown_agent_without_persisting
 
 
 @pytest.mark.asyncio
-async def test_handle_admin_user_create_rolls_back_on_platform_conflict(tmp_path) -> None:
+async def test_handle_admin_user_create_rolls_back_on_platform_conflict(
+    tmp_path,
+) -> None:
     user_store = UserStore(db_path=tmp_path / "auth.db")
     await user_store.connect()
     try:

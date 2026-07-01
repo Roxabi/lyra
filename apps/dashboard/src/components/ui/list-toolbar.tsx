@@ -1,6 +1,6 @@
+import { TextInput } from "@astryxdesign/core/TextInput";
 import { MagnifyingGlass } from "@phosphor-icons/react";
 import type * as React from "react";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 export function ListToolbar({
@@ -58,17 +58,15 @@ export function ListToolbarSearch({
   className?: string;
 }) {
   return (
-    <div className={cn("relative", className)}>
-      <MagnifyingGlass
-        className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
-        aria-hidden
-      />
-      <Input
+    <div className={cn(className)}>
+      <TextInput
+        label={ariaLabel}
+        isLabelHidden
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(next) => onChange(next)}
         placeholder={placeholder}
-        aria-label={ariaLabel}
-        className="border-border bg-muted/50 pl-9 shadow-none focus-visible:bg-background"
+        startIcon={<MagnifyingGlass className="size-4" aria-hidden />}
+        width="100%"
       />
     </div>
   );

@@ -36,6 +36,9 @@ podman secret create factory-ingress-github-webhook ~/.roxabi/factory/ingress-gi
 podman secret create factory-ingress-cloudflare-webhook ~/.roxabi/factory/ingress-cloudflare-webhook.tok
 
 # Config
+# ingress.toml (connector registry) is auto-provisioned by deploy/install.sh and
+# tools/dev-setup.sh from deploy/ingress.toml.example (copy-if-absent). Recreate/edit:
+cp deploy/ingress.toml.example ~/.roxabi/factory/ingress.toml   # enable/disable connectors
 cp deploy/env/ingress.env.example ~/.roxabi/factory/env/ingress.env
 # Set INGRESS_GITHUB_INSTALLATION_ID=<your installation id>
 

@@ -66,6 +66,9 @@ class DashboardSubjects(BaseModel):
     connectors_installations_delete: Literal[
         "factory.dashboard.connectors.installations.delete"
     ] = "factory.dashboard.connectors.installations.delete"
+    pipeline_list: Literal["factory.dashboard.pipeline.list"] = (
+        "factory.dashboard.pipeline.list"
+    )
 
 
 SUBJECTS = DashboardSubjects()

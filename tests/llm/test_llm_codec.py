@@ -92,11 +92,11 @@ class TestLlmCodecEncode:
         body = json.loads(payload)
         assert body.get("stream") is False
 
-    def test_encode_returns_unique_trace_ids(self) -> None:
+    def test_encode_reuses_trace_from_context(self) -> None:
         codec = LlmCodec()
         _, t1 = codec.encode("x", _MODEL, "sys", None, stream=False)
         _, t2 = codec.encode("x", _MODEL, "sys", None, stream=False)
-        assert t1 != t2
+        assert t1 == t2
 
 
 class TestLlmCodecDecode:

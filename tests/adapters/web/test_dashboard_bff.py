@@ -468,3 +468,45 @@ class TestDashboardBffRealPath:
         assert res.status_code == 200
         assert res.json()["display_name"] == "Ops"
         assert nc.request.await_args.args[0] == SUBJECTS.admin_user_patch
+
+    def test_bff_spans_proxies_factory_otel(
+        self,
+        wired_client: tuple[TestClient, WebAdapter, AsyncMock],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.delenv("FACTORY_DASHBOARD_E2E", raising=False)
+        tc, _adapter, _nc = wired_client
+        job_id = "c" * 32
+
+        async def _fake_fetch(**kwargs: object) -> dict:
+            assert kwargs["job_id"] == job_id
+            assert kwargs["component"] == "clipool-workers"
+            return {
+                "items": [
+                    {
+                        "trace_id": "trace-bff",
+                        "span_id": "span-bff",
+                        "job_id": job_id,
+                        "pool_id": "pool-bff",
+                        "component": "clipool-workers",
+                        "envelope_name": None,
+                        "subject": None,
+                        "name": "nats.work",
+                        "start_ts": 1.0,
+                        "duration_ms": 1.0,
+                        "attributes": {},
+                    }
+                ],
+                "total": 1,
+                "page": 1,
+                "page_size": 10,
+            }
+
+        monkeypatch.setattr("factory.dashboard.routes.bff.fetch_spans", _fake_fetch)
+        res = tc.get(
+            f"/api/bff/spans?job_id={job_id}&component=clipool-workers&page_size=10"
+        )
+        assert res.status_code == 200
+        body = res.json()
+        assert body["total"] == 1
+        assert body["items"][0]["job_id"] == job_id

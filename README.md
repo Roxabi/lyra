@@ -44,7 +44,7 @@ chat adapters                factory-hub              workers
                     infra (gh-helper·turn-writer·blobstore)
 ```
 
-**Production**: Twenty Quadlet containers on M₁ (`deploy/quadlet.toml` SSoT) share a single NATS server (`factory-nats`). Core factory: `factory-hub`, chat adapters (`factory-telegram`, `factory-discord`, `factory-dashboard`), workers (`factory-clipool`, `factory-omp`, `factory-socialmedia-adapter`), and infra (`factory-gh-helper`, `factory-turn-writer`, `factory-blobstore`). Observability stack: `factory-loki`, `factory-promtail`, `factory-otel-collector`, and the Langfuse bundle (`factory-langfuse-*`).
+**Production**: Sixteen active Quadlet containers on M₁ (`deploy/quadlet.toml` SSoT) share a single NATS server (`factory-nats`). Core factory: `factory-hub`, chat adapters (`factory-telegram`, `factory-discord`, `factory-dashboard`), workers (`factory-clipool`, `factory-omp`, `factory-socialmedia-adapter`), ingress (`factory-ingress`, `factory-cloudflared`), and infra (`factory-gh-helper`, `factory-turn-writer`, `factory-blobstore`). Observability: `factory-loki`, `factory-promtail`, `factory-otel` (Langfuse bundle and legacy `factory-otel-collector` disabled in manifest).
 
 **Development**: `factory start` runs everything in one process with an embedded NATS server.
 

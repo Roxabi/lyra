@@ -76,10 +76,13 @@ async def _bootstrap_clipool_standalone(raw_config: dict) -> None:
     )
     await cli_pool.start()
 
+    from factory.obs.otel_wiring import build_lifecycle_hooks
+
     worker = CliPoolNatsWorker(
         cli_pool,
         timeout=cli_pool_cfg.default_timeout,
         identity_name="clipool-worker",
+        lifecycle_hooks=build_lifecycle_hooks("clipool-workers"),
     )
     log.info("clipool: starting CliPoolNatsWorker on factory.jobs.claude")
     from factory.bootstrap.fleet_reporter import (
@@ -193,7 +196,13 @@ async def _bootstrap_omp_standalone(raw_config: dict) -> None:  # noqa: ARG001
     from factory.adapters.omp.omp_worker import OmpWorker
 
     pool = OmpPool()
-    worker = OmpWorker(pool=pool, identity_name="omp-worker")
+    from factory.obs.otel_wiring import build_lifecycle_hooks
+
+    worker = OmpWorker(
+        pool=pool,
+        identity_name="omp-worker",
+        lifecycle_hooks=build_lifecycle_hooks("omp-workers"),
+    )
     log.info("omp: starting OmpWorker on factory.jobs.omp")
     from factory.bootstrap.fleet_reporter import (
         cancel_fleet_reporter,

@@ -1,0 +1,80 @@
+---
+title: "OTel span attributes registry — required, optional, forbidden"
+issue: 2069
+status: approved
+tier: F-lite
+date: 2026-06-30
+source:
+  adr: docs/architecture/adr/097-otel-raw-telemetry-store.mdx
+  package: packages/roxabi-contracts/src/roxabi_contracts/telemetry/attrs.py
+---
+
+## Context
+
+Uncontrolled span attributes risk PII leakage and bloated storage. Workers need a single registry for what must, may, and must never appear on spans.
+
+## Goal
+
+SSoT attribute registry consumed by `roxabi-otel` exporters, worker `telemetry_attributes()` hooks, and CI negative tests.
+
+## Registry
+
+| Attribute | Required | Source |
+|-----------|----------|--------|
+| `roxabi.trace_id` | work spans | `WorkEnvelope.trace_id` (wire verbatim) |
+| `roxabi.job_id` | work spans | `WorkEnvelope.job_id` |
+| `roxabi.parent_job_id` | when sub-job | `WorkEnvelope.parent_job_id` |
+| `roxabi.pool_id` | when on wire | `WorkEnvelope.pool_id` or hub body |
+| `roxabi.component` | yes | `NatsAdapterBase.queue_group` |
+| `roxabi.envelope_name` | yes | adapter config |
+| `roxabi.subject` | yes | NATS subject |
+| `roxabi.model` | when applicable | worker hook / LiteLLM / Claude |
+| `roxabi.skill` | when applicable | worker hook; default `unknown` |
+| `roxabi.engine` | when applicable | voice/image hook |
+| `roxabi.blob_ref.in` | when applicable | STT ingress (`store_key` only) |
+| `roxabi.blob_ref.out` | when applicable | TTS/image output (`store_key` only) |
+| `roxabi.runtime` | optional | e.g. `omp`, `clipool` |
+
+### Skill default
+
+If a worker does not override `telemetry_attributes()`, hooks emit `roxabi.skill=unknown` explicitly — never silence.
+
+## Forbidden (CI negative test)
+
+| Category | Examples |
+|----------|----------|
+| Raw content | `prompt`, `messages[]`, `text`, user transcripts |
+| Bytes | `audio_b64`, `image_b64`, `waveform_b64`, inline blobs |
+| Secrets | API keys, tokens, `LITELLM_API_KEY`, home paths with secrets |
+| PII | raw Telegram user IDs, email bodies |
+| Tool dumps | `OTEL_LOG_TOOL_DETAILS=1` output |
+
+`roxabi-otel` scrubber drops forbidden keys before export; test asserts drop counter > 0 on injection.
+
+## Hook contract
+
+```python
+def telemetry_attributes(
+    self, payload: dict, result: object | None
+) -> dict[str, str | int | float | bool]:
+    return {}  # base default — standard attrs from envelope added by hooks impl
+```
+
+Domain hooks return **only** supplemental attrs; base hook adds envelope + adapter fields.
+
+## Worker examples
+
+| Worker | Hook attrs |
+|--------|------------|
+| clipool | `roxabi.pool_id`, `roxabi.skill` (scrubbed), `roxabi.runtime=clipool` |
+| omp | `roxabi.model`, `roxabi.runtime=omp` |
+| voice STT | `roxabi.blob_ref.in`, `roxabi.model` |
+| voice TTS | `roxabi.blob_ref.out`, `roxabi.model` |
+| image | `roxabi.blob_ref.out`, `roxabi.engine` |
+| llm worker | `roxabi.model`, token counts as ints |
+
+## Implementation
+
+- Registry constants: `packages/roxabi-contracts/src/roxabi_contracts/telemetry/attrs.py`
+- Scrubber: `packages/roxabi-otel/src/roxabi_otel/scrub.py`
+- CI: `packages/roxabi-otel/tests/test_forbidden_attrs.py`

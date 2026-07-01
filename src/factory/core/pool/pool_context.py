@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from ..agent import AgentBase
     from ..messaging.message import InboundMessage, OutboundMessage, Response
     from ..messaging.render_events import RenderEvent
+    from ..ports.active_jobs import ActiveJobsRecorder
 
 
 @runtime_checkable
@@ -35,3 +36,5 @@ class PoolContext(Protocol):
     def record_circuit_success(self) -> None: ...
 
     def record_circuit_failure(self, exc: BaseException) -> None: ...
+
+    def active_jobs_recorder(self) -> ActiveJobsRecorder | None: ...

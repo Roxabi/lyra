@@ -16,7 +16,7 @@
 | | `scripts/` | `tools/` |
 |---|------------|----------|
 | **What** | Run the factory (ACL, CI scanners, qg runner) | Quality gates invoked **by** `stack.yml` / `qg` |
-| **Who calls** | CI extras, Makefile, `factory-acl`, pre-push drift | `scripts/qg run` exclusively for declared gates |
+| **Who calls** | Makefile, `factory-acl`, pre-push drift | `scripts/qg run` for all `stack.yml` gates (incl. ACL scanners in `ci` stage) |
 | **dev-core** | Repo-specific | Canonical pattern from dev-core plugin |
 
 Rule: new **quality gate** → implementation in `tools/`, declaration in `stack.yml`.  

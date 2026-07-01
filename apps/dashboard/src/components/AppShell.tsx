@@ -31,13 +31,18 @@ export function AppShell() {
           className="ember-canvas bg-background text-foreground"
           topNav={<AppTopNav />}
           sideNav={<AppSideNav />}
+          // Mobile nav is the SideNav in a hamburger drawer (#2090 replaces the
+          // former bottom-tab bar). Controlled so the route-change effect closes it.
           mobileNav={{ isOpen: mobileNavOpen, onOpenChange: setMobileNavOpen }}
         >
           <div
             className={cn(
               "mx-auto w-full",
               fullBleed
-                ? "h-full min-h-0 max-w-none p-0"
+                ? // overflow-hidden so pages that own their internal scroll (chat)
+                  // don't stack a second scroll region inside Astryx's scrollable
+                  // content area.
+                  "h-full min-h-0 max-w-none overflow-hidden p-0"
                 : cn(
                     "px-4 py-4 md:px-6 md:py-6",
                     wideLayout ? "max-w-6xl xl:max-w-7xl" : "max-w-5xl",

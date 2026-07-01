@@ -1,6 +1,11 @@
-import { SideNav, SideNavHeading, SideNavItem, SideNavSection } from "@astryxdesign/core/SideNav";
+import {
+  SideNav,
+  SideNavCollapseButton,
+  SideNavHeading,
+  SideNavItem,
+  SideNavSection,
+} from "@astryxdesign/core/SideNav";
 import { useRouterState } from "@tanstack/react-router";
-import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { UserMenu } from "@/components/UserMenu";
 import {
@@ -13,27 +18,10 @@ import {
 } from "@/lib/nav";
 import { useSidebarCollapsed } from "@/lib/use-sidebar-collapsed";
 
-// Mirrors the key `useSidebarCollapsed`'s own `toggle()` persists to. Astryx's
-// `collapsible.onCollapsedChange` bypasses that helper, so this component
-// persists the value itself on every change to avoid losing the preference.
-const SIDEBAR_STORAGE_KEY = "factory.dashboard.sidebar-collapsed";
-
 export function AppSideNav() {
   const { t } = useTranslation();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { collapsed, setCollapsed } = useSidebarCollapsed();
-
-  const handleCollapsedChange = useCallback(
-    (next: boolean) => {
-      setCollapsed(next);
-      try {
-        localStorage.setItem(SIDEBAR_STORAGE_KEY, next ? "1" : "0");
-      } catch {
-        // ignore — persistence is best-effort
-      }
-    },
-    [setCollapsed],
-  );
 
   const renderItems = (items: AppNavItem[]) =>
     items.map((item) => {
@@ -52,7 +40,11 @@ export function AppSideNav() {
 
   return (
     <SideNav
-      collapsible={{ isCollapsed: collapsed, onCollapsedChange: handleCollapsedChange }}
+      // `hasButton: false` — Astryx auto-renders a collapse button with a
+      // hardcoded English label; we render our own (footerIcons) with a
+      // translated label to keep the FR/EN a11y coverage the old shell had.
+      // `setCollapsed` persists the preference (see useSidebarCollapsed).
+      collapsible={{ isCollapsed: collapsed, onCollapsedChange: setCollapsed, hasButton: false }}
       header={
         <SideNavHeading
           icon={<img src="/factory-mark.svg" alt="" className="size-8" aria-hidden />}
@@ -62,6 +54,9 @@ export function AppSideNav() {
         />
       }
       footer={<UserMenu variant="sidebar" collapsed={collapsed} />}
+      footerIcons={
+        <SideNavCollapseButton label={t(collapsed ? "nav.expandSidebar" : "nav.collapseSidebar")} />
+      }
     >
       <SideNavSection title={t("nav.sectionHome")}>{renderItems(homeNavItems)}</SideNavSection>
       <SideNavSection title={t("nav.sectionOperate")}>

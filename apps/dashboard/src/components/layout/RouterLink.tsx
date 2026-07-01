@@ -9,6 +9,12 @@ import { type ComponentProps, forwardRef } from "react";
  * enabling `to`-based routers (TanStack Router, React Router) to work without
  * a per-component adapter. TanStack Router's `Link` navigates via `to`, so
  * this component simply forwards the resolved destination through.
+ *
+ * Type note (intentional): the `rest as ComponentProps<typeof Link>` cast
+ * trades away TanStack's typed-route checking at this router-agnostic seam.
+ * Astryx only forwards benign anchor attrs today; if it ever forwards a
+ * `params`/`search` shape the cast would swallow the mismatch — acceptable for
+ * this adapter boundary, but noted so it isn't mistaken for an oversight.
  */
 export const RouterLink = forwardRef<
   HTMLAnchorElement,

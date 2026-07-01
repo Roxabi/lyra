@@ -17,9 +17,12 @@ export function AppTopNav() {
       label={t("nav.main")}
       className="bg-background/80 backdrop-blur"
       heading={
-        <h1 className="min-w-0 truncate font-[family-name:var(--font-head)] text-lg font-semibold tracking-tight">
+        // A plain <span>, not <h1>: Astryx mounts the `heading` slot twice below
+        // the md breakpoint (mobile top-bar + drawer header), so a semantic
+        // heading would produce duplicate <h1> nodes. Pages own their own <h1>.
+        <span className="block min-w-0 truncate font-[family-name:var(--font-head)] text-lg font-semibold tracking-tight">
           {label}
-        </h1>
+        </span>
       }
       endContent={
         <div className="shrink-0 md:hidden">

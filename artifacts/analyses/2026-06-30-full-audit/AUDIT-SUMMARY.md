@@ -23,8 +23,8 @@ Reduce pass over **8 domain shards** (architecture, axial-drift, security, ssot,
 |---|---|---|
 | **obs hardening** | P1-7 — `FleetReporter` crash guard (`reporter.py:82`) | ✅ implémenté — try/except sur construction+publish ; tests régression |
 | **omp P0-5** | `omp_pool.py` `set_system_prompt` no-op | Respawn worker + `append_system_prompt` au constructeur (reco opérateur) |
-| **acl P0-4** | telegram/discord manquent `$JS.API.STREAM.NAMES` (+ `CONSUMER.INFO`) | OK merge via auto-converge → restart NATS M₁ (sinon merge manuel hors converge) |
-| **cluster-plan P0-3** | `cluster_plan.py` role-rename + `--prune` (cross-repo) | Préflight souple hosts.toml ↔ quadlet.toml (reco opérateur) |
+| **acl P0-4** | telegram/discord manquent `$JS.API.STREAM.NAMES` (+ `CONSUMER.INFO`) | ✅ implémenté — grants backportés ; restart NATS au merge via auto-converge |
+| **cluster-plan P0-3** | `cluster_plan.py` role-rename + `--prune` (cross-repo) | ✅ implémenté — `ROLE_GUARD` + soft_error (projects-meta) |
 
 **Toujours ouverts (hors plan session, non traités) :** P0-1 dashboard BFF auth, P0-2 jobs/steer IDOR, et le reste du backlog P1–P3 (77 findings snapshot → ~10 clos ou partiellement clos via #2077).
 
@@ -199,8 +199,8 @@ Proposals only at audit time — remediation PRs listed in [Remediation status](
 |---|---|---|---|---|
 | P0 | `fix(dashboard): require operator auth on admin/agent BFF routes (bff_admin.py, bff_agents.py)` | security (+ssot) | `src/factory/dashboard/routes/bff_admin.py:24` | **open** |
 | P0 | `fix(dashboard): authenticate + check job ownership on /api/bff/jobs/steer (IDOR)` | security | `src/factory/bootstrap/factory/dashboard_jobs_rpc.py:100` | **open** |
-| P0 | `fix(deploy): make cluster_plan.py --prune role-validation hosts.toml-aware before deleting live units` | deploy | `lib/cluster_plan.py:45` | **open** — plan session, décision préflight |
-| P0 | `fix(nats): backport $JS.API.STREAM.NAMES + CONSUMER.INFO grants to telegram/discord-adapter ACL` | deploy | `deploy/nats/acl-matrix.json:94` | **open** — plan session, décision restart NATS |
+| P0 | `fix(deploy): make cluster_plan.py --prune role-validation hosts.toml-aware before deleting live units` | deploy | `lib/cluster_plan.py:45` | **closed** — ROLE_GUARD (projects-meta) |
+| P0 | `fix(nats): backport $JS.API.STREAM.NAMES + CONSUMER.INFO grants to telegram/discord-adapter ACL` | deploy | `deploy/nats/acl-matrix.json:94` | **closed** — grants + auth.conf regen |
 | P0 | `fix(omp): omp_pool.py calls nonexistent RpcClient.set_system_prompt — persona/soul never applied` | week-subsystem | `src/factory/adapters/omp/omp_pool.py:64` | **open** — plan session, décision respawn |
 | P1 | `fix(nats-kv): kv_safe_part collision — distinct pool_ids map to the same sanitized KV key` | architecture | `src/factory/infrastructure/stores/kv/_kv_keys.py:13` | open |
 | P1 | `fix(dashboard): admin_rpc.py PATCH allows identity rebind onto arbitrary user_id` | security | `src/factory/bootstrap/factory/dashboard/admin_rpc.py:241` | open |

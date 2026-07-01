@@ -69,8 +69,8 @@ Session audit 2026-06-30 : **4 PRs mergées** sur `staging`. Les shards `by-doma
 |---|---|---|
 | obs hardening | P1-7 `FleetReporter` crash guard | ✅ implémenté — try/except construction+publish + tests |
 | omp (P0-5 exec. summary) | `set_system_prompt` no-op | Respawn + `append_system_prompt` (reco opérateur) |
-| acl (P0-4 exec. summary) | telegram/discord `STREAM.NAMES` | OK restart NATS via auto-converge |
-| cluster-plan (P0-3 exec. summary) | `cluster_plan.py` `--prune` | Préflight souple (reco opérateur) |
+| acl (P0-4 exec. summary) | telegram/discord `STREAM.NAMES` | ✅ grants backportés ; restart NATS au merge |
+| cluster-plan (P0-3 exec. summary) | `cluster_plan.py` `--prune` | ✅ `ROLE_GUARD` soft preflight (projects-meta) |
 
 **Non traités cette session:** P0-1 dashboard BFF auth, P0-2 jobs/steer IDOR, et le reste du backlog P1–P3.
 
@@ -858,7 +858,7 @@ Tunables at the top of the script: `WEEK_SINCE`, `VERIFY_SEVERITIES`, the `FINDE
 **Next actions (updated 2026-07-01):**
 1. **Vérif M₁ #2086** — au prochain auto-converge : log `==> systemd: reloading user daemon` avant les restarts ; confirmer qu'un changement d'unit Quadlet est pris en compte (pas de restart depuis unit périmée).
 2. ~~**obs hardening**~~ — P1-7 clos : crash guard `FleetReporter` (construction+publish).
-3. **Décisions plan session** — omp respawn (P0-5), acl + restart NATS (P0-4), cluster-plan préflight (P0-3).
+3. **omp P0-5** — respawn worker + `append_system_prompt` (reporté).
 4. **Dashboard cluster (priorité sécurité)** — P0-1 + P0-2 + P1 rebind : `require_operator` + ownership `jobs/steer`.
 5. **Triage backlog** — file remaining P0/P1 via `roxabi-issues:issue-triage` (check epic #2034).
 
